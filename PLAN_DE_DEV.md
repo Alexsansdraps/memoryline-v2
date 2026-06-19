@@ -33,10 +33,9 @@ commande détaillée. On reprend les **patterns d'admin Shopify**, pas son code.
 |---|---|
 | Shopify | **Supprimé.** Aucune dépendance Shopify (ni thème, ni Admin API, ni metafields). |
 | Catalogue / panier | **Sur mesure.** |
-| Paiement (web) | **Stripe + PayPal.** On reproduit le set de moyens de paiement de Shopify (CB Visa/Mastercard/Amex, Apple Pay, Google Pay via Stripe ; + PayPal). |
-| Paiement (salon) | **Marqué manuellement** ("payé en salon") — la cliente encaisse hors plateforme (espèces / son TPE). Zéro matériel à intégrer. |
-| Back-office | **Maison**, mais ergonomie inspirée de l'admin Shopify (familiarité cliente). |
-| Mode salon | **Prise de commande assistée par la cliente** sur tablette (pas de kiosque libre-service). |
+| Paiement (web) | **Stripe + PayPal, intégrés au site** (comme aujourd'hui : checkout sur le domaine, **pas de redirection** vers une page externe). Stripe **Payment Element** → reproduit le set Shopify (CB Visa/Mastercard/Amex, Apple Pay, Google Pay) ; + PayPal. |
+| Mode salon | **Kiosque libre-service** sur tablette, à une **URL dédiée**. **Aucun paiement** : en fin de parcours, écran « nom + email » (les deux obligatoires) → envoi au back-office. (cf. §11 & §12) |
+| Back-office | **Maison**, mais ergonomie inspirée de l'admin Shopify (familiarité cliente). La cliente **imprime le PDF** des commandes salon directement depuis le back-office. |
 | Configurateur | Reconstruit sur mesure (composition SVG par couches, comme l'existant mais propre). |
 | Données initiales | **Remplies depuis des exports fournis par la cliente** (Shopify : produits, commandes, clients ; + bibliothèque personnages/assets). Script d'import dédié. |
 
@@ -93,8 +92,8 @@ memoryline-custom/
 |---|---|
 | Données injectées via Liquid + metafields | API `GET /products`, `/characters`, `/assets` |
 | `POST /cart/add.js` (cart Shopify) | `POST /api/cart` → panier en base/session |
-| Draft Order Admin API (mode POS) | `POST /api/orders` (mode salon) |
-| Paiement Shopify Checkout | **Stripe** (Payment Element) **+ PayPal** + webhooks de confirmation |
+| Draft Order Admin API (mode POS) | `POST /api/orders` (canal `salon`, sans paiement → §11) |
+| Paiement Shopify **intégré au site** | **Stripe Payment Element + PayPal, intégrés au site** (checkout sur le domaine, pas de redirection) + webhooks de confirmation |
 | Commandes dans l'admin Shopify | Commandes dans le **back-office maison** |
 
 ---
@@ -112,7 +111,8 @@ Order          (n° commande PRÉFIXÉ PAR CANAL [WEB-/SAL-], channel: web|salon
                 statut, total, infos client, date) — cf. §11 séparation stricte salon/web
 OrderItem      (snapshot complet de l'affiche personnalisée : fond, textes, personnages, format)
 Customer       (nom, email — minimal, guest)
-Payment        (fournisseur: stripe|paypal|salon, référence externe, statut, montant)
+Payment        (web uniquement — fournisseur: stripe|paypal, référence externe, statut, montant)
+PrintFile      (PDF d'impression : URL R2, nom de fichier [= nom client], format A4|A3, lié à OrderItem)
 AdminUser      (la cliente + collègues : email, hash, rôle)
 ```
 
@@ -132,50 +132,58 @@ Shopify aujourd'hui) → l'atelier d'impression a tout pour produire l'affiche.
    - Étape 3 : format (A4/A3) → **Ajouter au panier**.
 4. **Panier** → **Checkout (Stripe ou PayPal)** → confirmation + email.
 
-### 6.2 Cliente en salon (mode salon, sur tablette)
-1. Connexion au back-office, bouton **« Mode salon »** (plein écran, gros boutons, tactile).
-2. Configure l'affiche **avec/pour le client** (même configurateur).
-3. Saisit **nom + email** du client, choisit le format.
-4. **Encaisse sur place** (Stripe Terminal ou paiement manuel marqué "payé en salon").
-5. La commande apparaît dans le back-office, **taguée `salon`**, prête pour l'impression.
+### 6.2 Visiteur en salon — kiosque libre-service (tablette, URL dédiée)
+1. La tablette est posée **ouverte sur une URL dédiée** (ex. `salon.memoryline.fr` ou `/salon`), en
+   plein écran / mode kiosque. Le **visiteur se sert seul**.
+2. Il configure son affiche dans le **même configurateur** (fond + texte / personnages / format).
+3. **Pas de "Ajouter au panier"** : l'écran final demande **nom ET email** (les deux **obligatoires**).
+4. Validation → **envoi au back-office** (création d'une commande `salon`). **Aucun paiement** sur la
+   tablette.
+5. La tablette **se réinitialise** pour le visiteur suivant (écran de remerciement → retour à l'accueil).
+6. Côté cliente : la commande arrive dans **« Ventes salon »** avec un **PDF** (nom du fichier = nom du
+   visiteur, cf. §12) qu'elle **imprime directement depuis le back-office**.
 
 ### 6.3 Cliente — gestion (back-office)
 - **Commandes** : **deux espaces séparés** « Commandes en ligne » et « Ventes salon » (jamais mélangés,
   cf. §11), chacun avec listes filtrables (statut, date), fiche détaillée + aperçu de l'affiche, totaux.
 - **Produits & collections** : CRUD, prix, images.
 - **Personnages & assets** : gérer la bibliothèque SVG du configurateur (remplace les metafields Shopify).
+- **Impression salon** : ouvrir une commande « Ventes salon » → **télécharger / imprimer le PDF**
+  (nommé d'après le visiteur, cf. §12) directement depuis la fiche.
 
 ---
 
 ## 7. Phases de développement
 
 ### Phase 0 — Fondations (squelette)
-- [ ] Init monorepo pnpm, TypeScript, Tailwind preset partagé, lint/format.
+- [ ] Init monorepo pnpm + Turborepo, TypeScript, Tailwind preset partagé, lint/format.
 - [ ] `packages/types` : types de base. `packages/ui` : tokens + 5–6 composants.
-- [ ] `apps/api` : Hono + Prisma + schéma DB initial + migration. Healthcheck.
-- [ ] Décision finale stack/hébergement (cf. §3 alternative).
+- [ ] `apps/api` : Hono + Drizzle + schéma DB initial + migration. Healthcheck.
 
 ### Phase 1 — Configurateur (le cœur)
 - [ ] Extraire/reconstruire le configurateur SVG par couches dans `packages/configurator`.
 - [ ] 3 étapes : fond+texte / personnages / format. Stores SolidJS.
 - [ ] Rendu fidèle (couleurs, polices : Inter, DM Serif Display, Another Shabby).
-- [ ] Export PDF de l'affiche (html2canvas + jspdf) côté commande.
+- [ ] **Génération du PDF** de l'affiche (html2canvas + jspdf), **nom de fichier = nom du client** (cf. §12).
 
 ### Phase 2 — Web public (vitrine + e-commerce)
 - [ ] Home (hero, promo, best-sellers), pages catalogue & collections, fiche produit.
 - [ ] Intégration du configurateur dans la fiche produit.
-- [ ] Panier + **Checkout Stripe + PayPal** + webhooks + email de confirmation.
+- [ ] Panier + **Checkout Stripe (Payment Element) + PayPal, intégrés au site** (pas de redirection)
+      + webhooks + email de confirmation.
 
 ### Phase 3 — Back-office (familiarité Shopify)
 - [ ] Auth admin. Layout type admin (nav latérale : **Commandes en ligne**, **Ventes salon**, Produits, Personnages…).
 - [ ] CRUD Produits / Collections / Backgrounds.
 - [ ] CRUD Personnages / Assets (gestion bibliothèque du configurateur).
 - [ ] **Deux vues de commandes séparées** (web vs salon, cf. §11) : listes filtrables, fiche détaillée
-      avec aperçu d'affiche et export impression. Pas de liste mélangée par défaut.
+      avec aperçu d'affiche. **Téléchargement / impression du PDF** depuis la fiche (cf. §12).
 
-### Phase 4 — Mode salon
-- [ ] Vue tactile plein écran réutilisant le configurateur.
-- [ ] Prise de commande rapide + paiement marqué manuellement ("payé en salon") + tag `salon`.
+### Phase 4 — Mode salon (kiosque libre-service)
+- [ ] **URL dédiée** + mode kiosque plein écran réutilisant le configurateur.
+- [ ] Écran final **nom + email obligatoires** (pas de "ajouter au panier", **pas de paiement**)
+      → `POST /api/orders` canal `salon` + génération du PDF.
+- [ ] **Auto-reset** de la tablette pour le visiteur suivant.
 - [ ] Mode hors-ligne léger (PWA) à évaluer pour la connectivité salon.
 
 ### Phase 5 — Mise en prod & migration
@@ -246,8 +254,27 @@ Mise en œuvre :
 - **Back-office** : deux entrées de navigation distinctes — **« Commandes en ligne »** et
   **« Ventes salon »** — chacune avec ses propres listes, filtres, totaux et stats. Pas de vue
   fourre-tout par défaut. (Une vue "Tout" reste possible mais explicitement opt-in.)
-- **Création** : le canal web vient du checkout public ; le canal salon vient **uniquement** du
-  Mode salon. Aucun chemin ne permet d'en changer après coup.
-- **Paiement** : web = Stripe/PayPal (statut piloté par webhook) ; salon = "payé en salon" (manuel).
-  Les statuts de paiement ne se croisent pas.
-- **Reporting** : CA, volumes et exports comptables sont **ventilés par canal** par défaut.
+- **Création** : le canal web vient du **checkout public payé** (Stripe/PayPal) ; le canal salon vient
+  **uniquement** du **kiosque libre-service** (URL dédiée, nom+email, **sans paiement**). Aucun chemin
+  ne permet d'en changer après coup.
+- **Paiement** : web = Stripe/PayPal, **intégré au site** (statut piloté par webhook). Salon = **aucun
+  paiement** ; la commande arrive directement « à imprimer ». Les deux mondes ne se croisent pas.
+- **Reporting** : volumes et exports sont **ventilés par canal** par défaut (le CA ne concerne que le web).
+
+---
+
+## 12. PDF d'affiche & impression depuis le back-office
+
+Chaque commande (web ET salon) produit un **PDF imprimable** de l'affiche personnalisée.
+
+- **Génération** : à la validation de la commande, on rend l'affiche (html2canvas → image → jspdf) au
+  **bon format** (A4 / A3 selon le choix) et bonne résolution d'impression, puis on stocke le PDF sur R2.
+- **Nom de fichier = nom du client.** Exigence cliente : retrouver l'affiche par le nom de la personne.
+  Format proposé : `{NomClient}_{NumeroCommande}.pdf`, ex. `Marie-Dupont_SAL-0087.pdf`.
+  Le nom est **slugifié** (accents/espaces/caractères spéciaux → sûrs pour un nom de fichier) tout en
+  restant lisible. Le n° de commande suffixé évite toute collision entre deux clients homonymes.
+- **Impression côté cliente** : depuis la fiche commande du back-office, bouton **« Imprimer / Télécharger
+  le PDF »**. Pour le salon, c'est le geste principal — la cliente imprime directement, sans repasser
+  par le configurateur.
+- **Contenu du PDF** : l'affiche finale + (optionnel, à confirmer) un encart non imprimé avec n° de
+  commande, nom client, format, date — utile pour l'atelier. À trancher : page de garde séparée ou non.

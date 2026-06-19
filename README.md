@@ -4,9 +4,11 @@ Refonte complète de [memoryline.fr](https://memoryline.fr) — plateforme d'**a
 reconstruite **100% sur mesure, sans Shopify**.
 
 Trois usages :
-- 🛒 **Site web public** — vitrine, configurateur d'affiche, panier, paiement Stripe.
-- 🎪 **Mode salon** — prise de commande rapide par la cliente sur tablette (sur place).
-- ⚙️ **Back-office** — gestion catalogue, personnages, assets et commandes (ergonomie familière façon Shopify).
+- 🛒 **Site web public** — vitrine, configurateur d'affiche, panier, **paiement Stripe + PayPal intégrés au site**.
+- 🎪 **Kiosque salon** — tablette **libre-service** sur URL dédiée : le visiteur configure son affiche,
+  laisse **nom + email** (pas de paiement) → la commande part au back-office.
+- ⚙️ **Back-office** — gestion catalogue, personnages, assets et commandes (ergonomie familière façon
+  Shopify). **Commandes web et salon séparées.** La cliente **imprime le PDF** (nommé d'après le client) direct.
 
 👉 **Voir le [plan de développement](./PLAN_DE_DEV.md)** pour l'architecture, la stack, le modèle de
 données et les phases.
