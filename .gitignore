@@ -6,3 +6,6 @@ dist
 .DS_Store
 *.log
 .astro
+
+# Exports cliente (données réelles / PII)
+data/exports/
