@@ -1,0 +1,373 @@
+---
+import Admin from "../layouts/Admin.astro";
+import { adminApi, type CharacterType, type Asset } from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+// URL publique de l'API, joignable depuis le navigateur (îlots / fetch client).
+// Sert à enregistrer les couleurs côté client (credentials: include).
+const PUBLIC_API_URL =
+  import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
+
+// --- Traitement des formulaires (SSR) ----------------------------------
+// Tout ce qui ne touche pas aux couleurs passe en POST classique (robuste,
+// même pattern que promotions.astro). L'édition des couleurs, dynamique par
+// asset, se fait côté client (voir <script> en bas).
+let flash: string | null = null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const action = form.get("_action");
+  try {
+    if (action === "upsert") {
+      await api.upsertCharacter({
+        id: form.get("id") ? Number(form.get("id")) : undefined,
+        name: String(form.get("name") || "Type"),
+        category: (form.get("category") as string) || null,
+        position: Number(form.get("position") || 0),
+      });
+      flash = "Personnage enregistré.";
+    } else if (action === "archive") {
+      await api.archiveCharacter(
+        Number(form.get("id")),
+        form.get("archived") === "true",
+      );
+      flash =
+        form.get("archived") === "true"
+          ? "Personnage archivé. Les anciennes commandes restent intactes."
+          : "Personnage restauré.";
+    } else if (action === "reorder") {
+      // Échange de position avec le voisin (up/down). On envoie les 2 lignes.
+      const items = JSON.parse(String(form.get("items") || "[]"));
+      if (items.length) await api.reorderCharacters(items);
+      flash = "Ordre mis à jour.";
+    }
+  } catch (e) {
+    flash = "Erreur : " + String(e);
+  }
+}
+
+let types: CharacterType[] = [];
+let assets: Asset[] = [];
+let error: string | null = null;
+try {
+  const data = await api.characters();
+  types = data.types ?? [];
+  assets = data.assets ?? [];
+} catch (e) {
+  error = String(e);
+}
+
+const active = types.filter((t) => !t.archivedAt);
+const archived = types.filter((t) => t.archivedAt);
+
+// Regroupe les types actifs par catégorie, triés par position.
+const UNCAT = "Sans catégorie";
+const byCategory = new Map<string, CharacterType[]>();
+for (const t of active) {
+  const cat = t.category ?? UNCAT;
+  if (!byCategory.has(cat)) byCategory.set(cat, []);
+  byCategory.get(cat)!.push(t);
+}
+for (const list of byCategory.values())
+  list.sort((a, b) => a.position - b.position);
+const categories = [...byCategory.entries()].sort(([a], [b]) =>
+  a.localeCompare(b),
+);
+
+// Assets par type, regroupés par slot. On inclut le slot 'accessory' (§18.1 D).
+function assetsForType(typeId: number) {
+  const mine = assets
+    .filter((a) => a.characterTypeId === typeId)
+    .sort((a, b) => a.position - b.position);
+  const bySlot = new Map<string, Asset[]>();
+  for (const a of mine) {
+    if (!bySlot.has(a.slot)) bySlot.set(a.slot, []);
+    bySlot.get(a.slot)!.push(a);
+  }
+  return [...bySlot.entries()];
+}
+
+// Payload de réordonnancement : échange les positions de deux types.
+function swapPayload(a: CharacterType, b: CharacterType) {
+  return JSON.stringify([
+    { id: a.id, position: b.position, category: a.category },
+    { id: b.id, position: a.position, category: b.category },
+  ]);
+}
+---
+
+<Admin title="Personnages">
+  {flash && <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">{flash}</p>}
+  {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
+
+  <p class="mb-6 text-sm text-bo-muted max-w-3xl">
+    Gérez ici les personnages proposés dans le configurateur : créez-les,
+    réorganisez-les, modifiez les couleurs de leurs éléments (y compris les
+    <strong> accessoires</strong>). Archiver un personnage le retire du site
+    sans toucher aux commandes déjà passées — elles restent imprimables à
+    l'identique.
+  </p>
+
+  <!-- ====== Types actifs, par catégorie ====== -->
+  {
+    categories.map(([cat, list]) => (
+      <section class="mb-8">
+        <h2 class="font-semibold mb-3">{cat}</h2>
+        <div class="space-y-3">
+          {list.map((t, i) => (
+            <article class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
+              <header class="flex items-center justify-between gap-3 px-4 py-3 bg-bo-bg">
+                <div class="flex items-center gap-2">
+                  <span class="font-medium">{t.name}</span>
+                  <span class="text-xs text-bo-muted">/{t.slug}</span>
+                </div>
+                <div class="flex items-center gap-1">
+                  {/* Réordonner : échange avec le voisin (haut/bas) */}
+                  <form method="POST" class="inline">
+                    <input type="hidden" name="_action" value="reorder" />
+                    <input
+                      type="hidden"
+                      name="items"
+                      value={i > 0 ? swapPayload(t, list[i - 1]) : "[]"}
+                    />
+                    <button
+                      class="px-2 py-1 rounded border border-bo-border disabled:opacity-30"
+                      disabled={i === 0}
+                      title="Monter"
+                      aria-label="Monter"
+                    >
+                      ↑
+                    </button>
+                  </form>
+                  <form method="POST" class="inline">
+                    <input type="hidden" name="_action" value="reorder" />
+                    <input
+                      type="hidden"
+                      name="items"
+                      value={
+                        i < list.length - 1 ? swapPayload(t, list[i + 1]) : "[]"
+                      }
+                    />
+                    <button
+                      class="px-2 py-1 rounded border border-bo-border disabled:opacity-30"
+                      disabled={i === list.length - 1}
+                      title="Descendre"
+                      aria-label="Descendre"
+                    >
+                      ↓
+                    </button>
+                  </form>
+                  <form method="POST" class="inline ml-2">
+                    <input type="hidden" name="_action" value="archive" />
+                    <input type="hidden" name="id" value={t.id} />
+                    <input type="hidden" name="archived" value="true" />
+                    <button class="px-2 py-1 rounded border border-bo-border text-bo-muted hover:text-red-600">
+                      Archiver
+                    </button>
+                  </form>
+                </div>
+              </header>
+
+              {/* Édition rapide du type */}
+              <form
+                method="POST"
+                class="flex flex-wrap items-end gap-3 px-4 py-3 text-sm border-b border-bo-border"
+              >
+                <input type="hidden" name="_action" value="upsert" />
+                <input type="hidden" name="id" value={t.id} />
+                <label class="block">
+                  <span class="text-bo-muted text-xs">Nom</span>
+                  <input
+                    name="name"
+                    value={t.name}
+                    class="mt-1 block border border-bo-border rounded px-2 py-1"
+                  />
+                </label>
+                <label class="block">
+                  <span class="text-bo-muted text-xs">Catégorie</span>
+                  <input
+                    name="category"
+                    value={t.category ?? ""}
+                    class="mt-1 block border border-bo-border rounded px-2 py-1"
+                  />
+                </label>
+                <label class="block">
+                  <span class="text-bo-muted text-xs">Position</span>
+                  <input
+                    name="position"
+                    type="number"
+                    value={t.position}
+                    class="mt-1 block w-20 border border-bo-border rounded px-2 py-1"
+                  />
+                </label>
+                <button class="rounded bg-bo-accent text-white px-3 py-1.5 hover:opacity-90">
+                  Enregistrer
+                </button>
+              </form>
+
+              {/* Assets groupés par slot (accessoires inclus) */}
+              <div class="px-4 py-3 space-y-4">
+                {assetsForType(t.id).length === 0 && (
+                  <p class="text-xs text-bo-muted">Aucun élément pour ce personnage.</p>
+                )}
+                {assetsForType(t.id).map(([slot, slotAssets]) => (
+                  <div>
+                    <h3 class="text-xs font-medium uppercase tracking-wide text-bo-muted mb-2">
+                      {slot}
+                    </h3>
+                    <div class="grid sm:grid-cols-2 gap-3">
+                      {slotAssets.map((a) => (
+                        <div class="border border-bo-border rounded p-3" data-asset-id={a.id}>
+                          <div class="flex items-center gap-2 mb-2">
+                            {a.svgUrl && (
+                              <img
+                                src={
+                                  a.svgUrl.startsWith("http")
+                                    ? a.svgUrl
+                                    : `${PUBLIC_API_URL}${a.svgUrl}`
+                                }
+                                alt=""
+                                class="h-8 w-8 object-contain border border-bo-border rounded bg-white"
+                                loading="lazy"
+                              />
+                            )}
+                            <span class="text-sm font-medium">{a.name}</span>
+                          </div>
+                          {Object.keys(a.colorZones ?? {}).length === 0 ? (
+                            <p class="text-xs text-bo-muted">Pas de zone de couleur.</p>
+                          ) : (
+                            <>
+                              <div class="flex flex-wrap gap-2 mb-2">
+                                {Object.entries(a.colorZones ?? {}).map(([zone, hex]) => (
+                                  <label class="flex items-center gap-1 text-xs">
+                                    <input
+                                      type="color"
+                                      value={hex}
+                                      data-zone={zone}
+                                      class="h-7 w-7 border border-bo-border rounded cursor-pointer"
+                                    />
+                                    <span class="text-bo-muted">{zone}</span>
+                                  </label>
+                                ))}
+                              </div>
+                              <button
+                                type="button"
+                                class="js-save-colors rounded bg-bo-accent text-white px-3 py-1.5 text-xs hover:opacity-90"
+                              >
+                                Enregistrer les couleurs
+                              </button>
+                              <span class="js-color-status ml-2 text-xs"></span>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    ))
+  }
+
+  {active.length === 0 && !error && (
+    <p class="text-bo-muted text-sm mb-8">Aucun personnage actif.</p>
+  )}
+
+  <!-- ====== Créer un personnage ====== -->
+  <section class="mb-10 bg-bo-surface border border-bo-border rounded-lg p-5">
+    <h2 class="font-semibold mb-4">Nouveau personnage</h2>
+    <form method="POST" class="grid sm:grid-cols-3 gap-4 text-sm items-end">
+      <input type="hidden" name="_action" value="upsert" />
+      <label class="block">
+        <span class="text-bo-muted">Nom</span>
+        <input name="name" required class="mt-1 w-full border border-bo-border rounded px-3 py-2" placeholder="Ours" />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Catégorie</span>
+        <input name="category" class="mt-1 w-full border border-bo-border rounded px-3 py-2" placeholder="Animaux" />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Position</span>
+        <input name="position" type="number" value="0" class="mt-1 w-full border border-bo-border rounded px-3 py-2" />
+      </label>
+      <div class="sm:col-span-3">
+        <button class="rounded bg-bo-accent text-white px-4 py-2 hover:opacity-90">Créer</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- ====== Personnages archivés ====== -->
+  {
+    archived.length > 0 && (
+      <section class="mb-8">
+        <h2 class="font-semibold mb-1">Archivés</h2>
+        <p class="text-xs text-bo-muted mb-3">
+          Retirés du site. Les commandes passées restent intactes et imprimables.
+          Vous pouvez les restaurer à tout moment.
+        </p>
+        <div class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden opacity-60">
+          <table class="w-full text-sm">
+            <tbody>
+              {archived.map((t) => (
+                <tr class="border-t border-bo-border first:border-t-0">
+                  <td class="px-4 py-2 font-medium">{t.name}</td>
+                  <td class="px-4 py-2 text-bo-muted">{t.category ?? "—"}</td>
+                  <td class="px-4 py-2 text-right">
+                    <form method="POST" class="inline">
+                      <input type="hidden" name="_action" value="archive" />
+                      <input type="hidden" name="id" value={t.id} />
+                      <input type="hidden" name="archived" value="false" />
+                      <button class="text-bo-accent hover:underline">Restaurer</button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    )
+  }
+
+  <script is:inline define:vars={{ PUBLIC_API_URL }}>
+    // Enregistrement des couleurs d'un asset (accessoires inclus — §18.1 D).
+    // Fetch direct vers l'API publique avec credentials pour porter la session.
+    document.querySelectorAll(".js-save-colors").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const card = btn.closest("[data-asset-id]");
+        if (!card) return;
+        const id = card.getAttribute("data-asset-id");
+        const status = card.querySelector(".js-color-status");
+        const colorZones = {};
+        card.querySelectorAll('input[type="color"][data-zone]').forEach((i) => {
+          colorZones[i.getAttribute("data-zone")] = i.value;
+        });
+        if (status) status.textContent = "…";
+        try {
+          const res = await fetch(
+            `${PUBLIC_API_URL}/admin/assets/${id}/colors`,
+            {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ colorZones }),
+            },
+          );
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          if (status) {
+            status.textContent = "Enregistré ✓";
+            status.className = "js-color-status ml-2 text-xs text-green-700";
+          }
+        } catch (e) {
+          if (status) {
+            status.textContent = "Erreur";
+            status.className = "js-color-status ml-2 text-xs text-red-600";
+          }
+        }
+      });
+    });
+  </script>
+</Admin>

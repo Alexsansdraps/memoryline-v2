@@ -1,5 +1,7 @@
 node_modules
 dist
+.output
+.vite
 .env
 .env.*
 !.env.example
@@ -7,5 +9,16 @@ dist
 *.log
 .astro
 
+# Store pnpm local (volumineux, ne doit jamais être versionné)
+.pnpm-store/
+
 # Exports cliente (données réelles / PII)
 data/exports/
+wetransfer_*/
+# Images/SVG rapatriés depuis Shopify (binaires volumineux)
+data/assets/
+
+# Turborepo
+.turbo
+# Drizzle
+.drizzle

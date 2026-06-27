@@ -1,0 +1,58 @@
+---
+import Admin from "../layouts/Admin.astro";
+import { adminApi, type Banner } from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+let flash: string | null = null;
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  try {
+    await api.upsertBanner({
+      id: f.get("id") ? Number(f.get("id")) : undefined,
+      message: String(f.get("message") || ""),
+      linkUrl: (f.get("linkUrl") as string) || null,
+      linkLabel: (f.get("linkLabel") as string) || null,
+      bgColor: (f.get("bgColor") as string) || "#20211f",
+      textColor: (f.get("textColor") as string) || "#f7f3ec",
+      active: f.get("active") === "on",
+    });
+    flash = "Bandeau enregistré. Il est visible immédiatement sur le site.";
+  } catch (e) {
+    flash = "Erreur : " + String(e);
+  }
+}
+
+let banner: Banner | null = null;
+try {
+  banner = await api.banner();
+} catch {}
+---
+
+<Admin title="Bandeau du site">
+  {flash && <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">{flash}</p>}
+  <section class="bg-bo-surface border border-bo-border rounded-lg p-5 max-w-2xl">
+    <p class="text-sm text-bo-muted mb-4">
+      Le bandeau s'affiche tout en haut du site public. Laissez-le actif pour
+      annoncer l'offre du moment.
+    </p>
+    <form method="POST" class="space-y-4 text-sm">
+      {banner && <input type="hidden" name="id" value={banner.id} />}
+      <label class="block">
+        <span class="text-bo-muted">Message</span>
+        <input name="message" required value={banner?.message ?? ""} class="mt-1 w-full border border-bo-border rounded px-3 py-2" />
+      </label>
+      <div class="grid grid-cols-2 gap-4">
+        <label class="block"><span class="text-bo-muted">Lien (URL)</span><input name="linkUrl" value={banner?.linkUrl ?? ""} class="mt-1 w-full border border-bo-border rounded px-3 py-2" placeholder="/affiches" /></label>
+        <label class="block"><span class="text-bo-muted">Libellé du lien</span><input name="linkLabel" value={banner?.linkLabel ?? ""} class="mt-1 w-full border border-bo-border rounded px-3 py-2" placeholder="J'en profite" /></label>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <label class="block"><span class="text-bo-muted">Couleur de fond</span><input name="bgColor" type="color" value={banner?.bgColor ?? "#20211f"} class="mt-1 h-10 w-full border border-bo-border rounded" /></label>
+        <label class="block"><span class="text-bo-muted">Couleur du texte</span><input name="textColor" type="color" value={banner?.textColor ?? "#f7f3ec"} class="mt-1 h-10 w-full border border-bo-border rounded" /></label>
+      </div>
+      <label class="flex items-center gap-2">
+        <input name="active" type="checkbox" checked={banner?.active ?? true} /> <span>Afficher le bandeau</span>
+      </label>
+      <button class="rounded bg-bo-accent text-white px-4 py-2 hover:opacity-90">Enregistrer</button>
+    </form>
+  </section>
+</Admin>

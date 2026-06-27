@@ -1,0 +1,38 @@
+{
+  "name": "@memoryline/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=../../.env src/index.ts",
+    "dev:local": "tsx watch --env-file=../../.env src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx --env-file=../../.env src/db/migrate.ts",
+    "db:studio": "drizzle-kit studio",
+    "import": "tsx --env-file=../../.env scripts/import/index.ts",
+    "fetch-assets": "tsx --env-file=../../.env scripts/fetch-assets.ts",
+    "seed-config": "tsx --env-file=../../.env scripts/seed-config.ts",
+    "seed-characters": "tsx --env-file=../../.env scripts/seed-characters.ts",
+    "create-admin": "tsx --env-file=../../.env scripts/create-admin.ts",
+    "gen-redirects": "tsx --env-file=../../.env scripts/gen-redirects.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "@memoryline/types": "workspace:*",
+    "drizzle-orm": "^0.38.0",
+    "hono": "^4.6.0",
+    "pdf-lib": "^1.17.1",
+    "postgres": "^3.4.5",
+    "sharp": "^0.35.2",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "csv-parse": "^5.6.0",
+    "drizzle-kit": "^0.30.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

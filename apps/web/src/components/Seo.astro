@@ -1,0 +1,67 @@
+---
+/**
+ * Composant SEO centralisé : title, meta description, canonical, Open Graph,
+ * Twitter Card, robots, hreflang, et JSON-LD optionnel.
+ * Utilisé par le layout Base pour que CHAQUE page ait un SEO propre.
+ */
+interface Props {
+  title: string;
+  description: string;
+  /** Chemin de la page (ex. "/affiches/soissons-..."). Sert au canonical. */
+  path?: string;
+  /** Image absolue ou relative pour Open Graph (partage réseaux). */
+  image?: string;
+  /** "website" (défaut) ou "product" pour les fiches produit. */
+  type?: "website" | "product" | "article";
+  noindex?: boolean;
+  /** Objet(s) JSON-LD (Schema.org) à injecter. */
+  jsonLd?: Record<string, unknown> | Record<string, unknown>[];
+}
+
+const {
+  title,
+  description,
+  path = Astro.url.pathname,
+  image = "/og-default.png",
+  type = "website",
+  noindex = false,
+  jsonLd,
+} = Astro.props;
+
+const siteUrl = Astro.site?.toString().replace(/\/$/, "") ?? "https://memoryline.fr";
+const canonical = new URL(path, siteUrl + "/").toString();
+const ogImage = image.startsWith("http") ? image : new URL(image, siteUrl + "/").toString();
+const jsonLdList = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
+---
+
+<!-- Primaire -->
+<title>{title}</title>
+<meta name="description" content={description} />
+<link rel="canonical" href={canonical} />
+{noindex && <meta name="robots" content="noindex, nofollow" />}
+{!noindex && <meta name="robots" content="index, follow, max-image-preview:large" />}
+
+<!-- Open Graph (Facebook, LinkedIn, etc.) -->
+<meta property="og:site_name" content="Memory Line" />
+<meta property="og:locale" content="fr_FR" />
+<meta property="og:type" content={type} />
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:url" content={canonical} />
+<meta property="og:image" content={ogImage} />
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content={title} />
+<meta name="twitter:description" content={description} />
+<meta name="twitter:image" content={ogImage} />
+
+<!-- Données structurées Schema.org -->
+{
+  jsonLdList.map((data) => (
+    <script
+      type="application/ld+json"
+      set:html={JSON.stringify(data)}
+    />
+  ))
+}

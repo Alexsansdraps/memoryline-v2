@@ -1,0 +1,66 @@
+---
+/**
+ * Bandeau de consentement cookies (RGPD/CNIL).
+ * - S'affiche tant qu'aucun choix n'est enregistré.
+ * - Choix explicite Accepter / Refuser (équivalence requise par la CNIL).
+ * - Mémorise le consentement dans localStorage (pas de cookie tiers tant
+ *   que l'utilisateur n'a pas accepté).
+ * - Émet un évènement `ml:consent` pour brancher les traceurs plus tard.
+ */
+---
+
+<div
+  id="cookie-banner"
+  hidden
+  class="fixed inset-x-0 bottom-0 z-50 border-t border-ink/10 bg-paper/95 backdrop-blur"
+>
+  <div
+    class="mx-auto max-w-4xl px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center gap-4"
+  >
+    <p class="text-sm text-ink-soft flex-1">
+      Nous utilisons des cookies pour mesurer l'audience et améliorer votre
+      expérience. Vous pouvez accepter ou refuser. Voir notre{" "}
+      <a href="/cookies" class="underline">politique de cookies</a>.
+    </p>
+    <div class="flex gap-3 shrink-0">
+      <button
+        data-consent="refuse"
+        class="rounded-full border border-ink/20 px-4 py-2 text-sm hover:border-ink transition-colors"
+        >Refuser</button
+      >
+      <button
+        data-consent="accept"
+        class="rounded-full bg-ink px-4 py-2 text-sm text-paper hover:bg-terracotta-deep transition-colors"
+        >Accepter</button
+      >
+    </div>
+  </div>
+</div>
+
+<script is:inline>
+  (function () {
+    const KEY = "ml_cookie_consent";
+    const banner = document.getElementById("cookie-banner");
+    if (!banner) return;
+    let stored = null;
+    try {
+      stored = localStorage.getItem(KEY);
+    } catch {}
+    if (!stored) banner.hidden = false;
+
+    function choose(value) {
+      try {
+        localStorage.setItem(KEY, value);
+      } catch {}
+      banner.hidden = true;
+      document.dispatchEvent(
+        new CustomEvent("ml:consent", { detail: { consent: value } }),
+      );
+    }
+    banner.querySelectorAll("[data-consent]").forEach((btn) => {
+      btn.addEventListener("click", () =>
+        choose(btn.getAttribute("data-consent")),
+      );
+    });
+  })();
+</script>

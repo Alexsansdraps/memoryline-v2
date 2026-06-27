@@ -1,0 +1,134 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { adminApi, formatPrice, type OrderDetail } from "../../lib/api.ts";
+
+// URL publique de l'API (le lien PDF est ouvert dans le navigateur de la
+// cliente : il doit pointer vers l'API joignable côté client).
+const PUBLIC_API_URL =
+  import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
+
+const id = Number(Astro.params.id);
+const api = adminApi(Astro.request);
+
+let detail: OrderDetail | null = null;
+let error: string | null = null;
+try {
+  detail = await api.orderDetail(id);
+} catch (e) {
+  error = String(e);
+}
+
+const order = detail?.order;
+const items = detail?.items ?? [];
+---
+
+<Admin title={order ? `Commande ${order.number}` : `Commande #${id}`}>
+  <a href="javascript:history.back()" class="text-sm text-bo-accent hover:underline">
+    ← Retour
+  </a>
+
+  {
+    order && (
+      <section class="mt-3 bg-bo-surface border border-bo-border rounded-lg p-5 mb-6">
+        <dl class="grid sm:grid-cols-3 gap-3 text-sm">
+          <div>
+            <dt class="text-bo-muted">Numéro</dt>
+            <dd class="font-medium">{order.number}</dd>
+          </div>
+          <div>
+            <dt class="text-bo-muted">Statut</dt>
+            <dd class="font-medium">{order.status}</dd>
+          </div>
+          <div>
+            <dt class="text-bo-muted">Total</dt>
+            <dd class="font-medium">{formatPrice(order.totalCents)}</dd>
+          </div>
+        </dl>
+      </section>
+    )
+  }
+
+  {
+    detail && (
+      <section class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden mb-6">
+        <table class="w-full text-sm">
+          <thead class="bg-bo-bg text-bo-muted text-left">
+            <tr>
+              <th class="px-4 py-2 font-medium">Article</th>
+              <th class="px-4 py-2 font-medium text-right">Qté</th>
+              <th class="px-4 py-2 font-medium text-right">Prix</th>
+              <th class="px-4 py-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((it) => (
+              <tr class="border-t border-bo-border">
+                <td class="px-4 py-2 font-medium">{it.title ?? `Article #${it.id}`}</td>
+                <td class="px-4 py-2 text-right">{it.quantity}</td>
+                <td class="px-4 py-2 text-right">{formatPrice(it.unitPriceCents)}</td>
+                <td class="px-4 py-2 text-right">
+                  <a
+                    href={`${PUBLIC_API_URL}/print-files/${it.id}`}
+                    target="_blank"
+                    rel="noopener"
+                    class="rounded bg-bo-accent text-white px-3 py-1.5 hover:opacity-90"
+                  >
+                    Télécharger / Imprimer le PDF
+                  </a>
+                </td>
+              </tr>
+            ))}
+            {items.length === 0 && (
+              <tr>
+                <td colspan="4" class="px-4 py-6 text-center text-bo-muted">
+                  Aucun article personnalisable à imprimer.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
+    )
+  }
+
+  {
+    error && (
+      <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+        <p class="text-sm text-amber-700 mb-3">
+          Le détail de cette commande n'a pas pu être chargé ({error}).
+        </p>
+        <p class="text-sm text-bo-muted mb-4">
+          L'API ne fournit pas encore de route <code>GET /orders/:id</code>{" "}
+          renvoyant les lignes de commande (et donc leurs identifiants).
+          En attendant, si vous connaissez l'identifiant d'une ligne, vous
+          pouvez télécharger son PDF directement — il reste disponible pour
+          toute commande, même ancienne.
+        </p>
+        <form class="flex items-end gap-3" data-pdf-fallback>
+          <label class="block text-sm">
+            <span class="text-bo-muted">Identifiant de ligne (orderItemId)</span>
+            <input
+              type="number"
+              required
+              class="mt-1 block w-48 border border-bo-border rounded px-3 py-2"
+            />
+          </label>
+          <button class="rounded bg-bo-accent text-white px-4 py-2 hover:opacity-90">
+            Télécharger le PDF
+          </button>
+        </form>
+      </section>
+    )
+  }
+
+  <script is:inline define:vars={{ PUBLIC_API_URL }}>
+    // Câble le formulaire de secours (téléchargement par orderItemId).
+    document.querySelectorAll("form[data-pdf-fallback]").forEach((f) => {
+      f.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const v = f.querySelector("input")?.value;
+        if (v) window.open(`${PUBLIC_API_URL}/print-files/${v}`, "_blank");
+      });
+    });
+  </script>
+</Admin>

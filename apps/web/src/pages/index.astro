@@ -1,0 +1,92 @@
+---
+import Base from "../layouts/Base.astro";
+import { api, setting } from "../lib/api.ts";
+
+let stats = null;
+try {
+  stats = await api.stats();
+} catch {
+  // API non joignable au build/SSR -> on dégrade proprement
+}
+
+// Contenu éditable depuis le BO (avec repli si l'API ne répond pas).
+const heroTitle = await setting(
+  "home.hero.title",
+  "Votre ville, votre histoire, sur un mur.",
+);
+const heroSubtitle = await setting(
+  "home.hero.subtitle",
+  "Choisissez un fond, personnalisez le titre, ajoutez vos personnages. Votre affiche prête en 2 minutes — imprimée en A4 ou A3.",
+);
+---
+
+<Base>
+  <section class="mx-auto max-w-6xl px-6 pt-20 pb-16">
+    <p class="text-terracotta font-medium tracking-wide uppercase text-sm">
+      Affiches personnalisées
+    </p>
+    <h1 class="font-serif text-5xl sm:text-6xl leading-[1.05] mt-3 max-w-3xl">
+      {heroTitle}
+    </h1>
+    <p class="mt-6 text-lg text-ink-soft max-w-xl">
+      {heroSubtitle}
+    </p>
+    <div class="mt-8 flex flex-wrap gap-4">
+      <a
+        href="/affiches"
+        class="rounded-full bg-terracotta px-6 py-3 text-paper font-medium hover:bg-terracotta-deep transition-colors"
+        >Découvrir les affiches</a
+      >
+      <a
+        href="/affiches"
+        class="rounded-full border border-ink/20 px-6 py-3 font-medium hover:border-ink transition-colors"
+        >Personnaliser la mienne</a
+      >
+    </div>
+
+    {
+      stats && (
+        <dl class="mt-16 grid grid-cols-2 sm:grid-cols-4 gap-px bg-ink/10 rounded-2xl overflow-hidden border border-ink/10">
+          {[
+            ["Affiches", stats.products],
+            ["Collections", stats.collections],
+            ["Formats", "A4 · A3"],
+            ["Prêtes en", "2 min"],
+          ].map(([label, value]) => (
+            <div class="bg-paper px-6 py-5">
+              <dt class="text-sm text-ink-soft">{label}</dt>
+              <dd class="font-serif text-3xl mt-1">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )
+    }
+    {
+      !stats && (
+        <p class="mt-16 text-sm text-ink-soft">
+          (API non joignable — lance le backend, cf. PUBLIC_API_URL / .env.)
+        </p>
+      )
+    }
+  </section>
+
+  <section class="bg-paper-deep">
+    <div class="mx-auto max-w-6xl px-6 py-16 grid sm:grid-cols-3 gap-8">
+      {
+        [
+          ["1 · Choisissez votre fond", "Villes françaises, paysages, thèmes."],
+          [
+            "2 · Personnalisez",
+            "Titre, sous-titre, personnages et leurs tenues.",
+          ],
+          ["3 · Recevez", "Imprimée en A4 ou A3, livrée chez vous."],
+        ].map(([t, d]) => (
+          <div>
+            <h3 class="font-serif text-2xl">{t}</h3>
+            <p class="mt-2 text-ink-soft">{d}</p>
+          </div>
+        ))
+      }
+    </div>
+  </section>
+</Base>

@@ -1,0 +1,67 @@
+---
+import "../styles/admin.css";
+import { login } from "../lib/auth.ts";
+
+let error: string | null = null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const email = String(form.get("email") ?? "");
+  const password = String(form.get("password") ?? "");
+  const result = await login(email, password);
+  if (result.ok) {
+    // Redirige en propageant le cookie de session émis par l'API.
+    // On construit la réponse explicitement : Astro.redirect ne conserve pas
+    // toujours les en-têtes ajoutés à Astro.response.
+    const headers = new Headers({ Location: "/" });
+    if (result.setCookie) headers.append("set-cookie", result.setCookie);
+    return new Response(null, { status: 302, headers });
+  }
+  error = result.error ?? "Identifiants invalides";
+}
+---
+
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Connexion · Memory Line Admin</title>
+  </head>
+  <body class="min-h-screen flex items-center justify-center">
+    <form
+      method="POST"
+      class="bg-bo-surface border border-bo-border rounded-xl p-8 w-full max-w-sm shadow-sm"
+    >
+      <h1 class="text-xl font-semibold">Memory Line</h1>
+      <p class="text-sm text-bo-muted mt-1">Back-office — connexion</p>
+
+      {error && <p class="mt-4 text-sm text-red-600">{error}</p>}
+
+      <label class="block mt-5 text-sm">
+        <span class="text-bo-muted">Email</span>
+        <input
+          name="email"
+          type="email"
+          required
+          autocomplete="username"
+          class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+        />
+      </label>
+      <label class="block mt-4 text-sm">
+        <span class="text-bo-muted">Mot de passe</span>
+        <input
+          name="password"
+          type="password"
+          required
+          autocomplete="current-password"
+          class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+        />
+      </label>
+      <button
+        class="mt-6 w-full rounded bg-bo-accent text-white px-4 py-2 hover:opacity-90"
+        >Se connecter</button
+      >
+    </form>
+  </body>
+</html>

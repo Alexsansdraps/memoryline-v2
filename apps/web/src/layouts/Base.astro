@@ -1,0 +1,82 @@
+---
+import "../styles/global.css";
+import Seo from "../components/Seo.astro";
+import AnnouncementBanner from "../components/AnnouncementBanner.astro";
+import CookieBanner from "../components/CookieBanner.astro";
+interface Props {
+  title?: string;
+  description?: string;
+  path?: string;
+  image?: string;
+  type?: "website" | "product" | "article";
+  noindex?: boolean;
+  jsonLd?: Record<string, unknown> | Record<string, unknown>[];
+}
+const {
+  title = "Memory Line — Affiches personnalisées de villes & paysages",
+  description = "Affiches personnalisées de villes françaises, paysages et thèmes. Composez la vôtre en quelques minutes, imprimée en A4 ou A3.",
+  path,
+  image,
+  type,
+  noindex,
+  jsonLd,
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    <Seo
+      title={title}
+      description={description}
+      path={path}
+      image={image}
+      type={type}
+      noindex={noindex}
+      jsonLd={jsonLd}
+    />
+  </head>
+  <body class="min-h-screen flex flex-col bg-paper text-ink">
+    <AnnouncementBanner />
+    <header
+      class="border-b border-ink/10 bg-paper/80 backdrop-blur sticky top-0 z-10"
+    >
+      <nav
+        class="mx-auto max-w-6xl flex items-center justify-between px-6 py-4"
+      >
+        <a href="/" class="font-serif text-2xl tracking-tight">Memory Line</a>
+        <div class="flex items-center gap-6 text-sm">
+          <a href="/affiches" class="hover:text-terracotta transition-colors"
+            >Affiches</a
+          >
+          <a href="/panier" class="hover:text-terracotta transition-colors"
+            >Panier</a
+          >
+          <a
+            href="/affiches"
+            class="rounded-full bg-ink px-4 py-2 text-paper hover:bg-terracotta-deep transition-colors"
+            >Personnaliser</a
+          >
+        </div>
+      </nav>
+    </header>
+
+    <main class="flex-1">
+      <slot />
+    </main>
+
+    <footer class="border-t border-ink/10 mt-16">
+      <div
+        class="mx-auto max-w-6xl px-6 py-8 text-sm text-ink-soft flex flex-col sm:flex-row justify-between gap-2"
+      >
+        <p>© {new Date().getFullYear()} Memory Line — Affiches personnalisées</p>
+        <p>Votre affiche prête en 2 minutes.</p>
+      </div>
+    </footer>
+    <CookieBanner />
+  </body>
+</html>

@@ -1,0 +1,175 @@
+---
+import Admin from "../layouts/Admin.astro";
+import { formatPrice } from "../lib/api.ts";
+
+const API =
+  import.meta.env.API_URL_INTERNAL ??
+  import.meta.env.PUBLIC_API_URL ??
+  "http://localhost:3000";
+let products: {
+  id: number;
+  name: string;
+  slug?: string;
+  kind: string;
+  basePriceCents: number;
+}[] = [];
+let error: string | null = null;
+try {
+  const res = await fetch(`${API}/products?limit=200`);
+  products = await res.json();
+} catch (e) {
+  error = String(e);
+}
+
+const PAGE_SIZE = 25;
+---
+
+<Admin title="Produits">
+  {error && <p class="text-red-600 text-sm">API injoignable : {error}</p>}
+
+  <!-- Recherche + compteur -->
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <input
+      id="prod-search"
+      type="search"
+      placeholder="Rechercher un produit (nom ou identifiant)…"
+      class="w-72 max-w-full border border-bo-border rounded px-3 py-2 text-sm"
+    />
+    <p class="text-sm text-bo-muted">
+      <span id="prod-count">{products.length}</span> produit(s)
+    </p>
+  </div>
+
+  <!-- Pagination (haut) — demandée explicitement en haut de liste aussi -->
+  <nav
+    class="prod-pager mb-3 flex items-center justify-between gap-2 text-sm"
+    data-pager
+  >
+    <button
+      class="prod-prev rounded border border-bo-border px-3 py-1.5 disabled:opacity-40"
+    >
+      ← Précédent
+    </button>
+    <span class="prod-pageinfo text-bo-muted"></span>
+    <button
+      class="prod-next rounded border border-bo-border px-3 py-1.5 disabled:opacity-40"
+    >
+      Suivant →
+    </button>
+  </nav>
+
+  <section class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-bo-bg text-bo-muted text-left">
+        <tr>
+          <th class="px-4 py-2 font-medium">Nom</th>
+          <th class="px-4 py-2 font-medium">Type</th>
+          <th class="px-4 py-2 font-medium text-right">Prix de base</th>
+        </tr>
+      </thead>
+      <tbody id="prod-tbody">
+        {
+          products.map((p) => (
+            <tr
+              class="prod-row border-t border-bo-border"
+              data-name={(p.name ?? "").toLowerCase()}
+              data-slug={(p.slug ?? "").toLowerCase()}
+            >
+              <td class="px-4 py-2 font-medium">{p.name}</td>
+              <td class="px-4 py-2">{p.kind}</td>
+              <td class="px-4 py-2 text-right">{formatPrice(p.basePriceCents)}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+    <p id="prod-empty" class="hidden px-4 py-6 text-center text-bo-muted text-sm">
+      Aucun produit ne correspond.
+    </p>
+  </section>
+
+  <!-- Pagination (bas) -->
+  <nav
+    class="prod-pager mt-3 flex items-center justify-between gap-2 text-sm"
+    data-pager
+  >
+    <button
+      class="prod-prev rounded border border-bo-border px-3 py-1.5 disabled:opacity-40"
+    >
+      ← Précédent
+    </button>
+    <span class="prod-pageinfo text-bo-muted"></span>
+    <button
+      class="prod-next rounded border border-bo-border px-3 py-1.5 disabled:opacity-40"
+    >
+      Suivant →
+    </button>
+  </nav>
+
+  <script is:inline define:vars={{ PAGE_SIZE }}>
+    const rows = Array.from(document.querySelectorAll(".prod-row"));
+    const search = document.getElementById("prod-search");
+    const countEl = document.getElementById("prod-count");
+    const emptyEl = document.getElementById("prod-empty");
+    let page = 0;
+
+    function filtered() {
+      const q = (search?.value || "").trim().toLowerCase();
+      if (!q) return rows;
+      return rows.filter(
+        (r) =>
+          (r.dataset.name || "").includes(q) ||
+          (r.dataset.slug || "").includes(q),
+      );
+    }
+
+    function render() {
+      const list = filtered();
+      const total = list.length;
+      const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      if (page > pages - 1) page = pages - 1;
+      if (page < 0) page = 0;
+      const start = page * PAGE_SIZE;
+      const end = start + PAGE_SIZE;
+
+      // Cache toutes les lignes, puis affiche la tranche courante.
+      rows.forEach((r) => (r.style.display = "none"));
+      list.slice(start, end).forEach((r) => (r.style.display = ""));
+
+      if (countEl) countEl.textContent = String(total);
+      if (emptyEl) emptyEl.classList.toggle("hidden", total !== 0);
+
+      document.querySelectorAll("[data-pager]").forEach((pager) => {
+        const info = pager.querySelector(".prod-pageinfo");
+        const prev = pager.querySelector(".prod-prev");
+        const next = pager.querySelector(".prod-next");
+        if (info)
+          info.textContent =
+            total === 0
+              ? "—"
+              : `Page ${page + 1} / ${pages} · ${start + 1}–${Math.min(end, total)} sur ${total}`;
+        if (prev) prev.disabled = page === 0;
+        if (next) next.disabled = page >= pages - 1;
+      });
+    }
+
+    document.querySelectorAll(".prod-prev").forEach((b) =>
+      b.addEventListener("click", () => {
+        page--;
+        render();
+      }),
+    );
+    document.querySelectorAll(".prod-next").forEach((b) =>
+      b.addEventListener("click", () => {
+        page++;
+        render();
+      }),
+    );
+    search?.addEventListener("input", () => {
+      page = 0;
+      render();
+    });
+
+    render();
+  </script>
+</Admin>

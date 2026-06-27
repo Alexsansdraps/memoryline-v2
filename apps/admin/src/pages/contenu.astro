@@ -1,0 +1,57 @@
+---
+import Admin from "../layouts/Admin.astro";
+import { adminApi } from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+let flash: string | null = null;
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  try {
+    // Chaque champ du formulaire est une clé de réglage.
+    for (const [key, value] of f.entries()) {
+      await api.setSetting(key, String(value));
+    }
+    flash = "Contenu enregistré.";
+  } catch (e) {
+    flash = "Erreur : " + String(e);
+  }
+}
+
+let settings: Record<string, unknown> = {};
+try {
+  settings = await api.settings();
+} catch {}
+
+// Champs éditables présentés à la cliente (libellés lisibles).
+const FIELDS = [
+  { key: "home.hero.title", label: "Titre principal (accueil)" },
+  { key: "home.hero.subtitle", label: "Sous-titre (accueil)" },
+  { key: "footer.baseline", label: "Baseline (pied de page)" },
+];
+---
+
+<Admin title="Contenu du site">
+  {flash && <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">{flash}</p>}
+  <section class="bg-bo-surface border border-bo-border rounded-lg p-5 max-w-2xl">
+    <p class="text-sm text-bo-muted mb-4">
+      Modifiez les textes du site sans toucher au code. Les changements sont
+      pris en compte immédiatement.
+    </p>
+    <form method="POST" class="space-y-4 text-sm">
+      {
+        FIELDS.map((field) => (
+          <label class="block">
+            <span class="text-bo-muted">{field.label}</span>
+            <textarea
+              name={field.key}
+              rows="2"
+              class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+              set:html={typeof settings[field.key] === "string" ? settings[field.key] : ""}
+            />
+          </label>
+        ))
+      }
+      <button class="rounded bg-bo-accent text-white px-4 py-2 hover:opacity-90">Enregistrer</button>
+    </form>
+  </section>
+</Admin>

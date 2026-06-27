@@ -1,0 +1,6 @@
+# Généré par gen-redirects.ts — ne pas éditer à la main
+# Changement de préfixe Shopify -> nouveau site (§13)
+/products/* /affiches/:splat 301
+
+# Redirections spécifiques (table redirect)
+/products/strasbourg-affiche-personnalisee /affiches/colmar-affiche-personnalisee 301

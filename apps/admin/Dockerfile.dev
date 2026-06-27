@@ -1,0 +1,15 @@
+# Dockerfile DEV pour le back-office Astro (SSR, hot-reload).
+FROM node:24-alpine
+
+RUN corepack enable
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/admin/package.json apps/admin/package.json
+COPY packages/types/package.json packages/types/package.json
+
+RUN pnpm install --frozen-lockfile
+
+EXPOSE 4322
+
+CMD ["pnpm", "--filter", "@memoryline/admin", "run", "dev"]

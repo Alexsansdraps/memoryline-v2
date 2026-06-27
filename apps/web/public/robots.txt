@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://memoryline.fr/sitemap-index.xml

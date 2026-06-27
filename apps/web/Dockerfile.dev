@@ -1,0 +1,16 @@
+# Dockerfile DEV pour le front Astro (hot-reload).
+# Contexte de build = racine du monorepo (pnpm workspace).
+FROM node:24-alpine
+
+RUN corepack enable
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/web/package.json apps/web/package.json
+COPY packages/types/package.json packages/types/package.json
+
+RUN pnpm install --frozen-lockfile
+
+EXPOSE 4321
+
+CMD ["pnpm", "--filter", "@memoryline/web", "run", "dev"]

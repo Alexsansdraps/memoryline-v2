@@ -1,0 +1,180 @@
+---
+import Base from "../../layouts/Base.astro";
+import {
+  api,
+  assetUrl,
+  formatPrice,
+  type Product,
+  type ProductDetail,
+} from "../../lib/api.ts";
+import ProductConfigurator from "../../islands/ProductConfigurator.tsx";
+import AddToCartButton from "../../islands/AddToCartButton.tsx";
+
+export async function getStaticPaths() {
+  let products: Product[] = [];
+  try {
+    products = await api.products(500);
+  } catch {
+    // API injoignable au build -> aucune page générée (le build ne casse pas)
+  }
+  return products.map((p) => ({ params: { slug: p.slug } }));
+}
+
+const { slug } = Astro.params;
+
+let product: ProductDetail | null = null;
+try {
+  product = await api.product(slug!);
+} catch {
+  return Astro.redirect("/affiches");
+}
+if (!product) return Astro.redirect("/affiches");
+
+const cleanName = product.name.replace(/\s*[-–]\s*Affiche.*$/i, "");
+const image = assetUrl(product.images[0] ?? null);
+const prices = product.variants.map((v) => v.priceCents).filter((c) => c > 0);
+const minPrice = prices.length ? Math.min(...prices) : product.basePriceCents;
+
+const kindLabel =
+  product.kind === "personnalisable" ? "Personnalisable" : "Prête à imprimer";
+
+const description =
+  product.description?.replace(/<[^>]+>/g, "").slice(0, 160) ||
+  `Affiche ${cleanName} — ${kindLabel.toLowerCase()}, imprimée en A4 ou A3. Memory Line.`;
+
+// --- Données structurées Schema.org (SEO riche) ------------------------
+const siteUrl = Astro.site?.toString().replace(/\/$/, "") ?? "https://memoryline.fr";
+const productLd = {
+  "@context": "https://schema.org",
+  "@type": "Product",
+  name: cleanName,
+  description,
+  image: image ? [image] : [],
+  brand: { "@type": "Brand", name: "Memory Line" },
+  offers: {
+    "@type": "AggregateOffer",
+    priceCurrency: "EUR",
+    lowPrice: (minPrice / 100).toFixed(2),
+    highPrice: (
+      Math.max(...(prices.length ? prices : [product.basePriceCents])) / 100
+    ).toFixed(2),
+    offerCount: product.variants.length,
+    availability: "https://schema.org/InStock",
+  },
+};
+const breadcrumbLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Accueil", item: siteUrl + "/" },
+    {
+      "@type": "ListItem",
+      position: 2,
+      name: "Affiches",
+      item: siteUrl + "/affiches",
+    },
+    {
+      "@type": "ListItem",
+      position: 3,
+      name: cleanName,
+      item: `${siteUrl}/affiches/${product.slug}`,
+    },
+  ],
+};
+---
+
+<Base
+  title={`${cleanName} — Affiche personnalisée | Memory Line`}
+  description={description}
+  path={`/affiches/${product.slug}`}
+  type="product"
+  image={image ?? undefined}
+  jsonLd={[productLd, breadcrumbLd]}
+>
+  <article class="mx-auto max-w-6xl px-6 py-10 grid md:grid-cols-2 gap-10">
+    <div class="rounded-2xl bg-paper-deep border border-ink/10 overflow-hidden">
+      {
+        image ? (
+          <img src={image} alt={cleanName} class="w-full h-full object-cover" />
+        ) : (
+          <div class="aspect-[3/4] flex items-center justify-center font-serif text-2xl text-ink-soft">
+            {cleanName}
+          </div>
+        )
+      }
+    </div>
+
+    <div>
+      <nav class="text-sm text-ink-soft">
+        <a href="/" class="hover:text-terracotta">Accueil</a> ·
+        <a href="/affiches" class="hover:text-terracotta">Affiches</a>
+      </nav>
+      <p class="mt-4 text-xs uppercase tracking-wide text-terracotta">
+        {kindLabel}
+      </p>
+      <h1 class="font-serif text-4xl mt-1">{cleanName}</h1>
+      <p class="mt-4 text-2xl">{formatPrice(minPrice)}</p>
+
+      <div class="mt-6 space-y-2">
+        <p class="text-sm font-medium">Format</p>
+        <div class="flex gap-3">
+          {
+            product.variants.map((v) => (
+              <div class="rounded-lg border border-ink/20 px-4 py-3 text-sm">
+                <div class="font-medium">{v.format}</div>
+                <div class="text-ink-soft">{formatPrice(v.priceCents)}</div>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+
+      {
+        product.kind === "personnalisable" ? (
+          <a
+            href="#configurateur"
+            class="mt-8 inline-block rounded-full bg-terracotta px-8 py-3 text-paper font-medium hover:bg-terracotta-deep transition-colors"
+          >
+            Personnaliser
+          </a>
+        ) : (
+          <AddToCartButton
+            client:only="solid-js"
+            product={{
+              id: product.id,
+              name: cleanName,
+              basePriceCents: minPrice,
+            }}
+          />
+        )
+      }
+
+      {
+        product.description && (
+          <div
+            class="mt-8 prose prose-sm text-ink-soft max-w-none"
+            set:html={product.description}
+          />
+        )
+      }
+    </div>
+  </article>
+
+  {
+    product.kind === "personnalisable" && (
+      <section
+        id="configurateur"
+        class="mx-auto max-w-6xl px-4 sm:px-6 pb-16 scroll-mt-24"
+      >
+        <ProductConfigurator
+          client:only="solid-js"
+          product={{
+            id: product.id,
+            name: cleanName,
+            basePriceCents: minPrice,
+          }}
+        />
+      </section>
+    )
+  }
+</Base>

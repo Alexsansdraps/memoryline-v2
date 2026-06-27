@@ -1,0 +1,24 @@
+# Dockerfile DEV pour l'API (hot-reload via tsx watch).
+# Contexte de build = racine du monorepo (pnpm workspace).
+FROM node:24-alpine
+
+# pnpm via corepack (version épinglée par le champ packageManager du package.json racine)
+RUN corepack enable
+
+WORKDIR /app
+
+# 1) Manifests d'abord pour profiter du cache de couches Docker.
+#    On copie les package.json du workspace utilisés par l'API.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/package.json
+COPY packages/types/package.json packages/types/package.json
+
+# 2) Installe toutes les deps du workspace (dev incluses : tsx, drizzle-kit…).
+RUN pnpm install --frozen-lockfile
+
+# 3) Le code source est monté en volume au runtime (cf. docker-compose).
+#    On expose le port de l'API.
+EXPOSE 3000
+
+# Démarre l'API en watch (hot-reload). Le code vient du volume monté.
+CMD ["pnpm", "--filter", "@memoryline/api", "run", "dev"]

@@ -1,0 +1,26 @@
+---
+import { api, type Banner } from "../lib/api.ts";
+
+let banner: Banner | null = null;
+try {
+  banner = await api.banner();
+} catch {
+  // API non joignable -> pas de bandeau
+}
+---
+
+{
+  banner && (
+    <div
+      class="text-center text-sm font-medium px-4 py-2"
+      style={`background:${banner.bgColor ?? "#20211f"};color:${banner.textColor ?? "#f7f3ec"}`}
+    >
+      <span>{banner.message}</span>
+      {banner.linkUrl && banner.linkLabel && (
+        <a href={banner.linkUrl} class="underline underline-offset-2 ml-2">
+          {banner.linkLabel}
+        </a>
+      )}
+    </div>
+  )
+}

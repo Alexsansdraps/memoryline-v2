@@ -1,0 +1,48 @@
+---
+import { adminApi, formatPrice, type OrderRow } from "../lib/api.ts";
+interface Props {
+  channel: "web" | "salon";
+}
+const { channel } = Astro.props;
+let orders: OrderRow[] = [];
+let error: string | null = null;
+try {
+  orders = await adminApi(Astro.request).orders(channel);
+} catch (e) {
+  error = String(e);
+}
+---
+
+{error && <p class="text-red-600 text-sm">API injoignable : {error}</p>}
+<section class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-bo-bg text-bo-muted text-left">
+      <tr>
+        <th class="px-4 py-2 font-medium">N°</th>
+        <th class="px-4 py-2 font-medium">Statut</th>
+        <th class="px-4 py-2 font-medium text-right">Total</th>
+        <th class="px-4 py-2"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {
+        orders.map((o) => (
+          <tr class="border-t border-bo-border">
+            <td class="px-4 py-2 font-medium">{o.number}</td>
+            <td class="px-4 py-2">{o.status}</td>
+            <td class="px-4 py-2 text-right">{formatPrice(o.totalCents)}</td>
+            <td class="px-4 py-2 text-right">
+              <a href={`/commandes/${o.id}`} class="text-bo-accent hover:underline">
+                Détail / PDF
+              </a>
+            </td>
+          </tr>
+        ))
+      }
+      {orders.length === 0 && !error && (
+        <tr><td colspan="4" class="px-4 py-6 text-center text-bo-muted">Aucune commande.</td></tr>
+      )}
+    </tbody>
+  </table>
+</section>
+<p class="mt-2 text-sm text-bo-muted">{orders.length} commande(s).</p>

@@ -1,0 +1,42 @@
+---
+import Admin from "../layouts/Admin.astro";
+import { adminApi } from "../lib/api.ts";
+
+let stats = null;
+let error: string | null = null;
+try {
+  stats = await adminApi(Astro.request).stats();
+} catch (e) {
+  error = String(e);
+}
+---
+
+<Admin title="Accueil">
+  {error && <p class="text-red-600">API injoignable : {error}</p>}
+  {
+    stats && (
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {[
+          ["Produits", stats.products],
+          ["Commandes en ligne", stats.ordersByChannel.web ?? 0],
+          ["Ventes salon", stats.ordersByChannel.salon ?? 0],
+          ["Clients", stats.customers],
+        ].map(([label, value]) => (
+          <div class="bg-bo-surface border border-bo-border rounded-lg p-4">
+            <p class="text-sm text-bo-muted">{label}</p>
+            <p class="text-2xl font-semibold mt-1">{value}</p>
+          </div>
+        ))}
+      </div>
+    )
+  }
+  <div class="mt-6 bg-bo-surface border border-bo-border rounded-lg p-5">
+    <h2 class="font-semibold">Raccourcis</h2>
+    <ul class="mt-3 grid sm:grid-cols-2 gap-2 text-sm">
+      <li><a class="text-bo-accent hover:underline" href="/promotions">→ Gérer les promotions (offre du moment)</a></li>
+      <li><a class="text-bo-accent hover:underline" href="/bandeau">→ Modifier le bandeau du site</a></li>
+      <li><a class="text-bo-accent hover:underline" href="/ventes-salon">→ Voir les ventes salon</a></li>
+      <li><a class="text-bo-accent hover:underline" href="/contenu">→ Éditer le contenu du site</a></li>
+    </ul>
+  </div>
+</Admin>

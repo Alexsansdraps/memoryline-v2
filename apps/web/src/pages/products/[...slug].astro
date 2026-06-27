@@ -1,0 +1,25 @@
+---
+/**
+ * Redirections SEO 301 depuis les anciennes URLs Shopify `/products/{slug}`
+ * vers les nouvelles `/affiches/{slug}` (§13). Préserve le référencement
+ * des ~179 fiches déjà indexées.
+ *
+ * Génère une page par ancien slug (getStaticPaths) renvoyant un 301.
+ * Prend aussi en compte la table `redirect` importée (ex. strasbourg→colmar).
+ */
+import { api, type Product } from "../../lib/api.ts";
+
+export async function getStaticPaths() {
+  let products: Product[] = [];
+  try {
+    products = await api.products(500);
+  } catch {}
+  return products.map((p) => ({
+    params: { slug: p.slug },
+    props: { target: `/affiches/${p.slug}` },
+  }));
+}
+
+const { target } = Astro.props as { target: string };
+return Astro.redirect(target, 301);
+---

@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+/* Design tokens Memory Line — palette papier/encre, accent terracotta.
+   Polices de marque (§14.4) : DM Serif Display (titres), Inter (texte). */
+@theme {
+  --font-serif: "DM Serif Display", Georgia, serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+
+  --color-paper: #f7f3ec;
+  --color-paper-deep: #efe8db;
+  --color-ink: #20211f;
+  --color-ink-soft: #5b5b54;
+  --color-terracotta: #c4633f;
+  --color-terracotta-deep: #a44d2d;
+  --color-sage: #6b7a5e;
+}
+
+@font-face {
+  font-family: "DM Serif Display";
+  src: url("https://fonts.gstatic.com/s/dmserifdisplay/v15/-nFnOHM81r4j6k0gjAW3mujVU2B2K_d709jy92k.woff2")
+    format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+html {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+}
+
+/* --------------------------------------------------------------------------
+ * Configurateur (@memoryline/configurator) — adaptations responsive (§2).
+ * Le composant pose un grid 2 colonnes en style inline ; on le ramène à une
+ * seule colonne sur mobile pour que l'aperçu et le panneau s'empilent et
+ * restent utilisables au tactile.
+ * ------------------------------------------------------------------------ */
+@media (max-width: 768px) {
+  .ml-cfg-root {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  /* L'aperçu ne doit pas rester "sticky" quand tout est empilé. */
+  .ml-cfg-root > div:first-child {
+    position: static !important;
+  }
+}
+
+/* Empêche l'aperçu de déborder horizontalement sur petits écrans. */
+.ml-cfg-root {
+  max-width: 100%;
+}

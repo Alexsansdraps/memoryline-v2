@@ -1,0 +1,25 @@
+{
+  "name": "memoryline-custom",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.5.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "db:generate": "pnpm --filter @memoryline/api db:generate",
+    "db:migrate": "pnpm --filter @memoryline/api db:migrate",
+    "db:studio": "pnpm --filter @memoryline/api db:studio",
+    "import": "pnpm --filter @memoryline/api import"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.7.0"
+  }
+}
