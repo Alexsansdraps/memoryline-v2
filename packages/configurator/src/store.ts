@@ -5,8 +5,7 @@ import type {
   PosterConfig,
   Character,
   PosterFormat,
-  AssetDTO,
-  CharacterTypeDTO,
+  PosterView,
 } from "@memoryline/types";
 import { recolorSvg } from "@memoryline/types";
 
@@ -14,15 +13,78 @@ import { recolorSvg } from "@memoryline/types";
 export const STEPS = ["background", "characters", "format"] as const;
 export type Step = (typeof STEPS)[number];
 
-/** Personnage de travail : on garantit x/y/scale/position définis pour l'UI. */
+/* -------------------------------------------------------------------------- */
+/*  Nouveau contrat API (GET /characters)                                      */
+/* -------------------------------------------------------------------------- */
+
+/** Slots de variantes génériques, partagés par tous les personnages humains. */
+export const SLOTS = ["clothes", "pants", "hair", "accessory"] as const;
+export type Slot = (typeof SLOTS)[number];
+
+/**
+ * Une variante de slot (vêtement, pantalon, coupe, accessoire). SVG déjà
+ * positionné dans le cadre 500×1000 — il se superpose tel quel à la base.
+ */
+export interface VariantDTO {
+  id: number | string;
+  slot: Slot | string;
+  name: string | null;
+  /** URL absolue ou /assets/… servie par l'API. */
+  svgUrl: string;
+  view: PosterView | string | null;
+  /** Zones de couleur par défaut : { st0: "#hex", … } ou null. */
+  colorZones: Record<string, string> | null;
+  position: number;
+}
+
+/** Un personnage = SVG de base pré-composé + ses zones de couleur par défaut. */
+export interface CharacterDTO {
+  id: number | string;
+  slug: string;
+  name: string;
+  category: string | null;
+  position: number;
+  archived: boolean;
+  /** SVG complet pré-composé (viewBox 0 0 500 1000). */
+  baseSvgUrl: string;
+  /** Zones de couleur par défaut de la base : { stN: "#hex" }. */
+  baseColorZones: Record<string, string> | null;
+}
+
+/** Variantes par slot, pour une vue donnée. */
+export interface SlotVariants {
+  clothes: VariantDTO[];
+  pants: VariantDTO[];
+  hair: VariantDTO[];
+  accessory: VariantDTO[];
+}
+
+/** Bibliothèque de variantes : un jeu par vue (front / back). */
+export interface SlotsDTO {
+  front: SlotVariants;
+  back: SlotVariants;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  État de travail                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Personnage de travail.
+ * - `characterId` = type de personnage choisi (sa base + ses baseColorZones).
+ * - `assets` = variantes choisies par slot (id), optionnelles : absent = la
+ *   couche intégrée à la base est conservée.
+ * - `colors` = zone -> hex (override des couleurs par défaut, base + variantes).
+ * - x/y/scale/position = placement automatique sur l'affiche.
+ */
 export interface WorkingCharacter {
-  typeId: string | number;
+  characterId: string | number;
   position: number;
   x: number;
   y: number;
   scale: number;
-  /** slot -> assetId */
-  assets: Record<string, string | number>;
+  /** slot -> variantId (optionnel). */
+  assets: Partial<Record<Slot, string | number>>;
   /** zone -> hex */
   colors: Record<string, string>;
 }
@@ -32,6 +94,7 @@ export interface ConfiguratorState {
   backgroundId: string | number | undefined;
   backgroundUrl: string | undefined;
   format: PosterFormat;
+  view: PosterView;
   title: { value: string; font: string; color: string };
   subtitle: { value: string; font: string; color: string };
   characters: WorkingCharacter[];
@@ -48,6 +111,7 @@ function emptyState(): ConfiguratorState {
     backgroundId: undefined,
     backgroundUrl: undefined,
     format: "A4",
+    view: "front",
     title: { value: "", font: DEFAULT_FONT, color: DEFAULT_TEXT_COLOR },
     subtitle: { value: "", font: DEFAULT_FONT, color: DEFAULT_TEXT_COLOR },
     characters: [],
@@ -61,6 +125,7 @@ export function stateFromConfig(cfg: PosterConfig): ConfiguratorState {
   base.backgroundId = cfg.backgroundId;
   base.backgroundUrl = cfg.backgroundUrl;
   base.format = cfg.format ?? "A4";
+  base.view = cfg.view ?? "front";
   if (cfg.texts.title) {
     base.title = {
       value: cfg.texts.title.value,
@@ -75,15 +140,22 @@ export function stateFromConfig(cfg: PosterConfig): ConfiguratorState {
       color: cfg.texts.subtitle.color ?? DEFAULT_TEXT_COLOR,
     };
   }
-  base.characters = cfg.characters.map((c, i) => ({
-    typeId: c.typeId,
-    position: c.position ?? i,
-    x: c.x ?? 0.5,
-    y: c.y ?? 0.5,
-    scale: c.scale ?? 1,
-    assets: { ...c.assets },
-    colors: { ...(c.colors ?? {}) },
-  }));
+  base.characters = cfg.characters.map((c, i) => {
+    const assets: Partial<Record<Slot, string | number>> = {};
+    for (const slot of SLOTS) {
+      const v = c.assets[slot];
+      if (v !== undefined) assets[slot] = v;
+    }
+    return {
+      characterId: c.typeId,
+      position: c.position ?? i,
+      x: c.x ?? 0.5,
+      y: c.y ?? 0.5,
+      scale: c.scale ?? 1,
+      assets,
+      colors: { ...(c.colors ?? {}) },
+    };
+  });
   return base;
 }
 
@@ -116,13 +188,19 @@ export function configFromState(
   const placement = autoPlace(state.characters);
   const characters: Character[] = state.characters.map((c, i) => {
     const p = placement[i] ?? { x: c.x, y: c.y, scale: c.scale };
+    // assets : slot -> variantId, sans les slots vides.
+    const assets: Record<string, string | number> = {};
+    for (const slot of SLOTS) {
+      const v = c.assets[slot];
+      if (v !== undefined) assets[slot] = v;
+    }
     return {
-      typeId: c.typeId,
+      typeId: c.characterId,
       position: c.position,
       x: p.x,
       y: p.y,
       scale: p.scale,
-      assets: { ...c.assets },
+      assets,
       colors: { ...c.colors },
     };
   });
@@ -132,7 +210,7 @@ export function configFromState(
     backgroundId: state.backgroundId,
     backgroundUrl: state.backgroundUrl,
     format: state.format,
-    view: "front",
+    view: state.view,
     texts: {
       title: state.title.value
         ? {
@@ -153,58 +231,36 @@ export function configFromState(
   };
 }
 
-/** Slots dans l'ordre d'empilement bas -> haut (z-order interne au perso). */
-export const SLOT_ZORDER = [
-  "clothes",
-  "pants",
-  "shoes",
-  "hair",
-  "head",
-  "accessory",
-] as const;
+/** Slots dans l'ordre d'empilement bas -> haut (par-dessus la base). */
+export const SLOT_ZORDER = ["pants", "clothes", "hair", "accessory"] as const;
 
-/** Trouve un asset par id dans un type de personnage. */
-export function findAsset(
-  type: CharacterTypeDTO,
-  slot: string,
-  assetId: string | number | undefined,
-): AssetDTO | undefined {
-  if (assetId === undefined) return undefined;
-  const list = type.assetsBySlot[slot];
-  if (!list) return undefined;
-  return list.find((a) => String(a.id) === String(assetId));
+/** Trouve une variante par id dans la liste d'un slot. */
+export function findVariant(
+  variants: VariantDTO[] | undefined,
+  variantId: string | number | undefined,
+): VariantDTO | undefined {
+  if (variantId === undefined || !variants) return undefined;
+  return variants.find((v) => String(v.id) === String(variantId));
 }
 
-/** Crée un personnage par défaut pour un type (1er asset de chaque slot). */
-export function defaultCharacterForType(
-  type: CharacterTypeDTO,
+/** Crée un personnage par défaut pour une base (couleurs = baseColorZones). */
+export function defaultCharacter(
+  character: CharacterDTO,
   position: number,
 ): WorkingCharacter {
-  const assets: Record<string, string | number> = {};
-  const colors: Record<string, string> = {};
-  for (const slot of SLOT_ZORDER) {
-    const list = type.assetsBySlot[slot];
-    const first = list && list[0];
-    if (first) {
-      assets[slot] = first.id;
-      for (const [zone, hex] of Object.entries(first.colorZones ?? {})) {
-        colors[zone] = hex;
-      }
-    }
-  }
   return {
-    typeId: type.id,
+    characterId: character.id,
     position,
     x: 0.5,
     y: 0.55,
     scale: 1,
-    assets,
-    colors,
+    assets: {},
+    colors: { ...(character.baseColorZones ?? {}) },
   };
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Cache de SVG bruts + cache de SVG recoloriés                              */
+/*  Cache de SVG bruts                                                         */
 /* -------------------------------------------------------------------------- */
 
 export interface SvgCache {
@@ -248,49 +304,73 @@ export function createSvgCache(assetBaseUrl: string): {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Palettes de couleurs prédéfinies (miroir des maquettes client)            */
+/*  Palettes de couleurs prédéfinies (miroir des nuanciers memoryline.fr)      */
 /* -------------------------------------------------------------------------- */
 
-/** Teintes de peau (zone visage/peau). */
+function rgb(r: number, g: number, b: number): string {
+  const h = (n: number) => n.toString(16).padStart(2, "0").toUpperCase();
+  return `#${h(r)}${h(g)}${h(b)}`;
+}
+
+/** Teintes de peau (base / personnage). */
 export const SKIN_TONES = [
-  "#F8D9B5",
-  "#F0C49A",
-  "#E0AC7E",
-  "#C68A5E",
-  "#8D5A3C",
-  "#5C3A24",
+  rgb(255, 238, 224),
+  rgb(255, 226, 192),
+  rgb(246, 210, 169),
+  rgb(225, 180, 128),
+  rgb(184, 138, 108),
+  rgb(139, 91, 56),
 ] as const;
 
-/** Palette générale (vêtements / pantalon / accessoire). */
-export const GENERAL_PALETTE = [
-  "#FFFFFF",
-  "#E9446A",
-  "#9BD3AE",
-  "#BFE3C8",
-  "#C0392B",
-  "#2453B8",
-  "#B5703C",
-  "#111111",
+/** Nuancier vêtements. */
+export const CLOTHES_TONES = [
+  rgb(250, 250, 250),
+  rgb(255, 150, 191),
+  rgb(158, 223, 191),
+  rgb(200, 228, 214),
+  rgb(189, 18, 18),
+  rgb(0, 86, 175),
+  rgb(184, 85, 29),
+  rgb(0, 0, 0),
 ] as const;
 
-/** Teintes de cheveux. */
+/** Nuancier pantalon. */
+export const PANTS_TONES = [
+  rgb(237, 215, 198),
+  rgb(184, 85, 29),
+  rgb(94, 154, 191),
+  rgb(22, 81, 118),
+  rgb(84, 84, 84),
+  rgb(0, 0, 0),
+] as const;
+
+/** Nuancier cheveux. */
 export const HAIR_TONES = [
-  "#E8E2D5",
-  "#E8CE8B",
-  "#D8A93C",
-  "#A8602F",
-  "#C9A07A",
-  "#6B4226",
-  "#3A2418",
-  "#15110D",
+  rgb(232, 232, 232),
+  rgb(241, 203, 158),
+  rgb(231, 176, 51),
+  rgb(184, 85, 29),
+  rgb(214, 182, 149),
+  rgb(191, 129, 88),
+  rgb(107, 62, 30),
+  rgb(84, 21, 7),
+  rgb(36, 34, 44),
 ] as const;
 
 /** Palette de presets pour un slot donné. */
-export function presetPaletteForSlot(slot: string): readonly string[] {
+export function presetPaletteForSlot(slot: Slot | string): readonly string[] {
   if (slot === "hair") return HAIR_TONES;
-  if (slot === "head") return SKIN_TONES;
-  return GENERAL_PALETTE;
+  if (slot === "pants") return PANTS_TONES;
+  return CLOTHES_TONES;
 }
+
+/** ViewBox zoomé pour les vignettes de slot (cadrage sur la partie). */
+export const SLOT_THUMB_VIEWBOX: Record<Slot, string> = {
+  clothes: "-50 275 600 1000",
+  pants: "50 575 400 350",
+  hair: "50 50 400 400",
+  accessory: "50 0 400 400",
+};
 
 /** Recolorie un SVG brut avec les couleurs d'un perso (sous-ensemble des zones). */
 export function recolorForCharacter(
@@ -299,6 +379,23 @@ export function recolorForCharacter(
 ): string {
   if (!rawSvg) return rawSvg;
   return recolorSvg(rawSvg, colors);
+}
+
+/**
+ * Réécrit/injecte l'attribut viewBox sur la balise <svg> racine d'un SVG brut.
+ * Sert au cadrage zoomé des vignettes de slot.
+ */
+export function withViewBox(rawSvg: string, viewBox: string): string {
+  if (!rawSvg) return rawSvg;
+  // <svg ... viewBox="..."> -> remplace
+  if (/<svg[^>]*\sviewBox\s*=/.test(rawSvg)) {
+    return rawSvg.replace(
+      /(<svg[^>]*?\sviewBox\s*=\s*")[^"]*(")/,
+      `$1${viewBox}$2`,
+    );
+  }
+  // sinon, injecte juste après <svg
+  return rawSvg.replace(/<svg\b/, `<svg viewBox="${viewBox}"`);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -311,8 +408,7 @@ export function createConfiguratorStore(initial: ConfiguratorState): {
   mutate: (fn: (s: ConfiguratorState) => void) => void;
 } {
   const [state, setState] = createStore<ConfiguratorState>(initial);
-  const mutate = (fn: (s: ConfiguratorState) => void) =>
-    setState(produce(fn));
+  const mutate = (fn: (s: ConfiguratorState) => void) => setState(produce(fn));
   return { state, setState, mutate };
 }
 

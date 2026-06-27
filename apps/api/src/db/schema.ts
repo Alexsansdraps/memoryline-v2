@@ -136,6 +136,14 @@ export const characterTypes = pgTable(
     position: integer("position").default(0).notNull(),
     /** Soft-delete (§18.1 A) : non null = archivé, masqué du configurateur, sans casser les commandes. */
     archivedAt: timestamp("archived_at", { withTimezone: true }),
+    /**
+     * SVG complet pré-composé du personnage (ex. Male_2.svg) — viewBox 500×1000,
+     * sous-groupes Base/Bottoms/Clothes/Hair/Accessories. C'est l'affichage par
+     * défaut quand on ajoute ce personnage (avant tout changement de slot).
+     */
+    baseSvgUrl: text("base_svg_url"),
+    /** Zones de couleur par défaut du SVG de base (recoloration peau/tenue). */
+    baseColorZones: jsonb("base_color_zones").$type<Record<string, string>>(),
     legacyTypeId: integer("legacy_type_id"), // typeId Shopify (1, 15, 18…)
   },
   (t) => [

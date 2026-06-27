@@ -1,14 +1,17 @@
 /// <reference lib="dom" />
 import { For, Show, createMemo, type JSX } from "solid-js";
-import type { CharacterTypeDTO, AssetDTO } from "@memoryline/types";
 import {
-  SLOT_ZORDER,
-  findAsset,
+  findVariant,
   recolorForCharacter,
-  defaultCharacterForType,
+  withViewBox,
   presetPaletteForSlot,
   SKIN_TONES,
+  SLOT_THUMB_VIEWBOX,
+  type CharacterDTO,
+  type Slot,
+  type SlotVariants,
   type SvgCache,
+  type VariantDTO,
   type WorkingCharacter,
 } from "../store";
 import { CharacterStack } from "./CharacterLayer";
@@ -17,29 +20,30 @@ import { CharacterStack } from "./CharacterLayer";
 /*  Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
 
-/** data-URI d'un SVG (recolorié si des couleurs sont fournies). */
-function svgDataUri(
+/**
+ * SVG inline (string) prêt à être injecté : recolorié + cadré (viewBox zoomé)
+ * + dimensionné pour remplir la vignette. Retourne undefined si pas encore
+ * chargé.
+ */
+function thumbSvg(
   cache: SvgCache,
-  asset: AssetDTO | undefined,
+  svgUrl: string | undefined,
   colors: Record<string, string>,
+  viewBox?: string,
 ): string | undefined {
-  if (!asset) return undefined;
-  const raw = cache.raw[asset.svgUrl];
+  if (!svgUrl) return undefined;
+  const raw = cache.raw[svgUrl];
   if (raw === undefined || raw === "") return undefined;
-  const recolored = recolorForCharacter(raw, colors);
-  return "data:image/svg+xml;utf8," + encodeURIComponent(recolored);
-}
-
-/** Zone de "peau" éditable sur le visage (1ère zone de l'asset head). */
-function skinZoneOf(
-  type: CharacterTypeDTO | undefined,
-  character: WorkingCharacter,
-): string | undefined {
-  if (!type) return undefined;
-  const head = findAsset(type, "head", character.assets["head"]);
-  if (!head?.colorZones) return undefined;
-  const keys = Object.keys(head.colorZones);
-  return keys[0];
+  let svg = recolorForCharacter(raw, colors);
+  if (viewBox) svg = withViewBox(svg, viewBox);
+  // dimensionne : width/height 100%, contain, centré.
+  return svg.replace(/<svg\b([^>]*)>/, (_m, attrs: string) => {
+    const a = (attrs as string)
+      .replace(/\swidth\s*=\s*"[^"]*"/g, "")
+      .replace(/\sheight\s*=\s*"[^"]*"/g, "")
+      .replace(/\sstyle\s*=\s*"[^"]*"/g, "");
+    return `<svg${a} width="100%" height="100%" preserveAspectRatio="xMidYMid meet" style="display:block;width:100%;height:100%">`;
+  });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -53,7 +57,9 @@ function Gallery(props: { children: JSX.Element }) {
     scroller?.scrollBy({ left: dir * 180, behavior: "smooth" });
   };
   return (
-    <div style={{ position: "relative", display: "flex", "align-items": "center" }}>
+    <div
+      style={{ position: "relative", display: "flex", "align-items": "center" }}
+    >
       <button
         type="button"
         aria-label="Précédent"
@@ -103,7 +109,7 @@ function arrowStyle(): JSX.CSSProperties {
   };
 }
 
-/** Vignette cliquable (image ou contenu) avec état sélectionné. */
+/** Vignette cliquable (contenu) avec état sélectionné. */
 function Thumb(props: {
   selected: boolean;
   onClick: () => void;
@@ -129,6 +135,7 @@ function Thumb(props: {
         "align-items": "center",
         "justify-content": "center",
         "box-shadow": props.selected ? "0 0 0 2px rgba(79,70,229,.2)" : "none",
+        overflow: "hidden",
       }}
     >
       {props.children}
@@ -172,10 +179,29 @@ function CrossedCircle() {
   );
 }
 
-/**
- * Rangée de couleurs : presets cliquables + input type=color (choix libre).
- * Pour chaque zone de couleur de l'asset.
- */
+/** Contenu d'une vignette = SVG inline (fallback texte si pas chargé). */
+function SvgThumb(props: { svg: string | undefined; label: string }) {
+  return (
+    <Show
+      when={props.svg}
+      fallback={
+        <span style={{ "font-size": "10px", color: "#9ca3af" }}>
+          {props.label}
+        </span>
+      }
+    >
+      {(s) => (
+        <span
+          // eslint-disable-next-line solid/no-innerhtml
+          innerHTML={s()}
+          style={{ width: "100%", height: "100%", display: "block" }}
+        />
+      )}
+    </Show>
+  );
+}
+
+/** Rangée de couleurs : presets cliquables + input type=color, par zone. */
 function ColorRow(props: {
   zones: { zone: string; current: string }[];
   presets: readonly string[];
@@ -266,100 +292,71 @@ function SectionTitle(props: { children: JSX.Element }) {
 /*  Éditeur principal                                                          */
 /* -------------------------------------------------------------------------- */
 
+const SLOT_TITLES: Record<Slot, string> = {
+  clothes: "Vêtements",
+  pants: "Pantalon",
+  hair: "Coupes de cheveux",
+  accessory: "Accessoires",
+};
+
 /**
  * Éditeur d'un personnage (maquette client §18.2 F) : deux colonnes.
- * Gauche = prévisualisation isolée du perso. Droite = sections (type, vêtements,
- * pantalon, cheveux, accessoires), chacune = galerie de vignettes + couleurs.
- * Plus aucun placement libre. Accessoire recolorable (§18.1 D).
+ * Gauche ~35% = prévisualisation isolée du perso composé. Droite = barre
+ * Retour, puis sections : choix du personnage (galerie de bases) + nuancier
+ * peau, puis vêtements / pantalon / cheveux / accessoires (galeries zoomées +
+ * nuanciers). Plus aucun placement libre.
  */
 export function CharacterEditor(props: {
   character: WorkingCharacter;
-  type: CharacterTypeDTO | undefined;
-  characterTypes: CharacterTypeDTO[];
+  base: CharacterDTO | undefined;
+  characters: CharacterDTO[];
+  slots: SlotVariants;
   cache: SvgCache;
-  onSetAsset: (slot: string, assetId: string | number) => void;
-  onClearSlot: (slot: string) => void;
+  onSetAsset: (slot: Slot, variantId: string | number) => void;
+  onClearSlot: (slot: Slot) => void;
   onSetColor: (zone: string, hex: string) => void;
-  onChangeType: (type: CharacterTypeDTO) => void;
+  onChangeCharacter: (base: CharacterDTO) => void;
   onBack: () => void;
   onValidate: () => void;
 }) {
-  /** Zones de couleur d'un slot donné + valeur courante. */
-  const zonesForSlot = (
-    slot: string,
-  ): { zone: string; current: string }[] => {
-    const asset = props.type && findAsset(props.type, slot, props.character.assets[slot]);
-    if (!asset?.colorZones) return [];
-    return Object.keys(asset.colorZones).map((zone) => ({
+  /** Zones de couleur d'une variante (slot courant) + valeur actuelle. */
+  const zonesForSlot = (slot: Slot): { zone: string; current: string }[] => {
+    const variant = findVariant(props.slots[slot], props.character.assets[slot]);
+    if (!variant?.colorZones) return [];
+    return Object.keys(variant.colorZones).map((zone) => ({
       zone,
       current:
-        props.character.colors[zone] ?? asset.colorZones?.[zone] ?? "#000000",
+        props.character.colors[zone] ?? variant.colorZones?.[zone] ?? "#000000",
     }));
   };
 
-  const skinZone = createMemo(() => skinZoneOf(props.type, props.character));
-  const skinCurrent = () => {
-    const z = skinZone();
-    return (z && props.character.colors[z]) ?? "#E0AC7E";
-  };
+  /** Zones de peau de la base = ses baseColorZones. */
+  const skinZones = createMemo<{ zone: string; current: string }[]>(() => {
+    const base = props.base;
+    if (!base?.baseColorZones) return [];
+    // Heuristique : la 1ʳᵉ zone de la base = teinte de peau principale.
+    const first = Object.keys(base.baseColorZones)[0];
+    if (!first) return [];
+    return [
+      {
+        zone: first,
+        current:
+          props.character.colors[first] ??
+          base.baseColorZones[first] ??
+          "#E0AC7E",
+      },
+    ];
+  });
 
-  /** Vignette d'un asset (recolorié avec les couleurs courantes). */
-  const assetThumb = (asset: AssetDTO) => {
-    const uri = svgDataUri(props.cache, asset, props.character.colors);
-    return (
-      <Show
-        when={uri}
-        fallback={
-          <span style={{ "font-size": "10px", color: "#9ca3af" }}>
-            {asset.name ?? `#${asset.id}`}
-          </span>
-        }
-      >
-        {(u) => (
-          <img
-            src={u()}
-            alt={asset.name ?? ""}
-            draggable={false}
-            style={{
-              "max-width": "100%",
-              "max-height": "100%",
-              "object-fit": "contain",
-            }}
-          />
-        )}
-      </Show>
-    );
-  };
-
-  /** Vignette représentative d'un type (CharacterStack d'un perso par défaut). */
-  const typeThumb = (t: CharacterTypeDTO) => {
-    const sample = defaultCharacterForType(t, 0);
-    return (
-      <div
-        style={{
-          position: "relative",
-          width: "100%",
-          height: "100%",
-          "aspect-ratio": "1 / 1.6",
-        }}
-      >
-        <CharacterStack character={sample} type={t} cache={props.cache} />
-      </div>
-    );
-  };
-
-  /** Section galerie générique pour un slot (vêtements/pantalon/cheveux/accessoire). */
-  function SlotSection(opts: {
-    slot: string;
-    title: string;
-    allowNone: boolean;
-  }) {
-    const list = (): AssetDTO[] => props.type?.assetsBySlot[opts.slot] ?? [];
+  /** Section galerie pour un slot (vêtements/pantalon/cheveux/accessoire). */
+  function SlotSection(opts: { slot: Slot; allowNone: boolean }) {
+    const list = (): VariantDTO[] => props.slots[opts.slot];
     const selectedId = () => props.character.assets[opts.slot];
     const hasNone = () => selectedId() === undefined;
+    const viewBox = SLOT_THUMB_VIEWBOX[opts.slot];
     return (
       <Show when={list().length > 0}>
-        <SectionTitle>{opts.title}</SectionTitle>
+        <SectionTitle>{SLOT_TITLES[opts.slot]}</SectionTitle>
         <Gallery>
           <Show when={opts.allowNone}>
             <Thumb
@@ -371,13 +368,21 @@ export function CharacterEditor(props: {
             </Thumb>
           </Show>
           <For each={list()}>
-            {(asset) => (
+            {(variant) => (
               <Thumb
-                selected={String(selectedId()) === String(asset.id)}
-                onClick={() => props.onSetAsset(opts.slot, asset.id)}
-                title={asset.name ?? `#${asset.id}`}
+                selected={String(selectedId()) === String(variant.id)}
+                onClick={() => props.onSetAsset(opts.slot, variant.id)}
+                title={variant.name ?? `#${variant.id}`}
               >
-                {assetThumb(asset)}
+                <SvgThumb
+                  svg={thumbSvg(
+                    props.cache,
+                    variant.svgUrl,
+                    props.character.colors,
+                    viewBox,
+                  )}
+                  label={variant.name ?? `#${variant.id}`}
+                />
               </Thumb>
             )}
           </For>
@@ -402,6 +407,11 @@ export function CharacterEditor(props: {
           "align-items": "center",
           gap: "10px",
           "margin-bottom": "12px",
+          position: "sticky",
+          top: "0",
+          background: "#fafafa",
+          "z-index": "2",
+          "padding-bottom": "6px",
         }}
       >
         <button
@@ -411,13 +421,13 @@ export function CharacterEditor(props: {
             display: "inline-flex",
             "align-items": "center",
             gap: "4px",
-            border: "1px solid #d1d5db",
+            border: "1px solid #2453b8",
             "border-radius": "9999px",
-            background: "#fff",
+            background: "#2453b8",
+            color: "#fff",
             padding: "6px 12px",
             cursor: "pointer",
             "font-size": "13px",
-            color: "#374151",
           }}
         >
           ‹ Retour
@@ -438,13 +448,13 @@ export function CharacterEditor(props: {
       <div
         style={{
           display: "grid",
-          "grid-template-columns": "minmax(140px, 38%) 1fr",
+          "grid-template-columns": "minmax(120px, 35%) 1fr",
           gap: "16px",
           "align-items": "start",
         }}
       >
-        {/* Colonne gauche : prévisualisation isolée */}
-        <div>
+        {/* Colonne gauche : prévisualisation du perso composé */}
+        <div style={{ position: "sticky", top: "48px" }}>
           <span
             style={{
               display: "block",
@@ -461,22 +471,18 @@ export function CharacterEditor(props: {
             style={{
               position: "relative",
               width: "100%",
-              "aspect-ratio": "1 / 1.5",
+              "aspect-ratio": "1 / 1.6",
               background: "#f3f4f6",
               "border-radius": "10px",
               border: "1px solid #e5e7eb",
               overflow: "hidden",
             }}
           >
-            <div
-              style={{
-                position: "absolute",
-                inset: "8% 18%",
-              }}
-            >
+            <div style={{ position: "absolute", inset: "4% 6%" }}>
               <CharacterStack
                 character={props.character}
-                type={props.type}
+                base={props.base}
+                slots={props.slots}
                 cache={props.cache}
               />
             </div>
@@ -485,36 +491,43 @@ export function CharacterEditor(props: {
 
         {/* Colonne droite : sections */}
         <div style={{ "min-width": "0" }}>
-          {/* Choix du personnage (type) */}
+          {/* Choix du personnage (base) */}
           <SectionTitle>Choix du personnage</SectionTitle>
           <Gallery>
-            <For each={props.characterTypes}>
-              {(t) => (
+            <For each={props.characters}>
+              {(base) => (
                 <Thumb
-                  selected={String(props.character.typeId) === String(t.id)}
-                  onClick={() => props.onChangeType(t)}
-                  title={t.name}
+                  selected={String(props.character.characterId) === String(base.id)}
+                  onClick={() => props.onChangeCharacter(base)}
+                  title={base.name}
                 >
-                  {typeThumb(t)}
+                  <SvgThumb
+                    svg={thumbSvg(
+                      props.cache,
+                      base.baseSvgUrl,
+                      String(props.character.characterId) === String(base.id)
+                        ? props.character.colors
+                        : (base.baseColorZones ?? {}),
+                    )}
+                    label={base.name}
+                  />
                 </Thumb>
               )}
             </For>
           </Gallery>
-          {/* Couleur de peau */}
-          <Show when={skinZone()}>
-            {(z) => (
-              <ColorRow
-                zones={[{ zone: z(), current: skinCurrent() }]}
-                presets={SKIN_TONES}
-                onSetColor={props.onSetColor}
-              />
-            )}
+          {/* Couleur de peau (zones de la base) */}
+          <Show when={skinZones().length > 0}>
+            <ColorRow
+              zones={skinZones()}
+              presets={SKIN_TONES}
+              onSetColor={props.onSetColor}
+            />
           </Show>
 
-          <SlotSection slot="clothes" title="Vêtements" allowNone={false} />
-          <SlotSection slot="pants" title="Pantalon" allowNone={false} />
-          <SlotSection slot="hair" title="Coupes de cheveux" allowNone={true} />
-          <SlotSection slot="accessory" title="Accessoires" allowNone={true} />
+          <SlotSection slot="clothes" allowNone={false} />
+          <SlotSection slot="pants" allowNone={false} />
+          <SlotSection slot="hair" allowNone={true} />
+          <SlotSection slot="accessory" allowNone={true} />
         </div>
       </div>
 

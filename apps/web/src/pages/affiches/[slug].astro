@@ -138,6 +138,9 @@ const breadcrumbLd = {
               name: cleanName,
               basePriceCents: minPrice,
             }}
+            prices={Object.fromEntries(
+              product.variants.map((v) => [v.format, v.priceCents]),
+            )}
           />
         ) : (
           <AddToCartButton

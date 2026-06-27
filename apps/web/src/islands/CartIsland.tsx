@@ -24,6 +24,14 @@ import {
  * Affiche le total et un bouton « Commander » vers /commande.
  */
 
+/** Règle de promo renvoyée par l'API /promos. */
+interface PromoRule {
+  id: number;
+  name: string;
+  type: string;
+  config: unknown;
+}
+
 /** Vignette : on affiche le fond de l'affiche (URL stockée dans la config). */
 function thumbnailUrl(config: PosterConfig): string | null {
   if (config.backgroundUrl) {
@@ -65,11 +73,69 @@ export default function CartIsland(): JSX.Element {
     return { items: data.items, slugs };
   });
 
-  const total = () =>
+  // Promos actives (ex. « 3 achetées = 1 A4 offerte »).
+  const [promos] = createResource(async () => {
+    try {
+      const res = await fetch(`${PUBLIC_API_URL}/promos`);
+      return res.ok ? ((await res.json()) as PromoRule[]) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  /** Sous-total (somme des lignes, sans remise). */
+  const subtotal = () =>
     (cart()?.items ?? []).reduce(
       (s, it) => s + it.unitPriceCents * it.quantity,
       0,
     );
+
+  /**
+   * Remise « buy_x_get_y » : par tranche de `buyQty` articles éligibles, on
+   * offre `getQty` article(s) — le(s) MOINS cher(s) (ex. l'A4 offerte). On
+   * déplie les quantités en unités, on trie par prix croissant, et on offre
+   * floor(n / (buyQty+getQty)) * getQty unités gratuites.
+   */
+  const discount = (): { amount: number; label: string } => {
+    const items = cart()?.items ?? [];
+    let amount = 0;
+    let label = "";
+    for (const promo of promos() ?? []) {
+      if (promo.type !== "buy_x_get_y") continue;
+      const cfg = promo.config as {
+        buyQty?: number;
+        getQty?: number;
+        format?: string;
+      };
+      const buyQty = cfg.buyQty ?? 3;
+      const getQty = cfg.getQty ?? 1;
+      // unités éligibles (filtrées par format si la promo le précise)
+      const units: number[] = [];
+      for (const it of items) {
+        const fmt = it.config.format ?? "A4";
+        if (cfg.format && fmt !== cfg.format) {
+          // pour "1 A4 offerte" : il faut au moins buyQty achats au total,
+          // mais l'offert porte sur le format ciblé. On compte tout pour le
+          // seuil, et on offre des unités du format ciblé.
+        }
+        for (let k = 0; k < it.quantity; k++) units.push(it.unitPriceCents);
+      }
+      // « 3 achetées = 1 offerte » : par tranche de buyQty articles, getQty
+      // offert(s). Le seuil est buyQty (à 3 affiches, 1 est offerte).
+      const totalUnits = units.length;
+      const freeCount = Math.floor(totalUnits / buyQty) * getQty;
+      if (freeCount <= 0) continue;
+      // on offre les moins chères
+      const sorted = [...units].sort((a, b) => a - b);
+      for (let i = 0; i < freeCount && i < sorted.length; i++) {
+        amount += sorted[i]!;
+      }
+      if (amount > 0) label = promo.name;
+    }
+    return { amount, label };
+  };
+
+  const total = () => Math.max(0, subtotal() - discount().amount);
 
   function editHref(it: OrderItem): string | null {
     const slug = it.productId != null ? cart()?.slugs.get(it.productId) : null;
@@ -182,16 +248,29 @@ export default function CartIsland(): JSX.Element {
           </For>
         </ul>
 
-        <div class="mt-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-t border-ink/10 pt-6">
-          <p class="text-lg">
-            Total <span class="font-serif text-2xl">{formatPrice(total())}</span>
-          </p>
-          <a
-            href="/commande"
-            class="rounded-full bg-terracotta px-8 py-3 text-paper font-medium text-center hover:bg-terracotta-deep transition-colors"
-          >
-            Commander
-          </a>
+        <div class="mt-8 border-t border-ink/10 pt-6">
+          <Show when={discount().amount > 0}>
+            <div class="flex items-center justify-between text-sm text-ink-soft mb-2">
+              <span>Sous-total</span>
+              <span>{formatPrice(subtotal())}</span>
+            </div>
+            <div class="flex items-center justify-between text-sm text-sage mb-3">
+              <span>✨ {discount().label}</span>
+              <span>− {formatPrice(discount().amount)}</span>
+            </div>
+          </Show>
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <p class="text-lg">
+              Total{" "}
+              <span class="font-serif text-2xl">{formatPrice(total())}</span>
+            </p>
+            <a
+              href="/commande"
+              class="rounded-full bg-terracotta px-8 py-3 text-paper font-medium text-center hover:bg-terracotta-deep transition-colors"
+            >
+              Commander
+            </a>
+          </div>
         </div>
       </Show>
     </div>

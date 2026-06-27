@@ -161,9 +161,15 @@ async function browserSend<T>(
   return res.json() as Promise<T>;
 }
 
+/** Bibliothèque configurateur : personnages + variantes de slots (front/back). */
+export interface CharacterLibrary {
+  characters: unknown[];
+  slots: { front: Record<string, unknown[]>; back: Record<string, unknown[]> };
+}
+
 /** Client API navigateur (configurateur, panier, commande). */
 export const browserApi = {
-  characters: () => browserGet<CharacterTypeDTO[]>("/characters"),
+  characters: () => browserGet<CharacterLibrary>("/characters"),
   backgrounds: (productId: number | string) =>
     browserGet<BackgroundDTO[]>(`/backgrounds?productId=${productId}`),
 

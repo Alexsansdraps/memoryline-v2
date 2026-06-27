@@ -99,7 +99,15 @@ async function generatePrintFile(
 export function mountConfiguratorRoutes(app: Hono) {
   // === Données configurateur (public) ====================================
 
-  /** Types de personnages NON archivés, groupés par catégorie+position, avec assets. */
+  /**
+   * Bibliothèque du configurateur (architecture fidèle à memoryline.fr) :
+   *  - `characters` : les personnages à AJOUTER (Homme/Femme/Bébé/Animal…),
+   *    chacun avec son SVG complet de base (baseSvgUrl) et ses couleurs.
+   *  - `slots` : les variantes interchangeables GÉNÉRIQUES, regroupées par
+   *    vue (front/back) puis par slot (clothes/pants/hair/accessory).
+   * Le client choisit un personnage, puis change ses vêtements/cheveux/etc.
+   * en piochant dans `slots`, et recolore via les zones .stN.
+   */
   app.get("/characters", async (c) => {
     const includeArchived = c.req.query("all") === "1";
     const types = await db
@@ -107,40 +115,43 @@ export function mountConfiguratorRoutes(app: Hono) {
       .from(schema.characterTypes)
       .where(includeArchived ? undefined : isNull(schema.characterTypes.archivedAt))
       .orderBy(asc(schema.characterTypes.category), asc(schema.characterTypes.position));
-    const typeIds = types.map((t) => t.id);
-    const assets = typeIds.length
-      ? await db
-          .select()
-          .from(schema.assets)
-          .where(inArray(schema.assets.characterTypeId, typeIds))
-          .orderBy(asc(schema.assets.position))
-      : [];
-    const bySlotByType = new Map<number, Record<string, any[]>>();
-    for (const a of assets) {
-      const tid = a.characterTypeId!;
-      if (!bySlotByType.has(tid)) bySlotByType.set(tid, {});
-      const bySlot = bySlotByType.get(tid)!;
-      (bySlot[a.slot] ??= []).push({
+
+    // Variantes génériques (character_type_id IS NULL), partagées par tous.
+    const variants = await db
+      .select()
+      .from(schema.assets)
+      .where(isNull(schema.assets.characterTypeId))
+      .orderBy(asc(schema.assets.position));
+    const slots: Record<string, Record<string, unknown[]>> = {
+      front: {},
+      back: {},
+    };
+    for (const a of variants) {
+      const view = a.view === "back" ? "back" : "front";
+      (slots[view]![a.slot] ??= []).push({
         id: a.id,
         slot: a.slot,
         name: a.name,
         svgUrl: a.svgUrl,
-        view: a.view,
+        view,
         colorZones: a.colorZones,
         position: a.position,
       });
     }
-    return c.json(
-      types.map((t) => ({
+
+    return c.json({
+      characters: types.map((t) => ({
         id: t.id,
         slug: t.slug,
         name: t.name,
         category: t.category,
         position: t.position,
         archived: t.archivedAt != null,
-        assetsBySlot: bySlotByType.get(t.id) ?? {},
+        baseSvgUrl: t.baseSvgUrl,
+        baseColorZones: t.baseColorZones,
       })),
-    );
+      slots,
+    });
   });
 
   /**

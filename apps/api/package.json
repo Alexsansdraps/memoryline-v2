@@ -15,6 +15,7 @@
     "fetch-assets": "tsx --env-file=../../.env scripts/fetch-assets.ts",
     "seed-config": "tsx --env-file=../../.env scripts/seed-config.ts",
     "seed-characters": "tsx --env-file=../../.env scripts/seed-characters.ts",
+    "import-characters": "tsx --env-file=../../.env scripts/import-characters.ts",
     "link-backgrounds": "tsx --env-file=../../.env scripts/link-backgrounds.ts",
     "create-admin": "tsx --env-file=../../.env scripts/create-admin.ts",
     "gen-redirects": "tsx --env-file=../../.env scripts/gen-redirects.ts",

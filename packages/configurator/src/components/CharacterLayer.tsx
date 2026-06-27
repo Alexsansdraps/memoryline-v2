@@ -1,35 +1,85 @@
 /// <reference lib="dom" />
 import { For, createMemo } from "solid-js";
-import type { CharacterTypeDTO } from "@memoryline/types";
 import {
   SLOT_ZORDER,
-  findAsset,
+  findVariant,
   recolorForCharacter,
+  type CharacterDTO,
+  type SlotVariants,
   type SvgCache,
   type WorkingCharacter,
 } from "../store";
 
 /**
- * Rend un personnage : pile d'assets recoloriés (data-URI SVG), bas -> haut.
- * Indépendant de la résolution : positionné en % par le parent.
+ * Force `preserveAspectRatio="xMidYMax meet"` (centré + ancré EN BAS) et fait
+ * remplir le conteneur (width/height 100%, display block) sur la balise <svg>
+ * racine. Toutes les couches partagent le cadre 500×1000 : empilées alignées,
+ * elles composent le personnage (cf. RENDU-SPEC.md).
+ */
+function fillSvg(rawSvg: string): string {
+  if (!rawSvg) return rawSvg;
+  let out = rawSvg.replace(/<svg\b([^>]*)>/, (_m, attrs: string) => {
+    let a = attrs;
+    // preserveAspectRatio = bas-centré
+    a = /\spreserveAspectRatio\s*=/.test(a)
+      ? a.replace(
+          /(\spreserveAspectRatio\s*=\s*")[^"]*(")/,
+          `$1xMidYMax meet$2`,
+        )
+      : `${a} preserveAspectRatio="xMidYMax meet"`;
+    // width/height/style = 100% (le viewBox d'origine est conservé)
+    a = a
+      .replace(/\swidth\s*=\s*"[^"]*"/g, "")
+      .replace(/\sheight\s*=\s*"[^"]*"/g, "")
+      .replace(/\sstyle\s*=\s*"[^"]*"/g, "");
+    a = `${a} width="100%" height="100%" style="display:block;position:absolute;inset:0"`;
+    return `<svg${a}>`;
+  });
+  return out;
+}
+
+/**
+ * Rend un personnage composé : la base pré-composée + chaque variante choisie
+ * empilée par-dessus (bottoms -> clothes -> hair -> accessory), toutes au même
+ * cadre 500×1000, recoloriées avec les couleurs du perso. Positionné en % par
+ * le parent (indépendant de la résolution).
  */
 export function CharacterStack(props: {
   character: WorkingCharacter;
-  type: CharacterTypeDTO | undefined;
+  base: CharacterDTO | undefined;
+  slots: SlotVariants | undefined;
   cache: SvgCache;
 }) {
+  /** SVG inline (string) de chaque couche, recolorié + ancré bas. */
   const layers = createMemo(() => {
-    const t = props.type;
-    if (!t) return [] as { slot: string; href: string }[];
-    const out: { slot: string; href: string }[] = [];
-    for (const slot of SLOT_ZORDER) {
-      const asset = findAsset(t, slot, props.character.assets[slot]);
-      if (!asset) continue;
-      const raw = props.cache.raw[asset.svgUrl];
-      if (raw === undefined || raw === "") continue;
-      const recolored = recolorForCharacter(raw, props.character.colors);
-      const href = "data:image/svg+xml;utf8," + encodeURIComponent(recolored);
-      out.push({ slot, href });
+    const out: { key: string; svg: string }[] = [];
+    const colors = props.character.colors;
+
+    // Couche de base (SVG pré-composé complet).
+    const base = props.base;
+    if (base) {
+      const raw = props.cache.raw[base.baseSvgUrl];
+      if (raw !== undefined && raw !== "") {
+        out.push({
+          key: "base",
+          svg: fillSvg(recolorForCharacter(raw, colors)),
+        });
+      }
+    }
+
+    // Couches de variantes choisies (par-dessus la base).
+    const slots = props.slots;
+    if (slots) {
+      for (const slot of SLOT_ZORDER) {
+        const variant = findVariant(slots[slot], props.character.assets[slot]);
+        if (!variant) continue;
+        const raw = props.cache.raw[variant.svgUrl];
+        if (raw === undefined || raw === "") continue;
+        out.push({
+          key: `${slot}:${variant.id}`,
+          svg: fillSvg(recolorForCharacter(raw, colors)),
+        });
+      }
     }
     return out;
   });
@@ -38,17 +88,15 @@ export function CharacterStack(props: {
     <div class="ml-cfg-charstack">
       <For each={layers()}>
         {(layer) => (
-          <img
+          <div
             class="ml-cfg-charlayer"
-            src={layer.href}
-            alt=""
-            draggable={false}
+            // eslint-disable-next-line solid/no-innerhtml
+            innerHTML={layer.svg}
             style={{
               position: "absolute",
               inset: "0",
               width: "100%",
               height: "100%",
-              "object-fit": "contain",
               "pointer-events": "none",
               "user-select": "none",
             }}

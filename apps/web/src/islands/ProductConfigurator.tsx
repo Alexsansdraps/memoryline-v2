@@ -22,6 +22,8 @@ import ConfiguratorIsland from "./ConfiguratorIsland.tsx";
  */
 export interface ProductConfiguratorProps {
   product: { id: number; name: string; basePriceCents: number };
+  /** Prix réels par format (centimes), ex. { A4: 2300, A3: 2900 }. */
+  prices?: Partial<Record<string, number>>;
 }
 
 export default function ProductConfigurator(
@@ -120,6 +122,7 @@ export default function ProductConfigurator(
             <div class="ml-modal-body">
               <ConfiguratorIsland
                 product={props.product}
+                prices={props.prices}
                 mode={editItemId() != null ? "edit" : "add"}
                 initialConfig={initialConfig()}
                 itemId={editItemId() ?? undefined}

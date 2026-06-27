@@ -3,21 +3,25 @@ import { createEffect, createMemo, Show, type JSX } from "solid-js";
 import type {
   PosterConfig,
   PosterFormat,
+  PosterView,
   BackgroundDTO,
-  CharacterTypeDTO,
 } from "@memoryline/types";
 import {
   STEPS,
+  SLOTS,
   type Step,
+  type Slot,
   type ConfiguratorState,
+  type CharacterDTO,
+  type SlotsDTO,
+  type SlotVariants,
   emptyState,
   stateFromConfig,
   configFromState,
   createConfiguratorStore,
   createSvgCache,
-  defaultCharacterForType,
-  findAsset,
-  SLOT_ZORDER,
+  defaultCharacter,
+  findVariant,
 } from "./store";
 import { PosterPreview } from "./components/PosterPreview";
 import { StepBackgroundText } from "./components/StepBackgroundText";
@@ -35,14 +39,28 @@ export interface ConfiguratorProduct {
 export interface ConfiguratorProps {
   product: ConfiguratorProduct;
   backgrounds: BackgroundDTO[];
-  /** Types non archivés, déjà ordonnés par category + position. */
-  characterTypes: CharacterTypeDTO[];
+  /** Personnages (bases pré-composées) non archivés, ordonnés category+position. */
+  characters: CharacterDTO[];
+  /** Variantes génériques de slots, par vue (front / back). */
+  slots: SlotsDTO;
+  /** Prix par format en centimes (ex. { A4: 2300, A3: 2900 }). Le format
+   *  sélectionné met à jour le prix affiché (demande cliente). */
+  prices?: Partial<Record<PosterFormat, number>>;
   /** Réouverture (panier "edit" §18.3) : restaure tout l'état. */
   initialConfig?: PosterConfig;
   /** Préfixe pour fetch le texte SVG, ex "http://localhost:3100". */
   assetBaseUrl: string;
   onSubmit: (config: PosterConfig) => void;
   onBack?: () => void;
+}
+
+/** Formate un prix en centimes -> "23 €" (FR). */
+function fmtPrice(cents: number): string {
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
+  }).format(cents / 100);
 }
 
 const STEP_LABELS: Record<Step, string> = {
@@ -59,13 +77,16 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   const { state, mutate } = createConfiguratorStore(initialState);
   const { cache, fetchSvg } = createSvgCache(props.assetBaseUrl);
 
-  const typeById = (id: string | number): CharacterTypeDTO | undefined =>
-    props.characterTypes.find((t) => String(t.id) === String(id));
+  const characterById = (
+    id: string | number,
+  ): CharacterDTO | undefined =>
+    props.characters.find((c) => String(c.id) === String(id));
+
+  /** Variantes du slot pour la vue courante. */
+  const slotVariants = (): SlotVariants => props.slots[state.view];
 
   // Présélection du fond du produit : à l'ouverture, l'aperçu montre déjà
   // l'affiche de la fiche (1er fond renvoyé = fond de la ville du produit).
-  // On ne force rien si un fond est déjà choisi (réouverture panier / choix
-  // utilisateur). Exigence cliente : "ça doit prendre l'affiche de la fiche".
   createEffect(() => {
     if (state.backgroundUrl === undefined && props.backgrounds.length > 0) {
       selectBackground(props.backgrounds[0]!);
@@ -73,35 +94,25 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   });
 
   // Prefetch des SVG nécessaires :
-  //  - tous les assets sélectionnés des personnages présents (aperçu),
-  //  - tous les assets du type en cours d'édition (vignettes de l'éditeur),
-  //  - le 1er asset de chaque slot de chaque type (vignettes du sélecteur de type).
+  //  - bases + variantes choisies des personnages présents (aperçu),
+  //  - toutes les bases + toutes les variantes du slot quand on édite (galeries).
   createEffect(() => {
-    // Personnages présents (assets choisis).
+    const variants = slotVariants();
+    // Personnages présents (base + variantes choisies).
     for (const c of state.characters) {
-      const t = typeById(c.typeId);
-      if (!t) continue;
-      for (const slot of SLOT_ZORDER) {
-        const asset = findAsset(t, slot, c.assets[slot]);
-        if (asset) void fetchSvg(asset.svgUrl);
+      const base = characterById(c.characterId);
+      if (base) void fetchSvg(base.baseSvgUrl);
+      for (const slot of SLOTS) {
+        const v = findVariant(variants[slot], c.assets[slot]);
+        if (v) void fetchSvg(v.svgUrl);
       }
     }
-    // Tous les assets du type en cours d'édition (galeries de l'éditeur).
-    const editing = state.editingIndex;
-    if (editing !== null) {
-      const c = state.characters[editing];
-      const t = c && typeById(c.typeId);
-      if (t) {
-        for (const slot of SLOT_ZORDER) {
-          for (const a of t.assetsBySlot[slot] ?? []) void fetchSvg(a.svgUrl);
-        }
-      }
-      // 1er asset de chaque slot de chaque type pour les vignettes de type.
-      for (const t2 of props.characterTypes) {
-        for (const slot of SLOT_ZORDER) {
-          const first = (t2.assetsBySlot[slot] ?? [])[0];
-          if (first) void fetchSvg(first.svgUrl);
-        }
+    // En édition : toutes les bases (galerie de personnages) + toutes les
+    // variantes du slot courant (galeries vêtements/pantalon/cheveux/accessoires).
+    if (state.editingIndex !== null) {
+      for (const base of props.characters) void fetchSvg(base.baseSvgUrl);
+      for (const slot of SLOTS) {
+        for (const v of variants[slot]) void fetchSvg(v.svgUrl);
       }
     }
   });
@@ -154,10 +165,12 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   }
 
   /* --------------------------- étape 2 ------------------------------------ */
-  function addType(type: CharacterTypeDTO) {
+  function addCharacter() {
+    const base = props.characters[0];
+    if (!base) return;
     mutate((s) => {
       const position = s.characters.length;
-      s.characters.push(defaultCharacterForType(type, position));
+      s.characters.push(defaultCharacter(base, position));
       s.editingIndex = s.characters.length - 1;
     });
   }
@@ -173,20 +186,19 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       s.editingIndex = index;
     });
   }
-  function setAsset(index: number, slot: string, assetId: string | number) {
+  function setAsset(index: number, slot: Slot, variantId: string | number) {
     mutate((s) => {
       const c = s.characters[index];
       if (!c) return;
-      c.assets[slot] = assetId;
-      // Ajoute les couleurs par défaut des nouvelles zones de cet asset.
-      const t = typeById(c.typeId);
-      const asset = t && findAsset(t, slot, assetId);
-      for (const [zone, hex] of Object.entries(asset?.colorZones ?? {})) {
+      c.assets[slot] = variantId;
+      // Ajoute les couleurs par défaut des nouvelles zones de cette variante.
+      const v = findVariant(slotVariants()[slot], variantId);
+      for (const [zone, hex] of Object.entries(v?.colorZones ?? {})) {
         if (c.colors[zone] === undefined) c.colors[zone] = hex;
       }
     });
   }
-  function clearSlot(index: number, slot: string) {
+  function clearSlot(index: number, slot: Slot) {
     mutate((s) => {
       const c = s.characters[index];
       if (c) delete c.assets[slot];
@@ -198,15 +210,23 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       if (c) c.colors[zone] = hex;
     });
   }
-  /** Change le type d'un personnage : réinitialise ses assets/couleurs. */
-  function changeType(index: number, type: CharacterTypeDTO) {
+  /** Change la base (type) d'un personnage : conserve les variantes choisies,
+   *  réinitialise les couleurs sur celles de la nouvelle base. */
+  function changeCharacter(index: number, base: CharacterDTO) {
     mutate((s) => {
       const c = s.characters[index];
       if (!c) return;
-      const fresh = defaultCharacterForType(type, c.position);
-      c.typeId = fresh.typeId;
-      c.assets = fresh.assets;
-      c.colors = fresh.colors;
+      c.characterId = base.id;
+      // Couleurs : base + couleurs des variantes encore sélectionnées.
+      const colors: Record<string, string> = { ...(base.baseColorZones ?? {}) };
+      const variants = slotVariants();
+      for (const slot of SLOTS) {
+        const v = findVariant(variants[slot], c.assets[slot]);
+        for (const [zone, hex] of Object.entries(v?.colorZones ?? {})) {
+          colors[zone] = hex;
+        }
+      }
+      c.colors = colors;
     });
   }
   function swap(a: number, b: number) {
@@ -234,6 +254,17 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       s.format = format;
     });
   }
+  function setView(view: PosterView) {
+    mutate((s) => {
+      s.view = view;
+    });
+  }
+
+  /** Prix courant selon le format sélectionné (repli sur le prix de base). */
+  const currentPrice = (): number => {
+    const p = props.prices?.[state.format];
+    return typeof p === "number" ? p : props.product.basePriceCents;
+  };
 
   const isLast = () => stepIndex() === STEPS.length - 1;
   const editingActive = () =>
@@ -253,7 +284,12 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     >
       {/* Aperçu */}
       <div style={{ position: "sticky", top: "16px" }}>
-        <PosterPreview state={state} typeById={typeById} cache={cache} />
+        <PosterPreview
+          state={state}
+          characterById={characterById}
+          slots={props.slots}
+          cache={cache}
+        />
       </div>
 
       {/* Panneau de contrôle */}
@@ -303,10 +339,11 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
         <Show when={state.step === "characters"}>
           <StepCharacters
             state={state}
-            characterTypes={props.characterTypes}
+            characters={props.characters}
+            slots={slotVariants()}
             cache={cache}
-            typeById={typeById}
-            onAddType={addType}
+            characterById={characterById}
+            onAdd={addCharacter}
             onRemove={removeCharacter}
             onSelect={selectCharacter}
             onBringForward={bringForward}
@@ -314,12 +351,17 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             onSetAsset={setAsset}
             onClearSlot={clearSlot}
             onSetColor={setColor}
-            onChangeType={changeType}
+            onChangeCharacter={changeCharacter}
           />
         </Show>
 
         <Show when={state.step === "format"}>
-          <StepFormat state={state} onSelect={setFormat} />
+          <StepFormat
+            state={state}
+            prices={props.prices}
+            onSelect={setFormat}
+            onSelectView={setView}
+          />
         </Show>
 
         {/* Navigation globale (masquée quand on édite un perso : l'éditeur a ses
@@ -329,14 +371,25 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             style={{
               display: "flex",
               "justify-content": "space-between",
+              "align-items": "center",
               "margin-top": "18px",
               "border-top": "1px solid #e5e7eb",
               "padding-top": "14px",
+              gap: "12px",
             }}
           >
             <Button variant="secondary" onClick={prev}>
               Retour
             </Button>
+            {/* Prix mis à jour selon le format choisi (demande cliente). */}
+            <div style={{ "font-weight": "700", "font-size": "18px", "white-space": "nowrap" }}>
+              {fmtPrice(currentPrice())}
+              <Show when={state.format === "A3"}>
+                <span style={{ "font-size": "12px", color: "#6b7280", "font-weight": "500" }}>
+                  {" "}(A3)
+                </span>
+              </Show>
+            </div>
             <Button variant="primary" onClick={next}>
               {isLast() ? "Valider l'affiche" : "Continuer"}
             </Button>
@@ -349,3 +402,9 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
 
 export default Configurator;
 export type { PosterConfig } from "@memoryline/types";
+export type {
+  CharacterDTO,
+  VariantDTO,
+  SlotsDTO,
+  SlotVariants,
+} from "./store";

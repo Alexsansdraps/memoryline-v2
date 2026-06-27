@@ -1,49 +1,37 @@
 /// <reference lib="dom" />
-import { For, Show, createMemo } from "solid-js";
-import type { CharacterTypeDTO } from "@memoryline/types";
-import type { ConfiguratorState } from "../store";
+import { For, Show } from "solid-js";
 import { Button } from "./ui";
 import { CharacterEditor } from "./CharacterEditor";
-import type { SvgCache } from "../store";
-
-/** Groupe les types par catégorie (déjà ordonnés par category+position en amont). */
-function groupByCategory(
-  types: CharacterTypeDTO[],
-): { category: string; items: CharacterTypeDTO[] }[] {
-  const groups: { category: string; items: CharacterTypeDTO[] }[] = [];
-  for (const t of types) {
-    const cat = t.category ?? "Autres";
-    let g = groups.find((x) => x.category === cat);
-    if (!g) {
-      g = { category: cat, items: [] };
-      groups.push(g);
-    }
-    g.items.push(t);
-  }
-  return groups;
-}
+import type {
+  CharacterDTO,
+  ConfiguratorState,
+  Slot,
+  SlotVariants,
+  SvgCache,
+} from "../store";
 
 /**
  * Étape 2 : gestion des personnages.
- * - ajout par type, liste avec z-order (avancer/reculer), suppression
- * - sélection -> édition (asset + couleurs) via CharacterEditor.
+ * - liste des personnages ajoutés (Modifier / supprimer / réordonner),
+ *   bouton « + Nouveau personnage ».
+ * - clic Modifier / Nouveau -> éditeur de personnage (CharacterEditor).
  */
 export function StepCharacters(props: {
   state: ConfiguratorState;
-  characterTypes: CharacterTypeDTO[];
+  characters: CharacterDTO[];
+  slots: SlotVariants;
   cache: SvgCache;
-  typeById: (id: string | number) => CharacterTypeDTO | undefined;
-  onAddType: (type: CharacterTypeDTO) => void;
+  characterById: (id: string | number) => CharacterDTO | undefined;
+  onAdd: () => void;
   onRemove: (index: number) => void;
   onSelect: (index: number | null) => void;
   onBringForward: (index: number) => void;
   onSendBackward: (index: number) => void;
-  onSetAsset: (index: number, slot: string, assetId: string | number) => void;
-  onClearSlot: (index: number, slot: string) => void;
+  onSetAsset: (index: number, slot: Slot, variantId: string | number) => void;
+  onClearSlot: (index: number, slot: Slot) => void;
   onSetColor: (index: number, zone: string, hex: string) => void;
-  onChangeType: (index: number, type: CharacterTypeDTO) => void;
+  onChangeCharacter: (index: number, base: CharacterDTO) => void;
 }) {
-  const groups = createMemo(() => groupByCategory(props.characterTypes));
   const editing = () => props.state.editingIndex;
   const editingChar = () => {
     const i = editing();
@@ -60,12 +48,12 @@ export function StepCharacters(props: {
               Personnages
             </h3>
 
-            {/* Liste des personnages placés + z-order */}
+            {/* Liste des personnages ajoutés + z-order */}
             <Show when={props.state.characters.length > 0}>
               <div style={{ "margin-bottom": "14px" }}>
                 <For each={props.state.characters}>
                   {(c, i) => {
-                    const t = props.typeById(c.typeId);
+                    const base = props.characterById(c.characterId);
                     return (
                       <div
                         style={{
@@ -80,7 +68,7 @@ export function StepCharacters(props: {
                         }}
                       >
                         <span style={{ flex: "1", "font-size": "13px" }}>
-                          {t?.name ?? `Type ${c.typeId}`}
+                          {base?.name ?? `Personnage ${c.characterId}`}
                           <span style={{ color: "#9ca3af" }}>
                             {" "}
                             (z {c.position})
@@ -102,7 +90,7 @@ export function StepCharacters(props: {
                           variant="secondary"
                           onClick={() => props.onSelect(i())}
                         >
-                          Éditer
+                          Modifier
                         </Button>
                         <Button
                           variant="ghost"
@@ -117,65 +105,27 @@ export function StepCharacters(props: {
               </div>
             </Show>
 
-            {/* Ajout par type, groupé par catégorie */}
-            <p
-              style={{
-                "font-size": "13px",
-                "font-weight": "600",
-                color: "#374151",
-                "margin-bottom": "6px",
-              }}
-            >
-              Ajouter un personnage
-            </p>
-            <For each={groups()}>
-              {(group) => (
-                <div style={{ "margin-bottom": "10px" }}>
-                  <Show when={group.category !== "Autres" || groups().length > 1}>
-                    <p
-                      style={{
-                        "font-size": "12px",
-                        color: "#6b7280",
-                        "margin-bottom": "4px",
-                      }}
-                    >
-                      {group.category}
-                    </p>
-                  </Show>
-                  <div
-                    style={{ display: "flex", "flex-wrap": "wrap", gap: "6px" }}
-                  >
-                    <For each={group.items}>
-                      {(t) => (
-                        <Button
-                          variant="secondary"
-                          onClick={() => props.onAddType(t)}
-                        >
-                          + {t.name}
-                        </Button>
-                      )}
-                    </For>
-                  </div>
-                </div>
-              )}
-            </For>
+            <Button variant="primary" onClick={() => props.onAdd()}>
+              + Nouveau personnage
+            </Button>
           </div>
         }
       >
         {(char) => (
           <CharacterEditor
             character={char()}
-            type={props.typeById(char().typeId)}
-            characterTypes={props.characterTypes}
+            base={props.characterById(char().characterId)}
+            characters={props.characters}
+            slots={props.slots}
             cache={props.cache}
-            onSetAsset={(slot, assetId) =>
-              props.onSetAsset(editing()!, slot, assetId)
+            onSetAsset={(slot, variantId) =>
+              props.onSetAsset(editing()!, slot, variantId)
             }
             onClearSlot={(slot) => props.onClearSlot(editing()!, slot)}
-            onSetColor={(zone, hex) =>
-              props.onSetColor(editing()!, zone, hex)
+            onSetColor={(zone, hex) => props.onSetColor(editing()!, zone, hex)}
+            onChangeCharacter={(base) =>
+              props.onChangeCharacter(editing()!, base)
             }
-            onChangeType={(type) => props.onChangeType(editing()!, type)}
             onBack={() => props.onSelect(null)}
             onValidate={() => props.onSelect(null)}
           />

@@ -1,7 +1,12 @@
 /// <reference lib="dom" />
 import { For, Show } from "solid-js";
-import type { CharacterTypeDTO } from "@memoryline/types";
-import { autoPlace, type ConfiguratorState, type SvgCache } from "../store";
+import {
+  autoPlace,
+  type CharacterDTO,
+  type ConfiguratorState,
+  type SlotsDTO,
+  type SvgCache,
+} from "../store";
 import { CharacterStack } from "./CharacterLayer";
 
 /** Ratio largeur/hauteur d'affichage selon le format (portrait). */
@@ -20,7 +25,8 @@ function aspectFor(format: string): string {
  */
 export function PosterPreview(props: {
   state: ConfiguratorState;
-  typeById: (id: string | number) => CharacterTypeDTO | undefined;
+  characterById: (id: string | number) => CharacterDTO | undefined;
+  slots: SlotsDTO;
   cache: SvgCache;
 }) {
   // Largeur d'un perso en % de la largeur de l'affiche (~30% comme demandé).
@@ -83,7 +89,8 @@ export function PosterPreview(props: {
             >
               <CharacterStack
                 character={c}
-                type={props.typeById(c.typeId)}
+                base={props.characterById(c.characterId)}
+                slots={props.slots[props.state.view]}
                 cache={props.cache}
               />
             </div>

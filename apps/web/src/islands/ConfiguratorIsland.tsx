@@ -25,6 +25,8 @@ import {
  */
 export interface ConfiguratorIslandProps {
   product: { id: number; name: string; basePriceCents: number };
+  /** Prix réels par format (centimes), ex. { A4: 2300, A3: 2900 }. */
+  prices?: Partial<Record<string, number>>;
   /** "add" depuis la fiche produit, "edit" depuis le panier. */
   mode?: "add" | "edit";
   /** Réouverture (edit) : config de la ligne à modifier. */
@@ -35,12 +37,15 @@ export interface ConfiguratorIslandProps {
   onCancel?: () => void;
 }
 
-/** Prix selon le format choisi (A3 = +8 € par défaut, repli simple). */
+/** Prix selon le format choisi, depuis les prix réels des variantes. */
 function priceForConfig(
   config: PosterConfig,
   basePriceCents: number,
+  prices?: Partial<Record<string, number>>,
 ): number {
-  return config.format === "A3" ? basePriceCents + 800 : basePriceCents;
+  const fmt = config.format ?? "A4";
+  const p = prices?.[fmt];
+  return typeof p === "number" ? p : basePriceCents;
 }
 
 export default function ConfiguratorIsland(
@@ -48,15 +53,16 @@ export default function ConfiguratorIsland(
 ): JSX.Element {
   const mode = props.mode ?? "add";
 
-  // Chargement de la bibliothèque (types de personnages + fonds du produit).
+  // Chargement de la bibliothèque (personnages + variantes de slots + fonds).
   const [data] = createResource(async () => {
-    const [characterTypes, backgrounds] = await Promise.all([
+    const [library, backgrounds] = await Promise.all([
       browserApi.characters(),
       browserApi.backgrounds(props.product.id),
     ]);
-    return { characterTypes, backgrounds } as {
-      characterTypes: CharacterTypeDTO[];
-      backgrounds: BackgroundDTO[];
+    return {
+      characters: library.characters,
+      slots: library.slots,
+      backgrounds,
     };
   });
 
@@ -69,7 +75,11 @@ export default function ConfiguratorIsland(
     setError(null);
     try {
       const cartId = getCartId();
-      const unitPriceCents = priceForConfig(config, props.product.basePriceCents);
+      const unitPriceCents = priceForConfig(
+        config,
+        props.product.basePriceCents,
+        props.prices,
+      );
       if (mode === "edit" && props.itemId != null) {
         await browserApi.updateCartItem(cartId, props.itemId, {
           config,
@@ -134,7 +144,9 @@ export default function ConfiguratorIsland(
                 basePriceCents: props.product.basePriceCents,
               }}
               backgrounds={d().backgrounds}
-              characterTypes={d().characterTypes}
+              characters={d().characters as never}
+              slots={d().slots as never}
+              prices={props.prices}
               initialConfig={props.initialConfig}
               assetBaseUrl={PUBLIC_API_URL}
               onSubmit={handleSubmit}
