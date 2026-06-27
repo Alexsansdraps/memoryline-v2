@@ -144,35 +144,80 @@ export function mountConfiguratorRoutes(app: Hono) {
   });
 
   /**
-   * Fonds disponibles pour le configurateur.
+   * Fonds proposés dans le configurateur POUR UN PRODUIT DONNÉ.
    *
-   * Idéalement filtrés par produit, MAIS les fonds importés ne sont pas encore
-   * tous rattachés à un produit (product_id NULL hérité de l'import Shopify).
-   * Règle robuste : si un productId est fourni et qu'il existe des fonds qui lui
-   * sont propres, on les renvoie ; sinon on retombe sur la bibliothèque complète
-   * de fonds (jamais vide → le configurateur a toujours de quoi afficher).
+   * Exigence cliente : ouvrir le configurateur depuis la fiche "Amiens" doit
+   * proposer l'affiche d'Amiens — pas toute la bibliothèque.
+   *
+   * Stratégie en cascade (la 1re non vide gagne) :
+   *  1. fonds explicitement rattachés (`background.product_id`),
+   *  2. à défaut, fonds dont le NOM correspond à la VILLE du produit
+   *     (ex. produit "AMIENS Cathédrale" -> fonds dont le nom commence par
+   *     "AMIENS"). Couvre les fonds non encore rattachés en base.
+   *  3. en tout dernier recours seulement, la bibliothèque complète
+   *     (un produit sans aucun fond identifiable garde de quoi composer).
+   * Le 1er fond renvoyé est le fond "par défaut" présélectionné côté UI.
    */
   app.get("/backgrounds", async (c) => {
     const productId = c.req.query("productId");
-    let rows: (typeof schema.backgrounds.$inferSelect)[] = [];
+    const project = (b: typeof schema.backgrounds.$inferSelect) => ({
+      id: b.id,
+      url: b.url,
+      name: b.name,
+      position: b.position,
+    });
+
     if (productId) {
-      rows = await db
+      // 1. rattachement explicite
+      const linked = await db
         .select()
         .from(schema.backgrounds)
         .where(eq(schema.backgrounds.productId, Number(productId)))
-        .orderBy(asc(schema.backgrounds.position))
-        .limit(500);
+        .orderBy(asc(schema.backgrounds.position));
+      if (linked.length > 0) return c.json(linked.map(project));
+
+      // 2. correspondance par ville (nom du produit)
+      const [product] = await db
+        .select({ name: schema.products.name })
+        .from(schema.products)
+        .where(eq(schema.products.id, Number(productId)));
+      if (product) {
+        const norm = (s: string | null) =>
+          (s ?? "").toUpperCase().normalize("NFD").replace(/[^A-Z0-9]/g, "");
+        // On dérive des mots-clés candidats du nom produit (avant le tiret),
+        // en sautant les articles ("LE Tréport" -> "TREPORT"). On essaie chaque
+        // candidat et on garde le PREMIER qui correspond à des fonds : ça gère
+        // "AMIENS Cathédrale" (-> AMIENS), "LE TRÉPORT Phare" (-> TREPORT) et
+        // "ITALIE Venise" (fond nommé ITALIE) sans liste de villes en dur.
+        const STOP = new Set(["LE", "LA", "LES", "DU", "DE", "DES", "AFFICHE"]);
+        const candidates = product.name
+          .split(/[-–]/)[0]!
+          .trim()
+          .split(/\s+/)
+          .map(norm)
+          .filter((w) => w.length >= 3 && !STOP.has(w));
+        if (candidates.length > 0) {
+          const all = await db
+            .select()
+            .from(schema.backgrounds)
+            .orderBy(asc(schema.backgrounds.position));
+          // `includes` plutôt que `startsWith` : le nom du fond peut être
+          // préfixé par l'article ("LE_TOUQUET_..." pour le candidat "TOUQUET").
+          for (const cand of candidates) {
+            const cityMatch = all.filter((b) => norm(b.name).includes(cand));
+            if (cityMatch.length > 0) return c.json(cityMatch.map(project));
+          }
+        }
+      }
     }
-    if (rows.length === 0) {
-      rows = await db
-        .select()
-        .from(schema.backgrounds)
-        .orderBy(asc(schema.backgrounds.position))
-        .limit(500);
-    }
-    return c.json(
-      rows.map((b) => ({ id: b.id, url: b.url, name: b.name, position: b.position })),
-    );
+
+    // 3. repli : bibliothèque complète (jamais vide)
+    const rows = await db
+      .select()
+      .from(schema.backgrounds)
+      .orderBy(asc(schema.backgrounds.position))
+      .limit(500);
+    return c.json(rows.map(project));
   });
 
   // === Panier (lignes éditables — §18.3) ==================================

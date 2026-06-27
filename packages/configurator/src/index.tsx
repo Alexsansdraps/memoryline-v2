@@ -62,6 +62,16 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   const typeById = (id: string | number): CharacterTypeDTO | undefined =>
     props.characterTypes.find((t) => String(t.id) === String(id));
 
+  // Présélection du fond du produit : à l'ouverture, l'aperçu montre déjà
+  // l'affiche de la fiche (1er fond renvoyé = fond de la ville du produit).
+  // On ne force rien si un fond est déjà choisi (réouverture panier / choix
+  // utilisateur). Exigence cliente : "ça doit prendre l'affiche de la fiche".
+  createEffect(() => {
+    if (state.backgroundUrl === undefined && props.backgrounds.length > 0) {
+      selectBackground(props.backgrounds[0]!);
+    }
+  });
+
   // Prefetch des SVG nécessaires aux personnages présents.
   createEffect(() => {
     for (const c of state.characters) {
