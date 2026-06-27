@@ -54,3 +54,83 @@ body {
 .ml-cfg-root {
   max-width: 100%;
 }
+
+/* --------------------------------------------------------------------------
+ * Modale du configurateur (popup « Personnaliser »).
+ * Desktop : panneau centré, large, avec scroll interne.
+ * Mobile  : plein écran, pour une perso confortable au doigt (§2).
+ * ------------------------------------------------------------------------ */
+.ml-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(20, 21, 18, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ml-modal-panel {
+  background: var(--color-paper);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 1040px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.ml-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(32, 33, 31, 0.1);
+  flex: 0 0 auto;
+}
+
+.ml-modal-close {
+  appearance: none;
+  border: none;
+  background: var(--color-paper-deep);
+  color: var(--color-ink);
+  width: 38px;
+  height: 38px;
+  border-radius: 9999px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.ml-modal-close:hover {
+  background: #e2d9c8;
+}
+
+.ml-modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Plein écran sur mobile/tablette : la perso prend tout l'espace. */
+@media (max-width: 768px) {
+  .ml-modal-overlay {
+    padding: 0;
+  }
+  .ml-modal-panel {
+    max-width: 100%;
+    max-height: 100%;
+    height: 100%;
+    width: 100%;
+    border-radius: 0;
+  }
+  .ml-modal-body {
+    padding: 14px;
+  }
+}

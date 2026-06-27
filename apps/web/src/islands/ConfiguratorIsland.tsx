@@ -31,6 +31,8 @@ export interface ConfiguratorIslandProps {
   initialConfig?: PosterConfig;
   /** Réouverture (edit) : id de la ligne de panier à mettre à jour. */
   itemId?: number;
+  /** Fermeture de la modale (bouton « Retour » à l'étape 1). */
+  onCancel?: () => void;
 }
 
 /** Prix selon le format choisi (A3 = +8 € par défaut, repli simple). */
@@ -90,7 +92,15 @@ export default function ConfiguratorIsland(
   }
 
   function handleBack() {
-    window.location.href = mode === "edit" ? "/panier" : "/affiches";
+    // Étape 1 « Retour » : en édition on revient au panier ; en ajout on
+    // ferme simplement la modale (reste sur la fiche produit).
+    if (mode === "edit") {
+      window.location.href = "/panier";
+    } else if (props.onCancel) {
+      props.onCancel();
+    } else {
+      window.location.href = "/affiches";
+    }
   }
 
   return (

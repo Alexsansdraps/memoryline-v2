@@ -131,12 +131,14 @@ const breadcrumbLd = {
 
       {
         product.kind === "personnalisable" ? (
-          <a
-            href="#configurateur"
-            class="mt-8 inline-block rounded-full bg-terracotta px-8 py-3 text-paper font-medium hover:bg-terracotta-deep transition-colors"
-          >
-            Personnaliser
-          </a>
+          <ProductConfigurator
+            client:only="solid-js"
+            product={{
+              id: product.id,
+              name: cleanName,
+              basePriceCents: minPrice,
+            }}
+          />
         ) : (
           <AddToCartButton
             client:only="solid-js"
@@ -159,22 +161,4 @@ const breadcrumbLd = {
       }
     </div>
   </article>
-
-  {
-    product.kind === "personnalisable" && (
-      <section
-        id="configurateur"
-        class="mx-auto max-w-6xl px-4 sm:px-6 pb-16 scroll-mt-24"
-      >
-        <ProductConfigurator
-          client:only="solid-js"
-          product={{
-            id: product.id,
-            name: cleanName,
-            basePriceCents: minPrice,
-          }}
-        />
-      </section>
-    )
-  }
 </Base>
