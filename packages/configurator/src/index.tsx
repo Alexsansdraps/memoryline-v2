@@ -72,14 +72,36 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     }
   });
 
-  // Prefetch des SVG nécessaires aux personnages présents.
+  // Prefetch des SVG nécessaires :
+  //  - tous les assets sélectionnés des personnages présents (aperçu),
+  //  - tous les assets du type en cours d'édition (vignettes de l'éditeur),
+  //  - le 1er asset de chaque slot de chaque type (vignettes du sélecteur de type).
   createEffect(() => {
+    // Personnages présents (assets choisis).
     for (const c of state.characters) {
       const t = typeById(c.typeId);
       if (!t) continue;
       for (const slot of SLOT_ZORDER) {
         const asset = findAsset(t, slot, c.assets[slot]);
         if (asset) void fetchSvg(asset.svgUrl);
+      }
+    }
+    // Tous les assets du type en cours d'édition (galeries de l'éditeur).
+    const editing = state.editingIndex;
+    if (editing !== null) {
+      const c = state.characters[editing];
+      const t = c && typeById(c.typeId);
+      if (t) {
+        for (const slot of SLOT_ZORDER) {
+          for (const a of t.assetsBySlot[slot] ?? []) void fetchSvg(a.svgUrl);
+        }
+      }
+      // 1er asset de chaque slot de chaque type pour les vignettes de type.
+      for (const t2 of props.characterTypes) {
+        for (const slot of SLOT_ZORDER) {
+          const first = (t2.assetsBySlot[slot] ?? [])[0];
+          if (first) void fetchSvg(first.svgUrl);
+        }
       }
     }
   });
@@ -164,10 +186,27 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       }
     });
   }
+  function clearSlot(index: number, slot: string) {
+    mutate((s) => {
+      const c = s.characters[index];
+      if (c) delete c.assets[slot];
+    });
+  }
   function setColor(index: number, zone: string, hex: string) {
     mutate((s) => {
       const c = s.characters[index];
       if (c) c.colors[zone] = hex;
+    });
+  }
+  /** Change le type d'un personnage : réinitialise ses assets/couleurs. */
+  function changeType(index: number, type: CharacterTypeDTO) {
+    mutate((s) => {
+      const c = s.characters[index];
+      if (!c) return;
+      const fresh = defaultCharacterForType(type, c.position);
+      c.typeId = fresh.typeId;
+      c.assets = fresh.assets;
+      c.colors = fresh.colors;
     });
   }
   function swap(a: number, b: number) {
@@ -214,29 +253,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     >
       {/* Aperçu */}
       <div style={{ position: "sticky", top: "16px" }}>
-        <PosterPreview
-          state={state}
-          typeById={typeById}
-          cache={cache}
-          interactive={state.step === "characters"}
-          selectedIndex={state.editingIndex}
-          onSelect={selectCharacter}
-          onMove={(i, x, y) =>
-            mutate((s) => {
-              const c = s.characters[i];
-              if (c) {
-                c.x = x;
-                c.y = y;
-              }
-            })
-          }
-          onScale={(i, scale) =>
-            mutate((s) => {
-              const c = s.characters[i];
-              if (c) c.scale = scale;
-            })
-          }
-        />
+        <PosterPreview state={state} typeById={typeById} cache={cache} />
       </div>
 
       {/* Panneau de contrôle */}
@@ -295,7 +312,9 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             onBringForward={bringForward}
             onSendBackward={sendBackward}
             onSetAsset={setAsset}
+            onClearSlot={clearSlot}
             onSetColor={setColor}
+            onChangeType={changeType}
           />
         </Show>
 

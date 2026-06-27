@@ -17,7 +17,8 @@
     "seed-characters": "tsx --env-file=../../.env scripts/seed-characters.ts",
     "link-backgrounds": "tsx --env-file=../../.env scripts/link-backgrounds.ts",
     "create-admin": "tsx --env-file=../../.env scripts/create-admin.ts",
-    "gen-redirects": "tsx --env-file=../../.env scripts/gen-redirects.ts"
+    "gen-redirects": "tsx --env-file=../../.env scripts/gen-redirects.ts",
+    "map-characters": "tsx --env-file=../../.env scripts/map-characters.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",

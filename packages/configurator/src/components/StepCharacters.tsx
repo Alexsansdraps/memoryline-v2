@@ -39,7 +39,9 @@ export function StepCharacters(props: {
   onBringForward: (index: number) => void;
   onSendBackward: (index: number) => void;
   onSetAsset: (index: number, slot: string, assetId: string | number) => void;
+  onClearSlot: (index: number, slot: string) => void;
   onSetColor: (index: number, zone: string, hex: string) => void;
+  onChangeType: (index: number, type: CharacterTypeDTO) => void;
 }) {
   const groups = createMemo(() => groupByCategory(props.characterTypes));
   const editing = () => props.state.editingIndex;
@@ -164,13 +166,16 @@ export function StepCharacters(props: {
           <CharacterEditor
             character={char()}
             type={props.typeById(char().typeId)}
+            characterTypes={props.characterTypes}
             cache={props.cache}
             onSetAsset={(slot, assetId) =>
               props.onSetAsset(editing()!, slot, assetId)
             }
+            onClearSlot={(slot) => props.onClearSlot(editing()!, slot)}
             onSetColor={(zone, hex) =>
               props.onSetColor(editing()!, zone, hex)
             }
+            onChangeType={(type) => props.onChangeType(editing()!, type)}
             onBack={() => props.onSelect(null)}
             onValidate={() => props.onSelect(null)}
           />

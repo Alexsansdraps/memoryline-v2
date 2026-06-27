@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
-import { For, Show, createSignal, type Accessor } from "solid-js";
+import { For, Show } from "solid-js";
 import type { CharacterTypeDTO } from "@memoryline/types";
-import type { ConfiguratorState, SvgCache } from "../store";
-import { DraggableCharacter } from "./CharacterLayer";
+import { autoPlace, type ConfiguratorState, type SvgCache } from "../store";
+import { CharacterStack } from "./CharacterLayer";
 
 /** Ratio largeur/hauteur d'affichage selon le format (portrait). */
 function aspectFor(format: string): string {
@@ -13,24 +13,21 @@ function aspectFor(format: string): string {
 /**
  * Aperçu de l'affiche, espace de coordonnées normalisé 0..1.
  * Couches : fond -> personnages -> titre/sous-titre.
+ *
+ * Les personnages sont placés AUTOMATIQUEMENT (plus de drag/resize §18.2 F) :
+ * centrés, côte à côte, le long du bas-milieu de l'affiche. Aucun pointer
+ * event, aucune sélection visible sur l'affiche.
  */
 export function PosterPreview(props: {
   state: ConfiguratorState;
   typeById: (id: string | number) => CharacterTypeDTO | undefined;
   cache: SvgCache;
-  /** interactif (étape personnages) ou simple aperçu. */
-  interactive: boolean;
-  selectedIndex: number | null;
-  onSelect: (index: number) => void;
-  onMove: (index: number, x: number, y: number) => void;
-  onScale: (index: number, scale: number) => void;
 }) {
-  const [posterEl, setPosterEl] = createSignal<HTMLDivElement>();
-  const ref: Accessor<HTMLDivElement | undefined> = posterEl;
+  // Largeur d'un perso en % de la largeur de l'affiche (~30% comme demandé).
+  const CHAR_WIDTH_PCT = 30;
 
   return (
     <div
-      ref={setPosterEl}
       class="ml-cfg-poster"
       style={{
         position: "relative",
@@ -62,22 +59,36 @@ export function PosterPreview(props: {
         )}
       </Show>
 
-      {/* Couche personnages */}
+      {/* Couche personnages — placement automatique, non interactif */}
       <For each={props.state.characters}>
-        {(c, i) => (
-          <DraggableCharacter
-            character={c}
-            index={i()}
-            type={props.typeById(c.typeId)}
-            cache={props.cache}
-            selected={props.interactive && props.selectedIndex === i()}
-            baseSize={0.32}
-            posterEl={ref}
-            onSelect={props.interactive ? props.onSelect : () => {}}
-            onMove={props.interactive ? props.onMove : () => {}}
-            onScale={props.interactive ? props.onScale : () => {}}
-          />
-        )}
+        {(c, i) => {
+          const place = () =>
+            autoPlace(props.state.characters)[i()] ?? {
+              x: 0.5,
+              y: 0.62,
+              scale: 1,
+            };
+          return (
+            <div
+              style={{
+                position: "absolute",
+                left: `${place().x * 100}%`,
+                top: `${place().y * 100}%`,
+                width: `${CHAR_WIDTH_PCT}%`,
+                transform: "translate(-50%, -50%)",
+                "aspect-ratio": "1 / 1.6",
+                "z-index": String(c.position + 1),
+                "pointer-events": "none",
+              }}
+            >
+              <CharacterStack
+                character={c}
+                type={props.typeById(c.typeId)}
+                cache={props.cache}
+              />
+            </div>
+          );
+        }}
       </For>
 
       {/* Couche texte */}
