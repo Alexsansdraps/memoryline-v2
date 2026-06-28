@@ -165,7 +165,7 @@ export function stateFromConfig(cfg: PosterConfig): ConfiguratorState {
  * Largeur de référence d'un personnage (à scale=1) en fraction de la largeur
  * de l'affiche. Utilisée par autoPlace ET par le rendu (PosterPreview/PDF).
  */
-export const CHAR_BASE_WIDTH = 0.28;
+export const CHAR_BASE_WIDTH = 0.22;
 
 /**
  * Placement automatique des personnages : une seule RANGÉE, alignée vers le
@@ -180,11 +180,11 @@ export function autoPlace(
   const n = characters.length;
   if (n === 0) return [];
 
-  const Y = 0.74; // plus bas qu'avant (pieds vers le bas de l'affiche)
-  // Échelle : 1 perso un peu plus petit qu'avant ; rétrécit avec le nombre
-  // pour que la rangée tienne dans ~92% de la largeur.
-  const usable = 0.92;
-  const scale = Math.min(0.85, usable / (n * CHAR_BASE_WIDTH));
+  const Y = 0.88; // tout en bas de l'affiche : pieds posés sur le muret
+  // Échelle : persos plus petits ; rétrécit avec le nombre pour tenir côte à
+  // côte sans déborder (rangée dans ~90% de la largeur).
+  const usable = 0.9;
+  const scale = Math.min(0.7, usable / (n * CHAR_BASE_WIDTH));
   const slotW = CHAR_BASE_WIDTH * scale; // largeur effective d'un perso
   const rowW = n * slotW; // largeur totale de la rangée
   const start = 0.5 - rowW / 2; // bord gauche pour centrer le groupe

@@ -93,6 +93,25 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       initialState.view = props.defaults.view;
   }
 
+  // Personnages par défaut à l'ouverture (mode ajout) : un petit mix aléatoire
+  // d'humains et d'animaux respectant l'orientation de l'affiche, pour que
+  // l'affiche ne soit jamais vide. Le client peut ensuite modifier/retirer.
+  if (!props.initialConfig && initialState.characters.length === 0) {
+    const pool = props.characters.filter(
+      (c) => (c.orientation ?? "front") === initialState.view,
+    );
+    const animals = pool.filter((c) => (c.category ?? "") === "Animaux");
+    const humans = pool.filter((c) => (c.category ?? "") !== "Animaux");
+    const pick = <T,>(arr: T[]): T | undefined =>
+      arr.length ? arr[Math.floor(Math.random() * arr.length)] : undefined;
+    const chosen = [pick(humans), pick(animals)].filter(
+      (c): c is CharacterDTO => !!c,
+    );
+    initialState.characters = chosen.map((c, i) => ({
+      ...defaultCharacter(c, i),
+    }));
+  }
+
   const { state, mutate } = createConfiguratorStore(initialState);
   const { cache, fetchSvg } = createSvgCache(props.assetBaseUrl);
 
@@ -100,6 +119,20 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     id: string | number,
   ): CharacterDTO | undefined =>
     props.characters.find((c) => String(c.id) === String(id));
+
+  /**
+   * Personnages proposés à l'ajout, filtrés par l'orientation de l'AFFICHE :
+   * une affiche de dos ne propose que les persos de dos (et inversement). Évite
+   * qu'un perso de face apparaisse sur une affiche de dos. Si aucun perso ne
+   * correspond à la vue (donnée incomplète), on retombe sur la liste complète.
+   */
+  const visibleCharacters = createMemo<CharacterDTO[]>(() => {
+    const view = state.view;
+    const matching = props.characters.filter(
+      (c) => (c.orientation ?? "front") === view,
+    );
+    return matching.length > 0 ? matching : props.characters;
+  });
 
   /**
    * Variantes de slot pour le personnage en cours d'édition : on suit SON
@@ -196,7 +229,8 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
 
   /* --------------------------- étape 2 ------------------------------------ */
   function addCharacter() {
-    const base = props.characters[0];
+    // Le perso ajouté par défaut respecte l'orientation de l'affiche.
+    const base = visibleCharacters()[0] ?? props.characters[0];
     if (!base) return;
     mutate((s) => {
       const position = s.characters.length;
@@ -379,7 +413,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
         <Show when={state.step === "characters"}>
           <StepCharacters
             state={state}
-            characters={props.characters}
+            characters={visibleCharacters()}
             slots={slotVariants()}
             cache={cache}
             characterById={characterById}

@@ -306,7 +306,7 @@ export async function renderPosterPng(
   // 2) Personnages (couches ordonnées).
   // Largeur d'un perso = CHAR_BASE_WIDTH × scale × W (identique au rendu écran
   // du configurateur, pour que le PDF corresponde exactement à l'aperçu).
-  const CHAR_BASE_WIDTH = 0.28;
+  const CHAR_BASE_WIDTH = 0.22; // synchronisé avec le configurateur (store.ts)
   const layers = await resolveConfig(config, opts.data);
   for (const layer of layers) {
     // Largeur cible bornée au canevas. density:300 = qualité de rasterisation ;

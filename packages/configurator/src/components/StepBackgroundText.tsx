@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { For } from "solid-js";
+import { For, Show } from "solid-js";
 import type { BackgroundDTO } from "@memoryline/types";
 import type { ConfiguratorState } from "../store";
 import { Field } from "./ui";
@@ -41,50 +41,55 @@ export function StepBackgroundText(props: {
         Fond & texte
       </h3>
 
-      <Field label="Choisir un fond">
-        <div
-          style={{
-            display: "grid",
-            "grid-template-columns": "repeat(auto-fill, minmax(72px, 1fr))",
-            gap: "8px",
-          }}
-        >
-          <For each={props.backgrounds}>
-            {(bg) => {
-              const selected = () =>
-                String(props.state.backgroundId) === String(bg.id);
-              return (
-                <button
-                  type="button"
-                  onClick={() => props.onSelectBackground(bg)}
-                  title={bg.name ?? ""}
-                  style={{
-                    border: selected()
-                      ? "2px solid #4f46e5"
-                      : "1px solid #d1d5db",
-                    "border-radius": "6px",
-                    padding: "2px",
-                    cursor: "pointer",
-                    background: "#fff",
-                    "aspect-ratio": "1 / 1.4142",
-                    overflow: "hidden",
-                  }}
-                >
-                  <img
-                    src={resolve(bg.url)}
-                    alt={bg.name ?? ""}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      "object-fit": "cover",
-                    }}
-                  />
-                </button>
-              );
+      {/* Galerie de fonds : affichée UNIQUEMENT si le produit a plusieurs
+          variantes de fond. Avec un seul fond (cas normal), l'affiche est fixée
+          par le produit → pas de choix proposé au client. */}
+      <Show when={props.backgrounds.length > 1}>
+        <Field label="Choisir un fond">
+          <div
+            style={{
+              display: "grid",
+              "grid-template-columns": "repeat(auto-fill, minmax(72px, 1fr))",
+              gap: "8px",
             }}
-          </For>
-        </div>
-      </Field>
+          >
+            <For each={props.backgrounds}>
+              {(bg) => {
+                const selected = () =>
+                  String(props.state.backgroundId) === String(bg.id);
+                return (
+                  <button
+                    type="button"
+                    onClick={() => props.onSelectBackground(bg)}
+                    title={bg.name ?? ""}
+                    style={{
+                      border: selected()
+                        ? "2px solid #4f46e5"
+                        : "1px solid #d1d5db",
+                      "border-radius": "6px",
+                      padding: "2px",
+                      cursor: "pointer",
+                      background: "#fff",
+                      "aspect-ratio": "1 / 1.4142",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <img
+                      src={resolve(bg.url)}
+                      alt={bg.name ?? ""}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        "object-fit": "cover",
+                      }}
+                    />
+                  </button>
+                );
+              }}
+            </For>
+          </div>
+        </Field>
+      </Show>
 
       {/* Titre */}
       <Field label="Titre (symboles et chiffres autorisés)">
