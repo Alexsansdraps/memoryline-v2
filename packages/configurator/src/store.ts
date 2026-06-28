@@ -49,6 +49,8 @@ export interface CharacterDTO {
   baseSvgUrl: string;
   /** Zones de couleur par défaut de la base : { stN: "#hex" }. */
   baseColorZones: Record<string, string> | null;
+  /** Orientation native du perso : 'front' (face) ou 'back' (dos). */
+  orientation?: "front" | "back";
 }
 
 /** Variantes par slot, pour une vue donnée. */

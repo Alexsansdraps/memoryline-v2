@@ -30,6 +30,8 @@ if (Astro.request.method === "POST") {
         name: String(form.get("name") || "Personnage"),
         category: (form.get("category") as string) || null,
         position: Number(form.get("position") || 0),
+        orientation:
+          form.get("orientation") === "back" ? "back" : "front",
       });
       flash = "Personnage enregistré.";
     } else if (action === "archive") {
@@ -253,9 +255,33 @@ for (const a of pieces) {
                     class="mt-1 block w-20 border border-bo-border rounded px-2 py-1"
                   />
                 </label>
+                <label class="block">
+                  <span class="text-bo-muted text-xs">Orientation</span>
+                  <select
+                    name="orientation"
+                    class="mt-1 block border border-bo-border rounded px-2 py-1"
+                  >
+                    <option
+                      value="front"
+                      selected={(t.orientation ?? "front") === "front"}
+                    >
+                      Face
+                    </option>
+                    <option
+                      value="back"
+                      selected={t.orientation === "back"}
+                    >
+                      Dos
+                    </option>
+                  </select>
+                </label>
                 <button class="rounded bg-bo-accent text-white px-3 py-1.5 hover:opacity-90">
                   Enregistrer
                 </button>
+                <p class="basis-full text-xs text-bo-muted mt-1">
+                  Orientation native du personnage (ex. face = debout, dos =
+                  assis).
+                </p>
               </form>
 
               {/* Base : SVG plein personnage + couleurs par défaut */}

@@ -93,7 +93,14 @@ export function PosterPreview(props: {
               <CharacterStack
                 character={c}
                 base={props.characterById(c.characterId)}
-                slots={props.slots[props.state.view]}
+                slots={
+                  // Chaque perso utilise SON orientation native (dos/face),
+                  // sinon la vue globale de l'affiche.
+                  props.slots[
+                    props.characterById(c.characterId)?.orientation ??
+                      props.state.view
+                  ]
+                }
                 cache={props.cache}
               />
             </div>
@@ -102,9 +109,9 @@ export function PosterPreview(props: {
       </For>
 
       {/* Couche décor d'avant-plan (muret/banc…) — par-dessus les personnages
-          pour l'effet « assis dessus ». Ancré en bas, à sa taille naturelle
-          (pas étiré). Optionnel par produit. */}
-      <Show when={props.foregroundUrl}>
+          pour l'effet « assis dessus ». Ancré en bas, à sa taille naturelle.
+          UNIQUEMENT en vue de DOS (assis) : de face (debout), pas de rebord. */}
+      <Show when={props.state.view === "back" ? props.foregroundUrl : undefined}>
         {(url) => (
           <img
             src={url()}

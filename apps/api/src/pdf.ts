@@ -337,8 +337,8 @@ export async function renderPosterPng(
   }
 
   // 2b) Décor d'avant-plan (muret/banc…) — par-dessus les personnages, ancré
-  // en bas (contain). Optionnel (config.foregroundUrl).
-  if (config.foregroundUrl) {
+  // en bas (contain). UNIQUEMENT en vue de DOS (assis) : de face, pas de rebord.
+  if (config.foregroundUrl && config.view === "back") {
     try {
       const fgRaw = await readSource(config.foregroundUrl);
       const fgPng = await sharp(fgRaw, { density: 300 })

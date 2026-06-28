@@ -43,6 +43,13 @@
       "when": 1782637731855,
       "tag": "0005_breezy_spiral",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782639236891,
+      "tag": "0006_safe_captain_midlands",
+      "breakpoints": true
     }
   ]
 }

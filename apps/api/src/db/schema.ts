@@ -158,6 +158,13 @@ export const characterTypes = pgTable(
     baseSvgUrl: text("base_svg_url"),
     /** Zones de couleur par défaut du SVG de base (recoloration peau/tenue). */
     baseColorZones: jsonb("base_color_zones").$type<Record<string, string>>(),
+    /**
+     * Orientation NATIVE du personnage : 'front' (face) ou 'back' (dos).
+     * Propriété du perso (ex. "Homme assis de dos" = back), définie dans le BO.
+     * Le configurateur affiche le perso dans son orientation ; un perso n'a
+     * qu'une orientation (les variantes face/dos = deux persos distincts).
+     */
+    orientation: text("orientation").default("front").notNull(),
     legacyTypeId: integer("legacy_type_id"), // typeId Shopify (1, 15, 18…)
   },
   (t) => [

@@ -89,6 +89,7 @@ export interface CharacterType {
   archivedAt: string | null;
   baseSvgUrl: string | null;
   baseColorZones: Record<string, string> | null;
+  orientation?: "front" | "back";
 }
 
 export interface Asset {

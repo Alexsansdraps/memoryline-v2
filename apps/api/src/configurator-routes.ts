@@ -158,6 +158,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         archived: t.archivedAt != null,
         baseSvgUrl: t.baseSvgUrl,
         baseColorZones: t.baseColorZones,
+        orientation: t.orientation === "back" ? "back" : "front",
       })),
       slots,
     });
@@ -479,6 +480,9 @@ export function mountConfiguratorRoutes(app: Hono) {
       name: String(b.name ?? "Type"),
       category: b.category ?? null,
       position: Number(b.position ?? 0),
+      ...(b.orientation !== undefined
+        ? { orientation: b.orientation === "back" ? "back" : "front" }
+        : {}),
     };
     if (b.id) {
       const [row] = await db

@@ -85,8 +85,19 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   ): CharacterDTO | undefined =>
     props.characters.find((c) => String(c.id) === String(id));
 
-  /** Variantes du slot pour la vue courante. */
-  const slotVariants = (): SlotVariants => props.slots[state.view];
+  /**
+   * Variantes de slot pour le personnage en cours d'édition : on suit SON
+   * orientation native (dos/face), sinon la vue globale. Garantit que l'éditeur
+   * montre les bonnes pièces et la même chose que l'aperçu de l'affiche.
+   */
+  const slotVariants = (): SlotVariants => {
+    const idx = state.editingIndex;
+    const c = idx != null ? state.characters[idx] : undefined;
+    const orient = c
+      ? characterById(c.characterId)?.orientation
+      : undefined;
+    return props.slots[orient ?? state.view];
+  };
 
   // Présélection du fond du produit : à l'ouverture, l'aperçu montre déjà
   // l'affiche de la fiche (1er fond renvoyé = fond de la ville du produit).
