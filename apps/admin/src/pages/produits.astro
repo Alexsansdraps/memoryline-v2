@@ -65,6 +65,7 @@ const PAGE_SIZE = 25;
           <th class="px-4 py-2 font-medium">Nom</th>
           <th class="px-4 py-2 font-medium">Type</th>
           <th class="px-4 py-2 font-medium text-right">Prix de base</th>
+          <th class="px-4 py-2"></th>
         </tr>
       </thead>
       <tbody id="prod-tbody">
@@ -75,9 +76,18 @@ const PAGE_SIZE = 25;
               data-name={(p.name ?? "").toLowerCase()}
               data-slug={(p.slug ?? "").toLowerCase()}
             >
-              <td class="px-4 py-2 font-medium">{p.name}</td>
+              <td class="px-4 py-2 font-medium">
+                <a href={`/produits/${p.id}`} class="text-bo-accent hover:underline">
+                  {p.name}
+                </a>
+              </td>
               <td class="px-4 py-2">{p.kind}</td>
               <td class="px-4 py-2 text-right">{formatPrice(p.basePriceCents)}</td>
+              <td class="px-4 py-2 text-right">
+                <a href={`/produits/${p.id}`} class="text-bo-accent hover:underline">
+                  Configurer
+                </a>
+              </td>
             </tr>
           ))
         }

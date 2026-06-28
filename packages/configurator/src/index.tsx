@@ -49,6 +49,12 @@ export interface ConfiguratorProps {
   /** Décor d'avant-plan optionnel du produit (muret/banc…), rendu par-dessus
    *  les personnages (effet « assis dessus »). URL /assets/… ou absolue. */
   foregroundUrl?: string | null;
+  /** Réglages par défaut du produit (pré-remplissage à l'ouverture). */
+  defaults?: {
+    title?: string | null;
+    subtitle?: string | null;
+    view?: string | null;
+  };
   /** Réouverture (panier "edit" §18.3) : restaure tout l'état. */
   initialConfig?: PosterConfig;
   /** Préfixe pour fetch le texte SVG, ex "http://localhost:3100". */
@@ -76,6 +82,16 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   const initialState: ConfiguratorState = props.initialConfig
     ? stateFromConfig(props.initialConfig)
     : emptyState();
+
+  // Pré-remplissage depuis les réglages par défaut du produit (titre/sous-titre/
+  // position) — seulement en mode AJOUT (pas en réouverture panier).
+  if (!props.initialConfig && props.defaults) {
+    if (props.defaults.title) initialState.title.value = props.defaults.title;
+    if (props.defaults.subtitle)
+      initialState.subtitle.value = props.defaults.subtitle;
+    if (props.defaults.view === "front" || props.defaults.view === "back")
+      initialState.view = props.defaults.view;
+  }
 
   const { state, mutate } = createConfiguratorStore(initialState);
   const { cache, fetchSvg } = createSvgCache(props.assetBaseUrl);

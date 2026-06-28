@@ -29,6 +29,8 @@ export interface ConfiguratorIslandProps {
   prices?: Partial<Record<string, number>>;
   /** Décor d'avant-plan du produit (muret/banc…), rendu au 1er plan. */
   foregroundUrl?: string | null;
+  /** Réglages par défaut du produit (pré-remplissage). */
+  defaults?: { title?: string | null; subtitle?: string | null; view?: string | null };
   /** "add" depuis la fiche produit, "edit" depuis le panier. */
   mode?: "add" | "edit";
   /** Réouverture (edit) : config de la ligne à modifier. */
@@ -153,6 +155,7 @@ export default function ConfiguratorIsland(
               slots={d().slots as never}
               prices={props.prices}
               foregroundUrl={props.foregroundUrl}
+              defaults={props.defaults}
               initialConfig={props.initialConfig}
               assetBaseUrl={PUBLIC_API_URL}
               onSubmit={handleSubmit}

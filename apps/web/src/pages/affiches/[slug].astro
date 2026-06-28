@@ -142,6 +142,11 @@ const breadcrumbLd = {
               product.variants.map((v) => [v.format, v.priceCents]),
             )}
             foregroundUrl={product.foregroundUrl ?? null}
+            defaults={{
+              title: product.defaultTitle ?? null,
+              subtitle: product.defaultSubtitle ?? null,
+              view: product.defaultView ?? null,
+            }}
           />
         ) : (
           <AddToCartButton

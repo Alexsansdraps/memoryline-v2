@@ -103,6 +103,26 @@ export interface Asset {
   position: number;
 }
 
+/** Un visuel (arrière-plan) disponible pour un produit. */
+export interface ProductBackground {
+  id: number;
+  url: string;
+  name: string | null;
+  position: number;
+}
+
+/** Configuration du configurateur pour un produit donné. */
+export interface ProductConfig {
+  id: number;
+  slug: string;
+  name: string;
+  defaultTitle: string | null;
+  defaultSubtitle: string | null;
+  defaultView: "front" | "back" | null;
+  foregroundUrl: string | null;
+  backgrounds: ProductBackground[];
+}
+
 /**
  * Crée un client API lié au cookie de session de la requête entrante.
  * À utiliser dans les pages : `const api = adminApi(Astro.request)`.
@@ -176,6 +196,45 @@ export function adminApi(request?: Request) {
       req<Asset>("POST", `/admin/assets/${id}/colors`, { colorZones }, cookie),
     deleteAsset: (id: number) =>
       req<{ ok: boolean }>("DELETE", `/admin/assets/${id}`, undefined, cookie),
+    productConfig: (id: number | string) =>
+      req<ProductConfig>(
+        "GET",
+        `/admin/products/${id}/config`,
+        undefined,
+        cookie,
+      ),
+    setProductConfig: (
+      id: number | string,
+      data: {
+        defaultTitle?: string | null;
+        defaultSubtitle?: string | null;
+        defaultView?: "front" | "back" | null;
+        foregroundUrl?: string | null;
+      },
+    ) =>
+      req<ProductConfig>(
+        "POST",
+        `/admin/products/${id}/config`,
+        data,
+        cookie,
+      ),
+    addProductBackground: (
+      id: number | string,
+      data: { url: string; name?: string },
+    ) =>
+      req<ProductBackground>(
+        "POST",
+        `/admin/products/${id}/backgrounds`,
+        data,
+        cookie,
+      ),
+    deleteBackground: (bgId: number | string) =>
+      req<{ ok: boolean }>(
+        "DELETE",
+        `/admin/backgrounds/${bgId}`,
+        undefined,
+        cookie,
+      ),
   };
 }
 

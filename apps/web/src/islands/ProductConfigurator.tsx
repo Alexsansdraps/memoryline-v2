@@ -26,6 +26,8 @@ export interface ProductConfiguratorProps {
   prices?: Partial<Record<string, number>>;
   /** Décor d'avant-plan du produit. */
   foregroundUrl?: string | null;
+  /** Réglages par défaut du produit (pré-remplissage). */
+  defaults?: { title?: string | null; subtitle?: string | null; view?: string | null };
 }
 
 export default function ProductConfigurator(
@@ -126,6 +128,7 @@ export default function ProductConfigurator(
                 product={props.product}
                 prices={props.prices}
                 foregroundUrl={props.foregroundUrl}
+                defaults={props.defaults}
                 mode={editItemId() != null ? "edit" : "add"}
                 initialConfig={initialConfig()}
                 itemId={editItemId() ?? undefined}

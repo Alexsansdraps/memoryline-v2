@@ -1,0 +1,330 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { adminApi, type ProductConfig } from "../../lib/api.ts";
+
+const api = adminApi(Astro.request);
+const { id } = Astro.params;
+
+// URL publique de l'API, joignable depuis le navigateur (fetch client) et pour
+// résoudre les chemins d'images "/assets/...".
+const PUBLIC_API_URL =
+  import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
+
+// Helper : URL absolue d'une image. Les URLs externes (https://cdn.shopify…)
+// s'affichent telles quelles ; les chemins "/assets/..." sont préfixés.
+function imgSrc(url: string | null | undefined): string {
+  if (!url) return "";
+  return url.startsWith("http") ? url : `${PUBLIC_API_URL}${url}`;
+}
+
+// --- Enregistrement des défauts (SSR) ----------------------------------
+// Le bouton « Appliquer » (titre / sous-titre / position / décor) passe par un
+// POST classique, même pattern robuste que promotions / personnages. Les
+// actions par visuel (ajout / suppression) se font côté client.
+let flash: string | null = null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  try {
+    await api.setProductConfig(id!, {
+      defaultTitle: (form.get("defaultTitle") as string) ?? "",
+      defaultSubtitle: (form.get("defaultSubtitle") as string) ?? "",
+      defaultView:
+        form.get("defaultView") === "back"
+          ? "back"
+          : form.get("defaultView") === "front"
+            ? "front"
+            : null,
+      foregroundUrl: (form.get("foregroundUrl") as string)?.trim() || null,
+    });
+    flash = "Configuration enregistrée.";
+  } catch (e) {
+    flash = "Erreur : " + String(e);
+  }
+}
+
+let config: ProductConfig | null = null;
+let error: string | null = null;
+try {
+  config = await api.productConfig(id!);
+} catch (e) {
+  error = String(e);
+}
+
+const backgrounds = config?.backgrounds ?? [];
+---
+
+<Admin title={config?.name ?? "Produit"}>
+  <p class="mb-4">
+    <a href="/produits" class="text-bo-accent hover:underline text-sm"
+      >← Retour aux produits</a
+    >
+  </p>
+
+  {flash && <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">{flash}</p>}
+  {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
+
+  {config && (
+    <>
+      <header class="mb-6">
+        <h2 class="text-xl font-semibold">{config.name}</h2>
+        <p class="text-sm text-bo-muted">
+          /{config.slug} · Configuration du configurateur
+        </p>
+      </header>
+
+      {/* =============================================================== */}
+      {/* 1 — Visuels disponibles                                         */}
+      {/* =============================================================== */}
+      <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg p-5">
+        <h3 class="font-semibold mb-1">Visuels disponibles</h3>
+        <p class="text-sm text-bo-muted mb-4">
+          Les arrière-plans proposés au client pour ce produit.
+        </p>
+        <div id="bg-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {backgrounds.map((bg) => (
+            <figure
+              class="relative border border-bo-border rounded overflow-hidden bg-white group"
+              data-bg-id={bg.id}
+            >
+              <img
+                src={imgSrc(bg.url)}
+                alt={bg.name ?? ""}
+                class="w-full aspect-square object-cover"
+                loading="lazy"
+              />
+              <button
+                type="button"
+                class="js-del-bg absolute top-1 right-1 h-6 w-6 rounded-full bg-white/90 border border-bo-border text-sm leading-none text-bo-muted hover:text-red-600 hover:border-red-300 shadow"
+                title="Supprimer ce visuel"
+                aria-label="Supprimer ce visuel"
+              >
+                ✕
+              </button>
+              {bg.name && (
+                <figcaption class="px-2 py-1 text-xs text-bo-muted truncate">
+                  {bg.name}
+                </figcaption>
+              )}
+            </figure>
+          ))}
+        </div>
+        <p
+          id="bg-empty"
+          class={`text-sm text-bo-muted ${backgrounds.length ? "hidden" : ""}`}
+        >
+          Aucun visuel pour le moment.
+        </p>
+      </section>
+
+      {/* =============================================================== */}
+      {/* 2 — Ajouter un visuel                                           */}
+      {/* =============================================================== */}
+      <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg p-5">
+        <h3 class="font-semibold mb-3">Ajouter un visuel : URL de l'image</h3>
+        <div class="flex flex-wrap items-end gap-3">
+          <input
+            id="new-bg-url"
+            type="text"
+            class="flex-1 min-w-[16rem] border border-bo-border rounded px-3 py-2 text-sm font-mono"
+            placeholder="https://cdn.shopify.com/..."
+          />
+          <button
+            type="button"
+            id="add-bg-btn"
+            class="rounded bg-bo-accent text-white px-4 py-2 text-sm hover:opacity-90"
+          >
+            Ajouter
+          </button>
+          <span id="add-bg-status" class="text-xs"></span>
+        </div>
+      </section>
+
+      {/* =============================================================== */}
+      {/* 3 à 6 — Défauts (form SSR « Appliquer »)                        */}
+      {/* =============================================================== */}
+      <form method="POST" class="space-y-6">
+        {/* 3 — Position des personnages */}
+        <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+          <h3 class="font-semibold mb-3">Position des personnages</h3>
+          <label class="block max-w-xs">
+            <select
+              name="defaultView"
+              class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
+            >
+              <option
+                value="front"
+                selected={(config.defaultView ?? "front") === "front"}
+              >
+                Face
+              </option>
+              <option value="back" selected={config.defaultView === "back"}>
+                Dos
+              </option>
+            </select>
+          </label>
+        </section>
+
+        {/* 4 — Décor d'avant-plan */}
+        <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+          <h3 class="font-semibold mb-3">Décor d'avant-plan (optionnel)</h3>
+          <div class="flex flex-wrap items-end gap-3">
+            <label class="flex-1 min-w-[16rem] block">
+              <span class="text-bo-muted text-sm">URL du décor</span>
+              <input
+                id="fg-url"
+                name="foregroundUrl"
+                type="text"
+                value={config.foregroundUrl ?? ""}
+                class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm font-mono"
+                placeholder="/assets/...svg"
+              />
+            </label>
+            <img
+              id="fg-preview"
+              src={imgSrc(config.foregroundUrl)}
+              alt=""
+              class="h-16 w-16 object-contain border border-bo-border rounded bg-white shrink-0"
+              style={config.foregroundUrl ? "" : "visibility:hidden"}
+            />
+          </div>
+          <p class="text-xs text-bo-muted mt-2">
+            Affiché au 1er plan, uniquement quand les personnages sont de dos
+            (assis).
+          </p>
+        </section>
+
+        {/* 5 — Texte par défaut */}
+        <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+          <h3 class="font-semibold mb-3">Texte par défaut</h3>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <label class="block">
+              <span class="text-bo-muted text-sm">Titre</span>
+              <input
+                name="defaultTitle"
+                type="text"
+                value={config.defaultTitle ?? ""}
+                class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
+              />
+            </label>
+            <label class="block">
+              <span class="text-bo-muted text-sm">Sous-titre</span>
+              <input
+                name="defaultSubtitle"
+                type="text"
+                value={config.defaultSubtitle ?? ""}
+                class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+        </section>
+
+        {/* 6 — Appliquer */}
+        <div>
+          <button class="rounded bg-bo-accent text-white px-5 py-2.5 hover:opacity-90">
+            Appliquer
+          </button>
+        </div>
+      </form>
+    </>
+  )}
+
+  <script is:inline define:vars={{ PUBLIC_API_URL, productId: id }}>
+    const abs = (u) =>
+      u && u.startsWith("http") ? u : `${PUBLIC_API_URL}${u}`;
+
+    // --- Aperçu live du décor d'avant-plan ---
+    const fgUrl = document.getElementById("fg-url");
+    const fgPreview = document.getElementById("fg-preview");
+    fgUrl?.addEventListener("input", () => {
+      const v = fgUrl.value.trim();
+      if (v) {
+        fgPreview.src = abs(v);
+        fgPreview.style.visibility = "visible";
+      } else {
+        fgPreview.removeAttribute("src");
+        fgPreview.style.visibility = "hidden";
+      }
+    });
+
+    // --- Ajout d'un visuel (POST /admin/products/:id/backgrounds) ---
+    const addInput = document.getElementById("new-bg-url");
+    const addBtn = document.getElementById("add-bg-btn");
+    const addStatus = document.getElementById("add-bg-status");
+    const grid = document.getElementById("bg-grid");
+    const empty = document.getElementById("bg-empty");
+
+    function bindDelete(btn) {
+      btn.addEventListener("click", async () => {
+        const fig = btn.closest("[data-bg-id]");
+        if (!fig) return;
+        if (!confirm("Supprimer ce visuel ?")) return;
+        const bgId = fig.getAttribute("data-bg-id");
+        try {
+          const res = await fetch(`${PUBLIC_API_URL}/admin/backgrounds/${bgId}`, {
+            method: "DELETE",
+            credentials: "include",
+          });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          fig.remove();
+          if (empty && !grid.querySelector("[data-bg-id]"))
+            empty.classList.remove("hidden");
+        } catch (e) {
+          alert("Suppression impossible : " + e);
+        }
+      });
+    }
+
+    document.querySelectorAll(".js-del-bg").forEach(bindDelete);
+
+    addBtn?.addEventListener("click", async () => {
+      const url = (addInput.value || "").trim();
+      if (!url) {
+        addInput.focus();
+        return;
+      }
+      if (addStatus) {
+        addStatus.textContent = "…";
+        addStatus.className = "text-xs text-bo-muted";
+      }
+      try {
+        const res = await fetch(
+          `${PUBLIC_API_URL}/admin/products/${productId}/backgrounds`,
+          {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url }),
+          },
+        );
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const bg = await res.json();
+
+        // Insère la nouvelle vignette sans recharger la page.
+        const fig = document.createElement("figure");
+        fig.className =
+          "relative border border-bo-border rounded overflow-hidden bg-white group";
+        fig.setAttribute("data-bg-id", bg.id);
+        fig.innerHTML =
+          `<img src="${abs(bg.url)}" alt="${bg.name ?? ""}" class="w-full aspect-square object-cover" loading="lazy" />` +
+          `<button type="button" class="js-del-bg absolute top-1 right-1 h-6 w-6 rounded-full bg-white/90 border border-bo-border text-sm leading-none text-bo-muted hover:text-red-600 hover:border-red-300 shadow" title="Supprimer ce visuel" aria-label="Supprimer ce visuel">✕</button>` +
+          (bg.name
+            ? `<figcaption class="px-2 py-1 text-xs text-bo-muted truncate">${bg.name}</figcaption>`
+            : "");
+        grid.appendChild(fig);
+        bindDelete(fig.querySelector(".js-del-bg"));
+        empty?.classList.add("hidden");
+
+        addInput.value = "";
+        if (addStatus) {
+          addStatus.textContent = "Ajouté ✓";
+          addStatus.className = "text-xs text-green-700";
+        }
+      } catch (e) {
+        if (addStatus) {
+          addStatus.textContent = "Erreur";
+          addStatus.className = "text-xs text-red-600";
+        }
+      }
+    });
+  </script>
+</Admin>

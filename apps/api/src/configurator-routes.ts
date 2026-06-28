@@ -11,7 +11,7 @@
  * handlers, montés via `mountConfiguratorRoutes(app)`.
  */
 import type { Hono } from "hono";
-import { asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import { renderPosterPdf, type ResolveData } from "./pdf.js";
 import { posterConfigSchema, type PosterConfig } from "@memoryline/types";
@@ -630,6 +630,87 @@ export function mountConfiguratorRoutes(app: Hono) {
   app.delete("/admin/assets/:id", async (c) => {
     const id = Number(c.req.param("id"));
     await db.delete(schema.assets).where(eq(schema.assets.id, id));
+    return c.json({ ok: true });
+  });
+
+  // === Config CONFIGURATEUR par produit (BO) ===============================
+
+  /** Détail config configurateur d'un produit : défauts + visuels (fonds). */
+  app.get("/admin/products/:id/config", async (c) => {
+    const id = Number(c.req.param("id"));
+    const [product] = await db
+      .select()
+      .from(schema.products)
+      .where(eq(schema.products.id, id));
+    if (!product) return c.notFound();
+    const backgrounds = await db
+      .select()
+      .from(schema.backgrounds)
+      .where(eq(schema.backgrounds.productId, id))
+      .orderBy(asc(schema.backgrounds.position));
+    return c.json({
+      id: product.id,
+      slug: product.slug,
+      name: product.name,
+      defaultTitle: product.defaultTitle,
+      defaultSubtitle: product.defaultSubtitle,
+      defaultView: product.defaultView,
+      foregroundUrl: product.foregroundUrl,
+      backgrounds,
+    });
+  });
+
+  /** Met à jour les défauts configurateur d'un produit (titre/sous-titre/
+   *  position/décor avant-plan). */
+  app.post("/admin/products/:id/config", async (c) => {
+    const id = Number(c.req.param("id"));
+    const b = await c.req.json();
+    const set: Record<string, unknown> = {};
+    if (b.defaultTitle !== undefined) set.defaultTitle = b.defaultTitle || null;
+    if (b.defaultSubtitle !== undefined)
+      set.defaultSubtitle = b.defaultSubtitle || null;
+    if (b.defaultView !== undefined)
+      set.defaultView =
+        b.defaultView === "back" ? "back" : b.defaultView === "front" ? "front" : null;
+    if (b.foregroundUrl !== undefined)
+      set.foregroundUrl = b.foregroundUrl || null;
+    const [row] = await db
+      .update(schema.products)
+      .set(set)
+      .where(eq(schema.products.id, id))
+      .returning();
+    if (!row) return c.notFound();
+    return c.json(row);
+  });
+
+  /** Ajoute un visuel (fond) à un produit, par URL. */
+  app.post("/admin/products/:id/backgrounds", async (c) => {
+    const id = Number(c.req.param("id"));
+    const b = await c.req.json();
+    const url = String(b.url ?? "").trim();
+    if (!url) return c.json({ error: "url requise" }, 400);
+    const [maxPos] = await db
+      .select({ p: schema.backgrounds.position })
+      .from(schema.backgrounds)
+      .where(eq(schema.backgrounds.productId, id))
+      .orderBy(desc(schema.backgrounds.position))
+      .limit(1);
+    const [row] = await db
+      .insert(schema.backgrounds)
+      .values({
+        productId: id,
+        url,
+        name: b.name ?? url.split("/").pop()?.replace(/\.[a-z]+$/i, "") ?? null,
+        position: (maxPos?.p ?? -1) + 1,
+      })
+      .returning();
+    return c.json(row);
+  });
+
+  /** Retire un visuel (fond) d'un produit. */
+  app.delete("/admin/backgrounds/:bgId", async (c) => {
+    const bgId = Number(c.req.param("bgId"));
+    await db.delete(schema.backgrounds).where(eq(schema.backgrounds.id, bgId));
     return c.json({ ok: true });
   });
 }
