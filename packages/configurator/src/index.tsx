@@ -46,6 +46,9 @@ export interface ConfiguratorProps {
   /** Prix par format en centimes (ex. { A4: 2300, A3: 2900 }). Le format
    *  sélectionné met à jour le prix affiché (demande cliente). */
   prices?: Partial<Record<PosterFormat, number>>;
+  /** Décor d'avant-plan optionnel du produit (muret/banc…), rendu par-dessus
+   *  les personnages (effet « assis dessus »). URL /assets/… ou absolue. */
+  foregroundUrl?: string | null;
   /** Réouverture (panier "edit" §18.3) : restaure tout l'état. */
   initialConfig?: PosterConfig;
   /** Préfixe pour fetch le texte SVG, ex "http://localhost:3100". */
@@ -289,6 +292,13 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
           characterById={characterById}
           slots={props.slots}
           cache={cache}
+          foregroundUrl={
+            props.foregroundUrl
+              ? props.foregroundUrl.startsWith("http")
+                ? props.foregroundUrl
+                : props.assetBaseUrl.replace(/\/$/, "") + props.foregroundUrl
+              : undefined
+          }
         />
       </div>
 

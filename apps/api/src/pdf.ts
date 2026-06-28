@@ -304,11 +304,17 @@ export async function renderPosterPng(
   const composites: OverlayOptions[] = [];
 
   // 2) Personnages (couches ordonnées).
+  // Largeur d'un perso = CHAR_BASE_WIDTH × scale × W (identique au rendu écran
+  // du configurateur, pour que le PDF corresponde exactement à l'aperçu).
+  const CHAR_BASE_WIDTH = 0.28;
   const layers = await resolveConfig(config, opts.data);
   for (const layer of layers) {
     // Largeur cible bornée au canevas. density:300 = qualité de rasterisation ;
     // c'est .resize qui fixe la taille finale (indépendante de la densité).
-    const targetW = Math.min(W, Math.max(1, Math.round(layer.scale * W)));
+    const targetW = Math.min(
+      W,
+      Math.max(1, Math.round(CHAR_BASE_WIDTH * layer.scale * W)),
+    );
     const png = await sharp(Buffer.from(layer.svgString), {
       density: 300,
     })
@@ -328,6 +334,22 @@ export async function renderPosterPng(
     // on place la couche sur un canevas transparent W×H puis on composite à 0,0.
     const framed = await frameLayer(png, lw, lh, left, top, W, H);
     if (framed) composites.push({ input: framed, left: 0, top: 0 });
+  }
+
+  // 2b) Décor d'avant-plan (muret/banc…) — par-dessus les personnages, ancré
+  // en bas (contain). Optionnel (config.foregroundUrl).
+  if (config.foregroundUrl) {
+    try {
+      const fgRaw = await readSource(config.foregroundUrl);
+      const fgPng = await sharp(fgRaw, { density: 300 })
+        .resize({ width: W, height: H, fit: "contain", position: "bottom",
+          background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .png()
+        .toBuffer();
+      composites.push({ input: fgPng, left: 0, top: 0 });
+    } catch {
+      // décor manquant : on l'ignore (best-effort)
+    }
   }
 
   // 3) Textes (titre + sous-titre). Le SVG a déjà des dimensions en px = W×H ;

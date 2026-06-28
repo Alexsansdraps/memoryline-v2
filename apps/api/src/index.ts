@@ -197,6 +197,11 @@ app.get("/products/:slug", async (c) => {
     kind: product.kind,
     basePriceCents: product.basePriceCents,
     images: images.map((i) => i.url),
+    // Réglages configurateur par défaut (repris de l'ancien site, éditables BO).
+    defaultTitle: product.defaultTitle,
+    defaultSubtitle: product.defaultSubtitle,
+    defaultView: product.defaultView,
+    foregroundUrl: product.foregroundUrl,
     variants: variants.map((v) => ({
       format: v.format,
       priceCents: v.priceCents,

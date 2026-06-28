@@ -141,6 +141,7 @@ const breadcrumbLd = {
             prices={Object.fromEntries(
               product.variants.map((v) => [v.format, v.priceCents]),
             )}
+            foregroundUrl={product.foregroundUrl ?? null}
           />
         ) : (
           <AddToCartButton

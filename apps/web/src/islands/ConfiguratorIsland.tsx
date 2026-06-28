@@ -27,6 +27,8 @@ export interface ConfiguratorIslandProps {
   product: { id: number; name: string; basePriceCents: number };
   /** Prix réels par format (centimes), ex. { A4: 2300, A3: 2900 }. */
   prices?: Partial<Record<string, number>>;
+  /** Décor d'avant-plan du produit (muret/banc…), rendu au 1er plan. */
+  foregroundUrl?: string | null;
   /** "add" depuis la fiche produit, "edit" depuis le panier. */
   mode?: "add" | "edit";
   /** Réouverture (edit) : config de la ligne à modifier. */
@@ -74,6 +76,9 @@ export default function ConfiguratorIsland(
     setSaving(true);
     setError(null);
     try {
+      // Le décor d'avant-plan est un réglage produit : on l'injecte dans le
+      // snapshot pour que le PDF d'impression le rende aussi.
+      if (props.foregroundUrl) config = { ...config, foregroundUrl: props.foregroundUrl };
       const cartId = getCartId();
       const unitPriceCents = priceForConfig(
         config,
@@ -147,6 +152,7 @@ export default function ConfiguratorIsland(
               characters={d().characters as never}
               slots={d().slots as never}
               prices={props.prices}
+              foregroundUrl={props.foregroundUrl}
               initialConfig={props.initialConfig}
               assetBaseUrl={PUBLIC_API_URL}
               onSubmit={handleSubmit}

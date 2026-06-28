@@ -81,6 +81,10 @@ export interface ProductDetail {
   kind: ProductKind;
   basePriceCents: number;
   images: string[];
+  defaultTitle?: string | null;
+  defaultSubtitle?: string | null;
+  defaultView?: string | null;
+  foregroundUrl?: string | null;
   variants: {
     format: string;
     priceCents: number;

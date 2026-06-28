@@ -1,0 +1,1 @@
+ALTER TABLE "product" ADD COLUMN "foreground_url" text;

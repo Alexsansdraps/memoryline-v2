@@ -24,6 +24,8 @@ export interface ProductConfiguratorProps {
   product: { id: number; name: string; basePriceCents: number };
   /** Prix réels par format (centimes), ex. { A4: 2300, A3: 2900 }. */
   prices?: Partial<Record<string, number>>;
+  /** Décor d'avant-plan du produit. */
+  foregroundUrl?: string | null;
 }
 
 export default function ProductConfigurator(
@@ -123,6 +125,7 @@ export default function ProductConfigurator(
               <ConfiguratorIsland
                 product={props.product}
                 prices={props.prices}
+                foregroundUrl={props.foregroundUrl}
                 mode={editItemId() != null ? "edit" : "add"}
                 initialConfig={initialConfig()}
                 itemId={editItemId() ?? undefined}

@@ -67,6 +67,12 @@ export const products = pgTable(
     defaultTitle: text("default_title"),
     defaultSubtitle: text("default_subtitle"),
     defaultView: text("default_view"), // 'front' | 'back' (position des personnages)
+    /**
+     * Décor d'AVANT-PLAN optionnel (ex. muret/banc/fauteuil) : SVG rendu
+     * par-dessus le fond et les personnages, pour l'effet « assis dessus ».
+     * URL servie /assets/<fichier>. Éditable dans le back-office.
+     */
+    foregroundUrl: text("foreground_url"),
     legacyId: bigint("legacy_id", { mode: "number" }), // Shopify Product ID
     legacySlug: text("legacy_slug"), // slug d'origine -> 301 (§13)
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

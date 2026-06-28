@@ -29,6 +29,8 @@ export function PosterPreview(props: {
   characterById: (id: string | number) => CharacterDTO | undefined;
   slots: SlotsDTO;
   cache: SvgCache;
+  /** Décor d'avant-plan (muret/banc…), rendu au 1er plan (URL absolue). */
+  foregroundUrl?: string;
 }) {
 
   return (
@@ -98,6 +100,32 @@ export function PosterPreview(props: {
           );
         }}
       </For>
+
+      {/* Couche décor d'avant-plan (muret/banc…) — par-dessus les personnages
+          pour l'effet « assis dessus ». Ancré en bas, à sa taille naturelle
+          (pas étiré). Optionnel par produit. */}
+      <Show when={props.foregroundUrl}>
+        {(url) => (
+          <img
+            src={url()}
+            alt=""
+            draggable={false}
+            style={{
+              position: "absolute",
+              inset: "0",
+              width: "100%",
+              height: "100%",
+              // contain + ancrage bas : le décor garde ses proportions et se
+              // pose au bas de l'affiche, comme un vrai élément de premier plan.
+              "object-fit": "contain",
+              "object-position": "center bottom",
+              "pointer-events": "none",
+              "user-select": "none",
+              "z-index": "100",
+            }}
+          />
+        )}
+      </Show>
 
       {/* Couche texte */}
       <div

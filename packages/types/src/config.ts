@@ -57,6 +57,8 @@ export const posterConfigSchema = z.object({
   backgroundId: z.union([z.string(), z.number()]).optional(),
   /** URL du fond (legacy: référence directe au SVG Shopify). */
   backgroundUrl: z.string().optional(),
+  /** URL du décor d'avant-plan (muret/banc…), rendu au 1er plan. */
+  foregroundUrl: z.string().optional(),
   format: z.enum(POSTER_FORMATS).optional(),
   view: z.enum(POSTER_VIEWS).default("front"),
   texts: z.object({
