@@ -72,12 +72,24 @@ export interface ResolvedBackground {
 }
 
 /**
+ * Métadonnées d'un PERSONNAGE (table `character_type`) : son SVG complet de
+ * base (Male_2.svg…) pré-composé, sur lequel s'empilent les variantes de slots.
+ */
+export interface ResolvedCharacter {
+  id: number | string;
+  baseSvgUrl: string | null;
+  baseColorZones?: Record<string, string> | null;
+}
+
+/**
  * Données pré-résolues passées à {@link resolveConfig} / {@link renderPosterPng}.
  * L'appelant charge la DB lui-même puis remplit ces maps (clés = id en string).
  */
 export interface ResolveData {
-  /** assetId (string) -> ResolvedAsset. */
+  /** assetId (string) -> ResolvedAsset (variantes de slots). */
   assets: Map<string, ResolvedAsset>;
+  /** characterTypeId (string) -> ResolvedCharacter (SVG de base). */
+  characters?: Map<string, ResolvedCharacter>;
   /** backgroundId (string) -> ResolvedBackground. */
   backgrounds?: Map<string, ResolvedBackground>;
 }
@@ -163,7 +175,23 @@ export async function resolveConfig(
     const y = character.y ?? 0.5;
     const scale = character.scale ?? 1;
 
-    // assetId par slot -> on les ordonne selon SLOT_Z_ORDER (slots inconnus en fin).
+    // 1) SVG de BASE du personnage (Male_2.svg…) — la couche de fond du perso,
+    //    pré-composée. Recolorée avec les couleurs choisies (peau/tenue par défaut).
+    const base = data.characters?.get(String(character.typeId));
+    if (base?.baseSvgUrl) {
+      try {
+        const raw = (await readSource(base.baseSvgUrl)).toString("utf8");
+        const overrides: Record<string, string> = {
+          ...(base.baseColorZones ?? {}),
+          ...(character.colors ?? {}),
+        };
+        layers.push({ svgString: recolorSvg(raw, overrides), x, y, scale });
+      } catch {
+        // base illisible : on continue avec les variantes seules
+      }
+    }
+
+    // 2) Variantes de slots choisies, empilées par-dessus la base dans l'ordre.
     const slotEntries = Object.entries(character.assets);
     slotEntries.sort((a, b) => slotZ(a[0]) - slotZ(b[0]));
 
@@ -173,15 +201,12 @@ export async function resolveConfig(
 
       const raw = (await readSource(asset.svgUrl)).toString("utf8");
 
-      // Couleurs : on part des zones par défaut puis on surcharge avec celles
-      // du personnage (mêmes clés stN). recolorSvg ne touche que les zones citées.
+      // Couleurs : zones par défaut de l'asset surchargées par celles du perso.
       const overrides: Record<string, string> = {
         ...(asset.colorZones ?? {}),
         ...(character.colors ?? {}),
       };
-      const svgString = recolorSvg(raw, overrides);
-
-      layers.push({ svgString, x, y, scale });
+      layers.push({ svgString: recolorSvg(raw, overrides), x, y, scale });
     }
   }
 

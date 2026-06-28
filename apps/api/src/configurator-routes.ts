@@ -54,6 +54,7 @@ async function nextOrderNumber(channel: "web" | "salon"): Promise<string> {
 async function buildResolveData(): Promise<ResolveData> {
   const assets = await db.select().from(schema.assets);
   const backgrounds = await db.select().from(schema.backgrounds);
+  const types = await db.select().from(schema.characterTypes);
   const assetMap = new Map<string, any>();
   for (const a of assets)
     assetMap.set(String(a.id), {
@@ -63,10 +64,18 @@ async function buildResolveData(): Promise<ResolveData> {
       colorZones: a.colorZones,
       position: a.position,
     });
+  // Personnages (SVG de base pré-composé) pour le rendu PDF du nouveau modèle.
+  const charMap = new Map<string, any>();
+  for (const t of types)
+    charMap.set(String(t.id), {
+      id: t.id,
+      baseSvgUrl: t.baseSvgUrl,
+      baseColorZones: t.baseColorZones,
+    });
   const bgMap = new Map<string, any>();
   for (const b of backgrounds)
     bgMap.set(String(b.id), { id: b.id, url: b.url });
-  return { assets: assetMap, backgrounds: bgMap };
+  return { assets: assetMap, characters: charMap, backgrounds: bgMap };
 }
 
 /** Génère le PDF d'une ligne de commande et l'enregistre (print_file). */
