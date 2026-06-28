@@ -196,11 +196,17 @@ export function autoPlace(
   const rowW = n * slotW; // largeur totale de la rangée
   const start = 0.5 - rowW / 2; // bord gauche pour centrer le groupe
 
-  return characters.map((_, i) => ({
-    x: start + slotW * (i + 0.5), // centre du i-ème perso
-    y: Y,
-    scale,
-  }));
+  // PENTE DU MURET : il descend de gauche à droite (~+9% de bas en haut sur
+  // toute la largeur). Chaque perso suit cette pente -> y augmente avec x pour
+  // que les pieds restent sur le bord incliné (gauche plus haut, droite plus bas).
+  const SLOPE = 0.09; // dénivelé total sur la largeur de l'affiche
+
+  return characters.map((_, i) => {
+    const x = start + slotW * (i + 0.5); // centre du i-ème perso (0..1)
+    // décalage selon la position : centré sur 0.5 -> +/- la moitié de la pente.
+    const slopeY = (x - 0.5) * SLOPE;
+    return { x, y: Y + slopeY, scale };
+  });
 }
 
 /** Sérialise l'état de travail vers un PosterConfig propre (schemaVersion 1). */
@@ -270,7 +276,13 @@ export function findVariant(
   return variants.find((v) => String(v.id) === String(variantId));
 }
 
-/** Crée un personnage par défaut pour une base (couleurs = baseColorZones). */
+/**
+ * Crée un personnage par défaut pour une base. `colors` reste VIDE : le SVG de
+ * base a déjà ses bonnes couleurs intégrées (peau, tenue). On ne ré-applique pas
+ * baseColorZones — sinon les zones .stN, qui n'ont pas la même sémantique entre
+ * la base et les variantes de slots, se mélangent (peau qui devient bleue, etc.).
+ * Les couleurs ne sont surchargées que si le client en change explicitement.
+ */
 export function defaultCharacter(
   character: CharacterDTO,
   position: number,
@@ -282,7 +294,7 @@ export function defaultCharacter(
     y: 0.55,
     scale: 1,
     assets: {},
-    colors: { ...(character.baseColorZones ?? {}) },
+    colors: {},
   };
 }
 

@@ -23,6 +23,24 @@
   font-display: swap;
 }
 
+/* Sous-titre : « Another Shabby » est propriétaire (non fournie). En attendant,
+   on charge Caveat (script manuscrit Google Fonts, proche) et on l'aliase sur
+   « Another Shabby » pour que le rendu utilise une écriture manuscrite. */
+@font-face {
+  font-family: "Caveat";
+  src: url("https://fonts.gstatic.com/s/caveat/v18/WnznHAc5bAfYB2QRah7pcpNvOx-pjfJ9SIKjYBxPigs.woff2")
+    format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Another Shabby";
+  src: url("https://fonts.gstatic.com/s/caveat/v18/WnznHAc5bAfYB2QRah7pcpNvOx-pjfJ9SIKjYBxPigs.woff2")
+    format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+
 html {
   background: var(--color-paper);
   color: var(--color-ink);
