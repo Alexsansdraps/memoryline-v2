@@ -187,7 +187,7 @@ export function autoPlace(
   const n = characters.length;
   if (n === 0) return [];
 
-  const Y = 0.88; // tout en bas de l'affiche : pieds posés sur le muret
+  const Y = 0.84; // posés sur le muret (calé entre trop haut 0.78 et trop bas 0.88)
   // Échelle : persos plus petits ; rétrécit avec le nombre pour tenir côte à
   // côte sans déborder (rangée dans ~90% de la largeur).
   const usable = 0.9;
