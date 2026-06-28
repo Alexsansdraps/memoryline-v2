@@ -21,6 +21,7 @@ import {
   pgEnum,
   bigint,
   boolean,
+  doublePrecision,
 } from "drizzle-orm/pg-core";
 
 export const orderChannelEnum = pgEnum("order_channel", ["web", "salon"]);
@@ -158,6 +159,12 @@ export const characterTypes = pgTable(
     baseSvgUrl: text("base_svg_url"),
     /** Zones de couleur par défaut du SVG de base (recoloration peau/tenue). */
     baseColorZones: jsonb("base_color_zones").$type<Record<string, string>>(),
+    /**
+     * Position du BAS réel du contenu dans le viewBox (0..1, 1 = tout en bas).
+     * Les SVG animaux/bébés ont du vide sous le dessin (chat ~0.59) : ce ratio
+     * permet d'aligner les pieds de tous les persos au sol (mesuré par script).
+     */
+    bottomPct: doublePrecision("bottom_pct").default(1).notNull(),
     /**
      * Orientation NATIVE du personnage : 'front' (face) ou 'back' (dos).
      * Propriété du perso (ex. "Homme assis de dos" = back), définie dans le BO.

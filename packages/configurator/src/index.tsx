@@ -218,12 +218,18 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       s.backgroundUrl = url;
     });
   }
-  function setText(
-    which: "title" | "subtitle",
-    patch: Partial<{ value: string; font: string; color: string }>,
+  /** Met à jour SEULEMENT le texte d'un bloc (titre ou sous-titre). */
+  function setTextValue(which: "title" | "subtitle", value: string) {
+    mutate((s) => {
+      s[which].value = value;
+    });
+  }
+  /** Met à jour le STYLE PARTAGÉ (police/couleur/taille) titre + sous-titre. */
+  function setTextStyle(
+    patch: Partial<{ font: string; color: string; size: number }>,
   ) {
     mutate((s) => {
-      Object.assign(s[which], patch);
+      Object.assign(s.textStyle, patch);
     });
   }
 
@@ -406,7 +412,8 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             backgrounds={props.backgrounds}
             assetBaseUrl={props.assetBaseUrl}
             onSelectBackground={selectBackground}
-            onText={setText}
+            onTextValue={setTextValue}
+            onTextStyle={setTextStyle}
           />
         </Show>
 

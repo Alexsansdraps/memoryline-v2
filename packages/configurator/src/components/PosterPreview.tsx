@@ -79,16 +79,26 @@ export function PosterPreview(props: {
             };
           // Largeur effective = largeur de base × échelle (rangée centrée).
           const widthPct = () => CHAR_BASE_WIDTH * place().scale * 100;
+          // Alignement des pieds : un perso dont le contenu s'arrête à bottomPct
+          // de son cadre a du vide dessous ; on DESCEND le cadre de cette part
+          // (en % de l'affiche) pour que tous les pieds touchent la même ligne.
+          const bp = () =>
+            props.characterById(c.characterId)?.bottomPct ?? 1;
+          const dropPct = () => {
+            const containerHpct = widthPct() * 2; // aspect 1:2 (en % largeur≈hauteur poster)
+            return (1 - bp()) * (containerHpct / 2);
+          };
           return (
             <div
               style={{
                 position: "absolute",
                 left: `${place().x * 100}%`,
-                top: `${place().y * 100}%`,
+                top: `${place().y * 100 + dropPct()}%`,
                 width: `${widthPct()}%`,
                 transform: "translate(-50%, -50%)",
                 "aspect-ratio": "1 / 2",
-                "z-index": String(c.position + 1),
+                // ≥10 : les personnages passent DEVANT le muret (z=5).
+                "z-index": String(10 + c.position),
                 "pointer-events": "none",
               }}
             >
@@ -110,10 +120,9 @@ export function PosterPreview(props: {
         }}
       </For>
 
-      {/* Couche décor d'avant-plan (le muret) — par-dessus les personnages pour
-          l'effet « assis dessus ». UNIQUEMENT en vue de DOS. Comme l'ancien site :
-          ancré en bas, pleine largeur, hauteur auto (bottom-0 w-full h-auto).
-          Décor par défaut = muret ; surchargé par le foregroundUrl du produit. */}
+      {/* Couche muret — DERRIÈRE les personnages (les persos passent devant),
+          mais devant le fond. UNIQUEMENT en vue de DOS. Ancré en bas, pleine
+          largeur, hauteur auto. Décor par défaut = muret ; surchargé par produit. */}
       <Show when={props.state.view === "back" ? props.foregroundUrl ?? props.defaultForeground : undefined}>
         {(url) => (
           <img
@@ -128,52 +137,74 @@ export function PosterPreview(props: {
               height: "auto",
               "pointer-events": "none",
               "user-select": "none",
-              "z-index": "100",
+              "z-index": "5",
             }}
           />
         )}
       </Show>
 
-      {/* Couche texte */}
+      {/* Couche texte — EN HAUT de l'affiche (charte Memory Line). Titre + sous-
+          titre partagent police + couleur ; tailles FIXES (titre gros, sous-titre
+          plus petit). Si les deux sont vides : placeholder de marque. */}
       <div
         style={{
           position: "absolute",
           left: "0",
           right: "0",
-          bottom: "6%",
+          top: "5%",
           "text-align": "center",
           "pointer-events": "none",
           padding: "0 6%",
+          "container-type": "inline-size",
+          "z-index": "200",
         }}
       >
-        <Show when={props.state.title.value}>
-          <div
-            style={{
-              "font-family": props.state.title.font,
-              color: props.state.title.color,
-              "font-weight": "700",
-              "font-size": "clamp(14px, 5cqw, 40px)",
-              "line-height": "1.1",
-              "container-type": "inline-size",
-              "word-break": "break-word",
-            }}
-          >
-            {props.state.title.value}
-          </div>
-        </Show>
-        <Show when={props.state.subtitle.value}>
-          <div
-            style={{
-              "font-family": props.state.subtitle.font,
-              color: props.state.subtitle.color,
-              "font-size": "clamp(10px, 3cqw, 24px)",
-              "margin-top": "0.3em",
-              "word-break": "break-word",
-            }}
-          >
-            {props.state.subtitle.value}
-          </div>
-        </Show>
+        {(() => {
+          const st = props.state.textStyle;
+          const empty =
+            !props.state.title.value && !props.state.subtitle.value;
+          const titleText = empty ? "Memory Line" : props.state.title.value;
+          const subText = empty
+            ? "Votre ville, votre histoire"
+            : props.state.subtitle.value;
+          return (
+            <>
+              <Show when={titleText}>
+                <div
+                  style={{
+                    // Police FIXE du titre (charte) ; seule la couleur varie.
+                    "font-family": "'DM Serif Display', serif",
+                    color: st.color,
+                    "font-weight": "700",
+                    "font-size": "8cqw",
+                    "line-height": "1.05",
+                    "letter-spacing": "0.04em",
+                    "text-transform": "uppercase",
+                    "word-break": "break-word",
+                    opacity: empty ? "0.5" : "1",
+                  }}
+                >
+                  {titleText}
+                </div>
+              </Show>
+              <Show when={subText}>
+                <div
+                  style={{
+                    // Police FIXE du sous-titre (script manuscrit, charte).
+                    "font-family": "'Another Shabby', sans-serif",
+                    color: st.color,
+                    "font-size": "5.5cqw",
+                    "margin-top": "0.1em",
+                    "word-break": "break-word",
+                    opacity: empty ? "0.5" : "1",
+                  }}
+                >
+                  {subText}
+                </div>
+              </Show>
+            </>
+          );
+        })()}
       </div>
     </div>
   );

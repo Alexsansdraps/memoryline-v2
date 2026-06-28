@@ -21,7 +21,8 @@
     "gen-redirects": "tsx --env-file=../../.env scripts/gen-redirects.ts",
     "map-characters": "tsx --env-file=../../.env scripts/map-characters.ts",
     "shopify-export": "tsx --env-file=../../.env scripts/shopify-export.ts",
-    "import-product-configs": "tsx --env-file=../../.env scripts/import-product-configs.ts"
+    "import-product-configs": "tsx --env-file=../../.env scripts/import-product-configs.ts",
+    "measure-anchors": "tsx --env-file=../../.env scripts/measure-anchors.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",

@@ -32,6 +32,8 @@ export const textBlockSchema = z.object({
   value: z.string(),
   font: z.string().optional(),
   color: z.string().optional(),
+  /** Facteur de taille relatif (1 = défaut). Partagé titre/sous-titre. */
+  size: z.number().optional(),
 });
 export type TextBlock = z.infer<typeof textBlockSchema>;
 

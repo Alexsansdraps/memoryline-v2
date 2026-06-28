@@ -71,6 +71,7 @@ async function buildResolveData(): Promise<ResolveData> {
       id: t.id,
       baseSvgUrl: t.baseSvgUrl,
       baseColorZones: t.baseColorZones,
+      bottomPct: t.bottomPct ?? 1,
     });
   const bgMap = new Map<string, any>();
   for (const b of backgrounds)
@@ -159,6 +160,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         baseSvgUrl: t.baseSvgUrl,
         baseColorZones: t.baseColorZones,
         orientation: t.orientation === "back" ? "back" : "front",
+        bottomPct: t.bottomPct ?? 1,
       })),
       slots,
     });

@@ -51,6 +51,8 @@ export interface CharacterDTO {
   baseColorZones: Record<string, string> | null;
   /** Orientation native du perso : 'front' (face) ou 'back' (dos). */
   orientation?: "front" | "back";
+  /** Bas réel du contenu dans le viewBox (0..1) pour aligner les pieds au sol. */
+  bottomPct?: number;
 }
 
 /** Variantes par slot, pour une vue donnée. */
@@ -97,15 +99,20 @@ export interface ConfiguratorState {
   backgroundUrl: string | undefined;
   format: PosterFormat;
   view: PosterView;
-  title: { value: string; font: string; color: string };
-  subtitle: { value: string; font: string; color: string };
+  /** Seul le TEXTE diffère entre titre et sous-titre. */
+  title: { value: string };
+  subtitle: { value: string };
+  /** Style PARTAGÉ par le titre ET le sous-titre (police, couleur, taille). */
+  textStyle: { font: string; color: string; size: number };
   characters: WorkingCharacter[];
   /** index du personnage en cours d'édition, sinon null. */
   editingIndex: number | null;
 }
 
-const DEFAULT_TEXT_COLOR = "#222222";
+const DEFAULT_TEXT_COLOR = "#FFFFFF"; // blanc par défaut (charte affiches)
 const DEFAULT_FONT = "sans-serif";
+/** Taille de texte = facteur relatif (1 = défaut). Appliqué au titre et sous-titre. */
+const DEFAULT_TEXT_SIZE = 1;
 
 function emptyState(): ConfiguratorState {
   return {
@@ -114,8 +121,13 @@ function emptyState(): ConfiguratorState {
     backgroundUrl: undefined,
     format: "A4",
     view: "front",
-    title: { value: "", font: DEFAULT_FONT, color: DEFAULT_TEXT_COLOR },
-    subtitle: { value: "", font: DEFAULT_FONT, color: DEFAULT_TEXT_COLOR },
+    title: { value: "" },
+    subtitle: { value: "" },
+    textStyle: {
+      font: DEFAULT_FONT,
+      color: DEFAULT_TEXT_COLOR,
+      size: DEFAULT_TEXT_SIZE,
+    },
     characters: [],
     editingIndex: null,
   };
@@ -128,20 +140,15 @@ export function stateFromConfig(cfg: PosterConfig): ConfiguratorState {
   base.backgroundUrl = cfg.backgroundUrl;
   base.format = cfg.format ?? "A4";
   base.view = cfg.view ?? "front";
-  if (cfg.texts.title) {
-    base.title = {
-      value: cfg.texts.title.value,
-      font: cfg.texts.title.font ?? DEFAULT_FONT,
-      color: cfg.texts.title.color ?? DEFAULT_TEXT_COLOR,
-    };
-  }
-  if (cfg.texts.subtitle) {
-    base.subtitle = {
-      value: cfg.texts.subtitle.value,
-      font: cfg.texts.subtitle.font ?? DEFAULT_FONT,
-      color: cfg.texts.subtitle.color ?? DEFAULT_TEXT_COLOR,
-    };
-  }
+  if (cfg.texts.title) base.title = { value: cfg.texts.title.value };
+  if (cfg.texts.subtitle) base.subtitle = { value: cfg.texts.subtitle.value };
+  // Style partagé : repris du titre en priorité, sinon du sous-titre.
+  const src = cfg.texts.title ?? cfg.texts.subtitle;
+  base.textStyle = {
+    font: src?.font ?? DEFAULT_FONT,
+    color: src?.color ?? DEFAULT_TEXT_COLOR,
+    size: (src as { size?: number })?.size ?? DEFAULT_TEXT_SIZE,
+  };
   base.characters = cfg.characters.map((c, i) => {
     const assets: Partial<Record<Slot, string | number>> = {};
     for (const slot of SLOTS) {
@@ -228,18 +235,22 @@ export function configFromState(
     format: state.format,
     view: state.view,
     texts: {
+      // Titre et sous-titre partagent le même style (police/couleur/taille) ;
+      // seul le texte diffère.
       title: state.title.value
         ? {
             value: state.title.value,
-            font: state.title.font,
-            color: state.title.color,
+            font: state.textStyle.font,
+            color: state.textStyle.color,
+            size: state.textStyle.size,
           }
         : undefined,
       subtitle: state.subtitle.value
         ? {
             value: state.subtitle.value,
-            font: state.subtitle.font,
-            color: state.subtitle.color,
+            font: state.textStyle.font,
+            color: state.textStyle.color,
+            size: state.textStyle.size,
           }
         : undefined,
     },

@@ -4,24 +4,15 @@ import type { BackgroundDTO } from "@memoryline/types";
 import type { ConfiguratorState } from "../store";
 import { Field } from "./ui";
 
-const FONTS = [
-  "sans-serif",
-  "serif",
-  "Georgia, serif",
-  "'Times New Roman', serif",
-  "'Courier New', monospace",
-  "cursive",
-];
-
 /** Étape 1 : fond + textes (titre + sous-titre, symboles & chiffres autorisés). */
 export function StepBackgroundText(props: {
   state: ConfiguratorState;
   backgrounds: BackgroundDTO[];
   assetBaseUrl: string;
   onSelectBackground: (bg: BackgroundDTO) => void;
-  onText: (
-    which: "title" | "subtitle",
-    patch: Partial<{ value: string; font: string; color: string }>,
+  onTextValue: (which: "title" | "subtitle", value: string) => void;
+  onTextStyle: (
+    patch: Partial<{ font: string; color: string; size: number }>,
   ) => void;
 }) {
   const resolve = (url: string) =>
@@ -91,67 +82,41 @@ export function StepBackgroundText(props: {
         </Field>
       </Show>
 
-      {/* Titre */}
+      {/* Textes : seul le contenu diffère entre titre et sous-titre. */}
       <Field label="Titre (symboles et chiffres autorisés)">
         <input
           type="text"
           value={props.state.title.value}
-          placeholder="Ex : Notre famille n°1 ★"
-          onInput={(e) => props.onText("title", { value: e.currentTarget.value })}
+          placeholder="Memory Line"
+          onInput={(e) => props.onTextValue("title", e.currentTarget.value)}
           style={inputStyle}
         />
       </Field>
-      <div style={{ display: "flex", gap: "12px", "margin-bottom": "8px" }}>
-        <Field label="Police du titre">
-          <select
-            value={props.state.title.font}
-            onChange={(e) => props.onText("title", { font: e.currentTarget.value })}
-            style={inputStyle}
-          >
-            <For each={FONTS}>{(f) => <option value={f}>{f}</option>}</For>
-          </select>
-        </Field>
-        <Field label="Couleur">
-          <input
-            type="color"
-            value={props.state.title.color}
-            onInput={(e) => props.onText("title", { color: e.currentTarget.value })}
-            style={{ width: "48px", height: "38px", border: "none" }}
-          />
-        </Field>
-      </div>
-
-      {/* Sous-titre */}
       <Field label="Sous-titre (symboles et chiffres autorisés)">
         <input
           type="text"
           value={props.state.subtitle.value}
-          placeholder="Ex : depuis 2010 — #amour"
-          onInput={(e) =>
-            props.onText("subtitle", { value: e.currentTarget.value })
-          }
+          placeholder="Votre ville, votre histoire"
+          onInput={(e) => props.onTextValue("subtitle", e.currentTarget.value)}
           style={inputStyle}
         />
       </Field>
-      <div style={{ display: "flex", gap: "12px" }}>
-        <Field label="Police du sous-titre">
-          <select
-            value={props.state.subtitle.font}
-            onChange={(e) =>
-              props.onText("subtitle", { font: e.currentTarget.value })
-            }
-            style={inputStyle}
-          >
-            <For each={FONTS}>{(f) => <option value={f}>{f}</option>}</For>
-          </select>
-        </Field>
-        <Field label="Couleur">
+
+      {/* Style PARTAGÉ par le titre ET le sous-titre (police + couleur).
+          Pas de réglage de taille : la taille est fixe (titre en gros, sous-titre
+          plus petit), comme la charte des affiches. */}
+      <div
+        style={{
+          "margin-top": "8px",
+          "padding-top": "10px",
+          "border-top": "1px solid #e5e7eb",
+        }}
+      >
+        <Field label="Couleur du texte (titre & sous-titre)">
           <input
             type="color"
-            value={props.state.subtitle.color}
-            onInput={(e) =>
-              props.onText("subtitle", { color: e.currentTarget.value })
-            }
+            value={props.state.textStyle.color}
+            onInput={(e) => props.onTextStyle({ color: e.currentTarget.value })}
             style={{ width: "48px", height: "38px", border: "none" }}
           />
         </Field>

@@ -79,6 +79,8 @@ export interface ResolvedCharacter {
   id: number | string;
   baseSvgUrl: string | null;
   baseColorZones?: Record<string, string> | null;
+  /** Bas réel du contenu (0..1) pour aligner les pieds au sol. */
+  bottomPct?: number;
 }
 
 /**
@@ -172,12 +174,22 @@ export async function resolveConfig(
 
   for (const character of characters) {
     const x = character.x ?? 0.5;
-    const y = character.y ?? 0.5;
     const scale = character.scale ?? 1;
 
     // 1) SVG de BASE du personnage (Male_2.svg…) — la couche de fond du perso,
     //    pré-composée. Recolorée avec les couleurs choisies (peau/tenue par défaut).
     const base = data.characters?.get(String(character.typeId));
+
+    // Alignement des pieds : descendre le perso de la part de vide sous son
+    // contenu (cadre = aspect 1:2 -> hauteur = 2 × largeur ; en unités d'affiche
+    // la largeur ≈ CHAR_BASE_WIDTH×scale, hauteur normalisée ≈ ×2× (W/H)).
+    const bp = base?.bottomPct ?? 1;
+    // hauteur du cadre en fraction de H : (largeur en px ×2) / H.
+    const PDF_CHAR_BASE_WIDTH = 0.22;
+    const frameHpx = PDF_CHAR_BASE_WIDTH * scale * 2; // en fraction de W
+    // approx : W≈H pour le ratio ; le drop reste proportionnel et discret.
+    const dropFrac = (1 - bp) * (frameHpx / 2);
+    const y = (character.y ?? 0.5) + dropFrac;
     if (base?.baseSvgUrl) {
       try {
         const raw = (await readSource(base.baseSvgUrl)).toString("utf8");
@@ -245,30 +257,33 @@ function buildTextSvg(
   const subtitle = config.texts.subtitle?.value?.trim();
   if (!title && !subtitle) return null;
 
-  const titleFont = config.texts.title?.font ?? "DM Serif Display";
-  const subtitleFont = config.texts.subtitle?.font ?? "Inter";
-  const titleColor = config.texts.title?.color ?? "#1A1A1A";
-  const subtitleColor = config.texts.subtitle?.color ?? "#333333";
+  // Style PARTAGÉ titre + sous-titre (police/couleur/taille) — repris du titre
+  // en priorité, sinon du sous-titre. Seul le texte diffère entre les deux.
+  // Couleur partagée (modifiable). Polices FIXES de la charte Memory Line :
+  //  - Titre    : DM Serif Display, serif
+  //  - Sous-titre : 'Another Shabby', sans-serif (script manuscrit)
+  const styleSrc = config.texts.title ?? config.texts.subtitle;
+  const color = styleSrc?.color ?? "#FFFFFF";
 
-  // Tailles proportionnelles à la largeur (px @300 DPI).
-  const titleSize = Math.round(width * 0.06);
-  const subtitleSize = Math.round(width * 0.032);
-  const titleY = Math.round(height * 0.9);
-  const subtitleY = Math.round(titleY + titleSize * 0.95);
+  // Tailles FIXES proportionnelles à la largeur (px @300 DPI). Texte EN HAUT.
+  const titleSize = Math.round(width * 0.07);
+  const subtitleSize = Math.round(width * 0.05);
+  const titleY = Math.round(height * 0.1); // ~10% du haut
+  const subtitleY = Math.round(titleY + titleSize * 1.0);
 
   const parts: string[] = [];
   if (title) {
     parts.push(
       `<text x="${width / 2}" y="${titleY}" text-anchor="middle" ` +
-        `font-family="${escapeXml(titleFont)}, serif" font-size="${titleSize}" ` +
-        `fill="${escapeXml(titleColor)}">${escapeXml(title)}</text>`,
+        `font-family="DM Serif Display, serif" font-weight="700" font-size="${titleSize}" ` +
+        `fill="${escapeXml(color)}">${escapeXml(title)}</text>`,
     );
   }
   if (subtitle) {
     parts.push(
       `<text x="${width / 2}" y="${subtitleY}" text-anchor="middle" ` +
-        `font-family="${escapeXml(subtitleFont)}, sans-serif" font-size="${subtitleSize}" ` +
-        `fill="${escapeXml(subtitleColor)}">${escapeXml(subtitle)}</text>`,
+        `font-family="'Another Shabby', sans-serif" font-size="${subtitleSize}" ` +
+        `fill="${escapeXml(color)}">${escapeXml(subtitle)}</text>`,
     );
   }
 
@@ -303,7 +318,25 @@ export async function renderPosterPng(
 
   const composites: OverlayOptions[] = [];
 
-  // 2) Personnages (couches ordonnées).
+  // 1b) Muret — DERRIÈRE les personnages (composité AVANT eux), mais devant le
+  // fond. UNIQUEMENT en vue de DOS. Pleine largeur, hauteur auto, ancré en bas.
+  if (config.view === "back") {
+    const fgSource = config.foregroundUrl || "/assets/muret_officiel.svg";
+    try {
+      const fgRaw = await readSource(fgSource);
+      const fgPng = await sharp(fgRaw, { density: 300 })
+        .resize({ width: W })
+        .png()
+        .toBuffer();
+      const meta = await sharp(fgPng).metadata();
+      const fgH = meta.height ?? 0;
+      composites.push({ input: fgPng, left: 0, top: Math.max(0, H - fgH) });
+    } catch {
+      // décor manquant : on l'ignore (best-effort)
+    }
+  }
+
+  // 2) Personnages (couches ordonnées) — composités APRÈS le muret (devant lui).
   // Largeur d'un perso = CHAR_BASE_WIDTH × scale × W (identique au rendu écran
   // du configurateur, pour que le PDF corresponde exactement à l'aperçu).
   const CHAR_BASE_WIDTH = 0.22; // synchronisé avec le configurateur (store.ts)
@@ -334,27 +367,6 @@ export async function renderPosterPng(
     // on place la couche sur un canevas transparent W×H puis on composite à 0,0.
     const framed = await frameLayer(png, lw, lh, left, top, W, H);
     if (framed) composites.push({ input: framed, left: 0, top: 0 });
-  }
-
-  // 2b) Décor d'avant-plan (le muret) — par-dessus les personnages, UNIQUEMENT
-  // en vue de DOS. Comme l'ancien site : pleine largeur, hauteur auto, ancré en
-  // bas (bottom-0 w-full h-auto). Par défaut = muret ; surchargé par le produit.
-  if (config.view === "back") {
-    const fgSource = config.foregroundUrl || "/assets/muret_officiel.svg";
-    try {
-      const fgRaw = await readSource(fgSource);
-      // Largeur = W, hauteur proportionnelle (h-auto).
-      const fgPng = await sharp(fgRaw, { density: 300 })
-        .resize({ width: W })
-        .png()
-        .toBuffer();
-      const meta = await sharp(fgPng).metadata();
-      const fgH = meta.height ?? 0;
-      // Composite ancré en bas (top = H - hauteur du muret).
-      composites.push({ input: fgPng, left: 0, top: Math.max(0, H - fgH) });
-    } catch {
-      // décor manquant : on l'ignore (best-effort)
-    }
   }
 
   // 3) Textes (titre + sous-titre). Le SVG a déjà des dimensions en px = W×H ;
@@ -433,7 +445,12 @@ async function renderBackground(
   if (url) {
     const buf = await readSource(url);
     const isSvg = extname(fileNameFromUrl(url)).toLowerCase() === ".svg";
-    const pixels = await sharp(buf, isSvg ? { density: 300 } : undefined)
+    // unlimited:true → autorise les gros SVG de villes (sinon sharp lève
+    // "Buffer size limit exceeded"). density réduite à 150 (suffisant en cover).
+    const pixels = await sharp(
+      buf,
+      isSvg ? { density: 150, unlimited: true } : undefined,
+    )
       .resize({ width: W, height: H, fit: "cover", position: "centre" })
       .png()
       .toBuffer();
