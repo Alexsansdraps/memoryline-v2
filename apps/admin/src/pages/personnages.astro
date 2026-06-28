@@ -4,15 +4,21 @@ import { adminApi, type CharacterType, type Asset } from "../lib/api.ts";
 
 const api = adminApi(Astro.request);
 
-// URL publique de l'API, joignable depuis le navigateur (îlots / fetch client).
-// Sert à enregistrer les couleurs côté client (credentials: include).
+// URL publique de l'API, joignable depuis le navigateur (fetch client).
+// Sert aux actions dynamiques (couleurs, suppressions) en credentials:include.
 const PUBLIC_API_URL =
   import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
 
+// Helper : URL absolue d'un SVG stocké sous "/assets/...".
+function svgSrc(url: string | null | undefined): string {
+  if (!url) return "";
+  return url.startsWith("http") ? url : `${PUBLIC_API_URL}${url}`;
+}
+
 // --- Traitement des formulaires (SSR) ----------------------------------
-// Tout ce qui ne touche pas aux couleurs passe en POST classique (robuste,
-// même pattern que promotions.astro). L'édition des couleurs, dynamique par
-// asset, se fait côté client (voir <script> en bas).
+// Les créations / éditions simples passent en POST classique (robuste, même
+// pattern que promotions.astro). Les actions dynamiques par élément (couleurs,
+// suppressions, base) se font côté client (voir <script> en bas).
 let flash: string | null = null;
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
@@ -21,7 +27,7 @@ if (Astro.request.method === "POST") {
     if (action === "upsert") {
       await api.upsertCharacter({
         id: form.get("id") ? Number(form.get("id")) : undefined,
-        name: String(form.get("name") || "Type"),
+        name: String(form.get("name") || "Personnage"),
         category: (form.get("category") as string) || null,
         position: Number(form.get("position") || 0),
       });
@@ -36,10 +42,20 @@ if (Astro.request.method === "POST") {
           ? "Personnage archivé. Les anciennes commandes restent intactes."
           : "Personnage restauré.";
     } else if (action === "reorder") {
-      // Échange de position avec le voisin (up/down). On envoie les 2 lignes.
       const items = JSON.parse(String(form.get("items") || "[]"));
       if (items.length) await api.reorderCharacters(items);
       flash = "Ordre mis à jour.";
+    } else if (action === "add-asset") {
+      const colorZones = JSON.parse(String(form.get("colorZones") || "{}"));
+      await api.upsertAsset({
+        slot: String(form.get("slot") || "clothes"),
+        name: (form.get("name") as string) || undefined,
+        svgUrl: String(form.get("svgUrl") || ""),
+        view: (form.get("view") as "front" | "back") || "front",
+        colorZones: Object.keys(colorZones).length ? colorZones : undefined,
+        position: Number(form.get("position") || 0),
+      });
+      flash = "Pièce ajoutée.";
     }
   } catch (e) {
     flash = "Erreur : " + String(e);
@@ -52,15 +68,20 @@ let error: string | null = null;
 try {
   const data = await api.characters();
   types = data.types ?? [];
-  assets = data.assets ?? [];
 } catch (e) {
   error = String(e);
+}
+try {
+  assets = await api.assets();
+} catch (e) {
+  // L'endpoint /admin/assets renvoie les pièces génériques partagées.
+  if (!error) error = String(e);
 }
 
 const active = types.filter((t) => !t.archivedAt);
 const archived = types.filter((t) => t.archivedAt);
 
-// Regroupe les types actifs par catégorie, triés par position.
+// --- Regroupe les personnages actifs par catégorie, triés par position. ---
 const UNCAT = "Sans catégorie";
 const byCategory = new Map<string, CharacterType[]>();
 for (const t of active) {
@@ -74,25 +95,44 @@ const categories = [...byCategory.entries()].sort(([a], [b]) =>
   a.localeCompare(b),
 );
 
-// Assets par type, regroupés par slot. On inclut le slot 'accessory' (§18.1 D).
-function assetsForType(typeId: number) {
-  const mine = assets
-    .filter((a) => a.characterTypeId === typeId)
-    .sort((a, b) => a.position - b.position);
-  const bySlot = new Map<string, Asset[]>();
-  for (const a of mine) {
-    if (!bySlot.has(a.slot)) bySlot.set(a.slot, []);
-    bySlot.get(a.slot)!.push(a);
-  }
-  return [...bySlot.entries()];
-}
+// Catégories existantes (pour suggérer un choix dans le formulaire de création).
+const knownCategories = [
+  ...new Set(types.map((t) => t.category).filter(Boolean) as string[]),
+].sort((a, b) => a.localeCompare(b));
 
-// Payload de réordonnancement : échange les positions de deux types.
+// Liste des baseSvgUrl déjà utilisées : sert de "bibliothèque" de SVG plein
+// personnage pour le sélecteur de base.
+const knownBaseSvgs = [
+  ...new Set(
+    types.map((t) => t.baseSvgUrl).filter(Boolean) as string[],
+  ),
+].sort((a, b) => a.localeCompare(b));
+
+// Payload de réordonnancement : échange les positions de deux personnages.
 function swapPayload(a: CharacterType, b: CharacterType) {
   return JSON.stringify([
     { id: a.id, position: b.position, category: a.category },
     { id: b.id, position: a.position, category: b.category },
   ]);
+}
+
+// --- SECTION B : pièces génériques, groupées par slot puis vue. ---
+const SLOTS = [
+  { value: "clothes", label: "Vêtements" },
+  { value: "pants", label: "Pantalon" },
+  { value: "hair", label: "Coupes" },
+  { value: "accessory", label: "Accessoires" },
+];
+
+// Pièces génériques = celles non rattachées à un personnage précis.
+const pieces = assets
+  .slice()
+  .sort((a, b) => a.position - b.position || a.id - b.id);
+const piecesBySlot = new Map<string, Asset[]>();
+for (const s of SLOTS) piecesBySlot.set(s.value, []);
+for (const a of pieces) {
+  if (!piecesBySlot.has(a.slot)) piecesBySlot.set(a.slot, []);
+  piecesBySlot.get(a.slot)!.push(a);
 }
 ---
 
@@ -101,28 +141,49 @@ function swapPayload(a: CharacterType, b: CharacterType) {
   {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
 
   <p class="mb-6 text-sm text-bo-muted max-w-3xl">
-    Gérez ici les personnages proposés dans le configurateur : créez-les,
-    réorganisez-les, modifiez les couleurs de leurs éléments (y compris les
-    <strong> accessoires</strong>). Archiver un personnage le retire du site
-    sans toucher aux commandes déjà passées — elles restent imprimables à
-    l'identique.
+    Cette page sert à <strong>composer le configurateur</strong> proposé aux
+    clients. En haut, gérez les <strong>personnages prédéfinis</strong> (que le
+    client pourra choisir et personnaliser). En bas, gérez la bibliothèque de
+    <strong> pièces</strong> (vêtements, pantalons, coupes, accessoires) qui
+    servent de briques de base. Archiver un personnage le retire du site sans
+    toucher aux commandes déjà passées.
   </p>
 
-  <!-- ====== Types actifs, par catégorie ====== -->
+  <!-- ===================================================================== -->
+  <!-- SECTION A — Personnages prédéfinis                                     -->
+  <!-- ===================================================================== -->
+  <h2 class="text-lg font-semibold mb-1">Personnages</h2>
+  <p class="mb-4 text-sm text-bo-muted">
+    Les personnages que le client peut ajouter depuis le site.
+  </p>
+
   {
     categories.map(([cat, list]) => (
       <section class="mb-8">
-        <h2 class="font-semibold mb-3">{cat}</h2>
-        <div class="space-y-3">
+        <h3 class="font-semibold mb-3">{cat}</h3>
+        <div class="grid sm:grid-cols-2 gap-3">
           {list.map((t, i) => (
-            <article class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
-              <header class="flex items-center justify-between gap-3 px-4 py-3 bg-bo-bg">
-                <div class="flex items-center gap-2">
-                  <span class="font-medium">{t.name}</span>
-                  <span class="text-xs text-bo-muted">/{t.slug}</span>
+            <article
+              class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden"
+              data-char-id={t.id}
+            >
+              <header class="flex items-start justify-between gap-3 px-4 py-3 bg-bo-bg">
+                <div class="flex items-center gap-3 min-w-0">
+                  <img
+                    src={svgSrc(t.baseSvgUrl)}
+                    alt=""
+                    class="h-12 w-12 object-contain border border-bo-border rounded bg-white shrink-0"
+                    style={t.baseSvgUrl ? "" : "visibility:hidden"}
+                    loading="lazy"
+                  />
+                  <div class="min-w-0">
+                    <div class="font-medium truncate">{t.name}</div>
+                    <div class="text-xs text-bo-muted truncate">
+                      /{t.slug} · pos {t.position}
+                    </div>
+                  </div>
                 </div>
-                <div class="flex items-center gap-1">
-                  {/* Réordonner : échange avec le voisin (haut/bas) */}
+                <div class="flex items-center gap-1 shrink-0">
                   <form method="POST" class="inline">
                     <input type="hidden" name="_action" value="reorder" />
                     <input
@@ -157,18 +218,10 @@ function swapPayload(a: CharacterType, b: CharacterType) {
                       ↓
                     </button>
                   </form>
-                  <form method="POST" class="inline ml-2">
-                    <input type="hidden" name="_action" value="archive" />
-                    <input type="hidden" name="id" value={t.id} />
-                    <input type="hidden" name="archived" value="true" />
-                    <button class="px-2 py-1 rounded border border-bo-border text-bo-muted hover:text-red-600">
-                      Archiver
-                    </button>
-                  </form>
                 </div>
               </header>
 
-              {/* Édition rapide du type */}
+              {/* Édition du nom / catégorie / position */}
               <form
                 method="POST"
                 class="flex flex-wrap items-end gap-3 px-4 py-3 text-sm border-b border-bo-border"
@@ -205,65 +258,79 @@ function swapPayload(a: CharacterType, b: CharacterType) {
                 </button>
               </form>
 
-              {/* Assets groupés par slot (accessoires inclus) */}
-              <div class="px-4 py-3 space-y-4">
-                {assetsForType(t.id).length === 0 && (
-                  <p class="text-xs text-bo-muted">Aucun élément pour ce personnage.</p>
-                )}
-                {assetsForType(t.id).map(([slot, slotAssets]) => (
-                  <div>
-                    <h3 class="text-xs font-medium uppercase tracking-wide text-bo-muted mb-2">
-                      {slot}
-                    </h3>
-                    <div class="grid sm:grid-cols-2 gap-3">
-                      {slotAssets.map((a) => (
-                        <div class="border border-bo-border rounded p-3" data-asset-id={a.id}>
-                          <div class="flex items-center gap-2 mb-2">
-                            {a.svgUrl && (
-                              <img
-                                src={
-                                  a.svgUrl.startsWith("http")
-                                    ? a.svgUrl
-                                    : `${PUBLIC_API_URL}${a.svgUrl}`
-                                }
-                                alt=""
-                                class="h-8 w-8 object-contain border border-bo-border rounded bg-white"
-                                loading="lazy"
-                              />
-                            )}
-                            <span class="text-sm font-medium">{a.name}</span>
-                          </div>
-                          {Object.keys(a.colorZones ?? {}).length === 0 ? (
-                            <p class="text-xs text-bo-muted">Pas de zone de couleur.</p>
-                          ) : (
-                            <>
-                              <div class="flex flex-wrap gap-2 mb-2">
-                                {Object.entries(a.colorZones ?? {}).map(([zone, hex]) => (
-                                  <label class="flex items-center gap-1 text-xs">
-                                    <input
-                                      type="color"
-                                      value={hex}
-                                      data-zone={zone}
-                                      class="h-7 w-7 border border-bo-border rounded cursor-pointer"
-                                    />
-                                    <span class="text-bo-muted">{zone}</span>
-                                  </label>
-                                ))}
-                              </div>
-                              <button
-                                type="button"
-                                class="js-save-colors rounded bg-bo-accent text-white px-3 py-1.5 text-xs hover:opacity-90"
-                              >
-                                Enregistrer les couleurs
-                              </button>
-                              <span class="js-color-status ml-2 text-xs"></span>
-                            </>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+              {/* Base : SVG plein personnage + couleurs par défaut */}
+              <div class="px-4 py-3 border-b border-bo-border">
+                <h4 class="text-xs font-medium uppercase tracking-wide text-bo-muted mb-2">
+                  Base (SVG + couleurs par défaut)
+                </h4>
+                <div class="js-base flex flex-col gap-2 text-sm" data-id={t.id}>
+                  <div class="flex items-center gap-3">
+                    <img
+                      class="js-base-preview h-12 w-12 object-contain border border-bo-border rounded bg-white shrink-0"
+                      src={svgSrc(t.baseSvgUrl)}
+                      alt=""
+                      style={t.baseSvgUrl ? "" : "visibility:hidden"}
+                    />
+                    <label class="flex-1 block">
+                      <span class="text-bo-muted text-xs">URL du SVG</span>
+                      <input
+                        class="js-base-url mt-1 w-full border border-bo-border rounded px-2 py-1 font-mono text-xs"
+                        value={t.baseSvgUrl ?? ""}
+                        list="base-svg-list"
+                        placeholder="/assets/Male_2.svg"
+                      />
+                    </label>
                   </div>
-                ))}
+                  <div class="js-base-zones flex flex-wrap gap-2">
+                    {Object.entries(t.baseColorZones ?? {}).map(([zone, hex]) => (
+                      <label class="flex items-center gap-1 text-xs">
+                        <input
+                          type="color"
+                          value={hex}
+                          data-zone={zone}
+                          class="h-7 w-7 border border-bo-border rounded cursor-pointer"
+                        />
+                        <span class="text-bo-muted">{zone}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      class="js-base-newzone border border-bo-border rounded px-2 py-1 text-xs w-24"
+                      placeholder="st0"
+                    />
+                    <button
+                      type="button"
+                      class="js-base-addzone rounded border border-bo-border px-2 py-1 text-xs"
+                    >
+                      + Zone
+                    </button>
+                    <button
+                      type="button"
+                      class="js-base-save rounded bg-bo-accent text-white px-3 py-1.5 text-xs hover:opacity-90"
+                    >
+                      Enregistrer la base
+                    </button>
+                    <span class="js-base-status text-xs"></span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="px-4 py-3">
+                <button
+                  type="button"
+                  class="js-del-char text-xs text-bo-muted hover:text-red-600"
+                >
+                  Supprimer définitivement
+                </button>
+                <form method="POST" class="inline ml-3">
+                  <input type="hidden" name="_action" value="archive" />
+                  <input type="hidden" name="id" value={t.id} />
+                  <input type="hidden" name="archived" value="true" />
+                  <button class="text-xs text-bo-muted hover:text-bo-accent">
+                    Archiver
+                  </button>
+                </form>
               </div>
             </article>
           ))}
@@ -278,7 +345,11 @@ function swapPayload(a: CharacterType, b: CharacterType) {
 
   <!-- ====== Créer un personnage ====== -->
   <section class="mb-10 bg-bo-surface border border-bo-border rounded-lg p-5">
-    <h2 class="font-semibold mb-4">Nouveau personnage</h2>
+    <h3 class="font-semibold mb-4">Nouveau personnage</h3>
+    <p class="text-xs text-bo-muted mb-4">
+      Créez d'abord le personnage (nom + catégorie). Vous pourrez ensuite lui
+      définir une base (SVG + couleurs) sur sa carte ci-dessus.
+    </p>
     <form method="POST" class="grid sm:grid-cols-3 gap-4 text-sm items-end">
       <input type="hidden" name="_action" value="upsert" />
       <label class="block">
@@ -287,7 +358,12 @@ function swapPayload(a: CharacterType, b: CharacterType) {
       </label>
       <label class="block">
         <span class="text-bo-muted">Catégorie</span>
-        <input name="category" class="mt-1 w-full border border-bo-border rounded px-3 py-2" placeholder="Animaux" />
+        <input
+          name="category"
+          list="cat-list"
+          class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+          placeholder="Animaux"
+        />
       </label>
       <label class="block">
         <span class="text-bo-muted">Position</span>
@@ -302,8 +378,8 @@ function swapPayload(a: CharacterType, b: CharacterType) {
   <!-- ====== Personnages archivés ====== -->
   {
     archived.length > 0 && (
-      <section class="mb-8">
-        <h2 class="font-semibold mb-1">Archivés</h2>
+      <section class="mb-12">
+        <h3 class="font-semibold mb-1">Archivés</h3>
         <p class="text-xs text-bo-muted mb-3">
           Retirés du site. Les commandes passées restent intactes et imprimables.
           Vous pouvez les restaurer à tout moment.
@@ -332,9 +408,189 @@ function swapPayload(a: CharacterType, b: CharacterType) {
     )
   }
 
+  <!-- ===================================================================== -->
+  <!-- SECTION B — Éléments / Pièces                                          -->
+  <!-- ===================================================================== -->
+  <h2 class="text-lg font-semibold mb-1 border-t border-bo-border pt-8">
+    Éléments / Pièces
+  </h2>
+  <p class="mb-4 text-sm text-bo-muted max-w-3xl">
+    Les briques de base (vêtements, pantalons, coupes, accessoires), déclinées
+    en vue avant / arrière, avec leurs zones de couleur. Elles servent à
+    composer les personnages.
+  </p>
+
+  {
+    SLOTS.map((s) => {
+      const list = piecesBySlot.get(s.value) ?? [];
+      return (
+        <section class="mb-8">
+          <h3 class="font-semibold mb-3">{s.label}</h3>
+          {list.length === 0 ? (
+            <p class="text-xs text-bo-muted mb-2">Aucune pièce.</p>
+          ) : (
+            <div class="grid sm:grid-cols-2 gap-3">
+              {list.map((a) => (
+                <div
+                  class="border border-bo-border rounded p-3 bg-bo-surface"
+                  data-asset-id={a.id}
+                >
+                  <div class="flex items-center gap-2 mb-2">
+                    <img
+                      src={svgSrc(a.svgUrl)}
+                      alt=""
+                      class="h-10 w-10 object-contain border border-bo-border rounded bg-white"
+                      style={a.svgUrl ? "" : "visibility:hidden"}
+                      loading="lazy"
+                    />
+                    <div class="min-w-0">
+                      <div class="text-sm font-medium truncate">{a.name}</div>
+                      <div class="text-xs text-bo-muted">
+                        {a.view === "back" ? "Vue arrière" : "Vue avant"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      class="js-del-asset ml-auto text-xs text-bo-muted hover:text-red-600"
+                    >
+                      Supprimer
+                    </button>
+                  </div>
+                  {Object.keys(a.colorZones ?? {}).length === 0 ? (
+                    <p class="text-xs text-bo-muted">Pas de zone de couleur.</p>
+                  ) : (
+                    <>
+                      <div class="flex flex-wrap gap-2 mb-2">
+                        {Object.entries(a.colorZones ?? {}).map(([zone, hex]) => (
+                          <label class="flex items-center gap-1 text-xs">
+                            <input
+                              type="color"
+                              value={hex}
+                              data-zone={zone}
+                              class="h-7 w-7 border border-bo-border rounded cursor-pointer"
+                            />
+                            <span class="text-bo-muted">{zone}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        class="js-save-colors rounded bg-bo-accent text-white px-3 py-1.5 text-xs hover:opacity-90"
+                      >
+                        Enregistrer les couleurs
+                      </button>
+                      <span class="js-color-status ml-2 text-xs" />
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      );
+    })
+  }
+
+  <!-- ====== Ajouter une pièce ====== -->
+  <section class="mb-10 bg-bo-surface border border-bo-border rounded-lg p-5">
+    <h3 class="font-semibold mb-4">Ajouter une pièce</h3>
+    <form method="POST" class="grid sm:grid-cols-2 gap-4 text-sm items-end">
+      <input type="hidden" name="_action" value="add-asset" />
+      <label class="block">
+        <span class="text-bo-muted">Type de pièce</span>
+        <select name="slot" class="mt-1 w-full border border-bo-border rounded px-3 py-2">
+          {SLOTS.map((s) => <option value={s.value}>{s.label}</option>)}
+        </select>
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Vue</span>
+        <select name="view" class="mt-1 w-full border border-bo-border rounded px-3 py-2">
+          <option value="front">Avant</option>
+          <option value="back">Arrière</option>
+        </select>
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Nom</span>
+        <input name="name" class="mt-1 w-full border border-bo-border rounded px-3 py-2" placeholder="T-shirt rayé" />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Position</span>
+        <input name="position" type="number" value="0" class="mt-1 w-full border border-bo-border rounded px-3 py-2" />
+      </label>
+      <label class="block sm:col-span-2">
+        <span class="text-bo-muted">URL du SVG (obligatoire)</span>
+        <div class="flex items-center gap-3">
+          <input
+            id="new-asset-url"
+            name="svgUrl"
+            required
+            class="mt-1 flex-1 border border-bo-border rounded px-3 py-2 font-mono text-xs"
+            placeholder="/assets/tshirt.svg"
+          />
+          <img
+            id="new-asset-preview"
+            alt=""
+            class="mt-1 h-12 w-12 object-contain border border-bo-border rounded bg-white shrink-0"
+            style="visibility:hidden"
+          />
+        </div>
+      </label>
+
+      {/* Zones de couleur optionnelles, ajoutées dynamiquement. */}
+      <div class="sm:col-span-2">
+        <span class="text-bo-muted block mb-1">Zones de couleur (optionnel)</span>
+        <div id="new-asset-zones" class="flex flex-wrap gap-2 mb-2"></div>
+        <div class="flex items-center gap-2">
+          <input
+            id="new-asset-zone-name"
+            class="border border-bo-border rounded px-2 py-1 text-xs w-24"
+            placeholder="st0"
+          />
+          <button
+            type="button"
+            id="new-asset-add-zone"
+            class="rounded border border-bo-border px-2 py-1 text-xs"
+          >
+            + Zone
+          </button>
+        </div>
+        <input type="hidden" name="colorZones" id="new-asset-colorzones" value="{}" />
+      </div>
+
+      <div class="sm:col-span-2">
+        <button class="rounded bg-bo-accent text-white px-4 py-2 hover:opacity-90">Ajouter la pièce</button>
+      </div>
+    </form>
+  </section>
+
+  {/* Listes d'autocomplétion partagées */}
+  <datalist id="cat-list">
+    {knownCategories.map((c) => <option value={c} />)}
+  </datalist>
+  <datalist id="base-svg-list">
+    {knownBaseSvgs.map((u) => <option value={u} />)}
+  </datalist>
+
   <script is:inline define:vars={{ PUBLIC_API_URL }}>
-    // Enregistrement des couleurs d'un asset (accessoires inclus — §18.1 D).
-    // Fetch direct vers l'API publique avec credentials pour porter la session.
+    const abs = (u) => (u && u.startsWith("http") ? u : `${PUBLIC_API_URL}${u}`);
+
+    // --- Aperçu live d'une image à partir d'un champ URL ---
+    function bindPreview(input, img) {
+      if (!input || !img) return;
+      const update = () => {
+        const v = input.value.trim();
+        if (v) {
+          img.src = abs(v);
+          img.style.visibility = "visible";
+        } else {
+          img.removeAttribute("src");
+          img.style.visibility = "hidden";
+        }
+      };
+      input.addEventListener("input", update);
+    }
+
+    // ===== SECTION B : enregistrement des couleurs d'une pièce =====
     document.querySelectorAll(".js-save-colors").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const card = btn.closest("[data-asset-id]");
@@ -347,15 +603,12 @@ function swapPayload(a: CharacterType, b: CharacterType) {
         });
         if (status) status.textContent = "…";
         try {
-          const res = await fetch(
-            `${PUBLIC_API_URL}/admin/assets/${id}/colors`,
-            {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ colorZones }),
-            },
-          );
+          const res = await fetch(`${PUBLIC_API_URL}/admin/assets/${id}/colors`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ colorZones }),
+          });
           if (!res.ok) throw new Error("HTTP " + res.status);
           if (status) {
             status.textContent = "Enregistré ✓";
@@ -369,5 +622,155 @@ function swapPayload(a: CharacterType, b: CharacterType) {
         }
       });
     });
+
+    // ===== SECTION B : suppression d'une pièce =====
+    document.querySelectorAll(".js-del-asset").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const card = btn.closest("[data-asset-id]");
+        if (!card) return;
+        if (!confirm("Supprimer définitivement cette pièce ?")) return;
+        const id = card.getAttribute("data-asset-id");
+        try {
+          const res = await fetch(`${PUBLIC_API_URL}/admin/assets/${id}`, {
+            method: "DELETE",
+            credentials: "include",
+          });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          card.remove();
+        } catch (e) {
+          alert("Suppression impossible : " + e);
+        }
+      });
+    });
+
+    // ===== SECTION A : suppression d'un personnage =====
+    document.querySelectorAll(".js-del-char").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const card = btn.closest("[data-char-id]");
+        if (!card) return;
+        if (
+          !confirm(
+            "Supprimer définitivement ce personnage et ses éléments liés ? Cette action est irréversible.",
+          )
+        )
+          return;
+        const id = card.getAttribute("data-char-id");
+        try {
+          const res = await fetch(`${PUBLIC_API_URL}/admin/characters/${id}`, {
+            method: "DELETE",
+            credentials: "include",
+          });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          card.remove();
+        } catch (e) {
+          alert("Suppression impossible : " + e);
+        }
+      });
+    });
+
+    // ===== SECTION A : base d'un personnage (SVG + couleurs) =====
+    document.querySelectorAll(".js-base").forEach((box) => {
+      const id = box.getAttribute("data-id");
+      const urlInput = box.querySelector(".js-base-url");
+      const preview = box.querySelector(".js-base-preview");
+      const zonesWrap = box.querySelector(".js-base-zones");
+      const newZone = box.querySelector(".js-base-newzone");
+      const addBtn = box.querySelector(".js-base-addzone");
+      const saveBtn = box.querySelector(".js-base-save");
+      const status = box.querySelector(".js-base-status");
+
+      bindPreview(urlInput, preview);
+
+      addBtn?.addEventListener("click", () => {
+        const z = (newZone.value || "").trim();
+        if (!z) return;
+        if (zonesWrap.querySelector(`input[data-zone="${z}"]`)) {
+          newZone.value = "";
+          return;
+        }
+        const label = document.createElement("label");
+        label.className = "flex items-center gap-1 text-xs";
+        label.innerHTML =
+          `<input type="color" value="#000000" data-zone="${z}" class="h-7 w-7 border border-bo-border rounded cursor-pointer" />` +
+          `<span class="text-bo-muted">${z}</span>`;
+        zonesWrap.appendChild(label);
+        newZone.value = "";
+      });
+
+      saveBtn?.addEventListener("click", async () => {
+        const baseColorZones = {};
+        zonesWrap
+          .querySelectorAll('input[type="color"][data-zone]')
+          .forEach((i) => {
+            baseColorZones[i.getAttribute("data-zone")] = i.value;
+          });
+        const baseSvgUrl = (urlInput.value || "").trim() || null;
+        if (status) status.textContent = "…";
+        try {
+          const res = await fetch(`${PUBLIC_API_URL}/admin/characters/${id}/base`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ baseSvgUrl, baseColorZones }),
+          });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          if (status) {
+            status.textContent = "Enregistré ✓";
+            status.className = "js-base-status text-xs text-green-700";
+          }
+        } catch (e) {
+          if (status) {
+            status.textContent = "Erreur";
+            status.className = "js-base-status text-xs text-red-600";
+          }
+        }
+      });
+    });
+
+    // ===== Formulaire « Ajouter une pièce » : aperçu + zones dynamiques =====
+    bindPreview(
+      document.getElementById("new-asset-url"),
+      document.getElementById("new-asset-preview"),
+    );
+
+    const zonesBox = document.getElementById("new-asset-zones");
+    const zoneNameInput = document.getElementById("new-asset-zone-name");
+    const colorZonesField = document.getElementById("new-asset-colorzones");
+
+    function syncNewAssetZones() {
+      const cz = {};
+      zonesBox.querySelectorAll('input[type="color"][data-zone]').forEach((i) => {
+        cz[i.getAttribute("data-zone")] = i.value;
+      });
+      colorZonesField.value = JSON.stringify(cz);
+    }
+
+    document
+      .getElementById("new-asset-add-zone")
+      ?.addEventListener("click", () => {
+        const z = (zoneNameInput.value || "").trim();
+        if (!z) return;
+        if (zonesBox.querySelector(`input[data-zone="${z}"]`)) {
+          zoneNameInput.value = "";
+          return;
+        }
+        const label = document.createElement("label");
+        label.className = "flex items-center gap-1 text-xs";
+        const color = document.createElement("input");
+        color.type = "color";
+        color.value = "#000000";
+        color.setAttribute("data-zone", z);
+        color.className = "h-7 w-7 border border-bo-border rounded cursor-pointer";
+        color.addEventListener("input", syncNewAssetZones);
+        const span = document.createElement("span");
+        span.className = "text-bo-muted";
+        span.textContent = z;
+        label.append(color, span);
+        zonesBox.appendChild(label);
+        zoneNameInput.value = "";
+        syncNewAssetZones();
+      });
   </script>
 </Admin>
+</content>
+</invoke>

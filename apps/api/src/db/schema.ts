@@ -59,6 +59,14 @@ export const products = pgTable(
     kind: productKindEnum("kind").notNull().default("personnalisable"),
     basePriceCents: integer("base_price_cents").notNull().default(0),
     status: text("status").notNull().default("active"), // active | draft | archived
+    /**
+     * Réglages par défaut du configurateur pour CE produit (repris de l'app
+     * custom Shopify : metafield {title, subtitle, view}). Pré-remplissent le
+     * configurateur ; éditables dans le back-office.
+     */
+    defaultTitle: text("default_title"),
+    defaultSubtitle: text("default_subtitle"),
+    defaultView: text("default_view"), // 'front' | 'back' (position des personnages)
     legacyId: bigint("legacy_id", { mode: "number" }), // Shopify Product ID
     legacySlug: text("legacy_slug"), // slug d'origine -> 301 (§13)
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

@@ -2,6 +2,7 @@
 import { For, Show } from "solid-js";
 import {
   autoPlace,
+  CHAR_BASE_WIDTH,
   type CharacterDTO,
   type ConfiguratorState,
   type SlotsDTO,
@@ -29,8 +30,6 @@ export function PosterPreview(props: {
   slots: SlotsDTO;
   cache: SvgCache;
 }) {
-  // Largeur d'un perso en % de la largeur de l'affiche (~30% comme demandé).
-  const CHAR_WIDTH_PCT = 30;
 
   return (
     <div
@@ -71,18 +70,20 @@ export function PosterPreview(props: {
           const place = () =>
             autoPlace(props.state.characters)[i()] ?? {
               x: 0.5,
-              y: 0.62,
-              scale: 1,
+              y: 0.74,
+              scale: 0.6,
             };
+          // Largeur effective = largeur de base × échelle (rangée centrée).
+          const widthPct = () => CHAR_BASE_WIDTH * place().scale * 100;
           return (
             <div
               style={{
                 position: "absolute",
                 left: `${place().x * 100}%`,
                 top: `${place().y * 100}%`,
-                width: `${CHAR_WIDTH_PCT}%`,
+                width: `${widthPct()}%`,
                 transform: "translate(-50%, -50%)",
-                "aspect-ratio": "1 / 1.6",
+                "aspect-ratio": "1 / 2",
                 "z-index": String(c.position + 1),
                 "pointer-events": "none",
               }}

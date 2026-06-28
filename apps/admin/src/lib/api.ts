@@ -87,6 +87,8 @@ export interface CharacterType {
   category: string | null;
   position: number;
   archivedAt: string | null;
+  baseSvgUrl: string | null;
+  baseColorZones: Record<string, string> | null;
 }
 
 export interface Asset {
@@ -95,6 +97,7 @@ export interface Asset {
   slot: string;
   name: string;
   svgUrl: string | null;
+  view: "front" | "back" | null;
   colorZones: Record<string, string> | null;
   position: number;
 }
@@ -135,6 +138,13 @@ export function adminApi(request?: Request) {
       ),
     upsertCharacter: (data: Partial<CharacterType>) =>
       req<CharacterType>("POST", "/admin/characters", data, cookie),
+    setCharacterBase: (
+      id: number,
+      data: {
+        baseSvgUrl?: string | null;
+        baseColorZones?: Record<string, string> | null;
+      },
+    ) => req<CharacterType>("POST", `/admin/characters/${id}/base`, data, cookie),
     archiveCharacter: (id: number, archived: boolean) =>
       req<CharacterType>(
         "POST",
@@ -151,8 +161,20 @@ export function adminApi(request?: Request) {
         { items },
         cookie,
       ),
+    deleteCharacter: (id: number) =>
+      req<{ ok: boolean }>(
+        "DELETE",
+        `/admin/characters/${id}`,
+        undefined,
+        cookie,
+      ),
+    assets: () => req<Asset[]>("GET", "/admin/assets", undefined, cookie),
+    upsertAsset: (data: Partial<Asset>) =>
+      req<Asset>("POST", "/admin/assets", data, cookie),
     setAssetColors: (id: number, colorZones: Record<string, string>) =>
       req<Asset>("POST", `/admin/assets/${id}/colors`, { colorZones }, cookie),
+    deleteAsset: (id: number) =>
+      req<{ ok: boolean }>("DELETE", `/admin/assets/${id}`, undefined, cookie),
   };
 }
 

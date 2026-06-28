@@ -160,23 +160,37 @@ export function stateFromConfig(cfg: PosterConfig): ConfiguratorState {
 }
 
 /**
- * Placement automatique des personnages (le client ne positionne plus à la
- * main §18.2 F). Les persos sont centrés, côte à côte, le long du bas-milieu
- * de l'affiche. x réparti uniformément, y et scale fixes et déterministes.
- * On respecte l'ordre du tableau (= z-order géré par la liste).
+ * Largeur de référence d'un personnage (à scale=1) en fraction de la largeur
+ * de l'affiche. Utilisée par autoPlace ET par le rendu (PosterPreview/PDF).
+ */
+export const CHAR_BASE_WIDTH = 0.28;
+
+/**
+ * Placement automatique des personnages : une seule RANGÉE, alignée vers le
+ * BAS de l'affiche, centrée en groupe et recentrée à chaque ajout.
+ * Les persos rétrécissent quand ils sont nombreux pour tenir côte à côte sans
+ * déborder, et sont espacés régulièrement autour du centre (x=0.5).
+ * Le client ne positionne plus à la main (§18.2 F).
  */
 export function autoPlace(
   characters: WorkingCharacter[],
 ): { x: number; y: number; scale: number }[] {
   const n = characters.length;
-  const Y = 0.62;
-  const SCALE = 1;
   if (n === 0) return [];
-  // Réparti uniformément sur la largeur : centres aux fractions (i+1)/(n+1).
+
+  const Y = 0.74; // plus bas qu'avant (pieds vers le bas de l'affiche)
+  // Échelle : 1 perso un peu plus petit qu'avant ; rétrécit avec le nombre
+  // pour que la rangée tienne dans ~92% de la largeur.
+  const usable = 0.92;
+  const scale = Math.min(0.85, usable / (n * CHAR_BASE_WIDTH));
+  const slotW = CHAR_BASE_WIDTH * scale; // largeur effective d'un perso
+  const rowW = n * slotW; // largeur totale de la rangée
+  const start = 0.5 - rowW / 2; // bord gauche pour centrer le groupe
+
   return characters.map((_, i) => ({
-    x: (i + 1) / (n + 1),
+    x: start + slotW * (i + 0.5), // centre du i-ème perso
     y: Y,
-    scale: SCALE,
+    scale,
   }));
 }
 

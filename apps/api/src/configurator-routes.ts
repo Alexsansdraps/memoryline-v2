@@ -545,4 +545,87 @@ export function mountConfiguratorRoutes(app: Hono) {
     if (!row) return c.notFound();
     return c.json(row);
   });
+
+  /**
+   * Définit le SVG de BASE d'un personnage prédéfini + ses couleurs par défaut.
+   * Permet de composer un perso depuis le BO (baseSvgUrl = un perso complet,
+   * ou un assemblage exporté). baseColorZones = couleurs par défaut (peau/tenue).
+   */
+  app.post("/admin/characters/:id/base", async (c) => {
+    const id = Number(c.req.param("id"));
+    const b = await c.req.json();
+    const set: Record<string, unknown> = {};
+    if (b.baseSvgUrl !== undefined) set.baseSvgUrl = b.baseSvgUrl || null;
+    if (b.baseColorZones !== undefined) {
+      const clean: Record<string, string> = {};
+      for (const [k, v] of Object.entries(b.baseColorZones ?? {})) {
+        if (/^st\d+$/.test(k) && /^#[0-9a-fA-F]{3,8}$/.test(String(v)))
+          clean[k] = String(v).toUpperCase();
+      }
+      set.baseColorZones = clean;
+    }
+    const [row] = await db
+      .update(schema.characterTypes)
+      .set(set)
+      .where(eq(schema.characterTypes.id, id))
+      .returning();
+    if (!row) return c.notFound();
+    return c.json(row);
+  });
+
+  /** Supprime DÉFINITIVEMENT un type de personnage (et ses assets liés). */
+  app.delete("/admin/characters/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    await db.delete(schema.assets).where(eq(schema.assets.characterTypeId, id));
+    await db.delete(schema.characterTypes).where(eq(schema.characterTypes.id, id));
+    return c.json({ ok: true });
+  });
+
+  // === Gestion des PIÈCES (assets) — bibliothèque d'éléments ================
+
+  /** Liste des pièces (variantes génériques), groupées par slot + vue. */
+  app.get("/admin/assets", async (c) => {
+    const rows = await db
+      .select()
+      .from(schema.assets)
+      .orderBy(asc(schema.assets.slot), asc(schema.assets.position));
+    return c.json(rows);
+  });
+
+  /** Crée ou met à jour une pièce (vêtement, coupe, accessoire…). */
+  app.post("/admin/assets", async (c) => {
+    const b = await c.req.json();
+    const cleanZones: Record<string, string> = {};
+    for (const [k, v] of Object.entries(b.colorZones ?? {})) {
+      if (/^st\d+$/.test(k) && /^#[0-9a-fA-F]{3,8}$/.test(String(v)))
+        cleanZones[k] = String(v).toUpperCase();
+    }
+    const values = {
+      slot: String(b.slot ?? "clothes"),
+      name: b.name ?? null,
+      svgUrl: String(b.svgUrl ?? ""),
+      view: b.view === "back" ? "back" : "front",
+      colorZones: Object.keys(cleanZones).length ? cleanZones : null,
+      position: Number(b.position ?? 0),
+      characterTypeId: b.characterTypeId ? Number(b.characterTypeId) : null,
+    };
+    if (!values.svgUrl) return c.json({ error: "svgUrl requis" }, 400);
+    if (b.id) {
+      const [row] = await db
+        .update(schema.assets)
+        .set(values)
+        .where(eq(schema.assets.id, Number(b.id)))
+        .returning();
+      return c.json(row);
+    }
+    const [row] = await db.insert(schema.assets).values(values).returning();
+    return c.json(row);
+  });
+
+  /** Supprime une pièce. */
+  app.delete("/admin/assets/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    await db.delete(schema.assets).where(eq(schema.assets.id, id));
+    return c.json({ ok: true });
+  });
 }

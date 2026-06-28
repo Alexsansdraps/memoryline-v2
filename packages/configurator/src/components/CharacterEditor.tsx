@@ -471,21 +471,21 @@ export function CharacterEditor(props: {
             style={{
               position: "relative",
               width: "100%",
-              "aspect-ratio": "1 / 1.6",
+              // Même cadre que l'aperçu de l'affiche (SVG perso = viewBox 500×1000,
+              // ratio 1:2) → prévisualisation 100% fidèle au rendu final.
+              "aspect-ratio": "1 / 2",
               background: "#f3f4f6",
               "border-radius": "10px",
               border: "1px solid #e5e7eb",
               overflow: "hidden",
             }}
           >
-            <div style={{ position: "absolute", inset: "4% 6%" }}>
-              <CharacterStack
-                character={props.character}
-                base={props.base}
-                slots={props.slots}
-                cache={props.cache}
-              />
-            </div>
+            <CharacterStack
+              character={props.character}
+              base={props.base}
+              slots={props.slots}
+              cache={props.cache}
+            />
           </div>
         </div>
 
