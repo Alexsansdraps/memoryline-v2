@@ -29,8 +29,10 @@ export function PosterPreview(props: {
   characterById: (id: string | number) => CharacterDTO | undefined;
   slots: SlotsDTO;
   cache: SvgCache;
-  /** Décor d'avant-plan (muret/banc…), rendu au 1er plan (URL absolue). */
+  /** Décor d'avant-plan spécifique au produit (surcharge le muret par défaut). */
   foregroundUrl?: string;
+  /** Décor d'avant-plan par défaut (le muret), affiché en vue de dos. */
+  defaultForeground?: string;
 }) {
 
   return (
@@ -108,10 +110,11 @@ export function PosterPreview(props: {
         }}
       </For>
 
-      {/* Couche décor d'avant-plan (muret/banc…) — par-dessus les personnages
-          pour l'effet « assis dessus ». Ancré en bas, à sa taille naturelle.
-          UNIQUEMENT en vue de DOS (assis) : de face (debout), pas de rebord. */}
-      <Show when={props.state.view === "back" ? props.foregroundUrl : undefined}>
+      {/* Couche décor d'avant-plan (le muret) — par-dessus les personnages pour
+          l'effet « assis dessus ». UNIQUEMENT en vue de DOS. Comme l'ancien site :
+          ancré en bas, pleine largeur, hauteur auto (bottom-0 w-full h-auto).
+          Décor par défaut = muret ; surchargé par le foregroundUrl du produit. */}
+      <Show when={props.state.view === "back" ? props.foregroundUrl ?? props.defaultForeground : undefined}>
         {(url) => (
           <img
             src={url()}
@@ -119,13 +122,10 @@ export function PosterPreview(props: {
             draggable={false}
             style={{
               position: "absolute",
-              inset: "0",
+              bottom: "0",
+              left: "0",
               width: "100%",
-              height: "100%",
-              // contain + ancrage bas : le décor garde ses proportions et se
-              // pose au bas de l'affiche, comme un vrai élément de premier plan.
-              "object-fit": "contain",
-              "object-position": "center bottom",
+              height: "auto",
               "pointer-events": "none",
               "user-select": "none",
               "z-index": "100",

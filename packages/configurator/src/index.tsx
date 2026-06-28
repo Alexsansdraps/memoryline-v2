@@ -326,6 +326,9 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
                 : props.assetBaseUrl.replace(/\/$/, "") + props.foregroundUrl
               : undefined
           }
+          defaultForeground={
+            props.assetBaseUrl.replace(/\/$/, "") + "/assets/muret_officiel.svg"
+          }
         />
       </div>
 

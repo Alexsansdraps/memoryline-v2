@@ -336,17 +336,22 @@ export async function renderPosterPng(
     if (framed) composites.push({ input: framed, left: 0, top: 0 });
   }
 
-  // 2b) Décor d'avant-plan (muret/banc…) — par-dessus les personnages, ancré
-  // en bas (contain). UNIQUEMENT en vue de DOS (assis) : de face, pas de rebord.
-  if (config.foregroundUrl && config.view === "back") {
+  // 2b) Décor d'avant-plan (le muret) — par-dessus les personnages, UNIQUEMENT
+  // en vue de DOS. Comme l'ancien site : pleine largeur, hauteur auto, ancré en
+  // bas (bottom-0 w-full h-auto). Par défaut = muret ; surchargé par le produit.
+  if (config.view === "back") {
+    const fgSource = config.foregroundUrl || "/assets/muret_officiel.svg";
     try {
-      const fgRaw = await readSource(config.foregroundUrl);
+      const fgRaw = await readSource(fgSource);
+      // Largeur = W, hauteur proportionnelle (h-auto).
       const fgPng = await sharp(fgRaw, { density: 300 })
-        .resize({ width: W, height: H, fit: "contain", position: "bottom",
-          background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .resize({ width: W })
         .png()
         .toBuffer();
-      composites.push({ input: fgPng, left: 0, top: 0 });
+      const meta = await sharp(fgPng).metadata();
+      const fgH = meta.height ?? 0;
+      // Composite ancré en bas (top = H - hauteur du muret).
+      composites.push({ input: fgPng, left: 0, top: Math.max(0, H - fgH) });
     } catch {
       // décor manquant : on l'ignore (best-effort)
     }
