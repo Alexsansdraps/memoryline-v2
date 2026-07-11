@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
-import { For, createMemo } from "solid-js";
+import { For, createMemo, createUniqueId } from "solid-js";
+import { hideSlotGroups, scopeSvgStyles } from "@memoryline/types";
 import {
   SLOT_ZORDER,
   findVariant,
@@ -50,10 +51,24 @@ export function CharacterStack(props: {
   slots: SlotVariants | undefined;
   cache: SvgCache;
 }) {
+  // Scope CSS unique par instance : les <style> des SVG inlinés sont globaux
+  // au document, sans scoping la dernière couche écrase les couleurs des
+  // autres (cf. scopeSvgStyles).
+  const uid = createUniqueId();
+
   /** SVG inline (string) de chaque couche, recolorié + ancré bas. */
   const layers = createMemo(() => {
     const out: { key: string; svg: string }[] = [];
     const colors = props.character.colors;
+
+    // Slots effectivement remplacés par une variante choisie : on masque les
+    // groupes correspondants du SVG de base pré-composé (sinon la tenue
+    // d'origine reste visible sous la variante — doublons).
+    const replacedSlots = SLOT_ZORDER.filter(
+      (slot) =>
+        findVariant(props.slots?.[slot] ?? [], props.character.assets[slot]) !==
+        undefined,
+    );
 
     // Couche de base (SVG pré-composé complet).
     const base = props.base;
@@ -62,7 +77,12 @@ export function CharacterStack(props: {
       if (raw !== undefined && raw !== "") {
         out.push({
           key: "base",
-          svg: fillSvg(recolorForCharacter(raw, colors)),
+          svg: fillSvg(
+            scopeSvgStyles(
+              hideSlotGroups(recolorForCharacter(raw, colors), replacedSlots),
+              `${uid}-base`,
+            ),
+          ),
         });
       }
     }
@@ -77,7 +97,12 @@ export function CharacterStack(props: {
         if (raw === undefined || raw === "") continue;
         out.push({
           key: `${slot}:${variant.id}`,
-          svg: fillSvg(recolorForCharacter(raw, colors)),
+          svg: fillSvg(
+            scopeSvgStyles(
+              recolorForCharacter(raw, colors),
+              `${uid}-${slot}-${variant.id}`,
+            ),
+          ),
         });
       }
     }

@@ -24,7 +24,7 @@ import sharp from "sharp";
 import type { OverlayOptions, Sharp } from "sharp";
 import { PDFDocument } from "pdf-lib";
 
-import { recolorSvg } from "@memoryline/types";
+import { hideSlotGroups, recolorSvg } from "@memoryline/types";
 import type { PosterConfig, PosterFormat } from "@memoryline/types";
 
 // --- Constantes format --------------------------------------------------------
@@ -197,7 +197,18 @@ export async function resolveConfig(
           ...(base.baseColorZones ?? {}),
           ...(character.colors ?? {}),
         };
-        layers.push({ svgString: recolorSvg(raw, overrides), x, y, scale });
+        // Masque dans la base les groupes des slots remplacés par une variante
+        // (même logique que le configurateur : sinon la tenue d'origine du
+        // perso apparaît sous la variante sur le PDF imprimé).
+        const replacedSlots = Object.entries(character.assets)
+          .filter(([, assetId]) => data.assets.get(String(assetId)))
+          .map(([slot]) => slot);
+        layers.push({
+          svgString: recolorSvg(hideSlotGroups(raw, replacedSlots), overrides),
+          x,
+          y,
+          scale,
+        });
       } catch {
         // base illisible : on continue avec les variantes seules
       }

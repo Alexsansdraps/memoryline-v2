@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
-import { For, Show, createMemo, type JSX } from "solid-js";
+import { For, Show, createMemo, createUniqueId, type JSX } from "solid-js";
+import { scopeSvgStyles } from "@memoryline/types";
 import {
   findVariant,
   recolorForCharacter,
@@ -29,12 +30,15 @@ function thumbSvg(
   cache: SvgCache,
   svgUrl: string | undefined,
   colors: Record<string, string>,
-  viewBox?: string,
+  viewBox: string | undefined,
+  scopeUid: string,
 ): string | undefined {
   if (!svgUrl) return undefined;
   const raw = cache.raw[svgUrl];
   if (raw === undefined || raw === "") return undefined;
-  let svg = recolorForCharacter(raw, colors);
+  // Scope CSS : sans lui, le <style> global de la dernière vignette inlinée
+  // écraserait les couleurs de toutes les autres (cf. scopeSvgStyles).
+  let svg = scopeSvgStyles(recolorForCharacter(raw, colors), scopeUid);
   if (viewBox) svg = withViewBox(svg, viewBox);
   // dimensionne : width/height 100%, contain, centré.
   return svg.replace(/<svg\b([^>]*)>/, (_m, attrs: string) => {
@@ -319,6 +323,9 @@ export function CharacterEditor(props: {
   onBack: () => void;
   onValidate: () => void;
 }) {
+  // Scope CSS unique par instance d'éditeur (cf. scopeSvgStyles).
+  const uid = createUniqueId();
+
   /** Zones de couleur d'une variante (slot courant) + valeur actuelle. */
   const zonesForSlot = (slot: Slot): { zone: string; current: string }[] => {
     const variant = findVariant(props.slots[slot], props.character.assets[slot]);
@@ -380,6 +387,7 @@ export function CharacterEditor(props: {
                     variant.svgUrl,
                     props.character.colors,
                     viewBox,
+                    `${uid}-${opts.slot}-${variant.id}`,
                   )}
                   label={variant.name ?? `#${variant.id}`}
                 />
@@ -508,6 +516,8 @@ export function CharacterEditor(props: {
                       String(props.character.characterId) === String(base.id)
                         ? props.character.colors
                         : (base.baseColorZones ?? {}),
+                      undefined,
+                      `${uid}-charbase-${base.id}`,
                     )}
                     label={base.name}
                   />

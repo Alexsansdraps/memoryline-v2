@@ -42,3 +42,83 @@ export function recolorSvg(
 export function isValidZone(zone: string): boolean {
   return /^st\d+$/.test(zone);
 }
+
+/**
+ * Mots-clés des groupes du SVG de BASE d'un personnage, par slot.
+ * Nomenclature archive : `<g id="Male_Clothes_1">`, `<g id="Female_Bottoms1">`,
+ * `<g id="Teenage_Girl_Hair_1">`… Les groupes "Base" et "Collar" (animaux) ne
+ * matchent aucun mot-clé et ne sont jamais masqués.
+ */
+const SLOT_GROUP_KEYWORD: Record<string, RegExp> = {
+  clothes: /Clothes/i,
+  pants: /Bottoms/i,
+  hair: /Hair/i,
+  accessory: /Accessor/i,
+  // alias legacy (ancien site : head = accessoires)
+  head: /Accessor/i,
+};
+
+/**
+ * Masque (display="none") dans le SVG de BASE pré-composé les groupes des
+ * slots REMPLACÉS par une variante choisie. Sans ça, la tenue/coiffure
+ * d'origine du personnage reste visible sous/derrière la variante empilée
+ * (doublons, bords qui dépassent). Pure string-transform : utilisable côté
+ * navigateur (configurateur) ET côté serveur (worker PDF).
+ */
+export function hideSlotGroups(
+  svg: string,
+  slots: readonly string[],
+): string {
+  const patterns = slots
+    .map((s) => SLOT_GROUP_KEYWORD[s])
+    .filter((re): re is RegExp => re !== undefined);
+  if (patterns.length === 0) return svg;
+  return svg.replace(/<g\b([^>]*)>/g, (m, attrs: string) => {
+    const id = /\sid\s*=\s*"([^"]*)"/.exec(attrs)?.[1];
+    if (id && patterns.some((re) => re.test(id)))
+      return `<g${attrs} display="none">`;
+    return m;
+  });
+}
+
+/**
+ * Scope les règles CSS d'un SVG destiné à être INLINÉ dans le DOM.
+ *
+ * Problème : chaque SVG exporté définit ses couleurs via un bloc
+ * `<style>.st0{fill:…}</style>`. Une fois plusieurs SVG inlinés dans la même
+ * page (base + vêtements + cheveux…), ces règles sont GLOBALES au document :
+ * le dernier bloc `<style>` gagne pour toutes les couches → les recolorations
+ * ne s'affichent pas (ou s'appliquent aux mauvaises couches).
+ *
+ * Solution : on pose `data-svg-scope="<uid>"` sur la balise <svg> racine et on
+ * préfixe chaque sélecteur du bloc <style> par `[data-svg-scope="<uid>"] ` —
+ * les règles ne matchent plus que les éléments de CE svg, et leur spécificité
+ * bat les règles non préfixées d'un éventuel SVG tiers.
+ *
+ * Inutile côté serveur (le worker PDF rasterise chaque couche isolément) ;
+ * indispensable côté navigateur avant toute injection innerHTML.
+ */
+export function scopeSvgStyles(svg: string, uid: string): string {
+  const safe = uid.replace(/[^a-zA-Z0-9_-]/g, "-");
+  let out = svg.replace(
+    /<svg\b([^>]*)>/,
+    (_m, attrs: string) => `<svg${attrs} data-svg-scope="${safe}">`,
+  );
+  out = out.replace(
+    /(<style[^>]*>)([\s\S]*?)(<\/style>)/g,
+    (_m, open: string, css: string, close: string) => {
+      const scoped = css.replace(
+        /(^|\})\s*([^{}@][^{}]*)\{/g,
+        (_m2, brace: string, selectors: string) => {
+          const prefixed = selectors
+            .split(",")
+            .map((s) => `[data-svg-scope="${safe}"] ${s.trim()}`)
+            .join(",");
+          return `${brace}${prefixed}{`;
+        },
+      );
+      return open + scoped + close;
+    },
+  );
+  return out;
+}
