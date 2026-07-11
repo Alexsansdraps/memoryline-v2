@@ -53,6 +53,38 @@ export interface CharacterDTO {
   orientation?: "front" | "back";
   /** Bas réel du contenu dans le viewBox (0..1) pour aligner les pieds au sol. */
   bottomPct?: number;
+  /**
+   * Variantes AUTORISÉES pour ce perso, par slot, dans l'ordre d'affichage.
+   * Les nombres = `position` des VariantDTO (ids d'ancienne config), pas
+   * leurs ids. null/absent = pas encore lié -> proposer toutes les variantes.
+   */
+  slotVariants?: Partial<Record<Slot, number[]>> | null;
+}
+
+/**
+ * Restreint un jeu de variantes à celles AUTORISÉES pour un perso (matching
+ * par `position`, dans l'ordre du perso). Sans liste (donnée non liée), on
+ * retombe sur le jeu complet ; une liste VIDE = slot sans variante (animaux).
+ */
+export function slotsForCharacter(
+  all: SlotVariants,
+  base: CharacterDTO | undefined,
+): SlotVariants {
+  const allowed = base?.slotVariants;
+  if (!allowed) return all;
+  const pick = (slot: Slot): VariantDTO[] => {
+    const ids = allowed[slot];
+    if (!ids) return [];
+    return ids
+      .map((pos) => all[slot].find((v) => v.position === pos))
+      .filter((v): v is VariantDTO => v !== undefined);
+  };
+  return {
+    clothes: pick("clothes"),
+    pants: pick("pants"),
+    hair: pick("hair"),
+    accessory: pick("accessory"),
+  };
 }
 
 /** Variantes par slot, pour une vue donnée. */

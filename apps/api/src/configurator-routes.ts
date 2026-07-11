@@ -161,6 +161,9 @@ export function mountConfiguratorRoutes(app: Hono) {
         baseColorZones: t.baseColorZones,
         orientation: t.orientation === "back" ? "back" : "front",
         bottomPct: t.bottomPct ?? 1,
+        // Ids d'ancienne config par slot (= asset.position des génériques) :
+        // le front restreint les galeries de l'éditeur à ces variantes.
+        slotVariants: t.slotVariants ?? null,
       })),
       slots,
     });

@@ -22,6 +22,7 @@ import {
   createSvgCache,
   defaultCharacter,
   findVariant,
+  slotsForCharacter,
 } from "./store";
 import { PosterPreview } from "./components/PosterPreview";
 import { StepBackgroundText } from "./components/StepBackgroundText";
@@ -136,16 +137,17 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
 
   /**
    * Variantes de slot pour le personnage en cours d'édition : on suit SON
-   * orientation native (dos/face), sinon la vue globale. Garantit que l'éditeur
-   * montre les bonnes pièces et la même chose que l'aperçu de l'affiche.
+   * orientation native (dos/face), sinon la vue globale, puis on restreint
+   * aux variantes AUTORISÉES pour ce perso (slotVariants — un homme ne se
+   * voit pas proposer les habits de bébé). Garantit que l'éditeur montre les
+   * bonnes pièces et la même chose que l'aperçu de l'affiche.
    */
   const slotVariants = (): SlotVariants => {
     const idx = state.editingIndex;
     const c = idx != null ? state.characters[idx] : undefined;
-    const orient = c
-      ? characterById(c.characterId)?.orientation
-      : undefined;
-    return props.slots[orient ?? state.view];
+    const base = c ? characterById(c.characterId) : undefined;
+    const all = props.slots[base?.orientation ?? state.view];
+    return slotsForCharacter(all, base);
   };
 
   // Présélection du fond du produit : à l'ouverture, l'aperçu montre déjà
@@ -161,12 +163,15 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   //  - toutes les bases + toutes les variantes du slot quand on édite (galeries).
   createEffect(() => {
     const variants = slotVariants();
-    // Personnages présents (base + variantes choisies).
+    // Personnages présents (base + variantes choisies) : chacun résout ses
+    // variantes dans le jeu COMPLET de sa vue (comme PosterPreview), pas dans
+    // le jeu filtré du perso en cours d'édition.
     for (const c of state.characters) {
       const base = characterById(c.characterId);
       if (base) void fetchSvg(base.baseSvgUrl);
+      const all = props.slots[base?.orientation ?? state.view];
       for (const slot of SLOTS) {
-        const v = findVariant(variants[slot], c.assets[slot]);
+        const v = findVariant(all[slot], c.assets[slot]);
         if (v) void fetchSvg(v.svgUrl);
       }
     }
@@ -280,19 +285,28 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       if (c) c.colors[zone] = hex;
     });
   }
-  /** Change la base (type) d'un personnage : conserve les variantes choisies,
-   *  réinitialise les couleurs sur celles de la nouvelle base. */
+  /** Change la base (type) d'un personnage : conserve les variantes choisies
+   *  encore AUTORISÉES pour la nouvelle base (les autres sont abandonnées —
+   *  la tenue intégrée de la base reprend le relais), réinitialise les
+   *  couleurs sur celles de la nouvelle base. */
   function changeCharacter(index: number, base: CharacterDTO) {
     mutate((s) => {
       const c = s.characters[index];
       if (!c) return;
       c.characterId = base.id;
+      const variants = slotsForCharacter(
+        props.slots[base.orientation ?? state.view],
+        base,
+      );
       // Couleurs : base + couleurs des variantes encore sélectionnées.
       const colors: Record<string, string> = { ...(base.baseColorZones ?? {}) };
-      const variants = slotVariants();
       for (const slot of SLOTS) {
         const v = findVariant(variants[slot], c.assets[slot]);
-        for (const [zone, hex] of Object.entries(v?.colorZones ?? {})) {
+        if (!v) {
+          delete c.assets[slot];
+          continue;
+        }
+        for (const [zone, hex] of Object.entries(v.colorZones ?? {})) {
           colors[zone] = hex;
         }
       }

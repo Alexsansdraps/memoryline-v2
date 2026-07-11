@@ -173,6 +173,17 @@ export const characterTypes = pgTable(
      */
     orientation: text("orientation").default("front").notNull(),
     legacyTypeId: integer("legacy_type_id"), // typeId Shopify (1, 15, 18…)
+    /**
+     * Variantes AUTORISÉES pour ce personnage, par slot, dans l'ordre
+     * d'affichage : { clothes: [1], hair: [1, 15, 14, 13], … }. Les nombres
+     * sont les ids de l'ancienne config (= `asset.position` des génériques,
+     * stables d'un ré-import à l'autre), pas des asset.id. NULL = pas encore
+     * lié -> le configurateur propose tout (repli). Source : metafield
+     * `custom.characters` de l'ancien site (characters-config.json).
+     */
+    slotVariants: jsonb("slot_variants").$type<
+      Partial<Record<"clothes" | "pants" | "hair" | "accessory", number[]>>
+    >(),
   },
   (t) => [
     uniqueIndex("character_type_slug_uniq").on(t.slug),
