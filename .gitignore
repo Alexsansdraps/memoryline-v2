@@ -22,3 +22,6 @@ data/assets/
 .turbo
 # Drizzle
 .drizzle
+
+# Dumps pg locaux (sauvegardes, ne pas versionner)
+data/backups/
