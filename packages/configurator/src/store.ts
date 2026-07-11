@@ -22,6 +22,15 @@ export const SLOTS = ["clothes", "pants", "hair", "accessory"] as const;
 export type Slot = (typeof SLOTS)[number];
 
 /**
+ * Valeur sentinelle d'un slot : « aucun » EXPLICITE. À distinguer de
+ * `undefined` (= on garde la couche pré-composée dans le SVG de base) :
+ * "none" MASQUE aussi la couche de la base (perso sans casquette, sans
+ * coupe…). Sérialisée telle quelle dans PosterConfig.assets, comprise par le
+ * rendu front (CharacterStack) ET serveur (pdf.ts).
+ */
+export const NONE_ASSET = "none" as const;
+
+/**
  * Une variante de slot (vêtement, pantalon, coupe, accessoire). SVG déjà
  * positionné dans le cadre 500×1000 — il se superpose tel quel à la base.
  */
@@ -109,8 +118,14 @@ export interface SlotsDTO {
  * Personnage de travail.
  * - `characterId` = type de personnage choisi (sa base + ses baseColorZones).
  * - `assets` = variantes choisies par slot (id), optionnelles : absent = la
- *   couche intégrée à la base est conservée.
- * - `colors` = zone -> hex (override des couleurs par défaut, base + variantes).
+ *   couche intégrée à la base est conservée ; NONE_ASSET ("none") = « aucun »
+ *   explicite, la couche de la base est MASQUÉE (sans casquette, sans coupe…).
+ * - `colors` = clé namespacée "scope:zone" -> hex (override des couleurs par
+ *   défaut). Le scope = "base" (SVG de base) ou le slot ("clothes:st0"…) : les
+ *   zones stN étant réutilisées d'une couche à l'autre, le namespacing évite
+ *   qu'une couleur choisie pour un slot déteigne sur les autres (cf.
+ *   colorsForScope). Les clés plates "stN" (anciens paniers) restent acceptées
+ *   et s'appliquent à toutes les couches.
  * - x/y/scale/position = placement automatique sur l'affiche.
  */
 export interface WorkingCharacter {
@@ -121,7 +136,7 @@ export interface WorkingCharacter {
   scale: number;
   /** slot -> variantId (optionnel). */
   assets: Partial<Record<Slot, string | number>>;
-  /** zone -> hex */
+  /** "scope:zone" -> hex (scope = "base" | slot ; clés plates legacy tolérées). */
   colors: Record<string, string>;
 }
 

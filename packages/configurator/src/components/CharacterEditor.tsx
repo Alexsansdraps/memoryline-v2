@@ -1,7 +1,13 @@
 /// <reference lib="dom" />
 import { For, Show, createMemo, createUniqueId, type JSX } from "solid-js";
-import { scopeSvgStyles } from "@memoryline/types";
 import {
+  BASE_COLOR_SCOPE,
+  colorKey,
+  colorsForScope,
+  scopeSvgStyles,
+} from "@memoryline/types";
+import {
+  NONE_ASSET,
   findVariant,
   recolorForCharacter,
   withViewBox,
@@ -326,14 +332,22 @@ export function CharacterEditor(props: {
   // Scope CSS unique par instance d'éditeur (cf. scopeSvgStyles).
   const uid = createUniqueId();
 
-  /** Zones de couleur d'une variante (slot courant) + valeur actuelle. */
+  /**
+   * Zones de couleur d'une variante (slot courant) + valeur actuelle.
+   * `zone` = clé NAMESPACÉE "slot:stN" (cf. colorKey) : la couleur choisie ne
+   * s'applique qu'à ce slot, pas aux autres couches qui réutilisent stN.
+   * Repli sur la clé plate (anciens paniers) puis sur le défaut de la variante.
+   */
   const zonesForSlot = (slot: Slot): { zone: string; current: string }[] => {
     const variant = findVariant(props.slots[slot], props.character.assets[slot]);
     if (!variant?.colorZones) return [];
     return Object.keys(variant.colorZones).map((zone) => ({
-      zone,
+      zone: colorKey(slot, zone),
       current:
-        props.character.colors[zone] ?? variant.colorZones?.[zone] ?? "#000000",
+        props.character.colors[colorKey(slot, zone)] ??
+        props.character.colors[zone] ??
+        variant.colorZones?.[zone] ??
+        "#000000",
     }));
   };
 
@@ -346,8 +360,9 @@ export function CharacterEditor(props: {
     if (!first) return [];
     return [
       {
-        zone: first,
+        zone: colorKey(BASE_COLOR_SCOPE, first),
         current:
+          props.character.colors[colorKey(BASE_COLOR_SCOPE, first)] ??
           props.character.colors[first] ??
           base.baseColorZones[first] ??
           "#E0AC7E",
@@ -359,7 +374,9 @@ export function CharacterEditor(props: {
   function SlotSection(opts: { slot: Slot; allowNone: boolean }) {
     const list = (): VariantDTO[] => props.slots[opts.slot];
     const selectedId = () => props.character.assets[opts.slot];
-    const hasNone = () => selectedId() === undefined;
+    // « Aucun » n'est coché que sur demande EXPLICITE (NONE_ASSET) —
+    // `undefined` = couche d'origine de la base conservée, rien de coché.
+    const hasNone = () => selectedId() === NONE_ASSET;
     const viewBox = SLOT_THUMB_VIEWBOX[opts.slot];
     return (
       <Show when={list().length > 0}>
@@ -385,7 +402,10 @@ export function CharacterEditor(props: {
                   svg={thumbSvg(
                     props.cache,
                     variant.svgUrl,
-                    props.character.colors,
+                    // Seules les couleurs de CE slot : les zones stN étant
+                    // partagées entre couches, la map complète recolorerait
+                    // aussi ces vignettes quand on change une autre couche.
+                    colorsForScope(props.character.colors, opts.slot),
                     viewBox,
                     `${uid}-${opts.slot}-${variant.id}`,
                   )}
@@ -514,7 +534,7 @@ export function CharacterEditor(props: {
                       props.cache,
                       base.baseSvgUrl,
                       String(props.character.characterId) === String(base.id)
-                        ? props.character.colors
+                        ? colorsForScope(props.character.colors, BASE_COLOR_SCOPE)
                         : (base.baseColorZones ?? {}),
                       undefined,
                       `${uid}-charbase-${base.id}`,

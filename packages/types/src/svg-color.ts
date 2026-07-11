@@ -43,6 +43,49 @@ export function isValidZone(zone: string): boolean {
   return /^st\d+$/.test(zone);
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Couleurs namespacées par couche (base / slot)                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Les zones `.stN` n'ont PAS la même sémantique d'une couche à l'autre : la
+ * base et les variantes de slots (vêtements, pantalon, cheveux…) réutilisent
+ * les mêmes numéros. Une map plate { st0: "#hex" } recolore donc TOUTES les
+ * couches à la fois (crosstalk : choisir un rouge vêtements teinte aussi le
+ * pantalon et les cheveux). Les couleurs d'un personnage sont donc stockées
+ * sous des clés namespacées `<scope>:<zone>` (ex. "clothes:st0", "base:st1"),
+ * où le scope est {@link BASE_COLOR_SCOPE} pour le SVG de base ou le nom du
+ * slot pour une variante.
+ */
+export const BASE_COLOR_SCOPE = "base";
+
+/** Clé de couleur namespacée pour une zone d'une couche donnée. */
+export function colorKey(scope: string, zone: string): string {
+  return `${scope}:${zone}`;
+}
+
+/**
+ * Extrait, pour UNE couche (scope), la map plate { stN: "#hex" } à passer à
+ * {@link recolorSvg}. Les clés plates sans `:` (anciens configs / paniers
+ * sauvegardés avant le namespacing) s'appliquent à toutes les couches
+ * (comportement historique) ; les clés namespacées du scope les surchargent.
+ */
+export function colorsForScope(
+  colors: Record<string, string> | undefined | null,
+  scope: string,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!colors) return out;
+  for (const [key, hex] of Object.entries(colors)) {
+    if (!key.includes(":")) out[key] = hex; // legacy plat -> toutes les couches
+  }
+  const prefix = `${scope}:`;
+  for (const [key, hex] of Object.entries(colors)) {
+    if (key.startsWith(prefix)) out[key.slice(prefix.length)] = hex;
+  }
+  return out;
+}
+
 /**
  * Mots-clés des groupes du SVG de BASE d'un personnage, par slot.
  * Nomenclature archive : `<g id="Male_Clothes_1">`, `<g id="Female_Bottoms1">`,

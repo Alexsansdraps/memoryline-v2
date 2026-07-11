@@ -6,6 +6,7 @@ import type {
   PosterView,
   BackgroundDTO,
 } from "@memoryline/types";
+import { BASE_COLOR_SCOPE, colorKey } from "@memoryline/types";
 import {
   STEPS,
   SLOTS,
@@ -23,6 +24,7 @@ import {
   defaultCharacter,
   findVariant,
   slotsForCharacter,
+  NONE_ASSET,
 } from "./store";
 import { PosterPreview } from "./components/PosterPreview";
 import { StepBackgroundText } from "./components/StepBackgroundText";
@@ -266,17 +268,26 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       const c = s.characters[index];
       if (!c) return;
       c.assets[slot] = variantId;
-      // Ajoute les couleurs par défaut des nouvelles zones de cette variante.
+      // Ajoute les couleurs par défaut des nouvelles zones de cette variante,
+      // namespacées par slot (une couleur déjà choisie pour ce slot persiste).
       const v = findVariant(slotVariants()[slot], variantId);
       for (const [zone, hex] of Object.entries(v?.colorZones ?? {})) {
-        if (c.colors[zone] === undefined) c.colors[zone] = hex;
+        const key = colorKey(slot, zone);
+        if (c.colors[key] === undefined) c.colors[key] = hex;
       }
     });
   }
+  /**
+   * Vignette « Aucun » : masque la couche du slot, Y COMPRIS celle qui est
+   * pré-composée dans le SVG de base (casquette/coupe d'origine). Re-cliquer
+   * « Aucun » quand il est déjà actif rétablit la couche d'origine de la base.
+   */
   function clearSlot(index: number, slot: Slot) {
     mutate((s) => {
       const c = s.characters[index];
-      if (c) delete c.assets[slot];
+      if (!c) return;
+      if (c.assets[slot] === NONE_ASSET) delete c.assets[slot];
+      else c.assets[slot] = NONE_ASSET;
     });
   }
   function setColor(index: number, zone: string, hex: string) {
@@ -298,8 +309,13 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
         props.slots[base.orientation ?? state.view],
         base,
       );
-      // Couleurs : base + couleurs des variantes encore sélectionnées.
-      const colors: Record<string, string> = { ...(base.baseColorZones ?? {}) };
+      // Couleurs : base + couleurs des variantes encore sélectionnées, chacune
+      // sous sa clé namespacée (base:stN / slot:stN) — les zones stN partagées
+      // entre couches ne se mélangent plus.
+      const colors: Record<string, string> = {};
+      for (const [zone, hex] of Object.entries(base.baseColorZones ?? {})) {
+        colors[colorKey(BASE_COLOR_SCOPE, zone)] = hex;
+      }
       for (const slot of SLOTS) {
         const v = findVariant(variants[slot], c.assets[slot]);
         if (!v) {
@@ -307,7 +323,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
           continue;
         }
         for (const [zone, hex] of Object.entries(v.colorZones ?? {})) {
-          colors[zone] = hex;
+          colors[colorKey(slot, zone)] = hex;
         }
       }
       c.colors = colors;

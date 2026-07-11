@@ -24,7 +24,12 @@ import sharp from "sharp";
 import type { OverlayOptions, Sharp } from "sharp";
 import { PDFDocument } from "pdf-lib";
 
-import { hideSlotGroups, recolorSvg } from "@memoryline/types";
+import {
+  BASE_COLOR_SCOPE,
+  colorsForScope,
+  hideSlotGroups,
+  recolorSvg,
+} from "@memoryline/types";
 import type { PosterConfig, PosterFormat } from "@memoryline/types";
 
 // --- Constantes format --------------------------------------------------------
@@ -193,15 +198,22 @@ export async function resolveConfig(
     if (base?.baseSvgUrl) {
       try {
         const raw = (await readSource(base.baseSvgUrl)).toString("utf8");
+        // Couleurs namespacées "scope:zone" : la base ne reçoit que son scope
+        // (les zones stN sont réutilisées par les variantes de slots — une map
+        // plate ferait déteindre les couleurs d'un slot sur la base).
         const overrides: Record<string, string> = {
           ...(base.baseColorZones ?? {}),
-          ...(character.colors ?? {}),
+          ...colorsForScope(character.colors, BASE_COLOR_SCOPE),
         };
         // Masque dans la base les groupes des slots remplacés par une variante
         // (même logique que le configurateur : sinon la tenue d'origine du
-        // perso apparaît sous la variante sur le PDF imprimé).
+        // perso apparaît sous la variante sur le PDF imprimé) et de ceux mis
+        // explicitement à « aucun » ("none" : sans casquette, sans coupe…).
         const replacedSlots = Object.entries(character.assets)
-          .filter(([, assetId]) => data.assets.get(String(assetId)))
+          .filter(
+            ([, assetId]) =>
+              assetId === "none" || data.assets.get(String(assetId)),
+          )
           .map(([slot]) => slot);
         layers.push({
           svgString: recolorSvg(hideSlotGroups(raw, replacedSlots), overrides),
@@ -218,16 +230,18 @@ export async function resolveConfig(
     const slotEntries = Object.entries(character.assets);
     slotEntries.sort((a, b) => slotZ(a[0]) - slotZ(b[0]));
 
-    for (const [, assetId] of slotEntries) {
+    for (const [slot, assetId] of slotEntries) {
       const asset = data.assets.get(String(assetId));
       if (!asset) continue; // asset manquant : on saute (best-effort)
 
       const raw = (await readSource(asset.svgUrl)).toString("utf8");
 
-      // Couleurs : zones par défaut de l'asset surchargées par celles du perso.
+      // Couleurs : zones par défaut de l'asset surchargées par celles du perso
+      // POUR CE SLOT uniquement (clés "slot:zone" — le slot vient de la config,
+      // même clé que celle écrite par le configurateur).
       const overrides: Record<string, string> = {
         ...(asset.colorZones ?? {}),
-        ...(character.colors ?? {}),
+        ...colorsForScope(character.colors, slot),
       };
       layers.push({ svgString: recolorSvg(raw, overrides), x, y, scale });
     }

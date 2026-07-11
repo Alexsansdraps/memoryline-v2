@@ -1,7 +1,13 @@
 /// <reference lib="dom" />
 import { For, createMemo, createUniqueId } from "solid-js";
-import { hideSlotGroups, scopeSvgStyles } from "@memoryline/types";
 import {
+  BASE_COLOR_SCOPE,
+  colorsForScope,
+  hideSlotGroups,
+  scopeSvgStyles,
+} from "@memoryline/types";
+import {
+  NONE_ASSET,
   SLOT_ZORDER,
   findVariant,
   recolorForCharacter,
@@ -59,15 +65,20 @@ export function CharacterStack(props: {
   /** SVG inline (string) de chaque couche, recolorié + ancré bas. */
   const layers = createMemo(() => {
     const out: { key: string; svg: string }[] = [];
+    // Couleurs namespacées par couche (base:stN / clothes:stN…) : chaque
+    // couche ne reçoit QUE les siennes, sinon les zones stN partagées entre
+    // base et slots se recolorent mutuellement (cf. colorsForScope).
     const colors = props.character.colors;
 
-    // Slots effectivement remplacés par une variante choisie : on masque les
-    // groupes correspondants du SVG de base pré-composé (sinon la tenue
-    // d'origine reste visible sous la variante — doublons).
+    // Slots dont la couche de la base pré-composée doit être masquée : ceux
+    // remplacés par une variante choisie (sinon la tenue d'origine reste
+    // visible sous la variante — doublons) ET ceux explicitement mis à
+    // « aucun » (NONE_ASSET : perso sans casquette / sans coupe).
     const replacedSlots = SLOT_ZORDER.filter(
       (slot) =>
+        props.character.assets[slot] === NONE_ASSET ||
         findVariant(props.slots?.[slot] ?? [], props.character.assets[slot]) !==
-        undefined,
+          undefined,
     );
 
     // Couche de base (SVG pré-composé complet).
@@ -79,7 +90,10 @@ export function CharacterStack(props: {
           key: "base",
           svg: fillSvg(
             scopeSvgStyles(
-              hideSlotGroups(recolorForCharacter(raw, colors), replacedSlots),
+              hideSlotGroups(
+                recolorForCharacter(raw, colorsForScope(colors, BASE_COLOR_SCOPE)),
+                replacedSlots,
+              ),
               `${uid}-base`,
             ),
           ),
@@ -99,7 +113,7 @@ export function CharacterStack(props: {
           key: `${slot}:${variant.id}`,
           svg: fillSvg(
             scopeSvgStyles(
-              recolorForCharacter(raw, colors),
+              recolorForCharacter(raw, colorsForScope(colors, slot)),
               `${uid}-${slot}-${variant.id}`,
             ),
           ),
