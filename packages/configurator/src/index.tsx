@@ -3,7 +3,6 @@ import { createEffect, createMemo, Show, type JSX } from "solid-js";
 import type {
   PosterConfig,
   PosterFormat,
-  PosterView,
   BackgroundDTO,
 } from "@memoryline/types";
 import { BASE_COLOR_SCOPE, colorKey } from "@memoryline/types";
@@ -354,11 +353,6 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       s.format = format;
     });
   }
-  function setView(view: PosterView) {
-    mutate((s) => {
-      s.view = view;
-    });
-  }
 
   /** Prix courant selon le format sélectionné (repli sur le prix de base). */
   const currentPrice = (): number => {
@@ -471,7 +465,6 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             state={state}
             prices={props.prices}
             onSelect={setFormat}
-            onSelectView={setView}
           />
         </Show>
 

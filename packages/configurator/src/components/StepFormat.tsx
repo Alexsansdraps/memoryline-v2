@@ -1,24 +1,21 @@
 /// <reference lib="dom" />
 import { For } from "solid-js";
-import {
-  POSTER_FORMATS,
-  POSTER_VIEWS,
-  type PosterFormat,
-  type PosterView,
-} from "@memoryline/types";
+import { POSTER_FORMATS, type PosterFormat } from "@memoryline/types";
 import type { ConfiguratorState } from "../store";
 
-const VIEW_LABELS: Record<PosterView, string> = {
-  front: "De face",
-  back: "De dos",
-};
-
-/** Étape 3 : choix du format (A4 / A3) + vue (face / dos). */
+/**
+ * Étape 3 : choix du format (A4 / A3).
+ *
+ * L'orientation (de face / de dos) n'est PAS choisie ici : elle est une
+ * propriété du PRODUIT (sa scène — muret de dos, etc.) et des personnages
+ * proposés. Un ancien sélecteur « Orientation des personnages » changeait la
+ * vue de l'affiche sans réorienter les persos déjà posés (SVG face ≠ SVG dos),
+ * ce qui affichait des persos de dos sur une affiche de face — retiré.
+ */
 export function StepFormat(props: {
   state: ConfiguratorState;
   prices?: Partial<Record<PosterFormat, number>>;
   onSelect: (format: PosterFormat) => void;
-  onSelectView: (view: PosterView) => void;
 }) {
   const fmtPrice = (cents: number) =>
     new Intl.NumberFormat("fr-FR", {
@@ -54,23 +51,6 @@ export function StepFormat(props: {
                   {fmtPrice(props.prices[fmt]!)}
                 </div>
               )}
-            </button>
-          )}
-        </For>
-      </div>
-
-      <h3 style={{ "font-weight": "700", "margin-bottom": "10px" }}>
-        Orientation des personnages
-      </h3>
-      <div style={{ display: "flex", gap: "10px" }}>
-        <For each={POSTER_VIEWS}>
-          {(view) => (
-            <button
-              type="button"
-              onClick={() => props.onSelectView(view)}
-              style={tile(props.state.view === view)}
-            >
-              {VIEW_LABELS[view]}
             </button>
           )}
         </For>
