@@ -187,13 +187,19 @@ export function autoPlace(
   const n = characters.length;
   if (n === 0) return [];
 
-  const Y = 0.84; // posés sur le muret (calé entre trop haut 0.78 et trop bas 0.88)
+  // NB : ce calage suppose bottom_pct MESURÉ en base (pnpm run measure-anchors) —
+  // sans ça les persos flottent (vide sous les pieds non compensé).
+  const Y = 0.825; // posés sur le muret (calage visuel Alexandra 2026-07-07, ancres mesurées)
   // Échelle : persos plus petits ; rétrécit avec le nombre pour tenir côte à
   // côte sans déborder (rangée dans ~90% de la largeur).
   const usable = 0.9;
   const scale = Math.min(0.7, usable / (n * CHAR_BASE_WIDTH));
   const slotW = CHAR_BASE_WIDTH * scale; // largeur effective d'un perso
-  const rowW = n * slotW; // largeur totale de la rangée
+  // Resserrement : distance entre centres < largeur d'un perso (les cadres se
+  // chevauchent légèrement, les dessins ont de la marge). 1 = côte à côte.
+  const GAP = 0.8;
+  const stepW = slotW * GAP; // distance entre centres de persos voisins
+  const rowW = slotW + stepW * (n - 1); // largeur totale de la rangée
   const start = 0.5 - rowW / 2; // bord gauche pour centrer le groupe
 
   // PENTE DU MURET : il descend de gauche à droite (~+9% de bas en haut sur
@@ -202,7 +208,7 @@ export function autoPlace(
   const SLOPE = 0.09; // dénivelé total sur la largeur de l'affiche
 
   return characters.map((_, i) => {
-    const x = start + slotW * (i + 0.5); // centre du i-ème perso (0..1)
+    const x = start + slotW / 2 + stepW * i; // centre du i-ème perso (0..1)
     // décalage selon la position : centré sur 0.5 -> +/- la moitié de la pente.
     const slopeY = (x - 0.5) * SLOPE;
     return { x, y: Y + slopeY, scale };
