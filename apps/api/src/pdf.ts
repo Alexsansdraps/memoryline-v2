@@ -180,15 +180,15 @@ export async function resolveConfig(
     //    pré-composée. Recolorée avec les couleurs choisies (peau/tenue par défaut).
     const base = data.characters?.get(String(character.typeId));
 
-    // Alignement des pieds : descendre le perso de la part de vide sous son
-    // contenu (cadre = aspect 1:2 -> hauteur = 2 × largeur ; en unités d'affiche
-    // la largeur ≈ CHAR_BASE_WIDTH×scale, hauteur normalisée ≈ ×2× (W/H)).
+    // Alignement des pieds : descendre le perso de TOUT le vide sous son
+    // contenu, pour que le bas du contenu tombe à y + h/2 quel que soit
+    // bottomPct (même formule que PosterPreview côté front).
     const bp = base?.bottomPct ?? 1;
-    // hauteur du cadre en fraction de H : (largeur en px ×2) / H.
     const PDF_CHAR_BASE_WIDTH = 0.22;
-    const frameHpx = PDF_CHAR_BASE_WIDTH * scale * 2; // en fraction de W
-    // approx : W≈H pour le ratio ; le drop reste proportionnel et discret.
-    const dropFrac = (1 - bp) * (frameHpx / 2);
+    // hauteur du cadre (aspect 1:2 -> 2 × largeur, en fraction de W), puis en
+    // fraction de H : ÷ √2 (page portrait W:H = 1:√2).
+    const frameHfrac = (PDF_CHAR_BASE_WIDTH * scale * 2) / Math.SQRT2;
+    const dropFrac = (1 - bp) * frameHfrac;
     const y = (character.y ?? 0.5) + dropFrac;
     if (base?.baseSvgUrl) {
       try {

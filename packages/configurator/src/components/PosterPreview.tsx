@@ -80,14 +80,13 @@ export function PosterPreview(props: {
           // Largeur effective = largeur de base × échelle (rangée centrée).
           const widthPct = () => CHAR_BASE_WIDTH * place().scale * 100;
           // Alignement des pieds : un perso dont le contenu s'arrête à bottomPct
-          // de son cadre a du vide dessous ; on DESCEND le cadre de cette part
-          // (en % de l'affiche) pour que tous les pieds touchent la même ligne.
+          // de son cadre a du vide dessous ; on DESCEND le cadre de TOUT ce vide
+          // pour que le bas du contenu tombe à y + h/2 quel que soit bottomPct.
+          // Hauteur du cadre en % de la HAUTEUR d'affiche : largeur × 2 (aspect
+          // 1:2) ÷ 1.4142 (affiche portrait W:H = 1:√2) = widthPct × √2.
           const bp = () =>
             props.characterById(c.characterId)?.bottomPct ?? 1;
-          const dropPct = () => {
-            const containerHpct = widthPct() * 2; // aspect 1:2 (en % largeur≈hauteur poster)
-            return (1 - bp()) * (containerHpct / 2);
-          };
+          const dropPct = () => (1 - bp()) * widthPct() * Math.SQRT2;
           return (
             <div
               style={{

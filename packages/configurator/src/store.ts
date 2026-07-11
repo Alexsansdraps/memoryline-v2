@@ -221,7 +221,11 @@ export function autoPlace(
 
   // NB : ce calage suppose bottom_pct MESURÉ en base (pnpm run measure-anchors) —
   // sans ça les persos flottent (vide sous les pieds non compensé).
-  const Y = 0.825; // posés sur le muret (calage visuel Alexandra 2026-07-07, ancres mesurées)
+  // 0.825 = calage visuel Alexandra 2026-07-07 ; -0.009 le 2026-07-11 pour
+  // compenser la correction du drop (facteur √2 oublié) sans bouger les
+  // humains (bp≈0.86) déjà calés — seuls les persos à fort vide (animaux)
+  // descendent maintenant jusqu'au muret.
+  const Y = 0.816; // posés sur le muret
   // Échelle : persos plus petits ; rétrécit avec le nombre pour tenir côte à
   // côte sans déborder (rangée dans ~90% de la largeur).
   const usable = 0.9;
