@@ -11,10 +11,19 @@
  * handlers, montés via `mountConfiguratorRoutes(app)`.
  */
 import type { Hono } from "hono";
-import { asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import { renderPosterPdf, type ResolveData } from "./pdf.js";
 import { posterConfigSchema, type PosterConfig } from "@memoryline/types";
+import {
+  createPaypalOrder,
+  capturePaypalOrder,
+  createStripeIntent,
+  getStripeIntentStatus,
+  paypalConfigured,
+  stripeConfigured,
+  verifyStripeEvent,
+} from "./payments.js";
 
 // --- Helpers -----------------------------------------------------------------
 
@@ -102,6 +111,112 @@ async function generatePrintFile(
     })
     .onConflictDoNothing();
   return { filename };
+}
+
+// --- Tarification & paiement -------------------------------------------------
+
+/** Ligne de commande minimale pour le calcul de prix. */
+type PricedItem = {
+  unitPriceCents: number;
+  quantity: number;
+  config: unknown;
+};
+
+/**
+ * Total à FACTURER en centimes, promos incluses — calculé côté SERVEUR (le
+ * montant client n'est jamais de confiance). Miroir de la logique du panier
+ * (CartIsland) : pour chaque promo active `buy_x_get_y`, par tranche de
+ * `buyQty` unités on offre `getQty` unité(s), la/les moins chère(s).
+ */
+async function computeOrderTotalCents(items: PricedItem[]): Promise<number> {
+  const subtotal = items.reduce(
+    (s, it) => s + it.unitPriceCents * it.quantity,
+    0,
+  );
+  const now = new Date();
+  const rules = (
+    await db
+      .select()
+      .from(schema.promoRules)
+      .where(eq(schema.promoRules.active, true))
+  ).filter(
+    (r) => (!r.startsAt || r.startsAt <= now) && (!r.endsAt || r.endsAt >= now),
+  );
+
+  // unités dépliées, triées par prix croissant (on offre les moins chères)
+  const units: number[] = [];
+  for (const it of items)
+    for (let k = 0; k < it.quantity; k++) units.push(it.unitPriceCents);
+  units.sort((a, b) => a - b);
+
+  let discount = 0;
+  for (const rule of rules) {
+    if (rule.type !== "buy_x_get_y") continue;
+    const cfg = (rule.config ?? {}) as { buyQty?: number; getQty?: number };
+    const buyQty = cfg.buyQty ?? 3;
+    const getQty = cfg.getQty ?? 1;
+    const freeCount = Math.floor(units.length / buyQty) * getQty;
+    for (let i = 0; i < freeCount && i < units.length; i++)
+      discount += units[i]!;
+  }
+  return Math.max(0, subtotal - discount);
+}
+
+/**
+ * Passe une commande de `pending` à `paid` et génère les PDF — UNE SEULE FOIS
+ * (idempotent : appelé par le webhook Stripe ou la capture PayPal, qui peuvent
+ * rejouer). Met aussi à jour la ligne `payment` correspondante en `succeeded`.
+ * No-op si la commande est déjà payée. Renvoie true si elle vient d'être payée.
+ */
+async function markOrderPaid(
+  orderId: number,
+  provider: "stripe" | "paypal",
+  externalRef: string,
+): Promise<boolean> {
+  const [order] = await db
+    .select()
+    .from(schema.orders)
+    .where(eq(schema.orders.id, orderId));
+  if (!order) return false;
+
+  // Trace le paiement (idempotent sur externalRef).
+  await db
+    .update(schema.payments)
+    .set({ status: "succeeded" })
+    .where(eq(schema.payments.externalRef, externalRef));
+
+  if (order.status === "paid") return false; // déjà fait
+
+  await db
+    .update(schema.orders)
+    .set({ status: "paid" })
+    .where(eq(schema.orders.id, orderId));
+
+  // Nom client (pour le nom de fichier PDF).
+  let customerName = "client";
+  if (order.customerId != null) {
+    const [cust] = await db
+      .select()
+      .from(schema.customers)
+      .where(eq(schema.customers.id, order.customerId));
+    if (cust?.name) customerName = cust.name;
+  }
+
+  const items = await db
+    .select()
+    .from(schema.orderItems)
+    .where(eq(schema.orderItems.orderId, orderId));
+  for (const it of items) {
+    const cfg = it.config as PosterConfig | null;
+    if (!cfg) continue;
+    const fmt = (cfg.format ?? "A4") as "A4" | "A3";
+    try {
+      await generatePrintFile(it.id, cfg, customerName, order.number, fmt);
+    } catch (e) {
+      console.error("PDF génération échouée (item " + it.id + ") :", e);
+    }
+  }
+  return true;
 }
 
 // --- Montage des routes -------------------------------------------------------
@@ -336,9 +451,15 @@ export function mountConfiguratorRoutes(app: Hono) {
   // === Validation de commande web =========================================
 
   /**
-   * Transforme un panier draft en commande web confirmée (canal immuable).
-   * Génère le PDF de chaque ligne. Le paiement réel (Stripe/PayPal) est
-   * confirmé par webhook ailleurs ; ici on matérialise la commande.
+   * Prépare une commande web à PAYER à partir du panier draft.
+   *
+   * Attache le client + un numéro, fige le total (promos incluses, calculé
+   * SERVEUR) et passe la commande en `pending`. Le PDF et le passage en `paid`
+   * ne se font QU'APRÈS encaissement (webhook Stripe / capture PayPal, via
+   * markOrderPaid). Une commande n'est donc JAMAIS marquée payée sans paiement.
+   *
+   * Idempotent : relançable tant que non payée (met à jour client + total,
+   * garde le numéro). Renvoie 409 si la commande est déjà payée.
    */
   app.post("/orders", async (c) => {
     const body = await c.req.json();
@@ -353,6 +474,8 @@ export function mountConfiguratorRoutes(app: Hono) {
       .from(schema.orders)
       .where(eq(schema.orders.clientOrderId, cartId));
     if (!draft) return c.json({ error: "panier introuvable" }, 404);
+    if (draft.status === "paid")
+      return c.json({ error: "commande déjà payée" }, 409);
 
     const items = await db
       .select()
@@ -364,34 +487,218 @@ export function mountConfiguratorRoutes(app: Hono) {
       .insert(schema.customers)
       .values({ name, email })
       .returning();
-    const number = await nextOrderNumber("web");
-    const total = items.reduce(
-      (s, it) => s + it.unitPriceCents * it.quantity,
-      0,
-    );
+    // Garde le numéro s'il en a déjà un (retry) ; sinon en attribue un.
+    const number = /^WEB-\d+$/.test(draft.number)
+      ? draft.number
+      : await nextOrderNumber("web");
+    const total = await computeOrderTotalCents(items);
     const [order] = await db
       .update(schema.orders)
       .set({
         number,
-        status: "paid",
+        status: "pending",
         customerId: customer!.id,
         totalCents: total,
       })
       .where(eq(schema.orders.id, draft.id))
       .returning();
 
-    // PDF par ligne (régénérable, §15.3)
-    for (const it of items) {
-      const cfg = it.config as PosterConfig | null;
-      if (!cfg) continue;
-      const fmt = (cfg.format ?? "A4") as "A4" | "A3";
-      try {
-        await generatePrintFile(it.id, cfg, name, number, fmt);
-      } catch (e) {
-        console.error("PDF génération échouée (item " + it.id + ") :", e);
+    return c.json({
+      orderId: order!.id,
+      number,
+      status: order!.status,
+      totalCents: total,
+    });
+  });
+
+  // === Paiement (Stripe & PayPal) =========================================
+
+  /**
+   * Config paiement exposée au NAVIGATEUR : quels moyens sont réellement
+   * activés + les clés PUBLIQUES nécessaires côté client (clé publiable Stripe,
+   * client-id PayPal). Évite d'avoir à câbler des PUBLIC_* dans le conteneur
+   * web : l'API (qui lit le .env racine) est la source de vérité.
+   * Un moyen n'est "prêt" que si SES clés serveur ET publique sont présentes.
+   */
+  app.get("/payments/config", (c) => {
+    const stripePublicKey = process.env.PUBLIC_STRIPE_KEY ?? "";
+    const paypalClientId =
+      process.env.PUBLIC_PAYPAL_CLIENT_ID ?? process.env.PAYPAL_CLIENT_ID ?? "";
+    return c.json({
+      stripe:
+        stripeConfigured && stripePublicKey
+          ? { publicKey: stripePublicKey }
+          : null,
+      paypal:
+        paypalConfigured && paypalClientId ? { clientId: paypalClientId } : null,
+    });
+  });
+
+  /** Charge une commande à payer (existe, non déjà payée). */
+  async function loadPayableOrder(orderId: number) {
+    if (!Number.isFinite(orderId)) return null;
+    const [order] = await db
+      .select()
+      .from(schema.orders)
+      .where(eq(schema.orders.id, orderId));
+    return order ?? null;
+  }
+
+  /**
+   * Crée un PaymentIntent Stripe pour la commande et renvoie son clientSecret
+   * (le navigateur confirme le paiement avec Stripe.js). Le montant vient du
+   * SERVEUR (order.totalCents), jamais du client.
+   */
+  app.post("/payments/stripe/intent", async (c) => {
+    if (!stripeConfigured)
+      return c.json({ error: "Stripe non configuré" }, 503);
+    const body = await c.req.json().catch(() => ({}));
+    const order = await loadPayableOrder(Number(body.orderId));
+    if (!order) return c.json({ error: "commande introuvable" }, 404);
+    if (order.status === "paid")
+      return c.json({ error: "commande déjà payée" }, 409);
+    try {
+      const intent = await createStripeIntent(
+        order.totalCents,
+        order.id,
+        order.number,
+      );
+      await db.insert(schema.payments).values({
+        orderId: order.id,
+        provider: "stripe",
+        externalRef: intent.id,
+        status: "pending",
+        amountCents: order.totalCents,
+      });
+      return c.json({ clientSecret: intent.clientSecret });
+    } catch (e) {
+      console.error("Stripe intent:", e);
+      return c.json({ error: "création du paiement impossible" }, 502);
+    }
+  });
+
+  /**
+   * Webhook Stripe : source de vérité de l'encaissement. Vérifie la signature
+   * sur le corps BRUT, et sur `payment_intent.succeeded` passe la commande en
+   * payée + génère les PDF (idempotent).
+   */
+  app.post("/payments/stripe/webhook", async (c) => {
+    const raw = await c.req.text();
+    const event = verifyStripeEvent(raw, c.req.header("stripe-signature"));
+    if (!event) return c.json({ error: "signature invalide" }, 400);
+    if (event.type === "payment_intent.succeeded") {
+      const pi = event.data.object as {
+        id: string;
+        metadata?: { orderId?: string };
+      };
+      const orderId = Number(pi.metadata?.orderId);
+      if (Number.isFinite(orderId)) {
+        await markOrderPaid(orderId, "stripe", pi.id);
       }
     }
-    return c.json({ orderId: order!.id, number, status: order!.status });
+    return c.json({ received: true });
+  });
+
+  /**
+   * Confirme un paiement Stripe DEPUIS LE SERVEUR (revérifie le statut du
+   * PaymentIntent auprès de Stripe) et marque la commande payée si succeeded.
+   * Appelé par le navigateur juste après confirmPayment : permet de finaliser
+   * SANS webhook (dev) et sert de filet si le webhook n'arrive pas.
+   */
+  app.post("/payments/stripe/confirm", async (c) => {
+    if (!stripeConfigured)
+      return c.json({ error: "Stripe non configuré" }, 503);
+    const body = await c.req.json().catch(() => ({}));
+    const orderId = Number(body.orderId);
+    const [payment] = await db
+      .select()
+      .from(schema.payments)
+      .where(
+        and(
+          eq(schema.payments.orderId, orderId),
+          eq(schema.payments.provider, "stripe"),
+        ),
+      )
+      .orderBy(desc(schema.payments.id));
+    if (!payment?.externalRef)
+      return c.json({ error: "paiement introuvable" }, 404);
+    try {
+      const status = await getStripeIntentStatus(payment.externalRef);
+      if (status === "succeeded") {
+        await markOrderPaid(orderId, "stripe", payment.externalRef);
+        return c.json({ status: "paid" });
+      }
+      return c.json({ status }, 202);
+    } catch (e) {
+      console.error("Stripe confirm:", e);
+      return c.json({ error: "vérification impossible" }, 502);
+    }
+  });
+
+  /**
+   * Crée une commande PayPal (montant serveur) à approuver côté navigateur.
+   * Renvoie l'id PayPal. La capture (encaissement) se fait ensuite via
+   * /payments/paypal/capture.
+   */
+  app.post("/payments/paypal/order", async (c) => {
+    if (!paypalConfigured)
+      return c.json({ error: "PayPal non configuré" }, 503);
+    const body = await c.req.json().catch(() => ({}));
+    const order = await loadPayableOrder(Number(body.orderId));
+    if (!order) return c.json({ error: "commande introuvable" }, 404);
+    if (order.status === "paid")
+      return c.json({ error: "commande déjà payée" }, 409);
+    try {
+      const paypalOrderId = await createPaypalOrder(
+        order.totalCents,
+        order.number,
+      );
+      await db.insert(schema.payments).values({
+        orderId: order.id,
+        provider: "paypal",
+        externalRef: paypalOrderId,
+        status: "pending",
+        amountCents: order.totalCents,
+      });
+      return c.json({ paypalOrderId });
+    } catch (e) {
+      console.error("PayPal order:", e);
+      return c.json({ error: "création du paiement impossible" }, 502);
+    }
+  });
+
+  /**
+   * Capture une commande PayPal approuvée. On vérifie que le `paypalOrderId`
+   * appartient bien à cette commande (ligne payment), puis on capture : si
+   * COMPLETED, la commande passe en payée + PDF (markOrderPaid).
+   */
+  app.post("/payments/paypal/capture", async (c) => {
+    if (!paypalConfigured)
+      return c.json({ error: "PayPal non configuré" }, 503);
+    const body = await c.req.json().catch(() => ({}));
+    const orderId = Number(body.orderId);
+    const paypalOrderId = String(body.paypalOrderId ?? "");
+    const [payment] = await db
+      .select()
+      .from(schema.payments)
+      .where(
+        and(
+          eq(schema.payments.orderId, orderId),
+          eq(schema.payments.externalRef, paypalOrderId),
+        ),
+      );
+    if (!payment)
+      return c.json({ error: "paiement introuvable pour cette commande" }, 404);
+    try {
+      const cap = await capturePaypalOrder(paypalOrderId);
+      if (!cap.ok)
+        return c.json({ error: "paiement non complété", status: cap.status }, 402);
+      await markOrderPaid(orderId, "paypal", paypalOrderId);
+      return c.json({ status: "paid" });
+    } catch (e) {
+      console.error("PayPal capture:", e);
+      return c.json({ error: "encaissement impossible" }, 502);
+    }
   });
 
   /** Détail d'une commande + ses lignes (pour la fiche BO et les liens PDF). */

@@ -206,11 +206,46 @@ export const browserApi = {
     browserSend<{ ok: boolean }>("DELETE", `/cart/${cartId}/items/${itemId}`),
 
   createOrder: (cartId: string, customer: { name: string; email: string }) =>
-    browserSend<{ orderId: number; number: string; status: string }>(
-      "POST",
-      "/orders",
-      { cartId, customer },
-    ),
+    browserSend<{
+      orderId: number;
+      number: string;
+      status: string;
+      totalCents: number;
+    }>("POST", "/orders", { cartId, customer }),
+
+  /* --- Paiement (Stripe & PayPal) --------------------------------------- */
+
+  /** Moyens de paiement actifs + clés publiques (source de vérité = API). */
+  paymentsConfig: () =>
+    browserGet<{
+      stripe: { publicKey: string } | null;
+      paypal: { clientId: string } | null;
+    }>("/payments/config"),
+
+  /** Crée un PaymentIntent Stripe pour la commande, renvoie le clientSecret. */
+  stripeIntent: (orderId: number) =>
+    browserSend<{ clientSecret: string }>("POST", "/payments/stripe/intent", {
+      orderId,
+    }),
+
+  /** Confirme côté serveur le paiement Stripe (marque payé si succeeded). */
+  stripeConfirm: (orderId: number) =>
+    browserSend<{ status: string }>("POST", "/payments/stripe/confirm", {
+      orderId,
+    }),
+
+  /** Crée une commande PayPal (montant serveur), renvoie l'id PayPal. */
+  paypalOrder: (orderId: number) =>
+    browserSend<{ paypalOrderId: string }>("POST", "/payments/paypal/order", {
+      orderId,
+    }),
+
+  /** Capture une commande PayPal approuvée (marque payé si COMPLETED). */
+  paypalCapture: (orderId: number, paypalOrderId: string) =>
+    browserSend<{ status: string }>("POST", "/payments/paypal/capture", {
+      orderId,
+      paypalOrderId,
+    }),
 };
 
 /** Clé localStorage du panier (UUID par navigateur). */
