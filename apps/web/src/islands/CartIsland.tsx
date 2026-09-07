@@ -135,8 +135,23 @@ export default function CartIsland(): JSX.Element {
 
   return (
     <div>
+      {/* Attente : un squelette aux dimensions des vraies lignes, pour que
+          la page ne saute pas quand le contenu arrive. */}
       <Show when={cart.loading}>
-        <p class="text-ink-soft">Chargement du panier…</p>
+        <div class="space-y-4" aria-busy="true" aria-label="Chargement du panier">
+          <For each={[0, 1]}>
+            {() => (
+              <div class="flex gap-4 rounded-2xl border border-ink/10 p-4">
+                <div class="ml-skeleton h-28 w-20 shrink-0" />
+                <div class="flex-1 space-y-3 py-1">
+                  <div class="ml-skeleton h-4 w-2/3" />
+                  <div class="ml-skeleton h-4 w-1/4" />
+                  <div class="ml-skeleton h-8 w-32" />
+                </div>
+              </div>
+            )}
+          </For>
+        </div>
       </Show>
 
       <Show when={cart.error}>

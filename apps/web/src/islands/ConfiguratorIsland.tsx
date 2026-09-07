@@ -122,8 +122,21 @@ export default function ConfiguratorIsland(
 
   return (
     <div>
+      {/* Attente : l'ossature du configurateur (affiche + panneau). */}
       <Show when={data.loading}>
-        <p class="text-ink-soft">Chargement du configurateur…</p>
+        <div
+          class="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,320px)]"
+          aria-busy="true"
+          aria-label="Chargement du configurateur"
+        >
+          <div class="ml-skeleton mx-auto aspect-[1/1.4142] w-full max-w-[280px]" />
+          <div class="space-y-3">
+            <div class="ml-skeleton h-7 w-40" />
+            <div class="ml-skeleton h-10 w-full" />
+            <div class="ml-skeleton h-10 w-full" />
+            <div class="ml-skeleton h-24 w-full" />
+          </div>
+        </div>
       </Show>
 
       <Show when={data.error}>

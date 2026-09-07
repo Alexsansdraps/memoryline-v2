@@ -91,7 +91,14 @@ export default function ProductConfigurator(
         disabled={loadingEdit()}
         class="mt-8 inline-block rounded-full bg-terracotta px-8 py-3 text-paper font-medium hover:bg-terracotta-deep transition-colors disabled:opacity-60"
       >
-        {loadingEdit() ? "Chargement…" : "Personnaliser"}
+        {loadingEdit() ? (
+          <>
+            <span class="ml-spinner mr-2" aria-hidden="true" />
+            Un instant…
+          </>
+        ) : (
+          "Personnaliser"
+        )}
       </button>
       <p class="mt-3 text-sm text-ink-soft">
         Choisissez le fond, le texte et vos personnages.

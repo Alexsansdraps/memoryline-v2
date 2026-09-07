@@ -3,6 +3,7 @@ import "../styles/global.css";
 import Seo from "../components/Seo.astro";
 import AnnouncementBanner from "../components/AnnouncementBanner.astro";
 import CookieBanner from "../components/CookieBanner.astro";
+import CartBadge from "../islands/CartBadge.tsx";
 interface Props {
   title?: string;
   description?: string;
@@ -61,8 +62,10 @@ const {
           <a href="/affiches" class="hover:text-terracotta transition-colors"
             >Affiches</a
           >
-          <a href="/panier" class="hover:text-terracotta transition-colors"
-            >Panier</a
+          <a
+            href="/panier"
+            class="ml-panier-lien hover:text-terracotta transition-colors"
+            >Panier<CartBadge client:load /></a
           >
           <a
             href="/affiches"
