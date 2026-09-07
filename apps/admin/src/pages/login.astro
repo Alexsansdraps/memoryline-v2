@@ -1,6 +1,7 @@
 ---
 import "../styles/admin.css";
 import { login } from "../lib/auth.ts";
+import { url } from "../lib/url.ts";
 
 let error: string | null = null;
 if (Astro.request.method === "POST") {
@@ -12,7 +13,7 @@ if (Astro.request.method === "POST") {
     // Redirige en propageant le cookie de session émis par l'API.
     // On construit la réponse explicitement : Astro.redirect ne conserve pas
     // toujours les en-têtes ajoutés à Astro.response.
-    const headers = new Headers({ Location: "/" });
+    const headers = new Headers({ Location: url("/") });
     if (result.setCookie) headers.append("set-cookie", result.setCookie);
     return new Response(null, { status: 302, headers });
   }
