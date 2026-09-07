@@ -82,6 +82,38 @@ app.get("/assets/:file", async (c) => {
   }
 });
 
+/**
+ * Résout le contenu éditorial d'un produit dans la langue demandée.
+ *
+ * Le français (colonnes `name` / `description`) est la référence ET le repli :
+ * une traduction absente, vide ou faite d'espaces retombe dessus. Le client
+ * voit donc toujours un texte, jamais un blanc — c'est ce qui permet de
+ * traduire progressivement, produit par produit.
+ */
+type Traduisible = {
+  name: string;
+  description?: string | null;
+  translations?: Partial<
+    Record<string, { name?: string; description?: string }>
+  > | null;
+};
+
+function traduire<T extends Traduisible>(p: T, langue?: string) {
+  const t = langue && langue !== "fr" ? p.translations?.[langue] : undefined;
+  const utile = (v?: string | null) => (v && v.trim() ? v : undefined);
+  return {
+    ...p,
+    name: utile(t?.name) ?? p.name,
+    description: utile(t?.description) ?? p.description,
+  };
+}
+
+/** Langue demandée par le client (?lang=en). Inconnue ou absente -> français. */
+function langueDemandee(c: { req: { query: (k: string) => string | undefined } }) {
+  const l = (c.req.query("lang") ?? "").toLowerCase();
+  return ["en", "de", "it", "es"].includes(l) ? l : "fr";
+}
+
 app.get("/", (c) => c.json({ name: "memoryline-api", status: "ok" }));
 
 app.get("/health", async (c) => {
@@ -114,16 +146,23 @@ app.get("/stats", async (c) => {
 /** Catalogue : liste de produits (avec leurs variantes A4/A3). */
 app.get("/products", async (c) => {
   const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
-  const products = await db
+  const langue = langueDemandee(c);
+  const rows = await db
     .select({
       id: schema.products.id,
       slug: schema.products.slug,
       name: schema.products.name,
       kind: schema.products.kind,
       basePriceCents: schema.products.basePriceCents,
+      translations: schema.products.translations,
     })
     .from(schema.products)
     .limit(limit);
+  // Nom traduit, sans exposer le dictionnaire complet au site public.
+  const products = rows.map(({ translations, ...p }) => ({
+    ...p,
+    name: traduire({ ...p, translations }, langue).name,
+  }));
   const ids = products.map((p) => p.id);
   const variants = ids.length
     ? await db
@@ -173,8 +212,9 @@ app.get("/products/:slug", async (c) => {
     .select()
     .from(schema.products)
     .where(eq(schema.products.slug, slug));
-  const product = rows[0];
-  if (!product) return c.notFound();
+  const brut = rows[0];
+  if (!brut) return c.notFound();
+  const product = traduire(brut, langueDemandee(c));
 
   const [variants, images] = await Promise.all([
     db
@@ -457,6 +497,69 @@ app.post("/admin/uploads", async (c) => {
 
   await writeFile(resolve(ASSETS_DIR, nom), Buffer.from(await file.arrayBuffer()));
   return c.json({ url: `/assets/${nom}`, name: nom, size: file.size });
+});
+
+/**
+ * Traductions d'un produit, telles que saisies (sans repli) : le back-office
+ * doit distinguer « traduit à l'identique » de « pas encore traduit ».
+ */
+app.get("/admin/products/:id/translations", async (c) => {
+  const id = Number(c.req.param("id"));
+  const [p] = await db
+    .select({
+      id: schema.products.id,
+      name: schema.products.name,
+      description: schema.products.description,
+      translations: schema.products.translations,
+    })
+    .from(schema.products)
+    .where(eq(schema.products.id, id));
+  if (!p) return c.notFound();
+  return c.json({
+    id: p.id,
+    // Le français de référence, pour l'afficher en regard des champs.
+    fr: { name: p.name, description: p.description },
+    translations: p.translations ?? {},
+  });
+});
+
+/**
+ * Enregistre les traductions d'UNE langue. Un champ vidé est retiré du
+ * dictionnaire plutôt que stocké vide : « vide » et « absent » doivent
+ * signifier la même chose — le français s'affiche.
+ */
+app.post("/admin/products/:id/translations", async (c) => {
+  const id = Number(c.req.param("id"));
+  const b = await c.req.json();
+  const langue = String(b.lang ?? "");
+  if (!["en", "de", "it", "es"].includes(langue)) {
+    return c.json({ error: "langue inconnue" }, 400);
+  }
+  const [p] = await db
+    .select({ translations: schema.products.translations })
+    .from(schema.products)
+    .where(eq(schema.products.id, id));
+  if (!p) return c.notFound();
+
+  const propre = (v: unknown) => {
+    const s = typeof v === "string" ? v.trim() : "";
+    return s || undefined;
+  };
+  const entree = {
+    ...(propre(b.name) ? { name: propre(b.name) } : {}),
+    ...(propre(b.description) ? { description: propre(b.description) } : {}),
+  };
+
+  const dico = { ...(p.translations ?? {}) };
+  if (Object.keys(entree).length) dico[langue] = entree;
+  else delete dico[langue];
+
+  const [row] = await db
+    .update(schema.products)
+    .set({ translations: dico, updatedAt: new Date() })
+    .where(eq(schema.products.id, id))
+    .returning({ translations: schema.products.translations });
+  return c.json({ ok: true, translations: row?.translations ?? {} });
 });
 
 app.get("/admin/promos", async (c) => {

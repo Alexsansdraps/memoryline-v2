@@ -74,6 +74,17 @@ export const products = pgTable(
      * URL servie /assets/<fichier>. Éditable dans le back-office.
      */
     foregroundUrl: text("foreground_url"),
+    /**
+     * Traductions HUMAINES du contenu éditorial, par code langue :
+     *   { en: { name, description }, de: { … }, … }
+     *
+     * Le français vit dans les colonnes `name` / `description` ci-dessus et
+     * sert de repli : un champ vide ou absent affiche le français, jamais une
+     * chaîne vide. Pas de traduction automatique — la cliente les rédige.
+     */
+    translations: jsonb("translations").$type<
+      Partial<Record<string, { name?: string; description?: string }>>
+    >(),
     legacyId: bigint("legacy_id", { mode: "number" }), // Shopify Product ID
     legacySlug: text("legacy_slug"), // slug d'origine -> 301 (§13)
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

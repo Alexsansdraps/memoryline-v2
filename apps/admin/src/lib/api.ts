@@ -239,6 +239,24 @@ export function adminApi(request?: Request) {
       req<Asset>("POST", `/admin/assets/${id}/colors`, { colorZones }, cookie),
     productConfig: (id: number | string) =>
       req<ProductConfig>("GET", `/admin/products/${id}/config`, undefined, cookie),
+    /** Traductions saisies (sans repli) + le français de référence. */
+    productTranslations: (id: number | string) =>
+      req<{
+        id: number;
+        fr: { name: string; description: string | null };
+        translations: Record<string, { name?: string; description?: string }>;
+      }>("GET", `/admin/products/${id}/translations`, undefined, cookie),
+    /** Enregistre UNE langue ; un champ vide retire la traduction. */
+    setProductTranslation: (
+      id: number | string,
+      data: { lang: string; name?: string; description?: string },
+    ) =>
+      req<{ ok: boolean; translations: Record<string, unknown> }>(
+        "POST",
+        `/admin/products/${id}/translations`,
+        data,
+        cookie,
+      ),
     setProductConfig: (
       id: number | string,
       data: {

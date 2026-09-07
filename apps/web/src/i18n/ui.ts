@@ -1,0 +1,514 @@
+/**
+ * Textes de l'interface du site public, par langue.
+ *
+ * Le français est la langue de référence : c'est elle qui sert de repli quand
+ * une clé manque ailleurs (voir `t()` dans ./utils.ts), pour qu'un oubli se
+ * traduise par du français à l'écran plutôt que par une clé brute.
+ *
+ * Ne contient QUE les libellés de l'interface. Les contenus éditoriaux — nom et
+ * description des affiches, textes de la page d'accueil réglés depuis le
+ * back-office — vivent en base et ne sont pas traduits ici.
+ */
+
+export const LANGUES = ["fr", "en", "de", "it", "es"] as const;
+export type Langue = (typeof LANGUES)[number];
+
+export const LANGUE_DEFAUT: Langue = "fr";
+
+/** Libellé de chaque langue dans sa propre langue (pour le sélecteur). */
+export const NOM_LANGUE: Record<Langue, string> = {
+  fr: "Français",
+  en: "English",
+  de: "Deutsch",
+  it: "Italiano",
+  es: "Español",
+};
+
+/** Code complet pour l'attribut lang et les balises hreflang. */
+export const LOCALE_COMPLETE: Record<Langue, string> = {
+  fr: "fr-FR",
+  en: "en-GB",
+  de: "de-DE",
+  it: "it-IT",
+  es: "es-ES",
+};
+
+export const ui = {
+  fr: {
+    "nav.accueil": "Memory Line — accueil",
+    "nav.affiches": "Affiches",
+    "nav.panier": "Panier",
+    "nav.creer": "Créer mon affiche",
+    "nav.langue": "Langue",
+
+    "pied.droits": "Memory Line — Affiches personnalisées",
+    "pied.baseline": "Votre affiche prête en 2 minutes.",
+
+    "meta.titre": "Memory Line — Affiches personnalisées de villes & paysages",
+    "meta.description":
+      "Affiches personnalisées de villes, paysages et thèmes. Composez la vôtre en quelques minutes, imprimée en A4 ou A3.",
+
+    "accueil.surtitre": "Affiches personnalisées",
+    "accueil.titre": "Votre ville, votre histoire, sur un mur.",
+    "accueil.soustitre":
+      "Choisissez un fond, personnalisez le titre, ajoutez vos personnages. Votre affiche prête en 2 minutes — imprimée en A4 ou A3.",
+    "accueil.cta": "Découvrir les affiches",
+    "accueil.stat.affiches": "Affiches",
+    "accueil.stat.collections": "Collections",
+    "accueil.api_absente":
+      "(API non joignable — lancez le backend, cf. PUBLIC_API_URL / .env.)",
+
+    "catalogue.titre": "Toutes les affiches",
+    "catalogue.compte": "affiches · villes, paysages & thèmes",
+    "catalogue.erreur": "Impossible de charger le catalogue",
+    "catalogue.vide": "Aucune affiche pour le moment.",
+
+    "genre.personnalisable": "Personnalisable",
+    "genre.prete_a_imprimer": "Prête à imprimer",
+
+    "produit.format": "Format",
+    "produit.personnaliser": "Personnaliser",
+    "produit.aide": "Choisissez le fond, le texte et vos personnages.",
+    "produit.ajouter": "Ajouter au panier",
+    "produit.retour": "Retour aux affiches",
+
+    "panier.titre": "Votre panier",
+    "panier.vide": "Votre panier est vide.",
+    "panier.continuer": "Continuer mes achats",
+    "panier.commander": "Commander",
+    "panier.total": "Total",
+    "panier.quantite": "Quantité",
+    "panier.modifier": "Modifier",
+    "panier.supprimer": "Supprimer",
+    "panier.chargement": "Chargement du panier…",
+    "panier.erreur": "Impossible de charger le panier",
+
+    "commande.titre": "Votre commande",
+    "commande.nom": "Nom",
+    "commande.email": "E-mail",
+    "commande.payer": "Payer",
+    "commande.paiement_indisponible":
+      "Le paiement en ligne n'est pas encore activé.",
+
+    "cookies.texte":
+      "Nous utilisons des cookies pour mesurer l'audience et améliorer votre expérience. Vous pouvez accepter ou refuser.",
+    "cookies.politique": "Voir notre politique de cookies",
+    "cookies.accepter": "Accepter",
+    "cookies.refuser": "Refuser",
+
+    "cfg.titre": "Composez votre affiche",
+    "cfg.fermer": "Fermer",
+    "cfg.etape.fond": "Fond & texte",
+    "cfg.etape.personnages": "Personnages",
+    "cfg.etape.format": "Format",
+    "cfg.titre_champ": "Titre (symboles et chiffres autorisés)",
+    "cfg.soustitre_champ": "Sous-titre (symboles et chiffres autorisés)",
+    "cfg.couleur_texte": "Couleur du texte (titre & sous-titre)",
+    "cfg.fond": "Fond",
+    "cfg.personnages": "Personnages",
+    "cfg.nouveau_perso": "+ Nouveau personnage",
+    "cfg.modifier": "Modifier",
+    "cfg.retirer": "Retirer",
+    "cfg.monter": "Monter",
+    "cfg.descendre": "Descendre",
+    "cfg.retour": "Retour",
+    "cfg.continuer": "Continuer",
+    "cfg.valider_affiche": "Valider l'affiche",
+    "cfg.valider_perso": "Valider mon personnage",
+    "cfg.personnalisation": "PERSONNALISATION",
+    "cfg.previsualisation": "PRÉVISUALISATION",
+    "cfg.choix_perso": "Choix du personnage",
+    "cfg.choix_couleur": "CHOIX DE LA COULEUR",
+    "cfg.vetements": "Vêtements",
+    "cfg.pantalon": "Pantalon",
+    "cfg.coupes": "Coupes de cheveux",
+    "cfg.accessoires": "Accessoires",
+    "cfg.aucun": "Aucun",
+    "cfg.chargement": "Chargement du configurateur…",
+    "cfg.erreur":
+      "Le configurateur n'a pas pu démarrer. Vérifiez que l'API est démarrée",
+  },
+
+  en: {
+    "nav.accueil": "Memory Line — home",
+    "nav.affiches": "Posters",
+    "nav.panier": "Basket",
+    "nav.creer": "Create my poster",
+    "nav.langue": "Language",
+
+    "pied.droits": "Memory Line — Personalised posters",
+    "pied.baseline": "Your poster ready in 2 minutes.",
+
+    "meta.titre": "Memory Line — Personalised city & landscape posters",
+    "meta.description":
+      "Personalised posters of cities, landscapes and themes. Design yours in minutes, printed in A4 or A3.",
+
+    "accueil.surtitre": "Personalised posters",
+    "accueil.titre": "Your city, your story, on a wall.",
+    "accueil.soustitre":
+      "Pick a background, personalise the title, add your characters. Your poster ready in 2 minutes — printed in A4 or A3.",
+    "accueil.cta": "Browse the posters",
+    "accueil.stat.affiches": "Posters",
+    "accueil.stat.collections": "Collections",
+    "accueil.api_absente":
+      "(API unreachable — start the backend, see PUBLIC_API_URL / .env.)",
+
+    "catalogue.titre": "All posters",
+    "catalogue.compte": "posters · cities, landscapes & themes",
+    "catalogue.erreur": "Could not load the catalogue",
+    "catalogue.vide": "No posters yet.",
+
+    "genre.personnalisable": "Customisable",
+    "genre.prete_a_imprimer": "Ready to print",
+
+    "produit.format": "Size",
+    "produit.personnaliser": "Personalise",
+    "produit.aide": "Choose the background, the text and your characters.",
+    "produit.ajouter": "Add to basket",
+    "produit.retour": "Back to posters",
+
+    "panier.titre": "Your basket",
+    "panier.vide": "Your basket is empty.",
+    "panier.continuer": "Continue shopping",
+    "panier.commander": "Checkout",
+    "panier.total": "Total",
+    "panier.quantite": "Quantity",
+    "panier.modifier": "Edit",
+    "panier.supprimer": "Remove",
+    "panier.chargement": "Loading basket…",
+    "panier.erreur": "Could not load the basket",
+
+    "commande.titre": "Your order",
+    "commande.nom": "Name",
+    "commande.email": "Email",
+    "commande.payer": "Pay",
+    "commande.paiement_indisponible":
+      "Online payment is not enabled yet.",
+
+    "cookies.texte":
+      "We use cookies to measure traffic and improve your experience. You can accept or decline.",
+    "cookies.politique": "See our cookie policy",
+    "cookies.accepter": "Accept",
+    "cookies.refuser": "Decline",
+
+    "cfg.titre": "Design your poster",
+    "cfg.fermer": "Close",
+    "cfg.etape.fond": "Background & text",
+    "cfg.etape.personnages": "Characters",
+    "cfg.etape.format": "Size",
+    "cfg.titre_champ": "Title (symbols and numbers allowed)",
+    "cfg.soustitre_champ": "Subtitle (symbols and numbers allowed)",
+    "cfg.couleur_texte": "Text colour (title & subtitle)",
+    "cfg.fond": "Background",
+    "cfg.personnages": "Characters",
+    "cfg.nouveau_perso": "+ New character",
+    "cfg.modifier": "Edit",
+    "cfg.retirer": "Remove",
+    "cfg.monter": "Move up",
+    "cfg.descendre": "Move down",
+    "cfg.retour": "Back",
+    "cfg.continuer": "Continue",
+    "cfg.valider_affiche": "Confirm poster",
+    "cfg.valider_perso": "Confirm character",
+    "cfg.personnalisation": "PERSONALISATION",
+    "cfg.previsualisation": "PREVIEW",
+    "cfg.choix_perso": "Choose a character",
+    "cfg.choix_couleur": "COLOUR",
+    "cfg.vetements": "Top",
+    "cfg.pantalon": "Bottoms",
+    "cfg.coupes": "Hairstyles",
+    "cfg.accessoires": "Accessories",
+    "cfg.aucun": "None",
+    "cfg.chargement": "Loading the designer…",
+    "cfg.erreur":
+      "The designer could not start. Check that the API is running",
+  },
+
+  de: {
+    "nav.accueil": "Memory Line — Startseite",
+    "nav.affiches": "Poster",
+    "nav.panier": "Warenkorb",
+    "nav.creer": "Mein Poster gestalten",
+    "nav.langue": "Sprache",
+
+    "pied.droits": "Memory Line — Personalisierte Poster",
+    "pied.baseline": "Ihr Poster in 2 Minuten fertig.",
+
+    "meta.titre": "Memory Line — Personalisierte Städte- & Landschaftsposter",
+    "meta.description":
+      "Personalisierte Poster von Städten, Landschaften und Themen. In wenigen Minuten gestaltet, gedruckt in A4 oder A3.",
+
+    "accueil.surtitre": "Personalisierte Poster",
+    "accueil.titre": "Ihre Stadt, Ihre Geschichte, an Ihrer Wand.",
+    "accueil.soustitre":
+      "Hintergrund wählen, Titel personalisieren, Figuren hinzufügen. Ihr Poster in 2 Minuten fertig — gedruckt in A4 oder A3.",
+    "accueil.cta": "Poster entdecken",
+    "accueil.stat.affiches": "Poster",
+    "accueil.stat.collections": "Kollektionen",
+    "accueil.api_absente":
+      "(API nicht erreichbar — Backend starten, siehe PUBLIC_API_URL / .env.)",
+
+    "catalogue.titre": "Alle Poster",
+    "catalogue.compte": "Poster · Städte, Landschaften & Themen",
+    "catalogue.erreur": "Katalog konnte nicht geladen werden",
+    "catalogue.vide": "Noch keine Poster.",
+
+    "genre.personnalisable": "Personalisierbar",
+    "genre.prete_a_imprimer": "Druckfertig",
+
+    "produit.format": "Format",
+    "produit.personnaliser": "Personalisieren",
+    "produit.aide": "Wählen Sie Hintergrund, Text und Ihre Figuren.",
+    "produit.ajouter": "In den Warenkorb",
+    "produit.retour": "Zurück zu den Postern",
+
+    "panier.titre": "Ihr Warenkorb",
+    "panier.vide": "Ihr Warenkorb ist leer.",
+    "panier.continuer": "Weiter einkaufen",
+    "panier.commander": "Zur Kasse",
+    "panier.total": "Gesamt",
+    "panier.quantite": "Menge",
+    "panier.modifier": "Bearbeiten",
+    "panier.supprimer": "Entfernen",
+    "panier.chargement": "Warenkorb wird geladen…",
+    "panier.erreur": "Warenkorb konnte nicht geladen werden",
+
+    "commande.titre": "Ihre Bestellung",
+    "commande.nom": "Name",
+    "commande.email": "E-Mail",
+    "commande.payer": "Bezahlen",
+    "commande.paiement_indisponible":
+      "Die Online-Zahlung ist noch nicht aktiviert.",
+
+    "cookies.texte":
+      "Wir verwenden Cookies, um die Reichweite zu messen und Ihr Erlebnis zu verbessern. Sie können zustimmen oder ablehnen.",
+    "cookies.politique": "Unsere Cookie-Richtlinie ansehen",
+    "cookies.accepter": "Zustimmen",
+    "cookies.refuser": "Ablehnen",
+
+    "cfg.titre": "Gestalten Sie Ihr Poster",
+    "cfg.fermer": "Schließen",
+    "cfg.etape.fond": "Hintergrund & Text",
+    "cfg.etape.personnages": "Figuren",
+    "cfg.etape.format": "Format",
+    "cfg.titre_champ": "Titel (Symbole und Zahlen erlaubt)",
+    "cfg.soustitre_champ": "Untertitel (Symbole und Zahlen erlaubt)",
+    "cfg.couleur_texte": "Textfarbe (Titel & Untertitel)",
+    "cfg.fond": "Hintergrund",
+    "cfg.personnages": "Figuren",
+    "cfg.nouveau_perso": "+ Neue Figur",
+    "cfg.modifier": "Bearbeiten",
+    "cfg.retirer": "Entfernen",
+    "cfg.monter": "Nach oben",
+    "cfg.descendre": "Nach unten",
+    "cfg.retour": "Zurück",
+    "cfg.continuer": "Weiter",
+    "cfg.valider_affiche": "Poster bestätigen",
+    "cfg.valider_perso": "Figur bestätigen",
+    "cfg.personnalisation": "PERSONALISIERUNG",
+    "cfg.previsualisation": "VORSCHAU",
+    "cfg.choix_perso": "Figur wählen",
+    "cfg.choix_couleur": "FARBE",
+    "cfg.vetements": "Oberteil",
+    "cfg.pantalon": "Hose",
+    "cfg.coupes": "Frisuren",
+    "cfg.accessoires": "Accessoires",
+    "cfg.aucun": "Keine",
+    "cfg.chargement": "Konfigurator wird geladen…",
+    "cfg.erreur":
+      "Der Konfigurator konnte nicht starten. Prüfen Sie, ob die API läuft",
+  },
+
+  it: {
+    "nav.accueil": "Memory Line — home",
+    "nav.affiches": "Poster",
+    "nav.panier": "Carrello",
+    "nav.creer": "Crea il mio poster",
+    "nav.langue": "Lingua",
+
+    "pied.droits": "Memory Line — Poster personalizzati",
+    "pied.baseline": "Il tuo poster pronto in 2 minuti.",
+
+    "meta.titre": "Memory Line — Poster personalizzati di città e paesaggi",
+    "meta.description":
+      "Poster personalizzati di città, paesaggi e temi. Crea il tuo in pochi minuti, stampato in A4 o A3.",
+
+    "accueil.surtitre": "Poster personalizzati",
+    "accueil.titre": "La tua città, la tua storia, su un muro.",
+    "accueil.soustitre":
+      "Scegli uno sfondo, personalizza il titolo, aggiungi i tuoi personaggi. Il tuo poster pronto in 2 minuti — stampato in A4 o A3.",
+    "accueil.cta": "Scopri i poster",
+    "accueil.stat.affiches": "Poster",
+    "accueil.stat.collections": "Collezioni",
+    "accueil.api_absente":
+      "(API non raggiungibile — avvia il backend, vedi PUBLIC_API_URL / .env.)",
+
+    "catalogue.titre": "Tutti i poster",
+    "catalogue.compte": "poster · città, paesaggi e temi",
+    "catalogue.erreur": "Impossibile caricare il catalogo",
+    "catalogue.vide": "Ancora nessun poster.",
+
+    "genre.personnalisable": "Personalizzabile",
+    "genre.prete_a_imprimer": "Pronto da stampare",
+
+    "produit.format": "Formato",
+    "produit.personnaliser": "Personalizza",
+    "produit.aide": "Scegli lo sfondo, il testo e i tuoi personaggi.",
+    "produit.ajouter": "Aggiungi al carrello",
+    "produit.retour": "Torna ai poster",
+
+    "panier.titre": "Il tuo carrello",
+    "panier.vide": "Il tuo carrello è vuoto.",
+    "panier.continuer": "Continua lo shopping",
+    "panier.commander": "Ordina",
+    "panier.total": "Totale",
+    "panier.quantite": "Quantità",
+    "panier.modifier": "Modifica",
+    "panier.supprimer": "Rimuovi",
+    "panier.chargement": "Caricamento del carrello…",
+    "panier.erreur": "Impossibile caricare il carrello",
+
+    "commande.titre": "Il tuo ordine",
+    "commande.nom": "Nome",
+    "commande.email": "E-mail",
+    "commande.payer": "Paga",
+    "commande.paiement_indisponible":
+      "Il pagamento online non è ancora attivo.",
+
+    "cookies.texte":
+      "Utilizziamo i cookie per misurare il traffico e migliorare la tua esperienza. Puoi accettare o rifiutare.",
+    "cookies.politique": "Consulta la nostra politica sui cookie",
+    "cookies.accepter": "Accetta",
+    "cookies.refuser": "Rifiuta",
+
+    "cfg.titre": "Componi il tuo poster",
+    "cfg.fermer": "Chiudi",
+    "cfg.etape.fond": "Sfondo e testo",
+    "cfg.etape.personnages": "Personaggi",
+    "cfg.etape.format": "Formato",
+    "cfg.titre_champ": "Titolo (simboli e numeri ammessi)",
+    "cfg.soustitre_champ": "Sottotitolo (simboli e numeri ammessi)",
+    "cfg.couleur_texte": "Colore del testo (titolo e sottotitolo)",
+    "cfg.fond": "Sfondo",
+    "cfg.personnages": "Personaggi",
+    "cfg.nouveau_perso": "+ Nuovo personaggio",
+    "cfg.modifier": "Modifica",
+    "cfg.retirer": "Rimuovi",
+    "cfg.monter": "Sposta su",
+    "cfg.descendre": "Sposta giù",
+    "cfg.retour": "Indietro",
+    "cfg.continuer": "Continua",
+    "cfg.valider_affiche": "Conferma il poster",
+    "cfg.valider_perso": "Conferma il personaggio",
+    "cfg.personnalisation": "PERSONALIZZAZIONE",
+    "cfg.previsualisation": "ANTEPRIMA",
+    "cfg.choix_perso": "Scegli un personaggio",
+    "cfg.choix_couleur": "COLORE",
+    "cfg.vetements": "Maglia",
+    "cfg.pantalon": "Pantaloni",
+    "cfg.coupes": "Acconciature",
+    "cfg.accessoires": "Accessori",
+    "cfg.aucun": "Nessuno",
+    "cfg.chargement": "Caricamento del configuratore…",
+    "cfg.erreur":
+      "Il configuratore non è riuscito ad avviarsi. Verifica che l'API sia attiva",
+  },
+
+  es: {
+    "nav.accueil": "Memory Line — inicio",
+    "nav.affiches": "Láminas",
+    "nav.panier": "Cesta",
+    "nav.creer": "Crear mi lámina",
+    "nav.langue": "Idioma",
+
+    "pied.droits": "Memory Line — Láminas personalizadas",
+    "pied.baseline": "Tu lámina lista en 2 minutos.",
+
+    "meta.titre": "Memory Line — Láminas personalizadas de ciudades y paisajes",
+    "meta.description":
+      "Láminas personalizadas de ciudades, paisajes y temas. Diseña la tuya en unos minutos, impresa en A4 o A3.",
+
+    "accueil.surtitre": "Láminas personalizadas",
+    "accueil.titre": "Tu ciudad, tu historia, en la pared.",
+    "accueil.soustitre":
+      "Elige un fondo, personaliza el título, añade tus personajes. Tu lámina lista en 2 minutos — impresa en A4 o A3.",
+    "accueil.cta": "Descubrir las láminas",
+    "accueil.stat.affiches": "Láminas",
+    "accueil.stat.collections": "Colecciones",
+    "accueil.api_absente":
+      "(API no disponible — inicia el backend, ver PUBLIC_API_URL / .env.)",
+
+    "catalogue.titre": "Todas las láminas",
+    "catalogue.compte": "láminas · ciudades, paisajes y temas",
+    "catalogue.erreur": "No se ha podido cargar el catálogo",
+    "catalogue.vide": "Todavía no hay láminas.",
+
+    "genre.personnalisable": "Personalizable",
+    "genre.prete_a_imprimer": "Lista para imprimir",
+
+    "produit.format": "Formato",
+    "produit.personnaliser": "Personalizar",
+    "produit.aide": "Elige el fondo, el texto y tus personajes.",
+    "produit.ajouter": "Añadir a la cesta",
+    "produit.retour": "Volver a las láminas",
+
+    "panier.titre": "Tu cesta",
+    "panier.vide": "Tu cesta está vacía.",
+    "panier.continuer": "Seguir comprando",
+    "panier.commander": "Tramitar pedido",
+    "panier.total": "Total",
+    "panier.quantite": "Cantidad",
+    "panier.modifier": "Editar",
+    "panier.supprimer": "Eliminar",
+    "panier.chargement": "Cargando la cesta…",
+    "panier.erreur": "No se ha podido cargar la cesta",
+
+    "commande.titre": "Tu pedido",
+    "commande.nom": "Nombre",
+    "commande.email": "Correo electrónico",
+    "commande.payer": "Pagar",
+    "commande.paiement_indisponible":
+      "El pago en línea aún no está activado.",
+
+    "cookies.texte":
+      "Utilizamos cookies para medir la audiencia y mejorar tu experiencia. Puedes aceptar o rechazar.",
+    "cookies.politique": "Ver nuestra política de cookies",
+    "cookies.accepter": "Aceptar",
+    "cookies.refuser": "Rechazar",
+
+    "cfg.titre": "Compón tu lámina",
+    "cfg.fermer": "Cerrar",
+    "cfg.etape.fond": "Fondo y texto",
+    "cfg.etape.personnages": "Personajes",
+    "cfg.etape.format": "Formato",
+    "cfg.titre_champ": "Título (se permiten símbolos y números)",
+    "cfg.soustitre_champ": "Subtítulo (se permiten símbolos y números)",
+    "cfg.couleur_texte": "Color del texto (título y subtítulo)",
+    "cfg.fond": "Fondo",
+    "cfg.personnages": "Personajes",
+    "cfg.nouveau_perso": "+ Nuevo personaje",
+    "cfg.modifier": "Editar",
+    "cfg.retirer": "Quitar",
+    "cfg.monter": "Subir",
+    "cfg.descendre": "Bajar",
+    "cfg.retour": "Volver",
+    "cfg.continuer": "Continuar",
+    "cfg.valider_affiche": "Confirmar la lámina",
+    "cfg.valider_perso": "Confirmar el personaje",
+    "cfg.personnalisation": "PERSONALIZACIÓN",
+    "cfg.previsualisation": "VISTA PREVIA",
+    "cfg.choix_perso": "Elige un personaje",
+    "cfg.choix_couleur": "COLOR",
+    "cfg.vetements": "Camiseta",
+    "cfg.pantalon": "Pantalón",
+    "cfg.coupes": "Peinados",
+    "cfg.accessoires": "Accesorios",
+    "cfg.aucun": "Ninguno",
+    "cfg.chargement": "Cargando el configurador…",
+    "cfg.erreur":
+      "El configurador no ha podido arrancar. Comprueba que la API esté activa",
+  },
+} as const;
+
+/** Clés disponibles — dérivées du français, langue de référence. */
+export type CleUi = keyof (typeof ui)["fr"];

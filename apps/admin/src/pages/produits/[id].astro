@@ -22,10 +22,27 @@ function imgSrc(url: string | null | undefined): string {
 // Le bouton « Appliquer » (titre / sous-titre / position / décor) passe par un
 // POST classique, même pattern robuste que promotions / personnages. Les
 // actions par visuel (ajout / suppression) se font côté client.
+const LANGUES_TRADUISIBLES = [
+  { code: "en", nom: "Anglais" },
+  { code: "de", nom: "Allemand" },
+  { code: "it", nom: "Italien" },
+  { code: "es", nom: "Espagnol" },
+] as const;
+
 let flash: string | null = null;
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   try {
+    if (form.get("_action") === "traduction") {
+      const lang = String(form.get("lang") || "");
+      await api.setProductTranslation(id!, {
+        lang,
+        name: String(form.get("name") ?? ""),
+        description: String(form.get("description") ?? ""),
+      });
+      const nom = LANGUES_TRADUISIBLES.find((l) => l.code === lang)?.nom ?? lang;
+      flash = `Traduction « ${nom} » enregistrée.`;
+    } else {
     await api.setProductConfig(id!, {
       defaultTitle: (form.get("defaultTitle") as string) ?? "",
       defaultSubtitle: (form.get("defaultSubtitle") as string) ?? "",
@@ -38,9 +55,28 @@ if (Astro.request.method === "POST") {
       foregroundUrl: (form.get("foregroundUrl") as string)?.trim() || null,
     });
     flash = "Configuration enregistrée.";
+    }
   } catch (e) {
     flash = "Erreur : " + String(e);
   }
+}
+
+// Traductions saisies + français de référence (affiché en regard des champs).
+let trad: Awaited<ReturnType<typeof api.productTranslations>> | null = null;
+try {
+  trad = await api.productTranslations(id!);
+} catch {
+  // Section masquée si l'API ne répond pas : le reste de la page fonctionne.
+}
+
+/** « à traduire » / « partiel » / « traduit » — l'état visible d'un coup d'œil. */
+function etatLangue(code: string) {
+  const t = trad?.translations?.[code];
+  const nom = !!t?.name?.trim();
+  const desc = !!t?.description?.trim();
+  if (nom && desc) return { texte: "traduit", classe: "bg-green-100 text-green-800" };
+  if (nom || desc) return { texte: "partiel", classe: "bg-amber-100 text-amber-800" };
+  return { texte: "à traduire", classe: "bg-bo-bg text-bo-muted" };
 }
 
 let config: ProductConfig | null = null;
@@ -167,6 +203,76 @@ const backgrounds = config?.backgrounds ?? [];
           <span id="add-bg-status" class="text-xs"></span>
         </div>
       </section>
+
+      {/* =============================================================== */}
+      {/* 2 bis — Traductions humaines                                    */}
+      {/* =============================================================== */}
+      {trad && (
+        <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg p-5">
+          <h3 class="font-semibold mb-1">Traductions</h3>
+          <p class="mb-4 text-sm text-bo-muted">
+            Laissez un champ vide et c'est le français qui s'affichera. Vous
+            pouvez donc ne traduire que le nom, ou traduire plus tard.
+          </p>
+
+          <div class="space-y-3">
+            {LANGUES_TRADUISIBLES.map((l) => {
+              const t = trad!.translations?.[l.code] ?? {};
+              const etat = etatLangue(l.code);
+              return (
+                <details class="rounded border border-bo-border">
+                  <summary class="cursor-pointer select-none px-4 py-2.5 text-sm font-medium flex items-center gap-2">
+                    <span>{l.nom}</span>
+                    <span class={`rounded-full px-2 py-0.5 text-xs font-normal ${etat.classe}`}>
+                      {etat.texte}
+                    </span>
+                  </summary>
+
+                  <form method="POST" class="border-t border-bo-border p-4 space-y-3">
+                    <input type="hidden" name="_action" value="traduction" />
+                    <input type="hidden" name="lang" value={l.code} />
+
+                    <label class="block">
+                      <span class="text-xs text-bo-muted">Nom</span>
+                      <input
+                        name="name"
+                        value={t.name ?? ""}
+                        placeholder={trad!.fr.name}
+                        class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
+                      />
+                      <span class="mt-1 block text-xs text-bo-muted">
+                        Français : {trad!.fr.name}
+                      </span>
+                    </label>
+
+                    <label class="block">
+                      <span class="text-xs text-bo-muted">Description</span>
+                      <textarea
+                        name="description"
+                        rows="5"
+                        placeholder={trad!.fr.description ?? ""}
+                        class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm font-mono"
+                      >{t.description ?? ""}</textarea>
+                      <details class="mt-1">
+                        <summary class="cursor-pointer text-xs text-bo-muted">
+                          Voir la description française
+                        </summary>
+                        <div class="mt-1 max-h-40 overflow-y-auto rounded bg-bo-bg p-2 text-xs text-bo-muted whitespace-pre-wrap">
+                          {trad!.fr.description ?? "—"}
+                        </div>
+                      </details>
+                    </label>
+
+                    <button class="rounded bg-bo-accent text-white px-4 py-2 text-sm hover:opacity-90">
+                      Enregistrer {l.nom.toLowerCase()}
+                    </button>
+                  </form>
+                </details>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* =============================================================== */}
       {/* 3 à 6 — Défauts (form SSR « Appliquer »)                        */}

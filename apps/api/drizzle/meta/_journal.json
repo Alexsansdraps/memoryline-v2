@@ -78,6 +78,13 @@
       "when": 1788798483358,
       "tag": "0010_tough_klaw",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788816405013,
+      "tag": "0011_bent_warlock",
+      "breakpoints": true
     }
   ]
 }
