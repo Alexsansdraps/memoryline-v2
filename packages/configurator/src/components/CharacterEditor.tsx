@@ -523,18 +523,6 @@ export function CharacterEditor(props: {
       >
         {/* Colonne gauche : prévisualisation du perso composé */}
         <div class="ml-cfg-perso-col" style={{ position: "sticky", top: "48px" }}>
-          <span
-            style={{
-              display: "block",
-              "font-size": "11px",
-              "font-weight": "700",
-              color: "#6b7280",
-              "letter-spacing": ".04em",
-              "margin-bottom": "6px",
-            }}
-          >
-            PRÉVISUALISATION
-          </span>
           <div
             class="ml-cfg-perso-apercu"
             style={{

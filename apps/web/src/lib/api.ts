@@ -4,6 +4,7 @@ import type {
   CharacterTypeDTO,
   PosterConfig,
 } from "@memoryline/types";
+import type { CharacterDTO, SlotsDTO } from "@memoryline/configurator";
 
 /**
  * URL de base de l'API.
@@ -162,10 +163,16 @@ async function browserSend<T>(
   return res.json() as Promise<T>;
 }
 
-/** Bibliothèque configurateur : personnages + variantes de slots (front/back). */
+/**
+ * Bibliothèque configurateur : personnages + variantes de slots (front/back).
+ *
+ * Typée avec les DTO du paquet configurateur : le panier réutilise le même
+ * aperçu que le configurateur, il lui faut donc exactement la même forme de
+ * données — `unknown[]` ne s'y prêtait pas.
+ */
 export interface CharacterLibrary {
-  characters: unknown[];
-  slots: { front: Record<string, unknown[]>; back: Record<string, unknown[]> };
+  characters: CharacterDTO[];
+  slots: SlotsDTO;
 }
 
 /** Client API navigateur (configurateur, panier, commande). */

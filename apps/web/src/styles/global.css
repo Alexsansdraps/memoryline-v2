@@ -318,6 +318,15 @@ body {
   width: 100% !important;
 }
 
+/* La vignette du panier réutilise l'aperçu du configurateur : on annule le
+   plafond de hauteur prévu pour la modale, sinon l'affiche occupait la moitié
+   de l'écran et recouvrait le détail de la ligne. */
+.ml-panier-vignette .ml-cfg-poster {
+  width: 100% !important;
+  height: auto !important;
+  margin-inline: 0;
+}
+
 /* Rangée de polices proposées : défile horizontalement au doigt. */
 .ml-cfg-polices {
   display: flex;

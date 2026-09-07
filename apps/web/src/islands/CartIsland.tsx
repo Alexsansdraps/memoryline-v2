@@ -1,11 +1,19 @@
 /// <reference lib="dom" />
 import {
+  createEffect,
   createResource,
   createSignal,
   For,
   Show,
   type JSX,
 } from "solid-js";
+import {
+  PosterPreview,
+  createSvgCache,
+  stateFromConfig,
+  SLOTS,
+  findVariant,
+} from "@memoryline/configurator";
 import {
   remisesPanier,
   totalPanierCents,
@@ -36,18 +44,6 @@ interface PromoRule {
   name: string;
   type: string;
   config: unknown;
-}
-
-/**
- * Vignette : le fond de l'affiche, dont le chemin est stocké dans la config.
- *
- * urlAsset() ne préfixe que si nécessaire — les configurations enregistrées
- * avant le correctif portent déjà « /api/… », et la vignette s'affichait
- * « /api/api/… », donc cassée.
- */
-function thumbnailUrl(config: PosterConfig): string | null {
-  if (!config.backgroundUrl) return null;
-  return urlAsset(PUBLIC_API_URL, config.backgroundUrl);
 }
 
 /** Slug du produit pour reconstruire le lien « Modifier ». */
@@ -88,6 +84,42 @@ export default function CartIsland(): JSX.Element {
       return res.ok ? ((await res.json()) as PromoRule[]) : [];
     } catch {
       return [];
+    }
+  });
+
+  /**
+   * Bibliothèque de personnages, chargée UNE fois pour tout le panier : sans
+   * elle, l'aperçu ne saurait pas dessiner les personnages composés.
+   */
+  const [biblio] = createResource(async () => {
+    try {
+      return await browserApi.characters();
+    } catch {
+      return null;
+    }
+  });
+  const { cache, fetchSvg } = createSvgCache(PUBLIC_API_URL);
+  const personnageParId = (id: string | number) =>
+    biblio()?.characters.find((c) => String(c.id) === String(id));
+
+  /**
+   * Précharge les SVG de chaque ligne : base du personnage et variantes
+   * réellement choisies. Sans ce préchargement, l'aperçu resterait vide.
+   */
+  createEffect(() => {
+    const lib = biblio();
+    if (!lib) return;
+    for (const ligne of cart()?.items ?? []) {
+      for (const perso of ligne.config.characters ?? []) {
+        const base = personnageParId(perso.typeId);
+        if (!base) continue;
+        void fetchSvg(base.baseSvgUrl);
+        const jeu = lib.slots[base.orientation ?? "front"];
+        for (const slot of SLOTS) {
+          const v = findVariant(jeu[slot], perso.assets?.[slot]);
+          if (v) void fetchSvg(v.svgUrl);
+        }
+      }
     }
   });
 
@@ -179,25 +211,37 @@ export default function CartIsland(): JSX.Element {
         <ul class="space-y-4">
           <For each={cart()!.items}>
             {(it) => {
-              const thumb = thumbnailUrl(it.config);
               const href = editHref(it);
               const charCount = it.config.characters?.length ?? 0;
               return (
                 <li class="flex flex-col sm:flex-row gap-4 rounded-2xl border border-ink/10 bg-paper p-4">
-                  <div class="w-full sm:w-28 shrink-0">
-                    <div class="aspect-[3/4] rounded-lg bg-paper-deep border border-ink/10 overflow-hidden flex items-center justify-center">
-                      {thumb ? (
-                        <img
-                          src={thumb}
-                          alt={it.title ?? "Affiche"}
-                          class="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <span class="font-serif text-sm text-ink-soft px-2 text-center">
-                          {it.title ?? "Affiche"}
-                        </span>
-                      )}
-                    </div>
+                  <div class="ml-panier-vignette w-full sm:w-28 shrink-0">
+                    {/* L'aperçu du configurateur, à l'identique : fond,
+                        personnages et textes tels que le client les a
+                        composés. Même composant des deux côtés, donc les
+                        deux rendus ne peuvent pas diverger. */}
+                    <Show
+                      when={biblio()}
+                      fallback={
+                        <div class="ml-skeleton aspect-[1/1.4142] w-full sm:w-28" />
+                      }
+                    >
+                      <PosterPreview
+                        state={stateFromConfig(it.config)}
+                        characterById={personnageParId}
+                        slots={biblio()!.slots}
+                        cache={cache}
+                        assetBaseUrl={PUBLIC_API_URL}
+                        foregroundUrl={
+                          it.config.foregroundUrl
+                            ? urlAsset(PUBLIC_API_URL, it.config.foregroundUrl)
+                            : undefined
+                        }
+                        defaultForeground={
+                          urlAsset(PUBLIC_API_URL, "/assets/muret_officiel.svg")
+                        }
+                      />
+                    </Show>
                   </div>
 
                   <div class="flex-1 min-w-0">

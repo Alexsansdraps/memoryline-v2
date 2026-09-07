@@ -521,6 +521,14 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
 }
 
 export default Configurator;
+
+/**
+ * Aperçu d'affiche réutilisable hors du configurateur — le panier s'en sert
+ * pour montrer EXACTEMENT ce que le client a composé, pas seulement le fond.
+ * C'est le même composant, donc les deux rendus ne peuvent pas diverger.
+ */
+export { PosterPreview } from "./components/PosterPreview";
+export { createSvgCache, stateFromConfig, SLOTS, findVariant } from "./store";
 export type { PosterConfig } from "@memoryline/types";
 export type {
   CharacterDTO,
