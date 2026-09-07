@@ -136,6 +136,30 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* --------------------------------------------------------------------------
+ * L'affiche doit tenir EN ENTIER dans l'écran, sans avoir à faire défiler.
+ *
+ * Le composant dimensionne l'aperçu par sa LARGEUR (100 %). Sur un téléphone,
+ * un A4 (ratio 1:1,4142) mesure alors ~1,4 fois la largeur de l'écran en
+ * hauteur : le bas de l'affiche tombait sous la ligne de flottaison. On la
+ * dimensionne donc par sa HAUTEUR, et le ratio calcule la largeur.
+ *
+ * Le garde-fou en vw évite l'excès inverse sur un écran court et large
+ * (92vw × 1,4142 ≈ 130vw) : l'affiche ne déborde jamais latéralement.
+ * ------------------------------------------------------------------------ */
+.ml-cfg-poster {
+  width: auto !important;
+  height: min(64vh, 130vw);
+  margin-inline: auto;
+}
+
+@media (max-width: 768px) {
+  .ml-cfg-poster {
+    /* Plus court sur mobile : les commandes doivent rester visibles dessous. */
+    height: min(46vh, 130vw);
+  }
+}
+
 /* Plein écran sur mobile/tablette : la perso prend tout l'espace. */
 @media (max-width: 768px) {
   .ml-modal-overlay {
