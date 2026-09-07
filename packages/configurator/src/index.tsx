@@ -410,18 +410,29 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             "font-size": "12px",
           }}
         >
+          {/* Chaque étape est cliquable à tout moment (retour cliente) : on
+              n'est pas tenu d'enchaîner Continuer / Retour pour revenir au
+              fond depuis le format. goToStep ferme l'éditeur de personnage
+              s'il était ouvert. */}
           {STEPS.map((s, i) => (
-            <span
+            <button
+              type="button"
+              onClick={() => goToStep(s)}
+              aria-current={state.step === s ? "step" : undefined}
               style={{
                 padding: "4px 8px",
+                border: "none",
                 "border-radius": "9999px",
                 background: state.step === s ? "#4f46e5" : "#e5e7eb",
                 color: state.step === s ? "#fff" : "#6b7280",
                 "font-weight": "600",
+                "font-size": "inherit",
+                "font-family": "inherit",
+                cursor: state.step === s ? "default" : "pointer",
               }}
             >
               {i + 1}. {STEP_LABELS[s]}
-            </span>
+            </button>
           ))}
         </div>
 
