@@ -10,19 +10,41 @@ const path = relPath(Astro.url.pathname);
 // Navigation type admin Shopify (vocabulaire familier à la cliente).
 // `owner: true` = écran de configuration, masqué aux comptes « seller », qui
 // vendent et impriment mais ne modifient ni le catalogue ni les réglages.
-const nav = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: string;
+  owner?: boolean;
+  /** Sous-entrées, affichées en retrait sous le parent. */
+  children?: NavItem[];
+}
+
+const nav: NavItem[] = [
   { href: "/", label: "Accueil", icon: "🏠" },
   { href: "/commandes", label: "Commandes en ligne", icon: "🛒" },
   { href: "/ventes-salon", label: "Ventes salon", icon: "🎪" },
   { href: "/produits", label: "Produits", icon: "🖼️", owner: true },
-  { href: "/personnages", label: "Personnages", icon: "🧸", owner: true },
-  { href: "/categories", label: "Catégories", icon: "🗂️", owner: true },
+  {
+    href: "/personnages",
+    label: "Personnages",
+    icon: "🧸",
+    owner: true,
+    children: [{ href: "/categories", label: "Catégories", icon: "🗂️", owner: true }],
+  },
   { href: "/promotions", label: "Promotions", icon: "🎟️", owner: true },
   { href: "/bandeau", label: "Bandeau du site", icon: "📢", owner: true },
   { href: "/contenu", label: "Contenu", icon: "✏️", owner: true },
 ];
 const isOwner = Astro.locals.user?.role === "owner";
-const visibleNav = nav.filter((item) => isOwner || !item.owner);
+const allowed = (item: NavItem) => isOwner || !item.owner;
+const visibleNav = nav.filter(allowed).map((item) => ({
+  ...item,
+  children: item.children?.filter(allowed) ?? [],
+}));
+
+/** Une entrée est active sur sa page — l'accueil seulement à l'identique. */
+const isActive = (href: string) =>
+  href === "/" ? path === "/" : path === href || path.startsWith(href + "/");
 ---
 
 <!doctype html>
@@ -44,22 +66,37 @@ const visibleNav = nav.filter((item) => isOwner || !item.owner);
         <nav class="flex-1 py-3">
           {
             visibleNav.map((item) => {
+              // Le parent reste mis en avant quand on est sur une de ses
+              // sous-pages, pour que la section courante reste lisible.
               const active =
-                item.href === "/"
-                  ? path === "/"
-                  : path.startsWith(item.href);
+                isActive(item.href) || item.children.some((c) => isActive(c.href));
               return (
-                <a
-                  href={url(item.href)}
-                  class={`flex items-center gap-3 px-5 py-2.5 text-sm transition-colors ${
-                    active
-                      ? "bg-white/10 text-white font-medium"
-                      : "hover:bg-white/5"
-                  }`}
-                >
-                  <span>{item.icon}</span>
-                  <span>{item.label}</span>
-                </a>
+                <>
+                  <a
+                    href={url(item.href)}
+                    class={`flex items-center gap-3 px-5 py-2.5 text-sm transition-colors ${
+                      active
+                        ? "bg-white/10 text-white font-medium"
+                        : "hover:bg-white/5"
+                    }`}
+                  >
+                    <span>{item.icon}</span>
+                    <span>{item.label}</span>
+                  </a>
+                  {item.children.map((child) => (
+                    <a
+                      href={url(child.href)}
+                      class={`flex items-center gap-2 py-2 pl-12 pr-5 text-[13px] transition-colors ${
+                        isActive(child.href)
+                          ? "bg-white/10 text-white font-medium"
+                          : "text-white/70 hover:bg-white/5"
+                      }`}
+                    >
+                      <span class="text-white/40">└</span>
+                      <span>{child.label}</span>
+                    </a>
+                  ))}
+                </>
               );
             })
           }
