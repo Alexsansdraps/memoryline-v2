@@ -15,64 +15,52 @@
   --color-sage: #6b7a5e;
 }
 
+/* --------------------------------------------------------------------------
+ * Polices — servies par LE SITE, depuis public/fonts/.
+ *
+ * Elles pointaient vers des URLs fonts.gstatic.com dont quatre sur sept
+ * répondaient 404 : le navigateur retombait alors sur `cursive`, c'est-à-dire
+ * Comic Sans MS sous Windows. Les polices de la charte ne se chargeaient donc
+ * jamais, titre comme sous-titre.
+ *
+ * Ce sont exactement les mêmes fichiers que ceux installés dans l'image de
+ * l'API pour le rendu PDF (apps/api/fonts/) : l'aperçu à l'écran et l'affiche
+ * imprimée utilisent le même dessin de lettres, sans dépendre d'un service
+ * externe. Toutes sous licence OFL.
+ * ------------------------------------------------------------------------ */
 @font-face {
   font-family: "DM Serif Display";
-  src: url("https://fonts.gstatic.com/s/dmserifdisplay/v15/-nFnOHM81r4j6k0gjAW3mujVU2B2K_d709jy92k.woff2")
-    format("woff2");
-  font-weight: 400;
+  src: url("/fonts/DMSerifDisplay-Regular.ttf") format("truetype");
   font-display: swap;
 }
-
-/* Sous-titre : « Another Shabby » est propriétaire (non fournie). En attendant,
-   on charge Caveat (script manuscrit Google Fonts, proche) et on l'aliase sur
-   « Another Shabby » pour que le rendu utilise une écriture manuscrite. */
 @font-face {
   font-family: "Caveat";
-  src: url("https://fonts.gstatic.com/s/caveat/v18/WnznHAc5bAfYB2QRah7pcpNvOx-pjfJ9SIKjYBxPigs.woff2")
-    format("woff2");
-  font-weight: 700;
+  src: url("/fonts/Caveat-Regular.ttf") format("truetype");
   font-display: swap;
 }
-@font-face {
-  font-family: "Another Shabby";
-  src: url("https://fonts.gstatic.com/s/caveat/v18/WnznHAc5bAfYB2QRah7pcpNvOx-pjfJ9SIKjYBxPigs.woff2")
-    format("woff2");
-  font-weight: 700;
-  font-display: swap;
-}
-
-/* Polices calligraphiques proposees au client pour le titre et le sous-titre.
-   La liste fait foi dans @memoryline/types (POLICES_AFFICHE) ; les memes
-   familles sont installees dans l'image de l'API pour que le PDF imprime
-   corresponde a l'apercu. Toutes sous licence OFL. */
 @font-face {
   font-family: "Dancing Script";
-  src: url("https://fonts.gstatic.com/s/dancingscript/v25/If2cXTr6YS-zF4S-kcSWSVi_sxjsohD9F50Ruu7BMSo3Rep8ltA.woff2")
-    format("woff2");
+  src: url("/fonts/DancingScript.ttf") format("truetype");
   font-display: swap;
 }
 @font-face {
   font-family: "Great Vibes";
-  src: url("https://fonts.gstatic.com/s/greatvibes/v19/RWmMoKWR9v4ksMfaWd_JN9XFiaQ.woff2")
-    format("woff2");
+  src: url("/fonts/GreatVibes-Regular.ttf") format("truetype");
   font-display: swap;
 }
 @font-face {
   font-family: "Parisienne";
-  src: url("https://fonts.gstatic.com/s/parisienne/v13/E21i_d3kivvAkxhLEVZpQyhwDw.woff2")
-    format("woff2");
+  src: url("/fonts/Parisienne-Regular.ttf") format("truetype");
   font-display: swap;
 }
 @font-face {
   font-family: "Sacramento";
-  src: url("https://fonts.gstatic.com/s/sacramento/v15/buEzpo6gcdjy0EiZMBUG4C0f-w.woff2")
-    format("woff2");
+  src: url("/fonts/Sacramento-Regular.ttf") format("truetype");
   font-display: swap;
 }
 @font-face {
   font-family: "Pinyon Script";
-  src: url("https://fonts.gstatic.com/s/pinyonscript/v22/6xKpdSJbL9-e9LuoeQiDRQR8aOLQO4bhiDY.woff2")
-    format("woff2");
+  src: url("/fonts/PinyonScript-Regular.ttf") format("truetype");
   font-display: swap;
 }
 

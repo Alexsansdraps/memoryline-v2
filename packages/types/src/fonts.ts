@@ -24,6 +24,14 @@ export interface PoliceAffiche {
   repli: string;
 }
 
+/**
+ * Repli commun. Surtout PAS `cursive` : sous Windows, le navigateur y répond
+ * par Comic Sans MS. Si une police calligraphique ne se charge pas, on préfère
+ * un serif élégant — et les fichiers étant servis par le site lui-même, le
+ * repli ne devrait jamais servir.
+ */
+const REPLI_SUR = "'DM Serif Display', Georgia, 'Times New Roman', serif";
+
 export const POLICES_AFFICHE: readonly PoliceAffiche[] = [
   {
     id: "serif",
@@ -35,37 +43,37 @@ export const POLICES_AFFICHE: readonly PoliceAffiche[] = [
     id: "caveat",
     libelle: "Manuscrite",
     famille: "Caveat",
-    repli: "cursive",
+    repli: REPLI_SUR,
   },
   {
     id: "dancing",
     libelle: "Anglaise",
     famille: "Dancing Script",
-    repli: "cursive",
+    repli: REPLI_SUR,
   },
   {
     id: "greatvibes",
     libelle: "Calligraphie",
     famille: "Great Vibes",
-    repli: "cursive",
+    repli: REPLI_SUR,
   },
   {
     id: "parisienne",
     libelle: "Parisienne",
     famille: "Parisienne",
-    repli: "cursive",
+    repli: REPLI_SUR,
   },
   {
     id: "sacramento",
     libelle: "Fine",
     famille: "Sacramento",
-    repli: "cursive",
+    repli: REPLI_SUR,
   },
   {
     id: "pinyon",
     libelle: "Gravée",
     famille: "Pinyon Script",
-    repli: "cursive",
+    repli: REPLI_SUR,
   },
 ] as const;
 
