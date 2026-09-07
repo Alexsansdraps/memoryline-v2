@@ -1,6 +1,11 @@
 ---
 import Admin from "../layouts/Admin.astro";
-import { adminApi, type CharacterType, type Asset } from "../lib/api.ts";
+import {
+  adminApi,
+  type CharacterType,
+  type CharacterCategory,
+  type Asset,
+} from "../lib/api.ts";
 
 const api = adminApi(Astro.request);
 
@@ -25,10 +30,15 @@ if (Astro.request.method === "POST") {
   const action = form.get("_action");
   try {
     if (action === "upsert") {
+      const rawCat = form.get("categoryId");
       await api.upsertCharacter({
         id: form.get("id") ? Number(form.get("id")) : undefined,
         name: String(form.get("name") || "Personnage"),
-        category: (form.get("category") as string) || null,
+        // Absent = édition depuis une carte (la catégorie s'y change avec le
+        // sélecteur dédié) ; présent = création, "" valant « sans catégorie ».
+        ...(rawCat === null
+          ? {}
+          : { categoryId: rawCat === "" ? null : Number(rawCat) }),
         position: Number(form.get("position") || 0),
         orientation:
           form.get("orientation") === "back" ? "back" : "front",
@@ -43,6 +53,38 @@ if (Astro.request.method === "POST") {
         form.get("archived") === "true"
           ? "Personnage archivé. Les anciennes commandes restent intactes."
           : "Personnage restauré.";
+    } else if (action === "move-chars") {
+      // Déplacement d'un ou plusieurs personnages : "" = sans catégorie.
+      const raw = String(form.get("categoryId") ?? "");
+      const ids = form.getAll("ids").map(Number).filter(Number.isFinite);
+      const r = await api.moveCharacters(ids, raw === "" ? null : Number(raw));
+      flash = `${r.moved} personnage(s) déplacé(s).`;
+    } else if (action === "cat-create") {
+      const cat = await api.upsertCategory({ name: String(form.get("name") || "") });
+      flash = `Catégorie « ${cat.name} » créée.`;
+    } else if (action === "cat-rename") {
+      const cat = await api.upsertCategory({
+        id: Number(form.get("id")),
+        name: String(form.get("name") || ""),
+      });
+      flash = `Catégorie renommée en « ${cat.name} ».`;
+    } else if (action === "cat-move") {
+      // Échange de position avec la voisine.
+      await api.upsertCategory({
+        id: Number(form.get("id")),
+        name: String(form.get("name") || ""),
+        position: Number(form.get("otherPosition")),
+      });
+      await api.upsertCategory({
+        id: Number(form.get("otherId")),
+        name: String(form.get("otherName") || ""),
+        position: Number(form.get("position")),
+      });
+      flash = "Ordre des catégories mis à jour.";
+    } else if (action === "cat-delete") {
+      await api.deleteCategory(Number(form.get("id")));
+      flash =
+        "Catégorie supprimée. Ses personnages sont revenus dans « sans catégorie ».";
     } else if (action === "reorder") {
       const items = JSON.parse(String(form.get("items") || "[]"));
       if (items.length) await api.reorderCharacters(items);
@@ -80,27 +122,45 @@ try {
   if (!error) error = String(e);
 }
 
+let catalogue: CharacterCategory[] = [];
+try {
+  catalogue = await api.categories();
+} catch (e) {
+  if (!error) error = String(e);
+}
+
 const active = types.filter((t) => !t.archivedAt);
 const archived = types.filter((t) => t.archivedAt);
 
-// --- Regroupe les personnages actifs par catégorie, triés par position. ---
-const UNCAT = "Sans catégorie";
-const byCategory = new Map<string, CharacterType[]>();
-for (const t of active) {
-  const cat = t.category ?? UNCAT;
-  if (!byCategory.has(cat)) byCategory.set(cat, []);
-  byCategory.get(cat)!.push(t);
-}
-for (const list of byCategory.values())
-  list.sort((a, b) => a.position - b.position);
-const categories = [...byCategory.entries()].sort(([a], [b]) =>
-  a.localeCompare(b),
-);
+// --- Regroupement par catégorie (table character_category) ---------------
+// Les groupes suivent l'ordre des catégories, et « sans catégorie » ferme la
+// marche : il existe TOUJOURS, même vide — c'est là que reviennent les
+// personnages quand on supprime leur catégorie.
+const SANS = { id: null as number | null, name: "(sans catégorie)" };
 
-// Catégories existantes (pour suggérer un choix dans le formulaire de création).
-const knownCategories = [
-  ...new Set(types.map((t) => t.category).filter(Boolean) as string[]),
-].sort((a, b) => a.localeCompare(b));
+const groupes: { cat: CharacterCategory | null; label: string; list: CharacterType[] }[] =
+  [
+    ...catalogue.map((c) => ({
+      cat: c,
+      label: c.name,
+      list: active
+        .filter((t) => t.categoryId === c.id)
+        .sort((a, b) => a.position - b.position),
+    })),
+    {
+      cat: null,
+      label: SANS.name,
+      list: active
+        .filter((t) => t.categoryId == null)
+        .sort((a, b) => a.position - b.position),
+    },
+  ];
+
+/** Options du sélecteur de catégorie, « sans » comprise. */
+const optionsCategorie = [
+  { value: "", label: SANS.name },
+  ...catalogue.map((c) => ({ value: String(c.id), label: c.name })),
+];
 
 // Liste des baseSvgUrl déjà utilisées : sert de "bibliothèque" de SVG plein
 // personnage pour le sélecteur de base.
@@ -111,10 +171,11 @@ const knownBaseSvgs = [
 ].sort((a, b) => a.localeCompare(b));
 
 // Payload de réordonnancement : échange les positions de deux personnages.
+// La catégorie n'y figure plus — elle se change avec le sélecteur dédié.
 function swapPayload(a: CharacterType, b: CharacterType) {
   return JSON.stringify([
-    { id: a.id, position: b.position, category: a.category },
-    { id: b.id, position: a.position, category: b.category },
+    { id: a.id, position: b.position },
+    { id: b.id, position: a.position },
   ]);
 }
 
@@ -156,13 +217,123 @@ for (const a of pieces) {
   <!-- ===================================================================== -->
   <h2 class="text-lg font-semibold mb-1">Personnages</h2>
   <p class="mb-4 text-sm text-bo-muted">
-    Les personnages que le client peut ajouter depuis le site.
+    Les personnages que le client peut ajouter depuis le site, regroupés par
+    catégorie. Le sélecteur de chaque carte déplace le personnage ; pour en
+    déplacer plusieurs d'un coup, cochez-les.
   </p>
 
+  {/* ---- Gestion des catégories ---- */}
+  <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg p-4">
+    <h3 class="font-semibold mb-3">Catégories</h3>
+    <div class="flex flex-wrap gap-2 items-center">
+      {catalogue.map((c, i) => (
+        <div class="flex items-center gap-1 rounded border border-bo-border px-2 py-1">
+          <form method="POST" class="flex items-center gap-1">
+            <input type="hidden" name="_action" value="cat-rename" />
+            <input type="hidden" name="id" value={c.id} />
+            <input
+              name="name"
+              value={c.name}
+              class="w-32 border-0 bg-transparent p-0 text-sm focus:outline-none"
+              title="Modifier le nom puis Entrée"
+            />
+            <span class="text-xs text-bo-muted">{c.count ?? 0}</span>
+          </form>
+          {i > 0 && (
+            <form method="POST" class="inline">
+              <input type="hidden" name="_action" value="cat-move" />
+              <input type="hidden" name="id" value={c.id} />
+              <input type="hidden" name="name" value={c.name} />
+              <input type="hidden" name="position" value={c.position} />
+              <input type="hidden" name="otherId" value={catalogue[i - 1]!.id} />
+              <input type="hidden" name="otherName" value={catalogue[i - 1]!.name} />
+              <input type="hidden" name="otherPosition" value={catalogue[i - 1]!.position} />
+              <button class="px-1 text-bo-muted hover:text-bo-accent" title="Monter">↑</button>
+            </form>
+          )}
+          {i < catalogue.length - 1 && (
+            <form method="POST" class="inline">
+              <input type="hidden" name="_action" value="cat-move" />
+              <input type="hidden" name="id" value={c.id} />
+              <input type="hidden" name="name" value={c.name} />
+              <input type="hidden" name="position" value={c.position} />
+              <input type="hidden" name="otherId" value={catalogue[i + 1]!.id} />
+              <input type="hidden" name="otherName" value={catalogue[i + 1]!.name} />
+              <input type="hidden" name="otherPosition" value={catalogue[i + 1]!.position} />
+              <button class="px-1 text-bo-muted hover:text-bo-accent" title="Descendre">↓</button>
+            </form>
+          )}
+          <form method="POST" class="inline">
+            <input type="hidden" name="_action" value="cat-delete" />
+            <input type="hidden" name="id" value={c.id} />
+            <button
+              class="px-1 text-bo-muted hover:text-red-600"
+              title="Supprimer — ses personnages reviennent dans « sans catégorie »"
+            >
+              ×
+            </button>
+          </form>
+        </div>
+      ))}
+
+      <form method="POST" class="flex items-center gap-2">
+        <input type="hidden" name="_action" value="cat-create" />
+        <input
+          name="name"
+          required
+          placeholder="Nouvelle catégorie"
+          class="w-44 rounded border border-bo-border px-2 py-1.5 text-sm"
+        />
+        <button class="rounded bg-bo-accent px-3 py-1.5 text-sm text-white">Créer</button>
+      </form>
+    </div>
+    <p class="mt-2 text-xs text-bo-muted">
+      Supprimer une catégorie ne supprime aucun personnage : ils reviennent dans
+      « sans catégorie ».
+    </p>
+  </section>
+
+  {/* ---- Recherche ---- */}
+  <input
+    id="recherche-perso"
+    type="search"
+    placeholder="Rechercher un personnage…"
+    class="mb-4 w-full max-w-sm rounded border border-bo-border px-3 py-2 text-sm"
+  />
+
+  {/* ---- Déplacement groupé (barre collante, affichée à la sélection) ---- */}
+  <form method="POST" id="form-lot">
+    <input type="hidden" name="_action" value="move-chars" />
+    <div
+      id="barre-lot"
+      class="sticky top-2 z-10 mb-4 hidden items-center gap-3 rounded-lg border border-bo-accent bg-bo-surface px-4 py-2 shadow"
+    >
+      <strong id="lot-compteur">0</strong>
+      <span class="text-sm">sélectionné(s) — déplacer vers</span>
+      <select name="categoryId" class="rounded border border-bo-border px-2 py-1 text-sm">
+        {optionsCategorie.map((o) => (
+          <option value={o.value}>{o.label}</option>
+        ))}
+      </select>
+      <button class="rounded bg-bo-accent px-3 py-1.5 text-sm text-white">Déplacer</button>
+      <button type="button" id="lot-annuler" class="text-sm text-bo-muted hover:underline">
+        Annuler
+      </button>
+    </div>
+  </form>
+
   {
-    categories.map(([cat, list]) => (
-      <section class="mb-8">
-        <h3 class="font-semibold mb-3">{cat}</h3>
+    groupes.map(({ cat, label, list }) => (
+      <section class="mb-8" data-groupe>
+        <h3 class="font-semibold mb-3">
+          {label}
+          <span class="ml-2 text-sm font-normal text-bo-muted">{list.length}</span>
+        </h3>
+        {list.length === 0 && (
+          <p class="mb-3 text-sm text-bo-muted">
+            Aucun personnage{cat ? " dans cette catégorie" : " hors catégorie"}.
+          </p>
+        )}
         <div class="grid sm:grid-cols-2 gap-3">
           {list.map((t, i) => (
             <article
@@ -171,6 +342,12 @@ for (const a of pieces) {
             >
               <header class="flex items-start justify-between gap-3 px-4 py-3 bg-bo-bg">
                 <div class="flex items-center gap-3 min-w-0">
+                  <input
+                    type="checkbox"
+                    class="js-lot shrink-0"
+                    value={t.id}
+                    aria-label={`Sélectionner ${t.name}`}
+                  />
                   <img
                     src={svgSrc(t.baseSvgUrl)}
                     alt=""
@@ -223,7 +400,27 @@ for (const a of pieces) {
                 </div>
               </header>
 
-              {/* Édition du nom / catégorie / position */}
+              {/* Déplacement immédiat : un choix, un enregistrement. */}
+              <form method="POST" class="flex items-center gap-2 px-4 py-2 text-sm border-b border-bo-border bg-bo-surface">
+                <input type="hidden" name="_action" value="move-chars" />
+                <input type="hidden" name="ids" value={t.id} />
+                <span class="text-bo-muted text-xs">Catégorie</span>
+                <select
+                  name="categoryId"
+                  class="js-cat-select flex-1 border border-bo-border rounded px-2 py-1"
+                >
+                  {optionsCategorie.map((o) => (
+                    <option value={o.value} selected={o.value === String(t.categoryId ?? "")}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <noscript>
+                  <button class="rounded border border-bo-border px-2 py-1 text-xs">OK</button>
+                </noscript>
+              </form>
+
+              {/* Édition du nom / position */}
               <form
                 method="POST"
                 class="flex flex-wrap items-end gap-3 px-4 py-3 text-sm border-b border-bo-border"
@@ -238,14 +435,7 @@ for (const a of pieces) {
                     class="mt-1 block border border-bo-border rounded px-2 py-1"
                   />
                 </label>
-                <label class="block">
-                  <span class="text-bo-muted text-xs">Catégorie</span>
-                  <input
-                    name="category"
-                    value={t.category ?? ""}
-                    class="mt-1 block border border-bo-border rounded px-2 py-1"
-                  />
-                </label>
+
                 <label class="block">
                   <span class="text-bo-muted text-xs">Position</span>
                   <input
@@ -384,12 +574,14 @@ for (const a of pieces) {
       </label>
       <label class="block">
         <span class="text-bo-muted">Catégorie</span>
-        <input
-          name="category"
-          list="cat-list"
+        <select
+          name="categoryId"
           class="mt-1 w-full border border-bo-border rounded px-3 py-2"
-          placeholder="Animaux"
-        />
+        >
+          {optionsCategorie.map((o) => (
+            <option value={o.value}>{o.label}</option>
+          ))}
+        </select>
       </label>
       <label class="block">
         <span class="text-bo-muted">Position</span>
@@ -416,7 +608,9 @@ for (const a of pieces) {
               {archived.map((t) => (
                 <tr class="border-t border-bo-border first:border-t-0">
                   <td class="px-4 py-2 font-medium">{t.name}</td>
-                  <td class="px-4 py-2 text-bo-muted">{t.category ?? "—"}</td>
+                  <td class="px-4 py-2 text-bo-muted">
+                    {catalogue.find((c) => c.id === t.categoryId)?.name ?? "—"}
+                  </td>
                   <td class="px-4 py-2 text-right">
                     <form method="POST" class="inline">
                       <input type="hidden" name="_action" value="archive" />
@@ -590,12 +784,77 @@ for (const a of pieces) {
   </section>
 
   {/* Listes d'autocomplétion partagées */}
-  <datalist id="cat-list">
-    {knownCategories.map((c) => <option value={c} />)}
-  </datalist>
   <datalist id="base-svg-list">
     {knownBaseSvgs.map((u) => <option value={u} />)}
   </datalist>
+
+  <script is:inline>
+    // --- Catégories : déplacement immédiat au changement du sélecteur ---
+    for (const sel of document.querySelectorAll(".js-cat-select")) {
+      sel.addEventListener("change", () => sel.form.submit());
+    }
+
+    // --- Sélection multiple + barre de déplacement groupé ---
+    (() => {
+      const cases = Array.from(document.querySelectorAll(".js-lot"));
+      const barre = document.getElementById("barre-lot");
+      const compteur = document.getElementById("lot-compteur");
+      const formLot = document.getElementById("form-lot");
+      if (!cases.length || !barre || !formLot) return;
+
+      const coches = () => cases.filter((c) => c.checked);
+
+      const maj = () => {
+        const n = coches().length;
+        compteur.textContent = String(n);
+        barre.classList.toggle("hidden", n === 0);
+        barre.classList.toggle("flex", n > 0);
+      };
+
+      for (const c of cases) c.addEventListener("change", maj);
+
+      document.getElementById("lot-annuler").addEventListener("click", () => {
+        for (const c of cases) c.checked = false;
+        maj();
+      });
+
+      // Les cases vivent dans les cartes, hors du formulaire : on injecte les
+      // ids sélectionnés au moment de l'envoi.
+      formLot.addEventListener("submit", () => {
+        for (const vieux of formLot.querySelectorAll('input[name="ids"]')) vieux.remove();
+        for (const c of coches()) {
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = "ids";
+          input.value = c.value;
+          formLot.appendChild(input);
+        }
+      });
+
+      maj();
+    })();
+
+    // --- Recherche : masque les cartes et les groupes devenus vides ---
+    (() => {
+      const champ = document.getElementById("recherche-perso");
+      if (!champ) return;
+      const cartes = Array.from(document.querySelectorAll("[data-char-id]"));
+      const groupes = Array.from(document.querySelectorAll("[data-groupe]"));
+      champ.addEventListener("input", () => {
+        const q = champ.value.trim().toLowerCase();
+        for (const carte of cartes) {
+          const nom = (carte.textContent || "").toLowerCase();
+          carte.style.display = q === "" || nom.includes(q) ? "" : "none";
+        }
+        for (const g of groupes) {
+          const visible = Array.from(g.querySelectorAll("[data-char-id]")).some(
+            (c) => c.style.display !== "none",
+          );
+          g.style.display = q === "" || visible ? "" : "none";
+        }
+      });
+    })();
+  </script>
 
   <script is:inline define:vars={{ PUBLIC_API_URL }}>
     const abs = (u) => (u && u.startsWith("http") ? u : `${PUBLIC_API_URL}${u}`);

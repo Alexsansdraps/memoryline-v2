@@ -1067,6 +1067,40 @@ export function mountConfiguratorRoutes(app: Hono) {
   });
 
   /** Réordonne des types (drag & drop) : liste d'{id, position, category?}. */
+  /**
+   * Déplace un LOT de personnages vers une catégorie — ou hors catégorie
+   * (`categoryId: null`, le groupe « sans catégorie »).
+   *
+   * Distinct de POST /admin/categories/:id/characters, qui REMPLACE la
+   * composition d'une catégorie : ici on ne touche qu'aux personnages cités,
+   * et une route dédiée évite d'écraser au passage nom, position ou
+   * orientation comme le ferait un upsert partiel.
+   */
+  app.post("/admin/characters/category", async (c) => {
+    const b = await c.req.json();
+    const ids = Array.isArray(b.ids)
+      ? b.ids.map(Number).filter(Number.isFinite)
+      : [];
+    if (!ids.length) return c.json({ error: "aucun personnage" }, 400);
+    const categoryId =
+      b.categoryId == null || b.categoryId === "" ? null : Number(b.categoryId);
+
+    if (categoryId != null) {
+      const [cat] = await db
+        .select({ id: schema.characterCategories.id })
+        .from(schema.characterCategories)
+        .where(eq(schema.characterCategories.id, categoryId));
+      if (!cat) return c.json({ error: "catégorie inconnue" }, 404);
+    }
+
+    const moved = await db
+      .update(schema.characterTypes)
+      .set({ categoryId })
+      .where(inArray(schema.characterTypes.id, ids))
+      .returning({ id: schema.characterTypes.id });
+    return c.json({ ok: true, moved: moved.length });
+  });
+
   app.post("/admin/characters/reorder", async (c) => {
     const b = await c.req.json();
     const list: { id: number; position: number; category?: string }[] =

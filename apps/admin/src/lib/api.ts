@@ -200,6 +200,14 @@ export function adminApi(request?: Request) {
         { archived },
         cookie,
       ),
+    /** Déplace des personnages vers une catégorie (null = sans catégorie). */
+    moveCharacters: (ids: number[], categoryId: number | null) =>
+      req<{ ok: boolean; moved: number }>(
+        "POST",
+        "/admin/characters/category",
+        { ids, categoryId },
+        cookie,
+      ),
     reorderCharacters: (
       items: { id: number; position: number; category?: string | null }[],
     ) =>
