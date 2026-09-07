@@ -33,7 +33,7 @@ services:
       IMPORT_DIR: "/app/data/exports/shopify-2026-06-19"
       # Origines autorisées par CORS. Avec le proxy tout est en même origine,
       # mais on garde l'accès direct aux ports en développement.
-      WEB_ORIGINS: "http://localhost:8080,http://localhost:4321,http://localhost:4322,https://memoryline.alexandraporhansl.com"
+      WEB_ORIGINS: "http://localhost:8080,http://localhost:4321,http://localhost:4322,${PUBLIC_ORIGIN:-http://localhost:8080}"
       # Évite le purge interactif des node_modules par pnpm au démarrage.
       CI: "true"
     ports:
@@ -61,8 +61,10 @@ services:
       # Navigateur : même origine que le site, le proxy route /api vers l'API.
       # Vaut donc aussi bien en local (:8080) que derrière le tunnel.
       PUBLIC_API_URL: "/api"
-      # Domaine de l'environnement de test (canonical, sitemap, Open Graph).
-      SITE_URL: "https://memoryline.alexandraporhansl.com"
+      # Origine publique de l'environnement de test (canonical, Open Graph).
+      SITE_URL: "${PUBLIC_ORIGIN:-http://localhost:8080}"
+      # Hôtes publics acceptés par le serveur de dev Astro (cf. astro.config).
+      ALLOWED_HOSTS: "${NGROK_DOMAIN:-}"
       # Environnement de test : JAMAIS indexé (doublon de memoryline.fr).
       PUBLIC_NOINDEX: "true"
       # Évite que pnpm/Astro tentent un purge interactif des node_modules.
@@ -90,6 +92,7 @@ services:
       PUBLIC_API_URL: "/api"
       # Le BO est servi sous /bo (routage par chemin, cf. Caddyfile).
       ADMIN_BASE: "/bo"
+      ALLOWED_HOSTS: "${NGROK_DOMAIN:-}"
       CI: "true"
     ports:
       - "4322:4322"
@@ -114,21 +117,22 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
 
-  # Tunnel Cloudflare : expose le proxy — et LUI SEUL — sur le domaine public.
-  # Aucun port n'est ouvert sur la box : cloudflared sort en connexion sortante.
+  # Tunnel ngrok : expose le proxy — et LUI SEUL — sur un domaine public, en
+  # HTTPS. Aucun port n'est ouvert sur la box : ngrok sort en connexion
+  # sortante. Ce qui est en ligne est donc EXACTEMENT ce qui tourne ici.
   #
-  # Démarrage à la demande (profil), une fois TUNNEL_TOKEN renseigné dans .env :
+  # Démarrage à la demande (profil), une fois .env renseigné :
   #   docker compose --profile tunnel up -d
-  # Le jeton vient du tunnel créé dans le dashboard Cloudflare Zero Trust, dont
-  # le hostname public pointe sur http://proxy:80.
   tunnel:
-    image: cloudflare/cloudflared:latest
+    image: ngrok/ngrok:latest
     container_name: memoryline-tunnel
     restart: unless-stopped
     profiles: ["tunnel"]
     depends_on:
       - proxy
-    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN:-}
+    environment:
+      NGROK_AUTHTOKEN: "${NGROK_AUTHTOKEN:-}"
+    command: http proxy:80 --url=https://${NGROK_DOMAIN:-}
 
 volumes:
   memoryline_pgdata:
