@@ -98,3 +98,19 @@ export function policeParId(
 export function familleCss(police: PoliceAffiche): string {
   return `'${police.famille}', ${police.repli}`;
 }
+
+/**
+ * URL affichable d'un asset, à partir du chemin stocké dans la configuration.
+ *
+ * Les configurations enregistrées AVANT ce correctif contiennent déjà le
+ * préfixe de l'API (« /api/assets/… ») : le repréfixer donnerait
+ * « /api/api/assets/… », et la vignette du panier cassait pour cette raison.
+ * On ne préfixe donc que si ce n'est pas déjà fait.
+ */
+export function urlAsset(base: string, url: string): string {
+  if (!url) return url;
+  if (/^https?:\/\//i.test(url)) return url;
+  const b = (base || "").replace(/\/$/, "");
+  if (!b) return url;
+  return url.startsWith(b + "/") ? url : b + url;
+}

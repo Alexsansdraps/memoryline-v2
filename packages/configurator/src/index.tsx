@@ -202,12 +202,13 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
 
   /* --------------------------- étape 1 ------------------------------------ */
   function selectBackground(bg: BackgroundDTO) {
-    const url = bg.url.startsWith("http")
-      ? bg.url
-      : props.assetBaseUrl.replace(/\/$/, "") + bg.url;
     mutate((s) => {
       s.backgroundId = bg.id;
-      s.backgroundUrl = url;
+      // On stocke le chemin BRUT (« /assets/… ») : cette valeur part dans la
+      // commande et y reste des annees. Y figer le prefixe de l'API la
+      // rendrait caduque au moindre changement d'hebergement. Le prefixe est
+      // ajoute a l'affichage, par urlAsset().
+      s.backgroundUrl = bg.url;
     });
   }
   /** Met à jour SEULEMENT le texte d'un bloc (titre ou sous-titre). */
@@ -394,6 +395,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
           defaultForeground={
             props.assetBaseUrl.replace(/\/$/, "") + "/assets/muret_officiel.svg"
           }
+          assetBaseUrl={props.assetBaseUrl}
         />
       </div>
       </Show>

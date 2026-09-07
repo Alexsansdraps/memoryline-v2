@@ -9,6 +9,7 @@ import {
 import {
   remisesPanier,
   totalPanierCents,
+  urlAsset,
   type PosterConfig,
   type RegleParier,
 } from "@memoryline/types";
@@ -37,14 +38,16 @@ interface PromoRule {
   config: unknown;
 }
 
-/** Vignette : on affiche le fond de l'affiche (URL stockée dans la config). */
+/**
+ * Vignette : le fond de l'affiche, dont le chemin est stocké dans la config.
+ *
+ * urlAsset() ne préfixe que si nécessaire — les configurations enregistrées
+ * avant le correctif portent déjà « /api/… », et la vignette s'affichait
+ * « /api/api/… », donc cassée.
+ */
 function thumbnailUrl(config: PosterConfig): string | null {
-  if (config.backgroundUrl) {
-    return /^https?:\/\//.test(config.backgroundUrl)
-      ? config.backgroundUrl
-      : `${PUBLIC_API_URL}${config.backgroundUrl}`;
-  }
-  return null;
+  if (!config.backgroundUrl) return null;
+  return urlAsset(PUBLIC_API_URL, config.backgroundUrl);
 }
 
 /** Slug du produit pour reconstruire le lien « Modifier ». */

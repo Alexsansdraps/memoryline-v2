@@ -13,6 +13,7 @@ import {
   policeParId,
   POLICE_TITRE_DEFAUT,
   POLICE_SOUSTITRE_DEFAUT,
+  urlAsset,
 } from "@memoryline/types";
 import { CharacterStack } from "./CharacterLayer";
 
@@ -39,7 +40,14 @@ export function PosterPreview(props: {
   foregroundUrl?: string;
   /** Décor d'avant-plan par défaut (le muret), affiché en vue de dos. */
   defaultForeground?: string;
+  /** Préfixe des assets, ajouté à l'affichage seulement. */
+  assetBaseUrl?: string;
 }) {
+  /** Fond affichable : le chemin stocké est brut, on le préfixe ici. */
+  const srcFond = () =>
+    props.state.backgroundUrl
+      ? urlAsset(props.assetBaseUrl ?? "", props.state.backgroundUrl)
+      : undefined;
 
   return (
     <div
@@ -55,7 +63,7 @@ export function PosterPreview(props: {
       }}
     >
       {/* Couche fond */}
-      <Show when={props.state.backgroundUrl}>
+      <Show when={srcFond()}>
         {(url) => (
           <img
             src={url()}
