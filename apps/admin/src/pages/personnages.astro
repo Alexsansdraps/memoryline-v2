@@ -53,6 +53,27 @@ if (Astro.request.method === "POST") {
         form.get("archived") === "true"
           ? "Personnage archivé. Les anciennes commandes restent intactes."
           : "Personnage restauré.";
+    } else if (action === "annuler-deplacement") {
+      // "12:1,19:sans" — on regroupe par destination, un appel par groupe,
+      // ce qui permet d'annuler même une sélection venue de plusieurs
+      // catégories différentes.
+      const parCat = new Map<string, number[]>();
+      for (const paire of String(form.get("retour") || "").split(",")) {
+        const [id, cat] = paire.split(":");
+        if (!id) continue;
+        const cle = cat || "sans";
+        if (!parCat.has(cle)) parCat.set(cle, []);
+        parCat.get(cle)!.push(Number(id));
+      }
+      let total = 0;
+      for (const [cat, ids] of parCat) {
+        const r = await api.moveCharacters(
+          ids,
+          cat === "sans" ? null : Number(cat),
+        );
+        total += r.moved;
+      }
+      flash = `Déplacement annulé : ${total} personnage(s) remis à leur place.`;
     } else if (action === "move-chars") {
       // Déplacement d'un ou plusieurs personnages : "" = sans catégorie.
       const raw = String(form.get("categoryId") ?? "");
@@ -104,6 +125,17 @@ if (Astro.request.method === "POST") {
   } catch (e) {
     flash = "Erreur : " + String(e);
   }
+}
+
+// --- Confirmation d'un glisser-déposer ----------------------------------
+// Le dépôt se fait en fetch puis rechargement : sans message, un glissement
+// accidentel passait totalement inaperçu. On repasse donc par l'URL ce qui
+// vient d'être fait, et de quoi le défaire.
+const dndNombre = Number(Astro.url.searchParams.get("deplaces") || 0);
+const dndVers = Astro.url.searchParams.get("vers") ?? "";
+const dndRetour = Astro.url.searchParams.get("retour") ?? "";
+if (dndNombre > 0 && !flash) {
+  flash = `${dndNombre} personnage(s) déplacé(s) vers « ${dndVers} ».`;
 }
 
 let types: CharacterType[] = [];
@@ -203,7 +235,20 @@ for (const a of pieces) {
 ---
 
 <Admin title="Personnages">
-  {flash && <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">{flash}</p>}
+  {flash && (
+    <p class="mb-4 flex flex-wrap items-center gap-3 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">
+      <span>{flash}</span>
+      {dndRetour && Astro.request.method !== "POST" && (
+        <form method="POST" class="inline">
+          <input type="hidden" name="_action" value="annuler-deplacement" />
+          <input type="hidden" name="retour" value={dndRetour} />
+          <button class="rounded border border-green-300 bg-white px-2 py-0.5 text-xs hover:bg-green-100">
+            Annuler ce déplacement
+          </button>
+        </form>
+      )}
+    </p>
+  )}
   {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
 
   <p class="mb-6 text-sm text-bo-muted max-w-3xl">
@@ -1040,6 +1085,20 @@ for (const a of pieces) {
             .map(Number);
           if (!ids.length) return;
           const cat = groupe.dataset.cat;
+
+          // Provenance de chacun, AVANT le déplacement : c'est ce qui permet
+          // d'offrir une annulation, y compris si la sélection venait de
+          // plusieurs catégories différentes.
+          const retour = ids
+            .map((id) => {
+              const carte = document.querySelector(`[data-char-id="${id}"]`);
+              const source = carte?.closest("[data-groupe]")?.dataset.cat ?? "sans";
+              return `${id}:${source}`;
+            })
+            .join(",");
+          const nomCible = (
+            groupe.querySelector("summary")?.firstChild?.textContent || ""
+          ).trim();
           try {
             const res = await fetch(
               `${PUBLIC_API_URL}/admin/characters/category`,
@@ -1054,7 +1113,12 @@ for (const a of pieces) {
               },
             );
             if (!res.ok) throw new Error("HTTP " + res.status);
-            location.reload();
+            const params = new URLSearchParams({
+              deplaces: String(ids.length),
+              vers: nomCible,
+              retour,
+            });
+            location.href = location.pathname + "?" + params.toString();
           } catch (err) {
             alert("Déplacement impossible : " + err);
           }
