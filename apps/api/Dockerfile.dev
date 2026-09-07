@@ -5,6 +5,14 @@ FROM node:24-alpine
 # pnpm via corepack (version épinglée par le champ packageManager du package.json racine)
 RUN corepack enable
 
+# Polices de la charte — mêmes que l'image de production (cf. Dockerfile).
+# sharp rend le titre et le sous-titre de l'affiche avec les polices SYSTÈME :
+# sans elles, les PDF de recette sortent dans une police de repli, et ce qu'on
+# montre à la cliente ne correspond pas à ce qui sera imprimé.
+RUN apk add --no-cache fontconfig
+COPY apps/api/fonts/ /usr/share/fonts/memoryline/
+RUN fc-cache -f
+
 WORKDIR /app
 
 # 1) Manifests d'abord pour profiter du cache de couches Docker.
