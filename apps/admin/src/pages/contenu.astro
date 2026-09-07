@@ -7,10 +7,12 @@ let flash: string | null = null;
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   try {
-    // Chaque champ du formulaire est une clé de réglage.
-    for (const [key, value] of f.entries()) {
-      await api.setSetting(key, String(value));
-    }
+    // Chaque champ du formulaire est une clé de réglage. Les cases à cocher
+    // envoient deux valeurs ("off" caché puis "on" si cochée) : on ne garde
+    // que la DERNIÈRE, qui reflète l'état de la case.
+    const valeurs = new Map<string, string>();
+    for (const [key, value] of f.entries()) valeurs.set(key, String(value));
+    for (const [key, value] of valeurs) await api.setSetting(key, value);
     flash = "Contenu enregistré.";
   } catch (e) {
     flash = "Erreur : " + String(e);
@@ -22,35 +24,121 @@ try {
   settings = await api.settings();
 } catch {}
 
-// Champs éditables présentés à la cliente (libellés lisibles).
-const FIELDS = [
-  { key: "home.hero.title", label: "Titre principal (accueil)" },
-  { key: "home.hero.subtitle", label: "Sous-titre (accueil)" },
-  { key: "footer.baseline", label: "Baseline (pied de page)" },
+/**
+ * Contenu editable, regroupe par section de la page d'accueil.
+ *
+ * `type: "switch"` = section affichee ou masquee sur le site. Une valeur vide
+ * vaut « affichee » : rien ne disparait tant qu'on n'a pas explicitement
+ * decoche.
+ */
+const SECTIONS = [
+  {
+    titre: "Accueil — bandeau d'accroche",
+    aide: "Le premier bloc, tout en haut de la page d'accueil.",
+    champs: [
+      { key: "home.hero.eyebrow", label: "Sur-titre", type: "texte" },
+      { key: "home.hero.title", label: "Titre principal", type: "long" },
+      { key: "home.hero.subtitle", label: "Sous-titre", type: "long" },
+      { key: "home.hero.cta", label: "Texte du bouton", type: "texte" },
+    ],
+  },
+  {
+    titre: "Accueil — les affiches",
+    aide: "La grille d'affiches mise en avant sur l'accueil.",
+    champs: [
+      { key: "home.vitrine.visible", label: "Afficher cette section", type: "switch" },
+      { key: "home.vitrine.title", label: "Titre de la section", type: "texte" },
+      { key: "home.vitrine.subtitle", label: "Texte d'introduction", type: "long" },
+      { key: "home.vitrine.count", label: "Nombre d'affiches (1 à 24)", type: "nombre" },
+    ],
+  },
+  {
+    titre: "Accueil — comment ça marche",
+    aide: "Les trois étapes expliquant la démarche.",
+    champs: [
+      { key: "home.etapes.visible", label: "Afficher cette section", type: "switch" },
+      { key: "home.etapes.title", label: "Titre de la section", type: "texte" },
+    ],
+  },
+  {
+    titre: "Accueil — chiffres clés",
+    aide: "Le bandeau « X affiches · Y collections · A4-A3 · 2 min ».",
+    champs: [
+      { key: "home.chiffres.visible", label: "Afficher cette section", type: "switch" },
+    ],
+  },
+  {
+    titre: "Pied de page",
+    aide: "",
+    champs: [{ key: "footer.baseline", label: "Baseline", type: "texte" }],
+  },
 ];
+
+/** Valeur enregistree, sinon chaine vide. */
+const valeur = (cle: string) =>
+  typeof settings[cle] === "string" ? (settings[cle] as string) : "";
+
+/** Une section est affichee sauf si elle vaut explicitement "off". */
+const estAffichee = (cle: string) =>
+  !["off", "non", "no", "0", "false"].includes(valeur(cle).trim().toLowerCase());
 ---
 
 <Admin title="Contenu du site">
   {flash && <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">{flash}</p>}
   <section class="bg-bo-surface border border-bo-border rounded-lg p-5 max-w-2xl">
     <p class="text-sm text-bo-muted mb-4">
-      Modifiez les textes du site sans toucher au code. Les changements sont
-      pris en compte immédiatement.
+      Modifiez les textes du site et choisissez les sections affichées, sans
+      toucher au code. Les changements sont pris en compte immédiatement.
     </p>
-    <form method="POST" class="space-y-4 text-sm">
-      {
-        FIELDS.map((field) => (
-          <label class="block">
-            <span class="text-bo-muted">{field.label}</span>
-            <textarea
-              name={field.key}
-              rows="2"
-              class="mt-1 w-full border border-bo-border rounded px-3 py-2"
-              set:html={typeof settings[field.key] === "string" ? settings[field.key] : ""}
-            />
-          </label>
-        ))
-      }
+    <form method="POST" class="space-y-6 text-sm">
+      {SECTIONS.map((section) => (
+        <fieldset class="rounded border border-bo-border p-4">
+          <legend class="px-2 font-semibold">{section.titre}</legend>
+          {section.aide && (
+            <p class="mb-3 text-xs text-bo-muted">{section.aide}</p>
+          )}
+          <div class="space-y-3">
+            {section.champs.map((champ) =>
+              champ.type === "switch" ? (
+                <label class="flex items-center gap-2">
+                  {/* Champ caché : sans lui, une case décochée n'est pas
+                      envoyée et le réglage resterait inchangé. */}
+                  <input type="hidden" name={champ.key} value="off" />
+                  <input
+                    type="checkbox"
+                    name={champ.key}
+                    value="on"
+                    checked={estAffichee(champ.key)}
+                  />
+                  <span>{champ.label}</span>
+                </label>
+              ) : champ.type === "nombre" ? (
+                <label class="block">
+                  <span class="text-bo-muted">{champ.label}</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="24"
+                    name={champ.key}
+                    value={valeur(champ.key) || "8"}
+                    class="mt-1 w-24 border border-bo-border rounded px-3 py-2"
+                  />
+                </label>
+              ) : (
+                <label class="block">
+                  <span class="text-bo-muted">{champ.label}</span>
+                  <textarea
+                    name={champ.key}
+                    rows={champ.type === "long" ? 2 : 1}
+                    class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+                    set:html={valeur(champ.key)}
+                  />
+                </label>
+              ),
+            )}
+          </div>
+        </fieldset>
+      ))}
       <button class="rounded bg-bo-accent text-white px-4 py-2 hover:opacity-90">Enregistrer</button>
     </form>
   </section>

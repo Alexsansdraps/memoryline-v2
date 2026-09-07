@@ -1,6 +1,21 @@
 ---
 import Base from "../layouts/Base.astro";
-import { api, setting } from "../lib/api.ts";
+import {
+  api,
+  setting,
+  formatPrice,
+  assetUrl,
+  type Product,
+} from "../lib/api.ts";
+
+/**
+ * Page d'accueil.
+ *
+ * Chaque section est PILOTÉE DEPUIS LE BACK-OFFICE : titre, texte et
+ * affichage (on/off) viennent de la table `setting`. Les valeurs passées en
+ * second argument de `setting()` sont les replis — le site reste donc complet
+ * même si rien n'a jamais été saisi.
+ */
 
 let stats = null;
 try {
@@ -9,7 +24,21 @@ try {
   // API non joignable au build/SSR -> on dégrade proprement
 }
 
-// Contenu éditable depuis le BO (avec repli si l'API ne répond pas).
+// Les affiches mises en avant : c'est ce qui manquait à l'accueil.
+let products: Product[] = [];
+try {
+  products = await api.products(60);
+} catch {
+  // Sans API, la vitrine s'efface plutôt que d'afficher une grille vide.
+}
+
+/** Un réglage vaut « activé » sauf s'il est explicitement à "off"/"non"/"0". */
+async function visible(cle: string): Promise<boolean> {
+  const v = (await setting(cle, "on")).trim().toLowerCase();
+  return !["off", "non", "no", "0", "false"].includes(v);
+}
+
+const heroSurtitre = await setting("home.hero.eyebrow", "Affiches personnalisées");
 const heroTitle = await setting(
   "home.hero.title",
   "Votre ville, votre histoire, sur un mur.",
@@ -18,35 +47,135 @@ const heroSubtitle = await setting(
   "home.hero.subtitle",
   "Choisissez un fond, personnalisez le titre, ajoutez vos personnages. Votre affiche prête en 2 minutes — imprimée en A4 ou A3.",
 );
+const heroCta = await setting("home.hero.cta", "Découvrir les affiches");
+
+const vitrineVisible = await visible("home.vitrine.visible");
+const vitrineTitre = await setting("home.vitrine.title", "Nos affiches");
+const vitrineTexte = await setting(
+  "home.vitrine.subtitle",
+  "Une sélection parmi nos villes, paysages et thèmes.",
+);
+const vitrineNombre = Math.max(
+  1,
+  Math.min(24, Number(await setting("home.vitrine.count", "8")) || 8),
+);
+
+const etapesVisible = await visible("home.etapes.visible");
+const etapesTitre = await setting("home.etapes.title", "Comment ça marche");
+
+const chiffresVisible = await visible("home.chiffres.visible");
+
+const vitrine = products.slice(0, vitrineNombre);
+
+function fourchette(p: Product): string {
+  const prix = p.variants.map((v) => v.priceCents).filter((c) => c > 0);
+  if (prix.length === 0) return formatPrice(p.basePriceCents);
+  const min = Math.min(...prix);
+  const max = Math.max(...prix);
+  return min === max
+    ? formatPrice(min)
+    : `${formatPrice(min)} – ${formatPrice(max)}`;
+}
+
+/** Retire le suffixe « - Affiche personnalisée » des noms importés. */
+const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
 ---
 
 <Base>
-  <section class="mx-auto max-w-6xl px-6 pt-20 pb-16">
+  {/* ---------------- Bandeau d'accroche ---------------- */}
+  <section class="mx-auto max-w-6xl px-6 pt-16 pb-10">
     <p class="text-terracotta font-medium tracking-wide uppercase text-sm">
-      Affiches personnalisées
+      {heroSurtitre}
     </p>
     <h1 class="font-serif text-5xl sm:text-6xl leading-[1.05] mt-3 max-w-3xl">
       {heroTitle}
     </h1>
-    <p class="mt-6 text-lg text-ink-soft max-w-xl">
-      {heroSubtitle}
-    </p>
+    <p class="mt-6 text-lg text-ink-soft max-w-xl">{heroSubtitle}</p>
     <div class="mt-8 flex flex-wrap gap-4">
       <a
         href="/affiches"
         class="rounded-full bg-terracotta px-6 py-3 text-paper font-medium hover:bg-terracotta-deep transition-colors"
-        >Découvrir les affiches</a
-      >
-      <a
-        href="/affiches"
-        class="rounded-full border border-ink/20 px-6 py-3 font-medium hover:border-ink transition-colors"
-        >Personnaliser la mienne</a
+        >{heroCta}</a
       >
     </div>
+  </section>
 
-    {
-      stats && (
-        <dl class="mt-16 grid grid-cols-2 sm:grid-cols-4 gap-px bg-ink/10 rounded-2xl overflow-hidden border border-ink/10">
+  {/* ---------------- Les affiches ---------------- */}
+  {
+    vitrineVisible && vitrine.length > 0 && (
+      <section class="mx-auto max-w-6xl px-6 pb-4">
+        <div class="flex flex-wrap items-end justify-between gap-3 mb-6">
+          <div>
+            <h2 class="font-serif text-3xl sm:text-4xl">{vitrineTitre}</h2>
+            <p class="mt-2 text-ink-soft">{vitrineTexte}</p>
+          </div>
+          <a
+            href="/affiches"
+            class="text-terracotta hover:text-terracotta-deep font-medium whitespace-nowrap"
+          >
+            Voir toutes les affiches →
+          </a>
+        </div>
+
+        <ul class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
+          {vitrine.map((p) => (
+            <li class="group">
+              <a href={`/affiches/${p.slug}`} class="block">
+                <div class="aspect-[3/4] rounded-xl bg-paper-deep border border-ink/10 flex items-center justify-center overflow-hidden group-hover:border-terracotta/40 transition-colors">
+                  {assetUrl(p.image) ? (
+                    <img
+                      src={assetUrl(p.image)}
+                      alt={p.name}
+                      loading="lazy"
+                      class="h-full w-full object-cover group-hover:scale-[1.02] transition-transform"
+                    />
+                  ) : (
+                    <span class="font-serif text-lg text-ink-soft px-4 text-center">
+                      {titreCourt(p.name)}
+                    </span>
+                  )}
+                </div>
+                <h3 class="font-medium leading-snug mt-3">{titreCourt(p.name)}</h3>
+                <p class="text-ink-soft mt-1">{fourchette(p)}</p>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  {/* ---------------- Comment ça marche ---------------- */}
+  {
+    etapesVisible && (
+      <section class="bg-paper-deep mt-16">
+        <div class="mx-auto max-w-6xl px-6 py-16">
+          <h2 class="font-serif text-3xl sm:text-4xl mb-8">{etapesTitre}</h2>
+          <div class="grid sm:grid-cols-3 gap-8">
+            {[
+              ["1 · Choisissez votre fond", "Villes françaises, paysages, thèmes."],
+              [
+                "2 · Personnalisez",
+                "Titre, sous-titre, personnages et leurs tenues.",
+              ],
+              ["3 · Recevez", "Imprimée en A4 ou A3, livrée chez vous."],
+            ].map(([t, d]) => (
+              <div>
+                <h3 class="font-serif text-2xl">{t}</h3>
+                <p class="mt-2 text-ink-soft">{d}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  {/* ---------------- Chiffres ---------------- */}
+  {
+    chiffresVisible && stats && (
+      <section class="mx-auto max-w-6xl px-6 py-16">
+        <dl class="grid grid-cols-2 sm:grid-cols-4 gap-px bg-ink/10 rounded-2xl overflow-hidden border border-ink/10">
           {[
             ["Affiches", stats.products],
             ["Collections", stats.collections],
@@ -59,34 +188,7 @@ const heroSubtitle = await setting(
             </div>
           ))}
         </dl>
-      )
-    }
-    {
-      !stats && (
-        <p class="mt-16 text-sm text-ink-soft">
-          (API non joignable — lance le backend, cf. PUBLIC_API_URL / .env.)
-        </p>
-      )
-    }
-  </section>
-
-  <section class="bg-paper-deep">
-    <div class="mx-auto max-w-6xl px-6 py-16 grid sm:grid-cols-3 gap-8">
-      {
-        [
-          ["1 · Choisissez votre fond", "Villes françaises, paysages, thèmes."],
-          [
-            "2 · Personnalisez",
-            "Titre, sous-titre, personnages et leurs tenues.",
-          ],
-          ["3 · Recevez", "Imprimée en A4 ou A3, livrée chez vous."],
-        ].map(([t, d]) => (
-          <div>
-            <h3 class="font-serif text-2xl">{t}</h3>
-            <p class="mt-2 text-ink-soft">{d}</p>
-          </div>
-        ))
-      }
-    </div>
-  </section>
+      </section>
+    )
+  }
 </Base>
