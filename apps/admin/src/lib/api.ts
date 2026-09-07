@@ -70,6 +70,17 @@ export interface CharacterCategory {
   count?: number;
 }
 
+/** Cadre proposé en option lors de la personnalisation. */
+export interface Cadre {
+  id: number;
+  slug: string;
+  name: string;
+  priceCents: number;
+  previewColor: string | null;
+  active: boolean;
+  position: number;
+}
+
 export interface OrderRow {
   id: number;
   number: string;
@@ -170,6 +181,17 @@ export function adminApi(request?: Request) {
       ),
     orderDetail: (id: number) =>
       req<OrderDetail>("GET", `/admin/orders/${id}`, undefined, cookie),
+    frames: () => req<Cadre[]>("GET", "/admin/frames", undefined, cookie),
+    upsertFrame: (data: {
+      id?: number;
+      name: string;
+      priceCents: number;
+      previewColor?: string;
+      active: boolean;
+      position: number;
+    }) => req<Cadre>("POST", "/admin/frames", data, cookie),
+    deleteFrame: (id: number) =>
+      req<{ ok: boolean }>("DELETE", `/admin/frames/${id}`, undefined, cookie),
     categories: () =>
       req<CharacterCategory[]>("GET", "/admin/categories", undefined, cookie),
     upsertCategory: (data: { id?: number; name: string; position?: number }) =>

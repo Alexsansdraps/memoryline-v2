@@ -32,6 +32,8 @@ export interface MessagesConfigurateur {
   coupes: string;
   accessoires: string;
   aucun: string;
+  cadre: string;
+  sansCadre: string;
 }
 
 export const MESSAGES_DEFAUT: MessagesConfigurateur = {
@@ -61,6 +63,8 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   coupes: "Coupes de cheveux",
   accessoires: "Accessoires",
   aucun: "Aucun",
+  cadre: "Cadre (option)",
+  sansCadre: "Sans cadre",
 };
 
 /** Complète un dictionnaire partiel par les valeurs françaises. */

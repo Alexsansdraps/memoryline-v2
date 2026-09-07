@@ -144,12 +144,23 @@ export interface WorkingCharacter {
   colors: Record<string, string>;
 }
 
+/** Cadre proposé en option, tel que l'API le renvoie. */
+export interface CadreDTO {
+  id: number | string;
+  slug: string;
+  name: string;
+  priceCents: number;
+  previewColor?: string | null;
+}
+
 export interface ConfiguratorState {
   step: Step;
   backgroundId: string | number | undefined;
   backgroundUrl: string | undefined;
   format: PosterFormat;
   view: PosterView;
+  /** Cadre choisi, ou null si le client n'en veut pas. */
+  frameId: string | number | null;
   /** Texte ET police, choisis séparément pour le titre et le sous-titre. */
   title: { value: string; font: string };
   subtitle: { value: string; font: string };
@@ -175,6 +186,7 @@ function emptyState(): ConfiguratorState {
     backgroundUrl: undefined,
     format: "A4",
     view: "front",
+    frameId: null,
     title: { value: "", font: DEFAUT_POLICE_TITRE },
     subtitle: { value: "", font: DEFAUT_POLICE_SOUSTITRE },
     textStyle: {
@@ -193,6 +205,7 @@ export function stateFromConfig(cfg: PosterConfig): ConfiguratorState {
   base.backgroundId = cfg.backgroundId;
   base.backgroundUrl = cfg.backgroundUrl;
   base.format = cfg.format ?? "A4";
+  base.frameId = cfg.frameId ?? null;
   base.view = cfg.view ?? "front";
   if (cfg.texts.title)
     base.title = {
@@ -312,6 +325,7 @@ export function configFromState(
     backgroundUrl: state.backgroundUrl,
     format: state.format,
     view: state.view,
+    frameId: state.frameId,
     texts: {
       // La POLICE est propre à chaque bloc ; couleur et taille restent
       // communes (charte : un seul coloris de texte sur l'affiche).

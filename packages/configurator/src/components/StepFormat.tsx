@@ -1,7 +1,8 @@
 /// <reference lib="dom" />
 import { For } from "solid-js";
 import { POSTER_FORMATS, type PosterFormat } from "@memoryline/types";
-import type { ConfiguratorState } from "../store";
+import type { CadreDTO, ConfiguratorState } from "../store";
+import type { MessagesConfigurateur } from "../messages";
 
 /**
  * Étape 3 : choix du format (A4 / A3).
@@ -16,7 +17,12 @@ export function StepFormat(props: {
   state: ConfiguratorState;
   prices?: Partial<Record<PosterFormat, number>>;
   onSelect: (format: PosterFormat) => void;
+  /** Cadres proposés en option (vide = aucun cadre configuré). */
+  cadres?: CadreDTO[];
+  onSelectCadre: (frameId: string | number | null) => void;
+  messages: MessagesConfigurateur;
 }) {
+  const m = () => props.messages;
   const fmtPrice = (cents: number) =>
     new Intl.NumberFormat("fr-FR", {
       style: "currency",
@@ -36,7 +42,9 @@ export function StepFormat(props: {
 
   return (
     <div class="ml-cfg-step">
-      <h3 style={{ "font-weight": "700", "margin-bottom": "10px" }}>Format</h3>
+      <h3 style={{ "font-weight": "700", "margin-bottom": "10px" }}>
+        {m().etapeFormat}
+      </h3>
       <div style={{ display: "flex", gap: "10px", "margin-bottom": "18px" }}>
         <For each={POSTER_FORMATS}>
           {(fmt) => (
@@ -55,6 +63,68 @@ export function StepFormat(props: {
           )}
         </For>
       </div>
+
+      {/* Cadre en option : « sans cadre » d'abord, puis les cadres actifs
+          avec leur supplément. Le prix affiché est indicatif — c'est le
+          serveur qui refait le calcul au moment de facturer. */}
+      {(props.cadres?.length ?? 0) > 0 && (
+        <>
+          <h3 style={{ "font-weight": "700", "margin-bottom": "10px" }}>
+            {m().cadre}
+          </h3>
+          <div style={{ display: "flex", gap: "10px", "flex-wrap": "wrap" }}>
+            <button
+              type="button"
+              onClick={() => props.onSelectCadre(null)}
+              style={{
+                ...tile(props.state.frameId == null),
+                "min-width": "110px",
+                flex: "0 1 auto",
+                "font-size": "14px",
+              }}
+            >
+              {m().sansCadre}
+            </button>
+            <For each={props.cadres}>
+              {(cadre) => (
+                <button
+                  type="button"
+                  onClick={() => props.onSelectCadre(cadre.id)}
+                  style={{
+                    ...tile(String(props.state.frameId) === String(cadre.id)),
+                    "min-width": "110px",
+                    flex: "0 1 auto",
+                    "font-size": "14px",
+                  }}
+                >
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      display: "block",
+                      height: "22px",
+                      "border-radius": "4px",
+                      border: "3px solid " + (cadre.previewColor ?? "#b07d42"),
+                      background: "#fff",
+                      "margin-bottom": "6px",
+                    }}
+                  />
+                  <div>{cadre.name}</div>
+                  <div
+                    style={{
+                      "font-size": "13px",
+                      "font-weight": "600",
+                      color: "#4f46e5",
+                      "margin-top": "2px",
+                    }}
+                  >
+                    + {fmtPrice(cadre.priceCents)}
+                  </div>
+                </button>
+              )}
+            </For>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -145,6 +145,7 @@ type PricedItem = {
 async function resolveUnitPriceCents(
   productId: number | null | undefined,
   format: string | null | undefined,
+  frameId?: string | number | null,
 ): Promise<number> {
   if (productId == null || !Number.isFinite(productId)) return 0;
   const [product] = await db
@@ -161,7 +162,24 @@ async function resolveUnitPriceCents(
         eq(schema.variants.format, format ?? "A4"),
       ),
     );
-  return variant?.priceCents ?? product.basePriceCents;
+  const affiche = variant?.priceCents ?? product.basePriceCents;
+
+  // Supplément du cadre, relu au catalogue lui aussi : le navigateur n'a
+  // jamais son mot à dire sur un montant.
+  let cadre = 0;
+  if (frameId != null && frameId !== "") {
+    const [f] = await db
+      .select({ priceCents: schema.frames.priceCents })
+      .from(schema.frames)
+      .where(
+        and(
+          eq(schema.frames.id, Number(frameId)),
+          eq(schema.frames.active, true),
+        ),
+      );
+    cadre = f?.priceCents ?? 0;
+  }
+  return affiche + cadre;
 }
 
 /**
@@ -475,6 +493,7 @@ export function mountConfiguratorRoutes(app: Hono) {
     const unitPriceCents = await resolveUnitPriceCents(
       productId,
       parsed.data.format,
+      parsed.data.frameId,
     );
     const [item] = await db
       .insert(schema.orderItems)
@@ -503,6 +522,7 @@ export function mountConfiguratorRoutes(app: Hono) {
     const unitPriceCents = await resolveUnitPriceCents(
       current.productId,
       parsed.data.format,
+      parsed.data.frameId,
     );
     const [item] = await db
       .update(schema.orderItems)

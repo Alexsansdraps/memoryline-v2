@@ -2,7 +2,7 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import { count, eq, desc, inArray } from "drizzle-orm";
+import { asc, count, eq, desc, inArray } from "drizzle-orm";
 import { resolve, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile, stat, writeFile } from "node:fs/promises";
@@ -276,6 +276,16 @@ app.get("/settings", async (c) => {
 });
 
 /** Promos actives (pour info front / calcul panier ultérieur). */
+/** Cadres proposés au client (actifs uniquement), dans l'ordre du BO. */
+app.get("/frames", async (c) => {
+  const rows = await db
+    .select()
+    .from(schema.frames)
+    .where(eq(schema.frames.active, true))
+    .orderBy(asc(schema.frames.position));
+  return c.json(rows);
+});
+
 app.get("/promos", async (c) => {
   const now = new Date();
   const rows = await db
@@ -560,6 +570,70 @@ app.post("/admin/products/:id/translations", async (c) => {
     .where(eq(schema.products.id, id))
     .returning({ translations: schema.products.translations });
   return c.json({ ok: true, translations: row?.translations ?? {} });
+});
+
+/** Tous les cadres, actifs ou non — gestion au back-office. */
+app.get("/admin/frames", async (c) => {
+  const rows = await db
+    .select()
+    .from(schema.frames)
+    .orderBy(asc(schema.frames.position));
+  return c.json(rows);
+});
+
+/** Crée ou met à jour un cadre (nom, prix, couleur d'aperçu, ordre, actif). */
+app.post("/admin/frames", async (c) => {
+  const b = await c.req.json();
+  const name = String(b.name ?? "").trim();
+  if (!name) return c.json({ error: "nom requis" }, 400);
+  const valeurs = {
+    name,
+    priceCents: Math.max(0, Math.round(Number(b.priceCents ?? 0))),
+    previewColor: b.previewColor ? String(b.previewColor) : null,
+    active: b.active !== false,
+    position: Number(b.position ?? 0),
+  };
+  if (b.id) {
+    const [row] = await db
+      .update(schema.frames)
+      .set(valeurs)
+      .where(eq(schema.frames.id, Number(b.id)))
+      .returning();
+    if (!row) return c.notFound();
+    return c.json(row);
+  }
+  const base =
+    name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "cadre";
+  const pris = new Set(
+    (await db.select({ slug: schema.frames.slug }).from(schema.frames)).map(
+      (r) => r.slug,
+    ),
+  );
+  let slug = base;
+  for (let i = 2; pris.has(slug); i++) slug = `${base}-${i}`;
+  const [row] = await db
+    .insert(schema.frames)
+    .values({ ...valeurs, slug })
+    .returning();
+  return c.json(row);
+});
+
+/**
+ * Retire un cadre du catalogue. Les commandes passées ne bougent pas : leur
+ * prix a été figé à l'achat, le cadre n'y est plus relu.
+ */
+app.delete("/admin/frames/:id", async (c) => {
+  const [row] = await db
+    .delete(schema.frames)
+    .where(eq(schema.frames.id, Number(c.req.param("id"))))
+    .returning();
+  if (!row) return c.notFound();
+  return c.json({ ok: true });
 });
 
 app.get("/admin/promos", async (c) => {

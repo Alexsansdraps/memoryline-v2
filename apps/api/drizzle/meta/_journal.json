@@ -85,6 +85,13 @@
       "when": 1788816405013,
       "tag": "0011_bent_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788821327165,
+      "tag": "0012_great_metal_master",
+      "breakpoints": true
     }
   ]
 }

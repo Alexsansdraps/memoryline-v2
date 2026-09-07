@@ -24,6 +24,7 @@ import {
   findVariant,
   slotsForCharacter,
   NONE_ASSET,
+  type CadreDTO,
 } from "./store";
 import { PosterPreview } from "./components/PosterPreview";
 import { StepBackgroundText } from "./components/StepBackgroundText";
@@ -57,6 +58,8 @@ export interface ConfiguratorProps {
    * fournit un dictionnaire déjà traduit, complété par le français.
    */
   messages?: Partial<MessagesConfigurateur>;
+  /** Cadres proposés en option. */
+  cadres?: CadreDTO[];
   /** Décor d'avant-plan optionnel du produit (muret/banc…), rendu par-dessus
    *  les personnages (effet « assis dessus »). URL /assets/… ou absolue. */
   foregroundUrl?: string | null;
@@ -353,6 +356,12 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   }
 
   /* --------------------------- étape 3 ------------------------------------ */
+  /** Choix du cadre — null = sans cadre. */
+  function setCadre(frameId: string | number | null) {
+    mutate((s) => {
+      s.frameId = frameId;
+    });
+  }
   function setFormat(format: PosterFormat) {
     mutate((s) => {
       s.format = format;
@@ -494,6 +503,9 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             state={state}
             prices={props.prices}
             onSelect={setFormat}
+            cadres={props.cadres}
+            onSelectCadre={setCadre}
+            messages={msg()}
           />
         </Show>
 
@@ -544,6 +556,7 @@ export { PosterPreview } from "./components/PosterPreview";
 export { createSvgCache, stateFromConfig, SLOTS, findVariant } from "./store";
 export type { PosterConfig } from "@memoryline/types";
 export type {
+  CadreDTO,
   CharacterDTO,
   VariantDTO,
   SlotsDTO,

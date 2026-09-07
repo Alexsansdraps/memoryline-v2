@@ -15,6 +15,7 @@ const PUBLIC_PATHS = new Set(["/login"]);
  */
 const OWNER_PATHS = [
   "/produits",
+  "/cadres",
   "/personnages",
   "/promotions",
   "/bandeau",

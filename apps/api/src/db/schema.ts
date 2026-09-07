@@ -137,6 +137,29 @@ export const variants = pgTable(
   (t) => [index("variant_product_idx").on(t.productId)],
 );
 
+/**
+ * Cadre proposé en option lors de la personnalisation.
+ *
+ * Le prix s'ajoute à celui de l'affiche, par exemplaire. Géré depuis le
+ * back-office : on peut en ajouter, changer les prix, ou en désactiver un sans
+ * toucher aux commandes déjà passées (le prix est figé dans la ligne).
+ */
+export const frames = pgTable(
+  "frame",
+  {
+    id: serial("id").primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    /** Supplément en centimes, ajouté au prix de l'affiche. */
+    priceCents: integer("price_cents").notNull().default(0),
+    /** Couleur d'aperçu du cadre dans le configurateur (hex). */
+    previewColor: text("preview_color"),
+    active: boolean("active").notNull().default(true),
+    position: integer("position").notNull().default(0),
+  },
+  (t) => [uniqueIndex("frame_slug_uniq").on(t.slug)],
+);
+
 /** Fond sélectionnable dans le configurateur, lié à un produit. */
 export const backgrounds = pgTable("background", {
   id: serial("id").primaryKey(),

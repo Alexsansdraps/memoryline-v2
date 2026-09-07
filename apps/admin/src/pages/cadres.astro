@@ -1,0 +1,202 @@
+---
+import Admin from "../layouts/Admin.astro";
+import { adminApi, formatPrice, type Cadre } from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+let flash: string | null = null;
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const action = f.get("_action");
+  try {
+    if (action === "supprimer") {
+      await api.deleteFrame(Number(f.get("id")));
+      flash =
+        "Cadre retiré du catalogue. Les commandes déjà passées ne changent pas : leur prix a été figé à l'achat.";
+    } else {
+      const cadre = await api.upsertFrame({
+        id: f.get("id") ? Number(f.get("id")) : undefined,
+        name: String(f.get("name") || ""),
+        // Saisie en euros, stockée en centimes : jamais de flottant sur de
+        // l'argent une fois en base.
+        priceCents: Math.round(
+          Number(String(f.get("price") || "0").replace(",", ".")) * 100,
+        ),
+        previewColor: String(f.get("previewColor") || "") || undefined,
+        active: f.get("active") === "on",
+        position: Number(f.get("position") || 0),
+      });
+      flash = `Cadre « ${cadre.name} » enregistré.`;
+    }
+  } catch (e) {
+    flash = "Erreur : " + String(e);
+  }
+}
+
+let cadres: Cadre[] = [];
+let error: string | null = null;
+try {
+  cadres = await api.frames();
+} catch (e) {
+  error = String(e);
+}
+---
+
+<Admin title="Cadres">
+  {flash && (
+    <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">
+      {flash}
+    </p>
+  )}
+  {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
+
+  <p class="mb-4 text-sm text-bo-muted">
+    Les cadres proposés en option au moment de la personnalisation. Le prix
+    s'ajoute à celui de l'affiche, par exemplaire. Un cadre désactivé
+    disparaît du site sans toucher aux commandes déjà passées.
+  </p>
+
+  <section class="mb-8 bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-bo-bg text-left">
+        <tr>
+          <th class="px-4 py-2 w-16">Aperçu</th>
+          <th class="px-4 py-2">Nom</th>
+          <th class="px-4 py-2 w-32">Supplément</th>
+          <th class="px-4 py-2 w-24">Ordre</th>
+          <th class="px-4 py-2 w-24">Affiché</th>
+          <th class="px-4 py-2 w-28"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {cadres.map((c) => (
+          <tr class="border-t border-bo-border">
+            <td class="px-4 py-2">
+              <span
+                class="block h-7 w-7 rounded"
+                style={`border: 4px solid ${c.previewColor ?? "#b07d42"}; background:#fff`}
+                aria-hidden="true"
+              />
+            </td>
+            <td class="px-4 py-2" colspan="5">
+              <form method="POST" class="flex flex-wrap items-center gap-2">
+                <input type="hidden" name="id" value={c.id} />
+                <input
+                  name="name"
+                  value={c.name}
+                  required
+                  class="w-40 border border-bo-border rounded px-2 py-1"
+                />
+                <label class="flex items-center gap-1">
+                  <input
+                    name="price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={(c.priceCents / 100).toFixed(2)}
+                    class="w-24 border border-bo-border rounded px-2 py-1"
+                  />
+                  <span class="text-bo-muted">€</span>
+                </label>
+                <input
+                  name="previewColor"
+                  type="color"
+                  value={c.previewColor ?? "#b07d42"}
+                  title="Couleur du cadre dans l'aperçu"
+                  class="h-8 w-10 border border-bo-border rounded"
+                />
+                <input
+                  name="position"
+                  type="number"
+                  value={c.position}
+                  title="Ordre d'affichage"
+                  class="w-16 border border-bo-border rounded px-2 py-1"
+                />
+                <label class="flex items-center gap-1">
+                  <input type="checkbox" name="active" checked={c.active} />
+                  <span>Affiché</span>
+                </label>
+                <button class="rounded bg-bo-accent text-white px-3 py-1.5">
+                  Enregistrer
+                </button>
+              </form>
+            </td>
+          </tr>
+        ))}
+        {cadres.length === 0 && (
+          <tr>
+            <td class="px-4 py-6 text-bo-muted" colspan="6">
+              Aucun cadre pour le moment.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+    <h3 class="font-semibold mb-3">Ajouter un cadre</h3>
+    <form method="POST" class="flex flex-wrap items-end gap-3 text-sm">
+      <label class="block">
+        <span class="text-bo-muted">Nom</span>
+        <input
+          name="name"
+          required
+          placeholder="Cadre noir"
+          class="mt-1 block w-44 border border-bo-border rounded px-3 py-2"
+        />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Supplément (€)</span>
+        <input
+          name="price"
+          type="number"
+          step="0.01"
+          min="0"
+          value="15.00"
+          class="mt-1 block w-28 border border-bo-border rounded px-3 py-2"
+        />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Couleur d'aperçu</span>
+        <input
+          name="previewColor"
+          type="color"
+          value="#2b2b2b"
+          class="mt-1 block h-10 w-14 border border-bo-border rounded"
+        />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Ordre</span>
+        <input
+          name="position"
+          type="number"
+          value={cadres.length}
+          class="mt-1 block w-20 border border-bo-border rounded px-3 py-2"
+        />
+      </label>
+      <label class="flex items-center gap-2 pb-2">
+        <input type="checkbox" name="active" checked />
+        <span>Affiché sur le site</span>
+      </label>
+      <button class="rounded bg-bo-accent text-white px-4 py-2">Créer</button>
+    </form>
+  </section>
+
+  {cadres.length > 0 && (
+    <section class="mt-6">
+      <h3 class="font-semibold mb-2 text-sm">Retirer un cadre</h3>
+      <div class="flex flex-wrap gap-2">
+        {cadres.map((c) => (
+          <form method="POST">
+            <input type="hidden" name="_action" value="supprimer" />
+            <input type="hidden" name="id" value={c.id} />
+            <button class="rounded border border-red-300 px-3 py-1.5 text-xs text-red-700">
+              Retirer « {c.name} » ({formatPrice(c.priceCents)})
+            </button>
+          </form>
+        ))}
+      </div>
+    </section>
+  )}
+</Admin>

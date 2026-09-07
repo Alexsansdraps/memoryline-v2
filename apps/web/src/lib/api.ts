@@ -4,7 +4,11 @@ import type {
   CharacterTypeDTO,
   PosterConfig,
 } from "@memoryline/types";
-import type { CharacterDTO, SlotsDTO } from "@memoryline/configurator";
+import type {
+  CadreDTO,
+  CharacterDTO,
+  SlotsDTO,
+} from "@memoryline/configurator";
 
 /**
  * URL de base de l'API.
@@ -185,6 +189,7 @@ export interface CharacterLibrary {
 /** Client API navigateur (configurateur, panier, commande). */
 export const browserApi = {
   characters: () => browserGet<CharacterLibrary>("/characters"),
+  frames: () => browserGet<CadreDTO[]>("/frames"),
   backgrounds: (productId: number | string) =>
     browserGet<BackgroundDTO[]>(`/backgrounds?productId=${productId}`),
 

@@ -63,14 +63,16 @@ export default function ConfiguratorIsland(
 
   // Chargement de la bibliothèque (personnages + variantes de slots + fonds).
   const [data] = createResource(async () => {
-    const [library, backgrounds] = await Promise.all([
+    const [library, backgrounds, cadres] = await Promise.all([
       browserApi.characters(),
       browserApi.backgrounds(props.product.id),
+      browserApi.frames().catch(() => []),
     ]);
     return {
       characters: library.characters,
       slots: library.slots,
       backgrounds,
+      cadres,
     };
   });
 
@@ -196,6 +198,7 @@ export default function ConfiguratorIsland(
                 basePriceCents: props.product.basePriceCents,
               }}
               backgrounds={d().backgrounds}
+              cadres={d().cadres}
               characters={d().characters as never}
               slots={d().slots as never}
               prices={props.prices}

@@ -80,6 +80,12 @@ export const posterConfigSchema = z.object({
   /** URL du décor d'avant-plan (muret/banc…), rendu au 1er plan. */
   foregroundUrl: z.string().optional(),
   format: z.enum(POSTER_FORMATS).optional(),
+  /**
+   * Cadre choisi en option — identifiant de la table `frame`, ou absent si le
+   * client n'en veut pas. Le PRIX n'est pas stocké ici : il est relu côté
+   * serveur au moment de facturer, comme celui de l'affiche.
+   */
+  frameId: z.union([z.string(), z.number()]).nullish(),
   view: z.enum(POSTER_VIEWS).default("front"),
   texts: z.object({
     title: textBlockSchema.optional(),
