@@ -271,7 +271,7 @@ function escapeXml(s: string): string {
  * Construit un SVG plein cadre contenant le titre et le sous-titre, ou `null`
  * s'il n'y a aucun texte. Le titre est rendu en bas de l'affiche (zone classique
  * Memory Line), centré. Les familles de police sont citées explicitement ;
- * si elles ne sont pas installées, sharp retombe sur la police par défaut.
+ * elles sont installées dans l'image de production (cf. apps/api/Dockerfile).
  */
 function buildTextSvg(
   config: PosterConfig,
@@ -286,7 +286,9 @@ function buildTextSvg(
   // en priorité, sinon du sous-titre. Seul le texte diffère entre les deux.
   // Couleur partagée (modifiable). Polices FIXES de la charte Memory Line :
   //  - Titre    : DM Serif Display, serif
-  //  - Sous-titre : 'Another Shabby', sans-serif (script manuscrit)
+  //  - Sous-titre : 'Another Shabby' si disponible, sinon Caveat (script
+  //    manuscrit) — « Another Shabby » est propriétaire et n'est pas fournie ;
+  //    Caveat est déjà le repli côté web, les deux rendus concordent donc.
   const styleSrc = config.texts.title ?? config.texts.subtitle;
   const color = styleSrc?.color ?? "#FFFFFF";
 
@@ -307,7 +309,7 @@ function buildTextSvg(
   if (subtitle) {
     parts.push(
       `<text x="${width / 2}" y="${subtitleY}" text-anchor="middle" ` +
-        `font-family="'Another Shabby', sans-serif" font-size="${subtitleSize}" ` +
+        `font-family="'Another Shabby', 'Caveat', cursive" font-size="${subtitleSize}" ` +
         `fill="${escapeXml(color)}">${escapeXml(subtitle)}</text>`,
     );
   }
