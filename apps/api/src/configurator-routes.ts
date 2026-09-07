@@ -321,7 +321,14 @@ export function mountConfiguratorRoutes(app: Hono) {
     const variants = await db
       .select()
       .from(schema.assets)
-      .where(isNull(schema.assets.characterTypeId))
+      // Génériques ET non archivées : une pièce archivée disparaît du
+      // configurateur, mais reste en base pour les réimpressions.
+      .where(
+        and(
+          isNull(schema.assets.characterTypeId),
+          isNull(schema.assets.archivedAt),
+        ),
+      )
       .orderBy(asc(schema.assets.position));
     const slots: Record<string, Record<string, unknown[]>> = {
       front: {},
@@ -1165,12 +1172,11 @@ export function mountConfiguratorRoutes(app: Hono) {
   });
 
   /** Supprime DÉFINITIVEMENT un type de personnage (et ses assets liés). */
-  app.delete("/admin/characters/:id", async (c) => {
-    const id = Number(c.req.param("id"));
-    await db.delete(schema.assets).where(eq(schema.assets.characterTypeId, id));
-    await db.delete(schema.characterTypes).where(eq(schema.characterTypes.id, id));
-    return c.json({ ok: true });
-  });
+  // La suppression définitive d'un personnage a été RETIRÉE volontairement.
+  // Les PDF des commandes passées se régénèrent en relisant les personnages en
+  // base : supprimer une ligne rendait donc impossible la réimpression d'une
+  // commande déjà payée. On archive (POST /admin/characters/:id/archive), ce
+  // qui masque du configurateur sans rien casser.
 
   // === Gestion des PIÈCES (assets) — bibliothèque d'éléments ================
 
@@ -1214,10 +1220,22 @@ export function mountConfiguratorRoutes(app: Hono) {
   });
 
   /** Supprime une pièce. */
-  app.delete("/admin/assets/:id", async (c) => {
+  /**
+   * Archive ou restaure une pièce. La suppression définitive a été RETIRÉE :
+   * une pièce effacée empêchait de régénérer le PDF des commandes qui
+   * l'utilisaient. Archivée, elle disparaît du configurateur mais reste
+   * lisible pour l'impression.
+   */
+  app.post("/admin/assets/:id/archive", async (c) => {
     const id = Number(c.req.param("id"));
-    await db.delete(schema.assets).where(eq(schema.assets.id, id));
-    return c.json({ ok: true });
+    const b = await c.req.json().catch(() => ({}));
+    const [row] = await db
+      .update(schema.assets)
+      .set({ archivedAt: b.archived === false ? null : new Date() })
+      .where(eq(schema.assets.id, id))
+      .returning();
+    if (!row) return c.notFound();
+    return c.json({ ok: true, archived: row.archivedAt != null });
   });
 
   // === Config CONFIGURATEUR par produit (BO) ===============================

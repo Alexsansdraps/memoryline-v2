@@ -241,6 +241,12 @@ export const assets = pgTable(
     colorZones: jsonb("color_zones").$type<Record<string, string>>(),
     position: integer("position").default(0).notNull(),
     legacyAssetId: integer("legacy_asset_id"), // id numérique dans les properties
+    /**
+     * Soft-delete, comme pour les personnages : non null = archivée,
+     * masquée du configurateur mais TOUJOURS lisible pour régénérer le
+     * PDF d'une commande passée qui l'utilisait.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => [index("asset_slot_idx").on(t.slot)],
 );

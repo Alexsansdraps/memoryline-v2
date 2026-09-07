@@ -114,6 +114,8 @@ export interface Asset {
   view: "front" | "back" | null;
   colorZones: Record<string, string> | null;
   position: number;
+  /** Non null = pièce archivée : masquée du configurateur, jamais supprimée. */
+  archivedAt?: string | null;
 }
 
 /** Un visuel (arrière-plan) disponible pour un produit. */
@@ -193,6 +195,14 @@ export function adminApi(request?: Request) {
         baseColorZones?: Record<string, string> | null;
       },
     ) => req<CharacterType>("POST", `/admin/characters/${id}/base`, data, cookie),
+    /** Archive ou restaure une pièce (la suppression définitive n'existe plus). */
+    archiveAsset: (id: number, archived: boolean) =>
+      req<{ ok: boolean; archived: boolean }>(
+        "POST",
+        `/admin/assets/${id}/archive`,
+        { archived },
+        cookie,
+      ),
     archiveCharacter: (id: number, archived: boolean) =>
       req<CharacterType>(
         "POST",
@@ -217,27 +227,13 @@ export function adminApi(request?: Request) {
         { items },
         cookie,
       ),
-    deleteCharacter: (id: number) =>
-      req<{ ok: boolean }>(
-        "DELETE",
-        `/admin/characters/${id}`,
-        undefined,
-        cookie,
-      ),
     assets: () => req<Asset[]>("GET", "/admin/assets", undefined, cookie),
     upsertAsset: (data: Partial<Asset>) =>
       req<Asset>("POST", "/admin/assets", data, cookie),
     setAssetColors: (id: number, colorZones: Record<string, string>) =>
       req<Asset>("POST", `/admin/assets/${id}/colors`, { colorZones }, cookie),
-    deleteAsset: (id: number) =>
-      req<{ ok: boolean }>("DELETE", `/admin/assets/${id}`, undefined, cookie),
     productConfig: (id: number | string) =>
-      req<ProductConfig>(
-        "GET",
-        `/admin/products/${id}/config`,
-        undefined,
-        cookie,
-      ),
+      req<ProductConfig>("GET", `/admin/products/${id}/config`, undefined, cookie),
     setProductConfig: (
       id: number | string,
       data: {

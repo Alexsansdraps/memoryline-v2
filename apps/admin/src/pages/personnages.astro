@@ -188,8 +188,11 @@ const SLOTS = [
 ];
 
 // Pièces génériques = celles non rattachées à un personnage précis.
+// Les pièces archivées quittent la bibliothèque active : elles restent en
+// base pour réimprimer les commandes qui les utilisaient.
+const piecesArchivees = assets.filter((a) => a.archivedAt);
 const pieces = assets
-  .slice()
+  .filter((a) => !a.archivedAt)
   .sort((a, b) => a.position - b.position || a.id - b.id);
 const piecesBySlot = new Map<string, Asset[]>();
 for (const s of SLOTS) piecesBySlot.set(s.value, []);
@@ -533,13 +536,7 @@ for (const a of pieces) {
               </div>
 
               <div class="px-4 py-3">
-                <button
-                  type="button"
-                  class="js-del-char text-xs text-bo-muted hover:text-red-600"
-                >
-                  Supprimer définitivement
-                </button>
-                <form method="POST" class="inline ml-3">
+                <form method="POST" class="inline">
                   <input type="hidden" name="_action" value="archive" />
                   <input type="hidden" name="id" value={t.id} />
                   <input type="hidden" name="archived" value="true" />
@@ -671,9 +668,9 @@ for (const a of pieces) {
                     </div>
                     <button
                       type="button"
-                      class="js-del-asset ml-auto text-xs text-bo-muted hover:text-red-600"
+                      class="js-archive-asset ml-auto text-xs text-bo-muted hover:text-bo-accent"
                     >
-                      Supprimer
+                      Archiver
                     </button>
                   </div>
                   {Object.keys(a.colorZones ?? {}).length === 0 ? (
@@ -782,6 +779,44 @@ for (const a of pieces) {
       </div>
     </form>
   </section>
+
+  {/* ====== Pièces archivées ====== */}
+  {piecesArchivees.length > 0 && (
+    <section class="mb-12">
+      <h3 class="font-semibold mb-1">Pièces archivées</h3>
+      <p class="text-xs text-bo-muted mb-3">
+        Retirées du configurateur. Elles restent en base pour réimprimer les
+        commandes qui les utilisaient, et peuvent être restaurées.
+      </p>
+      <div class="grid sm:grid-cols-3 gap-3 opacity-60">
+        {piecesArchivees.map((a) => (
+          <div
+            class="border border-bo-border rounded p-3 bg-bo-surface flex items-center gap-2"
+            data-asset-id={a.id}
+          >
+            <img
+              src={svgSrc(a.svgUrl)}
+              alt=""
+              class="h-10 w-10 object-contain border border-bo-border rounded bg-white"
+              style={a.svgUrl ? "" : "visibility:hidden"}
+              loading="lazy"
+            />
+            <div class="min-w-0 flex-1">
+              <div class="text-sm font-medium truncate">{a.name}</div>
+              <div class="text-xs text-bo-muted">{a.slot}</div>
+            </div>
+            <button
+              type="button"
+              class="js-archive-asset text-xs text-bo-muted hover:text-bo-accent"
+              data-restaurer="1"
+            >
+              Restaurer
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  )}
 
   {/* Listes d'autocomplétion partagées */}
   <datalist id="base-svg-list">
@@ -908,50 +943,30 @@ for (const a of pieces) {
       });
     });
 
-    // ===== SECTION B : suppression d'une pièce =====
-    document.querySelectorAll(".js-del-asset").forEach((btn) => {
+    // ===== SECTION B : archivage d'une pièce =====
+    // Il n'y a plus de suppression définitive : une pièce effacée empêchait de
+    // régénérer le PDF des commandes qui l'utilisaient.
+    document.querySelectorAll(".js-archive-asset").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const card = btn.closest("[data-asset-id]");
         if (!card) return;
-        if (!confirm("Supprimer définitivement cette pièce ?")) return;
+        const restaurer = btn.dataset.restaurer === "1";
         const id = card.getAttribute("data-asset-id");
         try {
-          const res = await fetch(`${PUBLIC_API_URL}/admin/assets/${id}`, {
-            method: "DELETE",
+          const res = await fetch(`${PUBLIC_API_URL}/admin/assets/${id}/archive`, {
+            method: "POST",
             credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archived: !restaurer }),
           });
           if (!res.ok) throw new Error("HTTP " + res.status);
-          card.remove();
+          location.reload();
         } catch (e) {
-          alert("Suppression impossible : " + e);
+          alert((restaurer ? "Restauration" : "Archivage") + " impossible : " + e);
         }
       });
     });
 
-    // ===== SECTION A : suppression d'un personnage =====
-    document.querySelectorAll(".js-del-char").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const card = btn.closest("[data-char-id]");
-        if (!card) return;
-        if (
-          !confirm(
-            "Supprimer définitivement ce personnage et ses éléments liés ? Cette action est irréversible.",
-          )
-        )
-          return;
-        const id = card.getAttribute("data-char-id");
-        try {
-          const res = await fetch(`${PUBLIC_API_URL}/admin/characters/${id}`, {
-            method: "DELETE",
-            credentials: "include",
-          });
-          if (!res.ok) throw new Error("HTTP " + res.status);
-          card.remove();
-        } catch (e) {
-          alert("Suppression impossible : " + e);
-        }
-      });
-    });
 
     // ===== SECTION A : base d'un personnage (SVG + couleurs) =====
     document.querySelectorAll(".js-base").forEach((box) => {

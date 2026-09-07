@@ -71,6 +71,13 @@
       "when": 1788796668555,
       "tag": "0009_aromatic_exodus",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788798483358,
+      "tag": "0010_tough_klaw",
+      "breakpoints": true
     }
   ]
 }
