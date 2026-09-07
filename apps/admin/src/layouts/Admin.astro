@@ -8,16 +8,20 @@ const { title } = Astro.props;
 const path = relPath(Astro.url.pathname);
 
 // Navigation type admin Shopify (vocabulaire familier à la cliente).
+// `owner: true` = écran de configuration, masqué aux comptes « seller », qui
+// vendent et impriment mais ne modifient ni le catalogue ni les réglages.
 const nav = [
   { href: "/", label: "Accueil", icon: "🏠" },
   { href: "/commandes", label: "Commandes en ligne", icon: "🛒" },
   { href: "/ventes-salon", label: "Ventes salon", icon: "🎪" },
-  { href: "/produits", label: "Produits", icon: "🖼️" },
-  { href: "/personnages", label: "Personnages", icon: "🧸" },
-  { href: "/promotions", label: "Promotions", icon: "🎟️" },
-  { href: "/bandeau", label: "Bandeau du site", icon: "📢" },
-  { href: "/contenu", label: "Contenu", icon: "✏️" },
+  { href: "/produits", label: "Produits", icon: "🖼️", owner: true },
+  { href: "/personnages", label: "Personnages", icon: "🧸", owner: true },
+  { href: "/promotions", label: "Promotions", icon: "🎟️", owner: true },
+  { href: "/bandeau", label: "Bandeau du site", icon: "📢", owner: true },
+  { href: "/contenu", label: "Contenu", icon: "✏️", owner: true },
 ];
+const isOwner = Astro.locals.user?.role === "owner";
+const visibleNav = nav.filter((item) => isOwner || !item.owner);
 ---
 
 <!doctype html>
@@ -38,7 +42,7 @@ const nav = [
         </div>
         <nav class="flex-1 py-3">
           {
-            nav.map((item) => {
+            visibleNav.map((item) => {
               const active =
                 item.href === "/"
                   ? path === "/"
@@ -60,7 +64,7 @@ const nav = [
           }
         </nav>
         <div class="px-5 py-3 text-xs text-white/40 border-t border-white/10">
-          Back-office · v0
+          Back-office · v0{!isOwner && " · vendeur"}
         </div>
       </aside>
 

@@ -320,11 +320,27 @@ app.get("/auth/me", async (c) => {
   return c.json({ user: { email: user.email, role: user.role } });
 });
 
-// === Back-office (écritures) — PROTÉGÉ ====================================
-// Toute requête /admin/* exige une session admin valide.
+// === Back-office — PROTÉGÉ ================================================
+// Toute requête /admin/* exige une session valide, et les ÉCRITURES exigent
+// en plus le rôle « owner ».
+//
+// Règle volontairement simple, donc difficile à contourner par oubli : toute
+// méthode autre que GET est réservée au propriétaire. Un « seller » consulte
+// le catalogue, les commandes et télécharge les PDF d'impression, mais ne peut
+// modifier ni les produits, ni les personnages, ni les prix, ni les promotions,
+// ni le contenu du site. Énumérer les routes à protéger une par une aurait
+// laissé passer la prochaine route ajoutée.
+const OWNER_ROLE = "owner";
+
 app.use("/admin/*", async (c, next) => {
   const user = await validateSession(getCookie(c, SESSION_COOKIE));
   if (!user) return c.json({ error: "Non authentifié" }, 401);
+  if (c.req.method !== "GET" && user.role !== OWNER_ROLE) {
+    return c.json(
+      { error: "Action réservée au propriétaire du compte" },
+      403,
+    );
+  }
   await next();
 });
 

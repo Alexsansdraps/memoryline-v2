@@ -3,6 +3,8 @@ import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
 import { adminApi } from "../lib/api.ts";
 
+const isOwner = Astro.locals.user?.role === "owner";
+
 let stats = null;
 let error: string | null = null;
 try {
@@ -34,10 +36,17 @@ try {
   <div class="mt-6 bg-bo-surface border border-bo-border rounded-lg p-5">
     <h2 class="font-semibold">Raccourcis</h2>
     <ul class="mt-3 grid sm:grid-cols-2 gap-2 text-sm">
-      <li><a class="text-bo-accent hover:underline" href={url("/promotions")}>→ Gérer les promotions (offre du moment)</a></li>
-      <li><a class="text-bo-accent hover:underline" href={url("/bandeau")}>→ Modifier le bandeau du site</a></li>
+      {isOwner && (
+        <>
+          <li><a class="text-bo-accent hover:underline" href={url("/promotions")}>→ Gérer les promotions (offre du moment)</a></li>
+          <li><a class="text-bo-accent hover:underline" href={url("/bandeau")}>→ Modifier le bandeau du site</a></li>
+        </>
+      )}
       <li><a class="text-bo-accent hover:underline" href={url("/ventes-salon")}>→ Voir les ventes salon</a></li>
-      <li><a class="text-bo-accent hover:underline" href={url("/contenu")}>→ Éditer le contenu du site</a></li>
+      <li><a class="text-bo-accent hover:underline" href={url("/commandes")}>→ Voir les commandes en ligne</a></li>
+      {isOwner && (
+        <li><a class="text-bo-accent hover:underline" href={url("/contenu")}>→ Éditer le contenu du site</a></li>
+      )}
     </ul>
   </div>
 </Admin>
