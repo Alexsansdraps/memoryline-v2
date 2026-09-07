@@ -460,13 +460,12 @@ export function presetPaletteForSlot(slot: Slot | string): readonly string[] {
   return CLOTHES_TONES;
 }
 
-/** ViewBox zoomé pour les vignettes de slot (cadrage sur la partie). */
-export const SLOT_THUMB_VIEWBOX: Record<Slot, string> = {
-  clothes: "-50 275 600 1000",
-  pants: "50 575 400 350",
-  hair: "50 50 400 400",
-  accessory: "50 0 400 400",
-};
+/**
+ * ViewBox zoomé pour les vignettes de slot (cadrage sur la partie).
+ * Défini dans @memoryline/types et ré-exporté ici : le back-office s'en sert
+ * aussi, les deux cadrages doivent rester identiques.
+ */
+export { SLOT_THUMB_VIEWBOX } from "@memoryline/types";
 
 /** Recolorie un SVG brut avec les couleurs d'un perso (sous-ensemble des zones). */
 export function recolorForCharacter(

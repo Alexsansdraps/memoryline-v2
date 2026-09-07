@@ -28,6 +28,24 @@ export const ASSET_SLOTS = [
 ] as const;
 export type AssetSlot = (typeof ASSET_SLOTS)[number];
 
+/**
+ * Cadrage des VIGNETTES de pièces, exprimé dans le repère du personnage
+ * (viewBox 500×1000). Une coupe de cheveux ou un accessoire n'occupe qu'une
+ * petite zone de ce cadre : affichée en entier, la pièce apparaît minuscule
+ * dans un coin. On recadre donc sur sa zone utile.
+ *
+ * Défini ici, dans les types partagés, pour que le configurateur ET le
+ * back-office cadrent les vignettes de la même façon.
+ */
+export const SLOT_THUMB_VIEWBOX: Record<AssetSlot, string> = {
+  head: "50 0 400 400",
+  hair: "50 50 400 400",
+  clothes: "-50 275 600 1000",
+  pants: "50 575 400 350",
+  shoes: "50 800 400 200",
+  accessory: "50 0 400 400",
+};
+
 export const textBlockSchema = z.object({
   value: z.string(),
   font: z.string().optional(),

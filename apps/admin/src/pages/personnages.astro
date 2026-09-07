@@ -6,6 +6,7 @@ import {
   type CharacterCategory,
   type Asset,
 } from "../lib/api.ts";
+import { SLOT_THUMB_VIEWBOX } from "@memoryline/types";
 
 const api = adminApi(Astro.request);
 
@@ -708,13 +709,18 @@ for (const a of pieces) {
                   data-asset-id={a.id}
                 >
                   <div class="flex items-center gap-2 mb-2">
-                    <img
-                      src={svgSrc(a.svgUrl)}
-                      alt=""
-                      class="h-10 w-10 object-contain border border-bo-border rounded bg-white"
+                    {/* Cadré sur la zone de la pièce : dans le repère du
+                        personnage (500×1000), une coupe ou un accessoire
+                        n'occupe qu'un coin et serait illisible en entier. */}
+                    <svg
+                      viewBox={SLOT_THUMB_VIEWBOX[a.slot as keyof typeof SLOT_THUMB_VIEWBOX] ?? "0 0 500 1000"}
+                      class="h-10 w-10 shrink-0 border border-bo-border rounded bg-white"
                       style={a.svgUrl ? "" : "visibility:hidden"}
-                      loading="lazy"
-                    />
+                      role="img"
+                      aria-label={a.name}
+                    >
+                      <image href={svgSrc(a.svgUrl)} x="0" y="0" width="500" height="1000" />
+                    </svg>
                     <div class="min-w-0">
                       <div class="text-sm font-medium truncate">{a.name}</div>
                       <div class="text-xs text-bo-muted">
