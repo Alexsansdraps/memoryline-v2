@@ -64,6 +64,7 @@ services:
       - /app/node_modules
       - /app/apps/web/node_modules
       - /app/packages/types/node_modules
+      - /app/packages/configurator/node_modules
 
   admin:
     build:
