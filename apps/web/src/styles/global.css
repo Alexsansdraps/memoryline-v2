@@ -160,6 +160,71 @@ body {
   }
 }
 
+/* --------------------------------------------------------------------------
+ * Éditeur de personnage — l'aperçu ne doit pas manger l'écran.
+ *
+ * Le SVG d'un personnage a un ratio 1:2 : le cadre mesurait donc deux fois la
+ * largeur de sa colonne en hauteur. On plafonne la HAUTEUR et le ratio calcule
+ * la largeur, comme pour l'affiche.
+ * ------------------------------------------------------------------------ */
+.ml-cfg-perso-apercu {
+  width: auto !important;
+  height: min(46vh, 60vw);
+  margin-inline: auto;
+}
+
+@media (max-width: 768px) {
+  /* Une seule colonne : à 375 px, les galeries n'avaient plus que ~200 px.
+     Elles récupèrent toute la largeur, et l'aperçu devient un bandeau
+     compact qui reste visible pendant qu'on fait défiler les choix. */
+  .ml-cfg-editeur {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .ml-cfg-perso-col {
+    top: 0 !important;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--color-paper);
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(32, 33, 31, 0.08);
+  }
+  .ml-cfg-perso-apercu {
+    height: 22vh;
+    margin-inline: 0;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Choix du personnage : catégories puis grille.
+ * Une galerie horizontale unique obligeait à défiler les 62 personnages ;
+ * la grille tient à l'écran et défile au besoin dans sa propre zone.
+ * ------------------------------------------------------------------------ */
+.ml-cfg-categories {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 0 8px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.ml-cfg-grille-persos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+  max-height: 34vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px;
+}
+
+/* Les vignettes remplissent leur case de grille. */
+.ml-cfg-grille-persos > button {
+  width: 100% !important;
+}
+
 /* Plein écran sur mobile/tablette : la perso prend tout l'espace. */
 @media (max-width: 768px) {
   .ml-modal-overlay {

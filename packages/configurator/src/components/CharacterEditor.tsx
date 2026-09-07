@@ -1,5 +1,12 @@
 /// <reference lib="dom" />
-import { For, Show, createMemo, createUniqueId, type JSX } from "solid-js";
+import {
+  For,
+  Show,
+  createMemo,
+  createSignal,
+  createUniqueId,
+  type JSX,
+} from "solid-js";
 import {
   BASE_COLOR_SCOPE,
   colorKey,
@@ -332,6 +339,37 @@ export function CharacterEditor(props: {
   // Scope CSS unique par instance d'éditeur (cf. scopeSvgStyles).
   const uid = createUniqueId();
 
+  /* ---- Choix du personnage par catégorie -------------------------------- */
+  const SANS_CAT = "Autres";
+
+  /** Catégories présentes, dans l'ordre renvoyé par l'API (= ordre du BO). */
+  const categories = createMemo<string[]>(() => {
+    const vues: string[] = [];
+    for (const c of props.characters) {
+      const cat = c.category ?? SANS_CAT;
+      if (!vues.includes(cat)) vues.push(cat);
+    }
+    return vues;
+  });
+
+  /** Catégorie du personnage actuellement sélectionné, sinon la première. */
+  const categorieDuPerso = createMemo(() => {
+    const actuel = props.characters.find(
+      (c) => String(c.id) === String(props.character.characterId),
+    );
+    return actuel?.category ?? categories()[0] ?? SANS_CAT;
+  });
+
+  const [choisie, setChoisie] = createSignal<string | null>(null);
+  const categorieActive = () => choisie() ?? categorieDuPerso();
+  const setCategorieActive = (cat: string) => setChoisie(cat);
+
+  const personnagesDeLaCategorie = createMemo(() =>
+    props.characters.filter(
+      (c) => (c.category ?? SANS_CAT) === categorieActive(),
+    ),
+  );
+
   /**
    * Zones de couleur d'une variante (slot courant) + valeur actuelle.
    * `zone` = clé NAMESPACÉE "slot:stN" (cf. colorKey) : la couleur choisie ne
@@ -472,8 +510,10 @@ export function CharacterEditor(props: {
         </h3>
       </div>
 
-      {/* Deux colonnes */}
+      {/* Deux colonnes — une seule sur mobile (cf. global.css) : à 375 px, la
+          colonne des galeries ne faisait plus que ~200 px de large. */}
       <div
+        class="ml-cfg-editeur"
         style={{
           display: "grid",
           "grid-template-columns": "minmax(120px, 35%) 1fr",
@@ -482,7 +522,7 @@ export function CharacterEditor(props: {
         }}
       >
         {/* Colonne gauche : prévisualisation du perso composé */}
-        <div style={{ position: "sticky", top: "48px" }}>
+        <div class="ml-cfg-perso-col" style={{ position: "sticky", top: "48px" }}>
           <span
             style={{
               display: "block",
@@ -496,11 +536,14 @@ export function CharacterEditor(props: {
             PRÉVISUALISATION
           </span>
           <div
+            class="ml-cfg-perso-apercu"
             style={{
               position: "relative",
               width: "100%",
               // Même cadre que l'aperçu de l'affiche (SVG perso = viewBox 500×1000,
               // ratio 1:2) → prévisualisation 100% fidèle au rendu final.
+              // La HAUTEUR est plafonnée en CSS : à ce ratio, le cadre occupait
+              // deux fois la largeur de sa colonne et repoussait les galeries.
               "aspect-ratio": "1 / 2",
               background: "#f3f4f6",
               "border-radius": "10px",
@@ -519,10 +562,43 @@ export function CharacterEditor(props: {
 
         {/* Colonne droite : sections */}
         <div style={{ "min-width": "0" }}>
-          {/* Choix du personnage (base) */}
+          {/* Choix du personnage, PAR CATÉGORIE.
+              Une galerie horizontale unique imposait de faire défiler les 62
+              personnages pour atteindre le bon. On choisit d'abord la
+              catégorie, puis le personnage dans une grille qui tient à
+              l'écran. */}
           <SectionTitle>Choix du personnage</SectionTitle>
-          <Gallery>
-            <For each={props.characters}>
+
+          <div class="ml-cfg-categories">
+            <For each={categories()}>
+              {(cat) => (
+                <button
+                  type="button"
+                  onClick={() => setCategorieActive(cat)}
+                  aria-pressed={categorieActive() === cat}
+                  style={{
+                    flex: "0 0 auto",
+                    border:
+                      categorieActive() === cat
+                        ? "1px solid #4f46e5"
+                        : "1px solid #d1d5db",
+                    background: categorieActive() === cat ? "#4f46e5" : "#fff",
+                    color: categorieActive() === cat ? "#fff" : "#374151",
+                    "border-radius": "9999px",
+                    padding: "5px 12px",
+                    "font-size": "13px",
+                    "font-weight": "600",
+                    cursor: "pointer",
+                  }}
+                >
+                  {cat}
+                </button>
+              )}
+            </For>
+          </div>
+
+          <div class="ml-cfg-grille-persos">
+            <For each={personnagesDeLaCategorie()}>
               {(base) => (
                 <Thumb
                   selected={String(props.character.characterId) === String(base.id)}
@@ -544,7 +620,7 @@ export function CharacterEditor(props: {
                 </Thumb>
               )}
             </For>
-          </Gallery>
+          </div>
           {/* Couleur de peau (zones de la base) */}
           <Show when={skinZones().length > 0}>
             <ColorRow
