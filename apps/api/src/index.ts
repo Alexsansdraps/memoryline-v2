@@ -5,7 +5,8 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { count, eq, desc, inArray } from "drizzle-orm";
 import { resolve, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { db, sql, schema } from "./db/client.js";
 import {
   SESSION_COOKIE,
@@ -69,6 +70,12 @@ app.get("/assets/:file", async (c) => {
     return c.body(buf, 200, {
       "Content-Type": mime,
       "Cache-Control": "public, max-age=31536000, immutable",
+      // Un SVG est un document : ouvert directement, un fichier piégé
+      // s'exécuterait sur l'origine de l'API, là où vit le cookie admin.
+      // On neutralise scripts et ressources externes, et on interdit au
+      // navigateur de deviner un autre type que celui annoncé.
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
+      "X-Content-Type-Options": "nosniff",
     });
   } catch {
     return c.notFound();
@@ -402,6 +409,54 @@ app.get("/admin/stats", async (c) => {
     orderItems: items!.n,
     ordersByChannel: Object.fromEntries(byChannel.map((r) => [r.channel, r.n])),
   });
+});
+
+/**
+ * Téléverse un visuel dans data/assets et renvoie son URL publique.
+ *
+ * Réservé au propriétaire (comme toute écriture /admin/*). Le nom est
+ * reconstruit à partir de zéro — jamais celui du client — et l'extension doit
+ * figurer dans la liste blanche : c'est ce fichier qui sera ensuite servi par
+ * /assets/:file, et rasterisé dans le PDF d'impression.
+ */
+const UPLOAD_EXT = new Set([".svg", ".png", ".jpg", ".jpeg", ".webp"]);
+const UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
+
+app.post("/admin/uploads", async (c) => {
+  const form = await c.req.formData();
+  const file = form.get("file");
+  if (!(file instanceof File) || !file.size) {
+    return c.json({ error: "aucun fichier reçu" }, 400);
+  }
+  if (file.size > UPLOAD_MAX_BYTES) {
+    return c.json(
+      { error: `fichier trop lourd (max ${UPLOAD_MAX_BYTES / 1048576} Mo)` },
+      413,
+    );
+  }
+  const ext = extname(file.name).toLowerCase();
+  if (!UPLOAD_EXT.has(ext)) {
+    return c.json(
+      { error: `extension refusée (acceptées : ${[...UPLOAD_EXT].join(", ")})` },
+      415,
+    );
+  }
+
+  // Nom sûr : on repart du nom d'origine réduit à [a-z0-9-], puis on suffixe
+  // pour ne jamais écraser un visuel existant.
+  const base =
+    basename(file.name, extname(file.name))
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 60) || "visuel";
+  const suffixe = randomBytes(4).toString("hex");
+  const nom = `${base}-${suffixe}${ext}`;
+
+  await writeFile(resolve(ASSETS_DIR, nom), Buffer.from(await file.arrayBuffer()));
+  return c.json({ url: `/assets/${nom}`, name: nom, size: file.size });
 });
 
 app.get("/admin/promos", async (c) => {

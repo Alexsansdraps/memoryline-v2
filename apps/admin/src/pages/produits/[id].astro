@@ -121,7 +121,35 @@ const backgrounds = config?.backgrounds ?? [];
       {/* 2 — Ajouter un visuel                                           */}
       {/* =============================================================== */}
       <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg p-5">
-        <h3 class="font-semibold mb-3">Ajouter un visuel : URL de l'image</h3>
+        <h3 class="font-semibold mb-1">Ajouter un visuel</h3>
+        <p class="mb-3 text-sm text-bo-muted">
+          Chaque visuel ajouté ici devient un choix de fond proposé au client
+          dans le configurateur de ce produit.
+        </p>
+
+        <div class="mb-4 rounded border border-dashed border-bo-border p-4">
+          <label class="block text-sm font-medium mb-2" for="new-bg-file">
+            Depuis mon ordinateur
+          </label>
+          <div class="flex flex-wrap items-center gap-3">
+            <input
+              id="new-bg-file"
+              type="file"
+              accept=".svg,.png,.jpg,.jpeg,.webp"
+              multiple
+              class="text-sm"
+            />
+            <span id="upload-status" class="text-xs"></span>
+          </div>
+          <p class="mt-2 text-xs text-bo-muted">
+            SVG, PNG, JPG ou WebP, 25 Mo maximum par fichier. Plusieurs fichiers
+            peuvent être choisis d'un coup.
+          </p>
+        </div>
+
+        <label class="block text-sm font-medium mb-2" for="new-bg-url">
+          Ou depuis une adresse web
+        </label>
         <div class="flex flex-wrap items-end gap-3">
           <input
             id="new-bg-url"
@@ -276,6 +304,58 @@ const backgrounds = config?.backgrounds ?? [];
     }
 
     document.querySelectorAll(".js-del-bg").forEach(bindDelete);
+
+    // --- Téléversement d'un ou plusieurs visuels ---
+    // Deux temps : on dépose le fichier (POST /admin/uploads), puis on
+    // rattache l'URL obtenue au produit, exactement comme un ajout par URL.
+    const fileInput = document.getElementById("new-bg-file");
+    const uploadStatus = document.getElementById("upload-status");
+
+    async function rattacher(url) {
+      const res = await fetch(
+        `${PUBLIC_API_URL}/admin/products/${productId}/backgrounds`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        },
+      );
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.json();
+    }
+
+    fileInput?.addEventListener("change", async () => {
+      const fichiers = Array.from(fileInput.files || []);
+      if (!fichiers.length) return;
+      let faits = 0;
+      for (const f of fichiers) {
+        uploadStatus.className = "text-xs text-bo-muted";
+        uploadStatus.textContent = `Envoi de ${f.name} (${faits + 1}/${fichiers.length})…`;
+        try {
+          const fd = new FormData();
+          fd.append("file", f);
+          const res = await fetch(`${PUBLIC_API_URL}/admin/uploads`, {
+            method: "POST",
+            credentials: "include",
+            body: fd,
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
+          await rattacher(data.url);
+          faits++;
+        } catch (e) {
+          uploadStatus.className = "text-xs text-red-600";
+          uploadStatus.textContent = `${f.name} : ${e}`;
+          return;
+        }
+      }
+      uploadStatus.className = "text-xs text-green-700";
+      uploadStatus.textContent = `${faits} visuel(s) ajouté(s).`;
+      // Rechargement : la grille est rendue côté serveur, plus fiable que de
+      // la reconstruire à la main pour plusieurs fichiers.
+      location.reload();
+    });
 
     addBtn?.addEventListener("click", async () => {
       const url = (addInput.value || "").trim();
