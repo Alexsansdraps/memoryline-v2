@@ -7,6 +7,11 @@ import {
   For,
   type JSX,
 } from "solid-js";
+import {
+  remisesPanier,
+  totalPanierCents,
+  type RegleParier,
+} from "@memoryline/types";
 import { loadStripe } from "@stripe/stripe-js";
 import type { Stripe, StripeElements } from "@stripe/stripe-js";
 import {
@@ -91,38 +96,27 @@ export default function CheckoutIsland(): JSX.Element {
       0,
     );
 
-  // Promos actives — répliquées à l'identique du serveur (computeOrderTotalCents)
-  // et du panier, pour que le montant AFFICHÉ = le montant FACTURÉ.
+  // Promos actives. Le calcul lui-même vient du moteur PARTAGÉ : plus de
+  // réplique locale à maintenir en phase avec le serveur.
   const [promos] = createResource(async () => {
     try {
       const res = await fetch(`${PUBLIC_API_URL}/promos`);
-      return res.ok
-        ? ((await res.json()) as {
-            type: string;
-            config?: { buyQty?: number; getQty?: number };
-          }[])
-        : [];
+      return res.ok ? ((await res.json()) as RegleParier[]) : [];
     } catch {
       return [];
     }
   });
-  const discount = () => {
-    const units: number[] = [];
-    for (const it of cart()?.items ?? [])
-      for (let k = 0; k < it.quantity; k++) units.push(it.unitPriceCents);
-    units.sort((a, b) => a - b);
-    let amount = 0;
-    for (const p of promos() ?? []) {
-      if (p.type !== "buy_x_get_y") continue;
-      const buyQty = p.config?.buyQty ?? 3;
-      const getQty = p.config?.getQty ?? 1;
-      const freeCount = Math.floor(units.length / buyQty) * getQty;
-      for (let i = 0; i < freeCount && i < units.length; i++) amount += units[i]!;
-    }
-    return amount;
-  };
+  const lignes = () =>
+    (cart()?.items ?? []).map((it) => ({
+      unitPriceCents: it.unitPriceCents,
+      quantity: it.quantity,
+      format:
+        (it.config as { format?: string } | null | undefined)?.format ?? null,
+    }));
+  const discount = () => remisesPanier(lignes(), promos() ?? []).remiseCents;
+
   /** Montant réellement dû (= ce que débitera Stripe/PayPal). */
-  const total = () => Math.max(0, subtotal() - discount());
+  const total = () => totalPanierCents(lignes(), promos() ?? []);
 
   const methods = (): Method[] => {
     const c = config();

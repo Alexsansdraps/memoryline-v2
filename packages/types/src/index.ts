@@ -1,6 +1,7 @@
 export * from "./config.js";
 export * from "./library.js";
 export * from "./svg-color.js";
+export * from "./promo.js";
 
 /** Canal d'une commande — dimension structurante, immuable (§11). */
 export const ORDER_CHANNELS = ["web", "salon"] as const;

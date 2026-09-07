@@ -23,7 +23,11 @@ import {
 } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import { renderPosterPdf, type ResolveData } from "./pdf.js";
-import { posterConfigSchema, type PosterConfig } from "@memoryline/types";
+import {
+  posterConfigSchema,
+  totalPanierCents,
+  type PosterConfig,
+} from "@memoryline/types";
 import {
   createPaypalOrder,
   capturePaypalOrder,
@@ -185,43 +189,22 @@ async function loadCartItem(cartId: string, itemId: number) {
 }
 
 /**
- * Total à FACTURER en centimes, promos incluses — calculé côté SERVEUR (le
- * montant client n'est jamais de confiance). Miroir de la logique du panier
- * (CartIsland) : pour chaque promo active `buy_x_get_y`, par tranche de
- * `buyQty` unités on offre `getQty` unité(s), la/les moins chère(s).
+ * Total à FACTURER en centimes, remises comprises — calculé côté SERVEUR (le
+ * montant envoyé par le navigateur n'est jamais de confiance).
+ *
+ * Le calcul lui-même vit dans @memoryline/types : le panier et le tunnel de
+ * commande utilisent EXACTEMENT la même fonction, donc le montant affiché au
+ * client et le montant encaissé ne peuvent plus diverger.
  */
 async function computeOrderTotalCents(items: PricedItem[]): Promise<number> {
-  const subtotal = items.reduce(
-    (s, it) => s + it.unitPriceCents * it.quantity,
-    0,
-  );
-  const now = new Date();
-  const rules = (
-    await db
-      .select()
-      .from(schema.promoRules)
-      .where(eq(schema.promoRules.active, true))
-  ).filter(
-    (r) => (!r.startsAt || r.startsAt <= now) && (!r.endsAt || r.endsAt >= now),
-  );
-
-  // unités dépliées, triées par prix croissant (on offre les moins chères)
-  const units: number[] = [];
-  for (const it of items)
-    for (let k = 0; k < it.quantity; k++) units.push(it.unitPriceCents);
-  units.sort((a, b) => a - b);
-
-  let discount = 0;
-  for (const rule of rules) {
-    if (rule.type !== "buy_x_get_y") continue;
-    const cfg = (rule.config ?? {}) as { buyQty?: number; getQty?: number };
-    const buyQty = cfg.buyQty ?? 3;
-    const getQty = cfg.getQty ?? 1;
-    const freeCount = Math.floor(units.length / buyQty) * getQty;
-    for (let i = 0; i < freeCount && i < units.length; i++)
-      discount += units[i]!;
-  }
-  return Math.max(0, subtotal - discount);
+  const rules = await db.select().from(schema.promoRules);
+  const lignes = items.map((it) => ({
+    unitPriceCents: it.unitPriceCents,
+    quantity: it.quantity,
+    format:
+      (it.config as { format?: string } | null)?.format ?? null,
+  }));
+  return totalPanierCents(lignes, rules);
 }
 
 /**

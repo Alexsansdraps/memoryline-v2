@@ -6,7 +6,12 @@ import {
   Show,
   type JSX,
 } from "solid-js";
-import type { PosterConfig } from "@memoryline/types";
+import {
+  remisesPanier,
+  totalPanierCents,
+  type PosterConfig,
+  type RegleParier,
+} from "@memoryline/types";
 import {
   PUBLIC_API_URL,
   browserApi,
@@ -90,52 +95,28 @@ export default function CartIsland(): JSX.Element {
       0,
     );
 
+  /** Lignes réduites à ce dont le moteur de remises a besoin. */
+  const lignes = () =>
+    (cart()?.items ?? []).map((it) => ({
+      unitPriceCents: it.unitPriceCents,
+      quantity: it.quantity,
+      format: it.config.format ?? null,
+    }));
+
   /**
-   * Remise « buy_x_get_y » : par tranche de `buyQty` articles éligibles, on
-   * offre `getQty` article(s) — le(s) MOINS cher(s) (ex. l'A4 offerte). On
-   * déplie les quantités en unités, on trie par prix croissant, et on offre
-   * floor(n / (buyQty+getQty)) * getQty unités gratuites.
+   * Remises — calculées par le moteur PARTAGÉ (@memoryline/types), le même que
+   * l'API utilise pour le montant réellement encaissé. Ce qui est affiché ici
+   * ne peut donc plus diverger de ce qui sera débité.
    */
   const discount = (): { amount: number; label: string } => {
-    const items = cart()?.items ?? [];
-    let amount = 0;
-    let label = "";
-    for (const promo of promos() ?? []) {
-      if (promo.type !== "buy_x_get_y") continue;
-      const cfg = promo.config as {
-        buyQty?: number;
-        getQty?: number;
-        format?: string;
-      };
-      const buyQty = cfg.buyQty ?? 3;
-      const getQty = cfg.getQty ?? 1;
-      // unités éligibles (filtrées par format si la promo le précise)
-      const units: number[] = [];
-      for (const it of items) {
-        const fmt = it.config.format ?? "A4";
-        if (cfg.format && fmt !== cfg.format) {
-          // pour "1 A4 offerte" : il faut au moins buyQty achats au total,
-          // mais l'offert porte sur le format ciblé. On compte tout pour le
-          // seuil, et on offre des unités du format ciblé.
-        }
-        for (let k = 0; k < it.quantity; k++) units.push(it.unitPriceCents);
-      }
-      // « 3 achetées = 1 offerte » : par tranche de buyQty articles, getQty
-      // offert(s). Le seuil est buyQty (à 3 affiches, 1 est offerte).
-      const totalUnits = units.length;
-      const freeCount = Math.floor(totalUnits / buyQty) * getQty;
-      if (freeCount <= 0) continue;
-      // on offre les moins chères
-      const sorted = [...units].sort((a, b) => a - b);
-      for (let i = 0; i < freeCount && i < sorted.length; i++) {
-        amount += sorted[i]!;
-      }
-      if (amount > 0) label = promo.name;
-    }
-    return { amount, label };
+    const { remiseCents, detail } = remisesPanier(lignes(), promos() ?? []);
+    return {
+      amount: remiseCents,
+      label: detail.map((d) => d.regle).join(" · "),
+    };
   };
 
-  const total = () => Math.max(0, subtotal() - discount().amount);
+  const total = () => totalPanierCents(lignes(), promos() ?? []);
 
   function editHref(it: OrderItem): string | null {
     const slug = it.productId != null ? cart()?.slugs.get(it.productId) : null;
