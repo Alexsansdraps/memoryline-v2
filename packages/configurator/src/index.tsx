@@ -29,6 +29,10 @@ import { PosterPreview } from "./components/PosterPreview";
 import { StepBackgroundText } from "./components/StepBackgroundText";
 import { StepCharacters } from "./components/StepCharacters";
 import { StepFormat } from "./components/StepFormat";
+import {
+  messagesAvecDefauts,
+  type MessagesConfigurateur,
+} from "./messages";
 import { Button } from "./components/ui";
 
 /** Produit minimal injecté par l'hôte (pas d'appel réseau interne). */
@@ -48,6 +52,11 @@ export interface ConfiguratorProps {
   /** Prix par format en centimes (ex. { A4: 2300, A3: 2900 }). Le format
    *  sélectionné met à jour le prix affiché (demande cliente). */
   prices?: Partial<Record<PosterFormat, number>>;
+  /**
+   * Libellés traduits. Le paquet ne connaît pas les langues du site : l'hôte
+   * fournit un dictionnaire déjà traduit, complété par le français.
+   */
+  messages?: Partial<MessagesConfigurateur>;
   /** Décor d'avant-plan optionnel du produit (muret/banc…), rendu par-dessus
    *  les personnages (effet « assis dessus »). URL /assets/… ou absolue. */
   foregroundUrl?: string | null;
@@ -74,13 +83,15 @@ function fmtPrice(cents: number): string {
   }).format(cents / 100);
 }
 
-const STEP_LABELS: Record<Step, string> = {
-  background: "Fond & texte",
-  characters: "Personnages",
-  format: "Format",
-};
-
 export function Configurator(props: ConfiguratorProps): JSX.Element {
+  /** Libellés traduits, complétés par le français pour les clés absentes. */
+  const msg = () => messagesAvecDefauts(props.messages);
+  const STEP_LABELS = (): Record<Step, string> => ({
+    background: msg().etapeFond,
+    characters: msg().etapePersonnages,
+    format: msg().etapeFormat,
+  });
+
   const initialState: ConfiguratorState = props.initialConfig
     ? stateFromConfig(props.initialConfig)
     : emptyState();
@@ -440,7 +451,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
                 cursor: state.step === s ? "default" : "pointer",
               }}
             >
-              {i + 1}. {STEP_LABELS[s]}
+              {i + 1}. {STEP_LABELS()[s]}
             </button>
           ))}
         </div>
@@ -454,6 +465,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             onTextValue={setTextValue}
             onTextStyle={setTextStyle}
             onTextFont={setTextFont}
+            messages={msg()}
           />
         </Show>
 
@@ -473,6 +485,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             onClearSlot={clearSlot}
             onSetColor={setColor}
             onChangeCharacter={changeCharacter}
+            messages={msg()}
           />
         </Show>
 
@@ -499,7 +512,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             }}
           >
             <Button variant="secondary" onClick={prev}>
-              Retour
+              {msg().retour}
             </Button>
             {/* Prix mis à jour selon le format choisi (demande cliente). */}
             <div style={{ "font-weight": "700", "font-size": "18px", "white-space": "nowrap" }}>
@@ -511,7 +524,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
               </Show>
             </div>
             <Button variant="primary" onClick={next}>
-              {isLast() ? "Valider l'affiche" : "Continuer"}
+              {isLast() ? msg().validerAffiche : msg().continuer}
             </Button>
           </div>
         </Show>

@@ -7,6 +7,7 @@ import {
 } from "@memoryline/types";
 import type { ConfiguratorState } from "../store";
 import { Field } from "./ui";
+import type { MessagesConfigurateur } from "../messages";
 
 /** Étape 1 : fond + textes (titre + sous-titre, symboles & chiffres autorisés). */
 export function StepBackgroundText(props: {
@@ -20,7 +21,9 @@ export function StepBackgroundText(props: {
   ) => void;
   /** Change la police d'un seul bloc (titre ou sous-titre). */
   onTextFont: (which: "title" | "subtitle", font: string) => void;
+  messages: MessagesConfigurateur;
 }) {
+  const m = () => props.messages;
   /**
    * Choix rapide de la police, montrée DANS la police : le client juge le
    * rendu, pas un nom. Une rangée par bloc, car titre et sous-titre se
@@ -72,14 +75,14 @@ export function StepBackgroundText(props: {
   return (
     <div class="ml-cfg-step">
       <h3 style={{ "font-weight": "700", "margin-bottom": "10px" }}>
-        Fond & texte
+        {m().etapeFond}
       </h3>
 
       {/* Galerie de fonds : affichée UNIQUEMENT si le produit a plusieurs
           variantes de fond. Avec un seul fond (cas normal), l'affiche est fixée
           par le produit → pas de choix proposé au client. */}
       <Show when={props.backgrounds.length > 1}>
-        <Field label="Choisir un fond">
+        <Field label={m().choisirFond}>
           <div
             style={{
               display: "grid",
@@ -126,7 +129,7 @@ export function StepBackgroundText(props: {
       </Show>
 
       {/* Textes : seul le contenu diffère entre titre et sous-titre. */}
-      <Field label="Titre (symboles et chiffres autorisés)">
+      <Field label={m().champTitre}>
         <input
           type="text"
           value={props.state.title.value}
@@ -136,7 +139,7 @@ export function StepBackgroundText(props: {
         />
         <ChoixPolice which="title" />
       </Field>
-      <Field label="Sous-titre (symboles et chiffres autorisés)">
+      <Field label={m().champSousTitre}>
         <input
           type="text"
           value={props.state.subtitle.value}
@@ -157,7 +160,7 @@ export function StepBackgroundText(props: {
           "border-top": "1px solid #e5e7eb",
         }}
       >
-        <Field label="Couleur du texte (titre & sous-titre)">
+        <Field label={m().couleurTexte}>
           <input
             type="color"
             value={props.state.textStyle.color}

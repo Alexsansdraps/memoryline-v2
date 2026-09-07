@@ -134,6 +134,7 @@ export default function ProductConfigurator(
             </header>
             <div class="ml-modal-body">
               <ConfiguratorIsland
+                langue={props.langue}
                 product={props.product}
                 prices={props.prices}
                 foregroundUrl={props.foregroundUrl}

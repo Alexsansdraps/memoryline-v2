@@ -29,6 +29,7 @@ import {
   type WorkingCharacter,
 } from "../store";
 import { CharacterStack } from "./CharacterLayer";
+import type { MessagesConfigurateur } from "../messages";
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                    */
@@ -223,6 +224,8 @@ function ColorRow(props: {
   zones: { zone: string; current: string }[];
   presets: readonly string[];
   onSetColor: (zone: string, hex: string) => void;
+  /** Intitulé traduit, fourni par l'éditeur. */
+  libelle: string;
 }) {
   return (
     <div style={{ "margin-top": "8px" }}>
@@ -236,7 +239,7 @@ function ColorRow(props: {
           "margin-bottom": "6px",
         }}
       >
-        CHOIX DE LA COULEUR
+        {props.libelle}
       </span>
       <For each={props.zones}>
         {(z) => (
@@ -309,13 +312,6 @@ function SectionTitle(props: { children: JSX.Element }) {
 /*  Éditeur principal                                                          */
 /* -------------------------------------------------------------------------- */
 
-const SLOT_TITLES: Record<Slot, string> = {
-  clothes: "Vêtements",
-  pants: "Pantalon",
-  hair: "Coupes de cheveux",
-  accessory: "Accessoires",
-};
-
 /**
  * Éditeur d'un personnage (maquette client §18.2 F) : deux colonnes.
  * Gauche ~35% = prévisualisation isolée du perso composé. Droite = barre
@@ -335,7 +331,17 @@ export function CharacterEditor(props: {
   onChangeCharacter: (base: CharacterDTO) => void;
   onBack: () => void;
   onValidate: () => void;
+  messages: MessagesConfigurateur;
 }) {
+  const m = () => props.messages;
+  /** Intitulé de chaque emplacement, traduit. */
+  const titreSlot = (): Record<Slot, string> => ({
+    clothes: m().vetements,
+    pants: m().pantalon,
+    hair: m().coupes,
+    accessory: m().accessoires,
+  });
+
   // Scope CSS unique par instance d'éditeur (cf. scopeSvgStyles).
   const uid = createUniqueId();
 
@@ -418,13 +424,13 @@ export function CharacterEditor(props: {
     const viewBox = SLOT_THUMB_VIEWBOX[opts.slot];
     return (
       <Show when={list().length > 0}>
-        <SectionTitle>{SLOT_TITLES[opts.slot]}</SectionTitle>
+        <SectionTitle>{titreSlot()[opts.slot]}</SectionTitle>
         <Gallery>
           <Show when={opts.allowNone}>
             <Thumb
               selected={hasNone()}
               onClick={() => props.onClearSlot(opts.slot)}
-              title="Aucun"
+              title={m().aucun}
             >
               <CrossedCircle />
             </Thumb>
@@ -455,6 +461,7 @@ export function CharacterEditor(props: {
         </Gallery>
         <Show when={zonesForSlot(opts.slot).length > 0}>
           <ColorRow
+              libelle={m().choixCouleur}
             zones={zonesForSlot(opts.slot)}
             presets={presetPaletteForSlot(opts.slot)}
             onSetColor={props.onSetColor}
@@ -496,7 +503,7 @@ export function CharacterEditor(props: {
             "font-size": "13px",
           }}
         >
-          ‹ Retour
+          ‹ {m().retour}
         </button>
         <h3
           style={{
@@ -506,7 +513,7 @@ export function CharacterEditor(props: {
             margin: "0",
           }}
         >
-          PERSONNALISATION
+          {m().personnalisation}
         </h3>
       </div>
 
@@ -555,7 +562,7 @@ export function CharacterEditor(props: {
               personnages pour atteindre le bon. On choisit d'abord la
               catégorie, puis le personnage dans une grille qui tient à
               l'écran. */}
-          <SectionTitle>Choix du personnage</SectionTitle>
+          <SectionTitle>{m().choixPersonnage}</SectionTitle>
 
           <div class="ml-cfg-categories">
             <For each={categories()}>
@@ -612,6 +619,7 @@ export function CharacterEditor(props: {
           {/* Couleur de peau (zones de la base) */}
           <Show when={skinZones().length > 0}>
             <ColorRow
+              libelle={m().choixCouleur}
               zones={skinZones()}
               presets={SKIN_TONES}
               onSetColor={props.onSetColor}
@@ -649,7 +657,7 @@ export function CharacterEditor(props: {
             cursor: "pointer",
           }}
         >
-          Valider mon personnage
+          {m().validerPersonnage}
         </button>
       </div>
     </div>

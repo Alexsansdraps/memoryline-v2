@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import { t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
 import { createResource, createSignal, Show, type JSX } from "solid-js";
 import { Configurator } from "@memoryline/configurator";
 import type {
@@ -24,6 +25,8 @@ import {
  * ("ml_cart_id"). Tout est fait côté navigateur (client:only).
  */
 export interface ConfiguratorIslandProps {
+  /** Langue de la page — pilote les libellés du configurateur. */
+  langue?: Langue;
   product: { id: number; name: string; basePriceCents: number };
   /** Prix réels par format (centimes), ex. { A4: 2300, A3: 2900 }. */
   prices?: Partial<Record<string, number>>;
@@ -55,6 +58,7 @@ function priceForConfig(
 export default function ConfiguratorIsland(
   props: ConfiguratorIslandProps,
 ): JSX.Element {
+  const tr = t(props.langue ?? LANGUE_DEFAUT);
   const mode = props.mode ?? "add";
 
   // Chargement de la bibliothèque (personnages + variantes de slots + fonds).
@@ -155,9 +159,37 @@ export default function ConfiguratorIsland(
               </p>
             </Show>
             <Show when={saving()}>
-              <p class="mb-4 text-sm text-ink-soft">Enregistrement…</p>
+              <p class="mb-4 text-sm text-ink-soft">…</p>
             </Show>
             <Configurator
+              messages={{
+                titre: tr("cfg.titre"),
+                etapeFond: tr("cfg.etape.fond"),
+                etapePersonnages: tr("cfg.etape.personnages"),
+                etapeFormat: tr("cfg.etape.format"),
+                champTitre: tr("cfg.titre_champ"),
+                champSousTitre: tr("cfg.soustitre_champ"),
+                couleurTexte: tr("cfg.couleur_texte"),
+                choisirFond: tr("cfg.fond"),
+                personnages: tr("cfg.personnages"),
+                nouveauPersonnage: tr("cfg.nouveau_perso"),
+                modifier: tr("cfg.modifier"),
+                retirer: tr("cfg.retirer"),
+                monter: tr("cfg.monter"),
+                descendre: tr("cfg.descendre"),
+                retour: tr("cfg.retour"),
+                continuer: tr("cfg.continuer"),
+                validerAffiche: tr("cfg.valider_affiche"),
+                validerPersonnage: tr("cfg.valider_perso"),
+                personnalisation: tr("cfg.personnalisation"),
+                choixPersonnage: tr("cfg.choix_perso"),
+                choixCouleur: tr("cfg.choix_couleur"),
+                vetements: tr("cfg.vetements"),
+                pantalon: tr("cfg.pantalon"),
+                coupes: tr("cfg.coupes"),
+                accessoires: tr("cfg.accessoires"),
+                aucun: tr("cfg.aucun"),
+              }}
               product={{
                 id: props.product.id,
                 name: props.product.name,

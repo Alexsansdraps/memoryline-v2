@@ -7,6 +7,10 @@
  *   que l'utilisateur n'a pas accepté).
  * - Émet un évènement `ml:consent` pour brancher les traceurs plus tard.
  */
+import { LANGUE_DEFAUT, lien, t, type Langue } from "../i18n/utils.ts";
+
+const { langue = LANGUE_DEFAUT } = Astro.props as { langue?: Langue };
+const tr = t(langue);
 ---
 
 <div
@@ -18,20 +22,21 @@
     class="mx-auto max-w-4xl px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center gap-4"
   >
     <p class="text-sm text-ink-soft flex-1">
-      Nous utilisons des cookies pour mesurer l'audience et améliorer votre
-      expérience. Vous pouvez accepter ou refuser. Voir notre{" "}
-      <a href="/cookies" class="underline">politique de cookies</a>.
+      {tr("cookies.texte")}{" "}
+      <a href={lien(langue, "/cookies")} class="underline"
+        >{tr("cookies.politique")}</a
+      >.
     </p>
     <div class="flex gap-3 shrink-0">
       <button
         data-consent="refuse"
         class="rounded-full border border-ink/20 px-4 py-2 text-sm hover:border-ink transition-colors"
-        >Refuser</button
+        >{tr("cookies.refuser")}</button
       >
       <button
         data-consent="accept"
         class="rounded-full bg-ink px-4 py-2 text-sm text-paper hover:bg-terracotta-deep transition-colors"
-        >Accepter</button
+        >{tr("cookies.accepter")}</button
       >
     </div>
   </div>

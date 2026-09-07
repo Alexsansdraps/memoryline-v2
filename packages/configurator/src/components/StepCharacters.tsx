@@ -2,6 +2,7 @@
 import { For, Show } from "solid-js";
 import { Button } from "./ui";
 import { CharacterEditor } from "./CharacterEditor";
+import type { MessagesConfigurateur } from "../messages";
 import type {
   CharacterDTO,
   ConfiguratorState,
@@ -31,7 +32,9 @@ export function StepCharacters(props: {
   onClearSlot: (index: number, slot: Slot) => void;
   onSetColor: (index: number, zone: string, hex: string) => void;
   onChangeCharacter: (index: number, base: CharacterDTO) => void;
+  messages: MessagesConfigurateur;
 }) {
+  const m = () => props.messages;
   const editing = () => props.state.editingIndex;
   const editingChar = () => {
     const i = editing();
@@ -45,7 +48,7 @@ export function StepCharacters(props: {
         fallback={
           <div>
             <h3 style={{ "font-weight": "700", "margin-bottom": "10px" }}>
-              Personnages
+              {m().personnages}
             </h3>
 
             {/* Liste des personnages ajoutés + z-order */}
@@ -90,7 +93,7 @@ export function StepCharacters(props: {
                           variant="secondary"
                           onClick={() => props.onSelect(i())}
                         >
-                          Modifier
+                          {m().modifier}
                         </Button>
                         <Button
                           variant="ghost"
@@ -106,13 +109,14 @@ export function StepCharacters(props: {
             </Show>
 
             <Button variant="primary" onClick={() => props.onAdd()}>
-              + Nouveau personnage
+              {m().nouveauPersonnage}
             </Button>
           </div>
         }
       >
         {(char) => (
           <CharacterEditor
+            messages={m()}
             character={char()}
             base={props.characterById(char().characterId)}
             characters={props.characters}
