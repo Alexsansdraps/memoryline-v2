@@ -27,8 +27,10 @@ services:
       db:
         condition: service_healthy
     environment:
-      # Connexion intra-réseau Docker : on parle au service "db" sur 5432.
-      DATABASE_URL: "postgres://memoryline:memoryline@db:5432/memoryline"
+      # Base de données : par défaut le Postgres local (service "db" du réseau
+      # Docker). Définir DATABASE_URL dans .env bascule sur une base hébergée
+      # ailleurs — la stack n'a alors plus besoin du conteneur db.
+      DATABASE_URL: "${DATABASE_URL:-postgres://memoryline:memoryline@db:5432/memoryline}"
       API_PORT: "3000"
       IMPORT_DIR: "/app/data/exports/shopify-2026-06-19"
       # Origines autorisées par CORS. Avec le proxy tout est en même origine,
