@@ -70,9 +70,62 @@ interface CharLabel {
   category: Category;
 }
 
+/**
+ * Persos de l'ancien site dont le nom de fichier ne suit pas les patterns
+ * génériques ci-dessous (uuid Shopify, noms libres…). Libellés dérivés du
+ * champ `name` de characters-config.json, ramenés aux conventions v2
+ * (« Homme N », pas de « dos » : l'orientation est portée par la vue).
+ */
+const KNOWN_CHARACTERS: Record<string, CharLabel> = {
+  // Humains — variantes re-uploadées avec suffixe uuid
+  female_1_1f3dbbab: { name: "Femme 1", category: "Femmes" }, // #24 dos
+  female_1_6007b8b7: { name: "Femme fauteuil roulant", category: "Femmes" }, // #61
+  female_2_de64ddc7: { name: "Femme 2", category: "Femmes" }, // #15 face
+  female_2_9ea54a3e: { name: "Femme 2 (manches longues)", category: "Femmes" }, // #48
+  female_3_24f00ce2: { name: "Femme marin", category: "Femmes" }, // #66
+  female_4_afe4c383: { name: "Femme 4", category: "Femmes" }, // #59 dos (curvy)
+  male_1_6574ee92: { name: "Homme 1", category: "Hommes" }, // #41 dos
+  male_2_e6babd1b: { name: "Homme 2", category: "Hommes" }, // #18 face
+  male_2_dc713bc7: { name: "Homme 2 (manches longues)", category: "Hommes" }, // #56
+  male_3_ceb7dd5e: { name: "Homme 3", category: "Hommes" }, // #26 dos
+  old_lady_1: { name: "Femme âgée", category: "Femmes" }, // #27
+  old_man_1: { name: "Homme âgé", category: "Hommes" }, // #34
+  teenage_girl_2_f60c741f: { name: "Ado fille 2", category: "Ados" }, // #23 face
+  teenage_girl_2_4803dcfa: { name: "Ado fille 2 (manches longues)", category: "Ados" }, // #50
+  boys_2_f87884c7: { name: "Garçon 2 (manches longues)", category: "Garçons" }, // #47
+  girl_1_4291bb7f: { name: "Fille 1 (manches longues)", category: "Filles" }, // #57
+  little_boy_1: { name: "Garçon 1", category: "Garçons" }, // #7 face
+  little_girl_1: { name: "Fille 1", category: "Filles" }, // #8 face
+  little_girl_1_d422e835: { name: "Fille 2", category: "Filles" }, // #35 face
+  baby_boy_1: { name: "Bébé garçon 1", category: "Bébés" }, // #9 face
+  baby_girl_1: { name: "Bébé fille 1", category: "Bébés" }, // #58 face
+  // Animaux — noms libres
+  "3": { name: "Chat noir (face)", category: "Animaux" }, // #43
+  "4": { name: "Chat roux (face)", category: "Animaux" }, // #44
+  chats_gris_dos_7f7e834c: { name: "Chat gris", category: "Animaux" }, // #45 dos
+  chien_berger_allemand: { name: "Berger allemand", category: "Animaux" }, // #67
+  chien_berger_australien: { name: "Berger australien", category: "Animaux" }, // #68
+  "chien_york-chuihuahua": { name: "Chien york", category: "Animaux" }, // #70
+  chien_chihuahua: { name: "Chihuahua", category: "Animaux" }, // #73
+  chien_saint_bernard: { name: "Saint-bernard", category: "Animaux" }, // #74
+  "chien_saint-bernard": { name: "Saint-bernard", category: "Animaux" }, // #74
+};
+
 /** Déduit libellé FR + catégorie depuis le nom de fichier (sans .svg). */
 function classifyCharacter(base: string): CharLabel {
   const n = base.toLowerCase();
+
+  // Persos connus de l'ancien site : match exact, puis sans le suffixe uuid
+  // complet (on garde les 8 premiers hex, suffisants pour discriminer).
+  const known =
+    KNOWN_CHARACTERS[n] ??
+    KNOWN_CHARACTERS[
+      n.replace(
+        /_([0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+        "_$1",
+      )
+    ];
+  if (known) return known;
 
   let m: RegExpMatchArray | null;
 
