@@ -95,24 +95,10 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       initialState.view = props.defaults.view;
   }
 
-  // Personnages par défaut à l'ouverture (mode ajout) : un petit mix aléatoire
-  // d'humains et d'animaux respectant l'orientation de l'affiche, pour que
-  // l'affiche ne soit jamais vide. Le client peut ensuite modifier/retirer.
-  if (!props.initialConfig && initialState.characters.length === 0) {
-    const pool = props.characters.filter(
-      (c) => (c.orientation ?? "front") === initialState.view,
-    );
-    const animals = pool.filter((c) => (c.category ?? "") === "Animaux");
-    const humans = pool.filter((c) => (c.category ?? "") !== "Animaux");
-    const pick = <T,>(arr: T[]): T | undefined =>
-      arr.length ? arr[Math.floor(Math.random() * arr.length)] : undefined;
-    const chosen = [pick(humans), pick(animals)].filter(
-      (c): c is CharacterDTO => !!c,
-    );
-    initialState.characters = chosen.map((c, i) => ({
-      ...defaultCharacter(c, i),
-    }));
-  }
+  // À l'ouverture, l'affiche est VIDE de personnages (retour cliente) : le
+  // client part du fond seul et ajoute ce qu'il veut. Un mix aléatoire était
+  // pré-ajouté auparavant « pour que l'affiche ne soit jamais vide » — il
+  // imposait des personnages que le client devait d'abord retirer.
 
   const { state, mutate } = createConfiguratorStore(initialState);
   const { cache, fetchSvg } = createSvgCache(props.assetBaseUrl);

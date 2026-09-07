@@ -346,8 +346,10 @@ export async function renderPosterPng(
   const composites: OverlayOptions[] = [];
 
   // 1b) Muret — DERRIÈRE les personnages (composité AVANT eux), mais devant le
-  // fond. UNIQUEMENT en vue de DOS. Pleine largeur, hauteur auto, ancré en bas.
-  if (config.view === "back") {
+  // fond. UNIQUEMENT en vue de DOS, et UNIQUEMENT s'il y a au moins un
+  // personnage — même règle que l'aperçu écran (PosterPreview), sinon
+  // l'impression ne correspondrait pas à ce que le client a validé.
+  if (config.view === "back" && (config.characters?.length ?? 0) > 0) {
     const fgSource = config.foregroundUrl || "/assets/muret_officiel.svg";
     try {
       const fgRaw = await readSource(fgSource);

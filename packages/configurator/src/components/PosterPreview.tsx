@@ -120,9 +120,17 @@ export function PosterPreview(props: {
       </For>
 
       {/* Couche muret — DERRIÈRE les personnages (les persos passent devant),
-          mais devant le fond. UNIQUEMENT en vue de DOS. Ancré en bas, pleine
+          mais devant le fond. UNIQUEMENT en vue de DOS, et UNIQUEMENT s'il y a
+          au moins un personnage : sans personne à asseoir, le banc n'a pas de
+          raison d'être et masquerait le bas du visuel. Ancré en bas, pleine
           largeur, hauteur auto. Décor par défaut = muret ; surchargé par produit. */}
-      <Show when={props.state.view === "back" ? props.foregroundUrl ?? props.defaultForeground : undefined}>
+      <Show
+        when={
+          props.state.view === "back" && props.state.characters.length > 0
+            ? props.foregroundUrl ?? props.defaultForeground
+            : undefined
+        }
+      >
         {(url) => (
           <img
             src={url()}
