@@ -1,4 +1,5 @@
 ---
+import { url } from "../lib/url.ts";
 import { adminApi, formatPrice, type OrderRow } from "../lib/api.ts";
 interface Props {
   channel: "web" | "salon";
@@ -32,7 +33,7 @@ try {
             <td class="px-4 py-2">{o.status}</td>
             <td class="px-4 py-2 text-right">{formatPrice(o.totalCents)}</td>
             <td class="px-4 py-2 text-right">
-              <a href={`/commandes/${o.id}`} class="text-bo-accent hover:underline">
+              <a href={url(`/commandes/${o.id}`)} class="text-bo-accent hover:underline">
                 Détail / PDF
               </a>
             </td>

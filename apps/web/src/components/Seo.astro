@@ -31,6 +31,9 @@ const {
 const siteUrl = Astro.site?.toString().replace(/\/$/, "") ?? "https://memoryline.fr";
 const canonical = new URL(path, siteUrl + "/").toString();
 const ogImage = image.startsWith("http") ? image : new URL(image, siteUrl + "/").toString();
+// L'environnement de test ne doit pas être indexé, page par page — le
+// robots.txt seul n'empêche pas une URL de finir dans l'index.
+const blockIndex = noindex || import.meta.env.PUBLIC_NOINDEX === "true";
 const jsonLdList = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 ---
 
@@ -38,8 +41,8 @@ const jsonLdList = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 <title>{title}</title>
 <meta name="description" content={description} />
 <link rel="canonical" href={canonical} />
-{noindex && <meta name="robots" content="noindex, nofollow" />}
-{!noindex && <meta name="robots" content="index, follow, max-image-preview:large" />}
+{blockIndex && <meta name="robots" content="noindex, nofollow" />}
+{!blockIndex && <meta name="robots" content="index, follow, max-image-preview:large" />}
 
 <!-- Open Graph (Facebook, LinkedIn, etc.) -->
 <meta property="og:site_name" content="Memory Line" />

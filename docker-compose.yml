@@ -31,6 +31,9 @@ services:
       DATABASE_URL: "postgres://memoryline:memoryline@db:5432/memoryline"
       API_PORT: "3000"
       IMPORT_DIR: "/app/data/exports/shopify-2026-06-19"
+      # Origines autorisées par CORS. Avec le proxy tout est en même origine,
+      # mais on garde l'accès direct aux ports en développement.
+      WEB_ORIGINS: "http://localhost:8080,http://localhost:4321,http://localhost:4322,https://memoryline.alexandraporhansl.com"
       # Évite le purge interactif des node_modules par pnpm au démarrage.
       CI: "true"
     ports:
@@ -53,8 +56,15 @@ services:
     depends_on:
       - api
     environment:
-      # SSR côté serveur : on parle à l'API via le réseau interne Docker.
+      # SSR / build : on parle à l'API via le réseau interne Docker.
       API_URL_INTERNAL: "http://api:3000"
+      # Navigateur : même origine que le site, le proxy route /api vers l'API.
+      # Vaut donc aussi bien en local (:8080) que derrière le tunnel.
+      PUBLIC_API_URL: "/api"
+      # Domaine de l'environnement de test (canonical, sitemap, Open Graph).
+      SITE_URL: "https://memoryline.alexandraporhansl.com"
+      # Environnement de test : JAMAIS indexé (doublon de memoryline.fr).
+      PUBLIC_NOINDEX: "true"
       # Évite que pnpm/Astro tentent un purge interactif des node_modules.
       CI: "true"
     ports:
@@ -76,6 +86,10 @@ services:
       - api
     environment:
       API_URL_INTERNAL: "http://api:3000"
+      # Navigateur : même origine, le proxy route /api vers l'API.
+      PUBLIC_API_URL: "/api"
+      # Le BO est servi sous /bo (routage par chemin, cf. Caddyfile).
+      ADMIN_BASE: "/bo"
       CI: "true"
     ports:
       - "4322:4322"
@@ -84,6 +98,37 @@ services:
       - /app/node_modules
       - /app/apps/admin/node_modules
       - /app/packages/types/node_modules
+
+  # Point d'entrée UNIQUE : un seul hôte, routage par chemin (cf. Caddyfile).
+  # C'est ce service, et lui seul, que le tunnel Cloudflare expose.
+  proxy:
+    image: caddy:2-alpine
+    container_name: memoryline-proxy
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+      - admin
+    ports:
+      - "8080:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+
+  # Tunnel Cloudflare : expose le proxy — et LUI SEUL — sur le domaine public.
+  # Aucun port n'est ouvert sur la box : cloudflared sort en connexion sortante.
+  #
+  # Démarrage à la demande (profil), une fois TUNNEL_TOKEN renseigné dans .env :
+  #   docker compose --profile tunnel up -d
+  # Le jeton vient du tunnel créé dans le dashboard Cloudflare Zero Trust, dont
+  # le hostname public pointe sur http://proxy:80.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: memoryline-tunnel
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    depends_on:
+      - proxy
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN:-}
 
 volumes:
   memoryline_pgdata:

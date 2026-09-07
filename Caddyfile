@@ -1,0 +1,31 @@
+# Point d'entrée UNIQUE de la stack Memory Line.
+#
+# Un seul hôte sert les trois services, séparés par le chemin (choix retenu
+# pour l'environnement de test) :
+#
+#   /api/*  -> API Hono      préfixe RETIRÉ  (l'API ne connaît pas /api)
+#   /bo/*   -> back-office   préfixe GARDÉ   (Astro est servi avec base=/bo)
+#   /*      -> site public
+#
+# En local : http://localhost:8080. Derrière le tunnel Cloudflare : le même
+# routage, cloudflared ne parlant qu'à ce proxy. Les deux chemins sont donc
+# identiques, ce qui évite les surprises entre local et ligne.
+
+{
+	admin off
+	auto_https off
+}
+
+:80 {
+	handle_path /api/* {
+		reverse_proxy api:3000
+	}
+
+	handle /bo/* {
+		reverse_proxy admin:4322
+	}
+
+	handle {
+		reverse_proxy web:4321
+	}
+}

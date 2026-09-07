@@ -1,5 +1,6 @@
 import { defineMiddleware } from "astro:middleware";
 import { getUser } from "./lib/auth.ts";
+import { url, relPath } from "./lib/url.ts";
 
 /**
  * Garde d'authentification : toute page du BO exige une session valide,
@@ -8,7 +9,9 @@ import { getUser } from "./lib/auth.ts";
 const PUBLIC_PATHS = new Set(["/login"]);
 
 export const onRequest = defineMiddleware(async (context, next) => {
-  const { pathname } = context.url;
+  // Chemin logique : le préfixe de déploiement (/bo) est retiré pour que les
+  // comparaisons ci-dessous restent écrites en routes, pas en URLs.
+  const pathname = relPath(context.url.pathname);
 
   // Laisse passer les assets internes d'Astro.
   if (pathname.startsWith("/_")) return next();
@@ -17,11 +20,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
   context.locals.user = user;
 
   if (!user && !PUBLIC_PATHS.has(pathname)) {
-    return context.redirect("/login");
+    return context.redirect(url("/login"));
   }
   // Déjà connecté et sur /login -> vers l'accueil.
   if (user && pathname === "/login") {
-    return context.redirect("/");
+    return context.redirect(url("/"));
   }
   return next();
 });

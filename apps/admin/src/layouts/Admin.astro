@@ -1,10 +1,11 @@
 ---
 import "../styles/admin.css";
+import { url, relPath } from "../lib/url.ts";
 interface Props {
   title: string;
 }
 const { title } = Astro.props;
-const path = Astro.url.pathname;
+const path = relPath(Astro.url.pathname);
 
 // Navigation type admin Shopify (vocabulaire familier à la cliente).
 const nav = [
@@ -44,7 +45,7 @@ const nav = [
                   : path.startsWith(item.href);
               return (
                 <a
-                  href={item.href}
+                  href={url(item.href)}
                   class={`flex items-center gap-3 px-5 py-2.5 text-sm transition-colors ${
                     active
                       ? "bg-white/10 text-white font-medium"
@@ -70,7 +71,7 @@ const nav = [
           <h1 class="text-base font-semibold">{title}</h1>
           <div class="flex items-center gap-3 text-sm text-bo-muted">
             {Astro.locals.user && <span>{Astro.locals.user.email}</span>}
-            <form method="POST" action="/logout">
+            <form method="POST" action={url("/logout")}>
               <button class="text-bo-accent hover:underline">Déconnexion</button>
             </form>
           </div>

@@ -1,4 +1,5 @@
 ---
+import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
 import { formatPrice } from "../lib/api.ts";
 
@@ -77,14 +78,14 @@ const PAGE_SIZE = 25;
               data-slug={(p.slug ?? "").toLowerCase()}
             >
               <td class="px-4 py-2 font-medium">
-                <a href={`/produits/${p.id}`} class="text-bo-accent hover:underline">
+                <a href={url(`/produits/${p.id}`)} class="text-bo-accent hover:underline">
                   {p.name}
                 </a>
               </td>
               <td class="px-4 py-2">{p.kind}</td>
               <td class="px-4 py-2 text-right">{formatPrice(p.basePriceCents)}</td>
               <td class="px-4 py-2 text-right">
-                <a href={`/produits/${p.id}`} class="text-bo-accent hover:underline">
+                <a href={url(`/produits/${p.id}`)} class="text-bo-accent hover:underline">
                   Configurer
                 </a>
               </td>
