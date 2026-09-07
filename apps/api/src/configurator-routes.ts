@@ -1043,6 +1043,11 @@ export function mountConfiguratorRoutes(app: Hono) {
       ...(b.orientation !== undefined
         ? { orientation: b.orientation === "back" ? "back" : "front" }
         : {}),
+      // Calage vertical (0..1) : editable depuis le BO en plus de la mesure
+      // automatique, pour les persos dont les pieds tombent mal.
+      ...(b.bottomPct !== undefined && Number.isFinite(Number(b.bottomPct))
+        ? { bottomPct: Math.min(1, Math.max(0.05, Number(b.bottomPct))) }
+        : {}),
     };
     if (b.id) {
       const [row] = await db

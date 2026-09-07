@@ -103,6 +103,11 @@ export interface CharacterType {
   baseSvgUrl: string | null;
   baseColorZones: Record<string, string> | null;
   orientation?: "front" | "back";
+  /**
+   * Calage vertical : position du bas réel du dessin dans le viewBox (0..1).
+   * Sert à aligner les pieds de tous les personnages sur le muret.
+   */
+  bottomPct?: number;
 }
 
 export interface Asset {
