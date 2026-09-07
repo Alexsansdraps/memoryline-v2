@@ -60,6 +60,16 @@ export interface Stats {
   ordersByChannel: Record<string, number>;
 }
 
+/** Catégorie de personnages (table character_category). */
+export interface CharacterCategory {
+  id: number;
+  slug: string;
+  name: string;
+  position: number;
+  /** Nombre de personnages non archivés rattachés (renvoyé par /admin/categories). */
+  count?: number;
+}
+
 export interface OrderRow {
   id: number;
   number: string;
@@ -84,7 +94,10 @@ export interface CharacterType {
   id: number;
   slug: string;
   name: string;
+  /** Ancien champ texte, conservé le temps de la bascule — lire categoryId. */
   category: string | null;
+  /** Catégorie du personnage (table character_category), null = non rangé. */
+  categoryId: number | null;
   position: number;
   archivedAt: string | null;
   baseSvgUrl: string | null;
@@ -150,8 +163,22 @@ export function adminApi(request?: Request) {
       ),
     orderDetail: (id: number) =>
       req<OrderDetail>("GET", `/admin/orders/${id}`, undefined, cookie),
+    categories: () =>
+      req<CharacterCategory[]>("GET", "/admin/categories", undefined, cookie),
+    upsertCategory: (data: { id?: number; name: string; position?: number }) =>
+      req<CharacterCategory>("POST", "/admin/categories", data, cookie),
+    deleteCategory: (id: number) =>
+      req<{ ok: boolean }>("DELETE", `/admin/categories/${id}`, undefined, cookie),
+    /** Remplace la composition de la catégorie par la liste cochée. */
+    setCategoryCharacters: (id: number, characterIds: number[]) =>
+      req<{ category: string; attached: number; detached: number }>(
+        "POST",
+        `/admin/categories/${id}/characters`,
+        { characterIds },
+        cookie,
+      ),
     characters: () =>
-      req<{ types: CharacterType[]; assets: Asset[] }>(
+      req<{ types: CharacterType[]; assets: Asset[]; categories: CharacterCategory[] }>(
         "GET",
         "/admin/characters",
         undefined,

@@ -1,0 +1,220 @@
+---
+import Admin from "../layouts/Admin.astro";
+import { adminApi, type CharacterType, type CharacterCategory } from "../lib/api.ts";
+import { url } from "../lib/url.ts";
+
+const api = adminApi(Astro.request);
+
+// --- Actions (POST classique, même pattern que personnages.astro) --------
+let flash: string | null = null;
+let error: string | null = null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const action = form.get("_action");
+  try {
+    if (action === "create") {
+      const cat = await api.upsertCategory({ name: String(form.get("name") || "") });
+      flash = `Catégorie « ${cat.name} » créée.`;
+    } else if (action === "rename") {
+      const cat = await api.upsertCategory({
+        id: Number(form.get("id")),
+        name: String(form.get("name") || ""),
+      });
+      flash = `Catégorie renommée en « ${cat.name} ».`;
+    } else if (action === "move") {
+      // Échange de position avec la voisine : deux écritures, pas de tri global.
+      const id = Number(form.get("id"));
+      const otherId = Number(form.get("otherId"));
+      const pos = Number(form.get("position"));
+      const otherPos = Number(form.get("otherPosition"));
+      await api.upsertCategory({
+        id,
+        name: String(form.get("name") || ""),
+        position: otherPos,
+      });
+      await api.upsertCategory({
+        id: otherId,
+        name: String(form.get("otherName") || ""),
+        position: pos,
+      });
+      flash = "Ordre des catégories mis à jour.";
+    } else if (action === "delete") {
+      await api.deleteCategory(Number(form.get("id")));
+      flash =
+        "Catégorie supprimée. Les personnages qu'elle contenait sont conservés, simplement sans catégorie.";
+    } else if (action === "assign") {
+      const id = Number(form.get("categoryId"));
+      const ids = form.getAll("characterIds").map(Number).filter(Number.isFinite);
+      const r = await api.setCategoryCharacters(id, ids);
+      flash = `« ${r.category} » : ${r.attached} personnage(s) dedans, ${r.detached} retiré(s).`;
+    }
+  } catch (e) {
+    error = String(e);
+  }
+}
+
+// --- Données -------------------------------------------------------------
+let categories: CharacterCategory[] = [];
+let characters: CharacterType[] = [];
+try {
+  categories = await api.categories();
+  characters = (await api.characters()).types;
+} catch (e) {
+  error ??= String(e);
+}
+
+// Catégorie affichée à droite (?cat=<id>), sinon la première.
+const wanted = Number(Astro.url.searchParams.get("cat"));
+const current = categories.find((c) => c.id === wanted) ?? categories[0] ?? null;
+
+const actifs = characters.filter((t) => !t.archivedAt);
+const sansCategorie = actifs.filter((t) => t.categoryId == null);
+const nomParId = new Map(categories.map((c) => [c.id, c.name]));
+---
+
+<Admin title="Catégories de personnages">
+  {flash && (
+    <p class="mb-4 rounded border border-green-300 bg-green-50 px-4 py-2 text-sm text-green-800">
+      {flash}
+    </p>
+  )}
+  {error && (
+    <p class="mb-4 rounded border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-800">
+      {error}
+    </p>
+  )}
+
+  <p class="mb-4 text-sm text-bo-muted">
+    Les catégories regroupent les personnages dans le configurateur. Cochez ceux
+    qui appartiennent à une catégorie : un personnage n'en a qu'une seule, le
+    cocher ici le retire donc de sa catégorie précédente.
+  </p>
+
+  <div class="grid gap-6 md:grid-cols-[260px_1fr] items-start">
+    <div class="bg-bo-surface border border-bo-border rounded-lg p-4">
+      <h2 class="font-semibold mb-3">Catégories</h2>
+
+      <ul class="space-y-1 text-sm">
+        {categories.map((c, i) => (
+          <li class={current?.id === c.id ? "rounded bg-bo-accent/10 px-2 py-1.5 font-medium" : "rounded px-2 py-1.5"}>
+            <div class="flex items-center gap-1">
+              <a href={url("/categories") + "?cat=" + c.id} class="flex-1 hover:underline">
+                {c.name}<span class="text-bo-muted"> · {c.count ?? 0}</span>
+              </a>
+              {i > 0 && (
+                <form method="POST" class="inline">
+                  <input type="hidden" name="_action" value="move" />
+                  <input type="hidden" name="id" value={c.id} />
+                  <input type="hidden" name="name" value={c.name} />
+                  <input type="hidden" name="position" value={c.position} />
+                  <input type="hidden" name="otherId" value={categories[i - 1]!.id} />
+                  <input type="hidden" name="otherName" value={categories[i - 1]!.name} />
+                  <input type="hidden" name="otherPosition" value={categories[i - 1]!.position} />
+                  <button class="px-1 text-bo-muted hover:text-bo-accent" title="Monter">↑</button>
+                </form>
+              )}
+              {i < categories.length - 1 && (
+                <form method="POST" class="inline">
+                  <input type="hidden" name="_action" value="move" />
+                  <input type="hidden" name="id" value={c.id} />
+                  <input type="hidden" name="name" value={c.name} />
+                  <input type="hidden" name="position" value={c.position} />
+                  <input type="hidden" name="otherId" value={categories[i + 1]!.id} />
+                  <input type="hidden" name="otherName" value={categories[i + 1]!.name} />
+                  <input type="hidden" name="otherPosition" value={categories[i + 1]!.position} />
+                  <button class="px-1 text-bo-muted hover:text-bo-accent" title="Descendre">↓</button>
+                </form>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      <form method="POST" class="mt-4 flex gap-2">
+        <input type="hidden" name="_action" value="create" />
+        <input
+          name="name"
+          required
+          placeholder="Nouvelle catégorie"
+          class="min-w-0 flex-1 rounded border border-bo-border px-2 py-1.5 text-sm"
+        />
+        <button class="rounded bg-bo-accent px-3 py-1.5 text-sm text-white">Créer</button>
+      </form>
+
+      {sansCategorie.length > 0 && (
+        <p class="mt-4 text-xs text-bo-muted">
+          {sansCategorie.length} personnage(s) sans catégorie — ils n'apparaissent
+          dans aucun groupe du configurateur.
+        </p>
+      )}
+    </div>
+
+    <div class="bg-bo-surface border border-bo-border rounded-lg p-4">
+      {!current && <p class="text-sm text-bo-muted">Créez une première catégorie.</p>}
+
+      {current && (
+        <Fragment>
+          <div class="flex flex-wrap items-center gap-2 mb-4">
+            <form method="POST" class="flex items-center gap-2">
+              <input type="hidden" name="_action" value="rename" />
+              <input type="hidden" name="id" value={current.id} />
+              <input
+                name="name"
+                value={current.name}
+                required
+                class="rounded border border-bo-border px-2 py-1.5 text-sm font-semibold"
+              />
+              <button class="rounded border border-bo-border px-3 py-1.5 text-sm">Renommer</button>
+            </form>
+            <form method="POST" class="ml-auto">
+              <input type="hidden" name="_action" value="delete" />
+              <input type="hidden" name="id" value={current.id} />
+              <button class="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700">
+                Supprimer la catégorie
+              </button>
+            </form>
+          </div>
+
+          <form method="POST">
+            <input type="hidden" name="_action" value="assign" />
+            <input type="hidden" name="categoryId" value={current.id} />
+
+            <div class="max-h-[28rem] overflow-y-auto rounded border border-bo-border">
+              <table class="w-full text-sm">
+                <thead class="bg-bo-bg sticky top-0">
+                  <tr class="text-left">
+                    <th class="w-10 px-3 py-2"></th>
+                    <th class="px-3 py-2">Personnage</th>
+                    <th class="px-3 py-2">Catégorie actuelle</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {actifs.map((t) => (
+                    <tr class="border-t border-bo-border">
+                      <td class="px-3 py-1.5">
+                        <input
+                          type="checkbox"
+                          name="characterIds"
+                          value={t.id}
+                          checked={t.categoryId === current.id}
+                        />
+                      </td>
+                      <td class="px-3 py-1.5">{t.name}</td>
+                      <td class="px-3 py-1.5 text-bo-muted">
+                        {t.categoryId == null ? "—" : (nomParId.get(t.categoryId) ?? "—")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <button class="mt-3 rounded bg-bo-accent px-4 py-2 text-sm text-white">
+              Enregistrer la composition de « {current.name} »
+            </button>
+          </form>
+        </Fragment>
+      )}
+    </div>
+  </div>
+</Admin>

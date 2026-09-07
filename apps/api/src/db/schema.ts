@@ -139,14 +139,42 @@ export const backgrounds = pgTable("background", {
 
 // --- Bibliothèque configurateur ------------------------------------------
 
+/**
+ * Catégorie de personnages, gérée depuis le back-office (backlog A3).
+ *
+ * Remplace le texte libre `character_type.category` : on peut créer une
+ * catégorie vide, la renommer, la réordonner ou la supprimer sans toucher aux
+ * personnages — ce que du texte recopié sur chaque ligne ne permettait pas.
+ */
+export const characterCategories = pgTable(
+  "character_category",
+  {
+    id: serial("id").primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    /** Ordre d'affichage des catégories entre elles (BO et configurateur). */
+    position: integer("position").default(0).notNull(),
+  },
+  (t) => [uniqueIndex("character_category_slug_uniq").on(t.slug)],
+);
+
 export const characterTypes = pgTable(
   "character_type",
   {
     id: serial("id").primaryKey(),
     slug: text("slug").notNull(),
     name: text("name").notNull(),
-    /** Regroupement back-office / configurateur (§18.1 E) : ex. 'Adultes', 'Enfants', 'Animaux'. */
+    /**
+     * Regroupement — texte libre HISTORIQUE, conservé le temps de la bascule.
+     * La source de vérité est désormais `categoryId`. Sera supprimé une fois
+     * tous les écrans passés sur la table character_category.
+     */
     category: text("category"),
+    /** Catégorie du personnage (table character_category). */
+    categoryId: integer("category_id").references(
+      () => characterCategories.id,
+      { onDelete: "set null" },
+    ),
     /** Ordre manuel d'affichage dans sa catégorie (§18.1 E). */
     position: integer("position").default(0).notNull(),
     /** Soft-delete (§18.1 A) : non null = archivé, masqué du configurateur, sans casser les commandes. */

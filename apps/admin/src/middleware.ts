@@ -13,7 +13,14 @@ const PUBLIC_PATHS = new Set(["/login"]);
  * qui saisirait l'URL directement verrait sinon une interface d'édition dont
  * chaque bouton échouerait en 403 côté API — mieux vaut le renvoyer d'emblée.
  */
-const OWNER_PATHS = ["/produits", "/personnages", "/promotions", "/bandeau", "/contenu"];
+const OWNER_PATHS = [
+  "/produits",
+  "/personnages",
+  "/categories",
+  "/promotions",
+  "/bandeau",
+  "/contenu",
+];
 
 export const onRequest = defineMiddleware(async (context, next) => {
   // Chemin logique : le préfixe de déploiement (/bo) est retiré pour que les

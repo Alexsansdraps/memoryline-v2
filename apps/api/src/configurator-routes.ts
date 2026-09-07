@@ -11,7 +11,16 @@
  * handlers, montés via `mountConfiguratorRoutes(app)`.
  */
 import type { Hono } from "hono";
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  notInArray,
+  sql,
+} from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import { renderPosterPdf, type ResolveData } from "./pdf.js";
 import { posterConfigSchema, type PosterConfig } from "@memoryline/types";
@@ -288,11 +297,25 @@ export function mountConfiguratorRoutes(app: Hono) {
    */
   app.get("/characters", async (c) => {
     const includeArchived = c.req.query("all") === "1";
+    // La catégorie vient de la table character_category (jointure), mais le
+    // contrat exposé au front ne change pas : `category` reste son NOM.
+    // L'ordre suit la position des catégories, puis celle des personnages.
     const types = await db
-      .select()
+      .select({
+        t: schema.characterTypes,
+        categoryName: schema.characterCategories.name,
+        categoryPosition: schema.characterCategories.position,
+      })
       .from(schema.characterTypes)
+      .leftJoin(
+        schema.characterCategories,
+        eq(schema.characterTypes.categoryId, schema.characterCategories.id),
+      )
       .where(includeArchived ? undefined : isNull(schema.characterTypes.archivedAt))
-      .orderBy(asc(schema.characterTypes.category), asc(schema.characterTypes.position));
+      .orderBy(
+        asc(schema.characterCategories.position),
+        asc(schema.characterTypes.position),
+      );
 
     // Variantes génériques (character_type_id IS NULL), partagées par tous.
     const variants = await db
@@ -318,11 +341,12 @@ export function mountConfiguratorRoutes(app: Hono) {
     }
 
     return c.json({
-      characters: types.map((t) => ({
+      characters: types.map(({ t, categoryName }) => ({
         id: t.id,
         slug: t.slug,
         name: t.name,
-        category: t.category,
+        category: categoryName ?? null,
+        categoryId: t.categoryId,
         position: t.position,
         archived: t.archivedAt != null,
         baseSvgUrl: t.baseSvgUrl,
@@ -844,12 +868,152 @@ export function mountConfiguratorRoutes(app: Hono) {
     const types = await db
       .select()
       .from(schema.characterTypes)
-      .orderBy(asc(schema.characterTypes.category), asc(schema.characterTypes.position));
+      .orderBy(asc(schema.characterTypes.position), asc(schema.characterTypes.name));
     const assets = await db
       .select()
       .from(schema.assets)
       .orderBy(asc(schema.assets.position));
-    return c.json({ types, assets });
+    const categories = await db
+      .select()
+      .from(schema.characterCategories)
+      .orderBy(asc(schema.characterCategories.position));
+    return c.json({ types, assets, categories });
+  });
+
+  // === Catégories de personnages (BO) =====================================
+
+  /** Catégories, avec le nombre de personnages non archivés dans chacune. */
+  app.get("/admin/categories", async (c) => {
+    const rows = await db
+      .select({
+        id: schema.characterCategories.id,
+        slug: schema.characterCategories.slug,
+        name: schema.characterCategories.name,
+        position: schema.characterCategories.position,
+        count: sql<number>`count(${schema.characterTypes.id})::int`,
+      })
+      .from(schema.characterCategories)
+      .leftJoin(
+        schema.characterTypes,
+        and(
+          eq(schema.characterTypes.categoryId, schema.characterCategories.id),
+          isNull(schema.characterTypes.archivedAt),
+        ),
+      )
+      .groupBy(schema.characterCategories.id)
+      .orderBy(asc(schema.characterCategories.position));
+    return c.json(rows);
+  });
+
+  /** Crée une catégorie, ou renomme / réordonne une catégorie existante. */
+  app.post("/admin/categories", async (c) => {
+    const b = await c.req.json();
+    const name = String(b.name ?? "").trim();
+    if (!name) return c.json({ error: "nom requis" }, 400);
+
+    if (b.id) {
+      const [row] = await db
+        .update(schema.characterCategories)
+        .set({
+          name,
+          ...(b.position != null ? { position: Number(b.position) } : {}),
+        })
+        .where(eq(schema.characterCategories.id, Number(b.id)))
+        .returning();
+      if (!row) return c.notFound();
+      return c.json(row);
+    }
+
+    // Slug dérivé du nom, suffixé si déjà pris (deux catégories peuvent
+    // porter des noms proches : « Bébés » et « Bebes »).
+    const base =
+      name
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "") || "categorie";
+    const taken = new Set(
+      (
+        await db
+          .select({ slug: schema.characterCategories.slug })
+          .from(schema.characterCategories)
+      ).map((r) => r.slug),
+    );
+    let slug = base;
+    for (let i = 2; taken.has(slug); i++) slug = `${base}-${i}`;
+
+    const [{ max } = { max: -1 }] = await db
+      .select({ max: sql<number>`coalesce(max(${schema.characterCategories.position}), -1)::int` })
+      .from(schema.characterCategories);
+    const [row] = await db
+      .insert(schema.characterCategories)
+      .values({ slug, name, position: (max ?? -1) + 1 })
+      .returning();
+    return c.json(row);
+  });
+
+  /**
+   * Supprime une catégorie. Les personnages ne sont PAS supprimés : la clé
+   * étrangère est en ON DELETE SET NULL, ils se retrouvent sans catégorie et
+   * restent modifiables. Supprimer une catégorie n'est donc jamais destructif.
+   */
+  app.delete("/admin/categories/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    const [row] = await db
+      .delete(schema.characterCategories)
+      .where(eq(schema.characterCategories.id, id))
+      .returning();
+    if (!row) return c.notFound();
+    return c.json({ ok: true });
+  });
+
+  /**
+   * Affecte un LOT de personnages à une catégorie (vue liste à cocher du BO).
+   * `characterIds` = la liste COMPLÈTE des personnages cochés : ceux qui n'y
+   * figurent plus et appartenaient à cette catégorie en sortent.
+   */
+  app.post("/admin/categories/:id/characters", async (c) => {
+    const id = Number(c.req.param("id"));
+    const b = await c.req.json();
+    const ids = Array.isArray(b.characterIds)
+      ? b.characterIds.map(Number).filter(Number.isFinite)
+      : [];
+
+    const [category] = await db
+      .select()
+      .from(schema.characterCategories)
+      .where(eq(schema.characterCategories.id, id));
+    if (!category) return c.notFound();
+
+    // Sortie : les persos actuellement dans la catégorie et plus cochés.
+    const detached = await db
+      .update(schema.characterTypes)
+      .set({ categoryId: null })
+      .where(
+        ids.length
+          ? and(
+              eq(schema.characterTypes.categoryId, id),
+              notInArray(schema.characterTypes.id, ids),
+            )
+          : eq(schema.characterTypes.categoryId, id),
+      )
+      .returning({ id: schema.characterTypes.id });
+
+    // Entrée : tous les persos cochés rejoignent la catégorie.
+    const attached = ids.length
+      ? await db
+          .update(schema.characterTypes)
+          .set({ categoryId: id })
+          .where(inArray(schema.characterTypes.id, ids))
+          .returning({ id: schema.characterTypes.id })
+      : [];
+
+    return c.json({
+      category: category.name,
+      attached: attached.length,
+      detached: detached.length,
+    });
   });
 
   /** Crée ou met à jour un type (nom, catégorie, position). */
@@ -863,7 +1027,11 @@ export function mountConfiguratorRoutes(app: Hono) {
         .replace(/[^a-z0-9]+/g, "-");
     const values = {
       name: String(b.name ?? "Type"),
-      category: b.category ?? null,
+      // La catégorie est désormais une référence ; `category` (texte) n'est
+      // plus écrit, il ne subsiste que le temps de la bascule.
+      ...(b.categoryId !== undefined
+        ? { categoryId: b.categoryId == null ? null : Number(b.categoryId) }
+        : {}),
       position: Number(b.position ?? 0),
       ...(b.orientation !== undefined
         ? { orientation: b.orientation === "back" ? "back" : "front" }
