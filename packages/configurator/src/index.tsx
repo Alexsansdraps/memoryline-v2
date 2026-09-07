@@ -369,14 +369,22 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       class="ml-cfg-root"
       style={{
         display: "grid",
-        "grid-template-columns": "minmax(280px, 1fr) minmax(320px, 420px)",
+        // Pendant l'édition d'un personnage, l'aperçu de l'affiche disparaît
+        // et l'éditeur prend toute la largeur (cf. plus bas).
+        "grid-template-columns": editingActive()
+          ? "minmax(0, 1fr)"
+          : "minmax(280px, 1fr) minmax(320px, 420px)",
         gap: "20px",
         "align-items": "start",
         "font-family": "system-ui, sans-serif",
         color: "#111827",
       }}
     >
-      {/* Aperçu */}
+      {/* Aperçu de l'affiche — MASQUÉ pendant la composition d'un personnage :
+          l'éditeur affiche déjà le personnage seul, en grand, et montrer
+          l'affiche entière par-dessus surchargeait l'écran (retour cliente).
+          On la retrouve dès qu'on valide ou qu'on revient à la liste. */}
+      <Show when={!editingActive()}>
       <div style={{ position: "sticky", top: "16px" }}>
         <PosterPreview
           state={state}
@@ -395,6 +403,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
           }
         />
       </div>
+      </Show>
 
       {/* Panneau de contrôle */}
       <div
