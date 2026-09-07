@@ -123,6 +123,59 @@ type PricedItem = {
 };
 
 /**
+ * Prix unitaire d'une ligne, en centimes — RÉSOLU CÔTÉ SERVEUR depuis le
+ * catalogue. Le navigateur envoie bien un `unitPriceCents` (il doit l'afficher),
+ * mais on ne le lit JAMAIS : sinon un POST forgé fixerait librement le montant
+ * encaissé. Miroir de priceForConfig() côté web : prix de la variante du format
+ * demandé, à défaut le prix de base du produit.
+ */
+async function resolveUnitPriceCents(
+  productId: number | null | undefined,
+  format: string | null | undefined,
+): Promise<number> {
+  if (productId == null || !Number.isFinite(productId)) return 0;
+  const [product] = await db
+    .select({ basePriceCents: schema.products.basePriceCents })
+    .from(schema.products)
+    .where(eq(schema.products.id, productId));
+  if (!product) return 0;
+  const [variant] = await db
+    .select({ priceCents: schema.variants.priceCents })
+    .from(schema.variants)
+    .where(
+      and(
+        eq(schema.variants.productId, productId),
+        eq(schema.variants.format, format ?? "A4"),
+      ),
+    );
+  return variant?.priceCents ?? product.basePriceCents;
+}
+
+/**
+ * Charge une ligne de panier EN VÉRIFIANT qu'elle appartient bien au panier
+ * `cartId`. Sans ce contrôle, l'id de ligne (entier séquentiel) suffirait à
+ * modifier ou supprimer la ligne du panier de quelqu'un d'autre.
+ */
+async function loadCartItem(cartId: string, itemId: number) {
+  if (!Number.isFinite(itemId)) return null;
+  const [order] = await db
+    .select({ id: schema.orders.id })
+    .from(schema.orders)
+    .where(eq(schema.orders.clientOrderId, cartId));
+  if (!order) return null;
+  const [item] = await db
+    .select()
+    .from(schema.orderItems)
+    .where(
+      and(
+        eq(schema.orderItems.id, itemId),
+        eq(schema.orderItems.orderId, order.id),
+      ),
+    );
+  return item ?? null;
+}
+
+/**
  * Total à FACTURER en centimes, promos incluses — calculé côté SERVEUR (le
  * montant client n'est jamais de confiance). Miroir de la logique du panier
  * (CartIsland) : pour chaque promo active `buy_x_get_y`, par tranche de
@@ -404,16 +457,21 @@ export function mountConfiguratorRoutes(app: Hono) {
         })
         .returning();
     }
+    const productId = body.productId != null ? Number(body.productId) : null;
+    const unitPriceCents = await resolveUnitPriceCents(
+      productId,
+      parsed.data.format,
+    );
     const [item] = await db
       .insert(schema.orderItems)
       .values({
         orderId: order!.id,
-        productId: body.productId ?? null,
+        productId,
         variantId: body.variantId ?? null,
         config: parsed.data,
         title: body.title ?? null,
-        unitPriceCents: Number(body.unitPriceCents ?? 0),
-        quantity: Number(body.quantity ?? 1),
+        unitPriceCents,
+        quantity: Math.max(1, Number(body.quantity ?? 1)),
       })
       .returning();
     return c.json(item);
@@ -426,14 +484,22 @@ export function mountConfiguratorRoutes(app: Hono) {
     const parsed = posterConfigSchema.safeParse(body.config);
     if (!parsed.success)
       return c.json({ error: "config invalide", details: parsed.error.issues }, 400);
+    const current = await loadCartItem(c.req.param("cartId"), itemId);
+    if (!current) return c.notFound();
+    const unitPriceCents = await resolveUnitPriceCents(
+      current.productId,
+      parsed.data.format,
+    );
     const [item] = await db
       .update(schema.orderItems)
       .set({
         config: parsed.data,
         variantId: body.variantId ?? undefined,
-        unitPriceCents:
-          body.unitPriceCents != null ? Number(body.unitPriceCents) : undefined,
-        quantity: body.quantity != null ? Number(body.quantity) : undefined,
+        unitPriceCents,
+        quantity:
+          body.quantity != null
+            ? Math.max(1, Number(body.quantity))
+            : undefined,
       })
       .where(eq(schema.orderItems.id, itemId))
       .returning();
@@ -443,8 +509,12 @@ export function mountConfiguratorRoutes(app: Hono) {
 
   /** Supprime une ligne du panier. */
   app.delete("/cart/:cartId/items/:itemId", async (c) => {
-    const itemId = Number(c.req.param("itemId"));
-    await db.delete(schema.orderItems).where(eq(schema.orderItems.id, itemId));
+    const item = await loadCartItem(
+      c.req.param("cartId"),
+      Number(c.req.param("itemId")),
+    );
+    if (!item) return c.notFound();
+    await db.delete(schema.orderItems).where(eq(schema.orderItems.id, item.id));
     return c.json({ ok: true });
   });
 
@@ -702,7 +772,7 @@ export function mountConfiguratorRoutes(app: Hono) {
   });
 
   /** Détail d'une commande + ses lignes (pour la fiche BO et les liens PDF). */
-  app.get("/orders/:id", async (c) => {
+  app.get("/admin/orders/:id", async (c) => {
     const id = Number(c.req.param("id"));
     const [order] = await db
       .select()
@@ -729,14 +799,17 @@ export function mountConfiguratorRoutes(app: Hono) {
     return c.json({ order, customer: customer ?? null, items });
   });
 
-  // === Téléchargement PDF (à tout moment, web + salon — §12) ===============
+  // === Téléchargement PDF (BO uniquement — §12) ============================
 
   /**
    * Renvoie le PDF d'une ligne de commande, régénéré à la demande depuis le
    * snapshot (idempotent). Disponible pour TOUTE commande, même ancienne.
    * C'est la cliente qui télécharge/imprime (depuis le BO ou l'app salon).
+   *
+   * PROTÉGÉ : l'id de ligne est un entier séquentiel — en accès libre, il
+   * suffisait de l'incrémenter pour aspirer les affiches de tous les clients.
    */
-  app.get("/print-files/:orderItemId", async (c) => {
+  app.get("/admin/print-files/:orderItemId", async (c) => {
     const itemId = Number(c.req.param("orderItemId"));
     const [item] = await db
       .select()

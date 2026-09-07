@@ -48,14 +48,11 @@ export interface Product {
   variants: ProductVariant[];
 }
 
+/** Compteurs publics (catalogue seul) — cf. GET /stats côté API. */
 export interface Stats {
   products: number;
   variants: number;
   collections: number;
-  customers: number;
-  orders: number;
-  orderItems: number;
-  ordersByChannel: Record<string, number>;
 }
 
 async function get<T>(path: string): Promise<T> {

@@ -68,7 +68,7 @@ const items = detail?.items ?? [];
                 <td class="px-4 py-2 text-right">{formatPrice(it.unitPriceCents)}</td>
                 <td class="px-4 py-2 text-right">
                   <a
-                    href={`${PUBLIC_API_URL}/print-files/${it.id}`}
+                    href={`${PUBLIC_API_URL}/admin/print-files/${it.id}`}
                     target="_blank"
                     rel="noopener"
                     class="rounded bg-bo-accent text-white px-3 py-1.5 hover:opacity-90"
@@ -127,7 +127,7 @@ const items = detail?.items ?? [];
       f.addEventListener("submit", (e) => {
         e.preventDefault();
         const v = f.querySelector("input")?.value;
-        if (v) window.open(`${PUBLIC_API_URL}/print-files/${v}`, "_blank");
+        if (v) window.open(`${PUBLIC_API_URL}/admin/print-files/${v}`, "_blank");
       });
     });
   </script>

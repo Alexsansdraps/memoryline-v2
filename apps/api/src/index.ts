@@ -86,29 +86,21 @@ app.get("/health", async (c) => {
   }
 });
 
-/** Compteurs globaux — pratique pour vérifier l'import d'un coup d'œil. */
+/**
+ * Compteurs CATALOGUE — publics (la home les affiche : « X affiches »).
+ * Volontairement limités : clients, commandes et chiffre d'affaires relèvent
+ * du BO et vivent sur /admin/stats.
+ */
 app.get("/stats", async (c) => {
-  const [[products], [variants], [collections], [customers], [orders], [items]] =
-    await Promise.all([
-      db.select({ n: count() }).from(schema.products),
-      db.select({ n: count() }).from(schema.variants),
-      db.select({ n: count() }).from(schema.collections),
-      db.select({ n: count() }).from(schema.customers),
-      db.select({ n: count() }).from(schema.orders),
-      db.select({ n: count() }).from(schema.orderItems),
-    ]);
-  const byChannel = await db
-    .select({ channel: schema.orders.channel, n: count() })
-    .from(schema.orders)
-    .groupBy(schema.orders.channel);
+  const [[products], [variants], [collections]] = await Promise.all([
+    db.select({ n: count() }).from(schema.products),
+    db.select({ n: count() }).from(schema.variants),
+    db.select({ n: count() }).from(schema.collections),
+  ]);
   return c.json({
     products: products!.n,
     variants: variants!.n,
     collections: collections!.n,
-    customers: customers!.n,
-    orders: orders!.n,
-    orderItems: items!.n,
-    ordersByChannel: Object.fromEntries(byChannel.map((r) => [r.channel, r.n])),
   });
 });
 
@@ -211,31 +203,6 @@ app.get("/products/:slug", async (c) => {
   });
 });
 
-/** Commandes d'un canal donné (séparation §11). */
-app.get("/orders", async (c) => {
-  const channel = c.req.query("channel");
-  const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
-  const where =
-    channel === "web" || channel === "salon"
-      ? eq(schema.orders.channel, channel)
-      : undefined;
-  const rows = await db
-    .select({
-      id: schema.orders.id,
-      number: schema.orders.number,
-      channel: schema.orders.channel,
-      status: schema.orders.status,
-      totalCents: schema.orders.totalCents,
-      legacyName: schema.orders.legacyName,
-      createdAt: schema.orders.createdAt,
-    })
-    .from(schema.orders)
-    .where(where)
-    .orderBy(desc(schema.orders.createdAt))
-    .limit(limit);
-  return c.json(rows);
-});
-
 /** Bandeau d'annonce actif (le plus prioritaire, dans sa période). */
 app.get("/banner", async (c) => {
   const now = new Date();
@@ -278,7 +245,43 @@ app.get("/promos", async (c) => {
 
 // === Authentification back-office ========================================
 
+/**
+ * Anti-bruteforce du login : au-delà de LOGIN_MAX_ATTEMPTS échecs par IP dans
+ * la fenêtre, on répond 429. En mémoire (un seul process API) — suffisant ici,
+ * et sans dépendance supplémentaire, comme le reste du module d'auth.
+ */
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS = 10;
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+
+function clientIp(c: { req: { header: (k: string) => string | undefined } }) {
+  return (
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    c.req.header("x-real-ip") ||
+    "local"
+  );
+}
+
+function loginRateLimited(key: string): boolean {
+  const cur = loginAttempts.get(key);
+  return Boolean(cur && cur.resetAt > Date.now() && cur.count >= LOGIN_MAX_ATTEMPTS);
+}
+
+function noteFailedLogin(key: string): void {
+  const now = Date.now();
+  // Purge opportuniste : la table ne doit pas croître indéfiniment.
+  if (loginAttempts.size > 500)
+    for (const [k, v] of loginAttempts) if (v.resetAt < now) loginAttempts.delete(k);
+  const cur = loginAttempts.get(key);
+  if (!cur || cur.resetAt < now)
+    loginAttempts.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+  else cur.count += 1;
+}
+
 app.post("/auth/login", async (c) => {
+  const ip = clientIp(c);
+  if (loginRateLimited(ip))
+    return c.json({ error: "Trop de tentatives, réessayez plus tard" }, 429);
   const { email, password } = await c.req.json();
   await purgeExpiredSessions();
   const rows = await db
@@ -290,8 +293,10 @@ app.post("/auth/login", async (c) => {
   const ok =
     user && (await verifyPassword(String(password ?? ""), user.passwordHash));
   if (!user || !ok) {
+    noteFailedLogin(ip);
     return c.json({ error: "Identifiants invalides" }, 401);
   }
+  loginAttempts.delete(ip);
   const token = await createSession(user.id);
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
@@ -328,6 +333,60 @@ app.use("/admin/*", async (c, next) => {
 // middleware d'auth ci-dessus ; les routes publiques (/characters, /cart…)
 // ne sont pas concernées.
 mountConfiguratorRoutes(app);
+
+/**
+ * Commandes d'un canal donné (séparation §11) — BO uniquement : la liste
+ * porte les noms clients et les montants encaissés.
+ */
+app.get("/admin/orders", async (c) => {
+  const channel = c.req.query("channel");
+  const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
+  const where =
+    channel === "web" || channel === "salon"
+      ? eq(schema.orders.channel, channel)
+      : undefined;
+  const rows = await db
+    .select({
+      id: schema.orders.id,
+      number: schema.orders.number,
+      channel: schema.orders.channel,
+      status: schema.orders.status,
+      totalCents: schema.orders.totalCents,
+      legacyName: schema.orders.legacyName,
+      createdAt: schema.orders.createdAt,
+    })
+    .from(schema.orders)
+    .where(where)
+    .orderBy(desc(schema.orders.createdAt))
+    .limit(limit);
+  return c.json(rows);
+});
+
+/** Compteurs complets (catalogue + clients + commandes) — tableau de bord BO. */
+app.get("/admin/stats", async (c) => {
+  const [[products], [variants], [collections], [customers], [orders], [items]] =
+    await Promise.all([
+      db.select({ n: count() }).from(schema.products),
+      db.select({ n: count() }).from(schema.variants),
+      db.select({ n: count() }).from(schema.collections),
+      db.select({ n: count() }).from(schema.customers),
+      db.select({ n: count() }).from(schema.orders),
+      db.select({ n: count() }).from(schema.orderItems),
+    ]);
+  const byChannel = await db
+    .select({ channel: schema.orders.channel, n: count() })
+    .from(schema.orders)
+    .groupBy(schema.orders.channel);
+  return c.json({
+    products: products!.n,
+    variants: variants!.n,
+    collections: collections!.n,
+    customers: customers!.n,
+    orders: orders!.n,
+    orderItems: items!.n,
+    ordersByChannel: Object.fromEntries(byChannel.map((r) => [r.channel, r.n])),
+  });
+});
 
 app.get("/admin/promos", async (c) => {
   const rows = await db

@@ -130,7 +130,7 @@ export interface ProductConfig {
 export function adminApi(request?: Request) {
   const cookie = request?.headers.get("cookie") ?? undefined;
   return {
-    stats: () => req<Stats>("GET", "/stats", undefined, cookie),
+    stats: () => req<Stats>("GET", "/admin/stats", undefined, cookie),
     promos: () => req<PromoRule[]>("GET", "/admin/promos", undefined, cookie),
     upsertPromo: (data: Partial<PromoRule>) =>
       req<PromoRule>("POST", "/admin/promos", data, cookie),
@@ -144,12 +144,12 @@ export function adminApi(request?: Request) {
     orders: (channel?: string) =>
       req<OrderRow[]>(
         "GET",
-        `/orders${channel ? `?channel=${channel}` : ""}`,
+        `/admin/orders${channel ? `?channel=${channel}` : ""}`,
         undefined,
         cookie,
       ),
     orderDetail: (id: number) =>
-      req<OrderDetail>("GET", `/orders/${id}`, undefined, cookie),
+      req<OrderDetail>("GET", `/admin/orders/${id}`, undefined, cookie),
     characters: () =>
       req<{ types: CharacterType[]; assets: Asset[] }>(
         "GET",
