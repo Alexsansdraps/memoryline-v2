@@ -7,7 +7,11 @@ import type {
   PosterFormat,
   PosterView,
 } from "@memoryline/types";
-import { recolorSvg } from "@memoryline/types";
+import {
+  recolorSvg,
+  POLICE_TITRE_DEFAUT,
+  POLICE_SOUSTITRE_DEFAUT,
+} from "@memoryline/types";
 
 /** Étapes du flow configurateur (§18.2 F). */
 export const STEPS = ["background", "characters", "format"] as const;
@@ -146,10 +150,10 @@ export interface ConfiguratorState {
   backgroundUrl: string | undefined;
   format: PosterFormat;
   view: PosterView;
-  /** Seul le TEXTE diffère entre titre et sous-titre. */
-  title: { value: string };
-  subtitle: { value: string };
-  /** Style PARTAGÉ par le titre ET le sous-titre (police, couleur, taille). */
+  /** Texte ET police, choisis séparément pour le titre et le sous-titre. */
+  title: { value: string; font: string };
+  subtitle: { value: string; font: string };
+  /** Style PARTAGÉ : la couleur et la taille valent pour les deux. */
   textStyle: { font: string; color: string; size: number };
   characters: WorkingCharacter[];
   /** index du personnage en cours d'édition, sinon null. */
@@ -158,6 +162,9 @@ export interface ConfiguratorState {
 
 const DEFAULT_TEXT_COLOR = "#FFFFFF"; // blanc par défaut (charte affiches)
 const DEFAULT_FONT = "sans-serif";
+/** Polices par défaut de la charte : titre en serif, sous-titre manuscrit. */
+const DEFAUT_POLICE_TITRE = POLICE_TITRE_DEFAUT;
+const DEFAUT_POLICE_SOUSTITRE = POLICE_SOUSTITRE_DEFAUT;
 /** Taille de texte = facteur relatif (1 = défaut). Appliqué au titre et sous-titre. */
 const DEFAULT_TEXT_SIZE = 1;
 
@@ -168,8 +175,8 @@ function emptyState(): ConfiguratorState {
     backgroundUrl: undefined,
     format: "A4",
     view: "front",
-    title: { value: "" },
-    subtitle: { value: "" },
+    title: { value: "", font: DEFAUT_POLICE_TITRE },
+    subtitle: { value: "", font: DEFAUT_POLICE_SOUSTITRE },
     textStyle: {
       font: DEFAULT_FONT,
       color: DEFAULT_TEXT_COLOR,
@@ -187,8 +194,16 @@ export function stateFromConfig(cfg: PosterConfig): ConfiguratorState {
   base.backgroundUrl = cfg.backgroundUrl;
   base.format = cfg.format ?? "A4";
   base.view = cfg.view ?? "front";
-  if (cfg.texts.title) base.title = { value: cfg.texts.title.value };
-  if (cfg.texts.subtitle) base.subtitle = { value: cfg.texts.subtitle.value };
+  if (cfg.texts.title)
+    base.title = {
+      value: cfg.texts.title.value,
+      font: cfg.texts.title.font ?? DEFAUT_POLICE_TITRE,
+    };
+  if (cfg.texts.subtitle)
+    base.subtitle = {
+      value: cfg.texts.subtitle.value,
+      font: cfg.texts.subtitle.font ?? DEFAUT_POLICE_SOUSTITRE,
+    };
   // Style partagé : repris du titre en priorité, sinon du sous-titre.
   const src = cfg.texts.title ?? cfg.texts.subtitle;
   base.textStyle = {
@@ -298,12 +313,12 @@ export function configFromState(
     format: state.format,
     view: state.view,
     texts: {
-      // Titre et sous-titre partagent le même style (police/couleur/taille) ;
-      // seul le texte diffère.
+      // La POLICE est propre à chaque bloc ; couleur et taille restent
+      // communes (charte : un seul coloris de texte sur l'affiche).
       title: state.title.value
         ? {
             value: state.title.value,
-            font: state.textStyle.font,
+            font: state.title.font,
             color: state.textStyle.color,
             size: state.textStyle.size,
           }
@@ -311,7 +326,7 @@ export function configFromState(
       subtitle: state.subtitle.value
         ? {
             value: state.subtitle.value,
-            font: state.textStyle.font,
+            font: state.subtitle.font,
             color: state.textStyle.color,
             size: state.textStyle.size,
           }

@@ -216,7 +216,14 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       s[which].value = value;
     });
   }
-  /** Met à jour le STYLE PARTAGÉ (police/couleur/taille) titre + sous-titre. */
+  /** Change la police d'UN bloc (titre ou sous-titre), indépendamment. */
+  function setTextFont(which: "title" | "subtitle", font: string) {
+    mutate((s) => {
+      s[which].font = font;
+    });
+  }
+
+  /** Met à jour le STYLE PARTAGÉ (couleur/taille) titre + sous-titre. */
   function setTextStyle(
     patch: Partial<{ font: string; color: string; size: number }>,
   ) {
@@ -444,6 +451,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             onSelectBackground={selectBackground}
             onTextValue={setTextValue}
             onTextStyle={setTextStyle}
+            onTextFont={setTextFont}
           />
         </Show>
 

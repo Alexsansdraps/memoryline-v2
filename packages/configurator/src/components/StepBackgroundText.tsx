@@ -1,6 +1,10 @@
 /// <reference lib="dom" />
 import { For, Show } from "solid-js";
-import type { BackgroundDTO } from "@memoryline/types";
+import {
+  POLICES_AFFICHE,
+  familleCss,
+  type BackgroundDTO,
+} from "@memoryline/types";
 import type { ConfiguratorState } from "../store";
 import { Field } from "./ui";
 
@@ -14,7 +18,46 @@ export function StepBackgroundText(props: {
   onTextStyle: (
     patch: Partial<{ font: string; color: string; size: number }>,
   ) => void;
+  /** Change la police d'un seul bloc (titre ou sous-titre). */
+  onTextFont: (which: "title" | "subtitle", font: string) => void;
 }) {
+  /**
+   * Choix rapide de la police, montrée DANS la police : le client juge le
+   * rendu, pas un nom. Une rangée par bloc, car titre et sous-titre se
+   * choisissent séparément.
+   */
+  const ChoixPolice = (p: { which: "title" | "subtitle" }) => (
+    <div class="ml-cfg-polices">
+      <For each={POLICES_AFFICHE}>
+        {(police) => {
+          const actif = () => props.state[p.which].font === police.id;
+          return (
+            <button
+              type="button"
+              onClick={() => props.onTextFont(p.which, police.id)}
+              aria-pressed={actif()}
+              title={police.libelle}
+              style={{
+                flex: "0 0 auto",
+                border: actif() ? "2px solid #4f46e5" : "1px solid #d1d5db",
+                background: "#fff",
+                color: "#1f2937",
+                "border-radius": "8px",
+                padding: "4px 12px",
+                cursor: "pointer",
+                "font-family": familleCss(police),
+                "font-size": "19px",
+                "line-height": "1.5",
+                "white-space": "nowrap",
+              }}
+            >
+              {police.libelle}
+            </button>
+          );
+        }}
+      </For>
+    </div>
+  );
   const resolve = (url: string) =>
     url.startsWith("http") ? url : props.assetBaseUrl.replace(/\/$/, "") + url;
 
@@ -91,6 +134,7 @@ export function StepBackgroundText(props: {
           onInput={(e) => props.onTextValue("title", e.currentTarget.value)}
           style={inputStyle}
         />
+        <ChoixPolice which="title" />
       </Field>
       <Field label="Sous-titre (symboles et chiffres autorisés)">
         <input
@@ -100,6 +144,7 @@ export function StepBackgroundText(props: {
           onInput={(e) => props.onTextValue("subtitle", e.currentTarget.value)}
           style={inputStyle}
         />
+        <ChoixPolice which="subtitle" />
       </Field>
 
       {/* Style PARTAGÉ par le titre ET le sous-titre (police + couleur).

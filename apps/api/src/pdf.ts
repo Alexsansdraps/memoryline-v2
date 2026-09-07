@@ -30,6 +30,12 @@ import {
   hideSlotGroups,
   recolorSvg,
 } from "@memoryline/types";
+import {
+  familleCss,
+  policeParId,
+  POLICE_TITRE_DEFAUT,
+  POLICE_SOUSTITRE_DEFAUT,
+} from "@memoryline/types";
 import type { PosterConfig, PosterFormat } from "@memoryline/types";
 
 // --- Constantes format --------------------------------------------------------
@@ -282,9 +288,10 @@ function buildTextSvg(
   const subtitle = config.texts.subtitle?.value?.trim();
   if (!title && !subtitle) return null;
 
-  // Style PARTAGÉ titre + sous-titre (police/couleur/taille) — repris du titre
-  // en priorité, sinon du sous-titre. Seul le texte diffère entre les deux.
-  // Couleur partagée (modifiable). Polices FIXES de la charte Memory Line :
+  // Couleur partagée (modifiable). La POLICE est choisie par le client pour
+  // chaque bloc (POLICES_AFFICHE) : on résout ici le même nom de famille que
+  // l'aperçu écran, et l'image de l'API installe les fichiers correspondants
+  // — sans quoi le PDF sortirait dans une autre police que celle validée.
   //  - Titre    : DM Serif Display, serif
   //  - Sous-titre : 'Another Shabby' si disponible, sinon Caveat (script
   //    manuscrit) — « Another Shabby » est propriétaire et n'est pas fournie ;
@@ -302,14 +309,14 @@ function buildTextSvg(
   if (title) {
     parts.push(
       `<text x="${width / 2}" y="${titleY}" text-anchor="middle" ` +
-        `font-family="DM Serif Display, serif" font-weight="700" font-size="${titleSize}" ` +
+        `font-family="${escapeXml(familleCss(policeParId(config.texts.title?.font, POLICE_TITRE_DEFAUT)))}" font-weight="700" font-size="${titleSize}" ` +
         `fill="${escapeXml(color)}">${escapeXml(title)}</text>`,
     );
   }
   if (subtitle) {
     parts.push(
       `<text x="${width / 2}" y="${subtitleY}" text-anchor="middle" ` +
-        `font-family="'Another Shabby', 'Caveat', cursive" font-size="${subtitleSize}" ` +
+        `font-family="${escapeXml(familleCss(policeParId(config.texts.subtitle?.font, POLICE_SOUSTITRE_DEFAUT)))}" font-size="${subtitleSize}" ` +
         `fill="${escapeXml(color)}">${escapeXml(subtitle)}</text>`,
     );
   }

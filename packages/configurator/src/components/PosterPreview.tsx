@@ -8,6 +8,12 @@ import {
   type SlotsDTO,
   type SvgCache,
 } from "../store";
+import {
+  familleCss,
+  policeParId,
+  POLICE_TITRE_DEFAUT,
+  POLICE_SOUSTITRE_DEFAUT,
+} from "@memoryline/types";
 import { CharacterStack } from "./CharacterLayer";
 
 /** Ratio largeur/hauteur d'affichage selon le format (portrait). */
@@ -180,7 +186,9 @@ export function PosterPreview(props: {
                 <div
                   style={{
                     // Police FIXE du titre (charte) ; seule la couleur varie.
-                    "font-family": "'DM Serif Display', serif",
+                    "font-family": familleCss(
+                      policeParId(props.state.title.font, POLICE_TITRE_DEFAUT),
+                    ),
                     color: st.color,
                     "font-weight": "700",
                     "font-size": "8cqw",
@@ -198,7 +206,12 @@ export function PosterPreview(props: {
                 <div
                   style={{
                     // Police FIXE du sous-titre (script manuscrit, charte).
-                    "font-family": "'Another Shabby', sans-serif",
+                    "font-family": familleCss(
+                      policeParId(
+                        props.state.subtitle.font,
+                        POLICE_SOUSTITRE_DEFAUT,
+                      ),
+                    ),
                     color: st.color,
                     "font-size": "5.5cqw",
                     "margin-top": "0.1em",
