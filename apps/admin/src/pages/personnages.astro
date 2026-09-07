@@ -221,8 +221,9 @@ for (const a of pieces) {
   <h2 class="text-lg font-semibold mb-1">Personnages</h2>
   <p class="mb-4 text-sm text-bo-muted">
     Les personnages que le client peut ajouter depuis le site, regroupés par
-    catégorie. Le sélecteur de chaque carte déplace le personnage ; pour en
-    déplacer plusieurs d'un coup, cochez-les.
+    catégorie. Faites glisser la vignette d'un personnage sur le bandeau d'une
+    autre catégorie pour l'y déplacer — ou servez-vous du sélecteur de sa carte.
+    Pour en déplacer plusieurs d'un coup, cochez-les d'abord.
   </p>
 
   {/* ---- Gestion des catégories ---- */}
@@ -359,9 +360,11 @@ for (const a of pieces) {
                   <img
                     src={svgSrc(t.baseSvgUrl)}
                     alt=""
-                    class="h-12 w-12 object-contain border border-bo-border rounded bg-white shrink-0"
+                    class="js-grip h-12 w-12 object-contain border border-bo-border rounded bg-white shrink-0 cursor-grab active:cursor-grabbing"
                     style={t.baseSvgUrl ? "" : "visibility:hidden"}
                     loading="lazy"
+                    draggable="true"
+                    title="Glisser le personnage sur une catégorie pour l'y déplacer"
                   />
                   <div class="min-w-0">
                     <div class="font-medium truncate">{t.name}</div>
@@ -984,6 +987,80 @@ for (const a of pieces) {
 
   <script is:inline define:vars={{ PUBLIC_API_URL }}>
     const abs = (u) => (u && u.startsWith("http") ? u : `${PUBLIC_API_URL}${u}`);
+
+    // ===== Glisser-déposer : prendre un personnage, le lâcher sur une catégorie
+    // On saisit la vignette ; les bandeaux de catégorie (repliés ou non) servent
+    // de cibles, ce qui rend le déplacement direct maintenant que les huit
+    // catégories tiennent sur un écran.
+    (() => {
+      const groupes = Array.from(document.querySelectorAll("[data-groupe]"));
+      if (!groupes.length) return;
+
+      for (const poignee of document.querySelectorAll(".js-grip")) {
+        poignee.addEventListener("dragstart", (e) => {
+          const carte = poignee.closest("[data-char-id]");
+          if (!carte) return;
+          const id = carte.getAttribute("data-char-id");
+          const coches = Array.from(
+            document.querySelectorAll(".js-lot:checked"),
+          ).map((c) => c.value);
+          // Si le personnage saisi fait partie d'une sélection, on emmène
+          // toute la sélection ; sinon on ne déplace que lui.
+          const ids = coches.includes(id) ? coches : [id];
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", ids.join(","));
+          carte.classList.add("opacity-40");
+        });
+        poignee.addEventListener("dragend", () => {
+          const carte = poignee.closest("[data-char-id]");
+          if (carte) carte.classList.remove("opacity-40");
+        });
+      }
+
+      for (const groupe of groupes) {
+        const bandeau = groupe.querySelector("summary");
+        if (!bandeau) continue;
+        const surligner = (actif) => {
+          bandeau.style.background = actif ? "rgba(79, 70, 229, 0.15)" : "";
+        };
+
+        bandeau.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          surligner(true);
+        });
+        bandeau.addEventListener("dragleave", () => surligner(false));
+
+        bandeau.addEventListener("drop", async (e) => {
+          e.preventDefault();
+          surligner(false);
+          const ids = (e.dataTransfer.getData("text/plain") || "")
+            .split(",")
+            .filter(Boolean)
+            .map(Number);
+          if (!ids.length) return;
+          const cat = groupe.dataset.cat;
+          try {
+            const res = await fetch(
+              `${PUBLIC_API_URL}/admin/characters/category`,
+              {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  ids,
+                  categoryId: cat === "sans" ? null : Number(cat),
+                }),
+              },
+            );
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            location.reload();
+          } catch (err) {
+            alert("Déplacement impossible : " + err);
+          }
+        });
+      }
+    })();
 
     // --- Aperçu live d'une image à partir d'un champ URL ---
     function bindPreview(input, img) {
