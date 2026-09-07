@@ -26,6 +26,17 @@ export default defineConfig({
   vite: {
     envDir: "../../",
     plugins: [tailwindcss()],
-    ...(allowedHosts.length ? { server: { allowedHosts } } : {}),
+    // Docker Desktop sous Windows ne propage PAS les événements de fichiers
+    // dans le conteneur : sans scrutation active, Vite ne voit aucune
+    // modification du code et sert indéfiniment son cache. On exclut data/
+    // (1,5 Go d'assets) et node_modules pour que ça reste peu coûteux.
+    server: {
+      ...(allowedHosts.length ? { allowedHosts } : {}),
+      watch: {
+        usePolling: true,
+        interval: 400,
+        ignored: ["**/node_modules/**", "**/data/**", "**/.git/**"],
+      },
+    },
   },
 });
