@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import { t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
 import {
   createSignal,
   onMount,
@@ -21,6 +22,8 @@ import ConfiguratorIsland from "./ConfiguratorIsland.tsx";
  *   on charge la config de la ligne et on ouvre directement la modale.
  */
 export interface ProductConfiguratorProps {
+  /** Langue de la page — pilote tous les libellés affichés. */
+  langue?: Langue;
   product: { id: number; name: string; basePriceCents: number };
   /** Prix réels par format (centimes), ex. { A4: 2300, A3: 2900 }. */
   prices?: Partial<Record<string, number>>;
@@ -33,6 +36,7 @@ export interface ProductConfiguratorProps {
 export default function ProductConfigurator(
   props: ProductConfiguratorProps,
 ): JSX.Element {
+  const tr = t(props.langue ?? LANGUE_DEFAUT);
   const [open, setOpen] = createSignal(false);
   const [editItemId, setEditItemId] = createSignal<number | null>(null);
   const [initialConfig, setInitialConfig] = createSignal<
@@ -94,14 +98,14 @@ export default function ProductConfigurator(
         {loadingEdit() ? (
           <>
             <span class="ml-spinner mr-2" aria-hidden="true" />
-            Un instant…
+            {tr("cfg.chargement")}
           </>
         ) : (
-          "Personnaliser"
+          tr("produit.personnaliser")
         )}
       </button>
       <p class="mt-3 text-sm text-ink-soft">
-        Choisissez le fond, le texte et vos personnages.
+        {tr("produit.aide")}
       </p>
 
       <Show when={open()}>
@@ -109,7 +113,7 @@ export default function ProductConfigurator(
           class="ml-modal-overlay"
           role="dialog"
           aria-modal="true"
-          aria-label="Personnaliser l'affiche"
+          aria-label={tr("produit.personnaliser")}
           onClick={(e) => {
             if (e.target === e.currentTarget) closeModal();
           }}
@@ -117,9 +121,7 @@ export default function ProductConfigurator(
           <div class="ml-modal-panel">
             <header class="ml-modal-head">
               <h2 class="font-serif text-xl sm:text-2xl">
-                {editItemId() != null
-                  ? "Modifier votre affiche"
-                  : "Composez votre affiche"}
+                {tr("cfg.titre")}
               </h2>
               <button
                 type="button"

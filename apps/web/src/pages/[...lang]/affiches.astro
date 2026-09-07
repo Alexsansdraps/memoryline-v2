@@ -1,11 +1,17 @@
 ---
-import Base from "../layouts/Base.astro";
-import { api, formatPrice, assetUrl, type Product } from "../lib/api.ts";
+import Base from "../../layouts/Base.astro";
+import { api, formatPrice, assetUrl, type Product } from "../../lib/api.ts";
+import { cheminsLangues, lien, t, type Langue } from "../../i18n/utils.ts";
+
+export const getStaticPaths = cheminsLangues;
+
+const { langue } = Astro.props as { langue: Langue };
+const tr = t(langue);
 
 let products: Product[] = [];
 let error: string | null = null;
 try {
-  products = await api.products(120);
+  products = await api.products(120, langue);
 } catch (e) {
   error = String(e);
 }
@@ -21,23 +27,23 @@ function priceRange(p: Product): string {
 }
 
 const kindLabel: Record<string, string> = {
-  personnalisable: "Personnalisable",
-  prete_a_imprimer: "Prête à imprimer",
+  personnalisable: tr("genre.personnalisable"),
+  prete_a_imprimer: tr("genre.prete_a_imprimer"),
 };
 ---
 
-<Base title="Affiches — Memory Line">
+<Base langue={langue} title={`${tr("catalogue.titre")} — Memory Line`}>
   <section class="mx-auto max-w-6xl px-6 pt-12 pb-8">
-    <h1 class="font-serif text-4xl sm:text-5xl">Toutes les affiches</h1>
+    <h1 class="font-serif text-4xl sm:text-5xl">{tr("catalogue.titre")}</h1>
     <p class="mt-3 text-ink-soft">
-      {products.length} affiches · villes, paysages & thèmes
+      {products.length} {tr("catalogue.compte")}
     </p>
   </section>
 
   {
     error && (
       <p class="mx-auto max-w-6xl px-6 text-terracotta-deep">
-        Impossible de charger le catalogue ({error}).
+        {tr("catalogue.erreur")} ({error}).
       </p>
     )
   }
@@ -47,7 +53,7 @@ const kindLabel: Record<string, string> = {
       {
         products.map((p) => (
           <li class="group">
-            <a href={`/affiches/${p.slug}`} class="block">
+            <a href={lien(langue, `/affiches/${p.slug}`)} class="block">
               <div class="aspect-[3/4] rounded-xl bg-paper-deep border border-ink/10 flex items-center justify-center overflow-hidden group-hover:border-terracotta/40 transition-colors">
                 {
                   assetUrl(p.image) ? (

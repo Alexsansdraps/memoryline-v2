@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import { t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
 import {
   createResource,
   createSignal,
@@ -76,7 +77,8 @@ function loadPaypalSdk(clientId: string): Promise<PayPalNamespace> {
   return paypalSdk;
 }
 
-export default function CheckoutIsland(): JSX.Element {
+export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element {
+  const tr = t(props.langue ?? LANGUE_DEFAUT);
   const [name, setName] = createSignal("");
   const [email, setEmail] = createSignal("");
   const [method, setMethod] = createSignal<Method | null>(null);
@@ -327,7 +329,7 @@ export default function CheckoutIsland(): JSX.Element {
             <fieldset class="space-y-4" disabled={phase() === "pay"}>
               <legend class="font-serif text-2xl mb-2">Vos coordonnées</legend>
               <label class="block">
-                <span class="text-sm font-medium">Nom complet</span>
+                <span class="text-sm font-medium">{tr("commande.nom")}</span>
                 <input
                   type="text"
                   required
@@ -338,7 +340,7 @@ export default function CheckoutIsland(): JSX.Element {
                 />
               </label>
               <label class="block">
-                <span class="text-sm font-medium">E-mail</span>
+                <span class="text-sm font-medium">{tr("commande.email")}</span>
                 <input
                   type="email"
                   required
@@ -415,7 +417,7 @@ export default function CheckoutIsland(): JSX.Element {
                       disabled={submitting()}
                       class="w-full rounded-full bg-terracotta px-8 py-4 text-paper font-medium hover:bg-terracotta-deep transition-colors disabled:opacity-50"
                     >
-                      {submitting() ? "Paiement…" : `Payer ${formatPrice(total())}`}
+                      {submitting() ? "…" : `${tr("commande.payer")} ${formatPrice(total())}`}
                     </button>
                   </Show>
 
@@ -477,7 +479,7 @@ export default function CheckoutIsland(): JSX.Element {
               </div>
             </Show>
             <div class="mt-4 flex justify-between border-t border-ink/10 pt-4">
-              <span class="font-medium">Total</span>
+              <span class="font-medium">{tr("panier.total")}</span>
               <span class="font-serif text-xl">{formatPrice(total())}</span>
             </div>
             <a

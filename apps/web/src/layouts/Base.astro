@@ -4,7 +4,18 @@ import Seo from "../components/Seo.astro";
 import AnnouncementBanner from "../components/AnnouncementBanner.astro";
 import CookieBanner from "../components/CookieBanner.astro";
 import CartBadge from "../islands/CartBadge.tsx";
+import {
+  LANGUE_DEFAUT,
+  LOCALE_COMPLETE,
+  autresVersions,
+  cheminSansLangue,
+  lien,
+  t,
+  type Langue,
+} from "../i18n/utils.ts";
 interface Props {
+  /** Langue de la page — pilote les libellés, les liens et le hreflang. */
+  langue?: Langue;
   title?: string;
   description?: string;
   path?: string;
@@ -14,26 +25,48 @@ interface Props {
   jsonLd?: Record<string, unknown> | Record<string, unknown>[];
 }
 const {
-  title = "Memory Line — Affiches personnalisées de villes & paysages",
-  description = "Affiches personnalisées de villes françaises, paysages et thèmes. Composez la vôtre en quelques minutes, imprimée en A4 ou A3.",
+  langue = LANGUE_DEFAUT,
+  title,
+  description,
   path,
   image,
   type,
   noindex,
   jsonLd,
 } = Astro.props;
+
+const tr = t(langue);
+const chemin = cheminSansLangue(Astro.url.pathname);
+const versions = autresVersions(langue, chemin);
+const titre = title ?? tr("meta.titre");
+const desc = description ?? tr("meta.description");
 ---
 
 <!doctype html>
-<html lang="fr">
+<html lang={langue}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="generator" content={Astro.generator} />
     <link rel="sitemap" href="/sitemap-index.xml" />
+    {/* Versions traduites : chaque page se declare aux moteurs comme
+        l'equivalent des autres, pour eviter d'etre vue comme du contenu
+        duplique. */}
+    {versions.map((v) => (
+      <link
+        rel="alternate"
+        hreflang={LOCALE_COMPLETE[v.langue]}
+        href={new URL(v.href, Astro.site ?? "https://memoryline.fr").toString()}
+      />
+    ))}
+    <link
+      rel="alternate"
+      hreflang="x-default"
+      href={new URL(chemin, Astro.site ?? "https://memoryline.fr").toString()}
+    />
     <Seo
-      title={title}
-      description={description}
+      title={titre}
+      description={desc}
       path={path}
       image={image}
       type={type}
@@ -49,7 +82,11 @@ const {
       <nav
         class="mx-auto max-w-6xl flex items-center justify-between px-6 py-4"
       >
-        <a href="/" class="inline-flex items-center" aria-label="Memory Line — accueil">
+        <a
+          href={lien(langue, "/")}
+          class="inline-flex items-center"
+          aria-label={tr("nav.accueil")}
+        >
           <img
             src="/logo-memory-line.png"
             alt="Memory Line"
@@ -59,19 +96,49 @@ const {
           />
         </a>
         <div class="flex items-center gap-6 text-sm">
-          <a href="/affiches" class="hover:text-terracotta transition-colors"
-            >Affiches</a
+          <a
+            href={lien(langue, "/affiches")}
+            class="hover:text-terracotta transition-colors">{tr("nav.affiches")}</a
           >
           <a
-            href="/panier"
+            href={lien(langue, "/panier")}
             class="ml-panier-lien hover:text-terracotta transition-colors"
-            >Panier<CartBadge client:load /></a
+            >{tr("nav.panier")}<CartBadge client:load /></a
           >
           <a
-            href="/affiches"
+            href={lien(langue, "/affiches")}
             class="rounded-full bg-ink px-4 py-2 text-paper hover:bg-terracotta-deep transition-colors"
-            >Créer mon affiche</a
+            >{tr("nav.creer")}</a
           >
+
+          {/* Sélecteur de langue, en haut à droite. Ce sont de vrais liens :
+              chaque langue a son URL, indexable et partageable. */}
+          <div class="ml-langues">
+            <button
+              type="button"
+              class="ml-langues-bouton"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-label={tr("nav.langue")}
+            >
+              {langue.toUpperCase()}
+              <span aria-hidden="true">▾</span>
+            </button>
+            <ul class="ml-langues-liste">
+              {versions.map((v) => (
+                <li>
+                  <a
+                    href={v.href}
+                    hreflang={v.langue}
+                    aria-current={v.actuelle ? "true" : undefined}
+                    class={v.actuelle ? "est-actuelle" : ""}
+                  >
+                    {v.nom}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </nav>
     </header>
@@ -84,8 +151,8 @@ const {
       <div
         class="mx-auto max-w-6xl px-6 py-8 text-sm text-ink-soft flex flex-col sm:flex-row justify-between gap-2"
       >
-        <p>© {new Date().getFullYear()} Memory Line — Affiches personnalisées</p>
-        <p>Votre affiche prête en 2 minutes.</p>
+        <p>© {new Date().getFullYear()} {tr("pied.droits")}</p>
+        <p>{tr("pied.baseline")}</p>
       </div>
     </footer>
     <CookieBanner />

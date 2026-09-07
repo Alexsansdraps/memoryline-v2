@@ -327,6 +327,64 @@ body {
   margin-inline: 0;
 }
 
+/* --------------------------------------------------------------------------
+ * Sélecteur de langue (en-tête, à droite). Ouverture au survol ET au focus
+ * clavier ; les entrées sont de vrais liens, donc utilisables sans JS.
+ * ------------------------------------------------------------------------ */
+.ml-langues {
+  position: relative;
+}
+.ml-langues-bouton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(32, 33, 31, 0.2);
+  border-radius: 9999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.ml-langues-bouton:hover {
+  border-color: var(--color-ink);
+}
+.ml-langues-liste {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  min-width: 140px;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--color-paper);
+  border: 1px solid rgba(32, 33, 31, 0.15);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  display: none;
+}
+.ml-langues:hover .ml-langues-liste,
+.ml-langues:focus-within .ml-langues-liste {
+  display: block;
+}
+.ml-langues-liste a {
+  display: block;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  text-decoration: none;
+  color: inherit;
+}
+.ml-langues-liste a:hover {
+  background: var(--color-paper-deep);
+}
+.ml-langues-liste a.est-actuelle {
+  font-weight: 700;
+  color: var(--color-terracotta);
+}
+
 /* Rangée de polices proposées : défile horizontalement au doigt. */
 .ml-cfg-polices {
   display: flex;

@@ -1,0 +1,31 @@
+---
+import Base from "../../layouts/Base.astro";
+import CheckoutIsland from "../../islands/CheckoutIsland.tsx";
+import { cheminsLangues, lien, t, type Langue } from "../../i18n/utils.ts";
+
+export const getStaticPaths = cheminsLangues;
+
+const { langue } = Astro.props as { langue: Langue };
+const tr = t(langue);
+---
+
+<Base
+  langue={langue}
+  title={`${tr("commande.titre")} — Memory Line`}
+  path={lien(langue, "/commande")}
+  noindex={true}
+>
+  <section class="mx-auto max-w-4xl px-4 sm:px-6 pt-12 pb-16">
+    <nav class="text-sm text-ink-soft">
+      <a href={lien(langue, "/")} class="hover:text-terracotta">Memory Line</a> ·
+      <a href={lien(langue, "/panier")} class="hover:text-terracotta"
+        >{tr("nav.panier")}</a
+      >
+    </nav>
+    <h1 class="font-serif text-4xl sm:text-5xl mt-4 mb-8">
+      {tr("commande.titre")}
+    </h1>
+
+    <CheckoutIsland client:only="solid-js" langue={langue} />
+  </section>
+</Base>

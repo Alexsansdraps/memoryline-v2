@@ -93,8 +93,15 @@ export interface ProductDetail {
 
 export const api = {
   stats: () => get<Stats>("/stats"),
-  products: (limit = 60) => get<Product[]>(`/products?limit=${limit}`),
-  product: (slug: string) => get<ProductDetail>(`/products/${slug}`),
+  /** `langue` sélectionne les traductions saisies au back-office (repli fr). */
+  products: (limit = 60, langue?: string) =>
+    get<Product[]>(
+      `/products?limit=${limit}${langue && langue !== "fr" ? `&lang=${langue}` : ""}`,
+    ),
+  product: (slug: string, langue?: string) =>
+    get<ProductDetail>(
+      `/products/${slug}${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,
+    ),
   banner: () => get<Banner | null>("/banner"),
   settings: (group?: string) =>
     get<Record<string, unknown>>(`/settings${group ? `?group=${group}` : ""}`),

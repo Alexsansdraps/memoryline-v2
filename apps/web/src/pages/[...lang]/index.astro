@@ -1,12 +1,18 @@
 ---
-import Base from "../layouts/Base.astro";
+import Base from "../../layouts/Base.astro";
 import {
   api,
   setting,
   formatPrice,
   assetUrl,
   type Product,
-} from "../lib/api.ts";
+} from "../../lib/api.ts";
+import { cheminsLangues, lien, t, type Langue } from "../../i18n/utils.ts";
+
+export const getStaticPaths = cheminsLangues;
+
+const { langue } = Astro.props as { langue: Langue };
+const tr = t(langue);
 
 /**
  * Page d'accueil.
@@ -27,7 +33,7 @@ try {
 // Les affiches mises en avant : c'est ce qui manquait à l'accueil.
 let products: Product[] = [];
 try {
-  products = await api.products(60);
+  products = await api.products(60, langue);
 } catch {
   // Sans API, la vitrine s'efface plutôt que d'afficher une grille vide.
 }
@@ -38,23 +44,14 @@ async function visible(cle: string): Promise<boolean> {
   return !["off", "non", "no", "0", "false"].includes(v);
 }
 
-const heroSurtitre = await setting("home.hero.eyebrow", "Affiches personnalisées");
-const heroTitle = await setting(
-  "home.hero.title",
-  "Votre ville, votre histoire, sur un mur.",
-);
-const heroSubtitle = await setting(
-  "home.hero.subtitle",
-  "Choisissez un fond, personnalisez le titre, ajoutez vos personnages. Votre affiche prête en 2 minutes — imprimée en A4 ou A3.",
-);
-const heroCta = await setting("home.hero.cta", "Découvrir les affiches");
+const heroSurtitre = await setting("home.hero.eyebrow", tr("accueil.surtitre"));
+const heroTitle = await setting("home.hero.title", tr("accueil.titre"));
+const heroSubtitle = await setting("home.hero.subtitle", tr("accueil.soustitre"));
+const heroCta = await setting("home.hero.cta", tr("accueil.cta"));
 
 const vitrineVisible = await visible("home.vitrine.visible");
-const vitrineTitre = await setting("home.vitrine.title", "Nos affiches");
-const vitrineTexte = await setting(
-  "home.vitrine.subtitle",
-  "Une sélection parmi nos villes, paysages et thèmes.",
-);
+const vitrineTitre = await setting("home.vitrine.title", tr("catalogue.titre"));
+const vitrineTexte = await setting("home.vitrine.subtitle", tr("produit.aide"));
 const vitrineNombre = Math.max(
   1,
   Math.min(24, Number(await setting("home.vitrine.count", "8")) || 8),
@@ -81,7 +78,7 @@ function fourchette(p: Product): string {
 const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
 ---
 
-<Base>
+<Base langue={langue}>
   {/* ---------------- Bandeau d'accroche ---------------- */}
   <section class="mx-auto max-w-6xl px-6 pt-16 pb-10">
     <p class="text-terracotta font-medium tracking-wide uppercase text-sm">
@@ -93,7 +90,7 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
     <p class="mt-6 text-lg text-ink-soft max-w-xl">{heroSubtitle}</p>
     <div class="mt-8 flex flex-wrap gap-4">
       <a
-        href="/affiches"
+        href={lien(langue, "/affiches")}
         class="rounded-full bg-terracotta px-6 py-3 text-paper font-medium hover:bg-terracotta-deep transition-colors"
         >{heroCta}</a
       >
@@ -110,17 +107,17 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
             <p class="mt-2 text-ink-soft">{vitrineTexte}</p>
           </div>
           <a
-            href="/affiches"
+            href={lien(langue, "/affiches")}
             class="text-terracotta hover:text-terracotta-deep font-medium whitespace-nowrap"
           >
-            Voir toutes les affiches →
+            {tr("catalogue.titre")} →
           </a>
         </div>
 
         <ul class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
           {vitrine.map((p) => (
             <li class="group">
-              <a href={`/affiches/${p.slug}`} class="block">
+              <a href={lien(langue, `/affiches/${p.slug}`)} class="block">
                 <div class="aspect-[3/4] rounded-xl bg-paper-deep border border-ink/10 flex items-center justify-center overflow-hidden group-hover:border-terracotta/40 transition-colors">
                   {assetUrl(p.image) ? (
                     <img
@@ -177,8 +174,8 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
       <section class="mx-auto max-w-6xl px-6 py-16">
         <dl class="grid grid-cols-2 sm:grid-cols-4 gap-px bg-ink/10 rounded-2xl overflow-hidden border border-ink/10">
           {[
-            ["Affiches", stats.products],
-            ["Collections", stats.collections],
+            [tr("accueil.stat.affiches"), stats.products],
+            [tr("accueil.stat.collections"), stats.collections],
             ["Formats", "A4 · A3"],
             ["Prêtes en", "2 min"],
           ].map(([label, value]) => (

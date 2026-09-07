@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import { t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
 import {
   createEffect,
   createResource,
@@ -61,7 +62,8 @@ async function slugForProduct(
   }
 }
 
-export default function CartIsland(): JSX.Element {
+export default function CartIsland(props: { langue?: Langue }): JSX.Element {
+  const tr = t(props.langue ?? LANGUE_DEFAUT);
   const [busy, setBusy] = createSignal<number | null>(null);
 
   const [cart, { refetch }] = createResource(async () => {
@@ -191,13 +193,13 @@ export default function CartIsland(): JSX.Element {
 
       <Show when={cart.error}>
         <p class="text-terracotta-deep">
-          Impossible de charger le panier (API {PUBLIC_API_URL}).
+          {tr("panier.erreur")} ({PUBLIC_API_URL}).
         </p>
       </Show>
 
       <Show when={cart() && cart()!.items.length === 0}>
         <div class="rounded-2xl border border-ink/10 bg-paper-deep/40 p-10 text-center">
-          <p class="text-ink-soft">Votre panier est vide.</p>
+          <p class="text-ink-soft">{tr("panier.vide")}</p>
           <a
             href="/affiches"
             class="mt-6 inline-block rounded-full bg-terracotta px-6 py-3 text-paper font-medium hover:bg-terracotta-deep transition-colors"
@@ -265,7 +267,7 @@ export default function CartIsland(): JSX.Element {
                           href={href!}
                           class="rounded-full border border-ink/20 px-4 py-2 font-medium hover:border-ink transition-colors"
                         >
-                          Modifier
+                          {tr("panier.modifier")}
                         </a>
                       </Show>
                       <button
@@ -274,13 +276,13 @@ export default function CartIsland(): JSX.Element {
                         disabled={busy() === it.id}
                         class="rounded-full border border-terracotta/40 px-4 py-2 font-medium text-terracotta-deep hover:bg-terracotta/10 transition-colors disabled:opacity-60"
                       >
-                        {busy() === it.id ? "Suppression…" : "Supprimer"}
+                        {busy() === it.id ? "…" : tr("panier.supprimer")}
                       </button>
                     </div>
                   </div>
 
                   <div class="shrink-0 text-right">
-                    <p class="text-sm text-ink-soft">Qté {it.quantity}</p>
+                    <p class="text-sm text-ink-soft">{tr("panier.quantite")} {it.quantity}</p>
                     <p class="mt-1 font-medium">
                       {formatPrice(it.unitPriceCents * it.quantity)}
                     </p>
@@ -304,14 +306,14 @@ export default function CartIsland(): JSX.Element {
           </Show>
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <p class="text-lg">
-              Total{" "}
+              {tr("panier.total")}{" "}
               <span class="font-serif text-2xl">{formatPrice(total())}</span>
             </p>
             <a
               href="/commande"
               class="rounded-full bg-terracotta px-8 py-3 text-paper font-medium text-center hover:bg-terracotta-deep transition-colors"
             >
-              Commander
+              {tr("panier.commander")}
             </a>
           </div>
         </div>

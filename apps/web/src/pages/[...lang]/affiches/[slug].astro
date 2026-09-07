@@ -1,15 +1,23 @@
 ---
-import Base from "../../layouts/Base.astro";
+import Base from "../../../layouts/Base.astro";
 import {
   api,
   assetUrl,
   formatPrice,
   type Product,
   type ProductDetail,
-} from "../../lib/api.ts";
-import ProductConfigurator from "../../islands/ProductConfigurator.tsx";
-import AddToCartButton from "../../islands/AddToCartButton.tsx";
+} from "../../../lib/api.ts";
+import ProductConfigurator from "../../../islands/ProductConfigurator.tsx";
+import AddToCartButton from "../../../islands/AddToCartButton.tsx";
+import {
+  LANGUES,
+  LANGUE_DEFAUT,
+  lien,
+  t,
+  type Langue,
+} from "../../../i18n/utils.ts";
 
+/** Une page par produit ET par langue. */
 export async function getStaticPaths() {
   let products: Product[] = [];
   try {
@@ -17,18 +25,28 @@ export async function getStaticPaths() {
   } catch {
     // API injoignable au build -> aucune page générée (le build ne casse pas)
   }
-  return products.map((p) => ({ params: { slug: p.slug } }));
+  return LANGUES.flatMap((langue) =>
+    products.map((p) => ({
+      params: {
+        lang: langue === LANGUE_DEFAUT ? undefined : langue,
+        slug: p.slug,
+      },
+      props: { langue },
+    })),
+  );
 }
 
 const { slug } = Astro.params;
+const { langue } = Astro.props as { langue: Langue };
+const tr = t(langue);
 
 let product: ProductDetail | null = null;
 try {
-  product = await api.product(slug!);
+  product = await api.product(slug!, langue);
 } catch {
-  return Astro.redirect("/affiches");
+  return Astro.redirect(lien(langue, "/affiches"));
 }
-if (!product) return Astro.redirect("/affiches");
+if (!product) return Astro.redirect(lien(langue, "/affiches"));
 
 const cleanName = product.name.replace(/\s*[-–]\s*Affiche.*$/i, "");
 const image = assetUrl(product.images[0] ?? null);
@@ -36,7 +54,9 @@ const prices = product.variants.map((v) => v.priceCents).filter((c) => c > 0);
 const minPrice = prices.length ? Math.min(...prices) : product.basePriceCents;
 
 const kindLabel =
-  product.kind === "personnalisable" ? "Personnalisable" : "Prête à imprimer";
+  product.kind === "personnalisable"
+    ? tr("genre.personnalisable")
+    : tr("genre.prete_a_imprimer");
 
 const description =
   product.description?.replace(/<[^>]+>/g, "").slice(0, 160) ||
@@ -84,9 +104,10 @@ const breadcrumbLd = {
 ---
 
 <Base
-  title={`${cleanName} — Affiche personnalisée | Memory Line`}
+  langue={langue}
+  title={`${cleanName} | Memory Line`}
   description={description}
-  path={`/affiches/${product.slug}`}
+  path={lien(langue, `/affiches/${product.slug}`)}
   type="product"
   image={image ?? undefined}
   jsonLd={[productLd, breadcrumbLd]}
@@ -106,8 +127,10 @@ const breadcrumbLd = {
 
     <div>
       <nav class="text-sm text-ink-soft">
-        <a href="/" class="hover:text-terracotta">Accueil</a> ·
-        <a href="/affiches" class="hover:text-terracotta">Affiches</a>
+        <a href={lien(langue, "/")} class="hover:text-terracotta">Memory Line</a> ·
+        <a href={lien(langue, "/affiches")} class="hover:text-terracotta"
+          >{tr("nav.affiches")}</a
+        >
       </nav>
       <p class="mt-4 text-xs uppercase tracking-wide text-terracotta">
         {kindLabel}
@@ -116,7 +139,7 @@ const breadcrumbLd = {
       <p class="mt-4 text-2xl">{formatPrice(minPrice)}</p>
 
       <div class="mt-6 space-y-2">
-        <p class="text-sm font-medium">Format</p>
+        <p class="text-sm font-medium">{tr("produit.format")}</p>
         <div class="flex gap-3">
           {
             product.variants.map((v) => (
@@ -132,6 +155,7 @@ const breadcrumbLd = {
       {
         product.kind === "personnalisable" ? (
           <ProductConfigurator
+            langue={langue}
             client:only="solid-js"
             product={{
               id: product.id,
@@ -150,6 +174,7 @@ const breadcrumbLd = {
           />
         ) : (
           <AddToCartButton
+            langue={langue}
             client:only="solid-js"
             product={{
               id: product.id,

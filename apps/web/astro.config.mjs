@@ -16,11 +16,28 @@ const allowedHosts = (process.env.ALLOWED_HOSTS ?? "")
 
 export default defineConfig({
   site,
+  // Routage par langue : le FRANÇAIS reste à la racine (/affiches) pour ne
+  // pas casser les URLs existantes ni les redirections depuis l'ancien
+  // Shopify ; les autres langues sont préfixées (/en/affiches).
+  i18n: {
+    defaultLocale: "fr",
+    locales: ["fr", "en", "de", "it", "es"],
+    routing: { prefixDefaultLocale: false },
+  },
   server: { host: true, port: 4321 },
   integrations: [
     solid(),
     sitemap({
-      i18n: { defaultLocale: "fr", locales: { fr: "fr-FR" } },
+      i18n: {
+        defaultLocale: "fr",
+        locales: {
+          fr: "fr-FR",
+          en: "en-GB",
+          de: "de-DE",
+          it: "it-IT",
+          es: "es-ES",
+        },
+      },
     }),
   ],
   vite: {
