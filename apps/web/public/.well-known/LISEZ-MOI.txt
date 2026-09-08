@@ -1,0 +1,21 @@
+Fichier de vérification Apple Pay
+=================================
+
+Apple Pay n'apparaît que sur un domaine vérifié. Stripe fournit un fichier à
+déposer ICI, sans extension et sans le renommer :
+
+    apple-developer-merchantid-domain-association
+
+Où le récupérer : tableau de bord Stripe → Paramètres → Moyens de paiement →
+Apple Pay → « Ajouter un nouveau domaine » → télécharger le fichier de
+vérification.
+
+Une fois déposé, il est servi à l'adresse :
+    https://<le-domaine>/.well-known/apple-developer-merchantid-domain-association
+
+C'est cette adresse que Stripe vient lire pour valider le domaine. À refaire
+pour CHAQUE domaine où le paiement doit fonctionner (l'adresse de test et
+memoryline.fr sont deux domaines différents).
+
+Google Pay ne demande aucun fichier : il fonctionne dès que le site est en
+HTTPS et que le portefeuille est activé côté Stripe.
