@@ -1116,6 +1116,49 @@ export function mountConfiguratorRoutes(app: Hono) {
     return c.json({ ok: true, moved: moved.length });
   });
 
+  /**
+   * Pièces AUTORISÉES pour un personnage, emplacement par emplacement.
+   *
+   * `slotVariants` stocke des POSITIONS de pièces génériques, pas des ids :
+   * elles restent stables d'un ré-import à l'autre, alors que les ids
+   * changent. On enregistre donc ce que le back-office coche, converti en
+   * positions.
+   *
+   * Un emplacement absent du corps n'est pas touché. Un emplacement à liste
+   * VIDE signifie « aucune pièce » — c'est différent de `slotVariants` nul,
+   * qui veut dire « pas encore paramétré, on propose tout ».
+   */
+  app.post("/admin/characters/:id/slot-variants", async (c) => {
+    const id = Number(c.req.param("id"));
+    const b = await c.req.json();
+    const [perso] = await db
+      .select({ slotVariants: schema.characterTypes.slotVariants })
+      .from(schema.characterTypes)
+      .where(eq(schema.characterTypes.id, id));
+    if (!perso) return c.notFound();
+
+    const SLOTS = ["clothes", "pants", "hair", "accessory"] as const;
+    const suivant: Record<string, number[]> = {
+      ...((perso.slotVariants ?? {}) as Record<string, number[]>),
+    };
+    for (const slot of SLOTS) {
+      const recu = (b as Record<string, unknown>)[slot];
+      if (recu === undefined) continue;
+      suivant[slot] = Array.isArray(recu)
+        ? [...new Set(recu.map(Number).filter(Number.isFinite))].sort(
+            (x, y) => x - y,
+          )
+        : [];
+    }
+
+    const [row] = await db
+      .update(schema.characterTypes)
+      .set({ slotVariants: suivant })
+      .where(eq(schema.characterTypes.id, id))
+      .returning({ slotVariants: schema.characterTypes.slotVariants });
+    return c.json({ ok: true, slotVariants: row?.slotVariants ?? {} });
+  });
+
   app.post("/admin/characters/reorder", async (c) => {
     const b = await c.req.json();
     const list: { id: number; position: number; category?: string }[] =

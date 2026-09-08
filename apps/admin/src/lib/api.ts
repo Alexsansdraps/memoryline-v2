@@ -119,6 +119,13 @@ export interface CharacterType {
    * Sert à aligner les pieds de tous les personnages sur le muret.
    */
   bottomPct?: number;
+  /**
+   * Pièces autorisées par emplacement, en POSITIONS de pièces génériques.
+   * Absent = pas encore paramétré, le configurateur propose alors tout.
+   */
+  slotVariants?: Partial<
+    Record<"clothes" | "pants" | "hair" | "accessory", number[]>
+  > | null;
 }
 
 export interface Asset {
@@ -243,6 +250,19 @@ export function adminApi(request?: Request) {
         "POST",
         "/admin/characters/category",
         { ids, categoryId },
+        cookie,
+      ),
+    /** Enregistre les pièces autorisées d'un personnage, par emplacement. */
+    setSlotVariants: (
+      id: number,
+      data: Partial<
+        Record<"clothes" | "pants" | "hair" | "accessory", number[]>
+      >,
+    ) =>
+      req<{ ok: boolean; slotVariants: Record<string, number[]> }>(
+        "POST",
+        `/admin/characters/${id}/slot-variants`,
+        data,
         cookie,
       ),
     reorderCharacters: (

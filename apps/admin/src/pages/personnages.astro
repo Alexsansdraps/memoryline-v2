@@ -10,6 +10,14 @@ import { SLOT_THUMB_VIEWBOX } from "@memoryline/types";
 
 const api = adminApi(Astro.request);
 
+/** Emplacements de pièces, dans l'ordre d'affichage. */
+const SLOTS = [
+  { value: "clothes", label: "Vêtements" },
+  { value: "pants", label: "Pantalon" },
+  { value: "hair", label: "Coupes" },
+  { value: "accessory", label: "Accessoires" },
+];
+
 // URL publique de l'API, joignable depuis le navigateur (fetch client).
 // Sert aux actions dynamiques (couleurs, suppressions) en credentials:include.
 const PUBLIC_API_URL =
@@ -78,6 +86,22 @@ if (Astro.request.method === "POST") {
         total += r.moved;
       }
       flash = `Déplacement annulé : ${total} personnage(s) remis à leur place.`;
+    } else if (action === "pieces-autorisees") {
+      // Les cases cochées arrivent par emplacement : « clothes[] », etc.
+      const parSlot: Record<string, number[]> = {};
+      for (const slot of ["clothes", "pants", "hair", "accessory"]) {
+        // Un champ caché accompagne chaque emplacement : sans lui, tout
+        // décocher n'enverrait rien et l'emplacement resterait inchangé.
+        if (form.get(`present-${slot}`) === null) continue;
+        parSlot[slot] = form
+          .getAll(`${slot}[]`)
+          .map(Number)
+          .filter(Number.isFinite);
+      }
+      const id = Number(form.get("id"));
+      await api.setSlotVariants(id, parSlot);
+      const total = Object.values(parSlot).reduce((n, l) => n + l.length, 0);
+      flash = `Pièces autorisées enregistrées (${total} au total).`;
     } else if (action === "move-chars") {
       // Déplacement d'un ou plusieurs personnages : "" = sans catégorie.
       const raw = String(form.get("categoryId") ?? "");
@@ -206,6 +230,45 @@ const knownBaseSvgs = [
   ),
 ].sort((a, b) => a.localeCompare(b));
 
+/**
+ * Pièces GÉNÉRIQUES cochables, par emplacement.
+ *
+ * Deux points à connaître :
+ *  - `slotVariants` référence la POSITION d'une pièce, pas son id : c'est ce
+ *    qui reste stable quand la bibliothèque est réimportée, et c'est aussi ce
+ *    que le configurateur cherche (`slotsForCharacter`) ;
+ *  - une même pièce existe en DEUX exemplaires (vue avant et vue arrière) qui
+ *    partagent la même position. On n'en montre donc qu'un — l'avant de
+ *    préférence — sinon la liste afficherait chaque vêtement deux fois.
+ */
+const piecesCochables = new Map<string, Asset[]>();
+for (const s of SLOTS) piecesCochables.set(s.value, []);
+for (const a of assets) {
+  if (a.characterTypeId != null || a.archivedAt) continue;
+  const liste = piecesCochables.get(a.slot);
+  if (!liste) continue;
+  const deja = liste.findIndex((x) => x.position === a.position);
+  if (deja === -1) liste.push(a);
+  else if (a.view !== "back" && liste[deja]!.view === "back") liste[deja] = a;
+}
+for (const liste of piecesCochables.values())
+  liste.sort((a, b) => a.position - b.position);
+
+/**
+ * Positions autorisées d'un personnage pour un emplacement.
+ *
+ * `null` ne veut dire « tout est autorisé » QUE si le personnage n'a aucun
+ * réglage du tout : dès qu'il en a un, un emplacement absent est traité comme
+ * vide par le configurateur (`slotsForCharacter`). L'écran doit montrer la
+ * même chose, sinon on croirait autorisé ce que le site refuse.
+ */
+function autorisees(t: CharacterType, slot: string): number[] | null {
+  const sv = t.slotVariants;
+  if (!sv || typeof sv !== "object") return null;
+  const v = sv[slot as "clothes"];
+  return Array.isArray(v) ? v : [];
+}
+
 // Payload de réordonnancement : échange les positions de deux personnages.
 // La catégorie n'y figure plus — elle se change avec le sélecteur dédié.
 function swapPayload(a: CharacterType, b: CharacterType) {
@@ -216,12 +279,6 @@ function swapPayload(a: CharacterType, b: CharacterType) {
 }
 
 // --- SECTION B : pièces génériques, groupées par slot puis vue. ---
-const SLOTS = [
-  { value: "clothes", label: "Vêtements" },
-  { value: "pants", label: "Pantalon" },
-  { value: "hair", label: "Coupes" },
-  { value: "accessory", label: "Accessoires" },
-];
 
 // Pièces génériques = celles non rattachées à un personnage précis.
 // Les pièces archivées quittent la bibliothèque active : elles restent en
@@ -608,6 +665,93 @@ for (const a of pieces) {
                   </div>
                 </div>
               </div>
+
+              {/* Pièces autorisées : quelles coupes / vêtements ce
+                  personnage peut porter. Coché = proposé au client. */}
+              <details class="border-b border-bo-border">
+                <summary class="cursor-pointer px-4 py-3 text-xs font-medium uppercase tracking-wide text-bo-muted hover:text-bo-accent">
+                  Pièces autorisées
+                  <span class="ml-2 normal-case tracking-normal text-bo-muted">
+                    ({SLOTS.map((s) => {
+                      const liste = autorisees(t, s.value);
+                      const total = (piecesCochables.get(s.value) ?? []).length;
+                      return `${s.label} ${liste ? liste.length : total}/${total}`;
+                    }).join(" · ")})
+                  </span>
+                </summary>
+                <form method="POST" class="px-4 pb-4 js-pieces" data-id={t.id}>
+                  <input type="hidden" name="_action" value="pieces-autorisees" />
+                  <input type="hidden" name="id" value={t.id} />
+                  <p class="text-xs text-bo-muted mb-3">
+                    Décochez ce que ce personnage ne doit pas porter : la pièce
+                    disparaît de son choix côté site, sans être supprimée pour
+                    les autres. Un emplacement entièrement décoché n'est plus
+                    proposé du tout pour ce personnage.
+                  </p>
+                  {SLOTS.map((s) => {
+                    const liste = piecesCochables.get(s.value) ?? [];
+                    const permis = autorisees(t, s.value);
+                    return (
+                      <fieldset class="mb-4" data-slot={s.value}>
+                        {/* Sans ce témoin, tout décocher n'enverrait aucun
+                            champ et le serveur croirait l'emplacement inchangé. */}
+                        <input type="hidden" name={`present-${s.value}`} value="1" />
+                        <legend class="text-xs font-medium mb-1">
+                          {s.label}
+                          <button
+                            type="button"
+                            class="js-tout ml-2 font-normal text-bo-muted underline hover:text-bo-accent"
+                          >
+                            tout
+                          </button>
+                          <button
+                            type="button"
+                            class="js-rien ml-2 font-normal text-bo-muted underline hover:text-bo-accent"
+                          >
+                            rien
+                          </button>
+                        </legend>
+                        {liste.length === 0 ? (
+                          <p class="text-xs text-bo-muted">Aucune pièce dans la bibliothèque.</p>
+                        ) : (
+                          <div class="flex flex-wrap gap-2">
+                            {liste.map((a) => {
+                              const coche = permis === null || permis.includes(a.position);
+                              return (
+                                <label
+                                  class="flex w-20 cursor-pointer flex-col items-center gap-1 rounded border border-bo-border p-1 text-center hover:border-bo-accent"
+                                  title={a.name}
+                                >
+                                  <svg
+                                    viewBox={SLOT_THUMB_VIEWBOX[a.slot as keyof typeof SLOT_THUMB_VIEWBOX] ?? "0 0 500 1000"}
+                                    class="h-12 w-12 bg-white"
+                                    role="img"
+                                    aria-label={a.name}
+                                  >
+                                    <image href={svgSrc(a.svgUrl)} x="0" y="0" width="500" height="1000" />
+                                  </svg>
+                                  <span class="w-full truncate text-[10px] text-bo-muted">
+                                    {a.name}
+                                  </span>
+                                  <input
+                                    type="checkbox"
+                                    name={`${s.value}[]`}
+                                    value={a.position}
+                                    checked={coche}
+                                  />
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </fieldset>
+                    );
+                  })}
+                  <button class="rounded bg-bo-accent text-white px-3 py-1.5 text-sm hover:opacity-90">
+                    Enregistrer les pièces
+                  </button>
+                </form>
+              </details>
 
               <div class="px-4 py-3">
                 <form method="POST" class="inline">
@@ -1328,6 +1472,22 @@ for (const a of pieces) {
         zoneNameInput.value = "";
         syncNewAssetZones();
       });
+
+    // --- Pièces autorisées : raccourcis « tout » / « rien » par emplacement.
+    // Délégation : les cartes sont nombreuses et repliées, on n'accroche
+    // qu'un seul écouteur au document.
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest?.(".js-tout, .js-rien");
+      if (!btn) return;
+      const bloc = btn.closest("fieldset[data-slot]");
+      if (!bloc) return;
+      const coche = btn.classList.contains("js-tout");
+      bloc
+        .querySelectorAll('input[type="checkbox"]')
+        .forEach((c) => {
+          c.checked = coche;
+        });
+    });
   </script>
 </Admin>
 </content>
