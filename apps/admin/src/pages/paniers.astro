@@ -1,0 +1,171 @@
+---
+/**
+ * Paniers abandonnés : les commandes engagées mais jamais payées.
+ *
+ * On n'affiche que celles qui portent une adresse e-mail — un panier anonyme
+ * ne se relance pas, et le lister ferait du bruit sans action possible. Le
+ * délai est réglable : une heure suffit à écarter les clients encore en train
+ * de payer, mais on peut vouloir ne relancer qu'au bout d'un jour.
+ */
+import Admin from "../layouts/Admin.astro";
+import { url } from "../lib/url.ts";
+import { adminApi, formatPrice, type PanierAbandonne } from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+let flash: string | null = null;
+let flashErreur = false;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  try {
+    await api.relancerPanier(Number(f.get("id")));
+    flash = "Relance envoyée.";
+  } catch (e) {
+    flash = "Envoi impossible : " + String(e);
+    flashErreur = true;
+  }
+}
+
+const heures = Math.max(1, Number(Astro.url.searchParams.get("h") ?? 1));
+
+let paniers: PanierAbandonne[] = [];
+let error: string | null = null;
+try {
+  paniers = await api.abandonedCarts(heures);
+} catch (e) {
+  error = String(e);
+}
+
+// Sans adresse, aucune relance possible : on sépare les deux listes plutôt
+// que de proposer un bouton qui échouerait.
+const joignables = paniers.filter((p) => p.email);
+const anonymes = paniers.length - joignables.length;
+const valeur = joignables.reduce((s, p) => s + p.totalCents, 0);
+
+function quand(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" })} à ${d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
+  } catch {
+    return "—";
+  }
+}
+
+const DELAIS = [
+  { h: 1, label: "1 heure" },
+  { h: 6, label: "6 heures" },
+  { h: 24, label: "1 jour" },
+  { h: 72, label: "3 jours" },
+  { h: 168, label: "1 semaine" },
+];
+---
+
+<Admin title="Paniers abandonnés">
+  {flash && (
+    <p
+      class={`mb-4 rounded border px-3 py-2 text-sm ${
+        flashErreur ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+  {error && <p class="mb-4 text-sm text-red-600">API injoignable : {error}</p>}
+
+  <div class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+    <div class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+      <div class="text-xs text-bo-muted">Paniers relançables</div>
+      <div class="text-2xl">{joignables.length}</div>
+    </div>
+    <div class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+      <div class="text-xs text-bo-muted">Montant en jeu</div>
+      <div class="text-2xl">{formatPrice(valeur)}</div>
+    </div>
+    <div class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+      <div class="text-xs text-bo-muted">Sans e-mail</div>
+      <div class="text-2xl">{anonymes}</div>
+      <div class="text-xs text-bo-muted">Impossible à relancer.</div>
+    </div>
+  </div>
+
+  <form method="GET" class="mb-4 flex flex-wrap items-end gap-3">
+    <label class="text-sm">
+      <span class="mb-1 block text-xs text-bo-muted">Abandonnés depuis plus de</span>
+      <select name="h" class="rounded border border-bo-border px-3 py-2">
+        {DELAIS.map((d) => (
+          <option value={d.h} selected={d.h === heures}>
+            {d.label}
+          </option>
+        ))}
+      </select>
+    </label>
+    <button class="rounded bg-bo-nav px-4 py-2 text-sm text-white">Afficher</button>
+  </form>
+
+  <section class="overflow-x-auto rounded-lg border border-bo-border bg-bo-surface">
+    <table class="w-full text-sm">
+      <thead class="bg-bo-bg text-left text-bo-muted">
+        <tr>
+          <th class="px-4 py-2 font-medium">Panier</th>
+          <th class="px-4 py-2 font-medium">Abandonné</th>
+          <th class="px-4 py-2 font-medium">Client</th>
+          <th class="px-4 py-2 font-medium">Articles</th>
+          <th class="px-4 py-2 text-right font-medium">Montant</th>
+          <th class="px-4 py-2 font-medium">Relance</th>
+          <th class="px-4 py-2"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {joignables.map((p) => (
+          <tr class="border-t border-bo-border hover:bg-bo-bg/50">
+            <td class="px-4 py-2 whitespace-nowrap">
+              <a
+                href={url(`/commandes/${p.id}`)}
+                class="font-medium text-bo-accent hover:underline"
+              >
+                {p.number}
+              </a>
+            </td>
+            <td class="px-4 py-2 whitespace-nowrap text-bo-muted">
+              {quand(p.createdAt)}
+            </td>
+            <td class="px-4 py-2">
+              <div>{p.nom ?? "—"}</div>
+              <div class="text-xs text-bo-muted">{p.email}</div>
+            </td>
+            <td class="px-4 py-2 text-bo-muted">{p.articles}</td>
+            <td class="px-4 py-2 text-right whitespace-nowrap">
+              {formatPrice(p.totalCents)}
+            </td>
+            <td class="px-4 py-2 whitespace-nowrap text-bo-muted">
+              {p.relanceAt ? quand(p.relanceAt) : "Jamais"}
+            </td>
+            <td class="px-4 py-2 text-right">
+              <form method="POST">
+                <input type="hidden" name="id" value={p.id} />
+                <button class="rounded border border-bo-border px-3 py-1.5 text-sm hover:bg-bo-bg">
+                  {p.relanceAt ? "Relancer à nouveau" : "Relancer"}
+                </button>
+              </form>
+            </td>
+          </tr>
+        ))}
+        {joignables.length === 0 && !error && (
+          <tr>
+            <td colspan="7" class="px-4 py-6 text-center text-bo-muted">
+              Aucun panier abandonné sur cette période. Tant mieux.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </section>
+
+  <p class="mt-3 text-sm text-bo-muted">
+    La relance renvoie au client le contenu de son panier avec un lien pour
+    reprendre sa commande. La date d'envoi est gardée pour ne pas insister deux
+    fois par mégarde.
+  </p>
+</Admin>

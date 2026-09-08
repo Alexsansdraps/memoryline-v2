@@ -1,0 +1,252 @@
+/**
+ * Envoi d'e-mails transactionnels (Resend).
+ *
+ * Deux réglages, dans le `.env` de la racine :
+ *   RESEND_API_KEY  : la clé d'API (« re_… »)
+ *   MAIL_FROM       : l'expéditeur, ex. « Memory Line <commandes@memoryline.fr> »
+ *   MAIL_BCC        : facultatif — une copie de chaque envoi pour la boutique
+ *
+ * Sans clé, `estConfigure()` répond faux et `envoyer()` ne fait rien d'autre
+ * que le noter dans le journal : une commande ne doit JAMAIS échouer parce
+ * que l'e-mail n'a pas pu partir. Le paiement est encaissé, l'affiche est
+ * commandée — le courrier est un service en plus, pas une condition.
+ */
+
+const CLE = (process.env.RESEND_API_KEY ?? "").trim();
+const EXPEDITEUR = (process.env.MAIL_FROM ?? "").trim();
+const COPIE = (process.env.MAIL_BCC ?? "").trim();
+
+export function estConfigure(): boolean {
+  return CLE.length > 0 && EXPEDITEUR.length > 0;
+}
+
+export interface Courrier {
+  to: string;
+  subject: string;
+  html: string;
+  /** Version texte, pour les clients qui n'affichent pas le HTML. */
+  text?: string;
+}
+
+/**
+ * Envoie un e-mail. Ne lève jamais : l'appelant est un flux métier (paiement,
+ * expédition) qui ne doit pas s'interrompre pour un problème de courrier.
+ * Renvoie vrai si l'envoi est parti.
+ */
+export async function envoyer(courrier: Courrier): Promise<boolean> {
+  if (!estConfigure()) {
+    console.warn(
+      "[mail] non configuré (RESEND_API_KEY / MAIL_FROM) — courrier non envoyé :",
+      courrier.subject,
+    );
+    return false;
+  }
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${CLE}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: EXPEDITEUR,
+        to: [courrier.to],
+        ...(COPIE ? { bcc: [COPIE] } : {}),
+        subject: courrier.subject,
+        html: courrier.html,
+        ...(courrier.text ? { text: courrier.text } : {}),
+      }),
+    });
+    if (!res.ok) {
+      console.error("[mail] refus de Resend", res.status, await res.text());
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error("[mail] envoi impossible", e);
+    return false;
+  }
+}
+
+/** Échappe le texte inséré dans le HTML d'un courrier. */
+function h(v: unknown): string {
+  return String(v ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** Montant en centimes → « 23,00 € ». */
+function prix(cents: number): string {
+  return (cents / 100).toFixed(2).replace(".", ",") + " €";
+}
+
+export interface LigneCourrier {
+  titre: string;
+  format?: string | null;
+  cadre?: string | null;
+  quantite: number;
+  unitPriceCents: number;
+}
+
+/**
+ * Gabarit commun : en-tête, contenu, pied. Volontairement sobre et en tableau
+ * — les clients de messagerie ne savent toujours pas mettre en page autre
+ * chose, et une mise en page qui casse fait plus de mal qu'une simple.
+ */
+function gabarit(titre: string, contenu: string): string {
+  return `<!doctype html>
+<html lang="fr"><body style="margin:0;background:#f3f3f3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#121212">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f3f3;padding:24px 0">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff">
+        <tr><td style="padding:28px 32px 8px">
+          <div style="font-size:20px;letter-spacing:.6px">Memory Line</div>
+        </td></tr>
+        <tr><td style="padding:0 32px 8px">
+          <h1 style="font-size:22px;font-weight:400;letter-spacing:.6px;margin:12px 0">${h(titre)}</h1>
+        </td></tr>
+        <tr><td style="padding:0 32px 32px;font-size:15px;line-height:1.5">${contenu}</td></tr>
+        <tr><td style="padding:16px 32px;background:#f3f3f3;font-size:12px;color:#5b5b54">
+          Memory Line — affiches personnalisées.<br />
+          TVA non applicable, article 293 B du CGI.
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+/** Tableau des articles commandés. */
+function tableauLignes(lignes: LigneCourrier[]): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0">
+    ${lignes
+      .map(
+        (l) => `<tr>
+      <td style="padding:8px 0;border-bottom:1px solid #eee">
+        <strong style="font-weight:500">${h(l.titre)}</strong><br />
+        <span style="color:#5b5b54;font-size:13px">Format ${h(l.format ?? "A4")}${
+          l.cadre ? ` · ${h(l.cadre)}` : ""
+        } · ×${l.quantite}</span>
+      </td>
+      <td align="right" style="padding:8px 0;border-bottom:1px solid #eee;white-space:nowrap">
+        ${prix(l.unitPriceCents * l.quantite)}
+      </td>
+    </tr>`,
+      )
+      .join("")}
+  </table>`;
+}
+
+export interface ConfirmationCommande {
+  numero: string;
+  prenomClient: string;
+  lignes: LigneCourrier[];
+  sousTotalCents: number;
+  remiseCents: number;
+  codePromo?: string | null;
+  portCents: number;
+  totalCents: number;
+  modeLivraison?: string | null;
+  adresse?: string[] | null;
+}
+
+/** Confirmation envoyée au client dès que le paiement est encaissé. */
+export function courrierConfirmation(d: ConfirmationCommande): Courrier {
+  const totaux = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px">
+    <tr><td style="padding:4px 0;color:#5b5b54">Sous-total</td><td align="right">${prix(d.sousTotalCents)}</td></tr>
+    ${
+      d.remiseCents > 0
+        ? `<tr><td style="padding:4px 0;color:#5b5b54">Réduction${d.codePromo ? ` — ${h(d.codePromo)}` : ""}</td><td align="right">− ${prix(d.remiseCents)}</td></tr>`
+        : ""
+    }
+    <tr><td style="padding:4px 0;color:#5b5b54">Livraison${d.modeLivraison ? ` — ${h(d.modeLivraison)}` : ""}</td><td align="right">${prix(d.portCents)}</td></tr>
+    <tr><td style="padding:10px 0 0;border-top:1px solid #eee"><strong style="font-weight:500">Total</strong></td><td align="right" style="padding:10px 0 0;border-top:1px solid #eee"><strong style="font-weight:500">${prix(d.totalCents)}</strong></td></tr>
+  </table>`;
+
+  const adresse =
+    d.adresse && d.adresse.length
+      ? `<p style="margin:20px 0 0;color:#5b5b54;font-size:14px">Livraison :<br />${d.adresse
+          .filter(Boolean)
+          .map(h)
+          .join("<br />")}</p>`
+      : "";
+
+  return {
+    to: "",
+    subject: `Votre commande ${d.numero} est confirmée`,
+    html: gabarit(
+      `Merci ${d.prenomClient} !`,
+      `<p style="margin:0 0 4px">Votre commande <strong style="font-weight:500">${h(d.numero)}</strong> est bien enregistrée et payée. Nous préparons votre affiche.</p>
+       ${tableauLignes(d.lignes)}
+       ${totaux}
+       ${adresse}
+       <p style="margin:24px 0 0;color:#5b5b54;font-size:14px">Une question ? Répondez simplement à cet e-mail.</p>`,
+    ),
+    text: `Merci ${d.prenomClient} !\n\nVotre commande ${d.numero} est confirmée. Total : ${prix(d.totalCents)}.\n\nMemory Line`,
+  };
+}
+
+/** Avis interne : une commande vient d'arriver. */
+export function courrierNouvelleCommande(d: {
+  numero: string;
+  client: string;
+  totalCents: number;
+  lignes: LigneCourrier[];
+}): Courrier {
+  return {
+    to: "",
+    subject: `Nouvelle commande ${d.numero} — ${prix(d.totalCents)}`,
+    html: gabarit(
+      `Commande ${d.numero}`,
+      `<p style="margin:0">De ${h(d.client)}, pour ${prix(d.totalCents)}.</p>
+       ${tableauLignes(d.lignes)}`,
+    ),
+  };
+}
+
+/** Relance d'un panier laissé en plan. */
+export function courrierPanierAbandonne(d: {
+  prenomClient: string;
+  lien: string;
+  lignes: LigneCourrier[];
+  totalCents: number;
+}): Courrier {
+  return {
+    to: "",
+    subject: "Votre affiche vous attend",
+    html: gabarit(
+      `Bonjour ${d.prenomClient},`,
+      `<p style="margin:0">Vous avez composé une affiche sans finir votre commande. Elle est toujours là, telle que vous l'avez laissée.</p>
+       ${tableauLignes(d.lignes)}
+       <p style="margin:20px 0"><a href="${h(d.lien)}" style="display:inline-block;background:#121212;color:#ffffff;padding:14px 28px;text-decoration:none">Reprendre ma commande</a></p>
+       <p style="margin:0;color:#5b5b54;font-size:14px">Si vous avez changé d'avis, ignorez simplement ce message.</p>`,
+    ),
+    text: `Bonjour ${d.prenomClient},\n\nVotre affiche vous attend : ${d.lien}\n\nMemory Line`,
+  };
+}
+
+/**
+ * Lien de réinitialisation du mot de passe.
+ *
+ * Le courrier rappelle que la demande peut être ignorée : il part aussi bien
+ * vers quelqu'un qui a oublié son mot de passe que vers quelqu'un dont
+ * l'adresse a été saisie par erreur — ou par curiosité.
+ */
+export function courrierReinitialisation(d: {
+  prenomClient: string;
+  lien: string;
+}): Courrier {
+  return {
+    to: "",
+    subject: "Réinitialiser votre mot de passe",
+    html: gabarit(
+      `Bonjour ${d.prenomClient},`,
+      `<p style="margin:0">Vous avez demandé à changer le mot de passe de votre compte Memory Line. Ce lien est valable une heure et ne servira qu'une fois.</p>
+       <p style="margin:20px 0"><a href="${h(d.lien)}" style="display:inline-block;background:#121212;color:#ffffff;padding:14px 28px;text-decoration:none">Choisir un nouveau mot de passe</a></p>
+       <p style="margin:0;color:#5b5b54;font-size:14px">Si vous n'êtes pas à l'origine de cette demande, ignorez ce message : votre mot de passe actuel reste valable.</p>`,
+    ),
+    text: `Bonjour ${d.prenomClient},\n\nPour choisir un nouveau mot de passe (lien valable une heure) : ${d.lien}\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez ce message.\n\nMemory Line`,
+  };
+}
