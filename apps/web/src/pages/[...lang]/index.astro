@@ -59,11 +59,6 @@ async function visible(cle: string): Promise<boolean> {
   return !["off", "non", "no", "0", "false"].includes(v);
 }
 
-const heroSurtitre = await setting("home.hero.eyebrow", tr("accueil.surtitre"));
-const heroTitle = await setting("home.hero.title", tr("accueil.titre"));
-const heroSubtitle = await setting("home.hero.subtitle", tr("accueil.soustitre"));
-const heroCta = await setting("home.hero.cta", tr("accueil.cta"));
-
 const vitrineVisible = await visible("home.vitrine.visible");
 const vitrineTitre = await setting("home.vitrine.title", "Nos best-sellers ❤️");
 /**
@@ -105,31 +100,16 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
 ---
 
 <Base langue={langue}>
-  {/* ---------------- Bandeau d'accroche ---------------- */}
-  <section class="mx-auto max-w-[1200px] px-6 pt-16 pb-10">
-    <p class="text-terracotta font-medium tracking-wide uppercase text-sm">
-      {heroSurtitre}
-    </p>
-    <h1 class="font-serif text-5xl sm:text-6xl leading-[1.05] mt-3 max-w-3xl">
-      {heroTitle}
-    </h1>
-    <p class="mt-6 text-lg text-ink-soft max-w-xl">{heroSubtitle}</p>
-    <div class="mt-8 flex flex-wrap gap-4">
-      <a
-        href={lien(langue, "/affiches")}
-        class="rounded-full bg-ink px-6 py-3 text-paper font-medium hover:bg-ink/85 transition-colors"
-        >{heroCta}</a
-      >
-    </div>
-  </section>
-
   {/* ---------------- Les affiches ---------------- */}
   {
     vitrineVisible && vitrine.length > 0 && (
-      <section class="mx-auto max-w-[1200px] px-6 pb-4">
-        <div class="flex flex-wrap items-end justify-between gap-3 mb-6">
+      <section class="mx-auto max-w-[1200px] px-6 pt-12 pb-4 lg:px-12">
+        <div class="mb-8 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 class="text-2xl sm:text-3xl">{vitrineTitre}</h2>
+            {/* Devenu le titre de la page depuis que le bandeau d'accroche
+                a été retiré : une page sans h1 se présente mal aux moteurs
+                de recherche. */}
+            <h1 class="text-2xl sm:text-3xl">{vitrineTitre}</h1>
             <div class="mt-2 space-y-0.5 text-ink-soft">
               {vitrineLignes.map((l) =>
                 l.puce ? (
