@@ -38,6 +38,11 @@ import {
   POLICE_TITRE_DEFAUT,
   POLICE_SOUSTITRE_DEFAUT,
 } from "@memoryline/types";
+import {
+  COULEUR_TEXTE_DEFAUT,
+  lignesRemplies,
+  styleDesLignes,
+} from "@memoryline/types";
 import type { PosterConfig, PosterFormat } from "@memoryline/types";
 
 // --- Constantes format --------------------------------------------------------
@@ -150,11 +155,25 @@ function fileNameFromUrl(url: string): string {
  * si l'URL est absolue et le fichier absent localement.
  */
 async function readSource(url: string): Promise<Buffer> {
-  const file = basename(fileNameFromUrl(url));
+  // `fileNameFromUrl` ne rend que le nom de fichier : il faut le chemin ENTIER
+  // pour retrouver ce qui vit dans un sous-dossier (« ia/… »).
+  const relatif = (url.split("?")[0] ?? url).replace(/^\/+/, "");
+  const file = basename(relatif);
   const path = resolve(ASSETS_DIR, file);
   try {
     return await readFile(path);
   } catch {
+    // Les images rangées dans un sous-dossier (« ia/… ») ne se trouvent pas à
+    // plat : on retente le chemin tel qu'il a été donné, en vérifiant qu'il ne
+    // sort pas du dossier des ressources — un « ../ » y mènerait n'importe où.
+    const dansSousDossier = resolve(ASSETS_DIR, relatif);
+    if (dansSousDossier.startsWith(ASSETS_DIR)) {
+      try {
+        return await readFile(dansSousDossier);
+      } catch {
+        /* on continue vers le repli réseau ci-dessous */
+      }
+    }
     if (/^https?:\/\//i.test(url)) {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`fetch ${url} -> ${res.status}`);
@@ -290,50 +309,160 @@ function escapeXml(s: string): string {
 }
 
 /**
- * Construit un SVG plein cadre contenant le titre et le sous-titre, ou `null`
- * s'il n'y a aucun texte. Le titre est rendu en bas de l'affiche (zone classique
- * Memory Line), centré. Les familles de police sont citées explicitement ;
- * elles sont installées dans l'image de production (cf. apps/api/Dockerfile).
+ * Taille de chaque ligne, en fraction de la LARGEUR de l'affiche : la première
+ * porte le lieu et se lit de loin, les suivantes restent discrètes.
+ *
+ * Fractions de la largeur, et non de la hauteur, pour qu'un A3 rende
+ * exactement le même dessin qu'un A4 — les deux formats ont le même rapport.
  */
-function buildTextSvg(
+const TAILLE_LIGNE = [0.07, 0.05, 0.05] as const;
+
+/**
+ * Police retenue quand la ligne n'en porte pas.
+ *
+ * Une commande passée avant les trois lignes n'a de police que sur son titre :
+ * son sous-titre doit retomber sur la même valeur qu'à l'époque, sinon sa
+ * réimpression sortirait en serif là où le client avait vu une anglaise.
+ */
+const POLICE_LIGNE_DEFAUT = [
+  POLICE_TITRE_DEFAUT,
+  POLICE_SOUSTITRE_DEFAUT,
+  POLICE_SOUSTITRE_DEFAUT,
+] as const;
+
+/** Ligne de base de la première ligne, en fraction de la hauteur. */
+const HAUTEUR_PREMIERE_LIGNE = 0.1;
+
+/**
+ * Écart minimal entre deux lignes de base, en multiples de la taille de la
+ * ligne du DESSOUS. Deux lignes de même taille se chevaucheraient sinon : les
+ * polices anglaises descendent bien plus bas que leur corps.
+ */
+const INTERLIGNE_MINIMAL = 1.25;
+
+/**
+ * Facteur de taille du bloc de texte, ramené à une plage sûre.
+ *
+ * Le bloc s'écrit en haut de l'affiche et les personnages occupent le milieu :
+ * un facteur libre laisserait le texte descendre dans le dessin.
+ */
+function facteurTaille(valeur: number | undefined): number {
+  const f = Number(valeur);
+  if (!Number.isFinite(f) || f <= 0) return 1;
+  return Math.min(1.6, Math.max(0.6, f));
+}
+
+/** Part de la largeur de l'affiche offerte au texte (marges de l'aperçu). */
+const LARGEUR_UTILE = 0.88;
+
+/** Corps auquel on mesure une ligne avant de la ramener à sa vraie taille. */
+const CORPS_MESURE = 96;
+
+/**
+ * Largeur d'une ligne, en multiples de son corps.
+ *
+ * Le texte est centré : une ligne trop longue ne déborde pas, elle est ROGNÉE
+ * des deux côtés, et « SAINT-VALERY-SUR-SOMME » occupe déjà 84 % de la
+ * largeur — un nom à peine plus long partait à l'impression amputé de sa
+ * première et de sa dernière syllabe. On ne peut pas connaître l'avance des
+ * glyphes autrement qu'en les dessinant : on rasterise donc la ligne à petit
+ * corps (la largeur est proportionnelle au corps, à 0,2 % près) et on en
+ * déduit ce qu'elle occupera en vrai.
+ *
+ * `null` si la mesure échoue : mieux vaut le rendu d'avant que pas de texte.
+ */
+async function largeurParCorps(
+  texte: string,
+  famille: string,
+  gras: boolean,
+): Promise<number | null> {
+  const w = Math.ceil(CORPS_MESURE * (texte.length + 4) * 1.6);
+  const h = CORPS_MESURE * 3;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
+    `<text x="${CORPS_MESURE}" y="${CORPS_MESURE * 2}" font-family="${escapeXml(famille)}"` +
+    `${gras ? ' font-weight="700"' : ""} font-size="${CORPS_MESURE}" fill="#000000">` +
+    `${escapeXml(texte)}</text></svg>`;
+  try {
+    const { info } = await sharp(Buffer.from(svg))
+      .trim({ threshold: 0 })
+      .png()
+      .toBuffer({ resolveWithObject: true });
+    return info.width / CORPS_MESURE;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Construit un SVG plein cadre contenant les TROIS LIGNES de l'affiche, ou
+ * `null` s'il n'y en a aucune de remplie. Le bloc est centré en haut (zone
+ * classique Memory Line). Les familles de police sont citées explicitement ;
+ * elles sont installées dans l'image de production (cf. apps/api/Dockerfile).
+ *
+ * Les lignes se suivent sans trou : une affiche dont seule la deuxième ligne
+ * est remplie l'imprime en haut, pas au milieu d'un vide. C'est
+ * `lignesRemplies()` qui le garantit, et c'est aussi elle qui sait relire le
+ * titre et le sous-titre des commandes déjà passées.
+ */
+async function buildTextSvg(
   config: PosterConfig,
   width: number,
   height: number,
-): string | null {
-  const title = config.texts.title?.value?.trim();
-  const subtitle = config.texts.subtitle?.value?.trim();
-  if (!title && !subtitle) return null;
+): Promise<string | null> {
+  const lignes = lignesRemplies(config.texts);
+  if (!lignes.length) return null;
 
-  // Couleur partagée (modifiable). La POLICE est choisie par le client pour
-  // chaque bloc (POLICES_AFFICHE) : on résout ici le même nom de famille que
-  // l'aperçu écran, et l'image de l'API installe les fichiers correspondants
-  // — sans quoi le PDF sortirait dans une autre police que celle validée.
-  //  - Titre    : DM Serif Display, serif
-  //  - Sous-titre : 'Another Shabby' si disponible, sinon Caveat (script
-  //    manuscrit) — « Another Shabby » est propriétaire et n'est pas fournie ;
-  //    Caveat est déjà le repli côté web, les deux rendus concordent donc.
-  const styleSrc = config.texts.title ?? config.texts.subtitle;
-  const color = styleSrc?.color ?? "#FFFFFF";
+  // Couleur et taille sont COMMUNES à l'affiche (une seule encre, charte) ;
+  // seule la POLICE est choisie ligne par ligne. On résout ici le même nom de
+  // famille que l'aperçu écran, et l'image de l'API installe les fichiers
+  // correspondants — sans quoi le PDF sortirait dans une autre police que
+  // celle validée par le client.
+  const style = styleDesLignes(config.texts);
+  const couleur = style?.color ?? COULEUR_TEXTE_DEFAUT;
+  const facteur = facteurTaille(style?.size);
 
-  // Tailles FIXES proportionnelles à la largeur (px @300 DPI). Texte EN HAUT.
-  const titleSize = Math.round(width * 0.07);
-  const subtitleSize = Math.round(width * 0.05);
-  const titleY = Math.round(height * 0.1); // ~10% du haut
-  const subtitleY = Math.round(titleY + titleSize * 1.0);
+  const rendus = await Promise.all(
+    lignes.map(async (ligne, i) => {
+      const texte = ligne.value.trim();
+      const famille = familleCss(
+        policeParId(ligne.font, POLICE_LIGNE_DEFAUT[i] ?? POLICE_SOUSTITRE_DEFAUT),
+      );
+      // Gras sur la première ligne seulement : c'est ainsi que le titre était
+      // imprimé, et une réimpression doit ressembler à l'affiche d'origine.
+      const gras = i === 0;
+      const taille = Math.round(
+        width *
+          (TAILLE_LIGNE[i] ?? TAILLE_LIGNE[TAILLE_LIGNE.length - 1]!) *
+          facteur,
+      );
+      // On ne rétrécit QUE ce qui dépasserait : une ligne qui tenait déjà
+      // s'imprime exactement comme avant.
+      const parCorps = await largeurParCorps(texte, famille, gras);
+      const occupee = parCorps === null ? 0 : parCorps * taille;
+      const utile = width * LARGEUR_UTILE;
+      return {
+        texte,
+        famille,
+        gras,
+        taille:
+          occupee > utile ? Math.max(1, Math.floor((taille * utile) / occupee)) : taille,
+      };
+    }),
+  );
 
   const parts: string[] = [];
-  if (title) {
+  let y = Math.round(height * HAUTEUR_PREMIERE_LIGNE);
+  for (const [i, r] of rendus.entries()) {
+    if (i > 0) {
+      y += Math.round(
+        Math.max(rendus[i - 1]!.taille, r.taille * INTERLIGNE_MINIMAL),
+      );
+    }
     parts.push(
-      `<text x="${width / 2}" y="${titleY}" text-anchor="middle" ` +
-        `font-family="${escapeXml(familleCss(policeParId(config.texts.title?.font, POLICE_TITRE_DEFAUT)))}" font-weight="700" font-size="${titleSize}" ` +
-        `fill="${escapeXml(color)}">${escapeXml(title)}</text>`,
-    );
-  }
-  if (subtitle) {
-    parts.push(
-      `<text x="${width / 2}" y="${subtitleY}" text-anchor="middle" ` +
-        `font-family="${escapeXml(familleCss(policeParId(config.texts.subtitle?.font, POLICE_SOUSTITRE_DEFAUT)))}" font-size="${subtitleSize}" ` +
-        `fill="${escapeXml(color)}">${escapeXml(subtitle)}</text>`,
+      `<text x="${width / 2}" y="${y}" text-anchor="middle" ` +
+        `font-family="${escapeXml(r.famille)}"${r.gras ? ' font-weight="700"' : ""} ` +
+        `font-size="${r.taille}" fill="${escapeXml(couleur)}">${escapeXml(r.texte)}</text>`,
     );
   }
 
@@ -429,10 +558,10 @@ export async function renderPosterPng(
     if (framed) composites.push({ input: framed, left: 0, top: 0 });
   }
 
-  // 3) Textes (titre + sous-titre). Le SVG a déjà des dimensions en px = W×H ;
+  // 3) Textes (les trois lignes). Le SVG a déjà des dimensions en px = W×H ;
   // on le rasterise sans densité (sinon sharp multiplie par density/96) puis on
   // épingle la taille exacte du canevas pour garantir un overlay W×H plein cadre.
-  const textSvg = buildTextSvg(config, W, H);
+  const textSvg = await buildTextSvg(config, W, H);
   if (textSvg) {
     const textPng = await sharp(Buffer.from(textSvg))
       .resize({ width: W, height: H, fit: "fill" })

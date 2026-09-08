@@ -1,6 +1,20 @@
 ---
-import { url } from "../lib/url.ts";
-import { adminApi, formatPrice, type OrderRow } from "../lib/api.ts";
+/**
+ * Liste des commandes.
+ *
+ * Trois niveaux de filtrage, du plus rapide au plus fin : les ONGLETS (une
+ * question par onglet — « qu'est-ce qui reste à envoyer ? »), la RECHERCHE
+ * plein texte, et les FILTRES combinables pour les cas précis. Tout passe par
+ * l'URL : un filtre utile se met en favori, se partage, et survit à un
+ * rafraîchissement.
+ */
+import { apiUrl, url } from "../lib/url.ts";
+import {
+  adminApi,
+  formatPrice,
+  type FiltresCommandes,
+  type OrderRow,
+} from "../lib/api.ts";
 
 interface Props {
   channel: "web" | "salon";
@@ -10,28 +24,116 @@ const { channel } = Astro.props;
 const api = adminApi(Astro.request);
 
 let flash: string | null = null;
+let erreurAction: string | null = null;
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
-  if (f.get("_action") === "traiter") {
-    try {
+  const action = f.get("_action");
+  try {
+    if (action === "traiter") {
       const traite = f.get("fulfilled") === "true";
-      await api.fulfilOrder(Number(f.get("id")), traite);
-      flash = traite
-        ? "Commande marquée traitée."
-        : "Commande remise à traiter.";
-    } catch (e) {
-      flash = "Erreur : " + String(e);
+      await api.bulkOrders([Number(f.get("id"))], traite ? "fulfil" : "unfulfil");
+      flash = traite ? "Commande marquée traitée." : "Commande remise à traiter.";
+    } else if (action === "masse") {
+      const ids = String(f.get("ids") ?? "")
+        .split(",")
+        .map(Number)
+        .filter(Boolean);
+      const quoi = String(f.get("bulk") ?? "");
+      const tags = String(f.get("tags") ?? "")
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      if (quoi === "fulfil" || quoi === "unfulfil") {
+        const r = await api.bulkOrders(ids, quoi);
+        flash = `${r.count} commande(s) mise(s) à jour.`;
+      } else if (quoi === "tag" || quoi === "untag") {
+        const r = await api.bulkOrders(ids, quoi, tags);
+        flash =
+          quoi === "tag"
+            ? `Étiquette ajoutée à ${r.count} commande(s).`
+            : `Étiquette retirée de ${r.count} commande(s).`;
+      }
     }
+  } catch (e) {
+    erreurAction = String(e);
   }
 }
 
+/* --- Onglets ------------------------------------------------------------- */
+
+/**
+ * Chaque onglet est une question qu'on se pose vraiment dans la journée. Ils
+ * ne font que pré-régler les filtres : rien ne s'y cache qu'on ne puisse
+ * retrouver à la main.
+ */
+const ONGLETS: {
+  cle: string;
+  label: string;
+  filtres: Partial<FiltresCommandes>;
+}[] = [
+  { cle: "toutes", label: "Toutes", filtres: {} },
+  {
+    cle: "a-expedier",
+    label: "À expédier",
+    filtres: { financial: "paid", fulfillment: "unfulfilled,partially_fulfilled" },
+  },
+  {
+    cle: "non-traitees",
+    label: "Non traitées",
+    filtres: { fulfillment: "unfulfilled" },
+  },
+  { cle: "impayees", label: "Impayées", filtres: { financial: "pending,authorized" } },
+  {
+    cle: "remboursees",
+    label: "Remboursées",
+    filtres: { financial: "refunded,partially_refunded" },
+  },
+];
+
+const params = Astro.url.searchParams;
+const ongletActif = params.get("onglet") ?? "toutes";
+const onglet = ONGLETS.find((o) => o.cle === ongletActif) ?? ONGLETS[0]!;
+
+// Les filtres saisis à la main l'emportent sur ceux de l'onglet : sinon on ne
+// pourrait pas affiner « À expédier » sans changer d'onglet.
+const filtres: FiltresCommandes = {
+  channel,
+  ...onglet.filtres,
+  q: params.get("q") ?? undefined,
+  financial: params.get("financial") ?? onglet.filtres.financial,
+  fulfillment: params.get("fulfillment") ?? onglet.filtres.fulfillment,
+  tag: params.get("tag") ?? undefined,
+  from: params.get("from") ?? undefined,
+  to: params.get("to") ?? undefined,
+};
+
 let orders: OrderRow[] = [];
+let etiquettes: { name: string; n: number }[] = [];
 let error: string | null = null;
 try {
-  orders = await api.orders(channel);
+  [orders, etiquettes] = await Promise.all([api.orders(filtres), api.orderTags()]);
 } catch (e) {
   error = String(e);
 }
+
+/** Reconstruit l'URL courante en changeant une seule clé. */
+function lienAvec(modif: Record<string, string | null>): string {
+  const p = new URLSearchParams(params);
+  for (const [k, v] of Object.entries(modif)) {
+    if (v === null || v === "") p.delete(k);
+    else p.set(k, v);
+  }
+  const qs = p.toString();
+  return url(`${channel === "salon" ? "/ventes-salon" : "/commandes"}${qs ? `?${qs}` : ""}`);
+}
+
+/** Lien d'export, qui reprend exactement les filtres affichés. */
+const lienExport = (() => {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(filtres))
+    if (v) p.set(k, String(v));
+  return apiUrl(`/admin/orders/export.csv?${p.toString()}`);
+})();
 
 /** « le 27 août à 22:36 », comme sur la boutique. */
 function quand(iso: string | null | undefined): string {
@@ -49,21 +151,51 @@ function quand(iso: string | null | undefined): string {
   }
 }
 
-const NOM_CANAL: Record<string, string> = {
-  web: "Boutique en ligne",
-  salon: "Ventes salon",
+const BADGE_PAIEMENT: Record<string, { texte: string; classe: string }> = {
+  paid: { texte: "Payée", classe: "bg-bo-bg text-bo-ink" },
+  pending: { texte: "En attente", classe: "bg-amber-100 text-amber-900" },
+  authorized: { texte: "Autorisée", classe: "bg-sky-100 text-sky-900" },
+  partially_refunded: {
+    texte: "Remb. en partie",
+    classe: "bg-violet-100 text-violet-900",
+  },
+  refunded: { texte: "Remboursée", classe: "bg-violet-100 text-violet-900" },
+  voided: { texte: "Annulée", classe: "bg-bo-bg text-bo-muted" },
+  draft: { texte: "Panier", classe: "bg-bo-bg text-bo-muted" },
 };
 
-/** Libellé et couleur du statut de paiement. */
-function paiement(statut: string): { texte: string; classe: string } {
-  if (statut === "paid")
-    return { texte: "Payée", classe: "bg-bo-bg text-bo-ink" };
-  if (statut === "pending")
-    return { texte: "En attente", classe: "bg-amber-100 text-amber-900" };
-  if (statut === "draft")
-    return { texte: "Panier", classe: "bg-bo-bg text-bo-muted" };
-  return { texte: statut, classe: "bg-bo-bg text-bo-muted" };
-}
+const BADGE_TRAITEMENT: Record<string, { texte: string; classe: string }> = {
+  fulfilled: { texte: "Traitée", classe: "bg-green-100 text-green-900" },
+  partially_fulfilled: {
+    texte: "En partie",
+    classe: "bg-orange-100 text-orange-900",
+  },
+  unfulfilled: { texte: "Non traitée", classe: "bg-amber-100 text-amber-900" },
+};
+
+const FILTRES_PAIEMENT = [
+  ["paid", "Payée"],
+  ["pending", "En attente"],
+  ["authorized", "Autorisée"],
+  ["partially_refunded", "Remboursée en partie"],
+  ["refunded", "Remboursée"],
+  ["voided", "Annulée"],
+];
+const FILTRES_TRAITEMENT = [
+  ["unfulfilled", "Non traitée"],
+  ["partially_fulfilled", "Partiellement traitée"],
+  ["fulfilled", "Traitée"],
+];
+
+const paiementCoches = (filtres.financial ?? "").split(",").filter(Boolean);
+const traitementCoches = (filtres.fulfillment ?? "").split(",").filter(Boolean);
+const filtreActif =
+  Boolean(filtres.q) ||
+  Boolean(filtres.tag) ||
+  Boolean(filtres.from) ||
+  Boolean(filtres.to) ||
+  Boolean(params.get("financial")) ||
+  Boolean(params.get("fulfillment"));
 ---
 
 {flash && (
@@ -71,110 +203,371 @@ function paiement(statut: string): { texte: string; classe: string } {
     {flash}
   </p>
 )}
+{erreurAction && (
+  <p class="mb-4 text-sm rounded bg-red-50 border border-red-200 px-3 py-2">
+    {erreurAction}
+  </p>
+)}
 {error && <p class="text-red-600 text-sm">API injoignable : {error}</p>}
 
-<section class="overflow-x-auto rounded-lg border border-bo-border bg-bo-surface">
-  <table class="w-full text-sm">
-    <thead class="bg-bo-bg text-left text-bo-muted">
-      <tr>
-        <th class="px-4 py-2 font-medium">Commande</th>
-        <th class="px-4 py-2 font-medium">Date</th>
-        <th class="px-4 py-2 font-medium">Client</th>
-        <th class="px-4 py-2 font-medium">Canal</th>
-        <th class="px-4 py-2 font-medium text-right">Total</th>
-        <th class="px-4 py-2 font-medium">Paiement</th>
-        <th class="px-4 py-2 font-medium">Traitement</th>
-        <th class="px-4 py-2 font-medium">Articles</th>
-        <th class="px-4 py-2"></th>
-      </tr>
-    </thead>
-    <tbody>
-      {orders.map((o) => {
-        const p = paiement(o.status);
-        return (
-          <tr class="border-t border-bo-border hover:bg-bo-bg/50">
-            <td class="px-4 py-2 whitespace-nowrap">
-              <a
-                href={url(`/commandes/${o.id}`)}
-                class="font-medium text-bo-accent hover:underline"
-              >
-                {o.number}
-              </a>
-            </td>
-            <td class="px-4 py-2 whitespace-nowrap text-bo-muted">
-              {quand(o.createdAt)}
-            </td>
-            <td class="px-4 py-2">
-              {o.customerName ? (
-                o.customerName
-              ) : (
-                <span class="text-bo-muted">Aucun client</span>
-              )}
-            </td>
-            <td class="px-4 py-2 text-bo-muted whitespace-nowrap">
-              {NOM_CANAL[o.channel] ?? o.channel}
-            </td>
-            <td class="px-4 py-2 text-right whitespace-nowrap">
-              {formatPrice(o.totalCents)}
-            </td>
-            <td class="px-4 py-2">
-              <span
-                class={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${p.classe}`}
-              >
-                <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
-                {p.texte}
-              </span>
-            </td>
-            <td class="px-4 py-2">
-              {/* Traité / non traité : un clic bascule, c'est l'action du
-                  matin quand on prépare les colis. */}
-              <form method="POST" class="inline">
-                <input type="hidden" name="_action" value="traiter" />
-                <input type="hidden" name="id" value={o.id} />
-                <input
-                  type="hidden"
-                  name="fulfilled"
-                  value={o.fulfilledAt ? "false" : "true"}
-                />
-                <button
-                  class={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${
-                    o.fulfilledAt
-                      ? "bg-green-100 text-green-900"
-                      : "bg-amber-100 text-amber-900"
-                  }`}
-                  title={
-                    o.fulfilledAt
-                      ? "Remettre dans les commandes à traiter"
-                      : "Marquer comme traitée"
-                  }
+<section class="rounded-lg border border-bo-border bg-bo-surface">
+  {/* Onglets : un clic = une question courante. */}
+  <div class="flex flex-wrap items-center gap-1 border-b border-bo-border px-3 pt-3">
+    {ONGLETS.map((o) => (
+      <a
+        href={lienAvec({
+          onglet: o.cle === "toutes" ? null : o.cle,
+          financial: null,
+          fulfillment: null,
+        })}
+        class={`rounded-t px-3 py-2 text-sm ${
+          o.cle === onglet.cle
+            ? "bg-bo-bg font-medium text-bo-ink"
+            : "text-bo-muted hover:bg-bo-bg/60"
+        }`}
+      >
+        {o.label}
+      </a>
+    ))}
+  </div>
+
+  {/* Recherche + filtres fins. */}
+  <form method="GET" class="flex flex-wrap items-end gap-3 px-4 py-3">
+    {ongletActif !== "toutes" && (
+      <input type="hidden" name="onglet" value={ongletActif} />
+    )}
+    <label class="flex-1 min-w-[240px]">
+      <span class="mb-1 block text-xs text-bo-muted">
+        Rechercher (n° de commande, client, e-mail, ville)
+      </span>
+      <input
+        type="search"
+        name="q"
+        value={filtres.q ?? ""}
+        placeholder="WEB-1042, Dupont, dupont@…"
+        class="w-full rounded border border-bo-border px-3 py-2 text-sm"
+      />
+    </label>
+    <label>
+      <span class="mb-1 block text-xs text-bo-muted">Du</span>
+      <input
+        type="date"
+        name="from"
+        value={filtres.from ?? ""}
+        class="rounded border border-bo-border px-3 py-2 text-sm"
+      />
+    </label>
+    <label>
+      <span class="mb-1 block text-xs text-bo-muted">Au</span>
+      <input
+        type="date"
+        name="to"
+        value={filtres.to ?? ""}
+        class="rounded border border-bo-border px-3 py-2 text-sm"
+      />
+    </label>
+    <label>
+      <span class="mb-1 block text-xs text-bo-muted">Étiquette</span>
+      <select
+        name="tag"
+        class="rounded border border-bo-border px-3 py-2 text-sm"
+      >
+        <option value="">Toutes</option>
+        {etiquettes.map((t) => (
+          <option value={t.name} selected={filtres.tag === t.name}>
+            {t.name} ({t.n})
+          </option>
+        ))}
+      </select>
+    </label>
+
+    <details class="bo-menu relative">
+      <summary class="rounded border border-bo-border px-3 py-2 text-sm">
+        Statuts
+        {(paiementCoches.length || traitementCoches.length) > 0 && (
+          <span class="ml-1 text-bo-muted">
+            ({paiementCoches.length + traitementCoches.length})
+          </span>
+        )}
+      </summary>
+      <div
+        class="absolute right-0 z-20 mt-1 w-64 rounded-lg border border-bo-border bg-bo-surface p-3 shadow-lg"
+      >
+        <p class="mb-1 text-xs font-medium text-bo-muted">Paiement</p>
+        {FILTRES_PAIEMENT.map(([v, l]) => (
+          <label class="flex items-center gap-2 py-0.5 text-sm">
+            <input
+              type="checkbox"
+              name="financial"
+              value={v}
+              checked={paiementCoches.includes(v!)}
+            />
+            {l}
+          </label>
+        ))}
+        <p class="mt-2 mb-1 text-xs font-medium text-bo-muted">Traitement</p>
+        {FILTRES_TRAITEMENT.map(([v, l]) => (
+          <label class="flex items-center gap-2 py-0.5 text-sm">
+            <input
+              type="checkbox"
+              name="fulfillment"
+              value={v}
+              checked={traitementCoches.includes(v!)}
+            />
+            {l}
+          </label>
+        ))}
+      </div>
+    </details>
+
+    <button class="rounded bg-bo-nav px-4 py-2 text-sm text-white">
+      Filtrer
+    </button>
+    {filtreActif && (
+      <a
+        href={lienAvec({
+          q: null,
+          tag: null,
+          from: null,
+          to: null,
+          financial: null,
+          fulfillment: null,
+        })}
+        class="px-2 py-2 text-sm text-bo-accent hover:underline"
+      >
+        Effacer
+      </a>
+    )}
+    <a
+      href={lienExport}
+      class="ml-auto rounded border border-bo-border px-3 py-2 text-sm hover:bg-bo-bg"
+    >
+      Exporter en CSV
+    </a>
+  </form>
+
+  {/* Barre d'actions groupées : n'apparaît qu'une fois des cases cochées. */}
+  <form method="POST" id="bo-masse" class="hidden border-t border-bo-border bg-bo-bg px-4 py-2">
+    <input type="hidden" name="_action" value="masse" />
+    <input type="hidden" name="ids" id="bo-ids" />
+    <input type="hidden" name="bulk" id="bo-bulk" />
+    <input type="hidden" name="tags" id="bo-tags" />
+    <div class="flex flex-wrap items-center gap-2 text-sm">
+      <span id="bo-compte" class="font-medium"></span>
+      <button type="button" data-bulk="fulfil" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
+        Marquer comme traitées
+      </button>
+      <button type="button" data-bulk="unfulfil" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
+        Remettre à traiter
+      </button>
+      <button type="button" data-bulk="tag" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
+        Ajouter une étiquette
+      </button>
+      <button type="button" data-bulk="untag" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
+        Retirer une étiquette
+      </button>
+      <button type="button" id="bo-bons" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
+        Bons de livraison
+      </button>
+      <button type="button" id="bo-export" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
+        Exporter la sélection
+      </button>
+    </div>
+  </form>
+
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-bo-bg text-left text-bo-muted">
+        <tr>
+          <th class="w-8 px-3 py-2">
+            <input type="checkbox" id="bo-tout" aria-label="Tout cocher" />
+          </th>
+          <th class="px-4 py-2 font-medium">Commande</th>
+          <th class="px-4 py-2 font-medium">Date</th>
+          <th class="px-4 py-2 font-medium">Client</th>
+          <th class="px-4 py-2 font-medium">Paiement</th>
+          <th class="px-4 py-2 font-medium">Traitement</th>
+          <th class="px-4 py-2 font-medium">Articles</th>
+          <th class="px-4 py-2 font-medium">Livraison</th>
+          <th class="px-4 py-2 font-medium">Étiquettes</th>
+          <th class="px-4 py-2 font-medium text-right">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {orders.map((o) => {
+          const p = BADGE_PAIEMENT[o.statutFinancier ?? "pending"] ?? {
+            texte: o.status,
+            classe: "bg-bo-bg text-bo-muted",
+          };
+          const t = BADGE_TRAITEMENT[o.statutExpedition ?? "unfulfilled"]!;
+          return (
+            <tr class="border-t border-bo-border hover:bg-bo-bg/50">
+              <td class="px-3 py-2 align-top">
+                <input type="checkbox" class="bo-coche" value={o.id} />
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap align-top">
+                <a
+                  href={url(`/commandes/${o.id}`)}
+                  class="font-medium text-bo-accent hover:underline"
+                >
+                  {o.number}
+                </a>
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap align-top text-bo-muted">
+                {quand(o.createdAt)}
+              </td>
+              <td class="px-4 py-2 align-top">
+                {o.customerName ? (
+                  <>
+                    <div>{o.customerName}</div>
+                    {o.customerEmail && (
+                      <div class="text-xs text-bo-muted">{o.customerEmail}</div>
+                    )}
+                  </>
+                ) : (
+                  <span class="text-bo-muted">Aucun client</span>
+                )}
+              </td>
+              <td class="px-4 py-2 align-top">
+                <span
+                  class={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${p.classe}`}
                 >
                   <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
-                  {o.fulfilledAt ? "Traité" : "Non traité"}
-                </button>
-              </form>
-            </td>
-            <td class="px-4 py-2 whitespace-nowrap text-bo-muted">
-              {o.articles ?? 0} article{(o.articles ?? 0) > 1 ? "s" : ""}
-            </td>
-            <td class="px-4 py-2 text-right whitespace-nowrap">
-              <a
-                href={url(`/commandes/${o.id}`)}
-                class="text-bo-accent hover:underline"
-              >
-                Détail / PDF
-              </a>
+                  {p.texte}
+                </span>
+              </td>
+              <td class="px-4 py-2 align-top">
+                {/* Un clic bascule : c'est l'action du matin quand on prépare
+                    les colis. */}
+                <form method="POST" class="inline">
+                  <input type="hidden" name="_action" value="traiter" />
+                  <input type="hidden" name="id" value={o.id} />
+                  <input
+                    type="hidden"
+                    name="fulfilled"
+                    value={o.statutExpedition === "fulfilled" ? "false" : "true"}
+                  />
+                  <button
+                    class={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${t.classe}`}
+                    title={
+                      o.statutExpedition === "fulfilled"
+                        ? "Remettre dans les commandes à traiter"
+                        : "Marquer comme traitée"
+                    }
+                  >
+                    <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+                    {t.texte}
+                  </button>
+                </form>
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap align-top text-bo-muted">
+                {o.articles ?? 0} article{(o.articles ?? 0) > 1 ? "s" : ""}
+                {(o.expedies ?? 0) > 0 && (o.expedies ?? 0) < (o.articles ?? 0) && (
+                  <span class="text-xs"> · {o.expedies} parti(s)</span>
+                )}
+              </td>
+              <td class="px-4 py-2 align-top text-bo-muted">
+                {o.shippingLabel ?? "—"}
+              </td>
+              <td class="px-4 py-2 align-top">
+                {(o.tags ?? []).length ? (
+                  <span class="flex flex-wrap gap-1">
+                    {(o.tags ?? []).map((tag) => (
+                      <a
+                        href={lienAvec({ tag })}
+                        class="rounded bg-bo-bg px-1.5 py-0.5 text-xs text-bo-muted hover:text-bo-ink"
+                      >
+                        {tag}
+                      </a>
+                    ))}
+                  </span>
+                ) : (
+                  <span class="text-bo-muted">—</span>
+                )}
+              </td>
+              <td class="px-4 py-2 text-right whitespace-nowrap align-top">
+                {formatPrice(o.totalCents)}
+                {(o.rembourseCents ?? 0) > 0 && (
+                  <div class="text-xs text-violet-700">
+                    − {formatPrice(o.rembourseCents ?? 0)} remboursé
+                  </div>
+                )}
+              </td>
+            </tr>
+          );
+        })}
+        {orders.length === 0 && !error && (
+          <tr>
+            <td colspan="10" class="px-4 py-6 text-center text-bo-muted">
+              Aucune commande pour ces filtres.
             </td>
           </tr>
-        );
-      })}
-      {orders.length === 0 && !error && (
-        <tr>
-          <td colspan="9" class="px-4 py-6 text-center text-bo-muted">
-            Aucune commande.
-          </td>
-        </tr>
-      )}
-    </tbody>
-  </table>
+        )}
+      </tbody>
+    </table>
+  </div>
 </section>
-<p class="mt-2 text-sm text-bo-muted">{orders.length} commande(s).</p>
+<p class="mt-2 text-sm text-bo-muted">{orders.length} commande(s) affichée(s).</p>
+
+<script is:inline define:vars={{ exportBase: lienExport, bonsBase: url("/commandes/bons") }}>
+  // Sélection multiple : la barre d'actions n'existe que quand elle sert.
+  const tout = document.getElementById("bo-tout");
+  const cases = () => [...document.querySelectorAll(".bo-coche")];
+  const barre = document.getElementById("bo-masse");
+  const compte = document.getElementById("bo-compte");
+
+  function selection() {
+    return cases()
+      .filter((c) => c.checked)
+      .map((c) => c.value);
+  }
+
+  function rafraichir() {
+    const n = selection().length;
+    barre.classList.toggle("hidden", n === 0);
+    compte.textContent = `${n} commande${n > 1 ? "s" : ""} sélectionnée${n > 1 ? "s" : ""}`;
+    if (tout) tout.checked = n > 0 && n === cases().length;
+  }
+
+  tout?.addEventListener("change", () => {
+    cases().forEach((c) => (c.checked = tout.checked));
+    rafraichir();
+  });
+  cases().forEach((c) => c.addEventListener("change", rafraichir));
+
+  // Les actions qui écrivent passent par le formulaire (POST), les autres
+  // ouvrent simplement une URL avec les identifiants cochés.
+  document.querySelectorAll("[data-bulk]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const ids = selection();
+      if (!ids.length) return;
+      const quoi = b.dataset.bulk;
+      if (quoi === "tag" || quoi === "untag") {
+        const saisie = prompt(
+          quoi === "tag"
+            ? "Étiquette(s) à ajouter, séparées par des virgules :"
+            : "Étiquette(s) à retirer, séparées par des virgules :",
+        );
+        if (!saisie) return;
+        document.getElementById("bo-tags").value = saisie;
+      }
+      document.getElementById("bo-ids").value = ids.join(",");
+      document.getElementById("bo-bulk").value = quoi;
+      barre.submit();
+    });
+  });
+
+  document.getElementById("bo-export")?.addEventListener("click", () => {
+    const ids = selection();
+    if (!ids.length) return;
+    window.location.href = `${exportBase}&ids=${ids.join(",")}`;
+  });
+
+  document.getElementById("bo-bons")?.addEventListener("click", () => {
+    const ids = selection();
+    if (!ids.length) return;
+    window.open(`${bonsBase}?ids=${ids.join(",")}`, "_blank");
+  });
+
+  rafraichir();
+</script>
