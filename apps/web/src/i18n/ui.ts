@@ -98,6 +98,7 @@ export const ui = {
     "ia.generation_duree":
       "Comptez une bonne trentaine de secondes. Laissez cette page ouverte.",
     "ia.apercu_vide": "Votre affiche apparaîtra ici.",
+    "ia.deplacer_ligne": "Glissez pour déplacer la ligne",
     "ia.apercu_alt": "Aperçu de l'affiche générée",
     "ia.filigrane_note":
       "Le filigrane disparaît de l'affiche imprimée, après paiement.",
@@ -413,6 +414,7 @@ export const ui = {
     "ia.generation_duree":
       "Allow a good thirty seconds. Keep this page open.",
     "ia.apercu_vide": "Your poster will appear here.",
+    "ia.deplacer_ligne": "Drag to move the line",
     "ia.apercu_alt": "Preview of the generated poster",
     "ia.filigrane_note":
       "The watermark disappears from the printed poster, once paid.",
@@ -723,6 +725,7 @@ export const ui = {
     "ia.generation_duree":
       "Rechnen Sie mit gut dreißig Sekunden. Lassen Sie diese Seite geöffnet.",
     "ia.apercu_vide": "Hier erscheint Ihr Poster.",
+    "ia.deplacer_ligne": "Ziehen, um die Zeile zu verschieben",
     "ia.apercu_alt": "Vorschau des erstellten Posters",
     "ia.filigrane_note":
       "Das Wasserzeichen verschwindet nach der Bezahlung auf dem gedruckten Poster.",
@@ -1036,6 +1039,7 @@ export const ui = {
     "ia.generation_duree":
       "Ci vuole una trentina di secondi abbondante. Lascia aperta questa pagina.",
     "ia.apercu_vide": "Il tuo poster apparirà qui.",
+    "ia.deplacer_ligne": "Trascina per spostare la riga",
     "ia.apercu_alt": "Anteprima del poster creato",
     "ia.filigrane_note":
       "La filigrana sparisce dal poster stampato, dopo il pagamento.",
@@ -1346,6 +1350,7 @@ export const ui = {
     "ia.generation_duree":
       "Cuenta con unos treinta segundos largos. Deja esta página abierta.",
     "ia.apercu_vide": "Aquí aparecerá tu lámina.",
+    "ia.deplacer_ligne": "Arrastra para mover la línea",
     "ia.apercu_alt": "Vista previa de la lámina creada",
     "ia.filigrane_note":
       "La marca de agua desaparece en la lámina impresa, tras el pago.",

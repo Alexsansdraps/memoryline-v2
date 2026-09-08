@@ -453,17 +453,30 @@ async function buildTextSvg(
 
   const parts: string[] = [];
   let y = Math.round(height * HAUTEUR_PREMIERE_LIGNE);
+  let precedente: (typeof rendus)[number] | null = null;
   for (const [i, r] of rendus.entries()) {
-    if (i > 0) {
-      y += Math.round(
-        Math.max(rendus[i - 1]!.taille, r.taille * INTERLIGNE_MINIMAL),
+    const ligne = lignes[i]!;
+    // Une ligne déplacée à la main s'imprime là où le client l'a posée : le
+    // centre de la ligne vaut (x·largeur, y·hauteur), exactement comme dans
+    // l'aperçu. Elle sort de l'empilement, qui continue sans elle.
+    if (typeof ligne.x === "number" && typeof ligne.y === "number") {
+      parts.push(
+        `<text x="${Math.round(ligne.x * width)}" y="${Math.round(ligne.y * height)}" ` +
+          `text-anchor="middle" dominant-baseline="central" ` +
+          `font-family="${escapeXml(r.famille)}"${r.gras ? ' font-weight="700"' : ""} ` +
+          `font-size="${r.taille}" fill="${escapeXml(couleur)}">${escapeXml(r.texte)}</text>`,
       );
+      continue;
+    }
+    if (precedente) {
+      y += Math.round(Math.max(precedente.taille, r.taille * INTERLIGNE_MINIMAL));
     }
     parts.push(
       `<text x="${width / 2}" y="${y}" text-anchor="middle" ` +
         `font-family="${escapeXml(r.famille)}"${r.gras ? ' font-weight="700"' : ""} ` +
         `font-size="${r.taille}" fill="${escapeXml(couleur)}">${escapeXml(r.texte)}</text>`,
     );
+    precedente = r;
   }
 
   return (

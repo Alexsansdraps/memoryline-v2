@@ -917,6 +917,11 @@ export function mountConfiguratorRoutes(app: Hono) {
       .select()
       .from(schema.orders)
       .where(eq(schema.orders.clientOrderId, cartId));
+    // Un panier PAYÉ est clos : y ajouter une ligne reviendrait à glisser
+    // un article non réglé dans une commande déjà encaissée. Le navigateur
+    // qui a gardé cet identifiant doit repartir d'un panier neuf.
+    if (order && order.status === "paid")
+      return c.json({ error: "panier_clos" }, 409);
     if (!order) {
       [order] = await db
         .insert(schema.orders)
@@ -1616,6 +1621,18 @@ export function mountConfiguratorRoutes(app: Hono) {
     const id = Number(c.req.param("id"));
     if (!mailConfigure())
       return c.json({ error: "envoi d'e-mails non configuré" }, 503);
+    // Une commande de stand n'a pas de confirmation : le courrier porterait
+    // le tarif du site, que le stand cache justement — c'est la vendeuse qui
+    // a annoncé le prix, de vive voix.
+    const [commande] = await db
+      .select({ channel: schema.orders.channel })
+      .from(schema.orders)
+      .where(eq(schema.orders.id, id));
+    if (commande?.channel === "salon")
+      return c.json(
+        { error: "Pas de confirmation par e-mail pour une commande prise au stand." },
+        400,
+      );
     await previenirDuPaiement(id);
     return c.json({ ok: true });
   });

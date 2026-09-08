@@ -61,6 +61,15 @@ export const textBlockSchema = z.object({
   color: z.string().optional(),
   /** Facteur de taille relatif (1 = défaut). Partagé titre/sous-titre. */
   size: z.number().optional(),
+  /**
+   * Position du CENTRE de la ligne, en fractions de la largeur et de la
+   * hauteur de l'affiche (0..1). Absente, la ligne suit la mise en page
+   * automatique : empilée en haut, centrée. Elle n'apparaît que lorsque le
+   * client a déplacé la ligne à la main — et alors l'aperçu et le PDF la
+   * posent au même endroit, puisque c'est le même chiffre.
+   */
+  x: z.number().min(0).max(1).optional(),
+  y: z.number().min(0).max(1).optional(),
 });
 export type TextBlock = z.infer<typeof textBlockSchema>;
 

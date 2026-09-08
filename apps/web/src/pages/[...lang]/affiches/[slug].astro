@@ -1,4 +1,5 @@
 ---
+import AfficheVide from "../../../components/AfficheVide.astro";
 import Base from "../../../layouts/Base.astro";
 import {
   api,
@@ -111,8 +112,8 @@ const breadcrumbLd = {
         image ? (
           <img src={image} alt={cleanName} class="w-full h-full object-cover" />
         ) : (
-          <div class="aspect-[3/4] flex items-center justify-center text-2xl text-ink-soft">
-            {cleanName}
+          <div class="aspect-[3/4]">
+            <AfficheVide nom={cleanName} />
           </div>
         )
       }

@@ -36,7 +36,11 @@ import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { db, schema } from "./db/client.js";
 import { clientDeLaRequete } from "./comptes.js";
-import { STYLE_MEMORY_LINE, appliquerVariables } from "./ia-style.js";
+import {
+  STYLE_MEMORY_LINE,
+  ajouterDemandeClient,
+  appliquerVariables,
+} from "./ia-style.js";
 
 /** Mêmes assets que le reste de l'API (cf. ASSETS_DIR dans index.ts). */
 const ASSETS_DIR = resolve(fileURLToPath(import.meta.url), "../../../../data/assets");
@@ -205,54 +209,85 @@ const MIME_SORTIE: Record<string, string> = {
 };
 
 /**
- * Filigrane « MEMORY LINE » brûlé dans les pixels de l'aperçu.
+ * Filigrane brûlé dans les pixels de l'aperçu : le logo de la boutique, en
+ * blanc, répété en diagonale.
  *
  * Un calque CSS se retire depuis l'inspecteur du navigateur en trois clics ;
- * une image marquée, non. Le texte est écrit deux fois — une ombre sombre
- * décalée, puis un tracé clair par-dessus — parce qu'un filigrane blanc
- * disparaît sur un ciel de neige et un filigrane noir sur une nuit. Densité
- * réglée pour gêner la réutilisation sans empêcher de juger l'affiche.
+ * une image marquée, non. Le logo est posé deux fois — une ombre sombre
+ * décalée d'un rien, puis la silhouette blanche par-dessus — parce qu'un
+ * filigrane blanc disparaît sur un ciel de neige et un filigrane noir sur une
+ * nuit. Densité réglée pour gêner la réutilisation sans empêcher de juger
+ * l'affiche.
+ *
+ * C'est le MÊME fichier que celui du navigateur (apps/web/public), pour que
+ * l'aperçu IA et l'aperçu du configurateur portent la même marque.
  */
-function filigraneSvg(largeur: number, hauteur: number): Buffer {
-  const corps = Math.max(16, Math.round(largeur * 0.045));
-  const pasX = corps * 11; // « MEMORY LINE » occupe ~7 corps, le reste est le blanc
-  const pasY = corps * 4.2;
+const LOGO_FILIGRANE = resolve(
+  fileURLToPath(import.meta.url),
+  "../../marque/logo-filigrane.png",
+);
+
+/** Le logo blanc ramené à une opacité donnée : on atténue son canal alpha. */
+async function logoAttenue(largeur: number, opacite: number, sombre: boolean): Promise<Buffer> {
+  const base = sharp(LOGO_FILIGRANE).resize({ width: largeur });
+  // negate() sans toucher à l'alpha : la silhouette blanche devient noire,
+  // ses bords transparents restent transparents.
+  const couleur = sombre ? base.clone().negate({ alpha: false }) : base.clone();
+  const rgb = await couleur.removeAlpha().toBuffer();
+  const alpha = await base.clone().extractChannel("alpha").linear(opacite, 0).toBuffer();
+  return sharp(rgb).joinChannel(alpha).png().toBuffer();
+}
+
+/**
+ * Calques à composer sur l'aperçu : le logo en quinconce sur une grille
+ * tournée de 30°. Une ligne sur deux est décalée : aligné, le filigrane
+ * laisse des couloirs vides qu'un recadrage suffit à isoler.
+ */
+async function calquesFiligrane(
+  largeur: number,
+  hauteur: number,
+): Promise<{ input: Buffer; left: number; top: number }[]> {
+  const logoLargeur = Math.max(120, Math.round(largeur * 0.26));
+  const ombre = await logoAttenue(logoLargeur, 0.16, true);
+  const blanc = await logoAttenue(logoLargeur, 0.24, false);
+  const { width: lw = logoLargeur, height: lh = Math.round(logoLargeur * 0.444) } =
+    await sharp(blanc).metadata();
+
+  // La grille est calculée dans un repère tourné de -30°, puis chaque point
+  // est ramené dans le repère de l'image : c'est ce qui donne les diagonales.
+  const angle = (-30 * Math.PI) / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const pasX = lw * 1.6;
+  const pasY = lh * 2.2;
   const diag = Math.ceil(Math.hypot(largeur, hauteur));
-  const textes: string[] = [];
+  const cx = largeur / 2;
+  const cy = hauteur / 2;
+  const calques: { input: Buffer; left: number; top: number }[] = [];
   let rang = 0;
   for (let y = -diag; y < diag; y += pasY) {
-    // Une ligne sur deux est décalée : aligné, le filigrane laisse des
-    // couloirs vides qu'un recadrage suffit à isoler.
     const depart = -diag + (rang % 2) * (pasX / 2);
     for (let x = depart; x < diag; x += pasX) {
-      const px = Math.round(x);
-      const py = Math.round(y);
-      textes.push(
-        `<text x="${px + 2}" y="${py + 2}" fill="#000000" fill-opacity="0.20">MEMORY LINE</text>` +
-          `<text x="${px}" y="${py}" fill="#ffffff" fill-opacity="0.45">MEMORY LINE</text>`,
-      );
+      const px = Math.round(cx + x * cos - y * sin);
+      const py = Math.round(cy + x * sin + y * cos);
+      // Hors image : sharp refuse un calque entièrement en dehors.
+      if (px + lw < 0 || py + lh < 0 || px > largeur || py > hauteur) continue;
+      calques.push({ input: ombre, left: px + 2, top: py + 2 });
+      calques.push({ input: blanc, left: px, top: py });
     }
     rang++;
   }
-  return Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${largeur}" height="${hauteur}">` +
-      `<g transform="rotate(-30 ${largeur / 2} ${hauteur / 2})" ` +
-      `font-family="DM Serif Display" font-size="${corps}" letter-spacing="${(corps * 0.12).toFixed(1)}">` +
-      textes.join("") +
-      `</g></svg>`,
-  );
+  return calques;
 }
 
 /** Aperçu filigrané : 1024 px au plus grand côté, JPEG (léger à servir). */
-async function fabriquerApercu(pleine: Buffer, nom: string): Promise<string> {
+export async function fabriquerApercu(pleine: Buffer, nom: string): Promise<string> {
   const reduite = await sharp(pleine)
     .resize({ width: 1024, height: 1024, fit: "inside", withoutEnlargement: true })
     .toBuffer();
   const meta = await sharp(reduite).metadata();
   const marquee = await sharp(reduite)
-    .composite([
-      { input: filigraneSvg(meta.width ?? 1024, meta.height ?? 1024), blend: "over" },
-    ])
+    .composite(await calquesFiligrane(meta.width ?? 1024, meta.height ?? 1024))
     .jpeg({ quality: 82 })
     .toBuffer();
   await writeFile(resolve(IA_DIR, nom), marquee);
@@ -619,20 +654,40 @@ export function mountIaRoutes(app: Hono): void {
       return c.json({ error: "Photo introuvable : renvoyez-la d'abord à /ia/photo" }, 404);
     }
 
-    // La consigne officielle porte des marqueurs {{...}} : ce que le client a
-    // demandé y prend sa place, et ceux restés vides reçoivent une valeur
-    // explicite. Un marqueur laissé tel quel partirait au modèle, qui le
-    // lirait comme une consigne à part entière.
-    const consigne = [
-      appliquerVariables(reg["ia.stylePrompt"], {
-        OUTPUT_FORMAT: `vertical poster, portrait orientation, ${reg["ia.taille"]} pixels`,
-        CUSTOMER_REQUEST: precision,
-      }),
-      produit.aiStylePrompt ?? "",
-    ]
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .join("\n\n");
+    // La consigne officielle décrit le style ; ce que le client demande vient
+    // s'ajouter À LA FIN, clairement annoncé — le modèle retient mieux ce qui
+    // vient en dernier, et la consigne rappelle elle-même que la fidélité à la
+    // photo passe avant toute demande particulière.
+    //
+    // `appliquerVariables` reste appelée : le texte est modifiable au
+    // back-office, et un marqueur {{...}} qui y serait remis partirait sinon
+    // tel quel au modèle, qui le lirait comme une consigne.
+    // « adapté au format A3, vertical ou horizontal, cela dépendra de la photo »
+    // (consigne de la boutique) : une photo de plage en largeur rendue en
+    // portrait perdrait la moitié de la scène, ou serait complétée par du
+    // décor inventé — ce que la consigne interdit par ailleurs.
+    const dimensions = await sharp(photo).metadata();
+    const paysage = (dimensions.width ?? 0) > (dimensions.height ?? 0);
+    const orientation = paysage ? "horizontale" : "verticale";
+    const tailleChoisie = TAILLES.has(reg["ia.taille"])
+      ? paysage
+        ? "1536x1024"
+        : "1024x1536"
+      : reg["ia.taille"];
+
+    const consigne = ajouterDemandeClient(
+      [
+        appliquerVariables(reg["ia.stylePrompt"], {
+          OUTPUT_FORMAT: `affiche A3, orientation ${orientation}`,
+          CUSTOMER_REQUEST: precision,
+        }),
+        produit.aiStylePrompt ?? "",
+      ]
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .join("\n\n"),
+      precision,
+    );
 
     const client = await clientDeLaRequete(c);
     const publicId = randomUUID();
@@ -646,7 +701,7 @@ export function mountIaRoutes(app: Hono): void {
         sourcePath: `ia/${nomPhoto}`,
         prompt: consigne,
         model: reg["ia.modele"],
-        size: reg["ia.taille"],
+        size: tailleChoisie,
         status: "en_cours",
         ip,
       })
@@ -658,7 +713,7 @@ export function mountIaRoutes(app: Hono): void {
         nomPhoto,
         consigne,
         reg["ia.modele"],
-        reg["ia.taille"],
+        tailleChoisie,
         reg["ia.qualite"],
         reg["ia.fidelite"],
       );

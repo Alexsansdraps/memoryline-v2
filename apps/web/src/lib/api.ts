@@ -253,7 +253,20 @@ export const browserApi = {
   backgrounds: (productId: number | string) =>
     browserGet<BackgroundDTO[]>(`/backgrounds?productId=${productId}`),
 
-  cart: (cartId: string) => browserGet<Cart>(`/cart/${cartId}`),
+  /**
+   * Le panier, ou un panier neuf si celui-ci est déjà payé.
+   *
+   * L'identifiant vit dans le navigateur : quand le paiement se conclut sans
+   * repasser par la page (webhook, onglet fermé), il reste pointé sur une
+   * commande encaissée. Toute action dessus échouait alors en « commande déjà
+   * payée ». On l'oublie ici, une fois pour toutes les pages.
+   */
+  cart: async (cartId: string): Promise<Cart> => {
+    const panier = await browserGet<Cart>(`/cart/${cartId}`);
+    if (panier.status !== "paid") return panier;
+    localStorage.removeItem(CART_ID_KEY);
+    return { cartId: getCartId(), items: [], poidsGrammes: 0 };
+  },
 
   addCartItem: (
     cartId: string,
@@ -265,7 +278,16 @@ export const browserApi = {
       title?: string;
       config: PosterConfig;
     },
-  ) => browserSend<OrderItem>("POST", `/cart/${cartId}/items`, body),
+  ) =>
+    browserSend<OrderItem>("POST", `/cart/${cartId}/items`, body).catch(
+      async (e: unknown) => {
+        // Panier clos (déjà payé) : on repart d'un panier neuf et on
+        // réessaie une fois, sans rien demander au client.
+        if (!String(e).includes("panier_clos")) throw e;
+        localStorage.removeItem(CART_ID_KEY);
+        return browserSend<OrderItem>("POST", `/cart/${getCartId()}/items`, body);
+      },
+    ),
 
   updateCartItem: (
     cartId: string,
