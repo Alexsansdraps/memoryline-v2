@@ -145,7 +145,10 @@ app.get("/stats", async (c) => {
 
 /** Catalogue : liste de produits (avec leurs variantes A4/A3). */
 app.get("/products", async (c) => {
-  const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
+  // Plafond relevé : la boutique en demande la totalité, et le catalogue a
+  // dépassé les 200 depuis longtemps — au-delà, les dernières affiches
+  // créées n'apparaissaient nulle part.
+  const limit = Math.min(Number(c.req.query("limit") ?? 50), 1000);
   const langue = langueDemandee(c);
   const rows = await db
     .select({
@@ -157,6 +160,10 @@ app.get("/products", async (c) => {
       translations: schema.products.translations,
     })
     .from(schema.products)
+    // Ordre stable : sans tri explicite, Postgres est libre de renvoyer les
+    // lignes dans n'importe quel ordre, et la boutique se réorganisait toute
+    // seule d'une requête à l'autre. Les créations récentes ferment la marche.
+    .orderBy(asc(schema.products.id))
     .limit(limit);
   // Nom traduit, sans exposer le dictionnaire complet au site public.
   const products = rows.map(({ translations, ...p }) => ({

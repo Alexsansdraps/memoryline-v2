@@ -346,6 +346,24 @@ export function adminApi(request?: Request) {
         data,
         cookie,
       ),
+    /** Crée une affiche complète (fiche + formats + visuels + fonds). */
+    createProduct: (data: {
+      name: string;
+      description?: string | null;
+      kind?: "personnalisable" | "prete_a_imprimer";
+      defaultView?: string | null;
+      defaultTitle?: string | null;
+      defaultSubtitle?: string | null;
+      variants: { format: string; priceCents: number }[];
+      images?: string[];
+      backgrounds?: string[];
+    }) =>
+      req<{ id: number; slug: string; name: string }>(
+        "POST",
+        "/admin/products",
+        data,
+        cookie,
+      ),
     addProductBackground: (
       id: number | string,
       data: { url: string; name?: string },

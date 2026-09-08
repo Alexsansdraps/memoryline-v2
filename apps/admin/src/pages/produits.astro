@@ -39,6 +39,12 @@ const PAGE_SIZE = 25;
     <p class="text-sm text-bo-muted">
       <span id="prod-count">{products.length}</span> produit(s)
     </p>
+    <a
+      href={url("/produits/nouveau")}
+      class="rounded bg-bo-accent text-white px-4 py-2 text-sm"
+    >
+      <span class="mr-1">+</span> Nouvelle affiche
+    </a>
   </div>
 
   <!-- Pagination (haut) — demandée explicitement en haut de liste aussi -->

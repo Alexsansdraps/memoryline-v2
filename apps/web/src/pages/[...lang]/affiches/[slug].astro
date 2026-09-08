@@ -10,34 +10,26 @@ import {
 import ProductConfigurator from "../../../islands/ProductConfigurator.tsx";
 import AddToCartButton from "../../../islands/AddToCartButton.tsx";
 import {
-  LANGUES,
-  LANGUE_DEFAUT,
+  estLangue,
+  langueDepuisParam,
   lien,
   t,
   type Langue,
 } from "../../../i18n/utils.ts";
 
-/** Une page par produit ET par langue. */
-export async function getStaticPaths() {
-  let products: Product[] = [];
-  try {
-    products = await api.products(500);
-  } catch {
-    // API injoignable au build -> aucune page générée (le build ne casse pas)
-  }
-  return LANGUES.flatMap((langue) =>
-    products.map((p) => ({
-      params: {
-        lang: langue === LANGUE_DEFAUT ? undefined : langue,
-        slug: p.slug,
-      },
-      props: { langue },
-    })),
-  );
-}
+/**
+ * Rendue À LA DEMANDE, pas au build : une affiche créée au back-office doit
+ * répondre tout de suite. Générée d'avance, son adresse renvoyait 404 jusqu'au
+ * build suivant — il fallait un développeur pour publier une affiche.
+ */
+export const prerender = false;
 
 const { slug } = Astro.params;
-const { langue } = Astro.props as { langue: Langue };
+// Préfixe inconnu (« /zz/affiches/… ») : 404, plutôt que de servir le
+// français sous une adresse qui n'existe pas.
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
 const tr = t(langue);
 
 let product: ProductDetail | null = null;

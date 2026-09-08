@@ -1364,6 +1364,113 @@ export function mountConfiguratorRoutes(app: Hono) {
     return c.json(row);
   });
 
+  /**
+   * CRÉE une affiche de toutes pièces.
+   *
+   * Le catalogue venait entièrement de l'import Shopify : ajouter une affiche
+   * demandait un développeur. Tout ce qu'il faut pour qu'elle vive sur le site
+   * part d'ici — la fiche, ses formats, ses visuels et ses fonds — en une
+   * seule requête, pour ne pas laisser un produit à moitié créé si la page se
+   * ferme au mauvais moment.
+   */
+  app.post("/admin/products", async (c) => {
+    const b = await c.req.json();
+    const name = String(b.name ?? "").trim();
+    if (!name) return c.json({ error: "nom requis" }, 400);
+
+    // Slug : depuis le nom, rendu unique. Il fait l'URL publique de l'affiche
+    // et ne se devine pas deux fois pareil — d'où le suffixe numéroté.
+    const base =
+      String(b.slug ?? name)
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 80) || "affiche";
+    const pris = new Set(
+      (await db.select({ slug: schema.products.slug }).from(schema.products)).map(
+        (r) => r.slug,
+      ),
+    );
+    let slug = base;
+    for (let i = 2; pris.has(slug); i++) slug = `${base}-${i}`;
+
+    // Formats : A4 et A3 par défaut, avec leurs dimensions réelles. Un format
+    // sans prix n'est pas créé — le client ne doit pas pouvoir choisir un
+    // format qui n'a pas de prix.
+    const DIMENSIONS: Record<string, { w: number; h: number }> = {
+      A4: { w: 210, h: 297 },
+      A3: { w: 297, h: 420 },
+    };
+    const formats = Array.isArray(b.variants) ? b.variants : [];
+    const lignes = formats
+      .map((v: Record<string, unknown>) => ({
+        format: String(v.format ?? "A4"),
+        priceCents: Math.max(0, Math.round(Number(v.priceCents ?? 0))),
+      }))
+      .filter((v: { format: string; priceCents: number }) => v.priceCents > 0);
+    if (lignes.length === 0)
+      return c.json({ error: "au moins un format avec un prix" }, 400);
+
+    const kind =
+      b.kind === "prete_a_imprimer" ? "prete_a_imprimer" : "personnalisable";
+    // Prix de référence = le moins cher : c'est celui qu'affiche la boutique
+    // et celui qui sert de repli si un format perd son prix.
+    const basePriceCents = Math.min(
+      ...lignes.map((v: { priceCents: number }) => v.priceCents),
+    );
+
+    const [product] = await db
+      .insert(schema.products)
+      .values({
+        slug,
+        name,
+        description: b.description ? String(b.description) : null,
+        kind,
+        basePriceCents,
+        defaultTitle: b.defaultTitle ? String(b.defaultTitle) : null,
+        defaultSubtitle: b.defaultSubtitle ? String(b.defaultSubtitle) : null,
+        defaultView: await typeAfficheValide(b.defaultView),
+        foregroundUrl: b.foregroundUrl ? String(b.foregroundUrl) : null,
+      })
+      .returning();
+    if (!product) return c.json({ error: "création impossible" }, 500);
+
+    await db.insert(schema.variants).values(
+      lignes.map((v: { format: string; priceCents: number }) => ({
+        productId: product.id,
+        format: v.format,
+        priceCents: v.priceCents,
+        widthMm: DIMENSIONS[v.format]?.w ?? null,
+        heightMm: DIMENSIONS[v.format]?.h ?? null,
+      })),
+    );
+
+    const images: string[] = (Array.isArray(b.images) ? b.images : [])
+      .map((u: unknown) => String(u ?? "").trim())
+      .filter(Boolean);
+    if (images.length)
+      await db.insert(schema.productImages).values(
+        images.map((url, i) => ({ productId: product.id, url, position: i })),
+      );
+
+    const fonds: string[] = (Array.isArray(b.backgrounds) ? b.backgrounds : [])
+      .map((u: unknown) => String(u ?? "").trim())
+      .filter(Boolean);
+    if (fonds.length)
+      await db.insert(schema.backgrounds).values(
+        fonds.map((url, i) => ({
+          productId: product.id,
+          url,
+          name: url.split("/").pop()?.replace(/\.[a-z]+$/i, "") ?? null,
+          position: i,
+        })),
+      );
+
+    return c.json({ ...product, variants: lignes, images, backgrounds: fonds });
+  });
+
   /** Ajoute un visuel (fond) à un produit, par URL. */
   app.post("/admin/products/:id/backgrounds", async (c) => {
     const id = Number(c.req.param("id"));

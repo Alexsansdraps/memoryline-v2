@@ -7,11 +7,26 @@ import {
   assetUrl,
   type Product,
 } from "../../lib/api.ts";
-import { cheminsLangues, lien, t, type Langue } from "../../i18n/utils.ts";
+import {
+  estLangue,
+  langueDepuisParam,
+  lien,
+  t,
+  type Langue,
+} from "../../i18n/utils.ts";
 
-export const getStaticPaths = cheminsLangues;
+/**
+ * Rendue À LA DEMANDE : cette page liste le catalogue, qui change dès qu'une
+ * affiche est créée au back-office. Générée au build, elle aurait ignoré les
+ * nouveautés jusqu'au build suivant.
+ */
+export const prerender = false;
 
-const { langue } = Astro.props as { langue: Langue };
+// Préfixe de langue inconnu : 404 plutôt que du français à une adresse qui
+// n'existe pas.
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
 const tr = t(langue);
 
 /**

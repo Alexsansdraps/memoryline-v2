@@ -1,0 +1,314 @@
+---
+import { url } from "../../lib/url.ts";
+import Admin from "../../layouts/Admin.astro";
+import { adminApi, type TypeAffiche } from "../../lib/api.ts";
+
+const PUBLIC_API_URL =
+  import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
+
+const api = adminApi(Astro.request);
+
+/** Euros saisis -> centimes. Jamais de flottant sur de l'argent en base. */
+function centimes(v: FormDataEntryValue | null): number {
+  const n = Number(String(v ?? "").replace(",", ".").trim());
+  return Number.isFinite(n) ? Math.round(n * 100) : 0;
+}
+
+let erreur: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  try {
+    const visuel = String(f.get("image") || "").trim();
+    const fondsSup = String(f.get("backgrounds") || "")
+      .split("\n")
+      .map((u) => u.trim())
+      .filter(Boolean);
+    // Le visuel de la fiche sert aussi de fond par défaut : c'est presque
+    // toujours le même dessin, et un produit personnalisable sans fond
+    // s'ouvrirait sur une affiche vide.
+    const fonds =
+      f.get("imageEnFond") === "on" && visuel
+        ? [visuel, ...fondsSup.filter((u) => u !== visuel)]
+        : fondsSup;
+
+    const variants: { format: string; priceCents: number }[] = [];
+    const a4 = centimes(f.get("priceA4"));
+    const a3 = centimes(f.get("priceA3"));
+    if (a4 > 0) variants.push({ format: "A4", priceCents: a4 });
+    if (a3 > 0) variants.push({ format: "A3", priceCents: a3 });
+
+    const produit = await api.createProduct({
+      name: String(f.get("name") || ""),
+      description: String(f.get("description") || "") || null,
+      kind:
+        f.get("kind") === "prete_a_imprimer"
+          ? "prete_a_imprimer"
+          : "personnalisable",
+      defaultView: String(f.get("defaultView") || "") || null,
+      defaultTitle: String(f.get("defaultTitle") || "") || null,
+      defaultSubtitle: String(f.get("defaultSubtitle") || "") || null,
+      variants,
+      images: visuel ? [visuel] : [],
+      backgrounds: fonds,
+    });
+    // Le reste (fonds supplémentaires, traductions, réglages fins) se règle
+    // sur la fiche du produit : on y emmène directement.
+    return Astro.redirect(url(`/produits/${produit.id}?cree=1`), 303);
+  } catch (e) {
+    erreur = String(e).includes("400")
+      ? "Il manque le nom ou un prix : une affiche a besoin d'au moins un format avec un prix."
+      : "Erreur : " + String(e);
+  }
+}
+
+let vues: TypeAffiche[] = [];
+try {
+  vues = await api.views();
+} catch (e) {
+  if (!erreur) erreur = String(e);
+}
+---
+
+<Admin title="Nouvelle affiche">
+  <p class="mb-4">
+    <a href={url("/produits")} class="text-bo-accent hover:underline text-sm">
+      ← Retour aux produits
+    </a>
+  </p>
+
+  {erreur && (
+    <p class="mb-4 text-sm rounded bg-red-50 border border-red-200 px-3 py-2">
+      {erreur}
+    </p>
+  )}
+
+  <p class="mb-6 text-sm text-bo-muted max-w-3xl">
+    De quoi mettre une affiche en ligne : son nom, son prix et son visuel. Le
+    reste — visuels supplémentaires, traductions, réglages du configurateur —
+    s'ajoute juste après sur sa fiche.
+  </p>
+
+  <form method="POST" class="space-y-6 max-w-3xl">
+    <section class="bg-bo-surface border border-bo-border rounded-lg p-5 space-y-4">
+      <h3 class="font-semibold">L'affiche</h3>
+
+      <label class="block">
+        <span class="text-bo-muted text-sm">Nom *</span>
+        <input
+          name="name"
+          required
+          placeholder="LE CROTOY Baie — Affiche personnalisée"
+          class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+        />
+        <span class="mt-1 block text-xs text-bo-muted">
+          C'est ce nom qui fait l'adresse de la page. Il se change ensuite,
+          mais l'adresse, elle, ne bouge plus.
+        </span>
+      </label>
+
+      <label class="block">
+        <span class="text-bo-muted text-sm">Description</span>
+        <textarea
+          name="description"
+          rows="3"
+          class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
+          placeholder="Quelques lignes affichées sous l'affiche."
+        />
+      </label>
+
+      <div class="grid sm:grid-cols-2 gap-4">
+        <label class="block">
+          <span class="text-bo-muted text-sm">Personnalisable ?</span>
+          <select
+            name="kind"
+            class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
+          >
+            <option value="personnalisable">
+              Oui — le client compose son affiche
+            </option>
+            <option value="prete_a_imprimer">
+              Non — affiche prête à imprimer
+            </option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="text-bo-muted text-sm">Type d'affiche</span>
+          <select
+            name="defaultView"
+            class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
+          >
+            {vues.map((v) => <option value={v.slug}>{v.name}</option>)}
+          </select>
+          <span class="mt-1 block text-xs text-bo-muted">
+            Détermine les personnages proposés et le décor du premier plan.
+          </span>
+        </label>
+      </div>
+    </section>
+
+    <section class="bg-bo-surface border border-bo-border rounded-lg p-5 space-y-4">
+      <h3 class="font-semibold">Prix</h3>
+      <div class="flex flex-wrap gap-4">
+        <label class="block">
+          <span class="text-bo-muted text-sm">A4 (€) *</span>
+          <input
+            name="priceA4"
+            type="number"
+            step="0.01"
+            min="0"
+            value="23"
+            class="mt-1 block w-32 border border-bo-border rounded px-3 py-2"
+          />
+        </label>
+        <label class="block">
+          <span class="text-bo-muted text-sm">A3 (€)</span>
+          <input
+            name="priceA3"
+            type="number"
+            step="0.01"
+            min="0"
+            value="29"
+            class="mt-1 block w-32 border border-bo-border rounded px-3 py-2"
+          />
+        </label>
+      </div>
+      <p class="text-xs text-bo-muted">
+        Un format laissé vide (ou à 0) n'est pas proposé au client. Le prix du
+        cadre s'ajoute par-dessus, il se règle dans « Cadres ».
+      </p>
+    </section>
+
+    <section class="bg-bo-surface border border-bo-border rounded-lg p-5 space-y-4">
+      <h3 class="font-semibold">Visuel</h3>
+      <div class="flex flex-wrap items-start gap-4">
+        <img
+          id="apercu"
+          alt=""
+          class="h-32 w-24 object-contain border border-bo-border rounded bg-white"
+          style="visibility:hidden"
+        />
+        <div class="flex-1 min-w-[260px] space-y-2">
+          <div class="flex items-center gap-2">
+            <input
+              id="image"
+              name="image"
+              placeholder="/assets/le-crotoy.png"
+              class="flex-1 border border-bo-border rounded px-3 py-2 font-mono text-xs"
+            />
+            <button
+              type="button"
+              id="televerser"
+              class="rounded border border-bo-border px-3 py-2 text-sm whitespace-nowrap"
+            >
+              Téléverser…
+            </button>
+          </div>
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="imageEnFond" checked />
+            <span>Utiliser aussi comme fond dans le configurateur</span>
+          </label>
+          <label class="block">
+            <span class="text-bo-muted text-sm">
+              Autres fonds (une adresse par ligne)
+            </span>
+            <textarea
+              name="backgrounds"
+              rows="3"
+              class="mt-1 w-full border border-bo-border rounded px-3 py-2 font-mono text-xs"
+              placeholder="/assets/le-crotoy-nuit.png"
+            />
+            <span class="mt-1 block text-xs text-bo-muted">
+              Facultatif — vous pourrez aussi les ajouter un par un depuis la
+              fiche du produit, avec un aperçu.
+            </span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <section class="bg-bo-surface border border-bo-border rounded-lg p-5 space-y-4">
+      <h3 class="font-semibold">Textes pré-remplis</h3>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <label class="block">
+          <span class="text-bo-muted text-sm">Titre</span>
+          <input
+            name="defaultTitle"
+            placeholder="LE CROTOY"
+            class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+          />
+        </label>
+        <label class="block">
+          <span class="text-bo-muted text-sm">Sous-titre</span>
+          <input
+            name="defaultSubtitle"
+            placeholder="en famille"
+            class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+          />
+        </label>
+      </div>
+      <p class="text-xs text-bo-muted">
+        Ce que le client voit déjà écrit sur l'affiche en ouvrant le
+        configurateur. Il peut tout changer.
+      </p>
+    </section>
+
+    <div class="flex items-center gap-3">
+      <button class="rounded bg-bo-accent text-white px-5 py-2.5">
+        Créer l'affiche
+      </button>
+      <a href={url("/produits")} class="text-sm text-bo-muted hover:underline">
+        Annuler
+      </a>
+    </div>
+  </form>
+
+  <script is:inline define:vars={{ PUBLIC_API_URL }}>
+    const champ = document.getElementById("image");
+    const apercu = document.getElementById("apercu");
+    const bouton = document.getElementById("televerser");
+
+    function montrer() {
+      const v = (champ.value || "").trim();
+      if (!v) {
+        apercu.style.visibility = "hidden";
+        return;
+      }
+      apercu.src = v.startsWith("http") ? v : `${PUBLIC_API_URL}${v}`;
+      apercu.style.visibility = "visible";
+    }
+    champ.addEventListener("input", montrer);
+
+    bouton.addEventListener("click", () => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".svg,.png,.jpg,.jpeg,.webp";
+      input.addEventListener("change", async () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const avant = bouton.textContent;
+        bouton.textContent = "Envoi…";
+        bouton.disabled = true;
+        try {
+          const fd = new FormData();
+          fd.append("file", file);
+          const res = await fetch(`${PUBLIC_API_URL}/admin/uploads`, {
+            method: "POST",
+            body: fd,
+            credentials: "include",
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || res.status);
+          champ.value = data.url;
+          montrer();
+        } catch (e) {
+          alert("Téléversement impossible : " + e);
+        } finally {
+          bouton.textContent = avant;
+          bouton.disabled = false;
+        }
+      });
+      input.click();
+    });
+  </script>
+</Admin>
