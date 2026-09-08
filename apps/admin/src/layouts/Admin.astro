@@ -114,7 +114,9 @@ const isActive = (href: string) =>
             </form>
           </div>
         </header>
-        <main class="p-6 max-w-5xl">
+        {/* Pleine largeur : les écrans du back-office sont des tableaux et
+            des grilles de vignettes, une colonne de texte les étranglait. */}
+        <main class="p-6">
           <slot />
         </main>
       </div>
