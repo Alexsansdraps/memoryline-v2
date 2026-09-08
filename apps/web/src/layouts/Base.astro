@@ -64,6 +64,12 @@ const desc = description ?? tr("meta.description");
       hreflang="x-default"
       href={new URL(chemin, Astro.site ?? "https://memoryline.fr").toString()}
     />
+    {/* Marque la page comme animée avant qu'elle ne s'affiche : la règle
+        d'apparition ne s'applique que sous cette classe, donc sans
+        JavaScript rien n'est masqué. */}
+    <script is:inline>
+      document.documentElement.classList.add("ml-js");
+    </script>
     <Seo
       title={titre}
       description={desc}
@@ -177,5 +183,39 @@ const desc = description ?? tr("meta.description");
       </div>
     </footer>
     <CookieBanner langue={langue} />
+
+    <script is:inline>
+      // Apparition au défilement : chaque élément marqué se révèle quand il
+      // entre dans l'écran. On s'arrête de l'observer une fois révélé — inutile
+      // de recalculer pour cent quatre-vingts affiches à chaque pixel scrollé.
+      (() => {
+        const cibles = document.querySelectorAll(".ml-apparition");
+        if (!cibles.length) return;
+        const tout = () =>
+          cibles.forEach((c) => c.classList.add("est-visible"));
+        if (!("IntersectionObserver" in window)) {
+          tout();
+          return;
+        }
+        const observateur = new IntersectionObserver(
+          (entrees) => {
+            for (const e of entrees) {
+              if (!e.isIntersecting) continue;
+              e.target.classList.add("est-visible");
+              observateur.unobserve(e.target);
+            }
+          },
+          // Un peu avant le bord bas : l'affiche est déjà en place quand elle
+          // arrive vraiment sous les yeux.
+          { rootMargin: "0px 0px -10% 0px", threshold: 0.05 },
+        );
+        cibles.forEach((c) => observateur.observe(c));
+        // Filet : dans un onglet en arrière-plan, l'observateur peut ne jamais
+        // se déclencher. Au bout d'une seconde et demie, on montre tout ce qui
+        // reste caché — une grille vide serait bien pire qu'une animation
+        // manquée.
+        setTimeout(tout, 1500);
+      })();
+    </script>
   </body>
 </html>

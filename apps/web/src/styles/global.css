@@ -466,3 +466,31 @@ body {
     padding: 14px;
   }
 }
+
+/* --------------------------------------------------------------------------
+ * Apparition au défilement
+ *
+ * Les affiches montent de quelques pixels en se révélant quand elles entrent
+ * dans l'écran. L'animation est portée par `animation-timeline: view()` là où
+ * le navigateur la connaît ; ailleurs, un observateur en JavaScript pose la
+ * classe `est-visible`. Dans les deux cas, l'élément est VISIBLE par défaut :
+ * si rien ne s'exécute (JavaScript coupé, moteur ancien), la page s'affiche
+ * normalement plutôt que de rester blanche.
+ * ------------------------------------------------------------------------ */
+@media (prefers-reduced-motion: no-preference) {
+  /* L'état caché n'est appliqué QUE si le script a posé `ml-js` sur la page.
+     Sans JavaScript — ou si le script échoue avant d'y arriver — la grille
+     s'affiche normalement. Une animation ne doit jamais pouvoir escamoter le
+     contenu qu'elle décore. */
+  .ml-js .ml-apparition {
+    opacity: 0;
+    transform: translateY(18px);
+    transition:
+      opacity 0.5s ease-out,
+      transform 0.5s ease-out;
+  }
+  .ml-js .ml-apparition.est-visible {
+    opacity: 1;
+    transform: none;
+  }
+}

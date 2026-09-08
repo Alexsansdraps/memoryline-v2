@@ -1,5 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
+import Newsletter from "../../islands/Newsletter.tsx";
 import {
   api,
   setting,
@@ -81,8 +82,6 @@ const vitrineNombre = Math.max(
   Math.min(24, Number(await setting("home.vitrine.count", "8")) || 8),
 );
 
-const chiffresVisible = await visible("home.chiffres.visible");
-
 const vitrine = products.slice(0, vitrineNombre);
 
 function fourchette(p: Product): string {
@@ -94,6 +93,12 @@ function fourchette(p: Product): string {
     ? formatPrice(min)
     : `${formatPrice(min)} – ${formatPrice(max)}`;
 }
+
+/** Intitulé de la lettre d'information, réglable au back-office. */
+const lettreTitre = await setting(
+  "home.newsletter.title",
+  "Subscribe to our emails",
+);
 
 /** Retire le suffixe « - Affiche personnalisée » des noms importés. */
 const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
@@ -125,7 +130,7 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
           </div>
           <a
             href={lien(langue, "/affiches")}
-            class="text-terracotta hover:text-terracotta-deep font-medium whitespace-nowrap"
+            class="whitespace-nowrap font-medium text-terracotta hover:text-terracotta-deep"
           >
             {tr("catalogue.titre")} →
           </a>
@@ -133,7 +138,7 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
 
         <ul class="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
           {vitrine.map((p) => (
-            <li class="group">
+            <li class="group ml-apparition">
               <a href={lien(langue, `/affiches/${p.slug}`)} class="block">
                 <div
                   class="flex items-center justify-center overflow-hidden bg-paper-deep"
@@ -160,28 +165,26 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
             </li>
           ))}
         </ul>
+
+        {/* La vitrine ne montre qu'une partie du catalogue : le bouton dit
+            où trouver le reste, sans avoir à remonter en haut de page. */}
+        <div class="mt-12 flex justify-center">
+          <a
+            href={lien(langue, "/affiches")}
+            class="border border-ink px-8 py-3 font-medium hover:bg-ink hover:text-paper transition-colors"
+          >
+            {tr("accueil.tout_afficher")}
+          </a>
+        </div>
       </section>
     )
   }
 
-  {/* ---------------- Chiffres ---------------- */}
-  {
-    chiffresVisible && stats && (
-      <section class="mx-auto max-w-[1200px] px-6 py-16">
-        <dl class="grid grid-cols-2 sm:grid-cols-4 gap-px bg-ink/10 rounded-2xl overflow-hidden border border-ink/10">
-          {[
-            [tr("accueil.stat.affiches"), stats.products],
-            [tr("accueil.stat.collections"), stats.collections],
-            ["Formats", "A4 · A3"],
-            ["Prêtes en", "2 min"],
-          ].map(([label, value]) => (
-            <div class="bg-paper px-6 py-5">
-              <dt class="text-sm text-ink-soft">{label}</dt>
-              <dd class="font-serif text-3xl mt-1">{value}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
-    )
-  }
+  {/* ---------------- Lettre d'information ---------------- */}
+  <section class="mt-16 border-t border-ink/10">
+    <div class="mx-auto max-w-[1200px] px-6 py-14 text-center lg:px-12">
+      <h2 class="text-2xl">{lettreTitre}</h2>
+      <Newsletter client:visible langue={langue} />
+    </div>
+  </section>
 </Base>

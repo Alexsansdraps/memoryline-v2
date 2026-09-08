@@ -320,6 +320,39 @@ app.get("/views", async (c) => {
   return c.json(rows);
 });
 
+/**
+ * Inscription à la lettre d'information. Publique, forcément : c'est un
+ * visiteur qui la remplit. Une adresse déjà inscrite renvoie le même succès —
+ * lui dire « déjà inscrite » révélerait qui est dans la liste.
+ */
+app.post("/newsletter", async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  const email = String(b.email ?? "").trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 200)
+    return c.json({ error: "adresse invalide" }, 400);
+  const langue = String(b.langue ?? "").slice(0, 5) || null;
+  await db
+    .insert(schema.newsletterSubscribers)
+    .values({ email, langue })
+    .onConflictDoNothing();
+  return c.json({ ok: true });
+});
+
+app.get("/admin/newsletter", async (c) => {
+  const rows = await db
+    .select()
+    .from(schema.newsletterSubscribers)
+    .orderBy(desc(schema.newsletterSubscribers.createdAt));
+  return c.json(rows);
+});
+
+app.delete("/admin/newsletter/:id", async (c) => {
+  await db
+    .delete(schema.newsletterSubscribers)
+    .where(eq(schema.newsletterSubscribers.id, Number(c.req.param("id"))));
+  return c.json({ ok: true });
+});
+
 app.get("/promos", async (c) => {
   const now = new Date();
   const rows = await db

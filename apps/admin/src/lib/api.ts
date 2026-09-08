@@ -110,6 +110,14 @@ export interface CompteAdmin {
   moi: boolean;
 }
 
+/** Adresse laissée dans le formulaire de la lettre d'information. */
+export interface Inscrit {
+  id: number;
+  email: string;
+  langue: string | null;
+  createdAt: string;
+}
+
 export interface OrderRow {
   id: number;
   number: string;
@@ -268,6 +276,10 @@ export function adminApi(request?: Request) {
     deleteFrame: (id: number) =>
       req<{ ok: boolean }>("DELETE", `/admin/frames/${id}`, undefined, cookie),
 
+    subscribers: () =>
+      req<Inscrit[]>("GET", "/admin/newsletter", undefined, cookie),
+    deleteSubscriber: (id: number) =>
+      req<{ ok: boolean }>("DELETE", `/admin/newsletter/${id}`, undefined, cookie),
     users: () => req<CompteAdmin[]>("GET", "/admin/users", undefined, cookie),
     upsertUser: (data: {
       id?: number;

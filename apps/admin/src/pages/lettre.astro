@@ -1,0 +1,137 @@
+---
+import Admin from "../layouts/Admin.astro";
+import { adminApi, type Inscrit } from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+function leJour(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return "";
+  }
+}
+
+let flash: string | null = null;
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  try {
+    await api.deleteSubscriber(Number(f.get("id")));
+    flash = "Adresse retirée de la liste.";
+  } catch (e) {
+    flash = "Erreur : " + String(e);
+  }
+}
+
+let inscrits: Inscrit[] = [];
+let error: string | null = null;
+try {
+  inscrits = await api.subscribers();
+} catch (e) {
+  error = String(e);
+}
+
+/** Toutes les adresses, séparées par des virgules — prêtes à coller. */
+const listeCollable = inscrits.map((i) => i.email).join(", ");
+---
+
+<Admin title="Lettre d'information">
+  {flash && (
+    <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">
+      {flash}
+    </p>
+  )}
+  {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
+
+  <p class="mb-6 text-sm text-bo-muted max-w-3xl">
+    Les adresses laissées dans le formulaire en bas de l'accueil, la plus
+    récente en tête. Rien ne leur est envoyé automatiquement : c'est une
+    liste, à vous d'écrire quand vous le souhaitez.
+  </p>
+
+  <div class="mb-4 flex flex-wrap items-center gap-3 text-sm">
+    <strong>{inscrits.length}</strong>
+    <span class="text-bo-muted">
+      inscrit{inscrits.length > 1 ? "s" : ""}
+    </span>
+    {inscrits.length > 0 && (
+      <button
+        type="button"
+        id="copier"
+        class="rounded border border-bo-border px-3 py-1.5"
+        data-liste={listeCollable}
+      >
+        Copier toutes les adresses
+      </button>
+    )}
+    <span id="copie-ok" class="text-xs text-bo-muted"></span>
+  </div>
+
+  <section class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-bo-bg text-left">
+        <tr>
+          <th class="px-4 py-2">Adresse</th>
+          <th class="px-4 py-2 w-24">Langue</th>
+          <th class="px-4 py-2 w-32">Inscrite le</th>
+          <th class="px-2 py-2 w-10"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {inscrits.map((i) => (
+          <tr class="border-t border-bo-border">
+            <td class="px-4 py-2">{i.email}</td>
+            <td class="px-4 py-2 text-bo-muted">{i.langue ?? "—"}</td>
+            <td class="px-4 py-2 text-bo-muted">{leJour(i.createdAt)}</td>
+            <td class="px-2 py-2 text-right">
+              <form method="POST" class="js-retirer inline" data-nom={i.email}>
+                <input type="hidden" name="id" value={i.id} />
+                <button
+                  class="rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-red-300 hover:text-red-700"
+                  aria-label={`Retirer ${i.email}`}
+                  title="Retirer de la liste"
+                >
+                  ✕
+                </button>
+              </form>
+            </td>
+          </tr>
+        ))}
+        {inscrits.length === 0 && !error && (
+          <tr>
+            <td class="px-4 py-6 text-bo-muted" colspan="4">
+              Personne pour le moment.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </section>
+
+  <script is:inline>
+    document.getElementById("copier")?.addEventListener("click", async (e) => {
+      const liste = e.currentTarget.getAttribute("data-liste") || "";
+      const dit = document.getElementById("copie-ok");
+      try {
+        await navigator.clipboard.writeText(liste);
+        dit.textContent = "Copié.";
+      } catch {
+        // Presse-papiers refusé (page non sécurisée, permission) : on montre
+        // la liste pour qu'elle reste copiable à la main.
+        dit.textContent = "Copie refusée par le navigateur.";
+        window.prompt("Adresses :", liste);
+      }
+    });
+
+    document.querySelectorAll("form.js-retirer").forEach((f) => {
+      f.addEventListener("submit", (ev) => {
+        const nom = f.getAttribute("data-nom") || "cette adresse";
+        if (!confirm(`Retirer « ${nom} » de la liste ?`)) ev.preventDefault();
+      });
+    });
+  </script>
+</Admin>

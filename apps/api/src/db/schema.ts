@@ -479,6 +479,27 @@ export const sessions = pgTable("session", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
 
+/**
+ * Inscrits à la lettre d'information — le formulaire du bas de l'accueil.
+ *
+ * Une adresse ne s'inscrit qu'une fois (index unique) : réenvoyer le
+ * formulaire ne crée pas de doublon et n'a pas à être signalé comme une
+ * erreur au visiteur.
+ */
+export const newsletterSubscribers = pgTable(
+  "newsletter_subscriber",
+  {
+    id: serial("id").primaryKey(),
+    email: text("email").notNull(),
+    /** Langue du site au moment de l'inscription, pour écrire dans la sienne. */
+    langue: text("langue"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [uniqueIndex("newsletter_subscriber_email_uniq").on(t.email)],
+);
+
 export const redirects = pgTable(
   "redirect",
   {
