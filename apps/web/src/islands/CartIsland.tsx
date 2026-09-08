@@ -126,6 +126,55 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
     }
   });
 
+  /**
+   * Cadres du catalogue : la configuration ne garde que l'identifiant du
+   * cadre choisi, il faut le catalogue pour l'écrire en toutes lettres.
+   */
+  const [cadres] = createResource(async () => {
+    try {
+      return await browserApi.frames();
+    } catch {
+      return [];
+    }
+  });
+
+  /**
+   * Dimensions imprimées, en clair. Le client reconnaît « 21 × 29,7 cm »
+   * mieux que « A4 » — c'est ce que faisait l'ancien site.
+   */
+  const DIMENSIONS: Record<string, string> = {
+    A4: "21 × 29,7 cm",
+    A3: "29,7 × 42 cm",
+  };
+
+  /**
+   * Ce qu'il y a dans l'affiche, en phrases lisibles. L'ancien site déversait
+   * ici le JSON de la configuration : illisible, et il donnait à voir des
+   * URLs et des identifiants internes.
+   */
+  function details(it: OrderItem): string[] {
+    const out: string[] = [];
+    const format = it.config.format ?? "A4";
+    out.push(
+      `${tr("panier.format")} : ${format}${DIMENSIONS[format] ? ` (${DIMENSIONS[format]})` : ""}`,
+    );
+    const cadre = (cadres() ?? []).find(
+      (c) => String(c.id) === String(it.config.frameId),
+    );
+    out.push(
+      `${tr("panier.cadre")} : ${cadre ? cadre.name : tr("panier.sans_cadre")}`,
+    );
+    const titre = it.config.texts?.title?.value;
+    const sousTitre = it.config.texts?.subtitle?.value;
+    if (titre) out.push(sousTitre ? `« ${titre} — ${sousTitre} »` : `« ${titre} »`);
+    const n = it.config.characters?.length ?? 0;
+    if (n > 0)
+      out.push(
+        `${n} ${n > 1 ? tr("panier.personnages") : tr("panier.personnage")}`,
+      );
+    return out;
+  }
+
   /** Sous-total (somme des lignes, sans remise). */
   const subtotal = () =>
     (cart()?.items ?? []).reduce(
@@ -159,6 +208,26 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
   function editHref(it: OrderItem): string | null {
     const slug = it.productId != null ? cart()?.slugs.get(it.productId) : null;
     return slug ? `/affiches/${slug}?edit=${it.id}` : null;
+  }
+
+  /**
+   * Change la quantité d'une ligne. On repasse la configuration telle quelle :
+   * le serveur recalcule le prix unitaire lui-même, le navigateur n'a jamais
+   * son mot à dire sur un montant.
+   */
+  async function setQuantite(it: OrderItem, quantite: number) {
+    const q = Math.max(1, Math.min(99, quantite));
+    if (q === it.quantity) return;
+    setBusy(it.id);
+    try {
+      await browserApi.updateCartItem(getCartId(), it.id, {
+        config: it.config,
+        quantity: q,
+      });
+      await refetch();
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function remove(it: OrderItem) {
@@ -211,116 +280,156 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
       </Show>
 
       <Show when={cart() && cart()!.items.length > 0}>
-        <ul class="space-y-4">
+        {/* Trois colonnes comme sur une facture : ce qu'on achète, combien,
+            pour quel montant. Sur mobile, la quantité et le total passent
+            sous la description plutôt que de serrer trois colonnes. */}
+        <div class="hidden sm:grid grid-cols-[1fr_auto_7rem] gap-4 border-b border-ink/15 pb-3 text-xs uppercase tracking-[0.08em] text-ink-soft">
+          <span>{tr("panier.produit")}</span>
+          <span class="text-center">{tr("panier.quantite")}</span>
+          <span class="text-right">{tr("panier.total_ligne")}</span>
+        </div>
+
+        <ul>
           <For each={cart()!.items}>
             {(it) => {
               const href = editHref(it);
-              const charCount = it.config.characters?.length ?? 0;
               return (
-                <li class="flex flex-col sm:flex-row gap-4 rounded-2xl border border-ink/10 bg-paper p-4">
-                  <div class="ml-panier-vignette w-full sm:w-28 shrink-0">
-                    {/* L'aperçu du configurateur, à l'identique : fond,
-                        personnages et textes tels que le client les a
-                        composés. Même composant des deux côtés, donc les
-                        deux rendus ne peuvent pas diverger. */}
-                    <Show
-                      when={biblio()}
-                      fallback={
-                        <div class="ml-skeleton aspect-[1/1.4142] w-full sm:w-28" />
-                      }
-                    >
-                      <PosterPreview
-                        state={stateFromConfig(it.config)}
-                        characterById={personnageParId}
-                        slots={biblio()!.slots}
-                        cache={cache}
-                        assetBaseUrl={PUBLIC_API_URL}
-                        foregroundUrl={
-                          // Le décor est enregistré dans la configuration au
-                          // moment de l'ajout au panier. Les lignes ajoutées
-                          // AVANT que le décor devienne une donnée du type
-                          // n'en ont pas : pour elles, la vue de dos vaut
-                          // toujours muret, sinon leur aperçu changerait.
-                          urlAsset(
-                            PUBLIC_API_URL,
-                            it.config.foregroundUrl ||
-                              (it.config.view === "back"
-                                ? "/assets/muret_officiel.svg"
-                                : ""),
-                          ) || undefined
-                        }
-                      />
-                    </Show>
-                  </div>
+                <li class="grid gap-4 border-b border-ink/10 py-6 sm:grid-cols-[1fr_auto_7rem] sm:items-start">
+                  <div class="flex gap-4 min-w-0">
+                    <div class="ml-panier-vignette w-20 shrink-0 sm:w-24">
+                      {/* L'aperçu du configurateur, à l'identique : fond,
+                          personnages et textes tels que le client les a
+                          composés. Même composant des deux côtés, donc les
+                          deux rendus ne peuvent pas diverger. */}
+                      <Show
+                        when={biblio()}
+                        fallback={<div class="ml-skeleton aspect-[1/1.4142] w-full" />}
+                      >
+                        <PosterPreview
+                          state={stateFromConfig(it.config)}
+                          characterById={personnageParId}
+                          slots={biblio()!.slots}
+                          cache={cache}
+                          assetBaseUrl={PUBLIC_API_URL}
+                          foregroundUrl={
+                            // Le décor est enregistré dans la configuration au
+                            // moment de l'ajout au panier. Les lignes ajoutées
+                            // AVANT que le décor devienne une donnée du type
+                            // n'en ont pas : pour elles, la vue de dos vaut
+                            // toujours muret, sinon leur aperçu changerait.
+                            urlAsset(
+                              PUBLIC_API_URL,
+                              it.config.foregroundUrl ||
+                                (it.config.view === "back"
+                                  ? "/assets/muret_officiel.svg"
+                                  : ""),
+                            ) || undefined
+                          }
+                        />
+                      </Show>
+                    </div>
 
-                  <div class="flex-1 min-w-0">
-                    <h2 class="font-serif text-xl">
-                      {it.title ?? "Affiche personnalisée"}
-                    </h2>
-                    <p class="mt-1 text-sm text-ink-soft">
-                      Format {it.config.format ?? "A4"}
-                      {charCount > 0
-                        ? ` · ${charCount} personnage${charCount > 1 ? "s" : ""}`
-                        : ""}
-                      {it.config.texts?.title?.value
-                        ? ` · « ${it.config.texts.title.value} »`
-                        : ""}
-                    </p>
-                    <p class="mt-2">{formatPrice(it.unitPriceCents)}</p>
-
-                    <div class="mt-3 flex flex-wrap gap-3 text-sm">
+                    <div class="min-w-0">
+                      <h2 class="font-serif text-lg leading-tight">
+                        {it.title ?? "Affiche personnalisée"}
+                      </h2>
+                      <p class="mt-1 text-sm">{formatPrice(it.unitPriceCents)}</p>
+                      <ul class="mt-2 space-y-0.5 text-sm text-ink-soft">
+                        <For each={details(it)}>{(d) => <li>{d}</li>}</For>
+                      </ul>
                       <Show when={href}>
                         <a
                           href={href!}
-                          class="rounded-full border border-ink/20 px-4 py-2 font-medium hover:border-ink transition-colors"
+                          class="mt-2 inline-block text-sm underline underline-offset-4 hover:text-terracotta transition-colors"
                         >
                           {tr("panier.modifier")}
                         </a>
                       </Show>
-                      <button
-                        type="button"
-                        onClick={() => remove(it)}
-                        disabled={busy() === it.id}
-                        class="rounded-full border border-terracotta/40 px-4 py-2 font-medium text-terracotta-deep hover:bg-terracotta/10 transition-colors disabled:opacity-60"
-                      >
-                        {busy() === it.id ? "…" : tr("panier.supprimer")}
-                      </button>
                     </div>
                   </div>
 
-                  <div class="shrink-0 text-right">
-                    <p class="text-sm text-ink-soft">{tr("panier.quantite")} {it.quantity}</p>
-                    <p class="mt-1 font-medium">
-                      {formatPrice(it.unitPriceCents * it.quantity)}
-                    </p>
+                  <div class="flex items-center gap-3 sm:justify-center">
+                    <div class="inline-flex items-center rounded-md border border-ink/20">
+                      <button
+                        type="button"
+                        onClick={() => setQuantite(it, it.quantity - 1)}
+                        disabled={busy() === it.id || it.quantity <= 1}
+                        aria-label={tr("panier.moins")}
+                        class="px-3 py-2 text-lg leading-none hover:bg-paper-deep disabled:opacity-40 transition-colors"
+                      >
+                        −
+                      </button>
+                      <span class="w-10 text-center tabular-nums">
+                        {it.quantity}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setQuantite(it, it.quantity + 1)}
+                        disabled={busy() === it.id}
+                        aria-label={tr("panier.plus")}
+                        class="px-3 py-2 text-lg leading-none hover:bg-paper-deep disabled:opacity-40 transition-colors"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => remove(it)}
+                      disabled={busy() === it.id}
+                      aria-label={tr("panier.retirer_ligne")}
+                      title={tr("panier.supprimer")}
+                      class="rounded-md p-2 text-ink-soft hover:text-terracotta-deep disabled:opacity-40 transition-colors"
+                    >
+                      {/* Corbeille : le geste est assez courant pour se passer
+                          de mot, mais il garde son intitulé pour les lecteurs
+                          d'écran et au survol. */}
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        stroke-linecap="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+                      </svg>
+                    </button>
                   </div>
+
+                  <p class="font-medium sm:text-right">
+                    {formatPrice(it.unitPriceCents * it.quantity)}
+                  </p>
                 </li>
               );
             }}
           </For>
         </ul>
 
-        <div class="mt-8 border-t border-ink/10 pt-6">
-          <Show when={discount().amount > 0}>
-            <div class="flex items-center justify-between text-sm text-ink-soft mb-2">
-              <span>Sous-total</span>
-              <span>{formatPrice(subtotal())}</span>
-            </div>
-            <div class="flex items-center justify-between text-sm text-sage mb-3">
-              <span>✨ {discount().label}</span>
-              <span>− {formatPrice(discount().amount)}</span>
-            </div>
-          </Show>
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <p class="text-lg">
-              {tr("panier.total")}{" "}
+        {/* Totaux, alignés à droite comme sur une facture. */}
+        <div class="mt-8 flex justify-end">
+          <div class="w-full max-w-sm text-right">
+            <Show when={discount().amount > 0}>
+              <div class="flex items-center justify-between text-sm text-ink-soft">
+                <span>{tr("panier.sous_total")}</span>
+                <span>{formatPrice(subtotal())}</span>
+              </div>
+              <div class="mt-1 flex items-center justify-between text-sm text-sage">
+                <span>✨ {discount().label}</span>
+                <span>− {formatPrice(discount().amount)}</span>
+              </div>
+            </Show>
+            <div class="mt-3 flex items-center justify-end gap-4">
+              <span class="text-ink-soft">{tr("panier.total_estime")}</span>
               <span class="font-serif text-2xl">{formatPrice(total())}</span>
-            </p>
+            </div>
+            <p class="mt-2 text-xs text-ink-soft">{tr("panier.taxes")}</p>
             <a
               href="/commande"
-              class="rounded-full bg-terracotta px-8 py-3 text-paper font-medium text-center hover:bg-terracotta-deep transition-colors"
+              class="mt-4 block rounded-md bg-ink px-8 py-4 text-center font-medium text-paper hover:bg-ink-soft transition-colors"
             >
-              {tr("panier.commander")}
+              {tr("panier.payer")}
             </a>
           </div>
         </div>

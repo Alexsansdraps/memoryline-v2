@@ -22,7 +22,17 @@ const tr = t(langue);
         >{tr("nav.affiches")}</a
       >
     </nav>
-    <h1 class="font-serif text-4xl sm:text-5xl mt-4 mb-8">{tr("panier.titre")}</h1>
+    {/* Titre et retour à la boutique sur la même ligne : le client garde
+        sous les yeux la sortie qui ne vide pas son panier. */}
+    <div class="mt-4 mb-8 flex flex-wrap items-baseline justify-between gap-4">
+      <h1 class="font-serif text-4xl sm:text-5xl">{tr("panier.titre")}</h1>
+      <a
+        href={lien(langue, "/affiches")}
+        class="text-sm underline underline-offset-4 hover:text-terracotta transition-colors"
+      >
+        {tr("panier.continuer")}
+      </a>
+    </div>
 
     <CartIsland client:only="solid-js" langue={langue} />
   </section>
