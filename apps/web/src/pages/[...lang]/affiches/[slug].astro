@@ -9,6 +9,7 @@ import {
 } from "../../../lib/api.ts";
 import ProductConfigurator from "../../../islands/ProductConfigurator.tsx";
 import AddToCartButton from "../../../islands/AddToCartButton.tsx";
+import AfficheIA from "../../../islands/AfficheIA.tsx";
 import {
   estLangue,
   langueDepuisParam,
@@ -145,7 +146,24 @@ const breadcrumbLd = {
       </div>
 
       {
-        product.kind === "personnalisable" ? (
+        /* Une affiche IA n'est pas un autre genre de produit : c'est une
+           affiche ordinaire dont la fiche remplace le configurateur par
+           l'envoi d'une photo. Le drapeau prime donc sur le genre. */
+        product.aiEnabled ? (
+          <AfficheIA
+            langue={langue}
+            client:only="solid-js"
+            product={{
+              id: product.id,
+              name: cleanName,
+              basePriceCents: minPrice,
+            }}
+            formats={product.variants.map((v) => ({
+              format: v.format,
+              priceCents: v.priceCents,
+            }))}
+          />
+        ) : product.kind === "personnalisable" ? (
           <ProductConfigurator
             langue={langue}
             client:only="solid-js"
@@ -159,8 +177,11 @@ const breadcrumbLd = {
             )}
             foregroundUrl={product.foregroundUrl ?? null}
             defaults={{
-              title: product.defaultTitle ?? null,
-              subtitle: product.defaultSubtitle ?? null,
+              lignes: [
+                product.defaultTitle ?? null,
+                product.defaultSubtitle ?? null,
+                product.defaultLine3 ?? null,
+              ],
               view: product.defaultView ?? null,
             }}
           />

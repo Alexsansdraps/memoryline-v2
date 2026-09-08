@@ -27,7 +27,7 @@ import {
   verifyPassword,
   purgeExpiredSessions,
 } from "./auth.js";
-import { normaliserCode } from "@memoryline/types";
+import { formaterPoids, normaliserCode } from "@memoryline/types";
 import {
   estConfigure as mondialRelayConfigure,
   rechercherPointsRelais,
@@ -45,6 +45,10 @@ function transporteurConfigure(carrier: string | null | undefined): boolean {
   return false;
 }
 import { mountConfiguratorRoutes } from "./configurator-routes.js";
+import { mountOrderRoutes } from "./commandes.js";
+import { mountCatalogueRoutes } from "./catalogue.js";
+import { mountCompteRoutes } from "./comptes.js";
+import { mountIaRoutes } from "./ia.js";
 
 const app = new Hono();
 const isProd = process.env.NODE_ENV === "production";
@@ -73,6 +77,36 @@ app.use(
     allowHeaders: ["Content-Type"],
   }),
 );
+
+// === Back-office — PROTÉGÉ ================================================
+// Toute requête /admin/* exige une session valide, et les ÉCRITURES exigent
+// en plus le rôle « owner ».
+//
+// Ce garde est déclaré ICI, AVANT la moindre route, et c'est essentiel : Hono
+// n'applique un middleware qu'aux routes déclarées APRÈS lui. Placé plus bas,
+// il laissait passer sans session tout ce qui était écrit au-dessus — les
+// adresses de la lettre d'information et la grille tarifaire, entre autres.
+// Toute nouvelle route /admin/* est désormais couverte par construction.
+//
+// Règle volontairement simple, donc difficile à contourner par oubli : toute
+// méthode autre que GET est réservée au propriétaire. Un « seller » consulte
+// le catalogue, les commandes et télécharge les PDF d'impression, mais ne peut
+// modifier ni les produits, ni les personnages, ni les prix, ni les promotions,
+// ni le contenu du site. Énumérer les routes à protéger une par une aurait
+// laissé passer la prochaine route ajoutée.
+const OWNER_ROLE = "owner";
+
+app.use("/admin/*", async (c, next) => {
+  const user = await validateSession(getCookie(c, SESSION_COOKIE));
+  if (!user) return c.json({ error: "Non authentifié" }, 401);
+  if (c.req.method !== "GET" && user.role !== OWNER_ROLE) {
+    return c.json(
+      { error: "Action réservée au propriétaire du compte" },
+      403,
+    );
+  }
+  await next();
+});
 
 // Images/SVG rapatriés depuis Shopify (cf. scripts/fetch-assets.ts).
 // Servis depuis data/assets/ à la racine du repo. On lit le fichier
@@ -277,11 +311,19 @@ app.get("/products/:slug", async (c) => {
     name: product.name,
     description: product.description,
     kind: product.kind,
+    /**
+     * Affiche tirée d'une photo du client. Ce n'est pas un autre genre de
+     * produit : c'est une affiche ordinaire dont la fiche remplace le
+     * configurateur par l'envoi d'une photo — d'où le drapeau à côté de
+     * `kind` plutôt qu'une valeur de plus dedans.
+     */
+    aiEnabled: product.aiEnabled,
     basePriceCents: product.basePriceCents,
     images: images.map((i) => i.url),
     // Réglages configurateur par défaut (repris de l'ancien site, éditables BO).
     defaultTitle: product.defaultTitle,
     defaultSubtitle: product.defaultSubtitle,
+    defaultLine3: product.defaultLine3,
     defaultView: product.defaultView,
     // Décor de premier plan EFFECTIF : celui du produit s'il en a un, sinon
     // celui de son type d'affiche (le muret de la vue de dos, par exemple).
@@ -447,6 +489,8 @@ app.get("/shipping", async (c) => {
       zoneId: t.zoneId,
       priceCents: t.priceCents,
       freeFromCents: t.freeFromCents,
+      minWeightGrams: t.minWeightGrams,
+      maxWeightGrams: t.maxWeightGrams,
       active: t.active,
     })),
   });
@@ -483,34 +527,74 @@ app.post("/admin/shipping/methods/:id", async (c) => {
   return c.json(row);
 });
 
-/** Modifie un tarif (prix, franchise de port, disponibilité dans la zone). */
+/** Montant en centimes, ou null quand le champ est laissé vide. */
+function centimesOuNull(v: unknown): number | null {
+  if (v === null || v === "" || v === undefined) return null;
+  return Math.max(0, Math.round(Number(v)));
+}
+
+/**
+ * Bornes d'une tranche de poids, en grammes : de `min` inclus à `max` exclu.
+ * Null en haut = pas de limite. Renvoie un message quand la tranche n'a pas
+ * de sens — une borne haute sous la borne basse ne facturerait jamais rien.
+ */
+function trancheLue(
+  brut: { minWeightGrams?: unknown; maxWeightGrams?: unknown },
+): { min: number; max: number | null } | string {
+  const min = Math.round(Number(brut.minWeightGrams ?? 0));
+  if (!Number.isFinite(min) || min < 0) return "poids minimum invalide";
+  const brutMax = brut.maxWeightGrams;
+  if (brutMax === null || brutMax === "" || brutMax === undefined)
+    return { min, max: null };
+  const max = Math.round(Number(brutMax));
+  if (!Number.isFinite(max) || max <= min)
+    return "le poids maximum doit dépasser le poids minimum";
+  return { min, max };
+}
+
+/**
+ * Modifie un tarif (prix, franchise de port, tranche de poids, disponibilité).
+ *
+ * L'unicité porte sur (mode, zone, poids minimum) : réenvoyer une tranche
+ * déjà connue la met à jour, en poser une nouvelle l'ajoute à la grille.
+ */
 app.post("/admin/shipping/rates", async (c) => {
   const b = await c.req.json();
   const methodId = Number(b.methodId);
   const zoneId = Number(b.zoneId);
   if (!Number.isFinite(methodId) || !Number.isFinite(zoneId))
     return c.json({ error: "mode et zone requis" }, 400);
+  const tranche = trancheLue(b);
+  if (typeof tranche === "string") return c.json({ error: tranche }, 400);
   const valeurs = {
     priceCents: Math.max(0, Math.round(Number(b.priceCents ?? 0))),
-    freeFromCents:
-      b.freeFromCents === null || b.freeFromCents === "" || b.freeFromCents === undefined
-        ? null
-        : Math.max(0, Math.round(Number(b.freeFromCents))),
+    freeFromCents: centimesOuNull(b.freeFromCents),
+    minWeightGrams: tranche.min,
+    maxWeightGrams: tranche.max,
     active: b.active !== false,
   };
-  const [existant] = await db
-    .select({ id: schema.shippingRates.id })
-    .from(schema.shippingRates)
-    .where(
-      and(
-        eq(schema.shippingRates.methodId, methodId),
-        eq(schema.shippingRates.zoneId, zoneId),
-      ),
-    );
+  // L'identifiant explicite l'emporte : il permet de DÉPLACER la borne basse
+  // d'une tranche existante, ce que la recherche par (mode, zone, poids) ne
+  // saurait pas faire — elle en créerait une seconde à côté.
+  const [existant] = b.id
+    ? await db
+        .select({ id: schema.shippingRates.id })
+        .from(schema.shippingRates)
+        .where(eq(schema.shippingRates.id, Number(b.id)))
+    : await db
+        .select({ id: schema.shippingRates.id })
+        .from(schema.shippingRates)
+        .where(
+          and(
+            eq(schema.shippingRates.methodId, methodId),
+            eq(schema.shippingRates.zoneId, zoneId),
+            eq(schema.shippingRates.minWeightGrams, tranche.min),
+          ),
+        );
   if (existant) {
     const [row] = await db
       .update(schema.shippingRates)
-      .set(valeurs)
+      .set({ methodId, zoneId, ...valeurs })
       .where(eq(schema.shippingRates.id, existant.id))
       .returning();
     return c.json(row);
@@ -520,6 +604,136 @@ app.post("/admin/shipping/rates", async (c) => {
     .values({ methodId, zoneId, ...valeurs })
     .returning();
   return c.json(row);
+});
+
+/** Retire une tranche de la grille. */
+app.delete("/admin/shipping/rates/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) return c.json({ error: "identifiant invalide" }, 400);
+  await db.delete(schema.shippingRates).where(eq(schema.shippingRates.id, id));
+  return c.json({ ok: true });
+});
+
+/**
+ * Remplace TOUTE la grille tarifaire d'un mode dans une zone.
+ *
+ * Saisir tranche par tranche laissait vivre les anciennes bornes à côté des
+ * nouvelles ; on repart donc de zéro à chaque enregistrement.
+ *
+ * Une grille est refusée si elle laisse un trou ou si deux tranches se
+ * chevauchent : un trou, c'est un colis d'un certain poids que plus personne
+ * ne sait livrer, et mieux vaut l'apprendre à la saisie qu'au moment où un
+ * client ne peut plus commander. Une grille VIDE reste permise : elle dit que
+ * le mode ne dessert pas cette zone.
+ */
+app.post("/admin/shipping/rates/grille", async (c) => {
+  const b = await c.req.json();
+  const methodId = Number(b.methodId);
+  const zoneId = Number(b.zoneId);
+  if (!Number.isFinite(methodId) || !Number.isFinite(zoneId))
+    return c.json({ error: "mode et zone requis" }, 400);
+  const freeFromCents = centimesOuNull(b.freeFromCents);
+  const brutes = Array.isArray(b.tranches) ? b.tranches : [];
+
+  const tranches: { min: number; max: number | null; priceCents: number }[] = [];
+  for (const brute of brutes) {
+    const bornes = trancheLue(brute);
+    if (typeof bornes === "string") return c.json({ error: bornes }, 400);
+    tranches.push({
+      ...bornes,
+      priceCents: Math.max(0, Math.round(Number(brute.priceCents ?? 0))),
+    });
+  }
+  tranches.sort((a, z) => a.min - z.min);
+
+  for (const [i, t] of tranches.entries()) {
+    const attendu = i === 0 ? 0 : tranches[i - 1]!.max;
+    if (attendu === null)
+      return c.json(
+        { error: "une tranche sans limite haute doit être la dernière" },
+        400,
+      );
+    if (t.min !== attendu)
+      return c.json(
+        {
+          error:
+            t.min > attendu
+              ? `trou dans la grille : rien ne couvre ${formaterPoids(attendu)} à ${formaterPoids(t.min)}`
+              : `tranches qui se chevauchent à partir de ${formaterPoids(t.min)}`,
+        },
+        400,
+      );
+  }
+
+  const count = await db.transaction(async (tx) => {
+    await tx
+      .delete(schema.shippingRates)
+      .where(
+        and(
+          eq(schema.shippingRates.methodId, methodId),
+          eq(schema.shippingRates.zoneId, zoneId),
+        ),
+      );
+    if (tranches.length === 0) return 0;
+    const posees = await tx
+      .insert(schema.shippingRates)
+      .values(
+        tranches.map((t) => ({
+          methodId,
+          zoneId,
+          priceCents: t.priceCents,
+          freeFromCents,
+          minWeightGrams: t.min,
+          maxWeightGrams: t.max,
+          active: true,
+        })),
+      )
+      .returning({ id: schema.shippingRates.id });
+    return posees.length;
+  });
+  return c.json({ ok: true, count });
+});
+
+/**
+ * Bornes de poids HABITUELLES de Colissimo et Mondial Relay, sans prix.
+ *
+ * C'est une aide à la saisie, pas une vérité contractuelle : les transporteurs
+ * n'exposent aucune API de tarifs, et les paliers négociés par la cliente
+ * peuvent différer. Elle doit confronter ces bornes à sa propre grille avant
+ * de les remplir — seuls ses prix à elle font foi.
+ */
+app.get("/admin/shipping/tranches-standard", (c) => {
+  const bornes = (paliers: (number | null)[]) => {
+    const tranches: {
+      minWeightGrams: number;
+      maxWeightGrams: number | null;
+      label: string;
+    }[] = [];
+    let min = 0;
+    for (const max of paliers) {
+      tranches.push({
+        minWeightGrams: min,
+        maxWeightGrams: max,
+        label:
+          max === null
+            ? `plus de ${formaterPoids(min)}`
+            : min === 0
+              ? `jusqu'à ${formaterPoids(max)}`
+              : `${formaterPoids(min)} à ${formaterPoids(max)}`,
+      });
+      if (max === null) break;
+      min = max;
+    }
+    return tranches;
+  };
+  return c.json({
+    colissimo: bornes([
+      250, 500, 750, 1000, 2000, 5000, 10000, 15000, 30000,
+    ]),
+    mondial_relay: bornes([
+      500, 1000, 2000, 3000, 5000, 7000, 10000, 15000, 20000, 25000, 30000,
+    ]),
+  });
 });
 
 /** Modifie une zone : son nom et la liste des pays qu'elle couvre. */
@@ -680,86 +894,30 @@ app.get("/auth/me", async (c) => {
   return c.json({ user: { email: user.email, role: user.role } });
 });
 
-// === Back-office — PROTÉGÉ ================================================
-// Toute requête /admin/* exige une session valide, et les ÉCRITURES exigent
-// en plus le rôle « owner ».
-//
-// Règle volontairement simple, donc difficile à contourner par oubli : toute
-// méthode autre que GET est réservée au propriétaire. Un « seller » consulte
-// le catalogue, les commandes et télécharge les PDF d'impression, mais ne peut
-// modifier ni les produits, ni les personnages, ni les prix, ni les promotions,
-// ni le contenu du site. Énumérer les routes à protéger une par une aurait
-// laissé passer la prochaine route ajoutée.
-const OWNER_ROLE = "owner";
-
-app.use("/admin/*", async (c, next) => {
-  const user = await validateSession(getCookie(c, SESSION_COOKIE));
-  if (!user) return c.json({ error: "Non authentifié" }, 401);
-  if (c.req.method !== "GET" && user.role !== OWNER_ROLE) {
-    return c.json(
-      { error: "Action réservée au propriétaire du compte" },
-      403,
-    );
-  }
-  await next();
-});
 
 // Routes configurateur / panier / commandes web / PDF / CRUD personnages.
 // Montées ici : les routes /admin/* qu'elles déclarent passent par le
 // middleware d'auth ci-dessus ; les routes publiques (/characters, /cart…)
 // ne sont pas concernées.
+// Commandes AVANT le configurateur : celui-ci déclare « /admin/orders/:id »,
+// qui avalerait sinon « /admin/orders/tags » et « /admin/orders/export.csv ».
+// Hono retient la première route déclarée qui correspond.
+mountOrderRoutes(app);
+
+// Catégories de produits et poids d'expédition (apps/api/src/catalogue.ts).
+mountCatalogueRoutes(app);
+
+// Comptes clients : /compte/* pour la boutique, /admin/customers/* pour le BO.
+// Aucune route paramétrée déjà déclarée ne les avale (les /admin/* posées
+// avant portent sur /admin/orders et /admin/fulfillments).
+mountCompteRoutes(app);
+
 mountConfiguratorRoutes(app);
 
-/**
- * Commandes d'un canal donné (séparation §11) — BO uniquement : la liste
- * porte les noms clients et les montants encaissés.
- */
-app.get("/admin/orders", async (c) => {
-  const channel = c.req.query("channel");
-  const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
-  const where =
-    channel === "web" || channel === "salon"
-      ? eq(schema.orders.channel, channel)
-      : undefined;
-  const rows = await db
-    .select({
-      id: schema.orders.id,
-      number: schema.orders.number,
-      channel: schema.orders.channel,
-      status: schema.orders.status,
-      totalCents: schema.orders.totalCents,
-      legacyName: schema.orders.legacyName,
-      createdAt: schema.orders.createdAt,
-      fulfilledAt: schema.orders.fulfilledAt,
-      shippingLabel: schema.orders.shippingLabel,
-      customerName: schema.customers.name,
-    })
-    .from(schema.orders)
-    .leftJoin(schema.customers, eq(schema.orders.customerId, schema.customers.id))
-    .where(where)
-    .orderBy(desc(schema.orders.createdAt))
-    .limit(limit);
-
-  // Nombre d'articles par commande : la liste l'affiche, et le demander
-  // ligne par ligne ferait une requête par commande.
-  const ids = rows.map((r) => r.id);
-  const articles = ids.length
-    ? await db
-        .select({
-          orderId: schema.orderItems.orderId,
-          quantity: schema.orderItems.quantity,
-        })
-        .from(schema.orderItems)
-        .where(inArray(schema.orderItems.orderId, ids))
-    : [];
-  const compte = new Map<number, number>();
-  for (const a of articles)
-    compte.set(a.orderId, (compte.get(a.orderId) ?? 0) + a.quantity);
-
-  return c.json(
-    rows.map((r) => ({ ...r, articles: compte.get(r.id) ?? 0 })),
-  );
-});
+// Affiches générées par IA (apps/api/src/ia.ts) : envoi de la photo, aperçu
+// filigrané, back-office. Monté APRÈS les autres : « /admin/products/:id/ia »
+// ne doit pas être avalé par une route paramétrée déclarée plus haut.
+mountIaRoutes(app);
 
 /**
  * Marque une commande traitée, ou revient en arrière.
@@ -1264,6 +1422,7 @@ app.post("/admin/frames", async (c) => {
   const valeurs = {
     name,
     priceCents: Math.max(0, Math.round(Number(b.priceCents ?? 0))),
+    weightGrams: Math.max(0, Math.round(Number(b.weightGrams ?? 0))),
     previewColor: b.previewColor ? String(b.previewColor) : null,
     active: b.active !== false,
     position: Number(b.position ?? 0),

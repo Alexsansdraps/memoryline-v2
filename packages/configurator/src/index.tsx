@@ -72,8 +72,8 @@ export interface ConfiguratorProps {
   foregroundUrl?: string | null;
   /** Réglages par défaut du produit (pré-remplissage à l'ouverture). */
   defaults?: {
-    title?: string | null;
-    subtitle?: string | null;
+    /** Textes pré-remplis, une entrée par ligne, dans l'ordre. */
+    lignes?: (string | null)[];
     view?: string | null;
   };
   /** Réouverture (panier "edit" §18.3) : restaure tout l'état. */
@@ -106,12 +106,13 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     ? stateFromConfig(props.initialConfig)
     : emptyState();
 
-  // Pré-remplissage depuis les réglages par défaut du produit (titre/sous-titre/
-  // position) — seulement en mode AJOUT (pas en réouverture panier).
+  // Pré-remplissage depuis les réglages par défaut du produit (lignes de texte
+  // et type d'affiche) — seulement en mode AJOUT (pas en réouverture panier).
   if (!props.initialConfig && props.defaults) {
-    if (props.defaults.title) initialState.title.value = props.defaults.title;
-    if (props.defaults.subtitle)
-      initialState.subtitle.value = props.defaults.subtitle;
+    (props.defaults.lignes ?? []).forEach((texte, i) => {
+      const ligne = initialState.lignes[i];
+      if (ligne && texte) ligne.value = texte;
+    });
     // N'importe quel type d'affiche, y compris ceux créés au back-office :
     // filtrer sur une paire figée aurait ignoré tout nouveau type.
     if (props.defaults.view) initialState.view = props.defaults.view;
@@ -233,20 +234,22 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       s.backgroundUrl = bg.url;
     });
   }
-  /** Met à jour SEULEMENT le texte d'un bloc (titre ou sous-titre). */
-  function setTextValue(which: "title" | "subtitle", value: string) {
+  /** Met à jour SEULEMENT le texte d'une ligne. */
+  function setTextValue(ligne: number, value: string) {
     mutate((s) => {
-      s[which].value = value;
+      const l = s.lignes[ligne];
+      if (l) l.value = value;
     });
   }
-  /** Change la police d'UN bloc (titre ou sous-titre), indépendamment. */
-  function setTextFont(which: "title" | "subtitle", font: string) {
+  /** Change la police d'UNE ligne, indépendamment des autres. */
+  function setTextFont(ligne: number, font: string) {
     mutate((s) => {
-      s[which].font = font;
+      const l = s.lignes[ligne];
+      if (l) l.font = font;
     });
   }
 
-  /** Met à jour le STYLE PARTAGÉ (couleur/taille) titre + sous-titre. */
+  /** Met à jour le STYLE PARTAGÉ (couleur/taille) de toutes les lignes. */
   function setTextStyle(
     patch: Partial<{ font: string; color: string; size: number }>,
   ) {

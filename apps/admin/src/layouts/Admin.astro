@@ -22,11 +22,15 @@ interface NavItem {
 const nav: NavItem[] = [
   { href: "/", label: "Accueil", icon: "🏠" },
   { href: "/commandes", label: "Commandes en ligne", icon: "🛒" },
+  { href: "/paniers", label: "Paniers abandonnés", icon: "🛍️" },
+  { href: "/clients", label: "Clients", icon: "👥" },
   { href: "/ventes-salon", label: "Ventes salon", icon: "🎪" },
   { href: "/produits", label: "Produits", icon: "🖼️", owner: true },
   { href: "/cadres", label: "Cadres", icon: "🖼", owner: true },
   { href: "/personnages", label: "Personnages", icon: "🧸", owner: true },
   { href: "/types-affiche", label: "Types d'affiche", icon: "🎭", owner: true },
+  { href: "/ia", label: "Affiches IA", icon: "✨", owner: true },
+  { href: "/categories-produits", label: "Catégories de produits", icon: "📚", owner: true },
   { href: "/categories-pieces", label: "Catégories de pièces", icon: "🎨", owner: true },
   { href: "/promotions", label: "Promotions", icon: "🎟️", owner: true },
   { href: "/livraison", label: "Livraison", icon: "📦", owner: true },
@@ -36,6 +40,13 @@ const nav: NavItem[] = [
   { href: "/comptes", label: "Comptes", icon: "🔑", owner: true },
 ];
 const isOwner = Astro.locals.user?.role === "owner";
+
+/**
+ * Lien vers la boutique. Derrière le proxy, le site est à la racine et le
+ * back-office sous /bo — d'où le chemin absolu, qui ne passe donc PAS par
+ * url() : celui-ci préfixerait la base et renverrait sur le back-office.
+ */
+const lienBoutique = import.meta.env.PUBLIC_SITE_URL ?? "/";
 const allowed = (item: NavItem) => isOwner || !item.owner;
 const visibleNav = nav.filter(allowed).map((item) => ({
   ...item,
@@ -54,14 +65,59 @@ const isActive = (href: string) =>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>{title} · Memory Line Admin</title>
+    {/* Le thème est posé AVANT le premier rendu : appliqué après, la page
+        s'afficherait en clair une fraction de seconde avant de basculer. */}
+    <script is:inline>
+      (function () {
+        var choix = null;
+        try {
+          choix = localStorage.getItem("bo-theme");
+        } catch (e) {
+          /* navigation privée : on retombe sur la préférence du système */
+        }
+        var sombre =
+          choix === "sombre" ||
+          (choix !== "clair" &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = sombre ? "dark" : "light";
+      })();
+    </script>
   </head>
   <body class="min-h-screen">
     <div class="flex min-h-screen">
       <aside
         class="w-60 shrink-0 bg-bo-nav text-white/90 flex flex-col"
       >
-        <div class="px-5 py-4 text-lg font-semibold border-b border-white/10">
-          Memory&nbsp;Line
+        <div
+          class="flex items-center justify-between gap-2 border-b border-white/10 px-5 py-4"
+        >
+          <span class="text-lg font-semibold">Memory&nbsp;Line</span>
+          {/* Voir la boutique, comme dans Shopify : on ouvre dans un autre
+              onglet pour ne pas perdre l'écran en cours de préparation. */}
+          <a
+            href={lienBoutique}
+            target="_blank"
+            rel="noopener"
+            title="Voir la boutique"
+            aria-label="Voir la boutique"
+            class="text-white/45 transition-colors hover:text-white"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M14 4h6v6" />
+              <path d="M20 4 10 14" />
+              <path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" />
+            </svg>
+          </a>
         </div>
         <nav class="flex-1 py-3">
           {
@@ -112,6 +168,42 @@ const isActive = (href: string) =>
         >
           <h1 class="text-base font-semibold">{title}</h1>
           <div class="flex items-center gap-3 text-sm text-bo-muted">
+            {/* Clair / sombre / système. Le choix vit dans le navigateur :
+                l'écran de la boutique et celui du salon n'ont pas la même
+                lumière, il n'y a pas de bon réglage partagé. */}
+            <details class="bo-menu relative">
+              <summary
+                class="rounded border border-bo-border px-2 py-1 hover:bg-bo-bg"
+                title="Apparence"
+              >
+                <span data-theme-icone>◐</span>
+              </summary>
+              <div
+                class="absolute right-0 z-30 mt-1 w-40 rounded-lg border border-bo-border bg-bo-surface py-1 shadow-lg"
+              >
+                <button
+                  type="button"
+                  data-theme-choix="clair"
+                  class="block w-full px-3 py-1.5 text-left hover:bg-bo-bg"
+                >
+                  ☀️ Clair
+                </button>
+                <button
+                  type="button"
+                  data-theme-choix="sombre"
+                  class="block w-full px-3 py-1.5 text-left hover:bg-bo-bg"
+                >
+                  🌙 Sombre
+                </button>
+                <button
+                  type="button"
+                  data-theme-choix="systeme"
+                  class="block w-full px-3 py-1.5 text-left hover:bg-bo-bg"
+                >
+                  ◐ Comme le système
+                </button>
+              </div>
+            </details>
             {Astro.locals.user && <span>{Astro.locals.user.email}</span>}
             <form method="POST" action={url("/logout")}>
               <button class="text-bo-accent hover:underline">Déconnexion</button>
@@ -125,5 +217,49 @@ const isActive = (href: string) =>
         </main>
       </div>
     </div>
+
+    <script is:inline>
+      // Bascule d'apparence. « Système » ne fige rien : la page suit ensuite
+      // le réglage du poste, y compris s'il change en cours de journée.
+      (function () {
+        var media = window.matchMedia("(prefers-color-scheme: dark)");
+        var icone = document.querySelector("[data-theme-icone]");
+        var ICONES = { clair: "☀️", sombre: "🌙", systeme: "◐" };
+
+        function lire() {
+          try {
+            return localStorage.getItem("bo-theme") || "systeme";
+          } catch (e) {
+            return "systeme";
+          }
+        }
+
+        function appliquer(choix) {
+          var sombre = choix === "sombre" || (choix === "systeme" && media.matches);
+          document.documentElement.dataset.theme = sombre ? "dark" : "light";
+          if (icone) icone.textContent = ICONES[choix] || ICONES.systeme;
+        }
+
+        document.querySelectorAll("[data-theme-choix]").forEach(function (b) {
+          b.addEventListener("click", function () {
+            var choix = b.dataset.themeChoix;
+            try {
+              if (choix === "systeme") localStorage.removeItem("bo-theme");
+              else localStorage.setItem("bo-theme", choix);
+            } catch (e) {
+              /* sans stockage, le choix ne tiendra que le temps de la page */
+            }
+            appliquer(choix);
+            b.closest("details")?.removeAttribute("open");
+          });
+        });
+
+        media.addEventListener("change", function () {
+          if (lire() === "systeme") appliquer("systeme");
+        });
+
+        appliquer(lire());
+      })();
+    </script>
   </body>
 </html>

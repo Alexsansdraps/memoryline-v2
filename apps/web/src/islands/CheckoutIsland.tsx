@@ -9,12 +9,22 @@ import {
   type JSX,
 } from "solid-js";
 import {
+  formaterPoids,
   optionsLivraison,
   remisesPanier,
   totalPanierCents,
+  urlAsset,
   type OptionLivraison,
   type RegleParier,
 } from "@memoryline/types";
+import {
+  PosterPreview,
+  createSvgCache,
+  stateFromConfig,
+  SLOTS,
+  findVariant,
+  variantesDeVue,
+} from "@memoryline/configurator";
 
 /**
  * Pays proposés à la livraison. Volontairement court : ceux où la boutique
@@ -43,7 +53,9 @@ import {
   getCartId,
   PUBLIC_API_URL,
 } from "../lib/api.ts";
+import { apercuAbsolu, urlApercu } from "../lib/ia.ts";
 import { codePromoRetenu } from "./CartIsland.tsx";
+import { clientFictif } from "./jeu-essai.ts";
 
 /**
  * Tunnel de commande (§11 — canal web), en DEUX phases :
@@ -120,6 +132,47 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
       (s, it) => s + it.unitPriceCents * it.quantity,
       0,
     );
+  /**
+   * Poids du colis, tel que le serveur l'a pesé. Le refaire ici demanderait
+   * de connaître le poids des variantes, des catégories et des cadres : deux
+   * pesées finiraient par se contredire, et c'est la facture qui aurait
+   * raison. Champ absent (API pas encore à jour) = 0, comme avant.
+   */
+  const poidsColis = () => cart()?.poidsGrammes ?? 0;
+
+  /**
+   * Bibliothèque de personnages : le récapitulatif montre les affiches, pas
+   * seulement leurs noms. Le client doit voir CE QU'IL PAIE avant de payer —
+   * et l'aperçu porte le filigrane jusqu'au règlement.
+   */
+  const [biblio] = createResource(async () => {
+    try {
+      return await browserApi.characters();
+    } catch {
+      return null;
+    }
+  });
+  const { cache, fetchSvg } = createSvgCache(PUBLIC_API_URL);
+  const personnageParId = (id: string | number) =>
+    biblio()?.characters.find((c) => String(c.id) === String(id));
+
+  // Sans ce préchargement, les personnages resteraient absents de l'aperçu.
+  createEffect(() => {
+    const lib = biblio();
+    if (!lib) return;
+    for (const ligne of cart()?.items ?? []) {
+      for (const perso of ligne.config.characters ?? []) {
+        const base = personnageParId(perso.typeId);
+        if (!base) continue;
+        void fetchSvg(base.baseSvgUrl);
+        const jeu = variantesDeVue(lib.slots, base.orientation);
+        for (const slot of SLOTS) {
+          const v = findVariant(jeu[slot], perso.assets?.[slot]);
+          if (v) void fetchSvg(v.svgUrl);
+        }
+      }
+    }
+  });
 
   // Promos actives. Le calcul lui-même vient du moteur PARTAGÉ : plus de
   // réplique locale à maintenir en phase avec le serveur.
@@ -185,10 +238,28 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
   });
   const [pointRelais, setPointRelais] = createSignal({ id: "", label: "" });
 
+
   /* Recherche de points relais : on interroge le transporteur avec un code
      postal, le client choisit dans la liste. Pas de champ libre — une adresse
      saisie à la main ne correspondrait à aucun point réel. */
   const [cpRecherche, setCpRecherche] = createSignal("");
+  // Jeu d'essai : hors production, le formulaire arrive rempli d'un client
+  // tiré au sort. `clientFictif()` renvoie null partout ailleurs — c'est le
+  // seul garde-fou, et il tient à une variable d'environnement absente en
+  // production (voir islands/jeu-essai.ts).
+  const essai = clientFictif();
+  if (essai) {
+    setName(essai.nom);
+    setEmail(essai.email);
+    setAdresse({
+      line1: essai.line1,
+      line2: essai.line2,
+      postalCode: essai.postalCode,
+      city: essai.city,
+      phone: essai.phone,
+    });
+    setCpRecherche(essai.postalCode);
+  }
   const [relais, setRelais] = createSignal<
     { id: string; nom: string; adresse: string; codePostal: string; ville: string }[]
   >([]);
@@ -229,7 +300,9 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
 
   const optionsPort = (): OptionLivraison[] => {
     const cat = catalogue();
-    return cat ? optionsLivraison(cat, pays(), apresRemise()) : [];
+    return cat
+      ? optionsLivraison(cat, pays(), apresRemise(), poidsColis())
+      : [];
   };
   const optionChoisie = () =>
     optionsPort().find((o) => o.mode.slug === modeChoisi()) ?? null;
@@ -549,12 +622,27 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
                 </select>
               </label>
 
+              {/* Le poids commande la tranche d'affranchissement : l'écrire
+                  ici est ce qui rend compréhensible un prix de port qui monte
+                  parce qu'on a ajouté un cadre. */}
+              <Show when={poidsColis() > 0}>
+                <p class="text-xs text-ink-soft">
+                  {tr("livraison.poids_colis")} {formaterPoids(poidsColis())}
+                </p>
+              </Show>
+
               <Show
                 when={optionsPort().length > 0}
                 fallback={
-                  <p class="text-sm text-terracotta-deep">
-                    {tr("livraison.aucune")}
-                  </p>
+                  /* Rien tant que le catalogue n'est pas arrivé : une liste
+                     vide en cours de chargement n'est pas un refus. */
+                  <Show when={!catalogue.loading}>
+                    <p class="text-sm text-terracotta-deep">
+                      {poidsColis() > 0
+                        ? tr("livraison.aucune_pour_ce_poids")
+                        : tr("livraison.aucune")}
+                    </p>
+                  </Show>
                 }
               >
                 <div class="space-y-2">
@@ -881,14 +969,66 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
               <For each={cart()?.items ?? []}>
                 {(it) => (
                   <li class="flex justify-between gap-3">
-                    <span class="min-w-0">
-                      <span class="block truncate">
-                        {it.title ?? "Affiche personnalisée"}
-                      </span>
-                      <span class="text-ink-soft">
-                        {it.config.format ?? "A4"} · Qté {it.quantity}
-                      </span>
-                    </span>
+                    <div class="flex min-w-0 gap-3">
+                      {/* Aperçu FILIGRANÉ : la commande n'est pas encore
+                          payée, l'affiche montrée ici en porte donc un,
+                          exactement comme au panier. */}
+                      <div class="ml-panier-vignette w-14 shrink-0">
+                        <Show
+                          when={it.config.aiPublicId}
+                          fallback={
+                            <Show
+                              when={biblio()}
+                              fallback={
+                                <div class="ml-skeleton aspect-[1/1.4142] w-full" />
+                              }
+                            >
+                              <PosterPreview
+                                state={stateFromConfig(it.config)}
+                                characterById={personnageParId}
+                                slots={biblio()!.slots}
+                                cache={cache}
+                                assetBaseUrl={PUBLIC_API_URL}
+                                foregroundUrl={
+                                  urlAsset(
+                                    PUBLIC_API_URL,
+                                    it.config.foregroundUrl ||
+                                      (it.config.view === "back"
+                                        ? "/assets/muret_officiel.svg"
+                                        : ""),
+                                  ) || undefined
+                                }
+                              />
+                            </Show>
+                          }
+                        >
+                          <div
+                            class="relative w-full overflow-hidden bg-paper-deep"
+                            style={{ "aspect-ratio": "1 / 1.4142" }}
+                          >
+                            <img
+                              src={apercuAbsolu(
+                                it.config.aiApercuUrl ||
+                                  urlApercu(it.config.aiPublicId!),
+                              )}
+                              alt=""
+                              class="absolute inset-0 h-full w-full object-contain"
+                              onError={(e) => {
+                                e.currentTarget.hidden = true;
+                              }}
+                            />
+                          </div>
+                        </Show>
+                      </div>
+                      <div class="min-w-0">
+                        <span class="block truncate">
+                          {it.title ?? "Affiche personnalisée"}
+                        </span>
+                        <span class="text-ink-soft">
+                          {it.config.format ?? "A4"} · Qté {it.quantity}
+                        </span>
+                      </div>
+                    </div>
                     <span class="shrink-0">
                       {formatPrice(it.unitPriceCents * it.quantity)}
                     </span>

@@ -17,6 +17,8 @@ import {
   variantesDeVue,
 } from "@memoryline/configurator";
 import {
+  formaterPoids,
+  lignesRemplies,
   remisesPanier,
   totalPanierCents,
   urlAsset,
@@ -30,6 +32,7 @@ import {
   getCartId,
   type OrderItem,
 } from "../lib/api.ts";
+import { apercuAbsolu, urlApercu } from "../lib/ia.ts";
 
 /**
  * Panier (§18.3). Lit ml_cart_id (localStorage), liste les lignes avec une
@@ -139,7 +142,7 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
         if (pid != null) slugs.set(pid, await slugForProduct(pid));
       }),
     );
-    return { items: data.items, slugs };
+    return { items: data.items, slugs, poidsGrammes: data.poidsGrammes ?? 0 };
   });
 
   // Promos actives (ex. « 3 achetées = 1 A4 offerte »).
@@ -220,15 +223,22 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
     out.push(
       `${tr("panier.format")} : ${format}${DIMENSIONS[format] ? ` (${DIMENSIONS[format]})` : ""}`,
     );
+    // Une affiche IA n'a ni cadre, ni texte, ni personnages : lui lister des
+    // rubriques vides ne dirait rien au client.
+    if (it.config.aiPublicId) {
+      out.push(tr("panier.affiche_ia"));
+      return out;
+    }
     const cadre = (cadres() ?? []).find(
       (c) => String(c.id) === String(it.config.frameId),
     );
     out.push(
       `${tr("panier.cadre")} : ${cadre ? cadre.name : tr("panier.sans_cadre")}`,
     );
-    const titre = it.config.texts?.title?.value;
-    const sousTitre = it.config.texts?.subtitle?.value;
-    if (titre) out.push(sousTitre ? `« ${titre} — ${sousTitre} »` : `« ${titre} »`);
+    // lignesRemplies() lit aussi bien les trois lignes d'aujourd'hui que le
+    // titre/sous-titre des paniers composés avant.
+    const lignes = lignesRemplies(it.config.texts).map((b) => b.value);
+    if (lignes.length) out.push(`« ${lignes.join(" — ")} »`);
     const n = it.config.characters?.length ?? 0;
     if (n > 0)
       out.push(
@@ -285,6 +295,10 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
     totalPanierCents(lignes(), reglesEnJeu(), new Date(), codes());
 
   function editHref(it: OrderItem): string | null {
+    // Une affiche IA ne se « modifie » pas : on en regénère une autre depuis la
+    // fiche produit. Proposer « Modifier » ouvrirait un configurateur qui n'a
+    // rien à éditer.
+    if (it.config.aiPublicId) return null;
     const slug = it.productId != null ? cart()?.slugs.get(it.productId) : null;
     return slug ? `/affiches/${slug}?edit=${it.id}` : null;
   }
@@ -376,10 +390,13 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
                 <li class="grid gap-4 border-b border-ink/10 py-6 sm:grid-cols-[1fr_auto_7rem] sm:items-start">
                   <div class="flex gap-4 min-w-0">
                     <div class="ml-panier-vignette w-20 shrink-0 sm:w-24">
-                      {/* L'aperçu du configurateur, à l'identique : fond,
-                          personnages et textes tels que le client les a
-                          composés. Même composant des deux côtés, donc les
-                          deux rendus ne peuvent pas diverger. */}
+                      {/* Affiche IA : le visuel n'est pas une pile de calques
+                          mais l'image générée, dont l'aperçu arrive déjà
+                          filigrané — le filigrane y est cuit dans les pixels,
+                          donc plus solide que la couche SVG du site. */}
+                      <Show
+                        when={it.config.aiPublicId}
+                        fallback={
                       <Show
                         when={biblio()}
                         fallback={<div class="ml-skeleton aspect-[1/1.4142] w-full" />}
@@ -405,6 +422,28 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
                             ) || undefined
                           }
                         />
+                      </Show>
+                        }
+                      >
+                        <div
+                          class="relative w-full overflow-hidden bg-paper-deep"
+                          style={{ "aspect-ratio": "1 / 1.4142" }}
+                        >
+                          <img
+                            src={apercuAbsolu(
+                              it.config.aiApercuUrl ||
+                                urlApercu(it.config.aiPublicId!),
+                            )}
+                            alt=""
+                            class="absolute inset-0 h-full w-full object-contain"
+                            onError={(e) => {
+                              // Aperçu introuvable (route IA absente, fichier
+                              // effacé) : on laisse le cadre vide plutôt que
+                              // l'icône d'image cassée du navigateur.
+                              e.currentTarget.hidden = true;
+                            }}
+                          />
+                        </div>
                       </Show>
                     </div>
 
@@ -561,6 +600,15 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
               <span class="text-2xl">{formatPrice(total())}</span>
             </div>
             <p class="mt-2 text-xs text-ink-soft">{tr("panier.taxes")}</p>
+            {/* Le port se chiffre au tunnel, mais son ingrédient principal se
+                lit déjà ici : même poids serveur qu'à l'étape suivante, donc
+                jamais deux chiffres différents. */}
+            <Show when={cart()!.poidsGrammes > 0}>
+              <p class="mt-1 text-xs text-ink-soft">
+                {tr("livraison.poids_colis")}{" "}
+                {formaterPoids(cart()!.poidsGrammes)}
+              </p>
+            </Show>
             <a
               href="/commande"
               class="mt-4 block rounded-md bg-ink px-8 py-4 text-center font-medium text-paper hover:bg-ink-soft transition-colors"

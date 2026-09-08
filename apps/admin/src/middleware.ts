@@ -17,6 +17,7 @@ const OWNER_PATHS = [
   "/produits",
   "/cadres",
   "/personnages",
+  "/ia",
   "/promotions",
   "/bandeau",
   "/contenu",

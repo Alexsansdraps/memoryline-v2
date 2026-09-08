@@ -71,6 +71,53 @@ export const ui = {
     "produit.aide": "Choisissez le fond, le texte et vos personnages.",
     "produit.ajouter": "Ajouter au panier",
     "produit.retour": "Retour aux affiches",
+    "panier.affiche_ia": "Affiche générée à partir de votre photo",
+
+    "ia.titre": "Votre affiche à partir de votre photo",
+    "ia.intro":
+      "Envoyez une photo : nous en tirons une affiche. Regardez le résultat, relancez autant de fois que vous voulez, et gardez celle qui vous plaît.",
+    "ia.depot": "Déposez votre photo ici, ou cliquez pour la choisir",
+    "ia.depot_bouton": "Choisir une photo",
+    "ia.depot_formats": "JPEG, PNG ou WebP",
+    "ia.changer_photo": "Choisir une autre photo",
+    "ia.conseils_titre": "Ce qui donne les meilleurs résultats",
+    "ia.conseil_nette": "Une photo nette et bien éclairée.",
+    "ia.conseil_lieu":
+      "Un seul lieu — un paysage, une rue, une façade —, pas un montage de plusieurs images.",
+    "ia.conseil_cadrage":
+      "Un cadrage large plutôt qu'un gros plan : l'affiche a besoin d'espace.",
+    "ia.precision": "Une précision à ajouter ? (facultatif)",
+    "ia.precision_exemple":
+      "Par exemple : au coucher du soleil, dans des tons chauds…",
+    "ia.generer": "Générer mon affiche",
+    "ia.regenerer": "Générer une autre version",
+    "ia.regenerer_aide": "Autant de fois que vous voulez, sans supplément.",
+    "ia.recommencer": "Repartir de zéro",
+    "ia.envoi": "Envoi de votre photo…",
+    "ia.generation": "Création de votre affiche…",
+    "ia.generation_duree":
+      "Comptez une bonne trentaine de secondes. Laissez cette page ouverte.",
+    "ia.apercu_vide": "Votre affiche apparaîtra ici.",
+    "ia.apercu_alt": "Aperçu de l'affiche générée",
+    "ia.filigrane_note":
+      "Le filigrane disparaît de l'affiche imprimée, après paiement.",
+    "ia.poids_max": "Photo de {n} Mo maximum.",
+    "ia.err.indisponible":
+      "La création d'affiches n'est pas disponible pour l'instant. Réessayez dans quelques minutes, ou écrivez-nous.",
+    "ia.err.format":
+      "Ce fichier n'est pas une photo reconnue. Choisissez un JPEG, un PNG ou un WebP.",
+    "ia.err.trop_lourde":
+      "Cette photo est trop lourde. Prenez-en une plus légère, ou réduisez-la avant de l'envoyer.",
+    "ia.err.rafale":
+      "Un peu trop de demandes coup sur coup. Patientez une minute, puis relancez.",
+    "ia.err.plafond":
+      "La création d'affiches est momentanément suspendue. Réessayez plus tard, ou écrivez-nous.",
+    "ia.err.generation":
+      "La création n'a pas abouti. Relancez : cela passe souvent au deuxième essai. Sinon, essayez une autre photo.",
+    "ia.err.attente":
+      "L'affiche met plus longtemps que prévu. Relancez la génération.",
+    "ia.err.inconnu": "Quelque chose s'est mal passé. Relancez la génération.",
+
 
     "panier.titre": "Votre panier",
     "panier.vide": "Votre panier est vide.",
@@ -100,6 +147,9 @@ export const ui = {
       "Indiquez le nom et l'adresse du point relais Mondial Relay de votre choix.",
     "livraison.offerte": "Offerte",
     "livraison.aucune": "Aucune livraison disponible pour ce pays.",
+    "livraison.poids_colis": "Poids du colis :",
+    "livraison.aucune_pour_ce_poids":
+      "Aucun mode de livraison ne couvre ce poids pour ce pays — écrivez-nous.",
     "panier.code": "Code promo",
     "panier.code_appliquer": "Appliquer",
     "panier.code_applique": "Code appliqué :",
@@ -144,9 +194,13 @@ export const ui = {
     "cfg.etape.fond": "Fond & texte",
     "cfg.etape.personnages": "Personnages",
     "cfg.etape.format": "Format",
-    "cfg.titre_champ": "Titre (symboles et chiffres autorisés)",
-    "cfg.soustitre_champ": "Sous-titre (symboles et chiffres autorisés)",
-    "cfg.couleur_texte": "Couleur du texte (titre & sous-titre)",
+    "cfg.ligne1_champ": "Ligne 1 (symboles et chiffres autorisés)",
+    "cfg.ligne2_champ": "Ligne 2 (symboles et chiffres autorisés)",
+    "cfg.ligne3_champ": "Ligne 3 (symboles et chiffres autorisés)",
+    "cfg.ligne1_exemple": "MERS-LES-BAINS",
+    "cfg.ligne2_exemple": "la maison bleue",
+    "cfg.ligne3_exemple": "été 2019",
+    "cfg.couleur_texte": "Couleur du texte",
     "cfg.fond": "Fond",
     "cfg.personnages": "Personnages",
     "cfg.nouveau_perso": "+ Nouveau personnage",
@@ -170,6 +224,130 @@ export const ui = {
     "cfg.chargement": "Chargement du configurateur…",
     "cfg.erreur":
       "Le configurateur n'a pas pu démarrer. Vérifiez que l'API est démarrée",
+
+    "nav.compte": "Compte",
+
+    "compte.titre": "Mon compte",
+    "compte.menu.commandes": "Mes commandes",
+    "compte.menu.adresses": "Mes adresses",
+    "compte.menu.infos": "Mes informations",
+    "compte.deconnexion": "Se déconnecter",
+    "compte.email": "E-mail",
+    "compte.mdp": "Mot de passe",
+    "compte.nom": "Nom",
+    "compte.telephone": "Téléphone",
+    "compte.marketing":
+      "Je souhaite recevoir les nouveautés et offres Memory Line par e-mail.",
+    "compte.article": "article",
+    "compte.articles": "articles",
+    "compte.mdp_aide": "8 caractères minimum.",
+
+    "compte.connexion.titre": "Connexion",
+    "compte.connexion.intro":
+      "Connectez-vous pour suivre vos commandes et retrouver vos adresses.",
+    "compte.connexion.bouton": "Se connecter",
+    "compte.connexion.oubli": "Mot de passe oublié ?",
+    "compte.connexion.pas_de_compte": "Vous n'avez pas encore de compte ?",
+    "compte.connexion.creer": "Créer un compte",
+
+    "compte.inscription.titre": "Créer un compte",
+    "compte.inscription.intro":
+      "Un compte vous permet de suivre vos commandes et de ne plus ressaisir vos adresses.",
+    "compte.inscription.bouton": "Créer mon compte",
+    "compte.inscription.deja": "Vous avez déjà un compte ?",
+
+    "compte.commandes.titre": "Mes commandes",
+    "compte.commandes.vide": "Vous n'avez pas encore passé de commande.",
+    "compte.commandes.decouvrir": "Découvrir les affiches",
+    "compte.commandes.numero": "Commande",
+    "compte.commandes.voir": "Voir le détail",
+    "compte.commandes.suivre": "Suivre le colis",
+    "compte.commandes.retour": "Retour à mes commandes",
+
+    "compte.commande.paiement": "Paiement",
+    "compte.commande.traitement": "Traitement",
+    "compte.commande.adresse": "Adresse de livraison",
+    "compte.commande.articles": "Articles",
+    "compte.commande.expeditions": "Expéditions",
+    "compte.commande.sous_total": "Sous-total",
+    "compte.commande.remise": "Remise",
+    "compte.commande.port": "Livraison",
+    "compte.commande.total": "Total",
+    "compte.commande.rembourse": "Remboursé",
+    "compte.commande.quantite": "Quantité",
+    "compte.commande.introuvable": "Cette commande est introuvable.",
+    "compte.commande.sans_suivi": "Aucun numéro de suivi pour le moment.",
+
+    "compte.statut.financier.pending": "En attente de paiement",
+    "compte.statut.financier.authorized": "Paiement autorisé",
+    "compte.statut.financier.partially_paid": "Partiellement payée",
+    "compte.statut.financier.paid": "Payée",
+    "compte.statut.financier.partially_refunded": "Partiellement remboursée",
+    "compte.statut.financier.refunded": "Remboursée",
+    "compte.statut.financier.voided": "Annulée",
+
+    "compte.statut.expedition.unfulfilled": "Non expédiée",
+    "compte.statut.expedition.partially_fulfilled": "Partiellement expédiée",
+    "compte.statut.expedition.fulfilled": "Expédiée",
+    "compte.statut.expedition.delivered": "Livrée",
+    "compte.statut.expedition.cancelled": "Annulée",
+
+    "compte.adresses.titre": "Mes adresses",
+    "compte.adresses.vide": "Vous n'avez pas encore enregistré d'adresse.",
+    "compte.adresses.nouvelle": "Nouvelle adresse",
+    "compte.adresses.modifier": "Modifier",
+    "compte.adresses.supprimer": "Supprimer",
+    "compte.adresses.enregistrer": "Enregistrer",
+    "compte.adresses.annuler": "Annuler",
+    "compte.adresses.libelle": "Nom de l'adresse (Maison, Bureau…)",
+    "compte.adresses.defaut_livraison":
+      "Utiliser comme adresse de livraison par défaut",
+    "compte.adresses.defaut_facturation":
+      "Utiliser comme adresse de facturation par défaut",
+    "compte.adresses.badge_livraison": "Livraison par défaut",
+    "compte.adresses.badge_facturation": "Facturation par défaut",
+
+    "compte.infos.titre": "Mes informations",
+    "compte.infos.enregistrer": "Enregistrer",
+    "compte.infos.enregistre": "Vos informations ont été enregistrées.",
+    "compte.infos.mdp_titre": "Changer de mot de passe",
+    "compte.infos.mdp_ancien": "Mot de passe actuel",
+    "compte.infos.mdp_nouveau": "Nouveau mot de passe",
+    "compte.infos.mdp_confirmer": "Confirmer le nouveau mot de passe",
+    "compte.infos.mdp_bouton": "Changer mon mot de passe",
+    "compte.infos.mdp_change": "Votre mot de passe a été changé.",
+
+    "compte.oubli.titre": "Mot de passe oublié",
+    "compte.oubli.intro":
+      "Indiquez votre adresse e-mail : nous vous enverrons un lien pour choisir un nouveau mot de passe.",
+    "compte.oubli.bouton": "Envoyer le lien",
+    "compte.oubli.envoye":
+      "Si un compte existe pour cette adresse, un e-mail vient de partir. Pensez à regarder vos courriers indésirables.",
+    "compte.oubli.retour": "Retour à la connexion",
+
+    "compte.reinit.titre": "Nouveau mot de passe",
+    "compte.reinit.intro":
+      "Choisissez le nouveau mot de passe de votre compte.",
+    "compte.reinit.bouton": "Enregistrer le nouveau mot de passe",
+    "compte.reinit.ok":
+      "Votre mot de passe a été changé. Vous pouvez vous connecter.",
+    "compte.reinit.lien_incomplet":
+      "Ce lien est incomplet. Demandez-en un nouveau depuis la page de connexion.",
+
+    "compte.err.indisponible":
+      "L'espace client est momentanément indisponible. Réessayez dans quelques instants.",
+    "compte.err.identifiants": "E-mail ou mot de passe incorrect.",
+    "compte.err.deja_inscrit":
+      "Un compte existe déjà avec cette adresse e-mail.",
+    "compte.err.mdp_court":
+      "Le mot de passe doit contenir au moins 8 caractères.",
+    "compte.err.mdp_different":
+      "Les deux mots de passe saisis ne sont pas identiques.",
+    "compte.err.mdp_actuel": "Le mot de passe actuel est incorrect.",
+    "compte.err.jeton":
+      "Ce lien de réinitialisation n'est plus valable. Demandez-en un nouveau.",
+    "compte.err.champs": "Merci de remplir les champs obligatoires.",
+    "compte.err.generique": "Une erreur est survenue. Réessayez.",
   },
 
   en: {
@@ -209,6 +387,52 @@ export const ui = {
     "produit.aide": "Choose the background, the text and your characters.",
     "produit.ajouter": "Add to basket",
     "produit.retour": "Back to posters",
+    "panier.affiche_ia": "Poster created from your photo",
+
+    "ia.titre": "Your poster, from your photo",
+    "ia.intro":
+      "Upload a photo and we turn it into a poster. Look at the result, run it again as often as you like, and keep the one you love.",
+    "ia.depot": "Drop your photo here, or click to choose one",
+    "ia.depot_bouton": "Choose a photo",
+    "ia.depot_formats": "JPEG, PNG or WebP",
+    "ia.changer_photo": "Choose another photo",
+    "ia.conseils_titre": "What works best",
+    "ia.conseil_nette": "A sharp, well-lit photo.",
+    "ia.conseil_lieu":
+      "One single place — a landscape, a street, a façade — not a montage of several images.",
+    "ia.conseil_cadrage":
+      "A wide shot rather than a close-up: the poster needs room to breathe.",
+    "ia.precision": "Anything to add? (optional)",
+    "ia.precision_exemple": "For example: at sunset, in warm tones…",
+    "ia.generer": "Create my poster",
+    "ia.regenerer": "Create another version",
+    "ia.regenerer_aide": "As many times as you like, at no extra cost.",
+    "ia.recommencer": "Start over",
+    "ia.envoi": "Uploading your photo…",
+    "ia.generation": "Creating your poster…",
+    "ia.generation_duree":
+      "Allow a good thirty seconds. Keep this page open.",
+    "ia.apercu_vide": "Your poster will appear here.",
+    "ia.apercu_alt": "Preview of the generated poster",
+    "ia.filigrane_note":
+      "The watermark disappears from the printed poster, once paid.",
+    "ia.poids_max": "Photos up to {n} MB.",
+    "ia.err.indisponible":
+      "Poster creation is unavailable right now. Try again in a few minutes, or write to us.",
+    "ia.err.format":
+      "This file isn't a photo we recognise. Choose a JPEG, a PNG or a WebP.",
+    "ia.err.trop_lourde":
+      "This photo is too heavy. Pick a lighter one, or resize it before uploading.",
+    "ia.err.rafale":
+      "That's a few too many requests in a row. Wait a minute, then try again.",
+    "ia.err.plafond":
+      "Poster creation is paused for the moment. Try again later, or write to us.",
+    "ia.err.generation":
+      "The poster couldn't be created. Try again — it often works on the second attempt. Otherwise, try another photo.",
+    "ia.err.attente":
+      "The poster is taking longer than expected. Start the creation again.",
+    "ia.err.inconnu": "Something went wrong. Start the creation again.",
+
 
     "panier.titre": "Your basket",
     "panier.vide": "Your basket is empty.",
@@ -238,6 +462,9 @@ export const ui = {
       "Enter the name and address of your chosen Mondial Relay pickup point.",
     "livraison.offerte": "Free",
     "livraison.aucune": "No delivery available for this country.",
+    "livraison.poids_colis": "Parcel weight:",
+    "livraison.aucune_pour_ce_poids":
+      "No delivery option covers this weight for this country — please get in touch.",
     "panier.code": "Promo code",
     "panier.code_appliquer": "Apply",
     "panier.code_applique": "Code applied:",
@@ -282,9 +509,13 @@ export const ui = {
     "cfg.etape.fond": "Background & text",
     "cfg.etape.personnages": "Characters",
     "cfg.etape.format": "Size",
-    "cfg.titre_champ": "Title (symbols and numbers allowed)",
-    "cfg.soustitre_champ": "Subtitle (symbols and numbers allowed)",
-    "cfg.couleur_texte": "Text colour (title & subtitle)",
+    "cfg.ligne1_champ": "Line 1 (symbols and numbers allowed)",
+    "cfg.ligne2_champ": "Line 2 (symbols and numbers allowed)",
+    "cfg.ligne3_champ": "Line 3 (symbols and numbers allowed)",
+    "cfg.ligne1_exemple": "MERS-LES-BAINS",
+    "cfg.ligne2_exemple": "the blue house",
+    "cfg.ligne3_exemple": "summer 2019",
+    "cfg.couleur_texte": "Text colour",
     "cfg.fond": "Background",
     "cfg.personnages": "Characters",
     "cfg.nouveau_perso": "+ New character",
@@ -308,6 +539,124 @@ export const ui = {
     "cfg.chargement": "Loading the designer…",
     "cfg.erreur":
       "The designer could not start. Check that the API is running",
+
+    "nav.compte": "Account",
+
+    "compte.titre": "My account",
+    "compte.menu.commandes": "My orders",
+    "compte.menu.adresses": "My addresses",
+    "compte.menu.infos": "My details",
+    "compte.deconnexion": "Log out",
+    "compte.email": "Email",
+    "compte.mdp": "Password",
+    "compte.nom": "Name",
+    "compte.telephone": "Phone",
+    "compte.marketing":
+      "I'd like to receive Memory Line news and offers by email.",
+    "compte.article": "item",
+    "compte.articles": "items",
+    "compte.mdp_aide": "8 characters minimum.",
+
+    "compte.connexion.titre": "Log in",
+    "compte.connexion.intro":
+      "Log in to track your orders and find your saved addresses.",
+    "compte.connexion.bouton": "Log in",
+    "compte.connexion.oubli": "Forgotten your password?",
+    "compte.connexion.pas_de_compte": "Don't have an account yet?",
+    "compte.connexion.creer": "Create an account",
+
+    "compte.inscription.titre": "Create an account",
+    "compte.inscription.intro":
+      "An account lets you track your orders and save your addresses for next time.",
+    "compte.inscription.bouton": "Create my account",
+    "compte.inscription.deja": "Already have an account?",
+
+    "compte.commandes.titre": "My orders",
+    "compte.commandes.vide": "You haven't placed an order yet.",
+    "compte.commandes.decouvrir": "Browse the posters",
+    "compte.commandes.numero": "Order",
+    "compte.commandes.voir": "View details",
+    "compte.commandes.suivre": "Track the parcel",
+    "compte.commandes.retour": "Back to my orders",
+
+    "compte.commande.paiement": "Payment",
+    "compte.commande.traitement": "Fulfilment",
+    "compte.commande.adresse": "Delivery address",
+    "compte.commande.articles": "Items",
+    "compte.commande.expeditions": "Shipments",
+    "compte.commande.sous_total": "Subtotal",
+    "compte.commande.remise": "Discount",
+    "compte.commande.port": "Delivery",
+    "compte.commande.total": "Total",
+    "compte.commande.rembourse": "Refunded",
+    "compte.commande.quantite": "Quantity",
+    "compte.commande.introuvable": "This order could not be found.",
+    "compte.commande.sans_suivi": "No tracking number yet.",
+
+    "compte.statut.financier.pending": "Awaiting payment",
+    "compte.statut.financier.authorized": "Payment authorised",
+    "compte.statut.financier.partially_paid": "Partially paid",
+    "compte.statut.financier.paid": "Paid",
+    "compte.statut.financier.partially_refunded": "Partially refunded",
+    "compte.statut.financier.refunded": "Refunded",
+    "compte.statut.financier.voided": "Cancelled",
+
+    "compte.statut.expedition.unfulfilled": "Not shipped",
+    "compte.statut.expedition.partially_fulfilled": "Partially shipped",
+    "compte.statut.expedition.fulfilled": "Shipped",
+    "compte.statut.expedition.delivered": "Delivered",
+    "compte.statut.expedition.cancelled": "Cancelled",
+
+    "compte.adresses.titre": "My addresses",
+    "compte.adresses.vide": "You haven't saved an address yet.",
+    "compte.adresses.nouvelle": "New address",
+    "compte.adresses.modifier": "Edit",
+    "compte.adresses.supprimer": "Delete",
+    "compte.adresses.enregistrer": "Save",
+    "compte.adresses.annuler": "Cancel",
+    "compte.adresses.libelle": "Address name (Home, Work…)",
+    "compte.adresses.defaut_livraison": "Use as my default delivery address",
+    "compte.adresses.defaut_facturation": "Use as my default billing address",
+    "compte.adresses.badge_livraison": "Default delivery",
+    "compte.adresses.badge_facturation": "Default billing",
+
+    "compte.infos.titre": "My details",
+    "compte.infos.enregistrer": "Save",
+    "compte.infos.enregistre": "Your details have been saved.",
+    "compte.infos.mdp_titre": "Change password",
+    "compte.infos.mdp_ancien": "Current password",
+    "compte.infos.mdp_nouveau": "New password",
+    "compte.infos.mdp_confirmer": "Confirm the new password",
+    "compte.infos.mdp_bouton": "Change my password",
+    "compte.infos.mdp_change": "Your password has been changed.",
+
+    "compte.oubli.titre": "Forgotten password",
+    "compte.oubli.intro":
+      "Enter your email address: we'll send you a link to choose a new password.",
+    "compte.oubli.bouton": "Send the link",
+    "compte.oubli.envoye":
+      "If an account exists for this address, an email has just been sent. Remember to check your spam folder.",
+    "compte.oubli.retour": "Back to log in",
+
+    "compte.reinit.titre": "New password",
+    "compte.reinit.intro": "Choose the new password for your account.",
+    "compte.reinit.bouton": "Save the new password",
+    "compte.reinit.ok": "Your password has been changed. You can now log in.",
+    "compte.reinit.lien_incomplet":
+      "This link is incomplete. Request a new one from the log-in page.",
+
+    "compte.err.indisponible":
+      "The account area is temporarily unavailable. Please try again in a moment.",
+    "compte.err.identifiants": "Incorrect email or password.",
+    "compte.err.deja_inscrit":
+      "An account already exists with this email address.",
+    "compte.err.mdp_court": "The password must be at least 8 characters long.",
+    "compte.err.mdp_different": "The two passwords do not match.",
+    "compte.err.mdp_actuel": "The current password is incorrect.",
+    "compte.err.jeton":
+      "This reset link is no longer valid. Please request a new one.",
+    "compte.err.champs": "Please fill in the required fields.",
+    "compte.err.generique": "Something went wrong. Please try again.",
   },
 
   de: {
@@ -347,6 +696,54 @@ export const ui = {
     "produit.aide": "Wählen Sie Hintergrund, Text und Ihre Figuren.",
     "produit.ajouter": "In den Warenkorb",
     "produit.retour": "Zurück zu den Postern",
+    "panier.affiche_ia": "Poster aus Ihrem Foto erstellt",
+
+    "ia.titre": "Ihr Poster aus Ihrem Foto",
+    "ia.intro":
+      "Laden Sie ein Foto hoch – wir machen ein Poster daraus. Sehen Sie sich das Ergebnis an, starten Sie so oft neu, wie Sie möchten, und behalten Sie das Poster, das Ihnen gefällt.",
+    "ia.depot": "Foto hier ablegen oder klicken, um eines auszuwählen",
+    "ia.depot_bouton": "Foto auswählen",
+    "ia.depot_formats": "JPEG, PNG oder WebP",
+    "ia.changer_photo": "Anderes Foto auswählen",
+    "ia.conseils_titre": "Das funktioniert am besten",
+    "ia.conseil_nette": "Ein scharfes, gut belichtetes Foto.",
+    "ia.conseil_lieu":
+      "Ein einziger Ort – eine Landschaft, eine Straße, eine Fassade – keine Montage aus mehreren Bildern.",
+    "ia.conseil_cadrage":
+      "Lieber eine weite Aufnahme als eine Nahaufnahme: Das Poster braucht Raum.",
+    "ia.precision": "Möchten Sie etwas ergänzen? (optional)",
+    "ia.precision_exemple":
+      "Zum Beispiel: bei Sonnenuntergang, in warmen Farbtönen…",
+    "ia.generer": "Mein Poster erstellen",
+    "ia.regenerer": "Andere Version erstellen",
+    "ia.regenerer_aide": "So oft Sie möchten, ohne Aufpreis.",
+    "ia.recommencer": "Von vorn beginnen",
+    "ia.envoi": "Ihr Foto wird hochgeladen…",
+    "ia.generation": "Ihr Poster entsteht…",
+    "ia.generation_duree":
+      "Rechnen Sie mit gut dreißig Sekunden. Lassen Sie diese Seite geöffnet.",
+    "ia.apercu_vide": "Hier erscheint Ihr Poster.",
+    "ia.apercu_alt": "Vorschau des erstellten Posters",
+    "ia.filigrane_note":
+      "Das Wasserzeichen verschwindet nach der Bezahlung auf dem gedruckten Poster.",
+    "ia.poids_max": "Fotos bis {n} MB.",
+    "ia.err.indisponible":
+      "Die Postererstellung ist derzeit nicht verfügbar. Versuchen Sie es in ein paar Minuten erneut oder schreiben Sie uns.",
+    "ia.err.format":
+      "Diese Datei ist kein erkanntes Foto. Wählen Sie eine JPEG-, PNG- oder WebP-Datei.",
+    "ia.err.trop_lourde":
+      "Dieses Foto ist zu groß. Nehmen Sie ein kleineres oder verkleinern Sie es vor dem Hochladen.",
+    "ia.err.rafale":
+      "Etwas zu viele Anfragen hintereinander. Warten Sie eine Minute und starten Sie dann erneut.",
+    "ia.err.plafond":
+      "Die Postererstellung ist vorübergehend ausgesetzt. Versuchen Sie es später erneut oder schreiben Sie uns.",
+    "ia.err.generation":
+      "Das Poster konnte nicht erstellt werden. Starten Sie erneut – beim zweiten Versuch klappt es oft. Sonst probieren Sie ein anderes Foto.",
+    "ia.err.attente":
+      "Das Poster dauert länger als erwartet. Starten Sie die Erstellung erneut.",
+    "ia.err.inconnu":
+      "Etwas ist schiefgelaufen. Starten Sie die Erstellung erneut.",
+
 
     "panier.titre": "Ihr Warenkorb",
     "panier.vide": "Ihr Warenkorb ist leer.",
@@ -376,6 +773,9 @@ export const ui = {
       "Geben Sie Namen und Adresse Ihres Mondial-Relay-Paketshops an.",
     "livraison.offerte": "Kostenlos",
     "livraison.aucune": "Für dieses Land ist kein Versand verfügbar.",
+    "livraison.poids_colis": "Paketgewicht:",
+    "livraison.aucune_pour_ce_poids":
+      "Für dieses Gewicht gibt es in dieses Land keine Versandart — schreiben Sie uns.",
     "panier.code": "Rabattcode",
     "panier.code_appliquer": "Anwenden",
     "panier.code_applique": "Code angewendet:",
@@ -420,9 +820,13 @@ export const ui = {
     "cfg.etape.fond": "Hintergrund & Text",
     "cfg.etape.personnages": "Figuren",
     "cfg.etape.format": "Format",
-    "cfg.titre_champ": "Titel (Symbole und Zahlen erlaubt)",
-    "cfg.soustitre_champ": "Untertitel (Symbole und Zahlen erlaubt)",
-    "cfg.couleur_texte": "Textfarbe (Titel & Untertitel)",
+    "cfg.ligne1_champ": "Zeile 1 (Symbole und Zahlen erlaubt)",
+    "cfg.ligne2_champ": "Zeile 2 (Symbole und Zahlen erlaubt)",
+    "cfg.ligne3_champ": "Zeile 3 (Symbole und Zahlen erlaubt)",
+    "cfg.ligne1_exemple": "MERS-LES-BAINS",
+    "cfg.ligne2_exemple": "das blaue Haus",
+    "cfg.ligne3_exemple": "Sommer 2019",
+    "cfg.couleur_texte": "Textfarbe",
     "cfg.fond": "Hintergrund",
     "cfg.personnages": "Figuren",
     "cfg.nouveau_perso": "+ Neue Figur",
@@ -446,6 +850,127 @@ export const ui = {
     "cfg.chargement": "Konfigurator wird geladen…",
     "cfg.erreur":
       "Der Konfigurator konnte nicht starten. Prüfen Sie, ob die API läuft",
+
+    "nav.compte": "Konto",
+
+    "compte.titre": "Mein Konto",
+    "compte.menu.commandes": "Meine Bestellungen",
+    "compte.menu.adresses": "Meine Adressen",
+    "compte.menu.infos": "Meine Daten",
+    "compte.deconnexion": "Abmelden",
+    "compte.email": "E-Mail",
+    "compte.mdp": "Passwort",
+    "compte.nom": "Name",
+    "compte.telephone": "Telefon",
+    "compte.marketing":
+      "Ich möchte Neuigkeiten und Angebote von Memory Line per E-Mail erhalten.",
+    "compte.article": "Artikel",
+    "compte.articles": "Artikel",
+    "compte.mdp_aide": "Mindestens 8 Zeichen.",
+
+    "compte.connexion.titre": "Anmelden",
+    "compte.connexion.intro":
+      "Melden Sie sich an, um Ihre Bestellungen zu verfolgen und Ihre Adressen wiederzufinden.",
+    "compte.connexion.bouton": "Anmelden",
+    "compte.connexion.oubli": "Passwort vergessen?",
+    "compte.connexion.pas_de_compte": "Sie haben noch kein Konto?",
+    "compte.connexion.creer": "Konto erstellen",
+
+    "compte.inscription.titre": "Konto erstellen",
+    "compte.inscription.intro":
+      "Mit einem Konto verfolgen Sie Ihre Bestellungen und müssen Ihre Adressen nicht erneut eingeben.",
+    "compte.inscription.bouton": "Mein Konto erstellen",
+    "compte.inscription.deja": "Sie haben bereits ein Konto?",
+
+    "compte.commandes.titre": "Meine Bestellungen",
+    "compte.commandes.vide": "Sie haben noch keine Bestellung aufgegeben.",
+    "compte.commandes.decouvrir": "Poster entdecken",
+    "compte.commandes.numero": "Bestellung",
+    "compte.commandes.voir": "Details ansehen",
+    "compte.commandes.suivre": "Sendung verfolgen",
+    "compte.commandes.retour": "Zurück zu meinen Bestellungen",
+
+    "compte.commande.paiement": "Zahlung",
+    "compte.commande.traitement": "Bearbeitung",
+    "compte.commande.adresse": "Lieferadresse",
+    "compte.commande.articles": "Artikel",
+    "compte.commande.expeditions": "Sendungen",
+    "compte.commande.sous_total": "Zwischensumme",
+    "compte.commande.remise": "Rabatt",
+    "compte.commande.port": "Versand",
+    "compte.commande.total": "Gesamt",
+    "compte.commande.rembourse": "Erstattet",
+    "compte.commande.quantite": "Menge",
+    "compte.commande.introuvable": "Diese Bestellung wurde nicht gefunden.",
+    "compte.commande.sans_suivi": "Noch keine Sendungsnummer.",
+
+    "compte.statut.financier.pending": "Zahlung ausstehend",
+    "compte.statut.financier.authorized": "Zahlung autorisiert",
+    "compte.statut.financier.partially_paid": "Teilweise bezahlt",
+    "compte.statut.financier.paid": "Bezahlt",
+    "compte.statut.financier.partially_refunded": "Teilweise erstattet",
+    "compte.statut.financier.refunded": "Erstattet",
+    "compte.statut.financier.voided": "Storniert",
+
+    "compte.statut.expedition.unfulfilled": "Nicht versandt",
+    "compte.statut.expedition.partially_fulfilled": "Teilweise versandt",
+    "compte.statut.expedition.fulfilled": "Versandt",
+    "compte.statut.expedition.delivered": "Zugestellt",
+    "compte.statut.expedition.cancelled": "Storniert",
+
+    "compte.adresses.titre": "Meine Adressen",
+    "compte.adresses.vide": "Sie haben noch keine Adresse gespeichert.",
+    "compte.adresses.nouvelle": "Neue Adresse",
+    "compte.adresses.modifier": "Bearbeiten",
+    "compte.adresses.supprimer": "Löschen",
+    "compte.adresses.enregistrer": "Speichern",
+    "compte.adresses.annuler": "Abbrechen",
+    "compte.adresses.libelle": "Name der Adresse (Zuhause, Büro…)",
+    "compte.adresses.defaut_livraison": "Als Standard-Lieferadresse verwenden",
+    "compte.adresses.defaut_facturation":
+      "Als Standard-Rechnungsadresse verwenden",
+    "compte.adresses.badge_livraison": "Standard-Lieferadresse",
+    "compte.adresses.badge_facturation": "Standard-Rechnungsadresse",
+
+    "compte.infos.titre": "Meine Daten",
+    "compte.infos.enregistrer": "Speichern",
+    "compte.infos.enregistre": "Ihre Daten wurden gespeichert.",
+    "compte.infos.mdp_titre": "Passwort ändern",
+    "compte.infos.mdp_ancien": "Aktuelles Passwort",
+    "compte.infos.mdp_nouveau": "Neues Passwort",
+    "compte.infos.mdp_confirmer": "Neues Passwort bestätigen",
+    "compte.infos.mdp_bouton": "Passwort ändern",
+    "compte.infos.mdp_change": "Ihr Passwort wurde geändert.",
+
+    "compte.oubli.titre": "Passwort vergessen",
+    "compte.oubli.intro":
+      "Geben Sie Ihre E-Mail-Adresse an: Wir senden Ihnen einen Link, um ein neues Passwort zu wählen.",
+    "compte.oubli.bouton": "Link senden",
+    "compte.oubli.envoye":
+      "Falls ein Konto zu dieser Adresse besteht, ist gerade eine E-Mail unterwegs. Schauen Sie auch in den Spam-Ordner.",
+    "compte.oubli.retour": "Zurück zur Anmeldung",
+
+    "compte.reinit.titre": "Neues Passwort",
+    "compte.reinit.intro": "Wählen Sie das neue Passwort für Ihr Konto.",
+    "compte.reinit.bouton": "Neues Passwort speichern",
+    "compte.reinit.ok":
+      "Ihr Passwort wurde geändert. Sie können sich jetzt anmelden.",
+    "compte.reinit.lien_incomplet":
+      "Dieser Link ist unvollständig. Fordern Sie über die Anmeldeseite einen neuen an.",
+
+    "compte.err.indisponible":
+      "Der Kundenbereich ist derzeit nicht verfügbar. Bitte versuchen Sie es gleich noch einmal.",
+    "compte.err.identifiants": "E-Mail-Adresse oder Passwort ist falsch.",
+    "compte.err.deja_inscrit":
+      "Mit dieser E-Mail-Adresse besteht bereits ein Konto.",
+    "compte.err.mdp_court": "Das Passwort muss mindestens 8 Zeichen lang sein.",
+    "compte.err.mdp_different": "Die beiden Passwörter stimmen nicht überein.",
+    "compte.err.mdp_actuel": "Das aktuelle Passwort ist falsch.",
+    "compte.err.jeton":
+      "Dieser Link ist nicht mehr gültig. Bitte fordern Sie einen neuen an.",
+    "compte.err.champs": "Bitte füllen Sie die Pflichtfelder aus.",
+    "compte.err.generique":
+      "Es ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut.",
   },
 
   it: {
@@ -485,6 +1010,52 @@ export const ui = {
     "produit.aide": "Scegli lo sfondo, il testo e i tuoi personaggi.",
     "produit.ajouter": "Aggiungi al carrello",
     "produit.retour": "Torna ai poster",
+    "panier.affiche_ia": "Poster creato dalla tua foto",
+
+    "ia.titre": "Il tuo poster, dalla tua foto",
+    "ia.intro":
+      "Carica una foto: ne ricaviamo un poster. Guarda il risultato, rilancia quante volte vuoi e tieni quello che ti piace.",
+    "ia.depot": "Trascina qui la tua foto, oppure clicca per sceglierla",
+    "ia.depot_bouton": "Scegli una foto",
+    "ia.depot_formats": "JPEG, PNG o WebP",
+    "ia.changer_photo": "Scegli un'altra foto",
+    "ia.conseils_titre": "Cosa funziona meglio",
+    "ia.conseil_nette": "Una foto nitida e ben illuminata.",
+    "ia.conseil_lieu":
+      "Un solo luogo — un paesaggio, una strada, una facciata —, non un collage di più immagini.",
+    "ia.conseil_cadrage":
+      "Un'inquadratura ampia più che un primo piano: il poster ha bisogno di spazio.",
+    "ia.precision": "Vuoi aggiungere qualcosa? (facoltativo)",
+    "ia.precision_exemple": "Per esempio: al tramonto, con toni caldi…",
+    "ia.generer": "Crea il mio poster",
+    "ia.regenerer": "Crea un'altra versione",
+    "ia.regenerer_aide": "Tutte le volte che vuoi, senza costi aggiuntivi.",
+    "ia.recommencer": "Ricomincia da capo",
+    "ia.envoi": "Caricamento della tua foto…",
+    "ia.generation": "Creazione del tuo poster…",
+    "ia.generation_duree":
+      "Ci vuole una trentina di secondi abbondante. Lascia aperta questa pagina.",
+    "ia.apercu_vide": "Il tuo poster apparirà qui.",
+    "ia.apercu_alt": "Anteprima del poster creato",
+    "ia.filigrane_note":
+      "La filigrana sparisce dal poster stampato, dopo il pagamento.",
+    "ia.poids_max": "Foto fino a {n} MB.",
+    "ia.err.indisponible":
+      "La creazione dei poster non è disponibile al momento. Riprova tra qualche minuto, oppure scrivici.",
+    "ia.err.format":
+      "Questo file non è una foto riconosciuta. Scegli un JPEG, un PNG o un WebP.",
+    "ia.err.trop_lourde":
+      "Questa foto è troppo pesante. Scegline una più leggera, o riducila prima di caricarla.",
+    "ia.err.rafale":
+      "Un po' troppe richieste una dopo l'altra. Aspetta un minuto, poi rilancia.",
+    "ia.err.plafond":
+      "La creazione dei poster è sospesa per il momento. Riprova più tardi, oppure scrivici.",
+    "ia.err.generation":
+      "La creazione non è riuscita. Rilancia: spesso funziona al secondo tentativo. Altrimenti prova un'altra foto.",
+    "ia.err.attente":
+      "Il poster sta impiegando più tempo del previsto. Rilancia la creazione.",
+    "ia.err.inconnu": "Qualcosa è andato storto. Rilancia la creazione.",
+
 
     "panier.titre": "Il tuo carrello",
     "panier.vide": "Il tuo carrello è vuoto.",
@@ -514,6 +1085,9 @@ export const ui = {
       "Indica nome e indirizzo del punto di ritiro Mondial Relay scelto.",
     "livraison.offerte": "Gratuita",
     "livraison.aucune": "Nessuna spedizione disponibile per questo paese.",
+    "livraison.poids_colis": "Peso del pacco:",
+    "livraison.aucune_pour_ce_poids":
+      "Nessuna modalità di spedizione copre questo peso per questo paese: scrivici.",
     "panier.code": "Codice sconto",
     "panier.code_appliquer": "Applica",
     "panier.code_applique": "Codice applicato:",
@@ -558,9 +1132,13 @@ export const ui = {
     "cfg.etape.fond": "Sfondo e testo",
     "cfg.etape.personnages": "Personaggi",
     "cfg.etape.format": "Formato",
-    "cfg.titre_champ": "Titolo (simboli e numeri ammessi)",
-    "cfg.soustitre_champ": "Sottotitolo (simboli e numeri ammessi)",
-    "cfg.couleur_texte": "Colore del testo (titolo e sottotitolo)",
+    "cfg.ligne1_champ": "Riga 1 (simboli e numeri ammessi)",
+    "cfg.ligne2_champ": "Riga 2 (simboli e numeri ammessi)",
+    "cfg.ligne3_champ": "Riga 3 (simboli e numeri ammessi)",
+    "cfg.ligne1_exemple": "MERS-LES-BAINS",
+    "cfg.ligne2_exemple": "la casa blu",
+    "cfg.ligne3_exemple": "estate 2019",
+    "cfg.couleur_texte": "Colore del testo",
     "cfg.fond": "Sfondo",
     "cfg.personnages": "Personaggi",
     "cfg.nouveau_perso": "+ Nuovo personaggio",
@@ -584,6 +1162,125 @@ export const ui = {
     "cfg.chargement": "Caricamento del configuratore…",
     "cfg.erreur":
       "Il configuratore non è riuscito ad avviarsi. Verifica che l'API sia attiva",
+
+    "nav.compte": "Account",
+
+    "compte.titre": "Il mio account",
+    "compte.menu.commandes": "I miei ordini",
+    "compte.menu.adresses": "I miei indirizzi",
+    "compte.menu.infos": "I miei dati",
+    "compte.deconnexion": "Esci",
+    "compte.email": "E-mail",
+    "compte.mdp": "Password",
+    "compte.nom": "Nome",
+    "compte.telephone": "Telefono",
+    "compte.marketing":
+      "Desidero ricevere per e-mail le novità e le offerte di Memory Line.",
+    "compte.article": "articolo",
+    "compte.articles": "articoli",
+    "compte.mdp_aide": "Almeno 8 caratteri.",
+
+    "compte.connexion.titre": "Accedi",
+    "compte.connexion.intro":
+      "Accedi per seguire i tuoi ordini e ritrovare i tuoi indirizzi.",
+    "compte.connexion.bouton": "Accedi",
+    "compte.connexion.oubli": "Password dimenticata?",
+    "compte.connexion.pas_de_compte": "Non hai ancora un account?",
+    "compte.connexion.creer": "Crea un account",
+
+    "compte.inscription.titre": "Crea un account",
+    "compte.inscription.intro":
+      "Con un account puoi seguire i tuoi ordini e non riscrivere ogni volta i tuoi indirizzi.",
+    "compte.inscription.bouton": "Crea il mio account",
+    "compte.inscription.deja": "Hai già un account?",
+
+    "compte.commandes.titre": "I miei ordini",
+    "compte.commandes.vide": "Non hai ancora effettuato ordini.",
+    "compte.commandes.decouvrir": "Scopri i poster",
+    "compte.commandes.numero": "Ordine",
+    "compte.commandes.voir": "Vedi i dettagli",
+    "compte.commandes.suivre": "Segui il pacco",
+    "compte.commandes.retour": "Torna ai miei ordini",
+
+    "compte.commande.paiement": "Pagamento",
+    "compte.commande.traitement": "Evasione",
+    "compte.commande.adresse": "Indirizzo di spedizione",
+    "compte.commande.articles": "Articoli",
+    "compte.commande.expeditions": "Spedizioni",
+    "compte.commande.sous_total": "Subtotale",
+    "compte.commande.remise": "Sconto",
+    "compte.commande.port": "Spedizione",
+    "compte.commande.total": "Totale",
+    "compte.commande.rembourse": "Rimborsato",
+    "compte.commande.quantite": "Quantità",
+    "compte.commande.introuvable": "Questo ordine non è stato trovato.",
+    "compte.commande.sans_suivi": "Nessun numero di tracciamento per ora.",
+
+    "compte.statut.financier.pending": "In attesa di pagamento",
+    "compte.statut.financier.authorized": "Pagamento autorizzato",
+    "compte.statut.financier.partially_paid": "Parzialmente pagato",
+    "compte.statut.financier.paid": "Pagato",
+    "compte.statut.financier.partially_refunded": "Parzialmente rimborsato",
+    "compte.statut.financier.refunded": "Rimborsato",
+    "compte.statut.financier.voided": "Annullato",
+
+    "compte.statut.expedition.unfulfilled": "Non spedito",
+    "compte.statut.expedition.partially_fulfilled": "Parzialmente spedito",
+    "compte.statut.expedition.fulfilled": "Spedito",
+    "compte.statut.expedition.delivered": "Consegnato",
+    "compte.statut.expedition.cancelled": "Annullato",
+
+    "compte.adresses.titre": "I miei indirizzi",
+    "compte.adresses.vide": "Non hai ancora salvato nessun indirizzo.",
+    "compte.adresses.nouvelle": "Nuovo indirizzo",
+    "compte.adresses.modifier": "Modifica",
+    "compte.adresses.supprimer": "Elimina",
+    "compte.adresses.enregistrer": "Salva",
+    "compte.adresses.annuler": "Annulla",
+    "compte.adresses.libelle": "Nome dell'indirizzo (Casa, Ufficio…)",
+    "compte.adresses.defaut_livraison":
+      "Usa come indirizzo di spedizione predefinito",
+    "compte.adresses.defaut_facturation":
+      "Usa come indirizzo di fatturazione predefinito",
+    "compte.adresses.badge_livraison": "Spedizione predefinita",
+    "compte.adresses.badge_facturation": "Fatturazione predefinita",
+
+    "compte.infos.titre": "I miei dati",
+    "compte.infos.enregistrer": "Salva",
+    "compte.infos.enregistre": "I tuoi dati sono stati salvati.",
+    "compte.infos.mdp_titre": "Cambia password",
+    "compte.infos.mdp_ancien": "Password attuale",
+    "compte.infos.mdp_nouveau": "Nuova password",
+    "compte.infos.mdp_confirmer": "Conferma la nuova password",
+    "compte.infos.mdp_bouton": "Cambia la mia password",
+    "compte.infos.mdp_change": "La tua password è stata cambiata.",
+
+    "compte.oubli.titre": "Password dimenticata",
+    "compte.oubli.intro":
+      "Indica il tuo indirizzo e-mail: ti invieremo un link per scegliere una nuova password.",
+    "compte.oubli.bouton": "Invia il link",
+    "compte.oubli.envoye":
+      "Se esiste un account con questo indirizzo, l'e-mail è appena partita. Controlla anche la posta indesiderata.",
+    "compte.oubli.retour": "Torna all'accesso",
+
+    "compte.reinit.titre": "Nuova password",
+    "compte.reinit.intro": "Scegli la nuova password del tuo account.",
+    "compte.reinit.bouton": "Salva la nuova password",
+    "compte.reinit.ok": "La tua password è stata cambiata. Ora puoi accedere.",
+    "compte.reinit.lien_incomplet":
+      "Questo link è incompleto. Richiedine uno nuovo dalla pagina di accesso.",
+
+    "compte.err.indisponible":
+      "L'area clienti non è disponibile al momento. Riprova tra qualche istante.",
+    "compte.err.identifiants": "E-mail o password non corretti.",
+    "compte.err.deja_inscrit":
+      "Esiste già un account con questo indirizzo e-mail.",
+    "compte.err.mdp_court": "La password deve contenere almeno 8 caratteri.",
+    "compte.err.mdp_different": "Le due password non coincidono.",
+    "compte.err.mdp_actuel": "La password attuale non è corretta.",
+    "compte.err.jeton": "Questo link non è più valido. Richiedine uno nuovo.",
+    "compte.err.champs": "Compila i campi obbligatori.",
+    "compte.err.generique": "Si è verificato un errore. Riprova.",
   },
 
   es: {
@@ -623,6 +1320,52 @@ export const ui = {
     "produit.aide": "Elige el fondo, el texto y tus personajes.",
     "produit.ajouter": "Añadir a la cesta",
     "produit.retour": "Volver a las láminas",
+    "panier.affiche_ia": "Lámina creada a partir de tu foto",
+
+    "ia.titre": "Tu lámina, a partir de tu foto",
+    "ia.intro":
+      "Envía una foto: la convertimos en una lámina. Mira el resultado, vuelve a lanzarlo tantas veces como quieras y quédate con la que más te guste.",
+    "ia.depot": "Suelta aquí tu foto, o haz clic para elegirla",
+    "ia.depot_bouton": "Elegir una foto",
+    "ia.depot_formats": "JPEG, PNG o WebP",
+    "ia.changer_photo": "Elegir otra foto",
+    "ia.conseils_titre": "Lo que da mejores resultados",
+    "ia.conseil_nette": "Una foto nítida y bien iluminada.",
+    "ia.conseil_lieu":
+      "Un solo lugar — un paisaje, una calle, una fachada —, no un montaje de varias imágenes.",
+    "ia.conseil_cadrage":
+      "Un encuadre amplio mejor que un primer plano: la lámina necesita espacio.",
+    "ia.precision": "¿Quieres añadir algo? (opcional)",
+    "ia.precision_exemple": "Por ejemplo: al atardecer, en tonos cálidos…",
+    "ia.generer": "Crear mi lámina",
+    "ia.regenerer": "Crear otra versión",
+    "ia.regenerer_aide": "Todas las veces que quieras, sin coste adicional.",
+    "ia.recommencer": "Empezar de nuevo",
+    "ia.envoi": "Enviando tu foto…",
+    "ia.generation": "Creando tu lámina…",
+    "ia.generation_duree":
+      "Cuenta con unos treinta segundos largos. Deja esta página abierta.",
+    "ia.apercu_vide": "Aquí aparecerá tu lámina.",
+    "ia.apercu_alt": "Vista previa de la lámina creada",
+    "ia.filigrane_note":
+      "La marca de agua desaparece en la lámina impresa, tras el pago.",
+    "ia.poids_max": "Fotos de hasta {n} MB.",
+    "ia.err.indisponible":
+      "La creación de láminas no está disponible ahora mismo. Inténtalo de nuevo en unos minutos, o escríbenos.",
+    "ia.err.format":
+      "Este archivo no es una foto reconocida. Elige un JPEG, un PNG o un WebP.",
+    "ia.err.trop_lourde":
+      "Esta foto pesa demasiado. Elige una más ligera, o redúcela antes de enviarla.",
+    "ia.err.rafale":
+      "Demasiadas peticiones seguidas. Espera un minuto y vuelve a lanzarlo.",
+    "ia.err.plafond":
+      "La creación de láminas está suspendida por el momento. Inténtalo más tarde, o escríbenos.",
+    "ia.err.generation":
+      "La creación no ha salido. Vuelve a lanzarla: suele funcionar al segundo intento. Si no, prueba con otra foto.",
+    "ia.err.attente":
+      "La lámina tarda más de lo previsto. Vuelve a lanzar la creación.",
+    "ia.err.inconnu": "Algo ha salido mal. Vuelve a lanzar la creación.",
+
 
     "panier.titre": "Tu cesta",
     "panier.vide": "Tu cesta está vacía.",
@@ -652,6 +1395,9 @@ export const ui = {
       "Indica el nombre y la dirección del punto Mondial Relay elegido.",
     "livraison.offerte": "Gratis",
     "livraison.aucune": "No hay envío disponible para este país.",
+    "livraison.poids_colis": "Peso del paquete:",
+    "livraison.aucune_pour_ce_poids":
+      "Ningún método de envío cubre este peso para este país: escríbenos.",
     "panier.code": "Código promocional",
     "panier.code_appliquer": "Aplicar",
     "panier.code_applique": "Código aplicado:",
@@ -696,9 +1442,13 @@ export const ui = {
     "cfg.etape.fond": "Fondo y texto",
     "cfg.etape.personnages": "Personajes",
     "cfg.etape.format": "Formato",
-    "cfg.titre_champ": "Título (se permiten símbolos y números)",
-    "cfg.soustitre_champ": "Subtítulo (se permiten símbolos y números)",
-    "cfg.couleur_texte": "Color del texto (título y subtítulo)",
+    "cfg.ligne1_champ": "Línea 1 (se permiten símbolos y números)",
+    "cfg.ligne2_champ": "Línea 2 (se permiten símbolos y números)",
+    "cfg.ligne3_champ": "Línea 3 (se permiten símbolos y números)",
+    "cfg.ligne1_exemple": "MERS-LES-BAINS",
+    "cfg.ligne2_exemple": "la casa azul",
+    "cfg.ligne3_exemple": "verano 2019",
+    "cfg.couleur_texte": "Color del texto",
     "cfg.fond": "Fondo",
     "cfg.personnages": "Personajes",
     "cfg.nouveau_perso": "+ Nuevo personaje",
@@ -722,6 +1472,126 @@ export const ui = {
     "cfg.chargement": "Cargando el configurador…",
     "cfg.erreur":
       "El configurador no ha podido arrancar. Comprueba que la API esté activa",
+
+    "nav.compte": "Cuenta",
+
+    "compte.titre": "Mi cuenta",
+    "compte.menu.commandes": "Mis pedidos",
+    "compte.menu.adresses": "Mis direcciones",
+    "compte.menu.infos": "Mis datos",
+    "compte.deconnexion": "Cerrar sesión",
+    "compte.email": "Correo electrónico",
+    "compte.mdp": "Contraseña",
+    "compte.nom": "Nombre",
+    "compte.telephone": "Teléfono",
+    "compte.marketing":
+      "Quiero recibir por correo las novedades y ofertas de Memory Line.",
+    "compte.article": "artículo",
+    "compte.articles": "artículos",
+    "compte.mdp_aide": "8 caracteres como mínimo.",
+
+    "compte.connexion.titre": "Iniciar sesión",
+    "compte.connexion.intro":
+      "Inicia sesión para seguir tus pedidos y recuperar tus direcciones.",
+    "compte.connexion.bouton": "Iniciar sesión",
+    "compte.connexion.oubli": "¿Has olvidado tu contraseña?",
+    "compte.connexion.pas_de_compte": "¿Todavía no tienes cuenta?",
+    "compte.connexion.creer": "Crear una cuenta",
+
+    "compte.inscription.titre": "Crear una cuenta",
+    "compte.inscription.intro":
+      "Con una cuenta puedes seguir tus pedidos y no volver a escribir tus direcciones.",
+    "compte.inscription.bouton": "Crear mi cuenta",
+    "compte.inscription.deja": "¿Ya tienes una cuenta?",
+
+    "compte.commandes.titre": "Mis pedidos",
+    "compte.commandes.vide": "Todavía no has realizado ningún pedido.",
+    "compte.commandes.decouvrir": "Descubrir las láminas",
+    "compte.commandes.numero": "Pedido",
+    "compte.commandes.voir": "Ver el detalle",
+    "compte.commandes.suivre": "Seguir el paquete",
+    "compte.commandes.retour": "Volver a mis pedidos",
+
+    "compte.commande.paiement": "Pago",
+    "compte.commande.traitement": "Preparación",
+    "compte.commande.adresse": "Dirección de envío",
+    "compte.commande.articles": "Artículos",
+    "compte.commande.expeditions": "Envíos",
+    "compte.commande.sous_total": "Subtotal",
+    "compte.commande.remise": "Descuento",
+    "compte.commande.port": "Envío",
+    "compte.commande.total": "Total",
+    "compte.commande.rembourse": "Reembolsado",
+    "compte.commande.quantite": "Cantidad",
+    "compte.commande.introuvable": "No se ha encontrado este pedido.",
+    "compte.commande.sans_suivi": "Todavía no hay número de seguimiento.",
+
+    "compte.statut.financier.pending": "Pendiente de pago",
+    "compte.statut.financier.authorized": "Pago autorizado",
+    "compte.statut.financier.partially_paid": "Parcialmente pagado",
+    "compte.statut.financier.paid": "Pagado",
+    "compte.statut.financier.partially_refunded": "Parcialmente reembolsado",
+    "compte.statut.financier.refunded": "Reembolsado",
+    "compte.statut.financier.voided": "Anulado",
+
+    "compte.statut.expedition.unfulfilled": "Sin enviar",
+    "compte.statut.expedition.partially_fulfilled": "Parcialmente enviado",
+    "compte.statut.expedition.fulfilled": "Enviado",
+    "compte.statut.expedition.delivered": "Entregado",
+    "compte.statut.expedition.cancelled": "Anulado",
+
+    "compte.adresses.titre": "Mis direcciones",
+    "compte.adresses.vide": "Todavía no has guardado ninguna dirección.",
+    "compte.adresses.nouvelle": "Nueva dirección",
+    "compte.adresses.modifier": "Editar",
+    "compte.adresses.supprimer": "Eliminar",
+    "compte.adresses.enregistrer": "Guardar",
+    "compte.adresses.annuler": "Cancelar",
+    "compte.adresses.libelle": "Nombre de la dirección (Casa, Oficina…)",
+    "compte.adresses.defaut_livraison":
+      "Usar como dirección de envío predeterminada",
+    "compte.adresses.defaut_facturation":
+      "Usar como dirección de facturación predeterminada",
+    "compte.adresses.badge_livraison": "Envío predeterminado",
+    "compte.adresses.badge_facturation": "Facturación predeterminada",
+
+    "compte.infos.titre": "Mis datos",
+    "compte.infos.enregistrer": "Guardar",
+    "compte.infos.enregistre": "Tus datos se han guardado.",
+    "compte.infos.mdp_titre": "Cambiar la contraseña",
+    "compte.infos.mdp_ancien": "Contraseña actual",
+    "compte.infos.mdp_nouveau": "Nueva contraseña",
+    "compte.infos.mdp_confirmer": "Confirmar la nueva contraseña",
+    "compte.infos.mdp_bouton": "Cambiar mi contraseña",
+    "compte.infos.mdp_change": "Tu contraseña se ha cambiado.",
+
+    "compte.oubli.titre": "Contraseña olvidada",
+    "compte.oubli.intro":
+      "Indica tu correo electrónico: te enviaremos un enlace para elegir una nueva contraseña.",
+    "compte.oubli.bouton": "Enviar el enlace",
+    "compte.oubli.envoye":
+      "Si existe una cuenta con esta dirección, acabamos de enviar un correo. Revisa también el correo no deseado.",
+    "compte.oubli.retour": "Volver al inicio de sesión",
+
+    "compte.reinit.titre": "Nueva contraseña",
+    "compte.reinit.intro": "Elige la nueva contraseña de tu cuenta.",
+    "compte.reinit.bouton": "Guardar la nueva contraseña",
+    "compte.reinit.ok":
+      "Tu contraseña se ha cambiado. Ya puedes iniciar sesión.",
+    "compte.reinit.lien_incomplet":
+      "Este enlace está incompleto. Pide uno nuevo desde la página de inicio de sesión.",
+
+    "compte.err.indisponible":
+      "El área de cliente no está disponible por ahora. Inténtalo de nuevo en unos instantes.",
+    "compte.err.identifiants": "Correo electrónico o contraseña incorrectos.",
+    "compte.err.deja_inscrit":
+      "Ya existe una cuenta con esta dirección de correo.",
+    "compte.err.mdp_court": "La contraseña debe tener al menos 8 caracteres.",
+    "compte.err.mdp_different": "Las dos contraseñas no coinciden.",
+    "compte.err.mdp_actuel": "La contraseña actual no es correcta.",
+    "compte.err.jeton": "Este enlace ya no es válido. Pide uno nuevo.",
+    "compte.err.champs": "Rellena los campos obligatorios.",
+    "compte.err.generique": "Se ha producido un error. Inténtalo de nuevo.",
   },
 } as const;
 

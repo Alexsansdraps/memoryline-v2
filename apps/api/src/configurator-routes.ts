@@ -19,15 +19,31 @@ import {
   eq,
   inArray,
   isNull,
+  lt,
   notInArray,
   sql,
 } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import { renderPosterPdf, type ResolveData } from "./pdf.js";
 import {
+  resumeCommandes,
+  statutExpedition,
+  statutFinancier,
+} from "./commandes.js";
+import { clientDeLaRequete } from "./comptes.js";
+import {
+  envoyer as envoyerMail,
+  courrierConfirmation,
+  courrierNouvelleCommande,
+  courrierPanierAbandonne,
+  estConfigure as mailConfigure,
+} from "./mail.js";
+import {
   calageNeutre,
   calagePropre,
   fraisDePort,
+  lignesRemplies,
+  poidsPanier,
   normaliserCode,
   normaliserPays,
   posterConfigSchema,
@@ -35,7 +51,9 @@ import {
   sousTotalCents,
   totalPanierCents,
   type PosterConfig,
+  type TextesAffiche,
 } from "@memoryline/types";
+import { rattacherGenerationsAuPanier } from "./ia.js";
 import {
   createPaypalOrder,
   capturePaypalOrder,
@@ -113,6 +131,20 @@ async function buildResolveData(): Promise<ResolveData> {
 }
 
 /** Génère le PDF d'une ligne de commande et l'enregistre (print_file). */
+/**
+ * Nom du cadre tel qu'il doit apparaître dans le nom du fichier : « bois »,
+ * « creme », « noir »… et « pas-cadre » quand l'affiche part seule.
+ *
+ * Le préfixe « Cadre » est retiré : le fichier s'appelle déjà d'après une
+ * affiche, le répéter n'apprend rien. Le nom suit le catalogue — renommer un
+ * cadre au back-office renomme les fichiers suivants, sans toucher au code.
+ */
+function suffixeCadre(nomCadre: string | null | undefined): string {
+  const brut = String(nomCadre ?? "").trim();
+  if (!brut) return "pas-cadre";
+  return slugifyName(brut.replace(/^cadre\s+/i, "")) || "pas-cadre";
+}
+
 async function generatePrintFile(
   orderItemId: number,
   config: PosterConfig,
@@ -121,8 +153,60 @@ async function generatePrintFile(
   format: "A4" | "A3",
 ): Promise<{ filename: string }> {
   const data = await buildResolveData();
-  const pdf = await renderPosterPdf(config, { data, format });
-  const filename = `${slugifyName(customerName)}_${orderNumber}.pdf`;
+
+  // Affiche générée par IA : le visuel N'EST PAS la pile de calques habituelle
+  // (elle n'a ni fond, ni personnages), c'est l'image produite par le modèle.
+  // On la donne au moteur comme fond, et les lignes de texte se composent
+  // par-dessus comme sur n'importe quelle affiche.
+  //
+  // Sans ça, l'atelier recevait une page BLANCHE : le client avait payé, la
+  // génération existait en base, et rien ne l'amenait jusqu'au PDF.
+  let aImprimer = config;
+  if (config.aiPublicId) {
+    const [gen] = await db
+      .select({ fullPath: schema.aiGenerations.fullPath })
+      .from(schema.aiGenerations)
+      .where(eq(schema.aiGenerations.publicId, config.aiPublicId));
+    if (!gen?.fullPath)
+      // Mieux vaut une erreur bruyante qu'un A4 blanc glissé dans un colis.
+      throw new Error(
+        `Affiche IA ${config.aiPublicId} : image pleine définition introuvable`,
+      );
+    aImprimer = { ...config, backgroundUrl: gen.fullPath };
+  }
+
+  const pdf = await renderPosterPdf(aImprimer, { data, format });
+
+  // « dupont_A3_bois.pdf » : le nom se lit d'un coup d'œil au moment
+  // d'imprimer, sans avoir à rouvrir la commande pour savoir quel papier
+  // charger ni quel cadre sortir.
+  const [cadre] = config.frameId
+    ? await db
+        .select({ name: schema.frames.name })
+        .from(schema.frames)
+        .where(eq(schema.frames.id, Number(config.frameId)))
+    : [];
+  const base = `${slugifyName(customerName)}_${format}_${suffixeCadre(cadre?.name)}`;
+
+  // Deux affiches identiques dans la même commande porteraient le même nom :
+  // on numérote à partir de la deuxième, jamais la première.
+  const [ligne] = await db
+    .select({ orderId: schema.orderItems.orderId })
+    .from(schema.orderItems)
+    .where(eq(schema.orderItems.id, orderItemId));
+  const dejaPris = ligne
+    ? await db
+        .select({ filename: schema.printFiles.filename })
+        .from(schema.printFiles)
+        .innerJoin(
+          schema.orderItems,
+          eq(schema.printFiles.orderItemId, schema.orderItems.id),
+        )
+        .where(eq(schema.orderItems.orderId, ligne.orderId))
+    : [];
+  const noms = new Set(dejaPris.map((f) => f.filename));
+  let filename = `${base}.pdf`;
+  for (let i = 2; noms.has(filename); i++) filename = `${base}-${i}.pdf`;
   // Stockage : en l'absence de R2 configuré en dev, on dépose le binaire en
   // base via une route à la demande (régénérable). Ici on garde la trace.
   await db
@@ -144,7 +228,113 @@ type PricedItem = {
   unitPriceCents: number;
   quantity: number;
   config: unknown;
+  /** Servent au poids, absents des paniers reconstitués à la volée. */
+  productId?: number | null;
+  variantId?: number | null;
 };
+
+/**
+ * Poids total d'un panier, en grammes.
+ *
+ * Une seule requête par table plutôt qu'une par ligne : le tunnel de commande
+ * appelle cette fonction à chaque changement d'adresse, elle doit rester
+ * insensible au nombre d'articles.
+ *
+ * La cascade variante → produit → catégorie vit dans @memoryline/types, et le
+ * cadre s'ajoute par-dessus : c'est un objet de plus dans le colis.
+ */
+async function poidsDuPanier(items: PricedItem[]): Promise<number> {
+  const produitIds = [
+    ...new Set(items.map((i) => i.productId).filter((v): v is number => !!v)),
+  ];
+  // La variante se retrouve par le FORMAT, pas par variantId : la boutique ne
+  // renseigne jamais cette colonne, c'est le serveur qui résout la variante à
+  // partir de « format » — exactement comme il le fait pour le prix. Sans ça,
+  // un A3 serait facturé au prix A3 mais pesé comme un A4, et les poids saisis
+  // par format au back-office ne serviraient à rien.
+  const formatDe = (it: PricedItem) =>
+    String((it.config as { format?: unknown } | null)?.format ?? "A4");
+  const cadreIds = [
+    ...new Set(
+      items
+        .map((i) => Number((i.config as { frameId?: unknown } | null)?.frameId))
+        .filter((v) => Number.isFinite(v) && v > 0),
+    ),
+  ];
+
+  const [produits, variantes, cadres] = await Promise.all([
+    produitIds.length
+      ? db
+          .select({
+            id: schema.products.id,
+            weightGrams: schema.products.weightGrams,
+            categoryId: schema.products.categoryId,
+          })
+          .from(schema.products)
+          .where(inArray(schema.products.id, produitIds))
+      : [],
+    produitIds.length
+      ? db
+          .select({
+            productId: schema.variants.productId,
+            format: schema.variants.format,
+            weightGrams: schema.variants.weightGrams,
+          })
+          .from(schema.variants)
+          .where(inArray(schema.variants.productId, produitIds))
+      : [],
+    cadreIds.length
+      ? db
+          .select({
+            id: schema.frames.id,
+            weightGrams: schema.frames.weightGrams,
+          })
+          .from(schema.frames)
+          .where(inArray(schema.frames.id, cadreIds))
+      : [],
+  ]);
+
+  const categorieIds = [
+    ...new Set(produits.map((p) => p.categoryId).filter((v): v is number => !!v)),
+  ];
+  const categories = categorieIds.length
+    ? await db
+        .select({
+          id: schema.productCategories.id,
+          defaultWeightGrams: schema.productCategories.defaultWeightGrams,
+        })
+        .from(schema.productCategories)
+        .where(inArray(schema.productCategories.id, categorieIds))
+    : [];
+
+  const parProduit = new Map(produits.map((p) => [p.id, p]));
+  const parVariante = new Map(
+    variantes.map((v) => [`${v.productId}:${v.format}`, v]),
+  );
+  const parCadre = new Map(cadres.map((f) => [f.id, f]));
+  const parCategorie = new Map(categories.map((c) => [c.id, c]));
+
+  return poidsPanier(
+    items.map((it) => {
+      const produit = it.productId ? parProduit.get(it.productId) : undefined;
+      const categorie = produit?.categoryId
+        ? parCategorie.get(produit.categoryId)
+        : undefined;
+      const cadreId = Number(
+        (it.config as { frameId?: unknown } | null)?.frameId,
+      );
+      return {
+        quantite: it.quantity,
+        varianteGrammes:
+          parVariante.get(`${it.productId}:${formatDe(it)}`)?.weightGrams ??
+          null,
+        produitGrammes: produit?.weightGrams ?? null,
+        categorieGrammes: categorie?.defaultWeightGrams ?? null,
+        cadreGrammes: parCadre.get(cadreId)?.weightGrams ?? null,
+      };
+    }),
+  );
+}
 
 /**
  * Prix unitaire d'une ligne, en centimes — RÉSOLU CÔTÉ SERVEUR depuis le
@@ -281,7 +471,12 @@ async function computeShippingCents(
   modeSlug: string,
   pays: string,
   code?: string | null,
-): Promise<{ cents: number; label: string; kind: string } | null> {
+): Promise<{
+  cents: number;
+  label: string;
+  kind: string;
+  poidsGrammes: number;
+} | null> {
   const [zones, modes, tarifs, regles] = await Promise.all([
     db.select().from(schema.shippingZones),
     db
@@ -301,17 +496,23 @@ async function computeShippingCents(
   const apresRemise =
     sousTotalCents(lignes) -
     remisesPanier(lignes, regles, new Date(), code ? [code] : []).remiseCents;
+  // Le poids décide de la tranche d'affranchissement : un mode dont aucune
+  // tranche ne couvre le colis n'est pas proposable, et la commande est
+  // refusée plutôt que sous-affranchie.
+  const poids = await poidsDuPanier(items);
   const option = fraisDePort(
     { zones, modes, tarifs },
     modeSlug,
     pays,
     Math.max(0, apresRemise),
+    poids,
   );
   if (!option) return null;
   return {
     cents: option.fraisCents,
     label: option.mode.name,
     kind: option.mode.kind,
+    poidsGrammes: poids,
   };
 }
 
@@ -355,6 +556,11 @@ async function markOrderPaid(
     if (cust?.name) customerName = cust.name;
   }
 
+  // Les affiches générées par IA passent du panier à la commande : elles
+  // reçoivent leur date de paiement, et c'est elle qui les sort de la purge
+  // des photos de visiteurs (apps/api/src/ia.ts).
+  await rattacherGenerationsAuPanier(orderId, order.clientOrderId, order.customerId);
+
   const items = await db
     .select()
     .from(schema.orderItems)
@@ -369,7 +575,113 @@ async function markOrderPaid(
       console.error("PDF génération échouée (item " + it.id + ") :", e);
     }
   }
+
+  // Le grand livre reçoit l'encaissement. C'est la seule source de vérité
+  // pour le solde de la commande : le total, lui, ne bouge jamais.
+  await db.insert(schema.orderTransactions).values({
+    orderId,
+    kind: "sale",
+    status: "success",
+    amountCents: order.totalCents,
+    gateway: provider,
+    externalRef: externalRef ?? null,
+  });
+
+  await previenirDuPaiement(orderId);
   return true;
+}
+
+/**
+ * Courriers d'une commande qui vient d'être payée : la confirmation au
+ * client, et l'avis à la boutique.
+ *
+ * Isolé dans sa propre fonction, et sans jamais lever : une commande payée
+ * reste payée même si le courrier ne part pas. Le journal garde la trace de
+ * l'envoi — ou de son échec, pour qu'on puisse le relancer à la main.
+ */
+async function previenirDuPaiement(orderId: number): Promise<void> {
+  try {
+    const [order] = await db
+      .select()
+      .from(schema.orders)
+      .where(eq(schema.orders.id, orderId));
+    if (!order) return;
+    const [client] = order.customerId
+      ? await db
+          .select()
+          .from(schema.customers)
+          .where(eq(schema.customers.id, order.customerId))
+      : [];
+    const items = await db
+      .select()
+      .from(schema.orderItems)
+      .where(eq(schema.orderItems.orderId, orderId));
+    const cadres = await db.select().from(schema.frames);
+
+    const lignes = items.map((it) => {
+      const cfg = (it.config ?? {}) as Record<string, unknown>;
+      const cadre = cadres.find((f) => String(f.id) === String(cfg.frameId ?? ""));
+      return {
+        titre: it.title ?? "Affiche personnalisée",
+        format: (cfg.format as string) ?? "A4",
+        cadre: cadre?.name ?? null,
+        quantite: it.quantity,
+        unitPriceCents: it.unitPriceCents,
+      };
+    });
+    const sousTotal = lignes.reduce(
+      (s, l) => s + l.unitPriceCents * l.quantite,
+      0,
+    );
+    const port = order.shippingCents ?? 0;
+    // La remise se DÉDUIT de ce qui a été facturé : c'est le montant payé qui
+    // fait foi, pas un recalcul qui pourrait diverger.
+    const remise = Math.max(0, sousTotal + port - order.totalCents);
+
+    if (client?.email) {
+      const courrier = courrierConfirmation({
+        numero: order.number,
+        prenomClient: (client.name ?? "").split(" ")[0] || "et merci",
+        lignes,
+        sousTotalCents: sousTotal,
+        remiseCents: remise,
+        codePromo: order.promoCode,
+        portCents: port,
+        totalCents: order.totalCents,
+        modeLivraison: order.shippingLabel,
+        adresse: [
+          order.shippingName,
+          order.relayPointLabel,
+          order.shippingLine1,
+          order.shippingLine2,
+          [order.shippingPostalCode, order.shippingCity].filter(Boolean).join(" "),
+          order.shippingCountry,
+        ].filter((v): v is string => Boolean(v)),
+      });
+      const parti = await envoyerMail({ ...courrier, to: client.email });
+      await db.insert(schema.orderEvents).values({
+        orderId,
+        kind: "event",
+        message: parti
+          ? `Confirmation de commande envoyée à ${client.email}.`
+          : `Confirmation NON envoyée à ${client.email} (envoi d'e-mails non configuré ou en échec).`,
+      });
+    }
+
+    // Avis à la boutique : sans lui, il faut penser à ouvrir le back-office.
+    const destinataire = (process.env.MAIL_BOUTIQUE ?? "").trim();
+    if (destinataire) {
+      const avis = courrierNouvelleCommande({
+        numero: order.number,
+        client: client?.name ?? "client inconnu",
+        totalCents: order.totalCents,
+        lignes,
+      });
+      await envoyerMail({ ...avis, to: destinataire });
+    }
+  } catch (e) {
+    console.error("[mail] notification de paiement impossible", e);
+  }
 }
 
 // --- Montage des routes -------------------------------------------------------
@@ -576,12 +888,21 @@ export function mountConfiguratorRoutes(app: Hono) {
       .select()
       .from(schema.orders)
       .where(eq(schema.orders.clientOrderId, cartId));
-    if (!order) return c.json({ cartId, items: [] });
+    if (!order) return c.json({ cartId, items: [], poidsGrammes: 0 });
     const items = await db
       .select()
       .from(schema.orderItems)
       .where(eq(schema.orderItems.orderId, order.id));
-    return c.json({ cartId, orderId: order.id, status: order.status, items });
+    // Le panier expose son poids : la boutique en a besoin pour n'afficher
+    // que les modes de livraison qui savent porter le colis, AVANT que le
+    // client ait saisi la moindre adresse.
+    return c.json({
+      cartId,
+      orderId: order.id,
+      status: order.status,
+      items,
+      poidsGrammes: await poidsDuPanier(items),
+    });
   });
 
   /** Ajoute une ligne au panier (crée le draft si besoin). */
@@ -710,10 +1031,43 @@ export function mountConfiguratorRoutes(app: Hono) {
       .where(eq(schema.orderItems.orderId, draft.id));
     if (items.length === 0) return c.json({ error: "panier vide" }, 400);
 
-    const [customer] = await db
-      .insert(schema.customers)
-      .values({ name, email })
-      .returning();
+    // Une fiche client par commande : c'est ce que produisait l'INSERT
+    // systématique d'avant, et un même client finissait éparpillé en autant de
+    // fiches que d'achats. On rattache donc la commande au compte connecté
+    // quand il y en a un, sinon à la fiche qui porte déjà cette adresse, et on
+    // n'en crée une qu'en dernier recours.
+    const connecte = await clientDeLaRequete(c);
+    const emailNormalise = email.toLowerCase();
+    let customer = connecte
+      ? (
+          await db
+            .select()
+            .from(schema.customers)
+            .where(eq(schema.customers.id, connecte.id))
+        )[0]
+      : (
+          await db
+            .select()
+            .from(schema.customers)
+            .where(
+              sql`lower(coalesce(${schema.customers.email}, '')) = ${emailNormalise}`,
+            )
+            .orderBy(schema.customers.id)
+        )[0];
+    if (!customer) {
+      [customer] = await db
+        .insert(schema.customers)
+        .values({ name, email: emailNormalise })
+        .returning();
+    } else if (!customer.name && name) {
+      // Le nom manquait (fiche importée, commande passée sans) : la commande
+      // du jour le fournit, autant le garder.
+      [customer] = await db
+        .update(schema.customers)
+        .set({ name })
+        .where(eq(schema.customers.id, customer.id))
+        .returning();
+    }
     // Garde le numéro s'il en a déjà un (retry) ; sinon en attribue un.
     const number = /^WEB-\d+$/.test(draft.number)
       ? draft.number
@@ -753,6 +1107,8 @@ export function mountConfiguratorRoutes(app: Hono) {
         shippingMethod: modeSlug,
         shippingLabel: port.label,
         shippingCents: port.cents,
+        // Poids figé : le catalogue changera, le colis a pesé ce qu'il a pesé.
+        weightGrams: port.poidsGrammes,
         shippingName: String(liv.name ?? "").trim() || name,
         shippingLine1: ligne1 || null,
         shippingLine2: String(liv.line2 ?? "").trim() || null,
@@ -772,6 +1128,7 @@ export function mountConfiguratorRoutes(app: Hono) {
       status: order!.status,
       totalCents: total,
       shippingCents: port.cents,
+      poidsGrammes: port.poidsGrammes,
     });
   });
 
@@ -997,7 +1354,12 @@ export function mountConfiguratorRoutes(app: Hono) {
     const cadres = await db.select().from(schema.frames);
     const enrichies = items.map((it) => {
       const cfg = (it.config ?? {}) as Record<string, unknown>;
-      const textes = (cfg.texts ?? {}) as Record<string, { value?: string }>;
+      // Les lignes réellement écrites, dans l'ordre. Passer par `lignesRemplies`
+      // et jamais par `texts.title` : une commande de l'an dernier ne porte pas
+      // encore de `lines`, elle sortirait vide de la fiche de préparation.
+      const lignes = lignesRemplies(cfg.texts as TextesAffiche | undefined).map(
+        (l) => l.value.trim(),
+      );
       const cadre = cadres.find(
         (f) => String(f.id) === String(cfg.frameId ?? ""),
       );
@@ -1009,8 +1371,12 @@ export function mountConfiguratorRoutes(app: Hono) {
         unitPriceCents: it.unitPriceCents,
         format: it.format,
         cadre: cadre?.name ?? null,
-        titreAffiche: textes.title?.value ?? null,
-        sousTitreAffiche: textes.subtitle?.value ?? null,
+        lignesAffiche: lignes,
+        // Les deux anciens champs restent servis tant que le back-office ne
+        // les a pas lâchés — ils ne sont plus qu'une vue des deux premières
+        // lignes, et disparaîtront avec le dernier gabarit qui les lit.
+        titreAffiche: lignes[0] ?? null,
+        sousTitreAffiche: lignes[1] ?? null,
         personnages: Array.isArray(cfg.characters) ? cfg.characters.length : 0,
       };
     });
@@ -1037,14 +1403,221 @@ export function mountConfiguratorRoutes(app: Hono) {
       .where(eq(schema.orderEvents.orderId, id))
       .orderBy(desc(schema.orderEvents.createdAt));
 
+    // Expéditions, remboursements et grand livre : ce sont eux qui portent
+    // les statuts affichés, jamais un champ figé sur la commande.
+    const expeditions = await db
+      .select()
+      .from(schema.fulfillments)
+      .where(eq(schema.fulfillments.orderId, id))
+      .orderBy(desc(schema.fulfillments.createdAt));
+    const lignesExpediees = expeditions.length
+      ? await db
+          .select()
+          .from(schema.fulfillmentItems)
+          .where(
+            inArray(
+              schema.fulfillmentItems.fulfillmentId,
+              expeditions.map((f) => f.id),
+            ),
+          )
+      : [];
+    const remboursements = await db
+      .select()
+      .from(schema.refunds)
+      .where(eq(schema.refunds.orderId, id))
+      .orderBy(desc(schema.refunds.createdAt));
+    const lignesRemboursees = remboursements.length
+      ? await db
+          .select()
+          .from(schema.refundItems)
+          .where(
+            inArray(
+              schema.refundItems.refundId,
+              remboursements.map((r) => r.id),
+            ),
+          )
+      : [];
+    const mouvements = await db
+      .select()
+      .from(schema.orderTransactions)
+      .where(eq(schema.orderTransactions.orderId, id))
+      .orderBy(desc(schema.orderTransactions.createdAt));
+
+    const resume = (await resumeCommandes([id])).get(id)!;
+
+    // Ce qui reste à faire, ligne par ligne : la fiche s'en sert pour
+    // pré-remplir l'expédition et le remboursement sans recalculer côté BO.
+    const partiParLigne = new Map<number, number>();
+    for (const l of lignesExpediees) {
+      const f = expeditions.find((e) => e.id === l.fulfillmentId);
+      if (f?.status !== "success") continue;
+      partiParLigne.set(
+        l.orderItemId,
+        (partiParLigne.get(l.orderItemId) ?? 0) + l.quantity,
+      );
+    }
+    const renduParLigne = new Map<number, number>();
+    for (const l of lignesRemboursees)
+      renduParLigne.set(
+        l.orderItemId,
+        (renduParLigne.get(l.orderItemId) ?? 0) + l.quantity,
+      );
+    const avecRestes = enrichies.map((it) => ({
+      ...it,
+      expedie: partiParLigne.get(it.id) ?? 0,
+      rembourse: renduParLigne.get(it.id) ?? 0,
+      aExpedier: it.quantity - (partiParLigne.get(it.id) ?? 0),
+      aRembourser: it.quantity - (renduParLigne.get(it.id) ?? 0),
+    }));
+
+    const portRendu = remboursements.reduce((s, r) => s + r.shippingCents, 0);
+
     return c.json({
       order,
       customer: customer ?? null,
-      items: enrichies,
+      items: avecRestes,
       paiements,
       journal,
+      expeditions: expeditions.map((f) => ({
+        ...f,
+        lignes: lignesExpediees.filter((l) => l.fulfillmentId === f.id),
+      })),
+      remboursements: remboursements.map((r) => ({
+        ...r,
+        lignes: lignesRemboursees.filter((l) => l.refundId === r.id),
+      })),
+      mouvements,
+      statutFinancier: statutFinancier(order, resume.rembourseCents),
+      statutExpedition: statutExpedition(resume.articles, resume.expedies),
+      rembourseCents: resume.rembourseCents,
+      portRemboursableCents: Math.max(0, order.shippingCents - portRendu),
       commandesDuClient: Number(autres?.n ?? 0),
     });
+  });
+
+  /**
+   * Paniers abandonnés : les commandes engagées mais jamais payées.
+   *
+   * On ne retient que celles où l'on connaît une adresse e-mail — un panier
+   * anonyme ne se relance pas, et le lister ferait du bruit sans action
+   * possible. Les paniers de moins d'une heure sont écartés : le client est
+   * peut-être encore en train de payer.
+   */
+  app.get("/admin/carts/abandoned", async (c) => {
+    const heures = Math.max(1, Number(c.req.query("hours") ?? 1));
+    const limite = new Date(Date.now() - heures * 3600_000);
+    const lignes = await db
+      .select({
+        id: schema.orders.id,
+        number: schema.orders.number,
+        totalCents: schema.orders.totalCents,
+        createdAt: schema.orders.createdAt,
+        clientOrderId: schema.orders.clientOrderId,
+        relanceAt: schema.orders.reminderSentAt,
+        nom: schema.customers.name,
+        email: schema.customers.email,
+      })
+      .from(schema.orders)
+      .leftJoin(schema.customers, eq(schema.orders.customerId, schema.customers.id))
+      .where(
+        and(
+          eq(schema.orders.status, "pending"),
+          // Un panier abandonné n'existe que sur la boutique : au salon, une
+          // commande se prend en présence du client, il n'y a rien à relancer.
+          eq(schema.orders.channel, "web"),
+          lt(schema.orders.createdAt, limite),
+        ),
+      )
+      .orderBy(desc(schema.orders.createdAt))
+      .limit(200);
+
+    const ids = lignes.map((l) => l.id);
+    const articles = ids.length
+      ? await db
+          .select({
+            orderId: schema.orderItems.orderId,
+            quantity: schema.orderItems.quantity,
+          })
+          .from(schema.orderItems)
+          .where(inArray(schema.orderItems.orderId, ids))
+      : [];
+    const compte = new Map<number, number>();
+    for (const a of articles)
+      compte.set(a.orderId, (compte.get(a.orderId) ?? 0) + a.quantity);
+
+    return c.json(
+      lignes.map((l) => ({ ...l, articles: compte.get(l.id) ?? 0 })),
+    );
+  });
+
+  /**
+   * Relance un panier abandonné par e-mail.
+   *
+   * La date d'envoi est enregistrée : on ne veut pas relancer deux fois la
+   * même personne parce qu'on a rechargé la page.
+   */
+  app.post("/admin/carts/:id/relancer", async (c) => {
+    const id = Number(c.req.param("id"));
+    const [order] = await db
+      .select()
+      .from(schema.orders)
+      .where(eq(schema.orders.id, id));
+    if (!order) return c.notFound();
+    if (order.status === "paid")
+      return c.json({ error: "commande déjà payée" }, 400);
+    const [client] = order.customerId
+      ? await db
+          .select()
+          .from(schema.customers)
+          .where(eq(schema.customers.id, order.customerId))
+      : [];
+    if (!client?.email)
+      return c.json({ error: "aucune adresse e-mail sur ce panier" }, 400);
+    if (!mailConfigure())
+      return c.json({ error: "envoi d'e-mails non configuré" }, 503);
+
+    const items = await db
+      .select()
+      .from(schema.orderItems)
+      .where(eq(schema.orderItems.orderId, id));
+    const lignes = items.map((it) => {
+      const cfg = (it.config ?? {}) as Record<string, unknown>;
+      return {
+        titre: it.title ?? "Affiche personnalisée",
+        format: (cfg.format as string) ?? "A4",
+        cadre: null,
+        quantite: it.quantity,
+        unitPriceCents: it.unitPriceCents,
+      };
+    });
+    const origine = (process.env.PUBLIC_ORIGIN ?? "").replace(/\/$/, "");
+    const courrier = courrierPanierAbandonne({
+      prenomClient: (client.name ?? "").split(" ")[0] || "vous",
+      lien: `${origine}/panier`,
+      lignes,
+      totalCents: order.totalCents,
+    });
+    const parti = await envoyerMail({ ...courrier, to: client.email });
+    if (!parti) return c.json({ error: "envoi impossible" }, 502);
+    await db
+      .update(schema.orders)
+      .set({ reminderSentAt: new Date() })
+      .where(eq(schema.orders.id, id));
+    await db.insert(schema.orderEvents).values({
+      orderId: id,
+      kind: "event",
+      message: `Relance de panier envoyée à ${client.email}.`,
+    });
+    return c.json({ ok: true });
+  });
+
+  /** Renvoie la confirmation d'une commande payée. */
+  app.post("/admin/orders/:id/renvoyer-confirmation", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!mailConfigure())
+      return c.json({ error: "envoi d'e-mails non configuré" }, 503);
+    await previenirDuPaiement(id);
+    return c.json({ ok: true });
   });
 
   /** Ajoute un commentaire au journal d'une commande. */
@@ -1109,7 +1682,22 @@ export function mountConfiguratorRoutes(app: Hono) {
     const fmt = (cfg.format ?? "A4") as "A4" | "A3";
     const data = await buildResolveData();
     const pdf = await renderPosterPdf(cfg, { data, format: fmt });
-    const filename = `${slugifyName(customer?.name ?? "client")}_${order?.number ?? "CMD"}.pdf`;
+    // Le nom retenu au moment de la commande fait foi : le fichier téléchargé
+    // aujourd'hui doit s'appeler comme celui rangé le jour de l'impression,
+    // même si le cadre a été renommé entre-temps.
+    const [fichier] = await db
+      .select({ filename: schema.printFiles.filename })
+      .from(schema.printFiles)
+      .where(eq(schema.printFiles.orderItemId, itemId));
+    const [cadre] = cfg.frameId
+      ? await db
+          .select({ name: schema.frames.name })
+          .from(schema.frames)
+          .where(eq(schema.frames.id, Number(cfg.frameId)))
+      : [];
+    const filename =
+      fichier?.filename ??
+      `${slugifyName(customer?.name ?? "client")}_${fmt}_${suffixeCadre(cadre?.name)}.pdf`;
     return c.body(new Uint8Array(pdf), 200, {
       "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename="${filename}"`,
@@ -1761,21 +2349,25 @@ export function mountConfiguratorRoutes(app: Hono) {
       name: product.name,
       defaultTitle: product.defaultTitle,
       defaultSubtitle: product.defaultSubtitle,
+      defaultLine3: product.defaultLine3,
       defaultView: product.defaultView,
       foregroundUrl: product.foregroundUrl,
       backgrounds,
     });
   });
 
-  /** Met à jour les défauts configurateur d'un produit (titre/sous-titre/
-   *  position/décor avant-plan). */
+  /** Met à jour les défauts configurateur d'un produit (les trois lignes de
+   *  texte, la position, le décor d'avant-plan). */
   app.post("/admin/products/:id/config", async (c) => {
     const id = Number(c.req.param("id"));
     const b = await c.req.json();
     const set: Record<string, unknown> = {};
+    // `defaultTitle` / `defaultSubtitle` sont les colonnes des lignes 1 et 2 :
+    // elles gardent leur nom d'origine, rempli par 161 affiches.
     if (b.defaultTitle !== undefined) set.defaultTitle = b.defaultTitle || null;
     if (b.defaultSubtitle !== undefined)
       set.defaultSubtitle = b.defaultSubtitle || null;
+    if (b.defaultLine3 !== undefined) set.defaultLine3 = b.defaultLine3 || null;
     if (b.defaultView !== undefined)
       set.defaultView = await typeAfficheValide(b.defaultView);
     if (b.foregroundUrl !== undefined)
@@ -1856,6 +2448,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         basePriceCents,
         defaultTitle: b.defaultTitle ? String(b.defaultTitle) : null,
         defaultSubtitle: b.defaultSubtitle ? String(b.defaultSubtitle) : null,
+        defaultLine3: b.defaultLine3 ? String(b.defaultLine3) : null,
         defaultView: await typeAfficheValide(b.defaultView),
         foregroundUrl: b.foregroundUrl ? String(b.foregroundUrl) : null,
       })

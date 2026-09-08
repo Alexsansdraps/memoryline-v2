@@ -14,12 +14,25 @@
 {
 	admin off
 	auto_https off
+
+	# Le tunnel termine le TLS et annonce le schéma d'origine dans
+	# X-Forwarded-Proto. Sans cette ligne, Caddy ne fait pas confiance au
+	# proxy amont et réécrit l'en-tête en « http » : les applications
+	# derrière croient alors servir une page en clair, et posent leurs
+	# cookies sans l'attribut Secure. Seul le tunnel nous parle.
+	servers {
+		trusted_proxies static private_ranges
+	}
 }
 
 :80 {
 	handle_path /api/* {
 		reverse_proxy api:3000
 	}
+
+	# « /bo » tout court ne correspond pas au motif « /bo/* » : sans cette
+	# redirection, le raccourci affiché sur le site tombe sur un 404.
+	redir /bo /bo/
 
 	handle /bo/* {
 		reverse_proxy admin:4322

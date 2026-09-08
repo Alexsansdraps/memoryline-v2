@@ -63,6 +63,9 @@ services:
       # Navigateur : même origine que le site, le proxy route /api vers l'API.
       # Vaut donc aussi bien en local (:8080) que derrière le tunnel.
       PUBLIC_API_URL: "/api"
+      # Pré-remplit la page commande avec un client tiré au sort. Absent en
+      # production : c'est ce qui garantit qu'aucun vrai client ne le verra.
+      PUBLIC_JEU_ESSAI: "1"
       # Origine publique de l'environnement de test (canonical, Open Graph).
       SITE_URL: "${PUBLIC_ORIGIN:-http://localhost:8080}"
       # Hôtes publics acceptés par le serveur de dev Astro (cf. astro.config).

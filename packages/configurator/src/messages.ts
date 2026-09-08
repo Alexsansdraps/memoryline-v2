@@ -10,8 +10,10 @@ export interface MessagesConfigurateur {
   etapeFond: string;
   etapePersonnages: string;
   etapeFormat: string;
-  champTitre: string;
-  champSousTitre: string;
+  /** Libellé de chaque ligne de texte, dans l'ordre (« Ligne 1 »…). */
+  champsLignes: string[];
+  /** Exemple montré en filigrane dans chaque champ, dans l'ordre. */
+  exemplesLignes: string[];
   couleurTexte: string;
   choisirFond: string;
   personnages: string;
@@ -41,9 +43,9 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   etapeFond: "Fond & texte",
   etapePersonnages: "Personnages",
   etapeFormat: "Format",
-  champTitre: "Titre (symboles et chiffres autorisés)",
-  champSousTitre: "Sous-titre (symboles et chiffres autorisés)",
-  couleurTexte: "Couleur du texte (titre & sous-titre)",
+  champsLignes: ["Ligne 1", "Ligne 2", "Ligne 3"],
+  exemplesLignes: ["MERS-LES-BAINS", "la maison bleue", "été 2019"],
+  couleurTexte: "Couleur du texte",
   choisirFond: "Choisir un fond",
   personnages: "Personnages",
   nouveauPersonnage: "+ Nouveau personnage",

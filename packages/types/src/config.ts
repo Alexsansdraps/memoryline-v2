@@ -98,7 +98,27 @@ export const posterConfigSchema = z.object({
   // Chaîne libre, et non plus une paire figée : refuser un type créé au
   // back-office ferait échouer l'ajout au panier pour un produit tout neuf.
   view: z.string().min(1).default(POSTER_VIEW_DEFAUT),
+  /**
+   * Génération IA retenue par le client — `publicId` de la table
+   * `ai_generation`. Présent, il fait de la ligne une affiche IA : le visuel
+   * n'est plus la pile de calques mais l'image produite, et c'est par cet
+   * identifiant que le serveur retrouve le fichier sans filigrane à imprimer
+   * une fois la commande payée.
+   */
+  aiPublicId: z.string().optional(),
+  /** Aperçu FILIGRANÉ de cette génération, pour la vignette du panier. */
+  aiApercuUrl: z.string().optional(),
+  /**
+   * Textes de l'affiche : TROIS LIGNES, sans hiérarchie imposée.
+   *
+   * `title` et `subtitle` restent acceptés en LECTURE : les commandes déjà
+   * passées les portent, et une commande ne se réécrit pas. Le rendu passe
+   * toujours par `lignesDuTexte()` (textes-affiche.ts), qui sait lire les deux
+   * formes — c'est ce qui garantit qu'une affiche de l'an dernier sort encore
+   * de l'imprimante telle qu'elle a été validée.
+   */
   texts: z.object({
+    lines: z.array(textBlockSchema).max(3).optional(),
     title: textBlockSchema.optional(),
     subtitle: textBlockSchema.optional(),
   }),

@@ -9,6 +9,7 @@
  *  - legacy_* : on conserve les identifiants Shopify d'origine pour la
  *    traçabilité de l'import et les redirections 301 (§13).
  */
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   serial,
@@ -50,6 +51,32 @@ export const collections = pgTable(
   (t) => [uniqueIndex("collection_slug_uniq").on(t.slug)],
 );
 
+/**
+ * Catégorie de produits : « Affiches », « Magnets », « Cartes postales ».
+ *
+ * Elle porte le POIDS PAR DÉFAUT de ce qu'elle contient. C'est le seul endroit
+ * où l'on peut dire une bonne fois « une affiche pèse 60 g » — sans quoi il
+ * faudrait le ressaisir à chaque création de produit, et l'oublier une fois
+ * suffirait à fausser des frais de port.
+ */
+export const productCategories = pgTable(
+  "product_category",
+  {
+    id: serial("id").primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    /** Poids en grammes proposé aux produits de cette catégorie. */
+    defaultWeightGrams: integer("default_weight_grams").notNull().default(0),
+    active: boolean("active").notNull().default(true),
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [uniqueIndex("product_category_slug_uniq").on(t.slug)],
+);
+
 export const products = pgTable(
   "product",
   {
@@ -58,6 +85,33 @@ export const products = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     kind: productKindEnum("kind").notNull().default("personnalisable"),
+    /** Catégorie, d'où vient le poids par défaut. Null = non rangé. */
+    categoryId: integer("category_id").references(() => productCategories.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * Le client fournit une photo, l'affiche en est tirée par l'IA.
+     *
+     * Un drapeau plutôt qu'une valeur de plus dans `kind` : la tarification lit
+     * `kind` partout, et une affiche existante peut vouloir gagner ce mode sans
+     * pour autant changer de nature.
+     */
+    aiEnabled: boolean("ai_enabled").notNull().default(false),
+    /**
+     * Consignes de style propres à CETTE affiche, ajoutées au style commun de
+     * la boutique. C'est ici qu'on écrit « vue de la plage, ciel de coucher de
+     * soleil, personnages de dos » — ce que la photo du client ne dit pas.
+     */
+    aiStylePrompt: text("ai_style_prompt"),
+    /**
+     * Poids du produit en grammes. Null = celui de sa catégorie.
+     *
+     * Trois niveaux, du plus précis au plus général : la variante (un A3 pèse
+     * plus qu'un A4), puis le produit, puis la catégorie. On ne recopie jamais
+     * la valeur d'un niveau à l'autre : changer le poids d'une catégorie doit
+     * corriger d'un coup tout ce qui n'a pas été réglé à la main.
+     */
+    weightGrams: integer("weight_grams"),
     basePriceCents: integer("base_price_cents").notNull().default(0),
     status: text("status").notNull().default("active"), // active | draft | archived
     /**
@@ -65,8 +119,18 @@ export const products = pgTable(
      * custom Shopify : metafield {title, subtitle, view}). Pré-remplissent le
      * configurateur ; éditables dans le back-office.
      */
+    /**
+     * Textes pré-remplis dans le configurateur, ligne par ligne.
+     *
+     * Les deux premières colonnes s'appelaient « titre » et « sous-titre » du
+     * temps où l'affiche n'avait que ces deux textes. On les garde telles
+     * quelles — 161 affiches les remplissent — et on ajoute simplement la
+     * troisième : renommer les colonnes aurait coûté une migration de données
+     * pour ne rien apporter de plus.
+     */
     defaultTitle: text("default_title"),
     defaultSubtitle: text("default_subtitle"),
+    defaultLine3: text("default_line3"),
     defaultView: text("default_view"), // 'front' | 'back' (position des personnages)
     /**
      * Décor d'AVANT-PLAN optionnel (ex. muret/banc/fauteuil) : SVG rendu
@@ -91,6 +155,64 @@ export const products = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [uniqueIndex("product_slug_uniq").on(t.slug)],
+);
+
+/**
+ * Une génération d'affiche par IA : la photo envoyée, ce qu'on a demandé, et
+ * ce qui est revenu.
+ *
+ * Chaque essai laisse une ligne, y compris les échecs. C'est ce qui permet de
+ * répondre « combien ça nous a coûté ce mois-ci », de retrouver l'image d'une
+ * commande six mois plus tard, et de purger les photos des visiteurs qui n'ont
+ * jamais acheté — une photo de client est une donnée personnelle, on ne la
+ * garde pas indéfiniment « au cas où ».
+ */
+export const aiGenerations = pgTable(
+  "ai_generation",
+  {
+    id: serial("id").primaryKey(),
+    /** Identifiant utilisé dans les URL : il ne révèle pas le nombre d'essais. */
+    publicId: text("public_id").notNull(),
+    productId: integer("product_id").references(() => products.id, {
+      onDelete: "set null",
+    }),
+    /** Panier d'où vient la demande, avant qu'une commande existe. */
+    cartId: text("cart_id"),
+    /** Ligne de commande, une fois l'affiche achetée. */
+    orderItemId: integer("order_item_id").references(() => orderItems.id, {
+      onDelete: "set null",
+    }),
+    customerId: integer("customer_id").references(() => customers.id, {
+      onDelete: "set null",
+    }),
+    /** Photo envoyée par le client. */
+    sourcePath: text("source_path"),
+    /** Consigne réellement envoyée au modèle, style de la boutique compris. */
+    prompt: text("prompt"),
+    model: text("model"),
+    size: text("size"),
+    /** « en_cours », « prete » ou « echec ». */
+    status: text("status").notNull().default("en_cours"),
+    /** Aperçu FILIGRANÉ, seul visible tant que la commande n'est pas payée. */
+    previewPath: text("preview_path"),
+    /** Image sans filigrane, produite au paiement pour l'impression. */
+    fullPath: text("full_path"),
+    erreur: text("erreur"),
+    /** Coût estimé de l'appel, pour suivre la dépense du mois. */
+    costCents: integer("cost_cents").notNull().default(0),
+    /** Origine de la demande — sert uniquement à repérer un usage automatisé. */
+    ip: text("ip"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    /** Date du paiement : au-delà, l'image et la photo sont conservées. */
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("ai_generation_public_id_uniq").on(t.publicId),
+    index("ai_generation_cart_idx").on(t.cartId),
+    index("ai_generation_created_idx").on(t.createdAt),
+  ],
 );
 
 /** Table de liaison produit <-> collection (un produit peut être dans plusieurs). */
@@ -132,6 +254,23 @@ export const variants = pgTable(
     priceCents: integer("price_cents").notNull(),
     widthMm: integer("width_mm"),
     heightMm: integer("height_mm"),
+    /** Référence interne, imprimée sur les bons de préparation. */
+    sku: text("sku"),
+    barcode: text("barcode"),
+    /** Poids de CETTE variante en grammes. Null = celui du produit. */
+    weightGrams: integer("weight_grams"),
+    /** Prix barré affiché à côté du prix, quand il y en a un. */
+    compareAtCents: integer("compare_at_cents"),
+    /** Ce que la variante coûte à produire — sert au calcul de la marge. */
+    costCents: integer("cost_cents"),
+    /**
+     * Stock disponible. NULL = stock non suivi, et c'est le cas de toutes les
+     * affiches : elles sont imprimées à la commande, il n'y a rien à compter.
+     * Les magnets et cartes postales, eux, seront suivis.
+     */
+    stockQty: integer("stock_qty"),
+    /** À court de stock : « deny » (on arrête la vente) ou « continue ». */
+    stockPolicy: text("stock_policy").notNull().default("deny"),
     legacyId: bigint("legacy_id", { mode: "number" }), // Shopify Variant ID
   },
   (t) => [index("variant_product_idx").on(t.productId)],
@@ -152,6 +291,12 @@ export const frames = pgTable(
     name: text("name").notNull(),
     /** Supplément en centimes, ajouté au prix de l'affiche. */
     priceCents: integer("price_cents").notNull().default(0),
+    /**
+     * Poids du cadre en grammes, ajouté à celui de l'affiche quand il est
+     * vendu avec. Un cadre bois change la tranche d'affranchissement à lui
+     * seul : l'oublier, c'est facturer un colis au prix d'une lettre.
+     */
+    weightGrams: integer("weight_grams").notNull().default(0),
     /** Couleur d'aperçu du cadre dans le configurateur (hex). */
     previewColor: text("preview_color"),
     active: boolean("active").notNull().default(true),
@@ -454,14 +599,35 @@ export const shippingRates = pgTable(
      * ni l'inverse.
      */
     freeFromCents: integer("free_from_cents"),
+    /**
+     * Tranche de poids où ce tarif s'applique, en grammes : de `minWeightGrams`
+     * inclus à `maxWeightGrams` exclu. Null en haut = pas de limite.
+     *
+     * Un tarif unique de 0 à l'infini est le cas simple, et c'est ce qu'ont
+     * les tarifs existants. Les tranches ne servent qu'aux transporteurs qui
+     * facturent au poids — on ne les impose donc à personne.
+     */
+    minWeightGrams: integer("min_weight_grams").notNull().default(0),
+    maxWeightGrams: integer("max_weight_grams"),
     /** Mode indisponible dans cette zone (ex. retrait sur place à l'étranger). */
     active: boolean("active").notNull().default(true),
   },
-  (t) => [uniqueIndex("shipping_rate_uniq").on(t.methodId, t.zoneId)],
+  (t) => [
+    uniqueIndex("shipping_rate_uniq").on(t.methodId, t.zoneId, t.minWeightGrams),
+  ],
 );
 
 // --- Clients & commandes --------------------------------------------------
 
+/**
+ * Un client. La même ligne sert au visiteur de passage et au titulaire d'un
+ * compte : c'est `passwordHash` qui fait la différence.
+ *
+ * Ce choix évite le pire scénario côté cliente — deux fiches pour la même
+ * personne, l'une avec l'historique, l'autre avec le compte. À l'inscription,
+ * les commandes passées en visiteur avec la même adresse sont rattachées au
+ * compte, et la fiche en double disparaît.
+ */
 export const customers = pgTable(
   "customer",
   {
@@ -469,10 +635,105 @@ export const customers = pgTable(
     name: text("name"),
     email: text("email"),
     phone: text("phone"),
+    /** « scrypt:<sel>:<empreinte> ». Null = pas de compte, simple visiteur. */
+    passwordHash: text("password_hash"),
+    /** Consentement marketing explicite, avec sa date (RGPD). */
+    acceptsMarketing: boolean("accepts_marketing").notNull().default(false),
+    marketingOptInAt: timestamp("marketing_opt_in_at", { withTimezone: true }),
+    /** Étiquettes de classement interne, jamais montrées au client. */
+    tags: jsonb("tags").$type<string[]>(),
+    /** Note du back-office sur ce client. */
+    note: text("note"),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     legacyId: bigint("legacy_id", { mode: "number" }), // Shopify Customer ID
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [index("customer_email_idx").on(t.email)],
+  (t) => [
+    index("customer_email_idx").on(t.email),
+    // Unicité RÉSERVÉE aux comptes : deux visiteurs peuvent partager une
+    // adresse dans l'historique importé, mais on ne veut jamais deux comptes
+    // qui se disputent la même boîte mail.
+    uniqueIndex("customer_account_email_uniq")
+      .on(sql`lower(${t.email})`)
+      .where(sql`${t.passwordHash} is not null`),
+  ],
+);
+
+/**
+ * Carnet d'adresses d'un client.
+ *
+ * Séparé de la commande : celle-ci fige l'adresse du jour (une commande partie
+ * ne doit jamais changer de destination parce que le client a déménagé),
+ * tandis que le carnet, lui, suit la vie du client.
+ */
+export const customerAddresses = pgTable(
+  "customer_address",
+  {
+    id: serial("id").primaryKey(),
+    customerId: integer("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    /** « Maison », « Bureau »… saisi par le client. */
+    label: text("label"),
+    name: text("name"),
+    line1: text("line1"),
+    line2: text("line2"),
+    postalCode: text("postal_code"),
+    city: text("city"),
+    country: text("country"),
+    phone: text("phone"),
+    isDefaultShipping: boolean("is_default_shipping").notNull().default(false),
+    isDefaultBilling: boolean("is_default_billing").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [index("customer_address_customer_idx").on(t.customerId)],
+);
+
+/**
+ * Sessions de la boutique. Même principe que le back-office : la base ne
+ * garde que le SHA-256 du jeton, jamais le jeton lui-même — une fuite de
+ * cette table ne permet donc de se connecter au compte de personne.
+ */
+export const customerSessions = pgTable(
+  "customer_session",
+  {
+    id: text("id").primaryKey(),
+    customerId: integer("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [index("customer_session_customer_idx").on(t.customerId)],
+);
+
+/**
+ * Jetons à usage unique envoyés par e-mail : réinitialisation de mot de passe
+ * aujourd'hui, vérification d'adresse demain.
+ *
+ * `usedAt` plutôt qu'une suppression : on veut pouvoir répondre « ce lien a
+ * déjà servi » au lieu de « lien inconnu », qui laisse croire à une panne.
+ */
+export const customerTokens = pgTable(
+  "customer_token",
+  {
+    id: text("id").primaryKey(),
+    customerId: integer("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    /** « reset » ou « verify ». */
+    kind: text("kind").notNull().default("reset"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [index("customer_token_customer_idx").on(t.customerId, t.kind)],
 );
 
 export const orders = pgTable(
@@ -495,6 +756,12 @@ export const orders = pgTable(
     shippingLabel: text("shipping_label"),
     /** Frais réellement facturés, en centimes. Compris dans `totalCents`. */
     shippingCents: integer("shipping_cents").notNull().default(0),
+    /**
+     * Poids total figé au moment de la commande, en grammes. Le catalogue
+     * changera ; le colis, lui, a pesé ce qu'il a pesé — et c'est ce chiffre
+     * qu'il faut pour rééditer une étiquette ou contester une facture.
+     */
+    weightGrams: integer("weight_grams").notNull().default(0),
     /** Adresse de livraison, quand le mode en demande une. */
     shippingName: text("shipping_name"),
     shippingLine1: text("shipping_line1"),
@@ -526,6 +793,14 @@ export const orders = pgTable(
      * Elle n'est jamais montrée au client, elle sert à se souvenir.
      */
     internalNote: text("internal_note"),
+    /** Date de la dernière relance de panier abandonné, pour ne pas insister. */
+    reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }),
+    /**
+     * Étiquettes libres de classement interne : « cadeau », « urgent »,
+     * « salon de Nantes ». Jamais montrées au client ; elles servent à
+     * retrouver un lot de commandes qui n'ont rien d'autre en commun.
+     */
+    tags: jsonb("tags").$type<string[]>(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
@@ -579,6 +854,141 @@ export const orderEvents = pgTable(
       .notNull(),
   },
   (t) => [index("order_event_order_idx").on(t.orderId, t.createdAt)],
+);
+
+/**
+ * Une EXPÉDITION : un colis parti, avec son transporteur et son suivi.
+ *
+ * Une commande peut en avoir plusieurs — deux affiches envoyées séparément
+ * parce que l'une attendait un cadre. C'est pour ça que l'expédition porte
+ * ses propres lignes (`fulfillmentItems`) plutôt qu'un simple drapeau sur la
+ * commande : « partiellement expédiée » est un état réel, pas un entre-deux.
+ */
+export const fulfillments = pgTable(
+  "fulfillment",
+  {
+    id: serial("id").primaryKey(),
+    orderId: integer("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    /** « Colissimo », « Mondial Relay », « Remise en main propre »… */
+    carrier: text("carrier"),
+    trackingNumber: text("tracking_number"),
+    /** Lien de suivi, calculé à la création si le transporteur est connu. */
+    trackingUrl: text("tracking_url"),
+    /** « success » (parti) ou « cancelled » (annulé après coup). */
+    status: text("status").notNull().default("success"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  },
+  (t) => [index("fulfillment_order_idx").on(t.orderId)],
+);
+
+/** Ce qu'il y avait dans un colis, ligne par ligne. */
+export const fulfillmentItems = pgTable(
+  "fulfillment_item",
+  {
+    id: serial("id").primaryKey(),
+    fulfillmentId: integer("fulfillment_id")
+      .notNull()
+      .references(() => fulfillments.id, { onDelete: "cascade" }),
+    orderItemId: integer("order_item_id")
+      .notNull()
+      .references(() => orderItems.id, { onDelete: "cascade" }),
+    quantity: integer("quantity").notNull().default(1),
+  },
+  (t) => [index("fulfillment_item_ful_idx").on(t.fulfillmentId)],
+);
+
+/**
+ * Un REMBOURSEMENT, total ou partiel.
+ *
+ * On garde le détail (quelles lignes, quelles quantités, quelle part du port)
+ * et pas seulement un montant : c'est ce qui permet de dire, six mois après,
+ * *ce qui* a été remboursé — et d'empêcher de rembourser deux fois la même
+ * affiche.
+ */
+export const refunds = pgTable(
+  "refund",
+  {
+    id: serial("id").primaryKey(),
+    orderId: integer("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    /** Total rendu au client, port compris. */
+    amountCents: integer("amount_cents").notNull().default(0),
+    /** Part des frais de port dans ce total. */
+    shippingCents: integer("shipping_cents").notNull().default(0),
+    /** « Article abîmé », « erreur de commande »… */
+    reason: text("reason"),
+    /** Précision interne, jamais envoyée au client. */
+    note: text("note"),
+    /** Les articles rendus sont-ils remis en stock ? */
+    restock: boolean("restock").notNull().default(false),
+    /** « stripe », « paypal », « manuel » (virement, espèces au salon). */
+    gateway: text("gateway"),
+    /** Identifiant du remboursement chez le prestataire. */
+    externalRef: text("external_ref"),
+    author: text("author"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [index("refund_order_idx").on(t.orderId)],
+);
+
+/** Lignes d'un remboursement. */
+export const refundItems = pgTable(
+  "refund_item",
+  {
+    id: serial("id").primaryKey(),
+    refundId: integer("refund_id")
+      .notNull()
+      .references(() => refunds.id, { onDelete: "cascade" }),
+    orderItemId: integer("order_item_id")
+      .notNull()
+      .references(() => orderItems.id, { onDelete: "cascade" }),
+    quantity: integer("quantity").notNull().default(1),
+    amountCents: integer("amount_cents").notNull().default(0),
+  },
+  (t) => [index("refund_item_refund_idx").on(t.refundId)],
+);
+
+/**
+ * GRAND LIVRE des mouvements d'argent — en écriture seule.
+ *
+ * Rien n'y est jamais modifié ni supprimé : une erreur se corrige en ajoutant
+ * un mouvement contraire, comme en comptabilité. Le solde d'une commande est
+ * toujours la somme de ses lignes, ce qui rend impossible l'écart entre « ce
+ * que dit la fiche » et « ce qui s'est passé à la banque ».
+ *
+ * `kind` : sale (encaissement) · authorization (empreinte) · capture ·
+ * refund (remboursement) · void (annulation d'une empreinte).
+ * `amountCents` est toujours POSITIF ; c'est `kind` qui donne le sens.
+ */
+export const orderTransactions = pgTable(
+  "order_transaction",
+  {
+    id: serial("id").primaryKey(),
+    orderId: integer("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    /** « success », « pending » ou « failure ». */
+    status: text("status").notNull().default("success"),
+    amountCents: integer("amount_cents").notNull().default(0),
+    gateway: text("gateway"),
+    externalRef: text("external_ref"),
+    /** Mouvement dont celui-ci découle (un remboursement suit une vente). */
+    parentId: integer("parent_id"),
+    message: text("message"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [index("order_transaction_order_idx").on(t.orderId, t.createdAt)],
 );
 
 export const payments = pgTable("payment", {

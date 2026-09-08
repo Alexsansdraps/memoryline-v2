@@ -29,8 +29,8 @@ export interface ProductConfiguratorProps {
   prices?: Partial<Record<string, number>>;
   /** Décor d'avant-plan du produit. */
   foregroundUrl?: string | null;
-  /** Réglages par défaut du produit (pré-remplissage). */
-  defaults?: { title?: string | null; subtitle?: string | null; view?: string | null };
+  /** Réglages par défaut du produit (pré-remplissage), une entrée par ligne. */
+  defaults?: { lignes?: (string | null)[]; view?: string | null };
 }
 
 export default function ProductConfigurator(

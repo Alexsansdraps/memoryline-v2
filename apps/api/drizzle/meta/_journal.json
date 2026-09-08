@@ -169,6 +169,48 @@
       "when": 1788874530524,
       "tag": "0023_rapid_meteorite",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788875306133,
+      "tag": "0024_abnormal_winter_soldier",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788875948873,
+      "tag": "0025_strange_gwen_stacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1788877399051,
+      "tag": "0026_organic_betty_brant",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1788877788929,
+      "tag": "0027_good_wind_dancer",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1788882907051,
+      "tag": "0028_known_morgan_stark",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1788885189870,
+      "tag": "0029_woozy_bastion",
+      "breakpoints": true
     }
   ]
 }

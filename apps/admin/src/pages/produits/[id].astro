@@ -1,8 +1,10 @@
 ---
+import { formaterPoids } from "@memoryline/types";
 import { url } from "../../lib/url.ts";
 import Admin from "../../layouts/Admin.astro";
 import {
   adminApi,
+  type LogistiqueProduit,
   type ProductConfig,
   type TypeAffiche,
 } from "../../lib/api.ts";
@@ -23,7 +25,7 @@ function imgSrc(url: string | null | undefined): string {
 }
 
 // --- Enregistrement des défauts (SSR) ----------------------------------
-// Le bouton « Appliquer » (titre / sous-titre / position / décor) passe par un
+// Le bouton « Appliquer » (lignes de texte / position / décor) passe par un
 // POST classique, même pattern robuste que promotions / personnages. Les
 // actions par visuel (ajout / suppression) se font côté client.
 const LANGUES_TRADUISIBLES = [
@@ -33,11 +35,47 @@ const LANGUES_TRADUISIBLES = [
   { code: "es", nom: "Espagnol" },
 ] as const;
 
+/** Grammes saisis -> entier, ou null : « vide » veut dire « hérite ». */
+function grammes(v: FormDataEntryValue | null | undefined): number | null {
+  const t = String(v ?? "").replace(",", ".").trim();
+  if (!t) return null;
+  const n = Math.round(Number(t));
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/**
+ * Réglages IA de cette affiche. La réponse de l'écriture fait foi juste après
+ * un enregistrement ; sinon l'état est lu sur la fiche, plus bas.
+ */
+let ia: { aiEnabled: boolean; aiStylePrompt: string } | null = null;
+
 let flash: string | null = null;
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   try {
-    if (form.get("_action") === "traduction") {
+    if (form.get("_action") === "ia") {
+      const p = await api.setProductIa(id!, {
+        aiEnabled: form.get("aiEnabled") === "on",
+        aiStylePrompt: String(form.get("aiStylePrompt") ?? "").trim() || null,
+      });
+      ia = { aiEnabled: p.aiEnabled, aiStylePrompt: p.aiStylePrompt ?? "" };
+      flash = p.aiEnabled
+        ? "Génération par IA activée pour cette affiche."
+        : "Génération par IA désactivée pour cette affiche.";
+    } else if (form.get("_action") === "expedition") {
+      const poidsVariantes = form.getAll("variantePoids");
+      await api.setProductLogistique(id!, {
+        categoryId: form.get("categoryId")
+          ? Number(form.get("categoryId"))
+          : null,
+        weightGrams: grammes(form.get("weightGrams")),
+        variantes: form.getAll("varianteId").map((vid, i) => ({
+          id: Number(vid),
+          weightGrams: grammes(poidsVariantes[i]),
+        })),
+      });
+      flash = "Expédition enregistrée.";
+    } else if (form.get("_action") === "traduction") {
       const lang = String(form.get("lang") || "");
       await api.setProductTranslation(id!, {
         lang,
@@ -50,6 +88,7 @@ if (Astro.request.method === "POST") {
     await api.setProductConfig(id!, {
       defaultTitle: (form.get("defaultTitle") as string) ?? "",
       defaultSubtitle: (form.get("defaultSubtitle") as string) ?? "",
+      defaultLine3: (form.get("defaultLine3") as string) ?? "",
       // Slug du type d'affiche, pris tel quel : les types se créent au
       // back-office, la liste n'est plus figée ici.
       defaultView: String(form.get("defaultView") || "") || null,
@@ -95,6 +134,29 @@ try {
 } catch (e) {
   if (!error) error = String(e);
 }
+
+// Catégorie, poids du produit et de ses formats — chargés APRÈS le POST pour
+// que l'écran montre ce qui vient d'être enregistré.
+let logistique: LogistiqueProduit | null = null;
+let erreurLogistique: string | null = null;
+try {
+  logistique = await api.productLogistique(id!);
+} catch (e) {
+  erreurLogistique = String(e);
+}
+
+// L'état IA vient de la fiche quand rien n'a été enregistré à l'instant.
+const iaSure = ia !== null || config?.aiEnabled !== undefined;
+const reglagesIa = ia ?? {
+  aiEnabled: config?.aiEnabled === true,
+  aiStylePrompt: config?.aiStylePrompt ?? "",
+};
+
+/** Ce dont hérite une variante quand son champ reste vide. */
+const poidsHerite =
+  logistique?.produit.weightGrams ??
+  logistique?.categorie?.defaultWeightGrams ??
+  0;
 
 const backgrounds = config?.backgrounds ?? [];
 ---
@@ -290,6 +352,202 @@ const backgrounds = config?.backgrounds ?? [];
       )}
 
       {/* =============================================================== */}
+      {/* 2 ter — Expédition (catégorie et poids)                         */}
+      {/* =============================================================== */}
+      <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg p-5">
+        <h3 class="font-semibold mb-1">Expédition</h3>
+        <p class="mb-4 text-sm text-bo-muted max-w-3xl">
+          Le poids décide de la tranche d'affranchissement proposée au client.
+          Un champ laissé <strong>vide</strong> hérite de l'échelon du dessus :
+          le format prend le poids du produit, le produit celui de sa
+          catégorie. Ne remplissez donc que ce qui sort de l'ordinaire — le
+          poids indiqué en regard est celui qui sera réellement pesé.
+        </p>
+
+        {erreurLogistique && (
+          <p class="text-sm text-red-600">
+            Poids indisponibles : {erreurLogistique}
+          </p>
+        )}
+
+        {logistique && (
+          <form method="POST" class="space-y-4">
+            <input type="hidden" name="_action" value="expedition" />
+
+            <div class="flex flex-wrap items-end gap-4">
+              <label class="block">
+                <span class="text-bo-muted text-sm">Catégorie</span>
+                <select
+                  name="categoryId"
+                  class="mt-1 block w-56 border border-bo-border rounded px-3 py-2 text-sm"
+                >
+                  <option value="" selected={!logistique.produit.categoryId}>
+                    — Sans catégorie —
+                  </option>
+                  {logistique.categories.map((c) => (
+                    <option
+                      value={c.id}
+                      selected={logistique!.produit.categoryId === c.id}
+                    >
+                      {c.name}
+                      {c.defaultWeightGrams > 0
+                        ? ` — ${formaterPoids(c.defaultWeightGrams)}`
+                        : " — sans poids"}
+                    </option>
+                  ))}
+                </select>
+                <span class="mt-1 block text-xs text-bo-muted">
+                  Les catégories se créent dans
+                  <a class="underline" href={url("/categories-produits")}>
+                    {" "}Catégories de produits</a
+                  >.
+                </span>
+              </label>
+
+              <label class="block">
+                <span class="text-bo-muted text-sm">Poids du produit (g)</span>
+                <input
+                  name="weightGrams"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={logistique.produit.weightGrams ?? ""}
+                  placeholder={String(
+                    logistique.categorie?.defaultWeightGrams ?? 0,
+                  )}
+                  class="mt-1 block w-32 border border-bo-border rounded px-3 py-2 text-sm"
+                />
+                <span class="mt-1 block text-xs text-bo-muted">
+                  {logistique.categorie
+                    ? `Vide = ${formaterPoids(logistique.categorie.defaultWeightGrams)}, de la catégorie ${logistique.categorie.name}`
+                    : "Sans catégorie, un champ vide vaut 0 g"}
+                </span>
+              </label>
+            </div>
+
+            <div class="border border-bo-border rounded overflow-hidden">
+              <table class="w-full text-sm">
+                <thead class="bg-bo-bg text-left text-bo-muted">
+                  <tr>
+                    <th class="px-4 py-2 font-medium">Format</th>
+                    <th class="px-4 py-2 font-medium w-40">Poids (g)</th>
+                    <th class="px-4 py-2 font-medium">Ce qui sera pesé</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {logistique.variantes.map((v) => (
+                    <tr class="border-t border-bo-border">
+                      <td class="px-4 py-2">
+                        {v.format}
+                        {v.sku && (
+                          <span class="text-bo-muted"> · {v.sku}</span>
+                        )}
+                        <input type="hidden" name="varianteId" value={v.id} />
+                      </td>
+                      <td class="px-4 py-2">
+                        <input
+                          name="variantePoids"
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={v.weightGrams ?? ""}
+                          placeholder={String(poidsHerite)}
+                          class="block w-28 border border-bo-border rounded px-2 py-1"
+                        />
+                      </td>
+                      <td class="px-4 py-2 text-bo-muted">
+                        {v.poidsEffectif > 0 ? (
+                          <>
+                            {formaterPoids(v.poidsEffectif)}
+                            {v.weightGrams === null && " (hérité)"}
+                          </>
+                        ) : (
+                          <span class="text-amber-800">
+                            0 g — poids inconnu, l'affranchissement sera faux
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {logistique.variantes.length === 0 && (
+                    <tr>
+                      <td class="px-4 py-4 text-bo-muted" colspan="3">
+                        Ce produit n'a aucun format.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <p class="text-xs text-bo-muted">
+              Le cadre, quand il est vendu avec l'affiche, ajoute son propre
+              poids par-dessus — il se règle dans
+              <a class="underline" href={url("/cadres")}> Cadres</a>.
+            </p>
+
+            <button class="rounded bg-bo-accent text-white px-4 py-2 text-sm hover:opacity-90">
+              Enregistrer l'expédition
+            </button>
+          </form>
+        )}
+      </section>
+
+      {/* =============================================================== */}
+      {/* 2 quater — Génération par IA                                    */}
+      {/* =============================================================== */}
+      <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-5">
+        <h3 class="mb-1 font-semibold">Génération par IA</h3>
+        <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+          Le client envoie une photo et voit aussitôt son affiche, dessinée par
+          le modèle. Elle porte le filigrane jusqu'au paiement. La dépense et
+          les réglages communs (style de la boutique, modèle, plafond) sont
+          dans <a class="underline" href={url("/ia")}>Affiches IA</a>.
+        </p>
+
+        <form method="POST" class="space-y-4">
+          <input type="hidden" name="_action" value="ia" />
+
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="aiEnabled" checked={reglagesIa.aiEnabled} />
+            <span>Cette affiche est générée par IA à partir d'une photo</span>
+          </label>
+
+          <label class="block">
+            <span class="text-sm text-bo-muted">
+              Consignes de style propres à cette affiche
+            </span>
+            <textarea
+              name="aiStylePrompt"
+              rows="4"
+              class="mt-1 w-full rounded border border-bo-border px-3 py-2 text-sm"
+              placeholder="Affiche de mariage : couple en tenue de cérémonie, bouquet de pivoines, arche florale, fond crème."
+            >{reglagesIa.aiStylePrompt}</textarea>
+            <span class="mt-1 block text-xs text-bo-muted">
+              Elles s'ajoutent au style commun de la boutique, qui donne déjà la
+              technique et les couleurs. N'écrivez ici que ce qui distingue
+              cette affiche des autres — par exemple, pour une affiche
+              d'anniversaire : « chapeaux de fête, guirlandes, gâteau à bougies,
+              confettis en suspension ». Laissez vide et seul le style commun
+              s'applique.
+            </span>
+          </label>
+
+          {!iaSure && (
+            <p class="text-xs text-amber-800">
+              Cet écran ne sait pas encore relire ces deux réglages : ils
+              s'affichent à vide même s'ils sont remplis. Ce que vous
+              enregistrez ici est bien pris en compte.
+            </p>
+          )}
+
+          <button class="rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90">
+            Enregistrer la génération par IA
+          </button>
+        </form>
+      </section>
+
+      {/* =============================================================== */}
       {/* 3 à 6 — Défauts (form SSR « Appliquer »)                        */}
       {/* =============================================================== */}
       <form method="POST" class="space-y-6">
@@ -347,12 +605,15 @@ const backgrounds = config?.backgrounds ?? [];
           </p>
         </section>
 
-        {/* 5 — Texte par défaut */}
+        {/* 5 — Textes pré-remplis */}
+        {/* Les champs gardent les noms des colonnes (defaultTitle,
+            defaultSubtitle) : ce sont les lignes 1 et 2, remplies par 161
+            affiches. */}
         <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
-          <h3 class="font-semibold mb-3">Texte par défaut</h3>
-          <div class="grid sm:grid-cols-2 gap-4">
+          <h3 class="font-semibold mb-3">Textes pré-remplis</h3>
+          <div class="grid sm:grid-cols-3 gap-4">
             <label class="block">
-              <span class="text-bo-muted text-sm">Titre</span>
+              <span class="text-bo-muted text-sm">Ligne 1</span>
               <input
                 name="defaultTitle"
                 type="text"
@@ -361,7 +622,7 @@ const backgrounds = config?.backgrounds ?? [];
               />
             </label>
             <label class="block">
-              <span class="text-bo-muted text-sm">Sous-titre</span>
+              <span class="text-bo-muted text-sm">Ligne 2</span>
               <input
                 name="defaultSubtitle"
                 type="text"
@@ -369,7 +630,21 @@ const backgrounds = config?.backgrounds ?? [];
                 class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
               />
             </label>
+            <label class="block">
+              <span class="text-bo-muted text-sm">Ligne 3</span>
+              <input
+                name="defaultLine3"
+                type="text"
+                value={config.defaultLine3 ?? ""}
+                class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
+              />
+            </label>
           </div>
+          <p class="text-xs text-bo-muted mt-2">
+            Les trois lignes déjà écrites sur l'affiche quand le client ouvre le
+            configurateur. Il peut les changer, en laisser une vide, ou tout
+            effacer.
+          </p>
         </section>
 
         {/* 6 — Appliquer */}

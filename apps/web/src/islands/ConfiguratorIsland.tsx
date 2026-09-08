@@ -32,8 +32,8 @@ export interface ConfiguratorIslandProps {
   prices?: Partial<Record<string, number>>;
   /** Décor d'avant-plan du produit (muret/banc…), rendu au 1er plan. */
   foregroundUrl?: string | null;
-  /** Réglages par défaut du produit (pré-remplissage). */
-  defaults?: { title?: string | null; subtitle?: string | null; view?: string | null };
+  /** Réglages par défaut du produit (pré-remplissage), une entrée par ligne. */
+  defaults?: { lignes?: (string | null)[]; view?: string | null };
   /** "add" depuis la fiche produit, "edit" depuis le panier. */
   mode?: "add" | "edit";
   /** Réouverture (edit) : config de la ligne à modifier. */
@@ -170,8 +170,16 @@ export default function ConfiguratorIsland(
                 etapeFond: tr("cfg.etape.fond"),
                 etapePersonnages: tr("cfg.etape.personnages"),
                 etapeFormat: tr("cfg.etape.format"),
-                champTitre: tr("cfg.titre_champ"),
-                champSousTitre: tr("cfg.soustitre_champ"),
+                champsLignes: [
+                  tr("cfg.ligne1_champ"),
+                  tr("cfg.ligne2_champ"),
+                  tr("cfg.ligne3_champ"),
+                ],
+                exemplesLignes: [
+                  tr("cfg.ligne1_exemple"),
+                  tr("cfg.ligne2_exemple"),
+                  tr("cfg.ligne3_exemple"),
+                ],
                 couleurTexte: tr("cfg.couleur_texte"),
                 choisirFond: tr("cfg.fond"),
                 personnages: tr("cfg.personnages"),

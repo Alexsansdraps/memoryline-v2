@@ -34,14 +34,31 @@ export interface ModeLivraison {
   position?: number;
 }
 
-/** Tarif d'un mode dans une zone. */
+/**
+ * Tarif d'un mode dans une zone, pour une tranche de poids.
+ *
+ * Un même mode peut avoir plusieurs tarifs dans la même zone : « de 0 à 2 kg,
+ * 5 € ; de 2 à 5 kg, 8 € ». Le cas simple — un seul tarif de 0 à l'infini —
+ * reste le défaut, personne n'est obligé de découper quoi que ce soit.
+ */
 export interface TarifLivraison {
   methodId: number;
   zoneId: number;
   priceCents: number;
   /** Montant à partir duquel c'est offert. Null = jamais. */
   freeFromCents?: number | null;
+  /** Borne basse de la tranche, en grammes (incluse). */
+  minWeightGrams?: number | null;
+  /** Borne haute, en grammes (exclue). Null = pas de limite. */
+  maxWeightGrams?: number | null;
   active?: boolean;
+}
+
+/** Le tarif couvre-t-il ce poids ? */
+function couvreLePoids(t: TarifLivraison, poidsGrammes: number): boolean {
+  const min = t.minWeightGrams ?? 0;
+  const max = t.maxWeightGrams;
+  return poidsGrammes >= min && (max === null || max === undefined || poidsGrammes < max);
 }
 
 /** Ce que l'API expose au site : de quoi calculer sans rien redemander. */
@@ -99,15 +116,21 @@ export function optionsLivraison(
   catalogue: CatalogueLivraison,
   pays: string,
   sousTotalCents: number,
+  poidsGrammes = 0,
 ): OptionLivraison[] {
   const zone = zonePourPays(catalogue.zones, pays);
   if (!zone) return [];
   return catalogue.modes
     .filter((m) => m.active !== false)
     .map((mode) => {
-      const tarif = catalogue.tarifs.find(
-        (t) => t.methodId === mode.id && t.zoneId === zone.id,
-      );
+      // Aucune tranche ne couvre le poids = le mode ne SAIT PAS transporter ce
+      // colis. On le retire au lieu de retomber sur un tarif au hasard : mieux
+      // vaut proposer moins de modes qu'un affranchissement faux.
+      const tarif = catalogue.tarifs
+        .filter((t) => t.methodId === mode.id && t.zoneId === zone.id)
+        .filter((t) => couvreLePoids(t, poidsGrammes))
+        .sort((a, b) => (a.minWeightGrams ?? 0) - (b.minWeightGrams ?? 0))
+        .at(-1);
       if (!tarif || tarif.active === false) return null;
       const seuil = tarif.freeFromCents;
       const offert =
@@ -133,9 +156,10 @@ export function fraisDePort(
   modeSlug: string,
   pays: string,
   sousTotalCents: number,
+  poidsGrammes = 0,
 ): OptionLivraison | null {
   return (
-    optionsLivraison(catalogue, pays, sousTotalCents).find(
+    optionsLivraison(catalogue, pays, sousTotalCents, poidsGrammes).find(
       (o) => o.mode.slug === modeSlug,
     ) ?? null
   );

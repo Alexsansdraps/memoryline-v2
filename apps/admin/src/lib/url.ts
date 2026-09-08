@@ -21,3 +21,15 @@ export function relPath(pathname: string): string {
   const p = pathname.startsWith(BASE) ? pathname.slice(BASE.length) : pathname;
   return p || "/";
 }
+
+/**
+ * Lien vers l'API **depuis le navigateur** (téléchargements, ouvertures dans
+ * un onglet). Les pages, elles, parlent à l'API côté serveur via `adminApi`.
+ *
+ * Derrière le proxy, l'API vit sous `/api`. En développement direct, le BO est
+ * servi à la racine et l'API écoute sur son propre port.
+ */
+export function apiUrl(path: string): string {
+  if (BASE) return `/api${path}`;
+  return `${import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000"}${path}`;
+}

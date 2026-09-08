@@ -85,10 +85,22 @@ export interface ProductDetail {
   kind: ProductKind;
   basePriceCents: number;
   images: string[];
+  /**
+   * Textes pré-remplis des trois lignes de l'affiche. Les colonnes gardent
+   * leurs anciens noms : `defaultTitle` et `defaultSubtitle` sont les lignes 1
+   * et 2, remplies pour 161 affiches — les renommer n'aurait rien apporté.
+   */
   defaultTitle?: string | null;
   defaultSubtitle?: string | null;
+  defaultLine3?: string | null;
   defaultView?: string | null;
   foregroundUrl?: string | null;
+  /**
+   * Affiche générée par IA à partir d'une photo du client. Ce n'est pas un
+   * autre genre de produit : c'est une affiche ordinaire dont la fiche propose
+   * un parcours différent (envoi de photo) au lieu du configurateur.
+   */
+  aiEnabled?: boolean;
   variants: {
     format: string;
     priceCents: number;
@@ -146,6 +158,16 @@ export interface Cart {
   orderId?: number;
   status?: string;
   items: OrderItem[];
+  /**
+   * Poids total du colis, en grammes, calculé PAR LE SERVEUR.
+   *
+   * Le navigateur ne le recalcule pas : il ne connaît ni le poids des
+   * variantes ni celui des cadres, et un poids deviné ici finirait par
+   * afficher une tranche d'affranchissement que la facture dément.
+   * Absent tant que l'API ne le renvoie pas — on lit alors 0, soit le
+   * comportement d'avant les tranches de poids.
+   */
+  poidsGrammes?: number;
 }
 
 async function browserGet<T>(path: string): Promise<T> {

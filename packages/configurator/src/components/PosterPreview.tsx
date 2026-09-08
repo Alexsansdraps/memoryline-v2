@@ -3,20 +3,34 @@ import { For, Show } from "solid-js";
 import {
   autoPlace,
   CHAR_BASE_WIDTH,
+  policeDefautLigne,
   type CharacterDTO,
   type ConfiguratorState,
+  type LigneTexte,
   type SlotsDTO,
   type SvgCache,
   variantesDeVue,
 } from "../store";
-import {
-  familleCss,
-  policeParId,
-  POLICE_TITRE_DEFAUT,
-  POLICE_SOUSTITRE_DEFAUT,
-  urlAsset,
-} from "@memoryline/types";
+import { familleCss, policeParId, urlAsset } from "@memoryline/types";
 import { CharacterStack } from "./CharacterLayer";
+import { Filigrane } from "./Filigrane";
+
+/**
+ * Taille des lignes, en cqw (largeur du bloc de texte), par rang parmi les
+ * lignes REMPLIES — et non par numéro de ligne : une ligne 1 laissée vide ne
+ * doit pas condamner le reste du texte à la petite taille.
+ *
+ * La première domine, les suivantes se font discrètes ; les trois réunies
+ * occupent moins de 15 % de la hauteur de l'affiche, loin au-dessus des
+ * personnages.
+ */
+const TAILLES_LIGNES = [8, 5.5, 4.6];
+
+/** Texte montré tant que le client n'a rien saisi. */
+const LIGNES_EXEMPLE: LigneTexte[] = [
+  { value: "Memory Line", font: policeDefautLigne(0) },
+  { value: "Votre ville, votre histoire", font: policeDefautLigne(1) },
+];
 
 /** Ratio largeur/hauteur d'affichage selon le format (portrait). */
 function aspectFor(format: string): string {
@@ -45,6 +59,12 @@ export function PosterPreview(props: {
   foregroundUrl?: string;
   /** Préfixe des assets, ajouté à l'affichage seulement. */
   assetBaseUrl?: string;
+  /**
+   * Filigrane « MEMORY LINE » sur l'affiche. ACTIF par défaut : tout ce qu'on
+   * montre au client avant paiement en porte un. Seul un rendu destiné à
+   * l'impression — qui n'existe qu'une fois la commande payée — le coupe.
+   */
+  filigrane?: boolean;
 }) {
   /** Fond affichable : le chemin stocké est brut, on le préfixe ici. */
   const srcFond = () =>
@@ -167,9 +187,9 @@ export function PosterPreview(props: {
         )}
       </Show>
 
-      {/* Couche texte — EN HAUT de l'affiche (charte Memory Line). Titre + sous-
-          titre partagent police + couleur ; tailles FIXES (titre gros, sous-titre
-          plus petit). Si les deux sont vides : placeholder de marque. */}
+      {/* Couche texte — EN HAUT de l'affiche (charte Memory Line). Les lignes
+          remplies se suivent, chacune dans sa police, toutes dans la couleur
+          commune. Si aucune n'est saisie : placeholder de marque. */}
       <div
         style={{
           position: "absolute",
@@ -184,59 +204,45 @@ export function PosterPreview(props: {
         }}
       >
         {(() => {
-          const st = props.state.textStyle;
-          const empty =
-            !props.state.title.value && !props.state.subtitle.value;
-          const titleText = empty ? "Memory Line" : props.state.title.value;
-          const subText = empty
-            ? "Votre ville, votre histoire"
-            : props.state.subtitle.value;
+          const remplies = () =>
+            props.state.lignes.filter((l) => l.value.trim() !== "");
+          const vide = () => remplies().length === 0;
+          const aDessiner = () => (vide() ? LIGNES_EXEMPLE : remplies());
           return (
-            <>
-              <Show when={titleText}>
+            <For each={aDessiner()}>
+              {(ligne, rang) => (
                 <div
                   style={{
-                    // Police FIXE du titre (charte) ; seule la couleur varie.
                     "font-family": familleCss(
-                      policeParId(props.state.title.font, POLICE_TITRE_DEFAUT),
+                      policeParId(ligne.font, policeDefautLigne(rang())),
                     ),
-                    color: st.color,
-                    "font-weight": "700",
-                    "font-size": "8cqw",
-                    "line-height": "1.05",
-                    "letter-spacing": "0.04em",
-                    "text-transform": "uppercase",
+                    color: props.state.textStyle.color,
+                    // Ce qui distingue la ligne de tête, c'est sa TAILLE. Elle
+                    // n'est plus mise en capitales ni en gras : les lignes sont
+                    // libres, elles s'écrivent comme le client les tape, et
+                    // aucune des polices d'affiche n'a de graisse — le gras
+                    // n'était qu'une imitation du navigateur, que le PDF
+                    // d'impression ne sait pas reproduire.
+                    "font-size": `${TAILLES_LIGNES[rang()] ?? TAILLES_LIGNES.at(-1)}cqw`,
+                    "line-height": rang() === 0 ? "1.05" : "1.15",
+                    "letter-spacing": rang() === 0 ? "0.04em" : "normal",
+                    "margin-top": rang() === 0 ? "0" : "0.1em",
                     "word-break": "break-word",
-                    opacity: empty ? "0.5" : "1",
+                    opacity: vide() ? "0.5" : "1",
                   }}
                 >
-                  {titleText}
+                  {ligne.value}
                 </div>
-              </Show>
-              <Show when={subText}>
-                <div
-                  style={{
-                    // Police FIXE du sous-titre (script manuscrit, charte).
-                    "font-family": familleCss(
-                      policeParId(
-                        props.state.subtitle.font,
-                        POLICE_SOUSTITRE_DEFAUT,
-                      ),
-                    ),
-                    color: st.color,
-                    "font-size": "5.5cqw",
-                    "margin-top": "0.1em",
-                    "word-break": "break-word",
-                    opacity: empty ? "0.5" : "1",
-                  }}
-                >
-                  {subText}
-                </div>
-              </Show>
-            </>
+              )}
+            </For>
           );
         })()}
       </div>
+
+      {/* Filigrane — dernière couche, au-dessus de tout le reste. */}
+      <Show when={props.filigrane !== false}>
+        <Filigrane />
+      </Show>
     </div>
   );
 }

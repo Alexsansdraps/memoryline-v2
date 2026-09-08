@@ -73,6 +73,35 @@ export async function getStripeIntentStatus(id: string): Promise<string> {
   return j.status;
 }
 
+/**
+ * Rend l'argent au client sur le moyen de paiement d'origine.
+ *
+ * `amountCents` permet le remboursement PARTIEL : sans lui Stripe rendrait
+ * tout, ce qui n'est presque jamais ce qu'on veut quand une seule affiche
+ * d'une commande pose problème.
+ */
+export async function refundStripe(
+  paymentIntentId: string,
+  amountCents: number,
+): Promise<{ id: string; status: string }> {
+  if (!STRIPE_SECRET) throw new Error("Stripe non configuré");
+  const body = new URLSearchParams();
+  body.set("payment_intent", paymentIntentId);
+  body.set("amount", String(amountCents));
+  const res = await fetch("https://api.stripe.com/v1/refunds", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${STRIPE_SECRET}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+  });
+  if (!res.ok)
+    throw new Error(`Stripe refund HTTP ${res.status} ${await res.text()}`);
+  const j = (await res.json()) as { id: string; status: string };
+  return { id: j.id, status: j.status };
+}
+
 export interface StripeEvent {
   type: string;
   data: { object: Record<string, unknown> };

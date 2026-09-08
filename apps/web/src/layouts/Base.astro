@@ -40,6 +40,51 @@ const chemin = cheminSansLangue(Astro.url.pathname);
 const versions = autresVersions(langue, chemin);
 const titre = title ?? tr("meta.titre");
 const desc = description ?? tr("meta.description");
+
+/**
+ * Destination du lien « Compte » : le tableau de bord si une session est
+ * ouverte, la page de connexion sinon.
+ *
+ * On se contente de repérer le cookie — le valider coûterait un appel à l'API
+ * sur CHAQUE page du site. Une session périmée mène à /compte, qui renvoie
+ * alors vers la connexion : le visiteur atterrit au bon endroit dans tous les
+ * cas. Le court-circuit sur `isPrerendered` évite l'avertissement d'Astro sur
+ * les pages générées au build, où aucune requête n'existe.
+ */
+const connecte =
+  !Astro.isPrerendered &&
+  (Astro.request.headers.get("cookie") ?? "").includes("ml_client=");
+const lienCompte = lien(langue, connecte ? "/compte" : "/compte/connexion");
+
+/**
+ * Raccourci vers le back-office, pour qui y est déjà connecté.
+ *
+ * La session est VRAIMENT validée, contrairement au lien « Compte » plus
+ * haut : afficher l'entrée du back-office sur la foi d'un cookie périmé
+ * indiquerait à n'importe quel visiteur d'un poste partagé qu'il y a une
+ * porte, et laquelle. Le coût est nul pour un vrai client — sans le cookie,
+ * aucun appel n'est fait — et d'un aller-retour interne pour la boutique.
+ */
+const cookies = Astro.isPrerendered
+  ? ""
+  : (Astro.request.headers.get("cookie") ?? "");
+let admin: { email: string; role: string } | null = null;
+if (cookies.includes("ml_admin_session=")) {
+  try {
+    const base =
+      import.meta.env.API_URL_INTERNAL ??
+      import.meta.env.PUBLIC_API_URL ??
+      "http://localhost:3000";
+    const res = await fetch(`${base}/auth/me`, { headers: { cookie: cookies } });
+    if (res.ok) admin = (await res.json()).user ?? null;
+  } catch {
+    // API injoignable : on n'affiche simplement pas le raccourci. Une page
+    // publique ne doit jamais tomber parce qu'un lien d'administration
+    // n'a pas pu être calculé.
+  }
+}
+/** Le back-office vit sous /bo derrière le proxy ; surchargeable en prod. */
+const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
 ---
 
 <!doctype html>
@@ -108,6 +153,59 @@ const desc = description ?? tr("meta.description");
           >
         </div>
         <div class="flex items-center gap-5 text-sm">
+          {/* Raccourci d'administration. Volontairement discret : il ne
+              s'affiche que pour une session de back-office valide, et ne doit
+              pas concurrencer le panier dans l'œil du client. */}
+          {admin && (
+            <a
+              href={lienBackOffice}
+              rel="nofollow"
+              title={`Back-office — ${admin.email} (${
+                admin.role === "owner" ? "propriétaire" : "vendeur"
+              })`}
+              class="hidden sm:inline-flex items-center gap-1.5 border border-ink/15 px-2.5 py-1 text-[12px] text-ink/55 hover:text-terracotta hover:border-terracotta/40 transition-colors"
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 4h18v16H3z" />
+                <path d="M3 9h18" />
+                <path d="M8 9v11" />
+              </svg>
+              Back-office
+            </a>
+          )}
+          {/* Compte : même traitement que le panier — une icône, le mot en
+              lecture d'écran seulement, pour ne pas charger l'en-tête. */}
+          <a
+            href={lienCompte}
+            class="inline-flex items-center gap-2 hover:text-terracotta transition-colors"
+            aria-label={tr("nav.compte")}
+          >
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+              <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+            </svg>
+            <span class="sr-only">{tr("nav.compte")}</span>
+          </a>
           <a
             href={lien(langue, "/panier")}
             class="ml-panier-lien inline-flex items-center gap-2 hover:text-terracotta transition-colors"

@@ -6,12 +6,18 @@ import type {
   Character,
   PosterFormat,
   PosterView,
+  TextBlock,
 } from "@memoryline/types";
 import {
   colorKey,
   recolorSvg,
   POLICE_TITRE_DEFAUT,
   POLICE_SOUSTITRE_DEFAUT,
+  COULEUR_TEXTE_DEFAUT,
+  NB_LIGNES_AFFICHE,
+  lignesDuTexte,
+  styleDesLignes,
+  textesDepuisLignes,
 } from "@memoryline/types";
 
 /** Étapes du flow configurateur (§18.2 F). */
@@ -208,23 +214,48 @@ export interface ConfiguratorState {
   view: string;
   /** Cadre choisi, ou null si le client n'en veut pas. */
   frameId: string | number | null;
-  /** Texte ET police, choisis séparément pour le titre et le sous-titre. */
-  title: { value: string; font: string };
-  subtitle: { value: string; font: string };
-  /** Style PARTAGÉ : la couleur et la taille valent pour les deux. */
+  /** Les lignes de l'affiche, dans l'ordre : toujours NB_LIGNES_AFFICHE entrées. */
+  lignes: LigneTexte[];
+  /** Style PARTAGÉ : la couleur et la taille valent pour toutes les lignes. */
   textStyle: { font: string; color: string; size: number };
   characters: WorkingCharacter[];
   /** index du personnage en cours d'édition, sinon null. */
   editingIndex: number | null;
 }
 
-const DEFAULT_TEXT_COLOR = "#FFFFFF"; // blanc par défaut (charte affiches)
+const DEFAULT_TEXT_COLOR = COULEUR_TEXTE_DEFAUT; // blanc (charte affiches)
 const DEFAULT_FONT = "sans-serif";
-/** Polices par défaut de la charte : titre en serif, sous-titre manuscrit. */
-const DEFAUT_POLICE_TITRE = POLICE_TITRE_DEFAUT;
-const DEFAUT_POLICE_SOUSTITRE = POLICE_SOUSTITRE_DEFAUT;
-/** Taille de texte = facteur relatif (1 = défaut). Appliqué au titre et sous-titre. */
+/** Taille de texte = facteur relatif (1 = défaut). Commun à toutes les lignes. */
 const DEFAULT_TEXT_SIZE = 1;
+
+/** Une ligne de l'affiche : son texte et la police qui la dessine. */
+export interface LigneTexte {
+  value: string;
+  font: string;
+}
+
+/**
+ * Police de départ, ligne par ligne. Les deux premières reprennent celles de
+ * l'ancien titre et de l'ancien sous-titre — la charte n'a pas changé, seul
+ * le nombre de lignes — et la troisième suit la deuxième.
+ */
+const POLICES_LIGNES_DEFAUT: readonly string[] = [
+  POLICE_TITRE_DEFAUT,
+  POLICE_SOUSTITRE_DEFAUT,
+  POLICE_SOUSTITRE_DEFAUT,
+];
+
+/** Police de départ d'une ligne, quel que soit son rang. */
+export function policeDefautLigne(index: number): string {
+  return POLICES_LIGNES_DEFAUT[index] ?? POLICE_SOUSTITRE_DEFAUT;
+}
+
+function lignesVides(): LigneTexte[] {
+  return Array.from({ length: NB_LIGNES_AFFICHE }, (_, i) => ({
+    value: "",
+    font: policeDefautLigne(i),
+  }));
+}
 
 function emptyState(): ConfiguratorState {
   return {
@@ -234,8 +265,7 @@ function emptyState(): ConfiguratorState {
     format: "A4",
     view: "front",
     frameId: null,
-    title: { value: "", font: DEFAUT_POLICE_TITRE },
-    subtitle: { value: "", font: DEFAUT_POLICE_SOUSTITRE },
+    lignes: lignesVides(),
     textStyle: {
       font: DEFAULT_FONT,
       color: DEFAULT_TEXT_COLOR,
@@ -254,22 +284,20 @@ export function stateFromConfig(cfg: PosterConfig): ConfiguratorState {
   base.format = cfg.format ?? "A4";
   base.frameId = cfg.frameId ?? null;
   base.view = cfg.view ?? "front";
-  if (cfg.texts.title)
-    base.title = {
-      value: cfg.texts.title.value,
-      font: cfg.texts.title.font ?? DEFAUT_POLICE_TITRE,
-    };
-  if (cfg.texts.subtitle)
-    base.subtitle = {
-      value: cfg.texts.subtitle.value,
-      font: cfg.texts.subtitle.font ?? DEFAUT_POLICE_SOUSTITRE,
-    };
-  // Style partagé : repris du titre en priorité, sinon du sous-titre.
-  const src = cfg.texts.title ?? cfg.texts.subtitle;
+  // Une commande d'avant les trois lignes porte un titre et un sous-titre :
+  // lignesDuTexte() les rend ici en lignes 1 et 2, sans qu'on ait à le savoir.
+  base.lignes = lignesDuTexte(cfg.texts).map((bloc, i) => ({
+    value: bloc?.value ?? "",
+    font: bloc?.font ?? policeDefautLigne(i),
+  }));
+  // Style partagé, lu sur la première ligne remplie. Une couleur libre choisie
+  // avant le passage aux deux pastilles est CONSERVÉE telle quelle : la
+  // réécrire changerait une affiche que le client a validée.
+  const src = styleDesLignes(cfg.texts);
   base.textStyle = {
     font: src?.font ?? DEFAULT_FONT,
     color: src?.color ?? DEFAULT_TEXT_COLOR,
-    size: (src as { size?: number })?.size ?? DEFAULT_TEXT_SIZE,
+    size: src?.size ?? DEFAULT_TEXT_SIZE,
   };
   base.characters = cfg.characters.map((c, i) => {
     const assets: Partial<Record<Slot, string | number>> = {};
@@ -373,28 +401,34 @@ export function configFromState(
     format: state.format,
     view: state.view,
     frameId: state.frameId,
-    texts: {
-      // La POLICE est propre à chaque bloc ; couleur et taille restent
-      // communes (charte : un seul coloris de texte sur l'affiche).
-      title: state.title.value
-        ? {
-            value: state.title.value,
-            font: state.title.font,
-            color: state.textStyle.color,
-            size: state.textStyle.size,
-          }
-        : undefined,
-      subtitle: state.subtitle.value
-        ? {
-            value: state.subtitle.value,
-            font: state.subtitle.font,
-            color: state.textStyle.color,
-            size: state.textStyle.size,
-          }
-        : undefined,
-    },
+    texts: { lines: lignesEnregistrees(state) },
     characters,
   };
+}
+
+/**
+ * Les lignes telles qu'elles partent dans la commande : les REMPLIES, dans
+ * l'ordre, et rien d'autre.
+ *
+ * Une ligne laissée vide ne laisse pas de trou dans la liste — l'API refuse un
+ * trou (400), et le rendu ne lit de toute façon que la suite des lignes
+ * remplies. La POLICE reste propre à chaque ligne ; couleur et taille sont
+ * communes (charte : un seul coloris de texte sur l'affiche).
+ */
+function lignesEnregistrees(state: ConfiguratorState): TextBlock[] {
+  const remplies = state.lignes
+    .filter((l) => l.value.trim() !== "")
+    .map((l) => ({
+      value: l.value,
+      font: l.font,
+      color: state.textStyle.color,
+      size: state.textStyle.size,
+    }));
+  // Passage par textesDepuisLignes() : c'est lui qui dit la forme enregistrée,
+  // et il borne au passage le nombre de lignes.
+  return (textesDepuisLignes(remplies).lines ?? []).filter(
+    (b): b is TextBlock => b !== undefined,
+  );
 }
 
 /** Slots dans l'ordre d'empilement bas -> haut (par-dessus la base). */

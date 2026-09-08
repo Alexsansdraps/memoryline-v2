@@ -3,7 +3,10 @@ export * from "./library.js";
 export * from "./svg-color.js";
 export * from "./promo.js";
 export * from "./livraison.js";
+export * from "./poids.js";
 export * from "./fonts.js";
+export * from "./textes-affiche.js";
+export * from "./couleurs-texte.js";
 
 /** Canal d'une commande — dimension structurante, immuable (§11). */
 export const ORDER_CHANNELS = ["web", "salon"] as const;

@@ -33,3 +33,78 @@ body {
   display: none;
   content: "";
 }
+
+/* ==========================================================================
+   Thème sombre
+   ==========================================================================
+
+   Un seul sélecteur — `html[data-theme="dark"]` — porte toute la palette
+   sombre. Le réglage « système » n'a donc pas de règle à lui : un petit script
+   dans <head> traduit la préférence du système en `data-theme` avant le
+   premier rendu, ce qui évite à la fois la duplication des couleurs et le
+   flash blanc au chargement.
+
+   Les teintes Tailwind employées par les pastilles (ambre, vert, violet…)
+   sont redéfinies ici plutôt que remplacées page par page : les utilitaires
+   de Tailwind v4 pointent sur ces variables, une pastille « fond clair +
+   texte foncé » devient donc « fond foncé + texte clair » toute seule. */
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Chrome du back-office. */
+  --color-bo-bg: #1a1c1e;
+  --color-bo-surface: #232629;
+  --color-bo-ink: #e6e8ea;
+  --color-bo-muted: #9aa1a8;
+  --color-bo-border: #34383c;
+  --color-bo-accent: #7fb0f9;
+  --color-bo-nav: #111315;
+
+  /* Pastilles et bandeaux : on inverse le rôle des teintes claires et
+     foncées, en gardant le même contraste qu'en clair. */
+  --color-green-50: #16281c;
+  --color-green-100: #1d3324;
+  --color-green-200: #2c4c36;
+  --color-green-300: #386244;
+  --color-green-600: #3fae5f;
+  --color-green-700: #86e2a6;
+  --color-green-800: #9ae9b6;
+  --color-green-900: #baf0cd;
+
+  --color-amber-50: #2b2313;
+  --color-amber-100: #35291a;
+  --color-amber-200: #4b3b23;
+  --color-amber-500: #d99a2b;
+  --color-amber-800: #f0cd8a;
+  --color-amber-900: #f5daa4;
+
+  --color-red-50: #2e1a1a;
+  --color-red-200: #4f2c2c;
+  --color-red-300: #623636;
+  --color-red-600: #f3908a;
+  --color-red-700: #f8aaa4;
+
+  --color-violet-100: #2a2138;
+  --color-violet-700: #c6b3f6;
+  --color-violet-900: #dccffb;
+
+  --color-sky-100: #17262f;
+  --color-sky-900: #abd7f0;
+
+  --color-orange-100: #2f2318;
+  --color-orange-900: #f2c092;
+}
+
+/* Les champs de saisie n'héritent pas des couleurs du texte : sans ça, ils
+   restent des rectangles blancs au milieu d'une page sombre. */
+html[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]),
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea {
+  background-color: var(--color-bo-bg);
+  color: var(--color-bo-ink);
+}
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+  color: var(--color-bo-muted);
+}
