@@ -7,6 +7,7 @@ import { resolve, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
+import sharp from "sharp";
 import { db, sql, schema } from "./db/client.js";
 import {
   SESSION_COOKIE,
@@ -539,6 +540,71 @@ app.post("/admin/uploads", async (c) => {
 
   await writeFile(resolve(ASSETS_DIR, nom), Buffer.from(await file.arrayBuffer()));
   return c.json({ url: `/assets/${nom}`, name: nom, size: file.size });
+});
+
+/**
+ * Analyse un SVG fraîchement téléversé : ses zones de couleur et le bas réel
+ * de son dessin.
+ *
+ * Ces deux valeurs étaient calculées par des scripts lancés à la main lors de
+ * l'import. Sans elles, créer un personnage au back-office demandait de taper
+ * « st0 », « st1 »… à l'aveugle et de régler le calage vertical par essais
+ * successifs. Le formulaire les remplit maintenant tout seul.
+ */
+app.post("/admin/svg/analyse", async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  const brut = String(b.url ?? "").trim();
+  if (!brut) return c.json({ error: "url requise" }, 400);
+  // On ne lit que dans le dossier des assets : une URL bricolée ne doit pas
+  // pouvoir faire lire un fichier quelconque du serveur.
+  const nom = basename(brut.split("?")[0] ?? "");
+  if (!nom) return c.json({ error: "url invalide" }, 400);
+  const chemin = resolve(ASSETS_DIR, nom);
+  if (!chemin.startsWith(resolve(ASSETS_DIR)))
+    return c.json({ error: "url invalide" }, 400);
+
+  let contenu: Buffer;
+  try {
+    contenu = await readFile(chemin);
+  } catch {
+    return c.json({ error: "fichier introuvable" }, 404);
+  }
+
+  // Zones recolorables : les classes « .stN{fill:#…} » du SVG.
+  const colorZones: Record<string, string> = {};
+  if (extname(nom).toLowerCase() === ".svg") {
+    const texte = contenu.toString("utf8");
+    const re = /\.(st\d+)\s*\{\s*fill\s*:\s*(#[0-9a-fA-F]{3,8})/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(texte)) !== null) colorZones[m[1]!] = m[2]!.toUpperCase();
+  }
+
+  // Bas réel du dessin dans son cadre : les animaux et les bébés ont du vide
+  // sous eux et « flotteraient » au-dessus du muret sans cette mesure.
+  let bottomPct: number | null = null;
+  try {
+    const H = 400;
+    const { data, info } = await sharp(contenu, { density: 120, unlimited: true })
+      .resize(200, H, { fit: "fill" })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let bas = 0;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < info.width; x++) {
+        if (data[(y * info.width + x) * info.channels + 3]! > 20) {
+          if (y > bas) bas = y;
+          break;
+        }
+      }
+    }
+    bottomPct = Number(Math.min(1, Math.max(0.05, bas / H)).toFixed(4));
+  } catch {
+    // Rasterisation impossible : on rend les zones sans le calage, plutôt que
+    // de faire échouer tout le formulaire.
+  }
+
+  return c.json({ url: `/assets/${nom}`, colorZones, bottomPct });
 });
 
 /**

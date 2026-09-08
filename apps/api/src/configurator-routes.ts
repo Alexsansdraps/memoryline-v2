@@ -150,6 +150,15 @@ type PricedItem = {
  * On accepte donc n'importe quel type existant — et rien d'autre, pour ne pas
  * rattacher un dessin à un type fantôme.
  */
+function zonesPropres(brut: unknown): Record<string, string> {
+  const propre: Record<string, string> = {};
+  for (const [k, v] of Object.entries((brut ?? {}) as Record<string, unknown>)) {
+    if (/^st\d+$/.test(k) && /^#[0-9a-fA-F]{3,8}$/.test(String(v)))
+      propre[k] = String(v).toUpperCase();
+  }
+  return propre;
+}
+
 async function typeAfficheValide(slug: unknown): Promise<string | null> {
   const s = String(slug ?? "").trim();
   if (!s) return null;
@@ -1052,15 +1061,9 @@ export function mountConfiguratorRoutes(app: Hono) {
     });
   });
 
-  /** Crée ou met à jour un type (nom, catégorie, position). */
+  /** Crée ou met à jour un type (nom, catégorie, position, dessin). */
   app.post("/admin/characters", async (c) => {
     const b = await c.req.json();
-    const slug =
-      b.slug ??
-      String(b.name ?? "type")
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[^a-z0-9]+/g, "-");
     const values = {
       name: String(b.name ?? "Type"),
       // La catégorie est désormais une référence ; `category` (texte) n'est
@@ -1077,6 +1080,14 @@ export function mountConfiguratorRoutes(app: Hono) {
       ...(b.bottomPct !== undefined && Number.isFinite(Number(b.bottomPct))
         ? { bottomPct: Math.min(1, Math.max(0.05, Number(b.bottomPct))) }
         : {}),
+      // Dessin et couleurs, pour créer un personnage complet d'un coup depuis
+      // le back-office. Absents : on ne touche pas à ce qui existe.
+      ...(b.baseSvgUrl !== undefined
+        ? { baseSvgUrl: b.baseSvgUrl ? String(b.baseSvgUrl) : null }
+        : {}),
+      ...(b.baseColorZones !== undefined
+        ? { baseColorZones: zonesPropres(b.baseColorZones) }
+        : {}),
     };
     if (b.id) {
       const [row] = await db
@@ -1086,6 +1097,25 @@ export function mountConfiguratorRoutes(app: Hono) {
         .returning();
       return c.json(row);
     }
+    // Slug : accents retirés et unicité vérifiée. Deux personnages du même
+    // nom (« Ours », puis « Ours » à nouveau) butaient sinon sur l'index
+    // unique, et la création échouait sans rien expliquer.
+    const base =
+      String(b.slug ?? b.name ?? "type")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "") || "personnage";
+    const pris = new Set(
+      (
+        await db
+          .select({ slug: schema.characterTypes.slug })
+          .from(schema.characterTypes)
+      ).map((r) => r.slug),
+    );
+    let slug = base;
+    for (let i = 2; pris.has(slug); i++) slug = `${base}-${i}`;
     const [row] = await db
       .insert(schema.characterTypes)
       .values({ ...values, slug })
@@ -1231,14 +1261,8 @@ export function mountConfiguratorRoutes(app: Hono) {
     const b = await c.req.json();
     const set: Record<string, unknown> = {};
     if (b.baseSvgUrl !== undefined) set.baseSvgUrl = b.baseSvgUrl || null;
-    if (b.baseColorZones !== undefined) {
-      const clean: Record<string, string> = {};
-      for (const [k, v] of Object.entries(b.baseColorZones ?? {})) {
-        if (/^st\d+$/.test(k) && /^#[0-9a-fA-F]{3,8}$/.test(String(v)))
-          clean[k] = String(v).toUpperCase();
-      }
-      set.baseColorZones = clean;
-    }
+    if (b.baseColorZones !== undefined)
+      set.baseColorZones = zonesPropres(b.baseColorZones);
     const [row] = await db
       .update(schema.characterTypes)
       .set(set)

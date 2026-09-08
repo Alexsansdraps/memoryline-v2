@@ -53,6 +53,19 @@ if (Astro.request.method === "POST") {
         // Slug du type d'affiche, tel qu'il vient du sélecteur : la liste
         // des types se gère au back-office, elle n'est plus figée ici.
         orientation: String(form.get("orientation") || "front"),
+        // Dessin et couleurs : présents à la création (formulaire du bas),
+        // absents lors d'une édition depuis une carte — on ne les écrase
+        // alors pas.
+        ...(form.get("baseSvgUrl") !== null
+          ? { baseSvgUrl: String(form.get("baseSvgUrl") || "") || null }
+          : {}),
+        ...(form.get("baseColorZones")
+          ? {
+              baseColorZones: JSON.parse(
+                String(form.get("baseColorZones") || "{}"),
+              ),
+            }
+          : {}),
         ...(form.get("bottomPct") !== null && form.get("bottomPct") !== ""
           ? { bottomPct: Number(String(form.get("bottomPct")).replace(",", ".")) }
           : {}),
@@ -644,13 +657,21 @@ for (const a of pieces) {
                       style={t.baseSvgUrl ? "" : "visibility:hidden"}
                     />
                     <label class="flex-1 block">
-                      <span class="text-bo-muted text-xs">URL du SVG</span>
-                      <input
-                        class="js-base-url mt-1 w-full border border-bo-border rounded px-2 py-1 font-mono text-xs"
-                        value={t.baseSvgUrl ?? ""}
-                        list="base-svg-list"
-                        placeholder="/assets/Male_2.svg"
-                      />
+                      <span class="text-bo-muted text-xs">Dessin (SVG)</span>
+                      <span class="mt-1 flex items-center gap-2">
+                        <input
+                          class="js-base-url flex-1 border border-bo-border rounded px-2 py-1 font-mono text-xs"
+                          value={t.baseSvgUrl ?? ""}
+                          list="base-svg-list"
+                          placeholder="/assets/Male_2.svg"
+                        />
+                        <button
+                          type="button"
+                          class="js-base-upload rounded border border-bo-border px-2 py-1 text-xs whitespace-nowrap"
+                        >
+                          Remplacer…
+                        </button>
+                      </span>
                     </label>
                   </div>
                   <div class="js-base-zones flex flex-wrap gap-2">
@@ -809,10 +830,11 @@ for (const a of pieces) {
   <section class="mb-10 bg-bo-surface border border-bo-border rounded-lg p-5">
     <h3 class="font-semibold mb-4">Nouveau personnage</h3>
     <p class="text-xs text-bo-muted mb-4">
-      Créez d'abord le personnage (nom + catégorie). Vous pourrez ensuite lui
-      définir une base (SVG + couleurs) sur sa carte ci-dessus.
+      Nom, catégorie et dessin : le personnage est prêt à être proposé aux
+      clients. Ses couleurs et son calage vertical sont lus dans le dessin, il
+      n'y a rien à mesurer à la main.
     </p>
-    <form method="POST" class="grid sm:grid-cols-3 gap-4 text-sm items-end">
+    <form method="POST" class="grid sm:grid-cols-3 gap-4 text-sm items-end" id="form-perso">
       <input type="hidden" name="_action" value="upsert" />
       <label class="block">
         <span class="text-bo-muted">Nom</span>
@@ -829,6 +851,52 @@ for (const a of pieces) {
           ))}
         </select>
       </label>
+      <label class="block">
+        <span class="text-bo-muted">Type d'affiche</span>
+        <select
+          name="orientation"
+          class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+        >
+          {vues.map((v) => <option value={v.slug}>{v.name}</option>)}
+        </select>
+      </label>
+
+      {/* Dessin : téléversé puis analysé (zones de couleur + bas réel du
+          dessin). Les valeurs partent dans des champs cachés avec le reste. */}
+      <div class="sm:col-span-3 flex flex-wrap items-start gap-4 border-t border-bo-border pt-4">
+        <img
+          id="perso-apercu"
+          alt=""
+          class="h-24 w-16 object-contain border border-bo-border rounded bg-white"
+          style="visibility:hidden"
+        />
+        <div class="flex-1 min-w-[280px]">
+          <span class="text-bo-muted">Dessin du personnage (SVG)</span>
+          <div class="mt-1 flex items-center gap-2">
+            <input
+              id="perso-svg"
+              name="baseSvgUrl"
+              list="base-svg-list"
+              placeholder="/assets/Male_2.svg"
+              class="flex-1 border border-bo-border rounded px-3 py-2 font-mono text-xs"
+            />
+            <button
+              type="button"
+              id="perso-televerser"
+              class="rounded border border-bo-border px-3 py-2 text-xs whitespace-nowrap"
+            >
+              Téléverser…
+            </button>
+          </div>
+          <p id="perso-analyse" class="mt-1 text-xs text-bo-muted">
+            Le SVG complet du personnage, dans le même cadre que les autres
+            (500 × 1000).
+          </p>
+          <input type="hidden" name="baseColorZones" id="perso-zones" value="" />
+          <input type="hidden" name="bottomPct" id="perso-bottom" value="" />
+        </div>
+      </div>
+
       <label class="block">
         <span class="text-bo-muted">Position</span>
         <input name="position" type="number" value="0" class="mt-1 w-full border border-bo-border rounded px-3 py-2" />
@@ -988,7 +1056,7 @@ for (const a of pieces) {
         <input name="position" type="number" value="0" class="mt-1 w-full border border-bo-border rounded px-3 py-2" />
       </label>
       <label class="block sm:col-span-2">
-        <span class="text-bo-muted">URL du SVG (obligatoire)</span>
+        <span class="text-bo-muted">Dessin de la pièce (SVG)</span>
         <div class="flex items-center gap-3">
           <input
             id="new-asset-url"
@@ -997,6 +1065,13 @@ for (const a of pieces) {
             class="mt-1 flex-1 border border-bo-border rounded px-3 py-2 font-mono text-xs"
             placeholder="/assets/tshirt.svg"
           />
+          <button
+            type="button"
+            id="new-asset-upload"
+            class="mt-1 rounded border border-bo-border px-3 py-2 text-xs whitespace-nowrap"
+          >
+            Téléverser…
+          </button>
           <img
             id="new-asset-preview"
             alt=""
@@ -1004,6 +1079,10 @@ for (const a of pieces) {
             style="visibility:hidden"
           />
         </div>
+        <span class="mt-1 block text-xs text-bo-muted" id="new-asset-analyse">
+          Même cadre que les personnages (500 × 1000) : la pièce se superpose
+          au dessin, elle n'est pas redimensionnée.
+        </span>
       </label>
 
       {/* Zones de couleur optionnelles, ajoutées dynamiquement. */}
@@ -1475,6 +1554,46 @@ for (const a of pieces) {
       colorZonesField.value = JSON.stringify(cz);
     }
 
+    // Téléversement de la pièce : le fichier part, l'API relit ses zones de
+    // couleur, et le formulaire se remplit tout seul.
+    document
+      .getElementById("new-asset-upload")
+      ?.addEventListener("click", async (e) => {
+        const bouton = e.currentTarget;
+        const champ = document.getElementById("new-asset-url");
+        const note = document.getElementById("new-asset-analyse");
+        const url = await televerser(bouton);
+        if (!url) return;
+        champ.value = url;
+        champ.dispatchEvent(new Event("input"));
+        note.textContent = "Lecture du dessin…";
+        const info = await analyserSvg(url);
+        if (!info) {
+          note.textContent = "Dessin envoyé (zones de couleur à saisir à la main).";
+          return;
+        }
+        zonesBox.innerHTML = "";
+        for (const [zone, hex] of Object.entries(info.colorZones || {})) {
+          const label = document.createElement("label");
+          label.className = "flex items-center gap-1 text-xs";
+          const color = document.createElement("input");
+          color.type = "color";
+          color.value = hex;
+          color.setAttribute("data-zone", zone);
+          color.className =
+            "h-7 w-7 border border-bo-border rounded cursor-pointer";
+          color.addEventListener("input", syncNewAssetZones);
+          const span = document.createElement("span");
+          span.className = "text-bo-muted";
+          span.textContent = zone;
+          label.append(color, span);
+          zonesBox.appendChild(label);
+        }
+        syncNewAssetZones();
+        const n = Object.keys(info.colorZones || {}).length;
+        note.textContent = `Dessin envoyé · ${n} zone${n > 1 ? "s" : ""} de couleur relue${n > 1 ? "s" : ""}.`;
+      });
+
     document
       .getElementById("new-asset-add-zone")
       ?.addEventListener("click", () => {
@@ -1500,6 +1619,152 @@ for (const a of pieces) {
         zoneNameInput.value = "";
         syncNewAssetZones();
       });
+
+    // ===== Téléversement d'un dessin + lecture de ses réglages ============
+    // Le back-office ne savait qu'accepter un CHEMIN de fichier déjà présent
+    // sur le serveur, et il fallait taper « st0 », « st1 »… à la main puis
+    // régler le calage vertical par essais. On téléverse, et l'API relit dans
+    // le SVG ses zones de couleur et le bas réel de son dessin.
+
+    /** Envoie un fichier et rend son URL /assets/…, ou null si ça a échoué. */
+    async function televerser(bouton) {
+      return new Promise((resolve) => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".svg,.png,.jpg,.jpeg,.webp";
+        input.addEventListener("change", async () => {
+          const file = input.files && input.files[0];
+          if (!file) return resolve(null);
+          const avant = bouton.textContent;
+          bouton.textContent = "Envoi…";
+          bouton.disabled = true;
+          try {
+            const fd = new FormData();
+            fd.append("file", file);
+            const res = await fetch(`${PUBLIC_API_URL}/admin/uploads`, {
+              method: "POST",
+              body: fd,
+              credentials: "include",
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || res.status);
+            resolve(data.url);
+          } catch (e) {
+            alert("Téléversement impossible : " + e);
+            resolve(null);
+          } finally {
+            bouton.textContent = avant;
+            bouton.disabled = false;
+          }
+        });
+        input.click();
+      });
+    }
+
+    /** Zones de couleur + bas du dessin, lus dans le SVG par l'API. */
+    async function analyserSvg(url) {
+      try {
+        const res = await fetch(`${PUBLIC_API_URL}/admin/svg/analyse`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+          credentials: "include",
+        });
+        if (!res.ok) return null;
+        return await res.json();
+      } catch {
+        return null;
+      }
+    }
+
+    // --- Nouveau personnage : dessin, couleurs et calage d'un seul geste.
+    (() => {
+      const champ = document.getElementById("perso-svg");
+      const bouton = document.getElementById("perso-televerser");
+      const apercu = document.getElementById("perso-apercu");
+      const note = document.getElementById("perso-analyse");
+      const zones = document.getElementById("perso-zones");
+      const bas = document.getElementById("perso-bottom");
+      if (!champ || !bouton) return;
+
+      function montrer() {
+        const v = (champ.value || "").trim();
+        apercu.style.visibility = v ? "visible" : "hidden";
+        if (v) apercu.src = v.startsWith("http") ? v : PUBLIC_API_URL + v;
+      }
+
+      async function relire() {
+        const v = (champ.value || "").trim();
+        montrer();
+        if (!v) return;
+        note.textContent = "Lecture du dessin…";
+        const info = await analyserSvg(v);
+        if (!info) {
+          note.textContent =
+            "Dessin illisible : il sera enregistré tel quel, à régler ensuite sur sa carte.";
+          return;
+        }
+        zones.value = JSON.stringify(info.colorZones || {});
+        if (info.bottomPct != null) bas.value = String(info.bottomPct);
+        const n = Object.keys(info.colorZones || {}).length;
+        note.textContent =
+          `${n} zone${n > 1 ? "s" : ""} de couleur` +
+          (info.bottomPct != null
+            ? ` · calage vertical ${info.bottomPct}`
+            : "") +
+          " — relus dans le dessin.";
+      }
+
+      bouton.addEventListener("click", async () => {
+        const url = await televerser(bouton);
+        if (!url) return;
+        champ.value = url;
+        await relire();
+      });
+      champ.addEventListener("change", relire);
+    })();
+
+    // --- Base d'un personnage existant : remplacer le dessin.
+    document.addEventListener("click", async (e) => {
+      const btn = e.target.closest?.(".js-base-upload");
+      if (!btn) return;
+      const bloc = btn.closest(".js-base");
+      const champ = bloc?.querySelector(".js-base-url");
+      if (!champ) return;
+      const url = await televerser(btn);
+      if (!url) return;
+      champ.value = url;
+      const img = bloc.querySelector(".js-base-preview");
+      if (img) {
+        img.src = PUBLIC_API_URL + url;
+        img.style.visibility = "visible";
+      }
+      // Les zones du nouveau dessin remplacent les anciennes : garder celles
+      // du dessin précédent donnerait des couleurs qui ne s'appliquent à rien.
+      const info = await analyserSvg(url);
+      const boite = bloc.querySelector(".js-base-zones");
+      if (info && boite) {
+        boite.innerHTML = "";
+        for (const [zone, hex] of Object.entries(info.colorZones || {})) {
+          const label = document.createElement("label");
+          label.className = "flex items-center gap-1 text-xs";
+          const color = document.createElement("input");
+          color.type = "color";
+          color.value = hex;
+          color.setAttribute("data-zone", zone);
+          color.className =
+            "h-7 w-7 border border-bo-border rounded cursor-pointer";
+          const span = document.createElement("span");
+          span.className = "text-bo-muted";
+          span.textContent = zone;
+          label.append(color, span);
+          boite.appendChild(label);
+        }
+      }
+      const statut = bloc.querySelector(".js-base-status");
+      if (statut)
+        statut.textContent = "Dessin remplacé — pensez à enregistrer la base.";
+    });
 
     // --- Pièces autorisées : raccourcis « tout » / « rien » par emplacement.
     // Délégation : les cartes sont nombreuses et repliées, on n'accroche
