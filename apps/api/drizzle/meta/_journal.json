@@ -155,6 +155,20 @@
       "when": 1788873914778,
       "tag": "0021_bitter_molten_man",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1788874465388,
+      "tag": "0022_slippery_fantastic_four",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788874530524,
+      "tag": "0023_rapid_meteorite",
+      "breakpoints": true
     }
   ]
 }

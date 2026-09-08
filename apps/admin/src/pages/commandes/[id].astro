@@ -1,14 +1,48 @@
 ---
+import { url } from "../../lib/url.ts";
 import Admin from "../../layouts/Admin.astro";
 import { adminApi, formatPrice, type OrderDetail } from "../../lib/api.ts";
 
-// URL publique de l'API (le lien PDF est ouvert dans le navigateur de la
-// cliente : il doit pointer vers l'API joignable côté client).
+// L'API telle que le NAVIGATEUR la joint : le lien PDF est ouvert par la
+// cliente, il ne peut pas pointer sur le réseau interne de Docker.
 const PUBLIC_API_URL =
   import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
 
 const id = Number(Astro.params.id);
 const api = adminApi(Astro.request);
+
+let flash: string | null = null;
+let flashErreur = false;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const action = f.get("_action");
+  try {
+    if (action === "traiter") {
+      await api.fulfilOrder(id, f.get("fulfilled") === "true");
+      flash =
+        f.get("fulfilled") === "true"
+          ? "Commande marquée comme traitée."
+          : "Commande remise à traiter.";
+    } else if (action === "note") {
+      await api.setOrderNote(id, String(f.get("note") || ""));
+      flash = "Note enregistrée.";
+    } else if (action === "commentaire") {
+      const message = String(f.get("message") || "").trim();
+      if (message) {
+        await api.addOrderComment(
+          id,
+          message,
+          Astro.locals.user?.email ?? undefined,
+        );
+        flash = "Commentaire publié.";
+      }
+    }
+  } catch (e) {
+    flash = "Erreur : " + String(e);
+    flashErreur = true;
+  }
+}
 
 let detail: OrderDetail | null = null;
 let error: string | null = null;
@@ -20,115 +54,338 @@ try {
 
 const order = detail?.order;
 const items = detail?.items ?? [];
+const client = detail?.customer ?? null;
+
+/** « 27 août 2026 à 22:36 » */
+function quand(iso: string | null | undefined): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} à ${d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
+  } catch {
+    return "";
+  }
+}
+
+const NOM_CANAL: Record<string, string> = {
+  web: "Boutique en ligne",
+  salon: "Ventes salon",
+};
+
+/** Montants : la remise se déduit de ce qui a réellement été facturé. */
+const sousTotal = items.reduce(
+  (s, it) => s + it.unitPriceCents * it.quantity,
+  0,
+);
+const nbArticles = items.reduce((s, it) => s + it.quantity, 0);
+const port = order?.shippingCents ?? 0;
+const total = order?.totalCents ?? 0;
+const remise = Math.max(0, sousTotal + port - total);
+
+const paiement = (detail?.paiements ?? []).find((p) => p.status === "succeeded")
+  ?? (detail?.paiements ?? [])[0];
+const encaisse = order?.status === "paid";
 ---
 
 <Admin title={order ? `Commande ${order.number}` : `Commande #${id}`}>
-  <a href="javascript:history.back()" class="text-sm text-bo-accent hover:underline">
-    ← Retour
-  </a>
+  <p class="mb-4">
+    <a href={url("/commandes")} class="text-sm text-bo-accent hover:underline">
+      ← Retour aux commandes
+    </a>
+  </p>
 
-  {
-    order && (
-      <section class="mt-3 bg-bo-surface border border-bo-border rounded-lg p-5 mb-6">
-        <dl class="grid sm:grid-cols-3 gap-3 text-sm">
-          <div>
-            <dt class="text-bo-muted">Numéro</dt>
-            <dd class="font-medium">{order.number}</dd>
-          </div>
-          <div>
-            <dt class="text-bo-muted">Statut</dt>
-            <dd class="font-medium">{order.status}</dd>
-          </div>
-          <div>
-            <dt class="text-bo-muted">Total</dt>
-            <dd class="font-medium">{formatPrice(order.totalCents)}</dd>
-          </div>
-        </dl>
-      </section>
-    )
-  }
+  {flash && (
+    <p
+      class={`mb-4 text-sm rounded px-3 py-2 border ${
+        flashErreur ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+  {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
 
-  {
-    detail && (
-      <section class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden mb-6">
-        <table class="w-full text-sm">
-          <thead class="bg-bo-bg text-bo-muted text-left">
-            <tr>
-              <th class="px-4 py-2 font-medium">Article</th>
-              <th class="px-4 py-2 font-medium text-right">Qté</th>
-              <th class="px-4 py-2 font-medium text-right">Prix</th>
-              <th class="px-4 py-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((it) => (
-              <tr class="border-t border-bo-border">
-                <td class="px-4 py-2 font-medium">{it.title ?? `Article #${it.id}`}</td>
-                <td class="px-4 py-2 text-right">{it.quantity}</td>
-                <td class="px-4 py-2 text-right">{formatPrice(it.unitPriceCents)}</td>
-                <td class="px-4 py-2 text-right">
-                  <a
-                    href={`${PUBLIC_API_URL}/admin/print-files/${it.id}`}
-                    target="_blank"
-                    rel="noopener"
-                    class="rounded bg-bo-accent text-white px-3 py-1.5 hover:opacity-90"
-                  >
-                    Télécharger / Imprimer le PDF
-                  </a>
-                </td>
-              </tr>
-            ))}
-            {items.length === 0 && (
-              <tr>
-                <td colspan="4" class="px-4 py-6 text-center text-bo-muted">
-                  Aucun article personnalisable à imprimer.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </section>
-    )
-  }
-
-  {
-    error && (
-      <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
-        <p class="text-sm text-amber-700 mb-3">
-          Le détail de cette commande n'a pas pu être chargé ({error}).
-        </p>
-        <p class="text-sm text-bo-muted mb-4">
-          L'API ne fournit pas encore de route <code>GET /orders/:id</code>{" "}
-          renvoyant les lignes de commande (et donc leurs identifiants).
-          En attendant, si vous connaissez l'identifiant d'une ligne, vous
-          pouvez télécharger son PDF directement — il reste disponible pour
-          toute commande, même ancienne.
-        </p>
-        <form class="flex items-end gap-3" data-pdf-fallback>
-          <label class="block text-sm">
-            <span class="text-bo-muted">Identifiant de ligne (orderItemId)</span>
+  {order && (
+    <>
+      {/* -------------------------------------------------------------- */}
+      {/* En-tête : le numéro, les deux statuts, l'origine               */}
+      {/* -------------------------------------------------------------- */}
+      <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div class="flex flex-wrap items-center gap-2">
+            <h2 class="text-xl font-semibold">{order.number}</h2>
+            <span class="rounded-full bg-bo-bg px-2 py-0.5 text-xs">
+              {encaisse ? "Payée" : order.status === "pending" ? "En attente de paiement" : "Panier"}
+            </span>
+            <span
+              class={`rounded-full px-2 py-0.5 text-xs ${
+                order.fulfilledAt
+                  ? "bg-green-100 text-green-900"
+                  : "bg-amber-100 text-amber-900"
+              }`}
+            >
+              {order.fulfilledAt ? "Traitée" : "Non traitée"}
+            </span>
+          </div>
+          <p class="mt-1 text-sm text-bo-muted">
+            {quand(order.createdAt)} · {NOM_CANAL[order.channel] ?? order.channel}
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <form method="POST" class="inline">
+            <input type="hidden" name="_action" value="traiter" />
             <input
-              type="number"
-              required
-              class="mt-1 block w-48 border border-bo-border rounded px-3 py-2"
+              type="hidden"
+              name="fulfilled"
+              value={order.fulfilledAt ? "false" : "true"}
             />
-          </label>
-          <button class="rounded bg-bo-accent text-white px-4 py-2 hover:opacity-90">
-            Télécharger le PDF
-          </button>
-        </form>
-      </section>
-    )
-  }
+            <button class="rounded border border-bo-border px-3 py-2 text-sm">
+              {order.fulfilledAt ? "Remettre à traiter" : "Marquer comme traitée"}
+            </button>
+          </form>
+          {paiement?.externalRef && (
+            <a
+              href={`https://dashboard.stripe.com/payments/${paiement.externalRef}`}
+              target="_blank"
+              rel="noopener"
+              class="rounded border border-bo-border px-3 py-2 text-sm"
+              title="Rembourser ou consulter le paiement chez Stripe"
+            >
+              Voir le paiement ↗
+            </a>
+          )}
+        </div>
+      </div>
 
-  <script is:inline define:vars={{ PUBLIC_API_URL }}>
-    // Câble le formulaire de secours (téléchargement par orderItemId).
-    document.querySelectorAll("form[data-pdf-fallback]").forEach((f) => {
-      f.addEventListener("submit", (e) => {
-        e.preventDefault();
-        const v = f.querySelector("input")?.value;
-        if (v) window.open(`${PUBLIC_API_URL}/admin/print-files/${v}`, "_blank");
-      });
-    });
-  </script>
+      <div class="grid gap-6 lg:grid-cols-[1fr_340px] items-start">
+        <div class="space-y-6">
+          {/* ---------------------------------------------------------- */}
+          {/* Ce qu'il y a à préparer                                     */}
+          {/* ---------------------------------------------------------- */}
+          <section class="rounded-lg border border-bo-border bg-bo-surface">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-bo-border px-4 py-3">
+              <span class="font-medium">
+                {order.fulfilledAt ? "Traitée" : "Non traitée"} ({nbArticles})
+              </span>
+              {order.shippingLabel && (
+                <span class="text-sm text-bo-muted">
+                  {order.shippingLabel}
+                  {order.relayPointLabel ? ` · ${order.relayPointLabel}` : ""}
+                </span>
+              )}
+            </div>
+            <ul>
+              {items.map((it) => (
+                <li class="flex flex-wrap items-start gap-4 border-b border-bo-border px-4 py-3 last:border-b-0">
+                  <div class="min-w-0 flex-1">
+                    <div class="font-medium">{it.title ?? "Affiche personnalisée"}</div>
+                    {/* La configuration en clair : sur une fiche de
+                        préparation, du JSON ne sert à personne. */}
+                    <ul class="mt-1 space-y-0.5 text-sm text-bo-muted">
+                      <li>Format {it.format ?? "A4"}</li>
+                      <li>Cadre : {it.cadre ?? "sans cadre"}</li>
+                      {it.titreAffiche && (
+                        <li>
+                          « {it.titreAffiche}
+                          {it.sousTitreAffiche ? ` — ${it.sousTitreAffiche}` : ""} »
+                        </li>
+                      )}
+                      {(it.personnages ?? 0) > 0 && (
+                        <li>
+                          {it.personnages} personnage
+                          {(it.personnages ?? 0) > 1 ? "s" : ""}
+                        </li>
+                      )}
+                    </ul>
+                    <a
+                      href={`${PUBLIC_API_URL}/admin/print-files/${it.id}`}
+                      target="_blank"
+                      rel="noopener"
+                      class="mt-2 inline-block text-sm text-bo-accent hover:underline"
+                    >
+                      Télécharger le PDF d'impression
+                    </a>
+                  </div>
+                  <div class="whitespace-nowrap text-sm">
+                    {formatPrice(it.unitPriceCents)} × {it.quantity}
+                  </div>
+                  <div class="w-24 whitespace-nowrap text-right font-medium">
+                    {formatPrice(it.unitPriceCents * it.quantity)}
+                  </div>
+                </li>
+              ))}
+              {items.length === 0 && (
+                <li class="px-4 py-6 text-center text-bo-muted">
+                  Aucun article.
+                </li>
+              )}
+            </ul>
+          </section>
+
+          {/* ---------------------------------------------------------- */}
+          {/* L'argent                                                    */}
+          {/* ---------------------------------------------------------- */}
+          <section class="rounded-lg border border-bo-border bg-bo-surface">
+            <div class="border-b border-bo-border px-4 py-3 font-medium">
+              {encaisse ? "Payée" : "En attente de paiement"}
+            </div>
+            <dl class="px-4 py-3 text-sm">
+              <div class="flex justify-between py-1">
+                <dt class="text-bo-muted">
+                  Sous-total <span class="ml-2">{nbArticles} article{nbArticles > 1 ? "s" : ""}</span>
+                </dt>
+                <dd>{formatPrice(sousTotal)}</dd>
+              </div>
+              {remise > 0 && (
+                <div class="flex justify-between py-1">
+                  <dt class="text-bo-muted">
+                    Réduction{order.promoCode ? ` — ${order.promoCode}` : ""}
+                  </dt>
+                  <dd>− {formatPrice(remise)}</dd>
+                </div>
+              )}
+              <div class="flex justify-between py-1">
+                <dt class="text-bo-muted">
+                  Expédition{order.shippingLabel ? ` — ${order.shippingLabel}` : ""}
+                </dt>
+                <dd>{formatPrice(port)}</dd>
+              </div>
+              <div class="mt-2 flex justify-between border-t border-bo-border pt-2 font-medium">
+                <dt>Total</dt>
+                <dd>{formatPrice(total)}</dd>
+              </div>
+              {paiement && (
+                <div class="mt-2 flex justify-between border-t border-bo-border pt-2">
+                  <dt class="text-bo-muted">
+                    Payé — {paiement.provider}
+                    {paiement.externalRef ? ` · ${paiement.externalRef}` : ""}
+                  </dt>
+                  <dd>{formatPrice(paiement.amountCents)}</dd>
+                </div>
+              )}
+            </dl>
+          </section>
+
+          {/* ---------------------------------------------------------- */}
+          {/* Journal : ce qui est arrivé, et ce qu'on veut se rappeler   */}
+          {/* ---------------------------------------------------------- */}
+          <section class="rounded-lg border border-bo-border bg-bo-surface">
+            <div class="border-b border-bo-border px-4 py-3 font-medium">
+              Journal
+            </div>
+            <form method="POST" class="border-b border-bo-border px-4 py-3">
+              <input type="hidden" name="_action" value="commentaire" />
+              <textarea
+                name="message"
+                rows="2"
+                placeholder="Laisser un commentaire…"
+                class="w-full rounded border border-bo-border px-3 py-2 text-sm"
+              />
+              <div class="mt-2 flex items-center justify-between gap-3">
+                <span class="text-xs text-bo-muted">
+                  Visible seulement dans le back-office.
+                </span>
+                <button class="rounded bg-bo-accent px-3 py-1.5 text-sm text-white">
+                  Publier
+                </button>
+              </div>
+            </form>
+            <ul class="px-4 py-3 text-sm">
+              {(detail?.journal ?? []).map((e) => (
+                <li class="flex gap-3 border-b border-bo-border py-2 last:border-b-0">
+                  <span
+                    class={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
+                      e.kind === "comment" ? "bg-bo-accent" : "bg-bo-muted"
+                    }`}
+                  />
+                  <span class="flex-1">
+                    <span class="block">{e.message}</span>
+                    <span class="text-xs text-bo-muted">
+                      {quand(e.createdAt)}
+                      {e.author ? ` · ${e.author}` : ""}
+                    </span>
+                  </span>
+                </li>
+              ))}
+              {(detail?.journal ?? []).length === 0 && (
+                <li class="py-2 text-bo-muted">
+                  Rien pour le moment. Les événements s'ajouteront au fil de la
+                  vie de la commande.
+                </li>
+              )}
+            </ul>
+          </section>
+        </div>
+
+        {/* ------------------------------------------------------------ */}
+        {/* Colonne de droite : note, client, adresses                    */}
+        {/* ------------------------------------------------------------ */}
+        <div class="space-y-6">
+          <section class="rounded-lg border border-bo-border bg-bo-surface p-4">
+            <h3 class="mb-2 font-medium">Note</h3>
+            <form method="POST">
+              <input type="hidden" name="_action" value="note" />
+              <textarea
+                name="note"
+                rows="3"
+                placeholder="Aucune note"
+                class="w-full rounded border border-bo-border px-3 py-2 text-sm"
+              >{order.internalNote ?? ""}</textarea>
+              <button class="mt-2 rounded border border-bo-border px-3 py-1.5 text-sm">
+                Enregistrer
+              </button>
+            </form>
+          </section>
+
+          <section class="rounded-lg border border-bo-border bg-bo-surface p-4 text-sm">
+            <h3 class="mb-2 font-medium">Client</h3>
+            {client ? (
+              <>
+                <p>{client.name}</p>
+                <p class="text-bo-muted">
+                  {detail?.commandesDuClient ?? 1} commande
+                  {(detail?.commandesDuClient ?? 1) > 1 ? "s" : ""}
+                </p>
+                <h4 class="mt-3 font-medium">Coordonnées</h4>
+                <p>
+                  <a href={`mailto:${client.email}`} class="text-bo-accent hover:underline">
+                    {client.email}
+                  </a>
+                </p>
+                <p class="text-bo-muted">
+                  {order.shippingPhone ?? "Aucun numéro de téléphone"}
+                </p>
+              </>
+            ) : (
+              <p class="text-bo-muted">
+                Aucun client — commande prise au salon.
+              </p>
+            )}
+
+            <h4 class="mt-3 font-medium">Adresse d'expédition</h4>
+            {order.shippingLine1 || order.relayPointLabel ? (
+              <address class="not-italic text-bo-muted">
+                {order.shippingName && <p>{order.shippingName}</p>}
+                {order.relayPointLabel && <p>{order.relayPointLabel}</p>}
+                {order.shippingLine1 && <p>{order.shippingLine1}</p>}
+                {order.shippingLine2 && <p>{order.shippingLine2}</p>}
+                {(order.shippingPostalCode || order.shippingCity) && (
+                  <p>
+                    {order.shippingPostalCode} {order.shippingCity}
+                  </p>
+                )}
+                {order.shippingCountry && <p>{order.shippingCountry}</p>}
+              </address>
+            ) : (
+              <p class="text-bo-muted">
+                {order.shippingLabel === "Retrait sur place"
+                  ? "Retrait sur place — pas d'expédition."
+                  : "Aucune adresse enregistrée."}
+              </p>
+            )}
+          </section>
+        </div>
+      </div>
+    </>
+  )}
 </Admin>

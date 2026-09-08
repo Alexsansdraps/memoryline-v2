@@ -778,6 +778,14 @@ app.post("/admin/orders/:id/fulfil", async (c) => {
     .where(eq(schema.orders.id, id))
     .returning({ id: schema.orders.id, fulfilledAt: schema.orders.fulfilledAt });
   if (!row) return c.notFound();
+  // Le journal garde la trace : dans un mois, on saura quand c'est parti.
+  await db.insert(schema.orderEvents).values({
+    orderId: id,
+    kind: "event",
+    message: traite
+      ? "Commande marquée comme traitée."
+      : "Commande remise dans les commandes à traiter.",
+  });
   return c.json(row);
 });
 

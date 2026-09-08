@@ -193,8 +193,44 @@ export interface OrderItem {
 }
 
 export interface OrderDetail {
-  order: OrderRow & { createdAt?: string; legacyName?: string | null };
-  items: OrderItem[];
+  order: OrderRow & {
+    createdAt?: string;
+    legacyName?: string | null;
+    promoCode?: string | null;
+    shippingCents?: number;
+    shippingName?: string | null;
+    shippingLine1?: string | null;
+    shippingLine2?: string | null;
+    shippingPostalCode?: string | null;
+    shippingCity?: string | null;
+    shippingCountry?: string | null;
+    shippingPhone?: string | null;
+    relayPointLabel?: string | null;
+    internalNote?: string | null;
+  };
+  items: (OrderItem & {
+    format?: string | null;
+    cadre?: string | null;
+    titreAffiche?: string | null;
+    sousTitreAffiche?: string | null;
+    personnages?: number;
+  })[];
+  customer?: { id: number; name: string; email: string } | null;
+  paiements?: {
+    provider: string;
+    status: string | null;
+    externalRef: string | null;
+    amountCents: number;
+  }[];
+  /** Journal de la commande, du plus récent au plus ancien. */
+  journal?: {
+    id: number;
+    kind: string;
+    message: string;
+    author: string | null;
+    createdAt: string;
+  }[];
+  commandesDuClient?: number;
 }
 
 export interface CharacterType {
@@ -361,6 +397,22 @@ export function adminApi(request?: Request) {
       id: number,
       data: { name?: string; countries?: string },
     ) => req<unknown>("POST", `/admin/shipping/zones/${id}`, data, cookie),
+    /** Note interne d'une commande — jamais montrée au client. */
+    setOrderNote: (id: number, note: string) =>
+      req<{ id: number; internalNote: string | null }>(
+        "POST",
+        `/admin/orders/${id}/note`,
+        { note },
+        cookie,
+      ),
+    /** Ajoute un commentaire au journal d'une commande. */
+    addOrderComment: (id: number, message: string, author?: string) =>
+      req<unknown>(
+        "POST",
+        `/admin/orders/${id}/comment`,
+        { message, author },
+        cookie,
+      ),
     /** Marque une commande traitée (ou la remet à traiter). */
     fulfilOrder: (id: number, fulfilled: boolean) =>
       req<{ id: number; fulfilledAt: string | null }>(

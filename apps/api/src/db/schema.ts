@@ -521,6 +521,11 @@ export const orders = pgTable(
      * différentes que la liste doit répondre d'un coup d'œil.
      */
     fulfilledAt: timestamp("fulfilled_at", { withTimezone: true }),
+    /**
+     * Note interne : « à envoyer avec la commande #2141 », « client rappelé »…
+     * Elle n'est jamais montrée au client, elle sert à se souvenir.
+     */
+    internalNote: text("internal_note"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
@@ -547,6 +552,34 @@ export const orderItems = pgTable("order_item", {
   unitPriceCents: integer("unit_price_cents").notNull().default(0),
   quantity: integer("quantity").notNull().default(1),
 });
+
+/**
+ * Journal d'une commande : ce qui lui est arrivé, dans l'ordre.
+ *
+ * Deux natures d'entrées. Les ÉVÉNEMENTS sont écrits par le système quand
+ * quelque chose se produit (payée, traitée, PDF téléchargé) — ils racontent
+ * l'histoire sans qu'on ait à s'en souvenir. Les COMMENTAIRES sont écrits à
+ * la main, pour ce que le système ne peut pas deviner : « cliente rappelée »,
+ * « à joindre au colis de sa sœur ».
+ */
+export const orderEvents = pgTable(
+  "order_event",
+  {
+    id: serial("id").primaryKey(),
+    orderId: integer("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    /** « event » (le système) ou « comment » (quelqu'un). */
+    kind: text("kind").notNull().default("event"),
+    message: text("message").notNull(),
+    /** Qui l'a écrit, pour un commentaire. */
+    author: text("author"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [index("order_event_order_idx").on(t.orderId, t.createdAt)],
+);
 
 export const payments = pgTable("payment", {
   id: serial("id").primaryKey(),

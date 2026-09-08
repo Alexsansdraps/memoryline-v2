@@ -980,6 +980,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         productId: schema.orderItems.productId,
         quantity: schema.orderItems.quantity,
         unitPriceCents: schema.orderItems.unitPriceCents,
+        config: schema.orderItems.config,
         format: sql<string>`(${schema.orderItems.config} ->> 'format')`,
       })
       .from(schema.orderItems)
@@ -990,7 +991,91 @@ export function mountConfiguratorRoutes(app: Hono) {
           .from(schema.customers)
           .where(eq(schema.customers.id, order.customerId))
       : [];
-    return c.json({ order, customer: customer ?? null, items });
+
+    // Le cadre choisi, en toutes lettres : la configuration n'en garde que
+    // l'identifiant, illisible sur une fiche de préparation.
+    const cadres = await db.select().from(schema.frames);
+    const enrichies = items.map((it) => {
+      const cfg = (it.config ?? {}) as Record<string, unknown>;
+      const textes = (cfg.texts ?? {}) as Record<string, { value?: string }>;
+      const cadre = cadres.find(
+        (f) => String(f.id) === String(cfg.frameId ?? ""),
+      );
+      return {
+        id: it.id,
+        title: it.title,
+        productId: it.productId,
+        quantity: it.quantity,
+        unitPriceCents: it.unitPriceCents,
+        format: it.format,
+        cadre: cadre?.name ?? null,
+        titreAffiche: textes.title?.value ?? null,
+        sousTitreAffiche: textes.subtitle?.value ?? null,
+        personnages: Array.isArray(cfg.characters) ? cfg.characters.length : 0,
+      };
+    });
+
+    // Paiements enregistrés : c'est là qu'on lit ce qui a réellement été
+    // encaissé, et par quel moyen.
+    const paiements = await db
+      .select()
+      .from(schema.payments)
+      .where(eq(schema.payments.orderId, id));
+
+    // Combien de commandes ce client a-t-il passées ? Une fiche client
+    // minimale, mais c'est la question qu'on se pose en le lisant.
+    const [autres] = order.customerId
+      ? await db
+          .select({ n: count() })
+          .from(schema.orders)
+          .where(eq(schema.orders.customerId, order.customerId))
+      : [];
+
+    const journal = await db
+      .select()
+      .from(schema.orderEvents)
+      .where(eq(schema.orderEvents.orderId, id))
+      .orderBy(desc(schema.orderEvents.createdAt));
+
+    return c.json({
+      order,
+      customer: customer ?? null,
+      items: enrichies,
+      paiements,
+      journal,
+      commandesDuClient: Number(autres?.n ?? 0),
+    });
+  });
+
+  /** Ajoute un commentaire au journal d'une commande. */
+  app.post("/admin/orders/:id/comment", async (c) => {
+    const id = Number(c.req.param("id"));
+    const b = await c.req.json().catch(() => ({}));
+    const message = String(b.message ?? "").trim();
+    if (!message) return c.json({ error: "message vide" }, 400);
+    const [row] = await db
+      .insert(schema.orderEvents)
+      .values({
+        orderId: id,
+        kind: "comment",
+        message: message.slice(0, 2000),
+        author: String(b.author ?? "").trim() || null,
+      })
+      .returning();
+    return c.json(row);
+  });
+
+  /** Enregistre la note interne d'une commande. */
+  app.post("/admin/orders/:id/note", async (c) => {
+    const id = Number(c.req.param("id"));
+    const b = await c.req.json().catch(() => ({}));
+    const [row] = await db
+      .update(schema.orders)
+      .set({ internalNote: String(b.note ?? "").trim() || null })
+      .where(eq(schema.orders.id, id))
+      .returning({ id: schema.orders.id, internalNote: schema.orders.internalNote });
+    if (!row) return c.notFound();
+    return c.json(row);
   });
 
   // === Téléchargement PDF (BO uniquement — §12) ============================
