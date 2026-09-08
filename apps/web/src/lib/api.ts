@@ -193,6 +193,15 @@ export interface CharacterLibrary {
 export const browserApi = {
   characters: () => browserGet<CharacterLibrary>("/characters"),
   frames: () => browserGet<CadreDTO[]>("/frames"),
+  /** Vérifie un code promo ; rejette si le code est inconnu ou expiré. */
+  verifierCode: (code: string) =>
+    browserSend<{
+      code: string;
+      name: string;
+      type: string;
+      config: unknown;
+      priority: number;
+    }>("POST", "/promos/verifier", { code }),
   backgrounds: (productId: number | string) =>
     browserGet<BackgroundDTO[]>(`/backgrounds?productId=${productId}`),
 
@@ -224,13 +233,17 @@ export const browserApi = {
   deleteCartItem: (cartId: string, itemId: number) =>
     browserSend<{ ok: boolean }>("DELETE", `/cart/${cartId}/items/${itemId}`),
 
-  createOrder: (cartId: string, customer: { name: string; email: string }) =>
+  createOrder: (
+    cartId: string,
+    customer: { name: string; email: string },
+    promoCode?: string,
+  ) =>
     browserSend<{
       orderId: number;
       number: string;
       status: string;
       totalCents: number;
-    }>("POST", "/orders", { cartId, customer }),
+    }>("POST", "/orders", { cartId, customer, promoCode }),
 
   /* --- Paiement (Stripe & PayPal) --------------------------------------- */
 

@@ -46,6 +46,24 @@ interface PromoRule {
   name: string;
   type: string;
   config: unknown;
+  code?: string | null;
+  priority?: number;
+}
+
+/**
+ * Code promo retenu entre le panier et le tunnel de commande.
+ *
+ * Il ne vaut RIEN par lui-même : le serveur revérifie le code au moment de
+ * créer la commande et recalcule le montant. Ce qui est gardé ici n'est qu'un
+ * confort — ne pas avoir à le retaper à l'étape suivante.
+ */
+export const CLE_CODE_PROMO = "ml_code_promo";
+export function codePromoRetenu(): string {
+  try {
+    return localStorage.getItem(CLE_CODE_PROMO) ?? "";
+  } catch {
+    return "";
+  }
 }
 
 /** Slug du produit pour reconstruire le lien « Modifier ». */
@@ -66,6 +84,50 @@ async function slugForProduct(
 export default function CartIsland(props: { langue?: Langue }): JSX.Element {
   const tr = t(props.langue ?? LANGUE_DEFAUT);
   const [busy, setBusy] = createSignal<number | null>(null);
+
+  // Code promo : celui déjà saisi est repris, et revérifié à l'affichage —
+  // un code peut avoir expiré depuis la dernière visite.
+  const [codeSaisi, setCodeSaisi] = createSignal(codePromoRetenu());
+  const [codeApplique, setCodeApplique] = createSignal<PromoRule | null>(null);
+  const [codeEtat, setCodeEtat] = createSignal<"repos" | "envoi" | "refuse">(
+    "repos",
+  );
+
+  async function appliquerCode(code: string, silencieux = false) {
+    const propre = code.trim();
+    if (!propre) return;
+    setCodeEtat("envoi");
+    try {
+      const regle = await browserApi.verifierCode(propre);
+      setCodeApplique({ id: 0, ...regle } as PromoRule);
+      setCodeEtat("repos");
+      try {
+        localStorage.setItem(CLE_CODE_PROMO, regle.code);
+      } catch {
+        // Stockage refusé (navigation privée) : le code reste valable pour
+        // cette page, il faudra le ressaisir au tunnel.
+      }
+    } catch {
+      setCodeApplique(null);
+      setCodeEtat(silencieux ? "repos" : "refuse");
+      if (silencieux) oublierCode();
+    }
+  }
+
+  function oublierCode() {
+    setCodeApplique(null);
+    setCodeSaisi("");
+    setCodeEtat("repos");
+    try {
+      localStorage.removeItem(CLE_CODE_PROMO);
+    } catch {
+      // rien à faire : sans stockage, il n'y avait rien à oublier
+    }
+  }
+
+  // Reprise d'un code d'une visite précédente, sans rien reprocher au client
+  // s'il n'est plus valable.
+  if (codeSaisi()) void appliquerCode(codeSaisi(), true);
 
   const [cart, { refetch }] = createResource(async () => {
     const cartId = getCartId();
@@ -195,15 +257,32 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
    * l'API utilise pour le montant réellement encaissé. Ce qui est affiché ici
    * ne peut donc plus diverger de ce qui sera débité.
    */
+  /** Promotions automatiques + celle du code saisi, s'il y en a un. */
+  const reglesEnJeu = (): PromoRule[] => {
+    const auto = promos() ?? [];
+    const c = codeApplique();
+    return c ? [...auto, c] : auto;
+  };
+  const codes = () => {
+    const c = codeApplique();
+    return c?.code ? [c.code] : [];
+  };
+
   const discount = (): { amount: number; label: string } => {
-    const { remiseCents, detail } = remisesPanier(lignes(), promos() ?? []);
+    const { remiseCents, detail } = remisesPanier(
+      lignes(),
+      reglesEnJeu(),
+      new Date(),
+      codes(),
+    );
     return {
       amount: remiseCents,
       label: detail.map((d) => d.regle).join(" · "),
     };
   };
 
-  const total = () => totalPanierCents(lignes(), promos() ?? []);
+  const total = () =>
+    totalPanierCents(lignes(), reglesEnJeu(), new Date(), codes());
 
   function editHref(it: OrderItem): string | null {
     const slug = it.productId != null ? cart()?.slugs.get(it.productId) : null;
@@ -420,6 +499,63 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
                 <span>− {formatPrice(discount().amount)}</span>
               </div>
             </Show>
+            {/* Code promo : un champ, un bouton, et la remise se voit tout
+                de suite dans le total au-dessus. */}
+            <div class="mt-4 text-left">
+              <Show
+                when={!codeApplique()}
+                fallback={
+                  <p class="flex items-center justify-between gap-3 text-sm">
+                    <span class="text-sage">
+                      {tr("panier.code_applique")} {codeApplique()!.code}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={oublierCode}
+                      class="text-ink-soft underline underline-offset-4 hover:text-ink"
+                    >
+                      {tr("panier.code_retirer")}
+                    </button>
+                  </p>
+                }
+              >
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void appliquerCode(codeSaisi());
+                  }}
+                  class="flex items-stretch gap-2"
+                >
+                  <label class="sr-only" for="ml-code-promo">
+                    {tr("panier.code")}
+                  </label>
+                  <input
+                    id="ml-code-promo"
+                    value={codeSaisi()}
+                    onInput={(e) => {
+                      setCodeSaisi(e.currentTarget.value);
+                      if (codeEtat() === "refuse") setCodeEtat("repos");
+                    }}
+                    placeholder={tr("panier.code")}
+                    autocomplete="off"
+                    class="min-w-0 flex-1 border border-ink/20 px-3 py-2 outline-none focus:border-ink"
+                  />
+                  <button
+                    type="submit"
+                    disabled={codeEtat() === "envoi" || !codeSaisi().trim()}
+                    class="border border-ink px-4 py-2 font-medium hover:bg-ink hover:text-paper disabled:opacity-40 transition-colors"
+                  >
+                    {tr("panier.code_appliquer")}
+                  </button>
+                </form>
+                <Show when={codeEtat() === "refuse"}>
+                  <p class="mt-2 text-sm text-terracotta-deep">
+                    {tr("panier.code_refuse")}
+                  </p>
+                </Show>
+              </Show>
+            </div>
+
             <div class="mt-3 flex items-center justify-end gap-4">
               <span class="text-ink-soft">{tr("panier.total_estime")}</span>
               <span class="text-2xl">{formatPrice(total())}</span>

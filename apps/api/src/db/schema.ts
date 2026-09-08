@@ -398,7 +398,13 @@ export const orders = pgTable(
     id: serial("id").primaryKey(),
     channel: orderChannelEnum("channel").notNull(), // immuable (§11)
     number: text("number").notNull(), // 'WEB-1042' / 'SAL-0087'
-    clientOrderId: text("client_order_id"), // idempotence envoi salon (§17.2)
+    clientOrderId: text("client_order_id"),
+    /**
+     * Code promo saisi au panier, tel qu'il a été validé. Gardé sur la
+     * commande : c'est ce qui explique l'écart entre la somme des lignes et
+     * le montant encaissé, des mois plus tard.
+     */
+    promoCode: text("promo_code"), // idempotence envoi salon (§17.2)
     status: text("status").notNull().default("pending"),
     totalCents: integer("total_cents").notNull().default(0),
     customerId: integer("customer_id").references(() => customers.id, {

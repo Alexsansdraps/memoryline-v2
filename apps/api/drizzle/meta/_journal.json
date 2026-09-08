@@ -127,6 +127,13 @@
       "when": 1788868198469,
       "tag": "0017_hard_wonder_man",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788868667313,
+      "tag": "0018_fair_komodo",
+      "breakpoints": true
     }
   ]
 }

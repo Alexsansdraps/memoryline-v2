@@ -21,6 +21,7 @@ import {
   getCartId,
   PUBLIC_API_URL,
 } from "../lib/api.ts";
+import { codePromoRetenu } from "./CartIsland.tsx";
 
 /**
  * Tunnel de commande (§11 — canal web), en DEUX phases :

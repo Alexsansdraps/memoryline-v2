@@ -2,7 +2,7 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import { asc, count, eq, desc, inArray } from "drizzle-orm";
+import { and, asc, count, eq, desc, inArray, sql as sqlOp } from "drizzle-orm";
 import { resolve, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile, stat, writeFile } from "node:fs/promises";
@@ -18,6 +18,7 @@ import {
   verifyPassword,
   purgeExpiredSessions,
 } from "./auth.js";
+import { normaliserCode } from "@memoryline/types";
 import { mountConfiguratorRoutes } from "./configurator-routes.js";
 
 const app = new Hono();
@@ -353,6 +354,13 @@ app.delete("/admin/newsletter/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+/**
+ * Promotions AUTOMATIQUES, celles qui s'appliquent sans rien saisir.
+ *
+ * Les promotions à code en sont exclues : les exposer ici, c'était les
+ * appliquer à tout le monde — et publier la liste des codes par la même
+ * occasion.
+ */
 app.get("/promos", async (c) => {
   const now = new Date();
   const rows = await db
@@ -362,9 +370,48 @@ app.get("/promos", async (c) => {
     .orderBy(desc(schema.promoRules.priority));
   const active = rows.filter(
     (r) =>
-      (!r.startsAt || r.startsAt <= now) && (!r.endsAt || r.endsAt >= now),
+      !r.code &&
+      (!r.startsAt || r.startsAt <= now) &&
+      (!r.endsAt || r.endsAt >= now),
   );
   return c.json(active);
+});
+
+/**
+ * Vérifie un code promo saisi au panier.
+ *
+ * Réponse volontairement avare : la règle qui s'applique, rien de plus. On ne
+ * dit jamais qu'un code existe mais est expiré ou désactivé — ce serait aider
+ * à deviner les autres.
+ */
+app.post("/promos/verifier", async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  const code = normaliserCode(b.code);
+  if (!code || code.length > 60)
+    return c.json({ error: "code inconnu" }, 404);
+  const now = new Date();
+  const [regle] = await db
+    .select()
+    .from(schema.promoRules)
+    .where(
+      and(
+        eq(schema.promoRules.active, true),
+        sqlOp`upper(${schema.promoRules.code}) = ${code}`,
+      ),
+    );
+  if (
+    !regle ||
+    (regle.startsAt && regle.startsAt > now) ||
+    (regle.endsAt && regle.endsAt < now)
+  )
+    return c.json({ error: "code inconnu" }, 404);
+  return c.json({
+    code,
+    name: regle.name,
+    type: regle.type,
+    config: regle.config,
+    priority: regle.priority,
+  });
 });
 
 // === Authentification back-office ========================================

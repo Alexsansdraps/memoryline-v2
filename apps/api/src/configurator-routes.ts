@@ -27,6 +27,7 @@ import { renderPosterPdf, type ResolveData } from "./pdf.js";
 import {
   calageNeutre,
   calagePropre,
+  normaliserCode,
   posterConfigSchema,
   totalPanierCents,
   type PosterConfig,
@@ -247,7 +248,10 @@ async function loadCartItem(cartId: string, itemId: number) {
  * commande utilisent EXACTEMENT la même fonction, donc le montant affiché au
  * client et le montant encaissé ne peuvent plus diverger.
  */
-async function computeOrderTotalCents(items: PricedItem[]): Promise<number> {
+async function computeOrderTotalCents(
+  items: PricedItem[],
+  code?: string | null,
+): Promise<number> {
   const rules = await db.select().from(schema.promoRules);
   const lignes = items.map((it) => ({
     unitPriceCents: it.unitPriceCents,
@@ -255,7 +259,10 @@ async function computeOrderTotalCents(items: PricedItem[]): Promise<number> {
     format:
       (it.config as { format?: string } | null)?.format ?? null,
   }));
-  return totalPanierCents(lignes, rules);
+  // Le code passe par le moteur, qui décide seul s'il ouvre droit à une
+  // remise : le navigateur peut envoyer ce qu'il veut, un code inconnu ou
+  // expiré ne change rien au montant.
+  return totalPanierCents(lignes, rules, new Date(), code ? [code] : []);
 }
 
 /**
@@ -657,7 +664,8 @@ export function mountConfiguratorRoutes(app: Hono) {
     const number = /^WEB-\d+$/.test(draft.number)
       ? draft.number
       : await nextOrderNumber("web");
-    const total = await computeOrderTotalCents(items);
+    const code = normaliserCode(body.promoCode);
+    const total = await computeOrderTotalCents(items, code);
     const [order] = await db
       .update(schema.orders)
       .set({
@@ -665,6 +673,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         status: "pending",
         customerId: customer!.id,
         totalCents: total,
+        promoCode: code || null,
       })
       .where(eq(schema.orders.id, draft.id))
       .returning();

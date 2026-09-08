@@ -13,6 +13,11 @@
 export interface RegleParier {
   id?: number;
   name?: string;
+  /**
+   * Code à saisir pour que la règle s'applique. `null` ou absent = promotion
+   * automatique, valable pour tout le monde.
+   */
+  code?: string | null;
   /** buy_x_get_y | percent | fixed | free_shipping_over */
   type: string;
   /**
@@ -49,13 +54,30 @@ function date(v: string | Date | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/** Règles actives à l'instant donné, de la plus prioritaire à la moins. */
+/** Normalise un code pour la comparaison : sans espaces, en majuscules. */
+export function normaliserCode(code: unknown): string {
+  return String(code ?? "").trim().toUpperCase();
+}
+
+/**
+ * Règles actives à l'instant donné, de la plus prioritaire à la moins.
+ *
+ * Une règle porteuse d'un CODE est écartée tant que ce code n'a pas été
+ * saisi : sans ce filtre, une promotion à code s'appliquerait à tout le monde
+ * et le code ne servirait à rien.
+ */
 export function reglesActives<T extends RegleParier>(
   regles: readonly T[],
   maintenant: Date = new Date(),
+  codes: readonly string[] = [],
 ): T[] {
+  const saisis = new Set(codes.map(normaliserCode).filter(Boolean));
   return regles
     .filter((r) => r.active !== false)
+    .filter((r) => {
+      const code = normaliserCode(r.code);
+      return !code || saisis.has(code);
+    })
     .filter((r) => {
       const debut = date(r.startsAt);
       const fin = date(r.endsAt);
@@ -103,12 +125,13 @@ export function remisesPanier(
   lignes: readonly LignePanier[],
   regles: readonly RegleParier[],
   maintenant: Date = new Date(),
+  codes: readonly string[] = [],
 ): { remiseCents: number; detail: RemiseAppliquee[] } {
   const sousTotal = sousTotalCents(lignes);
   const detail: RemiseAppliquee[] = [];
   let remise = 0;
 
-  for (const regle of reglesActives(regles, maintenant)) {
+  for (const regle of reglesActives(regles, maintenant, codes)) {
     const cfg = (regle.config ?? {}) as Record<string, unknown>;
     const restant = sousTotal - remise;
     if (restant <= 0) break;
@@ -146,8 +169,9 @@ export function totalPanierCents(
   lignes: readonly LignePanier[],
   regles: readonly RegleParier[],
   maintenant: Date = new Date(),
+  codes: readonly string[] = [],
 ): number {
   const sousTotal = sousTotalCents(lignes);
-  const { remiseCents } = remisesPanier(lignes, regles, maintenant);
+  const { remiseCents } = remisesPanier(lignes, regles, maintenant, codes);
   return Math.max(0, sousTotal - remiseCents);
 }
