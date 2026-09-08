@@ -245,6 +245,7 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
   let stripe: Stripe | null = null;
   let elements: StripeElements | null = null;
   let stripeMountRef: HTMLDivElement | undefined;
+  let expressMountRef: HTMLDivElement | undefined;
   const [stripeClientSecret, setStripeClientSecret] = createSignal<
     string | null
   >(null);
@@ -263,6 +264,20 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
         clientSecret: stripeClientSecret()!,
         appearance: { theme: "stripe" },
       });
+
+      /* Apple Pay et Google Pay, en boutons dédiés au-dessus du formulaire.
+         Stripe ne les affiche que s'ils sont réellement utilisables : appareil
+         compatible, portefeuille approvisionné, moyen activé dans le tableau
+         de bord Stripe — et, pour Apple Pay, domaine vérifié chez Apple. Rien
+         à afficher : l'élément reste vide, le formulaire de carte suffit. */
+      if (expressMountRef) {
+        const express = elements.create("expressCheckout");
+        express.on("confirm", () => {
+          void payStripe();
+        });
+        express.mount(expressMountRef);
+      }
+
       elements.create("payment").mount(stripeMountRef);
     }
   });
@@ -710,6 +725,10 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
                 {/* Phase 2 : widget du moyen choisi */}
                 <Show when={phase() === "pay"}>
                   <Show when={method() === "stripe"}>
+                    {/* Apple Pay / Google Pay : Stripe n'affiche ces boutons
+                        que s'ils sont utilisables ici et maintenant. Sinon la
+                        zone reste vide et on passe directement à la carte. */}
+                    <div ref={expressMountRef} class="mb-3 empty:hidden" />
                     <div class="rounded-lg border border-ink/15 bg-paper p-4">
                       <div ref={stripeMountRef} />
                     </div>
@@ -717,7 +736,7 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
                       type="button"
                       onClick={payStripe}
                       disabled={submitting()}
-                      class="w-full rounded-full bg-terracotta px-8 py-4 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-50"
+                      class="w-full bg-ink px-8 py-4 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-50"
                     >
                       {submitting() ? "…" : `${tr("commande.payer")} ${formatPrice(total())}`}
                     </button>
