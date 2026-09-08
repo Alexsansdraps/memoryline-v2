@@ -1,0 +1,252 @@
+---
+import { url } from "../../lib/url.ts";
+import Admin from "../../layouts/Admin.astro";
+import {
+  adminApi,
+  type CharacterCategory,
+  type TypeAffiche,
+} from "../../lib/api.ts";
+
+const PUBLIC_API_URL =
+  import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
+
+const api = adminApi(Astro.request);
+
+let erreur: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  try {
+    const perso = await api.upsertCharacter({
+      name: String(f.get("name") || "Personnage"),
+      categoryId: f.get("categoryId") ? Number(f.get("categoryId")) : null,
+      orientation: String(f.get("orientation") || "front"),
+      position: Number(f.get("position") || 0),
+      baseSvgUrl: String(f.get("baseSvgUrl") || "") || null,
+      ...(f.get("baseColorZones")
+        ? {
+            baseColorZones: JSON.parse(String(f.get("baseColorZones") || "{}")),
+          }
+        : {}),
+      ...(f.get("bottomPct")
+        ? { bottomPct: Number(String(f.get("bottomPct")).replace(",", ".")) }
+        : {}),
+    });
+    // On revient à la liste, le personnage créé mis en avant : ses pièces
+    // autorisées et son calage se règlent sur sa carte.
+    return Astro.redirect(url(`/personnages?cree=${perso.id}`), 303);
+  } catch (e) {
+    erreur = "Erreur : " + String(e);
+  }
+}
+
+let categories: CharacterCategory[] = [];
+let vues: TypeAffiche[] = [];
+try {
+  categories = await api.categories();
+  vues = await api.views();
+} catch (e) {
+  if (!erreur) erreur = String(e);
+}
+---
+
+<Admin title="Nouveau personnage">
+  <p class="mb-4">
+    <a href={url("/personnages")} class="text-bo-accent hover:underline text-sm">
+      ← Retour aux personnages
+    </a>
+  </p>
+
+  {erreur && (
+    <p class="mb-4 text-sm rounded bg-red-50 border border-red-200 px-3 py-2">
+      {erreur}
+    </p>
+  )}
+
+  <p class="mb-6 text-sm text-bo-muted max-w-3xl">
+    Nom, catégorie et dessin : le personnage est prêt à être proposé aux
+    clients. Ses couleurs et son calage au sol sont lus dans le dessin — il n'y
+    a rien à mesurer à la main. Vous choisirez ensuite, sur sa carte, les
+    pièces qu'il peut porter et comment elles se posent sur lui.
+  </p>
+
+  <form method="POST" class="space-y-6 max-w-3xl">
+    <section class="bg-bo-surface border border-bo-border rounded-lg p-5 space-y-4">
+      <h3 class="font-semibold">Le personnage</h3>
+      <div class="grid sm:grid-cols-3 gap-4 text-sm">
+        <label class="block">
+          <span class="text-bo-muted">Nom *</span>
+          <input
+            name="name"
+            required
+            placeholder="Ours"
+            class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+          />
+        </label>
+        <label class="block">
+          <span class="text-bo-muted">Catégorie</span>
+          <select
+            name="categoryId"
+            class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+          >
+            <option value="">Sans catégorie</option>
+            {categories.map((c) => (
+              <option value={String(c.id)}>{c.name}</option>
+            ))}
+          </select>
+        </label>
+        <label class="block">
+          <span class="text-bo-muted">Type d'affiche</span>
+          <select
+            name="orientation"
+            class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+          >
+            {vues.map((v) => <option value={v.slug}>{v.name}</option>)}
+          </select>
+          <span class="mt-1 block text-xs text-bo-muted">
+            Il ne portera que des pièces dessinées sous le même angle.
+          </span>
+        </label>
+      </div>
+    </section>
+
+    <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+      <h3 class="font-semibold mb-4">Dessin</h3>
+      <div class="flex flex-wrap items-start gap-4 text-sm">
+        <img
+          id="perso-apercu"
+          alt=""
+          class="h-32 w-20 object-contain border border-bo-border rounded bg-white"
+          style="visibility:hidden"
+        />
+        <div class="flex-1 min-w-[280px]">
+          <span class="text-bo-muted">SVG du personnage</span>
+          <div class="mt-1 flex items-center gap-2">
+            <input
+              id="perso-svg"
+              name="baseSvgUrl"
+              placeholder="/assets/Male_2.svg"
+              class="flex-1 border border-bo-border rounded px-3 py-2 font-mono text-xs"
+            />
+            <button
+              type="button"
+              id="perso-televerser"
+              class="rounded border border-bo-border px-3 py-2 text-xs whitespace-nowrap"
+            >
+              Téléverser…
+            </button>
+          </div>
+          <p id="perso-analyse" class="mt-1 text-xs text-bo-muted">
+            Le SVG complet du personnage, dans le même cadre que les autres
+            (500 × 1000).
+          </p>
+          <input type="hidden" name="baseColorZones" id="perso-zones" value="" />
+          <input type="hidden" name="bottomPct" id="perso-bottom" value="" />
+        </div>
+      </div>
+    </section>
+
+    <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+      <label class="block text-sm max-w-xs">
+        <span class="text-bo-muted">Ordre d'affichage</span>
+        <input
+          name="position"
+          type="number"
+          value="0"
+          class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+        />
+      </label>
+    </section>
+
+    <div class="flex items-center gap-3">
+      <button class="rounded bg-bo-accent text-white px-5 py-2.5">
+        Créer le personnage
+      </button>
+      <a
+        href={url("/personnages")}
+        class="text-sm text-bo-muted hover:underline"
+      >
+        Annuler
+      </a>
+    </div>
+  </form>
+
+  <script is:inline define:vars={{ PUBLIC_API_URL }}>
+    // Téléversement du dessin, puis lecture de ses réglages par l'API : zones
+    // recolorables et bas réel du dessin. Sans ça, il faudrait taper « st0 »,
+    // « st1 »… à l'aveugle et régler le calage au sol par essais successifs.
+    const champ = document.getElementById("perso-svg");
+    const bouton = document.getElementById("perso-televerser");
+    const apercu = document.getElementById("perso-apercu");
+    const note = document.getElementById("perso-analyse");
+    const zones = document.getElementById("perso-zones");
+    const bas = document.getElementById("perso-bottom");
+
+    function montrer() {
+      const v = (champ.value || "").trim();
+      apercu.style.visibility = v ? "visible" : "hidden";
+      if (v) apercu.src = v.startsWith("http") ? v : PUBLIC_API_URL + v;
+    }
+
+    async function relire() {
+      const v = (champ.value || "").trim();
+      montrer();
+      if (!v) return;
+      note.textContent = "Lecture du dessin…";
+      try {
+        const res = await fetch(`${PUBLIC_API_URL}/admin/svg/analyse`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: v }),
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error(res.status);
+        const info = await res.json();
+        zones.value = JSON.stringify(info.colorZones || {});
+        if (info.bottomPct != null) bas.value = String(info.bottomPct);
+        const n = Object.keys(info.colorZones || {}).length;
+        note.textContent =
+          `${n} zone${n > 1 ? "s" : ""} de couleur` +
+          (info.bottomPct != null ? ` · calage au sol ${info.bottomPct}` : "") +
+          " — relus dans le dessin.";
+      } catch {
+        note.textContent =
+          "Dessin illisible : il sera enregistré tel quel, à régler ensuite sur sa carte.";
+      }
+    }
+
+    bouton.addEventListener("click", () => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".svg,.png,.jpg,.jpeg,.webp";
+      input.addEventListener("change", async () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const avant = bouton.textContent;
+        bouton.textContent = "Envoi…";
+        bouton.disabled = true;
+        try {
+          const fd = new FormData();
+          fd.append("file", file);
+          const res = await fetch(`${PUBLIC_API_URL}/admin/uploads`, {
+            method: "POST",
+            body: fd,
+            credentials: "include",
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || res.status);
+          champ.value = data.url;
+          await relire();
+        } catch (e) {
+          alert("Téléversement impossible : " + e);
+        } finally {
+          bouton.textContent = avant;
+          bouton.disabled = false;
+        }
+      });
+      input.click();
+    });
+
+    champ.addEventListener("change", relire);
+  </script>
+</Admin>

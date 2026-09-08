@@ -1,0 +1,291 @@
+---
+import { url } from "../../lib/url.ts";
+import Admin from "../../layouts/Admin.astro";
+import { adminApi, type TypeAffiche } from "../../lib/api.ts";
+
+const PUBLIC_API_URL =
+  import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
+
+const api = adminApi(Astro.request);
+
+/** Emplacements, dans l'ordre d'affichage (mêmes valeurs qu'en base). */
+const SLOTS = [
+  { value: "clothes", label: "Vêtements" },
+  { value: "pants", label: "Pantalon" },
+  { value: "hair", label: "Coupes" },
+  { value: "accessory", label: "Accessoires" },
+];
+
+let erreur: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  try {
+    const zones = JSON.parse(String(f.get("colorZones") || "{}"));
+    await api.upsertAsset({
+      slot: String(f.get("slot") || "clothes"),
+      name: (f.get("name") as string) || undefined,
+      svgUrl: String(f.get("svgUrl") || ""),
+      view: String(f.get("view") || "front"),
+      colorZones: Object.keys(zones).length ? zones : undefined,
+      position: Number(f.get("position") || 0),
+    });
+    return Astro.redirect(url("/personnages?piece=1"), 303);
+  } catch (e) {
+    erreur = "Erreur : " + String(e);
+  }
+}
+
+let vues: TypeAffiche[] = [];
+try {
+  vues = await api.views();
+} catch (e) {
+  if (!erreur) erreur = String(e);
+}
+---
+
+<Admin title="Nouvelle pièce">
+  <p class="mb-4">
+    <a href={url("/personnages")} class="text-bo-accent hover:underline text-sm">
+      ← Retour aux personnages
+    </a>
+  </p>
+
+  {erreur && (
+    <p class="mb-4 text-sm rounded bg-red-50 border border-red-200 px-3 py-2">
+      {erreur}
+    </p>
+  )}
+
+  <p class="mb-6 text-sm text-bo-muted max-w-3xl">
+    Une brique de la garde-robe : un vêtement, un pantalon, une coupe ou un
+    accessoire. Elle rejoint la bibliothèque du type d'affiche choisi, et
+    devient cochable sur les personnages dessinés sous le même angle.
+  </p>
+
+  <form method="POST" class="space-y-6 max-w-3xl">
+    <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+      <div class="grid sm:grid-cols-2 gap-4 text-sm">
+        <label class="block">
+          <span class="text-bo-muted">Emplacement</span>
+          <select
+            name="slot"
+            class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+          >
+            {SLOTS.map((s) => <option value={s.value}>{s.label}</option>)}
+          </select>
+        </label>
+        <label class="block">
+          <span class="text-bo-muted">Type d'affiche</span>
+          <select
+            name="view"
+            class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+          >
+            {vues.map((v) => <option value={v.slug}>{v.name}</option>)}
+          </select>
+        </label>
+        <label class="block">
+          <span class="text-bo-muted">Nom</span>
+          <input
+            name="name"
+            placeholder="T-shirt rayé"
+            class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+          />
+        </label>
+        <label class="block">
+          <span class="text-bo-muted">Ordre d'affichage</span>
+          <input
+            name="position"
+            type="number"
+            value="0"
+            class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+          />
+        </label>
+      </div>
+    </section>
+
+    <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+      <h3 class="font-semibold mb-4">Dessin</h3>
+      <div class="flex flex-wrap items-start gap-4 text-sm">
+        <img
+          id="piece-apercu"
+          alt=""
+          class="h-32 w-20 object-contain border border-bo-border rounded bg-white"
+          style="visibility:hidden"
+        />
+        <div class="flex-1 min-w-[280px]">
+          <span class="text-bo-muted">SVG de la pièce *</span>
+          <div class="mt-1 flex items-center gap-2">
+            <input
+              id="piece-url"
+              name="svgUrl"
+              required
+              placeholder="/assets/tshirt.svg"
+              class="flex-1 border border-bo-border rounded px-3 py-2 font-mono text-xs"
+            />
+            <button
+              type="button"
+              id="piece-televerser"
+              class="rounded border border-bo-border px-3 py-2 text-xs whitespace-nowrap"
+            >
+              Téléverser…
+            </button>
+          </div>
+          <p id="piece-analyse" class="mt-1 text-xs text-bo-muted">
+            Même cadre que les personnages (500 × 1000) : la pièce se superpose
+            au dessin, elle n'est pas redimensionnée.
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-4 text-sm">
+        <span class="text-bo-muted block mb-1">
+          Zones de couleur (relues dans le dessin)
+        </span>
+        <div id="piece-zones" class="flex flex-wrap gap-2 mb-2"></div>
+        <div class="flex items-center gap-2">
+          <input
+            id="piece-zone-nom"
+            class="border border-bo-border rounded px-2 py-1 text-xs w-24"
+            placeholder="st0"
+          />
+          <button
+            type="button"
+            id="piece-ajout-zone"
+            class="rounded border border-bo-border px-2 py-1 text-xs"
+          >
+            + Zone
+          </button>
+        </div>
+        <input type="hidden" name="colorZones" id="piece-colorzones" value="{}" />
+      </div>
+    </section>
+
+    <div class="flex items-center gap-3">
+      <button class="rounded bg-bo-accent text-white px-5 py-2.5">
+        Créer la pièce
+      </button>
+      <a
+        href={url("/personnages")}
+        class="text-sm text-bo-muted hover:underline"
+      >
+        Annuler
+      </a>
+    </div>
+  </form>
+
+  <script is:inline define:vars={{ PUBLIC_API_URL }}>
+    const champ = document.getElementById("piece-url");
+    const apercu = document.getElementById("piece-apercu");
+    const bouton = document.getElementById("piece-televerser");
+    const note = document.getElementById("piece-analyse");
+    const boiteZones = document.getElementById("piece-zones");
+    const nomZone = document.getElementById("piece-zone-nom");
+    const champZones = document.getElementById("piece-colorzones");
+
+    function syncZones() {
+      const cz = {};
+      boiteZones
+        .querySelectorAll('input[type="color"][data-zone]')
+        .forEach((i) => {
+          cz[i.getAttribute("data-zone")] = i.value;
+        });
+      champZones.value = JSON.stringify(cz);
+    }
+
+    function ajouterZone(zone, hex) {
+      if (boiteZones.querySelector(`input[data-zone="${zone}"]`)) return;
+      const label = document.createElement("label");
+      label.className = "flex items-center gap-1 text-xs";
+      const color = document.createElement("input");
+      color.type = "color";
+      color.value = hex || "#000000";
+      color.setAttribute("data-zone", zone);
+      color.className = "h-7 w-7 border border-bo-border rounded cursor-pointer";
+      color.addEventListener("input", syncZones);
+      const span = document.createElement("span");
+      span.className = "text-bo-muted";
+      span.textContent = zone;
+      label.append(color, span);
+      boiteZones.appendChild(label);
+      syncZones();
+    }
+
+    function montrer() {
+      const v = (champ.value || "").trim();
+      apercu.style.visibility = v ? "visible" : "hidden";
+      if (v) apercu.src = v.startsWith("http") ? v : PUBLIC_API_URL + v;
+    }
+
+    async function relire() {
+      const v = (champ.value || "").trim();
+      montrer();
+      if (!v) return;
+      note.textContent = "Lecture du dessin…";
+      try {
+        const res = await fetch(`${PUBLIC_API_URL}/admin/svg/analyse`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: v }),
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error(res.status);
+        const info = await res.json();
+        // Les zones du nouveau dessin remplacent les précédentes : garder
+        // celles d'un autre dessin donnerait des couleurs sans effet.
+        boiteZones.innerHTML = "";
+        champZones.value = "{}";
+        for (const [zone, hex] of Object.entries(info.colorZones || {}))
+          ajouterZone(zone, hex);
+        const n = Object.keys(info.colorZones || {}).length;
+        note.textContent = `${n} zone${n > 1 ? "s" : ""} de couleur relue${
+          n > 1 ? "s" : ""
+        } dans le dessin.`;
+      } catch {
+        note.textContent =
+          "Dessin illisible : zones de couleur à saisir à la main.";
+      }
+    }
+
+    bouton.addEventListener("click", () => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".svg,.png,.jpg,.jpeg,.webp";
+      input.addEventListener("change", async () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const avant = bouton.textContent;
+        bouton.textContent = "Envoi…";
+        bouton.disabled = true;
+        try {
+          const fd = new FormData();
+          fd.append("file", file);
+          const res = await fetch(`${PUBLIC_API_URL}/admin/uploads`, {
+            method: "POST",
+            body: fd,
+            credentials: "include",
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || res.status);
+          champ.value = data.url;
+          await relire();
+        } catch (e) {
+          alert("Téléversement impossible : " + e);
+        } finally {
+          bouton.textContent = avant;
+          bouton.disabled = false;
+        }
+      });
+      input.click();
+    });
+
+    champ.addEventListener("change", relire);
+
+    document.getElementById("piece-ajout-zone").addEventListener("click", () => {
+      const z = (nomZone.value || "").trim();
+      if (!z) return;
+      ajouterZone(z, "#000000");
+      nomZone.value = "";
+    });
+  </script>
+</Admin>

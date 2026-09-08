@@ -1,4 +1,5 @@
 ---
+import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
 import {
   adminApi,
@@ -35,6 +36,13 @@ function svgSrc(url: string | null | undefined): string {
 // pattern que promotions.astro). Les actions dynamiques par élément (couleurs,
 // suppressions, base) se font côté client (voir <script> en bas).
 let flash: string | null = null;
+// Retour des pages de création : le message se lit ici, pas là-bas — c'est
+// sur cette page que le résultat se voit.
+if (Astro.url.searchParams.get("cree"))
+  flash =
+    "Personnage créé. Cochez ses pièces autorisées, puis calez-les sur sa carte.";
+else if (Astro.url.searchParams.get("piece"))
+  flash = "Pièce ajoutée à la bibliothèque.";
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const action = form.get("_action");
@@ -53,19 +61,6 @@ if (Astro.request.method === "POST") {
         // Slug du type d'affiche, tel qu'il vient du sélecteur : la liste
         // des types se gère au back-office, elle n'est plus figée ici.
         orientation: String(form.get("orientation") || "front"),
-        // Dessin et couleurs : présents à la création (formulaire du bas),
-        // absents lors d'une édition depuis une carte — on ne les écrase
-        // alors pas.
-        ...(form.get("baseSvgUrl") !== null
-          ? { baseSvgUrl: String(form.get("baseSvgUrl") || "") || null }
-          : {}),
-        ...(form.get("baseColorZones")
-          ? {
-              baseColorZones: JSON.parse(
-                String(form.get("baseColorZones") || "{}"),
-              ),
-            }
-          : {}),
         ...(form.get("bottomPct") !== null && form.get("bottomPct") !== ""
           ? { bottomPct: Number(String(form.get("bottomPct")).replace(",", ".")) }
           : {}),
@@ -153,17 +148,6 @@ if (Astro.request.method === "POST") {
       const items = JSON.parse(String(form.get("items") || "[]"));
       if (items.length) await api.reorderCharacters(items);
       flash = "Ordre mis à jour.";
-    } else if (action === "add-asset") {
-      const colorZones = JSON.parse(String(form.get("colorZones") || "{}"));
-      await api.upsertAsset({
-        slot: String(form.get("slot") || "clothes"),
-        name: (form.get("name") as string) || undefined,
-        svgUrl: String(form.get("svgUrl") || ""),
-        view: String(form.get("view") || "front"),
-        colorZones: Object.keys(colorZones).length ? colorZones : undefined,
-        position: Number(form.get("position") || 0),
-      });
-      flash = "Pièce ajoutée.";
     }
   } catch (e) {
     flash = "Erreur : " + String(e);
@@ -362,7 +346,23 @@ for (const a of pieces) {
   <!-- ===================================================================== -->
   <!-- SECTION A — Personnages prédéfinis                                     -->
   <!-- ===================================================================== -->
-  <h2 class="text-lg font-semibold mb-1">Personnages</h2>
+  <div class="mb-1 flex flex-wrap items-center justify-between gap-3">
+    <h2 class="text-lg font-semibold">Personnages</h2>
+    <div class="flex items-center gap-2">
+      <a
+        href={url("/personnages/piece")}
+        class="rounded border border-bo-border px-4 py-2 text-sm"
+      >
+        <span class="mr-1">+</span> Nouvelle pièce
+      </a>
+      <a
+        href={url("/personnages/nouveau")}
+        class="rounded bg-bo-accent px-4 py-2 text-sm text-white"
+      >
+        <span class="mr-1">+</span> Nouveau personnage
+      </a>
+    </div>
+  </div>
   <p class="mb-4 text-sm text-bo-muted">
     Les personnages que le client peut ajouter depuis le site, regroupés par
     catégorie. Faites glisser la vignette d'un personnage sur le bandeau d'une
@@ -986,86 +986,6 @@ for (const a of pieces) {
   )}
 
   <!-- ====== Créer un personnage ====== -->
-  <section class="mb-10 bg-bo-surface border border-bo-border rounded-lg p-5">
-    <h3 class="font-semibold mb-4">Nouveau personnage</h3>
-    <p class="text-xs text-bo-muted mb-4">
-      Nom, catégorie et dessin : le personnage est prêt à être proposé aux
-      clients. Ses couleurs et son calage vertical sont lus dans le dessin, il
-      n'y a rien à mesurer à la main.
-    </p>
-    <form method="POST" class="grid sm:grid-cols-3 gap-4 text-sm items-end" id="form-perso">
-      <input type="hidden" name="_action" value="upsert" />
-      <label class="block">
-        <span class="text-bo-muted">Nom</span>
-        <input name="name" required class="mt-1 w-full border border-bo-border rounded px-3 py-2" placeholder="Ours" />
-      </label>
-      <label class="block">
-        <span class="text-bo-muted">Catégorie</span>
-        <select
-          name="categoryId"
-          class="mt-1 w-full border border-bo-border rounded px-3 py-2"
-        >
-          {optionsCategorie.map((o) => (
-            <option value={o.value}>{o.label}</option>
-          ))}
-        </select>
-      </label>
-      <label class="block">
-        <span class="text-bo-muted">Type d'affiche</span>
-        <select
-          name="orientation"
-          class="mt-1 w-full border border-bo-border rounded px-3 py-2"
-        >
-          {vues.map((v) => <option value={v.slug}>{v.name}</option>)}
-        </select>
-      </label>
-
-      {/* Dessin : téléversé puis analysé (zones de couleur + bas réel du
-          dessin). Les valeurs partent dans des champs cachés avec le reste. */}
-      <div class="sm:col-span-3 flex flex-wrap items-start gap-4 border-t border-bo-border pt-4">
-        <img
-          id="perso-apercu"
-          alt=""
-          class="h-24 w-16 object-contain border border-bo-border rounded bg-white"
-          style="visibility:hidden"
-        />
-        <div class="flex-1 min-w-[280px]">
-          <span class="text-bo-muted">Dessin du personnage (SVG)</span>
-          <div class="mt-1 flex items-center gap-2">
-            <input
-              id="perso-svg"
-              name="baseSvgUrl"
-              list="base-svg-list"
-              placeholder="/assets/Male_2.svg"
-              class="flex-1 border border-bo-border rounded px-3 py-2 font-mono text-xs"
-            />
-            <button
-              type="button"
-              id="perso-televerser"
-              class="rounded border border-bo-border px-3 py-2 text-xs whitespace-nowrap"
-            >
-              Téléverser…
-            </button>
-          </div>
-          <p id="perso-analyse" class="mt-1 text-xs text-bo-muted">
-            Le SVG complet du personnage, dans le même cadre que les autres
-            (500 × 1000).
-          </p>
-          <input type="hidden" name="baseColorZones" id="perso-zones" value="" />
-          <input type="hidden" name="bottomPct" id="perso-bottom" value="" />
-        </div>
-      </div>
-
-      <label class="block">
-        <span class="text-bo-muted">Position</span>
-        <input name="position" type="number" value="0" class="mt-1 w-full border border-bo-border rounded px-3 py-2" />
-      </label>
-      <div class="sm:col-span-3">
-        <button class="rounded bg-bo-accent text-white px-4 py-2 hover:opacity-90">Créer</button>
-      </div>
-    </form>
-  </section>
-
   <!-- ====== Personnages archivés ====== -->
   {
     archived.length > 0 && (
@@ -1188,88 +1108,6 @@ for (const a of pieces) {
       );
     })
   }
-
-  <!-- ====== Ajouter une pièce ====== -->
-  <section class="mb-10 bg-bo-surface border border-bo-border rounded-lg p-5">
-    <h3 class="font-semibold mb-4">Ajouter une pièce</h3>
-    <form method="POST" class="grid sm:grid-cols-2 gap-4 text-sm items-end">
-      <input type="hidden" name="_action" value="add-asset" />
-      <label class="block">
-        <span class="text-bo-muted">Type de pièce</span>
-        <select name="slot" class="mt-1 w-full border border-bo-border rounded px-3 py-2">
-          {SLOTS.map((s) => <option value={s.value}>{s.label}</option>)}
-        </select>
-      </label>
-      <label class="block">
-        <span class="text-bo-muted">Type d'affiche</span>
-        <select name="view" class="mt-1 w-full border border-bo-border rounded px-3 py-2">
-          {vues.map((v) => <option value={v.slug}>{v.name}</option>)}
-        </select>
-      </label>
-      <label class="block">
-        <span class="text-bo-muted">Nom</span>
-        <input name="name" class="mt-1 w-full border border-bo-border rounded px-3 py-2" placeholder="T-shirt rayé" />
-      </label>
-      <label class="block">
-        <span class="text-bo-muted">Position</span>
-        <input name="position" type="number" value="0" class="mt-1 w-full border border-bo-border rounded px-3 py-2" />
-      </label>
-      <label class="block sm:col-span-2">
-        <span class="text-bo-muted">Dessin de la pièce (SVG)</span>
-        <div class="flex items-center gap-3">
-          <input
-            id="new-asset-url"
-            name="svgUrl"
-            required
-            class="mt-1 flex-1 border border-bo-border rounded px-3 py-2 font-mono text-xs"
-            placeholder="/assets/tshirt.svg"
-          />
-          <button
-            type="button"
-            id="new-asset-upload"
-            class="mt-1 rounded border border-bo-border px-3 py-2 text-xs whitespace-nowrap"
-          >
-            Téléverser…
-          </button>
-          <img
-            id="new-asset-preview"
-            alt=""
-            class="mt-1 h-12 w-12 object-contain border border-bo-border rounded bg-white shrink-0"
-            style="visibility:hidden"
-          />
-        </div>
-        <span class="mt-1 block text-xs text-bo-muted" id="new-asset-analyse">
-          Même cadre que les personnages (500 × 1000) : la pièce se superpose
-          au dessin, elle n'est pas redimensionnée.
-        </span>
-      </label>
-
-      {/* Zones de couleur optionnelles, ajoutées dynamiquement. */}
-      <div class="sm:col-span-2">
-        <span class="text-bo-muted block mb-1">Zones de couleur (optionnel)</span>
-        <div id="new-asset-zones" class="flex flex-wrap gap-2 mb-2"></div>
-        <div class="flex items-center gap-2">
-          <input
-            id="new-asset-zone-name"
-            class="border border-bo-border rounded px-2 py-1 text-xs w-24"
-            placeholder="st0"
-          />
-          <button
-            type="button"
-            id="new-asset-add-zone"
-            class="rounded border border-bo-border px-2 py-1 text-xs"
-          >
-            + Zone
-          </button>
-        </div>
-        <input type="hidden" name="colorZones" id="new-asset-colorzones" value="{}" />
-      </div>
-
-      <div class="sm:col-span-2">
-        <button class="rounded bg-bo-accent text-white px-4 py-2 hover:opacity-90">Ajouter la pièce</button>
-      </div>
-    </form>
-  </section>
 
   {/* ====== Pièces archivées ====== */}
   {piecesArchivees.length > 0 && (
@@ -1694,194 +1532,6 @@ for (const a of pieces) {
         }
       });
     });
-
-    // ===== Formulaire « Ajouter une pièce » : aperçu + zones dynamiques =====
-    bindPreview(
-      document.getElementById("new-asset-url"),
-      document.getElementById("new-asset-preview"),
-    );
-
-    const zonesBox = document.getElementById("new-asset-zones");
-    const zoneNameInput = document.getElementById("new-asset-zone-name");
-    const colorZonesField = document.getElementById("new-asset-colorzones");
-
-    function syncNewAssetZones() {
-      const cz = {};
-      zonesBox.querySelectorAll('input[type="color"][data-zone]').forEach((i) => {
-        cz[i.getAttribute("data-zone")] = i.value;
-      });
-      colorZonesField.value = JSON.stringify(cz);
-    }
-
-    // Téléversement de la pièce : le fichier part, l'API relit ses zones de
-    // couleur, et le formulaire se remplit tout seul.
-    document
-      .getElementById("new-asset-upload")
-      ?.addEventListener("click", async (e) => {
-        const bouton = e.currentTarget;
-        const champ = document.getElementById("new-asset-url");
-        const note = document.getElementById("new-asset-analyse");
-        const url = await televerser(bouton);
-        if (!url) return;
-        champ.value = url;
-        champ.dispatchEvent(new Event("input"));
-        note.textContent = "Lecture du dessin…";
-        const info = await analyserSvg(url);
-        if (!info) {
-          note.textContent = "Dessin envoyé (zones de couleur à saisir à la main).";
-          return;
-        }
-        zonesBox.innerHTML = "";
-        for (const [zone, hex] of Object.entries(info.colorZones || {})) {
-          const label = document.createElement("label");
-          label.className = "flex items-center gap-1 text-xs";
-          const color = document.createElement("input");
-          color.type = "color";
-          color.value = hex;
-          color.setAttribute("data-zone", zone);
-          color.className =
-            "h-7 w-7 border border-bo-border rounded cursor-pointer";
-          color.addEventListener("input", syncNewAssetZones);
-          const span = document.createElement("span");
-          span.className = "text-bo-muted";
-          span.textContent = zone;
-          label.append(color, span);
-          zonesBox.appendChild(label);
-        }
-        syncNewAssetZones();
-        const n = Object.keys(info.colorZones || {}).length;
-        note.textContent = `Dessin envoyé · ${n} zone${n > 1 ? "s" : ""} de couleur relue${n > 1 ? "s" : ""}.`;
-      });
-
-    document
-      .getElementById("new-asset-add-zone")
-      ?.addEventListener("click", () => {
-        const z = (zoneNameInput.value || "").trim();
-        if (!z) return;
-        if (zonesBox.querySelector(`input[data-zone="${z}"]`)) {
-          zoneNameInput.value = "";
-          return;
-        }
-        const label = document.createElement("label");
-        label.className = "flex items-center gap-1 text-xs";
-        const color = document.createElement("input");
-        color.type = "color";
-        color.value = "#000000";
-        color.setAttribute("data-zone", z);
-        color.className = "h-7 w-7 border border-bo-border rounded cursor-pointer";
-        color.addEventListener("input", syncNewAssetZones);
-        const span = document.createElement("span");
-        span.className = "text-bo-muted";
-        span.textContent = z;
-        label.append(color, span);
-        zonesBox.appendChild(label);
-        zoneNameInput.value = "";
-        syncNewAssetZones();
-      });
-
-    // ===== Téléversement d'un dessin + lecture de ses réglages ============
-    // Le back-office ne savait qu'accepter un CHEMIN de fichier déjà présent
-    // sur le serveur, et il fallait taper « st0 », « st1 »… à la main puis
-    // régler le calage vertical par essais. On téléverse, et l'API relit dans
-    // le SVG ses zones de couleur et le bas réel de son dessin.
-
-    /** Envoie un fichier et rend son URL /assets/…, ou null si ça a échoué. */
-    async function televerser(bouton) {
-      return new Promise((resolve) => {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = ".svg,.png,.jpg,.jpeg,.webp";
-        input.addEventListener("change", async () => {
-          const file = input.files && input.files[0];
-          if (!file) return resolve(null);
-          const avant = bouton.textContent;
-          bouton.textContent = "Envoi…";
-          bouton.disabled = true;
-          try {
-            const fd = new FormData();
-            fd.append("file", file);
-            const res = await fetch(`${PUBLIC_API_URL}/admin/uploads`, {
-              method: "POST",
-              body: fd,
-              credentials: "include",
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || res.status);
-            resolve(data.url);
-          } catch (e) {
-            alert("Téléversement impossible : " + e);
-            resolve(null);
-          } finally {
-            bouton.textContent = avant;
-            bouton.disabled = false;
-          }
-        });
-        input.click();
-      });
-    }
-
-    /** Zones de couleur + bas du dessin, lus dans le SVG par l'API. */
-    async function analyserSvg(url) {
-      try {
-        const res = await fetch(`${PUBLIC_API_URL}/admin/svg/analyse`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url }),
-          credentials: "include",
-        });
-        if (!res.ok) return null;
-        return await res.json();
-      } catch {
-        return null;
-      }
-    }
-
-    // --- Nouveau personnage : dessin, couleurs et calage d'un seul geste.
-    (() => {
-      const champ = document.getElementById("perso-svg");
-      const bouton = document.getElementById("perso-televerser");
-      const apercu = document.getElementById("perso-apercu");
-      const note = document.getElementById("perso-analyse");
-      const zones = document.getElementById("perso-zones");
-      const bas = document.getElementById("perso-bottom");
-      if (!champ || !bouton) return;
-
-      function montrer() {
-        const v = (champ.value || "").trim();
-        apercu.style.visibility = v ? "visible" : "hidden";
-        if (v) apercu.src = v.startsWith("http") ? v : PUBLIC_API_URL + v;
-      }
-
-      async function relire() {
-        const v = (champ.value || "").trim();
-        montrer();
-        if (!v) return;
-        note.textContent = "Lecture du dessin…";
-        const info = await analyserSvg(v);
-        if (!info) {
-          note.textContent =
-            "Dessin illisible : il sera enregistré tel quel, à régler ensuite sur sa carte.";
-          return;
-        }
-        zones.value = JSON.stringify(info.colorZones || {});
-        if (info.bottomPct != null) bas.value = String(info.bottomPct);
-        const n = Object.keys(info.colorZones || {}).length;
-        note.textContent =
-          `${n} zone${n > 1 ? "s" : ""} de couleur` +
-          (info.bottomPct != null
-            ? ` · calage vertical ${info.bottomPct}`
-            : "") +
-          " — relus dans le dessin.";
-      }
-
-      bouton.addEventListener("click", async () => {
-        const url = await televerser(bouton);
-        if (!url) return;
-        champ.value = url;
-        await relire();
-      });
-      champ.addEventListener("change", relire);
-    })();
 
     // --- Base d'un personnage existant : remplacer le dessin.
     document.addEventListener("click", async (e) => {
