@@ -24,6 +24,8 @@ import {
 import { db, schema } from "./db/client.js";
 import { renderPosterPdf, type ResolveData } from "./pdf.js";
 import {
+  calageNeutre,
+  calagePropre,
   posterConfigSchema,
   totalPanierCents,
   type PosterConfig,
@@ -94,6 +96,9 @@ async function buildResolveData(): Promise<ResolveData> {
       baseSvgUrl: t.baseSvgUrl,
       baseColorZones: t.baseColorZones,
       bottomPct: t.bottomPct ?? 1,
+      // Calage des pièces : sans lui, le PDF poserait les coupes et les
+      // vêtements ailleurs que l'aperçu validé par le client.
+      slotAdjust: t.slotAdjust ?? null,
     });
   const bgMap = new Map<string, any>();
   for (const b of backgrounds)
@@ -399,6 +404,8 @@ export function mountConfiguratorRoutes(app: Hono) {
         // Ids d'ancienne config par slot (= asset.position des génériques) :
         // le front restreint les galeries de l'éditeur à ces variantes.
         slotVariants: t.slotVariants ?? null,
+        // Calage des pièces sur CE personnage (par emplacement).
+        slotAdjust: t.slotAdjust ?? null,
       })),
       slots,
     });
@@ -1213,6 +1220,48 @@ export function mountConfiguratorRoutes(app: Hono) {
       .where(eq(schema.characterTypes.id, id))
       .returning({ slotVariants: schema.characterTypes.slotVariants });
     return c.json({ ok: true, slotVariants: row?.slotVariants ?? {} });
+  });
+
+  /**
+   * Calage des pièces sur un personnage, emplacement par emplacement.
+   *
+   * Même principe que les pièces autorisées : un emplacement absent du corps
+   * de la requête n'est pas touché, et un calage neutre est effacé plutôt que
+   * stocké — inutile d'alourdir la config d'un personnage qui n'a rien à
+   * rattraper.
+   */
+  app.post("/admin/characters/:id/slot-adjust", async (c) => {
+    const id = Number(c.req.param("id"));
+    const b = await c.req.json();
+    const [perso] = await db
+      .select({ slotAdjust: schema.characterTypes.slotAdjust })
+      .from(schema.characterTypes)
+      .where(eq(schema.characterTypes.id, id));
+    if (!perso) return c.notFound();
+
+    const suivant: Record<string, { dx: number; dy: number; scale: number }> = {
+      ...((perso.slotAdjust ?? {}) as Record<
+        string,
+        { dx: number; dy: number; scale: number }
+      >),
+    };
+    // Clés acceptées : « hair » (tout l'emplacement) ou « hair:3 » (cette
+    // pièce-là). Tout le reste est ignoré : la table sert au rendu, une clé
+    // inventée y resterait sans jamais s'appliquer.
+    const CLE = /^(clothes|pants|hair|accessory)(:\d+)?$/;
+    for (const [cle, recu] of Object.entries(b as Record<string, unknown>)) {
+      if (!CLE.test(cle) || recu === undefined) continue;
+      const propre = calagePropre(recu);
+      if (calageNeutre(propre)) delete suivant[cle];
+      else suivant[cle] = propre;
+    }
+
+    const [row] = await db
+      .update(schema.characterTypes)
+      .set({ slotAdjust: suivant })
+      .where(eq(schema.characterTypes.id, id))
+      .returning({ slotAdjust: schema.characterTypes.slotAdjust });
+    return c.json({ ok: true, slotAdjust: row?.slotAdjust ?? {} });
   });
 
   app.post("/admin/characters/reorder", async (c) => {

@@ -1,6 +1,8 @@
 /// <reference lib="dom" />
 import { For, createMemo, createUniqueId } from "solid-js";
 import {
+  appliquerCalage,
+  calagePour,
   BASE_COLOR_SCOPE,
   colorsForScope,
   hideSlotGroups,
@@ -113,7 +115,12 @@ export function CharacterStack(props: {
           key: `${slot}:${variant.id}`,
           svg: fillSvg(
             scopeSvgStyles(
-              recolorForCharacter(raw, colorsForScope(colors, slot)),
+              // Calage de la pièce sur ce personnage : même fonction que
+              // pour l'impression, l'aperçu ne peut donc pas mentir.
+              appliquerCalage(
+                recolorForCharacter(raw, colorsForScope(colors, slot)),
+                calagePour(props.base?.slotAdjust, slot, variant.position),
+              ),
               `${uid}-${slot}-${variant.id}`,
             ),
           ),

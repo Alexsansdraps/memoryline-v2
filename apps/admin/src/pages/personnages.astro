@@ -803,6 +803,165 @@ for (const a of pieces) {
                 </form>
               </details>
 
+              {/* Calage : les pièces défilent une par une, on règle, on
+                  valide, la suivante s'affiche. Chaque validation part
+                  aussitôt en base — rien à ré-enregistrer à la fin. */}
+              <details class="border-b border-bo-border">
+                <summary class="cursor-pointer px-4 py-3 text-xs font-medium uppercase tracking-wide text-bo-muted hover:text-bo-accent">
+                  Calage des pièces
+                  <span class="ml-2 normal-case tracking-normal">
+                    ({Object.keys(t.slotAdjust ?? {}).length} réglage
+                    {Object.keys(t.slotAdjust ?? {}).length > 1 ? "s" : ""})
+                  </span>
+                </summary>
+                <div class="js-assistant px-4 pb-4" data-id={t.id}>
+                  <script
+                    type="application/json"
+                    class="js-assistant-data"
+                    set:html={JSON.stringify({
+                      calage: t.slotAdjust ?? {},
+                      base: svgSrc(t.baseSvgUrl),
+                      pieces: SLOTS.flatMap((s) =>
+                        piecesCochables(t, s.value)
+                          .filter((a) => {
+                            const permis = autorisees(t, s.value);
+                            return permis === null || permis.includes(a.position);
+                          })
+                          .map((a) => ({
+                            slot: s.value,
+                            slotLabel: s.label,
+                            position: a.position,
+                            name: a.name,
+                            url: svgSrc(a.svgUrl),
+                          })),
+                      ),
+                    })}
+                  />
+                  <p class="text-xs text-bo-muted mb-3">
+                    Les pièces cochées plus haut défilent une par une : on
+                    règle, on valide, la suivante s'affiche. Le réglage suit la
+                    pièce sur ce personnage — à l'écran comme à l'impression.
+                  </p>
+                  <div class="flex flex-wrap gap-4">
+                    <div class="relative h-64 w-32 shrink-0 rounded border border-bo-border bg-white">
+                      <svg viewBox="0 0 500 1000" class="absolute inset-0 h-full w-full">
+                        <image
+                          href={svgSrc(t.baseSvgUrl)}
+                          x="0"
+                          y="0"
+                          width="500"
+                          height="1000"
+                        />
+                      </svg>
+                      <svg
+                        viewBox="0 0 500 1000"
+                        class="js-ap-piece absolute inset-0 h-full w-full"
+                        style="transform-origin:50% 100%"
+                      >
+                        <image
+                          class="js-ap-image"
+                          x="0"
+                          y="0"
+                          width="500"
+                          height="1000"
+                        />
+                      </svg>
+                    </div>
+                    <div class="min-w-[260px] flex-1 text-xs">
+                      <div class="js-ap-titre mb-0.5 text-sm font-medium"></div>
+                      <div class="js-ap-progres mb-3 text-bo-muted"></div>
+
+                      <label class="mb-1 flex items-center gap-2">
+                        <span class="w-20 text-bo-muted">Gauche / droite</span>
+                        <input
+                          type="range"
+                          class="js-ap-dx flex-1"
+                          min="-30"
+                          max="30"
+                          step="0.5"
+                          value="0"
+                        />
+                        <input
+                          type="number"
+                          class="js-ap-dx-val w-16 rounded border border-bo-border px-1 py-0.5"
+                          step="0.5"
+                          value="0"
+                        />
+                      </label>
+                      <label class="mb-1 flex items-center gap-2">
+                        <span class="w-20 text-bo-muted">Haut / bas</span>
+                        <input
+                          type="range"
+                          class="js-ap-dy flex-1"
+                          min="-30"
+                          max="30"
+                          step="0.5"
+                          value="0"
+                        />
+                        <input
+                          type="number"
+                          class="js-ap-dy-val w-16 rounded border border-bo-border px-1 py-0.5"
+                          step="0.5"
+                          value="0"
+                        />
+                      </label>
+                      <label class="mb-2 flex items-center gap-2">
+                        <span class="w-20 text-bo-muted">Taille</span>
+                        <input
+                          type="range"
+                          class="js-ap-scale flex-1"
+                          min="0.5"
+                          max="1.6"
+                          step="0.01"
+                          value="1"
+                        />
+                        <input
+                          type="number"
+                          class="js-ap-scale-val w-16 rounded border border-bo-border px-1 py-0.5"
+                          step="0.01"
+                          value="1"
+                        />
+                      </label>
+
+                      <label class="mb-3 flex items-center gap-2">
+                        <input type="checkbox" class="js-ap-tout" />
+                        <span>
+                          Appliquer à toutes les pièces de cet emplacement
+                        </span>
+                      </label>
+
+                      <div class="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          class="js-ap-precedent rounded border border-bo-border px-2 py-1"
+                        >
+                          Précédente
+                        </button>
+                        <button
+                          type="button"
+                          class="js-ap-valider rounded bg-bo-accent px-3 py-1.5 text-white hover:opacity-90"
+                        >
+                          Valider et suivante
+                        </button>
+                        <button
+                          type="button"
+                          class="js-ap-passer rounded border border-bo-border px-2 py-1"
+                        >
+                          Passer
+                        </button>
+                        <button
+                          type="button"
+                          class="js-ap-reset text-bo-muted underline hover:text-bo-accent"
+                        >
+                          remettre à zéro
+                        </button>
+                        <span class="js-ap-statut text-bo-muted"></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </details>
+
               <div class="px-4 py-3">
                 <form method="POST" class="inline">
                   <input type="hidden" name="_action" value="archive" />
@@ -1765,6 +1924,140 @@ for (const a of pieces) {
       if (statut)
         statut.textContent = "Dessin remplacé — pensez à enregistrer la base.";
     });
+
+    // ===== Assistant de calage : les pièces une par une ==================
+    // La vignette applique la MÊME transformation que le site et que le PDF
+    // (translation en pourcents du cadre, agrandissement depuis le bas-centre),
+    // donc ce qu'on règle ici est ce qui sera imprimé.
+    for (const boite of document.querySelectorAll(".js-assistant")) {
+      const id = boite.getAttribute("data-id");
+      const donnees = JSON.parse(
+        boite.querySelector(".js-assistant-data")?.textContent || "{}",
+      );
+      const pieces = donnees.pieces || [];
+      const calage = donnees.calage || {};
+
+      const vue = boite.querySelector(".js-ap-piece");
+      const image = boite.querySelector(".js-ap-image");
+      const titre = boite.querySelector(".js-ap-titre");
+      const progres = boite.querySelector(".js-ap-progres");
+      const statut = boite.querySelector(".js-ap-statut");
+      const tout = boite.querySelector(".js-ap-tout");
+      const champs = [
+        [boite.querySelector(".js-ap-dx"), boite.querySelector(".js-ap-dx-val"), 0],
+        [boite.querySelector(".js-ap-dy"), boite.querySelector(".js-ap-dy-val"), 0],
+        [
+          boite.querySelector(".js-ap-scale"),
+          boite.querySelector(".js-ap-scale-val"),
+          1,
+        ],
+      ];
+
+      let index = 0;
+
+      const valeurs = () => champs.map(([, champ]) => Number(champ.value));
+      function poser(dx, dy, scale) {
+        champs.forEach(([curseur, champ], i) => {
+          const v = [dx, dy, scale][i];
+          curseur.value = String(v);
+          champ.value = String(v);
+        });
+        dessiner();
+      }
+      function dessiner() {
+        const [dx, dy, scale] = valeurs();
+        vue.style.transform =
+          "translate(" + dx + "%, " + dy + "%) scale(" + (scale || 1) + ")";
+      }
+
+      function afficher() {
+        if (pieces.length === 0) {
+          titre.textContent = "Aucune pièce cochée pour ce personnage.";
+          progres.textContent =
+            "Cochez d'abord ses pièces dans « Pièces autorisées ».";
+          image.removeAttribute("href");
+          return;
+        }
+        const p = pieces[index];
+        image.setAttribute("href", p.url);
+        titre.textContent = p.slotLabel + " — " + (p.name || "sans nom");
+        progres.textContent = index + 1 + " / " + pieces.length;
+        // Réglage déjà enregistré : celui de la pièce, sinon celui de tout
+        // l'emplacement, sinon rien.
+        const c = calage[p.slot + ":" + p.position] || calage[p.slot] || null;
+        tout.checked = !calage[p.slot + ":" + p.position] && !!calage[p.slot];
+        poser(c ? c.dx : 0, c ? c.dy : 0, c ? c.scale : 1);
+        statut.textContent = "";
+      }
+
+      function avancer(pas) {
+        if (pieces.length === 0) return;
+        index = (index + pas + pieces.length) % pieces.length;
+        afficher();
+      }
+
+      for (const [curseur, champ] of champs) {
+        curseur.addEventListener("input", () => {
+          champ.value = curseur.value;
+          dessiner();
+        });
+        champ.addEventListener("input", () => {
+          curseur.value = champ.value;
+          dessiner();
+        });
+      }
+
+      boite.querySelector(".js-ap-reset")?.addEventListener("click", () => {
+        poser(0, 0, 1);
+      });
+      boite.querySelector(".js-ap-passer")?.addEventListener("click", () => {
+        avancer(1);
+      });
+      boite.querySelector(".js-ap-precedent")?.addEventListener("click", () => {
+        avancer(-1);
+      });
+
+      boite.querySelector(".js-ap-valider")?.addEventListener("click", async (e) => {
+        if (pieces.length === 0) return;
+        const bouton = e.currentTarget;
+        const p = pieces[index];
+        const [dx, dy, scale] = valeurs();
+        // « Toutes les pièces de cet emplacement » écrit sous la clé du slot
+        // et efface le réglage propre à la pièce, sinon ce dernier gagnerait
+        // et le geste n'aurait aucun effet visible.
+        const corps = tout.checked
+          ? { [p.slot]: { dx, dy, scale }, [p.slot + ":" + p.position]: null }
+          : { [p.slot + ":" + p.position]: { dx, dy, scale } };
+        if (tout.checked) corps[p.slot + ":" + p.position] = { dx: 0, dy: 0, scale: 1 };
+        bouton.disabled = true;
+        statut.textContent = "Enregistrement…";
+        try {
+          const res = await fetch(
+            PUBLIC_API_URL + "/admin/characters/" + id + "/slot-adjust",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(corps),
+              credentials: "include",
+            },
+          );
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || res.status);
+          // On repart de la table renvoyée par le serveur : c'est elle qui
+          // fait foi, y compris pour les réglages neutres qu'il a effacés.
+          for (const cle of Object.keys(calage)) delete calage[cle];
+          Object.assign(calage, data.slotAdjust || {});
+          statut.textContent = "Enregistré.";
+          avancer(1);
+        } catch (err) {
+          statut.textContent = "Échec : " + err;
+        } finally {
+          bouton.disabled = false;
+        }
+      });
+
+      afficher();
+    }
 
     // --- Pièces autorisées : raccourcis « tout » / « rien » par emplacement.
     // Délégation : les cartes sont nombreuses et repliées, on n'accroche

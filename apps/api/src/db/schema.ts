@@ -263,6 +263,19 @@ export const characterTypes = pgTable(
      * qu'une orientation (les variantes face/dos = deux persos distincts).
      */
     orientation: text("orientation").default("front").notNull(),
+    /**
+     * Calage des pièces SUR CE PERSONNAGE, par emplacement :
+     *   { hair: { dx: 0, dy: -3, scale: 0.9 }, accessory: { … } }
+     *
+     * Les pièces sont dessinées dans le même cadre que les personnages et
+     * simplement superposées : elles ne tombent juste que sur la morphologie
+     * pour laquelle elles ont été dessinées. Sur un enfant ou un animal, la
+     * coupe flotte. `dx`/`dy` sont en pourcents du cadre, `scale` un facteur.
+     * Absent = pièce posée telle quelle.
+     */
+    slotAdjust: jsonb("slot_adjust").$type<
+      Partial<Record<string, { dx: number; dy: number; scale: number }>>
+    >(),
     legacyTypeId: integer("legacy_type_id"), // typeId Shopify (1, 15, 18…)
     /**
      * Variantes AUTORISÉES pour ce personnage, par slot, dans l'ordre

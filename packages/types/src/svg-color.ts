@@ -165,3 +165,111 @@ export function scopeSvgStyles(svg: string, uid: string): string {
   );
   return out;
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Calage des pièces sur un personnage                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Décalage et taille d'une pièce (coupe, vêtement…) SUR UN PERSONNAGE donné.
+ *
+ * Toutes les pièces sont dessinées dans le même cadre 500×1000 et simplement
+ * superposées : elles tombent juste sur la morphologie pour laquelle elles ont
+ * été dessinées. Sur un enfant ou un animal, la coupe flotte ou la casquette
+ * mange le front. Ce réglage rattrape l'écart, par personnage et par
+ * emplacement.
+ *
+ * `dx` et `dy` sont en POURCENTS du cadre du personnage (positif = vers la
+ * droite / vers le bas), `scale` un facteur (1 = taille d'origine).
+ */
+export interface CalagePiece {
+  dx: number;
+  dy: number;
+  scale: number;
+}
+
+/** Aucun calage : la pièce est posée telle qu'elle a été dessinée. */
+export const CALAGE_NEUTRE: CalagePiece = { dx: 0, dy: 0, scale: 1 };
+
+/** Vrai si le calage ne change rien — inutile de toucher au SVG. */
+export function calageNeutre(c: CalagePiece | null | undefined): boolean {
+  return !c || (c.dx === 0 && c.dy === 0 && c.scale === 1);
+}
+
+/** Complète un calage partiel (venu de la base) avec les valeurs neutres. */
+export function calagePropre(brut: unknown): CalagePiece {
+  const o = (brut ?? {}) as Record<string, unknown>;
+  const nombre = (v: unknown, defaut: number, min: number, max: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : defaut;
+  };
+  return {
+    dx: nombre(o.dx, 0, -50, 50),
+    dy: nombre(o.dy, 0, -50, 50),
+    scale: nombre(o.scale, 1, 0.2, 3),
+  };
+}
+
+/**
+ * Transformation SVG correspondant à un calage, dans le repère 500×1000.
+ *
+ * L'agrandissement part du BAS-CENTRE (250, 1000), le point d'ancrage commun
+ * à toutes les couches (`preserveAspectRatio="xMidYMax"`) : agrandir depuis le
+ * coin haut-gauche décollerait la pièce du personnage.
+ */
+export function transformCalage(c: CalagePiece): string {
+  const tx = (c.dx / 100) * 500;
+  const ty = (c.dy / 100) * 1000;
+  return `translate(${tx} ${ty}) translate(250 1000) scale(${c.scale}) translate(-250 -1000)`;
+}
+
+/**
+ * Applique un calage à un SVG de pièce : son contenu est enveloppé dans un
+ * groupe transformé.
+ *
+ * Le viewBox n'est pas touché — la pièce reste dans le même cadre que la base
+ * du personnage, seule son occupation à l'intérieur change. C'est la MÊME
+ * fonction qui sert à l'écran et à l'impression : les deux ne peuvent pas
+ * diverger.
+ */
+export function appliquerCalage(
+  svg: string,
+  calage: CalagePiece | null | undefined,
+): string {
+  if (!svg || calageNeutre(calage)) return svg;
+  const ouverture = /<svg\b[^>]*>/.exec(svg);
+  if (!ouverture) return svg;
+  const debut = ouverture.index + ouverture[0].length;
+  const fin = svg.lastIndexOf("</svg>");
+  if (fin <= debut) return svg;
+  const dedans = svg.slice(debut, fin);
+  return (
+    svg.slice(0, debut) +
+    `<g transform="${transformCalage(calagePropre(calage))}">${dedans}</g>` +
+    svg.slice(fin)
+  );
+}
+
+/**
+ * Calage à appliquer à une pièce précise sur un personnage.
+ *
+ * Deux niveaux, du plus précis au plus général :
+ *   1. `"hair:3"` — cette coupe-là sur ce personnage ;
+ *   2. `"hair"`   — toutes les coupes sur ce personnage.
+ *
+ * Le premier niveau existe parce qu'une coupe longue et une casquette ne se
+ * calent pas de la même façon ; le second évite d'avoir à régler vingt-sept
+ * coupes une par une quand un simple décalage d'ensemble suffit.
+ */
+export function calagePour(
+  table: Partial<Record<string, CalagePiece>> | null | undefined,
+  slot: string,
+  position: number | null | undefined,
+): CalagePiece | undefined {
+  if (!table) return undefined;
+  if (position != null) {
+    const precis = table[`${slot}:${position}`];
+    if (precis) return precis;
+  }
+  return table[slot];
+}

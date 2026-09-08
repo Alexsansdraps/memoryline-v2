@@ -25,6 +25,8 @@ import type { OverlayOptions, Sharp } from "sharp";
 import { PDFDocument } from "pdf-lib";
 
 import {
+  appliquerCalage,
+  calagePour,
   BASE_COLOR_SCOPE,
   colorsForScope,
   hideSlotGroups,
@@ -92,6 +94,10 @@ export interface ResolvedCharacter {
   baseColorZones?: Record<string, string> | null;
   /** Bas réel du contenu (0..1) pour aligner les pieds au sol. */
   bottomPct?: number;
+  /** Calage des pièces sur ce personnage, par emplacement. */
+  slotAdjust?: Partial<
+    Record<string, { dx: number; dy: number; scale: number }>
+  > | null;
 }
 
 /**
@@ -249,7 +255,17 @@ export async function resolveConfig(
         ...(asset.colorZones ?? {}),
         ...colorsForScope(character.colors, slot),
       };
-      layers.push({ svgString: recolorSvg(raw, overrides), x, y, scale });
+      // Calage de la pièce sur CE personnage : même fonction qu'à l'écran,
+      // donc impossible que l'impression tombe ailleurs que l'aperçu validé.
+      layers.push({
+        svgString: appliquerCalage(
+          recolorSvg(raw, overrides),
+          calagePour(base?.slotAdjust, slot, asset.position),
+        ),
+        x,
+        y,
+        scale,
+      });
     }
   }
 

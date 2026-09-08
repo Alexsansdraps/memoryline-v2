@@ -62,8 +62,8 @@ export interface CharacterDTO {
   baseSvgUrl: string;
   /** Zones de couleur par défaut de la base : { stN: "#hex" }. */
   baseColorZones: Record<string, string> | null;
-  /** Orientation native du perso : 'front' (face) ou 'back' (dos). */
-  orientation?: "front" | "back";
+  /** Type d'affiche du perso (slug) : « front », « back », ou créé au BO. */
+  orientation?: string;
   /** Bas réel du contenu dans le viewBox (0..1) pour aligner les pieds au sol. */
   bottomPct?: number;
   /**
@@ -72,6 +72,16 @@ export interface CharacterDTO {
    * leurs ids. null/absent = pas encore lié -> proposer toutes les variantes.
    */
   slotVariants?: Partial<Record<Slot, number[]>> | null;
+  /**
+   * Calage des pièces SUR CE PERSO, par slot : décalage en pourcents du cadre
+   * et facteur de taille. Une coupe dessinée pour un adulte flotte au-dessus
+   * d'un enfant ; ce réglage la remet en place, sans toucher au dessin.
+   */
+  /**
+   * Clés : « hair » pour tout l'emplacement, « hair:3 » pour cette coupe-là.
+   * Voir `calagePour` — le plus précis gagne.
+   */
+  slotAdjust?: Record<string, { dx: number; dy: number; scale: number }> | null;
 }
 
 /**

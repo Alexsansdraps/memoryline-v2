@@ -143,6 +143,17 @@ export interface CharacterType {
   slotVariants?: Partial<
     Record<"clothes" | "pants" | "hair" | "accessory", number[]>
   > | null;
+  /**
+   * Calage des pièces sur ce personnage, par emplacement : décalage en
+   * pourcents du cadre et facteur de taille. Absent = pièce posée telle
+   * qu'elle a été dessinée.
+   */
+  slotAdjust?: Partial<
+    Record<
+      "clothes" | "pants" | "hair" | "accessory",
+      { dx: number; dy: number; scale: number }
+    >
+  > | null;
 }
 
 export interface Asset {
