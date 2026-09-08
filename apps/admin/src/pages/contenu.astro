@@ -48,16 +48,13 @@ const SECTIONS = [
     champs: [
       { key: "home.vitrine.visible", label: "Afficher cette section", type: "switch" },
       { key: "home.vitrine.title", label: "Titre de la section", type: "texte" },
-      { key: "home.vitrine.subtitle", label: "Texte d'introduction", type: "long" },
+      {
+        key: "home.vitrine.subtitle",
+        label:
+          "Texte d'introduction — une ligne par ligne ; commencez par « - » pour une puce",
+        type: "long",
+      },
       { key: "home.vitrine.count", label: "Nombre d'affiches (1 à 24)", type: "nombre" },
-    ],
-  },
-  {
-    titre: "Accueil — comment ça marche",
-    aide: "Les trois étapes expliquant la démarche.",
-    champs: [
-      { key: "home.etapes.visible", label: "Afficher cette section", type: "switch" },
-      { key: "home.etapes.title", label: "Titre de la section", type: "texte" },
     ],
   },
   {

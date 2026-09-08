@@ -65,15 +65,26 @@ const heroSubtitle = await setting("home.hero.subtitle", tr("accueil.soustitre")
 const heroCta = await setting("home.hero.cta", tr("accueil.cta"));
 
 const vitrineVisible = await visible("home.vitrine.visible");
-const vitrineTitre = await setting("home.vitrine.title", tr("catalogue.titre"));
-const vitrineTexte = await setting("home.vitrine.subtitle", tr("produit.aide"));
+const vitrineTitre = await setting("home.vitrine.title", "Nos best-sellers ❤️");
+/**
+ * Texte d'introduction de la vitrine : une ligne par ligne saisie au
+ * back-office. Celles qui commencent par un tiret deviennent une puce, les
+ * autres restent des phrases — c'est ce que fait la boutique actuelle, et ça
+ * laisse la cliente écrire ce qu'elle veut sans passer par un développeur.
+ */
+const vitrineTexte = await setting(
+  "home.vitrine.subtitle",
+  "- Choisissez votre fond\n- Personnalisez votre texte\n- Choisissez vos personnages et personnalisez-les\nVotre affiche prête en 2 minutes !",
+);
+const vitrineLignes = vitrineTexte
+  .split(/\r?\n/)
+  .map((l) => l.trim())
+  .filter(Boolean)
+  .map((l) => ({ puce: /^[-–•]\s*/.test(l), texte: l.replace(/^[-–•]\s*/, "") }));
 const vitrineNombre = Math.max(
   1,
   Math.min(24, Number(await setting("home.vitrine.count", "8")) || 8),
 );
-
-const etapesVisible = await visible("home.etapes.visible");
-const etapesTitre = await setting("home.etapes.title", "Comment ça marche");
 
 const chiffresVisible = await visible("home.chiffres.visible");
 
@@ -119,7 +130,18 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
         <div class="flex flex-wrap items-end justify-between gap-3 mb-6">
           <div>
             <h2 class="text-2xl sm:text-3xl">{vitrineTitre}</h2>
-            <p class="mt-2 text-ink-soft">{vitrineTexte}</p>
+            <div class="mt-2 space-y-0.5 text-ink-soft">
+              {vitrineLignes.map((l) =>
+                l.puce ? (
+                  <p class="flex gap-2">
+                    <span aria-hidden="true">–</span>
+                    <span>{l.texte}</span>
+                  </p>
+                ) : (
+                  <p>{l.texte}</p>
+                ),
+              )}
+            </div>
           </div>
           <a
             href={lien(langue, "/affiches")}
@@ -129,56 +151,35 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
           </a>
         </div>
 
-        <ul class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
+        <ul class="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-4">
           {vitrine.map((p) => (
             <li class="group">
               <a href={lien(langue, `/affiches/${p.slug}`)} class="block">
-                <div class="aspect-[3/4] rounded-xl bg-paper-deep border border-ink/10 flex items-center justify-center overflow-hidden group-hover:border-terracotta/40 transition-colors">
+                <div
+                  class="flex items-center justify-center overflow-hidden bg-paper-deep"
+                  style="aspect-ratio:1020/1400"
+                >
                   {assetUrl(p.image) ? (
                     <img
                       src={assetUrl(p.image)}
                       alt={p.name}
                       loading="lazy"
-                      class="h-full w-full object-cover group-hover:scale-[1.02] transition-transform"
+                      class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                     />
                   ) : (
-                    <span class="text-lg text-ink-soft px-4 text-center">
+                    <span class="px-4 text-center text-lg text-ink-soft">
                       {titreCourt(p.name)}
                     </span>
                   )}
                 </div>
-                <h3 class="font-medium leading-snug mt-3">{titreCourt(p.name)}</h3>
-                <p class="text-ink-soft mt-1">{fourchette(p)}</p>
+                <h3 class="mt-4 text-[17px] leading-snug group-hover:underline underline-offset-4">
+                  {titreCourt(p.name)}
+                </h3>
+                <p class="mt-1 text-ink-soft">{fourchette(p)}</p>
               </a>
             </li>
           ))}
         </ul>
-      </section>
-    )
-  }
-
-  {/* ---------------- Comment ça marche ---------------- */}
-  {
-    etapesVisible && (
-      <section class="bg-paper-deep mt-16">
-        <div class="mx-auto max-w-[1200px] px-6 py-16">
-          <h2 class="text-2xl sm:text-3xl mb-8">{etapesTitre}</h2>
-          <div class="grid sm:grid-cols-3 gap-8">
-            {[
-              ["1 · Choisissez votre fond", "Villes françaises, paysages, thèmes."],
-              [
-                "2 · Personnalisez",
-                "Titre, sous-titre, personnages et leurs tenues.",
-              ],
-              ["3 · Recevez", "Imprimée en A4 ou A3, livrée chez vous."],
-            ].map(([t, d]) => (
-              <div>
-                <h3 class="text-2xl">{t}</h3>
-                <p class="mt-2 text-ink-soft">{d}</p>
-              </div>
-            ))}
-          </div>
-        </div>
       </section>
     )
   }
