@@ -579,9 +579,16 @@ app.post("/admin/svg/analyse", async (c) => {
     while ((m = re.exec(texte)) !== null) colorZones[m[1]!] = m[2]!.toUpperCase();
   }
 
-  // Bas réel du dessin dans son cadre : les animaux et les bébés ont du vide
-  // sous eux et « flotteraient » au-dessus du muret sans cette mesure.
+  // Où le dessin se trouve VRAIMENT dans son cadre. Deux usages :
+  //  - `bottomPct`, le bas du contenu, pour aligner les pieds sur le muret
+  //    (les animaux et les bébés ont du vide sous eux et « flotteraient ») ;
+  //  - `bbox`, le rectangle occupé, pour dessiner autour d'une pièce la
+  //    poignée de redimensionnement du back-office. Sans lui, il faudrait
+  //    encadrer tout le cadre 500×1000 — une boîte immense autour d'une
+  //    casquette.
   let bottomPct: number | null = null;
+  let bbox: { left: number; top: number; right: number; bottom: number } | null =
+    null;
   try {
     const H = 400;
     const { data, info } = await sharp(contenu, { density: 120, unlimited: true })
@@ -589,22 +596,37 @@ app.post("/admin/svg/analyse", async (c) => {
       .ensureAlpha()
       .raw()
       .toBuffer({ resolveWithObject: true });
-    let bas = 0;
+    const W = info.width;
+    let bas = -1;
+    let haut = H;
+    let gauche = W;
+    let droite = -1;
     for (let y = 0; y < H; y++) {
-      for (let x = 0; x < info.width; x++) {
-        if (data[(y * info.width + x) * info.channels + 3]! > 20) {
-          if (y > bas) bas = y;
-          break;
-        }
+      for (let x = 0; x < W; x++) {
+        if (data[(y * W + x) * info.channels + 3]! <= 20) continue;
+        if (y < haut) haut = y;
+        if (y > bas) bas = y;
+        if (x < gauche) gauche = x;
+        if (x > droite) droite = x;
       }
     }
-    bottomPct = Number(Math.min(1, Math.max(0.05, bas / H)).toFixed(4));
+    if (bas >= 0) {
+      bottomPct = Number(Math.min(1, Math.max(0.05, bas / H)).toFixed(4));
+      // Fractions du cadre : le back-office les multiplie par la taille de sa
+      // scène, quelle qu'elle soit.
+      bbox = {
+        left: Number((gauche / W).toFixed(4)),
+        top: Number((haut / H).toFixed(4)),
+        right: Number(((droite + 1) / W).toFixed(4)),
+        bottom: Number(((bas + 1) / H).toFixed(4)),
+      };
+    }
   } catch {
     // Rasterisation impossible : on rend les zones sans le calage, plutôt que
     // de faire échouer tout le formulaire.
   }
 
-  return c.json({ url: `/assets/${nom}`, colorZones, bottomPct });
+  return c.json({ url: `/assets/${nom}`, colorZones, bottomPct, bbox });
 });
 
 /**

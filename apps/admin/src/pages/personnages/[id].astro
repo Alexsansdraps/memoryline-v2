@@ -430,6 +430,29 @@ const piecesACaler = SLOTS.flatMap((s) => {
                   height="1000"
                 />
               </svg>
+
+              {/* Cadre de transformation, à la manière d'un logiciel de
+                  dessin : il épouse le dessin de la pièce (pas le cadre du
+                  personnage) et ses quatre coins la redimensionnent. */}
+              <div class="js-cadre absolute hidden">
+                <div class="pointer-events-none absolute inset-0 border border-dashed border-bo-accent"></div>
+                <span
+                  class="js-poignee absolute -left-1.5 -top-1.5 h-3 w-3 cursor-nwse-resize rounded-sm border border-white bg-bo-accent"
+                  data-coin="nw"
+                ></span>
+                <span
+                  class="js-poignee absolute -right-1.5 -top-1.5 h-3 w-3 cursor-nesw-resize rounded-sm border border-white bg-bo-accent"
+                  data-coin="ne"
+                ></span>
+                <span
+                  class="js-poignee absolute -bottom-1.5 -left-1.5 h-3 w-3 cursor-nesw-resize rounded-sm border border-white bg-bo-accent"
+                  data-coin="sw"
+                ></span>
+                <span
+                  class="js-poignee absolute -bottom-1.5 -right-1.5 h-3 w-3 cursor-nwse-resize rounded-sm border border-white bg-bo-accent"
+                  data-coin="se"
+                ></span>
+              </div>
             </div>
 
             <div class="min-w-[280px] flex-1 text-sm">
@@ -437,8 +460,9 @@ const piecesACaler = SLOTS.flatMap((s) => {
               <div class="js-progres mb-3 text-xs text-bo-muted"></div>
 
               <p class="mb-3 text-xs text-bo-muted">
-                Glisser = déplacer · molette = agrandir ou réduire ·
-                flèches du clavier = ajustement fin.
+                Glissez la pièce pour la déplacer, tirez un coin du cadre pour
+                la redimensionner. Molette et flèches du clavier pour ajuster
+                au détail près.
               </p>
               <div class="js-valeurs mb-4 font-mono text-xs text-bo-muted"></div>
 
@@ -656,6 +680,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
       function dessiner() {
         vue.style.transform =
           "translate(" + etat.dx + "%, " + etat.dy + "%) scale(" + etat.scale + ")";
+        placerCadre();
         valeurs.textContent =
           "décalage " +
           etat.dx.toFixed(1) +
@@ -676,6 +701,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
         }
         const p = pieces[index];
         image.setAttribute("href", p.url);
+        void chargerBbox(p.url);
         titre.textContent = p.slotLabel + " — " + (p.name || "sans nom");
         progres.textContent = index + 1 + " / " + pieces.length;
         const c = calage[p.slot + ":" + p.position] || calage[p.slot] || null;
@@ -695,29 +721,159 @@ const piecesACaler = SLOTS.flatMap((s) => {
         afficher();
       }
 
-      // Glisser-déposer à la souris (et au doigt : pointer events).
+      // --- Cadre de transformation ---------------------------------------
+      // Le cadre épouse le DESSIN, pas le cadre 500×1000 du personnage : sans
+      // ça, une casquette serait entourée d'une boîte de la taille d'un corps.
+      // L'API mesure ce rectangle (analyse du SVG) ; en attendant sa réponse,
+      // et si elle échoue, on retombe sur le cadre entier.
+      const cadre = boite.querySelector(".js-cadre");
+      const bboxes = {};
+      const BBOX_PLEINE = { left: 0, top: 0, right: 1, bottom: 1 };
+      const bboxCourante = () =>
+        (pieces[index] && bboxes[pieces[index].url]) || BBOX_PLEINE;
+
+      async function chargerBbox(url) {
+        if (bboxes[url] !== undefined) return;
+        bboxes[url] = null; // évite deux appels pour la même pièce
+        try {
+          const res = await fetch(`${PUBLIC_API_URL}/admin/svg/analyse`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url }),
+            credentials: "include",
+          });
+          if (!res.ok) return;
+          const info = await res.json();
+          if (info.bbox) bboxes[url] = info.bbox;
+        } catch {
+          // Mesure indisponible : le cadre entoure tout le cadre, ça marche
+          // quand même.
+        } finally {
+          placerCadre();
+        }
+      }
+
+      /**
+       * Position d'un point du cadre (en fractions) sur la scène, en pixels,
+       * une fois le calage appliqué. Même formule que la transformation CSS :
+       * mise à l'échelle depuis le bas-centre, puis translation.
+       */
+      function versEcran(fx, fy, r) {
+        const ox = 0.5 * r.width;
+        const oy = 1 * r.height;
+        return {
+          x: ox + (fx * r.width - ox) * etat.scale + (etat.dx / 100) * r.width,
+          y: oy + (fy * r.height - oy) * etat.scale + (etat.dy / 100) * r.height,
+        };
+      }
+
+      function placerCadre() {
+        if (!cadre) return;
+        if (pieces.length === 0) {
+          cadre.classList.add("hidden");
+          return;
+        }
+        const r = scene.getBoundingClientRect();
+        if (!r.width) return;
+        const b = bboxCourante();
+        const a = versEcran(b.left, b.top, r);
+        const c2 = versEcran(b.right, b.bottom, r);
+        cadre.classList.remove("hidden");
+        cadre.style.left = Math.min(a.x, c2.x) + "px";
+        cadre.style.top = Math.min(a.y, c2.y) + "px";
+        cadre.style.width = Math.abs(c2.x - a.x) + "px";
+        cadre.style.height = Math.abs(c2.y - a.y) + "px";
+      }
+
+      // Glisser : la pièce se déplace ; par un coin, elle se redimensionne en
+      // gardant le coin opposé en place — le geste attendu d'un cadre.
       let attrape = null;
       scene.addEventListener("pointerdown", (e) => {
         if (pieces.length === 0) return;
-        attrape = { x: e.clientX, y: e.clientY, dx: etat.dx, dy: etat.dy };
+        const poignee = e.target.closest(".js-poignee");
+        const r = scene.getBoundingClientRect();
+        if (poignee) {
+          const coin = poignee.dataset.coin;
+          const b = bboxCourante();
+          // Coin tiré et coin opposé, en fractions du cadre.
+          const tire = {
+            x: coin === "nw" || coin === "sw" ? b.left : b.right,
+            y: coin === "nw" || coin === "ne" ? b.top : b.bottom,
+          };
+          const ancre = {
+            x: coin === "nw" || coin === "sw" ? b.right : b.left,
+            y: coin === "nw" || coin === "ne" ? b.bottom : b.top,
+          };
+          // En pixels, à l'échelle 1 : le vecteur ancre → coin tiré.
+          const v = {
+            x: (tire.x - ancre.x) * r.width,
+            y: (tire.y - ancre.y) * r.height,
+          };
+          attrape = {
+            mode: "taille",
+            ancre,
+            v,
+            ancreEcran: versEcran(ancre.x, ancre.y, r),
+            scale0: etat.scale,
+            dx0: etat.dx,
+            dy0: etat.dy,
+          };
+        } else {
+          attrape = {
+            mode: "deplacer",
+            x: e.clientX,
+            y: e.clientY,
+            dx: etat.dx,
+            dy: etat.dy,
+          };
+          scene.style.cursor = "grabbing";
+        }
         scene.setPointerCapture(e.pointerId);
-        scene.style.cursor = "grabbing";
+        e.preventDefault();
       });
+
       scene.addEventListener("pointermove", (e) => {
         if (!attrape) return;
         const r = scene.getBoundingClientRect();
-        etat.dx = borne(
-          attrape.dx + ((e.clientX - attrape.x) / r.width) * 100,
-          -50,
-          50,
-        );
-        etat.dy = borne(
-          attrape.dy + ((e.clientY - attrape.y) / r.height) * 100,
-          -50,
-          50,
-        );
+        if (attrape.mode === "deplacer") {
+          etat.dx = borne(
+            attrape.dx + ((e.clientX - attrape.x) / r.width) * 100,
+            -50,
+            50,
+          );
+          etat.dy = borne(
+            attrape.dy + ((e.clientY - attrape.y) / r.height) * 100,
+            -50,
+            50,
+          );
+        } else {
+          // Échelle : projection du curseur sur la diagonale du cadre, pour
+          // que le coin suive la souris sans jamais déformer le dessin.
+          const q = {
+            x: e.clientX - r.left - (attrape.ancreEcran.x - 0),
+            y: e.clientY - r.top - (attrape.ancreEcran.y - 0),
+          };
+          const v = attrape.v;
+          const norme = v.x * v.x + v.y * v.y;
+          if (!norme) return;
+          const s = borne((q.x * v.x + q.y * v.y) / norme, 0.4, 2);
+          // Le coin opposé ne bouge pas : on rattrape l'écart par la
+          // translation, sinon la pièce s'échapperait à chaque coup.
+          etat.dx = borne(
+            attrape.dx0 + (attrape.ancre.x - 0.5) * (attrape.scale0 - s) * 100,
+            -50,
+            50,
+          );
+          etat.dy = borne(
+            attrape.dy0 + (attrape.ancre.y - 1) * (attrape.scale0 - s) * 100,
+            -50,
+            50,
+          );
+          etat.scale = s;
+        }
         dessiner();
       });
+
       const lacher = (e) => {
         if (!attrape) return;
         attrape = null;
@@ -728,6 +884,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
       };
       scene.addEventListener("pointerup", lacher);
       scene.addEventListener("pointercancel", lacher);
+      window.addEventListener("resize", placerCadre);
 
       // Molette = taille. `passive: false` sinon le navigateur refuse qu'on
       // empêche le défilement de la page sous le curseur.
