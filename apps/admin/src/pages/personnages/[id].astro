@@ -30,10 +30,15 @@ const SLOTS = [
 
 let flash: string | null = null;
 let erreur: string | null = null;
-// Arrivée depuis la création : on enchaîne sur les pièces et leur calage.
-if (Astro.url.searchParams.get("cree"))
+/**
+ * Arrivée depuis la création : le personnage est nu, la suite immédiate est
+ * de poser ses pièces dessus. Le calage passe donc en tête de page — le reste
+ * (nom, dessin, tri des pièces) attend en dessous.
+ */
+const sortDeCreation = Astro.url.searchParams.get("cree") === "1";
+if (sortDeCreation)
   flash =
-    "Personnage créé. Cochez ses pièces ci-dessous, puis calez-les à la souris.";
+    "Personnage créé. Toutes les pièces de son type lui sont proposées : calez-les à la souris ci-dessous, ou retirez d'abord celles qu'il ne portera pas.";
 
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
@@ -151,7 +156,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
   {!perso ? (
     <p class="text-bo-muted text-sm">Personnage introuvable.</p>
   ) : (
-    <div class="space-y-6">
+    <div class="flex flex-col gap-6">
       {/* ---------------------------------------------------------------- */}
       {/* Identité                                                          */}
       {/* ---------------------------------------------------------------- */}
@@ -373,7 +378,15 @@ const piecesACaler = SLOTS.flatMap((s) => {
       {/* ---------------------------------------------------------------- */}
       {/* Calage à la souris                                                */}
       {/* ---------------------------------------------------------------- */}
-      <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+      <section
+        id="calage"
+        class:list={[
+          "bg-bo-surface border border-bo-border rounded-lg p-5",
+          // Au sortir de la création, c'est LA chose à faire : elle passe
+          // devant tout le reste sans qu'on ait à faire défiler la page.
+          sortDeCreation && "order-first ring-2 ring-bo-accent",
+        ]}
+      >
         <h3 class="font-semibold mb-1">Calage des pièces</h3>
         <p class="text-xs text-bo-muted mb-4">
           Attrapez la pièce et posez-la où il faut. La molette la
@@ -387,6 +400,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
             class="js-calage-data"
             set:html={JSON.stringify({
               calage: perso.slotAdjust ?? {},
+              defaut: perso.defaultAssets ?? {},
               pieces: piecesACaler,
             })}
           />
@@ -428,9 +442,21 @@ const piecesACaler = SLOTS.flatMap((s) => {
               </p>
               <div class="js-valeurs mb-4 font-mono text-xs text-bo-muted"></div>
 
-              <label class="mb-3 flex items-center gap-2 text-xs">
+              <label class="mb-1 flex items-center gap-2 text-xs">
                 <input type="checkbox" class="js-tout-slot" />
                 <span>Appliquer à toutes les pièces de cet emplacement</span>
+              </label>
+              {/* Tenue de départ : un personnage importé nu arrive nu chez le
+                  client tant qu'on ne lui en donne pas une. */}
+              <label class="mb-3 flex items-center gap-2 text-xs">
+                <input type="checkbox" class="js-defaut" />
+                <span>
+                  Le personnage porte cette pièce par défaut
+                  <span class="block text-bo-muted">
+                    Ce que le client voit dès qu'il l'ajoute à son affiche. Une
+                    seule pièce par emplacement.
+                  </span>
+                </span>
               </label>
 
               <div class="flex flex-wrap items-center gap-2 text-xs">
@@ -617,6 +643,8 @@ const piecesACaler = SLOTS.flatMap((s) => {
       const valeurs = boite.querySelector(".js-valeurs");
       const statut = boite.querySelector(".js-statut");
       const toutSlot = boite.querySelector(".js-tout-slot");
+      const caseDefaut = boite.querySelector(".js-defaut");
+      const defaut = donnees.defaut || {};
 
       let index = 0;
       let etat = { dx: 0, dy: 0, scale: 1 };
@@ -653,6 +681,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
         const c = calage[p.slot + ":" + p.position] || calage[p.slot] || null;
         toutSlot.checked =
           !calage[p.slot + ":" + p.position] && !!calage[p.slot];
+        caseDefaut.checked = defaut[p.slot] === p.position;
         etat = c
           ? { dx: c.dx, dy: c.dy, scale: c.scale }
           : { dx: 0, dy: 0, scale: 1 };
@@ -775,6 +804,30 @@ const piecesACaler = SLOTS.flatMap((s) => {
           if (!res.ok) throw new Error(data.error || res.status);
           for (const cle of Object.keys(calage)) delete calage[cle];
           Object.assign(calage, data.slotAdjust || {});
+
+          // Tenue par défaut : cochée, cette pièce devient celle portée
+          // d'emblée pour son emplacement ; décochée alors qu'elle l'était,
+          // l'emplacement redevient vide. Un seul choix par emplacement, donc
+          // on écrase sans se poser de question.
+          const etaitDefaut = defaut[p.slot] === p.position;
+          if (caseDefaut.checked !== etaitDefaut) {
+            const res2 = await fetch(
+              `${PUBLIC_API_URL}/admin/characters/${id}/default-assets`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  [p.slot]: caseDefaut.checked ? p.position : null,
+                }),
+                credentials: "include",
+              },
+            );
+            const data2 = await res2.json();
+            if (!res2.ok) throw new Error(data2.error || res2.status);
+            for (const cle of Object.keys(defaut)) delete defaut[cle];
+            Object.assign(defaut, data2.defaultAssets || {});
+          }
+
           statut.textContent = "Enregistré.";
           avancer(1);
         } catch (err) {

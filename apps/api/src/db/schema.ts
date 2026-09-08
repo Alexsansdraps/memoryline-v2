@@ -276,6 +276,17 @@ export const characterTypes = pgTable(
     slotAdjust: jsonb("slot_adjust").$type<
       Partial<Record<string, { dx: number; dy: number; scale: number }>>
     >(),
+    /**
+     * Tenue par défaut : la POSITION de la pièce portée d'emblée pour chaque
+     * emplacement — { clothes: 3, hair: 7 }.
+     *
+     * Les personnages d'origine ont leur tenue dessinée dans leur SVG de base,
+     * ils arrivent donc habillés sans rien de plus. Un personnage importé nu
+     * arrivait tout nu chez le client, à lui de tout choisir : ce réglage lui
+     * donne une tenue de départ, modifiable ensuite comme n'importe quelle
+     * pièce. Emplacement absent = rien de porté au départ.
+     */
+    defaultAssets: jsonb("default_assets").$type<Partial<Record<string, number>>>(),
     legacyTypeId: integer("legacy_type_id"), // typeId Shopify (1, 15, 18…)
     /**
      * Variantes AUTORISÉES pour ce personnage, par slot, dans l'ordre

@@ -1,0 +1,1 @@
+ALTER TABLE "character_type" ADD COLUMN "default_assets" jsonb;

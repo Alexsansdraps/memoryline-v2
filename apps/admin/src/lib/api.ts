@@ -154,6 +154,13 @@ export interface CharacterType {
       { dx: number; dy: number; scale: number }
     >
   > | null;
+  /**
+   * Tenue portée d'emblée par le client, en positions de pièces :
+   * { clothes: 3, hair: 7 }. Utile aux personnages importés nus.
+   */
+  defaultAssets?: Partial<
+    Record<"clothes" | "pants" | "hair" | "accessory", number>
+  > | null;
 }
 
 export interface Asset {

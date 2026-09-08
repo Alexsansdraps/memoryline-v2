@@ -262,7 +262,18 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     if (!base) return;
     mutate((s) => {
       const position = s.characters.length;
-      s.characters.push(defaultCharacter(base, position));
+      // Les variantes que CE personnage peut porter : c'est là-dedans que se
+      // résout sa tenue par défaut.
+      s.characters.push(
+        defaultCharacter(
+          base,
+          position,
+          slotsForCharacter(
+            variantesDeVue(props.slots, base.orientation ?? state.view),
+            base,
+          ),
+        ),
+      );
       s.editingIndex = s.characters.length - 1;
     });
   }
@@ -324,6 +335,16 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
         variantesDeVue(props.slots, base.orientation ?? state.view),
         base,
       );
+      // Changement de personnage : les pièces qui n'existent pas chez le
+      // nouveau tombent, sa tenue par défaut prend le relais pour ces
+      // emplacements-là — sinon un perso nu resterait nu après l'échange.
+      for (const slot of SLOTS) {
+        if (findVariant(variants[slot], c.assets[slot])) continue;
+        const pos = base.defaultAssets?.[slot];
+        const v =
+          pos == null ? undefined : variants[slot]?.find((x) => x.position === pos);
+        if (v) c.assets[slot] = v.id;
+      }
       // Couleurs : base + couleurs des variantes encore sélectionnées, chacune
       // sous sa clé namespacée (base:stN / slot:stN) — les zones stN partagées
       // entre couches ne se mélangent plus.

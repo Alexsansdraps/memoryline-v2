@@ -424,6 +424,8 @@ export function mountConfiguratorRoutes(app: Hono) {
         slotVariants: t.slotVariants ?? null,
         // Calage des pièces sur CE personnage (par emplacement).
         slotAdjust: t.slotAdjust ?? null,
+        // Tenue portée d'emblée quand le client ajoute ce personnage.
+        defaultAssets: t.defaultAssets ?? null,
       })),
       slots,
     });
@@ -1280,6 +1282,42 @@ export function mountConfiguratorRoutes(app: Hono) {
       .where(eq(schema.characterTypes.id, id))
       .returning({ slotAdjust: schema.characterTypes.slotAdjust });
     return c.json({ ok: true, slotAdjust: row?.slotAdjust ?? {} });
+  });
+
+  /**
+   * Tenue par défaut d'un personnage : la pièce portée d'emblée, par
+   * emplacement, en POSITIONS (comme les pièces autorisées et le calage).
+   *
+   * Un emplacement absent du corps de la requête n'est pas touché ; `null`
+   * l'efface — le personnage arrive alors sans rien à cet endroit.
+   */
+  app.post("/admin/characters/:id/default-assets", async (c) => {
+    const id = Number(c.req.param("id"));
+    const b = await c.req.json();
+    const [perso] = await db
+      .select({ defaultAssets: schema.characterTypes.defaultAssets })
+      .from(schema.characterTypes)
+      .where(eq(schema.characterTypes.id, id));
+    if (!perso) return c.notFound();
+
+    const SLOTS = ["clothes", "pants", "hair", "accessory"] as const;
+    const suivant: Record<string, number> = {
+      ...((perso.defaultAssets ?? {}) as Record<string, number>),
+    };
+    for (const slot of SLOTS) {
+      const recu = (b as Record<string, unknown>)[slot];
+      if (recu === undefined) continue;
+      const n = Number(recu);
+      if (recu === null || !Number.isFinite(n)) delete suivant[slot];
+      else suivant[slot] = n;
+    }
+
+    const [row] = await db
+      .update(schema.characterTypes)
+      .set({ defaultAssets: suivant })
+      .where(eq(schema.characterTypes.id, id))
+      .returning({ defaultAssets: schema.characterTypes.defaultAssets });
+    return c.json({ ok: true, defaultAssets: row?.defaultAssets ?? {} });
   });
 
   app.post("/admin/characters/reorder", async (c) => {

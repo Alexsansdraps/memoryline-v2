@@ -8,6 +8,7 @@ import type {
   PosterView,
 } from "@memoryline/types";
 import {
+  colorKey,
   recolorSvg,
   POLICE_TITRE_DEFAUT,
   POLICE_SOUSTITRE_DEFAUT,
@@ -96,6 +97,12 @@ export interface CharacterDTO {
    * Voir `calagePour` — le plus précis gagne.
    */
   slotAdjust?: Record<string, { dx: number; dy: number; scale: number }> | null;
+  /**
+   * Tenue portée d'emblée, en POSITIONS de pièces : { clothes: 3, hair: 7 }.
+   * Les personnages dont la tenue est dessinée dans leur SVG de base n'en ont
+   * pas besoin ; un personnage nu, si.
+   */
+  defaultAssets?: Partial<Record<Slot, number>> | null;
 }
 
 /**
@@ -412,15 +419,36 @@ export function findVariant(
 export function defaultCharacter(
   character: CharacterDTO,
   position: number,
+  variants?: SlotVariants,
 ): WorkingCharacter {
+  // Tenue de départ : le back-office la décrit en POSITIONS, l'état de travail
+  // raisonne en identifiants de variante — on traduit ici, une fois.
+  const assets: Partial<Record<Slot, string | number>> = {};
+  const voulu = character.defaultAssets;
+  if (voulu && variants) {
+    for (const slot of SLOTS) {
+      const pos = voulu[slot];
+      if (pos == null) continue;
+      const v = variants[slot]?.find((x) => x.position === pos);
+      if (v) assets[slot] = v.id;
+    }
+  }
+  // Couleurs par défaut des pièces portées, sous leur clé namespacée : sans
+  // elles, la tenue s'afficherait dans les couleurs brutes du SVG.
+  const colors: Record<string, string> = {};
+  for (const slot of SLOTS) {
+    const v = findVariant(variants?.[slot], assets[slot]);
+    for (const [zone, hex] of Object.entries(v?.colorZones ?? {}))
+      colors[colorKey(slot, zone)] = hex;
+  }
   return {
     characterId: character.id,
     position,
     x: 0.5,
     y: 0.55,
     scale: 1,
-    assets: {},
-    colors: {},
+    assets,
+    colors,
   };
 }
 

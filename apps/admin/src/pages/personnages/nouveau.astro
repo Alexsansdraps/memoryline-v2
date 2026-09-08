@@ -32,9 +32,9 @@ if (Astro.request.method === "POST") {
         ? { bottomPct: Number(String(f.get("bottomPct")).replace(",", ".")) }
         : {}),
     });
-    // Droit sur sa fiche : c'est là qu'on enchaîne avec ses pièces et leur
-    // calage, dans la foulée de la création.
-    return Astro.redirect(url(`/personnages/${perso.id}?cree=1`), 303);
+    // Droit sur son calage : le personnage arrive nu, la seule chose à faire
+    // ensuite est de poser ses pièces dessus. L'ancre évite même de défiler.
+    return Astro.redirect(url(`/personnages/${perso.id}?cree=1#calage`), 303);
   } catch (e) {
     erreur = "Erreur : " + String(e);
   }
