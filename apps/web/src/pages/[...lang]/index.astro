@@ -103,7 +103,7 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
   {/* ---------------- Les affiches ---------------- */}
   {
     vitrineVisible && vitrine.length > 0 && (
-      <section class="mx-auto max-w-[1200px] px-6 pt-12 pb-4 lg:px-12">
+      <section class="w-full px-6 pt-12 pb-4 lg:px-12">
         <div class="mb-8 flex flex-wrap items-end justify-between gap-3">
           <div>
             {/* Devenu le titre de la page depuis que le bandeau d'accroche
@@ -131,7 +131,7 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
           </a>
         </div>
 
-        <ul class="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-4">
+        <ul class="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
           {vitrine.map((p) => (
             <li class="group">
               <a href={lien(langue, `/affiches/${p.slug}`)} class="block">
