@@ -1,0 +1,174 @@
+---
+import { adminApi, formatPrice, type StatsCommandes } from "../lib/api.ts";
+
+interface Props {
+  /** Canal des commandes : « web », « salon », ou tous si absent. */
+  channel?: "web" | "salon";
+}
+const { channel } = Astro.props;
+
+/**
+ * Période affichée, portée par l'URL : elle survit à un rechargement et se
+ * partage par un lien, ce qu'un état en mémoire ne permettrait pas.
+ */
+const PERIODES = [
+  { jours: 1, label: "Aujourd'hui", compare: "hier" },
+  { jours: 7, label: "7 derniers jours", compare: "aux 7 jours précédents" },
+  { jours: 30, label: "30 derniers jours", compare: "aux 30 jours précédents" },
+  { jours: 90, label: "90 derniers jours", compare: "aux 90 jours précédents" },
+];
+const demande = Number(Astro.url.searchParams.get("jours") ?? 30);
+const periode = PERIODES.find((p) => p.jours === demande) ?? PERIODES[2]!;
+
+let stats: StatsCommandes | null = null;
+let error: string | null = null;
+try {
+  stats = await adminApi(Astro.request).orderStats(periode.jours, channel);
+} catch (e) {
+  error = String(e);
+}
+
+/**
+ * Évolution en pourcentage. Partir de zéro n'a pas de pourcentage : on le dit
+ * plutôt que d'afficher un « +∞ » ou un trompeur « +100 % ».
+ */
+function evolution(actuel: number, avant: number): { texte: string; sens: number } {
+  if (avant === 0) return { texte: actuel > 0 ? "nouveau" : "—", sens: actuel > 0 ? 1 : 0 };
+  const pct = Math.round(((actuel - avant) / avant) * 100);
+  if (pct === 0) return { texte: "stable", sens: 0 };
+  return { texte: `${pct > 0 ? "+" : ""}${pct} %`, sens: pct > 0 ? 1 : -1 };
+}
+
+const cartes = stats
+  ? [
+      {
+        titre: "Commandes",
+        valeur: String(stats.periode.commandes),
+        evo: evolution(stats.periode.commandes, stats.precedent.commandes),
+      },
+      {
+        titre: "Articles commandés",
+        valeur: String(stats.periode.articles),
+        evo: evolution(stats.periode.articles, stats.precedent.articles),
+      },
+      {
+        titre: "Chiffre d'affaires",
+        valeur: formatPrice(stats.periode.caCents),
+        evo: evolution(stats.periode.caCents, stats.precedent.caCents),
+      },
+      {
+        titre: "Panier moyen",
+        valeur: formatPrice(
+          stats.periode.commandes
+            ? Math.round(stats.periode.caCents / stats.periode.commandes)
+            : 0,
+        ),
+        evo: evolution(
+          stats.periode.commandes ? stats.periode.caCents / stats.periode.commandes : 0,
+          stats.precedent.commandes
+            ? stats.precedent.caCents / stats.precedent.commandes
+            : 0,
+        ),
+      },
+      {
+        titre: "Frais de port encaissés",
+        valeur: formatPrice(stats.periode.portCents),
+        evo: evolution(stats.periode.portCents, stats.precedent.portCents),
+      },
+    ]
+  : [];
+
+/**
+ * Courbe des commandes, en SVG, sans dépendance. Une seule ligne suffit à
+ * dire si la période monte ou descend — le détail est dans le tableau.
+ */
+function courbe(serie: number[]): string {
+  if (serie.length < 2) return "";
+  const max = Math.max(...serie, 1);
+  const pas = 100 / (serie.length - 1);
+  return serie
+    .map((v, i) => `${(i * pas).toFixed(2)},${(28 - (v / max) * 26).toFixed(2)}`)
+    .join(" ");
+}
+const points = stats ? courbe(stats.serie) : "";
+
+/** Conserve les autres paramètres de l'URL en changeant de période. */
+function lienPeriode(jours: number): string {
+  const u = new URL(Astro.url);
+  u.searchParams.set("jours", String(jours));
+  return u.pathname + u.search;
+}
+---
+
+{error && (
+  <p class="mb-4 text-sm text-red-600">Statistiques indisponibles : {error}</p>
+)}
+
+{stats && (
+  <section class="mb-6">
+    {/* Choix de la période, en liens : l'adresse garde la sélection. */}
+    <div class="mb-3 flex flex-wrap items-center gap-2 text-sm">
+      {PERIODES.map((p) => (
+        <a
+          href={lienPeriode(p.jours)}
+          class={`rounded border px-3 py-1.5 ${
+            p.jours === periode.jours
+              ? "border-bo-accent bg-bo-accent text-white"
+              : "border-bo-border hover:border-bo-accent"
+          }`}
+        >
+          {p.label}
+        </a>
+      ))}
+      <span class="text-xs text-bo-muted">
+        comparé {periode.compare} · commandes payées uniquement
+      </span>
+    </div>
+
+    <div class="grid gap-px overflow-hidden rounded-lg border border-bo-border bg-bo-border sm:grid-cols-2 lg:grid-cols-5">
+      {cartes.map((c) => (
+        <div class="bg-bo-surface px-4 py-3">
+          <div class="text-xs text-bo-muted">{c.titre}</div>
+          <div class="mt-1 flex items-baseline gap-2">
+            <span class="text-xl">{c.valeur}</span>
+            <span
+              class={`text-xs ${
+                c.evo.sens > 0
+                  ? "text-green-700"
+                  : c.evo.sens < 0
+                    ? "text-red-700"
+                    : "text-bo-muted"
+              }`}
+            >
+              {c.evo.sens > 0 ? "↗" : c.evo.sens < 0 ? "↘" : ""} {c.evo.texte}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    {points && (
+      <div class="mt-3 rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+        <div class="text-xs text-bo-muted mb-1">
+          Commandes par jour sur la période
+        </div>
+        <svg
+          viewBox="0 0 100 30"
+          preserveAspectRatio="none"
+          class="h-16 w-full"
+          role="img"
+          aria-label="Courbe des commandes par jour"
+        >
+          <polyline
+            points={points}
+            fill="none"
+            stroke="currentColor"
+            stroke-width="0.8"
+            vector-effect="non-scaling-stroke"
+            class="text-bo-accent"
+          />
+        </svg>
+      </div>
+    )}
+  </section>
+)}

@@ -148,6 +148,25 @@ export interface CatalogueLivraisonBO {
   }[];
 }
 
+/** Chiffres d'une période de commandes, et de la précédente pour comparer. */
+export interface StatsCommandes {
+  jours: number;
+  periode: {
+    commandes: number;
+    articles: number;
+    caCents: number;
+    portCents: number;
+  };
+  precedent: {
+    commandes: number;
+    articles: number;
+    caCents: number;
+    portCents: number;
+  };
+  /** Nombre de commandes par jour, du plus ancien au plus récent. */
+  serie: number[];
+}
+
 export interface OrderRow {
   id: number;
   number: string;
@@ -332,6 +351,13 @@ export function adminApi(request?: Request) {
       id: number,
       data: { name?: string; countries?: string },
     ) => req<unknown>("POST", `/admin/shipping/zones/${id}`, data, cookie),
+    orderStats: (days: number, channel?: string) =>
+      req<StatsCommandes>(
+        "GET",
+        `/admin/stats/orders?days=${days}${channel ? `&channel=${channel}` : ""}`,
+        undefined,
+        cookie,
+      ),
     users: () => req<CompteAdmin[]>("GET", "/admin/users", undefined, cookie),
     upsertUser: (data: {
       id?: number;

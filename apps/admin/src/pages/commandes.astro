@@ -1,8 +1,10 @@
 ---
 import Admin from "../layouts/Admin.astro";
+import OrderStats from "../components/OrderStats.astro";
 import OrderTable from "../components/OrderTable.astro";
 ---
 
 <Admin title="Commandes en ligne">
+  <OrderStats channel="web" />
   <OrderTable channel="web" />
 </Admin>

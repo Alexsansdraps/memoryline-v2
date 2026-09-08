@@ -1,5 +1,6 @@
 ---
 import Admin from "../layouts/Admin.astro";
+import OrderStats from "../components/OrderStats.astro";
 import OrderTable from "../components/OrderTable.astro";
 ---
 
@@ -8,5 +9,6 @@ import OrderTable from "../components/OrderTable.astro";
     Commandes prises au salon (kiosque libre-service). Aucun paiement en ligne
     — à imprimer puis préparer.
   </p>
+  <OrderStats channel="salon" />
   <OrderTable channel="salon" />
 </Admin>

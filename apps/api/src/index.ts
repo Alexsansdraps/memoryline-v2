@@ -2,7 +2,16 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import { and, asc, count, eq, desc, inArray, sql as sqlOp } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  eq,
+  desc,
+  gte,
+  inArray,
+  sql as sqlOp,
+} from "drizzle-orm";
 import { resolve, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile, stat, writeFile } from "node:fs/promises";
@@ -976,6 +985,81 @@ async function nombreProprietaires(): Promise<number> {
     .where(eq(schema.adminUsers.role, OWNER_ROLE));
   return Number(n?.n ?? 0);
 }
+
+/**
+ * Chiffres des commandes sur une période, avec la période PRÉCÉDENTE de même
+ * durée pour donner une évolution — un nombre seul ne dit pas grand-chose.
+ *
+ * Seules les commandes payées comptent : un panier abandonné n'est pas une
+ * vente, et les gonfler ferait mentir le tableau de bord.
+ */
+app.get("/admin/stats/orders", async (c) => {
+  const jours = Math.min(365, Math.max(1, Number(c.req.query("days") ?? 30)));
+  const canal = String(c.req.query("channel") ?? "");
+  const maintenant = new Date();
+  const debut = new Date(maintenant.getTime() - jours * 86400000);
+  const debutPrecedent = new Date(maintenant.getTime() - 2 * jours * 86400000);
+
+  const conditions = [
+    eq(schema.orders.status, "paid"),
+    gte(schema.orders.createdAt, debutPrecedent),
+  ];
+  if (canal === "web" || canal === "salon")
+    conditions.push(eq(schema.orders.channel, canal));
+
+  const lignes = await db
+    .select({
+      id: schema.orders.id,
+      createdAt: schema.orders.createdAt,
+      totalCents: schema.orders.totalCents,
+      shippingCents: schema.orders.shippingCents,
+    })
+    .from(schema.orders)
+    .where(and(...conditions));
+
+  // Articles vendus : la somme des quantités des lignes de ces commandes.
+  const ids = lignes.map((l) => l.id);
+  const articles = ids.length
+    ? await db
+        .select({
+          orderId: schema.orderItems.orderId,
+          quantity: schema.orderItems.quantity,
+        })
+        .from(schema.orderItems)
+        .where(inArray(schema.orderItems.orderId, ids))
+    : [];
+  const parCommande = new Map<number, number>();
+  for (const a of articles)
+    parCommande.set(a.orderId, (parCommande.get(a.orderId) ?? 0) + a.quantity);
+
+  const dansPeriode = (d: Date) => d >= debut;
+  const resume = (garder: (d: Date) => boolean) => {
+    const sel = lignes.filter((l) => garder(l.createdAt));
+    return {
+      commandes: sel.length,
+      articles: sel.reduce((s, l) => s + (parCommande.get(l.id) ?? 0), 0),
+      caCents: sel.reduce((s, l) => s + l.totalCents, 0),
+      portCents: sel.reduce((s, l) => s + l.shippingCents, 0),
+    };
+  };
+
+  // Une valeur par jour, pour la courbe. Le jour le plus ancien en premier.
+  const serie: number[] = [];
+  for (let i = jours - 1; i >= 0; i--) {
+    const fin = new Date(maintenant.getTime() - i * 86400000);
+    const deb = new Date(fin.getTime() - 86400000);
+    serie.push(
+      lignes.filter((l) => l.createdAt > deb && l.createdAt <= fin).length,
+    );
+  }
+
+  return c.json({
+    jours,
+    periode: resume(dansPeriode),
+    precedent: resume((d) => !dansPeriode(d)),
+    serie,
+  });
+});
 
 app.get("/admin/users", async (c) => {
   const moi = await exigerProprietaire(getCookie(c, SESSION_COOKIE));
