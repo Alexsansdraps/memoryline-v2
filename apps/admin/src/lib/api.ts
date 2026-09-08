@@ -118,6 +118,36 @@ export interface Inscrit {
   createdAt: string;
 }
 
+/** Catalogue de livraison tel que le back-office le manipule. */
+export interface CatalogueLivraisonBO {
+  zones: {
+    id: number;
+    slug: string;
+    name: string;
+    countries: string[] | null;
+    position: number;
+  }[];
+  modes: {
+    id: number;
+    slug: string;
+    name: string;
+    description: string | null;
+    kind: string;
+    carrier: string | null;
+    pickupLocation: string | null;
+    active: boolean;
+    position: number;
+  }[];
+  tarifs: {
+    id: number;
+    methodId: number;
+    zoneId: number;
+    priceCents: number;
+    freeFromCents: number | null;
+    active: boolean;
+  }[];
+}
+
 export interface OrderRow {
   id: number;
   number: string;
@@ -280,6 +310,28 @@ export function adminApi(request?: Request) {
       req<Inscrit[]>("GET", "/admin/newsletter", undefined, cookie),
     deleteSubscriber: (id: number) =>
       req<{ ok: boolean }>("DELETE", `/admin/newsletter/${id}`, undefined, cookie),
+    shipping: () =>
+      req<CatalogueLivraisonBO>("GET", "/admin/shipping", undefined, cookie),
+    updateShippingMethod: (
+      id: number,
+      data: {
+        name?: string;
+        description?: string;
+        pickupLocation?: string;
+        active?: boolean;
+      },
+    ) => req<unknown>("POST", `/admin/shipping/methods/${id}`, data, cookie),
+    updateShippingRate: (data: {
+      methodId: number;
+      zoneId: number;
+      priceCents: number;
+      freeFromCents: number | null;
+      active: boolean;
+    }) => req<unknown>("POST", "/admin/shipping/rates", data, cookie),
+    updateShippingZone: (
+      id: number,
+      data: { name?: string; countries?: string },
+    ) => req<unknown>("POST", `/admin/shipping/zones/${id}`, data, cookie),
     users: () => req<CompteAdmin[]>("GET", "/admin/users", undefined, cookie),
     upsertUser: (data: {
       id?: number;

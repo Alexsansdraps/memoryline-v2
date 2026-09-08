@@ -9,10 +9,32 @@ import {
   type JSX,
 } from "solid-js";
 import {
+  optionsLivraison,
   remisesPanier,
   totalPanierCents,
+  type OptionLivraison,
   type RegleParier,
 } from "@memoryline/types";
+
+/**
+ * Pays proposés à la livraison. Volontairement court : ceux où la boutique
+ * expédie vraiment, plus « autre pays », qui tombe dans la zone de repli.
+ */
+const PAYS = [
+  { code: "FR", nom: "France" },
+  { code: "BE", nom: "Belgique" },
+  { code: "CH", nom: "Suisse" },
+  { code: "LU", nom: "Luxembourg" },
+  { code: "DE", nom: "Allemagne" },
+  { code: "ES", nom: "Espagne" },
+  { code: "IT", nom: "Italie" },
+  { code: "NL", nom: "Pays-Bas" },
+  { code: "PT", nom: "Portugal" },
+  { code: "GB", nom: "Royaume-Uni" },
+  { code: "CA", nom: "Canada" },
+  { code: "US", nom: "États-Unis" },
+  { code: "ZZ", nom: "Autre pays" },
+];
 import { loadStripe } from "@stripe/stripe-js";
 import type { Stripe, StripeElements } from "@stripe/stripe-js";
 import {
@@ -116,10 +138,92 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
       format:
         (it.config as { format?: string } | null | undefined)?.format ?? null,
     }));
-  const discount = () => remisesPanier(lignes(), promos() ?? []).remiseCents;
+  /**
+   * Code promo saisi au panier. Il est revérifié ici, puis renvoyé au serveur
+   * qui refait seul le calcul : ce qui suit ne sert qu'à afficher le bon
+   * montant avant de payer.
+   */
+  const [codePromo] = createResource(async () => {
+    const code = codePromoRetenu();
+    if (!code) return null;
+    try {
+      const regle = await browserApi.verifierCode(code);
+      return { ...regle, id: 0 } as unknown as RegleParier;
+    } catch {
+      return null;
+    }
+  });
+  const reglesEnJeu = (): RegleParier[] => {
+    const auto = promos() ?? [];
+    const c = codePromo();
+    return c ? [...auto, c] : auto;
+  };
+  const codes = () => {
+    const c = codePromo() as { code?: string } | null;
+    return c?.code ? [c.code] : [];
+  };
+
+  const discount = () =>
+    remisesPanier(lignes(), reglesEnJeu(), new Date(), codes()).remiseCents;
+
+  /* --- Livraison ------------------------------------------------------- */
+  const [catalogue] = createResource(async () => {
+    try {
+      return await browserApi.shipping();
+    } catch {
+      return null;
+    }
+  });
+  const [pays, setPays] = createSignal("FR");
+  const [modeChoisi, setModeChoisi] = createSignal<string | null>(null);
+  const [adresse, setAdresse] = createSignal({
+    line1: "",
+    line2: "",
+    postalCode: "",
+    city: "",
+    phone: "",
+  });
+  const [pointRelais, setPointRelais] = createSignal({ id: "", label: "" });
+
+  /** Panier après remises : c'est lui qui décide de la franchise de port. */
+  const apresRemise = () => Math.max(0, subtotal() - discount());
+
+  const optionsPort = (): OptionLivraison[] => {
+    const cat = catalogue();
+    return cat ? optionsLivraison(cat, pays(), apresRemise()) : [];
+  };
+  const optionChoisie = () =>
+    optionsPort().find((o) => o.mode.slug === modeChoisi()) ?? null;
+  const fraisPort = () => optionChoisie()?.fraisCents ?? 0;
+
+  // Premier mode disponible par défaut, et repli si le choix devient
+  // impossible — changer de pays peut retirer le retrait sur place.
+  createEffect(() => {
+    const dispo = optionsPort();
+    if (!dispo.length) return;
+    if (!dispo.some((o) => o.mode.slug === modeChoisi()))
+      setModeChoisi(dispo[0]!.mode.slug);
+  });
+
+  /** Ce que le mode choisi exige avant de pouvoir payer. */
+  const livraisonValide = () => {
+    const o = optionChoisie();
+    if (!o) return false;
+    if (o.mode.kind === "home") {
+      const a = adresse();
+      return (
+        a.line1.trim().length > 0 &&
+        a.postalCode.trim().length > 0 &&
+        a.city.trim().length > 0
+      );
+    }
+    if (o.mode.kind === "relay") return pointRelais().id.trim().length > 0;
+    return true;
+  };
 
   /** Montant réellement dû (= ce que débitera Stripe/PayPal). */
-  const total = () => totalPanierCents(lignes(), promos() ?? []);
+  const total = () =>
+    totalPanierCents(lignes(), reglesEnJeu(), new Date(), codes()) + fraisPort();
 
   const methods = (): Method[] => {
     const c = config();
@@ -134,7 +238,8 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
   });
 
   const emailValid = () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email().trim());
-  const formValid = () => name().trim().length > 0 && emailValid();
+  const formValid = () =>
+    name().trim().length > 0 && emailValid() && livraisonValide();
 
   /* --- Stripe --------------------------------------------------------- */
   let stripe: Stripe | null = null;
@@ -226,10 +331,25 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
     setSubmitting(true);
     setError(null);
     try {
-      const order = await browserApi.createOrder(getCartId(), {
-        name: name().trim(),
-        email: email().trim(),
-      });
+      const a = adresse();
+      const relais = pointRelais();
+      const order = await browserApi.createOrder(
+        getCartId(),
+        { name: name().trim(), email: email().trim() },
+        codePromoRetenu() || undefined,
+        {
+          method: modeChoisi() ?? "",
+          name: name().trim(),
+          line1: a.line1.trim(),
+          line2: a.line2.trim(),
+          postalCode: a.postalCode.trim(),
+          city: a.city.trim(),
+          country: pays(),
+          phone: a.phone.trim(),
+          relayPointId: relais.id.trim(),
+          relayPointLabel: relais.label.trim(),
+        },
+      );
       setOrderId(order.orderId);
       setOrderNumber(order.number);
 
@@ -358,6 +478,187 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
               </label>
             </fieldset>
 
+            {/* Livraison */}
+            <fieldset class="space-y-4" disabled={phase() === "pay"}>
+              <legend class="text-2xl mb-2">{tr("livraison.titre")}</legend>
+
+              <label class="block">
+                <span class="text-sm font-medium">{tr("livraison.pays")}</span>
+                <select
+                  value={pays()}
+                  onChange={(e) => setPays(e.currentTarget.value)}
+                  class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
+                >
+                  <For each={PAYS}>
+                    {(p) => <option value={p.code}>{p.nom}</option>}
+                  </For>
+                </select>
+              </label>
+
+              <Show
+                when={optionsPort().length > 0}
+                fallback={
+                  <p class="text-sm text-terracotta-deep">
+                    {tr("livraison.aucune")}
+                  </p>
+                }
+              >
+                <div class="space-y-2">
+                  <For each={optionsPort()}>
+                    {(o) => (
+                      <label
+                        class={`flex cursor-pointer items-start gap-3 border p-4 transition-colors ${
+                          modeChoisi() === o.mode.slug
+                            ? "border-ink"
+                            : "border-ink/20 hover:border-ink/50"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="mode-livraison"
+                          class="mt-1"
+                          checked={modeChoisi() === o.mode.slug}
+                          onChange={() => setModeChoisi(o.mode.slug)}
+                        />
+                        <span class="flex-1">
+                          <span class="flex items-baseline justify-between gap-3">
+                            <span class="font-medium">{o.mode.name}</span>
+                            <span>
+                              {o.offert
+                                ? tr("livraison.offerte")
+                                : formatPrice(o.fraisCents)}
+                            </span>
+                          </span>
+                          <Show when={o.mode.description}>
+                            <span class="mt-0.5 block text-sm text-ink-soft">
+                              {o.mode.description}
+                            </span>
+                          </Show>
+                          {/* Retrait sur place : l'emplacement change de salon
+                              en salon, il vient du back-office. */}
+                          <Show
+                            when={
+                              o.mode.kind === "pickup" && o.mode.pickupLocation
+                            }
+                          >
+                            <span class="mt-1 block text-sm">
+                              {o.mode.pickupLocation}
+                            </span>
+                          </Show>
+                        </span>
+                      </label>
+                    )}
+                  </For>
+                </div>
+              </Show>
+
+              {/* Adresse : demandée seulement quand le mode en a besoin. */}
+              <Show when={optionChoisie()?.mode.kind === "home"}>
+                <div class="space-y-4">
+                  <label class="block">
+                    <span class="text-sm font-medium">
+                      {tr("livraison.adresse")}
+                    </span>
+                    <input
+                      type="text"
+                      value={adresse().line1}
+                      onInput={(e) =>
+                        setAdresse({ ...adresse(), line1: e.currentTarget.value })
+                      }
+                      class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
+                      placeholder="12 rue des Bains"
+                    />
+                  </label>
+                  <label class="block">
+                    <span class="text-sm font-medium">
+                      {tr("livraison.complement")}
+                    </span>
+                    <input
+                      type="text"
+                      value={adresse().line2}
+                      onInput={(e) =>
+                        setAdresse({ ...adresse(), line2: e.currentTarget.value })
+                      }
+                      class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
+                      placeholder="Bâtiment B, 3e étage"
+                    />
+                  </label>
+                  <div class="grid grid-cols-[8rem_1fr] gap-4">
+                    <label class="block">
+                      <span class="text-sm font-medium">
+                        {tr("livraison.code_postal")}
+                      </span>
+                      <input
+                        type="text"
+                        value={adresse().postalCode}
+                        onInput={(e) =>
+                          setAdresse({
+                            ...adresse(),
+                            postalCode: e.currentTarget.value,
+                          })
+                        }
+                        class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
+                        placeholder="80350"
+                      />
+                    </label>
+                    <label class="block">
+                      <span class="text-sm font-medium">
+                        {tr("livraison.ville")}
+                      </span>
+                      <input
+                        type="text"
+                        value={adresse().city}
+                        onInput={(e) =>
+                          setAdresse({ ...adresse(), city: e.currentTarget.value })
+                        }
+                        class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
+                        placeholder="Mers-les-Bains"
+                      />
+                    </label>
+                  </div>
+                  <label class="block">
+                    <span class="text-sm font-medium">
+                      {tr("livraison.telephone")}
+                    </span>
+                    <input
+                      type="tel"
+                      value={adresse().phone}
+                      onInput={(e) =>
+                        setAdresse({ ...adresse(), phone: e.currentTarget.value })
+                      }
+                      class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
+                      placeholder="06 12 34 56 78"
+                    />
+                  </label>
+                </div>
+              </Show>
+
+              {/* Point relais : en attendant la carte Mondial Relay, le client
+                  saisit le point qu'il a choisi sur leur site. */}
+              <Show when={optionChoisie()?.mode.kind === "relay"}>
+                <label class="block">
+                  <span class="text-sm font-medium">
+                    {tr("livraison.point_relais")}
+                  </span>
+                  <input
+                    type="text"
+                    value={pointRelais().label}
+                    onInput={(e) =>
+                      setPointRelais({
+                        id: e.currentTarget.value.trim(),
+                        label: e.currentTarget.value,
+                      })
+                    }
+                    class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
+                    placeholder="Tabac de la Plage, 3 rue du Port, 80350"
+                  />
+                  <span class="mt-1 block text-xs text-ink-soft">
+                    {tr("livraison.point_relais_aide")}
+                  </span>
+                </label>
+              </Show>
+            </fieldset>
+
             {/* Paiement */}
             <fieldset class="space-y-4">
               <legend class="text-2xl mb-2">Paiement</legend>
@@ -477,6 +778,16 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
               <div class="mt-1 flex justify-between text-sm text-sage">
                 <span>✨ Remise</span>
                 <span>− {formatPrice(discount())}</span>
+              </div>
+            </Show>
+            <Show when={optionChoisie()}>
+              <div class="mt-1 flex justify-between text-sm text-ink-soft">
+                <span>{optionChoisie()!.mode.name}</span>
+                <span>
+                  {optionChoisie()!.offert
+                    ? tr("livraison.offerte")
+                    : formatPrice(fraisPort())}
+                </span>
               </div>
             </Show>
             <div class="mt-4 flex justify-between border-t border-ink/10 pt-4">

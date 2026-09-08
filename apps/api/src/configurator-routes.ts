@@ -27,8 +27,12 @@ import { renderPosterPdf, type ResolveData } from "./pdf.js";
 import {
   calageNeutre,
   calagePropre,
+  fraisDePort,
   normaliserCode,
+  normaliserPays,
   posterConfigSchema,
+  remisesPanier,
+  sousTotalCents,
   totalPanierCents,
   type PosterConfig,
 } from "@memoryline/types";
@@ -263,6 +267,52 @@ async function computeOrderTotalCents(
   // remise : le navigateur peut envoyer ce qu'il veut, un code inconnu ou
   // expiré ne change rien au montant.
   return totalPanierCents(lignes, rules, new Date(), code ? [code] : []);
+}
+
+/**
+ * Frais de port d'une commande, calculés côté SERVEUR.
+ *
+ * Le mode et le pays viennent du navigateur, le PRIX non : il est relu au
+ * catalogue, et un mode indisponible dans la zone du client fait échouer la
+ * commande plutôt que d'être facturé au hasard.
+ */
+async function computeShippingCents(
+  items: PricedItem[],
+  modeSlug: string,
+  pays: string,
+  code?: string | null,
+): Promise<{ cents: number; label: string; kind: string } | null> {
+  const [zones, modes, tarifs, regles] = await Promise.all([
+    db.select().from(schema.shippingZones),
+    db
+      .select()
+      .from(schema.shippingMethods)
+      .where(eq(schema.shippingMethods.active, true)),
+    db.select().from(schema.shippingRates),
+    db.select().from(schema.promoRules),
+  ]);
+  const lignes = items.map((it) => ({
+    unitPriceCents: it.unitPriceCents,
+    quantity: it.quantity,
+    format: (it.config as { format?: string } | null)?.format ?? null,
+  }));
+  // Le seuil de gratuité se compare au panier APRÈS remises : c'est ce que
+  // le client voit à l'écran, et c'est le montant qu'il paie vraiment.
+  const apresRemise =
+    sousTotalCents(lignes) -
+    remisesPanier(lignes, regles, new Date(), code ? [code] : []).remiseCents;
+  const option = fraisDePort(
+    { zones, modes, tarifs },
+    modeSlug,
+    pays,
+    Math.max(0, apresRemise),
+  );
+  if (!option) return null;
+  return {
+    cents: option.fraisCents,
+    label: option.mode.name,
+    kind: option.mode.kind,
+  };
 }
 
 /**
@@ -551,7 +601,11 @@ export function mountConfiguratorRoutes(app: Hono) {
         .insert(schema.orders)
         .values({
           channel: "web",
-          number: `DRAFT-${cartId.slice(0, 8)}`,
+          // Le numéro provisoire reprend l'identifiant de panier ENTIER :
+          // tronqué à huit caractères, deux paniers commençant pareil se
+          // heurtaient à l'index unique et le second ne pouvait plus être
+          // créé du tout.
+          number: `DRAFT-${cartId}`,
           clientOrderId: cartId,
           status: "draft",
           totalCents: 0,
@@ -665,7 +719,29 @@ export function mountConfiguratorRoutes(app: Hono) {
       ? draft.number
       : await nextOrderNumber("web");
     const code = normaliserCode(body.promoCode);
-    const total = await computeOrderTotalCents(items, code);
+    const articles = await computeOrderTotalCents(items, code);
+
+    // Livraison : mode et adresse viennent du client, le prix vient de la
+    // base. Sans mode choisi, on refuse — mieux vaut une commande bloquée
+    // qu'un colis sans destination.
+    const liv = (body.shipping ?? {}) as Record<string, unknown>;
+    const modeSlug = String(liv.method ?? "").trim();
+    const pays = normaliserPays(liv.country) || "FR";
+    if (!modeSlug) return c.json({ error: "mode de livraison requis" }, 400);
+    const port = await computeShippingCents(items, modeSlug, pays, code);
+    if (!port)
+      return c.json({ error: "mode de livraison indisponible" }, 400);
+    // Une livraison à domicile sans adresse n'arrive nulle part ; un point
+    // relais sans point relais non plus.
+    const ligne1 = String(liv.line1 ?? "").trim();
+    const ville = String(liv.city ?? "").trim();
+    const cp = String(liv.postalCode ?? "").trim();
+    if (port.kind === "home" && (!ligne1 || !ville || !cp))
+      return c.json({ error: "adresse de livraison incomplète" }, 400);
+    if (port.kind === "relay" && !String(liv.relayPointId ?? "").trim())
+      return c.json({ error: "point relais requis" }, 400);
+
+    const total = articles + port.cents;
     const [order] = await db
       .update(schema.orders)
       .set({
@@ -674,6 +750,18 @@ export function mountConfiguratorRoutes(app: Hono) {
         customerId: customer!.id,
         totalCents: total,
         promoCode: code || null,
+        shippingMethod: modeSlug,
+        shippingLabel: port.label,
+        shippingCents: port.cents,
+        shippingName: String(liv.name ?? "").trim() || name,
+        shippingLine1: ligne1 || null,
+        shippingLine2: String(liv.line2 ?? "").trim() || null,
+        shippingPostalCode: cp || null,
+        shippingCity: ville || null,
+        shippingCountry: pays,
+        shippingPhone: String(liv.phone ?? "").trim() || null,
+        relayPointId: String(liv.relayPointId ?? "").trim() || null,
+        relayPointLabel: String(liv.relayPointLabel ?? "").trim() || null,
       })
       .where(eq(schema.orders.id, draft.id))
       .returning();
@@ -683,6 +771,7 @@ export function mountConfiguratorRoutes(app: Hono) {
       number,
       status: order!.status,
       totalCents: total,
+      shippingCents: port.cents,
     });
   });
 

@@ -361,6 +361,132 @@ app.delete("/admin/newsletter/:id", async (c) => {
  * appliquer à tout le monde — et publier la liste des codes par la même
  * occasion.
  */
+/**
+ * Catalogue de livraison : zones, modes et tarifs. Public, parce que le
+ * tunnel de commande doit afficher les frais AVANT de créer la commande.
+ * Les modes désactivés n'en font pas partie.
+ */
+app.get("/shipping", async (c) => {
+  const [zones, modes, tarifs] = await Promise.all([
+    db.select().from(schema.shippingZones).orderBy(asc(schema.shippingZones.position)),
+    db
+      .select()
+      .from(schema.shippingMethods)
+      .where(eq(schema.shippingMethods.active, true))
+      .orderBy(asc(schema.shippingMethods.position)),
+    db.select().from(schema.shippingRates),
+  ]);
+  return c.json({
+    zones,
+    modes,
+    tarifs: tarifs.map((t) => ({
+      methodId: t.methodId,
+      zoneId: t.zoneId,
+      priceCents: t.priceCents,
+      freeFromCents: t.freeFromCents,
+      active: t.active,
+    })),
+  });
+});
+
+/** Idem, tout compris (modes désactivés inclus) — gestion au back-office. */
+app.get("/admin/shipping", async (c) => {
+  const [zones, modes, tarifs] = await Promise.all([
+    db.select().from(schema.shippingZones).orderBy(asc(schema.shippingZones.position)),
+    db.select().from(schema.shippingMethods).orderBy(asc(schema.shippingMethods.position)),
+    db.select().from(schema.shippingRates),
+  ]);
+  return c.json({ zones, modes, tarifs });
+});
+
+/** Modifie un mode de livraison : nom, texte, emplacement de retrait, actif. */
+app.post("/admin/shipping/methods/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  const b = await c.req.json();
+  const set: Record<string, unknown> = {};
+  if (b.name !== undefined) set.name = String(b.name).trim() || "Livraison";
+  if (b.description !== undefined)
+    set.description = String(b.description).trim() || null;
+  if (b.pickupLocation !== undefined)
+    set.pickupLocation = String(b.pickupLocation).trim() || null;
+  if (b.active !== undefined) set.active = b.active !== false;
+  if (b.position !== undefined) set.position = Number(b.position) || 0;
+  const [row] = await db
+    .update(schema.shippingMethods)
+    .set(set)
+    .where(eq(schema.shippingMethods.id, id))
+    .returning();
+  if (!row) return c.notFound();
+  return c.json(row);
+});
+
+/** Modifie un tarif (prix, franchise de port, disponibilité dans la zone). */
+app.post("/admin/shipping/rates", async (c) => {
+  const b = await c.req.json();
+  const methodId = Number(b.methodId);
+  const zoneId = Number(b.zoneId);
+  if (!Number.isFinite(methodId) || !Number.isFinite(zoneId))
+    return c.json({ error: "mode et zone requis" }, 400);
+  const valeurs = {
+    priceCents: Math.max(0, Math.round(Number(b.priceCents ?? 0))),
+    freeFromCents:
+      b.freeFromCents === null || b.freeFromCents === "" || b.freeFromCents === undefined
+        ? null
+        : Math.max(0, Math.round(Number(b.freeFromCents))),
+    active: b.active !== false,
+  };
+  const [existant] = await db
+    .select({ id: schema.shippingRates.id })
+    .from(schema.shippingRates)
+    .where(
+      and(
+        eq(schema.shippingRates.methodId, methodId),
+        eq(schema.shippingRates.zoneId, zoneId),
+      ),
+    );
+  if (existant) {
+    const [row] = await db
+      .update(schema.shippingRates)
+      .set(valeurs)
+      .where(eq(schema.shippingRates.id, existant.id))
+      .returning();
+    return c.json(row);
+  }
+  const [row] = await db
+    .insert(schema.shippingRates)
+    .values({ methodId, zoneId, ...valeurs })
+    .returning();
+  return c.json(row);
+});
+
+/** Modifie une zone : son nom et la liste des pays qu'elle couvre. */
+app.post("/admin/shipping/zones/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  const b = await c.req.json();
+  const set: Record<string, unknown> = {};
+  if (b.name !== undefined) set.name = String(b.name).trim() || "Zone";
+  if (b.countries !== undefined) {
+    // Codes ISO à deux lettres, en majuscules, sans doublon : c'est ce que
+    // compare `zonePourPays`.
+    const propres = [
+      ...new Set(
+        (Array.isArray(b.countries) ? b.countries : String(b.countries).split(/[\s,;]+/))
+          .map((v: unknown) => String(v).trim().toUpperCase())
+          .filter((v: string) => /^[A-Z]{2}$/.test(v)),
+      ),
+    ];
+    set.countries = propres;
+  }
+  if (b.position !== undefined) set.position = Number(b.position) || 0;
+  const [row] = await db
+    .update(schema.shippingZones)
+    .set(set)
+    .where(eq(schema.shippingZones.id, id))
+    .returning();
+  if (!row) return c.notFound();
+  return c.json(row);
+});
+
 app.get("/promos", async (c) => {
   const now = new Date();
   const rows = await db

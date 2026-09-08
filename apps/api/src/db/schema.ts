@@ -377,6 +377,89 @@ export const assets = pgTable(
   (t) => [index("asset_slot_idx").on(t.slot)],
 );
 
+/* --------------------------------------------------------------------------
+ *  Livraison
+ *
+ *  Trois tables plutôt qu'une colonne de prix : le tarif dépend du MODE
+ *  (point relais, domicile, retrait) ET de la ZONE (France, Europe, reste du
+ *  monde). Les deux se gèrent au back-office sans toucher au code, et le
+ *  croisement des deux donne le prix.
+ * ----------------------------------------------------------------------- */
+
+/** Zone de livraison : un groupe de pays qui partagent les mêmes tarifs. */
+export const shippingZones = pgTable(
+  "shipping_zone",
+  {
+    id: serial("id").primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    /**
+     * Codes pays ISO (« FR », « BE »…). Une zone dont la liste est VIDE est
+     * la zone par défaut : elle ramasse tous les pays qu'aucune autre ne
+     * réclame. Sans elle, un client d'un pays oublié ne pourrait pas
+     * commander.
+     */
+    countries: jsonb("countries").$type<string[]>(),
+    position: integer("position").notNull().default(0),
+  },
+  (t) => [uniqueIndex("shipping_zone_slug_uniq").on(t.slug)],
+);
+
+/** Mode de livraison proposé au client. */
+export const shippingMethods = pgTable(
+  "shipping_method",
+  {
+    id: serial("id").primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    /** Texte affiché sous le nom (délai indicatif, précisions). */
+    description: text("description"),
+    /**
+     * Nature du mode, qui décide de ce qu'on demande au client :
+     *   relay  → un point relais à choisir (Mondial Relay) ;
+     *   home   → une adresse de livraison (Colissimo) ;
+     *   pickup → rien du tout (retrait sur place).
+     */
+    kind: text("kind").notNull().default("home"),
+    /** Transporteur, pour les intégrations à venir (étiquettes, suivi). */
+    carrier: text("carrier"),
+    /**
+     * Où retirer sa commande, pour un mode « pickup ». La boutique est
+     * itinérante : l'emplacement change de salon en salon, il se modifie donc
+     * au back-office, et le mode se désactive les semaines sans marché.
+     */
+    pickupLocation: text("pickup_location"),
+    active: boolean("active").notNull().default(true),
+    position: integer("position").notNull().default(0),
+  },
+  (t) => [uniqueIndex("shipping_method_slug_uniq").on(t.slug)],
+);
+
+/** Tarif d'un mode dans une zone, avec son éventuelle franchise de port. */
+export const shippingRates = pgTable(
+  "shipping_rate",
+  {
+    id: serial("id").primaryKey(),
+    methodId: integer("method_id")
+      .notNull()
+      .references(() => shippingMethods.id, { onDelete: "cascade" }),
+    zoneId: integer("zone_id")
+      .notNull()
+      .references(() => shippingZones.id, { onDelete: "cascade" }),
+    priceCents: integer("price_cents").notNull().default(0),
+    /**
+     * Montant d'achat à partir duquel la livraison est offerte. Null = jamais
+     * offerte. Le seuil se compare au panier APRÈS remises : une promotion ne
+     * doit pas faire perdre le franco de port qu'elle vient de faire gagner…
+     * ni l'inverse.
+     */
+    freeFromCents: integer("free_from_cents"),
+    /** Mode indisponible dans cette zone (ex. retrait sur place à l'étranger). */
+    active: boolean("active").notNull().default(true),
+  },
+  (t) => [uniqueIndex("shipping_rate_uniq").on(t.methodId, t.zoneId)],
+);
+
 // --- Clients & commandes --------------------------------------------------
 
 export const customers = pgTable(
@@ -404,7 +487,25 @@ export const orders = pgTable(
      * commande : c'est ce qui explique l'écart entre la somme des lignes et
      * le montant encaissé, des mois plus tard.
      */
-    promoCode: text("promo_code"), // idempotence envoi salon (§17.2)
+    promoCode: text("promo_code"),
+    /* --- Livraison ------------------------------------------------------- */
+    /** Mode choisi (slug), figé sur la commande : le catalogue peut changer. */
+    shippingMethod: text("shipping_method"),
+    /** Nom du mode tel qu'il s'appelait le jour de la commande. */
+    shippingLabel: text("shipping_label"),
+    /** Frais réellement facturés, en centimes. Compris dans `totalCents`. */
+    shippingCents: integer("shipping_cents").notNull().default(0),
+    /** Adresse de livraison, quand le mode en demande une. */
+    shippingName: text("shipping_name"),
+    shippingLine1: text("shipping_line1"),
+    shippingLine2: text("shipping_line2"),
+    shippingPostalCode: text("shipping_postal_code"),
+    shippingCity: text("shipping_city"),
+    shippingCountry: text("shipping_country"),
+    shippingPhone: text("shipping_phone"),
+    /** Point relais choisi (identifiant Mondial Relay et libellé lisible). */
+    relayPointId: text("relay_point_id"),
+    relayPointLabel: text("relay_point_label"), // idempotence envoi salon (§17.2)
     status: text("status").notNull().default("pending"),
     totalCents: integer("total_cents").notNull().default(0),
     customerId: integer("customer_id").references(() => customers.id, {

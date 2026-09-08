@@ -1,6 +1,7 @@
 import type {
   ProductKind,
   BackgroundDTO,
+  CatalogueLivraison,
   CharacterTypeDTO,
   PosterConfig,
 } from "@memoryline/types";
@@ -193,6 +194,8 @@ export interface CharacterLibrary {
 export const browserApi = {
   characters: () => browserGet<CharacterLibrary>("/characters"),
   frames: () => browserGet<CadreDTO[]>("/frames"),
+  /** Zones, modes et tarifs de livraison. */
+  shipping: () => browserGet<CatalogueLivraison>("/shipping"),
   /** Vérifie un code promo ; rejette si le code est inconnu ou expiré. */
   verifierCode: (code: string) =>
     browserSend<{
@@ -237,13 +240,26 @@ export const browserApi = {
     cartId: string,
     customer: { name: string; email: string },
     promoCode?: string,
+    shipping?: {
+      method: string;
+      name?: string;
+      line1?: string;
+      line2?: string;
+      postalCode?: string;
+      city?: string;
+      country?: string;
+      phone?: string;
+      relayPointId?: string;
+      relayPointLabel?: string;
+    },
   ) =>
     browserSend<{
       orderId: number;
       number: string;
       status: string;
       totalCents: number;
-    }>("POST", "/orders", { cartId, customer, promoCode }),
+      shippingCents: number;
+    }>("POST", "/orders", { cartId, customer, promoCode, shipping }),
 
   /* --- Paiement (Stripe & PayPal) --------------------------------------- */
 
