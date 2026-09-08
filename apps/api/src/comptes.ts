@@ -1,0 +1,1030 @@
+/**
+ * Comptes clients : côté boutique (inscription, connexion, historique, carnet
+ * d'adresses) et côté back-office (fiche client, segments).
+ *
+ * Les deux moitiés vivent dans le même fichier parce qu'elles répondent à la
+ * même question — « qui est ce client, et qu'a-t-il acheté ? » — à partir des
+ * mêmes agrégats. Les séparer aurait dupliqué le calcul du chiffre d'affaires
+ * et des statuts, avec la certitude qu'un jour les deux ne diraient plus la
+ * même chose.
+ *
+ * Une seule table `customer` sert au visiteur de passage et au titulaire d'un
+ * compte : `passwordHash` fait la différence. C'est ce qui permet, le jour où
+ * un habitué se crée enfin un compte, de lui rendre ses commandes passées au
+ * lieu d'ouvrir une deuxième fiche à côté de la première.
+ */
+import type { Context, Hono } from "hono";
+import { getCookie, setCookie, deleteCookie } from "hono/cookie";
+import { createHash, randomBytes } from "node:crypto";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  ne,
+  notInArray,
+  or,
+  sql as raw,
+} from "drizzle-orm";
+import { db, schema } from "./db/client.js";
+import { hashPassword, verifyPassword } from "./auth.js";
+import {
+  lienDeSuivi,
+  resumeCommandes,
+  statutExpedition,
+  statutFinancier,
+} from "./commandes.js";
+import { courrierReinitialisation, envoyer, estConfigure } from "./mail.js";
+
+export const COOKIE_CLIENT = "ml_client";
+
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 jours
+const RESET_TTL_MS = 1000 * 60 * 60; // 1 heure
+const MDP_MIN = 8;
+
+/**
+ * Empreinte comparée quand aucun compte ne porte l'adresse saisie.
+ *
+ * scrypt coûte le même temps qu'il aboutisse ou non : sans elle, une réponse
+ * instantanée dirait « cette adresse n'existe pas » et donnerait de quoi
+ * énumérer les clients.
+ */
+const EMPREINTE_FACTICE = `scrypt:${"0".repeat(32)}:${"0".repeat(128)}`;
+
+/** Une commande annulée n'est pas du chiffre d'affaires ; un panier non plus. */
+const HORS_VENTES = ["draft", "cancelled", "voided"];
+
+/* -------------------------------------------------------------------------- */
+/*  Sessions boutique                                                         */
+/* -------------------------------------------------------------------------- */
+
+function empreinte(jeton: string): string {
+  return createHash("sha256").update(jeton).digest("hex");
+}
+
+/** Ouvre une session et renvoie le jeton brut — le seul exemplaire existant. */
+export async function creerSessionClient(customerId: number): Promise<string> {
+  const jeton = randomBytes(32).toString("base64url");
+  await db.insert(schema.customerSessions).values({
+    id: empreinte(jeton),
+    customerId,
+    expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+  });
+  return jeton; // la base n'en garde que le SHA-256 : sa fuite n'ouvre aucun compte
+}
+
+export interface ClientConnecte {
+  id: number;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  acceptsMarketing: boolean;
+  createdAt: Date;
+}
+
+/**
+ * Le client derrière le cookie `ml_client`, ou null.
+ *
+ * Exporté : le tunnel de commande s'en sert pour rattacher la commande au
+ * compte connecté plutôt que d'ouvrir une fiche de plus.
+ */
+export async function clientDeLaRequete(
+  c: Context,
+): Promise<ClientConnecte | null> {
+  const jeton = getCookie(c, COOKIE_CLIENT);
+  if (!jeton) return null;
+  const id = empreinte(jeton);
+  const [row] = await db
+    .select({
+      expiresAt: schema.customerSessions.expiresAt,
+      id: schema.customers.id,
+      name: schema.customers.name,
+      email: schema.customers.email,
+      phone: schema.customers.phone,
+      acceptsMarketing: schema.customers.acceptsMarketing,
+      createdAt: schema.customers.createdAt,
+    })
+    .from(schema.customerSessions)
+    .innerJoin(
+      schema.customers,
+      eq(schema.customerSessions.customerId, schema.customers.id),
+    )
+    .where(eq(schema.customerSessions.id, id));
+  if (!row) return null;
+  if (row.expiresAt.getTime() < Date.now()) {
+    await db
+      .delete(schema.customerSessions)
+      .where(eq(schema.customerSessions.id, id));
+    return null;
+  }
+  const { expiresAt, ...client } = row;
+  return client;
+}
+
+export async function supprimerSessionClient(
+  jeton: string | undefined,
+): Promise<void> {
+  if (!jeton) return;
+  await db
+    .delete(schema.customerSessions)
+    .where(eq(schema.customerSessions.id, empreinte(jeton)));
+}
+
+/** Purge best effort, au moment où l'on en ouvre une nouvelle. */
+async function purgerSessionsExpirees(): Promise<void> {
+  await db
+    .delete(schema.customerSessions)
+    .where(lt(schema.customerSessions.expiresAt, new Date()));
+}
+
+/**
+ * `secure` seulement en https : posé en http (le proxy local), le cookie
+ * serait refusé par le navigateur et personne ne resterait connecté.
+ */
+/**
+ * La requête est-elle arrivée en https ?
+ *
+ * `x-forwarded-proto` ne suffit pas : le tunnel termine le TLS, puis le proxy
+ * réécrit l'en-tête en « http » avant de nous parler. L'HÔTE, lui, traverse la
+ * chaîne intact — on le compare donc à l'origine publique, qui est la seule
+ * adresse en https par laquelle un vrai client arrive. En local, sur
+ * http://localhost:8080, la comparaison échoue et le cookie reste utilisable.
+ */
+function requeteHttps(c: Context): boolean {
+  const hote = (c.req.header("host") ?? "").toLowerCase();
+  const publique = (process.env.PUBLIC_ORIGIN ?? "").toLowerCase();
+  if (hote && publique.startsWith("https://") && publique.endsWith(hote))
+    return true;
+  const proto = c.req.header("x-forwarded-proto")?.split(",")[0]?.trim();
+  return proto === "https" || c.req.url.startsWith("https://");
+}
+
+function poserCookie(c: Context, jeton: string): void {
+  const https = requeteHttps(c);
+  setCookie(c, COOKIE_CLIENT, jeton, {
+    httpOnly: true,
+    sameSite: "Lax",
+    secure: https,
+    path: "/",
+    maxAge: SESSION_TTL_MS / 1000,
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Petits outils                                                             */
+/* -------------------------------------------------------------------------- */
+
+/** Comparaison d'adresse insensible à la casse, comme l'index d'unicité. */
+function memeEmail(email: string) {
+  return raw`lower(coalesce(${schema.customers.email}, '')) = ${email}`;
+}
+
+interface FicheClient {
+  id: number;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  acceptsMarketing: boolean;
+  createdAt: Date;
+}
+
+/** Ce que la boutique a le droit de savoir d'un client : jamais l'empreinte. */
+function publique(cl: FicheClient) {
+  return {
+    id: cl.id,
+    name: cl.name,
+    email: cl.email,
+    phone: cl.phone,
+    acceptsMarketing: cl.acceptsMarketing,
+    createdAt: cl.createdAt,
+  };
+}
+
+/** Normalise une étiquette : casse et espaces ne doivent pas faire doublon. */
+function etiquette(v: unknown): string {
+  return String(v ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 40);
+}
+
+/**
+ * Anti-bruteforce de la connexion boutique : au-delà de MAX échecs par IP dans
+ * la fenêtre, on répond 429. En mémoire, comme le login du back-office — un
+ * seul process API, et pas de dépendance de plus pour ça.
+ */
+const ESSAIS_FENETRE_MS = 15 * 60 * 1000;
+const ESSAIS_MAX = 20;
+const essais = new Map<string, { n: number; finAt: number }>();
+
+function ipAppelant(c: Context): string {
+  return (
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    c.req.header("x-real-ip") ||
+    "local"
+  );
+}
+
+function tropDEssais(ip: string): boolean {
+  const cur = essais.get(ip);
+  return Boolean(cur && cur.finAt > Date.now() && cur.n >= ESSAIS_MAX);
+}
+
+function noterEchec(ip: string): void {
+  const now = Date.now();
+  if (essais.size > 500)
+    for (const [k, v] of essais) if (v.finAt < now) essais.delete(k);
+  const cur = essais.get(ip);
+  if (!cur || cur.finAt < now)
+    essais.set(ip, { n: 1, finAt: now + ESSAIS_FENETRE_MS });
+  else cur.n += 1;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Agrégats client                                                           */
+/* -------------------------------------------------------------------------- */
+
+interface AgregatClient {
+  commandes: number;
+  caCents: number;
+  derniereCommande: Date | null;
+}
+
+/**
+ * Nombre de commandes, chiffre d'affaires et date de la dernière, par client.
+ *
+ * Une seule requête groupée pour toute la liste : une par client transformerait
+ * la page en salle d'attente dès quelques centaines de fiches.
+ */
+async function agregatsClients(
+  ids?: number[],
+): Promise<Map<number, AgregatClient>> {
+  const out = new Map<number, AgregatClient>();
+  if (ids && !ids.length) return out;
+  const conditions = [
+    isNotNull(schema.orders.customerId),
+    notInArray(schema.orders.status, HORS_VENTES),
+  ];
+  if (ids) conditions.push(inArray(schema.orders.customerId, ids));
+  const rows = await db
+    .select({
+      customerId: schema.orders.customerId,
+      n: raw<number>`count(*)::int`,
+      ca: raw<number>`coalesce(sum(${schema.orders.totalCents}), 0)::int`,
+      derniere: raw<Date>`max(${schema.orders.createdAt})`,
+    })
+    .from(schema.orders)
+    .where(and(...conditions))
+    .groupBy(schema.orders.customerId);
+  for (const r of rows) {
+    if (r.customerId == null) continue;
+    out.set(r.customerId, {
+      commandes: r.n,
+      caCents: r.ca,
+      derniereCommande: r.derniere ? new Date(r.derniere) : null,
+    });
+  }
+  return out;
+}
+
+const AGREGAT_VIDE: AgregatClient = {
+  commandes: 0,
+  caCents: 0,
+  derniereCommande: null,
+};
+
+/* -------------------------------------------------------------------------- */
+
+export function mountCompteRoutes(app: Hono): void {
+  /* ===== Boutique — compte ============================================== */
+
+  /**
+   * Création de compte.
+   *
+   * Une fiche NEUVE, toujours. On ne rattache jamais à l'inscription les
+   * commandes passées en visiteur avec la même adresse, aussi tentant que ce
+   * soit : s'inscrire ne prouve rien sur la possession de la boîte mail, et il
+   * suffirait de connaître l'adresse d'un client pour lire son nom, son
+   * adresse postale, son téléphone et ses montants.
+   *
+   * Le rattachement existe, mais il passe par une décision humaine au
+   * back-office (POST /admin/customers/:id/rattacher-commandes) — ou, le jour
+   * où l'envoi d'e-mails sera branché, par la vérification de l'adresse.
+   */
+  app.post("/compte/inscription", async (c) => {
+    const b = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const email = String(b.email ?? "")
+      .trim()
+      .toLowerCase();
+    const mdp = String(b.password ?? "");
+    const nom = String(b.name ?? "").trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      return c.json({ error: "Adresse e-mail invalide" }, 400);
+    if (mdp.length < MDP_MIN)
+      return c.json(
+        { error: `Le mot de passe doit faire au moins ${MDP_MIN} caractères` },
+        400,
+      );
+
+    const [dejaCompte] = await db
+      .select({ id: schema.customers.id })
+      .from(schema.customers)
+      .where(and(memeEmail(email), isNotNull(schema.customers.passwordHash)));
+    if (dejaCompte)
+      return c.json({ error: "Un compte existe déjà avec cette adresse" }, 409);
+
+    const marketing = b.acceptsMarketing === true;
+    const maintenant = new Date();
+    const [client] = await db
+      .insert(schema.customers)
+      .values({
+        name: nom || null,
+        email,
+        passwordHash: await hashPassword(mdp),
+        acceptsMarketing: marketing,
+        marketingOptInAt: marketing ? maintenant : null,
+        lastLoginAt: maintenant,
+      })
+      .returning();
+    if (!client) return c.json({ error: "Création impossible" }, 500);
+
+    poserCookie(c, await creerSessionClient(client.id));
+    return c.json({ customer: publique(client) }, 201);
+  });
+
+  /**
+   * Rattache à un compte les commandes passées en visiteur avec la même
+   * adresse. RÉSERVÉ AU BACK-OFFICE, et c'est le cœur de la protection : la
+   * personne qui clique a identifié le client autrement (au téléphone, sur une
+   * commande, en salon). Le système, lui, n'a aucun moyen de le faire tant que
+   * l'adresse n'est pas vérifiée par e-mail.
+   *
+   * Les fiches vidées sont supprimées : deux fiches pour une même personne
+   * finissent toujours par produire deux historiques et deux vérités.
+   */
+  app.post("/admin/customers/:id/rattacher-commandes", async (c) => {
+    const id = Number(c.req.param("id"));
+    const [compte] = await db
+      .select()
+      .from(schema.customers)
+      .where(eq(schema.customers.id, id));
+    if (!compte) return c.notFound();
+    if (!compte.email)
+      return c.json({ error: "Cette fiche n'a pas d'adresse e-mail" }, 400);
+
+    const fiches = await db
+      .select({ id: schema.customers.id })
+      .from(schema.customers)
+      .where(
+        and(
+          memeEmail(compte.email.toLowerCase()),
+          isNull(schema.customers.passwordHash),
+        ),
+      );
+    const doublons = fiches.map((f) => f.id).filter((v) => v !== id);
+    if (!doublons.length)
+      return c.json({ ok: true, commandes: 0, fiches: 0 });
+
+    const deplacees = await db
+      .update(schema.orders)
+      .set({ customerId: id })
+      .where(inArray(schema.orders.customerId, doublons))
+      .returning({ id: schema.orders.id });
+    await db
+      .update(schema.customerAddresses)
+      .set({ customerId: id })
+      .where(inArray(schema.customerAddresses.customerId, doublons));
+    await db
+      .delete(schema.customers)
+      .where(inArray(schema.customers.id, doublons));
+
+    return c.json({
+      ok: true,
+      commandes: deplacees.length,
+      fiches: doublons.length,
+    });
+  });
+
+  app.post("/compte/connexion", async (c) => {
+    const ip = ipAppelant(c);
+    if (tropDEssais(ip))
+      return c.json({ error: "Trop de tentatives, réessayez plus tard" }, 429);
+    const b = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const email = String(b.email ?? "")
+      .trim()
+      .toLowerCase();
+    const mdp = String(b.password ?? "");
+
+    const [compte] = await db
+      .select()
+      .from(schema.customers)
+      .where(and(memeEmail(email), isNotNull(schema.customers.passwordHash)));
+    // Même travail cryptographique dans les deux cas : le temps de réponse ne
+    // doit pas trahir l'existence de l'adresse.
+    const ok = await verifyPassword(
+      mdp,
+      compte?.passwordHash ?? EMPREINTE_FACTICE,
+    );
+    if (!compte || !ok) {
+      noterEchec(ip);
+      return c.json({ error: "Identifiants invalides" }, 401);
+    }
+    essais.delete(ip);
+
+    await db
+      .update(schema.customers)
+      .set({ lastLoginAt: new Date() })
+      .where(eq(schema.customers.id, compte.id));
+    await purgerSessionsExpirees();
+    poserCookie(c, await creerSessionClient(compte.id));
+    return c.json({ customer: publique(compte) });
+  });
+
+  app.post("/compte/deconnexion", async (c) => {
+    await supprimerSessionClient(getCookie(c, COOKIE_CLIENT));
+    deleteCookie(c, COOKIE_CLIENT, { path: "/" });
+    return c.json({ ok: true });
+  });
+
+  app.get("/compte/moi", async (c) => {
+    const moi = await clientDeLaRequete(c);
+    if (!moi) return c.json({ error: "Non authentifié" }, 401);
+    return c.json({ customer: publique(moi) });
+  });
+
+  app.post("/compte/moi", async (c) => {
+    const moi = await clientDeLaRequete(c);
+    if (!moi) return c.json({ error: "Non authentifié" }, 401);
+    const b = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const maj: Partial<typeof schema.customers.$inferInsert> = {};
+    if (b.name !== undefined) maj.name = String(b.name).trim() || null;
+    if (b.phone !== undefined) maj.phone = String(b.phone).trim() || null;
+    if (b.acceptsMarketing !== undefined) {
+      const veut = b.acceptsMarketing === true;
+      maj.acceptsMarketing = veut;
+      // La date du consentement est ce qu'il faudra produire en cas de
+      // réclamation : elle ne se pose qu'au moment où il est donné.
+      maj.marketingOptInAt = veut
+        ? moi.acceptsMarketing
+          ? undefined
+          : new Date()
+        : null;
+      if (maj.marketingOptInAt === undefined) delete maj.marketingOptInAt;
+    }
+    const [client] = await db
+      .update(schema.customers)
+      .set(maj)
+      .where(eq(schema.customers.id, moi.id))
+      .returning();
+    return c.json({ customer: publique(client!) });
+  });
+
+  app.post("/compte/mot-de-passe", async (c) => {
+    const moi = await clientDeLaRequete(c);
+    if (!moi) return c.json({ error: "Non authentifié" }, 401);
+    const b = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const ancien = String(b.ancien ?? "");
+    const nouveau = String(b.nouveau ?? "");
+    if (nouveau.length < MDP_MIN)
+      return c.json(
+        { error: `Le mot de passe doit faire au moins ${MDP_MIN} caractères` },
+        400,
+      );
+    const [compte] = await db
+      .select()
+      .from(schema.customers)
+      .where(eq(schema.customers.id, moi.id));
+    if (
+      !compte?.passwordHash ||
+      !(await verifyPassword(ancien, compte.passwordHash))
+    )
+      return c.json({ error: "Mot de passe actuel incorrect" }, 400);
+    await db
+      .update(schema.customers)
+      .set({ passwordHash: await hashPassword(nouveau) })
+      .where(eq(schema.customers.id, moi.id));
+    return c.json({ ok: true });
+  });
+
+  /**
+   * Demande de réinitialisation.
+   *
+   * Réponse invariable, y compris pour une adresse inconnue : distinguer les
+   * deux cas donnerait à n'importe qui la liste des clients de la boutique.
+   */
+  app.post("/compte/mot-de-passe-oublie", async (c) => {
+    const b = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const email = String(b.email ?? "")
+      .trim()
+      .toLowerCase();
+    if (email) {
+      const [compte] = await db
+        .select()
+        .from(schema.customers)
+        .where(and(memeEmail(email), isNotNull(schema.customers.passwordHash)));
+      if (compte?.email) {
+        const jeton = randomBytes(32).toString("base64url");
+        await db.insert(schema.customerTokens).values({
+          id: empreinte(jeton),
+          customerId: compte.id,
+          kind: "reset",
+          expiresAt: new Date(Date.now() + RESET_TTL_MS),
+        });
+        const origine = (process.env.PUBLIC_ORIGIN ?? "").replace(/\/$/, "");
+        const lien = `${origine}/compte/reinitialiser?jeton=${jeton}`;
+        const courrier = courrierReinitialisation({
+          prenomClient: (compte.name ?? "").split(" ")[0] || "vous",
+          lien,
+        });
+        if (estConfigure()) {
+          await envoyer({ ...courrier, to: compte.email });
+        } else {
+          // Sans courrier configuré la fonction serait intestable : on écrit le
+          // lien dans le journal du serveur, jamais dans la réponse. En
+          // production l'envoi est configuré et cette branche ne sert plus.
+          console.warn(
+            "[compte] courrier non configuré — lien de réinitialisation :",
+            lien,
+          );
+        }
+      }
+    }
+    return c.json({ ok: true });
+  });
+
+  app.post("/compte/mot-de-passe-reinitialiser", async (c) => {
+    const b = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const jeton = String(b.token ?? "");
+    const nouveau = String(b.nouveau ?? "");
+    if (nouveau.length < MDP_MIN)
+      return c.json(
+        { error: `Le mot de passe doit faire au moins ${MDP_MIN} caractères` },
+        400,
+      );
+    const [ligne] = await db
+      .select()
+      .from(schema.customerTokens)
+      .where(
+        and(
+          eq(schema.customerTokens.id, empreinte(jeton)),
+          eq(schema.customerTokens.kind, "reset"),
+        ),
+      );
+    if (!ligne || ligne.usedAt || ligne.expiresAt.getTime() < Date.now())
+      return c.json({ error: "Lien expiré ou déjà utilisé" }, 400);
+
+    await db
+      .update(schema.customers)
+      .set({ passwordHash: await hashPassword(nouveau) })
+      .where(eq(schema.customers.id, ligne.customerId));
+    await db
+      .update(schema.customerTokens)
+      .set({ usedAt: new Date() })
+      .where(eq(schema.customerTokens.id, ligne.id));
+    // Réinitialiser, c'est souvent reprendre la main sur un compte perdu :
+    // toutes les sessions ouvertes tombent, y compris celle de l'intrus.
+    await db
+      .delete(schema.customerSessions)
+      .where(eq(schema.customerSessions.customerId, ligne.customerId));
+    return c.json({ ok: true });
+  });
+
+  /* ===== Boutique — commandes ========================================== */
+
+  /**
+   * Historique du client. Les paniers (`draft`) n'y figurent jamais : ce sont
+   * des brouillons de la boutique, pas des achats.
+   */
+  app.get("/compte/commandes", async (c) => {
+    const moi = await clientDeLaRequete(c);
+    if (!moi) return c.json({ error: "Non authentifié" }, 401);
+    const commandes = await db
+      .select()
+      .from(schema.orders)
+      .where(
+        and(
+          eq(schema.orders.customerId, moi.id),
+          ne(schema.orders.status, "draft"),
+        ),
+      )
+      .orderBy(desc(schema.orders.createdAt));
+    const ids = commandes.map((o) => o.id);
+    const resume = await resumeCommandes(ids);
+    const colis = ids.length
+      ? await db
+          .select()
+          .from(schema.fulfillments)
+          .where(
+            and(
+              inArray(schema.fulfillments.orderId, ids),
+              eq(schema.fulfillments.status, "success"),
+            ),
+          )
+      : [];
+
+    return c.json(
+      commandes.map((o) => {
+        const s = resume.get(o.id)!;
+        return {
+          id: o.id,
+          number: o.number,
+          createdAt: o.createdAt,
+          totalCents: o.totalCents,
+          articles: s.articles,
+          statutFinancier: statutFinancier(o, s.rembourseCents),
+          statutExpedition: statutExpedition(s.articles, s.expedies),
+          suivi: colis
+            .filter((f) => f.orderId === o.id && f.trackingNumber)
+            .map((f) => ({
+              carrier: f.carrier,
+              trackingNumber: f.trackingNumber,
+              trackingUrl: f.trackingUrl ?? lienDeSuivi(f.carrier, f.trackingNumber),
+            })),
+        };
+      }),
+    );
+  });
+
+  /**
+   * Détail d'une commande. 404 — et non 403 — quand elle appartient à
+   * quelqu'un d'autre : répondre « interdit » confirmerait qu'elle existe.
+   */
+  app.get("/compte/commandes/:id", async (c) => {
+    const moi = await clientDeLaRequete(c);
+    if (!moi) return c.json({ error: "Non authentifié" }, 401);
+    const id = Number(c.req.param("id"));
+    const [order] = await db
+      .select()
+      .from(schema.orders)
+      .where(
+        and(
+          eq(schema.orders.id, id),
+          eq(schema.orders.customerId, moi.id),
+          ne(schema.orders.status, "draft"),
+        ),
+      );
+    if (!order) return c.json({ error: "Commande introuvable" }, 404);
+
+    const items = await db
+      .select()
+      .from(schema.orderItems)
+      .where(eq(schema.orderItems.orderId, order.id));
+    const expeditions = await db
+      .select()
+      .from(schema.fulfillments)
+      .where(
+        and(
+          eq(schema.fulfillments.orderId, order.id),
+          eq(schema.fulfillments.status, "success"),
+        ),
+      )
+      .orderBy(desc(schema.fulfillments.createdAt));
+    const resume = (await resumeCommandes([order.id])).get(order.id)!;
+
+    const sousTotal = items.reduce(
+      (s, it) => s + it.unitPriceCents * it.quantity,
+      0,
+    );
+    const port = order.shippingCents ?? 0;
+    // La remise se DÉDUIT de ce qui a été facturé : c'est le montant payé qui
+    // fait foi, pas un recalcul qui pourrait diverger du jour de la commande.
+    const remise = Math.max(0, sousTotal + port - order.totalCents);
+
+    return c.json({
+      order,
+      items,
+      expeditions: expeditions.map((f) => ({
+        ...f,
+        trackingUrl: f.trackingUrl ?? lienDeSuivi(f.carrier, f.trackingNumber),
+      })),
+      montants: {
+        sousTotalCents: sousTotal,
+        remiseCents: remise,
+        portCents: port,
+        totalCents: order.totalCents,
+        rembourseCents: resume.rembourseCents,
+      },
+      statutFinancier: statutFinancier(order, resume.rembourseCents),
+      statutExpedition: statutExpedition(resume.articles, resume.expedies),
+    });
+  });
+
+  /* ===== Boutique — carnet d'adresses ================================== */
+
+  app.get("/compte/adresses", async (c) => {
+    const moi = await clientDeLaRequete(c);
+    if (!moi) return c.json({ error: "Non authentifié" }, 401);
+    return c.json(
+      await db
+        .select()
+        .from(schema.customerAddresses)
+        .where(eq(schema.customerAddresses.customerId, moi.id))
+        .orderBy(desc(schema.customerAddresses.isDefaultShipping), schema.customerAddresses.id),
+    );
+  });
+
+  /** Création ou modification : `id` présent = modification de SA propre adresse. */
+  app.post("/compte/adresses", async (c) => {
+    const moi = await clientDeLaRequete(c);
+    if (!moi) return c.json({ error: "Non authentifié" }, 401);
+    const b = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const texte = (v: unknown) => String(v ?? "").trim() || null;
+    const valeurs = {
+      label: texte(b.label),
+      name: texte(b.name),
+      line1: texte(b.line1),
+      line2: texte(b.line2),
+      postalCode: texte(b.postalCode),
+      city: texte(b.city),
+      country: texte(b.country),
+      phone: texte(b.phone),
+      isDefaultShipping: b.isDefaultShipping === true,
+      isDefaultBilling: b.isDefaultBilling === true,
+    };
+    if (!valeurs.line1 || !valeurs.city || !valeurs.postalCode)
+      return c.json({ error: "Adresse incomplète" }, 400);
+
+    const id = Number(b.id ?? 0);
+    let adresse: typeof schema.customerAddresses.$inferSelect | undefined;
+    if (id) {
+      [adresse] = await db
+        .update(schema.customerAddresses)
+        .set(valeurs)
+        .where(
+          and(
+            eq(schema.customerAddresses.id, id),
+            eq(schema.customerAddresses.customerId, moi.id),
+          ),
+        )
+        .returning();
+      if (!adresse) return c.json({ error: "Adresse introuvable" }, 404);
+    } else {
+      [adresse] = await db
+        .insert(schema.customerAddresses)
+        .values({ ...valeurs, customerId: moi.id })
+        .returning();
+    }
+
+    // « Par défaut » n'a de sens qu'à un seul exemplaire : on retire le drapeau
+    // aux autres plutôt que de laisser deux adresses se disputer le titre.
+    if (valeurs.isDefaultShipping)
+      await db
+        .update(schema.customerAddresses)
+        .set({ isDefaultShipping: false })
+        .where(
+          and(
+            eq(schema.customerAddresses.customerId, moi.id),
+            ne(schema.customerAddresses.id, adresse!.id),
+          ),
+        );
+    if (valeurs.isDefaultBilling)
+      await db
+        .update(schema.customerAddresses)
+        .set({ isDefaultBilling: false })
+        .where(
+          and(
+            eq(schema.customerAddresses.customerId, moi.id),
+            ne(schema.customerAddresses.id, adresse!.id),
+          ),
+        );
+
+    return c.json(adresse);
+  });
+
+  app.delete("/compte/adresses/:id", async (c) => {
+    const moi = await clientDeLaRequete(c);
+    if (!moi) return c.json({ error: "Non authentifié" }, 401);
+    const id = Number(c.req.param("id"));
+    const [supprimee] = await db
+      .delete(schema.customerAddresses)
+      .where(
+        and(
+          eq(schema.customerAddresses.id, id),
+          eq(schema.customerAddresses.customerId, moi.id),
+        ),
+      )
+      .returning({ id: schema.customerAddresses.id });
+    if (!supprimee) return c.json({ error: "Adresse introuvable" }, 404);
+    return c.json({ ok: true });
+  });
+
+  /* ===== Back-office — clients ========================================= */
+
+  /**
+   * Liste des clients avec leurs agrégats.
+   *
+   * Les segments qui dépendent des commandes (inactifs, fidèles, sans
+   * commande) se filtrent en mémoire, comme les statuts de la liste des
+   * commandes : les exprimer en SQL rendrait la requête illisible pour un gain
+   * nul à cette échelle.
+   */
+  app.get("/admin/customers", async (c) => {
+    const q = c.req.query();
+    const limit = Math.min(Number(q.limit ?? 200), 1000);
+    const conditions = [];
+    const cherche = (q.q ?? "").trim().toLowerCase();
+    if (cherche) {
+      const motif = `%${cherche}%`;
+      conditions.push(
+        or(
+          raw`lower(coalesce(${schema.customers.name}, '')) like ${motif}`,
+          raw`lower(coalesce(${schema.customers.email}, '')) like ${motif}`,
+          raw`lower(coalesce(${schema.customers.phone}, '')) like ${motif}`,
+        )!,
+      );
+    }
+    const segment = (q.segment ?? "").trim();
+    if (segment === "compte")
+      conditions.push(isNotNull(schema.customers.passwordHash));
+    if (segment === "optin")
+      conditions.push(eq(schema.customers.acceptsMarketing, true));
+
+    const rows = await db
+      .select({
+        id: schema.customers.id,
+        name: schema.customers.name,
+        email: schema.customers.email,
+        phone: schema.customers.phone,
+        createdAt: schema.customers.createdAt,
+        acceptsMarketing: schema.customers.acceptsMarketing,
+        tags: schema.customers.tags,
+        compte: raw<boolean>`(${schema.customers.passwordHash} is not null)`,
+      })
+      .from(schema.customers)
+      .where(conditions.length ? and(...conditions) : undefined);
+
+    const agregats = await agregatsClients();
+    let liste = rows.map((r) => {
+      const a = agregats.get(r.id) ?? AGREGAT_VIDE;
+      return {
+        ...r,
+        tags: r.tags ?? [],
+        commandes: a.commandes,
+        caCents: a.caCents,
+        derniereCommande: a.derniereCommande
+          ? a.derniereCommande.toISOString()
+          : null,
+      };
+    });
+
+    const ilY90Jours = Date.now() - 90 * 24 * 60 * 60 * 1000;
+    if (segment === "inactifs")
+      liste = liste.filter(
+        (l) =>
+          l.commandes > 0 &&
+          l.derniereCommande !== null &&
+          new Date(l.derniereCommande).getTime() < ilY90Jours,
+      );
+    if (segment === "fideles") liste = liste.filter((l) => l.commandes >= 2);
+    if (segment === "sans-commande")
+      liste = liste.filter((l) => l.commandes === 0);
+
+    // Les plus récemment actifs d'abord : c'est ce qu'on cherche en ouvrant la
+    // page. Les clients sans commande passent après, du plus récent inscrit.
+    liste.sort(
+      (a, b) =>
+        (b.derniereCommande ? Date.parse(b.derniereCommande) : 0) -
+          (a.derniereCommande ? Date.parse(a.derniereCommande) : 0) ||
+        b.createdAt.getTime() - a.createdAt.getTime(),
+    );
+    return c.json(liste.slice(0, limit));
+  });
+
+  app.get("/admin/customers/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    const [client] = await db
+      .select({
+        id: schema.customers.id,
+        name: schema.customers.name,
+        email: schema.customers.email,
+        phone: schema.customers.phone,
+        createdAt: schema.customers.createdAt,
+        acceptsMarketing: schema.customers.acceptsMarketing,
+        marketingOptInAt: schema.customers.marketingOptInAt,
+        tags: schema.customers.tags,
+        note: schema.customers.note,
+        lastLoginAt: schema.customers.lastLoginAt,
+        legacyId: schema.customers.legacyId,
+        compte: raw<boolean>`(${schema.customers.passwordHash} is not null)`,
+      })
+      .from(schema.customers)
+      .where(eq(schema.customers.id, id));
+    if (!client) return c.json({ error: "Client introuvable" }, 404);
+
+    const adresses = await db
+      .select()
+      .from(schema.customerAddresses)
+      .where(eq(schema.customerAddresses.customerId, id))
+      .orderBy(desc(schema.customerAddresses.isDefaultShipping), schema.customerAddresses.id);
+
+    // Le back-office voit aussi les paniers abandonnés : ils expliquent une
+    // relance, et c'est justement le genre de chose qu'on veut retrouver ici.
+    const commandes = await db
+      .select()
+      .from(schema.orders)
+      .where(eq(schema.orders.customerId, id))
+      .orderBy(desc(schema.orders.createdAt));
+    const resume = await resumeCommandes(commandes.map((o) => o.id));
+    const a = (await agregatsClients([id])).get(id) ?? AGREGAT_VIDE;
+
+    return c.json({
+      customer: { ...client, tags: client.tags ?? [] },
+      adresses,
+      commandes: commandes.map((o) => {
+        const s = resume.get(o.id)!;
+        return {
+          id: o.id,
+          number: o.number,
+          createdAt: o.createdAt,
+          totalCents: o.totalCents,
+          articles: s.articles,
+          statutFinancier: statutFinancier(o, s.rembourseCents),
+          statutExpedition: statutExpedition(s.articles, s.expedies),
+        };
+      }),
+      stats: {
+        commandes: a.commandes,
+        caCents: a.caCents,
+        panierMoyenCents: a.commandes
+          ? Math.round(a.caCents / a.commandes)
+          : 0,
+      },
+    });
+  });
+
+  app.post("/admin/customers/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    const b = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const [avant] = await db
+      .select()
+      .from(schema.customers)
+      .where(eq(schema.customers.id, id));
+    if (!avant) return c.json({ error: "Client introuvable" }, 404);
+
+    const maj: Partial<typeof schema.customers.$inferInsert> = {};
+    if (b.name !== undefined) maj.name = String(b.name).trim() || null;
+    if (b.phone !== undefined) maj.phone = String(b.phone).trim() || null;
+    if (b.note !== undefined) maj.note = String(b.note).trim() || null;
+    if (b.tags !== undefined) {
+      const brutes: unknown[] = Array.isArray(b.tags) ? b.tags : [];
+      // Dédoublonnage insensible à la casse, en gardant la première graphie :
+      // « VIP » et « vip » sont la même étiquette, et rien ne justifierait de
+      // les afficher côte à côte.
+      const vues = new Set<string>();
+      const propres: string[] = [];
+      for (const t of brutes) {
+        const e = etiquette(t);
+        if (!e || vues.has(e.toLowerCase())) continue;
+        vues.add(e.toLowerCase());
+        propres.push(e);
+      }
+      maj.tags = propres;
+    }
+    if (b.acceptsMarketing !== undefined) {
+      const veut = b.acceptsMarketing === true;
+      maj.acceptsMarketing = veut;
+      if (!veut) maj.marketingOptInAt = null;
+      else if (!avant.acceptsMarketing) maj.marketingOptInAt = new Date();
+    }
+    if (b.email !== undefined) {
+      const email = String(b.email).trim().toLowerCase();
+      // L'index d'unicité ne couvre que les comptes : on renvoie un conflit
+      // lisible plutôt que de laisser remonter une erreur Postgres brute.
+      const [pris] = await db
+        .select({ id: schema.customers.id })
+        .from(schema.customers)
+        .where(
+          and(
+            memeEmail(email),
+            isNotNull(schema.customers.passwordHash),
+            ne(schema.customers.id, id),
+          ),
+        );
+      if (pris)
+        return c.json({ error: "Un compte utilise déjà cette adresse" }, 409);
+      maj.email = email || null;
+    }
+
+    const [client] = await db
+      .update(schema.customers)
+      .set(maj)
+      .where(eq(schema.customers.id, id))
+      .returning({
+        id: schema.customers.id,
+        name: schema.customers.name,
+        email: schema.customers.email,
+        phone: schema.customers.phone,
+        createdAt: schema.customers.createdAt,
+        acceptsMarketing: schema.customers.acceptsMarketing,
+        marketingOptInAt: schema.customers.marketingOptInAt,
+        tags: schema.customers.tags,
+        note: schema.customers.note,
+        lastLoginAt: schema.customers.lastLoginAt,
+        compte: raw<boolean>`(${schema.customers.passwordHash} is not null)`,
+      });
+    return c.json({ ...client!, tags: client!.tags ?? [] });
+  });
+}

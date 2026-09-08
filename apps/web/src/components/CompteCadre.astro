@@ -1,0 +1,95 @@
+---
+/**
+ * Habillage commun aux pages de l'espace client : fil d'Ariane, titre, menu.
+ *
+ * Le bouton « Se déconnecter » est un FORMULAIRE qui poste sur /compte, et non
+ * un lien : la déconnexion change l'état du visiteur, un préchargement de
+ * navigateur ne doit pas pouvoir la déclencher tout seul.
+ */
+import Base from "../layouts/Base.astro";
+import { lien, t, type Langue } from "../i18n/utils.ts";
+
+interface Props {
+  langue: Langue;
+  titre: string;
+  /** Chemin SANS préfixe de langue — canonical et onglet actif du menu. */
+  chemin: string;
+  /** Menu latéral : hors sujet tant que le visiteur n'est pas connecté. */
+  menu?: boolean;
+}
+
+const { langue, titre, chemin, menu = true } = Astro.props;
+const tr = t(langue);
+
+const onglets = [
+  { chemin: "/compte", libelle: tr("compte.menu.commandes") },
+  { chemin: "/compte/adresses", libelle: tr("compte.menu.adresses") },
+  { chemin: "/compte/infos", libelle: tr("compte.menu.infos") },
+];
+---
+
+<Base
+  langue={langue}
+  title={`${titre} — Memory Line`}
+  path={lien(langue, chemin)}
+  noindex={true}
+>
+  <section class="mx-auto max-w-[1200px] px-6 pt-12 pb-16 lg:px-12">
+    <nav class="text-sm text-ink-soft">
+      <a href={lien(langue, "/")} class="hover:text-terracotta">Memory Line</a>
+      {
+        menu && (
+          <Fragment>
+            {" · "}
+            <a href={lien(langue, "/compte")} class="hover:text-terracotta">
+              {tr("compte.titre")}
+            </a>
+          </Fragment>
+        )
+      }
+    </nav>
+    <h1 class="mt-4 mb-8 text-3xl sm:text-4xl">{titre}</h1>
+
+    {
+      menu ? (
+        <div class="grid items-start gap-10 lg:grid-cols-[220px_1fr]">
+          <aside class="border-b border-ink/10 pb-6 lg:border-r lg:border-b-0 lg:pr-6 lg:pb-0">
+            <ul class="space-y-2 text-[15px]">
+              {onglets.map((o) => (
+                <li>
+                  <a
+                    href={lien(langue, o.chemin)}
+                    aria-current={o.chemin === chemin ? "page" : undefined}
+                    class={
+                      o.chemin === chemin
+                        ? "font-semibold text-terracotta"
+                        : "transition-colors hover:text-terracotta"
+                    }
+                  >
+                    {o.libelle}
+                  </a>
+                </li>
+              ))}
+            </ul>
+            <form method="post" action={lien(langue, "/compte")} class="mt-8">
+              <input type="hidden" name="action" value="deconnexion" />
+              <button
+                type="submit"
+                class="text-[15px] text-ink-soft underline underline-offset-4 transition-colors hover:text-terracotta"
+              >
+                {tr("compte.deconnexion")}
+              </button>
+            </form>
+          </aside>
+          <div class="min-w-0">
+            <slot />
+          </div>
+        </div>
+      ) : (
+        <div class="max-w-md">
+          <slot />
+        </div>
+      )
+    }
+  </section>
+</Base>

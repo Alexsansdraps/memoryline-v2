@@ -1,0 +1,252 @@
+---
+/**
+ * Liste des clients.
+ *
+ * Même grammaire que la liste des commandes : des ONGLETS pour les questions
+ * courantes (« qui achète encore ? »), une RECHERCHE plein texte, et tout dans
+ * l'URL pour qu'un segment se mette en favori et se partage.
+ *
+ * Le tri par défaut est le total dépensé : la première ligne est la cliente
+ * qu'on a le plus intérêt à soigner.
+ */
+import Admin from "../layouts/Admin.astro";
+import { url } from "../lib/url.ts";
+import { adminApi, formatPrice, type Client } from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+const params = Astro.url.searchParams;
+
+/** Les segments sont ceux de l'API ; l'onglet ne fait que les nommer. */
+const ONGLETS: { cle: string; label: string; segment?: string }[] = [
+  { cle: "tous", label: "Tous" },
+  { cle: "compte", label: "Avec compte", segment: "compte" },
+  { cle: "fideles", label: "Fidèles", segment: "fideles" },
+  { cle: "inactifs", label: "Inactifs > 90 jours", segment: "inactifs" },
+  { cle: "optin", label: "Accepte le marketing", segment: "optin" },
+  { cle: "sans-commande", label: "Sans commande", segment: "sans-commande" },
+];
+const ongletActif = params.get("segment") ?? "tous";
+const onglet = ONGLETS.find((o) => o.cle === ongletActif) ?? ONGLETS[0]!;
+
+const recherche = params.get("q") ?? "";
+
+let clients: Client[] = [];
+let error: string | null = null;
+try {
+  clients = await api.customers({ q: recherche, segment: onglet.segment });
+} catch (e) {
+  error = String(e);
+}
+
+/**
+ * Tri fait ici et pas côté API : la liste tient dans une page, et le contrat
+ * de /admin/customers ne porte pas de tri.
+ */
+const TRIS: Record<string, { label: string; ordre: (a: Client, b: Client) => number }> = {
+  ca: { label: "Total dépensé", ordre: (a, b) => b.caCents - a.caCents },
+  commandes: { label: "Commandes", ordre: (a, b) => b.commandes - a.commandes },
+  recente: {
+    label: "Dernière commande",
+    ordre: (a, b) => (b.derniereCommande ?? "").localeCompare(a.derniereCommande ?? ""),
+  },
+  nom: {
+    label: "Nom",
+    ordre: (a, b) => (a.name ?? "").localeCompare(b.name ?? "", "fr"),
+  },
+};
+const triActif = params.get("tri") ?? "ca";
+const tri = TRIS[triActif] ?? TRIS.ca!;
+const lignes = [...clients].sort(tri.ordre);
+
+/** Reconstruit l'URL courante en changeant une seule clé. */
+function lienAvec(modif: Record<string, string | null>): string {
+  const p = new URLSearchParams(params);
+  for (const [k, v] of Object.entries(modif)) {
+    if (v === null || v === "") p.delete(k);
+    else p.set(k, v);
+  }
+  const qs = p.toString();
+  return url(`/clients${qs ? `?${qs}` : ""}`);
+}
+
+/** En-tête de colonne cliquable : un clic trie sur cette colonne. */
+function lienTri(cle: string): string {
+  return lienAvec({ tri: cle === "ca" ? null : cle });
+}
+
+/** « le 27 août », l'année seulement si ce n'est pas l'année en cours. */
+function quand(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    const annee = d.getFullYear();
+    return d.toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "long",
+      ...(annee === new Date().getFullYear() ? {} : { year: "numeric" }),
+    });
+  } catch {
+    return "—";
+  }
+}
+
+const caTotal = lignes.reduce((s, c) => s + c.caCents, 0);
+---
+
+<Admin title="Clients">
+  {error && (
+    <p class="mb-4 text-sm text-red-600">API injoignable : {error}</p>
+  )}
+
+  <section class="rounded-lg border border-bo-border bg-bo-surface">
+    {/* Onglets : un clic = un segment. */}
+    <div class="flex flex-wrap items-center gap-1 border-b border-bo-border px-3 pt-3">
+      {ONGLETS.map((o) => (
+        <a
+          href={lienAvec({ segment: o.segment ?? null })}
+          class={`rounded-t px-3 py-2 text-sm ${
+            o.cle === onglet.cle
+              ? "bg-bo-bg font-medium text-bo-ink"
+              : "text-bo-muted hover:bg-bo-bg/60"
+          }`}
+        >
+          {o.label}
+        </a>
+      ))}
+    </div>
+
+    <form method="GET" class="flex flex-wrap items-end gap-3 px-4 py-3">
+      {onglet.segment && (
+        <input type="hidden" name="segment" value={onglet.segment} />
+      )}
+      {triActif !== "ca" && <input type="hidden" name="tri" value={triActif} />}
+      <label class="min-w-[240px] flex-1">
+        <span class="mb-1 block text-xs text-bo-muted">
+          Rechercher (nom, e-mail, téléphone)
+        </span>
+        <input
+          type="search"
+          name="q"
+          value={recherche}
+          placeholder="Dupont, dupont@…, 06…"
+          class="w-full rounded border border-bo-border px-3 py-2 text-sm"
+        />
+      </label>
+      <button class="rounded bg-bo-nav px-4 py-2 text-sm text-white">
+        Rechercher
+      </button>
+      {recherche && (
+        <a
+          href={lienAvec({ q: null })}
+          class="px-2 py-2 text-sm text-bo-accent hover:underline"
+        >
+          Effacer
+        </a>
+      )}
+    </form>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-bo-bg text-left text-bo-muted">
+          <tr>
+            <th class="px-4 py-2 font-medium">
+              <a href={lienTri("nom")} class={triActif === "nom" ? "text-bo-ink" : "hover:text-bo-ink"}>
+                Nom
+              </a>
+            </th>
+            <th class="px-4 py-2 font-medium">E-mail</th>
+            <th class="px-4 py-2 font-medium">Téléphone</th>
+            <th class="px-4 py-2 font-medium">Compte</th>
+            <th class="px-4 py-2 font-medium">
+              <a
+                href={lienTri("commandes")}
+                class={triActif === "commandes" ? "text-bo-ink" : "hover:text-bo-ink"}
+              >
+                Commandes
+              </a>
+            </th>
+            <th class="px-4 py-2 text-right font-medium">
+              <a href={lienTri("ca")} class={triActif === "ca" ? "text-bo-ink" : "hover:text-bo-ink"}>
+                Total dépensé
+              </a>
+            </th>
+            <th class="px-4 py-2 font-medium">
+              <a
+                href={lienTri("recente")}
+                class={triActif === "recente" ? "text-bo-ink" : "hover:text-bo-ink"}
+              >
+                Dernière commande
+              </a>
+            </th>
+            <th class="px-4 py-2 font-medium">Étiquettes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lignes.map((c) => (
+            <tr class="border-t border-bo-border hover:bg-bo-bg/50">
+              <td class="px-4 py-2 align-top">
+                <a
+                  href={url(`/clients/${c.id}`)}
+                  class="font-medium text-bo-accent hover:underline"
+                >
+                  {c.name?.trim() || "Sans nom"}
+                </a>
+              </td>
+              <td class="px-4 py-2 align-top">
+                {c.email ? (
+                  <span class="text-bo-muted">{c.email}</span>
+                ) : (
+                  <span class="text-bo-muted">—</span>
+                )}
+              </td>
+              <td class="px-4 py-2 align-top whitespace-nowrap text-bo-muted">
+                {c.phone || "—"}
+              </td>
+              <td class="px-4 py-2 align-top">
+                {c.compte ? (
+                  <span class="rounded-full bg-bo-bg px-2 py-0.5 text-xs text-bo-ink">
+                    Oui
+                  </span>
+                ) : (
+                  <span class="text-bo-muted">Non</span>
+                )}
+              </td>
+              <td class="px-4 py-2 align-top text-bo-muted">{c.commandes}</td>
+              <td class="px-4 py-2 text-right align-top whitespace-nowrap">
+                {formatPrice(c.caCents)}
+              </td>
+              <td class="px-4 py-2 align-top whitespace-nowrap text-bo-muted">
+                {quand(c.derniereCommande)}
+              </td>
+              <td class="px-4 py-2 align-top">
+                {(c.tags ?? []).length ? (
+                  <span class="flex flex-wrap gap-1">
+                    {(c.tags ?? []).map((tag) => (
+                      <span class="rounded bg-bo-bg px-1.5 py-0.5 text-xs text-bo-muted">
+                        {tag}
+                      </span>
+                    ))}
+                  </span>
+                ) : (
+                  <span class="text-bo-muted">—</span>
+                )}
+              </td>
+            </tr>
+          ))}
+          {lignes.length === 0 && !error && (
+            <tr>
+              <td colspan="8" class="px-4 py-6 text-center text-bo-muted">
+                Aucun client pour ce segment.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="mt-2 text-sm text-bo-muted">
+    {lignes.length} client(s) affiché(s) · {formatPrice(caTotal)} dépensés au
+    total · triés par {tri.label.toLowerCase()}.
+  </p>
+</Admin>
