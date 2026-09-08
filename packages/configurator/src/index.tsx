@@ -368,10 +368,23 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     });
   }
 
-  /** Prix courant selon le format sélectionné (repli sur le prix de base). */
+  /** Cadre actuellement choisi, s'il y en a un. */
+  const cadreChoisi = (): CadreDTO | undefined =>
+    state.frameId == null || state.frameId === ""
+      ? undefined
+      : props.cadres?.find((c) => String(c.id) === String(state.frameId));
+
+  /**
+   * Prix courant : format sélectionné + supplément du cadre.
+   *
+   * Même addition que côté serveur (`resolveUnitPriceCents`) : le montant
+   * affiché ici doit être celui qui sera facturé, sinon le client découvre
+   * le supplément au panier.
+   */
   const currentPrice = (): number => {
     const p = props.prices?.[state.format];
-    return typeof p === "number" ? p : props.product.basePriceCents;
+    const affiche = typeof p === "number" ? p : props.product.basePriceCents;
+    return affiche + (cadreChoisi()?.priceCents ?? 0);
   };
 
   const isLast = () => stepIndex() === STEPS.length - 1;
@@ -526,12 +539,17 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             <Button variant="secondary" onClick={prev}>
               {msg().retour}
             </Button>
-            {/* Prix mis à jour selon le format choisi (demande cliente). */}
+            {/* Prix mis à jour selon le format ET le cadre choisis. Le
+                détail entre parenthèses reprend le nom du cadre tel qu'il est
+                saisi au back-office : rien à traduire. */}
             <div style={{ "font-weight": "700", "font-size": "18px", "white-space": "nowrap" }}>
               {fmtPrice(currentPrice())}
-              <Show when={state.format === "A3"}>
+              <Show when={state.format === "A3" || cadreChoisi()}>
                 <span style={{ "font-size": "12px", color: "#6b7280", "font-weight": "500" }}>
-                  {" "}(A3)
+                  {" "}
+                  ({[state.format === "A3" ? "A3" : null, cadreChoisi()?.name]
+                    .filter(Boolean)
+                    .join(" · ")})
                 </span>
               </Show>
             </div>

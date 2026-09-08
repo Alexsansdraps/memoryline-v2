@@ -318,6 +318,25 @@ body {
   width: 100% !important;
 }
 
+/* Rail horizontal (choix du cadre) : barre de défilement fine et discrète,
+   visible quand même — c'est elle, avec la vignette coupée en deux, qui dit
+   au client qu'il y a d'autres cadres à droite. */
+.ml-cfg-rail {
+  scrollbar-width: thin;
+  scrollbar-color: #c7c7c7 transparent;
+  -webkit-overflow-scrolling: touch;
+}
+.ml-cfg-rail::-webkit-scrollbar {
+  height: 6px;
+}
+.ml-cfg-rail::-webkit-scrollbar-thumb {
+  background: #c7c7c7;
+  border-radius: 3px;
+}
+.ml-cfg-rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 /* La vignette du panier réutilise l'aperçu du configurateur : on annule le
    plafond de hauteur prévu pour la modale, sinon l'affiche occupait la moitié
    de l'écran et recouvrait le détail de la ligne. */
