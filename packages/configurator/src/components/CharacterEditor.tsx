@@ -18,7 +18,8 @@ import {
   findVariant,
   recolorForCharacter,
   withViewBox,
-  presetPaletteForSlot,
+  paletteForVariant,
+  type PieceCategoryDTO,
   SKIN_TONES,
   SLOT_THUMB_VIEWBOX,
   type CharacterDTO,
@@ -223,6 +224,8 @@ function SvgThumb(props: { svg: string | undefined; label: string }) {
 function ColorRow(props: {
   zones: { zone: string; current: string }[];
   presets: readonly string[];
+  /** Saisie hors nuancier autorisée ? Non dès qu'une catégorie a ses couleurs. */
+  libre: boolean;
   onSetColor: (zone: string, hex: string) => void;
   /** Intitulé traduit, fourni par l'éditeur. */
   libelle: string;
@@ -272,20 +275,22 @@ function ColorRow(props: {
                 />
               )}
             </For>
-            <input
-              type="color"
-              value={z.current}
-              onInput={(e) => props.onSetColor(z.zone, e.currentTarget.value)}
-              title="Couleur personnalisée"
-              style={{
-                width: "26px",
-                height: "26px",
-                border: "none",
-                padding: "0",
-                background: "transparent",
-                cursor: "pointer",
-              }}
-            />
+            <Show when={props.libre}>
+              <input
+                type="color"
+                value={z.current}
+                onInput={(e) => props.onSetColor(z.zone, e.currentTarget.value)}
+                title="Couleur personnalisée"
+                style={{
+                  width: "26px",
+                  height: "26px",
+                  border: "none",
+                  padding: "0",
+                  background: "transparent",
+                  cursor: "pointer",
+                }}
+              />
+            </Show>
           </div>
         )}
       </For>
@@ -325,6 +330,8 @@ export function CharacterEditor(props: {
   characters: CharacterDTO[];
   slots: SlotVariants;
   cache: SvgCache;
+  /** Catégories de pièces et leurs nuanciers (vide = nuanciers de repli). */
+  pieceCategories?: PieceCategoryDTO[];
   onSetAsset: (slot: Slot, variantId: string | number) => void;
   onClearSlot: (slot: Slot) => void;
   onSetColor: (zone: string, hex: string) => void;
@@ -460,12 +467,24 @@ export function CharacterEditor(props: {
           </For>
         </Gallery>
         <Show when={zonesForSlot(opts.slot).length > 0}>
-          <ColorRow
-              libelle={m().choixCouleur}
-            zones={zonesForSlot(opts.slot)}
-            presets={presetPaletteForSlot(opts.slot)}
-            onSetColor={props.onSetColor}
-          />
+          {(() => {
+            // Nuancier de LA pièce portée : celui de sa catégorie, sinon
+            // celui de l'emplacement (et alors la saisie libre reste ouverte).
+            const palette = paletteForVariant(
+              props.pieceCategories,
+              findVariant(props.slots[opts.slot], props.character.assets[opts.slot]),
+              opts.slot,
+            );
+            return (
+              <ColorRow
+                libelle={m().choixCouleur}
+                zones={zonesForSlot(opts.slot)}
+                presets={palette.couleurs}
+                libre={palette.libre}
+                onSetColor={props.onSetColor}
+              />
+            );
+          })()}
         </Show>
       </Show>
     );
@@ -622,6 +641,7 @@ export function CharacterEditor(props: {
               libelle={m().choixCouleur}
               zones={skinZones()}
               presets={SKIN_TONES}
+              libre={true}
               onSetColor={props.onSetColor}
             />
           </Show>

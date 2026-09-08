@@ -6,6 +6,7 @@ import {
   type CharacterType,
   type CharacterCategory,
   type Asset,
+  type CategoriePiece,
   type TypeAffiche,
 } from "../lib/api.ts";
 import { SLOT_THUMB_VIEWBOX } from "@memoryline/types";
@@ -192,6 +193,15 @@ try {
 // personnages et des pièces. La liste se gère dans son propre écran.
 try {
   vues = await api.views();
+} catch (e) {
+  if (!error) error = String(e);
+}
+
+// Catégories de pièces : chaque pièce se range dans l'une d'elles, et c'est
+// la catégorie qui décide des couleurs proposées au client.
+let categoriesPieces: CategoriePiece[] = [];
+try {
+  categoriesPieces = await api.pieceCategories();
 } catch (e) {
   if (!error) error = String(e);
 }
@@ -709,6 +719,27 @@ for (const a of pieces) {
                       <div class="text-xs text-bo-muted">
                         {nomVue(a.view)}
                       </div>
+                      {/* Catégorie de la pièce : décide de son nuancier.
+                          Un choix, un enregistrement — pas de bouton. */}
+                      <select
+                        class="js-cat-piece mt-1 max-w-full rounded border border-bo-border px-1 py-0.5 text-xs"
+                        data-asset-id={a.id}
+                        title="Catégorie de la pièce (et donc ses couleurs)"
+                      >
+                        <option value="" selected={a.pieceCategoryId == null}>
+                          Sans catégorie
+                        </option>
+                        {categoriesPieces
+                          .filter((c) => c.slot === a.slot)
+                          .map((c) => (
+                            <option
+                              value={String(c.id)}
+                              selected={a.pieceCategoryId === c.id}
+                            >
+                              {c.name} ({c.colors.length} couleurs)
+                            </option>
+                          ))}
+                      </select>
                     </div>
                     <button
                       type="button"
@@ -1116,6 +1147,28 @@ for (const a of pieces) {
       });
     });
 
+
+    // --- Catégorie d'une pièce : enregistrée dès le changement ------------
+    document.addEventListener("change", async (e) => {
+      const sel = e.target.closest?.(".js-cat-piece");
+      if (!sel) return;
+      const id = Number(sel.getAttribute("data-asset-id"));
+      const valeur = sel.value === "" ? null : Number(sel.value);
+      sel.disabled = true;
+      try {
+        const res = await fetch(`${PUBLIC_API_URL}/admin/assets/category`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: [id], pieceCategoryId: valeur }),
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error(res.status);
+      } catch (err) {
+        alert("Changement de catégorie impossible : " + err);
+      } finally {
+        sel.disabled = false;
+      }
+    });
 
     // Menu « Nouveau » : un clic ailleurs le referme, comme tout menu.
     document.addEventListener("click", (e) => {

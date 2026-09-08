@@ -26,6 +26,7 @@ import {
   variantesDeVue,
   NONE_ASSET,
   type CadreDTO,
+  type PieceCategoryDTO,
 } from "./store";
 import { PosterPreview } from "./components/PosterPreview";
 import { StepBackgroundText } from "./components/StepBackgroundText";
@@ -61,6 +62,11 @@ export interface ConfiguratorProps {
   messages?: Partial<MessagesConfigurateur>;
   /** Cadres proposés en option. */
   cadres?: CadreDTO[];
+  /**
+   * Catégories de pièces avec leurs nuanciers. Sans elles, le configurateur
+   * retombe sur ses nuanciers historiques et laisse la saisie libre.
+   */
+  pieceCategories?: PieceCategoryDTO[];
   /** Décor d'avant-plan optionnel du produit (muret/banc…), rendu par-dessus
    *  les personnages (effet « assis dessus »). URL /assets/… ou absolue. */
   foregroundUrl?: string | null;
@@ -495,6 +501,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             state={state}
             characters={visibleCharacters()}
             slots={slotVariants()}
+            pieceCategories={props.pieceCategories}
             cache={cache}
             characterById={characterById}
             onAdd={addCharacter}
@@ -580,6 +587,7 @@ export {
 export type { PosterConfig } from "@memoryline/types";
 export type {
   CadreDTO,
+  PieceCategoryDTO,
   CharacterDTO,
   VariantDTO,
   SlotsDTO,

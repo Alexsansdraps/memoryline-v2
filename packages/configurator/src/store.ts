@@ -48,6 +48,20 @@ export interface VariantDTO {
   /** Zones de couleur par défaut : { st0: "#hex", … } ou null. */
   colorZones: Record<string, string> | null;
   position: number;
+  /** Catégorie de la pièce (« Casquettes »…) : elle porte le nuancier. */
+  pieceCategoryId?: number | null;
+}
+
+/**
+ * Catégorie de pièces telle que le back-office la définit, avec les couleurs
+ * proposées au client pour les pièces qu'elle contient.
+ */
+export interface PieceCategoryDTO {
+  id: number;
+  slug: string;
+  name: string;
+  slot: string;
+  colors: string[];
 }
 
 /** Un personnage = SVG de base pré-composé + ses zones de couleur par défaut. */
@@ -508,11 +522,35 @@ export const HAIR_TONES = [
   rgb(36, 34, 44),
 ] as const;
 
-/** Palette de presets pour un slot donné. */
+/**
+ * Nuancier de repli d'un emplacement — celui qui vivait en dur dans le code
+ * avant que les catégories de pièces portent leurs propres couleurs. Ne sert
+ * plus qu'aux pièces sans catégorie, ou dont la catégorie n'a aucune couleur.
+ */
 export function presetPaletteForSlot(slot: Slot | string): readonly string[] {
   if (slot === "hair") return HAIR_TONES;
   if (slot === "pants") return PANTS_TONES;
   return CLOTHES_TONES;
+}
+
+/**
+ * Nuancier d'une pièce : celui de sa catégorie, sinon celui de l'emplacement.
+ *
+ * `libre` dit si le client peut aussi saisir une couleur hors nuancier : oui
+ * seulement en repli. Une catégorie paramétrée au back-office ferme la liste —
+ * c'est tout l'intérêt de la paramétrer.
+ */
+export function paletteForVariant(
+  categories: readonly PieceCategoryDTO[] | undefined,
+  variant: VariantDTO | undefined,
+  slot: Slot | string,
+): { couleurs: readonly string[]; libre: boolean } {
+  const cat = variant?.pieceCategoryId
+    ? categories?.find((c) => c.id === variant.pieceCategoryId)
+    : undefined;
+  if (cat && cat.colors.length > 0)
+    return { couleurs: cat.colors, libre: false };
+  return { couleurs: presetPaletteForSlot(slot), libre: true };
 }
 
 /**

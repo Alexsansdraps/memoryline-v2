@@ -7,6 +7,7 @@ import type {
 import type {
   CadreDTO,
   CharacterDTO,
+  PieceCategoryDTO,
   SlotsDTO,
 } from "@memoryline/configurator";
 
@@ -184,6 +185,8 @@ async function browserSend<T>(
 export interface CharacterLibrary {
   characters: CharacterDTO[];
   slots: SlotsDTO;
+  /** Catégories de pièces et leurs nuanciers, définis au back-office. */
+  pieceCategories?: PieceCategoryDTO[];
 }
 
 /** Client API navigateur (configurateur, panier, commande). */

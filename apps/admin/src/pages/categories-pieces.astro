@@ -1,0 +1,327 @@
+---
+import { url } from "../lib/url.ts";
+import Admin from "../layouts/Admin.astro";
+import { adminApi, type CategoriePiece } from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+const SLOTS = [
+  { value: "clothes", label: "Vêtements" },
+  { value: "pants", label: "Pantalon" },
+  { value: "hair", label: "Coupes" },
+  { value: "accessory", label: "Accessoires" },
+];
+const nomSlot = (v: string) => SLOTS.find((s) => s.value === v)?.label ?? v;
+
+/** « #fff, #B8551D … » ou une couleur par ligne -> liste propre. */
+function couleursDepuis(brut: FormDataEntryValue | null): string[] {
+  return String(brut ?? "")
+    .split(/[\s,;]+/)
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .map((c) => (c.startsWith("#") ? c : `#${c}`))
+    .map((c) =>
+      // #abc -> #aabbcc, pour que le configurateur retrouve la pastille.
+      /^#[0-9a-fA-F]{3}$/.test(c)
+        ? "#" + c.slice(1).split("").map((x) => x + x).join("")
+        : c,
+    )
+    .map((c) => c.toUpperCase())
+    .filter((c) => /^#[0-9A-F]{6}$/.test(c));
+}
+
+let flash: string | null = null;
+let flashErreur = false;
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const action = f.get("_action");
+  try {
+    if (action === "supprimer") {
+      await api.deletePieceCategory(Number(f.get("id")));
+      flash =
+        "Catégorie supprimée. Ses pièces reprennent le nuancier de leur emplacement.";
+    } else {
+      const cat = await api.upsertPieceCategory({
+        id: f.get("id") ? Number(f.get("id")) : undefined,
+        name: String(f.get("name") || ""),
+        slot: String(f.get("slot") || "accessory"),
+        colors: couleursDepuis(f.get("colors")),
+        active: f.get("active") === "on",
+        position: Number(f.get("position") || 0),
+      });
+      flash = `Catégorie « ${cat.name} » enregistrée.`;
+    }
+  } catch (e) {
+    flash = "Erreur : " + String(e);
+    flashErreur = true;
+  }
+}
+
+let categories: CategoriePiece[] = [];
+let error: string | null = null;
+try {
+  categories = await api.pieceCategories();
+} catch (e) {
+  error = String(e);
+}
+---
+
+<Admin title="Catégories de pièces">
+  {flash && (
+    <p
+      class={`mb-4 text-sm rounded px-3 py-2 border ${
+        flashErreur ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+  {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
+
+  <p class="mb-4 text-sm text-bo-muted max-w-3xl">
+    Les pièces (vêtements, pantalons, coupes, accessoires) se rangent en
+    catégories — « Casquettes », « Robes », « Lunettes »… — et chaque catégorie
+    porte <strong>ses couleurs</strong> : celles que le client peut choisir pour
+    les pièces qu'elle contient. Une catégorie sans couleur laisse le nuancier
+    de l'emplacement et la saisie libre.
+  </p>
+  <p class="mb-6 text-sm text-bo-muted max-w-3xl">
+    Le rangement des pièces dans leurs catégories se fait sur
+    <a class="underline" href={url("/personnages")}> Personnages</a>, dans la
+    bibliothèque de pièces.
+  </p>
+
+  <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-bo-bg text-left">
+        <tr>
+          <th class="px-4 py-2">Catégorie</th>
+          <th class="px-2 py-2 w-10"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {categories.map((c) => (
+          <tr class="border-t border-bo-border align-top">
+            <td class="px-4 py-3">
+              <form method="POST" class="js-cat flex flex-wrap items-end gap-3">
+                <input type="hidden" name="id" value={c.id} />
+                <label class="block">
+                  <span class="text-bo-muted text-xs">Nom</span>
+                  <input
+                    name="name"
+                    value={c.name}
+                    required
+                    class="mt-1 block w-44 border border-bo-border rounded px-2 py-1"
+                  />
+                </label>
+                <label class="block">
+                  <span class="text-bo-muted text-xs">Emplacement</span>
+                  <select
+                    name="slot"
+                    class="mt-1 block border border-bo-border rounded px-2 py-1"
+                  >
+                    {SLOTS.map((s) => (
+                      <option value={s.value} selected={c.slot === s.value}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label class="block">
+                  <span class="text-bo-muted text-xs">Ordre</span>
+                  <input
+                    name="position"
+                    type="number"
+                    value={c.position}
+                    class="mt-1 block w-16 border border-bo-border rounded px-2 py-1"
+                  />
+                </label>
+                <label class="flex items-center gap-1 pb-1.5">
+                  <input type="checkbox" name="active" checked={c.active} />
+                  <span>Proposée</span>
+                </label>
+                <button class="rounded bg-bo-accent text-white px-3 py-1.5">
+                  Enregistrer
+                </button>
+
+                {/* Nuancier : pastilles cliquables + ajout par sélecteur.
+                    La liste part dans un champ texte caché, une couleur par
+                    ligne. */}
+                <div class="basis-full">
+                  <span class="text-bo-muted text-xs">
+                    Couleurs proposées ({c.colors.length}) — cliquez une
+                    pastille pour la retirer
+                  </span>
+                  <div class="js-pastilles mt-1 flex flex-wrap items-center gap-2">
+                    {c.colors.map((hex) => (
+                      <button
+                        type="button"
+                        class="js-pastille h-7 w-7 rounded-full border border-bo-border"
+                        style={`background:${hex}`}
+                        title={`${hex} — retirer`}
+                        data-hex={hex}
+                      />
+                    ))}
+                    <input
+                      type="color"
+                      class="js-ajout h-7 w-9 border border-bo-border rounded cursor-pointer"
+                      title="Ajouter une couleur"
+                      value="#B8551D"
+                    />
+                    <button
+                      type="button"
+                      class="js-ajouter rounded border border-bo-border px-2 py-1 text-xs"
+                    >
+                      + Ajouter
+                    </button>
+                  </div>
+                  <textarea name="colors" class="js-liste hidden">{c.colors.join("\n")}</textarea>
+                </div>
+                <p class="basis-full text-xs text-bo-muted">
+                  {c.pieces ?? 0} pièce{(c.pieces ?? 0) > 1 ? "s" : ""} —
+                  identifiant <code>{c.slug}</code>.
+                </p>
+              </form>
+            </td>
+            <td class="px-2 py-3 text-right">
+              <form method="POST" class="js-retirer inline" data-nom={c.name}>
+                <input type="hidden" name="_action" value="supprimer" />
+                <input type="hidden" name="id" value={c.id} />
+                <button
+                  class="rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-red-300 hover:text-red-700"
+                  title={`Supprimer « ${c.name} »`}
+                  aria-label={`Supprimer ${c.name}`}
+                >
+                  ✕
+                </button>
+              </form>
+            </td>
+          </tr>
+        ))}
+        {categories.length === 0 && !error && (
+          <tr>
+            <td class="px-4 py-6 text-bo-muted" colspan="2">
+              Aucune catégorie de pièces.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </section>
+
+  <details class="bg-bo-surface border border-bo-border rounded-lg">
+    <summary class="cursor-pointer px-5 py-3 font-semibold select-none">
+      <span class="mr-1 text-bo-accent">+</span> Ajouter une catégorie
+    </summary>
+    <form method="POST" class="js-cat flex flex-wrap items-end gap-3 px-5 pb-5 text-sm">
+      <label class="block">
+        <span class="text-bo-muted">Nom</span>
+        <input
+          name="name"
+          required
+          placeholder="Casquettes"
+          class="mt-1 block w-44 border border-bo-border rounded px-3 py-2"
+        />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Emplacement</span>
+        <select
+          name="slot"
+          class="mt-1 block border border-bo-border rounded px-3 py-2"
+        >
+          {SLOTS.map((s) => <option value={s.value}>{s.label}</option>)}
+        </select>
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Ordre</span>
+        <input
+          name="position"
+          type="number"
+          value={categories.length}
+          class="mt-1 block w-20 border border-bo-border rounded px-3 py-2"
+        />
+      </label>
+      <label class="flex items-center gap-2 pb-2">
+        <input type="checkbox" name="active" checked />
+        <span>Proposée</span>
+      </label>
+      <div class="basis-full">
+        <span class="text-bo-muted">Couleurs proposées</span>
+        <div class="js-pastilles mt-1 flex flex-wrap items-center gap-2">
+          <input
+            type="color"
+            class="js-ajout h-8 w-10 border border-bo-border rounded cursor-pointer"
+            value="#B8551D"
+          />
+          <button
+            type="button"
+            class="js-ajouter rounded border border-bo-border px-2 py-1 text-xs"
+          >
+            + Ajouter
+          </button>
+        </div>
+        <textarea name="colors" class="js-liste hidden"></textarea>
+      </div>
+      <button class="rounded bg-bo-accent text-white px-4 py-2">Créer</button>
+    </form>
+  </details>
+
+  <script is:inline>
+    // Un nuancier se compose à la souris : une pastille par couleur, un
+    // sélecteur pour en ajouter, un clic sur une pastille pour la retirer.
+    // Le formulaire n'envoie qu'une liste texte — c'est lisible et ça passe
+    // sans JavaScript si besoin.
+    for (const form of document.querySelectorAll("form.js-cat")) {
+      const boite = form.querySelector(".js-pastilles");
+      const liste = form.querySelector(".js-liste");
+      const ajout = form.querySelector(".js-ajout");
+      const bouton = form.querySelector(".js-ajouter");
+      if (!boite || !liste) continue;
+
+      function synchroniser() {
+        liste.value = [...boite.querySelectorAll(".js-pastille")]
+          .map((p) => p.getAttribute("data-hex"))
+          .join("\n");
+      }
+
+      function pastille(hex) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "js-pastille h-7 w-7 rounded-full border border-bo-border";
+        b.style.background = hex;
+        b.title = hex + " — retirer";
+        b.setAttribute("data-hex", hex);
+        boite.insertBefore(b, ajout);
+      }
+
+      boite.addEventListener("click", (e) => {
+        const p = e.target.closest(".js-pastille");
+        if (!p) return;
+        p.remove();
+        synchroniser();
+      });
+
+      bouton?.addEventListener("click", () => {
+        const hex = (ajout.value || "").toUpperCase();
+        if (!/^#[0-9A-F]{6}$/.test(hex)) return;
+        if (boite.querySelector(`.js-pastille[data-hex="${hex}"]`)) return;
+        pastille(hex);
+        synchroniser();
+      });
+
+      synchroniser();
+    }
+
+    document.querySelectorAll("form.js-retirer").forEach((f) => {
+      f.addEventListener("submit", (e) => {
+        const nom = f.getAttribute("data-nom") || "cette catégorie";
+        if (
+          !confirm(
+            `Supprimer « ${nom} » ? Ses pièces reprendront le nuancier de leur emplacement.`,
+          )
+        )
+          e.preventDefault();
+      });
+    });
+  </script>
+</Admin>

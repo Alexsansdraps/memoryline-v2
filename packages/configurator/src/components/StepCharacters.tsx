@@ -6,6 +6,7 @@ import type { MessagesConfigurateur } from "../messages";
 import type {
   CharacterDTO,
   ConfiguratorState,
+  PieceCategoryDTO,
   Slot,
   SlotVariants,
   SvgCache,
@@ -21,6 +22,7 @@ export function StepCharacters(props: {
   state: ConfiguratorState;
   characters: CharacterDTO[];
   slots: SlotVariants;
+  pieceCategories?: PieceCategoryDTO[];
   cache: SvgCache;
   characterById: (id: string | number) => CharacterDTO | undefined;
   onAdd: () => void;
@@ -121,6 +123,7 @@ export function StepCharacters(props: {
             base={props.characterById(char().characterId)}
             characters={props.characters}
             slots={props.slots}
+            pieceCategories={props.pieceCategories}
             cache={props.cache}
             onSetAsset={(slot, variantId) =>
               props.onSetAsset(editing()!, slot, variantId)

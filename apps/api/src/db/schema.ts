@@ -295,6 +295,37 @@ export const characterTypes = pgTable(
   ],
 );
 
+/**
+ * Catégorie de PIÈCES — « Casquettes », « Robes », « Lunettes »…
+ *
+ * Deux besoins d'un coup :
+ *  - ranger les pièces plus finement que les quatre emplacements, pour que le
+ *    client s'y retrouve quand la garde-robe s'étoffe ;
+ *  - donner à chaque famille SES couleurs. Les nuanciers vivaient en dur dans
+ *    le code du configurateur (un pour les vêtements, un pour les pantalons,
+ *    un pour les cheveux) : ajouter une teinte demandait un développeur, et
+ *    toutes les pièces d'un emplacement partageaient forcément la même liste.
+ */
+export const pieceCategories = pgTable(
+  "piece_category",
+  {
+    id: serial("id").primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    /** Emplacement concerné (clothes | pants | hair | accessory). */
+    slot: text("slot").notNull(),
+    /**
+     * Couleurs proposées au client pour les pièces de cette catégorie, dans
+     * l'ordre d'affichage : ["#FFFFFF", "#B8551D", …]. Vide ou absent = on
+     * retombe sur le nuancier de l'emplacement.
+     */
+    colors: jsonb("colors").$type<string[]>(),
+    active: boolean("active").notNull().default(true),
+    position: integer("position").notNull().default(0),
+  },
+  (t) => [uniqueIndex("piece_category_slug_uniq").on(t.slug)],
+);
+
 export const assets = pgTable(
   "asset",
   {
@@ -306,7 +337,15 @@ export const assets = pgTable(
     slot: text("slot").notNull(), // 'hair' | 'clothes' | 'pants' | 'head' …
     name: text("name"),
     svgUrl: text("svg_url").notNull(),
-    view: text("view"), // 'front' | 'back'
+    view: text("view"), // slug du type d'affiche
+    /**
+     * Catégorie de la pièce (« Casquettes »…). Elle porte le nuancier
+     * proposé au client. Null = pièce non rangée : nuancier de l'emplacement.
+     */
+    pieceCategoryId: integer("piece_category_id").references(
+      () => pieceCategories.id,
+      { onDelete: "set null" },
+    ),
     /**
      * Zones de couleur recolorables (§18.1 D), extraites des classes `.stN`
      * du SVG : { "st0": "#BA6821", "st1": "#206FE2" } = couleur par défaut de

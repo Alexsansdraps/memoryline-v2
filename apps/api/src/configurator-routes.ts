@@ -14,6 +14,7 @@ import type { Hono } from "hono";
 import {
   and,
   asc,
+  count,
   desc,
   eq,
   inArray,
@@ -385,10 +386,27 @@ export function mountConfiguratorRoutes(app: Hono) {
         view,
         colorZones: a.colorZones,
         position: a.position,
+        // Catégorie de la pièce : c'est elle qui porte le nuancier proposé.
+        pieceCategoryId: a.pieceCategoryId,
       });
     }
 
+    // Catégories de pièces + leurs nuanciers : le configurateur n'a plus de
+    // couleurs en dur, il lit celles-ci.
+    const categoriesPieces = await db
+      .select()
+      .from(schema.pieceCategories)
+      .where(eq(schema.pieceCategories.active, true))
+      .orderBy(asc(schema.pieceCategories.position));
+
     return c.json({
+      pieceCategories: categoriesPieces.map((p) => ({
+        id: p.id,
+        slug: p.slug,
+        name: p.name,
+        slot: p.slot,
+        colors: p.colors ?? [],
+      })),
       characters: types.map(({ t, categoryName }) => ({
         id: t.id,
         slug: t.slug,
@@ -1280,6 +1298,111 @@ export function mountConfiguratorRoutes(app: Hono) {
     return c.json({ ok: true, count: list.length });
   });
 
+  /** Catégories de pièces, toutes, avec le nombre de pièces rangées dedans. */
+  app.get("/admin/piece-categories", async (c) => {
+    const cats = await db
+      .select()
+      .from(schema.pieceCategories)
+      .orderBy(asc(schema.pieceCategories.position));
+    const comptes = await Promise.all(
+      cats.map(async (cat) => {
+        const [n] = await db
+          .select({ n: count() })
+          .from(schema.assets)
+          .where(eq(schema.assets.pieceCategoryId, cat.id));
+        return { ...cat, colors: cat.colors ?? [], pieces: Number(n?.n ?? 0) };
+      }),
+    );
+    return c.json(comptes);
+  });
+
+  /**
+   * Crée ou modifie une catégorie de pièces et son nuancier.
+   *
+   * Les couleurs sont normalisées en hexadécimal majuscule : le configurateur
+   * compare la couleur choisie à celles proposées pour cocher la bonne
+   * pastille, une casse différente lui ferait rater la comparaison.
+   */
+  app.post("/admin/piece-categories", async (c) => {
+    const b = await c.req.json();
+    const name = String(b.name ?? "").trim();
+    if (!name) return c.json({ error: "nom requis" }, 400);
+    const SLOTS = ["clothes", "pants", "hair", "accessory"];
+    const slot = SLOTS.includes(String(b.slot)) ? String(b.slot) : "accessory";
+    const colors = (Array.isArray(b.colors) ? b.colors : [])
+      .map((v: unknown) => String(v).trim().toUpperCase())
+      .filter((v: string) => /^#[0-9A-F]{6}$/.test(v));
+    const valeurs = {
+      name,
+      slot,
+      colors,
+      active: b.active !== false,
+      position: Number(b.position ?? 0),
+    };
+    if (b.id) {
+      const [row] = await db
+        .update(schema.pieceCategories)
+        .set(valeurs)
+        .where(eq(schema.pieceCategories.id, Number(b.id)))
+        .returning();
+      if (!row) return c.notFound();
+      return c.json(row);
+    }
+    const base =
+      name
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "") || "categorie";
+    const pris = new Set(
+      (
+        await db
+          .select({ slug: schema.pieceCategories.slug })
+          .from(schema.pieceCategories)
+      ).map((r) => r.slug),
+    );
+    let slug = base;
+    for (let i = 2; pris.has(slug); i++) slug = `${base}-${i}`;
+    const [row] = await db
+      .insert(schema.pieceCategories)
+      .values({ ...valeurs, slug })
+      .returning();
+    return c.json(row);
+  });
+
+  /**
+   * Supprime une catégorie de pièces. Les pièces qui s'y trouvaient ne sont
+   * pas touchées : elles se retrouvent sans catégorie et reprennent le
+   * nuancier de leur emplacement (`on delete set null`).
+   */
+  app.delete("/admin/piece-categories/:id", async (c) => {
+    const [row] = await db
+      .delete(schema.pieceCategories)
+      .where(eq(schema.pieceCategories.id, Number(c.req.param("id"))))
+      .returning();
+    if (!row) return c.notFound();
+    return c.json({ ok: true });
+  });
+
+  /** Range un lot de pièces dans une catégorie (ou les en sort). */
+  app.post("/admin/assets/category", async (c) => {
+    const b = await c.req.json();
+    const ids = Array.isArray(b.ids)
+      ? b.ids.map(Number).filter(Number.isFinite)
+      : [];
+    if (!ids.length) return c.json({ error: "aucune pièce" }, 400);
+    const categoryId =
+      b.pieceCategoryId == null || b.pieceCategoryId === ""
+        ? null
+        : Number(b.pieceCategoryId);
+    await db
+      .update(schema.assets)
+      .set({ pieceCategoryId: categoryId })
+      .where(inArray(schema.assets.id, ids));
+    return c.json({ ok: true, count: ids.length });
+  });
+
   /** Édite les couleurs d'un asset (accessoires inclus — §18.1 D). */
   app.post("/admin/assets/:id/colors", async (c) => {
     const id = Number(c.req.param("id"));
@@ -1355,6 +1478,14 @@ export function mountConfiguratorRoutes(app: Hono) {
       colorZones: Object.keys(cleanZones).length ? cleanZones : null,
       position: Number(b.position ?? 0),
       characterTypeId: b.characterTypeId ? Number(b.characterTypeId) : null,
+      ...(b.pieceCategoryId !== undefined
+        ? {
+            pieceCategoryId:
+              b.pieceCategoryId == null || b.pieceCategoryId === ""
+                ? null
+                : Number(b.pieceCategoryId),
+          }
+        : {}),
     };
     if (!values.svgUrl) return c.json({ error: "svgUrl requis" }, 400);
     if (b.id) {

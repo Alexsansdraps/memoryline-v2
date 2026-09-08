@@ -71,6 +71,7 @@ export default function ConfiguratorIsland(
     return {
       characters: library.characters,
       slots: library.slots,
+      pieceCategories: library.pieceCategories ?? [],
       backgrounds,
       cadres,
     };
@@ -199,6 +200,7 @@ export default function ConfiguratorIsland(
               }}
               backgrounds={d().backgrounds}
               cadres={d().cadres}
+              pieceCategories={d().pieceCategories}
               characters={d().characters as never}
               slots={d().slots as never}
               prices={props.prices}

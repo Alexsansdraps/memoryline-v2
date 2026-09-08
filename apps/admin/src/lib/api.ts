@@ -168,6 +168,24 @@ export interface Asset {
   position: number;
   /** Non null = pièce archivée : masquée du configurateur, jamais supprimée. */
   archivedAt?: string | null;
+  /** Catégorie de pièces (« Casquettes »…), qui porte le nuancier. */
+  pieceCategoryId?: number | null;
+}
+
+/**
+ * Catégorie de pièces : un rangement plus fin que l'emplacement, et surtout
+ * le nuancier proposé au client pour les pièces qu'elle contient.
+ */
+export interface CategoriePiece {
+  id: number;
+  slug: string;
+  name: string;
+  slot: string;
+  colors: string[];
+  active: boolean;
+  position: number;
+  /** Nombre de pièces rangées dedans. */
+  pieces?: number;
 }
 
 /** Un visuel (arrière-plan) disponible pour un produit. */
@@ -241,6 +259,31 @@ export function adminApi(request?: Request) {
     }) => req<TypeAffiche>("POST", "/admin/views", data, cookie),
     deleteView: (id: number) =>
       req<{ ok: boolean }>("DELETE", `/admin/views/${id}`, undefined, cookie),
+    pieceCategories: () =>
+      req<CategoriePiece[]>("GET", "/admin/piece-categories", undefined, cookie),
+    upsertPieceCategory: (data: {
+      id?: number;
+      name: string;
+      slot: string;
+      colors: string[];
+      active?: boolean;
+      position?: number;
+    }) => req<CategoriePiece>("POST", "/admin/piece-categories", data, cookie),
+    deletePieceCategory: (id: number) =>
+      req<{ ok: boolean }>(
+        "DELETE",
+        `/admin/piece-categories/${id}`,
+        undefined,
+        cookie,
+      ),
+    /** Range un lot de pièces dans une catégorie (null = les en sort). */
+    setAssetsCategory: (ids: number[], pieceCategoryId: number | null) =>
+      req<{ ok: boolean; count: number }>(
+        "POST",
+        "/admin/assets/category",
+        { ids, pieceCategoryId },
+        cookie,
+      ),
     categories: () =>
       req<CharacterCategory[]>("GET", "/admin/categories", undefined, cookie),
     upsertCategory: (data: { id?: number; name: string; position?: number }) =>
