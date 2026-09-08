@@ -1,0 +1,790 @@
+---
+import { url } from "../../lib/url.ts";
+import Admin from "../../layouts/Admin.astro";
+import {
+  adminApi,
+  type Asset,
+  type CharacterCategory,
+  type CharacterType,
+  type TypeAffiche,
+} from "../../lib/api.ts";
+
+const PUBLIC_API_URL =
+  import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
+
+const api = adminApi(Astro.request);
+const id = Number(Astro.params.id);
+
+/** URL absolue d'un SVG stocké sous « /assets/… ». */
+function svgSrc(u: string | null | undefined): string {
+  if (!u) return "";
+  return u.startsWith("http") ? u : `${PUBLIC_API_URL}${u}`;
+}
+
+const SLOTS = [
+  { value: "clothes", label: "Vêtements" },
+  { value: "pants", label: "Pantalon" },
+  { value: "hair", label: "Coupes" },
+  { value: "accessory", label: "Accessoires" },
+];
+
+let flash: string | null = null;
+let erreur: string | null = null;
+// Arrivée depuis la création : on enchaîne sur les pièces et leur calage.
+if (Astro.url.searchParams.get("cree"))
+  flash =
+    "Personnage créé. Cochez ses pièces ci-dessous, puis calez-les à la souris.";
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const action = f.get("_action");
+  try {
+    if (action === "archive") {
+      await api.archiveCharacter(id, f.get("archived") === "true");
+      return Astro.redirect(url("/personnages?archive=1"), 303);
+    } else if (action === "pieces-autorisees") {
+      const parSlot: Record<string, number[]> = {};
+      for (const s of SLOTS) {
+        // Un témoin par emplacement : sans lui, tout décocher n'enverrait
+        // aucun champ et le serveur croirait l'emplacement inchangé.
+        if (f.get(`present-${s.value}`) === null) continue;
+        parSlot[s.value] = f
+          .getAll(`${s.value}[]`)
+          .map(Number)
+          .filter(Number.isFinite);
+      }
+      await api.setSlotVariants(id, parSlot);
+      flash = "Pièces autorisées enregistrées.";
+    } else {
+      await api.upsertCharacter({
+        id,
+        name: String(f.get("name") || "Personnage"),
+        categoryId: f.get("categoryId") ? Number(f.get("categoryId")) : null,
+        orientation: String(f.get("orientation") || "front"),
+        position: Number(f.get("position") || 0),
+        ...(f.get("bottomPct")
+          ? { bottomPct: Number(String(f.get("bottomPct")).replace(",", ".")) }
+          : {}),
+      });
+      flash = "Personnage enregistré.";
+    }
+  } catch (e) {
+    erreur = "Erreur : " + String(e);
+  }
+}
+
+let perso: CharacterType | undefined;
+let assets: Asset[] = [];
+let categories: CharacterCategory[] = [];
+let vues: TypeAffiche[] = [];
+try {
+  const data = await api.characters();
+  perso = (data.types ?? []).find((t) => t.id === id);
+  assets = await api.assets();
+  categories = await api.categories();
+  vues = await api.views();
+} catch (e) {
+  if (!erreur) erreur = String(e);
+}
+
+const vueDuPerso = perso?.orientation ?? vues[0]?.slug ?? "front";
+
+/**
+ * Pièces génériques du type d'affiche de CE personnage, par emplacement.
+ * Les positions ne valent que dans un type donné : mélanger les types ferait
+ * cocher des pièces qui n'existent pas pour lui.
+ */
+const piecesParSlot = new Map<string, Asset[]>(SLOTS.map((s) => [s.value, []]));
+for (const a of assets) {
+  if (a.characterTypeId != null || a.archivedAt) continue;
+  if ((a.view ?? "front") !== vueDuPerso) continue;
+  piecesParSlot.get(a.slot)?.push(a);
+}
+for (const liste of piecesParSlot.values())
+  liste.sort((a, b) => a.position - b.position);
+
+/**
+ * Positions autorisées pour un emplacement. `null` ne veut dire « tout » que
+ * si le personnage n'a AUCUN réglage : dès qu'il en a un, un emplacement
+ * absent est traité comme vide par le site.
+ */
+function autorisees(slot: string): number[] | null {
+  const sv = perso?.slotVariants;
+  if (!sv || typeof sv !== "object") return null;
+  const v = sv[slot as "clothes"];
+  return Array.isArray(v) ? v : [];
+}
+
+/** Pièces réellement proposées pour ce personnage — celles à caler. */
+const piecesACaler = SLOTS.flatMap((s) => {
+  const permis = autorisees(s.value);
+  return (piecesParSlot.get(s.value) ?? [])
+    .filter((a) => permis === null || permis.includes(a.position))
+    .map((a) => ({
+      slot: s.value,
+      slotLabel: s.label,
+      position: a.position,
+      name: a.name,
+      url: svgSrc(a.svgUrl),
+    }));
+});
+---
+
+<Admin title={perso?.name ?? "Personnage"}>
+  <p class="mb-4">
+    <a href={url("/personnages")} class="text-bo-accent hover:underline text-sm">
+      ← Retour aux personnages
+    </a>
+  </p>
+
+  {flash && (
+    <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">
+      {flash}
+    </p>
+  )}
+  {erreur && (
+    <p class="mb-4 text-sm rounded bg-red-50 border border-red-200 px-3 py-2">
+      {erreur}
+    </p>
+  )}
+
+  {!perso ? (
+    <p class="text-bo-muted text-sm">Personnage introuvable.</p>
+  ) : (
+    <div class="space-y-6">
+      {/* ---------------------------------------------------------------- */}
+      {/* Identité                                                          */}
+      {/* ---------------------------------------------------------------- */}
+      <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+        <h3 class="font-semibold mb-4">Le personnage</h3>
+        <form method="POST" class="grid sm:grid-cols-4 gap-4 text-sm items-end">
+          <label class="block">
+            <span class="text-bo-muted">Nom</span>
+            <input
+              name="name"
+              value={perso.name}
+              class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+            />
+          </label>
+          <label class="block">
+            <span class="text-bo-muted">Catégorie</span>
+            <select
+              name="categoryId"
+              class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+            >
+              <option value="" selected={perso.categoryId == null}>
+                Sans catégorie
+              </option>
+              {categories.map((c) => (
+                <option
+                  value={String(c.id)}
+                  selected={perso!.categoryId === c.id}
+                >
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label class="block">
+            <span class="text-bo-muted">Type d'affiche</span>
+            <select
+              name="orientation"
+              class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+              title="Angle sous lequel ce personnage est dessiné. Il ne portera que des pièces du même type."
+            >
+              {vues.map((v) => (
+                <option value={v.slug} selected={vueDuPerso === v.slug}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label class="block">
+            <span class="text-bo-muted">Ordre</span>
+            <input
+              name="position"
+              type="number"
+              value={perso.position}
+              class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+            />
+          </label>
+          <label class="block">
+            <span class="text-bo-muted">Calage au sol</span>
+            <input
+              name="bottomPct"
+              type="number"
+              step="0.005"
+              min="0.05"
+              max="1"
+              value={perso.bottomPct ?? 1}
+              class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+            />
+            <span class="mt-1 block text-xs text-bo-muted">
+              Il flotte au-dessus du muret : baissez. Il s'enfonce : montez.
+            </span>
+          </label>
+          <div class="sm:col-span-4">
+            <button class="rounded bg-bo-accent text-white px-4 py-2">
+              Enregistrer
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Dessin de base                                                    */}
+      {/* ---------------------------------------------------------------- */}
+      <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+        <h3 class="font-semibold mb-4">Dessin</h3>
+        <div class="js-base flex flex-wrap items-start gap-4 text-sm">
+          <img
+            class="js-base-preview h-32 w-20 object-contain border border-bo-border rounded bg-white"
+            src={svgSrc(perso.baseSvgUrl)}
+            alt=""
+            style={perso.baseSvgUrl ? "" : "visibility:hidden"}
+          />
+          <div class="flex-1 min-w-[280px]">
+            <span class="text-bo-muted">SVG du personnage</span>
+            <div class="mt-1 flex items-center gap-2">
+              <input
+                class="js-base-url flex-1 border border-bo-border rounded px-3 py-2 font-mono text-xs"
+                value={perso.baseSvgUrl ?? ""}
+                placeholder="/assets/Male_2.svg"
+              />
+              <button
+                type="button"
+                class="js-base-upload rounded border border-bo-border px-3 py-2 text-xs whitespace-nowrap"
+              >
+                Remplacer…
+              </button>
+            </div>
+            <div class="js-base-zones mt-3 flex flex-wrap gap-2">
+              {Object.entries(perso.baseColorZones ?? {}).map(([zone, hex]) => (
+                <label class="flex items-center gap-1 text-xs">
+                  <input
+                    type="color"
+                    value={hex}
+                    data-zone={zone}
+                    class="h-7 w-7 border border-bo-border rounded cursor-pointer"
+                  />
+                  <span class="text-bo-muted">{zone}</span>
+                </label>
+              ))}
+            </div>
+            <div class="mt-3 flex items-center gap-2">
+              <input
+                class="js-base-newzone border border-bo-border rounded px-2 py-1 text-xs w-24"
+                placeholder="st0"
+              />
+              <button
+                type="button"
+                class="js-base-addzone rounded border border-bo-border px-2 py-1 text-xs"
+              >
+                + Zone
+              </button>
+              <button
+                type="button"
+                class="js-base-save rounded bg-bo-accent text-white px-3 py-1.5 text-xs"
+              >
+                Enregistrer le dessin
+              </button>
+              <span class="js-base-status text-xs"></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Pièces autorisées                                                 */}
+      {/* ---------------------------------------------------------------- */}
+      <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+        <h3 class="font-semibold mb-1">Pièces autorisées</h3>
+        <p class="text-xs text-bo-muted mb-4">
+          Décochez ce que ce personnage ne doit pas porter : la pièce disparaît
+          de son choix côté site, sans être supprimée pour les autres. Seules
+          les pièces du type « {vues.find((v) => v.slug === vueDuPerso)?.name ??
+            vueDuPerso} » sont proposées.
+        </p>
+        <form method="POST">
+          <input type="hidden" name="_action" value="pieces-autorisees" />
+          {SLOTS.map((s) => {
+            const liste = piecesParSlot.get(s.value) ?? [];
+            const permis = autorisees(s.value);
+            return (
+              <fieldset class="mb-4" data-slot={s.value}>
+                <input type="hidden" name={`present-${s.value}`} value="1" />
+                <legend class="text-xs font-medium mb-1">
+                  {s.label}
+                  <button
+                    type="button"
+                    class="js-tout ml-2 font-normal text-bo-muted underline hover:text-bo-accent"
+                  >
+                    tout
+                  </button>
+                  <button
+                    type="button"
+                    class="js-rien ml-2 font-normal text-bo-muted underline hover:text-bo-accent"
+                  >
+                    rien
+                  </button>
+                </legend>
+                {liste.length === 0 ? (
+                  <p class="text-xs text-bo-muted">
+                    Aucune pièce de ce type dans la bibliothèque.
+                  </p>
+                ) : (
+                  <div class="flex flex-wrap gap-2">
+                    {liste.map((a) => (
+                      <label
+                        class="flex w-20 cursor-pointer flex-col items-center gap-1 rounded border border-bo-border p-1 text-center hover:border-bo-accent"
+                        title={a.name}
+                      >
+                        <svg viewBox="0 0 500 1000" class="h-12 w-12 bg-white">
+                          <image
+                            href={svgSrc(a.svgUrl)}
+                            x="0"
+                            y="0"
+                            width="500"
+                            height="1000"
+                          />
+                        </svg>
+                        <span class="w-full truncate text-[10px] text-bo-muted">
+                          {a.name}
+                        </span>
+                        <input
+                          type="checkbox"
+                          name={`${s.value}[]`}
+                          value={a.position}
+                          checked={permis === null || permis.includes(a.position)}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </fieldset>
+            );
+          })}
+          <button class="rounded bg-bo-accent text-white px-4 py-2 text-sm">
+            Enregistrer les pièces
+          </button>
+        </form>
+      </section>
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Calage à la souris                                                */}
+      {/* ---------------------------------------------------------------- */}
+      <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+        <h3 class="font-semibold mb-1">Calage des pièces</h3>
+        <p class="text-xs text-bo-muted mb-4">
+          Attrapez la pièce et posez-la où il faut. La molette la
+          redimensionne. On valide, la suivante s'affiche — et le réglage vaut
+          à l'écran comme à l'impression.
+        </p>
+
+        <div class="js-calage" data-id={perso.id}>
+          <script
+            type="application/json"
+            class="js-calage-data"
+            set:html={JSON.stringify({
+              calage: perso.slotAdjust ?? {},
+              pieces: piecesACaler,
+            })}
+          />
+          <div class="flex flex-wrap gap-6">
+            <div
+              class="js-scene relative h-[420px] w-[210px] shrink-0 cursor-grab touch-none select-none rounded border border-bo-border bg-white"
+            >
+              <svg viewBox="0 0 500 1000" class="absolute inset-0 h-full w-full">
+                <image
+                  href={svgSrc(perso.baseSvgUrl)}
+                  x="0"
+                  y="0"
+                  width="500"
+                  height="1000"
+                />
+              </svg>
+              <svg
+                viewBox="0 0 500 1000"
+                class="js-piece absolute inset-0 h-full w-full"
+                style="transform-origin:50% 100%"
+              >
+                <image
+                  class="js-piece-image"
+                  x="0"
+                  y="0"
+                  width="500"
+                  height="1000"
+                />
+              </svg>
+            </div>
+
+            <div class="min-w-[280px] flex-1 text-sm">
+              <div class="js-titre font-medium"></div>
+              <div class="js-progres mb-3 text-xs text-bo-muted"></div>
+
+              <p class="mb-3 text-xs text-bo-muted">
+                Glisser = déplacer · molette = agrandir ou réduire ·
+                flèches du clavier = ajustement fin.
+              </p>
+              <div class="js-valeurs mb-4 font-mono text-xs text-bo-muted"></div>
+
+              <label class="mb-3 flex items-center gap-2 text-xs">
+                <input type="checkbox" class="js-tout-slot" />
+                <span>Appliquer à toutes les pièces de cet emplacement</span>
+              </label>
+
+              <div class="flex flex-wrap items-center gap-2 text-xs">
+                <button
+                  type="button"
+                  class="js-precedent rounded border border-bo-border px-2 py-1"
+                >
+                  Précédente
+                </button>
+                <button
+                  type="button"
+                  class="js-valider rounded bg-bo-accent px-3 py-1.5 text-white"
+                >
+                  Valider et suivante
+                </button>
+                <button
+                  type="button"
+                  class="js-passer rounded border border-bo-border px-2 py-1"
+                >
+                  Passer
+                </button>
+                <button
+                  type="button"
+                  class="js-reset text-bo-muted underline hover:text-bo-accent"
+                >
+                  remettre à zéro
+                </button>
+                <span class="js-statut text-bo-muted"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <form method="POST">
+        <input type="hidden" name="_action" value="archive" />
+        <input type="hidden" name="archived" value="true" />
+        <button class="text-xs text-bo-muted hover:text-bo-accent">
+          Archiver ce personnage
+        </button>
+      </form>
+    </div>
+  )}
+
+  <script is:inline define:vars={{ PUBLIC_API_URL, ID_PERSO: id }}>
+    // --- Pièces autorisées : raccourcis « tout » / « rien » ---------------
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest?.(".js-tout, .js-rien");
+      if (!btn) return;
+      const bloc = btn.closest("fieldset[data-slot]");
+      if (!bloc) return;
+      const coche = btn.classList.contains("js-tout");
+      bloc
+        .querySelectorAll('input[type="checkbox"]')
+        .forEach((c) => (c.checked = coche));
+    });
+
+    // --- Dessin de base : remplacer le SVG, relire ses zones --------------
+    const base = document.querySelector(".js-base");
+    if (base) {
+      const champ = base.querySelector(".js-base-url");
+      const apercu = base.querySelector(".js-base-preview");
+      const boiteZones = base.querySelector(".js-base-zones");
+      const statut = base.querySelector(".js-base-status");
+
+      function ajouterZone(zone, hex) {
+        if (boiteZones.querySelector(`input[data-zone="${zone}"]`)) return;
+        const label = document.createElement("label");
+        label.className = "flex items-center gap-1 text-xs";
+        const color = document.createElement("input");
+        color.type = "color";
+        color.value = hex || "#000000";
+        color.setAttribute("data-zone", zone);
+        color.className =
+          "h-7 w-7 border border-bo-border rounded cursor-pointer";
+        const span = document.createElement("span");
+        span.className = "text-bo-muted";
+        span.textContent = zone;
+        label.append(color, span);
+        boiteZones.appendChild(label);
+      }
+
+      base.querySelector(".js-base-addzone")?.addEventListener("click", () => {
+        const champZone = base.querySelector(".js-base-newzone");
+        const z = (champZone.value || "").trim();
+        if (!z) return;
+        ajouterZone(z, "#000000");
+        champZone.value = "";
+      });
+
+      base.querySelector(".js-base-upload")?.addEventListener("click", async (e) => {
+        const bouton = e.currentTarget;
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".svg,.png,.jpg,.jpeg,.webp";
+        input.addEventListener("change", async () => {
+          const file = input.files && input.files[0];
+          if (!file) return;
+          const avant = bouton.textContent;
+          bouton.textContent = "Envoi…";
+          bouton.disabled = true;
+          try {
+            const fd = new FormData();
+            fd.append("file", file);
+            const res = await fetch(`${PUBLIC_API_URL}/admin/uploads`, {
+              method: "POST",
+              body: fd,
+              credentials: "include",
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || res.status);
+            champ.value = data.url;
+            apercu.src = PUBLIC_API_URL + data.url;
+            apercu.style.visibility = "visible";
+            // Les zones du nouveau dessin remplacent les anciennes : garder
+            // celles d'avant donnerait des couleurs sans effet.
+            const info = await fetch(`${PUBLIC_API_URL}/admin/svg/analyse`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: data.url }),
+              credentials: "include",
+            }).then((r) => (r.ok ? r.json() : null));
+            if (info) {
+              boiteZones.innerHTML = "";
+              for (const [zone, hex] of Object.entries(info.colorZones || {}))
+                ajouterZone(zone, hex);
+            }
+            statut.textContent = "Dessin remplacé — pensez à enregistrer.";
+          } catch (err) {
+            alert("Téléversement impossible : " + err);
+          } finally {
+            bouton.textContent = avant;
+            bouton.disabled = false;
+          }
+        });
+        input.click();
+      });
+
+      base.querySelector(".js-base-save")?.addEventListener("click", async () => {
+        const zones = {};
+        boiteZones
+          .querySelectorAll('input[type="color"][data-zone]')
+          .forEach((i) => (zones[i.getAttribute("data-zone")] = i.value));
+        statut.textContent = "Enregistrement…";
+        try {
+          const res = await fetch(
+            `${PUBLIC_API_URL}/admin/characters/${ID_PERSO}/base`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                baseSvgUrl: champ.value.trim() || null,
+                baseColorZones: zones,
+              }),
+              credentials: "include",
+            },
+          );
+          if (!res.ok) throw new Error(res.status);
+          statut.textContent = "Enregistré.";
+        } catch (e) {
+          statut.textContent = "Échec : " + e;
+        }
+      });
+    }
+
+    // --- Calage à la souris ----------------------------------------------
+    // La scène affiche le cadre 500×1000 du personnage : un déplacement de
+    // N pixels vaut donc N / largeur (ou hauteur) de la scène, en pourcents —
+    // exactement l'unité enregistrée, et celle qu'appliquent le site et le PDF.
+    const boite = document.querySelector(".js-calage");
+    if (boite) {
+      const donnees = JSON.parse(
+        boite.querySelector(".js-calage-data")?.textContent || "{}",
+      );
+      const pieces = donnees.pieces || [];
+      const calage = donnees.calage || {};
+      const id = boite.getAttribute("data-id");
+
+      const scene = boite.querySelector(".js-scene");
+      const vue = boite.querySelector(".js-piece");
+      const image = boite.querySelector(".js-piece-image");
+      const titre = boite.querySelector(".js-titre");
+      const progres = boite.querySelector(".js-progres");
+      const valeurs = boite.querySelector(".js-valeurs");
+      const statut = boite.querySelector(".js-statut");
+      const toutSlot = boite.querySelector(".js-tout-slot");
+
+      let index = 0;
+      let etat = { dx: 0, dy: 0, scale: 1 };
+
+      function borne(v, min, max) {
+        return Math.min(max, Math.max(min, v));
+      }
+
+      function dessiner() {
+        vue.style.transform =
+          "translate(" + etat.dx + "%, " + etat.dy + "%) scale(" + etat.scale + ")";
+        valeurs.textContent =
+          "décalage " +
+          etat.dx.toFixed(1) +
+          " % / " +
+          etat.dy.toFixed(1) +
+          " % · taille " +
+          etat.scale.toFixed(2);
+      }
+
+      function afficher() {
+        if (pieces.length === 0) {
+          titre.textContent = "Aucune pièce cochée pour ce personnage.";
+          progres.textContent =
+            "Cochez d'abord ses pièces ci-dessus, puis enregistrez.";
+          image.removeAttribute("href");
+          valeurs.textContent = "";
+          return;
+        }
+        const p = pieces[index];
+        image.setAttribute("href", p.url);
+        titre.textContent = p.slotLabel + " — " + (p.name || "sans nom");
+        progres.textContent = index + 1 + " / " + pieces.length;
+        const c = calage[p.slot + ":" + p.position] || calage[p.slot] || null;
+        toutSlot.checked =
+          !calage[p.slot + ":" + p.position] && !!calage[p.slot];
+        etat = c
+          ? { dx: c.dx, dy: c.dy, scale: c.scale }
+          : { dx: 0, dy: 0, scale: 1 };
+        statut.textContent = "";
+        dessiner();
+      }
+
+      function avancer(pas) {
+        if (pieces.length === 0) return;
+        index = (index + pas + pieces.length) % pieces.length;
+        afficher();
+      }
+
+      // Glisser-déposer à la souris (et au doigt : pointer events).
+      let attrape = null;
+      scene.addEventListener("pointerdown", (e) => {
+        if (pieces.length === 0) return;
+        attrape = { x: e.clientX, y: e.clientY, dx: etat.dx, dy: etat.dy };
+        scene.setPointerCapture(e.pointerId);
+        scene.style.cursor = "grabbing";
+      });
+      scene.addEventListener("pointermove", (e) => {
+        if (!attrape) return;
+        const r = scene.getBoundingClientRect();
+        etat.dx = borne(
+          attrape.dx + ((e.clientX - attrape.x) / r.width) * 100,
+          -50,
+          50,
+        );
+        etat.dy = borne(
+          attrape.dy + ((e.clientY - attrape.y) / r.height) * 100,
+          -50,
+          50,
+        );
+        dessiner();
+      });
+      const lacher = (e) => {
+        if (!attrape) return;
+        attrape = null;
+        scene.style.cursor = "grab";
+        try {
+          scene.releasePointerCapture(e.pointerId);
+        } catch {}
+      };
+      scene.addEventListener("pointerup", lacher);
+      scene.addEventListener("pointercancel", lacher);
+
+      // Molette = taille. `passive: false` sinon le navigateur refuse qu'on
+      // empêche le défilement de la page sous le curseur.
+      scene.addEventListener(
+        "wheel",
+        (e) => {
+          if (pieces.length === 0) return;
+          e.preventDefault();
+          etat.scale = borne(
+            Number((etat.scale * (1 - e.deltaY * 0.0015)).toFixed(3)),
+            0.4,
+            2,
+          );
+          dessiner();
+        },
+        { passive: false },
+      );
+
+      // Clavier : l'ajustement au pixel près, quand la souris est trop
+      // grossière. La scène est focusable pour ça.
+      scene.tabIndex = 0;
+      scene.addEventListener("keydown", (e) => {
+        const pas = e.shiftKey ? 2 : 0.25;
+        if (e.key === "ArrowLeft") etat.dx = borne(etat.dx - pas, -50, 50);
+        else if (e.key === "ArrowRight") etat.dx = borne(etat.dx + pas, -50, 50);
+        else if (e.key === "ArrowUp") etat.dy = borne(etat.dy - pas, -50, 50);
+        else if (e.key === "ArrowDown") etat.dy = borne(etat.dy + pas, -50, 50);
+        else if (e.key === "+" || e.key === "=")
+          etat.scale = borne(etat.scale + 0.02, 0.4, 2);
+        else if (e.key === "-")
+          etat.scale = borne(etat.scale - 0.02, 0.4, 2);
+        else return;
+        e.preventDefault();
+        dessiner();
+      });
+
+      boite.querySelector(".js-reset")?.addEventListener("click", () => {
+        etat = { dx: 0, dy: 0, scale: 1 };
+        dessiner();
+      });
+      boite.querySelector(".js-passer")?.addEventListener("click", () => avancer(1));
+      boite
+        .querySelector(".js-precedent")
+        ?.addEventListener("click", () => avancer(-1));
+
+      boite.querySelector(".js-valider")?.addEventListener("click", async (e) => {
+        if (pieces.length === 0) return;
+        const bouton = e.currentTarget;
+        const p = pieces[index];
+        const valeur = {
+          dx: Number(etat.dx.toFixed(2)),
+          dy: Number(etat.dy.toFixed(2)),
+          scale: Number(etat.scale.toFixed(3)),
+        };
+        // « Tout l'emplacement » écrit sous la clé du slot ET neutralise le
+        // réglage propre à la pièce : sinon ce dernier gagnerait et le geste
+        // n'aurait aucun effet visible.
+        const corps = toutSlot.checked
+          ? { [p.slot]: valeur, [p.slot + ":" + p.position]: { dx: 0, dy: 0, scale: 1 } }
+          : { [p.slot + ":" + p.position]: valeur };
+        bouton.disabled = true;
+        statut.textContent = "Enregistrement…";
+        try {
+          const res = await fetch(
+            `${PUBLIC_API_URL}/admin/characters/${id}/slot-adjust`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(corps),
+              credentials: "include",
+            },
+          );
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || res.status);
+          for (const cle of Object.keys(calage)) delete calage[cle];
+          Object.assign(calage, data.slotAdjust || {});
+          statut.textContent = "Enregistré.";
+          avancer(1);
+        } catch (err) {
+          statut.textContent = "Échec : " + err;
+        } finally {
+          bouton.disabled = false;
+        }
+      });
+
+      afficher();
+    }
+  </script>
+</Admin>

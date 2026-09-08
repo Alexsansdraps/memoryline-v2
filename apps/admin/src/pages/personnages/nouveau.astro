@@ -32,9 +32,9 @@ if (Astro.request.method === "POST") {
         ? { bottomPct: Number(String(f.get("bottomPct")).replace(",", ".")) }
         : {}),
     });
-    // On revient à la liste, le personnage créé mis en avant : ses pièces
-    // autorisées et son calage se règlent sur sa carte.
-    return Astro.redirect(url(`/personnages?cree=${perso.id}`), 303);
+    // Droit sur sa fiche : c'est là qu'on enchaîne avec ses pièces et leur
+    // calage, dans la foulée de la création.
+    return Astro.redirect(url(`/personnages/${perso.id}?cree=1`), 303);
   } catch (e) {
     erreur = "Erreur : " + String(e);
   }
