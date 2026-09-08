@@ -1,0 +1,342 @@
+---
+import { url } from "../../lib/url.ts";
+import Admin from "../../layouts/Admin.astro";
+import {
+  adminApi,
+  type Asset,
+  type CategoriePiece,
+  type CharacterCategory,
+  type CharacterType,
+  type TypeAffiche,
+} from "../../lib/api.ts";
+import { SLOT_THUMB_VIEWBOX } from "@memoryline/types";
+
+const PUBLIC_API_URL =
+  import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
+
+const api = adminApi(Astro.request);
+
+function svgSrc(u: string | null | undefined): string {
+  if (!u) return "";
+  return u.startsWith("http") ? u : `${PUBLIC_API_URL}${u}`;
+}
+
+const SLOTS = [
+  { value: "clothes", label: "Vêtements" },
+  { value: "pants", label: "Pantalon" },
+  { value: "hair", label: "Coupes" },
+  { value: "accessory", label: "Accessoires" },
+];
+
+/** Filtres de la grille : type d'affiche et emplacement, portés par l'URL. */
+const params = Astro.url.searchParams;
+const slotChoisi = SLOTS.some((s) => s.value === params.get("slot"))
+  ? String(params.get("slot"))
+  : "clothes";
+
+let flash: string | null = null;
+let erreur: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const slot = String(f.get("slot") || slotChoisi);
+  try {
+    // Une ligne par personnage : la liste exacte des pièces cochées pour cet
+    // emplacement. Le témoin « present-<id> » distingue « rien de coché »
+    // d'une ligne absente du formulaire.
+    let lignes = 0;
+    for (const cle of f.keys()) {
+      const m = /^present-(\d+)$/.exec(cle);
+      if (!m) continue;
+      const id = Number(m[1]);
+      const positions = f
+        .getAll(`c${id}[]`)
+        .map(Number)
+        .filter(Number.isFinite);
+      await api.setSlotVariants(id, { [slot]: positions } as Record<
+        "clothes" | "pants" | "hair" | "accessory",
+        number[]
+      >);
+      lignes++;
+    }
+    flash = `Correspondances enregistrées pour ${lignes} personnage${lignes > 1 ? "s" : ""}.`;
+  } catch (e) {
+    erreur = "Erreur : " + String(e);
+  }
+}
+
+let types: CharacterType[] = [];
+let assets: Asset[] = [];
+let categories: CharacterCategory[] = [];
+let categoriesPieces: CategoriePiece[] = [];
+let vues: TypeAffiche[] = [];
+try {
+  const data = await api.characters();
+  types = (data.types ?? []).filter((t) => !t.archivedAt);
+  assets = await api.assets();
+  categories = await api.categories();
+  categoriesPieces = await api.pieceCategories();
+  vues = await api.views();
+} catch (e) {
+  if (!erreur) erreur = String(e);
+}
+
+const vueChoisie = vues.some((v) => v.slug === params.get("vue"))
+  ? String(params.get("vue"))
+  : (vues[0]?.slug ?? "front");
+
+/** Personnages du type choisi, rangés par catégorie (ordre du BO). */
+const persos = types
+  .filter((t) => (t.orientation ?? vues[0]?.slug ?? "front") === vueChoisie)
+  .sort((a, b) => {
+    const ca = categories.findIndex((c) => c.id === a.categoryId);
+    const cb = categories.findIndex((c) => c.id === b.categoryId);
+    return ca - cb || a.position - b.position || a.id - b.id;
+  });
+const nomCategorie = (id: number | null) =>
+  categories.find((c) => c.id === id)?.name ?? "Sans catégorie";
+
+/** Pièces génériques du type et de l'emplacement choisis, par catégorie. */
+const pieces = assets
+  .filter(
+    (a) =>
+      a.characterTypeId == null &&
+      !a.archivedAt &&
+      (a.view ?? "front") === vueChoisie &&
+      a.slot === slotChoisi,
+  )
+  .sort((a, b) => {
+    const ca = categoriesPieces.findIndex((c) => c.id === a.pieceCategoryId);
+    const cb = categoriesPieces.findIndex((c) => c.id === b.pieceCategoryId);
+    return ca - cb || a.position - b.position;
+  });
+const nomCategoriePiece = (id: number | null | undefined) =>
+  categoriesPieces.find((c) => c.id === id)?.name ?? "Sans catégorie";
+
+/** Vrai si ce personnage porte cette position (règle du site). */
+function porte(t: CharacterType, position: number): boolean {
+  const sv = t.slotVariants;
+  if (!sv || typeof sv !== "object") return true;
+  const v = sv[slotChoisi as "clothes"];
+  return Array.isArray(v) ? v.includes(position) : false;
+}
+
+const viewBox =
+  SLOT_THUMB_VIEWBOX[slotChoisi as keyof typeof SLOT_THUMB_VIEWBOX] ??
+  "0 0 500 1000";
+---
+
+<Admin title="Correspondances">
+  <p class="mb-4">
+    <a href={url("/personnages")} class="text-bo-accent hover:underline text-sm">
+      ← Retour aux personnages
+    </a>
+  </p>
+
+  {flash && (
+    <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">
+      {flash}
+    </p>
+  )}
+  {erreur && (
+    <p class="mb-4 text-sm rounded bg-red-50 border border-red-200 px-3 py-2">
+      {erreur}
+    </p>
+  )}
+
+  <p class="mb-4 text-sm text-bo-muted max-w-3xl">
+    Qui porte quoi, dans les deux sens sur la même grille : une ligne par
+    personnage, une colonne par pièce. Cochez une case, ou cliquez un
+    <strong>en-tête de colonne</strong> pour donner la pièce à tout le monde
+    (ou à personne), un <strong>en-tête de ligne</strong> pour tout donner à
+    un personnage. Une pièce fraîchement créée est décochée partout : un clic
+    sur sa colonne, et elle est disponible.
+  </p>
+
+  {/* Filtres : type d'affiche et emplacement, un rechargement par choix. */}
+  <form method="GET" class="mb-4 flex flex-wrap items-end gap-3 text-sm">
+    <label class="block">
+      <span class="text-bo-muted text-xs">Type d'affiche</span>
+      <select
+        name="vue"
+        class="mt-1 block border border-bo-border rounded px-2 py-1"
+        onchange="this.form.submit()"
+      >
+        {vues.map((v) => (
+          <option value={v.slug} selected={v.slug === vueChoisie}>
+            {v.name}
+          </option>
+        ))}
+      </select>
+    </label>
+    <div class="flex items-center gap-1">
+      {SLOTS.map((s) => (
+        <a
+          href={url(`/personnages/correspondances?vue=${vueChoisie}&slot=${s.value}`)}
+          class={`rounded px-3 py-1.5 border ${
+            s.value === slotChoisi
+              ? "bg-bo-accent text-white border-bo-accent"
+              : "border-bo-border hover:border-bo-accent"
+          }`}
+        >
+          {s.label}
+        </a>
+      ))}
+    </div>
+    <span class="text-xs text-bo-muted pb-1.5">
+      {persos.length} personnage{persos.length > 1 ? "s" : ""} ×{" "}
+      {pieces.length} pièce{pieces.length > 1 ? "s" : ""}
+    </span>
+  </form>
+
+  {pieces.length === 0 ? (
+    <p class="text-sm text-bo-muted">
+      Aucune pièce de cet emplacement pour ce type d'affiche.
+    </p>
+  ) : (
+    <form method="POST" id="grille">
+      <input type="hidden" name="slot" value={slotChoisi} />
+      <div class="overflow-x-auto rounded-lg border border-bo-border bg-bo-surface">
+        <table class="text-xs" style="border-collapse:separate;border-spacing:0">
+          <thead>
+            {/* Ligne des catégories de pièces, puis ligne des pièces. */}
+            <tr class="bg-bo-bg">
+              <th class="sticky left-0 z-10 bg-bo-bg px-3 py-2 text-left"></th>
+              {(() => {
+                const groupes: { nom: string; n: number }[] = [];
+                for (const p of pieces) {
+                  const nom = nomCategoriePiece(p.pieceCategoryId);
+                  const dernier = groupes[groupes.length - 1];
+                  if (dernier && dernier.nom === nom) dernier.n++;
+                  else groupes.push({ nom, n: 1 });
+                }
+                return groupes.map((g) => (
+                  <th
+                    colspan={g.n}
+                    class="border-l border-bo-border px-2 py-1 text-center font-medium text-bo-muted"
+                  >
+                    {g.nom}
+                  </th>
+                ));
+              })()}
+            </tr>
+            <tr class="bg-bo-bg">
+              <th class="sticky left-0 z-10 bg-bo-bg px-3 py-2 text-left font-medium">
+                Personnage
+              </th>
+              {pieces.map((p) => (
+                <th class="border-l border-bo-border px-1 py-1 align-bottom">
+                  <button
+                    type="button"
+                    class="js-colonne flex w-14 flex-col items-center gap-1 rounded p-1 hover:bg-white"
+                    data-position={p.position}
+                    title={`${p.name ?? ""} — cliquer : tout le monde / personne`}
+                  >
+                    <svg viewBox={viewBox} class="h-10 w-10 bg-white rounded border border-bo-border">
+                      <image href={svgSrc(p.svgUrl)} x="0" y="0" width="500" height="1000" />
+                    </svg>
+                    <span class="w-full truncate text-[10px] font-normal text-bo-muted">
+                      {p.name}
+                    </span>
+                  </button>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {persos.map((t, i) => {
+              const nouvelleCategorie =
+                i === 0 || persos[i - 1]!.categoryId !== t.categoryId;
+              return (
+                <>
+                  {nouvelleCategorie && (
+                    <tr>
+                      <td
+                        class="sticky left-0 z-10 bg-bo-surface px-3 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-bo-muted"
+                        colspan={pieces.length + 1}
+                      >
+                        {nomCategorie(t.categoryId)}
+                      </td>
+                    </tr>
+                  )}
+                  <tr class="border-t border-bo-border hover:bg-bo-bg/60">
+                    <th class="sticky left-0 z-10 bg-bo-surface px-3 py-1 text-left font-normal whitespace-nowrap">
+                      <input type="hidden" name={`present-${t.id}`} value="1" />
+                      <button
+                        type="button"
+                        class="js-ligne flex items-center gap-2 rounded px-1 hover:bg-white"
+                        data-id={t.id}
+                        title="Cliquer : toutes les pièces / aucune"
+                      >
+                        <img
+                          src={svgSrc(t.baseSvgUrl)}
+                          alt=""
+                          class="h-8 w-8 rounded border border-bo-border bg-white object-contain"
+                          loading="lazy"
+                        />
+                        <span>{t.name}</span>
+                      </button>
+                    </th>
+                    {pieces.map((p) => (
+                      <td class="border-l border-bo-border px-1 py-1 text-center">
+                        <input
+                          type="checkbox"
+                          name={`c${t.id}[]`}
+                          value={p.position}
+                          data-id={t.id}
+                          data-position={p.position}
+                          checked={porte(t, p.position)}
+                          class="h-4 w-4"
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                </>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div class="sticky bottom-0 mt-3 flex items-center gap-3 bg-bo-bg/90 py-3">
+        <button class="rounded bg-bo-accent text-white px-5 py-2 text-sm">
+          Enregistrer les correspondances
+        </button>
+        <span class="js-compteur text-xs text-bo-muted"></span>
+      </div>
+    </form>
+  )}
+
+  <script is:inline>
+    // Un en-tête de colonne bascule la pièce pour tout le monde ; un en-tête
+    // de ligne bascule toutes les pièces d'un personnage. « Tout » si au moins
+    // une case manque, sinon « rien » — c'est ce que la main attend.
+    const grille = document.getElementById("grille");
+    if (grille) {
+      const cases = (sel) => [...grille.querySelectorAll(sel)];
+      const basculer = (liste) => {
+        const toutCoche = liste.every((c) => c.checked);
+        liste.forEach((c) => (c.checked = !toutCoche));
+        compter();
+      };
+      grille.addEventListener("click", (e) => {
+        const col = e.target.closest(".js-colonne");
+        if (col) {
+          basculer(cases(`input[data-position="${col.dataset.position}"]`));
+          return;
+        }
+        const ligne = e.target.closest(".js-ligne");
+        if (ligne) basculer(cases(`input[data-id="${ligne.dataset.id}"]`));
+      });
+      grille.addEventListener("change", compter);
+
+      const compteur = grille.querySelector(".js-compteur");
+      function compter() {
+        const total = cases('input[type="checkbox"]');
+        const n = total.filter((c) => c.checked).length;
+        if (compteur)
+          compteur.textContent = `${n} correspondance${n > 1 ? "s" : ""} cochée${n > 1 ? "s" : ""} sur ${total.length}`;
+      }
+      compter();
+    }
+  </script>
+</Admin>

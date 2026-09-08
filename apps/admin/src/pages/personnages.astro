@@ -357,6 +357,14 @@ for (const a of pieces) {
   <!-- ===================================================================== -->
   <div class="mb-1 flex flex-wrap items-center justify-between gap-3">
     <h2 class="text-lg font-semibold">Personnages</h2>
+    <div class="flex items-center gap-2">
+    <a
+      href={url("/personnages/correspondances")}
+      class="rounded border border-bo-border px-4 py-2 text-sm"
+      title="Qui porte quoi : une grille personnages × pièces"
+    >
+      Correspondances
+    </a>
     {/* Un seul bouton « Nouveau », le choix se fait dans le menu. */}
     <details class="bo-menu relative">
       <summary class="rounded bg-bo-accent px-4 py-2 text-sm text-white">
@@ -385,6 +393,7 @@ for (const a of pieces) {
         </a>
       </div>
     </details>
+    </div>
   </div>
   <p class="mb-4 text-sm text-bo-muted">
     Les personnages que le client peut ajouter depuis le site, regroupés par
