@@ -156,6 +156,8 @@ export interface StatsCommandes {
     articles: number;
     caCents: number;
     portCents: number;
+    /** Commandes payées de la période qui restent à préparer. */
+    aTraiter: number;
   };
   precedent: {
     commandes: number;
@@ -173,6 +175,14 @@ export interface OrderRow {
   channel: string;
   status: string;
   totalCents: number;
+  createdAt?: string;
+  /** Nom du client, absent pour une commande prise au salon. */
+  customerName?: string | null;
+  /** Non null = commande préparée et partie. */
+  fulfilledAt?: string | null;
+  /** Nombre d'articles, quantités comprises. */
+  articles?: number;
+  shippingLabel?: string | null;
 }
 
 export interface OrderItem {
@@ -351,6 +361,14 @@ export function adminApi(request?: Request) {
       id: number,
       data: { name?: string; countries?: string },
     ) => req<unknown>("POST", `/admin/shipping/zones/${id}`, data, cookie),
+    /** Marque une commande traitée (ou la remet à traiter). */
+    fulfilOrder: (id: number, fulfilled: boolean) =>
+      req<{ id: number; fulfilledAt: string | null }>(
+        "POST",
+        `/admin/orders/${id}/fulfil`,
+        { fulfilled },
+        cookie,
+      ),
     orderStats: (days: number, channel?: string) =>
       req<StatsCommandes>(
         "GET",

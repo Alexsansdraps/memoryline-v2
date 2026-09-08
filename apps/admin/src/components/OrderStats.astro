@@ -75,6 +75,13 @@ const cartes = stats
         valeur: formatPrice(stats.periode.portCents),
         evo: evolution(stats.periode.portCents, stats.precedent.portCents),
       },
+      {
+        // Le seul chiffre qui dit quoi FAIRE, là où les autres disent ce qui
+        // s'est passé : les commandes payées qui restent à préparer.
+        titre: "À traiter",
+        valeur: String(stats.periode.aTraiter),
+        evo: { texte: "sur la période", sens: 0 },
+      },
     ]
   : [];
 
@@ -125,7 +132,7 @@ function lienPeriode(jours: number): string {
       </span>
     </div>
 
-    <div class="grid gap-px overflow-hidden rounded-lg border border-bo-border bg-bo-border sm:grid-cols-2 lg:grid-cols-5">
+    <div class="grid gap-px overflow-hidden rounded-lg border border-bo-border bg-bo-border sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
       {cartes.map((c) => (
         <div class="bg-bo-surface px-4 py-3">
           <div class="text-xs text-bo-muted">{c.titre}</div>

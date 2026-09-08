@@ -1,47 +1,178 @@
 ---
 import { url } from "../lib/url.ts";
 import { adminApi, formatPrice, type OrderRow } from "../lib/api.ts";
+
 interface Props {
   channel: "web" | "salon";
 }
 const { channel } = Astro.props;
+
+const api = adminApi(Astro.request);
+
+let flash: string | null = null;
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  if (f.get("_action") === "traiter") {
+    try {
+      const traite = f.get("fulfilled") === "true";
+      await api.fulfilOrder(Number(f.get("id")), traite);
+      flash = traite
+        ? "Commande marquée traitée."
+        : "Commande remise à traiter.";
+    } catch (e) {
+      flash = "Erreur : " + String(e);
+    }
+  }
+}
+
 let orders: OrderRow[] = [];
 let error: string | null = null;
 try {
-  orders = await adminApi(Astro.request).orders(channel);
+  orders = await api.orders(channel);
 } catch (e) {
   error = String(e);
 }
+
+/** « le 27 août à 22:36 », comme sur la boutique. */
+function quand(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    const jour = d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+    const heure = d.toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    return `le ${jour} à ${heure}`;
+  } catch {
+    return "—";
+  }
+}
+
+const NOM_CANAL: Record<string, string> = {
+  web: "Boutique en ligne",
+  salon: "Ventes salon",
+};
+
+/** Libellé et couleur du statut de paiement. */
+function paiement(statut: string): { texte: string; classe: string } {
+  if (statut === "paid")
+    return { texte: "Payée", classe: "bg-bo-bg text-bo-ink" };
+  if (statut === "pending")
+    return { texte: "En attente", classe: "bg-amber-100 text-amber-900" };
+  if (statut === "draft")
+    return { texte: "Panier", classe: "bg-bo-bg text-bo-muted" };
+  return { texte: statut, classe: "bg-bo-bg text-bo-muted" };
+}
 ---
 
+{flash && (
+  <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">
+    {flash}
+  </p>
+)}
 {error && <p class="text-red-600 text-sm">API injoignable : {error}</p>}
-<section class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
+
+<section class="overflow-x-auto rounded-lg border border-bo-border bg-bo-surface">
   <table class="w-full text-sm">
-    <thead class="bg-bo-bg text-bo-muted text-left">
+    <thead class="bg-bo-bg text-left text-bo-muted">
       <tr>
-        <th class="px-4 py-2 font-medium">N°</th>
-        <th class="px-4 py-2 font-medium">Statut</th>
+        <th class="px-4 py-2 font-medium">Commande</th>
+        <th class="px-4 py-2 font-medium">Date</th>
+        <th class="px-4 py-2 font-medium">Client</th>
+        <th class="px-4 py-2 font-medium">Canal</th>
         <th class="px-4 py-2 font-medium text-right">Total</th>
+        <th class="px-4 py-2 font-medium">Paiement</th>
+        <th class="px-4 py-2 font-medium">Traitement</th>
+        <th class="px-4 py-2 font-medium">Articles</th>
         <th class="px-4 py-2"></th>
       </tr>
     </thead>
     <tbody>
-      {
-        orders.map((o) => (
-          <tr class="border-t border-bo-border">
-            <td class="px-4 py-2 font-medium">{o.number}</td>
-            <td class="px-4 py-2">{o.status}</td>
-            <td class="px-4 py-2 text-right">{formatPrice(o.totalCents)}</td>
-            <td class="px-4 py-2 text-right">
-              <a href={url(`/commandes/${o.id}`)} class="text-bo-accent hover:underline">
+      {orders.map((o) => {
+        const p = paiement(o.status);
+        return (
+          <tr class="border-t border-bo-border hover:bg-bo-bg/50">
+            <td class="px-4 py-2 whitespace-nowrap">
+              <a
+                href={url(`/commandes/${o.id}`)}
+                class="font-medium text-bo-accent hover:underline"
+              >
+                {o.number}
+              </a>
+            </td>
+            <td class="px-4 py-2 whitespace-nowrap text-bo-muted">
+              {quand(o.createdAt)}
+            </td>
+            <td class="px-4 py-2">
+              {o.customerName ? (
+                o.customerName
+              ) : (
+                <span class="text-bo-muted">Aucun client</span>
+              )}
+            </td>
+            <td class="px-4 py-2 text-bo-muted whitespace-nowrap">
+              {NOM_CANAL[o.channel] ?? o.channel}
+            </td>
+            <td class="px-4 py-2 text-right whitespace-nowrap">
+              {formatPrice(o.totalCents)}
+            </td>
+            <td class="px-4 py-2">
+              <span
+                class={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${p.classe}`}
+              >
+                <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+                {p.texte}
+              </span>
+            </td>
+            <td class="px-4 py-2">
+              {/* Traité / non traité : un clic bascule, c'est l'action du
+                  matin quand on prépare les colis. */}
+              <form method="POST" class="inline">
+                <input type="hidden" name="_action" value="traiter" />
+                <input type="hidden" name="id" value={o.id} />
+                <input
+                  type="hidden"
+                  name="fulfilled"
+                  value={o.fulfilledAt ? "false" : "true"}
+                />
+                <button
+                  class={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${
+                    o.fulfilledAt
+                      ? "bg-green-100 text-green-900"
+                      : "bg-amber-100 text-amber-900"
+                  }`}
+                  title={
+                    o.fulfilledAt
+                      ? "Remettre dans les commandes à traiter"
+                      : "Marquer comme traitée"
+                  }
+                >
+                  <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+                  {o.fulfilledAt ? "Traité" : "Non traité"}
+                </button>
+              </form>
+            </td>
+            <td class="px-4 py-2 whitespace-nowrap text-bo-muted">
+              {o.articles ?? 0} article{(o.articles ?? 0) > 1 ? "s" : ""}
+            </td>
+            <td class="px-4 py-2 text-right whitespace-nowrap">
+              <a
+                href={url(`/commandes/${o.id}`)}
+                class="text-bo-accent hover:underline"
+              >
                 Détail / PDF
               </a>
             </td>
           </tr>
-        ))
-      }
+        );
+      })}
       {orders.length === 0 && !error && (
-        <tr><td colspan="4" class="px-4 py-6 text-center text-bo-muted">Aucune commande.</td></tr>
+        <tr>
+          <td colspan="9" class="px-4 py-6 text-center text-bo-muted">
+            Aucune commande.
+          </td>
+        </tr>
       )}
     </tbody>
   </table>

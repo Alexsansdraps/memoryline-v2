@@ -730,12 +730,55 @@ app.get("/admin/orders", async (c) => {
       totalCents: schema.orders.totalCents,
       legacyName: schema.orders.legacyName,
       createdAt: schema.orders.createdAt,
+      fulfilledAt: schema.orders.fulfilledAt,
+      shippingLabel: schema.orders.shippingLabel,
+      customerName: schema.customers.name,
     })
     .from(schema.orders)
+    .leftJoin(schema.customers, eq(schema.orders.customerId, schema.customers.id))
     .where(where)
     .orderBy(desc(schema.orders.createdAt))
     .limit(limit);
-  return c.json(rows);
+
+  // Nombre d'articles par commande : la liste l'affiche, et le demander
+  // ligne par ligne ferait une requête par commande.
+  const ids = rows.map((r) => r.id);
+  const articles = ids.length
+    ? await db
+        .select({
+          orderId: schema.orderItems.orderId,
+          quantity: schema.orderItems.quantity,
+        })
+        .from(schema.orderItems)
+        .where(inArray(schema.orderItems.orderId, ids))
+    : [];
+  const compte = new Map<number, number>();
+  for (const a of articles)
+    compte.set(a.orderId, (compte.get(a.orderId) ?? 0) + a.quantity);
+
+  return c.json(
+    rows.map((r) => ({ ...r, articles: compte.get(r.id) ?? 0 })),
+  );
+});
+
+/**
+ * Marque une commande traitée, ou revient en arrière.
+ *
+ * « Traitée » veut dire : imprimée, emballée, partie. C'est l'information qui
+ * manque le matin pour savoir quoi préparer — le statut de paiement, lui, ne
+ * dit rien de ce travail-là.
+ */
+app.post("/admin/orders/:id/fulfil", async (c) => {
+  const id = Number(c.req.param("id"));
+  const b = await c.req.json().catch(() => ({}));
+  const traite = b.fulfilled !== false;
+  const [row] = await db
+    .update(schema.orders)
+    .set({ fulfilledAt: traite ? new Date() : null })
+    .where(eq(schema.orders.id, id))
+    .returning({ id: schema.orders.id, fulfilledAt: schema.orders.fulfilledAt });
+  if (!row) return c.notFound();
+  return c.json(row);
 });
 
 /** Compteurs complets (catalogue + clients + commandes) — tableau de bord BO. */
@@ -1013,6 +1056,7 @@ app.get("/admin/stats/orders", async (c) => {
       createdAt: schema.orders.createdAt,
       totalCents: schema.orders.totalCents,
       shippingCents: schema.orders.shippingCents,
+      fulfilledAt: schema.orders.fulfilledAt,
     })
     .from(schema.orders)
     .where(and(...conditions));
@@ -1053,9 +1097,15 @@ app.get("/admin/stats/orders", async (c) => {
     );
   }
 
+  // Ce qui reste à préparer sur la période : le chiffre qui dit quoi faire
+  // aujourd'hui, là où les autres disent ce qui s'est passé.
+  const aTraiter = lignes.filter(
+    (l) => dansPeriode(l.createdAt) && !l.fulfilledAt,
+  ).length;
+
   return c.json({
     jours,
-    periode: resume(dansPeriode),
+    periode: { ...resume(dansPeriode), aTraiter },
     precedent: resume((d) => !dansPeriode(d)),
     serie,
   });

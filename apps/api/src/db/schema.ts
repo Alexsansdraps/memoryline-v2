@@ -514,6 +514,13 @@ export const orders = pgTable(
     seenAt: timestamp("seen_at", { withTimezone: true }), // null = badge "ventes salon" (§17.3)
     legacyId: bigint("legacy_id", { mode: "number" }), // Shopify Order/Draft ID
     legacyName: text("legacy_name"), // ex. '#1042'
+    /**
+     * Date de traitement : la commande a été imprimée, emballée, expédiée ou
+     * remise. Null = reste à faire. C'est ce qui distingue « payée » (l'argent
+     * est arrivé) de « traitée » (le client a son affiche) — deux questions
+     * différentes que la liste doit répondre d'un coup d'œil.
+     */
+    fulfilledAt: timestamp("fulfilled_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
