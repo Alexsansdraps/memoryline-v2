@@ -13,9 +13,18 @@ import { z } from "zod";
 export const POSTER_FORMATS = ["A4", "A3"] as const;
 export type PosterFormat = (typeof POSTER_FORMATS)[number];
 
-/** Vue de l'affiche : personnages de face ou de dos (cf. collections du site). */
+/**
+ * Type d'affiche : « de face », « de dos », et ceux que la cliente crée au
+ * back-office (table `poster_view`).
+ *
+ * Ces deux-là restent nommés ici parce qu'ils servent de valeur par défaut et
+ * de repli, mais la liste n'est plus fermée : une configuration porte le
+ * `slug` du type, quel qu'il soit.
+ */
 export const POSTER_VIEWS = ["front", "back"] as const;
 export type PosterView = (typeof POSTER_VIEWS)[number];
+/** Type d'affiche par défaut quand rien n'est précisé. */
+export const POSTER_VIEW_DEFAUT = "front";
 
 /** Slots d'assets empilables sur un personnage (ouvert, pas figé). */
 export const ASSET_SLOTS = [
@@ -86,7 +95,9 @@ export const posterConfigSchema = z.object({
    * serveur au moment de facturer, comme celui de l'affiche.
    */
   frameId: z.union([z.string(), z.number()]).nullish(),
-  view: z.enum(POSTER_VIEWS).default("front"),
+  // Chaîne libre, et non plus une paire figée : refuser un type créé au
+  // back-office ferait échouer l'ajout au panier pour un produit tout neuf.
+  view: z.string().min(1).default(POSTER_VIEW_DEFAUT),
   texts: z.object({
     title: textBlockSchema.optional(),
     subtitle: textBlockSchema.optional(),

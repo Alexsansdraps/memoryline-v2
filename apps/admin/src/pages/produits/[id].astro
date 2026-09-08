@@ -1,7 +1,11 @@
 ---
 import { url } from "../../lib/url.ts";
 import Admin from "../../layouts/Admin.astro";
-import { adminApi, type ProductConfig } from "../../lib/api.ts";
+import {
+  adminApi,
+  type ProductConfig,
+  type TypeAffiche,
+} from "../../lib/api.ts";
 
 const api = adminApi(Astro.request);
 const { id } = Astro.params;
@@ -46,12 +50,9 @@ if (Astro.request.method === "POST") {
     await api.setProductConfig(id!, {
       defaultTitle: (form.get("defaultTitle") as string) ?? "",
       defaultSubtitle: (form.get("defaultSubtitle") as string) ?? "",
-      defaultView:
-        form.get("defaultView") === "back"
-          ? "back"
-          : form.get("defaultView") === "front"
-            ? "front"
-            : null,
+      // Slug du type d'affiche, pris tel quel : les types se créent au
+      // back-office, la liste n'est plus figée ici.
+      defaultView: String(form.get("defaultView") || "") || null,
       foregroundUrl: (form.get("foregroundUrl") as string)?.trim() || null,
     });
     flash = "Configuration enregistrée.";
@@ -85,6 +86,14 @@ try {
   config = await api.productConfig(id!);
 } catch (e) {
   error = String(e);
+}
+
+// Types d'affiche proposés au produit (« de face », « de dos », …).
+let vues: TypeAffiche[] = [];
+try {
+  vues = await api.views();
+} catch (e) {
+  if (!error) error = String(e);
 }
 
 const backgrounds = config?.backgrounds ?? [];
@@ -280,23 +289,27 @@ const backgrounds = config?.backgrounds ?? [];
       <form method="POST" class="space-y-6">
         {/* 3 — Position des personnages */}
         <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
-          <h3 class="font-semibold mb-3">Position des personnages</h3>
+          <h3 class="font-semibold mb-3">Type d'affiche</h3>
           <label class="block max-w-xs">
             <select
               name="defaultView"
               class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
             >
-              <option
-                value="front"
-                selected={(config.defaultView ?? "front") === "front"}
-              >
-                Face
-              </option>
-              <option value="back" selected={config.defaultView === "back"}>
-                Dos
-              </option>
+              {vues.map((v) => (
+                <option
+                  value={v.slug}
+                  selected={(config.defaultView ?? vues[0]?.slug) === v.slug}
+                >
+                  {v.name}
+                </option>
+              ))}
             </select>
           </label>
+          <p class="mt-2 text-xs text-bo-muted">
+            Détermine les personnages proposés au client et le décor posé au
+            premier plan. Les types se créent dans
+            <a class="underline" href="../types-affiche"> Types d'affiche</a>.
+          </p>
         </section>
 
         {/* 4 — Décor d'avant-plan */}

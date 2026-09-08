@@ -228,6 +228,14 @@ app.get("/products/:slug", async (c) => {
       .orderBy(schema.productImages.position),
   ]);
 
+  // Type d'affiche du produit : il porte le décor par défaut.
+  const [vue] = product.defaultView
+    ? await db
+        .select({ foregroundUrl: schema.posterViews.foregroundUrl })
+        .from(schema.posterViews)
+        .where(eq(schema.posterViews.slug, product.defaultView))
+    : [];
+
   return c.json({
     id: product.id,
     slug: product.slug,
@@ -240,7 +248,11 @@ app.get("/products/:slug", async (c) => {
     defaultTitle: product.defaultTitle,
     defaultSubtitle: product.defaultSubtitle,
     defaultView: product.defaultView,
-    foregroundUrl: product.foregroundUrl,
+    // Décor de premier plan EFFECTIF : celui du produit s'il en a un, sinon
+    // celui de son type d'affiche (le muret de la vue de dos, par exemple).
+    // Résolu ici, une fois : le site, le panier et le PDF n'ont plus à
+    // connaître la règle.
+    foregroundUrl: product.foregroundUrl ?? vue?.foregroundUrl ?? null,
     variants: variants.map((v) => ({
       format: v.format,
       priceCents: v.priceCents,
@@ -283,6 +295,19 @@ app.get("/frames", async (c) => {
     .from(schema.frames)
     .where(eq(schema.frames.active, true))
     .orderBy(asc(schema.frames.position));
+  return c.json(rows);
+});
+
+/**
+ * Types d'affiche actifs (« de face », « de dos », …), dans l'ordre du BO.
+ * Le site s'en sert pour proposer les vues sans rien connaître de leurs noms.
+ */
+app.get("/views", async (c) => {
+  const rows = await db
+    .select()
+    .from(schema.posterViews)
+    .where(eq(schema.posterViews.active, true))
+    .orderBy(asc(schema.posterViews.position));
   return c.json(rows);
 });
 
@@ -633,6 +658,126 @@ app.delete("/admin/frames/:id", async (c) => {
     .where(eq(schema.frames.id, Number(c.req.param("id"))))
     .returning();
   if (!row) return c.notFound();
+  return c.json({ ok: true });
+});
+
+/** Tous les types d'affiche, avec ce qui s'y rattache (pour le BO). */
+app.get("/admin/views", async (c) => {
+  const rows = await db
+    .select()
+    .from(schema.posterViews)
+    .orderBy(asc(schema.posterViews.position));
+  // Un type rattaché à des dessins ne se supprime pas : on compte d'abord.
+  const usages = await Promise.all(
+    rows.map(async (v) => {
+      const [p] = await db
+        .select({ n: count() })
+        .from(schema.products)
+        .where(eq(schema.products.defaultView, v.slug));
+      const [ct] = await db
+        .select({ n: count() })
+        .from(schema.characterTypes)
+        .where(eq(schema.characterTypes.orientation, v.slug));
+      const [a] = await db
+        .select({ n: count() })
+        .from(schema.assets)
+        .where(eq(schema.assets.view, v.slug));
+      return {
+        ...v,
+        usage: {
+          produits: Number(p?.n ?? 0),
+          personnages: Number(ct?.n ?? 0),
+          pieces: Number(a?.n ?? 0),
+        },
+      };
+    }),
+  );
+  return c.json(usages);
+});
+
+/**
+ * Crée ou renomme un type d'affiche.
+ *
+ * Le `slug` est posé à la création et ne bouge plus : c'est lui qui relie les
+ * personnages, les pièces et les produits à leur type. Le renommer les
+ * détacherait tous d'un coup.
+ */
+app.post("/admin/views", async (c) => {
+  const b = await c.req.json();
+  const name = String(b.name ?? "").trim();
+  if (!name) return c.json({ error: "nom requis" }, 400);
+  const valeurs = {
+    name,
+    foregroundUrl: b.foregroundUrl ? String(b.foregroundUrl).trim() : null,
+    active: b.active !== false,
+    position: Number(b.position ?? 0),
+  };
+  if (b.id) {
+    const [row] = await db
+      .update(schema.posterViews)
+      .set(valeurs)
+      .where(eq(schema.posterViews.id, Number(b.id)))
+      .returning();
+    if (!row) return c.notFound();
+    return c.json(row);
+  }
+  const base =
+    name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "vue";
+  const pris = new Set(
+    (
+      await db.select({ slug: schema.posterViews.slug }).from(schema.posterViews)
+    ).map((r) => r.slug),
+  );
+  let slug = base;
+  for (let i = 2; pris.has(slug); i++) slug = `${base}-${i}`;
+  const [row] = await db
+    .insert(schema.posterViews)
+    .values({ ...valeurs, slug })
+    .returning();
+  return c.json(row);
+});
+
+/**
+ * Supprime un type d'affiche — seulement s'il ne sert plus à rien.
+ *
+ * Sinon ses personnages, pièces et produits pointeraient sur un type qui
+ * n'existe plus : le configurateur n'aurait plus rien à proposer. Le BO
+ * propose alors de le désactiver, ce qui le retire du site sans casser
+ * l'existant.
+ */
+app.delete("/admin/views/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  const [vue] = await db
+    .select()
+    .from(schema.posterViews)
+    .where(eq(schema.posterViews.id, id));
+  if (!vue) return c.notFound();
+  const [p] = await db
+    .select({ n: count() })
+    .from(schema.products)
+    .where(eq(schema.products.defaultView, vue.slug));
+  const [ct] = await db
+    .select({ n: count() })
+    .from(schema.characterTypes)
+    .where(eq(schema.characterTypes.orientation, vue.slug));
+  const [a] = await db
+    .select({ n: count() })
+    .from(schema.assets)
+    .where(eq(schema.assets.view, vue.slug));
+  const usage = {
+    produits: Number(p?.n ?? 0),
+    personnages: Number(ct?.n ?? 0),
+    pieces: Number(a?.n ?? 0),
+  };
+  if (usage.produits + usage.personnages + usage.pieces > 0) {
+    return c.json({ error: "type encore utilisé", usage }, 409);
+  }
+  await db.delete(schema.posterViews).where(eq(schema.posterViews.id, id));
   return c.json({ ok: true });
 });
 

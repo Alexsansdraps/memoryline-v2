@@ -5,6 +5,7 @@ import {
   type CharacterType,
   type CharacterCategory,
   type Asset,
+  type TypeAffiche,
 } from "../lib/api.ts";
 import { SLOT_THUMB_VIEWBOX } from "@memoryline/types";
 
@@ -49,8 +50,9 @@ if (Astro.request.method === "POST") {
           ? {}
           : { categoryId: rawCat === "" ? null : Number(rawCat) }),
         position: Number(form.get("position") || 0),
-        orientation:
-          form.get("orientation") === "back" ? "back" : "front",
+        // Slug du type d'affiche, tel qu'il vient du sélecteur : la liste
+        // des types se gère au back-office, elle n'est plus figée ici.
+        orientation: String(form.get("orientation") || "front"),
         ...(form.get("bottomPct") !== null && form.get("bottomPct") !== ""
           ? { bottomPct: Number(String(form.get("bottomPct")).replace(",", ".")) }
           : {}),
@@ -144,7 +146,7 @@ if (Astro.request.method === "POST") {
         slot: String(form.get("slot") || "clothes"),
         name: (form.get("name") as string) || undefined,
         svgUrl: String(form.get("svgUrl") || ""),
-        view: (form.get("view") as "front" | "back") || "front",
+        view: String(form.get("view") || "front"),
         colorZones: Object.keys(colorZones).length ? colorZones : undefined,
         position: Number(form.get("position") || 0),
       });
@@ -166,6 +168,7 @@ if (dndNombre > 0 && !flash) {
   flash = `${dndNombre} personnage(s) déplacé(s) vers « ${dndVers} ».`;
 }
 
+let vues: TypeAffiche[] = [];
 let types: CharacterType[] = [];
 let assets: Asset[] = [];
 let error: string | null = null;
@@ -188,6 +191,20 @@ try {
 } catch (e) {
   if (!error) error = String(e);
 }
+
+// Types d'affiche : ils alimentent les sélecteurs « Type d'affiche » des
+// personnages et des pièces. La liste se gère dans son propre écran.
+try {
+  vues = await api.views();
+} catch (e) {
+  if (!error) error = String(e);
+}
+/** Type d'affiche d'un dessin, avec repli sur le premier de la liste. */
+const vueParDefaut = vues[0]?.slug ?? "front";
+const nomVue = (slug: string | null | undefined) =>
+  vues.find((v) => v.slug === (slug ?? vueParDefaut))?.name ??
+  slug ??
+  vueParDefaut;
 
 const active = types.filter((t) => !t.archivedAt);
 const archived = types.filter((t) => t.archivedAt);
@@ -231,28 +248,36 @@ const knownBaseSvgs = [
 ].sort((a, b) => a.localeCompare(b));
 
 /**
- * Pièces GÉNÉRIQUES cochables, par emplacement.
+ * Pièces GÉNÉRIQUES cochables, par TYPE d'affiche puis par emplacement.
  *
  * Deux points à connaître :
  *  - `slotVariants` référence la POSITION d'une pièce, pas son id : c'est ce
  *    qui reste stable quand la bibliothèque est réimportée, et c'est aussi ce
  *    que le configurateur cherche (`slotsForCharacter`) ;
- *  - une même pièce existe en DEUX exemplaires (vue avant et vue arrière) qui
- *    partagent la même position. On n'en montre donc qu'un — l'avant de
- *    préférence — sinon la liste afficherait chaque vêtement deux fois.
+ *  - ces positions ne valent QUE dans le type d'affiche du personnage. La
+ *    position 16 existe en « de dos » et pas en « de face » : mélanger les
+ *    types ferait cocher des pièces qui n'existent pas pour ce personnage.
  */
-const piecesCochables = new Map<string, Asset[]>();
-for (const s of SLOTS) piecesCochables.set(s.value, []);
+const piecesParVue = new Map<string, Map<string, Asset[]>>();
 for (const a of assets) {
   if (a.characterTypeId != null || a.archivedAt) continue;
-  const liste = piecesCochables.get(a.slot);
-  if (!liste) continue;
-  const deja = liste.findIndex((x) => x.position === a.position);
-  if (deja === -1) liste.push(a);
-  else if (a.view !== "back" && liste[deja]!.view === "back") liste[deja] = a;
+  const vue = a.view ?? vueParDefaut;
+  let parSlot = piecesParVue.get(vue);
+  if (!parSlot) {
+    parSlot = new Map(SLOTS.map((s) => [s.value, [] as Asset[]]));
+    piecesParVue.set(vue, parSlot);
+  }
+  const liste = parSlot.get(a.slot);
+  if (liste) liste.push(a);
 }
-for (const liste of piecesCochables.values())
-  liste.sort((a, b) => a.position - b.position);
+for (const parSlot of piecesParVue.values())
+  for (const liste of parSlot.values())
+    liste.sort((a, b) => a.position - b.position);
+
+/** Pièces cochables d'un personnage pour un emplacement, selon son type. */
+function piecesCochables(t: CharacterType, slot: string): Asset[] {
+  return piecesParVue.get(t.orientation ?? vueParDefaut)?.get(slot) ?? [];
+}
 
 /**
  * Positions autorisées d'un personnage pour un emplacement.
@@ -576,23 +601,20 @@ for (const a of pieces) {
                   />
                 </label>
                 <label class="block">
-                  <span class="text-bo-muted text-xs">Orientation</span>
+                  <span class="text-bo-muted text-xs">Type d'affiche</span>
                   <select
                     name="orientation"
                     class="mt-1 block border border-bo-border rounded px-2 py-1"
+                    title="Angle sous lequel ce personnage est dessiné. Il ne portera que des pièces du même type."
                   >
-                    <option
-                      value="front"
-                      selected={(t.orientation ?? "front") === "front"}
-                    >
-                      Face
-                    </option>
-                    <option
-                      value="back"
-                      selected={t.orientation === "back"}
-                    >
-                      Dos
-                    </option>
+                    {vues.map((v) => (
+                      <option
+                        value={v.slug}
+                        selected={(t.orientation ?? vueParDefaut) === v.slug}
+                      >
+                        {v.name}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <button class="rounded bg-bo-accent text-white px-3 py-1.5 hover:opacity-90">
@@ -674,7 +696,7 @@ for (const a of pieces) {
                   <span class="ml-2 normal-case tracking-normal text-bo-muted">
                     ({SLOTS.map((s) => {
                       const liste = autorisees(t, s.value);
-                      const total = (piecesCochables.get(s.value) ?? []).length;
+                      const total = piecesCochables(t, s.value).length;
                       return `${s.label} ${liste ? liste.length : total}/${total}`;
                     }).join(" · ")})
                   </span>
@@ -686,10 +708,13 @@ for (const a of pieces) {
                     Décochez ce que ce personnage ne doit pas porter : la pièce
                     disparaît de son choix côté site, sans être supprimée pour
                     les autres. Un emplacement entièrement décoché n'est plus
-                    proposé du tout pour ce personnage.
+                    proposé du tout pour ce personnage. Seules les pièces du
+                    type « {nomVue(t.orientation)} » sont proposées — un
+                    personnage ne peut porter que des pièces dessinées sous le
+                    même angle que lui.
                   </p>
                   {SLOTS.map((s) => {
-                    const liste = piecesCochables.get(s.value) ?? [];
+                    const liste = piecesCochables(t, s.value);
                     const permis = autorisees(t, s.value);
                     return (
                       <fieldset class="mb-4" data-slot={s.value}>
@@ -712,7 +737,11 @@ for (const a of pieces) {
                           </button>
                         </legend>
                         {liste.length === 0 ? (
-                          <p class="text-xs text-bo-muted">Aucune pièce dans la bibliothèque.</p>
+                          <p class="text-xs text-bo-muted">
+                            Aucune pièce de ce type dans la bibliothèque —
+                            ajoutez-en plus bas, avec le type «{" "}
+                            {nomVue(t.orientation)} ».
+                          </p>
                         ) : (
                           <div class="flex flex-wrap gap-2">
                             {liste.map((a) => {
@@ -888,7 +917,7 @@ for (const a of pieces) {
                     <div class="min-w-0">
                       <div class="text-sm font-medium truncate">{a.name}</div>
                       <div class="text-xs text-bo-muted">
-                        {a.view === "back" ? "Vue arrière" : "Vue avant"}
+                        {nomVue(a.view)}
                       </div>
                     </div>
                     <button
@@ -945,10 +974,9 @@ for (const a of pieces) {
         </select>
       </label>
       <label class="block">
-        <span class="text-bo-muted">Vue</span>
+        <span class="text-bo-muted">Type d'affiche</span>
         <select name="view" class="mt-1 w-full border border-bo-border rounded px-3 py-2">
-          <option value="front">Avant</option>
-          <option value="back">Arrière</option>
+          {vues.map((v) => <option value={v.slug}>{v.name}</option>)}
         </select>
       </label>
       <label class="block">

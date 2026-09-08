@@ -142,6 +142,24 @@ type PricedItem = {
  * encaissé. Miroir de priceForConfig() côté web : prix de la variante du format
  * demandé, à défaut le prix de base du produit.
  */
+/**
+ * Vérifie qu'un slug de type d'affiche existe vraiment.
+ *
+ * Les valeurs étaient ramenées de force à « front » ou « back » : un type
+ * créé au back-office aurait été silencieusement réécrit en « de face ».
+ * On accepte donc n'importe quel type existant — et rien d'autre, pour ne pas
+ * rattacher un dessin à un type fantôme.
+ */
+async function typeAfficheValide(slug: unknown): Promise<string | null> {
+  const s = String(slug ?? "").trim();
+  if (!s) return null;
+  const [v] = await db
+    .select({ slug: schema.posterViews.slug })
+    .from(schema.posterViews)
+    .where(eq(schema.posterViews.slug, s));
+  return v?.slug ?? null;
+}
+
 async function resolveUnitPriceCents(
   productId: number | null | undefined,
   format: string | null | undefined,
@@ -331,12 +349,20 @@ export function mountConfiguratorRoutes(app: Hono) {
         ),
       )
       .orderBy(asc(schema.assets.position));
-    const slots: Record<string, Record<string, unknown[]>> = {
-      front: {},
-      back: {},
-    };
+    // Un tiroir par type d'affiche, y compris ceux créés au back-office :
+    // le configurateur cherche `slots[vue]`, il ne doit jamais tomber sur un
+    // trou parce qu'un type est arrivé après la mise en production.
+    const vues = await db
+      .select({ slug: schema.posterViews.slug })
+      .from(schema.posterViews);
+    const slots: Record<string, Record<string, unknown[]>> = {};
+    for (const v of vues) slots[v.slug] = {};
+    slots["front"] ??= {};
     for (const a of variants) {
-      const view = a.view === "back" ? "back" : "front";
+      // Une pièce sans type explicite reste rattachée au premier type,
+      // « de face » — c'est ce que faisait le code d'avant.
+      const view = a.view ?? "front";
+      slots[view] ??= {};
       (slots[view]![a.slot] ??= []).push({
         id: a.id,
         slot: a.slot,
@@ -359,7 +385,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         archived: t.archivedAt != null,
         baseSvgUrl: t.baseSvgUrl,
         baseColorZones: t.baseColorZones,
-        orientation: t.orientation === "back" ? "back" : "front",
+        orientation: t.orientation ?? "front",
         bottomPct: t.bottomPct ?? 1,
         // Ids d'ancienne config par slot (= asset.position des génériques) :
         // le front restreint les galeries de l'éditeur à ces variantes.
@@ -1044,7 +1070,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         : {}),
       position: Number(b.position ?? 0),
       ...(b.orientation !== undefined
-        ? { orientation: b.orientation === "back" ? "back" : "front" }
+        ? { orientation: (await typeAfficheValide(b.orientation)) ?? "front" }
         : {}),
       // Calage vertical (0..1) : editable depuis le BO en plus de la mesure
       // automatique, pour les persos dont les pieds tombent mal.
@@ -1252,7 +1278,7 @@ export function mountConfiguratorRoutes(app: Hono) {
       slot: String(b.slot ?? "clothes"),
       name: b.name ?? null,
       svgUrl: String(b.svgUrl ?? ""),
-      view: b.view === "back" ? "back" : "front",
+      view: (await typeAfficheValide(b.view)) ?? "front",
       colorZones: Object.keys(cleanZones).length ? cleanZones : null,
       position: Number(b.position ?? 0),
       characterTypeId: b.characterTypeId ? Number(b.characterTypeId) : null,
@@ -1326,8 +1352,7 @@ export function mountConfiguratorRoutes(app: Hono) {
     if (b.defaultSubtitle !== undefined)
       set.defaultSubtitle = b.defaultSubtitle || null;
     if (b.defaultView !== undefined)
-      set.defaultView =
-        b.defaultView === "back" ? "back" : b.defaultView === "front" ? "front" : null;
+      set.defaultView = await typeAfficheValide(b.defaultView);
     if (b.foregroundUrl !== undefined)
       set.foregroundUrl = b.foregroundUrl || null;
     const [row] = await db

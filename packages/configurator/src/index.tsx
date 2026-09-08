@@ -23,6 +23,7 @@ import {
   defaultCharacter,
   findVariant,
   slotsForCharacter,
+  variantesDeVue,
   NONE_ASSET,
   type CadreDTO,
 } from "./store";
@@ -105,8 +106,9 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     if (props.defaults.title) initialState.title.value = props.defaults.title;
     if (props.defaults.subtitle)
       initialState.subtitle.value = props.defaults.subtitle;
-    if (props.defaults.view === "front" || props.defaults.view === "back")
-      initialState.view = props.defaults.view;
+    // N'importe quel type d'affiche, y compris ceux créés au back-office :
+    // filtrer sur une paire figée aurait ignoré tout nouveau type.
+    if (props.defaults.view) initialState.view = props.defaults.view;
   }
 
   // À l'ouverture, l'affiche est VIDE de personnages (retour cliente) : le
@@ -147,7 +149,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     const idx = state.editingIndex;
     const c = idx != null ? state.characters[idx] : undefined;
     const base = c ? characterById(c.characterId) : undefined;
-    const all = props.slots[base?.orientation ?? state.view];
+    const all = variantesDeVue(props.slots, base?.orientation ?? state.view);
     return slotsForCharacter(all, base);
   };
 
@@ -170,7 +172,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     for (const c of state.characters) {
       const base = characterById(c.characterId);
       if (base) void fetchSvg(base.baseSvgUrl);
-      const all = props.slots[base?.orientation ?? state.view];
+      const all = variantesDeVue(props.slots, base?.orientation ?? state.view);
       for (const slot of SLOTS) {
         const v = findVariant(all[slot], c.assets[slot]);
         if (v) void fetchSvg(v.svgUrl);
@@ -313,7 +315,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       if (!c) return;
       c.characterId = base.id;
       const variants = slotsForCharacter(
-        props.slots[base.orientation ?? state.view],
+        variantesDeVue(props.slots, base.orientation ?? state.view),
         base,
       );
       // Couleurs : base + couleurs des variantes encore sélectionnées, chacune
@@ -424,9 +426,6 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
                 ? props.foregroundUrl
                 : props.assetBaseUrl.replace(/\/$/, "") + props.foregroundUrl
               : undefined
-          }
-          defaultForeground={
-            props.assetBaseUrl.replace(/\/$/, "") + "/assets/muret_officiel.svg"
           }
           assetBaseUrl={props.assetBaseUrl}
         />
@@ -571,7 +570,13 @@ export default Configurator;
  * C'est le même composant, donc les deux rendus ne peuvent pas diverger.
  */
 export { PosterPreview } from "./components/PosterPreview";
-export { createSvgCache, stateFromConfig, SLOTS, findVariant } from "./store";
+export {
+  createSvgCache,
+  stateFromConfig,
+  SLOTS,
+  findVariant,
+  variantesDeVue,
+} from "./store";
 export type { PosterConfig } from "@memoryline/types";
 export type {
   CadreDTO,

@@ -11,7 +11,13 @@ import { browserApi, getCartId } from "../lib/api.ts";
 export interface AddToCartButtonProps {
   /** Langue de la page — pilote tous les libellés affichés. */
   langue?: Langue;
-  product: { id: number; name: string; basePriceCents: number };
+  product: {
+    id: number;
+    name: string;
+    basePriceCents: number;
+    /** Type d'affiche du produit — repli sur « de face » s'il n'en a pas. */
+    defaultView?: string | null;
+  };
 }
 
 export default function AddToCartButton(
@@ -27,7 +33,7 @@ export default function AddToCartButton(
     setError(null);
     const config: PosterConfig = {
       schemaVersion: 1,
-      view: "front",
+      view: props.product.defaultView || "front",
       texts: {},
       characters: [],
     };

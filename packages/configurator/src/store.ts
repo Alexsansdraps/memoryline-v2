@@ -108,10 +108,25 @@ export interface SlotVariants {
   accessory: VariantDTO[];
 }
 
-/** Bibliothèque de variantes : un jeu par vue (front / back). */
-export interface SlotsDTO {
-  front: SlotVariants;
-  back: SlotVariants;
+/**
+ * Bibliothèque de variantes : un jeu par TYPE d'affiche.
+ *
+ * Les clés sont les slugs des types (« front », « back », et ceux créés au
+ * back-office) : la liste n'est pas connue à la compilation. Un type sans
+ * pièce peut manquer, d'où la valeur possiblement absente — voir
+ * `variantesDeVue()` qui rend alors une bibliothèque vide.
+ */
+export type SlotsDTO = Record<string, SlotVariants | undefined>;
+
+/** Jeu de variantes d'un type d'affiche, ou un jeu vide s'il n'en a aucune. */
+export function variantesDeVue(
+  slots: SlotsDTO | undefined,
+  vue: string | null | undefined,
+): SlotVariants {
+  return (
+    slots?.[vue ?? "front"] ??
+    slots?.["front"] ?? { clothes: [], pants: [], hair: [], accessory: [] }
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -158,7 +173,8 @@ export interface ConfiguratorState {
   backgroundId: string | number | undefined;
   backgroundUrl: string | undefined;
   format: PosterFormat;
-  view: PosterView;
+  /** Type d'affiche (slug) : « front », « back », ou créé au back-office. */
+  view: string;
   /** Cadre choisi, ou null si le client n'en veut pas. */
   frameId: string | number | null;
   /** Texte ET police, choisis séparément pour le titre et le sous-titre. */

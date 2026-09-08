@@ -1,0 +1,319 @@
+---
+import Admin from "../layouts/Admin.astro";
+import { adminApi, type TypeAffiche } from "../lib/api.ts";
+
+const PUBLIC_API_URL =
+  import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
+
+const api = adminApi(Astro.request);
+
+let flash: string | null = null;
+let flashErreur = false;
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const action = f.get("_action");
+  try {
+    if (action === "supprimer") {
+      await api.deleteView(Number(f.get("id")));
+      flash = "Type d'affiche supprimé.";
+    } else {
+      const vue = await api.upsertView({
+        id: f.get("id") ? Number(f.get("id")) : undefined,
+        name: String(f.get("name") || ""),
+        foregroundUrl: String(f.get("foregroundUrl") || "") || null,
+        active: f.get("active") === "on",
+        position: Number(f.get("position") || 0),
+      });
+      flash = `Type d'affiche « ${vue.name} » enregistré.`;
+    }
+  } catch (e) {
+    // Le refus le plus courant : le type sert encore. On le dit en clair.
+    flash = String(e).includes("409")
+      ? "Ce type est encore utilisé par des produits, des personnages ou des pièces. Décochez « Proposé » pour le retirer du site sans rien casser."
+      : "Erreur : " + String(e);
+    flashErreur = true;
+  }
+}
+
+let vues: TypeAffiche[] = [];
+let error: string | null = null;
+try {
+  vues = await api.views();
+} catch (e) {
+  error = String(e);
+}
+
+/** Ce qui est rattaché à un type, en une phrase. */
+function rattache(v: TypeAffiche): string {
+  const u = v.usage;
+  if (!u) return "";
+  const bouts: string[] = [];
+  if (u.produits) bouts.push(`${u.produits} produit${u.produits > 1 ? "s" : ""}`);
+  if (u.personnages)
+    bouts.push(`${u.personnages} personnage${u.personnages > 1 ? "s" : ""}`);
+  if (u.pieces) bouts.push(`${u.pieces} pièce${u.pieces > 1 ? "s" : ""}`);
+  return bouts.length ? bouts.join(" · ") : "rien pour l'instant";
+}
+
+const libre = (v: TypeAffiche) =>
+  !v.usage || v.usage.produits + v.usage.personnages + v.usage.pieces === 0;
+---
+
+<Admin title="Types d'affiche">
+  {flash && (
+    <p
+      class={`mb-4 text-sm rounded px-3 py-2 border ${
+        flashErreur
+          ? "bg-red-50 border-red-200"
+          : "bg-green-50 border-green-200"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+  {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
+
+  <p class="mb-4 text-sm text-bo-muted max-w-3xl">
+    « De face », « de dos »… et tout ce que vous voudrez ajouter. Un type
+    d'affiche décrit une manière de dessiner la scène : les personnages y sont
+    dessinés sous un certain angle, et un décor peut être posé devant le fond
+    (le muret de la vue de dos, par exemple).
+  </p>
+
+  <details class="mb-6 text-sm bg-bo-surface border border-bo-border rounded-lg">
+    <summary class="cursor-pointer px-4 py-3 font-semibold select-none">
+      Comment ajouter un type d'affiche ?
+    </summary>
+    <ol class="list-decimal px-8 pb-4 space-y-1 text-bo-muted">
+      <li>Créez le type ici (« De profil », « Assis », …).</li>
+      <li>
+        Ajoutez-lui un décor si la scène en a un (muret, banc). Sans décor,
+        les personnages posent directement sur le fond.
+      </li>
+      <li>
+        Dans <a class="underline" href="personnages">Personnages</a>, créez les
+        personnages dessinés sous cet angle et choisissez ce type dans leur
+        champ « Type d'affiche ». Ajoutez aussi les pièces (coupes, vêtements…)
+        avec ce même type : un personnage ne peut porter que des pièces
+        dessinées sous le même angle.
+      </li>
+      <li>
+        Dans <a class="underline" href="produits">Produits</a>, mettez vos
+        affiches sur ce type. Le site s'en occupe ensuite tout seul.
+      </li>
+    </ol>
+  </details>
+
+  <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-bo-bg text-left">
+        <tr>
+          <th class="px-4 py-2 w-16">Décor</th>
+          <th class="px-4 py-2">Type</th>
+          <th class="px-2 py-2 w-10"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {vues.map((v) => (
+          <tr class="border-t border-bo-border align-top">
+            <td class="px-4 py-3">
+              {v.foregroundUrl ? (
+                <img
+                  src={
+                    v.foregroundUrl.startsWith("http")
+                      ? v.foregroundUrl
+                      : `${PUBLIC_API_URL}${v.foregroundUrl}`
+                  }
+                  alt=""
+                  class="h-10 w-14 object-contain border border-bo-border rounded bg-white"
+                />
+              ) : (
+                <span class="text-xs text-bo-muted">aucun</span>
+              )}
+            </td>
+            <td class="px-4 py-3">
+              <form method="POST" class="flex flex-wrap items-end gap-2">
+                <input type="hidden" name="id" value={v.id} />
+                <label class="block">
+                  <span class="text-bo-muted text-xs">Nom</span>
+                  <input
+                    name="name"
+                    value={v.name}
+                    required
+                    class="mt-1 block w-40 border border-bo-border rounded px-2 py-1"
+                  />
+                </label>
+                <label class="block flex-1 min-w-[220px]">
+                  <span class="text-bo-muted text-xs">
+                    Décor de premier plan (facultatif)
+                  </span>
+                  <span class="mt-1 flex items-center gap-2">
+                    <input
+                      name="foregroundUrl"
+                      value={v.foregroundUrl ?? ""}
+                      placeholder="/assets/muret_officiel.svg"
+                      class="js-decor flex-1 border border-bo-border rounded px-2 py-1 font-mono text-xs"
+                    />
+                    <button
+                      type="button"
+                      class="js-televerser rounded border border-bo-border px-2 py-1 text-xs whitespace-nowrap"
+                    >
+                      Téléverser…
+                    </button>
+                  </span>
+                </label>
+                <label class="block">
+                  <span class="text-bo-muted text-xs">Ordre</span>
+                  <input
+                    name="position"
+                    type="number"
+                    value={v.position}
+                    class="mt-1 block w-16 border border-bo-border rounded px-2 py-1"
+                  />
+                </label>
+                <label class="flex items-center gap-1 pb-1.5">
+                  <input type="checkbox" name="active" checked={v.active} />
+                  <span>Proposé</span>
+                </label>
+                <button class="rounded bg-bo-accent text-white px-3 py-1.5">
+                  Enregistrer
+                </button>
+                <p class="basis-full text-xs text-bo-muted">
+                  Identifiant technique <code>{v.slug}</code> — fixé à la
+                  création, il relie les dessins à ce type. Rattaché à :{" "}
+                  {rattache(v)}.
+                </p>
+              </form>
+            </td>
+            <td class="px-2 py-3 text-right">
+              {libre(v) ? (
+                <form method="POST" class="js-retirer inline" data-nom={v.name}>
+                  <input type="hidden" name="_action" value="supprimer" />
+                  <input type="hidden" name="id" value={v.id} />
+                  <button
+                    class="rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-red-300 hover:text-red-700"
+                    title={`Supprimer « ${v.name} »`}
+                    aria-label={`Supprimer ${v.name}`}
+                  >
+                    ✕
+                  </button>
+                </form>
+              ) : (
+                <span
+                  class="text-xs text-bo-muted"
+                  title="Ce type sert encore : décochez « Proposé » pour le retirer du site."
+                >
+                  —
+                </span>
+              )}
+            </td>
+          </tr>
+        ))}
+        {vues.length === 0 && !error && (
+          <tr>
+            <td class="px-4 py-6 text-bo-muted" colspan="3">
+              Aucun type d'affiche.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </section>
+
+  <details class="bg-bo-surface border border-bo-border rounded-lg">
+    <summary class="cursor-pointer px-5 py-3 font-semibold select-none">
+      <span class="mr-1 text-bo-accent">+</span> Ajouter un type d'affiche
+    </summary>
+    <form method="POST" class="flex flex-wrap items-end gap-3 px-5 pb-5 text-sm">
+      <label class="block">
+        <span class="text-bo-muted">Nom</span>
+        <input
+          name="name"
+          required
+          placeholder="De profil"
+          class="mt-1 block w-44 border border-bo-border rounded px-3 py-2"
+        />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Décor de premier plan (facultatif)</span>
+        <span class="mt-1 flex items-center gap-2">
+          <input
+            name="foregroundUrl"
+            placeholder="/assets/mon-banc.svg"
+            class="js-decor block w-72 border border-bo-border rounded px-3 py-2 font-mono text-xs"
+          />
+          <button
+            type="button"
+            class="js-televerser rounded border border-bo-border px-2 py-2 text-xs whitespace-nowrap"
+          >
+            Téléverser…
+          </button>
+        </span>
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Ordre</span>
+        <input
+          name="position"
+          type="number"
+          value={vues.length}
+          class="mt-1 block w-20 border border-bo-border rounded px-3 py-2"
+        />
+      </label>
+      <label class="flex items-center gap-2 pb-2">
+        <input type="checkbox" name="active" checked />
+        <span>Proposé sur le site</span>
+      </label>
+      <button class="rounded bg-bo-accent text-white px-4 py-2">Créer</button>
+      <p class="basis-full text-xs text-bo-muted">
+        Le décor est posé en bas de l'affiche, devant le fond et derrière les
+        personnages — et seulement quand l'affiche a au moins un personnage.
+      </p>
+    </form>
+  </details>
+
+  <script is:inline define:vars={{ PUBLIC_API_URL }}>
+    // Suppression : irréversible, on demande confirmation.
+    document.querySelectorAll("form.js-retirer").forEach((f) => {
+      f.addEventListener("submit", (e) => {
+        const nom = f.getAttribute("data-nom") || "ce type";
+        if (!confirm(`Supprimer « ${nom} » ?`)) e.preventDefault();
+      });
+    });
+
+    // Téléversement du décor : évite d'avoir à connaître le chemin d'un
+    // fichier sur le serveur. Le champ reçoit l'URL renvoyée par l'API.
+    document.querySelectorAll(".js-televerser").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const champ = btn.parentElement.querySelector(".js-decor");
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".svg,.png,.jpg,.jpeg,.webp";
+        input.addEventListener("change", async () => {
+          const file = input.files && input.files[0];
+          if (!file) return;
+          const avant = btn.textContent;
+          btn.textContent = "Envoi…";
+          btn.disabled = true;
+          try {
+            const fd = new FormData();
+            fd.append("file", file);
+            const res = await fetch(`${PUBLIC_API_URL}/admin/uploads`, {
+              method: "POST",
+              body: fd,
+              credentials: "include",
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || res.status);
+            champ.value = data.url;
+          } catch (e) {
+            alert("Téléversement impossible : " + e);
+          } finally {
+            btn.textContent = avant;
+            btn.disabled = false;
+          }
+        });
+        input.click();
+      });
+    });
+  </script>
+</Admin>

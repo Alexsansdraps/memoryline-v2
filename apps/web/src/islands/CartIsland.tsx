@@ -14,6 +14,7 @@ import {
   stateFromConfig,
   SLOTS,
   findVariant,
+  variantesDeVue,
 } from "@memoryline/configurator";
 import {
   remisesPanier,
@@ -116,7 +117,7 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
         const base = personnageParId(perso.typeId);
         if (!base) continue;
         void fetchSvg(base.baseSvgUrl);
-        const jeu = lib.slots[base.orientation ?? "front"];
+        const jeu = variantesDeVue(lib.slots, base.orientation);
         for (const slot of SLOTS) {
           const v = findVariant(jeu[slot], perso.assets?.[slot]);
           if (v) void fetchSvg(v.svgUrl);
@@ -235,12 +236,18 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
                         cache={cache}
                         assetBaseUrl={PUBLIC_API_URL}
                         foregroundUrl={
-                          it.config.foregroundUrl
-                            ? urlAsset(PUBLIC_API_URL, it.config.foregroundUrl)
-                            : undefined
-                        }
-                        defaultForeground={
-                          urlAsset(PUBLIC_API_URL, "/assets/muret_officiel.svg")
+                          // Le décor est enregistré dans la configuration au
+                          // moment de l'ajout au panier. Les lignes ajoutées
+                          // AVANT que le décor devienne une donnée du type
+                          // n'en ont pas : pour elles, la vue de dos vaut
+                          // toujours muret, sinon leur aperçu changerait.
+                          urlAsset(
+                            PUBLIC_API_URL,
+                            it.config.foregroundUrl ||
+                              (it.config.view === "back"
+                                ? "/assets/muret_officiel.svg"
+                                : ""),
+                          ) || undefined
                         }
                       />
                     </Show>

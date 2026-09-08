@@ -352,12 +352,20 @@ export async function renderPosterPng(
 
   const composites: OverlayOptions[] = [];
 
-  // 1b) Muret — DERRIÈRE les personnages (composité AVANT eux), mais devant le
-  // fond. UNIQUEMENT en vue de DOS, et UNIQUEMENT s'il y a au moins un
-  // personnage — même règle que l'aperçu écran (PosterPreview), sinon
-  // l'impression ne correspondrait pas à ce que le client a validé.
-  if (config.view === "back" && (config.characters?.length ?? 0) > 0) {
-    const fgSource = config.foregroundUrl || "/assets/muret_officiel.svg";
+  // 1b) Décor — DERRIÈRE les personnages (composité AVANT eux), mais devant le
+  // fond, et UNIQUEMENT s'il y a au moins un personnage — même règle que
+  // l'aperçu écran (PosterPreview), sinon l'impression ne correspondrait pas
+  // à ce que le client a validé.
+  //
+  // Le décor vient de la configuration, où il a été figé à l'ajout au panier
+  // (décor du produit, sinon décor de son type d'affiche). Les commandes
+  // passées AVANT que le décor devienne une donnée n'en ont pas : pour
+  // elles, la vue de dos vaut toujours muret, sinon leur réimpression
+  // perdrait le muret.
+  const fgSource =
+    config.foregroundUrl ||
+    (config.view === "back" ? "/assets/muret_officiel.svg" : "");
+  if (fgSource && (config.characters?.length ?? 0) > 0) {
     try {
       const fgRaw = await readSource(fgSource);
       const fgPng = await sharp(fgRaw, { density: 300 })

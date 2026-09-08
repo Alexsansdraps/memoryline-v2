@@ -81,6 +81,22 @@ export interface Cadre {
   position: number;
 }
 
+/**
+ * Type d'affiche : « de face », « de dos », et ceux créés au back-office.
+ * Le `slug` relie personnages, pièces et produits à leur type ; il ne change
+ * jamais après la création.
+ */
+export interface TypeAffiche {
+  id: number;
+  slug: string;
+  name: string;
+  foregroundUrl: string | null;
+  active: boolean;
+  position: number;
+  /** Ce qui s'y rattache — un type utilisé ne se supprime pas. */
+  usage?: { produits: number; personnages: number; pieces: number };
+}
+
 export interface OrderRow {
   id: number;
   number: string;
@@ -113,7 +129,8 @@ export interface CharacterType {
   archivedAt: string | null;
   baseSvgUrl: string | null;
   baseColorZones: Record<string, string> | null;
-  orientation?: "front" | "back";
+  /** Type d'affiche (slug) sous lequel ce personnage est dessiné. */
+  orientation?: string;
   /**
    * Calage vertical : position du bas réel du dessin dans le viewBox (0..1).
    * Sert à aligner les pieds de tous les personnages sur le muret.
@@ -134,7 +151,8 @@ export interface Asset {
   slot: string;
   name: string;
   svgUrl: string | null;
-  view: "front" | "back" | null;
+  /** Type d'affiche (slug) sous lequel cette pièce est dessinée. */
+  view: string | null;
   colorZones: Record<string, string> | null;
   position: number;
   /** Non null = pièce archivée : masquée du configurateur, jamais supprimée. */
@@ -156,7 +174,8 @@ export interface ProductConfig {
   name: string;
   defaultTitle: string | null;
   defaultSubtitle: string | null;
-  defaultView: "front" | "back" | null;
+  /** Slug du type d'affiche du produit. */
+  defaultView: string | null;
   foregroundUrl: string | null;
   backgrounds: ProductBackground[];
 }
@@ -199,6 +218,18 @@ export function adminApi(request?: Request) {
     }) => req<Cadre>("POST", "/admin/frames", data, cookie),
     deleteFrame: (id: number) =>
       req<{ ok: boolean }>("DELETE", `/admin/frames/${id}`, undefined, cookie),
+
+    views: () =>
+      req<TypeAffiche[]>("GET", "/admin/views", undefined, cookie),
+    upsertView: (data: {
+      id?: number;
+      name: string;
+      foregroundUrl?: string | null;
+      active?: boolean;
+      position?: number;
+    }) => req<TypeAffiche>("POST", "/admin/views", data, cookie),
+    deleteView: (id: number) =>
+      req<{ ok: boolean }>("DELETE", `/admin/views/${id}`, undefined, cookie),
     categories: () =>
       req<CharacterCategory[]>("GET", "/admin/categories", undefined, cookie),
     upsertCategory: (data: { id?: number; name: string; position?: number }) =>
@@ -304,7 +335,8 @@ export function adminApi(request?: Request) {
       data: {
         defaultTitle?: string | null;
         defaultSubtitle?: string | null;
-        defaultView?: "front" | "back" | null;
+        /** Slug du type d'affiche (« front », « back », ou créé au BO). */
+        defaultView?: string | null;
         foregroundUrl?: string | null;
       },
     ) =>

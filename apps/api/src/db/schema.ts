@@ -160,6 +160,35 @@ export const frames = pgTable(
   (t) => [uniqueIndex("frame_slug_uniq").on(t.slug)],
 );
 
+/**
+ * Type d'affiche — « de face », « de dos », et tout ce que la cliente
+ * inventera ensuite.
+ *
+ * C'était une paire figée dans le code (`front` / `back`). Un nouveau type
+ * demandait un développeur ; il se crée maintenant au back-office. Le `slug`
+ * est la valeur écrite dans `asset.view`, `character_type.orientation` et
+ * `product.default_view` : il ne se renomme pas une fois des dessins
+ * rattachés (le nom, lui, se change librement).
+ */
+export const posterViews = pgTable(
+  "poster_view",
+  {
+    id: serial("id").primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    /**
+     * Décor de premier plan par défaut (muret, banc…), posé DEVANT le fond et
+     * DERRIÈRE les personnages. C'est ce qui distinguait la vue de dos : la
+     * règle devient une donnée du type, un produit pouvant toujours donner le
+     * sien.
+     */
+    foregroundUrl: text("foreground_url"),
+    active: boolean("active").notNull().default(true),
+    position: integer("position").notNull().default(0),
+  },
+  (t) => [uniqueIndex("poster_view_slug_uniq").on(t.slug)],
+);
+
 /** Fond sélectionnable dans le configurateur, lié à un produit. */
 export const backgrounds = pgTable("background", {
   id: serial("id").primaryKey(),

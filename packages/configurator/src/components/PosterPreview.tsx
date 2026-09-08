@@ -7,6 +7,7 @@ import {
   type ConfiguratorState,
   type SlotsDTO,
   type SvgCache,
+  variantesDeVue,
 } from "../store";
 import {
   familleCss,
@@ -36,10 +37,12 @@ export function PosterPreview(props: {
   characterById: (id: string | number) => CharacterDTO | undefined;
   slots: SlotsDTO;
   cache: SvgCache;
-  /** Décor d'avant-plan spécifique au produit (surcharge le muret par défaut). */
+  /**
+   * Décor d'avant-plan (muret, banc…), posé devant le fond et derrière les
+   * personnages. Déjà résolu par l'appelant : décor du produit, sinon décor
+   * de son type d'affiche. Absent = pas de décor.
+   */
   foregroundUrl?: string;
-  /** Décor d'avant-plan par défaut (le muret), affiché en vue de dos. */
-  defaultForeground?: string;
   /** Préfixe des assets, ajouté à l'affichage seulement. */
   assetBaseUrl?: string;
 }) {
@@ -119,12 +122,14 @@ export function PosterPreview(props: {
                 character={c}
                 base={props.characterById(c.characterId)}
                 slots={
-                  // Chaque perso utilise SON orientation native (dos/face),
-                  // sinon la vue globale de l'affiche.
-                  props.slots[
+                  // Chaque perso utilise SON orientation native (dos/face,
+                  // ou tout type créé au back-office), sinon la vue globale
+                  // de l'affiche.
+                  variantesDeVue(
+                    props.slots,
                     props.characterById(c.characterId)?.orientation ??
-                      props.state.view
-                  ]
+                      props.state.view,
+                  )
                 }
                 cache={props.cache}
               />
@@ -133,16 +138,14 @@ export function PosterPreview(props: {
         }}
       </For>
 
-      {/* Couche muret — DERRIÈRE les personnages (les persos passent devant),
-          mais devant le fond. UNIQUEMENT en vue de DOS, et UNIQUEMENT s'il y a
-          au moins un personnage : sans personne à asseoir, le banc n'a pas de
-          raison d'être et masquerait le bas du visuel. Ancré en bas, pleine
-          largeur, hauteur auto. Décor par défaut = muret ; surchargé par produit. */}
+      {/* Couche décor — DERRIÈRE les personnages (les persos passent devant),
+          mais devant le fond. Affichée dès que le type d'affiche en a un et
+          qu'il y a au moins un personnage : sans personne à asseoir, le banc
+          n'a pas de raison d'être et masquerait le bas du visuel. Ancré en
+          bas, pleine largeur, hauteur auto. */}
       <Show
         when={
-          props.state.view === "back" && props.state.characters.length > 0
-            ? props.foregroundUrl ?? props.defaultForeground
-            : undefined
+          props.state.characters.length > 0 ? props.foregroundUrl : undefined
         }
       >
         {(url) => (
