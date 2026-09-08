@@ -348,20 +348,34 @@ for (const a of pieces) {
   <!-- ===================================================================== -->
   <div class="mb-1 flex flex-wrap items-center justify-between gap-3">
     <h2 class="text-lg font-semibold">Personnages</h2>
-    <div class="flex items-center gap-2">
-      <a
-        href={url("/personnages/piece")}
-        class="rounded border border-bo-border px-4 py-2 text-sm"
+    {/* Un seul bouton « Nouveau », le choix se fait dans le menu. */}
+    <details class="bo-menu relative">
+      <summary class="rounded bg-bo-accent px-4 py-2 text-sm text-white">
+        <span class="mr-1">+</span> Nouveau <span class="ml-1">▾</span>
+      </summary>
+      <div
+        class="absolute right-0 z-20 mt-1 w-64 overflow-hidden rounded border border-bo-border bg-bo-surface shadow-lg"
       >
-        <span class="mr-1">+</span> Nouvelle pièce
-      </a>
-      <a
-        href={url("/personnages/nouveau")}
-        class="rounded bg-bo-accent px-4 py-2 text-sm text-white"
-      >
-        <span class="mr-1">+</span> Nouveau personnage
-      </a>
-    </div>
+        <a
+          href={url("/personnages/nouveau")}
+          class="block px-3 py-2 text-sm hover:bg-bo-bg"
+        >
+          Personnage
+          <span class="block text-xs text-bo-muted">
+            Un nouveau modèle à poser sur les affiches
+          </span>
+        </a>
+        <a
+          href={url("/personnages/piece")}
+          class="block border-t border-bo-border px-3 py-2 text-sm hover:bg-bo-bg"
+        >
+          Pièce
+          <span class="block text-xs text-bo-muted">
+            Vêtement, pantalon, coupe ou accessoire
+          </span>
+        </a>
+      </div>
+    </details>
   </div>
   <p class="mb-4 text-sm text-bo-muted">
     Les personnages que le client peut ajouter depuis le site, regroupés par
@@ -1573,6 +1587,13 @@ for (const a of pieces) {
       const statut = bloc.querySelector(".js-base-status");
       if (statut)
         statut.textContent = "Dessin remplacé — pensez à enregistrer la base.";
+    });
+
+    // Menu « Nouveau » : un clic ailleurs le referme, comme tout menu.
+    document.addEventListener("click", (e) => {
+      for (const menu of document.querySelectorAll("details.bo-menu[open]")) {
+        if (!menu.contains(e.target)) menu.open = false;
+      }
     });
 
     // ===== Assistant de calage : les pièces une par une ==================

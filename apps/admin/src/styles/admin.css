@@ -20,3 +20,16 @@ html {
 body {
   margin: 0;
 }
+
+/* Menu déroulant bâti sur <details> : l'ouverture et la fermeture au clavier
+   viennent du navigateur, il ne reste qu'à masquer le triangle. */
+.bo-menu > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+.bo-menu > summary::-webkit-details-marker,
+.bo-menu > summary::marker {
+  display: none;
+  content: "";
+}
