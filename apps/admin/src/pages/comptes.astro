@@ -1,0 +1,276 @@
+---
+import Admin from "../layouts/Admin.astro";
+import { adminApi, type CompteAdmin } from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+const ROLES = [
+  {
+    value: "owner",
+    label: "Propriétaire",
+    aide: "Tous les droits : catalogue, personnages, prix, promotions, comptes.",
+  },
+  {
+    value: "seller",
+    label: "Vendeur",
+    aide: "Consultation seule : commandes, catalogue, PDF d'impression. Ne modifie rien.",
+  },
+];
+const nomRole = (v: string) => ROLES.find((r) => r.value === v)?.label ?? v;
+
+/** Date lisible, sans dépendance : « 8 septembre 2026 ». */
+function leJour(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  } catch {
+    return "";
+  }
+}
+
+let flash: string | null = null;
+let flashErreur = false;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const action = f.get("_action");
+  try {
+    if (action === "supprimer") {
+      await api.deleteUser(Number(f.get("id")));
+      flash = "Compte supprimé.";
+    } else if (action === "deconnecter") {
+      await api.logoutUser(Number(f.get("id")));
+      flash = "Sessions fermées : ce compte devra se reconnecter.";
+    } else {
+      const motDePasse = String(f.get("password") || "");
+      const compte = await api.upsertUser({
+        id: f.get("id") ? Number(f.get("id")) : undefined,
+        email: String(f.get("email") || ""),
+        role: String(f.get("role") || "seller"),
+        ...(motDePasse ? { password: motDePasse } : {}),
+      });
+      flash = f.get("id")
+        ? `Compte « ${compte.email} » mis à jour${motDePasse ? " — nouveau mot de passe actif, ses sessions ont été fermées." : "."}`
+        : `Compte « ${compte.email} » créé.`;
+    }
+  } catch (e) {
+    // Les refus de l'API sont explicites (dernier propriétaire, son propre
+    // compte, adresse déjà prise) : on les montre tels quels.
+    const texte = String(e);
+    flash = texte.includes("400") || texte.includes("409")
+      ? "Refusé : " + texte.replace(/^.*-> \d+\s*/, "")
+      : "Erreur : " + texte;
+    flashErreur = true;
+  }
+}
+
+let comptes: CompteAdmin[] = [];
+let error: string | null = null;
+try {
+  comptes = await api.users();
+} catch (e) {
+  error = String(e);
+}
+
+const proprietaires = comptes.filter((c) => c.role === "owner").length;
+/**
+ * Un compte supprimable : ni le sien, ni le dernier propriétaire.
+ * Calculé ici et pas dans le gabarit : un « <= » au milieu du JSX est lu
+ * comme l'ouverture d'un fragment et casse la compilation.
+ */
+const supprimable = (c: CompteAdmin) =>
+  !c.moi && !(c.role === "owner" && proprietaires === 1);
+---
+
+<Admin title="Comptes">
+  {flash && (
+    <p
+      class={`mb-4 text-sm rounded px-3 py-2 border ${
+        flashErreur ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+  {error && (
+    <p class="mb-4 text-red-600 text-sm">
+      Liste indisponible : {error}
+    </p>
+  )}
+
+  <p class="mb-6 text-sm text-bo-muted max-w-3xl">
+    Qui peut entrer dans le back-office, et jusqu'où. Un
+    <strong> propriétaire</strong> peut tout modifier, y compris cette page ; un
+    <strong> vendeur</strong> ne fait que consulter — commandes, catalogue et
+    PDF d'impression — sans rien pouvoir changer.
+  </p>
+
+  <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-bo-bg text-left">
+        <tr>
+          <th class="px-4 py-2">Compte</th>
+          <th class="px-2 py-2 w-10"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {comptes.map((c) => (
+          <tr class="border-t border-bo-border align-top">
+            <td class="px-4 py-3">
+              <form method="POST" class="flex flex-wrap items-end gap-3">
+                <input type="hidden" name="id" value={c.id} />
+                <label class="block">
+                  <span class="text-bo-muted text-xs">Adresse e-mail</span>
+                  <input
+                    name="email"
+                    type="email"
+                    value={c.email}
+                    required
+                    class="mt-1 block w-64 border border-bo-border rounded px-2 py-1"
+                  />
+                </label>
+                <label class="block">
+                  <span class="text-bo-muted text-xs">Rôle</span>
+                  <select
+                    name="role"
+                    disabled={c.moi}
+                    title={c.moi ? "On ne change pas son propre rôle" : undefined}
+                    class="mt-1 block border border-bo-border rounded px-2 py-1 disabled:opacity-60"
+                  >
+                    {ROLES.map((r) => (
+                      <option value={r.value} selected={c.role === r.value}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
+                  {c.moi && <input type="hidden" name="role" value={c.role} />}
+                </label>
+                <label class="block">
+                  <span class="text-bo-muted text-xs">
+                    Nouveau mot de passe
+                  </span>
+                  <input
+                    name="password"
+                    type="password"
+                    minlength="10"
+                    autocomplete="new-password"
+                    placeholder="laisser vide pour ne pas changer"
+                    class="mt-1 block w-56 border border-bo-border rounded px-2 py-1"
+                  />
+                </label>
+                <button class="rounded bg-bo-accent text-white px-3 py-1.5">
+                  Enregistrer
+                </button>
+                <p class="basis-full text-xs text-bo-muted">
+                  {nomRole(c.role)} · créé le {leJour(c.createdAt)}
+                  {c.moi && " · c'est vous"}
+                  {c.connecte ? " · connecté en ce moment" : ""}
+                </p>
+              </form>
+            </td>
+            <td class="px-2 py-3 text-right whitespace-nowrap">
+              {c.connecte && !c.moi && (
+                <form method="POST" class="inline">
+                  <input type="hidden" name="_action" value="deconnecter" />
+                  <input type="hidden" name="id" value={c.id} />
+                  <button
+                    class="rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:text-bo-accent"
+                    title={`Fermer les sessions de ${c.email}`}
+                  >
+                    Déconnecter
+                  </button>
+                </form>
+              )}
+              {supprimable(c) && (
+                <form
+                  method="POST"
+                  class="js-retirer ml-1 inline"
+                  data-nom={c.email}
+                >
+                  <input type="hidden" name="_action" value="supprimer" />
+                  <input type="hidden" name="id" value={c.id} />
+                  <button
+                    class="rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-red-300 hover:text-red-700"
+                    title={`Supprimer le compte ${c.email}`}
+                    aria-label={`Supprimer ${c.email}`}
+                  >
+                    ✕
+                  </button>
+                </form>
+              )}
+            </td>
+          </tr>
+        ))}
+        {comptes.length === 0 && !error && (
+          <tr>
+            <td class="px-4 py-6 text-bo-muted" colspan="2">
+              Aucun compte.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </section>
+
+  <details class="bg-bo-surface border border-bo-border rounded-lg">
+    <summary class="cursor-pointer px-5 py-3 font-semibold select-none">
+      <span class="mr-1 text-bo-accent">+</span> Ajouter un compte
+    </summary>
+    <form method="POST" class="flex flex-wrap items-end gap-3 px-5 pb-5 text-sm">
+      <label class="block">
+        <span class="text-bo-muted">Adresse e-mail</span>
+        <input
+          name="email"
+          type="email"
+          required
+          placeholder="prenom@memoryline.fr"
+          class="mt-1 block w-64 border border-bo-border rounded px-3 py-2"
+        />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Rôle</span>
+        <select
+          name="role"
+          class="mt-1 block border border-bo-border rounded px-3 py-2"
+        >
+          {ROLES.map((r) => <option value={r.value}>{r.label}</option>)}
+        </select>
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Mot de passe</span>
+        <input
+          name="password"
+          type="password"
+          required
+          minlength="10"
+          autocomplete="new-password"
+          class="mt-1 block w-56 border border-bo-border rounded px-3 py-2"
+        />
+      </label>
+      <button class="rounded bg-bo-accent text-white px-4 py-2">Créer</button>
+      <p class="basis-full text-xs text-bo-muted">
+        Dix caractères minimum. Transmettez-le à la personne par un autre canal
+        que l'e-mail du compte, et demandez-lui de le changer ici même.
+      </p>
+    </form>
+  </details>
+
+  <p class="mt-6 text-xs text-bo-muted max-w-3xl">
+    Deux règles que le back-office fait respecter tout seul : il reste toujours
+    au moins un propriétaire, et on ne peut ni supprimer son propre compte ni
+    changer son propre rôle — de quoi éviter de se retrouver dehors.
+  </p>
+
+  <script is:inline>
+    document.querySelectorAll("form.js-retirer").forEach((f) => {
+      f.addEventListener("submit", (e) => {
+        const nom = f.getAttribute("data-nom") || "ce compte";
+        if (!confirm(`Supprimer le compte « ${nom} » ? Il perdra l'accès immédiatement.`))
+          e.preventDefault();
+      });
+    });
+  </script>
+</Admin>

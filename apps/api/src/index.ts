@@ -13,6 +13,7 @@ import {
   SESSION_COOKIE,
   createSession,
   deleteSession,
+  hashPassword,
   validateSession,
   verifyPassword,
   purgeExpiredSessions,
@@ -690,6 +691,158 @@ app.post("/admin/products/:id/translations", async (c) => {
     .where(eq(schema.products.id, id))
     .returning({ translations: schema.products.translations });
   return c.json({ ok: true, translations: row?.translations ?? {} });
+});
+
+/* --------------------------------------------------------------------------
+ *  Comptes du back-office
+ *
+ *  Réservés au PROPRIÉTAIRE, lecture comprise : la liste des comptes dit qui
+ *  peut entrer, un vendeur n'a pas à la connaître (le garde-fou global ne
+ *  protège que les écritures).
+ * ----------------------------------------------------------------------- */
+
+/** L'appelant, s'il est propriétaire ; null sinon. */
+async function exigerProprietaire(jeton: string | undefined) {
+  const user = await validateSession(jeton);
+  if (!user || user.role !== OWNER_ROLE) return null;
+  return user;
+}
+
+/** Combien de propriétaires reste-t-il ? Sert à ne jamais tomber à zéro. */
+async function nombreProprietaires(): Promise<number> {
+  const [n] = await db
+    .select({ n: count() })
+    .from(schema.adminUsers)
+    .where(eq(schema.adminUsers.role, OWNER_ROLE));
+  return Number(n?.n ?? 0);
+}
+
+app.get("/admin/users", async (c) => {
+  const moi = await exigerProprietaire(getCookie(c, SESSION_COOKIE));
+  if (!moi) return c.json({ error: "Réservé au propriétaire" }, 403);
+  const rows = await db
+    .select({
+      id: schema.adminUsers.id,
+      email: schema.adminUsers.email,
+      role: schema.adminUsers.role,
+      createdAt: schema.adminUsers.createdAt,
+    })
+    .from(schema.adminUsers)
+    .orderBy(asc(schema.adminUsers.id));
+  // Sessions ouvertes : dit d'un coup d'œil quels comptes servent vraiment.
+  const ouvertes = await db
+    .select({
+      adminUserId: schema.sessions.adminUserId,
+      expiresAt: schema.sessions.expiresAt,
+    })
+    .from(schema.sessions);
+  const actifs = new Set(
+    ouvertes
+      .filter((s) => s.expiresAt.getTime() > Date.now())
+      .map((s) => s.adminUserId),
+  );
+  return c.json(
+    rows.map((r) => ({
+      ...r,
+      connecte: actifs.has(r.id),
+      moi: r.id === moi.adminUserId,
+    })),
+  );
+});
+
+/**
+ * Crée un compte, ou change le rôle et/ou le mot de passe d'un compte
+ * existant.
+ *
+ * Deux garde-fous, parce qu'un back-office sans propriétaire ne se répare pas
+ * depuis le back-office : on ne rétrograde pas le dernier propriétaire, et on
+ * ne change pas son propre rôle (on se verrouillerait dehors d'un clic).
+ */
+app.post("/admin/users", async (c) => {
+  const moi = await exigerProprietaire(getCookie(c, SESSION_COOKIE));
+  if (!moi) return c.json({ error: "Réservé au propriétaire" }, 403);
+  const b = await c.req.json();
+  const email = String(b.email ?? "").trim().toLowerCase();
+  const role = b.role === "seller" ? "seller" : OWNER_ROLE;
+  const motDePasse = String(b.password ?? "");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
+    return c.json({ error: "adresse e-mail invalide" }, 400);
+  if (motDePasse && motDePasse.length < 10)
+    return c.json({ error: "mot de passe : 10 caractères minimum" }, 400);
+
+  const id = b.id ? Number(b.id) : null;
+  if (id) {
+    const [avant] = await db
+      .select({ id: schema.adminUsers.id, role: schema.adminUsers.role })
+      .from(schema.adminUsers)
+      .where(eq(schema.adminUsers.id, id));
+    if (!avant) return c.notFound();
+    if (avant.id === moi.adminUserId && role !== avant.role)
+      return c.json({ error: "on ne change pas son propre rôle" }, 400);
+    if (
+      avant.role === OWNER_ROLE &&
+      role !== OWNER_ROLE &&
+      (await nombreProprietaires()) <= 1
+    )
+      return c.json({ error: "il faut au moins un propriétaire" }, 400);
+    const [row] = await db
+      .update(schema.adminUsers)
+      .set({
+        email,
+        role,
+        ...(motDePasse ? { passwordHash: await hashPassword(motDePasse) } : {}),
+      })
+      .where(eq(schema.adminUsers.id, id))
+      .returning({ id: schema.adminUsers.id, email: schema.adminUsers.email });
+    // Changement de mot de passe : on ferme les sessions ouvertes de ce
+    // compte, sinon l'ancien mot de passe continue de donner accès.
+    if (motDePasse)
+      await db.delete(schema.sessions).where(eq(schema.sessions.adminUserId, id));
+    return c.json(row);
+  }
+
+  if (!motDePasse)
+    return c.json({ error: "mot de passe requis pour un nouveau compte" }, 400);
+  const [existe] = await db
+    .select({ id: schema.adminUsers.id })
+    .from(schema.adminUsers)
+    .where(eq(schema.adminUsers.email, email));
+  if (existe) return c.json({ error: "cette adresse a déjà un compte" }, 409);
+  const [row] = await db
+    .insert(schema.adminUsers)
+    .values({ email, role, passwordHash: await hashPassword(motDePasse) })
+    .returning({ id: schema.adminUsers.id, email: schema.adminUsers.email });
+  return c.json(row);
+});
+
+/**
+ * Supprime un compte. Ni le sien (on se mettrait dehors), ni le dernier
+ * propriétaire. Les sessions du compte tombent avec lui (cascade).
+ */
+app.delete("/admin/users/:id", async (c) => {
+  const moi = await exigerProprietaire(getCookie(c, SESSION_COOKIE));
+  if (!moi) return c.json({ error: "Réservé au propriétaire" }, 403);
+  const id = Number(c.req.param("id"));
+  if (id === moi.adminUserId)
+    return c.json({ error: "on ne supprime pas son propre compte" }, 400);
+  const [cible] = await db
+    .select({ role: schema.adminUsers.role })
+    .from(schema.adminUsers)
+    .where(eq(schema.adminUsers.id, id));
+  if (!cible) return c.notFound();
+  if (cible.role === OWNER_ROLE && (await nombreProprietaires()) <= 1)
+    return c.json({ error: "il faut au moins un propriétaire" }, 400);
+  await db.delete(schema.adminUsers).where(eq(schema.adminUsers.id, id));
+  return c.json({ ok: true });
+});
+
+/** Ferme toutes les sessions d'un compte — le remet à la porte. */
+app.post("/admin/users/:id/deconnecter", async (c) => {
+  const moi = await exigerProprietaire(getCookie(c, SESSION_COOKIE));
+  if (!moi) return c.json({ error: "Réservé au propriétaire" }, 403);
+  const id = Number(c.req.param("id"));
+  await db.delete(schema.sessions).where(eq(schema.sessions.adminUserId, id));
+  return c.json({ ok: true });
 });
 
 /** Tous les cadres, actifs ou non — gestion au back-office. */

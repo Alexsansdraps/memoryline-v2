@@ -97,6 +97,19 @@ export interface TypeAffiche {
   usage?: { produits: number; personnages: number; pieces: number };
 }
 
+/** Compte d'accès au back-office. */
+export interface CompteAdmin {
+  id: number;
+  email: string;
+  /** « owner » (tous droits) ou « seller » (lecture seule). */
+  role: string;
+  createdAt: string;
+  /** Une session ouverte en ce moment. */
+  connecte: boolean;
+  /** C'est le compte avec lequel on est connecté. */
+  moi: boolean;
+}
+
 export interface OrderRow {
   id: number;
   number: string;
@@ -255,6 +268,22 @@ export function adminApi(request?: Request) {
     deleteFrame: (id: number) =>
       req<{ ok: boolean }>("DELETE", `/admin/frames/${id}`, undefined, cookie),
 
+    users: () => req<CompteAdmin[]>("GET", "/admin/users", undefined, cookie),
+    upsertUser: (data: {
+      id?: number;
+      email: string;
+      role: string;
+      password?: string;
+    }) => req<{ id: number; email: string }>("POST", "/admin/users", data, cookie),
+    deleteUser: (id: number) =>
+      req<{ ok: boolean }>("DELETE", `/admin/users/${id}`, undefined, cookie),
+    logoutUser: (id: number) =>
+      req<{ ok: boolean }>(
+        "POST",
+        `/admin/users/${id}/deconnecter`,
+        {},
+        cookie,
+      ),
     views: () =>
       req<TypeAffiche[]>("GET", "/admin/views", undefined, cookie),
     upsertView: (data: {

@@ -31,6 +31,7 @@ const nav: NavItem[] = [
   { href: "/promotions", label: "Promotions", icon: "🎟️", owner: true },
   { href: "/bandeau", label: "Bandeau du site", icon: "📢", owner: true },
   { href: "/contenu", label: "Contenu", icon: "✏️", owner: true },
+  { href: "/comptes", label: "Comptes", icon: "🔑", owner: true },
 ];
 const isOwner = Astro.locals.user?.role === "owner";
 const allowed = (item: NavItem) => isOwner || !item.owner;
