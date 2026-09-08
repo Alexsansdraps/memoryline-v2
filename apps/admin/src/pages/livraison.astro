@@ -1,15 +1,40 @@
 ---
+import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
-import { adminApi, formatPrice, type CatalogueLivraisonBO } from "../lib/api.ts";
+import {
+  adminApi,
+  formatPrice,
+  type CatalogueLivraisonBO,
+  type TranchesStandard,
+} from "../lib/api.ts";
 
 const api = adminApi(Astro.request);
 
-/** Euros saisis -> centimes. Champ vide = pas de franchise de port. */
-function centimes(v: FormDataEntryValue | null): number | null {
+/** Euros saisis -> centimes. Champ vide = pas de valeur. */
+function centimes(v: FormDataEntryValue | null | undefined): number | null {
   const t = String(v ?? "").replace(",", ".").trim();
   if (!t) return null;
   const n = Number(t);
   return Number.isFinite(n) ? Math.round(n * 100) : null;
+}
+
+/** Borne de poids saisie -> grammes entiers. Champ vide = pas de borne. */
+function borne(v: FormDataEntryValue | null | undefined): number | null {
+  const t = String(v ?? "").replace(",", ".").trim();
+  if (!t) return null;
+  const n = Math.round(Number(t));
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/**
+ * Une route pas encore déployée doit se lire, pas se deviner : la cliente
+ * n'a pas à traduire un 404 en « redémarrez l'API ».
+ */
+function lisible(e: unknown): string {
+  const t = String(e).replace(/^Error:\s*/, "");
+  return t.includes("404")
+    ? "Cette fonction n'est pas encore disponible côté API. Redémarrez l'API, puis réessayez."
+    : t;
 }
 
 let flash: string | null = null;
@@ -34,17 +59,50 @@ if (Astro.request.method === "POST") {
       });
       flash = "Zone enregistrée.";
     } else {
-      await api.updateShippingRate({
+      // La grille part entière : une tranche retirée de l'écran doit
+      // disparaître de la base, ligne à ligne on l'oublierait.
+      const mins = f.getAll("min");
+      const maxs = f.getAll("max");
+      const prix = f.getAll("price");
+      const tranches: {
+        minWeightGrams: number;
+        maxWeightGrams: number | null;
+        priceCents: number;
+      }[] = [];
+      for (let i = 0; i < mins.length; i++) {
+        const min = borne(mins[i]);
+        const max = borne(maxs[i]);
+        const p = centimes(prix[i]);
+        if (min === null && max === null && p === null) continue;
+        // Aucun prix n'est deviné : une tranche sans prix est une erreur de
+        // saisie, pas un port gratuit.
+        if (p === null)
+          throw new Error(
+            `La tranche à partir de ${min ?? 0} g n'a pas de prix : saisissez-le, ou retirez la ligne.`,
+          );
+        if (max !== null && max <= (min ?? 0))
+          throw new Error(
+            `Tranche impossible : ${max} g n'est pas au-dessus de ${min ?? 0} g.`,
+          );
+        tranches.push({
+          minWeightGrams: min ?? 0,
+          maxWeightGrams: max,
+          priceCents: p,
+        });
+      }
+      tranches.sort((a, b) => a.minWeightGrams - b.minWeightGrams);
+      const r = await api.setShippingGrille({
         methodId: Number(f.get("methodId")),
         zoneId: Number(f.get("zoneId")),
-        priceCents: centimes(f.get("price")) ?? 0,
         freeFromCents: centimes(f.get("freeFrom")),
-        active: f.get("active") === "on",
+        tranches,
       });
-      flash = "Tarif enregistré.";
+      flash = tranches.length
+        ? `Grille enregistrée : ${r.count} tranche(s).`
+        : "Grille vidée : ce mode ne sera plus proposé dans cette zone.";
     }
   } catch (e) {
-    flash = "Erreur : " + String(e);
+    flash = "Erreur : " + lisible(e);
     flashErreur = true;
   }
 }
@@ -72,13 +130,36 @@ try {
   error = String(e);
 }
 
-const tarif = (methodId: number, zoneId: number) =>
-  cat.tarifs.find((t) => t.methodId === methodId && t.zoneId === zoneId);
+// Bornes habituelles des transporteurs : une aide à la saisie, jamais des
+// prix. Si la route manque, les boutons disparaissent et on le dit.
+let standard: TranchesStandard | null = null;
+let erreurStandard: string | null = null;
+try {
+  standard = await api.tranchesStandard();
+} catch (e) {
+  erreurStandard = lisible(e);
+}
+
+/** Les tranches proposées au client, de la plus légère à la plus lourde. */
+const grille = (methodId: number, zoneId: number) =>
+  cat.tarifs
+    .filter((t) => t.methodId === methodId && t.zoneId === zoneId && t.active)
+    .sort((a, b) => a.minWeightGrams - b.minWeightGrams);
+
+/** Lignes désactivées : elles bloquent le mode sans apparaître dans la grille. */
+const retire = (methodId: number, zoneId: number) =>
+  cat.tarifs.some(
+    (t) => t.methodId === methodId && t.zoneId === zoneId && !t.active,
+  );
 
 const NOM_NATURE: Record<string, string> = {
   relay: "Point relais",
   home: "À domicile",
   pickup: "Retrait sur place",
+};
+const NOM_TRANSPORTEUR: Record<string, string> = {
+  colissimo: "Colissimo",
+  mondial_relay: "Mondial Relay",
 };
 ---
 
@@ -96,8 +177,9 @@ const NOM_NATURE: Record<string, string> = {
 
   <p class="mb-6 text-sm text-bo-muted max-w-3xl">
     Ce que le client peut choisir au moment de payer, et combien ça lui coûte.
-    Le prix dépend du <strong>mode</strong> et de la <strong>zone</strong> :
-    c'est le croisement des deux, dans le tableau plus bas, qui décide.
+    Le prix dépend du <strong>mode</strong>, de la <strong>zone</strong> et du
+    <strong>poids du colis</strong> : c'est le croisement des trois, dans les
+    grilles plus bas, qui décide.
   </p>
 
   {/* ------------------------------------------------------------------ */}
@@ -180,82 +262,177 @@ const NOM_NATURE: Record<string, string> = {
   </section>
 
   {/* ------------------------------------------------------------------ */}
-  {/* Tarifs                                                              */}
+  {/* Grilles tarifaires                                                  */}
   {/* ------------------------------------------------------------------ */}
-  <h3 class="font-semibold mb-1">Tarifs</h3>
-  <p class="mb-3 text-sm text-bo-muted max-w-3xl">
-    Un prix par mode et par zone. Le champ « offert à partir de » se compare au
-    panier <strong>après remises</strong> — laissez-le vide pour ne jamais
-    offrir le port. Décochez « Disponible » pour retirer un mode d'une zone
-    (le retrait sur place n'a pas de sens à l'étranger).
+  <h3 class="font-semibold mb-1">Tarifs par poids</h3>
+  <p class="mb-2 text-sm text-bo-muted max-w-3xl">
+    Pour chaque mode et chaque zone, une grille : « de tel poids à tel poids,
+    tel prix ». Le poids du colis est calculé à partir du poids des affiches
+    (<a class="underline" href={url("/categories-produits")}>catégories de
+    produits</a> et fiches produit) et de celui des
+    <a class="underline" href={url("/cadres")}> cadres</a>.
   </p>
+  <p class="mb-2 text-sm text-bo-muted max-w-3xl">
+    La borne haute est <strong>exclue</strong> : une tranche « 0 → 250 » couvre
+    jusqu'à 249 g, et la suivante commence à 250. Laissez la borne haute vide
+    pour « sans limite ». <strong>Un poids qu'aucune tranche ne couvre fait
+    disparaître le mode</strong> du tunnel de commande — la note sous chaque
+    grille dit ce qui est couvert.
+  </p>
+  <p class="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm max-w-3xl">
+    <strong>Les prix ne sont jamais devinés.</strong> Ni Colissimo ni Mondial
+    Relay ne publient de tarifs interrogeables : les boutons « Reprendre les
+    tranches… » ne remplissent que les <strong>bornes de poids</strong>
+    habituelles du transporteur, pour éviter de les retaper. Les
+    <strong>prix</strong>, eux, se recopient depuis votre grille contractuelle.
+  </p>
+  {erreurStandard && (
+    <p class="mb-4 text-sm text-bo-muted max-w-3xl">
+      Bornes habituelles indisponibles : {erreurStandard} Les tranches restent
+      saisissables à la main.
+    </p>
+  )}
+
   <section class="mb-8 space-y-6">
     {cat.zones.map((z) => (
       <div class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
         <div class="bg-bo-bg px-4 py-2 text-sm font-medium">{z.name}</div>
-        <table class="w-full text-sm">
-          <tbody>
-            {cat.modes.map((m) => {
-              const t = tarif(m.id, z.id);
-              return (
-                <tr class="border-t border-bo-border">
-                  <td class="px-4 py-3">
-                    <form method="POST" class="flex flex-wrap items-end gap-3">
-                      <input type="hidden" name="methodId" value={m.id} />
-                      <input type="hidden" name="zoneId" value={z.id} />
-                      <span class="w-40 pb-1.5">{m.name}</span>
-                      <label class="block">
-                        <span class="text-bo-muted text-xs">Prix (€)</span>
-                        <input
-                          name="price"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={((t?.priceCents ?? 0) / 100).toFixed(2)}
-                          class="mt-1 block w-24 border border-bo-border rounded px-2 py-1"
-                        />
-                      </label>
-                      <label class="block">
-                        <span class="text-bo-muted text-xs">
-                          Offert à partir de (€)
-                        </span>
-                        <input
-                          name="freeFrom"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={
-                            t?.freeFromCents == null
-                              ? ""
-                              : (t.freeFromCents / 100).toFixed(2)
-                          }
-                          placeholder="jamais"
-                          class="mt-1 block w-32 border border-bo-border rounded px-2 py-1"
-                        />
-                      </label>
-                      <label class="flex items-center gap-2 pb-1.5">
-                        <input
-                          type="checkbox"
-                          name="active"
-                          checked={t?.active ?? true}
-                        />
-                        <span>Disponible</span>
-                      </label>
-                      <button class="rounded bg-bo-accent text-white px-3 py-1.5">
-                        Enregistrer
-                      </button>
-                      <span class="pb-1.5 text-xs text-bo-muted">
-                        {t
-                          ? `actuellement ${formatPrice(t.priceCents)}`
-                          : "aucun tarif"}
-                      </span>
-                    </form>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div class="divide-y divide-bo-border">
+          {cat.modes.map((m) => {
+            const lignes = grille(m.id, z.id);
+            const franco = lignes[0]?.freeFromCents ?? null;
+            const transporteur = m.carrier ?? "";
+            return (
+              <form method="POST" class="js-grille p-4 text-sm">
+                <input type="hidden" name="methodId" value={m.id} />
+                <input type="hidden" name="zoneId" value={z.id} />
+
+                <div class="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <span class="font-medium">{m.name}</span>
+                    <span class="ml-2 text-xs text-bo-muted">
+                      {NOM_NATURE[m.kind] ?? m.kind}
+                      {m.carrier ? ` · ${NOM_TRANSPORTEUR[m.carrier] ?? m.carrier}` : ""}
+                      {!m.active && " · mode désactivé partout"}
+                    </span>
+                  </div>
+                  <label class="block">
+                    <span class="text-bo-muted text-xs">
+                      Offert à partir de (€)
+                    </span>
+                    <input
+                      name="freeFrom"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={franco == null ? "" : (franco / 100).toFixed(2)}
+                      placeholder="jamais"
+                      class="mt-1 block w-32 border border-bo-border rounded px-2 py-1"
+                    />
+                  </label>
+                </div>
+
+                <table class="mt-3 w-full text-sm">
+                  <thead class="text-left text-bo-muted">
+                    <tr>
+                      <th class="w-36 px-3 py-1 font-medium">De (g, inclus)</th>
+                      <th class="w-36 px-3 py-1 font-medium">À (g, exclu)</th>
+                      <th class="w-32 px-3 py-1 font-medium">Prix (€)</th>
+                      <th class="px-3 py-1"></th>
+                    </tr>
+                  </thead>
+                  <tbody class="js-lignes">
+                    {lignes.map((t) => (
+                      <tr class="js-ligne">
+                        <td class="px-3 py-1">
+                          <input
+                            name="min"
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={t.minWeightGrams}
+                            class="w-28 border border-bo-border rounded px-2 py-1"
+                          />
+                        </td>
+                        <td class="px-3 py-1">
+                          <input
+                            name="max"
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={t.maxWeightGrams ?? ""}
+                            placeholder="sans limite"
+                            class="w-28 border border-bo-border rounded px-2 py-1"
+                          />
+                        </td>
+                        <td class="px-3 py-1">
+                          <input
+                            name="price"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={(t.priceCents / 100).toFixed(2)}
+                            class="w-24 border border-bo-border rounded px-2 py-1"
+                          />
+                        </td>
+                        <td class="px-3 py-1 text-right">
+                          <button
+                            type="button"
+                            class="js-retirer-ligne rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-red-300 hover:text-red-700"
+                            title="Retirer cette tranche"
+                            aria-label="Retirer cette tranche"
+                          >
+                            ✕
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    class="js-ajouter-ligne rounded border border-bo-border px-3 py-1.5 text-xs"
+                  >
+                    + Ajouter une tranche
+                  </button>
+                  {standard && transporteur && NOM_TRANSPORTEUR[transporteur] && (
+                    <button
+                      type="button"
+                      class="js-standard rounded border border-bo-border px-3 py-1.5 text-xs"
+                      data-transporteur={transporteur}
+                      title="Ne remplit que les bornes de poids ; les prix restent à saisir"
+                    >
+                      Reprendre les tranches {NOM_TRANSPORTEUR[transporteur]}
+                    </button>
+                  )}
+                  <button class="rounded bg-bo-accent text-white px-3 py-1.5">
+                    Enregistrer la grille
+                  </button>
+                  <span class="text-xs text-bo-muted">
+                    {lignes.length === 0
+                      ? "aucune tranche enregistrée"
+                      : `${lignes.length} tranche(s) · de ${formatPrice(
+                          Math.min(...lignes.map((t) => t.priceCents)),
+                        )} à ${formatPrice(
+                          Math.max(...lignes.map((t) => t.priceCents)),
+                        )}`}
+                  </span>
+                </div>
+
+                <p class="js-couverture mt-2 text-xs"></p>
+                {retire(m.id, z.id) && (
+                  <p class="mt-1 text-xs text-bo-muted">
+                    Ce mode a été retiré de cette zone. Enregistrer une grille
+                    ici le remet en service ; laissez-la vide pour qu'il reste
+                    retiré.
+                  </p>
+                )}
+              </form>
+            );
+          })}
+        </div>
       </div>
     ))}
   </section>
@@ -305,4 +482,147 @@ const NOM_NATURE: Record<string, string> = {
       </form>
     ))}
   </section>
+
+  <script is:inline define:vars={{ STANDARD: standard }}>
+    // Une grille se compose à l'écran : on ajoute et on retire des lignes, et
+    // la note de couverture dit tout de suite ce qui restera sans mode de
+    // livraison. Le tout part en un seul POST — la grille entière remplace
+    // l'ancienne, sans quoi une tranche retirée survivrait en base.
+
+    /** Affichage seulement : le calcul du poids vit dans @memoryline/types. */
+    function poids(g) {
+      return g >= 1000
+        ? `${(g / 1000).toFixed(g % 1000 === 0 ? 0 : 2).replace(".", ",")} kg`
+        : `${g} g`;
+    }
+
+    const LIGNE = `
+      <td class="px-3 py-1"><input name="min" type="number" min="0" step="1" value="" class="w-28 border border-bo-border rounded px-2 py-1" /></td>
+      <td class="px-3 py-1"><input name="max" type="number" min="0" step="1" value="" placeholder="sans limite" class="w-28 border border-bo-border rounded px-2 py-1" /></td>
+      <td class="px-3 py-1"><input name="price" type="number" min="0" step="0.01" value="" class="w-24 border border-bo-border rounded px-2 py-1" /></td>
+      <td class="px-3 py-1 text-right"><button type="button" class="js-retirer-ligne rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-red-300 hover:text-red-700" title="Retirer cette tranche" aria-label="Retirer cette tranche">✕</button></td>`;
+
+    for (const form of document.querySelectorAll("form.js-grille")) {
+      const corps = form.querySelector(".js-lignes");
+      const note = form.querySelector(".js-couverture");
+
+      function lignes() {
+        return [...corps.querySelectorAll(".js-ligne")]
+          // Une ligne entièrement vide est ignorée à l'enregistrement : la
+          // note de couverture doit dire la même chose que ce qui sera gardé.
+          .filter((tr) =>
+            ["min", "max", "price"].some(
+              (n) => tr.querySelector(`[name=${n}]`).value !== "",
+            ),
+          )
+          .map((tr) => ({
+            min: Number(tr.querySelector("[name=min]").value || 0),
+            max:
+              tr.querySelector("[name=max]").value === ""
+                ? null
+                : Number(tr.querySelector("[name=max]").value),
+          }))
+          .sort((a, b) => a.min - b.min);
+      }
+
+      function couverture() {
+        const l = lignes();
+        if (!l.length) {
+          note.textContent =
+            "Aucune tranche : ce mode ne sera pas proposé dans cette zone.";
+          note.className = "js-couverture mt-2 text-xs text-amber-800";
+          return;
+        }
+        const trous = [];
+        if (l[0].min > 0)
+          trous.push(`en dessous de ${poids(l[0].min)}, ce mode ne sera pas proposé`);
+        for (let i = 0; i < l.length - 1; i++) {
+          if (l[i].max === null) break;
+          if (l[i].max < l[i + 1].min)
+            trous.push(
+              `de ${poids(l[i].max)} à ${poids(l[i + 1].min)}, aucune tranche : ce mode ne sera pas proposé`,
+            );
+        }
+        // Une seule tranche sans borne haute suffit à tout couvrir vers le
+        // haut, même si elle n'est pas la dernière de la liste.
+        if (!l.some((t) => t.max === null))
+          trous.push(
+            `au-delà de ${poids(Math.max(...l.map((t) => t.max)))}, ce mode ne sera pas proposé`,
+          );
+        if (trous.length) {
+          note.textContent = "Couverture : " + trous.join(" · ") + ".";
+          note.className = "js-couverture mt-2 text-xs text-amber-800";
+        } else {
+          note.textContent =
+            "Couverture : tous les poids, de 0 g à sans limite.";
+          note.className = "js-couverture mt-2 text-xs text-bo-muted";
+        }
+      }
+
+      form.querySelector(".js-ajouter-ligne")?.addEventListener("click", () => {
+        const tr = document.createElement("tr");
+        tr.className = "js-ligne";
+        tr.innerHTML = LIGNE;
+        corps.appendChild(tr);
+        tr.querySelector("[name=min]").focus();
+        couverture();
+      });
+
+      corps.addEventListener("click", (e) => {
+        const b = e.target.closest(".js-retirer-ligne");
+        if (!b) return;
+        b.closest(".js-ligne").remove();
+        couverture();
+      });
+
+      corps.addEventListener("input", couverture);
+
+      // Bornes habituelles du transporteur : on ne touche PAS aux prix, et on
+      // reprend ceux déjà saisis quand la borne basse est la même.
+      form.querySelector(".js-standard")?.addEventListener("click", (e) => {
+        const liste = STANDARD?.[e.currentTarget.dataset.transporteur] ?? [];
+        if (!liste.length) return;
+        const anciens = new Map(
+          [...corps.querySelectorAll(".js-ligne")].map((tr) => [
+            tr.querySelector("[name=min]").value,
+            tr.querySelector("[name=price]").value,
+          ]),
+        );
+        if (
+          anciens.size &&
+          !confirm(
+            "Remplacer les tranches actuelles par les bornes du transporteur ? Les prix déjà saisis sur les mêmes bornes sont conservés.",
+          )
+        )
+          return;
+        corps.innerHTML = "";
+        for (const t of liste) {
+          const tr = document.createElement("tr");
+          tr.className = "js-ligne";
+          tr.innerHTML = LIGNE;
+          tr.querySelector("[name=min]").value = t.minWeightGrams;
+          tr.querySelector("[name=max]").value = t.maxWeightGrams ?? "";
+          tr.querySelector("[name=price]").value =
+            anciens.get(String(t.minWeightGrams)) ?? "";
+          tr.querySelector("[name=price]").title = t.label;
+          corps.appendChild(tr);
+        }
+        couverture();
+      });
+
+      // Vider une grille retire le mode de la zone : ça se confirme.
+      form.addEventListener("submit", (e) => {
+        if (!corps.querySelector(".js-ligne")) {
+          if (
+            !confirm(
+              "Aucune tranche : ce mode ne sera plus proposé dans cette zone. Continuer ?",
+            )
+          )
+            e.preventDefault();
+        }
+      });
+
+      couverture();
+    }
+  </script>
 </Admin>

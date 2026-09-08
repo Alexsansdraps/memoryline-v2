@@ -22,6 +22,12 @@ if (Astro.request.method === "POST") {
         priceCents: Math.round(
           Number(String(f.get("price") || "0").replace(",", ".")) * 100,
         ),
+        // Le poids du cadre s'ajoute à celui de l'affiche : il fait changer de
+        // tranche d'affranchissement à lui seul.
+        weightGrams: Math.max(
+          0,
+          Math.round(Number(String(f.get("weightGrams") || "0").replace(",", "."))) || 0,
+        ),
         previewColor: String(f.get("previewColor") || "") || undefined,
         active: f.get("active") === "on",
         position: Number(f.get("position") || 0),
@@ -55,6 +61,12 @@ try {
     s'ajoute à celui de l'affiche, par exemplaire. Un cadre désactivé
     disparaît du site sans toucher aux commandes déjà passées.
   </p>
+  <p class="mb-4 text-sm text-bo-muted">
+    Le <strong>poids</strong>, en grammes, s'ajoute lui aussi à celui de
+    l'affiche : c'est lui qui fait basculer le colis dans la tranche
+    d'affranchissement suivante. Un cadre laissé à 0 g sous-affranchit toutes
+    les commandes qui le contiennent.
+  </p>
 
   <section class="mb-8 bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
     <table class="w-full text-sm">
@@ -63,6 +75,7 @@ try {
           <th class="px-4 py-2 w-16">Aperçu</th>
           <th class="px-4 py-2">Nom</th>
           <th class="px-4 py-2 w-32">Supplément</th>
+          <th class="px-4 py-2 w-28">Poids (g)</th>
           <th class="px-4 py-2 w-24">Ordre</th>
           <th class="px-4 py-2 w-24">Affiché</th>
           <th class="px-4 py-2 w-28"></th>
@@ -79,7 +92,7 @@ try {
                 aria-hidden="true"
               />
             </td>
-            <td class="px-4 py-2" colspan="5">
+            <td class="px-4 py-2" colspan="6">
               <form method="POST" class="flex flex-wrap items-center gap-2">
                 <input type="hidden" name="id" value={c.id} />
                 <input
@@ -98,6 +111,18 @@ try {
                     class="w-24 border border-bo-border rounded px-2 py-1"
                   />
                   <span class="text-bo-muted">€</span>
+                </label>
+                <label class="flex items-center gap-1">
+                  <input
+                    name="weightGrams"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={c.weightGrams}
+                    title="Poids du cadre, ajouté à celui de l'affiche"
+                    class="w-20 border border-bo-border rounded px-2 py-1"
+                  />
+                  <span class="text-bo-muted">g</span>
                 </label>
                 <input
                   name="previewColor"
@@ -145,7 +170,7 @@ try {
         ))}
         {cadres.length === 0 && (
           <tr>
-            <td class="px-4 py-6 text-bo-muted" colspan="7">
+            <td class="px-4 py-6 text-bo-muted" colspan="8">
               Aucun cadre pour le moment.
             </td>
           </tr>
@@ -176,6 +201,17 @@ try {
           step="0.01"
           min="0"
           value="15.00"
+          class="mt-1 block w-28 border border-bo-border rounded px-3 py-2"
+        />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Poids (g)</span>
+        <input
+          name="weightGrams"
+          type="number"
+          min="0"
+          step="1"
+          value="0"
           class="mt-1 block w-28 border border-bo-border rounded px-3 py-2"
         />
       </label>
