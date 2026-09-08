@@ -719,6 +719,14 @@ export function adminApi(request?: Request) {
         cookie,
       );
     },
+    /** Réglages du stand — par la route protégée, jamais par /settings. */
+    salon: () =>
+      req<{ code: string; evenement: string; ouvert: boolean }>(
+        "GET",
+        "/admin/salon",
+        undefined,
+        cookie,
+      ),
     /** Étiquettes déjà employées, les plus fréquentes d'abord. */
     orderTags: () =>
       req<{ name: string; n: number }[]>(

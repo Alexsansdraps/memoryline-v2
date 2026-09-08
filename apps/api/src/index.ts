@@ -47,6 +47,7 @@ function transporteurConfigure(carrier: string | null | undefined): boolean {
 import { mountConfiguratorRoutes } from "./configurator-routes.js";
 import { mountOrderRoutes } from "./commandes.js";
 import { mountCatalogueRoutes } from "./catalogue.js";
+import { mountSalonRoutes } from "./salon.js";
 import { mountCompteRoutes } from "./comptes.js";
 import { mountIaRoutes } from "./ia.js";
 
@@ -355,10 +356,22 @@ app.get("/banner", async (c) => {
 });
 
 /** Réglages éditables (clé -> valeur), optionnellement filtrés par groupe. */
+/**
+ * Réglages lisibles par le SITE — donc par n'importe qui.
+ *
+ * Certaines clés n'ont rien à y faire : le code d'accès du stand protège des
+ * commandes sans paiement, le servir ici reviendrait à l'afficher sur la
+ * porte. Tout ce qui commence par « salon. » reste réservé au back-office,
+ * qui a sa propre route (GET /admin/salon).
+ */
+const PREFIXES_PRIVES = ["salon."];
+
 app.get("/settings", async (c) => {
   const group = c.req.query("group");
   const rows = await db.select().from(schema.settings);
-  const filtered = group ? rows.filter((r) => r.group === group) : rows;
+  const filtered = (group ? rows.filter((r) => r.group === group) : rows).filter(
+    (r) => !PREFIXES_PRIVES.some((p) => r.key.startsWith(p)),
+  );
   return c.json(
     Object.fromEntries(filtered.map((r) => [r.key, r.value])),
   );
@@ -906,6 +919,9 @@ mountOrderRoutes(app);
 
 // Catégories de produits et poids d'expédition (apps/api/src/catalogue.ts).
 mountCatalogueRoutes(app);
+
+// Commandes prises au stand : pas de prix a l'ecran, pas de paiement en ligne.
+mountSalonRoutes(app);
 
 // Comptes clients : /compte/* pour la boutique, /admin/customers/* pour le BO.
 // Aucune route paramétrée déjà déclarée ne les avale (les /admin/* posées

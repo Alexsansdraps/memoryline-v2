@@ -16,6 +16,8 @@ import type { MessagesConfigurateur } from "../messages";
 export function StepFormat(props: {
   state: ConfiguratorState;
   prices?: Partial<Record<PosterFormat, number>>;
+  /** Stand de salon : les choix restent, les montants disparaissent. */
+  sansPrix?: boolean;
   onSelect: (format: PosterFormat) => void;
   /** Cadres proposés en option (vide = aucun cadre configuré). */
   cadres?: CadreDTO[];
@@ -127,7 +129,7 @@ export function StepFormat(props: {
               style={tile(props.state.format === fmt)}
             >
               <div>{fmt}</div>
-              {typeof props.prices?.[fmt] === "number" && (
+              {!props.sansPrix && typeof props.prices?.[fmt] === "number" && (
                 <div style={{ "font-size": "14px", "font-weight": "600", color: "#4f46e5", "margin-top": "4px" }}>
                   {fmtPrice(props.prices[fmt]!)}
                 </div>
@@ -195,16 +197,18 @@ export function StepFormat(props: {
                     }}
                   />
                   <div>{cadre.name}</div>
-                  <div
-                    style={{
-                      "font-size": "13px",
-                      "font-weight": "600",
-                      color: "#4f46e5",
-                      "margin-top": "2px",
-                    }}
-                  >
-                    + {fmtPrice(cadre.priceCents)}
-                  </div>
+                  <Show when={!props.sansPrix}>
+                    <div
+                      style={{
+                        "font-size": "13px",
+                        "font-weight": "600",
+                        color: "#4f46e5",
+                        "margin-top": "2px",
+                      }}
+                    >
+                      + {fmtPrice(cadre.priceCents)}
+                    </div>
+                  </Show>
                 </button>
               )}
             </For>

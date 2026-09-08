@@ -56,6 +56,15 @@ export interface ConfiguratorProps {
    *  sélectionné met à jour le prix affiché (demande cliente). */
   prices?: Partial<Record<PosterFormat, number>>;
   /**
+   * Masque TOUT montant, sans rien retirer des choix (format, cadre).
+   *
+   * Sur un stand de salon, le tarif n'est pas celui du site — pas de port, des
+   * remises, des lots — et c'est la vendeuse qui l'annonce de vive voix : un
+   * prix à l'écran la contredirait devant le client. Les prix continuent
+   * d'arriver par `prices`, ils servent au panier, plus à l'affichage.
+   */
+  sansPrix?: boolean;
+  /**
    * Libellés traduits. Le paquet ne connaît pas les langues du site : l'hôte
    * fournit un dictionnaire déjà traduit, complété par le français.
    */
@@ -419,6 +428,13 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     return affiche + (cadreChoisi()?.priceCents ?? 0);
   };
 
+  /** Rappel du choix — le format courant s'il sort de l'ordinaire, le cadre.
+   *  Vide en A4 sans cadre : il n'y aurait rien à rappeler. */
+  const rappelChoix = (): string =>
+    [state.format === "A3" ? "A3" : null, cadreChoisi()?.name]
+      .filter(Boolean)
+      .join(" · ");
+
   const isLast = () => stepIndex() === STEPS.length - 1;
   const editingActive = () =>
     state.step === "characters" && state.editingIndex !== null;
@@ -545,6 +561,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
           <StepFormat
             state={state}
             prices={props.prices}
+            sansPrix={props.sansPrix}
             onSelect={setFormat}
             cadres={props.cadres}
             onSelectCadre={setCadre}
@@ -571,15 +588,20 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             </Button>
             {/* Prix mis à jour selon le format ET le cadre choisis. Le
                 détail entre parenthèses reprend le nom du cadre tel qu'il est
-                saisi au back-office : rien à traduire. */}
+                saisi au back-office : rien à traduire. Sans prix, ce rappel
+                reste seul et tient le milieu de la barre — les deux boutons
+                s'écarteraient sinon aux extrémités, autour d'un vide. */}
             <div style={{ "font-weight": "700", "font-size": "18px", "white-space": "nowrap" }}>
-              {fmtPrice(currentPrice())}
-              <Show when={state.format === "A3" || cadreChoisi()}>
-                <span style={{ "font-size": "12px", color: "#6b7280", "font-weight": "500" }}>
-                  {" "}
-                  ({[state.format === "A3" ? "A3" : null, cadreChoisi()?.name]
-                    .filter(Boolean)
-                    .join(" · ")})
+              <Show when={!props.sansPrix}>{fmtPrice(currentPrice())}</Show>
+              <Show when={rappelChoix()}>
+                <span
+                  style={{
+                    "font-size": props.sansPrix ? "14px" : "12px",
+                    color: "#6b7280",
+                    "font-weight": "500",
+                  }}
+                >
+                  {props.sansPrix ? rappelChoix() : ` (${rappelChoix()})`}
                 </span>
               </Show>
             </div>

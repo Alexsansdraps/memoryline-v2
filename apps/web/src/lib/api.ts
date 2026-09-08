@@ -214,6 +214,15 @@ export interface CharacterLibrary {
 
 /** Client API navigateur (configurateur, panier, commande). */
 export const browserApi = {
+  /**
+   * Catalogue lu DEPUIS LE NAVIGATEUR — c'est ce dont le stand a besoin.
+   *
+   * Rendu côté serveur, le catalogue arriverait par les propriétés de l'îlot,
+   * donc dans le HTML servi, prix compris : le stand n'affiche aucun montant,
+   * il ne doit pas non plus en transporter dans sa page.
+   */
+  produits: (limite = 500) => browserGet<Product[]>(`/products?limit=${limite}`),
+  produit: (slug: string) => browserGet<ProductDetail>(`/products/${slug}`),
   characters: () => browserGet<CharacterLibrary>("/characters"),
   frames: () => browserGet<CadreDTO[]>("/frames"),
   /** Zones, modes et tarifs de livraison. */
@@ -344,6 +353,89 @@ export function getCartId(): string {
   }
   return id;
 }
+
+/**
+ * Repart d'un panier VIDE, sans toucher au panier précédent.
+ *
+ * Au stand, chaque client a sa commande : la vendeuse enchaîne, et le panier
+ * du client servi ne doit rien laisser au suivant.
+ */
+export function nouveauCartId(): string {
+  const id = crypto.randomUUID();
+  localStorage.setItem(CART_ID_KEY, id);
+  return id;
+}
+
+/* ---------------------------------------------------------------------------
+ * Stand de salon.
+ *
+ * Le code du stand voyage dans un EN-TÊTE, jamais dans l'adresse : l'URL
+ * s'affiche en clair devant le client, et se retrouve dans l'historique du
+ * navigateur comme dans les journaux du proxy.
+ * ------------------------------------------------------------------------- */
+
+export interface EtatSalon {
+  ouvert: boolean;
+  evenement: string | null;
+  /** Le code présenté ouvre-t-il le stand ? Le code n'est jamais renvoyé. */
+  autorise: boolean;
+}
+
+/** Accusé de commande stand — aucun montant, volontairement (cf. /salon). */
+export interface CommandeSalon {
+  number: string;
+  client: { name: string; email: string };
+  articles: { title?: string | null; quantity?: number }[];
+}
+
+/**
+ * Échec d'un appel au stand. Le CODE HTTP est le seul moyen de distinguer un
+ * stand fermé ou un code refusé (403) d'une saisie incomplète (400) : les
+ * deux se répondent très différemment à l'écran.
+ */
+export class ErreurSalon extends Error {
+  constructor(
+    readonly statut: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ErreurSalon";
+  }
+}
+
+async function salonFetch<T>(
+  chemin: string,
+  code: string | null,
+  corps?: unknown,
+): Promise<T> {
+  const res = await fetch(`${PUBLIC_API_URL}${chemin}`, {
+    method: corps ? "POST" : "GET",
+    headers: {
+      ...(corps ? { "Content-Type": "application/json" } : {}),
+      ...(code ? { "X-Salon-Code": code } : {}),
+    },
+    body: corps ? JSON.stringify(corps) : undefined,
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const json = (await res.json()) as { error?: unknown; message?: unknown };
+      detail = String(json.error ?? json.message ?? "");
+    } catch {
+      /* corps illisible : le code HTTP suffit à choisir l'écran */
+    }
+    throw new ErreurSalon(res.status, detail);
+  }
+  return res.json() as Promise<T>;
+}
+
+export const salonApi = {
+  etat: (code: string | null) => salonFetch<EtatSalon>("/salon/etat", code),
+  commander: (
+    code: string | null,
+    corps: { cartId: string; name: string; email: string },
+  ) => salonFetch<CommandeSalon>("/salon/commandes", code, corps),
+};
 
 /** "2300" centimes -> "23 €" (format FR). */
 export function formatPrice(cents: number): string {

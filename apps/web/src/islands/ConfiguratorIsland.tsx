@@ -11,6 +11,7 @@ import {
   PUBLIC_API_URL,
   browserApi,
   getCartId,
+  type OrderItem,
 } from "../lib/api.ts";
 
 /**
@@ -42,6 +43,14 @@ export interface ConfiguratorIslandProps {
   itemId?: number;
   /** Fermeture de la modale (bouton « Retour » à l'étape 1). */
   onCancel?: () => void;
+  /** Stand de salon : aucun montant à l'écran (cf. ConfiguratorProps). */
+  sansPrix?: boolean;
+  /**
+   * Prend la main après l'ajout au panier, à la place du renvoi vers /panier.
+   * Le stand enchaîne sur son propre écran de validation : la boutique, elle,
+   * continue de passer par le panier.
+   */
+  onAjoute?: (item: OrderItem) => void;
 }
 
 /** Prix selon le format choisi, depuis les prix réels des variantes. */
@@ -100,13 +109,20 @@ export default function ConfiguratorIsland(
           unitPriceCents,
         });
       } else {
-        await browserApi.addCartItem(cartId, {
+        const item = await browserApi.addCartItem(cartId, {
           productId: props.product.id,
           unitPriceCents,
           quantity: 1,
           title: props.product.name,
           config,
         });
+        // Le prix est CALCULÉ et enregistré même quand il n'est pas affiché :
+        // la boutique doit savoir ce qu'elle a vendu sur le stand.
+        if (props.onAjoute) {
+          props.onAjoute(item);
+          setSaving(false);
+          return;
+        }
       }
       window.location.href = "/panier";
     } catch (e) {
@@ -212,6 +228,7 @@ export default function ConfiguratorIsland(
               characters={d().characters as never}
               slots={d().slots as never}
               prices={props.prices}
+              sansPrix={props.sansPrix}
               foregroundUrl={props.foregroundUrl}
               defaults={props.defaults}
               initialConfig={props.initialConfig}
