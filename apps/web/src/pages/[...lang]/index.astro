@@ -95,7 +95,7 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
 
 <Base langue={langue}>
   {/* ---------------- Bandeau d'accroche ---------------- */}
-  <section class="mx-auto max-w-6xl px-6 pt-16 pb-10">
+  <section class="mx-auto max-w-[1200px] px-6 pt-16 pb-10">
     <p class="text-terracotta font-medium tracking-wide uppercase text-sm">
       {heroSurtitre}
     </p>
@@ -106,7 +106,7 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
     <div class="mt-8 flex flex-wrap gap-4">
       <a
         href={lien(langue, "/affiches")}
-        class="rounded-full bg-terracotta px-6 py-3 text-paper font-medium hover:bg-terracotta-deep transition-colors"
+        class="rounded-full bg-ink px-6 py-3 text-paper font-medium hover:bg-ink/85 transition-colors"
         >{heroCta}</a
       >
     </div>
@@ -115,10 +115,10 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
   {/* ---------------- Les affiches ---------------- */}
   {
     vitrineVisible && vitrine.length > 0 && (
-      <section class="mx-auto max-w-6xl px-6 pb-4">
+      <section class="mx-auto max-w-[1200px] px-6 pb-4">
         <div class="flex flex-wrap items-end justify-between gap-3 mb-6">
           <div>
-            <h2 class="font-serif text-3xl sm:text-4xl">{vitrineTitre}</h2>
+            <h2 class="text-2xl sm:text-3xl">{vitrineTitre}</h2>
             <p class="mt-2 text-ink-soft">{vitrineTexte}</p>
           </div>
           <a
@@ -142,7 +142,7 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
                       class="h-full w-full object-cover group-hover:scale-[1.02] transition-transform"
                     />
                   ) : (
-                    <span class="font-serif text-lg text-ink-soft px-4 text-center">
+                    <span class="text-lg text-ink-soft px-4 text-center">
                       {titreCourt(p.name)}
                     </span>
                   )}
@@ -161,8 +161,8 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
   {
     etapesVisible && (
       <section class="bg-paper-deep mt-16">
-        <div class="mx-auto max-w-6xl px-6 py-16">
-          <h2 class="font-serif text-3xl sm:text-4xl mb-8">{etapesTitre}</h2>
+        <div class="mx-auto max-w-[1200px] px-6 py-16">
+          <h2 class="text-2xl sm:text-3xl mb-8">{etapesTitre}</h2>
           <div class="grid sm:grid-cols-3 gap-8">
             {[
               ["1 · Choisissez votre fond", "Villes françaises, paysages, thèmes."],
@@ -173,7 +173,7 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
               ["3 · Recevez", "Imprimée en A4 ou A3, livrée chez vous."],
             ].map(([t, d]) => (
               <div>
-                <h3 class="font-serif text-2xl">{t}</h3>
+                <h3 class="text-2xl">{t}</h3>
                 <p class="mt-2 text-ink-soft">{d}</p>
               </div>
             ))}
@@ -186,7 +186,7 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
   {/* ---------------- Chiffres ---------------- */}
   {
     chiffresVisible && stats && (
-      <section class="mx-auto max-w-6xl px-6 py-16">
+      <section class="mx-auto max-w-[1200px] px-6 py-16">
         <dl class="grid grid-cols-2 sm:grid-cols-4 gap-px bg-ink/10 rounded-2xl overflow-hidden border border-ink/10">
           {[
             [tr("accueil.stat.affiches"), stats.products],

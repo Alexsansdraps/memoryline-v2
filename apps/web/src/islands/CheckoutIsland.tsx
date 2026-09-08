@@ -299,11 +299,11 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
           </p>
           <p class="mt-4 text-lg">
             Numéro de commande :{" "}
-            <span class="font-serif text-2xl">{orderNumber()}</span>
+            <span class="text-2xl">{orderNumber()}</span>
           </p>
           <a
             href="/affiches"
-            class="mt-6 inline-block rounded-full bg-terracotta px-6 py-3 text-paper font-medium hover:bg-terracotta-deep transition-colors"
+            class="mt-6 inline-block rounded-full bg-ink px-6 py-3 text-paper font-medium hover:bg-ink/85 transition-colors"
           >
             Retour aux affiches
           </a>
@@ -315,7 +315,7 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
           <p class="text-ink-soft">Votre panier est vide.</p>
           <a
             href="/affiches"
-            class="mt-6 inline-block rounded-full bg-terracotta px-6 py-3 text-paper font-medium hover:bg-terracotta-deep transition-colors"
+            class="mt-6 inline-block rounded-full bg-ink px-6 py-3 text-paper font-medium hover:bg-ink/85 transition-colors"
           >
             Découvrir les affiches
           </a>
@@ -327,7 +327,7 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
           <div class="space-y-8">
             {/* Coordonnées */}
             <fieldset class="space-y-4" disabled={phase() === "pay"}>
-              <legend class="font-serif text-2xl mb-2">Vos coordonnées</legend>
+              <legend class="text-2xl mb-2">Vos coordonnées</legend>
               <label class="block">
                 <span class="text-sm font-medium">{tr("commande.nom")}</span>
                 <input
@@ -359,7 +359,7 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
 
             {/* Paiement */}
             <fieldset class="space-y-4">
-              <legend class="font-serif text-2xl mb-2">Paiement</legend>
+              <legend class="text-2xl mb-2">Paiement</legend>
 
               {/* Aucun moyen configuré */}
               <Show when={config() && methods().length === 0}>
@@ -397,7 +397,7 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
                     type="button"
                     onClick={goToPay}
                     disabled={!formValid() || !method() || submitting()}
-                    class="w-full rounded-full bg-terracotta px-8 py-4 text-paper font-medium hover:bg-terracotta-deep transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="w-full rounded-full bg-terracotta px-8 py-4 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {submitting()
                       ? "Préparation…"
@@ -415,7 +415,7 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
                       type="button"
                       onClick={payStripe}
                       disabled={submitting()}
-                      class="w-full rounded-full bg-terracotta px-8 py-4 text-paper font-medium hover:bg-terracotta-deep transition-colors disabled:opacity-50"
+                      class="w-full rounded-full bg-terracotta px-8 py-4 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-50"
                     >
                       {submitting() ? "…" : `${tr("commande.payer")} ${formatPrice(total())}`}
                     </button>
@@ -448,7 +448,7 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
 
           {/* Récapitulatif */}
           <aside class="rounded-2xl border border-ink/10 bg-paper-deep/40 p-6 lg:sticky lg:top-24">
-            <h2 class="font-serif text-xl mb-4">Récapitulatif</h2>
+            <h2 class="text-xl mb-4">Récapitulatif</h2>
             <ul class="space-y-3 text-sm">
               <For each={cart()?.items ?? []}>
                 {(it) => (
@@ -480,7 +480,7 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
             </Show>
             <div class="mt-4 flex justify-between border-t border-ink/10 pt-4">
               <span class="font-medium">{tr("panier.total")}</span>
-              <span class="font-serif text-xl">{formatPrice(total())}</span>
+              <span class="text-xl">{formatPrice(total())}</span>
             </div>
             <a
               href="/panier"

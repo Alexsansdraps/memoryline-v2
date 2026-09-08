@@ -58,7 +58,7 @@ export default function AddToCartButton(
         type="button"
         onClick={add}
         disabled={busy()}
-        class="mt-8 inline-block rounded-full bg-terracotta px-8 py-3 text-paper font-medium hover:bg-terracotta-deep transition-colors disabled:opacity-60"
+        class="mt-8 inline-block rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
       >
         {busy() ? "…" : tr("produit.ajouter")}
       </button>

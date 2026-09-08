@@ -272,7 +272,7 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
           <p class="text-ink-soft">{tr("panier.vide")}</p>
           <a
             href="/affiches"
-            class="mt-6 inline-block rounded-full bg-terracotta px-6 py-3 text-paper font-medium hover:bg-terracotta-deep transition-colors"
+            class="mt-6 inline-block rounded-full bg-ink px-6 py-3 text-paper font-medium hover:bg-ink/85 transition-colors"
           >
             Découvrir les affiches
           </a>
@@ -330,7 +330,7 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
                     </div>
 
                     <div class="min-w-0">
-                      <h2 class="font-serif text-lg leading-tight">
+                      <h2 class="text-lg leading-tight">
                         {it.title ?? "Affiche personnalisée"}
                       </h2>
                       <p class="mt-1 text-sm">{formatPrice(it.unitPriceCents)}</p>
@@ -422,7 +422,7 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
             </Show>
             <div class="mt-3 flex items-center justify-end gap-4">
               <span class="text-ink-soft">{tr("panier.total_estime")}</span>
-              <span class="font-serif text-2xl">{formatPrice(total())}</span>
+              <span class="text-2xl">{formatPrice(total())}</span>
             </div>
             <p class="mt-2 text-xs text-ink-soft">{tr("panier.taxes")}</p>
             <a

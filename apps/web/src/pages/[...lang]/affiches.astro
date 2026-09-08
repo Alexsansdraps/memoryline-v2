@@ -50,8 +50,8 @@ const kindLabel: Record<string, string> = {
 ---
 
 <Base langue={langue} title={`${tr("catalogue.titre")} — Memory Line`}>
-  <section class="mx-auto max-w-6xl px-6 pt-12 pb-8">
-    <h1 class="font-serif text-4xl sm:text-5xl">{tr("catalogue.titre")}</h1>
+  <section class="mx-auto max-w-[1200px] px-6 pt-12 pb-8 lg:px-12">
+    <h1 class="text-3xl sm:text-4xl">{tr("catalogue.titre")}</h1>
     <p class="mt-3 text-ink-soft">
       {products.length} {tr("catalogue.compte")}
     </p>
@@ -59,42 +59,42 @@ const kindLabel: Record<string, string> = {
 
   {
     error && (
-      <p class="mx-auto max-w-6xl px-6 text-terracotta-deep">
+      <p class="mx-auto max-w-[1200px] px-6 text-terracotta-deep lg:px-12">
         {tr("catalogue.erreur")} ({error}).
       </p>
     )
   }
 
-  <section class="mx-auto max-w-6xl px-6 pb-16">
-    <ul class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
+  <section class="mx-auto max-w-[1200px] px-6 pb-16 lg:px-12">
+    {/* Grille des affiches : l'image porte tout, le texte se fait discret
+        dessous — comme sur memoryline.fr. Le rapport 1020/1400 est celui des
+        visuels de la boutique. */}
+    <ul class="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-4">
       {
         products.map((p) => (
           <li class="group">
             <a href={lien(langue, `/affiches/${p.slug}`)} class="block">
-              <div class="aspect-[3/4] rounded-xl bg-paper-deep border border-ink/10 flex items-center justify-center overflow-hidden group-hover:border-terracotta/40 transition-colors">
+              <div class="flex items-center justify-center overflow-hidden bg-paper-deep" style="aspect-ratio:1020/1400">
                 {
                   assetUrl(p.image) ? (
                     <img
                       src={assetUrl(p.image)}
                       alt={p.name}
                       loading="lazy"
-                      class="h-full w-full object-cover group-hover:scale-[1.02] transition-transform"
+                      class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                     />
                   ) : (
-                    <span class="font-serif text-xl text-ink-soft px-4 text-center">
+                    <span class="px-4 text-center text-lg text-ink-soft">
                       {p.name.replace(/\s*[-–]\s*Affiche.*$/i, "")}
                     </span>
                   )
                 }
               </div>
-              <div class="mt-3">
-                <p class="text-xs uppercase tracking-wide text-terracotta">
-                  {kindLabel[p.kind] ?? p.kind}
-                </p>
-                <h2 class="font-medium leading-snug mt-1">
+              <div class="mt-4">
+                <h2 class="text-[17px] leading-snug group-hover:underline underline-offset-4">
                   {p.name.replace(/\s*[-–]\s*Affiche.*$/i, "")}
                 </h2>
-                <p class="text-ink-soft mt-1">{priceRange(p)}</p>
+                <p class="mt-1 text-ink-soft">{priceRange(p)}</p>
               </div>
             </a>
           </li>

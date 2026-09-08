@@ -1,18 +1,55 @@
 @import "tailwindcss";
 
-/* Design tokens Memory Line — palette papier/encre, accent terracotta.
-   Polices de marque (§14.4) : DM Serif Display (titres), Inter (texte). */
+/* Jetons de style, relevés sur memoryline.fr : fond blanc, encre presque
+   noire, gris de zone, et le rouge du bandeau. Inter partout — le site
+   n'utilise aucune police à empattements pour son habillage.
+
+   `--font-serif` garde son nom (des dizaines de `font-serif` s'y réfèrent)
+   mais pointe désormais sur Inter : les titres du site sont en Inter, poids
+   400. Les polices calligraphiques restent chargées plus bas — ce sont
+   celles des AFFICHES, pas celles de l'habillage. */
 @theme {
-  --font-serif: "DM Serif Display", Georgia, serif;
+  --font-serif: "Inter", system-ui, sans-serif;
   --font-sans: "Inter", system-ui, sans-serif;
 
-  --color-paper: #f7f3ec;
-  --color-paper-deep: #efe8db;
-  --color-ink: #20211f;
-  --color-ink-soft: #5b5b54;
-  --color-terracotta: #c4633f;
-  --color-terracotta-deep: #a44d2d;
+  --color-paper: #ffffff;
+  --color-paper-deep: #f3f3f3;
+  --color-ink: #121212;
+  --color-ink-soft: rgba(18, 18, 18, 0.75);
+  --color-terracotta: #9c1616;
+  --color-terracotta-deep: #7d1111;
   --color-sage: #6b7a5e;
+}
+
+/* Titres : Inter, poids normal, très légèrement espacés — la signature
+   typographique de memoryline.fr, où rien n'est en gras sauf la navigation. */
+h1,
+h2,
+h3,
+h4 {
+  font-weight: 400;
+  letter-spacing: 0.6px;
+}
+
+/* Angles droits partout, comme sur memoryline.fr (--buttons-radius: 0,
+   --media-radius: 0). Plutôt que de réécrire chaque classe d'arrondi dans
+   quinze fichiers, on les neutralise ici : le jour où la cliente voudra des
+   coins arrondis, c'est une seule règle à retirer. */
+.rounded,
+.rounded-sm,
+.rounded-md,
+.rounded-lg,
+.rounded-xl,
+.rounded-2xl,
+.rounded-3xl,
+.rounded-full {
+  border-radius: 0;
+}
+/* Deux exceptions : la pastille du panier et les pastilles de couleur, qui
+   ne veulent rien dire si elles ne sont pas rondes. */
+.ml-panier-pastille,
+.ml-rond {
+  border-radius: 9999px;
 }
 
 /* --------------------------------------------------------------------------

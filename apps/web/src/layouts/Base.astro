@@ -76,15 +76,15 @@ const desc = description ?? tr("meta.description");
   </head>
   <body class="min-h-screen flex flex-col bg-paper text-ink">
     <AnnouncementBanner />
-    <header
-      class="border-b border-ink/10 bg-paper/80 backdrop-blur sticky top-0 z-10"
-    >
+    {/* En-tête calquée sur memoryline.fr : logo à gauche, navigation au
+        centre, actions à droite, sur 1200 px de large. */}
+    <header class="border-b border-ink/10 bg-paper sticky top-0 z-10">
       <nav
-        class="mx-auto max-w-6xl flex items-center justify-between px-6 py-4"
+        class="mx-auto flex max-w-[1200px] items-center justify-between gap-6 px-6 py-5 lg:px-12"
       >
         <a
           href={lien(langue, "/")}
-          class="inline-flex items-center"
+          class="inline-flex shrink-0 items-center"
           aria-label={tr("nav.accueil")}
         >
           <img
@@ -92,22 +92,43 @@ const desc = description ?? tr("meta.description");
             alt="Memory Line"
             width="500"
             height="222"
-            class="h-11 w-auto"
+            class="h-12 w-auto"
           />
         </a>
-        <div class="flex items-center gap-6 text-sm">
+        <div class="hidden md:flex items-center gap-8 text-[17px] font-semibold">
           <a
             href={lien(langue, "/affiches")}
             class="hover:text-terracotta transition-colors">{tr("nav.affiches")}</a
           >
+        </div>
+        <div class="flex items-center gap-5 text-sm">
           <a
             href={lien(langue, "/panier")}
-            class="ml-panier-lien hover:text-terracotta transition-colors"
-            >{tr("nav.panier")}<CartBadge client:load /></a
+            class="ml-panier-lien inline-flex items-center gap-2 hover:text-terracotta transition-colors"
+            aria-label={tr("nav.panier")}
           >
+            {/* Panier en icône, comme sur le site actuel : le mot prend de la
+                place et l'icône se reconnaît d'un coup d'œil. */}
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M6 8h12l-1 12H7L6 8Z" />
+              <path d="M9 8V6a3 3 0 0 1 6 0v2" />
+            </svg>
+            <span class="sr-only">{tr("nav.panier")}</span>
+            <CartBadge client:load />
+          </a>
           <a
             href={lien(langue, "/affiches")}
-            class="rounded-full bg-ink px-4 py-2 text-paper hover:bg-terracotta-deep transition-colors"
+            class="bg-ink px-5 py-2.5 text-paper hover:bg-ink/85 transition-colors"
             >{tr("nav.creer")}</a
           >
 
@@ -149,7 +170,7 @@ const desc = description ?? tr("meta.description");
 
     <footer class="border-t border-ink/10 mt-16">
       <div
-        class="mx-auto max-w-6xl px-6 py-8 text-sm text-ink-soft flex flex-col sm:flex-row justify-between gap-2"
+        class="mx-auto flex max-w-[1200px] flex-col justify-between gap-2 px-6 py-9 text-sm text-ink-soft sm:flex-row lg:px-12"
       >
         <p>© {new Date().getFullYear()} {tr("pied.droits")}</p>
         <p>{tr("pied.baseline")}</p>

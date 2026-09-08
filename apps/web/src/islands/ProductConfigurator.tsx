@@ -93,7 +93,7 @@ export default function ProductConfigurator(
         type="button"
         onClick={openModal}
         disabled={loadingEdit()}
-        class="mt-8 inline-block rounded-full bg-terracotta px-8 py-3 text-paper font-medium hover:bg-terracotta-deep transition-colors disabled:opacity-60"
+        class="mt-8 inline-block rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
       >
         {loadingEdit() ? (
           <>
@@ -120,7 +120,7 @@ export default function ProductConfigurator(
         >
           <div class="ml-modal-panel">
             <header class="ml-modal-head">
-              <h2 class="font-serif text-xl sm:text-2xl">
+              <h2 class="text-xl sm:text-2xl">
                 {tr("cfg.titre")}
               </h2>
               <button
