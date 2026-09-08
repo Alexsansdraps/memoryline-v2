@@ -19,6 +19,22 @@ import {
   purgeExpiredSessions,
 } from "./auth.js";
 import { normaliserCode } from "@memoryline/types";
+import {
+  estConfigure as mondialRelayConfigure,
+  rechercherPointsRelais,
+} from "./mondial-relay.js";
+import {
+  estConfigure as colissimoConfigure,
+  rechercherPointsRetrait,
+} from "./colissimo.js";
+
+/** Un transporteur sait-il chercher ses points ? */
+function transporteurConfigure(carrier: string | null | undefined): boolean {
+  if (carrier === "colissimo") return colissimoConfigure();
+  if (carrier === "mondial_relay") return mondialRelayConfigure();
+  // Transporteur inconnu : on ne prétend pas savoir chercher pour lui.
+  return false;
+}
 import { mountConfiguratorRoutes } from "./configurator-routes.js";
 
 const app = new Hono();
@@ -366,8 +382,40 @@ app.delete("/admin/newsletter/:id", async (c) => {
  * tunnel de commande doit afficher les frais AVANT de créer la commande.
  * Les modes désactivés n'en font pas partie.
  */
+/**
+ * Points relais autour d'un code postal.
+ *
+ * Le compte Mondial Relay n'est pas configuré ? On répond 503 avec un message
+ * clair plutôt qu'une liste vide, qui se lirait « aucun point relais par ici ».
+ */
+app.get("/shipping/relay-points", async (c) => {
+  const carrier = String(c.req.query("carrier") ?? "mondial_relay");
+  if (!transporteurConfigure(carrier))
+    return c.json({ error: "Recherche de points non configurée" }, 503);
+  const cp = String(c.req.query("postalCode") ?? "").trim();
+  if (!/^[A-Za-z0-9 -]{3,10}$/.test(cp))
+    return c.json({ error: "code postal invalide" }, 400);
+  const pays = String(c.req.query("country") ?? "FR");
+  const ville = String(c.req.query("city") ?? "");
+  try {
+    const points =
+      carrier === "colissimo"
+        ? await rechercherPointsRetrait({ codePostal: cp, pays, ville })
+        : await rechercherPointsRelais({
+            codePostal: cp,
+            pays,
+            ville,
+            nombre: 12,
+          });
+    return c.json(points);
+  } catch (e) {
+    console.error("[points de retrait]", carrier, e);
+    return c.json({ error: "recherche indisponible" }, 502);
+  }
+});
+
 app.get("/shipping", async (c) => {
-  const [zones, modes, tarifs] = await Promise.all([
+  const [zones, tousModes, tarifs] = await Promise.all([
     db.select().from(schema.shippingZones).orderBy(asc(schema.shippingZones.position)),
     db
       .select()
@@ -376,6 +424,12 @@ app.get("/shipping", async (c) => {
       .orderBy(asc(schema.shippingMethods.position)),
     db.select().from(schema.shippingRates),
   ]);
+  // Un mode « point relais » suppose de pouvoir CHOISIR son point. Tant que
+  // le compte du transporteur n'est pas branché, on ne le propose pas : une
+  // adresse saisie à la main ne vaut rien pour l'expédition.
+  const modes = tousModes.filter(
+    (m) => m.kind !== "relay" || transporteurConfigure(m.carrier),
+  );
   return c.json({
     zones,
     modes,

@@ -49,6 +49,21 @@ if (Astro.request.method === "POST") {
   }
 }
 
+/**
+ * La recherche de points relais est-elle branchée ? On le déduit du catalogue
+ * PUBLIC : il masque le mode « relay » tant que le compte manque.
+ */
+let relaisPret = true;
+try {
+  const res = await fetch(
+    `${import.meta.env.API_URL_INTERNAL ?? import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000"}/shipping`,
+  );
+  const publique = (await res.json()) as { modes: { kind: string }[] };
+  relaisPret = publique.modes.some((m) => m.kind === "relay");
+} catch {
+  // API injoignable : on ne dit rien plutôt que d'alarmer à tort.
+}
+
 let cat: CatalogueLivraisonBO = { zones: [], modes: [], tarifs: [] };
 let error: string | null = null;
 try {
@@ -88,6 +103,19 @@ const NOM_NATURE: Record<string, string> = {
   {/* ------------------------------------------------------------------ */}
   {/* Modes                                                               */}
   {/* ------------------------------------------------------------------ */}
+  {/* Le point relais suppose un compte transporteur : tant qu'il manque, le
+      mode est masqué côté site et il vaut mieux le dire ici. */}
+  {cat.modes.some((m) => m.kind === "relay") && !relaisPret && (
+    <p class="mb-6 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+      <strong>Point relais masqué sur le site.</strong> La recherche de points
+      relais demande un compte Mondial Relay : ajoutez
+      <code> MONDIAL_RELAY_ENSEIGNE</code> et <code>MONDIAL_RELAY_CLE</code>
+      dans le fichier <code>.env</code>, puis redémarrez l'API. Sans eux, le
+      client ne pourrait pas choisir son point relais — et une adresse saisie
+      à la main ne sert à rien pour l'expédition.
+    </p>
+  )}
+
   <h3 class="font-semibold mb-3">Modes de livraison</h3>
   <section class="mb-8 space-y-3">
     {cat.modes.map((m) => (

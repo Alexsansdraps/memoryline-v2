@@ -196,6 +196,20 @@ export const browserApi = {
   frames: () => browserGet<CadreDTO[]>("/frames"),
   /** Zones, modes et tarifs de livraison. */
   shipping: () => browserGet<CatalogueLivraison>("/shipping"),
+  /** Points relais autour d'un code postal. */
+  pointsRelais: (postalCode: string, country: string, carrier: string) =>
+    browserGet<
+      {
+        id: string;
+        nom: string;
+        adresse: string;
+        codePostal: string;
+        ville: string;
+        horaires?: string;
+      }[]
+    >(
+      `/shipping/relay-points?postalCode=${encodeURIComponent(postalCode)}&country=${encodeURIComponent(country)}&carrier=${encodeURIComponent(carrier)}`,
+    ),
   /** Vérifie un code promo ; rejette si le code est inconnu ou expiré. */
   verifierCode: (code: string) =>
     browserSend<{

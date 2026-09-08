@@ -185,6 +185,45 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
   });
   const [pointRelais, setPointRelais] = createSignal({ id: "", label: "" });
 
+  /* Recherche de points relais : on interroge le transporteur avec un code
+     postal, le client choisit dans la liste. Pas de champ libre — une adresse
+     saisie à la main ne correspondrait à aucun point réel. */
+  const [cpRecherche, setCpRecherche] = createSignal("");
+  const [relais, setRelais] = createSignal<
+    { id: string; nom: string; adresse: string; codePostal: string; ville: string }[]
+  >([]);
+  const [relaisEtat, setRelaisEtat] = createSignal<
+    "repos" | "recherche" | "vide" | "erreur"
+  >("repos");
+
+  createEffect(() => {
+    // Le mode change : les points trouvés pour l'autre transporteur n'ont
+    // plus cours, et le point choisi encore moins.
+    modeChoisi();
+    setRelais([]);
+    setPointRelais({ id: "", label: "" });
+    setRelaisEtat("repos");
+  });
+
+  async function chercherRelais(e?: Event) {
+    e?.preventDefault();
+    const cp = cpRecherche().trim();
+    if (!cp) return;
+    setRelaisEtat("recherche");
+    try {
+      const liste = await browserApi.pointsRelais(
+        cp,
+        pays(),
+        optionChoisie()?.mode.carrier ?? "mondial_relay",
+      );
+      setRelais(liste);
+      setRelaisEtat(liste.length ? "repos" : "vide");
+    } catch {
+      setRelais([]);
+      setRelaisEtat("erreur");
+    }
+  }
+
   /** Panier après remises : c'est lui qui décide de la franchise de port. */
   const apresRemise = () => Math.max(0, subtotal() - discount());
 
@@ -648,29 +687,97 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
                 </div>
               </Show>
 
-              {/* Point relais : en attendant la carte Mondial Relay, le client
-                  saisit le point qu'il a choisi sur leur site. */}
+              {/* Point relais : le client cherche autour de chez lui et choisit
+                  dans la liste renvoyée par le transporteur. */}
               <Show when={optionChoisie()?.mode.kind === "relay"}>
-                <label class="block">
-                  <span class="text-sm font-medium">
+                <div class="space-y-3">
+                  <span class="block text-sm font-medium">
                     {tr("livraison.point_relais")}
                   </span>
-                  <input
-                    type="text"
-                    value={pointRelais().label}
-                    onInput={(e) =>
-                      setPointRelais({
-                        id: e.currentTarget.value.trim(),
-                        label: e.currentTarget.value,
-                      })
-                    }
-                    class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
-                    placeholder="Tabac de la Plage, 3 rue du Port, 80350"
-                  />
-                  <span class="mt-1 block text-xs text-ink-soft">
-                    {tr("livraison.point_relais_aide")}
-                  </span>
-                </label>
+                  <div class="flex items-stretch gap-2">
+                    <input
+                      type="text"
+                      inputmode="numeric"
+                      value={cpRecherche()}
+                      onInput={(e) => setCpRecherche(e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void chercherRelais();
+                        }
+                      }}
+                      class="min-w-0 flex-1 rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
+                      placeholder={tr("livraison.cp_recherche")}
+                    />
+                    <button
+                      type="button"
+                      onClick={chercherRelais}
+                      disabled={relaisEtat() === "recherche" || !cpRecherche().trim()}
+                      class="border border-ink px-5 font-medium hover:bg-ink hover:text-paper disabled:opacity-40 transition-colors"
+                    >
+                      {tr("livraison.chercher")}
+                    </button>
+                  </div>
+
+                  <Show when={relaisEtat() === "recherche"}>
+                    <p class="text-sm text-ink-soft">
+                      {tr("livraison.recherche_en_cours")}
+                    </p>
+                  </Show>
+                  <Show when={relaisEtat() === "vide"}>
+                    <p class="text-sm text-ink-soft">
+                      {tr("livraison.aucun_relais")}
+                    </p>
+                  </Show>
+                  <Show when={relaisEtat() === "erreur"}>
+                    <p class="text-sm text-terracotta-deep">
+                      {tr("livraison.relais_indisponible")}
+                    </p>
+                  </Show>
+
+                  <Show when={relais().length > 0}>
+                    <ul class="max-h-72 space-y-2 overflow-y-auto">
+                      <For each={relais()}>
+                        {(r) => (
+                          <li>
+                            <label
+                              class={`flex cursor-pointer items-start gap-3 border p-3 text-sm transition-colors ${
+                                pointRelais().id === r.id
+                                  ? "border-ink"
+                                  : "border-ink/20 hover:border-ink/50"
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name="point-relais"
+                                class="mt-1"
+                                checked={pointRelais().id === r.id}
+                                onChange={() =>
+                                  setPointRelais({
+                                    id: r.id,
+                                    label: `${r.nom}, ${r.adresse}, ${r.codePostal} ${r.ville}`,
+                                  })
+                                }
+                              />
+                              <span>
+                                <span class="block font-medium">{r.nom}</span>
+                                <span class="block text-ink-soft">
+                                  {r.adresse}, {r.codePostal} {r.ville}
+                                </span>
+                              </span>
+                            </label>
+                          </li>
+                        )}
+                      </For>
+                    </ul>
+                  </Show>
+
+                  <Show when={pointRelais().id}>
+                    <p class="text-sm text-sage">
+                      {tr("livraison.relais_choisi")} {pointRelais().label}
+                    </p>
+                  </Show>
+                </div>
               </Show>
             </fieldset>
 
