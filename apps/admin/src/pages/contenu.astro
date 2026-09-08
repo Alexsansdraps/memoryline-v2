@@ -48,6 +48,27 @@ const SECTIONS = [
     ],
   },
   {
+    titre: "Accueil — l'affiche à partir d'une photo",
+    aide:
+      "Le bloc qui met en avant l'affiche générée à partir de la photo du " +
+      "client. Il ne s'affiche QUE si une image est renseignée : ce produit " +
+      "se vend par l'image, une mise en avant sans visuel ferait un trou au " +
+      "milieu de la page.",
+    champs: [
+      { key: "home.ia.visible", label: "Afficher cette section", type: "switch" },
+      {
+        key: "home.ia.image",
+        label:
+          "Image (adresse du visuel — idéalement une belle illustration produite par l'outil)",
+        type: "texte",
+      },
+      { key: "home.ia.title", label: "Titre", type: "texte" },
+      { key: "home.ia.text", label: "Texte", type: "long" },
+      { key: "home.ia.cta", label: "Libellé du bouton", type: "texte" },
+      { key: "home.ia.link", label: "Lien du bouton", type: "texte" },
+    ],
+  },
+  {
     titre: "Accueil — lettre d'information",
     aide: "Le bloc d'inscription, tout en bas de la page d'accueil.",
     champs: [

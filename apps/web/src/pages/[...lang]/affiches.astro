@@ -1,4 +1,5 @@
 ---
+import AfficheVide from "../../components/AfficheVide.astro";
 import Base from "../../layouts/Base.astro";
 import { api, formatPrice, assetUrl, type Product } from "../../lib/api.ts";
 import {
@@ -84,9 +85,7 @@ const kindLabel: Record<string, string> = {
                       class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                     />
                   ) : (
-                    <span class="px-4 text-center text-lg text-ink-soft">
-                      {p.name.replace(/\s*[-–]\s*Affiche.*$/i, "")}
-                    </span>
+                    <AfficheVide nom={p.name.replace(/\s*[-–]\s*Affiche.*$/i, "")} />
                   )
                 }
               </div>

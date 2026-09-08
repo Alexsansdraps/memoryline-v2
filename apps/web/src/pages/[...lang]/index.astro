@@ -1,4 +1,5 @@
 ---
+import AfficheVide from "../../components/AfficheVide.astro";
 import Base from "../../layouts/Base.astro";
 import Newsletter from "../../islands/Newsletter.tsx";
 import {
@@ -95,6 +96,27 @@ function fourchette(p: Product): string {
 }
 
 /** Intitulé de la lettre d'information, réglable au back-office. */
+/**
+ * Mise en avant de l'affiche tirée d'une photo.
+ *
+ * Le bloc ne s'affiche QUE si une image lui a été donnée au back-office :
+ * une mise en avant sans visuel est un trou au milieu de la page, et ce
+ * produit-là se vend précisément par l'image. Tout le reste — titre, texte,
+ * libellé du bouton — se règle sans développeur, comme la vitrine.
+ */
+const iaVisible = await visible("home.ia.visible");
+const iaImage = (await setting("home.ia.image", "")).trim();
+const iaTitre = await setting("home.ia.title", "Votre photo, en affiche");
+const iaTexte = await setting(
+  "home.ia.text",
+  "Envoyez une photo — une maison, une plage, une rue, un souvenir — et retrouvez-la illustrée dans le style Memory Line. Vous voyez le résultat avant de commander.",
+);
+const iaBouton = await setting("home.ia.cta", "Essayer avec ma photo");
+const iaLien = await setting(
+  "home.ia.link",
+  "/affiches/affiche-ia-a-partir-de-votre-photo",
+);
+
 const lettreTitre = await setting(
   "home.newsletter.title",
   "Subscribe to our emails",
@@ -152,9 +174,7 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
                       class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                     />
                   ) : (
-                    <span class="px-4 text-center text-lg text-ink-soft">
-                      {titreCourt(p.name)}
-                    </span>
+                    <AfficheVide nom={titreCourt(p.name)} />
                   )}
                 </div>
                 <h3 class="mt-4 text-[17px] leading-snug group-hover:underline underline-offset-4">
@@ -175,6 +195,34 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
           >
             {tr("accueil.tout_afficher")}
           </a>
+        </div>
+      </section>
+    )
+  }
+
+  {
+    /* ---------------- L'affiche à partir d'une photo ---------------- */
+    iaVisible && iaImage && (
+      <section class="mt-16 border-t border-ink/10">
+        <div
+          class="mx-auto grid max-w-[1200px] items-center gap-10 px-6 py-14 lg:grid-cols-2 lg:px-12"
+        >
+          <img
+            src={iaImage}
+            alt={iaTitre}
+            loading="lazy"
+            class="w-full object-cover"
+          />
+          <div>
+            <h2 class="text-3xl leading-tight">{iaTitre}</h2>
+            <p class="mt-4 text-lg leading-relaxed text-ink-soft">{iaTexte}</p>
+            <a
+              href={iaLien.startsWith("http") ? iaLien : lien(langue, iaLien)}
+              class="mt-8 inline-block bg-ink px-8 py-3 font-medium text-paper transition-colors hover:bg-ink/85"
+            >
+              {iaBouton}
+            </a>
+          </div>
         </div>
       </section>
     )

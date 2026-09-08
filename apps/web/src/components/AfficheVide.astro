@@ -1,0 +1,39 @@
+---
+/**
+ * Ce qu'on montre à la place d'une affiche qui n'a pas encore de visuel.
+ *
+ * Un nom en gris au milieu d'un rectangle vide ressemble à une page cassée.
+ * Une petite scène — ciel, soleil, mer, dunes — dans les tons de la marque
+ * dit « il y aura une affiche ici » sans prétendre en être une. Elle est
+ * dessinée en SVG dans la page : rien à charger, rien à héberger, et elle
+ * s'adapte à toutes les tailles de vignette.
+ */
+interface Props {
+  /** Nom de l'affiche, pour les lecteurs d'écran seulement. */
+  nom: string;
+  class?: string;
+}
+const { nom, class: classe = "" } = Astro.props;
+---
+
+<svg
+  viewBox="0 0 300 424"
+  role="img"
+  aria-label={nom}
+  class={`h-full w-full ${classe}`}
+  preserveAspectRatio="xMidYMid slice"
+>
+  <defs>
+    <linearGradient id="ciel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e9edf1" />
+      <stop offset="1" stop-color="#f6e9dc" />
+    </linearGradient>
+  </defs>
+  <rect width="300" height="424" fill="url(#ciel)" />
+  <circle cx="212" cy="122" r="34" fill="#efc9a0" />
+  <path d="M0 236 Q60 214 120 232 T240 236 T300 230 V424 H0 Z" fill="#c9d8dc" />
+  <path d="M0 262 Q75 246 150 262 T300 258 V424 H0 Z" fill="#b5c9cf" />
+  <path d="M0 322 Q50 300 110 318 T230 312 T300 322 V424 H0 Z" fill="#e6d9c3" />
+  <path d="M0 356 Q70 336 140 350 T300 346 V424 H0 Z" fill="#d9c7a8" />
+  <rect x="24" y="24" width="252" height="376" fill="none" stroke="#121212" stroke-opacity="0.12" stroke-width="2" />
+</svg>
