@@ -46,6 +46,34 @@ import {
  */
 const COPIE = (process.env.MAIL_BCC ?? "").trim();
 const BOITE_TEST = (process.env.MAIL_TEST_URL ?? "").trim().replace(/\/+$/, "");
+
+/**
+ * La même boîte d'essai, mais telle qu'un NAVIGATEUR peut l'atteindre.
+ *
+ * L'API lui parle par son nom de service Docker, « http://mailpit:8025 ». Ce
+ * nom n'existe qu'entre les conteneurs : donné en lien au back-office, il ne
+ * mène nulle part, et c'est exactement ce qui s'est produit. Un nom d'hôte
+ * sans point est forcément un service Docker, jamais un domaine : on le
+ * remplace par la machine de la personne, en gardant le port.
+ *
+ * MAIL_TEST_PUBLIC_URL permet de dire autre chose le jour où la boîte d'essai
+ * vivra ailleurs que sur le poste de travail.
+ */
+const BOITE_TEST_NAVIGATEUR = (() => {
+  const annoncee = (process.env.MAIL_TEST_PUBLIC_URL ?? "").trim();
+  if (annoncee) return annoncee.replace(/\/+$/, "");
+  if (!BOITE_TEST) return "";
+  try {
+    const u = new URL(BOITE_TEST);
+    if (!u.hostname.includes(".") && u.hostname !== "localhost") {
+      u.hostname = "localhost";
+      return u.toString().replace(/\/+$/, "");
+    }
+  } catch {
+    /* adresse illisible : on la rend telle quelle, elle sera visible */
+  }
+  return BOITE_TEST;
+})();
 const EXPEDITEUR =
   (process.env.MAIL_FROM ?? "").trim() ||
   (BOITE_TEST ? "Memory Line (essai) <boutique@memoryline.test>" : "");
@@ -441,7 +469,7 @@ export function mountCourriers(app: Hono): void {
       enEssai: estEnEssai(),
       expediteur: EXPEDITEUR || null,
       copie: COPIE || null,
-      boiteTestUrl: BOITE_TEST || null,
+      boiteTestUrl: BOITE_TEST_NAVIGATEUR || null,
       resume: resumeDestination(),
     }),
   );
