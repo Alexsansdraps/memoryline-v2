@@ -1,5 +1,6 @@
 ---
 import AfficheVide from "../../../components/AfficheVide.astro";
+import { dimensionsFormat } from "@memoryline/types";
 import Base from "../../../layouts/Base.astro";
 import {
   api,
@@ -146,6 +147,7 @@ const breadcrumbLd = {
             product.variants.map((v) => (
               <div class="rounded-lg border border-ink/20 px-4 py-3 text-sm">
                 <div class="font-medium">{v.format}</div>
+                <div class="text-ink-soft text-xs">{dimensionsFormat(v.format)}</div>
                 <div class="text-ink-soft">{formatPrice(v.priceCents)}</div>
               </div>
             ))

@@ -11,6 +11,7 @@
  * partir des expéditions et des remboursements enregistrés.
  */
 import { apiUrl, url } from "../../lib/url.ts";
+import { libelleFormat } from "@memoryline/types";
 import Admin from "../../layouts/Admin.astro";
 import {
   adminApi,
@@ -326,7 +327,7 @@ const LIBELLE_MOUVEMENT: Record<string, string> = {
                       </div>
                       <div class="mt-0.5 text-bo-muted">
                         {[
-                          it.format ? `Format ${it.format}` : null,
+                          it.format ? `Format ${libelleFormat(it.format)}` : null,
                           it.cadre ?? "Sans cadre",
                           it.personnages
                             ? `${it.personnages} personnage${it.personnages > 1 ? "s" : ""}`

@@ -19,3 +19,4 @@ export type ProductKind = (typeof PRODUCT_KINDS)[number];
 /** Fournisseurs de paiement — web uniquement (§11). */
 export const PAYMENT_PROVIDERS = ["stripe", "paypal"] as const;
 export type PaymentProvider = (typeof PAYMENT_PROVIDERS)[number];
+export * from "./formats.js";

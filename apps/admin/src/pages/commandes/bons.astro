@@ -7,6 +7,7 @@
  * l'adresse, le contenu, rien d'autre. Une page par bon (`break-after`), pour
  * qu'un lot de dix commandes sorte en dix feuilles sans découpage.
  */
+import { libelleFormat } from "@memoryline/types";
 import {
   adminApi,
   formatPrice,
@@ -239,7 +240,7 @@ function dateCourte(iso: string | null | undefined): string {
                       </div>
                     )}
                   </td>
-                  <td>{it.format ?? "—"}</td>
+                  <td>{it.format ? libelleFormat(it.format) : "—"}</td>
                   <td>{it.cadre ?? "Sans cadre"}</td>
                   <td class="droite">{it.quantity}</td>
                 </tr>

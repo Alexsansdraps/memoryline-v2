@@ -17,6 +17,7 @@ import {
   variantesDeVue,
 } from "@memoryline/configurator";
 import {
+  dimensionsFormat,
   formaterPoids,
   lignesRemplies,
   remisesPanier,
@@ -233,8 +234,8 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
    * mieux que « A4 » — c'est ce que faisait l'ancien site.
    */
   const DIMENSIONS: Record<string, string> = {
-    A4: "21 × 29,7 cm",
-    A3: "29,7 × 42 cm",
+    A4: dimensionsFormat("A4"),
+    A3: dimensionsFormat("A3"),
   };
 
   /**
