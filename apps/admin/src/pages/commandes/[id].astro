@@ -46,6 +46,13 @@ if (Astro.request.method === "POST") {
       flash = f.get("remise")
         ? "Affiche remise au client."
         : "Expédition enregistrée.";
+    } else if (action === "supprimer-commande") {
+      // Un retour à la liste plutôt qu'un rendu : la commande n'existe plus,
+      // la page qui la montre non plus.
+      const r = await api.supprimerCommande(id);
+      return Astro.redirect(
+        `${url("/commandes")}?supprimee=${encodeURIComponent(r.numero)}`,
+      );
     } else if (action === "annuler-expedition") {
       await api.cancelFulfillment(Number(f.get("fulfillmentId")));
       flash = "Expédition annulée.";
@@ -884,6 +891,27 @@ const LIBELLE_MOUVEMENT: Record<string, string> = {
               <p class="text-xs text-bo-muted">Séparées par des virgules.</p>
               <button class="rounded border border-bo-border px-3 py-1.5 hover:bg-bo-bg">
                 Enregistrer
+              </button>
+            </form>
+          </section>
+
+          {/* En dernier, et en rouge : ce qu'on ne défait pas se range là où
+              on ne clique pas par mégarde. */}
+          <section class="rounded-lg border border-red-300 bg-bo-surface px-4 py-3">
+            <h3 class="mb-2 font-medium text-red-800">Supprimer la commande</h3>
+            <p class="mb-3 text-sm text-bo-muted">
+              Les articles, les expéditions, les remboursements, les mouvements
+              d'argent et la chronologie partent avec elle, et elle sort de vos
+              chiffres. Pour retirer une vente sans effacer son histoire,
+              annulez-la plutôt.
+            </p>
+            <form
+              method="POST"
+              onsubmit="return confirm('Supprimer définitivement cette commande ? Cette action est sans retour.')"
+            >
+              <input type="hidden" name="_action" value="supprimer-commande" />
+              <button class="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50">
+                Supprimer définitivement {order.number}
               </button>
             </form>
           </section>

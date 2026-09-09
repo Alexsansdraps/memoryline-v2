@@ -914,6 +914,19 @@ export function adminApi(request?: Request) {
         undefined,
         cookie,
       ),
+    /**
+     * Efface une commande et tout ce qui pend après elle.
+     *
+     * À ne pas confondre avec l'annulation : une commande annulée reste
+     * lisible, une commande supprimée disparaît des chiffres.
+     */
+    supprimerCommande: (id: number) =>
+      req<{ ok: true; numero: string }>(
+        "DELETE",
+        `/admin/orders/${id}`,
+        undefined,
+        cookie,
+      ),
     /** Étiquettes déjà employées, les plus fréquentes d'abord. */
     orderTags: () =>
       req<{ name: string; n: number }[]>(
@@ -933,10 +946,12 @@ export function adminApi(request?: Request) {
     /** Action groupée sur les commandes cochées. */
     bulkOrders: (
       ids: number[],
-      action: "fulfil" | "unfulfil" | "tag" | "untag",
+      action: "fulfil" | "unfulfil" | "tag" | "untag" | "supprimer",
       tags?: string[],
     ) =>
-      req<{ ok: boolean; count: number }>(
+      // `numeros` n'accompagne que la suppression : nommer ce qui a disparu
+      // est la seule trace qu'il en reste.
+      req<{ ok: boolean; count: number; numeros?: string[] }>(
         "POST",
         "/admin/orders/bulk",
         { ids, action, tags },

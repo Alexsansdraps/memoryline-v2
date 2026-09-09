@@ -582,8 +582,55 @@ export function mountOrderRoutes(app: Hono): void {
       return c.json({ ok: true, count: rows.length });
     }
 
+    if (action === "supprimer") {
+      const detruites = await supprimerCommandes(ids);
+      return c.json({ ok: true, count: detruites.length, numeros: detruites });
+    }
+
     return c.json({ error: "action inconnue" }, 400);
   });
+
+  /**
+   * Efface une commande et tout ce qui pend après elle.
+   *
+   * Rien n'est refusé, pas même une commande payée : c'est la boutiquière qui
+   * sait ce qu'elle veut garder, et l'écran la prévient nommément avant
+   * d'agir. Une vente supprimée disparaît en revanche des chiffres, ce qui la
+   * distingue d'une commande annulée — celle-ci reste et se lit encore.
+   */
+  app.delete("/admin/orders/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0)
+      return c.json({ error: "commande inconnue" }, 400);
+    const detruites = await supprimerCommandes([id]);
+    if (!detruites.length)
+      return c.json(
+        { error: "Cette commande n'existe plus. Rechargez la liste." },
+        404,
+      );
+    return c.json({ ok: true, numero: detruites[0] });
+  });
+
+  /**
+   * Efface les commandes demandées et rend les numéros réellement effacés.
+   *
+   * Les lignes, expéditions, remboursements, mouvements d'argent et journaux
+   * partent en cascade : les clés étrangères le déclarent, inutile de les
+   * énumérer ici et de risquer d'en oublier une à la prochaine table ajoutée.
+   *
+   * Les affiches générées par IA survivent, leur lien vers la ligne se vidant
+   * de lui-même : ce sont des images déjà fabriquées et payées, et leur propre
+   * purge s'en occupe. Les fichiers d'impression écrits sur le disque restent
+   * eux aussi, faute de savoir ici lesquels ne servent plus à personne.
+   */
+  async function supprimerCommandes(ids: number[]): Promise<string[]> {
+    if (!ids.length) return [];
+    const partis = await db
+      .delete(schema.orders)
+      .where(inArray(schema.orders.id, ids))
+      .returning({ numero: schema.orders.number });
+    return partis.map((p) => p.numero);
+  }
 
   /** Crée une expédition : ce qui part, par qui, avec quel numéro de suivi. */
   app.post("/admin/orders/:id/fulfillments", async (c) => {

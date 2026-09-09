@@ -52,6 +52,12 @@ if (Astro.request.method === "POST") {
           quoi === "tag"
             ? `Étiquette ajoutée à ${r.count} commande(s).`
             : `Étiquette retirée de ${r.count} commande(s).`;
+      } else if (quoi === "supprimer") {
+        const r = await api.bulkOrders(ids, "supprimer");
+        const numeros = Array.isArray(r.numeros) ? r.numeros : [];
+        flash =
+          `${r.count} commande(s) supprimée(s) définitivement` +
+          (numeros.length ? ` : ${numeros.join(", ")}.` : ".");
       }
     }
   } catch (e) {
@@ -372,6 +378,14 @@ const filtreActif =
       <button type="button" id="bo-export" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
         Exporter la sélection
       </button>
+      <button
+        type="button"
+        data-bulk="supprimer"
+        data-confirme="Supprimer définitivement les commandes sélectionnées ? Leurs articles, expéditions, remboursements et mouvements d'argent partent avec elles, et elles sortent de vos chiffres. Pour retirer une vente sans effacer son histoire, annulez-la plutôt."
+        class="ml-auto rounded border border-red-300 px-3 py-1.5 text-red-700 hover:bg-red-50"
+      >
+        Supprimer
+      </button>
     </div>
   </form>
 
@@ -542,6 +556,9 @@ const filtreActif =
       const ids = selection();
       if (!ids.length) return;
       const quoi = b.dataset.bulk;
+      // Une action destructrice s'annonce, et nomme ce qu'elle détruit.
+      const avertissement = b.dataset.confirme;
+      if (avertissement && !confirm(avertissement)) return;
       if (quoi === "tag" || quoi === "untag") {
         const saisie = prompt(
           quoi === "tag"
