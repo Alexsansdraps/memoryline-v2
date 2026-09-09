@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { For, Show } from "solid-js";
+import { createSignal, onCleanup, onMount, For, Show } from "solid-js";
 import {
   autoPlace,
   CHAR_BASE_WIDTH,
@@ -31,6 +31,26 @@ const LIGNES_EXEMPLE: LigneTexte[] = [
   { value: "Memory Line", font: policeDefautLigne(0) },
   { value: "Votre ville, votre histoire", font: policeDefautLigne(1) },
 ];
+
+/**
+ * Couleur de repli d'un cadre dont le back-office n'a pas fixé la teinte :
+ * un bois clair, le cadre le plus vendu. Mieux vaut un cadre approximatif
+ * qu'une affiche nue là où le client vient d'en choisir un.
+ */
+const COULEUR_CADRE_DEFAUT = "#b07d42";
+
+/**
+ * Épaisseur du cadre, en proportion de la largeur de l'aperçu.
+ *
+ * En proportion plutôt qu'en pixels : l'aperçu fait quatre cents pixels de
+ * large sur la fiche produit et le double en plein écran, un cadre fixe y
+ * paraîtrait deux fois plus fin. La valeur correspond à peu près à la
+ * baguette de trois centimètres d'un cadre vendu pour un A3.
+ */
+const PART_CADRE = 0.045;
+/** En dessous, la baguette n'est plus qu'un trait ; au-dessus, elle mange l'affiche. */
+const CADRE_MIN_PX = 7;
+const CADRE_MAX_PX = 34;
 
 /** Ratio largeur/hauteur d'affichage selon le format (portrait). */
 function aspectFor(format: string): string {
@@ -65,7 +85,47 @@ export function PosterPreview(props: {
    * l'impression — qui n'existe qu'une fois la commande payée — le coupe.
    */
   filigrane?: boolean;
+  /**
+   * Cadre choisi, dessiné autour de l'affiche. Absent ou nul = affiche nue.
+   *
+   * On ne prend que ce qui se dessine : la couleur d'aperçu et le nom, pour
+   * que le lecteur d'écran dise ce que l'œil voit.
+   */
+  cadre?: { name?: string; previewColor?: string | null } | null;
 }) {
+  /** La couleur du cadre, ou rien du tout s'il n'y en a pas. */
+  const couleurCadre = () =>
+    props.cadre ? props.cadre.previewColor || COULEUR_CADRE_DEFAUT : null;
+
+  /**
+   * Largeur réelle de l'aperçu, suivie à la trace.
+   *
+   * L'affiche est tantôt bridée par la largeur de la colonne, tantôt par la
+   * hauteur de la modale : aucune règle CSS ne sait dire d'avance laquelle
+   * gagne. On regarde donc.
+   */
+  const [largeurAffiche, setLargeurAffiche] = createSignal(0);
+  let bloc: HTMLDivElement | undefined;
+  onMount(() => {
+    if (!bloc || typeof ResizeObserver === "undefined") return;
+    const observateur = new ResizeObserver(() => {
+      // La largeur EXTÉRIEURE : elle ne bouge pas quand la bordure change,
+      // sans quoi la mesure et le cadre se poursuivraient sans fin.
+      setLargeurAffiche(bloc?.getBoundingClientRect().width ?? 0);
+    });
+    observateur.observe(bloc);
+    setLargeurAffiche(bloc.getBoundingClientRect().width);
+    onCleanup(() => observateur.disconnect());
+  });
+
+  /** L'épaisseur de la baguette, en pixels, pour la largeur du moment. */
+  const epaisseurCadre = () =>
+    Math.round(
+      Math.min(
+        CADRE_MAX_PX,
+        Math.max(CADRE_MIN_PX, largeurAffiche() * PART_CADRE),
+      ),
+    );
   /** Fond affichable : le chemin stocké est brut, on le préfixe ici. */
   const srcFond = () =>
     props.state.backgroundUrl
@@ -74,15 +134,32 @@ export function PosterPreview(props: {
 
   return (
     <div
+      ref={bloc}
       class="ml-cfg-poster"
+      role={props.cadre ? "img" : undefined}
+      aria-label={
+        props.cadre ? `Aperçu de l'affiche dans un ${props.cadre.name ?? "cadre"}` : undefined
+      }
       style={{
         position: "relative",
         width: "100%",
         "aspect-ratio": aspectFor(props.state.format),
         background: "#f3f4f6",
         overflow: "hidden",
-        "border-radius": "8px",
-        "box-shadow": "0 1px 4px rgba(0,0,0,.15)",
+        // Un vrai cadre n'a pas les coins arrondis, et la baguette mange sur
+        // l'affiche au lieu de s'ajouter autour : c'est ce que fait une
+        // bordure en « border-box », comme un passe-partout.
+        "border-radius": props.cadre ? "2px" : "8px",
+        ...(couleurCadre()
+          ? {
+              border: `${epaisseurCadre()}px solid ${couleurCadre()}`,
+              // Deux traits fins : l'un creuse la feuillure côté affiche,
+              // l'autre détache la baguette du fond de la page. Sans eux, un
+              // cadre blanc sur fond blanc ne se voit pas.
+              "box-shadow":
+                "inset 0 0 0 1px rgba(0,0,0,.28), 0 0 0 1px rgba(0,0,0,.14), 0 6px 18px rgba(0,0,0,.22)",
+            }
+          : { "box-shadow": "0 1px 4px rgba(0,0,0,.15)" }),
       }}
     >
       {/* Couche fond */}

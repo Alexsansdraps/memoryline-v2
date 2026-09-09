@@ -474,6 +474,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
               : undefined
           }
           assetBaseUrl={props.assetBaseUrl}
+          cadre={cadreChoisi() ?? null}
         />
       </div>
       </Show>
