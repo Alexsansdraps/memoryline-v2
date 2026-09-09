@@ -12,14 +12,17 @@
  * travaille pas comme une affiche qui en amène.
  *
  * Deux conventions, les mêmes que sur /admin/stats/orders :
- *  - une vente est une commande PAYÉE, datée de sa création ;
+ *  - une vente est une commande qui n'est ni un panier abandonné, ni annulée,
+ *    ni avortée, datée de sa création. Filtrer sur « payée » aurait écarté
+ *    toutes les ventes du stand, qui restent « en attente » à vie ;
  *  - « net » veut dire remboursements déduits. Un remboursement est imputé à
  *    la ligne qu'il rembourse, quelle que soit sa propre date : ce qui
  *    intéresse la boutique, c'est ce que l'affiche a réellement laissé.
  */
 import type { Hono } from "hono";
-import { and, eq, gte, inArray } from "drizzle-orm";
+import { and, eq, gte, inArray, notInArray } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
+import { HORS_VENTES } from "./statuts-vente.js";
 
 /** Bornes acceptées pour la fenêtre d'observation, en jours. */
 const JOURS_MIN = 1;
@@ -44,9 +47,10 @@ export function mountVentesProduit(app: Hono) {
     const fin = new Date();
     const debut = new Date(fin.getTime() - jours * 86400000);
 
-    // Les lignes de commande qui portent CE produit, sur des commandes payées.
-    // Une jointure plutôt que deux requêtes : le filtre sur le statut et la
-    // date doit s'appliquer avant de ramener quoi que ce soit.
+    // Les lignes de commande qui portent CE produit, sur des commandes qui
+    // comptent comme des ventes. Une jointure plutôt que deux requêtes : le
+    // filtre sur le statut et la date doit s'appliquer avant de ramener quoi
+    // que ce soit.
     const lignes = await db
       .select({
         ligneId: schema.orderItems.id,
@@ -62,7 +66,7 @@ export function mountVentesProduit(app: Hono) {
       .where(
         and(
           eq(schema.orderItems.productId, id),
-          eq(schema.orders.status, "paid"),
+          notInArray(schema.orders.status, HORS_VENTES),
           gte(schema.orders.createdAt, debut),
         ),
       );
@@ -128,7 +132,7 @@ export function mountVentesProduit(app: Hono) {
     }
 
     // Nouveaux clients ou habitués : on regarde, pour chacun des acheteurs de
-    // cette affiche, si sa TOUTE PREMIÈRE commande payée tombe dans la
+    // cette affiche, si sa TOUTE PREMIÈRE commande tombe dans la
     // fenêtre. Une affiche qui n'attire que des habitués ne se travaille pas
     // comme une affiche qui fait entrer du monde.
     let nouveaux = 0;
@@ -143,7 +147,7 @@ export function mountVentesProduit(app: Hono) {
         .from(schema.orders)
         .where(
           and(
-            eq(schema.orders.status, "paid"),
+            notInArray(schema.orders.status, HORS_VENTES),
             inArray(schema.orders.customerId, idsClients),
           ),
         );

@@ -21,9 +21,10 @@
  * trouerait l'historique des ventes.
  */
 import type { Hono } from "hono";
-import { and, asc, eq, inArray, notInArray } from "drizzle-orm";
-import { poidsArticle } from "@memoryline/types";
+import { and, asc, eq, inArray, notInArray, sql as raw } from "drizzle-orm";
+import { poidsArticle, POSTER_FORMATS } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
+import { FORMAT_PAR_DEFAUT, HORS_VENTES } from "./statuts-vente.js";
 
 /** Les seuls états qu'un produit peut prendre. */
 const STATUTS = ["active", "draft", "archived"] as const;
@@ -571,14 +572,28 @@ export function mountFicheProduit(app: Hono): void {
             aSupprimer.push(existante.id);
           }
 
-          if (aSupprimer.length) {
-            // Un panier abandonné est une commande en brouillon : il ne compte
-            // pas comme une vente et ne doit pas bloquer un format créé par
-            // erreur. Une commande PAYÉE, elle, cite ce format dans son
-            // historique, et l'effacer reviendrait à réécrire des ventes déjà
-            // faites.
-            const vendus = await tx
-              .select({ variantId: schema.orderItems.variantId })
+          /**
+           * Les formats de CE produit qui figurent déjà dans une vente.
+           *
+           * On ne cherche PAS par `variant_id` : la colonne est vide dans
+           * toute la base, aucun chemin d'ajout au panier ne la remplit. Le
+           * format vendu se lit dans la configuration figée de la ligne,
+           * exactement comme le fait le calcul du prix, et une ligne sans
+           * format est un A4.
+           *
+           * Un panier abandonné (« draft »), une commande annulée ou avortée
+           * ne comptent pas. Une commande du stand, elle, compte : elle reste
+           * « en attente » à vie faute de prestataire de paiement à confirmer.
+           */
+          const formatsVendus = new Set<string>();
+          if (aSupprimer.length || variantesExistantes.length) {
+            const lignesVendues = await tx
+              .select({
+                format: raw<
+                  string | null
+                >`${schema.orderItems.config}->>'format'`,
+                varianteId: schema.orderItems.variantId,
+              })
               .from(schema.orderItems)
               .innerJoin(
                 schema.orders,
@@ -586,19 +601,28 @@ export function mountFicheProduit(app: Hono): void {
               )
               .where(
                 and(
-                  eq(schema.orders.status, "paid"),
-                  inArray(schema.orderItems.variantId, aSupprimer),
+                  eq(schema.orderItems.productId, id),
+                  notInArray(schema.orders.status, HORS_VENTES),
                 ),
               );
-            const bloque = vendus
-              .map((v) => v.variantId)
-              .find((v): v is number => v !== null);
-            if (bloque !== undefined) {
-              const nom = varianteParId.get(bloque)?.format ?? "Ce format";
-              throw new SaisieRefusee(
-                `Le format ${nom} a déjà été vendu, il ne peut pas être supprimé. Vous pouvez le retirer de la vente en mettant son stock à zéro.`,
-              );
+            for (const l of lignesVendues) {
+              const parNom = (l.format ?? "").trim() || FORMAT_PAR_DEFAUT;
+              formatsVendus.add(parNom.toLowerCase());
+              // Ceinture : le jour où `variant_id` sera rempli, cette ligne
+              // protégera aussi les commandes passées d'ici là.
+              if (l.varianteId !== null) {
+                const nom = varianteParId.get(l.varianteId)?.format;
+                if (nom) formatsVendus.add(nom.toLowerCase());
+              }
             }
+          }
+
+          for (const varianteId of aSupprimer) {
+            const nom = varianteParId.get(varianteId)?.format ?? "";
+            if (!formatsVendus.has(nom.toLowerCase())) continue;
+            throw new SaisieRefusee(
+              `Le format ${nom} a déjà été vendu, il ne peut pas être supprimé : des commandes le citent. Vous pouvez le retirer de la vente en mettant son stock à zéro.`,
+            );
           }
 
           // Les formats tels qu'ils seront APRÈS enregistrement : c'est là que
@@ -627,6 +651,31 @@ export function mountFicheProduit(app: Hono): void {
             if (!format)
               throw new SaisieRefusee(
                 "Chaque format doit porter un nom, par exemple A4 ou A3.",
+              );
+            // La boutique ne sait commander que les formats de sa liste : le
+            // formulaire de panier les refuse tous les autres. Créer un « A2 »
+            // ici donnerait une variante que personne ne pourrait acheter.
+            const connu = (POSTER_FORMATS as readonly string[]).find(
+              (f) => f.toLowerCase() === format.toLowerCase(),
+            );
+            if (!connu)
+              throw new SaisieRefusee(
+                `La boutique ne sait pas vendre le format ${format}. Les formats possibles sont ${POSTER_FORMATS.join(" et ")}.`,
+              );
+            // Renommer un format vendu revient à le supprimer : tout se
+            // rattache à son nom, les commandes passées comprises.
+            const varianteVisee = identifiantExistant(e.id);
+            const ancienNom =
+              varianteVisee === null
+                ? undefined
+                : varianteParId.get(varianteVisee)?.format;
+            if (
+              ancienNom &&
+              ancienNom.toLowerCase() !== connu.toLowerCase() &&
+              formatsVendus.has(ancienNom.toLowerCase())
+            )
+              throw new SaisieRefusee(
+                `Le format ${ancienNom} a déjà été vendu, son nom ne peut plus changer : des commandes le citent.`,
               );
             if (formatsFinaux.has(format.toLowerCase()))
               throw new SaisieRefusee(

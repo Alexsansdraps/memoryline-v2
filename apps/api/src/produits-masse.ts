@@ -16,7 +16,17 @@
  * du lot est bien enregistré.
  */
 import type { Hono } from "hono";
-import { and, asc, count, eq, inArray, or, sql as raw } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  eq,
+  inArray,
+  notInArray,
+  or,
+  sql as raw,
+} from "drizzle-orm";
+import { HORS_VENTES } from "./statuts-vente.js";
 import { poidsArticle } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 
@@ -932,7 +942,7 @@ export function mountProduitsMasse(app: Hono): void {
           )
           .where(
             and(
-              eq(schema.orders.status, "paid"),
+              notInArray(schema.orders.status, HORS_VENTES),
               or(
                 inArray(schema.orderItems.productId, ids),
                 inArray(schema.variants.productId, ids),
