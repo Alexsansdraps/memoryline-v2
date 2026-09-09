@@ -711,9 +711,108 @@ const boutonPrincipal =
   "rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90";
 const boutonDiscret =
   "rounded border border-bo-border bg-bo-surface px-3 py-1.5 text-sm hover:bg-bo-bg";
+
+/**
+ * Les fiches d'avant et d'après, dans l'ordre de la liste.
+ *
+ * L'ordre est celui du NOM, comme la liste des produits : c'est la logique
+ * qu'on avait sous les yeux en arrivant, en changer ici donnerait le sentiment
+ * de sauter au hasard. Une fiche absente de la liste (elle vient d'être créée,
+ * le catalogue n'a pas répondu) n'a simplement pas de voisines.
+ */
+let precedente: { id: number; name: string } | null = null;
+let suivante: { id: number; name: string } | null = null;
+let rangDansListe = 0;
+let totalListe = 0;
+try {
+  const tout = await api.produitsAdmin({ statut: "tous", limit: 1000 });
+  const rang = tout.produits.findIndex((p) => p.id === idProduit);
+  if (rang !== -1) {
+    totalListe = tout.produits.length;
+    rangDansListe = rang + 1;
+    const avant = tout.produits[rang - 1];
+    const apres = tout.produits[rang + 1];
+    if (avant) precedente = { id: avant.id, name: avant.name };
+    if (apres) suivante = { id: apres.id, name: apres.name };
+  }
+} catch {
+  // Sans catalogue, la fiche reste utilisable : elle perd juste ses voisines.
+}
 ---
 
 <Admin title={produit?.name ?? config?.name ?? "Produit"}>
+  {/* Les deux voisines, sur le bord droit. Régler quarante affiches ne doit
+      pas demander quarante retours à la liste. */}
+  {(precedente || suivante) && (
+    <nav
+      aria-label="Fiche précédente ou suivante"
+      class="fixed top-1/2 right-4 z-20 hidden -translate-y-1/2 flex-col items-center gap-2 lg:flex"
+    >
+      <a
+        href={precedente ? url(`/produits/${precedente.id}`) : undefined}
+        title={precedente ? `Fiche précédente : ${precedente.name}` : "Première fiche de la liste"}
+        aria-label={precedente ? `Fiche précédente : ${precedente.name}` : "Première fiche de la liste"}
+        aria-disabled={precedente ? undefined : "true"}
+        data-voisine="precedente"
+        class={`flex h-10 w-10 items-center justify-center rounded-full border border-bo-border bg-bo-surface text-lg shadow-sm ${
+          precedente
+            ? "text-bo-nav hover:border-bo-accent hover:text-bo-accent"
+            : "cursor-not-allowed text-bo-muted opacity-40"
+        }`}
+      >
+        ▲
+      </a>
+      {totalListe > 0 && (
+        <span class="text-[11px] text-bo-muted">
+          {rangDansListe}/{totalListe}
+        </span>
+      )}
+      <a
+        href={suivante ? url(`/produits/${suivante.id}`) : undefined}
+        title={suivante ? `Fiche suivante : ${suivante.name}` : "Dernière fiche de la liste"}
+        aria-label={suivante ? `Fiche suivante : ${suivante.name}` : "Dernière fiche de la liste"}
+        aria-disabled={suivante ? undefined : "true"}
+        data-voisine="suivante"
+        class={`flex h-10 w-10 items-center justify-center rounded-full border border-bo-border bg-bo-surface text-lg shadow-sm ${
+          suivante
+            ? "text-bo-nav hover:border-bo-accent hover:text-bo-accent"
+            : "cursor-not-allowed text-bo-muted opacity-40"
+        }`}
+      >
+        ▼
+      </a>
+    </nav>
+  )}
+
+  <script is:inline>
+    // Les mêmes flèches au clavier, mais JAMAIS pendant une saisie : une
+    // flèche pressée en corrigeant un prix doit déplacer le curseur, pas
+    // changer de page.
+    document.addEventListener("keydown", function (e) {
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      var actif = document.activeElement;
+      if (
+        actif &&
+        (actif.tagName === "INPUT" ||
+          actif.tagName === "TEXTAREA" ||
+          actif.tagName === "SELECT" ||
+          actif.isContentEditable)
+      )
+        return;
+      var quoi =
+        e.key === "ArrowUp"
+          ? "precedente"
+          : e.key === "ArrowDown"
+            ? "suivante"
+            : null;
+      if (!quoi) return;
+      var lien = document.querySelector('[data-voisine="' + quoi + '"]');
+      if (lien && lien.getAttribute("href")) {
+        e.preventDefault();
+        window.location.href = lien.getAttribute("href");
+      }
+    });
+  </script>
   {Astro.url.searchParams.get("cree") === "1" && (
     <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">
       Affiche créée. Elle est déjà en ligne : ajoutez ses fonds et vérifiez ses

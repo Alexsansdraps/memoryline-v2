@@ -204,6 +204,35 @@ export interface MenuCms {
   entrees: EntreeMenu[];
 }
 
+/** Ce qu'un import ferait, ou vient de faire, sur une fiche produit. */
+export interface LigneImport {
+  /** L'adresse du produit dans le fichier : c'est elle qui identifie. */
+  handle: string;
+  nom: string;
+  action: "creation" | "mise-a-jour" | "inchange" | "refus";
+  /** Pourquoi la ligne est refusée, en français. */
+  raison?: string;
+  /** Ce qui change, phrase par phrase : « prix A3 : 29 € vers 31 € ». */
+  changements: string[];
+  collections: string[];
+  formats: { format: string; prixCents: number; sku: string | null }[];
+  /** Renseigné après application : de quoi enchaîner sur les images. */
+  produitId?: number;
+  /** Vrai quand la fiche n'a encore aucune image. */
+  sansImage?: boolean;
+}
+
+/** Le résultat d'un import, qu'il ait été appliqué ou seulement simulé. */
+export interface ResultatImport {
+  applique: boolean;
+  lignes: number;
+  produits: number;
+  /** Collections créées au passage, parce qu'une étiquette les nommait. */
+  collectionsCreees: string[];
+  apercu: LigneImport[];
+  erreurs: { ligne: number; message: string }[];
+}
+
 /**
  * Une collection : la façon dont la boutique range ses affiches.
  *
@@ -1391,6 +1420,20 @@ export function adminApi(request?: Request) {
         cookie,
       );
     },
+    /**
+     * Lit un fichier d'import de fiches produit.
+     *
+     * Sans `appliquer`, RIEN n'est écrit : on rend seulement ce qui se
+     * passerait. Un import de quarante affiches ne se lance pas à l'aveugle.
+     */
+    importerProduits: (csv: string, appliquer = false) =>
+      req<ResultatImport>(
+        "POST",
+        "/admin/products/import",
+        { csv, appliquer },
+        cookie,
+      ),
+
     /* --- Collections : la façon de ranger les affiches ------------------ */
     collections: () =>
       req<{ collections: CollectionBo[] }>(
