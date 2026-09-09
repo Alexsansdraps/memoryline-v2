@@ -1,0 +1,742 @@
+---
+/**
+ * Les finances de la boutique, avec leurs sources.
+ *
+ * Cet écran répond à une question simple qui recevait jusqu'ici trois réponses
+ * différentes : « combien est entré ? ». Il ne tranche pas entre elles. Il
+ * pose les quatre comptabilités côte à côte, dit quand elles concordent, et
+ * quand elles divergent il nomme l'écart au lieu de choisir en silence.
+ *
+ * L'ordre de lecture est voulu : d'abord les quatre chiffres, ensuite les
+ * commandes qui clochent (c'est là qu'on va le jour où un chiffre étonne),
+ * puis le détail mouvement par mouvement, et enfin les répartitions.
+ */
+import Admin from "../layouts/Admin.astro";
+import { formatPrice } from "../lib/api.ts";
+import { apiUrl, url } from "../lib/url.ts";
+
+/**
+ * L'API vue du serveur : en conteneur par le réseau interne, sinon en direct.
+ * Le cookie de la requête entrante est relayé, sans quoi la route financière
+ * répondrait « non authentifié ».
+ */
+const API_URL =
+  import.meta.env.API_URL_INTERNAL ??
+  import.meta.env.PUBLIC_API_URL ??
+  "http://localhost:3000";
+
+interface SourceChiffree {
+  cents: number;
+  nombre: number;
+}
+interface Anomalie {
+  numero: string;
+  id: number;
+  date: string;
+  canal: string;
+  attendu: number;
+  journal: number;
+  paiement: number;
+  lignes: number;
+  raison: string;
+}
+interface Mouvement {
+  date: string;
+  numero: string;
+  orderId: number;
+  canal: string;
+  stand: string | null;
+  genre: string;
+  source: string;
+  cents: number;
+  client: string;
+}
+interface Finances {
+  periode: { du: string; au: string };
+  sources: {
+    commandes: SourceChiffree;
+    journal: SourceChiffree;
+    paiements: SourceChiffree;
+    lignes: { cents: number };
+  };
+  anomalies: Anomalie[];
+  mouvements: Mouvement[];
+  parCanal: { canal: string; stand: string | null; cents: number; nombre: number }[];
+  parMoyen: { moyen: string; cents: number; nombre: number }[];
+  remboursements: SourceChiffree;
+  cartesCadeaux: { emisesCents: number; utiliseesCents: number; soldeCents: number };
+}
+
+/**
+ * Un appel à l'API financière. La phrase de refus de l'API est conservée :
+ * elle explique une date de travers ou un accès refusé mieux qu'un code.
+ */
+async function lireFinances(chemin: string): Promise<Finances> {
+  const entetes: Record<string, string> = {};
+  const cookie = Astro.request.headers.get("cookie");
+  if (cookie) entetes["cookie"] = cookie;
+  const reponse = await fetch(`${API_URL}${chemin}`, { headers: entetes });
+  if (!reponse.ok) {
+    const brut = await reponse.text().catch(() => "");
+    let raison = "";
+    try {
+      raison = String((JSON.parse(brut) as { error?: unknown }).error ?? "");
+    } catch {
+      /* réponse non JSON (erreur du proxy) : on garde le code de retour */
+    }
+    throw new Error(raison || `L'API a répondu ${reponse.status}.`);
+  }
+  return (await reponse.json()) as Finances;
+}
+
+/* --- La période, portée par l'adresse ----------------------------------- */
+
+/** « 2026-09-09 » en heure locale : la journée telle qu'on la vit. */
+function jourISO(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+const aujourdhui = new Date();
+
+/** Ce que l'API affiche quand l'adresse ne dit rien : le mois en cours. */
+const MOIS_EN_COURS = {
+  du: jourISO(new Date(aujourdhui.getFullYear(), aujourdhui.getMonth(), 1)),
+  au: jourISO(aujourdhui),
+};
+
+const RACCOURCIS = [
+  { cle: "mois", label: "Ce mois-ci", ...MOIS_EN_COURS },
+  {
+    cle: "mois-dernier",
+    label: "Le mois dernier",
+    du: jourISO(new Date(aujourdhui.getFullYear(), aujourdhui.getMonth() - 1, 1)),
+    // Le jour 0 du mois courant, c'est le dernier jour du mois d'avant.
+    au: jourISO(new Date(aujourdhui.getFullYear(), aujourdhui.getMonth(), 0)),
+  },
+  {
+    cle: "annee",
+    label: "Cette année",
+    du: jourISO(new Date(aujourdhui.getFullYear(), 0, 1)),
+    au: jourISO(aujourdhui),
+  },
+];
+
+const params = Astro.url.searchParams;
+const duDemande = (params.get("du") ?? "").trim();
+const auDemande = (params.get("au") ?? "").trim();
+const raccourciActif = RACCOURCIS.find(
+  (r) =>
+    (duDemande || MOIS_EN_COURS.du) === r.du &&
+    (auDemande || MOIS_EN_COURS.au) === r.au,
+);
+
+const TRIS = ["date", "commande", "montant", "provenance"];
+const triDemande = params.get("tri") ?? "date";
+const tri = TRIS.includes(triDemande) ? triDemande : "date";
+const sens = params.get("sens") === "asc" ? "asc" : "desc";
+
+/** L'adresse de cette page, avec une période imposée. */
+function lienPeriode(du: string, au: string): string {
+  const p = new URLSearchParams(params);
+  p.set("du", du);
+  p.set("au", au);
+  return url(`/finances?${p.toString()}`);
+}
+
+/** La même adresse, avec un tri différent pour le tableau des mouvements. */
+function lienTri(colonne: string): string {
+  const p = new URLSearchParams(params);
+  p.set("tri", colonne);
+  // Recliquer sur la colonne déjà triée renverse l'ordre : c'est le geste
+  // qu'on fait sans y penser dans un tableur.
+  p.set("sens", tri === colonne && sens === "desc" ? "asc" : "desc");
+  return url(`/finances?${p.toString()}`);
+}
+
+const requete = new URLSearchParams();
+if (duDemande) requete.set("du", duDemande);
+if (auDemande) requete.set("au", auDemande);
+const suffixe = requete.toString() ? `?${requete.toString()}` : "";
+
+let finances: Finances | null = null;
+let erreur: string | null = null;
+try {
+  finances = await lireFinances(`/admin/finances${suffixe}`);
+} catch (souci) {
+  erreur = (souci instanceof Error ? souci.message : String(souci))
+    .replace(/^Error:\s*/, "")
+    .trim();
+}
+
+const lienExport = apiUrl(`/admin/finances/export.csv${suffixe}`);
+
+/* --- Ce que chaque source dit, et si elles s'accordent ------------------- */
+
+/** « 1 vente », « 3 ventes » : le « (s) » se lit mal. */
+const pluriel = (nombre: number, mot: string, terminaison = "s") =>
+  `${nombre} ${mot}${nombre > 1 ? terminaison : ""}`;
+
+/**
+ * Les quatre chiffres, nommés comme la boutique les nomme.
+ *
+ * Le nom compte autant que le montant : « ce qu'ont encaissé Stripe et
+ * PayPal » se comprend, « somme de la table payment » non.
+ */
+const CARTES = finances
+  ? [
+      {
+        titre: "Ce que disent les commandes",
+        valeur: finances.sources.commandes.cents,
+        detail: `${pluriel(finances.sources.commandes.nombre, "vente")} sur la période`,
+        note: "Le total de chaque commande vendue, remboursements non déduits.",
+      },
+      {
+        titre: "Ce que dit le grand livre",
+        valeur: finances.sources.journal.cents,
+        detail: `${pluriel(finances.sources.journal.nombre, "mouvement")} enregistré${finances.sources.journal.nombre > 1 ? "s" : ""}`,
+        note: "Les encaissements notés au fil de l'eau, moins ce qui a été rendu.",
+      },
+      {
+        titre: "Ce qu'ont encaissé Stripe et PayPal",
+        valeur: finances.sources.paiements.cents,
+        detail: `${pluriel(finances.sources.paiements.nombre, "encaissement")} en ligne`,
+        note: "Les ventes du site uniquement. Une vente de stand ne passe pas par là.",
+      },
+      {
+        titre: "La somme des articles vendus",
+        valeur: finances.sources.lignes.cents,
+        detail: "Articles seuls",
+        note: "Hors frais de port, et avant les remises. Voisin des autres, jamais identique.",
+      },
+    ]
+  : [];
+
+/**
+ * Ce que les prestataires en ligne auraient dû prendre : la part des ventes
+ * que le grand livre leur attribue. C'est le seul rapprochement honnête avec
+ * la table des encaissements, puisqu'un stand n'y figure jamais.
+ */
+const attenduEnLigne = (finances?.parMoyen ?? [])
+  .filter((m) => m.moyen === "Stripe" || m.moyen === "PayPal")
+  .reduce((total, m) => total + m.cents, 0);
+
+/**
+ * Les rapprochements, un par couple de sources qui DOIT se recouper.
+ *
+ * Chacun porte sa phrase d'explication : un écart nul se dit, un écart non nul
+ * s'explique ou s'affiche en évidence. Il n'y a pas d'écart muet.
+ */
+const RAPPROCHEMENTS = finances
+  ? [
+      {
+        titre: "Les commandes et le grand livre",
+        ecart:
+          finances.sources.commandes.cents -
+          finances.remboursements.cents -
+          finances.sources.journal.cents,
+        attendu:
+          finances.remboursements.cents > 0
+            ? `Le grand livre est plus bas de ${formatPrice(finances.remboursements.cents)} : c'est exactement ce qui a été remboursé sur la période.`
+            : "Aucun remboursement sur la période : les deux doivent donner le même montant.",
+        souci:
+          "Des ventes n'ont pas d'écriture au grand livre, ou leur écriture ne dit pas le même montant que la commande. Le détail est dans les commandes à vérifier, plus bas.",
+      },
+      {
+        titre: "Le grand livre et les encaissements en ligne",
+        ecart: attenduEnLigne - finances.sources.paiements.cents,
+        attendu:
+          attenduEnLigne === 0
+            ? "Aucune vente réglée en ligne sur la période."
+            : `Le grand livre attribue ${formatPrice(attenduEnLigne)} à Stripe et à PayPal, et c'est bien ce qu'ils ont pris.`,
+        souci:
+          "Un prestataire a pris une somme que le grand livre ne connaît pas, ou l'inverse. C'est le genre d'écart qu'il vaut mieux regarder tout de suite.",
+      },
+    ]
+  : [];
+
+const toutConcorde = RAPPROCHEMENTS.every((r) => r.ecart === 0);
+
+/* --- Le détail des mouvements ------------------------------------------- */
+
+/**
+ * Ce que l'API ramène au plus dans le détail. Le tableau prévient quand il est
+ * plein, sans quoi on croirait tout voir alors qu'il manque des lignes.
+ */
+const PLAFOND_MOUVEMENTS = 1000;
+
+const mouvements = [...(finances?.mouvements ?? [])];
+mouvements.sort((a, b) => {
+  const facteur = sens === "asc" ? 1 : -1;
+  if (tri === "montant") return (a.cents - b.cents) * facteur;
+  if (tri === "commande") return a.numero.localeCompare(b.numero) * facteur;
+  if (tri === "provenance") return a.source.localeCompare(b.source) * facteur;
+  return a.date.localeCompare(b.date) * facteur;
+});
+const totalMouvements = mouvements.reduce((somme, m) => somme + m.cents, 0);
+
+/** « le 27 août à 22:36 », comme partout ailleurs dans le back-office. */
+function quand(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const jour = d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+  const heure = d.toLocaleTimeString("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `le ${jour} à ${heure}`;
+}
+
+/** « 3 février 2026 », pour situer une commande dans l'année. */
+function jourDit(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : d.toLocaleDateString("fr-FR", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+}
+
+const COLONNES = [
+  { cle: "date", label: "Date" },
+  { cle: "commande", label: "Commande" },
+  { cle: "provenance", label: "Provenance" },
+  { cle: "montant", label: "Montant" },
+];
+
+const cadre = "rounded-lg border border-bo-border bg-bo-surface";
+---
+
+<Admin title="Finances">
+  {/* Pourquoi plusieurs chiffres et pas un seul : la question se pose dès le
+      premier coup d'œil, elle reçoit sa réponse avant les chiffres. */}
+  <p class="mb-1 text-sm">
+    Tout ce qui est entré et sorti sur une période, avec la provenance de chaque
+    euro.
+  </p>
+  <p class="mb-5 max-w-4xl text-sm text-bo-muted">
+    La boutique tient trois comptabilités qui ne se parlent pas : le total des
+    commandes, le grand livre des encaissements, et ce que Stripe et PayPal ont
+    réellement pris. Aucune n'est fausse, aucune n'est complète non plus, et une
+    vente réglée en espèces sur un stand ne peut par nature figurer chez un
+    prestataire en ligne. Cette page les affiche donc côte à côte plutôt que
+    d'en choisir une : quand elles concordent, elle le dit ; quand elles
+    divergent, elle montre l'écart et l'explique.
+  </p>
+
+  {/* Choix de la période. Porté par l'adresse : le lien se partage et survit à
+      un rechargement. */}
+  <section class={`mb-6 ${cadre} p-4`}>
+    <div class="flex flex-wrap items-end gap-4">
+      <div class="flex flex-wrap items-center gap-2 text-sm">
+        {
+          RACCOURCIS.map((r) => (
+            <a
+              href={lienPeriode(r.du, r.au)}
+              class={`rounded border px-3 py-1.5 ${
+                raccourciActif?.cle === r.cle
+                  ? "border-bo-accent bg-bo-accent text-white"
+                  : "border-bo-border hover:border-bo-accent"
+              }`}
+            >
+              {r.label}
+            </a>
+          ))
+        }
+      </div>
+
+      <form method="GET" class="flex flex-wrap items-end gap-3 text-sm">
+        <label>
+          <span class="mb-1 block text-xs text-bo-muted">Du</span>
+          <input
+            type="date"
+            name="du"
+            value={finances?.periode.du ?? duDemande}
+            class="rounded border border-bo-border px-3 py-2"
+          />
+        </label>
+        <label>
+          <span class="mb-1 block text-xs text-bo-muted">Au</span>
+          <input
+            type="date"
+            name="au"
+            value={finances?.periode.au ?? auDemande}
+            class="rounded border border-bo-border px-3 py-2"
+          />
+        </label>
+        <button class="rounded border border-bo-border px-3 py-2 hover:bg-bo-bg">
+          Afficher cette période
+        </button>
+      </form>
+
+      {/* Rien à exporter tant que la période est refusée : le bouton
+          téléchargerait le même refus, sous forme de fichier. */}
+      {
+        finances && (
+          <a
+            href={lienExport}
+            class="ml-auto rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90"
+          >
+            Exporter en CSV
+          </a>
+        )
+      }
+    </div>
+    {
+      finances && (
+        <p class="mt-3 text-xs text-bo-muted">
+          Période affichée : du {jourDit(finances.periode.du)} au{" "}
+          {jourDit(finances.periode.au)}. Une vente est datée du jour où elle a
+          été passée, et tout ce qui s'y rattache est compté avec elle, même
+          survenu plus tard : un remboursement de novembre sur une vente
+          d'octobre reste rangé en octobre.
+        </p>
+      )
+    }
+  </section>
+
+  {
+    erreur && (
+      <p class="mb-6 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        {erreur}
+      </p>
+    )
+  }
+
+  {
+    finances && (
+      <>
+        {/* --- Les quatre sources, côte à côte --- */}
+        <h2 class="mb-1 text-base font-semibold">Le même argent, vu par chaque source</h2>
+        <p class="mb-3 text-sm text-bo-muted">
+          Quatre façons de compter la même période. Les écarts sont sous le
+          tableau.
+        </p>
+
+        <div class="grid gap-px overflow-hidden rounded-lg border border-bo-border bg-bo-border sm:grid-cols-2 xl:grid-cols-4">
+          {CARTES.map((c) => (
+            <div class="bg-bo-surface px-4 py-3">
+              <div class="text-xs text-bo-muted">{c.titre}</div>
+              <div class="mt-1 text-2xl">{formatPrice(c.valeur)}</div>
+              <div class="mt-1 text-xs text-bo-muted">{c.detail}</div>
+              <p class="mt-2 border-t border-bo-border pt-2 text-xs text-bo-muted">
+                {c.note}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {/* Concordance ou divergence. Jamais un écart muet : chacun porte la
+            phrase qui dit s'il est normal, et pourquoi. */}
+        <div class="mt-3 grid gap-3 md:grid-cols-2">
+          {RAPPROCHEMENTS.map((r) => (
+            <div
+              class={`rounded-lg border px-4 py-3 text-sm ${
+                r.ecart === 0
+                  ? "border-green-200 bg-green-50 text-green-900"
+                  : "border-amber-200 bg-amber-50 text-amber-900"
+              }`}
+            >
+              <div class="flex flex-wrap items-baseline justify-between gap-2">
+                <span class="font-medium">{r.titre}</span>
+                <span class="text-xs">
+                  {r.ecart === 0 ? "Ces deux sources concordent." : "Écart inexpliqué"}
+                </span>
+              </div>
+              {r.ecart !== 0 && (
+                <p class="mt-1 text-xl font-semibold">{formatPrice(r.ecart)}</p>
+              )}
+              <p class="mt-1">{r.ecart === 0 ? r.attendu : r.souci}</p>
+            </div>
+          ))}
+        </div>
+
+        {toutConcorde && (
+          <p class="mt-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900">
+            Les comptabilités qui doivent se recouper se recoupent, au centime.
+            La somme des articles, elle, reste normalement différente : elle
+            ignore les frais de port et compte les prix avant remise.
+          </p>
+        )}
+
+        {/* --- Les commandes qui clochent --- */}
+        <h2 class="mt-8 mb-1 text-base font-semibold">Les commandes à vérifier</h2>
+        {finances.anomalies.length === 0 ? (
+          <p class={`${cadre} px-4 py-3 text-sm text-bo-muted`}>
+            Aucune commande de la période ne raconte deux histoires
+            différentes. Les ventes de stand sans encaissement en ligne ne sont
+            pas comptées ici : c'est leur fonctionnement normal, elles se
+            règlent sur place.
+          </p>
+        ) : (
+          <>
+            <p class="mb-3 text-sm text-bo-muted">
+              {finances.anomalies.length === 1
+                ? "Une commande dont les sources ne disent pas la même chose. Les plus gros écarts d'abord."
+                : `${finances.anomalies.length} commandes dont les sources ne disent pas la même chose. Les plus gros écarts d'abord.`}
+            </p>
+            <div class={`overflow-x-auto ${cadre}`}>
+              <table class="w-full text-sm">
+                <thead class="border-b border-bo-border text-left text-xs text-bo-muted">
+                  <tr>
+                    <th class="px-4 py-2 font-medium">Commande</th>
+                    <th class="px-4 py-2 font-medium">Canal</th>
+                    <th class="px-4 py-2 text-right font-medium">La commande</th>
+                    <th class="px-4 py-2 text-right font-medium">Le grand livre</th>
+                    <th class="px-4 py-2 text-right font-medium">Stripe ou PayPal</th>
+                    <th class="px-4 py-2 text-right font-medium">Les articles</th>
+                    <th class="px-4 py-2 font-medium">Ce qui cloche</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {finances.anomalies.map((a) => (
+                    <tr class="border-b border-bo-border last:border-0 align-top">
+                      <td class="px-4 py-2">
+                        <a
+                          href={url(`/commandes/${a.id}`)}
+                          class="text-bo-accent hover:underline"
+                        >
+                          {a.numero}
+                        </a>
+                        <div class="text-xs text-bo-muted">{jourDit(a.date)}</div>
+                      </td>
+                      <td class="px-4 py-2">{a.canal}</td>
+                      <td class="px-4 py-2 text-right whitespace-nowrap">
+                        {formatPrice(a.attendu)}
+                      </td>
+                      <td
+                        class={`px-4 py-2 text-right whitespace-nowrap ${
+                          a.journal === a.attendu ? "" : "font-semibold text-amber-800"
+                        }`}
+                      >
+                        {formatPrice(a.journal)}
+                      </td>
+                      <td class="px-4 py-2 text-right whitespace-nowrap">
+                        {a.canal === "Site" ? formatPrice(a.paiement) : "réglé sur place"}
+                      </td>
+                      <td class="px-4 py-2 text-right whitespace-nowrap">
+                        {formatPrice(a.lignes)}
+                      </td>
+                      <td class="px-4 py-2 text-bo-muted">{a.raison}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* --- Le détail, mouvement par mouvement --- */}
+        <div class="mt-8 mb-1 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 class="text-base font-semibold">Le détail des mouvements</h2>
+          <a
+            href={lienExport}
+            class="rounded border border-bo-border px-3 py-1.5 text-sm hover:bg-bo-bg"
+          >
+            Exporter en CSV
+          </a>
+        </div>
+        <p class="mb-3 text-sm text-bo-muted">
+          Chaque entrée et chaque sortie d'argent, avec le registre d'où elle
+          vient. Un montant négatif est de l'argent rendu.
+          {mouvements.length >= PLAFOND_MOUVEMENTS &&
+            ` Seuls les ${PLAFOND_MOUVEMENTS} mouvements les plus récents sont affichés ; l'export les contient tous.`}
+        </p>
+
+        {mouvements.length === 0 ? (
+          <p class={`${cadre} px-4 py-3 text-sm text-bo-muted`}>
+            Aucun mouvement d'argent sur cette période.
+          </p>
+        ) : (
+          <div class={`overflow-x-auto ${cadre}`}>
+            <table class="w-full text-sm">
+              <thead class="border-b border-bo-border text-left text-xs text-bo-muted">
+                <tr>
+                  {COLONNES.map((col) => (
+                    <th
+                      class={`px-4 py-2 font-medium ${col.cle === "montant" ? "text-right" : ""}`}
+                    >
+                      <a href={lienTri(col.cle)} class="hover:text-bo-accent">
+                        {col.label}
+                        {tri === col.cle ? (sens === "asc" ? " ↑" : " ↓") : ""}
+                      </a>
+                    </th>
+                  ))}
+                  <th class="px-4 py-2 font-medium">Canal</th>
+                  <th class="px-4 py-2 font-medium">Client</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mouvements.map((m) => (
+                  <tr class="border-b border-bo-border last:border-0">
+                    <td class="px-4 py-2 whitespace-nowrap text-bo-muted">
+                      {quand(m.date)}
+                    </td>
+                    <td class="px-4 py-2">
+                      <a
+                        href={url(`/commandes/${m.orderId}`)}
+                        class="text-bo-accent hover:underline"
+                      >
+                        {m.numero}
+                      </a>
+                      <span class="ml-2 text-xs text-bo-muted">{m.genre}</span>
+                    </td>
+                    <td class="px-4 py-2 text-bo-muted">{m.source}</td>
+                    <td
+                      class={`px-4 py-2 text-right whitespace-nowrap ${
+                        m.cents < 0 ? "text-violet-900" : ""
+                      }`}
+                    >
+                      {formatPrice(m.cents)}
+                    </td>
+                    <td class="px-4 py-2">{m.stand ?? m.canal}</td>
+                    <td class="px-4 py-2 text-bo-muted">{m.client}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot class="border-t border-bo-border">
+                <tr>
+                  <td class="px-4 py-2 text-xs text-bo-muted" colspan="3">
+                    Somme des mouvements affichés
+                  </td>
+                  <td class="px-4 py-2 text-right font-semibold whitespace-nowrap">
+                    {formatPrice(totalMouvements)}
+                  </td>
+                  <td colspan="2" />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+
+        {/* --- Les deux répartitions --- */}
+        <div class="mt-8 grid gap-6 lg:grid-cols-2">
+          <section>
+            <h2 class="mb-1 text-base font-semibold">Par canal de vente</h2>
+            <p class="mb-3 text-sm text-bo-muted">
+              Le site, et chaque stand nommément. Total des commandes vendues.
+            </p>
+            <div class={`overflow-x-auto ${cadre}`}>
+              <table class="w-full text-sm">
+                <thead class="border-b border-bo-border text-left text-xs text-bo-muted">
+                  <tr>
+                    <th class="px-4 py-2 font-medium">Où</th>
+                    <th class="px-4 py-2 text-right font-medium">Ventes</th>
+                    <th class="px-4 py-2 text-right font-medium">Montant</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {finances.parCanal.map((ligne) => (
+                    <tr class="border-b border-bo-border last:border-0">
+                      <td class="px-4 py-2">
+                        {ligne.stand ?? ligne.canal}
+                        {ligne.stand && (
+                          <span class="ml-2 text-xs text-bo-muted">stand</span>
+                        )}
+                        {!ligne.stand && ligne.canal === "Stand" && (
+                          <span class="ml-2 text-xs text-bo-muted">
+                            stand non rattaché
+                          </span>
+                        )}
+                      </td>
+                      <td class="px-4 py-2 text-right">{ligne.nombre}</td>
+                      <td class="px-4 py-2 text-right whitespace-nowrap">
+                        {formatPrice(ligne.cents)}
+                      </td>
+                    </tr>
+                  ))}
+                  {finances.parCanal.length === 0 && (
+                    <tr>
+                      <td class="px-4 py-3 text-bo-muted" colspan="3">
+                        Aucune vente sur la période.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section>
+            <h2 class="mb-1 text-base font-semibold">Par moyen de paiement</h2>
+            <p class="mb-3 text-sm text-bo-muted">
+              Comment l'argent est entré. Une vente réglée en partie par carte
+              cadeau apparaît sur les deux lignes, chaque euro une seule fois.
+            </p>
+            <div class={`overflow-x-auto ${cadre}`}>
+              <table class="w-full text-sm">
+                <thead class="border-b border-bo-border text-left text-xs text-bo-muted">
+                  <tr>
+                    <th class="px-4 py-2 font-medium">Moyen</th>
+                    <th class="px-4 py-2 text-right font-medium">Commandes</th>
+                    <th class="px-4 py-2 text-right font-medium">Montant</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {finances.parMoyen.map((ligne) => (
+                    <tr class="border-b border-bo-border last:border-0">
+                      <td class="px-4 py-2">{ligne.moyen}</td>
+                      <td class="px-4 py-2 text-right">{ligne.nombre}</td>
+                      <td class="px-4 py-2 text-right whitespace-nowrap">
+                        {formatPrice(ligne.cents)}
+                      </td>
+                    </tr>
+                  ))}
+                  {finances.parMoyen.length === 0 && (
+                    <tr>
+                      <td class="px-4 py-3 text-bo-muted" colspan="3">
+                        Aucune vente sur la période.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        {/* --- Ce qui sort, et ce qui est dû --- */}
+        <div class="mt-8 grid gap-px overflow-hidden rounded-lg border border-bo-border bg-bo-border sm:grid-cols-2 xl:grid-cols-4">
+          <div class="bg-bo-surface px-4 py-3">
+            <div class="text-xs text-bo-muted">Remboursements</div>
+            <div class="mt-1 text-xl">
+              {formatPrice(finances.remboursements.cents)}
+            </div>
+            <div class="mt-1 text-xs text-bo-muted">
+              {pluriel(finances.remboursements.nombre, "rendu")} aux clients
+            </div>
+          </div>
+          <div class="bg-bo-surface px-4 py-3">
+            <div class="text-xs text-bo-muted">Cartes cadeaux vendues</div>
+            <div class="mt-1 text-xl">
+              {formatPrice(finances.cartesCadeaux.emisesCents)}
+            </div>
+            <div class="mt-1 text-xs text-bo-muted">
+              Encaissé d'avance, pas encore transformé en affiches.
+            </div>
+          </div>
+          <div class="bg-bo-surface px-4 py-3">
+            <div class="text-xs text-bo-muted">Cartes cadeaux dépensées</div>
+            <div class="mt-1 text-xl">
+              {formatPrice(finances.cartesCadeaux.utiliseesCents)}
+            </div>
+            <div class="mt-1 text-xs text-bo-muted">
+              Réglé avec une carte pendant la période.
+            </div>
+          </div>
+          <div class="bg-bo-surface px-4 py-3">
+            <div class="text-xs text-bo-muted">Reste dû sur les cartes</div>
+            <div class="mt-1 text-xl">
+              {formatPrice(finances.cartesCadeaux.soldeCents)}
+            </div>
+            <div class="mt-1 text-xs text-bo-muted">
+              Aujourd'hui, toutes cartes confondues. Une dette n'a pas de mois.
+            </div>
+          </div>
+        </div>
+      </>
+    )
+  }
+</Admin>

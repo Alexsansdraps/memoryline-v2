@@ -1,6 +1,6 @@
 ---
 import "../styles/admin.css";
-import { url, relPath } from "../lib/url.ts";
+import { url, relPath, apiUrl } from "../lib/url.ts";
 interface Props {
   title: string;
 }
@@ -328,10 +328,76 @@ const isActive = (href: string) =>
 
       <div class="flex-1 min-w-0">
         <header
-          class="h-14 bg-bo-surface border-b border-bo-border flex items-center justify-between px-6"
+          class="h-14 bg-bo-surface border-b border-bo-border flex items-center gap-4 px-6"
         >
-          <h1 class="text-base font-semibold">{title}</h1>
-          <div class="flex items-center gap-3 text-sm text-bo-muted">
+          {/* Le titre garde la priorité sur la largeur : le champ de recherche
+              se contente de la place restante (flex-1 part de zéro), et le
+              titre ne se coupe qu'à la toute fin, sur une fenêtre étroite, au
+              lieu de pousser la déconnexion hors de l'écran. */}
+          <h1 class="min-w-0 truncate text-base font-semibold">{title}</h1>
+          {/* La recherche est réservée à la propriétaire, comme la route qui
+              la sert : un vendeur n'a pas à fouiller les commandes du site ni
+              les fiches clients. Absente plutôt que grisée, pour ne pas
+              montrer une porte qui ne s'ouvre pas. */}
+          {
+            isOwner && (
+              <div
+                id="ml-recherche"
+                class="relative min-w-0 max-w-md flex-1"
+                data-api={apiUrl("")}
+                data-base={url("")}
+              >
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  aria-hidden="true"
+                  class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-bo-muted"
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m20 20-3.5-3.5" />
+                </svg>
+                {/* Pas de <form> : sans JavaScript, ce champ ne doit mener
+                    nulle part plutôt que vers une page qui n'existe pas. Il
+                    naît donc inactif, et le script le réveille. */}
+                <input
+                  id="ml-recherche-champ"
+                  type="text"
+                  disabled
+                  autocomplete="off"
+                  spellcheck={false}
+                  placeholder="Rechercher une affiche, une commande, un client…"
+                  aria-label="Rechercher dans le back-office"
+                  role="combobox"
+                  aria-expanded="false"
+                  aria-controls="ml-recherche-panneau"
+                  aria-autocomplete="list"
+                  class="w-full rounded-lg border border-bo-border bg-bo-bg py-1.5 pl-8 pr-9 text-sm outline-none placeholder:text-bo-muted focus:border-bo-accent"
+                />
+                {/* Annoncé discrètement : qui ne le remarque pas garde la
+                    souris, qui le remarque gagne une seconde à chaque fois. */}
+                <kbd
+                  id="ml-recherche-raccourci"
+                  hidden
+                  class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-bo-border px-1.5 py-0.5 text-[11px] leading-none text-bo-muted"
+                >
+                  /
+                </kbd>
+                <div
+                  id="ml-recherche-panneau"
+                  hidden
+                  role="listbox"
+                  aria-label="Résultats de la recherche"
+                  class="absolute left-0 right-0 top-full z-40 mt-1 max-h-[70vh] overflow-y-auto overscroll-contain rounded-lg border border-bo-border bg-bo-surface py-1 shadow-lg"
+                />
+              </div>
+            )
+          }
+          <div class="ml-auto flex shrink-0 items-center gap-3 text-sm text-bo-muted">
             {/* Clair / sombre / système. Le choix vit dans le navigateur :
                 l'écran de la boutique et celui du salon n'ont pas la même
                 lumière, il n'y a pas de bon réglage partagé. */}
@@ -374,6 +440,274 @@ const isActive = (href: string) =>
             </form>
           </div>
         </header>
+        <script is:inline>
+          // La recherche du haut de page.
+          //
+          // Elle interroge « /admin/recherche » et range les réponses par
+          // catégorie. Trois choses comptent plus que le reste ici :
+          //
+          //   - On n'appelle PAS l'API à chaque touche. On attend que la
+          //     frappe s'arrête, et la requête précédente est abandonnée dès
+          //     qu'une nouvelle part : sans cela, « cathédrale » lancerait
+          //     onze recherches dont dix pour rien, et la plus lente pourrait
+          //     revenir en dernier et écraser la bonne réponse.
+          //   - Tout se construit avec createElement et textContent. Les noms
+          //     de clients et les titres d'affiches viennent de la base : les
+          //     coller en HTML ferait exécuter, dans le back-office, ce que
+          //     quelqu'un aurait écrit dans un formulaire de la boutique.
+          //   - Le clavier seul doit suffire : la barre oblique pour venir,
+          //     les flèches pour choisir, Entrée pour ouvrir, Échap pour
+          //     renoncer.
+          (function () {
+            var boite = document.getElementById("ml-recherche");
+            if (!boite) return; // vendeur : pas de recherche
+            var champ = document.getElementById("ml-recherche-champ");
+            var panneau = document.getElementById("ml-recherche-panneau");
+            var raccourci = document.getElementById("ml-recherche-raccourci");
+            if (!champ || !panneau) return;
+
+            // Le champ naît inactif pour ne rien promettre sans JavaScript.
+            champ.disabled = false;
+            if (raccourci) raccourci.hidden = false;
+
+            var API = boite.dataset.api || "";
+            var BASE = boite.dataset.base || "";
+            var MINIMUM = 2;
+            // Le temps qu'on laisse aux doigts. Trop court, on rappelle l'API
+            // au milieu d'un mot ; trop long, le panneau traîne derrière la
+            // frappe. Deux dixièmes de seconde est le point où l'on ne sent
+            // ni l'un ni l'autre.
+            var ATTENTE = 180;
+
+            var minuteur = null;
+            var encours = null; // AbortController de la requête en vol
+            var lignes = []; // les <a> du panneau, dans l'ordre d'affichage
+            var choisi = -1;
+
+            function ouvrir() {
+              panneau.hidden = false;
+              champ.setAttribute("aria-expanded", "true");
+            }
+
+            function fermer() {
+              panneau.hidden = true;
+              panneau.replaceChildren();
+              champ.setAttribute("aria-expanded", "false");
+              champ.removeAttribute("aria-activedescendant");
+              lignes = [];
+              choisi = -1;
+            }
+
+            /** Un mot au milieu du panneau : recherche en cours, ou rien. */
+            function message(texte) {
+              lignes = [];
+              choisi = -1;
+              var p = document.createElement("p");
+              p.className = "px-3 py-3 text-sm text-bo-muted";
+              p.textContent = texte;
+              panneau.replaceChildren(p);
+              ouvrir();
+            }
+
+            function marquer() {
+              for (var i = 0; i < lignes.length; i++) {
+                var actif = i === choisi;
+                lignes[i].classList.toggle("bg-bo-bg", actif);
+                lignes[i].setAttribute("aria-selected", actif ? "true" : "false");
+              }
+              if (choisi >= 0 && lignes[choisi]) {
+                champ.setAttribute("aria-activedescendant", lignes[choisi].id);
+                // « nearest » : on ne recentre pas la liste sous les yeux de
+                // quelqu'un qui descend d'un cran.
+                lignes[choisi].scrollIntoView({ block: "nearest" });
+              } else {
+                champ.removeAttribute("aria-activedescendant");
+              }
+            }
+
+            function deplacer(pas) {
+              if (!lignes.length) return;
+              choisi = (choisi + pas + lignes.length) % lignes.length;
+              marquer();
+            }
+
+            /** L'adresse d'une vignette, telle que le navigateur doit la demander. */
+            function vignette(chemin) {
+              if (!chemin) return "";
+              return chemin.indexOf("http") === 0 ? chemin : API + chemin;
+            }
+
+            function dessiner(reponse) {
+              var groupes = (reponse && reponse.groupes) || [];
+              if (!groupes.length) {
+                message("Rien ne correspond à « " + reponse.q + " ».");
+                return;
+              }
+              lignes = [];
+              var morceaux = document.createDocumentFragment();
+              groupes.forEach(function (groupe) {
+                var titre = document.createElement("p");
+                titre.className =
+                  "px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-bo-muted";
+                titre.textContent = groupe.titre;
+                morceaux.appendChild(titre);
+
+                (groupe.resultats || []).forEach(function (r) {
+                  var lien = document.createElement("a");
+                  lien.id = "ml-recherche-" + lignes.length;
+                  lien.href = BASE + r.href;
+                  lien.setAttribute("role", "option");
+                  lien.className =
+                    "flex items-center gap-3 px-3 py-2 text-sm no-underline";
+
+                  if (r.image) {
+                    var img = document.createElement("img");
+                    img.src = vignette(r.image);
+                    img.alt = "";
+                    img.loading = "lazy";
+                    img.className =
+                      "h-8 w-6 shrink-0 rounded border border-bo-border object-cover";
+                    lien.appendChild(img);
+                  }
+
+                  var textes = document.createElement("span");
+                  textes.className = "min-w-0";
+                  var nom = document.createElement("span");
+                  nom.className = "block truncate";
+                  nom.textContent = r.titre;
+                  textes.appendChild(nom);
+                  if (r.detail) {
+                    var sous = document.createElement("span");
+                    sous.className = "block truncate text-xs text-bo-muted";
+                    sous.textContent = r.detail;
+                    textes.appendChild(sous);
+                  }
+                  lien.appendChild(textes);
+
+                  // La souris et les flèches désignent la MÊME ligne : deux
+                  // surbrillances à l'écran ne diraient plus laquelle Entrée
+                  // ouvre.
+                  var rang = lignes.length;
+                  lien.addEventListener("mousemove", function () {
+                    if (choisi === rang) return;
+                    choisi = rang;
+                    marquer();
+                  });
+
+                  lignes.push(lien);
+                  morceaux.appendChild(lien);
+                });
+              });
+              panneau.replaceChildren(morceaux);
+              // Le premier résultat est retenu d'emblée : taper un numéro de
+              // commande puis Entrée doit ouvrir la commande, sans détour par
+              // la flèche du bas.
+              choisi = lignes.length ? 0 : -1;
+              marquer();
+              ouvrir();
+            }
+
+            function chercher() {
+              var saisie = champ.value.trim();
+              if (encours) encours.abort();
+              if (saisie.length < MINIMUM) {
+                fermer();
+                return;
+              }
+              message("Recherche…");
+              var controleur = new AbortController();
+              encours = controleur;
+              fetch(API + "/admin/recherche?q=" + encodeURIComponent(saisie), {
+                // Le back-office et l'API sont derrière le même proxy : le
+                // cookie de session part tout seul, sans rien exposer de plus.
+                credentials: "same-origin",
+                headers: { Accept: "application/json" },
+                signal: controleur.signal,
+              })
+                .then(function (r) {
+                  if (!r.ok) throw new Error(String(r.status));
+                  return r.json();
+                })
+                .then(function (reponse) {
+                  // La saisie a pu changer pendant le trajet : on ne dessine
+                  // que la réponse à ce qui est écrit maintenant.
+                  if (controleur !== encours) return;
+                  encours = null;
+                  dessiner(reponse);
+                })
+                .catch(function (e) {
+                  if (e && e.name === "AbortError") return;
+                  if (controleur !== encours) return;
+                  encours = null;
+                  message("La recherche n'a pas répondu. Réessayez.");
+                });
+            }
+
+            champ.addEventListener("input", function () {
+              // On attend l'arrêt de la frappe : voir ATTENTE plus haut.
+              if (minuteur) clearTimeout(minuteur);
+              minuteur = setTimeout(chercher, ATTENTE);
+            });
+
+            // Revenir sur un champ déjà rempli rouvre ce qu'on y avait trouvé,
+            // au lieu d'obliger à retaper une lettre.
+            champ.addEventListener("focus", function () {
+              if (champ.value.trim().length >= MINIMUM && panneau.hidden)
+                chercher();
+            });
+
+            champ.addEventListener("keydown", function (e) {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                deplacer(1);
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                deplacer(-1);
+              } else if (e.key === "Enter") {
+                if (choisi >= 0 && lignes[choisi]) {
+                  e.preventDefault();
+                  lignes[choisi].click();
+                }
+              } else if (e.key === "Escape") {
+                // Le premier Échap ferme le panneau, le second rend le champ :
+                // renoncer à la liste et renoncer à la recherche sont deux
+                // gestes différents.
+                if (!panneau.hidden) {
+                  e.preventDefault();
+                  fermer();
+                } else {
+                  champ.value = "";
+                  champ.blur();
+                }
+              }
+            });
+
+            // Un clic à l'extérieur ferme, comme partout ailleurs.
+            document.addEventListener("mousedown", function (e) {
+              if (!boite.contains(e.target)) fermer();
+            });
+
+            // La barre oblique amène ici. Une touche seule plutôt qu'une
+            // combinaison : elle se tape d'une main. Elle ne prend donc la
+            // main QUE si l'on n'est pas déjà en train d'écrire quelque part,
+            // sinon on ne pourrait plus taper « 12/03 » dans une note.
+            document.addEventListener("keydown", function (e) {
+              if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
+              var ou = document.activeElement;
+              var balise = ou && ou.tagName ? ou.tagName.toLowerCase() : "";
+              if (
+                balise === "input" ||
+                balise === "textarea" ||
+                balise === "select" ||
+                (ou && ou.isContentEditable)
+              )
+                return;
+              e.preventDefault();
+              champ.focus();
+              champ.select();
+            });
+          })();
+        </script>
         {/* Pleine largeur : les écrans du back-office sont des tableaux et
             des grilles de vignettes, une colonne de texte les étranglait. */}
         <main class="p-6">
