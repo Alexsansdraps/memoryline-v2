@@ -45,13 +45,47 @@ if (Astro.request.method === "POST") {
       flash = "Collection enregistrée.";
     }
     if (action === "supprimer") {
-      await api.supprimerCollection(Number(f.get("id")));
-      flash = "Collection supprimée.";
+      const r = await api.supprimerCollection(Number(f.get("id")));
+      const n = r.detachees ?? 0;
+      flash =
+        n === 0
+          ? "Collection supprimée."
+          : n === 1
+            ? "Collection supprimée. L'affiche qui y était rangée en est sortie, elle n'a pas été touchée."
+            : `Collection supprimée. Les ${n} affiches qui y étaient rangées en sont sorties, elles n'ont pas été touchées.`;
     }
   } catch (e) {
     flash = e instanceof Error ? e.message : String(e);
     flashErreur = true;
   }
+}
+
+/**
+ * Ce qu'il faut avoir lu avant de supprimer une collection.
+ *
+ * Les affiches survivent : une collection les RANGE, elle ne les contient
+ * pas. Le poids par défaut, lui, part avec elle — c'est le seul vrai effet
+ * de bord, et il se paie en timbres, donc il est écrit noir sur blanc.
+ */
+function messageSuppression(c: CollectionBo): string {
+  const l = [`Supprimer la collection « ${c.name} » ?`];
+  if (c.produits === 0) l.push("Elle est vide, rien ne sera perdu.");
+  else if (c.produits === 1)
+    l.push(
+      "L'affiche qui y est rangée en sortira simplement. Elle n'est pas supprimée, et reste dans le catalogue.",
+    );
+  else
+    l.push(
+      `Les ${c.produits} affiches qui y sont rangées en sortiront simplement. Elles ne sont pas supprimées, et restent dans le catalogue.`,
+    );
+  if (c.produits > 0 && c.defaultWeightGrams != null)
+    l.push(
+      `Attention au poids : cette collection donnait ${c.defaultWeightGrams} g par défaut à ses affiches. Celles qui n'ont pas de poids à elles retomberont sur le poids général, et un colis peut partir sous-affranchi.`,
+    );
+  l.push(
+    "Les pages du site qui affichaient cette collection resteront en ligne, la rangée sera simplement vide.",
+  );
+  return l.join("\n\n");
 }
 
 let collections: CollectionBo[] = [];
@@ -204,19 +238,17 @@ const rangees = [...collections].sort((a, b) => {
                 >
                   Ouvrir
                 </a>
-                {c.produits === 0 && (
-                  <form
-                    method="POST"
-                    class="ml-3 inline"
-                    onsubmit="return confirm('Supprimer cette collection ? Elle est vide, rien ne sera perdu.')"
-                  >
-                    <input type="hidden" name="_action" value="supprimer" />
-                    <input type="hidden" name="id" value={c.id} />
-                    <button class="text-xs text-red-700 hover:underline">
-                      Supprimer
-                    </button>
-                  </form>
-                )}
+                <form
+                  method="POST"
+                  class="ml-3 inline"
+                  onsubmit={`return confirm(${JSON.stringify(messageSuppression(c))})`}
+                >
+                  <input type="hidden" name="_action" value="supprimer" />
+                  <input type="hidden" name="id" value={c.id} />
+                  <button class="text-xs text-red-700 hover:underline">
+                    Supprimer
+                  </button>
+                </form>
               </td>
             </tr>
           ))

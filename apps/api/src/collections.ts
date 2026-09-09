@@ -458,24 +458,19 @@ export function mountCollections(app: Hono): void {
         400,
       );
 
+    // Combien d'affiches en sortent : l'écran le redit ensuite à la
+    // propriétaire, pour qu'une suppression ne se fasse pas à l'aveugle.
     const [dedans] = await db
       .select({ n: count() })
       .from(schema.productCollections)
       .where(eq(schema.productCollections.collectionId, id));
-    const nombre = Number(dedans?.n ?? 0);
-    if (nombre > 0)
-      return c.json(
-        {
-          error:
-            nombre === 1
-              ? "Un produit est encore rangé dans cette collection. Sortez-le d'abord, puis supprimez la collection."
-              : `${nombre} produits sont encore rangés dans cette collection. Sortez-les d'abord, puis supprimez la collection.`,
-        },
-        400,
-      );
+    const detachees = Number(dedans?.n ?? 0);
 
+    // Les affiches ne sont pas supprimées, ni modifiées : seules les lignes de
+    // rangement disparaissent, emportées par la clé étrangère en cascade.
+    // Une collection range des affiches, elle ne les contient pas.
     await db.delete(schema.collections).where(eq(schema.collections.id, id));
-    return c.json({ ok: true });
+    return c.json({ ok: true, detachees });
   });
 
   /* ---------------------------------------------------------------------- */
