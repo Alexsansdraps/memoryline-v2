@@ -218,8 +218,7 @@ export default function ConfiguratorIsland(
                 aucun: tr("cfg.aucun"),
                 cadre: tr("cfg.cadre"),
                 sansCadre: tr("cfg.sans_cadre"),
-                deplacerAide: tr("cfg.deplacer_aide"),
-                replacerAuto: tr("cfg.replacer_auto"),
+                reordonnerAide: tr("cfg.reordonner_aide"),
               }}
               product={{
                 id: props.product.id,

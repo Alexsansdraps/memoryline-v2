@@ -400,6 +400,33 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   function bringForward(index: number) {
     if (index < state.characters.length - 1) swap(index, index + 1);
   }
+
+  /**
+   * Sort un personnage de la liste et le repose à un autre rang.
+   *
+   * Un échange deux à deux ne suffit pas ici : le geste peut traverser
+   * plusieurs lignes d'un coup, et enchaîner des échanges ferait remonter les
+   * voisins dans le désordre. Les rangs de superposition sont renumérotés
+   * d'après l'ordre obtenu, pour que le dessin suive la liste.
+   */
+  function reordonner(depuis: number, vers: number) {
+    if (depuis === vers) return;
+    mutate((s) => {
+      if (
+        depuis < 0 ||
+        vers < 0 ||
+        depuis >= s.characters.length ||
+        vers >= s.characters.length
+      )
+        return;
+      const [pris] = s.characters.splice(depuis, 1);
+      if (!pris) return;
+      s.characters.splice(vers, 0, pris);
+      s.characters.forEach((c, rang) => {
+        c.position = rang;
+      });
+    });
+  }
   function sendBackward(index: number) {
     if (index > 0) swap(index, index - 1);
   }
@@ -514,8 +541,6 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
           // On ne compose qu'ici, et seulement à l'étape des personnages :
           // ailleurs, un glissement n'aurait aucun sens et l'affiche doit
           // rester une image.
-          deplacable={state.step === "characters"}
-          onDeplace={deplacerPersonnage}
         />
       </div>
       </Show>
@@ -591,35 +616,15 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             onSelect={selectCharacter}
             onBringForward={bringForward}
             onSendBackward={sendBackward}
+            onReorder={reordonner}
             onSetAsset={setAsset}
             onClearSlot={clearSlot}
             onSetColor={setColor}
             onChangeCharacter={changeCharacter}
             messages={msg()}
           />
-          {/* Le glisser-déposer ne se devine pas : on l'annonce, et on laisse
-              de quoi revenir en arrière — un personnage posé de travers ne se
-              remettrait plus dans la rangée tout seul. */}
-          <Show when={!editingActive() && state.characters.length > 0}>
-            <div
-              style={{
-                display: "flex",
-                "align-items": "center",
-                "justify-content": "space-between",
-                gap: "10px",
-                "margin-top": "12px",
-                "font-size": "12px",
-                color: "#6b7280",
-              }}
-            >
-              <span>{msg().deplacerAide}</span>
-              <Show when={aDesPlacesPosees()}>
-                <Button variant="secondary" onClick={replacerAutomatiquement}>
-                  {msg().replacerAuto}
-                </Button>
-              </Show>
-            </div>
-          </Show>
+          {/* Le placement sur l'affiche reste automatique : la boutique veut
+              qu'on réordonne la LISTE, pas qu'on pousse les dessins. */}
         </Show>
 
         <Show when={state.step === "format"}>
