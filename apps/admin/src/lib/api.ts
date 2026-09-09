@@ -152,6 +152,80 @@ export interface CategorieProduit {
 }
 
 /**
+ * Un bloc d'une page du site.
+ *
+ * Cinq formes possibles, pas une de plus : c'est ce qui permet à l'éditeur de
+ * rester compréhensible sans formation. Le type est volontairement large côté
+ * client — c'est l'API qui refuse un bloc mal formé, et elle seule.
+ */
+export interface BlocPage {
+  type: "titre" | "texte" | "image" | "produits" | "bouton";
+  [cle: string]: unknown;
+}
+
+/** Une page du site telle que la liste du back-office la montre. */
+export interface ResumePage {
+  id: number;
+  slug: string;
+  title: string;
+  status: string;
+  updatedAt: string;
+}
+
+/** Tout ce qu'il faut pour éditer une page, et de quoi remplir ses listes. */
+export interface PageCms {
+  page: {
+    id: number;
+    slug: string;
+    title: string;
+    status: string;
+    seoTitle: string | null;
+    seoDescription: string | null;
+    blocks: BlocPage[];
+    translations: Record<string, { title?: string; blocks?: BlocPage[] }> | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+  collections: { id: number; slug: string; name: string }[];
+  categories: { id: number; name: string }[];
+}
+
+/** Une entrée du menu du site, avec ses sous-liens. */
+export interface EntreeMenu {
+  id?: number;
+  label: string;
+  href: string;
+  visible: boolean;
+  translations?: Record<string, { label?: string }> | null;
+  enfants: EntreeMenu[];
+}
+
+export interface MenuCms {
+  entrees: EntreeMenu[];
+}
+
+/** Où partent les courriers de la boutique en ce moment. */
+export interface EtatCourriers {
+  configure: boolean;
+  /** Vrai quand tout part dans la boîte d'essai, donc vers personne. */
+  enEssai: boolean;
+  expediteur: string | null;
+  copie: string | null;
+  boiteTestUrl: string | null;
+  /** La phrase que la boutiquière lira : « si j'envoie maintenant, où ça va ». */
+  resume: string;
+}
+
+/** Un des courriers que la boutique sait envoyer. */
+export interface ModeleCourrier {
+  id: string;
+  nom: string;
+  /** À quel moment la boutique l'envoie, en une phrase. */
+  quand: string;
+  besoinCommande: boolean;
+}
+
+/**
  * Un produit vu du back-office.
  *
  * Le site n'a pas besoin du statut ni du poids ; la boutiquière, si. C'est la
@@ -1225,6 +1299,66 @@ export function adminApi(request?: Request) {
         cookie,
       );
     },
+    /* --- Contenu du site : pages libres et menu ------------------------ */
+    /** Les pages créées depuis le back-office. */
+    pages: () =>
+      req<{ pages: ResumePage[] }>("GET", "/admin/pages", undefined, cookie),
+    /** Une page, plus les collections et catégories pour ses blocs produits. */
+    page: (id: number) =>
+      req<PageCms>("GET", `/admin/pages/${id}`, undefined, cookie),
+    creerPage: (corps: { slug: string; title: string }) =>
+      req<{ id: number }>("POST", "/admin/pages", corps, cookie),
+    /** Enregistre une page. Les clés absentes ne sont pas touchées. */
+    enregistrerPage: (id: number, corps: Record<string, unknown>) =>
+      req<{ ok: true }>("POST", `/admin/pages/${id}`, corps, cookie),
+    supprimerPage: (id: number) =>
+      req<{ ok: true }>("DELETE", `/admin/pages/${id}`, undefined, cookie),
+    /** Le menu du site, entrées masquées comprises. */
+    menu: () => req<MenuCms>("GET", "/admin/menu", undefined, cookie),
+    /** Remplace TOUT l'arbre du menu : l'ordre du tableau fait la position. */
+    enregistrerMenu: (entrees: unknown[]) =>
+      req<{ ok: true }>("POST", "/admin/menu", { entrees }, cookie),
+
+    /* --- Essai des courriers ------------------------------------------- */
+    /** Où partent les courriers en ce moment : boîte d'essai, ou vrais clients. */
+    etatCourriers: () =>
+      req<EtatCourriers>("GET", "/admin/courriers/etat", undefined, cookie),
+    modelesCourriers: () =>
+      req<{ modeles: ModeleCourrier[] }>(
+        "GET",
+        "/admin/courriers/modeles",
+        undefined,
+        cookie,
+      ),
+    /** Le courrier tel qu'il arrivera, sans rien envoyer. */
+    apercuCourrier: (modele: string, commande?: string) =>
+      req<{
+        modele: string;
+        sujet: string;
+        html: string;
+        source: string;
+        commande?: string;
+      }>(
+        "GET",
+        `/admin/courriers/apercu/${encodeURIComponent(modele)}${
+          commande ? `?commande=${encodeURIComponent(commande)}` : ""
+        }`,
+        undefined,
+        cookie,
+      ),
+    /** Envoie un courrier d'essai. La réponse dit où il est réellement allé. */
+    essaiCourrier: (corps: {
+      modele: string;
+      destinataire: string;
+      commande?: string;
+    }) =>
+      req<{ ok: true; parti: boolean; resume: string }>(
+        "POST",
+        "/admin/courriers/essai",
+        corps,
+        cookie,
+      ),
+
     /** La fiche complète d'un produit, en un seul appel. */
     ficheProduit: (id: number) =>
       req<FicheProduit>("GET", `/admin/products/${id}/fiche`, undefined, cookie),

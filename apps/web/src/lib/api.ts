@@ -115,6 +115,36 @@ export interface ProductDetail {
   }[];
 }
 
+/**
+ * Une entrée du menu du haut, telle que le back-office l'a rangée.
+ *
+ * Le libellé arrive DÉJÀ traduit : c'est l'API qui applique la langue et le
+ * repli sur le français, pour que la boutique n'ait pas à connaître la forme
+ * du dictionnaire.
+ */
+/** Un bloc d'une page écrite au back-office, déjà résolu par l'API. */
+export interface BlocPagePublic {
+  type: string;
+  [cle: string]: unknown;
+}
+
+/** Une page libre du site, telle que la boutique l'a composée. */
+export interface PageCms {
+  id: number;
+  slug: string;
+  title: string;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  blocks: BlocPagePublic[];
+}
+
+export interface EntreeMenuPublique {
+  id: number;
+  label: string;
+  href: string;
+  enfants: { id: number; label: string; href: string }[];
+}
+
 /** Une collection du catalogue, telle que le menu la propose. */
 export interface Collection {
   id: number;
@@ -142,6 +172,16 @@ export const api = {
     return get<Product[]>(`/products?${p.toString()}`);
   },
   collections: () => get<Collection[]>("/collections"),
+  /** Une page écrite au back-office. Lève si elle n'existe pas ou est en brouillon. */
+  page: (slug: string, langue?: string) =>
+    get<PageCms>(
+      `/pages/${encodeURIComponent(slug)}${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,
+    ),
+  /** Le menu du haut, dans la langue du visiteur. */
+  menu: (langue?: string) =>
+    get<{ entrees: EntreeMenuPublique[] }>(
+      `/menu${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,
+    ),
   product: (slug: string, langue?: string) =>
     get<ProductDetail>(
       `/products/${slug}${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,

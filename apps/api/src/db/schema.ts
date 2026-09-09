@@ -11,6 +11,7 @@
  */
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   pgTable,
   serial,
   text,
@@ -1172,4 +1173,112 @@ export const announcementBanners = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [index("banner_active_idx").on(t.active)],
+);
+
+// --- Contenu éditorial : pages et menu ------------------------------------
+
+/**
+ * Un bloc de page, tel qu'il est enregistré dans `page.blocks`.
+ *
+ * Cinq formes, pas une de plus. La liste est volontairement fermée : c'est
+ * elle qui permet au back-office de proposer un formulaire par type plutôt
+ * qu'un champ de code, et à la boutique de savoir dessiner chaque bloc sans
+ * jamais rencontrer une forme qu'elle ne connaît pas.
+ *
+ * `produits` ne stocke qu'une référence, jamais la liste des produits : une
+ * liste figée vieillirait mal — un produit retiré de la vente continuerait de
+ * s'afficher, et une nouveauté n'apparaîtrait jamais.
+ */
+export type BlocPage =
+  | { type: "titre"; texte: string; niveau: 2 | 3 }
+  | { type: "texte"; html: string }
+  | { type: "image"; url: string; alt: string; legende?: string }
+  | {
+      type: "produits";
+      source: "collection" | "categorie";
+      reference: string;
+      limite: number;
+    }
+  | { type: "bouton"; texte: string; href: string };
+
+/**
+ * Une page écrite depuis le back-office : « Qui sommes-nous », « Magnets »,
+ * « Livraison et retours ».
+ *
+ * Jusqu'ici, ouvrir un rayon demandait d'écrire un fichier dans la boutique et
+ * une ligne dans le menu. C'est ce que cette table supprime : la propriétaire
+ * compose sa page par blocs, lui donne une adresse, et la publie seule.
+ *
+ * Le statut suit la même règle que celui d'un produit : un brouillon se
+ * prépare, il ne se visite pas. Le site public ne doit jamais en servir un,
+ * même à quelqu'un qui devinerait l'adresse.
+ */
+export const pages = pgTable(
+  "page",
+  {
+    id: serial("id").primaryKey(),
+    /** Ce qui suit le nom de domaine. Unique dans toute la boutique. */
+    slug: text("slug").notNull(),
+    title: text("title").notNull(),
+    /** « active » (en ligne) ou « draft » (brouillon). */
+    status: text("status").notNull().default("draft"),
+    /**
+     * Ce que Google affiche. Vides, la page retombe sur son titre : un repli
+     * acceptable, pas un choix éditorial.
+     */
+    seoTitle: text("seo_title"),
+    seoDescription: text("seo_description"),
+    blocks: jsonb("blocks")
+      .$type<BlocPage[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    /**
+     * Traductions HUMAINES, par code langue. Le français vit dans les colonnes
+     * ci-dessus et sert de repli, exactement comme pour les produits : une
+     * traduction absente ou vide affiche le français, jamais un blanc.
+     */
+    translations: jsonb("translations").$type<
+      Partial<Record<string, { title?: string; blocks?: BlocPage[] }>>
+    >(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [uniqueIndex("page_slug_uniq").on(t.slug)],
+);
+
+/**
+ * Une entrée du menu principal, avec ses sous-entrées.
+ *
+ * Un seul niveau de profondeur, et ce n'est pas une limite technique : le
+ * bandeau du site déroule un sous-menu, pas deux, et une entrée cachée à trois
+ * niveaux serait invisible pour tout le monde sauf pour celle qui l'a écrite.
+ *
+ * La suppression en cascade suit la même idée : retirer « Affiches
+ * personnalisables » retire ses sous-entrées, qui n'ont aucun sens seules.
+ */
+export const menuItems = pgTable(
+  "menu_item",
+  {
+    id: serial("id").primaryKey(),
+    /** Null = entrée de premier niveau. */
+    parentId: integer("parent_id").references((): AnyPgColumn => menuItems.id, {
+      onDelete: "cascade",
+    }),
+    label: text("label").notNull(),
+    href: text("href").notNull(),
+    position: integer("position").notNull().default(0),
+    /** Masquée : préparée dans le back-office, absente du site. */
+    visible: boolean("visible").notNull().default(true),
+    translations: jsonb("translations").$type<
+      Partial<Record<string, { label?: string }>>
+    >(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [index("menu_item_parent_idx").on(t.parentId, t.position)],
 );

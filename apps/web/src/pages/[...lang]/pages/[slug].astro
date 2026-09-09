@@ -1,0 +1,195 @@
+---
+/**
+ * Les pages écrites depuis le back-office.
+ *
+ * C'est la sortie du contenu éditable : la boutique crée « Magnets », y pose
+ * un texte, une image et une grille de produits, et cette page l'affiche. Elle
+ * ne connaît que cinq formes de bloc, et refuse tout le reste en silence
+ * plutôt que d'afficher un morceau de page cassé.
+ *
+ * L'adresse porte le préfixe « /pages/ », et ce n'est pas un choix esthétique.
+ * Posée à la racine, cette route se glissait devant les accueils traduits :
+ * pour « /en », le routeur préfère un segment nommé à un segment de reste, et
+ * l'anglais tombait en page introuvable. Le préfixe lève l'ambiguïté sans
+ * toucher à l'accueil, qui est la page qu'on casse en dernier.
+ *
+ * Une adresse inconnue rend une page introuvable, jamais une page vide.
+ */
+import Base from "../../../layouts/Base.astro";
+import { api, assetUrl, formatPrice, type PageCms } from "../../../lib/api.ts";
+import {
+  estLangue,
+  langueDepuisParam,
+  lien,
+  type Langue,
+} from "../../../i18n/utils.ts";
+
+/** Le contenu vient de la base : le figer au build le gèlerait. */
+export const prerender = false;
+
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
+
+const slug = Astro.params.slug ?? "";
+let page: PageCms | null = null;
+try {
+  page = await api.page(slug, langue);
+} catch {
+  // Page absente, brouillon, ou API muette : dans les trois cas la page
+  // n'existe pas pour le visiteur, et le dire est plus honnête qu'un cadre
+  // vide qui laisserait croire à une panne d'affichage.
+  page = null;
+}
+if (!page) return new Response(null, { status: 404 });
+
+/** Une adresse écrite dans un bloc, prête à être cliquée. */
+function adresse(href: string): string {
+  if (/^https?:\/\//i.test(href)) return href;
+  const [chemin, requete] = href.split("?");
+  return lien(langue, chemin || "/") + (requete ? `?${requete}` : "");
+}
+
+/** Le prix affiché sous une vignette : « à partir de » quand il varie. */
+function prix(p: {
+  basePriceCents: number;
+  variants?: { priceCents: number }[];
+}): string {
+  const montants = (p.variants ?? [])
+    .map((v) => v.priceCents)
+    .filter((c) => c > 0);
+  if (!montants.length) return formatPrice(p.basePriceCents);
+  const min = Math.min(...montants);
+  const max = Math.max(...montants);
+  return min === max ? formatPrice(min) : `${formatPrice(min)} – ${formatPrice(max)}`;
+}
+
+const titreOnglet = page.seoTitle?.trim() || `${page.title} — Memory Line`;
+---
+
+<Base
+  langue={langue}
+  title={titreOnglet}
+  description={page.seoDescription ?? undefined}
+>
+  <article class="mx-auto max-w-[1000px] px-6 py-12 lg:px-12">
+    <h1 class="text-3xl sm:text-4xl">{page.title}</h1>
+
+    {
+      page.blocks.map((bloc) => {
+        if (bloc.type === "titre") {
+          const texte = String(bloc.texte ?? "");
+          return bloc.niveau === 3 ? (
+            <h3 class="mt-10 text-xl font-medium">{texte}</h3>
+          ) : (
+            <h2 class="mt-12 text-2xl font-medium">{texte}</h2>
+          );
+        }
+
+        if (bloc.type === "texte") {
+          return (
+            <div
+              class="ml-page-texte mt-6 leading-relaxed text-ink-soft"
+              set:html={String(bloc.html ?? "")}
+            />
+          );
+        }
+
+        if (bloc.type === "image") {
+          const src = assetUrl(String(bloc.url ?? ""));
+          if (!src) return null;
+          const legende = String(bloc.legende ?? "");
+          return (
+            <figure class="mt-10">
+              <img
+                src={src}
+                alt={String(bloc.alt ?? "")}
+                loading="lazy"
+                class="w-full rounded-lg"
+              />
+              {legende && (
+                <figcaption class="mt-2 text-sm text-ink-soft">
+                  {legende}
+                </figcaption>
+              )}
+            </figure>
+          );
+        }
+
+        if (bloc.type === "bouton") {
+          return (
+            <p class="mt-8">
+              <a
+                href={adresse(String(bloc.href ?? "/"))}
+                class="inline-block rounded-full bg-ink px-6 py-3 text-paper transition-opacity hover:opacity-90"
+              >
+                {String(bloc.texte ?? "")}
+              </a>
+            </p>
+          );
+        }
+
+        if (bloc.type === "produits") {
+          const produits = Array.isArray(bloc.produits) ? bloc.produits : [];
+          if (!produits.length) return null;
+          return (
+            <div class="mt-10 grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-4">
+              {produits.map((p) => (
+                <a
+                  href={lien(langue, `/affiches/${p.slug}`)}
+                  class="group block"
+                >
+                  <div class="bg-paper-deep aspect-[3/4] overflow-hidden rounded">
+                    {p.image ? (
+                      <img
+                        src={assetUrl(p.image) ?? ""}
+                        alt=""
+                        loading="lazy"
+                        class="h-full w-full object-cover transition-transform group-hover:scale-[1.02]"
+                      />
+                    ) : (
+                      <span class="block h-full w-full" />
+                    )}
+                  </div>
+                  <p class="mt-2 text-sm">{p.name}</p>
+                  <p class="text-sm text-ink-soft">{prix(p)}</p>
+                </a>
+              ))}
+            </div>
+          );
+        }
+
+        // Un genre de bloc que cette version du site ne sait pas dessiner :
+        // on le saute. Mieux vaut une page incomplète qu'une page en erreur.
+        return null;
+      })
+    }
+  </article>
+</Base>
+
+<style is:global>
+  /* Le texte des blocs vient de l'éditeur visuel : il n'a que des paragraphes,
+     des listes, du gras, de l'italique, des liens et des images. */
+  .ml-page-texte p {
+    margin: 0.9rem 0;
+  }
+  .ml-page-texte ul,
+  .ml-page-texte ol {
+    margin: 0.9rem 0;
+    padding-left: 1.5rem;
+  }
+  .ml-page-texte ul {
+    list-style: disc;
+  }
+  .ml-page-texte ol {
+    list-style: decimal;
+  }
+  .ml-page-texte a {
+    text-decoration: underline;
+  }
+  .ml-page-texte img {
+    max-width: 100%;
+    height: auto;
+    margin: 1rem 0;
+  }
+</style>

@@ -1,0 +1,297 @@
+---
+/**
+ * La liste des pages du site, et leur création.
+ *
+ * Jusqu'ici, ajouter une page au site demandait de nous appeler : la page
+ * d'accueil et les fiches produits vivaient dans le code, et rien d'autre
+ * n'existait. La propriétaire de la boutique doit pouvoir monter seule une
+ * page « Magnets » le jour où elle décide d'en vendre, y poser un texte, une
+ * image et une grille de produits, puis la mettre en ligne.
+ *
+ * Cet écran ne fait que deux choses : ouvrir une page existante et en créer
+ * une nouvelle. Tout le reste se règle dans l'éditeur, sur pages/[id].astro.
+ *
+ * La création demande le nom ET l'adresse, parce que l'adresse est ce qui
+ * restera dans les liens partagés : la deviner à partir du nom sans la montrer
+ * reviendrait à choisir à la place de la personne quelque chose qu'elle ne
+ * pourra plus changer sans casser ces liens. Le navigateur la propose, elle
+ * reste modifiable, et une adresse impossible est refusée avec sa raison
+ * plutôt que corrigée en douce.
+ */
+import { url } from "../lib/url.ts";
+import Admin from "../layouts/Admin.astro";
+import { adminApi, type ResumePage } from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+/**
+ * Ce qu'une adresse de page peut contenir. Des minuscules sans accent, des
+ * chiffres et des traits d'union : tout le reste voyage mal dans un lien, se
+ * recopie de travers dans un message et finit par pointer nulle part.
+ */
+const ADRESSE_VALIDE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** L'adresse publique de la boutique, pour montrer un exemple qui a du sens. */
+function originePublique(): string {
+  const annoncee: unknown =
+    import.meta.env.PUBLIC_SITE_URL ?? import.meta.env.PUBLIC_ORIGIN;
+  if (typeof annoncee === "string" && annoncee.trim())
+    return annoncee.trim().replace(/\/+$/, "");
+  const entetes = Astro.request.headers;
+  const hote = entetes.get("x-forwarded-host") ?? entetes.get("host");
+  const protocole =
+    entetes.get("x-forwarded-proto") ?? Astro.url.protocol.replace(":", "");
+  return hote ? `${protocole}://${hote}` : Astro.url.origin;
+}
+/** Sans le protocole : « memoryline.fr », pas « https://memoryline.fr ». */
+const NOM_DU_SITE = originePublique().replace(/^https?:\/\//, "");
+
+/** Une date de la base, rendue lisible. Vide si elle n'est pas exploitable. */
+function dateCourte(brut: unknown): string {
+  if (typeof brut !== "string" && typeof brut !== "number" && !(brut instanceof Date))
+    return "";
+  const quand = new Date(brut);
+  if (Number.isNaN(quand.getTime())) return "";
+  return quand.toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+let flash: string | null = null;
+let flashErreur = false;
+
+// Ce que la personne venait d'écrire, gardé pour le cas où la création est
+// refusée : refaire la saisie parce qu'un trait d'union manquait est la
+// meilleure façon de renoncer à créer la page.
+let saisieNom = "";
+let saisieAdresse = "";
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const action = String(f.get("_action") ?? "");
+  try {
+    if (action === "supprimer") {
+      const id = Number(f.get("id"));
+      if (!Number.isFinite(id) || id <= 0)
+        throw new Error("Cette page n'a pas pu être retrouvée.");
+      await api.supprimerPage(id);
+      flash = "Page supprimée.";
+    } else {
+      saisieNom = String(f.get("title") ?? "").trim();
+      saisieAdresse = String(f.get("slug") ?? "").trim();
+      if (!saisieNom)
+        throw new Error("Donnez un nom à la page, par exemple « Magnets ».");
+      if (!saisieAdresse)
+        throw new Error(
+          "Écrivez l'adresse de la page, par exemple « magnets ».",
+        );
+      if (!ADRESSE_VALIDE.test(saisieAdresse))
+        throw new Error(
+          "L'adresse « " +
+            saisieAdresse +
+            " » ne convient pas : elle ne peut contenir que des lettres " +
+            "minuscules sans accent, des chiffres et des traits d'union, " +
+            "sans espace ni barre oblique. Par exemple : magnets, " +
+            "ou cartes-de-voeux.",
+        );
+      const cree = await api.creerPage({ slug: saisieAdresse, title: saisieNom });
+      return Astro.redirect(url(`/pages/${cree.id}?cree=1`), 303);
+    }
+  } catch (e) {
+    flash = String(e).replace(/^Error:\s*/, "");
+    flashErreur = true;
+  }
+}
+
+let pages: ResumePage[] = [];
+let erreur: string | null = null;
+try {
+  const reponse = await api.pages();
+  pages = reponse.pages;
+} catch (e) {
+  erreur = String(e).replace(/^Error:\s*/, "");
+}
+
+const champ =
+  "mt-1 w-full rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm";
+const boutonPrincipal =
+  "rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90";
+---
+
+<Admin title="Pages du site">
+  {flash && (
+    <p
+      class={`mb-4 rounded border px-3 py-2 text-sm ${
+        flashErreur ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+  {erreur && (
+    <p class="mb-4 text-sm text-red-600">
+      La liste des pages n'a pas pu être lue : {erreur}
+    </p>
+  )}
+
+  <p class="mb-6 max-w-3xl text-sm text-bo-muted">
+    Les pages du site que vous écrivez vous-même : « Magnets », « Qui sommes
+    nous », « Livraison et retours ». Chacune se compose de blocs que vous
+    empilez dans l'ordre que vous voulez : un titre, un texte, une image, une
+    grille de produits, un bouton. Une fois la page en ligne, ajoutez-la au
+    <a class="underline" href={url("/menu")}>menu du site</a> pour que vos
+    clients la trouvent.
+  </p>
+
+  <section class="mb-6 overflow-hidden rounded-lg border border-bo-border bg-bo-surface">
+    <table class="w-full text-sm">
+      <thead class="bg-bo-bg text-left text-bo-muted">
+        <tr>
+          <th class="px-4 py-2 font-medium">Nom de la page</th>
+          <th class="px-4 py-2 font-medium">Adresse</th>
+          <th class="px-4 py-2 font-medium">Statut</th>
+          <th class="px-4 py-2 font-medium">Modifiée le</th>
+          <th class="px-2 py-2 w-10"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {pages.map((p) => (
+          <tr class="border-t border-bo-border">
+            <td class="px-4 py-3">
+              <a
+                class="font-medium text-bo-accent hover:underline"
+                href={url(`/pages/${p.id}`)}
+              >
+                {p.title}
+              </a>
+            </td>
+            <td class="px-4 py-3 text-bo-muted">
+              {NOM_DU_SITE}/{p.slug}
+            </td>
+            <td class="px-4 py-3">
+              {p.status === "active" ? (
+                <span class="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800">
+                  En ligne
+                </span>
+              ) : (
+                <span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900">
+                  Brouillon
+                </span>
+              )}
+            </td>
+            <td class="px-4 py-3 text-bo-muted">{dateCourte(p.updatedAt)}</td>
+            <td class="px-2 py-3 text-right">
+              <form method="POST" class="js-retirer inline" data-nom={p.title}>
+                <input type="hidden" name="_action" value="supprimer" />
+                <input type="hidden" name="id" value={p.id} />
+                <button
+                  class="rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-red-300 hover:text-red-700"
+                  title={`Supprimer « ${p.title} »`}
+                  aria-label={`Supprimer ${p.title}`}
+                >
+                  ✕
+                </button>
+              </form>
+            </td>
+          </tr>
+        ))}
+        {pages.length === 0 && !erreur && (
+          <tr>
+            <td class="px-4 py-6 text-bo-muted" colspan="5">
+              Aucune page pour l'instant. Créez la première ci-dessous.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </section>
+
+  <details
+    class="rounded-lg border border-bo-border bg-bo-surface"
+    open={pages.length === 0 || flashErreur}
+  >
+    <summary class="cursor-pointer select-none px-5 py-3 font-semibold">
+      <span class="mr-1 text-bo-accent">+</span> Créer une page
+    </summary>
+    <form method="POST" class="space-y-4 px-5 pb-5 text-sm">
+      <label class="block max-w-md">
+        <span class="font-medium">Nom de la page</span>
+        <input
+          id="champ-nom"
+          name="title"
+          value={saisieNom}
+          required
+          placeholder="Magnets"
+          class={champ}
+        />
+        <span class="mt-1 block text-xs text-bo-muted">
+          Le titre que verront vos clients en haut de la page.
+        </span>
+      </label>
+
+      <label class="block max-w-md">
+        <span class="font-medium">Adresse de la page</span>
+        <span class="mt-1 flex flex-wrap items-center gap-1">
+          <span class="text-bo-muted">{NOM_DU_SITE}/</span>
+          <input
+            id="champ-adresse"
+            name="slug"
+            value={saisieAdresse}
+            required
+            placeholder="magnets"
+            class="w-56 rounded border border-bo-border bg-bo-surface px-3 py-2 font-mono text-sm"
+          />
+        </span>
+        <span class="mt-1 block text-xs text-bo-muted">
+          L'adresse où la page sera visible : ici, {NOM_DU_SITE}/magnets. Elle
+          se propose toute seule à partir du nom, vous pouvez la modifier tant
+          que la page n'est pas créée. Des lettres minuscules sans accent, des
+          chiffres et des traits d'union, rien d'autre.
+        </span>
+      </label>
+
+      <button class={boutonPrincipal}>Créer la page</button>
+      <p class="text-xs text-bo-muted">
+        La page est créée en brouillon : elle n'apparaît sur le site qu'une fois
+        que vous l'aurez mise en ligne, depuis l'éditeur.
+      </p>
+    </form>
+  </details>
+
+  <script is:inline>
+    // La suppression d'une page ne se rattrape pas : ce qu'elle contenait part
+    // avec elle, et l'adresse partagée à vos clients ne répond plus.
+    document.querySelectorAll("form.js-retirer").forEach((f) => {
+      f.addEventListener("submit", (e) => {
+        const nom = f.getAttribute("data-nom") || "cette page";
+        if (
+          !confirm(
+            `Supprimer « ${nom} » ? Son contenu sera perdu et son adresse ne ` +
+              `répondra plus sur le site.`,
+          )
+        )
+          e.preventDefault();
+      });
+    });
+
+    // L'adresse se propose à partir du nom, et cesse de le suivre dès qu'on y
+    // touche : ce qui a été écrit à la main ne doit jamais être réécrit.
+    const nom = document.getElementById("champ-nom");
+    const adresse = document.getElementById("champ-adresse");
+    let adresseLibre = !adresse || !adresse.value;
+    adresse?.addEventListener("input", () => {
+      adresseLibre = false;
+    });
+    nom?.addEventListener("input", () => {
+      if (!adresseLibre || !adresse) return;
+      adresse.value = nom.value
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+    });
+  </script>
+</Admin>

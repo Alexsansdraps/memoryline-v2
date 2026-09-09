@@ -13,6 +13,7 @@ import {
   t,
   type Langue,
 } from "../i18n/utils.ts";
+import { api, type EntreeMenuPublique } from "../lib/api.ts";
 interface Props {
   /** Langue de la page — pilote les libellés, les liens et le hreflang. */
   langue?: Langue;
@@ -36,6 +37,62 @@ const {
 } = Astro.props;
 
 const tr = t(langue);
+
+/**
+ * Le menu du haut, tel que le back-office l'a rangé.
+ *
+ * Le repli n'est pas un luxe : une boutique dont la navigation disparaît
+ * parce qu'une route est tombée est une boutique fermée. Ces deux entrées
+ * sont celles qui vivaient en dur ici avant que le menu devienne modifiable.
+ */
+const MENU_DE_SECOURS: EntreeMenuPublique[] = [
+  {
+    id: -1,
+    label: tr("nav.personnalisables"),
+    href: "/affiches?genre=personnalisable",
+    enfants: [
+      { id: -2, label: tr("nav.tout_voir"), href: "/affiches?genre=personnalisable" },
+      {
+        id: -3,
+        label: tr("nav.villes"),
+        href: "/affiches?genre=personnalisable&collection=villes",
+      },
+      {
+        id: -4,
+        label: tr("nav.themes_paysages"),
+        href: "/affiches?genre=personnalisable&collection=balades-paysages",
+      },
+    ],
+  },
+  {
+    id: -5,
+    label: tr("nav.pretes"),
+    href: "/affiches?genre=prete_a_imprimer",
+    enfants: [],
+  },
+];
+
+let entreesMenu: EntreeMenuPublique[] = MENU_DE_SECOURS;
+try {
+  const rendu = await api.menu(langue);
+  if (rendu.entrees.length) entreesMenu = rendu.entrees;
+} catch {
+  /* API injoignable : le menu d'origine reste, la boutique reste ouverte */
+}
+
+/**
+ * Une adresse de menu, prête à être cliquée.
+ *
+ * Une adresse interne reçoit le préfixe de langue : sans lui, un visiteur
+ * anglais serait renvoyé sur la page française au premier clic. Une adresse
+ * absolue désigne un autre site et part telle quelle.
+ */
+function adresseMenu(href: string): string {
+  if (/^https?:\/\//i.test(href)) return href;
+  const [chemin, requete] = href.split("?");
+  return lien(langue, chemin || "/") + (requete ? `?${requete}` : "");
+}
+
 const chemin = cheminSansLangue(Astro.url.pathname);
 const versions = autresVersions(langue, chemin);
 const titre = title ?? tr("meta.titre");
@@ -147,57 +204,54 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
           />
         </a>
         <div class="hidden md:flex items-center gap-8 text-[17px] font-semibold">
-          {/* Deux rayons, parce que la boutique vend deux choses : des
-              affiches que le client compose, et des affiches prêtes à
-              imprimer. Le menu déroulant s'ouvre au clic et se ferme au clic
-              ailleurs ou avec Échap — un survol seul laisserait les écrans
-              tactiles sans porte d'entrée. */}
-          <details class="ml-menu relative">
-            <summary
-              class="hover:text-terracotta flex cursor-pointer list-none items-center gap-1 transition-colors"
-            >
-              {tr("nav.personnalisables")}
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 12 12"
-                aria-hidden="true"
-                class="ml-menu-fleche transition-transform"
-              >
-                <path
-                  d="M2 4.5 6 8.5 10 4.5"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.6"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"></path>
-              </svg>
-            </summary>
-            <div
-              class="border-ink/10 bg-paper absolute top-full left-0 z-20 mt-3 min-w-56 rounded-lg border py-2 text-[15px] font-medium shadow-lg"
-            >
-              <a
-                href={`${lien(langue, "/affiches")}?genre=personnalisable`}
-                class="hover:bg-ink/5 hover:text-terracotta block px-4 py-2 transition-colors"
-                >{tr("nav.tout_voir")}</a
-              >
-              <a
-                href={`${lien(langue, "/affiches")}?genre=personnalisable&collection=villes`}
-                class="hover:bg-ink/5 hover:text-terracotta block px-4 py-2 transition-colors"
-                >{tr("nav.villes")}</a
-              >
-              <a
-                href={`${lien(langue, "/affiches")}?genre=personnalisable&collection=balades-paysages`}
-                class="hover:bg-ink/5 hover:text-terracotta block px-4 py-2 transition-colors"
-                >{tr("nav.themes_paysages")}</a
-              >
-            </div>
-          </details>
-          <a
-            href={`${lien(langue, "/affiches")}?genre=prete_a_imprimer`}
-            class="hover:text-terracotta transition-colors"
-            >{tr("nav.pretes")}</a
-          >
+          {/* Le menu vient du back-office. Une entrée sans sous-lien est un
+              simple lien ; les autres se déroulent au clic, et se referment au
+              clic ailleurs ou avec Échap — un survol seul laisserait les
+              écrans tactiles sans porte d'entrée. */}
+          {
+            entreesMenu.map((entree) =>
+              entree.enfants.length === 0 ? (
+                <a
+                  href={adresseMenu(entree.href)}
+                  class="hover:text-terracotta transition-colors"
+                >
+                  {entree.label}
+                </a>
+              ) : (
+                <details class="ml-menu relative">
+                  <summary class="hover:text-terracotta flex cursor-pointer list-none items-center gap-1 transition-colors">
+                    {entree.label}
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 12 12"
+                      aria-hidden="true"
+                      class="ml-menu-fleche transition-transform"
+                    >
+                      <path
+                        d="M2 4.5 6 8.5 10 4.5"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.6"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </summary>
+                  <div class="border-ink/10 bg-paper absolute top-full left-0 z-20 mt-3 min-w-56 rounded-lg border py-2 text-[15px] font-medium shadow-lg">
+                    {entree.enfants.map((enfant) => (
+                      <a
+                        href={adresseMenu(enfant.href)}
+                        class="hover:bg-ink/5 hover:text-terracotta block px-4 py-2 transition-colors"
+                      >
+                        {enfant.label}
+                      </a>
+                    ))}
+                  </div>
+                </details>
+              ),
+            )
+          }
         </div>
         <div class="flex items-center gap-5 text-sm">
           {/* Raccourci d'administration. Volontairement discret : il ne

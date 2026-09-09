@@ -50,6 +50,8 @@ import { mountCatalogueRoutes } from "./catalogue.js";
 import { mountProduitsMasse } from "./produits-masse.js";
 import { mountVentesProduit } from "./ventes-produit.js";
 import { mountFicheProduit } from "./fiche-produit.js";
+import { mountCms } from "./cms.js";
+import { mountCourriers } from "./courriers.js";
 import { mountSalonRoutes } from "./salon.js";
 import { mountCompteRoutes } from "./comptes.js";
 import { mountIaRoutes } from "./ia.js";
@@ -100,10 +102,25 @@ app.use(
 // laissé passer la prochaine route ajoutée.
 const OWNER_ROLE = "owner";
 
+/**
+ * Routes réservées au propriétaire, LECTURE COMPRISE.
+ *
+ * La règle générale suffit presque partout : un vendeur consulte, seul le
+ * propriétaire modifie. Elle tombe dès qu'une lecture révèle plus que ce
+ * qu'elle affiche. L'aperçu d'un courrier, par exemple, rend la confirmation
+ * d'une commande nommée : nom, adresse postale complète et montants d'une
+ * vraie cliente, dans une simple requête de lecture.
+ */
+const LECTURES_RESERVEES = ["/admin/courriers"];
+
 app.use("/admin/*", async (c, next) => {
   const user = await validateSession(getCookie(c, SESSION_COOKIE));
   if (!user) return c.json({ error: "Non authentifié" }, 401);
-  if (c.req.method !== "GET" && user.role !== OWNER_ROLE) {
+  const chemin = new URL(c.req.url).pathname;
+  const reservee =
+    c.req.method !== "GET" ||
+    LECTURES_RESERVEES.some((p) => chemin.startsWith(p));
+  if (reservee && user.role !== OWNER_ROLE) {
     return c.json(
       { error: "Action réservée au propriétaire du compte" },
       403,
@@ -1002,6 +1019,14 @@ mountVentesProduit(app);
 // tarifs, stock, référencement. Un seul aller-retour pour lire, un seul pour
 // enregistrer, là où la page interrogeait quatre routes différentes.
 mountFicheProduit(app);
+
+// Pages libres et menu du site, écrits depuis le back-office. Ouvrir un rayon
+// « Magnets » ne demande plus de toucher au code.
+mountCms(app);
+
+// Banc d'essai des courriers : les voir et s'en envoyer un, sans attendre
+// qu'une commande passe.
+mountCourriers(app);
 
 // Commandes prises au stand : pas de prix a l'ecran, pas de paiement en ligne.
 mountSalonRoutes(app);
