@@ -496,7 +496,13 @@ if (Astro.request.method === "POST") {
       flash = "Configuration enregistrée.";
     }
   } catch (e) {
-    flash = "Erreur : " + String(e);
+    // « Erreur : Error: ... » : le mot était écrit deux fois, une fois en
+    // français une fois en anglais. Et surtout la phrase ne disait pas
+    // l'essentiel : l'enregistrement est annulé en entier, rien n'est passé à
+    // moitié. C'est la seule chose qu'on veuille savoir devant un refus.
+    flash =
+      "Rien n'a été enregistré. " +
+      (e instanceof Error ? e.message : String(e));
     flashErreur = true;
   }
 }
@@ -1501,6 +1507,16 @@ const boutonDiscret =
           dans <a class="underline" href={url("/ia")}>Affiches IA</a>.
         </p>
 
+        {!iaSure && (
+          <p class="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Ces réglages n'ont pas pu être relus. Ils ne sont donc pas
+            modifiables ici pour le moment : le formulaire s'afficherait à vide
+            et l'enregistrer effacerait les consignes de style déjà écrites.
+            Rechargez la page. Si le message revient, dites-le moi.
+          </p>
+        )}
+
+        {iaSure && (
         <form method="POST" class="space-y-4">
           <input type="hidden" name="_action" value="ia" />
 
@@ -1529,18 +1545,11 @@ const boutonDiscret =
             </span>
           </label>
 
-          {!iaSure && (
-            <p class="text-xs text-amber-800">
-              Cet écran ne sait pas encore relire ces deux réglages : ils
-              s'affichent à vide même s'ils sont remplis. Ce que vous
-              enregistrez ici est bien pris en compte.
-            </p>
-          )}
-
           <button class="rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90">
             Enregistrer la génération par IA
           </button>
         </form>
+        )}
       </section>
 
       {config && (

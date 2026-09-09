@@ -235,7 +235,7 @@ const bouton =
       aria-multiline="true"
       aria-label={etiquette}
       aria-describedby={invite ? idInvite : undefined}
-      class="min-h-32 max-h-96 overflow-y-auto px-3 py-2 text-sm outline-none [&_a]:text-bo-accent [&_a]:underline [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-2 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6"
+      class="min-h-32 max-h-96 overflow-y-auto px-3 py-2 text-sm outline-none [&_a]:text-bo-accent [&_a]:underline [&_img]:my-2 [&_img]:h-auto [&_img]:max-w-full [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-2 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6"
     >
     </div>
     {
@@ -250,6 +250,14 @@ const bouton =
       )
     }
   </div>
+
+  {/* Dit ce que cet éditeur ne sait pas garder, quand le texte enregistré en
+      contient. Caché tant qu'il n'y a rien à signaler. */}
+  <p
+    data-perte
+    class="hidden border-t border-bo-border bg-amber-50 px-3 py-2 text-xs text-amber-800"
+  >
+  </p>
 
   {/* Le seul champ que le serveur voit. Il part avec le HTML nettoyé. */}
   <input type="hidden" data-champ name={nom} value={valeur ?? ""} />
@@ -268,7 +276,12 @@ const bouton =
       var invite = racine.querySelector("[data-invite]");
       if (!zone || !champ || !barre) return;
 
-      var AUTORISEES = ["P", "BR", "STRONG", "EM", "U", "UL", "OL", "LI", "A"];
+      // IMG en fait partie : soixante et une descriptions importées de
+      // l'ancienne boutique en contiennent une, et les jeter reviendrait à
+      // vider la fiche de ce qu'elle montre.
+      var AUTORISEES = ["P", "BR", "STRONG", "EM", "U", "UL", "OL", "LI", "A", "IMG"];
+      /** Une image vient du serveur ou d'un site : jamais d'un « data: ». */
+      var SOURCE_SURE = /^(https?:\/\/|\/(?!\/))/i;
       // Ces balises partent AVEC leur contenu, au lieu d'être remplacées par
       // lui : un copier-coller depuis Word arrive avec un <style> de plusieurs
       // centaines de lignes, qui se lirait sinon en clair dans la description.
@@ -346,10 +359,23 @@ const bouton =
             continue;
           }
           var adresse = nom === "A" ? (el.getAttribute("href") || "").trim() : "";
+          var source = nom === "IMG" ? (el.getAttribute("src") || "").trim() : "";
+          var texteAlt = nom === "IMG" ? el.getAttribute("alt") || "" : "";
           while (el.attributes.length) el.removeAttribute(el.attributes[0].name);
           if (nom === "A") {
             if (ADRESSE_SURE.test(adresse)) el.setAttribute("href", adresse);
             else deballer(el);
+            continue;
+          }
+          if (nom === "IMG") {
+            // Une image sans adresse sûre ne s'affiche pas : la garder ne
+            // ferait qu'un rectangle cassé dans la fiche publique.
+            if (SOURCE_SURE.test(source)) {
+              el.setAttribute("src", source);
+              if (texteAlt) el.setAttribute("alt", texteAlt);
+            } else if (el.parentNode) {
+              el.parentNode.removeChild(el);
+            }
             continue;
           }
           // Mettre un paragraphe en liste laisse derrière lui un <p></p> sans
@@ -525,9 +551,52 @@ const bouton =
         // Réglages de confort : le nettoyage rattrape ce qu'ils auraient évité.
       }
 
-      var depart = nettoyer(champ.value);
+      /**
+       * Ce que cet éditeur ne saura pas reproduire dans le texte enregistré.
+       *
+       * On regarde le HTML d'origine, pas le résultat du nettoyage : c'est la
+       * seule façon de nommer ce qui manquerait, et donc de le dire.
+       */
+      function balisesPerdues(html) {
+        var gardees = AUTORISEES.slice();
+        for (var cle in RENOMMAGES)
+          if (Object.prototype.hasOwnProperty.call(RENOMMAGES, cle))
+            gardees.push(cle);
+        var doc = new DOMParser().parseFromString(
+          "<div id=\"racine-perte\">" + String(html || "") + "</div>",
+          "text/html",
+        );
+        var bloc = doc.getElementById("racine-perte");
+        var vues = [];
+        if (!bloc) return vues;
+        var tous = bloc.getElementsByTagName("*");
+        for (var i = 0; i < tous.length; i++) {
+          var n = tous[i].tagName.toUpperCase();
+          if (gardees.indexOf(n) === -1 && vues.indexOf(n) === -1) vues.push(n);
+        }
+        return vues;
+      }
+
+      var perte = racine.querySelector("[data-perte]");
+      var enregistre = champ.value;
+      var depart = nettoyer(enregistre);
       zone.innerHTML = depart.trim() ? depart : "<p><br></p>";
-      synchroniser();
+
+      // Surtout PAS de synchroniser() ici. Le champ caché doit garder le texte
+      // de la base tant que personne n'a rien tapé : le réécrire au chargement
+      // suffisait à publier une version amputée en cliquant sur Enregistrer
+      // sans avoir touché à quoi que ce soit.
+      if (invite)
+        invite.classList.toggle("hidden", !!(zone.textContent || "").trim());
+
+      var manquantes = balisesPerdues(enregistre);
+      if (perte && manquantes.length) {
+        perte.textContent =
+          "Ce texte contient une mise en forme que cet éditeur ne sait pas garder (" +
+          manquantes.join(", ").toLowerCase() +
+          "). Elle reste en ligne telle quelle, mais si vous modifiez le texte ici, elle sera perdue.";
+        perte.classList.remove("hidden");
+      }
     })();
   </script>
 </div>
