@@ -42,7 +42,10 @@ if (Astro.request.method === "POST") {
         carrier: String(f.get("carrier") ?? ""),
         trackingNumber: String(f.get("trackingNumber") ?? ""),
       });
-      flash = "Expédition enregistrée.";
+      // Au stand, il n'y a pas de colis : le mot doit dire ce qui s'est passé.
+      flash = f.get("remise")
+        ? "Affiche remise au client."
+        : "Expédition enregistrée.";
     } else if (action === "annuler-expedition") {
       await api.cancelFulfillment(Number(f.get("fulfillmentId")));
       flash = "Expédition annulée.";
@@ -116,6 +119,12 @@ const order = detail?.order;
 const items = detail?.items ?? [];
 const client = detail?.customer ?? null;
 const expeditions = detail?.expeditions ?? [];
+/**
+ * Une commande prise au stand n'est pas expédiée : l'affiche est remise au
+ * client, sur place. Pas de transporteur, pas de numéro de suivi — juste
+ * « c'est fait ».
+ */
+const auStand = order?.channel === "salon";
 const remboursements = detail?.remboursements ?? [];
 const mouvements = detail?.mouvements ?? [];
 
@@ -367,7 +376,7 @@ const LIBELLE_MOUVEMENT: Record<string, string> = {
             {expeditions.length > 0 && (
               <div class="border-t border-bo-border px-4 py-3">
                 <h4 class="mb-2 text-xs font-medium tracking-wide text-bo-muted uppercase">
-                  Colis
+                  {auStand ? "Remise au client" : "Colis"}
                 </h4>
                 <ul class="space-y-2 text-sm">
                   {expeditions.map((f) => (
@@ -375,7 +384,7 @@ const LIBELLE_MOUVEMENT: Record<string, string> = {
                       <span
                         class={f.status === "cancelled" ? "text-bo-muted line-through" : ""}
                       >
-                        {f.carrier ?? "Sans transporteur"}
+                        {f.carrier ?? (auStand ? "Remis au client" : "Sans transporteur")}
                         {f.trackingNumber && (
                           <>
                             {" · "}
@@ -413,7 +422,23 @@ const LIBELLE_MOUVEMENT: Record<string, string> = {
               </div>
             )}
 
-            {resteAExpedier > 0 && (
+            {resteAExpedier > 0 && auStand && (
+              <div class="flex flex-wrap items-center justify-between gap-3 border-t border-bo-border px-4 py-3">
+                <p class="text-sm text-bo-muted">
+                  {resteAExpedier} affiche(s) à remettre au client. Commande prise
+                  au stand : rien à expédier.
+                </p>
+                <form method="POST">
+                  <input type="hidden" name="_action" value="expedier" />
+                  <input type="hidden" name="remise" value="1" />
+                  <button class="rounded bg-bo-nav px-4 py-2 text-sm text-white">
+                    Marquer comme remis
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {resteAExpedier > 0 && !auStand && (
               <details class="border-t border-bo-border">
                 <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-bo-accent">
                   Traiter les articles ({resteAExpedier} en attente)

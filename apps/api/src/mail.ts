@@ -1,10 +1,13 @@
 /**
- * Envoi d'e-mails transactionnels (Resend).
+ * Envoi d'e-mails transactionnels (Resend), ou boîte aux lettres de test.
  *
- * Deux réglages, dans le `.env` de la racine :
+ * Réglages, dans le `.env` de la racine :
  *   RESEND_API_KEY  : la clé d'API (« re_… »)
  *   MAIL_FROM       : l'expéditeur, ex. « Memory Line <commandes@memoryline.fr> »
  *   MAIL_BCC        : facultatif — une copie de chaque envoi pour la boutique
+ *   MAIL_TEST_URL   : facultatif — adresse d'une boîte de test (Mailpit).
+ *                     Renseignée, elle prend TOUT : aucun courrier ne part
+ *                     vers un vrai destinataire. C'est le mode d'essai.
  *
  * Sans clé, `estConfigure()` répond faux et `envoyer()` ne fait rien d'autre
  * que le noter dans le journal : une commande ne doit JAMAIS échouer parce
@@ -13,11 +16,64 @@
  */
 
 const CLE = (process.env.RESEND_API_KEY ?? "").trim();
-const EXPEDITEUR = (process.env.MAIL_FROM ?? "").trim();
 const COPIE = (process.env.MAIL_BCC ?? "").trim();
+/** Boîte d'essai : si elle est renseignée, elle remplace Resend. */
+const BOITE_TEST = (process.env.MAIL_TEST_URL ?? "").trim().replace(/\/+$/, "");
+/**
+ * L'expéditeur. En mode d'essai il n'a pas à être un domaine vérifié : la
+ * boîte de test accepte n'importe quelle adresse, et en afficher une parlante
+ * aide à relire le courrier tel que le client le verra.
+ */
+const EXPEDITEUR =
+  (process.env.MAIL_FROM ?? "").trim() ||
+  (BOITE_TEST ? "Memory Line (essai) <boutique@memoryline.test>" : "");
 
+/** Vrai quand on sait où envoyer : la boîte d'essai, ou Resend. */
 export function estConfigure(): boolean {
+  if (BOITE_TEST) return true;
   return CLE.length > 0 && EXPEDITEUR.length > 0;
+}
+
+/** Vrai quand les courriers vont dans la boîte d'essai, pas chez le client. */
+export function estEnEssai(): boolean {
+  return BOITE_TEST.length > 0;
+}
+
+/**
+ * Dépose un courrier dans la boîte d'essai. Mailpit expose la même chose
+ * qu'un serveur d'envoi, mais en HTTP : on lui parle comme à Resend.
+ */
+async function deposerDansLaBoite(courrier: Courrier): Promise<boolean> {
+  const res = await fetch(`${BOITE_TEST}/api/v1/send`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      From: { Email: adresseSeule(EXPEDITEUR), Name: nomSeul(EXPEDITEUR) },
+      To: [{ Email: courrier.to }],
+      ...(COPIE ? { Bcc: [COPIE] } : {}),
+      Subject: courrier.subject,
+      HTML: courrier.html,
+      ...(courrier.text ? { Text: courrier.text } : {}),
+    }),
+  });
+  if (!res.ok) {
+    console.error("[mail] boîte d'essai injoignable", res.status, await res.text());
+    return false;
+  }
+  console.log("[mail] déposé dans la boîte d'essai :", courrier.subject);
+  return true;
+}
+
+/** « Memory Line <a@b.fr> » → « a@b.fr ». */
+function adresseSeule(v: string): string {
+  const m = v.match(/<([^>]+)>/);
+  return (m?.[1] ?? v).trim();
+}
+
+/** « Memory Line <a@b.fr> » → « Memory Line ». */
+function nomSeul(v: string): string {
+  const m = v.match(/^([^<]+)</);
+  return m?.[1]?.trim() ?? "";
 }
 
 export interface Courrier {
@@ -42,6 +98,8 @@ export async function envoyer(courrier: Courrier): Promise<boolean> {
     return false;
   }
   try {
+    // En mode d'essai, rien ne part : le courrier va dans la boîte de test.
+    if (BOITE_TEST) return await deposerDansLaBoite(courrier);
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {

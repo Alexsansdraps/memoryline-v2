@@ -38,6 +38,12 @@ services:
       WEB_ORIGINS: "http://localhost:8080,http://localhost:4321,http://localhost:4322,${PUBLIC_ORIGIN:-http://localhost:8080}"
       # Évite le purge interactif des node_modules par pnpm au démarrage.
       CI: "true"
+      # Boîte aux lettres de test : renseignée, elle prend TOUS les courriers
+      # à la place de Resend. Vide (ou service arrêté), on repasse par Resend.
+      MAIL_TEST_URL: "${MAIL_TEST_URL:-}"
+      MAIL_FROM: "${MAIL_FROM:-}"
+      MAIL_BCC: "${MAIL_BCC:-}"
+      RESEND_API_KEY: "${RESEND_API_KEY:-}"
     ports:
       - "3000:3000"
     volumes:
@@ -138,6 +144,24 @@ services:
     environment:
       NGROK_AUTHTOKEN: "${NGROK_AUTHTOKEN:-}"
     command: http proxy:80 --url=https://${NGROK_DOMAIN:-}
+
+  # Boîte aux lettres de TEST. Elle accepte tous les courriers de la boutique
+  # et n'en livre aucun : ils s'affichent dans une page web, sur
+  # http://localhost:8025. C'est ce qui permet de relire une confirmation de
+  # commande sans écrire à un vrai client. Rien de tout cela ne sort de la
+  # machine, et le service ne tourne qu'à la demande :
+  #   docker compose --profile mail up -d
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: memoryline-mailpit
+    restart: unless-stopped
+    profiles: ["mail"]
+    environment:
+      # Les messages restent en mémoire : ils disparaissent au redémarrage,
+      # ce qui est exactement ce qu'on veut d'une boîte d'essai.
+      MP_MAX_MESSAGES: "500"
+    ports:
+      - "8025:8025"
 
 volumes:
   memoryline_pgdata:
