@@ -1,12 +1,14 @@
 /// <reference lib="dom" />
-import { createSignal, onCleanup, onMount, For, Show } from "solid-js";
+import { createMemo, createSignal, onCleanup, onMount, For, Show } from "solid-js";
 import {
-  autoPlace,
+  bornerPlacement,
   CHAR_BASE_WIDTH,
+  placementsAffiche,
   policeDefautLigne,
   type CharacterDTO,
   type ConfiguratorState,
   type LigneTexte,
+  type PlacementPersonnage,
   type SlotsDTO,
   type SvgCache,
   variantesDeVue,
@@ -52,6 +54,14 @@ const PART_CADRE = 0.045;
 const CADRE_MIN_PX = 7;
 const CADRE_MAX_PX = 34;
 
+/**
+ * Pas d'un déplacement au clavier, en fraction de l'affiche.
+ *
+ * Une flèche déplace d'un centième d'affiche : assez pour se voir, assez fin
+ * pour caler un personnage contre un autre en quelques appuis.
+ */
+const PAS_CLAVIER = 0.01;
+
 /** Ratio largeur/hauteur d'affichage selon le format (portrait). */
 function aspectFor(format: string): string {
   // A4 / A3 partagent le même ratio papier ~ 1:1.4142 (portrait).
@@ -62,9 +72,10 @@ function aspectFor(format: string): string {
  * Aperçu de l'affiche, espace de coordonnées normalisé 0..1.
  * Couches : fond -> personnages -> titre/sous-titre.
  *
- * Les personnages sont placés AUTOMATIQUEMENT (plus de drag/resize §18.2 F) :
- * centrés, côte à côte, le long du bas-milieu de l'affiche. Aucun pointer
- * event, aucune sélection visible sur l'affiche.
+ * Les personnages se rangent AUTOMATIQUEMENT : centrés, côte à côte, le long
+ * du bas-milieu de l'affiche. Le client peut les déplacer à la souris ou au
+ * doigt, mais seulement là où on le lui propose (`deplacable`) : le panier et
+ * la commande montrent la même affiche, on n'y compose plus rien.
  */
 export function PosterPreview(props: {
   state: ConfiguratorState;
@@ -92,6 +103,19 @@ export function PosterPreview(props: {
    * que le lecteur d'écran dise ce que l'œil voit.
    */
   cadre?: { name?: string; previewColor?: string | null } | null;
+  /**
+   * Autorise le client à déplacer les personnages du doigt ou à la souris.
+   *
+   * FAUX par défaut : partout ailleurs que dans le configurateur — panier,
+   * commande — l'affiche n'est plus qu'une image de ce qui a été validé, et
+   * on ne doit pas pouvoir la remanier d'un glissement involontaire.
+   */
+  deplacable?: boolean;
+  /**
+   * Le client vient de poser un personnage. La position est donnée en
+   * fractions (0..1) de la zone d'affiche, déjà bornée à l'intérieur du cadre.
+   */
+  onDeplace?: (index: number, position: { x: number; y: number }) => void;
 }) {
   /** La couleur du cadre, ou rien du tout s'il n'y en a pas. */
   const couleurCadre = () =>
@@ -131,6 +155,136 @@ export function PosterPreview(props: {
     props.state.backgroundUrl
       ? urlAsset(props.assetBaseUrl ?? "", props.state.backgroundUrl)
       : undefined;
+
+  /** Bas réel du dessin d'un personnage, pour aligner ses pieds au sol. */
+  const basDuDessin = (id: string | number): number =>
+    props.characterById(id)?.bottomPct ?? 1;
+
+  /**
+   * Où se pose chaque personnage : la rangée automatique, ou la place que le
+   * client lui a donnée. Une seule fois pour toute l'affiche — le calcul de la
+   * rangée dépend de tous les personnages, le refaire par personnage le
+   * répéterait autant de fois qu'il y en a.
+   */
+  const placements = createMemo<PlacementPersonnage[]>(() =>
+    placementsAffiche(props.state.characters, (c) =>
+      basDuDessin(c.characterId),
+    ),
+  );
+
+  /** Index du personnage en cours de glissement, sinon rien. */
+  const [glisse, setGlisse] = createSignal<number | null>(null);
+
+  /**
+   * Zone utile de l'affiche, en pixels écran : l'INTÉRIEUR du cadre.
+   *
+   * La baguette est dessinée en bordure et mange sur l'affiche. Compter sur la
+   * boîte extérieure poserait un personnage lâché tout en bas sous la
+   * baguette, là où le client ne le reverrait jamais.
+   */
+  function zoneAffiche():
+    | { gauche: number; haut: number; largeur: number; hauteur: number }
+    | null {
+    if (!bloc) return null;
+    const boite = bloc.getBoundingClientRect();
+    const baguette = couleurCadre() ? epaisseurCadre() : 0;
+    const largeur = boite.width - 2 * baguette;
+    const hauteur = boite.height - 2 * baguette;
+    if (largeur <= 0 || hauteur <= 0) return null;
+    return {
+      gauche: boite.left + baguette,
+      haut: boite.top + baguette,
+      largeur,
+      hauteur,
+    };
+  }
+
+  /**
+   * Fin du geste en cours, gardée sous la main : un aperçu démonté au beau
+   * milieu d'un glissement (changement d'étape, fermeture de la modale)
+   * laisserait sinon ses écouteurs sur `window` et le texte de la page
+   * insélectionnable.
+   */
+  let finDuGeste: (() => void) | null = null;
+  onCleanup(() => finDuGeste?.());
+
+  function demarrerGlissement(
+    evenement: PointerEvent,
+    index: number,
+    depart: PlacementPersonnage,
+    bas: number,
+  ) {
+    if (!props.deplacable || evenement.button !== 0) return;
+    const zone = zoneAffiche();
+    if (!zone) return;
+    evenement.preventDefault();
+    finDuGeste?.();
+
+    const departX = evenement.clientX;
+    const departY = evenement.clientY;
+    // Sans ça, glisser sur l'affiche surligne le titre au lieu de déplacer.
+    const selectionAvant = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+    setGlisse(index);
+
+    const suivre = (e: PointerEvent) => {
+      props.onDeplace?.(
+        index,
+        bornerPlacement(
+          {
+            x: depart.x + (e.clientX - departX) / zone.largeur,
+            y: depart.y + (e.clientY - departY) / zone.hauteur,
+          },
+          depart.scale,
+          bas,
+        ),
+      );
+    };
+    const terminer = () => {
+      window.removeEventListener("pointermove", suivre);
+      window.removeEventListener("pointerup", terminer);
+      window.removeEventListener("pointercancel", terminer);
+      document.body.style.userSelect = selectionAvant;
+      setGlisse(null);
+      finDuGeste = null;
+    };
+
+    // Sur `window`, jamais sur le personnage : chaque déplacement redessine
+    // l'affiche et le moteur peut recréer l'élément sous le doigt. Une écoute
+    // posée sur lui — capture du pointeur comprise — se romprait au premier
+    // pixel parcouru.
+    window.addEventListener("pointermove", suivre);
+    window.addEventListener("pointerup", terminer);
+    window.addEventListener("pointercancel", terminer);
+    finDuGeste = terminer;
+  }
+
+  /** Déplacement aux flèches : le glisser-déposer sans souris ni écran tactile. */
+  function deplacerAuClavier(
+    evenement: KeyboardEvent,
+    index: number,
+    depart: PlacementPersonnage,
+    bas: number,
+  ) {
+    if (!props.deplacable) return;
+    const pas: Record<string, { dx: number; dy: number } | undefined> = {
+      ArrowLeft: { dx: -PAS_CLAVIER, dy: 0 },
+      ArrowRight: { dx: PAS_CLAVIER, dy: 0 },
+      ArrowUp: { dx: 0, dy: -PAS_CLAVIER },
+      ArrowDown: { dx: 0, dy: PAS_CLAVIER },
+    };
+    const vers = pas[evenement.key];
+    if (!vers) return;
+    evenement.preventDefault();
+    props.onDeplace?.(
+      index,
+      bornerPlacement(
+        { x: depart.x + vers.dx, y: depart.y + vers.dy },
+        depart.scale,
+        bas,
+      ),
+    );
+  }
 
   return (
     <div
@@ -182,15 +336,11 @@ export function PosterPreview(props: {
         )}
       </Show>
 
-      {/* Couche personnages — placement automatique, non interactif */}
+      {/* Couche personnages — rangée automatique, déplaçable sur demande */}
       <For each={props.state.characters}>
         {(c, i) => {
-          const place = () =>
-            autoPlace(props.state.characters)[i()] ?? {
-              x: 0.5,
-              y: 0.74,
-              scale: 0.6,
-            };
+          const place = (): PlacementPersonnage =>
+            placements()[i()] ?? { x: 0.5, y: 0.74, scale: 0.6 };
           // Largeur effective = largeur de base × échelle (rangée centrée).
           const widthPct = () => CHAR_BASE_WIDTH * place().scale * 100;
           // Alignement des pieds : un perso dont le contenu s'arrête à bottomPct
@@ -198,11 +348,23 @@ export function PosterPreview(props: {
           // pour que le bas du contenu tombe à y + h/2 quel que soit bottomPct.
           // Hauteur du cadre en % de la HAUTEUR d'affiche : largeur × 2 (aspect
           // 1:2) ÷ 1.4142 (affiche portrait W:H = 1:√2) = widthPct × √2.
-          const bp = () =>
-            props.characterById(c.characterId)?.bottomPct ?? 1;
+          const bp = () => basDuDessin(c.characterId);
           const dropPct = () => (1 - bp()) * widthPct() * Math.SQRT2;
+          const nom = () =>
+            props.characterById(c.characterId)?.name ?? "Personnage";
           return (
             <div
+              onPointerDown={(e) =>
+                demarrerGlissement(e, i(), place(), bp())
+              }
+              onKeyDown={(e) => deplacerAuClavier(e, i(), place(), bp())}
+              tabindex={props.deplacable ? 0 : undefined}
+              role={props.deplacable ? "button" : undefined}
+              aria-label={
+                props.deplacable
+                  ? `${nom()} : glissez-le pour le déplacer sur l'affiche, ou utilisez les flèches`
+                  : undefined
+              }
               style={{
                 position: "absolute",
                 left: `${place().x * 100}%`,
@@ -212,7 +374,16 @@ export function PosterPreview(props: {
                 "aspect-ratio": "1 / 2",
                 // ≥10 : les personnages passent DEVANT le muret (z=5).
                 "z-index": String(10 + c.position),
-                "pointer-events": "none",
+                "pointer-events": props.deplacable ? "auto" : "none",
+                // Le doigt doit déplacer le personnage, pas faire défiler la
+                // page : sans ça le navigateur s'approprie le geste.
+                "touch-action": props.deplacable ? "none" : undefined,
+                "user-select": props.deplacable ? "none" : undefined,
+                cursor: props.deplacable
+                  ? glisse() === i()
+                    ? "grabbing"
+                    : "grab"
+                  : undefined,
               }}
             >
               <CharacterStack

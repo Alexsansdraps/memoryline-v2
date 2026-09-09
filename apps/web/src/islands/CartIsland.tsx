@@ -69,19 +69,48 @@ export function codePromoRetenu(): string {
   }
 }
 
-/** Slug du produit pour reconstruire le lien « Modifier ». */
-async function slugForProduct(
-  productId: number | null,
-): Promise<string | null> {
-  if (productId == null) return null;
-  try {
-    const res = await fetch(`${PUBLIC_API_URL}/products?limit=500`);
-    if (!res.ok) return null;
-    const list = (await res.json()) as { id: number; slug: string }[];
-    return list.find((p) => p.id === productId)?.slug ?? null;
-  } catch {
-    return null;
-  }
+/** Ce que le panier a besoin de savoir d'un produit, au-delà de sa ligne. */
+interface FicheLigne {
+  slug: string | null;
+  /** Le visuel de la boutique, seul aperçu possible d'une affiche non composée. */
+  image: string | null;
+  /** « personnalisable » ou « prete_a_imprimer ». */
+  kind: string | null;
+}
+
+/**
+ * Le catalogue, lu UNE fois par chargement de page.
+ *
+ * Chaque ligne du panier avait sa propre requête : cinq articles, cinq fois
+ * cinq cents produits téléchargés. La promesse est mémorisée, pas son
+ * résultat : deux lignes demandées en même temps partagent le même appel.
+ */
+let catalogueEnCours: Promise<Map<number, FicheLigne>> | null = null;
+function catalogue(): Promise<Map<number, FicheLigne>> {
+  if (!catalogueEnCours)
+    catalogueEnCours = (async () => {
+      const par = new Map<number, FicheLigne>();
+      try {
+        const res = await fetch(`${PUBLIC_API_URL}/products?limit=1000`);
+        if (!res.ok) return par;
+        const list = (await res.json()) as {
+          id: number;
+          slug: string;
+          image: string | null;
+          kind: string | null;
+        }[];
+        for (const p of list)
+          par.set(p.id, {
+            slug: p.slug,
+            image: p.image ?? null,
+            kind: p.kind ?? null,
+          });
+      } catch {
+        /* catalogue injoignable : on retombe sur l'aperçu en calques */
+      }
+      return par;
+    })();
+  return catalogueEnCours;
 }
 
 export default function CartIsland(props: { langue?: Langue }): JSX.Element {
@@ -135,14 +164,10 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
   const [cart, { refetch }] = createResource(async () => {
     const cartId = getCartId();
     const data = await browserApi.cart(cartId);
-    // On résout les slugs en parallèle pour les liens « Modifier ».
-    const slugs = new Map<number, string | null>();
-    await Promise.all(
-      [...new Set(data.items.map((i) => i.productId))].map(async (pid) => {
-        if (pid != null) slugs.set(pid, await slugForProduct(pid));
-      }),
-    );
-    return { items: data.items, slugs, poidsGrammes: data.poidsGrammes ?? 0 };
+    // Le catalogue sert à deux choses : le lien « Modifier » et l'image des
+    // affiches prêtes à imprimer.
+    const fiches = await catalogue();
+    return { items: data.items, fiches, poidsGrammes: data.poidsGrammes ?? 0 };
   });
 
   // Promos actives (ex. « 3 achetées = 1 A4 offerte »).
@@ -299,8 +324,43 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
     // fiche produit. Proposer « Modifier » ouvrirait un configurateur qui n'a
     // rien à éditer.
     if (it.config.aiPublicId) return null;
-    const slug = it.productId != null ? cart()?.slugs.get(it.productId) : null;
+    // Une affiche prête à imprimer ne se compose pas : « Modifier » ouvrirait
+    // un configurateur vide, et la cliente y perdrait son temps.
+    if (pretAImprimer(it)) return null;
+    const slug =
+      it.productId != null ? cart()?.fiches.get(it.productId)?.slug : null;
     return slug ? `/affiches/${slug}?edit=${it.id}` : null;
+  }
+
+  /**
+   * Vrai pour une affiche vendue telle quelle.
+   *
+   * Le genre du produit fait foi. À défaut — catalogue injoignable, produit
+   * disparu — on retombe sur ce que la ligne montre d'elle-même : ni fond ni
+   * personnage, donc rien à composer.
+   */
+  function pretAImprimer(it: OrderItem): boolean {
+    const genre =
+      it.productId != null ? cart()?.fiches.get(it.productId)?.kind : null;
+    if (genre) return genre === "prete_a_imprimer";
+    return (
+      !it.config.backgroundUrl && (it.config.characters?.length ?? 0) === 0
+    );
+  }
+
+  /**
+   * L'image à montrer quand la ligne n'a rien de composé.
+   *
+   * Une affiche prête à imprimer arrive au panier sans fond ni personnage :
+   * l'aperçu en calques n'aurait rien à empiler. On lui rend son visuel de
+   * boutique. Une affiche composée, elle, garde sa pile, même si le catalogue
+   * n'est pas joignable.
+   */
+  function imageSeule(it: OrderItem): string | undefined {
+    if (!pretAImprimer(it) || it.productId == null) return undefined;
+    const image = cart()?.fiches.get(it.productId)?.image;
+    // Le chemin stocké est relatif à l'API : c'est elle qui sert les visuels.
+    return image ? urlAsset(PUBLIC_API_URL, image) : undefined;
   }
 
   /**
@@ -398,6 +458,9 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
                         when={it.config.aiPublicId}
                         fallback={
                       <Show
+                        when={imageSeule(it)}
+                        fallback={
+                      <Show
                         when={biblio()}
                         fallback={<div class="ml-skeleton aspect-[1/1.4142] w-full" />}
                       >
@@ -422,6 +485,18 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
                             ) || undefined
                           }
                         />
+                      </Show>
+                        }
+                      >
+                        {(image) => (
+                          <img
+                            src={image()}
+                            alt=""
+                            loading="lazy"
+                            class="w-full rounded object-cover"
+                            style={{ "aspect-ratio": "1 / 1.4142" }}
+                          />
+                        )}
                       </Show>
                         }
                       >

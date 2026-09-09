@@ -209,6 +209,12 @@ export async function resolveConfig(
   );
 
   for (const character of characters) {
+    // x/y viennent de la configuration telle qu'elle a été validée : la rangée
+    // automatique, ou la place que le client a donnée au personnage en le
+    // glissant sur l'aperçu. Les deux se lisent pareil, et c'est voulu — le
+    // configurateur enregistre le placement FINAL, jamais une consigne à
+    // rejouer ici. Recalculer quoi que ce soit ferait sortir de l'imprimante
+    // une affiche différente de celle qui a été commandée.
     const x = character.x ?? 0.5;
     const scale = character.scale ?? 1;
 

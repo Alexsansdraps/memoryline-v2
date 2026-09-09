@@ -182,7 +182,8 @@ export function variantesDeVue(
  *   qu'une couleur choisie pour un slot déteigne sur les autres (cf.
  *   colorsForScope). Les clés plates "stN" (anciens paniers) restent acceptées
  *   et s'appliquent à toutes les couches.
- * - x/y/scale/position = placement automatique sur l'affiche.
+ * - x/y/scale/position = placement automatique sur l'affiche, sauf x/y quand
+ *   `placementManuel` est vrai : le client a posé le personnage lui-même.
  */
 export interface WorkingCharacter {
   characterId: string | number;
@@ -190,6 +191,12 @@ export interface WorkingCharacter {
   x: number;
   y: number;
   scale: number;
+  /**
+   * Le client a déplacé ce personnage : x/y valent les siens, il ne suit plus
+   * la rangée. Faux tant qu'il n'y a pas touché — c'est le rangement
+   * automatique qui reste la règle.
+   */
+  placementManuel: boolean;
   /** slot -> variantId (optionnel). */
   assets: Partial<Record<Slot, string | number>>;
   /** "scope:zone" -> hex (scope = "base" | slot ; clés plates legacy tolérées). */
@@ -311,6 +318,7 @@ export function stateFromConfig(cfg: PosterConfig): ConfiguratorState {
       x: c.x ?? 0.5,
       y: c.y ?? 0.5,
       scale: c.scale ?? 1,
+      placementManuel: c.placementManuel === true,
       assets,
       colors: { ...(c.colors ?? {}) },
     };
@@ -329,7 +337,10 @@ export const CHAR_BASE_WIDTH = 0.22;
  * BAS de l'affiche, centrée en groupe et recentrée à chaque ajout.
  * Les persos rétrécissent quand ils sont nombreux pour tenir côte à côte sans
  * déborder, et sont espacés régulièrement autour du centre (x=0.5).
- * Le client ne positionne plus à la main (§18.2 F).
+ *
+ * C'est le comportement par DÉFAUT : un personnage auquel le client n'a pas
+ * touché se range ici, et la rangée se recompose à chaque ajout. Voir
+ * `placementsAffiche` pour ceux qu'il a déplacés lui-même.
  */
 export function autoPlace(
   characters: WorkingCharacter[],
@@ -369,12 +380,85 @@ export function autoPlace(
   });
 }
 
+/**
+ * Placement d'un personnage sur l'affiche : le centre de son cadre et son
+ * échelle, en fractions de la zone d'affiche.
+ */
+export interface PlacementPersonnage {
+  x: number;
+  y: number;
+  scale: number;
+}
+
+/**
+ * Hauteur du cadre d'un personnage en fraction de la HAUTEUR de l'affiche.
+ *
+ * Le cadre est deux fois plus haut que large et l'affiche est un portrait
+ * 1:√2 : une largeur comptée en fraction de largeur devient une hauteur en
+ * fraction de hauteur en la multipliant par √2 (2 ÷ √2).
+ */
+function hauteurCadre(scale: number): number {
+  return CHAR_BASE_WIDTH * scale * Math.SQRT2;
+}
+
+function entre(valeur: number, mini: number, maxi: number): number {
+  return Math.min(Math.max(valeur, mini), maxi);
+}
+
+/**
+ * Ramène une position dans l'affiche : le dessin doit y tenir en entier.
+ *
+ * `bas` = part du cadre réellement occupée par le dessin (bottomPct). C'est
+ * elle qui dit de combien le cadre a été descendu pour poser les pieds au sol,
+ * donc où tombe vraiment le haut du dessin : sans elle, un animal, tout en bas
+ * de son cadre, refuserait de descendre jusqu'au muret.
+ */
+export function bornerPlacement(
+  position: { x: number; y: number },
+  scale: number,
+  bas: number,
+): { x: number; y: number } {
+  const largeur = CHAR_BASE_WIDTH * scale;
+  const hauteur = hauteurCadre(scale);
+  const descente = (1 - bas) * hauteur;
+  return {
+    x: entre(position.x, largeur / 2, 1 - largeur / 2),
+    y: entre(position.y, hauteur / 2 - descente, 1 - hauteur / 2),
+  };
+}
+
+/**
+ * Placement final des personnages : la rangée automatique, sauf pour ceux que
+ * le client a posés lui-même, qui gardent leur position.
+ *
+ * L'ÉCHELLE reste toujours celle de la rangée, même après un déplacement :
+ * glisser un personnage ne le redimensionne pas, et ajouter un personnage
+ * continue de resserrer tout le monde — sinon le nouveau venu rapetisserait
+ * seul, à côté de géants.
+ *
+ * `basDuDessin` donne le bottomPct de chaque personnage ; sans lui on suppose
+ * un dessin qui remplit son cadre, ce qui borne un peu plus court.
+ */
+export function placementsAffiche(
+  characters: WorkingCharacter[],
+  basDuDessin?: (c: WorkingCharacter) => number,
+): PlacementPersonnage[] {
+  const rangee = autoPlace(characters);
+  return characters.map((c, i) => {
+    const auto = rangee[i] ?? { x: 0.5, y: 0.816, scale: 0.6 };
+    if (!c.placementManuel) return auto;
+    const pose = bornerPlacement(c, auto.scale, basDuDessin?.(c) ?? 1);
+    return { x: pose.x, y: pose.y, scale: auto.scale };
+  });
+}
+
 /** Sérialise l'état de travail vers un PosterConfig propre (schemaVersion 1). */
 export function configFromState(
   state: ConfiguratorState,
   productId: string | number | undefined,
+  basDuDessin?: (c: WorkingCharacter) => number,
 ): PosterConfig {
-  const placement = autoPlace(state.characters);
+  const placement = placementsAffiche(state.characters, basDuDessin);
   const characters: Character[] = state.characters.map((c, i) => {
     const p = placement[i] ?? { x: c.x, y: c.y, scale: c.scale };
     // assets : slot -> variantId, sans les slots vides.
@@ -383,7 +467,7 @@ export function configFromState(
       const v = c.assets[slot];
       if (v !== undefined) assets[slot] = v;
     }
-    return {
+    const perso: Character = {
       typeId: c.characterId,
       position: c.position,
       x: p.x,
@@ -392,6 +476,10 @@ export function configFromState(
       assets,
       colors: { ...c.colors },
     };
+    // Le drapeau ne part QUE s'il a lieu d'être : une configuration sans lui se
+    // range automatiquement à la réouverture, comme toutes les précédentes.
+    if (c.placementManuel) perso.placementManuel = true;
+    return perso;
   });
   return {
     schemaVersion: 1,
@@ -481,6 +569,7 @@ export function defaultCharacter(
     x: 0.5,
     y: 0.55,
     scale: 1,
+    placementManuel: false,
     assets,
     colors,
   };

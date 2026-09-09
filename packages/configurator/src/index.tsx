@@ -27,6 +27,7 @@ import {
   NONE_ASSET,
   type CadreDTO,
   type PieceCategoryDTO,
+  type WorkingCharacter,
 } from "./store";
 import { PosterPreview } from "./components/PosterPreview";
 import { StepBackgroundText } from "./components/StepBackgroundText";
@@ -228,8 +229,15 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     const target = STEPS[i - 1];
     if (target) goToStep(target);
   }
+  /** Bas réel du dessin d'un personnage, pour aligner ses pieds au sol. */
+  const basDuDessin = (c: WorkingCharacter): number =>
+    characterById(c.characterId)?.bottomPct ?? 1;
+
   function submit() {
-    props.onSubmit(configFromState(state, props.product.id));
+    // Le même calage qu'à l'écran part dans la commande : c'est ce x/y-là que
+    // le PDF d'impression relit, l'affiche imprimée ne peut donc pas différer
+    // de celle que le client a composée.
+    props.onSubmit(configFromState(state, props.product.id, basDuDessin));
   }
 
   /* --------------------------- étape 1 ------------------------------------ */
@@ -396,6 +404,34 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     if (index > 0) swap(index, index - 1);
   }
 
+  /**
+   * Le client vient de poser un personnage sur l'affiche : sa place devient la
+   * sienne, et ce personnage quitte la rangée automatique.
+   */
+  function deplacerPersonnage(
+    index: number,
+    position: { x: number; y: number },
+  ) {
+    mutate((s) => {
+      const c = s.characters[index];
+      if (!c) return;
+      c.x = position.x;
+      c.y = position.y;
+      c.placementManuel = true;
+    });
+  }
+
+  /** Tout le monde retourne dans la rangée : les places posées sont oubliées. */
+  function replacerAutomatiquement() {
+    mutate((s) => {
+      for (const c of s.characters) c.placementManuel = false;
+    });
+  }
+
+  /** Au moins un personnage a été posé à la main. */
+  const aDesPlacesPosees = () =>
+    state.characters.some((c) => c.placementManuel);
+
   /* --------------------------- étape 3 ------------------------------------ */
   /** Choix du cadre — null = sans cadre. */
   function setCadre(frameId: string | number | null) {
@@ -475,6 +511,11 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
           }
           assetBaseUrl={props.assetBaseUrl}
           cadre={cadreChoisi() ?? null}
+          // On ne compose qu'ici, et seulement à l'étape des personnages :
+          // ailleurs, un glissement n'aurait aucun sens et l'affiche doit
+          // rester une image.
+          deplacable={state.step === "characters"}
+          onDeplace={deplacerPersonnage}
         />
       </div>
       </Show>
@@ -556,6 +597,32 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             onChangeCharacter={changeCharacter}
             messages={msg()}
           />
+          {/* Le glisser-déposer ne se devine pas : on l'annonce, et on laisse
+              de quoi revenir en arrière — un personnage posé de travers ne se
+              remettrait plus dans la rangée tout seul. */}
+          <Show when={!editingActive() && state.characters.length > 0}>
+            <div
+              style={{
+                display: "flex",
+                "align-items": "center",
+                "justify-content": "space-between",
+                gap: "10px",
+                "margin-top": "12px",
+                "font-size": "12px",
+                color: "#6b7280",
+              }}
+            >
+              <span>
+                Glissez les personnages sur l'affiche pour les placer où vous
+                voulez.
+              </span>
+              <Show when={aDesPlacesPosees()}>
+                <Button variant="secondary" onClick={replacerAutomatiquement}>
+                  Replacer automatiquement
+                </Button>
+              </Show>
+            </div>
+          </Show>
         </Show>
 
         <Show when={state.step === "format"}>

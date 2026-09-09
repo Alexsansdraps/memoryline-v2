@@ -82,6 +82,15 @@ export const characterSchema = z.object({
   x: z.number().optional(),
   y: z.number().optional(),
   scale: z.number().optional(),
+  /**
+   * Le client a posé ce personnage lui-même, `x`/`y` sont SON choix.
+   *
+   * Absent, `x`/`y` ne sont que la trace du rangement automatique du jour où
+   * la configuration a été enregistrée : les rouvrir comme un choix figerait
+   * la rangée des paniers et des commandes d'avant le glisser-déposer, qui
+   * doivent continuer à se ranger toutes seules.
+   */
+  placementManuel: z.boolean().optional(),
   /** Asset choisi par slot : slot -> assetId. */
   assets: z.record(z.string(), z.union([z.string(), z.number()])),
   /** Couleurs personnalisées : zone -> couleur hex. */
