@@ -111,7 +111,7 @@ function originePublique(): string {
 }
 
 const adresseStand = code
-  ? `${originePublique()}/salon?code=${encodeURIComponent(code)}`
+  ? `${originePublique()}/stand?code=${encodeURIComponent(code)}`
   : "";
 
 /** Les deux côtés de l'interrupteur : celui en vigueur est plein. */
@@ -121,7 +121,7 @@ const classeInterrupteur = (actif: boolean) =>
   } disabled:cursor-not-allowed disabled:opacity-40`;
 ---
 
-<Admin title="Ventes salon">
+<Admin title="Ventes stand">
   {flash && (
     <p
       class={`mb-4 rounded border px-3 py-2 text-sm ${
@@ -225,7 +225,7 @@ const classeInterrupteur = (actif: boolean) =>
         </div>
         <p class="mt-1 text-xs text-bo-muted">
           Six caractères, sans O ni I qu'on confondrait avec 0 et 1. En tirer
-          un nouveau coupe l'ancienne adresse : à faire après le salon, pas
+          un nouveau coupe l'ancienne adresse : à faire après le stand, pas
           pendant.
         </p>
       </form>

@@ -22,7 +22,7 @@ try {
         {[
           ["Produits", stats.products],
           ["Commandes en ligne", stats.ordersByChannel.web ?? 0],
-          ["Ventes salon", stats.ordersByChannel.salon ?? 0],
+          ["Ventes stand", stats.ordersByChannel.salon ?? 0],
           ["Clients", stats.customers],
         ].map(([label, value]) => (
           <div class="bg-bo-surface border border-bo-border rounded-lg p-4">
@@ -42,7 +42,7 @@ try {
           <li><a class="text-bo-accent hover:underline" href={url("/bandeau")}>→ Modifier le bandeau du site</a></li>
         </>
       )}
-      <li><a class="text-bo-accent hover:underline" href={url("/ventes-salon")}>→ Voir les ventes salon</a></li>
+      <li><a class="text-bo-accent hover:underline" href={url("/ventes-salon")}>→ Voir les ventes stand</a></li>
       <li><a class="text-bo-accent hover:underline" href={url("/commandes")}>→ Voir les commandes en ligne</a></li>
       {isOwner && (
         <li><a class="text-bo-accent hover:underline" href={url("/contenu")}>→ Éditer le contenu du site</a></li>

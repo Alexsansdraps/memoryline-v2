@@ -149,7 +149,7 @@ function quand(iso: string | null | undefined): string {
 
 const NOM_CANAL: Record<string, string> = {
   web: "Boutique en ligne",
-  salon: "Ventes salon",
+  salon: "Ventes stand",
 };
 
 const BADGE_PAIEMENT: Record<string, { texte: string; classe: string }> = {
@@ -886,7 +886,7 @@ const LIBELLE_MOUVEMENT: Record<string, string> = {
               <input
                 name="tags"
                 value={(order.tags ?? []).join(", ")}
-                placeholder="cadeau, urgent, salon de Nantes"
+                placeholder="cadeau, urgent, stand de Nantes"
                 class="w-full rounded border border-bo-border px-2 py-1"
               />
               <p class="text-xs text-bo-muted">Séparées par des virgules.</p>

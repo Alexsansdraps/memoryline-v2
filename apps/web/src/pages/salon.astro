@@ -1,33 +1,13 @@
 ---
-import "../styles/global.css";
-import StandSalon from "../islands/StandSalon.tsx";
-
 /**
- * Stand de salon — outil INTERNE, hors du routage [...lang].
+ * L'ancienne adresse du stand.
  *
- * Une seule langue (le français : c'est la vendeuse qui s'en sert), aucune
- * indexation, et surtout pas l'habillage de la boutique : ni en-tête, ni
- * panier, ni sélecteur de langue. Une tablette posée sur une table n'a que
- * faire d'une navigation de site — et le moindre lien y ramènerait le client
- * vers des prix qui ne sont pas ceux du stand.
- *
- * Rendue à la demande, donc absente du plan de site.
+ * Le mot « salon » a laissé la place à « stand » partout où on le lit. Cette
+ * adresse-ci survit parce qu'elle est peut-être ouverte sur une tablette en
+ * ce moment même, et parce qu'un code d'accès envoyé par message ne se
+ * réécrit pas. Elle emmène au même endroit, code compris.
  */
 export const prerender = false;
+const suite = Astro.url.search;
+return Astro.redirect(`/stand${suite}`, 301);
 ---
-
-<!doctype html>
-<html lang="fr">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="robots" content="noindex, nofollow" />
-    <title>Stand — Memory Line</title>
-  </head>
-  <body class="bg-paper text-ink">
-    {/* Tout le parcours est interactif et dépend du code du stand : rien
-        n'est rendu côté serveur, donc aucune donnée de catalogue — prix
-        compris — ne transite par le HTML de cette page. */}
-    <StandSalon client:only="solid-js" />
-  </body>
-</html>
