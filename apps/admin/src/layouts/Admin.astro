@@ -133,7 +133,9 @@ const isActive = (href: string) =>
               const active =
                 isActive(item.href) || item.children.some((c) => isActive(c.href));
               return (
-                <>
+                // Un bloc par entrée, sous-liens compris : sans lui, déplacer
+                // « Produits » laisserait ses sous-pages derrière.
+                <div data-entree={item.href} class="ml-entree">
                   <a
                     href={url(item.href)}
                     class={`flex items-center gap-3 px-5 py-2.5 text-sm transition-colors ${
@@ -158,14 +160,158 @@ const isActive = (href: string) =>
                       <span>{child.label}</span>
                     </a>
                   ))}
-                </>
+                </div>
               );
             })
           }
+          {/* N'apparaît qu'une fois l'ordre changé : un bouton d'annulation
+              visible en permanence laisserait croire qu'il y a quelque chose
+              à défaire. */}
+          <button
+            type="button"
+            id="ml-ordre-defaut"
+            hidden
+            class="mt-2 w-full px-5 py-2 text-left text-[11px] text-white/40 hover:text-white/70"
+          >
+            Remettre le menu dans l'ordre d'origine
+          </button>
         </nav>
         <div class="px-5 py-3 text-xs text-white/40 border-t border-white/10">
           Back-office · v0{!isOwner && " · vendeur"}
         </div>
+        <script is:inline>
+          (function () {
+            var menu = document.querySelector("aside nav");
+            if (!menu) return;
+            var CLE = "ml_ordre_menu";
+
+            function entrees() {
+              return Array.prototype.slice.call(
+                menu.querySelectorAll("[data-entree]"),
+              );
+            }
+            function ordreActuel() {
+              return entrees().map(function (e) {
+                return e.dataset.entree;
+              });
+            }
+            function lire() {
+              try {
+                var brut = localStorage.getItem(CLE);
+                var liste = brut ? JSON.parse(brut) : null;
+                return Array.isArray(liste) ? liste : null;
+              } catch (e) {
+                return null;
+              }
+            }
+            function ecrire(liste) {
+              try {
+                if (liste) localStorage.setItem(CLE, JSON.stringify(liste));
+                else localStorage.removeItem(CLE);
+              } catch (e) {
+                /* sans stockage, l'ordre ne tient que le temps de la page */
+              }
+              var bouton = document.getElementById("ml-ordre-defaut");
+              if (bouton) bouton.hidden = !liste;
+            }
+
+            // Les entrées connues d'abord, dans l'ordre retenu ; les autres
+            // gardent leur place d'origine derrière. Un écran ajouté demain
+            // apparaît donc, au lieu de disparaître faute d'être dans la liste.
+            var retenu = lire();
+            if (retenu) {
+              var parCle = {};
+              entrees().forEach(function (e) {
+                parCle[e.dataset.entree] = e;
+              });
+              retenu.forEach(function (cle) {
+                if (parCle[cle]) menu.appendChild(parCle[cle]);
+                delete parCle[cle];
+              });
+              Object.keys(parCle).forEach(function (cle) {
+                menu.appendChild(parCle[cle]);
+              });
+              var b = document.getElementById("ml-ordre-defaut");
+              if (b) {
+                b.hidden = false;
+                menu.appendChild(b);
+              }
+            }
+
+            // Le seuil est ce qui distingue un clic d'un déplacement : sans
+            // lui, ouvrir un écran deviendrait impossible, chaque pression
+            // étant lue comme le début d'un glissement.
+            var SEUIL = 6;
+            var tenue = null;
+            var depart = 0;
+            var glisse = false;
+
+            menu.addEventListener("pointerdown", function (e) {
+              if (e.button !== 0) return;
+              var entree = e.target.closest("[data-entree]");
+              if (!entree) return;
+              tenue = entree;
+              depart = e.clientY;
+              glisse = false;
+
+              function bouger(ev) {
+                if (!tenue) return;
+                if (!glisse) {
+                  if (Math.abs(ev.clientY - depart) < SEUIL) return;
+                  glisse = true;
+                  tenue.style.opacity = "0.5";
+                  document.body.style.userSelect = "none";
+                }
+                var sous = document.elementFromPoint(ev.clientX, ev.clientY);
+                var cible =
+                  sous && sous.closest ? sous.closest("[data-entree]") : null;
+                if (!cible || cible === tenue || cible.parentElement !== menu)
+                  return;
+                var apres =
+                  cible.compareDocumentPosition(tenue) &
+                  Node.DOCUMENT_POSITION_PRECEDING;
+                menu.insertBefore(tenue, apres ? cible.nextSibling : cible);
+              }
+              function lacher() {
+                if (tenue) tenue.style.opacity = "";
+                document.body.style.userSelect = "";
+                window.removeEventListener("pointermove", bouger);
+                window.removeEventListener("pointerup", lacher);
+                window.removeEventListener("pointercancel", lacher);
+                if (glisse) ecrire(ordreActuel());
+                tenue = null;
+                // Le drapeau survit jusqu'au clic qui suit le relâchement,
+                // sinon le lien s'ouvrirait au bout du déplacement.
+                setTimeout(function () {
+                  glisse = false;
+                }, 0);
+              }
+              window.addEventListener("pointermove", bouger);
+              window.addEventListener("pointerup", lacher);
+              window.addEventListener("pointercancel", lacher);
+            });
+
+            menu.addEventListener(
+              "click",
+              function (e) {
+                if (glisse) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }
+              },
+              true,
+            );
+
+            document
+              .getElementById("ml-ordre-defaut")
+              ?.addEventListener("click", function () {
+                ecrire(null);
+                window.location.reload();
+              });
+
+            ecrire(retenu);
+          })();
+        </script>
       </aside>
 
       <div class="flex-1 min-w-0">
