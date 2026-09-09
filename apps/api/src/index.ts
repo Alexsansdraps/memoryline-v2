@@ -56,6 +56,8 @@ import { mountCollections } from "./collections.js";
 import { mountImportProduits } from "./import-produits.js";
 import { mountCartesCadeaux } from "./cartes-cadeaux.js";
 import { mountLettre } from "./lettre.js";
+import { mountFinances } from "./finances.js";
+import { mountRecherche } from "./recherche.js";
 import { mountCourriers } from "./courriers.js";
 import { mountSalonRoutes } from "./salon.js";
 import { mountCompteRoutes } from "./comptes.js";
@@ -1096,6 +1098,14 @@ mountCartesCadeaux(app);
 // désabonnement qui doit fonctionner sans être connecté.
 mountLettre(app);
 
+// Finances : les quatre sources d'argent côte à côte, et ce qui ne se
+// recoupe pas. Réservé à la propriétaire, la route le revérifie elle-même.
+mountFinances(app);
+
+// Recherche globale : le champ en tête du back-office. Réservée à la
+// propriétaire, et elle ne lit jamais le code d'accès d'un stand.
+mountRecherche(app);
+
 // Pages libres et menu du site, écrits depuis le back-office. Ouvrir un rayon
 // « Magnets » ne demande plus de toucher au code.
 mountCms(app);
@@ -1854,19 +1864,122 @@ app.post("/admin/promos/:id/toggle", async (c) => {
   return c.json(row);
 });
 
+/**
+ * Le bandeau tel que le BACK-OFFICE doit le voir, avec la regle qu'il annonce.
+ *
+ * L'ecran lisait jusqu'ici la route publique, qui ne rend que les bandeaux
+ * actifs et dans leur periode. Bandeau eteint = ecran vide = champ « id »
+ * absent = l'enregistrement suivant creait une DEUXIEME ligne au lieu de
+ * modifier la premiere, et le site se mettait a afficher l'ancienne.
+ */
+app.get("/admin/banner", async (c) => {
+  const [banner] = await db
+    .select()
+    .from(schema.announcementBanners)
+    .orderBy(desc(schema.announcementBanners.priority), desc(schema.announcementBanners.id))
+    .limit(1);
+  if (!banner) return c.json(null);
+  let promo = null;
+  if (banner.promoRuleId) {
+    [promo] = await db
+      .select()
+      .from(schema.promoRules)
+      .where(eq(schema.promoRules.id, banner.promoRuleId));
+  }
+  return c.json({ ...banner, promo: promo ?? null });
+});
+
 app.post("/admin/banner", async (c) => {
   const body = await c.req.json();
+  const actif = body.active ?? true;
+  const debut = body.startsAt ? new Date(body.startsAt) : null;
+  const fin = body.endsAt ? new Date(body.endsAt) : null;
+
+  // La regle annoncee, s'il y en a une. Trois cas, et un seul silencieux :
+  //   `promo` absent  -> on ne touche pas au lien (compatibilite).
+  //   `promo` null    -> le bandeau n'annonce plus rien.
+  //   `promo` objet   -> on l'ecrit et on la lie.
+  const [avant] = body.id
+    ? await db
+        .select({ promoRuleId: schema.announcementBanners.promoRuleId })
+        .from(schema.announcementBanners)
+        .where(eq(schema.announcementBanners.id, Number(body.id)))
+    : [];
+  const ancienneRegle = avant?.promoRuleId ?? null;
+  let promoRuleId: number | null | undefined =
+    body.promoRuleId === undefined ? undefined : body.promoRuleId ? Number(body.promoRuleId) : null;
+
+  if (body.promo !== undefined) {
+    if (body.promo === null) {
+      promoRuleId = null;
+    } else {
+      const p = body.promo as Record<string, unknown>;
+      if (p.id && !p.type) {
+        // Une regle deja enregistree, choisie dans la liste : on la lie sans
+        // rien reecrire de ce qu'elle dit. Seuls son etat et ses dates suivent
+        // le bandeau.
+        const [lie] = await db
+          .update(schema.promoRules)
+          .set({ active: actif, startsAt: debut, endsAt: fin, updatedAt: new Date() })
+          .where(eq(schema.promoRules.id, Number(p.id)))
+          .returning();
+        promoRuleId = lie?.id ?? null;
+      } else {
+      // La regle suit le bandeau : meme etat, memes dates. C'est tout le sens
+      // du lien — on ne peut pas annoncer une offre eteinte, ni faire tourner
+      // une offre que plus rien n'annonce.
+      const valeurs = {
+        name: String(p.name ?? "Offre du bandeau"),
+        type: String(p.type ?? "percent"),
+        config: p.config ?? {},
+        code: p.code ? String(p.code) : null,
+        active: actif,
+        priority: Number(p.priority ?? 10),
+        startsAt: debut,
+        endsAt: fin,
+        updatedAt: new Date(),
+      };
+      const cible = p.id ? Number(p.id) : ancienneRegle;
+      if (cible) {
+        const [maj] = await db
+          .update(schema.promoRules)
+          .set(valeurs)
+          .where(eq(schema.promoRules.id, cible))
+          .returning();
+        promoRuleId = maj?.id ?? null;
+      } else {
+        const [cree] = await db.insert(schema.promoRules).values(valeurs).returning();
+        promoRuleId = cree?.id ?? null;
+      }
+      }
+    }
+  }
+
+  // Une regle qu'on vient de delier ne doit pas continuer a remiser dans le
+  // dos de la boutique : elle s'eteint avec le bandeau qui l'annoncait. Elle
+  // reste dans l'ecran Promotions, ou elle peut etre rallumee a la main.
+  if (
+    ancienneRegle &&
+    promoRuleId !== undefined &&
+    promoRuleId !== ancienneRegle
+  ) {
+    await db
+      .update(schema.promoRules)
+      .set({ active: false, updatedAt: new Date() })
+      .where(eq(schema.promoRules.id, ancienneRegle));
+  }
+
   const values = {
     message: String(body.message ?? ""),
     linkUrl: body.linkUrl || null,
     linkLabel: body.linkLabel || null,
     bgColor: body.bgColor || "#20211f",
     textColor: body.textColor || "#f7f3ec",
-    active: body.active ?? true,
+    active: actif,
     priority: Number(body.priority ?? 0),
-    promoRuleId: body.promoRuleId ? Number(body.promoRuleId) : null,
-    startsAt: body.startsAt ? new Date(body.startsAt) : null,
-    endsAt: body.endsAt ? new Date(body.endsAt) : null,
+    ...(promoRuleId === undefined ? {} : { promoRuleId }),
+    startsAt: debut,
+    endsAt: fin,
   };
   if (body.id) {
     const [row] = await db

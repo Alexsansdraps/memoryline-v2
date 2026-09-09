@@ -106,6 +106,78 @@ function unites(lignes: readonly LignePanier[], format?: unknown): number[] {
   return out.sort((a, b) => a - b);
 }
 
+/**
+ * Part remisée sur les exemplaires offerts d'un « X achetées = Y ».
+ *
+ * Absent = 100 %, donc offert. Une règle enregistrée avant que la remise
+ * partielle existe garde ainsi exactement le sens qu'elle avait.
+ */
+function pourcentageOffert(cfg: Record<string, unknown>): number {
+  return Math.min(100, Math.max(0, nombre(cfg.percent, 100)));
+}
+
+/** « 4e », « 2e », « 1re » — le rang d'un exemplaire dans le panier. */
+function rang(n: number): string {
+  return n <= 1 ? "1re" : `${n}e`;
+}
+
+function euros(cents: number): string {
+  const v = cents / 100;
+  return (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(".", ",")) + " €";
+}
+
+/**
+ * La règle, écrite en français.
+ *
+ * Le bandeau du site annonce une offre, le back-office la configure, le
+ * panier la déduit : les trois doivent dire la même chose. Ils tiennent la
+ * phrase d'ici, pour qu'aucun écran ne puisse promettre autre chose que ce
+ * que le calcul fait.
+ */
+export function libelleRegle(regle: RegleParier): string {
+  const cfg = (regle.config ?? {}) as Record<string, unknown>;
+  if (regle.type === "buy_x_get_y") {
+    const buyQty = Math.max(1, Math.floor(nombre(cfg.buyQty, 3)));
+    const getQty = Math.max(1, Math.floor(nombre(cfg.getQty, 1)));
+    const pct = pourcentageOffert(cfg);
+    const format = typeof cfg.format === "string" && cfg.format ? cfg.format : null;
+    const achetees = buyQty === 1 ? "1 affiche achetée" : `${buyQty} affiches achetées`;
+    const cibles =
+      getQty === 1
+        ? `la ${rang(buyQty + 1)}`
+        : `les ${rang(buyQty + 1)} à ${rang(buyQty + getQty)}`;
+    const effet =
+      pct >= 100
+        ? getQty === 1
+          ? "offerte"
+          : "offertes"
+        : `à -${pct} %`;
+    const ou = format ? ` (format ${format} seulement)` : "";
+    return `${achetees}, ${cibles} ${effet}${ou}`;
+  }
+  if (regle.type === "percent")
+    return `-${Math.min(100, Math.max(0, nombre(cfg.percent, 0)))} % sur le panier`;
+  if (regle.type === "fixed")
+    return `-${euros(Math.max(0, Math.round(nombre(cfg.amountCents, 0))))} sur le panier`;
+  if (regle.type === "free_shipping_over")
+    return `Livraison offerte dès ${euros(Math.max(0, Math.round(nombre(cfg.thresholdCents, 0))))}`;
+  return regle.type;
+}
+
+/**
+ * Combien d'exemplaires il faut dans le panier pour que la règle se déclenche.
+ *
+ * Sert à l'écrire à l'écran : une offre qui ne se déclenche jamais parce que
+ * personne n'achète autant d'affiches est une offre qui n'existe pas.
+ */
+export function seuilDeclenchement(regle: RegleParier): number {
+  const cfg = (regle.config ?? {}) as Record<string, unknown>;
+  if (regle.type !== "buy_x_get_y") return 1;
+  const buyQty = Math.max(1, Math.floor(nombre(cfg.buyQty, 3)));
+  const getQty = Math.max(1, Math.floor(nombre(cfg.getQty, 1)));
+  return buyQty + getQty;
+}
+
 export interface RemiseAppliquee {
   regle: string;
   montantCents: number;
@@ -138,14 +210,22 @@ export function remisesPanier(
     let montant = 0;
 
     if (regle.type === "buy_x_get_y") {
-      // Par tranche de `buyQty` exemplaires éligibles, on offre `getQty`
-      // exemplaire(s) : les MOINS CHERS, comme l'annonce le bandeau.
+      // Un LOT vaut `buyQty` exemplaires payés PLUS `getQty` remisés : c'est
+      // ce que dit « 3 achetées, la 4e offerte », et c'est ce que fait
+      // Shopify. Compter les lots sur `buyQty` seul offrait la troisième des
+      // trois — les trois annoncées n'étaient jamais payées — et, sur
+      // « 1 achetée, la 2e à -50 % », remisait le panier entier.
       const buyQty = Math.max(1, Math.floor(nombre(cfg.buyQty, 3)));
       const getQty = Math.max(1, Math.floor(nombre(cfg.getQty, 1)));
+      // Sans pourcentage, l'exemplaire est offert : c'est le cas courant, et
+      // c'est le sens des règles écrites avant que la remise partielle existe.
+      const pct = pourcentageOffert(cfg);
+      // Les MOINS CHERS d'abord : c'est ce que le client attend d'une offre,
+      // et c'est ce que l'écran lui montre.
       const eligibles = unites(lignes, cfg.format);
-      const offerts = Math.floor(eligibles.length / buyQty) * getQty;
+      const offerts = Math.floor(eligibles.length / (buyQty + getQty)) * getQty;
       for (let i = 0; i < offerts && i < eligibles.length; i++) {
-        montant += eligibles[i]!;
+        montant += Math.round((eligibles[i]! * pct) / 100);
       }
     } else if (regle.type === "percent") {
       const pct = Math.min(100, Math.max(0, nombre(cfg.percent, 0)));

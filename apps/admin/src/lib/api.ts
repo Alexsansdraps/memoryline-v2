@@ -64,6 +64,17 @@ export interface Banner {
   bgColor: string | null;
   textColor: string | null;
   active: boolean;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  promoRuleId?: number | null;
+}
+
+/**
+ * Le bandeau tel que le back-office le lit : meme eteint, et avec la regle
+ * qu'il annonce. La route publique, elle, ne rend que les bandeaux visibles.
+ */
+export interface BannerBo extends Banner {
+  promo: PromoRule | null;
 }
 
 export interface Stats {
@@ -1027,8 +1038,18 @@ export function adminApi(request?: Request) {
     upsertPromo: (data: Partial<PromoRule>) =>
       req<PromoRule>("POST", "/admin/promos", data, cookie),
     banner: () => req<Banner | null>("GET", "/banner", undefined, cookie),
-    upsertBanner: (data: Partial<Banner>) =>
-      req<Banner>("POST", "/admin/banner", data, cookie),
+    /** Le bandeau du back-office : meme eteint, et avec sa regle. */
+    bannerBo: () => req<BannerBo | null>("GET", "/admin/banner", undefined, cookie),
+    /**
+     * Enregistre le bandeau ET l'offre qu'il annonce.
+     *
+     * `promo` absent ne touche pas au lien ; `null` le retire (la regle liee
+     * s'eteint) ; un objet ecrit la regle, qui prend l'etat et les dates du
+     * bandeau.
+     */
+    upsertBanner: (
+      data: Partial<Banner> & { promo?: Record<string, unknown> | null },
+    ) => req<Banner>("POST", "/admin/banner", data, cookie),
     settings: () =>
       req<Record<string, unknown>>("GET", "/settings", undefined, cookie),
     setSetting: (key: string, value: unknown) =>
@@ -1523,8 +1544,17 @@ export function adminApi(request?: Request) {
       },
     ) => req<{ ok: true }>("POST", `/admin/collections/${id}`, corps, cookie),
     /** Supprime une collection vide. Refusé si elle contient des produits. */
+    /**
+     * Supprime la collection. Les affiches qui y étaient rangées en sortent
+     * simplement : `detachees` dit combien, pour pouvoir le redire à l'écran.
+     */
     supprimerCollection: (id: number) =>
-      req<{ ok: true }>("DELETE", `/admin/collections/${id}`, undefined, cookie),
+      req<{ ok: true; detachees: number }>(
+        "DELETE",
+        `/admin/collections/${id}`,
+        undefined,
+        cookie,
+      ),
     /** Range des produits dans la collection, ou les en sort. */
     produitsDeCollection: (
       id: number,
