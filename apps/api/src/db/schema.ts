@@ -1248,6 +1248,89 @@ export const newsletterSubs = pgTable(
   (t) => [uniqueIndex("newsletter_email_uniq").on(t.email)],
 );
 
+// --- Lettre d'information : ce que la boutique écrit et envoie ------------
+
+/**
+ * Une lettre d'information, de son brouillon à son envoi.
+ *
+ * Le nombre de destinataires et celui des envois réussis sont FIGÉS ici au
+ * moment de l'envoi, au lieu d'être recomptés à l'affichage. La liste bouge
+ * tous les jours : recomptée un mois plus tard, elle raconterait l'envoi
+ * d'aujourd'hui avec les inscrits de demain.
+ */
+export const lettres = pgTable("lettre", {
+  id: serial("id").primaryKey(),
+  /** Nom interne, pour s'y retrouver dans la liste. Jamais envoyé. */
+  titre: text("titre").notNull(),
+  /** L'objet du courrier, celui que le destinataire voit dans sa boîte. */
+  objet: text("objet").notNull(),
+  contenuHtml: text("contenu_html").notNull().default(""),
+  /**
+   * « brouillon », « en_cours » ou « envoyee ».
+   *
+   * L'état intermédiaire n'est pas décoratif : l'envoi part par paquets et
+   * dure plusieurs requêtes. Sans lui, une lettre à moitié partie resterait
+   * un brouillon, donc modifiable et supprimable pendant que le reste part.
+   */
+  etat: text("etat").notNull().default("brouillon"),
+  envoyeeLe: timestamp("envoyee_le", { withTimezone: true }),
+  /** Personnes visées au lancement, avant le premier paquet. */
+  destinatairesPrevus: integer("destinataires_prevus").notNull().default(0),
+  envoisReussis: integer("envois_reussis").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * Une ligne par destinataire et par lettre : qui a reçu quoi, et quand.
+ *
+ * L'index unique (lettre, adresse) est la seule chose qui empêche vraiment
+ * d'écrire deux fois à la même personne. Un envoi interrompu se reprend en
+ * sautant les lignes déjà posées ; sans cette table, reprendre voudrait dire
+ * tout renvoyer, y compris à ceux qui ont déjà lu la lettre.
+ */
+export const lettreEnvois = pgTable(
+  "lettre_envoi",
+  {
+    id: serial("id").primaryKey(),
+    lettreId: integer("lettre_id")
+      .notNull()
+      .references(() => lettres.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    /**
+     * « en_attente », « en_cours », « reussi » ou « echec ».
+     *
+     * La liste entière est posée en attente au lancement, puis chaque paquet
+     * prend ses lignes en passant par « en_cours ». Une ligne restée dans cet
+     * état est un envoi coupé en plein vol : elle compte pour un échec et
+     * n'est PAS reprise. Rater un courrier se rattrape ; en envoyer deux, non.
+     */
+    resultat: text("resultat").notNull().default("en_attente"),
+    envoyeLe: timestamp("envoye_le", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("lettre_envoi_lettre_email_uniq").on(t.lettreId, t.email)],
+);
+
+/**
+ * Le jeton de désabonnement d'une adresse.
+ *
+ * Il est tiré au sort, propre à la personne, et ne sert qu'à la sortir de la
+ * liste : il n'ouvre aucune session et ne dit rien d'elle. Une adresse garde
+ * le même jeton d'une lettre à l'autre, sinon les liens des lettres déjà
+ * parties cesseraient de fonctionner au premier envoi suivant.
+ */
+export const lettreJetons = pgTable(
+  "lettre_jeton",
+  {
+    jeton: text("jeton").primaryKey(),
+    email: text("email").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    /** Renseignée dès que la personne s'est désabonnée. Trace, pas filtre. */
+    desabonneLe: timestamp("desabonne_le", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("lettre_jeton_email_uniq").on(t.email)],
+);
+
 // --- Configuration éditable depuis le BO ---------------------------------
 
 /**

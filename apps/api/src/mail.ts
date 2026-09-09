@@ -54,6 +54,13 @@ async function deposerDansLaBoite(courrier: Courrier): Promise<boolean> {
       Subject: courrier.subject,
       HTML: courrier.html,
       ...(courrier.text ? { Text: courrier.text } : {}),
+      ...(courrier.entetes
+        ? {
+            Headers: Object.fromEntries(
+              Object.entries(courrier.entetes).map(([c, v]) => [c, [v]]),
+            ),
+          }
+        : {}),
     }),
   });
   if (!res.ok) {
@@ -82,6 +89,15 @@ export interface Courrier {
   html: string;
   /** Version texte, pour les clients qui n'affichent pas le HTML. */
   text?: string;
+  /**
+   * En-têtes supplémentaires. Sert au désabonnement en un clic de la lettre
+   * d'information : Gmail et Outlook affichent alors un bouton
+   * « Se désabonner » à côté de l'expéditeur, et s'en servent pour juger si
+   * l'expéditeur est sérieux. Sans lui, la personne qui ne veut plus rien
+   * recevoir n'a qu'un bouton sous la main, « courrier indésirable » — et
+   * quelques clics de ceux-là font tomber l'adresse d'expédition entière.
+   */
+  entetes?: Record<string, string>;
 }
 
 /**
@@ -113,6 +129,7 @@ export async function envoyer(courrier: Courrier): Promise<boolean> {
         subject: courrier.subject,
         html: courrier.html,
         ...(courrier.text ? { text: courrier.text } : {}),
+        ...(courrier.entetes ? { headers: courrier.entetes } : {}),
       }),
     });
     if (!res.ok) {

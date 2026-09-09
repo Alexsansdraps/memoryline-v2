@@ -55,6 +55,7 @@ import { mountCms } from "./cms.js";
 import { mountCollections } from "./collections.js";
 import { mountImportProduits } from "./import-produits.js";
 import { mountCartesCadeaux } from "./cartes-cadeaux.js";
+import { mountLettre } from "./lettre.js";
 import { mountCourriers } from "./courriers.js";
 import { mountSalonRoutes } from "./salon.js";
 import { mountCompteRoutes } from "./comptes.js";
@@ -1090,6 +1091,10 @@ mountImportProduits(app);
 // Cartes cadeaux : de l'argent encaissé d'avance, avec son journal et sa
 // carte imprimable.
 mountCartesCadeaux(app);
+
+// Lettre d'information : l'écrire, l'envoyer par paquets, et le lien de
+// désabonnement qui doit fonctionner sans être connecté.
+mountLettre(app);
 
 // Pages libres et menu du site, écrits depuis le back-office. Ouvrir un rayon
 // « Magnets » ne demande plus de toucher au code.

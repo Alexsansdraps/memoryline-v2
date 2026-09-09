@@ -1,10 +1,128 @@
 ---
+/**
+ * La lettre d'information : l'écrire, voir qui la recevra, l'envoyer.
+ *
+ * Cet écran ne montrait qu'une liste d'adresses. On pouvait la copier, la
+ * coller dans sa propre messagerie et espérer que personne ne voie les
+ * adresses des autres. Il sait maintenant faire le travail en entier :
+ * rédiger, compter les destinataires AVANT de partir, s'envoyer un essai,
+ * puis lancer l'envoi.
+ *
+ * Trois précautions se lisent dans la page, et elles ne sont pas décoratives.
+ * Le bandeau du haut dit où atterrissent les courriers : tant que la boîte
+ * d'essai tourne, rien n'atteint un client. Le nombre de destinataires est
+ * annoncé avant l'envoi et redemandé dans la confirmation. Et l'envoi part par
+ * paquets : la page rappelle l'API jusqu'au bout plutôt que d'attendre une
+ * seule requête interminable, qu'un proxy finirait par couper sans qu'on
+ * sache ce qui est parti.
+ *
+ * Sans JavaScript, tout fonctionne encore : le bouton d'envoi est un vrai
+ * formulaire, qui envoie un paquet et réaffiche la page avec ce qu'il reste.
+ * Le script ne fait qu'enchaîner ces paquets sans recharger l'écran.
+ */
 import Admin from "../layouts/Admin.astro";
-import { adminApi, type Inscrit } from "../lib/api.ts";
+import EditeurTexte from "../components/EditeurTexte.astro";
+import { url, apiUrl } from "../lib/url.ts";
 
-const api = adminApi(Astro.request);
+/**
+ * L'API, vue du serveur. Même chemin que le reste du back-office : le réseau
+ * interne de Docker en conteneur, le port local sinon.
+ */
+const API_URL =
+  import.meta.env.API_URL_INTERNAL ??
+  import.meta.env.PUBLIC_API_URL ??
+  "http://localhost:3000";
 
-function leJour(iso: string): string {
+/** La session du back-office vit dans ce cookie : il faut le relayer. */
+const cookieEntrant = Astro.request.headers.get("cookie") ?? "";
+
+/**
+ * Un appel à l'API.
+ *
+ * L'API refuse souvent pour une raison qui se lit telle quelle (« cette
+ * lettre est déjà partie ») : on garde cette phrase plutôt que d'afficher un
+ * code que la boutique devrait interpréter.
+ */
+async function appelApi<T>(
+  methode: string,
+  chemin: string,
+  corps?: unknown,
+): Promise<T> {
+  const entetes: Record<string, string> = {};
+  if (corps !== undefined) entetes["Content-Type"] = "application/json";
+  if (cookieEntrant) entetes["cookie"] = cookieEntrant;
+  const reponse = await fetch(`${API_URL}${chemin}`, {
+    method: methode,
+    headers: entetes,
+    body: corps === undefined ? undefined : JSON.stringify(corps),
+  });
+  const brut = await reponse.text();
+  if (!reponse.ok) {
+    let raison = "";
+    try {
+      raison = String((JSON.parse(brut) as { error?: unknown }).error ?? "");
+    } catch {
+      /* réponse illisible (page d'erreur du proxy) : on garde notre phrase */
+    }
+    throw new Error(raison || `API ${methode} ${chemin} -> ${reponse.status}`);
+  }
+  return JSON.parse(brut) as T;
+}
+
+/**
+ * Ce qui peut s'afficher, et ce qui ne veut rien dire pour la boutique. Un
+ * code de statut ou une panne de réseau devient une phrase à nous.
+ */
+const TECHNIQUE = /^API\s|fetch|ECONN|ENOTFOUND|Unexpected|JSON|socket/i;
+function messageLisible(e: unknown, repli: string): string {
+  const brut = (e instanceof Error ? e.message : String(e)).trim();
+  if (!brut || TECHNIQUE.test(brut)) return repli;
+  return brut;
+}
+
+interface LettreVue {
+  id: number;
+  titre: string;
+  objet: string;
+  contenuHtml: string;
+  etat: "brouillon" | "en_cours" | "envoyee";
+  etatLibelle: string;
+  modifiable: boolean;
+  envoyeeLe: string | null;
+  destinatairesPrevus: number;
+  envoisReussis: number;
+  echecs: number;
+  restants: number;
+  createdAt: string;
+}
+interface EtatEnvoi {
+  configure: boolean;
+  enEssai: boolean;
+  taillePaquet: number;
+}
+interface CompteDestinataires {
+  total: number;
+  inscrits: number;
+  clients: number;
+  communs: number;
+}
+interface Inscrit {
+  id: number;
+  email: string;
+  langue: string | null;
+  createdAt: string;
+}
+interface Avancee {
+  termine: boolean;
+  total: number;
+  reussis: number;
+  echecs: number;
+  restants: number;
+  resume: string;
+}
+
+function leJour(iso: string | null): string {
+  if (!iso) return "";
   try {
     return new Date(iso).toLocaleDateString("fr-FR", {
       day: "numeric",
@@ -16,100 +134,542 @@ function leJour(iso: string): string {
   }
 }
 
-let flash: string | null = null;
+/** « 3 personnes », « 1 personne », « personne » : la phrase se lit toute seule. */
+function personnes(combien: number): string {
+  if (combien <= 0) return "personne";
+  return combien > 1 ? `${combien} personnes` : "1 personne";
+}
+
+type Ton = "ok" | "attention" | "erreur";
+let flash: { ton: Ton; message: string } | null = null;
+/** L'avancée du dernier paquet envoyé sans JavaScript. */
+let avancee: Avancee | null = null;
+/** Identifiant de la lettre à rouvrir après l'action. */
+let idOuverte: number | null = null;
+/** Mode « nouvelle lettre » : le formulaire s'affiche vide. */
+let enCreation = false;
+/** Ce qui vient d'être saisi, à remettre dans les champs après un refus. */
+let saisie: { titre: string; objet: string; contenu: string } | null = null;
+let destinataireEssai = "";
+
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
+  const action = String(f.get("_action") ?? "");
+  // Jamais Number() sur un champ vide : il vaudrait zéro, et zéro ressemble à
+  // un identifiant valable. Sans chiffres, il n'y a pas de lettre.
+  const idBrut = String(f.get("id") ?? "").trim();
+  const id = /^\d+$/.test(idBrut) ? Number(idBrut) : null;
+  const titre = String(f.get("titre") ?? "").trim();
+  const objet = String(f.get("objet") ?? "").trim();
+  const contenu = String(f.get("contenu") ?? "");
+  destinataireEssai = String(f.get("destinataire") ?? "").trim();
+
   try {
-    await api.deleteSubscriber(Number(f.get("id")));
-    flash = "Adresse retirée de la liste.";
+    if (action === "creer") {
+      const creee = await appelApi<LettreVue>("POST", "/admin/lettres", {
+        titre,
+        objet,
+        contenuHtml: contenu,
+      });
+      idOuverte = creee.id;
+      flash = { ton: "ok", message: "Lettre créée. Elle reste un brouillon tant que vous ne l'envoyez pas." };
+    } else if (action === "enregistrer" && id) {
+      await appelApi<LettreVue>("PUT", `/admin/lettres/${id}`, {
+        titre,
+        objet,
+        contenuHtml: contenu,
+      });
+      idOuverte = id;
+      flash = { ton: "ok", message: "Lettre enregistrée." };
+    } else if (action === "supprimer" && id) {
+      await appelApi<{ ok: boolean }>("DELETE", `/admin/lettres/${id}`);
+      flash = { ton: "ok", message: "Brouillon supprimé." };
+    } else if (action === "essai" && id) {
+      const retour = await appelApi<{ resume: string }>(
+        "POST",
+        `/admin/lettres/${id}/essai`,
+        { destinataire: destinataireEssai },
+      );
+      idOuverte = id;
+      flash = { ton: "ok", message: retour.resume };
+    } else if (action === "envoyer" && id) {
+      // Le chemin sans JavaScript : un paquet part, la page se réaffiche avec
+      // ce qu'il reste, et le bouton devient « Continuer l'envoi ».
+      avancee = await appelApi<Avancee>("POST", `/admin/lettres/${id}/envoi`);
+      idOuverte = id;
+      flash = { ton: avancee.termine ? "ok" : "attention", message: avancee.resume };
+    } else if (action === "retirer-abonne" && id) {
+      await appelApi<{ ok: boolean }>("DELETE", `/admin/newsletter/${id}`);
+      flash = { ton: "ok", message: "Adresse retirée de la liste." };
+    } else {
+      flash = { ton: "erreur", message: "Action inconnue : rien n'a été fait." };
+    }
   } catch (e) {
-    flash = "Erreur : " + String(e);
+    // La saisie revient à l'écran : un refus ne doit pas coûter le texte écrit.
+    if (action === "creer" || action === "enregistrer") {
+      saisie = { titre, objet, contenu };
+      enCreation = action === "creer";
+      idOuverte = id;
+    }
+    if (action === "essai" || action === "envoyer") idOuverte = id;
+    flash = {
+      ton: "erreur",
+      message: messageLisible(e, "L'opération n'a pas abouti. Réessayez dans un instant."),
+    };
   }
 }
 
+/* --- Ce que la page affiche ---------------------------------------------- */
+
+let etatEnvoi: EtatEnvoi = { configure: false, enEssai: false, taillePaquet: 25 };
+let compte: CompteDestinataires = { total: 0, inscrits: 0, clients: 0, communs: 0 };
+let lettres: LettreVue[] = [];
 let inscrits: Inscrit[] = [];
-let error: string | null = null;
+let panne: string | null = null;
+
 try {
-  inscrits = await api.subscribers();
+  etatEnvoi = await appelApi<EtatEnvoi>("GET", "/admin/lettres/etat");
+  compte = await appelApi<CompteDestinataires>("GET", "/admin/lettres/destinataires");
+  lettres = (await appelApi<{ lettres: LettreVue[] }>("GET", "/admin/lettres")).lettres;
+  inscrits = await appelApi<Inscrit[]>("GET", "/admin/newsletter");
 } catch (e) {
-  error = String(e);
+  panne = messageLisible(
+    e,
+    "L'écran n'a pas pu charger ses données. Rechargez la page dans un instant.",
+  );
 }
 
-/** Toutes les adresses, séparées par des virgules — prêtes à coller. */
+// Une lettre ouverte à l'écriture : celle que l'action vient de toucher, ou
+// celle demandée dans l'adresse.
+const demandee = Astro.url.searchParams.get("lettre");
+if (idOuverte === null && demandee && /^\d+$/.test(demandee)) idOuverte = Number(demandee);
+if (Astro.url.searchParams.get("nouvelle") !== null && idOuverte === null) enCreation = true;
+
+const ouverte = idOuverte === null ? null : (lettres.find((l) => l.id === idOuverte) ?? null);
+// Une lettre supprimée n'a plus de formulaire à rouvrir.
+if (!ouverte && !enCreation) idOuverte = null;
+
+/** Les champs affichés : la saisie refusée d'abord, la base ensuite. */
+const champTitre = saisie?.titre ?? ouverte?.titre ?? "";
+const champObjet = saisie?.objet ?? ouverte?.objet ?? "";
+const champContenu = saisie?.contenu ?? ouverte?.contenuHtml ?? "";
+
+/** L'aperçu du courrier, tel qu'il arrivera. Ne part nulle part. */
+let apercuHtml: string | null = null;
+if (ouverte && ouverte.contenuHtml.trim()) {
+  try {
+    apercuHtml = (
+      await appelApi<{ html: string }>("GET", `/admin/lettres/${ouverte.id}/apercu`)
+    ).html;
+  } catch {
+    /* l'aperçu est un confort : son absence n'empêche ni d'écrire ni d'envoyer */
+  }
+}
+
+/** Toutes les adresses inscrites, séparées par des virgules, prêtes à coller. */
 const listeCollable = inscrits.map((i) => i.email).join(", ");
+
+const TON_CLASSE: Record<Ton, string> = {
+  ok: "bg-green-50 border-green-200 text-green-900",
+  attention: "bg-amber-50 border-amber-200 text-amber-900",
+  erreur: "bg-red-50 border-red-200 text-red-700",
+};
 ---
 
 <Admin title="Lettre d'information">
-  {flash && (
-    <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">
-      {flash}
+  {/* Où atterrit un courrier envoyé maintenant. C'est la première chose à
+      savoir, et la seule qui change tout : le même bouton écrit à une boîte
+      d'essai ou à toute la clientèle. */}
+  {!panne && (
+    <p
+      class={`mb-4 rounded border px-3 py-2 text-sm ${
+        !etatEnvoi.configure
+          ? TON_CLASSE.erreur
+          : etatEnvoi.enEssai
+            ? TON_CLASSE.attention
+            : TON_CLASSE.ok
+      }`}
+    >
+      {!etatEnvoi.configure
+        ? "L'envoi de courrier n'est pas configuré : rien ne peut partir pour le moment. Vous pouvez écrire vos lettres, elles resteront en brouillon."
+        : etatEnvoi.enEssai
+          ? "Boîte d'essai active : tout ce que vous envoyez d'ici est retenu pour relecture et n'atteint aucun client."
+          : "Envoi réel : ce que vous envoyez d'ici part vraiment chez vos lecteurs."}
     </p>
   )}
-  {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
 
-  <p class="mb-6 text-sm text-bo-muted max-w-3xl">
-    Les adresses laissées dans le formulaire en bas de l'accueil, la plus
-    récente en tête. Rien ne leur est envoyé automatiquement : c'est une
-    liste, à vous d'écrire quand vous le souhaitez.
-  </p>
+  {panne && <p class={`mb-4 rounded border px-3 py-2 text-sm ${TON_CLASSE.erreur}`}>{panne}</p>}
 
-  <div class="mb-4 flex flex-wrap items-center gap-3 text-sm">
-    <strong>{inscrits.length}</strong>
-    <span class="text-bo-muted">
-      inscrit{inscrits.length > 1 ? "s" : ""}
-    </span>
-    {inscrits.length > 0 && (
-      <button
-        type="button"
-        id="copier"
-        class="rounded border border-bo-border px-3 py-1.5"
-        data-liste={listeCollable}
+  {flash && (
+    <p class={`mb-4 rounded border px-3 py-2 text-sm ${TON_CLASSE[flash.ton]}`}>{flash.message}</p>
+  )}
+
+  {/* --- Qui recevra la lettre ------------------------------------------ */}
+  <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-4">
+    <h2 class="mb-2 text-sm font-semibold">Qui recevra vos lettres</h2>
+    <p class="text-sm">
+      <strong class="text-lg">{compte.total}</strong>
+      <span class="text-bo-muted"> {compte.total > 1 ? "personnes" : "personne"} au total.</span>
+    </p>
+    <p class="mt-1 text-sm text-bo-muted">
+      {compte.inscrits} inscrite{compte.inscrits > 1 ? "s" : ""} par le formulaire du site,
+      {" "}{compte.clients} cliente{compte.clients > 1 ? "s" : ""} ayant accepté d'être tenue{compte.clients > 1 ? "s" : ""} au courant
+      {compte.communs > 0 && ` (dont ${compte.communs} dans les deux listes, comptée${compte.communs > 1 ? "s" : ""} une seule fois)`}.
+    </p>
+    <p class="mt-2 text-xs text-bo-muted">
+      Personne d'autre ne reçoit vos lettres. Un client qui a simplement commandé
+      sans cocher la case n'en fait pas partie.
+    </p>
+  </section>
+
+  {/* --- Les lettres ----------------------------------------------------- */}
+  <section class="mb-6">
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+      <h2 class="text-sm font-semibold">Vos lettres</h2>
+      <a
+        href={url("/lettre?nouvelle=1")}
+        class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 text-sm hover:bg-bo-bg"
       >
-        Copier toutes les adresses
-      </button>
-    )}
-    <span id="copie-ok" class="text-xs text-bo-muted"></span>
-  </div>
+        Écrire une nouvelle lettre
+      </a>
+    </div>
 
-  <section class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
-    <table class="w-full text-sm">
-      <thead class="bg-bo-bg text-left">
-        <tr>
-          <th class="px-4 py-2">Adresse</th>
-          <th class="px-4 py-2 w-24">Langue</th>
-          <th class="px-4 py-2 w-32">Inscrite le</th>
-          <th class="px-2 py-2 w-10"></th>
-        </tr>
-      </thead>
-      <tbody>
-        {inscrits.map((i) => (
-          <tr class="border-t border-bo-border">
-            <td class="px-4 py-2">{i.email}</td>
-            <td class="px-4 py-2 text-bo-muted">{i.langue ?? "—"}</td>
-            <td class="px-4 py-2 text-bo-muted">{leJour(i.createdAt)}</td>
-            <td class="px-2 py-2 text-right">
-              <form method="POST" class="js-retirer inline" data-nom={i.email}>
-                <input type="hidden" name="id" value={i.id} />
-                <button
-                  class="rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-red-300 hover:text-red-700"
-                  aria-label={`Retirer ${i.email}`}
-                  title="Retirer de la liste"
+    <div class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface">
+      <table class="w-full text-sm">
+        <thead class="bg-bo-bg text-left">
+          <tr>
+            <th class="px-4 py-2">Titre</th>
+            <th class="w-32 px-4 py-2">État</th>
+            <th class="w-40 px-4 py-2">Résultat</th>
+            <th class="w-32 px-4 py-2">Date</th>
+            <th class="w-24 px-2 py-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {lettres.map((l) => (
+            <tr class={`border-t border-bo-border ${ouverte?.id === l.id ? "bg-bo-bg" : ""}`}>
+              <td class="px-4 py-2">
+                <div class="font-medium">{l.titre}</div>
+                <div class="text-xs text-bo-muted">{l.objet}</div>
+              </td>
+              <td class="px-4 py-2">
+                <span
+                  class={`rounded px-2 py-0.5 text-xs ${
+                    l.etat === "envoyee"
+                      ? "bg-green-100 text-green-800"
+                      : l.etat === "en_cours"
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-bo-bg text-bo-muted"
+                  }`}
                 >
-                  ✕
+                  {l.etatLibelle}
+                </span>
+              </td>
+              <td class="px-4 py-2 text-bo-muted">
+                {l.etat === "brouillon"
+                  ? "—"
+                  : `${l.envoisReussis} sur ${l.destinatairesPrevus}${l.echecs > 0 ? `, ${l.echecs} en échec` : ""}`}
+              </td>
+              <td class="px-4 py-2 text-bo-muted">
+                {l.envoyeeLe ? leJour(l.envoyeeLe) : leJour(l.createdAt)}
+              </td>
+              <td class="px-2 py-2 text-right">
+                <a href={url(`/lettre?lettre=${l.id}`)} class="text-bo-accent hover:underline">
+                  {l.modifiable ? "Modifier" : "Voir"}
+                </a>
+              </td>
+            </tr>
+          ))}
+          {lettres.length === 0 && !panne && (
+            <tr>
+              <td class="px-4 py-6 text-bo-muted" colspan="5">
+                Aucune lettre pour l'instant. Cliquez sur « Écrire une nouvelle lettre ».
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {/* --- Écrire une lettre ----------------------------------------------- */}
+  {(ouverte || enCreation) && (
+    <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-5">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-sm font-semibold">
+          {enCreation ? "Nouvelle lettre" : ouverte?.modifiable ? "Modifier la lettre" : "Lettre envoyée"}
+        </h2>
+        <a href={url("/lettre")} class="text-sm text-bo-muted hover:underline">Fermer</a>
+      </div>
+
+      {ouverte && !ouverte.modifiable && (
+        <p class={`mb-4 rounded border px-3 py-2 text-sm ${TON_CLASSE.attention}`}>
+          {ouverte.etat === "envoyee"
+            ? "Cette lettre est partie chez vos lecteurs. Elle ne se modifie plus et ne se supprime plus : elle garde la trace de qui l'a reçue."
+            : "L'envoi de cette lettre est en cours. Elle ne peut plus être modifiée tant qu'il n'est pas terminé."}
+        </p>
+      )}
+
+      <form method="POST" class="js-ecriture">
+        <input type="hidden" name="_action" value={enCreation ? "creer" : "enregistrer"} />
+        {ouverte && <input type="hidden" name="id" value={ouverte.id} />}
+
+        <label class="mb-3 block">
+          <span class="text-sm font-medium">Titre</span>
+          <span class="block text-xs text-bo-muted">
+            Pour vous, dans cette liste. Vos lecteurs ne le voient jamais.
+          </span>
+          <input
+            name="titre"
+            value={champTitre}
+            maxlength="200"
+            required
+            readonly={ouverte ? !ouverte.modifiable : false}
+            class="mt-1 w-full rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm"
+          />
+        </label>
+
+        <label class="mb-3 block">
+          <span class="text-sm font-medium">Objet du courrier</span>
+          <span class="block text-xs text-bo-muted">
+            La phrase que vos lecteurs verront dans leur boîte aux lettres.
+          </span>
+          <input
+            name="objet"
+            value={champObjet}
+            maxlength="200"
+            required
+            readonly={ouverte ? !ouverte.modifiable : false}
+            class="mt-1 w-full rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm"
+          />
+        </label>
+
+        <div class="mb-4">
+          <span class="text-sm font-medium">Contenu</span>
+          <EditeurTexte
+            nom="contenu"
+            valeur={champContenu}
+            invite="Écrivez ici votre lettre. Les boutons du dessus mettent en gras, en italique, en liste."
+            etiquette="Contenu de la lettre"
+          />
+          <p class="mt-1 text-xs text-bo-muted">
+            Le lien de désabonnement est ajouté automatiquement en bas du courrier :
+            vous n'avez pas à l'écrire.
+          </p>
+        </div>
+
+        {(enCreation || ouverte?.modifiable) && (
+          <div class="flex flex-wrap items-center gap-3">
+            <button class="rounded bg-bo-accent px-4 py-2 text-sm text-white">
+              {enCreation ? "Créer le brouillon" : "Enregistrer"}
+            </button>
+            {ouverte && (
+              <span class="text-xs text-bo-muted">
+                Enregistrez avant d'envoyer un essai : l'essai part avec le texte enregistré.
+              </span>
+            )}
+          </div>
+        )}
+      </form>
+
+      {ouverte && (
+        <>
+          {apercuHtml && (
+            <details class="mt-5 rounded border border-bo-border">
+              <summary class="cursor-pointer px-3 py-2 text-sm">
+                Voir la lettre telle qu'elle arrivera
+              </summary>
+              {/* Dans un cadre isolé : le courrier porte ses propres couleurs et
+                  ne doit pas déteindre sur le back-office, ni l'inverse. */}
+              <iframe
+                title="Aperçu de la lettre"
+                sandbox=""
+                srcdoc={apercuHtml}
+                class="h-[520px] w-full border-0 bg-white"
+              ></iframe>
+            </details>
+          )}
+
+          {/* --- L'essai --------------------------------------------------- */}
+          <div class="mt-5 border-t border-bo-border pt-4">
+            <h3 class="text-sm font-semibold">S'envoyer un essai</h3>
+            <p class="mb-2 text-xs text-bo-muted">
+              Le courrier part vers cette seule adresse, avec la mention « Essai »
+              dans son objet. Rien n'est retenu : vos lecteurs pourront quand même
+              recevoir la vraie lettre.
+            </p>
+            <form method="POST" class="flex flex-wrap items-center gap-2">
+              <input type="hidden" name="_action" value="essai" />
+              <input type="hidden" name="id" value={ouverte.id} />
+              <input
+                type="email"
+                name="destinataire"
+                value={destinataireEssai}
+                placeholder="votre.adresse@exemple.fr"
+                required
+                class="w-72 rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm"
+              />
+              <button
+                class="rounded border border-bo-border px-4 py-2 text-sm hover:bg-bo-bg"
+                disabled={!etatEnvoi.configure}
+              >
+                Envoyer l'essai
+              </button>
+            </form>
+          </div>
+
+          {/* --- L'envoi réel ---------------------------------------------- */}
+          <div class="mt-5 border-t border-bo-border pt-4">
+            <h3 class="text-sm font-semibold">Envoyer la lettre</h3>
+
+            {ouverte.etat === "envoyee" ? (
+              <p class="mt-1 text-sm text-bo-muted">
+                Partie le {leJour(ouverte.envoyeeLe)} :
+                {" "}{ouverte.envoisReussis} courrier{ouverte.envoisReussis > 1 ? "s" : ""} sur
+                {" "}{ouverte.destinatairesPrevus}
+                {ouverte.echecs > 0
+                  ? `, ${ouverte.echecs} n'${ouverte.echecs > 1 ? "ont" : "a"} pas pu partir.`
+                  : "."}
+              </p>
+            ) : (
+              <>
+                <p class="mb-2 text-xs text-bo-muted">
+                  {ouverte.etat === "en_cours"
+                    ? `Envoi commencé : ${ouverte.envoisReussis} courrier${ouverte.envoisReussis > 1 ? "s partis" : " parti"} sur ${ouverte.destinatairesPrevus}, il en reste ${ouverte.restants}. Personne ne recevra la lettre deux fois.`
+                    : `${personnes(compte.total)} recevra${compte.total > 1 ? "ont" : ""} cette lettre. L'envoi se fait par petits paquets : laissez cet écran ouvert jusqu'au bout.`}
+                </p>
+
+                {ouverte.etat === "en_cours" && (
+                  <div class="mb-3 h-2 w-full overflow-hidden rounded bg-bo-bg">
+                    <div
+                      id="avancee-barre"
+                      class="h-full bg-bo-accent"
+                      style={`width:${
+                        ouverte.destinatairesPrevus > 0
+                          ? Math.round(
+                              ((ouverte.envoisReussis + ouverte.echecs) /
+                                ouverte.destinatairesPrevus) *
+                                100,
+                            )
+                          : 0
+                      }%`}
+                    ></div>
+                  </div>
+                )}
+
+                <form method="POST" class="flex flex-wrap items-center gap-3">
+                  <input type="hidden" name="_action" value="envoyer" />
+                  <input type="hidden" name="id" value={ouverte.id} />
+                  <button
+                    id="envoyer-vraiment"
+                    data-envoi={apiUrl(`/admin/lettres/${ouverte.id}/envoi`)}
+                    data-retour={url(`/lettre?lettre=${ouverte.id}`)}
+                    data-combien={String(
+                      ouverte.etat === "en_cours" ? ouverte.restants : compte.total,
+                    )}
+                    data-confirmer={ouverte.etat === "en_cours" ? "0" : "1"}
+                    disabled={!etatEnvoi.configure || compte.total === 0}
+                    class="rounded bg-bo-accent px-4 py-2 text-sm text-white disabled:opacity-50"
+                  >
+                    {ouverte.etat === "en_cours" ? "Continuer l'envoi" : "Envoyer la lettre"}
+                  </button>
+                  {/* Rempli par le script au fil des paquets. Sans script, le
+                      point d'avancement est déjà en haut de la page. */}
+                  <span id="avancee-envoi" class="text-sm text-bo-muted"></span>
+                </form>
+
+                {compte.total === 0 && (
+                  <p class="mt-2 text-xs text-bo-muted">
+                    Personne ne recevrait cette lettre pour le moment : aucune adresse
+                    inscrite, aucun client n'ayant accepté d'être contacté.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+
+          {ouverte.modifiable && (
+            <div class="mt-5 border-t border-bo-border pt-4">
+              <form method="POST" class="js-supprimer" data-nom={ouverte.titre}>
+                <input type="hidden" name="_action" value="supprimer" />
+                <input type="hidden" name="id" value={ouverte.id} />
+                <button class="rounded border border-bo-border px-3 py-1.5 text-xs text-bo-muted hover:border-red-300 hover:text-red-700">
+                  Supprimer ce brouillon
                 </button>
               </form>
-            </td>
-          </tr>
-        ))}
-        {inscrits.length === 0 && !error && (
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  )}
+
+  {/* --- Les inscrits ---------------------------------------------------- */}
+  <section>
+    <h2 class="mb-2 text-sm font-semibold">Les inscrits au formulaire du site</h2>
+    <p class="mb-3 max-w-3xl text-sm text-bo-muted">
+      Les adresses laissées dans le formulaire en bas de l'accueil, la plus récente
+      en tête. Elles reçoivent vos lettres, avec les clients ayant accepté d'être
+      tenus au courant.
+    </p>
+
+    <div class="mb-3 flex flex-wrap items-center gap-3 text-sm">
+      <strong>{inscrits.length}</strong>
+      <span class="text-bo-muted">inscrit{inscrits.length > 1 ? "s" : ""}</span>
+      {inscrits.length > 0 && (
+        <button
+          type="button"
+          id="copier"
+          class="rounded border border-bo-border px-3 py-1.5"
+          data-liste={listeCollable}
+        >
+          Copier toutes les adresses
+        </button>
+      )}
+      <span id="copie-ok" class="text-xs text-bo-muted"></span>
+    </div>
+
+    <div class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface">
+      <table class="w-full text-sm">
+        <thead class="bg-bo-bg text-left">
           <tr>
-            <td class="px-4 py-6 text-bo-muted" colspan="4">
-              Personne pour le moment.
-            </td>
+            <th class="px-4 py-2">Adresse</th>
+            <th class="w-24 px-4 py-2">Langue</th>
+            <th class="w-32 px-4 py-2">Inscrite le</th>
+            <th class="w-10 px-2 py-2"></th>
           </tr>
-        )}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {inscrits.map((i) => (
+            <tr class="border-t border-bo-border">
+              <td class="px-4 py-2">{i.email}</td>
+              <td class="px-4 py-2 text-bo-muted">{i.langue ?? "—"}</td>
+              <td class="px-4 py-2 text-bo-muted">{leJour(i.createdAt)}</td>
+              <td class="px-2 py-2 text-right">
+                <form method="POST" class="js-retirer inline" data-nom={i.email}>
+                  <input type="hidden" name="_action" value="retirer-abonne" />
+                  <input type="hidden" name="id" value={i.id} />
+                  <button
+                    class="rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-red-300 hover:text-red-700"
+                    aria-label={`Retirer ${i.email}`}
+                    title="Retirer de la liste"
+                  >
+                    ✕
+                  </button>
+                </form>
+              </td>
+            </tr>
+          ))}
+          {inscrits.length === 0 && !panne && (
+            <tr>
+              <td class="px-4 py-6 text-bo-muted" colspan="4">
+                Personne pour le moment.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
   </section>
 
   <script is:inline>
@@ -133,5 +693,101 @@ const listeCollable = inscrits.map((i) => i.email).join(", ");
         if (!confirm(`Retirer « ${nom} » de la liste ?`)) ev.preventDefault();
       });
     });
+
+    document.querySelectorAll("form.js-supprimer").forEach((f) => {
+      f.addEventListener("submit", (ev) => {
+        const nom = f.getAttribute("data-nom") || "ce brouillon";
+        if (!confirm(`Supprimer le brouillon « ${nom} » ? Il ne sera pas récupérable.`))
+          ev.preventDefault();
+      });
+    });
+
+    // L'envoi réel : une confirmation qui dit le nombre, puis les paquets
+    // s'enchaînent sans recharger la page. Sans ce script, le même bouton
+    // reste un formulaire qui envoie un paquet par clic.
+    (function () {
+      var bouton = document.getElementById("envoyer-vraiment");
+      if (!bouton) return;
+      var formulaire = bouton.closest("form");
+      var zone = document.getElementById("avancee-envoi");
+      var barre = document.getElementById("avancee-barre");
+      var adresse = bouton.getAttribute("data-envoi") || "";
+      var retour = bouton.getAttribute("data-retour") || "";
+      var combien = Number(bouton.getAttribute("data-combien") || "0");
+      var aConfirmer = bouton.getAttribute("data-confirmer") === "1";
+
+      function dire(texte) {
+        if (zone) zone.textContent = texte;
+      }
+      function avancer(faits, total) {
+        if (!barre || !total) return;
+        barre.style.width = Math.round((faits / total) * 100) + "%";
+      }
+
+      formulaire.addEventListener("submit", function (ev) {
+        if (aConfirmer) {
+          var question =
+            combien > 1
+              ? "Envoyer cette lettre à " + combien + " personnes ?"
+              : "Envoyer cette lettre à 1 personne ?";
+          if (!confirm(question + " Un courrier parti ne se rattrape pas.")) {
+            ev.preventDefault();
+            return;
+          }
+        }
+        ev.preventDefault();
+        aConfirmer = false;
+        enchainer();
+      });
+
+      async function enchainer() {
+        bouton.disabled = true;
+        dire("Envoi en cours, laissez cet écran ouvert.");
+        try {
+          for (;;) {
+            var reponse = await fetch(adresse, {
+              method: "POST",
+              credentials: "same-origin",
+            });
+            var brut = await reponse.text();
+            var donnees = null;
+            try {
+              donnees = JSON.parse(brut);
+            } catch (e) {
+              donnees = null;
+            }
+            if (!reponse.ok || !donnees) {
+              dire(
+                (donnees && donnees.error) ||
+                  "L'envoi s'est arrêté. Cliquez sur « Continuer l'envoi » : il reprendra là où il en est.",
+              );
+              bouton.disabled = false;
+              return;
+            }
+            avancer(donnees.reussis + donnees.echecs, donnees.total);
+            dire(donnees.resume);
+            // Aucun courrier n'est parti ce tour-ci : un autre envoi tient
+            // les derniers destinataires. On patiente au lieu de rappeler
+            // aussitôt, ce qui tournerait à vide des centaines de fois.
+            if (!donnees.termine && donnees.partisCeTour === 0) {
+              await new Promise(function (fini) {
+                setTimeout(fini, 3000);
+              });
+            }
+            if (donnees.termine) {
+              // Retour par une adresse normale : recharger une page arrivée
+              // par un envoi de formulaire renverrait le formulaire.
+              window.location.href = retour;
+              return;
+            }
+          }
+        } catch (e) {
+          dire(
+            "L'envoi s'est interrompu. Rechargez la page : il reprendra là où il s'est arrêté, sans écrire deux fois aux mêmes personnes.",
+          );
+          bouton.disabled = false;
+        }
+      }
+    })();
   </script>
 </Admin>
