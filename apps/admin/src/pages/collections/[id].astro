@@ -1,0 +1,534 @@
+---
+/**
+ * Une collection, et les affiches qu'elle range.
+ *
+ * Deux façons de regarder, parce qu'on ne cherche pas la même chose : la LISTE
+ * pour lire des noms, des statuts et des prix, les ICÔNES pour reconnaître une
+ * affiche à son visuel. C'est la distinction que fait l'explorateur de
+ * fichiers, et elle vaut ici pour la même raison.
+ *
+ * L'ORDRE se change en attrapant une affiche. Il décide de la façon dont la
+ * collection s'affiche sur le site, dans les grilles de produits d'une page :
+ * ce qu'on met devant est ce qui se vend.
+ */
+import Admin from "../../layouts/Admin.astro";
+import { apiUrl, url } from "../../lib/url.ts";
+import {
+  adminApi,
+  formatPrice,
+  type CollectionBo,
+  type ProduitDeCollection,
+  type ProduitAdmin,
+} from "../../lib/api.ts";
+
+const id = Number(Astro.params.id);
+if (!Number.isInteger(id) || id <= 0) return Astro.redirect(url("/collections"));
+const api = adminApi(Astro.request);
+
+let flash: string | null = null;
+let flashErreur = false;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const action = String(f.get("_action") ?? "");
+  try {
+    if (action === "ordre") {
+      const ordre = String(f.get("ordre") ?? "")
+        .split(",")
+        .map(Number)
+        .filter((n) => Number.isInteger(n) && n > 0);
+      if (!ordre.length) throw new Error("L'ordre envoyé était vide.");
+      const r = await api.ordreCollection(id, ordre);
+      flash = `Ordre enregistré, ${r.ranges} affiche(s) rangée(s).`;
+    } else if (action === "retirer") {
+      await api.produitsDeCollection(id, { retirer: [Number(f.get("produit"))] });
+      flash = "Affiche retirée de la collection. Elle reste dans le catalogue.";
+    } else if (action === "ajouter") {
+      const ajouter = f
+        .getAll("produit")
+        .map(Number)
+        .filter((n) => Number.isInteger(n) && n > 0);
+      if (!ajouter.length) throw new Error("Aucune affiche cochée.");
+      const r = await api.produitsDeCollection(id, { ajouter });
+      flash = `${ajouter.length} affiche(s) ajoutée(s). La collection en compte ${r.dedans}.`;
+    } else if (action === "reglages") {
+      const brutPoids = String(f.get("defaultWeightGrams") ?? "").trim();
+      // Vidé veut dire « je ne sais pas », pas « ça ne pèse rien » : confondre
+      // les deux ferait partir des colis sous-affranchis.
+      const poids = brutPoids === "" ? null : Number(brutPoids);
+      if (poids !== null && (!Number.isInteger(poids) || poids < 0))
+        throw new Error("Le poids doit être un nombre de grammes, ou rester vide.");
+      await api.majCollection(id, {
+        name: String(f.get("name") ?? "").trim(),
+        description: String(f.get("description") ?? "").trim() || null,
+        active: f.get("active") === "on",
+        defaultWeightGrams: poids,
+      });
+      flash = "Collection enregistrée.";
+    }
+  } catch (e) {
+    flash = e instanceof Error ? e.message : String(e);
+    flashErreur = true;
+  }
+}
+
+let collection: CollectionBo | null = null;
+let produits: ProduitDeCollection[] = [];
+let erreur: string | null = null;
+try {
+  const r = await api.collection(id);
+  collection = r.collection;
+  produits = r.produits;
+} catch (e) {
+  erreur = e instanceof Error ? e.message : String(e);
+}
+
+/** Le catalogue, pour proposer ce qui n'est pas encore dans la collection. */
+let horsCollection: ProduitAdmin[] = [];
+if (collection) {
+  try {
+    const dedans = new Set(produits.map((p) => p.id));
+    const tout = await api.produitsAdmin({ statut: "tous", limit: 1000 });
+    horsCollection = tout.produits.filter((p) => !dedans.has(p.id));
+  } catch {
+    // Le catalogue manque : on peut encore ranger et réordonner ce qui est là.
+    horsCollection = [];
+  }
+}
+
+/** L'adresse d'une image telle que le NAVIGATEUR doit la demander. */
+function imageProduit(u: string | null): string {
+  if (!u) return "";
+  return u.startsWith("http") ? u : apiUrl(u);
+}
+
+/** Le prix affiché sous une affiche : une fourchette quand elle en a une. */
+function prix(p: ProduitDeCollection): string {
+  if (p.prixMin === null) return "sans format";
+  return p.prixMin === p.prixMax
+    ? formatPrice(p.prixMin)
+    : `${formatPrice(p.prixMin)} à ${formatPrice(p.prixMax ?? p.prixMin)}`;
+}
+
+const ETIQUETTE_STATUT: Record<string, { texte: string; classe: string }> = {
+  active: { texte: "Actif", classe: "bg-green-100 text-green-800" },
+  draft: { texte: "Désactivé", classe: "bg-amber-100 text-amber-800" },
+  archived: { texte: "Archivé", classe: "bg-bo-bg text-bo-muted" },
+};
+---
+
+<Admin title={collection ? collection.name : "Collection"}>
+  <p class="mb-4 text-sm">
+    <a href={url("/collections")} class="text-bo-accent hover:underline">
+      ← Toutes les collections
+    </a>
+  </p>
+
+  {
+    flash && (
+      <p
+        class={`mb-4 rounded border px-3 py-2 text-sm ${
+          flashErreur
+            ? "border-red-300 bg-red-50 text-red-800"
+            : "border-green-300 bg-green-50 text-green-800"
+        }`}
+      >
+        {flash}
+      </p>
+    )
+  }
+  {erreur && <p class="mb-4 text-sm text-red-600">API injoignable : {erreur}</p>}
+
+  {
+    collection && (
+      <>
+        <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-5">
+          <form method="POST" class="flex flex-wrap items-end gap-4">
+            <input type="hidden" name="_action" value="reglages" />
+            <label class="text-sm">
+              <span class="mb-1 block text-xs text-bo-muted">Nom</span>
+              <input
+                name="name"
+                value={collection.name}
+                class="w-72 max-w-full rounded border border-bo-border px-3 py-2 text-sm"
+              />
+            </label>
+            <label class="text-sm">
+              <span class="mb-1 block text-xs text-bo-muted">
+                Poids par défaut
+              </span>
+              <input
+                name="defaultWeightGrams"
+                type="text"
+                inputmode="numeric"
+                value={collection.defaultWeightGrams ?? ""}
+                placeholder="non renseigné"
+                class="w-40 rounded border border-bo-border px-3 py-2 text-sm"
+              />
+            </label>
+            <label class="flex items-center gap-2 pb-2 text-sm">
+              <input
+                type="checkbox"
+                name="active"
+                checked={collection.active}
+              />
+              <span>Visible en boutique</span>
+            </label>
+            <button class="rounded bg-bo-accent px-4 py-2 text-sm text-white">
+              Enregistrer
+            </button>
+          </form>
+          <p class="mt-3 text-xs text-bo-muted">
+            Le poids ne sert que si ni le format ni l'affiche n'en portent un.
+            Laissé vide, il ne s'applique pas.
+          </p>
+        </section>
+
+        <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface">
+          <header class="flex flex-wrap items-center justify-between gap-3 border-b border-bo-border px-4 py-3">
+            <div>
+              <h2 class="font-semibold">
+                {produits.length} affiche{produits.length > 1 ? "s" : ""} dans
+                cette collection
+              </h2>
+              <p class="text-xs text-bo-muted">
+                Attrapez une affiche pour changer sa place. L'ordre décide de
+                l'affichage sur le site.
+              </p>
+            </div>
+            <div class="flex items-center gap-2 text-sm">
+              {/* Deux façons de regarder : des noms, ou des visuels. */}
+              <div class="inline-flex overflow-hidden rounded border border-bo-border">
+                <button
+                  type="button"
+                  data-vue="liste"
+                  class="px-3 py-1.5 text-bo-muted hover:bg-bo-bg"
+                >
+                  Liste
+                </button>
+                <button
+                  type="button"
+                  data-vue="icones"
+                  class="border-l border-bo-border px-3 py-1.5 text-bo-muted hover:bg-bo-bg"
+                >
+                  Icônes
+                </button>
+              </div>
+              <form method="POST" id="form-ordre">
+                <input type="hidden" name="_action" value="ordre" />
+                <input type="hidden" name="ordre" id="champ-ordre" />
+                <button
+                  id="bouton-ordre"
+                  disabled
+                  class="rounded bg-bo-nav px-3 py-1.5 text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Enregistrer l'ordre
+                </button>
+              </form>
+            </div>
+          </header>
+
+          <ul id="grille" class="p-4" data-vue="liste">
+            {produits.map((p) => {
+              const badge = ETIQUETTE_STATUT[p.status] ?? {
+                texte: p.status,
+                classe: "bg-bo-bg text-bo-muted",
+              };
+              return (
+                <li
+                  class="ml-carte rounded border border-bo-border bg-bo-surface"
+                  data-produit={p.id}
+                >
+                  <span
+                    class="ml-poignee cursor-grab text-bo-muted select-none"
+                    title="Glissez pour changer la place"
+                    aria-label="Glissez pour changer la place"
+                    role="button"
+                    tabindex="0"
+                  >
+                    ⠿
+                  </span>
+                  <span class="ml-vignette">
+                    {p.image ? (
+                      <img
+                        src={imageProduit(p.image)}
+                        alt=""
+                        loading="lazy"
+                        class="h-full w-full rounded object-cover"
+                      />
+                    ) : (
+                      <span class="block h-full w-full rounded bg-bo-bg" />
+                    )}
+                  </span>
+                  <span class="ml-infos">
+                    <a
+                      href={url(`/produits/${p.id}`)}
+                      class="font-medium text-bo-accent hover:underline"
+                    >
+                      {p.name}
+                    </a>
+                    <span class="ml-details text-xs text-bo-muted">
+                      <span
+                        class={`inline-block rounded-full px-2 py-0.5 ${badge.classe}`}
+                      >
+                        {badge.texte}
+                      </span>
+                      <span class="ml-2">{prix(p)}</span>
+                    </span>
+                  </span>
+                  <form method="POST" class="ml-retirer">
+                    <input type="hidden" name="_action" value="retirer" />
+                    <input type="hidden" name="produit" value={p.id} />
+                    <button
+                      class="text-xs text-red-700 hover:underline"
+                      title="Retirer de la collection, sans supprimer l'affiche"
+                    >
+                      Retirer
+                    </button>
+                  </form>
+                </li>
+              );
+            })}
+          </ul>
+          {produits.length === 0 && (
+            <p class="px-4 pb-6 text-center text-sm text-bo-muted">
+              Cette collection est vide. Ajoutez-y des affiches ci-dessous.
+            </p>
+          )}
+        </section>
+
+        <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+          <h2 class="mb-1 text-base font-semibold">Ajouter des affiches</h2>
+          <p class="mb-3 text-sm text-bo-muted">
+            Cochez, puis ajoutez. Une affiche peut appartenir à plusieurs
+            collections.
+          </p>
+          <input
+            id="recherche-ajout"
+            type="search"
+            placeholder="Rechercher par nom…"
+            class="mb-3 w-72 max-w-full rounded border border-bo-border px-3 py-2 text-sm"
+          />
+          <form method="POST">
+            <input type="hidden" name="_action" value="ajouter" />
+            <div class="max-h-80 overflow-y-auto rounded border border-bo-border">
+              {horsCollection.map((p) => (
+                <label
+                  class="ml-ligne-ajout flex items-center gap-3 border-b border-bo-border px-3 py-2 text-sm last:border-b-0"
+                  data-nom={p.name.toLowerCase()}
+                >
+                  <input type="checkbox" name="produit" value={p.id} />
+                  {p.imageUrl ? (
+                    <img
+                      src={imageProduit(p.imageUrl)}
+                      alt=""
+                      loading="lazy"
+                      class="h-10 w-8 rounded border border-bo-border object-cover"
+                    />
+                  ) : (
+                    <span class="block h-10 w-8 rounded border border-bo-border bg-bo-bg" />
+                  )}
+                  <span class="flex-1">{p.name}</span>
+                </label>
+              ))}
+              {horsCollection.length === 0 && (
+                <p class="px-3 py-6 text-center text-sm text-bo-muted">
+                  Toutes les affiches du catalogue sont déjà dans cette
+                  collection.
+                </p>
+              )}
+            </div>
+            <button class="mt-3 rounded bg-bo-accent px-4 py-2 text-sm text-white">
+              Ajouter les affiches cochées
+            </button>
+          </form>
+        </section>
+      </>
+    )
+  }
+
+  <style is:global>
+    /* La LISTE se lit, les ICÔNES se reconnaissent. Une seule structure dans
+       la page, deux mises en forme : sans cela, changer de vue demanderait de
+       redessiner la grille et l'ordre en cours se perdrait. */
+    #grille[data-vue="liste"] {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    #grille[data-vue="liste"] .ml-carte {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0.75rem;
+    }
+    #grille[data-vue="liste"] .ml-vignette {
+      display: block;
+      width: 2.5rem;
+      height: 3.4rem;
+      flex: none;
+    }
+    #grille[data-vue="liste"] .ml-infos {
+      display: flex;
+      min-width: 0;
+      flex: 1;
+      flex-direction: column;
+    }
+
+    #grille[data-vue="icones"] {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+      gap: 0.75rem;
+    }
+    #grille[data-vue="icones"] .ml-carte {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.75rem 0.5rem;
+      text-align: center;
+    }
+    #grille[data-vue="icones"] .ml-vignette {
+      display: block;
+      width: 100%;
+      aspect-ratio: 3 / 4;
+    }
+    #grille[data-vue="icones"] .ml-infos {
+      display: flex;
+      width: 100%;
+      min-width: 0;
+      flex-direction: column;
+      gap: 0.15rem;
+      font-size: 0.8rem;
+      line-height: 1.15rem;
+    }
+    #grille[data-vue="icones"] .ml-poignee {
+      position: absolute;
+      top: 0.35rem;
+      left: 0.4rem;
+    }
+    #grille[data-vue="icones"] .ml-retirer {
+      position: absolute;
+      top: 0.35rem;
+      right: 0.4rem;
+    }
+    #grille .ml-carte.ml-tenue {
+      opacity: 0.55;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    }
+  </style>
+
+  <script is:inline>
+    (function () {
+      var grille = document.getElementById("grille");
+      if (!grille) return;
+      var champ = document.getElementById("champ-ordre");
+      var bouton = document.getElementById("bouton-ordre");
+
+      // La vue choisie suit la personne d'une collection à l'autre : c'est une
+      // préférence de travail, pas un réglage de la boutique.
+      var CLE_VUE = "ml_vue_collection";
+      function poserVue(vue) {
+        grille.dataset.vue = vue;
+        document.querySelectorAll("[data-vue]").forEach(function (b) {
+          if (b === grille || !b.dataset.vue) return;
+          var actif = b.dataset.vue === vue;
+          b.classList.toggle("bg-bo-nav", actif);
+          b.classList.toggle("text-white", actif);
+          b.classList.toggle("text-bo-muted", !actif);
+        });
+        try {
+          localStorage.setItem(CLE_VUE, vue);
+        } catch (e) {
+          /* sans stockage, la vue ne tient que le temps de la page */
+        }
+      }
+      document.querySelectorAll("button[data-vue]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          poserVue(b.dataset.vue);
+        });
+      });
+      var retenue = "liste";
+      try {
+        retenue = localStorage.getItem(CLE_VUE) || "liste";
+      } catch (e) {
+        /* rien à retenir */
+      }
+      poserVue(retenue === "icones" ? "icones" : "liste");
+
+      function cartes() {
+        return Array.prototype.slice.call(
+          grille.querySelectorAll("[data-produit]"),
+        );
+      }
+      var ordreDepart = cartes()
+        .map(function (c) {
+          return c.dataset.produit;
+        })
+        .join(",");
+
+      function verifierOrdre() {
+        var actuel = cartes()
+          .map(function (c) {
+            return c.dataset.produit;
+          })
+          .join(",");
+        champ.value = actuel;
+        bouton.disabled = actuel === ordreDepart;
+      }
+
+      // Le geste s'écoute sur la FENÊTRE : la carte change de place pendant le
+      // glissement, et une carte déplacée perdrait le suivi du pointeur.
+      var tenue = null;
+      grille.addEventListener("pointerdown", function (e) {
+        var poignee = e.target.closest(".ml-poignee");
+        if (!poignee) return;
+        e.preventDefault();
+        tenue = poignee.closest("[data-produit]");
+        if (!tenue) return;
+        tenue.classList.add("ml-tenue");
+        document.body.style.userSelect = "none";
+
+        function bouger(ev) {
+          if (!tenue) return;
+          var sous = document.elementFromPoint(ev.clientX, ev.clientY);
+          var cible = sous && sous.closest ? sous.closest("[data-produit]") : null;
+          if (!cible || cible === tenue || cible.parentElement !== grille) return;
+          var apres =
+            cible.compareDocumentPosition(tenue) &
+            Node.DOCUMENT_POSITION_PRECEDING;
+          grille.insertBefore(tenue, apres ? cible.nextSibling : cible);
+          verifierOrdre();
+        }
+        function lacher() {
+          if (tenue) tenue.classList.remove("ml-tenue");
+          tenue = null;
+          document.body.style.userSelect = "";
+          window.removeEventListener("pointermove", bouger);
+          window.removeEventListener("pointerup", lacher);
+          window.removeEventListener("pointercancel", lacher);
+          verifierOrdre();
+        }
+        window.addEventListener("pointermove", bouger);
+        window.addEventListener("pointerup", lacher);
+        window.addEventListener("pointercancel", lacher);
+      });
+
+      // Le filtre de la liste d'ajout : cent soixante affiches ne se
+      // parcourent pas à l'œil.
+      var recherche = document.getElementById("recherche-ajout");
+      if (recherche) {
+        recherche.addEventListener("input", function () {
+          var q = recherche.value.trim().toLowerCase();
+          document.querySelectorAll(".ml-ligne-ajout").forEach(function (l) {
+            l.style.display =
+              !q || (l.dataset.nom || "").indexOf(q) !== -1 ? "" : "none";
+          });
+        });
+      }
+
+      verifierOrdre();
+    })();
+  </script>
+</Admin>

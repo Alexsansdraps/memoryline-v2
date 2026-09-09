@@ -205,6 +205,38 @@ export interface MenuCms {
 }
 
 /**
+ * Une collection : la façon dont la boutique range ses affiches.
+ *
+ * C'est ce que l'ancienne boutique appelait déjà collection, et ce que le
+ * back-office appelait catégorie. Un seul mot désormais, et un seul endroit :
+ * les catégories étaient restées vides depuis le premier jour.
+ */
+export interface CollectionBo {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  position: number;
+  active: boolean;
+  /** Poids d'un article de cette collection, quand rien de plus précis ne le dit. */
+  defaultWeightGrams: number | null;
+  /** Nombre de produits dedans, tous statuts confondus. */
+  produits: number;
+}
+
+/** Un produit vu depuis sa collection : de quoi le reconnaître d'un coup d'œil. */
+export interface ProduitDeCollection {
+  id: number;
+  name: string;
+  slug: string;
+  status: string;
+  image: string | null;
+  prixMin: number | null;
+  prixMax: number | null;
+  formats: string[];
+}
+
+/**
  * Un stand : un endroit et un moment où l'on vend en personne.
  *
  * Plusieurs peuvent être ouverts en même temps, chacun avec son code : c'est
@@ -1158,10 +1190,13 @@ export function adminApi(request?: Request) {
         { fulfilled },
         cookie,
       ),
-    orderStats: (days: number, channel?: string) =>
+    /** `stand` restreint les chiffres à un seul stand de salon. */
+    orderStats: (days: number, channel?: string, stand?: number) =>
       req<StatsCommandes>(
         "GET",
-        `/admin/stats/orders?days=${days}${channel ? `&channel=${channel}` : ""}`,
+        `/admin/stats/orders?days=${days}${channel ? `&channel=${channel}` : ""}${
+          stand ? `&stand=${stand}` : ""
+        }`,
         undefined,
         cookie,
       ),
@@ -1356,6 +1391,63 @@ export function adminApi(request?: Request) {
         cookie,
       );
     },
+    /* --- Collections : la façon de ranger les affiches ------------------ */
+    collections: () =>
+      req<{ collections: CollectionBo[] }>(
+        "GET",
+        "/admin/collections",
+        undefined,
+        cookie,
+      ),
+    /** Une collection et les produits qui y sont rangés, dans l'ordre voulu. */
+    collection: (id: number) =>
+      req<{ collection: CollectionBo; produits: ProduitDeCollection[] }>(
+        "GET",
+        `/admin/collections/${id}`,
+        undefined,
+        cookie,
+      ),
+    creerCollection: (corps: { name: string }) =>
+      req<{ id: number }>("POST", "/admin/collections", corps, cookie),
+    /** Renomme, décrit, active, ou fixe le poids par défaut. */
+    majCollection: (
+      id: number,
+      corps: {
+        name?: string;
+        description?: string | null;
+        active?: boolean;
+        defaultWeightGrams?: number | null;
+        position?: number;
+      },
+    ) => req<{ ok: true }>("POST", `/admin/collections/${id}`, corps, cookie),
+    /** Supprime une collection vide. Refusé si elle contient des produits. */
+    supprimerCollection: (id: number) =>
+      req<{ ok: true }>("DELETE", `/admin/collections/${id}`, undefined, cookie),
+    /** Range des produits dans la collection, ou les en sort. */
+    produitsDeCollection: (
+      id: number,
+      corps: { ajouter?: number[]; retirer?: number[] },
+    ) =>
+      req<{ ok: true; dedans: number }>(
+        "POST",
+        `/admin/collections/${id}/produits`,
+        corps,
+        cookie,
+      ),
+    /**
+     * Fixe l'ordre des produits dans la collection.
+     *
+     * Le tableau fait foi : la position devient l'indice. Ceux qui n'y
+     * figurent pas gardent leur place derrière.
+     */
+    ordreCollection: (id: number, produits: number[]) =>
+      req<{ ok: true; ranges: number }>(
+        "POST",
+        `/admin/collections/${id}/ordre`,
+        { produits },
+        cookie,
+      ),
+
     /* --- Contenu du site : pages libres et menu ------------------------ */
     /** Les pages créées depuis le back-office. */
     pages: () =>

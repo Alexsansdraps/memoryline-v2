@@ -9,7 +9,8 @@
  * lignes. Il n'y a donc aucun moyen que la fiche raconte autre chose que ce
  * qui s'est réellement passé.
  */
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
+import type { SQL } from "drizzle-orm";
 import { and, desc, eq, gte, inArray, lte, or, sql as raw } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import { refundStripe } from "./payments.js";
@@ -281,6 +282,29 @@ async function annulerExpeditions(ids: number[]): Promise<void> {
 /*  Routes                                                                    */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Le vendeur ne voit que les ventes du stand.
+ *
+ * Rend les conditions à AJOUTER aux siennes, quoi qu'il demande. Le
+ * propriétaire, lui, ne reçoit rien de plus : il voit tout.
+ *
+ * Le filtre vit dans la requête et non dans l'écran : un écran qui masque un
+ * bouton est une politesse, pas une garde. Une adresse tapée à la main doit
+ * buter sur la même règle.
+ */
+function limiterAuStand(c: Context): SQL[] {
+  const user = c.get("utilisateur");
+  if (!user || user.role === "owner") return [];
+  const bornes: SQL[] = [eq(schema.orders.channel, "salon")];
+  // Le stand du vendeur, quand il lui en a été attribué un. Sans attribution,
+  // il voit les ventes de stand mais aucune du site : c'est déjà la moitié de
+  // la règle, et le refus par défaut vaut mieux qu'un accès complet.
+  const stand = user.standId;
+  if (typeof stand === "number" && stand > 0)
+    bornes.push(eq(schema.orders.standId, stand));
+  return bornes;
+}
+
 export function mountOrderRoutes(app: Hono): void {
   /**
    * Liste des commandes, filtrable.
@@ -300,6 +324,7 @@ export function mountOrderRoutes(app: Hono): void {
     const stand = Number(q.stand);
     if (Number.isInteger(stand) && stand > 0)
       conditions.push(eq(schema.orders.standId, stand));
+    conditions.push(...limiterAuStand(c));
     if (q.from) conditions.push(gte(schema.orders.createdAt, new Date(q.from)));
     if (q.to) {
       // Une date de fin s'entend « jusqu'au soir » : sinon un filtre « du 1er
@@ -409,6 +434,7 @@ export function mountOrderRoutes(app: Hono): void {
     const stand = Number(q.stand);
     if (Number.isInteger(stand) && stand > 0)
       conditions.push(eq(schema.orders.standId, stand));
+    conditions.push(...limiterAuStand(c));
     if (q.from) conditions.push(gte(schema.orders.createdAt, new Date(q.from)));
     if (q.to) {
       const fin = new Date(q.to);

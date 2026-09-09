@@ -18,8 +18,10 @@ import {
 
 interface Props {
   channel: "web" | "salon";
+  /** Restreint la liste à un seul stand, quand l'écran en regarde un. */
+  stand?: number;
 }
-const { channel } = Astro.props;
+const { channel, stand } = Astro.props;
 
 const api = adminApi(Astro.request);
 
@@ -104,6 +106,7 @@ const onglet = ONGLETS.find((o) => o.cle === ongletActif) ?? ONGLETS[0]!;
 // pourrait pas affiner « À expédier » sans changer d'onglet.
 const filtres: FiltresCommandes = {
   channel,
+  stand,
   ...onglet.filtres,
   q: params.get("q") ?? undefined,
   financial: params.get("financial") ?? onglet.filtres.financial,

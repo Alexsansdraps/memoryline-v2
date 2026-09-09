@@ -20,17 +20,20 @@ interface NavItem {
 }
 
 const nav: NavItem[] = [
-  { href: "/", label: "Accueil", icon: "🏠" },
-  { href: "/commandes", label: "Commandes en ligne", icon: "🛒" },
-  { href: "/paniers", label: "Paniers abandonnés", icon: "🛍️" },
-  { href: "/clients", label: "Clients", icon: "👥" },
+  // Un vendeur ne voit que son stand : tout le reste porte « owner ». Le
+  // tableau de bord lui-même mêle les ventes du site aux siennes, il n'y a
+  // donc pas sa place.
+  { href: "/", label: "Accueil", icon: "🏠", owner: true },
+  { href: "/commandes", label: "Commandes en ligne", icon: "🛒", owner: true },
+  { href: "/paniers", label: "Paniers abandonnés", icon: "🛍️", owner: true },
+  { href: "/clients", label: "Clients", icon: "👥", owner: true },
   { href: "/ventes-salon", label: "Ventes stand", icon: "🎪" },
   { href: "/produits", label: "Produits", icon: "🖼️", owner: true },
   { href: "/cadres", label: "Cadres", icon: "🖼", owner: true },
   { href: "/personnages", label: "Personnages", icon: "🧸", owner: true },
   { href: "/types-affiche", label: "Types d'affiche", icon: "🎭", owner: true },
   { href: "/ia", label: "Affiches IA", icon: "✨", owner: true },
-  { href: "/categories-produits", label: "Catégories de produits", icon: "📚", owner: true },
+  { href: "/collections", label: "Collections", icon: "📚", owner: true },
   { href: "/categories-pieces", label: "Catégories de pièces", icon: "🎨", owner: true },
   { href: "/promotions", label: "Promotions", icon: "🎟️", owner: true },
   { href: "/livraison", label: "Livraison", icon: "📦", owner: true },

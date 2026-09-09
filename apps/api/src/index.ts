@@ -103,28 +103,48 @@ app.use(
 const OWNER_ROLE = "owner";
 
 /**
- * Routes réservées au propriétaire, LECTURE COMPRISE.
+ * Ce qu'un VENDEUR a le droit de lire, et rien d'autre.
  *
- * La règle générale suffit presque partout : un vendeur consulte, seul le
- * propriétaire modifie. Elle tombe dès qu'une lecture révèle plus que ce
- * qu'elle affiche. L'aperçu d'un courrier, par exemple, rend la confirmation
- * d'une commande nommée : nom, adresse postale complète et montants d'une
- * vraie cliente, dans une simple requête de lecture.
+ * La règle d'avant disait « le vendeur consulte, le propriétaire modifie ».
+ * Elle laissait donc lire tout : le chiffre du site, les fiches clients, les
+ * marges, les autres stands. Ce n'est pas ce qu'on confie à quelqu'un qui
+ * tient une table un samedi après-midi.
+ *
+ * Le sens de la marche compte plus que la liste elle-même. Énumérer ce qui est
+ * INTERDIT laisse passer chaque route ajoutée ensuite, et personne ne s'en
+ * aperçoit avant la fuite. Énumérer ce qui est PERMIS refuse par défaut :
+ * l'oubli se voit tout de suite, parce que l'écran cesse de marcher.
+ *
+ * Sur ces routes-là, les données sont en plus bornées au stand : voir
+ * `limiterAuStand` dans apps/api/src/commandes.ts.
  */
-const LECTURES_RESERVEES = ["/admin/courriers"];
+const LECTURES_DU_VENDEUR = [
+  "/admin/orders", // bornées au stand, cf. commandes.ts
+  "/admin/stats/orders", // idem
+  "/admin/stands", // son stand seulement
+  "/admin/print-files", // le fichier d'impression d'une affiche vendue
+  "/admin/me",
+];
 
 app.use("/admin/*", async (c, next) => {
   const user = await validateSession(getCookie(c, SESSION_COOKIE));
   if (!user) return c.json({ error: "Non authentifié" }, 401);
-  const chemin = new URL(c.req.url).pathname;
-  const reservee =
-    c.req.method !== "GET" ||
-    LECTURES_RESERVEES.some((p) => chemin.startsWith(p));
-  if (reservee && user.role !== OWNER_ROLE) {
-    return c.json(
-      { error: "Action réservée au propriétaire du compte" },
-      403,
-    );
+  // Les routes lisent l'utilisateur pour borner ce qu'elles renvoient. Posé
+  // ici, une fois : une route qui l'oublierait renverrait tout.
+  c.set("utilisateur", user);
+
+  if (user.role !== OWNER_ROLE) {
+    const chemin = new URL(c.req.url).pathname;
+    const permise =
+      c.req.method === "GET" &&
+      LECTURES_DU_VENDEUR.some(
+        (p) => chemin === p || chemin.startsWith(`${p}/`) || chemin.startsWith(`${p}?`),
+      );
+    if (!permise)
+      return c.json(
+        { error: "Cette partie du back-office est réservée au propriétaire." },
+        403,
+      );
   }
   await next();
 });
@@ -1339,6 +1359,21 @@ app.get("/admin/stats/orders", async (c) => {
   ];
   if (canal === "web" || canal === "salon")
     conditions.push(eq(schema.orders.channel, canal));
+  // Un stand précis : c'est la question du retour de salon, « celui-là,
+  // combien a-t-il fait ».
+  const standDemande = Number(c.req.query("stand"));
+  if (Number.isInteger(standDemande) && standDemande > 0)
+    conditions.push(eq(schema.orders.standId, standDemande));
+
+  // Un vendeur ne voit que le stand, quoi qu'il demande. Le filtre est posé
+  // ici et non dans l'écran : une adresse tapée à la main doit buter sur la
+  // même règle qu'un bouton.
+  const utilisateur = c.get("utilisateur");
+  if (utilisateur && utilisateur.role !== OWNER_ROLE) {
+    conditions.push(eq(schema.orders.channel, "salon"));
+    if (typeof utilisateur.standId === "number" && utilisateur.standId > 0)
+      conditions.push(eq(schema.orders.standId, utilisateur.standId));
+  }
 
   const lignes = await db
     .select({
