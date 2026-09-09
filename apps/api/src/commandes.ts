@@ -14,6 +14,12 @@ import type { SQL } from "drizzle-orm";
 import { and, desc, eq, gte, inArray, lte, or, sql as raw } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import { refundStripe } from "./payments.js";
+import {
+  courrierExpediee,
+  courrierPreteAuStand,
+  envoyer as envoyerCourrier,
+  estConfigure as mailConfigure,
+} from "./mail.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Statuts calculés                                                          */
@@ -755,8 +761,107 @@ export function mountOrderRoutes(app: Hono): void {
         (trackingNumber ? `, suivi ${trackingNumber}` : "") +
         ".",
     });
+
+    await previenirDeLExpedition(id, {
+      carrier,
+      trackingNumber,
+      trackingUrl: ful!.trackingUrl ?? null,
+    });
     return c.json(ful);
   });
+
+  /**
+   * Dit à la cliente que son affiche part, ou qu'elle est prête.
+   *
+   * Le texte dépend du canal, et ce n'est pas cosmétique : une commande de
+   * stand ne porte AUCUN prix, du premier écran de la tablette jusqu'ici. La
+   * vendeuse a annoncé le montant de vive voix, un chiffre écrit là la
+   * contredirait après coup.
+   *
+   * Ne lève jamais. Le colis est parti, c'est le fait qui compte ; un courrier
+   * qui ne part pas ne doit pas défaire une expédition enregistrée. L'échec se
+   * lit dans la chronologie de la commande.
+   */
+  async function previenirDeLExpedition(
+    orderId: number,
+    envoi: {
+      carrier: string | null;
+      trackingNumber: string | null;
+      trackingUrl: string | null;
+    },
+  ): Promise<void> {
+    if (!mailConfigure()) return;
+    try {
+      const [commande] = await db
+        .select({
+          number: schema.orders.number,
+          channel: schema.orders.channel,
+          customerId: schema.orders.customerId,
+          note: schema.orders.internalNote,
+        })
+        .from(schema.orders)
+        .where(eq(schema.orders.id, orderId));
+      if (!commande?.customerId) return;
+
+      const [client] = await db
+        .select({ name: schema.customers.name, email: schema.customers.email })
+        .from(schema.customers)
+        .where(eq(schema.customers.id, commande.customerId));
+      if (!client?.email) return;
+
+      const lignesCommande = await db
+        .select({
+          title: schema.orderItems.title,
+          quantity: schema.orderItems.quantity,
+          unitPriceCents: schema.orderItems.unitPriceCents,
+          config: schema.orderItems.config,
+        })
+        .from(schema.orderItems)
+        .where(eq(schema.orderItems.orderId, orderId));
+      const lignes = lignesCommande.map((l) => {
+        const cfg = (l.config ?? {}) as { format?: unknown };
+        return {
+          titre: l.title ?? "Affiche personnalisée",
+          format: typeof cfg.format === "string" ? cfg.format : null,
+          cadre: null,
+          quantite: l.quantity,
+          unitPriceCents: l.unitPriceCents,
+        };
+      });
+      const prenom = (client.name ?? "").split(" ")[0] || "vous";
+
+      const courrier =
+        commande.channel === "salon"
+          ? courrierPreteAuStand({
+              prenomClient: prenom,
+              numero: commande.number,
+              // Le nom du stand a été gardé dans la note interne au moment de
+              // la vente : c'est le seul endroit où il vit sur la commande.
+              evenement:
+                commande.note?.replace(/^Stand\s*:\s*/, "").trim() || null,
+              lignes,
+            })
+          : courrierExpediee({
+              prenomClient: prenom,
+              numero: commande.number,
+              transporteur: envoi.carrier,
+              numeroSuivi: envoi.trackingNumber,
+              lienSuivi: envoi.trackingUrl,
+              lignes,
+            });
+
+      const parti = await envoyerCourrier({ ...courrier, to: client.email });
+      await db.insert(schema.orderEvents).values({
+        orderId,
+        kind: "event",
+        message: parti
+          ? `Courrier envoyé à ${client.email} : ${courrier.subject}.`
+          : `Le courrier « ${courrier.subject} » n'a pas pu partir vers ${client.email}.`,
+      });
+    } catch {
+      // Une panne de courrier ne défait pas une expédition enregistrée.
+    }
+  }
 
   /** Annule une expédition (colis jamais parti, erreur de saisie). */
   app.post("/admin/fulfillments/:id/cancel", async (c) => {

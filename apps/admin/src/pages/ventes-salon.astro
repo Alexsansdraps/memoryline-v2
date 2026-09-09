@@ -432,6 +432,10 @@ const classeBouton =
     }
   </div>
 
+  {/* Pas d'ouverture de stand quand on en regarde un : on est venu voir les
+      ventes de celui-là, un formulaire de création à côté se lit comme s'il
+      allait le modifier. On revient à la liste pour en ouvrir un autre. */}
+  {!standChoisi && (
   <section class="mt-6 rounded-lg border border-bo-border bg-bo-surface p-5">
     <h2 class="text-base font-semibold">Ouvrir un nouveau stand</h2>
     <form method="POST" class="mt-3 flex flex-wrap items-end gap-3 text-sm">
@@ -470,6 +474,7 @@ const classeBouton =
       <li>Un stand qui a vendu se ferme et se rouvre, il ne se supprime pas.</li>
     </ul>
   </section>
+  )}
 
   {
     orphelines.commandes > 0 && (
@@ -485,7 +490,7 @@ const classeBouton =
 
   <h2 class="mt-8 mb-1 text-base font-semibold">Commandes prises au stand</h2>
   <p class="mb-4 text-sm text-bo-muted">
-    À encaisser sur place, puis à imprimer et préparer.
+    Réglées sur place, à imprimer et à préparer.
   </p>
 
   {
@@ -503,8 +508,9 @@ const classeBouton =
     )
   }
 
-  {/* Les chiffres du haut valent pour tous les stands : les afficher au-dessus
-      d'une liste filtrée les ferait passer pour ceux du stand regardé. */}
+  {/* Les chiffres suivent le stand regardé et disent lequel : au-dessus d'une
+      liste filtrée, un total qui compterait autre chose se lirait comme le
+      sien. */}
   {/* Les chiffres suivent le stand choisi, et disent lequel. Les cacher dès
       qu'on en choisit un privait justement du chiffre qu'on venait chercher. */}
   <OrderStats

@@ -20,6 +20,8 @@ import type { Hono } from "hono";
 import { eq, or, sql } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import {
+  courrierExpediee,
+  courrierPreteAuStand,
   courrierConfirmation,
   courrierNouvelleCommande,
   courrierPanierAbandonne,
@@ -57,6 +59,8 @@ const ORIGINE = (process.env.PUBLIC_ORIGIN ?? "").replace(/\/$/, "");
 
 type IdModele =
   | "confirmation"
+  | "expediee"
+  | "prete-au-stand"
   | "nouvelle-commande"
   | "panier-abandonne"
   | "reinitialisation";
@@ -74,6 +78,18 @@ const MODELES: Modele[] = [
     id: "confirmation",
     nom: "Confirmation de commande",
     quand: "Part vers le client dès que son paiement est encaissé.",
+    besoinCommande: true,
+  },
+  {
+    id: "expediee",
+    nom: "Commande expédiée",
+    quand: "Part vers le client quand vous enregistrez son colis, avec le lien de suivi.",
+    besoinCommande: true,
+  },
+  {
+    id: "prete-au-stand",
+    nom: "Affiche prête (stand)",
+    quand: "Prévient un client du stand que son affiche est prête. Aucun prix.",
     besoinCommande: true,
   },
   {
@@ -298,6 +314,25 @@ function rendre(modele: IdModele, d: DonneesCourrier): Courrier {
         totalCents: d.totalCents,
         modeLivraison: d.modeLivraison,
         adresse: d.adresse,
+      });
+    case "expediee":
+      // Le suivi d'exemple imite un envoi Colissimo : sans numéro, l'aperçu
+      // cacherait justement le bouton qu'on vient vérifier.
+      return courrierExpediee({
+        prenomClient: d.prenomClient || "vous",
+        numero: d.numero,
+        transporteur: "Colissimo",
+        numeroSuivi: "6A12345678901",
+        lienSuivi:
+          "https://www.laposte.fr/outils/suivre-vos-envois?code=6A12345678901",
+        lignes: d.lignes,
+      });
+    case "prete-au-stand":
+      return courrierPreteAuStand({
+        prenomClient: d.prenomClient || "vous",
+        numero: d.numero,
+        evenement: "Salon du livre de Nantes 2026",
+        lignes: d.lignes,
       });
     case "nouvelle-commande":
       return courrierNouvelleCommande({

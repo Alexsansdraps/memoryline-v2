@@ -197,6 +197,29 @@ function tableauLignes(lignes: LigneCourrier[]): string {
   </table>`;
 }
 
+/**
+ * Les articles, sans un seul montant.
+ *
+ * Le stand n'affiche aucun prix, du premier écran de la tablette jusqu'au
+ * courrier : c'est la vendeuse qui les annonce, et un chiffre écrit ici la
+ * contredirait après coup.
+ */
+function tableauLignesSansPrix(lignes: LigneCourrier[]): string {
+  if (!lignes.length) return "";
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:20px 0;font-size:14px">
+    ${lignes
+      .map(
+        (l) =>
+          `<tr><td style="padding:8px 0;border-bottom:1px solid #eee">${h(l.titre)}${
+            l.format ? ` — ${h(l.format)}` : ""
+          }${l.cadre ? `, ${h(l.cadre)}` : ""}${
+            l.quantite > 1 ? ` × ${l.quantite}` : ""
+          }</td></tr>`,
+      )
+      .join("")}
+  </table>`;
+}
+
 export interface ConfirmationCommande {
   numero: string;
   prenomClient: string;
@@ -282,6 +305,78 @@ export function courrierPanierAbandonne(d: {
        <p style="margin:0;color:#5b5b54;font-size:14px">Si vous avez changé d'avis, ignorez simplement ce message.</p>`,
     ),
     text: `Bonjour ${d.prenomClient},\n\nVotre affiche vous attend : ${d.lien}\n\nMemory Line`,
+  };
+}
+
+/**
+ * Le colis est parti.
+ *
+ * C'est le courrier le plus attendu de tous, et le seul que la boutique
+ * n'envoyait pas : un numéro de suivi saisi au back-office n'allait nulle
+ * part. Le lien de suivi n'est pas toujours connu (transporteur saisi à la
+ * main, numéro d'un service qu'on ne sait pas construire) : on donne alors le
+ * numéro en clair, ce qui vaut mieux que rien.
+ */
+export function courrierExpediee(d: {
+  prenomClient: string;
+  numero: string;
+  transporteur: string | null;
+  numeroSuivi: string | null;
+  lienSuivi: string | null;
+  lignes: LigneCourrier[];
+}): Courrier {
+  const par = d.transporteur ? ` par ${h(d.transporteur)}` : "";
+  const suivi = d.lienSuivi
+    ? `<p style="margin:20px 0"><a href="${h(d.lienSuivi)}" style="display:inline-block;background:#121212;color:#ffffff;padding:14px 28px;text-decoration:none">Suivre mon colis</a></p>`
+    : d.numeroSuivi
+      ? `<p style="margin:20px 0;font-size:14px">Numéro de suivi : <strong style="font-weight:500">${h(d.numeroSuivi)}</strong></p>`
+      : "";
+  return {
+    to: "",
+    subject: `Votre commande ${d.numero} est en route`,
+    html: gabarit(
+      `Bonjour ${h(d.prenomClient)},`,
+      `<p style="margin:0">Votre affiche est partie${par}. Elle arrive.</p>
+       ${tableauLignes(d.lignes)}
+       ${suivi}
+       <p style="margin:0;color:#5b5b54;font-size:14px">Comptez quelques jours avant que le suivi ne s'anime : le transporteur met un moment à enregistrer le colis.</p>`,
+    ),
+    text:
+      `Bonjour ${d.prenomClient},\n\nVotre commande ${d.numero} est partie${d.transporteur ? ` par ${d.transporteur}` : ""}.` +
+      (d.lienSuivi
+        ? `\nSuivi : ${d.lienSuivi}`
+        : d.numeroSuivi
+          ? `\nNuméro de suivi : ${d.numeroSuivi}`
+          : "") +
+      `\n\nMemory Line`,
+  };
+}
+
+/**
+ * L'affiche prise au stand est prête.
+ *
+ * AUCUN PRIX, comme tout ce qui vient du stand : le tarif y est annoncé de
+ * vive voix par la vendeuse, et un montant écrit ici la contredirait après
+ * coup. On demande une adresse e-mail au stand exactement pour envoyer ce
+ * message-là, et personne ne l'envoyait.
+ */
+export function courrierPreteAuStand(d: {
+  prenomClient: string;
+  numero: string;
+  evenement: string | null;
+  lignes: LigneCourrier[];
+}): Courrier {
+  const ou = d.evenement ? ` sur ${h(d.evenement)}` : "";
+  return {
+    to: "",
+    subject: "Votre affiche est prête",
+    html: gabarit(
+      `Bonjour ${h(d.prenomClient)},`,
+      `<p style="margin:0">Votre affiche commandée${ou} est prête. Nous vous recontactons pour la remise, ou vous la recevez sous peu si elle doit voyager.</p>
+       ${tableauLignesSansPrix(d.lignes)}
+       <p style="margin:20px 0 0;color:#5b5b54;font-size:14px">Commande ${h(d.numero)}. Merci d'être passée nous voir.</p>`,
+    ),
+    text: `Bonjour ${d.prenomClient},\n\nVotre affiche commandée${d.evenement ? ` sur ${d.evenement}` : ""} est prête.\nCommande ${d.numero}.\n\nMemory Line`,
   };
 }
 
