@@ -1,26 +1,31 @@
 ---
 /**
- * Mettre en ligne une fournée d'affiches, puis leur donner leur visuel, sans
- * jamais ouvrir une fiche.
+ * Mettre en ligne une fournée d'affiches AVEC leurs visuels, sans jamais
+ * ouvrir une fiche.
  *
  * Une série arrive rarement seule : quarante affiches d'un même voyage, avec
  * leurs noms, leurs deux formats et leur rangement, plus quarante images dans
  * un dossier à côté. Le tableur sait décrire les quarante fiches d'un coup ;
- * il ne sait rien des images. C'est ce que cet écran raccorde, et c'est
- * pourquoi il ne s'arrête pas à l'import : la liste qui suit l'import est la
- * même liste, une ligne par affiche, avec de quoi déposer son visuel dessus.
- * Quarante fiches ouvertes une par une, c'est l'après-midi ; ici c'est le
- * temps de faire glisser quarante fichiers.
+ * il ne sait rien des images. C'est ce que cet écran raccorde.
  *
  * L'écran se lit en trois temps, et le deuxième est le plus important : on
  * dépose le fichier, on REGARDE ce qui se passerait, et seulement ensuite on
  * décide. Tant que le second bouton n'a pas été touché, rien n'est écrit.
+ *
+ * Les images se déposent pendant ce deuxième temps, sur la ligne de l'affiche
+ * qu'elles illustrent. Elles partent aussitôt vers la boutique, qui les range
+ * et rend leur adresse ; la page garde ces adresses et les envoie AVEC le
+ * fichier au moment d'importer. Les affiches naissent donc illustrées, au
+ * lieu qu'il faille repasser derrière chacune d'elles. Rien de tout cela
+ * n'entre en base avant l'import : un visuel déposé sur un aperçu que l'on
+ * abandonne n'aura fait qu'occuper un peu de place sur le disque.
+ *
+ * Le troisième temps, lui, reste : la liste qui suit l'import est la même
+ * liste, une ligne par affiche, avec de quoi déposer ce qu'on avait oublié.
  */
 import Admin from "../../layouts/Admin.astro";
 import { apiUrl, url } from "../../lib/url.ts";
-import { adminApi, type ResultatImport } from "../../lib/api.ts";
-
-const api = adminApi(Astro.request);
+import type { ResultatImport } from "../../lib/api.ts";
 
 /**
  * L'adresse de l'API telle que le NAVIGATEUR doit la demander.
@@ -31,22 +36,149 @@ const api = adminApi(Astro.request);
  */
 const BASE_API = apiUrl("");
 
+/**
+ * L'adresse de l'API vue du SERVEUR : par le réseau interne en conteneur, en
+ * direct sinon.
+ *
+ * L'import part d'ici plutôt que du client partagé du back-office : celui-ci
+ * ne sait poster que le fichier, alors que les visuels déposés pendant
+ * l'aperçu doivent voyager dans le même appel que celui qui écrit. Un import
+ * en deux appels laisserait la porte ouverte à des affiches créées sans leur
+ * image, ce que cet écran existe précisément pour éviter.
+ */
+const API_INTERNE =
+  import.meta.env.API_URL_INTERNAL ??
+  import.meta.env.PUBLIC_API_URL ??
+  "http://localhost:3000";
+
+/**
+ * Combien de visuels une même affiche peut recevoir en une fois.
+ *
+ * La boutique applique la même borne de son côté ; celle-ci sert à le dire
+ * avant d'envoyer quoi que ce soit. Ce qu'elle arrête n'est pas une envie de
+ * bien faire, c'est un dossier entier lâché sur la mauvaise ligne.
+ */
+const IMAGES_PAR_AFFICHE_MAX = 10;
+
+/** Les visuels déposés : la liste des adresses, affiche par affiche. */
+type ImagesDeposees = Record<string, string[]>;
+
+/**
+ * Relit les adresses des visuels que la page a jointes au formulaire.
+ *
+ * Elles voyagent en un seul champ caché, parce qu'un formulaire ne sait pas
+ * porter une liste de listes. Un contenu illisible n'est pas passé sous
+ * silence : importer sans les images qu'on vient de déposer, sans un mot,
+ * serait la pire des réponses.
+ */
+function lireImagesDuFormulaire(brut: string): ImagesDeposees {
+  if (!brut.trim()) return {};
+  let donnees: unknown;
+  try {
+    donnees = JSON.parse(brut);
+  } catch {
+    throw new Error(
+      "Les images déposées n'ont pas pu être relues. Rechargez la page, redéposez-les, puis relancez : rien n'a été enregistré.",
+    );
+  }
+  if (typeof donnees !== "object" || donnees === null || Array.isArray(donnees))
+    return {};
+
+  const propres: ImagesDeposees = {};
+  for (const [handle, valeur] of Object.entries(
+    donnees as Record<string, unknown>,
+  )) {
+    if (!Array.isArray(valeur)) continue;
+    const adresses = valeur.filter(
+      (v): v is string => typeof v === "string" && v.trim() !== "",
+    );
+    if (adresses.length) propres[handle] = adresses;
+  }
+  return propres;
+}
+
+/**
+ * Demande à la boutique ce que le fichier donnerait, ou de l'écrire.
+ *
+ * Le cookie de la requête entrante est relayé, sans quoi l'import répondrait
+ * « non authentifié ». La phrase d'un refus est reprise telle quelle : elle
+ * nomme la ligne et le défaut, là où un code ne dirait rien à personne.
+ */
+async function demanderImport(
+  csv: string,
+  appliquer: boolean,
+  images: ImagesDeposees,
+): Promise<ResultatImport> {
+  const reponse = await fetch(`${API_INTERNE}/admin/products/import`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      cookie: Astro.request.headers.get("cookie") ?? "",
+    },
+    body: JSON.stringify({ csv, appliquer, images }),
+  });
+
+  const texte = await reponse.text().catch(() => "");
+  let donnees: unknown = null;
+  try {
+    donnees = JSON.parse(texte);
+  } catch {
+    /* réponse non lisible : le code de retour est tout ce qu'on saura */
+  }
+  const raison =
+    typeof donnees === "object" && donnees !== null && "error" in donnees
+      ? String((donnees as { error?: unknown }).error ?? "")
+      : "";
+
+  if (!reponse.ok)
+    throw new Error(
+      raison ||
+        "L'import n'a pas abouti. Rien n'a été enregistré : réessayez dans un instant.",
+    );
+  // Une réponse acceptée mais vide donnerait un écran blanc sans un mot, et
+  // laisserait croire que le fichier n'a rien donné.
+  if (donnees === null || typeof donnees !== "object")
+    throw new Error(
+      "La réponse de la boutique n'a pas pu être lue. Réessayez dans un instant.",
+    );
+  return donnees as ResultatImport;
+}
+
 let resultat: ResultatImport | null = null;
 let contenu = "";
 let erreur: string | null = null;
+/** Les visuels déjà déposés, à remettre en place si l'écran doit revenir. */
+let imagesDeposees: ImagesDeposees = {};
 
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   contenu = String(f.get("csv") ?? "");
   const appliquer = String(f.get("_action") ?? "") === "importer";
   try {
+    imagesDeposees = lireImagesDuFormulaire(String(f.get("images") ?? ""));
     if (!contenu.trim())
       throw new Error(
         "Aucun fichier n'a été choisi. Sélectionnez un fichier, ou collez son contenu.",
       );
-    resultat = await api.importerProduits(contenu, appliquer);
+    // L'aperçu ne porte jamais les visuels : c'est la page qui les annonce au
+    // fur et à mesure qu'on les dépose, et les faire annoncer des deux côtés
+    // donnerait deux lignes pour une seule image.
+    resultat = await demanderImport(
+      contenu,
+      appliquer,
+      appliquer ? imagesDeposees : {},
+    );
   } catch (e) {
     erreur = e instanceof Error ? e.message : String(e);
+    // Un import refusé ne doit pas emporter avec lui le travail déjà fait :
+    // on redemande l'aperçu pour que la liste revienne, ses visuels avec
+    // elle, et qu'il n'y ait plus qu'à corriger puis relancer.
+    if (appliquer && contenu.trim())
+      try {
+        resultat = await demanderImport(contenu, false, {});
+      } catch {
+        /* la première phrase dit déjà ce qui bloque */
+      }
   }
 }
 
@@ -107,6 +239,20 @@ const dejaIllustrees = affiches.filter((l) => l.sansImage === false).length;
 /** Le compteur de visuels, avant que le navigateur ne le fasse avancer. */
 const phraseCompteur = `${dejaIllustrees} image${marque(dejaIllustrees)} sur ${affiches.length}`;
 
+/**
+ * Ce que la propriétaire cherche des yeux avant de valider : les affiches qui
+ * partiraient en boutique sans rien à montrer.
+ */
+const sansVisuel = (resultat?.apercu ?? []).filter(
+  (l) => l.sansImage === true,
+).length;
+const phraseSansVisuel = (n: number): string =>
+  n === 0
+    ? "Toutes les affiches auront un visuel."
+    : n === 1
+      ? "1 affiche n'a encore aucun visuel."
+      : `${n} affiches n'ont encore aucun visuel.`;
+
 /** Un montant en centimes, écrit comme sur une étiquette de prix. */
 function euros(cents: number): string {
   const entier = Math.floor(cents / 100);
@@ -143,9 +289,10 @@ const pastilleAppliquee: Record<string, string> = {
   <h2 class="mb-1 text-lg font-semibold">Importer des affiches</h2>
   <p class="mb-5 max-w-3xl text-sm text-bo-muted">
     Déposez le fichier de votre série d'affiches. Vous verrez d'abord, ligne par
-    ligne, ce qui serait créé et ce qui serait corrigé. Rien n'est enregistré
-    tant que vous ne l'avez pas demandé. Une fois l'import fait, vous déposerez
-    l'image de chaque affiche ici même, sans ouvrir une seule fiche.
+    ligne, ce qui serait créé et ce qui serait corrigé, et vous pourrez y
+    attacher les images de chaque affiche : elles seront mises en place en même
+    temps que les fiches. Rien n'est enregistré tant que vous ne l'avez pas
+    demandé.
   </p>
 
   {
@@ -220,7 +367,7 @@ const pastilleAppliquee: Record<string, string> = {
   }
 
   {/* ------------------------------------------------------------------ */}
-  {/*  2. L'aperçu, ou le compte rendu                                    */}
+  {/*  2. L'aperçu, ses visuels, ou le compte rendu                       */}
   {/* ------------------------------------------------------------------ */}
   {
     resultat && (
@@ -229,6 +376,24 @@ const pastilleAppliquee: Record<string, string> = {
           {applique ? "Import terminé" : "Ce qui se passerait"}
         </h3>
         <p class="mb-4 text-sm text-bo-muted">{resume.join(" ")}</p>
+
+        {!applique && (
+          <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+            Déposez l'image de chaque affiche sur sa ligne, ou cliquez pour la
+            choisir. Plusieurs images par affiche sont possibles : la première
+            est celle que la boutique montrera. Elles ne seront enregistrées
+            qu'au moment de l'import.
+          </p>
+        )}
+
+        {!applique && (
+          <p
+            id="compteur-visuels"
+            class={`mb-4 text-sm ${sansVisuel > 0 ? "text-amber-900" : "text-bo-muted"}`}
+          >
+            {phraseSansVisuel(sansVisuel)}
+          </p>
+        )}
 
         {resultat.collectionsCreees.length > 0 && (
           <p class="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -245,6 +410,7 @@ const pastilleAppliquee: Record<string, string> = {
             <thead class="bg-bo-bg text-left text-bo-muted">
               <tr>
                 <th class="px-3 py-2 font-medium">Affiche</th>
+                {!applique && <th class="px-3 py-2 font-medium">Visuels</th>}
                 <th class="px-3 py-2 font-medium">Ce qui se passe</th>
                 <th class="px-3 py-2 font-medium">Le détail</th>
                 <th class="px-3 py-2 font-medium">Formats</th>
@@ -253,16 +419,63 @@ const pastilleAppliquee: Record<string, string> = {
             </thead>
             <tbody>
               {resultat.apercu.map((l) => (
-                <tr class="border-t border-bo-border align-top">
+                <tr
+                  class="js-rangee border-t border-bo-border align-top"
+                  data-action={l.action}
+                >
                   <td class="px-3 py-2">
                     <span class="font-medium">{l.nom}</span>
                     <span class="block text-xs text-bo-muted">
                       adresse de la page : /{l.handle}
                     </span>
                   </td>
+
+                  {/* La colonne des visuels n'a de sens qu'avant l'import :
+                      après, c'est la liste du bas qui prend le relais, avec
+                      les affiches telles qu'elles sont en base. */}
+                  {!applique && (
+                    <td class="px-3 py-2">
+                      {l.action === "refus" ? (
+                        <span class="text-xs text-bo-muted">
+                          rien à illustrer
+                        </span>
+                      ) : (
+                        <div
+                          class="js-visuels min-w-[11rem]"
+                          data-handle={l.handle}
+                          data-en-base={l.sansImage === false ? "1" : "0"}
+                        >
+                          <div class="js-galerie mb-1 flex flex-wrap gap-1"></div>
+                          <p class="text-xs">
+                            <label class="cursor-pointer text-bo-accent hover:underline">
+                              Déposer des images
+                              <input
+                                type="file"
+                                class="js-choisir sr-only"
+                                multiple
+                                accept=".png,.jpg,.jpeg,.webp,.svg,image/*"
+                              />
+                            </label>
+                          </p>
+                          <p class="js-etat text-xs text-bo-muted">
+                            {l.sansImage === false
+                              ? "Un visuel est déjà en place."
+                              : "ou faites-les glisser sur la ligne."}
+                          </p>
+                          <p
+                            class="js-alerte mt-1 inline-block rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800"
+                            hidden={l.sansImage !== true}
+                          >
+                            aucun visuel
+                          </p>
+                        </div>
+                      )}
+                    </td>
+                  )}
+
                   <td class="px-3 py-2 whitespace-nowrap">
                     <span
-                      class={`inline-block rounded-full px-2 py-0.5 text-xs ${pastilles[l.action]?.classe ?? "bg-bo-bg text-bo-muted"}`}
+                      class={`js-pastille inline-block rounded-full px-2 py-0.5 text-xs ${pastilles[l.action]?.classe ?? "bg-bo-bg text-bo-muted"}`}
                     >
                       {applique && l.action !== "refus"
                         ? (pastilleAppliquee[l.action] ?? l.action)
@@ -272,7 +485,7 @@ const pastilleAppliquee: Record<string, string> = {
                   <td class="px-3 py-2">
                     {l.raison && <span class="text-red-700">{l.raison}</span>}
                     {!l.raison && l.changements.length === 0 && (
-                      <span class="text-bo-muted">
+                      <span class="js-sans-changement text-bo-muted">
                         {l.action === "creation"
                           ? "nouvelle affiche"
                           : "aucune différence avec le fichier"}
@@ -284,6 +497,13 @@ const pastilleAppliquee: Record<string, string> = {
                           <li>{c}</li>
                         ))}
                       </ul>
+                    )}
+                    {/* Ce que le fichier ne dit pas et que la page sait : les
+                        visuels déposés à l'instant, annoncés avec le reste des
+                        changements plutôt qu'à part. */}
+                    {!applique && l.action !== "refus" && (
+                      <p class="js-annonce-images text-xs text-bo-accent" hidden>
+                      </p>
                     )}
                   </td>
                   <td class="px-3 py-2 text-xs whitespace-nowrap">
@@ -322,16 +542,32 @@ const pastilleAppliquee: Record<string, string> = {
         )}
 
         {!applique && (
-          <form method="POST" class="mt-5 flex flex-wrap items-center gap-3">
+          <form
+            method="POST"
+            id="formulaire-import"
+            class="mt-5 flex flex-wrap items-center gap-3"
+          >
             <input type="hidden" name="_action" value="importer" />
             <input type="hidden" name="csv" value={contenu} />
+            {/* Les adresses des visuels déposés, rassemblées au dernier
+                moment : c'est l'ordre des vignettes à l'écran qui fait foi. */}
+            <input type="hidden" name="images" id="images-deposees" value="" />
             <button class="rounded bg-bo-accent px-4 py-2 text-sm text-white">
               Importer pour de bon
             </button>
             <span class="text-xs text-bo-muted">
               L'import ajoute et corrige. Il ne supprime ni format, ni
-              collection, ni image.
+              collection, ni image : les visuels déposés viennent à la suite de
+              ceux déjà en place.
             </span>
+            <p
+              id="attente-visuels"
+              class="w-full text-xs text-amber-900"
+              hidden
+            >
+              Une image est encore en cours d'envoi. Attendez qu'elle soit
+              arrivée avant de lancer l'import.
+            </p>
           </form>
         )}
       </section>
@@ -339,7 +575,7 @@ const pastilleAppliquee: Record<string, string> = {
   }
 
   {/* ------------------------------------------------------------------ */}
-  {/*  3. Les visuels, une ligne par affiche                              */}
+  {/*  3. Les visuels oubliés, une ligne par affiche                      */}
   {/* ------------------------------------------------------------------ */}
   {
     applique && affiches.length > 0 && (
@@ -351,8 +587,9 @@ const pastilleAppliquee: Record<string, string> = {
           </p>
         </div>
         <p class="mb-4 max-w-3xl text-sm text-bo-muted">
-          Faites glisser l'image de chaque affiche sur sa ligne, ou cliquez pour
-          la choisir. Chaque image part dès qu'elle est déposée, vous pouvez
+          Les images déposées avant l'import sont déjà en place. Pour compléter,
+          faites glisser l'image d'une affiche sur sa ligne, ou cliquez pour la
+          choisir. Chaque image part dès qu'elle est déposée, vous pouvez
           enchaîner sans attendre. Fichiers acceptés : png, jpg, webp et svg.
         </p>
 
@@ -485,25 +722,24 @@ const pastilleAppliquee: Record<string, string> = {
     })();
   </script>
 
-  {/* Dépôt des visuels, ligne par ligne, sans quitter la page. Deux temps :
-     le fichier part d'abord vers la boutique, qui répond par une adresse ;
-     cette adresse est ensuite rattachée à l'affiche. Un échec ne concerne
-     jamais que sa ligne, les autres continuent. */}
+  {/* Le dépôt des visuels, aux deux moments où il a lieu.
+     Un seul script parce que le premier temps et le second partagent tout ce
+     qui compte : l'envoi du fichier à la boutique et la traduction de ses
+     refus. Ce qui les sépare tient en une phrase : avant l'import, l'adresse
+     rendue est mise de côté et attendra ; après, elle est rattachée aussitôt
+     à l'affiche. Un échec ne concerne jamais que sa ligne. */}
   <script
     is:inline
-    define:vars={{ BASE_API, dejaIllustrees, total: affiches.length }}
+    define:vars={{
+      BASE_API,
+      IMAGES_PAR_AFFICHE_MAX,
+      imagesDeposees,
+      dejaIllustrees,
+      total: affiches.length,
+    }}
   >
     (function () {
-      var lignes = document.querySelectorAll(".js-ligne");
-      if (!lignes.length) return;
-      var compteur = document.getElementById("compteur");
-      var faites = dejaIllustrees;
-
-      function majCompteur() {
-        if (!compteur) return;
-        compteur.textContent =
-          faites + (faites > 1 ? " images sur " : " image sur ") + total;
-      }
+      /* -- Ce dont les deux moments ont besoin ------------------------- */
 
       function adresseVisible(adresse) {
         return adresse.indexOf("http") === 0 ? adresse : BASE_API + adresse;
@@ -533,108 +769,397 @@ const pastilleAppliquee: Record<string, string> = {
         }
       }
 
-      async function deposer(ligne, fichier) {
-        if (!fichier) return;
-        // Un second fichier lâché sur une ligne encore en cours d'envoi
-        // rattacherait deux visuels à la même affiche sans qu'on l'ait voulu.
-        if (ligne.dataset.enCours === "1") return;
-        var depot = ligne.querySelector(".js-depot");
-        var message = ligne.querySelector(".js-message");
-        var vignette = ligne.querySelector(".js-vignette");
-        var produitId = ligne.dataset.produit;
-        if (!message || !produitId) return;
-
-        ligne.dataset.enCours = "1";
-        message.className = "js-message text-xs text-bo-muted";
-        message.textContent = "Envoi de " + fichier.name + "…";
-
-        try {
-          // Premier temps : le fichier part vers la boutique, qui répond par
-          // l'adresse à laquelle elle vient de le ranger.
-          var formulaire = new FormData();
-          formulaire.append("file", fichier);
-          var envoi = await fetch(BASE_API + "/admin/uploads", {
-            method: "POST",
-            credentials: "include",
-            body: formulaire,
-          });
-          var range = await corps(envoi);
-          if (!envoi.ok) throw new Error(phraseDEchec(envoi, range));
-
-          // Second temps : cette adresse est rattachée à l'affiche, à la suite
-          // des visuels qu'elle a déjà.
-          var rattachement = await fetch(
-            BASE_API + "/admin/products/" + produitId + "/image",
-            {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                url: range.url,
-                alt: ligne.dataset.nom || "",
-              }),
-            },
+      /** Range une image dans la boutique et rend l'adresse obtenue. */
+      async function televerser(fichier) {
+        var envoi = new FormData();
+        envoi.append("file", fichier);
+        var reponse = await fetch(BASE_API + "/admin/uploads", {
+          method: "POST",
+          credentials: "include",
+          body: envoi,
+        });
+        var donnees = await corps(reponse);
+        if (!reponse.ok) throw new Error(phraseDEchec(reponse, donnees));
+        var adresse =
+          donnees && typeof donnees.url === "string" ? donnees.url : "";
+        if (!adresse)
+          throw new Error(
+            "La boutique n'a pas indiqué où elle a rangé cette image. Réessayez dans un instant.",
           );
-          var retour = await corps(rattachement);
-          if (!rattachement.ok)
-            throw new Error(phraseDEchec(rattachement, retour));
-
-          if (vignette) {
-            vignette.src = adresseVisible(range.url);
-            vignette.hidden = false;
-          }
-          if (depot) depot.remove();
-          message.className = "js-message text-sm text-green-800";
-          message.textContent = "Visuel en place.";
-          ligne.appendChild(message);
-          ligne.dataset.illustree = "1";
-          faites += 1;
-          majCompteur();
-        } catch (e) {
-          message.className = "js-message text-xs text-red-700";
-          message.textContent =
-            (e && e.message
-              ? e.message
-              : "L'envoi n'a pas abouti. Réessayez dans un instant.") +
-            " Vous pouvez redéposer une image sur cette ligne.";
-        } finally {
-          ligne.dataset.enCours = "";
-        }
+        return adresse;
       }
 
-      lignes.forEach(function (ligne) {
-        var champ = ligne.querySelector(".js-fichier");
-        if (champ)
-          champ.addEventListener("change", function () {
-            deposer(ligne, champ.files && champ.files[0]);
+      /* -- Premier temps : avant l'import ------------------------------ */
+
+      /* Les vignettes déposées sont la seule mémoire de la page : leur ordre à
+         l'écran est celui qui partira, et la première est celle que la
+         boutique montrera. Une liste tenue à part finirait par ne plus dire la
+         même chose que ce que la propriétaire a sous les yeux. */
+      function avantImport() {
+        var blocs = document.querySelectorAll(".js-visuels");
+        var champImages = document.getElementById("images-deposees");
+        var formulaire = document.getElementById("formulaire-import");
+        if (!blocs.length || !champImages || !formulaire) return;
+
+        var compteur = document.getElementById("compteur-visuels");
+        var attente = document.getElementById("attente-visuels");
+        var CLASSE_COMPTEUR = "mb-4 text-sm ";
+        var CLASSE_PASTILLE =
+          "js-pastille inline-block rounded-full px-2 py-0.5 text-xs ";
+        var envoisEnCours = 0;
+
+        function visuelsDe(bloc) {
+          return bloc.querySelectorAll(".js-visuel");
+        }
+
+        function phraseEtat(bloc) {
+          var n = visuelsDe(bloc).length;
+          if (n > 1)
+            return n + " images prêtes, elles seront mises en place à l'import.";
+          if (n === 1)
+            return "1 image prête, elle sera mise en place à l'import.";
+          return bloc.dataset.enBase === "1"
+            ? "Un visuel est déjà en place."
+            : "ou faites-les glisser sur la ligne.";
+        }
+
+        function majAttente() {
+          if (attente) attente.hidden = envoisEnCours === 0;
+        }
+
+        function majCompteur() {
+          if (!compteur) return;
+          var restantes = 0;
+          blocs.forEach(function (bloc) {
+            if (visuelsDe(bloc).length === 0 && bloc.dataset.enBase !== "1")
+              restantes += 1;
+          });
+          compteur.className =
+            CLASSE_COMPTEUR +
+            (restantes > 0 ? "text-amber-900" : "text-bo-muted");
+          compteur.textContent =
+            restantes === 0
+              ? "Toutes les affiches auront un visuel."
+              : restantes === 1
+                ? "1 affiche n'a encore aucun visuel."
+                : restantes + " affiches n'ont encore aucun visuel.";
+        }
+
+        /* Ce que la ligne annonce d'elle-même : le nombre d'images en
+           partance, l'alerte quand il n'y en a aucune, et la pastille d'une
+           affiche que le fichier ne changeait pas mais qu'un visuel change. */
+        function rafraichir(bloc) {
+          var n = visuelsDe(bloc).length;
+          var alerte = bloc.querySelector(".js-alerte");
+          if (alerte) alerte.hidden = n > 0 || bloc.dataset.enBase === "1";
+
+          var rangee = bloc.closest("tr");
+          if (rangee) {
+            var annonce = rangee.querySelector(".js-annonce-images");
+            if (annonce) {
+              annonce.hidden = n === 0;
+              annonce.textContent =
+                n + (n > 1 ? " images ajoutées" : " image ajoutée");
+            }
+            if (rangee.dataset.action === "inchange") {
+              var pastille = rangee.querySelector(".js-pastille");
+              if (pastille) {
+                pastille.className =
+                  CLASSE_PASTILLE +
+                  (n > 0
+                    ? "bg-amber-100 text-amber-800"
+                    : "bg-bo-bg text-bo-muted");
+                pastille.textContent = n > 0 ? "à corriger" : "rien à changer";
+              }
+              var inchange = rangee.querySelector(".js-sans-changement");
+              if (inchange) inchange.hidden = n > 0;
+            }
+          }
+          majCompteur();
+        }
+
+        function ajouterVignette(bloc, adresse) {
+          var galerie = bloc.querySelector(".js-galerie");
+          if (!galerie || !adresse) return;
+
+          var vignette = document.createElement("span");
+          vignette.className = "js-visuel relative inline-block";
+          vignette.dataset.adresse = adresse;
+
+          var image = document.createElement("img");
+          image.className =
+            "h-14 w-10 rounded border border-bo-border bg-bo-bg object-contain";
+          image.src = adresseVisible(adresse);
+          image.alt = "";
+
+          var retirer = document.createElement("button");
+          retirer.type = "button";
+          retirer.className =
+            "absolute -top-1 -right-1 rounded-full border border-bo-border bg-bo-surface px-1 text-xs leading-none text-bo-muted";
+          retirer.textContent = "×";
+          retirer.title = "Retirer cette image";
+          retirer.setAttribute("aria-label", "Retirer cette image");
+          retirer.addEventListener("click", function () {
+            vignette.remove();
+            var etat = bloc.querySelector(".js-etat");
+            if (etat) {
+              etat.className = "js-etat text-xs text-bo-muted";
+              etat.textContent = phraseEtat(bloc);
+            }
+            rafraichir(bloc);
           });
 
-        // Le glisser-déposer vise la LIGNE entière et non la petite zone :
-        // c'est une cible large, et c'est le geste qu'on fait naturellement en
-        // vidant un dossier d'images.
-        ["dragenter", "dragover"].forEach(function (nom) {
-          ligne.addEventListener(nom, function (e) {
+          vignette.appendChild(image);
+          vignette.appendChild(retirer);
+          galerie.appendChild(vignette);
+        }
+
+        /* Les fichiers partent un par un, dans l'ordre où ils ont été lâchés :
+           lancés ensemble, ils reviendraient dans le désordre et la première
+           image d'une affiche serait tirée au sort. */
+        async function deposer(bloc, fichiers) {
+          if (!fichiers || !fichiers.length) return;
+          var etat = bloc.querySelector(".js-etat");
+          if (!etat) return;
+
+          var liste = [];
+          for (var i = 0; i < fichiers.length; i += 1) liste.push(fichiers[i]);
+
+          var echecs = 0;
+          var derniereRaison = "";
+          var plafondAtteint = false;
+
+          envoisEnCours += 1;
+          majAttente();
+          try {
+            for (var j = 0; j < liste.length; j += 1) {
+              if (visuelsDe(bloc).length >= IMAGES_PAR_AFFICHE_MAX) {
+                plafondAtteint = true;
+                break;
+              }
+              etat.className = "js-etat text-xs text-bo-muted";
+              etat.textContent = "Envoi de " + liste[j].name + "…";
+              try {
+                ajouterVignette(bloc, await televerser(liste[j]));
+              } catch (e) {
+                echecs += 1;
+                derniereRaison =
+                  e && e.message
+                    ? e.message
+                    : "L'envoi n'a pas abouti. Réessayez dans un instant.";
+              }
+              rafraichir(bloc);
+            }
+          } finally {
+            envoisEnCours -= 1;
+            majAttente();
+          }
+
+          // Le mot de la fin est celui du LOT, pas celui du dernier fichier :
+          // dire où en est le dernier laisserait croire que tout est passé
+          // alors qu'un envoi a échoué au milieu, et l'affiche partirait avec
+          // une image de moins sans que personne ne l'ait vu.
+          if (echecs > 0) {
+            etat.className = "js-etat text-xs text-red-700";
+            etat.textContent =
+              (echecs > 1
+                ? echecs + " images n'ont pas pu être envoyées. "
+                : "Une image n'a pas pu être envoyée. ") +
+              derniereRaison +
+              " Vous pouvez la redéposer sur cette ligne.";
+          } else if (plafondAtteint) {
+            etat.className = "js-etat text-xs text-amber-900";
+            etat.textContent =
+              "Cette affiche a déjà " +
+              IMAGES_PAR_AFFICHE_MAX +
+              " images, c'est le maximum. Retirez-en une pour en ajouter une autre.";
+          } else {
+            etat.className = "js-etat text-xs text-bo-muted";
+            etat.textContent = phraseEtat(bloc);
+          }
+        }
+
+        blocs.forEach(function (bloc) {
+          var champ = bloc.querySelector(".js-choisir");
+          if (champ)
+            champ.addEventListener("change", function () {
+              deposer(bloc, champ.files);
+              // Le champ est vidé pour que le même fichier, choisi deux fois
+              // de suite, déclenche bien un second dépôt.
+              champ.value = "";
+            });
+
+          // Le glisser-déposer vise la LIGNE entière et non la petite zone :
+          // c'est une cible large, et c'est le geste qu'on fait naturellement
+          // en vidant un dossier d'images.
+          var rangee = bloc.closest("tr");
+          if (!rangee) return;
+          ["dragenter", "dragover"].forEach(function (nom) {
+            rangee.addEventListener(nom, function (e) {
+              e.preventDefault();
+              rangee.classList.add("bg-bo-bg");
+            });
+          });
+          ["dragleave", "drop"].forEach(function (nom) {
+            rangee.addEventListener(nom, function () {
+              rangee.classList.remove("bg-bo-bg");
+            });
+          });
+          rangee.addEventListener("drop", function (e) {
+            e.preventDefault();
+            deposer(bloc, e.dataTransfer && e.dataTransfer.files);
+          });
+        });
+
+        // Un import refusé ramène l'aperçu : les visuels déjà déposés
+        // reprennent leur place plutôt que d'être à redéposer un par un.
+        blocs.forEach(function (bloc) {
+          var reprises = imagesDeposees[bloc.dataset.handle];
+          if (Array.isArray(reprises))
+            reprises.forEach(function (adresse) {
+              ajouterVignette(bloc, adresse);
+            });
+          var etat = bloc.querySelector(".js-etat");
+          if (etat) etat.textContent = phraseEtat(bloc);
+          rafraichir(bloc);
+        });
+
+        formulaire.addEventListener("submit", function (e) {
+          // Une image encore en route ne serait dans aucune liste : l'import
+          // créerait l'affiche sans elle, et personne ne s'en apercevrait.
+          if (envoisEnCours > 0) {
+            e.preventDefault();
+            majAttente();
+            return;
+          }
+          var rassemblees = {};
+          blocs.forEach(function (bloc) {
+            var adresses = [];
+            visuelsDe(bloc).forEach(function (vignette) {
+              if (vignette.dataset.adresse)
+                adresses.push(vignette.dataset.adresse);
+            });
+            if (adresses.length) rassemblees[bloc.dataset.handle] = adresses;
+          });
+          champImages.value = JSON.stringify(rassemblees);
+        });
+      }
+
+      /* -- Second temps : après l'import ------------------------------- */
+
+      /* Ce qu'on avait oublié, et les affiches déjà en boutique. Ici l'affiche
+         existe : l'adresse rendue lui est rattachée dans la foulée, à la suite
+         de ses visuels. */
+      function apresImport() {
+        var lignes = document.querySelectorAll(".js-ligne");
+        if (!lignes.length) return;
+        var compteur = document.getElementById("compteur");
+        var faites = dejaIllustrees;
+
+        function majCompteur() {
+          if (!compteur) return;
+          compteur.textContent =
+            faites + (faites > 1 ? " images sur " : " image sur ") + total;
+        }
+
+        async function deposer(ligne, fichier) {
+          if (!fichier) return;
+          // Un second fichier lâché sur une ligne encore en cours d'envoi
+          // rattacherait deux visuels à la même affiche sans qu'on l'ait voulu.
+          if (ligne.dataset.enCours === "1") return;
+          var depot = ligne.querySelector(".js-depot");
+          var message = ligne.querySelector(".js-message");
+          var vignette = ligne.querySelector(".js-vignette");
+          var produitId = ligne.dataset.produit;
+          if (!message || !produitId) return;
+
+          ligne.dataset.enCours = "1";
+          message.className = "js-message text-xs text-bo-muted";
+          message.textContent = "Envoi de " + fichier.name + "…";
+
+          try {
+            // Premier temps : le fichier part vers la boutique, qui répond par
+            // l'adresse à laquelle elle vient de le ranger.
+            var adresse = await televerser(fichier);
+
+            // Second temps : cette adresse est rattachée à l'affiche, à la
+            // suite des visuels qu'elle a déjà.
+            var rattachement = await fetch(
+              BASE_API + "/admin/products/" + produitId + "/image",
+              {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  url: adresse,
+                  alt: ligne.dataset.nom || "",
+                }),
+              },
+            );
+            var retour = await corps(rattachement);
+            if (!rattachement.ok)
+              throw new Error(phraseDEchec(rattachement, retour));
+
+            if (vignette) {
+              vignette.src = adresseVisible(adresse);
+              vignette.hidden = false;
+            }
+            if (depot) depot.remove();
+            message.className = "js-message text-sm text-green-800";
+            message.textContent = "Visuel en place.";
+            ligne.appendChild(message);
+            ligne.dataset.illustree = "1";
+            faites += 1;
+            majCompteur();
+          } catch (e) {
+            message.className = "js-message text-xs text-red-700";
+            message.textContent =
+              (e && e.message
+                ? e.message
+                : "L'envoi n'a pas abouti. Réessayez dans un instant.") +
+              " Vous pouvez redéposer une image sur cette ligne.";
+          } finally {
+            ligne.dataset.enCours = "";
+          }
+        }
+
+        lignes.forEach(function (ligne) {
+          var champ = ligne.querySelector(".js-fichier");
+          if (champ)
+            champ.addEventListener("change", function () {
+              deposer(ligne, champ.files && champ.files[0]);
+            });
+
+          // Le glisser-déposer vise la LIGNE entière et non la petite zone :
+          // c'est une cible large, et c'est le geste qu'on fait naturellement en
+          // vidant un dossier d'images.
+          ["dragenter", "dragover"].forEach(function (nom) {
+            ligne.addEventListener(nom, function (e) {
+              if (ligne.dataset.illustree === "1") return;
+              e.preventDefault();
+              ligne.classList.add("bg-bo-bg");
+            });
+          });
+          ["dragleave", "drop"].forEach(function (nom) {
+            ligne.addEventListener(nom, function () {
+              ligne.classList.remove("bg-bo-bg");
+            });
+          });
+          ligne.addEventListener("drop", function (e) {
             if (ligne.dataset.illustree === "1") return;
             e.preventDefault();
-            ligne.classList.add("bg-bo-bg");
+            var fichiers = e.dataTransfer && e.dataTransfer.files;
+            // Une seule image par ligne : les suivantes seraient rattachées à la
+            // mauvaise affiche, ce qui est bien pire que de n'en prendre qu'une.
+            deposer(ligne, fichiers && fichiers[0]);
           });
         });
-        ["dragleave", "drop"].forEach(function (nom) {
-          ligne.addEventListener(nom, function () {
-            ligne.classList.remove("bg-bo-bg");
-          });
-        });
-        ligne.addEventListener("drop", function (e) {
-          if (ligne.dataset.illustree === "1") return;
-          e.preventDefault();
-          var fichiers = e.dataTransfer && e.dataTransfer.files;
-          // Une seule image par ligne : les suivantes seraient rattachées à la
-          // mauvaise affiche, ce qui est bien pire que de n'en prendre qu'une.
-          deposer(ligne, fichiers && fichiers[0]);
-        });
-      });
 
-      majCompteur();
+        majCompteur();
+      }
+
+      avantImport();
+      apresImport();
     })();
   </script>
 </Admin>

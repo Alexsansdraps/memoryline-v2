@@ -27,6 +27,12 @@
  * — vingt affiches passées, vingt restées en arrière, et personne pour savoir
  * lesquelles — serait bien pire que pas d'import du tout.
  *
+ * Le fichier, lui, ne sait rien des images ; l'écran qui le dépose, si. Les
+ * visuels attachés ligne à ligne pendant qu'on regarde l'aperçu voyagent avec
+ * le fichier et entrent en base au même moment que les affiches, à la suite
+ * de ceux qui étaient déjà là. C'est tout l'intérêt : une affiche naît avec
+ * son visuel plutôt que de le recevoir dans un second passage.
+ *
  * Le fichier attendu est l'export d'une boutique Shopify : une ligne par
  * format, donc deux lignes par affiche, l'adresse (« Handle ») répétée d'une
  * ligne à l'autre. Les colonnes qui ne mènent nulle part dans ce schéma sont
@@ -60,6 +66,16 @@ const NOM_COLLECTION_MAX = 80;
 
 /** Une affiche rangée dans vingt collections ne serait plus rangée du tout. */
 const COLLECTIONS_PAR_PRODUIT_MAX = 20;
+
+/**
+ * Combien de visuels peuvent être déposés d'un coup sur une même affiche.
+ *
+ * Ce que cette borne arrête n'est pas une malveillance, c'est un geste : un
+ * dossier entier lâché sur la mauvaise ligne. Dix vues d'une même affiche,
+ * c'est déjà plus que ce qu'une fiche montre ; cinquante, c'est une erreur de
+ * visée, et mieux vaut le dire tout de suite que la laisser passer.
+ */
+const IMAGES_DEPOSEES_MAX = 10;
 
 /**
  * Les colonnes sans lesquelles il n'y a rien à importer, et leur nom tel que
@@ -245,6 +261,11 @@ function euros(cents: number): string {
     : `${signe}${entier},${String(centiemes).padStart(2, "0")} €`;
 }
 
+/** La marque du pluriel, pour les phrases que l'aperçu montre telles quelles. */
+function marque(n: number): string {
+  return n > 1 ? "s" : "";
+}
+
 /**
  * Un prix écrit en euros, rendu en centimes.
  *
@@ -336,6 +357,19 @@ function etiquettes(brut: string): string[] {
     if (nom && !propres.has(nom.toLowerCase())) propres.set(nom.toLowerCase(), nom);
   }
   return [...propres.values()].slice(0, COLLECTIONS_PAR_PRODUIT_MAX);
+}
+
+/**
+ * Une adresse d'image que la boutique saura afficher.
+ *
+ * Deux formes seulement : un fichier rangé par la boutique (« /assets/… ») ou
+ * une adresse web complète. « //ailleurs.com/x.jpg » ressemble à la première
+ * mais désigne un autre site, dont la boutique n'a aucune maîtrise : le jour
+ * où il ferme, la fiche montre un cadre vide.
+ */
+function adresseImageValable(adresse: string): boolean {
+  const interne = adresse.startsWith("/") && !adresse.startsWith("//");
+  return interne || /^https?:\/\//i.test(adresse);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -583,6 +617,81 @@ function rassemblerProduits(
 }
 
 /* ------------------------------------------------------------------------ */
+/*  Les visuels déposés avec le fichier                                     */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Les visuels attachés aux lignes pendant l'aperçu, rangés par affiche.
+ *
+ * Ils arrivent avec le fichier, sous la forme d'une liste d'adresses par
+ * « Handle » : l'écran d'aperçu a fait monter chaque image dès son dépôt, sans
+ * rien écrire en base, et n'a gardé que l'adresse rendue. L'ORDRE est celui du
+ * dépôt, et il compte : la première image est celle que la boutique montre.
+ *
+ * Une clé qui ne correspond à aucune ligne du fichier ne peut être rattachée à
+ * rien : ses images sont laissées de côté plutôt que de faire échouer l'import
+ * entier pour un visuel orphelin. Une adresse illisible, en revanche, arrête
+ * tout : la propriétaire croirait sinon avoir illustré une affiche qui
+ * resterait vide.
+ */
+function lireImagesDeposees(
+  brut: unknown,
+  produitsLus: ProduitLu[],
+): Map<string, string[]> {
+  const parAdresse = new Map<string, string[]>();
+  if (brut === undefined || brut === null) return parAdresse;
+  if (typeof brut !== "object" || Array.isArray(brut))
+    throw new FichierRefuse(
+      "Les images déposées n'ont pas été reçues correctement. Rechargez la page, redéposez-les, puis relancez : rien n'a été enregistré.",
+    );
+
+  // De quoi nommer l'affiche fautive dans un refus. « La troisième image de
+  // Montmartre, ligne 12 » se retrouve dans un fichier de quarante affiches ;
+  // « la clé montmartre-2 » n'aide personne.
+  const reperes = new Map<string, { nom: string; ligne: number }>();
+  for (const p of produitsLus)
+    reperes.set(p.adresse, { nom: p.nom || p.handle, ligne: p.ligne });
+
+  for (const [handle, valeur] of Object.entries(
+    brut as Record<string, unknown>,
+  )) {
+    const adresse = adresseProduit(handle);
+    const repere = adresse ? reperes.get(adresse) : undefined;
+    if (!adresse || !repere) continue;
+    const laquelle = `« ${repere.nom} » (ligne ${repere.ligne} du fichier)`;
+
+    if (!Array.isArray(valeur))
+      throw new FichierRefuse(
+        `Les images de l'affiche ${laquelle} n'ont pas été reçues correctement. Rechargez la page, redéposez-les, puis relancez : rien n'a été enregistré.`,
+      );
+
+    const liste = parAdresse.get(adresse) ?? [];
+    for (const element of valeur) {
+      if (typeof element !== "string")
+        throw new FichierRefuse(
+          `Une image de l'affiche ${laquelle} n'a pas d'adresse lisible. Retirez-la de sa ligne, puis relancez : rien n'a été enregistré.`,
+        );
+      const image = element.trim();
+      if (!image) continue;
+      if (!adresseImageValable(image))
+        throw new FichierRefuse(
+          `L'adresse « ${image.slice(0, 60)} » ne mène pas à une image, sur l'affiche ${laquelle}. Retirez cette image de sa ligne, puis relancez : rien n'a été enregistré.`,
+        );
+      // La même adresse deux fois, c'est le même fichier déposé deux fois : la
+      // montrer en double sur la fiche n'apporterait rien.
+      if (!liste.includes(image)) liste.push(image);
+    }
+
+    if (liste.length > IMAGES_DEPOSEES_MAX)
+      throw new FichierRefuse(
+        `L'affiche ${laquelle} a reçu ${liste.length} images, c'est plus que les ${IMAGES_DEPOSEES_MAX} possibles sur une même affiche. Retirez-en quelques-unes, puis relancez : rien n'a été enregistré.`,
+      );
+    parAdresse.set(adresse, liste);
+  }
+  return parAdresse;
+}
+
+/* ------------------------------------------------------------------------ */
 /*  Ce que l'import répond                                                  */
 /* ------------------------------------------------------------------------ */
 
@@ -596,6 +705,11 @@ interface LigneImport {
   collections: string[];
   formats: { format: string; prixCents: number; sku: string | null }[];
   produitId?: number;
+  /**
+   * Vrai quand l'affiche n'aura toujours aucun visuel une fois l'import
+   * passé : ni image en base, ni image déposée avec le fichier. C'est ce que
+   * la propriétaire cherche des yeux avant de valider.
+   */
   sansImage?: boolean;
 }
 
@@ -611,6 +725,11 @@ export function mountImportProduits(app: Hono): void {
    * Sans « appliquer », la réponse est un aperçu : la même liste, les mêmes
    * phrases, mais pas une ligne écrite en base. C'est le mode par défaut, et
    * c'est volontaire — on veut pouvoir se tromper de fichier.
+   *
+   * Le corps porte le fichier (« csv »), la décision (« appliquer ») et les
+   * visuels déposés sur l'écran d'aperçu (« images » : une liste d'adresses
+   * par « Handle »). Ces derniers ne changent rien à la règle du double
+   * accord : sans « appliquer », ils sont relus, annoncés, et rien de plus.
    */
   app.post("/admin/products/import", async (c) => {
     const corps = (await c.req.json().catch(() => ({}))) as Record<
@@ -693,6 +812,11 @@ export function mountImportProduits(app: Hono): void {
           `Ce fichier décrit ${produitsLus.length} affiches, c'est trop pour un seul import. Coupez-le en plusieurs fichiers.`,
         );
 
+      // Les visuels sont relus AVANT d'ouvrir la transaction : une adresse
+      // douteuse doit se dire tout de suite, et non après vingt écritures
+      // qu'il faudrait annuler.
+      const imagesDeposees = lireImagesDeposees(corps.images, produitsLus);
+
       /* -- Confrontation au catalogue, et écriture ------------------------ */
 
       // Tout se passe dans UNE transaction, y compris l'aperçu. Le catalogue
@@ -743,18 +867,33 @@ export function mountImportProduits(app: Hono): void {
           else variantesParProduit.set(v.productId, [v]);
         }
 
+        // Les adresses des visuels déjà en place, et non leur simple nombre :
+        // elles servent à reconnaître un fichier déposé deux fois, et leurs
+        // positions à ranger les nouveaux À LA SUITE. « À la suite » se
+        // calcule sur les positions réelles, pas sur le nombre d'images : une
+        // liste réordonnée à la main compte très bien trois images numérotées
+        // 0, 5 et 9.
         const imagesExistantes = identifiants.length
           ? await tx
-              .select({ productId: schema.productImages.productId })
+              .select({
+                productId: schema.productImages.productId,
+                url: schema.productImages.url,
+                position: schema.productImages.position,
+              })
               .from(schema.productImages)
               .where(inArray(schema.productImages.productId, identifiants))
           : [];
-        const imagesParProduit = new Map<number, number>();
-        for (const i of imagesExistantes)
-          imagesParProduit.set(
+        const imagesParProduit = new Map<number, string[]>();
+        const dernierRangImage = new Map<number, number>();
+        for (const i of imagesExistantes) {
+          const dejaLa = imagesParProduit.get(i.productId);
+          if (dejaLa) dejaLa.push(i.url);
+          else imagesParProduit.set(i.productId, [i.url]);
+          dernierRangImage.set(
             i.productId,
-            (imagesParProduit.get(i.productId) ?? 0) + 1,
+            Math.max(dernierRangImage.get(i.productId) ?? -1, i.position),
           );
+        }
 
         const liensExistants = identifiants.length
           ? await tx
@@ -867,6 +1006,17 @@ export function mountImportProduits(app: Hono): void {
           const existant = produitParAdresse.get(lu.adresse);
           const changements: string[] = [];
 
+          /* -- Les visuels déposés sur cette ligne -------------------------- */
+
+          // Une image déjà en place n'est pas remise : le même fichier redéposé
+          // ferait apparaître deux fois la même vue sur la fiche.
+          const imagesEnBase = existant
+            ? (imagesParProduit.get(existant.id) ?? [])
+            : [];
+          const imagesAAjouter = (imagesDeposees.get(lu.adresse) ?? []).filter(
+            (image) => !imagesEnBase.includes(image),
+          );
+
           /* -- Ce que le fichier changerait sur une affiche déjà là ------- */
 
           if (existant) {
@@ -931,6 +1081,15 @@ export function mountImportProduits(app: Hono): void {
             }
           }
 
+          // Annoncé en dernier, après les prix et le rangement : c'est ce qui
+          // s'ajoute à la fiche, pas ce qui s'y corrige. Une affiche que le
+          // fichier ne changeait pas mais qui reçoit un visuel n'est plus
+          // « inchangée » pour autant, et l'aperçu doit le dire.
+          if (imagesAAjouter.length)
+            changements.push(
+              `${imagesAAjouter.length} image${marque(imagesAAjouter.length)} ajoutée${marque(imagesAAjouter.length)}`,
+            );
+
           const action: LigneImport["action"] = !existant
             ? "creation"
             : changements.length
@@ -944,7 +1103,7 @@ export function mountImportProduits(app: Hono): void {
             changements,
             collections: lu.collections,
             formats: lu.formats,
-            sansImage: existant ? !imagesParProduit.get(existant.id) : true,
+            sansImage: imagesEnBase.length + imagesAAjouter.length === 0,
           };
 
           /* -- L'écriture, quand elle est demandée ------------------------ */
@@ -1044,6 +1203,23 @@ export function mountImportProduits(app: Hono): void {
             }
             liensParProduit.set(produitId, dejaLiees);
             dernierRangParProduit.set(produitId, rang - 1);
+
+            // Les visuels déposés viennent APRÈS ceux qui étaient là : la
+            // première image est celle que la boutique montre, et la voir
+            // changer parce qu'on a ajouté une vue de dos serait la dernière
+            // des surprises. C'est aussi la règle du fichier entier : un
+            // import ajoute, il n'enlève ni ne remplace.
+            let rangImage = (dernierRangImage.get(produitId) ?? -1) + 1;
+            for (const image of imagesAAjouter) {
+              await tx.insert(schema.productImages).values({
+                productId: produitId,
+                url: image.slice(0, 500),
+                alt: lu.nom.slice(0, 200) || null,
+                position: rangImage,
+              });
+              rangImage += 1;
+            }
+            dernierRangImage.set(produitId, rangImage - 1);
           }
 
           apercu.push(ligne);
@@ -1097,6 +1273,11 @@ export function mountImportProduits(app: Hono): void {
    * leur ordre et leur texte, et la première reste la première — c'est elle
    * qui s'affiche en boutique, et la voir changer parce qu'on a ajouté une
    * vue de dos serait la dernière des surprises.
+   *
+   * Elle sert l'APRÈS-import, quand l'import lui-même sait désormais attacher
+   * les visuels déposés pendant l'aperçu. Les deux moments coexistent : on
+   * illustre ce qu'on a sous la main avant de valider, et on complète ensuite
+   * ce qu'on avait oublié, ou une affiche déjà en boutique.
    */
   app.post("/admin/products/:id/image", async (c) => {
     const id = Number(c.req.param("id"));
@@ -1117,13 +1298,7 @@ export function mountImportProduits(app: Hono): void {
         { error: "Aucune image à ajouter : son adresse est vide." },
         400,
       );
-    // Deux formes acceptées : un fichier de la boutique (« /assets/… ») ou une
-    // adresse web complète. Le reste est refusé, y compris
-    // « //ailleurs.com/x.jpg » qui ressemble à une adresse interne mais
-    // désigne un autre site.
-    const interne = url.startsWith("/") && !url.startsWith("//");
-    const distante = /^https?:\/\//i.test(url);
-    if (!interne && !distante)
+    if (!adresseImageValable(url))
       return c.json(
         {
           error: `L'adresse « ${url.slice(0, 60)} » n'est pas une adresse d'image valable. Elle doit commencer par « / », « http:// » ou « https:// ».`,
