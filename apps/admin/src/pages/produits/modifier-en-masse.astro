@@ -1,0 +1,798 @@
+---
+/**
+ * Modification en masse des produits.
+ *
+ * Corriger vingt prix ou ranger trente affiches dans une catégorie, fiche par
+ * fiche, prend une matinée. Cet écran présente les mêmes réglages sous forme
+ * de grille : une ligne par produit, une colonne par champ, et un seul
+ * enregistrement à la fin. Le bouton « recopier vers le bas » de chaque
+ * colonne reprend la valeur de la première ligne et la pose sur toutes les
+ * autres, ce qui est le geste qui fait gagner la matinée.
+ *
+ * La page ne renvoie que les lignes réellement touchées. Le navigateur garde
+ * la valeur d'origine de chaque champ et compare avant d'envoyer : réécrire
+ * deux cents produits parce que la page a été ouverte serait le meilleur moyen
+ * d'écraser un travail fait ailleurs.
+ *
+ * Les produits à éditer arrivent soit par leurs identifiants (« ?ids=12,45 »,
+ * ce que passe la liste des produits quand on coche des lignes), soit par le
+ * filtre courant, repris tel quel de la liste.
+ */
+import { formaterPoids } from "@memoryline/types";
+import { url } from "../../lib/url.ts";
+import Admin from "../../layouts/Admin.astro";
+import {
+  adminApi,
+  formatPrice,
+  type ListeProduitsAdmin,
+  type ProduitAdmin,
+} from "../../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+/**
+ * Au-delà, la grille devient illisible et le navigateur rame sur des milliers
+ * de champs. Mieux vaut deux passages qu'une page qui ne répond plus.
+ */
+const PLAFOND = 100;
+
+const STATUTS = [
+  { valeur: "active", libelle: "Actif" },
+  { valeur: "draft", libelle: "Brouillon" },
+  { valeur: "archived", libelle: "Archivé" },
+];
+
+/** Les images de l'API sont servies en chemin relatif : le navigateur, lui, a besoin de l'adresse complète. */
+const API_PUBLIQUE = import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
+function imgSrc(chemin: string | null): string {
+  if (!chemin) return "";
+  return chemin.startsWith("http") ? chemin : `${API_PUBLIQUE}${chemin}`;
+}
+
+/** Centimes vers la saisie à l'écran, toujours avec deux décimales. */
+function euros(cents: number): string {
+  return (cents / 100).toFixed(2);
+}
+
+const parametres = Astro.url.searchParams;
+
+const idsDemandes = [
+  ...new Set(
+    (parametres.get("ids") ?? "")
+      .split(",")
+      .map((t) => Number(t.trim()))
+      .filter((n) => Number.isInteger(n) && n > 0),
+  ),
+];
+
+const STATUTS_FILTRE = ["tous", "active", "draft", "archived"];
+const statutDemande = parametres.get("statut") ?? "";
+const statutFiltre = STATUTS_FILTRE.includes(statutDemande)
+  ? statutDemande
+  : "tous";
+const recherche = (parametres.get("q") ?? "").trim();
+const categorieFiltre = Number(parametres.get("categorie") ?? "");
+const collectionFiltre = Number(parametres.get("collection") ?? "");
+
+/**
+ * Relit la charge envoyée par le navigateur champ par champ. Elle traverse un
+ * formulaire, donc rien de ce qu'elle contient n'est digne de confiance : tout
+ * ce qui n'est pas reconnu est laissé de côté plutôt que transmis à l'API.
+ */
+function lireModifications(brut: string): Record<string, unknown>[] {
+  let donnees: unknown;
+  try {
+    donnees = JSON.parse(brut);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(donnees)) return [];
+
+  const sorties: Record<string, unknown>[] = [];
+  for (const entree of donnees) {
+    if (typeof entree !== "object" || entree === null) continue;
+    const ligne = entree as Record<string, unknown>;
+    const id = Number(ligne.id);
+    if (!Number.isInteger(id) || id <= 0) continue;
+
+    const sortie: Record<string, unknown> = { id };
+
+    const nom = ligne.name;
+    if (typeof nom === "string" && nom.trim()) sortie.name = nom.trim();
+
+    const slug = ligne.slug;
+    if (typeof slug === "string" && slug.trim()) sortie.slug = slug.trim();
+
+    const statut = ligne.status;
+    if (typeof statut === "string" && STATUTS.some((s) => s.valeur === statut))
+      sortie.status = statut;
+
+    const prix = ligne.basePriceCents;
+    if (typeof prix === "number" && Number.isFinite(prix))
+      sortie.basePriceCents = Math.max(0, Math.round(prix));
+
+    if ("categoryId" in ligne) {
+      const cat = Number(ligne.categoryId);
+      sortie.categoryId =
+        ligne.categoryId === null || !Number.isInteger(cat) || cat <= 0
+          ? null
+          : cat;
+    }
+
+    if ("weightGrams" in ligne) {
+      const poids = Number(ligne.weightGrams);
+      sortie.weightGrams =
+        ligne.weightGrams === null || !Number.isFinite(poids)
+          ? null
+          : Math.max(0, Math.round(poids));
+    }
+
+    if (typeof ligne.aiEnabled === "boolean") sortie.aiEnabled = ligne.aiEnabled;
+
+    if (Object.keys(sortie).length > 1) sorties.push(sortie);
+  }
+  return sorties;
+}
+
+let flash: string | null = null;
+let flashErreur = false;
+
+/** Le motif du refus, produit par produit, affiché sur la ligne concernée. */
+const messagesErreur = new Map<number, string>();
+
+/**
+ * Ce que la propriétaire avait tapé pour les lignes que l'API n'a pas gardées.
+ * Sans ça, la page se recharge sur les anciennes valeurs et son travail est
+ * perdu au moment précis où il faudrait le corriger.
+ */
+const valeursSaisies = new Map<number, Record<string, unknown>>();
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const modifications = lireModifications(String(f.get("modifications") ?? ""));
+
+  if (modifications.length === 0) {
+    flash = "Rien à enregistrer : aucune valeur n'avait changé.";
+  } else {
+    try {
+      const r = await api.enregistrerProduitsEnMasse(modifications);
+      const refuses = r.erreurs ?? [];
+      for (const e of refuses) messagesErreur.set(e.id, e.message);
+      for (const m of modifications) {
+        const id = Number(m.id);
+        if (messagesErreur.has(id)) valeursSaisies.set(id, m);
+      }
+
+      flash = `${r.count} produit${r.count > 1 ? "s" : ""} enregistré${r.count > 1 ? "s" : ""}.`;
+      if (refuses.length > 0) {
+        flash += ` ${refuses.length} n'${refuses.length > 1 ? "ont" : "a"} pas pu être enregistré${refuses.length > 1 ? "s" : ""} : la raison est indiquée sur ${refuses.length > 1 ? "les lignes concernées" : "la ligne concernée"}, vos valeurs y sont toujours.`;
+        flashErreur = true;
+      }
+    } catch (e) {
+      for (const m of modifications) valeursSaisies.set(Number(m.id), m);
+      flash =
+        "Rien n'a été enregistré, la boutique n'a pas répondu : " +
+        String(e).replace(/^Error:\s*/, "") +
+        ". Vos valeurs sont toujours à l'écran, réessayez dans un instant.";
+      flashErreur = true;
+    }
+  }
+}
+
+let liste: ListeProduitsAdmin | null = null;
+let error: string | null = null;
+try {
+  liste = await api.produitsAdmin(
+    idsDemandes.length > 0
+      ? // Une sélection se respecte quel que soit le statut des produits cochés.
+        { statut: "tous", limit: 500 }
+      : {
+          statut: statutFiltre,
+          ...(recherche ? { q: recherche } : {}),
+          ...(Number.isInteger(categorieFiltre) && categorieFiltre > 0
+            ? { categorie: categorieFiltre }
+            : {}),
+          ...(Number.isInteger(collectionFiltre) && collectionFiltre > 0
+            ? { collection: collectionFiltre }
+            : {}),
+          limit: PLAFOND,
+        },
+  );
+} catch (e) {
+  error = String(e).replace(/^Error:\s*/, "");
+}
+
+const categories = liste?.categories ?? [];
+const selection: ProduitAdmin[] =
+  idsDemandes.length > 0
+    ? (liste?.produits ?? []).filter((p) => idsDemandes.includes(p.id))
+    : (liste?.produits ?? []);
+const produits = selection.slice(0, PLAFOND);
+
+const listeCoupee =
+  selection.length > PLAFOND ||
+  (idsDemandes.length === 0 && selection.length >= PLAFOND);
+const introuvables =
+  idsDemandes.length > 0 ? idsDemandes.length - selection.length : 0;
+
+/** Ce que l'API a refusé reste affiché tel quel : ces trois lectures s'en chargent. */
+function texteSaisi(
+  saisie: Record<string, unknown> | undefined,
+  cle: string,
+  defaut: string,
+): string {
+  const v = saisie?.[cle];
+  return typeof v === "string" ? v : defaut;
+}
+function nombreSaisi(
+  saisie: Record<string, unknown> | undefined,
+  cle: string,
+  defaut: number | null,
+): number | null {
+  if (!saisie || !(cle in saisie)) return defaut;
+  const v = saisie[cle];
+  if (v === null) return null;
+  return typeof v === "number" && Number.isFinite(v) ? v : defaut;
+}
+function boolSaisi(
+  saisie: Record<string, unknown> | undefined,
+  cle: string,
+  defaut: boolean,
+): boolean {
+  const v = saisie?.[cle];
+  return typeof v === "boolean" ? v : defaut;
+}
+
+/** Bordures posées cellule par cellule : la grille est en `border-separate` pour que l'en-tête collant garde les siennes. */
+const cellule = "border-t border-bo-border px-2 py-2 align-top";
+const enTete =
+  "sticky top-0 z-20 border-b border-bo-border bg-bo-bg px-2 py-2 text-left font-medium";
+const champ =
+  "w-full rounded border border-bo-border px-2 py-1 text-sm bg-transparent";
+const recopier =
+  "rounded border border-bo-border px-1 text-xs leading-4 text-bo-muted hover:bg-bo-surface";
+---
+
+<Admin title="Modifier plusieurs produits">
+  <p class="mb-4">
+    <a href={url("/produits")} class="text-sm text-bo-accent hover:underline">
+      ← Retour à la liste
+    </a>
+  </p>
+
+  {flash && (
+    <p
+      class={`mb-4 text-sm rounded px-3 py-2 border ${
+        flashErreur ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+  {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
+
+  <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+    Une ligne par produit, une colonne par réglage, comme dans un tableur. Rien
+    ne part tant que vous n'avez pas cliqué sur <strong>Enregistrer</strong>, et
+    seules les lignes que vous avez touchées sont envoyées : les autres ne
+    bougent pas, même si elles restent affichées.
+  </p>
+
+  {listeCoupee && (
+    <p class="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+      Cette page modifie {PLAFOND} produits à la fois au maximum. Affinez votre
+      recherche dans la liste des produits, ou faites le travail en deux fois.
+    </p>
+  )}
+  {introuvables > 0 && (
+    <p class="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+      {introuvables > 1
+        ? `${introuvables} produits de votre sélection n'ont pas été retrouvés et n'apparaissent donc pas ci-dessous.`
+        : "Un produit de votre sélection n'a pas été retrouvé et n'apparaît donc pas ci-dessous."}
+    </p>
+  )}
+
+  {produits.length === 0 && !error && (
+    <p class="rounded-lg border border-bo-border bg-bo-surface px-4 py-6 text-sm text-bo-muted">
+      Aucun produit à modifier ici. Repassez par la
+      <a class="text-bo-accent underline" href={url("/produits")}> liste des produits</a>
+      {" "}pour choisir ceux que vous voulez retoucher.
+    </p>
+  )}
+
+  {produits.length > 0 && (
+    <form method="POST" id="grille" autocomplete="off">
+      <input type="hidden" name="modifications" id="charge-modifications" />
+
+      {/* La grille défile dans son propre cadre : c'est ce qui permet à la
+          ligne d'en-tête de rester visible, avec ses boutons de recopie, et à
+          la colonne du produit de ne pas disparaître vers la gauche. */}
+      <div class="max-h-[70vh] overflow-auto rounded-lg border border-bo-border bg-bo-surface">
+        <table class="w-full min-w-[68rem] border-separate border-spacing-0 text-sm">
+          <thead class="text-bo-muted">
+            <tr>
+              <th class={`${enTete} sticky left-0 z-30 w-64`}>Produit</th>
+              <th class={`${enTete} w-56`}>
+                <span class="flex items-center gap-1">
+                  Nom
+                  <button
+                    type="button"
+                    data-recopier="nom"
+                    class={recopier}
+                    title="Recopier le nom de la première ligne sur toutes les autres"
+                    aria-label="Recopier le nom de la première ligne sur toutes les autres"
+                  >↓</button>
+                </span>
+              </th>
+              <th class={`${enTete} w-48`}>
+                <span
+                  class="flex items-center gap-1"
+                  title="L'identifiant est ce qui apparaît dans l'adresse de la page du produit sur la boutique."
+                >
+                  Identifiant
+                  <button
+                    type="button"
+                    data-recopier="slug"
+                    class={recopier}
+                    title="Recopier l'identifiant de la première ligne sur toutes les autres"
+                    aria-label="Recopier l'identifiant de la première ligne sur toutes les autres"
+                  >↓</button>
+                </span>
+              </th>
+              <th class={`${enTete} w-36`}>
+                <span class="flex items-center gap-1">
+                  Statut
+                  <button
+                    type="button"
+                    data-recopier="statut"
+                    class={recopier}
+                    title="Recopier le statut de la première ligne sur toutes les autres"
+                    aria-label="Recopier le statut de la première ligne sur toutes les autres"
+                  >↓</button>
+                </span>
+              </th>
+              <th class={`${enTete} w-32`}>
+                <span
+                  class="flex items-center gap-1"
+                  title="Ce prix ne sert qu'aux produits qui n'ont aucun format. Dès qu'un produit a des formats, c'est le prix du format qui est payé au panier."
+                >
+                  Prix de base (€)
+                  <button
+                    type="button"
+                    data-recopier="prix"
+                    class={recopier}
+                    title="Recopier le prix de la première ligne sur toutes les autres"
+                    aria-label="Recopier le prix de la première ligne sur toutes les autres"
+                  >↓</button>
+                </span>
+              </th>
+              <th class={`${enTete} w-48`}>
+                <span class="flex items-center gap-1">
+                  Catégorie
+                  <button
+                    type="button"
+                    data-recopier="categorie"
+                    class={recopier}
+                    title="Recopier la catégorie de la première ligne sur toutes les autres"
+                    aria-label="Recopier la catégorie de la première ligne sur toutes les autres"
+                  >↓</button>
+                </span>
+              </th>
+              <th class={`${enTete} w-32`}>
+                <span
+                  class="flex items-center gap-1"
+                  title="Laissez vide pour que le produit prenne le poids de sa catégorie."
+                >
+                  Poids (g)
+                  <button
+                    type="button"
+                    data-recopier="poids"
+                    class={recopier}
+                    title="Recopier le poids de la première ligne sur toutes les autres"
+                    aria-label="Recopier le poids de la première ligne sur toutes les autres"
+                  >↓</button>
+                </span>
+              </th>
+              <th class={`${enTete} w-28 text-center`}>
+                <span
+                  class="flex items-center justify-center gap-1"
+                  title="Le client peut faire dessiner cette affiche par l'ordinateur."
+                >
+                  Affiche IA
+                  <button
+                    type="button"
+                    data-recopier="ia"
+                    class={recopier}
+                    title="Recopier le réglage de la première ligne sur toutes les autres"
+                    aria-label="Recopier le réglage de la première ligne sur toutes les autres"
+                  >↓</button>
+                </span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {produits.map((p) => {
+              const saisie = valeursSaisies.get(p.id);
+              const erreur = messagesErreur.get(p.id);
+              const nom = texteSaisi(saisie, "name", p.name);
+              const slug = texteSaisi(saisie, "slug", p.slug);
+              const statut = texteSaisi(saisie, "status", p.status);
+              const prixCents = nombreSaisi(saisie, "basePriceCents", p.basePriceCents) ?? p.basePriceCents;
+              const categorieId = nombreSaisi(saisie, "categoryId", p.categoryId);
+              const poids = nombreSaisi(saisie, "weightGrams", p.weightGrams);
+              const ia = boolSaisi(saisie, "aiEnabled", p.aiEnabled);
+              const statutInconnu = !STATUTS.some((s) => s.valeur === p.status);
+              return (
+                <>
+                  <tr data-ligne data-id={p.id} data-nom={p.name}>
+                    <td class={`${cellule} sticky left-0 z-10 bg-bo-surface`}>
+                      <span class="flex items-start gap-2">
+                        {p.imageUrl ? (
+                          <img
+                            src={imgSrc(p.imageUrl)}
+                            alt=""
+                            class="h-10 w-10 shrink-0 rounded border border-bo-border object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <span class="h-10 w-10 shrink-0 rounded border border-bo-border bg-bo-bg" />
+                        )}
+                        <span class="min-w-0">
+                          <a
+                            href={url(`/produits/${p.id}`)}
+                            class="block truncate text-bo-accent hover:underline"
+                            title={`Ouvrir la fiche de ${p.name}`}
+                          >
+                            {p.name}
+                          </a>
+                          <span class="block text-xs text-bo-muted">
+                            {p.formats.length > 0
+                              ? p.formats.join(", ")
+                              : "aucun format"}
+                            <span data-modifie class="ml-1 text-bo-accent" hidden>
+                              · modifié
+                            </span>
+                          </span>
+                        </span>
+                      </span>
+                    </td>
+
+                    <td class={cellule}>
+                      <input
+                        data-champ="nom"
+                        data-initial={p.name}
+                        value={nom}
+                        class={champ}
+                        aria-label={`Nom de ${p.name}`}
+                      />
+                    </td>
+
+                    <td class={cellule}>
+                      <input
+                        data-champ="slug"
+                        data-initial={p.slug}
+                        value={slug}
+                        class={`${champ} font-mono text-xs`}
+                        aria-label={`Identifiant de ${p.name}`}
+                      />
+                    </td>
+
+                    <td class={cellule}>
+                      <select
+                        data-champ="statut"
+                        data-initial={p.status}
+                        class={champ}
+                        aria-label={`Statut de ${p.name}`}
+                      >
+                        {STATUTS.map((s) => (
+                          <option value={s.valeur} selected={s.valeur === statut}>
+                            {s.libelle}
+                          </option>
+                        ))}
+                        {/* Un statut venu de l'API que la liste ne connaît pas
+                            resterait sélectionné à tort sur « Actif ». */}
+                        {statutInconnu && (
+                          <option value={p.status} selected={p.status === statut}>
+                            {p.status}
+                          </option>
+                        )}
+                      </select>
+                    </td>
+
+                    <td class={cellule}>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        data-champ="prix"
+                        data-initial={String(p.basePriceCents)}
+                        value={euros(prixCents)}
+                        class={`${champ} text-right`}
+                        aria-label={`Prix de base de ${p.name}, en euros`}
+                      />
+                      {/* Le prix payé vient du format dès qu'il y en a un :
+                          sans ce rappel, on croit régler le prix de vente. */}
+                      {p.formats.length > 0 && (
+                        <span class="mt-0.5 block text-xs text-bo-muted">
+                          {p.prixMin === null || p.prixMax === null
+                            ? "prix porté par les formats"
+                            : p.prixMin === p.prixMax
+                              ? `formats : ${formatPrice(p.prixMin)}`
+                              : `formats : ${formatPrice(p.prixMin)} à ${formatPrice(p.prixMax)}`}
+                        </span>
+                      )}
+                    </td>
+
+                    <td class={cellule}>
+                      <select
+                        data-champ="categorie"
+                        data-initial={p.categoryId === null ? "" : String(p.categoryId)}
+                        class={champ}
+                        aria-label={`Catégorie de ${p.name}`}
+                      >
+                        <option value="" selected={categorieId === null}>
+                          Aucune
+                        </option>
+                        {categories.map((c) => (
+                          <option value={c.id} selected={c.id === categorieId}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+
+                    <td class={cellule}>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        data-champ="poids"
+                        data-initial={p.weightGrams === null ? "" : String(p.weightGrams)}
+                        value={poids === null ? "" : String(poids)}
+                        placeholder={p.poidsEffectif > 0 ? String(p.poidsEffectif) : ""}
+                        class={`${champ} text-right`}
+                        aria-label={`Poids de ${p.name}, en grammes`}
+                      />
+                      {p.weightGrams === null && (
+                        <span
+                          class={`mt-0.5 block text-xs ${
+                            p.poidsEffectif > 0 ? "text-bo-muted" : "text-amber-800"
+                          }`}
+                        >
+                          {p.poidsEffectif > 0
+                            ? `hérite de ${formaterPoids(p.poidsEffectif)}`
+                            : "aucun poids connu"}
+                        </span>
+                      )}
+                    </td>
+
+                    <td class={`${cellule} text-center`}>
+                      <input
+                        type="checkbox"
+                        data-champ="ia"
+                        data-initial={p.aiEnabled ? "1" : "0"}
+                        checked={ia}
+                        class="mt-1"
+                        aria-label={`Affiche IA pour ${p.name}`}
+                      />
+                    </td>
+                  </tr>
+                  {erreur && (
+                    <tr>
+                      <td colspan="8" class="border-t border-bo-border bg-red-50 px-3 py-2 text-sm">
+                        « {p.name} » n'a pas pu être enregistré : {erreur}
+                      </td>
+                    </tr>
+                  )}
+                </>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* La barre suit le bas de l'écran : avec cent lignes, un bouton posé
+          sous le tableau se retrouve à trois écrans de la valeur qu'on tape. */}
+      <div class="sticky bottom-0 z-40 -mx-6 mt-4 border-t border-bo-border bg-bo-surface px-6 py-3">
+        <div class="flex flex-wrap items-center gap-3">
+          <span id="compteur" class="text-sm text-bo-muted">
+            Aucune modification pour l'instant.
+          </span>
+          <span class="flex-1"></span>
+          <button
+            type="button"
+            id="remettre"
+            disabled
+            class="rounded border border-bo-border px-3 py-1.5 text-sm hover:bg-bo-bg disabled:opacity-40"
+          >
+            Tout remettre comme avant
+          </button>
+          <button
+            id="enregistrer"
+            disabled
+            class="rounded bg-bo-accent px-4 py-2 text-sm text-white disabled:opacity-40"
+          >
+            Enregistrer
+          </button>
+        </div>
+        <p id="problemes" class="mt-2 text-sm text-red-600" hidden></p>
+      </div>
+    </form>
+  )}
+
+  <script is:inline>
+    (function () {
+      var formulaire = document.getElementById("grille");
+      if (!formulaire) return;
+
+      var lignes = Array.prototype.slice.call(
+        document.querySelectorAll("[data-ligne]"),
+      );
+      var champs = Array.prototype.slice.call(
+        document.querySelectorAll("[data-champ]"),
+      );
+      var compteur = document.getElementById("compteur");
+      var problemesEl = document.getElementById("problemes");
+      var enregistrer = document.getElementById("enregistrer");
+      var remettre = document.getElementById("remettre");
+      var charge = document.getElementById("charge-modifications");
+      var modifies = 0;
+      var envoiEnCours = false;
+
+      // Toute comparaison passe par cette forme : le prix est comparé en
+      // centimes, pas en « 24,9 » contre « 24.90 », sinon la moitié des lignes
+      // partirait à l'enregistrement sans avoir été touchée.
+      function valeur(c) {
+        if (c.type === "checkbox") return c.checked ? "1" : "0";
+        var brut = String(c.value).replace(",", ".").trim();
+        if (c.dataset.champ === "prix") {
+          if (brut === "") return "";
+          var cents = Math.round(parseFloat(brut) * 100);
+          return Number.isFinite(cents) && cents >= 0 ? String(cents) : "?";
+        }
+        if (c.dataset.champ === "poids") {
+          if (brut === "") return "";
+          var g = Math.round(parseFloat(brut));
+          return Number.isFinite(g) && g >= 0 ? String(g) : "?";
+        }
+        return String(c.value).trim();
+      }
+
+      function souci(c) {
+        var cle = c.dataset.champ;
+        if (cle === "nom" && valeur(c) === "")
+          return "le nom ne peut pas rester vide";
+        if (cle === "slug" && valeur(c) === "")
+          return "l'identifiant ne peut pas rester vide";
+        if (cle === "prix" && (valeur(c) === "" || valeur(c) === "?"))
+          return "le prix doit être un nombre, par exemple 24,90";
+        if (cle === "poids" && valeur(c) === "?")
+          return "le poids doit être un nombre de grammes, ou rester vide pour prendre celui de la catégorie";
+        return null;
+      }
+
+      function recalculer() {
+        var soucis = [];
+        modifies = 0;
+
+        lignes.forEach(function (ligne) {
+          var bouge = false;
+          Array.prototype.forEach.call(
+            ligne.querySelectorAll("[data-champ]"),
+            function (c) {
+              var change = valeur(c) !== (c.dataset.initial || "");
+              if (change) bouge = true;
+              if (c.type !== "checkbox") {
+                c.classList.toggle("border-bo-accent", change);
+                c.classList.toggle("border-bo-border", !change);
+              }
+              var probleme = change ? souci(c) : null;
+              if (probleme)
+                soucis.push(
+                  "« " + (ligne.dataset.nom || "ce produit") + " » : " + probleme + ".",
+                );
+            },
+          );
+          var marque = ligne.querySelector("[data-modifie]");
+          if (marque) marque.hidden = !bouge;
+          if (bouge) modifies++;
+        });
+
+        if (compteur) {
+          compteur.textContent =
+            modifies === 0
+              ? "Aucune modification pour l'instant."
+              : modifies + (modifies > 1 ? " produits modifiés" : " produit modifié");
+          compteur.className =
+            modifies === 0 ? "text-sm text-bo-muted" : "text-sm font-medium";
+        }
+        if (problemesEl) {
+          var uniques = soucis.filter(function (s, i) {
+            return soucis.indexOf(s) === i;
+          });
+          problemesEl.hidden = uniques.length === 0;
+          problemesEl.textContent = uniques.slice(0, 5).join(" ");
+        }
+        if (enregistrer) enregistrer.disabled = modifies === 0 || soucis.length > 0;
+        if (remettre) remettre.disabled = modifies === 0;
+      }
+
+      champs.forEach(function (c) {
+        c.addEventListener("input", recalculer);
+        c.addEventListener("change", recalculer);
+      });
+
+      // Recopier vers le bas : la première ligne sert de modèle à la colonne.
+      Array.prototype.forEach.call(
+        document.querySelectorAll("[data-recopier]"),
+        function (bouton) {
+          bouton.addEventListener("click", function () {
+            var colonne = champs.filter(function (c) {
+              return c.dataset.champ === bouton.dataset.recopier;
+            });
+            if (colonne.length < 2) return;
+            for (var i = 1; i < colonne.length; i++) {
+              if (colonne[0].type === "checkbox")
+                colonne[i].checked = colonne[0].checked;
+              else colonne[i].value = colonne[0].value;
+            }
+            recalculer();
+          });
+        },
+      );
+
+      if (remettre)
+        remettre.addEventListener("click", function () {
+          champs.forEach(function (c) {
+            var initial = c.dataset.initial || "";
+            if (c.type === "checkbox") c.checked = initial === "1";
+            else if (c.dataset.champ === "prix")
+              c.value = initial === "" ? "" : (Number(initial) / 100).toFixed(2);
+            else c.value = initial;
+          });
+          recalculer();
+        });
+
+      formulaire.addEventListener("submit", function (e) {
+        var modifications = [];
+        lignes.forEach(function (ligne) {
+          var diff = { id: Number(ligne.dataset.id) };
+          var bouge = false;
+          Array.prototype.forEach.call(
+            ligne.querySelectorAll("[data-champ]"),
+            function (c) {
+              if (valeur(c) === (c.dataset.initial || "")) return;
+              bouge = true;
+              var cle = c.dataset.champ;
+              if (cle === "nom") diff.name = String(c.value).trim();
+              else if (cle === "slug") diff.slug = String(c.value).trim();
+              else if (cle === "statut") diff.status = c.value;
+              else if (cle === "prix") diff.basePriceCents = Number(valeur(c));
+              else if (cle === "categorie")
+                diff.categoryId = c.value === "" ? null : Number(c.value);
+              else if (cle === "poids")
+                diff.weightGrams = valeur(c) === "" ? null : Number(valeur(c));
+              else if (cle === "ia") diff.aiEnabled = c.checked;
+            },
+          );
+          if (bouge) modifications.push(diff);
+        });
+
+        if (modifications.length === 0) {
+          e.preventDefault();
+          return;
+        }
+        charge.value = JSON.stringify(modifications);
+        envoiEnCours = true;
+      });
+
+      window.addEventListener("beforeunload", function (e) {
+        if (envoiEnCours || modifies === 0) return;
+        e.preventDefault();
+        e.returnValue = "";
+      });
+
+      recalculer();
+    })();
+  </script>
+</Admin>

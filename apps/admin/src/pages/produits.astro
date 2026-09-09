@@ -1,192 +1,630 @@
 ---
+/**
+ * La liste des produits, et tout ce qu'on peut leur faire sans les ouvrir.
+ *
+ * Une boutique de deux cents affiches ne se tient pas fiche par fiche : passer
+ * la moitié du catalogue en brouillon avant un salon, remonter tous les prix
+ * de cinquante centimes, ranger vingt affiches dans une catégorie — chacune de
+ * ces corrections demandait autrefois vingt allers-retours. D'où la sélection
+ * multiple et la barre d'actions groupées, sur le modèle de Shopify.
+ *
+ * La liste ne passe plus par la route publique /products : celle-ci ne montre
+ * que ce qui est en vente, et le back-office doit justement voir ce que la
+ * boutique cache.
+ */
 import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
-import { formatPrice } from "../lib/api.ts";
+import { adminApi, formatPrice, type ListeProduitsAdmin } from "../lib/api.ts";
 
-const API =
-  import.meta.env.API_URL_INTERNAL ??
-  import.meta.env.PUBLIC_API_URL ??
-  "http://localhost:3000";
-let products: {
-  id: number;
-  name: string;
-  slug?: string;
-  kind: string;
-  basePriceCents: number;
-}[] = [];
-let error: string | null = null;
+const api = adminApi(Astro.request);
+
+let flash: string | null = null;
+let flashErreur = false;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const ids = String(f.get("ids") ?? "")
+    .split(",")
+    .map((v) => Number(v))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const quoi = String(f.get("bulk") ?? "");
+  try {
+    if (!ids.length) throw new Error("Aucun produit sélectionné.");
+    let params: Record<string, unknown> = {};
+    let action = quoi;
+
+    if (quoi === "activer" || quoi === "desactiver" || quoi === "archiver") {
+      action = "statut";
+      params = {
+        valeur:
+          quoi === "activer"
+            ? "active"
+            : quoi === "desactiver"
+              ? "draft"
+              : "archived",
+      };
+    } else if (quoi === "categorie") {
+      const brut = String(f.get("categoryId") ?? "");
+      params = { categoryId: brut === "" ? null : Number(brut) };
+    } else if (quoi === "poids") {
+      const brut = String(f.get("poids") ?? "").trim();
+      params = { weightGrams: brut === "" ? null : Number(brut) };
+    } else if (quoi === "prix") {
+      const mode = String(f.get("prixMode") ?? "fixe");
+      const unite = String(f.get("prixUnite") ?? "euros");
+      const format = String(f.get("prixFormat") ?? "tous");
+      // La saisie est en euros, avec la virgule française ; l'API compte en
+      // centimes. La conversion se fait ici, une fois, plutôt que dans chaque
+      // appel.
+      const valeur = Number(String(f.get("prixValeur") ?? "0").replace(",", "."));
+      if (!Number.isFinite(valeur) || valeur < 0)
+        throw new Error("Le montant saisi n'est pas un nombre valable.");
+      params =
+        unite === "pourcent"
+          ? { mode, format, pourcent: valeur }
+          : { mode, format, montantCents: Math.round(valeur * 100) };
+    } else if (quoi === "collection-ajouter" || quoi === "collection-retirer") {
+      const brut = String(f.get("collectionId") ?? "");
+      if (!brut) throw new Error("Choisissez une collection.");
+      params = { collectionId: Number(brut) };
+    } else if (quoi !== "supprimer") {
+      throw new Error("Action inconnue.");
+    }
+
+    const r = await api.produitsEnMasse(ids, action, params);
+    const refuses = r.refuses ?? [];
+    flash =
+      `${r.count} produit${r.count > 1 ? "s" : ""} modifié${r.count > 1 ? "s" : ""}.` +
+      (refuses.length
+        ? ` ${refuses.length} refusé${refuses.length > 1 ? "s" : ""} : ` +
+          refuses.map((x) => `${x.name} (${x.raison})`).join(" ; ")
+        : "");
+    flashErreur = refuses.length > 0;
+  } catch (e) {
+    flash = String(e instanceof Error ? e.message : e);
+    flashErreur = true;
+  }
+}
+
+// --- Filtres, lus dans l'adresse -----------------------------------------
+const params = Astro.url.searchParams;
+const statut = params.get("statut") ?? "tous";
+const q = params.get("q") ?? "";
+const categorieFiltre = Number(params.get("categorie") ?? "") || undefined;
+const collectionFiltre = Number(params.get("collection") ?? "") || undefined;
+
+let liste: ListeProduitsAdmin = {
+  produits: [],
+  categories: [],
+  collections: [],
+  formats: [],
+  compte: { tous: 0, active: 0, draft: 0, archived: 0 },
+};
+let erreur: string | null = null;
 try {
-  const res = await fetch(`${API}/products?limit=200`);
-  products = await res.json();
+  liste = await api.produitsAdmin({
+    statut,
+    q,
+    categorie: categorieFiltre,
+    collection: collectionFiltre,
+    limit: 1000,
+  });
 } catch (e) {
-  error = String(e);
+  erreur = String(e instanceof Error ? e.message : e);
+}
+
+const produits = liste.produits;
+
+/** Le vocabulaire de la boutique, pas celui de la base. */
+const ETIQUETTE_STATUT: Record<string, { texte: string; classe: string }> = {
+  active: { texte: "Actif", classe: "bg-green-100 text-green-800" },
+  draft: { texte: "Désactivé", classe: "bg-amber-100 text-amber-800" },
+  archived: { texte: "Archivé", classe: "bg-bo-bg text-bo-muted" },
+};
+
+const ONGLETS = [
+  { cle: "tous", texte: "Tous", nombre: liste.compte.tous },
+  { cle: "active", texte: "Actifs", nombre: liste.compte.active },
+  { cle: "draft", texte: "Désactivés", nombre: liste.compte.draft },
+  { cle: "archived", texte: "Archivés", nombre: liste.compte.archived },
+];
+
+/** Garde les filtres en place quand on change d'onglet. */
+function lienOnglet(cle: string): string {
+  const p = new URLSearchParams();
+  if (cle !== "tous") p.set("statut", cle);
+  if (q) p.set("q", q);
+  if (categorieFiltre) p.set("categorie", String(categorieFiltre));
+  if (collectionFiltre) p.set("collection", String(collectionFiltre));
+  const suite = p.toString();
+  return url(`/produits${suite ? `?${suite}` : ""}`);
 }
 
 const PAGE_SIZE = 25;
 ---
 
 <Admin title="Produits">
-  {error && <p class="text-red-600 text-sm">API injoignable : {error}</p>}
+  {erreur && <p class="mb-3 text-sm text-red-600">API injoignable : {erreur}</p>}
+  {
+    flash && (
+      <p
+        class={`mb-3 rounded border px-3 py-2 text-sm ${
+          flashErreur
+            ? "border-red-300 bg-red-50 text-red-800"
+            : "border-green-300 bg-green-50 text-green-800"
+        }`}
+      >
+        {flash}
+      </p>
+    )
+  }
 
-  <!-- Recherche + compteur -->
-  <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-    <input
-      id="prod-search"
-      type="search"
-      placeholder="Rechercher un produit (nom ou identifiant)…"
-      class="w-72 max-w-full border border-bo-border rounded px-3 py-2 text-sm"
-    />
-    <p class="text-sm text-bo-muted">
-      <span id="prod-count">{products.length}</span> produit(s)
-    </p>
+  <!-- Recherche, filtres, création -->
+  <form method="GET" class="mb-4 flex flex-wrap items-end gap-3">
+    <label class="text-sm">
+      <span class="mb-1 block text-xs text-bo-muted">Rechercher</span>
+      <input
+        type="search"
+        name="q"
+        value={q}
+        placeholder="Nom ou identifiant…"
+        class="w-64 max-w-full rounded border border-bo-border px-3 py-2 text-sm"
+      />
+    </label>
+    <label class="text-sm">
+      <span class="mb-1 block text-xs text-bo-muted">Catégorie</span>
+      <select
+        name="categorie"
+        class="rounded border border-bo-border px-3 py-2 text-sm"
+      >
+        <option value="">Toutes</option>
+        {
+          liste.categories.map((c) => (
+            <option value={c.id} selected={c.id === categorieFiltre}>
+              {c.name}
+            </option>
+          ))
+        }
+      </select>
+    </label>
+    <label class="text-sm">
+      <span class="mb-1 block text-xs text-bo-muted">Collection</span>
+      <select
+        name="collection"
+        class="rounded border border-bo-border px-3 py-2 text-sm"
+      >
+        <option value="">Toutes</option>
+        {
+          liste.collections.map((c) => (
+            <option value={c.id} selected={c.id === collectionFiltre}>
+              {c.name}
+            </option>
+          ))
+        }
+      </select>
+    </label>
+    {statut !== "tous" && <input type="hidden" name="statut" value={statut} />}
+    <button class="rounded border border-bo-border px-4 py-2 text-sm hover:bg-bo-bg">
+      Filtrer
+    </button>
     <a
       href={url("/produits/nouveau")}
-      class="rounded bg-bo-accent text-white px-4 py-2 text-sm"
+      class="ml-auto rounded bg-bo-accent px-4 py-2 text-sm text-white"
     >
       <span class="mr-1">+</span> Nouvelle affiche
     </a>
-  </div>
+  </form>
 
-  <!-- Pagination (haut) — demandée explicitement en haut de liste aussi -->
-  <nav
-    class="prod-pager mb-3 flex items-center justify-between gap-2 text-sm"
-    data-pager
-  >
-    <button
-      class="prod-prev rounded border border-bo-border px-3 py-1.5 disabled:opacity-40"
-    >
-      ← Précédent
-    </button>
-    <span class="prod-pageinfo text-bo-muted"></span>
-    <button
-      class="prod-next rounded border border-bo-border px-3 py-1.5 disabled:opacity-40"
-    >
-      Suivant →
-    </button>
+  <!-- Onglets par statut -->
+  <nav class="mb-3 flex flex-wrap gap-1 border-b border-bo-border text-sm">
+    {
+      ONGLETS.map((o) => (
+        <a
+          href={lienOnglet(o.cle)}
+          class={`-mb-px border-b-2 px-3 py-2 ${
+            statut === o.cle
+              ? "border-bo-accent font-medium text-bo-accent"
+              : "border-transparent text-bo-muted hover:text-bo-nav"
+          }`}
+        >
+          {o.texte} <span class="text-xs">({o.nombre})</span>
+        </a>
+      ))
+    }
   </nav>
 
-  <section class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
-    <table class="w-full text-sm">
-      <thead class="bg-bo-bg text-bo-muted text-left">
-        <tr>
-          <th class="px-4 py-2 font-medium">Nom</th>
-          <th class="px-4 py-2 font-medium">Type</th>
-          <th class="px-4 py-2 font-medium text-right">Prix de base</th>
-          <th class="px-4 py-2"></th>
-        </tr>
-      </thead>
-      <tbody id="prod-tbody">
-        {
-          products.map((p) => (
-            <tr
-              class="prod-row border-t border-bo-border"
-              data-name={(p.name ?? "").toLowerCase()}
-              data-slug={(p.slug ?? "").toLowerCase()}
+  <section
+    class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface"
+  >
+    {/* La barre d'actions n'apparaît qu'une fois des cases cochées. */}
+    <form
+      method="POST"
+      id="pm-masse"
+      class="hidden border-b border-bo-border bg-bo-bg px-4 py-3"
+    >
+      <input type="hidden" name="ids" id="pm-ids" />
+      <input type="hidden" name="bulk" id="pm-bulk" />
+      <div class="flex flex-wrap items-center gap-2 text-sm">
+        <span id="pm-compte" class="font-medium"></span>
+        <button
+          type="button"
+          data-bulk="activer"
+          class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+        >
+          Activer
+        </button>
+        <button
+          type="button"
+          data-bulk="desactiver"
+          class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+        >
+          Désactiver
+        </button>
+        <button
+          type="button"
+          data-bulk="archiver"
+          class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+        >
+          Archiver
+        </button>
+        <button
+          type="button"
+          id="pm-grille"
+          class="rounded bg-bo-nav px-3 py-1.5 text-white"
+        >
+          Modifier en masse
+        </button>
+        <button
+          type="button"
+          data-bulk="supprimer"
+          data-confirme="Supprimer définitivement les produits sélectionnés ? Ceux qui figurent dans une commande seront conservés."
+          class="ml-auto rounded border border-red-300 px-3 py-1.5 text-red-700 hover:bg-red-50"
+        >
+          Supprimer
+        </button>
+      </div>
+
+      <div
+        class="mt-3 flex flex-wrap items-end gap-x-6 gap-y-3 border-t border-bo-border pt-3 text-sm"
+      >
+        <div class="flex items-end gap-2">
+          <label>
+            <span class="mb-1 block text-xs text-bo-muted">Catégorie</span>
+            <select
+              name="categoryId"
+              class="rounded border border-bo-border px-2 py-1.5"
             >
-              <td class="px-4 py-2 font-medium">
-                <a href={url(`/produits/${p.id}`)} class="text-bo-accent hover:underline">
-                  {p.name}
-                </a>
-              </td>
-              <td class="px-4 py-2">{p.kind}</td>
-              <td class="px-4 py-2 text-right">{formatPrice(p.basePriceCents)}</td>
-              <td class="px-4 py-2 text-right">
-                <a href={url(`/produits/${p.id}`)} class="text-bo-accent hover:underline">
-                  Configurer
-                </a>
-              </td>
-            </tr>
-          ))
-        }
-      </tbody>
-    </table>
-    <p id="prod-empty" class="hidden px-4 py-6 text-center text-bo-muted text-sm">
+              <option value="">Aucune</option>
+              {liste.categories.map((c) => <option value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+          <button
+            type="button"
+            data-bulk="categorie"
+            class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+          >
+            Ranger
+          </button>
+        </div>
+
+        <div class="flex items-end gap-2">
+          <label>
+            <span class="mb-1 block text-xs text-bo-muted">Prix de base</span>
+            <select
+              name="prixMode"
+              class="rounded border border-bo-border px-2 py-1.5"
+            >
+              <option value="fixe">Fixer à</option>
+              <option value="augmenter">Augmenter de</option>
+              <option value="diminuer">Diminuer de</option>
+            </select>
+          </label>
+          <input
+            name="prixValeur"
+            type="text"
+            inputmode="decimal"
+            placeholder="0,00"
+            class="w-24 rounded border border-bo-border px-2 py-1.5"
+          />
+          <select
+            name="prixUnite"
+            class="rounded border border-bo-border px-2 py-1.5"
+          >
+            <option value="euros">€</option>
+            <option value="pourcent">%</option>
+          </select>
+          <select
+            name="prixFormat"
+            class="rounded border border-bo-border px-2 py-1.5"
+            aria-label="Formats concernés"
+          >
+            <option value="tous">tous les formats</option>
+            {liste.formats.map((fmt) => <option value={fmt}>{fmt}</option>)}
+          </select>
+          <button
+            type="button"
+            data-bulk="prix"
+            class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+          >
+            Appliquer
+          </button>
+        </div>
+
+        <div class="flex items-end gap-2">
+          <label>
+            <span class="mb-1 block text-xs text-bo-muted">Poids (g)</span>
+            <input
+              name="poids"
+              type="number"
+              min="0"
+              placeholder="vide = catégorie"
+              class="w-36 rounded border border-bo-border px-2 py-1.5"
+            />
+          </label>
+          <button
+            type="button"
+            data-bulk="poids"
+            class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+          >
+            Appliquer
+          </button>
+        </div>
+
+        <div class="flex items-end gap-2">
+          <label>
+            <span class="mb-1 block text-xs text-bo-muted">Collection</span>
+            <select
+              name="collectionId"
+              class="rounded border border-bo-border px-2 py-1.5"
+            >
+              <option value="">Choisir…</option>
+              {liste.collections.map((c) => <option value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+          <button
+            type="button"
+            data-bulk="collection-ajouter"
+            class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+          >
+            Ajouter
+          </button>
+          <button
+            type="button"
+            data-bulk="collection-retirer"
+            class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+          >
+            Retirer
+          </button>
+        </div>
+      </div>
+    </form>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-bo-bg text-left text-bo-muted">
+          <tr>
+            <th class="w-8 px-3 py-2">
+              <input type="checkbox" id="pm-tout" aria-label="Tout cocher" />
+            </th>
+            <th class="px-4 py-2 font-medium">Produit</th>
+            <th class="px-4 py-2 font-medium">Statut</th>
+            <th class="px-4 py-2 font-medium">Catégorie</th>
+            <th class="px-4 py-2 font-medium">Collections</th>
+            <th class="px-4 py-2 font-medium text-right">Poids</th>
+            <th class="px-4 py-2 font-medium text-right">Prix</th>
+            <th class="px-4 py-2"></th>
+          </tr>
+        </thead>
+        <tbody id="pm-tbody">
+          {
+            produits.map((p) => {
+              const badge = ETIQUETTE_STATUT[p.status] ?? {
+                texte: p.status,
+                classe: "bg-bo-bg text-bo-muted",
+              };
+              return (
+                <tr class="pm-row border-t border-bo-border">
+                  <td class="px-3 py-2 align-middle">
+                    <input type="checkbox" class="pm-coche" value={p.id} />
+                  </td>
+                  <td class="px-4 py-2">
+                    <div class="flex items-center gap-3">
+                      {p.imageUrl ? (
+                        <img
+                          src={p.imageUrl}
+                          alt=""
+                          loading="lazy"
+                          class="h-10 w-8 rounded border border-bo-border object-cover"
+                        />
+                      ) : (
+                        <span class="block h-10 w-8 rounded border border-bo-border bg-bo-bg" />
+                      )}
+                      <span>
+                        <a
+                          href={url(`/produits/${p.id}`)}
+                          class="font-medium text-bo-accent hover:underline"
+                        >
+                          {p.name}
+                        </a>
+                        <span class="block text-xs text-bo-muted">
+                          {p.variantes} format(s)
+                          {p.aiEnabled ? " · affiche IA" : ""}
+                        </span>
+                      </span>
+                    </div>
+                  </td>
+                  <td class="px-4 py-2">
+                    <span
+                      class={`inline-block rounded-full px-2 py-0.5 text-xs ${badge.classe}`}
+                    >
+                      {badge.texte}
+                    </span>
+                  </td>
+                  <td class="px-4 py-2 text-bo-muted">
+                    {p.categoryName ?? "—"}
+                  </td>
+                  <td class="px-4 py-2 text-bo-muted">
+                    {p.collections.length
+                      ? p.collections.map((c) => c.name).join(", ")
+                      : "—"}
+                  </td>
+                  <td class="px-4 py-2 text-right text-bo-muted">
+                    {p.poidsEffectif} g
+                    {p.weightGrams === null && (
+                      <span class="block text-xs">de la catégorie</span>
+                    )}
+                  </td>
+                  <td class="px-4 py-2 text-right whitespace-nowrap">
+                    {p.prixMin === null ? (
+                      <span title="Aucun format : c'est le prix de repli du produit.">
+                        {formatPrice(p.basePriceCents)}
+                        <span class="block text-xs text-bo-muted">sans format</span>
+                      </span>
+                    ) : p.prixMin === p.prixMax ? (
+                      formatPrice(p.prixMin)
+                    ) : (
+                      <span>
+                        {formatPrice(p.prixMin)}
+                        <span class="text-bo-muted"> à </span>
+                        {formatPrice(p.prixMax ?? p.prixMin)}
+                      </span>
+                    )}
+                  </td>
+                  <td class="px-4 py-2 text-right whitespace-nowrap">
+                    <a
+                      href={url(`/produits/${p.id}`)}
+                      class="text-bo-accent hover:underline"
+                    >
+                      Configurer
+                    </a>
+                  </td>
+                </tr>
+              );
+            })
+          }
+        </tbody>
+      </table>
+    </div>
+    <p
+      id="pm-vide"
+      class="hidden px-4 py-6 text-center text-sm text-bo-muted"
+    >
       Aucun produit ne correspond.
     </p>
   </section>
 
-  <!-- Pagination (bas) -->
+  <!-- Pagination -->
   <nav
-    class="prod-pager mt-3 flex items-center justify-between gap-2 text-sm"
+    class="pm-pager mt-3 flex items-center justify-between gap-2 text-sm"
     data-pager
   >
     <button
-      class="prod-prev rounded border border-bo-border px-3 py-1.5 disabled:opacity-40"
+      class="pm-prev rounded border border-bo-border px-3 py-1.5 disabled:opacity-40"
     >
       ← Précédent
     </button>
-    <span class="prod-pageinfo text-bo-muted"></span>
+    <span class="pm-pageinfo text-bo-muted"></span>
     <button
-      class="prod-next rounded border border-bo-border px-3 py-1.5 disabled:opacity-40"
+      class="pm-next rounded border border-bo-border px-3 py-1.5 disabled:opacity-40"
     >
       Suivant →
     </button>
   </nav>
 
-  <script is:inline define:vars={{ PAGE_SIZE }}>
-    const rows = Array.from(document.querySelectorAll(".prod-row"));
-    const search = document.getElementById("prod-search");
-    const countEl = document.getElementById("prod-count");
-    const emptyEl = document.getElementById("prod-empty");
+  <script
+    is:inline
+    define:vars={{ PAGE_SIZE, lienGrille: url("/produits/modifier-en-masse") }}
+  >
+    const lignes = Array.from(document.querySelectorAll(".pm-row"));
+    const vide = document.getElementById("pm-vide");
+    const barre = document.getElementById("pm-masse");
+    const compte = document.getElementById("pm-compte");
+    const tout = document.getElementById("pm-tout");
     let page = 0;
 
-    function filtered() {
-      const q = (search?.value || "").trim().toLowerCase();
-      if (!q) return rows;
-      return rows.filter(
-        (r) =>
-          (r.dataset.name || "").includes(q) ||
-          (r.dataset.slug || "").includes(q),
-      );
+    const cases = () => Array.from(document.querySelectorAll(".pm-coche"));
+    const selection = () =>
+      cases()
+        .filter((c) => c.checked)
+        .map((c) => c.value);
+
+    function rafraichirSelection() {
+      const n = selection().length;
+      barre.classList.toggle("hidden", n === 0);
+      compte.textContent = `${n} produit${n > 1 ? "s" : ""} sélectionné${n > 1 ? "s" : ""}`;
+      // « Tout cocher » ne parle que des lignes visibles : cocher une case
+      // cachée par la pagination serait une action invisible.
+      const visibles = cases().filter((c) => c.closest("tr").style.display !== "none");
+      if (tout)
+        tout.checked = visibles.length > 0 && visibles.every((c) => c.checked);
     }
 
-    function render() {
-      const list = filtered();
-      const total = list.length;
+    function afficher() {
+      const total = lignes.length;
       const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
       if (page > pages - 1) page = pages - 1;
       if (page < 0) page = 0;
-      const start = page * PAGE_SIZE;
-      const end = start + PAGE_SIZE;
+      const debut = page * PAGE_SIZE;
+      const fin = debut + PAGE_SIZE;
 
-      // Cache toutes les lignes, puis affiche la tranche courante.
-      rows.forEach((r) => (r.style.display = "none"));
-      list.slice(start, end).forEach((r) => (r.style.display = ""));
-
-      if (countEl) countEl.textContent = String(total);
-      if (emptyEl) emptyEl.classList.toggle("hidden", total !== 0);
+      lignes.forEach((l) => (l.style.display = "none"));
+      lignes.slice(debut, fin).forEach((l) => (l.style.display = ""));
+      if (vide) vide.classList.toggle("hidden", total !== 0);
 
       document.querySelectorAll("[data-pager]").forEach((pager) => {
-        const info = pager.querySelector(".prod-pageinfo");
-        const prev = pager.querySelector(".prod-prev");
-        const next = pager.querySelector(".prod-next");
+        const info = pager.querySelector(".pm-pageinfo");
+        const prec = pager.querySelector(".pm-prev");
+        const suiv = pager.querySelector(".pm-next");
         if (info)
           info.textContent =
             total === 0
               ? "—"
-              : `Page ${page + 1} / ${pages} · ${start + 1}–${Math.min(end, total)} sur ${total}`;
-        if (prev) prev.disabled = page === 0;
-        if (next) next.disabled = page >= pages - 1;
+              : `Page ${page + 1} / ${pages} · ${debut + 1}–${Math.min(fin, total)} sur ${total}`;
+        if (prec) prec.disabled = page === 0;
+        if (suiv) suiv.disabled = page >= pages - 1;
       });
+      rafraichirSelection();
     }
 
-    document.querySelectorAll(".prod-prev").forEach((b) =>
+    tout?.addEventListener("change", () => {
+      cases()
+        .filter((c) => c.closest("tr").style.display !== "none")
+        .forEach((c) => (c.checked = tout.checked));
+      rafraichirSelection();
+    });
+    cases().forEach((c) => c.addEventListener("change", rafraichirSelection));
+
+    document.querySelectorAll(".pm-prev").forEach((b) =>
       b.addEventListener("click", () => {
         page--;
-        render();
+        afficher();
       }),
     );
-    document.querySelectorAll(".prod-next").forEach((b) =>
+    document.querySelectorAll(".pm-next").forEach((b) =>
       b.addEventListener("click", () => {
         page++;
-        render();
+        afficher();
       }),
     );
-    search?.addEventListener("input", () => {
-      page = 0;
-      render();
+
+    document.querySelectorAll("[data-bulk]").forEach((b) => {
+      b.addEventListener("click", () => {
+        const ids = selection();
+        if (!ids.length) return;
+        const avertissement = b.dataset.confirme;
+        if (avertissement && !confirm(avertissement)) return;
+        document.getElementById("pm-ids").value = ids.join(",");
+        document.getElementById("pm-bulk").value = b.dataset.bulk;
+        barre.submit();
+      });
     });
 
-    render();
+    document.getElementById("pm-grille")?.addEventListener("click", () => {
+      const ids = selection();
+      if (!ids.length) return;
+      window.location.href = `${lienGrille}?ids=${ids.join(",")}`;
+    });
+
+    afficher();
   </script>
 </Admin>

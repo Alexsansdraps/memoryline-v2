@@ -151,6 +151,52 @@ export interface CategorieProduit {
   produits?: number;
 }
 
+/**
+ * Un produit vu du back-office.
+ *
+ * Le site n'a pas besoin du statut ni du poids ; la boutiquière, si. C'est la
+ * même table, ce n'est pas la même lecture.
+ */
+export interface ProduitAdmin {
+  id: number;
+  name: string;
+  slug: string;
+  kind: string;
+  /** active | draft | archived. Affiché « Actif », « Désactivé », « Archivé ». */
+  status: string;
+  /**
+   * Prix de repli, utilisé seulement par un produit sans aucun format. Ce
+   * n'est PAS le prix payé : celui-là est sur la variante.
+   */
+  basePriceCents: number;
+  /** Fourchette des prix des formats. Null quand le produit n'en a aucun. */
+  prixMin: number | null;
+  prixMax: number | null;
+  /** Les formats existants pour ce produit, par exemple ["A4", "A3"]. */
+  formats: string[];
+  categoryId: number | null;
+  categoryName: string | null;
+  /** Null = le produit prend le poids par défaut de sa catégorie. */
+  weightGrams: number | null;
+  /** Ce qui sera réellement pesé, cadre non compris. */
+  poidsEffectif: number;
+  aiEnabled: boolean;
+  imageUrl: string | null;
+  variantes: number;
+  collections: { id: number; name: string }[];
+}
+
+/** La liste des produits, et de quoi remplir les filtres et les onglets. */
+export interface ListeProduitsAdmin {
+  produits: ProduitAdmin[];
+  categories: { id: number; name: string }[];
+  collections: { id: number; name: string }[];
+  /** Tous les formats du catalogue, pour ne viser qu'un format à la fois. */
+  formats: string[];
+  /** Nombres par statut, tous filtres appliqués sauf celui du statut. */
+  compte: { tous: number; active: number; draft: number; archived: number };
+}
+
 /** Tout ce qu'il faut pour régler le poids d'un produit et de ses formats. */
 export interface LogistiqueProduit {
   produit: {
@@ -1083,6 +1129,50 @@ export function adminApi(request?: Request) {
       req<Asset>("POST", "/admin/assets", data, cookie),
     setAssetColors: (id: number, colorZones: Record<string, string>) =>
       req<Asset>("POST", `/admin/assets/${id}/colors`, { colorZones }, cookie),
+    /**
+     * La liste des produits telle que le back-office la voit, brouillons et
+     * archives compris. La route publique /products ne sert plus ici : elle
+     * ne montre que ce qui est en vente.
+     */
+    produitsAdmin: (params?: {
+      statut?: string;
+      q?: string;
+      categorie?: number;
+      collection?: number;
+      limit?: number;
+    }) => {
+      const p = new URLSearchParams();
+      if (params?.statut && params.statut !== "tous") p.set("statut", params.statut);
+      if (params?.q) p.set("q", params.q);
+      if (params?.categorie) p.set("categorie", String(params.categorie));
+      if (params?.collection) p.set("collection", String(params.collection));
+      if (params?.limit) p.set("limit", String(params.limit));
+      const suite = p.toString();
+      return req<ListeProduitsAdmin>(
+        "GET",
+        `/admin/products${suite ? `?${suite}` : ""}`,
+        undefined,
+        cookie,
+      );
+    },
+    /** Une même action appliquée à plusieurs produits d'un coup. */
+    produitsEnMasse: (
+      ids: number[],
+      action: string,
+      params?: Record<string, unknown>,
+    ) =>
+      req<{
+        ok: true;
+        count: number;
+        refuses?: { id: number; name: string; raison: string }[];
+      }>("POST", "/admin/products/bulk", { ids, action, ...params }, cookie),
+    /** L'éditeur en grille : chaque ligne porte ses propres changements. */
+    enregistrerProduitsEnMasse: (modifications: Record<string, unknown>[]) =>
+      req<{
+        ok: true;
+        count: number;
+        erreurs?: { id: number; message: string }[];
+      }>("POST", "/admin/products/masse", { modifications }, cookie),
     productCategories: () =>
       req<CategorieProduit[]>(
         "GET",

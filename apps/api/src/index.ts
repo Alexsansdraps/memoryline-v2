@@ -47,6 +47,8 @@ function transporteurConfigure(carrier: string | null | undefined): boolean {
 import { mountConfiguratorRoutes } from "./configurator-routes.js";
 import { mountOrderRoutes } from "./commandes.js";
 import { mountCatalogueRoutes } from "./catalogue.js";
+import { mountProduitsMasse } from "./produits-masse.js";
+import { mountVentesProduit } from "./ventes-produit.js";
 import { mountSalonRoutes } from "./salon.js";
 import { mountCompteRoutes } from "./comptes.js";
 import { mountIaRoutes } from "./ia.js";
@@ -223,6 +225,11 @@ app.get("/products", async (c) => {
       translations: schema.products.translations,
     })
     .from(schema.products)
+    // Seuls les produits actifs sont en vente. Un brouillon est un produit
+    // qu'on prépare, une archive un produit retiré : ni l'un ni l'autre n'a
+    // sa place dans la boutique. Le back-office passe par /admin/products,
+    // qui, lui, montre tout.
+    .where(eq(schema.products.status, "active"))
     // Ordre stable : sans tri explicite, Postgres est libre de renvoyer les
     // lignes dans n'importe quel ordre, et la boutique se réorganisait toute
     // seule d'une requête à l'autre. Les créations récentes ferment la marche.
@@ -281,7 +288,9 @@ app.get("/products/:slug", async (c) => {
   const rows = await db
     .select()
     .from(schema.products)
-    .where(eq(schema.products.slug, slug));
+    // Même règle que pour la liste : une adresse devinée ne doit pas donner
+    // accès à une affiche que la boutique a retirée de la vente.
+    .where(and(eq(schema.products.slug, slug), eq(schema.products.status, "active")));
   const brut = rows[0];
   if (!brut) return c.notFound();
   const product = traduire(brut, langueDemandee(c));
@@ -919,6 +928,15 @@ mountOrderRoutes(app);
 
 // Catégories de produits et poids d'expédition (apps/api/src/catalogue.ts).
 mountCatalogueRoutes(app);
+
+// Liste des produits vue du back-office et actions groupées. AVANT le
+// configurateur, qui déclare « /admin/products/:id/... » : une route
+// paramétrée posée d'abord avalerait « /admin/products/bulk » et
+// « /admin/products/masse ».
+mountProduitsMasse(app);
+
+// Ce qu'une affiche a rapporté, pour sa fiche produit.
+mountVentesProduit(app);
 
 // Commandes prises au stand : pas de prix a l'ecran, pas de paiement en ligne.
 mountSalonRoutes(app);
