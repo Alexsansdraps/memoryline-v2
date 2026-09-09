@@ -1,7 +1,13 @@
 ---
 import AfficheVide from "../../components/AfficheVide.astro";
 import Base from "../../layouts/Base.astro";
-import { api, formatPrice, assetUrl, type Product } from "../../lib/api.ts";
+import {
+  api,
+  formatPrice,
+  assetUrl,
+  type Collection,
+  type Product,
+} from "../../lib/api.ts";
 import {
   estLangue,
   langueDepuisParam,
@@ -24,15 +30,45 @@ if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
 const langue: Langue = langueDepuisParam(Astro.params.lang);
 const tr = t(langue);
 
+/**
+ * Le rayon demandé, lu dans l'adresse.
+ *
+ * « genre » sépare les affiches à composer des affiches prêtes à imprimer,
+ * « collection » découpe les premières en villes et en paysages. Les deux sont
+ * facultatifs : sans eux, la page montre tout, comme avant.
+ */
+const genre = Astro.url.searchParams.get("genre") ?? "";
+const collectionDemandee = Astro.url.searchParams.get("collection") ?? "";
+
 let products: Product[] = [];
+let collections: Collection[] = [];
 let error: string | null = null;
 try {
   // Tout le catalogue : plafonné à 120, la boutique masquait les dernières
   // affiches créées.
-  products = await api.products(500, langue);
+  [products, collections] = await Promise.all([
+    api.products(500, langue, {
+      genre: genre || undefined,
+      collection: collectionDemandee || undefined,
+    }),
+    // Sert seulement à nommer le rayon en titre : le nom vient de la boutique,
+    // pas d'une table de correspondance écrite en dur ici.
+    collectionDemandee ? api.collections() : Promise.resolve([]),
+  ]);
 } catch (e) {
   error = String(e);
 }
+
+/** Le titre de la page : le nom du rayon, ou celui du catalogue entier. */
+const titrePage = (() => {
+  if (collectionDemandee) {
+    const trouvee = collections.find((c) => c.slug === collectionDemandee);
+    if (trouvee) return trouvee.name;
+  }
+  if (genre === "personnalisable") return tr("nav.personnalisables");
+  if (genre === "prete_a_imprimer") return tr("nav.pretes");
+  return tr("catalogue.titre");
+})();
 
 function priceRange(p: Product): string {
   const prices = p.variants.map((v) => v.priceCents).filter((c) => c > 0);
@@ -50,11 +86,14 @@ const kindLabel: Record<string, string> = {
 };
 ---
 
-<Base langue={langue} title={`${tr("catalogue.titre")} — Memory Line`}>
+<Base langue={langue} title={`${titrePage} — Memory Line`}>
   <section class="mx-auto max-w-[1200px] px-6 pt-12 pb-8 lg:px-12">
-    <h1 class="text-3xl sm:text-4xl">{tr("catalogue.titre")}</h1>
+    <h1 class="text-3xl sm:text-4xl">{titrePage}</h1>
     <p class="mt-3 text-ink-soft">
-      {products.length} {tr("catalogue.compte")}
+      {products.length}{" "}
+      {genre || collectionDemandee
+        ? tr("catalogue.compte_simple")
+        : tr("catalogue.compte")}
     </p>
   </section>
 

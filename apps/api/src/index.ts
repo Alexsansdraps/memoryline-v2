@@ -216,6 +216,16 @@ app.get("/products", async (c) => {
   // créées n'apparaissaient nulle part.
   const limit = Math.min(Number(c.req.query("limit") ?? 50), 1000);
   const langue = langueDemandee(c);
+
+  const filtres = [eq(schema.products.status, "active")];
+  const genre = (c.req.query("genre") ?? "").trim();
+  if (genre === "personnalisable" || genre === "prete_a_imprimer")
+    filtres.push(eq(schema.products.kind, genre));
+  const collection = (c.req.query("collection") ?? "").trim();
+  if (collection)
+    filtres.push(
+      sqlOp`exists (select 1 from ${schema.productCollections} pc join ${schema.collections} col on col.id = pc.collection_id where pc.product_id = ${schema.products.id} and col.slug = ${collection})`,
+    );
   const rows = await db
     .select({
       id: schema.products.id,
@@ -230,7 +240,11 @@ app.get("/products", async (c) => {
     // qu'on prépare, une archive un produit retiré : ni l'un ni l'autre n'a
     // sa place dans la boutique. Le back-office passe par /admin/products,
     // qui, lui, montre tout.
-    .where(eq(schema.products.status, "active"))
+    //
+    // Les deux filtres facultatifs servent les rayons du menu : le GENRE
+    // sépare les affiches à composer des affiches prêtes à imprimer, la
+    // COLLECTION donne « Villes » et « Thèmes & paysages ».
+    .where(and(...filtres))
     // Ordre stable : sans tri explicite, Postgres est libre de renvoyer les
     // lignes dans n'importe quel ordre, et la boutique se réorganisait toute
     // seule d'une requête à l'autre. Les créations récentes ferment la marche.
@@ -284,6 +298,44 @@ app.get("/products", async (c) => {
 });
 
 /** Fiche produit complète par slug (pour /affiches/[slug]). */
+/**
+ * Les collections qui contiennent au moins une affiche en vente.
+ *
+ * Une collection vide est un vestige de l'import : la proposer au menu
+ * mènerait à une page blanche. Le compte sert aussi à écrire « Villes (146) »
+ * si la boutique le souhaite un jour.
+ */
+app.get("/collections", async (c) => {
+  const rows = await db
+    .select({
+      id: schema.collections.id,
+      slug: schema.collections.slug,
+      name: schema.collections.name,
+      position: schema.collections.position,
+      produits: count(schema.productCollections.productId),
+    })
+    .from(schema.collections)
+    .innerJoin(
+      schema.productCollections,
+      eq(schema.productCollections.collectionId, schema.collections.id),
+    )
+    .innerJoin(
+      schema.products,
+      and(
+        eq(schema.products.id, schema.productCollections.productId),
+        eq(schema.products.status, "active"),
+      ),
+    )
+    .groupBy(
+      schema.collections.id,
+      schema.collections.slug,
+      schema.collections.name,
+      schema.collections.position,
+    )
+    .orderBy(asc(schema.collections.position), asc(schema.collections.name));
+  return c.json(rows.map(({ position: _p, ...r }) => r));
+});
+
 app.get("/products/:slug", async (c) => {
   const slug = c.req.param("slug");
   const rows = await db

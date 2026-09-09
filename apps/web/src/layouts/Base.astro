@@ -147,9 +147,56 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
           />
         </a>
         <div class="hidden md:flex items-center gap-8 text-[17px] font-semibold">
+          {/* Deux rayons, parce que la boutique vend deux choses : des
+              affiches que le client compose, et des affiches prêtes à
+              imprimer. Le menu déroulant s'ouvre au clic et se ferme au clic
+              ailleurs ou avec Échap — un survol seul laisserait les écrans
+              tactiles sans porte d'entrée. */}
+          <details class="ml-menu relative">
+            <summary
+              class="hover:text-terracotta flex cursor-pointer list-none items-center gap-1 transition-colors"
+            >
+              {tr("nav.personnalisables")}
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 12 12"
+                aria-hidden="true"
+                class="ml-menu-fleche transition-transform"
+              >
+                <path
+                  d="M2 4.5 6 8.5 10 4.5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"></path>
+              </svg>
+            </summary>
+            <div
+              class="border-ink/10 bg-paper absolute top-full left-0 z-20 mt-3 min-w-56 rounded-lg border py-2 text-[15px] font-medium shadow-lg"
+            >
+              <a
+                href={`${lien(langue, "/affiches")}?genre=personnalisable`}
+                class="hover:bg-ink/5 hover:text-terracotta block px-4 py-2 transition-colors"
+                >{tr("nav.tout_voir")}</a
+              >
+              <a
+                href={`${lien(langue, "/affiches")}?genre=personnalisable&collection=villes`}
+                class="hover:bg-ink/5 hover:text-terracotta block px-4 py-2 transition-colors"
+                >{tr("nav.villes")}</a
+              >
+              <a
+                href={`${lien(langue, "/affiches")}?genre=personnalisable&collection=balades-paysages`}
+                class="hover:bg-ink/5 hover:text-terracotta block px-4 py-2 transition-colors"
+                >{tr("nav.themes_paysages")}</a
+              >
+            </div>
+          </details>
           <a
-            href={lien(langue, "/affiches")}
-            class="hover:text-terracotta transition-colors">{tr("nav.affiches")}</a
+            href={`${lien(langue, "/affiches")}?genre=prete_a_imprimer`}
+            class="hover:text-terracotta transition-colors"
+            >{tr("nav.pretes")}</a
           >
         </div>
         <div class="flex items-center gap-5 text-sm">
@@ -267,6 +314,46 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
         </div>
       </nav>
     </header>
+
+    <style is:global>
+      /* Le triangle par défaut de <details> n'a rien à faire dans un menu. */
+      .ml-menu > summary::-webkit-details-marker {
+        display: none;
+      }
+      .ml-menu[open] .ml-menu-fleche {
+        transform: rotate(180deg);
+      }
+    </style>
+
+    <script is:inline>
+      // Un menu ouvert doit se fermer quand on clique ailleurs ou qu'on appuie
+      // sur Échap : <details> ne le fait pas tout seul, et un menu resté
+      // ouvert par-dessus la page passe pour un bogue.
+      (function () {
+        var menus = document.querySelectorAll("details.ml-menu");
+        if (!menus.length) return;
+        function fermerSauf(garde) {
+          menus.forEach(function (m) {
+            if (m !== garde) m.removeAttribute("open");
+          });
+        }
+        menus.forEach(function (m) {
+          m.addEventListener("toggle", function () {
+            if (m.open) fermerSauf(m);
+          });
+        });
+        document.addEventListener("click", function (e) {
+          var dedans = e.target instanceof Node && e.target;
+          menus.forEach(function (m) {
+            if (dedans && m.contains(dedans)) return;
+            m.removeAttribute("open");
+          });
+        });
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape") fermerSauf(null);
+        });
+      })();
+    </script>
 
     <main class="flex-1">
       <slot />

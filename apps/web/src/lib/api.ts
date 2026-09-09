@@ -115,13 +115,33 @@ export interface ProductDetail {
   }[];
 }
 
+/** Une collection du catalogue, telle que le menu la propose. */
+export interface Collection {
+  id: number;
+  slug: string;
+  name: string;
+  produits: number;
+}
+
 export const api = {
   stats: () => get<Stats>("/stats"),
-  /** `langue` sélectionne les traductions saisies au back-office (repli fr). */
-  products: (limit = 60, langue?: string) =>
-    get<Product[]>(
-      `/products?limit=${limit}${langue && langue !== "fr" ? `&lang=${langue}` : ""}`,
-    ),
+  /**
+   * `langue` sélectionne les traductions saisies au back-office (repli fr).
+   * `genre` et `collection` servent les rayons du menu : affiches à composer
+   * ou prêtes à imprimer, et « Villes » ou « Thèmes & paysages ».
+   */
+  products: (
+    limit = 60,
+    langue?: string,
+    filtres?: { genre?: string; collection?: string },
+  ) => {
+    const p = new URLSearchParams({ limit: String(limit) });
+    if (langue && langue !== "fr") p.set("lang", langue);
+    if (filtres?.genre) p.set("genre", filtres.genre);
+    if (filtres?.collection) p.set("collection", filtres.collection);
+    return get<Product[]>(`/products?${p.toString()}`);
+  },
+  collections: () => get<Collection[]>("/collections"),
   product: (slug: string, langue?: string) =>
     get<ProductDetail>(
       `/products/${slug}${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,

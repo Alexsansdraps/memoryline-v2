@@ -37,6 +37,11 @@ export const ui = {
   fr: {
     "nav.accueil": "Memory Line — accueil",
     "nav.affiches": "Affiches",
+    "nav.personnalisables": "Affiches personnalisables",
+    "nav.tout_voir": "Tout voir",
+    "nav.villes": "Villes",
+    "nav.themes_paysages": "Thèmes et paysages",
+    "nav.pretes": "Affiches prêtes à imprimer",
     "nav.panier": "Panier",
     "nav.creer": "Créer mon affiche",
     "nav.langue": "Langue",
@@ -60,6 +65,7 @@ export const ui = {
 
     "catalogue.titre": "Toutes les affiches",
     "catalogue.compte": "affiches · villes, paysages & thèmes",
+    "catalogue.compte_simple": "affiches",
     "catalogue.erreur": "Impossible de charger le catalogue",
     "catalogue.vide": "Aucune affiche pour le moment.",
 
@@ -354,6 +360,11 @@ export const ui = {
   en: {
     "nav.accueil": "Memory Line — home",
     "nav.affiches": "Posters",
+    "nav.personnalisables": "Customisable posters",
+    "nav.tout_voir": "See all",
+    "nav.villes": "Towns and cities",
+    "nav.themes_paysages": "Themes and landscapes",
+    "nav.pretes": "Ready-to-print posters",
     "nav.panier": "Basket",
     "nav.creer": "Create my poster",
     "nav.langue": "Language",
@@ -377,6 +388,7 @@ export const ui = {
 
     "catalogue.titre": "All posters",
     "catalogue.compte": "posters · cities, landscapes & themes",
+    "catalogue.compte_simple": "posters",
     "catalogue.erreur": "Could not load the catalogue",
     "catalogue.vide": "No posters yet.",
 
@@ -664,6 +676,11 @@ export const ui = {
   de: {
     "nav.accueil": "Memory Line — Startseite",
     "nav.affiches": "Poster",
+    "nav.personnalisables": "Personalisierbare Poster",
+    "nav.tout_voir": "Alle ansehen",
+    "nav.villes": "Städte",
+    "nav.themes_paysages": "Themen und Landschaften",
+    "nav.pretes": "Druckfertige Poster",
     "nav.panier": "Warenkorb",
     "nav.creer": "Mein Poster gestalten",
     "nav.langue": "Sprache",
@@ -687,6 +704,7 @@ export const ui = {
 
     "catalogue.titre": "Alle Poster",
     "catalogue.compte": "Poster · Städte, Landschaften & Themen",
+    "catalogue.compte_simple": "Poster",
     "catalogue.erreur": "Katalog konnte nicht geladen werden",
     "catalogue.vide": "Noch keine Poster.",
 
@@ -979,6 +997,11 @@ export const ui = {
   it: {
     "nav.accueil": "Memory Line — home",
     "nav.affiches": "Poster",
+    "nav.personnalisables": "Poster personalizzabili",
+    "nav.tout_voir": "Vedi tutto",
+    "nav.villes": "Città",
+    "nav.themes_paysages": "Temi e paesaggi",
+    "nav.pretes": "Poster pronti da stampare",
     "nav.panier": "Carrello",
     "nav.creer": "Crea il mio poster",
     "nav.langue": "Lingua",
@@ -1002,6 +1025,7 @@ export const ui = {
 
     "catalogue.titre": "Tutti i poster",
     "catalogue.compte": "poster · città, paesaggi e temi",
+    "catalogue.compte_simple": "poster",
     "catalogue.erreur": "Impossibile caricare il catalogo",
     "catalogue.vide": "Ancora nessun poster.",
 
@@ -1290,6 +1314,11 @@ export const ui = {
   es: {
     "nav.accueil": "Memory Line — inicio",
     "nav.affiches": "Láminas",
+    "nav.personnalisables": "Láminas personalizables",
+    "nav.tout_voir": "Ver todo",
+    "nav.villes": "Ciudades",
+    "nav.themes_paysages": "Temas y paisajes",
+    "nav.pretes": "Láminas listas para imprimir",
     "nav.panier": "Cesta",
     "nav.creer": "Crear mi lámina",
     "nav.langue": "Idioma",
@@ -1313,6 +1342,7 @@ export const ui = {
 
     "catalogue.titre": "Todas las láminas",
     "catalogue.compte": "láminas · ciudades, paisajes y temas",
+    "catalogue.compte_simple": "láminas",
     "catalogue.erreur": "No se ha podido cargar el catálogo",
     "catalogue.vide": "Todavía no hay láminas.",
 
