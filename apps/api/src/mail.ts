@@ -153,6 +153,24 @@ export interface LigneCourrier {
  * — les clients de messagerie ne savent toujours pas mettre en page autre
  * chose, et une mise en page qui casse fait plus de mal qu'une simple.
  */
+/**
+ * L'en-tête d'un courrier : le logo, ou le nom de la boutique à défaut.
+ *
+ * Une messagerie ne sait pas résoudre « /logo.png » ni joindre le réseau
+ * interne de Docker : il faut une adresse absolue et publique. Sans
+ * PUBLIC_ORIGIN, on écrit le nom plutôt que d'envoyer une image cassée.
+ *
+ * Le texte de remplacement porte le nom et sa mise en forme : une messagerie
+ * qui bloque les images, ce qui est le cas par défaut chez beaucoup, affiche
+ * alors « Memory Line » lisiblement au lieu d'un rectangle vide.
+ */
+function enteteMarque(): string {
+  const origine = (process.env.PUBLIC_ORIGIN ?? "").trim().replace(/\/+$/, "");
+  if (!/^https?:\/\//i.test(origine))
+    return `<div style="font-size:20px;letter-spacing:.6px">Memory Line</div>`;
+  return `<img src="${origine}/logo-memory-line.png" width="150" height="67" alt="Memory Line" style="display:block;border:0;outline:none;text-decoration:none;height:auto;width:150px;max-width:150px;font-size:20px;letter-spacing:.6px;color:#121212" />`;
+}
+
 function gabarit(titre: string, contenu: string): string {
   return `<!doctype html>
 <html lang="fr"><body style="margin:0;background:#f3f3f3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#121212">
@@ -160,14 +178,14 @@ function gabarit(titre: string, contenu: string): string {
     <tr><td align="center">
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff">
         <tr><td style="padding:28px 32px 8px">
-          <div style="font-size:20px;letter-spacing:.6px">Memory Line</div>
+          ${enteteMarque()}
         </td></tr>
         <tr><td style="padding:0 32px 8px">
           <h1 style="font-size:22px;font-weight:400;letter-spacing:.6px;margin:12px 0">${h(titre)}</h1>
         </td></tr>
         <tr><td style="padding:0 32px 32px;font-size:15px;line-height:1.5">${contenu}</td></tr>
         <tr><td style="padding:16px 32px;background:#f3f3f3;font-size:12px;color:#5b5b54">
-          Memory Line — affiches personnalisées.<br />
+          Memory Line, affiches personnalisées.<br />
           TVA non applicable, article 293 B du CGI.
         </td></tr>
       </table>
