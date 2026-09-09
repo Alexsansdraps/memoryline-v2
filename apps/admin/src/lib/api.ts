@@ -957,6 +957,65 @@ export interface StatsIA {
 }
 
 /**
+ * Une carte cadeau : de l'argent déjà encaissé, à rendre en affiches.
+ *
+ * `initialAmountCents` ne bouge jamais, c'est ce qui a été payé le jour de la
+ * vente. `balanceCents` est ce qu'il en reste, recopié du journal de la carte.
+ */
+export interface CarteCadeau {
+  id: number;
+  code: string;
+  initialAmountCents: number;
+  balanceCents: number;
+  /** « active » ou « disabled ». Une carte ne se supprime pas. */
+  status: string;
+  expiresAt: string | null;
+  customerId: number | null;
+  clientNom: string | null;
+  clientEmail: string | null;
+  note: string | null;
+  createdAt: string;
+  disabledAt: string | null;
+  /** Nombre de fois où la carte a servi à payer quelque chose. */
+  utilisations: number;
+}
+
+/**
+ * Un mouvement du journal d'une carte.
+ *
+ * `amountCents` est NÉGATIF quand la carte paie, positif à l'achat et aux
+ * recharges. Le journal fait foi : le solde n'en est que la somme.
+ */
+export interface MouvementCarteCadeau {
+  id: number;
+  amountCents: number;
+  label: string | null;
+  orderId: number | null;
+  /** Le numéro de la commande payée, quand le mouvement en désigne une. */
+  numeroCommande: string | null;
+  createdAt: string;
+}
+
+/** Une carte, son journal, et la personne à qui elle a été remise. */
+export interface DetailCarteCadeau {
+  carte: Omit<CarteCadeau, "clientNom" | "clientEmail" | "utilisations">;
+  mouvements: MouvementCarteCadeau[];
+  client: { id: number; nom: string | null; email: string | null } | null;
+}
+
+/**
+ * La liste des cartes, et ce que la boutique doit encore en affiches.
+ *
+ * `totalEnCirculationCents` ne compte que les cartes encore échangeables :
+ * une carte désactivée ou périmée a cessé d'être une dette.
+ */
+export interface ListeCartesCadeaux {
+  cartes: CarteCadeau[];
+  totalEnCirculationCents: number;
+  cartesEnCirculation: number;
+}
+
+/**
  * Crée un client API lié au cookie de session de la requête entrante.
  * À utiliser dans les pages : `const api = adminApi(Astro.request)`.
  */
@@ -1745,6 +1804,48 @@ export function adminApi(request?: Request) {
         "POST",
         "/admin/ia/purger",
         {},
+        cookie,
+      ),
+
+    /* --- Cartes cadeaux -------------------------------------------------- */
+
+    /** Toutes les cartes, et la somme des soldes encore échangeables. */
+    cartesCadeaux: () =>
+      req<ListeCartesCadeaux>("GET", "/admin/gift-cards", undefined, cookie),
+    /** Une carte, tous ses mouvements, et son destinataire. */
+    carteCadeau: (id: number) =>
+      req<DetailCarteCadeau>("GET", `/admin/gift-cards/${id}`, undefined, cookie),
+    /**
+     * Vend une carte. Le code est tiré par le serveur : on ne l'envoie jamais.
+     *
+     * Le montant part en CENTIMES, comme partout ailleurs dans cette API. La
+     * saisie en euros se convertit dans la page, jamais ici.
+     */
+    creerCarteCadeau: (data: {
+      montantCents: number;
+      expiresAt?: string | null;
+      customerId?: number | null;
+      note?: string | null;
+    }) => req<{ carte: CarteCadeau }>("POST", "/admin/gift-cards", data, cookie),
+    /** Désactive, réactive, ou change la note et la date de fin. */
+    majCarteCadeau: (
+      id: number,
+      data: { status?: string; note?: string | null; expiresAt?: string | null },
+    ) => req<{ ok: boolean }>("POST", `/admin/gift-cards/${id}`, data, cookie),
+    /**
+     * Recharge la carte, ou corrige une erreur.
+     *
+     * Passe par le journal, jamais par une écriture directe du solde : c'est ce
+     * qui garantit que le compteur et les écritures ne peuvent pas diverger.
+     */
+    ajusterCarteCadeau: (
+      id: number,
+      data: { amountCents: number; label: string },
+    ) =>
+      req<{ ok: boolean; solde: number }>(
+        "POST",
+        `/admin/gift-cards/${id}/ajuster`,
+        data,
         cookie,
       ),
   };

@@ -54,6 +54,7 @@ import { mountFicheProduit } from "./fiche-produit.js";
 import { mountCms } from "./cms.js";
 import { mountCollections } from "./collections.js";
 import { mountImportProduits } from "./import-produits.js";
+import { mountCartesCadeaux } from "./cartes-cadeaux.js";
 import { mountCourriers } from "./courriers.js";
 import { mountSalonRoutes } from "./salon.js";
 import { mountCompteRoutes } from "./comptes.js";
@@ -1085,6 +1086,10 @@ mountCollections(app);
 // Import de fiches produit par fichier, et l'image qu'on dépose ensuite sur
 // chacune. Après les collections : l'import y range les affiches.
 mountImportProduits(app);
+
+// Cartes cadeaux : de l'argent encaissé d'avance, avec son journal et sa
+// carte imprimable.
+mountCartesCadeaux(app);
 
 // Pages libres et menu du site, écrits depuis le back-office. Ouvrir un rayon
 // « Magnets » ne demande plus de toucher au code.

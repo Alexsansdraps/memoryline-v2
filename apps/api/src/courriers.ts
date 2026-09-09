@@ -1,12 +1,12 @@
 /**
  * Banc d'essai des courriers de la boutique.
  *
- * Les quatre courriers que Memory Line envoie (confirmation, avis de nouvelle
- * commande, relance de panier, réinitialisation de mot de passe) ne se voient
- * aujourd'hui qu'en attendant qu'un vrai client déclenche l'un d'eux. Ce
- * fichier offre le raccourci : afficher n'importe lequel des quatre, tel qu'il
- * sortira, avec un jeu d'exemple ou avec les données d'une vraie commande, et
- * s'en envoyer un pour de bon afin de le lire dans une boîte de réception.
+ * Les courriers que Memory Line envoie (confirmation, expédition, remboursement,
+ * relance de panier, bienvenue, avis de sécurité…) ne se voient autrement qu'en
+ * attendant qu'un vrai client déclenche l'un d'eux. Ce fichier offre le
+ * raccourci : afficher n'importe lequel, tel qu'il sortira, avec un jeu
+ * d'exemple ou avec les données d'une vraie commande, et s'en envoyer un pour
+ * de bon afin de le lire dans une boîte de réception.
  *
  * Deux principes gouvernent le tout. L'aperçu ne fait que LIRE : il rend du
  * HTML et n'envoie jamais rien. L'envoi, lui, sort de la machine dès que la
@@ -20,12 +20,16 @@ import type { Hono } from "hono";
 import { eq, or, sql } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import {
+  courrierAnnulee,
+  courrierBienvenue,
   courrierExpediee,
+  courrierMotDePasseModifie,
   courrierPreteAuStand,
   courrierConfirmation,
   courrierNouvelleCommande,
   courrierPanierAbandonne,
   courrierReinitialisation,
+  courrierRemboursee,
   envoyer,
   estConfigure,
   estEnEssai,
@@ -82,15 +86,19 @@ const EXPEDITEUR =
 const ORIGINE = (process.env.PUBLIC_ORIGIN ?? "").replace(/\/$/, "");
 
 /* -------------------------------------------------------------------------- */
-/*  Les quatre modèles                                                        */
+/*  Les modèles                                                               */
 /* -------------------------------------------------------------------------- */
 
 type IdModele =
   | "confirmation"
   | "expediee"
   | "prete-au-stand"
+  | "remboursee"
+  | "annulee"
   | "nouvelle-commande"
   | "panier-abandonne"
+  | "bienvenue"
+  | "mot-de-passe-modifie"
   | "reinitialisation";
 
 interface Modele {
@@ -121,6 +129,23 @@ const MODELES: Modele[] = [
     besoinCommande: true,
   },
   {
+    id: "remboursee",
+    nom: "Commande remboursée",
+    quand:
+      "Part vers le client quand vous enregistrez un remboursement, total ou partiel. Jamais pour une commande de stand.",
+    besoinCommande: true,
+  },
+  {
+    id: "annulee",
+    nom: "Commande annulée",
+    // Aucune route n'annule une commande aujourd'hui : le modèle existe et
+    // s'essaie ici, mais rien ne le déclenche encore. Le dire vaut mieux que
+    // de laisser croire à la boutique qu'un client est prévenu.
+    quand:
+      "Prévient le client que sa commande est annulée. Aucun déclenchement automatique pour l'instant : la boutique n'a pas de bouton d'annulation.",
+    besoinCommande: true,
+  },
+  {
     id: "nouvelle-commande",
     nom: "Avis de nouvelle commande",
     quand: "Vous prévient qu'une commande vient d'arriver.",
@@ -130,6 +155,19 @@ const MODELES: Modele[] = [
     id: "panier-abandonne",
     nom: "Relance de panier",
     quand: "Rappelle son affiche à quelqu'un qui a laissé sa commande en plan.",
+    besoinCommande: false,
+  },
+  {
+    id: "bienvenue",
+    nom: "Bienvenue",
+    quand: "Accueille quelqu'un qui vient de créer son compte client.",
+    besoinCommande: false,
+  },
+  {
+    id: "mot-de-passe-modifie",
+    nom: "Mot de passe modifié",
+    quand:
+      "Avis de sécurité, dès qu'un mot de passe change : depuis le compte, ou par un lien de réinitialisation.",
     besoinCommande: false,
   },
   {
@@ -149,7 +187,7 @@ function estIdModele(v: string): v is IdModele {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Tout ce dont les quatre modèles peuvent avoir besoin, réuni.
+ * Tout ce dont les modèles peuvent avoir besoin, réuni.
  *
  * `prenomClient` peut être vide : chaque modèle a sa propre formule de repli
  * en production, et l'aperçu doit montrer celle-là, pas une autre.
@@ -362,6 +400,42 @@ function rendre(modele: IdModele, d: DonneesCourrier): Courrier {
         evenement: "Salon du livre de Nantes 2026",
         lignes: d.lignes,
       });
+    case "remboursee": {
+      // Le cas le plus complet, donc le seul qui vaille d'être relu : un
+      // remboursement PARTIEL, un exemplaire rendu sur plusieurs, les frais de
+      // port avec, et un premier remboursement déjà passé sur la commande.
+      // Chacune de ces conditions fait apparaître une ligne du courrier qui
+      // resterait autrement invisible.
+      const rendu = d.lignes[0];
+      const articles = rendu ? [{ ...rendu, quantite: 1 }] : [];
+      const montant =
+        articles.reduce((s, l) => s + l.unitPriceCents * l.quantite, 0) +
+        d.portCents;
+      const autre = d.lignes[d.lignes.length - 1];
+      const dejaRendu = d.lignes.length > 1 && autre ? autre.unitPriceCents : 0;
+      return courrierRemboursee({
+        prenomClient: d.prenomClient || "vous",
+        numero: d.numero,
+        montantCents: montant,
+        portCents: d.portCents,
+        articles,
+        // Plafonné au total de la commande : au-delà, l'aperçu montrerait un
+        // cumul que la route des remboursements refuserait d'écrire.
+        totalRembourseCents: Math.min(d.totalCents, montant + dejaRendu),
+        totalCommandeCents: d.totalCents,
+        viaPaiementEnLigne: true,
+      });
+    }
+    case "annulee":
+      return courrierAnnulee({
+        prenomClient: d.prenomClient || "vous",
+        numero: d.numero,
+        // Le motif est facultatif dans le modèle : sans lui, l'aperçu cacherait
+        // justement la ligne qu'on vient relire.
+        motif: "Annulée à la demande de la cliente, avant impression.",
+        articles: d.lignes,
+        dejaPayee: true,
+      });
     case "nouvelle-commande":
       return courrierNouvelleCommande({
         numero: d.numero,
@@ -375,6 +449,20 @@ function rendre(modele: IdModele, d: DonneesCourrier): Courrier {
         lien: `${ORIGINE}/panier`,
         lignes: d.lignes,
         totalCents: d.totalCents,
+      });
+    case "bienvenue":
+      return courrierBienvenue({
+        prenomClient: d.prenomClient || "vous",
+        lien: `${ORIGINE}/compte`,
+      });
+    case "mot-de-passe-modifie":
+      // L'aperçu montre le chemin de la RÉINITIALISATION : c'est celui qui dit
+      // en plus que les sessions ouvertes sont tombées, donc celui qui a le
+      // plus à relire. L'autre chemin ne change qu'une phrase.
+      return courrierMotDePasseModifie({
+        prenomClient: d.prenomClient || "vous",
+        parReinitialisation: true,
+        lien: `${ORIGINE}/compte/mot-de-passe-oublie`,
       });
     case "reinitialisation":
       // Le jeton d'un vrai lien ne vit qu'une heure et n'existe que pour la
@@ -474,7 +562,7 @@ export function mountCourriers(app: Hono): void {
     }),
   );
 
-  /** La liste des quatre courriers que la boutique sait écrire. */
+  /** La liste des courriers que la boutique sait écrire. */
   app.get("/admin/courriers/modeles", (c) => c.json({ modeles: MODELES }));
 
   /**

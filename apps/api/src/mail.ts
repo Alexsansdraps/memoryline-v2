@@ -381,6 +381,204 @@ export function courrierPreteAuStand(d: {
 }
 
 /**
+ * Bienvenue, à la création d'un compte.
+ *
+ * AUCUN MOT DE PASSE, ni en clair ni en rappel, jamais. Un courrier se
+ * transfère, se retrouve dans une boîte partagée, et reste lisible des années
+ * après : ce qu'on y écrit une fois, on ne le reprend plus.
+ *
+ * Il dit à quoi le compte sert, et rien d'autre : c'est la seule chose que la
+ * personne ne sait pas encore, elle vient justement de choisir le reste.
+ */
+export function courrierBienvenue(d: {
+  prenomClient: string;
+  lien: string | null;
+}): Courrier {
+  const bouton = d.lien
+    ? `<p style="margin:20px 0"><a href="${h(d.lien)}" style="display:inline-block;background:#121212;color:#ffffff;padding:14px 28px;text-decoration:none">Ouvrir mon compte</a></p>`
+    : "";
+  return {
+    to: "",
+    subject: "Bienvenue chez Memory Line",
+    html: gabarit(
+      `Bonjour ${d.prenomClient},`,
+      `<p style="margin:0">Votre compte est créé. Vous y retrouvez vos commandes et leur suivi, les affiches que vous avez composées, et les adresses de livraison que vous enregistrez une fois pour toutes.</p>
+       ${bouton}
+       <p style="margin:20px 0 0;color:#5b5b54;font-size:14px">Nous ne vous demanderons jamais votre mot de passe par e-mail. Une question ? Répondez simplement à ce message.</p>`,
+    ),
+    text:
+      `Bonjour ${d.prenomClient},\n\nVotre compte Memory Line est créé. Vous y retrouvez vos commandes et leur suivi, vos affiches et vos adresses de livraison.` +
+      (d.lien ? `\n${d.lien}` : "") +
+      `\n\nMemory Line`,
+  };
+}
+
+/**
+ * Avis de sécurité : le mot de passe vient de changer.
+ *
+ * Il part APRÈS le changement, et sans lien qui reposerait un mot de passe :
+ * son seul rôle est de prévenir quelqu'un dont le compte serait en train de
+ * lui échapper, assez tôt pour qu'il reprenne la main. Le chemin qu'on lui
+ * indique est donc le chemin public, celui qui exige sa boîte mail.
+ */
+export function courrierMotDePasseModifie(d: {
+  prenomClient: string;
+  /** Vrai quand le changement vient d'un lien de réinitialisation. */
+  parReinitialisation: boolean;
+  lien: string | null;
+}): Courrier {
+  const origine = d.parReinitialisation
+    ? `<p style="margin:0">Le mot de passe de votre compte Memory Line vient d'être changé, à partir du lien de réinitialisation demandé depuis la page de connexion. Toutes les sessions ouvertes ont été fermées : il faut vous reconnecter sur chaque appareil.</p>`
+    : `<p style="margin:0">Le mot de passe de votre compte Memory Line vient d'être changé depuis votre compte.</p>`;
+  const bouton = d.lien
+    ? `<p style="margin:20px 0"><a href="${h(d.lien)}" style="display:inline-block;background:#121212;color:#ffffff;padding:14px 28px;text-decoration:none">Reprendre la main sur mon compte</a></p>`
+    : "";
+  return {
+    to: "",
+    subject: "Le mot de passe de votre compte a été modifié",
+    html: gabarit(
+      `Bonjour ${d.prenomClient},`,
+      `${origine}
+       <p style="margin:16px 0 0">Si vous n'êtes pas à l'origine de ce changement, votre compte vous échappe. Demandez tout de suite un nouveau mot de passe depuis la page de connexion, puis prévenez-nous en répondant à ce message.</p>
+       ${bouton}
+       <p style="margin:20px 0 0;color:#5b5b54;font-size:14px">Ce message est un avis de sécurité. Il ne contient aucun mot de passe, et nous ne vous demanderons jamais le vôtre.</p>`,
+    ),
+    text:
+      `Bonjour ${d.prenomClient},\n\nLe mot de passe de votre compte Memory Line vient d'être changé` +
+      (d.parReinitialisation
+        ? `, à partir du lien de réinitialisation que vous aviez demandé. Toutes les sessions ouvertes ont été fermées.`
+        : ` depuis votre compte.`) +
+      `\n\nSi ce n'est pas vous, demandez tout de suite un nouveau mot de passe depuis la page de connexion` +
+      (d.lien ? ` : ${d.lien}` : ".") +
+      `\n\nMemory Line`,
+  };
+}
+
+export interface RemboursementCourrier {
+  prenomClient: string;
+  numero: string;
+  /** Ce que CE remboursement rend, frais de port compris. */
+  montantCents: number;
+  /** Part des frais de port dans ce montant. Zéro le plus souvent. */
+  portCents: number;
+  /** Les articles rendus, avec les quantités de ce remboursement seulement. */
+  articles: LigneCourrier[];
+  /** Somme rendue sur la commande, celui-ci et les précédents réunis. */
+  totalRembourseCents: number;
+  /** Ce que la commande avait coûté. Sert à dire si le compte est soldé. */
+  totalCommandeCents: number;
+  /** L'argent repart-il par le moyen de paiement d'origine ? */
+  viaPaiementEnLigne: boolean;
+}
+
+/**
+ * Un remboursement vient d'être enregistré.
+ *
+ * Trois questions, dans l'ordre où elles se posent : combien, sur quoi, et
+ * quand est-ce que ça se voit. La troisième est celle qui fait écrire à la
+ * boutique, parce que la banque met des jours et que le silence, lui, est
+ * immédiat.
+ *
+ * Un remboursement PARTIEL le dit en toutes lettres : le montant seul laisse
+ * croire à une erreur de la boutique quand il ne correspond pas au total payé.
+ */
+export function courrierRemboursee(d: RemboursementCourrier): Courrier {
+  const partiel = d.totalRembourseCents < d.totalCommandeCents;
+
+  const mention = partiel
+    ? `<p style="margin:16px 0 0">Il s'agit d'un remboursement partiel : le reste de votre commande n'est pas concerné.</p>`
+    : "";
+
+  const port = d.portCents
+    ? `<p style="margin:16px 0 0;font-size:14px;color:#5b5b54">Dont frais de port : ${prix(d.portCents)}.</p>`
+    : "";
+
+  // Le cumul n'a de sens qu'à partir du deuxième remboursement : sinon il
+  // répète le montant qu'on vient de lire, deux lignes plus haut.
+  const cumul =
+    d.totalRembourseCents > d.montantCents
+      ? `<p style="margin:16px 0 0;font-size:14px;color:#5b5b54">Au total, ${prix(d.totalRembourseCents)} vous ont été rendus sur cette commande de ${prix(d.totalCommandeCents)}.</p>`
+      : "";
+
+  const delai = d.viaPaiementEnLigne
+    ? `<p style="margin:20px 0 0">Le montant repart vers le moyen de paiement utilisé pour la commande. Comptez quelques jours ouvrés avant de le voir sur votre relevé : ce délai est celui de votre banque, il ne dépend pas de nous.</p>`
+    : `<p style="margin:20px 0 0">Ce remboursement se fait en dehors du paiement en ligne. Nous revenons vers vous si une information nous manque pour vous le verser.</p>`;
+
+  return {
+    to: "",
+    subject: partiel
+      ? `Remboursement partiel de votre commande ${d.numero}`
+      : `Remboursement de votre commande ${d.numero}`,
+    html: gabarit(
+      `Bonjour ${d.prenomClient},`,
+      `<p style="margin:0">Nous avons enregistré un remboursement de <strong style="font-weight:500">${prix(d.montantCents)}</strong> sur votre commande ${h(d.numero)}.</p>
+       ${mention}
+       ${d.articles.length ? tableauLignes(d.articles) : ""}
+       ${port}
+       ${cumul}
+       ${delai}
+       <p style="margin:24px 0 0;color:#5b5b54;font-size:14px">Une question sur ce remboursement ? Répondez simplement à cet e-mail.</p>`,
+    ),
+    text:
+      `Bonjour ${d.prenomClient},\n\nUn remboursement de ${prix(d.montantCents)} a été enregistré sur votre commande ${d.numero}.` +
+      (partiel
+        ? `\nIl s'agit d'un remboursement partiel : le reste de la commande n'est pas concerné.`
+        : "") +
+      (d.viaPaiementEnLigne
+        ? `\nComptez quelques jours ouvrés avant de le voir sur votre relevé.`
+        : `\nCe remboursement se fait en dehors du paiement en ligne.`) +
+      `\n\nMemory Line`,
+  };
+}
+
+/**
+ * Une commande est annulée.
+ *
+ * AUCUN MONTANT, comme le courrier du stand : l'annulation n'est pas le moment
+ * de réafficher un prix, et ce même texte doit pouvoir partir vers une
+ * commande prise au stand, dont les tarifs ne s'écrivent nulle part.
+ *
+ * L'argent, quand il y en a eu, se règle par le courrier de remboursement, qui
+ * part au moment où le remboursement est réellement enregistré. Annoncer ici
+ * une somme rendue avant qu'elle le soit serait une promesse.
+ */
+export function courrierAnnulee(d: {
+  prenomClient: string;
+  numero: string;
+  /** Ce que la boutique dit de l'annulation. Rien plutôt qu'une formule creuse. */
+  motif: string | null;
+  articles: LigneCourrier[];
+  /** La commande avait-elle été payée avant d'être annulée ? */
+  dejaPayee: boolean;
+}): Courrier {
+  const motif = d.motif
+    ? `<p style="margin:16px 0 0">Motif : ${h(d.motif)}</p>`
+    : "";
+  const argent = d.dejaPayee
+    ? `<p style="margin:16px 0 0">Le montant réglé vous est rendu. Vous recevrez un message dédié dès que le remboursement est enregistré, avec le détail et le délai.</p>`
+    : "";
+  return {
+    to: "",
+    subject: `Votre commande ${d.numero} est annulée`,
+    html: gabarit(
+      `Bonjour ${d.prenomClient},`,
+      `<p style="margin:0">Votre commande ${h(d.numero)} est annulée. Rien ne sera fabriqué ni expédié.</p>
+       ${motif}
+       ${tableauLignesSansPrix(d.articles)}
+       ${argent}
+       <p style="margin:20px 0 0;color:#5b5b54;font-size:14px">Si cette annulation vous surprend, répondez à ce message : nous reprendrons la commande avec vous.</p>`,
+    ),
+    text:
+      `Bonjour ${d.prenomClient},\n\nVotre commande ${d.numero} est annulée. Rien ne sera fabriqué ni expédié.` +
+      (d.motif ? `\nMotif : ${d.motif}` : "") +
+      (d.dejaPayee
+        ? `\nLe montant réglé vous est rendu ; un message dédié suivra dès que le remboursement est enregistré.`
+        : "") +
+      `\n\nMemory Line`,
+  };
+}
+
+/**
  * Lien de réinitialisation du mot de passe.
  *
  * Le courrier rappelle que la demande peut être ignorée : il part aussi bien

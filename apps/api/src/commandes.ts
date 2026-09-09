@@ -17,8 +17,10 @@ import { refundStripe } from "./payments.js";
 import {
   courrierExpediee,
   courrierPreteAuStand,
+  courrierRemboursee,
   envoyer as envoyerCourrier,
   estConfigure as mailConfigure,
+  type LigneCourrier,
 } from "./mail.js";
 
 /* -------------------------------------------------------------------------- */
@@ -917,6 +919,13 @@ export function mountOrderRoutes(app: Hono): void {
       quantity: number;
       amountCents: number;
     }[] = [];
+    /**
+     * Les mêmes lignes, telles que le courrier les montrera. Composées ici,
+     * dans la boucle qui les valide : les retrouver après coup obligerait à
+     * refaire la correspondance avec les articles, et une seconde façon de la
+     * faire finirait par diverger de celle qui a servi à calculer l'argent.
+     */
+    const articlesRendus: LigneCourrier[] = [];
     for (const it of (Array.isArray(b.items) ? b.items : []) as {
       orderItemId: number;
       quantity: number;
@@ -937,6 +946,14 @@ export function mountOrderRoutes(app: Hono): void {
         orderItemId: ligne.id,
         quantity: q,
         amountCents: ligne.unitPriceCents * q,
+      });
+      const cfg = (ligne.config ?? {}) as { format?: unknown };
+      articlesRendus.push({
+        titre: ligne.title ?? "Affiche personnalisée",
+        format: typeof cfg.format === "string" ? cfg.format : null,
+        cadre: null,
+        quantite: q,
+        unitPriceCents: ligne.unitPriceCents,
       });
     }
 
@@ -1050,8 +1067,95 @@ export function mountOrderRoutes(app: Hono): void {
         (b.restock === true ? ", articles remis en stock" : "") +
         ".",
     });
+
+    // Le courrier suit le remboursement qui vient d'être inscrit, et lui seul.
+    // Rejouer la requête ne le renverra pas : elle créerait un AUTRE
+    // remboursement, et n'y arrive pas — les quantités déjà rendues et le
+    // plafond du montant encaissé la refusent avant d'en écrire un second.
+    await previenirDuRemboursement(id, {
+      montantCents: montant,
+      portCents: portDemande,
+      articles: articlesRendus,
+      totalRembourseCents: dejaCents + montant,
+      viaPaiementEnLigne: gateway !== "manuel",
+    });
     return c.json(refund);
   });
+
+  /**
+   * Dit à la cliente ce qui vient de lui être rendu.
+   *
+   * Même prudence que pour l'expédition : le remboursement est écrit, le grand
+   * livre en fait foi, et un courrier qui ne part pas n'a rien à défaire. Ne
+   * lève donc jamais, et l'échec se lit dans la chronologie de la commande.
+   *
+   * RIEN ne part pour une commande de stand : ce courrier porte des montants,
+   * et le stand n'en écrit aucun, du premier écran de la tablette jusqu'ici.
+   * C'est la vendeuse qui a annoncé le prix de vive voix, et c'est elle qui
+   * rend l'argent en disant ce qu'elle rend.
+   */
+  async function previenirDuRemboursement(
+    orderId: number,
+    remboursement: {
+      montantCents: number;
+      portCents: number;
+      articles: LigneCourrier[];
+      totalRembourseCents: number;
+      viaPaiementEnLigne: boolean;
+    },
+  ): Promise<void> {
+    if (!mailConfigure()) return;
+    try {
+      const [commande] = await db
+        .select({
+          number: schema.orders.number,
+          channel: schema.orders.channel,
+          customerId: schema.orders.customerId,
+          totalCents: schema.orders.totalCents,
+        })
+        .from(schema.orders)
+        .where(eq(schema.orders.id, orderId));
+      if (!commande) return;
+
+      if (commande.channel === "salon") {
+        await db.insert(schema.orderEvents).values({
+          orderId,
+          kind: "event",
+          message:
+            "Aucun courrier de remboursement : commande prise au stand, où les montants ne s'écrivent pas.",
+        });
+        return;
+      }
+      if (!commande.customerId) return;
+
+      const [client] = await db
+        .select({ name: schema.customers.name, email: schema.customers.email })
+        .from(schema.customers)
+        .where(eq(schema.customers.id, commande.customerId));
+      if (!client?.email) return;
+
+      const courrier = courrierRemboursee({
+        prenomClient: (client.name ?? "").split(" ")[0] || "vous",
+        numero: commande.number,
+        montantCents: remboursement.montantCents,
+        portCents: remboursement.portCents,
+        articles: remboursement.articles,
+        totalRembourseCents: remboursement.totalRembourseCents,
+        totalCommandeCents: commande.totalCents,
+        viaPaiementEnLigne: remboursement.viaPaiementEnLigne,
+      });
+      const parti = await envoyerCourrier({ ...courrier, to: client.email });
+      await db.insert(schema.orderEvents).values({
+        orderId,
+        kind: "event",
+        message: parti
+          ? `Courrier envoyé à ${client.email} : ${courrier.subject}.`
+          : `Le courrier « ${courrier.subject} » n'a pas pu partir vers ${client.email}.`,
+      });
+    } catch {
+      // Une panne de courrier ne défait pas un remboursement enregistré.
+    }
+  }
 
   /** Corrige l'adresse de livraison d'une commande déjà passée. */
   app.post("/admin/orders/:id/address", async (c) => {

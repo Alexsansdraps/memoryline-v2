@@ -62,6 +62,22 @@ const NOM_COLLECTION_MAX = 80;
 const COLLECTIONS_PAR_PRODUIT_MAX = 20;
 
 /**
+ * Les colonnes sans lesquelles il n'y a rien à importer, et leur nom tel que
+ * le tableur l'affiche.
+ *
+ * Le nom d'origine est repris mot pour mot, en anglais et avec ses
+ * majuscules : c'est celui que la propriétaire va chercher des yeux en haut de
+ * son fichier, et le traduire l'enverrait chercher une colonne qui n'existe
+ * pas.
+ */
+const COLONNES_INDISPENSABLES: [string, string][] = [
+  ["handle", "Handle"],
+  ["title", "Title"],
+  ["option1 value", "Option1 Value"],
+  ["variant price", "Variant Price"],
+];
+
+/**
  * Borne haute des montants, en centimes : un million d'euros.
  *
  * Rien à voir avec la boutique, tout à voir avec la base : un entier Postgres
@@ -99,7 +115,7 @@ class FichierRefuse extends Error {}
  * elle se collerait au nom de la première colonne, et « Handle » deviendrait
  * introuvable.
  */
-export function lireCsv(texte: string): string[][] {
+function lireCsv(texte: string): string[][] {
   const sansMarque = texte.charCodeAt(0) === 0xfeff ? texte.slice(1) : texte;
   const lignes: string[][] = [];
   let champs: string[] = [];
@@ -239,21 +255,29 @@ function euros(cents: number): string {
  * égarée, un moins : tout cela est refusé et expliqué, jamais corrigé en
  * douce.
  *
- * Renvoie null quand la valeur n'est pas un prix ; l'appelant sait mieux que
- * cette fonction quelle phrase montrer.
+ * Le refus dit LEQUEL des trois défauts a été rencontré : « ce prix ne se lit
+ * pas » n'aide personne à retrouver un moins tapé par mégarde au milieu de
+ * quarante lignes.
  */
-function centimesDepuisEuros(brut: string): number | null {
+type PrixLu =
+  | { cents: number }
+  | { probleme: "illisible" | "negatif" | "trop-eleve" };
+
+function centimesDepuisEuros(brut: string): PrixLu {
+  // Un tableur écrit volontiers l'unité et un séparateur de milliers, et son
+  // espace est parfois insécable : rien de tout cela n'est un chiffre, et rien
+  // de tout cela ne doit faire refuser un prix pourtant juste.
   const texte = brut
-    .replace(/[\s ]/g, "")
+    .replace(/\s/g, "")
     .replace(/€|eur/gi, "")
     .replace(",", ".");
-  if (!texte) return null;
-  if (!/^\d+(\.\d+)?$/.test(texte)) return null;
+  if (!/^-?\d+(\.\d+)?$/.test(texte)) return { probleme: "illisible" };
   const montant = Number(texte);
-  if (!Number.isFinite(montant)) return null;
+  if (!Number.isFinite(montant)) return { probleme: "illisible" };
   const cents = Math.round(montant * 100);
-  if (cents < 0 || cents > MONTANT_MAX_CENTS) return null;
-  return cents;
+  if (cents < 0) return { probleme: "negatif" };
+  if (cents > MONTANT_MAX_CENTS) return { probleme: "trop-eleve" };
+  return { cents };
 }
 
 /**
@@ -345,6 +369,14 @@ interface ProduitLu {
   formats: FormatLu[];
   /** La phrase qui écarte l'affiche, quand quelque chose ne se lit pas. */
   refus: string | null;
+  /**
+   * La ligne du tableur qui a fait écarter l'affiche.
+   *
+   * Rarement la première : c'est souvent la seconde ligne, celle du grand
+   * format, qui porte le prix mal tapé. Renvoyer la première enverrait la
+   * propriétaire chercher au mauvais endroit dans son fichier.
+   */
+  ligneRefus: number | null;
 }
 
 /** Une ligne du fichier, ses champs rangés par nom de colonne. */
@@ -360,7 +392,7 @@ type LigneNommee = (colonne: string) => string;
  * valeur NON VIDE rencontrée l'emporte. Une case vide sur une ligne de suite
  * ne peut donc jamais effacer ce que la première ligne a dit.
  */
-export function rassemblerProduits(
+function rassemblerProduits(
   lignes: LigneNommee[],
   numeros: number[],
 ): ProduitLu[] {
@@ -368,6 +400,15 @@ export function rassemblerProduits(
   // Les formats déjà vus, affiche par affiche : deux « A4 » sur la même
   // affiche, et la boutique proposerait deux fois le même choix à deux prix.
   const formatsVus = new Map<string, Set<string>>();
+
+  // La première raison rencontrée est la seule retenue : les suivantes ne
+  // seraient que des conséquences, et trois phrases pour un seul défaut
+  // donneraient l'impression que l'affiche est irrattrapable.
+  const ecarter = (produit: ProduitLu, numero: number, message: string) => {
+    if (produit.refus) return;
+    produit.refus = message;
+    produit.ligneRefus = numero;
+  };
 
   for (const [rang, lire] of lignes.entries()) {
     const numero = numeros[rang] ?? rang + 2;
@@ -391,6 +432,7 @@ export function rassemblerProduits(
         collections: [],
         formats: [],
         refus: null,
+        ligneRefus: null,
       };
       parAdresse.set(adresse, produit);
       formatsVus.set(adresse, new Set());
@@ -418,7 +460,11 @@ export function rassemblerProduits(
         if ((STATUTS as readonly string[]).includes(brut)) {
           produit.statut = brut as StatutProduit;
         } else {
-          produit.refus = `La colonne « Status » indique « ${brut.slice(0, 40)} » à la ligne ${numero}. Écrivez « active » pour mettre en ligne, « draft » pour garder en brouillon, ou « archived » pour archiver.`;
+          ecarter(
+            produit,
+            numero,
+            `La colonne « Status » indique « ${brut.slice(0, 40)} ». Écrivez « active » pour mettre en ligne, « draft » pour garder en brouillon, ou « archived » pour archiver.`,
+          );
         }
       }
     }
@@ -430,7 +476,11 @@ export function rassemblerProduits(
       if (brutPublie) {
         const publie = ouiOuNon(brutPublie);
         if (publie === null) {
-          produit.refus = `La colonne « Published » indique « ${brutPublie.slice(0, 40)} » à la ligne ${numero}, qui ne veut dire ni oui ni non. Écrivez TRUE ou FALSE.`;
+          ecarter(
+            produit,
+            numero,
+            `La colonne « Published » indique « ${brutPublie.slice(0, 40)} », qui ne veut dire ni oui ni non. Écrivez TRUE pour mettre en ligne, FALSE pour garder en brouillon.`,
+          );
         } else if (!publie && produit.statut !== "archived") {
           produit.statut = "draft";
         }
@@ -450,37 +500,62 @@ export function rassemblerProduits(
     if (produit.refus) continue;
 
     if (!brutFormat) {
-      produit.refus = `La ligne ${numero} indique un prix mais aucun format. Écrivez le format dans la colonne « Option1 Value », par exemple « A4 (21 x 29.7 cm) ».`;
+      ecarter(
+        produit,
+        numero,
+        "Cette ligne indique un prix mais aucun format. Écrivez le format dans la colonne « Option1 Value », par exemple « A4 (21 x 29.7 cm) ».",
+      );
       continue;
     }
 
     const format = formatDepuisOption(brutFormat);
     const connu = format ? formatConnu(format) : null;
     if (!connu) {
-      produit.refus = `La boutique ne sait pas vendre le format « ${brutFormat.slice(0, 40)} » demandé à la ligne ${numero}. Les formats possibles sont ${POSTER_FORMATS.join(" et ")}.`;
+      ecarter(
+        produit,
+        numero,
+        `La boutique ne sait pas vendre le format « ${brutFormat.slice(0, 40)} ». Les formats possibles sont ${POSTER_FORMATS.join(" et ")}.`,
+      );
       continue;
     }
 
     const dejaVus = formatsVus.get(adresse);
     if (dejaVus?.has(connu)) {
-      produit.refus = `Le format ${connu} est indiqué deux fois pour cette affiche, jusqu'à la ligne ${numero}. Une affiche ne peut proposer qu'une seule fois le même format.`;
+      ecarter(
+        produit,
+        numero,
+        `Le format ${connu} est indiqué deux fois pour cette affiche. Une affiche ne peut proposer qu'une seule fois le même format.`,
+      );
       continue;
     }
 
     if (!brutPrix) {
-      produit.refus = `Le prix du format ${connu} n'est pas rempli à la ligne ${numero}. Une affiche sans prix ne peut pas être mise en vente.`;
+      ecarter(
+        produit,
+        numero,
+        `Le prix du format ${connu} n'est pas rempli. Une affiche sans prix ne peut pas être mise en vente.`,
+      );
       continue;
     }
-    const prixCents = centimesDepuisEuros(brutPrix);
-    if (prixCents === null) {
-      produit.refus = `Le prix « ${brutPrix.slice(0, 40)} » du format ${connu}, ligne ${numero}, ne se lit pas comme un montant en euros. Écrivez par exemple 29 ou 29,50.`;
+    const prix = centimesDepuisEuros(brutPrix);
+    if ("probleme" in prix) {
+      const extrait = brutPrix.slice(0, 40);
+      ecarter(
+        produit,
+        numero,
+        prix.probleme === "negatif"
+          ? `Le prix du format ${connu} est négatif (« ${extrait} »). Une affiche ne peut pas se vendre à moins que rien.`
+          : prix.probleme === "trop-eleve"
+            ? `Le prix « ${extrait} » du format ${connu} est bien trop élevé. Vérifiez qu'un zéro ne s'est pas ajouté.`
+            : `Le prix « ${extrait} » du format ${connu} ne se lit pas comme un montant en euros. Écrivez par exemple 29 ou 29,50.`,
+      );
       continue;
     }
 
     dejaVus?.add(connu);
     produit.formats.push({
       format: connu,
-      prixCents,
+      prixCents: prix.cents,
       sku: texteOuNull(brutSku, 60),
     });
   }
@@ -489,11 +564,19 @@ export function rassemblerProduits(
   for (const produit of parAdresse.values()) {
     if (produit.refus) continue;
     if (!produit.nom) {
-      produit.refus = `Cette affiche n'a pas de nom (colonne « Title », ligne ${produit.ligne}).`;
+      ecarter(
+        produit,
+        produit.ligne,
+        "Cette affiche n'a pas de nom : la colonne « Title » est vide.",
+      );
       continue;
     }
     if (!produit.formats.length)
-      produit.refus = `Aucun format n'est indiqué pour cette affiche (ligne ${produit.ligne}). Il en faut au moins un, avec son prix.`;
+      ecarter(
+        produit,
+        produit.ligne,
+        "Aucun format n'est indiqué pour cette affiche. Il en faut au moins un, avec son prix.",
+      );
   }
 
   return [...parAdresse.values()];
@@ -569,17 +652,9 @@ export function mountImportProduits(app: Hono): void {
       const rangBody = colonnes.get("body (html)") ?? colonnes.get("body html");
       if (rangBody !== undefined) colonnes.set("body (html)", rangBody);
 
-      const manquantes = ["handle", "title", "option1 value", "variant price"]
-        .filter((nom) => !colonnes.has(nom))
-        .map((nom) =>
-          nom === "handle"
-            ? "Handle"
-            : nom === "title"
-              ? "Title"
-              : nom === "option1 value"
-                ? "Option1 Value"
-                : "Variant Price",
-        );
+      const manquantes = COLONNES_INDISPENSABLES.filter(
+        ([cle]) => !colonnes.has(cle),
+      ).map(([, affiche]) => affiche);
       if (manquantes.length)
         throw new FichierRefuse(
           `Il manque ${manquantes.length > 1 ? "les colonnes" : "la colonne"} ${manquantes.map((n) => `« ${n} »`).join(", ")} dans ce fichier. Sans ${manquantes.length > 1 ? "elles" : "elle"}, les affiches ne peuvent pas être reconnues.`,
@@ -850,7 +925,7 @@ export function mountImportProduits(app: Hono): void {
                 continue;
               changements.push(
                 nouvelle
-                  ? `rangée dans « ${nom} », une collection qui sera créée`
+                  ? `rangée dans « ${nom} », collection ${appliquer ? "créée au passage" : "qui sera créée"}`
                   : `rangée dans « ${nom} »`,
               );
             }
@@ -928,21 +1003,27 @@ export function mountImportProduits(app: Hono): void {
             }
 
             // Le prix « à partir de » suit le plus bas des formats, comme
-            // partout ailleurs dans la boutique.
-            const restantes = await tx
-              .select({ priceCents: schema.variants.priceCents })
-              .from(schema.variants)
-              .where(eq(schema.variants.productId, produitId));
-            if (restantes.length)
-              await tx
-                .update(schema.products)
-                .set({
-                  basePriceCents: Math.min(
-                    ...restantes.map((v) => v.priceCents),
-                  ),
-                  updatedAt: new Date(),
-                })
-                .where(eq(schema.products.id, produitId));
+            // partout ailleurs dans la boutique. On le relit en base plutôt
+            // que dans le fichier : les formats que le fichier ne cite pas
+            // sont toujours en vente, et l'un d'eux peut très bien être le
+            // moins cher. Une affiche inchangée, elle, n'est pas touchée du
+            // tout, pas même sa date de dernière modification.
+            if (action === "mise-a-jour") {
+              const enVente = await tx
+                .select({ priceCents: schema.variants.priceCents })
+                .from(schema.variants)
+                .where(eq(schema.variants.productId, produitId));
+              if (enVente.length)
+                await tx
+                  .update(schema.products)
+                  .set({
+                    basePriceCents: Math.min(
+                      ...enVente.map((v) => v.priceCents),
+                    ),
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(schema.products.id, produitId));
+            }
 
             // Le rangement s'ajoute, il ne se remplace pas : une collection
             // posée à la main sur cette affiche n'a pas à sauter parce qu'un
@@ -978,7 +1059,10 @@ export function mountImportProduits(app: Hono): void {
           // liste que la propriétaire relit, son fichier ouvert à côté.
           erreurs: produitsLus
             .filter((p) => p.refus)
-            .map((p) => ({ ligne: p.ligne, message: p.refus ?? "" })),
+            .map((p) => ({
+              ligne: p.ligneRefus ?? p.ligne,
+              message: p.refus ?? "",
+            })),
         };
       });
 

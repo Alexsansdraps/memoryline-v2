@@ -1,0 +1,640 @@
+---
+/**
+ * Mettre en ligne une fournée d'affiches, puis leur donner leur visuel, sans
+ * jamais ouvrir une fiche.
+ *
+ * Une série arrive rarement seule : quarante affiches d'un même voyage, avec
+ * leurs noms, leurs deux formats et leur rangement, plus quarante images dans
+ * un dossier à côté. Le tableur sait décrire les quarante fiches d'un coup ;
+ * il ne sait rien des images. C'est ce que cet écran raccorde, et c'est
+ * pourquoi il ne s'arrête pas à l'import : la liste qui suit l'import est la
+ * même liste, une ligne par affiche, avec de quoi déposer son visuel dessus.
+ * Quarante fiches ouvertes une par une, c'est l'après-midi ; ici c'est le
+ * temps de faire glisser quarante fichiers.
+ *
+ * L'écran se lit en trois temps, et le deuxième est le plus important : on
+ * dépose le fichier, on REGARDE ce qui se passerait, et seulement ensuite on
+ * décide. Tant que le second bouton n'a pas été touché, rien n'est écrit.
+ */
+import Admin from "../../layouts/Admin.astro";
+import { apiUrl, url } from "../../lib/url.ts";
+import { adminApi, type ResultatImport } from "../../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+/**
+ * L'adresse de l'API telle que le NAVIGATEUR doit la demander.
+ *
+ * Les pages parlent à l'API depuis le serveur ; le dépôt des visuels, lui, se
+ * fait depuis le navigateur, sans quitter la page. Derrière le proxy, l'API
+ * vit sous « /api », et c'est ce que `apiUrl` sait poser.
+ */
+const BASE_API = apiUrl("");
+
+let resultat: ResultatImport | null = null;
+let contenu = "";
+let erreur: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  contenu = String(f.get("csv") ?? "");
+  const appliquer = String(f.get("_action") ?? "") === "importer";
+  try {
+    if (!contenu.trim())
+      throw new Error(
+        "Aucun fichier n'a été choisi. Sélectionnez un fichier, ou collez son contenu.",
+      );
+    resultat = await api.importerProduits(contenu, appliquer);
+  } catch (e) {
+    erreur = e instanceof Error ? e.message : String(e);
+  }
+}
+
+const applique = resultat?.applique === true;
+
+/** Les affiches réellement en base : celles qui peuvent recevoir un visuel. */
+const affiches = applique
+  ? (resultat?.apercu ?? []).filter((l) => typeof l.produitId === "number")
+  : [];
+const ecartees = (resultat?.apercu ?? []).filter((l) => l.action === "refus");
+
+const compte = (action: string) =>
+  (resultat?.apercu ?? []).filter((l) => l.action === action).length;
+
+/**
+ * La phrase de résumé, écrite ici plutôt que dans le gabarit.
+ *
+ * Elle change de temps selon qu'on regarde ou qu'on a décidé, et l'accord
+ * suit le nombre d'affiches. Assemblée au milieu des balises, elle devenait
+ * illisible pour une phrase que l'on relit pourtant à chaque import.
+ */
+const marque = (n: number) => (n > 1 ? "s" : "");
+const resume: string[] = [];
+if (resultat) {
+  resume.push(
+    `${resultat.produits} affiche${marque(resultat.produits)} lue${marque(resultat.produits)} sur ${resultat.lignes} ligne${marque(resultat.lignes)} de fichier.`,
+  );
+  if (compte("creation") > 0)
+    resume.push(
+      applique
+        ? `${compte("creation")} créée${marque(compte("creation"))}.`
+        : `${compte("creation")} à créer.`,
+    );
+  if (compte("mise-a-jour") > 0)
+    resume.push(
+      applique
+        ? `${compte("mise-a-jour")} corrigée${marque(compte("mise-a-jour"))}.`
+        : `${compte("mise-a-jour")} à corriger.`,
+    );
+  if (compte("inchange") > 0)
+    resume.push(`${compte("inchange")} déjà à jour, rien à y changer.`);
+  if (ecartees.length > 0)
+    resume.push(`${ecartees.length} écartée${marque(ecartees.length)}.`);
+}
+
+/** L'annonce des affiches écartées, au-dessus de la liste de leurs raisons. */
+const annonceEcartees =
+  ecartees.length > 1
+    ? `${ecartees.length} affiches ont été écartées.`
+    : "Une affiche a été écartée.";
+const suiteEcartees = applique
+  ? " Le reste du fichier a bien été importé."
+  : " Le reste du fichier reste importable.";
+
+/** Combien d'affiches ont déjà leur visuel : le compteur démarre de là. */
+const dejaIllustrees = affiches.filter((l) => l.sansImage === false).length;
+
+/** Le compteur de visuels, avant que le navigateur ne le fasse avancer. */
+const phraseCompteur = `${dejaIllustrees} image${marque(dejaIllustrees)} sur ${affiches.length}`;
+
+/** Un montant en centimes, écrit comme sur une étiquette de prix. */
+function euros(cents: number): string {
+  const entier = Math.floor(cents / 100);
+  const centiemes = cents % 100;
+  return centiemes === 0
+    ? `${entier} €`
+    : `${entier},${String(centiemes).padStart(2, "0")} €`;
+}
+
+/** La pastille qui dit, d'un coup d'oeil, ce qui arrive à une affiche. */
+const pastilles: Record<string, { texte: string; classe: string }> = {
+  creation: { texte: "à créer", classe: "bg-green-100 text-green-800" },
+  "mise-a-jour": { texte: "à corriger", classe: "bg-amber-100 text-amber-800" },
+  inchange: { texte: "rien à changer", classe: "bg-bo-bg text-bo-muted" },
+  refus: {
+    texte: "écartée",
+    classe: "border border-red-300 bg-red-50 text-red-700",
+  },
+};
+const pastilleAppliquee: Record<string, string> = {
+  creation: "créée",
+  "mise-a-jour": "corrigée",
+  inchange: "laissée telle quelle",
+};
+---
+
+<Admin title="Importer des affiches">
+  <p class="mb-4">
+    <a href={url("/produits")} class="text-sm text-bo-accent hover:underline">
+      ← Retour aux produits
+    </a>
+  </p>
+
+  <h2 class="mb-1 text-lg font-semibold">Importer des affiches</h2>
+  <p class="mb-5 max-w-3xl text-sm text-bo-muted">
+    Déposez le fichier de votre série d'affiches. Vous verrez d'abord, ligne par
+    ligne, ce qui serait créé et ce qui serait corrigé. Rien n'est enregistré
+    tant que vous ne l'avez pas demandé. Une fois l'import fait, vous déposerez
+    l'image de chaque affiche ici même, sans ouvrir une seule fiche.
+  </p>
+
+  {
+    erreur && (
+      <p class="mb-4 max-w-3xl rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+        {erreur}
+      </p>
+    )
+  }
+
+  {/* ------------------------------------------------------------------ */}
+  {/*  1. Le fichier                                                      */}
+  {/* ------------------------------------------------------------------ */}
+  {
+    !applique && (
+      <form
+        method="POST"
+        id="formulaire"
+        class="mb-6 max-w-3xl space-y-4 rounded-lg border border-bo-border bg-bo-surface p-5"
+      >
+        <input type="hidden" name="_action" value="apercu" />
+
+        <div
+          id="zone-fichier"
+          class="rounded-lg border-2 border-dashed border-bo-border px-4 py-8 text-center"
+        >
+          <p class="mb-2 text-sm">
+            Faites glisser votre fichier ici, ou
+            <label
+              for="fichier"
+              class="cursor-pointer text-bo-accent hover:underline"
+            >
+              choisissez-le sur votre ordinateur
+            </label>
+            .
+          </p>
+          <input
+            type="file"
+            id="fichier"
+            accept=".csv,text/csv,text/plain"
+            class="sr-only"
+          />
+          <p id="etat-fichier" class="text-xs text-bo-muted">
+            Un fichier de tableur enregistré au format CSV.
+          </p>
+        </div>
+
+        <details class="text-sm">
+          <summary class="cursor-pointer text-bo-muted">
+            Ou coller directement le contenu du fichier
+          </summary>
+          <textarea
+            name="csv"
+            id="csv"
+            rows="6"
+            class="mt-2 w-full rounded border border-bo-border px-3 py-2 font-mono text-xs"
+            placeholder="Handle,Title,Body (HTML),…"
+            set:text={contenu}
+          />
+        </details>
+
+        <div class="flex items-center gap-3">
+          <button class="rounded bg-bo-accent px-4 py-2 text-sm text-white">
+            Voir ce que ça donnerait
+          </button>
+          <span class="text-xs text-bo-muted">
+            Cette étape n'enregistre rien.
+          </span>
+        </div>
+      </form>
+    )
+  }
+
+  {/* ------------------------------------------------------------------ */}
+  {/*  2. L'aperçu, ou le compte rendu                                    */}
+  {/* ------------------------------------------------------------------ */}
+  {
+    resultat && (
+      <section class="mb-6 max-w-5xl rounded-lg border border-bo-border bg-bo-surface p-5">
+        <h3 class="mb-1 text-base font-semibold">
+          {applique ? "Import terminé" : "Ce qui se passerait"}
+        </h3>
+        <p class="mb-4 text-sm text-bo-muted">{resume.join(" ")}</p>
+
+        {resultat.collectionsCreees.length > 0 && (
+          <p class="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {applique
+              ? "Ces collections n'existaient pas et viennent d'être créées : "
+              : "Ces collections n'existent pas encore et seront créées : "}
+            <strong>{resultat.collectionsCreees.join(", ")}</strong>. Vous
+            pourrez les renommer ou les masquer depuis l'écran Collections.
+          </p>
+        )}
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-bo-bg text-left text-bo-muted">
+              <tr>
+                <th class="px-3 py-2 font-medium">Affiche</th>
+                <th class="px-3 py-2 font-medium">Ce qui se passe</th>
+                <th class="px-3 py-2 font-medium">Le détail</th>
+                <th class="px-3 py-2 font-medium">Formats</th>
+                <th class="px-3 py-2 font-medium">Rangement</th>
+              </tr>
+            </thead>
+            <tbody>
+              {resultat.apercu.map((l) => (
+                <tr class="border-t border-bo-border align-top">
+                  <td class="px-3 py-2">
+                    <span class="font-medium">{l.nom}</span>
+                    <span class="block text-xs text-bo-muted">
+                      adresse de la page : /{l.handle}
+                    </span>
+                  </td>
+                  <td class="px-3 py-2 whitespace-nowrap">
+                    <span
+                      class={`inline-block rounded-full px-2 py-0.5 text-xs ${pastilles[l.action]?.classe ?? "bg-bo-bg text-bo-muted"}`}
+                    >
+                      {applique && l.action !== "refus"
+                        ? (pastilleAppliquee[l.action] ?? l.action)
+                        : (pastilles[l.action]?.texte ?? l.action)}
+                    </span>
+                  </td>
+                  <td class="px-3 py-2">
+                    {l.raison && <span class="text-red-700">{l.raison}</span>}
+                    {!l.raison && l.changements.length === 0 && (
+                      <span class="text-bo-muted">
+                        {l.action === "creation"
+                          ? "nouvelle affiche"
+                          : "aucune différence avec le fichier"}
+                      </span>
+                    )}
+                    {l.changements.length > 0 && (
+                      <ul class="list-inside list-disc text-xs">
+                        {l.changements.map((c) => (
+                          <li>{c}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </td>
+                  <td class="px-3 py-2 text-xs whitespace-nowrap">
+                    {l.formats.length === 0 ? (
+                      <span class="text-bo-muted">aucun</span>
+                    ) : (
+                      l.formats.map((f) => (
+                        <span class="block">
+                          {f.format} à {euros(f.prixCents)}
+                        </span>
+                      ))
+                    )}
+                  </td>
+                  <td class="px-3 py-2 text-xs">
+                    {l.collections.length === 0 ? (
+                      <span class="text-bo-muted">aucune collection</span>
+                    ) : (
+                      l.collections.join(", ")
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {resultat.erreurs.length > 0 && (
+          <div class="mt-4 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <p class="mb-1 font-medium">{annonceEcartees + suiteEcartees}</p>
+            <ul class="list-inside list-disc text-xs">
+              {resultat.erreurs.map((e) => (
+                <li>Ligne {e.ligne} du fichier : {e.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {!applique && (
+          <form method="POST" class="mt-5 flex flex-wrap items-center gap-3">
+            <input type="hidden" name="_action" value="importer" />
+            <input type="hidden" name="csv" value={contenu} />
+            <button class="rounded bg-bo-accent px-4 py-2 text-sm text-white">
+              Importer pour de bon
+            </button>
+            <span class="text-xs text-bo-muted">
+              L'import ajoute et corrige. Il ne supprime ni format, ni
+              collection, ni image.
+            </span>
+          </form>
+        )}
+      </section>
+    )
+  }
+
+  {/* ------------------------------------------------------------------ */}
+  {/*  3. Les visuels, une ligne par affiche                              */}
+  {/* ------------------------------------------------------------------ */}
+  {
+    applique && affiches.length > 0 && (
+      <section class="max-w-5xl rounded-lg border border-bo-border bg-bo-surface p-5">
+        <div class="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+          <h3 class="text-base font-semibold">Les visuels</h3>
+          <p id="compteur" class="text-sm font-medium text-bo-accent">
+            {phraseCompteur}
+          </p>
+        </div>
+        <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+          Faites glisser l'image de chaque affiche sur sa ligne, ou cliquez pour
+          la choisir. Chaque image part dès qu'elle est déposée, vous pouvez
+          enchaîner sans attendre. Fichiers acceptés : png, jpg, webp et svg.
+        </p>
+
+        <ul class="divide-y divide-bo-border border-t border-bo-border">
+          {affiches.map((l) => (
+            <li
+              class="js-ligne flex flex-wrap items-center gap-4 py-3"
+              data-produit={String(l.produitId)}
+              data-nom={l.nom}
+              data-illustree={l.sansImage === false ? "1" : "0"}
+            >
+              <img
+                class="js-vignette h-16 w-12 shrink-0 rounded border border-bo-border bg-bo-bg object-contain"
+                alt=""
+                hidden
+              />
+              <div class="min-w-[14rem] flex-1">
+                <span class="font-medium">{l.nom}</span>
+                <span class="block text-xs text-bo-muted">
+                  <a
+                    href={url(`/produits/${l.produitId}`)}
+                    class="text-bo-accent hover:underline"
+                  >
+                    ouvrir la fiche
+                  </a>
+                  {l.formats.length > 0 &&
+                    ` · ${l.formats.map((f) => f.format).join(" et ")}`}
+                </span>
+              </div>
+
+              {l.sansImage === false ? (
+                <p class="js-message text-sm text-green-800">
+                  Visuel déjà en place.
+                </p>
+              ) : (
+                <div class="js-depot flex min-w-[16rem] items-center gap-3 rounded border border-dashed border-bo-border px-3 py-2">
+                  <label class="cursor-pointer text-sm text-bo-accent hover:underline">
+                    Déposer une image
+                    <input
+                      type="file"
+                      class="js-fichier sr-only"
+                      accept=".png,.jpg,.jpeg,.webp,.svg,image/*"
+                    />
+                  </label>
+                  <span class="js-message text-xs text-bo-muted">
+                    ou faites-la glisser ici
+                  </span>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+
+        <p class="mt-4 text-sm">
+          <a href={url("/produits")} class="text-bo-accent hover:underline">
+            Voir toutes les affiches
+          </a>
+          <span class="text-bo-muted"> · </span>
+          <a href={url("/produits/import")} class="text-bo-accent hover:underline">
+            Importer un autre fichier
+          </a>
+        </p>
+      </section>
+    )
+  }
+
+  {
+    applique && ecartees.length > 0 && (
+      <p class="mt-4 max-w-3xl text-sm text-bo-muted">
+        Les affiches écartées n'ont pas de ligne ici : corrigez-les dans votre
+        fichier, puis relancez un import. Rien ne sera dupliqué, celles qui sont
+        déjà passées seront simplement reconnues.
+      </p>
+    )
+  }
+
+  {/* Lecture du fichier dans le navigateur : c'est son CONTENU qui part au
+     serveur, pas le fichier. Le champ de collage sert de porteur unique, ce
+     qui évite d'avoir deux chemins à tenir à jour selon la façon de choisir. */}
+  <script is:inline>
+    (function () {
+      var champFichier = document.getElementById("fichier");
+      var zone = document.getElementById("zone-fichier");
+      var etat = document.getElementById("etat-fichier");
+      var csv = document.getElementById("csv");
+      var formulaire = document.getElementById("formulaire");
+      if (!champFichier || !zone || !etat || !csv || !formulaire) return;
+
+      function lire(fichier) {
+        if (!fichier) return;
+        etat.textContent = "Lecture de " + fichier.name + "…";
+        fichier
+          .text()
+          .then(function (texte) {
+            csv.value = texte;
+            etat.textContent =
+              fichier.name + " est prêt. Envoi de l'aperçu en cours…";
+            formulaire.submit();
+          })
+          .catch(function () {
+            etat.textContent =
+              "Ce fichier n'a pas pu être lu. Réenregistrez-le au format CSV, puis réessayez.";
+          });
+      }
+
+      champFichier.addEventListener("change", function () {
+        lire(champFichier.files && champFichier.files[0]);
+      });
+
+      // La couleur de bordure est ÉCHANGÉE, pas ajoutée : deux classes de
+      // bordure sur le même cadre laisseraient l'ordre des feuilles de style
+      // décider laquelle gagne, et le repère visuel ne se verrait pas.
+      ["dragenter", "dragover"].forEach(function (nom) {
+        zone.addEventListener(nom, function (e) {
+          e.preventDefault();
+          zone.classList.remove("border-bo-border");
+          zone.classList.add("border-bo-accent");
+        });
+      });
+      ["dragleave", "drop"].forEach(function (nom) {
+        zone.addEventListener(nom, function () {
+          zone.classList.remove("border-bo-accent");
+          zone.classList.add("border-bo-border");
+        });
+      });
+      zone.addEventListener("drop", function (e) {
+        e.preventDefault();
+        lire(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
+      });
+    })();
+  </script>
+
+  {/* Dépôt des visuels, ligne par ligne, sans quitter la page. Deux temps :
+     le fichier part d'abord vers la boutique, qui répond par une adresse ;
+     cette adresse est ensuite rattachée à l'affiche. Un échec ne concerne
+     jamais que sa ligne, les autres continuent. */}
+  <script
+    is:inline
+    define:vars={{ BASE_API, dejaIllustrees, total: affiches.length }}
+  >
+    (function () {
+      var lignes = document.querySelectorAll(".js-ligne");
+      if (!lignes.length) return;
+      var compteur = document.getElementById("compteur");
+      var faites = dejaIllustrees;
+
+      function majCompteur() {
+        if (!compteur) return;
+        compteur.textContent =
+          faites + (faites > 1 ? " images sur " : " image sur ") + total;
+      }
+
+      function adresseVisible(adresse) {
+        return adresse.indexOf("http") === 0 ? adresse : BASE_API + adresse;
+      }
+
+      /* Les refus de la boutique sont traduits ici : la propriétaire n'a pas à
+         savoir ce qu'est un code 413 pour comprendre qu'une image est trop
+         lourde. */
+      function phraseDEchec(reponse, donnees) {
+        if (reponse.status === 401 || reponse.status === 403)
+          return "Votre session a expiré. Rechargez la page, puis reconnectez-vous.";
+        if (reponse.status === 413)
+          return "Cette image est trop lourde. Réduisez-la, puis réessayez.";
+        if (reponse.status === 415)
+          return "Ce type de fichier n'est pas accepté. Utilisez une image png, jpg, webp ou svg.";
+        if (donnees && typeof donnees.error === "string" && donnees.error)
+          return donnees.error;
+        return "L'envoi n'a pas abouti. Réessayez dans un instant.";
+      }
+
+      /** Le contenu d'une réponse, quoi qu'elle contienne. */
+      async function corps(reponse) {
+        try {
+          return await reponse.json();
+        } catch (e) {
+          return {};
+        }
+      }
+
+      async function deposer(ligne, fichier) {
+        if (!fichier) return;
+        // Un second fichier lâché sur une ligne encore en cours d'envoi
+        // rattacherait deux visuels à la même affiche sans qu'on l'ait voulu.
+        if (ligne.dataset.enCours === "1") return;
+        var depot = ligne.querySelector(".js-depot");
+        var message = ligne.querySelector(".js-message");
+        var vignette = ligne.querySelector(".js-vignette");
+        var produitId = ligne.dataset.produit;
+        if (!message || !produitId) return;
+
+        ligne.dataset.enCours = "1";
+        message.className = "js-message text-xs text-bo-muted";
+        message.textContent = "Envoi de " + fichier.name + "…";
+
+        try {
+          // Premier temps : le fichier part vers la boutique, qui répond par
+          // l'adresse à laquelle elle vient de le ranger.
+          var formulaire = new FormData();
+          formulaire.append("file", fichier);
+          var envoi = await fetch(BASE_API + "/admin/uploads", {
+            method: "POST",
+            credentials: "include",
+            body: formulaire,
+          });
+          var range = await corps(envoi);
+          if (!envoi.ok) throw new Error(phraseDEchec(envoi, range));
+
+          // Second temps : cette adresse est rattachée à l'affiche, à la suite
+          // des visuels qu'elle a déjà.
+          var rattachement = await fetch(
+            BASE_API + "/admin/products/" + produitId + "/image",
+            {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                url: range.url,
+                alt: ligne.dataset.nom || "",
+              }),
+            },
+          );
+          var retour = await corps(rattachement);
+          if (!rattachement.ok)
+            throw new Error(phraseDEchec(rattachement, retour));
+
+          if (vignette) {
+            vignette.src = adresseVisible(range.url);
+            vignette.hidden = false;
+          }
+          if (depot) depot.remove();
+          message.className = "js-message text-sm text-green-800";
+          message.textContent = "Visuel en place.";
+          ligne.appendChild(message);
+          ligne.dataset.illustree = "1";
+          faites += 1;
+          majCompteur();
+        } catch (e) {
+          message.className = "js-message text-xs text-red-700";
+          message.textContent =
+            (e && e.message
+              ? e.message
+              : "L'envoi n'a pas abouti. Réessayez dans un instant.") +
+            " Vous pouvez redéposer une image sur cette ligne.";
+        } finally {
+          ligne.dataset.enCours = "";
+        }
+      }
+
+      lignes.forEach(function (ligne) {
+        var champ = ligne.querySelector(".js-fichier");
+        if (champ)
+          champ.addEventListener("change", function () {
+            deposer(ligne, champ.files && champ.files[0]);
+          });
+
+        // Le glisser-déposer vise la LIGNE entière et non la petite zone :
+        // c'est une cible large, et c'est le geste qu'on fait naturellement en
+        // vidant un dossier d'images.
+        ["dragenter", "dragover"].forEach(function (nom) {
+          ligne.addEventListener(nom, function (e) {
+            if (ligne.dataset.illustree === "1") return;
+            e.preventDefault();
+            ligne.classList.add("bg-bo-bg");
+          });
+        });
+        ["dragleave", "drop"].forEach(function (nom) {
+          ligne.addEventListener(nom, function () {
+            ligne.classList.remove("bg-bo-bg");
+          });
+        });
+        ligne.addEventListener("drop", function (e) {
+          if (ligne.dataset.illustree === "1") return;
+          e.preventDefault();
+          var fichiers = e.dataTransfer && e.dataTransfer.files;
+          // Une seule image par ligne : les suivantes seraient rattachées à la
+          // mauvaise affiche, ce qui est bien pire que de n'en prendre qu'une.
+          deposer(ligne, fichiers && fichiers[0]);
+        });
+      });
+
+      majCompteur();
+    })();
+  </script>
+</Admin>

@@ -37,13 +37,62 @@ import {
   statutExpedition,
   statutFinancier,
 } from "./commandes.js";
-import { courrierReinitialisation, envoyer, estConfigure } from "./mail.js";
+import {
+  courrierBienvenue,
+  courrierMotDePasseModifie,
+  courrierReinitialisation,
+  envoyer,
+  estConfigure,
+  type Courrier,
+} from "./mail.js";
 
 export const COOKIE_CLIENT = "ml_client";
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 jours
 const RESET_TTL_MS = 1000 * 60 * 60; // 1 heure
 const MDP_MIN = 8;
+
+/**
+ * Origine publique du site, pour les liens cliquables des courriers.
+ *
+ * Vide en développement : un lien sans origine mène à « /compte », qui ne veut
+ * rien dire dans une boîte mail. Les modèles acceptent donc `null` et se
+ * passent de bouton plutôt que d'en afficher un mort.
+ */
+const ORIGINE = (process.env.PUBLIC_ORIGIN ?? "").replace(/\/$/, "");
+
+/**
+ * Prévient le client sans jamais faire échouer ce qui vient d'aboutir.
+ *
+ * Une inscription réussie reste réussie, un mot de passe changé reste changé :
+ * le courrier est un service en plus, pas une condition. Une fiche sans
+ * adresse et un envoi non configuré s'arrêtent ici, silencieusement — c'est le
+ * cas courant en développement.
+ *
+ * Le compte n'a pas de chronologie où consigner l'incident, contrairement à la
+ * commande : l'échec part donc au journal du serveur, seul endroit où on
+ * pourra le retrouver.
+ */
+async function previenirLeClient(
+  destinataire: string | null,
+  courrier: Courrier,
+): Promise<void> {
+  if (!destinataire || !estConfigure()) return;
+  try {
+    const parti = await envoyer({ ...courrier, to: destinataire });
+    if (!parti)
+      console.warn(
+        `[compte] courrier « ${courrier.subject} » non parti vers ${destinataire}`,
+      );
+  } catch (e) {
+    console.error("[compte] envoi impossible", e);
+  }
+}
+
+/** Le prénom tel que les courriers l'emploient, ou de quoi s'en passer. */
+function prenomDe(nom: string | null): string {
+  return (nom ?? "").split(" ")[0] || "vous";
+}
 
 /**
  * Empreinte comparée quand aucun compte ne porte l'adresse saisie.
@@ -393,6 +442,18 @@ export function mountCompteRoutes(app: Hono): void {
     if (!client) return c.json({ error: "Création impossible" }, 500);
 
     poserCookie(c, await creerSessionClient(client.id));
+    // Après l'insertion, jamais avant : une création qui échoue ne doit pas
+    // laisser derrière elle un mot de bienvenue vers un compte inexistant.
+    // Une adresse ne peut porter qu'un compte (le contrôle ci-dessus, doublé
+    // de l'index d'unicité) : rejouer l'inscription part en 409 et n'envoie
+    // rien, le courrier ne peut donc pas arriver deux fois.
+    await previenirLeClient(
+      client.email,
+      courrierBienvenue({
+        prenomClient: prenomDe(client.name),
+        lien: ORIGINE ? `${ORIGINE}/compte` : null,
+      }),
+    );
     return c.json({ customer: publique(client) }, 201);
   });
 
@@ -547,6 +608,17 @@ export function mountCompteRoutes(app: Hono): void {
       .update(schema.customers)
       .set({ passwordHash: await hashPassword(nouveau) })
       .where(eq(schema.customers.id, moi.id));
+    // L'avis part une fois le changement écrit, et il ne peut pas partir deux
+    // fois : la requête rejouée présente un ancien mot de passe qui n'est plus
+    // celui du compte, et se fait refuser quelques lignes plus haut.
+    await previenirLeClient(
+      compte.email,
+      courrierMotDePasseModifie({
+        prenomClient: prenomDe(compte.name),
+        parReinitialisation: false,
+        lien: ORIGINE ? `${ORIGINE}/compte/mot-de-passe-oublie` : null,
+      }),
+    );
     return c.json({ ok: true });
   });
 
@@ -630,6 +702,23 @@ export function mountCompteRoutes(app: Hono): void {
     await db
       .delete(schema.customerSessions)
       .where(eq(schema.customerSessions.customerId, ligne.customerId));
+
+    // L'avis de sécurité part après que le jeton a été marqué utilisé : rejouer
+    // la requête bute sur `usedAt` et repart en 400 sans rien envoyer. C'est
+    // même le seul avertissement que recevra quelqu'un dont on a détourné la
+    // boîte mail, alors il compte plus ici que sur l'autre chemin.
+    const [titulaire] = await db
+      .select({ name: schema.customers.name, email: schema.customers.email })
+      .from(schema.customers)
+      .where(eq(schema.customers.id, ligne.customerId));
+    await previenirLeClient(
+      titulaire?.email ?? null,
+      courrierMotDePasseModifie({
+        prenomClient: prenomDe(titulaire?.name ?? null),
+        parReinitialisation: true,
+        lien: ORIGINE ? `${ORIGINE}/compte/mot-de-passe-oublie` : null,
+      }),
+    );
     return c.json({ ok: true });
   });
 
