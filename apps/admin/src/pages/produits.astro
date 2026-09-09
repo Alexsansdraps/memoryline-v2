@@ -12,7 +12,7 @@
  * que ce qui est en vente, et le back-office doit justement voir ce que la
  * boutique cache.
  */
-import { url } from "../lib/url.ts";
+import { url, apiUrl } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
 import { adminApi, formatPrice, type ListeProduitsAdmin } from "../lib/api.ts";
 
@@ -174,6 +174,19 @@ function lienOnglet(cle: string): string {
   if (collectionFiltre) p.set("collection", String(collectionFiltre));
   const suite = p.toString();
   return url(`/produits${suite ? `?${suite}` : ""}`);
+}
+
+/**
+ * L'adresse d'une image telle que le NAVIGATEUR doit la demander.
+ *
+ * Les visuels sont servis par l'API sous « /assets/… ». Écrit tel quel dans la
+ * page du back-office, ce chemin part vers la boutique, qui ne connaît pas ces
+ * fichiers : la vignette restait vide. Derrière le proxy, l'API vit sous
+ * « /api », et c'est ce que `apiUrl` sait poser.
+ */
+function imageProduit(u: string | null): string {
+  if (!u) return "";
+  return u.startsWith("http") ? u : apiUrl(u);
 }
 
 const PAGE_SIZE = 25;
@@ -467,7 +480,7 @@ const PAGE_SIZE = 25;
                     <div class="flex items-center gap-3">
                       {p.imageUrl ? (
                         <img
-                          src={p.imageUrl}
+                          src={imageProduit(p.imageUrl)}
                           alt=""
                           loading="lazy"
                           class="h-10 w-8 rounded border border-bo-border object-cover"
