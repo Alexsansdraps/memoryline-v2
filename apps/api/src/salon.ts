@@ -232,6 +232,7 @@ export function mountSalonRoutes(app: Hono): void {
    * Il ne sort d'ici que sous la garde du back-office.
    */
   app.get("/admin/stands", async (c) => {
+    const proprietaire = c.get("utilisateur")?.role === "owner";
     const stands = await db
       .select()
       .from(schema.stands)
@@ -268,7 +269,10 @@ export function mountSalonRoutes(app: Hono): void {
       stands: stands
         .map((s) => ({
           id: s.id,
-          code: s.code,
+          // Le code n'est montré qu'à la propriétaire. Il permet d'enregistrer
+          // des commandes déclarées payées : le distribuer à tout vendeur,
+          // pour tous les stands, revient à le laisser traîner.
+          code: proprietaire ? s.code : null,
           nom: s.nom,
           ouvert: s.ouvert,
           createdAt: s.createdAt,

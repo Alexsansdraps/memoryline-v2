@@ -26,6 +26,24 @@
 }
 
 :80 {
+	# Compression, et c'est la correction la moins chère de tout le projet.
+	# Sans elle, la liste des affiches partait en 316 Ko de HTML ; compressée,
+	# elle en fait 25. Le JSON de l'API en profite autant. Les images, déjà
+	# compressées dans leur format, sont laissées tranquilles par Caddy.
+	encode zstd gzip
+
+	# En-têtes de sécurité, posés une fois pour les trois applications.
+	# « frame-ancestors 'none' » empêche qu'un autre site encadre le
+	# back-office pour faire cliquer quelqu'un sur « rembourser » sans qu'il
+	# le voie. « Referrer-Policy » évite que l'adresse du stand, qui porte son
+	# code d'accès, parte dans l'en-tête du premier lien sortant.
+	header {
+		Content-Security-Policy "frame-ancestors 'none'"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
 	handle_path /api/* {
 		reverse_proxy api:3000
 	}

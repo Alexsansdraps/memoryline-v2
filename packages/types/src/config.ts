@@ -26,6 +26,32 @@ export type PosterView = (typeof POSTER_VIEWS)[number];
 /** Type d'affiche par défaut quand rien n'est précisé. */
 export const POSTER_VIEW_DEFAUT = "front";
 
+/**
+ * L'ordre d'empilement des pièces sur un personnage, du bas vers le haut.
+ *
+ * Une seule liste, et elle est ici. Il y en avait deux : celle de l'aperçu et
+ * celle de l'impression, portant le même commentaire et des valeurs inversées
+ * sur le pantalon et le vêtement. À la taille, là où les deux se recouvrent,
+ * l'affiche livrée ne ressemblait donc pas à celle que la cliente avait
+ * validée — un défaut qu'aucun écran ne montre, et qui ne se découvre qu'en
+ * ouvrant l'enveloppe.
+ *
+ * C'est l'APERÇU qui fait foi : c'est lui que la cliente regarde avant de
+ * payer. Le vêtement passe donc par-dessus le pantalon, ici comme à l'écran.
+ *
+ * « shoes » et « head » ne sont pas proposés par le configurateur d'
+ * aujourd'hui ; ils restent dans la liste parce que des personnages importés
+ * en portent, et qu'ils doivent s'empiler quelque part.
+ */
+export const ORDRE_CALQUES = [
+  "pants",
+  "clothes",
+  "shoes",
+  "hair",
+  "head",
+  "accessory",
+] as const;
+
 /** Slots d'assets empilables sur un personnage (ouvert, pas figé). */
 export const ASSET_SLOTS = [
   "head",

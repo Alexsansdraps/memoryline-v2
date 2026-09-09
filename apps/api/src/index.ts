@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { cors } from "hono/cors";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import {
@@ -472,7 +473,7 @@ app.get("/banner", async (c) => {
  * porte. Tout ce qui commence par « salon. » reste réservé au back-office,
  * qui a sa propre route (GET /admin/salon).
  */
-const PREFIXES_PRIVES = ["salon."];
+const PREFIXES_PRIVES = ["salon.", "ia."];
 
 app.get("/settings", async (c) => {
   const group = c.req.query("group");
@@ -947,14 +948,46 @@ app.post("/promos/verifier", async (c) => {
  */
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 10;
+/**
+ * La requête est-elle arrivée en HTTPS ?
+ *
+ * Même raisonnement que pour le cookie client : on regarde l'hôte appelé et
+ * l'adresse publique annoncée, puis l'en-tête du proxy. Une variable
+ * d'environnement ne dit rien de la requête en cours.
+ */
+function requeteEnHttps(c: Context): boolean {
+  const hote = (c.req.header("host") ?? "").toLowerCase();
+  const publique = (process.env.PUBLIC_ORIGIN ?? "").toLowerCase();
+  if (hote && publique.startsWith("https://") && publique.endsWith(hote))
+    return true;
+  const proto = c.req.header("x-forwarded-proto")?.split(",")[0]?.trim();
+  return proto === "https" || c.req.url.startsWith("https://");
+}
+
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 
+/**
+ * L'adresse d'où vient l'appel, telle qu'on peut la croire.
+ *
+ * Le proxy AJOUTE son entrée à « X-Forwarded-For » sans effacer celle qui
+ * arrive : le PREMIER élément est donc écrit par l'appelant, qui peut le
+ * changer à chaque requête. Un compteur d'essais fondé dessus ne se déclenche
+ * jamais, et un mot de passe se devine indéfiniment.
+ *
+ * Le dernier élément, lui, a été posé par notre propre proxy. C'est le seul
+ * qu'on ne puisse pas écrire soi-même.
+ */
 function clientIp(c: { req: { header: (k: string) => string | undefined } }) {
-  return (
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-    c.req.header("x-real-ip") ||
-    "local"
-  );
+  const chaine = c.req.header("x-forwarded-for");
+  if (chaine) {
+    const morceaux = chaine
+      .split(",")
+      .map((m) => m.trim())
+      .filter(Boolean);
+    const dernier = morceaux[morceaux.length - 1];
+    if (dernier) return dernier;
+  }
+  return c.req.header("x-real-ip") || "local";
 }
 
 function loginRateLimited(key: string): boolean {
@@ -996,7 +1029,10 @@ app.post("/auth/login", async (c) => {
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "Lax",
-    secure: isProd,
+    // La vraie requête décide, pas une variable d'environnement : NODE_ENV
+    // n'est défini nulle part, et le cookie du back-office partait donc sans
+    // « Secure » y compris derrière le tunnel en HTTPS.
+    secure: requeteEnHttps(c),
     path: "/",
     maxAge: 60 * 60 * 24 * 30,
   });

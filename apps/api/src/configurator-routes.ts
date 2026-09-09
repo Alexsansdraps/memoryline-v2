@@ -10,7 +10,7 @@
  * Le wiring d'auth /admin/* est posé dans index.ts ; ici on définit les
  * handlers, montés via `mountConfiguratorRoutes(app)`.
  */
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import {
   and,
   asc,
@@ -698,6 +698,19 @@ async function previenirDuPaiement(orderId: number): Promise<void> {
 
 // --- Montage des routes -------------------------------------------------------
 
+/**
+ * Cette commande est-elle visible par la personne connectée ?
+ *
+ * Le propriétaire voit tout. Un vendeur ne voit que le stand : la liste des
+ * commandes le bornait déjà, mais la fiche et le fichier d'impression ne le
+ * faisaient pas, et les identifiants se suivent. Compter de un en un suffisait.
+ */
+function commandeVisiblePar(c: Context, canal: string | undefined): boolean {
+  const user = c.get("utilisateur");
+  if (!user || user.role === "owner") return true;
+  return canal === "salon";
+}
+
 export function mountConfiguratorRoutes(app: Hono) {
   // === Données configurateur (public) ====================================
 
@@ -1347,6 +1360,12 @@ export function mountConfiguratorRoutes(app: Hono) {
       .from(schema.orders)
       .where(eq(schema.orders.id, id));
     if (!order) return c.notFound();
+    // Un vendeur ne lit que les ventes du stand. Sans cette ligne, il lui
+    // suffisait de compter de un en un : les identifiants se suivent, et la
+    // fiche rend tout, y compris l'adresse postale de la cliente.
+    // « Introuvable » plutôt que « interdit » : répondre 403 confirmerait que
+    // la commande existe.
+    if (!commandeVisiblePar(c, order.channel)) return c.notFound();
     const items = await db
       .select({
         id: schema.orderItems.id,
@@ -1701,6 +1720,9 @@ export function mountConfiguratorRoutes(app: Hono) {
       .select()
       .from(schema.orders)
       .where(eq(schema.orders.id, item.orderId));
+    // Même règle que pour la fiche : l'affiche d'une cliente du site, avec son
+    // nom dans le nom de fichier, n'est pas à portée d'un compte de stand.
+    if (!commandeVisiblePar(c, order?.channel)) return c.notFound();
     const [customer] = order?.customerId
       ? await db
           .select()

@@ -8,7 +8,10 @@ services:
       POSTGRES_PASSWORD: memoryline
       POSTGRES_DB: memoryline
     ports:
-      - "5433:5432"
+      # Attachée à cette machine SEULEMENT. Publiée sur toutes les interfaces,
+      # avec les identifiants écrits juste au-dessus dans un fichier versionné,
+      # la base réelle s'ouvrait à quiconque atteint le poste sur le réseau.
+      - "127.0.0.1:5433:5432"
     volumes:
       - memoryline_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -45,7 +48,7 @@ services:
       MAIL_BCC: "${MAIL_BCC:-}"
       RESEND_API_KEY: "${RESEND_API_KEY:-}"
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       # Code source monté pour le hot-reload (tsx watch).
       - .:/app
@@ -81,7 +84,7 @@ services:
       # Évite que pnpm/Astro tentent un purge interactif des node_modules.
       CI: "true"
     ports:
-      - "4321:4321"
+      - "127.0.0.1:4321:4321"
     volumes:
       - .:/app
       - /app/node_modules
@@ -106,7 +109,7 @@ services:
       ALLOWED_HOSTS: "${NGROK_DOMAIN:-}"
       CI: "true"
     ports:
-      - "4322:4322"
+      - "127.0.0.1:4322:4322"
     volumes:
       - .:/app
       - /app/node_modules

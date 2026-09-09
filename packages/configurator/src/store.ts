@@ -9,6 +9,7 @@ import type {
   TextBlock,
 } from "@memoryline/types";
 import {
+  ORDRE_CALQUES,
   colorKey,
   recolorSvg,
   POLICE_TITRE_DEFAUT,
@@ -519,8 +520,16 @@ function lignesEnregistrees(state: ConfiguratorState): TextBlock[] {
   );
 }
 
-/** Slots dans l'ordre d'empilement bas -> haut (par-dessus la base). */
-export const SLOT_ZORDER = ["pants", "clothes", "hair", "accessory"] as const;
+/**
+ * Slots dans l'ordre d'empilement bas vers haut, par-dessus la base.
+ *
+ * Repris de l'ordre partagé et réduit à ce que le configurateur propose : une
+ * seconde liste écrite à la main a fini par contredire celle de l'impression,
+ * et l'affiche livrée ne ressemblait plus à l'aperçu validé.
+ */
+export const SLOT_ZORDER = ORDRE_CALQUES.filter((s): s is Slot =>
+  (SLOTS as readonly string[]).includes(s),
+);
 
 /** Trouve une variante par id dans la liste d'un slot. */
 export function findVariant(

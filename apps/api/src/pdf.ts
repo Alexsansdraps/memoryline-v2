@@ -25,6 +25,7 @@ import type { OverlayOptions, Sharp } from "sharp";
 import { PDFDocument } from "pdf-lib";
 
 import {
+  ORDRE_CALQUES,
   appliquerCalage,
   calagePour,
   BASE_COLOR_SCOPE,
@@ -59,8 +60,14 @@ const FORMAT_PT: Record<PosterFormat, { width: number; height: number }> = {
   A3: { width: 841.89, height: 1190.55 },
 };
 
-/** Ordre d'empilement des slots sur un personnage (bas → haut). */
-const SLOT_Z_ORDER = ["clothes", "pants", "shoes", "hair", "head", "accessory"] as const;
+/**
+ * Ordre d'empilement des slots sur un personnage, du bas vers le haut.
+ *
+ * Repris du paquet partagé : cette liste disait autrefois le contraire de
+ * celle de l'aperçu sur le pantalon et le vêtement, si bien que le papier ne
+ * montrait pas ce que la cliente avait validé à l'écran.
+ */
+const SLOT_Z_ORDER = ORDRE_CALQUES;
 
 /** Répertoire des assets sur disque : data/assets/<fichier> (cf. index.ts). */
 const ASSETS_DIR = resolve(fileURLToPath(import.meta.url), "../../../../data/assets");
