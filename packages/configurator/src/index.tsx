@@ -612,13 +612,10 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
                 color: "#6b7280",
               }}
             >
-              <span>
-                Glissez les personnages sur l'affiche pour les placer où vous
-                voulez.
-              </span>
+              <span>{msg().deplacerAide}</span>
               <Show when={aDesPlacesPosees()}>
                 <Button variant="secondary" onClick={replacerAutomatiquement}>
-                  Replacer automatiquement
+                  {msg().replacerAuto}
                 </Button>
               </Show>
             </div>

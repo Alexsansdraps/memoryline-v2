@@ -36,6 +36,10 @@ export interface MessagesConfigurateur {
   aucun: string;
   cadre: string;
   sansCadre: string;
+  /** Annonce le glisser-déposer : un geste qui ne se devine pas se dit. */
+  deplacerAide: string;
+  /** Ramène les personnages dans la rangée automatique. */
+  replacerAuto: string;
 }
 
 export const MESSAGES_DEFAUT: MessagesConfigurateur = {
@@ -67,6 +71,9 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   aucun: "Aucun",
   cadre: "Cadre (option)",
   sansCadre: "Sans cadre",
+  deplacerAide:
+    "Glissez les personnages sur l'affiche pour les placer où vous voulez.",
+  replacerAuto: "Replacer automatiquement",
 };
 
 /** Complète un dictionnaire partiel par les valeurs françaises. */

@@ -176,27 +176,23 @@ export function PosterPreview(props: {
   const [glisse, setGlisse] = createSignal<number | null>(null);
 
   /**
-   * Zone utile de l'affiche, en pixels écran : l'INTÉRIEUR du cadre.
+   * Dimensions en pixels de la zone utile : l'INTÉRIEUR du cadre. Ce sont
+   * elles qui convertissent les pixels parcourus par le doigt en fractions
+   * d'affiche.
    *
    * La baguette est dessinée en bordure et mange sur l'affiche. Compter sur la
-   * boîte extérieure poserait un personnage lâché tout en bas sous la
-   * baguette, là où le client ne le reverrait jamais.
+   * boîte extérieure fausserait la conversion, et un personnage lâché tout en
+   * bas irait se ranger sous la baguette, là où le client ne le reverrait
+   * jamais.
    */
-  function zoneAffiche():
-    | { gauche: number; haut: number; largeur: number; hauteur: number }
-    | null {
+  function tailleZone(): { largeur: number; hauteur: number } | null {
     if (!bloc) return null;
     const boite = bloc.getBoundingClientRect();
     const baguette = couleurCadre() ? epaisseurCadre() : 0;
     const largeur = boite.width - 2 * baguette;
     const hauteur = boite.height - 2 * baguette;
     if (largeur <= 0 || hauteur <= 0) return null;
-    return {
-      gauche: boite.left + baguette,
-      haut: boite.top + baguette,
-      largeur,
-      hauteur,
-    };
+    return { largeur, hauteur };
   }
 
   /**
@@ -208,6 +204,30 @@ export function PosterPreview(props: {
   let finDuGeste: (() => void) | null = null;
   onCleanup(() => finDuGeste?.());
 
+  /**
+   * Étouffe le clic qui suit un glissement.
+   *
+   * Lâcher le personnage à côté de l'affiche produit un clic dont la cible est
+   * l'ancêtre commun du départ et de l'arrivée : le fond de la modale, qui se
+   * referme dessus et emporte l'affiche en cours de composition. Ce geste
+   * n'était pas un clic, il n'a rien à déclencher.
+   *
+   * Le filet de sécurité : si aucun clic ne suit (geste annulé par le
+   * système), l'écoute se retire d'elle-même au tour de boucle suivant, sans
+   * quoi elle avalerait le prochain vrai clic du client.
+   */
+  function avalerLeProchainClic(): void {
+    const avaler = (e: MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+    };
+    window.addEventListener("click", avaler, { capture: true, once: true });
+    setTimeout(
+      () => window.removeEventListener("click", avaler, { capture: true }),
+      0,
+    );
+  }
+
   function demarrerGlissement(
     evenement: PointerEvent,
     index: number,
@@ -215,7 +235,7 @@ export function PosterPreview(props: {
     bas: number,
   ) {
     if (!props.deplacable || evenement.button !== 0) return;
-    const zone = zoneAffiche();
+    const zone = tailleZone();
     if (!zone) return;
     evenement.preventDefault();
     finDuGeste?.();
@@ -226,8 +246,10 @@ export function PosterPreview(props: {
     const selectionAvant = document.body.style.userSelect;
     document.body.style.userSelect = "none";
     setGlisse(index);
+    let aBouge = false;
 
     const suivre = (e: PointerEvent) => {
+      aBouge = true;
       props.onDeplace?.(
         index,
         bornerPlacement(
@@ -247,6 +269,7 @@ export function PosterPreview(props: {
       document.body.style.userSelect = selectionAvant;
       setGlisse(null);
       finDuGeste = null;
+      if (aBouge) avalerLeProchainClic();
     };
 
     // Sur `window`, jamais sur le personnage : chaque déplacement redessine
