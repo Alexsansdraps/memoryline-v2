@@ -23,6 +23,7 @@
 import type { Hono } from "hono";
 import { and, asc, eq, inArray, notInArray, sql as raw } from "drizzle-orm";
 import { poidsArticle, POSTER_FORMATS } from "@memoryline/types";
+import { poidsDesCollections } from "./collections.js";
 import { db, schema } from "./db/client.js";
 import { FORMAT_PAR_DEFAUT, HORS_VENTES } from "./statuts-vente.js";
 
@@ -274,9 +275,18 @@ export function mountFicheProduit(app: Hono): void {
       .select({ id: schema.collections.id, name: schema.collections.name })
       .from(schema.collections)
       .orderBy(asc(schema.collections.position), asc(schema.collections.name));
+    // Le poids par défaut vient avec les liens : c'est la collection qui le
+    // porte, et la fiche doit pouvoir montrer ce qui sera réellement pesé.
     const liens = await db
-      .select({ collectionId: schema.productCollections.collectionId })
+      .select({
+        collectionId: schema.productCollections.collectionId,
+        defaultWeightGrams: schema.collections.defaultWeightGrams,
+      })
       .from(schema.productCollections)
+      .innerJoin(
+        schema.collections,
+        eq(schema.productCollections.collectionId, schema.collections.id),
+      )
       .where(eq(schema.productCollections.productId, id))
       .orderBy(asc(schema.productCollections.position));
     const images = await db
@@ -308,7 +318,12 @@ export function mountFicheProduit(app: Hono): void {
           etiquettesConnues.set(propre.toLowerCase(), propre);
       }
 
-    const categorie = categories.find((cat) => cat.id === produit.categoryId);
+    // La plus lourde des collections qui se prononcent : un colis surestimé se
+    // paie quelques centimes, un colis sous-affranchi revient en surtaxe sans
+    // que rien ne l'ait signalé.
+    const poidsCollections = poidsDesCollections(
+      liens.map((l) => l.defaultWeightGrams),
+    );
 
     return c.json({
       produit: {
@@ -329,7 +344,7 @@ export function mountFicheProduit(app: Hono): void {
         // « 60 g » sur un produit au champ vide plutôt qu'une case muette.
         poidsEffectif: poidsArticle({
           produitGrammes: produit.weightGrams,
-          categorieGrammes: categorie?.defaultWeightGrams,
+          collectionGrammes: poidsCollections,
         }),
         aiEnabled: produit.aiEnabled,
         basePriceCents: produit.basePriceCents,
@@ -352,7 +367,7 @@ export function mountFicheProduit(app: Hono): void {
         poidsEffectif: poidsArticle({
           varianteGrammes: v.weightGrams,
           produitGrammes: produit.weightGrams,
-          categorieGrammes: categorie?.defaultWeightGrams,
+          collectionGrammes: poidsCollections,
         }),
         stockQty: v.stockQty,
         stockPolicy: v.stockPolicy,

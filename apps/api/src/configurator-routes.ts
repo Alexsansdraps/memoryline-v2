@@ -24,6 +24,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
+import { poidsDesCollections } from "./collections.js";
 import { renderPosterPdf, type ResolveData } from "./pdf.js";
 import {
   resumeCommandes,
@@ -294,32 +295,38 @@ async function poidsDuPanier(items: PricedItem[]): Promise<number> {
       : [],
   ]);
 
-  const categorieIds = [
-    ...new Set(produits.map((p) => p.categoryId).filter((v): v is number => !!v)),
-  ];
-  const categories = categorieIds.length
+  // Le poids par défaut vient des COLLECTIONS du produit, et une affiche en a
+  // souvent plusieurs. Une seule requête pour tout le panier : une par produit
+  // sur le chemin qui calcule les frais de port serait payée à chaque ajout.
+  const rangements = produitIds.length
     ? await db
         .select({
-          id: schema.productCategories.id,
-          defaultWeightGrams: schema.productCategories.defaultWeightGrams,
+          productId: schema.productCollections.productId,
+          defaultWeightGrams: schema.collections.defaultWeightGrams,
         })
-        .from(schema.productCategories)
-        .where(inArray(schema.productCategories.id, categorieIds))
+        .from(schema.productCollections)
+        .innerJoin(
+          schema.collections,
+          eq(schema.productCollections.collectionId, schema.collections.id),
+        )
+        .where(inArray(schema.productCollections.productId, produitIds))
     : [];
+  const poidsParProduit = new Map<number, (number | null)[]>();
+  for (const r of rangements) {
+    const liste = poidsParProduit.get(r.productId) ?? [];
+    liste.push(r.defaultWeightGrams);
+    poidsParProduit.set(r.productId, liste);
+  }
 
   const parProduit = new Map(produits.map((p) => [p.id, p]));
   const parVariante = new Map(
     variantes.map((v) => [`${v.productId}:${v.format}`, v]),
   );
   const parCadre = new Map(cadres.map((f) => [f.id, f]));
-  const parCategorie = new Map(categories.map((c) => [c.id, c]));
 
   return poidsPanier(
     items.map((it) => {
       const produit = it.productId ? parProduit.get(it.productId) : undefined;
-      const categorie = produit?.categoryId
-        ? parCategorie.get(produit.categoryId)
-        : undefined;
       const cadreId = Number(
         (it.config as { frameId?: unknown } | null)?.frameId,
       );
@@ -329,7 +336,12 @@ async function poidsDuPanier(items: PricedItem[]): Promise<number> {
           parVariante.get(`${it.productId}:${formatDe(it)}`)?.weightGrams ??
           null,
         produitGrammes: produit?.weightGrams ?? null,
-        categorieGrammes: categorie?.defaultWeightGrams ?? null,
+        // La plus lourde de ses collections : un colis surestimé se paie en
+        // centimes visibles, un colis sous-affranchi revient en surtaxe sans
+        // que rien ne l'ait signalé.
+        collectionGrammes: poidsDesCollections(
+          poidsParProduit.get(it.productId ?? -1) ?? [],
+        ),
         cadreGrammes: parCadre.get(cadreId)?.weightGrams ?? null,
       };
     }),

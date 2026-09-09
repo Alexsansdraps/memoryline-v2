@@ -175,7 +175,11 @@ export function mountSalonRoutes(app: Hono): void {
         channel: "salon",
         standId: stand.id,
         number: numero,
-        status: "pending",
+        // Payée d'emblée : au stand, le client règle avant de partir avec son
+        // affiche, ou il ne commande pas. Un état « en attente » obligeait à
+        // se souvenir de cocher chaque vente du samedi, et laissait les
+        // chiffres du stand à zéro tant que personne ne l'avait fait.
+        status: "paid",
         customerId: client.id,
         totalCents: total,
         shippingCents: 0,
@@ -189,11 +193,23 @@ export function mountSalonRoutes(app: Hono): void {
       .where(eq(schema.orders.id, panier.id))
       .returning();
 
+    // Le grand livre reçoit l'encaissement, comme pour une vente du site :
+    // c'est lui qui fait foi pour le solde d'une commande, et un
+    // remboursement de stand doit pouvoir s'y adosser.
+    await db.insert(schema.orderTransactions).values({
+      orderId: panier.id,
+      kind: "sale",
+      status: "success",
+      amountCents: total,
+      gateway: "stand",
+      externalRef: null,
+    });
+
     await db.insert(schema.orderEvents).values({
       orderId: panier.id,
       kind: "event",
       message:
-        `Commande prise au stand${evenement ? ` (${evenement})` : ""}, à encaisser sur place.`,
+        `Commande prise au stand${evenement ? ` (${evenement})` : ""}, réglée sur place.`,
     });
 
     return c.json({

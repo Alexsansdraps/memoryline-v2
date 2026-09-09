@@ -28,6 +28,7 @@ import {
 } from "drizzle-orm";
 import { HORS_VENTES } from "./statuts-vente.js";
 import { poidsArticle } from "@memoryline/types";
+import { poidsDesCollections } from "./collections.js";
 import { db, schema } from "./db/client.js";
 
 /** Les seuls états qu'un produit peut prendre. */
@@ -73,7 +74,7 @@ function grammes(v: unknown): number | null {
  * Un poids saisi dans un formulaire.
  *
  * Trois réponses possibles, et il faut vraiment les trois : un nombre, un
- * champ vidé (qui veut dire « reprends celui de la catégorie », pas « zéro
+ * champ vidé (qui veut dire « reprends celui de la collection », pas « zéro
  * gramme »), et une saisie qui n'a pas de sens. Confondre les deux dernières
  * ferait passer une faute de frappe pour un effacement voulu, et le colis
  * partirait sous-affranchi sans que rien ne le signale.
@@ -446,7 +447,6 @@ export function mountProduitsMasse(app: Hono): void {
       .select({
         id: schema.productCategories.id,
         name: schema.productCategories.name,
-        defaultWeightGrams: schema.productCategories.defaultWeightGrams,
       })
       .from(schema.productCategories)
       .orderBy(
@@ -489,6 +489,7 @@ export function mountProduitsMasse(app: Hono): void {
             productId: schema.productCollections.productId,
             id: schema.collections.id,
             name: schema.collections.name,
+            defaultWeightGrams: schema.collections.defaultWeightGrams,
           })
           .from(schema.productCollections)
           .innerJoin(
@@ -532,10 +533,21 @@ export function mountProduitsMasse(app: Hono): void {
         imageParProduit.set(img.productId, img.url);
 
     const collectionsParProduit = new Map<number, { id: number; name: string }[]>();
+    // La plus lourde des collections qui se prononcent : un colis surestimé se
+    // paie quelques centimes, un colis sous-affranchi revient en surtaxe sans
+    // que rien ne l'ait signalé.
+    const poidsCollectionsParProduit = new Map<number, number | null>();
     for (const l of liens) {
       const liste = collectionsParProduit.get(l.productId) ?? [];
       liste.push({ id: l.id, name: l.name });
       collectionsParProduit.set(l.productId, liste);
+      poidsCollectionsParProduit.set(
+        l.productId,
+        poidsDesCollections([
+          poidsCollectionsParProduit.get(l.productId),
+          l.defaultWeightGrams,
+        ]),
+      );
     }
 
     const categorieParId = new Map(categories.map((cat) => [cat.id, cat]));
@@ -558,7 +570,7 @@ export function mountProduitsMasse(app: Hono): void {
           // « 60 g » sur un produit au champ vide plutôt qu'une case muette.
           poidsEffectif: poidsArticle({
             produitGrammes: p.weightGrams,
-            categorieGrammes: categorie?.defaultWeightGrams,
+            collectionGrammes: poidsCollectionsParProduit.get(p.id),
           }),
           prixMin: prixParProduit.get(p.id)?.min ?? null,
           prixMax: prixParProduit.get(p.id)?.max ?? null,

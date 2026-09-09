@@ -51,6 +51,7 @@ import { mountProduitsMasse } from "./produits-masse.js";
 import { mountVentesProduit } from "./ventes-produit.js";
 import { mountFicheProduit } from "./fiche-produit.js";
 import { mountCms } from "./cms.js";
+import { mountCollections } from "./collections.js";
 import { mountCourriers } from "./courriers.js";
 import { mountSalonRoutes } from "./salon.js";
 import { mountCompteRoutes } from "./comptes.js";
@@ -1039,6 +1040,10 @@ mountVentesProduit(app);
 // tarifs, stock, référencement. Un seul aller-retour pour lire, un seul pour
 // enregistrer, là où la page interrogeait quatre routes différentes.
 mountFicheProduit(app);
+
+// Les collections : la façon dont la boutique range ses affiches, et le poids
+// par défaut de ce qu'elles contiennent.
+mountCollections(app);
 
 // Pages libres et menu du site, écrits depuis le back-office. Ouvrir un rayon
 // « Magnets » ne demande plus de toucher au code.

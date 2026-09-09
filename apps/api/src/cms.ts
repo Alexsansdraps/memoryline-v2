@@ -12,13 +12,19 @@
  * proposer un formulaire par type plutôt qu'un champ de code, et à la boutique
  * de dessiner chaque bloc sans jamais tomber sur une forme inconnue.
  *
+ * Une page sait aussi OÙ elle se montre : sur le site, sur la tablette du
+ * stand, ou sur les deux. La boutique et le salon ne disent pas les mêmes
+ * choses — un mode d'emploi du configurateur n'a rien à faire en ligne, les
+ * conditions de vente à distance n'ont rien à faire sur un stand — et sans ce
+ * réglage il faudrait tenir deux fois le même contenu à deux endroits.
+ *
  * Deux principes gouvernent la lecture publique. D'abord, ce qui n'est pas
  * publié n'existe pas : un brouillon et une entrée de menu masquée sont
  * invisibles pour le site, même à qui devinerait l'adresse — exactement comme
  * un produit en brouillon. Ensuite, un bloc « produits » ne fait jamais
- * confiance à ce qu'il a enregistré : la collection citée a pu être supprimée
- * depuis, et une page qui casserait pour cette raison serait pire qu'une page
- * dont une rangée est vide.
+ * confiance à ce qu'il a enregistré : une collection citée a pu être supprimée
+ * ou retirée depuis, et une page qui casserait pour cette raison serait pire
+ * qu'une page dont une rangée est vide.
  *
  * Enfin, tout ce qui s'écrit ici est relu avant d'être enregistré, et le menu
  * entier tient dans une seule transaction : un menu à moitié réécrit laisserait
@@ -32,6 +38,21 @@ import type { BlocPage } from "./db/schema.js";
 /** Les seuls états qu'une page peut prendre. */
 const STATUTS = ["active", "draft"] as const;
 type StatutPage = (typeof STATUTS)[number];
+
+/** Les seuls endroits où une page peut se montrer. */
+const AFFICHAGES = ["site", "stand", "les-deux"] as const;
+type Affichage = (typeof AFFICHAGES)[number];
+
+/**
+ * Les valeurs qui comprennent la boutique en ligne, et celles qui comprennent
+ * la tablette du stand.
+ *
+ * Écrites en toutes lettres plutôt que déduites de « tout sauf l'autre » : le
+ * jour où un troisième écran s'ajoute, une page destinée à lui seul ne doit pas
+ * se retrouver en ligne parce que personne n'avait pensé à l'exclure.
+ */
+const AFFICHAGES_SITE: string[] = ["site", "les-deux"];
+const AFFICHAGES_STAND: string[] = ["stand", "les-deux"];
 
 /**
  * Les langues que la boutique sait servir, et leur nom en toutes lettres.
@@ -76,6 +97,16 @@ const ADRESSES_RESERVEES: string[] = [
 
 /** Au-delà, ce n'est plus une rangée de produits, c'est un catalogue. */
 const LIMITE_PRODUITS_MAX = 48;
+
+/**
+ * Le nombre de collections qu'une même rangée peut réunir.
+ *
+ * Chaque référence coûte une interrogation de la base à chaque visite, sur une
+ * route que traverse tout le monde. Et une rangée qui puise dans quinze
+ * collections ne se comprend plus en la regardant : c'est deux blocs qu'il
+ * fallait faire.
+ */
+const REFERENCES_MAX = 12;
 
 /** Un menu plus grand que cela ne tient pas dans un bandeau de site. */
 const ENTREES_MENU_MAX = 200;
@@ -239,6 +270,58 @@ type TraductionsMenu = Partial<Record<string, { label?: string }>>;
 /* -------------------------------------------------------------------------- */
 
 /**
+ * Les collections qu'une rangée de produits doit réunir.
+ *
+ * Deux écritures acceptées, et il faut les deux : `references`, la liste, telle
+ * que le back-office l'envoie depuis qu'une rangée peut en montrer plusieurs ;
+ * et `reference`, la référence seule, telle que les pages déjà composées la
+ * portent. Refuser la seconde reviendrait à casser des pages en ligne dont
+ * personne n'a rien demandé.
+ *
+ * Une case laissée vide au milieu de la liste est simplement passée : un choix
+ * multiple à moitié rempli ne doit pas empêcher d'enregistrer toute la page.
+ * C'est quand il ne reste rien du tout que la rangée est refusée, parce
+ * qu'alors elle ne montrerait jamais rien.
+ */
+function lireReferences(
+  b: Record<string, unknown>,
+  source: "collection" | "categorie",
+  ou: string,
+): string[] {
+  let brutes: unknown[];
+  if (b.references !== undefined && b.references !== null) {
+    if (!Array.isArray(b.references))
+      throw new SaisieRefusee(
+        `${ou} : la liste des collections n'a pas pu être lue. Rechargez la page et réessayez.`,
+      );
+    brutes = b.references as unknown[];
+  } else {
+    brutes = b.reference === undefined || b.reference === null ? [] : [b.reference];
+  }
+
+  const references: string[] = [];
+  for (const brute of brutes) {
+    const reference = String(brute ?? "").trim().slice(0, 120);
+    if (!reference) continue;
+    // Une catégorie se désigne par son numéro, tel que le back-office le
+    // propose dans sa liste. Un texte libre viserait une catégorie au hasard.
+    if (source === "categorie" && !/^\d+$/.test(reference))
+      throw new SaisieRefusee(
+        `${ou} : choisissez une catégorie de produits dans la liste proposée.`,
+      );
+    // La même collection citée deux fois ne doublerait pas la rangée, elle
+    // consommerait deux fois la place disponible pour rien.
+    if (!references.includes(reference)) references.push(reference);
+  }
+
+  if (references.length > REFERENCES_MAX)
+    throw new SaisieRefusee(
+      `${ou} : une rangée ne peut pas réunir plus de ${REFERENCES_MAX} collections. Faites-en deux rangées.`,
+    );
+  return references;
+}
+
+/**
  * Relit un bloc, ou refuse la page en nommant le bloc fautif.
  *
  * Nommer le bloc est tout l'intérêt du message : « le 3e bloc » se retrouve à
@@ -293,16 +376,11 @@ function lireBloc(brut: unknown, ou: string): BlocPage {
       throw new SaisieRefusee(
         `${ou} : choisissez une collection ou une catégorie de produits à afficher.`,
       );
-    const reference = String(b.reference ?? "").trim().slice(0, 120);
-    if (!reference)
+    const references = lireReferences(b, source, ou);
+    const premiere = references[0];
+    if (premiere === undefined)
       throw new SaisieRefusee(
-        `${ou} : choisissez ${source === "collection" ? "la collection" : "la catégorie"} de produits à afficher.`,
-      );
-    // Une catégorie se désigne par son numéro, tel que le back-office le
-    // propose dans sa liste. Un texte libre viserait une catégorie au hasard.
-    if (source === "categorie" && !/^\d+$/.test(reference))
-      throw new SaisieRefusee(
-        `${ou} : choisissez une catégorie de produits dans la liste proposée.`,
+        `${ou} : choisissez au moins une ${source === "collection" ? "collection" : "catégorie"} de produits à afficher.`,
       );
     const limite = entier(
       b.limite,
@@ -310,7 +388,10 @@ function lireBloc(brut: unknown, ou: string): BlocPage {
       1,
       LIMITE_PRODUITS_MAX,
     );
-    return { type, source, reference, limite };
+    // `reference` reste écrite, et vaut la première de la liste : des pages
+    // enregistrées avant ne connaissent qu'elle, et tout ce qui les relit ainsi
+    // doit continuer d'afficher quelque chose plutôt que rien.
+    return { type, source, reference: premiere, references, limite };
   }
 
   if (type === "bouton") {
@@ -422,7 +503,41 @@ interface ProduitDeBloc {
 }
 
 /**
- * Les produits d'un bloc « produits ».
+ * Les références d'un bloc, telles qu'on les relit en base.
+ *
+ * Défensif à dessein : ces blocs viennent d'une colonne JSON écrite par des
+ * versions successives du back-office, et une page composée il y a six mois ne
+ * porte que `reference`. Ce qui n'est pas lisible est écarté sans bruit, jamais
+ * traité comme une panne.
+ */
+function referencesDuBloc(
+  bloc: Extract<BlocPage, { type: "produits" }>,
+): string[] {
+  const brutes =
+    Array.isArray(bloc.references) && bloc.references.length
+      ? bloc.references
+      : [bloc.reference];
+  const references: string[] = [];
+  for (const brute of brutes) {
+    const reference = String(brute ?? "").trim();
+    if (reference && !references.includes(reference)) references.push(reference);
+  }
+  return references.slice(0, REFERENCES_MAX);
+}
+
+/** Un produit retenu par une référence, avant que la rangée soit habillée. */
+interface LigneProduit {
+  id: number;
+  slug: string;
+  name: string;
+  basePriceCents: number;
+  translations: Partial<
+    Record<string, { name?: string; description?: string }>
+  > | null;
+}
+
+/**
+ * Les produits que désigne UNE référence.
  *
  * La référence enregistrée n'est jamais tenue pour acquise : une collection
  * supprimée, une catégorie renommée, un numéro qui ne désigne plus rien rendent
@@ -431,26 +546,25 @@ interface ProduitDeBloc {
  * la page pour une rangée.
  *
  * Seuls les produits en vente sortent d'ici : un brouillon ou une archive n'a
- * pas plus sa place dans une page qu'ailleurs dans la boutique. Une catégorie
- * désactivée compte pour supprimée — c'est ainsi que la boutique la traite déjà
- * (catalogue.ts) — et ses produits ne doivent donc pas reparaître par une page.
+ * pas plus sa place dans une page qu'ailleurs dans la boutique. Une collection
+ * ou une catégorie désactivée compte pour supprimée — c'est ainsi que la
+ * boutique les traite déjà — et ses produits ne doivent donc pas reparaître par
+ * une page.
  */
-async function produitsDuBloc(
-  bloc: Extract<BlocPage, { type: "produits" }>,
-  langue: string,
-): Promise<ProduitDeBloc[]> {
-  const limite = Math.min(Math.max(Math.trunc(bloc.limite) || 0, 0), LIMITE_PRODUITS_MAX);
-  if (limite <= 0) return [];
-
+async function produitsDuneReference(
+  source: "collection" | "categorie",
+  reference: string,
+  limite: number,
+): Promise<LigneProduit[]> {
   const filtre =
-    bloc.source === "collection"
-      ? raw`exists (select 1 from ${schema.productCollections} pc join ${schema.collections} col on col.id = pc.collection_id where pc.product_id = ${schema.products.id} and col.slug = ${bloc.reference})`
-      : /^\d+$/.test(bloc.reference)
-        ? raw`exists (select 1 from ${schema.productCategories} cat where cat.id = ${schema.products.categoryId} and cat.id = ${Number(bloc.reference)} and cat.active = true)`
+    source === "collection"
+      ? raw`exists (select 1 from ${schema.productCollections} pc join ${schema.collections} col on col.id = pc.collection_id where pc.product_id = ${schema.products.id} and col.slug = ${reference} and col.active = true)`
+      : /^\d+$/.test(reference)
+        ? raw`exists (select 1 from ${schema.productCategories} cat where cat.id = ${schema.products.categoryId} and cat.id = ${Number(reference)} and cat.active = true)`
         : null;
   if (filtre === null) return [];
 
-  const lignes = await db
+  return db
     .select({
       id: schema.products.id,
       slug: schema.products.slug,
@@ -465,6 +579,50 @@ async function produitsDuBloc(
     // seule d'une visite à l'autre.
     .orderBy(asc(schema.products.id))
     .limit(limite);
+}
+
+/**
+ * Les produits d'un bloc « produits », toutes ses références réunies.
+ *
+ * Le plafond s'applique à la rangée ENTIÈRE, pas à chaque collection : c'est un
+ * nombre de vignettes qui tiennent à l'écran, et il ne doit pas tripler parce
+ * qu'on a cité trois collections.
+ *
+ * Une affiche rangée dans deux collections citées n'apparaît qu'une fois, à la
+ * place que lui donne la PREMIÈRE qui la cite : l'ordre des références est un
+ * choix éditorial, et la voir remonter en doublon serait pris pour un défaut.
+ *
+ * Les références sont interrogées ensemble : les attendre l'une après l'autre
+ * mettrait bout à bout les allers-retours de chacune, sur une route que
+ * traverse chaque visiteuse.
+ */
+async function produitsDuBloc(
+  bloc: Extract<BlocPage, { type: "produits" }>,
+  langue: string,
+): Promise<ProduitDeBloc[]> {
+  const limite = Math.min(Math.max(Math.trunc(bloc.limite) || 0, 0), LIMITE_PRODUITS_MAX);
+  if (limite <= 0) return [];
+
+  const references = referencesDuBloc(bloc);
+  if (!references.length) return [];
+
+  const lots = await Promise.all(
+    references.map((reference) =>
+      produitsDuneReference(bloc.source, reference, limite),
+    ),
+  );
+
+  const lignes: LigneProduit[] = [];
+  const vus = new Set<number>();
+  for (const lot of lots) {
+    for (const produit of lot) {
+      if (lignes.length >= limite) break;
+      if (vus.has(produit.id)) continue;
+      vus.add(produit.id);
+      lignes.push(produit);
+    }
+    if (lignes.length >= limite) break;
+  }
 
   const ids = lignes.map((p) => p.id);
   if (!ids.length) return [];
@@ -534,6 +692,98 @@ async function resoudreBlocs(
 }
 
 /* -------------------------------------------------------------------------- */
+/*  Une page, telle qu'on la sert au public                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Les colonnes à lire pour servir une page, et pas une de plus.
+ *
+ * L'état de la page et son affichage servent à la filtrer, jamais à la
+ * montrer : les faire sortir d'ici finirait par les faire apparaître dans une
+ * réponse publique le jour où quelqu'un renverrait la ligne telle quelle.
+ */
+const COLONNES_PUBLIQUES = {
+  id: schema.pages.id,
+  slug: schema.pages.slug,
+  title: schema.pages.title,
+  seoTitle: schema.pages.seoTitle,
+  seoDescription: schema.pages.seoDescription,
+  blocks: schema.pages.blocks,
+  translations: schema.pages.translations,
+};
+
+/** Les colonnes d'une page dont la lecture publique a besoin. */
+interface PageEnregistree {
+  id: number;
+  slug: string;
+  title: string;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  blocks: BlocPage[];
+  translations: TraductionsPage | null;
+}
+
+/**
+ * Une page publiée, blocs compris et rangées de produits déjà remplies.
+ *
+ * Partagée entre la boutique et la tablette du stand, et c'est tout l'intérêt :
+ * les deux doivent recevoir exactement la même chose, sans quoi une page relue
+ * au salon s'afficherait autrement qu'en ligne sans que personne ne l'ait
+ * voulu. Rien de ce qui relève du back-office n'en sort : ni l'état de la page,
+ * ni l'endroit où elle se montre, ni le dictionnaire des traductions.
+ */
+async function pagePubliee(page: PageEnregistree, langue: string) {
+  const traduction = langue === "fr" ? undefined : page.translations?.[langue];
+  // Les blocs se traduisent d'un seul tenant : une page traduite est réécrite
+  // entièrement, pas bloc par bloc. Tant qu'elle ne l'est pas, on montre le
+  // français, jamais une page à moitié dans chaque langue.
+  const blocs =
+    traduction?.blocks && traduction.blocks.length
+      ? traduction.blocks
+      : (page.blocks ?? []);
+
+  return {
+    id: page.id,
+    slug: page.slug,
+    title: utile(traduction?.title) ?? page.title,
+    seoTitle: page.seoTitle,
+    seoDescription: page.seoDescription,
+    blocks: await resoudreBlocs(blocs, langue),
+  };
+}
+
+/**
+ * Le code du stand qui accompagne la requête.
+ *
+ * Même lecture que dans salon.ts (`codeFourni`) : la tablette l'envoie tantôt
+ * dans l'adresse, tantôt dans un en-tête, et les deux doivent marcher. Recopié
+ * ici plutôt qu'importé, pour ne pas ouvrir le fichier des commandes du stand ;
+ * si l'une des deux lectures change là-bas, celle-ci doit suivre.
+ */
+function codeDuStand(c: Context): string {
+  return String(
+    c.req.query("code") ?? c.req.header("x-salon-code") ?? "",
+  ).trim();
+}
+
+/**
+ * Le stand OUVERT que désigne ce code, s'il en existe un.
+ *
+ * Le code se dicte à voix haute et se retape sur une tablette : il est
+ * enregistré en majuscules, et c'est ainsi qu'on le compare, comme le fait
+ * salon.ts.
+ */
+async function standOuvertDuCode(code: string) {
+  const propre = code.trim().toUpperCase();
+  if (!propre) return undefined;
+  const [stand] = await db
+    .select({ id: schema.stands.id })
+    .from(schema.stands)
+    .where(and(eq(schema.stands.code, propre), eq(schema.stands.ouvert, true)));
+  return stand;
+}
+
+/* -------------------------------------------------------------------------- */
 /*  Relecture d'une page                                                      */
 /* -------------------------------------------------------------------------- */
 
@@ -542,6 +792,7 @@ interface ChampsPage {
   slug?: string;
   title?: string;
   status?: StatutPage;
+  affichage?: Affichage;
   seoTitle?: string | null;
   seoDescription?: string | null;
   blocks?: BlocPage[];
@@ -606,6 +857,15 @@ async function lireChampsPage(
         "Cet état n'existe pas. Une page est en ligne, ou en brouillon.",
       );
     champs.status = statut as StatutPage;
+  }
+
+  if ("affichage" in corps) {
+    const affichage = String(corps.affichage ?? "");
+    if (!(AFFICHAGES as readonly string[]).includes(affichage))
+      throw new SaisieRefusee(
+        "Dites où cette page doit se montrer : sur le site, sur la tablette du stand, ou sur les deux.",
+      );
+    champs.affichage = affichage as Affichage;
   }
 
   // Un référencement vidé vaut « rien d'écrit à la main », pas « titre vide » :
@@ -747,9 +1007,9 @@ export function mountCms(app: Hono): void {
    * Une page publiée, blocs compris et rangées de produits déjà remplies.
    *
    * Un brouillon n'existe pas ici, même pour qui devinerait son adresse : c'est
-   * la même règle que pour un produit retiré de la vente. Et rien de ce qui
-   * relève du back-office ne sort d'ici : ni l'état de la page, ni le
-   * dictionnaire des traductions.
+   * la même règle que pour un produit retiré de la vente. Une page réservée à la
+   * tablette du stand non plus : elle est écrite pour être lue debout, devant
+   * quelqu'un, et n'a rien à faire en ligne.
    */
   app.get("/pages/:slug", async (c) => {
     const langue = langueDemandee(c);
@@ -759,27 +1019,59 @@ export function mountCms(app: Hono): void {
     const slug = slugifier(c.req.param("slug"));
     if (!slug) return c.notFound();
     const [page] = await db
-      .select()
+      .select(COLONNES_PUBLIQUES)
       .from(schema.pages)
-      .where(and(eq(schema.pages.slug, slug), eq(schema.pages.status, "active")));
+      .where(
+        and(
+          eq(schema.pages.slug, slug),
+          eq(schema.pages.status, "active"),
+          inArray(schema.pages.affichage, AFFICHAGES_SITE),
+        ),
+      );
     if (!page) return c.notFound();
 
-    const traduction = langue === "fr" ? undefined : page.translations?.[langue];
-    // Les blocs se traduisent d'un seul tenant : une page traduite est réécrite
-    // entièrement, pas bloc par bloc. Tant qu'elle ne l'est pas, on montre le
-    // français, jamais une page à moitié dans chaque langue.
-    const blocs =
-      traduction?.blocks && traduction.blocks.length
-        ? traduction.blocks
-        : (page.blocks ?? []);
+    return c.json(await pagePubliee(page, langue));
+  });
+
+  /* ---------------------------------------------------------------------- */
+  /*  Pages — côté stand                                                    */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * Les pages destinées à la tablette du stand, prêtes à afficher.
+   *
+   * Toutes d'un coup, et non une par adresse : la tablette les charge en
+   * arrivant sur le salon, où la connexion est ce qu'elle est, et doit pouvoir
+   * continuer à les feuilleter ensuite.
+   *
+   * Le code du stand est exigé, exactement comme pour l'état du stand. Un code
+   * qui ne désigne aucun stand ouvert repart avec une liste VIDE, jamais avec
+   * une explication : la tablette est posée devant des clients, et un message
+   * qui distinguerait « mauvais code » de « rien à montrer » apprendrait à un
+   * curieux qu'il y a quelque chose à trouver.
+   */
+  app.get("/stand/pages", async (c) => {
+    const langue = langueDemandee(c);
+    const stand = await standOuvertDuCode(codeDuStand(c));
+    if (!stand) return c.json({ pages: [] });
+
+    const lignes = await db
+      .select(COLONNES_PUBLIQUES)
+      .from(schema.pages)
+      .where(
+        and(
+          eq(schema.pages.status, "active"),
+          inArray(schema.pages.affichage, AFFICHAGES_STAND),
+        ),
+      )
+      // Par titre : la vendeuse cherche « Nos formats » dans une liste, et un
+      // classement par date changerait de place à chaque enregistrement.
+      .orderBy(asc(schema.pages.title));
 
     return c.json({
-      id: page.id,
-      slug: page.slug,
-      title: utile(traduction?.title) ?? page.title,
-      seoTitle: page.seoTitle,
-      seoDescription: page.seoDescription,
-      blocks: await resoudreBlocs(blocs, langue),
+      pages: await Promise.all(
+        lignes.map((page) => pagePubliee(page, langue)),
+      ),
     });
   });
 
@@ -801,6 +1093,7 @@ export function mountCms(app: Hono): void {
         slug: schema.pages.slug,
         title: schema.pages.title,
         status: schema.pages.status,
+        affichage: schema.pages.affichage,
         updatedAt: schema.pages.updatedAt,
       })
       .from(schema.pages)
@@ -835,6 +1128,11 @@ export function mountCms(app: Hono): void {
         name: schema.collections.name,
       })
       .from(schema.collections)
+      // Seulement les collections actives, pour la même raison que les
+      // catégories juste en dessous : une collection retirée ne sort plus de
+      // produits, et la proposer ici ferait composer une rangée condamnée à
+      // rester vide sans que rien n'explique pourquoi.
+      .where(eq(schema.collections.active, true))
       .orderBy(asc(schema.collections.position), asc(schema.collections.name));
     // Seulement les catégories actives : une catégorie désactivée est une
     // catégorie retirée, et la proposer ici ferait composer une rangée qui
@@ -854,6 +1152,7 @@ export function mountCms(app: Hono): void {
         slug: page.slug,
         title: page.title,
         status: page.status,
+        affichage: page.affichage,
         seoTitle: page.seoTitle,
         seoDescription: page.seoDescription,
         blocks: page.blocks ?? [],
@@ -890,6 +1189,9 @@ export function mountCms(app: Hono): void {
           slug: champs.slug,
           title: champs.title,
           status: champs.status ?? "draft",
+          // Une page écrite sans y penser va là où l'on écrit d'ordinaire : sur
+          // le site. La destiner au stand est un choix, pas un oubli.
+          affichage: champs.affichage ?? "site",
           seoTitle: champs.seoTitle ?? null,
           seoDescription: champs.seoDescription ?? null,
           blocks: champs.blocks ?? [],

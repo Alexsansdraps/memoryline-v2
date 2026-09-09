@@ -38,6 +38,20 @@ export const paymentProviderEnum = pgEnum("payment_provider", [
 
 // --- Catalogue ------------------------------------------------------------
 
+/**
+ * Une collection : la façon dont la boutique range ses affiches, et le seul
+ * rangement dont la propriétaire parle — « Villes », « Thèmes & paysages »,
+ * « Affiches prêtes à imprimer ».
+ *
+ * C'est elle qui porte désormais le POIDS PAR DÉFAUT de ce qu'elle contient.
+ * C'est le seul endroit où l'on peut dire une bonne fois « une affiche pèse
+ * 60 g » : sans cela il faudrait le ressaisir à chaque création de produit, et
+ * l'oublier une seule fois suffirait à fausser des frais de port.
+ *
+ * Le poids est FACULTATIF, et un poids vide n'est pas un poids de zéro : une
+ * collection qui ne dit rien laisse simplement la question au produit ou à sa
+ * variante. Un zéro, lui, annoncerait un colis sans masse.
+ */
 export const collections = pgTable(
   "collection",
   {
@@ -46,6 +60,10 @@ export const collections = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     position: integer("position").default(0).notNull(),
+    /** Poids en grammes des articles de cette collection. Null = non renseigné. */
+    defaultWeightGrams: integer("default_weight_grams"),
+    /** Désactivée : conservée au back-office, absente de la boutique. */
+    active: boolean("active").notNull().default(true),
     legacyId: bigint("legacy_id", { mode: "number" }), // Shopify Collection ID
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -55,10 +73,11 @@ export const collections = pgTable(
 /**
  * Catégorie de produits : « Affiches », « Magnets », « Cartes postales ».
  *
- * Elle porte le POIDS PAR DÉFAUT de ce qu'elle contient. C'est le seul endroit
- * où l'on peut dire une bonne fois « une affiche pèse 60 g » — sans quoi il
- * faudrait le ressaisir à chaque création de produit, et l'oublier une fois
- * suffirait à fausser des frais de port.
+ * PLUS UTILISÉE. Elle n'a jamais reçu une seule ligne, et le rangement du
+ * catalogue s'est fait tout entier par collections. Le poids par défaut a suivi
+ * : il vit maintenant sur la collection. La table reste en place parce que
+ * `product.category_id` la cite encore et que la supprimer coûterait une
+ * migration de données pour ne rien apporter.
  */
 export const productCategories = pgTable(
   "product_category",
@@ -86,7 +105,7 @@ export const products = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     kind: productKindEnum("kind").notNull().default("personnalisable"),
-    /** Catégorie, d'où vient le poids par défaut. Null = non rangé. */
+    /** Ancienne catégorie. Plus alimentée : le rangement passe par les collections. */
     categoryId: integer("category_id").references(() => productCategories.id, {
       onDelete: "set null",
     }),
@@ -105,11 +124,11 @@ export const products = pgTable(
      */
     aiStylePrompt: text("ai_style_prompt"),
     /**
-     * Poids du produit en grammes. Null = celui de sa catégorie.
+     * Poids du produit en grammes. Null = celui de ses collections.
      *
      * Trois niveaux, du plus précis au plus général : la variante (un A3 pèse
-     * plus qu'un A4), puis le produit, puis la catégorie. On ne recopie jamais
-     * la valeur d'un niveau à l'autre : changer le poids d'une catégorie doit
+     * plus qu'un A4), puis le produit, puis la collection. On ne recopie jamais
+     * la valeur d'un niveau à l'autre : changer le poids d'une collection doit
      * corriger d'un coup tout ce qui n'a pas été réglé à la main.
      */
     weightGrams: integer("weight_grams"),
@@ -155,14 +174,14 @@ export const products = pgTable(
      * Type de produit et fournisseur, tels que la boutique les tenait sur
      * Shopify (« CRIEL Cabines », fournisseur « CRIEL »). Purement internes :
      * ils ne s'affichent jamais en boutique, ils servent à filtrer et à
-     * retrouver. La CATÉGORIE, elle, porte le poids et compte vraiment.
+     * retrouver. La COLLECTION, elle, porte le poids et compte vraiment.
      */
     vendor: text("vendor"),
     productType: text("product_type"),
     /**
      * Étiquettes libres. Les commandes en ont depuis longtemps ; les produits
      * n'en avaient pas, alors que c'est le seul moyen de rassembler des
-     * affiches qui n'ont ni catégorie ni collection en commun (« à refaire »,
+     * affiches qui n'ont aucune collection en commun (« à refaire »,
      * « best-seller », « salon de Vannes »).
      */
     tags: jsonb("tags").$type<string[]>(),
@@ -1231,7 +1250,7 @@ export const announcementBanners = pgTable(
  * qu'un champ de code, et à la boutique de savoir dessiner chaque bloc sans
  * jamais rencontrer une forme qu'elle ne connaît pas.
  *
- * `produits` ne stocke qu'une référence, jamais la liste des produits : une
+ * `produits` ne stocke que des références, jamais la liste des produits : une
  * liste figée vieillirait mal — un produit retiré de la vente continuerait de
  * s'afficher, et une nouveauté n'apparaîtrait jamais.
  */
@@ -1242,7 +1261,18 @@ export type BlocPage =
   | {
       type: "produits";
       source: "collection" | "categorie";
+      /**
+       * La première des références, recopiée telle qu'elle s'écrivait avant que
+       * le bloc puisse en porter plusieurs. Elle reste renseignée pour que les
+       * pages déjà enregistrées, et tout ce qui les lit encore ainsi, continuent
+       * d'afficher quelque chose au lieu de rien.
+       */
       reference: string;
+      /**
+       * Les collections à réunir dans la rangée, dans l'ordre voulu. Absente sur
+       * les pages composées avant, où `reference` fait foi à elle seule.
+       */
+      references?: string[];
       limite: number;
     }
   | { type: "bouton"; texte: string; href: string };
@@ -1268,6 +1298,15 @@ export const pages = pgTable(
     title: text("title").notNull(),
     /** « active » (en ligne) ou « draft » (brouillon). */
     status: text("status").notNull().default("draft"),
+    /**
+     * Où la page se montre : « site », « stand », ou « les-deux ».
+     *
+     * La tablette du salon et la boutique n'ont pas les mêmes besoins — un mode
+     * d'emploi du configurateur n'a rien à faire en ligne, et les conditions de
+     * vente à distance n'ont rien à faire sur un stand. Par défaut « site » :
+     * une page écrite sans y penser va là où l'on écrit d'ordinaire.
+     */
+    affichage: text("affichage").notNull().default("site"),
     /**
      * Ce que Google affiche. Vides, la page retombe sur son titre : un repli
      * acceptable, pas un choix éditorial.

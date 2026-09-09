@@ -7,13 +7,20 @@
  * l'écart se paierait en frais de port perdus.
  *
  * Trois niveaux, du plus précis au plus général :
- *   1. la VARIANTE  — un A3 pèse plus qu'un A4 ;
- *   2. le PRODUIT   — quand toutes ses variantes pèsent pareil ;
- *   3. la CATÉGORIE — « une affiche pèse 60 g », dit une fois pour toutes.
+ *   1. la VARIANTE   — un A3 pèse plus qu'un A4 ;
+ *   2. le PRODUIT    — quand toutes ses variantes pèsent pareil ;
+ *   3. la COLLECTION — « une affiche pèse 60 g », dit une fois pour toutes.
  *
  * On ne recopie jamais la valeur d'un niveau à l'autre : corriger le poids
- * d'une catégorie doit corriger d'un coup tout ce qui n'a pas été réglé à la
+ * d'une collection doit corriger d'un coup tout ce qui n'a pas été réglé à la
  * main. Un niveau vaut donc « non renseigné », pas « zéro ».
+ *
+ * Un produit peut appartenir à PLUSIEURS collections, qui n'annoncent pas
+ * forcément le même poids. Le choix entre elles ne se fait pas ici : c'est à
+ * l'appelant, qui sait lesquelles, de retenir LA PLUS LOURDE de celles qui en
+ * déclarent une. Un colis sous-affranchi coûte plus cher qu'un colis surestimé,
+ * et c'est l'erreur qu'on ne voit pas passer : le second se paie en centimes
+ * d'avance, le premier revient en surtaxe, en retard, ou en colis refusé.
  */
 
 /** Un entier de grammes, ou rien. Les valeurs absurdes sont écartées. */
@@ -28,8 +35,11 @@ export interface SourcePoids {
   varianteGrammes?: number | null;
   /** Poids porté par le produit. */
   produitGrammes?: number | null;
-  /** Poids par défaut de la catégorie du produit. */
-  categorieGrammes?: number | null;
+  /**
+   * Poids par défaut retenu parmi les collections du produit : la plus lourde
+   * de celles qui en déclarent un. L'appelant l'a déjà tranché.
+   */
+  collectionGrammes?: number | null;
   /** Poids du cadre, quand il est vendu avec l'affiche. */
   cadreGrammes?: number | null;
 }
@@ -44,7 +54,7 @@ export function poidsArticle(source: SourcePoids): number {
   const base =
     grammes(source.varianteGrammes) ??
     grammes(source.produitGrammes) ??
-    grammes(source.categorieGrammes) ??
+    grammes(source.collectionGrammes) ??
     0;
   return base + (grammes(source.cadreGrammes) ?? 0);
 }

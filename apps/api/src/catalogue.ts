@@ -3,15 +3,20 @@
  *
  * Le poids n'a qu'un usage : décider de la tranche d'affranchissement. Il est
  * donc traité comme un réglage de catalogue, pas comme une donnée technique —
- * la cliente le saisit une fois par catégorie (« une affiche pèse 60 g »), et
+ * la cliente le saisit une fois par collection (« une affiche pèse 60 g »), et
  * ne le reprend produit par produit que lorsqu'un article sort de l'ordinaire.
+ * Les catégories, elles, n'ont jamais reçu une seule ligne : leurs routes
+ * restent servies, mais ce sont les collections qui portent le poids.
  *
- * La résolution en cascade (variante → produit → catégorie) vit dans
+ * La résolution en cascade (variante → produit → collection) vit dans
  * `@memoryline/types` (poids.ts) pour que la boutique, l'API et le back-office
- * ne puissent pas en donner trois réponses différentes.
+ * ne puissent pas en donner trois réponses différentes. Quand un produit est
+ * rangé dans plusieurs collections, c'est LA PLUS LOURDE de celles qui se
+ * prononcent qui l'emporte (voir `poidsDesCollections`).
  */
 import type { Hono } from "hono";
 import { and, asc, count, eq, inArray, isNull, sql as raw } from "drizzle-orm";
+import { poidsDesCollections } from "./collections.js";
 import { db, schema } from "./db/client.js";
 
 /** Slug lisible et stable : accents retirés, tout en minuscules. */
@@ -157,10 +162,11 @@ export function mountCatalogueRoutes(app: Hono): void {
   /* ---------------------------------------------------------------------- */
 
   /**
-   * Ce qu'il faut pour régler le poids d'un produit : sa catégorie, son poids
-   * propre, celui de chaque variante, et le poids effectif qui en découle.
+   * Ce qu'il faut pour régler le poids d'un produit : ses collections, son
+   * poids propre, celui de chaque variante, et le poids effectif qui en
+   * découle.
    *
-   * Le back-office affiche « 60 g (de la catégorie Affiches) » plutôt qu'un
+   * Le back-office affiche « 60 g (de la collection Villes) » plutôt qu'un
    * champ vide : c'est la seule façon de voir d'un coup d'œil ce qui sera
    * réellement pesé.
    */
@@ -187,6 +193,21 @@ export function mountCatalogueRoutes(app: Hono): void {
       .from(schema.productCategories)
       .orderBy(asc(schema.productCategories.position));
 
+    // Le poids annoncé par les collections du produit. La plus lourde
+    // l'emporte : un colis surestimé se paie quelques centimes, un colis
+    // sous-affranchi revient en surtaxe sans que rien ne l'ait signalé.
+    const liens = await db
+      .select({ defaultWeightGrams: schema.collections.defaultWeightGrams })
+      .from(schema.productCollections)
+      .innerJoin(
+        schema.collections,
+        eq(schema.productCollections.collectionId, schema.collections.id),
+      )
+      .where(eq(schema.productCollections.productId, id));
+    const poidsCollections = poidsDesCollections(
+      liens.map((l) => l.defaultWeightGrams),
+    );
+
     return c.json({
       produit: {
         id: produit.id,
@@ -203,10 +224,7 @@ export function mountCatalogueRoutes(app: Hono): void {
         weightGrams: v.weightGrams,
         /** Ce qui sera réellement pesé, cadre non compris. */
         poidsEffectif:
-          v.weightGrams ??
-          produit.weightGrams ??
-          categorie?.defaultWeightGrams ??
-          0,
+          v.weightGrams ?? produit.weightGrams ?? poidsCollections ?? 0,
       })),
     });
   });
@@ -277,10 +295,14 @@ export function mountCatalogueRoutes(app: Hono): void {
 
   /**
    * Les produits dont le poids est inconnu — ni sur la variante, ni sur le
-   * produit, ni sur une catégorie.
+   * produit, ni sur une seule de ses collections.
    *
    * C'est le garde-fou de tout le dispositif : un seul produit oublié suffit à
    * sous-affranchir un colis, et rien d'autre ne le signalerait.
+   *
+   * Un poids de zéro compte pour un poids manquant. Aucun colis ne pèse rien,
+   * et laisser passer ce zéro reviendrait à éteindre l'alerte exactement là où
+   * elle sert.
    */
   app.get("/admin/products/sans-poids", async (c) => {
     const rows = await db
@@ -290,14 +312,10 @@ export function mountCatalogueRoutes(app: Hono): void {
         slug: schema.products.slug,
       })
       .from(schema.products)
-      .leftJoin(
-        schema.productCategories,
-        eq(schema.products.categoryId, schema.productCategories.id),
-      )
       .where(
         and(
           isNull(schema.products.weightGrams),
-          raw`coalesce(${schema.productCategories.defaultWeightGrams}, 0) = 0`,
+          raw`not exists (select 1 from ${schema.productCollections} pc join ${schema.collections} col on col.id = pc.collection_id where pc.product_id = ${schema.products.id} and coalesce(col.default_weight_grams, 0) > 0)`,
           raw`not exists (select 1 from ${schema.variants} v where v.product_id = ${schema.products.id} and v.weight_grams is not null)`,
         ),
       )

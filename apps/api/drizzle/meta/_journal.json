@@ -239,6 +239,13 @@
       "when": 1788961734152,
       "tag": "0033_complete_gressill",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1788963019658,
+      "tag": "0034_sticky_magdalene",
+      "breakpoints": true
     }
   ]
 }
