@@ -82,6 +82,12 @@ export interface ProductDetail {
   slug: string;
   name: string;
   description: string | null;
+  /**
+   * Ce que la boutique veut voir dans Google. Vides, la page retombe sur le
+   * nom du produit et sur les premiers mots de la description.
+   */
+  seoTitle: string | null;
+  seoDescription: string | null;
   kind: ProductKind;
   basePriceCents: number;
   images: string[];

@@ -49,6 +49,7 @@ import { mountOrderRoutes } from "./commandes.js";
 import { mountCatalogueRoutes } from "./catalogue.js";
 import { mountProduitsMasse } from "./produits-masse.js";
 import { mountVentesProduit } from "./ventes-produit.js";
+import { mountFicheProduit } from "./fiche-produit.js";
 import { mountSalonRoutes } from "./salon.js";
 import { mountCompteRoutes } from "./comptes.js";
 import { mountIaRoutes } from "./ia.js";
@@ -320,6 +321,13 @@ app.get("/products/:slug", async (c) => {
     slug: product.slug,
     name: product.name,
     description: product.description,
+    /**
+     * Ce que la boutiquière veut voir dans Google. Vides, la page retombe sur
+     * le nom du produit et sur les premiers mots de sa description : c'est un
+     * repli acceptable, pas un choix éditorial.
+     */
+    seoTitle: product.seoTitle,
+    seoDescription: product.seoDescription,
     kind: product.kind,
     /**
      * Affiche tirée d'une photo du client. Ce n'est pas un autre genre de
@@ -937,6 +945,11 @@ mountProduitsMasse(app);
 
 // Ce qu'une affiche a rapporté, pour sa fiche produit.
 mountVentesProduit(app);
+
+// La fiche produit complète du back-office : contenu, médias, formats et
+// tarifs, stock, référencement. Un seul aller-retour pour lire, un seul pour
+// enregistrer, là où la page interrogeait quatre routes différentes.
+mountFicheProduit(app);
 
 // Commandes prises au stand : pas de prix a l'ecran, pas de paiement en ligne.
 mountSalonRoutes(app);

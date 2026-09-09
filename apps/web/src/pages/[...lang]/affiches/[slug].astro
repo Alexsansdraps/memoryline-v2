@@ -52,9 +52,16 @@ const kindLabel =
     ? tr("genre.personnalisable")
     : tr("genre.prete_a_imprimer");
 
+// Le texte du référencement, dans l'ordre : ce que la boutique a écrit
+// elle-même, puis le début de la description, puis une phrase de repli. Le
+// découpage à cent soixante caractères coupe au milieu d'un mot ; il ne sert
+// donc que faute de mieux.
 const description =
+  product.seoDescription?.trim() ||
   product.description?.replace(/<[^>]+>/g, "").slice(0, 160) ||
   `Affiche ${cleanName} — ${kindLabel.toLowerCase()}, imprimée en A4 ou A3. Memory Line.`;
+/** Le titre de l'onglet et du résultat Google, quand il doit différer du nom. */
+const titreSeo = product.seoTitle?.trim() || null;
 
 // --- Données structurées Schema.org (SEO riche) ------------------------
 const siteUrl = Astro.site?.toString().replace(/\/$/, "") ?? "https://memoryline.fr";
@@ -99,7 +106,7 @@ const breadcrumbLd = {
 
 <Base
   langue={langue}
-  title={`${cleanName} | Memory Line`}
+  title={titreSeo ?? `${cleanName} | Memory Line`}
   description={description}
   path={lien(langue, `/affiches/${product.slug}`)}
   type="product"

@@ -197,6 +197,73 @@ export interface ListeProduitsAdmin {
   compte: { tous: number; active: number; draft: number; archived: number };
 }
 
+/** Un format d'une affiche : c'est lui qui porte le prix réellement payé. */
+export interface VarianteFiche {
+  id: number;
+  format: string;
+  priceCents: number;
+  /** Prix barré affiché à côté du prix, quand il y en a un. */
+  compareAtCents: number | null;
+  /** Ce que le format coûte à produire, pour le calcul de la marge. */
+  costCents: number | null;
+  sku: string | null;
+  barcode: string | null;
+  /** Null = ce format prend le poids du produit. */
+  weightGrams: number | null;
+  poidsEffectif: number;
+  /** Null = stock non suivi, ce qui est le cas des affiches. */
+  stockQty: number | null;
+  stockPolicy: string;
+  widthMm: number | null;
+  heightMm: number | null;
+}
+
+/** Tout ce que la fiche produit du back-office affiche et enregistre. */
+export interface FicheProduit {
+  produit: {
+    id: number;
+    name: string;
+    slug: string;
+    description: string | null;
+    status: string;
+    kind: string;
+    vendor: string | null;
+    productType: string | null;
+    tags: string[];
+    seoTitle: string | null;
+    seoDescription: string | null;
+    categoryId: number | null;
+    weightGrams: number | null;
+    poidsEffectif: number;
+    aiEnabled: boolean;
+    basePriceCents: number;
+    createdAt: string;
+    updatedAt: string;
+  };
+  categories: { id: number; name: string; defaultWeightGrams: number }[];
+  collections: { id: number; name: string }[];
+  collectionsDuProduit: number[];
+  images: { id: number; url: string; alt: string | null; position: number }[];
+  variantes: VarianteFiche[];
+  /** Les étiquettes déjà posées ailleurs, proposées en suggestion. */
+  etiquettesConnues: string[];
+}
+
+/** Ce qu'une affiche a rapporté sur une période, remboursements déduits. */
+export interface VentesProduit {
+  produit: string | null;
+  jours: number;
+  debut: string;
+  fin: string;
+  unites: number;
+  acheteurs: number;
+  commandes: number;
+  ventesNettesCents: number;
+  serie: { jour: string; cents: number }[];
+  parCanal: { canal: string; unites: number; cents: number }[];
+  clients: { nouveaux: number; recurrents: number };
+}
+
 /** Tout ce qu'il faut pour régler le poids d'un produit et de ses formats. */
 export interface LogistiqueProduit {
   produit: {
@@ -1139,9 +1206,12 @@ export function adminApi(request?: Request) {
       q?: string;
       categorie?: number;
       collection?: number;
+      /** Demander précisément ces produits-là, sans charger tout le reste. */
+      ids?: number[];
       limit?: number;
     }) => {
       const p = new URLSearchParams();
+      if (params?.ids?.length) p.set("ids", params.ids.join(","));
       if (params?.statut && params.statut !== "tous") p.set("statut", params.statut);
       if (params?.q) p.set("q", params.q);
       if (params?.categorie) p.set("categorie", String(params.categorie));
@@ -1155,6 +1225,20 @@ export function adminApi(request?: Request) {
         cookie,
       );
     },
+    /** La fiche complète d'un produit, en un seul appel. */
+    ficheProduit: (id: number) =>
+      req<FicheProduit>("GET", `/admin/products/${id}/fiche`, undefined, cookie),
+    /** Enregistre la fiche. Les clés absentes ne sont pas touchées. */
+    enregistrerFicheProduit: (id: number, corps: Record<string, unknown>) =>
+      req<{ ok: true }>("POST", `/admin/products/${id}/fiche`, corps, cookie),
+    /** Ce que cette affiche a rapporté sur les derniers jours. */
+    ventesProduit: (id: number, jours = 90) =>
+      req<VentesProduit>(
+        "GET",
+        `/admin/products/${id}/ventes?jours=${jours}`,
+        undefined,
+        cookie,
+      ),
     /** Une même action appliquée à plusieurs produits d'un coup. */
     produitsEnMasse: (
       ids: number[],

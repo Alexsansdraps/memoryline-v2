@@ -1,0 +1,533 @@
+---
+/**
+ * Éditeur de texte mis en forme pour le back-office.
+ *
+ * La description d'une affiche part telle quelle dans la page publique, qui
+ * l'insère en HTML. Elle se saisissait pourtant dans une zone de texte brute :
+ * la propriétaire de la boutique devait écrire ses balises à la main, ce
+ * qu'elle ne sait pas faire et qui casse la fiche à la moindre balise oubliée.
+ * Ce composant remplace cette zone par un cadre où le texte s'affiche déjà mis
+ * en forme, avec une barre de sept boutons.
+ *
+ * Le HTML réel ne quitte jamais le champ caché qui porte le `name` d'origine :
+ * le formulaire POST existant et l'API en face n'ont donc rien à changer.
+ *
+ * Rien n'est importé : l'authentification de ce dépôt est elle aussi écrite à
+ * la main plutôt que déléguée à une bibliothèque. Un éditeur maison de deux
+ * cents lignes se relit, se corrige et ne vieillit pas tout seul.
+ *
+ * `document.execCommand` est marqué déprécié et « astro check » le signale.
+ * Il n'a pourtant aucun remplaçant normalisé, il fonctionne dans tous les
+ * navigateurs visés, et le réécrire à la main demanderait de gérer soi-même la
+ * sélection et l'annulation. Le nettoyage ci-dessous ne lui fait de toute
+ * façon aucune confiance : quoi qu'il produise, seule la liste blanche sort.
+ *
+ * Le HTML admis se limite à p, br, strong, em, u, ul, ol, li et a. Tout ce qui
+ * dépasse est retiré au chargement comme à l'enregistrement, y compris ce qui
+ * arrive par un collage depuis Word ou une page web. La liste blanche vit dans
+ * le script du navigateur, jamais ici : nettoyer deux fois avec deux codes
+ * différents finit toujours par donner deux résultats différents.
+ */
+interface Props {
+  /** `name` du champ envoyé au serveur, repris tel quel par le champ caché. */
+  nom: string;
+  /** HTML déjà enregistré. Il est nettoyé par le navigateur avant affichage. */
+  valeur?: string | null;
+  /** Texte grisé tant que l'éditeur est vide. Du texte simple, pas du HTML. */
+  invite?: string;
+  /** Ce que lit un lecteur d'écran en entrant dans le cadre. */
+  etiquette: string;
+}
+
+const { nom, valeur, invite, etiquette } = Astro.props;
+
+/**
+ * Un `id` tiré au sort par instance. La page des affiches montre un éditeur
+ * par langue : sans ça, l'invite de l'anglais porterait le même identifiant
+ * que celle de l'espagnol et les liens d'accessibilité pointeraient au hasard.
+ */
+const cle = `editeur-${Math.random().toString(36).slice(2, 10)}`;
+const idZone = `${cle}-zone`;
+const idInvite = `${cle}-invite`;
+
+/** Le style commun aux sept boutons, écrit une fois plutôt que sept. */
+const bouton =
+  "flex h-7 w-7 items-center justify-center rounded text-bo-muted " +
+  "hover:bg-bo-surface hover:text-bo-ink";
+---
+
+<div class="mt-1 overflow-hidden rounded border border-bo-border">
+  <div
+    data-barre
+    role="toolbar"
+    aria-label={`Mise en forme : ${etiquette}`}
+    aria-controls={idZone}
+    class="flex flex-wrap items-center gap-0.5 border-b border-bo-border bg-bo-bg px-1.5 py-1"
+  >
+    <button
+      type="button"
+      data-commande="bold"
+      data-etat="bold"
+      aria-pressed="false"
+      title="Gras"
+      aria-label="Gras"
+      class={`${bouton} font-bold`}>G</button
+    >
+    <button
+      type="button"
+      data-commande="italic"
+      data-etat="italic"
+      aria-pressed="false"
+      title="Italique"
+      aria-label="Italique"
+      class={`${bouton} font-serif italic`}>I</button
+    >
+
+    <span class="mx-1 h-5 w-px bg-bo-border" aria-hidden="true"></span>
+
+    <button
+      type="button"
+      data-commande="insertUnorderedList"
+      data-etat="insertUnorderedList"
+      aria-pressed="false"
+      title="Liste à puces"
+      aria-label="Liste à puces"
+      class={bouton}
+    >
+      <svg
+        viewBox="0 0 16 16"
+        class="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        aria-hidden="true"
+      >
+        <circle cx="2.5" cy="4" r="1.1" fill="currentColor" stroke="none"></circle>
+        <circle cx="2.5" cy="8" r="1.1" fill="currentColor" stroke="none"></circle>
+        <circle cx="2.5" cy="12" r="1.1" fill="currentColor" stroke="none"></circle>
+        <path d="M6 4h8M6 8h8M6 12h8"></path>
+      </svg>
+    </button>
+    <button
+      type="button"
+      data-commande="insertOrderedList"
+      data-etat="insertOrderedList"
+      aria-pressed="false"
+      title="Liste numérotée"
+      aria-label="Liste numérotée"
+      class={bouton}
+    >
+      <svg
+        viewBox="0 0 16 16"
+        class="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        aria-hidden="true"
+      >
+        <path d="M6 4h8M6 8h8M6 12h8"></path>
+        <text
+          x="0.6"
+          y="5.4"
+          font-size="5"
+          fill="currentColor"
+          stroke="none"
+          font-family="inherit">1</text
+        >
+        <text
+          x="0.6"
+          y="9.6"
+          font-size="5"
+          fill="currentColor"
+          stroke="none"
+          font-family="inherit">2</text
+        >
+        <text
+          x="0.6"
+          y="13.8"
+          font-size="5"
+          fill="currentColor"
+          stroke="none"
+          font-family="inherit">3</text
+        >
+      </svg>
+    </button>
+
+    <span class="mx-1 h-5 w-px bg-bo-border" aria-hidden="true"></span>
+
+    <button
+      type="button"
+      data-commande="lien"
+      title="Insérer un lien"
+      aria-label="Insérer un lien"
+      class={bouton}
+    >
+      <svg
+        viewBox="0 0 16 16"
+        class="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.4"
+        stroke-linecap="round"
+        aria-hidden="true"
+      >
+        <path d="M6.5 9.5 9.5 6.5"></path>
+        <path d="M7 4.5 8.6 2.9a2.6 2.6 0 0 1 3.7 3.7L10.7 8.2"></path>
+        <path d="M9 11.5 7.4 13.1a2.6 2.6 0 0 1-3.7-3.7L5.3 7.8"></path>
+      </svg>
+    </button>
+    <button
+      type="button"
+      data-commande="unlink"
+      title="Retirer le lien"
+      aria-label="Retirer le lien"
+      class={bouton}
+    >
+      <svg
+        viewBox="0 0 16 16"
+        class="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.4"
+        stroke-linecap="round"
+        aria-hidden="true"
+      >
+        <path d="M7 4.5 8.6 2.9a2.6 2.6 0 0 1 3.7 3.7L10.7 8.2"></path>
+        <path d="M9 11.5 7.4 13.1a2.6 2.6 0 0 1-3.7-3.7L5.3 7.8"></path>
+        <path d="M2.5 2.5 13.5 13.5"></path>
+      </svg>
+    </button>
+
+    <span class="mx-1 h-5 w-px bg-bo-border" aria-hidden="true"></span>
+
+    <button
+      type="button"
+      data-commande="removeFormat"
+      title="Effacer la mise en forme"
+      aria-label="Effacer la mise en forme"
+      class={bouton}
+    >
+      <svg
+        viewBox="0 0 16 16"
+        class="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.4"
+        stroke-linecap="round"
+        aria-hidden="true"
+      >
+        <path d="M6 3h7"></path>
+        <path d="M9.5 3 7 13"></path>
+        <path d="M3 13h6"></path>
+        <path d="M11 9.5 14 12.5M14 9.5 11 12.5"></path>
+      </svg>
+    </button>
+  </div>
+
+  <div class="relative bg-bo-surface">
+    <div
+      id={idZone}
+      data-zone
+      contenteditable="true"
+      role="textbox"
+      aria-multiline="true"
+      aria-label={etiquette}
+      aria-describedby={invite ? idInvite : undefined}
+      class="min-h-32 max-h-96 overflow-y-auto px-3 py-2 text-sm outline-none [&_a]:text-bo-accent [&_a]:underline [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-2 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6"
+    >
+    </div>
+    {
+      invite && (
+        <div
+          id={idInvite}
+          data-invite
+          aria-hidden="true"
+          class="pointer-events-none absolute inset-0 overflow-hidden px-3 py-2 text-sm whitespace-pre-wrap text-bo-muted"
+        >{/* Collé aux balises : « whitespace-pre-wrap » afficherait sinon
+             l'indentation de ce fichier comme un retrait du texte. */}{invite}</div>
+      )
+    }
+  </div>
+
+  {/* Le seul champ que le serveur voit. Il part avec le HTML nettoyé. */}
+  <input type="hidden" data-champ name={nom} value={valeur ?? ""} />
+
+  <script is:inline>
+    (function () {
+      // Chaque instance retrouve SON bloc en remontant depuis son propre
+      // <script> : deux éditeurs sur la même page ne peuvent donc pas se
+      // prendre l'un pour l'autre, et cette fonction ne laisse derrière elle
+      // aucune variable que la voisine pourrait écraser.
+      var racine = document.currentScript && document.currentScript.parentElement;
+      if (!racine) return;
+      var zone = racine.querySelector("[data-zone]");
+      var champ = racine.querySelector("[data-champ]");
+      var barre = racine.querySelector("[data-barre]");
+      var invite = racine.querySelector("[data-invite]");
+      if (!zone || !champ || !barre) return;
+
+      var AUTORISEES = ["P", "BR", "STRONG", "EM", "U", "UL", "OL", "LI", "A"];
+      // Ces balises partent AVEC leur contenu, au lieu d'être remplacées par
+      // lui : un copier-coller depuis Word arrive avec un <style> de plusieurs
+      // centaines de lignes, qui se lirait sinon en clair dans la description.
+      var A_JETER = [
+        "SCRIPT",
+        "STYLE",
+        "HEAD",
+        "TITLE",
+        "NOSCRIPT",
+        "TEMPLATE",
+        "IFRAME",
+        "OBJECT",
+        "SVG",
+        "MATH",
+      ];
+      // Le navigateur écrit <b>, <i> et <div> dans un contenteditable, et Word
+      // colle des titres. Les renommer plutôt que les jeter garde le gras, les
+      // italiques et les sauts de ligne que la personne vient de poser.
+      var RENOMMAGES = {
+        B: "strong",
+        I: "em",
+        DIV: "p",
+        H1: "p",
+        H2: "p",
+        H3: "p",
+        H4: "p",
+        H5: "p",
+        H6: "p",
+      };
+      var ADRESSE_SURE = /^(https?:\/\/|mailto:)/i;
+
+      /** Remplace un élément par son contenu, sans rien perdre du texte. */
+      function deballer(el) {
+        var parent = el.parentNode;
+        if (!parent) return;
+        while (el.firstChild) parent.insertBefore(el.firstChild, el);
+        parent.removeChild(el);
+      }
+
+      /** Change la balise d'un élément en gardant ses enfants en place. */
+      function renommer(el, balise) {
+        var neuf = el.ownerDocument.createElement(balise);
+        while (el.firstChild) neuf.appendChild(el.firstChild);
+        el.replaceWith(neuf);
+        return neuf;
+      }
+
+      function nettoyerEnfants(parent) {
+        var enfants = Array.prototype.slice.call(parent.childNodes);
+        for (var i = 0; i < enfants.length; i++) {
+          var noeud = enfants[i];
+          if (noeud.nodeType === 3) continue;
+          if (noeud.nodeType !== 1) {
+            if (noeud.parentNode) noeud.parentNode.removeChild(noeud);
+            continue;
+          }
+          var el = noeud;
+          // Mis en capitales à la main : `tagName` ne l'est que pour le HTML,
+          // un <svg> ou un <math> collés gardent leur casse d'origine et
+          // passeraient à travers des comparaisons directes.
+          var nom = el.tagName.toUpperCase();
+          if (A_JETER.indexOf(nom) !== -1) {
+            if (el.parentNode) el.parentNode.removeChild(el);
+            continue;
+          }
+          if (RENOMMAGES[nom]) {
+            el = renommer(el, RENOMMAGES[nom]);
+            nom = el.tagName;
+          }
+          // En profondeur d'abord : un enfant refusé doit être déballé avant
+          // que son parent ne le soit à son tour, sinon il ressort tel quel.
+          nettoyerEnfants(el);
+          if (AUTORISEES.indexOf(nom) === -1) {
+            deballer(el);
+            continue;
+          }
+          var adresse = nom === "A" ? (el.getAttribute("href") || "").trim() : "";
+          while (el.attributes.length) el.removeAttribute(el.attributes[0].name);
+          if (nom === "A") {
+            if (ADRESSE_SURE.test(adresse)) el.setAttribute("href", adresse);
+            else deballer(el);
+            continue;
+          }
+          // Mettre un paragraphe en liste laisse derrière lui un <p></p> sans
+          // le moindre enfant, que la fiche publique afficherait en blanc. Un
+          // <p><br></p> a lui un enfant : la ligne vide voulue est gardée.
+          if (nom !== "BR" && !el.firstChild && el.parentNode) {
+            el.parentNode.removeChild(el);
+          }
+        }
+      }
+
+      /**
+       * Le HTML entrant repasse toujours par ici, qu'il vienne de la base, du
+       * presse-papiers ou du contenteditable. DOMParser travaille dans un
+       * document inerte : ni script ni image ne s'exécute pendant le tri.
+       */
+      function nettoyer(html) {
+        var doc = new DOMParser().parseFromString(
+          "<!doctype html><body>" + html,
+          "text/html",
+        );
+        nettoyerEnfants(doc.body);
+        return doc.body.innerHTML;
+      }
+
+      /** Texte simple vers HTML, pour un collage sans mise en forme. */
+      function enTexteSimple(texte) {
+        var boite = document.createElement("div");
+        boite.textContent = texte;
+        return boite.innerHTML.replace(/\r?\n/g, "<br>");
+      }
+
+      /**
+       * Un éditeur vidé rend une chaîne vide et non le <p><br></p> que laisse
+       * le navigateur : côté API, « vide » veut dire « pas de traduction », et
+       * un paragraphe fantôme ferait passer la langue pour traduite.
+       */
+      function synchroniser() {
+        var vide = !(zone.textContent || "").trim();
+        champ.value = vide ? "" : nettoyer(zone.innerHTML);
+        if (invite) invite.classList.toggle("hidden", !vide);
+      }
+
+      // Écrites ici en toutes lettres pour que Tailwind les trouve en lisant
+      // le fichier : une classe assemblée à l'exécution n'existerait pas dans
+      // la feuille de style produite.
+      var CLASSES_ACTIF = ["bg-bo-surface", "text-bo-accent"];
+
+      /** Le gras, l'italique et les listes s'allument selon l'endroit du texte
+       *  où se trouve le curseur : sans ça, impossible de savoir ce qui est
+       *  déjà appliqué avant de cliquer. */
+      function rafraichirBoutons() {
+        var boutons = barre.querySelectorAll("[data-etat]");
+        for (var i = 0; i < boutons.length; i++) {
+          var actif = false;
+          try {
+            actif = document.queryCommandState(boutons[i].dataset.etat);
+          } catch (e) {
+            actif = false;
+          }
+          boutons[i].setAttribute("aria-pressed", actif ? "true" : "false");
+          for (var j = 0; j < CLASSES_ACTIF.length; j++) {
+            boutons[i].classList.toggle(CLASSES_ACTIF[j], actif);
+          }
+          // La couleur de repos part vraiment, plutôt que de compter sur
+          // l'ordre des règles dans la feuille produite pour la recouvrir.
+          boutons[i].classList.toggle("text-bo-muted", !actif);
+        }
+      }
+
+      function selectionDansZone() {
+        var sel = document.getSelection();
+        return !!(sel && sel.rangeCount && zone.contains(sel.anchorNode));
+      }
+
+      function poserLien(portee) {
+        var adresse = window.prompt(
+          "Adresse du lien (https://... ou mailto:...)",
+          "https://",
+        );
+        if (adresse === null) return;
+        adresse = adresse.trim();
+        if (!ADRESSE_SURE.test(adresse)) {
+          window.alert(
+            "Adresse refusée. Elle doit commencer par https://, http:// ou mailto:.",
+          );
+          return;
+        }
+        // La fenêtre du navigateur a pris le focus : sans cette remise en
+        // place, le lien se poserait au début du texte ou nulle part.
+        zone.focus();
+        var sel = document.getSelection();
+        if (portee && sel) {
+          sel.removeAllRanges();
+          sel.addRange(portee);
+        }
+        if (sel && sel.isCollapsed) {
+          // Rien n'est sélectionné : on écrit l'adresse et on la rend cliquable
+          // d'un coup, plutôt que de ne rien faire comme le ferait createLink.
+          var a = document.createElement("a");
+          a.setAttribute("href", adresse);
+          a.textContent = adresse;
+          document.execCommand("insertHTML", false, a.outerHTML);
+        } else {
+          document.execCommand("createLink", false, adresse);
+        }
+      }
+
+      var porteeMemorisee = null;
+      barre.addEventListener("mousedown", function (ev) {
+        // Le clic ne doit pas sortir le curseur du texte, sinon la commande
+        // s'appliquerait à une sélection déjà perdue.
+        if (ev.target.closest("button")) ev.preventDefault();
+        var sel = document.getSelection();
+        porteeMemorisee =
+          selectionDansZone() && sel ? sel.getRangeAt(0).cloneRange() : null;
+      });
+
+      barre.addEventListener("click", function (ev) {
+        var bouton = ev.target.closest("[data-commande]");
+        if (!bouton) return;
+        var commande = bouton.dataset.commande;
+        if (commande === "lien") {
+          poserLien(porteeMemorisee);
+        } else {
+          if (!selectionDansZone()) zone.focus();
+          document.execCommand(commande, false);
+        }
+        synchroniser();
+        rafraichirBoutons();
+      });
+
+      zone.addEventListener("paste", function (ev) {
+        // Un collage brut depuis Word emmène ses polices, ses tailles et ses
+        // couleurs jusque dans la page publique. On ne garde que le texte et
+        // les balises de la liste blanche.
+        ev.preventDefault();
+        var presse = ev.clipboardData;
+        if (!presse) return;
+        var html = presse.getData("text/html");
+        var contenu = html
+          ? nettoyer(html)
+          : enTexteSimple(presse.getData("text/plain"));
+        document.execCommand("insertHTML", false, contenu);
+        synchroniser();
+      });
+
+      zone.addEventListener("input", synchroniser);
+      zone.addEventListener("keyup", rafraichirBoutons);
+      zone.addEventListener("mouseup", rafraichirBoutons);
+      zone.addEventListener("focus", rafraichirBoutons);
+      zone.addEventListener("blur", function () {
+        // Sans ça, l'éditeur que l'on vient de quitter garderait son « G »
+        // allumé pendant qu'on écrit dans celui d'à côté : deux barres
+        // s'annonceraient en gras alors qu'une seule l'est.
+        var boutons = barre.querySelectorAll("[data-etat]");
+        for (var i = 0; i < boutons.length; i++) {
+          boutons[i].setAttribute("aria-pressed", "false");
+          for (var j = 0; j < CLASSES_ACTIF.length; j++) {
+            boutons[i].classList.remove(CLASSES_ACTIF[j]);
+          }
+          boutons[i].classList.add("text-bo-muted");
+        }
+      });
+
+      // Le navigateur enferme chaque ligne dans un <div> par défaut. Un <p>
+      // survit à la liste blanche et donne au site les mêmes paragraphes que
+      // ceux vus ici.
+      try {
+        document.execCommand("defaultParagraphSeparator", false, "p");
+        document.execCommand("styleWithCSS", false, false);
+      } catch (e) {
+        // Réglages de confort : le nettoyage rattrape ce qu'ils auraient évité.
+      }
+
+      var depart = nettoyer(champ.value);
+      zone.innerHTML = depart.trim() ? depart : "<p><br></p>";
+      synchroniser();
+    })();
+  </script>
+</div>

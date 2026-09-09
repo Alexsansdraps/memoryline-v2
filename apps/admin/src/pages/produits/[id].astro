@@ -1,16 +1,40 @@
 ---
+/**
+ * Fiche d'une affiche : tout ce qui se règle affiche par affiche.
+ *
+ * Cet écran n'était jusqu'ici que « la configuration du configurateur » : les
+ * fonds proposés au client, le type d'affiche, les textes pré-remplis. Le nom,
+ * la description française, les prix, les images de la boutique et le
+ * référencement se modifiaient encore ailleurs. Tout cela vit ici désormais,
+ * dans la disposition à laquelle la boutique est habituée : à gauche ce qui
+ * décrit et compose l'affiche, à droite ce qui la classe et ce qu'elle
+ * rapporte, les deux colonnes se remettant l'une sous l'autre sur un écran
+ * étroit.
+ *
+ * Chaque bloc garde son propre bouton d'enregistrement plutôt qu'un bouton
+ * unique en haut de page, pour deux raisons : les blocs du configurateur
+ * parlent à d'autres routes de l'API que la fiche elle-même, et un formulaire
+ * HTML ne peut pas en contenir un autre. Un bloc n'envoie donc que ses propres
+ * champs, et l'API ne touche pas au reste : ce qui n'a pas été envoyé n'est
+ * jamais effacé.
+ */
 import { formaterPoids } from "@memoryline/types";
 import { url } from "../../lib/url.ts";
 import Admin from "../../layouts/Admin.astro";
+import EditeurTexte from "../../components/EditeurTexte.astro";
 import {
   adminApi,
+  formatPrice,
+  type FicheProduit,
   type LogistiqueProduit,
   type ProductConfig,
   type TypeAffiche,
+  type VentesProduit,
 } from "../../lib/api.ts";
 
 const api = adminApi(Astro.request);
 const { id } = Astro.params;
+const idProduit = Number(id);
 
 // URL publique de l'API, joignable depuis le navigateur (fetch client) et pour
 // résoudre les chemins d'images "/assets/...".
@@ -24,6 +48,24 @@ function imgSrc(url: string | null | undefined): string {
   return url.startsWith("http") ? url : `${PUBLIC_API_URL}${url}`;
 }
 
+/**
+ * L'adresse publique de la boutique, telle qu'un client la voit. Elle sert à
+ * l'aperçu du référencement : montrer « localhost » à la place du vrai nom de
+ * domaine rendrait cet aperçu inutile.
+ */
+function originePublique(): string {
+  const annoncee: unknown =
+    import.meta.env.PUBLIC_SITE_URL ?? import.meta.env.PUBLIC_ORIGIN;
+  if (typeof annoncee === "string" && annoncee.trim())
+    return annoncee.trim().replace(/\/+$/, "");
+  const entetes = Astro.request.headers;
+  const hote = entetes.get("x-forwarded-host") ?? entetes.get("host");
+  const protocole =
+    entetes.get("x-forwarded-proto") ?? Astro.url.protocol.replace(":", "");
+  return hote ? `${protocole}://${hote}` : Astro.url.origin;
+}
+const ORIGINE_PUBLIQUE = originePublique();
+
 // --- Enregistrement des défauts (SSR) ----------------------------------
 // Le bouton « Appliquer » (lignes de texte / position / décor) passe par un
 // POST classique, même pattern robuste que promotions / personnages. Les
@@ -35,6 +77,37 @@ const LANGUES_TRADUISIBLES = [
   { code: "es", nom: "Espagnol" },
 ] as const;
 
+/**
+ * Les trois statuts, avec les mots de la boutique. « Désactivé » se dit
+ * « draft » en base : c'est le mot du logiciel, jamais celui de l'écran.
+ */
+const STATUTS = [
+  {
+    valeur: "active",
+    nom: "Actif",
+    explication: "L'affiche est en vente sur le site.",
+    pastille: "bg-green-100 text-green-800",
+  },
+  {
+    valeur: "draft",
+    nom: "Désactivé",
+    explication: "L'affiche n'apparaît plus en boutique et ne peut pas être achetée.",
+    pastille: "bg-amber-100 text-amber-900",
+  },
+  {
+    valeur: "archived",
+    nom: "Archivé",
+    explication:
+      "L'affiche n'apparaît plus en boutique et sort des listes de travail. Ses anciennes commandes restent intactes.",
+    pastille: "bg-bo-bg text-bo-muted",
+  },
+] as const;
+
+const NOM_CANAL: Record<string, string> = {
+  web: "Boutique en ligne",
+  salon: "Ventes au stand",
+};
+
 /** Grammes saisis -> entier, ou null : « vide » veut dire « hérite ». */
 function grammes(v: FormDataEntryValue | null | undefined): number | null {
   const t = String(v ?? "").replace(",", ".").trim();
@@ -44,16 +117,135 @@ function grammes(v: FormDataEntryValue | null | undefined): number | null {
 }
 
 /**
+ * Les entiers de la base s'arrêtent à 2 147 483 647. Un montant plus grand
+ * fait échouer l'écriture sur un message que personne ne peut comprendre :
+ * autant refuser ici, en français, avant d'écrire quoi que ce soit.
+ */
+const MAX_ENTIER = 2147483647;
+
+/** Une valeur lue dans un formulaire : acceptée, ou refusée avec sa raison. */
+type Lu<T> = { ok: true; valeur: T } | { ok: false; raison: string };
+
+/**
+ * Un montant saisi en euros, rendu en centimes.
+ *
+ * La règle qui compte est celle du champ vide : il ne vaut JAMAIS zéro. Un
+ * prix effacé par mégarde mettrait l'affiche à 0 € en boutique, et personne ne
+ * s'en apercevrait avant la première commande. Un prix vide est donc refusé,
+ * et une saisie incompréhensible l'est aussi : on ne devine pas à la place de
+ * la personne qui écrit.
+ */
+function lireEuros(
+  brut: FormDataEntryValue | null | undefined,
+  quoi: string,
+  obligatoire: boolean,
+): Lu<number | null> {
+  const saisi = String(brut ?? "").trim();
+  const t = saisi.replace(/[\s €]/g, "").replace(",", ".");
+  if (!t) {
+    return obligatoire
+      ? {
+          ok: false,
+          raison: `${quoi} : le prix est vide. Écrivez un montant, par exemple 24,90.`,
+        }
+      : { ok: true, valeur: null };
+  }
+  const m = /^(\d+)(?:\.(\d{1,2}))?$/.exec(t);
+  if (!m)
+    return {
+      ok: false,
+      raison: `${quoi} : « ${saisi} » n'est pas un montant. Écrivez par exemple 24,90.`,
+    };
+  const centimes = Number(m[1] ?? "0") * 100 + Number((m[2] ?? "").padEnd(2, "0"));
+  if (!Number.isSafeInteger(centimes) || centimes > MAX_ENTIER)
+    return { ok: false, raison: `${quoi} : ce montant est beaucoup trop grand.` };
+  return { ok: true, valeur: centimes };
+}
+
+/** Un nombre entier saisi (poids, stock). Vide veut dire « pas de valeur ». */
+function lireEntier(
+  brut: FormDataEntryValue | null | undefined,
+  quoi: string,
+  negatifAutorise = false,
+): Lu<number | null> {
+  const saisi = String(brut ?? "").trim();
+  const t = saisi.replace(/[\s ]/g, "");
+  if (!t) return { ok: true, valeur: null };
+  const motif = negatifAutorise ? /^-?\d+$/ : /^\d+$/;
+  if (!motif.test(t))
+    return {
+      ok: false,
+      raison: `${quoi} : « ${saisi} » n'est pas un nombre entier${
+        negatifAutorise ? "" : " positif"
+      }.`,
+    };
+  const n = Number(t);
+  if (!Number.isSafeInteger(n) || Math.abs(n) > MAX_ENTIER)
+    return { ok: false, raison: `${quoi} : ce nombre est beaucoup trop grand.` };
+  return { ok: true, valeur: n };
+}
+
+/**
+ * L'adresse de la page (le « slug »). Elle n'est jamais corrigée en douce :
+ * une adresse réécrite dans le dos de la personne casse silencieusement les
+ * liens déjà partagés. On refuse, et on propose la forme attendue.
+ */
+function lireAdresse(brut: FormDataEntryValue | null | undefined): Lu<string> {
+  const t = String(brut ?? "").trim();
+  if (!t)
+    return {
+      ok: false,
+      raison:
+        "L'adresse de la page est vide. Écrivez par exemple affiche-colmar.",
+    };
+  if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(t)) return { ok: true, valeur: t };
+  // « NFD » sépare « é » en « e » suivi de son accent : ne garder ensuite que
+  // l'ASCII imprimable retire les accents sans abîmer les lettres.
+  const propose = t
+    .normalize("NFD")
+    .replace(/[^\x20-\x7E]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return {
+    ok: false,
+    raison:
+      `L'adresse « ${t} » ne convient pas : uniquement des lettres sans accent, ` +
+      `des chiffres et des tirets.` +
+      (propose ? ` Essayez « ${propose} ».` : ""),
+  };
+}
+
+/**
+ * La marge d'un format, « 9,90 € (40 %) ». Elle n'est jamais enregistrée :
+ * elle se déduit du prix et du coût, ici au chargement et dans le navigateur
+ * à chaque frappe.
+ */
+function marge(prix: number, cout: number | null): string {
+  if (cout === null || prix <= 0) return "";
+  const ecart = prix - cout;
+  return `${formatPrice(ecart)} (${Math.round((ecart / prix) * 100)} %)`;
+}
+
+/** Centimes -> ce qui s'écrit dans un champ de prix : « 24,90 », ou rien. */
+function enEuros(cents: number | null | undefined): string {
+  if (cents === null || cents === undefined) return "";
+  return (cents / 100).toFixed(2).replace(".", ",");
+}
+
+/**
  * Réglages IA de cette affiche. La réponse de l'écriture fait foi juste après
  * un enregistrement ; sinon l'état est lu sur la fiche, plus bas.
  */
 let ia: { aiEnabled: boolean; aiStylePrompt: string } | null = null;
 
 let flash: string | null = null;
+let flashErreur = false;
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
+  const action = String(form.get("_action") ?? "");
   try {
-    if (form.get("_action") === "ia") {
+    if (action === "ia") {
       const p = await api.setProductIa(id!, {
         aiEnabled: form.get("aiEnabled") === "on",
         aiStylePrompt: String(form.get("aiStylePrompt") ?? "").trim() || null,
@@ -62,7 +254,7 @@ if (Astro.request.method === "POST") {
       flash = p.aiEnabled
         ? "Génération par IA activée pour cette affiche."
         : "Génération par IA désactivée pour cette affiche.";
-    } else if (form.get("_action") === "expedition") {
+    } else if (action === "expedition") {
       const poidsVariantes = form.getAll("variantePoids");
       await api.setProductLogistique(id!, {
         categoryId: form.get("categoryId")
@@ -75,7 +267,7 @@ if (Astro.request.method === "POST") {
         })),
       });
       flash = "Expédition enregistrée.";
-    } else if (form.get("_action") === "traduction") {
+    } else if (action === "traduction") {
       const lang = String(form.get("lang") || "");
       await api.setProductTranslation(id!, {
         lang,
@@ -84,20 +276,228 @@ if (Astro.request.method === "POST") {
       });
       const nom = LANGUES_TRADUISIBLES.find((l) => l.code === lang)?.nom ?? lang;
       flash = `Traduction « ${nom} » enregistrée.`;
+    } else if (action === "infos") {
+      const nom = String(form.get("name") ?? "").trim();
+      if (!nom) {
+        flash =
+          "Le nom de l'affiche ne peut pas rester vide. Rien n'a été enregistré.";
+        flashErreur = true;
+      } else {
+        await api.enregistrerFicheProduit(idProduit, {
+          produit: {
+            name: nom,
+            description: String(form.get("description") ?? ""),
+          },
+        });
+        flash = "Nom et description enregistrés.";
+      }
+    } else if (action === "medias") {
+      // La liste voyage en JSON dans un champ caché : c'est le navigateur qui
+      // range les vignettes, et l'ORDRE du tableau fait la position. Un champ
+      // absent n'est pas une liste vide : on refuse plutôt que d'effacer.
+      const brut = form.get("imagesJson");
+      let recues: unknown = null;
+      try {
+        recues = brut === null ? null : JSON.parse(String(brut));
+      } catch {
+        recues = null;
+      }
+      if (!Array.isArray(recues)) {
+        flash =
+          "Les images n'ont pas pu être enregistrées. Rechargez la page et recommencez.";
+        flashErreur = true;
+      } else {
+        const nettoyees: { id?: number; url: string; alt: string | null }[] = [];
+        for (const entree of recues) {
+          if (typeof entree !== "object" || entree === null) continue;
+          const o = entree as { id?: unknown; url?: unknown; alt?: unknown };
+          const adresse = typeof o.url === "string" ? o.url.trim() : "";
+          if (!adresse) continue;
+          const ligne: { id?: number; url: string; alt: string | null } = {
+            url: adresse,
+            alt: typeof o.alt === "string" && o.alt.trim() ? o.alt.trim() : null,
+          };
+          const n = Number(o.id);
+          if (Number.isInteger(n) && n > 0) ligne.id = n;
+          nettoyees.push(ligne);
+        }
+        await api.enregistrerFicheProduit(idProduit, { images: nettoyees });
+        flash = nettoyees.length
+          ? "Images enregistrées."
+          : "Toutes les images ont été retirées de cette affiche.";
+      }
+    } else if (action === "tarification") {
+      const ids = form.getAll("varianteId");
+      const formats = form.getAll("varianteFormat");
+      const prix = form.getAll("variantePrix");
+      const prixBarres = form.getAll("variantePrixBarre");
+      const couts = form.getAll("varianteCout");
+      const skus = form.getAll("varianteSku");
+      const codes = form.getAll("varianteCodeBarres");
+      const poids = form.getAll("varianteTarifPoids");
+      const stocks = form.getAll("varianteStock");
+      const supprimes = form.getAll("varianteSupprimer");
+      // Le format et le prix d'avant la saisie : une ligne qu'on retire part
+      // avec eux, sans quoi une case vidée juste avant la suppression ferait
+      // échouer l'enregistrement pour rien.
+      const prixOrigine = form.getAll("variantePrixOrigine");
+      const formatsOrigine = form.getAll("varianteFormatOrigine");
+
+      const problemes: string[] = [];
+      const lignes: Record<string, unknown>[] = [];
+      const dejaVus = new Set<string>();
+
+      for (let i = 0; i < ids.length; i++) {
+        const idLigne = String(ids[i] ?? "").trim();
+        const format = String(formats[i] ?? "").trim();
+        const quoi = format ? `Format ${format}` : `Ligne ${i + 1}`;
+
+        // Une ligne retirée n'est pas relue : ce qu'elle contient n'a plus
+        // d'importance, seul son identifiant compte. Le format et le prix
+        // d'origine l'accompagnent parce que l'API les demande toujours.
+        if (String(supprimes[i] ?? "0") === "1") {
+          if (idLigne)
+            lignes.push({
+              id: Number(idLigne),
+              format: format || String(formatsOrigine[i] ?? "").trim(),
+              priceCents: Number(prixOrigine[i] ?? 0) || 0,
+              supprimer: true,
+            });
+          continue;
+        }
+
+        if (!format) {
+          problemes.push(
+            `Ligne ${i + 1} : le format n'a pas de nom. Écrivez par exemple A4.`,
+          );
+          continue;
+        }
+        const cle = format.toLowerCase();
+        if (dejaVus.has(cle)) {
+          problemes.push(
+            `Le format « ${format} » apparaît deux fois. Un format ne peut figurer qu'une fois.`,
+          );
+          continue;
+        }
+        dejaVus.add(cle);
+
+        const lus = {
+          prix: lireEuros(prix[i], quoi, true),
+          barre: lireEuros(prixBarres[i], `${quoi} (prix barré)`, false),
+          cout: lireEuros(couts[i], `${quoi} (coût)`, false),
+          poids: lireEntier(poids[i], `${quoi} (poids)`),
+          stock: lireEntier(stocks[i], `${quoi} (stock)`, true),
+        };
+        const refuse = Object.values(lus).find((l) => !l.ok);
+        if (refuse && !refuse.ok) {
+          problemes.push(refuse.raison);
+          continue;
+        }
+        if (!lus.prix.ok || !lus.barre.ok || !lus.cout.ok) continue;
+        if (!lus.poids.ok || !lus.stock.ok) continue;
+
+        const ligne: Record<string, unknown> = {
+          format,
+          priceCents: lus.prix.valeur ?? 0,
+          compareAtCents: lus.barre.valeur,
+          costCents: lus.cout.valeur,
+          sku: String(skus[i] ?? "").trim() || null,
+          barcode: String(codes[i] ?? "").trim() || null,
+          weightGrams: lus.poids.valeur,
+          stockQty: lus.stock.valeur,
+        };
+        if (idLigne) ligne.id = Number(idLigne);
+        lignes.push(ligne);
+      }
+
+      if (problemes.length) {
+        flash = `Rien n'a été enregistré. ${problemes.join(" ")}`;
+        flashErreur = true;
+      } else {
+        await api.enregistrerFicheProduit(idProduit, { variantes: lignes });
+        flash = "Tarification et formats enregistrés.";
+      }
+    } else if (action === "referencement") {
+      const adresse = lireAdresse(form.get("slug"));
+      if (!adresse.ok) {
+        flash = `Rien n'a été enregistré. ${adresse.raison}`;
+        flashErreur = true;
+      } else {
+        await api.enregistrerFicheProduit(idProduit, {
+          produit: {
+            slug: adresse.valeur,
+            seoTitle: String(form.get("seoTitle") ?? "").trim() || null,
+            seoDescription:
+              String(form.get("seoDescription") ?? "").trim() || null,
+          },
+        });
+        flash = "Référencement enregistré.";
+      }
+    } else if (action === "statut") {
+      const choisi = String(form.get("status") ?? "");
+      const statut = STATUTS.find((s) => s.valeur === choisi);
+      if (!statut) {
+        flash = "Ce statut n'existe pas. Rien n'a été enregistré.";
+        flashErreur = true;
+      } else {
+        await api.enregistrerFicheProduit(idProduit, {
+          produit: { status: statut.valeur },
+        });
+        flash =
+          statut.valeur === "active"
+            ? "Cette affiche est en vente."
+            : `Cette affiche est ${statut.nom.toLowerCase()}e et n'apparaît plus en boutique.`;
+      }
+    } else if (action === "organisation") {
+      const categorie = String(form.get("categoryId") ?? "").trim();
+      const idCategorie = categorie ? Number(categorie) : null;
+      if (idCategorie !== null && !Number.isInteger(idCategorie)) {
+        flash = "Cette catégorie n'existe pas. Rien n'a été enregistré.";
+        flashErreur = true;
+      } else {
+        const produit: Record<string, unknown> = {
+          vendor: String(form.get("vendor") ?? "").trim() || null,
+          productType: String(form.get("productType") ?? "").trim() || null,
+          categoryId: idCategorie,
+        };
+        const corps: Record<string, unknown> = {};
+        // Une case décochée ne s'envoie pas : sans ces deux témoins, « plus
+        // aucune collection » ne se distinguerait pas de « le bloc n'a pas été
+        // envoyé », et la fiche perdrait son classement sans que personne ne
+        // l'ait demandé.
+        if (form.get("etiquettesPresentes"))
+          produit.tags = [
+            ...new Set(
+              form
+                .getAll("tags")
+                .map((t) => String(t).trim())
+                .filter(Boolean),
+            ),
+          ];
+        if (form.get("collectionsPresentes"))
+          corps.collections = form
+            .getAll("collections")
+            .map((c) => Number(c))
+            .filter((n) => Number.isInteger(n));
+        corps.produit = produit;
+        await api.enregistrerFicheProduit(idProduit, corps);
+        flash = "Organisation enregistrée.";
+      }
     } else {
-    await api.setProductConfig(id!, {
-      defaultTitle: (form.get("defaultTitle") as string) ?? "",
-      defaultSubtitle: (form.get("defaultSubtitle") as string) ?? "",
-      defaultLine3: (form.get("defaultLine3") as string) ?? "",
-      // Slug du type d'affiche, pris tel quel : les types se créent au
-      // back-office, la liste n'est plus figée ici.
-      defaultView: String(form.get("defaultView") || "") || null,
-      foregroundUrl: (form.get("foregroundUrl") as string)?.trim() || null,
-    });
-    flash = "Configuration enregistrée.";
+      await api.setProductConfig(id!, {
+        defaultTitle: (form.get("defaultTitle") as string) ?? "",
+        defaultSubtitle: (form.get("defaultSubtitle") as string) ?? "",
+        defaultLine3: (form.get("defaultLine3") as string) ?? "",
+        // Slug du type d'affiche, pris tel quel : les types se créent au
+        // back-office, la liste n'est plus figée ici.
+        defaultView: String(form.get("defaultView") || "") || null,
+        foregroundUrl: (form.get("foregroundUrl") as string)?.trim() || null,
+      });
+      flash = "Configuration enregistrée.";
     }
   } catch (e) {
     flash = "Erreur : " + String(e);
+    flashErreur = true;
   }
 }
 
@@ -107,6 +507,36 @@ try {
   trad = await api.productTranslations(id!);
 } catch {
   // Section masquée si l'API ne répond pas : le reste de la page fonctionne.
+}
+
+/**
+ * HTML vers texte lisible.
+ *
+ * Les descriptions sont stockées en HTML, puisque la fiche publique les insère
+ * telles quelles. Partout où cet écran ne fait que MONTRER une description
+ * (le français de référence, l'invite grisée des éditeurs, l'aperçu Google),
+ * il faut donc en retirer les balises : la personne qui rédige ne doit jamais
+ * en croiser une. Les puces et les fins de paragraphe deviennent des retours à
+ * la ligne, que les blocs affichent en « whitespace-pre-wrap ».
+ */
+function texteBrut(html: string | null | undefined): string {
+  if (!html) return "";
+  return html
+    .replace(/<li[^>]*>/gi, "\n• ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|ul|ol|h[1-6])\s*>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0?39;/gi, "'")
+    // L'esperluette en dernier : la décoder plus tôt ressusciterait les
+    // entités qu'elle contient, « &amp;lt; » redeviendrait un chevron.
+    .replace(/&amp;/gi, "&")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /** « à traduire » / « partiel » / « traduit » — l'état visible d'un coup d'œil. */
@@ -125,6 +555,25 @@ try {
   config = await api.productConfig(id!);
 } catch (e) {
   error = String(e);
+}
+
+// La fiche marchande : nom, description, images, formats, classement. Elle est
+// relue APRÈS le POST pour que l'écran montre ce qui vient d'être enregistré.
+let fiche: FicheProduit | null = null;
+let erreurFiche: string | null = null;
+try {
+  fiche = await api.ficheProduit(idProduit);
+} catch (e) {
+  erreurFiche = String(e);
+}
+
+// Les ventes ne sont qu'un indicateur : si elles manquent, la fiche reste
+// entièrement modifiable, le bloc disparaît simplement.
+let ventes: VentesProduit | null = null;
+try {
+  ventes = await api.ventesProduit(idProduit, 90);
+} catch {
+  ventes = null;
 }
 
 // Types d'affiche proposés au produit (« de face », « de dos », …).
@@ -159,9 +608,106 @@ const poidsHerite =
   0;
 
 const backgrounds = config?.backgrounds ?? [];
+
+// --- Ce que la fiche marchande donne à afficher ------------------------
+const produit = fiche?.produit ?? null;
+const images = fiche?.images ?? [];
+const variantes = fiche?.variantes ?? [];
+const etiquettes = produit?.tags ?? [];
+const collectionsCochees = new Set(fiche?.collectionsDuProduit ?? []);
+const suggestions = (fiche?.etiquettesConnues ?? []).filter(
+  (t) => !etiquettes.includes(t),
+);
+const statutActuel =
+  STATUTS.find((s) => s.valeur === produit?.status) ?? STATUTS[1];
+
+/**
+ * Ce que le site publie quand les champs de référencement restent vides : le
+ * nom de l'affiche suivi du nom de la boutique, et les premiers mots de la
+ * description. L'aperçu doit montrer exactement cela, sinon il ment.
+ */
+const LONGUEUR_DESCRIPTION = 160;
+const titreParDefaut = produit ? `${produit.name} | Memory Line` : "";
+const descriptionParDefaut = texteBrut(produit?.description).slice(
+  0,
+  LONGUEUR_DESCRIPTION,
+);
+const apercuTitre = produit?.seoTitle?.trim() || titreParDefaut;
+const apercuDescription =
+  produit?.seoDescription?.trim() || descriptionParDefaut;
+const adressePublique = produit ? `${ORIGINE_PUBLIQUE}/affiches/${produit.slug}` : "";
+
+// --- Les trois dessins de la modale des ventes -------------------------
+// Tout est calculé ici, en coordonnées du viewBox : le navigateur n'a plus
+// qu'à afficher un tracé déjà écrit, sans bibliothèque et sans calcul.
+const serie = ventes?.serie ?? [];
+const COURBE_L = 640;
+const COURBE_H = 150;
+const maxSerie = serie.reduce((m, pt) => Math.max(m, pt.cents), 0);
+function abscisse(i: number): number {
+  if (serie.length < 2) return COURBE_L / 2;
+  return (i * COURBE_L) / (serie.length - 1);
+}
+function ordonnee(cents: number): number {
+  if (maxSerie <= 0) return COURBE_H - 1;
+  return COURBE_H - 1 - (cents / maxSerie) * (COURBE_H - 2);
+}
+const pointsCourbe = serie
+  .map((pt, i) => `${abscisse(i).toFixed(1)},${ordonnee(pt.cents).toFixed(1)}`)
+  .join(" ");
+const aireCourbe = serie.length
+  ? `${abscisse(0).toFixed(1)},${COURBE_H} ${pointsCourbe} ${abscisse(
+      serie.length - 1,
+    ).toFixed(1)},${COURBE_H}`
+  : "";
+
+const canaux = ventes?.parCanal ?? [];
+const totalCanal = canaux.reduce((s, c) => s + Math.max(0, c.cents), 0);
+const nouveaux = ventes?.clients.nouveaux ?? 0;
+const recurrents = ventes?.clients.recurrents ?? 0;
+const totalClients = nouveaux + recurrents;
+const partNouveaux = totalClients ? Math.round((nouveaux / totalClients) * 100) : 0;
+
+/** « 11 juin 2026 », pour les bornes de la période. */
+function jourLong(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString("fr-FR", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+}
+/** « 11 juin », pour les repères sous la courbe. */
+function jourCourt(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
+const reperesCourbe = serie.length
+  ? [
+      serie[0]?.jour,
+      serie[Math.floor(serie.length / 2)]?.jour,
+      serie[serie.length - 1]?.jour,
+    ]
+  : [];
+
+/** Le style commun des champs de saisie, écrit une fois plutôt que trente. */
+const champ =
+  "mt-1 w-full rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm";
+const cellule =
+  "w-full rounded border border-bo-border bg-bo-surface px-2 py-1 text-sm";
+const boutonPrincipal =
+  "rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90";
+const boutonDiscret =
+  "rounded border border-bo-border bg-bo-surface px-3 py-1.5 text-sm hover:bg-bo-bg";
 ---
 
-<Admin title={config?.name ?? "Produit"}>
+<Admin title={produit?.name ?? config?.name ?? "Produit"}>
   {Astro.url.searchParams.get("cree") === "1" && (
     <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">
       Affiche créée. Elle est déjà en ligne : ajoutez ses fonds et vérifiez ses
@@ -174,118 +720,569 @@ const backgrounds = config?.backgrounds ?? [];
     >
   </p>
 
-  {flash && <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">{flash}</p>}
+  {flash && (
+    <p
+      class={`mb-4 rounded border px-3 py-2 text-sm ${
+        flashErreur ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
   {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
+  {erreurFiche && (
+    <p class="mb-4 text-sm text-red-600">
+      La fiche marchande n'a pas pu être lue : {erreurFiche}
+    </p>
+  )}
 
-  {config && (
-    <>
-      <header class="mb-6">
-        <h2 class="text-xl font-semibold">{config.name}</h2>
-        <p class="text-sm text-bo-muted">
-          /{config.slug} · Configuration du configurateur
-        </p>
-      </header>
+  {/* ================================================================= */}
+  {/* En-tête                                                           */}
+  {/* ================================================================= */}
+  <header class="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <div class="flex flex-wrap items-center gap-2">
+        <h2 class="text-xl font-semibold">
+          {produit?.name ?? config?.name ?? "Affiche"}
+        </h2>
+        {produit && (
+          <span class={`rounded-full px-2 py-0.5 text-xs ${statutActuel.pastille}`}>
+            {statutActuel.nom}
+          </span>
+        )}
+      </div>
+      <p class="mt-1 text-sm text-bo-muted">
+        /affiches/{produit?.slug ?? config?.slug}
+      </p>
+    </div>
+    {produit && (
+      <a
+        href={adressePublique}
+        target="_blank"
+        rel="noopener"
+        class={boutonDiscret}
+      >
+        Voir la fiche sur le site ↗
+      </a>
+    )}
+  </header>
 
-      {/* =============================================================== */}
-      {/* 1 — Visuels disponibles                                         */}
-      {/* =============================================================== */}
-      <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg p-5">
-        <h3 class="font-semibold mb-1">Visuels disponibles</h3>
-        <p class="text-sm text-bo-muted mb-4">
-          Les arrière-plans proposés au client pour ce produit.
-        </p>
-        <div id="bg-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {backgrounds.map((bg) => (
-            <figure
-              class="relative border border-bo-border rounded overflow-hidden bg-white group"
-              data-bg-id={bg.id}
-            >
-              <img
-                src={imgSrc(bg.url)}
-                alt={bg.name ?? ""}
-                class="w-full aspect-square object-cover"
-                loading="lazy"
+  {/* ================================================================= */}
+  {/* Deux colonnes : composer à gauche, classer et suivre à droite      */}
+  {/* ================================================================= */}
+  <div class="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+    <div class="space-y-6 lg:col-span-2">
+      {/* ------------------------------------------------------------- */}
+      {/* 1 — Nom et description                                        */}
+      {/* ------------------------------------------------------------- */}
+      {produit && (
+        <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+          <form method="POST" class="space-y-4">
+            <input type="hidden" name="_action" value="infos" />
+            <label class="block">
+              <span class="text-sm font-medium">Nom de l'affiche</span>
+              <input
+                name="name"
+                value={produit.name}
+                required
+                class={champ}
               />
-              <button
-                type="button"
-                class="js-del-bg absolute top-1 right-1 h-6 w-6 rounded-full bg-white/90 border border-bo-border text-sm leading-none text-bo-muted hover:text-red-600 hover:border-red-300 shadow"
-                title="Supprimer ce visuel"
-                aria-label="Supprimer ce visuel"
-              >
-                ✕
-              </button>
-              {bg.name && (
-                <figcaption class="px-2 py-1 text-xs text-bo-muted truncate">
-                  {bg.name}
-                </figcaption>
-              )}
-            </figure>
-          ))}
-        </div>
-        <p
-          id="bg-empty"
-          class={`text-sm text-bo-muted ${backgrounds.length ? "hidden" : ""}`}
-        >
-          Aucun visuel pour le moment.
-        </p>
-      </section>
+            </label>
 
-      {/* =============================================================== */}
-      {/* 2 — Ajouter un visuel                                           */}
-      {/* =============================================================== */}
-      <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg p-5">
-        <h3 class="font-semibold mb-1">Ajouter un visuel</h3>
-        <p class="mb-3 text-sm text-bo-muted">
-          Chaque visuel ajouté ici devient un choix de fond proposé au client
-          dans le configurateur de ce produit.
-        </p>
+            {/* La description française se modifiait partout sauf ici : les
+                traductions avaient déjà l'éditeur visuel, l'original non. */}
+            <div>
+              <span class="text-sm font-medium">Description</span>
+              <EditeurTexte
+                nom="description"
+                valeur={produit.description ?? ""}
+                invite="Ce que le client lit sous l'affiche : la scène, les personnages, ce qui la rend particulière."
+                etiquette="Description de l'affiche"
+              />
+              <p class="mt-1 text-xs text-bo-muted">
+                Ce texte s'affiche sur la fiche du site et sert de base aux
+                traductions, plus bas.
+              </p>
+            </div>
 
-        <div class="mb-4 rounded border border-dashed border-bo-border p-4">
-          <label class="block text-sm font-medium mb-2" for="new-bg-file">
-            Depuis mon ordinateur
-          </label>
-          <div class="flex flex-wrap items-center gap-3">
-            <input
-              id="new-bg-file"
-              type="file"
-              accept=".svg,.png,.jpg,.jpeg,.webp"
-              multiple
-              class="text-sm"
-            />
-            <span id="upload-status" class="text-xs"></span>
-          </div>
-          <p class="mt-2 text-xs text-bo-muted">
-            SVG, PNG, JPG ou WebP, 25 Mo maximum par fichier. Plusieurs fichiers
-            peuvent être choisis d'un coup.
+            <button class={boutonPrincipal}>Enregistrer</button>
+          </form>
+        </section>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* 2 — Images de la boutique                                     */}
+      {/* ------------------------------------------------------------- */}
+      {produit && (
+        <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+          <h3 class="mb-1 font-semibold">Images</h3>
+          <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+            Les photos de la fiche du site. La première est l'image principale :
+            c'est elle qui apparaît dans les listes, dans le panier et sur les
+            réseaux sociaux. Ce ne sont pas les fonds du configurateur, qui ont
+            leur propre bloc plus bas.
           </p>
-        </div>
 
-        <label class="block text-sm font-medium mb-2" for="new-bg-url">
-          Ou depuis une adresse web
-        </label>
-        <div class="flex flex-wrap items-end gap-3">
-          <input
-            id="new-bg-url"
-            type="text"
-            class="flex-1 min-w-[16rem] border border-bo-border rounded px-3 py-2 text-sm font-mono"
-            placeholder="https://cdn.shopify.com/..."
-          />
-          <button
-            type="button"
-            id="add-bg-btn"
-            class="rounded bg-bo-accent text-white px-4 py-2 text-sm hover:opacity-90"
+          <form method="POST">
+            <input type="hidden" name="_action" value="medias" />
+            {/* La liste part déjà remplie de ce qui est enregistré : le
+                navigateur la réécrit à chaque changement, et sans lui un
+                enregistrement ne fait rien plutôt que de tout effacer. */}
+            <input
+              type="hidden"
+              name="imagesJson"
+              id="images-json"
+              value={JSON.stringify(
+                images.map((im) => ({ id: im.id, url: im.url, alt: im.alt })),
+              )}
+            />
+
+            <ul
+              id="medias-liste"
+              class="grid grid-cols-2 gap-3 sm:grid-cols-4"
+            >
+              {images.map((im, i) => (
+                <li
+                  class="relative rounded border border-bo-border bg-bo-bg"
+                  data-image-id={im.id}
+                  data-url={im.url}
+                  data-alt={im.alt ?? ""}
+                >
+                  <img
+                    src={imgSrc(im.url)}
+                    alt={im.alt ?? ""}
+                    class="aspect-square w-full rounded-t object-contain"
+                    loading="lazy"
+                  />
+                  <div class="flex items-center justify-between gap-1 px-1.5 py-1">
+                    <button
+                      type="button"
+                      class="js-media-gauche px-1 text-bo-muted hover:text-bo-ink"
+                      title="Déplacer vers la gauche"
+                      aria-label="Déplacer cette image vers la gauche"
+                    >
+                      ◀
+                    </button>
+                    <span class="js-media-rang text-[11px] text-bo-muted">
+                      {i === 0 ? "Principale" : `n° ${i + 1}`}
+                    </span>
+                    <button
+                      type="button"
+                      class="js-media-droite px-1 text-bo-muted hover:text-bo-ink"
+                      title="Déplacer vers la droite"
+                      aria-label="Déplacer cette image vers la droite"
+                    >
+                      ▶
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    class="js-media-suppr absolute right-1 top-1 h-6 w-6 rounded-full border border-bo-border bg-bo-surface text-sm leading-none text-bo-muted shadow hover:border-red-300 hover:text-red-600"
+                    title="Retirer cette image"
+                    aria-label="Retirer cette image"
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            <p
+              id="medias-vide"
+              class={`text-sm text-bo-muted ${images.length ? "hidden" : ""}`}
+            >
+              Cette affiche n'a encore aucune image.
+            </p>
+
+            <div class="mt-4 rounded border border-dashed border-bo-border p-4">
+              <label class="mb-2 block text-sm font-medium" for="media-fichier">
+                Ajouter des images
+              </label>
+              <div class="flex flex-wrap items-center gap-3">
+                <input
+                  id="media-fichier"
+                  type="file"
+                  accept=".png,.jpg,.jpeg,.webp,.svg"
+                  multiple
+                  class="text-sm"
+                />
+                <span id="media-etat" class="text-xs"></span>
+              </div>
+              <p class="mt-2 text-xs text-bo-muted">
+                JPG, PNG ou WebP, 25 Mo maximum par fichier. Plusieurs fichiers
+                peuvent être choisis d'un coup.
+              </p>
+            </div>
+
+            <div class="mt-4 flex flex-wrap items-center gap-3">
+              <button class={boutonPrincipal}>Enregistrer les images</button>
+              <span id="medias-modifie" class="hidden text-xs text-amber-800">
+                Vos changements ne seront gardés qu'après cet enregistrement.
+              </span>
+            </div>
+          </form>
+        </section>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* 3 — Tarification et formats                                   */}
+      {/* ------------------------------------------------------------- */}
+      {produit && (
+        <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+          <h3 class="mb-1 font-semibold">Tarification et formats</h3>
+          <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+            Une ligne par format vendu. Le prix barré est l'ancien prix montré
+            au client quand l'affiche est en promotion ; le coût sert à calculer
+            la marge et ne s'affiche jamais en boutique.
+          </p>
+
+          <form method="POST">
+            <input type="hidden" name="_action" value="tarification" />
+
+            <div class="overflow-x-auto rounded border border-bo-border">
+              <table class="w-full min-w-[64rem] text-sm">
+                <thead class="bg-bo-bg text-left text-bo-muted">
+                  <tr>
+                    <th class="px-3 py-2 font-medium">Format</th>
+                    <th class="px-3 py-2 font-medium">Prix</th>
+                    <th class="px-3 py-2 font-medium">Prix barré</th>
+                    <th class="px-3 py-2 font-medium">Coût</th>
+                    <th class="px-3 py-2 font-medium">Marge</th>
+                    <th class="px-3 py-2 font-medium">Référence</th>
+                    <th class="px-3 py-2 font-medium">Code-barres</th>
+                    <th class="px-3 py-2 font-medium">Poids (g)</th>
+                    <th class="px-3 py-2 font-medium">Stock</th>
+                    <th class="px-3 py-2 font-medium"><span class="sr-only">Retirer</span></th>
+                  </tr>
+                </thead>
+                <tbody id="lignes-formats">
+                  {variantes.map((v) => (
+                    <tr class="js-ligne-format border-t border-bo-border">
+                      <td class="px-3 py-2">
+                        <input type="hidden" name="varianteId" value={v.id} />
+                        <input
+                          type="hidden"
+                          name="variantePrixOrigine"
+                          value={v.priceCents}
+                        />
+                        <input
+                          type="hidden"
+                          name="varianteFormatOrigine"
+                          value={v.format}
+                        />
+                        <input
+                          type="hidden"
+                          name="varianteSupprimer"
+                          class="js-format-supprime"
+                          value="0"
+                        />
+                        <input
+                          name="varianteFormat"
+                          value={v.format}
+                          class={`${cellule} w-24`}
+                          aria-label="Nom du format"
+                        />
+                      </td>
+                      <td class="px-3 py-2">
+                        <input
+                          name="variantePrix"
+                          value={enEuros(v.priceCents)}
+                          inputmode="decimal"
+                          class={`js-prix ${cellule} w-24`}
+                          aria-label="Prix en euros"
+                        />
+                      </td>
+                      <td class="px-3 py-2">
+                        <input
+                          name="variantePrixBarre"
+                          value={enEuros(v.compareAtCents)}
+                          inputmode="decimal"
+                          class={`${cellule} w-24`}
+                          aria-label="Prix barré en euros"
+                        />
+                      </td>
+                      <td class="px-3 py-2">
+                        <input
+                          name="varianteCout"
+                          value={enEuros(v.costCents)}
+                          inputmode="decimal"
+                          class={`js-cout ${cellule} w-24`}
+                          aria-label="Coût en euros"
+                        />
+                      </td>
+                      <td class="js-marge whitespace-nowrap px-3 py-2 text-bo-muted">
+                        {marge(v.priceCents, v.costCents)}
+                      </td>
+                      <td class="px-3 py-2">
+                        <input
+                          name="varianteSku"
+                          value={v.sku ?? ""}
+                          class={`${cellule} w-28 font-mono`}
+                          aria-label="Référence"
+                        />
+                      </td>
+                      <td class="px-3 py-2">
+                        <input
+                          name="varianteCodeBarres"
+                          value={v.barcode ?? ""}
+                          class={`${cellule} w-32 font-mono`}
+                          aria-label="Code-barres"
+                        />
+                      </td>
+                      <td class="px-3 py-2">
+                        <input
+                          name="varianteTarifPoids"
+                          value={v.weightGrams ?? ""}
+                          inputmode="numeric"
+                          placeholder={String(poidsHerite)}
+                          class={`${cellule} w-20`}
+                          aria-label="Poids en grammes"
+                        />
+                      </td>
+                      <td class="px-3 py-2">
+                        <input
+                          name="varianteStock"
+                          value={v.stockQty ?? ""}
+                          inputmode="numeric"
+                          class={`${cellule} w-20`}
+                          aria-label="Stock"
+                        />
+                      </td>
+                      <td class="px-3 py-2 text-right">
+                        <button
+                          type="button"
+                          class="js-retirer-format text-sm text-bo-muted hover:text-red-600"
+                        >
+                          Retirer
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <p
+              id="formats-vide"
+              class={`mt-3 text-sm text-bo-muted ${variantes.length ? "hidden" : ""}`}
+            >
+              Cette affiche n'a aucun format. Tant qu'il n'y en a pas, la
+              boutique la vend au prix de base, {formatPrice(produit.basePriceCents)}.
+            </p>
+
+            <div class="mt-4 flex flex-wrap items-center gap-3">
+              <button type="button" id="ajouter-format" class={boutonDiscret}>
+                Ajouter un format
+              </button>
+              <button class={boutonPrincipal}>
+                Enregistrer la tarification
+              </button>
+            </div>
+            <p class="mt-2 text-xs text-bo-muted">
+              Les prix s'écrivent en euros, avec une virgule. Un prix vide est
+              refusé : une affiche à 0 € partirait pour rien.
+            </p>
+          </form>
+
+          {/* Le modèle d'une ligne vierge. Un « template » n'est pas envoyé
+              avec le formulaire : ses champs ne comptent donc pas tant que le
+              navigateur n'en a pas fait une vraie ligne. */}
+          <template id="modele-format">
+            <tr class="js-ligne-format border-t border-bo-border">
+              <td class="px-3 py-2">
+                <input type="hidden" name="varianteId" value="" />
+                <input type="hidden" name="variantePrixOrigine" value="0" />
+                <input type="hidden" name="varianteFormatOrigine" value="" />
+                <input
+                  type="hidden"
+                  name="varianteSupprimer"
+                  class="js-format-supprime"
+                  value="0"
+                />
+                <input
+                  name="varianteFormat"
+                  value=""
+                  placeholder="A4"
+                  class={`${cellule} w-24`}
+                  aria-label="Nom du format"
+                />
+              </td>
+              <td class="px-3 py-2">
+                <input
+                  name="variantePrix"
+                  value=""
+                  inputmode="decimal"
+                  placeholder="24,90"
+                  class={`js-prix ${cellule} w-24`}
+                  aria-label="Prix en euros"
+                />
+              </td>
+              <td class="px-3 py-2">
+                <input
+                  name="variantePrixBarre"
+                  value=""
+                  inputmode="decimal"
+                  class={`${cellule} w-24`}
+                  aria-label="Prix barré en euros"
+                />
+              </td>
+              <td class="px-3 py-2">
+                <input
+                  name="varianteCout"
+                  value=""
+                  inputmode="decimal"
+                  class={`js-cout ${cellule} w-24`}
+                  aria-label="Coût en euros"
+                />
+              </td>
+              <td class="js-marge whitespace-nowrap px-3 py-2 text-bo-muted"></td>
+              <td class="px-3 py-2">
+                <input
+                  name="varianteSku"
+                  value=""
+                  class={`${cellule} w-28 font-mono`}
+                  aria-label="Référence"
+                />
+              </td>
+              <td class="px-3 py-2">
+                <input
+                  name="varianteCodeBarres"
+                  value=""
+                  class={`${cellule} w-32 font-mono`}
+                  aria-label="Code-barres"
+                />
+              </td>
+              <td class="px-3 py-2">
+                <input
+                  name="varianteTarifPoids"
+                  value=""
+                  inputmode="numeric"
+                  placeholder={String(poidsHerite)}
+                  class={`${cellule} w-20`}
+                  aria-label="Poids en grammes"
+                />
+              </td>
+              <td class="px-3 py-2">
+                <input
+                  name="varianteStock"
+                  value=""
+                  inputmode="numeric"
+                  class={`${cellule} w-20`}
+                  aria-label="Stock"
+                />
+              </td>
+              <td class="px-3 py-2 text-right">
+                <button
+                  type="button"
+                  class="js-retirer-format text-sm text-bo-muted hover:text-red-600"
+                >
+                  Retirer
+                </button>
+              </td>
+            </tr>
+          </template>
+        </section>
+      )}
+
+      {/* ============================================================== */}
+      {/* 4 — Les blocs du configurateur, inchangés                      */}
+      {/* ============================================================== */}
+
+      {config && (
+        <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+          <h3 class="font-semibold mb-1">Visuels disponibles</h3>
+          <p class="text-sm text-bo-muted mb-4">
+            Les arrière-plans proposés au client pour ce produit.
+          </p>
+          <div id="bg-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {backgrounds.map((bg) => (
+              <figure
+                class="relative border border-bo-border rounded overflow-hidden bg-white group"
+                data-bg-id={bg.id}
+              >
+                <img
+                  src={imgSrc(bg.url)}
+                  alt={bg.name ?? ""}
+                  class="w-full aspect-square object-cover"
+                  loading="lazy"
+                />
+                <button
+                  type="button"
+                  class="js-del-bg absolute top-1 right-1 h-6 w-6 rounded-full bg-white/90 border border-bo-border text-sm leading-none text-bo-muted hover:text-red-600 hover:border-red-300 shadow"
+                  title="Supprimer ce visuel"
+                  aria-label="Supprimer ce visuel"
+                >
+                  ✕
+                </button>
+                {bg.name && (
+                  <figcaption class="px-2 py-1 text-xs text-bo-muted truncate">
+                    {bg.name}
+                  </figcaption>
+                )}
+              </figure>
+            ))}
+          </div>
+          <p
+            id="bg-empty"
+            class={`text-sm text-bo-muted ${backgrounds.length ? "hidden" : ""}`}
           >
-            Ajouter
-          </button>
-          <span id="add-bg-status" class="text-xs"></span>
-        </div>
-      </section>
+            Aucun visuel pour le moment.
+          </p>
+        </section>
+      )}
 
-      {/* =============================================================== */}
-      {/* 2 bis — Traductions humaines                                    */}
-      {/* =============================================================== */}
+      {config && (
+        <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+          <h3 class="font-semibold mb-1">Ajouter un visuel</h3>
+          <p class="mb-3 text-sm text-bo-muted">
+            Chaque visuel ajouté ici devient un choix de fond proposé au client
+            dans le configurateur de ce produit.
+          </p>
+
+          <div class="mb-4 rounded border border-dashed border-bo-border p-4">
+            <label class="block text-sm font-medium mb-2" for="new-bg-file">
+              Depuis mon ordinateur
+            </label>
+            <div class="flex flex-wrap items-center gap-3">
+              <input
+                id="new-bg-file"
+                type="file"
+                accept=".svg,.png,.jpg,.jpeg,.webp"
+                multiple
+                class="text-sm"
+              />
+              <span id="upload-status" class="text-xs"></span>
+            </div>
+            <p class="mt-2 text-xs text-bo-muted">
+              SVG, PNG, JPG ou WebP, 25 Mo maximum par fichier. Plusieurs
+              fichiers peuvent être choisis d'un coup.
+            </p>
+          </div>
+
+          <label class="block text-sm font-medium mb-2" for="new-bg-url">
+            Ou depuis une adresse web
+          </label>
+          <div class="flex flex-wrap items-end gap-3">
+            <input
+              id="new-bg-url"
+              type="text"
+              class="flex-1 min-w-[16rem] border border-bo-border rounded px-3 py-2 text-sm font-mono"
+              placeholder="https://cdn.shopify.com/..."
+            />
+            <button
+              type="button"
+              id="add-bg-btn"
+              class="rounded bg-bo-accent text-white px-4 py-2 text-sm hover:opacity-90"
+            >
+              Ajouter
+            </button>
+            <span id="add-bg-status" class="text-xs"></span>
+          </div>
+        </section>
+      )}
+
       {trad && (
-        <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg p-5">
+        <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
           <h3 class="font-semibold mb-1">Traductions</h3>
           <p class="mb-4 text-sm text-bo-muted">
             Laissez un champ vide et c'est le français qui s'affichera. Vous
@@ -322,23 +1319,28 @@ const backgrounds = config?.backgrounds ?? [];
                       </span>
                     </label>
 
-                    <label class="block">
+                    {/* Un éditeur par langue, chacun avec ses propres
+                        identifiants : voir EditeurTexte.astro. Le champ caché
+                        qu'il pose s'appelle toujours « description », le POST
+                        plus haut n'a donc rien à savoir de tout ceci. */}
+                    <div>
                       <span class="text-xs text-bo-muted">Description</span>
-                      <textarea
-                        name="description"
-                        rows="5"
-                        placeholder={trad!.fr.description ?? ""}
-                        class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm font-mono"
-                      >{t.description ?? ""}</textarea>
+                      <EditeurTexte
+                        nom="description"
+                        valeur={t.description ?? ""}
+                        invite={texteBrut(trad!.fr.description)}
+                        etiquette={`Description en ${l.nom.toLowerCase()}`}
+                      />
                       <details class="mt-1">
                         <summary class="cursor-pointer text-xs text-bo-muted">
                           Voir la description française
                         </summary>
-                        <div class="mt-1 max-h-40 overflow-y-auto rounded bg-bo-bg p-2 text-xs text-bo-muted whitespace-pre-wrap">
-                          {trad!.fr.description ?? "—"}
-                        </div>
+                        <div
+                          class="mt-1 max-h-40 overflow-y-auto rounded bg-bo-bg p-2 text-xs text-bo-muted whitespace-pre-wrap"
+                        >{texteBrut(trad!.fr.description) ||
+                            "Cette affiche n'a pas encore de description française."}</div>
                       </details>
-                    </label>
+                    </div>
 
                     <button class="rounded bg-bo-accent text-white px-4 py-2 text-sm hover:opacity-90">
                       Enregistrer {l.nom.toLowerCase()}
@@ -351,10 +1353,7 @@ const backgrounds = config?.backgrounds ?? [];
         </section>
       )}
 
-      {/* =============================================================== */}
-      {/* 2 ter — Expédition (catégorie et poids)                         */}
-      {/* =============================================================== */}
-      <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg p-5">
+      <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
         <h3 class="font-semibold mb-1">Expédition</h3>
         <p class="mb-4 text-sm text-bo-muted max-w-3xl">
           Le poids décide de la tranche d'affranchissement proposée au client.
@@ -493,10 +1492,7 @@ const backgrounds = config?.backgrounds ?? [];
         )}
       </section>
 
-      {/* =============================================================== */}
-      {/* 2 quater — Génération par IA                                    */}
-      {/* =============================================================== */}
-      <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-5">
+      <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
         <h3 class="mb-1 font-semibold">Génération par IA</h3>
         <p class="mb-4 max-w-3xl text-sm text-bo-muted">
           Le client envoie une photo et voit aussitôt son affiche, dessinée par
@@ -547,117 +1543,618 @@ const backgrounds = config?.backgrounds ?? [];
         </form>
       </section>
 
-      {/* =============================================================== */}
-      {/* 3 à 6 — Défauts (form SSR « Appliquer »)                        */}
-      {/* =============================================================== */}
-      <form method="POST" class="space-y-6">
-        {/* 3 — Position des personnages */}
-        <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
-          <h3 class="font-semibold mb-3">Type d'affiche</h3>
-          <label class="block max-w-xs">
-            <select
-              name="defaultView"
-              class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
+      {config && (
+        <form method="POST" class="space-y-6">
+          {/* Type d'affiche */}
+          <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+            <h3 class="font-semibold mb-3">Type d'affiche</h3>
+            <label class="block max-w-xs">
+              <select
+                name="defaultView"
+                class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
+              >
+                {vues.map((v) => (
+                  <option
+                    value={v.slug}
+                    selected={(config!.defaultView ?? vues[0]?.slug) === v.slug}
+                  >
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p class="mt-2 text-xs text-bo-muted">
+              Détermine les personnages proposés au client et le décor posé au
+              premier plan. Les types se créent dans
+              <a class="underline" href={url("/types-affiche")}>
+                {" "}Types d'affiche</a
+              >.
+            </p>
+          </section>
+
+          {/* Décor d'avant-plan */}
+          <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+            <h3 class="font-semibold mb-3">Décor d'avant-plan (optionnel)</h3>
+            <div class="flex flex-wrap items-end gap-3">
+              <label class="flex-1 min-w-[16rem] block">
+                <span class="text-bo-muted text-sm">URL du décor</span>
+                <input
+                  id="fg-url"
+                  name="foregroundUrl"
+                  type="text"
+                  value={config.foregroundUrl ?? ""}
+                  class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm font-mono"
+                  placeholder="/assets/...svg"
+                />
+              </label>
+              <img
+                id="fg-preview"
+                src={imgSrc(config.foregroundUrl)}
+                alt=""
+                class="h-16 w-16 object-contain border border-bo-border rounded bg-white shrink-0"
+                style={config.foregroundUrl ? "" : "visibility:hidden"}
+              />
+            </div>
+            <p class="text-xs text-bo-muted mt-2">
+              Affiché au 1er plan, uniquement quand les personnages sont de dos
+              (assis).
+            </p>
+          </section>
+
+          {/* Textes pré-remplis */}
+          {/* Les champs gardent les noms des colonnes (defaultTitle,
+              defaultSubtitle) : ce sont les lignes 1 et 2, remplies par 161
+              affiches. */}
+          <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+            <h3 class="font-semibold mb-3">Textes pré-remplis</h3>
+            <div class="grid sm:grid-cols-3 gap-4">
+              <label class="block">
+                <span class="text-bo-muted text-sm">Ligne 1</span>
+                <input
+                  name="defaultTitle"
+                  type="text"
+                  value={config.defaultTitle ?? ""}
+                  class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
+                />
+              </label>
+              <label class="block">
+                <span class="text-bo-muted text-sm">Ligne 2</span>
+                <input
+                  name="defaultSubtitle"
+                  type="text"
+                  value={config.defaultSubtitle ?? ""}
+                  class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
+                />
+              </label>
+              <label class="block">
+                <span class="text-bo-muted text-sm">Ligne 3</span>
+                <input
+                  name="defaultLine3"
+                  type="text"
+                  value={config.defaultLine3 ?? ""}
+                  class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+            <p class="text-xs text-bo-muted mt-2">
+              Les trois lignes déjà écrites sur l'affiche quand le client ouvre
+              le configurateur. Il peut les changer, en laisser une vide, ou
+              tout effacer.
+            </p>
+          </section>
+
+          <div>
+            <button class="rounded bg-bo-accent text-white px-5 py-2.5 hover:opacity-90">
+              Appliquer
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* 5 — Référencement                                             */}
+      {/* ------------------------------------------------------------- */}
+      {produit && (
+        <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+          <h3 class="mb-1 font-semibold">Référencement</h3>
+          <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+            Ce qu'un moteur de recherche montre quand quelqu'un tombe sur cette
+            affiche. Laissez les deux premiers champs vides et le site reprend
+            le nom de l'affiche et le début de sa description, comme ci-dessous.
+          </p>
+
+          {/* L'aperçu est rendu ici avec les valeurs enregistrées, puis remis à
+              jour à chaque frappe : il reste juste même sans JavaScript. */}
+          <div class="mb-5 rounded border border-bo-border bg-bo-bg p-4">
+            <p class="mb-2 text-xs uppercase tracking-wide text-bo-muted">
+              Aperçu dans les résultats de recherche
+            </p>
+            <p id="apercu-url" class="text-xs text-bo-muted">{adressePublique}</p>
+            <p id="apercu-titre" class="text-lg leading-snug text-bo-accent">
+              {apercuTitre}
+            </p>
+            <p id="apercu-description" class="text-sm">
+              {apercuDescription || "Cette affiche n'a pas encore de description."}
+            </p>
+          </div>
+
+          <form method="POST" class="space-y-4">
+            <input type="hidden" name="_action" value="referencement" />
+
+            <label class="block">
+              <span class="text-sm font-medium">Titre de la page</span>
+              <input
+                id="champ-seo-titre"
+                name="seoTitle"
+                value={produit.seoTitle ?? ""}
+                placeholder={titreParDefaut}
+                class={champ}
+              />
+              <span
+                id="compte-seo-titre"
+                class="mt-1 block text-xs text-bo-muted"></span>
+            </label>
+
+            <label class="block">
+              <span class="text-sm font-medium">Description pour les moteurs</span>
+              <textarea
+                id="champ-seo-description"
+                name="seoDescription"
+                rows="3"
+                placeholder={descriptionParDefaut}
+                class={champ}>{produit.seoDescription ?? ""}</textarea>
+              <span
+                id="compte-seo-description"
+                class="mt-1 block text-xs text-bo-muted"></span>
+            </label>
+
+            <label class="block">
+              <span class="text-sm font-medium">Adresse de la page</span>
+              <div class="mt-1 flex flex-wrap items-center gap-1">
+                <span class="text-sm text-bo-muted">
+                  {ORIGINE_PUBLIQUE}/affiches/
+                </span>
+                <input
+                  id="champ-slug"
+                  name="slug"
+                  value={produit.slug}
+                  class="w-64 rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm font-mono"
+                />
+              </div>
+              <span class="mt-1 block text-xs text-bo-muted">
+                Changer l'adresse casse les liens déjà partagés vers cette
+                affiche. Ne le faites que si le nom a vraiment changé.
+              </span>
+            </label>
+
+            <button class={boutonPrincipal}>Enregistrer le référencement</button>
+          </form>
+        </section>
+      )}
+    </div>
+
+    {/* =============================================================== */}
+    {/* Colonne latérale                                                */}
+    {/* =============================================================== */}
+    <aside class="space-y-6">
+      {/* Statut */}
+      {produit && (
+        <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+          <h3 class="mb-3 font-semibold">Statut</h3>
+          <form method="POST" class="space-y-3">
+            <input type="hidden" name="_action" value="statut" />
+            <label class="block">
+              <select
+                id="champ-statut"
+                name="status"
+                class={champ}
+                aria-label="Statut de l'affiche"
+              >
+                {STATUTS.map((s) => (
+                  <option
+                    value={s.valeur}
+                    selected={produit.status === s.valeur}
+                    data-explication={s.explication}
+                  >
+                    {s.nom}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {/* Ce que le statut change vraiment, dit sous le champ : « draft »
+                ne veut rien dire pour qui tient la boutique. */}
+            <p id="explication-statut" class="text-xs text-bo-muted">
+              {statutActuel.explication}
+            </p>
+            <button class={boutonPrincipal}>Enregistrer le statut</button>
+          </form>
+        </section>
+      )}
+
+      {/* Ventes */}
+      <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+        <h3 class="mb-3 font-semibold">Ventes des 90 derniers jours</h3>
+        {ventes ? (
+          <>
+            <dl class="space-y-2 text-sm">
+              <div class="flex items-baseline justify-between gap-3">
+                <dt class="text-bo-muted">Affiches vendues</dt>
+                <dd class="font-medium">{ventes.unites}</dd>
+              </div>
+              <div class="flex items-baseline justify-between gap-3">
+                <dt class="text-bo-muted">Acheteurs</dt>
+                <dd class="font-medium">{ventes.acheteurs}</dd>
+              </div>
+              <div class="flex items-baseline justify-between gap-3">
+                <dt class="text-bo-muted">Ventes nettes</dt>
+                <dd class="font-medium">
+                  {formatPrice(ventes.ventesNettesCents)}
+                </dd>
+              </div>
+            </dl>
+            <button
+              type="button"
+              id="ouvrir-ventes"
+              class="mt-3 text-sm text-bo-accent hover:underline"
             >
-              {vues.map((v) => (
-                <option
-                  value={v.slug}
-                  selected={(config.defaultView ?? vues[0]?.slug) === v.slug}
-                >
-                  {v.name}
+              Afficher les détails
+            </button>
+          </>
+        ) : (
+          <p class="text-sm text-bo-muted">
+            Les ventes de cette affiche ne sont pas consultables pour le moment.
+          </p>
+        )}
+      </section>
+
+      {/* Organisation */}
+      {produit && fiche && (
+        <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+          <h3 class="mb-3 font-semibold">Organisation</h3>
+          <form method="POST" class="space-y-4">
+            <input type="hidden" name="_action" value="organisation" />
+            <input type="hidden" name="etiquettesPresentes" value="1" />
+            <input type="hidden" name="collectionsPresentes" value="1" />
+
+            <label class="block">
+              <span class="text-sm text-bo-muted">Catégorie</span>
+              <select name="categoryId" class={champ}>
+                <option value="" selected={!produit.categoryId}>
+                  Sans catégorie
                 </option>
-              ))}
-            </select>
-          </label>
-          <p class="mt-2 text-xs text-bo-muted">
-            Détermine les personnages proposés au client et le décor posé au
-            premier plan. Les types se créent dans
-            <a class="underline" href="../types-affiche"> Types d'affiche</a>.
-          </p>
-        </section>
+                {fiche.categories.map((c) => (
+                  <option value={c.id} selected={produit.categoryId === c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              {/* La catégorie décide aussi du poids par défaut : c'est la même
+                  case que dans Expédition, montrée aux deux endroits où on la
+                  cherche. */}
+              <span class="mt-1 block text-xs text-bo-muted">
+                Elle donne aussi le poids par défaut, réglé dans Expédition.
+              </span>
+            </label>
 
-        {/* 4 — Décor d'avant-plan */}
-        <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
-          <h3 class="font-semibold mb-3">Décor d'avant-plan (optionnel)</h3>
-          <div class="flex flex-wrap items-end gap-3">
-            <label class="flex-1 min-w-[16rem] block">
-              <span class="text-bo-muted text-sm">URL du décor</span>
+            <label class="block">
+              <span class="text-sm text-bo-muted">Type de produit</span>
               <input
-                id="fg-url"
-                name="foregroundUrl"
-                type="text"
-                value={config.foregroundUrl ?? ""}
-                class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm font-mono"
-                placeholder="/assets/...svg"
+                name="productType"
+                value={produit.productType ?? ""}
+                placeholder="Affiche"
+                class={champ}
               />
             </label>
-            <img
-              id="fg-preview"
-              src={imgSrc(config.foregroundUrl)}
-              alt=""
-              class="h-16 w-16 object-contain border border-bo-border rounded bg-white shrink-0"
-              style={config.foregroundUrl ? "" : "visibility:hidden"}
-            />
-          </div>
-          <p class="text-xs text-bo-muted mt-2">
-            Affiché au 1er plan, uniquement quand les personnages sont de dos
-            (assis).
-          </p>
-        </section>
 
-        {/* 5 — Textes pré-remplis */}
-        {/* Les champs gardent les noms des colonnes (defaultTitle,
-            defaultSubtitle) : ce sont les lignes 1 et 2, remplies par 161
-            affiches. */}
-        <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
-          <h3 class="font-semibold mb-3">Textes pré-remplis</h3>
-          <div class="grid sm:grid-cols-3 gap-4">
             <label class="block">
-              <span class="text-bo-muted text-sm">Ligne 1</span>
+              <span class="text-sm text-bo-muted">Fournisseur</span>
               <input
-                name="defaultTitle"
-                type="text"
-                value={config.defaultTitle ?? ""}
-                class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
+                name="vendor"
+                value={produit.vendor ?? ""}
+                placeholder="Memory Line"
+                class={champ}
               />
             </label>
-            <label class="block">
-              <span class="text-bo-muted text-sm">Ligne 2</span>
-              <input
-                name="defaultSubtitle"
-                type="text"
-                value={config.defaultSubtitle ?? ""}
-                class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
-              />
-            </label>
-            <label class="block">
-              <span class="text-bo-muted text-sm">Ligne 3</span>
-              <input
-                name="defaultLine3"
-                type="text"
-                value={config.defaultLine3 ?? ""}
-                class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
-              />
-            </label>
-          </div>
-          <p class="text-xs text-bo-muted mt-2">
-            Les trois lignes déjà écrites sur l'affiche quand le client ouvre le
-            configurateur. Il peut les changer, en laisser une vide, ou tout
-            effacer.
-          </p>
-        </section>
 
-        {/* 6 — Appliquer */}
+            <div>
+              <span class="text-sm text-bo-muted">Collections</span>
+              <div class="mt-1 max-h-56 space-y-1 overflow-y-auto rounded border border-bo-border p-2">
+                {fiche.collections.map((c) => (
+                  <label class="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      name="collections"
+                      value={c.id}
+                      checked={collectionsCochees.has(c.id)}
+                    />
+                    <span>{c.name}</span>
+                  </label>
+                ))}
+                {fiche.collections.length === 0 && (
+                  <p class="text-xs text-bo-muted">
+                    La boutique n'a encore aucune collection.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <span class="text-sm text-bo-muted">Étiquettes</span>
+              <div
+                id="etiquettes-posees"
+                class="mt-1 flex flex-wrap items-center gap-2"
+              >
+                {etiquettes.map((t) => (
+                  <span
+                    class="js-etiquette inline-flex items-center gap-1 rounded-full bg-bo-bg px-2 py-0.5 text-xs"
+                    data-etiquette={t}
+                  >
+                    <input type="hidden" name="tags" value={t} />
+                    {t}
+                    <button
+                      type="button"
+                      class="js-retirer-etiquette text-bo-muted hover:text-red-600"
+                      aria-label={`Retirer l'étiquette ${t}`}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <p
+                id="etiquettes-vide"
+                class={`mt-1 text-xs text-bo-muted ${etiquettes.length ? "hidden" : ""}`}
+              >
+                Aucune étiquette.
+              </p>
+
+              <div class="mt-2 flex flex-wrap items-center gap-2">
+                <input
+                  id="nouvelle-etiquette"
+                  list="etiquettes-connues"
+                  placeholder="Noël, mariage, enfants..."
+                  class="flex-1 rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm"
+                  aria-label="Nouvelle étiquette"
+                />
+                <button
+                  type="button"
+                  id="ajouter-etiquette"
+                  class={boutonDiscret}
+                >
+                  Ajouter
+                </button>
+              </div>
+              <datalist id="etiquettes-connues">
+                {(fiche.etiquettesConnues ?? []).map((t) => (
+                  <option value={t}></option>
+                ))}
+              </datalist>
+
+              {suggestions.length > 0 && (
+                <div class="mt-2">
+                  <p class="text-xs text-bo-muted">Déjà utilisées ailleurs :</p>
+                  <div class="mt-1 flex flex-wrap gap-1.5">
+                    {suggestions.slice(0, 20).map((t) => (
+                      <button
+                        type="button"
+                        class="js-suggestion rounded-full border border-bo-border px-2 py-0.5 text-xs text-bo-muted hover:text-bo-ink"
+                        data-etiquette={t}
+                      >
+                        + {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button class={boutonPrincipal}>Enregistrer l'organisation</button>
+          </form>
+        </section>
+      )}
+    </aside>
+  </div>
+
+  {/* ================================================================= */}
+  {/* Le détail des ventes, en modale                                   */}
+  {/* ================================================================= */}
+  {ventes && (
+    <dialog
+      id="modale-ventes"
+      aria-labelledby="titre-modale-ventes"
+      class="w-[min(48rem,92vw)] rounded-lg border border-bo-border bg-bo-surface p-0 text-bo-ink backdrop:bg-bo-nav/60"
+    >
+      <div class="flex items-start justify-between gap-4 border-b border-bo-border px-5 py-4">
         <div>
-          <button class="rounded bg-bo-accent text-white px-5 py-2.5 hover:opacity-90">
-            Appliquer
-          </button>
+          <h3 id="titre-modale-ventes" class="font-semibold">
+            Ventes des {ventes.jours} derniers jours
+          </h3>
+          <p class="text-xs text-bo-muted">
+            Du {jourLong(ventes.debut)} au {jourLong(ventes.fin)}, remboursements
+            déduits.
+          </p>
         </div>
-      </form>
-    </>
+        <button
+          type="button"
+          id="fermer-ventes"
+          class="h-8 w-8 rounded-full border border-bo-border text-bo-muted hover:text-bo-ink"
+          aria-label="Fermer"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div class="max-h-[75vh] space-y-6 overflow-y-auto px-5 py-5">
+        {/* La courbe des ventes nettes */}
+        <div>
+          <div class="flex items-baseline justify-between gap-3">
+            <h4 class="text-sm font-medium">Ventes nettes dans le temps</h4>
+            <span class="text-xs text-bo-muted">
+              {formatPrice(ventes.ventesNettesCents)} au total
+            </span>
+          </div>
+          {maxSerie > 0 ? (
+            <>
+              <p class="mt-1 text-xs text-bo-muted">
+                Plus forte journée : {formatPrice(maxSerie)}
+              </p>
+              <svg
+                viewBox={`0 0 ${COURBE_L} ${COURBE_H}`}
+                preserveAspectRatio="none"
+                class="mt-2 h-40 w-full"
+                role="img"
+                aria-label="Courbe des ventes nettes jour par jour"
+              >
+                <polygon
+                  points={aireCourbe}
+                  class="text-bo-accent"
+                  fill="currentColor"
+                  opacity="0.12"
+                />
+                <polyline
+                  points={pointsCourbe}
+                  class="text-bo-accent"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linejoin="round"
+                  stroke-linecap="round"
+                  vector-effect="non-scaling-stroke"
+                />
+                <line
+                  x1="0"
+                  y1={COURBE_H - 0.5}
+                  x2={COURBE_L}
+                  y2={COURBE_H - 0.5}
+                  class="text-bo-border"
+                  stroke="currentColor"
+                  stroke-width="1"
+                  vector-effect="non-scaling-stroke"
+                />
+              </svg>
+              <div class="mt-1 flex justify-between text-xs text-bo-muted">
+                {reperesCourbe.map((j) => <span>{jourCourt(j)}</span>)}
+              </div>
+            </>
+          ) : (
+            <p class="mt-2 text-sm text-bo-muted">
+              Aucune vente sur la période.
+            </p>
+          )}
+        </div>
+
+        {/* Site ou stand */}
+        <div>
+          <h4 class="text-sm font-medium">Le site ou le stand</h4>
+          {canaux.length ? (
+            <div class="mt-2 space-y-3">
+              {canaux.map((c) => {
+                const part =
+                  totalCanal > 0 ? Math.round((c.cents / totalCanal) * 100) : 0;
+                return (
+                  <div>
+                    <div class="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                      <span>{NOM_CANAL[c.canal] ?? c.canal}</span>
+                      <span class="text-bo-muted">
+                        {formatPrice(c.cents)} · {c.unites} vendue{c.unites > 1 ? "s" : ""} · {part} %
+                      </span>
+                    </div>
+                    <svg
+                      viewBox="0 0 320 10"
+                      preserveAspectRatio="none"
+                      class="mt-1 h-2.5 w-full overflow-hidden rounded-full"
+                      role="img"
+                      aria-label={`${part} % des ventes`}
+                    >
+                      <rect
+                        x="0"
+                        y="0"
+                        width="320"
+                        height="10"
+                        class="text-bo-border"
+                        fill="currentColor"
+                      />
+                      <rect
+                        x="0"
+                        y="0"
+                        width={Math.max(part * 3.2, part > 0 ? 3 : 0)}
+                        height="10"
+                        class="text-bo-accent"
+                        fill="currentColor"
+                      />
+                    </svg>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p class="mt-2 text-sm text-bo-muted">Aucune vente sur la période.</p>
+          )}
+        </div>
+
+        {/* Nouveaux clients */}
+        <div>
+          <h4 class="text-sm font-medium">Des nouveaux ou des habitués</h4>
+          {totalClients ? (
+            <>
+              <div class="mt-2 flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                <span>
+                  {nouveaux} nouveau{nouveaux > 1 ? "x" : ""} client
+                  {nouveaux > 1 ? "s" : ""}
+                </span>
+                <span class="text-bo-muted">
+                  {partNouveaux} % des acheteurs de cette affiche
+                </span>
+              </div>
+              <svg
+                viewBox="0 0 320 10"
+                preserveAspectRatio="none"
+                class="mt-1 h-2.5 w-full overflow-hidden rounded-full"
+                role="img"
+                aria-label={`${partNouveaux} % de nouveaux clients`}
+              >
+                <rect
+                  x="0"
+                  y="0"
+                  width="320"
+                  height="10"
+                  class="text-bo-border"
+                  fill="currentColor"
+                />
+                <rect
+                  x="0"
+                  y="0"
+                  width={Math.max(partNouveaux * 3.2, partNouveaux > 0 ? 3 : 0)}
+                  height="10"
+                  class="text-bo-accent"
+                  fill="currentColor"
+                />
+              </svg>
+              <p class="mt-1 text-xs text-bo-muted">
+                Le reste, {recurrents} client{recurrents > 1 ? "s" : ""}, avait
+                déjà commandé avant cette période.
+              </p>
+            </>
+          ) : (
+            <p class="mt-2 text-sm text-bo-muted">
+              Personne n'a encore acheté cette affiche sur la période.
+            </p>
+          )}
+        </div>
+      </div>
+    </dialog>
   )}
 
-  <script is:inline define:vars={{ PUBLIC_API_URL, productId: id }}>
+  <script
+    is:inline
+    define:vars={{
+      PUBLIC_API_URL,
+      productId: id,
+      titreParDefaut,
+      descriptionParDefaut,
+      LONGUEUR_DESCRIPTION,
+    }}
+  >
     const abs = (u) =>
       u && u.startsWith("http") ? u : `${PUBLIC_API_URL}${u}`;
 
@@ -807,5 +2304,351 @@ const backgrounds = config?.backgrounds ?? [];
         }
       }
     });
+
+    // ================================================================
+    // Images de la boutique
+    // ================================================================
+    // Les vignettes SONT la liste : leur ordre à l'écran est celui qui part au
+    // serveur, recopié dans un champ caché avant l'envoi. Rien n'est
+    // enregistré tant que le bouton n'a pas été cliqué, ce que dit le
+    // marqueur « non enregistré ».
+    const listeMedias = document.getElementById("medias-liste");
+    if (listeMedias) {
+      const champImages = document.getElementById("images-json");
+      const mediasVide = document.getElementById("medias-vide");
+      const mediasModifie = document.getElementById("medias-modifie");
+      const mediaFichier = document.getElementById("media-fichier");
+      const mediaEtat = document.getElementById("media-etat");
+
+      function synchroniserMedias() {
+        const items = [...listeMedias.querySelectorAll("li[data-url]")];
+        items.forEach((li, i) => {
+          const rang = li.querySelector(".js-media-rang");
+          if (rang) rang.textContent = i === 0 ? "Principale" : "n° " + (i + 1);
+        });
+        champImages.value = JSON.stringify(
+          items.map((li) => ({
+            id: li.dataset.imageId ? Number(li.dataset.imageId) : undefined,
+            url: li.dataset.url,
+            alt: li.dataset.alt || null,
+          })),
+        );
+        mediasVide?.classList.toggle("hidden", items.length > 0);
+      }
+
+      function mediasChanges() {
+        mediasModifie?.classList.remove("hidden");
+        synchroniserMedias();
+      }
+
+      synchroniserMedias();
+
+      listeMedias.addEventListener("click", (ev) => {
+        const cible = ev.target;
+        if (!(cible instanceof Element)) return;
+        const li = cible.closest("li[data-url]");
+        if (!li) return;
+        if (cible.closest(".js-media-gauche")) {
+          const avant = li.previousElementSibling;
+          if (avant) listeMedias.insertBefore(li, avant);
+          mediasChanges();
+        } else if (cible.closest(".js-media-droite")) {
+          const apres = li.nextElementSibling;
+          if (apres) listeMedias.insertBefore(apres, li);
+          mediasChanges();
+        } else if (cible.closest(".js-media-suppr")) {
+          li.remove();
+          mediasChanges();
+        }
+      });
+
+      mediaFichier?.addEventListener("change", async () => {
+        const fichiers = Array.from(mediaFichier.files || []);
+        if (!fichiers.length) return;
+        let faits = 0;
+        for (const f of fichiers) {
+          mediaEtat.className = "text-xs text-bo-muted";
+          mediaEtat.textContent = `Envoi de ${f.name} (${faits + 1}/${fichiers.length})…`;
+          try {
+            const fd = new FormData();
+            fd.append("file", f);
+            const res = await fetch(`${PUBLIC_API_URL}/admin/uploads`, {
+              method: "POST",
+              credentials: "include",
+              body: fd,
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "HTTP " + res.status);
+
+            const li = document.createElement("li");
+            li.className = "relative rounded border border-bo-border bg-bo-bg";
+            li.dataset.url = data.url;
+            li.dataset.alt = "";
+            li.innerHTML =
+              `<img src="${abs(data.url)}" alt="" class="aspect-square w-full rounded-t object-contain" loading="lazy" />` +
+              `<div class="flex items-center justify-between gap-1 px-1.5 py-1">` +
+              `<button type="button" class="js-media-gauche px-1 text-bo-muted hover:text-bo-ink" title="Déplacer vers la gauche" aria-label="Déplacer cette image vers la gauche">◀</button>` +
+              `<span class="js-media-rang text-[11px] text-bo-muted"></span>` +
+              `<button type="button" class="js-media-droite px-1 text-bo-muted hover:text-bo-ink" title="Déplacer vers la droite" aria-label="Déplacer cette image vers la droite">▶</button>` +
+              `</div>` +
+              `<button type="button" class="js-media-suppr absolute right-1 top-1 h-6 w-6 rounded-full border border-bo-border bg-bo-surface text-sm leading-none text-bo-muted shadow hover:border-red-300 hover:text-red-600" title="Retirer cette image" aria-label="Retirer cette image">✕</button>`;
+            listeMedias.appendChild(li);
+            faits++;
+          } catch (e) {
+            mediaEtat.className = "text-xs text-red-600";
+            mediaEtat.textContent = `${f.name} n'a pas pu être envoyée. Réessayez.`;
+            mediasChanges();
+            return;
+          }
+        }
+        mediaEtat.className = "text-xs text-green-700";
+        mediaEtat.textContent = `${faits} image(s) ajoutée(s), à enregistrer.`;
+        mediaFichier.value = "";
+        mediasChanges();
+      });
+    }
+
+    // ================================================================
+    // Tarification : marge affichée, lignes ajoutées et retirées
+    // ================================================================
+    const corpsFormats = document.getElementById("lignes-formats");
+    if (corpsFormats) {
+      const formatsVide = document.getElementById("formats-vide");
+      const modeleFormat = document.getElementById("modele-format");
+      const boutonAjoutFormat = document.getElementById("ajouter-format");
+
+      /** « 24,90 » ou « 24.9 » -> 2490 centimes, ou rien si c'est illisible. */
+      function centimes(texte) {
+        const t = String(texte || "")
+          .replace(/[\s €]/g, "")
+          .replace(",", ".");
+        if (!/^\d+(\.\d{1,2})?$/.test(t)) return null;
+        return Math.round(Number(t) * 100);
+      }
+
+      // Le même rendu qu'au chargement de la page : « 24 € » quand le montant
+      // est rond, « 24,90 € » sinon.
+      function euros(cents) {
+        return (cents / 100).toLocaleString("fr-FR", {
+          style: "currency",
+          currency: "EUR",
+          minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
+        });
+      }
+
+      /** La marge n'est jamais enregistrée : elle se déduit à chaque frappe. */
+      function calculerMarge(ligne) {
+        const cellule = ligne.querySelector(".js-marge");
+        if (!cellule) return;
+        const prix = centimes(ligne.querySelector(".js-prix")?.value);
+        const cout = centimes(ligne.querySelector(".js-cout")?.value);
+        if (prix === null || cout === null || prix <= 0) {
+          cellule.textContent = "";
+          return;
+        }
+        const marge = prix - cout;
+        const part = Math.round((marge / prix) * 100);
+        cellule.textContent = `${euros(marge)} (${part} %)`;
+      }
+
+      function rafraichirFormats() {
+        const lignes = [...corpsFormats.querySelectorAll(".js-ligne-format")];
+        lignes.forEach(calculerMarge);
+        formatsVide?.classList.toggle("hidden", lignes.length > 0);
+      }
+
+      rafraichirFormats();
+
+      corpsFormats.addEventListener("input", (ev) => {
+        const ligne = ev.target.closest?.(".js-ligne-format");
+        if (ligne) calculerMarge(ligne);
+      });
+
+      corpsFormats.addEventListener("click", (ev) => {
+        const cible = ev.target;
+        if (!(cible instanceof Element)) return;
+        const bouton = cible.closest(".js-retirer-format");
+        if (!bouton) return;
+        const ligne = bouton.closest(".js-ligne-format");
+        const drapeau = ligne?.querySelector(".js-format-supprime");
+        if (!ligne || !drapeau) return;
+
+        // Une ligne jamais enregistrée disparaît tout de suite ; une ligne
+        // existante reste visible, barrée, jusqu'à l'enregistrement — sinon
+        // rien ne dit à la boutique ce qui va être supprimé.
+        const existante = ligne.querySelector('input[name="varianteId"]')?.value;
+        if (!existante) {
+          ligne.remove();
+          rafraichirFormats();
+          return;
+        }
+        if (drapeau.value === "1") {
+          drapeau.value = "0";
+          ligne.classList.remove("opacity-50", "line-through");
+          bouton.textContent = "Retirer";
+        } else {
+          drapeau.value = "1";
+          ligne.classList.add("opacity-50", "line-through");
+          bouton.textContent = "Rétablir";
+        }
+      });
+
+      boutonAjoutFormat?.addEventListener("click", () => {
+        const clone = modeleFormat.content.firstElementChild.cloneNode(true);
+        corpsFormats.appendChild(clone);
+        clone.querySelector('input[name="varianteFormat"]')?.focus();
+        rafraichirFormats();
+      });
+    }
+
+    // ================================================================
+    // Référencement : l'aperçu suit ce qui se tape
+    // ================================================================
+    const champSeoTitre = document.getElementById("champ-seo-titre");
+    if (champSeoTitre) {
+      const champSeoDescription = document.getElementById(
+        "champ-seo-description",
+      );
+      const champSlug = document.getElementById("champ-slug");
+      const apercuTitre = document.getElementById("apercu-titre");
+      const apercuDescription = document.getElementById("apercu-description");
+      const apercuUrl = document.getElementById("apercu-url");
+      const compteTitre = document.getElementById("compte-seo-titre");
+      const compteDescription = document.getElementById(
+        "compte-seo-description",
+      );
+      const baseUrl = (apercuUrl.textContent || "").replace(/[^/]*$/, "");
+
+      function rafraichirApercu() {
+        const titre = champSeoTitre.value.trim();
+        const description = champSeoDescription.value.trim();
+        apercuTitre.textContent = titre || titreParDefaut;
+        apercuDescription.textContent =
+          description ||
+          descriptionParDefaut ||
+          "Cette affiche n'a pas encore de description.";
+        apercuUrl.textContent = baseUrl + champSlug.value.trim();
+        compteTitre.textContent = titre
+          ? `${titre.length} caractères, 70 conseillés au maximum.`
+          : "Vide : le site utilise le nom de l'affiche.";
+        compteDescription.textContent = description
+          ? `${description.length} caractères, ${LONGUEUR_DESCRIPTION} conseillés au maximum.`
+          : "Vide : le site utilise le début de la description.";
+      }
+
+      [champSeoTitre, champSeoDescription, champSlug].forEach((c) =>
+        c?.addEventListener("input", rafraichirApercu),
+      );
+      rafraichirApercu();
+    }
+
+    // ================================================================
+    // Statut : dire tout de suite ce que le choix va changer
+    // ================================================================
+    const champStatut = document.getElementById("champ-statut");
+    champStatut?.addEventListener("change", () => {
+      const explication = document.getElementById("explication-statut");
+      const choisi = champStatut.selectedOptions[0];
+      if (explication && choisi)
+        explication.textContent = choisi.dataset.explication || "";
+    });
+
+    // ================================================================
+    // Étiquettes
+    // ================================================================
+    const posees = document.getElementById("etiquettes-posees");
+    if (posees) {
+      const saisie = document.getElementById("nouvelle-etiquette");
+      const boutonEtiquette = document.getElementById("ajouter-etiquette");
+      const etiquettesVide = document.getElementById("etiquettes-vide");
+
+      function rafraichirEtiquettes() {
+        const nb = posees.querySelectorAll(".js-etiquette").length;
+        etiquettesVide?.classList.toggle("hidden", nb > 0);
+        document.querySelectorAll(".js-suggestion").forEach((s) => {
+          const nom = s.getAttribute("data-etiquette");
+          const deja = !!posees.querySelector(
+            `.js-etiquette[data-etiquette="${CSS.escape(nom)}"]`,
+          );
+          s.classList.toggle("hidden", deja);
+        });
+      }
+
+      function ajouterEtiquette(nom) {
+        const propre = String(nom || "").trim();
+        if (!propre) return;
+        if (
+          posees.querySelector(
+            `.js-etiquette[data-etiquette="${CSS.escape(propre)}"]`,
+          )
+        )
+          return;
+        const puce = document.createElement("span");
+        puce.className =
+          "js-etiquette inline-flex items-center gap-1 rounded-full bg-bo-bg px-2 py-0.5 text-xs";
+        puce.setAttribute("data-etiquette", propre);
+        const champCache = document.createElement("input");
+        champCache.type = "hidden";
+        champCache.name = "tags";
+        champCache.value = propre;
+        const retrait = document.createElement("button");
+        retrait.type = "button";
+        retrait.className =
+          "js-retirer-etiquette text-bo-muted hover:text-red-600";
+        retrait.setAttribute("aria-label", `Retirer l'étiquette ${propre}`);
+        retrait.textContent = "✕";
+        puce.append(champCache, document.createTextNode(propre), retrait);
+        posees.appendChild(puce);
+        rafraichirEtiquettes();
+      }
+
+      boutonEtiquette?.addEventListener("click", () => {
+        ajouterEtiquette(saisie.value);
+        saisie.value = "";
+        saisie.focus();
+      });
+
+      // Entrée ajoute l'étiquette au lieu d'envoyer le formulaire : personne
+      // ne s'attend à enregistrer toute la fiche en tapant une étiquette.
+      saisie?.addEventListener("keydown", (ev) => {
+        if (ev.key !== "Enter") return;
+        ev.preventDefault();
+        ajouterEtiquette(saisie.value);
+        saisie.value = "";
+      });
+
+      posees.addEventListener("click", (ev) => {
+        const cible = ev.target;
+        if (!(cible instanceof Element)) return;
+        if (!cible.closest(".js-retirer-etiquette")) return;
+        cible.closest(".js-etiquette")?.remove();
+        rafraichirEtiquettes();
+      });
+
+      document.querySelectorAll(".js-suggestion").forEach((s) => {
+        s.addEventListener("click", () =>
+          ajouterEtiquette(s.getAttribute("data-etiquette")),
+        );
+      });
+
+      rafraichirEtiquettes();
+    }
+
+    // ================================================================
+    // Le détail des ventes
+    // ================================================================
+    const modaleVentes = document.getElementById("modale-ventes");
+    if (modaleVentes) {
+      const ouvrir = document.getElementById("ouvrir-ventes");
+      const fermer = document.getElementById("fermer-ventes");
+      ouvrir?.addEventListener("click", () => modaleVentes.showModal());
+      fermer?.addEventListener("click", () => modaleVentes.close());
+      // Un clic hors du cadre ferme aussi : l'événement porte alors sur la
+      // fenêtre elle-même, jamais sur son contenu. La touche Échap est déjà
+      // gérée par le navigateur.
+      modaleVentes.addEventListener("click", (ev) => {
+        if (ev.target === modaleVentes) modaleVentes.close();
+      });
+    }
   </script>
 </Admin>

@@ -28,13 +28,26 @@ function statutValide(v: unknown): v is StatutProduit {
   return typeof v === "string" && (STATUTS as readonly string[]).includes(v);
 }
 
+/**
+ * Un identifiant de produit, ou null quand ce n'en est pas un.
+ *
+ * `Number()` accepte beaucoup trop : `true` désignerait le produit 1 et
+ * « 3.7 » un produit à virgule qui n'existe pas. Une sélection mal transmise
+ * doit sortir du lot plutôt que viser un produit au hasard.
+ */
+function identifiant(v: unknown): number | null {
+  if (typeof v !== "number" && typeof v !== "string") return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 /** Identifiants d'une sélection, dédoublonnés, débarrassés de ce qui n'en est pas. */
 function identifiants(v: unknown): number[] {
   return [
     ...new Set(
       (Array.isArray(v) ? (v as unknown[]) : [])
-        .map((x) => Number(x))
-        .filter((n) => Number.isFinite(n)),
+        .map(identifiant)
+        .filter((n): n is number => n !== null),
     ),
   ];
 }
@@ -59,6 +72,91 @@ function poidsSaisi(v: unknown): { valeur: number | null } | null {
   if (v === null || v === undefined || v === "") return { valeur: null };
   const n = grammes(v);
   return n === null ? null : { valeur: n };
+}
+
+/**
+ * Au-delà, c'est une faute de frappe, pas un prix.
+ *
+ * Une affiche ne se vend pas dix mille euros, et la base garde les prix dans
+ * un entier qui déborde un peu plus loin : sans borne haute, une saisie
+ * fantaisiste ne donne pas un prix absurde mais un enregistrement qui casse
+ * au milieu du lot, sans dire où il s'est arrêté.
+ */
+const PRIX_MAX_CENTS = 1_000_000;
+
+/** La plus forte hausse ou remise qu'un pourcentage puisse demander. */
+const POURCENT_MAX = 1000;
+
+/** Un prix en euros, tel qu'on l'écrit dans un message. */
+function euros(cents: number): string {
+  return `${(cents / 100).toLocaleString("fr-FR")} €`;
+}
+
+/** Pourquoi un prix saisi a été refusé. */
+type RefusPrix = "vide" | "illisible" | "negatif" | "trop-grand";
+
+/**
+ * Un prix saisi dans un formulaire, en centimes.
+ *
+ * Une case de prix vidée n'est PAS un prix de zéro euro. Sélectionner une
+ * cellule et appuyer sur Suppr est le geste le plus banal d'une grille ;
+ * converti en nombre, il mettrait l'affiche en vente pour rien, avec un
+ * compteur qui annonce fièrement la ligne comme enregistrée. Comme pour le
+ * poids, la case vide et la saisie qui n'a pas de sens se distinguent, et
+ * aucune des deux ne devient un chiffre.
+ */
+function prixSaisi(v: unknown): number | RefusPrix {
+  if (v === null || v === undefined) return "vide";
+  if (typeof v === "string" && v.trim() === "") return "vide";
+  if (typeof v !== "number" && typeof v !== "string") return "illisible";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "illisible";
+  const cents = Math.round(n);
+  if (cents < 0) return "negatif";
+  if (cents > PRIX_MAX_CENTS) return "trop-grand";
+  return cents;
+}
+
+/** Ce qu'on dit quand un prix n'est pas utilisable. `quoi` ouvre la phrase. */
+function messagePrix(refus: RefusPrix, quoi: string): string {
+  if (refus === "vide")
+    return `${quoi} ne peut pas rester vide. Écrivez 0 si le produit est offert.`;
+  if (refus === "negatif") return `${quoi} ne peut pas être négatif.`;
+  if (refus === "trop-grand")
+    return `${quoi} dépasse ${euros(PRIX_MAX_CENTS)}. Vérifiez la saisie : les prix s'écrivent en centimes.`;
+  return `${quoi} doit être un nombre.`;
+}
+
+/**
+ * Une case à cocher, qui revient tantôt en booléen, tantôt en texte.
+ *
+ * Null quand la valeur ne veut rien dire : sur une action de masse, mieux
+ * vaut refuser que comprendre « non » et éteindre l'IA de toute la sélection.
+ */
+function booleenSaisi(v: unknown): boolean | null {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "string") {
+    const mot = v.trim().toLowerCase();
+    if (mot === "true" || mot === "1" || mot === "oui") return true;
+    if (mot === "false" || mot === "0" || mot === "non") return false;
+  }
+  return null;
+}
+
+/**
+ * Regroupe des écritures par valeur : une requête par prix, pas une par ligne.
+ *
+ * Une remise de saison touche des centaines de variantes mais ne produit
+ * qu'une poignée de prix différents.
+ */
+function parValeur(cibles: Map<number, number>): Map<number, number[]> {
+  const groupes = new Map<number, number[]>();
+  for (const [id, valeur] of cibles) {
+    const liste = groupes.get(valeur) ?? [];
+    liste.push(id);
+    groupes.set(valeur, liste);
+  }
+  return groupes;
 }
 
 /**
@@ -87,6 +185,9 @@ function slugifier(valeur: string): string {
  * retomberaient jamais sur leurs pieds. Et rien ne passe sous zéro : une
  * remise de 120 % donne un produit gratuit, pas un produit qui rapporte de
  * l'argent au client.
+ *
+ * Le pourcentage est vérifié positif par l'appelant : « diminuer de moins
+ * cinquante » augmenterait les prix de moitié en annonçant une remise.
  */
 function nouveauPrix(
   base: number,
@@ -144,16 +245,11 @@ function verifierLigne(
     for (const [format, valeur] of Object.entries(
       m.prix as Record<string, unknown>,
     )) {
-      const cents = Math.round(Number(valeur));
-      if (!Number.isFinite(cents))
+      const cents = prixSaisi(valeur);
+      if (typeof cents !== "number")
         return {
           ok: false,
-          message: `Le prix du format ${format} doit être un nombre.`,
-        };
-      if (cents < 0)
-        return {
-          ok: false,
-          message: `Le prix du format ${format} ne peut pas être négatif.`,
+          message: messagePrix(cents, `Le prix du format ${format}`),
         };
       prix.set(format, cents);
     }
@@ -183,12 +279,10 @@ function verifierLigne(
   }
 
   if ("basePriceCents" in m) {
-    const prix = Math.round(Number(m.basePriceCents));
-    if (!Number.isFinite(prix))
-      return { ok: false, message: "Le prix doit être un nombre." };
-    if (prix < 0)
-      return { ok: false, message: "Le prix ne peut pas être négatif." };
-    donnees.basePriceCents = prix;
+    const base = prixSaisi(m.basePriceCents);
+    if (typeof base !== "number")
+      return { ok: false, message: messagePrix(base, "Le prix de base") };
+    donnees.basePriceCents = base;
   }
 
   if ("status" in m) {
@@ -227,7 +321,15 @@ function verifierLigne(
     donnees.weightGrams = poids.valeur;
   }
 
-  if ("aiEnabled" in m) donnees.aiEnabled = m.aiEnabled === true;
+  if ("aiEnabled" in m) {
+    const actif = booleenSaisi(m.aiEnabled);
+    if (actif === null)
+      return {
+        ok: false,
+        message: "La colonne IA attend oui ou non.",
+      };
+    donnees.aiEnabled = actif;
+  }
 
   return { ok: true, donnees, prix };
 }
@@ -246,15 +348,35 @@ export function mountProduitsMasse(app: Hono): void {
    */
   app.get("/admin/products", async (c) => {
     const q = c.req.query();
-    const limite = Math.min(Number(q.limit ?? 500) || 500, 1000);
+    // Bornée des deux côtés : une adresse bricolée avec `limit=-5` ferait
+    // refuser la requête par la base et renverrait une page en erreur.
+    const limite = Math.min(
+      Math.max(1, Math.round(Number(q.limit ?? 500) || 500)),
+      1000,
+    );
 
     // Ces filtres-là comptent aussi pour les onglets : « Actifs 200 » doit
     // parler de la recherche en cours, sinon les compteurs contrediraient le
     // tableau qu'ils surmontent.
     const communs = [];
+
+    // Demander des produits nommément. L'éditeur en grille arrive avec la
+    // liste cochée : sans ce filtre il recevait les premiers du catalogue par
+    // ordre alphabétique, c'est-à-dire n'importe lesquels.
+    const choisis = identifiants(
+      (q.ids ?? "")
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean),
+    );
+    if (choisis.length) communs.push(inArray(schema.products.id, choisis));
+
     const cherche = (q.q ?? "").trim();
     if (cherche) {
-      const motif = `%${cherche.toLowerCase()}%`;
+      // « % » et « _ » ont un sens pour la base : cherchés tels quels, ils
+      // ramèneraient tout le catalogue et les compteurs mentiraient avec la
+      // liste. Le nom d'une affiche a le droit de contenir « 50% ».
+      const motif = `%${cherche.toLowerCase().replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
       communs.push(
         or(
           raw`lower(${schema.products.name}) like ${motif}`,
@@ -479,6 +601,16 @@ export function mountProduitsMasse(app: Hono): void {
     }
 
     if (action === "categorie") {
+      // Champ absent : c'est un envoi incomplet, pas l'ordre de déclasser
+      // toute la sélection. Pour retirer la catégorie, il faut l'écrire.
+      if (!("categoryId" in b))
+        return c.json(
+          {
+            error:
+              "Indiquez la catégorie à appliquer, ou choisissez « aucune catégorie » pour les en retirer.",
+          },
+          400,
+        );
       const brut = b.categoryId;
       let categoryId: number | null = null;
       if (brut !== null && brut !== undefined && brut !== "") {
@@ -504,6 +636,16 @@ export function mountProduitsMasse(app: Hono): void {
     }
 
     if (action === "poids") {
+      // Même prudence que pour la catégorie : sans le champ, on ne vide pas
+      // le poids de trente produits au motif que le formulaire l'a oublié.
+      if (!("weightGrams" in b))
+        return c.json(
+          {
+            error:
+              "Indiquez le poids à appliquer. Laissez la case vide pour reprendre celui de la catégorie.",
+          },
+          400,
+        );
       const poids = poidsSaisi(b.weightGrams);
       if (!poids)
         return c.json(
@@ -526,28 +668,71 @@ export function mountProduitsMasse(app: Hono): void {
       if (mode !== "fixe" && mode !== "augmenter" && mode !== "diminuer")
         return c.json({ error: "Choisissez comment changer le prix." }, 400);
 
-      const brutMontant = b.montantCents;
-      const montantCents =
-        brutMontant === null || brutMontant === undefined || brutMontant === ""
-          ? null
-          : Math.round(Number(brutMontant));
-      if (montantCents !== null && !Number.isFinite(montantCents))
-        return c.json({ error: "Le montant doit être un nombre." }, 400);
+      // Un montant laissé vide veut dire « je passe par le pourcentage » ;
+      // toute autre saisie illisible est refusée plutôt que lue comme zéro.
+      const luMontant = prixSaisi(b.montantCents);
+      if (typeof luMontant !== "number" && luMontant !== "vide")
+        return c.json({ error: messagePrix(luMontant, "Le montant") }, 400);
+      const montantCents: number | null =
+        typeof luMontant === "number" ? luMontant : null;
+
       const brutPourcent = b.pourcent;
-      const pourcent =
-        brutPourcent === null ||
-        brutPourcent === undefined ||
-        brutPourcent === ""
-          ? null
-          : Number(brutPourcent);
-      if (pourcent !== null && !Number.isFinite(pourcent))
-        return c.json({ error: "Le pourcentage doit être un nombre." }, 400);
+      let pourcent: number | null = null;
+      if (
+        brutPourcent !== null &&
+        brutPourcent !== undefined &&
+        brutPourcent !== ""
+      ) {
+        const n =
+          typeof brutPourcent === "number" || typeof brutPourcent === "string"
+            ? Number(brutPourcent)
+            : Number.NaN;
+        if (!Number.isFinite(n))
+          return c.json({ error: "Le pourcentage doit être un nombre." }, 400);
+        // Un pourcentage négatif retourne l'opération : « diminuer de moins
+        // cinquante » remonterait tous les prix de la sélection en annonçant
+        // une remise.
+        if (n < 0)
+          return c.json(
+            {
+              error:
+                "Le pourcentage ne peut pas être négatif. Pour baisser les prix, choisissez « diminuer ».",
+            },
+            400,
+          );
+        if (n > POURCENT_MAX)
+          return c.json(
+            {
+              error: `Le pourcentage doit rester entre 0 et ${POURCENT_MAX}.`,
+            },
+            400,
+          );
+        pourcent = n;
+      }
 
       if (mode === "fixe" && montantCents === null)
         return c.json({ error: "Indiquez le nouveau prix." }, 400);
       if (mode !== "fixe" && montantCents === null && pourcent === null)
         return c.json(
           { error: "Indiquez un montant ou un pourcentage." },
+          400,
+        );
+      // Les deux à la fois : le calcul n'en retiendrait qu'un, et personne ne
+      // saurait lequel a été appliqué à toute la sélection.
+      if (mode === "fixe" && pourcent !== null)
+        return c.json(
+          {
+            error:
+              "Pour un prix fixe, indiquez seulement le nouveau prix : le pourcentage ne s'applique pas.",
+          },
+          400,
+        );
+      if (montantCents !== null && pourcent !== null)
+        return c.json(
+          {
+            error:
+              "Choisissez un montant ou un pourcentage, pas les deux à la fois.",
+          },
           400,
         );
 
@@ -578,20 +763,28 @@ export function mountProduitsMasse(app: Hono): void {
         format === "tous"
           ? variantes
           : variantes.filter((v) => v.format === format);
+
+      /** Le message d'un calcul qui sort des prix possibles pour une affiche. */
+      const horsBornes = `Ce calcul donnerait un prix au-dessus de ${euros(PRIX_MAX_CENTS)}. Vérifiez le montant ou le pourcentage saisi.`;
+
+      // Tout est calculé AVANT la moindre écriture : un prix hors bornes doit
+      // arrêter l'action pendant qu'elle est encore sans effet, plutôt que de
+      // laisser la moitié du catalogue re-tarifée.
+      const prixAEcrire = new Map<number, number>();
       const touches = new Set<number>();
       for (const v of visees) {
         const suivant = calculer(v.priceCents);
+        if (suivant > PRIX_MAX_CENTS)
+          return c.json({ error: horsBornes }, 400);
         if (suivant === v.priceCents) continue;
-        await db
-          .update(schema.variants)
-          .set({ priceCents: suivant })
-          .where(eq(schema.variants.id, v.id));
+        prixAEcrire.set(v.id, suivant);
         v.priceCents = suivant;
         touches.add(v.productId);
       }
 
       // Un produit sans aucun format n'a que son prix de repli : sans ce
       // rattrapage, l'action resterait sans effet sur lui, sans le dire.
+      const basesAEcrire = new Map<number, number>();
       const avecFormats = new Set(variantes.map((v) => v.productId));
       const sansFormat = ids.filter((i) => !avecFormats.has(i));
       if (sansFormat.length && format === "tous") {
@@ -604,11 +797,10 @@ export function mountProduitsMasse(app: Hono): void {
           .where(inArray(schema.products.id, sansFormat));
         for (const r of rows) {
           const suivant = calculer(r.basePriceCents);
+          if (suivant > PRIX_MAX_CENTS)
+            return c.json({ error: horsBornes }, 400);
           if (suivant === r.basePriceCents) continue;
-          await db
-            .update(schema.products)
-            .set({ basePriceCents: suivant, updatedAt: new Date() })
-            .where(eq(schema.products.id, r.id));
+          basesAEcrire.set(r.id, suivant);
           touches.add(r.id);
         }
       }
@@ -623,12 +815,26 @@ export function mountProduitsMasse(app: Hono): void {
       }
       for (const produitId of touches) {
         const bas = minParProduit.get(produitId);
-        if (bas === undefined) continue;
-        await db
-          .update(schema.products)
-          .set({ basePriceCents: bas, updatedAt: new Date() })
-          .where(eq(schema.products.id, produitId));
+        if (bas !== undefined) basesAEcrire.set(produitId, bas);
       }
+
+      // Une remise s'applique en entier ou pas du tout : un catalogue à
+      // moitié re-tarifé serait invendable et impossible à rattraper à la
+      // main. Les prix identiques partent ensemble, pour ne pas envoyer une
+      // requête par affiche.
+      await db.transaction(async (tx) => {
+        for (const [cents, varianteIds] of parValeur(prixAEcrire))
+          await tx
+            .update(schema.variants)
+            .set({ priceCents: cents })
+            .where(inArray(schema.variants.id, varianteIds));
+        const maintenant = new Date();
+        for (const [cents, produitIds] of parValeur(basesAEcrire))
+          await tx
+            .update(schema.products)
+            .set({ basePriceCents: cents, updatedAt: maintenant })
+            .where(inArray(schema.products.id, produitIds));
+      });
 
       return c.json({ ok: true, count: touches.size });
     }
@@ -677,30 +883,83 @@ export function mountProduitsMasse(app: Hono): void {
     }
 
     if (action === "ia") {
+      // Sans valeur lisible, on ne suppose pas « non » : ce serait éteindre
+      // l'IA de toute la sélection sur un simple champ oublié en chemin.
+      const actif = booleenSaisi(b.valeur);
+      if (actif === null)
+        return c.json(
+          { error: "Indiquez si l'IA doit être activée ou désactivée." },
+          400,
+        );
       const faits = await db
         .update(schema.products)
-        .set({ aiEnabled: b.valeur === true, updatedAt: new Date() })
+        .set({ aiEnabled: actif, updatedAt: new Date() })
         .where(inArray(schema.products.id, ids))
         .returning({ id: schema.products.id });
       return c.json({ ok: true, count: faits.length });
     }
 
     if (action === "supprimer") {
-      // Une commande passée cite le produit qu'elle contient. L'effacer
-      // viderait des ventes déjà faites de leur libellé et de leur lien, et
-      // aucune comptabilité ne se relit après ça.
-      const vendus = await db
-        .select({ productId: schema.orderItems.productId })
-        .from(schema.orderItems)
-        .where(inArray(schema.orderItems.productId, ids))
-        .groupBy(schema.orderItems.productId);
-      const proteges = new Set(
-        vendus
-          .map((v) => v.productId)
-          .filter((n): n is number => n !== null),
-      );
-
+      const selection = new Set(ids);
       const refuses: { id: number; name: string; raison: string }[] = [];
+
+      // La lecture et la suppression dans le même mouvement : entre les deux,
+      // rien ne doit pouvoir se glisser qui rendrait le verdict faux.
+      const { supprimes, proteges } = await db.transaction(async (tx) => {
+        // Une commande PAYÉE cite le produit qu'elle contient. L'effacer
+        // viderait des ventes déjà faites de leur libellé et de leur lien, et
+        // aucune comptabilité ne se relit après ça. Un panier abandonné, lui,
+        // est une commande en brouillon : il n'a rien vendu et ne protège
+        // rien, sans quoi le passage d'un visiteur suffirait à rendre une
+        // affiche indéboulonnable pour toujours.
+        //
+        // Deux chemins mènent au produit : la ligne le cite directement, ou
+        // elle ne cite que le format acheté. Une seule requête couvre les
+        // deux, faute de quoi une vente ancienne passerait au travers.
+        const lignesVendues = await tx
+          .select({
+            produitDeLaLigne: schema.orderItems.productId,
+            produitDuFormat: schema.variants.productId,
+          })
+          .from(schema.orderItems)
+          .innerJoin(
+            schema.orders,
+            eq(schema.orderItems.orderId, schema.orders.id),
+          )
+          .leftJoin(
+            schema.variants,
+            eq(schema.orderItems.variantId, schema.variants.id),
+          )
+          .where(
+            and(
+              eq(schema.orders.status, "paid"),
+              or(
+                inArray(schema.orderItems.productId, ids),
+                inArray(schema.variants.productId, ids),
+              )!,
+            ),
+          );
+
+        const vendus = new Set<number>();
+        for (const ligne of lignesVendues) {
+          for (const candidat of [
+            ligne.produitDeLaLigne,
+            ligne.produitDuFormat,
+          ])
+            if (candidat !== null && selection.has(candidat))
+              vendus.add(candidat);
+        }
+
+        const aSupprimer = ids.filter((id) => !vendus.has(id));
+        const effaces = aSupprimer.length
+          ? await tx
+              .delete(schema.products)
+              .where(inArray(schema.products.id, aSupprimer))
+              .returning({ id: schema.products.id })
+          : [];
+        return { supprimes: effaces, proteges: vendus };
+      });
+
       if (proteges.size) {
         const noms = await db
           .select({ id: schema.products.id, name: schema.products.name })
@@ -711,20 +970,21 @@ export function mountProduitsMasse(app: Hono): void {
             id: p.id,
             name: p.name,
             raison:
-              "Ce produit figure dans des commandes, il ne peut pas être supprimé. Archivez-le plutôt.",
+              "Ce produit a déjà été vendu, il ne peut pas être supprimé. Archivez-le plutôt.",
           });
       }
 
-      const aSupprimer = ids.filter((id) => !proteges.has(id));
-      const supprimes = aSupprimer.length
-        ? await db
-            .delete(schema.products)
-            .where(inArray(schema.products.id, aSupprimer))
-            .returning({ id: schema.products.id })
-        : [];
       return c.json({
         ok: true,
         count: supprimes.length,
+        // Ce qui part avec le produit et ne se récupère pas : mieux vaut le
+        // lire après coup que le découvrir en cherchant une image disparue.
+        ...(supprimes.length
+          ? {
+              message:
+                "Leurs photos, leurs fonds du configurateur et leur rangement en collections ont été supprimés avec eux. Les affiches déjà créées par l'IA ne leur sont plus rattachées.",
+            }
+          : {}),
         ...(refuses.length ? { refuses } : {}),
       });
     }
@@ -802,11 +1062,11 @@ export function mountProduitsMasse(app: Hono): void {
     let count = 0;
 
     for (const m of modifications) {
-      const id = Number(m.id);
-      const produit = Number.isFinite(id) ? parId.get(id) : undefined;
+      const id = identifiant(m.id);
+      const produit = id === null ? undefined : parId.get(id);
       if (!produit) {
         erreurs.push({
-          id: Number.isFinite(id) ? id : 0,
+          id: id ?? 0,
           message: "Ce produit n'existe plus. Rechargez la page.",
         });
         continue;
@@ -821,21 +1081,67 @@ export function mountProduitsMasse(app: Hono): void {
         continue;
       }
       const formatsDuProduit = variantesParProduit.get(produit.id) ?? [];
+
+      // Un prix tapé pour un format que le produit n'a pas ne s'applique nulle
+      // part. Le passer sous silence laisserait croire à un enregistrement
+      // réussi devant une valeur qui n'a pas pris.
+      const formatsConnus = new Set(formatsDuProduit.map((v) => v.format));
+      const inconnus = [...verdict.prix.keys()].filter(
+        (f) => !formatsConnus.has(f),
+      );
+      if (inconnus.length) {
+        erreurs.push({
+          id: produit.id,
+          message: `Ce produit n'existe pas en ${inconnus.join(", ")}. Rechargez la page pour voir ses formats.`,
+        });
+        continue;
+      }
+
       // Ne garder que les prix qui changent VRAIMENT : réécrire une valeur
       // identique ferait compter la ligne comme modifiée, et la page
       // annoncerait un travail qu'elle n'a pas fait.
-      const prixAEcrire = formatsDuProduit.filter((v) => {
+      const prixAEcrire = new Map<number, number>();
+      for (const v of formatsDuProduit) {
         const voulu = verdict.prix.get(v.format);
-        return voulu !== undefined && voulu !== v.priceCents;
-      });
-      if (!Object.keys(verdict.donnees).length && !prixAEcrire.length) continue;
+        if (voulu !== undefined && voulu !== v.priceCents)
+          prixAEcrire.set(v.id, voulu);
+      }
+      if (!Object.keys(verdict.donnees).length && !prixAEcrire.size) continue;
+
+      // Le prix de base suit le plus bas des formats, sauf quand la ligne le
+      // fixe elle-même : la valeur tapée à la main a le dernier mot, sinon
+      // elle serait écrasée dans la seconde par un calcul que personne n'a
+      // demandé.
+      const baseARecaler =
+        prixAEcrire.size && verdict.donnees.basePriceCents === undefined
+          ? Math.min(
+              ...formatsDuProduit.map(
+                (v) => prixAEcrire.get(v.id) ?? v.priceCents,
+              ),
+            )
+          : null;
 
       try {
-        if (Object.keys(verdict.donnees).length)
-          await db
-            .update(schema.products)
-            .set({ ...verdict.donnees, updatedAt: new Date() })
-            .where(eq(schema.products.id, produit.id));
+        // La ligne passe en entier ou pas du tout : un produit dont le statut
+        // serait écrit et le prix non serait dans un état que personne n'a
+        // demandé, et que rien à l'écran ne trahirait.
+        await db.transaction(async (tx) => {
+          if (Object.keys(verdict.donnees).length)
+            await tx
+              .update(schema.products)
+              .set({ ...verdict.donnees, updatedAt: new Date() })
+              .where(eq(schema.products.id, produit.id));
+          for (const [cents, varianteIds] of parValeur(prixAEcrire))
+            await tx
+              .update(schema.variants)
+              .set({ priceCents: cents })
+              .where(inArray(schema.variants.id, varianteIds));
+          if (baseARecaler !== null)
+            await tx
+              .update(schema.products)
+              .set({ basePriceCents: baseARecaler, updatedAt: new Date() })
+              .where(eq(schema.products.id, produit.id));
+        });
       } catch {
         // Le lot entier ne tombe pas pour une ligne : la base peut refuser une
         // adresse prise entre-temps par quelqu'un d'autre, et les lignes
@@ -848,28 +1154,15 @@ export function mountProduitsMasse(app: Hono): void {
         continue;
       }
 
+      // La mémoire du lot ne se met à jour qu'une fois la ligne écrite : le
+      // même produit peut revenir plus bas dans le même envoi.
       if (verdict.donnees.slug) {
         proprietaireDuSlug.delete(produit.slug);
         proprietaireDuSlug.set(verdict.donnees.slug, produit.id);
       }
-      if (prixAEcrire.length) {
-        for (const v of prixAEcrire) {
-          const voulu = verdict.prix.get(v.format);
-          if (voulu === undefined) continue;
-          await db
-            .update(schema.variants)
-            .set({ priceCents: voulu })
-            .where(eq(schema.variants.id, v.id));
-          v.priceCents = voulu;
-        }
-        // Le prix de base suit le plus bas des formats : c'est lui qui sert de
-        // « à partir de » en boutique.
-        const bas = Math.min(...formatsDuProduit.map((v) => v.priceCents));
-        if (Number.isFinite(bas))
-          await db
-            .update(schema.products)
-            .set({ basePriceCents: bas, updatedAt: new Date() })
-            .where(eq(schema.products.id, produit.id));
+      for (const v of formatsDuProduit) {
+        const ecrit = prixAEcrire.get(v.id);
+        if (ecrit !== undefined) v.priceCents = ecrit;
       }
 
       count++;

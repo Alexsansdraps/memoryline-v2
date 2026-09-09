@@ -149,6 +149,31 @@ export const products = pgTable(
     translations: jsonb("translations").$type<
       Partial<Record<string, { name?: string; description?: string }>>
     >(),
+    /* --- Classement interne ---------------------------------------------- */
+    /**
+     * Type de produit et fournisseur, tels que la boutique les tenait sur
+     * Shopify (« CRIEL Cabines », fournisseur « CRIEL »). Purement internes :
+     * ils ne s'affichent jamais en boutique, ils servent à filtrer et à
+     * retrouver. La CATÉGORIE, elle, porte le poids et compte vraiment.
+     */
+    vendor: text("vendor"),
+    productType: text("product_type"),
+    /**
+     * Étiquettes libres. Les commandes en ont depuis longtemps ; les produits
+     * n'en avaient pas, alors que c'est le seul moyen de rassembler des
+     * affiches qui n'ont ni catégorie ni collection en commun (« à refaire »,
+     * « best-seller », « salon de Vannes »).
+     */
+    tags: jsonb("tags").$type<string[]>(),
+    /* --- Référencement ---------------------------------------------------- */
+    /**
+     * Ce que Google affiche. Vides, le site retombe sur le nom du produit et
+     * sur les premiers mots de sa description — ce qui donne des phrases
+     * coupées au milieu. Les remplir est le seul moyen d'écrire soi-même ce
+     * que voit quelqu'un qui cherche « affiche personnalisée Amiens ».
+     */
+    seoTitle: text("seo_title"),
+    seoDescription: text("seo_description"),
     legacyId: bigint("legacy_id", { mode: "number" }), // Shopify Product ID
     legacySlug: text("legacy_slug"), // slug d'origine -> 301 (§13)
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

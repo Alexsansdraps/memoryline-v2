@@ -33,7 +33,16 @@ if (Astro.request.method === "POST") {
     let params: Record<string, unknown> = {};
     let action = quoi;
 
-    if (quoi === "activer" || quoi === "desactiver" || quoi === "archiver") {
+    if (quoi === "statut-direct") {
+      // La pastille d'une ligne : l'état voulu est calculé au rendu, pas
+      // déduit ici. Deux onglets ouverts sur la même liste ne peuvent donc
+      // pas se renvoyer l'un l'autre dans un état que personne n'a demandé.
+      action = "statut";
+      const voulu = String(f.get("statutVoulu") ?? "");
+      if (voulu !== "active" && voulu !== "draft" && voulu !== "archived")
+        throw new Error("Ce statut n'existe pas.");
+      params = { valeur: voulu };
+    } else if (quoi === "activer" || quoi === "desactiver" || quoi === "archiver") {
       action = "statut";
       params = {
         valeur:
@@ -73,13 +82,24 @@ if (Astro.request.method === "POST") {
 
     const r = await api.produitsEnMasse(ids, action, params);
     const refuses = r.refuses ?? [];
-    flash =
-      `${r.count} produit${r.count > 1 ? "s" : ""} modifié${r.count > 1 ? "s" : ""}.` +
-      (refuses.length
-        ? ` ${refuses.length} refusé${refuses.length > 1 ? "s" : ""} : ` +
-          refuses.map((x) => `${x.name} (${x.raison})`).join(" ; ")
-        : "");
-    flashErreur = refuses.length > 0;
+    if (quoi === "statut-direct" && !refuses.length) {
+      // Un clic sur une pastille ne concerne qu'une affiche : « 1 produit
+      // modifié » serait exact et ne dirait rien de ce qui a changé.
+      const voulu = String(f.get("statutVoulu") ?? "");
+      flash =
+        voulu === "active"
+          ? "Affiche remise en vente. Elle réapparaît sur le site."
+          : "Affiche retirée de la vente. Elle ne s'affiche plus sur le site.";
+      flashErreur = false;
+    } else {
+      flash =
+        `${r.count} produit${r.count > 1 ? "s" : ""} modifié${r.count > 1 ? "s" : ""}.` +
+        (refuses.length
+          ? ` ${refuses.length} refusé${refuses.length > 1 ? "s" : ""} : ` +
+            refuses.map((x) => `${x.name} (${x.raison})`).join(" ; ")
+          : "");
+      flashErreur = refuses.length > 0;
+    }
   } catch (e) {
     flash = String(e instanceof Error ? e.message : e);
     flashErreur = true;
@@ -121,6 +141,22 @@ const ETIQUETTE_STATUT: Record<string, { texte: string; classe: string }> = {
   draft: { texte: "Désactivé", classe: "bg-amber-100 text-amber-800" },
   archived: { texte: "Archivé", classe: "bg-bo-bg text-bo-muted" },
 };
+
+/**
+ * Ce que devient le statut quand on clique dessus. Une affiche en vente se
+ * retire ; tout le reste revient en vente, parce que c'est la seule chose
+ * qu'on veuille faire d'une affiche retirée depuis cette liste.
+ */
+function statutApresClic(actuel: string): string {
+  return actuel === "active" ? "draft" : "active";
+}
+
+/** Ce qu'on annonce avant le clic, pour que personne ne clique à l'aveugle. */
+function infobulleStatut(actuel: string): string {
+  return actuel === "active"
+    ? "Cliquer pour retirer cette affiche de la vente"
+    : "Cliquer pour remettre cette affiche en vente";
+}
 
 const ONGLETS = [
   { cle: "tous", texte: "Tous", nombre: liste.compte.tous },
@@ -454,11 +490,22 @@ const PAGE_SIZE = 25;
                     </div>
                   </td>
                   <td class="px-4 py-2">
-                    <span
-                      class={`inline-block rounded-full px-2 py-0.5 text-xs ${badge.classe}`}
-                    >
-                      {badge.texte}
-                    </span>
+                    <form method="POST" class="inline">
+                      <input type="hidden" name="ids" value={p.id} />
+                      <input type="hidden" name="bulk" value="statut-direct" />
+                      <input
+                        type="hidden"
+                        name="statutVoulu"
+                        value={statutApresClic(p.status)}
+                      />
+                      <button
+                        type="submit"
+                        title={infobulleStatut(p.status)}
+                        class={`cursor-pointer rounded-full px-2 py-0.5 text-xs hover:ring-2 hover:ring-bo-accent/40 ${badge.classe}`}
+                      >
+                        {badge.texte}
+                      </button>
+                    </form>
                   </td>
                   <td class="px-4 py-2 text-bo-muted">
                     {p.categoryName ?? "—"}
