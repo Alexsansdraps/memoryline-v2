@@ -290,6 +290,47 @@ async function agregatsClients(
   return out;
 }
 
+/**
+ * D'où vient chaque client : de la boutique, ou d'un stand — et lequel.
+ *
+ * C'est la PREMIÈRE commande qui décide. Quelqu'un rencontré sur un salon puis
+ * devenu client du site reste quelqu'un que le salon a fait connaître, et
+ * c'est ce qu'on veut savoir en se demandant si un salon valait la peine.
+ *
+ * Calculé plutôt que recopié dans une colonne : une colonne aurait dérivé le
+ * jour où l'on rattache une commande à une autre fiche, et il aurait fallu une
+ * migration pour les clients déjà enregistrés.
+ */
+async function originesClients(
+  ids?: number[],
+): Promise<Map<number, { canal: string; stand: string | null }>> {
+  const out = new Map<number, { canal: string; stand: string | null }>();
+  if (ids && !ids.length) return out;
+  const conditions = [
+    isNotNull(schema.orders.customerId),
+    notInArray(schema.orders.status, HORS_VENTES),
+  ];
+  if (ids) conditions.push(inArray(schema.orders.customerId, ids));
+  // Triées de la plus ancienne à la plus récente : la dernière écrite gagne,
+  // donc c'est bien la première commande qui reste.
+  const rows = await db
+    .select({
+      customerId: schema.orders.customerId,
+      channel: schema.orders.channel,
+      stand: schema.stands.nom,
+      creeLe: schema.orders.createdAt,
+    })
+    .from(schema.orders)
+    .leftJoin(schema.stands, eq(schema.orders.standId, schema.stands.id))
+    .where(and(...conditions))
+    .orderBy(desc(schema.orders.createdAt));
+  for (const r of rows) {
+    if (r.customerId == null) continue;
+    out.set(r.customerId, { canal: r.channel, stand: r.stand ?? null });
+  }
+  return out;
+}
+
 const AGREGAT_VIDE: AgregatClient = {
   commandes: 0,
   caCents: 0,
@@ -857,11 +898,17 @@ export function mountCompteRoutes(app: Hono): void {
       .where(conditions.length ? and(...conditions) : undefined);
 
     const agregats = await agregatsClients();
+    const origines = await originesClients();
     let liste = rows.map((r) => {
       const a = agregats.get(r.id) ?? AGREGAT_VIDE;
+      const o = origines.get(r.id);
       return {
         ...r,
         tags: r.tags ?? [],
+        /** « web », « salon », ou null pour qui n'a jamais rien commandé. */
+        origine: o?.canal ?? null,
+        /** Le nom du stand, quand la première commande y a été prise. */
+        origineStand: o?.stand ?? null,
         commandes: a.commandes,
         caCents: a.caCents,
         derniereCommande: a.derniereCommande

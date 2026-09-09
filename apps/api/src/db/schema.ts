@@ -816,6 +816,77 @@ export const stands = pgTable(
   (t) => [uniqueIndex("stand_code_uniq").on(t.code)],
 );
 
+/**
+ * Une carte cadeau : une somme encaissée d'avance, à rendre en affiches.
+ *
+ * Ce n'est pas un code promo. Une remise réduit un prix au moment de l'achat ;
+ * une carte cadeau est de l'argent déjà versé, donc une dette de la boutique.
+ * Elle garde un solde, se dépense en plusieurs fois, et ne se supprime pas :
+ * on la désactive, ce qui laisse la trace de ce qui a été vendu.
+ */
+export const giftCards = pgTable(
+  "gift_card",
+  {
+    id: serial("id").primaryKey(),
+    /** Le code que porte la carte. Jamais deux fois le même. */
+    code: text("code").notNull(),
+    /** Ce qui a été payé à l'achat de la carte. Ne bouge plus jamais. */
+    initialAmountCents: integer("initial_amount_cents").notNull(),
+    /**
+     * Ce qu'il reste. Recopié du journal pour que la caisse n'ait pas à faire
+     * une somme à chaque passage ; c'est le JOURNAL qui fait foi en cas de
+     * doute, jamais ce compteur.
+     */
+    balanceCents: integer("balance_cents").notNull(),
+    /** active | disabled. Une carte vidée reste active : elle vaut zéro. */
+    status: text("status").notNull().default("active"),
+    /** Null = sans date de fin. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    /** À qui elle a été remise, quand on le sait. */
+    customerId: integer("customer_id").references(() => customers.id, {
+      onDelete: "set null",
+    }),
+    /** Note interne : « offerte au salon de Vannes », « geste commercial ». */
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    disabledAt: timestamp("disabled_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("gift_card_code_uniq").on(t.code)],
+);
+
+/**
+ * Chaque mouvement d'une carte cadeau, en écriture seule.
+ *
+ * Négatif quand la carte paie une commande, positif quand elle est rechargée
+ * ou qu'un remboursement lui rend sa valeur. Rien ne se corrige ici : une
+ * erreur se répare par une écriture inverse, comme dans un livre de comptes.
+ */
+export const giftCardTransactions = pgTable(
+  "gift_card_transaction",
+  {
+    id: serial("id").primaryKey(),
+    giftCardId: integer("gift_card_id")
+      .notNull()
+      .references(() => giftCards.id, { onDelete: "cascade" }),
+    /**
+     * La commande payée avec la carte. « set null » et non cascade : effacer
+     * une commande ne doit pas effacer la preuve que la carte a été dépensée.
+     */
+    orderId: integer("order_id").references(() => orders.id, {
+      onDelete: "set null",
+    }),
+    amountCents: integer("amount_cents").notNull(),
+    /** Ce que dira le back-office : « payé la commande WEB-0042 ». */
+    label: text("label"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [index("gift_card_transaction_card_idx").on(t.giftCardId, t.createdAt)],
+);
+
 export const orders = pgTable(
   "order",
   {
@@ -870,6 +941,14 @@ export const orders = pgTable(
     standId: integer("stand_id").references(() => stands.id, {
       onDelete: "set null",
     }),
+    /**
+     * Part du total réglée par une carte cadeau, en centimes.
+     *
+     * Gardée sur la commande et pas seulement dans le journal de la carte :
+     * c'est ce qui explique, des mois plus tard, pourquoi le prestataire de
+     * paiement n'a encaissé que la différence.
+     */
+    giftCardCents: integer("gift_card_cents").notNull().default(0),
     legacyId: bigint("legacy_id", { mode: "number" }), // Shopify Order/Draft ID
     legacyName: text("legacy_name"), // ex. '#1042'
     /**
