@@ -58,9 +58,16 @@ if (Astro.request.method === "POST") {
       const poids = brutPoids === "" ? null : Number(brutPoids);
       if (poids !== null && (!Number.isInteger(poids) || poids < 0))
         throw new Error("Le poids doit être un nombre de grammes, ou rester vide.");
+      // La description n'a PAS de champ dans ce formulaire. L'envoyer quand
+      // meme revenait a envoyer `null` : le premier reglage de poids ou de
+      // visibilite effacait en silence la description reprise de l'ancienne
+      // boutique. L'API n'ecrit que ce qu'on lui envoie : on ne lui envoie
+      // donc que ce que l'ecran sait vraiment.
       await api.majCollection(id, {
         name: String(f.get("name") ?? "").trim(),
-        description: String(f.get("description") ?? "").trim() || null,
+        ...(f.has("description")
+          ? { description: String(f.get("description") ?? "").trim() || null }
+          : {}),
         active: f.get("active") === "on",
         defaultWeightGrams: poids,
       });
