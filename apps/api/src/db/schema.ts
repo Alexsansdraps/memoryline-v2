@@ -762,6 +762,41 @@ export const customerTokens = pgTable(
   (t) => [index("customer_token_customer_idx").on(t.customerId, t.kind)],
 );
 
+/**
+ * Un stand, c'est-à-dire un endroit et un moment où l'on vend en personne.
+ *
+ * Il y en avait un seul, tenu dans les réglages : un code, un nom, un
+ * interrupteur. Deux stands le même week-end étaient donc impossibles, et
+ * rien ne disait des mois plus tard d'où venait une vente, sinon une étiquette
+ * posée à la main.
+ *
+ * Le CODE est ce qui ouvre la tablette. Il vit ici et nulle part ailleurs :
+ * deux stands ouverts en même temps ne peuvent pas partager le même, sans quoi
+ * on ne saurait plus attribuer une commande.
+ */
+export const stands = pgTable(
+  "stand",
+  {
+    id: serial("id").primaryKey(),
+    /** Le code que la vendeuse tape sur la tablette. Jamais montré au client. */
+    code: text("code").notNull(),
+    /** « Salon du livre de Nantes 2026 » : le nom du lieu, tel qu'on le dit. */
+    nom: text("nom").notNull(),
+    /**
+     * Ouvert veut dire « la tablette accepte des commandes ». Fermer ne
+     * supprime rien : les ventes restent, et le stand peut rouvrir l'an
+     * prochain sous le même nom.
+     */
+    ouvert: boolean("ouvert").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    /** Dernière fermeture. Null tant qu'il n'a jamais été fermé. */
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("stand_code_uniq").on(t.code)],
+);
+
 export const orders = pgTable(
   "order",
   {
@@ -804,7 +839,18 @@ export const orders = pgTable(
     customerId: integer("customer_id").references(() => customers.id, {
       onDelete: "set null",
     }),
-    seenAt: timestamp("seen_at", { withTimezone: true }), // null = badge "ventes salon" (§17.3)
+    seenAt: timestamp("seen_at", { withTimezone: true }), // null = badge "ventes stand" (§17.3)
+    /**
+     * Le stand où cette commande a été prise. Null pour une vente du site, et
+     * pour les ventes d'avant que les stands soient plusieurs.
+     *
+     * « set null » plutôt qu'une cascade : supprimer un stand ne doit pas
+     * emporter les ventes qu'on y a faites. On perd le rattachement, jamais
+     * le chiffre.
+     */
+    standId: integer("stand_id").references(() => stands.id, {
+      onDelete: "set null",
+    }),
     legacyId: bigint("legacy_id", { mode: "number" }), // Shopify Order/Draft ID
     legacyName: text("legacy_name"), // ex. '#1042'
     /**

@@ -204,6 +204,25 @@ export interface MenuCms {
   entrees: EntreeMenu[];
 }
 
+/**
+ * Un stand : un endroit et un moment où l'on vend en personne.
+ *
+ * Plusieurs peuvent être ouverts en même temps, chacun avec son code : c'est
+ * ce qui permet de savoir, des mois plus tard, lequel a bien marché.
+ */
+export interface StandBo {
+  id: number;
+  code: string;
+  nom: string;
+  ouvert: boolean;
+  createdAt: string;
+  closedAt: string | null;
+  /** Commandes prises sur ce stand, paniers en cours exclus. */
+  commandes: number;
+  /** Ce qu'elles totalisent, en centimes. */
+  cents: number;
+}
+
 /** Où partent les courriers de la boutique en ce moment. */
 export interface EtatCourriers {
   configure: boolean;
@@ -473,6 +492,8 @@ export interface OrderRow {
 /** Filtres de la liste des commandes — tous combinables. */
 export interface FiltresCommandes {
   channel?: string;
+  /** Identifiant d'un stand : ne garde que ce qui y a été vendu. */
+  stand?: number;
   q?: string;
   financial?: string;
   fulfillment?: string;
@@ -906,14 +927,35 @@ export function adminApi(request?: Request) {
         cookie,
       );
     },
-    /** Réglages du stand — par la route protégée, jamais par /settings. */
-    salon: () =>
-      req<{ code: string; evenement: string; ouvert: boolean }>(
-        "GET",
-        "/admin/salon",
-        undefined,
+    /**
+     * Tous les stands, avec ce que chacun a rapporté.
+     *
+     * « orphelines » compte les ventes de stand d'avant que les stands soient
+     * plusieurs, et qui n'ont pas pu être rattachées : les taire ferait un
+     * trou dans les chiffres.
+     */
+    stands: () =>
+      req<{
+        stands: StandBo[];
+        orphelines: { commandes: number; cents: number };
+      }>("GET", "/admin/stands", undefined, cookie),
+    /** Ouvre un nouveau stand. Le code est tiré par le serveur. */
+    creerStand: (corps: { nom: string; ouvert?: boolean }) =>
+      req<{ ok: true; stand: StandBo }>("POST", "/admin/stands", corps, cookie),
+    /** Renomme, ouvre, ferme, ou donne un nouveau code d'accès. */
+    majStand: (
+      id: number,
+      corps: { nom?: string; ouvert?: boolean; nouveauCode?: boolean },
+    ) =>
+      req<{ ok: true; stand: StandBo }>(
+        "POST",
+        `/admin/stands/${id}`,
+        corps,
         cookie,
       ),
+    /** Supprime un stand qui n'a rien vendu. Refusé sinon. */
+    supprimerStand: (id: number) =>
+      req<{ ok: true }>("DELETE", `/admin/stands/${id}`, undefined, cookie),
     /**
      * Efface une commande et tout ce qui pend après elle.
      *

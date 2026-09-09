@@ -21,28 +21,35 @@
  */
 import type { Hono } from "hono";
 import type { Context } from "hono";
-import { eq } from "drizzle-orm";
+import { and, asc, count, eq, isNull, ne, sql as raw } from "drizzle-orm";
+import { randomInt } from "node:crypto";
 import { db, schema } from "./db/client.js";
+import { HORS_VENTES } from "./statuts-vente.js";
 
-/** Réglages du stand, modifiables au back-office. */
-const DEFAUTS = {
-  /** Code à saisir pour ouvrir le stand. Vide = stand fermé. */
-  "salon.code": "",
-  /** Nom de l'événement en cours, imprimé sur les bons de préparation. */
-  "salon.evenement": "",
-  /** Le stand accepte-t-il les commandes en ce moment ? */
-  "salon.ouvert": "0",
-} as const;
+/**
+ * Un code d'accès : six caractères, sans ceux qui se confondent.
+ *
+ * Ni O ni 0, ni I ni 1 : ce code se dicte à voix haute dans le bruit d'un
+ * salon, et se retape sur une tablette. Une lettre ambiguë coûte une minute
+ * devant un client qui attend.
+ */
+const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-async function reglagesSalon(): Promise<Record<string, string>> {
-  const rows = await db.select().from(schema.settings);
-  const trouves = new Map(rows.map((r) => [r.key, r.value]));
-  const out: Record<string, string> = { ...DEFAUTS };
-  for (const cle of Object.keys(DEFAUTS)) {
-    const v = trouves.get(cle);
-    if (v !== undefined && v !== null && v !== "") out[cle] = String(v);
-  }
-  return out;
+function nouveauCode(): string {
+  let code = "";
+  for (let i = 0; i < 6; i++) code += ALPHABET[randomInt(ALPHABET.length)];
+  return code;
+}
+
+/** Le stand désigné par ce code, s'il en existe un. */
+async function standDuCode(code: string) {
+  const propre = code.trim().toUpperCase();
+  if (!propre) return undefined;
+  const [stand] = await db
+    .select()
+    .from(schema.stands)
+    .where(eq(schema.stands.code, propre));
+  return stand;
 }
 
 /**
@@ -82,16 +89,21 @@ export function mountSalonRoutes(app: Hono): void {
    * fermé. On ne renvoie JAMAIS le code lui-même.
    */
   app.get("/salon/etat", async (c) => {
-    const reg = await reglagesSalon();
-    const attendu = reg["salon.code"]!;
-    const ouvert = reg["salon.ouvert"] === "1" && attendu.length > 0;
-    const autorise = ouvert && codeFourni(c) === attendu;
+    const stand = await standDuCode(codeFourni(c));
+    const autorise = !!stand?.ouvert;
+    // « ouvert » répond à « y a-t-il un stand ouvert quelque part ». Sans lui,
+    // une tablette au mauvais code ne saurait pas distinguer « je me suis
+    // trompée » de « c'est fermé aujourd'hui ».
+    const [ouverts] = await db
+      .select({ n: count() })
+      .from(schema.stands)
+      .where(eq(schema.stands.ouvert, true));
     return c.json({
-      ouvert,
-      // Le nom de l'événement ne se dit qu'à qui a le code : l'écran du
-      // stand le cache justement tant que le code n'est pas bon.
-      evenement: autorise ? reg["salon.evenement"] || null : null,
-      /** Vrai si la requête porte déjà le bon code. */
+      ouvert: Number(ouverts?.n ?? 0) > 0,
+      // Le nom du stand ne se dit qu'à qui a le code : l'écran le cache
+      // justement tant que le code n'est pas bon.
+      evenement: autorise ? stand!.nom : null,
+      /** Vrai si la requête porte le code d'un stand ouvert. */
       autorise,
     });
   });
@@ -104,12 +116,9 @@ export function mountSalonRoutes(app: Hono): void {
    * c'est uniquement ce qu'on AFFICHE.
    */
   app.post("/salon/commandes", async (c) => {
-    const reg = await reglagesSalon();
-    const attendu = reg["salon.code"]!;
-    if (reg["salon.ouvert"] !== "1" || !attendu)
-      return c.json({ error: "Le stand est fermé." }, 403);
-    if (codeFourni(c) !== attendu)
-      return c.json({ error: "Code du stand incorrect." }, 403);
+    const stand = await standDuCode(codeFourni(c));
+    if (!stand) return c.json({ error: "Code du stand incorrect." }, 403);
+    if (!stand.ouvert) return c.json({ error: "Le stand est fermé." }, 403);
 
     const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
     const cartId = String(body.cartId ?? "");
@@ -158,12 +167,13 @@ export function mountSalonRoutes(app: Hono): void {
       0,
     );
     const numero = await prochainNumeroSalon();
-    const evenement = reg["salon.evenement"];
+    const evenement = stand.nom;
 
     const [commande] = await db
       .update(schema.orders)
       .set({
         channel: "salon",
+        standId: stand.id,
         number: numero,
         status: "pending",
         customerId: client.id,
@@ -173,7 +183,7 @@ export function mountSalonRoutes(app: Hono): void {
         shippingName: nom,
         // L'événement va dans la note : c'est ce qu'on cherche des mois plus
         // tard pour savoir quel salon a bien marché.
-        internalNote: evenement ? `Salon : ${evenement}` : null,
+        internalNote: evenement ? `Stand : ${evenement}` : null,
         tags: evenement ? [evenement] : [],
       })
       .where(eq(schema.orders.id, panier.id))
@@ -195,13 +205,165 @@ export function mountSalonRoutes(app: Hono): void {
     });
   });
 
-  /** Réglages du stand pour le back-office (le code y est visible : c'est elle qui le donne). */
-  app.get("/admin/salon", async (c) => {
-    const reg = await reglagesSalon();
+  /* ---------------------------------------------------------------------- */
+  /*  Les stands, vus du back-office                                        */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * Tous les stands, avec ce que chacun a rapporté.
+   *
+   * Le code y est visible : c'est la boutiquière qui le donne à sa vendeuse.
+   * Il ne sort d'ici que sous la garde du back-office.
+   */
+  app.get("/admin/stands", async (c) => {
+    const stands = await db
+      .select()
+      .from(schema.stands)
+      .orderBy(asc(schema.stands.ouvert), asc(schema.stands.nom));
+
+    // Les ventes, comptées d'un coup : une requête par stand serait une
+    // requête de trop dès la troisième année de salons.
+    const ventes = await db
+      .select({
+        standId: schema.orders.standId,
+        commandes: count(),
+        cents: raw<number>`coalesce(sum(${schema.orders.totalCents}), 0)::int`,
+      })
+      .from(schema.orders)
+      .where(
+        and(
+          eq(schema.orders.channel, "salon"),
+          ne(schema.orders.status, "draft"),
+        ),
+      )
+      .groupBy(schema.orders.standId);
+    const parStand = new Map(
+      ventes.map((v) => [
+        v.standId,
+        { commandes: Number(v.commandes), cents: Number(v.cents) },
+      ]),
+    );
+
+    // Les ventes d'avant les stands multiples, si la migration n'a rien eu à
+    // rattacher : les taire ferait un trou dans les chiffres.
+    const orphelines = parStand.get(null) ?? { commandes: 0, cents: 0 };
+
     return c.json({
-      code: reg["salon.code"],
-      evenement: reg["salon.evenement"],
-      ouvert: reg["salon.ouvert"] === "1",
+      stands: stands
+        .map((s) => ({
+          id: s.id,
+          code: s.code,
+          nom: s.nom,
+          ouvert: s.ouvert,
+          createdAt: s.createdAt,
+          closedAt: s.closedAt,
+          ...(parStand.get(s.id) ?? { commandes: 0, cents: 0 }),
+        }))
+        // Les stands ouverts d'abord : ce sont eux qu'on regarde.
+        .sort((a, b) => Number(b.ouvert) - Number(a.ouvert)),
+      orphelines,
     });
+  });
+
+  /** Ouvre un nouveau stand. Le code est tiré ici, jamais choisi. */
+  app.post("/admin/stands", async (c) => {
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const nom = String(b.nom ?? "").trim().slice(0, 120);
+    if (!nom)
+      return c.json(
+        { error: "Donnez un nom au stand, par exemple « Salon du livre de Nantes 2026 »." },
+        400,
+      );
+    // Un code déjà pris ferait pointer deux stands vers la même tablette. La
+    // boucle est courte : un million de codes possibles, quelques stands.
+    for (let essai = 0; essai < 12; essai++) {
+      const code = nouveauCode();
+      if (await standDuCode(code)) continue;
+      const [stand] = await db
+        .insert(schema.stands)
+        .values({ code, nom, ouvert: b.ouvert === true })
+        .returning();
+      return c.json({ ok: true, stand });
+    }
+    return c.json(
+      { error: "Impossible de tirer un code libre. Réessayez." },
+      500,
+    );
+  });
+
+  /** Renomme un stand, l'ouvre, le ferme, ou lui donne un nouveau code. */
+  app.post("/admin/stands/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0)
+      return c.json({ error: "stand inconnu" }, 400);
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const [stand] = await db
+      .select()
+      .from(schema.stands)
+      .where(eq(schema.stands.id, id));
+    if (!stand)
+      return c.json({ error: "Ce stand n'existe plus. Rechargez la page." }, 404);
+
+    const champs: Record<string, unknown> = {};
+    if ("nom" in b) {
+      const nom = String(b.nom ?? "").trim().slice(0, 120);
+      if (!nom) return c.json({ error: "Le nom du stand ne peut pas être vide." }, 400);
+      champs.nom = nom;
+    }
+    if ("ouvert" in b) {
+      if (typeof b.ouvert !== "boolean")
+        return c.json({ error: "Dites si le stand est ouvert ou fermé." }, 400);
+      champs.ouvert = b.ouvert;
+      // La date de fermeture ne se remet pas à zéro à la réouverture : on veut
+      // savoir quand le stand a fermé la dernière fois.
+      if (!b.ouvert) champs.closedAt = new Date();
+    }
+    if (b.nouveauCode === true) {
+      // Changer le code coupe l'ancienne adresse : à faire APRÈS le stand, ou
+      // quand le code a circulé plus loin qu'il n'aurait dû.
+      for (let essai = 0; essai < 12; essai++) {
+        const code = nouveauCode();
+        if (await standDuCode(code)) continue;
+        champs.code = code;
+        break;
+      }
+      if (!champs.code)
+        return c.json({ error: "Impossible de tirer un code libre. Réessayez." }, 500);
+    }
+    if (!Object.keys(champs).length) return c.json({ ok: true, stand });
+
+    const [suivant] = await db
+      .update(schema.stands)
+      .set(champs)
+      .where(eq(schema.stands.id, id))
+      .returning();
+    return c.json({ ok: true, stand: suivant });
+  });
+
+  /**
+   * Supprime un stand qui n'a rien vendu.
+   *
+   * Un stand qui a des ventes ne s'efface pas : la clé étrangère détacherait
+   * les commandes sans rien dire, et on perdrait la seule trace de l'endroit
+   * où elles ont été prises. On ferme un stand, on ne le supprime pas.
+   */
+  app.delete("/admin/stands/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0)
+      return c.json({ error: "stand inconnu" }, 400);
+    const [vendu] = await db
+      .select({ n: count() })
+      .from(schema.orders)
+      .where(eq(schema.orders.standId, id));
+    if (Number(vendu?.n ?? 0) > 0)
+      return c.json(
+        {
+          error:
+            "Ce stand a des commandes : il ne peut pas être supprimé, sinon elles perdraient leur origine. Fermez-le plutôt.",
+        },
+        400,
+      );
+    await db.delete(schema.stands).where(eq(schema.stands.id, id));
+    return c.json({ ok: true });
   });
 }

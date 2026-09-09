@@ -295,6 +295,11 @@ export function mountOrderRoutes(app: Hono): void {
     const conditions = [];
     if (q.channel === "web" || q.channel === "salon")
       conditions.push(eq(schema.orders.channel, q.channel));
+    // Un stand précis : c'est la question qu'on se pose au retour d'un salon,
+    // « combien celui-là a-t-il fait ».
+    const stand = Number(q.stand);
+    if (Number.isInteger(stand) && stand > 0)
+      conditions.push(eq(schema.orders.standId, stand));
     if (q.from) conditions.push(gte(schema.orders.createdAt, new Date(q.from)));
     if (q.to) {
       // Une date de fin s'entend « jusqu'au soir » : sinon un filtre « du 1er
@@ -399,6 +404,11 @@ export function mountOrderRoutes(app: Hono): void {
     const conditions = [];
     if (q.channel === "web" || q.channel === "salon")
       conditions.push(eq(schema.orders.channel, q.channel));
+    // Un stand précis : c'est la question qu'on se pose au retour d'un salon,
+    // « combien celui-là a-t-il fait ».
+    const stand = Number(q.stand);
+    if (Number.isInteger(stand) && stand > 0)
+      conditions.push(eq(schema.orders.standId, stand));
     if (q.from) conditions.push(gte(schema.orders.createdAt, new Date(q.from)));
     if (q.to) {
       const fin = new Date(q.to);
