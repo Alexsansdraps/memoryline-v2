@@ -36,6 +36,11 @@ import {
   type Courrier,
   type LigneCourrier,
 } from "./mail.js";
+// La vignette d'un produit se compose au même endroit que la relance de
+// panier, seul courrier qui l'affiche : deux façons de fabriquer cette adresse
+// finiraient par diverger, et l'aperçu montrerait une image que le vrai
+// courrier n'a pas.
+import { vignettesDesProduits } from "./relance-panier.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Réglages affichés                                                         */
@@ -314,6 +319,11 @@ async function donneesDeCommande(
     .from(schema.orderItems)
     .where(eq(schema.orderItems.orderId, commande.id));
   const cadres = await db.select().from(schema.frames);
+  // Les vignettes : seule la relance de panier les affiche, mais elles sont
+  // portées par la ligne, donc composées ici comme le reste.
+  const vignettes = await vignettesDesProduits(
+    articles.map((it) => it.productId),
+  );
 
   const lignes: LigneCourrier[] = articles.map((it) => {
     const cfg = (it.config ?? {}) as Record<string, unknown>;
@@ -324,6 +334,7 @@ async function donneesDeCommande(
       cadre: cadre?.name ?? null,
       quantite: it.quantity,
       unitPriceCents: it.unitPriceCents,
+      imageUrl: it.productId != null ? (vignettes.get(it.productId) ?? null) : null,
     };
   });
   const sousTotalCents = lignes.reduce(
@@ -444,11 +455,18 @@ function rendre(modele: IdModele, d: DonneesCourrier): Courrier {
         lignes: d.lignes,
       });
     case "panier-abandonne":
+      // L'aperçu montre le courrier le plus COMPLET : lien de récupération à
+      // jeton, code de réduction repris, et lien de désinscription. Ce dernier
+      // n'apparaît en vrai qu'avec la base légale de l'intérêt légitime, mais
+      // c'est justement la ligne qu'on vient relire — un aperçu qui la cache
+      // laisserait croire qu'elle manque.
       return courrierPanierAbandonne({
         prenomClient: d.prenomClient || "vous",
-        lien: `${ORIGINE}/panier`,
+        lien: `${ORIGINE}/panier/recuperer?jeton=exemple-de-lien`,
         lignes: d.lignes,
         totalCents: d.totalCents,
+        codePromo: d.codePromo,
+        lienDesinscription: `${ORIGINE}/api/relance/desabonnement?jeton=essai`,
       });
     case "bienvenue":
       return courrierBienvenue({

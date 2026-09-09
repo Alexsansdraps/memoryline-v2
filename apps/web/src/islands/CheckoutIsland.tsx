@@ -260,6 +260,30 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
     });
     setCpRecherche(essai.postalCode);
   }
+
+  /*
+   * Retour par un lien de relance : la page de récupération vient de déposer
+   * le nom et l'adresse que la cliente nous avait déjà donnés. Les lui faire
+   * retaper serait la première chose qu'on lui demanderait après lui avoir
+   * écrit « votre commande vous attend » — exactement ce qu'on veut éviter.
+   *
+   * APRÈS le jeu d'essai, et c'est voulu : de vraies coordonnées l'emportent
+   * toujours sur un client tiré au sort. Lues PUIS effacées, car elles ne
+   * valent que pour ce retour-là — le client suivant, sur le même navigateur,
+   * ne doit pas trouver le nom de quelqu'un d'autre dans ses champs.
+   */
+  try {
+    const garde = localStorage.getItem("ml_relance_client");
+    if (garde) {
+      localStorage.removeItem("ml_relance_client");
+      const d = JSON.parse(garde) as { nom?: string; email?: string };
+      if (d.nom) setName(d.nom);
+      if (d.email) setEmail(d.email);
+    }
+  } catch {
+    /* stockage indisponible : la cliente saisira ses coordonnées, comme avant */
+  }
+
   const [relais, setRelais] = createSignal<
     { id: string; nom: string; adresse: string; codePostal: string; ville: string }[]
   >([]);

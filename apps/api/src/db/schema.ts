@@ -963,8 +963,55 @@ export const orders = pgTable(
      * Elle n'est jamais montrée au client, elle sert à se souvenir.
      */
     internalNote: text("internal_note"),
-    /** Date de la dernière relance de panier abandonné, pour ne pas insister. */
+    /**
+     * Date d'envoi de la relance de panier abandonné.
+     *
+     * C'EST le drapeau d'unicité : « relancé » se lit « cette date existe ».
+     * Shopify porte un booléen `recovery_email_sent` à côté de sa date ; ici
+     * la date seule dit la même chose et ne peut pas se contredire — un
+     * booléen et une date finissent toujours par diverger, et il faut alors
+     * choisir lequel des deux ment. On n'ajoute donc PAS de colonne
+     * `recovery_email_sent_at` en double : c'est cette colonne-ci.
+     */
     reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }),
+    /**
+     * Dernière fois que ce panier a bougé : article ajouté, modifié, retiré,
+     * ou passage au tunnel de commande. C'est L'HORLOGE D'INACTIVITÉ, celle
+     * qui décide qu'un panier est abandonné.
+     *
+     * Sans elle, on ne savait mesurer que l'âge du panier : un client qui
+     * compose son affiche pendant une heure était déclaré « abandonné » alors
+     * qu'il était encore là. Null pour les paniers d'avant cette colonne — on
+     * retombe alors sur `createdAt`, qui reste une approximation honnête.
+     */
+    lastActivityAt: timestamp("last_activity_at", { withTimezone: true }),
+    /**
+     * Le jeton du lien de récupération envoyé dans la relance.
+     *
+     * Tiré au sort, propre à ce panier, il ne dit rien de la personne et ne
+     * se devine pas : il ne sert qu'à remettre CE panier dans le navigateur
+     * qui ouvre le lien. Créé au moment où on en a besoin, jamais avant.
+     */
+    recoveryToken: text("recovery_token"),
+    /**
+     * Le panier a été payé APRÈS une relance.
+     *
+     * C'est le seul chiffre qui dit si la relance sert à quelque chose : sans
+     * lui, on sait combien de courriers sont partis, jamais combien de
+     * commandes ils ont ramenées.
+     */
+    recoveredAt: timestamp("recovered_at", { withTimezone: true }),
+    /**
+     * Pourquoi la relance automatique a renoncé : « achat croisé »,
+     * « article indisponible », « pas de consentement »…
+     *
+     * Gardé en clair plutôt qu'en code : c'est une phrase que la boutique lit
+     * dans la liste, et personne n'a envie d'entretenir un dictionnaire de
+     * codes pour l'afficher. Réécrit à chaque passage du travailleur.
+     */
+    recoveryDeclinedReason: text("recovery_declined_reason"),
+    /** Quand ce renoncement a été constaté. */
+    recoveryDeclinedAt: timestamp("recovery_declined_at", { withTimezone: true }),
     /**
      * Étiquettes libres de classement interne : « cadeau », « urgent »,
      * « salon de Nantes ». Jamais montrées au client ; elles servent à
@@ -977,6 +1024,10 @@ export const orders = pgTable(
     uniqueIndex("order_number_uniq").on(t.number),
     uniqueIndex("order_client_order_id_uniq").on(t.clientOrderId),
     index("order_channel_created_idx").on(t.channel, t.createdAt),
+    // Unique : deux paniers ne doivent jamais partager un jeton, sinon le
+    // lien de l'un ouvrirait le panier de l'autre. Et indexé, parce que la
+    // page de récupération n'a que ce jeton pour retrouver la commande.
+    uniqueIndex("order_recovery_token_uniq").on(t.recoveryToken),
   ],
 );
 
@@ -1329,6 +1380,33 @@ export const lettreJetons = pgTable(
     desabonneLe: timestamp("desabonne_le", { withTimezone: true }),
   },
   (t) => [uniqueIndex("lettre_jeton_email_uniq").on(t.email)],
+);
+
+/**
+ * Les adresses qui ne veulent plus qu'on leur rappelle leur panier.
+ *
+ * Une table à part, et non un drapeau sur la fiche client, pour deux raisons.
+ * D'abord un refus porte sur une ADRESSE, pas sur une fiche : cette base
+ * accepte plusieurs fiches pour la même adresse (l'unicité n'est imposée
+ * qu'aux comptes), et un drapeau posé sur l'une laisserait les autres
+ * relançables. Ensuite le refus doit survivre à la fiche : fusionner deux
+ * clients ou en effacer un ne doit jamais faire repartir des courriers que
+ * quelqu'un avait refusés.
+ *
+ * Même forme que le jeton de la lettre d'information : l'adresse garde son
+ * jeton d'un courrier à l'autre, sinon les liens déjà partis cesseraient de
+ * fonctionner. `refuseLe` renseigné = plus aucune relance, jamais.
+ */
+export const relanceRefus = pgTable(
+  "relance_refus",
+  {
+    jeton: text("jeton").primaryKey(),
+    email: text("email").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    /** Renseignée dès que la personne a refusé. Trace, et filtre. */
+    refuseLe: timestamp("refuse_le", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("relance_refus_email_uniq").on(t.email)],
 );
 
 // --- Configuration éditable depuis le BO ---------------------------------

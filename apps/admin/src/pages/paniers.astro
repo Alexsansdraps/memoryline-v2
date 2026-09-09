@@ -1,15 +1,26 @@
 ---
 /**
- * Paniers abandonnés : les commandes engagées mais jamais payées.
+ * Paniers abandonnés : les commandes engagées mais jamais payées, et la
+ * relance qui va les chercher.
  *
- * On n'affiche que celles qui portent une adresse e-mail — un panier anonyme
- * ne se relance pas, et le lister ferait du bruit sans action possible. Le
- * délai est réglable : une heure suffit à écarter les clients encore en train
- * de payer, mais on peut vouloir ne relancer qu'au bout d'un jour.
+ * Deux horloges cohabitent ici, et l'écran doit les distinguer sans détour.
+ * Celle de L'AFFICHAGE, réglée en minutes : passé ce délai sans activité, le
+ * panier apparaît dans la liste. Celle de L'ENVOI, réglée en heures : c'est
+ * seulement à ce terme qu'un courrier part. Un panier peut donc rester
+ * plusieurs heures sous les yeux sans qu'on ait écrit à personne, et c'est
+ * voulu — la marchande voit ce qui se passe avant que la machine n'agisse.
+ *
+ * Et une limite qui ne se règle pas : passé quatorze jours, plus aucun envoi.
+ * Ces paniers-là restent visibles, avec la raison écrite en toutes lettres.
  */
 import Admin from "../layouts/Admin.astro";
 import { url } from "../lib/url.ts";
-import { adminApi, formatPrice, type PanierAbandonne } from "../lib/api.ts";
+import {
+  adminApi,
+  formatPrice,
+  type EcranPaniers,
+  type PanierAbandonne,
+} from "../lib/api.ts";
 
 const api = adminApi(Astro.request);
 
@@ -18,109 +29,320 @@ let flashErreur = false;
 
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
+  const action = String(f.get("action") ?? "relancer");
   try {
-    await api.relancerPanier(Number(f.get("id")));
-    flash = "Relance envoyée.";
+    if (action === "reglages") {
+      const r = await api.reglagesRelance({
+        active: f.get("active") === "on",
+        palierHeures: Number(f.get("palierHeures")),
+        plancherMinutes: Number(f.get("plancherMinutes")),
+        baseLegale:
+          String(f.get("baseLegale")) === "interet_legitime"
+            ? "interet_legitime"
+            : "consentement",
+      });
+      flash = r.reglages.active
+        ? `Réglages enregistrés. Les relances partent toutes seules, ${r.reglages.palierHeures} h après le dernier geste de la cliente.`
+        : "Réglages enregistrés. La relance automatique est éteinte : seul le bouton « Relancer » envoie un courrier.";
+    } else if (action === "passage") {
+      const { bilan } = await api.passageRelance();
+      // Un passage qui ne fait rien doit dire pourquoi : « 0 panier examiné »
+      // tout seul se lit comme une panne, alors que c'est un réglage.
+      flash =
+        bilan.envoyes > 0
+          ? `${bilan.envoyes} relance${bilan.envoyes > 1 ? "s sont parties" : " est partie"}, ${bilan.renonces} panier${bilan.renonces > 1 ? "s écartés" : " écarté"} sur ${bilan.examines} examiné${bilan.examines > 1 ? "s" : ""}.`
+          : (bilan.motif ??
+            `Aucun courrier n'est parti. ${bilan.examines} panier${bilan.examines > 1 ? "s examinés" : " examiné"}, ${bilan.renonces} écarté${bilan.renonces > 1 ? "s" : ""} par les garde-fous.`);
+    } else {
+      await api.relancerPanier(Number(f.get("id")));
+      flash = "Relance envoyée.";
+    }
   } catch (e) {
-    flash = "Envoi impossible : " + String(e);
+    flash = e instanceof Error ? e.message : String(e);
     flashErreur = true;
   }
 }
 
-const heures = Math.max(1, Number(Astro.url.searchParams.get("h") ?? 1));
+/**
+ * Le délai d'affichage peut se regarder autrement que réglé, le temps d'un
+ * coup d'œil. Absent de l'adresse, c'est le réglage de la boutique qui parle.
+ */
+const plancherDemande = Astro.url.searchParams.get("plancher");
 
-let paniers: PanierAbandonne[] = [];
-let error: string | null = null;
+let ecran: EcranPaniers | null = null;
+let erreur: string | null = null;
 try {
-  paniers = await api.abandonedCarts(heures);
+  ecran = await api.abandonedCarts(
+    plancherDemande ? Number(plancherDemande) : undefined,
+  );
 } catch (e) {
-  error = String(e);
+  erreur = e instanceof Error ? e.message : String(e);
 }
 
-// Sans adresse, aucune relance possible : on sépare les deux listes plutôt
-// que de proposer un bouton qui échouerait.
-const joignables = paniers.filter((p) => p.email);
-const anonymes = paniers.length - joignables.length;
-const valeur = joignables.reduce((s, p) => s + p.totalCents, 0);
+const reglages = ecran?.reglages ?? {
+  active: false,
+  palierHeures: 10,
+  plancherMinutes: 10,
+  baseLegale: "consentement" as const,
+};
+const paniers: PanierAbandonne[] = ecran?.paniers ?? [];
+const chiffres = ecran?.chiffres ?? {
+  relancables: 0,
+  montantEnJeu: 0,
+  relancesEnvoyees: 0,
+  paniersRecuperes: 0,
+  montantRecupere: 0,
+};
 
-function quand(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  try {
-    const d = new Date(iso);
-    return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" })} à ${d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
-  } catch {
-    return "—";
-  }
-}
-
-const DELAIS = [
-  { h: 1, label: "1 heure" },
-  { h: 6, label: "6 heures" },
-  { h: 24, label: "1 jour" },
-  { h: 72, label: "3 jours" },
-  { h: 168, label: "1 semaine" },
+/** Les quatre paliers de Shopify, avec la phrase qui dit ce qu'ils valent. */
+const PALIERS = [
+  { h: 1, label: "1 heure", aide: "Très tôt : la cliente est peut-être encore devant son écran." },
+  { h: 6, label: "6 heures", aide: "Le message arrive dans la même demi-journée." },
+  { h: 10, label: "10 heures", aide: "Le réglage conseillé : le panier du soir est rappelé le matin." },
+  { h: 24, label: "24 heures", aide: "Un jour plus tard, à la même heure qu'hier." },
 ];
+
+/** Le plancher d'affichage : Shopify ne descend pas sous 10, ni au-delà de 15. */
+const PLANCHERS = [10, 11, 12, 13, 14, 15];
+
+const palierChoisi =
+  PALIERS.find((p) => p.h === reglages.palierHeures) ?? PALIERS[2]!;
+
+/** Couleur de la pastille d'état — le lisible avant le décoratif. */
+function tonEtat(etat: PanierAbandonne["etat"]): string {
+  if (etat === "recupere") return "bg-green-100 text-green-800";
+  if (etat === "trop_ancien") return "bg-gray-100 text-gray-600";
+  if (etat === "relance") return "bg-blue-100 text-blue-800";
+  if (etat === "renonce") return "bg-amber-100 text-amber-800";
+  return "bg-bo-bg text-bo-muted";
+}
 ---
 
 <Admin title="Paniers abandonnés">
   {flash && (
     <p
       class={`mb-4 rounded border px-3 py-2 text-sm ${
-        flashErreur ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"
+        flashErreur
+          ? "border-red-300 bg-red-50 text-red-800"
+          : "border-green-300 bg-green-50 text-green-800"
       }`}
     >
       {flash}
     </p>
   )}
-  {error && <p class="mb-4 text-sm text-red-600">API injoignable : {error}</p>}
+  {erreur && <p class="mb-4 text-sm text-red-600">API injoignable : {erreur}</p>}
 
-  <div class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+  {ecran && !ecran.courrierConfigure && (
+    <p class="mb-4 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      L'envoi de courriers n'est pas configuré : aucune relance ne peut partir,
+      automatique ou non. Les paniers restent listés ci-dessous.
+    </p>
+  )}
+
+  <p class="mb-5 max-w-3xl text-sm text-bo-muted">
+    Un panier devient « abandonné » quand une cliente a laissé son adresse
+    e-mail au tunnel de commande et que plus rien n'a bougé depuis le délai
+    d'affichage réglé plus bas. Il apparaît alors ici. Le courrier de relance,
+    lui, ne part qu'au terme du palier d'envoi — et jamais au-delà de quatorze
+    jours, où le panier est définitivement laissé tranquille.
+  </p>
+
+  {/* --- Les chiffres qui comptent -------------------------------------- */}
+  <div class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
     <div class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
       <div class="text-xs text-bo-muted">Paniers relançables</div>
-      <div class="text-2xl">{joignables.length}</div>
+      <div class="text-2xl">{chiffres.relancables}</div>
     </div>
     <div class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
       <div class="text-xs text-bo-muted">Montant en jeu</div>
-      <div class="text-2xl">{formatPrice(valeur)}</div>
+      <div class="text-2xl">{formatPrice(chiffres.montantEnJeu)}</div>
     </div>
     <div class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
-      <div class="text-xs text-bo-muted">Sans e-mail</div>
-      <div class="text-2xl">{anonymes}</div>
-      <div class="text-xs text-bo-muted">Impossible à relancer.</div>
+      <div class="text-xs text-bo-muted">Relances envoyées</div>
+      <div class="text-2xl">{chiffres.relancesEnvoyees}</div>
+      <div class="text-xs text-bo-muted">Depuis toujours.</div>
+    </div>
+    <div class="rounded-lg border border-green-300 bg-green-50 px-4 py-3">
+      <div class="text-xs text-green-800">Paniers récupérés</div>
+      <div class="text-2xl text-green-900">{chiffres.paniersRecuperes}</div>
+      <div class="text-xs text-green-800">Payés après une relance.</div>
+    </div>
+    <div class="rounded-lg border border-green-300 bg-green-50 px-4 py-3">
+      <div class="text-xs text-green-800">Montant récupéré</div>
+      <div class="text-2xl text-green-900">{formatPrice(chiffres.montantRecupere)}</div>
+      <div class="text-xs text-green-800">Ce que la relance a rapporté.</div>
     </div>
   </div>
 
-  <form method="GET" class="mb-4 flex flex-wrap items-end gap-3">
-    <label class="text-sm">
-      <span class="mb-1 block text-xs text-bo-muted">Abandonnés depuis plus de</span>
-      <select name="h" class="rounded border border-bo-border px-3 py-2">
-        {DELAIS.map((d) => (
-          <option value={d.h} selected={d.h === heures}>
-            {d.label}
-          </option>
-        ))}
-      </select>
-    </label>
-    <button class="rounded bg-bo-nav px-4 py-2 text-sm text-white">Afficher</button>
-  </form>
+  {/* --- Les réglages ---------------------------------------------------- */}
+  <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface">
+    <h2 class="border-b border-bo-border px-4 py-3 text-sm font-medium">
+      Réglages de la relance
+    </h2>
+    <form method="POST" class="space-y-5 px-4 py-4">
+      <input type="hidden" name="action" value="reglages" />
+
+      <label class="flex max-w-3xl items-start gap-3">
+        <input
+          type="checkbox"
+          name="active"
+          checked={reglages.active}
+          class="mt-1"
+        />
+        <span>
+          <span class="text-sm font-medium">Relancer automatiquement</span>
+          <span class="mt-0.5 block text-xs text-bo-muted">
+            Décochée, aucune relance ne part toute seule : il faut cliquer sur
+            « Relancer » panier par panier. Cochée, la boutique regarde toutes
+            les cinq minutes et écrit d'elle-même aux clientes concernées.
+          </span>
+        </span>
+      </label>
+
+      <div class="grid max-w-3xl gap-5 sm:grid-cols-2">
+        <label class="block">
+          <span class="text-sm font-medium">Envoyer le courrier après</span>
+          <select
+            name="palierHeures"
+            class="mt-1 w-full rounded border border-bo-border px-3 py-2 text-sm"
+          >
+            {PALIERS.map((p) => (
+              <option value={p.h} selected={p.h === reglages.palierHeures}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <span class="mt-1 block text-xs text-bo-muted">
+            {palierChoisi.aide} Le délai se compte à partir du dernier geste de
+            la cliente, pas de la création du panier.
+          </span>
+        </label>
+
+        <label class="block">
+          <span class="text-sm font-medium">Afficher le panier après</span>
+          <select
+            name="plancherMinutes"
+            class="mt-1 w-full rounded border border-bo-border px-3 py-2 text-sm"
+          >
+            {PLANCHERS.map((m) => (
+              <option value={m} selected={m === reglages.plancherMinutes}>
+                {m} minutes
+              </option>
+            ))}
+          </select>
+          <span class="mt-1 block text-xs text-bo-muted">
+            Le temps qu'on laisse à une cliente avant de considérer qu'elle est
+            partie. En dessous de dix minutes, on prendrait pour un abandon
+            quelqu'un qui remplit encore son adresse.
+          </span>
+        </label>
+      </div>
+
+      <fieldset class="max-w-3xl">
+        <legend class="text-sm font-medium">Sur quelle base on écrit</legend>
+        <label class="mt-2 flex items-start gap-3">
+          <input
+            type="radio"
+            name="baseLegale"
+            value="consentement"
+            checked={reglages.baseLegale === "consentement"}
+            class="mt-1"
+          />
+          <span>
+            <span class="text-sm">Consentement</span>
+            <span class="mt-0.5 block text-xs text-bo-muted">
+              On n'écrit qu'aux clientes qui ont accepté de recevoir nos
+              messages. C'est le choix le plus prudent : moins de courriers
+              partent, mais aucun ne peut être reproché.
+            </span>
+          </span>
+        </label>
+        <label class="mt-3 flex items-start gap-3">
+          <input
+            type="radio"
+            name="baseLegale"
+            value="interet_legitime"
+            checked={reglages.baseLegale === "interet_legitime"}
+            class="mt-1"
+          />
+          <span>
+            <span class="text-sm">Intérêt légitime</span>
+            <span class="mt-0.5 block text-xs text-bo-muted">
+              On écrit à toute cliente qui a laissé une commande en cours, même
+              sans case cochée — le RGPD l'autorise pour une commande entamée.
+              En contrepartie, chaque courrier porte alors un lien
+              « Ne plus recevoir de rappel », et une cliente qui l'utilise n'est
+              plus jamais relancée.
+            </span>
+          </span>
+        </label>
+      </fieldset>
+
+      <div class="flex flex-wrap items-center gap-3">
+        <button class="rounded bg-bo-nav px-4 py-2 text-sm text-white">
+          Enregistrer les réglages
+        </button>
+        <span class="text-xs text-bo-muted">
+          Ces réglages ne se saisissent qu'ici.
+        </span>
+      </div>
+    </form>
+  </section>
+
+  {/* --- La liste -------------------------------------------------------- */}
+  <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
+    <form method="GET" class="flex flex-wrap items-end gap-3">
+      <label class="text-sm">
+        <span class="mb-1 block text-xs text-bo-muted">
+          Voir les paniers immobiles depuis plus de
+        </span>
+        <select
+          name="plancher"
+          class="rounded border border-bo-border px-3 py-2 text-sm"
+        >
+          {[10, 15, 60, 360, 1440, 10080].map((m) => (
+            <option value={m} selected={m === ecran?.plancher}>
+              {m < 60
+                ? `${m} minutes`
+                : m < 1440
+                  ? `${m / 60} heures`
+                  : m === 1440
+                    ? "1 jour"
+                    : `${m / 1440} jours`}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button class="rounded border border-bo-border px-4 py-2 text-sm hover:bg-bo-bg">
+        Afficher
+      </button>
+    </form>
+
+    <form method="POST">
+      <input type="hidden" name="action" value="passage" />
+      <button class="rounded border border-bo-border px-4 py-2 text-sm hover:bg-bo-bg">
+        Lancer un passage maintenant
+      </button>
+    </form>
+  </div>
 
   <section class="overflow-x-auto rounded-lg border border-bo-border bg-bo-surface">
     <table class="w-full text-sm">
       <thead class="bg-bo-bg text-left text-bo-muted">
         <tr>
           <th class="px-4 py-2 font-medium">Panier</th>
-          <th class="px-4 py-2 font-medium">Abandonné</th>
-          <th class="px-4 py-2 font-medium">Client</th>
+          <th class="px-4 py-2 font-medium">État</th>
+          <th class="px-4 py-2 font-medium">Cliente</th>
           <th class="px-4 py-2 font-medium">Articles</th>
           <th class="px-4 py-2 text-right font-medium">Montant</th>
-          <th class="px-4 py-2 font-medium">Relance</th>
+          <th class="px-4 py-2 font-medium">Lien de récupération</th>
           <th class="px-4 py-2"></th>
         </tr>
       </thead>
       <tbody>
-        {joignables.map((p) => (
-          <tr class="border-t border-bo-border hover:bg-bo-bg/50">
-            <td class="px-4 py-2 whitespace-nowrap">
+        {paniers.map((p) => (
+          <tr class="border-t border-bo-border align-top hover:bg-bo-bg/50">
+            <td class="px-4 py-3 whitespace-nowrap">
               <a
                 href={url(`/commandes/${p.id}`)}
                 class="font-medium text-bo-accent hover:underline"
@@ -128,31 +350,57 @@ const DELAIS = [
                 {p.number}
               </a>
             </td>
-            <td class="px-4 py-2 whitespace-nowrap text-bo-muted">
-              {quand(p.createdAt)}
+            <td class="px-4 py-3">
+              <span class={`inline-block rounded px-2 py-0.5 text-xs ${tonEtat(p.etat)}`}>
+                {p.etatLibelle}
+              </span>
+              {p.etat === "trop_ancien" && (
+                <span class="mt-1 block text-xs text-bo-muted">
+                  Passé quatorze jours, plus aucun courrier ne part : le rappel
+                  serait à côté de la plaque, et les prix ont pu changer.
+                </span>
+              )}
+              {p.motifRenoncement && p.etat !== "trop_ancien" && (
+                <span class="mt-1 block text-xs text-amber-800">
+                  Envoi renoncé : {p.motifRenoncement}
+                </span>
+              )}
             </td>
-            <td class="px-4 py-2">
+            <td class="px-4 py-3">
               <div>{p.nom ?? "—"}</div>
               <div class="text-xs text-bo-muted">{p.email}</div>
             </td>
-            <td class="px-4 py-2 text-bo-muted">{p.articles}</td>
-            <td class="px-4 py-2 text-right whitespace-nowrap">
+            <td class="px-4 py-3 text-bo-muted">{p.articles}</td>
+            <td class="px-4 py-3 text-right whitespace-nowrap">
               {formatPrice(p.totalCents)}
             </td>
-            <td class="px-4 py-2 whitespace-nowrap text-bo-muted">
-              {p.relanceAt ? quand(p.relanceAt) : "Jamais"}
+            <td class="px-4 py-3">
+              {/* Le lien se copie et se donne : au téléphone, dans un message,
+                  ou pour vérifier soi-même ce que la cliente verra. */}
+              <input
+                type="text"
+                readonly
+                value={p.lienRecuperation}
+                onclick="this.select()"
+                class="w-64 rounded border border-bo-border bg-bo-bg px-2 py-1 text-xs"
+              />
             </td>
-            <td class="px-4 py-2 text-right">
-              <form method="POST">
-                <input type="hidden" name="id" value={p.id} />
-                <button class="rounded border border-bo-border px-3 py-1.5 text-sm hover:bg-bo-bg">
-                  {p.relanceAt ? "Relancer à nouveau" : "Relancer"}
-                </button>
-              </form>
+            <td class="px-4 py-3 text-right">
+              {p.relancable ? (
+                <form method="POST">
+                  <input type="hidden" name="action" value="relancer" />
+                  <input type="hidden" name="id" value={p.id} />
+                  <button class="rounded border border-bo-border px-3 py-1.5 text-sm whitespace-nowrap hover:bg-bo-bg">
+                    {p.relanceAt ? "Relancer à nouveau" : "Relancer"}
+                  </button>
+                </form>
+              ) : (
+                <span class="text-xs text-bo-muted">—</span>
+              )}
             </td>
           </tr>
         ))}
-        {joignables.length === 0 && !error && (
+        {paniers.length === 0 && !erreur && (
           <tr>
             <td colspan="7" class="px-4 py-6 text-center text-bo-muted">
               Aucun panier abandonné sur cette période. Tant mieux.
@@ -163,9 +411,14 @@ const DELAIS = [
     </table>
   </section>
 
-  <p class="mt-3 text-sm text-bo-muted">
-    La relance renvoie au client le contenu de son panier avec un lien pour
-    reprendre sa commande. La date d'envoi est gardée pour ne pas insister deux
-    fois par mégarde.
+  <p class="mt-3 max-w-3xl text-sm text-bo-muted">
+    Avant chaque envoi, la boutique vérifie cinq choses : que la cliente n'a
+    pas commandé entre-temps avec la même adresse, qu'on ne l'a pas déjà
+    relancée, qu'on a le droit de lui écrire, que ses affiches sont toujours
+    disponibles, et que le panier a moins de quatorze jours. Le motif s'affiche
+    dans la colonne « État » chaque fois qu'un envoi est écarté. Le bouton
+    « Relancer » passe outre l'unicité et le consentement — jamais les trois
+    autres —, et le courrier qu'il envoie à une cliente sans consentement
+    porte alors son lien de désinscription, quel que soit le réglage.
   </p>
 </Admin>

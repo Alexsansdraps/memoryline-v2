@@ -625,12 +625,62 @@ export interface PanierAbandonne {
   id: number;
   number: string;
   totalCents: number;
-  createdAt: string;
-  clientOrderId: string | null;
-  relanceAt: string | null;
-  nom: string | null;
-  email: string | null;
   articles: number;
+  nom: string | null;
+  email: string;
+  createdAt: string;
+  /** Dernière fois que le panier a bougé — l'horloge de l'abandon. */
+  derniereActivite: string;
+  relanceAt: string | null;
+  recupereLe: string | null;
+  etat: "abandonne" | "relance" | "recupere" | "trop_ancien" | "renonce";
+  /** L'état en une phrase : « Abandonné il y a 3 h », « Récupéré le 4 mars ». */
+  etatLibelle: string;
+  /** Pourquoi la relance automatique a renoncé. Null quand elle n'a pas renoncé. */
+  motifRenoncement: string | null;
+  /** Le lien qui remet ce panier dans le navigateur de la cliente. */
+  lienRecuperation: string;
+  relancable: boolean;
+}
+
+/** Les réglages de la relance, tenus dans le back-office. */
+export interface ReglagesRelance {
+  active: boolean;
+  palierHeures: number;
+  plancherMinutes: number;
+  baseLegale: "consentement" | "interet_legitime";
+}
+
+/** Ce que rapporte la relance, en chiffres. */
+export interface ChiffresRelance {
+  relancables: number;
+  montantEnJeu: number;
+  relancesEnvoyees: number;
+  paniersRecuperes: number;
+  montantRecupere: number;
+}
+
+/** Tout l'écran des paniers abandonnés, en un seul aller-retour. */
+export interface EcranPaniers {
+  reglages: ReglagesRelance;
+  /** Le délai plancher réellement appliqué à cette liste, en minutes. */
+  plancher: number;
+  paliers: number[];
+  /** La limite au-delà de laquelle plus rien ne part : 336 h, soit 14 jours. */
+  fenetreHeures: number;
+  courrierConfigure: boolean;
+  chiffres: ChiffresRelance;
+  paniers: PanierAbandonne[];
+}
+
+/** Ce qu'un passage du travailleur a fait. */
+export interface BilanPassage {
+  examines: number;
+  envoyes: number;
+  renonces: number;
+  echecs: number;
+  /** Pourquoi le passage n'a rien fait, quand ce n'est pas faute de paniers. */
+  motif?: string | null;
 }
 
 export interface OrderItem {
@@ -1180,17 +1230,36 @@ export function adminApi(request?: Request) {
         {},
         cookie,
       ),
-    /** Paniers engagés mais jamais payés, plus vieux que `hours` heures. */
-    abandonedCarts: (hours = 1) =>
-      req<PanierAbandonne[]>(
+    /**
+     * L'écran des paniers abandonnés : réglages, chiffres et liste.
+     *
+     * `plancher` (en minutes) permet de regarder la liste avec un autre délai
+     * que celui enregistré, sans toucher aux réglages. Omis, c'est le réglage
+     * de la boutique qui s'applique.
+     */
+    abandonedCarts: (plancher?: number) =>
+      req<EcranPaniers>(
         "GET",
-        `/admin/carts/abandoned?hours=${hours}`,
+        plancher === undefined
+          ? "/admin/carts/abandoned"
+          : `/admin/carts/abandoned?plancher=${plancher}`,
         undefined,
         cookie,
       ),
-    /** Envoie la relance d'un panier abandonné. */
+    /** Enregistre les réglages de la relance. */
+    reglagesRelance: (r: Partial<ReglagesRelance>) =>
+      req<{ reglages: ReglagesRelance }>(
+        "POST",
+        "/admin/relance/reglages",
+        r,
+        cookie,
+      ),
+    /** Envoie la relance d'un panier abandonné, à la main. */
     relancerPanier: (id: number) =>
       req<{ ok: boolean }>("POST", `/admin/carts/${id}/relancer`, {}, cookie),
+    /** Déclenche un passage du travailleur tout de suite. */
+    passageRelance: () =>
+      req<{ bilan: BilanPassage }>("POST", "/admin/relance/passage", {}, cookie),
     orderDetail: (id: number) =>
       req<OrderDetail>("GET", `/admin/orders/${id}`, undefined, cookie),
     frames: () => req<Cadre[]>("GET", "/admin/frames", undefined, cookie),

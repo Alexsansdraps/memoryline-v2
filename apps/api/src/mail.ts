@@ -54,13 +54,13 @@ async function deposerDansLaBoite(courrier: Courrier): Promise<boolean> {
       Subject: courrier.subject,
       HTML: courrier.html,
       ...(courrier.text ? { Text: courrier.text } : {}),
-      ...(courrier.entetes
-        ? {
-            Headers: Object.fromEntries(
-              Object.entries(courrier.entetes).map(([c, v]) => [c, [v]]),
-            ),
-          }
-        : {}),
+      // Les en-têtes supplémentaires, une valeur par nom. Ils partaient
+      // enveloppés dans un tableau, ce que la boîte d'essai refuse net
+      // (« cannot unmarshal array into Go struct field ») : le courrier ne
+      // partait pas du tout, et personne ne s'en était aperçu, faute d'envoi
+      // qui s'en serve. Le premier — la relance de panier et son
+      // « List-Unsubscribe » — l'a découvert.
+      ...(courrier.entetes ? { Headers: courrier.entetes } : {}),
     }),
   });
   if (!res.ok) {
@@ -163,6 +163,21 @@ export interface LigneCourrier {
   cadre?: string | null;
   quantite: number;
   unitPriceCents: number;
+  /**
+   * L'image de l'affiche, en adresse ABSOLUE et publique.
+   *
+   * Facultative : une messagerie qui ne peut pas la charger doit lire un
+   * courrier complet quand même. Seule la relance de panier s'en sert — on y
+   * rappelle à quelqu'un une affiche qu'il a composée, et une vignette la lui
+   * remet en tête bien mieux qu'un titre.
+   */
+  imageUrl?: string | null;
+  /**
+   * Vrai quand cet article ne peut plus être commandé : produit retiré de la
+   * vente, ou stock épuisé. Le courrier le dit au lieu de faire cliquer vers
+   * une impasse.
+   */
+  indisponible?: boolean;
 }
 
 /**
@@ -322,24 +337,132 @@ export function courrierNouvelleCommande(d: {
   };
 }
 
-/** Relance d'un panier laissé en plan. */
+/**
+ * Les articles du panier, avec leur vignette quand on en a une.
+ *
+ * Une image par ligne plutôt qu'une seule en tête du courrier : le panier
+ * peut contenir deux affiches très différentes, et n'en montrer qu'une
+ * laisserait croire que l'autre a disparu. La vignette a une taille FIXE en
+ * attributs HTML et pas seulement en CSS — les vieilles messageries ignorent
+ * le style et affichent alors l'image en pleine largeur, qui pousse le prix
+ * hors de l'écran.
+ */
+function tableauLignesAvecImage(lignes: LigneCourrier[]): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0">
+    ${lignes
+      .map(
+        (l) => `<tr>
+      ${
+        l.imageUrl
+          ? `<td width="72" style="padding:10px 12px 10px 0;border-bottom:1px solid #eee;vertical-align:top">
+        <img src="${h(l.imageUrl)}" width="64" height="90" alt="" style="display:block;border:0;width:64px;height:auto;max-width:64px;background:#f3f3f3" />
+      </td>`
+          : ""
+      }
+      <td style="padding:10px 0;border-bottom:1px solid #eee;vertical-align:top">
+        <strong style="font-weight:500">${h(l.titre)}</strong><br />
+        <span style="color:#5b5b54;font-size:13px">Format ${h(l.format ?? "A4")}${
+          l.cadre ? ` · ${h(l.cadre)}` : ""
+        } · ×${l.quantite}</span>${
+          l.indisponible
+            ? `<br /><span style="color:#8a5a2b;font-size:13px">Cette affiche n'est plus disponible.</span>`
+            : ""
+        }
+      </td>
+      <td align="right" style="padding:10px 0;border-bottom:1px solid #eee;white-space:nowrap;vertical-align:top">
+        ${prix(l.unitPriceCents * l.quantite)}
+      </td>
+    </tr>`,
+      )
+      .join("")}
+  </table>`;
+}
+
+/**
+ * Relance d'un panier laissé en plan.
+ *
+ * Le lien de récupération porte un jeton propre à ce panier : il remet les
+ * articles dans le navigateur, reprend le code de réduction déjà saisi et
+ * emmène au tunnel. On ne renvoie donc PAS vers « /panier », qui, sur un
+ * autre appareil ou après un vidage du navigateur, serait vide.
+ *
+ * `lienDesinscription` n'est renseigné que lorsque la boutique s'appuie sur
+ * l'intérêt légitime plutôt que sur un consentement recueilli. Le RGPD
+ * l'exige alors, et il ne suffit pas de l'écrire dans le pied de page : les
+ * en-têtes `List-Unsubscribe` posent le bouton « Se désabonner » de Gmail et
+ * d'Outlook, seul geste que la personne trouvera du premier coup. Sans lui,
+ * elle a l'autre bouton sous la main — « courrier indésirable » — et quelques
+ * clics de ceux-là suffisent à faire tomber l'adresse d'expédition entière.
+ */
 export function courrierPanierAbandonne(d: {
   prenomClient: string;
   lien: string;
   lignes: LigneCourrier[];
   totalCents: number;
+  /** Code de réduction déjà saisi, repris par le lien de récupération. */
+  codePromo?: string | null;
+  /** Adresse de la page de désinscription. Absente = base légale du consentement. */
+  lienDesinscription?: string | null;
 }): Courrier {
+  const manquants = d.lignes.filter((l) => l.indisponible);
+  const avertissement = manquants.length
+    ? `<p style="margin:0 0 4px;color:#8a5a2b;font-size:14px">${
+        manquants.length > 1
+          ? "Certaines de ces affiches ne sont plus disponibles"
+          : "Une de ces affiches n'est plus disponible"
+      } : le reste de votre panier vous attend toujours.</p>`
+    : "";
+  const promo = d.codePromo
+    ? `<p style="margin:0 0 4px;color:#5b5b54;font-size:14px">Votre code de réduction <strong style="font-weight:500">${h(d.codePromo)}</strong> est déjà appliqué.</p>`
+    : "";
+  const desinscription = d.lienDesinscription
+    ? `<p style="margin:24px 0 0;color:#5b5b54;font-size:12px">Vous recevez ce message parce que vous avez laissé une commande en cours chez nous.
+        <a href="${h(d.lienDesinscription)}" style="color:#5b5b54">Ne plus recevoir de rappel de panier</a>.</p>`
+    : "";
+
   return {
     to: "",
     subject: "Votre affiche vous attend",
     html: gabarit(
-      `Bonjour ${d.prenomClient},`,
+      `Bonjour ${h(d.prenomClient)},`,
       `<p style="margin:0">Vous avez composé une affiche sans finir votre commande. Elle est toujours là, telle que vous l'avez laissée.</p>
-       ${tableauLignes(d.lignes)}
+       ${tableauLignesAvecImage(d.lignes)}
+       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px">
+         <tr><td style="padding:4px 0"><strong style="font-weight:500">Votre panier</strong></td><td align="right"><strong style="font-weight:500">${prix(d.totalCents)}</strong></td></tr>
+       </table>
+       ${avertissement}
+       ${promo}
        <p style="margin:20px 0"><a href="${h(d.lien)}" style="display:inline-block;background:#121212;color:#ffffff;padding:14px 28px;text-decoration:none">Reprendre ma commande</a></p>
-       <p style="margin:0;color:#5b5b54;font-size:14px">Si vous avez changé d'avis, ignorez simplement ce message.</p>`,
+       <p style="margin:0;color:#5b5b54;font-size:14px">Si vous avez changé d'avis, ignorez simplement ce message.</p>
+       ${desinscription}`,
     ),
-    text: `Bonjour ${d.prenomClient},\n\nVotre affiche vous attend : ${d.lien}\n\nMemory Line`,
+    text:
+      `Bonjour ${d.prenomClient},\n\n` +
+      `Vous avez composé une affiche sans finir votre commande. Elle vous attend :\n` +
+      d.lignes
+        .map(
+          (l) =>
+            `- ${l.titre} (${l.format ?? "A4"}) × ${l.quantite} — ${prix(l.unitPriceCents * l.quantite)}` +
+            (l.indisponible ? " — plus disponible" : ""),
+        )
+        .join("\n") +
+      `\nTotal : ${prix(d.totalCents)}\n` +
+      (d.codePromo ? `Votre code de réduction ${d.codePromo} est déjà appliqué.\n` : "") +
+      `\nReprendre ma commande : ${d.lien}\n` +
+      (d.lienDesinscription
+        ? `\nNe plus recevoir de rappel de panier : ${d.lienDesinscription}\n`
+        : "") +
+      `\nMemory Line`,
+    // Le bouton « Se désabonner » des messageries. Les deux en-têtes vont
+    // ensemble : sans le second, Gmail affiche un lien, pas le bouton.
+    ...(d.lienDesinscription
+      ? {
+          entetes: {
+            "List-Unsubscribe": `<${d.lienDesinscription}>`,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+          },
+        }
+      : {}),
   };
 }
 

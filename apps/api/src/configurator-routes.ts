@@ -36,9 +36,9 @@ import {
   envoyer as envoyerMail,
   courrierConfirmation,
   courrierNouvelleCommande,
-  courrierPanierAbandonne,
   estConfigure as mailConfigure,
 } from "./mail.js";
+import { noterLaRecuperation } from "./relance-panier.js";
 import {
   calageNeutre,
   calagePropre,
@@ -447,6 +447,28 @@ async function loadCartItem(cartId: string, itemId: number) {
 }
 
 /**
+ * Remonte l'horloge d'inactivité d'un panier : quelque chose vient d'y bouger.
+ *
+ * À appeler PARTOUT où le panier ou le tunnel change — ajout, modification,
+ * suppression d'un article, passage à la commande. C'est le cœur du troisième
+ * critère d'abandon : sans cette date, l'inactivité ne se mesure pas, et un
+ * client qui compose son affiche depuis une heure serait déclaré parti.
+ *
+ * Ne lève jamais : une horloge qui n'a pas pu s'écrire ne doit pas empêcher
+ * quelqu'un d'ajouter une affiche à son panier.
+ */
+async function panierABouge(orderId: number): Promise<void> {
+  try {
+    await db
+      .update(schema.orders)
+      .set({ lastActivityAt: new Date() })
+      .where(eq(schema.orders.id, orderId));
+  } catch (e) {
+    console.error("[panier] horloge d'activité non écrite", e);
+  }
+}
+
+/**
  * Total à FACTURER en centimes, remises comprises — calculé côté SERVEUR (le
  * montant envoyé par le navigateur n'est jamais de confiance).
  *
@@ -557,6 +579,11 @@ async function markOrderPaid(
     .update(schema.orders)
     .set({ status: "paid" })
     .where(eq(schema.orders.id, orderId));
+
+  // Ce panier avait-il été relancé ? Si oui, la relance a servi à quelque
+  // chose, et c'est le seul chiffre qui le dira. Ne fait rien dans le cas
+  // ordinaire, où aucun courrier n'était parti.
+  await noterLaRecuperation(orderId);
 
   // Nom client (pour le nom de fichier PDF).
   let customerName = "client";
@@ -960,6 +987,7 @@ export function mountConfiguratorRoutes(app: Hono) {
           clientOrderId: cartId,
           status: "draft",
           totalCents: 0,
+          lastActivityAt: new Date(),
         })
         .returning();
     }
@@ -981,6 +1009,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         quantity: Math.max(1, Number(body.quantity ?? 1)),
       })
       .returning();
+    await panierABouge(order!.id);
     return c.json(item);
   });
 
@@ -1012,6 +1041,7 @@ export function mountConfiguratorRoutes(app: Hono) {
       .where(eq(schema.orderItems.id, itemId))
       .returning();
     if (!item) return c.notFound();
+    await panierABouge(current.orderId);
     return c.json(item);
   });
 
@@ -1023,6 +1053,9 @@ export function mountConfiguratorRoutes(app: Hono) {
     );
     if (!item) return c.notFound();
     await db.delete(schema.orderItems).where(eq(schema.orderItems.id, item.id));
+    // Retirer un article est aussi une activité : quelqu'un qui vide à moitié
+    // son panier est là, devant l'écran, et n'a rien abandonné du tout.
+    await panierABouge(item.orderId);
     return c.json({ ok: true });
   });
 
@@ -1148,6 +1181,9 @@ export function mountConfiguratorRoutes(app: Hono) {
         shippingPhone: String(liv.phone ?? "").trim() || null,
         relayPointId: String(liv.relayPointId ?? "").trim() || null,
         relayPointLabel: String(liv.relayPointLabel ?? "").trim() || null,
+        // Le passage au tunnel est LA dernière activité du panier : c'est à
+        // partir d'ici que se compte l'inactivité qui en fera un abandon.
+        lastActivityAt: new Date(),
       })
       .where(eq(schema.orders.id, draft.id))
       .returning();
@@ -1531,121 +1567,11 @@ export function mountConfiguratorRoutes(app: Hono) {
     });
   });
 
-  /**
-   * Paniers abandonnés : les commandes engagées mais jamais payées.
-   *
-   * On ne retient que celles où l'on connaît une adresse e-mail — un panier
-   * anonyme ne se relance pas, et le lister ferait du bruit sans action
-   * possible. Les paniers de moins d'une heure sont écartés : le client est
-   * peut-être encore en train de payer.
-   */
-  app.get("/admin/carts/abandoned", async (c) => {
-    const heures = Math.max(1, Number(c.req.query("hours") ?? 1));
-    const limite = new Date(Date.now() - heures * 3600_000);
-    const lignes = await db
-      .select({
-        id: schema.orders.id,
-        number: schema.orders.number,
-        totalCents: schema.orders.totalCents,
-        createdAt: schema.orders.createdAt,
-        clientOrderId: schema.orders.clientOrderId,
-        relanceAt: schema.orders.reminderSentAt,
-        nom: schema.customers.name,
-        email: schema.customers.email,
-      })
-      .from(schema.orders)
-      .leftJoin(schema.customers, eq(schema.orders.customerId, schema.customers.id))
-      .where(
-        and(
-          eq(schema.orders.status, "pending"),
-          // Un panier abandonné n'existe que sur la boutique : au salon, une
-          // commande se prend en présence du client, il n'y a rien à relancer.
-          eq(schema.orders.channel, "web"),
-          lt(schema.orders.createdAt, limite),
-        ),
-      )
-      .orderBy(desc(schema.orders.createdAt))
-      .limit(200);
-
-    const ids = lignes.map((l) => l.id);
-    const articles = ids.length
-      ? await db
-          .select({
-            orderId: schema.orderItems.orderId,
-            quantity: schema.orderItems.quantity,
-          })
-          .from(schema.orderItems)
-          .where(inArray(schema.orderItems.orderId, ids))
-      : [];
-    const compte = new Map<number, number>();
-    for (const a of articles)
-      compte.set(a.orderId, (compte.get(a.orderId) ?? 0) + a.quantity);
-
-    return c.json(
-      lignes.map((l) => ({ ...l, articles: compte.get(l.id) ?? 0 })),
-    );
-  });
-
-  /**
-   * Relance un panier abandonné par e-mail.
-   *
-   * La date d'envoi est enregistrée : on ne veut pas relancer deux fois la
-   * même personne parce qu'on a rechargé la page.
-   */
-  app.post("/admin/carts/:id/relancer", async (c) => {
-    const id = Number(c.req.param("id"));
-    const [order] = await db
-      .select()
-      .from(schema.orders)
-      .where(eq(schema.orders.id, id));
-    if (!order) return c.notFound();
-    if (order.status === "paid")
-      return c.json({ error: "commande déjà payée" }, 400);
-    const [client] = order.customerId
-      ? await db
-          .select()
-          .from(schema.customers)
-          .where(eq(schema.customers.id, order.customerId))
-      : [];
-    if (!client?.email)
-      return c.json({ error: "aucune adresse e-mail sur ce panier" }, 400);
-    if (!mailConfigure())
-      return c.json({ error: "envoi d'e-mails non configuré" }, 503);
-
-    const items = await db
-      .select()
-      .from(schema.orderItems)
-      .where(eq(schema.orderItems.orderId, id));
-    const lignes = items.map((it) => {
-      const cfg = (it.config ?? {}) as Record<string, unknown>;
-      return {
-        titre: it.title ?? "Affiche personnalisée",
-        format: (cfg.format as string) ?? "A4",
-        cadre: null,
-        quantite: it.quantity,
-        unitPriceCents: it.unitPriceCents,
-      };
-    });
-    const origine = (process.env.PUBLIC_ORIGIN ?? "").replace(/\/$/, "");
-    const courrier = courrierPanierAbandonne({
-      prenomClient: (client.name ?? "").split(" ")[0] || "vous",
-      lien: `${origine}/panier`,
-      lignes,
-      totalCents: order.totalCents,
-    });
-    const parti = await envoyerMail({ ...courrier, to: client.email });
-    if (!parti) return c.json({ error: "envoi impossible" }, 502);
-    await db
-      .update(schema.orders)
-      .set({ reminderSentAt: new Date() })
-      .where(eq(schema.orders.id, id));
-    await db.insert(schema.orderEvents).values({
-      orderId: id,
-      kind: "event",
-      message: `Relance de panier envoyée à ${client.email}.`,
-    });
-    return c.json({ ok: true });
-  });
+  // Les paniers abandonnés et leur relance ont leur propre fichier
+  // (apps/api/src/relance-panier.ts) : les trois critères d'abandon, les
+  // cinq gardes-fous, le travailleur d'envoi et le lien de récupération y
+  // vivent ensemble. Ce qui reste ici, c'est ce qui les alimente : l'horloge
+  // d'activité du panier, et la date de récupération posée au paiement.
 
   /** Renvoie la confirmation d'une commande payée. */
   app.post("/admin/orders/:id/renvoyer-confirmation", async (c) => {

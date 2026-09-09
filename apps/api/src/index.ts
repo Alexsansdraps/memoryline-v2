@@ -59,6 +59,10 @@ import { mountLettre } from "./lettre.js";
 import { mountFinances } from "./finances.js";
 import { mountRecherche } from "./recherche.js";
 import { mountCourriers } from "./courriers.js";
+import {
+  demarrerRelancePanier,
+  mountRelancePanier,
+} from "./relance-panier.js";
 import { mountSalonRoutes } from "./salon.js";
 import { mountCompteRoutes } from "./comptes.js";
 import { mountIaRoutes } from "./ia.js";
@@ -475,9 +479,11 @@ app.get("/banner", async (c) => {
  * Certaines clés n'ont rien à y faire : le code d'accès du stand protège des
  * commandes sans paiement, le servir ici reviendrait à l'afficher sur la
  * porte. Tout ce qui commence par « salon. » reste réservé au back-office,
- * qui a sa propre route (GET /admin/salon).
+ * qui a sa propre route (GET /admin/salon). « relance. » de même : le rythme
+ * auquel la boutique écrit à ses clientes et la base légale qu'elle invoque
+ * la regardent, et la vitrine n'en a aucun usage.
  */
-const PREFIXES_PRIVES = ["salon.", "ia."];
+const PREFIXES_PRIVES = ["salon.", "ia.", "relance."];
 
 app.get("/settings", async (c) => {
   const group = c.req.query("group");
@@ -1113,6 +1119,12 @@ mountCms(app);
 // Banc d'essai des courriers : les voir et s'en envoyer un, sans attendre
 // qu'une commande passe.
 mountCourriers(app);
+
+// Relance des paniers abandonnés : les trois critères d'abandon, les cinq
+// garde-fous, le travailleur d'envoi, le lien de récupération et le refus.
+// AVANT le configurateur, qui déclare « /cart/:cartId » et « /admin/... » :
+// une route paramétrée posée d'abord avalerait celles-ci.
+mountRelancePanier(app);
 
 // Commandes prises au stand : pas de prix a l'ecran, pas de paiement en ligne.
 mountSalonRoutes(app);
@@ -2013,6 +2025,10 @@ app.post("/admin/settings", async (c) => {
 const port = Number(process.env.API_PORT ?? 3000);
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`✓ API memoryline sur http://localhost:${info.port}`);
+  // Le travailleur des relances de panier, une fois l'API en écoute : un
+  // passage toutes les cinq minutes, qui ne fait rien tant que la marchande
+  // n'a pas allumé la relance automatique dans le back-office.
+  demarrerRelancePanier();
 });
 
 export type AppType = typeof app;

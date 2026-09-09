@@ -189,7 +189,64 @@ export const api = {
   banner: () => get<Banner | null>("/banner"),
   settings: (group?: string) =>
     get<Record<string, unknown>>(`/settings${group ? `?group=${group}` : ""}`),
+  /**
+   * Le panier que désigne un jeton de relance.
+   *
+   * Ne lève PAS quand le jeton est refusé : la page de récupération doit
+   * répondre une phrase lisible (« ce lien a expiré », « cette commande est
+   * déjà réglée ») et non une erreur technique. C'est justement le cas le
+   * plus fréquent — un lien de courrier vieux de trois semaines.
+   */
+  panierARecuperer: async (
+    jeton: string,
+  ): Promise<PanierRecupere | { erreur: MotifRecuperation }> => {
+    try {
+      const res = await fetch(
+        `${API_URL}/panier/recuperation/${encodeURIComponent(jeton)}`,
+      );
+      if (res.ok) return (await res.json()) as PanierRecupere;
+      const corps = (await res.json().catch(() => ({}))) as { error?: string };
+      const connus: MotifRecuperation[] = [
+        "jeton_inconnu",
+        "deja_payee",
+        "panier_clos",
+        "trop_ancien",
+      ];
+      const motif = connus.find((m) => m === corps.error);
+      return { erreur: motif ?? "indisponible" };
+    } catch {
+      // API injoignable : on ne sait pas si le lien est bon, on le dit ainsi.
+      return { erreur: "indisponible" };
+    }
+  },
 };
+
+/** Pourquoi un lien de récupération n'ouvre rien. */
+export type MotifRecuperation =
+  | "jeton_inconnu"
+  | "deja_payee"
+  | "panier_clos"
+  | "trop_ancien"
+  | "indisponible";
+
+/** Le panier qu'un lien de relance remet en place. */
+export interface PanierRecupere {
+  /** L'identifiant de panier à réinstaller dans le navigateur. */
+  cartId: string;
+  /** Le code de réduction déjà saisi, à reprendre tel quel. */
+  promoCode: string | null;
+  nom: string | null;
+  email: string | null;
+  totalCents: number;
+  articles: {
+    titre: string;
+    format: string | null;
+    quantite: number;
+    unitPriceCents: number;
+    imageUrl: string | null;
+    indisponible: boolean;
+  }[];
+}
 
 /** Récupère un réglage texte avec valeur de repli. */
 export async function setting(key: string, fallback: string): Promise<string> {
