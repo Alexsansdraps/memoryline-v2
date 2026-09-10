@@ -1,0 +1,385 @@
+---
+/**
+ * Les décors des affiches, tous ensemble, comme dans un gestionnaire de fichiers.
+ *
+ * Un décor est le dessin de fond d'une affiche personnalisable. Jusqu'ici on
+ * ne pouvait les voir qu'un par un, en ouvrant la fiche de l'affiche à
+ * laquelle ils appartiennent : impossible de répondre à la question la plus
+ * simple, « qu'est-ce qu'on a, au juste ? ».
+ *
+ * Deux choses se lisent ici et nulle part ailleurs. Les affiches qui ont
+ * PLUSIEURS décors : le configurateur les propose toutes au client, ce qui
+ * surprend quand on ne s'en souvient pas. Et les affiches qui n'en ont AUCUN :
+ * pour celles-là, le configurateur va en chercher par le nom de la ville, et
+ * s'il n'en trouve pas, le client n'a rien à choisir.
+ */
+import Admin from "../layouts/Admin.astro";
+import { url } from "../lib/url.ts";
+
+interface Decor {
+  id: number;
+  nom: string | null;
+  url: string;
+  position: number;
+  produitId: number | null;
+  produitNom: string | null;
+  produitSlug: string | null;
+  produitStatut: string | null;
+  ville: string;
+  orphelin: boolean;
+}
+interface SansDecor {
+  id: number;
+  nom: string;
+  slug: string;
+  ville: string;
+  devines: number;
+}
+
+const base =
+  import.meta.env.API_URL_INTERNAL ??
+  import.meta.env.PUBLIC_API_URL ??
+  "http://localhost:3000";
+
+let flash: string | null = null;
+let flashErreur = false;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  try {
+    const res = await fetch(`${base}/admin/decors/${Number(f.get("id"))}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        cookie: Astro.request.headers.get("cookie") ?? "",
+      },
+      body: JSON.stringify({ nom: String(f.get("nom") ?? "") }),
+    });
+    const d = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) throw new Error(d.error ?? "Le nom n'a pas pu être enregistré.");
+    flash = "Nom du décor enregistré.";
+  } catch (e) {
+    flash = e instanceof Error ? e.message : String(e);
+    flashErreur = true;
+  }
+}
+
+let decors: Decor[] = [];
+let sansDecor: SansDecor[] = [];
+let erreur: string | null = null;
+try {
+  const res = await fetch(`${base}/admin/decors`, {
+    headers: { cookie: Astro.request.headers.get("cookie") ?? "" },
+  });
+  if (!res.ok) {
+    const d = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(d.error ?? `L'API a répondu ${res.status}.`);
+  }
+  const d = (await res.json()) as { decors: Decor[]; sansDecor: SansDecor[] };
+  decors = d.decors;
+  sansDecor = d.sansDecor;
+} catch (e) {
+  erreur = e instanceof Error ? e.message : String(e);
+}
+
+const recherche = (Astro.url.searchParams.get("q") ?? "").trim();
+const vue = Astro.url.searchParams.get("vue") === "liste" ? "liste" : "icones";
+const filtre = Astro.url.searchParams.get("filtre") ?? "tous";
+
+/** Combien de décors porte chaque affiche : c'est ce qui explique les surprises. */
+const parAffiche = new Map<number, number>();
+for (const d of decors)
+  if (d.produitId !== null)
+    parAffiche.set(d.produitId, (parAffiche.get(d.produitId) ?? 0) + 1);
+
+const plusieurs = [...parAffiche.entries()].filter(([, n]) => n > 1);
+
+function correspond(d: Decor): boolean {
+  if (filtre === "multiples")
+    return d.produitId !== null && (parAffiche.get(d.produitId) ?? 0) > 1;
+  if (filtre === "orphelins") return d.orphelin;
+  return true;
+}
+const sansAccent = (s: string) =>
+  s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const motif = sansAccent(recherche);
+const visibles = decors
+  .filter(correspond)
+  .filter(
+    (d) =>
+      !motif ||
+      sansAccent(d.nom ?? "").includes(motif) ||
+      sansAccent(d.produitNom ?? "").includes(motif),
+  );
+
+/** L'adresse d'un décor telle que le NAVIGATEUR doit la demander. */
+function vignette(u: string, largeur: number): string {
+  if (/^https?:\/\//.test(u)) return u;
+  // Un dessin vectoriel ne se redimensionne pas : il s'agrandit tout seul.
+  return u.endsWith(".svg") ? `/api${u}` : `/api${u}?l=${largeur}`;
+}
+
+/** Garde la vue et la recherche en changeant de filtre. */
+function lienAvec(patch: Record<string, string | null>): string {
+  const p = new URLSearchParams();
+  const actuel: Record<string, string> = { q: recherche, vue, filtre };
+  for (const [k, v] of Object.entries({ ...actuel, ...patch }))
+    if (v && !(k === "filtre" && v === "tous") && !(k === "vue" && v === "icones"))
+      p.set(k, v);
+  const suite = p.toString();
+  return url(`/decors${suite ? `?${suite}` : ""}`);
+}
+
+const FILTRES = [
+  { cle: "tous", nom: "Tous les décors", n: decors.length },
+  {
+    cle: "multiples",
+    nom: "Affiches à plusieurs décors",
+    n: decors.filter((d) => d.produitId !== null && (parAffiche.get(d.produitId) ?? 0) > 1).length,
+  },
+  {
+    cle: "orphelins",
+    nom: "Rattachés à aucune affiche",
+    n: decors.filter((d) => d.orphelin).length,
+  },
+];
+---
+
+<Admin title="Décors des affiches">
+  {flash && (
+    <p
+      class={`mb-4 rounded border px-3 py-2 text-sm ${
+        flashErreur
+          ? "border-red-300 bg-red-50 text-red-800"
+          : "border-green-300 bg-green-50 text-green-800"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+  {erreur && <p class="mb-4 text-sm text-red-600">API injoignable : {erreur}</p>}
+
+  <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+    Le décor est le dessin de fond d'une affiche personnalisable. C'est ce que
+    la cliente choisit à la première étape de « Personnaliser ». Une affiche qui
+    en a plusieurs les propose toutes.
+  </p>
+
+  {plusieurs.length > 0 && (
+    <div class="mb-4 max-w-3xl rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm">
+      <b>{plusieurs.length}</b> affiche{plusieurs.length > 1 ? "s ont" : " a"}{" "}
+      plusieurs décors. C'est voulu quand on propose deux versions d'une même
+      ville, et c'est une surprise quand l'import en a rattaché deux sans qu'on
+      le sache.{" "}
+      <a href={lienAvec({ filtre: "multiples" })} class="text-bo-accent hover:underline">
+        Les voir
+      </a>
+      .
+    </div>
+  )}
+
+  {sansDecor.length > 0 && (
+    <div class="mb-4 max-w-3xl rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      <p>
+        <b>{sansDecor.length}</b> affiche{sansDecor.length > 1 ? "s" : ""}{" "}
+        personnalisable{sansDecor.length > 1 ? "s n'ont" : " n'a"} aucun décor à
+        elle{sansDecor.length > 1 ? "s" : ""}. La boutique en cherche alors par
+        le nom de la ville.
+      </p>
+      <ul class="mt-1 list-inside list-disc">
+        {sansDecor.map((p) => (
+          <li>
+            <a
+              href={url(`/produits/${p.id}`)}
+              class="underline hover:no-underline"
+            >
+              {p.nom}
+            </a>{" "}
+            {p.devines > 0
+              ? `: ${p.devines} décor${p.devines > 1 ? "s" : ""} proposé${p.devines > 1 ? "s" : ""} au nom de « ${p.ville} ».`
+              : `: rien ne correspond à « ${p.ville} », la cliente n'aura aucun décor à choisir.`}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )}
+
+  <form method="GET" class="mb-3 flex flex-wrap items-end gap-3">
+    <label class="min-w-[240px] flex-1">
+      <span class="mb-1 block text-xs text-bo-muted">
+        Rechercher (nom du décor ou de l'affiche)
+      </span>
+      <input
+        type="search"
+        name="q"
+        value={recherche}
+        placeholder="paris, cathédrale, forêt…"
+        class="w-full rounded border border-bo-border px-3 py-2 text-sm"
+      />
+    </label>
+    {filtre !== "tous" && <input type="hidden" name="filtre" value={filtre} />}
+    {vue !== "icones" && <input type="hidden" name="vue" value={vue} />}
+    <button class="rounded bg-bo-nav px-4 py-2 text-sm text-white">Chercher</button>
+    <div class="ml-auto flex gap-1">
+      <a
+        href={lienAvec({ vue: "icones" })}
+        class={`rounded border px-3 py-2 text-sm ${vue === "icones" ? "border-bo-accent text-bo-accent" : "border-bo-border hover:bg-bo-bg"}`}
+        title="Grandes vignettes"
+      >
+        Icônes
+      </a>
+      <a
+        href={lienAvec({ vue: "liste" })}
+        class={`rounded border px-3 py-2 text-sm ${vue === "liste" ? "border-bo-accent text-bo-accent" : "border-bo-border hover:bg-bo-bg"}`}
+        title="Une ligne par décor"
+      >
+        Liste
+      </a>
+    </div>
+  </form>
+
+  <nav class="mb-4 flex flex-wrap gap-1 border-b border-bo-border text-sm">
+    {FILTRES.map((f) => (
+      <a
+        href={lienAvec({ filtre: f.cle })}
+        class={`-mb-px border-b-2 px-3 py-2 ${
+          filtre === f.cle
+            ? "border-bo-accent font-medium text-bo-accent"
+            : "border-transparent text-bo-muted hover:text-bo-ink"
+        }`}
+      >
+        {f.nom} <span class="text-bo-muted">{f.n}</span>
+      </a>
+    ))}
+  </nav>
+
+  <p class="mb-3 text-sm text-bo-muted">
+    {visibles.length} décor{visibles.length > 1 ? "s" : ""} affiché
+    {visibles.length > 1 ? "s" : ""}
+    {recherche && ` pour « ${recherche} »`}.
+  </p>
+
+  {vue === "icones" ? (
+    <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+      {visibles.map((d) => (
+        <li class="rounded-lg border border-bo-border bg-bo-surface p-2">
+          <div class="flex aspect-[1020/1400] items-center justify-center overflow-hidden rounded bg-bo-bg">
+            <img
+              src={vignette(d.url, 400)}
+              alt={d.nom ?? "Décor sans nom"}
+              loading="lazy"
+              class="h-full w-full object-contain"
+            />
+          </div>
+          <form method="POST" class="mt-2">
+            <input type="hidden" name="id" value={d.id} />
+            <input
+              name="nom"
+              value={d.nom ?? ""}
+              placeholder="Nommer ce décor"
+              class="w-full rounded border border-bo-border px-1.5 py-1 text-[12px]"
+              aria-label={`Nom du décor ${d.id}`}
+            />
+          </form>
+          <p class="mt-1 truncate text-[11px] text-bo-muted">
+            {d.produitId ? (
+              <a
+                href={url(`/produits/${d.produitId}`)}
+                class="text-bo-accent hover:underline"
+                title={d.produitNom ?? ""}
+              >
+                {d.produitNom}
+              </a>
+            ) : (
+              <span class="text-amber-700">Rattaché à aucune affiche</span>
+            )}
+          </p>
+          {d.produitId && (parAffiche.get(d.produitId) ?? 0) > 1 && (
+            <p class="mt-0.5 text-[11px] text-amber-700">
+              Cette affiche en propose {parAffiche.get(d.produitId)}
+            </p>
+          )}
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <section class="overflow-x-auto rounded-lg border border-bo-border bg-bo-surface">
+      <table class="w-full text-sm">
+        <thead class="bg-bo-bg text-left text-bo-muted">
+          <tr>
+            <th class="px-4 py-2 font-medium">Aperçu</th>
+            <th class="px-4 py-2 font-medium">Nom du décor</th>
+            <th class="px-4 py-2 font-medium">Affiche</th>
+            <th class="px-4 py-2 font-medium">Décors de cette affiche</th>
+          </tr>
+        </thead>
+        <tbody>
+          {visibles.map((d) => (
+            <tr class="border-t border-bo-border align-middle">
+              <td class="px-4 py-2">
+                <img
+                  src={vignette(d.url, 200)}
+                  alt={d.nom ?? "Décor sans nom"}
+                  loading="lazy"
+                  class="h-14 w-10 rounded border border-bo-border object-contain"
+                />
+              </td>
+              <td class="px-4 py-2">
+                <form method="POST" class="flex items-center gap-2">
+                  <input type="hidden" name="id" value={d.id} />
+                  <input
+                    name="nom"
+                    value={d.nom ?? ""}
+                    placeholder="Nommer ce décor"
+                    class="w-full max-w-md rounded border border-bo-border px-2 py-1"
+                    aria-label={`Nom du décor ${d.id}`}
+                  />
+                  <button class="rounded border border-bo-border px-2 py-1 text-xs hover:bg-bo-bg">
+                    Enregistrer
+                  </button>
+                </form>
+              </td>
+              <td class="px-4 py-2">
+                {d.produitId ? (
+                  <a
+                    href={url(`/produits/${d.produitId}`)}
+                    class="text-bo-accent hover:underline"
+                  >
+                    {d.produitNom}
+                  </a>
+                ) : (
+                  <span class="text-amber-700">aucune</span>
+                )}
+              </td>
+              <td class="px-4 py-2">
+                {d.produitId ? (
+                  (parAffiche.get(d.produitId) ?? 0) > 1 ? (
+                    <span class="text-amber-700">
+                      {parAffiche.get(d.produitId)} décors
+                    </span>
+                  ) : (
+                    <span class="text-bo-muted">un seul</span>
+                  )
+                ) : (
+                  "—"
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {visibles.length === 0 && (
+        <p class="px-4 py-6 text-center text-sm text-bo-muted">
+          Aucun décor ne correspond.
+        </p>
+      )}
+    </section>
+  )}
+
+  <p class="mt-4 max-w-3xl text-xs text-bo-muted">
+    Le nom d'un décor n'est pas décoratif : c'est lui que la boutique compare au
+    nom de la ville quand une affiche n'a aucun décor à elle. Un décor bien
+    nommé se retrouve ; « AFFICHES_Villes_2_.pdf » ne se retrouve jamais.
+    Pour rattacher ou détacher un décor, ouvrez la fiche de l'affiche.
+  </p>
+</Admin>

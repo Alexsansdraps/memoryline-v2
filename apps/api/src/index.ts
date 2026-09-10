@@ -60,6 +60,7 @@ import { mountCartesCadeaux } from "./cartes-cadeaux.js";
 import { mountLettre } from "./lettre.js";
 import { mountFinances } from "./finances.js";
 import { mountRecherche } from "./recherche.js";
+import { mountDecors } from "./decors.js";
 import { mountCourriers } from "./courriers.js";
 import {
   demarrerRelancePanier,
@@ -1381,6 +1382,10 @@ mountFinances(app);
 // Recherche globale : le champ en tête du back-office. Réservée à la
 // propriétaire, et elle ne lit jamais le code d'accès d'un stand.
 mountRecherche(app);
+
+// Les décors des affiches, vus tous ensemble : ce que le configurateur
+// propose, et ce qu'il devine quand une affiche n'a rien à elle.
+mountDecors(app);
 
 // Pages libres et menu du site, écrits depuis le back-office. Ouvrir un rayon
 // « Magnets » ne demande plus de toucher au code.
