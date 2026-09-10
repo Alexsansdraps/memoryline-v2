@@ -31,7 +31,7 @@ import {
 } from "drizzle-orm";
 import { basename, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { db, schema } from "./db/client.js";
@@ -83,9 +83,15 @@ const OPENAI_TIMEOUT_MS = 180_000;
 const DEFAUTS = {
   /** La consigne officielle, rédigée par la cliente (voir ia-style.ts). */
   "ia.stylePrompt": STYLE_MEMORY_LINE,
-  "ia.modele": "gpt-image-1",
-  "ia.taille": "1024x1536",
-  "ia.qualite": "medium",
+  "ia.modele": "gpt-image-2.5-sunburst",
+  /**
+   * 1584 x 2240 : exactement le rapport 297:420, celui de l'A3 vertical, et
+   * deux multiples de 16 comme le modèle l'exige. Composer directement à ce
+   * format évite de générer un carré puis de le couper, ce qui ampute la
+   * scène ou oblige à inventer ce qui manque.
+   */
+  "ia.taille": "1584x2240",
+  "ia.qualite": "high",
   /** « high » conserve les visages de la photo ; « low » coûte moins cher. */
   "ia.fidelite": "high",
   /** Plafond de dépense du mois, en centimes. 50 € = environ 600 aperçus. */
@@ -102,7 +108,55 @@ type CleReglage = keyof typeof DEFAUTS;
 type Reglages = { [K in CleReglage]: (typeof DEFAUTS)[K] };
 
 /** Tailles acceptées par l'API images : un réglage fantaisiste ferait 400. */
-const TAILLES = new Set(["1024x1024", "1024x1536", "1536x1024", "auto"]);
+const TAILLES = new Set([
+  "1584x2240",
+  "1024x1024",
+  "1024x1536",
+  "1536x1024",
+  "auto",
+]);
+
+/**
+ * Le dossier des affiches de référence, qui montrent le rendu au modèle.
+ *
+ * Elles ne sont PAS dans les visuels de la boutique : ce sont des références
+ * de style, pas des produits, et les mélanger reviendrait à les voir
+ * disparaître le jour où l'une est retirée de la vente.
+ *
+ * Trois au maximum partent avec la photo. Au-delà, le modèle dilue le rendu et
+ * l'appel grossit pour rien.
+ */
+const REFERENCES_DIR = resolve(process.cwd(), "references-ia");
+const REFERENCES_MAX = 3;
+
+/**
+ * Les images de style à envoyer, dans l'ordre.
+ *
+ * L'ordre compte : la consigne parle d'IMAGE 2, IMAGE 3 et IMAGE 4. On les
+ * trie donc par nom de fichier, ce qui rend l'ordre visible et modifiable
+ * sans toucher au code.
+ *
+ * Aucune référence n'est une panne : la génération part alors avec la seule
+ * consigne écrite, comme avant que ces images existent. Le back-office le dit.
+ */
+async function referencesDeStyle(): Promise<{ nom: string; donnees: Buffer }[]> {
+  try {
+    const noms = (await readdir(REFERENCES_DIR))
+      .filter((n) => /\.(png|jpe?g|webp)$/i.test(n))
+      .sort();
+    const sortie: { nom: string; donnees: Buffer }[] = [];
+    for (const nom of noms.slice(0, REFERENCES_MAX)) {
+      try {
+        sortie.push({ nom, donnees: await readFile(resolve(REFERENCES_DIR, nom)) });
+      } catch {
+        // Un fichier illisible ne doit pas emporter la génération entière.
+      }
+    }
+    return sortie;
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Lit les réglages « ia.* » en base, complétés par les défauts.
@@ -294,6 +348,41 @@ export async function fabriquerApercu(pleine: Buffer, nom: string): Promise<stri
   return `ia/${nom}`;
 }
 
+/**
+ * Le fichier prêt pour l'imprimeur : A3 vertical, 300 points par pouce.
+ *
+ * 3508 x 4961 pixels, c'est un A3 à 300 points par pouce. La génération sort
+ * en 1584 x 2240, même rapport exactement : l'agrandissement ne déforme donc
+ * rien, il ajoute seulement des pixels.
+ *
+ * `lanczos3` est le rééchantillonnage qui garde les bords nets — sur des
+ * aplats de couleur, un agrandissement mou se verrait tout de suite. Et la
+ * résolution est ÉCRITE dans le fichier : sans elle, un logiciel de mise en
+ * page suppose 72 points par pouce et propose d'imprimer l'affiche en A1.
+ *
+ * L'original généré n'est jamais remplacé : un agrandissement se refait, une
+ * génération non.
+ */
+const IMPRESSION_A3 = { largeur: 3508, hauteur: 4961, dpi: 300 } as const;
+
+export async function fabriquerFichierImpression(
+  pleine: Buffer,
+  nom: string,
+): Promise<string> {
+  const fichier = await sharp(pleine)
+    .resize({
+      width: IMPRESSION_A3.largeur,
+      height: IMPRESSION_A3.hauteur,
+      fit: "cover",
+      kernel: "lanczos3",
+    })
+    .withMetadata({ density: IMPRESSION_A3.dpi })
+    .png({ compressionLevel: 9 })
+    .toBuffer();
+  await writeFile(resolve(IA_DIR, nom), fichier);
+  return `ia/${nom}`;
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Appel du modèle                                                           */
 /* -------------------------------------------------------------------------- */
@@ -314,14 +403,29 @@ async function editerImage(
   taille: string,
   qualite: string,
   fidelite: string,
+  /**
+   * Les affiches de référence, dans l'ordre. Elles deviennent IMAGE 2, 3 et 4
+   * de la consigne ; la photo du client reste IMAGE 1.
+   */
+  references: { nom: string; donnees: Buffer }[] = [],
 ): Promise<Buffer> {
   const envoyer = async (avecOptions: boolean): Promise<Response> => {
     const form = new FormData();
+    // L'ORDRE fait le sens : la photo d'abord, c'est elle qui porte la scène.
+    // Une référence en premier ferait recopier son contenu, et le client
+    // recevrait une affiche qui n'est pas la sienne.
+    const champ = references.length ? "image[]" : "image";
     form.append(
-      "image",
+      champ,
       new Blob([new Uint8Array(photo)], { type: "image/jpeg" }),
       nomPhoto,
     );
+    for (const r of references)
+      form.append(
+        "image[]",
+        new Blob([new Uint8Array(r.donnees)], { type: "image/png" }),
+        r.nom,
+      );
     form.append("prompt", consigne);
     form.append("model", modele);
     form.append("size", taille);
@@ -666,19 +770,18 @@ export function mountIaRoutes(app: Hono): void {
     // (consigne de la boutique) : une photo de plage en largeur rendue en
     // portrait perdrait la moitié de la scène, ou serait complétée par du
     // décor inventé — ce que la consigne interdit par ailleurs.
-    const dimensions = await sharp(photo).metadata();
-    const paysage = (dimensions.width ?? 0) > (dimensions.height ?? 0);
-    const orientation = paysage ? "horizontale" : "verticale";
+    // TOUJOURS l'A3 vertical. On choisissait autrefois le portrait ou le
+    // paysage selon la photo ; une affiche se vend en A3 vertical, et c'est la
+    // composition qui s'adapte, pas le format. La consigne dit au modèle
+    // comment adapter une photo en largeur sans amputer la scène.
     const tailleChoisie = TAILLES.has(reg["ia.taille"])
-      ? paysage
-        ? "1536x1024"
-        : "1024x1536"
-      : reg["ia.taille"];
+      ? reg["ia.taille"]
+      : DEFAUTS["ia.taille"];
 
     const consigne = ajouterDemandeClient(
       [
         appliquerVariables(reg["ia.stylePrompt"], {
-          OUTPUT_FORMAT: `affiche A3, orientation ${orientation}`,
+          OUTPUT_FORMAT: "A3 vertical poster",
           CUSTOMER_REQUEST: precision,
         }),
         produit.aiStylePrompt ?? "",
@@ -716,9 +819,14 @@ export function mountIaRoutes(app: Hono): void {
         tailleChoisie,
         reg["ia.qualite"],
         reg["ia.fidelite"],
+        await referencesDeStyle(),
       );
       const nomPleine = `${publicId}-pleine.png`;
       await writeFile(resolve(IA_DIR, nomPleine), pleine);
+      // Le fichier d'impression, tout de suite : le jour où la commande part
+      // en fabrication, personne n'a envie de dépendre d'un agrandissement qui
+      // reste à faire. L'original généré reste à côté, intact.
+      await fabriquerFichierImpression(pleine, `${publicId}-impression.png`);
       const apercu = await fabriquerApercu(pleine, `${publicId}-apercu.jpg`);
 
       await db
