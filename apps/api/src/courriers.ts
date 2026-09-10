@@ -23,6 +23,7 @@ import {
   courrierAnnulee,
   courrierBienvenue,
   courrierExpediee,
+  courrierFacture,
   courrierMotDePasseModifie,
   courrierPreteAuStand,
   courrierConfirmation,
@@ -100,6 +101,7 @@ type IdModele =
   | "prete-au-stand"
   | "remboursee"
   | "annulee"
+  | "facture"
   | "nouvelle-commande"
   | "panier-abandonne"
   | "bienvenue"
@@ -143,11 +145,18 @@ const MODELES: Modele[] = [
   {
     id: "annulee",
     nom: "Commande annulée",
-    // Aucune route n'annule une commande aujourd'hui : le modèle existe et
-    // s'essaie ici, mais rien ne le déclenche encore. Le dire vaut mieux que
-    // de laisser croire à la boutique qu'un client est prévenu.
     quand:
-      "Prévient le client que sa commande est annulée. Aucun déclenchement automatique pour l'instant : la boutique n'a pas de bouton d'annulation.",
+      "Part vers le client quand vous annulez sa commande depuis sa fiche. Jamais pour une commande de stand : c'est la vendeuse qui prévient.",
+    besoinCommande: true,
+  },
+  {
+    id: "facture",
+    nom: "Facture",
+    // L'aperçu ne montre que le message ; le PDF, lui, ne se fabrique que
+    // depuis la fiche d'une commande, parce qu'il consomme un numéro de
+    // facture et qu'un banc d'essai n'a pas à en dépenser.
+    quand:
+      "Part vers le client quand vous lui envoyez sa facture depuis sa fiche, avec le PDF joint. L'essai n'envoie que le message : la facture elle-même s'édite depuis la commande.",
     besoinCommande: true,
   },
   {
@@ -214,6 +223,16 @@ interface DonneesCourrier {
    * confirmation par courrier les révélerait, la boutique s'en abstient.
    */
   canal: string;
+  /**
+   * Le numéro de facture de la commande, s'il lui en a déjà été attribué un.
+   *
+   * L'aperçu ne DONNE jamais de numéro : chacun est unique et définitif, et
+   * en tirer un pour regarder une maquette le retirerait de la suite pour
+   * toujours. Sans numéro, on en montre un d'exemple, reconnaissable comme tel.
+   */
+  numeroFacture: string | null;
+  /** La commande a-t-elle été réglée ? Change une phrase de la facture. */
+  dejaPayee: boolean;
 }
 
 /**
@@ -252,6 +271,10 @@ function jeuExemple(): DonneesCourrier {
     // La commande d'exemple vient du site : c'est le seul canal dont la
     // boutique envoie une confirmation.
     canal: "web",
+    // Un numéro d'exemple, dans la forme des vrais : personne ne doit pouvoir
+    // le confondre avec une facture réellement émise.
+    numeroFacture: "F2026-0001",
+    dejaPayee: true,
     prenomClient: "Camille",
     nomClient: "Camille Dubois",
     lignes,
@@ -346,6 +369,10 @@ async function donneesDeCommande(
   return {
     numero: commande.number,
     canal: commande.channel,
+    // Le numéro déjà attribué, ou celui d'exemple : l'aperçu n'en tire jamais
+    // un nouveau, sous peine de le retirer de la suite pour rien.
+    numeroFacture: commande.invoiceNumber ?? "F2026-0001",
+    dejaPayee: commande.status === "paid",
     prenomClient: (client?.name ?? "").split(" ")[0] ?? "",
     nomClient: client?.name ?? "client inconnu",
     lignes,
@@ -446,6 +473,14 @@ function rendre(modele: IdModele, d: DonneesCourrier): Courrier {
         motif: "Annulée à la demande de la cliente, avant impression.",
         articles: d.lignes,
         dejaPayee: true,
+      });
+    case "facture":
+      return courrierFacture({
+        prenomClient: d.prenomClient || "vous",
+        numero: d.numero,
+        numeroFacture: d.numeroFacture ?? "F2026-0001",
+        totalCents: d.totalCents,
+        dejaPayee: d.dejaPayee,
       });
     case "nouvelle-commande":
       return courrierNouvelleCommande({

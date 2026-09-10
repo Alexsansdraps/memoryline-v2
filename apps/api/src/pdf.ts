@@ -22,7 +22,8 @@ import { fileURLToPath } from "node:url";
 
 import sharp from "sharp";
 import type { OverlayOptions, Sharp } from "sharp";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, StandardFonts, degrees, rgb } from "pdf-lib";
+import type { PDFFont, PDFPage } from "pdf-lib";
 
 import {
   ORDRE_CALQUES,
@@ -71,6 +72,9 @@ const SLOT_Z_ORDER = ORDRE_CALQUES;
 
 /** Répertoire des assets sur disque : data/assets/<fichier> (cf. index.ts). */
 const ASSETS_DIR = resolve(fileURLToPath(import.meta.url), "../../../../data/assets");
+
+/** Le dossier de marque de l'API : apps/api/marque/ (cf. cartes-cadeaux.ts). */
+const DOSSIER_MARQUE = resolve(fileURLToPath(import.meta.url), "../../marque");
 
 // --- Types d'entrée -----------------------------------------------------------
 
@@ -720,4 +724,371 @@ export async function renderPosterPdf(
 
   const bytes = await doc.save();
   return Buffer.from(bytes);
+}
+
+// --- La facture --------------------------------------------------------------
+
+/*
+ * Rien de ce qui suit ne touche à l'affiche. C'est un document administratif :
+ * du texte sur du blanc, en A4, écrit avec les polices standard du PDF plutôt
+ * qu'avec sharp. Une facture se lit, se cherche et se copie — la passer par
+ * une image, comme on le fait de l'affiche, en ferait une photo de facture.
+ */
+
+/** A4 portrait, en points PDF. */
+const FACTURE_LARGEUR = 595.28;
+const FACTURE_HAUTEUR = 841.89;
+/** Marge de page : 18 mm, ce qu'une imprimante de bureau sait tenir. */
+const FACTURE_MARGE = 51;
+
+const ENCRE_FACTURE = rgb(0.09, 0.09, 0.09);
+const ENCRE_FACTURE_PALE = rgb(0.42, 0.42, 0.42);
+const FILET_FACTURE = rgb(0.78, 0.78, 0.78);
+
+/**
+ * Ramène un texte à ce que les polices standard du PDF savent dessiner.
+ *
+ * Elles écrivent en WinAnsi, qui couvre le français en entier — accents,
+ * cédille, œ, guillemets, euro. Ce qu'il ne couvre pas, pdf-lib refuse de
+ * l'écrire, et il refuse en LEVANT : un émoji dans le titre d'une affiche, ou
+ * la fine insécable que `toLocaleString` glisse dans les nombres, suffirait à
+ * faire échouer la facture entière. On remplace donc plutôt que d'échouer —
+ * une facture avec un caractère en moins vaut mieux qu'une erreur 500.
+ */
+function pourPolicePdf(v: unknown): string {
+  return (
+    String(v ?? "")
+      // Toutes les espaces exotiques deviennent l'espace ordinaire — dont
+      // la fine insécable (U+202F) que le formatage français des nombres
+      // glisse devant le symbole monétaire, et qui à elle seule suffirait à
+      // faire échouer la page entière. Ces caractères sont échappés plutôt
+      // qu'écrits en clair : invisibles à l'œil, un éditeur mal réglé les
+      // perdrait sans qu'on le voie, et le garde-fou ne garderait plus rien.
+      .replace(/[\u00a0\u2007\u2009\u200a\u202f\u2060]/g, " ")
+      .replace(/[\u2018\u2019\u201b]/g, "'")
+      .replace(/[\u201c\u201d]/g, '"')
+      .replace(/[\u2013\u2014]/g, "-")
+      .replace(/\u2026/g, "...")
+      // Le reste : Latin-1, plus les quelques signes que WinAnsi ajoute et
+      // dont le français se sert : œ, Œ, Ÿ et l'euro.
+      .replace(/[^\x20-\x7E\u00a1-\u00ff\u0152\u0153\u0178\u20ac]/g, "")
+  );
+}
+
+/** Montant en centimes → « 49,00 € ». */
+function euros(cents: number): string {
+  return (cents / 100).toFixed(2).replace(".", ",") + " €";
+}
+
+/** « 10 septembre 2026 ». */
+function jourFrancais(quand: Date): string {
+  return pourPolicePdf(
+    quand.toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }),
+  );
+}
+
+/** Une ligne de la facture, telle qu'elle s'imprime. */
+export interface LigneFacture {
+  designation: string;
+  /** Format, cadre, nombre de personnages… tout ce qui précise l'article. */
+  precision?: string | null;
+  /** Le texte imprimé sur l'affiche, ce qui distingue deux lignes identiques. */
+  lignesAffiche?: string[];
+  quantite: number;
+  unitPriceCents: number;
+}
+
+/** Tout ce que la facture montre. Aucune lecture de base ici, comme partout dans ce fichier. */
+export interface DonneesFacture {
+  /** Le numéro de FACTURE, jamais celui de la commande. */
+  numeroFacture: string;
+  dateFacture: Date;
+  numeroCommande: string;
+  dateCommande: Date;
+  /** À qui elle est adressée, une ligne par ligne d'adresse. */
+  clientNom: string;
+  clientEmail?: string | null;
+  clientAdresse: string[];
+  lignes: LigneFacture[];
+  remiseCents: number;
+  codePromo?: string | null;
+  portCents: number;
+  modeLivraison?: string | null;
+  totalCents: number;
+  /** Ce qui a déjà été rendu sur cette commande. Zéro le plus souvent. */
+  rembourseCents: number;
+  /** « Réglée par Stripe le 8 septembre 2026 », ou ce qui en tient lieu. */
+  mentionReglement: string;
+  /** L'identité légale de la boutique, quand elle a été renseignée. */
+  adresseBoutique?: string[] | null;
+  siret?: string | null;
+  /** Portée en travers quand la commande a été annulée après sa facturation. */
+  filigrane?: string | null;
+}
+
+/**
+ * La facture d'une commande, en PDF A4.
+ *
+ * Elle porte les mentions d'une vente en franchise de TVA : le numéro de
+ * facture, sa date, l'identité des deux parties, le détail des articles et
+ * « TVA non applicable, article 293 B du CGI ». Le montant est celui qui a été
+ * facturé — on ne recalcule rien, l'appelant a déjà lu la commande.
+ */
+export async function renderInvoicePdf(d: DonneesFacture): Promise<Buffer> {
+  const doc = await PDFDocument.create();
+  doc.setTitle(`Facture ${d.numeroFacture} - Memory Line`);
+  doc.setSubject(`Commande ${d.numeroCommande}`);
+  const page = doc.addPage([FACTURE_LARGEUR, FACTURE_HAUTEUR]);
+  const normale = await doc.embedFont(StandardFonts.Helvetica);
+  const grasse = await doc.embedFont(StandardFonts.HelveticaBold);
+
+  const gauche = FACTURE_MARGE;
+  const droite = FACTURE_LARGEUR - FACTURE_MARGE;
+
+  /** Écrit un texte et rend l'ordonnée de la ligne suivante. */
+  const ecrire = (
+    texte: string,
+    x: number,
+    y: number,
+    o?: { taille?: number; gras?: boolean; pale?: boolean; aDroite?: boolean },
+  ): number => {
+    const taille = o?.taille ?? 9.5;
+    const police = o?.gras ? grasse : normale;
+    const propre = pourPolicePdf(texte);
+    const abscisse = o?.aDroite
+      ? x - police.widthOfTextAtSize(propre, taille)
+      : x;
+    page.drawText(propre, {
+      x: abscisse,
+      y,
+      size: taille,
+      font: police,
+      color: o?.pale ? ENCRE_FACTURE_PALE : ENCRE_FACTURE,
+    });
+    return y - taille * 1.45;
+  };
+
+  /* --- En-tête : le logo à gauche, la facture à droite -------------------- */
+
+  let hautGauche = FACTURE_HAUTEUR - FACTURE_MARGE;
+  const HAUTEUR_LOGO = 38;
+  try {
+    // Le même logo que les courriers, pris sur le disque de l'API. S'il
+    // manque, le nom de la boutique le remplace : une facture sans logo reste
+    // une facture, une erreur 500 n'en est pas une.
+    const octets = await readFile(resolve(DOSSIER_MARQUE, "logo-memory-line.png"));
+    const logo = await doc.embedPng(octets);
+    const largeur = (logo.width / logo.height) * HAUTEUR_LOGO;
+    page.drawImage(logo, {
+      x: gauche,
+      y: hautGauche - HAUTEUR_LOGO,
+      width: largeur,
+      height: HAUTEUR_LOGO,
+    });
+    hautGauche -= HAUTEUR_LOGO + 14;
+  } catch {
+    hautGauche = ecrire("MEMORY LINE", gauche, hautGauche - 14, {
+      taille: 16,
+      gras: true,
+    });
+  }
+
+  let hautDroite = FACTURE_HAUTEUR - FACTURE_MARGE - 14;
+  hautDroite = ecrire("FACTURE", droite, hautDroite, {
+    taille: 20,
+    gras: true,
+    aDroite: true,
+  });
+  hautDroite -= 4;
+  hautDroite = ecrire(`N° ${d.numeroFacture}`, droite, hautDroite, {
+    taille: 11,
+    gras: true,
+    aDroite: true,
+  });
+  hautDroite = ecrire(
+    `Émise le ${jourFrancais(d.dateFacture)}`,
+    droite,
+    hautDroite,
+    { pale: true, aDroite: true },
+  );
+
+  /* --- Les deux parties --------------------------------------------------- */
+
+  let y = Math.min(hautGauche, hautDroite) - 18;
+  const colonneClient = FACTURE_LARGEUR / 2 + 10;
+  const hautDesParties = y;
+
+  y = ecrire("ÉMETTEUR", gauche, y, { taille: 8, gras: true, pale: true });
+  y = ecrire("Memory Line", gauche, y - 2, { gras: true });
+  y = ecrire("Affiches personnalisées", gauche, y, { pale: true });
+  for (const ligne of d.adresseBoutique ?? [])
+    if (ligne) y = ecrire(ligne, gauche, y, { pale: true });
+  if (d.siret) y = ecrire(`SIRET ${d.siret}`, gauche, y, { pale: true });
+
+  let yClient = ecrire("FACTURÉ À", colonneClient, hautDesParties, {
+    taille: 8,
+    gras: true,
+    pale: true,
+  });
+  yClient = ecrire(d.clientNom || "Client", colonneClient, yClient - 2, {
+    gras: true,
+  });
+  for (const ligne of d.clientAdresse)
+    if (ligne) yClient = ecrire(ligne, colonneClient, yClient, { pale: true });
+  if (d.clientEmail)
+    yClient = ecrire(d.clientEmail, colonneClient, yClient, { pale: true });
+
+  y = Math.min(y, yClient) - 16;
+
+  /* --- Ce que cette facture couvre ---------------------------------------- */
+
+  y = ecrire(
+    `Commande ${d.numeroCommande} du ${jourFrancais(d.dateCommande)}`,
+    gauche,
+    y,
+    { taille: 10, gras: true },
+  );
+  y = ecrire(d.mentionReglement, gauche, y, { pale: true });
+  y -= 12;
+
+  /* --- Le détail ---------------------------------------------------------- */
+
+  const COL_QTE = droite - 190;
+  const COL_UNITE = droite - 105;
+
+  const filet = (ordonnee: number, epaisseur = 0.6) =>
+    page.drawRectangle({
+      x: gauche,
+      y: ordonnee,
+      width: droite - gauche,
+      height: epaisseur,
+      color: FILET_FACTURE,
+    });
+
+  ecrire("DÉSIGNATION", gauche, y, { taille: 8, gras: true, pale: true });
+  ecrire("QTÉ", COL_QTE, y, { taille: 8, gras: true, pale: true, aDroite: true });
+  ecrire("PRIX UNIT.", COL_UNITE, y, {
+    taille: 8,
+    gras: true,
+    pale: true,
+    aDroite: true,
+  });
+  ecrire("TOTAL", droite, y, { taille: 8, gras: true, pale: true, aDroite: true });
+  y -= 7;
+  filet(y);
+  y -= 15;
+
+  for (const l of d.lignes) {
+    const hautDeLaLigne = y;
+    y = ecrire(l.designation || "Affiche personnalisée", gauche, y, {
+      taille: 9.5,
+    });
+    if (l.precision) y = ecrire(l.precision, gauche, y, { taille: 8.5, pale: true });
+    // Le texte de l'affiche : c'est lui, et lui seul, qui distingue deux
+    // lignes de même titre et de même prix sur une facture retrouvée un an
+    // après. Il tient entre guillemets, comme partout dans la boutique.
+    for (const ligne of l.lignesAffiche ?? [])
+      if (ligne) y = ecrire(`« ${ligne} »`, gauche + 8, y, { taille: 8.5, pale: true });
+
+    ecrire(String(l.quantite), COL_QTE, hautDeLaLigne, { aDroite: true });
+    ecrire(euros(l.unitPriceCents), COL_UNITE, hautDeLaLigne, { aDroite: true });
+    ecrire(euros(l.unitPriceCents * l.quantite), droite, hautDeLaLigne, {
+      aDroite: true,
+    });
+    y -= 5;
+    filet(y, 0.4);
+    y -= 15;
+  }
+
+  /* --- Les totaux --------------------------------------------------------- */
+
+  const sousTotal = d.lignes.reduce(
+    (s, l) => s + l.unitPriceCents * l.quantite,
+    0,
+  );
+  const totalLibelle = droite - 105;
+  y -= 4;
+
+  const totalLigne = (
+    libelle: string,
+    montant: string,
+    o?: { gras?: boolean; pale?: boolean },
+  ) => {
+    ecrire(libelle, totalLibelle, y, { aDroite: true, ...o });
+    y = ecrire(montant, droite, y, { aDroite: true, ...o });
+  };
+
+  totalLigne("Sous-total", euros(sousTotal), { pale: true });
+  if (d.remiseCents > 0)
+    totalLigne(
+      `Réduction${d.codePromo ? ` (${d.codePromo})` : ""}`,
+      `- ${euros(d.remiseCents)}`,
+      { pale: true },
+    );
+  totalLigne(
+    `Livraison${d.modeLivraison ? ` (${d.modeLivraison})` : ""}`,
+    euros(d.portCents),
+    { pale: true },
+  );
+  y -= 3;
+  page.drawRectangle({
+    x: totalLibelle - 120,
+    y,
+    width: droite - (totalLibelle - 120),
+    height: 0.6,
+    color: FILET_FACTURE,
+  });
+  y -= 15;
+  totalLigne("TOTAL À PAYER", euros(d.totalCents), { gras: true });
+  if (d.rembourseCents > 0) {
+    y -= 2;
+    totalLigne("Dont remboursé", `- ${euros(d.rembourseCents)}`, { pale: true });
+    totalLigne("Net encaissé", euros(d.totalCents - d.rembourseCents), {
+      pale: true,
+    });
+  }
+
+  /* --- Le pied ------------------------------------------------------------ */
+
+  let pied = FACTURE_MARGE + 46;
+  filet(pied + 14);
+  pied = ecrire(
+    "TVA non applicable, article 293 B du CGI.",
+    gauche,
+    pied,
+    { taille: 8.5, gras: true, pale: true },
+  );
+  pied = ecrire(
+    "Memory Line, affiches personnalisées. Une question sur cette facture ? Répondez au courrier qui vous l'a apportée.",
+    gauche,
+    pied,
+    { taille: 8, pale: true },
+  );
+
+  // Le filigrane, quand la commande a été annulée APRÈS avoir été facturée :
+  // le numéro reste pris, la facture reste éditable, et le papier dit
+  // lui-même qu'elle ne vaut plus. Effacer la facture aurait fait le trou que
+  // toute cette mécanique existe pour éviter.
+  if (d.filigrane) dessinerFiligrane(page, grasse, d.filigrane);
+
+  return Buffer.from(await doc.save());
+}
+
+/** Écrit un mot en travers de la page, en gris très clair. */
+function dessinerFiligrane(page: PDFPage, police: PDFFont, mot: string): void {
+  const propre = pourPolicePdf(mot).toUpperCase();
+  const TAILLE = 66;
+  const largeur = police.widthOfTextAtSize(propre, TAILLE);
+  page.drawText(propre, {
+    x: (FACTURE_LARGEUR - largeur * 0.72) / 2,
+    y: FACTURE_HAUTEUR / 2 - largeur * 0.36,
+    size: TAILLE,
+    font: police,
+    color: rgb(0.88, 0.85, 0.85),
+    rotate: degrees(45),
+  });
 }

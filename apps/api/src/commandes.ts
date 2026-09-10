@@ -1,27 +1,38 @@
 /**
  * Routes d'administration des commandes : expéditions, remboursements,
- * étiquettes, actions de masse et export.
+ * annulation, encaissement hors ligne, facture, étiquettes, actions de masse
+ * et export.
  *
  * Le principe qui gouverne tout ce fichier : **rien ne s'écrase**. Une
  * expédition annulée reste dans la table avec sa date d'annulation, un
  * remboursement s'ajoute au grand livre au lieu de corriger le total de la
- * commande, et les statuts affichés sont TOUJOURS recalculés à partir de ces
- * lignes. Il n'y a donc aucun moyen que la fiche raconte autre chose que ce
- * qui s'est réellement passé.
+ * commande, une commande annulée reste lisible, et les statuts affichés sont
+ * TOUJOURS recalculés à partir de ces lignes. Il n'y a donc aucun moyen que la
+ * fiche raconte autre chose que ce qui s'est réellement passé.
  */
 import type { Context, Hono } from "hono";
 import type { SQL } from "drizzle-orm";
 import { and, desc, eq, gte, inArray, lte, or, sql as raw } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import { refundStripe } from "./payments.js";
+import { lignesRemplies, type TextesAffiche } from "@memoryline/types";
 import {
+  courrierAnnulee,
   courrierExpediee,
+  courrierFacture,
   courrierPreteAuStand,
   courrierRemboursee,
   envoyer as envoyerCourrier,
   estConfigure as mailConfigure,
   type LigneCourrier,
 } from "./mail.js";
+// L'encaissement d'un virement passe par la MÊME fonction que celui d'un
+// paiement Stripe. L'import est croisé — configurator-routes.ts lit déjà
+// `resumeCommandes` ici — mais chacun ne s'en sert qu'à l'intérieur d'une
+// fonction, jamais au chargement du module : le cycle ne se referme donc
+// jamais pendant l'évaluation, et Node le résout sans broncher.
+import { markOrderPaid } from "./configurator-routes.js";
+import { renderInvoicePdf, type LigneFacture } from "./pdf.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Statuts calculés                                                          */
@@ -248,9 +259,98 @@ async function quantitesRemboursees(
   return m;
 }
 
-/** Expédie d'un coup tout ce qui reste sur un lot de commandes. */
-async function expedierTout(ids: number[]): Promise<void> {
+/**
+ * Remet en stock ce qui a été rendu ou annulé.
+ *
+ * Seules les variantes qui TIENNENT un stock sont touchées : une affiche est
+ * imprimée à la commande et n'a rien à réintégrer, alors qu'un magnet ou une
+ * carte, eux, sont revenus dans le tiroir. Le `is not null` fait la
+ * différence, et il est dans la clause SQL plutôt que dans une lecture
+ * préalable — sinon deux annulations simultanées liraient le même stock avant
+ * de l'écrire toutes les deux.
+ *
+ * Écrite une fois, appelée par le remboursement ET par l'annulation : deux
+ * additions de stock finiraient par diverger sur le cas des variantes sans
+ * stock, qui est justement le cas courant ici.
+ */
+async function remettreEnStock(
+  lignes: (typeof schema.orderItems.$inferSelect)[],
+  quantites: Map<number, number>,
+): Promise<void> {
+  for (const ligne of lignes) {
+    const q = quantites.get(ligne.id) ?? 0;
+    if (q <= 0 || !ligne.variantId) continue;
+    await db
+      .update(schema.variants)
+      .set({
+        stockQty: raw`coalesce(${schema.variants.stockQty}, 0) + ${q}`,
+      })
+      .where(
+        and(
+          eq(schema.variants.id, ligne.variantId),
+          raw`${schema.variants.stockQty} is not null`,
+        ),
+      );
+  }
+}
+
+/**
+ * Ce qui reste remboursable sur les frais de port d'une commande.
+ *
+ * Le port ne se rembourse pas par article : c'est une somme unique, qu'on rend
+ * en une ou plusieurs fois. Il faut donc retrancher ce qui en est déjà parti,
+ * et cette soustraction se fait ici seulement — le bouton « Rembourser » et
+ * l'annulation d'une commande payée s'appuient sur la même.
+ */
+async function portRemboursable(
+  orderId: number,
+  portFactureCents: number,
+): Promise<number> {
+  const rendus = await db
+    .select({ v: schema.refunds.shippingCents })
+    .from(schema.refunds)
+    .where(eq(schema.refunds.orderId, orderId));
+  return Math.max(0, portFactureCents - rendus.reduce((s, r) => s + r.v, 0));
+}
+
+/**
+ * Les commandes de ce lot qui ne peuvent plus rien expédier.
+ *
+ * Une commande annulée reste lisible et gardera son histoire, mais elle ne
+ * doit plus RIEN faire partir : c'est tout le sens de l'annulation. Le
+ * contrôle vit ici, en une requête pour tout le lot, et non dans l'écran —
+ * une adresse tapée à la main doit buter sur la même règle.
+ */
+async function commandesAnnulees(ids: number[]): Promise<Set<number>> {
+  if (!ids.length) return new Set();
+  const rows = await db
+    .select({ id: schema.orders.id, status: schema.orders.status })
+    .from(schema.orders)
+    .where(inArray(schema.orders.id, ids));
+  return new Set(
+    rows.filter((r) => r.status === "cancelled" || r.status === "voided").map((r) => r.id),
+  );
+}
+
+/**
+ * Expédie d'un coup tout ce qui reste sur un lot de commandes.
+ *
+ * Rend la liste de celles où quelque chose est RÉELLEMENT parti, et celle des
+ * annulées qu'on a refusé de toucher. L'appelante en a besoin pour deux
+ * choses : ne prévenir que les clientes dont le colis part vraiment, et dire à
+ * l'écran combien de commandes ont été écartées, plutôt que d'annoncer
+ * « 30 commandes traitées » quand deux d'entre elles étaient annulées.
+ */
+async function expedierTout(
+  ids: number[],
+): Promise<{ expediees: number[]; annulees: number[] }> {
+  const annulees = await commandesAnnulees(ids);
+  const expediees: number[] = [];
   for (const id of ids) {
+    // Une commande annulée ne fait plus rien partir. Elle est écartée ici,
+    // dans la fonction qui écrit, et pas seulement dans l'écran : un écran qui
+    // masque un bouton est une politesse, pas une garde.
+    if (annulees.has(id)) continue;
     const lignes = await db
       .select()
       .from(schema.orderItems)
@@ -270,7 +370,9 @@ async function expedierTout(ids: number[]): Promise<void> {
     await db
       .insert(schema.fulfillmentItems)
       .values(reste.map((l) => ({ ...l, fulfillmentId: ful!.id })));
+    expediees.push(id);
   }
+  return { expediees, annulees: [...annulees] };
 }
 
 /** Annule toutes les expéditions en cours d'un lot de commandes. */
@@ -584,22 +686,63 @@ export function mountOrderRoutes(app: Hono): void {
 
     if (action === "fulfil" || action === "unfulfil") {
       const traite = action === "fulfil";
-      if (traite) await expedierTout(ids);
-      else await annulerExpeditions(ids);
-      await db
-        .update(schema.orders)
-        .set({ fulfilledAt: traite ? new Date() : null })
-        .where(inArray(schema.orders.id, ids));
-      await db.insert(schema.orderEvents).values(
-        ids.map((orderId) => ({
-          orderId,
-          kind: "event",
-          message: traite
-            ? "Commande marquée comme traitée (action groupée)."
-            : "Commande remise à traiter (action groupée).",
-        })),
-      );
-      return c.json({ ok: true, count: ids.length });
+      /*
+       * L'action groupée PRÉVIENT la cliente, comme le fait le formulaire
+       * d'expédition à l'unité. Deux boutons qui portent le même mot ne
+       * peuvent pas avoir deux effets différents : celui de la fiche envoyait
+       * « votre commande est en route », celui de la liste ne disait rien, et
+       * rien à l'écran ne permettait de deviner lequel des deux on venait de
+       * cliquer. C'est la panne la plus courante du service client — une
+       * cliente qui écrit « où en est ma commande ? » une semaine après
+       * qu'elle est partie.
+       *
+       * Le courrier part SANS transporteur ni numéro de suivi, parce que
+       * `expedierTout` n'en enregistre aucun. Le modèle sait le faire : il
+       * écrit alors « votre affiche est partie, elle arrive » et n'affiche
+       * aucun bouton de suivi. C'est moins qu'un suivi, mais c'est la réponse
+       * à la question que la cliente se pose ; et le silence, lui, n'en est
+       * pas une. Pour un colis suivi, c'est le formulaire de la fiche qu'il
+       * faut ouvrir — lui prend le transporteur et le numéro.
+       */
+      const bilan = traite
+        ? await expedierTout(ids)
+        : { expediees: [], annulees: [] as number[] };
+      if (!traite) await annulerExpeditions(ids);
+      // Les annulées gardent leur date de traitement telle quelle : on ne les
+      // a pas touchées, il n'y a pas de raison de l'écrire.
+      const touchees = ids.filter((id) => !bilan.annulees.includes(id));
+      if (touchees.length)
+        await db
+          .update(schema.orders)
+          .set({ fulfilledAt: traite ? new Date() : null })
+          .where(inArray(schema.orders.id, touchees));
+      if (touchees.length)
+        await db.insert(schema.orderEvents).values(
+          touchees.map((orderId) => ({
+            orderId,
+            kind: "event",
+            message: traite
+              ? "Commande marquée comme traitée (action groupée)."
+              : "Commande remise à traiter (action groupée).",
+          })),
+        );
+      // Un courrier par commande réellement expédiée, et seulement celles-là :
+      // une commande dont tout était déjà parti ne doit pas recevoir un
+      // deuxième « c'est en route ».
+      for (const orderId of bilan.expediees)
+        await previenirDeLExpedition(orderId, {
+          carrier: null,
+          trackingNumber: null,
+          trackingUrl: null,
+        });
+      return c.json({
+        ok: true,
+        count: touchees.length,
+        prevenues: bilan.expediees.length,
+        // Nommer ce qui a été écarté : « 30 traitées » quand deux étaient
+        // annulées est un compte rendu qui ment par omission.
+        annulees: bilan.annulees.length,
+      });
     }
 
     if (action === "tag" || action === "untag") {
@@ -685,6 +828,16 @@ export function mountOrderRoutes(app: Hono): void {
       .from(schema.orders)
       .where(eq(schema.orders.id, id));
     if (!order) return c.notFound();
+    // Une commande annulée ne fait plus rien partir : c'est tout le sens de
+    // l'annulation, et la cliente a reçu un courrier qui le lui dit.
+    if (order.status === "cancelled" || order.status === "voided")
+      return c.json(
+        {
+          error:
+            "Cette commande est annulée : plus rien ne peut en partir. Si l'annulation était une erreur, il faut repasser une commande.",
+        },
+        400,
+      );
 
     const lignes = await db
       .select()
@@ -901,11 +1054,40 @@ export function mountOrderRoutes(app: Hono): void {
   app.post("/admin/orders/:id/refunds", async (c) => {
     const id = Number(c.req.param("id"));
     const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const r = await enregistrerRemboursement(id, b);
+    if (r.introuvable) return c.notFound();
+    if (r.erreur) return c.json({ error: r.erreur }, r.code ?? 400);
+    return c.json(r.refund);
+  });
+
+  /**
+   * Le remboursement lui-même, détaché de sa route.
+   *
+   * L'annulation d'une commande payée doit pouvoir rendre l'argent, et elle
+   * doit le faire EXACTEMENT comme le bouton « Rembourser » : mêmes plafonds,
+   * même renvoi chez Stripe, même écriture au grand livre, même courrier. Une
+   * seconde façon de rembourser aurait fini par diverger de celle-ci sur un
+   * détail — le plafond du port, ou le cumul des remboursements précédents — et
+   * l'écart ne se serait vu que le jour où il aurait coûté de l'argent.
+   *
+   * Rend un objet plutôt qu'une réponse HTTP, pour que l'annulation puisse
+   * décider elle-même quoi dire quand le remboursement échoue.
+   */
+  async function enregistrerRemboursement(
+    id: number,
+    b: Record<string, unknown>,
+  ): Promise<{
+    introuvable?: true;
+    erreur?: string;
+    code?: 400 | 502;
+    refund?: typeof schema.refunds.$inferSelect;
+    montantCents?: number;
+  }> {
     const [order] = await db
       .select()
       .from(schema.orders)
       .where(eq(schema.orders.id, id));
-    if (!order) return c.notFound();
+    if (!order) return { introuvable: true };
 
     const lignes = await db
       .select()
@@ -936,12 +1118,9 @@ export function mountOrderRoutes(app: Hono): void {
       if (q <= 0) continue;
       const reste = ligne.quantity - (dejaRendu.get(ligne.id) ?? 0);
       if (q > reste)
-        return c.json(
-          {
-            error: `« ${ligne.title ?? "Article"} » : ${reste} exemplaire(s) remboursable(s) au plus.`,
-          },
-          400,
-        );
+        return {
+          erreur: `« ${ligne.title ?? "Article"} » : ${reste} exemplaire(s) remboursable(s) au plus.`,
+        };
       detail.push({
         orderItemId: ligne.id,
         quantity: q,
@@ -958,28 +1137,16 @@ export function mountOrderRoutes(app: Hono): void {
     }
 
     const portDemande = Math.max(0, Math.floor(Number(b.shippingCents) || 0));
-    const portDejaRendu = (
-      await db
-        .select({ v: schema.refunds.shippingCents })
-        .from(schema.refunds)
-        .where(eq(schema.refunds.orderId, id))
-    ).reduce((s, r) => s + r.v, 0);
-    const portRestant = Math.max(0, order.shippingCents - portDejaRendu);
+    const portRestant = await portRemboursable(id, order.shippingCents);
     if (portDemande > portRestant)
-      return c.json(
-        {
-          error: `Frais de port : ${(portRestant / 100).toFixed(2)} € remboursables au plus.`,
-        },
-        400,
-      );
+      return {
+        erreur: `Frais de port : ${(portRestant / 100).toFixed(2)} € remboursables au plus.`,
+      };
 
     const montant = detail.reduce((s, d) => s + d.amountCents, 0) + portDemande;
-    if (montant <= 0) return c.json({ error: "Rien à rembourser." }, 400);
+    if (montant <= 0) return { erreur: "Rien à rembourser." };
     if (dejaCents + montant > order.totalCents)
-      return c.json(
-        { error: "Le total remboursé dépasserait le montant encaissé." },
-        400,
-      );
+      return { erreur: "Le total remboursé dépasserait le montant encaissé." };
 
     // Renvoi de l'argent chez le prestataire, s'il est demandé et possible.
     let gateway = "manuel";
@@ -1001,10 +1168,10 @@ export function mountOrderRoutes(app: Hono): void {
           gateway = "stripe";
           externalRef = r.id;
         } catch (e) {
-          return c.json(
-            { error: `Stripe a refusé le remboursement : ${String(e)}` },
-            502,
-          );
+          return {
+            erreur: `Stripe a refusé le remboursement : ${String(e)}`,
+            code: 502,
+          };
         }
       }
     }
@@ -1040,23 +1207,11 @@ export function mountOrderRoutes(app: Hono): void {
 
     // Remise en stock, pour les articles qui en ont un (magnets, cartes) ;
     // une affiche imprimée à la commande n'a rien à réintégrer.
-    if (b.restock === true) {
-      for (const d of detail) {
-        const ligne = lignes.find((l) => l.id === d.orderItemId);
-        if (!ligne?.variantId) continue;
-        await db
-          .update(schema.variants)
-          .set({
-            stockQty: raw`coalesce(${schema.variants.stockQty}, 0) + ${d.quantity}`,
-          })
-          .where(
-            and(
-              eq(schema.variants.id, ligne.variantId),
-              raw`${schema.variants.stockQty} is not null`,
-            ),
-          );
-      }
-    }
+    if (b.restock === true)
+      await remettreEnStock(
+        lignes,
+        new Map(detail.map((d) => [d.orderItemId, d.quantity])),
+      );
 
     await db.insert(schema.orderEvents).values({
       orderId: id,
@@ -1079,8 +1234,8 @@ export function mountOrderRoutes(app: Hono): void {
       totalRembourseCents: dejaCents + montant,
       viaPaiementEnLigne: gateway !== "manuel",
     });
-    return c.json(refund);
-  });
+    return { refund: refund!, montantCents: montant };
+  }
 
   /**
    * Dit à la cliente ce qui vient de lui être rendu.
@@ -1157,6 +1312,400 @@ export function mountOrderRoutes(app: Hono): void {
     }
   }
 
+  /* ------------------------------------------------------------------ */
+  /*  Annuler une commande                                              */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Annule une commande.
+   *
+   * L'annulation n'EFFACE rien : la commande reste dans la liste, sa
+   * chronologie reste lisible, ses mouvements d'argent restent au grand livre.
+   * Elle sort en revanche des chiffres (`HORS_VENTES`) et ne peut plus rien
+   * expédier. C'est ce qui la distingue de la suppression, qui, elle, fait
+   * disparaître la vente pour de bon.
+   *
+   * Elle fait, dans cet ordre, tout ce qu'une annulation demande : rendre
+   * l'argent si on le lui demande, remettre le stock, fermer les expéditions,
+   * inscrire au grand livre ce qui ne sera jamais encaissé, poser le statut,
+   * prévenir la cliente, et tout écrire au journal. Cet ordre n'est pas
+   * indifférent : l'argent part AVANT le changement de statut, parce que le
+   * remboursement plafonne au montant encaissé et qu'une commande déjà
+   * marquée annulée n'aurait plus rien à rendre.
+   */
+  app.post("/admin/orders/:id/cancel", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0)
+      return c.json({ error: "commande inconnue" }, 400);
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+
+    const [order] = await db
+      .select()
+      .from(schema.orders)
+      .where(eq(schema.orders.id, id));
+    if (!order) return c.notFound();
+
+    if (order.status === "cancelled" || order.status === "voided")
+      return c.json(
+        {
+          error: `La commande ${order.number} est déjà annulée${
+            order.cancelledAt
+              ? ` depuis le ${order.cancelledAt.toLocaleDateString("fr-FR")}`
+              : ""
+          }. Rien n'a été refait.`,
+        },
+        400,
+      );
+
+    // Un panier n'est pas une commande : il n'a jamais été passé, il n'y a
+    // rien à annuler ni personne à prévenir. Il se supprime, ou il s'oublie.
+    if (order.status === "draft")
+      return c.json(
+        {
+          error:
+            "Ceci est un panier abandonné, pas une commande : il n'y a rien à annuler. Supprimez-le si vous voulez qu'il disparaisse.",
+        },
+        400,
+      );
+
+    const resume = (await resumeCommandes([id])).get(id)!;
+
+    // Ce qui est PARTI ne se rattrape pas par une annulation. On le dit avec
+    // les chiffres sous les yeux, et on dit quoi faire à la place : sans cela,
+    // le refus ressemble à une panne.
+    if (resume.expedies > 0)
+      return c.json(
+        {
+          error:
+            resume.expedies >= resume.articles
+              ? `Cette commande est déjà entièrement partie (${resume.expedies} article(s)). On n'annule pas un colis en route : annulez d'abord l'expédition si elle n'est pas réellement partie, sinon enregistrez un remboursement au retour du colis.`
+              : `Cette commande est déjà partie en partie : ${resume.expedies} article(s) sur ${resume.articles} ont quitté l'atelier. Annulez d'abord cette expédition si le colis n'est pas réellement parti ; sinon, remboursez ce qui revient plutôt que d'annuler la commande entière.`,
+        },
+        400,
+      );
+
+    const motif = motifDAnnulation(b.motif, b.motifLibre);
+    const auteur = String(b.author ?? "").trim() || null;
+    const auStand = order.channel === "salon";
+    const etaitPayee = order.status === "paid";
+
+    const lignes = await db
+      .select()
+      .from(schema.orderItems)
+      .where(eq(schema.orderItems.orderId, id));
+
+    /* --- 1. L'argent, s'il faut le rendre ----------------------------- */
+
+    let rembourseCents = 0;
+    if (b.rembourser === true) {
+      if (!etaitPayee)
+        return c.json(
+          {
+            error:
+              "Cette commande n'a jamais été encaissée : il n'y a rien à rembourser. Décochez le remboursement pour l'annuler.",
+          },
+          400,
+        );
+      const dejaRendu = await quantitesRemboursees(id);
+      const aRendre = lignes
+        .map((l) => ({
+          orderItemId: l.id,
+          quantity: l.quantity - (dejaRendu.get(l.id) ?? 0),
+        }))
+        .filter((l) => l.quantity > 0);
+      // Le port part avec le reste : la commande entière est annulée, la
+      // cliente n'a rien reçu, il n'y a pas de raison qu'elle paie l'envoi.
+      const portARendre = await portRemboursable(id, order.shippingCents);
+      // Une commande déjà entièrement remboursée n'a plus rien à rendre. Le
+      // remboursement refuserait — « Rien à rembourser » — et son refus
+      // arrêterait l'annulation, alors qu'elle est justement le geste qui
+      // reste à faire. On saute donc l'étape au lieu de buter dessus.
+      if (!aRendre.length && portARendre <= 0) {
+        await db.insert(schema.orderEvents).values({
+          orderId: id,
+          kind: "event",
+          message:
+            "Aucun remboursement à l'annulation : tout avait déjà été rendu sur cette commande.",
+        });
+      } else {
+        const r = await enregistrerRemboursement(id, {
+          items: aRendre,
+          shippingCents: portARendre,
+          reason: motif ?? "Commande annulée",
+          note: String(b.note ?? "").trim() || null,
+          restock: b.restock === true,
+          viaPsp: b.viaPsp !== false,
+          author: auteur,
+        });
+        // Un remboursement refusé ARRÊTE l'annulation. Annuler quand même
+        // laisserait une commande annulée dont l'argent est resté chez nous,
+        // et c'est exactement le genre d'écart qu'on ne retrouve jamais.
+        if (r.erreur)
+          return c.json(
+            {
+              error: `La commande n'a pas été annulée : le remboursement a échoué. ${r.erreur}`,
+            },
+            r.code ?? 400,
+          );
+        rembourseCents = r.montantCents ?? 0;
+      }
+    } else if (b.restock === true) {
+      // Sans remboursement, la remise en stock n'a personne pour la faire :
+      // on la fait ici, sur la totalité de ce qui a été commandé.
+      await remettreEnStock(
+        lignes,
+        new Map(lignes.map((l) => [l.id, l.quantity])),
+      );
+    }
+
+    /* --- 2. Les expéditions ------------------------------------------- */
+
+    // Aucune expédition vivante ne survit à une annulation. Le contrôle plus
+    // haut a déjà écarté les commandes dont quelque chose est parti : ce qui
+    // reste ici est une expédition à zéro article, ou une trace laissée par
+    // une manœuvre concurrente. L'appel est donc une GARANTIE, pas un geste
+    // courant — mais sans lui, la garantie ne tiendrait qu'à un contrôle.
+    await annulerExpeditions([id]);
+
+    /* --- 3. Le grand livre -------------------------------------------- */
+
+    // Ce qui n'a jamais été encaissé doit quand même se lire quelque part.
+    // Une commande qui disparaît des chiffres sans un mot laisse la page
+    // Finances avec une vente attendue qui ne vient pas ; l'écriture « void »
+    // dit noir sur blanc que cet argent-là n'arrivera pas. On ne l'écrit que
+    // s'il n'y a EU aucun encaissement : sinon c'est le remboursement qui
+    // solde la commande, et deux écritures raconteraient deux histoires.
+    const [encaisse] = await db
+      .select({
+        cents: raw<number>`coalesce(sum(${schema.orderTransactions.amountCents}), 0)::int`,
+      })
+      .from(schema.orderTransactions)
+      .where(
+        and(
+          eq(schema.orderTransactions.orderId, id),
+          eq(schema.orderTransactions.kind, "sale"),
+          eq(schema.orderTransactions.status, "success"),
+        ),
+      );
+    const rienEncaisse = (encaisse?.cents ?? 0) <= 0;
+    if (rienEncaisse && order.totalCents > 0)
+      await db.insert(schema.orderTransactions).values({
+        orderId: id,
+        kind: "void",
+        status: "success",
+        amountCents: order.totalCents,
+        gateway: null,
+        message: motif,
+      });
+
+    /* --- 4. Le statut -------------------------------------------------- */
+
+    const annuleeLe = new Date();
+    await db
+      .update(schema.orders)
+      .set({
+        status: "cancelled",
+        cancelledAt: annuleeLe,
+        cancelReason: motif,
+        // Une commande annulée n'est pas « traitée » : elle n'a plus rien à
+        // faire, ce qui n'est pas la même chose que d'avoir tout fait.
+        fulfilledAt: null,
+      })
+      .where(eq(schema.orders.id, id));
+
+    /* --- 5. Le journal -------------------------------------------------- */
+
+    /*
+     * Ce que l'annulation laisse dû à la cliente.
+     *
+     * On retranche AUSSI ce qui avait été rendu avant elle : une commande déjà
+     * remboursée en entier ne doit plus rien, et annoncer le contraire
+     * enverrait la boutique rendre une seconde fois le même argent.
+     */
+    const resteADevoir = etaitPayee
+      ? Math.max(0, order.totalCents - resume.rembourseCents - rembourseCents)
+      : 0;
+
+    await db.insert(schema.orderEvents).values({
+      orderId: id,
+      kind: "event",
+      author: auteur,
+      message:
+        `Commande annulée${motif ? ` — ${motif}` : ""}.` +
+        (rembourseCents > 0
+          ? ` ${(rembourseCents / 100).toFixed(2).replace(".", ",")} € remboursés dans la foulée.`
+          : resteADevoir > 0
+            ? ` Le montant réglé n'a PAS été remboursé : ${(resteADevoir / 100).toFixed(2).replace(".", ",")} € restent à rendre à la cliente.`
+            : "") +
+        (b.restock === true ? " Articles remis en stock." : "") +
+        (rienEncaisse && order.totalCents > 0
+          ? " Écriture d'annulation portée au grand livre."
+          : ""),
+    });
+
+    if (order.invoiceNumber)
+      await db.insert(schema.orderEvents).values({
+        orderId: id,
+        kind: "event",
+        message: `La facture ${order.invoiceNumber} a déjà été éditée pour cette commande : elle garde son numéro et reste éditable, portant désormais la mention « annulée ». Un avoir reste à établir si elle est partie chez la cliente.`,
+      });
+
+    /* --- 6. Le courrier ------------------------------------------------ */
+
+    await previenirDeLAnnulation(id, {
+      motif,
+      // Une commande payée dont on n'a rien rendu ne doit pas laisser croire
+      // à la cliente que son argent revient : le modèle ne le dit que si un
+      // remboursement a réellement eu lieu.
+      dejaPayee: rembourseCents > 0,
+      articles: lignes.map((l) => {
+        const cfg = (l.config ?? {}) as { format?: unknown };
+        return {
+          titre: l.title ?? "Affiche personnalisée",
+          format: typeof cfg.format === "string" ? cfg.format : null,
+          cadre: null,
+          quantite: l.quantity,
+          unitPriceCents: l.unitPriceCents,
+        };
+      }),
+      auStand,
+    });
+
+    return c.json({
+      ok: true,
+      numero: order.number,
+      annuleeLe: annuleeLe.toISOString(),
+      motif,
+      rembourseCents,
+      // Ce que l'annulation LAISSE en suspens : l'écran le répète à la
+      // boutiquière, qui vient de faire un geste dont elle ne verra plus la
+      // conséquence nulle part si personne ne le lui dit.
+      resteADevoir,
+    });
+  });
+
+  /**
+   * Les motifs proposés, et leur libellé complet.
+   *
+   * Une liste COURTE, choisie plutôt que tapée : un motif libre finit par
+   * contenir « annulée », « annulation », « annul. » et « à la demande » pour
+   * dire la même chose, et plus rien ne se compte ni ne se retrouve. Le champ
+   * libre reste là pour « autre », parce qu'aucune liste ne couvre tout.
+   */
+  const MOTIFS_ANNULATION: Record<string, string> = {
+    saisie: "Erreur de saisie",
+    rupture: "Rupture — article indisponible",
+    cliente: "Demande de la cliente",
+    impaye: "Paiement non reçu",
+    autre: "Autre",
+  };
+
+  /** Le motif tel qu'il s'écrira au journal et dans le courrier. */
+  function motifDAnnulation(choix: unknown, libre: unknown): string | null {
+    const cle = String(choix ?? "").trim();
+    const precision = String(libre ?? "")
+      .trim()
+      .slice(0, 200);
+    const libelle = MOTIFS_ANNULATION[cle];
+    if (!libelle) return precision || null;
+    // « Autre » sans précision ne dit rien : mieux vaut alors ne rien écrire
+    // que d'envoyer à la cliente un motif qui s'appelle « Autre ».
+    if (cle === "autre") return precision || null;
+    return precision ? `${libelle} — ${precision}` : libelle;
+  }
+
+  /**
+   * Dit à la cliente que sa commande est annulée.
+   *
+   * Même prudence que pour l'expédition et le remboursement : l'annulation est
+   * écrite, elle ne se défait pas parce qu'un courrier n'est pas parti. Ne lève
+   * donc jamais, et l'échec se lit dans la chronologie.
+   *
+   * RIEN ne part pour une commande de stand — la MÊME règle que le
+   * remboursement, et pour la même raison : personne n'a laissé son adresse
+   * e-mail au stand pour recevoir des nouvelles administratives, la vendeuse a
+   * la cliente en face d'elle ou au téléphone, et c'est elle qui lui dit.
+   */
+  async function previenirDeLAnnulation(
+    orderId: number,
+    annulation: {
+      motif: string | null;
+      dejaPayee: boolean;
+      articles: LigneCourrier[];
+      auStand: boolean;
+    },
+  ): Promise<void> {
+    try {
+      if (annulation.auStand) {
+        await db.insert(schema.orderEvents).values({
+          orderId,
+          kind: "event",
+          message:
+            "Aucun courrier d'annulation : commande prise au stand, c'est la vendeuse qui prévient la cliente.",
+        });
+        return;
+      }
+      if (!mailConfigure()) {
+        await db.insert(schema.orderEvents).values({
+          orderId,
+          kind: "event",
+          message:
+            "Aucun courrier d'annulation : l'envoi d'e-mails n'est pas configuré. La cliente n'a pas été prévenue.",
+        });
+        return;
+      }
+
+      const [commande] = await db
+        .select({
+          number: schema.orders.number,
+          customerId: schema.orders.customerId,
+        })
+        .from(schema.orders)
+        .where(eq(schema.orders.id, orderId));
+      if (!commande?.customerId) {
+        await db.insert(schema.orderEvents).values({
+          orderId,
+          kind: "event",
+          message:
+            "Aucun courrier d'annulation : cette commande n'a pas de client rattaché.",
+        });
+        return;
+      }
+
+      const [client] = await db
+        .select({ name: schema.customers.name, email: schema.customers.email })
+        .from(schema.customers)
+        .where(eq(schema.customers.id, commande.customerId));
+      if (!client?.email) {
+        await db.insert(schema.orderEvents).values({
+          orderId,
+          kind: "event",
+          message:
+            "Aucun courrier d'annulation : aucune adresse e-mail sur la fiche de la cliente.",
+        });
+        return;
+      }
+
+      const courrier = courrierAnnulee({
+        prenomClient: (client.name ?? "").split(" ")[0] || "vous",
+        numero: commande.number,
+        motif: annulation.motif,
+        articles: annulation.articles,
+        dejaPayee: annulation.dejaPayee,
+      });
+      const parti = await envoyerCourrier({ ...courrier, to: client.email });
+      await db.insert(schema.orderEvents).values({
+        orderId,
+        kind: "event",
+        message: parti
+          ? `Courrier envoyé à ${client.email} : ${courrier.subject}.`
+          : `Le courrier « ${courrier.subject} » n'a pas pu partir vers ${client.email}.`,
+      });
+    } catch {
+      // Une panne de courrier ne défait pas une annulation enregistrée.
+    }
+  }
+
   /** Corrige l'adresse de livraison d'une commande déjà passée. */
   app.post("/admin/orders/:id/address", async (c) => {
     const id = Number(c.req.param("id"));
@@ -1186,4 +1735,477 @@ export function mountOrderRoutes(app: Hono): void {
     });
     return c.json({ ok: true });
   });
+
+  /* ------------------------------------------------------------------ */
+  /*  Encaisser un règlement hors ligne                                 */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Les moyens de règlement qui n'ont pas de prestataire, et leur libellé.
+   *
+   * Ils vont au JOURNAL, pas au grand livre : la page Finances range tout ce
+   * qui entre à la main sous un seul moyen (« À la main (virement, espèces) »),
+   * et le détail du chèque ou du virement se lit sur la fiche de la commande,
+   * là où on le cherche.
+   */
+  const MOYENS_HORS_LIGNE: Record<string, string> = {
+    virement: "virement bancaire",
+    cheque: "chèque",
+    especes: "espèces",
+    autre: "un autre moyen",
+  };
+
+  /**
+   * Marque une commande payée alors que l'argent est arrivé hors du site.
+   *
+   * Le virement et le chèque existent, et rien ne savait les enregistrer : la
+   * commande restait « En attente » pour toujours, elle ne sortait jamais dans
+   * les commandes à préparer, ses PDF d'impression n'étaient pas fabriqués et
+   * la cliente ne recevait aucune confirmation. Elle avait pourtant payé.
+   *
+   * Tout le travail est fait par `markOrderPaid`, la MÊME fonction qu'un
+   * paiement Stripe : date de paiement, PDF d'impression, écriture au grand
+   * livre, confirmation à la cliente, panier relancé noté comme récupéré. On
+   * ne fait ici que deux choses qu'elle ne fait pas — écrire la ligne de
+   * paiement, qu'un paiement en ligne crée au moment du tunnel, et dire au
+   * journal qui a encaissé quoi.
+   */
+  app.post("/admin/orders/:id/encaisser", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0)
+      return c.json({ error: "commande inconnue" }, 400);
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+
+    const [order] = await db
+      .select()
+      .from(schema.orders)
+      .where(eq(schema.orders.id, id));
+    if (!order) return c.notFound();
+
+    if (order.status === "draft")
+      return c.json(
+        {
+          error:
+            "Ceci est un panier abandonné, pas une commande : il n'y a rien à encaisser.",
+        },
+        400,
+      );
+    if (order.status === "cancelled" || order.status === "voided")
+      return c.json(
+        {
+          error: `La commande ${order.number} est annulée. Si de l'argent est arrivé pour elle, il est à rendre, pas à encaisser.`,
+        },
+        400,
+      );
+    // Une vente de stand naît déjà réglée, de la main à la main. Elle n'a rien
+    // à encaisser après coup, et la confirmation que cette route enverrait
+    // porterait les tarifs du site, que le stand cache justement.
+    if (order.channel === "salon")
+      return c.json(
+        {
+          error:
+            "Une vente prise au stand est réglée sur place : elle est encaissée dès la vente, il n'y a rien à marquer ici.",
+        },
+        400,
+      );
+    // Idempotence : ce n'est PAS une erreur de cliquer deux fois, c'est même
+    // le geste naturel quand la page a mis un instant à répondre. On répond
+    // donc que c'est déjà fait, sans écrire un second encaissement.
+    if (order.status === "paid")
+      return c.json({
+        ok: true,
+        deja: true,
+        message: `La commande ${order.number} était déjà marquée payée. Rien n'a été encaissé une seconde fois.`,
+      });
+    if (order.totalCents <= 0)
+      return c.json(
+        { error: "Cette commande ne vaut rien : il n'y a rien à encaisser." },
+        400,
+      );
+
+    const cle = String(b.moyen ?? "").trim();
+    const moyen = MOYENS_HORS_LIGNE[cle];
+    if (!moyen)
+      return c.json(
+        {
+          error:
+            "Indiquez comment la cliente a réglé : virement, chèque, espèces, ou autre.",
+        },
+        400,
+      );
+    const reference = String(b.reference ?? "")
+      .trim()
+      .slice(0, 120);
+    const auteur = String(b.author ?? "").trim() || null;
+
+    /*
+     * La référence sert à retrouver l'argent sur le relevé de banque. Elle
+     * doit donc être unique : la même référence sur deux commandes est presque
+     * toujours le même chèque saisi deux fois, et c'est justement ce qu'on
+     * veut voir arrêté. Sans référence, on en fabrique une à partir de
+     * l'identifiant de la commande — `markOrderPaid` s'en sert pour retrouver
+     * la ligne de paiement qu'elle doit passer en « succeeded », et une
+     * référence vide en aurait rattrapé n'importe laquelle.
+     */
+    const externalRef = reference || `manuel-${id}`;
+    const [dejaPrise] = await db
+      .select({
+        numero: schema.orders.number,
+        orderId: schema.payments.orderId,
+      })
+      .from(schema.payments)
+      .innerJoin(schema.orders, eq(schema.payments.orderId, schema.orders.id))
+      .where(eq(schema.payments.externalRef, externalRef));
+    if (dejaPrise && dejaPrise.orderId !== id)
+      return c.json(
+        {
+          error: `La référence « ${externalRef} » est déjà portée par la commande ${dejaPrise.numero}. Vérifiez que ce n'est pas le même règlement saisi deux fois.`,
+        },
+        400,
+      );
+
+    await db.insert(schema.payments).values({
+      orderId: id,
+      // « manuel », et surtout pas « stripe » : la page Finances rapproche les
+      // encaissements de ce que les prestataires ont réellement pris, et une
+      // ligne Stripe qui n'existe pas chez Stripe y ferait une anomalie
+      // permanente. C'est aussi le mot que le remboursement hors ligne emploie
+      // déjà, et que Finances sait afficher : « À la main (virement, espèces) ».
+      provider: "manuel",
+      externalRef,
+      status: "pending",
+      amountCents: order.totalCents,
+    });
+
+    const encaissee = await markOrderPaid(id, "manuel", externalRef);
+
+    await db.insert(schema.orderEvents).values({
+      orderId: id,
+      kind: "event",
+      author: auteur,
+      message:
+        `Encaissement de ${(order.totalCents / 100).toFixed(2).replace(".", ",")} € reçu par ${moyen}` +
+        (reference ? ` (réf. ${reference})` : "") +
+        `, saisi au back-office${auteur ? ` par ${auteur}` : ""}.`,
+    });
+
+    return c.json({
+      ok: true,
+      encaissee,
+      montantCents: order.totalCents,
+      moyen,
+      reference: reference || null,
+    });
+  });
+
+  /* ------------------------------------------------------------------ */
+  /*  La facture                                                        */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * La facture d'une commande, en PDF.
+   *
+   * Le numéro se pose à la PREMIÈRE édition et ne bouge plus : rouvrir cette
+   * adresse rend la même facture, portant le même numéro. C'est une obligation
+   * légale autant qu'une commodité — la cliente qui réclame « sa » facture
+   * doit recevoir celle qu'elle a déjà, pas une nouvelle.
+   */
+  app.get("/admin/orders/:id/facture.pdf", async (c) => {
+    // Réservée à la propriétaire, et vérifiée ICI. Le garde-fou général du
+    // serveur laisse passer les LECTURES d'un vendeur sous « /admin/orders »,
+    // pour qu'il retrouve ses ventes de stand et leurs fichiers d'impression.
+    // Or cette adresse-ci n'est pas une lecture ordinaire : elle rend
+    // l'adresse postale d'une cliente du site, et surtout elle CONSOMME un
+    // numéro de facture, ce qui n'est pas le geste de quelqu'un qui tient une
+    // table un samedi après-midi.
+    const user = c.get("utilisateur");
+    if (user && user.role !== "owner")
+      return c.json(
+        { error: "Les factures sont réservées à la propriétaire." },
+        403,
+      );
+    const id = Number(c.req.param("id"));
+    const facture = await composerLaFacture(id);
+    if ("erreur" in facture) return c.json({ error: facture.erreur }, facture.code);
+    // « inline » : le PDF s'ouvre dans l'onglet, d'où il s'imprime et se
+    // télécharge. Forcer le téléchargement obligerait à ouvrir le fichier pour
+    // le relire, alors qu'on veut le plus souvent juste y jeter un œil.
+    return new Response(new Uint8Array(facture.pdf), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="${facture.nomFichier}"`,
+      },
+    });
+  });
+
+  /** Envoie la facture à la cliente, en pièce jointe. */
+  app.post("/admin/orders/:id/facture/envoyer", async (c) => {
+    const id = Number(c.req.param("id"));
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!mailConfigure())
+      return c.json(
+        {
+          error:
+            "L'envoi d'e-mails n'est pas configuré : la facture ne partirait nulle part. Elle reste téléchargeable depuis la fiche.",
+        },
+        503,
+      );
+
+    const facture = await composerLaFacture(id);
+    if ("erreur" in facture) return c.json({ error: facture.erreur }, facture.code);
+    if (!facture.clientEmail)
+      return c.json(
+        {
+          error:
+            "Cette commande n'a pas d'adresse e-mail : la facture ne peut pas partir. Elle reste téléchargeable depuis la fiche.",
+        },
+        400,
+      );
+
+    const courrier = courrierFacture({
+      prenomClient: facture.prenomClient,
+      numero: facture.numeroCommande,
+      numeroFacture: facture.numeroFacture,
+      totalCents: facture.totalCents,
+      dejaPayee: facture.dejaPayee,
+    });
+    const parti = await envoyerCourrier({
+      ...courrier,
+      to: facture.clientEmail,
+      pieces: [
+        {
+          nomFichier: facture.nomFichier,
+          contenu: facture.pdf.toString("base64"),
+          type: "application/pdf",
+        },
+      ],
+    });
+
+    await db.insert(schema.orderEvents).values({
+      orderId: id,
+      kind: "event",
+      author: String(b.author ?? "").trim() || null,
+      message: parti
+        ? `Facture ${facture.numeroFacture} envoyée à ${facture.clientEmail}.`
+        : `La facture ${facture.numeroFacture} n'a pas pu partir vers ${facture.clientEmail}.`,
+    });
+
+    if (!parti)
+      return c.json(
+        {
+          error: `La facture ${facture.numeroFacture} n'a pas pu partir vers ${facture.clientEmail}. Le numéro reste attribué : réessayez, la même facture repartira.`,
+        },
+        502,
+      );
+    return c.json({
+      ok: true,
+      numeroFacture: facture.numeroFacture,
+      destinataire: facture.clientEmail,
+    });
+  });
+
+  /**
+   * Attribue le numéro de facture d'une commande, ou rend celui qu'elle a.
+   *
+   * Le compteur et le numéro s'écrivent DANS LA MÊME TRANSACTION, et la ligne
+   * du compteur est verrouillée le temps de l'opération (`for update`) : deux
+   * factures demandées au même instant se rangent alors l'une derrière
+   * l'autre au lieu de tirer le même numéro. Si quoi que ce soit échoue, les
+   * deux écritures reviennent en arrière ensemble et le numéro reste libre —
+   * c'est ainsi, et pas autrement, qu'une suite reste sans trou.
+   */
+  async function numeroterLaFacture(
+    orderId: number,
+  ): Promise<{ numero: string; emiseLe: Date }> {
+    return db.transaction(async (tx) => {
+      const [commande] = await tx
+        .select({
+          numero: schema.orders.invoiceNumber,
+          emiseLe: schema.orders.invoicedAt,
+        })
+        .from(schema.orders)
+        .where(eq(schema.orders.id, orderId));
+      if (commande?.numero)
+        return { numero: commande.numero, emiseLe: commande.emiseLe ?? new Date() };
+
+      const maintenant = new Date();
+      const annee = maintenant.getFullYear();
+      // « on conflict do update » plutôt que « do nothing » : c'est ce qui
+      // rend la ligne verrouillée même quand elle existait déjà, et donc ce
+      // qui sérialise deux demandes simultanées.
+      const [compteur] = await tx
+        .insert(schema.factureCompteur)
+        .values({ annee, dernierNumero: 1 })
+        .onConflictDoUpdate({
+          target: schema.factureCompteur.annee,
+          set: {
+            dernierNumero: raw`${schema.factureCompteur.dernierNumero} + 1`,
+            majLe: maintenant,
+          },
+        })
+        .returning({ n: schema.factureCompteur.dernierNumero });
+
+      const numero = `F${annee}-${String(compteur!.n).padStart(4, "0")}`;
+      await tx
+        .update(schema.orders)
+        .set({ invoiceNumber: numero, invoicedAt: maintenant })
+        .where(eq(schema.orders.id, orderId));
+      return { numero, emiseLe: maintenant };
+    });
+  }
+
+  /**
+   * Tout ce qu'il faut pour éditer OU envoyer la facture, composé une fois.
+   *
+   * Les deux routes en ont besoin des mêmes données, et surtout du même PDF :
+   * en fabriquer deux, l'un pour l'écran et l'autre pour la pièce jointe,
+   * aurait fini par en donner deux qui ne disent pas la même chose.
+   */
+  async function composerLaFacture(orderId: number): Promise<
+    | { erreur: string; code: 400 | 404 }
+    | {
+        pdf: Buffer;
+        nomFichier: string;
+        numeroFacture: string;
+        numeroCommande: string;
+        totalCents: number;
+        dejaPayee: boolean;
+        clientEmail: string | null;
+        prenomClient: string;
+      }
+  > {
+    if (!Number.isInteger(orderId) || orderId <= 0)
+      return { erreur: "commande inconnue", code: 400 };
+    const [order] = await db
+      .select()
+      .from(schema.orders)
+      .where(eq(schema.orders.id, orderId));
+    if (!order) return { erreur: "Cette commande n'existe pas.", code: 404 };
+    // Un panier n'a rien à facturer : personne n'a commandé, personne ne doit
+    // rien. Lui donner un numéro le prendrait dans la suite des factures, et
+    // ce numéro serait perdu pour de bon.
+    if (order.status === "draft")
+      return {
+        erreur:
+          "Ceci est un panier abandonné, pas une commande : il n'y a rien à facturer.",
+        code: 400,
+      };
+
+    const { numero: numeroFacture, emiseLe } = await numeroterLaFacture(orderId);
+
+    const [client] = order.customerId
+      ? await db
+          .select()
+          .from(schema.customers)
+          .where(eq(schema.customers.id, order.customerId))
+      : [];
+    const articles = await db
+      .select()
+      .from(schema.orderItems)
+      .where(eq(schema.orderItems.orderId, orderId));
+    const cadres = await db.select().from(schema.frames);
+
+    const lignes: LigneFacture[] = articles.map((it) => {
+      const cfg = (it.config ?? {}) as Record<string, unknown>;
+      const cadre = cadres.find((f) => String(f.id) === String(cfg.frameId ?? ""));
+      return {
+        designation: it.title ?? "Affiche personnalisée",
+        precision:
+          [
+            typeof cfg.format === "string" ? `Format ${cfg.format}` : null,
+            cadre?.name ?? null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || null,
+        // Le texte imprimé sur l'affiche, comme sur le bon de préparation :
+        // c'est lui qui distingue deux lignes de même titre et de même prix.
+        lignesAffiche: lignesRemplies(cfg.texts as TextesAffiche | undefined)
+          .map((l) => l.value.trim())
+          .filter(Boolean),
+        quantite: it.quantity,
+        unitPriceCents: it.unitPriceCents,
+      };
+    });
+
+    const sousTotal = lignes.reduce(
+      (s, l) => s + l.unitPriceCents * l.quantite,
+      0,
+    );
+    const port = order.shippingCents ?? 0;
+    const resume = (await resumeCommandes([orderId])).get(orderId)!;
+
+    // L'identité légale de la boutique : adresse postale et SIRET sont
+    // OBLIGATOIRES sur une facture. Elles ne vivent nulle part dans ce projet ;
+    // on les lit dans les réglages pour qu'il y ait un endroit où les poser, et
+    // on ne les invente pas quand elles manquent — une facture incomplète se
+    // corrige, une facture qui ment se paie.
+    const reglages = await db
+      .select()
+      .from(schema.settings)
+      .where(inArray(schema.settings.key, ["facture.adresse", "facture.siret"]));
+    const valeur = (cle: string): string =>
+      String(reglages.find((r) => r.key === cle)?.value ?? "").trim();
+
+    const pdf = await renderInvoicePdf({
+      numeroFacture,
+      dateFacture: emiseLe,
+      numeroCommande: order.number,
+      dateCommande: order.createdAt,
+      clientNom: order.shippingName ?? client?.name ?? "Client",
+      clientEmail: client?.email ?? null,
+      clientAdresse: [
+        order.relayPointLabel,
+        order.shippingLine1,
+        order.shippingLine2,
+        [order.shippingPostalCode, order.shippingCity].filter(Boolean).join(" "),
+        order.shippingCountry,
+      ].filter((v): v is string => Boolean(v)),
+      lignes,
+      // La remise se DÉDUIT de ce qui a été facturé, comme partout ailleurs :
+      // c'est le montant encaissé qui fait foi, pas un recalcul.
+      remiseCents: Math.max(0, sousTotal + port - order.totalCents),
+      codePromo: order.promoCode,
+      portCents: port,
+      modeLivraison: order.shippingLabel,
+      totalCents: order.totalCents,
+      rembourseCents: resume.rembourseCents,
+      mentionReglement: mentionDeReglement(order),
+      adresseBoutique: valeur("facture.adresse")
+        ? valeur("facture.adresse").split("\n")
+        : null,
+      siret: valeur("facture.siret") || null,
+      // Une commande annulée après avoir été facturée garde sa facture et son
+      // numéro — le trou serait pire —, mais le papier doit dire lui-même
+      // qu'elle ne vaut plus.
+      filigrane:
+        order.status === "cancelled" || order.status === "voided"
+          ? "Annulée"
+          : null,
+    });
+
+    return {
+      pdf,
+      nomFichier: `Facture_${numeroFacture}_${order.number}.pdf`,
+      numeroFacture,
+      numeroCommande: order.number,
+      totalCents: order.totalCents,
+      dejaPayee: order.status === "paid",
+      clientEmail: client?.email ?? null,
+      prenomClient: (client?.name ?? "").split(" ")[0] || "vous",
+    };
+  }
+
+  /** « Réglée le 8 septembre 2026. », ou ce qui en tient lieu. */
+  function mentionDeReglement(
+    order: typeof schema.orders.$inferSelect,
+  ): string {
+    if (order.status === "cancelled" || order.status === "voided")
+      return `Commande annulée${
+        order.cancelledAt
+          ? ` le ${order.cancelledAt.toLocaleDateString("fr-FR")}`
+          : ""
+      }${order.cancelReason ? ` — ${order.cancelReason}` : ""}.`;
+    if (order.status === "paid") return "Commande réglée. Facture acquittée.";
+    return "Commande non réglée à ce jour.";
+  }
 }

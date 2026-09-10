@@ -555,10 +555,23 @@ async function computeShippingCents(
  * (idempotent : appelé par le webhook Stripe ou la capture PayPal, qui peuvent
  * rejouer). Met aussi à jour la ligne `payment` correspondante en `succeeded`.
  * No-op si la commande est déjà payée. Renvoie true si elle vient d'être payée.
+ *
+ * EXPORTÉE parce qu'un encaissement n'arrive plus seulement du réseau : la
+ * boutique encaisse aussi un virement ou un chèque depuis la fiche commande
+ * (apps/api/src/commandes.ts). Tout ce que cette fonction fait — la date de
+ * paiement, la récupération d'un panier relancé, les PDF d'impression,
+ * l'écriture au grand livre, la confirmation au client — vaut exactement
+ * pareil dans ce cas-là, et l'écrire une seconde fois aurait fait deux
+ * encaissements qui divergent.
+ *
+ * `provider` accepte « manuel » pour cette raison, et pour elle seule : le
+ * corps de la fonction ne le distingue de rien, il le recopie sur la ligne de
+ * paiement et au grand livre — où la page Finances sait déjà l'écrire en
+ * français.
  */
-async function markOrderPaid(
+export async function markOrderPaid(
   orderId: number,
-  provider: "stripe" | "paypal",
+  provider: "stripe" | "paypal" | "manuel",
   externalRef: string,
 ): Promise<boolean> {
   const [order] = await db

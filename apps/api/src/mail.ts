@@ -61,6 +61,15 @@ async function deposerDansLaBoite(courrier: Courrier): Promise<boolean> {
       // qui s'en serve. Le premier — la relance de panier et son
       // « List-Unsubscribe » — l'a découvert.
       ...(courrier.entetes ? { Headers: courrier.entetes } : {}),
+      ...(courrier.pieces?.length
+        ? {
+            Attachments: courrier.pieces.map((p) => ({
+              Filename: p.nomFichier,
+              Content: p.contenu,
+              ...(p.type ? { ContentType: p.type } : {}),
+            })),
+          }
+        : {}),
     }),
   });
   if (!res.ok) {
@@ -83,12 +92,31 @@ function nomSeul(v: string): string {
   return m?.[1]?.trim() ?? "";
 }
 
+/**
+ * Un fichier joint au courrier.
+ *
+ * `contenu` est le fichier lui-même, en base64 : c'est la seule forme que
+ * Resend et la boîte d'essai acceptent l'un comme l'autre. On ne joint donc
+ * jamais un chemin ni un lien — un lien vers la facture obligerait à ouvrir
+ * une route publique, et la cliente doit pouvoir garder son document sans
+ * dépendre de la boutique.
+ */
+export interface PieceJointe {
+  nomFichier: string;
+  /** Le fichier encodé en base64. */
+  contenu: string;
+  /** « application/pdf »… Facultatif : la messagerie devine sinon. */
+  type?: string;
+}
+
 export interface Courrier {
   to: string;
   subject: string;
   html: string;
   /** Version texte, pour les clients qui n'affichent pas le HTML. */
   text?: string;
+  /** Les fichiers joints. Seule la facture s'en sert aujourd'hui. */
+  pieces?: PieceJointe[];
   /**
    * En-têtes supplémentaires. Sert au désabonnement en un clic de la lettre
    * d'information : Gmail et Outlook affichent alors un bouton
@@ -130,6 +158,15 @@ export async function envoyer(courrier: Courrier): Promise<boolean> {
         html: courrier.html,
         ...(courrier.text ? { text: courrier.text } : {}),
         ...(courrier.entetes ? { headers: courrier.entetes } : {}),
+        ...(courrier.pieces?.length
+          ? {
+              attachments: courrier.pieces.map((p) => ({
+                filename: p.nomFichier,
+                content: p.contenu,
+                ...(p.type ? { content_type: p.type } : {}),
+              })),
+            }
+          : {}),
       }),
     });
     if (!res.ok) {
@@ -733,6 +770,55 @@ export function courrierAnnulee(d: {
         ? `\nLe montant réglé vous est rendu ; un message dédié suivra dès que le remboursement est enregistré.`
         : "") +
       `\n\nMemory Line`,
+  };
+}
+
+/**
+ * La facture de la commande, en pièce jointe.
+ *
+ * Elle part quand la boutique l'envoie, jamais toute seule : une facture n'a
+ * pas de moment évident — certaines clientes la demandent, la plupart ne la
+ * réclament jamais — et l'envoyer d'office ferait un courrier de plus après la
+ * confirmation, qui dit déjà ce qui a été acheté et pour combien.
+ *
+ * Le courrier lui-même est COURT et ne répète pas le détail : il est dans la
+ * pièce jointe, et une facture qu'on lit deux fois, une fois dans le message et
+ * une fois dans le PDF, invite justement à comparer les deux. Le numéro de
+ * facture est écrit ici parce que c'est ce qu'une comptable cite quand elle
+ * nous écrit à propos de ce document.
+ */
+export function courrierFacture(d: {
+  prenomClient: string;
+  numero: string;
+  numeroFacture: string;
+  totalCents: number;
+  /** Vrai quand la commande a déjà été réglée. Change la phrase, pas le PDF. */
+  dejaPayee: boolean;
+}): Courrier {
+  const reglement = d.dejaPayee
+    ? `<p style="margin:16px 0 0">Cette commande est réglée : la facture est acquittée, vous n'avez rien à faire.</p>`
+    : `<p style="margin:16px 0 0">Cette commande n'est pas encore réglée. Nous revenons vers vous si un règlement nous manque.</p>`;
+  return {
+    to: "",
+    subject: `Votre facture ${d.numeroFacture} — commande ${d.numero}`,
+    html: gabarit(
+      `Bonjour ${h(d.prenomClient)},`,
+      `<p style="margin:0">Voici la facture de votre commande ${h(d.numero)}, en pièce jointe.</p>
+       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0;font-size:14px">
+         <tr><td style="padding:4px 0;color:#5b5b54">Facture n°</td><td align="right"><strong style="font-weight:500">${h(d.numeroFacture)}</strong></td></tr>
+         <tr><td style="padding:4px 0;color:#5b5b54">Commande</td><td align="right">${h(d.numero)}</td></tr>
+         <tr><td style="padding:4px 0;color:#5b5b54">Montant</td><td align="right"><strong style="font-weight:500">${prix(d.totalCents)}</strong></td></tr>
+       </table>
+       ${reglement}
+       <p style="margin:24px 0 0;color:#5b5b54;font-size:14px">Une question sur cette facture ? Répondez simplement à cet e-mail.</p>`,
+    ),
+    text:
+      `Bonjour ${d.prenomClient},\n\nVoici la facture de votre commande ${d.numero}, en pièce jointe.\n` +
+      `Facture n° ${d.numeroFacture} — ${prix(d.totalCents)}.\n` +
+      (d.dejaPayee
+        ? `Cette commande est réglée : la facture est acquittée.\n`
+        : `Cette commande n'est pas encore réglée.\n`) +
+      `\nMemory Line`,
   };
 }
 

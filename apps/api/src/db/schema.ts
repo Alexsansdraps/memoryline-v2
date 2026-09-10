@@ -31,9 +31,26 @@ export const productKindEnum = pgEnum("product_kind", [
   "personnalisable",
   "prete_a_imprimer",
 ]);
+/**
+ * Par où l'argent est entré.
+ *
+ * « manuel » couvre tout ce qui n'a pas de prestataire : le virement, le
+ * chèque, les espèces. Il fallait bien un nom, car une cliente qui règle par
+ * virement laissait sa commande « En attente » pour toujours, faute de moyen
+ * de l'encaisser — et la marquer « stripe » aurait fait mentir la page
+ * Finances, qui rapproche justement les encaissements de ce que le prestataire
+ * a réellement pris.
+ *
+ * Ce mot-là et pas un autre : c'est déjà celui que le remboursement hors ligne
+ * emploie, et le seul que la page Finances sache écrire en français
+ * (« À la main (virement, espèces) »). Le moyen exact — virement, chèque,
+ * espèces — et sa référence se lisent au journal de la commande, là où on les
+ * cherche ; ce champ-ci ne répond qu'à « chez qui ».
+ */
 export const paymentProviderEnum = pgEnum("payment_provider", [
   "stripe",
   "paypal",
+  "manuel",
 ]);
 
 // --- Catalogue ------------------------------------------------------------
@@ -959,6 +976,37 @@ export const orders = pgTable(
      */
     fulfilledAt: timestamp("fulfilled_at", { withTimezone: true }),
     /**
+     * Quand la commande a été annulée. Null = elle ne l'est pas.
+     *
+     * Le statut `cancelled` dit DÉJÀ qu'elle l'est ; cette date dit QUAND, ce
+     * que le statut seul ne peut pas porter. Les deux vont ensemble et sont
+     * posés d'un seul geste par la route d'annulation : on ne pose jamais
+     * l'un sans l'autre, sinon la fiche saurait qu'une commande est annulée
+     * sans savoir depuis quand.
+     */
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    /**
+     * Pourquoi elle a été annulée, dans les mots de la boutique : « rupture »,
+     * « demande de la cliente »… Gardé en clair et pas en code, comme
+     * `recoveryDeclinedReason` : c'est une phrase qu'on lit sur la fiche, et
+     * personne n'a envie d'entretenir un dictionnaire pour l'afficher.
+     */
+    cancelReason: text("cancel_reason"),
+    /**
+     * Le numéro de la FACTURE de cette commande — « F2026-0001 ».
+     *
+     * Rien à voir avec `number`, le numéro de commande : celui-ci se donne à
+     * la commande dès qu'elle naît, y compris à un panier qui ne sera jamais
+     * payé. Le numéro de facture, lui, est une obligation légale (art. 242
+     * nonies A de l'annexe II au CGI) : une suite chronologique, continue et
+     * SANS TROU. Il n'est donc attribué qu'à la première édition de la
+     * facture, une seule fois, et ne bouge plus jamais — rééditer le PDF rend
+     * la même facture, portant le même numéro.
+     */
+    invoiceNumber: text("invoice_number"),
+    /** Date d'émission de la facture, figée avec son numéro. */
+    invoicedAt: timestamp("invoiced_at", { withTimezone: true }),
+    /**
      * Note interne : « à envoyer avec la commande #2141 », « client rappelé »…
      * Elle n'est jamais montrée au client, elle sert à se souvenir.
      */
@@ -1024,6 +1072,10 @@ export const orders = pgTable(
     uniqueIndex("order_number_uniq").on(t.number),
     uniqueIndex("order_client_order_id_uniq").on(t.clientOrderId),
     index("order_channel_created_idx").on(t.channel, t.createdAt),
+    // Deux commandes ne doivent JAMAIS porter le même numéro de facture : la
+    // base le refuse, ce qui vaut mieux qu'un contrôle applicatif qu'un
+    // deuxième onglet ouvert au même instant contournerait.
+    uniqueIndex("order_invoice_number_uniq").on(t.invoiceNumber),
     // Unique : deux paniers ne doivent jamais partager un jeton, sinon le
     // lien de l'un ouvrirait le panier de l'autre. Et indexé, parce que la
     // page de récupération n'a que ce jeton pour retrouver la commande.
@@ -1222,6 +1274,29 @@ export const payments = pgTable("payment", {
   status: text("status"),
   amountCents: integer("amount_cents").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * Le compteur des numéros de facture, une ligne par année.
+ *
+ * Pourquoi une table et pas une séquence Postgres : une séquence AVANCE même
+ * quand la transaction qui l'a lue échoue. Elle laisserait donc des trous, et
+ * un trou dans une suite de factures est exactement ce que la loi interdit
+ * (art. 242 nonies A de l'annexe II au CGI). Ici le compteur est une ligne
+ * verrouillée puis incrémentée DANS la même transaction que l'écriture du
+ * numéro sur la commande : si quoi que ce soit échoue, les deux reviennent en
+ * arrière ensemble et le numéro reste libre pour la facture suivante.
+ *
+ * Une ligne par année parce que la suite repart à 1 le 1er janvier — c'est la
+ * pratique française courante, et elle est admise tant que la numérotation
+ * reste chronologique et continue à l'intérieur de la série.
+ */
+export const factureCompteur = pgTable("facture_compteur", {
+  /** L'année civile de la série : 2026, 2027… */
+  annee: integer("annee").primaryKey(),
+  /** Le dernier numéro attribué dans cette année. 0 = aucune facture encore. */
+  dernierNumero: integer("dernier_numero").notNull().default(0),
+  majLe: timestamp("maj_le", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const printFiles = pgTable("print_file", {

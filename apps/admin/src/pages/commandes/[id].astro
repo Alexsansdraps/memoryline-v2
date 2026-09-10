@@ -74,6 +74,40 @@ if (Astro.request.method === "POST") {
         author: Astro.locals.user?.email ?? undefined,
       });
       flash = `Remboursement de ${formatPrice(r.amountCents)} enregistré.`;
+    } else if (action === "annuler") {
+      const r = await api.annulerCommande(id, {
+        motif: String(f.get("motif") ?? ""),
+        motifLibre: String(f.get("motifLibre") ?? ""),
+        rembourser: f.get("rembourser") === "on",
+        restock: f.get("restockAnnul") === "on",
+        viaPsp: f.get("viaPspAnnul") === "on",
+        note: String(f.get("noteAnnul") ?? ""),
+        author: Astro.locals.user?.email ?? undefined,
+      });
+      // Le mot rend compte de TOUT ce qui vient de se passer, y compris de ce
+      // qui ne s'est pas passé : une commande payée annulée sans remboursement
+      // laisse de l'argent à rendre, et c'est le seul moment où quelqu'un le
+      // verra écrit.
+      flash =
+        `Commande ${r.numero} annulée.` +
+        (r.rembourseCents > 0
+          ? ` ${formatPrice(r.rembourseCents)} remboursés.`
+          : "") +
+        (r.resteADevoir > 0
+          ? ` Attention : ${formatPrice(r.resteADevoir)} restent à rendre à la cliente — aucun remboursement n'a été enregistré.`
+          : "");
+    } else if (action === "encaisser") {
+      const r = await api.encaisserCommande(id, {
+        moyen: String(f.get("moyen") ?? ""),
+        reference: String(f.get("reference") ?? ""),
+        author: Astro.locals.user?.email ?? undefined,
+      });
+      flash = r.deja
+        ? (r.message ?? "Cette commande était déjà marquée payée.")
+        : `Commande encaissée : ${formatPrice(r.montantCents ?? 0)} reçus par ${r.moyen}. La confirmation est partie chez la cliente et les fichiers d'impression sont prêts.`;
+    } else if (action === "envoyer-facture") {
+      const r = await api.envoyerFacture(id, Astro.locals.user?.email ?? undefined);
+      flash = `Facture ${r.numeroFacture} envoyée à ${r.destinataire}.`;
     } else if (action === "note") {
       await api.setOrderNote(id, String(f.get("note") || ""));
       flash = "Note enregistrée.";
@@ -202,6 +236,44 @@ const badgeTraitement =
 const resteAExpedier = items.reduce((s, it) => s + (it.aExpedier ?? 0), 0);
 const resteARembourser = items.reduce((s, it) => s + (it.aRembourser ?? 0), 0);
 
+/**
+ * La commande est-elle annulée ?
+ *
+ * On lit le statut brut plutôt que le badge : celui-ci range « annulée » et
+ * « remboursée » au même endroit visuel, alors que les deux n'autorisent pas
+ * du tout les mêmes gestes.
+ */
+const annulee = order?.status === "cancelled" || order?.status === "voided";
+
+/**
+ * Le panier n'est pas une commande. Elle ne s'encaisse pas, ne s'annule pas,
+ * ne se facture pas — elle se reprend ou elle s'oublie.
+ */
+const estPanier = order?.status === "draft";
+
+/** Peut-on encore encaisser un règlement arrivé hors du site ? */
+const encaissableALaMain = !!order && !encaisse && !annulee && !estPanier && !auStand;
+
+/** Ce que l'annulation laisserait en suspens si elle ne remboursait pas. */
+const resteSiPasRembourse = encaisse ? total - rembourse : 0;
+
+/** Les motifs d'annulation, dans l'ordre où ils se présentent à l'esprit. */
+const MOTIFS_ANNULATION = [
+  ["cliente", "Demande de la cliente"],
+  ["rupture", "Rupture — article indisponible"],
+  ["saisie", "Erreur de saisie"],
+  ["impaye", "Paiement non reçu"],
+  ["autre", "Autre (précisez)"],
+];
+
+/** Les moyens de règlement qui n'ont pas de prestataire. */
+const MOYENS_HORS_LIGNE = [
+  ["virement", "Virement bancaire"],
+  ["cheque", "Chèque"],
+  ["especes", "Espèces"],
+  ["autre", "Autre"],
+];
+
 /** Transporteurs proposés — la saisie libre reste possible. */
 const TRANSPORTEURS = [
   "Colissimo",
@@ -217,6 +289,34 @@ const LIBELLE_MOUVEMENT: Record<string, string> = {
   refund: "Remboursement",
   void: "Annulation",
 };
+
+/**
+ * Le moyen de paiement, dit comme la boutique le dit.
+ *
+ * Les mêmes mots que la page Finances, à la virgule près : un même
+ * encaissement lu à deux endroits ne doit pas porter deux noms. Sans cette
+ * table, la fiche affichait le code de la base — « manuel », avec sa
+ * minuscule et sans accent — au milieu de phrases écrites en français.
+ */
+const LIBELLE_MOYEN: Record<string, string> = {
+  stripe: "Stripe",
+  paypal: "PayPal",
+  stand: "Réglé sur place",
+  manuel: "À la main (virement, chèque, espèces)",
+};
+
+function libelleMoyen(v: string | null | undefined): string {
+  if (!v) return "Moyen non renseigné";
+  return LIBELLE_MOYEN[v] ?? v;
+}
+
+/**
+ * Le lien vers le tableau de bord Stripe n'a de sens que pour un paiement
+ * Stripe. Il s'affichait dès qu'une référence existait, si bien qu'un
+ * virement encaissé à la main proposait d'aller chercher son numéro de
+ * virement chez Stripe, où il n'a jamais été.
+ */
+const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null;
 ---
 
 <Admin title={order ? `Commande ${order.number}` : `Commande #${id}`}>
@@ -266,7 +366,35 @@ const LIBELLE_MOUVEMENT: Record<string, string> = {
           >
             Bon de livraison
           </a>
-          {client?.email && (
+          {/* La facture. Le premier clic lui donne son numéro, définitif ;
+              les suivants rendent la même. Un panier n'a rien à facturer. */}
+          {!estPanier && (
+            <a
+              href={apiUrl(`/admin/orders/${order.id}/facture.pdf`)}
+              target="_blank"
+              title={
+                order.invoiceNumber
+                  ? `Facture ${order.invoiceNumber}, éditée le ${quand(order.invoicedAt)}`
+                  : "Cette commande n'a pas encore de facture. L'ouvrir lui attribuera son numéro, définitif."
+              }
+              class="rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm hover:bg-bo-bg"
+            >
+              {order.invoiceNumber
+                ? `Facture ${order.invoiceNumber}`
+                : "Éditer la facture"}
+            </a>
+          )}
+          {!estPanier && client?.email && (
+            <form method="POST">
+              <input type="hidden" name="_action" value="envoyer-facture" />
+              <button class="rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm hover:bg-bo-bg">
+                Envoyer la facture
+              </button>
+            </form>
+          )}
+          {/* Rien à reconfirmer sur une commande annulée : la cliente vient
+              justement de recevoir le contraire. */}
+          {client?.email && !annulee && (
             <form method="POST">
               <input type="hidden" name="_action" value="renvoyer" />
               <button class="rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm hover:bg-bo-bg">
@@ -274,9 +402,9 @@ const LIBELLE_MOUVEMENT: Record<string, string> = {
               </button>
             </form>
           )}
-          {paiement?.externalRef && (
+          {chezStripe && (
             <a
-              href={`https://dashboard.stripe.com/payments/${paiement.externalRef}`}
+              href={`https://dashboard.stripe.com/payments/${chezStripe}`}
               target="_blank"
               rel="noopener"
               class="rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm hover:bg-bo-bg"
@@ -286,6 +414,41 @@ const LIBELLE_MOUVEMENT: Record<string, string> = {
           )}
         </div>
       </div>
+
+      {/* Une commande annulée le dit en haut, avant tout le reste : c'est ce
+          qui explique pourquoi les boutons d'expédition ont disparu, et sans
+          ce bandeau leur absence passerait pour une panne. */}
+      {annulee && (
+        <div class="mb-6 rounded-lg border border-bo-border bg-bo-bg px-4 py-3">
+          <p class="font-medium">
+            Commande annulée{order.cancelledAt ? ` le ${quand(order.cancelledAt)}` : ""}.
+          </p>
+          {order.cancelReason && (
+            <p class="mt-0.5 text-sm text-bo-muted">Motif : {order.cancelReason}</p>
+          )}
+          <p class="mt-1 text-sm text-bo-muted">
+            Elle reste lisible et garde son histoire, mais elle ne compte plus
+            dans vos chiffres et ne peut plus rien expédier.
+            {encaisse && rembourse < total && (
+              <>
+                {" "}
+                <strong class="font-medium text-red-800">
+                  {formatPrice(total - rembourse)} restent à rendre à la cliente :
+                  aucun remboursement de ce montant n'est enregistré.
+                </strong>
+              </>
+            )}
+            {order.invoiceNumber && (
+              <>
+                {" "}
+                La facture {order.invoiceNumber} a déjà été éditée : elle garde
+                son numéro et porte désormais la mention « annulée ». Si elle est
+                partie chez la cliente, il faut lui établir un avoir.
+              </>
+            )}
+          </p>
+        </div>
+      )}
 
       {/* ============================================================== */}
       {/* Deux colonnes : agir à gauche, consulter à droite               */}
@@ -430,7 +593,14 @@ const LIBELLE_MOUVEMENT: Record<string, string> = {
               </div>
             )}
 
-            {resteAExpedier > 0 && auStand && (
+            {resteAExpedier > 0 && annulee && (
+              <p class="border-t border-bo-border px-4 py-3 text-sm text-bo-muted">
+                {resteAExpedier} article(s) ne partiront pas : la commande est
+                annulée.
+              </p>
+            )}
+
+            {resteAExpedier > 0 && !annulee && auStand && (
               <div class="flex flex-wrap items-center justify-between gap-3 border-t border-bo-border px-4 py-3">
                 <p class="text-sm text-bo-muted">
                   {resteAExpedier} affiche(s) à remettre au client. Commande prise
@@ -446,7 +616,7 @@ const LIBELLE_MOUVEMENT: Record<string, string> = {
               </div>
             )}
 
-            {resteAExpedier > 0 && !auStand && (
+            {resteAExpedier > 0 && !annulee && !auStand && (
               <details class="border-t border-bo-border">
                 <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-bo-accent">
                   Traiter les articles ({resteAExpedier} en attente)
@@ -587,7 +757,9 @@ const LIBELLE_MOUVEMENT: Record<string, string> = {
                     <li class="flex flex-wrap items-baseline justify-between gap-2">
                       <span>
                         {LIBELLE_MOUVEMENT[m.kind] ?? m.kind}
-                        {m.gateway && <span class="text-bo-muted"> · {m.gateway}</span>}
+                        {m.gateway && (
+                          <span class="text-bo-muted"> · {libelleMoyen(m.gateway)}</span>
+                        )}
                         {m.externalRef && (
                           <span class="ml-1 text-xs text-bo-muted">{m.externalRef}</span>
                         )}
@@ -607,9 +779,65 @@ const LIBELLE_MOUVEMENT: Record<string, string> = {
 
             {paiement && (
               <p class="border-t border-bo-border px-4 py-3 text-sm text-bo-muted">
-                Encaissé par {paiement.provider}
+                Encaissé : {libelleMoyen(paiement.provider)}
                 {paiement.externalRef && ` · ${paiement.externalRef}`}
               </p>
+            )}
+
+            {/* Le règlement arrivé hors du site : virement, chèque, espèces.
+                Sans ce bouton, une cliente qui paie par virement laissait sa
+                commande « En attente » pour toujours — jamais préparée, sans
+                fichier d'impression, et sans confirmation. */}
+            {encaissableALaMain && (
+              <details class="border-t border-bo-border">
+                <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-bo-accent">
+                  Marquer comme payée (règlement hors ligne)
+                </summary>
+                <form method="POST" class="space-y-3 px-4 pb-4">
+                  <input type="hidden" name="_action" value="encaisser" />
+                  <p class="text-sm text-bo-muted">
+                    À utiliser quand l'argent est bien arrivé mais pas par le
+                    site : virement, chèque, espèces. La commande passe en
+                    « Payée » pour {formatPrice(total)}, ses fichiers
+                    d'impression sont fabriqués, et la confirmation part chez la
+                    cliente — exactement comme un paiement en ligne.
+                  </p>
+                  <div class="flex flex-wrap items-end gap-4">
+                    <label class="text-sm">
+                      <span class="mb-1 block text-xs text-bo-muted">
+                        Moyen de règlement
+                      </span>
+                      <select
+                        name="moyen"
+                        required
+                        class="rounded border border-bo-border px-3 py-2"
+                      >
+                        {MOYENS_HORS_LIGNE.map(([valeur, libelle]) => (
+                          <option value={valeur}>{libelle}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label class="flex-1 text-sm">
+                      <span class="mb-1 block text-xs text-bo-muted">
+                        Référence (numéro de virement, de chèque…)
+                      </span>
+                      <input
+                        name="reference"
+                        placeholder="VIR-20260910-4412"
+                        class="w-full rounded border border-bo-border px-3 py-2"
+                      />
+                    </label>
+                  </div>
+                  <p class="text-xs text-bo-muted">
+                    La référence sert à retrouver l'argent sur le relevé de
+                    banque. Elle est refusée si une autre commande la porte
+                    déjà — c'est souvent le même chèque saisi deux fois.
+                  </p>
+                  <button class="rounded bg-bo-nav px-4 py-2 text-sm text-white">
+                    Encaisser {formatPrice(total)}
+                  </button>
+                </form>
+              </details>
             )}
 
             {encaisse && (resteARembourser > 0 || portRemboursable > 0) && (
@@ -895,6 +1123,117 @@ const LIBELLE_MOUVEMENT: Record<string, string> = {
               </button>
             </form>
           </section>
+
+          {/* Annuler : le geste qu'on cherche neuf fois sur dix quand on
+              croit vouloir supprimer. Il se range donc JUSTE AVANT la
+              suppression, pour qu'on le rencontre en premier. */}
+          {!annulee && !estPanier && (
+            <section class="rounded-lg border border-amber-300 bg-bo-surface px-4 py-3">
+              <h3 class="mb-2 font-medium text-amber-900">Annuler la commande</h3>
+              <p class="mb-2 text-sm text-bo-muted">
+                La commande reste lisible et garde toute son histoire. Elle sort
+                de vos chiffres, ne peut plus rien expédier, et la cliente est
+                prévenue par courrier.
+              </p>
+              {resteAExpedier < nbArticles && (
+                <p class="mb-2 rounded bg-amber-50 px-2 py-1 text-sm text-amber-900">
+                  {nbArticles - resteAExpedier} article(s) sont déjà partis :
+                  l'annulation sera refusée. Annulez d'abord l'expédition si le
+                  colis n'est pas réellement parti, sinon remboursez ce qui
+                  revient.
+                </p>
+              )}
+              <details>
+                <summary class="cursor-pointer text-sm text-bo-accent">
+                  Annuler {order.number}
+                </summary>
+                <form method="POST" class="mt-2 space-y-2 text-sm">
+                  <input type="hidden" name="_action" value="annuler" />
+                  <label class="block">
+                    <span class="mb-1 block text-xs text-bo-muted">Motif</span>
+                    <select
+                      name="motif"
+                      class="w-full rounded border border-bo-border px-2 py-1"
+                    >
+                      {MOTIFS_ANNULATION.map(([valeur, libelle]) => (
+                        <option value={valeur}>{libelle}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label class="block">
+                    <span class="mb-1 block text-xs text-bo-muted">
+                      Précision (écrite à la cliente)
+                    </span>
+                    <input
+                      name="motifLibre"
+                      placeholder="Le fond choisi n'est plus disponible"
+                      class="w-full rounded border border-bo-border px-2 py-1"
+                    />
+                  </label>
+                  <label class="block">
+                    <span class="mb-1 block text-xs text-bo-muted">
+                      Note interne (jamais envoyée)
+                    </span>
+                    <input
+                      name="noteAnnul"
+                      class="w-full rounded border border-bo-border px-2 py-1"
+                    />
+                  </label>
+
+                  {/* Le remboursement n'a de sens que sur une commande
+                      encaissée. Sur les autres, on ne montre pas une case
+                      qui ne peut que produire un refus. */}
+                  {encaisse && resteSiPasRembourse > 0 && (
+                    <>
+                      <label class="flex items-start gap-2">
+                        <input type="checkbox" name="rembourser" checked class="mt-0.5" />
+                        <span>
+                          Rembourser {formatPrice(resteSiPasRembourse)} en même
+                          temps
+                          <span class="block text-xs text-bo-muted">
+                            Décochée, l'annulation passe quand même — mais cette
+                            somme reste due à la cliente, et rien d'autre ne
+                            vous le rappellera.
+                          </span>
+                        </span>
+                      </label>
+                      <label class="flex items-center gap-2">
+                        <input type="checkbox" name="viaPspAnnul" checked />
+                        Rendre l'argent via Stripe
+                        <span class="text-xs text-bo-muted">
+                          (décochez pour un remboursement fait à la main)
+                        </span>
+                      </label>
+                    </>
+                  )}
+                  {encaisse && resteSiPasRembourse <= 0 && (
+                    <p class="text-xs text-bo-muted">
+                      Tout a déjà été remboursé sur cette commande : il n'y a
+                      plus rien à rendre.
+                    </p>
+                  )}
+                  {!encaisse && (
+                    <p class="text-xs text-bo-muted">
+                      Cette commande n'a jamais été encaissée : il n'y a rien à
+                      rembourser. Une écriture d'annulation sera portée au grand
+                      livre, pour que la page Finances reste juste.
+                    </p>
+                  )}
+
+                  <label class="flex items-center gap-2">
+                    <input type="checkbox" name="restockAnnul" />
+                    Remettre les articles en stock
+                    <span class="text-xs text-bo-muted">
+                      (sans effet sur les affiches, imprimées à la commande)
+                    </span>
+                  </label>
+                  <button class="rounded border border-amber-400 px-3 py-1.5 text-amber-900 hover:bg-amber-50">
+                    Annuler cette commande
+                  </button>
+                </form>
+              </details>
+            </section>
+          )}
 
           {/* En dernier, et en rouge : ce qu'on ne défait pas se range là où
               on ne clique pas par mégarde. */}
