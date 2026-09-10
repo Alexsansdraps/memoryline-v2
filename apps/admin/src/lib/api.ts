@@ -708,6 +708,15 @@ export interface OrderDetail {
     internalNote?: string | null;
     tags?: string[] | null;
     shippingMethod?: string | null;
+    /** Quand la commande a été annulée, et pourquoi. Null = elle ne l'est pas. */
+    cancelledAt?: string | null;
+    cancelReason?: string | null;
+    /**
+     * Le numéro de la FACTURE, attribué à sa première édition et jamais
+     * réattribué. Absent tant que personne n'a édité la facture.
+     */
+    invoiceNumber?: string | null;
+    invoicedAt?: string | null;
   };
   items: (OrderItem & {
     format?: string | null;
@@ -1222,6 +1231,59 @@ export function adminApi(request?: Request) {
       data: Record<string, string | null | undefined>,
     ) =>
       req<{ ok: boolean }>("POST", `/admin/orders/${id}/address`, data, cookie),
+    /**
+     * Annule une commande.
+     *
+     * À ne pas confondre avec la suppression : une commande annulée reste
+     * lisible et garde son histoire, elle sort seulement des chiffres et ne
+     * peut plus rien expédier.
+     */
+    annulerCommande: (
+      id: number,
+      data: {
+        motif?: string;
+        motifLibre?: string;
+        rembourser?: boolean;
+        restock?: boolean;
+        viaPsp?: boolean;
+        note?: string;
+        author?: string;
+      },
+    ) =>
+      req<{
+        ok: true;
+        numero: string;
+        annuleeLe: string;
+        motif: string | null;
+        rembourseCents: number;
+        /** Ce que l'annulation laisse dû à la cliente. Zéro le plus souvent. */
+        resteADevoir: number;
+      }>("POST", `/admin/orders/${id}/cancel`, data, cookie),
+    /**
+     * Marque une commande payée alors que l'argent est arrivé hors du site
+     * (virement, chèque, espèces). Idempotent : `deja` dit qu'elle l'était.
+     */
+    encaisserCommande: (
+      id: number,
+      data: { moyen: string; reference?: string; author?: string },
+    ) =>
+      req<{
+        ok: true;
+        deja?: boolean;
+        message?: string;
+        encaissee?: boolean;
+        montantCents?: number;
+        moyen?: string;
+        reference?: string | null;
+      }>("POST", `/admin/orders/${id}/encaisser`, data, cookie),
+    /** Envoie la facture à la cliente, en pièce jointe. */
+    envoyerFacture: (id: number, author?: string) =>
+      req<{ ok: true; numeroFacture: string; destinataire: string }>(
+        "POST",
+        `/admin/orders/${id}/facture/envoyer`,
+        { author },
+        cookie,
+      ),
     /** Renvoie la confirmation au client. */
     resendConfirmation: (id: number) =>
       req<{ ok: boolean }>(

@@ -423,6 +423,92 @@ function lireBlocs(v: unknown, ouPage: string): BlocPage[] {
 }
 
 /**
+ * Relit les blocs TRADUITS d'une page, en prenant le français pour patron.
+ *
+ * Un bloc traduit ne se relit pas comme un bloc français, et c'est délibéré :
+ * ici, un champ VIDE est une réponse valable. Il veut dire « pas encore
+ * traduit », et le site affichera le français à sa place (voir `fusionnerBlocs`
+ * plus bas). Passer ces blocs par `lireBlocs` refuserait une page à moitié
+ * traduite — or c'est l'état normal d'une traduction en cours, et le seul
+ * moyen d'en commencer une.
+ *
+ * Seul le TEXTE se traduit. Tout ce qui tient la page debout — l'ordre des
+ * blocs, le niveau d'un titre, l'adresse d'une image ou d'un bouton, les
+ * collections d'une rangée — est recopié du français, jamais lu depuis la
+ * requête : une version espagnole qui pointerait vers une autre collection que
+ * la version française ne serait plus une traduction, ce serait une deuxième
+ * page que personne ne saurait tenir à jour.
+ *
+ * D'où l'exigence sur la forme : autant de blocs que le français, et dans le
+ * même ordre. Ce n'est pas une contrainte technique mais un garde-fou : une
+ * liste décalée d'un cran mettrait la traduction du 3e paragraphe sous le 2e,
+ * et rien à l'écran ne dirait pourquoi. Mieux vaut refuser et faire recharger.
+ */
+function lireBlocsTraduits(
+  v: unknown,
+  francais: BlocPage[],
+  nomLangue: string,
+): BlocPage[] {
+  if (!Array.isArray(v))
+    throw new SaisieRefusee(
+      `Le contenu de la version en ${nomLangue} n'a pas pu être lu. Rechargez la page et réessayez.`,
+    );
+  if (v.length !== francais.length)
+    throw new SaisieRefusee(
+      `La version en ${nomLangue} ne correspond plus au contenu français : le nombre de blocs a changé entre-temps. Rechargez la page, puis reprenez la traduction.`,
+    );
+
+  return francais.map((repere, i) => {
+    const brut = objet(v[i], `Le ${rang(i)} bloc de la version en ${nomLangue}`);
+    const ou = `Le ${rang(i)} bloc de la version en ${nomLangue}`;
+    // Le type vient du français. Un type différent dans la requête signale un
+    // écran désynchronisé, pas une intention : on refuse plutôt que d'écrire
+    // une traduction qui atterrirait sur le mauvais bloc.
+    if (brut.type !== undefined && String(brut.type) !== repere.type)
+      throw new SaisieRefusee(
+        `${ou} n'est plus du même genre que le bloc français. Rechargez la page, puis reprenez la traduction.`,
+      );
+
+    if (repere.type === "titre")
+      return {
+        type: "titre",
+        texte: String(brut.texte ?? "").trim().slice(0, 200),
+        niveau: repere.niveau,
+      };
+
+    if (repere.type === "texte")
+      return { type: "texte", html: String(brut.html ?? "").trim().slice(0, 50_000) };
+
+    if (repere.type === "image") {
+      const alt = String(brut.alt ?? "").trim().slice(0, 200);
+      const legende = String(brut.legende ?? "").trim().slice(0, 300);
+      return legende
+        ? { type: "image", url: repere.url, alt, legende }
+        : { type: "image", url: repere.url, alt };
+    }
+
+    if (repere.type === "bouton")
+      return {
+        type: "bouton",
+        texte: String(brut.texte ?? "").trim().slice(0, 80),
+        href: repere.href,
+      };
+
+    // Une rangée de produits n'a pas un mot à traduire : les noms des affiches
+    // le sont sur leur propre fiche. Le bloc français est recopié tel quel.
+    return repere;
+  });
+}
+
+/** Vrai quand un bloc traduit ne porte pas un seul mot. */
+function blocTraduitVide(bloc: BlocPage): boolean {
+  if (bloc.type === "titre" || bloc.type === "bouton") return !bloc.texte.trim();
+  if (bloc.type === "texte") return !bloc.html.trim();
+  if (bloc.type === "image") return !bloc.alt.trim() && !(bloc.legende ?? "").trim();
+  return true;
+}
+
+/**
  * Relit le dictionnaire de traductions d'une page, par-dessus l'existant.
  *
  * Une langue que la boutique ne sert pas est refusée plutôt qu'enregistrée :
@@ -437,11 +523,15 @@ function lireBlocs(v: unknown, ouPage: string): BlocPage[] {
  *
  * Une langue envoyée vide est en revanche RETIRÉE : « vide » et « pas encore
  * traduit » doivent vouloir dire la même chose — le français s'affiche. C'est
- * aussi le seul moyen d'effacer une traduction devenue fausse.
+ * aussi le seul moyen d'effacer une traduction devenue fausse. Une liste de
+ * blocs où plus rien n'est écrit compte pour vide, au même titre qu'un titre
+ * effacé : sans cela, une langue entièrement vidée resterait enregistrée et
+ * l'écran continuerait de l'annoncer comme traduite.
  */
 function lireTraductionsPage(
   v: unknown,
   enregistrees: TraductionsPage | null,
+  blocsFrancais: BlocPage[],
 ): TraductionsPage | null {
   const traductions: TraductionsPage = { ...(enregistrees ?? {}) };
   if (v !== null && v !== undefined) {
@@ -460,8 +550,10 @@ function lireTraductionsPage(
       const entree: { title?: string; blocks?: BlocPage[] } = {};
       const titre = texteOuNull(t.title, 200);
       if (titre) entree.title = titre;
-      if (t.blocks !== undefined && t.blocks !== null)
-        entree.blocks = lireBlocs(t.blocks, ` de la version en ${nom}`);
+      if (t.blocks !== undefined && t.blocks !== null) {
+        const blocs = lireBlocsTraduits(t.blocks, blocsFrancais, nom);
+        if (!blocs.every(blocTraduitVide)) entree.blocks = blocs;
+      }
       if (entree.title || entree.blocks) traductions[langue] = entree;
       else delete traductions[langue];
     }
@@ -724,6 +816,48 @@ interface PageEnregistree {
 }
 
 /**
+ * Le contenu d'une page dans une langue : le traduit quand il existe, le
+ * français partout ailleurs.
+ *
+ * Champ par champ, et non bloc par bloc ni page par page. C'est ce qui permet
+ * de traduire une page en plusieurs fois — le titre aujourd'hui, les
+ * paragraphes la semaine prochaine — sans que la partie non traduite
+ * disparaisse du site entre-temps. Un champ laissé vide dans le back-office
+ * affiche donc le français, exactement comme le promet l'écran.
+ *
+ * La forme vient TOUJOURS du français : c'est lui qui décide combien il y a de
+ * blocs, dans quel ordre et de quel genre. Une traduction qui ne collerait
+ * plus (blocs ajoutés côté français depuis) est ignorée là où elle ne colle
+ * pas, plutôt que d'imposer sa forme : une page en français entier vaut mieux
+ * qu'une page dont il manque le dernier paragraphe.
+ */
+function fusionnerBlocs(
+  francais: BlocPage[],
+  traduits: BlocPage[] | undefined,
+): BlocPage[] {
+  if (!traduits || !traduits.length) return francais;
+  return francais.map((f, i) => {
+    const t = traduits[i];
+    if (!t || t.type !== f.type) return f;
+    if (f.type === "titre" && t.type === "titre")
+      return { ...f, texte: utile(t.texte) ?? f.texte };
+    if (f.type === "texte" && t.type === "texte")
+      return { ...f, html: utile(t.html) ?? f.html };
+    if (f.type === "bouton" && t.type === "bouton")
+      return { ...f, texte: utile(t.texte) ?? f.texte };
+    if (f.type === "image" && t.type === "image") {
+      const legende = utile(t.legende) ?? f.legende;
+      const fusionne: BlocPage = { ...f, alt: utile(t.alt) ?? f.alt };
+      if (legende) return { ...fusionne, legende };
+      return fusionne;
+    }
+    // Une rangée de produits n'a rien à traduire : ses affiches portent leurs
+    // propres traductions, posées sur leur fiche.
+    return f;
+  });
+}
+
+/**
  * Une page publiée, blocs compris et rangées de produits déjà remplies.
  *
  * Partagée entre la boutique et la tablette du stand, et c'est tout l'intérêt :
@@ -734,13 +868,7 @@ interface PageEnregistree {
  */
 async function pagePubliee(page: PageEnregistree, langue: string) {
   const traduction = langue === "fr" ? undefined : page.translations?.[langue];
-  // Les blocs se traduisent d'un seul tenant : une page traduite est réécrite
-  // entièrement, pas bloc par bloc. Tant qu'elle ne l'est pas, on montre le
-  // français, jamais une page à moitié dans chaque langue.
-  const blocs =
-    traduction?.blocks && traduction.blocks.length
-      ? traduction.blocks
-      : (page.blocks ?? []);
+  const blocs = fusionnerBlocs(page.blocks ?? [], traduction?.blocks);
 
   return {
     id: page.id,
@@ -838,7 +966,13 @@ async function lireAdresse(valeur: unknown, pageId: number | null): Promise<stri
 async function lireChampsPage(
   corps: Record<string, unknown>,
   pageId: number | null,
-  traductionsEnregistrees: TraductionsPage | null,
+  /**
+   * Ce que la page porte DÉJÀ en base. Les traductions, pour ne pas effacer
+   * les langues que la requête ne mentionne pas ; les blocs, parce qu'ils
+   * servent de patron aux blocs traduits (voir `lireBlocsTraduits`) et qu'une
+   * requête qui ne touche qu'à une traduction ne les renvoie pas.
+   */
+  enregistre: { translations: TraductionsPage | null; blocks: BlocPage[] },
 ): Promise<ChampsPage> {
   const champs: ChampsPage = {};
 
@@ -876,10 +1010,14 @@ async function lireChampsPage(
     champs.seoDescription = texteOuNull(corps.seoDescription, 400);
 
   if ("blocks" in corps) champs.blocks = lireBlocs(corps.blocks, "");
+  // Les blocs d'abord, les traductions ensuite, et l'ordre compte : une
+  // requête qui réécrit le français ET une traduction dans le même geste doit
+  // caler la traduction sur le NOUVEAU français, pas sur celui d'avant.
   if ("translations" in corps)
     champs.translations = lireTraductionsPage(
       corps.translations,
-      traductionsEnregistrees,
+      enregistre.translations,
+      champs.blocks ?? enregistre.blocks,
     );
 
   return champs;
@@ -1175,7 +1313,12 @@ export function mountCms(app: Hono): void {
   app.post("/admin/pages", async (c) => {
     const corps = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
     try {
-      const champs = await lireChampsPage(corps, null, null);
+      // Une page qui naît n'a encore ni traductions ni blocs : le patron des
+      // blocs traduits sera donc celui que la requête apporte, s'il y en a un.
+      const champs = await lireChampsPage(corps, null, {
+        translations: null,
+        blocks: [],
+      });
       if (champs.slug === undefined)
         throw new SaisieRefusee(
           "L'adresse de la page ne peut pas rester vide. Utilisez des lettres et des chiffres, par exemple « nos-magnets ».",
@@ -1215,14 +1358,23 @@ export function mountCms(app: Hono): void {
 
       // Les traductions déjà enregistrées repartent avec la relecture : le
       // back-office n'envoie souvent qu'une langue, et les autres doivent
-      // survivre à l'enregistrement.
+      // survivre à l'enregistrement. Les blocs français partent avec elles :
+      // un enregistrement de traduction seule ne les renvoie pas, et ce sont
+      // eux qui donnent sa forme au contenu traduit.
       const [page] = await db
-        .select({ id: schema.pages.id, translations: schema.pages.translations })
+        .select({
+          id: schema.pages.id,
+          translations: schema.pages.translations,
+          blocks: schema.pages.blocks,
+        })
         .from(schema.pages)
         .where(eq(schema.pages.id, id));
       if (!page) throw new SaisieRefusee("Cette page n'existe plus. Rechargez la liste.");
 
-      const champs = await lireChampsPage(corps, id, page.translations ?? null);
+      const champs = await lireChampsPage(corps, id, {
+        translations: page.translations ?? null,
+        blocks: page.blocks ?? [],
+      });
       await db
         .update(schema.pages)
         .set({ ...champs, updatedAt: new Date() })

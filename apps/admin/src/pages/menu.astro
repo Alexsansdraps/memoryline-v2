@@ -11,9 +11,14 @@
  * un troisième niveau ne se déplierait nulle part.
  *
  * L'enregistrement remplace l'arbre entier en une fois : ce qui a été retiré
- * ici disparaît du site. Les libellés traduits ne se modifient pas encore
- * depuis cet écran, mais ils font l'aller-retour avec le reste, sinon un
- * simple changement d'ordre effacerait les traductions déjà en place.
+ * ici disparaît du site.
+ *
+ * Le menu se saisit dans les cinq langues, mais UNE À LA FOIS : les boutons du
+ * haut choisissent la langue affichée, et chaque ligne montre alors son nom
+ * français à côté du champ à remplir. Un champ laissé vide n'est pas un trou :
+ * le site affiche le français à sa place. Les quatre langues sont rendues dès
+ * le départ et simplement masquées — c'est ce qui permet à un ajout de ligne,
+ * fait par recopie du patron, d'emporter ses champs de traduction avec lui.
  */
 import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
@@ -27,19 +32,38 @@ const api = adminApi(Astro.request);
  */
 const LIEN_VALIDE = /^(\/\S*|https?:\/\/\S+|mailto:\S+)$/;
 
+/**
+ * Les quatre langues qui se traduisent. Le français n'en fait pas partie :
+ * c'est lui qu'on traduit, il vit dans le champ « Nom dans le menu ».
+ */
+const LANGUES_TRADUISIBLES = [
+  { code: "en", nom: "Anglais" },
+  { code: "de", nom: "Allemand" },
+  { code: "it", nom: "Italien" },
+  { code: "es", nom: "Espagnol" },
+] as const;
+
+/** Les libellés traduits d'une entrée, par code de langue. */
+type Traductions = Record<string, { label?: string }>;
+
 /** Une entrée telle qu'elle s'affiche : tout en texte, rien de jugé. */
 interface EntreeSouple {
   id: string;
   label: string;
   href: string;
   visible: boolean;
-  /** Repassé tel quel à l'API : cet écran ne sait pas les modifier. */
-  traductions: unknown;
+  traductions: Traductions | null;
   enfants: EntreeSouple[];
 }
 
 function entreeVide(): EntreeSouple {
   return { id: "", label: "", href: "", visible: true, traductions: null, enfants: [] };
+}
+
+/** Le libellé déjà traduit dans cette langue, ou rien. */
+function libelleTraduit(entree: EntreeSouple, code: string): string {
+  const valeur = entree.traductions?.[code]?.label;
+  return typeof valeur === "string" ? valeur : "";
 }
 
 function chaine(objet: Record<string, unknown>, cle: string): string {
@@ -64,7 +88,9 @@ function entreesSouples(brut: unknown, profondeur = 0): EntreeSouple[] {
     // disparaître du site sans que personne ne l'ait décoché.
     entree.visible = o.visible !== false;
     entree.traductions =
-      o.translations && typeof o.translations === "object" ? o.translations : null;
+      o.translations && typeof o.translations === "object"
+        ? (o.translations as Traductions)
+        : null;
     // Un seul niveau de sous-liens : au-delà, le site n'aurait pas où les mettre.
     entree.enfants = profondeur === 0 ? entreesSouples(o.enfants, 1) : [];
     sortie.push(entree);
@@ -97,7 +123,9 @@ function verifierEntree(
   const identifiant = Number(e.id);
   if (e.id && Number.isFinite(identifiant) && identifiant > 0)
     sortie.id = identifiant;
-  if (e.traductions) sortie.translations = e.traductions;
+  // Toujours envoyé, même vide : c'est ainsi qu'un libellé traduit effacé à
+  // l'écran disparaît vraiment. Omettre la clé le laisserait en place.
+  sortie.translations = e.traductions ?? null;
   return sortie;
 }
 
@@ -231,6 +259,40 @@ const boutonOutil =
     </ul>
   </div>
 
+  {/* Le choix de la langue affichée. Des boutons et non des liens : changer de
+      langue ne doit pas recharger l'écran, ce qui perdrait tout ce qui vient
+      d'être déplacé ou ajouté sans être encore enregistré. */}
+  <div class="mb-2 flex flex-wrap items-center gap-2">
+    <span class="text-sm text-bo-muted">Langue affichée :</span>
+    <button
+      type="button"
+      data-choix-langue="fr"
+      aria-pressed="true"
+      class={`${boutonDiscret} border-bo-accent font-medium`}
+    >
+      Français
+    </button>
+    {LANGUES_TRADUISIBLES.map((l) => (
+      <button
+        type="button"
+        data-choix-langue={l.code}
+        aria-pressed="false"
+        class={boutonDiscret}
+      >
+        {l.nom}
+      </button>
+    ))}
+  </div>
+  <p
+    id="aide-langue"
+    class="mb-6 hidden max-w-3xl rounded-lg border border-bo-border bg-bo-surface p-4 text-sm text-bo-muted"
+  >
+    Le nom français reste affiché à gauche : c'est la référence.
+    <strong>Laissez un champ vide et c'est lui qui s'affichera</strong> sur le
+    site, dans cette langue — jamais un blanc. L'adresse, elle, est la même
+    partout : une page traduite vit à la même adresse que la française.
+  </p>
+
   <form method="POST" id="form-menu">
     <input type="hidden" name="entrees" id="champ-entrees" value={entreesJson} />
 
@@ -254,6 +316,19 @@ const boutonOutil =
                 class={champ}
               />
             </label>
+            {LANGUES_TRADUISIBLES.map((l) => (
+              <label data-langue={l.code} hidden class="min-w-[12rem] flex-1">
+                <span class="text-xs text-bo-muted">
+                  Nom en {l.nom.toLowerCase()}
+                </span>
+                <input
+                  data-trad={l.code}
+                  value={libelleTraduit(entree, l.code)}
+                  placeholder={entree.label || "Magnets"}
+                  class={champ}
+                />
+              </label>
+            ))}
             <label class="block min-w-[14rem] flex-1">
               <span class="text-xs text-bo-muted">Adresse</span>
               <input
@@ -326,6 +401,19 @@ const boutonOutil =
                       class={champ}
                     />
                   </label>
+                  {LANGUES_TRADUISIBLES.map((l) => (
+                    <label data-langue={l.code} hidden class="min-w-[10rem] flex-1">
+                      <span class="text-xs text-bo-muted">
+                        Nom en {l.nom.toLowerCase()}
+                      </span>
+                      <input
+                        data-trad={l.code}
+                        value={libelleTraduit(enfant, l.code)}
+                        placeholder={enfant.label || "Magnets ronds"}
+                        class={champ}
+                      />
+                    </label>
+                  ))}
                   <label class="block min-w-[12rem] flex-1">
                     <span class="text-xs text-bo-muted">Adresse</span>
                     <input
@@ -435,6 +523,23 @@ const boutonOutil =
           : String(el.value == null ? "" : el.value);
       }
 
+      /**
+       * Les libellés traduits d'UNE ligne, sans descendre dans ses sous-liens.
+       *
+       * Un champ vide n'est pas enregistré : « vide » et « pas traduit » disent
+       * la même chose, et le site affiche alors le français. C'est aussi ce qui
+       * permet d'effacer une traduction devenue fausse — on vide, on enregistre.
+       */
+      function traductions(ligne) {
+        const sortie = {};
+        ligne.querySelectorAll("[data-trad]").forEach((n) => {
+          if (n.closest("[data-entree], [data-enfant]") !== ligne) return;
+          const texte = String(n.value == null ? "" : n.value).trim();
+          if (texte) sortie[n.getAttribute("data-trad")] = { label: texte };
+        });
+        return Object.keys(sortie).length ? sortie : null;
+      }
+
       function serialiser() {
         const sortie = reels(arbre, "data-entree").map((entree) => {
           const enfants = entree.querySelector("[data-enfants]");
@@ -449,35 +554,62 @@ const boutonOutil =
                   label: valeur(enfant, "label"),
                   href: valeur(enfant, "href"),
                   visible: valeur(enfant, "visible") === true,
-                  translations: enfant.__traductions || null,
+                  translations: traductions(enfant),
                 }))
               : [],
-            translations: entree.__traductions || null,
+            translations: traductions(entree),
           };
         });
         champEntrees.value = JSON.stringify(sortie);
       }
 
-      // Les libellés traduits ne s'affichent nulle part sur cet écran. Ils
-      // sont accrochés à leur ligne au chargement et repartent avec elle :
-      // sans ça, réenregistrer le menu effacerait le travail de traduction.
-      try {
-        const depart = JSON.parse(champEntrees.value || "[]");
-        const lignes = reels(arbre, "data-entree");
-        depart.forEach((e, i) => {
-          const ligne = lignes[i];
-          if (!ligne) return;
-          ligne.__traductions = e.translations || null;
-          const conteneur = ligne.querySelector("[data-enfants]");
-          const sousLignes = conteneur ? reels(conteneur, "data-enfant") : [];
-          (e.enfants || []).forEach((c, j) => {
-            if (sousLignes[j]) sousLignes[j].__traductions = c.translations || null;
-          });
+      /* --- La langue affichée ------------------------------------------- */
+
+      const boutonsLangue = document.querySelectorAll("[data-choix-langue]");
+      const aideLangue = document.getElementById("aide-langue");
+      let langueAffichee = "fr";
+
+      /**
+       * Montre les champs d'UNE langue et cache ceux des autres.
+       *
+       * Appelée aussi après chaque ajout de ligne : une ligne recopiée du
+       * patron arrive avec ses quatre champs cachés, et resterait muette en
+       * pleine saisie d'une traduction.
+       */
+      function afficherLangue(code) {
+        langueAffichee = code;
+        arbre.querySelectorAll("[data-langue]").forEach((n) => {
+          n.hidden = n.getAttribute("data-langue") !== code;
         });
-      } catch (e) {
-        // Champ illisible : les traductions ne suivront pas, mais l'écran
-        // reste utilisable et le serveur refusera ce qu'il ne comprend pas.
+        boutonsLangue.forEach((b) => {
+          const actif = b.getAttribute("data-choix-langue") === code;
+          b.classList.toggle("border-bo-accent", actif);
+          b.classList.toggle("font-medium", actif);
+          b.setAttribute("aria-pressed", actif ? "true" : "false");
+        });
+        if (aideLangue) aideLangue.classList.toggle("hidden", code === "fr");
       }
+
+      boutonsLangue.forEach((bouton) => {
+        bouton.addEventListener("click", () => {
+          afficherLangue(bouton.getAttribute("data-choix-langue"));
+        });
+      });
+
+      // Le nom français sert d'invite grisée aux champs traduits de sa ligne :
+      // on voit du premier coup d'œil ce qui s'affichera si on ne remplit pas.
+      arbre.addEventListener("input", (ev) => {
+        const champFrancais = ev.target.closest('[data-valeur="label"]');
+        if (!champFrancais) return;
+        const ligne =
+          champFrancais.closest("[data-enfant]") ||
+          champFrancais.closest("[data-entree]");
+        if (!ligne) return;
+        ligne.querySelectorAll("[data-trad]").forEach((n) => {
+          if (n.closest("[data-entree], [data-enfant]") === ligne)
+            n.placeholder = champFrancais.value;
+        });
+      });
 
       function rafraichir() {
         if (menuVide)
@@ -485,6 +617,9 @@ const boutonOutil =
             "hidden",
             reels(arbre, "data-entree").length > 0,
           );
+        // Les lignes tout juste ajoutées arrivent avec leurs champs traduits
+        // cachés : on les remet dans la langue affichée.
+        afficherLangue(langueAffichee);
       }
 
       arbre.addEventListener("click", (ev) => {
@@ -501,6 +636,7 @@ const boutonOutil =
           neuf.removeAttribute("hidden");
           neuf.removeAttribute("style");
           conteneur.insertBefore(neuf, modele);
+          rafraichir();
           const premier = neuf.querySelector("input:not([type=hidden])");
           if (premier) premier.focus();
           return;
