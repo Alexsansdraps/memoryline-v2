@@ -1117,6 +1117,19 @@ export function mountConfiguratorRoutes(app: Hono) {
     // quand il y en a un, sinon à la fiche qui porte déjà cette adresse, et on
     // n'en crée une qu'en dernier recours.
     const connecte = await clientDeLaRequete(c);
+    // Commander depuis le site demande un compte. Sans lui, la même personne
+    // se retrouvait en autant de fiches que d'achats, sans historique ni
+    // carnet d'adresses. Le contrôle est ici et pas seulement à l'écran : une
+    // règle qui ne vit que dans la page se contourne en rechargeant.
+    if (!connecte)
+      return c.json(
+        {
+          error:
+            "Il faut être connectée pour valider la commande. Créez votre compte ou connectez-vous, votre panier vous attend.",
+          code: "compte_requis",
+        },
+        401,
+      );
     const emailNormalise = email.toLowerCase();
     let customer = connecte
       ? (
@@ -1204,6 +1217,48 @@ export function mountConfiguratorRoutes(app: Hono) {
       })
       .where(eq(schema.orders.id, draft.id))
       .returning();
+
+    // L'adresse rejoint le carnet de la cliente : saisie une fois, elle
+    // revient toute seule la prochaine fois. Une livraison en point relais n'a
+    // pas d'adresse à elle, il n'y a rien à ranger.
+    if (port.kind === "home" && ligne1 && ville && cp) {
+      try {
+        const connues = await db
+          .select()
+          .from(schema.customerAddresses)
+          .where(eq(schema.customerAddresses.customerId, customer!.id));
+        const meme = (a: string | null, b: string) =>
+          (a ?? "").trim().toLowerCase() === b.trim().toLowerCase();
+        const dejaLa = connues.some(
+          (a) =>
+            meme(a.line1, ligne1) &&
+            meme(a.postalCode, cp) &&
+            meme(a.city, ville) &&
+            meme(a.country ?? "", pays),
+        );
+        if (!dejaLa) {
+          await db.insert(schema.customerAddresses).values({
+            customerId: customer!.id,
+            label: null,
+            name: String(liv.name ?? "").trim() || name,
+            line1: ligne1,
+            line2: String(liv.line2 ?? "").trim() || null,
+            postalCode: cp,
+            city: ville,
+            country: pays,
+            phone: String(liv.phone ?? "").trim() || null,
+            // La première adresse enregistrée devient celle par défaut : sans
+            // cela le carnet se remplit sans que rien ne soit proposé.
+            isDefaultShipping: connues.length === 0,
+            isDefaultBilling: false,
+          });
+        }
+      } catch (e) {
+        // Le carnet est un confort : une commande valide ne doit pas échouer
+        // parce qu'on n'a pas su ranger une adresse.
+        console.warn("[commande] adresse non rangée au carnet", String(e));
+      }
+    }
 
     return c.json({
       orderId: order!.id,

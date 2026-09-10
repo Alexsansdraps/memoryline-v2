@@ -112,10 +112,30 @@ function loadPaypalSdk(clientId: string): Promise<PayPalNamespace> {
   return paypalSdk;
 }
 
-export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element {
+/** Une adresse du carnet, telle que la page la transmet. */
+interface AdresseCarnet {
+  id: number;
+  label: string | null;
+  name: string | null;
+  line1: string | null;
+  line2: string | null;
+  postalCode: string | null;
+  city: string | null;
+  country: string | null;
+  phone: string | null;
+  parDefaut: boolean;
+}
+
+export default function CheckoutIsland(props: {
+  langue?: Langue;
+  /** La cliente connectée. La page ne rend le tunnel qu'à elle. */
+  compte?: { nom: string; email: string; telephone: string };
+  /** Ses adresses déjà enregistrées, la première étant celle par défaut. */
+  carnet?: AdresseCarnet[];
+}): JSX.Element {
   const tr = t(props.langue ?? LANGUE_DEFAUT);
-  const [name, setName] = createSignal("");
-  const [email, setEmail] = createSignal("");
+  const [name, setName] = createSignal(props.compte?.nom ?? "");
+  const [email, setEmail] = createSignal(props.compte?.email ?? "");
   const [method, setMethod] = createSignal<Method | null>(null);
   const [phase, setPhase] = createSignal<"details" | "pay">("details");
   const [submitting, setSubmitting] = createSignal(false);
@@ -227,15 +247,48 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
       return null;
     }
   });
-  const [pays, setPays] = createSignal("FR");
+  const [pays, setPays] = createSignal(
+    (props.carnet ?? []).find((a) => a.parDefaut)?.country ??
+      (props.carnet ?? [])[0]?.country ??
+      "FR",
+  );
   const [modeChoisi, setModeChoisi] = createSignal<string | null>(null);
+  /** L'adresse à proposer d'emblée : celle par défaut, sinon la première. */
+  const adresseDepart = (): AdresseCarnet | null => {
+    const c = props.carnet ?? [];
+    return c.find((a) => a.parDefaut) ?? c[0] ?? null;
+  };
+  const [adresseChoisie, setAdresseChoisie] = createSignal<number | null>(
+    adresseDepart()?.id ?? null,
+  );
+  const depart = adresseDepart();
   const [adresse, setAdresse] = createSignal({
-    line1: "",
-    line2: "",
-    postalCode: "",
-    city: "",
-    phone: "",
+    line1: depart?.line1 ?? "",
+    line2: depart?.line2 ?? "",
+    postalCode: depart?.postalCode ?? "",
+    city: depart?.city ?? "",
+    phone: depart?.phone ?? props.compte?.telephone ?? "",
   });
+
+  /** Recopie une adresse du carnet dans le formulaire. */
+  function choisirAdresse(id: number | null) {
+    setAdresseChoisie(id);
+    if (id === null) {
+      setAdresse({ line1: "", line2: "", postalCode: "", city: "", phone: "" });
+      return;
+    }
+    const a = (props.carnet ?? []).find((x) => x.id === id);
+    if (!a) return;
+    setAdresse({
+      line1: a.line1 ?? "",
+      line2: a.line2 ?? "",
+      postalCode: a.postalCode ?? "",
+      city: a.city ?? "",
+      phone: a.phone ?? "",
+    });
+    if (a.country) setPays(a.country);
+    if (a.name) setName(a.name);
+  }
   const [pointRelais, setPointRelais] = createSignal({ id: "", label: "" });
 
 
@@ -626,10 +679,22 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
                   type="email"
                   required
                   value={email()}
+                  readOnly={Boolean(props.compte)}
                   onInput={(e) => setEmail(e.currentTarget.value)}
-                  class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
+                  class={`mt-1 w-full rounded-lg border border-ink/20 px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60 ${
+                    props.compte ? "bg-paper-deep text-ink-soft" : "bg-paper"
+                  }`}
                   placeholder="camille@example.com"
                 />
+                {/* Celle du compte : c'est elle qui identifie la commande et
+                    l'historique. La changer ici rattacherait la commande à
+                    quelqu'un d'autre. */}
+                <Show when={props.compte}>
+                  <span class="mt-1 block text-xs text-ink-soft">
+                    C'est l'adresse de votre compte. Pour en changer, passez par
+                    « Mes informations ».
+                  </span>
+                </Show>
                 <Show when={email().length > 0 && !emailValid()}>
                   <span class="mt-1 block text-xs text-terracotta-deep">
                     E-mail invalide.
@@ -730,6 +795,48 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
               {/* Adresse : demandée seulement quand le mode en a besoin. */}
               <Show when={optionChoisie()?.mode.kind === "home"}>
                 <div class="space-y-4">
+                  {/* Le carnet : une adresse déjà enregistrée se choisit d'un
+                      clic plutôt que de se retaper. */}
+                  <Show when={(props.carnet ?? []).length > 0}>
+                    <div class="rounded-lg border border-ink/15 p-3">
+                      <p class="mb-2 text-sm font-medium">
+                        Vos adresses enregistrées
+                      </p>
+                      <div class="flex flex-wrap gap-2">
+                        <For each={props.carnet}>
+                          {(a) => (
+                            <button
+                              type="button"
+                              onClick={() => choisirAdresse(a.id)}
+                              class={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                                adresseChoisie() === a.id
+                                  ? "border-terracotta bg-terracotta/10"
+                                  : "border-ink/20 hover:border-ink"
+                              }`}
+                            >
+                              <span class="block font-medium">
+                                {a.label || a.line1 || "Adresse"}
+                              </span>
+                              <span class="block text-xs text-ink-soft">
+                                {[a.postalCode, a.city].filter(Boolean).join(" ")}
+                              </span>
+                            </button>
+                          )}
+                        </For>
+                        <button
+                          type="button"
+                          onClick={() => choisirAdresse(null)}
+                          class={`rounded-lg border px-3 py-2 text-sm transition-colors ${
+                            adresseChoisie() === null
+                              ? "border-terracotta bg-terracotta/10"
+                              : "border-ink/20 hover:border-ink"
+                          }`}
+                        >
+                          Une autre adresse
+                        </button>
+                      </div>
+                    </div>
+                  </Show>
                   <label class="block">
                     <span class="text-sm font-medium">
                       {tr("livraison.adresse")}

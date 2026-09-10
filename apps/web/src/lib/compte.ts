@@ -348,6 +348,20 @@ export async function cadres(astro: ContexteAstro): Promise<Cadre[]> {
  * 303 par défaut : après le POST d'un formulaire, il force le navigateur à
  * repasser en GET, ce qui évite le renvoi du formulaire au rafraîchissement.
  */
+/**
+ * Le chemin de retour demandé, s'il est sûr.
+ *
+ * Uniquement un chemin interne : « /commande » oui, « //ailleurs.fr » et
+ * « https://ailleurs.fr » non. Sans ce contrôle, un lien pourrait faire
+ * atterrir la cliente sur un autre site juste après sa connexion, au moment
+ * précis où elle croit être chez nous.
+ */
+export function retourSur(brut: string | null | undefined): string | null {
+  const v = (brut ?? "").trim();
+  if (!v.startsWith("/") || v.startsWith("//")) return null;
+  return v.slice(0, 300);
+}
+
 export function rediriger(
   astro: ContexteAstro,
   cible: string,
