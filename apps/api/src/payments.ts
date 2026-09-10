@@ -204,10 +204,64 @@ export async function createPaypalOrder(
       ],
     }),
   });
-  if (!res.ok)
-    throw new Error(`PayPal create HTTP ${res.status} ${await res.text()}`);
+  if (!res.ok) throw await refusPaypal(res);
   const j = (await res.json()) as { id: string };
   return j.id;
+}
+
+/**
+ * Un refus de PayPal, traduit.
+ *
+ * PayPal range la vraie cause dans `details[].issue`, un mot en majuscules
+ * anglaises, sous un message générique qui ne dit rien. Les plus fréquentes
+ * ne sont pas des pannes mais des états du COMPTE, et chacune appelle un
+ * geste précis : aucune ligne de code ne les répare.
+ */
+export class RefusPaypal extends Error {
+  constructor(
+    readonly issue: string,
+    readonly explication: string,
+    readonly brut: string,
+  ) {
+    super(`PayPal a refusé : ${issue || "raison inconnue"} — ${explication}`);
+    this.name = "RefusPaypal";
+  }
+}
+
+const RAISONS: Record<string, string> = {
+  PAYEE_ACCOUNT_RESTRICTED:
+    "Le compte PayPal de la boutique est restreint : PayPal lui interdit d'encaisser tant qu'une vérification n'est pas faite. Connectez-vous sur paypal.com et regardez les notifications ou le centre de résolution.",
+  PAYEE_ACCOUNT_LOCKED_OR_CLOSED:
+    "Le compte PayPal de la boutique est bloqué ou fermé. Rien ne peut être encaissé avant de le rouvrir avec PayPal.",
+  PAYEE_ACCOUNT_INVALID:
+    "Le compte destinataire déclaré n'est pas reconnu par PayPal. Vérifiez que les identifiants viennent bien du compte de la boutique.",
+  CURRENCY_NOT_SUPPORTED:
+    "Le compte PayPal de la boutique n'accepte pas l'euro. Ajoutez cette devise dans les réglages du compte.",
+  PERMISSION_DENIED:
+    "L'application PayPal n'a pas le droit de créer des paiements. Regardez les autorisations de l'application sur developer.paypal.com.",
+  INVALID_RESOURCE_ID:
+    "PayPal ne retrouve pas ce paiement. Il a peut-être expiré : refaites la commande.",
+  INSTRUMENT_DECLINED:
+    "Le moyen de paiement du client a été refusé. C'est au client de réessayer avec un autre.",
+};
+
+async function refusPaypal(res: Response): Promise<RefusPaypal> {
+  const brut = await res.text();
+  let issue = "";
+  try {
+    const j = JSON.parse(brut) as {
+      name?: string;
+      details?: { issue?: string }[];
+    };
+    issue = j.details?.[0]?.issue ?? j.name ?? "";
+  } catch {
+    // Une réponse qui n'est pas du JSON : on garde le texte tel quel.
+  }
+  const explication =
+    RAISONS[issue] ??
+    `PayPal a répondu ${res.status} sans raison connue de nous. Le détail est dans le journal du serveur.`;
+  console.error("[paypal] refus", issue || res.status, brut.slice(0, 500));
+  return new RefusPaypal(issue, explication, brut.slice(0, 1000));
 }
 
 /**
@@ -229,8 +283,7 @@ export async function capturePaypalOrder(
       },
     },
   );
-  if (!res.ok)
-    throw new Error(`PayPal capture HTTP ${res.status} ${await res.text()}`);
+  if (!res.ok) throw await refusPaypal(res);
   const j = (await res.json()) as ReponsePaypalCommande;
   return {
     ok: j.status === "COMPLETED",
@@ -305,8 +358,7 @@ export async function refundPaypal(
       }),
     },
   );
-  if (!res.ok)
-    throw new Error(`PayPal refund HTTP ${res.status} ${await res.text()}`);
+  if (!res.ok) throw await refusPaypal(res);
   const j = (await res.json()) as { id: string; status: string };
   return { id: j.id, status: j.status };
 }

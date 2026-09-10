@@ -58,6 +58,7 @@ import { rattacherGenerationsAuPanier } from "./ia.js";
 import {
   createPaypalOrder,
   capturePaypalOrder,
+  RefusPaypal,
   createStripeIntent,
   getStripeIntentStatus,
   paypalConfigured,
@@ -1363,7 +1364,18 @@ export function mountConfiguratorRoutes(app: Hono) {
       return c.json({ paypalOrderId });
     } catch (e) {
       console.error("PayPal order:", e);
-      return c.json({ error: "création du paiement impossible" }, 502);
+      // La raison vient de PayPal et parle de la BOUTIQUE, pas du client :
+      // elle part dans un champ à part, que le journal et le back-office
+      // lisent. Le client, lui, garde une phrase qui le concerne.
+      const refus = e instanceof RefusPaypal ? e : null;
+      return c.json(
+        {
+          error:
+            "Le paiement par PayPal n'a pas pu être ouvert. Essayez la carte bancaire, ou revenez dans quelques minutes.",
+          ...(refus ? { raison: refus.explication, code: refus.issue } : {}),
+        },
+        502,
+      );
     }
   });
 
