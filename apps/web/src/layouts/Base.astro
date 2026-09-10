@@ -298,7 +298,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
             class="h-12 w-auto"
           />
         </a>
-        <div class="hidden md:flex items-center gap-8 text-[17px] font-semibold">
+        <div class="hidden md:flex items-center gap-6 text-[14px] font-semibold lg:gap-7 lg:text-[15px]">
           {/* Le menu vient du back-office. Une entrée sans sous-lien est un
               simple lien ; les autres se déroulent au clic, et se referment au
               clic ailleurs ou avec Échap — un survol seul laisserait les
@@ -333,7 +333,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
                       />
                     </svg>
                   </summary>
-                  <div class="border-ink/10 bg-paper absolute top-full left-0 z-20 mt-3 min-w-56 rounded-lg border py-2 text-[15px] font-medium shadow-lg">
+                  <div class="border-ink/10 bg-paper absolute top-full left-0 z-20 mt-3 min-w-56 rounded-lg border py-2 text-[14px] font-medium shadow-lg">
                     {entree.enfants.map((enfant) => (
                       <a
                         href={adresseMenu(enfant.href)}
