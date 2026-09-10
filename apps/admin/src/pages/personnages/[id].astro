@@ -321,12 +321,30 @@ const piecesACaler = SLOTS.flatMap((s) => {
           >
             <img id="calibrage-fond" alt="" class="absolute inset-0 h-full w-full object-cover" />
             {/* Le personnage passe DEVANT le rebord, comme sur la boutique. */}
+            {/* Silhouette d'un adulte à 100 %, pour comparer à une taille
+                connue. Masquée tant qu'on ne la demande pas. */}
+            <img
+              id="calibrage-repere-img"
+              alt=""
+              hidden
+              class="absolute opacity-30"
+              style="z-index: 9; object-fit: contain; filter: grayscale(1)"
+            />
             <img
               id="calibrage-perso"
               alt=""
               class="absolute"
-              style="z-index: 10; object-fit: contain"
+              style="z-index: 10; object-fit: contain; cursor: grab; touch-action: none"
             />
+            {/* La poignée de taille, au coin haut-droit du personnage. */}
+            <button
+              type="button"
+              id="calibrage-poignee"
+              aria-label="Tirer pour changer la taille du personnage"
+              title="Tirez pour changer la taille"
+              class="absolute rounded-full border-2 border-white bg-bo-accent shadow"
+              style="z-index: 20; width: 18px; height: 18px; cursor: nwse-resize; touch-action: none"
+            ></button>
             {avantPlan && (
               <img
                 id="calibrage-muret"
@@ -371,46 +389,74 @@ const piecesACaler = SLOTS.flatMap((s) => {
               </label>
             )}
 
-            <label class="block">
-              <span class="text-bo-muted">
-                Taille du personnage — <b id="calibrage-taille-val">1</b>
-              </span>
-              <input
-                id="calibrage-taille"
-                name="facteurTaille"
-                form="fiche-personnage"
-                type="range"
-                min="0.3"
-                max="2"
-                step="0.01"
-                value={perso.facteurTaille ?? 1}
-                class="mt-1 w-full"
-              />
-              <span class="mt-1 block text-xs text-bo-muted">
-                1 est la taille d'un adulte. Un chat ou un bébé se règlent plus
-                bas, un couple plus haut. C'est cette taille-là que la boutique
-                emploiera.
-              </span>
-            </label>
+            {/* La commande, c'est l'affiche elle-même. Ces champs ne font
+                que porter le résultat jusqu'à l'enregistrement. */}
+            <input
+              id="calibrage-taille"
+              name="facteurTaille"
+              form="fiche-personnage"
+              type="hidden"
+              value={perso.facteurTaille ?? 1}
+            />
+            <input
+              id="calibrage-sol"
+              type="hidden"
+              value={perso.bottomPct ?? 1}
+            />
 
-            <label class="block">
-              <span class="text-bo-muted">
-                Calage au sol — <b id="calibrage-sol-val">1</b>
-              </span>
-              <input
-                id="calibrage-sol"
-                type="range"
-                min="0.05"
-                max="1"
-                step="0.005"
-                value={perso.bottomPct ?? 1}
-                class="mt-1 w-full"
-              />
-              <span class="mt-1 block text-xs text-bo-muted">
-                Il flotte au-dessus du muret : baissez. Il s'enfonce dedans :
-                montez. Ce curseur écrit le même chiffre que le champ « Calage
-                au sol » plus haut.
-              </span>
+            <div class="rounded-lg border border-bo-border bg-bo-bg p-4">
+              <p class="mb-3 font-medium">
+                Attrapez le personnage sur l'affiche.
+              </p>
+              <ul class="space-y-1.5 text-xs text-bo-muted">
+                <li>
+                  <b class="text-bo-ink">Pour le poser :</b> montez-le ou
+                  descendez-le jusqu'à ce que ses pieds touchent le rebord.
+                </li>
+                <li>
+                  <b class="text-bo-ink">Pour le dimensionner :</b> tirez la
+                  poignée ronde, en haut à droite de lui.
+                </li>
+              </ul>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-bo-muted">Taille :</span>
+              <button
+                type="button"
+                id="calibrage-moins"
+                class="h-9 w-9 rounded border border-bo-border text-lg leading-none hover:bg-bo-bg"
+                title="Rapetisser de 5 %"
+                aria-label="Rapetisser le personnage"
+              >
+                −
+              </button>
+              <b id="calibrage-taille-val" class="min-w-[70px] text-center">100 %</b>
+              <button
+                type="button"
+                id="calibrage-plus"
+                class="h-9 w-9 rounded border border-bo-border text-lg leading-none hover:bg-bo-bg"
+                title="Agrandir de 5 %"
+                aria-label="Agrandir le personnage"
+              >
+                +
+              </button>
+              <button
+                type="button"
+                id="calibrage-reset"
+                class="rounded border border-bo-border px-3 py-2 text-xs hover:bg-bo-bg"
+              >
+                Taille d'un adulte
+              </button>
+            </div>
+            <p class="text-xs text-bo-muted">
+              100 %, c'est la taille d'un adulte debout. Un chat ou un bébé
+              descendent bien plus bas, un couple monte au-dessus.
+            </p>
+
+            <label class="flex items-center gap-2">
+              <input id="calibrage-repere" type="checkbox" />
+              <span>Comparer à un adulte</span>
             </label>
 
             {avantPlan ? (
@@ -1218,7 +1264,9 @@ const piecesACaler = SLOTS.flatMap((s) => {
       const taille = document.getElementById("calibrage-taille");
       const sol = document.getElementById("calibrage-sol");
       const tailleVal = document.getElementById("calibrage-taille-val");
-      const solVal = document.getElementById("calibrage-sol-val");
+      const poignee = document.getElementById("calibrage-poignee");
+      const repere = document.getElementById("calibrage-repere");
+      const repereImg = document.getElementById("calibrage-repere-img");
       const champSol = document.querySelector('input[name="bottomPct"]');
 
       const LARGEUR = Number(scene.dataset.largeur || 0.22);
@@ -1242,16 +1290,125 @@ const piecesACaler = SLOTS.flatMap((s) => {
         perso.style.left = "50%";
         perso.style.top = Y * 100 + descente + "%";
         perso.style.transform = "translate(-50%, -50%)";
-        tailleVal.textContent = f.toFixed(2).replace(".", ",");
-        solVal.textContent = bp.toFixed(3).replace(".", ",");
+        // La poignée suit le coin haut-droit du personnage.
+        if (poignee) {
+          poignee.style.left = 50 + largeurPct / 2 + "%";
+          poignee.style.top = Y * 100 + descente - hauteurPct / 2 + "%";
+          poignee.style.transform = "translate(-50%, -50%)";
+        }
+        // La silhouette de comparaison : un adulte à 100 %, posé au même
+        // endroit, pour juger d'une taille connue plutôt que dans le vide.
+        if (repereImg && !repereImg.hidden) {
+          const lRep = LARGEUR * ECHELLE * 100;
+          const hRep = lRep * Math.SQRT2;
+          repereImg.style.width = lRep + "%";
+          repereImg.style.height = hRep + "%";
+          repereImg.style.left = 50 - largeurPct / 2 - lRep / 2 - 2 + "%";
+          repereImg.style.top = Y * 100 + (1 - bp) * hRep + "%";
+          repereImg.style.transform = "translate(-50%, -50%)";
+        }
+        tailleVal.textContent = Math.round(f * 100) + " %";
         // Le champ chiffré du bloc du dessus reste la source enregistrée pour
-        // le calage : deux endroits qui diraient deux choses seraient pires
-        // que pas de curseur du tout.
-        if (champSol) champSol.value = String(bp);
+        // le calage : deux endroits qui diraient deux choses se
+        // contrediraient tôt ou tard.
+        if (champSol) champSol.value = bp.toFixed(4);
       }
 
-      taille.addEventListener("input", dessiner);
-      sol.addEventListener("input", dessiner);
+      /** Borne une valeur, comme la base le fera de toute façon. */
+      const borner = (v, min, max) => Math.min(max, Math.max(min, v));
+
+      /* --- Attraper le personnage : le poser sur le rebord --------------- */
+      perso.addEventListener("pointerdown", function (ev) {
+        ev.preventDefault();
+        // Capturer le pointeur garde le geste même si le doigt sort de
+        // l'image. Si le navigateur refuse, on continue sans : un réglage qui
+        // marche moins bien vaut mieux qu'un réglage qui ne marche pas.
+        try {
+          perso.setPointerCapture(ev.pointerId);
+        } catch {}
+        perso.style.cursor = "grabbing";
+        const depart = ev.clientY;
+        const bpDepart = Number(sol.value);
+        const boite = scene.getBoundingClientRect();
+        // Hauteur du cadre du personnage, en fraction de la hauteur d'affiche.
+        const hauteurCadre =
+          LARGEUR * ECHELLE * Number(taille.value) * Math.SQRT2;
+
+        const bouger = (e) => {
+          // Monter à l'écran = remonter le dessin dans son cadre.
+          const d = (e.clientY - depart) / boite.height;
+          sol.value = String(borner(bpDepart - d / hauteurCadre, 0.05, 1));
+          dessiner();
+        };
+        const lacher = () => {
+          perso.style.cursor = "grab";
+          perso.removeEventListener("pointermove", bouger);
+          perso.removeEventListener("pointerup", lacher);
+          perso.removeEventListener("pointercancel", lacher);
+        };
+        perso.addEventListener("pointermove", bouger);
+        perso.addEventListener("pointerup", lacher);
+        perso.addEventListener("pointercancel", lacher);
+      });
+
+      /* --- Tirer la poignée : changer la taille -------------------------- */
+      poignee?.addEventListener("pointerdown", function (ev) {
+        ev.preventDefault();
+        try {
+          poignee.setPointerCapture(ev.pointerId);
+        } catch {}
+        const boite = scene.getBoundingClientRect();
+        const departX = ev.clientX;
+        const facteurDepart = Number(taille.value);
+
+        const bouger = (e) => {
+          // On écarte pour agrandir, on rapproche pour rapetisser. Le geste
+          // est AMORTI : coller la poignée au doigt rendrait le réglage
+          // inutilisable, parce qu'un personnage n'occupe que quinze pour cent
+          // de la largeur — trente pixels doubleraient sa taille. Ici,
+          // traverser la moitié de l'affiche change la taille de moitié.
+          const d = (e.clientX - departX) / boite.width;
+          taille.value = String(borner(facteurDepart + d, 0.3, 2));
+          dessiner();
+        };
+        const lacher = () => {
+          poignee.removeEventListener("pointermove", bouger);
+          poignee.removeEventListener("pointerup", lacher);
+          poignee.removeEventListener("pointercancel", lacher);
+        };
+        poignee.addEventListener("pointermove", bouger);
+        poignee.addEventListener("pointerup", lacher);
+        poignee.addEventListener("pointercancel", lacher);
+      });
+
+      /* --- Les boutons, pour finir au détail près ------------------------ */
+      const pas = (facteur) => {
+        taille.value = String(borner(Number(taille.value) * facteur, 0.3, 2));
+        dessiner();
+      };
+      document
+        .getElementById("calibrage-moins")
+        ?.addEventListener("click", () => pas(0.95));
+      document
+        .getElementById("calibrage-plus")
+        ?.addEventListener("click", () => pas(1 / 0.95));
+      document
+        .getElementById("calibrage-reset")
+        ?.addEventListener("click", function () {
+          taille.value = "1";
+          dessiner();
+        });
+
+      /* --- La silhouette de comparaison ---------------------------------- */
+      repere?.addEventListener("change", function () {
+        repereImg.hidden = !repere.checked;
+        if (repere.checked && !repereImg.src)
+          repereImg.src = scene.dataset.base || "";
+        dessiner();
+      });
+
+      // Le champ chiffré du bloc du dessus peut encore être saisi à la main :
+      // il reste la référence, et l'affiche le suit.
       if (champSol)
         champSol.addEventListener("input", function () {
           const v = Number(String(champSol.value).replace(",", "."));
