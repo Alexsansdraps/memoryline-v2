@@ -951,6 +951,104 @@ export function mountCompteRoutes(app: Hono): void {
    * commandes : les exprimer en SQL rendrait la requête illisible pour un gain
    * nul à cette échelle.
    */
+
+  /**
+   * La liste des clientes, en fichier.
+   *
+   * Memes filtres que l'ecran : ce qu'on voit est ce qu'on exporte, sans quoi
+   * on croit sortir un segment et on sort tout le monde.
+   *
+   * La colonne du consentement marketing n'est pas facultative : une liste
+   * d'adresses sans elle est une liste qu'on ne peut pas utiliser, et on
+   * finirait par ecrire a des gens qui n'ont rien demande.
+   */
+  app.get("/admin/customers/export.csv", async (c) => {
+    if (c.get("utilisateur")?.role !== "owner")
+      return c.json(
+        { error: "La liste des clientes est réservée à la propriétaire." },
+        403,
+      );
+
+    const q = c.req.query();
+    const url = new URL(c.req.url);
+    const interne = new URL(url.origin + "/admin/customers");
+    if (q.q) interne.searchParams.set("q", q.q);
+    if (q.segment) interne.searchParams.set("segment", q.segment);
+    interne.searchParams.set("limit", "5000");
+    // On repasse par la meme lecture que l'ecran : deux requetes differentes
+    // finiraient par ne plus dire la meme chose, et le fichier ne
+    // correspondrait plus a la liste qu'on a sous les yeux.
+    const reponse = await app.fetch(
+      new Request(interne, { headers: c.req.raw.headers }),
+    );
+    if (!reponse.ok)
+      return c.json({ error: "La liste n'a pas pu être lue." }, 500);
+    const lignesBrutes = (await reponse.json()) as {
+      name: string | null;
+      email: string | null;
+      phone: string | null;
+      createdAt: string;
+      acceptsMarketing: boolean;
+      tags: string[];
+      compte: boolean;
+      origine: string | null;
+      origineStand: string | null;
+      commandes: number;
+      caCents: number;
+      derniereCommande: string | null;
+    }[];
+
+    const cellule = (v: unknown): string => {
+      const t = v === null || v === undefined ? "" : String(v);
+      return /[";\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+    };
+    const jour = (iso: string | null) =>
+      iso ? new Date(iso).toLocaleDateString("fr-FR") : "";
+
+    const entetes = [
+      "Nom",
+      "Adresse e-mail",
+      "Téléphone",
+      "Accepte le marketing",
+      "Compte client",
+      "Vient de",
+      "Stand",
+      "Commandes",
+      "Total dépensé",
+      "Dernière commande",
+      "Inscrite le",
+      "Étiquettes",
+    ];
+    const lignes = lignesBrutes.map((r) =>
+      [
+        r.name ?? "",
+        r.email ?? "",
+        r.phone ?? "",
+        r.acceptsMarketing ? "oui" : "non",
+        r.compte ? "oui" : "non",
+        r.origine === "salon" ? "stand" : r.origine === "web" ? "site" : "",
+        r.origineStand ?? "",
+        r.commandes,
+        (r.caCents / 100).toFixed(2).replace(".", ","),
+        jour(r.derniereCommande),
+        jour(r.createdAt),
+        (r.tags ?? []).join(", "),
+      ]
+        .map(cellule)
+        .join(";"),
+    );
+
+    // BOM et point-virgule : c'est ce qu'Excel francais ouvre en colonnes sans
+    // rien demander, comme les autres exports de la maison.
+    const csv = "﻿" + [entetes.join(";"), ...lignes].join("\r\n");
+    return new Response(csv, {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": 'attachment; filename="clientes.csv"',
+      },
+    });
+  });
+
   app.get("/admin/customers", async (c) => {
     const q = c.req.query();
     const limit = Math.min(Number(q.limit ?? 200), 1000);

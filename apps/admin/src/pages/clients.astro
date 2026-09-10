@@ -143,6 +143,18 @@ const caTotal = lignes.reduce((s, c) => s + c.caCents, 0);
           Effacer
         </a>
       )}
+      {/* L'export suit les filtres de l'écran : ce qu'on voit est ce qu'on
+          sort, sans quoi on croit exporter un segment et on exporte tout. */}
+      <a
+        href={`/api/admin/customers/export.csv?${new URLSearchParams({
+          ...(recherche ? { q: recherche } : {}),
+          ...(onglet.segment ? { segment: onglet.segment } : {}),
+        }).toString()}`}
+        class="ml-auto rounded border border-bo-border px-4 py-2 text-sm hover:bg-bo-bg"
+        title="La liste affichée, en fichier, avec le consentement marketing de chacune."
+      >
+        Exporter cette liste
+      </a>
     </form>
 
     <div class="overflow-x-auto">

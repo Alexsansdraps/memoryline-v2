@@ -48,6 +48,29 @@ if (Astro.request.method === "POST") {
     } else if (action === "note") {
       await api.updateCustomer(id, { note: String(f.get("note") ?? "") });
       flash = "Note enregistrée.";
+    } else if (action === "rattacher") {
+      // Appel direct : le client partagé ne connaît pas encore cette route,
+      // et la fiche est le seul écran qui en a besoin.
+      const base =
+        import.meta.env.API_URL_INTERNAL ??
+        import.meta.env.PUBLIC_API_URL ??
+        "http://localhost:3000";
+      const res = await fetch(
+        `${base}/admin/customers/${id}/rattacher-commandes`,
+        {
+          method: "POST",
+          headers: { cookie: Astro.request.headers.get("cookie") ?? "" },
+        },
+      );
+      const r = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        commandes?: number;
+        fiches?: number;
+      };
+      if (!res.ok) throw new Error(r.error ?? "Le rattachement a échoué.");
+      flash = r.fiches
+        ? `${r.fiches} fiche${r.fiches > 1 ? "s" : ""} en double rattachée${r.fiches > 1 ? "s" : ""} à celle-ci, avec ${r.commandes ?? 0} commande${(r.commandes ?? 0) > 1 ? "s" : ""}.`
+        : "Aucune fiche en double à rattacher : cette adresse n'apparaît qu'ici.";
     }
   } catch (e) {
     flash = "Erreur : " + String(e);
@@ -381,6 +404,27 @@ const nom = client?.name?.trim() || "Client sans nom";
               </p>
               <button class="rounded border border-bo-border px-3 py-1.5 hover:bg-bo-bg">
                 Enregistrer
+              </button>
+            </form>
+          </section>
+
+          {/* Une même personne finit avec plusieurs fiches : une par commande
+              passée sans compte, une de plus le jour où elle en ouvre un. Le
+              rattachement les réunit sous celle-ci, commandes comprises. */}
+          <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+            <h3 class="mb-2 font-medium">Fiches en double</h3>
+            <form method="POST" class="space-y-2 text-sm">
+              <input type="hidden" name="_action" value="rattacher" />
+              <p class="text-xs text-bo-muted">
+                Si la même adresse e-mail existe sur d'autres fiches sans
+                compte, leurs commandes et leurs adresses viennent ici, et les
+                fiches vidées disparaissent.
+              </p>
+              <button
+                class="rounded border border-bo-border px-3 py-1.5 hover:bg-bo-bg"
+                onclick="return confirm('Rattacher à cette fiche toutes les commandes passées avec la même adresse e-mail ? Les fiches en double, une fois vidées, seront supprimées. Cette opération ne se défait pas.')"
+              >
+                Rattacher les doublons
               </button>
             </form>
           </section>
