@@ -12,6 +12,7 @@
     "db:migrate": "tsx --env-file=../../.env src/db/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "import": "tsx --env-file=../../.env scripts/import/index.ts",
+    "import:historique": "tsx --env-file=../../.env scripts/import-historique.ts",
     "fetch-assets": "tsx --env-file=../../.env scripts/fetch-assets.ts",
     "seed-config": "tsx --env-file=../../.env scripts/seed-config.ts",
     "seed-characters": "tsx --env-file=../../.env scripts/seed-characters.ts",
