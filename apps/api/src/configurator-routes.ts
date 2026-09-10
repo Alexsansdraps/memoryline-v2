@@ -1228,6 +1228,14 @@ export function mountConfiguratorRoutes(app: Hono) {
     const stripePublicKey = process.env.PUBLIC_STRIPE_KEY ?? "";
     const paypalClientId =
       process.env.PUBLIC_PAYPAL_CLIENT_ID ?? process.env.PAYPAL_CLIENT_ID ?? "";
+    // La boutique tourne-t-elle en mode ESSAI ? Une clé Stripe de test se
+    // reconnaît à son préfixe, et PayPal le dit dans son réglage. Le tunnel
+    // s'en sert pour rappeler quoi saisir : sans ce rappel, on cherche un
+    // numéro de carte d'essai à chaque fois, et on finit par se demander si
+    // c'est la boutique qui est cassée.
+    const essai =
+      stripePublicKey.startsWith("pk_test") ||
+      (process.env.PAYPAL_ENV ?? "").trim().toLowerCase() !== "live";
     return c.json({
       stripe:
         stripeConfigured && stripePublicKey
@@ -1235,6 +1243,7 @@ export function mountConfiguratorRoutes(app: Hono) {
           : null,
       paypal:
         paypalConfigured && paypalClientId ? { clientId: paypalClientId } : null,
+      essai,
     });
   });
 

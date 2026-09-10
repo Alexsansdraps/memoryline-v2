@@ -906,6 +906,30 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
                 </div>
               </Show>
 
+              {/* Mode essai : ce qu'il faut saisir. Sans ce rappel on cherche
+                  le numéro de carte de test ailleurs à chaque fois, et devant
+                  PayPal on essaie son vrai compte, qui ne marche pas. */}
+              <Show when={config()?.essai && methods().length > 0}>
+                <div class="rounded-lg border border-sage/40 bg-sage/10 p-4 text-sm">
+                  <p class="font-medium">
+                    Boutique en mode essai : aucun paiement réel.
+                  </p>
+                  <ul class="mt-2 space-y-1 text-ink-soft">
+                    <li>
+                      <b>Carte bancaire :</b> 4242 4242 4242 4242, une date
+                      future, trois chiffres au dos, et n'importe quel code
+                      postal.
+                    </li>
+                    <li>
+                      <b>PayPal :</b> connectez-vous avec le compte acheteur
+                      d'essai, pas le vôtre. Il se trouve sur
+                      developer.paypal.com, « Testing Tools » puis « Sandbox
+                      accounts », en <code>@personal.example.com</code>.
+                    </li>
+                  </ul>
+                </div>
+              </Show>
+
               <Show when={methods().length > 0}>
                 {/* Onglets moyens de paiement */}
                 <div class="flex gap-3">

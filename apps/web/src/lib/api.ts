@@ -548,6 +548,8 @@ export const browserApi = {
     browserGet<{
       stripe: { publicKey: string } | null;
       paypal: { clientId: string } | null;
+      /** Vrai quand la boutique encaisse en mode ESSAI : rien n'est débité. */
+      essai?: boolean;
     }>("/payments/config"),
 
   /** Crée un PaymentIntent Stripe pour la commande, renvoie le clientSecret. */
