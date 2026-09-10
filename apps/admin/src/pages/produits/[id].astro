@@ -959,6 +959,12 @@ try {
             réseaux sociaux. Ce ne sont pas les fonds du configurateur, qui ont
             leur propre bloc plus bas.
           </p>
+          <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+            Sous chaque image, décrivez ce qu'elle montre : « Affiche de la
+            cathédrale d'Amiens sous un ciel bleu ». C'est ce que lit quelqu'un
+            qui ne voit pas l'image, et c'est aussi la seule façon pour Google
+            de savoir de quelle ville il s'agit.
+          </p>
 
           <form method="POST">
             <input type="hidden" name="_action" value="medias" />
@@ -1012,6 +1018,15 @@ try {
                       ▶
                     </button>
                   </div>
+                  <input
+                    type="text"
+                    class="js-media-alt w-full rounded-b border-t border-bo-border bg-bo-surface px-1.5 py-1 text-[11px]"
+                    value={im.alt ?? ""}
+                    maxlength="180"
+                    placeholder="Décrire l'image"
+                    aria-label="Texte alternatif de cette image"
+                    title="Ce que voit quelqu'un qui ne voit pas l'image, et ce que lit Google."
+                  />
                   <button
                     type="button"
                     class="js-media-suppr absolute right-1 top-1 h-6 w-6 rounded-full border border-bo-border bg-bo-surface text-sm leading-none text-bo-muted shadow hover:border-red-300 hover:text-red-600"
@@ -2509,6 +2524,18 @@ try {
 
       synchroniserMedias();
 
+      // La frappe dans un texte alternatif se range aussitot sur la ligne :
+      // c'est elle que la serialisation relit au moment d'enregistrer.
+      listeMedias.addEventListener("input", (ev) => {
+        const cible = ev.target;
+        if (!(cible instanceof Element)) return;
+        if (!cible.classList.contains("js-media-alt")) return;
+        const li = cible.closest("li[data-url]");
+        if (!li) return;
+        li.dataset.alt = cible.value.trim();
+        mediasChanges();
+      });
+
       listeMedias.addEventListener("click", (ev) => {
         const cible = ev.target;
         if (!(cible instanceof Element)) return;
@@ -2557,6 +2584,7 @@ try {
               `<span class="js-media-rang text-[11px] text-bo-muted"></span>` +
               `<button type="button" class="js-media-droite px-1 text-bo-muted hover:text-bo-ink" title="Déplacer vers la droite" aria-label="Déplacer cette image vers la droite">▶</button>` +
               `</div>` +
+              `<input type="text" class="js-media-alt w-full rounded-b border-t border-bo-border bg-bo-surface px-1.5 py-1 text-[11px]" value="" maxlength="180" placeholder="Décrire l'image" aria-label="Texte alternatif de cette image" />` +
               `<button type="button" class="js-media-suppr absolute right-1 top-1 h-6 w-6 rounded-full border border-bo-border bg-bo-surface text-sm leading-none text-bo-muted shadow hover:border-red-300 hover:text-red-600" title="Retirer cette image" aria-label="Retirer cette image">✕</button>`;
             listeMedias.appendChild(li);
             faits++;
