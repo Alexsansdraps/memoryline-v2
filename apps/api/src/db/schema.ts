@@ -464,6 +464,19 @@ export const characterTypes = pgTable(
      */
     bottomPct: doublePrecision("bottom_pct").default(1).notNull(),
     /**
+     * Taille de CE personnage, en facteur de la largeur de référence.
+     *
+     * Tous les personnages étaient dessinés à la même largeur : un chat
+     * occupait autant de place qu'un homme adulte. Ce facteur corrige la
+     * proportion, personnage par personnage. 1 = la largeur de référence,
+     * 0,6 = nettement plus petit, 1,3 = plus grand.
+     *
+     * Il s'applique quand l'affiche se COMPOSE, pas au rendu : il entre dans
+     * l'échelle enregistrée avec la commande. Une affiche commandée hier ne
+     * bouge donc jamais, même si ce facteur change demain.
+     */
+    facteurTaille: doublePrecision("facteur_taille").default(1).notNull(),
+    /**
      * Orientation NATIVE du personnage : 'front' (face) ou 'back' (dos).
      * Propriété du perso (ex. "Homme assis de dos" = back), définie dans le BO.
      * Le configurateur affiche le perso dans son orientation ; un perso n'a

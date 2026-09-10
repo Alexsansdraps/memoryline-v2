@@ -70,6 +70,13 @@ if (Astro.request.method === "POST") {
         ...(f.get("bottomPct")
           ? { bottomPct: Number(String(f.get("bottomPct")).replace(",", ".")) }
           : {}),
+        ...(f.get("facteurTaille")
+          ? {
+              facteurTaille: Number(
+                String(f.get("facteurTaille")).replace(",", "."),
+              ),
+            }
+          : {}),
       });
       flash = "Personnage enregistré.";
     }
@@ -93,6 +100,48 @@ try {
 }
 
 const vueDuPerso = perso?.orientation ?? vues[0]?.slug ?? "front";
+
+/**
+ * L'avant-plan du type d'affiche de ce personnage : le muret pour un
+ * personnage de dos, rien pour un personnage de face. C'est exactement ce que
+ * la boutique dessinera devant lui.
+ */
+const avantPlan = vues.find((v) => v.slug === vueDuPerso)?.foregroundUrl ?? null;
+
+/** Quelques décors réels, pour ne pas calibrer sur un fond blanc. */
+interface DecorChoix {
+  id: number;
+  nom: string;
+  url: string;
+}
+let decors: DecorChoix[] = [];
+try {
+  const base =
+    import.meta.env.API_URL_INTERNAL ??
+    import.meta.env.PUBLIC_API_URL ??
+    "http://localhost:3000";
+  const res = await fetch(`${base}/admin/decors`, {
+    headers: { cookie: Astro.request.headers.get("cookie") ?? "" },
+  });
+  if (res.ok) {
+    const d = (await res.json()) as {
+      decors: { id: number; nom: string | null; url: string }[];
+    };
+    decors = d.decors
+      .filter((x) => x.url)
+      .map((x) => ({ id: x.id, nom: x.nom ?? `Décor ${x.id}`, url: x.url }));
+  }
+} catch {
+  // Sans décors, la calibration se fait sur un fond uni : moins parlant, mais
+  // la géométrie reste juste.
+}
+
+/* Les constantes du configurateur, recopiées telles quelles. Elles décident
+   de la taille et de la place d'un personnage sur l'affiche ; les changer ici
+   sans les changer là-bas ferait mentir la calibration. */
+const CHAR_BASE_WIDTH = 0.22; // largeur de référence, en fraction de l'affiche
+const ECHELLE_SEUL = 0.7; // échelle d'un personnage seul sur l'affiche
+const Y_MURET = 0.816; // hauteur où les pieds se posent
 
 /**
  * Pièces génériques du type d'affiche de CE personnage, par emplacement.
@@ -162,7 +211,11 @@ const piecesACaler = SLOTS.flatMap((s) => {
       {/* ---------------------------------------------------------------- */}
       <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
         <h3 class="font-semibold mb-4">Le personnage</h3>
-        <form method="POST" class="grid sm:grid-cols-4 gap-4 text-sm items-end">
+        <form
+          id="fiche-personnage"
+          method="POST"
+          class="grid sm:grid-cols-4 gap-4 text-sm items-end"
+        >
           <label class="block">
             <span class="text-bo-muted">Nom</span>
             <input
@@ -234,6 +287,115 @@ const piecesACaler = SLOTS.flatMap((s) => {
             </button>
           </div>
         </form>
+      </section>
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Calibrage en conditions réelles                                   */}
+      {/* ---------------------------------------------------------------- */}
+      <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+        <h3 class="mb-1 font-semibold">Taille et calage, en conditions réelles</h3>
+        <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+          Le personnage est posé sur un vrai décor, à la taille exacte qu'il
+          aura dans le configurateur{avantPlan ? ", avec le muret devant lui" : ""}.
+          Bougez les curseurs, l'affiche se recompose. Puis enregistrez.
+        </p>
+
+        <div class="flex flex-wrap items-start gap-6">
+          <div
+            id="calibrage-scene"
+            class="relative w-[260px] shrink-0 overflow-hidden rounded border border-bo-border bg-bo-bg"
+            style="aspect-ratio: 1 / 1.4142"
+            data-base={svgSrc(perso.baseSvgUrl)}
+            data-avant-plan={avantPlan ? svgSrc(avantPlan) : ""}
+            data-largeur={CHAR_BASE_WIDTH}
+            data-echelle={ECHELLE_SEUL}
+            data-y={Y_MURET}
+          >
+            <img id="calibrage-fond" alt="" class="absolute inset-0 h-full w-full object-cover" />
+            {/* Le personnage passe DEVANT le muret, comme sur la boutique. */}
+            <img
+              id="calibrage-perso"
+              alt=""
+              class="absolute"
+              style="z-index: 10; object-fit: contain"
+            />
+            {avantPlan && (
+              <img
+                id="calibrage-muret"
+                src={svgSrc(avantPlan)}
+                alt=""
+                class="absolute bottom-0 left-0 w-full"
+                style="z-index: 5; height: auto"
+              />
+            )}
+          </div>
+
+          <div class="min-w-[300px] flex-1 space-y-4 text-sm">
+            {decors.length > 0 && (
+              <label class="block">
+                <span class="text-bo-muted">Décor d'essai</span>
+                <select
+                  id="calibrage-decor"
+                  class="mt-1 w-full rounded border border-bo-border px-3 py-2"
+                >
+                  {decors.map((d) => (
+                    <option value={svgSrc(d.url)}>{d.nom}</option>
+                  ))}
+                </select>
+                <span class="mt-1 block text-xs text-bo-muted">
+                  Le décor ne change rien au réglage : il sert à juger.
+                </span>
+              </label>
+            )}
+
+            <label class="block">
+              <span class="text-bo-muted">
+                Taille du personnage — <b id="calibrage-taille-val">1</b>
+              </span>
+              <input
+                id="calibrage-taille"
+                name="facteurTaille"
+                form="fiche-personnage"
+                type="range"
+                min="0.3"
+                max="2"
+                step="0.01"
+                value={perso.facteurTaille ?? 1}
+                class="mt-1 w-full"
+              />
+              <span class="mt-1 block text-xs text-bo-muted">
+                1 est la taille d'un adulte. Un chat ou un bébé se règlent plus
+                bas, un couple plus haut. C'est cette taille-là que la boutique
+                emploiera.
+              </span>
+            </label>
+
+            <label class="block">
+              <span class="text-bo-muted">
+                Calage au sol — <b id="calibrage-sol-val">1</b>
+              </span>
+              <input
+                id="calibrage-sol"
+                type="range"
+                min="0.05"
+                max="1"
+                step="0.005"
+                value={perso.bottomPct ?? 1}
+                class="mt-1 w-full"
+              />
+              <span class="mt-1 block text-xs text-bo-muted">
+                Il flotte au-dessus du muret : baissez. Il s'enfonce dedans :
+                montez. Ce curseur écrit le même chiffre que le champ « Calage
+                au sol » plus haut.
+              </span>
+            </label>
+
+            <p class="text-xs text-bo-muted">
+              Les deux réglages s'enregistrent avec le bouton « Enregistrer » du
+              bloc du dessus.
+            </p>
+          </div>
+        </div>
       </section>
 
       {/* ---------------------------------------------------------------- */}
@@ -996,5 +1158,75 @@ const piecesACaler = SLOTS.flatMap((s) => {
 
       afficher();
     }
+  </script>
+
+  <script is:inline>
+    /*
+     * Le calibrage, en conditions réelles.
+     *
+     * La géométrie est celle du configurateur, recopiée :
+     *   largeur du cadre = 22 % × échelle × facteur de taille
+     *   hauteur du cadre = largeur × 2 (le cadre est deux fois plus haut que
+     *     large), puis rapportée à la hauteur de l'affiche : × √2
+     *   descente = (1 − calage au sol) × hauteur du cadre
+     * Le personnage est centré sur (0,5 ; 0,816 + descente), comme un
+     * personnage seul posé sur le muret.
+     */
+    (function () {
+      const scene = document.getElementById("calibrage-scene");
+      if (!scene) return;
+      const perso = document.getElementById("calibrage-perso");
+      const fond = document.getElementById("calibrage-fond");
+      const decor = document.getElementById("calibrage-decor");
+      const taille = document.getElementById("calibrage-taille");
+      const sol = document.getElementById("calibrage-sol");
+      const tailleVal = document.getElementById("calibrage-taille-val");
+      const solVal = document.getElementById("calibrage-sol-val");
+      const champSol = document.querySelector('input[name="bottomPct"]');
+
+      const LARGEUR = Number(scene.dataset.largeur || 0.22);
+      const ECHELLE = Number(scene.dataset.echelle || 0.7);
+      const Y = Number(scene.dataset.y || 0.816);
+
+      perso.src = scene.dataset.base || "";
+      if (!scene.dataset.base) perso.style.visibility = "hidden";
+      if (decor && decor.value) fond.src = decor.value;
+
+      function dessiner() {
+        const f = Number(taille.value);
+        const bp = Number(sol.value);
+        // Largeur du cadre en % de la largeur d'affiche.
+        const largeurPct = LARGEUR * ECHELLE * f * 100;
+        // Hauteur du cadre en % de la HAUTEUR d'affiche (aspect 1:2, page √2).
+        const hauteurPct = largeurPct * Math.SQRT2;
+        const descente = (1 - bp) * hauteurPct;
+        perso.style.width = largeurPct + "%";
+        perso.style.height = hauteurPct + "%";
+        perso.style.left = "50%";
+        perso.style.top = Y * 100 + descente + "%";
+        perso.style.transform = "translate(-50%, -50%)";
+        tailleVal.textContent = f.toFixed(2).replace(".", ",");
+        solVal.textContent = bp.toFixed(3).replace(".", ",");
+        // Le champ chiffré du bloc du dessus reste la source enregistrée pour
+        // le calage : deux endroits qui diraient deux choses seraient pires
+        // que pas de curseur du tout.
+        if (champSol) champSol.value = String(bp);
+      }
+
+      taille.addEventListener("input", dessiner);
+      sol.addEventListener("input", dessiner);
+      if (champSol)
+        champSol.addEventListener("input", function () {
+          const v = Number(String(champSol.value).replace(",", "."));
+          if (Number.isFinite(v) && v >= 0.05 && v <= 1) {
+            sol.value = String(v);
+            dessiner();
+          }
+        });
+      decor?.addEventListener("change", function () {
+        fond.src = decor.value;
+      });
+      dessiner();
+    })();
   </script>
 </Admin>

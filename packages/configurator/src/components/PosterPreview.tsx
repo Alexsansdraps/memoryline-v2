@@ -167,8 +167,12 @@ export function PosterPreview(props: {
    * répéterait autant de fois qu'il y en a.
    */
   const placements = createMemo<PlacementPersonnage[]>(() =>
-    placementsAffiche(props.state.characters, (c) =>
-      basDuDessin(c.characterId),
+    placementsAffiche(
+      props.state.characters,
+      (c) => basDuDessin(c.characterId),
+      // La taille propre au personnage : un chat n'occupe pas la place d'un
+      // adulte, et la rangée doit le savoir pour répartir correctement.
+      (c) => props.characterById(c.characterId)?.facteurTaille ?? 1,
     ),
   );
 

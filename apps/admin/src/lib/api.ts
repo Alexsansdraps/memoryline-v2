@@ -855,6 +855,11 @@ export interface CharacterType {
    */
   bottomPct?: number;
   /**
+   * Taille de ce personnage, en facteur de la largeur de référence.
+   * 1 = la largeur commune d'avant ce réglage, 0,6 = nettement plus petit.
+   */
+  facteurTaille?: number;
+  /**
    * Pièces autorisées par emplacement, en POSITIONS de pièces génériques.
    * Absent = pas encore paramétré, le configurateur propose alors tout.
    */

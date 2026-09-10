@@ -854,6 +854,9 @@ export function mountConfiguratorRoutes(app: Hono) {
         baseColorZones: t.baseColorZones,
         orientation: t.orientation ?? "front",
         bottomPct: t.bottomPct ?? 1,
+        // Taille propre au personnage : c'est le configurateur qui l'applique
+        // en composant, pour qu'elle entre dans l'échelle enregistrée.
+        facteurTaille: t.facteurTaille ?? 1,
         // Ids d'ancienne config par slot (= asset.position des génériques) :
         // le front restreint les galeries de l'éditeur à ces variantes.
         slotVariants: t.slotVariants ?? null,
@@ -1887,6 +1890,11 @@ export function mountConfiguratorRoutes(app: Hono) {
       // automatique, pour les persos dont les pieds tombent mal.
       ...(b.bottomPct !== undefined && Number.isFinite(Number(b.bottomPct))
         ? { bottomPct: Math.min(1, Math.max(0.05, Number(b.bottomPct))) }
+        : {}),
+      // Taille propre au personnage. Bornée : en dessous de 0,3 il devient
+      // illisible, au-delà de 2 il déborde de l'affiche.
+      ...(b.facteurTaille !== undefined && Number.isFinite(Number(b.facteurTaille))
+        ? { facteurTaille: Math.min(2, Math.max(0.3, Number(b.facteurTaille))) }
         : {}),
       // Dessin et couleurs, pour créer un personnage complet d'un coup depuis
       // le back-office. Absents : on ne touche pas à ce qui existe.

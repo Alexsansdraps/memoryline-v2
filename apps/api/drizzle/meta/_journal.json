@@ -281,6 +281,13 @@
       "when": 1789034213962,
       "tag": "0039_capture_paypal",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1789037496116,
+      "tag": "0040_taille_personnage",
+      "breakpoints": true
     }
   ]
 }

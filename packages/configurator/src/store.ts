@@ -89,6 +89,12 @@ export interface CharacterDTO {
   /** Bas réel du contenu dans le viewBox (0..1) pour aligner les pieds au sol. */
   bottomPct?: number;
   /**
+   * Taille de CE personnage, en facteur de la largeur de référence. Un chat
+   * n'occupe pas la place d'un adulte. Absent, il vaut 1 : c'est ce que
+   * faisaient tous les personnages avant que ce réglage existe.
+   */
+  facteurTaille?: number;
+  /**
    * Variantes AUTORISÉES pour ce perso, par slot, dans l'ordre d'affichage.
    * Les nombres = `position` des VariantDTO (ids d'ancienne config), pas
    * leurs ids. null/absent = pas encore lié -> proposer toutes les variantes.
@@ -345,9 +351,20 @@ export const CHAR_BASE_WIDTH = 0.22;
  */
 export function autoPlace(
   characters: WorkingCharacter[],
+  /**
+   * La taille propre à chaque personnage, en facteur de la largeur de
+   * référence. Absente, tout le monde fait la même largeur — c'est ce que
+   * faisait la rangée avant qu'un chat puisse être plus petit qu'un homme.
+   */
+  facteurDe?: (c: WorkingCharacter) => number,
 ): { x: number; y: number; scale: number }[] {
   const n = characters.length;
   if (n === 0) return [];
+  // Bornés comme en base : un facteur aberrant ne doit pas faire disparaître
+  // la rangée entière.
+  const facteurs = characters.map((c) =>
+    Math.min(2, Math.max(0.3, facteurDe?.(c) ?? 1)),
+  );
 
   // NB : ce calage suppose bottom_pct MESURÉ en base (pnpm run measure-anchors) —
   // sans ça les persos flottent (vide sous les pieds non compensé).
@@ -359,13 +376,24 @@ export function autoPlace(
   // Échelle : persos plus petits ; rétrécit avec le nombre pour tenir côte à
   // côte sans déborder (rangée dans ~90% de la largeur).
   const usable = 0.9;
-  const scale = Math.min(0.7, usable / (n * CHAR_BASE_WIDTH));
-  const slotW = CHAR_BASE_WIDTH * scale; // largeur effective d'un perso
+  // On compte la place réellement demandée, pas le nombre de personnages :
+  // deux chats à 0,6 tiennent dans ce qu'un adulte occupe.
+  const demande = facteurs.reduce((s, f) => s + f, 0);
+  const scale = Math.min(0.7, usable / (demande * CHAR_BASE_WIDTH));
+  // Largeur effective de CHAQUE perso, la sienne.
+  const largeurs = facteurs.map((f) => CHAR_BASE_WIDTH * scale * f);
   // Resserrement : distance entre centres < largeur d'un perso (les cadres se
   // chevauchent légèrement, les dessins ont de la marge). 1 = côte à côte.
   const GAP = 0.8;
-  const stepW = slotW * GAP; // distance entre centres de persos voisins
-  const rowW = slotW + stepW * (n - 1); // largeur totale de la rangée
+  // Le pas entre deux voisins tient compte des DEUX largeurs : un chat collé à
+  // un adulte ne s'écarte pas comme deux adultes.
+  const pas = largeurs.map((w, i) =>
+    i === 0 ? 0 : ((largeurs[i - 1]! + w) / 2) * GAP,
+  );
+  const rowW =
+    largeurs[0]! / 2 +
+    pas.reduce((s, v) => s + v, 0) +
+    largeurs[n - 1]! / 2; // largeur totale de la rangée
   const start = 0.5 - rowW / 2; // bord gauche pour centrer le groupe
 
   // PENTE DU MURET : il descend de gauche à droite (~+9% de bas en haut sur
@@ -373,11 +401,15 @@ export function autoPlace(
   // que les pieds restent sur le bord incliné (gauche plus haut, droite plus bas).
   const SLOPE = 0.09; // dénivelé total sur la largeur de l'affiche
 
+  let curseur = start + largeurs[0]! / 2; // centre du premier
   return characters.map((_, i) => {
-    const x = start + slotW / 2 + stepW * i; // centre du i-ème perso (0..1)
+    if (i > 0) curseur += pas[i]!;
+    const x = curseur; // centre du i-ème perso (0..1)
     // décalage selon la position : centré sur 0.5 -> +/- la moitié de la pente.
     const slopeY = (x - 0.5) * SLOPE;
-    return { x, y: Y + slopeY, scale };
+    // L'échelle rendue est celle du personnage : la rangée décide de la place,
+    // le facteur décide de la taille dans cette place.
+    return { x, y: Y + slopeY, scale: scale * facteurs[i]! };
   });
 }
 
@@ -443,8 +475,9 @@ export function bornerPlacement(
 export function placementsAffiche(
   characters: WorkingCharacter[],
   basDuDessin?: (c: WorkingCharacter) => number,
+  facteurDe?: (c: WorkingCharacter) => number,
 ): PlacementPersonnage[] {
-  const rangee = autoPlace(characters);
+  const rangee = autoPlace(characters, facteurDe);
   return characters.map((c, i) => {
     const auto = rangee[i] ?? { x: 0.5, y: 0.816, scale: 0.6 };
     if (!c.placementManuel) return auto;
@@ -458,8 +491,9 @@ export function configFromState(
   state: ConfiguratorState,
   productId: string | number | undefined,
   basDuDessin?: (c: WorkingCharacter) => number,
+  facteurDe?: (c: WorkingCharacter) => number,
 ): PosterConfig {
-  const placement = placementsAffiche(state.characters, basDuDessin);
+  const placement = placementsAffiche(state.characters, basDuDessin, facteurDe);
   const characters: Character[] = state.characters.map((c, i) => {
     const p = placement[i] ?? { x: c.x, y: c.y, scale: c.scale };
     // assets : slot -> variantId, sans les slots vides.

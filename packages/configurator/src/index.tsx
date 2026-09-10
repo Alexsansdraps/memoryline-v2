@@ -237,7 +237,16 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     // Le même calage qu'à l'écran part dans la commande : c'est ce x/y-là que
     // le PDF d'impression relit, l'affiche imprimée ne peut donc pas différer
     // de celle que le client a composée.
-    props.onSubmit(configFromState(state, props.product.id, basDuDessin));
+    props.onSubmit(
+      configFromState(
+        state,
+        props.product.id,
+        basDuDessin,
+        // La taille propre au personnage entre dans l'échelle enregistrée :
+        // le PDF relit ce chiffre-là et ne recalcule rien.
+        (c) => characterById(c.characterId)?.facteurTaille ?? 1,
+      ),
+    );
   }
 
   /* --------------------------- étape 1 ------------------------------------ */
