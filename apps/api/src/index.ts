@@ -11,11 +11,13 @@ import {
   desc,
   gte,
   inArray,
+  or,
   sql as sqlOp,
 } from "drizzle-orm";
+import type { Column, SQL } from "drizzle-orm";
 import { resolve, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import sharp from "sharp";
 import { db, sql, schema } from "./db/client.js";
@@ -66,6 +68,7 @@ import {
 import { mountSalonRoutes } from "./salon.js";
 import { mountCompteRoutes } from "./comptes.js";
 import { mountIaRoutes } from "./ia.js";
+import { mountContact } from "./contact.js";
 
 const app = new Hono();
 const isProd = process.env.NODE_ENV === "production";
@@ -173,14 +176,92 @@ const MIME: Record<string, string> = {
   ".gif": "image/gif",
 };
 
+/**
+ * Les largeurs qu'on sait servir, et rien d'autre.
+ *
+ * Une liste fermee, parce qu'une largeur libre est un disque qu'on remplit :
+ * il suffirait de demander mille largeurs d'une meme image pour ecrire mille
+ * fichiers. Ces cinq-la couvrent la grille, la fiche et le grand ecran.
+ */
+const LARGEURS_SERVIES = [200, 400, 600, 900, 1400] as const;
+
+/** Le dossier ou l'on range les tailles calculees. Jamais les originaux. */
+const TAILLES_DIR = resolve(ASSETS_DIR, "tailles");
+
+/** Les retailles en cours, pour n'en lancer qu'une par fichier a la fois. */
+const tailleEnCours = new Map<string, Promise<void>>();
+
+/**
+ * Le fichier a servir : l'original, ou la taille demandee.
+ *
+ * L'original n'est jamais modifie — c'est lui qu'on imprime. La taille
+ * calculee est ecrite a cote, une fois, puis relue. Si la retaille echoue
+ * pour une raison quelconque, on rend l'original : une image lourde vaut
+ * mieux qu'une image absente.
+ */
+async function fichierALaTaille(
+  path: string,
+  file: string,
+  largeur: number | null,
+): Promise<{ chemin: string; mime: string }> {
+  const ext = extname(file).toLowerCase();
+  const mimeOrigine = MIME[ext] ?? "application/octet-stream";
+  // Un SVG est un dessin : il s'agrandit sans perdre, le retailler n'aurait
+  // aucun sens. Un format qu'on ne connait pas, on n'y touche pas non plus.
+  if (largeur === null || ext === ".svg" || !mimeOrigine.startsWith("image/"))
+    return { chemin: path, mime: mimeOrigine };
+
+  const nomCache = `${largeur}-${file.replace(/\.[^.]+$/, "")}.webp`;
+  const cache = resolve(TAILLES_DIR, basename(nomCache));
+  try {
+    await stat(cache);
+    return { chemin: cache, mime: "image/webp" };
+  } catch {
+    // Pas encore calculee : on la fabrique.
+  }
+  try {
+    // Deux visiteurs qui demandent la meme taille au meme instant écriraient
+    // le même fichier en même temps, et l'un lirait ce que l'autre est en
+    // train d'écrire. Le premier arrivé calcule, les autres attendent son
+    // résultat.
+    let travail = tailleEnCours.get(cache);
+    if (!travail) {
+      travail = (async () => {
+        const sharp = (await import("sharp")).default;
+        await mkdir(TAILLES_DIR, { recursive: true });
+        await sharp(path)
+          // `withoutEnlargement` : on ne fabrique jamais une image plus grande
+          // que l'originale, ce qui ne ferait qu'ajouter du poids sans un
+          // pixel de détail en plus.
+          .resize({ width: largeur, withoutEnlargement: true })
+          .webp({ quality: 82 })
+          .toFile(cache);
+      })().finally(() => tailleEnCours.delete(cache));
+      tailleEnCours.set(cache, travail);
+    }
+    await travail;
+    return { chemin: cache, mime: "image/webp" };
+  } catch (e) {
+    console.warn("[assets] retaille impossible", file, String(e));
+    return { chemin: path, mime: mimeOrigine };
+  }
+}
+
 app.get("/assets/:file", async (c) => {
   // basename() neutralise toute tentative de traversal (../).
   const file = basename(c.req.param("file"));
   const path = resolve(ASSETS_DIR, file);
+  // « ?l=600 » demande une largeur. Une largeur hors de la liste est ignoree
+  // plutot que refusee : l'image doit s'afficher, meme mal demandee.
+  const demandee = Number(c.req.query("l"));
+  const largeur = (LARGEURS_SERVIES as readonly number[]).includes(demandee)
+    ? demandee
+    : null;
   try {
     await stat(path);
-    const buf = await readFile(path);
-    const mime = MIME[extname(file).toLowerCase()] ?? "application/octet-stream";
+    const servi = await fichierALaTaille(path, file, largeur);
+    const buf = await readFile(servi.chemin);
+    const mime = servi.mime;
     return c.body(buf, 200, {
       "Content-Type": mime,
       "Cache-Control": "public, max-age=31536000, immutable",
@@ -257,12 +338,156 @@ app.get("/stats", async (c) => {
   });
 });
 
-/** Catalogue : liste de produits (avec leurs variantes A4/A3). */
+/* -------------------------------------------------------------------------- */
+/*  Chercher une affiche depuis la boutique                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * La table de correspondance des lettres accentuées, pour `translate()`.
+ *
+ * Recopiée de la recherche du back-office (recherche.ts), volontairement : ce
+ * fichier-là est réservé au back-office — il lit des noms de clientes, des
+ * montants et des numéros de commande — et une route publique n'a rien à
+ * importer de lui. La méthode, elle, est la bonne : `unaccent` demanderait un
+ * `CREATE EXTENSION`, donc les droits d'administration de la base et une
+ * migration de plus à ne pas oublier ; `translate()` est présent partout.
+ *
+ * Les majuscules accentuées figurent dans la table alors que `lower()` est
+ * appliqué avant : sur une base créée avec la locale « C », `lower('É')` ne
+ * rend pas « é », et « Éléonore » cesserait de se trouver en tapant
+ * « eleonore ».
+ */
+const LETTRES_ACCENTUEES =
+  "àáâãäåçèéêëìíîïñòóôõöùúûüýÿÀÁÂÃÄÅÇÈÉÊËÌÍÎÏÑÒÓÔÕÖÙÚÛÜÝŸ";
+const LETTRES_PLATES =
+  "aaaaaaceeeeiiiinooooouuuuyyaaaaaaceeeeiiiinooooouuuuyy";
+
+/** Le même aplatissement, côté JavaScript, pour la saisie du visiteur. */
+function aplatir(texte: string): string {
+  return texte
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/gu, "")
+    .toLowerCase();
+}
+
+/**
+ * Le motif `like` correspondant à une saisie.
+ *
+ * `%` et `_` ont un sens pour la base : cherchés tels quels, taper « 50% »
+ * ramènerait le catalogue entier. Une affiche a parfaitement le droit de
+ * s'appeler « Promo 50% », et la barre oblique inversée d'être tapée par
+ * erreur — les trois sont donc échappées.
+ */
+function motifDe(saisie: string): string {
+  const plat = aplatir(saisie).replace(/[\\%_]/g, (signe) => `\\${signe}`);
+  return `%${plat}%`;
+}
+
+/** « cette colonne, accents et casse mis de côté, contient le motif ». */
+function contient(colonne: Column, motif: string): SQL {
+  return sqlOp`translate(lower(coalesce(${colonne}, '')), ${LETTRES_ACCENTUEES}, ${LETTRES_PLATES}) like ${motif}`;
+}
+
+/**
+ * « le nom TRADUIT dans cette langue contient le motif ».
+ *
+ * Une visiteuse allemande cherche avec les mots qu'elle a sous les yeux. Le
+ * nom français reste cherché en même temps : les noms de villes ne se
+ * traduisent pas, et une traduction non saisie retombe déjà sur le français.
+ */
+function contientTraduction(langue: string, motif: string): SQL {
+  return sqlOp`translate(lower(coalesce(${schema.products.translations} -> ${langue} ->> 'name', '')), ${LETTRES_ACCENTUEES}, ${LETTRES_PLATES}) like ${motif}`;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Ranger un rayon                                                           */
+/* -------------------------------------------------------------------------- */
+
+/** Les tris que la boutique sait rendre. Tout le reste retombe sur le défaut. */
+const TRIS = ["manuel", "nouveautes", "prix_asc", "prix_desc", "alpha"] as const;
+type Tri = (typeof TRIS)[number];
+
+/**
+ * Le prix qu'une affiche AFFICHE : le plus bas de ses variantes.
+ *
+ * C'est ce que la vignette montre (« à partir de 23 € »), donc c'est sur lui
+ * que le tri par prix doit porter — trier sur le prix de base rangerait la
+ * grille dans un ordre que l'œil dément. Sans variante tarifée, le prix de
+ * base reprend la main.
+ */
+const PRIX_AFFICHE = sqlOp`coalesce((select min(v.price_cents) from ${schema.variants} v where v.product_id = ${schema.products.id} and v.price_cents > 0), ${schema.products.basePriceCents})`;
+
+/** Le nom, accents et casse mis de côté : « Élan » se range entre « Eau » et « Été ». */
+const NOM_RANGE = sqlOp`translate(lower(${schema.products.name}), ${LETTRES_ACCENTUEES}, ${LETTRES_PLATES})`;
+
+/**
+ * La place que la propriétaire a donnée à l'affiche DANS CETTE collection.
+ *
+ * Elle range ses affiches au glisser-déposer dans le back-office, et cette
+ * position dormait : la boutique servait l'ordre de création. Une affiche qui
+ * n'est pas dans la collection demandée ne peut pas se présenter ici — le
+ * filtre l'a déjà écartée — mais `nulls last` garde le tri lisible plutôt que
+ * de laisser Postgres choisir.
+ */
+function positionDansCollection(collection: string): SQL {
+  return sqlOp`(select min(pc.position) from ${schema.productCollections} pc join ${schema.collections} col on col.id = pc.collection_id where pc.product_id = ${schema.products.id} and col.slug = ${collection})`;
+}
+
+/**
+ * L'ordre demandé, en clauses SQL.
+ *
+ * Chaque tri se termine par l'identifiant : deux affiches au même prix, au
+ * même nom ou à la même position doivent se présenter dans le même ordre
+ * d'une page à l'autre, sinon la pagination perd et répète des affiches.
+ */
+function ordreDeTri(tri: Tri, collection: string): SQL[] {
+  switch (tri) {
+    case "nouveautes":
+      return [desc(schema.products.createdAt), desc(schema.products.id)];
+    case "prix_asc":
+      return [sqlOp`${PRIX_AFFICHE} asc`, asc(schema.products.id)];
+    case "prix_desc":
+      return [sqlOp`${PRIX_AFFICHE} desc`, asc(schema.products.id)];
+    case "alpha":
+      return [sqlOp`${NOM_RANGE} asc`, asc(schema.products.id)];
+    case "manuel":
+      // Hors collection, « manuel » n'a personne à qui obéir : on retombe sur
+      // l'ordre de création, celui que la boutique servait avant.
+      return collection
+        ? [
+            sqlOp`${positionDansCollection(collection)} asc nulls last`,
+            asc(schema.products.id),
+          ]
+        : [asc(schema.products.id)];
+  }
+}
+
+/**
+ * Catalogue : liste de produits (avec leurs variantes A4/A3).
+ *
+ * Quatre paramètres facultatifs, tous portés par l'adresse pour qu'un lien
+ * reste partageable :
+ *
+ *   - `genre` et `collection` découpent les rayons du menu ;
+ *   - `q` cherche dans le nom et l'adresse de l'affiche, accents et casse mis
+ *     de côté ;
+ *   - `sort` range (`manuel`, `nouveautes`, `prix_asc`, `prix_desc`, `alpha`) ;
+ *   - `limit` et `offset` paginent.
+ *
+ * Le nombre TOTAL d'affiches correspondant aux filtres part dans l'en-tête
+ * `X-Total-Count`. Il ne rentre pas dans le corps, qui reste un tableau nu :
+ * le stand, le plan de site et la page d'accueil le lisent tel quel, et les
+ * envelopper dans un objet aurait cassé les trois pour une pagination qu'eux
+ * n'utilisent pas.
+ */
 app.get("/products", async (c) => {
   // Plafond relevé : la boutique en demande la totalité, et le catalogue a
   // dépassé les 200 depuis longtemps — au-delà, les dernières affiches
   // créées n'apparaissaient nulle part.
-  const limit = Math.min(Number(c.req.query("limit") ?? 50), 1000);
+  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 50) || 0, 1), 1000);
+  // Une page négative ou illisible vaut la première : mieux qu'une erreur sur
+  // une adresse qu'un visiteur peut très bien avoir tapée à la main.
+  const offset = Math.max(Math.trunc(Number(c.req.query("offset") ?? 0)) || 0, 0);
   const langue = langueDemandee(c);
 
   const filtres = [eq(schema.products.status, "active")];
@@ -271,33 +496,58 @@ app.get("/products", async (c) => {
     filtres.push(eq(schema.products.kind, genre));
   const collection = (c.req.query("collection") ?? "").trim();
   if (collection)
+    // `col.active` : une collection désactivée est retirée de la boutique, pas
+    // seulement du menu. Sans cette condition, son adresse continuait d'ouvrir
+    // un rayon que la propriétaire croyait fermé.
     filtres.push(
-      sqlOp`exists (select 1 from ${schema.productCollections} pc join ${schema.collections} col on col.id = pc.collection_id where pc.product_id = ${schema.products.id} and col.slug = ${collection})`,
+      sqlOp`exists (select 1 from ${schema.productCollections} pc join ${schema.collections} col on col.id = pc.collection_id where pc.product_id = ${schema.products.id} and col.slug = ${collection} and col.active = true)`,
     );
-  const rows = await db
-    .select({
-      id: schema.products.id,
-      slug: schema.products.slug,
-      name: schema.products.name,
-      kind: schema.products.kind,
-      basePriceCents: schema.products.basePriceCents,
-      translations: schema.products.translations,
-    })
-    .from(schema.products)
-    // Seuls les produits actifs sont en vente. Un brouillon est un produit
-    // qu'on prépare, une archive un produit retiré : ni l'un ni l'autre n'a
-    // sa place dans la boutique. Le back-office passe par /admin/products,
-    // qui, lui, montre tout.
-    //
-    // Les deux filtres facultatifs servent les rayons du menu : le GENRE
-    // sépare les affiches à composer des affiches prêtes à imprimer, la
-    // COLLECTION donne « Villes » et « Thèmes & paysages ».
-    .where(and(...filtres))
-    // Ordre stable : sans tri explicite, Postgres est libre de renvoyer les
-    // lignes dans n'importe quel ordre, et la boutique se réorganisait toute
-    // seule d'une requête à l'autre. Les créations récentes ferment la marche.
-    .orderBy(asc(schema.products.id))
-    .limit(limit);
+
+  const saisie = (c.req.query("q") ?? "").trim();
+  if (saisie) {
+    const motif = motifDe(saisie);
+    const surLeNom = [
+      contient(schema.products.name, motif),
+      contient(schema.products.slug, motif),
+      ...(langue !== "fr" ? [contientTraduction(langue, motif)] : []),
+    ];
+    filtres.push(or(...surLeNom)!);
+  }
+
+  const tri: Tri =
+    (TRIS as readonly string[]).indexOf(c.req.query("sort") ?? "") >= 0
+      ? (c.req.query("sort") as Tri)
+      : // Par défaut, l'ordre réglé à la main quand un rayon est demandé, et
+        // l'ordre de création sinon — celui que la boutique servait déjà.
+        "manuel";
+
+  // Seuls les produits actifs sont en vente. Un brouillon est un produit
+  // qu'on prépare, une archive un produit retiré : ni l'un ni l'autre n'a
+  // sa place dans la boutique. Le back-office passe par /admin/products,
+  // qui, lui, montre tout.
+  const conditions = and(...filtres);
+
+  // Le compte va avec la page : sans lui, la boutique ne peut ni annoncer
+  // « 146 affiches » ni savoir combien de pages proposer. Les deux requêtes
+  // partent ensemble — l'une derrière l'autre, la page attendrait deux fois.
+  const [rows, [totalRow]] = await Promise.all([
+    db
+      .select({
+        id: schema.products.id,
+        slug: schema.products.slug,
+        name: schema.products.name,
+        kind: schema.products.kind,
+        basePriceCents: schema.products.basePriceCents,
+        translations: schema.products.translations,
+      })
+      .from(schema.products)
+      .where(conditions)
+      .orderBy(...ordreDeTri(tri, collection))
+      .limit(limit)
+      .offset(offset),
+    db.select({ n: count() }).from(schema.products).where(conditions),
+  ]);
+  c.header("X-Total-Count", String(totalRow?.n ?? 0));
   // Nom traduit, sans exposer le dictionnaire complet au site public.
   const products = rows.map(({ translations, ...p }) => ({
     ...p,
@@ -310,6 +560,13 @@ app.get("/products", async (c) => {
           productId: schema.variants.productId,
           format: schema.variants.format,
           priceCents: schema.variants.priceCents,
+          /**
+           * Le prix barré, saisi au back-office et jamais servi jusqu'ici : la
+           * vignette ne pouvait pas montrer une remise que la boutique avait
+           * bel et bien réglée. Vide pour la plupart des affiches — c'est au
+           * site de n'en rien faire dans ce cas.
+           */
+          compareAtCents: schema.variants.compareAtCents,
         })
         .from(schema.variants)
         .where(inArray(schema.variants.productId, ids))
@@ -352,6 +609,11 @@ app.get("/products", async (c) => {
  * Une collection vide est un vestige de l'import : la proposer au menu
  * mènerait à une page blanche. Le compte sert aussi à écrire « Villes (146) »
  * si la boutique le souhaite un jour.
+ *
+ * Une collection DÉSACTIVÉE n'en fait pas partie non plus. La case existe au
+ * back-office et n'était lue que par les pages du CMS : le menu de la boutique
+ * et le filtre `?collection=` continuaient de servir un rayon que la
+ * propriétaire avait fermé.
  */
 app.get("/collections", async (c) => {
   const rows = await db
@@ -374,6 +636,7 @@ app.get("/collections", async (c) => {
         eq(schema.products.status, "active"),
       ),
     )
+    .where(eq(schema.collections.active, true))
     .groupBy(
       schema.collections.id,
       schema.collections.slug,
@@ -451,6 +714,13 @@ app.get("/products/:slug", async (c) => {
     variants: variants.map((v) => ({
       format: v.format,
       priceCents: v.priceCents,
+      /**
+       * Le prix barré, quand la boutique en a réglé un. Il était saisi au
+       * back-office, enregistré, et n'arrivait jamais au client : la fiche ne
+       * pouvait pas annoncer une remise pourtant décidée. Vide reste vide — la
+       * fiche n'invente pas de promotion.
+       */
+      compareAtCents: v.compareAtCents,
       widthMm: v.widthMm,
       heightMm: v.heightMm,
     })),
@@ -1140,6 +1410,12 @@ mountConfiguratorRoutes(app);
 // filigrané, back-office. Monté APRÈS les autres : « /admin/products/:id/ia »
 // ne doit pas être avalé par une route paramétrée déclarée plus haut.
 mountIaRoutes(app);
+
+// Formulaire de contact du site (apps/api/src/contact.ts) : une seule route
+// publique, « POST /contact », qui n'écrit rien en base et se contente
+// d'envoyer deux courriers. Montée en dernier : elle ne réclame aucune
+// priorité et n'a donc pas à se glisser devant quoi que ce soit.
+mountContact(app);
 
 /**
  * Marque une commande traitée, ou revient en arrière.
