@@ -257,8 +257,15 @@ const PAGE_SIZE = 25;
       Filtrer
     </button>
     <a
+      href="/api/admin/products/export.csv"
+      class="ml-auto rounded border border-bo-border px-4 py-2 text-sm hover:bg-bo-bg"
+      title="Tout le catalogue dans un fichier, une ligne par format. Il se rouvre dans un tableur, et il se reimporte tel quel."
+    >
+      Exporter le catalogue
+    </a>
+    <a
       href={url("/produits/nouveau")}
-      class="ml-auto rounded bg-bo-accent px-4 py-2 text-sm text-white"
+      class="rounded bg-bo-accent px-4 py-2 text-sm text-white"
     >
       <span class="mr-1">+</span> Nouvelle affiche
     </a>

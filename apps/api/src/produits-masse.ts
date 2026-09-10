@@ -346,6 +346,232 @@ function verifierLigne(
 }
 
 export function mountProduitsMasse(app: Hono): void {
+/* -------------------------------------------------------------------------- */
+/*  L'export du catalogue                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Une cellule de fichier CSV, echappee.
+ *
+ * Point-virgule et BOM : c'est ce qu'Excel francais ouvre sans rien demander.
+ * Meme convention que l'export des commandes, pour que les deux fichiers
+ * s'ouvrent de la meme facon.
+ */
+function cellule(v: unknown): string {
+  const t = v === null || v === undefined ? "" : String(v);
+  return /[";\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+}
+
+/** Les centimes en euros, avec la virgule francaise. */
+function euros(cents: number | null | undefined): string {
+  if (cents === null || cents === undefined) return "";
+  return (cents / 100).toFixed(2).replace(".", ",");
+}
+
+/**
+ * Les colonnes du fichier.
+ *
+ * Les quinze premieres sont celles que NOTRE importeur sait relire
+ * (`import-produits.ts`) : le fichier exporte se reimporte donc tel quel,
+ * c'est tout l'interet. Les suivantes ne sont la que pour etre lues — un
+ * poids, un stock, une image — et l'importeur les ignore sans se plaindre.
+ *
+ * « Tags » porte les COLLECTIONS, et pas les etiquettes du produit : c'est la
+ * convention de l'importeur, heritee de l'ancienne boutique ou les etiquettes
+ * Shopify tenaient lieu de collections. Les vraies etiquettes ont leur propre
+ * colonne, plus loin, qui ne revient pas a l'import.
+ */
+const COLONNES_EXPORT = [
+  "Handle",
+  "Title",
+  "Body (HTML)",
+  "Vendor",
+  "Type",
+  "Tags",
+  "Published",
+  "Status",
+  "SEO Title",
+  "SEO Description",
+  "Option1 Name",
+  "Option1 Value",
+  "Variant SKU",
+  "Variant Price",
+  "Variant Compare At Price",
+  "Variant Grams",
+  "Variant Barcode",
+  "Cost per item",
+  "Variant Inventory Qty",
+  "Image Src",
+  "Etiquettes produit",
+  "Poids de l'affiche (g)",
+  "Poids de la collection (g)",
+];
+
+/**
+ * Tout le catalogue dans un fichier, une ligne par format.
+ *
+ * La premiere ligne d'une affiche porte l'affiche entiere ; les suivantes ne
+ * portent que le format, comme le fait Shopify et comme l'attend notre
+ * importeur. Une affiche sans format sort quand meme : mieux vaut une ligne
+ * incomplete qu'une affiche absente du fichier.
+ */
+app.get("/admin/products/export.csv", async (c) => {
+  const q = c.req.query();
+
+  const conditions = [];
+  if (statutValide(q.statut))
+    conditions.push(eq(schema.products.status, q.statut));
+  const ids = identifiants((q.ids ?? "").split(",").filter(Boolean));
+  if (ids.length) conditions.push(inArray(schema.products.id, ids));
+
+  const produits = await db
+    .select({
+      id: schema.products.id,
+      slug: schema.products.slug,
+      name: schema.products.name,
+      description: schema.products.description,
+      vendor: schema.products.vendor,
+      productType: schema.products.productType,
+      tags: schema.products.tags,
+      status: schema.products.status,
+      seoTitle: schema.products.seoTitle,
+      seoDescription: schema.products.seoDescription,
+      weightGrams: schema.products.weightGrams,
+    })
+    .from(schema.products)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(asc(schema.products.name));
+
+  if (!produits.length) {
+    const vide = "﻿" + COLONNES_EXPORT.join(";") + "\r\n";
+    return new Response(vide, {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": 'attachment; filename="catalogue.csv"',
+      },
+    });
+  }
+
+  const idsProduits = produits.map((p) => p.id);
+
+  // Trois lectures groupees plutot qu'une par affiche : le fichier doit sortir
+  // en une fois, meme avec deux cents affiches et leurs formats.
+  const [variantes, rangements, visuels] = await Promise.all([
+    db
+      .select()
+      .from(schema.variants)
+      .where(inArray(schema.variants.productId, idsProduits))
+      .orderBy(asc(schema.variants.productId), asc(schema.variants.id)),
+    db
+      .select({
+        productId: schema.productCollections.productId,
+        nom: schema.collections.name,
+        poids: schema.collections.defaultWeightGrams,
+        position: schema.productCollections.position,
+      })
+      .from(schema.productCollections)
+      .innerJoin(
+        schema.collections,
+        eq(schema.collections.id, schema.productCollections.collectionId),
+      )
+      .where(inArray(schema.productCollections.productId, idsProduits))
+      .orderBy(asc(schema.productCollections.position)),
+    db
+      .select({
+        productId: schema.productImages.productId,
+        url: schema.productImages.url,
+        position: schema.productImages.position,
+      })
+      .from(schema.productImages)
+      .where(inArray(schema.productImages.productId, idsProduits))
+      .orderBy(asc(schema.productImages.position)),
+  ]);
+
+  const parProduit = <T extends { productId: number }>(lignes: T[]) => {
+    const m = new Map<number, T[]>();
+    for (const l of lignes) {
+      const liste = m.get(l.productId);
+      if (liste) liste.push(l);
+      else m.set(l.productId, [l]);
+    }
+    return m;
+  };
+  const variantesDe = parProduit(variantes);
+  const rangementsDe = parProduit(rangements);
+  const visuelsDe = parProduit(visuels);
+
+  const lignes: string[] = [];
+  for (const p of produits) {
+    const formats = variantesDe.get(p.id) ?? [];
+    const collections = rangementsDe.get(p.id) ?? [];
+    const images = visuelsDe.get(p.id) ?? [];
+    // Le poids que la collection donnerait : c'est lui qui s'applique quand
+    // ni la variante ni l'affiche n'en portent, et il explique un
+    // affranchissement qu'on croirait sorti de nulle part.
+    const poidsCollection = collections
+      .map((r) => r.poids)
+      .filter((v): v is number => typeof v === "number")
+      .sort((a, b) => b - a)[0];
+
+    const commun = [
+      p.slug,
+      p.name,
+      p.description ?? "",
+      p.vendor ?? "",
+      p.productType ?? "",
+      collections.map((r) => r.nom).join(", "),
+      p.status === "active" ? "TRUE" : "FALSE",
+      p.status,
+      p.seoTitle ?? "",
+      p.seoDescription ?? "",
+      formats.length ? "Format" : "",
+    ];
+    const queue = (v: (typeof formats)[number] | null) => [
+      v?.format ?? "",
+      v?.sku ?? "",
+      euros(v?.priceCents ?? null),
+      euros(v?.compareAtCents ?? null),
+      v?.weightGrams ?? "",
+      v?.barcode ?? "",
+      euros(v?.costCents ?? null),
+      v?.stockQty ?? "",
+    ];
+    const informatif = [
+      (p.tags ?? []).join(", "),
+      p.weightGrams ?? "",
+      poidsCollection ?? "",
+    ];
+
+    if (!formats.length) {
+      lignes.push(
+        [...commun, ...queue(null), images[0]?.url ?? "", ...informatif]
+          .map(cellule)
+          .join(";"),
+      );
+      continue;
+    }
+    formats.forEach((v, i) => {
+      // La premiere ligne porte l'affiche, les suivantes seulement le format :
+      // c'est ce que produit Shopify, et ce que notre importeur relit.
+      const tete = i === 0 ? commun : [p.slug, ...Array(commun.length - 1).fill("")];
+      const image = images[i]?.url ?? (i === 0 ? images[0]?.url ?? "" : "");
+      lignes.push(
+        [...tete, ...queue(v), image, ...(i === 0 ? informatif : ["", "", ""])]
+          .map(cellule)
+          .join(";"),
+      );
+    });
+  }
+
+  const csv = "﻿" + [COLONNES_EXPORT.join(";"), ...lignes].join("\r\n");
+  return new Response(csv, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": 'attachment; filename="catalogue.csv"',
+    },
+  });
+});
+
   /* ---------------------------------------------------------------------- */
   /*  Le tableau                                                            */
   /* ---------------------------------------------------------------------- */

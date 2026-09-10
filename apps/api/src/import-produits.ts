@@ -131,8 +131,39 @@ class FichierRefuse extends Error {}
  * elle se collerait au nom de la première colonne, et « Handle » deviendrait
  * introuvable.
  */
+/**
+ * Le separateur du fichier : virgule ou point-virgule.
+ *
+ * Shopify exporte en virgules ; Excel francais enregistre en point-virgules,
+ * et c'est aussi ce que produit notre export pour s'ouvrir d'un double-clic.
+ * On compte les deux sur la PREMIERE ligne, hors guillemets : sur une ligne
+ * d'entetes, celui qui revient le plus souvent est le bon.
+ */
+function separateurDu(texte: string): "," | ";" {
+  let virgules = 0;
+  let pointsVirgules = 0;
+  let entreGuillemets = false;
+  for (let i = 0; i < texte.length; i++) {
+    const c = texte[i];
+    if (c === '"') {
+      if (entreGuillemets && texte[i + 1] === '"') {
+        i += 1;
+        continue;
+      }
+      entreGuillemets = !entreGuillemets;
+      continue;
+    }
+    if (entreGuillemets) continue;
+    if (c === "\n" || c === "\r") break;
+    if (c === ",") virgules += 1;
+    else if (c === ";") pointsVirgules += 1;
+  }
+  return pointsVirgules > virgules ? ";" : ",";
+}
+
 function lireCsv(texte: string): string[][] {
   const sansMarque = texte.charCodeAt(0) === 0xfeff ? texte.slice(1) : texte;
+  const separateur = separateurDu(sansMarque);
   const lignes: string[][] = [];
   let champs: string[] = [];
   let champ = "";
@@ -176,7 +207,7 @@ function lireCsv(texte: string): string[][] {
       i += 1;
       continue;
     }
-    if (c === ",") {
+    if (c === separateur) {
       champs.push(champ);
       champ = "";
       i += 1;
