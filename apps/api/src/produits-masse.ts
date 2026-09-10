@@ -618,9 +618,21 @@ app.get("/admin/products/export.csv", async (c) => {
         or(
           raw`lower(${schema.products.name}) like ${motif}`,
           raw`lower(${schema.products.slug}) like ${motif}`,
+          // Les étiquettes aussi : « vannes » doit trouver l'affiche
+          // étiquetée « salon de Vannes », même si son nom ne dit rien de
+          // Vannes. C'est tout l'intérêt d'étiqueter.
+          raw`exists (select 1 from jsonb_array_elements_text(coalesce(${schema.products.tags}, '[]'::jsonb)) e where lower(e) like ${motif})`,
         )!,
       );
     }
+    // Une étiquette précise, choisie dans la liste : la comparaison est
+    // exacte, sans quoi « salon » ramènerait « salon de Vannes » et on ne
+    // pourrait plus isoler l'une des deux.
+    const etiquette = (q.etiquette ?? "").trim();
+    if (etiquette)
+      communs.push(
+        raw`exists (select 1 from jsonb_array_elements_text(coalesce(${schema.products.tags}, '[]'::jsonb)) e where lower(e) = ${etiquette.toLowerCase()})`,
+      );
     const categorieFiltre = Number(q.categorie);
     if (Number.isFinite(categorieFiltre) && categorieFiltre > 0)
       communs.push(eq(schema.products.categoryId, categorieFiltre));
@@ -810,6 +822,18 @@ app.get("/admin/products/export.csv", async (c) => {
       categories: categories.map((cat) => ({ id: cat.id, name: cat.name })),
       collections,
       formats: [...tousLesFormats].sort(),
+      // Les étiquettes déjà posées dans tout le catalogue, pour choisir dans
+      // une liste au lieu de retaper : « best-seller » écrit de quatre façons
+      // différentes ne se retrouve jamais.
+      etiquettes: [
+        ...new Set(
+          (
+            await db
+              .select({ tags: schema.products.tags })
+              .from(schema.products)
+          ).flatMap((r) => r.tags ?? []),
+        ),
+      ].sort((a, b) => a.localeCompare(b, "fr")),
       compte,
     });
   });
