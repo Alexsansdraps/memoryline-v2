@@ -24,6 +24,16 @@ interface Props {
   type?: "website" | "product" | "article";
   noindex?: boolean;
   jsonLd?: Record<string, unknown> | Record<string, unknown>[];
+  /**
+   * Page précédente et page suivante d'une liste paginée.
+   *
+   * Elles disent à un moteur que ces adresses sont les morceaux d'une SEULE
+   * suite : sans elles, la page 4 d'un rayon passe pour une page isolée,
+   * pauvre en texte et sans lien entrant, et sort de l'index avec les
+   * quarante-huit affiches qu'elle porte.
+   */
+  precedente?: string | null;
+  suivante?: string | null;
 }
 const {
   langue = LANGUE_DEFAUT,
@@ -34,6 +44,8 @@ const {
   type,
   noindex,
   jsonLd,
+  precedente,
+  suivante,
 } = Astro.props;
 
 const tr = t(langue);
@@ -95,8 +107,72 @@ function adresseMenu(href: string): string {
 
 const chemin = cheminSansLangue(Astro.url.pathname);
 const versions = autresVersions(langue, chemin);
+
+/**
+ * Ce que le champ de l'en-tête affiche déjà.
+ *
+ * Sur la page de résultats, il reprend la saisie : le vider ferait croire que
+ * la recherche a été oubliée, et obligerait à tout retaper pour corriger une
+ * lettre. Ailleurs, il est vide.
+ */
+const rechercheEnCours =
+  chemin === "/recherche" ? (Astro.url.searchParams.get("q") ?? "") : "";
 const titre = title ?? tr("meta.titre");
 const desc = description ?? tr("meta.description");
+
+/**
+ * La baseline du pied de page, telle que le back-office la règle.
+ *
+ * Le champ « Baseline » de l'écran « Contenu du site » était enregistré et
+ * jamais lu : le site affichait une constante du dictionnaire, et la
+ * propriétaire pouvait écrire ce qu'elle voulait sans que rien ne bouge.
+ *
+ * Il ne s'applique qu'au FRANÇAIS, et c'est délibéré : le réglage est une
+ * chaîne unique, sans colonne de traduction, alors que le dictionnaire porte
+ * les cinq langues. Le servir partout remplacerait quatre phrases traduites
+ * par une phrase française. La visiteuse allemande garde donc la sienne, et
+ * la boutiquière retrouve la sienne là où elle l'a écrite.
+ */
+let baseline = tr("pied.baseline");
+if (langue === LANGUE_DEFAUT) {
+  try {
+    const reglages = await api.settings("footer");
+    const saisie = reglages["footer.baseline"];
+    if (typeof saisie === "string" && saisie.trim()) baseline = saisie.trim();
+  } catch {
+    // API muette : la phrase du dictionnaire tient. Un pied de page n'a
+    // jamais de raison de faire tomber une page.
+  }
+}
+
+/**
+ * Les liens du pied de page.
+ *
+ * Les pages libres du site vivent sous « /pages/{adresse} » — préfixe
+ * volontaire, documenté dans pages/[...lang]/pages/[slug].astro : posée à la
+ * racine, cette route se glissait devant les accueils traduits. « Contact »
+ * fait exception, c'est une page à elle.
+ *
+ * Ces pages sont en cours d'écriture au back-office. Un lien qui pointe vers
+ * l'une d'elles avant qu'elle existe ne casse rien : la route rend une page
+ * introuvable, qui porte le menu, le pied de page et de quoi rebondir. C'est
+ * le seul comportement possible ici — aucune route publique ne dit quelles
+ * pages sont publiées, et interroger les cinq une par une coûterait cinq
+ * allers-retours sur CHAQUE page du site.
+ */
+const liensBoutique = [
+  { href: "/affiches", texte: tr("nav.affiches") },
+  { href: "/affiches?genre=personnalisable", texte: tr("nav.personnalisables") },
+  { href: "/affiches?genre=prete_a_imprimer", texte: tr("nav.pretes") },
+  { href: "/recherche", texte: tr("recherche.titre") },
+];
+const liensAide = [
+  { href: "/contact", texte: tr("pied.contact") },
+  { href: "/pages/conditions-de-vente", texte: tr("pied.conditions") },
+  { href: "/pages/mentions-legales", texte: tr("pied.mentions") },
+  { href: "/pages/confidentialite", texte: tr("pied.confidentialite") },
+  { href: "/pages/cookies", texte: tr("pied.cookies") },
+];
 
 /**
  * Destination du lien « Compte » : le tableau de bord si une session est
@@ -112,6 +188,12 @@ const connecte =
   !Astro.isPrerendered &&
   (Astro.request.headers.get("cookie") ?? "").includes("ml_client=");
 const lienCompte = lien(langue, connecte ? "/compte" : "/compte/connexion");
+
+/** Le pied de page renvoie vers le même compte que l'en-tête. */
+const liensCompte = [
+  { href: connecte ? "/compte" : "/compte/connexion", texte: tr("nav.compte") },
+  { href: "/panier", texte: tr("nav.panier") },
+];
 
 /**
  * Raccourci vers le back-office, pour qui y est déjà connecté.
@@ -166,6 +248,19 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
       hreflang="x-default"
       href={new URL(chemin, Astro.site ?? "https://memoryline.fr").toString()}
     />
+    {/* Les morceaux d'une liste paginée se tiennent par la main. */}
+    {precedente && (
+      <link
+        rel="prev"
+        href={new URL(precedente, Astro.site ?? "https://memoryline.fr").toString()}
+      />
+    )}
+    {suivante && (
+      <link
+        rel="next"
+        href={new URL(suivante, Astro.site ?? "https://memoryline.fr").toString()}
+      />
+    )}
     {/* Marque la page comme animée avant qu'elle ne s'affiche : la règle
         d'apparition ne s'applique que sous cette classe, donc sans
         JavaScript rien n'est masqué. */}
@@ -253,7 +348,70 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
             )
           }
         </div>
-        <div class="flex items-center gap-5 text-sm">
+        <div class="flex items-center gap-4 text-sm">
+          {/* La recherche de la boutique.
+              Un vrai formulaire en GET vers /recherche : la saisie finit dans
+              l'adresse, donc un résultat se recopie dans un message et le
+              bouton « précédent » ramène la liste qu'on quittait. Sur les
+              petits écrans le champ céderait toute la place à l'en-tête : on
+              y met la loupe seule, qui mène à la page de recherche et à son
+              grand champ. */}
+          <form
+            method="get"
+            action={lien(langue, "/recherche")}
+            role="search"
+            class="ml-recherche hidden lg:flex items-center border border-ink/20 focus-within:border-ink transition-colors"
+          >
+            <label for="ml-q" class="sr-only">{tr("recherche.champ")}</label>
+            <input
+              id="ml-q"
+              type="search"
+              name="q"
+              value={rechercheEnCours}
+              autocomplete="off"
+              placeholder={tr("recherche.champ")}
+              class="w-40 bg-transparent px-3 py-1.5 text-[13px] focus:outline-none xl:w-52"
+            />
+            <button
+              type="submit"
+              class="px-2 py-1.5 text-ink/60 hover:text-terracotta transition-colors"
+              aria-label={tr("recherche.bouton")}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" />
+              </svg>
+            </button>
+          </form>
+          <a
+            href={lien(langue, "/recherche")}
+            class="inline-flex lg:hidden items-center hover:text-terracotta transition-colors"
+            aria-label={tr("recherche.titre")}
+          >
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <span class="sr-only">{tr("recherche.titre")}</span>
+          </a>
           {/* Raccourci d'administration. Volontairement discret : il ne
               s'affiche que pour une session de back-office valide, et ne doit
               pas concurrencer le panier dans l'œil du client. */}
@@ -413,12 +571,75 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
       <slot />
     </main>
 
+    {/* Le pied de page ne contenait AUCUN lien : deux phrases, et rien pour
+        aller aux conditions de vente, au contact ou à la livraison — c'est
+        pourtant là qu'on les cherche, tout en bas, après avoir fait défiler. */}
     <footer class="border-t border-ink/10 mt-16">
-      <div
-        class="mx-auto flex max-w-[1200px] flex-col justify-between gap-2 px-6 py-9 text-sm text-ink-soft sm:flex-row lg:px-12"
-      >
-        <p>© {new Date().getFullYear()} {tr("pied.droits")}</p>
-        <p>{tr("pied.baseline")}</p>
+      <div class="mx-auto max-w-[1200px] px-6 py-12 lg:px-12">
+        <div class="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <img
+              src="/logo-memory-line.png"
+              alt="Memory Line"
+              width="500"
+              height="222"
+              class="h-10 w-auto"
+            />
+            <p class="mt-4 text-sm text-ink-soft">{baseline}</p>
+          </div>
+
+          <nav aria-labelledby="pied-boutique">
+            <h2 id="pied-boutique" class="text-sm font-semibold">
+              {tr("pied.navigation")}
+            </h2>
+            <ul class="mt-4 space-y-2 text-sm text-ink-soft">
+              {liensBoutique.map((l) => (
+                <li>
+                  <a
+                    href={adresseMenu(l.href)}
+                    class="hover:text-terracotta transition-colors">{l.texte}</a
+                  >
+                </li>
+              ))}
+            </ul>
+          </nav>
+
+          <nav aria-labelledby="pied-aide">
+            <h2 id="pied-aide" class="text-sm font-semibold">
+              {tr("pied.aide")}
+            </h2>
+            <ul class="mt-4 space-y-2 text-sm text-ink-soft">
+              {liensAide.map((l) => (
+                <li>
+                  <a
+                    href={adresseMenu(l.href)}
+                    class="hover:text-terracotta transition-colors">{l.texte}</a
+                  >
+                </li>
+              ))}
+            </ul>
+          </nav>
+
+          <nav aria-labelledby="pied-compte">
+            <h2 id="pied-compte" class="text-sm font-semibold">
+              {tr("nav.compte")}
+            </h2>
+            <ul class="mt-4 space-y-2 text-sm text-ink-soft">
+              {liensCompte.map((l) => (
+                <li>
+                  <a
+                    href={adresseMenu(l.href)}
+                    class="hover:text-terracotta transition-colors">{l.texte}</a
+                  >
+                </li>
+              ))}
+            </ul>
+          </nav>
+        </div>
+
+        <p class="mt-12 border-t border-ink/10 pt-6 text-sm text-ink-soft">
+          © {new Date().getFullYear()} {tr("pied.droits")}
+        </p>
       </div>
     </footer>
     <CookieBanner langue={langue} />

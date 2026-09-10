@@ -1,0 +1,135 @@
+---
+/**
+ * Une affiche dans une grille : l'image, le nom, le prix.
+ *
+ * Écrite une fois et partagée par le rayon et la page de résultats : deux
+ * grilles écrites séparément finissent par diverger — l'une sait montrer un
+ * prix barré, l'autre l'a oublié — et c'est précisément le défaut qu'on
+ * répare ici.
+ *
+ * L'image porte tout, le texte se fait discret dessous, comme sur
+ * memoryline.fr. Le rapport 1020/1400 est celui des visuels de la boutique.
+ */
+import AfficheVide from "./AfficheVide.astro";
+import {
+  assetSrcset,
+  assetUrl,
+  formatPrice,
+  promotion,
+  varianteLaMoinsChere,
+  type Product,
+} from "../lib/api.ts";
+import { lien, t, type Langue } from "../i18n/utils.ts";
+
+interface Props {
+  affiche: Product;
+  langue: Langue;
+  /**
+   * Charger l'image tout de suite plutôt qu'à l'approche de l'écran.
+   *
+   * Réservé aux premières vignettes : ce sont elles que la visiteuse voit
+   * avant d'avoir bougé, et les différer retarde l'affichage de la page pour
+   * rien. Au-delà, la paresse reprend ses droits — cent quatre-vingts images
+   * chargées d'un coup ne serviraient personne.
+   */
+  prioritaire?: boolean;
+}
+
+const { affiche, langue, prioritaire = false } = Astro.props;
+const tr = t(langue);
+
+/**
+ * Le nom sans son suffixe commercial.
+ *
+ * Les noms viennent de Shopify et finissent presque tous par « - Affiche
+ * personnalisée ». Répété sous cent quatre-vingts vignettes, il n'apprend
+ * rien et mange deux lignes de chaque cartouche.
+ */
+const nom = affiche.name.replace(/\s*[-–]\s*Affiche.*$/i, "");
+
+/**
+ * La promotion, s'il y en a une — celle de la variante la MOINS CHÈRE.
+ *
+ * C'est son prix que la vignette affiche : barrer l'ancien prix d'un autre
+ * format annoncerait une remise qui ne correspond à rien de ce qui est écrit
+ * juste à côté.
+ */
+const moinsChere = varianteLaMoinsChere(affiche.variants);
+const promo = moinsChere
+  ? promotion(moinsChere.priceCents, moinsChere.compareAtCents)
+  : null;
+
+/**
+ * Le prix montré : le plus bas, et « – » jusqu'au plus haut s'il varie.
+ *
+ * En promotion, la fourchette s'efface au profit du seul prix soldé. « 23 € –
+ * 29 € » suivi d'un « 29 € » barré se lit deux fois : le 29 € de la fourchette
+ * est le prix du grand format, celui qui est barré était celui du petit. Une
+ * vignette n'a pas la place d'expliquer la différence — la fiche, elle, montre
+ * les deux formats et leurs deux prix.
+ */
+const tarifs = affiche.variants.map((v) => v.priceCents).filter((c) => c > 0);
+const mini = tarifs.length ? Math.min(...tarifs) : affiche.basePriceCents;
+const maxi = tarifs.length ? Math.max(...tarifs) : affiche.basePriceCents;
+const prix =
+  promo || mini === maxi
+    ? formatPrice(mini)
+    : `${formatPrice(mini)} – ${formatPrice(maxi)}`;
+// Quatre cents pixels de large suffisent à une vignette de grille ; le
+// navigateur prend la plus petite qui lui va parmi celles proposées.
+const image = assetUrl(affiche.image, 400);
+const imageJeu = assetSrcset(affiche.image, [200, 400, 600]);
+---
+
+<li class="group ml-apparition">
+  <a href={lien(langue, `/affiches/${affiche.slug}`)} class="block">
+    <div
+      class="relative flex items-center justify-center overflow-hidden bg-paper-deep"
+      style="aspect-ratio:1020/1400"
+    >
+      {
+        image ? (
+          <img
+            src={image}
+            srcset={imageJeu}
+            sizes="(min-width: 1024px) 300px, (min-width: 640px) 45vw, 90vw"
+            alt={nom}
+            width="1020"
+            height="1400"
+            loading={prioritaire ? "eager" : "lazy"}
+            class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+          />
+        ) : (
+          <AfficheVide nom={nom} />
+        )
+      }
+      {
+        /* L'étiquette de remise sur l'image, pas sous le prix : c'est ce
+           qu'on repère en balayant une grille des yeux. */
+        promo && (
+          <span class="absolute left-0 top-0 bg-terracotta px-2.5 py-1 text-[13px] font-semibold text-paper">
+            −{promo.pourcent} %
+          </span>
+        )
+      }
+    </div>
+    <div class="mt-4">
+      <h2 class="text-[17px] leading-snug group-hover:underline underline-offset-4">
+        {nom}
+      </h2>
+      {
+        promo ? (
+          <p class="mt-1 flex flex-wrap items-baseline gap-2">
+            <span class="text-terracotta-deep">{prix}</span>
+            <s class="text-ink/45">
+              <span class="sr-only">{tr("promo.ancien_prix")} </span>
+              {formatPrice(promo.avantCents)}
+            </s>
+          </p>
+        ) : (
+          <p class="mt-1 text-ink-soft">{prix}</p>
+        )
+      }
+    </div>
+  </a>
+</li>

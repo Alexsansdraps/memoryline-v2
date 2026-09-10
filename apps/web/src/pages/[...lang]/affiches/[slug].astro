@@ -4,9 +4,11 @@ import { dimensionsFormat } from "@memoryline/types";
 import Base from "../../../layouts/Base.astro";
 import {
   api,
+  assetSrcset,
   assetUrl,
   formatPrice,
-  type Product,
+  promotion,
+  varianteLaMoinsChere,
   type ProductDetail,
 } from "../../../lib/api.ts";
 import ProductConfigurator from "../../../islands/ProductConfigurator.tsx";
@@ -44,9 +46,25 @@ try {
 if (!product) return Astro.redirect(lien(langue, "/affiches"));
 
 const cleanName = product.name.replace(/\s*[-–]\s*Affiche.*$/i, "");
-const image = assetUrl(product.images[0] ?? null);
+// La fiche montre l'affiche en grand, mais pas en taille d'impression :
+// neuf cents pixels suffisent à l'écran, et le navigateur prend plus petit
+// s'il est sur un téléphone.
+const image = assetUrl(product.images[0] ?? null, 900);
+const imageJeu = assetSrcset(product.images[0] ?? null, [400, 600, 900, 1400]);
 const prices = product.variants.map((v) => v.priceCents).filter((c) => c > 0);
 const minPrice = prices.length ? Math.min(...prices) : product.basePriceCents;
+
+/**
+ * La promotion annoncée en tête de fiche : celle du format le moins cher.
+ *
+ * C'est le prix que la fiche affiche en gros, donc c'est le sien qu'on barre.
+ * Chaque format porte le sien plus bas, dans sa case — un A3 peut être en
+ * promotion sans que le A4 le soit.
+ */
+const moinsChere = varianteLaMoinsChere(product.variants);
+const promoPrincipale = moinsChere
+  ? promotion(moinsChere.priceCents, moinsChere.compareAtCents)
+  : null;
 
 const kindLabel =
   product.kind === "personnalisable"
@@ -118,7 +136,15 @@ const breadcrumbLd = {
     <div class="rounded-2xl bg-paper-deep border border-ink/10 overflow-hidden">
       {
         image ? (
-          <img src={image} alt={cleanName} class="w-full h-full object-cover" />
+          <img
+            src={image}
+            srcset={imageJeu}
+            sizes="(min-width: 1024px) 620px, 100vw"
+            alt={cleanName}
+            width="1020"
+            height="1400"
+            class="h-full w-full object-cover"
+          />
         ) : (
           <div class="aspect-[3/4]">
             <AfficheVide nom={cleanName} />
@@ -138,19 +164,56 @@ const breadcrumbLd = {
         {kindLabel}
       </p>
       <h1 class="font-serif text-4xl mt-1">{cleanName}</h1>
-      <p class="mt-4 text-2xl">{formatPrice(minPrice)}</p>
+      {
+        /* Le prix barré : saisi au back-office et jamais servi jusqu'ici, la
+           fiche taisait une remise pourtant décidée. Rien ne s'affiche quand
+           il est vide, nul ou déjà rattrapé par une baisse de prix. */
+        promoPrincipale ? (
+          <p class="mt-4 flex flex-wrap items-baseline gap-3">
+            <span class="text-2xl text-terracotta-deep">
+              {formatPrice(minPrice)}
+            </span>
+            <s class="text-lg text-ink/45">
+              <span class="sr-only">{tr("promo.ancien_prix")} </span>
+              {formatPrice(promoPrincipale.avantCents)}
+            </s>
+            <span class="bg-terracotta px-2 py-0.5 text-sm font-semibold text-paper">
+              −{promoPrincipale.pourcent} %
+            </span>
+          </p>
+        ) : (
+          <p class="mt-4 text-2xl">{formatPrice(minPrice)}</p>
+        )
+      }
 
       <div class="mt-6 space-y-2">
         <p class="text-sm font-medium">{tr("produit.format")}</p>
         <div class="flex gap-3">
           {
-            product.variants.map((v) => (
-              <div class="rounded-lg border border-ink/20 px-4 py-3 text-sm">
-                <div class="font-medium">{v.format}</div>
-                <div class="text-ink-soft text-xs">{dimensionsFormat(v.format)}</div>
-                <div class="text-ink-soft">{formatPrice(v.priceCents)}</div>
-              </div>
-            ))
+            product.variants.map((v) => {
+              // Chaque format a son propre prix barré : la boutique peut
+              // solder le A3 sans toucher au A4.
+              const promo = promotion(v.priceCents, v.compareAtCents);
+              return (
+                <div class="rounded-lg border border-ink/20 px-4 py-3 text-sm">
+                  <div class="font-medium">{v.format}</div>
+                  <div class="text-ink-soft text-xs">{dimensionsFormat(v.format)}</div>
+                  {promo ? (
+                    <div class="flex flex-wrap items-baseline gap-2">
+                      <span class="text-terracotta-deep">
+                        {formatPrice(v.priceCents)}
+                      </span>
+                      <s class="text-ink/45">
+                        <span class="sr-only">{tr("promo.ancien_prix")} </span>
+                        {formatPrice(promo.avantCents)}
+                      </s>
+                    </div>
+                  ) : (
+                    <div class="text-ink-soft">{formatPrice(v.priceCents)}</div>
+                  )}
+                </div>
+              );
+            })
           }
         </div>
       </div>

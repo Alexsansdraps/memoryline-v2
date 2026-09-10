@@ -33,16 +33,50 @@ export const PUBLIC_API_URL =
   import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
 
 /** Transforme un chemin /assets/... en URL absolue chargeable par le navigateur. */
-export function assetUrl(path: string | null | undefined): string | null {
+/**
+ * L'adresse d'une image, éventuellement redimensionnée.
+ *
+ * Sans largeur, l'original : c'est lui qu'on imprime. Avec, l'API calcule
+ * une fois la taille demandée et la garde — une vignette de rayon pèse alors
+ * neuf kilo-octets au lieu d'un mégaoctet et demi.
+ *
+ * Les largeurs que l'API sait servir sont 200, 400, 600, 900 et 1400. Une
+ * autre valeur lui fait rendre l'original : rien ne casse, mais rien
+ * n'allège non plus.
+ */
+export function assetUrl(
+  path: string | null | undefined,
+  largeur?: number,
+): string | null {
   if (!path) return null;
   if (/^https?:\/\//.test(path)) return path;
-  return `${PUBLIC_API_URL}${path}`;
+  return `${PUBLIC_API_URL}${path}${largeur ? `?l=${largeur}` : ""}`;
+}
+
+/**
+ * Le même visuel en plusieurs largeurs, pour que le navigateur choisisse.
+ *
+ * Sans cela, un téléphone télécharge l'image calibrée pour un grand écran.
+ * Une adresse extérieure n'est pas redimensionnable : on ne propose alors
+ * aucun choix plutôt qu'un choix qui n'existe pas.
+ */
+export function assetSrcset(
+  path: string | null | undefined,
+  largeurs: readonly number[],
+): string | undefined {
+  if (!path || /^https?:\/\//.test(path)) return undefined;
+  return largeurs.map((l) => `${assetUrl(path, l)} ${l}w`).join(", ");
 }
 
 export interface ProductVariant {
   productId: number;
   format: string;
   priceCents: number;
+  /**
+   * Prix barré réglé au back-office. Absent, nul, ou inférieur au prix
+   * courant : il n'y a pas de promotion, et la boutique n'en invente pas.
+   */
+  compareAtCents?: number | null;
 }
 
 export interface Product {
@@ -66,6 +100,26 @@ async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${API_URL}${path}`);
   if (!res.ok) throw new Error(`API ${path} -> ${res.status}`);
   return res.json() as Promise<T>;
+}
+
+/**
+ * Une page de catalogue : les affiches demandées, ET combien il y en a en tout.
+ *
+ * Le total voyage dans l'en-tête `X-Total-Count` et non dans le corps, qui
+ * reste un tableau nu pour le stand, le plan de site et l'accueil. En-tête
+ * illisible — un proxy qui la mange, une API d'une version antérieure — on
+ * retombe sur le nombre d'affiches reçues : la grille s'affiche, elle ne
+ * propose simplement pas de page suivante.
+ */
+async function getPagine<T>(path: string): Promise<{ items: T[]; total: number }> {
+  const res = await fetch(`${API_URL}${path}`);
+  if (!res.ok) throw new Error(`API ${path} -> ${res.status}`);
+  const items = (await res.json()) as T[];
+  const annonce = Number(res.headers.get("X-Total-Count"));
+  return {
+    items,
+    total: Number.isFinite(annonce) && annonce >= 0 ? annonce : items.length,
+  };
 }
 
 export interface Banner {
@@ -110,6 +164,8 @@ export interface ProductDetail {
   variants: {
     format: string;
     priceCents: number;
+    /** Prix barré de CE format. Vide : ce format n'est pas en promotion. */
+    compareAtCents?: number | null;
     widthMm: number | null;
     heightMm: number | null;
   }[];
@@ -153,6 +209,23 @@ export interface Collection {
   produits: number;
 }
 
+/** Ce qu'on demande au catalogue. Tout est facultatif. */
+export interface OptionsCatalogue {
+  langue?: string;
+  /** « personnalisable » ou « prete_a_imprimer ». */
+  genre?: string;
+  /** Adresse d'une collection : le rayon respecte alors l'ordre du back-office. */
+  collection?: string;
+  /** Ce que la visiteuse a tapé. Cherché dans le nom et l'adresse de l'affiche. */
+  q?: string;
+  /** « manuel », « nouveautes », « prix_asc », « prix_desc » ou « alpha ». */
+  tri?: string;
+  /** Combien d'affiches par page. */
+  limite?: number;
+  /** Combien d'affiches sauter — c'est la pagination. */
+  offset?: number;
+}
+
 export const api = {
   stats: () => get<Stats>("/stats"),
   /**
@@ -170,6 +243,23 @@ export const api = {
     if (filtres?.genre) p.set("genre", filtres.genre);
     if (filtres?.collection) p.set("collection", filtres.collection);
     return get<Product[]>(`/products?${p.toString()}`);
+  },
+  /**
+   * Une PAGE du catalogue : filtrée, cherchée, rangée, et son total.
+   *
+   * Tout est facultatif et tout passe par l'adresse : c'est ce qui rend un
+   * rayon trié partageable et indexable, là où un tri gardé en mémoire du
+   * navigateur ne se recopie pas dans un message.
+   */
+  catalogue: (o: OptionsCatalogue = {}) => {
+    const p = new URLSearchParams({ limit: String(o.limite ?? 60) });
+    if (o.langue && o.langue !== "fr") p.set("lang", o.langue);
+    if (o.genre) p.set("genre", o.genre);
+    if (o.collection) p.set("collection", o.collection);
+    if (o.q) p.set("q", o.q);
+    if (o.tri) p.set("sort", o.tri);
+    if (o.offset) p.set("offset", String(o.offset));
+    return getPagine<Product>(`/products?${p.toString()}`);
   },
   collections: () => get<Collection[]>("/collections"),
   /** Une page écrite au back-office. Lève si elle n'existe pas ou est en brouillon. */
@@ -589,4 +679,49 @@ export function formatPrice(cents: number): string {
     currency: "EUR",
     minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
   }).format(cents / 100);
+}
+
+/* ---------------------------------------------------------------------------
+ * Prix barré
+ * ------------------------------------------------------------------------- */
+
+/** Ce qu'une promotion affiche : l'ancien prix, et de combien on descend. */
+export interface Promotion {
+  /** Le prix barré, en centimes. */
+  avantCents: number;
+  /** La remise en pourcentage, arrondie : « -21 % ». */
+  pourcent: number;
+}
+
+/**
+ * La promotion d'une variante, s'il y en a vraiment une.
+ *
+ * Trois cas rendent `null`, et c'est volontaire : pas de prix barré du tout,
+ * un prix barré à zéro, et un prix barré INFÉRIEUR OU ÉGAL au prix courant.
+ * Ce dernier est le piège : une saisie ancienne qu'un baissement de prix a
+ * rattrapée afficherait « 23 € au lieu de 19 € », c'est-à-dire une promotion
+ * à l'envers. Un arrondi qui tombe à zéro pour cent est écarté de même : une
+ * étiquette « -0 % » ne dit rien à personne.
+ */
+export function promotion(
+  prixCents: number,
+  compareAtCents?: number | null,
+): Promotion | null {
+  if (!compareAtCents || compareAtCents <= prixCents) return null;
+  const pourcent = Math.round(
+    ((compareAtCents - prixCents) / compareAtCents) * 100,
+  );
+  return pourcent >= 1 ? { avantCents: compareAtCents, pourcent } : null;
+}
+
+/**
+ * La variante la MOINS CHÈRE d'une affiche, celle dont la vignette montre le
+ * prix. C'est donc la sienne, et aucune autre, qu'il faut barrer.
+ */
+export function varianteLaMoinsChere<T extends { priceCents: number }>(
+  variantes: T[],
+): T | null {
+  const tarifees = variantes.filter((v) => v.priceCents > 0);
+  if (!tarifees.length) return null;
+  return tarifees.reduce((a, b) => (b.priceCents < a.priceCents ? b : a));
 }

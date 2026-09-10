@@ -1,0 +1,215 @@
+---
+/**
+ * Les résultats de la recherche de la boutique.
+ *
+ * Cent soixante-dix-sept affiches, et jusqu'ici aucun moyen d'en trouver une :
+ * une cliente qui cherchait « Reims » devait parcourir la grille entière. La
+ * recherche porte sur le nom ET l'adresse de l'affiche, accents et casse mis
+ * de côté — « cathedrale » trouve « Cathédrale ».
+ *
+ * La saisie voyage dans l'ADRESSE (`?q=…`) et non dans un appel de fond : un
+ * résultat se recopie alors dans un message, se met en favori, et le bouton
+ * « précédent » ramène bien la liste qu'on venait de quitter.
+ */
+import Base from "../../layouts/Base.astro";
+import VignetteAffiche from "../../components/VignetteAffiche.astro";
+import { api, type Product } from "../../lib/api.ts";
+import {
+  estLangue,
+  langueDepuisParam,
+  lien,
+  t,
+  type Langue,
+} from "../../i18n/utils.ts";
+
+/** Le catalogue change au back-office : cette page ne se fige pas au build. */
+export const prerender = false;
+
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
+const tr = t(langue);
+
+/**
+ * Deux caractères avant de chercher — la règle du back-office.
+ *
+ * En dessous, tout correspond : une lettre ramènerait le catalogue entier
+ * sous le titre « résultats », ce qui est pire qu'une page vide.
+ */
+const MINIMUM = 2;
+/** Autant que le rayon : la grille a la même forme, elle se lit pareil. */
+const PAR_PAGE = 48;
+
+const saisie = (Astro.url.searchParams.get("q") ?? "").trim();
+const assezLong = saisie.length >= MINIMUM;
+const pageDemandee = Math.max(
+  Math.trunc(Number(Astro.url.searchParams.get("page") ?? 1)) || 1,
+  1,
+);
+
+let resultats: Product[] = [];
+let total = 0;
+let error: string | null = null;
+if (assezLong) {
+  try {
+    const page = await api.catalogue({
+      langue,
+      q: saisie,
+      limite: PAR_PAGE,
+      offset: (pageDemandee - 1) * PAR_PAGE,
+    });
+    resultats = page.items;
+    total = page.total;
+  } catch (e) {
+    error = String(e);
+  }
+}
+
+const pages = Math.max(Math.ceil(total / PAR_PAGE), 1);
+
+/** L'adresse de cette recherche à une autre page. */
+function adressePage(page: number): string {
+  const p = new URLSearchParams({ q: saisie });
+  if (page > 1) p.set("page", String(page));
+  return `${lien(langue, "/recherche")}?${p.toString()}`;
+}
+
+const precedente = pageDemandee > 1 ? adressePage(pageDemandee - 1) : null;
+const suivante = pageDemandee < pages ? adressePage(pageDemandee + 1) : null;
+
+/**
+ * Une page de résultats ne s'indexe pas.
+ *
+ * C'est du contenu du catalogue re-découpé par ce qu'un visiteur a tapé : mis
+ * dans l'index, il concurrencerait les fiches et les rayons avec les mêmes
+ * affiches, sous des adresses sans fin. Les fiches, elles, sont indexées et
+ * c'est par elles qu'on doit arriver.
+ */
+const titre = assezLong
+  ? `${tr("recherche.titre")} : ${saisie} — Memory Line`
+  : `${tr("recherche.titre")} — Memory Line`;
+---
+
+<Base
+  langue={langue}
+  title={titre}
+  noindex
+  precedente={precedente}
+  suivante={suivante}
+>
+  <section class="mx-auto max-w-[1200px] px-6 pt-12 pb-8 lg:px-12">
+    <h1 class="text-3xl sm:text-4xl">{tr("recherche.titre")}</h1>
+
+    {/* Le champ est REPRIS ici, pré-rempli : on corrige une faute de frappe
+        là où on lit le résultat, sans remonter à l'en-tête. */}
+    <form
+      method="get"
+      action={lien(langue, "/recherche")}
+      role="search"
+      class="mt-6 flex max-w-xl gap-2"
+    >
+      <input
+        type="search"
+        name="q"
+        value={saisie}
+        autocomplete="off"
+        placeholder={tr("recherche.champ")}
+        aria-label={tr("recherche.champ")}
+        class="flex-1 border border-ink/20 bg-paper px-4 py-2.5 focus:border-ink focus:outline-none"
+      />
+      <button
+        type="submit"
+        class="bg-ink px-5 py-2.5 text-paper hover:bg-ink/85 transition-colors"
+        >{tr("recherche.bouton")}</button
+      >
+    </form>
+
+    {/* Le compte ne s'écrit que s'il y a quelque chose à compter : « 0 affiche
+        trouvée » juste au-dessus de « Aucune affiche ne correspond » dit deux
+        fois la même chose, et se décline mal — le français met zéro au
+        singulier, l'anglais et l'espagnol au pluriel. */}
+    <p class="mt-4 text-ink-soft">
+      {
+        !saisie
+          ? tr("recherche.invite")
+          : !assezLong
+            ? tr("recherche.trop_court")
+            : total === 0
+              ? ""
+              : `${total} ${total === 1 ? tr("recherche.resultat") : tr("recherche.resultats")}`
+      }
+    </p>
+  </section>
+
+  {
+    error && (
+      <p class="mx-auto max-w-[1200px] px-6 text-terracotta-deep lg:px-12">
+        {tr("catalogue.erreur")} ({error}).
+      </p>
+    )
+  }
+
+  <section class="mx-auto max-w-[1200px] px-6 pb-16 lg:px-12">
+    {
+      assezLong && !error && total === 0 && (
+        <div class="max-w-xl">
+          <p>{tr("recherche.aucun")}</p>
+          <p class="mt-2 text-ink-soft">{tr("recherche.conseil")}</p>
+          <a
+            href={lien(langue, "/affiches")}
+            class="mt-6 inline-block bg-ink px-5 py-2.5 text-paper hover:bg-ink/85 transition-colors"
+            >{tr("recherche.tout_voir")}</a
+          >
+        </div>
+      )
+    }
+
+    <ul class="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-4">
+      {
+        resultats.map((p, rang) => (
+          <VignetteAffiche affiche={p} langue={langue} prioritaire={rang < 4} />
+        ))
+      }
+    </ul>
+
+    {
+      pages > 1 && (
+        <nav
+          class="mt-14 flex items-center justify-center gap-6 text-sm"
+          aria-label={tr("catalogue.page")}
+        >
+          {precedente ? (
+            <a
+              href={precedente}
+              rel="prev"
+              class="border border-ink/20 px-4 py-2 hover:border-ink transition-colors"
+            >
+              ← {tr("catalogue.precedente")}
+            </a>
+          ) : (
+            <span class="border border-ink/10 px-4 py-2 text-ink/30">
+              ← {tr("catalogue.precedente")}
+            </span>
+          )}
+          <span class="text-ink-soft">
+            {tr("catalogue.page")} {pageDemandee} {tr("catalogue.page_sur")}{" "}
+            {pages}
+          </span>
+          {suivante ? (
+            <a
+              href={suivante}
+              rel="next"
+              class="border border-ink/20 px-4 py-2 hover:border-ink transition-colors"
+            >
+              {tr("catalogue.suivante")} →
+            </a>
+          ) : (
+            <span class="border border-ink/10 px-4 py-2 text-ink/30">
+              {tr("catalogue.suivante")} →
+            </span>
+          )}
+        </nav>
+      )
+    }
+  </section>
+</Base>
