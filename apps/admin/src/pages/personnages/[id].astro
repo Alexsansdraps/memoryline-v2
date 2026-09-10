@@ -129,7 +129,15 @@ try {
     };
     decors = d.decors
       .filter((x) => x.url)
-      .map((x) => ({ id: x.id, nom: x.nom ?? `Décor ${x.id}`, url: x.url }));
+      .map((x) => ({ id: x.id, nom: x.nom ?? `Décor ${x.id}`, url: x.url }))
+      // Les décors correctement nommés d'abord : ceux sortis de l'ancienne
+      // boutique s'appellent « AFFICHES_Villes_2_.pdf.png » et ne montrent
+      // rien de reconnaissable. On calibre sur une vraie ville.
+      .sort((a, b) => {
+        const propre = (n: string) =>
+          /\.(pdf|png|jpe?g)/i.test(n) || /_/.test(n) ? 1 : 0;
+        return propre(a.nom) - propre(b.nom) || a.nom.localeCompare(b.nom, "fr");
+      });
   }
 } catch {
   // Sans décors, la calibration se fait sur un fond uni : moins parlant, mais
@@ -303,7 +311,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
         <div class="flex flex-wrap items-start gap-6">
           <div
             id="calibrage-scene"
-            class="relative w-[260px] shrink-0 overflow-hidden rounded border border-bo-border bg-bo-bg"
+            class="relative w-[420px] max-w-full shrink-0 overflow-hidden rounded border border-bo-border bg-bo-bg shadow-sm"
             style="aspect-ratio: 1 / 1.4142"
             data-base={svgSrc(perso.baseSvgUrl)}
             data-avant-plan={avantPlan ? svgSrc(avantPlan) : ""}
@@ -312,7 +320,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
             data-y={Y_MURET}
           >
             <img id="calibrage-fond" alt="" class="absolute inset-0 h-full w-full object-cover" />
-            {/* Le personnage passe DEVANT le muret, comme sur la boutique. */}
+            {/* Le personnage passe DEVANT le rebord, comme sur la boutique. */}
             <img
               id="calibrage-perso"
               alt=""
@@ -328,6 +336,21 @@ const piecesACaler = SLOTS.flatMap((s) => {
                 style="z-index: 5; height: auto"
               />
             )}
+            {/* Le texte est à sa vraie place, aux vraies tailles : c'est lui
+                qui donne l'échelle de l'affiche, et sans lui un personnage
+                paraît toujours bien dimensionné. Les polices de la boutique ne
+                sont pas chargées ici, seule la place compte. */}
+            <div
+              class="pointer-events-none absolute left-0 right-0 text-center"
+              style="top: 5%; padding: 0 6%; container-type: inline-size; z-index: 200; color: #1c1c1c"
+            >
+              <div style="font-family: Georgia, serif; font-size: 8cqw; line-height: 1.05">
+                PARIS
+              </div>
+              <div style="font-family: Georgia, serif; font-size: 5.5cqw; line-height: 1.15">
+                Mon amour
+              </div>
+            </div>
           </div>
 
           <div class="min-w-[300px] flex-1 space-y-4 text-sm">
@@ -389,6 +412,20 @@ const piecesACaler = SLOTS.flatMap((s) => {
                 au sol » plus haut.
               </span>
             </label>
+
+            {avantPlan ? (
+              <label class="flex items-center gap-2">
+                <input id="calibrage-rebord" type="checkbox" checked />
+                <span>
+                  Montrer le rebord — ce personnage est dessiné pour s'y poser
+                </span>
+              </label>
+            ) : (
+              <p class="rounded border border-bo-border bg-bo-bg px-3 py-2 text-xs text-bo-muted">
+                Ce personnage n'est pas dessiné pour un rebord : son type
+                d'affiche n'en a pas. Il se pose directement sur le décor.
+              </p>
+            )}
 
             <p class="text-xs text-bo-muted">
               Les deux réglages s'enregistrent avec le bouton « Enregistrer » du
@@ -1226,6 +1263,17 @@ const piecesACaler = SLOTS.flatMap((s) => {
       decor?.addEventListener("change", function () {
         fond.src = decor.value;
       });
+
+      // Le rebord se montre et se cache : c'est en le retirant qu'on voit si
+      // le personnage tient debout tout seul, et en le remettant qu'on juge
+      // s'il s'y pose bien.
+      const rebord = document.getElementById("calibrage-rebord");
+      const muret = document.getElementById("calibrage-muret");
+      if (rebord && muret)
+        rebord.addEventListener("change", function () {
+          muret.hidden = !rebord.checked;
+        });
+
       dessiner();
     })();
   </script>
