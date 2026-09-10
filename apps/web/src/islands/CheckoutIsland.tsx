@@ -414,7 +414,16 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
         express.mount(expressMountRef);
       }
 
-      elements.create("payment").mount(stripeMountRef);
+      /* La CARTE d'abord, et rien d'autre par défaut.
+       *
+       * Sans cet ordre, Stripe met Link en tête — son service de carte
+       * enregistrée. Une adresse déjà connue de Link déclenche alors son
+       * propre formulaire, qui refuse les cartes d'essai avec « We weren't
+       * able to add this card » et laisse croire à une panne de la boutique.
+       * Link reste proposé, il ne passe plus devant. */
+      elements
+        .create("payment", { paymentMethodOrder: ["card"] })
+        .mount(stripeMountRef);
     }
   });
 
