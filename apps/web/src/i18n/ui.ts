@@ -214,7 +214,7 @@ export const ui = {
     "panier.total_ligne": "Total",
     "panier.total_estime": "Total estimé",
     "panier.taxes":
-      "Taxes incluses. Réductions et frais d'expédition calculés à l'étape du paiement.",
+      "TVA non applicable, article 293 B du CGI. Réductions et frais d'expédition calculés à l'étape du paiement.",
     "panier.payer": "Procéder au paiement",
     "panier.format": "Format",
     "panier.cadre": "Cadre",
@@ -234,7 +234,7 @@ export const ui = {
       "Le paiement en ligne n'est pas encore activé.",
 
     "cookies.texte":
-      "Nous utilisons des cookies pour mesurer l'audience et améliorer votre expérience. Vous pouvez accepter ou refuser.",
+      "Ce site garde dans votre navigateur ce qu'il faut pour votre panier et vos préférences. Aucune mesure d'audience, aucun traceur publicitaire.",
     "cookies.politique": "Voir notre politique de cookies",
     "cookies.accepter": "Accepter",
     "cookies.refuser": "Refuser",
@@ -576,7 +576,7 @@ export const ui = {
     "panier.total_ligne": "Total",
     "panier.total_estime": "Estimated total",
     "panier.taxes":
-      "Taxes included. Discounts and shipping calculated at checkout.",
+      "VAT not applicable (French small-business exemption). Discounts and shipping calculated at checkout.",
     "panier.payer": "Proceed to checkout",
     "panier.format": "Size",
     "panier.cadre": "Frame",
@@ -596,7 +596,7 @@ export const ui = {
       "Online payment is not enabled yet.",
 
     "cookies.texte":
-      "We use cookies to measure traffic and improve your experience. You can accept or decline.",
+      "This site keeps what your basket and preferences need in your browser. No analytics, no advertising trackers.",
     "cookies.politique": "See our cookie policy",
     "cookies.accepter": "Accept",
     "cookies.refuser": "Decline",
@@ -935,7 +935,7 @@ export const ui = {
     "panier.total_ligne": "Gesamt",
     "panier.total_estime": "Geschätzte Summe",
     "panier.taxes":
-      "Inklusive Steuern. Rabatte und Versand werden an der Kasse berechnet.",
+      "Keine Mehrwertsteuer (französische Kleinunternehmerregelung). Rabatte und Versand werden an der Kasse berechnet.",
     "panier.payer": "Zur Kasse gehen",
     "panier.format": "Format",
     "panier.cadre": "Rahmen",
@@ -955,7 +955,7 @@ export const ui = {
       "Die Online-Zahlung ist noch nicht aktiviert.",
 
     "cookies.texte":
-      "Wir verwenden Cookies, um die Reichweite zu messen und Ihr Erlebnis zu verbessern. Sie können zustimmen oder ablehnen.",
+      "Diese Website speichert in Ihrem Browser nur, was Warenkorb und Einstellungen brauchen. Keine Reichweitenmessung, keine Werbe-Tracker.",
     "cookies.politique": "Unsere Cookie-Richtlinie ansehen",
     "cookies.accepter": "Zustimmen",
     "cookies.refuser": "Ablehnen",
@@ -1295,7 +1295,7 @@ export const ui = {
     "panier.total_ligne": "Totale",
     "panier.total_estime": "Totale stimato",
     "panier.taxes":
-      "Tasse incluse. Sconti e spedizione calcolati al momento del pagamento.",
+      "IVA non applicabile (regime francese di franchigia). Sconti e spedizione calcolati al momento del pagamento.",
     "panier.payer": "Procedi al pagamento",
     "panier.format": "Formato",
     "panier.cadre": "Cornice",
@@ -1315,7 +1315,7 @@ export const ui = {
       "Il pagamento online non è ancora attivo.",
 
     "cookies.texte":
-      "Utilizziamo i cookie per misurare il traffico e migliorare la tua esperienza. Puoi accettare o rifiutare.",
+      "Questo sito conserva nel tuo browser solo ciò che serve al carrello e alle preferenze. Nessuna misurazione del traffico, nessun tracciante pubblicitario.",
     "cookies.politique": "Consulta la nostra politica sui cookie",
     "cookies.accepter": "Accetta",
     "cookies.refuser": "Rifiuta",
@@ -1653,7 +1653,7 @@ export const ui = {
     "panier.total_ligne": "Total",
     "panier.total_estime": "Total estimado",
     "panier.taxes":
-      "Impuestos incluidos. Descuentos y envío calculados al finalizar la compra.",
+      "IVA no aplicable (régimen francés de franquicia). Descuentos y envío calculados al finalizar la compra.",
     "panier.payer": "Proceder al pago",
     "panier.format": "Formato",
     "panier.cadre": "Marco",
@@ -1673,7 +1673,7 @@ export const ui = {
       "El pago en línea aún no está activado.",
 
     "cookies.texte":
-      "Utilizamos cookies para medir la audiencia y mejorar tu experiencia. Puedes aceptar o rechazar.",
+      "Este sitio guarda en tu navegador solo lo que necesitan la cesta y tus preferencias. Sin medición de audiencia ni rastreadores publicitarios.",
     "cookies.politique": "Ver nuestra política de cookies",
     "cookies.accepter": "Aceptar",
     "cookies.refuser": "Rechazar",
