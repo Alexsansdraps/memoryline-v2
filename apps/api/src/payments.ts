@@ -216,7 +216,7 @@ export async function createPaypalOrder(
  */
 export async function capturePaypalOrder(
   paypalOrderId: string,
-): Promise<{ ok: boolean; status: string }> {
+): Promise<{ ok: boolean; status: string; captureId: string | null }> {
   if (!paypalConfigured) throw new Error("PayPal non configuré");
   const token = await paypalToken();
   const res = await fetch(
@@ -231,6 +231,82 @@ export async function capturePaypalOrder(
   );
   if (!res.ok)
     throw new Error(`PayPal capture HTTP ${res.status} ${await res.text()}`);
-  const j = (await res.json()) as { status: string };
-  return { ok: j.status === "COMPLETED", status: j.status };
+  const j = (await res.json()) as ReponsePaypalCommande;
+  return {
+    ok: j.status === "COMPLETED",
+    status: j.status,
+    // L'identifiant de la CAPTURE, pas celui de la commande : c'est lui, et
+    // lui seul, que PayPal accepte de rembourser plus tard.
+    captureId: captureDe(j),
+  };
+}
+
+/** La forme, réduite au nécessaire, de ce que PayPal rend sur une commande. */
+interface ReponsePaypalCommande {
+  status: string;
+  purchase_units?: {
+    payments?: { captures?: { id?: string; status?: string }[] };
+  }[];
+}
+
+/** L'identifiant de la capture, quand il y en a une. */
+function captureDe(j: ReponsePaypalCommande): string | null {
+  for (const unite of j.purchase_units ?? [])
+    for (const capture of unite.payments?.captures ?? [])
+      if (capture.id) return capture.id;
+  return null;
+}
+
+/**
+ * Retrouve la capture d'une commande PayPal déjà encaissée.
+ *
+ * Sert aux ventes passées avant qu'on garde cet identifiant : sans lui, leur
+ * premier remboursement échouerait sans qu'on comprenne pourquoi.
+ */
+export async function capturePaypalDeLaCommande(
+  paypalOrderId: string,
+): Promise<string | null> {
+  if (!paypalConfigured) throw new Error("PayPal non configuré");
+  const token = await paypalToken();
+  const res = await fetch(`${PAYPAL_BASE}/v2/checkout/orders/${paypalOrderId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return null;
+  return captureDe((await res.json()) as ReponsePaypalCommande);
+}
+
+/**
+ * Rend l'argent d'une capture PayPal, en totalité ou en partie.
+ *
+ * PayPal ne rembourse pas une commande mais une CAPTURE : c'est la même
+ * distinction que chez Stripe entre l'intention de paiement et le paiement.
+ * Le montant part en euros avec deux décimales, la devise étant celle de la
+ * boutique.
+ */
+export async function refundPaypal(
+  captureId: string,
+  amountCents: number,
+): Promise<{ id: string; status: string }> {
+  if (!paypalConfigured) throw new Error("PayPal non configuré");
+  const token = await paypalToken();
+  const res = await fetch(
+    `${PAYPAL_BASE}/v2/payments/captures/${captureId}/refund`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        amount: {
+          currency_code: "EUR",
+          value: (amountCents / 100).toFixed(2),
+        },
+      }),
+    },
+  );
+  if (!res.ok)
+    throw new Error(`PayPal refund HTTP ${res.status} ${await res.text()}`);
+  const j = (await res.json()) as { id: string; status: string };
+  return { id: j.id, status: j.status };
 }

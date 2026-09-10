@@ -14,7 +14,12 @@ import type { Context, Hono } from "hono";
 import type { SQL } from "drizzle-orm";
 import { and, desc, eq, gte, inArray, lte, or, sql as raw } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
-import { refundStripe } from "./payments.js";
+import {
+  capturePaypalDeLaCommande,
+  paypalConfigured,
+  refundPaypal,
+  refundStripe,
+} from "./payments.js";
 import { lignesRemplies, type TextesAffiche } from "@memoryline/types";
 import {
   courrierAnnulee,
@@ -1148,7 +1153,10 @@ export function mountOrderRoutes(app: Hono): void {
     if (dejaCents + montant > order.totalCents)
       return { erreur: "Le total remboursé dépasserait le montant encaissé." };
 
-    // Renvoi de l'argent chez le prestataire, s'il est demandé et possible.
+    // Renvoi de l'argent chez le prestataire qui l'a encaissé, s'il est
+    // demandé et possible. On ne cherchait ici qu'un paiement Stripe : une
+    // vente réglée par PayPal retombait donc sur « à la main », c'est-à-dire
+    // que la boutique notait un remboursement que personne n'avait fait.
     let gateway = "manuel";
     let externalRef: string | null = null;
     if (b.viaPsp !== false) {
@@ -1158,11 +1166,13 @@ export function mountOrderRoutes(app: Hono): void {
         .where(
           and(
             eq(schema.payments.orderId, id),
-            eq(schema.payments.provider, "stripe"),
+            inArray(schema.payments.provider, ["stripe", "paypal"]),
+            eq(schema.payments.status, "succeeded"),
           ),
         )
         .orderBy(desc(schema.payments.createdAt));
-      if (paiement?.externalRef) {
+
+      if (paiement?.provider === "stripe" && paiement.externalRef) {
         try {
           const r = await refundStripe(paiement.externalRef, montant);
           gateway = "stripe";
@@ -1170,6 +1180,45 @@ export function mountOrderRoutes(app: Hono): void {
         } catch (e) {
           return {
             erreur: `Stripe a refusé le remboursement : ${String(e)}`,
+            code: 502,
+          };
+        }
+      } else if (paiement?.provider === "paypal") {
+        if (!paypalConfigured)
+          return {
+            erreur:
+              "Cette commande a été réglée par PayPal, et PayPal n'est pas configuré sur ce serveur. Remboursez depuis votre compte PayPal, puis enregistrez le remboursement ici en décochant « rendre l'argent ».",
+            code: 400,
+          };
+        // PayPal ne rembourse pas une commande mais une CAPTURE. Les ventes
+        // d'avant qu'on garde cet identifiant n'en ont pas : on le redemande
+        // plutôt que d'échouer sans explication.
+        let capture = paiement.captureRef;
+        if (!capture && paiement.externalRef) {
+          try {
+            capture = await capturePaypalDeLaCommande(paiement.externalRef);
+            if (capture)
+              await db
+                .update(schema.payments)
+                .set({ captureRef: capture })
+                .where(eq(schema.payments.id, paiement.id));
+          } catch {
+            capture = null;
+          }
+        }
+        if (!capture)
+          return {
+            erreur:
+              "L'encaissement PayPal de cette commande est introuvable. Remboursez depuis votre compte PayPal, puis enregistrez le remboursement ici en décochant « rendre l'argent ».",
+            code: 502,
+          };
+        try {
+          const r = await refundPaypal(capture, montant);
+          gateway = "paypal";
+          externalRef = r.id;
+        } catch (e) {
+          return {
+            erreur: `PayPal a refusé le remboursement : ${String(e)}`,
             code: 502,
           };
         }

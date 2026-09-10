@@ -1271,6 +1271,16 @@ export const payments = pgTable("payment", {
     .references(() => orders.id, { onDelete: "cascade" }),
   provider: paymentProviderEnum("provider").notNull(), // WEB uniquement (§11)
   externalRef: text("external_ref"),
+  /**
+   * L'identifiant de l'encaissement chez le prestataire, quand il diffère de
+   * `externalRef`.
+   *
+   * PayPal en a besoin : il ne rembourse pas une COMMANDE mais une CAPTURE,
+   * et ce sont deux identifiants différents. Sans celui-ci, un remboursement
+   * PayPal n'aurait aucun moyen de partir, et l'argent resterait chez nous
+   * pendant que la boutique noterait qu'il est rendu.
+   */
+  captureRef: text("capture_ref"),
   status: text("status"),
   amountCents: integer("amount_cents").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

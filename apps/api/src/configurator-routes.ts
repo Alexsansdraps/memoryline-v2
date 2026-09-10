@@ -1393,6 +1393,14 @@ export function mountConfiguratorRoutes(app: Hono) {
       const cap = await capturePaypalOrder(paypalOrderId);
       if (!cap.ok)
         return c.json({ error: "paiement non complété", status: cap.status }, 402);
+      // L'identifiant de la CAPTURE, gardé tout de suite : c'est le seul que
+      // PayPal accepte de rembourser, et on ne le reverra plus dans la suite
+      // de la conversation.
+      if (cap.captureId)
+        await db
+          .update(schema.payments)
+          .set({ captureRef: cap.captureId })
+          .where(eq(schema.payments.id, payment.id));
       await markOrderPaid(orderId, "paypal", paypalOrderId);
       return c.json({ status: "paid" });
     } catch (e) {

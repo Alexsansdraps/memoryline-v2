@@ -92,6 +92,35 @@ const panierMoyen =
 const panierMoyenAvant =
   avant && avant.commandes > 0 ? Math.round(avant.caCents / avant.commandes) : 0;
 
+/**
+ * Les moyens de paiement réellement branchés.
+ *
+ * Un moyen dont les clés manquent n'apparaît tout simplement pas sur le site :
+ * le bouton ne s'affiche pas, et rien ne le dit. On l'a donc écrit ici, où on
+ * regarde tous les jours, plutôt que de le découvrir en se demandant pourquoi
+ * personne ne paie par PayPal.
+ */
+let paiements: { stripe: boolean; paypal: boolean } | null = null;
+if (isOwner) {
+  try {
+    const base =
+      import.meta.env.API_URL_INTERNAL ??
+      import.meta.env.PUBLIC_API_URL ??
+      "http://localhost:3000";
+    const res = await fetch(`${base}/payments/config`);
+    if (res.ok) {
+      const d = (await res.json()) as {
+        stripe: unknown | null;
+        paypal: unknown | null;
+      };
+      paiements = { stripe: Boolean(d.stripe), paypal: Boolean(d.paypal) };
+    }
+  } catch {
+    // Sans réponse, on n'affiche rien : mieux vaut se taire qu'annoncer une
+    // panne qui n'existe pas.
+  }
+}
+
 /** La courbe des ventes, en un tracé simple. */
 function courbe(serie: number[]): string {
   if (serie.length < 2) return "";
@@ -239,6 +268,25 @@ const teinte = (sens: string) =>
     )
   }
   <p class="mt-2 text-xs text-bo-muted">Ces quatre-là comptent depuis l'ouverture.</p>
+
+  {
+    paiements && !(paiements.stripe && paiements.paypal) && (
+      <div class="mt-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        <p class="font-medium">
+          {!paiements.stripe && !paiements.paypal
+            ? "Aucun moyen de paiement n'est branché : personne ne peut payer sur le site."
+            : !paiements.paypal
+              ? "PayPal n'est pas branché : le bouton ne s'affiche pas sur le site."
+              : "La carte bancaire n'est pas branchée : seul PayPal s'affiche sur le site."}
+        </p>
+        <p class="mt-1">
+          Un moyen de paiement n'apparaît que si ses identifiants sont
+          renseignés sur le serveur. Rien ne le signale au client : le bouton
+          est simplement absent.
+        </p>
+      </div>
+    )
+  }
 
   <div class="mt-6 rounded-lg border border-bo-border bg-bo-surface p-5">
     <h2 class="font-semibold">Raccourcis</h2>
