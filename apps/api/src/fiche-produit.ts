@@ -240,6 +240,159 @@ interface ChampsVariante {
 
 export function mountFicheProduit(app: Hono): void {
   /* ---------------------------------------------------------------------- */
+  /*  Dupliquer une affiche                                                 */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * Copie une affiche entiere, sous un nouveau nom.
+   *
+   * La copie nait en BROUILLON, toujours : une affiche dupliquee n'est pas
+   * finie, et la mettre en ligne d'office publierait un doublon de la
+   * precedente le temps qu'on s'en apercoive.
+   *
+   * Tout se fait en une seule transaction. Une copie a moitie faite — la
+   * fiche sans ses formats, ou sans ses collections — serait pire que pas de
+   * copie du tout : elle a l'air complete.
+   */
+  app.post("/admin/products/:id/dupliquer", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isFinite(id)) return c.notFound();
+
+    const corps = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const [source] = await db
+      .select()
+      .from(schema.products)
+      .where(eq(schema.products.id, id));
+    if (!source) return c.notFound();
+
+    const nom =
+      String(corps.name ?? "").trim().slice(0, 200) || `${source.name} (copie)`;
+
+    // L'adresse se derive du nom, et se decale tant qu'elle est prise. On ne
+    // refuse pas : dupliquer doit marcher du premier coup, sans faire chercher
+    // une adresse libre a la main.
+    const racine = slugifier(nom) || `${source.slug}-copie`;
+    let adresse = racine;
+    for (let n = 2; n < 200; n++) {
+      const [pris] = await db
+        .select({ id: schema.products.id })
+        .from(schema.products)
+        .where(eq(schema.products.slug, adresse));
+      if (!pris) break;
+      adresse = `${racine}-${n}`.slice(0, 200);
+    }
+
+    const copie = await db.transaction(async (tx) => {
+      const [neuf] = await tx
+        .insert(schema.products)
+        .values({
+          slug: adresse,
+          name: nom,
+          description: source.description,
+          kind: source.kind,
+          categoryId: source.categoryId,
+          aiEnabled: source.aiEnabled,
+          aiStylePrompt: source.aiStylePrompt,
+          weightGrams: source.weightGrams,
+          basePriceCents: source.basePriceCents,
+          // Toujours en brouillon : voir l'en-tete.
+          status: "draft",
+          defaultTitle: source.defaultTitle,
+          defaultSubtitle: source.defaultSubtitle,
+          defaultLine3: source.defaultLine3,
+          defaultView: source.defaultView,
+          foregroundUrl: source.foregroundUrl,
+          translations: source.translations,
+          vendor: source.vendor,
+          productType: source.productType,
+          tags: source.tags,
+          // Le referencement ne se copie pas : deux fiches avec le meme titre
+          // Google se font concurrence a elles-memes. Elles repartent du nom.
+          seoTitle: null,
+          seoDescription: null,
+        })
+        .returning();
+
+      const formats = await tx
+        .select()
+        .from(schema.variants)
+        .where(eq(schema.variants.productId, id));
+      if (formats.length)
+        await tx.insert(schema.variants).values(
+          formats.map((v) => ({
+            productId: neuf!.id,
+            format: v.format,
+            priceCents: v.priceCents,
+            compareAtCents: v.compareAtCents,
+            costCents: v.costCents,
+            weightGrams: v.weightGrams,
+            widthMm: v.widthMm,
+            heightMm: v.heightMm,
+            // La reference et le code-barres designent un article precis : les
+            // recopier ferait deux articles differents sous un meme code.
+            sku: null,
+            barcode: null,
+            stockQty: v.stockQty,
+            stockPolicy: v.stockPolicy,
+          })),
+        );
+
+      const images = await tx
+        .select()
+        .from(schema.productImages)
+        .where(eq(schema.productImages.productId, id));
+      if (images.length)
+        await tx.insert(schema.productImages).values(
+          images.map((im) => ({
+            productId: neuf!.id,
+            url: im.url,
+            alt: im.alt,
+            position: im.position,
+          })),
+        );
+
+      const fonds = await tx
+        .select()
+        .from(schema.backgrounds)
+        .where(eq(schema.backgrounds.productId, id));
+      if (fonds.length)
+        await tx.insert(schema.backgrounds).values(
+          fonds.map((f) => ({
+            productId: neuf!.id,
+            url: f.url,
+            name: f.name,
+            position: f.position,
+          })),
+        );
+
+      const rangements = await tx
+        .select()
+        .from(schema.productCollections)
+        .where(eq(schema.productCollections.productId, id));
+      if (rangements.length)
+        await tx.insert(schema.productCollections).values(
+          rangements.map((r) => ({
+            productId: neuf!.id,
+            collectionId: r.collectionId,
+            position: r.position,
+          })),
+        );
+
+      return {
+        id: neuf!.id,
+        slug: neuf!.slug,
+        name: neuf!.name,
+        formats: formats.length,
+        images: images.length,
+        fonds: fonds.length,
+        collections: rangements.length,
+      };
+    });
+
+    return c.json(copie);
+  });
+
+  /* ---------------------------------------------------------------------- */
   /*  Lecture de la fiche                                                   */
   /* ---------------------------------------------------------------------- */
 

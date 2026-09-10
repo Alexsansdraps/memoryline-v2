@@ -245,6 +245,32 @@ if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const action = String(form.get("_action") ?? "");
   try {
+    if (action === "dupliquer") {
+      // Appel direct plutôt que par le client partagé : c'est le seul écran
+      // qui duplique, et le client partagé sert déjà à tout le reste.
+      const base =
+        import.meta.env.API_URL_INTERNAL ??
+        import.meta.env.PUBLIC_API_URL ??
+        "http://localhost:3000";
+      const res = await fetch(`${base}/admin/products/${id}/dupliquer`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          cookie: Astro.request.headers.get("cookie") ?? "",
+        },
+        body: JSON.stringify({
+          name: String(form.get("nomCopie") ?? "").trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const d = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(d.error ?? "La copie n'a pas pu être faite.");
+      }
+      const copie = (await res.json()) as { id: number };
+      // La copie part sur sa propre fiche : c'est elle qu'on va modifier, et
+      // rester sur l'original ferait croire que rien ne s'est passé.
+      return Astro.redirect(`${url(`/produits/${copie.id}`)}?copiee=1`);
+    }
     if (action === "ia") {
       const p = await api.setProductIa(id!, {
         aiEnabled: form.get("aiEnabled") === "on",
@@ -817,6 +843,12 @@ try {
     <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">
       Affiche créée. Elle est déjà en ligne : ajoutez ses fonds et vérifiez ses
       réglages ci-dessous.
+    </p>
+  )}
+  {Astro.url.searchParams.get("copiee") === "1" && (
+    <p class="mb-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm">
+      Copie faite. Vous êtes sur la nouvelle affiche, en brouillon : changez son
+      nom, ses images et son texte, puis mettez-la en ligne.
     </p>
   )}
   <p class="mb-4">
@@ -1875,6 +1907,32 @@ try {
               {statutActuel.explication}
             </p>
             <button class={boutonPrincipal}>Enregistrer le statut</button>
+          </form>
+        </section>
+      )}
+
+      {/* Dupliquer : le geste le plus fréquent du métier, une affiche de ville
+          ressemblant beaucoup à la précédente. */}
+      {produit && (
+        <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+          <h3 class="mb-1 font-semibold">Dupliquer</h3>
+          <p class="mb-3 text-xs text-bo-muted">
+            Formats, prix, poids, images, fonds et collections sont recopiés.
+            La copie naît en brouillon, et son référencement repart de zéro.
+          </p>
+          <form method="POST" class="space-y-3">
+            <input type="hidden" name="_action" value="dupliquer" />
+            <label class="block">
+              <span class="text-xs text-bo-muted">Nom de la copie</span>
+              <input
+                name="nomCopie"
+                class={champ}
+                placeholder={`${produit.name} (copie)`}
+              />
+            </label>
+            <button class="w-full rounded border border-bo-border px-3 py-2 text-sm hover:bg-bo-bg">
+              Dupliquer cette affiche
+            </button>
           </form>
         </section>
       )}
