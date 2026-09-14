@@ -17,7 +17,6 @@
  */
 import Base from "../../layouts/Base.astro";
 import CheckoutIsland from "../../islands/CheckoutIsland.tsx";
-import CommandeStand from "../../islands/CommandeStand.tsx";
 import { lien, t, type Langue } from "../../i18n/utils.ts";
 import {
   adresses as lireAdresses,
@@ -38,35 +37,37 @@ const tr = t(langue);
 const ici = lien(langue, "/commande");
 
 /*
- * Le stand ne se connecte à aucun compte.
+ * Au stand, ce tunnel n'existe pas.
  *
- * Le compte sert à retrouver ses adresses et ses commandes passées : au stand,
- * le client est devant la vendeuse, il n'a ni adresse à livrer ni historique à
- * consulter. Exiger une connexion l'enverrait sur un écran de mot de passe au
- * moment de payer sur place — et c'est ce qui avait conduit à écrire une
- * deuxième boutique entière plutôt que de lever cette seule condition.
+ * Le client paie sur place : ni compte, ni adresse, ni carte bancaire. Sa
+ * dernière étape est le récapitulatif du panier, où il laisse son nom et son
+ * adresse e-mail (CartIsland + CommandeStand). Une tablette qui arrive
+ * quand même ici — un lien gardé, un retour arrière — y est renvoyée, plutôt
+ * que de tomber sur un écran de connexion puis sur un paiement en ligne.
+ *
+ * Il y avait auparavant ICI un second formulaire de stand, en plus de celui du
+ * panier : deux dernières étapes pour un même parcours, dont une que le
+ * panier sans prix ne permettait même plus d'atteindre.
  */
-const auStand = Astro.locals.stand;
+if (Astro.locals.stand) return Astro.redirect(lien(langue, "/panier"), 302);
 
-const session = auStand ? null : await moi(Astro);
-if (session && !session.ok)
+const session = await moi(Astro);
+if (!session.ok)
   return rediriger(
     Astro,
     `${lien(langue, "/compte/connexion")}?retour=${encodeURIComponent(ici)}`,
     302,
   );
 
-const client = session?.donnees ?? null;
+const client = session.donnees!;
 // Le carnet est un confort : s'il ne répond pas, le tunnel s'ouvre quand même
 // avec des champs vides plutôt que de refuser la commande.
 let carnet: Adresse[] = [];
-if (!auStand) {
-  try {
-    const r = await lireAdresses(Astro);
-    if (r.ok && Array.isArray(r.donnees)) carnet = r.donnees;
-  } catch {
-    carnet = [];
-  }
+try {
+  const r = await lireAdresses(Astro);
+  if (r.ok && Array.isArray(r.donnees)) carnet = r.donnees;
+} catch {
+  carnet = [];
 }
 ---
 
@@ -87,12 +88,6 @@ if (!auStand) {
       {tr("commande.titre")}
     </h1>
 
-    {/* Au stand, le client paie de la main à la main : ni adresse, ni
-        livraison, ni carte bancaire. Le reste du parcours — catalogue, fiche,
-        configurateur, panier — est celui de la boutique, aux montants près. */}
-    {auStand || !client ? (
-      <CommandeStand client:only="solid-js" />
-    ) : (
     <CheckoutIsland
       client:only="solid-js"
       langue={langue}
@@ -116,6 +111,5 @@ if (!auStand) {
         parDefaut: a.isDefaultShipping,
       }))}
     />
-    )}
   </section>
 </Base>

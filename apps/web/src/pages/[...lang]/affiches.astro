@@ -63,7 +63,17 @@ const TRIS = ["nouveautes", "prix_asc", "prix_desc", "alpha"] as const;
  */
 const pageRangeable =
   !!collectionDemandee || genre === "personnalisable" || genre === "prete_a_imprimer";
-const trisOfferts = pageRangeable ? (["manuel", ...TRIS] as const) : TRIS;
+/*
+ * Au stand, pas de tri par prix : les vignettes n'en montrent aucun, et un
+ * rayon rangé « du moins cher au plus cher » sans un chiffre à l'écran ne se
+ * comprend pas — il trahirait en plus l'écart que la vendeuse ne dit pas.
+ */
+const trisDuMode: readonly string[] = Astro.locals.stand
+  ? TRIS.filter((t) => t !== "prix_asc" && t !== "prix_desc")
+  : TRIS;
+const trisOfferts: readonly string[] = pageRangeable
+  ? ["manuel", ...trisDuMode]
+  : trisDuMode;
 const triParDefaut = pageRangeable ? "manuel" : "nouveautes";
 
 /**
@@ -78,7 +88,7 @@ const triParDefaut = pageRangeable ? "manuel" : "nouveautes";
 const villeDemandee = Astro.url.searchParams.get("ville") ?? "";
 
 const triDemande = Astro.url.searchParams.get("tri") ?? "";
-const tri = (trisOfferts as readonly string[]).includes(triDemande)
+const tri = trisOfferts.includes(triDemande)
   ? triDemande
   : triParDefaut;
 

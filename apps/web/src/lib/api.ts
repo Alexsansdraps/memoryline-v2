@@ -105,7 +105,7 @@ async function get<T>(path: string): Promise<T> {
  * Une page de catalogue : les affiches demandées, ET combien il y en a en tout.
  *
  * Le total voyage dans l'en-tête `X-Total-Count` et non dans le corps, qui
- * reste un tableau nu pour le stand, le plan de site et l'accueil. En-tête
+ * reste un tableau nu pour le panier, le plan de site et l'accueil. En-tête
  * illisible — un proxy qui la mange, une API d'une version antérieure — on
  * retombe sur le nombre d'affiches reçues : la grille s'affiche, elle ne
  * propose simplement pas de page suivante.
@@ -493,15 +493,6 @@ export interface CharacterLibrary {
 
 /** Client API navigateur (configurateur, panier, commande). */
 export const browserApi = {
-  /**
-   * Catalogue lu DEPUIS LE NAVIGATEUR — c'est ce dont le stand a besoin.
-   *
-   * Rendu côté serveur, le catalogue arriverait par les propriétés de l'îlot,
-   * donc dans le HTML servi, prix compris : le stand n'affiche aucun montant,
-   * il ne doit pas non plus en transporter dans sa page.
-   */
-  produits: (limite = 500) => browserGet<Product[]>(`/products?limit=${limite}`),
-  produit: (slug: string) => browserGet<ProductDetail>(`/products/${slug}`),
   characters: () => browserGet<CharacterLibrary>("/characters"),
   frames: () => browserGet<CadreDTO[]>("/frames"),
   /** Zones, modes et tarifs de livraison. */
@@ -661,7 +652,7 @@ export function getCartId(): string {
  * Repart d'un panier VIDE, sans toucher au panier précédent.
  *
  * Au stand, chaque client a sa commande : la vendeuse enchaîne, et le panier
- * du client servi ne doit rien laisser au suivant.
+ * du client servi ne doit rien laisser au suivant (CommandeStand.tsx).
  */
 export function nouveauCartId(): string {
   const id = crypto.randomUUID();
@@ -684,11 +675,18 @@ export interface EtatSalon {
   autorise: boolean;
 }
 
-/** Accusé de commande stand — aucun montant, volontairement (cf. /salon). */
+/**
+ * Accusé de commande stand — aucun montant, volontairement (cf. salon.ts).
+ *
+ * Calqué sur ce que l'API renvoie vraiment : le type annonçait un tableau
+ * d'articles et un client en anglais, l'API répond un NOMBRE d'exemplaires et
+ * un client en français. Personne ne le lisait, donc personne ne l'avait vu.
+ */
 export interface CommandeSalon {
   number: string;
-  client: { name: string; email: string };
-  articles: { title?: string | null; quantity?: number }[];
+  client: { nom: string; email: string };
+  /** Nombre d'exemplaires enregistrés, toutes lignes confondues. */
+  articles: number;
 }
 
 /**

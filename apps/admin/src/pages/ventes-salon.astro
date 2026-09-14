@@ -127,9 +127,16 @@ function originePublique(): string {
 }
 
 const origine = originePublique();
-/** L'adresse à ouvrir sur la tablette : le code y est déjà, rien à taper. */
+/**
+ * L'adresse à ouvrir sur la tablette : le code y est déjà, rien à taper.
+ *
+ * C'est le SITE, en mode stand — mêmes pages, sans aucun prix, et seule la
+ * dernière étape change : nom, adresse e-mail et « Valider mes affiches » au
+ * lieu du paiement. La tablette range le code et l'ôte de la barre d'adresse
+ * dès la première page. L'ancienne adresse « /stand?code=… » y mène encore.
+ */
 const adresseDe = (code: string) =>
-  `${origine}/stand?code=${encodeURIComponent(code)}`;
+  `${origine}/?stand=1&code=${encodeURIComponent(code)}`;
 
 /**
  * Le stand qu'on regarde de près, porté par l'adresse : le filtre survit à un
@@ -350,8 +357,8 @@ const classeBouton =
                 <span class="copie-ok text-xs text-bo-muted" />
               </div>
               <p class="mt-1 text-xs text-bo-muted">
-                À ouvrir sur la tablette : le code est déjà dans l'adresse, il
-                n'y a rien à taper.
+                À ouvrir sur la tablette : c'est le site, sans aucun prix, et le
+                code est déjà dans l'adresse — il n'y a rien à taper.
               </p>
             </div>
 
@@ -470,7 +477,7 @@ const classeBouton =
     >
       <li>Aucun prix à l'écran, c'est vous qui l'annoncez.</li>
       <li>Aucun paiement en ligne, on règle sur place.</li>
-      <li>Une commande se valide avec un nom et une adresse e-mail.</li>
+      <li>Une commande se valide avec un nom et une adresse e-mail, pour toutes les affiches du client d'un coup.</li>
       <li>Un stand qui a vendu se ferme et se rouvre, il ne se supprime pas.</li>
     </ul>
   </section>

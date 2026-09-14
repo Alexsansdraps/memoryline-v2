@@ -238,6 +238,42 @@ export const ui = {
     "commande.paiement_indisponible":
       "Le paiement en ligne n'est pas encore activé.",
 
+    /* Le stand : la dernière étape, quand le site est ouvert sur la tablette
+       d'un marché. Le client lit ces textes lui-même, d'où le « vous ». */
+    "stand.titre": "Vos affiches",
+    "stand.ajouter": "Ajouter une autre affiche",
+    "stand.code": "Code du stand",
+    "stand.code_aide":
+      "Saisi une fois par la vendeuse : la tablette le retient ensuite.",
+    "stand.code_valider": "Valider le code",
+    "stand.code_verification": "Vérification du code…",
+    "stand.code_vide": "Saisissez le code du stand.",
+    "stand.code_refuse":
+      "Ce code ne correspond à aucun stand ouvert. Vérifiez-le, ou ouvrez le stand depuis le back-office.",
+    "stand.code_perime":
+      "Le code retenu par cette tablette ne correspond plus à un stand ouvert. Saisissez le code du jour.",
+    "stand.code_injoignable":
+      "Le stand n'a pas répondu. Vérifiez la connexion, puis réessayez.",
+    "stand.stand": "Stand",
+    "stand.changer_code": "Changer de code",
+    "stand.nom": "Votre nom",
+    "stand.email": "Votre adresse e-mail",
+    "stand.email_aide":
+      "Nous vous écrivons à cette adresse quand votre commande est prête.",
+    "stand.nom_vide": "Indiquez votre nom.",
+    "stand.email_invalide": "Cette adresse e-mail est incomplète.",
+    "stand.valider_une": "Valider mon affiche",
+    "stand.valider_plusieurs": "Valider mes affiches",
+    "stand.envoi": "Enregistrement…",
+    "stand.sans_paiement":
+      "Aucun paiement en ligne : le règlement se fait directement sur le stand.",
+    "stand.erreur": "La commande n'a pas pu être enregistrée. Réessayez.",
+    "stand.merci": "Merci, votre commande est enregistrée",
+    "stand.numero": "Numéro de commande",
+    "stand.prevenu":
+      "Nous vous écrirons à {email} dès que votre commande sera prête.",
+    "stand.suivant": "Client suivant",
+
     "cookies.texte":
       "Ce site garde dans votre navigateur ce qu'il faut pour votre panier et vos préférences. Aucune mesure d'audience, aucun traceur publicitaire.",
     "cookies.politique": "Voir notre politique de cookies",
@@ -605,6 +641,40 @@ export const ui = {
     "commande.paiement_indisponible":
       "Online payment is not enabled yet.",
 
+    "stand.titre": "Your posters",
+    "stand.ajouter": "Add another poster",
+    "stand.code": "Stand code",
+    "stand.code_aide":
+      "Entered once by the stand staff: the tablet then remembers it.",
+    "stand.code_valider": "Confirm code",
+    "stand.code_verification": "Checking the code…",
+    "stand.code_vide": "Enter the stand code.",
+    "stand.code_refuse":
+      "This code does not match any open stand. Check it, or open the stand from the back office.",
+    "stand.code_perime":
+      "The code saved on this tablet no longer matches an open stand. Enter today's code.",
+    "stand.code_injoignable":
+      "The stand did not respond. Check the connection, then try again.",
+    "stand.stand": "Stand",
+    "stand.changer_code": "Change code",
+    "stand.nom": "Your name",
+    "stand.email": "Your email address",
+    "stand.email_aide":
+      "We will write to this address when your order is ready.",
+    "stand.nom_vide": "Please enter your name.",
+    "stand.email_invalide": "This email address is incomplete.",
+    "stand.valider_une": "Confirm my poster",
+    "stand.valider_plusieurs": "Confirm my posters",
+    "stand.envoi": "Saving…",
+    "stand.sans_paiement":
+      "No online payment: you pay directly at the stand.",
+    "stand.erreur": "The order could not be saved. Please try again.",
+    "stand.merci": "Thank you, your order is saved",
+    "stand.numero": "Order number",
+    "stand.prevenu":
+      "We will write to {email} as soon as your order is ready.",
+    "stand.suivant": "Next customer",
+
     "cookies.texte":
       "This site keeps what your basket and preferences need in your browser. No analytics, no advertising trackers.",
     "cookies.politique": "See our cookie policy",
@@ -968,6 +1038,41 @@ export const ui = {
     "commande.payer": "Bezahlen",
     "commande.paiement_indisponible":
       "Die Online-Zahlung ist noch nicht aktiviert.",
+
+    "stand.titre": "Ihre Poster",
+    "stand.ajouter": "Weiteres Poster hinzufügen",
+    "stand.code": "Stand-Code",
+    "stand.code_aide":
+      "Einmal vom Standpersonal eingegeben: Das Tablet merkt ihn sich.",
+    "stand.code_valider": "Code bestätigen",
+    "stand.code_verification": "Code wird geprüft…",
+    "stand.code_vide": "Bitte den Stand-Code eingeben.",
+    "stand.code_refuse":
+      "Dieser Code gehört zu keinem geöffneten Stand. Prüfen Sie ihn oder öffnen Sie den Stand im Backoffice.",
+    "stand.code_perime":
+      "Der auf diesem Tablet gespeicherte Code gehört zu keinem geöffneten Stand mehr. Bitte den heutigen Code eingeben.",
+    "stand.code_injoignable":
+      "Der Stand antwortet nicht. Prüfen Sie die Verbindung und versuchen Sie es erneut.",
+    "stand.stand": "Stand",
+    "stand.changer_code": "Code ändern",
+    "stand.nom": "Ihr Name",
+    "stand.email": "Ihre E-Mail-Adresse",
+    "stand.email_aide":
+      "Wir schreiben Ihnen an diese Adresse, sobald Ihre Bestellung fertig ist.",
+    "stand.nom_vide": "Bitte geben Sie Ihren Namen ein.",
+    "stand.email_invalide": "Diese E-Mail-Adresse ist unvollständig.",
+    "stand.valider_une": "Mein Poster bestätigen",
+    "stand.valider_plusieurs": "Meine Poster bestätigen",
+    "stand.envoi": "Wird gespeichert…",
+    "stand.sans_paiement":
+      "Keine Online-Zahlung: Sie bezahlen direkt am Stand.",
+    "stand.erreur":
+      "Die Bestellung konnte nicht gespeichert werden. Bitte erneut versuchen.",
+    "stand.merci": "Danke, Ihre Bestellung ist gespeichert",
+    "stand.numero": "Bestellnummer",
+    "stand.prevenu":
+      "Wir schreiben Ihnen an {email}, sobald Ihre Bestellung fertig ist.",
+    "stand.suivant": "Nächster Kunde",
 
     "cookies.texte":
       "Diese Website speichert in Ihrem Browser nur, was Warenkorb und Einstellungen brauchen. Keine Reichweitenmessung, keine Werbe-Tracker.",
@@ -1334,6 +1439,40 @@ export const ui = {
     "commande.paiement_indisponible":
       "Il pagamento online non è ancora attivo.",
 
+    "stand.titre": "I tuoi poster",
+    "stand.ajouter": "Aggiungi un altro poster",
+    "stand.code": "Codice dello stand",
+    "stand.code_aide":
+      "Inserito una volta dal personale dello stand: il tablet poi lo ricorda.",
+    "stand.code_valider": "Conferma il codice",
+    "stand.code_verification": "Verifica del codice…",
+    "stand.code_vide": "Inserisci il codice dello stand.",
+    "stand.code_refuse":
+      "Questo codice non corrisponde a nessuno stand aperto. Controllalo, oppure apri lo stand dal back-office.",
+    "stand.code_perime":
+      "Il codice salvato su questo tablet non corrisponde più a uno stand aperto. Inserisci il codice di oggi.",
+    "stand.code_injoignable":
+      "Lo stand non ha risposto. Controlla la connessione e riprova.",
+    "stand.stand": "Stand",
+    "stand.changer_code": "Cambia codice",
+    "stand.nom": "Il tuo nome",
+    "stand.email": "Il tuo indirizzo e-mail",
+    "stand.email_aide":
+      "Ti scriveremo a questo indirizzo quando il tuo ordine sarà pronto.",
+    "stand.nom_vide": "Inserisci il tuo nome.",
+    "stand.email_invalide": "Questo indirizzo e-mail è incompleto.",
+    "stand.valider_une": "Conferma il mio poster",
+    "stand.valider_plusieurs": "Conferma i miei poster",
+    "stand.envoi": "Salvataggio…",
+    "stand.sans_paiement":
+      "Nessun pagamento online: paghi direttamente allo stand.",
+    "stand.erreur": "Non è stato possibile salvare l'ordine. Riprova.",
+    "stand.merci": "Grazie, il tuo ordine è registrato",
+    "stand.numero": "Numero d'ordine",
+    "stand.prevenu":
+      "Ti scriveremo a {email} non appena il tuo ordine sarà pronto.",
+    "stand.suivant": "Cliente successivo",
+
     "cookies.texte":
       "Questo sito conserva nel tuo browser solo ciò che serve al carrello e alle preferenze. Nessuna misurazione del traffico, nessun tracciante pubblicitario.",
     "cookies.politique": "Consulta la nostra politica sui cookie",
@@ -1696,6 +1835,40 @@ export const ui = {
     "commande.payer": "Pagar",
     "commande.paiement_indisponible":
       "El pago en línea aún no está activado.",
+
+    "stand.titre": "Tus láminas",
+    "stand.ajouter": "Añadir otra lámina",
+    "stand.code": "Código del puesto",
+    "stand.code_aide":
+      "Lo introduce una vez el personal del puesto: la tableta lo recuerda después.",
+    "stand.code_valider": "Validar el código",
+    "stand.code_verification": "Comprobando el código…",
+    "stand.code_vide": "Introduce el código del puesto.",
+    "stand.code_refuse":
+      "Este código no corresponde a ningún puesto abierto. Compruébalo, o abre el puesto desde el back-office.",
+    "stand.code_perime":
+      "El código guardado en esta tableta ya no corresponde a un puesto abierto. Introduce el código de hoy.",
+    "stand.code_injoignable":
+      "El puesto no ha respondido. Comprueba la conexión y vuelve a intentarlo.",
+    "stand.stand": "Puesto",
+    "stand.changer_code": "Cambiar de código",
+    "stand.nom": "Tu nombre",
+    "stand.email": "Tu correo electrónico",
+    "stand.email_aide":
+      "Te escribiremos a esta dirección cuando tu pedido esté listo.",
+    "stand.nom_vide": "Indica tu nombre.",
+    "stand.email_invalide": "Esta dirección de correo está incompleta.",
+    "stand.valider_une": "Validar mi lámina",
+    "stand.valider_plusieurs": "Validar mis láminas",
+    "stand.envoi": "Guardando…",
+    "stand.sans_paiement":
+      "Sin pago en línea: pagas directamente en el puesto.",
+    "stand.erreur": "No se ha podido registrar el pedido. Vuelve a intentarlo.",
+    "stand.merci": "Gracias, tu pedido está registrado",
+    "stand.numero": "Número de pedido",
+    "stand.prevenu":
+      "Te escribiremos a {email} en cuanto tu pedido esté listo.",
+    "stand.suivant": "Siguiente cliente",
 
     "cookies.texte":
       "Este sitio guarda en tu navegador solo lo que necesitan la cesta y tus preferencias. Sin medición de audiencia ni rastreadores publicitarios.",

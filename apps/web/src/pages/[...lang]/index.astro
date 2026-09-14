@@ -92,6 +92,13 @@ const vitrineNombre = Math.max(
 
 const vitrine = products.slice(0, vitrineNombre);
 
+/*
+ * Au stand, la vitrine se montre sans prix, comme les vignettes du rayon
+ * (VignetteAffiche.astro) : c'est l'accueil qui s'ouvre en premier sur la
+ * tablette, et la vendeuse y annonce ses tarifs de salon.
+ */
+const sansPrix = Astro.locals.stand;
+
 function fourchette(p: Product): string {
   const prix = p.variants.map((v) => v.priceCents).filter((c) => c > 0);
   if (prix.length === 0) return formatPrice(p.basePriceCents);
@@ -252,7 +259,7 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
                 <h3 class="mt-4 text-[17px] leading-snug group-hover:underline underline-offset-4">
                   {titreCourt(p.name)}
                 </h3>
-                <p class="mt-1 text-ink-soft">{fourchette(p)}</p>
+                {!sansPrix && <p class="mt-1 text-ink-soft">{fourchette(p)}</p>}
               </a>
             </li>
           ))}

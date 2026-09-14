@@ -1,13 +1,15 @@
 ---
 /**
- * L'ancienne adresse du stand.
+ * L'adresse la plus ancienne du stand, du temps où il s'appelait « salon ».
  *
- * Le mot « salon » a laissé la place à « stand » partout où on le lit. Cette
- * adresse-ci survit parce qu'elle est peut-être ouverte sur une tablette en
- * ce moment même, et parce qu'un code d'accès envoyé par message ne se
- * réécrit pas. Elle emmène au même endroit, code compris.
+ * Même destination que /stand, et directement : un détour par /stand
+ * coûterait une redirection de plus à une tablette sur le réseau d'un salon.
+ * Le site s'ouvre en mode stand, code compris (voir stand.astro).
  */
 export const prerender = false;
-const suite = Astro.url.search;
-return Astro.redirect(`/stand${suite}`, 301);
+
+const code = Astro.url.searchParams.get("code")?.trim();
+const suite = new URLSearchParams({ stand: "1" });
+if (code) suite.set("code", code);
+return Astro.redirect(`/?${suite.toString()}`, 301);
 ---

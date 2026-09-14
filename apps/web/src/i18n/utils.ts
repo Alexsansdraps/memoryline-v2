@@ -47,20 +47,6 @@ export function lien(langue: Langue, chemin: string): string {
   return c === "/" ? `/${langue}` : `/${langue}${c}`;
 }
 
-/**
- * Chemins à générer pour une page traduite, à donner à `getStaticPaths`.
- * Le français passe par `undefined` — c'est ce qui produit l'URL sans préfixe.
- */
-export function cheminsLangues(): {
-  params: { lang: string | undefined };
-  props: { langue: Langue };
-}[] {
-  return LANGUES.map((langue) => ({
-    params: { lang: langue === LANGUE_DEFAUT ? undefined : langue },
-    props: { langue },
-  }));
-}
-
 /** Même page dans les autres langues — pour le sélecteur et les hreflang. */
 export function autresVersions(
   langue: Langue,

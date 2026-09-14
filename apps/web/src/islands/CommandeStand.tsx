@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import { createSignal, onMount, Show, type JSX } from "solid-js";
-import { ErreurSalon, getCartId, salonApi } from "../lib/api.ts";
+import { lien, t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
+import { ErreurSalon, getCartId, nouveauCartId, salonApi } from "../lib/api.ts";
 
 /**
  * La dernière étape, au stand.
@@ -8,22 +9,29 @@ import { ErreurSalon, getCartId, salonApi } from "../lib/api.ts";
  * Sur le site, on paie : adresse, livraison, carte bancaire. Au stand, le
  * client est devant la vendeuse et paie de la main à la main — il ne reste
  * qu'à savoir à qui appartient la commande, pour retrouver l'affiche à
- * l'impression et lui envoyer sa confirmation.
+ * l'impression et le prévenir quand elle est prête.
  *
- * Deux champs, donc, et rien d'autre. Tout ce qui précède — le catalogue, la
- * fiche, le configurateur, le panier — est celui de la boutique, aux montants
- * près. C'était le sens de la demande : une seule boutique, vue autrement,
- * plutôt que deux interfaces qui divergent en silence.
+ * Ce formulaire vit SOUS LE PANIER (CartIsland), qui sert de récapitulatif :
+ * mêmes aperçus, mêmes quantités, sans aucun montant. Tout ce qui précède — le
+ * catalogue, la fiche, le configurateur, l'affiche tirée d'une photo — est
+ * celui de la boutique. C'était la demande : « le site, mais juste la
+ * dernière étape qui change ». Une seule boutique vue autrement, plutôt que
+ * deux interfaces qui divergent en silence.
  *
  * LE CODE DU STAND N'EST PAS UN DÉTAIL. Le mode stand, lui, ne fait
  * qu'effacer des prix de l'écran : n'importe qui pourrait poser le cookie.
- * Ce qui autorise réellement à enregistrer une vente est ce code, vérifié par
- * l'API, et il voyage dans un EN-TÊTE — jamais dans l'adresse, où il
- * resterait dans l'historique d'une tablette qui passe de main en main.
+ * Ce qui autorise réellement à enregistrer une vente — déclarée payée — est
+ * ce code, vérifié par l'API, et il voyage dans un EN-TÊTE. L'adresse donnée
+ * par le back-office le porte une seule fois (« ?code= ») : la mise en page
+ * le range dans la tablette et l'ôte aussitôt de la barre d'adresse
+ * (Base.astro).
  */
 
-/** Le code du stand, retenu par la tablette : le retaper entre deux clients
- *  est intenable un jour de salon. */
+/**
+ * Le code du stand, retenu par la tablette : le retaper entre deux clients
+ * est intenable un jour de salon. Le nom de la clé date du « salon » ; le
+ * changer ferait redemander le code à toutes les tablettes déjà réglées.
+ */
 const CLE_CODE = "ml_salon_code";
 
 function codeMemorise(): string | null {
@@ -48,90 +56,172 @@ function oublierCode() {
   }
 }
 
-export default function CommandeStand(): JSX.Element {
+/** Une adresse e-mail plausible : la même règle que l'API (salon.ts). */
+const COURRIEL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Ce que l'écran de confirmation a besoin de savoir de la vente. */
+export interface VenteStand {
+  numero: string;
+  email: string;
+}
+
+/** Des champs larges et hauts : on les touche du doigt, sur une tablette. */
+const CHAMP_NU =
+  "border border-ink/25 bg-paper px-4 py-3 text-lg outline-none focus:border-ink";
+const CHAMP = `mt-1 w-full ${CHAMP_NU}`;
+const PRINCIPAL =
+  "inline-flex items-center justify-center px-6 py-4 text-lg font-medium bg-ink text-paper transition-colors hover:bg-ink/85 disabled:opacity-50";
+
+export default function CommandeStand(props: {
+  langue?: Langue;
+  /**
+   * Le nombre d'affiches du panier, exemplaires compris : le bouton dit
+   * « Valider mon affiche » ou « Valider mes affiches ».
+   */
+  nombre: number;
+  /** Une ligne du panier est en train d'être modifiée : on attend qu'elle ait fini. */
+  occupe?: boolean;
+  /** La vente est enregistrée : le panier laisse la place à la confirmation. */
+  onEnregistree: (vente: VenteStand) => void;
+}): JSX.Element {
+  const tr = t(props.langue ?? LANGUE_DEFAUT);
+
+  /*
+   * Le code, en trois états : on vérifie celui que la tablette a retenu, il
+   * est bon, ou il faut en saisir un. Il n'y a pas d'état « refusé » à part :
+   * un code refusé redemande une saisie, et le message dit pourquoi.
+   */
+  const [etatCode, setEtatCode] = createSignal<"verification" | "saisie" | "valide">(
+    "verification",
+  );
   const [code, setCode] = createSignal<string | null>(null);
+  const [evenement, setEvenement] = createSignal<string | null>(null);
   const [saisieCode, setSaisieCode] = createSignal("");
   const [erreurCode, setErreurCode] = createSignal<string | null>(null);
-  const [evenement, setEvenement] = createSignal<string | null>(null);
+  /** La dernière saisie déjà soumise au stand : quitter le champ ne la renvoie pas. */
+  let dejaVerifie = "";
 
   const [nom, setNom] = createSignal("");
   const [courriel, setCourriel] = createSignal("");
   const [envoi, setEnvoi] = createSignal(false);
   const [erreur, setErreur] = createSignal<string | null>(null);
-  const [numero, setNumero] = createSignal<string | null>(null);
 
-  onMount(async () => {
-    const retenu = codeMemorise();
-    if (!retenu) return;
-    // On vérifie le code retenu AVANT de s'en servir : un stand fermé depuis
-    // hier, ou un code changé, se découvrirait sinon au pire moment — le
-    // client devant soi, la commande déjà composée.
-    try {
-      const etat = await salonApi.etat(retenu);
-      if (etat.ouvert) {
-        setCode(retenu);
-        setEvenement(etat.evenement ?? null);
-      } else {
-        oublierCode();
-      }
-    } catch {
-      oublierCode();
-    }
-  });
-
-  async function validerCode(e: Event) {
-    e.preventDefault();
-    const saisi = saisieCode().trim();
-    if (!saisi) return;
+  /**
+   * Soumet un code au stand. Vrai s'il ouvre un stand OUVERT.
+   *
+   * `autorise`, et non `ouvert` : `ouvert` dit seulement qu'un stand est
+   * ouvert QUELQUE PART. Le lire seul laissait passer n'importe quel code dès
+   * qu'un stand était ouvert, et le refus tombait au moment de valider, le
+   * client devant soi, sa commande composée.
+   */
+  async function verifierCode(saisi: string, retenu: boolean): Promise<boolean> {
+    setEtatCode("verification");
     setErreurCode(null);
     try {
       const etat = await salonApi.etat(saisi);
-      if (!etat.ouvert) {
-        setErreurCode("Ce code ne correspond à aucun stand ouvert.");
-        return;
+      if (etat.autorise) {
+        retenirCode(saisi);
+        setCode(saisi);
+        setEvenement(etat.evenement ?? null);
+        setSaisieCode("");
+        setEtatCode("valide");
+        return true;
       }
-      retenirCode(saisi);
-      setCode(saisi);
-      setEvenement(etat.evenement ?? null);
+      // Un code retenu devenu faux — stand fermé depuis hier, code changé —
+      // est effacé : sinon la tablette le réessaierait à chaque client.
+      if (retenu) oublierCode();
+      setCode(null);
+      setErreurCode(tr(retenu ? "stand.code_perime" : "stand.code_refuse"));
     } catch {
-      setErreurCode("Le stand n'a pas répondu. Réessayez.");
+      // Le stand n'a pas répondu : une coupure de réseau n'est pas un code
+      // faux, on garde donc celui que la tablette a retenu pour réessayer.
+      setErreurCode(tr("stand.code_injoignable"));
     }
+    setEtatCode("saisie");
+    return false;
+  }
+
+  onMount(() => {
+    const retenu = codeMemorise();
+    // On vérifie le code retenu AVANT de s'en servir : un stand fermé depuis
+    // hier se découvrirait sinon au pire moment.
+    if (retenu) void verifierCode(retenu, true);
+    else setEtatCode("saisie");
+  });
+
+  function soumettreCode(e: Event) {
+    e.preventDefault();
+    const saisi = saisieCode().trim();
+    if (!saisi) {
+      setErreurCode(tr("stand.code_vide"));
+      return;
+    }
+    dejaVerifie = saisi;
+    void verifierCode(saisi, false);
+  }
+
+  function changerDeCode() {
+    oublierCode();
+    setCode(null);
+    setEvenement(null);
+    setSaisieCode("");
+    setErreurCode(null);
+    dejaVerifie = "";
+    setEtatCode("saisie");
   }
 
   async function valider(e: Event) {
     e.preventDefault();
-    if (envoi()) return;
+    if (envoi() || props.occupe || props.nombre === 0) return;
     const n = nom().trim();
     const m = courriel().trim();
     if (!n) {
-      setErreur("Le nom est obligatoire.");
+      setErreur(tr("stand.nom_vide"));
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m)) {
-      setErreur("Adresse e-mail incomplète.");
+    if (!COURRIEL.test(m)) {
+      setErreur(tr("stand.email_invalide"));
       return;
     }
-    setEnvoi(true);
     setErreur(null);
+
+    // Pas encore de code bon : celui qui est tapé, sinon celui que la tablette
+    // a retenu (le stand n'avait pas répondu au chargement).
+    let valable = etatCode() === "valide" ? code() : null;
+    if (!valable) {
+      const tape = saisieCode().trim();
+      const essai = tape || codeMemorise();
+      if (!essai) {
+        setErreurCode(tr("stand.code_vide"));
+        return;
+      }
+      if (!(await verifierCode(essai, !tape))) return;
+      valable = code();
+    }
+
+    setEnvoi(true);
     try {
-      const commande = await salonApi.commander(code(), {
+      const commande = await salonApi.commander(valable, {
         cartId: getCartId(),
         name: n,
         email: m,
       });
-      setNumero(commande.number);
+      // Le panier servi est clos : la tablette repart d'un panier neuf tout de
+      // suite, même si personne ne touche « Client suivant ».
+      nouveauCartId();
+      props.onEnregistree({ numero: commande.number, email: m });
     } catch (err) {
       if (err instanceof ErreurSalon && err.statut === 403) {
-        // Stand refermé ou code changé en plein salon : le panier reste en
-        // l'état, on redemande le code et la validation reprend.
+        // Stand refermé ou code changé en plein salon : le panier, le nom et
+        // l'adresse restent en l'état, on redemande le code seulement.
         oublierCode();
         setCode(null);
-        setErreurCode("Le stand a refusé le code. Saisissez-le à nouveau.");
+        setEvenement(null);
+        setEtatCode("saisie");
+        setErreurCode(tr("stand.code_refuse"));
       } else {
         setErreur(
-          err instanceof ErreurSalon && err.message
-            ? err.message
-            : "La commande n'a pas pu être enregistrée.",
+          err instanceof ErreurSalon && err.message ? err.message : tr("stand.erreur"),
         );
       }
     } finally {
@@ -139,103 +229,183 @@ export default function CommandeStand(): JSX.Element {
     }
   }
 
-  const CHAMP =
-    "mt-1 w-full border border-ink/25 bg-paper px-4 py-3 text-lg outline-none focus:border-ink";
-  const PRINCIPAL =
-    "inline-flex items-center justify-center px-6 py-4 text-lg font-medium bg-ink text-paper hover:bg-ink/85 disabled:opacity-50";
-
   return (
     <div class="max-w-xl">
-      <Show when={numero()}>
-        <div class="border border-ink/15 bg-paper-deep p-8 text-center">
-          <p class="text-2xl">Commande enregistrée</p>
-          <p class="mt-3 text-4xl font-medium">{numero()}</p>
-          <p class="mt-4 text-ink-soft">
-            Le client recevra sa confirmation par e-mail. Notez ce numéro sur
-            son bon si vous en remettez un.
+      {/* Le code d'abord, dans son propre formulaire : « Entrée » dans ce
+          champ vérifie le code, sans envoyer une commande à moitié remplie. */}
+      <div class="border-b border-ink/10 pb-5">
+        <Show when={etatCode() === "verification"}>
+          <p class="flex items-center text-ink-soft" aria-live="polite">
+            <span class="ml-spinner mr-3" aria-hidden="true" />
+            {tr("stand.code_verification")}
           </p>
-          <a
-            href="/affiches?stand=1"
-            class={`${PRINCIPAL} mt-8`}
-            onClick={() => {
-              // Chaque client a son panier : on repart à vide pour le suivant.
-              try {
-                localStorage.removeItem("ml_cart_id");
-              } catch {
-                /* rien à oublier */
-              }
-            }}
-          >
-            Client suivant
-          </a>
-        </div>
-      </Show>
+        </Show>
 
-      <Show when={!numero() && !code()}>
-        <form class="flex flex-col gap-4" onSubmit={validerCode}>
-          <p class="text-ink-soft">
-            Saisissez le code du stand pour enregistrer une vente.
-          </p>
-          <label class="block">
-            <span class="text-sm font-medium">Code du stand</span>
-            <input
-              value={saisieCode()}
-              onInput={(e) => setSaisieCode(e.currentTarget.value)}
-              autocomplete="off"
-              autocapitalize="characters"
-              class={CHAMP}
-            />
-          </label>
-          <Show when={erreurCode()}>
-            <p class="text-terracotta-deep">{erreurCode()}</p>
-          </Show>
-          <button type="submit" class={PRINCIPAL}>
-            Ouvrir le stand
-          </button>
-        </form>
-      </Show>
-
-      <Show when={!numero() && code()}>
-        <form class="flex flex-col gap-5" onSubmit={valider}>
-          <Show when={evenement()}>
-            <p class="text-ink-soft">Stand : {evenement()}</p>
-          </Show>
-          <label class="block">
-            <span class="text-sm font-medium">Nom du client</span>
-            <input
-              value={nom()}
-              onInput={(e) => setNom(e.currentTarget.value)}
-              autocomplete="off"
-              class={CHAMP}
-            />
-          </label>
-          <label class="block">
-            <span class="text-sm font-medium">Son adresse e-mail</span>
-            <input
-              type="email"
-              value={courriel()}
-              onInput={(e) => setCourriel(e.currentTarget.value)}
-              autocomplete="off"
-              inputmode="email"
-              class={CHAMP}
-            />
-            <span class="mt-1 block text-sm text-ink-soft">
-              C'est là qu'il recevra sa confirmation et, plus tard, son
-              affiche prête.
+        <Show when={etatCode() === "valide"}>
+          <p class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <span>
+              <span class="text-ink-soft">{tr("stand.stand")} :</span>{" "}
+              <span class="font-medium">{evenement() ?? "Memory Line"}</span>
             </span>
-          </label>
-          <Show when={erreur()}>
-            <p class="text-terracotta-deep">{erreur()}</p>
-          </Show>
-          <button type="submit" class={PRINCIPAL} disabled={envoi()}>
-            {envoi() ? "Enregistrement…" : "Enregistrer la commande"}
-          </button>
-          <p class="text-sm text-ink-soft">
-            Aucun paiement n'est pris ici : le client règle sur place, comme
-            d'habitude.
+            <button
+              type="button"
+              onClick={changerDeCode}
+              class="text-sm text-ink-soft underline underline-offset-4 hover:text-ink"
+            >
+              {tr("stand.changer_code")}
+            </button>
           </p>
-        </form>
-      </Show>
+        </Show>
+
+        <Show when={etatCode() === "saisie"}>
+          <form class="flex flex-col gap-2" onSubmit={soumettreCode}>
+            <label class="block" for="ml-stand-code">
+              <span class="text-sm font-medium">{tr("stand.code")}</span>
+            </label>
+            <div class="flex flex-wrap gap-3">
+              <input
+                id="ml-stand-code"
+                value={saisieCode()}
+                onInput={(e) => setSaisieCode(e.currentTarget.value)}
+                onBlur={() => {
+                  // Quitter le champ suffit à savoir si le code est bon : le
+                  // refus arrive tout de suite, pas après le nom et l'adresse.
+                  const saisi = saisieCode().trim();
+                  if (saisi && saisi !== dejaVerifie) {
+                    dejaVerifie = saisi;
+                    void verifierCode(saisi, false);
+                  }
+                }}
+                autocomplete="off"
+                autocapitalize="characters"
+                spellcheck={false}
+                aria-invalid={erreurCode() ? "true" : undefined}
+                aria-describedby="ml-stand-code-aide"
+                class={`${CHAMP_NU} min-w-0 flex-1 uppercase tracking-[0.15em]`}
+              />
+              <button
+                type="submit"
+                class="border border-ink px-5 py-3 font-medium transition-colors hover:bg-ink hover:text-paper"
+              >
+                {tr("stand.code_valider")}
+              </button>
+            </div>
+            <span id="ml-stand-code-aide" class="text-sm text-ink-soft">
+              {tr("stand.code_aide")}
+            </span>
+          </form>
+        </Show>
+
+        <Show when={erreurCode()}>
+          <p role="alert" class="mt-3 bg-terracotta/10 px-4 py-3 text-terracotta-deep">
+            {erreurCode()}
+          </p>
+        </Show>
+      </div>
+
+      <form class="mt-5 flex flex-col gap-5" onSubmit={valider} novalidate>
+        <label class="block">
+          <span class="text-sm font-medium">{tr("stand.nom")}</span>
+          <input
+            value={nom()}
+            onInput={(e) => {
+              setNom(e.currentTarget.value);
+              // Le reproche s'efface dès qu'on corrige : resté affiché, il
+              // laisserait croire que la correction n'a pas été prise.
+              setErreur(null);
+            }}
+            autocomplete="off"
+            required
+            class={CHAMP}
+          />
+        </label>
+        <label class="block">
+          <span class="text-sm font-medium">{tr("stand.email")}</span>
+          <input
+            type="email"
+            value={courriel()}
+            onInput={(e) => {
+              setCourriel(e.currentTarget.value);
+              setErreur(null);
+            }}
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck={false}
+            inputmode="email"
+            required
+            class={CHAMP}
+          />
+          {/* La promesse tenue : aucun courrier ne part à la validation. Le
+              seul que ce client recevra est « Votre affiche est prête »,
+              envoyé quand la commande est marquée prête au back-office. La
+              confirmation de commande du site, elle, détaille des montants
+              que la vendeuse n'a pas annoncés. */}
+          <span class="mt-1 block text-sm text-ink-soft">
+            {tr("stand.email_aide")}
+          </span>
+        </label>
+        <Show when={erreur()}>
+          <p role="alert" class="bg-terracotta/10 px-4 py-3 text-terracotta-deep">
+            {erreur()}
+          </p>
+        </Show>
+        <button
+          type="submit"
+          class={PRINCIPAL}
+          disabled={
+            envoi() || props.occupe || props.nombre === 0 || etatCode() === "verification"
+          }
+        >
+          {envoi()
+            ? tr("stand.envoi")
+            : props.nombre > 1
+              ? tr("stand.valider_plusieurs")
+              : tr("stand.valider_une")}
+        </button>
+        <p class="text-sm text-ink-soft">{tr("stand.sans_paiement")}</p>
+      </form>
+    </div>
+  );
+}
+
+/**
+ * La vente est enregistrée.
+ *
+ * C'est l'écran que la vendeuse regarde en rendant la tablette : le numéro se
+ * lit de loin, et « Client suivant » repart du catalogue avec un panier vide.
+ * Le lien repose `?stand=1` : il renouvelle pour une journée le mode stand de
+ * la tablette, qu'un salon de deux jours aurait sinon laissé expirer.
+ */
+export function ConfirmationStand(props: {
+  langue?: Langue;
+  vente: VenteStand;
+}): JSX.Element {
+  const langue = props.langue ?? LANGUE_DEFAUT;
+  const tr = t(langue);
+  return (
+    <div class="mx-auto mt-6 max-w-2xl border border-ink/15 bg-paper-deep px-6 py-10 text-center sm:px-10">
+      <p class="text-2xl sm:text-3xl">{tr("stand.merci")}</p>
+      <p class="mt-8 text-sm uppercase tracking-[0.08em] text-ink-soft">
+        {tr("stand.numero")}
+      </p>
+      <p class="mt-1 text-5xl font-medium tabular-nums sm:text-6xl">
+        {props.vente.numero}
+      </p>
+      <p class="mt-8 text-lg text-ink-soft">
+        {tr("stand.prevenu").replace("{email}", props.vente.email)}
+      </p>
+      <a
+        href={`${lien(langue, "/affiches")}?stand=1`}
+        class={`${PRINCIPAL} mt-10 px-10`}
+        onClick={() => {
+          // Le panier a déjà été remis à neuf à l'enregistrement. On le refait
+          // ici au cas où une affiche y serait entrée depuis — un retour
+          // arrière, un second onglet : le client suivant n'hérite de rien.
+          nouveauCartId();
+        }}
+      >
+        {tr("stand.suivant")}
+      </a>
     </div>
   );
 }

@@ -273,6 +273,36 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
     <script is:inline>
       document.documentElement.classList.add("ml-js");
     </script>
+    {/* Le code du stand, arrivé par l'adresse que donne le back-office
+        (« /?stand=1&code=… »). Il est rangé dans la tablette — c'est là que
+        la dernière étape le relit (CommandeStand.tsx) — puis retiré aussitôt
+        de la barre d'adresse : un code affiché devant le client, et gardé
+        dans l'historique d'une tablette qui passe de main en main, n'est plus
+        un code. Rien n'est vérifié ici : l'étape de validation le soumet au
+        stand avant de s'en servir. */}
+    {
+      Astro.locals.stand && (
+        <script is:inline>
+          (function () {
+            try {
+              var adresse = new URL(window.location.href);
+              var code = (adresse.searchParams.get("code") || "").trim();
+              if (!code) return;
+              localStorage.setItem("ml_salon_code", code);
+              adresse.searchParams.delete("code");
+              history.replaceState(
+                history.state,
+                "",
+                adresse.pathname + adresse.search + adresse.hash,
+              );
+            } catch (e) {
+              // Stockage refusé (navigation privée) : le code se saisira à la
+              // main, à la dernière étape.
+            }
+          })();
+        </script>
+      )
+    }
     <Seo
       title={titre}
       description={desc}

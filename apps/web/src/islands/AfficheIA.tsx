@@ -55,6 +55,14 @@ export interface AfficheIAProps {
   product: { id: number; name: string; basePriceCents: number };
   /** Formats vendus et leur prix, dans l'ordre du catalogue. */
   formats?: { format: string; priceCents: number }[];
+  /**
+   * Au stand : aucun montant sous les formats.
+   *
+   * L'affiche tirée d'une photo se vend au stand comme les autres, et comme
+   * les autres sans prix : c'est la vendeuse qui les annonce. Le prix reste
+   * calculé et enregistré avec la ligne du panier.
+   */
+  sansPrix?: boolean;
 }
 
 /** Étapes du parcours, dans l'ordre où le client les traverse. */
@@ -801,9 +809,11 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                       }`}
                     >
                       <span class="block font-medium">{f.format}</span>
-                      <span class="block opacity-80">
-                        {formatPrice(f.priceCents)}
-                      </span>
+                      <Show when={!props.sansPrix}>
+                        <span class="block opacity-80">
+                          {formatPrice(f.priceCents)}
+                        </span>
+                      </Show>
                     </button>
                   )}
                 </For>

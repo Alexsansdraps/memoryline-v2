@@ -25,6 +25,7 @@ import { and, asc, count, eq, isNull, ne, sql as raw } from "drizzle-orm";
 import { randomInt } from "node:crypto";
 import { db, schema } from "./db/client.js";
 import { enregistrerFichiersDImpression } from "./configurator-routes.js";
+import { rattacherGenerationsAuPanier } from "./ia.js";
 import { HORS_VENTES } from "./statuts-vente.js";
 
 /**
@@ -238,6 +239,14 @@ export function mountSalonRoutes(app: Hono): void {
       return c.json({ error: "Cette commande est déjà enregistrée." }, 409);
     const { lignes: vendues, commande } = vente;
     if (!commande) return c.json({ error: "Aucune affiche choisie." }, 400);
+
+    // Les affiches tirées d'une photo passent du panier à la commande, comme
+    // au paiement d'une vente du site (markOrderPaid) : elles reçoivent leur
+    // date de paiement, et c'est elle qui les sort de la purge des photos de
+    // visiteurs. Sans ce rattachement, l'affiche vendue au stand perdait son
+    // image pleine définition au ménage suivant — et avec elle son fichier
+    // d'impression. Ne lève jamais : la vente est faite.
+    await rattacherGenerationsAuPanier(panier.id, panier.clientOrderId, client.id);
 
     // Les fichiers d'impression, comme pour une vente du site : nommés tout
     // de suite — deux affiches identiques de la même vente deviennent

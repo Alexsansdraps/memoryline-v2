@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
+import { lien, t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
 import {
   createEffect,
   createResource,
@@ -34,6 +34,7 @@ import {
   type OrderItem,
 } from "../lib/api.ts";
 import { apercuAbsolu, urlApercu } from "../lib/ia.ts";
+import CommandeStand, { ConfirmationStand, type VenteStand } from "./CommandeStand.tsx";
 
 /**
  * Panier (§18.3). Lit ml_cart_id (localStorage), liste les lignes avec une
@@ -42,6 +43,10 @@ import { apercuAbsolu, urlApercu } from "../lib/ia.ts";
  *    configurateur avec la config et fait un PUT (§18.3 I).
  *  - « Supprimer » -> DELETE.
  * Affiche le total et un bouton « Commander » vers /commande.
+ *
+ * Au stand, le même panier devient la DERNIÈRE ÉTAPE : récapitulatif sans un
+ * montant, puis nom, adresse e-mail et « Valider mes affiches »
+ * (CommandeStand.tsx). Toutes les lignes partent dans une seule commande.
  */
 
 /** Règle de promo renvoyée par l'API /promos. */
@@ -117,17 +122,26 @@ function catalogue(): Promise<Map<number, FicheLigne>> {
 export default function CartIsland(props: {
   langue?: Langue;
   /**
-   * Au stand : aucun montant, ni par ligne, ni en total.
+   * Au stand : aucun montant, ni par ligne, ni en total — et la validation
+   * du stand à la place du paiement.
    *
    * Le panier reste le panier — mêmes articles, mêmes aperçus, mêmes
-   * quantités. Seuls les chiffres s'effacent, parce que la vendeuse annonce
-   * ses prix de salon et qu'un total affiché la contredirait devant le client.
-   * Le code promo disparaît avec eux : une remise sans prix n'a rien à dire.
+   * quantités. Les chiffres s'effacent, parce que la vendeuse annonce ses prix
+   * de salon et qu'un total affiché la contredirait devant le client. Le code
+   * promo, le poids du colis et « Procéder au paiement » disparaissent avec
+   * eux : il n'y a ni remise à calculer, ni colis, ni paiement en ligne.
+   *
+   * Masquer le bloc des totaux cachait AUSSI le seul bouton qui menait plus
+   * loin : le panier du stand était une impasse. La validation vit donc ici,
+   * sous les affiches, et non sur une page de plus.
    */
-  sansPrix?: boolean;
+  stand?: boolean;
 }): JSX.Element {
-  const tr = t(props.langue ?? LANGUE_DEFAUT);
+  const langue = props.langue ?? LANGUE_DEFAUT;
+  const tr = t(langue);
   const [busy, setBusy] = createSignal<number | null>(null);
+  /** La vente du stand, une fois enregistrée : elle remplace le panier à l'écran. */
+  const [vente, setVente] = createSignal<VenteStand | null>(null);
 
   // Code promo : celui déjà saisi est repris, et revérifié à l'affichage —
   // un code peut avoir expiré depuis la dernière visite.
@@ -170,8 +184,8 @@ export default function CartIsland(props: {
   }
 
   // Reprise d'un code d'une visite précédente, sans rien reprocher au client
-  // s'il n'est plus valable.
-  if (codeSaisi()) void appliquerCode(codeSaisi(), true);
+  // s'il n'est plus valable. Pas au stand : aucune remise ne s'y affiche.
+  if (!props.stand && codeSaisi()) void appliquerCode(codeSaisi(), true);
 
   const [cart, { refetch }] = createResource(async () => {
     const cartId = getCartId();
@@ -282,6 +296,20 @@ export default function CartIsland(props: {
         `${n} ${n > 1 ? tr("panier.personnages") : tr("panier.personnage")}`,
       );
     return out;
+  }
+
+  /** Le nombre d'affiches, exemplaires compris : « mon affiche » ou « mes affiches ». */
+  const exemplaires = () =>
+    (cart()?.items ?? []).reduce((s, it) => s + it.quantity, 0);
+
+  /** La vente du stand est faite : la confirmation prend toute la place. */
+  function venteEnregistree(v: VenteStand) {
+    setVente(v);
+    // La pastille de l'en-tête compte encore le panier servi : on lui dit
+    // qu'il est clos (CartBadge.tsx), sinon elle annoncerait ses affiches
+    // au client suivant.
+    window.dispatchEvent(new Event("ml:panier"));
+    window.scrollTo({ top: 0 });
   }
 
   /** Sous-total (somme des lignes, sans remise). */
@@ -405,8 +433,37 @@ export default function CartIsland(props: {
     }
   }
 
+  /*
+   * Les colonnes d'une ligne : ce qu'on achète, combien, pour quel montant.
+   * Au stand, la colonne du montant n'existe pas — une colonne vide laissait
+   * un trou à droite de chaque affiche.
+   */
+  const COLONNES = props.stand
+    ? "sm:grid-cols-[1fr_auto]"
+    : "sm:grid-cols-[1fr_auto_7rem]";
+
   return (
+    <>
+    <Show when={vente()}>
+      {(v) => <ConfirmationStand langue={langue} vente={v()} />}
+    </Show>
+    <Show when={!vente()}>
     <div>
+      {/* Au stand, le titre vit dans l'îlot : il s'efface avec le panier quand
+          la vente est enregistrée, et « Ajouter une autre affiche » ne reste
+          pas affiché au-dessus d'une commande close. */}
+      <Show when={props.stand}>
+        <div class="mt-4 mb-8 flex flex-wrap items-baseline justify-between gap-4">
+          <h1 class="text-3xl sm:text-4xl">{tr("stand.titre")}</h1>
+          <a
+            href={lien(langue, "/affiches")}
+            class="border border-ink px-5 py-3 font-medium hover:bg-ink hover:text-paper transition-colors"
+          >
+            {tr("stand.ajouter")}
+          </a>
+        </div>
+      </Show>
+
       {/* Attente : un squelette aux dimensions des vraies lignes, pour que
           la page ne saute pas quand le contenu arrive. */}
       <Show when={cart.loading}>
@@ -448,10 +505,14 @@ export default function CartIsland(props: {
         {/* Trois colonnes comme sur une facture : ce qu'on achète, combien,
             pour quel montant. Sur mobile, la quantité et le total passent
             sous la description plutôt que de serrer trois colonnes. */}
-        <div class="hidden sm:grid grid-cols-[1fr_auto_7rem] gap-4 border-b border-ink/15 pb-3 text-xs uppercase tracking-[0.08em] text-ink-soft">
+        <div
+          class={`hidden sm:grid ${COLONNES} gap-4 border-b border-ink/15 pb-3 text-xs uppercase tracking-[0.08em] text-ink-soft`}
+        >
           <span>{tr("panier.produit")}</span>
           <span class="text-center">{tr("panier.quantite")}</span>
-          <span class="text-right">{tr("panier.total_ligne")}</span>
+          <Show when={!props.stand}>
+            <span class="text-right">{tr("panier.total_ligne")}</span>
+          </Show>
         </div>
 
         <ul>
@@ -459,7 +520,7 @@ export default function CartIsland(props: {
             {(it) => {
               const href = editHref(it);
               return (
-                <li class="grid gap-4 border-b border-ink/10 py-6 sm:grid-cols-[1fr_auto_7rem] sm:items-start">
+                <li class={`grid gap-4 border-b border-ink/10 py-6 ${COLONNES} sm:items-start`}>
                   <div class="flex gap-4 min-w-0">
                     <div class="ml-panier-vignette w-20 shrink-0 sm:w-24">
                       {/* Affiche IA : le visuel n'est pas une pile de calques
@@ -538,7 +599,7 @@ export default function CartIsland(props: {
                       <h2 class="text-lg leading-tight">
                         {it.title ?? "Affiche personnalisée"}
                       </h2>
-                      <Show when={!props.sansPrix}>
+                      <Show when={!props.stand}>
                         <p class="mt-1 text-sm">
                           {formatPrice(it.unitPriceCents)}
                         </p>
@@ -607,19 +668,32 @@ export default function CartIsland(props: {
                     </button>
                   </div>
 
-                  <p class="font-medium sm:text-right">
-                    <Show when={!props.sansPrix}>
+                  <Show when={!props.stand}>
+                    <p class="font-medium sm:text-right">
                       {formatPrice(it.unitPriceCents * it.quantity)}
-                    </Show>
-                  </p>
+                    </p>
+                  </Show>
                 </li>
               );
             }}
           </For>
         </ul>
 
+        {/* Au stand : la validation, à la place des totaux et du paiement. */}
+        <Show when={props.stand}>
+          <div class="mt-10">
+            <CommandeStand
+              langue={langue}
+              nombre={exemplaires()}
+              occupe={busy() !== null}
+              onEnregistree={venteEnregistree}
+            />
+          </div>
+        </Show>
+
         {/* Totaux, alignés à droite comme sur une facture. */}
-        <div class="mt-8 flex justify-end" style={props.sansPrix ? { display: "none" } : undefined}>
+        <Show when={!props.stand}>
+        <div class="mt-8 flex justify-end">
           <div class="w-full max-w-sm text-right">
             <Show when={discount().amount > 0}>
               <div class="flex items-center justify-between text-sm text-ink-soft">
@@ -710,7 +784,10 @@ export default function CartIsland(props: {
             </a>
           </div>
         </div>
+        </Show>
       </Show>
     </div>
+    </Show>
+    </>
   );
 }

@@ -44,8 +44,9 @@ const tr = t(langue);
  *
  * Ni le prix de l'affiche, ni celui de chaque taille, ni la remise : la
  * vendeuse annonce ses tarifs de salon, et un chiffre affiché la
- * contredirait devant le client. Le configurateur, lui, sait déjà se taire —
- * il porte une option `sansPrix` depuis le premier stand.
+ * contredirait devant le client. Le configurateur sait déjà se taire — il
+ * porte une option `sansPrix` depuis le premier stand —, et l'affiche tirée
+ * d'une photo reçoit la même, puisqu'elle se vend aussi au stand.
  */
 const sansPrix = Astro.locals.stand;
 
@@ -300,6 +301,7 @@ const breadcrumbLd = {
           <AfficheIA
             langue={langue}
             client:only="solid-js"
+            sansPrix={sansPrix}
             product={{
               id: product.id,
               name: cleanName,
