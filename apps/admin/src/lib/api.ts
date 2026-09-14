@@ -743,6 +743,11 @@ export interface OrderDetail {
     titreAffiche?: string | null;
     sousTitreAffiche?: string | null;
     personnages?: number;
+    /**
+     * L'aperçu de l'affiche commandée, rendu comme le fichier d'impression.
+     * Adresse relative à l'API, signée : à préfixer par `apiUrl`.
+     */
+    apercu?: string;
     /** Quantités déjà parties / déjà rendues, et ce qu'il reste à faire. */
     expedie?: number;
     rembourse?: number;

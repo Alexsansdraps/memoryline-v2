@@ -484,7 +484,35 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
               <tbody>
                 {items.map((it) => (
                   <tr class="border-b border-bo-border last:border-0">
-                    <td class="px-4 py-3">
+                    {/* L'aperçu, à gauche, comme dans le panier de la boutique.
+                        Il est rendu par le moteur du fichier d'impression :
+                        c'est ce qui partira à l'atelier, pas une recomposition.
+                        Un clic l'ouvre en grand — c'est là qu'on vérifie un
+                        prénom ou la couleur d'un pull avant d'imprimer.
+
+                        Le cadre garde les proportions d'une affiche (1:√2) :
+                        l'image se charge après la page, et sans ce gabarit la
+                        ligne sauterait de hauteur en arrivant. */}
+                    <td class="w-24 py-3 pl-4 align-top">
+                      {it.apercu && (
+                        <a
+                          href={apiUrl(it.apercu)}
+                          target="_blank"
+                          rel="noopener"
+                          title="Voir l'affiche en grand"
+                          class="block overflow-hidden rounded border border-bo-border bg-bo-bg transition-opacity hover:opacity-85"
+                          style="aspect-ratio: 1 / 1.4142"
+                        >
+                          <img
+                            src={apiUrl(it.apercu)}
+                            alt={`Aperçu : ${it.title ?? "affiche"}`}
+                            loading="lazy"
+                            class="h-full w-full object-cover"
+                          />
+                        </a>
+                      )}
+                    </td>
+                    <td class="px-4 py-3 align-top">
                       <div class="font-medium">
                         {it.title ?? "Affiche personnalisée"}
                       </div>

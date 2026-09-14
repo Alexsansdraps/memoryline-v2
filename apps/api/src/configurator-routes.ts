@@ -24,6 +24,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
+import { cheminApercu } from "./apercus.js";
 import { poidsDesCollections } from "./collections.js";
 import { renderPosterPdf, type ResolveData } from "./pdf.js";
 import {
@@ -1558,6 +1559,10 @@ export function mountConfiguratorRoutes(app: Hono) {
         titreAffiche: lignes[0] ?? null,
         sousTitreAffiche: lignes[1] ?? null,
         personnages: Array.isArray(cfg.characters) ? cfg.characters.length : 0,
+        // L'aperçu de la ligne, rendu par le même moteur que le fichier
+        // d'impression : ce qu'on regarde ici est ce qui part à l'atelier.
+        // Adresse relative, signée ; le back-office la préfixe.
+        apercu: cheminApercu(it.id),
       };
     });
 

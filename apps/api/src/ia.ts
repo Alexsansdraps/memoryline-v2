@@ -299,8 +299,8 @@ const MIME_SORTIE: Record<string, string> = {
 };
 
 /**
- * Filigrane brûlé dans les pixels de l'aperçu : le logo de la boutique, en
- * blanc, répété en diagonale.
+ * Filigrane brûlé dans les pixels de l'aperçu : un cercle fin au centre et le
+ * logo de la boutique à l'intérieur, en blanc presque transparent.
  *
  * Un calque CSS se retire depuis l'inspecteur du navigateur en trois clics ;
  * une image marquée, non. Le logo est posé deux fois — une ombre sombre
@@ -329,45 +329,50 @@ async function logoAttenue(largeur: number, opacite: number, sombre: boolean): P
 }
 
 /**
- * Calques à composer sur l'aperçu : le logo en quinconce sur une grille
- * tournée de 30°. Une ligne sur deux est décalée : aligné, le filigrane
- * laisse des couloirs vides qu'un recadrage suffit à isoler.
+ * Calques à composer sur l'aperçu : un cercle fin au centre, et le logo à
+ * l'intérieur, en blanc presque transparent — le MÊME dessin que le filigrane
+ * du configurateur (packages/configurator/src/components/Filigrane.tsx), aux
+ * mêmes proportions : cercle de 40 % de la largeur, logo de 24 %.
+ *
+ * Il remplace une grille de logos en diagonale, doublée d'une ombre sombre,
+ * qui couvrait toute l'image. La boutique la voulait plus discrète. Le cercle
+ * reste AU CENTRE, là où un recadrage ne peut pas l'ôter sans emporter le
+ * sujet de l'affiche.
+ *
+ * Le cercle est un SVG rendu par sharp, à la taille exacte de l'image : un
+ * trait vectoriel reste net, là où un anneau dessiné en pixels se crénelle.
  */
 async function calquesFiligrane(
   largeur: number,
   hauteur: number,
 ): Promise<{ input: Buffer; left: number; top: number }[]> {
-  const logoLargeur = Math.max(120, Math.round(largeur * 0.26));
-  const ombre = await logoAttenue(logoLargeur, 0.16, true);
-  const blanc = await logoAttenue(logoLargeur, 0.24, false);
-  const { width: lw = logoLargeur, height: lh = Math.round(logoLargeur * 0.444) } =
-    await sharp(blanc).metadata();
-
-  // La grille est calculée dans un repère tourné de -30°, puis chaque point
-  // est ramené dans le repère de l'image : c'est ce qui donne les diagonales.
-  const angle = (-30 * Math.PI) / 180;
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  const pasX = lw * 1.6;
-  const pasY = lh * 2.2;
-  const diag = Math.ceil(Math.hypot(largeur, hauteur));
   const cx = largeur / 2;
   const cy = hauteur / 2;
-  const calques: { input: Buffer; left: number; top: number }[] = [];
-  let rang = 0;
-  for (let y = -diag; y < diag; y += pasY) {
-    const depart = -diag + (rang % 2) * (pasX / 2);
-    for (let x = depart; x < diag; x += pasX) {
-      const px = Math.round(cx + x * cos - y * sin);
-      const py = Math.round(cy + x * sin + y * cos);
-      // Hors image : sharp refuse un calque entièrement en dehors.
-      if (px + lw < 0 || py + lh < 0 || px > largeur || py > hauteur) continue;
-      calques.push({ input: ombre, left: px + 2, top: py + 2 });
-      calques.push({ input: blanc, left: px, top: py });
-    }
-    rang++;
-  }
-  return calques;
+  const rayon = Math.round(largeur * 0.2);
+  // Le trait suit la taille de l'image : 1,5 px vu sur un aperçu d'environ
+  // 600 px de large, comme dans le configurateur.
+  const epaisseur = Math.max(2, largeur / 300);
+
+  const cercle = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${largeur}" height="${hauteur}">` +
+      `<circle cx="${cx}" cy="${cy}" r="${rayon}" fill="none" ` +
+      `stroke="#ffffff" stroke-opacity="0.5" stroke-width="${epaisseur}"/>` +
+      `</svg>`,
+  );
+
+  const logoLargeur = Math.max(80, Math.round(largeur * 0.24));
+  const logo = await logoAttenue(logoLargeur, 0.4, false);
+  const { width: lw = logoLargeur, height: lh = Math.round(logoLargeur * 0.444) } =
+    await sharp(logo).metadata();
+
+  return [
+    { input: cercle, left: 0, top: 0 },
+    {
+      input: logo,
+      left: Math.round(cx - lw / 2),
+      top: Math.round(cy - lh / 2),
+    },
+  ];
 }
 
 /** Aperçu filigrané : 1024 px au plus grand côté, JPEG (léger à servir). */

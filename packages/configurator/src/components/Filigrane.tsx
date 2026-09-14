@@ -1,42 +1,47 @@
 /// <reference lib="dom" />
-import { createUniqueId } from "solid-js";
 
 /**
- * Filigrane posé PAR-DESSUS l'affiche : le logo de la boutique, en blanc,
- * répété en diagonale.
+ * Filigrane posé PAR-DESSUS l'affiche : un cercle fin au centre, et le logo de
+ * la boutique à l'intérieur, en blanc presque transparent.
  *
  * Il est DANS l'aperçu, pas autour : une capture d'écran de l'affiche emporte
  * le filigrane avec elle. C'est toute la raison d'être de cette couche — un
  * bandeau posé à côté de l'image ne protégerait rien.
  *
- * Le logo est une silhouette blanche (logo-filigrane.png, la même image que
- * celle que le serveur brûle dans les aperçus IA — un seul fichier, un seul
- * rendu). Un blanc seul disparaîtrait sur un ciel de neige : une ombre sombre
- * très légère, décalée d'un rien, le garde lisible sur un fond clair sans
- * peser sur un fond de nuit.
+ * UN SEUL MOTIF, AU CENTRE. Le logo était auparavant répété en diagonale sur
+ * toute la surface, souligné d'une ombre sombre : il protégeait bien, mais il
+ * couvrait l'affiche que la cliente venait composer, jusque sur les visages
+ * et les prénoms. Un cercle au milieu protège autant — on ne recadre pas une
+ * affiche en coupant son centre — et laisse voir le travail.
  *
- * Le repère du SVG suit l'affiche (viewBox au ratio A4 portrait) : le motif
- * garde la même densité sur la vignette de 80 px du panier comme sur l'aperçu
- * plein écran du configurateur.
+ * Plus d'ombre non plus : elle rendait le filigrane lisible sur un ciel de
+ * neige, mais le faisait peser partout ailleurs. La discrétion est voulue.
+ *
+ * Le repère du SVG suit l'affiche (viewBox au ratio A4 portrait) : le cercle
+ * garde la même place et la même proportion sur la vignette de 80 px du panier
+ * comme sur l'aperçu plein écran du configurateur.
  */
 
 /** Chemin public du logo, servi par le site depuis apps/web/public. */
 const LOGO_FILIGRANE = "/logo-filigrane.png";
 
-/** Le logo fait 500×222 : on garde son rapport. */
-const LOGO_LARGEUR = 260;
+/** Le repère de l'affiche : 1000 de large, 1414 de haut (1:√2). */
+const LARGEUR = 1000;
+const HAUTEUR = 1414;
+
+/** Le cercle : 40 % de la largeur de l'affiche, centré. */
+const CENTRE_X = LARGEUR / 2;
+const CENTRE_Y = HAUTEUR / 2;
+const RAYON = 200;
+
+/** Le logo fait 500×222 : on garde son rapport, à 60 % du diamètre. */
+const LOGO_LARGEUR = 240;
 const LOGO_HAUTEUR = Math.round((LOGO_LARGEUR * 222) / 500);
 
 export function Filigrane() {
-  // Un motif SVG est référencé par id : deux aperçus sur la même page (le
-  // panier en aligne un par ligne) doivent avoir des ids distincts.
-  const uid = createUniqueId();
-  const idMotif = `ml-filigrane-${uid}`;
-  const idOmbre = `ml-filigrane-ombre-${uid}`;
-
   return (
     <svg
-      viewBox="0 0 1000 1414"
+      viewBox={`0 0 ${LARGEUR} ${HAUTEUR}`}
       preserveAspectRatio="none"
       aria-hidden="true"
       style={{
@@ -50,51 +55,25 @@ export function Filigrane() {
         "z-index": "300",
       }}
     >
-      <defs>
-        {/* Rend la silhouette blanche noire, alpha conservé : c'est l'ombre. */}
-        <filter id={idOmbre} color-interpolation-filters="sRGB">
-          <feColorMatrix
-            type="matrix"
-            values="0 0 0 0 0
-                    0 0 0 0 0
-                    0 0 0 0 0
-                    0 0 0 1 0"
-          />
-        </filter>
-        <pattern
-          id={idMotif}
-          width="420"
-          height="250"
-          patternUnits="userSpaceOnUse"
-          patternTransform="rotate(-30)"
-        >
-          <image
-            href={LOGO_FILIGRANE}
-            x="2"
-            y="2"
-            width={LOGO_LARGEUR}
-            height={LOGO_HAUTEUR}
-            opacity="0.16"
-            filter={`url(#${idOmbre})`}
-          />
-          <image
-            href={LOGO_FILIGRANE}
-            x="0"
-            y="0"
-            width={LOGO_LARGEUR}
-            height={LOGO_HAUTEUR}
-            opacity="0.22"
-          />
-        </pattern>
-      </defs>
-      {/* Le rectangle déborde largement : une fois le motif tourné de 30°, un
-          rectangle à la taille exacte laissait les coins nus. */}
-      <rect
-        x="-400"
-        y="-400"
-        width="1800"
-        height="2214"
-        fill={`url(#${idMotif})`}
+      <circle
+        cx={CENTRE_X}
+        cy={CENTRE_Y}
+        r={RAYON}
+        fill="none"
+        stroke="#ffffff"
+        stroke-width="2"
+        stroke-opacity="0.5"
+        // Le trait garde son épaisseur quand l'aperçu rétrécit : sans cela,
+        // le cercle disparaîtrait à la taille d'une vignette de panier.
+        vector-effect="non-scaling-stroke"
+      />
+      <image
+        href={LOGO_FILIGRANE}
+        x={CENTRE_X - LOGO_LARGEUR / 2}
+        y={CENTRE_Y - LOGO_HAUTEUR / 2}
+        width={LOGO_LARGEUR}
+        height={LOGO_HAUTEUR}
+        opacity="0.4"
       />
     </svg>
   );
