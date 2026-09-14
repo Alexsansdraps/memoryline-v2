@@ -1847,6 +1847,24 @@ export function adminApi(request?: Request) {
     enregistrerMenu: (entrees: unknown[]) =>
       req<{ ok: true }>("POST", "/admin/menu", { entrees }, cookie),
 
+    /* --- Ordre d'affichage des pages de genre ------------------------- */
+    /** Les affiches actives d'un genre, dans l'ordre où la boutique les montre. */
+    ordreGenre: (genre: string) =>
+      req<{ genre: string; rangees: number; produits: ProduitDeCollection[] }>(
+        "GET",
+        `/admin/products/ordre?genre=${encodeURIComponent(genre)}`,
+        undefined,
+        cookie,
+      ),
+    /** Enregistre l'ordre d'un genre : les affiches reçues prennent leur rang. */
+    enregistrerOrdreGenre: (genre: string, produits: number[]) =>
+      req<{ ok: true; ranges: number }>(
+        "POST",
+        "/admin/products/ordre",
+        { genre, produits },
+        cookie,
+      ),
+
     /* --- Statistiques de vente ----------------------------------------- */
     /** Tout l'écran en un appel : résumé, courbe, meilleures ventes, clientes. */
     analytique: (depuis?: string, jusqu?: string) =>

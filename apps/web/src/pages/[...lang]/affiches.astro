@@ -53,10 +53,18 @@ const PAR_PAGE = 48;
  * rangement se voie.
  */
 const TRIS = ["nouveautes", "prix_asc", "prix_desc", "alpha"] as const;
-const trisOfferts = collectionDemandee
-  ? (["manuel", ...TRIS] as const)
-  : TRIS;
-const triParDefaut = collectionDemandee ? "manuel" : "nouveautes";
+/*
+ * « Ordre de la boutique » est proposé — et choisi par défaut — dans une
+ * collection ET sur les pages d'un genre (« Affiches personnalisables »,
+ * « prêtes à imprimer »). Ces deux pages-là sont celles où les clientes
+ * arrivent, et elles se rangeaient jusqu'ici par nouveautés sans que la
+ * boutique puisse rien y changer. Elles suivent maintenant l'ordre réglé au
+ * back-office ; tant que rien n'est rangé, cet ordre EST celui des nouveautés.
+ */
+const pageRangeable =
+  !!collectionDemandee || genre === "personnalisable" || genre === "prete_a_imprimer";
+const trisOfferts = pageRangeable ? (["manuel", ...TRIS] as const) : TRIS;
+const triParDefaut = pageRangeable ? "manuel" : "nouveautes";
 
 /**
  * La ville demandée.

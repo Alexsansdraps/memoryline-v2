@@ -141,6 +141,13 @@ export const products = pgTable(
      */
     aiStylePrompt: text("ai_style_prompt"),
     /**
+     * La place de l'affiche sur la page de son genre (« Affiches
+     * personnalisables », « Affiches prêtes à imprimer »), réglée à la main au
+     * back-office. 0 = pas encore rangée : elle passe après les rangées, par
+     * nouveauté. Voir ordre-affichage.ts.
+     */
+    ordreAffichage: integer("ordre_affichage").default(0).notNull(),
+    /**
      * Poids du produit en grammes. Null = celui de ses collections.
      *
      * Trois niveaux, du plus précis au plus général : la variante (un A3 pèse

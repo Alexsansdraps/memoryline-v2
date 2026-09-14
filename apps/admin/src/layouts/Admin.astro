@@ -71,6 +71,10 @@ const nav: GroupeNav[] = [
         // Aucun autre écran ne pointe vers l'import : sans cette entrée, il
         // redevient introuvable, ce qu'il a déjà été une fois.
         children: [
+          // Où ranger les pages « Affiches personnalisables » et « prêtes à
+          // imprimer ». Les collections, elles, se rangent dans leur propre
+          // écran.
+          { href: "/produits/ordre", label: "Ordre d'affichage", icon: "↕️", owner: true },
           { href: "/produits/import", label: "Importer un fichier", icon: "📥", owner: true },
         ],
       },

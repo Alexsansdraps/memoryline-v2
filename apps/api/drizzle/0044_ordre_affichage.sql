@@ -1,0 +1,1 @@
+ALTER TABLE "product" ADD COLUMN "ordre_affichage" integer DEFAULT 0 NOT NULL;

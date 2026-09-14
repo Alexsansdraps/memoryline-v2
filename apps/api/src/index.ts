@@ -136,6 +136,10 @@ import {
 import { mountSalonRoutes } from "./salon.js";
 import { mountCompteRoutes } from "./comptes.js";
 import { mountAnalytiqueRoutes } from "./analytique.js";
+import {
+  mountOrdreAffichageRoutes,
+  ordreManuelDuGenre,
+} from "./ordre-affichage.js";
 import { mountIaRoutes } from "./ia.js";
 import { mountContact } from "./contact.js";
 
@@ -520,14 +524,16 @@ function ordreDeTri(tri: Tri, collection: string): SQL[] {
     case "alpha":
       return [sqlOp`${NOM_RANGE} asc`, asc(schema.products.id)];
     case "manuel":
-      // Hors collection, « manuel » n'a personne à qui obéir : on retombe sur
-      // l'ordre de création, celui que la boutique servait avant.
+      // Dans une collection, l'ordre de la collection. Ailleurs — les pages
+      // « Affiches personnalisables » et « prêtes à imprimer » — l'ordre
+      // réglé pour le genre, et à défaut les nouveautés : tant que rien n'est
+      // rangé, rien ne change pour les clientes.
       return collection
         ? [
             sqlOp`${positionDansCollection(collection)} asc nulls last`,
             asc(schema.products.id),
           ]
-        : [asc(schema.products.id)];
+        : ordreManuelDuGenre();
   }
 }
 
@@ -1757,6 +1763,7 @@ mountConfiguratorRoutes(app);
 // ne doit pas être avalé par une route paramétrée déclarée plus haut.
 mountIaRoutes(app);
 mountAnalytiqueRoutes(app);
+mountOrdreAffichageRoutes(app);
 
 // Formulaire de contact du site (apps/api/src/contact.ts) : une seule route
 // publique, « POST /contact », qui n'écrit rien en base et se contente
