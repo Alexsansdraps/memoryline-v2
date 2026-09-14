@@ -1,4 +1,5 @@
 ---
+import { apiInterne } from "../lib/api-interne.ts";
 import "../styles/global.css";
 import Seo from "../components/Seo.astro";
 import AnnouncementBanner from "../components/AnnouncementBanner.astro";
@@ -63,6 +64,7 @@ const MENU_DE_SECOURS: EntreeMenuPublique[] = [
     label: tr("nav.personnalisables"),
     href: "/affiches?genre=personnalisable",
     enfants: [
+      { id: -6, label: tr("nav.creer"), href: "/affiches" },
       { id: -2, label: tr("nav.tout_voir"), href: "/affiches?genre=personnalisable" },
       {
         id: -3,
@@ -84,13 +86,28 @@ const MENU_DE_SECOURS: EntreeMenuPublique[] = [
   },
 ];
 
+/*
+ * Le menu et la baseline du pied de page partent ENSEMBLE.
+ *
+ * Ils étaient demandés l'un après l'autre, à trente lignes d'écart : deux
+ * allers-retours pour deux informations qui ne dépendent pas l'une de
+ * l'autre, sur CHAQUE page du site. Ensemble, ils n'en coûtent qu'un.
+ *
+ * Chacun garde son repli : un menu qui ne répond pas laisse celui d'origine,
+ * une baseline absente laisse celle du dictionnaire. Une page publique ne
+ * tombe jamais parce qu'un ornement n'a pas pu être lu.
+ */
+const [reponseMenu, reponseReglages] = await Promise.all([
+  api.menu(langue).catch(() => null),
+  // La baseline n'est lue qu'en français : elle n'a pas de traduction, et la
+  // servir partout remplacerait quatre phrases traduites par une française.
+  langue === LANGUE_DEFAUT
+    ? api.settings("footer").catch(() => null)
+    : Promise.resolve(null),
+]);
+
 let entreesMenu: EntreeMenuPublique[] = MENU_DE_SECOURS;
-try {
-  const rendu = await api.menu(langue);
-  if (rendu.entrees.length) entreesMenu = rendu.entrees;
-} catch {
-  /* API injoignable : le menu d'origine reste, la boutique reste ouverte */
-}
+if (reponseMenu?.entrees.length) entreesMenu = reponseMenu.entrees;
 
 /**
  * Une adresse de menu, prête à être cliquée.
@@ -134,15 +151,9 @@ const desc = description ?? tr("meta.description");
  * la boutiquière retrouve la sienne là où elle l'a écrite.
  */
 let baseline = tr("pied.baseline");
-if (langue === LANGUE_DEFAUT) {
-  try {
-    const reglages = await api.settings("footer");
-    const saisie = reglages["footer.baseline"];
-    if (typeof saisie === "string" && saisie.trim()) baseline = saisie.trim();
-  } catch {
-    // API muette : la phrase du dictionnaire tient. Un pied de page n'a
-    // jamais de raison de faire tomber une page.
-  }
+{
+  const saisie = reponseReglages?.["footer.baseline"];
+  if (typeof saisie === "string" && saisie.trim()) baseline = saisie.trim();
 }
 
 /**
@@ -189,11 +200,19 @@ const connecte =
   (Astro.request.headers.get("cookie") ?? "").includes("ml_client=");
 const lienCompte = lien(langue, connecte ? "/compte" : "/compte/connexion");
 
-/** Le pied de page renvoie vers le même compte que l'en-tête. */
-const liensCompte = [
-  { href: connecte ? "/compte" : "/compte/connexion", texte: tr("nav.compte") },
-  { href: "/panier", texte: tr("nav.panier") },
-];
+/**
+ * Le pied de page renvoie vers le même compte que l'en-tête — sauf au stand,
+ * où le compte n'existe pas : il n'y reste que le panier.
+ */
+const liensCompte = Astro.locals.stand
+  ? [{ href: "/panier", texte: tr("nav.panier") }]
+  : [
+      {
+        href: connecte ? "/compte" : "/compte/connexion",
+        texte: tr("nav.compte"),
+      },
+      { href: "/panier", texte: tr("nav.panier") },
+    ];
 
 /**
  * Raccourci vers le back-office, pour qui y est déjà connecté.
@@ -204,24 +223,11 @@ const liensCompte = [
  * porte, et laquelle. Le coût est nul pour un vrai client — sans le cookie,
  * aucun appel n'est fait — et d'un aller-retour interne pour la boutique.
  */
-const cookies = Astro.isPrerendered
-  ? ""
-  : (Astro.request.headers.get("cookie") ?? "");
-let admin: { email: string; role: string } | null = null;
-if (cookies.includes("ml_admin_session=")) {
-  try {
-    const base =
-      import.meta.env.API_URL_INTERNAL ??
-      import.meta.env.PUBLIC_API_URL ??
-      "http://localhost:3000";
-    const res = await fetch(`${base}/auth/me`, { headers: { cookie: cookies } });
-    if (res.ok) admin = (await res.json()).user ?? null;
-  } catch {
-    // API injoignable : on n'affiche simplement pas le raccourci. Une page
-    // publique ne doit jamais tomber parce qu'un lien d'administration
-    // n'a pas pu être calculé.
-  }
-}
+// Résolue par le middleware, une fois par requête. La redemander ici
+// coûtait un aller-retour de plus à l'API pour la même réponse. Une page
+// figée au build n'a pas de session : `locals` y est vide, et le raccourci
+// ne s'affiche pas — ce qui est exactement ce qu'on veut.
+const admin = Astro.isPrerendered ? null : (Astro.locals.admin ?? null);
 /** Le back-office vit sous /bo derrière le proxy ; surchargeable en prod. */
 const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
 ---
@@ -278,89 +284,126 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
     />
   </head>
   <body class="min-h-screen flex flex-col bg-paper text-ink">
-    <AnnouncementBanner />
+    {/* Pas de bandeau au stand : il annonce une offre chiffrée — « 3 achetées,
+        1 offerte » — et la vendeuse a ses propres tarifs de salon. Une remise
+        affichée qui ne s'applique pas ici la contredirait devant le client. */}
+    {!Astro.locals.stand && <AnnouncementBanner />}
     {/* En-tête calquée sur memoryline.fr : logo à gauche, navigation au
         centre, actions à droite, sur 1200 px de large. */}
     <header class="border-b border-ink/10 bg-paper sticky top-0 z-10">
-      <nav
-        class="mx-auto flex max-w-[1200px] items-center justify-between gap-6 px-6 py-5 lg:px-12"
+      {/*
+        UNE rangée : logo · menu · « Créer mon affiche » · RECHERCHE · actions.
+
+        Toute la largeur, sans conteneur centré : le contenu des pages garde
+        sa largeur de lecture, mais un en-tête serré au milieu d'un grand
+        écran se lit mal alors qu'il reste de la place de chaque côté.
+
+        LE CHAMP DE RECHERCHE EST À DROITE, avec les icônes.
+
+        Il a d'abord été centré au pixel, ce qui demandait une grille à trois
+        pistes dont les deux côtés faisaient la même largeur. C'était ce qui
+        bridait tout le reste : le côté droit ne portant que trois icônes, le
+        côté gauche recevait la même largeur qu'elles — et le logo plus le
+        menu n'y tenaient qu'à peine, les libellés se coupant en deux lignes.
+
+        À droite, cette contrainte tombe. La rangée redevient une simple
+        ligne, le champ peut être plus large ET apparaître plus tôt : dès
+        1024 px au lieu de 1290.
+      */}
+      <div
+        class="flex w-full items-center gap-4 px-4 py-4 sm:gap-6 sm:px-6 lg:px-10"
       >
-        <a
-          href={lien(langue, "/")}
-          class="inline-flex shrink-0 items-center"
-          aria-label={tr("nav.accueil")}
-        >
-          <img
-            src="/logo-memory-line.png"
-            alt="Memory Line"
-            width="500"
-            height="222"
-            class="h-12 w-auto"
-          />
-        </a>
-        <div class="hidden md:flex items-center gap-6 text-[14px] font-semibold lg:gap-7 lg:text-[15px]">
-          {/* Le menu vient du back-office. Une entrée sans sous-lien est un
-              simple lien ; les autres se déroulent au clic, et se referment au
-              clic ailleurs ou avec Échap — un survol seul laisserait les
-              écrans tactiles sans porte d'entrée. */}
-          {
-            entreesMenu.map((entree) =>
-              entree.enfants.length === 0 ? (
-                <a
-                  href={adresseMenu(entree.href)}
-                  class="hover:text-terracotta transition-colors"
-                >
-                  {entree.label}
-                </a>
-              ) : (
-                <details class="ml-menu relative">
-                  <summary class="hover:text-terracotta flex cursor-pointer list-none items-center gap-1 transition-colors">
+        {/* Le logo et le menu, à leur largeur naturelle. `shrink-0` est ce
+            qui empêche les libellés de se couper : sans lui, le navigateur
+            comprime ce groupe dès que la rangée est chargée. */}
+        <div class="mr-auto flex min-w-0 items-center gap-3 sm:gap-5 lg:shrink-0 lg:gap-6">
+          <a
+            href={lien(langue, "/")}
+            class="inline-flex shrink-0 items-center"
+            aria-label={tr("nav.accueil")}
+          >
+            <img
+              src="/logo-memory-line.png"
+              alt="Memory Line"
+              width="500"
+              height="222"
+              class="h-12 w-auto"
+            />
+          </a>
+
+          <nav
+            aria-label={tr("nav.accueil")}
+            class="hidden md:flex items-center gap-5 text-[13px] font-semibold lg:gap-6 lg:text-[14px] lg:whitespace-nowrap"
+          >
+            {/* Le menu vient du back-office. Une entrée sans sous-lien est un
+                simple lien ; les autres se déroulent au clic, et se referment au
+                clic ailleurs ou avec Échap — un survol seul laisserait les
+                écrans tactiles sans porte d'entrée. */}
+            {
+              entreesMenu.map((entree) =>
+                entree.enfants.length === 0 ? (
+                  <a
+                    href={adresseMenu(entree.href)}
+                    class="hover:text-terracotta transition-colors"
+                  >
                     {entree.label}
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 12 12"
-                      aria-hidden="true"
-                      class="ml-menu-fleche transition-transform"
-                    >
-                      <path
-                        d="M2 4.5 6 8.5 10 4.5"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.6"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      />
-                    </svg>
-                  </summary>
-                  <div class="border-ink/10 bg-paper absolute top-full left-0 z-20 mt-3 min-w-56 rounded-lg border py-2 text-[14px] font-medium shadow-lg">
-                    {entree.enfants.map((enfant) => (
-                      <a
-                        href={adresseMenu(enfant.href)}
-                        class="hover:bg-ink/5 hover:text-terracotta block px-4 py-2 transition-colors"
+                  </a>
+                ) : (
+                  <details class="ml-menu relative">
+                    <summary class="hover:text-terracotta flex cursor-pointer list-none items-center gap-1 transition-colors">
+                      {entree.label}
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 12 12"
+                        aria-hidden="true"
+                        class="ml-menu-fleche transition-transform"
                       >
-                        {enfant.label}
-                      </a>
-                    ))}
-                  </div>
-                </details>
-              ),
-            )
-          }
+                        <path
+                          d="M2 4.5 6 8.5 10 4.5"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.6"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        />
+                      </svg>
+                    </summary>
+                    <div class="border-ink/10 bg-paper absolute top-full left-0 z-20 mt-3 min-w-56 rounded-lg border py-2 text-[14px] font-medium shadow-lg">
+                      {entree.enfants.map((enfant) => (
+                        <a
+                          href={adresseMenu(enfant.href)}
+                          class="hover:bg-ink/5 hover:text-terracotta block px-4 py-2 transition-colors"
+                        >
+                          {enfant.label}
+                        </a>
+                      ))}
+                    </div>
+                  </details>
+                ),
+              )
+            }
+          </nav>
+
         </div>
-        <div class="flex items-center gap-4 text-sm">
-          {/* La recherche de la boutique.
-              Un vrai formulaire en GET vers /recherche : la saisie finit dans
-              l'adresse, donc un résultat se recopie dans un message et le
-              bouton « précédent » ramène la liste qu'on quittait. Sur les
-              petits écrans le champ céderait toute la place à l'en-tête : on
-              y met la loupe seule, qui mène à la page de recherche et à son
-              grand champ. */}
+
+        {/* La recherche.
+            Un vrai formulaire en GET vers /recherche : la saisie finit dans
+            l'adresse, donc un résultat se recopie dans un message et le
+            bouton « précédent » ramène la liste qu'on quittait. Sur les
+            petits écrans le champ prendrait toute la place : c'est la loupe,
+            à droite, qui prend le relais et mène au grand champ de la page de
+            recherche.
+
+            Sa largeur suit l'écran sans jamais l'étouffer : le logo et le
+            menu gardent leur place, le champ prend le reste, entre 170 et
+            360 px. */}
+        <div class="hidden w-[clamp(170px,16vw,360px)] lg:block">
           <form
             method="get"
             action={lien(langue, "/recherche")}
             role="search"
-            class="ml-recherche hidden lg:flex items-center border border-ink/20 focus-within:border-ink transition-colors"
+            class="ml-recherche flex w-full items-center border transition-colors"
           >
             <label for="ml-q" class="sr-only">{tr("recherche.champ")}</label>
             <input
@@ -369,8 +412,8 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
               name="q"
               value={rechercheEnCours}
               autocomplete="off"
-              placeholder={tr("recherche.champ")}
-              class="w-40 bg-transparent px-3 py-1.5 text-[13px] focus:outline-none xl:w-52"
+              placeholder={tr("recherche.champ_court")}
+              class="ml-recherche-champ w-full bg-transparent px-3 py-2 text-[13px] font-semibold focus:outline-none"
             />
             <button
               type="submit"
@@ -392,9 +435,13 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
               </svg>
             </button>
           </form>
+        </div>
+
+        {/* Les icônes, à la suite du champ, contre le bord droit. */}
+        <div class="flex shrink-0 items-center justify-end gap-3 text-sm sm:gap-4">
           <a
             href={lien(langue, "/recherche")}
-            class="inline-flex lg:hidden items-center hover:text-terracotta transition-colors"
+            class="inline-flex items-center hover:text-terracotta transition-colors lg:hidden"
             aria-label={tr("recherche.titre")}
           >
             <svg
@@ -443,7 +490,11 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
             </a>
           )}
           {/* Compte : même traitement que le panier — une icône, le mot en
-              lecture d'écran seulement, pour ne pas charger l'en-tête. */}
+              lecture d'écran seulement, pour ne pas charger l'en-tête.
+              Absent au stand : le client est devant la vendeuse, il n'a ni
+              adresse à retrouver ni historique à consulter, et le seul effet
+              du lien serait de l'envoyer sur un écran de mot de passe. */}
+          {!Astro.locals.stand && (
           <a
             href={lienCompte}
             class="inline-flex items-center gap-2 hover:text-terracotta transition-colors"
@@ -465,6 +516,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
             </svg>
             <span class="sr-only">{tr("nav.compte")}</span>
           </a>
+          )}
           <a
             href={lien(langue, "/panier")}
             class="ml-panier-lien inline-flex items-center gap-2 hover:text-terracotta transition-colors"
@@ -489,12 +541,6 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
             <span class="sr-only">{tr("nav.panier")}</span>
             <CartBadge client:load />
           </a>
-          <a
-            href={lien(langue, "/affiches")}
-            class="bg-ink px-5 py-2.5 text-paper hover:bg-ink/85 transition-colors"
-            >{tr("nav.creer")}</a
-          >
-
           {/* Sélecteur de langue, en haut à droite. Ce sont de vrais liens :
               chaque langue a son URL, indexable et partageable. */}
           <div class="ml-langues">
@@ -524,7 +570,8 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
             </ul>
           </div>
         </div>
-      </nav>
+      </div>
+
     </header>
 
     <style is:global>
@@ -575,7 +622,12 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
         aller aux conditions de vente, au contact ou à la livraison — c'est
         pourtant là qu'on les cherche, tout en bas, après avoir fait défiler. */}
     <footer class="border-t border-ink/10 mt-16">
-      <div class="mx-auto max-w-[1200px] px-6 py-12 lg:px-12">
+      {/* Toute la largeur, comme la barre du haut. Les quatre colonnes se
+          répartissaient dans 1 200 px centrés : sur un grand écran elles se
+          serraient au milieu alors qu'il restait de la place des deux côtés.
+          Un pied de page est une liste de liens, pas un texte suivi — il n'a
+          pas besoin d'une largeur de lecture. */}
+      <div class="w-full px-4 py-12 sm:px-6 lg:px-10">
         <div class="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <img

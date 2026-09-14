@@ -712,6 +712,20 @@ export const customers = pgTable(
     phone: text("phone"),
     /** « scrypt:<sel>:<empreinte> ». Null = pas de compte, simple visiteur. */
     passwordHash: text("password_hash"),
+    /**
+     * Prénom et nom, séparés.
+     *
+     * `name` reste le nom COMPLET : c'est lui qu'affichent les écrans, les
+     * étiquettes de colis et les courriers, et le séparer aurait demandé de
+     * réécrire partout. Ces deux champs-ci le composent, et servent là où la
+     * distinction compte : « Bonjour Marie » dans un courrier, un tri par nom
+     * de famille dans la liste des clientes.
+     *
+     * Vides sur les fiches d'avant : on ne devine pas où couper « Jean-Pierre
+     * de la Tour », et une mauvaise coupure vaut moins que rien du tout.
+     */
+    firstName: text("first_name"),
+    lastName: text("last_name"),
     /** Consentement marketing explicite, avec sa date (RGPD). */
     acceptsMarketing: boolean("accepts_marketing").notNull().default(false),
     marketingOptInAt: timestamp("marketing_opt_in_at", { withTimezone: true }),
@@ -1704,4 +1718,57 @@ export const menuItems = pgTable(
       .notNull(),
   },
   (t) => [index("menu_item_parent_idx").on(t.parentId, t.position)],
+);
+
+/**
+ * Un style d'affiche IA : un titre, une consigne, et ses images de référence.
+ *
+ * La boutique n'avait qu'UNE consigne, écrite dans les réglages, et trois
+ * images de référence lues dans un dossier du serveur que personne ne pouvait
+ * voir ni changer. La cliente ne choisissait rien : elle envoyait sa photo et
+ * ajoutait une phrase libre.
+ *
+ * Ici, chaque style est une ligne : « Couple », « Paysage », « Famille ». La
+ * cliente choisit le TITRE — c'est le seul mot qu'elle voit — et la consigne
+ * qui part au modèle, elle, se règle au back-office sans toucher au code.
+ *
+ * Les images servent DEUX FOIS, et c'est voulu : montrées à la cliente comme
+ * exemples de ce qu'elle obtiendra, et envoyées au modèle comme références de
+ * style. Deux jeux d'images séparés finiraient par ne plus se ressembler, et
+ * c'est l'exemple montré qui deviendrait un mensonge.
+ *
+ * Cinq au maximum : c'est le plafond demandé, et il est tenu par l'API — un
+ * tableau JSON ne sait pas se limiter tout seul.
+ */
+export const aiPrompts = pgTable(
+  "ia_prompt",
+  {
+    id: serial("id").primaryKey(),
+    /** Ce que la cliente lit et choisit : « Couple », « Paysage »… */
+    title: text("title").notNull(),
+    /**
+     * La consigne envoyée au modèle, ajoutée à la consigne générale de la
+     * boutique. Vide, le style ne fait qu'apporter ses images.
+     */
+    prompt: text("prompt").notNull().default(""),
+    /** Chemins dans data/assets, cinq au plus. */
+    images: jsonb("images")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    position: integer("position").notNull().default(0),
+    /** Éteint : gardé au back-office, absent du site. */
+    active: boolean("active").notNull().default(true),
+    /** Le titre dans les autres langues ; vide, le français s'affiche. */
+    translations: jsonb("translations").$type<
+      Partial<Record<string, { title?: string }>>
+    >(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [index("ia_prompt_position_idx").on(t.position, t.id)],
 );

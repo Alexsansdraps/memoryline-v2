@@ -1,12 +1,11 @@
+import { apiInterne } from "./api-interne.ts";
 /**
  * Client API du back-office. Lecture ET écriture (le BO modifie la config).
  * SSR -> on parle à l'API via le réseau interne Docker (api:3000) en conteneur,
  * sinon localhost:3000 en dev local.
  */
 const API_URL =
-  import.meta.env.API_URL_INTERNAL ??
-  import.meta.env.PUBLIC_API_URL ??
-  "http://localhost:3000";
+  apiInterne();
 
 /**
  * Appel API. `cookie` (optionnel) = en-tête Cookie de la requête entrante du
@@ -497,8 +496,25 @@ export interface CatalogueLivraisonBO {
     pickupLocation: string | null;
     active: boolean;
     position: number;
+    /**
+     * Pourquoi ce mode ne sort pas sur le site, ou null quand il en sort.
+     *
+     * Calculé par l'API, avec la règle qui filtre vraiment le site. Le
+     * back-office ne la recalcule pas : deux versions finiraient par
+     * afficher « proposé » sur un mode que personne ne voit.
+     */
+    masquePourquoi?: string | null;
   }[];
   tarifs: TarifLivraisonBO[];
+  /** Les transporteurs connus de l'API, avec leur état d'intégration. */
+  transporteurs?: {
+    code: string;
+    nom: string;
+    integre: boolean;
+    variables: readonly string[];
+  }[];
+  /** Nombre de stands ouverts en ce moment. */
+  standsOuverts?: number;
 }
 
 /** Chiffres d'une période de commandes, et de la précédente pour comparer. */
@@ -1094,6 +1110,57 @@ export interface ListeCartesCadeaux {
  * Crée un client API lié au cookie de session de la requête entrante.
  * À utiliser dans les pages : `const api = adminApi(Astro.request)`.
  */
+/** Ce que l'écran des statistiques reçoit, en un seul appel. */
+export interface Analytique {
+  periode: { debut: string; fin: string; jours: number };
+  resume: {
+    caCents: number;
+    commandes: number;
+    panierMoyenCents: number;
+    clients: number;
+    /** Null quand la période précédente était vide : on ne compare pas à rien. */
+    evolution: {
+      caCents: number | null;
+      commandes: number | null;
+      panierMoyenCents: number | null;
+    };
+    precedent: { caCents: number; commandes: number; panierMoyenCents: number };
+  };
+  parJour: { jour: string; caCents: number; commandes: number }[];
+  meilleuresVentes: {
+    nom: string;
+    slug: string | null;
+    quantite: number;
+    caCents: number;
+  }[];
+  parCanal: { canal: string; commandes: number; caCents: number }[];
+  parFormat: { format: string; quantite: number; caCents: number }[];
+  clients: { nouvelles: number; revenantes: number };
+  paniers: {
+    abandonnes: number;
+    enAttente: number;
+    perduCents: number;
+    transformation: number | null;
+  };
+  lieux: { ville: string; commandes: number }[];
+}
+
+/**
+ * Un style d'affiche IA tel que le back-office le manipule.
+ *
+ * `prompt` n'existe QUE côté administration : la route publique ne renvoie
+ * jamais la consigne, seulement le titre et les images.
+ */
+export interface StyleIa {
+  id: number;
+  title: string;
+  prompt: string;
+  images: string[];
+  position: number;
+  active: boolean;
+  translations: Partial<Record<string, { title?: string }>> | null;
+}
+
 export function adminApi(request?: Request) {
   const cookie = request?.headers.get("cookie") ?? undefined;
   return {
@@ -1114,10 +1181,43 @@ export function adminApi(request?: Request) {
     upsertBanner: (
       data: Partial<Banner> & { promo?: Record<string, unknown> | null },
     ) => req<Banner>("POST", "/admin/banner", data, cookie),
-    settings: () =>
-      req<Record<string, unknown>>("GET", "/settings", undefined, cookie),
-    setSetting: (key: string, value: unknown) =>
-      req<unknown>("POST", "/admin/settings", { key, value }, cookie),
+    /**
+     * Les réglages tels que le back-office doit les voir.
+     *
+     * La route ADMIN, et non la route publique : celle-ci retire les clés
+     * « ia. », « salon. » et « relance. ». Le back-office y lisait donc une
+     * consigne de style IA toujours vide, et l'enregistrait vide par-dessus
+     * la vraie. Le résultat garde la forme d'un dictionnaire clé → valeur
+     * pour ne rien casser chez les appelants.
+     */
+    settings: async () => {
+      const lignes = await req<
+        { key: string; value: unknown; label: string | null; group: string | null }[]
+      >("GET", "/admin/settings", undefined, cookie);
+      return Object.fromEntries(lignes.map((l) => [l.key, l.value]));
+    },
+    /** Les lignes entières : label, groupe, et toutes les langues. */
+    settingsLignes: () =>
+      req<
+        {
+          key: string;
+          label: string | null;
+          group: string | null;
+          value: unknown;
+          updatedAt: string;
+        }[]
+      >("GET", "/admin/settings", undefined, cookie),
+    /**
+     * Enregistre un réglage. `lang` fusionne dans la langue demandée sans
+     * toucher aux autres ; sans `lang`, la valeur remplace tout.
+     */
+    setSetting: (key: string, value: unknown, lang?: string) =>
+      req<unknown>(
+        "POST",
+        "/admin/settings",
+        lang ? { key, value, lang } : { key, value },
+        cookie,
+      ),
     orders: (filtres?: string | FiltresCommandes) => {
       const f: FiltresCommandes =
         typeof filtres === "string" ? { channel: filtres } : (filtres ?? {});
@@ -1351,6 +1451,15 @@ export function adminApi(request?: Request) {
       req<{ ok: boolean }>("DELETE", `/admin/newsletter/${id}`, undefined, cookie),
     shipping: () =>
       req<CatalogueLivraisonBO>("GET", "/admin/shipping", undefined, cookie),
+    createShippingMethod: (data: {
+      name: string;
+      kind: string;
+      carrier?: string;
+      description?: string;
+      pickupLocation?: string;
+    }) => req<unknown>("POST", "/admin/shipping/methods", data, cookie),
+    deleteShippingMethod: (id: number) =>
+      req<unknown>("DELETE", `/admin/shipping/methods/${id}`, undefined, cookie),
     updateShippingMethod: (
       id: number,
       data: {
@@ -1735,6 +1844,27 @@ export function adminApi(request?: Request) {
     /** Remplace TOUT l'arbre du menu : l'ordre du tableau fait la position. */
     enregistrerMenu: (entrees: unknown[]) =>
       req<{ ok: true }>("POST", "/admin/menu", { entrees }, cookie),
+
+    /* --- Statistiques de vente ----------------------------------------- */
+    /** Tout l'écran en un appel : résumé, courbe, meilleures ventes, clientes. */
+    analytique: (depuis?: string, jusqu?: string) =>
+      req<Analytique>(
+        "GET",
+        `/admin/analytique${depuis ? `?depuis=${depuis}${jusqu ? `&jusqu=${jusqu}` : ""}` : ""}`,
+        undefined,
+        cookie,
+      ),
+
+    /* --- Styles d'affiche IA ------------------------------------------- */
+    /** Tous les styles, éteints compris : c'est l'écran qui les range. */
+    stylesIa: () =>
+      req<StyleIa[]>("GET", "/admin/ia/prompts", undefined, cookie),
+    creerStyleIa: (corps: Record<string, unknown>) =>
+      req<StyleIa>("POST", "/admin/ia/prompts", corps, cookie),
+    majStyleIa: (id: number, corps: Record<string, unknown>) =>
+      req<StyleIa>("PUT", `/admin/ia/prompts/${id}`, corps, cookie),
+    supprimerStyleIa: (id: number) =>
+      req<{ ok: true }>("DELETE", `/admin/ia/prompts/${id}`, undefined, cookie),
 
     /* --- Essai des courriers ------------------------------------------- */
     /** Où partent les courriers en ce moment : boîte d'essai, ou vrais clients. */

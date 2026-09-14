@@ -38,6 +38,16 @@ import {
 // jamais pendant l'évaluation, et Node le résout sans broncher.
 import { markOrderPaid } from "./configurator-routes.js";
 import { renderInvoicePdf, type LigneFacture } from "./pdf.js";
+import { cheminApercu } from "./apercus.js";
+
+/**
+ * L'adresse publique du site, pour les images des courriers.
+ *
+ * Un courrier ne sait pas résoudre un chemin relatif : sans origine, la
+ * vignette ne s'afficherait nulle part.
+ */
+const ORIGINE_PUBLIQUE =
+  (process.env.PUBLIC_ORIGIN ?? "").replace(/\/+$/, "") || "http://localhost:8080";
 
 /* -------------------------------------------------------------------------- */
 /*  Statuts calculés                                                          */
@@ -147,46 +157,57 @@ export async function resumeCommandes(
   for (const id of ids)
     out.set(id, { articles: 0, expedies: 0, rembourseCents: 0 });
 
-  const lignes = await db
-    .select({
-      orderId: schema.orderItems.orderId,
-      id: schema.orderItems.id,
-      quantity: schema.orderItems.quantity,
-    })
-    .from(schema.orderItems)
-    .where(inArray(schema.orderItems.orderId, ids));
+  /*
+   * Les trois lectures partent ENSEMBLE : aucune n'a besoin des autres, elles
+   * ne font que remplir trois colonnes du même tableau.
+   *
+   * La base est à 110 ms d'aller-retour (Neon, Ohio) : enchaînées, elles
+   * coûtaient un tiers de seconde d'attente pure à chaque ouverture de la
+   * liste des commandes.
+   */
+  const [lignes, partis, rembourses] = await Promise.all([
+    db
+      .select({
+        orderId: schema.orderItems.orderId,
+        id: schema.orderItems.id,
+        quantity: schema.orderItems.quantity,
+      })
+      .from(schema.orderItems)
+      .where(inArray(schema.orderItems.orderId, ids)),
+    // Seules les expéditions non annulées comptent comme parties.
+    db
+      .select({
+        orderItemId: schema.fulfillmentItems.orderItemId,
+        quantity: schema.fulfillmentItems.quantity,
+        status: schema.fulfillments.status,
+      })
+      .from(schema.fulfillmentItems)
+      .innerJoin(
+        schema.fulfillments,
+        eq(schema.fulfillmentItems.fulfillmentId, schema.fulfillments.id),
+      )
+      .where(inArray(schema.fulfillments.orderId, ids)),
+    db
+      .select({
+        orderId: schema.refunds.orderId,
+        amountCents: schema.refunds.amountCents,
+      })
+      .from(schema.refunds)
+      .where(inArray(schema.refunds.orderId, ids)),
+  ]);
+
   const commandeDeLigne = new Map<number, number>();
   for (const l of lignes) {
     out.get(l.orderId)!.articles += l.quantity;
     commandeDeLigne.set(l.id, l.orderId);
   }
 
-  // Seules les expéditions non annulées comptent comme parties.
-  const partis = await db
-    .select({
-      orderItemId: schema.fulfillmentItems.orderItemId,
-      quantity: schema.fulfillmentItems.quantity,
-      status: schema.fulfillments.status,
-    })
-    .from(schema.fulfillmentItems)
-    .innerJoin(
-      schema.fulfillments,
-      eq(schema.fulfillmentItems.fulfillmentId, schema.fulfillments.id),
-    )
-    .where(inArray(schema.fulfillments.orderId, ids));
   for (const p of partis) {
     if (p.status !== "success") continue;
     const oid = commandeDeLigne.get(p.orderItemId);
     if (oid != null) out.get(oid)!.expedies += p.quantity;
   }
 
-  const rembourses = await db
-    .select({
-      orderId: schema.refunds.orderId,
-      amountCents: schema.refunds.amountCents,
-    })
-    .from(schema.refunds)
-    .where(inArray(schema.refunds.orderId, ids));
   for (const r of rembourses)
     out.get(r.orderId)!.rembourseCents += r.amountCents;
 
@@ -1138,6 +1159,9 @@ export function mountOrderRoutes(app: Hono): void {
         cadre: null,
         quantite: q,
         unitPriceCents: ligne.unitPriceCents,
+        // L'affiche elle-même : un remboursement partiel doit dire LAQUELLE
+        // des trois affiches est concernée, et le titre seul ne suffit pas.
+        imageUrl: `${ORIGINE_PUBLIQUE}/api${cheminApercu(ligne.id)}`,
       });
     }
 

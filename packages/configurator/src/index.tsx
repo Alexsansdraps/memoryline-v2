@@ -1,11 +1,17 @@
 /// <reference lib="dom" />
-import { createEffect, createMemo, Show, type JSX } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  Show,
+  type JSX,
+} from "solid-js";
 import type {
   PosterConfig,
   PosterFormat,
   BackgroundDTO,
 } from "@memoryline/types";
-import { BASE_COLOR_SCOPE, colorKey } from "@memoryline/types";
+import { BASE_COLOR_SCOPE, colorKey, ligneEnMajuscules } from "@memoryline/types";
 import {
   STEPS,
   SLOTS,
@@ -85,11 +91,27 @@ export interface ConfiguratorProps {
     /** Textes pré-remplis, une entrée par ligne, dans l'ordre. */
     lignes?: (string | null)[];
     view?: string | null;
+    /**
+     * Le format choisi sur la fiche, avant d'ouvrir le configurateur.
+     *
+     * Sans lui, quelqu'un qui a cliqué « A3 » sur la fiche devait le
+     * rechoisir à l'étape 3 : deux fois le même geste, dont un pour rien.
+     */
+    format?: PosterFormat;
   };
   /** Réouverture (panier "edit" §18.3) : restaure tout l'état. */
   initialConfig?: PosterConfig;
   /** Préfixe pour fetch le texte SVG, ex "http://localhost:3100". */
   assetBaseUrl: string;
+  /**
+   * L'affiche validée.
+   *
+   * Le nombre d'exemplaires ne passe PAS par ici : il se choisit sur la fiche
+   * produit, avant d'ouvrir le configurateur, au même endroit que pour une
+   * affiche prête à imprimer. Une affiche commandée en trois exemplaires est
+   * la même affiche — c'est la ligne de panier qui porte le nombre, pas le
+   * dessin.
+   */
   onSubmit: (config: PosterConfig) => void;
   onBack?: () => void;
 }
@@ -126,6 +148,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     // N'importe quel type d'affiche, y compris ceux créés au back-office :
     // filtrer sur une paire figée aurait ignoré tout nouveau type.
     if (props.defaults.view) initialState.view = props.defaults.view;
+    if (props.defaults.format) initialState.format = props.defaults.format;
   }
 
   // À l'ouverture, l'affiche est VIDE de personnages (retour cliente) : le
@@ -260,11 +283,20 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       s.backgroundUrl = bg.url;
     });
   }
-  /** Met à jour SEULEMENT le texte d'une ligne. */
+  /**
+   * Met à jour SEULEMENT le texte d'une ligne.
+   *
+   * La première passe en capitales à la frappe, et pas seulement à l'écran :
+   * c'est la ligne du lieu — AMIENS, MERS-LES-BAINS — et la charte la veut
+   * ainsi partout. Transformer à l'affichage seulement laisserait le texte
+   * enregistré différer du fichier d'impression, et personne ne saurait
+   * lequel des deux fait foi. `toLocaleUpperCase` et non `toUpperCase` :
+   * c'est lui qui traite correctement les accents et le ß allemand.
+   */
   function setTextValue(ligne: number, value: string) {
     mutate((s) => {
       const l = s.lignes[ligne];
-      if (l) l.value = value;
+      if (l) l.value = ligneEnMajuscules(ligne) ? value.toLocaleUpperCase() : value;
     });
   }
   /** Change la police d'UNE ligne, indépendamment des autres. */
@@ -304,6 +336,33 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
         ),
       );
       s.editingIndex = s.characters.length - 1;
+    });
+  }
+  /**
+   * Dupliquer un personnage.
+   *
+   * Une famille de quatre se compose rarement de quatre inconnus : on pose un
+   * enfant, on l'habille, puis on veut le même en changeant la couleur du
+   * pull. Le refaire de zéro demandait de reprendre chaque vêtement et chaque
+   * teinte, une dizaine de choix, pour arriver au même point.
+   *
+   * La copie est PROFONDE — `structuredClone` — parce que les tenues et les
+   * couleurs sont des objets : copiés par référence, changer le pull du double
+   * changerait aussi celui de l'original, et personne ne comprendrait pourquoi.
+   *
+   * Elle se glisse juste derrière son modèle plutôt qu'en fin de liste : c'est
+   * là que l'œil la cherche, et l'ordre de la liste décide de qui passe devant
+   * qui sur l'affiche.
+   */
+  function duplicateCharacter(index: number) {
+    mutate((s) => {
+      const source = s.characters[index];
+      if (!source) return;
+      const copie = structuredClone(source);
+      s.characters.splice(index + 1, 0, copie);
+      s.characters.forEach((c, i) => (c.position = i));
+      // On ouvre la copie : on duplique pour modifier, jamais pour contempler.
+      s.editingIndex = index + 1;
     });
   }
   function removeCharacter(index: number) {
@@ -621,10 +680,9 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             cache={cache}
             characterById={characterById}
             onAdd={addCharacter}
+            onDuplicate={duplicateCharacter}
             onRemove={removeCharacter}
             onSelect={selectCharacter}
-            onBringForward={bringForward}
-            onSendBackward={sendBackward}
             onReorder={reordonner}
             onSetAsset={setAsset}
             onClearSlot={clearSlot}

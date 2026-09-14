@@ -1,7 +1,9 @@
 ---
 import CompteCadre from "../../../components/CompteCadre.astro";
 import {
+  adresses as lireAdresses,
   changerMotDePasse,
+  decouperNom,
   exigerSession,
   majInfos,
   rediriger,
@@ -56,7 +58,8 @@ if (session.etat === "connecte" && Astro.request.method === "POST") {
     }
   } else {
     const r = await majInfos(Astro, {
-      name: texte("name"),
+      firstName: texte("firstName"),
+      lastName: texte("lastName"),
       phone: texte("phone"),
       acceptsMarketing: formulaire.get("acceptsMarketing") !== null,
     });
@@ -66,6 +69,45 @@ if (session.etat === "connecte" && Astro.request.method === "POST") {
         `${lien(langue, "/compte/infos")}?enregistre=infos`,
       );
     erreur = r.erreur;
+  }
+}
+
+/*
+ * Ce qu'on met dans les deux champs.
+ *
+ * Les fiches créées avant que le compte porte un prénom ET un nom n'ont
+ * qu'un nom complet : les deux champs seraient vides, et la page aurait
+ * l'air d'avoir perdu le nom de la personne. On propose donc un découpage,
+ * qu'elle voit et corrige avant d'enregistrer.
+ */
+const nomAffiche = client?.firstName || client?.lastName
+  ? { prenom: client.firstName ?? "", nom: client.lastName ?? "" }
+  : decouperNom(client?.name);
+
+/*
+ * Le téléphone, repris du carnet d'adresses quand la fiche n'en a pas.
+ *
+ * Il est demandé au tunnel de commande, mais il y est rangé AVEC l'adresse
+ * de livraison — c'est le transporteur qui le réclame. La fiche cliente, elle,
+ * restait vide : quelqu'un qui a commandé trois fois voyait quand même un
+ * champ « Téléphone » blanc, et pouvait croire que le site avait tout perdu.
+ *
+ * Comme pour le nom, c'est une PROPOSITION : elle s'affiche dans un champ
+ * modifiable, et c'est l'enregistrement qui la fixe sur la fiche.
+ */
+let telAffiche = client?.phone ?? "";
+if (client && !telAffiche) {
+  try {
+    const r = await lireAdresses(Astro);
+    if (r.ok && Array.isArray(r.donnees)) {
+      const carnet = r.donnees;
+      telAffiche =
+        (carnet.find((a) => a.isDefaultShipping)?.phone ||
+          carnet.find((a) => a.phone)?.phone) ??
+        "";
+    }
+  } catch {
+    /* carnet indisponible : le champ reste vide, comme avant */
   }
 }
 
@@ -113,22 +155,34 @@ const champ =
               class={`${champ} opacity-60`}
             />
           </label>
-          <label class="block">
-            <span class="text-sm font-medium">{tr("compte.nom")}</span>
-            <input
-              type="text"
-              name="name"
-              value={client.name ?? ""}
-              autocomplete="name"
-              class={champ}
-            />
-          </label>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <label class="block">
+              <span class="text-sm font-medium">{tr("compte.prenom")}</span>
+              <input
+                type="text"
+                name="firstName"
+                value={nomAffiche.prenom}
+                autocomplete="given-name"
+                class={champ}
+              />
+            </label>
+            <label class="block">
+              <span class="text-sm font-medium">{tr("compte.nom")}</span>
+              <input
+                type="text"
+                name="lastName"
+                value={nomAffiche.nom}
+                autocomplete="family-name"
+                class={champ}
+              />
+            </label>
+          </div>
           <label class="block">
             <span class="text-sm font-medium">{tr("compte.telephone")}</span>
             <input
               type="tel"
               name="phone"
-              value={client.phone ?? ""}
+              value={telAffiche}
               autocomplete="tel"
               class={champ}
             />

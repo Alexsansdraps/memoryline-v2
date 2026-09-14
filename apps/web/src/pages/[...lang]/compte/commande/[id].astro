@@ -1,7 +1,7 @@
 ---
 import CompteCadre from "../../../../components/CompteCadre.astro";
 import { lignesRemplies } from "@memoryline/types";
-import { formatPrice } from "../../../../lib/api.ts";
+import { formatPrice, PUBLIC_API_URL } from "../../../../lib/api.ts";
 import {
   adresseLivraison,
   cadres,
@@ -111,6 +111,24 @@ const expeditions = (detail?.expeditions ?? []).filter(
           <ul class="divide-y divide-ink/10 border-y border-ink/10">
             {detail.items.map((ligne) => (
               <li class="flex flex-wrap justify-between gap-4 py-4">
+                <div class="flex min-w-0 gap-4">
+                  {/* L'affiche, pas seulement son titre. « MERS-LES-BAINS
+                      Baigneurs #2 » et « MERS-LES-BAINS Baigneurs » ne se
+                      distinguent pas à la lecture, et c'est pour la revoir
+                      qu'on ouvre cette page. Le rendu vient du serveur : la
+                      page n'a pas à charger la bibliothèque des personnages
+                      pour une vignette. */}
+                  {ligne.apercu && (
+                    <img
+                      src={`${PUBLIC_API_URL}${ligne.apercu}`}
+                      alt=""
+                      loading="lazy"
+                      width="80"
+                      height="113"
+                      class="w-20 shrink-0 rounded border border-ink/10 bg-paper-deep object-cover"
+                      style="aspect-ratio: 1 / 1.4142"
+                    />
+                  )}
                 <div class="min-w-0">
                   <p>{ligne.title ?? "—"}</p>
                   <p class="mt-1 text-sm text-ink-soft">
@@ -134,6 +152,7 @@ const expeditions = (detail?.expeditions ?? []).filter(
                   <p class="mt-1 text-sm text-ink-soft">
                     {tr("compte.commande.quantite")} : {ligne.quantity}
                   </p>
+                </div>
                 </div>
                 <p class="shrink-0">
                   {formatPrice(ligne.unitPriceCents * ligne.quantity)}

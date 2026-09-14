@@ -209,7 +209,11 @@ export interface Anomalie {
   attendu: number;
   /** Ce que le grand livre a noté comme encaissé sur cette commande. */
   journal: number;
-  /** Ce que Stripe ou PayPal a réellement pris. */
+  /**
+   * Ce qui a été encaissé sur cette commande, un règlement pris à la main
+   * compris : la question posée ici est « l'argent est-il arrivé ? », pas
+   * « par quel prestataire ? ».
+   */
   paiement: number;
   /** La somme des articles vendus, port exclu. */
   lignes: number;
@@ -271,6 +275,19 @@ function libelleMoyen(passerelle: string | null): string {
   if (!passerelle) return MOYEN_INCONNU;
   return LIBELLE_MOYEN[passerelle] ?? passerelle;
 }
+
+/**
+ * Les seuls prestataires qui encaissent VRAIMENT en ligne.
+ *
+ * L'énumération `payment_provider` accepte aussi « manuel », posé sur la ligne
+ * de paiement quand la boutique encaisse un virement, un chèque ou des espèces
+ * depuis la fiche commande. Cette ligne-là DOIT exister — sans elle, le
+ * contrôle par commande, plus bas, signalerait à tort chaque vente réglée par
+ * virement comme payée sans encaissement — mais elle n'a rien à faire dans un
+ * chiffre présenté comme celui de Stripe et de PayPal : personne ne retrouvera
+ * jamais un chèque sur un relevé Stripe.
+ */
+const PRESTATAIRES_EN_LIGNE = new Set(["stripe", "paypal"]);
 
 /** « Site » ou « Stand », les deux façons dont la boutique vend. */
 function libelleCanal(canal: string): string {
@@ -369,8 +386,14 @@ async function rapprocher(periode: Periode): Promise<Finances> {
         schema.orderTransactions.gateway,
       ),
 
-    // 4. Ce que les prestataires en ligne ont réellement pris. Une vente de
-    //    stand n'apparaît pas ici, et n'y apparaîtra jamais.
+    // 4. Les lignes de paiement, commande par commande ET prestataire par
+    //    prestataire. Le prestataire est dans le regroupement parce que deux
+    //    lecteurs attendent d'ici deux sous-ensembles différents : le contrôle
+    //    par commande veut TOUTES les lignes, « manuel » compris, sans quoi
+    //    une vente réglée par virement passerait pour non encaissée ; le
+    //    chiffre affiché comme celui de Stripe et de PayPal, lui, ne veut
+    //    qu'eux deux. Une vente de stand, elle, n'apparaît dans ni l'un ni
+    //    l'autre, et n'y apparaîtra jamais.
     db
       .select({
         orderId: schema.payments.orderId,
@@ -508,13 +531,32 @@ async function rapprocher(periode: Periode): Promise<Finances> {
     }
   }
 
+  /**
+   * Ce qui a été encaissé sur chaque commande, TOUS moyens confondus, un
+   * règlement hors ligne compris. C'est ce que lit le contrôle par commande,
+   * qui ne demande qu'une chose : l'argent d'une vente marquée payée est-il
+   * arrivé quelque part ? Un virement encaissé à la main y répond « oui ».
+   */
   const paiementDe = new Map<number, number>();
   const prestataireDe = new Map<number, string>();
+  /*
+   * Le total affiché, lui, s'arrête aux prestataires en ligne, parce que les
+   * deux endroits qui le lisent parlent d'eux et d'eux seuls : la tuile
+   * annonce « ce qu'ont encaissé Stripe et PayPal », et le rapprochement le
+   * compare à la part que le grand livre attribue à ces deux-là. Or le grand
+   * livre range un règlement hors ligne sous la passerelle « manuel » : un
+   * chèque compté ici fabriquerait un « écart inexpliqué » de son propre
+   * montant, alors que rien n'a été perdu — l'argent est simplement entré par
+   * un autre chemin, et il se lit déjà dans « Ce que disent les commandes »,
+   * dans « Ce que dit le grand livre » et sous « À la main (virement,
+   * espèces) » de la répartition par moyen de paiement.
+   */
   let paiementsCents = 0;
   let paiementsNombre = 0;
   for (const p of paiementsParCommande) {
     paiementDe.set(p.orderId, (paiementDe.get(p.orderId) ?? 0) + p.cents);
     prestataireDe.set(p.orderId, p.prestataire);
+    if (!PRESTATAIRES_EN_LIGNE.has(p.prestataire)) continue;
     paiementsCents += p.cents;
     paiementsNombre += p.nombre;
   }

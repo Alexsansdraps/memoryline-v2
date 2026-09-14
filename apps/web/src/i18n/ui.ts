@@ -70,6 +70,8 @@ export const ui = {
     "catalogue.vide": "Aucune affiche pour le moment.",
 
     /* Tri et pagination d'un rayon */
+    "catalogue.ville": "Lieux",
+    "catalogue.toutes_villes": "Tous les lieux",
     "catalogue.tri": "Trier",
     "catalogue.tri.manuel": "Ordre de la boutique",
     "catalogue.tri.nouveautes": "Nouveautés",
@@ -83,7 +85,10 @@ export const ui = {
     "catalogue.suivante": "Suivante",
     /* Recherche */
     "recherche.titre": "Rechercher",
-    "recherche.champ": "Rechercher une affiche",
+    "recherche.champ": "Rechercher une ville ou un lieu…",
+    /* Version courte, pour le champ de l'en-tête : la place y est
+       comptée, et la phrase entière poussait le champ hors de sa piste. */
+    "recherche.champ_court": "Recherche…",
     "recherche.bouton": "Rechercher",
     "recherche.invite": "Cherchez une ville, un lieu, un thème.",
     "recherche.trop_court": "Tapez au moins deux lettres.",
@@ -287,6 +292,7 @@ export const ui = {
     "compte.deconnexion": "Se déconnecter",
     "compte.email": "E-mail",
     "compte.mdp": "Mot de passe",
+    "compte.prenom": "Prénom",
     "compte.nom": "Nom",
     "compte.telephone": "Téléphone",
     "compte.marketing":
@@ -438,6 +444,8 @@ export const ui = {
     "catalogue.erreur": "Could not load the catalogue",
     "catalogue.vide": "No posters yet.",
 
+    "catalogue.ville": "Places",
+    "catalogue.toutes_villes": "All places",
     "catalogue.tri": "Sort",
     "catalogue.tri.manuel": "Shop order",
     "catalogue.tri.nouveautes": "New in",
@@ -450,7 +458,8 @@ export const ui = {
     "catalogue.precedente": "Previous",
     "catalogue.suivante": "Next",
     "recherche.titre": "Search",
-    "recherche.champ": "Search for a poster",
+    "recherche.champ": "Search for a town or a place…",
+    "recherche.champ_court": "Search…",
     "recherche.bouton": "Search",
     "recherche.invite": "Search for a city, a place, a theme.",
     "recherche.trop_court": "Type at least two letters.",
@@ -649,7 +658,8 @@ export const ui = {
     "compte.deconnexion": "Log out",
     "compte.email": "Email",
     "compte.mdp": "Password",
-    "compte.nom": "Name",
+    "compte.prenom": "First name",
+    "compte.nom": "Last name",
     "compte.telephone": "Phone",
     "compte.marketing":
       "I'd like to receive Memory Line news and offers by email.",
@@ -794,6 +804,8 @@ export const ui = {
     "catalogue.erreur": "Katalog konnte nicht geladen werden",
     "catalogue.vide": "Noch keine Poster.",
 
+    "catalogue.ville": "Orte",
+    "catalogue.toutes_villes": "Alle Orte",
     "catalogue.tri": "Sortieren",
     "catalogue.tri.manuel": "Reihenfolge des Shops",
     "catalogue.tri.nouveautes": "Neuheiten",
@@ -806,7 +818,8 @@ export const ui = {
     "catalogue.precedente": "Zurück",
     "catalogue.suivante": "Weiter",
     "recherche.titre": "Suche",
-    "recherche.champ": "Poster suchen",
+    "recherche.champ": "Stadt oder Ort suchen…",
+    "recherche.champ_court": "Suche…",
     "recherche.bouton": "Suchen",
     "recherche.invite": "Suchen Sie nach einer Stadt, einem Ort, einem Thema.",
     "recherche.trop_court": "Geben Sie mindestens zwei Buchstaben ein.",
@@ -1008,7 +1021,8 @@ export const ui = {
     "compte.deconnexion": "Abmelden",
     "compte.email": "E-Mail",
     "compte.mdp": "Passwort",
-    "compte.nom": "Name",
+    "compte.prenom": "Vorname",
+    "compte.nom": "Nachname",
     "compte.telephone": "Telefon",
     "compte.marketing":
       "Ich möchte Neuigkeiten und Angebote von Memory Line per E-Mail erhalten.",
@@ -1156,6 +1170,8 @@ export const ui = {
     "catalogue.erreur": "Impossibile caricare il catalogo",
     "catalogue.vide": "Ancora nessun poster.",
 
+    "catalogue.ville": "Luoghi",
+    "catalogue.toutes_villes": "Tutti i luoghi",
     "catalogue.tri": "Ordina",
     "catalogue.tri.manuel": "Ordine del negozio",
     "catalogue.tri.nouveautes": "Novità",
@@ -1168,7 +1184,8 @@ export const ui = {
     "catalogue.precedente": "Precedente",
     "catalogue.suivante": "Successiva",
     "recherche.titre": "Cerca",
-    "recherche.champ": "Cerca un poster",
+    "recherche.champ": "Cerca una città o un luogo…",
+    "recherche.champ_court": "Cerca…",
     "recherche.bouton": "Cerca",
     "recherche.invite": "Cerca una città, un luogo, un tema.",
     "recherche.trop_court": "Digita almeno due lettere.",
@@ -1368,7 +1385,8 @@ export const ui = {
     "compte.deconnexion": "Esci",
     "compte.email": "E-mail",
     "compte.mdp": "Password",
-    "compte.nom": "Nome",
+    "compte.prenom": "Nome",
+    "compte.nom": "Cognome",
     "compte.telephone": "Telefono",
     "compte.marketing":
       "Desidero ricevere per e-mail le novità e le offerte di Memory Line.",
@@ -1514,6 +1532,8 @@ export const ui = {
     "catalogue.erreur": "No se ha podido cargar el catálogo",
     "catalogue.vide": "Todavía no hay láminas.",
 
+    "catalogue.ville": "Lugares",
+    "catalogue.toutes_villes": "Todos los lugares",
     "catalogue.tri": "Ordenar",
     "catalogue.tri.manuel": "Orden de la tienda",
     "catalogue.tri.nouveautes": "Novedades",
@@ -1526,7 +1546,8 @@ export const ui = {
     "catalogue.precedente": "Anterior",
     "catalogue.suivante": "Siguiente",
     "recherche.titre": "Buscar",
-    "recherche.champ": "Buscar una lámina",
+    "recherche.champ": "Buscar una ciudad o un lugar…",
+    "recherche.champ_court": "Buscar…",
     "recherche.bouton": "Buscar",
     "recherche.invite": "Busca una ciudad, un lugar, un tema.",
     "recherche.trop_court": "Escribe al menos dos letras.",
@@ -1726,7 +1747,8 @@ export const ui = {
     "compte.deconnexion": "Cerrar sesión",
     "compte.email": "Correo electrónico",
     "compte.mdp": "Contraseña",
-    "compte.nom": "Nombre",
+    "compte.prenom": "Nombre",
+    "compte.nom": "Apellidos",
     "compte.telephone": "Teléfono",
     "compte.marketing":
       "Quiero recibir por correo las novedades y ofertas de Memory Line.",

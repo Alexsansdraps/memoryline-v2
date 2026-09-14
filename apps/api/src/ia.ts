@@ -128,6 +128,14 @@ const TAILLES = new Set([
  */
 const REFERENCES_DIR = resolve(process.cwd(), "references-ia");
 const REFERENCES_MAX = 3;
+/**
+ * Cinq images par style, au plus.
+ *
+ * C'est le plafond demandé par la boutique. Il vaut aussi pour ce qui part au
+ * modèle : au-delà, chaque image supplémentaire coûte un aller-retour de plus
+ * et dilue le style au lieu de le préciser.
+ */
+const STYLE_IMAGES_MAX = 5;
 
 /**
  * Les images de style à envoyer, dans l'ordre.
@@ -156,6 +164,34 @@ async function referencesDeStyle(): Promise<{ nom: string; donnees: Buffer }[]> 
   } catch {
     return [];
   }
+}
+
+/**
+ * Les images d'un style, lues dans data/assets.
+ *
+ * `null` — et non un tableau vide — quand le style n'en a aucune : l'appelant
+ * doit pouvoir distinguer « ce style n'a pas d'images, prends celles du
+ * dossier » de « ce style en a, et elles sont toutes illisibles ».
+ *
+ * `basename()` : ces chemins viennent de la base, donc du back-office, donc
+ * d'un formulaire. Ils ne désigneront rien d'autre qu'un fichier de
+ * data/assets — jamais un « ../../.env ».
+ */
+async function imagesDuStyle(
+  chemins: string[] | null | undefined,
+): Promise<{ nom: string; donnees: Buffer }[] | null> {
+  if (!Array.isArray(chemins) || !chemins.length) return null;
+  const sortie: { nom: string; donnees: Buffer }[] = [];
+  for (const brut of chemins.slice(0, STYLE_IMAGES_MAX)) {
+    const nom = basename(String(brut).split("?")[0] ?? "");
+    if (!nom || !/\.(png|jpe?g|webp)$/i.test(nom)) continue;
+    try {
+      sortie.push({ nom, donnees: await readFile(resolve(ASSETS_DIR, nom)) });
+    } catch {
+      // Une image effacée du disque ne doit pas emporter la génération.
+    }
+  }
+  return sortie.length ? sortie : null;
 }
 
 /**
@@ -738,6 +774,28 @@ export function mountIaRoutes(app: Hono): void {
       .trim()
       .slice(0, PRECISION_MAX);
 
+    /*
+     * Le style choisi par la cliente — « Couple », « Paysage ».
+     *
+     * Facultatif, et il doit le rester : une affiche créée avant que les
+     * styles existent, ou depuis un écran qui n'en propose pas, part avec la
+     * seule consigne générale de la boutique, comme avant. Un style éteint au
+     * back-office est traité comme absent — on ne refuse pas la génération,
+     * on retombe sur le général.
+     */
+    const idStyle = Number(body.promptId);
+    const [style] = Number.isFinite(idStyle)
+      ? await db
+          .select()
+          .from(schema.aiPrompts)
+          .where(
+            and(
+              eq(schema.aiPrompts.id, idStyle),
+              eq(schema.aiPrompts.active, true),
+            ),
+          )
+      : [];
+
     const [produit] = Number.isFinite(productId)
       ? await db.select().from(schema.products).where(eq(schema.products.id, productId))
       : [];
@@ -785,6 +843,10 @@ export function mountIaRoutes(app: Hono): void {
           CUSTOMER_REQUEST: precision,
         }),
         produit.aiStylePrompt ?? "",
+        // Le style choisi vient APRÈS celui de l'affiche : de deux consignes
+        // qui se contrediraient, c'est celle que la cliente a choisie qui doit
+        // l'emporter, et le modèle retient mieux ce qui vient en dernier.
+        style?.prompt ?? "",
       ]
         .map((s) => s.trim())
         .filter(Boolean)
@@ -819,7 +881,9 @@ export function mountIaRoutes(app: Hono): void {
         tailleChoisie,
         reg["ia.qualite"],
         reg["ia.fidelite"],
-        await referencesDeStyle(),
+        // Les images du style choisi ; à défaut, celles du dossier du
+        // serveur, qui restent le repli des affiches sans style.
+        (await imagesDuStyle(style?.images)) ?? (await referencesDeStyle()),
       );
       const nomPleine = `${publicId}-pleine.png`;
       await writeFile(resolve(IA_DIR, nomPleine), pleine);
@@ -1183,6 +1247,119 @@ export function mountIaRoutes(app: Hono): void {
         aiStylePrompt: schema.products.aiStylePrompt,
       });
     return c.json(maj);
+  });
+
+  /* ----------------------------- les styles ------------------------------
+   *
+   * Un style = un titre montré à la cliente, une consigne qui part au modèle,
+   * et jusqu'à cinq images qui font les deux : exemples à l'écran, références
+   * de style à la génération.
+   */
+
+  /** Le titre dans la langue demandée ; le français en repli, jamais un blanc. */
+  function titreDuStyle(
+    ligne: { title: string; translations: unknown },
+    langue: string,
+  ): string {
+    const t = ligne.translations as
+      | Record<string, { title?: string } | undefined>
+      | null
+      | undefined;
+    const traduit = t?.[langue]?.title;
+    return typeof traduit === "string" && traduit.trim()
+      ? traduit.trim()
+      : ligne.title;
+  }
+
+  /**
+   * Ce que le site a le droit de savoir d'un style.
+   *
+   * La consigne N'EN FAIT PAS PARTIE, et c'est délibéré : c'est la recette de
+   * la boutique, ce qui distingue ses affiches de celles qu'on obtiendrait en
+   * tapant la même demande ailleurs. Elle ne sort jamais de /admin.
+   */
+  app.get("/ia/prompts", async (c) => {
+    const langue = String(c.req.query("lang") ?? "fr").slice(0, 5);
+    const lignes = await db
+      .select()
+      .from(schema.aiPrompts)
+      .where(eq(schema.aiPrompts.active, true))
+      .orderBy(asc(schema.aiPrompts.position), asc(schema.aiPrompts.id));
+    return c.json(
+      lignes.map((l) => ({
+        id: l.id,
+        titre: titreDuStyle(l, langue),
+        images: Array.isArray(l.images) ? l.images : [],
+      })),
+    );
+  });
+
+  app.get("/admin/ia/prompts", async (c) => {
+    const lignes = await db
+      .select()
+      .from(schema.aiPrompts)
+      .orderBy(asc(schema.aiPrompts.position), asc(schema.aiPrompts.id));
+    return c.json(lignes);
+  });
+
+  /**
+   * Ce qu'un formulaire envoie, remis d'aplomb.
+   *
+   * Les cinq images sont tenues ICI et non par la base : un tableau JSON ne
+   * sait pas se limiter tout seul. On coupe plutôt que de refuser — une
+   * sixième image glissée par erreur ne doit pas faire perdre la saisie.
+   */
+  function styleDepuisLeCorps(b: Record<string, unknown>) {
+    const images = (Array.isArray(b.images) ? b.images : [])
+      .map((v) => String(v ?? "").trim())
+      .filter(Boolean)
+      .slice(0, STYLE_IMAGES_MAX);
+    return {
+      title: String(b.title ?? "").trim().slice(0, 80),
+      prompt: String(b.prompt ?? "").trim().slice(0, 8000),
+      images,
+      position: Number.isFinite(Number(b.position)) ? Number(b.position) : 0,
+      active: b.active !== false,
+      translations:
+        b.translations && typeof b.translations === "object"
+          ? (b.translations as Record<string, { title?: string }>)
+          : null,
+    };
+  }
+
+  app.post("/admin/ia/prompts", async (c) => {
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const valeurs = styleDepuisLeCorps(b);
+    if (!valeurs.title)
+      return c.json({ error: "Donnez un titre à ce style." }, 400);
+    const [ligne] = await db.insert(schema.aiPrompts).values(valeurs).returning();
+    return c.json(ligne, 201);
+  });
+
+  app.put("/admin/ia/prompts/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isFinite(id)) return c.json({ error: "identifiant invalide" }, 400);
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const valeurs = styleDepuisLeCorps(b);
+    if (!valeurs.title)
+      return c.json({ error: "Donnez un titre à ce style." }, 400);
+    const [ligne] = await db
+      .update(schema.aiPrompts)
+      .set({ ...valeurs, updatedAt: new Date() })
+      .where(eq(schema.aiPrompts.id, id))
+      .returning();
+    if (!ligne) return c.json({ error: "Style introuvable" }, 404);
+    return c.json(ligne);
+  });
+
+  app.delete("/admin/ia/prompts/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isFinite(id)) return c.json({ error: "identifiant invalide" }, 400);
+    // Les images restent dans data/assets : elles peuvent servir ailleurs, et
+    // une suppression de style ne doit pas faire disparaître un visuel qu'une
+    // fiche produit afficherait encore.
+    await db.delete(schema.aiPrompts).where(eq(schema.aiPrompts.id, id));
+    return c.json({ ok: true });
   });
 }
 

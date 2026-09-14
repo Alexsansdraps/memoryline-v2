@@ -288,6 +288,20 @@
       "when": 1789037496116,
       "tag": "0040_taille_personnage",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1789048034063,
+      "tag": "0041_prenom_nom_client",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1789143769600,
+      "tag": "0042_styles_ia",
+      "breakpoints": true
     }
   ]
 }

@@ -49,6 +49,7 @@ import {
   normaliserPays,
   posterConfigSchema,
   remisesPanier,
+  seuilPortOffertCents,
   sousTotalCents,
   totalPanierCents,
   type PosterConfig,
@@ -541,6 +542,10 @@ async function computeShippingCents(
     pays,
     Math.max(0, apresRemise),
     poids,
+    // La promotion « livraison offerte dès X € », si la boutique en a une.
+    // C'est le serveur qui décide du port encaissé : l'écran l'affiche, il
+    // ne le calcule pas pour lui.
+    seuilPortOffertCents(regles, new Date(), code ? [code] : []),
   );
   if (!option) return null;
   return {
@@ -1785,18 +1790,27 @@ export function mountConfiguratorRoutes(app: Hono) {
 
   /** Liste complète (BO) : types + assets, archivés inclus, pour la gestion. */
   app.get("/admin/characters", async (c) => {
-    const types = await db
-      .select()
-      .from(schema.characterTypes)
-      .orderBy(asc(schema.characterTypes.position), asc(schema.characterTypes.name));
-    const assets = await db
-      .select()
-      .from(schema.assets)
-      .orderBy(asc(schema.assets.position));
-    const categories = await db
-      .select()
-      .from(schema.characterCategories)
-      .orderBy(asc(schema.characterCategories.position));
+    /*
+     * Les trois listes partent ENSEMBLE : aucune n'a besoin des autres.
+     *
+     * La base est à 110 ms d'aller-retour (Neon, Ohio). Enchaînées, ces trois
+     * requêtes coûtaient une demi-seconde d'attente pure pour un écran qui
+     * n'affiche que des listes. Ensemble, elles en coûtent une seule.
+     */
+    const [types, assets, categories] = await Promise.all([
+      db
+        .select()
+        .from(schema.characterTypes)
+        .orderBy(
+          asc(schema.characterTypes.position),
+          asc(schema.characterTypes.name),
+        ),
+      db.select().from(schema.assets).orderBy(asc(schema.assets.position)),
+      db
+        .select()
+        .from(schema.characterCategories)
+        .orderBy(asc(schema.characterCategories.position)),
+    ]);
     return c.json({ types, assets, categories });
   });
 

@@ -78,7 +78,7 @@ services:
       # Origine publique de l'environnement de test (canonical, Open Graph).
       SITE_URL: "${PUBLIC_ORIGIN:-http://localhost:8080}"
       # Hôtes publics acceptés par le serveur de dev Astro (cf. astro.config).
-      ALLOWED_HOSTS: "${NGROK_DOMAIN:-}"
+      ALLOWED_HOSTS: "${ALLOWED_HOSTS:-}"
       # Environnement de test : JAMAIS indexé (doublon de memoryline.fr).
       PUBLIC_NOINDEX: "true"
       # Évite que pnpm/Astro tentent un purge interactif des node_modules.
@@ -106,7 +106,7 @@ services:
       PUBLIC_API_URL: "/api"
       # Le BO est servi sous /bo (routage par chemin, cf. Caddyfile).
       ADMIN_BASE: "/bo"
-      ALLOWED_HOSTS: "${NGROK_DOMAIN:-}"
+      ALLOWED_HOSTS: "${ALLOWED_HOSTS:-}"
       CI: "true"
     ports:
       - "127.0.0.1:4322:4322"
@@ -130,23 +130,6 @@ services:
       - "8080:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-
-  # Tunnel ngrok : expose le proxy — et LUI SEUL — sur un domaine public, en
-  # HTTPS. Aucun port n'est ouvert sur la box : ngrok sort en connexion
-  # sortante. Ce qui est en ligne est donc EXACTEMENT ce qui tourne ici.
-  #
-  # Démarrage à la demande (profil), une fois .env renseigné :
-  #   docker compose --profile tunnel up -d
-  tunnel:
-    image: ngrok/ngrok:latest
-    container_name: memoryline-tunnel
-    restart: unless-stopped
-    profiles: ["tunnel"]
-    depends_on:
-      - proxy
-    environment:
-      NGROK_AUTHTOKEN: "${NGROK_AUTHTOKEN:-}"
-    command: http proxy:80 --url=https://${NGROK_DOMAIN:-}
 
   # Boîte aux lettres de TEST. Elle accepte tous les courriers de la boutique
   # et n'en livre aucun : ils s'affichent dans une page web, sur

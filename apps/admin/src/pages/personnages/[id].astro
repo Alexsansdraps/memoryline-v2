@@ -1,4 +1,5 @@
 ---
+import { apiInterne } from "../../lib/api-interne.ts";
 import { url } from "../../lib/url.ts";
 import Admin from "../../layouts/Admin.astro";
 import {
@@ -117,9 +118,7 @@ interface DecorChoix {
 let decors: DecorChoix[] = [];
 try {
   const base =
-    import.meta.env.API_URL_INTERNAL ??
-    import.meta.env.PUBLIC_API_URL ??
-    "http://localhost:3000";
+    apiInterne();
   const res = await fetch(`${base}/admin/decors`, {
     headers: { cookie: Astro.request.headers.get("cookie") ?? "" },
   });
@@ -473,10 +472,19 @@ const piecesACaler = SLOTS.flatMap((s) => {
               </p>
             )}
 
-            <p class="text-xs text-bo-muted">
-              Les deux réglages s'enregistrent avec le bouton « Enregistrer » du
-              bloc du dessus.
-            </p>
+            <div class="flex flex-wrap items-center gap-3 border-t border-bo-border pt-3">
+              <button
+                type="submit"
+                form="fiche-personnage"
+                class="rounded bg-bo-accent text-white px-4 py-2"
+              >
+                Enregistrer la calibration
+              </button>
+              <span class="text-xs text-bo-muted">
+                La taille et le calage au sol ne sont gardés qu'une fois ce
+                bouton pressé — l'aperçu ci-dessus ne fait que les montrer.
+              </span>
+            </div>
           </div>
         </div>
       </section>

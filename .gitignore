@@ -25,3 +25,14 @@ data/assets/
 
 # Dumps pg locaux (sauvegardes, ne pas versionner)
 data/backups/
+
+# Les sauvegardes locales du serveur : la base et les fichiers téléversés.
+# Jamais versionnées, jamais dans une archive de déploiement.
+sauvegardes/
+
+# La police « another shabby » est une version d'essai sous licence Creative
+# Commons NON COMMERCIALE. Le dépôt est public : l'enregistrer ici reviendrait
+# à la redistribuer à quiconque le clone, ce que sa licence interdit. Elle
+# voyage avec l'archive de déploiement, jamais par Git.
+apps/api/fonts/AnotherShabby-Regular.ttf
+apps/web/public/fonts/AnotherShabby-Regular.ttf

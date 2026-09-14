@@ -41,7 +41,17 @@ import {
 // panier, seul courrier qui l'affiche : deux façons de fabriquer cette adresse
 // finiraient par diverger, et l'aperçu montrerait une image que le vrai
 // courrier n'a pas.
-import { vignettesDesProduits } from "./relance-panier.js";
+import { cheminApercu } from "./apercus.js";
+
+/**
+ * L'adresse publique du site, pour les images des courriers.
+ *
+ * Un courrier ne sait pas résoudre un chemin relatif : sans origine, la
+ * vignette ne s'afficherait nulle part. Le repli de développement vaut mieux
+ * qu'une adresse absente.
+ */
+const ORIGINE_PUBLIQUE =
+  (process.env.PUBLIC_ORIGIN ?? "").replace(/\/+$/, "") || "http://localhost:8080";
 
 /* -------------------------------------------------------------------------- */
 /*  Réglages affichés                                                         */
@@ -342,11 +352,6 @@ async function donneesDeCommande(
     .from(schema.orderItems)
     .where(eq(schema.orderItems.orderId, commande.id));
   const cadres = await db.select().from(schema.frames);
-  // Les vignettes : seule la relance de panier les affiche, mais elles sont
-  // portées par la ligne, donc composées ici comme le reste.
-  const vignettes = await vignettesDesProduits(
-    articles.map((it) => it.productId),
-  );
 
   const lignes: LigneCourrier[] = articles.map((it) => {
     const cfg = (it.config ?? {}) as Record<string, unknown>;
@@ -357,7 +362,10 @@ async function donneesDeCommande(
       cadre: cadre?.name ?? null,
       quantite: it.quantity,
       unitPriceCents: it.unitPriceCents,
-      imageUrl: it.productId != null ? (vignettes.get(it.productId) ?? null) : null,
+      // L'aperçu réel de CETTE ligne, en adresse absolue : une messagerie
+      // ne sait pas résoudre un chemin relatif, et le jeton lui permet de
+      // charger l'image sans session.
+      imageUrl: `${ORIGINE_PUBLIQUE}/api${cheminApercu(it.id)}`,
     };
   });
   const sousTotalCents = lignes.reduce(

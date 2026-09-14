@@ -38,6 +38,16 @@ interface Props {
 const { affiche, langue, prioritaire = false } = Astro.props;
 const tr = t(langue);
 
+/*
+ * Au stand, aucun montant.
+ *
+ * La vendeuse annonce ses prix de salon, qui ne sont pas ceux du site : un
+ * chiffre affiché sous la vignette la contredirait devant le client. La
+ * remise, elle, disparaît aussi — une étiquette « −20 % » sans prix ne veut
+ * plus rien dire.
+ */
+const sansPrix = Astro.locals.stand;
+
 /**
  * Le nom sans son suffixe commercial.
  *
@@ -77,8 +87,20 @@ const prix =
     : `${formatPrice(mini)} – ${formatPrice(maxi)}`;
 // Quatre cents pixels de large suffisent à une vignette de grille ; le
 // navigateur prend la plus petite qui lui va parmi celles proposées.
-const image = assetUrl(affiche.image, 400);
-const imageJeu = assetSrcset(affiche.image, [200, 400, 600]);
+/*
+ * Le visuel, et les tailles dans lesquelles le navigateur peut le prendre.
+ *
+ * Les vignettes ont grandi — trois colonnes au lieu de quatre, soit environ
+ * 355 px de large sur un écran de 1440, et le double de pixels réels sur un
+ * écran à haute densité. L'ancien jeu s'arrêtait à 600 px et `sizes` annonçait
+ * 300 : le navigateur choisissait donc une image de 400 px qu'il agrandissait,
+ * et l'affiche paraissait molle.
+ *
+ * 900 et 1400 existent déjà côté API (`/assets/:fichier?l=`) : il n'y avait
+ * qu'à les proposer.
+ */
+const image = assetUrl(affiche.image, 600);
+const imageJeu = assetSrcset(affiche.image, [400, 600, 900, 1400]);
 ---
 
 <li class="group ml-apparition">
@@ -92,7 +114,7 @@ const imageJeu = assetSrcset(affiche.image, [200, 400, 600]);
           <img
             src={image}
             srcset={imageJeu}
-            sizes="(min-width: 1024px) 300px, (min-width: 640px) 45vw, 90vw"
+            sizes="(min-width: 1536px) 300px, (min-width: 1024px) 380px, (min-width: 640px) 46vw, 46vw"
             alt={nom}
             width="1020"
             height="1400"
@@ -106,11 +128,12 @@ const imageJeu = assetSrcset(affiche.image, [200, 400, 600]);
       {
         /* L'étiquette de remise sur l'image, pas sous le prix : c'est ce
            qu'on repère en balayant une grille des yeux. */
-        promo && (
-          <span class="absolute left-0 top-0 bg-terracotta px-2.5 py-1 text-[13px] font-semibold text-paper">
-            −{promo.pourcent} %
-          </span>
-        )
+        promo &&
+          !sansPrix && (
+            <span class="absolute left-0 top-0 bg-terracotta px-2.5 py-1 text-[13px] font-semibold text-paper">
+              −{promo.pourcent} %
+            </span>
+          )
       }
     </div>
     <div class="mt-4">
@@ -118,7 +141,7 @@ const imageJeu = assetSrcset(affiche.image, [200, 400, 600]);
         {nom}
       </h2>
       {
-        promo ? (
+        sansPrix ? null : promo ? (
           <p class="mt-1 flex flex-wrap items-baseline gap-2">
             <span class="text-terracotta-deep">{prix}</span>
             <s class="text-ink/45">

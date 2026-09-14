@@ -26,10 +26,9 @@ export function StepCharacters(props: {
   cache: SvgCache;
   characterById: (id: string | number) => CharacterDTO | undefined;
   onAdd: () => void;
+  onDuplicate: (index: number) => void;
   onRemove: (index: number) => void;
   onSelect: (index: number | null) => void;
-  onBringForward: (index: number) => void;
-  onSendBackward: (index: number) => void;
   /** Déplace un personnage d'un rang à un autre dans la liste. */
   onReorder: (depuis: number, vers: number) => void;
   onSetAsset: (index: number, slot: Slot, variantId: string | number) => void;
@@ -156,22 +155,34 @@ export function StepCharacters(props: {
                           </span>
                         </span>
                         <Button
-                          variant="ghost"
-                          onClick={() => props.onSendBackward(i())}
-                        >
-                          ↓
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          onClick={() => props.onBringForward(i())}
-                        >
-                          ↑
-                        </Button>
-                        <Button
                           variant="secondary"
                           onClick={() => props.onSelect(i())}
                         >
                           {m().modifier}
+                        </Button>
+                        {/* Deux carrés décalés : le signe habituel de la
+                            copie, lisible sans légende et sans emoji — les
+                            emoji ne se dessinent pas pareil d'un téléphone à
+                            l'autre, et celui-ci doit rester net à 15 px. */}
+                        <Button
+                          variant="ghost"
+                          onClick={() => props.onDuplicate(i())}
+                          title={m().dupliquer}
+                          aria-label={m().dupliquer}
+                        >
+                          <svg
+                            viewBox="0 0 16 16"
+                            width="14"
+                            height="14"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.4"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                          >
+                            <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+                            <path d="M10.5 2.5H3a.5.5 0 0 0-.5.5v7.5" />
+                          </svg>
                         </Button>
                         <Button
                           variant="ghost"

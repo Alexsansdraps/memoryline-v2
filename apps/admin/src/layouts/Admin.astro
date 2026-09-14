@@ -19,44 +19,138 @@ interface NavItem {
   children?: NavItem[];
 }
 
-const nav: NavItem[] = [
-  // Un vendeur ne voit que son stand : tout le reste porte « owner ». Le
-  // tableau de bord lui-même mêle les ventes du site aux siennes, il n'y a
-  // donc pas sa place.
-  { href: "/", label: "Accueil", icon: "🏠", owner: true },
-  { href: "/commandes", label: "Commandes en ligne", icon: "🛒", owner: true },
-  { href: "/paniers", label: "Paniers abandonnés", icon: "🛍️", owner: true },
-  { href: "/clients", label: "Clients", icon: "👥", owner: true },
-  { href: "/ventes-salon", label: "Ventes stand", icon: "🎪" },
+/** Un thème du menu. `titre` à null pour le bloc du haut, qui n'en a pas. */
+interface GroupeNav {
+  titre: string | null;
+  entrees: NavItem[];
+}
+
+/*
+ * Sept groupes, rangés par NATURE de la chose qu'on manipule — comme Shopify,
+ * d'où vient la cliente et dont le vocabulaire lui est déjà familier. Une
+ * hésitation s'y tranche en ouvrant l'écran, alors qu'un rangement par
+ * fréquence d'usage se périme dès que les habitudes changent.
+ *
+ * `owner: true` = écran de configuration, masqué aux comptes « seller », qui
+ * vendent et impriment mais ne modifient ni le catalogue ni les réglages.
+ */
+const nav: GroupeNav[] = [
+  // Sans titre, tout en haut : les deux écrans qu'on ouvre en arrivant, avant
+  // même de savoir ce qu'on vient faire.
   {
-    href: "/produits",
-    label: "Produits",
-    icon: "🖼️",
-    owner: true,
-    // L'import existait, terminé, sans qu'aucun lien n'y mène : il fallait
-    // taper l'adresse pour le trouver.
-    children: [
-      { href: "/produits/import", label: "Importer un fichier", icon: "📥", owner: true },
+    titre: null,
+    entrees: [
+      { href: "/", label: "Accueil", icon: "🏠", owner: true },
+      // Deux écrans, deux questions. « Finances » répond à « où est
+      // l'argent » ; « Statistiques » à « qu'est-ce qui se vend ». Les
+      // réunir donnerait un écran qu'on ouvre pour deux raisons opposées.
+      { href: "/statistiques", label: "Statistiques", icon: "📈", owner: true },
+      { href: "/finances", label: "Finances", icon: "📊", owner: true },
     ],
   },
-  { href: "/cadres", label: "Cadres", icon: "🖼", owner: true },
-  { href: "/personnages", label: "Personnages", icon: "🧸", owner: true },
-  { href: "/types-affiche", label: "Types d'affiche", icon: "🎭", owner: true },
-  { href: "/decors", label: "Décors des affiches", icon: "🖼️", owner: true },
-  { href: "/ia", label: "Affiches IA", icon: "✨", owner: true },
-  { href: "/collections", label: "Collections", icon: "📚", owner: true },
-  { href: "/cartes-cadeaux", label: "Cartes cadeaux", icon: "🎁", owner: true },
-  { href: "/categories-pieces", label: "Catégories de pièces", icon: "🎨", owner: true },
-  { href: "/promotions", label: "Promotions", icon: "🎟️", owner: true },
-  { href: "/livraison", label: "Livraison", icon: "📦", owner: true },
-  { href: "/bandeau", label: "Bandeau du site", icon: "📢", owner: true },
-  { href: "/contenu", label: "Contenu", icon: "✏️", owner: true },
-  { href: "/pages", label: "Pages du site", icon: "📄", owner: true },
-  { href: "/menu", label: "Menu du site", icon: "🧭", owner: true },
-  { href: "/lettre", label: "Lettre d'information", icon: "✉️", owner: true },
-  { href: "/courriers", label: "Courriers d'essai", icon: "📬", owner: true },
-  { href: "/finances", label: "Finances", icon: "📊", owner: true },
-  { href: "/comptes", label: "Comptes", icon: "🔑", owner: true },
+  {
+    titre: "Commandes",
+    entrees: [
+      { href: "/commandes", label: "Commandes en ligne", icon: "🛒", owner: true },
+      // La seule entrée qu'un vendeur voit : son stand, et rien d'autre.
+      { href: "/ventes-salon", label: "Ventes stand", icon: "🎪" },
+      { href: "/paniers", label: "Paniers abandonnés", icon: "🛍️", owner: true },
+      // Ici et pas dans le catalogue : une carte cadeau n'est pas un article à
+      // vendre, c'est de l'argent que quelqu'un a déjà payé.
+      { href: "/cartes-cadeaux", label: "Cartes cadeaux", icon: "🎁", owner: true },
+    ],
+  },
+  {
+    titre: "Produits",
+    entrees: [
+      {
+        href: "/produits",
+        label: "Produits",
+        icon: "🖼️",
+        owner: true,
+        // Aucun autre écran ne pointe vers l'import : sans cette entrée, il
+        // redevient introuvable, ce qu'il a déjà été une fois.
+        children: [
+          { href: "/produits/import", label: "Importer un fichier", icon: "📥", owner: true },
+        ],
+      },
+      { href: "/collections", label: "Collections", icon: "📚", owner: true },
+      // 🪵 et non 🖼 : Produits, Cadres et Décors portaient trois cadres photo
+      // presque identiques, et sur un petit écran on vise la forme avant de
+      // lire le mot.
+      { href: "/cadres", label: "Cadres", icon: "🪵", owner: true },
+    ],
+  },
+  {
+    // « Atelier » et surtout pas « Personnalisation » : l'écran de
+    // personnalisation des courriers arrive, et l'œil serait allé sur le
+    // groupe qui porte le mot — celui des vêtements de personnages.
+    titre: "Atelier",
+    entrees: [
+      {
+        href: "/personnages",
+        label: "Personnages",
+        icon: "🧸",
+        owner: true,
+        children: [
+          // Sa seule porte était un bouton discret en haut de la liste des
+          // personnages. C'est pourtant lui qui rend utilisable une pièce
+          // fraîchement créée, décochée partout par défaut.
+          { href: "/personnages/correspondances", label: "Pièces par personnage", icon: "🧩", owner: true },
+          { href: "/categories-pieces", label: "Catégories de pièces", icon: "🎨", owner: true },
+        ],
+      },
+      { href: "/types-affiche", label: "Types d'affiche", icon: "🎭", owner: true },
+      // Le libellé garde « des affiches » : c'est le seul mot qui rattache cet
+      // écran au catalogue, et on y NOMME un décor, on n'en ajoute pas.
+      { href: "/decors", label: "Décors des affiches", icon: "🏞️", owner: true },
+      {
+        href: "/ia",
+        label: "Affiches IA",
+        icon: "✨",
+        owner: true,
+        // Les styles proposés à la cliente — « Couple », « Paysage » — vivent
+        // sous les affiches IA dont ils sont le réglage, et non à côté :
+        // on n'y va qu'après avoir ouvert celles-ci.
+        children: [
+          { href: "/ia/styles", label: "Styles proposés", icon: "🎨", owner: true },
+        ],
+      },
+    ],
+  },
+  {
+    titre: "Clients et marketing",
+    entrees: [
+      { href: "/clients", label: "Clients", icon: "👥", owner: true },
+      { href: "/promotions", label: "Promotions", icon: "🎟️", owner: true },
+      { href: "/lettre", label: "Lettre d'information", icon: "✉️", owner: true },
+    ],
+  },
+  {
+    titre: "Boutique en ligne",
+    entrees: [
+      // « et offre » : enregistrer cet écran enregistre le message ET la
+      // remise qu'il annonce. Le nom doit prévenir qu'on touche à de l'argent.
+      { href: "/bandeau", label: "Bandeau et offre", icon: "📢", owner: true },
+      // « Contenu » ne disait rien et se confondait avec « Pages du site »,
+      // juste en dessous. Cet écran ne touche que cinq blocs : quatre de
+      // l'accueil, et le pied de page.
+      { href: "/contenu", label: "Accueil et pied de page", icon: "✏️", owner: true },
+      { href: "/pages", label: "Pages du site", icon: "📄", owner: true },
+      { href: "/menu", label: "Menu du site", icon: "🧭", owner: true },
+    ],
+  },
+  {
+    titre: "Réglages",
+    entrees: [
+      { href: "/livraison", label: "Livraison", icon: "📦", owner: true },
+      // Ni « d'essai » — le mot ne décrivait qu'un bouton et faisait passer
+      // l'écran pour un bac à sable — ni « automatiques », qui serait faux :
+      // la facture et l'avis d'expédition ne partent que sur son geste.
+      { href: "/courriers", label: "Courriers", icon: "📬", owner: true },
+      { href: "/comptes", label: "Comptes", icon: "🔑", owner: true },
+    ],
+  },
 ];
 const isOwner = Astro.locals.user?.role === "owner";
 
@@ -67,10 +161,28 @@ const isOwner = Astro.locals.user?.role === "owner";
  */
 const lienBoutique = import.meta.env.PUBLIC_SITE_URL ?? "/";
 const allowed = (item: NavItem) => isOwner || !item.owner;
-const visibleNav = nav.filter(allowed).map((item) => ({
-  ...item,
-  children: item.children?.filter(allowed) ?? [],
-}));
+const visibleNav = nav
+  .map((groupe) => ({
+    ...groupe,
+    entrees: groupe.entrees.filter(allowed).map((item) => ({
+      ...item,
+      children: item.children?.filter(allowed) ?? [],
+    })),
+  }))
+  // Un groupe dont tout le contenu est masqué ne laisse pas son titre derrière
+  // lui : un vendeur verrait cinq intertitres au-dessus de rien.
+  .filter((groupe) => groupe.entrees.length > 0);
+
+/*
+ * Une liste d'un seul élément ne se range pas.
+ *
+ * Le compte porte sur le menu ENTIER, et non sur chaque groupe : « au moins
+ * deux entrées dans ce groupe » se retournerait contre la patronne le jour où
+ * un groupe tomberait à une ligne — son titre disparaîtrait, et cette ligne
+ * flotterait sous le groupe précédent comme si elle en faisait partie.
+ */
+const nombreEntrees = visibleNav.reduce((n, g) => n + g.entrees.length, 0);
+const avecGroupes = nombreEntrees > 1;
 
 /** Une entrée est active sur sa page — l'accueil seulement à l'identique. */
 const isActive = (href: string) =>
@@ -138,56 +250,83 @@ const isActive = (href: string) =>
             </svg>
           </a>
         </div>
-        <nav class="flex-1 py-3">
+        <nav
+          class="flex-1 overflow-y-auto py-3"
+          data-groupes={avecGroupes ? "1" : undefined}
+        >
           {
-            visibleNav.map((item) => {
-              // Le parent reste mis en avant quand on est sur une de ses
-              // sous-pages, pour que la section courante reste lisible.
-              const active =
-                isActive(item.href) || item.children.some((c) => isActive(c.href));
+            visibleNav.map((groupe) => {
+              // Le groupe de l'écran ouvert est déplié de force, quoi qu'ait
+              // retenu le navigateur : on ne se perd jamais dans un menu qui
+              // cache l'endroit où l'on se trouve.
+              const ici = groupe.entrees.some(
+                (e) =>
+                  isActive(e.href) || e.children.some((c) => isActive(c.href)),
+              );
               return (
-                // Un bloc par entrée, sous-liens compris : sans lui, déplacer
-                // « Produits » laisserait ses sous-pages derrière.
-                <div data-entree={item.href} class="ml-entree">
-                  <a
-                    href={url(item.href)}
-                    class={`flex items-center gap-3 px-5 py-2.5 text-sm transition-colors ${
-                      active
-                        ? "bg-white/10 text-white font-medium"
-                        : "hover:bg-white/5"
-                    }`}
-                  >
-                    <span>{item.icon}</span>
-                    <span>{item.label}</span>
-                  </a>
-                  {item.children.map((child) => (
-                    <a
-                      href={url(child.href)}
-                      class={`flex items-center gap-2 py-2 pl-12 pr-5 text-[13px] transition-colors ${
-                        isActive(child.href)
-                          ? "bg-white/10 text-white font-medium"
-                          : "text-white/70 hover:bg-white/5"
-                      }`}
+                <div data-groupe={groupe.titre ?? ""} data-ici={ici ? "1" : undefined}>
+                  {avecGroupes && groupe.titre && (
+                    <button
+                      type="button"
+                      data-titre
+                      aria-expanded={ici ? "true" : "false"}
+                      class="flex w-full items-center gap-1.5 px-5 pt-4 pb-1.5 text-left text-[11px] font-semibold tracking-wider text-white/40 uppercase hover:text-white/70"
                     >
-                      <span class="text-white/40">└</span>
-                      <span>{child.label}</span>
-                    </a>
-                  ))}
+                      <span data-fleche aria-hidden="true" class="text-[9px]">
+                        {ici ? "▾" : "▸"}
+                      </span>
+                      <span>{groupe.titre}</span>
+                    </button>
+                  )}
+                  {/* Fermé d'emblée, sauf le groupe de l'écran ouvert. C'est
+                      le SERVEUR qui le décide, et non le script : laissé au
+                      navigateur, le menu s'afficherait déployé le temps d'un
+                      battement avant de se refermer, à chaque page. */}
+                  <div data-corps hidden={avecGroupes && !!groupe.titre && !ici}>
+                    {groupe.entrees.map((item) => {
+                      // Le parent reste mis en avant quand on est sur une de
+                      // ses sous-pages, pour que la section courante reste
+                      // lisible.
+                      const active =
+                        isActive(item.href) ||
+                        item.children.some((c) => isActive(c.href));
+                      return (
+                        // Un bloc par entrée, sous-liens compris : « Importer
+                        // un fichier » appartient à « Produits » et se lit en
+                        // retrait dessous.
+                        <div>
+                          <a
+                            href={url(item.href)}
+                            class={`flex items-center gap-3 px-5 py-2.5 text-sm transition-colors ${
+                              active
+                                ? "bg-white/10 text-white font-medium"
+                                : "hover:bg-white/5"
+                            }`}
+                          >
+                            <span>{item.icon}</span>
+                            <span>{item.label}</span>
+                          </a>
+                          {item.children.map((child) => (
+                            <a
+                              href={url(child.href)}
+                              class={`flex items-center gap-2 py-2 pl-12 pr-5 text-[13px] transition-colors ${
+                                isActive(child.href)
+                                  ? "bg-white/10 text-white font-medium"
+                                  : "text-white/70 hover:bg-white/5"
+                              }`}
+                            >
+                              <span class="text-white/40">└</span>
+                              <span>{child.label}</span>
+                            </a>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })
           }
-          {/* N'apparaît qu'une fois l'ordre changé : un bouton d'annulation
-              visible en permanence laisserait croire qu'il y a quelque chose
-              à défaire. */}
-          <button
-            type="button"
-            id="ml-ordre-defaut"
-            hidden
-            class="mt-2 w-full px-5 py-2 text-left text-[11px] text-white/40 hover:text-white/70"
-          >
-            Remettre le menu dans l'ordre d'origine
-          </button>
         </nav>
         <div class="px-5 py-3 text-xs text-white/40 border-t border-white/10">
           Back-office · v0{!isOwner && " · vendeur"}
@@ -196,133 +335,83 @@ const isActive = (href: string) =>
           (function () {
             var menu = document.querySelector("aside nav");
             if (!menu) return;
-            var CLE = "ml_ordre_menu";
 
-            function entrees() {
-              return Array.prototype.slice.call(
-                menu.querySelectorAll("[data-entree]"),
-              );
+            // Un menu réduit à une seule ligne — ce que voit un vendeur —
+            // n'a pas de groupes, donc rien à ouvrir ni à fermer.
+            if (menu.dataset.groupes !== "1") return;
+
+            var CLE = "ml_groupes_ouverts";
+
+            // Reste d'un glisser-déposer retiré depuis. Sans cet effacement,
+            // la liste dormirait indéfiniment dans le navigateur de la seule
+            // personne qui s'en était servie.
+            try {
+              localStorage.removeItem("ml_ordre_menu");
+              localStorage.removeItem("ml_groupes_replies");
+            } catch (e) {
+              /* navigation privée : il n'y avait rien à effacer */
             }
-            function ordreActuel() {
-              return entrees().map(function (e) {
-                return e.dataset.entree;
-              });
-            }
+
             function lire() {
               try {
                 var brut = localStorage.getItem(CLE);
                 var liste = brut ? JSON.parse(brut) : null;
-                return Array.isArray(liste) ? liste : null;
+                return Array.isArray(liste) ? liste : [];
               } catch (e) {
-                return null;
+                return [];
               }
             }
             function ecrire(liste) {
               try {
-                if (liste) localStorage.setItem(CLE, JSON.stringify(liste));
+                if (liste.length) localStorage.setItem(CLE, JSON.stringify(liste));
                 else localStorage.removeItem(CLE);
               } catch (e) {
-                /* sans stockage, l'ordre ne tient que le temps de la page */
-              }
-              var bouton = document.getElementById("ml-ordre-defaut");
-              if (bouton) bouton.hidden = !liste;
-            }
-
-            // Les entrées connues d'abord, dans l'ordre retenu ; les autres
-            // gardent leur place d'origine derrière. Un écran ajouté demain
-            // apparaît donc, au lieu de disparaître faute d'être dans la liste.
-            var retenu = lire();
-            if (retenu) {
-              var parCle = {};
-              entrees().forEach(function (e) {
-                parCle[e.dataset.entree] = e;
-              });
-              retenu.forEach(function (cle) {
-                if (parCle[cle]) menu.appendChild(parCle[cle]);
-                delete parCle[cle];
-              });
-              Object.keys(parCle).forEach(function (cle) {
-                menu.appendChild(parCle[cle]);
-              });
-              var b = document.getElementById("ml-ordre-defaut");
-              if (b) {
-                b.hidden = false;
-                menu.appendChild(b);
+                /* sans stockage, l'ouverture ne tient que le temps de la page */
               }
             }
 
-            // Le seuil est ce qui distingue un clic d'un déplacement : sans
-            // lui, ouvrir un écran deviendrait impossible, chaque pression
-            // étant lue comme le début d'un glissement.
-            var SEUIL = 6;
-            var tenue = null;
-            var depart = 0;
-            var glisse = false;
+            function groupes() {
+              return Array.prototype.slice.call(
+                menu.querySelectorAll("[data-groupe]"),
+              );
+            }
 
-            menu.addEventListener("pointerdown", function (e) {
-              if (e.button !== 0) return;
-              var entree = e.target.closest("[data-entree]");
-              if (!entree) return;
-              tenue = entree;
-              depart = e.clientY;
-              glisse = false;
+            function appliquer() {
+              var ouverts = lire();
+              groupes().forEach(function (g) {
+                var titre = g.querySelector("[data-titre]");
+                var corps = g.querySelector("[data-corps]");
+                if (!titre || !corps) return;
+                // Deux raisons d'être ouvert : on s'y trouve, ou elle l'a
+                // ouvert. La première ne se discute pas — un menu qui cache
+                // l'endroit où l'on est ne sert à rien.
+                var ouvert =
+                  !!g.dataset.ici || ouverts.indexOf(g.dataset.groupe) !== -1;
+                corps.hidden = !ouvert;
+                titre.setAttribute("aria-expanded", ouvert ? "true" : "false");
+                var fleche = titre.querySelector("[data-fleche]");
+                if (fleche) fleche.textContent = ouvert ? "▾" : "▸";
+              });
+            }
 
-              function bouger(ev) {
-                if (!tenue) return;
-                if (!glisse) {
-                  if (Math.abs(ev.clientY - depart) < SEUIL) return;
-                  glisse = true;
-                  tenue.style.opacity = "0.5";
-                  document.body.style.userSelect = "none";
-                }
-                var sous = document.elementFromPoint(ev.clientX, ev.clientY);
-                var cible =
-                  sous && sous.closest ? sous.closest("[data-entree]") : null;
-                if (!cible || cible === tenue || cible.parentElement !== menu)
-                  return;
-                var apres =
-                  cible.compareDocumentPosition(tenue) &
-                  Node.DOCUMENT_POSITION_PRECEDING;
-                menu.insertBefore(tenue, apres ? cible.nextSibling : cible);
-              }
-              function lacher() {
-                if (tenue) tenue.style.opacity = "";
-                document.body.style.userSelect = "";
-                window.removeEventListener("pointermove", bouger);
-                window.removeEventListener("pointerup", lacher);
-                window.removeEventListener("pointercancel", lacher);
-                if (glisse) ecrire(ordreActuel());
-                tenue = null;
-                // Le drapeau survit jusqu'au clic qui suit le relâchement,
-                // sinon le lien s'ouvrirait au bout du déplacement.
-                setTimeout(function () {
-                  glisse = false;
-                }, 0);
-              }
-              window.addEventListener("pointermove", bouger);
-              window.addEventListener("pointerup", lacher);
-              window.addEventListener("pointercancel", lacher);
+            menu.addEventListener("click", function (e) {
+              var titre = e.target.closest("[data-titre]");
+              if (!titre) return;
+              var groupe = titre.closest("[data-groupe]");
+              if (!groupe) return;
+              // Son clic passe devant la règle qui déroule le groupe où l'on
+              // se trouve : un titre sur lequel on appuie sans que rien ne
+              // bouge serait pire qu'un titre qui ne s'ouvre pas du tout.
+              groupe.removeAttribute("data-ici");
+              var ouverts = lire();
+              var rang = ouverts.indexOf(groupe.dataset.groupe);
+              if (rang === -1) ouverts.push(groupe.dataset.groupe);
+              else ouverts.splice(rang, 1);
+              ecrire(ouverts);
+              appliquer();
             });
 
-            menu.addEventListener(
-              "click",
-              function (e) {
-                if (glisse) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }
-              },
-              true,
-            );
-
-            document
-              .getElementById("ml-ordre-defaut")
-              ?.addEventListener("click", function () {
-                ecrire(null);
-                window.location.reload();
-              });
-
-            ecrire(retenu);
+            appliquer();
           })();
         </script>
       </aside>

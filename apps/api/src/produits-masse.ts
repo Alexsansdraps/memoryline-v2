@@ -644,11 +644,57 @@ app.get("/admin/products/export.csv", async (c) => {
 
     // Les compteurs ignorent en revanche le statut demandé : ce sont eux qui
     // permettent de cliquer sur « Archivés 2 » quand on regarde les actifs.
-    const parStatut = await db
-      .select({ status: schema.products.status, n: count() })
-      .from(schema.products)
-      .where(communs.length ? and(...communs) : undefined)
-      .groupBy(schema.products.status);
+    const conditionsLignes = [...communs];
+    if (statutValide(q.statut))
+      conditionsLignes.push(eq(schema.products.status, q.statut));
+
+    /*
+     * PREMIÈRE VAGUE — quatre requêtes qui ne dépendent de rien.
+     *
+     * La base est à 300 ms d'aller-retour (Neon, Ohio). Les enchaîner faisait
+     * 1,2 seconde d'attente pure, alors qu'aucune n'a besoin du résultat des
+     * autres. Ensemble, elles coûtent une attente au lieu de quatre.
+     */
+    const [parStatut, lignes, categories, collections] = await Promise.all([
+      db
+        .select({ status: schema.products.status, n: count() })
+        .from(schema.products)
+        .where(communs.length ? and(...communs) : undefined)
+        .groupBy(schema.products.status),
+      db
+        .select({
+          id: schema.products.id,
+          name: schema.products.name,
+          slug: schema.products.slug,
+          kind: schema.products.kind,
+          status: schema.products.status,
+          basePriceCents: schema.products.basePriceCents,
+          categoryId: schema.products.categoryId,
+          weightGrams: schema.products.weightGrams,
+          aiEnabled: schema.products.aiEnabled,
+        })
+        .from(schema.products)
+        .where(conditionsLignes.length ? and(...conditionsLignes) : undefined)
+        // Par ordre alphabétique : on cherche ici un produit dont on connaît
+        // le nom, pas une création récente.
+        .orderBy(asc(schema.products.name), asc(schema.products.id))
+        .limit(limite),
+      db
+        .select({
+          id: schema.productCategories.id,
+          name: schema.productCategories.name,
+        })
+        .from(schema.productCategories)
+        .orderBy(
+          asc(schema.productCategories.position),
+          asc(schema.productCategories.name),
+        ),
+      db
+        .select({ id: schema.collections.id, name: schema.collections.name })
+        .from(schema.collections)
+        .orderBy(asc(schema.collections.position), asc(schema.collections.name)),
+    ]);
+
     const compte = { tous: 0, active: 0, draft: 0, archived: 0 };
     for (const r of parStatut) {
       const n = Number(r.n);
@@ -656,50 +702,18 @@ app.get("/admin/products/export.csv", async (c) => {
       if (statutValide(r.status)) compte[r.status] += n;
     }
 
-    const conditions = [...communs];
-    if (statutValide(q.statut))
-      conditions.push(eq(schema.products.status, q.statut));
-
-    const lignes = await db
-      .select({
-        id: schema.products.id,
-        name: schema.products.name,
-        slug: schema.products.slug,
-        kind: schema.products.kind,
-        status: schema.products.status,
-        basePriceCents: schema.products.basePriceCents,
-        categoryId: schema.products.categoryId,
-        weightGrams: schema.products.weightGrams,
-        aiEnabled: schema.products.aiEnabled,
-      })
-      .from(schema.products)
-      .where(conditions.length ? and(...conditions) : undefined)
-      // Par ordre alphabétique : on cherche ici un produit dont on connaît le
-      // nom, pas une création récente.
-      .orderBy(asc(schema.products.name), asc(schema.products.id))
-      .limit(limite);
-
     const ids = lignes.map((l) => l.id);
 
-    const categories = await db
-      .select({
-        id: schema.productCategories.id,
-        name: schema.productCategories.name,
-      })
-      .from(schema.productCategories)
-      .orderBy(
-        asc(schema.productCategories.position),
-        asc(schema.productCategories.name),
-      );
-    const collections = await db
-      .select({ id: schema.collections.id, name: schema.collections.name })
-      .from(schema.collections)
-      .orderBy(asc(schema.collections.position), asc(schema.collections.name));
-
-    // Les prix, pas seulement le nombre de formats : la liste doit montrer ce
-    // que le client paiera, et le prix de base ne le dit pas.
-    const variantes = ids.length
-      ? await db
+    /*
+     * DEUXIÈME VAGUE — les trois requêtes qui ont besoin des identifiants
+     * trouvés ci-dessus. Elles partent ensemble, elles aussi.
+     *
+     * Les prix, et pas seulement le nombre de formats : la liste doit montrer
+     * ce que la cliente paiera, et le prix de base ne le dit pas.
+     */
+    const [variantes, images, liens] = await Promise.all([
+      ids.length
+        ? db
           .select({
             productId: schema.variants.productId,
             format: schema.variants.format,
@@ -707,9 +721,9 @@ app.get("/admin/products/export.csv", async (c) => {
           })
           .from(schema.variants)
           .where(inArray(schema.variants.productId, ids))
-      : [];
-    const images = ids.length
-      ? await db
+        : [],
+      ids.length
+        ? db
           .select({
             productId: schema.productImages.productId,
             url: schema.productImages.url,
@@ -720,9 +734,9 @@ app.get("/admin/products/export.csv", async (c) => {
             asc(schema.productImages.position),
             asc(schema.productImages.id),
           )
-      : [];
-    const liens = ids.length
-      ? await db
+        : [],
+      ids.length
+        ? db
           .select({
             productId: schema.productCollections.productId,
             id: schema.collections.id,
@@ -739,7 +753,8 @@ app.get("/admin/products/export.csv", async (c) => {
             asc(schema.productCollections.position),
             asc(schema.collections.name),
           )
-      : [];
+        : [],
+    ]);
 
     const nombreDeVariantes = new Map<number, number>();
     const prixParProduit = new Map<number, { min: number; max: number }>();

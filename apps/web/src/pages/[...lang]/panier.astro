@@ -34,6 +34,10 @@ const tr = t(langue);
       </a>
     </div>
 
-    <CartIsland client:only="solid-js" langue={langue} />
+    <CartIsland
+      client:only="solid-js"
+      langue={langue}
+      sansPrix={Astro.locals.stand}
+    />
   </section>
 </Base>

@@ -9,6 +9,15 @@ export function Button(props: {
   disabled?: boolean;
   type?: "button" | "submit";
   class?: string;
+  /**
+   * L'infobulle, et ce que lit un lecteur d'écran.
+   *
+   * Un bouton dont le contenu est un dessin — la copie d'un personnage, par
+   * exemple — n'a aucun texte à annoncer : sans ces deux-là, il se lit
+   * « bouton » et rien d'autre.
+   */
+  title?: string;
+  "aria-label"?: string;
 }) {
   const variant = () => props.variant ?? "primary";
   const cls = () => {
@@ -33,6 +42,8 @@ export function Button(props: {
     <button
       type={props.type ?? "button"}
       class={cls()}
+      title={props.title}
+      aria-label={props["aria-label"]}
       disabled={props.disabled}
       onClick={() => props.onClick?.()}
       style={{

@@ -58,6 +58,17 @@ const trisOfferts = collectionDemandee
   : TRIS;
 const triParDefaut = collectionDemandee ? "manuel" : "nouveautes";
 
+/**
+ * La ville demandée.
+ *
+ * Elle vient du nom de l'affiche, où la boutique l'écrit en capitales depuis
+ * toujours — « AMIENS Cathédrale », « BAIE DE SOMME Phoques ». Aucune
+ * validation ici : une ville inconnue ne trouve simplement rien, et l'écran
+ * le dit, plutôt que de renvoyer une erreur sur une adresse qu'un visiteur
+ * peut avoir recopiée de travers.
+ */
+const villeDemandee = Astro.url.searchParams.get("ville") ?? "";
+
 const triDemande = Astro.url.searchParams.get("tri") ?? "";
 const tri = (trisOfferts as readonly string[]).includes(triDemande)
   ? triDemande
@@ -75,13 +86,18 @@ const pageDemandee = Math.max(
 let products: Product[] = [];
 let total = 0;
 let collections: Collection[] = [];
+let villes: { nom: string; nombre: number }[] = [];
 let error: string | null = null;
 try {
-  const [rayon, listeCollections] = await Promise.all([
+  const [rayon, listeCollections, listeVilles] = await Promise.all([
     api.catalogue({
       langue,
       genre: genre || undefined,
       collection: collectionDemandee || undefined,
+      // Même règle que pour la liste : le filtre n'existe pas sur ce rayon,
+      // une adresse recopiée à la main ne doit pas le faire réapparaître.
+      ville:
+        genre === "prete_a_imprimer" ? undefined : villeDemandee || undefined,
       tri,
       limite: PAR_PAGE,
       offset: (pageDemandee - 1) * PAR_PAGE,
@@ -89,10 +105,23 @@ try {
     // Sert seulement à nommer le rayon en titre : le nom vient de la boutique,
     // pas d'une table de correspondance écrite en dur ici.
     collectionDemandee ? api.collections() : Promise.resolve([]),
+    /*
+     * Les lieux partent avec le reste plutôt qu'après.
+     *
+     * Ils étaient demandés une fois la grille reçue : un aller-retour de plus
+     * en file, alors que la liste des lieux ne dépend pas des affiches
+     * affichées. Elle est vide sur les prêtes à imprimer — ce ne sont pas des
+     * affiches de lieu, leur titre entier est en capitales et le filtre y
+     * lisait quinze « lieux » qui n'en étaient pas.
+     */
+    genre === "prete_a_imprimer"
+      ? Promise.resolve([])
+      : api.villes(genre || undefined).catch(() => []),
   ]);
   products = rayon.items;
   total = rayon.total;
   collections = listeCollections;
+  villes = listeVilles;
 } catch (e) {
   error = String(e);
 }
@@ -152,6 +181,7 @@ function adresseRayon(changements: { tri?: string; page?: number }): string {
   const p = new URLSearchParams();
   if (genre) p.set("genre", genre);
   if (collectionDemandee) p.set("collection", collectionDemandee);
+  if (villeDemandee) p.set("ville", villeDemandee);
   const triVoulu = changements.tri ?? tri;
   if (triVoulu !== triParDefaut) p.set("tri", triVoulu);
   const pageVoulue = changements.page ?? pageDemandee;
@@ -172,6 +202,7 @@ const canonique = (() => {
   const p = new URLSearchParams();
   if (genre) p.set("genre", genre);
   if (collectionDemandee) p.set("collection", collectionDemandee);
+  if (villeDemandee) p.set("ville", villeDemandee);
   if (pageDemandee > 1) p.set("page", String(pageDemandee));
   const requete = p.toString();
   return lien(langue, "/affiches") + (requete ? `?${requete}` : "");
@@ -197,7 +228,7 @@ const libelleTri: Record<string, string> = {
   precedente={precedente}
   suivante={suivante}
 >
-  <section class="mx-auto max-w-[1200px] px-6 pt-12 pb-8 lg:px-12">
+  <section class="mx-auto max-w-[1600px] px-4 pt-12 pb-8 sm:px-6 lg:px-10">
     <h1 class="text-3xl sm:text-4xl">{titrePage}</h1>
     <div
       class="mt-3 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
@@ -214,18 +245,45 @@ const libelleTri: Record<string, string> = {
           Les autres réglages du rayon suivent en champs cachés, sinon
           changer de tri ferait sortir du rayon. Le numéro de page, lui, ne
           suit pas : trier autrement, c'est repartir du début. */}
-      <form method="get" action={lien(langue, "/affiches")} class="ml-tri flex items-center gap-2">
+      <form
+        method="get"
+        action={lien(langue, "/affiches")}
+        class="ml-tri flex flex-wrap items-center gap-x-2 gap-y-2"
+      >
         {genre && <input type="hidden" name="genre" value={genre} />}
         {
           collectionDemandee && (
             <input type="hidden" name="collection" value={collectionDemandee} />
           )
         }
+        {/* Le filtre par ville. Cent une entrées : un menu déroulant, où
+            l'on cherche un nom — pas une rangée de pastilles à parcourir.
+            Il part avec le formulaire du tri, qui marche déjà sans
+            JavaScript. */}
+        {villes.length > 0 && (
+          <>
+            <label for="ville" class="text-sm text-ink-soft">
+              {tr("catalogue.ville")}
+            </label>
+            <select
+              id="ville"
+              name="ville"
+              class="ml-filtre-ville min-w-0 max-w-[min(14rem,60vw)] border border-ink/20 bg-paper px-3 py-2 text-sm"
+            >
+              <option value="">{tr("catalogue.toutes_villes")}</option>
+              {villes.map((v) => (
+                <option value={v.nom} selected={v.nom === villeDemandee}>
+                  {v.nom} ({v.nombre})
+                </option>
+              ))}
+            </select>
+          </>
+        )}
         <label for="tri" class="text-sm text-ink-soft">{tr("catalogue.tri")}</label>
         <select
           id="tri"
           name="tri"
-          class="border border-ink/20 bg-paper px-3 py-2 text-sm"
+          class="min-w-0 max-w-[min(12rem,50vw)] border border-ink/20 bg-paper px-3 py-2 text-sm"
         >
           {
             trisOfferts.map((valeur) => (
@@ -248,19 +306,29 @@ const libelleTri: Record<string, string> = {
 
   {
     error && (
-      <p class="mx-auto max-w-[1200px] px-6 text-terracotta-deep lg:px-12">
+      <p class="mx-auto max-w-[1600px] px-4 text-terracotta-deep sm:px-6 lg:px-10">
         {tr("catalogue.erreur")} ({error}).
       </p>
     )
   }
 
-  <section class="mx-auto max-w-[1200px] px-6 pb-16 lg:px-12">
+  <section class="mx-auto max-w-[1600px] px-4 pb-16 sm:px-6 lg:px-10">
     {
       !error && products.length === 0 && (
         <p class="text-ink-soft">{tr("catalogue.vide")}</p>
       )
     }
-    <ul class="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-4">
+    {/* UNE COLONNE DE MOINS À CHAQUE PALIER, et le cadre passe de 1200 à
+        1600 px : sur un écran large, on avait quatre affiches par ligne dans
+        un couloir de 1200 px, soit des vignettes plus petites que sur
+        l'ancien site alors que l'écran était plus grand.
+
+        Le blanc qu'on voit autour des affiches n'est pas d'ici : les
+        vignettes sont remplies bord à bord, sans rognage. Il est DANS les
+        photos — ce sont des mises en situation où l'affiche n'occupe qu'une
+        partie de l'image. Agrandir la vignette agrandit donc aussi ce blanc ;
+        seule une photo recadrée le supprimerait. */}
+    <ul class="grid grid-cols-2 gap-x-5 gap-y-10 sm:gap-x-6 lg:grid-cols-3">
       {
         products.map((p, rang) => (
           <VignetteAffiche affiche={p} langue={langue} prioritaire={rang < 4} />
@@ -312,17 +380,28 @@ const libelleTri: Record<string, string> = {
   </section>
 
   <script is:inline>
-    // Le menu de tri envoie le formulaire dès qu'on choisit : un bouton de
-    // plus à cliquer pour ranger une grille se paie en abandons. Sans
-    // JavaScript, le <noscript> ci-dessus rend ce bouton — la page reste
-    // utilisable dans tous les cas.
+    // Les menus de la barre envoient le formulaire dès qu'on choisit : un
+    // bouton de plus à cliquer pour ranger une grille se paie en abandons.
+    // Sans JavaScript, le <noscript> ci-dessus rend ce bouton — la page
+    // reste utilisable dans tous les cas.
+    //
+    // TOUS les menus, et non le seul tri. Le filtre par ville s'est ajouté à
+    // côté, et comme rien ne l'écoutait, en changer ne faisait rien du tout :
+    // pas de rechargement, pas même une requête. Écouter la barre entière
+    // couvre aussi le prochain filtre qu'on y mettra.
     (function () {
       var form = document.querySelector("form.ml-tri");
       if (!form) return;
-      var choix = form.querySelector("select[name=tri]");
-      if (!choix) return;
-      choix.addEventListener("change", function () {
-        form.submit();
+      var menus = form.querySelectorAll("select");
+      if (!menus.length) return;
+      menus.forEach(function (menu) {
+        menu.addEventListener("change", function () {
+          // Changer de filtre repart de la première page : une page 3 n'a
+          // aucun sens quand la grille change de contenu.
+          var page = form.querySelector("input[name=page]");
+          if (page) page.remove();
+          form.submit();
+        });
       });
     })();
   </script>

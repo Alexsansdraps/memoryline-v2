@@ -1,3 +1,4 @@
+import { apiInterne } from "./api-interne.ts";
 import type {
   ProductKind,
   BackgroundDTO,
@@ -19,9 +20,7 @@ import type {
  * Surchargée par PUBLIC_API_URL / API_URL_INTERNAL si défini.
  */
 const API_URL =
-  import.meta.env.API_URL_INTERNAL ??
-  import.meta.env.PUBLIC_API_URL ??
-  "http://localhost:3000";
+  apiInterne();
 
 /**
  * URL de l'API joignable depuis le NAVIGATEUR (pour les <img>, etc.).
@@ -220,6 +219,8 @@ export interface OptionsCatalogue {
   q?: string;
   /** « manuel », « nouveautes », « prix_asc », « prix_desc » ou « alpha ». */
   tri?: string;
+  /** La ville, lue dans le nom de l'affiche (« PARIS », « BAIE DE SOMME »). */
+  ville?: string;
   /** Combien d'affiches par page. */
   limite?: number;
   /** Combien d'affiches sauter — c'est la pagination. */
@@ -258,10 +259,22 @@ export const api = {
     if (o.collection) p.set("collection", o.collection);
     if (o.q) p.set("q", o.q);
     if (o.tri) p.set("sort", o.tri);
+    if (o.ville) p.set("ville", o.ville);
     if (o.offset) p.set("offset", String(o.offset));
     return getPagine<Product>(`/products?${p.toString()}`);
   },
   collections: () => get<Collection[]>("/collections"),
+  /**
+   * Les villes du catalogue, avec le nombre d'affiches de chacune.
+   *
+   * La ville n'est pas une colonne : elle se lit dans le nom de l'affiche,
+   * en capitales et en tête. C'est l'API qui l'extrait, une fois, pour que
+   * la liste proposée et le filtre appliqué ne puissent pas se contredire.
+   */
+  villes: (genre?: string) =>
+    get<{ nom: string; nombre: number }[]>(
+      `/villes${genre ? `?genre=${encodeURIComponent(genre)}` : ""}`,
+    ),
   /** Une page écrite au back-office. Lève si elle n'existe pas ou est en brouillon. */
   page: (slug: string, langue?: string) =>
     get<PageCms>(
@@ -277,8 +290,21 @@ export const api = {
       `/products/${slug}${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,
     ),
   banner: () => get<Banner | null>("/banner"),
-  settings: (group?: string) =>
-    get<Record<string, unknown>>(`/settings${group ? `?group=${group}` : ""}`),
+  /**
+   * Les redirections d'anciennes adresses, posées au back-office.
+   *
+   * Lues par le middleware, qui redirige : c'est le site qui voit passer
+   * « /products/… », pas l'API.
+   */
+  redirects: () =>
+    get<{ fromPath: string; toPath: string; code: number }[]>("/redirects"),
+  settings: (group?: string, langue?: string) =>
+    get<Record<string, unknown>>(
+      `/settings?${new URLSearchParams({
+        ...(group ? { group } : {}),
+        ...(langue ? { lang: langue } : {}),
+      })}`,
+    ),
   /**
    * Le panier que désigne un jeton de relance.
    *
@@ -338,12 +364,52 @@ export interface PanierRecupere {
   }[];
 }
 
-/** Récupère un réglage texte avec valeur de repli. */
-export async function setting(key: string, fallback: string): Promise<string> {
+/**
+ * Le tableau des réglages, lu UNE fois par langue et gardé deux secondes.
+ *
+ * Sans cela, chaque appel à `setting()` relisait toute la table : la page
+ * d'accueil en lit douze, soit douze allers-retours pour la même réponse. À
+ * 107 ms l'aller-retour, cela faisait 1,3 seconde avant le premier octet, et
+ * chaque texte ajouté au back-office en aurait coûté 107 de plus.
+ *
+ * Deux secondes, et pas davantage : le temps de rendre une page, pas celui
+ * de faire attendre une modification. Une valeur changée au back-office se
+ * voit au rafraîchissement suivant — c'est ce qu'on attend d'un CMS.
+ */
+const CACHE_REGLAGES_MS = 2000;
+const cacheReglages = new Map<
+  string,
+  { a: number; valeurs: Promise<Record<string, unknown>> }
+>();
+
+function reglagesDeLaLangue(langue: string): Promise<Record<string, unknown>> {
+  const maintenant = Date.now();
+  const garde = cacheReglages.get(langue);
+  if (garde && maintenant - garde.a < CACHE_REGLAGES_MS) return garde.valeurs;
+  const valeurs = api.settings(undefined, langue).catch(() => ({}));
+  cacheReglages.set(langue, { a: maintenant, valeurs });
+  return valeurs;
+}
+
+/**
+ * Un réglage, dans la langue demandée, avec sa valeur d'usine en repli.
+ *
+ * Le repli descend d'un cran à la fois : la langue demandée, puis le français
+ * (l'API s'en charge), puis le texte passé ici. Une case laissée blanche au
+ * back-office ne peut donc jamais produire un titre vide — au pire la
+ * visiteuse allemande lit le français, au pire du pire le texte d'usine.
+ */
+export async function setting(
+  key: string,
+  fallback: string,
+  langue = "fr",
+): Promise<string> {
   try {
-    const all = await api.settings();
+    const all = await reglagesDeLaLangue(langue);
     const v = all[key];
-    return typeof v === "string" ? v : fallback;
+    if (typeof v !== "string") return fallback;
+    // Une valeur blanche n'est pas une valeur : elle vaut « rien saisi ».
+    return v.trim() ? v : fallback;
   } catch {
     return fallback;
   }

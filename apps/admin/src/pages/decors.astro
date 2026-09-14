@@ -1,4 +1,5 @@
 ---
+import { apiInterne } from "../lib/api-interne.ts";
 /**
  * Les décors des affiches, tous ensemble, comme dans un gestionnaire de fichiers.
  *
@@ -37,9 +38,7 @@ interface SansDecor {
 }
 
 const base =
-  import.meta.env.API_URL_INTERNAL ??
-  import.meta.env.PUBLIC_API_URL ??
-  "http://localhost:3000";
+  apiInterne();
 
 let flash: string | null = null;
 let flashErreur = false;

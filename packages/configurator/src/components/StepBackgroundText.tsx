@@ -2,8 +2,8 @@
 import { For, Show } from "solid-js";
 import {
   COULEURS_TEXTE_AFFICHE,
-  POLICES_AFFICHE,
   couleurTexteParValeur,
+  policesDeLaLigne,
   familleCss,
   type BackgroundDTO,
   type CouleurTexteAffiche,
@@ -34,7 +34,7 @@ export function StepBackgroundText(props: {
    */
   const ChoixPolice = (p: { ligne: number }) => (
     <div class="ml-cfg-polices">
-      <For each={POLICES_AFFICHE}>
+      <For each={policesDeLaLigne(p.ligne)}>
         {(police) => {
           const actif = () =>
             props.state.lignes[p.ligne]?.font === police.id;

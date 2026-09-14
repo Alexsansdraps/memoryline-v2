@@ -178,6 +178,32 @@ export function seuilDeclenchement(regle: RegleParier): number {
   return buyQty + getQty;
 }
 
+/**
+ * Le seuil à partir duquel la livraison est offerte, ou null.
+ *
+ * Quand plusieurs promotions en annoncent un, c'est le PLUS BAS qui vaut :
+ * on ne fait pas payer le port à quelqu'un qui remplit l'une des conditions
+ * affichées. C'est aussi ce que le bandeau laisse entendre.
+ *
+ * Le montant comparé est le sous-total APRÈS remises — celui que le client
+ * paie réellement pour les affiches. Comparer avant remise offrirait le port
+ * sur un panier qui, une fois la promotion déduite, n'atteint plus le seuil.
+ */
+export function seuilPortOffertCents(
+  regles: readonly RegleParier[],
+  maintenant: Date = new Date(),
+  codes: readonly string[] = [],
+): number | null {
+  let seuil: number | null = null;
+  for (const regle of reglesActives(regles, maintenant, codes)) {
+    if (regle.type !== "free_shipping_over") continue;
+    const cfg = (regle.config ?? {}) as Record<string, unknown>;
+    const v = Math.max(0, Math.round(nombre(cfg.thresholdCents, 0)));
+    if (seuil === null || v < seuil) seuil = v;
+  }
+  return seuil;
+}
+
 export interface RemiseAppliquee {
   regle: string;
   montantCents: number;
@@ -189,9 +215,9 @@ export interface RemiseAppliquee {
  * Les remises se cumulent dans l'ordre de priorité et le total est borné au
  * sous-total : une promo ne peut jamais rendre un panier négatif.
  *
- * `free_shipping_over` n'apparaît pas : il n'y a pas encore de frais de port
- * dans le modèle de commande, donc rien à offrir. La règle est acceptée et
- * conservée, mais reste sans effet tant que la livraison n'existe pas.
+ * `free_shipping_over` n'apparaît pas ICI : elle ne remise pas les affiches,
+ * elle annule les frais de port. C'est `seuilPortOffertCents` qui la lit, et
+ * le calcul de la livraison qui l'applique.
  */
 export function remisesPanier(
   lignes: readonly LignePanier[],

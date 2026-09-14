@@ -77,21 +77,110 @@ function causeDuStatut(statut: number): EchecIA {
   return "inconnu";
 }
 
+/**
+ * Le plus grand côté d'une photo réduite.
+ *
+ * La même valeur que celle du serveur : au-delà, on enverrait des pixels que
+ * le modèle n'utilise pas. Un chiffre plus petit ici ferait perdre du détail
+ * pour rien ; un plus grand ferait payer le trajet sans rien y gagner.
+ */
+const COTE_MAX = 2048;
+
+/**
+ * Réduit une photo dans le navigateur, avant tout envoi.
+ *
+ * Rend `null` si le navigateur n'y arrive pas — pas de canvas, format qu'il ne
+ * sait pas décoder, image démesurée pour sa mémoire. L'appelant repart alors
+ * sur le fichier d'origine et ses contrôles habituels : mieux vaut un envoi
+ * lourd qu'un refus.
+ *
+ * `createImageBitmap` applique l'orientation EXIF au décodage, ce que
+ * `<img>` ne garantit pas : sans cela, les photos prises à la verticale
+ * arriveraient couchées.
+ */
+export async function reduirePhoto(fichier: File): Promise<File | null> {
+  if (typeof createImageBitmap !== "function") return null;
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(fichier, { imageOrientation: "from-image" });
+  } catch {
+    return null;
+  }
+  try {
+    const facteur = Math.min(1, COTE_MAX / Math.max(bitmap.width, bitmap.height));
+    const largeur = Math.max(1, Math.round(bitmap.width * facteur));
+    const hauteur = Math.max(1, Math.round(bitmap.height * facteur));
+
+    const toile = document.createElement("canvas");
+    toile.width = largeur;
+    toile.height = hauteur;
+    const ctx = toile.getContext("2d");
+    if (!ctx) return null;
+    // Un fond blanc : un PNG transparent deviendrait noir en JPEG.
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, largeur, hauteur);
+    ctx.drawImage(bitmap, 0, 0, largeur, hauteur);
+
+    const blob = await new Promise<Blob | null>((resoudre) =>
+      toile.toBlob(resoudre, "image/jpeg", 0.85),
+    );
+    if (!blob || !blob.size) return null;
+    // Si la « réduction » a grossi le fichier — une petite image déjà
+    // compressée au maximum — on garde l'original.
+    if (blob.size >= fichier.size && fichier.size <= POIDS_PHOTO_MAX) return null;
+    return new File([blob], "photo.jpg", { type: "image/jpeg" });
+  } catch {
+    return null;
+  } finally {
+    bitmap.close?.();
+  }
+}
+
 /** Vérifie la photo AVANT de la téléverser : inutile d'envoyer 30 Mo pour rien. */
 export function verifierPhoto(fichier: File): EchecIA | null {
-  if (!(TYPES_PHOTO as readonly string[]).includes(fichier.type))
-    return "format";
+  const format = verifierFormatPhoto(fichier);
+  if (format) return format;
   if (fichier.size > POIDS_PHOTO_MAX) return "trop_lourde";
+  return null;
+}
+
+/**
+ * Le FORMAT seul, sans le poids.
+ *
+ * L'écran s'en sert au moment où la personne choisit son fichier : le poids
+ * n'y veut plus rien dire, puisque la photo sera réduite avant de partir. Un
+ * fichier vide ou d'un type que le navigateur ne décodera pas, en revanche,
+ * se refuse tout de suite plutôt qu'après une tentative de réduction.
+ *
+ * Un type VIDE passe : Android renvoie parfois une chaîne vide pour une photo
+ * prise à l'instant, et la réduction dira bien assez tôt si c'en est une.
+ */
+export function verifierFormatPhoto(fichier: File): EchecIA | null {
+  if (!fichier.size) return "format";
+  if (fichier.type && !(TYPES_PHOTO as readonly string[]).includes(fichier.type))
+    return "format";
   return null;
 }
 
 /** Envoie la photo du client. Renvoie le chemin que l'API lui a donné. */
 export async function envoyerPhoto(fichier: File): Promise<string> {
-  const cause = verifierPhoto(fichier);
+  /*
+   * On réduit AVANT de vérifier, et c'est tout l'intérêt : une photo de 20 Mo
+   * sortie d'un téléphone récent était refusée d'emblée, alors qu'elle pèse
+   * 400 Ko une fois ramenée à la taille que le modèle utilise réellement.
+   *
+   * Les contrôles ne portent donc que sur ce qui part vraiment. Ils restent
+   * là pour le cas où la réduction n'a pas pu se faire : le fichier d'origine
+   * repart alors tel quel, avec ses limites d'avant.
+   */
+  const reduite = await reduirePhoto(fichier);
+  const aEnvoyer = reduite ?? fichier;
+
+  const cause = verifierPhoto(aEnvoyer);
   if (cause) throw new ErreurIA(cause);
 
   const corps = new FormData();
-  corps.append("photo", fichier, fichier.name);
+  corps.append("photo", aEnvoyer, aEnvoyer.name);
 
   let reponse: Response;
   try {
@@ -118,11 +207,41 @@ export async function envoyerPhoto(fichier: File): Promise<string> {
 }
 
 /** Lance une génération. `precision` est la consigne libre du client. */
+/** Un style proposé à la cliente : son titre, ses images. Jamais sa consigne. */
+export interface StyleIA {
+  id: number;
+  titre: string;
+  images: string[];
+}
+
+/**
+ * Les styles que la boutique propose.
+ *
+ * Un tableau vide n'est PAS une panne : c'est l'état d'une boutique qui n'en
+ * a pas encore créé, et le parcours doit alors être exactement celui d'avant.
+ * Une erreur réseau donne le même résultat — on ne prive personne de son
+ * affiche parce qu'une liste d'ornements n'a pas pu être lue.
+ */
+export async function lireStyles(langue?: string): Promise<StyleIA[]> {
+  try {
+    const r = await fetch(
+      `${PUBLIC_API_URL}/ia/prompts${langue ? `?lang=${encodeURIComponent(langue)}` : ""}`,
+    );
+    if (!r.ok) return [];
+    const d = await r.json();
+    return Array.isArray(d) ? (d as StyleIA[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function genererAffiche(entree: {
   productId: number | string;
   photo: string;
   cartId: string;
   precision?: string;
+  /** Le style choisi, s'il y en a un. */
+  promptId?: number | null;
 }): Promise<GenerationIA> {
   let reponse: Response;
   try {
@@ -134,6 +253,7 @@ export async function genererAffiche(entree: {
         photo: entree.photo,
         cartId: entree.cartId,
         precision: entree.precision?.trim() || undefined,
+        promptId: entree.promptId ?? undefined,
       }),
     });
   } catch {

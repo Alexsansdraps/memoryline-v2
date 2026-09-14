@@ -14,6 +14,7 @@ import {
   rediriger,
   retourSur,
 } from "../../../lib/compte.ts";
+import { compteFictif } from "../../../islands/jeu-essai.ts";
 
 export const prerender = false;
 
@@ -24,7 +25,8 @@ const tr = t(langue);
 
 let erreur: CleUi | null = null;
 let email = "";
-let nom = "";
+let prenom = "";
+let nomFamille = "";
 let marketing = false;
 // D'où l'on vient, pour y retourner une fois le compte créé.
 let retour = retourSur(Astro.url.searchParams.get("retour"));
@@ -34,7 +36,8 @@ if (Astro.request.method === "POST") {
   const formulaire = await Astro.request.formData();
   retour = retourSur(String(formulaire.get("retour") ?? "")) ?? retour;
   email = String(formulaire.get("email") ?? "").trim();
-  nom = String(formulaire.get("name") ?? "").trim();
+  prenom = String(formulaire.get("firstName") ?? "").trim();
+  nomFamille = String(formulaire.get("lastName") ?? "").trim();
   marketing = formulaire.get("acceptsMarketing") !== null;
   const motDePasse = String(formulaire.get("password") ?? "");
 
@@ -47,7 +50,8 @@ if (Astro.request.method === "POST") {
     const r = await inscription(Astro, {
       email,
       password: motDePasse,
-      name: nom || undefined,
+      firstName: prenom || undefined,
+      lastName: nomFamille || undefined,
       acceptsMarketing: marketing,
     });
     if (r.ok) return rediriger(Astro, apresInscription());
@@ -57,6 +61,21 @@ if (Astro.request.method === "POST") {
 } else {
   const session = await moi(Astro);
   if (session.ok) return rediriger(Astro, apresInscription(), 302);
+}
+
+/**
+ * Jeu d'essai : hors production, le formulaire arrive rempli.
+ *
+ * Uniquement en arrivant sur la page — jamais après un envoi. Sinon une
+ * inscription refusée verrait les corrections de la cliente remplacées par un
+ * nouveau tirage, et le message d'erreur porterait sur des valeurs qui ne
+ * sont plus à l'écran.
+ */
+const essai = Astro.request.method === "POST" ? null : compteFictif();
+if (essai) {
+  prenom = essai.prenom;
+  nomFamille = essai.nom;
+  email = essai.email;
 }
 
 const champ =
@@ -79,18 +98,41 @@ const champ =
     )
   }
 
+  {
+    essai && (
+      <p class="mt-6 border border-dashed border-ink/30 bg-paper-deep px-4 py-3 text-sm text-ink-soft">
+        <b>Site de test.</b> Ce compte est pré-rempli au hasard pour vous
+        éviter la saisie. Mot de passe&nbsp;: <code>{essai.motDePasse}</code> —
+        notez l'adresse e-mail si vous voulez vous reconnecter dessus. Ce
+        bandeau et ce pré-remplissage n'existent pas en production.
+      </p>
+    )
+  }
+
   <form method="post" class="mt-6 space-y-4">
     {retour && <input type="hidden" name="retour" value={retour} />}
-    <label class="block">
-      <span class="text-sm font-medium">{tr("compte.nom")}</span>
-      <input
-        type="text"
-        name="name"
-        value={nom}
-        autocomplete="name"
-        class={champ}
-      />
-    </label>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <label class="block">
+        <span class="text-sm font-medium">{tr("compte.prenom")}</span>
+        <input
+          type="text"
+          name="firstName"
+          value={prenom}
+          autocomplete="given-name"
+          class={champ}
+        />
+      </label>
+      <label class="block">
+        <span class="text-sm font-medium">{tr("compte.nom")}</span>
+        <input
+          type="text"
+          name="lastName"
+          value={nomFamille}
+          autocomplete="family-name"
+          class={champ}
+        />
+      </label>
+    </div>
     <label class="block">
       <span class="text-sm font-medium">{tr("compte.email")}</span>
       <input
@@ -105,8 +147,9 @@ const champ =
     <label class="block">
       <span class="text-sm font-medium">{tr("compte.mdp")}</span>
       <input
-        type="password"
+        type={essai ? "text" : "password"}
         name="password"
+        value={essai?.motDePasse ?? ""}
         required
         minlength="8"
         autocomplete="new-password"

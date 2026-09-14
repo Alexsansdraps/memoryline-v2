@@ -45,6 +45,7 @@ import {
   estConfigure,
   type Courrier,
 } from "./mail.js";
+import { cheminApercu } from "./apercus.js";
 
 export const COOKIE_CLIENT = "ml_client";
 
@@ -128,6 +129,8 @@ export async function creerSessionClient(customerId: number): Promise<string> {
 export interface ClientConnecte {
   id: number;
   name: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
   email: string | null;
   phone: string | null;
   acceptsMarketing: boolean;
@@ -151,6 +154,8 @@ export async function clientDeLaRequete(
       expiresAt: schema.customerSessions.expiresAt,
       id: schema.customers.id,
       name: schema.customers.name,
+      firstName: schema.customers.firstName,
+      lastName: schema.customers.lastName,
       email: schema.customers.email,
       phone: schema.customers.phone,
       acceptsMarketing: schema.customers.acceptsMarketing,
@@ -234,6 +239,8 @@ function memeEmail(email: string) {
 interface FicheClient {
   id: number;
   name: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
   email: string | null;
   phone: string | null;
   acceptsMarketing: boolean;
@@ -241,10 +248,32 @@ interface FicheClient {
 }
 
 /** Ce que la boutique a le droit de savoir d'un client : jamais l'empreinte. */
+/**
+ * Le nom complet, à partir du prénom et du nom.
+ *
+ * Écrit une seule fois : deux endroits qui composeraient différemment
+ * finiraient par afficher deux noms pour la même personne. Quand ni l'un ni
+ * l'autre n'est renseigné, on garde ce qui était déjà là — les fiches d'avant
+ * n'ont qu'un nom complet, et l'effacer ferait perdre l'information.
+ */
+export function nomComplet(
+  prenom: string | null | undefined,
+  nom: string | null | undefined,
+  ancien?: string | null,
+): string | null {
+  const morceaux = [String(prenom ?? "").trim(), String(nom ?? "").trim()].filter(
+    Boolean,
+  );
+  if (morceaux.length) return morceaux.join(" ").slice(0, 160);
+  return (ancien ?? "").trim() || null;
+}
+
 function publique(cl: FicheClient) {
   return {
     id: cl.id,
     name: cl.name,
+    firstName: cl.firstName,
+    lastName: cl.lastName,
     email: cl.email,
     phone: cl.phone,
     acceptsMarketing: cl.acceptsMarketing,
@@ -410,7 +439,11 @@ export function mountCompteRoutes(app: Hono): void {
       .trim()
       .toLowerCase();
     const mdp = String(b.password ?? "");
-    const nom = String(b.name ?? "").trim();
+    const prenom = String(b.firstName ?? "").trim().slice(0, 80);
+    const nomFamille = String(b.lastName ?? "").trim().slice(0, 80);
+    // `name` reste accepté : les anciens formulaires et le tunnel de commande
+    // l'envoient encore, et refuser une inscription pour cela serait absurde.
+    const nom = nomComplet(prenom, nomFamille, String(b.name ?? "").trim());
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       return c.json({ error: "Adresse e-mail invalide" }, 400);
     if (mdp.length < MDP_MIN)
@@ -431,7 +464,9 @@ export function mountCompteRoutes(app: Hono): void {
     const [client] = await db
       .insert(schema.customers)
       .values({
-        name: nom || null,
+        name: nom,
+        firstName: prenom || null,
+        lastName: nomFamille || null,
         email,
         passwordHash: await hashPassword(mdp),
         acceptsMarketing: marketing,
@@ -562,7 +597,24 @@ export function mountCompteRoutes(app: Hono): void {
     if (!moi) return c.json({ error: "Non authentifié" }, 401);
     const b = await c.req.json().catch(() => ({}) as Record<string, unknown>);
     const maj: Partial<typeof schema.customers.$inferInsert> = {};
-    if (b.name !== undefined) maj.name = String(b.name).trim() || null;
+    // Prénom et nom séparés : `name` se recompose des deux, toujours de la
+    // même façon. Envoyer `name` seul reste accepté pour les formulaires qui
+    // ne connaissent pas encore la distinction.
+    if (b.firstName !== undefined || b.lastName !== undefined) {
+      const prenom =
+        b.firstName !== undefined
+          ? String(b.firstName).trim().slice(0, 80)
+          : (moi.firstName ?? "");
+      const nomFamille =
+        b.lastName !== undefined
+          ? String(b.lastName).trim().slice(0, 80)
+          : (moi.lastName ?? "");
+      maj.firstName = prenom || null;
+      maj.lastName = nomFamille || null;
+      maj.name = nomComplet(prenom, nomFamille, moi.name);
+    } else if (b.name !== undefined) {
+      maj.name = String(b.name).trim() || null;
+    }
     if (b.phone !== undefined) maj.phone = String(b.phone).trim() || null;
     if (b.acceptsMarketing !== undefined) {
       const veut = b.acceptsMarketing === true;
@@ -798,10 +850,20 @@ export function mountCompteRoutes(app: Hono): void {
       );
     if (!order) return c.json({ error: "Commande introuvable" }, 404);
 
-    const items = await db
+    const lignes = await db
       .select()
       .from(schema.orderItems)
       .where(eq(schema.orderItems.orderId, order.id));
+
+    /*
+     * L'adresse de la vignette de chaque ligne.
+     *
+     * Le rendu se fait côté serveur, à la demande, et se garde ensuite : la
+     * page n'a plus à charger la bibliothèque des personnages ni à empiler
+     * des SVG pour une image de 80 pixels. Et c'est la même adresse qui part
+     * dans les courriers, qui eux ne savent pas exécuter de code.
+     */
+    const items = lignes.map((l) => ({ ...l, apercu: cheminApercu(l.id) }));
     const expeditions = await db
       .select()
       .from(schema.fulfillments)
@@ -1199,7 +1261,24 @@ export function mountCompteRoutes(app: Hono): void {
     if (!avant) return c.json({ error: "Client introuvable" }, 404);
 
     const maj: Partial<typeof schema.customers.$inferInsert> = {};
-    if (b.name !== undefined) maj.name = String(b.name).trim() || null;
+    // Prénom et nom séparés : `name` se recompose des deux, toujours de la
+    // même façon. Envoyer `name` seul reste accepté pour les formulaires qui
+    // ne connaissent pas encore la distinction.
+    if (b.firstName !== undefined || b.lastName !== undefined) {
+      const prenom =
+        b.firstName !== undefined
+          ? String(b.firstName).trim().slice(0, 80)
+          : (avant.firstName ?? "");
+      const nomFamille =
+        b.lastName !== undefined
+          ? String(b.lastName).trim().slice(0, 80)
+          : (avant.lastName ?? "");
+      maj.firstName = prenom || null;
+      maj.lastName = nomFamille || null;
+      maj.name = nomComplet(prenom, nomFamille, avant.name);
+    } else if (b.name !== undefined) {
+      maj.name = String(b.name).trim() || null;
+    }
     if (b.phone !== undefined) maj.phone = String(b.phone).trim() || null;
     if (b.note !== undefined) maj.note = String(b.note).trim() || null;
     if (b.tags !== undefined) {

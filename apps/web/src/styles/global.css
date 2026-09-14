@@ -71,6 +71,20 @@ h4 {
   font-display: swap;
 }
 @font-face {
+  font-family: "League Spartan";
+  src: url("/fonts/LeagueSpartan-Regular.ttf") format("truetype");
+  font-display: swap;
+}
+/* Le nom de famille est écrit EXACTEMENT comme la police se nomme
+   elle-même — « another shabby », en minuscules. C'est ce nom-là que
+   fontconfig indexe sur le serveur d'impression : une capitale de plus ici et
+   le PDF sortirait dans une police de repli, sans erreur ni avertissement. */
+@font-face {
+  font-family: "another shabby";
+  src: url("/fonts/AnotherShabby-Regular.ttf") format("truetype");
+  font-display: swap;
+}
+@font-face {
   font-family: "Caveat";
   src: url("/fonts/Caveat-Regular.ttf") format("truetype");
   font-display: swap;
@@ -264,6 +278,65 @@ body {
   padding: 20px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+
+  /*
+   * La barre de défilement reste VISIBLE, même sans toucher l'écran.
+   *
+   * Les navigateurs la cachent par défaut sur un appareil tactile et ne la
+   * montrent qu'au premier geste. Dans une fenêtre de personnalisation, ça
+   * pose un vrai problème : on choisit son personnage, on ne voit rien
+   * dessous, et on repart sans savoir que la couleur des cheveux, les
+   * vêtements et les accessoires attendaient un peu plus bas. Une barre
+   * visible dit d'emblée qu'il reste de la page.
+   *
+   * `scrollbar-gutter: stable` réserve sa place en permanence : sans lui, la
+   * barre apparaît et disparaît selon le contenu, et la fenêtre entière
+   * tressaute de quelques pixels à chaque changement d'étape.
+   */
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(18, 18, 18, 0.35) transparent;
+}
+
+/* WebKit ne connaît pas encore `scrollbar-width` : sur Safari et sur les
+   navigateurs des téléphones, c'est ce bloc-ci qui dessine la barre — et
+   `-webkit-appearance: none` est ce qui l'empêche de rester invisible. */
+.ml-modal-body::-webkit-scrollbar {
+  -webkit-appearance: none;
+  width: 10px;
+}
+.ml-modal-body::-webkit-scrollbar-thumb {
+  border-radius: 5px;
+  background-color: rgba(18, 18, 18, 0.35);
+  /* La bordure transparente amincit le curseur sans réduire la zone que le
+     doigt peut attraper. */
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.ml-modal-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* --------------------------------------------------------------------------
+ * La recherche de l'en-tête : un CADRE bleu, et le texte en gras.
+ *
+ * Le bleu est celui du tour, pas celui des lettres : c'est le cadre qui doit
+ * attraper l'œil dans un en-tête par ailleurs noir et blanc. Le texte saisi
+ * garde l'encre du site — un texte coloré se lit moins bien, et c'est lui
+ * qu'on relit en tapant.
+ *
+ * Le cadre s'épaissit au clic plutôt que de changer de couleur : le champ
+ * reste reconnaissable, et rien ne se déplace, la bordure gardant sa place.
+ * ------------------------------------------------------------------------ */
+.ml-recherche {
+  border-color: #1352ac;
+}
+.ml-recherche:focus-within {
+  border-color: #1352ac;
+  box-shadow: inset 0 0 0 1px #1352ac;
+}
+.ml-recherche-champ::placeholder {
+  font-weight: 600;
 }
 
 /* --------------------------------------------------------------------------

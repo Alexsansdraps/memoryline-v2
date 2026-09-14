@@ -66,6 +66,20 @@ export interface CatalogueLivraison {
   zones: ZoneLivraison[];
   modes: ModeLivraison[];
   tarifs: TarifLivraison[];
+  /**
+   * Les stands OUVERTS, pour un mode « retrait sur place ».
+   *
+   * Sans eux, « retrait à convenir » ne disait rien de concret : le client
+   * validait sans savoir où ni quand, et il fallait lui écrire ensuite. Le
+   * code du stand n'y figure jamais — c'est lui qui ouvre la caisse.
+   */
+  stands?: StandOuvert[];
+}
+
+/** Un stand ouvert, tel que le tunnel de commande le montre. */
+export interface StandOuvert {
+  id: number;
+  nom: string;
 }
 
 /** Code pays normalisé : deux lettres majuscules, ou chaîne vide. */
@@ -117,6 +131,17 @@ export function optionsLivraison(
   pays: string,
   sousTotalCents: number,
   poidsGrammes = 0,
+  /**
+   * Le seuil d'une promotion « livraison offerte dès X € », s'il y en a une.
+   *
+   * Il s'ajoute à la franchise propre à chaque grille tarifaire, sans la
+   * remplacer : le port est offert dès que l'UN des deux est atteint. Une
+   * franchise négociée avec un transporteur n'a pas à disparaître parce
+   * qu'une promotion passe, et l'inverse non plus.
+   *
+   * Cf. `seuilPortOffertCents` dans promo.ts, qui le lit dans les règles.
+   */
+  seuilPromotionCents: number | null = null,
 ): OptionLivraison[] {
   const zone = zonePourPays(catalogue.zones, pays);
   if (!zone) return [];
@@ -132,9 +157,10 @@ export function optionsLivraison(
         .sort((a, b) => (a.minWeightGrams ?? 0) - (b.minWeightGrams ?? 0))
         .at(-1);
       if (!tarif || tarif.active === false) return null;
-      const seuil = tarif.freeFromCents;
+      const atteint = (s: number | null | undefined) =>
+        typeof s === "number" && s >= 0 && sousTotalCents >= s;
       const offert =
-        typeof seuil === "number" && seuil >= 0 && sousTotalCents >= seuil;
+        atteint(tarif.freeFromCents) || atteint(seuilPromotionCents);
       return {
         mode,
         tarif,
@@ -157,10 +183,15 @@ export function fraisDePort(
   pays: string,
   sousTotalCents: number,
   poidsGrammes = 0,
+  seuilPromotionCents: number | null = null,
 ): OptionLivraison | null {
   return (
-    optionsLivraison(catalogue, pays, sousTotalCents, poidsGrammes).find(
-      (o) => o.mode.slug === modeSlug,
-    ) ?? null
+    optionsLivraison(
+      catalogue,
+      pays,
+      sousTotalCents,
+      poidsGrammes,
+      seuilPromotionCents,
+    ).find((o) => o.mode.slug === modeSlug) ?? null
   );
 }

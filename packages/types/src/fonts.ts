@@ -40,8 +40,40 @@ export const POLICES_AFFICHE: readonly PoliceAffiche[] = [
     repli: "Georgia, serif",
   },
   {
-    id: "caveat",
+    // La seconde police de la charte : sans empattement, geometrique, faite
+    // pour les capitales de la premiere ligne.
+    id: "spartan",
+    libelle: "Bâton",
+    famille: "League Spartan",
+    repli: "Helvetica, Arial, sans-serif",
+  },
+  {
+    /*
+     * L'écriture manuscrite de la charte.
+     *
+     * Le nom de famille est écrit EXACTEMENT comme la police se nomme
+     * elle-même — « another shabby », en minuscules : c'est ce nom que
+     * fontconfig indexe sur le serveur d'impression, et une capitale de plus
+     * ferait sortir le PDF dans une police de repli, sans erreur.
+     *
+     * Licence : Zetafonts, distribution d'essai sous Creative Commons non
+     * commerciale, dont le contrat demande une licence complète pour la
+     * vente et pour l'incorporation dans un PDF. La boutiquière a été
+     * informée et a choisi d'assumer ce point.
+     */
+    id: "shabby",
     libelle: "Manuscrite",
+    famille: "another shabby",
+    repli: REPLI_SUR,
+  },
+  {
+    /*
+     * Caveat n'est plus proposée nulle part, et reste déclarée exprès :
+     * c'était la manuscrite jusqu'ici, des commandes l'ont enregistrée, et
+     * leur fichier d'impression doit continuer de sortir en Caveat.
+     */
+    id: "caveat",
+    libelle: "Manuscrite (ancienne)",
     famille: "Caveat",
     repli: REPLI_SUR,
   },
@@ -77,10 +109,53 @@ export const POLICES_AFFICHE: readonly PoliceAffiche[] = [
   },
 ] as const;
 
+/*
+ * Ce que chaque ligne a le droit de porter.
+ *
+ * Les identifiants absents d'une ligne restent parfaitement rendables : ils
+ * ne sont simplement plus proposés. Voir l'en-tête de ce fichier.
+ */
+const POLICES_PAR_LIGNE: readonly (readonly string[])[] = [
+  ["serif", "spartan"],
+  ["shabby"],
+  ["serif", "shabby"],
+];
+
+/**
+ * Les polices proposées sur une ligne, dans l'ordre d'affichage.
+ *
+ * Une ligne au-delà de la troisième — il n'y en a pas aujourd'hui — retombe
+ * sur les règles de la troisième plutôt que sur rien : un rang inattendu ne
+ * doit pas priver la cliente de tout choix.
+ */
+export function policesDeLaLigne(index: number): readonly PoliceAffiche[] {
+  const permis =
+    POLICES_PAR_LIGNE[index] ?? POLICES_PAR_LIGNE[POLICES_PAR_LIGNE.length - 1]!;
+  return POLICES_AFFICHE.filter((p) => permis.includes(p.id));
+}
+
+/**
+ * La première ligne s'écrit toujours en capitales.
+ *
+ * C'est la ligne du lieu — AMIENS, MERS-LES-BAINS — et la charte la veut ainsi
+ * sur toutes les affiches du catalogue. On applique la règle à la saisie
+ * plutôt qu'à l'affichage : la cliente voit immédiatement ce qui sera imprimé,
+ * et le texte enregistré est exactement celui du fichier d'impression.
+ */
+export function ligneEnMajuscules(index: number): boolean {
+  return index === 0;
+}
+
 /** Police par défaut du TITRE (charte Memory Line). */
 export const POLICE_TITRE_DEFAUT = "serif";
-/** Police par défaut du SOUS-TITRE (choix cliente). */
-export const POLICE_SOUSTITRE_DEFAUT = "parisienne";
+/**
+ * Police par défaut des lignes 2 et 3.
+ *
+ * C'était « parisienne », qui n'est plus proposée sur aucune ligne : une
+ * nouvelle affiche serait née avec une police que sa cliente ne pourrait plus
+ * rechoisir après en avoir essayé une autre.
+ */
+export const POLICE_SOUSTITRE_DEFAUT = "shabby";
 
 /** Retrouve une police par son id ; repli sur `defaut` si l'id est inconnu. */
 export function policeParId(

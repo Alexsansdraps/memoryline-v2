@@ -32,6 +32,11 @@ if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
 const langue: Langue = langueDepuisParam(Astro.params.lang);
 
 const slug = Astro.params.slug ?? "";
+
+/** La personne du back-office qui regarde, résolue par le middleware. */
+const admin = Astro.locals.admin ?? null;
+/** Le back-office vit sous /bo derrière le proxy ; surchargeable en prod. */
+const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
 let page: PageCms | null = null;
 try {
   page = await api.page(slug, langue);
@@ -73,7 +78,37 @@ const titreOnglet = page.seoTitle?.trim() || `${page.title} — Memory Line`;
   description={page.seoDescription ?? undefined}
 >
   <article class="mx-auto max-w-[1000px] px-6 py-12 lg:px-12">
-    <h1 class="text-3xl sm:text-4xl">{page.title}</h1>
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <h1 class="text-3xl sm:text-4xl">{page.title}</h1>
+      {/* Le raccourci d'édition, pour la boutique seulement.
+          Lire une coquille sur une page légale et devoir ouvrir le
+          back-office, trouver la liste des pages, retrouver la bonne : trois
+          écrans pour corriger un mot. Ce crayon-ci mène droit à l'éditeur.
+          Un visiteur ne le voit pas, et n'apprend pas qu'il existe. */}
+      {admin && (
+        <a
+          href={`${lienBackOffice}/pages/${page.id}`}
+          rel="nofollow"
+          class="inline-flex shrink-0 items-center gap-1.5 border border-ink/15 px-3 py-1.5 text-[13px] text-ink/60 transition-colors hover:border-terracotta/40 hover:text-terracotta"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+          </svg>
+          Modifier cette page
+        </a>
+      )}
+    </div>
 
     {
       page.blocks.map((bloc) => {
@@ -168,8 +203,37 @@ const titreOnglet = page.seoTitle?.trim() || `${page.title} — Memory Line`;
 </Base>
 
 <style is:global>
-  /* Le texte des blocs vient de l'éditeur visuel : il n'a que des paragraphes,
-     des listes, du gras, de l'italique, des liens et des images. */
+  /* Le texte vient de l'éditeur visuel : paragraphes, listes, gras, italique,
+     liens, images — et, pour les pages qui sont de vrais documents, deux
+     niveaux de titre.
+
+     Ces deux règles-là reprennent au mot près l'allure qu'avaient les anciens
+     blocs « titre » (mt-12 text-2xl / mt-10 text-xl, en font-medium) : les
+     conditions de vente ne doivent pas changer d'aspect le jour où leurs
+     quatorze intertitres cessent d'être des blocs pour devenir du texte. La
+     couleur, elle, est rendue explicitement : le cadre porte « text-ink-soft »
+     pour le corps, et un titre qui en hériterait paraîtrait effacé. */
+  .ml-page-texte h2 {
+    margin: 3rem 0 0;
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 500;
+    color: var(--color-ink, currentColor);
+  }
+  .ml-page-texte h3 {
+    margin: 2.5rem 0 0;
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+    font-weight: 500;
+    color: var(--color-ink, currentColor);
+  }
+  /* Un titre suivi de son paragraphe ne doit pas cumuler les deux marges :
+     l'espace au-dessus du titre sépare les sections, celui du paragraphe
+     ferait un trou entre le titre et le texte qu'il annonce. */
+  .ml-page-texte h2 + p,
+  .ml-page-texte h3 + p {
+    margin-top: 0.6rem;
+  }
   .ml-page-texte p {
     margin: 0.9rem 0;
   }

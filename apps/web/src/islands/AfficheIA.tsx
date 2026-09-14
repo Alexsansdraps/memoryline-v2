@@ -22,11 +22,14 @@ import {
   type PosterConfig,
   type TextBlock,
 } from "@memoryline/types";
-import { browserApi, formatPrice, getCartId } from "../lib/api.ts";
+import { assetUrl, browserApi, formatPrice, getCartId } from "../lib/api.ts";
 import {
   apercuAbsolu,
   attendreApercu,
   envoyerPhoto,
+  lireStyles,
+  verifierFormatPhoto,
+  type StyleIA,
   genererAffiche,
   verifierPhoto,
   ErreurIA,
@@ -64,6 +67,35 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   const [echec, setEchec] = createSignal<EchecIA | null>(null);
   const [survol, setSurvol] = createSignal(false);
   const [precision, setPrecision] = createSignal("");
+
+  /**
+   * Le nombre d'exemplaires.
+   *
+   * Il apparaît seulement une fois l'affiche obtenue, et c'est la différence
+   * avec les deux autres parcours : ici, on ne sait pas encore ce qu'on
+   * achète avant de l'avoir vu. Demander « combien ? » avant la génération
+   * reviendrait à faire choisir une quantité d'une chose qui n'existe pas.
+   *
+   * Borné entre 1 et 20, comme ailleurs.
+   */
+  const [quantite, setQuantite] = createSignal(1);
+  const bornerQuantite = (n: number) =>
+    Math.min(20, Math.max(1, Math.trunc(n) || 1));
+
+  /*
+   * Les styles proposés par la boutique, et celui que la cliente a choisi.
+   *
+   * Lus une fois à l'ouverture. Une liste vide — boutique qui n'en a pas
+   * encore créé, ou API muette — fait simplement disparaître le bloc : le
+   * parcours redevient celui d'avant, sans message d'erreur pour un choix
+   * qui n'est pas obligatoire.
+   */
+  const [styles, setStyles] = createSignal<StyleIA[]>([]);
+  const [styleChoisi, setStyleChoisi] = createSignal<number | null>(null);
+  onMount(async () => {
+    const lus = await lireStyles(props.langue);
+    setStyles(lus);
+  });
 
   /**
    * Les trois lignes de texte, « comme sur les autres affiches » : mêmes
@@ -232,7 +264,14 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   }
 
   async function choisirPhoto(fichier: File) {
-    const refus = verifierPhoto(fichier);
+    /*
+     * On ne contrôle plus le POIDS ici : `envoyerPhoto` réduit la photo avant
+     * de l'envoyer, et une photo de téléphone de 20 Mo devient 400 Ko. La
+     * refuser ici reviendrait à refuser ce qui, une seconde plus tard, serait
+     * parfaitement acceptable. Le format, lui, se vérifie toujours — un PDF
+     * n'est pas une photo, et aucune réduction n'y changera rien.
+     */
+    const refus = verifierFormatPhoto(fichier);
     if (refus) {
       setEchec(refus);
       return;
@@ -271,6 +310,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
         photo: source,
         cartId: getCartId(),
         precision: precision(),
+        promptId: styleChoisi(),
       });
       const url = apercuAbsolu(gen.apercuUrl);
       // « en_cours » : l'image n'existe pas encore, on attend qu'elle réponde.
@@ -337,7 +377,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       await browserApi.addCartItem(getCartId(), {
         productId: props.product.id,
         unitPriceCents: prixCourant(),
-        quantity: 1,
+        quantity: quantite(),
         title: props.product.name,
         config,
       });
@@ -628,6 +668,48 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
             </ul>
           </div>
 
+            <Show when={styles().length > 0}>
+            <div class="mb-6">
+              <span class="font-medium">Quel genre d'affiche ?</span>
+              <div class="mt-3 flex flex-wrap gap-3">
+                <For each={styles()}>
+                  {(st) => {
+                    const actif = () => styleChoisi() === st.id;
+                    return (
+                      <button
+                        type="button"
+                        aria-pressed={actif()}
+                        onClick={() =>
+                          setStyleChoisi(actif() ? null : st.id)
+                        }
+                        class={`flex w-28 flex-col overflow-hidden border text-left transition-colors ${
+                          actif()
+                            ? "border-ink"
+                            : "border-ink/20 hover:border-ink/45"
+                        }`}
+                      >
+                        <Show when={assetUrl(st.images[0], 400)}>
+                          <img
+                            src={assetUrl(st.images[0], 400) ?? ""}
+                            alt=""
+                            loading="lazy"
+                            class="aspect-square w-full object-cover"
+                          />
+                        </Show>
+                        <span class="px-2 py-1.5 text-[13px]">
+                          {st.titre}
+                        </span>
+                      </button>
+                    );
+                  }}
+                </For>
+              </div>
+              <p class="mt-2 text-sm text-ink-soft">
+                Facultatif : sans choix, nous composons selon votre photo.
+              </p>
+            </div>
+          </Show>
+
           <label class="mt-4 block text-sm">
             <span class="font-medium">{tr("ia.precision")}</span>
             <input
@@ -761,6 +843,42 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                 {apercu() ? tr("ia.regenerer") : tr("ia.generer")}
               </button>
               <Show when={apercu()}>
+                {/* Les mêmes boutons qu'ailleurs dans la boutique : deux
+                    touches plutôt qu'un champ seul, parce que sur un
+                    téléphone passer de 1 à 3 se fait au pouce sans ouvrir le
+                    clavier. */}
+                <div class="inline-flex items-center border border-ink/20">
+                  <button
+                    type="button"
+                    onClick={() => setQuantite((q) => bornerQuantite(q - 1))}
+                    disabled={ajout() || occupe() || quantite() <= 1}
+                    aria-label={tr("panier.moins")}
+                    class="px-3 py-2.5 text-lg leading-none text-ink-soft transition-colors hover:text-ink disabled:opacity-40"
+                  >
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={quantite()}
+                    onInput={(e) =>
+                      setQuantite(bornerQuantite(Number(e.currentTarget.value)))
+                    }
+                    disabled={ajout() || occupe()}
+                    aria-label={tr("panier.quantite")}
+                    class="w-12 border-x border-ink/20 bg-transparent py-2.5 text-center text-sm focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setQuantite((q) => bornerQuantite(q + 1))}
+                    disabled={ajout() || occupe() || quantite() >= 20}
+                    aria-label={tr("panier.plus")}
+                    class="px-3 py-2.5 text-lg leading-none text-ink-soft transition-colors hover:text-ink disabled:opacity-40"
+                  >
+                    +
+                  </button>
+                </div>
                 <button
                   type="button"
                   disabled={ajout() || occupe()}

@@ -40,12 +40,78 @@ import {
   rechercherPointsRetrait,
 } from "./colissimo.js";
 
+/**
+ * Les transporteurs connus, et ce qu'il faut pour qu'ils fonctionnent.
+ *
+ * Écrit ICI et nulle part ailleurs : le back-office lit cette liste plutôt
+ * que d'en tenir une copie, qui finirait par annoncer un transporteur que
+ * l'API ne sait pas interroger.
+ *
+ * `integre` dit si le code sait chercher les points de ce réseau. Les autres
+ * peuvent être préparés dès maintenant — la cliente crée le mode, fixe ses
+ * tarifs — mais restent masqués du site tant que l'intégration n'est pas
+ * écrite : laisser choisir un point relais qu'on ne saurait pas transmettre
+ * au transporteur reviendrait à vendre une livraison impossible.
+ */
+export const TRANSPORTEURS = [
+  {
+    code: "mondial_relay",
+    nom: "Mondial Relay",
+    integre: true,
+    variables: ["MONDIAL_RELAY_ENSEIGNE", "MONDIAL_RELAY_CLE"],
+  },
+  {
+    code: "colissimo",
+    nom: "Colissimo (La Poste)",
+    integre: true,
+    variables: ["COLISSIMO_CONTRAT", "COLISSIMO_MOTDEPASSE"],
+  },
+  { code: "chronopost", nom: "Chronopost / Pickup", integre: false, variables: [] },
+  { code: "relais_colis", nom: "Relais Colis", integre: false, variables: [] },
+  { code: "dpd", nom: "DPD Relais", integre: false, variables: [] },
+  { code: "ups", nom: "UPS Access Point", integre: false, variables: [] },
+  { code: "gls", nom: "GLS ParcelShop", integre: false, variables: [] },
+  { code: "shop2shop", nom: "Shop2Shop (Chronopost)", integre: false, variables: [] },
+] as const;
+
 /** Un transporteur sait-il chercher ses points ? */
 function transporteurConfigure(carrier: string | null | undefined): boolean {
   if (carrier === "colissimo") return colissimoConfigure();
   if (carrier === "mondial_relay") return mondialRelayConfigure();
-  // Transporteur inconnu : on ne prétend pas savoir chercher pour lui.
+  // Transporteur inconnu, ou connu mais pas encore intégré : on ne prétend
+  // pas savoir chercher ses points.
   return false;
+}
+
+/**
+ * Pourquoi ce mode ne sort pas sur le site — ou null quand il en sort.
+ *
+ * Une seule fonction pour la règle, appelée par le site (qui filtre) et par
+ * le back-office (qui explique). Deux versions de cette règle finiraient par
+ * afficher « proposé » sur un mode que le site cache.
+ */
+function raisonMasquage(
+  m: {
+    kind: string;
+    carrier: string | null;
+    active: boolean;
+    pickupLocation: string | null;
+  },
+  standsOuverts: number,
+): string | null {
+  if (!m.active) return "Décoché : vous ne le proposez pas.";
+  if (m.kind === "relay") {
+    const t = TRANSPORTEURS.find((x) => x.code === m.carrier);
+    if (!t)
+      return `Transporteur « ${m.carrier ?? "non renseigné"} » inconnu : la recherche de points relais est impossible.`;
+    if (!t.integre)
+      return `L'intégration ${t.nom} n'est pas encore écrite : le client ne pourrait pas choisir son point.`;
+    if (!transporteurConfigure(m.carrier))
+      return `Compte ${t.nom} absent : ajoutez ${t.variables.join(" et ")} dans le fichier .env, puis redémarrez l'API.`;
+  }
+  if (m.kind === "pickup" && standsOuverts === 0 && !m.pickupLocation?.trim())
+    return "Aucun stand ouvert et aucun lieu de retrait renseigné : personne ne pourrait remettre la commande.";
+  return null;
 }
 import { mountConfiguratorRoutes } from "./configurator-routes.js";
 import { mountOrderRoutes } from "./commandes.js";
@@ -61,6 +127,7 @@ import { mountLettre } from "./lettre.js";
 import { mountFinances } from "./finances.js";
 import { mountRecherche } from "./recherche.js";
 import { mountDecors } from "./decors.js";
+import { mountApercus } from "./apercus.js";
 import { mountCourriers } from "./courriers.js";
 import {
   demarrerRelancePanier,
@@ -68,6 +135,7 @@ import {
 } from "./relance-panier.js";
 import { mountSalonRoutes } from "./salon.js";
 import { mountCompteRoutes } from "./comptes.js";
+import { mountAnalytiqueRoutes } from "./analytique.js";
 import { mountIaRoutes } from "./ia.js";
 import { mountContact } from "./contact.js";
 
@@ -481,6 +549,63 @@ function ordreDeTri(tri: Tri, collection: string): SQL[] {
  * envelopper dans un objet aurait cassé les trois pour une pagination qu'eux
  * n'utilisent pas.
  */
+/**
+ * La ville d'une affiche, lue dans son nom.
+ *
+ * La convention de la boutique : le nom commence par la ville en CAPITALES,
+ * puis vient le sujet en minuscules — « AMIENS Cathédrale ciel bleu ».
+ * Un mot appartient donc à la ville tant qu'il est entièrement en capitales,
+ * ce qui attrape aussi « BAIE DE SOMME », « CÔTE D'OPALE » et
+ * « SAINT-VALERY-SUR-SOMME » sans rien coder de particulier.
+ *
+ * Vérifié sur le catalogue : 176 affiches, 101 villes, aucune exception.
+ * Une affiche qui ne suivrait pas la convention n'a simplement pas de ville,
+ * et n'apparaît sous aucun filtre — jamais sous une mauvaise.
+ */
+export function villeDuNom(nom: string): string {
+  const pris: string[] = [];
+  for (const brut of String(nom ?? "").split(/\s+/)) {
+    const mot = brut.replace(/[–—-]+$/, "");
+    if (!/^[A-ZÀ-ÖØ-Þ0-9'’-]{2,}$/u.test(mot)) break;
+    pris.push(mot);
+  }
+  return pris.join(" ");
+}
+
+/**
+ * Les villes du catalogue, avec le nombre d'affiches de chacune.
+ *
+ * Calculées sur les noms plutôt que stockées : 176 lignes à lire, c'est
+ * moins cher qu'une colonne à tenir à jour, et le résultat ne peut pas
+ * contredire le nom affiché.
+ *
+ * L'affiche générée à partir d'une photo est écartée : elle n'est d'aucune
+ * ville, et son nom commence par des capitales qui n'en sont pas une.
+ */
+app.get("/villes", async (c) => {
+  const genre = (c.req.query("genre") ?? "").trim();
+  const filtres = [eq(schema.products.status, "active")];
+  if (genre === "personnalisable" || genre === "prete_a_imprimer")
+    filtres.push(eq(schema.products.kind, genre));
+  const rows = await db
+    .select({ name: schema.products.name, ai: schema.products.aiEnabled })
+    .from(schema.products)
+    .where(and(...filtres));
+
+  const compte = new Map<string, number>();
+  for (const r of rows) {
+    if (r.ai) continue;
+    const v = villeDuNom(r.name);
+    if (v) compte.set(v, (compte.get(v) ?? 0) + 1);
+  }
+  // Par ordre alphabétique : dans une liste de cent entrées, on cherche un
+  // nom, on ne parcourt pas un classement.
+  const villes = [...compte.entries()]
+    .map(([nom, nombre]) => ({ nom, nombre }))
+    .sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
+  return c.json(villes);
+});
+
 app.get("/products", async (c) => {
   // Plafond relevé : la boutique en demande la totalité, et le catalogue a
   // dépassé les 200 depuis longtemps — au-delà, les dernières affiches
@@ -503,6 +628,35 @@ app.get("/products", async (c) => {
     filtres.push(
       sqlOp`exists (select 1 from ${schema.productCollections} pc join ${schema.collections} col on col.id = pc.collection_id where pc.product_id = ${schema.products.id} and col.slug = ${collection} and col.active = true)`,
     );
+
+  /*
+   * La ville.
+   *
+   * Le filtre s'applique sur la ville LUE DANS LE NOM, avec exactement la
+   * règle qui a servi à dresser la liste — sans quoi les deux se
+   * contrediraient. Un simple préfixe « PARIS % » ne suffisait pas : il
+   * ramenait aussi « PARIS MON AMOUR » et « PARIS L'AMOUR DANS L'AIR »,
+   * deux affiches prêtes à imprimer dont le titre entier est en capitales.
+   * Le filtre annonçait 19 affiches et en montrait 21.
+   *
+   * On lit donc les noms des affiches actives — 176 lignes, une requête
+   * courte — et on ne garde que celles dont la ville correspond. La
+   * pagination reste faite par la base, sur une liste d'identifiants.
+   */
+  const ville = (c.req.query("ville") ?? "").trim();
+  if (ville) {
+    const candidats = await db
+      .select({ id: schema.products.id, name: schema.products.name })
+      .from(schema.products)
+      .where(eq(schema.products.status, "active"));
+    const cherchee = aplatir(ville);
+    const ids = candidats
+      .filter((p) => aplatir(villeDuNom(p.name)) === cherchee)
+      .map((p) => p.id);
+    // Aucune affiche pour cette ville : une liste d'identifiants vide ne
+    // s'écrit pas en SQL, on force donc une condition fausse.
+    filtres.push(ids.length ? inArray(schema.products.id, ids) : sqlOp`false`);
+  }
 
   const saisie = (c.req.query("q") ?? "").trim();
   if (saisie) {
@@ -756,15 +910,86 @@ app.get("/banner", async (c) => {
  */
 const PREFIXES_PRIVES = ["salon.", "ia.", "relance."];
 
+/**
+ * La valeur d'un réglage dans une langue.
+ *
+ * Une valeur est soit une CHAÎNE — la forme d'origine, toutes langues
+ * confondues — soit un DICTIONNAIRE par langue. La chaîne se lit comme du
+ * français : c'est ce qui permet de rendre les réglages traduisibles sans
+ * réécrire une seule ligne en base.
+ *
+ * Le repli descend d'un cran à la fois : langue demandée, puis français.
+ * Une case laissée blanche ne compte PAS comme une traduction — sans quoi
+ * une visiteuse allemande lirait un titre vide au lieu du texte français.
+ * C'est la règle des pages et du menu, on n'en invente pas une deuxième.
+ */
+export function valeurDansLaLangue(brut: unknown, langue: string): unknown {
+  if (brut === null || typeof brut !== "object" || Array.isArray(brut))
+    return brut;
+  const dico = brut as Record<string, unknown>;
+  const utile = (v: unknown) =>
+    typeof v === "string" ? (v.trim() ? v : undefined) : (v ?? undefined);
+  return utile(dico[langue]) ?? utile(dico.fr) ?? "";
+}
+
 app.get("/settings", async (c) => {
   const group = c.req.query("group");
+  // La langue demandée par le site. Absente, on sert le français : c'est la
+  // langue de référence, celle qui existe toujours.
+  const langue = (c.req.query("lang") ?? "fr").slice(0, 5);
   const rows = await db.select().from(schema.settings);
   const filtered = (group ? rows.filter((r) => r.group === group) : rows).filter(
     (r) => !PREFIXES_PRIVES.some((p) => r.key.startsWith(p)),
   );
   return c.json(
-    Object.fromEntries(filtered.map((r) => [r.key, r.value])),
+    Object.fromEntries(
+      filtered.map((r) => [r.key, valeurDansLaLangue(r.value, langue)]),
+    ),
   );
+});
+
+/**
+ * Les réglages tels que le BACK-OFFICE doit les voir : lignes entières,
+ * toutes les langues, et RIEN de filtré.
+ *
+ * Son absence était un bug destructeur : le back-office lisait la route
+ * publique, qui retire les clés « ia. », « salon. » et « relance. ». L'écran
+ * de l'IA affichait donc une consigne de style vide et l'enregistrait vide
+ * par-dessus la vraie. La garde /admin/* suffit à protéger cette route-ci.
+ */
+app.get("/admin/settings", async (c) => {
+  const rows = await db
+    .select()
+    .from(schema.settings)
+    .orderBy(asc(schema.settings.key));
+  return c.json(
+    rows.map((r) => ({
+      key: r.key,
+      label: r.label,
+      group: r.group,
+      value: r.value,
+      updatedAt: r.updatedAt,
+    })),
+  );
+});
+
+/**
+ * Les redirections d'anciennes adresses, pour le site.
+ *
+ * Publique, et sans risque : ce sont des correspondances d'adresses, la même
+ * information que celle qu'un visiteur obtient en suivant le lien. C'est le
+ * SITE qui redirige, parce qu'il est le seul à voir passer l'adresse
+ * demandée — l'API, elle, ne reçoit jamais « /products/… ».
+ */
+app.get("/redirects", async (c) => {
+  const rows = await db
+    .select({
+      fromPath: schema.redirects.fromPath,
+      toPath: schema.redirects.toPath,
+      code: schema.redirects.code,
+    })
+    .from(schema.redirects);
+  return c.json(rows);
 });
 
 /** Promos actives (pour info front / calcul panier ultérieur). */
@@ -869,7 +1094,7 @@ app.get("/shipping/relay-points", async (c) => {
 });
 
 app.get("/shipping", async (c) => {
-  const [zones, tousModes, tarifs] = await Promise.all([
+  const [zones, tousModes, tarifs, standsOuverts] = await Promise.all([
     db.select().from(schema.shippingZones).orderBy(asc(schema.shippingZones.position)),
     db
       .select()
@@ -877,16 +1102,25 @@ app.get("/shipping", async (c) => {
       .where(eq(schema.shippingMethods.active, true))
       .orderBy(asc(schema.shippingMethods.position)),
     db.select().from(schema.shippingRates),
+    // Le CODE ne sort pas : c'est lui qui ouvre la tablette de vente.
+    db
+      .select({ id: schema.stands.id, nom: schema.stands.nom })
+      .from(schema.stands)
+      .where(eq(schema.stands.ouvert, true))
+      .orderBy(asc(schema.stands.nom)),
   ]);
   // Un mode « point relais » suppose de pouvoir CHOISIR son point. Tant que
   // le compte du transporteur n'est pas branché, on ne le propose pas : une
   // adresse saisie à la main ne vaut rien pour l'expédition.
+  // Et un « retrait sur place » suppose un endroit où retirer. La règle est
+  // celle de `raisonMasquage`, la même que celle expliquée au back-office.
   const modes = tousModes.filter(
-    (m) => m.kind !== "relay" || transporteurConfigure(m.carrier),
+    (m) => raisonMasquage(m, standsOuverts.length) === null,
   );
   return c.json({
     zones,
     modes,
+    stands: standsOuverts,
     tarifs: tarifs.map((t) => ({
       methodId: t.methodId,
       zoneId: t.zoneId,
@@ -901,12 +1135,118 @@ app.get("/shipping", async (c) => {
 
 /** Idem, tout compris (modes désactivés inclus) — gestion au back-office. */
 app.get("/admin/shipping", async (c) => {
-  const [zones, modes, tarifs] = await Promise.all([
+  const [zones, modes, tarifs, ouverts] = await Promise.all([
     db.select().from(schema.shippingZones).orderBy(asc(schema.shippingZones.position)),
     db.select().from(schema.shippingMethods).orderBy(asc(schema.shippingMethods.position)),
     db.select().from(schema.shippingRates),
+    db
+      .select({ id: schema.stands.id })
+      .from(schema.stands)
+      .where(eq(schema.stands.ouvert, true)),
   ]);
-  return c.json({ zones, modes, tarifs });
+  return c.json({
+    zones,
+    // Chaque mode porte sa raison de ne pas sortir sur le site, s'il en a
+    // une. Sans elle, l'écran affiche « proposé » sur un mode que personne
+    // ne voit, et on cherche l'erreur ailleurs pendant une heure.
+    modes: modes.map((m) => ({
+      ...m,
+      masquePourquoi: raisonMasquage(m, ouverts.length),
+    })),
+    tarifs,
+    transporteurs: TRANSPORTEURS,
+    standsOuverts: ouverts.length,
+  });
+});
+
+/**
+ * Crée un mode de livraison.
+ *
+ * Le SLUG est l'identifiant technique : il voyage dans les commandes déjà
+ * passées, et le changer ferait perdre le lien. Il est donc calculé une fois,
+ * à la création, et jamais modifiable ensuite.
+ */
+app.post("/admin/shipping/methods", async (c) => {
+  const b = await c.req.json();
+  const nom = String(b.name ?? "").trim();
+  if (!nom) return c.json({ error: "nom obligatoire" }, 400);
+  const kind = ["home", "relay", "pickup"].includes(String(b.kind))
+    ? String(b.kind)
+    : "home";
+  const carrier = String(b.carrier ?? "").trim() || null;
+  if (kind === "relay" && !carrier)
+    return c.json({ error: "un point relais demande un transporteur" }, 400);
+  if (carrier && !TRANSPORTEURS.some((t) => t.code === carrier))
+    return c.json({ error: "transporteur inconnu" }, 400);
+
+  const base =
+    nom
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "mode";
+  const pris = new Set(
+    (
+      await db
+        .select({ slug: schema.shippingMethods.slug })
+        .from(schema.shippingMethods)
+    ).map((r) => r.slug),
+  );
+  let slug = base;
+  for (let i = 2; pris.has(slug); i++) slug = `${base}_${i}`;
+
+  const [dernier] = await db
+    .select({ p: schema.shippingMethods.position })
+    .from(schema.shippingMethods)
+    .orderBy(desc(schema.shippingMethods.position))
+    .limit(1);
+
+  const [row] = await db
+    .insert(schema.shippingMethods)
+    .values({
+      slug,
+      name: nom,
+      kind,
+      carrier,
+      description: String(b.description ?? "").trim() || null,
+      pickupLocation: String(b.pickupLocation ?? "").trim() || null,
+      // Décoché au départ : un mode sans tarif afficherait 0 € de port.
+      active: false,
+      position: (dernier?.p ?? 0) + 1,
+    })
+    .returning();
+  return c.json(row, 201);
+});
+
+/**
+ * Supprime un mode — seulement s'il n'a jamais servi.
+ *
+ * Une commande passée garde le nom du mode choisi ; effacer le mode d'une
+ * commande déjà expédiée ferait disparaître de son historique la façon dont
+ * elle est partie. Dans ce cas on refuse, et il reste à le décocher.
+ */
+app.delete("/admin/shipping/methods/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  const [m] = await db
+    .select()
+    .from(schema.shippingMethods)
+    .where(eq(schema.shippingMethods.id, id));
+  if (!m) return c.notFound();
+  const lignes = await sql`
+    select count(*)::int as n from "order" where shipping_method = ${m.slug}
+  `;
+  const n = Number(lignes[0]?.n ?? 0);
+  if (n > 0)
+    return c.json(
+      {
+        error: `${n} commande(s) sont parties avec ce mode : il ne peut pas être supprimé. Décochez « Proposé » pour cesser de l'offrir.`,
+      },
+      409,
+    );
+  await db.delete(schema.shippingRates).where(eq(schema.shippingRates.methodId, id));
+  await db.delete(schema.shippingMethods).where(eq(schema.shippingMethods.id, id));
+  return c.json({ ok: true });
 });
 
 /** Modifie un mode de livraison : nom, texte, emplacement de retrait, actif. */
@@ -1386,6 +1726,7 @@ mountRecherche(app);
 // Les décors des affiches, vus tous ensemble : ce que le configurateur
 // propose, et ce qu'il devine quand une affiche n'a rien à elle.
 mountDecors(app);
+mountApercus(app);
 
 // Pages libres et menu du site, écrits depuis le back-office. Ouvrir un rayon
 // « Magnets » ne demande plus de toucher au code.
@@ -1415,6 +1756,7 @@ mountConfiguratorRoutes(app);
 // filigrané, back-office. Monté APRÈS les autres : « /admin/products/:id/ia »
 // ne doit pas être avalé par une route paramétrée déclarée plus haut.
 mountIaRoutes(app);
+mountAnalytiqueRoutes(app);
 
 // Formulaire de contact du site (apps/api/src/contact.ts) : une seule route
 // publique, « POST /contact », qui n'écrit rien en base et se contente
@@ -2289,15 +2631,67 @@ app.post("/admin/banner", async (c) => {
   return c.json(row);
 });
 
+/**
+ * Enregistre un réglage, éventuellement dans UNE langue.
+ *
+ * Sans `lang`, la valeur remplace tout : c'est le comportement d'origine, et
+ * celui qui convient aux réglages qui ne se traduisent pas (un plafond, un
+ * interrupteur, une adresse d'image).
+ *
+ * Avec `lang`, la valeur est FUSIONNÉE dans le dictionnaire existant :
+ * enregistrer l'allemand ne touche pas au français. Sans cette fusion, chaque
+ * passage sur une langue effacerait les quatre autres — la cliente
+ * traduirait en rond sans jamais comprendre pourquoi.
+ *
+ * Une langue enregistrée vide est RETIRÉE du dictionnaire plutôt que gardée
+ * en blanc : c'est ce qui la fait retomber proprement sur le français, au
+ * lieu d'afficher du vide.
+ */
 app.post("/admin/settings", async (c) => {
   const body = await c.req.json();
   const key = String(body.key);
+  const langue = body.lang ? String(body.lang).slice(0, 5) : null;
+
+  let valeur: unknown = body.value;
+  if (langue) {
+    const [existant] = await db
+      .select({ value: schema.settings.value })
+      .from(schema.settings)
+      .where(eq(schema.settings.key, key));
+    const brut = existant?.value;
+    // Une valeur restée en chaîne était du français : on la garde comme tel
+    // au lieu de la perdre en passant au dictionnaire.
+    const dico: Record<string, unknown> =
+      brut && typeof brut === "object" && !Array.isArray(brut)
+        ? { ...(brut as Record<string, unknown>) }
+        : brut === undefined || brut === null
+          ? {}
+          : { fr: brut };
+    const texte = String(body.value ?? "");
+    if (texte.trim()) dico[langue] = texte;
+    else delete dico[langue];
+    // La colonne est NOT NULL : un dictionnaire entièrement vidé retombe sur
+    // un français vide, jamais sur NULL.
+    valeur = Object.keys(dico).length ? dico : { fr: "" };
+  }
+
   const [row] = await db
     .insert(schema.settings)
-    .values({ key, value: body.value, updatedAt: new Date() })
+    .values({
+      key,
+      value: valeur,
+      ...(body.label !== undefined ? { label: String(body.label) } : {}),
+      ...(body.group !== undefined ? { group: String(body.group) } : {}),
+      updatedAt: new Date(),
+    })
     .onConflictDoUpdate({
       target: schema.settings.key,
-      set: { value: body.value, updatedAt: new Date() },
+      set: {
+        value: valeur,
+        ...(body.label !== undefined ? { label: String(body.label) } : {}),
+        ...(body.group !== undefined ? { group: String(body.group) } : {}),
+        updatedAt: new Date(),
+      },
     })
     .returning();
   return c.json(row);

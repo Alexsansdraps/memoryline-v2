@@ -22,7 +22,8 @@
  * sélection et l'annulation. Le nettoyage ci-dessous ne lui fait de toute
  * façon aucune confiance : quoi qu'il produise, seule la liste blanche sort.
  *
- * Le HTML admis se limite à p, br, strong, em, u, ul, ol, li et a. Tout ce qui
+ * Le HTML admis se limite à p, br, strong, em, u, ul, ol, li et a — plus h2
+ * et h3 dans les seuls éditeurs qui demandent `titres`. Tout ce qui
  * dépasse est retiré au chargement comme à l'enregistrement, y compris ce qui
  * arrive par un collage depuis Word ou une page web. La liste blanche vit dans
  * le script du navigateur, jamais ici : nettoyer deux fois avec deux codes
@@ -37,9 +38,19 @@ interface Props {
   invite?: string;
   /** Ce que lit un lecteur d'écran en entrant dans le cadre. */
   etiquette: string;
+  /**
+   * Autoriser deux niveaux de titre.
+   *
+   * Faux par défaut, et c'est un choix : une description d'affiche n'a pas de
+   * sections, et ouvrir les titres partout ferait apparaître des niveaux de
+   * titre au milieu de pages qui portent déjà le leur. Seules les pages du
+   * site — conditions de vente, mentions légales — sont de vrais documents,
+   * assez longs pour qu'on s'y perde sans intertitres.
+   */
+  titres?: boolean;
 }
 
-const { nom, valeur, invite, etiquette } = Astro.props;
+const { nom, valeur, invite, etiquette, titres = false } = Astro.props;
 
 /**
  * Un `id` tiré au sort par instance. La page des affiches montre un éditeur
@@ -56,7 +67,10 @@ const bouton =
   "hover:bg-bo-surface hover:text-bo-ink";
 ---
 
-<div class="mt-1 overflow-hidden rounded border border-bo-border">
+<div
+  class="mt-1 overflow-hidden rounded border border-bo-border"
+  data-titres={titres ? "1" : undefined}
+>
   <div
     data-barre
     role="toolbar"
@@ -64,6 +78,26 @@ const bouton =
     aria-controls={idZone}
     class="flex flex-wrap items-center gap-0.5 border-b border-bo-border bg-bo-bg px-1.5 py-1"
   >
+    {
+      titres && (
+        <Fragment>
+          {/* Elle dit ce que porte le curseur, ce que deux boutons ne savent
+              pas faire : on voit « Titre » en se posant sur un titre. */}
+          <select
+            data-niveau
+            title="Niveau du texte"
+            aria-label="Niveau du texte"
+            class="h-7 cursor-pointer rounded border-none bg-transparent pr-1 pl-1.5 text-xs text-bo-ink hover:bg-bo-surface focus:outline-none"
+          >
+            <option value="p">Texte normal</option>
+            <option value="h2">Titre</option>
+            <option value="h3">Sous-titre</option>
+          </select>
+          <span class="mx-1 h-5 w-px bg-bo-border" aria-hidden="true" />
+        </Fragment>
+      )
+    }
+
     <button
       type="button"
       data-commande="bold"
@@ -235,7 +269,7 @@ const bouton =
       aria-multiline="true"
       aria-label={etiquette}
       aria-describedby={invite ? idInvite : undefined}
-      class="min-h-32 max-h-96 overflow-y-auto px-3 py-2 text-sm outline-none [&_a]:text-bo-accent [&_a]:underline [&_img]:my-2 [&_img]:h-auto [&_img]:max-w-full [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-2 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6"
+      class="min-h-32 max-h-96 overflow-y-auto px-3 py-2 text-sm outline-none [&_a]:text-bo-accent [&_a]:underline [&_img]:my-2 [&_img]:h-auto [&_img]:max-w-full [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_h2]:mt-4 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mt-3 [&_h3]:text-sm [&_h3]:font-semibold [&_p]:my-2 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6"
     >
     </div>
     {
@@ -279,7 +313,10 @@ const bouton =
       // IMG en fait partie : soixante et une descriptions importées de
       // l'ancienne boutique en contiennent une, et les jeter reviendrait à
       // vider la fiche de ce qu'elle montre.
+      /** Les titres ne sont admis que là où l'appelant les a demandés. */
+      var TITRES = racine.dataset.titres === "1";
       var AUTORISEES = ["P", "BR", "STRONG", "EM", "U", "UL", "OL", "LI", "A", "IMG"];
+      if (TITRES) AUTORISEES.push("H2", "H3");
       /** Une image vient du serveur ou d'un site : jamais d'un « data: ». */
       var SOURCE_SURE = /^(https?:\/\/|\/(?!\/))/i;
       // Ces balises partent AVEC leur contenu, au lieu d'être remplacées par
@@ -311,6 +348,20 @@ const bouton =
         H5: "p",
         H6: "p",
       };
+      // Là où les titres sont admis, un texte collé depuis Word garde ses
+      // niveaux au lieu de s'aplatir. H1 redescend en titre de section : la
+      // page porte déjà le sien, et deux H1 dans un document n'ont pas de
+      // sens. Tout ce qui descend plus bas que H3 remonte à H3 — deux niveaux
+      // suffisent à des conditions de vente, et un quatrième ne se
+      // distinguerait plus à l'œil.
+      if (TITRES) {
+        RENOMMAGES.H1 = "h2";
+        delete RENOMMAGES.H2;
+        delete RENOMMAGES.H3;
+        RENOMMAGES.H4 = "h3";
+        RENOMMAGES.H5 = "h3";
+        RENOMMAGES.H6 = "h3";
+      }
       var ADRESSE_SURE = /^(https?:\/\/|mailto:)/i;
 
       /** Remplace un élément par son contenu, sans rien perdre du texte. */
@@ -427,7 +478,25 @@ const bouton =
       /** Le gras, l'italique et les listes s'allument selon l'endroit du texte
        *  où se trouve le curseur : sans ça, impossible de savoir ce qui est
        *  déjà appliqué avant de cliquer. */
+      /** La liste des niveaux, présente seulement quand les titres sont admis. */
+      var niveau = barre.querySelector("[data-niveau]");
+
+      /** Le niveau du bloc où se trouve le curseur : « p », « h2 » ou « h3 ». */
+      function niveauCourant() {
+        var nom = "";
+        try {
+          nom = String(document.queryCommandValue("formatBlock") || "");
+        } catch (e) {
+          nom = "";
+        }
+        nom = nom.toLowerCase().replace(/[<>]/g, "");
+        // Tout le reste — div, blockquote, rien du tout — se lit « texte
+        // normal » : c'est ce que le nettoyage en fera de toute façon.
+        return nom === "h2" || nom === "h3" ? nom : "p";
+      }
+
       function rafraichirBoutons() {
+        if (niveau) niveau.value = niveauCourant();
         var boutons = barre.querySelectorAll("[data-etat]");
         for (var i = 0; i < boutons.length; i++) {
           var actif = false;
@@ -507,6 +576,24 @@ const bouton =
         synchroniser();
         rafraichirBoutons();
       });
+
+      if (niveau) {
+        niveau.addEventListener("change", function () {
+          // Dérouler la liste a emporté le focus, et la sélection avec lui.
+          // On la remet en place avant d'appliquer, sinon le titre se poserait
+          // au début du texte ou nulle part — même remise en place que pour
+          // la pose d'un lien, qui perd le focus au profit d'une fenêtre.
+          zone.focus();
+          var sel = document.getSelection();
+          if (porteeMemorisee && sel) {
+            sel.removeAllRanges();
+            sel.addRange(porteeMemorisee);
+          }
+          document.execCommand("formatBlock", false, "<" + niveau.value + ">");
+          synchroniser();
+          rafraichirBoutons();
+        });
+      }
 
       zone.addEventListener("paste", function (ev) {
         // Un collage brut depuis Word emmène ses polices, ses tailles et ses

@@ -14,6 +14,9 @@ export interface MessagesConfigurateur {
   champsLignes: string[];
   /** Exemple montré en filigrane dans chaque champ, dans l'ordre. */
   exemplesLignes: string[];
+  quantite: string;
+  quantiteMoins: string;
+  quantitePlus: string;
   couleurTexte: string;
   choisirFond: string;
   personnages: string;
@@ -38,6 +41,8 @@ export interface MessagesConfigurateur {
   sansCadre: string;
   /** Sur la poignée de chaque ligne : dit ce que le geste fait. */
   reordonnerAide: string;
+  /** Sur l'icône de copie d'un personnage. */
+  dupliquer: string;
 }
 
 export const MESSAGES_DEFAUT: MessagesConfigurateur = {
@@ -47,6 +52,9 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   etapeFormat: "Format",
   champsLignes: ["Ligne 1", "Ligne 2", "Ligne 3"],
   exemplesLignes: ["MERS-LES-BAINS", "la maison bleue", "été 2019"],
+  quantite: "Nombre d'exemplaires",
+  quantiteMoins: "Un exemplaire de moins",
+  quantitePlus: "Un exemplaire de plus",
   couleurTexte: "Couleur du texte",
   choisirFond: "Choisir un fond",
   personnages: "Personnages",
@@ -70,6 +78,7 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   cadre: "Cadre (option)",
   sansCadre: "Sans cadre",
   reordonnerAide: "Glissez pour changer l'ordre des personnages",
+  dupliquer: "Dupliquer ce personnage",
 };
 
 /** Complète un dictionnaire partiel par les valeurs françaises. */

@@ -64,6 +64,47 @@ function au_hasard<T>(liste: readonly T[]): T {
   return liste[Math.floor(Math.random() * liste.length)]!;
 }
 
+/**
+ * Une adresse e-mail jetable, sur le domaine réservé `example.com` (RFC 2606).
+ * Même si un courrier partait par erreur, il ne pourrait atteindre personne.
+ */
+function courriel(prenom: string, nom: string): string {
+  return (
+    `${prenom}.${nom}${Math.floor(Math.random() * 1000)}`
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase() + "@example.com"
+  );
+}
+
+/**
+ * Un compte fictif pour le formulaire d'inscription.
+ *
+ * Depuis que le compte est obligatoire avant de commander, c'est là que se
+ * fait la saisie à la main : un nom, un prénom, une adresse e-mail et un mot
+ * de passe à retaper à chaque essai. Le mot de passe est FIXE et affiché à
+ * l'écran — un mot de passe tiré au sort qu'on ne voit pas rend le compte
+ * inutilisable dès la deuxième connexion.
+ */
+export interface CompteEssai {
+  prenom: string;
+  nom: string;
+  email: string;
+  motDePasse: string;
+}
+
+export function compteFictif(): CompteEssai | null {
+  if (!estActif()) return null;
+  const prenom = au_hasard(PRENOMS);
+  const nom = au_hasard(NOMS);
+  return {
+    prenom,
+    nom,
+    email: courriel(prenom, nom),
+    motDePasse: "essai1234",
+  };
+}
+
 export interface JeuEssai {
   nom: string;
   email: string;
@@ -89,10 +130,7 @@ export function clientFictif(): JeuEssai | null {
   const n = 1 + Math.floor(Math.random() * 98);
   return {
     nom: `${prenom} ${nom}`,
-    email: `${prenom}.${nom}${Math.floor(Math.random() * 1000)}`
-      .normalize("NFD")
-      .replace(/[̀-ͯ]/g, "")
-      .toLowerCase() + "@example.com",
+    email: courriel(prenom, nom),
     line1: `${n} ${au_hasard(VOIES)}`,
     line2: Math.random() < 0.3 ? `Bâtiment ${au_hasard(["A", "B", "C"])}` : "",
     postalCode: cp,

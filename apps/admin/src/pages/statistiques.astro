@@ -1,0 +1,408 @@
+---
+/**
+ * Les statistiques de vente.
+ *
+ * L'écran des finances répond à « où est l'argent » — ce qui est entré, ce qui
+ * est sorti, par quel moyen. Celui-ci répond à la question qu'on se pose le
+ * lundi matin : « qu'est-ce qui se vend, et est-ce que ça monte ? »
+ *
+ * L'ordre de lecture est voulu. Quatre chiffres d'abord, chacun comparé à la
+ * période précédente — un chiffre seul ne dit rien, c'est l'écart qui informe.
+ * La courbe ensuite, pour voir la forme. Puis ce qui se vend, à qui, où, et
+ * enfin ce qui s'est perdu en route.
+ *
+ * La courbe est dessinée À LA MAIN en SVG, sans bibliothèque : une courbe de
+ * trente points ne vaut pas quatre-vingts kilo-octets de code à charger, et
+ * une dépendance de plus est une dépendance à suivre.
+ */
+import Admin from "../layouts/Admin.astro";
+import { adminApi, type Analytique } from "../lib/api.ts";
+import { url } from "../lib/url.ts";
+
+const api = adminApi(Astro.request);
+
+/** Les fenêtres proposées. Trente jours par défaut : voir la tendance ET la semaine. */
+const FENETRES = [
+  { jours: 7, nom: "7 jours" },
+  { jours: 30, nom: "30 jours" },
+  { jours: 90, nom: "90 jours" },
+  { jours: 365, nom: "12 mois" },
+] as const;
+
+const demande = Number(Astro.url.searchParams.get("jours") ?? 30);
+const jours = FENETRES.some((f) => f.jours === demande) ? demande : 30;
+
+const depuis = new Date(Date.now() - (jours - 1) * 86400000)
+  .toISOString()
+  .slice(0, 10);
+
+let a: Analytique | null = null;
+let erreur: string | null = null;
+try {
+  a = await api.analytique(depuis);
+} catch (e) {
+  erreur = String(e).replace(/^Error:\s*/, "");
+}
+
+const euros = (cents: number) =>
+  (cents / 100).toLocaleString("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: cents % 100 === 0 ? 0 : 2,
+  });
+
+/**
+ * L'écart avec la période précédente, tel qu'on le lit.
+ *
+ * `null` signifie « la période d'avant était vide » — et non « pas de
+ * changement ». Les confondre ferait lire « 0 % » là où il n'y a rien à
+ * comparer, ce qui est un mensonge par omission.
+ */
+function ecart(v: number | null): { texte: string; classe: string } {
+  if (v === null)
+    return { texte: "pas de comparaison", classe: "text-bo-muted" };
+  if (v === 0) return { texte: "stable", classe: "text-bo-muted" };
+  return v > 0
+    ? { texte: `+${v} %`, classe: "text-green-700" }
+    : { texte: `${v} %`, classe: "text-red-700" };
+}
+
+/* ---------------------------------------------------------------------- */
+/*  La courbe                                                             */
+/* ---------------------------------------------------------------------- */
+const points = a?.parJour ?? [];
+const hautMax = Math.max(1, ...points.map((p) => p.caCents));
+const L = 900;
+const H = 200;
+
+/** Le chemin de la courbe, en coordonnées du dessin. */
+const chemin = points
+  .map((p, i) => {
+    const x = points.length > 1 ? (i / (points.length - 1)) * L : L / 2;
+    const y = H - (p.caCents / hautMax) * (H - 10);
+    return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+  })
+  .join(" ");
+
+/** La même, refermée en bas : c'est elle qui porte l'aplat. */
+const aplat = chemin ? `${chemin} L${L},${H} L0,${H} Z` : "";
+
+/** Trois repères de date sous la courbe : début, milieu, fin. */
+const reperes = points.length
+  ? [0, Math.floor(points.length / 2), points.length - 1]
+      .filter((v, i, t) => t.indexOf(v) === i)
+      .map((i) => ({
+        x: points.length > 1 ? (i / (points.length - 1)) * L : L / 2,
+        texte: new Date(points[i]!.jour).toLocaleDateString("fr-FR", {
+          day: "numeric",
+          month: "short",
+        }),
+      }))
+  : [];
+
+const meilleurJour = points.reduce(
+  (m, p) => (p.caCents > (m?.caCents ?? -1) ? p : m),
+  null as (typeof points)[number] | null,
+);
+
+const cadre = "rounded-lg border border-bo-border bg-bo-surface";
+---
+
+<Admin title="Statistiques">
+  <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h2 class="text-lg font-semibold">Ce qui se vend</h2>
+      <p class="text-sm text-bo-muted">
+        Seules les commandes <strong>payées et non annulées</strong> comptent.
+        Un panier abandonné n'est pas une vente.
+      </p>
+    </div>
+    <div class="flex flex-wrap gap-1">
+      {FENETRES.map((f) => (
+        <a
+          href={`${url("/statistiques")}?jours=${f.jours}`}
+          aria-current={f.jours === jours ? "true" : undefined}
+          class={`rounded border px-3 py-1.5 text-sm ${
+            f.jours === jours
+              ? "border-bo-accent bg-bo-bg font-medium"
+              : "border-bo-border bg-bo-surface hover:bg-bo-bg"
+          }`}
+        >
+          {f.nom}
+        </a>
+      ))}
+    </div>
+  </div>
+
+  {erreur && (
+    <p class="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm">
+      Les statistiques n'ont pas pu être lues : {erreur}
+    </p>
+  )}
+
+  {a && (
+    <>
+      {/* =============================================================== */}
+      {/* Les quatre chiffres                                             */}
+      {/* =============================================================== */}
+      <div class="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {[
+          {
+            titre: "Chiffre d'affaires",
+            valeur: euros(a.resume.caCents),
+            ev: ecart(a.resume.evolution.caCents),
+            avant: euros(a.resume.precedent.caCents),
+          },
+          {
+            titre: "Commandes",
+            valeur: String(a.resume.commandes),
+            ev: ecart(a.resume.evolution.commandes),
+            avant: String(a.resume.precedent.commandes),
+          },
+          {
+            titre: "Panier moyen",
+            valeur: euros(a.resume.panierMoyenCents),
+            ev: ecart(a.resume.evolution.panierMoyenCents),
+            avant: euros(a.resume.precedent.panierMoyenCents),
+          },
+          {
+            titre: "Clientes servies",
+            valeur: String(a.resume.clients),
+            ev: { texte: "", classe: "" },
+            avant: "",
+          },
+        ].map((c) => (
+          <div class={`${cadre} p-4`}>
+            <p class="text-xs tracking-wide text-bo-muted uppercase">
+              {c.titre}
+            </p>
+            <p class="mt-1 text-2xl font-semibold">{c.valeur}</p>
+            {c.ev.texte && (
+              <p class={`mt-1 text-xs ${c.ev.classe}`}>
+                {c.ev.texte}
+                {c.avant && (
+                  <span class="text-bo-muted"> · avant : {c.avant}</span>
+                )}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* =============================================================== */}
+      {/* La courbe                                                       */}
+      {/* =============================================================== */}
+      <section class={`${cadre} mb-6 p-5`}>
+        <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h3 class="font-semibold">Jour par jour</h3>
+          {meilleurJour && meilleurJour.caCents > 0 && (
+            <p class="text-sm text-bo-muted">
+              Meilleure journée :{" "}
+              <strong>
+                {new Date(meilleurJour.jour).toLocaleDateString("fr-FR", {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                })}
+              </strong>{" "}
+              — {euros(meilleurJour.caCents)}
+            </p>
+          )}
+        </div>
+
+        {a.resume.caCents === 0 ? (
+          <p class="py-8 text-center text-sm text-bo-muted">
+            Aucune vente sur cette période.
+          </p>
+        ) : (
+          <div class="overflow-x-auto">
+            <svg
+              viewBox={`0 0 ${L} ${H + 24}`}
+              class="h-56 w-full min-w-[420px]"
+              role="img"
+              aria-label={`Chiffre d'affaires jour par jour sur ${jours} jours`}
+            >
+              {/* Trois lignes de repère : le haut, le milieu, le bas. Sans
+                  elles, on lit une forme mais aucune hauteur. */}
+              {[0, 0.5, 1].map((f) => (
+                <line
+                  x1="0"
+                  y1={H - f * (H - 10)}
+                  x2={L}
+                  y2={H - f * (H - 10)}
+                  stroke="currentColor"
+                  stroke-width="1"
+                  class="text-bo-border"
+                />
+              ))}
+              <path d={aplat} class="fill-bo-accent/10" />
+              <path
+                d={chemin}
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linejoin="round"
+                stroke-linecap="round"
+                class="text-bo-accent"
+              />
+              {reperes.map((r) => (
+                <text
+                  x={r.x}
+                  y={H + 18}
+                  text-anchor={r.x === 0 ? "start" : r.x === L ? "end" : "middle"}
+                  class="fill-bo-muted text-[11px]"
+                >
+                  {r.texte}
+                </text>
+              ))}
+            </svg>
+            <p class="mt-1 text-xs text-bo-muted">
+              Sommet de l'échelle : {euros(hautMax)}
+            </p>
+          </div>
+        )}
+      </section>
+
+      <div class="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* ============================================================= */}
+        {/* Les meilleures ventes                                         */}
+        {/* ============================================================= */}
+        <section class={`${cadre} p-5`}>
+          <h3 class="mb-1 font-semibold">Ce qui se vend le mieux</h3>
+          <p class="mb-3 text-sm text-bo-muted">
+            Par chiffre d'affaires. Le nom est celui sous lequel l'affiche
+            s'est vendue, même si elle a été renommée depuis.
+          </p>
+          {a.meilleuresVentes.length === 0 ? (
+            <p class="py-4 text-sm text-bo-muted">Rien sur cette période.</p>
+          ) : (
+            <table class="w-full text-sm">
+              <tbody>
+                {a.meilleuresVentes.map((v, i) => (
+                  <tr class="border-t border-bo-border first:border-0">
+                    <td class="w-6 py-2 text-bo-muted">{i + 1}</td>
+                    <td class="py-2">{v.nom}</td>
+                    <td class="py-2 text-right whitespace-nowrap text-bo-muted">
+                      × {v.quantite}
+                    </td>
+                    <td class="py-2 pl-4 text-right font-medium whitespace-nowrap">
+                      {euros(v.caCents)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+
+        {/* ============================================================= */}
+        {/* Clientes, canaux, formats                                     */}
+        {/* ============================================================= */}
+        <div class="space-y-6">
+          <section class={`${cadre} p-5`}>
+            <h3 class="mb-1 font-semibold">Vos clientes</h3>
+            <p class="mb-3 text-sm text-bo-muted">
+              « Nouvelle » se juge sur la première commande payée, pas sur la
+              date d'inscription.
+            </p>
+            <div class="flex gap-8">
+              <div>
+                <p class="text-2xl font-semibold">{a.clients.nouvelles}</p>
+                <p class="text-xs text-bo-muted">nouvelles</p>
+              </div>
+              <div>
+                <p class="text-2xl font-semibold">{a.clients.revenantes}</p>
+                <p class="text-xs text-bo-muted">qui reviennent</p>
+              </div>
+            </div>
+          </section>
+
+          <section class={`${cadre} p-5`}>
+            <h3 class="mb-3 font-semibold">Par canal et par format</h3>
+            <div class="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <p class="mb-1 text-xs tracking-wide text-bo-muted uppercase">
+                  Canal
+                </p>
+                {a.parCanal.length === 0 && (
+                  <p class="text-bo-muted">—</p>
+                )}
+                {a.parCanal.map((c) => (
+                  <p class="flex justify-between gap-3">
+                    <span>{c.canal === "salon" ? "Stand" : "Site"}</span>
+                    <span class="font-medium">{euros(c.caCents)}</span>
+                  </p>
+                ))}
+              </div>
+              <div>
+                <p class="mb-1 text-xs tracking-wide text-bo-muted uppercase">
+                  Format
+                </p>
+                {a.parFormat.length === 0 && <p class="text-bo-muted">—</p>}
+                {a.parFormat.map((f) => (
+                  <p class="flex justify-between gap-3">
+                    <span>{f.format}</span>
+                    <span class="font-medium">× {f.quantite}</span>
+                  </p>
+                ))}
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      {/* =============================================================== */}
+      {/* Ce qui s'est perdu en route                                     */}
+      {/* =============================================================== */}
+      <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <section class={`${cadre} p-5`}>
+          <h3 class="mb-1 font-semibold">Ce qui n'est pas allé au bout</h3>
+          <p class="mb-3 text-sm text-bo-muted">
+            Sur cent parcours commencés, combien sont allés jusqu'au paiement.
+          </p>
+          <p class="text-3xl font-semibold">
+            {a.paniers.transformation === null
+              ? "—"
+              : `${a.paniers.transformation} %`}
+          </p>
+          <p class="mt-3 text-sm text-bo-muted">
+            <strong>{a.paniers.abandonnes}</strong> paniers laissés en route,{" "}
+            <strong>{a.paniers.enAttente}</strong> en attente de paiement — soit{" "}
+            <strong>{euros(a.paniers.perduCents)}</strong> qui n'ont pas abouti.
+          </p>
+          <p class="mt-3 text-sm">
+            <a href={url("/paniers")} class="text-bo-accent hover:underline">
+              Voir les paniers abandonnés →
+            </a>
+          </p>
+        </section>
+
+        <section class={`${cadre} p-5`}>
+          <h3 class="mb-1 font-semibold">Où partent les affiches</h3>
+          <p class="mb-3 text-sm text-bo-muted">
+            La ville de livraison — celle de vos clientes, pas celle de
+            l'affiche.
+          </p>
+          {a.lieux.length === 0 ? (
+            <p class="text-sm text-bo-muted">
+              Aucune livraison sur cette période.
+            </p>
+          ) : (
+            <table class="w-full text-sm">
+              <tbody>
+                {a.lieux.map((l) => (
+                  <tr class="border-t border-bo-border first:border-0">
+                    <td class="py-1.5">{l.ville}</td>
+                    <td class="py-1.5 text-right text-bo-muted">
+                      {l.commandes} commande{l.commandes > 1 ? "s" : ""}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      </div>
+    </>
+  )}
+</Admin>

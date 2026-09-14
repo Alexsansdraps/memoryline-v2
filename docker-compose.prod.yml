@@ -1,0 +1,182 @@
+# Memory Line — PRODUCTION (serveur).
+#
+# Différences avec le docker-compose.yml de développement, et pourquoi :
+#
+#  - PAS de volume de code monté. L'image contient le code compilé ; monter le
+#    dossier du serveur par-dessus écraserait le build par des sources que
+#    personne n'a compilées.
+#  - UNE base de données locale, dans le service « db ». Elle était chez Neon,
+#    de l'autre côté de l'Atlantique, et c'était la cause de la lenteur :
+#    mesuré sur ce serveur, un aller-retour vers l'Ohio coûtait 90 ms, et la
+#    page du catalogue en enchaîne une douzaine. Sur place, le même
+#    aller-retour coûte moins d'une milliseconde.
+#
+#    Les deux objections d'origine ont été vérifiées plutôt que supposées. La
+#    mémoire : les quatre conteneurs tiennent dans 276 Mo, la machine en a
+#    2 900 de libres, PostgreSQL en demande 300 à 500. La sauvegarde : elle
+#    était déjà « votre affaire », puisque les 1,5 Go de fichiers téléversés
+#    ne vivent que sur ce disque. Voir `scripts/sauvegarder.sh`, qui traite
+#    les deux d'un coup — la base ET les fichiers.
+#  - PAS de mailpit ni de tunnel : ce sont des outils de développement.
+#  - Caddy obtient un vrai certificat, tout seul, pour le nom de domaine.
+#
+# Les images se construisent SUR LE SERVEUR (`docker compose build`). Sur une
+# machine à 4 Go c'est lent la première fois — dix à quinze minutes — et
+# instantané ensuite tant que les dépendances ne bougent pas.
+
+services:
+  # La base. Elle n'expose AUCUN port vers l'extérieur : seuls les conteneurs
+  # du même réseau Docker peuvent l'atteindre, et l'API est le seul à essayer.
+  # Publier 5432 sur Internet reviendrait à laisser la porte du stock ouverte
+  # sur la rue au motif qu'elle a une serrure.
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    # Le fichier .env est lu ICI aussi, et c'est volontaire : la copie depuis
+    # l'ancienne base a besoin de l'adresse de celle-ci, et la lire dans
+    # l'environnement du conteneur évite de l'écrire sur une ligne de commande,
+    # où elle s'inscrirait — mot de passe compris — dans l'historique du
+    # terminal et dans la liste des processus.
+    env_file: .env
+    environment:
+      POSTGRES_USER: memoryline
+      POSTGRES_DB: memoryline
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Manque POSTGRES_PASSWORD dans .env}
+      # Le français pour l'ordre alphabétique : sans lui, « Épinal » se range
+      # après « Zurich » et la liste des lieux devient illisible.
+      LANG: fr_FR.utf8
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    # 64 Mo par défaut, ce qui suffit rarement dès qu'un tri déborde en
+    # mémoire partagée. 256 Mo coûtent peu sur une machine qui en a 3 800.
+    shm_size: 256mb
+    volumes:
+      # Un volume nommé, PAS un dossier du dépôt : les données de la base ne
+      # doivent jamais se retrouver dans une archive de déploiement, ni
+      # disparaître parce qu'on a refait le dossier du projet.
+      #
+      # Le point de montage est « /var/lib/postgresql », SANS « /data » —
+      # c'est ce qui change avec PostgreSQL 18. L'image range désormais les
+      # données dans un sous-dossier qui porte le numéro de version, pour que
+      # la montée de version suivante puisse lire l'ancienne et écrire la
+      # nouvelle côte à côte. Monter sur « /data » comme on le faisait
+      # jusqu'ici fait refuser le démarrage, avec un message qui parle de
+      # « pg_upgrade » et laisse croire à une migration ratée alors que la
+      # base est neuve.
+      - db_data:/var/lib/postgresql
+    healthcheck:
+      # « le conteneur tourne » ne veut pas dire « la base accepte des
+      # requêtes » : au premier démarrage elle passe une minute à s'initialiser.
+      test: ["CMD-SHELL", "pg_isready -U memoryline -d memoryline"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    expose:
+      - "5432"
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      API_PORT: 3000
+      # Les adresses autorisées à appeler l'API depuis un navigateur. Le site
+      # et le back-office passant par le même hôte, une seule suffit.
+      WEB_ORIGINS: ${PUBLIC_ORIGIN}
+      # Sert aux liens des courriers : un courrier ne sait pas résoudre un
+      # chemin relatif.
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN}
+    volumes:
+      # Les visuels, les affiches générées et les fichiers d'impression. Avec
+      # le volume « db_data », c'est l'un des DEUX endroits qui portent des
+      # données, et les deux se sauvegardent ensemble.
+      - ./data/assets:/app/data/assets
+    depends_on:
+      db:
+        # Pas « démarrée » mais « prête » : l'API interroge la base dès son
+        # premier souffle, et se relèverait en boucle contre une base qui
+        # s'initialise encore.
+        condition: service_healthy
+    expose:
+      - "3000"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        SITE_URL: ${PUBLIC_ORIGIN}
+        # Sans lui, Astro se croit sur localhost derrière le proxy et refuse
+        # chaque formulaire : « Cross-site POST form submissions are forbidden ».
+        ALLOWED_HOSTS: ${DOMAINE}
+        PUBLIC_API_URL: /api
+        # Le plan de site se construit en interrogeant l'API depuis le réseau
+        # interne de Docker, où elle s'appelle « api ».
+        API_URL_INTERNAL: http://api:3000
+        # Un site de TEST sert le même contenu que memoryline.fr : indexé, il
+        # ferait doublon et se ferait concurrence à lui-même dans Google.
+        PUBLIC_NOINDEX: ${PUBLIC_NOINDEX:-true}
+        PUBLIC_JEU_ESSAI: ${PUBLIC_JEU_ESSAI:-0}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PUBLIC_API_URL: /api
+      API_URL_INTERNAL: http://api:3000
+    depends_on:
+      - api
+    expose:
+      - "4321"
+
+  admin:
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+      args:
+        ADMIN_BASE: /bo
+        ALLOWED_HOSTS: ${DOMAINE}
+        PUBLIC_API_URL: /api
+        # Figée au build (voir le Dockerfile) : la passer au seul démarrage
+        # laissait le back-office appeler « /api », et chaque page en 500.
+        API_URL_INTERNAL: http://api:3000
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PUBLIC_API_URL: /api
+      API_URL_INTERNAL: http://api:3000
+    depends_on:
+      - api
+    expose:
+      - "4322"
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Caddy lit ces deux valeurs dans le Caddyfile.
+      DOMAINE: ${DOMAINE}
+      COURRIEL_TLS: ${COURRIEL_TLS}
+    volumes:
+      - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
+      # Les certificats, pour ne pas en redemander à chaque redémarrage :
+      # Let's Encrypt limite le nombre de demandes par semaine.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - admin
+      - api
+
+volumes:
+  # Les données de la base. Un volume nommé survit à `docker compose down`,
+  # mais PAS à `docker compose down -v` : cette option-là efface tout, et
+  # c'est la seule commande de ce projet qui puisse perdre une commande
+  # cliente. Elle n'est écrite nulle part dans le mode d'emploi, exprès.
+  db_data:
+  caddy_data:
+  caddy_config:

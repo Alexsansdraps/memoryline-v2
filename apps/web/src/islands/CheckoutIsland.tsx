@@ -11,6 +11,7 @@ import {
 import {
   formaterPoids,
   optionsLivraison,
+  seuilPortOffertCents,
   remisesPanier,
   totalPanierCents,
   urlAsset,
@@ -56,6 +57,9 @@ import {
 import { apercuAbsolu, urlApercu } from "../lib/ia.ts";
 import { codePromoRetenu } from "./CartIsland.tsx";
 import { clientFictif } from "./jeu-essai.ts";
+// Le même découpage que la fiche client : deux versions finiraient par
+// proposer deux noms pour la même personne.
+import { decouperNom as decouper } from "../lib/compte.ts";
 
 /**
  * Tunnel de commande (§11 — canal web), en DEUX phases :
@@ -129,12 +133,38 @@ interface AdresseCarnet {
 export default function CheckoutIsland(props: {
   langue?: Langue;
   /** La cliente connectée. La page ne rend le tunnel qu'à elle. */
-  compte?: { nom: string; email: string; telephone: string };
+  compte?: {
+    nom: string;
+    prenom?: string;
+    nomFamille?: string;
+    email: string;
+    telephone: string;
+  };
   /** Ses adresses déjà enregistrées, la première étant celle par défaut. */
   carnet?: AdresseCarnet[];
 }): JSX.Element {
   const tr = t(props.langue ?? LANGUE_DEFAUT);
-  const [name, setName] = createSignal(props.compte?.nom ?? "");
+  /*
+   * Prénom et nom, séparés — comme sur la fiche client.
+   *
+   * Un champ unique obligeait à deviner où couper pour l'étiquette de colis :
+   * « Marie Dupont » se coupe bien, « Jean-Pierre de la Tour » beaucoup moins.
+   * Le compte connaît déjà les deux ; on les reprend tels quels.
+   */
+  const [prenom, setPrenom] = createSignal(
+    props.compte?.prenom ?? decouper(props.compte?.nom ?? "").prenom,
+  );
+  const [nomFamille, setNomFamille] = createSignal(
+    props.compte?.nomFamille ?? decouper(props.compte?.nom ?? "").nom,
+  );
+  /** Ce qui part à l'API : toujours la concaténation des deux. */
+  const name = (): string => `${prenom().trim()} ${nomFamille().trim()}`.trim();
+  /** Repose un nom complet venu d'ailleurs (carnet, relance, jeu d'essai). */
+  const setName = (complet: string) => {
+    const d = decouper(complet);
+    setPrenom(d.prenom);
+    setNomFamille(d.nom);
+  };
   const [email, setEmail] = createSignal(props.compte?.email ?? "");
   const [method, setMethod] = createSignal<Method | null>(null);
   const [phase, setPhase] = createSignal<"details" | "pay">("details");
@@ -291,6 +321,27 @@ export default function CheckoutIsland(props: {
   }
   const [pointRelais, setPointRelais] = createSignal({ id: "", label: "" });
 
+  /*
+   * Retrait sur place : quel stand.
+   *
+   * Les stands ouverts arrivent avec le catalogue de livraison. Un seul
+   * ouvert, il est choisi d'office — faire cliquer sur l'unique possibilité
+   * n'apporte rien. Plusieurs, le client choisit ; tant qu'il n'a pas choisi,
+   * la commande ne part pas, sinon personne ne saurait où la remettre.
+   */
+  const standsOuverts = (): { id: number; nom: string }[] =>
+    catalogue()?.stands ?? [];
+  const [standChoisi, setStandChoisi] = createSignal<number | null>(null);
+  const standRetenu = (): { id: number; nom: string } | null => {
+    const l = standsOuverts();
+    return l.find((x) => x.id === standChoisi()) ?? l[0] ?? null;
+  };
+  /** Vrai quand le mode choisi est un retrait et qu'il reste à dire où. */
+  const standManquant = (): boolean =>
+    optionChoisie()?.mode.kind === "pickup" &&
+    standsOuverts().length > 0 &&
+    standRetenu() === null;
+
 
   /* Recherche de points relais : on interroge le transporteur avec un code
      postal, le client choisit dans la liste. Pas de champ libre — une adresse
@@ -300,18 +351,27 @@ export default function CheckoutIsland(props: {
   // tiré au sort. `clientFictif()` renvoie null partout ailleurs — c'est le
   // seul garde-fou, et il tient à une variable d'environnement absente en
   // production (voir islands/jeu-essai.ts).
+  //
+  // Il ne remplit QUE ce qui est vide. Connectée, la cliente arrive avec son
+  // nom, son e-mail et son adresse déjà en place : les remplacer par un
+  // client tiré au sort lui ferait croire, sur le site de test, que ses
+  // informations ne sont pas reprises. Un compte connu l'emporte toujours.
   const essai = clientFictif();
   if (essai) {
-    setName(essai.nom);
-    setEmail(essai.email);
-    setAdresse({
-      line1: essai.line1,
-      line2: essai.line2,
-      postalCode: essai.postalCode,
-      city: essai.city,
-      phone: essai.phone,
-    });
-    setCpRecherche(essai.postalCode);
+    if (!name()) setName(essai.nom);
+    if (!email()) setEmail(essai.email);
+    if (!adresse().line1) {
+      setAdresse({
+        line1: essai.line1,
+        line2: essai.line2,
+        postalCode: essai.postalCode,
+        city: essai.city,
+        phone: adresse().phone || essai.phone,
+      });
+      setCpRecherche(essai.postalCode);
+    } else {
+      setCpRecherche(adresse().postalCode);
+    }
   }
 
   /*
@@ -375,10 +435,20 @@ export default function CheckoutIsland(props: {
   /** Panier après remises : c'est lui qui décide de la franchise de port. */
   const apresRemise = () => Math.max(0, subtotal() - discount());
 
+  /**
+   * Le seuil de la promotion « livraison offerte dès X € », s'il y en a une.
+   *
+   * L'écran l'affiche, le serveur le recalcule avant d'encaisser : c'est la
+   * même fonction des deux côtés, donc le port annoncé ne peut pas différer
+   * du port facturé.
+   */
+  const seuilPort = () =>
+    seuilPortOffertCents(reglesEnJeu(), new Date(), codes());
+
   const optionsPort = (): OptionLivraison[] => {
     const cat = catalogue();
     return cat
-      ? optionsLivraison(cat, pays(), apresRemise(), poidsColis())
+      ? optionsLivraison(cat, pays(), apresRemise(), poidsColis(), seuilPort())
       : [];
   };
   const optionChoisie = () =>
@@ -428,7 +498,10 @@ export default function CheckoutIsland(props: {
 
   const emailValid = () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email().trim());
   const formValid = () =>
-    name().trim().length > 0 && emailValid() && livraisonValide();
+    name().trim().length > 0 &&
+    emailValid() &&
+    livraisonValide() &&
+    !standManquant();
 
   /* --- Stripe --------------------------------------------------------- */
   let stripe: Stripe | null = null;
@@ -545,7 +618,14 @@ export default function CheckoutIsland(props: {
     setError(null);
     try {
       const a = adresse();
-      const relais = pointRelais();
+      // Un retrait sur stand se range là où se range un point relais : ces
+      // deux champs disent « où va la commande », et le mode de livraison dit
+      // de quelle sorte d'endroit il s'agit. Le préfixe « stand: » évite de
+      // confondre un identifiant de stand avec un identifiant de transporteur.
+      const st = optionChoisie()?.mode.kind === "pickup" ? standRetenu() : null;
+      const relais = st
+        ? { id: `stand:${st.id}`, label: st.nom }
+        : pointRelais();
       const order = await browserApi.createOrder(
         getCartId(),
         { name: name().trim(), email: email().trim() },
@@ -662,17 +742,32 @@ export default function CheckoutIsland(props: {
             {/* Coordonnées */}
             <fieldset class="space-y-4" disabled={phase() === "pay"}>
               <legend class="text-2xl mb-2">Vos coordonnées</legend>
-              <label class="block">
-                <span class="text-sm font-medium">{tr("commande.nom")}</span>
-                <input
-                  type="text"
-                  required
-                  value={name()}
-                  onInput={(e) => setName(e.currentTarget.value)}
-                  class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
-                  placeholder="Camille Durand"
-                />
-              </label>
+              <div class="grid gap-4 sm:grid-cols-2">
+                <label class="block">
+                  <span class="text-sm font-medium">{tr("compte.prenom")}</span>
+                  <input
+                    type="text"
+                    required
+                    value={prenom()}
+                    onInput={(e) => setPrenom(e.currentTarget.value)}
+                    autocomplete="given-name"
+                    class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
+                    placeholder="Camille"
+                  />
+                </label>
+                <label class="block">
+                  <span class="text-sm font-medium">{tr("compte.nom")}</span>
+                  <input
+                    type="text"
+                    required
+                    value={nomFamille()}
+                    onInput={(e) => setNomFamille(e.currentTarget.value)}
+                    autocomplete="family-name"
+                    class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
+                    placeholder="Durand"
+                  />
+                </label>
+              </div>
               <label class="block">
                 <span class="text-sm font-medium">{tr("commande.email")}</span>
                 <input
@@ -774,8 +869,8 @@ export default function CheckoutIsland(props: {
                               {o.mode.description}
                             </span>
                           </Show>
-                          {/* Retrait sur place : l'emplacement change de salon
-                              en salon, il vient du back-office. */}
+                          {/* Retrait sur place : le lieu fixe du back-office,
+                              quand il y en a un. */}
                           <Show
                             when={
                               o.mode.kind === "pickup" && o.mode.pickupLocation
@@ -783,6 +878,35 @@ export default function CheckoutIsland(props: {
                           >
                             <span class="mt-1 block text-sm">
                               {o.mode.pickupLocation}
+                            </span>
+                          </Show>
+                          {/* Et les stands ouverts en ce moment. Un seul, on
+                              l'annonce ; plusieurs, on fait choisir — sans
+                              quoi personne ne saurait où remettre la
+                              commande. */}
+                          <Show
+                            when={
+                              o.mode.kind === "pickup" &&
+                              standsOuverts().length > 0
+                            }
+                          >
+                            <span class="mt-2 block space-y-1">
+                              <span class="block text-sm text-ink-soft">
+                                Où souhaitez-vous retirer&nbsp;?
+                              </span>
+                              <For each={standsOuverts()}>
+                                {(st) => (
+                                  <label class="flex items-center gap-2 text-sm">
+                                    <input
+                                      type="radio"
+                                      name="stand-retrait"
+                                      checked={standRetenu()?.id === st.id}
+                                      onChange={() => setStandChoisi(st.id)}
+                                    />
+                                    <span>{st.nom}</span>
+                                  </label>
+                                )}
+                              </For>
                             </span>
                           </Show>
                         </span>

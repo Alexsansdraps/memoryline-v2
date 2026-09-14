@@ -1,3 +1,4 @@
+import { apiInterne } from "./api-interne.ts";
 import type { PosterConfig } from "@memoryline/types";
 import { ui } from "../i18n/ui.ts";
 import {
@@ -35,9 +36,7 @@ import {
  * n'est joignable que depuis le navigateur.
  */
 const API_URL =
-  import.meta.env.API_URL_INTERNAL ??
-  import.meta.env.PUBLIC_API_URL ??
-  "http://localhost:3000";
+  apiInterne();
 
 /** Ce que le client a besoin de connaître de l'objet `Astro` d'une page. */
 export interface ContexteAstro {
@@ -49,7 +48,10 @@ export interface ContexteAstro {
 export interface Client {
   id: number;
   email: string;
+  /** Le nom complet, composé du prénom et du nom par l'API. */
   name: string | null;
+  firstName: string | null;
+  lastName: string | null;
   phone: string | null;
   acceptsMarketing: boolean;
   createdAt?: string | null;
@@ -92,6 +94,13 @@ export interface LigneCommande {
   quantity: number;
   unitPriceCents: number;
   config?: PosterConfig | null;
+  /**
+   * L'adresse de la vignette, servie par l'API et rendue côté serveur.
+   *
+   * Absente sur une API d'une version antérieure : la page affiche alors la
+   * ligne sans image plutôt que de refuser de s'ouvrir.
+   */
+  apercu?: string | null;
 }
 
 export interface Expedition {
@@ -259,6 +268,27 @@ async function appelClient(
 
 /* --- Session --------------------------------------------------------------- */
 
+/**
+ * Découpe un nom complet en prénom + nom, faute de mieux.
+ *
+ * Le dernier mot fait le nom, le reste le prénom. C'est faux pour
+ * « Jean-Pierre de la Tour », et c'est assumé : cela ne sert qu'aux fiches
+ * qui n'ont QU'un nom complet — celles d'avant que le compte porte les deux
+ * séparément, et les adresses du carnet. Le résultat est toujours affiché
+ * dans un champ modifiable, jamais écrit en base sans que quelqu'un l'ait vu.
+ *
+ * Un compte qui connaît déjà ses deux valeurs ne passe jamais par ici.
+ */
+export function decouperNom(complet: string | null | undefined): {
+  prenom: string;
+  nom: string;
+} {
+  const mots = String(complet ?? "").trim().split(/\s+/).filter(Boolean);
+  if (mots.length === 0) return { prenom: "", nom: "" };
+  if (mots.length === 1) return { prenom: "", nom: mots[0]! };
+  return { prenom: mots.slice(0, -1).join(" "), nom: mots[mots.length - 1]! };
+}
+
 export const moi = (astro: ContexteAstro) => appelClient(astro, "/compte/moi");
 
 export const connexion = (
@@ -271,6 +301,9 @@ export const inscription = (
   corps: {
     email: string;
     password: string;
+    /** Prénom et nom séparés ; l'API en compose le nom complet. */
+    firstName?: string;
+    lastName?: string;
     name?: string;
     acceptsMarketing?: boolean;
   },
@@ -281,7 +314,13 @@ export const deconnexion = (astro: ContexteAstro) =>
 
 export const majInfos = (
   astro: ContexteAstro,
-  corps: { name?: string; phone?: string; acceptsMarketing?: boolean },
+  corps: {
+    firstName?: string;
+    lastName?: string;
+    name?: string;
+    phone?: string;
+    acceptsMarketing?: boolean;
+  },
 ) => appelClient(astro, "/compte/moi", { methode: "POST", corps });
 
 export const changerMotDePasse = (

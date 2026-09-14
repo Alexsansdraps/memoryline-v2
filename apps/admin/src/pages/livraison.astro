@@ -42,7 +42,9 @@ let flashErreur = false;
 
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
-  const action = f.get("_action");
+  // Lu AVANT `_action` : le bouton Supprimer vit dans le formulaire de
+  // modification, qui porte son propre `_action` caché.
+  const action = f.get("supprimer") ? "mode-supprimer" : f.get("_action");
   try {
     if (action === "mode") {
       await api.updateShippingMethod(Number(f.get("id")), {
@@ -52,6 +54,18 @@ if (Astro.request.method === "POST") {
         active: f.get("active") === "on",
       });
       flash = "Mode de livraison enregistré.";
+    } else if (action === "mode-creer") {
+      await api.createShippingMethod({
+        name: String(f.get("name") || ""),
+        kind: String(f.get("kind") || "home"),
+        carrier: String(f.get("carrier") || "") || undefined,
+        description: String(f.get("description") || ""),
+      });
+      flash =
+        "Mode créé. Il est décoché : fixez ses tarifs plus bas, puis cochez « Proposé ».";
+    } else if (action === "mode-supprimer") {
+      await api.deleteShippingMethod(Number(f.get("id")));
+      flash = "Mode supprimé.";
     } else if (action === "zone") {
       await api.updateShippingZone(Number(f.get("id")), {
         name: String(f.get("name") || ""),
@@ -107,20 +121,6 @@ if (Astro.request.method === "POST") {
   }
 }
 
-/**
- * La recherche de points relais est-elle branchée ? On le déduit du catalogue
- * PUBLIC : il masque le mode « relay » tant que le compte manque.
- */
-let relaisPret = true;
-try {
-  const res = await fetch(
-    `${import.meta.env.API_URL_INTERNAL ?? import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000"}/shipping`,
-  );
-  const publique = (await res.json()) as { modes: { kind: string }[] };
-  relaisPret = publique.modes.some((m) => m.kind === "relay");
-} catch {
-  // API injoignable : on ne dit rien plutôt que d'alarmer à tort.
-}
 
 let cat: CatalogueLivraisonBO = { zones: [], modes: [], tarifs: [] };
 let error: string | null = null;
@@ -157,10 +157,14 @@ const NOM_NATURE: Record<string, string> = {
   home: "À domicile",
   pickup: "Retrait sur place",
 };
-const NOM_TRANSPORTEUR: Record<string, string> = {
-  colissimo: "Colissimo",
-  mondial_relay: "Mondial Relay",
-};
+/**
+ * Les transporteurs, tels que l'API les connaît. La liste vit là-bas : une
+ * copie ici finirait par proposer un transporteur que l'API refuse.
+ */
+const transporteurs = cat.transporteurs ?? [];
+const NOM_TRANSPORTEUR: Record<string, string> = Object.fromEntries(
+  transporteurs.map((t) => [t.code, t.nom]),
+);
 ---
 
 <Admin title="Livraison">
@@ -185,18 +189,8 @@ const NOM_TRANSPORTEUR: Record<string, string> = {
   {/* ------------------------------------------------------------------ */}
   {/* Modes                                                               */}
   {/* ------------------------------------------------------------------ */}
-  {/* Le point relais suppose un compte transporteur : tant qu'il manque, le
-      mode est masqué côté site et il vaut mieux le dire ici. */}
-  {cat.modes.some((m) => m.kind === "relay") && !relaisPret && (
-    <p class="mb-6 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
-      <strong>Point relais masqué sur le site.</strong> La recherche de points
-      relais demande un compte Mondial Relay : ajoutez
-      <code> MONDIAL_RELAY_ENSEIGNE</code> et <code>MONDIAL_RELAY_CLE</code>
-      dans le fichier <code>.env</code>, puis redémarrez l'API. Sans eux, le
-      client ne pourrait pas choisir son point relais — et une adresse saisie
-      à la main ne sert à rien pour l'expédition.
-    </p>
-  )}
+  {/* Chaque mode dit lui-même s'il sort sur le site : un avertissement
+      général ne disait pas LEQUEL des modes était masqué, ni pourquoi. */}
 
   <h3 class="font-semibold mb-3">Modes de livraison</h3>
   <section class="mb-8 space-y-3">
@@ -253,12 +247,105 @@ const NOM_TRANSPORTEUR: Record<string, string> = {
         {m.kind !== "pickup" && (
           <input type="hidden" name="pickupLocation" value={m.pickupLocation ?? ""} />
         )}
-        <p class="mt-2 text-xs text-bo-muted">
-          {NOM_NATURE[m.kind] ?? m.kind} · identifiant <code>{m.slug}</code>
-          {m.carrier ? ` · transporteur ${m.carrier}` : ""}
+        {/* L'état RÉEL : « Proposé » coché ne suffit pas à faire apparaître un
+            mode sur le site. Sans cette ligne, on coche, on ne voit rien, et
+            on cherche l'erreur ailleurs. */}
+        {m.masquePourquoi ? (
+          <p class="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs">
+            <strong>Pas visible sur le site.</strong> {m.masquePourquoi}
+          </p>
+        ) : (
+          <p class="mt-3 text-xs text-green-700">
+            Visible sur le site : les clients peuvent le choisir.
+          </p>
+        )}
+        <p class="mt-2 flex flex-wrap items-center gap-2 text-xs text-bo-muted">
+          <span>
+            {NOM_NATURE[m.kind] ?? m.kind} · identifiant <code>{m.slug}</code>
+            {m.carrier
+              ? ` · ${NOM_TRANSPORTEUR[m.carrier] ?? m.carrier}`
+              : ""}
+          </span>
+          {/* Son propre champ, et non `_action` : le formulaire en porte
+              déjà un, caché, et c'est le premier envoyé qui compte. */}
+          <button
+            type="submit"
+            name="supprimer"
+            value="1"
+            formnovalidate
+            class="ml-auto rounded border border-bo-border px-2 py-1 hover:bg-red-50 hover:text-red-700"
+          >
+            Supprimer
+          </button>
         </p>
       </form>
     ))}
+
+    {/* Créer un mode. Il naît décoché : un mode sans tarif afficherait
+        0 € de port au client. */}
+    <form
+      method="POST"
+      class="bg-bo-surface border border-dashed border-bo-border rounded-lg p-4 text-sm"
+    >
+      <input type="hidden" name="_action" value="mode-creer" />
+      <p class="mb-3 font-medium">Ajouter un mode</p>
+      <div class="flex flex-wrap items-end gap-3">
+        <label class="block">
+          <span class="text-bo-muted text-xs">Nom vu par le client</span>
+          <input
+            name="name"
+            required
+            placeholder="Point relais Chronopost"
+            class="mt-1 block w-52 border border-bo-border rounded px-2 py-1"
+          />
+        </label>
+        <label class="block">
+          <span class="text-bo-muted text-xs">Nature</span>
+          <select
+            name="kind"
+            class="mt-1 block w-44 border border-bo-border rounded px-2 py-1"
+          >
+            <option value="home">À domicile</option>
+            <option value="relay">Point relais</option>
+            <option value="pickup">Retrait sur place</option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="text-bo-muted text-xs">Transporteur</span>
+          <select
+            name="carrier"
+            class="mt-1 block w-56 border border-bo-border rounded px-2 py-1"
+          >
+            <option value="">Aucun</option>
+            {transporteurs.map((t) => (
+              <option value={t.code}>
+                {t.nom}
+                {t.integre ? "" : " — intégration à écrire"}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label class="block flex-1 min-w-[220px]">
+          <span class="text-bo-muted text-xs">Précision (délai…)</span>
+          <input
+            name="description"
+            class="mt-1 block w-full border border-bo-border rounded px-2 py-1"
+          />
+        </label>
+        <button class="rounded bg-bo-accent text-white px-3 py-1.5">
+          Ajouter
+        </button>
+      </div>
+      <p class="mt-2 text-xs text-bo-muted">
+        Un <strong>point relais</strong> demande un transporteur : c'est lui
+        qui fournit la liste des points où le client choisit. Les
+        transporteurs marqués « intégration à écrire » peuvent être préparés
+        dès maintenant (tarifs, zones), mais leur mode restera masqué du site
+        tant que la recherche de points n'existe pas — proposer un point
+        relais qu'on ne sait pas transmettre reviendrait à vendre une
+        livraison impossible.
+      </p>
+    </form>
   </section>
 
   {/* ------------------------------------------------------------------ */}

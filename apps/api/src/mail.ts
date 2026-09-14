@@ -203,10 +203,13 @@ export interface LigneCourrier {
   /**
    * L'image de l'affiche, en adresse ABSOLUE et publique.
    *
+   * C'est l'aperçu RÉEL de la ligne — celui du compte client, rendu par le
+   * moteur qui fabrique le fichier d'impression — et non le visuel de
+   * catalogue : sur une affiche personnalisée, ce dernier montrerait la
+   * boutique, sans le prénom ni les personnages choisis.
+   *
    * Facultative : une messagerie qui ne peut pas la charger doit lire un
-   * courrier complet quand même. Seule la relance de panier s'en sert — on y
-   * rappelle à quelqu'un une affiche qu'il a composée, et une vignette la lui
-   * remet en tête bien mieux qu'un titre.
+   * courrier complet quand même.
    */
   imageUrl?: string | null;
   /**
@@ -269,6 +272,17 @@ function tableauLignes(lignes: LigneCourrier[]): string {
     ${lignes
       .map(
         (l) => `<tr>
+      ${
+        // L'affiche, et pas seulement son titre : « CÔTE D'OPALE Plage FACE »
+        // ne dit rien à qui a commandé trois affiches le même jour. Une
+        // messagerie qui bloque les images laisse la cellule vide et le
+        // courrier reste lisible — d'où l'`alt` vide et le fond gris.
+        l.imageUrl
+          ? `<td width="72" style="padding:10px 12px 10px 0;border-bottom:1px solid #eee;vertical-align:top">
+        <img src="${h(l.imageUrl)}" width="64" height="90" alt="" style="display:block;border:0;width:64px;height:auto;max-width:64px;background:#f3f3f3" />
+      </td>`
+          : ""
+      }
       <td style="padding:8px 0;border-bottom:1px solid #eee">
         <strong style="font-weight:500">${h(l.titre)}</strong><br />
         <span style="color:#5b5b54;font-size:13px">Format ${h(l.format ?? "A4")}${

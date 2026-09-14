@@ -1028,9 +1028,17 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
 
           <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
             <h3 class="mb-2 font-medium">Adresse de livraison</h3>
+            {/* Un retrait sur stand se range dans les mêmes colonnes qu'un
+                point relais — elles disent « où va la commande ». Le préfixe
+                de l'identifiant dit de quelle sorte d'endroit il s'agit :
+                sans lui, un stand s'annoncerait comme un point relais et
+                personne n'irait le chercher au bon endroit. */}
             {order.relayPointLabel && (
               <p class="mb-2 rounded bg-bo-bg px-2 py-1 text-sm">
-                Point relais : {order.relayPointLabel}
+                {String(order.relayPointId ?? "").startsWith("stand:")
+                  ? "Retrait sur place"
+                  : "Point relais"}{" "}
+                : {order.relayPointLabel}
               </p>
             )}
             {order.shippingLine1 || order.shippingName ? (

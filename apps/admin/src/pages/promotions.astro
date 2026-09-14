@@ -1,4 +1,5 @@
 ---
+import { apiInterne } from "../lib/api-interne.ts";
 import Admin from "../layouts/Admin.astro";
 import { adminApi, type PromoRule } from "../lib/api.ts";
 import { url } from "../lib/url.ts";
@@ -15,7 +16,7 @@ if (Astro.request.method === "POST") {
     if (action === "toggle") {
       const id = Number(form.get("id"));
       await fetch(
-        `${import.meta.env.API_URL_INTERNAL ?? import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000"}/admin/promos/${id}/toggle`,
+        `${apiInterne()}/admin/promos/${id}/toggle`,
         {
           method: "POST",
           headers: { cookie: Astro.request.headers.get("cookie") ?? "" },
@@ -40,6 +41,12 @@ if (Astro.request.method === "POST") {
         config = { percent: Number(form.get("percent") || 10) };
       else if (type === "fixed")
         config = { amountCents: Math.round(Number(form.get("amount") || 5) * 100) };
+      else if (type === "free_shipping_over")
+        // Le seuil se compare au panier APRÈS remises : c'est le montant que
+        // la cliente paie vraiment pour ses affiches.
+        config = {
+          thresholdCents: Math.round(Number(form.get("seuil") || 60) * 100),
+        };
 
       await api.upsertPromo({
         id: form.get("id") ? Number(form.get("id")) : undefined,
@@ -68,6 +75,7 @@ const TYPES = [
   { value: "buy_x_get_y", label: "X achetées, la suivante remisée" },
   { value: "percent", label: "Pourcentage de remise" },
   { value: "fixed", label: "Montant fixe de remise" },
+  { value: "free_shipping_over", label: "Livraison offerte à partir d'un montant" },
 ];
 
 // La phrase vient du moteur qui facture, pas d'une copie tenue a la main :
@@ -157,6 +165,27 @@ const describe = libelleRegle;
       </fieldset>
       <fieldset data-type="fixed" hidden class="sm:col-span-2">
         <label class="block"><span class="text-bo-muted">Montant remisé (€)</span><input name="amount" type="number" step="0.01" value="5" class="mt-1 w-full border border-bo-border rounded px-3 py-2" /></label>
+      </fieldset>
+      <fieldset data-type="free_shipping_over" hidden class="sm:col-span-2">
+        <label class="block">
+          <span class="text-bo-muted">Livraison offerte à partir de (€)</span>
+          <input
+            name="seuil"
+            type="number"
+            step="0.01"
+            min="0"
+            value="60"
+            class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+          />
+          <span class="mt-1 block text-xs text-bo-muted">
+            Le montant est celui du panier APRÈS remises — ce que la cliente
+            paie vraiment pour ses affiches. L'offre vaut pour tous les modes
+            de livraison et toutes les zones. Pour n'offrir le port que sur un
+            transporteur précis, utilisez plutôt la franchise de sa grille
+            tarifaire, dans l'écran Livraison : les deux se cumulent, le port
+            est offert dès que l'un des deux seuils est atteint.
+          </span>
+        </label>
       </fieldset>
 
       <label class="block">

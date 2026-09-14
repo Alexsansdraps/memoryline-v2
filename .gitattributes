@@ -1,0 +1,27 @@
+# Les fins de ligne, fixées une fois pour toutes.
+#
+# Le dépôt est travaillé sous Windows et déployé sous Linux, par une archive
+# fabriquée À PARTIR DE LA COPIE DE TRAVAIL. Si Git convertit un script en fin
+# de ligne Windows (CRLF) sur le poste, l'archive l'emporte ainsi, et le
+# serveur refuse de l'exécuter : « $'\r': command not found ». La sauvegarde de
+# nuit échouerait alors en silence, sans que rien ne le signale.
+#
+# Tout ce qui s'exécute ou se lit sur le serveur reste donc en LF, quoi que
+# fasse Git sur le poste.
+*           text=auto
+*.sh        text eol=lf
+*.mjs       text eol=lf
+Dockerfile  text eol=lf
+Caddyfile*  text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.sql       text eol=lf
+
+# Binaires : jamais touchés.
+*.ttf  binary
+*.otf  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.webp binary
+*.pdf  binary

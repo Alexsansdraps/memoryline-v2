@@ -6,6 +6,7 @@ import type {
   BackgroundDTO,
   CharacterTypeDTO,
   PosterConfig,
+  PosterFormat,
 } from "@memoryline/types";
 import {
   PUBLIC_API_URL,
@@ -34,7 +35,11 @@ export interface ConfiguratorIslandProps {
   /** Décor d'avant-plan du produit (muret/banc…), rendu au 1er plan. */
   foregroundUrl?: string | null;
   /** Réglages par défaut du produit (pré-remplissage), une entrée par ligne. */
-  defaults?: { lignes?: (string | null)[]; view?: string | null };
+  defaults?: {
+    lignes?: (string | null)[];
+    view?: string | null;
+    format?: PosterFormat;
+  };
   /** "add" depuis la fiche produit, "edit" depuis le panier. */
   mode?: "add" | "edit";
   /** Réouverture (edit) : config de la ligne à modifier. */
@@ -45,6 +50,14 @@ export interface ConfiguratorIslandProps {
   onCancel?: () => void;
   /** Stand de salon : aucun montant à l'écran (cf. ConfiguratorProps). */
   sansPrix?: boolean;
+  /**
+   * Le nombre d'exemplaires, choisi sur la fiche produit.
+   *
+   * Il vient de l'extérieur et non du configurateur : on décide combien avant
+   * de composer, au même endroit que pour une affiche prête à imprimer. Une
+   * ligne de panier porte ce nombre ; les exemplaires sont identiques.
+   */
+  quantite?: number;
   /**
    * Prend la main après l'ajout au panier, à la place du renvoi vers /panier.
    * Le stand enchaîne sur son propre écran de validation : la boutique, elle,
@@ -89,7 +102,17 @@ export default function ConfiguratorIsland(
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
+  /**
+   * L'affiche validée part au panier, avec son nombre d'exemplaires.
+   *
+   * La quantité vient du configurateur et non de la configuration : trois
+   * exemplaires d'une affiche, c'est la même affiche trois fois, pas trois
+   * affiches différentes.
+   */
   async function handleSubmit(config: PosterConfig) {
+    // Borné ici aussi : la fiche le borne déjà, mais cet îlot est appelé
+    // depuis plusieurs écrans et rien ne garantit qu'ils le feront tous.
+    const quantite = Math.min(20, Math.max(1, Math.trunc(props.quantite ?? 1) || 1));
     if (saving()) return;
     setSaving(true);
     setError(null);
@@ -112,7 +135,7 @@ export default function ConfiguratorIsland(
         const item = await browserApi.addCartItem(cartId, {
           productId: props.product.id,
           unitPriceCents,
-          quantity: 1,
+          quantity: quantite,
           title: props.product.name,
           config,
         });

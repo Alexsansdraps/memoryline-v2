@@ -7,6 +7,7 @@ import {
   setting,
   formatPrice,
   assetUrl,
+  assetSrcset,
   type Product,
 } from "../../lib/api.ts";
 import {
@@ -57,19 +58,25 @@ try {
 
 /** Un réglage vaut « activé » sauf s'il est explicitement à "off"/"non"/"0". */
 async function visible(cle: string): Promise<boolean> {
+  // Un interrupteur ne se traduit pas : on le lit toujours en français, la
+  // langue de référence. Sans quoi masquer une section en français la
+  // laisserait visible sur /de.
   const v = (await setting(cle, "on")).trim().toLowerCase();
   return !["off", "non", "no", "0", "false"].includes(v);
 }
 
+/** Un texte réglable, dans la langue de la page. */
+const texte = (cle: string, defaut: string) => setting(cle, defaut, langue);
+
 const vitrineVisible = await visible("home.vitrine.visible");
-const vitrineTitre = await setting("home.vitrine.title", "Nos best-sellers ❤️");
+const vitrineTitre = await texte("home.vitrine.title", "Nos best-sellers ❤️");
 /**
  * Texte d'introduction de la vitrine : une ligne par ligne saisie au
  * back-office. Celles qui commencent par un tiret deviennent une puce, les
  * autres restent des phrases — c'est ce que fait la boutique actuelle, et ça
  * laisse la cliente écrire ce qu'elle veut sans passer par un développeur.
  */
-const vitrineTexte = await setting(
+const vitrineTexte = await texte(
   "home.vitrine.subtitle",
   "- Choisissez votre fond\n- Personnalisez votre texte\n- Choisissez vos personnages et personnalisez-les\nVotre affiche prête en 2 minutes !",
 );
@@ -106,18 +113,41 @@ function fourchette(p: Product): string {
  */
 const iaVisible = await visible("home.ia.visible");
 const iaImage = (await setting("home.ia.image", "")).trim();
-const iaTitre = await setting("home.ia.title", "Votre photo, en affiche");
-const iaTexte = await setting(
+const iaTitre = await texte("home.ia.title", "Votre photo, en affiche");
+const iaTexte = await texte(
   "home.ia.text",
   "Envoyez une photo — une maison, une plage, une rue, un souvenir — et retrouvez-la illustrée dans le style Memory Line. Vous voyez le résultat avant de commander.",
 );
-const iaBouton = await setting("home.ia.cta", "Essayer avec ma photo");
+const iaBouton = await texte("home.ia.cta", "Essayer avec ma photo");
 const iaLien = await setting(
   "home.ia.link",
   "/affiches/affiche-ia-a-partir-de-votre-photo",
 );
 
-const lettreTitre = await setting(
+/**
+ * L'ENCART D'ACCUEIL — le premier bloc de la page.
+ *
+ * Une image, un titre, un texte, un bouton. Il sert à annoncer ce qui compte
+ * en ce moment : une nouveauté, une collection, un salon, une promesse.
+ *
+ * Il ne s'affiche QUE si une image lui a été donnée. Un encart sans visuel
+ * est un trou en haut de la page, et c'est l'image qui fait son intérêt —
+ * pour du texte seul, le bandeau d'annonce existe déjà.
+ *
+ * L'image est COMMUNE aux cinq langues, les textes se traduisent. C'est la
+ * règle du reste du site : la forme et les adresses ne se traduisent pas,
+ * sinon chaque langue devient une page indépendante que personne ne tient
+ * plus à jour.
+ */
+const encartVisible = await visible("home.encart.visible");
+const encartImage = (await setting("home.encart.image", "")).trim();
+const encartAlt = await texte("home.encart.alt", "");
+const encartTitre = await texte("home.encart.title", "");
+const encartTexte = await texte("home.encart.text", "");
+const encartBouton = await texte("home.encart.cta", "");
+const encartLien = (await setting("home.encart.link", "")).trim();
+
+const lettreTitre = await texte(
   "home.newsletter.title",
   "Subscribe to our emails",
 );
@@ -127,6 +157,48 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
 ---
 
 <Base langue={langue}>
+  {/* ---------------- Encart d'accueil ----------------
+      Tout en haut, AVANT les affiches — et surtout HORS de la condition de
+      la vitrine : à l'intérieur, il disparaîtrait le jour où la cliente
+      masque la vitrine, ou simplement quand l'API ne renvoie rien. */}
+  {
+    encartVisible && encartImage && (
+      <section class="w-full px-6 pt-10 lg:px-12">
+        <div class="mx-auto grid max-w-[1200px] items-center gap-8 sm:grid-cols-2">
+          <img
+            src={assetUrl(encartImage) ?? encartImage}
+            srcset={assetSrcset(encartImage, [400, 600, 900, 1400])}
+            sizes="(min-width: 640px) 50vw, 100vw"
+            alt={encartAlt || encartTitre}
+            class="w-full rounded-lg object-cover"
+          />
+          <div>
+            {encartTitre && (
+              <h2 class="text-3xl leading-tight">{encartTitre}</h2>
+            )}
+            {encartTexte && (
+              <p class="mt-4 text-lg leading-relaxed text-ink-soft">
+                {encartTexte}
+              </p>
+            )}
+            {encartBouton && encartLien && (
+              <a
+                href={
+                  encartLien.startsWith("http")
+                    ? encartLien
+                    : lien(langue, encartLien)
+                }
+                class="mt-8 inline-block bg-ink px-8 py-3 font-medium text-paper transition-colors hover:bg-ink/85"
+              >
+                {encartBouton}
+              </a>
+            )}
+          </div>
+        </div>
+      </section>
+    )
+  }
+
   {/* ---------------- Les affiches ---------------- */}
   {
     vitrineVisible && vitrine.length > 0 && (
@@ -158,7 +230,7 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
           </a>
         </div>
 
-        <ul class="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+        <ul class="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {vitrine.map((p) => (
             <li class="group ml-apparition">
               <a href={lien(langue, `/affiches/${p.slug}`)} class="block">
@@ -207,8 +279,15 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
         <div
           class="mx-auto grid max-w-[1200px] items-center gap-10 px-6 py-14 lg:grid-cols-2 lg:px-12"
         >
+          {/* `assetUrl` et pas l'adresse brute : « /assets/… » se
+              résoudrait sinon sur l'origine du site, qui ne sert aucun
+              /assets — l'image serait cassée dès que la cliente en pose une.
+              Le srcset laisse un téléphone télécharger la version qu'il
+              affiche, pas celle d'un grand écran. */}
           <img
-            src={iaImage}
+            src={assetUrl(iaImage) ?? iaImage}
+            srcset={assetSrcset(iaImage, [400, 600, 900, 1400])}
+            sizes="(min-width: 1024px) 50vw, 100vw"
             alt={iaTitre}
             loading="lazy"
             class="w-full object-cover"

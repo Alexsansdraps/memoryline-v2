@@ -114,7 +114,18 @@ function catalogue(): Promise<Map<number, FicheLigne>> {
   return catalogueEnCours;
 }
 
-export default function CartIsland(props: { langue?: Langue }): JSX.Element {
+export default function CartIsland(props: {
+  langue?: Langue;
+  /**
+   * Au stand : aucun montant, ni par ligne, ni en total.
+   *
+   * Le panier reste le panier — mêmes articles, mêmes aperçus, mêmes
+   * quantités. Seuls les chiffres s'effacent, parce que la vendeuse annonce
+   * ses prix de salon et qu'un total affiché la contredirait devant le client.
+   * Le code promo disparaît avec eux : une remise sans prix n'a rien à dire.
+   */
+  sansPrix?: boolean;
+}): JSX.Element {
   const tr = t(props.langue ?? LANGUE_DEFAUT);
   const [busy, setBusy] = createSignal<number | null>(null);
 
@@ -527,7 +538,11 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
                       <h2 class="text-lg leading-tight">
                         {it.title ?? "Affiche personnalisée"}
                       </h2>
-                      <p class="mt-1 text-sm">{formatPrice(it.unitPriceCents)}</p>
+                      <Show when={!props.sansPrix}>
+                        <p class="mt-1 text-sm">
+                          {formatPrice(it.unitPriceCents)}
+                        </p>
+                      </Show>
                       <ul class="mt-2 space-y-0.5 text-sm text-ink-soft">
                         <For each={details(it)}>{(d) => <li>{d}</li>}</For>
                       </ul>
@@ -593,7 +608,9 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
                   </div>
 
                   <p class="font-medium sm:text-right">
-                    {formatPrice(it.unitPriceCents * it.quantity)}
+                    <Show when={!props.sansPrix}>
+                      {formatPrice(it.unitPriceCents * it.quantity)}
+                    </Show>
                   </p>
                 </li>
               );
@@ -602,7 +619,7 @@ export default function CartIsland(props: { langue?: Langue }): JSX.Element {
         </ul>
 
         {/* Totaux, alignés à droite comme sur une facture. */}
-        <div class="mt-8 flex justify-end">
+        <div class="mt-8 flex justify-end" style={props.sansPrix ? { display: "none" } : undefined}>
           <div class="w-full max-w-sm text-right">
             <Show when={discount().amount > 0}>
               <div class="flex items-center justify-between text-sm text-ink-soft">
