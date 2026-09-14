@@ -61,7 +61,7 @@ import type { PosterConfig, PosterFormat } from "@memoryline/types";
 // --- Constantes format --------------------------------------------------------
 
 /** Dimensions en pixels @300 DPI (rasterisation). */
-const FORMAT_PX: Record<PosterFormat, { width: number; height: number }> = {
+export const FORMAT_PX: Record<PosterFormat, { width: number; height: number }> = {
   A4: { width: 2480, height: 3508 },
   A3: { width: 3508, height: 4960 },
 };
@@ -846,9 +846,54 @@ export async function renderPosterPdf(
   opts: RenderOptions,
 ): Promise<Buffer> {
   const format: PosterFormat = opts.format ?? config.format ?? "A4";
-  const { width: pw, height: ph } = FORMAT_PT[format];
+  return pdfPleinePage(await renderPosterPng(config, opts), format);
+}
 
-  const pngBytes = await renderPosterPng(config, opts);
+/**
+ * Le PDF d'une affiche PRÊTE À IMPRIMER : son visuel, et rien d'autre.
+ *
+ * Elle n'a ni fond, ni personnage, ni texte à composer : passée par
+ * `renderPosterPdf`, elle sortait en page BLANCHE. Son visuel est posé à la
+ * taille du format commandé, en entier : s'il n'a pas tout à fait les
+ * proportions A4/A3, le reste de la feuille est blanc plutôt que d'y couper
+ * un bout du dessin vendu. Quelques millimètres de blanc disparaissent sous
+ * la feuillure d'un cadre ; un titre rogné, non.
+ *
+ * Même assemblage que les affiches composées : PNG sur blanc, inséré tel quel
+ * dans une page aux dimensions exactes du format. Aucun filigrane.
+ */
+export async function renderImagePdf(
+  image: Buffer,
+  format: PosterFormat,
+): Promise<Buffer> {
+  const { width: W, height: H } = FORMAT_PX[format];
+  const meta = await sharp(image).metadata();
+  // Un SVG n'a pas de pixels : lu à la densité par défaut (72), il sortirait
+  // flou. On le rasterise directement à la taille de la feuille.
+  const source =
+    meta.format === "svg" && meta.width && meta.height
+      ? sharp(image, {
+          density: Math.ceil(72 * Math.max(W / meta.width, H / meta.height)),
+          unlimited: true,
+        })
+      : sharp(image);
+  const png = await source
+    // La photo d'un appareil porte son sens dans ses métadonnées : sans ce
+    // redressement, une image prise en hauteur s'imprimerait couchée.
+    .rotate()
+    .resize({ width: W, height: H, fit: "contain", background: "#ffffff" })
+    // Sur du blanc, en RVB 8 bits : c'est ce que l'insertion sans
+    // recompression sait prendre (voir insererPngTelQuel).
+    .flatten({ background: "#ffffff" })
+    .toColourspace("srgb")
+    .png({ compressionLevel: 6 })
+    .toBuffer();
+  return pdfPleinePage(png, format);
+}
+
+/** Une page aux dimensions exactes du format, le PNG posé plein cadre. */
+async function pdfPleinePage(pngBytes: Buffer, format: PosterFormat): Promise<Buffer> {
+  const { width: pw, height: ph } = FORMAT_PT[format];
 
   const doc = await PDFDocument.create();
   const page = doc.addPage([pw, ph]);

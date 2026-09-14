@@ -1950,7 +1950,43 @@ export function mountOrderRoutes(app: Hono): void {
       amountCents: order.totalCents,
     });
 
-    const encaissee = await markOrderPaid(id, "manuel", externalRef);
+    // Le montant déclaré reçu est le total lu plus haut : si la commande a
+    // bougé depuis — la cliente a modifié son panier, elle est revenue en
+    // panier —, markOrderPaid ne valide rien.
+    const encaissee = await markOrderPaid(id, "manuel", externalRef, {
+      montantCents: order.totalCents,
+      devise: "EUR",
+    });
+    if (!encaissee) {
+      // La ligne de paiement posée à l'instant ne correspond à aucun
+      // encaissement : la laisser « en attente » ferait croire à un règlement
+      // en cours.
+      await db
+        .delete(schema.payments)
+        .where(
+          and(
+            eq(schema.payments.orderId, id),
+            eq(schema.payments.externalRef, externalRef),
+            eq(schema.payments.status, "pending"),
+          ),
+        );
+      const [maintenant] = await db
+        .select({ status: schema.orders.status })
+        .from(schema.orders)
+        .where(eq(schema.orders.id, id));
+      if (maintenant?.status === "paid")
+        return c.json({
+          ok: true,
+          deja: true,
+          message: `La commande ${order.number} était déjà marquée payée. Rien n'a été encaissé une seconde fois.`,
+        });
+      return c.json(
+        {
+          error: `La commande ${order.number} a changé pendant la saisie : la cliente a modifié son panier, et son total n'est plus ${(order.totalCents / 100).toFixed(2).replace(".", ",")} €. Rien n'a été encaissé. Rechargez la page pour voir ce qu'elle contient maintenant.`,
+        },
+        409,
+      );
+    }
 
     await db.insert(schema.orderEvents).values({
       orderId: id,

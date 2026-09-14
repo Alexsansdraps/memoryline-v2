@@ -65,7 +65,7 @@ import {
   capturePaypalOrder,
   RefusPaypal,
   createStripeIntent,
-  getStripeIntentStatus,
+  getStripeIntent,
   paypalConfigured,
   stripeConfigured,
   verifyStripeEvent,
@@ -120,66 +120,145 @@ function suffixeCadre(nomCadre: string | null | undefined): string {
 }
 
 /**
- * Enregistre le fichier d'impression d'une ligne de commande (print_file) et
- * lance sa fabrication en arrière-plan (fichiers-impression.ts).
+ * Enregistre les fichiers d'impression d'une commande (print_file), un par
+ * ligne, et — sur demande — lance leur fabrication en arrière-plan
+ * (fichiers-impression.ts).
+ *
+ * Une commande entière d'un coup, et plus ligne par ligne : le nom d'une
+ * ligne dépend de ceux de ses voisines. Deux affiches identiques de la même
+ * commande s'appelaient pareil — et au stand, où rien n'était enregistré, le
+ * nom était recalculé à chaque téléchargement, sans aucune numérotation.
+ *
+ * EXPORTÉE pour le stand (salon.ts), qui encaisse sans passer par
+ * markOrderPaid. Une ligne déjà nommée garde son nom : on peut rappeler la
+ * fonction sans rien renommer.
  */
-async function generatePrintFile(
-  orderItemId: number,
-  config: PosterConfig,
-  customerName: string,
-  orderNumber: string,
-  format: "A4" | "A3",
-): Promise<{ filename: string }> {
-  // « dupont_A3_bois.pdf » : le nom se lit d'un coup d'œil au moment
-  // d'imprimer, sans avoir à rouvrir la commande pour savoir quel papier
-  // charger ni quel cadre sortir.
-  const [cadre] = config.frameId
-    ? await db
-        .select({ name: schema.frames.name })
-        .from(schema.frames)
-        .where(eq(schema.frames.id, Number(config.frameId)))
-    : [];
-  const base = `${slugifyName(customerName)}_${format}_${suffixeCadre(cadre?.name)}`;
+export async function enregistrerFichiersDImpression(
+  orderId: number,
+  { preparer }: { preparer: boolean },
+): Promise<void> {
+  const [order] = await db
+    .select({ customerId: schema.orders.customerId })
+    .from(schema.orders)
+    .where(eq(schema.orders.id, orderId));
+  if (!order) return;
+  let customerName = "client";
+  if (order.customerId != null) {
+    const [cust] = await db
+      .select({ name: schema.customers.name })
+      .from(schema.customers)
+      .where(eq(schema.customers.id, order.customerId));
+    if (cust?.name) customerName = cust.name;
+  }
 
-  // Deux affiches identiques dans la même commande porteraient le même nom :
-  // on numérote à partir de la deuxième, jamais la première.
-  const [ligne] = await db
-    .select({ orderId: schema.orderItems.orderId })
+  // Dans l'ordre des lignes : la première affiche d'une série garde le nom
+  // simple, la suivante prend « -2 », d'un téléchargement à l'autre.
+  const lignes = await db
+    .select()
     .from(schema.orderItems)
-    .where(eq(schema.orderItems.id, orderItemId));
-  const dejaPris = ligne
+    .where(eq(schema.orderItems.orderId, orderId))
+    .orderBy(asc(schema.orderItems.id));
+  const dejaPris = lignes.length
     ? await db
-        .select({ filename: schema.printFiles.filename })
+        .select({
+          orderItemId: schema.printFiles.orderItemId,
+          filename: schema.printFiles.filename,
+        })
         .from(schema.printFiles)
-        .innerJoin(
-          schema.orderItems,
-          eq(schema.printFiles.orderItemId, schema.orderItems.id),
+        .where(
+          inArray(
+            schema.printFiles.orderItemId,
+            lignes.map((l) => l.id),
+          ),
         )
-        .where(eq(schema.orderItems.orderId, ligne.orderId))
     : [];
   const noms = new Set(dejaPris.map((f) => f.filename));
-  let filename = `${base}.pdf`;
-  for (let i = 2; noms.has(filename); i++) filename = `${base}-${i}.pdf`;
-  // La trace du fichier, sous son nom définitif ; le PDF, lui, se range dans
-  // data/assets/cache/impressions (fichiers-impression.ts).
-  await db
-    .insert(schema.printFiles)
-    .values({
-      orderItemId,
-      url: `/print-files/${orderItemId}`,
-      filename,
-      format,
-    })
-    .onConflictDoNothing();
+  const nommees = new Set(dejaPris.map((f) => f.orderItemId));
+  const cadres = await db
+    .select({ id: schema.frames.id, name: schema.frames.name })
+    .from(schema.frames);
 
-  // Le PDF lui-même se fabrique derrière : de quelques secondes à plus d'une
-  // minute pour le premier rendu d'un fond, que la cliente n'a pas à attendre
-  // sur l'écran de paiement. Il sera prêt quand on viendra le télécharger.
-  preparerFichierDImpression(orderItemId, config);
-  return { filename };
+  for (const it of lignes) {
+    const cfg = it.config as PosterConfig | null;
+    if (!cfg) continue;
+    if (!nommees.has(it.id)) {
+      const format = (cfg.format ?? "A4") as "A4" | "A3";
+      // « dupont_A3_bois.pdf » : le nom se lit d'un coup d'œil au moment
+      // d'imprimer, sans avoir à rouvrir la commande pour savoir quel papier
+      // charger ni quel cadre sortir.
+      const cadre = cfg.frameId
+        ? cadres.find((f) => f.id === Number(cfg.frameId))
+        : undefined;
+      const base = `${slugifyName(customerName)}_${format}_${suffixeCadre(cadre?.name)}`;
+      // Deux affiches identiques dans la même commande porteraient le même
+      // nom : on numérote à partir de la deuxième, jamais la première.
+      let filename = `${base}.pdf`;
+      for (let i = 2; noms.has(filename); i++) filename = `${base}-${i}.pdf`;
+      noms.add(filename);
+      try {
+        // La trace du fichier, sous son nom définitif ; le PDF, lui, se range
+        // dans data/assets/cache/impressions (fichiers-impression.ts).
+        await db.insert(schema.printFiles).values({
+          orderItemId: it.id,
+          url: `/print-files/${it.id}`,
+          filename,
+          format,
+        });
+      } catch (e) {
+        console.error("Fichier d'impression non enregistré (item " + it.id + ") :", e);
+      }
+    }
+    // Le PDF lui-même se fabrique derrière : de quelques secondes à plus
+    // d'une minute pour le premier rendu d'un fond, que la cliente n'a pas à
+    // attendre sur l'écran de paiement. Il sera prêt quand on viendra le
+    // télécharger.
+    if (preparer) preparerFichierDImpression(it.id, cfg);
+  }
 }
 
 // --- Tarification & paiement -------------------------------------------------
+
+/** Une transaction ouverte par `db.transaction`. */
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Là où passent les requêtes d'un calcul : la base, ou la transaction en
+ * cours.
+ *
+ * Un calcul fait SOUS LE VERROU d'une commande doit lire par la transaction
+ * qui tient ce verrou : elle seule voit la ligne qu'elle vient d'écrire, et
+ * une requête partie par `db` prendrait une seconde connexion du pool
+ * pendant que la première attend — dix paniers modifiés à la fois, et plus
+ * aucune connexion ne se libère.
+ */
+type Executeur = typeof db | Transaction;
+
+/**
+ * Relit une commande en la VERROUILLANT jusqu'à la fin de la transaction.
+ *
+ * C'est ce verrou qui met en file les deux côtés d'un paiement : une
+ * modification du panier (ligne écrite, commande repassée en panier) et la
+ * validation d'un encaissement (lignes relues, montant comparé, commande
+ * marquée payée). Sans lui, une modification pouvait tomber entre la
+ * vérification du montant et le passage en « payée » : une affiche passée de
+ * l'A4 à l'A3 x5 était validée au prix d'un seul A4.
+ *
+ * « no key update » plutôt que « update » : le verrou bloque tout ce qui
+ * MODIFIE la commande, mais laisse passer ce qui s'y RATTACHE — une ligne de
+ * journal, un paiement —, dont la clé étrangère n'a besoin que de savoir que
+ * la commande existe.
+ */
+async function commandeVerrouillee(
+  tx: Transaction,
+  condition: ReturnType<typeof eq>,
+): Promise<typeof schema.orders.$inferSelect | null> {
+  const [order] = await tx
+    .select()
+    .from(schema.orders)
+    .where(condition)
+    .for("no key update");
+  return order ?? null;
+}
 
 /** Ligne de commande minimale pour le calcul de prix. */
 type PricedItem = {
@@ -201,7 +280,10 @@ type PricedItem = {
  * La cascade variante → produit → catégorie vit dans @memoryline/types, et le
  * cadre s'ajoute par-dessus : c'est un objet de plus dans le colis.
  */
-async function poidsDuPanier(items: PricedItem[]): Promise<number> {
+async function poidsDuPanier(
+  items: PricedItem[],
+  ex: Executeur = db,
+): Promise<number> {
   const produitIds = [
     ...new Set(items.map((i) => i.productId).filter((v): v is number => !!v)),
   ];
@@ -222,7 +304,7 @@ async function poidsDuPanier(items: PricedItem[]): Promise<number> {
 
   const [produits, variantes, cadres] = await Promise.all([
     produitIds.length
-      ? db
+      ? ex
           .select({
             id: schema.products.id,
             weightGrams: schema.products.weightGrams,
@@ -232,7 +314,7 @@ async function poidsDuPanier(items: PricedItem[]): Promise<number> {
           .where(inArray(schema.products.id, produitIds))
       : [],
     produitIds.length
-      ? db
+      ? ex
           .select({
             productId: schema.variants.productId,
             format: schema.variants.format,
@@ -242,7 +324,7 @@ async function poidsDuPanier(items: PricedItem[]): Promise<number> {
           .where(inArray(schema.variants.productId, produitIds))
       : [],
     cadreIds.length
-      ? db
+      ? ex
           .select({
             id: schema.frames.id,
             weightGrams: schema.frames.weightGrams,
@@ -256,7 +338,7 @@ async function poidsDuPanier(items: PricedItem[]): Promise<number> {
   // souvent plusieurs. Une seule requête pour tout le panier : une par produit
   // sur le chemin qui calcule les frais de port serait payée à chaque ajout.
   const rangements = produitIds.length
-    ? await db
+    ? await ex
         .select({
           productId: schema.productCollections.productId,
           defaultWeightGrams: schema.collections.defaultWeightGrams,
@@ -343,14 +425,15 @@ async function resolveUnitPriceCents(
   productId: number | null | undefined,
   format: string | null | undefined,
   frameId?: string | number | null,
+  ex: Executeur = db,
 ): Promise<number> {
   if (productId == null || !Number.isFinite(productId)) return 0;
-  const [product] = await db
+  const [product] = await ex
     .select({ basePriceCents: schema.products.basePriceCents })
     .from(schema.products)
     .where(eq(schema.products.id, productId));
   if (!product) return 0;
-  const [variant] = await db
+  const [variant] = await ex
     .select({ priceCents: schema.variants.priceCents })
     .from(schema.variants)
     .where(
@@ -365,7 +448,7 @@ async function resolveUnitPriceCents(
   // jamais son mot à dire sur un montant.
   let cadre = 0;
   if (frameId != null && frameId !== "") {
-    const [f] = await db
+    const [f] = await ex
       .select({ priceCents: schema.frames.priceCents })
       .from(schema.frames)
       .where(
@@ -380,22 +463,40 @@ async function resolveUnitPriceCents(
 }
 
 /**
- * Charge une ligne de panier EN VÉRIFIANT qu'elle appartient bien au panier
- * `cartId`. Sans ce contrôle, l'id de ligne (entier séquentiel) suffirait à
- * modifier ou supprimer la ligne du panier de quelqu'un d'autre.
+ * Le panier `cartId`, VERROUILLÉ jusqu'à la fin de la transaction
+ * (commandeVerrouillee) — ou null s'il n'accepte plus de modification.
+ *
+ * Le statut se lit SOUS le verrou : lu avant, il pouvait être « en attente »
+ * au moment du contrôle et « payée » au moment d'écrire la ligne.
  */
-async function loadCartItem(cartId: string, itemId: number) {
-  if (!Number.isFinite(itemId)) return null;
-  const [order] = await db
-    .select({ id: schema.orders.id, status: schema.orders.status })
-    .from(schema.orders)
-    .where(eq(schema.orders.clientOrderId, cartId));
+async function panierModifiable(tx: Transaction, cartId: string) {
+  const order = await commandeVerrouillee(
+    tx,
+    eq(schema.orders.clientOrderId, cartId),
+  );
   // Un panier devenu commande est clos. Sans cette garde, l'identifiant de
   // panier resté dans le navigateur suffisait à modifier une affiche DÉJÀ
   // PAYÉE — passer d'un A4 à un A3, au prix de l'A4 — ou à en retirer une.
+  // Une commande EN ATTENTE reste modifiable, mais elle repasse alors en
+  // panier, et son ancien montant ne vaut plus rien (panierModifie).
   if (!order || (order.status !== "draft" && order.status !== "pending"))
     return null;
-  const [item] = await db
+  return order;
+}
+
+/**
+ * Charge une ligne de panier EN VÉRIFIANT qu'elle appartient bien au panier
+ * `cartId`. Sans ce contrôle, l'id de ligne (entier séquentiel) suffirait à
+ * modifier ou supprimer la ligne du panier de quelqu'un d'autre.
+ *
+ * Le panier revient verrouillé avec elle (panierModifiable) : l'écriture de
+ * la ligne et le retour en panier se font dans la même transaction.
+ */
+async function loadCartItem(tx: Transaction, cartId: string, itemId: number) {
+  if (!Number.isFinite(itemId)) return null;
+  const order = await panierModifiable(tx, cartId);
+  if (!order) return null;
+  const [item] = await tx
     .select()
     .from(schema.orderItems)
     .where(
@@ -404,29 +505,85 @@ async function loadCartItem(cartId: string, itemId: number) {
         eq(schema.orderItems.orderId, order.id),
       ),
     );
-  return item ?? null;
+  return item ? { order, item } : null;
 }
 
 /**
- * Remonte l'horloge d'inactivité d'un panier : quelque chose vient d'y bouger.
+ * Une ligne du panier vient d'être ajoutée, modifiée ou retirée — dans la
+ * transaction `tx`, qui tient le verrou de la commande (panierModifiable).
  *
- * À appeler PARTOUT où le panier ou le tunnel change — ajout, modification,
- * suppression d'un article, passage à la commande. C'est le cœur du troisième
- * critère d'abandon : sans cette date, l'inactivité ne se mesure pas, et un
- * client qui compose son affiche depuis une heure serait déclaré parti.
+ * Remonte d'abord l'horloge d'inactivité. À faire PARTOUT où le panier ou le
+ * tunnel change : c'est le cœur du troisième critère d'abandon. Sans cette
+ * date, l'inactivité ne se mesure pas, et un client qui compose son affiche
+ * depuis une heure serait déclaré parti.
  *
- * Ne lève jamais : une horloge qui n'a pas pu s'écrire ne doit pas empêcher
- * quelqu'un d'ajouter une affiche à son panier.
+ * Et surtout : si la commande était EN ATTENTE DE PAIEMENT, elle repasse en
+ * panier. Son total avait été figé au passage en caisse, et le paiement
+ * ouvert à ce moment-là — carte ou PayPal — l'avait été pour ce montant. Le
+ * laisser tel quel permettait de passer un A4 en A3 puis de payer le prix de
+ * l'A4.
+ *
+ * Revenue en panier, la commande garde son numéro, sa cliente et son adresse ;
+ * son total est recalculé pour ce qu'elle contient désormais. Le prochain
+ * passage en caisse la remet en attente et ouvre un paiement au bon montant,
+ * et aucun paiement ne peut plus s'ouvrir d'ici là (voir la route du
+ * PaymentIntent). Un paiement déjà ouvert qui aboutirait quand même est
+ * vérifié à l'arrivée, sous le même verrou (markOrderPaid).
+ *
+ * Le total reste ensuite à jour à chaque nouvelle modification : c'est lui
+ * que la relance de panier abandonné annonce à la cliente. Un panier qui
+ * n'est jamais passé en caisse, lui, n'a pas de total à tenir.
  */
-async function panierABouge(orderId: number): Promise<void> {
-  try {
-    await db
+async function panierModifie(
+  tx: Transaction,
+  order: typeof schema.orders.$inferSelect,
+): Promise<void> {
+  const maintenant = new Date();
+  const rouverte = order.status === "pending";
+  // Passé en caisse = une cliente rattachée : c'est le passage en caisse qui
+  // la pose.
+  if (!rouverte && order.customerId == null) {
+    await tx
       .update(schema.orders)
-      .set({ lastActivityAt: new Date() })
-      .where(eq(schema.orders.id, orderId));
-  } catch (e) {
-    console.error("[panier] horloge d'activité non écrite", e);
+      .set({ lastActivityAt: maintenant })
+      .where(eq(schema.orders.id, order.id));
+    return;
   }
+
+  // Le recalcul se fait dans un point de reprise : s'il échoue, la ligne
+  // reste écrite et la commande repasse quand même en panier — c'est ce qui
+  // protège. Le total sera de toute façon recalculé au prochain passage en
+  // caisse, et une panne de calcul ne doit pas empêcher quelqu'un de modifier
+  // son panier.
+  let valeur: Awaited<ReturnType<typeof valeurDesLignes>> | null = null;
+  try {
+    valeur = await tx.transaction((sp) => valeurDesLignes(order, maintenant, sp));
+  } catch (e) {
+    console.error("[panier] total non recalculé après modification", e);
+  }
+  await tx
+    .update(schema.orders)
+    .set({
+      status: "draft",
+      lastActivityAt: maintenant,
+      ...(valeur
+        ? {
+            totalCents: valeur.totalCents,
+            shippingCents: valeur.shippingCents,
+            weightGrams: valeur.poidsGrammes,
+          }
+        : {}),
+    })
+    .where(eq(schema.orders.id, order.id));
+  if (rouverte)
+    await tx.insert(schema.orderEvents).values({
+      orderId: order.id,
+      kind: "event",
+      message:
+        `Panier modifié après le passage en caisse : la commande repasse en panier ` +
+        `(${euros(order.totalCents)} → ${valeur ? euros(valeur.totalCents) : "total à recalculer"}). ` +
+        `Un paiement ouvert pour l'ancien montant ne la validera plus, sauf si elle revient à ce montant.`,
+    });
 }
 
 /**
@@ -440,8 +597,10 @@ async function panierABouge(orderId: number): Promise<void> {
 async function computeOrderTotalCents(
   items: PricedItem[],
   code?: string | null,
+  maintenant: Date = new Date(),
+  ex: Executeur = db,
 ): Promise<number> {
-  const rules = await db.select().from(schema.promoRules);
+  const rules = await ex.select().from(schema.promoRules);
   const lignes = items.map((it) => ({
     unitPriceCents: it.unitPriceCents,
     quantity: it.quantity,
@@ -451,7 +610,7 @@ async function computeOrderTotalCents(
   // Le code passe par le moteur, qui décide seul s'il ouvre droit à une
   // remise : le navigateur peut envoyer ce qu'il veut, un code inconnu ou
   // expiré ne change rien au montant.
-  return totalPanierCents(lignes, rules, new Date(), code ? [code] : []);
+  return totalPanierCents(lignes, rules, maintenant, code ? [code] : []);
 }
 
 /**
@@ -466,6 +625,8 @@ async function computeShippingCents(
   modeSlug: string,
   pays: string,
   code?: string | null,
+  maintenant: Date = new Date(),
+  ex: Executeur = db,
 ): Promise<{
   cents: number;
   label: string;
@@ -473,13 +634,13 @@ async function computeShippingCents(
   poidsGrammes: number;
 } | null> {
   const [zones, modes, tarifs, regles] = await Promise.all([
-    db.select().from(schema.shippingZones),
-    db
+    ex.select().from(schema.shippingZones),
+    ex
       .select()
       .from(schema.shippingMethods)
       .where(eq(schema.shippingMethods.active, true)),
-    db.select().from(schema.shippingRates),
-    db.select().from(schema.promoRules),
+    ex.select().from(schema.shippingRates),
+    ex.select().from(schema.promoRules),
   ]);
   const lignes = items.map((it) => ({
     unitPriceCents: it.unitPriceCents,
@@ -490,11 +651,11 @@ async function computeShippingCents(
   // le client voit à l'écran, et c'est le montant qu'il paie vraiment.
   const apresRemise =
     sousTotalCents(lignes) -
-    remisesPanier(lignes, regles, new Date(), code ? [code] : []).remiseCents;
+    remisesPanier(lignes, regles, maintenant, code ? [code] : []).remiseCents;
   // Le poids décide de la tranche d'affranchissement : un mode dont aucune
   // tranche ne couvre le colis n'est pas proposable, et la commande est
   // refusée plutôt que sous-affranchie.
-  const poids = await poidsDuPanier(items);
+  const poids = await poidsDuPanier(items, ex);
   const option = fraisDePort(
     { zones, modes, tarifs },
     modeSlug,
@@ -504,7 +665,7 @@ async function computeShippingCents(
     // La promotion « livraison offerte dès X € », si la boutique en a une.
     // C'est le serveur qui décide du port encaissé : l'écran l'affiche, il
     // ne le calcule pas pour lui.
-    seuilPortOffertCents(regles, new Date(), code ? [code] : []),
+    seuilPortOffertCents(regles, maintenant, code ? [code] : []),
   );
   if (!option) return null;
   return {
@@ -514,6 +675,283 @@ async function computeShippingCents(
     poidsGrammes: poids,
   };
 }
+
+/**
+ * Ce que vaut une commande d'après ses lignes ACTUELLES : articles, remise du
+ * code retenu, et port du mode choisi.
+ *
+ * `totalCents` est figé au passage en caisse ; les lignes, elles, pouvaient
+ * encore bouger ensuite. C'est ce recalcul qui fait foi quand un paiement
+ * arrive, et quand un panier modifié repasse en brouillon.
+ *
+ * `maintenant` fixe l'heure à laquelle se lisent les promotions : celle du
+ * passage en caisse pour vérifier un paiement. Une remise qui expire à minuit
+ * ne doit pas faire refuser un paiement ouvert à 23 h 58 et confirmé à
+ * 0 h 01.
+ *
+ * `livrable` est faux quand le mode de livraison choisi ne sait plus porter
+ * ce colis : le total rendu n'a alors pas de port, et ne peut rien valider.
+ */
+async function valeurDesLignes(
+  order: typeof schema.orders.$inferSelect,
+  maintenant: Date,
+  ex: Executeur = db,
+): Promise<{
+  totalCents: number;
+  shippingCents: number;
+  poidsGrammes: number;
+  livrable: boolean;
+}> {
+  const items = await ex
+    .select()
+    .from(schema.orderItems)
+    .where(eq(schema.orderItems.orderId, order.id));
+  const articles = await computeOrderTotalCents(items, order.promoCode, maintenant, ex);
+  // Une commande sans mode de livraison (reprise de l'ancienne boutique) garde
+  // le port qu'elle porte : il n'y a rien pour le recalculer.
+  if (!order.shippingMethod)
+    return {
+      totalCents: articles + order.shippingCents,
+      shippingCents: order.shippingCents,
+      poidsGrammes: order.weightGrams,
+      livrable: true,
+    };
+  const port = await computeShippingCents(
+    items,
+    order.shippingMethod,
+    order.shippingCountry || "FR",
+    order.promoCode,
+    maintenant,
+    ex,
+  );
+  if (!port)
+    return {
+      totalCents: articles,
+      shippingCents: 0,
+      poidsGrammes: await poidsDuPanier(items, ex),
+      livrable: false,
+    };
+  return {
+    totalCents: articles + port.cents,
+    shippingCents: port.cents,
+    poidsGrammes: port.poidsGrammes,
+    livrable: true,
+  };
+}
+
+/** Des centimes, écrits comme sur une facture : « 19,00 € ». */
+function euros(cents: number): string {
+  return `${(cents / 100).toFixed(2).replace(".", ",")} €`;
+}
+
+/** Ce qu'un prestataire dit avoir réellement encaissé. */
+export interface MontantRecu {
+  montantCents: number;
+  /** Code ISO de la devise, dans la casse du prestataire (« eur », « EUR »). */
+  devise: string;
+}
+
+/**
+ * Un encaissement qui ne correspond pas à ce que vaut la commande.
+ *
+ * Levée par markOrderPaid : la commande n'est PAS marquée payée, l'écart est
+ * écrit au journal de la commande, et la route qui l'attrape répond une
+ * erreur au navigateur. Le message est celui de la cliente.
+ */
+export class MontantEncaisseDifferent extends Error {
+  constructor(
+    readonly attenduCents: number,
+    readonly recuCents: number,
+  ) {
+    super(
+      `Votre paiement de ${euros(recuCents)} a bien été reçu, mais votre panier a changé pendant le paiement ` +
+        `et vaut maintenant ${euros(attenduCents)}. Votre commande n'est donc pas encore validée : ` +
+        `nous revenons vers vous très vite pour régulariser. Inutile de payer une seconde fois.`,
+    );
+    this.name = "MontantEncaisseDifferent";
+  }
+}
+
+/**
+ * Vérifie qu'un paiement en ligne couvre EXACTEMENT ce que vaut la commande,
+ * recalculée depuis ses lignes. Rend le montant validé, ou l'écart constaté.
+ *
+ * La faille qu'elle ferme : le paiement était créé pour le panier du passage
+ * en caisse, et le panier restait modifiable ensuite. Passer une affiche de
+ * l'A4 à l'A3, puis payer l'ancien paiement, livrait un A3 au prix d'un A4 —
+ * et la commande passait « payée » sans que rien ne le signale.
+ *
+ * S'appelle dans la transaction de markOrderPaid, qui tient le verrou de la
+ * commande : les lignes comparées sont celles qui seront payées, aucune
+ * modification du panier ne peut se glisser entre les deux.
+ *
+ * Sur un écart, rien n'est effacé et rien n'est validé : l'argent est bien
+ * arrivé chez le prestataire, il faut le rendre ou le compléter. La ligne de
+ * paiement passe en « montant_different » avec la somme réellement reçue, et
+ * le journal de la commande dit quoi faire — une seule fois, même si le
+ * prestataire rejoue son avis.
+ */
+async function verifierEncaissement(
+  tx: Transaction,
+  order: typeof schema.orders.$inferSelect,
+  provider: "stripe" | "paypal",
+  externalRef: string,
+  recu: MontantRecu,
+): Promise<{ valide: true; montantCents: number } | { valide: false; attenduCents: number }> {
+  const valeur = await valeurDesLignes(order, order.lastActivityAt ?? new Date(), tx);
+  const devise = recu.devise.trim().toUpperCase();
+  if (
+    valeur.livrable &&
+    devise === "EUR" &&
+    Number.isInteger(recu.montantCents) &&
+    recu.montantCents === valeur.totalCents
+  )
+    return { valide: true, montantCents: valeur.totalCents };
+
+  const nomPrestataire = provider === "stripe" ? "Stripe" : "PayPal";
+  console.error(
+    `[paiement] ${order.number} : ${nomPrestataire} ${externalRef} a encaissé ${recu.montantCents} ${devise || "?"}, ` +
+      `la commande vaut ${valeur.totalCents} EUR${valeur.livrable ? "" : " (livraison impossible)"} — NON marquée payée`,
+  );
+
+  const [paiement] = await tx
+    .select({ id: schema.payments.id, status: schema.payments.status })
+    .from(schema.payments)
+    .where(
+      and(
+        eq(schema.payments.orderId, order.id),
+        eq(schema.payments.externalRef, externalRef),
+      ),
+    );
+  if (paiement?.status !== "montant_different") {
+    if (paiement)
+      await tx
+        .update(schema.payments)
+        .set({ status: "montant_different", amountCents: recu.montantCents })
+        .where(eq(schema.payments.id, paiement.id));
+    else
+      // Un paiement que nous n'avions pas ouvert — ou plus trace : on le garde
+      // quand même, c'est de l'argent reçu.
+      await tx.insert(schema.payments).values({
+        orderId: order.id,
+        provider,
+        externalRef,
+        status: "montant_different",
+        amountCents: recu.montantCents,
+      });
+    const recuEnClair =
+      devise === "EUR" ? euros(recu.montantCents) : `${recu.montantCents / 100} ${devise || "(devise inconnue)"}`;
+    await tx.insert(schema.orderEvents).values({
+      orderId: order.id,
+      kind: "event",
+      message:
+        `ÉCART DE PAIEMENT : ${nomPrestataire} a encaissé ${recuEnClair} (${externalRef}), ` +
+        `mais la commande vaut ${euros(valeur.totalCents)} d'après ses lignes actuelles` +
+        (valeur.livrable
+          ? ""
+          : ", sans compter le port : le mode de livraison choisi ne sait plus porter ce colis") +
+        `. Le panier a sans doute été modifié pendant le paiement. La commande n'a PAS été marquée payée : ` +
+        `voyez avec la cliente, puis remboursez ce paiement depuis votre compte ${nomPrestataire} ; ` +
+        `elle pourra repasser commande au bon montant.`,
+    });
+  }
+  return { valide: false, attenduCents: valeur.totalCents };
+}
+
+/** Ce paiement est-il celui qui a déjà réglé la commande (avis rejoué) ? */
+async function dejaEncaisse(
+  tx: Transaction,
+  orderId: number,
+  externalRef: string,
+): Promise<boolean> {
+  const [paiement] = await tx
+    .select({ id: schema.payments.id })
+    .from(schema.payments)
+    .where(
+      and(
+        eq(schema.payments.orderId, orderId),
+        eq(schema.payments.externalRef, externalRef),
+        eq(schema.payments.status, "succeeded"),
+      ),
+    );
+  if (paiement) return true;
+  const [vente] = await tx
+    .select({ id: schema.orderTransactions.id })
+    .from(schema.orderTransactions)
+    .where(
+      and(
+        eq(schema.orderTransactions.orderId, orderId),
+        eq(schema.orderTransactions.kind, "sale"),
+        eq(schema.orderTransactions.externalRef, externalRef),
+      ),
+    );
+  return Boolean(vente);
+}
+
+/**
+ * Un SECOND paiement aboutit sur une commande déjà payée.
+ *
+ * C'est la suite naturelle d'un panier modifié pendant le paiement : l'ancien
+ * paiement, ouvert pour l'ancien montant, peut encore aboutir après que la
+ * cliente a payé le nouveau. Ou deux onglets qui paient au même instant : le
+ * verrou de markOrderPaid les fait passer l'un après l'autre, et le second
+ * arrive ici. On le marquait « succeeded » en silence — deux encaissements
+ * pour une affiche, sans que personne ne le voie. Il passe en « en_trop », et
+ * le journal de la commande dit de le rembourser — une seule fois, même si le
+ * prestataire rejoue son avis.
+ */
+async function signalerPaiementEnTrop(
+  tx: Transaction,
+  order: typeof schema.orders.$inferSelect,
+  provider: "stripe" | "paypal",
+  externalRef: string,
+  recu: MontantRecu,
+): Promise<void> {
+  const nomPrestataire = provider === "stripe" ? "Stripe" : "PayPal";
+  const montant = recu.montantCents;
+  console.error(
+    `[paiement] ${order.number} : ${nomPrestataire} ${externalRef} a encaissé ${montant} alors que la commande était déjà payée`,
+  );
+  const [paiement] = await tx
+    .select({ id: schema.payments.id, status: schema.payments.status })
+    .from(schema.payments)
+    .where(
+      and(
+        eq(schema.payments.orderId, order.id),
+        eq(schema.payments.externalRef, externalRef),
+      ),
+    );
+  // Déjà signalé : en trop, ou déjà relevé comme écart — le journal dit déjà
+  // de le rembourser.
+  if (paiement?.status === "en_trop" || paiement?.status === "montant_different") return;
+  if (paiement)
+    await tx
+      .update(schema.payments)
+      .set({ status: "en_trop", amountCents: montant })
+      .where(eq(schema.payments.id, paiement.id));
+  else
+    await tx.insert(schema.payments).values({
+      orderId: order.id,
+      provider,
+      externalRef,
+      status: "en_trop",
+      amountCents: montant,
+    });
+  await tx.insert(schema.orderEvents).values({
+    orderId: order.id,
+    kind: "event",
+    message:
+      `PAIEMENT EN TROP : ${nomPrestataire} a encaissé ${euros(montant)} (${externalRef}) ` +
+      `alors que la commande était déjà payée — sans doute un paiement ouvert avant une modification du panier, ` +
+      `ou un second paiement parti au même moment. Remboursez-le depuis votre compte ${nomPrestataire}.`,
+  });
+}
+
+/** Ce que la transaction de markOrderPaid a conclu. */
+type ConclusionEncaissement =
+  | { issue: "payee"; order: typeof schema.orders.$inferSelect }
+  | { issue: "ecart"; attenduCents: number; recuCents: number }
+  | { issue: "sans_suite" };
 
 /**
  * Passe une commande de `pending` à `paid` et génère les PDF — UNE SEULE FOIS
@@ -533,76 +971,145 @@ async function computeShippingCents(
  * corps de la fonction ne le distingue de rien, il le recopie sur la ligne de
  * paiement et au grand livre — où la page Finances sait déjà l'écrire en
  * français.
+ *
+ * TOUT ENCAISSEMENT DIT COMBIEN IL A REÇU (`recu`).
+ *  - En ligne, c'est ce que le prestataire a réellement pris. La commande
+ *    n'est marquée payée que si ce montant est exactement ce qu'elle vaut,
+ *    recalculée depuis ses lignes du moment ; sinon
+ *    {@link MontantEncaisseDifferent} est levée et rien n'est validé (voir
+ *    verifierEncaissement).
+ *  - « manuel », c'est le total que la boutique déclare avoir reçu, lu sur la
+ *    fiche d'une commande en attente. Si la commande est revenue en panier
+ *    entre-temps (panierModifie) ou ne vaut plus ce total, rien n'est validé
+ *    et la fonction rend false : la route le dit à la boutique.
+ *
+ * Tout se décide dans UNE transaction, sous le verrou de la commande
+ * (commandeVerrouillee) : relire la commande, comparer le montant, écrire le
+ * paiement, passer en « payée », inscrire la vente au grand livre. Les
+ * routes du panier prennent le même verrou pour écrire une ligne : l'une
+ * attend que l'autre ait fini. Le webhook Stripe et la confirmation du
+ * navigateur qui arrivent au même instant passent aussi l'un après l'autre :
+ * le second trouve la commande payée, et la vente ne s'écrit qu'une fois.
+ *
+ * Les suites — relance récupérée, affiches IA, fichiers d'impression,
+ * courriers — viennent APRÈS la transaction : une commande est payée pour de
+ * bon avant qu'on envoie quoi que ce soit.
  */
 export async function markOrderPaid(
   orderId: number,
   provider: "stripe" | "paypal" | "manuel",
   externalRef: string,
+  recu: MontantRecu,
 ): Promise<boolean> {
-  const [order] = await db
-    .select()
-    .from(schema.orders)
-    .where(eq(schema.orders.id, orderId));
-  if (!order) return false;
+  const conclusion = await db.transaction(
+    async (tx): Promise<ConclusionEncaissement> => {
+      const order = await commandeVerrouillee(tx, eq(schema.orders.id, orderId));
+      if (!order) return { issue: "sans_suite" };
+      const cePaiement = and(
+        eq(schema.payments.orderId, orderId),
+        eq(schema.payments.externalRef, externalRef),
+      );
 
-  // Trace le paiement (idempotent sur externalRef).
-  await db
-    .update(schema.payments)
-    .set({ status: "succeeded" })
-    .where(eq(schema.payments.externalRef, externalRef));
+      if (order.status === "paid") {
+        // Payée entre la lecture de la fiche et le clic : il n'y a rien à
+        // déclarer reçu (la route le dit).
+        if (provider === "manuel") return { issue: "sans_suite" };
+        if (await dejaEncaisse(tx, orderId, externalRef)) {
+          // Le prestataire rejoue son avis : la commande est déjà faite.
+          await tx
+            .update(schema.payments)
+            .set({ status: "succeeded" })
+            .where(cePaiement);
+          return { issue: "sans_suite" };
+        }
+        await signalerPaiementEnTrop(tx, order, provider, externalRef, recu);
+        return { issue: "sans_suite" };
+      }
 
-  if (order.status === "paid") return false; // déjà fait
+      // Ce qui entre au grand livre : la somme vérifiée chez le prestataire,
+      // ou le total déclaré reçu par la boutique.
+      let montantCents: number;
+      if (provider === "manuel") {
+        if (order.status !== "pending" || order.totalCents !== recu.montantCents)
+          return { issue: "sans_suite" };
+        montantCents = order.totalCents;
+      } else {
+        const verdict = await verifierEncaissement(tx, order, provider, externalRef, recu);
+        if (!verdict.valide)
+          return {
+            issue: "ecart",
+            attenduCents: verdict.attenduCents,
+            recuCents: recu.montantCents,
+          };
+        montantCents = verdict.montantCents;
+      }
 
-  await db
-    .update(schema.orders)
-    .set({ status: "paid" })
-    .where(eq(schema.orders.id, orderId));
+      // Trace le paiement (idempotent sur externalRef).
+      const [avant] = await tx
+        .select({ status: schema.payments.status })
+        .from(schema.payments)
+        .where(cePaiement);
+      await tx
+        .update(schema.payments)
+        .set(
+          provider === "manuel"
+            ? { status: "succeeded" }
+            : { status: "succeeded", amountCents: montantCents },
+        )
+        .where(cePaiement);
+
+      await tx
+        .update(schema.orders)
+        .set({ status: "paid", totalCents: montantCents })
+        .where(eq(schema.orders.id, orderId));
+
+      // Le grand livre reçoit l'encaissement. C'est la seule source de vérité
+      // pour le solde de la commande : le total, lui, ne bouge jamais.
+      await tx.insert(schema.orderTransactions).values({
+        orderId,
+        kind: "sale",
+        status: "success",
+        amountCents: montantCents,
+        gateway: provider,
+        externalRef: externalRef ?? null,
+      });
+
+      // Un avis rejoué après que le panier a été remis au montant payé : le
+      // journal disait de rembourser ce paiement, il doit dire que ce n'est
+      // plus la peine.
+      if (avant?.status === "montant_different")
+        await tx.insert(schema.orderEvents).values({
+          orderId,
+          kind: "event",
+          message:
+            `Le paiement ${externalRef}, relevé plus tôt comme ÉCART DE PAIEMENT, correspond désormais ` +
+            `au total de la commande (${euros(montantCents)}) : elle est marquée payée, il n'y a rien à rembourser.`,
+        });
+
+      return { issue: "payee", order };
+    },
+  );
+
+  if (conclusion.issue === "ecart")
+    throw new MontantEncaisseDifferent(conclusion.attenduCents, conclusion.recuCents);
+  if (conclusion.issue !== "payee") return false;
+  const { order } = conclusion;
 
   // Ce panier avait-il été relancé ? Si oui, la relance a servi à quelque
   // chose, et c'est le seul chiffre qui le dira. Ne fait rien dans le cas
   // ordinaire, où aucun courrier n'était parti.
   await noterLaRecuperation(orderId);
 
-  // Nom client (pour le nom de fichier PDF).
-  let customerName = "client";
-  if (order.customerId != null) {
-    const [cust] = await db
-      .select()
-      .from(schema.customers)
-      .where(eq(schema.customers.id, order.customerId));
-    if (cust?.name) customerName = cust.name;
-  }
-
   // Les affiches générées par IA passent du panier à la commande : elles
   // reçoivent leur date de paiement, et c'est elle qui les sort de la purge
   // des photos de visiteurs (apps/api/src/ia.ts).
   await rattacherGenerationsAuPanier(orderId, order.clientOrderId, order.customerId);
 
-  const items = await db
-    .select()
-    .from(schema.orderItems)
-    .where(eq(schema.orderItems.orderId, orderId));
-  for (const it of items) {
-    const cfg = it.config as PosterConfig | null;
-    if (!cfg) continue;
-    const fmt = (cfg.format ?? "A4") as "A4" | "A3";
-    try {
-      await generatePrintFile(it.id, cfg, customerName, order.number, fmt);
-    } catch (e) {
-      console.error("Fichier d'impression non enregistré (item " + it.id + ") :", e);
-    }
+  try {
+    await enregistrerFichiersDImpression(orderId, { preparer: true });
+  } catch (e) {
+    console.error("Fichiers d'impression non enregistrés (commande " + orderId + ") :", e);
   }
-
-  // Le grand livre reçoit l'encaissement. C'est la seule source de vérité
-  // pour le solde de la commande : le total, lui, ne bouge jamais.
-  await db.insert(schema.orderTransactions).values({
-    orderId,
-    kind: "sale",
-    status: "success",
-    amountCents: order.totalCents,
-    gateway: provider,
-    externalRef: externalRef ?? null,
-  });
 
   await previenirDuPaiement(orderId);
   return true;
@@ -949,17 +1456,16 @@ export function mountConfiguratorRoutes(app: Hono) {
     if (!parsed.success)
       return c.json({ error: "config invalide", details: parsed.error.issues }, 400);
 
-    let [order] = await db
-      .select()
+    const [existe] = await db
+      .select({ id: schema.orders.id })
       .from(schema.orders)
       .where(eq(schema.orders.clientOrderId, cartId));
-    // Un panier PAYÉ est clos : y ajouter une ligne reviendrait à glisser
-    // un article non réglé dans une commande déjà encaissée. Le navigateur
-    // qui a gardé cet identifiant doit repartir d'un panier neuf.
-    if (order && order.status === "paid")
-      return c.json({ error: "panier_clos" }, 409);
-    if (!order) {
-      [order] = await db
+    if (!existe) {
+      // Le panier naît avec son premier article. « onConflictDoNothing » :
+      // deux ajouts partis au même instant d'un panier neuf ne doivent pas
+      // en créer deux — l'index unique sur l'identifiant de panier garde le
+      // premier, et le second y ajoute simplement sa ligne.
+      await db
         .insert(schema.orders)
         .values({
           channel: "web",
@@ -973,7 +1479,7 @@ export function mountConfiguratorRoutes(app: Hono) {
           totalCents: 0,
           lastActivityAt: new Date(),
         })
-        .returning();
+        .onConflictDoNothing();
     }
     const productId = body.productId != null ? Number(body.productId) : null;
     const unitPriceCents = await resolveUnitPriceCents(
@@ -981,19 +1487,31 @@ export function mountConfiguratorRoutes(app: Hono) {
       parsed.data.format,
       parsed.data.frameId,
     );
-    const [item] = await db
-      .insert(schema.orderItems)
-      .values({
-        orderId: order!.id,
-        productId,
-        variantId: body.variantId ?? null,
-        config: parsed.data,
-        title: body.title ?? null,
-        unitPriceCents,
-        quantity: Math.max(1, Number(body.quantity ?? 1)),
-      })
-      .returning();
-    await panierABouge(order!.id);
+    const item = await db.transaction(async (tx) => {
+      // Un panier PAYÉ est clos : y ajouter une ligne reviendrait à glisser
+      // un article non réglé dans une commande déjà encaissée. Le navigateur
+      // qui a gardé cet identifiant doit repartir d'un panier neuf. De même
+      // pour une commande annulée : seuls un panier et une commande en attente
+      // de paiement acceptent encore un article (la seconde repasse alors en
+      // panier, voir panierModifie).
+      const order = await panierModifiable(tx, cartId);
+      if (!order) return null;
+      const [ligne] = await tx
+        .insert(schema.orderItems)
+        .values({
+          orderId: order.id,
+          productId,
+          variantId: body.variantId ?? null,
+          config: parsed.data,
+          title: body.title ?? null,
+          unitPriceCents,
+          quantity: Math.max(1, Number(body.quantity ?? 1)),
+        })
+        .returning();
+      await panierModifie(tx, order);
+      return ligne;
+    });
+    if (!item) return c.json({ error: "panier_clos" }, 409);
     return c.json(item);
   });
 
@@ -1004,42 +1522,58 @@ export function mountConfiguratorRoutes(app: Hono) {
     const parsed = posterConfigSchema.safeParse(body.config);
     if (!parsed.success)
       return c.json({ error: "config invalide", details: parsed.error.issues }, 400);
-    const current = await loadCartItem(c.req.param("cartId"), itemId);
-    if (!current) return c.notFound();
-    const unitPriceCents = await resolveUnitPriceCents(
-      current.productId,
-      parsed.data.format,
-      parsed.data.frameId,
-    );
-    const [item] = await db
-      .update(schema.orderItems)
-      .set({
-        config: parsed.data,
-        variantId: body.variantId ?? undefined,
-        unitPriceCents,
-        quantity:
-          body.quantity != null
-            ? Math.max(1, Number(body.quantity))
-            : undefined,
-      })
-      .where(eq(schema.orderItems.id, itemId))
-      .returning();
+    // Contrôle du statut, écriture de la ligne et retour en panier : une
+    // seule transaction, sous le verrou de la commande. Contrôlé avant et
+    // écrit après, un paiement validé entre les deux laissait une commande
+    // payée au prix de l'ancienne ligne.
+    const item = await db.transaction(async (tx) => {
+      const trouve = await loadCartItem(tx, c.req.param("cartId"), itemId);
+      if (!trouve) return null;
+      const unitPriceCents = await resolveUnitPriceCents(
+        trouve.item.productId,
+        parsed.data.format,
+        parsed.data.frameId,
+        tx,
+      );
+      const [ligne] = await tx
+        .update(schema.orderItems)
+        .set({
+          config: parsed.data,
+          variantId: body.variantId ?? undefined,
+          unitPriceCents,
+          quantity:
+            body.quantity != null
+              ? Math.max(1, Number(body.quantity))
+              : undefined,
+        })
+        .where(eq(schema.orderItems.id, itemId))
+        .returning();
+      await panierModifie(tx, trouve.order);
+      return ligne ?? null;
+    });
     if (!item) return c.notFound();
-    await panierABouge(current.orderId);
     return c.json(item);
   });
 
   /** Supprime une ligne du panier. */
   app.delete("/cart/:cartId/items/:itemId", async (c) => {
-    const item = await loadCartItem(
-      c.req.param("cartId"),
-      Number(c.req.param("itemId")),
-    );
-    if (!item) return c.notFound();
-    await db.delete(schema.orderItems).where(eq(schema.orderItems.id, item.id));
-    // Retirer un article est aussi une activité : quelqu'un qui vide à moitié
-    // son panier est là, devant l'écran, et n'a rien abandonné du tout.
-    await panierABouge(item.orderId);
+    const retiree = await db.transaction(async (tx) => {
+      const trouve = await loadCartItem(
+        tx,
+        c.req.param("cartId"),
+        Number(c.req.param("itemId")),
+      );
+      if (!trouve) return false;
+      await tx
+        .delete(schema.orderItems)
+        .where(eq(schema.orderItems.id, trouve.item.id));
+      // Retirer un article est aussi une activité : quelqu'un qui vide à
+      // moitié son panier est là, devant l'écran, et n'a rien abandonné du
+      // tout.
+      await panierModifie(tx, trouve.order);
+      return true;
+    });
+    if (!retiree) return c.notFound();
     return c.json({ ok: true });
   });
 
@@ -1133,7 +1667,6 @@ export function mountConfiguratorRoutes(app: Hono) {
       ? draft.number
       : await nextOrderNumber("web");
     const code = normaliserCode(body.promoCode);
-    const articles = await computeOrderTotalCents(items, code);
 
     // Livraison : mode et adresse viennent du client, le prix vient de la
     // base. Sans mode choisi, on refuse — mieux vaut une commande bloquée
@@ -1142,48 +1675,79 @@ export function mountConfiguratorRoutes(app: Hono) {
     const modeSlug = String(liv.method ?? "").trim();
     const pays = normaliserPays(liv.country) || "FR";
     if (!modeSlug) return c.json({ error: "mode de livraison requis" }, 400);
-    const port = await computeShippingCents(items, modeSlug, pays, code);
-    if (!port)
-      return c.json({ error: "mode de livraison indisponible" }, 400);
-    // Une livraison à domicile sans adresse n'arrive nulle part ; un point
-    // relais sans point relais non plus.
     const ligne1 = String(liv.line1 ?? "").trim();
     const ville = String(liv.city ?? "").trim();
     const cp = String(liv.postalCode ?? "").trim();
-    if (port.kind === "home" && (!ligne1 || !ville || !cp))
-      return c.json({ error: "adresse de livraison incomplète" }, 400);
-    if (port.kind === "relay" && !String(liv.relayPointId ?? "").trim())
-      return c.json({ error: "point relais requis" }, 400);
 
-    const total = articles + port.cents;
-    const [order] = await db
-      .update(schema.orders)
-      .set({
-        number,
-        status: "pending",
-        customerId: customer!.id,
-        totalCents: total,
-        promoCode: code || null,
-        shippingMethod: modeSlug,
-        shippingLabel: port.label,
-        shippingCents: port.cents,
-        // Poids figé : le catalogue changera, le colis a pesé ce qu'il a pesé.
-        weightGrams: port.poidsGrammes,
-        shippingName: String(liv.name ?? "").trim() || name,
-        shippingLine1: ligne1 || null,
-        shippingLine2: String(liv.line2 ?? "").trim() || null,
-        shippingPostalCode: cp || null,
-        shippingCity: ville || null,
-        shippingCountry: pays,
-        shippingPhone: String(liv.phone ?? "").trim() || null,
-        relayPointId: String(liv.relayPointId ?? "").trim() || null,
-        relayPointLabel: String(liv.relayPointLabel ?? "").trim() || null,
-        // Le passage au tunnel est LA dernière activité du panier : c'est à
-        // partir d'ici que se compte l'inactivité qui en fera un abandon.
-        lastActivityAt: new Date(),
-      })
-      .where(eq(schema.orders.id, draft.id))
-      .returning();
+    // Le total se calcule SOUS LE VERROU de la commande (commandeVerrouillee),
+    // sur les lignes relues dans la même transaction. Une modification du
+    // panier partie au même instant passe soit avant — et le total la
+    // compte —, soit après — et la commande repasse en panier
+    // (panierModifie). Calculé hors verrou, le total d'avant la modification
+    // pouvait être figé « en attente », et un paiement ouvert pour lui.
+    const resultat = await db.transaction(async (tx) => {
+      const panier = await commandeVerrouillee(tx, eq(schema.orders.id, draft.id));
+      if (!panier) return { erreur: "panier introuvable", statut: 404 as const };
+      if (panier.status === "paid")
+        return { erreur: "commande déjà payée", statut: 409 as const };
+      const lignes = await tx
+        .select()
+        .from(schema.orderItems)
+        .where(eq(schema.orderItems.orderId, panier.id));
+      if (lignes.length === 0)
+        return { erreur: "panier vide", statut: 400 as const };
+
+      // Une seule heure pour tout le calcul, et c'est elle qui est gardée
+      // comme dernière activité : le paiement sera vérifié avec les
+      // promotions de CE moment-là (verifierEncaissement).
+      const maintenant = new Date();
+      const articles = await computeOrderTotalCents(lignes, code, maintenant, tx);
+      const port = await computeShippingCents(lignes, modeSlug, pays, code, maintenant, tx);
+      if (!port)
+        return { erreur: "mode de livraison indisponible", statut: 400 as const };
+      // Une livraison à domicile sans adresse n'arrive nulle part ; un point
+      // relais sans point relais non plus.
+      if (port.kind === "home" && (!ligne1 || !ville || !cp))
+        return { erreur: "adresse de livraison incomplète", statut: 400 as const };
+      if (port.kind === "relay" && !String(liv.relayPointId ?? "").trim())
+        return { erreur: "point relais requis", statut: 400 as const };
+
+      const total = articles + port.cents;
+      const [order] = await tx
+        .update(schema.orders)
+        .set({
+          // Relu sous le verrou : un autre passage en caisse du même panier a
+          // pu attribuer le numéro entre-temps.
+          number: /^WEB-\d+$/.test(panier.number) ? panier.number : number,
+          status: "pending",
+          customerId: customer!.id,
+          totalCents: total,
+          promoCode: code || null,
+          shippingMethod: modeSlug,
+          shippingLabel: port.label,
+          shippingCents: port.cents,
+          // Poids figé : le catalogue changera, le colis a pesé ce qu'il a pesé.
+          weightGrams: port.poidsGrammes,
+          shippingName: String(liv.name ?? "").trim() || name,
+          shippingLine1: ligne1 || null,
+          shippingLine2: String(liv.line2 ?? "").trim() || null,
+          shippingPostalCode: cp || null,
+          shippingCity: ville || null,
+          shippingCountry: pays,
+          shippingPhone: String(liv.phone ?? "").trim() || null,
+          relayPointId: String(liv.relayPointId ?? "").trim() || null,
+          relayPointLabel: String(liv.relayPointLabel ?? "").trim() || null,
+          // Le passage au tunnel est LA dernière activité du panier : c'est à
+          // partir d'ici que se compte l'inactivité qui en fera un abandon.
+          lastActivityAt: maintenant,
+        })
+        .where(eq(schema.orders.id, panier.id))
+        .returning();
+      return { order: order!, port, total };
+    });
+    if ("erreur" in resultat)
+      return c.json({ error: resultat.erreur }, resultat.statut);
+    const { order, port, total } = resultat;
 
     // L'adresse rejoint le carnet de la cliente : saisie une fois, elle
     // revient toute seule la prochaine fois. Une livraison en point relais n'a
@@ -1228,9 +1792,9 @@ export function mountConfiguratorRoutes(app: Hono) {
     }
 
     return c.json({
-      orderId: order!.id,
-      number,
-      status: order!.status,
+      orderId: order.id,
+      number: order.number,
+      status: order.status,
       totalCents: total,
       shippingCents: port.cents,
       poidsGrammes: port.poidsGrammes,
@@ -1280,6 +1844,17 @@ export function mountConfiguratorRoutes(app: Hono) {
   }
 
   /**
+   * Un paiement ne s'ouvre que pour une commande EN ATTENTE, c'est-à-dire
+   * sortie de la caisse à l'instant, total fraîchement calculé.
+   *
+   * Un panier (« draft ») n'a pas de total fiable : soit il n'est jamais passé
+   * en caisse, soit il a été modifié depuis (panierModifie). Ouvrir un
+   * paiement pour lui, c'était encaisser un montant d'avant la modification.
+   */
+  const PANIER_A_REVALIDER =
+    "Votre panier a changé depuis le calcul du total. Revenez à l'étape précédente pour le recalculer avant de payer.";
+
+  /**
    * Crée un PaymentIntent Stripe pour la commande et renvoie son clientSecret
    * (le navigateur confirme le paiement avec Stripe.js). Le montant vient du
    * SERVEUR (order.totalCents), jamais du client.
@@ -1292,6 +1867,8 @@ export function mountConfiguratorRoutes(app: Hono) {
     if (!order) return c.json({ error: "commande introuvable" }, 404);
     if (order.status === "paid")
       return c.json({ error: "commande déjà payée" }, 409);
+    if (order.status !== "pending")
+      return c.json({ error: PANIER_A_REVALIDER, code: "panier_modifie" }, 409);
     try {
       const intent = await createStripeIntent(
         order.totalCents,
@@ -1324,11 +1901,25 @@ export function mountConfiguratorRoutes(app: Hono) {
     if (event.type === "payment_intent.succeeded") {
       const pi = event.data.object as {
         id: string;
+        amount_received?: number;
+        currency?: string;
         metadata?: { orderId?: string };
       };
       const orderId = Number(pi.metadata?.orderId);
       if (Number.isFinite(orderId)) {
-        await markOrderPaid(orderId, "stripe", pi.id);
+        try {
+          // Le montant vient de l'événement signé : c'est ce que Stripe a
+          // réellement pris, pas ce que la commande croyait demander.
+          await markOrderPaid(orderId, "stripe", pi.id, {
+            montantCents: Number(pi.amount_received ?? 0),
+            devise: String(pi.currency ?? ""),
+          });
+        } catch (e) {
+          // Un écart est déjà écrit au journal de la commande. Répondre en
+          // erreur ferait rejouer l'avis par Stripe pendant trois jours, pour
+          // la même conclusion.
+          if (!(e instanceof MontantEncaisseDifferent)) throw e;
+        }
       }
     }
     return c.json({ received: true });
@@ -1358,13 +1949,18 @@ export function mountConfiguratorRoutes(app: Hono) {
     if (!payment?.externalRef)
       return c.json({ error: "paiement introuvable" }, 404);
     try {
-      const status = await getStripeIntentStatus(payment.externalRef);
-      if (status === "succeeded") {
-        await markOrderPaid(orderId, "stripe", payment.externalRef);
+      const intent = await getStripeIntent(payment.externalRef);
+      if (intent.status === "succeeded") {
+        await markOrderPaid(orderId, "stripe", payment.externalRef, {
+          montantCents: intent.montantCents,
+          devise: intent.devise,
+        });
         return c.json({ status: "paid" });
       }
-      return c.json({ status }, 202);
+      return c.json({ status: intent.status }, 202);
     } catch (e) {
+      if (e instanceof MontantEncaisseDifferent)
+        return c.json({ error: e.message, code: "montant_different" }, 409);
       console.error("Stripe confirm:", e);
       return c.json({ error: "vérification impossible" }, 502);
     }
@@ -1383,6 +1979,8 @@ export function mountConfiguratorRoutes(app: Hono) {
     if (!order) return c.json({ error: "commande introuvable" }, 404);
     if (order.status === "paid")
       return c.json({ error: "commande déjà payée" }, 409);
+    if (order.status !== "pending")
+      return c.json({ error: PANIER_A_REVALIDER, code: "panier_modifie" }, 409);
     try {
       const paypalOrderId = await createPaypalOrder(
         order.totalCents,
@@ -1435,6 +2033,35 @@ export function mountConfiguratorRoutes(app: Hono) {
       );
     if (!payment)
       return c.json({ error: "paiement introuvable pour cette commande" }, 404);
+
+    // AVANT de capturer : PayPal, lui, permet de vérifier avant que l'argent
+    // ne bouge. Le paiement a été ouvert pour `payment.amountCents` ; si la
+    // commande ne vaut plus cela — panier modifié entre-temps —, on ne capture
+    // pas, et la cliente n'est pas débitée d'un montant faux.
+    const [order] = await db
+      .select()
+      .from(schema.orders)
+      .where(eq(schema.orders.id, orderId));
+    if (order?.status === "paid") {
+      // Payée par CE paiement : la capture a abouti et le navigateur la
+      // redemande, c'est déjà fait. Par un autre : capturer celui-ci ferait
+      // payer la cliente deux fois, pour un remboursement à faire ensuite.
+      if (payment.status === "succeeded") return c.json({ status: "paid" });
+      return c.json({ error: "commande déjà payée" }, 409);
+    }
+    if (order) {
+      // Lecture sans verrou : ce contrôle évite de débiter un montant faux
+      // dans le cas courant. Celui qui fait foi, sous verrou, vient après la
+      // capture (markOrderPaid).
+      const valeur = await valeurDesLignes(order, order.lastActivityAt ?? new Date());
+      if (
+        order.status !== "pending" ||
+        !valeur.livrable ||
+        valeur.totalCents !== payment.amountCents
+      )
+        return c.json({ error: PANIER_A_REVALIDER, code: "panier_modifie" }, 409);
+    }
+
     try {
       const cap = await capturePaypalOrder(paypalOrderId);
       if (!cap.ok)
@@ -1447,9 +2074,15 @@ export function mountConfiguratorRoutes(app: Hono) {
           .update(schema.payments)
           .set({ captureRef: cap.captureId })
           .where(eq(schema.payments.id, payment.id));
-      await markOrderPaid(orderId, "paypal", paypalOrderId);
+      // Et APRÈS : c'est le montant réellement capturé qui décide.
+      await markOrderPaid(orderId, "paypal", paypalOrderId, {
+        montantCents: cap.montantCents,
+        devise: cap.devise,
+      });
       return c.json({ status: "paid" });
     } catch (e) {
+      if (e instanceof MontantEncaisseDifferent)
+        return c.json({ error: e.message, code: "montant_different" }, 409);
       console.error("PayPal capture:", e);
       return c.json({ error: "encaissement impossible" }, 502);
     }
@@ -1742,10 +2375,20 @@ export function mountConfiguratorRoutes(app: Hono) {
     // Le nom retenu au moment de la commande fait foi : le fichier téléchargé
     // aujourd'hui doit s'appeler comme celui rangé le jour de l'impression,
     // même si le cadre a été renommé entre-temps.
-    const [fichier] = await db
-      .select({ filename: schema.printFiles.filename })
-      .from(schema.printFiles)
-      .where(eq(schema.printFiles.orderItemId, itemId));
+    const nomRetenu = () =>
+      db
+        .select({ filename: schema.printFiles.filename })
+        .from(schema.printFiles)
+        .where(eq(schema.printFiles.orderItemId, itemId));
+    let [fichier] = await nomRetenu();
+    // Une commande payée sans nom retenu — vente du stand d'avant qu'on les
+    // enregistre, commande reprise — reçoit les noms de TOUTES ses lignes
+    // maintenant, dans leur ordre, numérotation comprise : recalculé ici à
+    // chaque clic, le nom de deux affiches identiques était le même.
+    if (!fichier && order?.status === "paid") {
+      await enregistrerFichiersDImpression(item.orderId, { preparer: false });
+      [fichier] = await nomRetenu();
+    }
     const [cadre] = cfg.frameId
       ? await db
           .select({ name: schema.frames.name })

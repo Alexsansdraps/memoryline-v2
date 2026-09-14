@@ -223,9 +223,22 @@ const rembourse = detail?.rembourseCents ?? 0;
 const portRemboursable = detail?.portRemboursableCents ?? 0;
 const netEncaisse = total - rembourse;
 
+/**
+ * Les paiements arrivés chez le prestataire SANS avoir validé la commande :
+ * un montant qui ne correspondait plus au panier (« montant_different »), ou
+ * un second paiement sur une commande déjà payée (« en_trop »). L'argent est
+ * à rendre. Affiché sous « Encaissé », il laissait croire que la commande
+ * était réglée — juste au-dessus du bouton qui la marque payée.
+ */
+const STATUTS_A_REMBOURSER = ["montant_different", "en_trop"];
+const aRembourser = (detail?.paiements ?? []).filter((p) =>
+  STATUTS_A_REMBOURSER.includes(p.status ?? ""),
+);
 const paiement =
   (detail?.paiements ?? []).find((p) => p.status === "succeeded") ??
-  (detail?.paiements ?? [])[0];
+  (detail?.paiements ?? []).find(
+    (p) => !STATUTS_A_REMBOURSER.includes(p.status ?? ""),
+  );
 const encaisse = order?.status === "paid";
 
 const badgePaiement = BADGE_PAIEMENT[detail?.statutFinancier ?? "pending"]!;
@@ -811,6 +824,19 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                 {paiement.externalRef && ` · ${paiement.externalRef}`}
               </p>
             )}
+
+            {aRembourser.map((p) => (
+              <p class="border-t border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                <strong class="font-medium">À rembourser :</strong>{" "}
+                {libelleMoyen(p.provider)} a encaissé {formatPrice(p.amountCents)}
+                {p.externalRef && ` (${p.externalRef})`}
+                {p.status === "en_trop"
+                  ? " alors que la commande était déjà payée."
+                  : " pour un montant qui ne correspond pas à la commande."}{" "}
+                Ce paiement ne compte pas dans ce qui est encaissé : le journal
+                explique quoi faire.
+              </p>
+            ))}
 
             {/* Le règlement arrivé hors du site : virement, chèque, espèces.
                 Sans ce bouton, une cliente qui paie par virement laissait sa

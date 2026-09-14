@@ -679,6 +679,17 @@ export default function CheckoutIsland(props: {
     setSubmitting(true);
     setError(null);
     try {
+      // Le panier a-t-il bougé depuis l'ouverture du paiement — un autre
+      // onglet, un retour au panier ? Il est alors revenu à l'état de panier,
+      // et le serveur refusera de valider l'ancien montant ; mais la carte,
+      // elle, serait déjà débitée. Mieux vaut le dire AVANT de payer.
+      const panier = await browserApi.cart(getCartId());
+      if (panier.status === "draft") {
+        setError(
+          "Votre panier a changé depuis le calcul du total. Revenez à l'étape précédente pour le recalculer avant de payer.",
+        );
+        return;
+      }
       const { error: stripeErr, paymentIntent } = await stripe.confirmPayment({
         elements,
         redirect: "if_required",

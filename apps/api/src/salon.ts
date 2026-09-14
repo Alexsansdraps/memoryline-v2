@@ -24,6 +24,7 @@ import type { Context } from "hono";
 import { and, asc, count, eq, isNull, ne, sql as raw } from "drizzle-orm";
 import { randomInt } from "node:crypto";
 import { db, schema } from "./db/client.js";
+import { enregistrerFichiersDImpression } from "./configurator-routes.js";
 import { HORS_VENTES } from "./statuts-vente.js";
 
 /**
@@ -162,62 +163,102 @@ export function mountSalonRoutes(app: Hono): void {
         .set({ name: nom })
         .where(eq(schema.customers.id, existant.id));
 
-    const total = lignes.reduce(
-      (s, l) => s + l.unitPriceCents * l.quantity,
-      0,
-    );
     const numero = await prochainNumeroSalon();
     const evenement = stand.nom;
 
-    const [commande] = await db
-      .update(schema.orders)
-      .set({
-        channel: "salon",
-        standId: stand.id,
-        number: numero,
-        // Payée d'emblée : au stand, le client règle avant de partir avec son
-        // affiche, ou il ne commande pas. Un état « en attente » obligeait à
-        // se souvenir de cocher chaque vente du samedi, et laissait les
-        // chiffres du stand à zéro tant que personne ne l'avait fait.
-        status: "paid",
-        customerId: client.id,
-        totalCents: total,
-        shippingCents: 0,
-        shippingLabel: "Remise sur le stand",
-        shippingName: nom,
-        // L'événement va dans la note : c'est ce qu'on cherche des mois plus
-        // tard pour savoir quel salon a bien marché.
-        internalNote: evenement ? `Stand : ${evenement}` : null,
-        tags: evenement ? [evenement] : [],
-      })
-      .where(eq(schema.orders.id, panier.id))
-      .returning();
+    // La vente se décide sous le VERROU de la commande — le même que prennent
+    // les routes du panier pour écrire une ligne (configurator-routes.ts) :
+    // statut revérifié, lignes relues, total compté, commande passée payée et
+    // vente inscrite, d'un bloc. Sans lui, une affiche modifiée sur la
+    // tablette au même instant restait hors du total, et deux appuis sur
+    // « Valider » inscrivaient deux fois la vente au grand livre.
+    const vente = await db.transaction(async (tx) => {
+      const [verrouille] = await tx
+        .select()
+        .from(schema.orders)
+        .where(eq(schema.orders.id, panier.id))
+        .for("no key update");
+      if (!verrouille || verrouille.status !== "draft") return null;
+      const lignes = await tx
+        .select()
+        .from(schema.orderItems)
+        .where(eq(schema.orderItems.orderId, panier.id));
+      if (!lignes.length) return { lignes, commande: null };
 
-    // Le grand livre reçoit l'encaissement, comme pour une vente du site :
-    // c'est lui qui fait foi pour le solde d'une commande, et un
-    // remboursement de stand doit pouvoir s'y adosser.
-    await db.insert(schema.orderTransactions).values({
-      orderId: panier.id,
-      kind: "sale",
-      status: "success",
-      amountCents: total,
-      gateway: "stand",
-      externalRef: null,
-    });
+      const total = lignes.reduce(
+        (s, l) => s + l.unitPriceCents * l.quantity,
+        0,
+      );
+      const [commande] = await tx
+        .update(schema.orders)
+        .set({
+          channel: "salon",
+          standId: stand.id,
+          number: numero,
+          // Payée d'emblée : au stand, le client règle avant de partir avec
+          // son affiche, ou il ne commande pas. Un état « en attente »
+          // obligeait à se souvenir de cocher chaque vente du samedi, et
+          // laissait les chiffres du stand à zéro tant que personne ne l'avait
+          // fait.
+          status: "paid",
+          customerId: client.id,
+          totalCents: total,
+          shippingCents: 0,
+          shippingLabel: "Remise sur le stand",
+          shippingName: nom,
+          // L'événement va dans la note : c'est ce qu'on cherche des mois plus
+          // tard pour savoir quel salon a bien marché.
+          internalNote: evenement ? `Stand : ${evenement}` : null,
+          tags: evenement ? [evenement] : [],
+        })
+        .where(eq(schema.orders.id, panier.id))
+        .returning();
 
-    await db.insert(schema.orderEvents).values({
-      orderId: panier.id,
-      kind: "event",
-      message:
-        `Commande prise au stand${evenement ? ` (${evenement})` : ""}, réglée sur place.`,
+      // Le grand livre reçoit l'encaissement, comme pour une vente du site :
+      // c'est lui qui fait foi pour le solde d'une commande, et un
+      // remboursement de stand doit pouvoir s'y adosser.
+      await tx.insert(schema.orderTransactions).values({
+        orderId: panier.id,
+        kind: "sale",
+        status: "success",
+        amountCents: total,
+        gateway: "stand",
+        externalRef: null,
+      });
+
+      await tx.insert(schema.orderEvents).values({
+        orderId: panier.id,
+        kind: "event",
+        message:
+          `Commande prise au stand${evenement ? ` (${evenement})` : ""}, réglée sur place.`,
+      });
+      return { lignes, commande: commande! };
     });
+    if (!vente)
+      return c.json({ error: "Cette commande est déjà enregistrée." }, 409);
+    const { lignes: vendues, commande } = vente;
+    if (!commande) return c.json({ error: "Aucune affiche choisie." }, 400);
+
+    // Les fichiers d'impression, comme pour une vente du site : nommés tout
+    // de suite — deux affiches identiques de la même vente deviennent
+    // « martin_A4_pas-cadre.pdf » et « martin_A4_pas-cadre-2.pdf » — et
+    // préparés derrière, pour être prêts quand la vendeuse viendra imprimer.
+    // Sans cette étape, le nom était recalculé à chaque téléchargement, le
+    // même pour les deux.
+    try {
+      await enregistrerFichiersDImpression(panier.id, { preparer: true });
+    } catch (e) {
+      // La vente est faite et encaissée : un nom de fichier manqué se
+      // rattrape au premier téléchargement.
+      console.error(`[stand] fichiers d'impression non enregistrés (${numero}) :`, e);
+    }
 
     return c.json({
-      number: commande!.number,
+      number: commande.number,
       // Le prix ne remonte PAS à la tablette : rien à l'écran ne doit pouvoir
       // contredire ce que la vendeuse annonce de vive voix.
       client: { nom, email },
-      articles: lignes.reduce((s, l) => s + l.quantity, 0),
+      articles: vendues.reduce((s, l) => s + l.quantity, 0),
     });
   });
 

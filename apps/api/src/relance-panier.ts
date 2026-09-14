@@ -292,7 +292,11 @@ function immobileDepuis(seuil: Date) {
  *      checkout entamé peut être abandonné.
  *   2. **Le tunnel n'a pas abouti.** Ni payée, ni annulée, ni remboursée. On
  *      écarte aussi le stand : une commande y est prise en présence du client,
- *      il n'y a rien à relancer.
+ *      il n'y a rien à relancer. Et une commande dont un paiement est arrivé
+ *      sans pouvoir la valider — son montant ne correspondait plus au panier
+ *      (markOrderPaid, configurator-routes.ts) — n'est pas abandonnée non
+ *      plus : la cliente a payé, c'est à la boutique de régulariser, et lui
+ *      écrire que son panier l'attend l'inviterait à payer une seconde fois.
  *   3. **Plus rien ne bouge depuis le délai plancher.**
  */
 export async function paniersAbandonnes(
@@ -347,6 +351,7 @@ async function requetePaniers(
       and(
         eq(schema.orders.channel, "web"),
         notInArray(schema.orders.status, STATUTS_CLOS),
+        sql`not exists (select 1 from ${schema.payments} where ${schema.payments.orderId} = ${schema.orders.id} and ${schema.payments.status} = 'montant_different')`,
         isNotNull(schema.customers.email),
         ne(schema.customers.email, ""),
         immobileDepuis(seuil),

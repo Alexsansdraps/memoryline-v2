@@ -59,18 +59,35 @@ export async function createStripeIntent(
 }
 
 /**
- * Statut serveur d'un PaymentIntent (pour confirmer un paiement SANS attendre
- * le webhook — pratique en dev, et filet de sécurité si le webhook rate).
+ * Un PaymentIntent tel que Stripe le voit (pour confirmer un paiement SANS
+ * attendre le webhook — pratique en dev, et filet de sécurité si le webhook
+ * rate).
+ *
+ * Le MONTANT ENCAISSÉ remonte avec le statut : « succeeded » dit que de
+ * l'argent est arrivé, pas combien. C'est ce montant-là que la commande doit
+ * valoir pour être marquée payée (markOrderPaid).
  */
-export async function getStripeIntentStatus(id: string): Promise<string> {
+export async function getStripeIntent(id: string): Promise<{
+  status: string;
+  montantCents: number;
+  devise: string;
+}> {
   if (!STRIPE_SECRET) throw new Error("Stripe non configuré");
   const res = await fetch(`https://api.stripe.com/v1/payment_intents/${id}`, {
     headers: { Authorization: `Bearer ${STRIPE_SECRET}` },
   });
   if (!res.ok)
     throw new Error(`Stripe get intent HTTP ${res.status} ${await res.text()}`);
-  const j = (await res.json()) as { status: string };
-  return j.status;
+  const j = (await res.json()) as {
+    status: string;
+    amount_received?: number;
+    currency?: string;
+  };
+  return {
+    status: j.status,
+    montantCents: Number(j.amount_received ?? 0),
+    devise: String(j.currency ?? ""),
+  };
 }
 
 /**
@@ -266,11 +283,20 @@ async function refusPaypal(res: Response): Promise<RefusPaypal> {
 
 /**
  * Capture une commande PayPal approuvée. Renvoie ok=true si COMPLETED.
- * Le montant réel a été fixé à la création côté serveur (non falsifiable).
+ *
+ * Le montant a été fixé à la création, côté serveur — mais pour le panier
+ * de CE moment-là. Le montant réellement capturé remonte donc aussi : c'est
+ * lui que la commande doit valoir pour être marquée payée (markOrderPaid).
  */
 export async function capturePaypalOrder(
   paypalOrderId: string,
-): Promise<{ ok: boolean; status: string; captureId: string | null }> {
+): Promise<{
+  ok: boolean;
+  status: string;
+  captureId: string | null;
+  montantCents: number;
+  devise: string;
+}> {
   if (!paypalConfigured) throw new Error("PayPal non configuré");
   const token = await paypalToken();
   const res = await fetch(
@@ -291,6 +317,7 @@ export async function capturePaypalOrder(
     // L'identifiant de la CAPTURE, pas celui de la commande : c'est lui, et
     // lui seul, que PayPal accepte de rembourser plus tard.
     captureId: captureDe(j),
+    ...montantCapture(j),
   };
 }
 
@@ -298,8 +325,34 @@ export async function capturePaypalOrder(
 interface ReponsePaypalCommande {
   status: string;
   purchase_units?: {
-    payments?: { captures?: { id?: string; status?: string }[] };
+    payments?: {
+      captures?: {
+        id?: string;
+        status?: string;
+        amount?: { currency_code?: string; value?: string };
+      }[];
+    };
   }[];
+}
+
+/**
+ * Ce qui a réellement été capturé : la somme des captures abouties.
+ *
+ * PayPal écrit les montants en texte décimal (« 19.00 ») : on repasse en
+ * centimes en arrondissant, un nombre à virgule ne tombant jamais juste.
+ * Deux devises différentes dans une même commande ne devraient pas exister ;
+ * si c'était le cas, la devise rendue vide fait échouer la vérification.
+ */
+function montantCapture(j: ReponsePaypalCommande): { montantCents: number; devise: string } {
+  let montantCents = 0;
+  const devises = new Set<string>();
+  for (const unite of j.purchase_units ?? [])
+    for (const capture of unite.payments?.captures ?? []) {
+      if (capture.status !== "COMPLETED" || !capture.amount) continue;
+      montantCents += Math.round(Number(capture.amount.value ?? 0) * 100);
+      devises.add(String(capture.amount.currency_code ?? ""));
+    }
+  return { montantCents, devise: devises.size === 1 ? [...devises][0]! : "" };
 }
 
 /** L'identifiant de la capture, quand il y en a une. */
