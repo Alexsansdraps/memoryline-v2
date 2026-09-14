@@ -173,6 +173,8 @@ export function PosterPreview(props: {
       // La taille propre au personnage : un chat n'occupe pas la place d'un
       // adulte, et la rangée doit le savoir pour répartir correctement.
       (c) => props.characterById(c.characterId)?.facteurTaille ?? 1,
+      // Sa place de côté, réglée au back-office.
+      (c) => props.characterById(c.characterId)?.decalageX ?? 0,
     ),
   );
 

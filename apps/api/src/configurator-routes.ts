@@ -862,6 +862,9 @@ export function mountConfiguratorRoutes(app: Hono) {
         // Taille propre au personnage : c'est le configurateur qui l'applique
         // en composant, pour qu'elle entre dans l'échelle enregistrée.
         facteurTaille: t.facteurTaille ?? 1,
+        // Sa place de côté, réglée au back-office : le configurateur l'ajoute
+        // à la case que la rangée lui donne.
+        decalageX: t.decalageX ?? 0,
         // Ids d'ancienne config par slot (= asset.position des génériques) :
         // le front restreint les galeries de l'éditeur à ces variantes.
         slotVariants: t.slotVariants ?? null,
@@ -1973,6 +1976,11 @@ export function mountConfiguratorRoutes(app: Hono) {
       // illisible, au-delà de 2 il déborde de l'affiche.
       ...(b.facteurTaille !== undefined && Number.isFinite(Number(b.facteurTaille))
         ? { facteurTaille: Math.min(2, Math.max(0.3, Number(b.facteurTaille))) }
+        : {}),
+      // Le décalage de côté. Borné à 40 % de la largeur : au-delà, un
+      // personnage placé en bout de rangée sortirait de l'affiche.
+      ...(b.decalageX !== undefined && Number.isFinite(Number(b.decalageX))
+        ? { decalageX: Math.min(0.4, Math.max(-0.4, Number(b.decalageX))) }
         : {}),
       // Dessin et couleurs, pour créer un personnage complet d'un coup depuis
       // le back-office. Absents : on ne touche pas à ce qui existe.

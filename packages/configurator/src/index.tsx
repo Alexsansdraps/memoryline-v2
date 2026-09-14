@@ -268,6 +268,9 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
         // La taille propre au personnage entre dans l'échelle enregistrée :
         // le PDF relit ce chiffre-là et ne recalcule rien.
         (c) => characterById(c.characterId)?.facteurTaille ?? 1,
+        // Le décalage réglé au back-office entre dans la position enregistrée :
+        // l'impression relit ce chiffre, elle ne recalcule rien.
+        (c) => characterById(c.characterId)?.decalageX ?? 0,
       ),
     );
   }

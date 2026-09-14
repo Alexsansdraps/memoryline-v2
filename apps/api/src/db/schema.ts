@@ -477,6 +477,12 @@ export const characterTypes = pgTable(
      */
     facteurTaille: doublePrecision("facteur_taille").default(1).notNull(),
     /**
+     * Le décalage de CÔTÉ de ce personnage, en fraction de la largeur de
+     * l'affiche : négatif vers la gauche, positif vers la droite, 0 à sa place
+     * dans la rangée. Réglé à l'écran de calage, comme la hauteur et la taille.
+     */
+    decalageX: doublePrecision("decalage_x").default(0).notNull(),
+    /**
      * Orientation NATIVE du personnage : 'front' (face) ou 'back' (dos).
      * Propriété du perso (ex. "Homme assis de dos" = back), définie dans le BO.
      * Le configurateur affiche le perso dans son orientation ; un perso n'a

@@ -1,0 +1,1 @@
+ALTER TABLE "character_type" ADD COLUMN "decalage_x" double precision DEFAULT 0 NOT NULL;

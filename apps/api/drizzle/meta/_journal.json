@@ -302,6 +302,13 @@
       "when": 1789143769600,
       "tag": "0042_styles_ia",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1789396541672,
+      "tag": "0043_decalage_personnage",
+      "breakpoints": true
     }
   ]
 }

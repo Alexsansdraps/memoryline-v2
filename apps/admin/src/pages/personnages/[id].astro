@@ -79,6 +79,16 @@ if (Astro.request.method === "POST") {
               ),
             }
           : {}),
+        // Zéro est une vraie valeur — « au centre » — et doit partir aussi :
+        // tester la chaîne vide plutôt que la valeur, sinon ramener un
+        // personnage au centre ne s'enregistrerait jamais.
+        ...(f.get("decalageX") !== null && String(f.get("decalageX")) !== ""
+          ? {
+              decalageX: Number(
+                String(f.get("decalageX")).replace(",", "."),
+              ),
+            }
+          : {}),
       });
       flash = "Personnage enregistré.";
     }
@@ -277,21 +287,8 @@ const piecesACaler = SLOTS.flatMap((s) => {
               class="mt-1 w-full border border-bo-border rounded px-3 py-2"
             />
           </label>
-          <label class="block">
-            <span class="text-bo-muted">Calage au sol</span>
-            <input
-              name="bottomPct"
-              type="number"
-              step="0.005"
-              min="0.05"
-              max="1"
-              value={perso.bottomPct ?? 1}
-              class="mt-1 w-full border border-bo-border rounded px-3 py-2"
-            />
-            <span class="mt-1 block text-xs text-bo-muted">
-              Il flotte au-dessus du muret : baissez. Il s'enfonce : montez.
-            </span>
-          </label>
+          {/* « Calage au sol » a rejoint le bloc « Taille et calage » : il y
+              chiffre le geste qu'on fait sur l'affiche. */}
           <div class="sm:col-span-4">
             <button class="rounded bg-bo-accent text-white px-4 py-2">
               Enregistrer
@@ -406,6 +403,13 @@ const piecesACaler = SLOTS.flatMap((s) => {
               type="hidden"
               value={perso.bottomPct ?? 1}
             />
+            <input
+              id="calibrage-decalage"
+              name="decalageX"
+              form="fiche-personnage"
+              type="hidden"
+              value={perso.decalageX ?? 0}
+            />
 
             <div class="rounded-lg border border-bo-border bg-bo-bg p-4">
               <p class="mb-3 font-medium">
@@ -415,6 +419,11 @@ const piecesACaler = SLOTS.flatMap((s) => {
                 <li>
                   <b class="text-bo-ink">Pour le poser :</b> montez-le ou
                   descendez-le jusqu'à ce que ses pieds touchent le rebord.
+                </li>
+                <li>
+                  <b class="text-bo-ink">Pour le décaler :</b> glissez-le vers
+                  la gauche ou la droite. Sur le site, il gardera cet écart
+                  par rapport à sa place dans la rangée.
                 </li>
                 <li>
                   <b class="text-bo-ink">Pour le dimensionner :</b> tirez la
@@ -456,6 +465,61 @@ const piecesACaler = SLOTS.flatMap((s) => {
               100 %, c'est la taille d'un adulte debout. Un chat ou un bébé
               descendent bien plus bas, un couple monte au-dessus.
             </p>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-bo-muted">Côté :</span>
+              <button
+                type="button"
+                id="calibrage-gauche"
+                class="h-9 w-9 rounded border border-bo-border text-lg leading-none hover:bg-bo-bg"
+                title="Décaler vers la gauche"
+                aria-label="Décaler le personnage vers la gauche"
+              >
+                ←
+              </button>
+              <b id="calibrage-decalage-val" class="min-w-[90px] text-center">au centre</b>
+              <button
+                type="button"
+                id="calibrage-droite"
+                class="h-9 w-9 rounded border border-bo-border text-lg leading-none hover:bg-bo-bg"
+                title="Décaler vers la droite"
+                aria-label="Décaler le personnage vers la droite"
+              >
+                →
+              </button>
+              <button
+                type="button"
+                id="calibrage-centre"
+                class="rounded border border-bo-border px-3 py-2 text-xs hover:bg-bo-bg"
+              >
+                Au centre
+              </button>
+            </div>
+
+            {/* Le chiffre du geste « poser sur le rebord ». Il suit le
+                personnage quand on l'attrape, et le personnage le suit quand on
+                tape une valeur.
+
+                `step="any"`, et c'est la correction : le geste écrit une valeur
+                à quatre décimales, qu'un pas de 0,005 faisait refuser par le
+                navigateur — le formulaire ne partait plus, sans rien dire. */}
+            <label class="flex flex-wrap items-center gap-2">
+              <span class="text-bo-muted">Calage au sol :</span>
+              <input
+                id="calibrage-sol-chiffre"
+                name="bottomPct"
+                form="fiche-personnage"
+                type="number"
+                step="any"
+                min="0.05"
+                max="1"
+                value={perso.bottomPct ?? 1}
+                class="w-28 rounded border border-bo-border px-3 py-2"
+              />
+              <span class="text-xs text-bo-muted">
+                Il flotte au-dessus du muret : baissez. Il s'enfonce : montez.
+              </span>
+            </label>
 
             <label class="flex items-center gap-2">
               <input id="calibrage-repere" type="checkbox" />
@@ -1280,6 +1344,8 @@ const piecesACaler = SLOTS.flatMap((s) => {
       const repere = document.getElementById("calibrage-repere");
       const repereImg = document.getElementById("calibrage-repere-img");
       const champSol = document.querySelector('input[name="bottomPct"]');
+      const decalage = document.getElementById("calibrage-decalage");
+      const decalageVal = document.getElementById("calibrage-decalage-val");
 
       const LARGEUR = Number(scene.dataset.largeur || 0.22);
       const ECHELLE = Number(scene.dataset.echelle || 0.7);
@@ -1292,6 +1358,9 @@ const piecesACaler = SLOTS.flatMap((s) => {
       function dessiner() {
         const f = Number(taille.value);
         const bp = Number(sol.value);
+        // L'écart de côté, en points de largeur d'affiche.
+        const dx = decalage ? Number(decalage.value) || 0 : 0;
+        const centreX = 50 + dx * 100;
         // Largeur du cadre en % de la largeur d'affiche.
         const largeurPct = LARGEUR * ECHELLE * f * 100;
         // Hauteur du cadre en % de la HAUTEUR d'affiche (aspect 1:2, page √2).
@@ -1299,12 +1368,12 @@ const piecesACaler = SLOTS.flatMap((s) => {
         const descente = (1 - bp) * hauteurPct;
         perso.style.width = largeurPct + "%";
         perso.style.height = hauteurPct + "%";
-        perso.style.left = "50%";
+        perso.style.left = centreX + "%";
         perso.style.top = Y * 100 + descente + "%";
         perso.style.transform = "translate(-50%, -50%)";
         // La poignée suit le coin haut-droit du personnage.
         if (poignee) {
-          poignee.style.left = 50 + largeurPct / 2 + "%";
+          poignee.style.left = centreX + largeurPct / 2 + "%";
           poignee.style.top = Y * 100 + descente - hauteurPct / 2 + "%";
           poignee.style.transform = "translate(-50%, -50%)";
         }
@@ -1315,11 +1384,16 @@ const piecesACaler = SLOTS.flatMap((s) => {
           const hRep = lRep * Math.SQRT2;
           repereImg.style.width = lRep + "%";
           repereImg.style.height = hRep + "%";
-          repereImg.style.left = 50 - largeurPct / 2 - lRep / 2 - 2 + "%";
+          repereImg.style.left = centreX - largeurPct / 2 - lRep / 2 - 2 + "%";
           repereImg.style.top = Y * 100 + (1 - bp) * hRep + "%";
           repereImg.style.transform = "translate(-50%, -50%)";
         }
         tailleVal.textContent = Math.round(f * 100) + " %";
+        if (decalageVal) {
+          const pts = Math.round(Math.abs(dx) * 100);
+          decalageVal.textContent =
+            pts === 0 ? "au centre" : pts + " % " + (dx < 0 ? "à gauche" : "à droite");
+        }
         // Le champ chiffré du bloc du dessus reste la source enregistrée pour
         // le calage : deux endroits qui diraient deux choses se
         // contrediraient tôt ou tard.
@@ -1340,7 +1414,9 @@ const piecesACaler = SLOTS.flatMap((s) => {
         } catch {}
         perso.style.cursor = "grabbing";
         const depart = ev.clientY;
+        const departX = ev.clientX;
         const bpDepart = Number(sol.value);
+        const dxDepart = decalage ? Number(decalage.value) || 0 : 0;
         const boite = scene.getBoundingClientRect();
         // Hauteur du cadre du personnage, en fraction de la hauteur d'affiche.
         const hauteurCadre =
@@ -1350,6 +1426,12 @@ const piecesACaler = SLOTS.flatMap((s) => {
           // Monter à l'écran = remonter le dessin dans son cadre.
           const d = (e.clientY - depart) / boite.height;
           sol.value = String(borner(bpDepart - d / hauteurCadre, 0.05, 1));
+          // Le côté suit le doigt au pixel près : contrairement à la taille,
+          // une position se lit directement sur l'affiche, sans amortir.
+          if (decalage) {
+            const ddx = (e.clientX - departX) / boite.width;
+            decalage.value = String(borner(dxDepart + ddx, -0.4, 0.4));
+          }
           dessiner();
         };
         const lacher = () => {
@@ -1408,6 +1490,41 @@ const piecesACaler = SLOTS.flatMap((s) => {
         .getElementById("calibrage-reset")
         ?.addEventListener("click", function () {
           taille.value = "1";
+          dessiner();
+        });
+
+      /* --- Le calage au sol, tapé au clavier ----------------------------- */
+      // Le champ chiffré et le geste se tiennent à jour : dessiner() écrit la
+      // valeur du geste dans le champ, et une valeur tapée repose le
+      // personnage. Une saisie incomplète (« 0, ») ne déplace rien tant
+      // qu'elle n'est pas un nombre.
+      champSol?.addEventListener("input", function () {
+        const v = Number(String(champSol.value).replace(",", "."));
+        if (!Number.isFinite(v)) return;
+        sol.value = String(borner(v, 0.05, 1));
+        dessiner();
+      });
+
+      /* --- Le côté, au détail près --------------------------------------- */
+      // Un point de largeur d'affiche par clic : assez fin pour ajuster, assez
+      // franc pour qu'on voie le personnage bouger.
+      const decaler = (delta) => {
+        if (!decalage) return;
+        decalage.value = String(
+          borner((Number(decalage.value) || 0) + delta, -0.4, 0.4),
+        );
+        dessiner();
+      };
+      document
+        .getElementById("calibrage-gauche")
+        ?.addEventListener("click", () => decaler(-0.01));
+      document
+        .getElementById("calibrage-droite")
+        ?.addEventListener("click", () => decaler(0.01));
+      document
+        .getElementById("calibrage-centre")
+        ?.addEventListener("click", function () {
+          if (decalage) decalage.value = "0";
           dessiner();
         });
 

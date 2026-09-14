@@ -875,6 +875,8 @@ export interface CharacterType {
    * 1 = la largeur commune d'avant ce réglage, 0,6 = nettement plus petit.
    */
   facteurTaille?: number;
+  /** Décalage de côté sur l'affiche, en fraction de sa largeur (0 = centré). */
+  decalageX?: number;
   /**
    * Pièces autorisées par emplacement, en POSITIONS de pièces génériques.
    * Absent = pas encore paramétré, le configurateur propose alors tout.

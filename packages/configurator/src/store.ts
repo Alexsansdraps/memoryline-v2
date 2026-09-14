@@ -96,6 +96,11 @@ export interface CharacterDTO {
    */
   facteurTaille?: number;
   /**
+   * Décalage de CÔTÉ réglé au back-office, en fraction de la largeur de
+   * l'affiche. Absent, il vaut 0 : le personnage reste au centre de sa case.
+   */
+  decalageX?: number;
+  /**
    * Variantes AUTORISÉES pour ce perso, par slot, dans l'ordre d'affichage.
    * Les nombres = `position` des VariantDTO (ids d'ancienne config), pas
    * leurs ids. null/absent = pas encore lié -> proposer toutes les variantes.
@@ -358,6 +363,11 @@ export function autoPlace(
    * faisait la rangée avant qu'un chat puisse être plus petit qu'un homme.
    */
   facteurDe?: (c: WorkingCharacter) => number,
+  /**
+   * Le décalage de côté de chaque personnage, réglé au back-office. Absent,
+   * tout le monde reste au centre de sa case, comme avant ce réglage.
+   */
+  decalageDe?: (c: WorkingCharacter) => number,
 ): { x: number; y: number; scale: number }[] {
   const n = characters.length;
   if (n === 0) return [];
@@ -414,9 +424,14 @@ export function autoPlace(
    */
 
   let curseur = start + largeurs[0]! / 2; // centre du premier
-  return characters.map((_, i) => {
+  return characters.map((c, i) => {
     if (i > 0) curseur += pas[i]!;
-    const x = curseur; // centre du i-ème perso (0..1)
+    // Sa case dans la rangée, plus l'écart réglé pour CE personnage au
+    // back-office. Ramené dans l'affiche : un décalage vers la droite sur le
+    // dernier de la rangée ne doit pas le faire sortir du cadre.
+    const ecart = Math.min(0.4, Math.max(-0.4, decalageDe?.(c) ?? 0));
+    const demiLargeur = largeurs[i]! / 2;
+    const x = Math.min(1 - demiLargeur, Math.max(demiLargeur, curseur + ecart));
     // L'échelle rendue est celle du personnage : la rangée décide de la place,
     // le facteur décide de la taille dans cette place.
     return { x, y: Y, scale: scale * facteurs[i]! };
@@ -486,8 +501,9 @@ export function placementsAffiche(
   characters: WorkingCharacter[],
   basDuDessin?: (c: WorkingCharacter) => number,
   facteurDe?: (c: WorkingCharacter) => number,
+  decalageDe?: (c: WorkingCharacter) => number,
 ): PlacementPersonnage[] {
-  const rangee = autoPlace(characters, facteurDe);
+  const rangee = autoPlace(characters, facteurDe, decalageDe);
   return characters.map((c, i) => {
     const auto = rangee[i] ?? { x: 0.5, y: 0.816, scale: 0.6 };
     if (!c.placementManuel) return auto;
@@ -502,8 +518,14 @@ export function configFromState(
   productId: string | number | undefined,
   basDuDessin?: (c: WorkingCharacter) => number,
   facteurDe?: (c: WorkingCharacter) => number,
+  decalageDe?: (c: WorkingCharacter) => number,
 ): PosterConfig {
-  const placement = placementsAffiche(state.characters, basDuDessin, facteurDe);
+  const placement = placementsAffiche(
+    state.characters,
+    basDuDessin,
+    facteurDe,
+    decalageDe,
+  );
   const characters: Character[] = state.characters.map((c, i) => {
     const p = placement[i] ?? { x: c.x, y: c.y, scale: c.scale };
     // assets : slot -> variantId, sans les slots vides.

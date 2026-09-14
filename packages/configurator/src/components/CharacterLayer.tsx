@@ -20,22 +20,33 @@ import {
 } from "../store";
 
 /**
- * Force `preserveAspectRatio="xMidYMax meet"` (centré + ancré EN BAS) et fait
- * remplir le conteneur (width/height 100%, display block) sur la balise <svg>
- * racine. Toutes les couches partagent le cadre 500×1000 : empilées alignées,
- * elles composent le personnage (cf. RENDU-SPEC.md).
+ * Fait remplir le conteneur (width/height 100%, display block) à la balise
+ * <svg> racine. Toutes les couches d'un humain partagent le cadre 500×1000 :
+ * empilées alignées, elles composent le personnage (cf. RENDU-SPEC.md).
+ *
+ * L'ALIGNEMENT EST CELUI DU FICHIER, et c'est une correction. Cette fonction
+ * forçait `xMidYMax` — le dessin collé au BAS de son cadre. Pour un dessin au
+ * format du cadre (1:2), l'ancrage ne change rien : il remplit tout. Mais cinq
+ * personnages ne le sont pas — les chiens, dessinés en 2:3 — et eux se
+ * posaient 12,5 % plus bas que partout ailleurs :
+ *
+ *   - l'écran de calage du back-office les centre dans leur cadre ;
+ *   - le fichier d'impression aussi, parce que le SVG le demande lui-même
+ *     (`xMidYMid meet`) et que sharp le respecte ;
+ *   - seule la boutique les collait en bas.
+ *
+ * Résultat : un chien calé au pixel près au back-office descendait sur la
+ * boutique, et la cliente le voyait plus bas que là où il serait IMPRIMÉ —
+ * près de deux centimètres sur une affiche A3. En respectant l'alignement du
+ * fichier, les trois rendus disent enfin la même chose.
+ *
+ * Les chiens n'ont aucune couche de vêtement à aligner (variantes vides) : ce
+ * que l'ancrage forcé protégeait n'existe pas pour eux.
  */
 function fillSvg(rawSvg: string): string {
   if (!rawSvg) return rawSvg;
   let out = rawSvg.replace(/<svg\b([^>]*)>/, (_m, attrs: string) => {
     let a = attrs;
-    // preserveAspectRatio = bas-centré
-    a = /\spreserveAspectRatio\s*=/.test(a)
-      ? a.replace(
-          /(\spreserveAspectRatio\s*=\s*")[^"]*(")/,
-          `$1xMidYMax meet$2`,
-        )
-      : `${a} preserveAspectRatio="xMidYMax meet"`;
     // width/height/style = 100% (le viewBox d'origine est conservé)
     a = a
       .replace(/\swidth\s*=\s*"[^"]*"/g, "")
