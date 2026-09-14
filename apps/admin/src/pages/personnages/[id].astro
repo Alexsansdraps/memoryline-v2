@@ -2,6 +2,7 @@
 import { apiInterne } from "../../lib/api-interne.ts";
 import { url } from "../../lib/url.ts";
 import Admin from "../../layouts/Admin.astro";
+import { Y_SOL_PERSONNAGES } from "@memoryline/types";
 import {
   adminApi,
   type Asset,
@@ -148,7 +149,10 @@ try {
    sans les changer là-bas ferait mentir la calibration. */
 const CHAR_BASE_WIDTH = 0.22; // largeur de référence, en fraction de l'affiche
 const ECHELLE_SEUL = 0.7; // échelle d'un personnage seul sur l'affiche
-const Y_MURET = 0.816; // hauteur où les pieds se posent
+// La hauteur où les pieds se posent : la MÊME valeur que la rangée du site,
+// partagée plutôt que recopiée. Le site y ajoutait une pente que cet écran
+// ignorait — un personnage calé ici ressortait décalé sur la boutique.
+const Y_MURET = Y_SOL_PERSONNAGES;
 
 /**
  * Pièces génériques du type d'affiche de CE personnage, par emplacement.

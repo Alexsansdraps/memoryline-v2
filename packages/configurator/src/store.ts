@@ -19,6 +19,7 @@ import {
   lignesDuTexte,
   styleDesLignes,
   textesDepuisLignes,
+  Y_SOL_PERSONNAGES,
 } from "@memoryline/types";
 
 /** Étapes du flow configurateur (§18.2 F). */
@@ -372,7 +373,10 @@ export function autoPlace(
   // compenser la correction du drop (facteur √2 oublié) sans bouger les
   // humains (bp≈0.86) déjà calés — seuls les persos à fort vide (animaux)
   // descendent maintenant jusqu'au muret.
-  const Y = 0.816; // posés sur le muret
+  // La même ligne que l'écran de calage du back-office — la valeur est
+  // partagée, voir Y_SOL_PERSONNAGES. C'est là-bas qu'on règle comment chaque
+  // personnage se pose ; ici, on ne fait que les ranger dessus.
+  const Y = Y_SOL_PERSONNAGES;
   // Échelle : persos plus petits ; rétrécit avec le nombre pour tenir côte à
   // côte sans déborder (rangée dans ~90% de la largeur).
   const usable = 0.9;
@@ -396,20 +400,26 @@ export function autoPlace(
     largeurs[n - 1]! / 2; // largeur totale de la rangée
   const start = 0.5 - rowW / 2; // bord gauche pour centrer le groupe
 
-  // PENTE DU MURET : il descend de gauche à droite (~+9% de bas en haut sur
-  // toute la largeur). Chaque perso suit cette pente -> y augmente avec x pour
-  // que les pieds restent sur le bord incliné (gauche plus haut, droite plus bas).
-  const SLOPE = 0.09; // dénivelé total sur la largeur de l'affiche
+  /*
+   * PLUS DE PENTE. Une pente de 9 % faisait descendre chaque personnage un
+   * peu plus bas que son voisin de gauche. Elle avait été réglée pour UN
+   * fond — un muret incliné — et s'appliquait depuis à toutes les affiches du
+   * catalogue : sur un fond à sol plat, les personnages apparaissaient en
+   * escalier.
+   *
+   * Et l'écran de calage du back-office, lui, pose les pieds sur une ligne
+   * PLATE. Un personnage calé parfaitement là-bas ressortait donc décalé ici.
+   * Tout le monde sur la même ligne : c'est le calage du back-office, et lui
+   * seul, qui décide comment chacun se pose.
+   */
 
   let curseur = start + largeurs[0]! / 2; // centre du premier
   return characters.map((_, i) => {
     if (i > 0) curseur += pas[i]!;
     const x = curseur; // centre du i-ème perso (0..1)
-    // décalage selon la position : centré sur 0.5 -> +/- la moitié de la pente.
-    const slopeY = (x - 0.5) * SLOPE;
     // L'échelle rendue est celle du personnage : la rangée décide de la place,
     // le facteur décide de la taille dans cette place.
-    return { x, y: Y + slopeY, scale: scale * facteurs[i]! };
+    return { x, y: Y, scale: scale * facteurs[i]! };
   });
 }
 
