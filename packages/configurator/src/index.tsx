@@ -11,6 +11,7 @@ import type {
   PosterFormat,
   BackgroundDTO,
 } from "@memoryline/types";
+import { unwrap } from "solid-js/store";
 import { BASE_COLOR_SCOPE, colorKey, ligneEnMajuscules } from "@memoryline/types";
 import {
   STEPS,
@@ -361,7 +362,10 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     mutate((s) => {
       const source = s.characters[index];
       if (!source) return;
-      const copie = structuredClone(source);
+      // `source` est un reflet du magasin, pas l'objet lui-même : le cloner tel
+      // quel lève une erreur (DataCloneError), avalée par le clic — le bouton
+      // ne faisait rien. On clone l'objet réel qu'il reflète.
+      const copie = structuredClone(unwrap(source));
       s.characters.splice(index + 1, 0, copie);
       s.characters.forEach((c, i) => (c.position = i));
       // On ouvre la copie : on duplique pour modifier, jamais pour contempler.

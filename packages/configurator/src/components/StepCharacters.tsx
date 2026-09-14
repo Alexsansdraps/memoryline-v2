@@ -149,10 +149,6 @@ export function StepCharacters(props: {
                         </span>
                         <span style={{ flex: "1", "font-size": "13px" }}>
                           {base?.name ?? `Personnage ${c.characterId}`}
-                          <span style={{ color: "#9ca3af" }}>
-                            {" "}
-                            (z {c.position})
-                          </span>
                         </span>
                         <Button
                           variant="secondary"

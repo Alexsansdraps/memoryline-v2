@@ -65,7 +65,16 @@ if (Astro.request.method === "POST") {
       // La saisie est en euros, avec la virgule française ; l'API compte en
       // centimes. La conversion se fait ici, une fois, plutôt que dans chaque
       // appel.
-      const valeur = Number(String(f.get("prixValeur") ?? "0").replace(",", "."));
+      //
+      // Une case VIDE est refusée ici. Elle était lue comme « 0 » : un clic
+      // sur Appliquer sans rien écrire rendait gratuites toutes les affiches
+      // cochées. Pour offrir un produit, il faut écrire 0.
+      const saisie = String(f.get("prixValeur") ?? "").trim();
+      if (!saisie)
+        throw new Error(
+          "Indiquez un montant (ou un pourcentage) avant d'appliquer. Pour offrir un produit, écrivez 0.",
+        );
+      const valeur = Number(saisie.replace(",", "."));
       if (!Number.isFinite(valeur) || valeur < 0)
         throw new Error("Le montant saisi n'est pas un nombre valable.");
       params =
