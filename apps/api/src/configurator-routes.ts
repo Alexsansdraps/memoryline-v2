@@ -26,7 +26,10 @@ import {
 import { db, schema } from "./db/client.js";
 import { cheminApercu } from "./apercus.js";
 import { poidsDesCollections } from "./collections.js";
-import { renderPosterPdf, type ResolveData } from "./pdf.js";
+import {
+  fichierDImpression,
+  preparerFichierDImpression,
+} from "./fichiers-impression.js";
 import {
   resumeCommandes,
   statutExpedition,
@@ -102,39 +105,6 @@ async function nextOrderNumber(channel: "web" | "salon"): Promise<string> {
   return prefix + String(max + 1).padStart(4, "0");
 }
 
-/** Charge les données nécessaires au rendu PDF d'un snapshot. */
-async function buildResolveData(): Promise<ResolveData> {
-  const assets = await db.select().from(schema.assets);
-  const backgrounds = await db.select().from(schema.backgrounds);
-  const types = await db.select().from(schema.characterTypes);
-  const assetMap = new Map<string, any>();
-  for (const a of assets)
-    assetMap.set(String(a.id), {
-      id: a.id,
-      slot: a.slot,
-      svgUrl: a.svgUrl,
-      colorZones: a.colorZones,
-      position: a.position,
-    });
-  // Personnages (SVG de base pré-composé) pour le rendu PDF du nouveau modèle.
-  const charMap = new Map<string, any>();
-  for (const t of types)
-    charMap.set(String(t.id), {
-      id: t.id,
-      baseSvgUrl: t.baseSvgUrl,
-      baseColorZones: t.baseColorZones,
-      bottomPct: t.bottomPct ?? 1,
-      // Calage des pièces : sans lui, le PDF poserait les coupes et les
-      // vêtements ailleurs que l'aperçu validé par le client.
-      slotAdjust: t.slotAdjust ?? null,
-    });
-  const bgMap = new Map<string, any>();
-  for (const b of backgrounds)
-    bgMap.set(String(b.id), { id: b.id, url: b.url });
-  return { assets: assetMap, characters: charMap, backgrounds: bgMap };
-}
-
-/** Génère le PDF d'une ligne de commande et l'enregistre (print_file). */
 /**
  * Nom du cadre tel qu'il doit apparaître dans le nom du fichier : « bois »,
  * « creme », « noir »… et « pas-cadre » quand l'affiche part seule.
@@ -149,6 +119,10 @@ function suffixeCadre(nomCadre: string | null | undefined): string {
   return slugifyName(brut.replace(/^cadre\s+/i, "")) || "pas-cadre";
 }
 
+/**
+ * Enregistre le fichier d'impression d'une ligne de commande (print_file) et
+ * lance sa fabrication en arrière-plan (fichiers-impression.ts).
+ */
 async function generatePrintFile(
   orderItemId: number,
   config: PosterConfig,
@@ -156,31 +130,6 @@ async function generatePrintFile(
   orderNumber: string,
   format: "A4" | "A3",
 ): Promise<{ filename: string }> {
-  const data = await buildResolveData();
-
-  // Affiche générée par IA : le visuel N'EST PAS la pile de calques habituelle
-  // (elle n'a ni fond, ni personnages), c'est l'image produite par le modèle.
-  // On la donne au moteur comme fond, et les lignes de texte se composent
-  // par-dessus comme sur n'importe quelle affiche.
-  //
-  // Sans ça, l'atelier recevait une page BLANCHE : le client avait payé, la
-  // génération existait en base, et rien ne l'amenait jusqu'au PDF.
-  let aImprimer = config;
-  if (config.aiPublicId) {
-    const [gen] = await db
-      .select({ fullPath: schema.aiGenerations.fullPath })
-      .from(schema.aiGenerations)
-      .where(eq(schema.aiGenerations.publicId, config.aiPublicId));
-    if (!gen?.fullPath)
-      // Mieux vaut une erreur bruyante qu'un A4 blanc glissé dans un colis.
-      throw new Error(
-        `Affiche IA ${config.aiPublicId} : image pleine définition introuvable`,
-      );
-    aImprimer = { ...config, backgroundUrl: gen.fullPath };
-  }
-
-  const pdf = await renderPosterPdf(aImprimer, { data, format });
-
   // « dupont_A3_bois.pdf » : le nom se lit d'un coup d'œil au moment
   // d'imprimer, sans avoir à rouvrir la commande pour savoir quel papier
   // charger ni quel cadre sortir.
@@ -211,8 +160,8 @@ async function generatePrintFile(
   const noms = new Set(dejaPris.map((f) => f.filename));
   let filename = `${base}.pdf`;
   for (let i = 2; noms.has(filename); i++) filename = `${base}-${i}.pdf`;
-  // Stockage : en l'absence de R2 configuré en dev, on dépose le binaire en
-  // base via une route à la demande (régénérable). Ici on garde la trace.
+  // La trace du fichier, sous son nom définitif ; le PDF, lui, se range dans
+  // data/assets/cache/impressions (fichiers-impression.ts).
   await db
     .insert(schema.printFiles)
     .values({
@@ -222,6 +171,11 @@ async function generatePrintFile(
       format,
     })
     .onConflictDoNothing();
+
+  // Le PDF lui-même se fabrique derrière : de quelques secondes à plus d'une
+  // minute pour le premier rendu d'un fond, que la cliente n'a pas à attendre
+  // sur l'écran de paiement. Il sera prêt quand on viendra le télécharger.
+  preparerFichierDImpression(orderItemId, config);
   return { filename };
 }
 
@@ -433,10 +387,14 @@ async function resolveUnitPriceCents(
 async function loadCartItem(cartId: string, itemId: number) {
   if (!Number.isFinite(itemId)) return null;
   const [order] = await db
-    .select({ id: schema.orders.id })
+    .select({ id: schema.orders.id, status: schema.orders.status })
     .from(schema.orders)
     .where(eq(schema.orders.clientOrderId, cartId));
-  if (!order) return null;
+  // Un panier devenu commande est clos. Sans cette garde, l'identifiant de
+  // panier resté dans le navigateur suffisait à modifier une affiche DÉJÀ
+  // PAYÉE — passer d'un A4 à un A3, au prix de l'A4 — ou à en retirer une.
+  if (!order || (order.status !== "draft" && order.status !== "pending"))
+    return null;
   const [item] = await db
     .select()
     .from(schema.orderItems)
@@ -631,7 +589,7 @@ export async function markOrderPaid(
     try {
       await generatePrintFile(it.id, cfg, customerName, order.number, fmt);
     } catch (e) {
-      console.error("PDF génération échouée (item " + it.id + ") :", e);
+      console.error("Fichier d'impression non enregistré (item " + it.id + ") :", e);
     }
   }
 
@@ -1770,8 +1728,17 @@ export function mountConfiguratorRoutes(app: Hono) {
       : [];
     const cfg = item.config as PosterConfig;
     const fmt = (cfg.format ?? "A4") as "A4" | "A3";
-    const data = await buildResolveData();
-    const pdf = await renderPosterPdf(cfg, { data, format: fmt });
+    // Rangé au paiement, le fichier part aussitôt ; sinon il se fabrique ici.
+    let pdf: Buffer;
+    try {
+      pdf = await fichierDImpression(itemId, cfg);
+    } catch (e) {
+      console.error(`[impression] ligne ${itemId} :`, e);
+      return c.json(
+        { error: `Fichier d'impression impossible à fabriquer : ${(e as Error).message}` },
+        500,
+      );
+    }
     // Le nom retenu au moment de la commande fait foi : le fichier téléchargé
     // aujourd'hui doit s'appeler comme celui rangé le jour de l'impression,
     // même si le cadre a été renommé entre-temps.

@@ -16,13 +16,24 @@
  * (rapide + fiable) avec repli HTTP si un fichier manque localement.
  */
 
-import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readdir, readFile, rename, utimes, writeFile } from "node:fs/promises";
 import { basename, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import sharp from "sharp";
 import type { OverlayOptions, Sharp } from "sharp";
-import { PDFDocument, StandardFonts, degrees, rgb } from "pdf-lib";
+import {
+  PDFDocument,
+  PDFRawStream,
+  StandardFonts,
+  concatTransformationMatrix,
+  degrees,
+  drawObject,
+  popGraphicsState,
+  pushGraphicsState,
+  rgb,
+} from "pdf-lib";
 import type { PDFFont, PDFPage } from "pdf-lib";
 
 import {
@@ -31,7 +42,7 @@ import {
   calagePour,
   BASE_COLOR_SCOPE,
   colorsForScope,
-  hideSlotGroups,
+  empilerPersonnage,
   recolorSvg,
 } from "@memoryline/types";
 import {
@@ -200,10 +211,11 @@ async function readSource(url: string): Promise<Buffer> {
  * Transforme une {@link PosterConfig} + les données pré-chargées en une liste
  * ORDONNÉE de couches {svgString, x, y, scale} prêtes à compositer.
  *
- * Pour chaque personnage (trié par `position`), on empile ses assets dans
- * l'ordre {@link SLOT_Z_ORDER}, chacun recoloré via `character.colors`
- * (surcharge les zones par défaut de l'asset). Le placement (x/y/scale) du
- * personnage s'applique à toutes ses couches.
+ * Pour chaque personnage (trié par `position`), on empile sa base, découpée en
+ * tranches, et ses pièces choisies dans l'ordre {@link SLOT_Z_ORDER} (cf.
+ * empilerPersonnage), chacune recolorée via `character.colors` (surcharge les
+ * zones par défaut de l'asset). Le placement (x/y/scale) du personnage
+ * s'applique à toutes ses couches.
  *
  * Le fond N'EST PAS inclus ici (il est rendu pleine taille séparément).
  *
@@ -243,43 +255,55 @@ export async function resolveConfig(
     const frameHfrac = (PDF_CHAR_BASE_WIDTH * scale * 2) / Math.SQRT2;
     const dropFrac = (1 - bp) * frameHfrac;
     const y = (character.y ?? 0.5) + dropFrac;
+
+    // Pièces choisies (celles qu'on sait retrouver) et emplacements mis à
+    // « aucun » ("none" : sans casquette, sans coupe…). Les deux effacent de
+    // la base le groupe d'origine ; seules les premières le remplacent.
+    const entrees = Object.entries(character.assets);
+    const pieces = entrees
+      .filter(([, id]) => id !== "none" && data.assets.get(String(id)))
+      .map(([slot]) => slot);
+    const retires = entrees
+      .filter(([, id]) => id === "none")
+      .map(([slot]) => slot);
+
+    let brute: string | null = null;
     if (base?.baseSvgUrl) {
       try {
-        const raw = (await readSource(base.baseSvgUrl)).toString("utf8");
-        // Couleurs namespacées "scope:zone" : la base ne reçoit que son scope
-        // (les zones stN sont réutilisées par les variantes de slots — une map
-        // plate ferait déteindre les couleurs d'un slot sur la base).
-        const overrides: Record<string, string> = {
-          ...(base.baseColorZones ?? {}),
-          ...colorsForScope(character.colors, BASE_COLOR_SCOPE),
-        };
-        // Masque dans la base les groupes des slots remplacés par une variante
-        // (même logique que le configurateur : sinon la tenue d'origine du
-        // perso apparaît sous la variante sur le PDF imprimé) et de ceux mis
-        // explicitement à « aucun » ("none" : sans casquette, sans coupe…).
-        const replacedSlots = Object.entries(character.assets)
-          .filter(
-            ([, assetId]) =>
-              assetId === "none" || data.assets.get(String(assetId)),
-          )
-          .map(([slot]) => slot);
+        brute = (await readSource(base.baseSvgUrl)).toString("utf8");
+      } catch {
+        // base illisible : on continue avec les pièces seules
+      }
+    }
+
+    // 1) et 2) La base en tranches, les pièces choisies intercalées à leur
+    //    place : corps → pantalon → haut → cheveux → accessoires. Même
+    //    découpe que le configurateur (empilerPersonnage) — sans elle, un
+    //    t-shirt choisi s'imprimait par-dessus les cheveux d'origine.
+    const etages = brute
+      ? empilerPersonnage(brute, pieces, retires)
+      : [...pieces].sort((a, b) => slotZ(a) - slotZ(b)).map((piece) => ({ piece }));
+
+    // Couleurs namespacées "scope:zone" : la base ne reçoit que son scope
+    // (les zones stN sont réutilisées par les pièces — une map plate ferait
+    // déteindre les couleurs d'une pièce sur la base).
+    const couleursBase: Record<string, string> = {
+      ...(base?.baseColorZones ?? {}),
+      ...colorsForScope(character.colors, BASE_COLOR_SCOPE),
+    };
+
+    for (const etage of etages) {
+      if ("base" in etage) {
         layers.push({
-          svgString: recolorSvg(hideSlotGroups(raw, replacedSlots), overrides),
+          svgString: recolorSvg(etage.base, couleursBase),
           x,
           y,
           scale,
         });
-      } catch {
-        // base illisible : on continue avec les variantes seules
+        continue;
       }
-    }
-
-    // 2) Variantes de slots choisies, empilées par-dessus la base dans l'ordre.
-    const slotEntries = Object.entries(character.assets);
-    slotEntries.sort((a, b) => slotZ(a[0]) - slotZ(b[0]));
-
-    for (const [slot, assetId] of slotEntries) {
-      const asset = data.assets.get(String(assetId));
+      const slot = etage.piece;
+      const asset = data.assets.get(String(character.assets[slot]));
       if (!asset) continue; // asset manquant : on saute (best-effort)
 
       const raw = (await readSource(asset.svgUrl)).toString("utf8");
@@ -567,25 +591,22 @@ export async function renderPosterPng(
       W,
       Math.max(1, Math.round(CHAR_BASE_WIDTH * layer.scale * W)),
     );
-    const png = await sharp(Buffer.from(layer.svgString), {
+    // En pixels bruts, pas en PNG : un PNG serait compressé ici pour être
+    // aussitôt décompressé par l'assemblage final, et ce, pour chaque calque.
+    const { data: pixels, info } = await sharp(Buffer.from(layer.svgString), {
       density: 300,
     })
       .resize({ width: targetW })
-      .png()
-      .toBuffer();
-
-    const meta = await sharp(png).metadata();
-    const lw = meta.width ?? targetW;
-    const lh = meta.height ?? targetW;
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
 
     // (x*W, y*H) = centre de la couche -> coin haut-gauche.
-    const left = Math.round(layer.x * W - lw / 2);
-    const top = Math.round(layer.y * H - lh / 2);
+    const left = Math.round(layer.x * W - info.width / 2);
+    const top = Math.round(layer.y * H - info.height / 2);
 
-    // sharp refuse les overlays plus grands que la base ou en débord négatif :
-    // on place la couche sur un canevas transparent W×H puis on composite à 0,0.
-    const framed = await frameLayer(png, lw, lh, left, top, W, H);
-    if (framed) composites.push({ input: framed, left: 0, top: 0 });
+    const place = await placerCouche(pixels, info.width, info.height, left, top, W, H);
+    if (place) composites.push(place);
   }
 
   // 3) Textes (les trois lignes). Le SVG a déjà des dimensions en px = W×H ;
@@ -593,34 +614,57 @@ export async function renderPosterPng(
   // épingle la taille exacte du canevas pour garantir un overlay W×H plein cadre.
   const textSvg = await buildTextSvg(config, W, H);
   if (textSvg) {
-    const textPng = await sharp(Buffer.from(textSvg))
+    const { data: texte, info } = await sharp(Buffer.from(textSvg))
       .resize({ width: W, height: H, fit: "fill" })
-      .png()
-      .toBuffer();
-    composites.push({ input: textPng, left: 0, top: 0 });
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    composites.push({
+      input: texte,
+      raw: { width: info.width, height: info.height, channels: 4 },
+      left: 0,
+      top: 0,
+    });
   }
 
-  return base
+  const { data: affiche, info } = await base
     .composite(composites)
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  // Sur du blanc, comme le papier : l'affiche est opaque, et un PNG sans
+  // couche de transparence s'insère dans le PDF tel quel (cf. renderPosterPdf)
+  // au lieu d'y être décompressé puis recompressé. En deux temps : dans un
+  // même enchaînement, sharp aplatit AVANT d'assembler les calques, et
+  // l'assemblage rajoute la transparence qu'on venait d'ôter.
+  return sharp(affiche, { raw: info })
+    .flatten({ background: "#ffffff" })
     .png({ compressionLevel: 6 })
     .toBuffer();
 }
 
 /**
- * Place une couche déjà rasterisée (lw×lh) à la position (left, top) sur un
- * canevas transparent W×H, en recadrant ce qui dépasse. Retourne un PNG W×H, ou
- * `null` si la couche est entièrement hors champ. Garantit des overlays de même
- * taille que la base (sharp refuse autrement débords et overlays trop grands).
+ * Prépare une couche rasterisée (lw×lh, pixels bruts RGBA) pour l'assemblage :
+ * recadrée à ce qui tombe sur l'affiche, et posée à sa place. `null` si elle
+ * tombe entièrement hors champ.
+ *
+ * sharp refuse un calque qui déborde de l'image ou commence en négatif : un
+ * personnage poussé contre le bord doit donc perdre ce qui dépasse.
+ *
+ * On ne pose PLUS chaque couche sur une toile transparente de la taille de
+ * l'affiche. C'est ce que faisait cette fonction, et c'était l'essentiel du
+ * temps d'impression : une toile A3 fait 17 millions de pixels, et elle était
+ * compressée en PNG pour CHAQUE calque — vingt-quatre fois pour une famille
+ * de six. Une affiche A3 prenait près de deux minutes.
  */
-async function frameLayer(
-  png: Buffer,
+async function placerCouche(
+  pixels: Buffer,
   lw: number,
   lh: number,
   left: number,
   top: number,
   W: number,
   H: number,
-): Promise<Buffer | null> {
+): Promise<OverlayOptions | null> {
   // Intersection [left, left+lw) × [top, top+lh) avec [0, W) × [0, H).
   const sx = Math.max(0, -left); // décalage source en x si débord à gauche
   const sy = Math.max(0, -top);
@@ -630,23 +674,45 @@ async function frameLayer(
   const ch = Math.min(lh - sy, H - dy);
   if (cw <= 0 || ch <= 0) return null;
 
-  let src = sharp(png);
-  if (sx > 0 || sy > 0 || cw < lw || ch < lh) {
-    src = src.extract({ left: sx, top: sy, width: cw, height: ch });
-  }
-  const cropped = await src.png().toBuffer();
+  const brut = { width: lw, height: lh, channels: 4 as const };
+  if (sx === 0 && sy === 0 && cw === lw && ch === lh)
+    return { input: pixels, raw: brut, left: dx, top: dy };
 
-  return sharp({
-    create: {
-      width: W,
-      height: H,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
-    },
-  })
-    .composite([{ input: cropped, left: dx, top: dy }])
-    .png()
+  const recadre = await sharp(pixels, { raw: brut })
+    .extract({ left: sx, top: sy, width: cw, height: ch })
+    .raw()
     .toBuffer();
+  return {
+    input: recadre,
+    raw: { width: cw, height: ch, channels: 4 },
+    left: dx,
+    top: dy,
+  };
+}
+
+/**
+ * Le plus petit raster déjà rangé d'un fond qui soit au moins aussi large que
+ * `W`, ou `null`. Les fichiers s'appellent `<empreinte>-<largeur>x<hauteur>`.
+ */
+async function fondDejaRasterise(empreinte: string, W: number): Promise<Buffer | null> {
+  let noms: string[];
+  try {
+    noms = await readdir(DOSSIER_FONDS);
+  } catch {
+    return null;
+  }
+  const candidats = noms
+    .map((nom) => /^([0-9a-f]+)-(\d+)x(\d+)\.png$/.exec(nom))
+    .filter((m): m is RegExpExecArray => !!m && m[1] === empreinte && Number(m[2]) > W)
+    .sort((a, b) => Number(a[2]) - Number(b[2]));
+  for (const m of candidats) {
+    try {
+      return await readFile(resolve(DOSSIER_FONDS, m[0]));
+    } catch {
+      // effacé entre-temps par le ménage : on essaie le suivant
+    }
+  }
+  return null;
 }
 
 /**
@@ -664,12 +730,8 @@ async function renderBackground(
   if (url) {
     const buf = await readSource(url);
     const isSvg = extname(fileNameFromUrl(url)).toLowerCase() === ".svg";
-    // unlimited:true → autorise les gros SVG de villes (sinon sharp lève
-    // "Buffer size limit exceeded"). density réduite à 150 (suffisant en cover).
-    const pixels = await sharp(
-      buf,
-      isSvg ? { density: 150, unlimited: true } : undefined,
-    )
+    if (isSvg) return sharp(await fondSvgRasterise(buf, W, H));
+    const pixels = await sharp(buf)
       .resize({ width: W, height: H, fit: "cover", position: "centre" })
       .png()
       .toBuffer();
@@ -685,6 +747,77 @@ async function renderBackground(
       background: { r: 255, g: 255, b: 255, alpha: 1 },
     },
   }).png();
+}
+
+/**
+ * Les fonds SVG déjà rasterisés, à la taille d'un format.
+ *
+ * Un fond n'est pas un dessin : c'est une photo emballée dans un SVG, et la
+ * rasteriser prend de quatre à VINGT secondes — pour un résultat identique à
+ * chaque fois, puisque toutes les affiches d'un même produit partagent leur
+ * fond. On la fait donc une fois, et on relit le résultat (un dixième de
+ * seconde) : aperçus de commande, fichier préparé au paiement, téléchargements.
+ *
+ * La clé est l'EMPREINTE du fichier, pas son nom : un fond remplacé sous le
+ * même nom produit une autre clé, et jamais l'ancienne image.
+ *
+ * PNG, sans perte : c'est ce qui part à l'impression. Rangé dans
+ * data/assets/cache/, qu'on peut vider sans rien perdre et que la sauvegarde
+ * ignore (scripts/sauvegarder.sh).
+ */
+const DOSSIER_FONDS = resolve(ASSETS_DIR, "cache", "fonds");
+
+/** Les rasterisations en cours : deux rendus du même fond n'en lancent qu'une. */
+const fondsEnCours = new Map<string, Promise<Buffer>>();
+
+async function fondSvgRasterise(svg: Buffer, W: number, H: number): Promise<Buffer> {
+  const cle = `${createHash("sha1").update(svg).digest("hex")}-${W}x${H}`;
+  const chemin = resolve(DOSSIER_FONDS, `${cle}.png`);
+  try {
+    const deja = await readFile(chemin);
+    // La date du fichier dit quand il a servi pour la dernière fois : c'est
+    // sur elle que se fait le ménage (voir fichiers-impression.ts).
+    const maintenant = new Date();
+    await utimes(chemin, maintenant, maintenant).catch(() => {});
+    return deja;
+  } catch {
+    // Pas encore rasterisé.
+  }
+
+  let travail = fondsEnCours.get(chemin);
+  if (!travail) {
+    travail = (async () => {
+      // Le même fond, déjà rasterisé pour un format PLUS GRAND (l'A3 d'une
+      // commande, quand on demande l'A4 de sa vignette) : on le réduit, en
+      // une demi-seconde, au lieu de repartir du SVG. A4 et A3 ont les mêmes
+      // proportions, la réduction ne coupe rien.
+      const plusGrand = await fondDejaRasterise(cle.split("-")[0]!, W);
+      // unlimited:true → autorise les gros SVG de villes (sinon sharp lève
+      // "Buffer size limit exceeded"). density réduite à 150 (suffisant en cover).
+      const pixels = await sharp(
+        plusGrand ?? svg,
+        plusGrand ? undefined : { density: 150, unlimited: true },
+      )
+        .resize({ width: W, height: H, fit: "cover", position: "centre" })
+        .png()
+        .toBuffer();
+      try {
+        await mkdir(DOSSIER_FONDS, { recursive: true });
+        // Écrit à côté puis renommé : un rendu qui lirait le fichier pendant
+        // l'écriture trouverait une image tronquée.
+        const provisoire = `${chemin}.${process.pid}.tmp`;
+        await writeFile(provisoire, pixels);
+        await rename(provisoire, chemin);
+      } catch (e) {
+        // Un disque plein ne doit pas empêcher d'imprimer : le fond est là,
+        // en mémoire, simplement pas rangé pour la prochaine fois.
+        console.warn("[impression] fond non mis en cache :", String(e));
+      }
+      return pixels;
+    })().finally(() => fondsEnCours.delete(chemin));
+    fondsEnCours.set(chemin, travail);
+  }
+  return travail;
 }
 
 function resolveBackgroundUrl(
@@ -719,11 +852,93 @@ export async function renderPosterPdf(
 
   const doc = await PDFDocument.create();
   const page = doc.addPage([pw, ph]);
-  const img = await doc.embedPng(pngBytes);
-  page.drawImage(img, { x: 0, y: 0, width: pw, height: ph });
+  if (!insererPngTelQuel(doc, page, pngBytes, pw, ph)) {
+    const img = await doc.embedPng(pngBytes);
+    page.drawImage(img, { x: 0, y: 0, width: pw, height: ph });
+  }
 
   const bytes = await doc.save();
   return Buffer.from(bytes);
+}
+
+/**
+ * Pose un PNG pleine page SANS le décompresser.
+ *
+ * `embedPng` de pdf-lib décode l'image entière puis la recompresse, en
+ * JavaScript, sur le fil principal de l'API : deux secondes pour un A4, près
+ * de cinq pour un A3, pendant lesquelles le serveur ne répond plus à personne
+ * — ni au site, ni au back-office.
+ *
+ * Or un PNG et un PDF compressent les pixels de la même façon (zlib, avec
+ * les mêmes prédicteurs par ligne) : les données du PNG deviennent celles de
+ * l'image du PDF, octet pour octet, sans rien recalculer. Même image, même
+ * poids, et quelques millisecondes.
+ *
+ * Seul le cas le plus simple est pris — RVB 8 bits, non entrelacé, ce que
+ * renderPosterPng produit. Pour tout autre PNG, on rend `false` et
+ * l'appelant repasse par pdf-lib.
+ */
+function insererPngTelQuel(
+  doc: PDFDocument,
+  page: ReturnType<PDFDocument["addPage"]>,
+  png: Buffer,
+  pw: number,
+  ph: number,
+): boolean {
+  const SIGNATURE = "89504e470d0a1a0a";
+  if (png.length < 33 || png.subarray(0, 8).toString("hex") !== SIGNATURE) return false;
+
+  let largeur = 0;
+  let hauteur = 0;
+  const donnees: Buffer[] = [];
+  for (let i = 8; i + 8 <= png.length; ) {
+    const longueur = png.readUInt32BE(i);
+    const type = png.toString("latin1", i + 4, i + 8);
+    const debut = i + 8;
+    if (debut + longueur > png.length) return false;
+    if (type === "IHDR") {
+      largeur = png.readUInt32BE(debut);
+      hauteur = png.readUInt32BE(debut + 4);
+      const profondeur = png[debut + 8];
+      const couleur = png[debut + 9];
+      const entrelace = png[debut + 12];
+      // 2 = RVB, sans palette ni transparence.
+      if (profondeur !== 8 || couleur !== 2 || entrelace !== 0) return false;
+    } else if (type === "IDAT") {
+      donnees.push(png.subarray(debut, debut + longueur));
+    } else if (type === "IEND") {
+      break;
+    }
+    i = debut + longueur + 4; // + CRC
+  }
+  if (!largeur || !hauteur || !donnees.length) return false;
+
+  const image = PDFRawStream.of(
+    doc.context.obj({
+      Type: "XObject",
+      Subtype: "Image",
+      Width: largeur,
+      Height: hauteur,
+      ColorSpace: "DeviceRGB",
+      BitsPerComponent: 8,
+      Filter: "FlateDecode",
+      DecodeParms: {
+        Predictor: 15,
+        Colors: 3,
+        BitsPerComponent: 8,
+        Columns: largeur,
+      },
+    }),
+    Buffer.concat(donnees),
+  );
+  const nom = page.node.newXObject("Affiche", doc.context.register(image));
+  page.pushOperators(
+    pushGraphicsState(),
+    concatTransformationMatrix(pw, 0, 0, ph, 0, 0),
+    drawObject(nom),
+    popGraphicsState(),
+  );
+  return true;
 }
 
 // --- La facture --------------------------------------------------------------

@@ -91,7 +91,10 @@ elif ! command -v rsync >/dev/null 2>&1; then
   echo >&2
 else
   VEILLE=$(ls -1d "$COPIES/fichiers"/*/ 2>/dev/null | sort | tail -1 || true)
+  # « cache/ » se recalcule entièrement (fonds rasterisés, PDF d'impression
+  # préparés) : le copier grossirait la sauvegarde sans rien protéger.
   rsync -a --delete \
+    --exclude=/cache/ \
     ${VEILLE:+--link-dest="$VEILLE"} \
     data/assets/ "$COPIES/fichiers/$JOUR/"
   echo "   $(du -sh --apparent-size "$COPIES/fichiers/$JOUR" | cut -f1) de fichiers"

@@ -5,7 +5,7 @@ import {
   calagePour,
   BASE_COLOR_SCOPE,
   colorsForScope,
-  hideSlotGroups,
+  empilerPersonnage,
   scopeSvgStyles,
 } from "@memoryline/types";
 import {
@@ -59,10 +59,11 @@ function fillSvg(rawSvg: string): string {
 }
 
 /**
- * Rend un personnage composé : la base pré-composée + chaque variante choisie
- * empilée par-dessus (bottoms -> clothes -> hair -> accessory), toutes au même
- * cadre 500×1000, recoloriées avec les couleurs du perso. Positionné en % par
- * le parent (indépendant de la résolution).
+ * Rend un personnage composé : sa base et les pièces choisies, toutes au même
+ * cadre 500×1000, recoloriées avec les couleurs du perso, dans l'ordre corps →
+ * pantalon → haut → cheveux → accessoires. La base est découpée en tranches
+ * intercalées entre les pièces (cf. empilerPersonnage) : un t-shirt choisi
+ * passe SOUS les cheveux d'origine. Positionné en % par le parent.
  */
 export function CharacterStack(props: {
   character: WorkingCharacter;
@@ -83,61 +84,61 @@ export function CharacterStack(props: {
     // base et slots se recolorent mutuellement (cf. colorsForScope).
     const colors = props.character.colors;
 
-    // Slots dont la couche de la base pré-composée doit être masquée : ceux
-    // remplacés par une variante choisie (sinon la tenue d'origine reste
-    // visible sous la variante — doublons) ET ceux explicitement mis à
-    // « aucun » (NONE_ASSET : perso sans casquette / sans coupe).
-    const replacedSlots = SLOT_ZORDER.filter(
-      (slot) =>
-        props.character.assets[slot] === NONE_ASSET ||
-        findVariant(props.slots?.[slot] ?? [], props.character.assets[slot]) !==
-          undefined,
+    const slots = props.slots;
+    const choisie = (slot: (typeof SLOT_ZORDER)[number]) =>
+      findVariant(slots?.[slot] ?? [], props.character.assets[slot]);
+    // Les emplacements qui portent une pièce choisie, et ceux mis à « aucun »
+    // (sans casquette, sans coupe) : leur groupe d'origine disparaît de la
+    // base, et seules les premières prennent sa place.
+    const pieces = SLOT_ZORDER.filter((slot) => choisie(slot) !== undefined);
+    const retires = SLOT_ZORDER.filter(
+      (slot) => props.character.assets[slot] === NONE_ASSET,
     );
 
-    // Couche de base (SVG pré-composé complet).
     const base = props.base;
-    if (base) {
-      const raw = props.cache.raw[base.baseSvgUrl];
-      if (raw !== undefined && raw !== "") {
-        out.push({
-          key: "base",
-          svg: fillSvg(
-            scopeSvgStyles(
-              hideSlotGroups(
-                recolorForCharacter(raw, colorsForScope(colors, BASE_COLOR_SCOPE)),
-                replacedSlots,
-              ),
-              `${uid}-base`,
-            ),
-          ),
-        });
-      }
-    }
+    const brute = base ? props.cache.raw[base.baseSvgUrl] : undefined;
+    // Base pas encore chargée (ou illisible) : les pièces seules, dans l'ordre.
+    const etages = brute
+      ? empilerPersonnage(brute, pieces, retires)
+      : pieces.map((piece) => ({ piece }));
 
-    // Couches de variantes choisies (par-dessus la base).
-    const slots = props.slots;
-    if (slots) {
-      for (const slot of SLOT_ZORDER) {
-        const variant = findVariant(slots[slot], props.character.assets[slot]);
-        if (!variant) continue;
-        const raw = props.cache.raw[variant.svgUrl];
-        if (raw === undefined || raw === "") continue;
+    etages.forEach((etage, i) => {
+      if ("base" in etage) {
         out.push({
-          key: `${slot}:${variant.id}`,
+          key: `base:${i}`,
           svg: fillSvg(
             scopeSvgStyles(
-              // Calage de la pièce sur ce personnage : même fonction que
-              // pour l'impression, l'aperçu ne peut donc pas mentir.
-              appliquerCalage(
-                recolorForCharacter(raw, colorsForScope(colors, slot)),
-                calagePour(props.base?.slotAdjust, slot, variant.position),
+              recolorForCharacter(
+                etage.base,
+                colorsForScope(colors, BASE_COLOR_SCOPE),
               ),
-              `${uid}-${slot}-${variant.id}`,
+              // Une portée par tranche : chacune porte son propre <style>.
+              `${uid}-base-${i}`,
             ),
           ),
         });
+        return;
       }
-    }
+      const slot = etage.piece as (typeof SLOT_ZORDER)[number];
+      const variant = choisie(slot);
+      if (!variant) return;
+      const raw = props.cache.raw[variant.svgUrl];
+      if (raw === undefined || raw === "") return;
+      out.push({
+        key: `${slot}:${variant.id}`,
+        svg: fillSvg(
+          scopeSvgStyles(
+            // Calage de la pièce sur ce personnage : même fonction que
+            // pour l'impression, l'aperçu ne peut donc pas mentir.
+            appliquerCalage(
+              recolorForCharacter(raw, colorsForScope(colors, slot)),
+              calagePour(props.base?.slotAdjust, slot, variant.position),
+            ),
+            `${uid}-${slot}-${variant.id}`,
+          ),
+        ),
+      });
+    });
     return out;
   });
 
