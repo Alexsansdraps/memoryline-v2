@@ -332,7 +332,7 @@ async function logoAttenue(largeur: number, opacite: number, sombre: boolean): P
  * Calques à composer sur l'aperçu : un cercle fin au centre, et le logo à
  * l'intérieur, en blanc presque transparent — le MÊME dessin que le filigrane
  * du configurateur (packages/configurator/src/components/Filigrane.tsx), aux
- * mêmes proportions : cercle de 40 % de la largeur, logo de 24 %.
+ * mêmes proportions : cercle de 52 % de la largeur, logo de 36 %.
  *
  * Il remplace une grille de logos en diagonale, doublée d'une ombre sombre,
  * qui couvrait toute l'image. La boutique la voulait plus discrète. Le cercle
@@ -348,7 +348,7 @@ async function calquesFiligrane(
 ): Promise<{ input: Buffer; left: number; top: number }[]> {
   const cx = largeur / 2;
   const cy = hauteur / 2;
-  const rayon = Math.round(largeur * 0.2);
+  const rayon = Math.round(largeur * 0.26);
   // Le trait suit la taille de l'image : 1,5 px vu sur un aperçu d'environ
   // 600 px de large, comme dans le configurateur.
   const epaisseur = Math.max(2, largeur / 300);
@@ -360,7 +360,7 @@ async function calquesFiligrane(
       `</svg>`,
   );
 
-  const logoLargeur = Math.max(80, Math.round(largeur * 0.24));
+  const logoLargeur = Math.max(80, Math.round(largeur * 0.36));
   const logo = await logoAttenue(logoLargeur, 0.4, false);
   const { width: lw = logoLargeur, height: lh = Math.round(logoLargeur * 0.444) } =
     await sharp(logo).metadata();
