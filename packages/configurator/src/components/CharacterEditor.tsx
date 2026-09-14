@@ -30,6 +30,17 @@ import {
   type WorkingCharacter,
 } from "../store";
 import { CharacterStack } from "./CharacterLayer";
+import {
+  BarreActions,
+  IndiceDefilement,
+  createResteDessous,
+} from "./Defilement";
+import {
+  ANNEAU_COULEUR_CHOISIE,
+  Button,
+  CocheCouleur,
+  PastilleCouleur,
+} from "./ui";
 import type { MessagesConfigurateur } from "../messages";
 
 /* -------------------------------------------------------------------------- */
@@ -220,7 +231,12 @@ function SvgThumb(props: { svg: string | undefined; label: string }) {
   );
 }
 
-/** Rangée de couleurs : presets cliquables + input type=color, par zone. */
+/**
+ * Rangée de couleurs : presets cliquables + saisie libre, par zone.
+ *
+ * Les pastilles sont celles de la couleur du texte (cf. PastilleCouleur) :
+ * mêmes 40 px, même coche sur la couleur portée.
+ */
 function ColorRow(props: {
   zones: { zone: string; current: string }[];
   presets: readonly string[];
@@ -230,6 +246,8 @@ function ColorRow(props: {
   /** Intitulé traduit, fourni par l'éditeur. */
   libelle: string;
 }) {
+  const memeCouleur = (a: string, b: string) =>
+    a.toUpperCase() === b.toUpperCase();
   return (
     <div style={{ "margin-top": "8px" }}>
       <span
@@ -239,60 +257,105 @@ function ColorRow(props: {
           "font-weight": "700",
           color: "#6b7280",
           "letter-spacing": ".04em",
-          "margin-bottom": "6px",
+          "margin-bottom": "8px",
         }}
       >
         {props.libelle}
       </span>
       <For each={props.zones}>
-        {(z) => (
-          <div
-            style={{
-              display: "flex",
-              "align-items": "center",
-              gap: "6px",
-              "flex-wrap": "wrap",
-              "margin-bottom": "6px",
-            }}
-          >
-            <For each={props.presets}>
-              {(hex) => (
-                <button
-                  type="button"
-                  title={hex}
-                  onClick={() => props.onSetColor(z.zone, hex)}
+        {(z) => {
+          // Couleur saisie hors nuancier : c'est la pastille arc-en-ciel qui
+          // porte la coche, sinon aucune couleur ne paraîtrait choisie.
+          const horsNuancier = () =>
+            !props.presets.some((hex) => memeCouleur(hex, z.current));
+          return (
+            <div
+              style={{
+                display: "flex",
+                "align-items": "center",
+                // 10 px : l'anneau de la couleur choisie déborde de 4 px, il
+                // ne doit pas toucher la pastille voisine ni la rangée d'en
+                // dessous.
+                gap: "10px",
+                "flex-wrap": "wrap",
+                "margin-bottom": "10px",
+              }}
+            >
+              <For each={props.presets}>
+                {(hex) => (
+                  <PastilleCouleur
+                    couleur={hex}
+                    libelle={hex}
+                    actif={memeCouleur(z.current, hex)}
+                    onClick={() => props.onSetColor(z.zone, hex)}
+                  />
+                )}
+              </For>
+              <Show when={props.libre}>
+                {/* Le sélecteur du navigateur, invisible, recouvre toute la
+                    pastille : un toucher n'importe où l'ouvre, et c'est lui
+                    qui renvoie la couleur. Sa propre case, minuscule et
+                    différente d'un navigateur à l'autre, ne se voit plus. */}
+                <span
+                  title="Couleur personnalisée"
                   style={{
-                    width: "22px",
-                    height: "22px",
+                    position: "relative",
+                    flex: "0 0 auto",
+                    width: "40px",
+                    height: "40px",
                     "border-radius": "9999px",
-                    background: hex,
-                    border:
-                      z.current.toUpperCase() === hex.toUpperCase()
-                        ? "2px solid #4f46e5"
-                        : "1px solid #d1d5db",
-                    cursor: "pointer",
+                    background:
+                      "conic-gradient(#ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444)",
+                    "box-shadow": horsNuancier() ? ANNEAU_COULEUR_CHOISIE : "none",
+                    display: "inline-flex",
+                    "align-items": "center",
+                    "justify-content": "center",
                   }}
-                />
-              )}
-            </For>
-            <Show when={props.libre}>
-              <input
-                type="color"
-                value={z.current}
-                onInput={(e) => props.onSetColor(z.zone, e.currentTarget.value)}
-                title="Couleur personnalisée"
-                style={{
-                  width: "26px",
-                  height: "26px",
-                  border: "none",
-                  padding: "0",
-                  background: "transparent",
-                  cursor: "pointer",
-                }}
-              />
-            </Show>
-          </div>
-        )}
+                >
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: "26px",
+                      height: "26px",
+                      "border-radius": "9999px",
+                      border: "2px solid #ffffff",
+                      "box-sizing": "border-box",
+                      background: horsNuancier() ? z.current : "#ffffff",
+                      color: "#374151",
+                      "font-size": "18px",
+                      "line-height": "1",
+                      display: "inline-flex",
+                      "align-items": "center",
+                      "justify-content": "center",
+                    }}
+                  >
+                    <Show when={horsNuancier()} fallback="+">
+                      <CocheCouleur fond={z.current} />
+                    </Show>
+                  </span>
+                  <input
+                    type="color"
+                    value={z.current}
+                    onInput={(e) => props.onSetColor(z.zone, e.currentTarget.value)}
+                    aria-label="Couleur personnalisée"
+                    style={{
+                      position: "absolute",
+                      top: "0",
+                      left: "0",
+                      width: "100%",
+                      height: "100%",
+                      margin: "0",
+                      padding: "0",
+                      border: "none",
+                      opacity: "0",
+                      cursor: "pointer",
+                    }}
+                  />
+                </span>
+              </Show>
+            </div>
+          );
+        }}
       </For>
     </div>
   );
@@ -319,10 +382,10 @@ function SectionTitle(props: { children: JSX.Element }) {
 
 /**
  * Éditeur d'un personnage (maquette client §18.2 F) : deux colonnes.
- * Gauche ~35% = prévisualisation isolée du perso composé. Droite = barre
- * Retour, puis sections : choix du personnage (galerie de bases) + nuancier
- * peau, puis vêtements / pantalon / cheveux / accessoires (galeries zoomées +
- * nuanciers). Plus aucun placement libre.
+ * Gauche ~35% = prévisualisation isolée du perso composé. Droite = sections :
+ * choix du personnage (galerie de bases) + nuancier peau, puis vêtements /
+ * pantalon / cheveux / accessoires (galeries zoomées + nuanciers). En bas, une
+ * barre collée : Retour à gauche, Valider à droite. Plus aucun placement libre.
  */
 export function CharacterEditor(props: {
   character: WorkingCharacter;
@@ -374,6 +437,9 @@ export function CharacterEditor(props: {
   });
 
   const [choisie, setChoisie] = createSignal<string | null>(null);
+  /** La grille défile d'elle-même : l'indice dit quand elle cache des personnages. */
+  let grillePersos: HTMLDivElement | undefined;
+  const grilleResteDessous = createResteDessous(() => grillePersos);
   const categorieActive = () => choisie() ?? categorieDuPerso();
   const setCategorieActive = (cat: string) => setChoisie(cat);
 
@@ -492,49 +558,19 @@ export function CharacterEditor(props: {
 
   return (
     <div class="ml-cfg-editor">
-      {/* Barre Retour + titre */}
-      <div
+      {/* Titre seul : « Retour » a rejoint « Valider » dans la barre du bas.
+          Collé en haut, il finissait sous l'aperçu du personnage, collé lui
+          aussi, sur téléphone et tablette en portrait. */}
+      <h3
         style={{
-          display: "flex",
-          "align-items": "center",
-          gap: "10px",
-          "margin-bottom": "12px",
-          position: "sticky",
-          top: "0",
-          background: "#fafafa",
-          "z-index": "2",
-          "padding-bottom": "6px",
+          "font-weight": "800",
+          "letter-spacing": ".06em",
+          "font-size": "15px",
+          margin: "0 0 12px",
         }}
       >
-        <button
-          type="button"
-          onClick={() => props.onBack()}
-          style={{
-            display: "inline-flex",
-            "align-items": "center",
-            gap: "4px",
-            border: "1px solid #2453b8",
-            "border-radius": "9999px",
-            background: "#2453b8",
-            color: "#fff",
-            padding: "6px 12px",
-            cursor: "pointer",
-            "font-size": "13px",
-          }}
-        >
-          ‹ {m().retour}
-        </button>
-        <h3
-          style={{
-            "font-weight": "800",
-            "letter-spacing": ".06em",
-            "font-size": "15px",
-            margin: "0",
-          }}
-        >
-          {m().personnalisation}
-        </h3>
-      </div>
+        {m().personnalisation}
+      </h3>
 
       {/* Deux colonnes — une seule sur mobile (cf. global.css) : à 375 px, la
           colonne des galeries ne faisait plus que ~200 px de large. */}
@@ -548,7 +584,7 @@ export function CharacterEditor(props: {
         }}
       >
         {/* Colonne gauche : prévisualisation du perso composé */}
-        <div class="ml-cfg-perso-col" style={{ position: "sticky", top: "48px" }}>
+        <div class="ml-cfg-perso-col" style={{ position: "sticky", top: "0" }}>
           <div
             class="ml-cfg-perso-apercu"
             style={{
@@ -611,29 +647,37 @@ export function CharacterEditor(props: {
             </For>
           </div>
 
-          <div class="ml-cfg-grille-persos">
-            <For each={personnagesDeLaCategorie()}>
-              {(base) => (
-                <Thumb
-                  selected={String(props.character.characterId) === String(base.id)}
-                  onClick={() => props.onChangeCharacter(base)}
-                  title={base.name}
-                >
-                  <SvgThumb
-                    svg={thumbSvg(
-                      props.cache,
-                      base.baseSvgUrl,
-                      String(props.character.characterId) === String(base.id)
-                        ? colorsForScope(props.character.colors, BASE_COLOR_SCOPE)
-                        : (base.baseColorZones ?? {}),
-                      undefined,
-                      `${uid}-charbase-${base.id}`,
-                    )}
-                    label={base.name}
-                  />
-                </Thumb>
-              )}
-            </For>
+          {/* Enveloppe positionnée : l'indice se pose sur le bas de la
+              grille, qui défile, sans défiler avec elle. */}
+          <div style={{ position: "relative" }}>
+            <div ref={grillePersos} class="ml-cfg-grille-persos">
+              <For each={personnagesDeLaCategorie()}>
+                {(base) => (
+                  <Thumb
+                    selected={String(props.character.characterId) === String(base.id)}
+                    onClick={() => props.onChangeCharacter(base)}
+                    title={base.name}
+                  >
+                    <SvgThumb
+                      svg={thumbSvg(
+                        props.cache,
+                        base.baseSvgUrl,
+                        String(props.character.characterId) === String(base.id)
+                          ? colorsForScope(props.character.colors, BASE_COLOR_SCOPE)
+                          : (base.baseColorZones ?? {}),
+                        undefined,
+                        `${uid}-charbase-${base.id}`,
+                      )}
+                      label={base.name}
+                    />
+                  </Thumb>
+                )}
+              </For>
+            </div>
+            <IndiceDefilement
+              visible={grilleResteDessous()}
+              style={{ bottom: "0" }}
+            />
           </div>
           {/* Couleur de peau (zones de la base) */}
           <Show when={skinZones().length > 0}>
@@ -653,33 +697,18 @@ export function CharacterEditor(props: {
         </div>
       </div>
 
-      {/* Valider §18.2 F */}
-      <div
-        style={{
-          display: "flex",
-          "justify-content": "flex-end",
-          "margin-top": "18px",
-          "border-top": "1px solid #e5e7eb",
-          "padding-top": "14px",
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => props.onValidate()}
-          style={{
-            background: "#4f46e5",
-            color: "#fff",
-            border: "1px solid transparent",
-            "border-radius": "6px",
-            padding: "10px 18px",
-            "font-size": "14px",
-            "font-weight": "600",
-            cursor: "pointer",
-          }}
-        >
+      {/* Retour à gauche, Valider à droite §18.2 F — côte à côte et toujours
+          à portée, comme Retour / Continuer entre les étapes (retour
+          cliente). Les deux ramènent à la liste : le personnage est modifié
+          au fil des choix, il n'y a rien à annuler. */}
+      <BarreActions>
+        <Button variant="secondary" onClick={() => props.onBack()}>
+          ‹ {m().retour}
+        </Button>
+        <Button variant="primary" onClick={() => props.onValidate()}>
           {m().validerPersonnage}
-        </button>
-      </div>
+        </Button>
+      </BarreActions>
     </div>
   );
 }

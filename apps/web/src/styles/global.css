@@ -275,7 +275,10 @@ body {
 }
 
 .ml-modal-body {
-  padding: 20px;
+  /* La marge intérieure, nommée : ce qui colle aux bords de la fenêtre (barre
+     d'actions, aperçu du personnage) doit la rattraper, cf. plus bas. */
+  --ml-modal-marge: 20px;
+  padding: var(--ml-modal-marge);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 
@@ -315,6 +318,47 @@ body {
 }
 .ml-modal-body::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/*
+ * Barre d'actions du configurateur (Retour / Continuer, Retour / Valider mon
+ * personnage), collée au bas de la fenêtre.
+ *
+ * Un élément collant s'arrête au bord INTÉRIEUR de la marge du conteneur qui
+ * défile : sans ce décalage, la barre flottait 20 px au-dessus du bas de la
+ * fenêtre, et le contenu défilait, visible, dans l'interstice.
+ */
+.ml-modal-body .ml-cfg-pied {
+  bottom: calc(-1 * var(--ml-modal-marge)) !important;
+}
+
+/*
+ * Indice « la suite est plus bas », posé au-dessus de cette barre et au bas
+ * de la grille des personnages. Il s'efface en fondu une fois le bas atteint,
+ * et sa flèche descend trois fois de quelques pixels quand il apparaît — puis
+ * se tient tranquille : au stand, la tablette reste ouverte des heures, une
+ * flèche qui sautille sans fin finit par agacer.
+ *
+ * Rien de tout cela quand l'appareil demande moins d'animations : l'indice
+ * apparaît et disparaît d'un coup, la flèche ne bouge pas.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .ml-cfg-indice {
+    transition: opacity 0.25s ease-out;
+  }
+  .ml-cfg-indice.est-visible .ml-cfg-indice-fleche {
+    animation: ml-indice-descend 1.2s ease-in-out 0.3s 3;
+  }
+}
+
+@keyframes ml-indice-descend {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(4px);
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -392,6 +436,14 @@ body {
     background: var(--color-paper);
     padding-bottom: 8px;
     border-bottom: 1px solid rgba(32, 33, 31, 0.08);
+  }
+  /* Le bandeau colle au bord intérieur de la marge de la fenêtre : dans ces
+     14 px au-dessus de lui, les choix défilaient encore, coupés en deux. Une
+     ombre pleine, de la couleur du bandeau, bouche l'interstice sans rien
+     déplacer dans la page. Un pixel de plus pour la position fractionnaire
+     de la fenêtre : la fenêtre rogne ce qui dépasse, l'en-tête reste net. */
+  .ml-modal-body .ml-cfg-perso-col {
+    box-shadow: 0 calc(-1 * var(--ml-modal-marge) - 1px) 0 var(--color-paper);
   }
   .ml-cfg-perso-apercu {
     height: 22vh;
@@ -536,7 +588,7 @@ body {
     border-radius: 0;
   }
   .ml-modal-body {
-    padding: 14px;
+    --ml-modal-marge: 14px;
   }
 }
 

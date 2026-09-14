@@ -50,6 +50,7 @@ import {
   type MessagesConfigurateur,
 } from "./messages";
 import { Button } from "./components/ui";
+import { BarreActions } from "./components/Defilement";
 
 /** Produit minimal injecté par l'hôte (pas d'appel réseau interne). */
 export interface ConfiguratorProduct {
@@ -720,19 +721,10 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
         </Show>
 
         {/* Navigation globale (masquée quand on édite un perso : l'éditeur a ses
-            propres boutons Retour / Valider §18.2 F). */}
+            propres boutons Retour / Valider §18.2 F). Collée au bas de la
+            fenêtre, avec l'indice qui dit qu'il reste à voir plus bas. */}
         <Show when={!editingActive()}>
-          <div
-            style={{
-              display: "flex",
-              "justify-content": "space-between",
-              "align-items": "center",
-              "margin-top": "18px",
-              "border-top": "1px solid #e5e7eb",
-              "padding-top": "14px",
-              gap: "12px",
-            }}
-          >
+          <BarreActions>
             <Button variant="secondary" onClick={prev}>
               {msg().retour}
             </Button>
@@ -758,7 +750,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             <Button variant="primary" onClick={next}>
               {isLast() ? msg().validerAffiche : msg().continuer}
             </Button>
-          </div>
+          </BarreActions>
         </Show>
       </div>
     </div>

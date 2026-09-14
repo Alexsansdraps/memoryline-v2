@@ -9,7 +9,7 @@ import {
   type CouleurTexteAffiche,
 } from "@memoryline/types";
 import type { ConfiguratorState } from "../store";
-import { Field } from "./ui";
+import { Field, PastilleCouleur } from "./ui";
 import type { MessagesConfigurateur } from "../messages";
 
 /** Étape 1 : fond + les trois lignes de texte (symboles & chiffres autorisés). */
@@ -182,23 +182,11 @@ export function StepBackgroundText(props: {
                   props.state.textStyle.color.toUpperCase() ===
                   couleur.hex.toUpperCase();
                 return (
-                  <button
-                    type="button"
+                  <PastilleCouleur
+                    couleur={couleur.hex}
+                    libelle={couleur.libelle}
+                    actif={actif()}
                     onClick={() => props.onTextStyle({ color: couleur.hex })}
-                    aria-pressed={actif()}
-                    aria-label={couleur.libelle}
-                    title={couleur.libelle}
-                    style={{
-                      width: "38px",
-                      height: "38px",
-                      "border-radius": "9999px",
-                      background: couleur.hex,
-                      border: actif()
-                        ? "3px solid #4f46e5"
-                        : "1px solid #d1d5db",
-                      cursor: "pointer",
-                      padding: "0",
-                    }}
                   />
                 );
               }}
