@@ -9,6 +9,7 @@ export * from "./fonts.js";
 export * from "./textes-affiche.js";
 export * from "./couleurs-texte.js";
 export * from "./sol-personnages.js";
+export * from "./cadres.js";
 
 /** Canal d'une commande — dimension structurante, immuable (§11). */
 export const ORDER_CHANNELS = ["web", "salon"] as const;

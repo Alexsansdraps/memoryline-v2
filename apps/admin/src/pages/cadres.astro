@@ -1,15 +1,35 @@
 ---
 import Admin from "../layouts/Admin.astro";
 import { adminApi, type Cadre } from "../lib/api.ts";
+import {
+  REGLAGE_CADRES_SITE,
+  cadresProposesSurLeSite,
+} from "@memoryline/types";
 
 const api = adminApi(Astro.request);
+
+/**
+ * Saisie en euros, stockée en centimes : jamais de flottant sur de l'argent
+ * une fois en base.
+ */
+function centimes(v: FormDataEntryValue | null): number {
+  return Math.round(Number(String(v || "0").replace(",", ".")) * 100);
+}
 
 let flash: string | null = null;
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   const action = f.get("_action");
   try {
-    if (action === "supprimer") {
+    if (action === "site") {
+      // Booléen et non « on »/« off » : l'API et le site lisent ce réglage
+      // tel quel (cadresProposesSurLeSite).
+      const proposes = f.get("site") === "on";
+      await api.setSetting(REGLAGE_CADRES_SITE, proposes);
+      flash = proposes
+        ? "Les cadres sont de nouveau proposés sur le site."
+        : "Les cadres ne sont plus proposés sur le site. Le stand continue de les proposer.";
+    } else if (action === "supprimer") {
       await api.deleteFrame(Number(f.get("id")));
       flash =
         "Cadre retiré du catalogue. Les commandes déjà passées ne changent pas : leur prix a été figé à l'achat.";
@@ -17,11 +37,10 @@ if (Astro.request.method === "POST") {
       const cadre = await api.upsertFrame({
         id: f.get("id") ? Number(f.get("id")) : undefined,
         name: String(f.get("name") || ""),
-        // Saisie en euros, stockée en centimes : jamais de flottant sur de
-        // l'argent une fois en base.
-        priceCents: Math.round(
-          Number(String(f.get("price") || "0").replace(",", ".")) * 100,
-        ),
+        // Un supplément par format : un cadre A3 est plus grand, donc plus
+        // cher. Le configurateur montre celui du format choisi.
+        priceA4Cents: centimes(f.get("priceA4")),
+        priceA3Cents: centimes(f.get("priceA3")),
         // Le poids du cadre s'ajoute à celui de l'affiche : il fait changer de
         // tranche d'affranchissement à lui seul.
         weightGrams: Math.max(
@@ -41,8 +60,13 @@ if (Astro.request.method === "POST") {
 
 let cadres: Cadre[] = [];
 let error: string | null = null;
+// Réglage illisible : la case s'affiche cochée, comme la boutique se
+// comporte quand elle n'a jamais touché au réglage.
+let surLeSite = true;
 try {
-  cadres = await api.frames();
+  const [liste, reglages] = await Promise.all([api.frames(), api.settings()]);
+  cadres = liste;
+  surLeSite = cadresProposesSurLeSite(reglages[REGLAGE_CADRES_SITE]);
 } catch (e) {
   error = String(e);
 }
@@ -56,10 +80,35 @@ try {
   )}
   {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
 
+  {/* En tête de page : c'est la question qui se pose avant toutes les
+      autres — le site vend-il des cadres en ce moment ? */}
+  <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface">
+    <form method="POST" class="flex flex-wrap items-start gap-4 px-4 py-4">
+      <input type="hidden" name="_action" value="site" />
+      <label class="flex max-w-3xl flex-1 items-start gap-3">
+        <input type="checkbox" name="site" checked={surLeSite} class="mt-1" />
+        <span>
+          <span class="text-sm font-medium">Proposer les cadres sur le site</span>
+          <span class="mt-0.5 block text-xs text-bo-muted">
+            Décochée, le site ne montre plus aucun cadre, et un panier qui en
+            contenait déjà les perd, prix recalculé, avec un message à la
+            cliente. Le <strong>stand</strong> continue de les proposer : c'est
+            l'envoi par la poste qui est en cause, pas le cadre.
+          </span>
+        </span>
+      </label>
+      <button class="rounded bg-bo-accent text-white px-3 py-1.5 text-sm">
+        Enregistrer
+      </button>
+    </form>
+  </section>
+
   <p class="mb-4 text-sm text-bo-muted">
     Les cadres proposés en option au moment de la personnalisation. Le prix
-    s'ajoute à celui de l'affiche, par exemplaire. Un cadre désactivé
-    disparaît du site sans toucher aux commandes déjà passées.
+    s'ajoute à celui de l'affiche, par exemplaire, et dépend du format :
+    un <strong>supplément A4</strong> et un <strong>supplément A3</strong>. Un
+    cadre dont « Affiché » est décoché disparaît partout, site et stand, sans
+    toucher aux commandes déjà passées.
   </p>
   <p class="mb-4 text-sm text-bo-muted">
     Le <strong>poids</strong>, en grammes, s'ajoute lui aussi à celui de
@@ -74,7 +123,8 @@ try {
         <tr>
           <th class="px-4 py-2 w-16">Aperçu</th>
           <th class="px-4 py-2">Nom</th>
-          <th class="px-4 py-2 w-32">Supplément</th>
+          <th class="px-4 py-2 w-32">Supplément A4</th>
+          <th class="px-4 py-2 w-32">Supplément A3</th>
           <th class="px-4 py-2 w-28">Poids (g)</th>
           <th class="px-4 py-2 w-24">Ordre</th>
           <th class="px-4 py-2 w-24">Affiché</th>
@@ -92,7 +142,7 @@ try {
                 aria-hidden="true"
               />
             </td>
-            <td class="px-4 py-2" colspan="6">
+            <td class="px-4 py-2" colspan="7">
               <form method="POST" class="flex flex-wrap items-center gap-2">
                 <input type="hidden" name="id" value={c.id} />
                 <input
@@ -101,13 +151,26 @@ try {
                   required
                   class="w-40 border border-bo-border rounded px-2 py-1"
                 />
-                <label class="flex items-center gap-1">
+                <label class="flex items-center gap-1" title="Supplément pour une affiche A4">
+                  <span class="text-bo-muted">A4</span>
                   <input
-                    name="price"
+                    name="priceA4"
                     type="number"
                     step="0.01"
                     min="0"
-                    value={(c.priceCents / 100).toFixed(2)}
+                    value={(c.priceA4Cents / 100).toFixed(2)}
+                    class="w-24 border border-bo-border rounded px-2 py-1"
+                  />
+                  <span class="text-bo-muted">€</span>
+                </label>
+                <label class="flex items-center gap-1" title="Supplément pour une affiche A3">
+                  <span class="text-bo-muted">A3</span>
+                  <input
+                    name="priceA3"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={(c.priceA3Cents / 100).toFixed(2)}
                     class="w-24 border border-bo-border rounded px-2 py-1"
                   />
                   <span class="text-bo-muted">€</span>
@@ -170,7 +233,7 @@ try {
         ))}
         {cadres.length === 0 && (
           <tr>
-            <td class="px-4 py-6 text-bo-muted" colspan="8">
+            <td class="px-4 py-6 text-bo-muted" colspan="9">
               Aucun cadre pour le moment.
             </td>
           </tr>
@@ -194,9 +257,20 @@ try {
         />
       </label>
       <label class="block">
-        <span class="text-bo-muted">Supplément (€)</span>
+        <span class="text-bo-muted">Supplément A4 (€)</span>
         <input
-          name="price"
+          name="priceA4"
+          type="number"
+          step="0.01"
+          min="0"
+          value="15.00"
+          class="mt-1 block w-28 border border-bo-border rounded px-3 py-2"
+        />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Supplément A3 (€)</span>
+        <input
+          name="priceA3"
           type="number"
           step="0.01"
           min="0"
@@ -235,7 +309,7 @@ try {
       </label>
       <label class="flex items-center gap-2 pb-2">
         <input type="checkbox" name="active" checked />
-        <span>Affiché sur le site</span>
+        <span>Affiché</span>
       </label>
       <button class="rounded bg-bo-accent text-white px-4 py-2">Créer</button>
     </form>

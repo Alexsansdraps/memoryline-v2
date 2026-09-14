@@ -29,6 +29,8 @@ export interface ProductConfiguratorProps {
    * traverser cette fiche-ci.
    */
   sansPrix?: boolean;
+  /** Faux : le site ne propose pas les cadres (cf. ConfiguratorIslandProps). */
+  cadresProposes?: boolean;
   /** Langue de la page — pilote tous les libellés affichés. */
   langue?: Langue;
   product: { id: number; name: string; basePriceCents: number };
@@ -223,6 +225,7 @@ export default function ProductConfigurator(
                 product={props.product}
                 prices={props.prices}
                 sansPrix={props.sansPrix}
+                cadresProposes={props.cadresProposes}
                 quantite={quantite()}
                 foregroundUrl={props.foregroundUrl}
                 defaults={{

@@ -6,6 +6,10 @@ import type {
   CharacterTypeDTO,
   PosterConfig,
 } from "@memoryline/types";
+import {
+  REGLAGE_CADRES_SITE,
+  cadresProposesSurLeSite,
+} from "@memoryline/types";
 import type {
   CadreDTO,
   CharacterDTO,
@@ -415,6 +419,23 @@ export async function setting(
   }
 }
 
+/**
+ * Le site propose-t-il les cadres ? Réglage de la page Cadres du back-office.
+ *
+ * Ne dit rien du stand, qui les propose toujours : c'est à la page de
+ * combiner les deux. Réglages injoignables : oui, comme avant que le réglage
+ * existe — l'API retire de toute façon le cadre d'un panier du site quand la
+ * boutique n'en propose pas.
+ */
+export async function cadresSurLeSite(): Promise<boolean> {
+  try {
+    const all = await reglagesDeLaLangue("fr");
+    return cadresProposesSurLeSite(all[REGLAGE_CADRES_SITE]);
+  } catch {
+    return true;
+  }
+}
+
 /* ---------------------------------------------------------------------------
  * Configurateur / panier / commande — appels effectués DEPUIS LE NAVIGATEUR
  * (islands SolidJS). On parle donc à PUBLIC_API_URL, pas à l'URL interne SSR.
@@ -430,6 +451,12 @@ export interface OrderItem {
   title: string | null;
   unitPriceCents: number;
   quantity: number;
+  /**
+   * Vrai quand l'API a écrit la ligne SANS le cadre demandé : le site ne
+   * propose plus les cadres (page ouverte avant que la boutique ne les
+   * retire). Seules les réponses d'ajout et de modification le portent.
+   */
+  cadreRetire?: boolean;
 }
 
 export interface Cart {
@@ -447,6 +474,12 @@ export interface Cart {
    * comportement d'avant les tranches de poids.
    */
   poidsGrammes?: number;
+  /**
+   * Lignes qui portent un cadre que le site ne propose plus — toujours 0 au
+   * stand. Le panier et la caisse les retirent alors (retirerCadres) et le
+   * disent à la cliente ; la lecture, elle, ne change rien.
+   */
+  cadresHorsSite?: number;
 }
 
 async function browserGet<T>(path: string): Promise<T> {
@@ -572,6 +605,13 @@ export const browserApi = {
 
   deleteCartItem: (cartId: string, itemId: number) =>
     browserSend<{ ok: boolean }>("DELETE", `/cart/${cartId}/items/${itemId}`),
+
+  /**
+   * Retire du panier les cadres que le site ne propose plus, prix recalculés
+   * par le serveur. Rend le nombre de lignes touchées.
+   */
+  retirerCadres: (cartId: string) =>
+    browserSend<{ retires: number }>("POST", `/cart/${cartId}/retirer-cadres`),
 
   createOrder: (
     cartId: string,

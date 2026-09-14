@@ -6,6 +6,7 @@ import type {
   Character,
   PosterFormat,
   PosterView,
+  PrixDuCadre,
   TextBlock,
 } from "@memoryline/types";
 import {
@@ -216,12 +217,16 @@ export interface WorkingCharacter {
   colors: Record<string, string>;
 }
 
-/** Cadre proposé en option, tel que l'API le renvoie. */
-export interface CadreDTO {
+/**
+ * Cadre proposé en option, tel que l'API le renvoie.
+ *
+ * Deux suppléments, un par format : le montant à montrer se choisit avec
+ * `prixDuCadreCents` (@memoryline/types), la fonction qui facture aussi.
+ */
+export interface CadreDTO extends PrixDuCadre {
   id: number | string;
   slug: string;
   name: string;
-  priceCents: number;
   previewColor?: string | null;
 }
 

@@ -2281,14 +2281,19 @@ app.get("/admin/frames", async (c) => {
   return c.json(rows);
 });
 
-/** Crée ou met à jour un cadre (nom, prix, couleur d'aperçu, ordre, actif). */
+/**
+ * Crée ou met à jour un cadre (nom, prix A4 et A3, couleur d'aperçu, ordre,
+ * actif).
+ */
 app.post("/admin/frames", async (c) => {
   const b = await c.req.json();
   const name = String(b.name ?? "").trim();
   if (!name) return c.json({ error: "nom requis" }, 400);
   const valeurs = {
     name,
-    priceCents: Math.max(0, Math.round(Number(b.priceCents ?? 0))),
+    // Un supplément par format : un cadre A3 coûte plus qu'un cadre A4.
+    priceA4Cents: Math.max(0, Math.round(Number(b.priceA4Cents ?? 0))),
+    priceA3Cents: Math.max(0, Math.round(Number(b.priceA3Cents ?? 0))),
     weightGrams: Math.max(0, Math.round(Number(b.weightGrams ?? 0))),
     previewColor: b.previewColor ? String(b.previewColor) : null,
     active: b.active !== false,

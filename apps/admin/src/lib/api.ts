@@ -99,7 +99,10 @@ export interface Cadre {
   id: number;
   slug: string;
   name: string;
-  priceCents: number;
+  /** Supplément pour une affiche A4, en centimes. */
+  priceA4Cents: number;
+  /** Supplément pour une affiche A3, en centimes : un cadre plus grand. */
+  priceA3Cents: number;
   /** Poids du cadre, ajouté à celui de l'affiche quand il est vendu avec. */
   weightGrams: number;
   previewColor: string | null;
@@ -1440,7 +1443,8 @@ export function adminApi(request?: Request) {
     upsertFrame: (data: {
       id?: number;
       name: string;
-      priceCents: number;
+      priceA4Cents: number;
+      priceA3Cents: number;
       weightGrams?: number;
       previewColor?: string;
       active: boolean;

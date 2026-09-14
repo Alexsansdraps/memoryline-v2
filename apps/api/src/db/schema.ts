@@ -358,8 +358,15 @@ export const frames = pgTable(
     id: serial("id").primaryKey(),
     slug: text("slug").notNull(),
     name: text("name").notNull(),
-    /** Supplément en centimes, ajouté au prix de l'affiche. */
-    priceCents: integer("price_cents").notNull().default(0),
+    /**
+     * Supplément en centimes, ajouté au prix de l'affiche — UN PAR FORMAT :
+     * un cadre A3 coûte plus cher qu'un cadre A4. Il n'y avait qu'un prix
+     * (`price_cents`) ; la migration 0045 l'a recopié dans les deux. Le choix
+     * entre les deux se fait dans `prixDuCadreCents` (@memoryline/types), et
+     * nulle part ailleurs.
+     */
+    priceA4Cents: integer("price_a4_cents").notNull().default(0),
+    priceA3Cents: integer("price_a3_cents").notNull().default(0),
     /**
      * Poids du cadre en grammes, ajouté à celui de l'affiche quand il est
      * vendu avec. Un cadre bois change la tranche d'affranchissement à lui

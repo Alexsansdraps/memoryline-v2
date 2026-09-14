@@ -7,6 +7,7 @@ import {
   api,
   assetSrcset,
   assetUrl,
+  cadresSurLeSite,
   formatPrice,
   promotion,
   varianteLaMoinsChere,
@@ -49,6 +50,14 @@ const tr = t(langue);
  * d'une photo reçoit la même, puisqu'elle se vend aussi au stand.
  */
 const sansPrix = Astro.locals.stand;
+
+/*
+ * Les cadres : toujours au stand, où l'affiche repart sous le bras ; sur le
+ * site, seulement si la boutique les propose (page Cadres du back-office) —
+ * elle ne sait pas encore les expédier. Sans eux, le configurateur n'affiche
+ * pas du tout la rubrique.
+ */
+const cadresProposes = Astro.locals.stand || (await cadresSurLeSite());
 
 let product: ProductDetail | null = null;
 try {
@@ -323,6 +332,7 @@ const breadcrumbLd = {
             langue={langue}
             client:only="solid-js"
             sansPrix={sansPrix}
+            cadresProposes={cadresProposes}
             product={{
               id: product.id,
               name: cleanName,

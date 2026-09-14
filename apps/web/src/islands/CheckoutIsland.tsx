@@ -175,8 +175,26 @@ export default function CheckoutIsland(props: {
 
   // Config paiement (moyens actifs + clés publiques).
   const [config] = createResource(async () => browserApi.paymentsConfig());
-  // Récapitulatif du panier (lecture seule).
-  const [cart] = createResource(async () => browserApi.cart(getCartId()));
+  /**
+   * Des cadres que le site ne propose plus ont quitté le panier à l'ouverture
+   * de la caisse. On y arrive aussi sans passer par le panier — le lien d'un
+   * courrier de relance mène droit ici —, le retrait doit donc se voir ici.
+   */
+  const [cadresRetires, setCadresRetires] = createSignal(false);
+  // Récapitulatif du panier (lecture seule, sauf les cadres hors site).
+  const [cart, { refetch: relirePanier }] = createResource(async () => {
+    const cartId = getCartId();
+    const panier = await browserApi.cart(cartId);
+    if ((panier.cadresHorsSite ?? 0) === 0) return panier;
+    // Un échec ne cache pas la caisse : la validation de la commande retire
+    // de toute façon ces cadres, et le dit.
+    const { retires } = await browserApi
+      .retirerCadres(cartId)
+      .catch(() => ({ retires: 0 }));
+    if (retires === 0) return panier;
+    setCadresRetires(true);
+    return browserApi.cart(cartId);
+  });
   const subtotal = () =>
     (cart()?.items ?? []).reduce(
       (s, it) => s + it.unitPriceCents * it.quantity,
@@ -657,7 +675,14 @@ export default function CheckoutIsland(props: {
       // PayPal : les boutons se rendent via l'effet une fois en phase "pay".
       setPhase("pay");
     } catch (err) {
-      setError(String(err));
+      if (String(err).includes("cadres_retires")) {
+        // La boutique a retiré les cadres du site pendant que la cliente
+        // remplissait la caisse : le serveur les a ôtés du panier et refusé la
+        // commande. Le récapitulatif se relit, et elle valide en voyant le
+        // nouveau montant.
+        setError(tr("panier.cadres_retires"));
+        void relirePanier();
+      } else setError(String(err));
     } finally {
       setSubmitting(false);
     }
@@ -1264,6 +1289,14 @@ export default function CheckoutIsland(props: {
           {/* Récapitulatif */}
           <aside class="rounded-2xl border border-ink/10 bg-paper-deep/40 p-6 lg:sticky lg:top-24">
             <h2 class="text-xl mb-4">Récapitulatif</h2>
+            <Show when={cadresRetires()}>
+              <p
+                role="status"
+                class="mb-4 rounded-lg border border-ink/15 bg-paper px-3 py-2 text-sm"
+              >
+                {tr("panier.cadres_retires")}
+              </p>
+            </Show>
             <ul class="space-y-3 text-sm">
               <For each={cart()?.items ?? []}>
                 {(it) => (

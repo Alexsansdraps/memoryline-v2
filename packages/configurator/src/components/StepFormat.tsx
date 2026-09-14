@@ -3,6 +3,7 @@ import { For, Show, createSignal, onCleanup } from "solid-js";
 import {
   dimensionsFormat,
   POSTER_FORMATS,
+  prixDuCadreCents,
   type PosterFormat,
 } from "@memoryline/types";
 import type { CadreDTO, ConfiguratorState } from "../store";
@@ -215,7 +216,10 @@ export function StepFormat(props: {
                         "margin-top": "2px",
                       }}
                     >
-                      + {fmtPrice(cadre.priceCents)}
+                      {/* Le supplément du format COCHÉ au-dessus : passer
+                          de l'A4 à l'A3 change le prix du cadre sous les
+                          yeux, pas seulement celui de l'affiche. */}
+                      + {fmtPrice(prixDuCadreCents(cadre, props.state.format))}
                     </div>
                   </Show>
                 </button>

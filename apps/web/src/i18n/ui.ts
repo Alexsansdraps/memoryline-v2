@@ -224,6 +224,8 @@ export const ui = {
     "panier.format": "Format",
     "panier.cadre": "Cadre",
     "panier.sans_cadre": "Sans cadre",
+    "panier.cadres_retires":
+      "Les cadres ne sont pas proposés sur le site pour le moment : nous les avons retirés de votre panier, et le prix a été recalculé.",
     "panier.personnage": "personnage",
     "panier.personnages": "personnages",
     "panier.retirer_ligne": "Retirer cette affiche",
@@ -627,6 +629,8 @@ export const ui = {
     "panier.format": "Size",
     "panier.cadre": "Frame",
     "panier.sans_cadre": "No frame",
+    "panier.cadres_retires":
+      "Frames are not available on the website at the moment: we have removed them from your basket and updated the price.",
     "panier.personnage": "character",
     "panier.personnages": "characters",
     "panier.retirer_ligne": "Remove this poster",
@@ -1025,6 +1029,8 @@ export const ui = {
     "panier.format": "Format",
     "panier.cadre": "Rahmen",
     "panier.sans_cadre": "Ohne Rahmen",
+    "panier.cadres_retires":
+      "Rahmen sind auf der Website derzeit nicht erhältlich: Wir haben sie aus Ihrem Warenkorb entfernt und den Preis neu berechnet.",
     "panier.personnage": "Figur",
     "panier.personnages": "Figuren",
     "panier.retirer_ligne": "Dieses Poster entfernen",
@@ -1425,6 +1431,8 @@ export const ui = {
     "panier.format": "Formato",
     "panier.cadre": "Cornice",
     "panier.sans_cadre": "Senza cornice",
+    "panier.cadres_retires":
+      "Al momento le cornici non sono disponibili sul sito: le abbiamo rimosse dal tuo carrello e il prezzo è stato ricalcolato.",
     "panier.personnage": "personaggio",
     "panier.personnages": "personaggi",
     "panier.retirer_ligne": "Rimuovi questo poster",
@@ -1822,6 +1830,8 @@ export const ui = {
     "panier.format": "Formato",
     "panier.cadre": "Marco",
     "panier.sans_cadre": "Sin marco",
+    "panier.cadres_retires":
+      "Por el momento, los marcos no están disponibles en la web: los hemos quitado de tu cesta y el precio se ha recalculado.",
     "panier.personnage": "personaje",
     "panier.personnages": "personajes",
     "panier.retirer_ligne": "Quitar este póster",

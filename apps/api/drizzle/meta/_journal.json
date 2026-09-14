@@ -316,6 +316,13 @@
       "when": 1789398073354,
       "tag": "0044_ordre_affichage",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1789420436263,
+      "tag": "0045_prix_cadre_par_format",
+      "breakpoints": true
     }
   ]
 }

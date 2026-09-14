@@ -25,6 +25,7 @@ import {
 } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import { cheminApercu } from "./apercus.js";
+import { cadresProposesA, cadresSurLeSite } from "./cadres.js";
 import { poidsDesCollections } from "./collections.js";
 import {
   fichierDImpression,
@@ -52,6 +53,7 @@ import {
   normaliserCode,
   normaliserPays,
   posterConfigSchema,
+  prixDuCadreCents,
   remisesPanier,
   seuilPortOffertCents,
   sousTotalCents,
@@ -445,11 +447,16 @@ async function resolveUnitPriceCents(
   const affiche = variant?.priceCents ?? product.basePriceCents;
 
   // Supplément du cadre, relu au catalogue lui aussi : le navigateur n'a
-  // jamais son mot à dire sur un montant.
+  // jamais son mot à dire sur un montant. Il dépend du format — un cadre A3
+  // coûte plus qu'un cadre A4 —, et c'est la même fonction que celle du
+  // configurateur qui choisit entre les deux prix.
   let cadre = 0;
   if (frameId != null && frameId !== "") {
     const [f] = await ex
-      .select({ priceCents: schema.frames.priceCents })
+      .select({
+        priceA4Cents: schema.frames.priceA4Cents,
+        priceA3Cents: schema.frames.priceA3Cents,
+      })
       .from(schema.frames)
       .where(
         and(
@@ -457,9 +464,58 @@ async function resolveUnitPriceCents(
           eq(schema.frames.active, true),
         ),
       );
-    cadre = f?.priceCents ?? 0;
+    cadre = f ? prixDuCadreCents(f, format ?? "A4") : 0;
   }
   return affiche + cadre;
+}
+
+/** La configuration sans son cadre — le reste de l'affiche ne bouge pas. */
+function sansCadre(cfg: PosterConfig): PosterConfig {
+  const { frameId: _retire, ...reste } = cfg;
+  return reste;
+}
+
+/** La ligne porte-t-elle un cadre ? */
+function porteUnCadre(config: unknown): boolean {
+  const frameId = (config as { frameId?: unknown } | null)?.frameId;
+  return frameId != null && frameId !== "";
+}
+
+/**
+ * Retire le cadre de chaque ligne d'une commande qui en porte un, prix
+ * recalculé. Rend le nombre de lignes touchées.
+ *
+ * Sert quand le site ne propose plus les cadres : un panier rempli avant que
+ * la boutique ne les retire ne doit pas pouvoir en commander un. S'appelle
+ * dans une transaction qui tient le verrou de la commande ; à l'appelant de
+ * signaler ensuite la modification (panierModifie).
+ */
+async function retirerLesCadres(tx: Transaction, orderId: number): Promise<number> {
+  const lignes = await tx
+    .select()
+    .from(schema.orderItems)
+    .where(eq(schema.orderItems.orderId, orderId));
+  let retires = 0;
+  for (const ligne of lignes) {
+    if (!porteUnCadre(ligne.config)) continue;
+    const cfg = ligne.config as PosterConfig;
+    await tx
+      .update(schema.orderItems)
+      .set({
+        config: sansCadre(cfg),
+        // Recalculé comme à chaque modification d'une ligne (PUT) : le prix
+        // de l'affiche seule, au catalogue du moment.
+        unitPriceCents: await resolveUnitPriceCents(
+          ligne.productId,
+          cfg.format,
+          null,
+          tx,
+        ),
+      })
+      .where(eq(schema.orderItems.id, ligne.id));
+    retires++;
+  }
+  return retires;
 }
 
 /**
@@ -1436,6 +1492,17 @@ export function mountConfiguratorRoutes(app: Hono) {
       .select()
       .from(schema.orderItems)
       .where(eq(schema.orderItems.orderId, order.id));
+    // Des cadres que le site ne propose plus : le panier les COMPTE sans y
+    // toucher. Une lecture ne modifie rien — la pastille de l'en-tête lit ce
+    // panier sur chaque page, et le retrait se ferait alors dans le dos de la
+    // cliente, sans que le panier ait jamais pu le lui dire. C'est le panier
+    // et la caisse qui les retirent, en le montrant (retirer-cadres).
+    const modifiable = order.status === "draft" || order.status === "pending";
+    const avecCadre = modifiable
+      ? items.filter((it) => porteUnCadre(it.config)).length
+      : 0;
+    const cadresHorsSite =
+      avecCadre > 0 && !(await cadresProposesA(c)) ? avecCadre : 0;
     // Le panier expose son poids : la boutique en a besoin pour n'afficher
     // que les modes de livraison qui savent porter le colis, AVANT que le
     // client ait saisi la moindre adresse.
@@ -1445,7 +1512,30 @@ export function mountConfiguratorRoutes(app: Hono) {
       status: order.status,
       items,
       poidsGrammes: await poidsDuPanier(items),
+      cadresHorsSite,
     });
+  });
+
+  /**
+   * Retire du panier les cadres que le site ne propose plus, prix recalculés.
+   *
+   * Appelée par le panier et la caisse quand la lecture du panier en a compté
+   * (`cadresHorsSite`) : ils montrent alors à la cliente que son cadre est
+   * parti, et le nouveau montant, avant qu'elle ne paie. Ne fait rien au
+   * stand, qui propose toujours les cadres, ni sur un panier déjà clos.
+   */
+  app.post("/cart/:cartId/retirer-cadres", async (c) => {
+    if (await cadresProposesA(c)) return c.json({ retires: 0 });
+    const retires = await db.transaction(async (tx) => {
+      const order = await panierModifiable(tx, c.req.param("cartId"));
+      if (!order) return 0;
+      const n = await retirerLesCadres(tx, order.id);
+      // Une commande en attente de paiement repasse en panier : son total
+      // comptait les cadres.
+      if (n > 0) await panierModifie(tx, order);
+      return n;
+    });
+    return c.json({ retires });
   });
 
   /** Ajoute une ligne au panier (crée le draft si besoin). */
@@ -1482,10 +1572,17 @@ export function mountConfiguratorRoutes(app: Hono) {
         .onConflictDoNothing();
     }
     const productId = body.productId != null ? Number(body.productId) : null;
+    // Un cadre que le site ne propose pas ne rentre pas dans le panier : la
+    // ligne s'écrit sans lui, au prix de l'affiche seule. Seule une page
+    // ouverte AVANT que la boutique ne retire les cadres peut encore en
+    // envoyer un ; la réponse le dit (`cadreRetire`), et le site le montre.
+    const cadreRetire =
+      porteUnCadre(parsed.data) && !(await cadresProposesA(c));
+    const config = cadreRetire ? sansCadre(parsed.data) : parsed.data;
     const unitPriceCents = await resolveUnitPriceCents(
       productId,
-      parsed.data.format,
-      parsed.data.frameId,
+      config.format,
+      config.frameId,
     );
     const item = await db.transaction(async (tx) => {
       // Un panier PAYÉ est clos : y ajouter une ligne reviendrait à glisser
@@ -1502,7 +1599,7 @@ export function mountConfiguratorRoutes(app: Hono) {
           orderId: order.id,
           productId,
           variantId: body.variantId ?? null,
-          config: parsed.data,
+          config,
           title: body.title ?? null,
           unitPriceCents,
           quantity: Math.max(1, Number(body.quantity ?? 1)),
@@ -1512,7 +1609,7 @@ export function mountConfiguratorRoutes(app: Hono) {
       return ligne;
     });
     if (!item) return c.json({ error: "panier_clos" }, 409);
-    return c.json(item);
+    return c.json(cadreRetire ? { ...item, cadreRetire } : item);
   });
 
   /** MODIFIE une ligne existante (réouverture configurateur — §18.3 I). */
@@ -1522,6 +1619,12 @@ export function mountConfiguratorRoutes(app: Hono) {
     const parsed = posterConfigSchema.safeParse(body.config);
     if (!parsed.success)
       return c.json({ error: "config invalide", details: parsed.error.issues }, 400);
+    // Même règle qu'à l'ajout : sans cadre si le site n'en propose pas. Lue
+    // AVANT la transaction — une requête partie par `db` sous le verrou
+    // prendrait une seconde connexion du pool (voir Executeur).
+    const cadreRetire =
+      porteUnCadre(parsed.data) && !(await cadresProposesA(c));
+    const config = cadreRetire ? sansCadre(parsed.data) : parsed.data;
     // Contrôle du statut, écriture de la ligne et retour en panier : une
     // seule transaction, sous le verrou de la commande. Contrôlé avant et
     // écrit après, un paiement validé entre les deux laissait une commande
@@ -1531,14 +1634,14 @@ export function mountConfiguratorRoutes(app: Hono) {
       if (!trouve) return null;
       const unitPriceCents = await resolveUnitPriceCents(
         trouve.item.productId,
-        parsed.data.format,
-        parsed.data.frameId,
+        config.format,
+        config.frameId,
         tx,
       );
       const [ligne] = await tx
         .update(schema.orderItems)
         .set({
-          config: parsed.data,
+          config,
           variantId: body.variantId ?? undefined,
           unitPriceCents,
           quantity:
@@ -1552,7 +1655,7 @@ export function mountConfiguratorRoutes(app: Hono) {
       return ligne ?? null;
     });
     if (!item) return c.notFound();
-    return c.json(item);
+    return c.json(cadreRetire ? { ...item, cadreRetire } : item);
   });
 
   /** Supprime une ligne du panier. */
@@ -1678,6 +1781,10 @@ export function mountConfiguratorRoutes(app: Hono) {
     const ligne1 = String(liv.line1 ?? "").trim();
     const ville = String(liv.city ?? "").trim();
     const cp = String(liv.postalCode ?? "").trim();
+    // Lu avant la transaction, qui ne doit pas prendre une seconde connexion
+    // pendant qu'elle tient le verrou (voir Executeur). Le cookie du stand
+    // n'y change rien : c'est la caisse du SITE, le stand a la sienne.
+    const cadresSite = await cadresSurLeSite();
 
     // Le total se calcule SOUS LE VERROU de la commande (commandeVerrouillee),
     // sur les lignes relues dans la même transaction. Une modification du
@@ -1696,6 +1803,23 @@ export function mountConfiguratorRoutes(app: Hono) {
         .where(eq(schema.orderItems.orderId, panier.id));
       if (lignes.length === 0)
         return { erreur: "panier vide", statut: 400 as const };
+
+      // Un cadre que le site ne propose plus ne part pas par sa caisse : c'est
+      // ici que le réglage protège vraiment, quoi que le navigateur ait gardé
+      // (un panier rempli avant le retrait des cadres, une ligne écrite en
+      // mode stand). Les cadres sont retirés, prix recalculés, et la commande
+      // est REFUSÉE cette fois-ci : la cliente doit voir le nouveau montant
+      // avant de payer, pas le découvrir sur son relevé.
+      if (!cadresSite && lignes.some((l) => porteUnCadre(l.config))) {
+        await retirerLesCadres(tx, panier.id);
+        await panierModifie(tx, panier);
+        return {
+          erreur:
+            "Les cadres ne sont plus proposés sur le site : nous les avons retirés de votre panier. Vérifiez le nouveau montant, puis validez à nouveau.",
+          statut: 409 as const,
+          code: "cadres_retires",
+        };
+      }
 
       // Une seule heure pour tout le calcul, et c'est elle qui est gardée
       // comme dernière activité : le paiement sera vérifié avec les
@@ -1746,7 +1870,13 @@ export function mountConfiguratorRoutes(app: Hono) {
       return { order: order!, port, total };
     });
     if ("erreur" in resultat)
-      return c.json({ error: resultat.erreur }, resultat.statut);
+      return c.json(
+        {
+          error: resultat.erreur,
+          ...("code" in resultat ? { code: resultat.code } : {}),
+        },
+        resultat.statut,
+      );
     const { order, port, total } = resultat;
 
     // L'adresse rejoint le carnet de la cliente : saisie une fois, elle

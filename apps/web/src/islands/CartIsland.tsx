@@ -187,9 +187,46 @@ export default function CartIsland(props: {
   // s'il n'est plus valable. Pas au stand : aucune remise ne s'y affiche.
   if (!props.stand && codeSaisi()) void appliquerCode(codeSaisi(), true);
 
+  /**
+   * Des cadres ont quitté le panier parce que le site ne les propose plus.
+   *
+   * Deux chemins y mènent : un panier rempli avant que la boutique ne les
+   * retire, nettoyé ci-dessous à l'ouverture ; une affiche validée dans une
+   * page restée ouverte, que le serveur a écrite sans cadre et que le
+   * configurateur envoie ici avec « ?cadres=retires ». Le message reste le
+   * temps de la page : c'est ici que la cliente voit son nouveau montant.
+   */
+  const [cadresRetires, setCadresRetires] = createSignal(false);
+  try {
+    const adresse = new URL(window.location.href);
+    if (adresse.searchParams.get("cadres") === "retires") {
+      setCadresRetires(true);
+      // Retiré de l'adresse : un rechargement ne doit pas redire ce qui a
+      // déjà été dit.
+      adresse.searchParams.delete("cadres");
+      history.replaceState(history.state, "", adresse.pathname + adresse.search + adresse.hash);
+    }
+  } catch {
+    /* adresse illisible : pas de message, le panier reste juste */
+  }
+
   const [cart, { refetch }] = createResource(async () => {
     const cartId = getCartId();
-    const data = await browserApi.cart(cartId);
+    let data = await browserApi.cart(cartId);
+    // Le serveur compte les cadres que le site ne propose plus (jamais au
+    // stand) ; c'est l'ouverture du panier qui les retire, pour que le retrait
+    // se VOIE — la pastille de l'en-tête lit le même panier sans y toucher.
+    if ((data.cadresHorsSite ?? 0) > 0) {
+      // Un échec ici ne doit pas cacher le panier : la caisse retire de
+      // toute façon ces cadres avant de compter quoi que ce soit.
+      const { retires } = await browserApi
+        .retirerCadres(cartId)
+        .catch(() => ({ retires: 0 }));
+      if (retires > 0) {
+        setCadresRetires(true);
+        data = await browserApi.cart(cartId);
+      }
+    }
     // Le catalogue sert à deux choses : le lien « Modifier » et l'image des
     // affiches prêtes à imprimer.
     const fiches = await catalogue();
@@ -502,6 +539,14 @@ export default function CartIsland(props: {
       </Show>
 
       <Show when={cart() && cart()!.items.length > 0}>
+        <Show when={cadresRetires()}>
+          <p
+            role="status"
+            class="mb-6 rounded-lg border border-ink/15 bg-paper-deep/40 px-4 py-3 text-sm"
+          >
+            {tr("panier.cadres_retires")}
+          </p>
+        </Show>
         {/* Trois colonnes comme sur une facture : ce qu'on achète, combien,
             pour quel montant. Sur mobile, la quantité et le total passent
             sous la description plutôt que de serrer trois colonnes. */}

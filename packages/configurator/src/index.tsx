@@ -12,7 +12,12 @@ import type {
   BackgroundDTO,
 } from "@memoryline/types";
 import { unwrap } from "solid-js/store";
-import { BASE_COLOR_SCOPE, colorKey, ligneEnMajuscules } from "@memoryline/types";
+import {
+  BASE_COLOR_SCOPE,
+  colorKey,
+  ligneEnMajuscules,
+  prixDuCadreCents,
+} from "@memoryline/types";
 import {
   STEPS,
   SLOTS,
@@ -554,16 +559,17 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       : props.cadres?.find((c) => String(c.id) === String(state.frameId));
 
   /**
-   * Prix courant : format sélectionné + supplément du cadre.
+   * Prix courant : format sélectionné + supplément du cadre POUR CE FORMAT.
    *
-   * Même addition que côté serveur (`resolveUnitPriceCents`) : le montant
-   * affiché ici doit être celui qui sera facturé, sinon le client découvre
-   * le supplément au panier.
+   * Même addition que côté serveur (`resolveUnitPriceCents`), et même choix
+   * du prix du cadre (`prixDuCadreCents`) : le montant affiché ici doit être
+   * celui qui sera facturé, sinon le client découvre le supplément au panier.
    */
   const currentPrice = (): number => {
     const p = props.prices?.[state.format];
     const affiche = typeof p === "number" ? p : props.product.basePriceCents;
-    return affiche + (cadreChoisi()?.priceCents ?? 0);
+    const cadre = cadreChoisi();
+    return affiche + (cadre ? prixDuCadreCents(cadre, state.format) : 0);
   };
 
   /** Rappel du choix — le format courant s'il sort de l'ordinaire, le cadre.

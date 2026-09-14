@@ -12,6 +12,7 @@ import {
   PUBLIC_API_URL,
   browserApi,
   getCartId,
+  type OrderItem,
 } from "../lib/api.ts";
 
 /**
@@ -50,6 +51,13 @@ export interface ConfiguratorIslandProps {
   /** Stand de salon : aucun montant à l'écran (cf. ConfiguratorProps). */
   sansPrix?: boolean;
   /**
+   * Faux quand le site ne propose pas les cadres (réglage du back-office,
+   * jamais au stand) : la rubrique « Cadre » disparaît du configurateur, et
+   * une ligne rouverte depuis le panier repart sans son cadre. Absent, les
+   * cadres sont proposés.
+   */
+  cadresProposes?: boolean;
+  /**
    * Le nombre d'exemplaires, choisi sur la fiche produit.
    *
    * Il vient de l'extérieur et non du configurateur : on décide combien avant
@@ -75,13 +83,16 @@ export default function ConfiguratorIsland(
 ): JSX.Element {
   const tr = t(props.langue ?? LANGUE_DEFAUT);
   const mode = props.mode ?? "add";
+  const cadresProposes = props.cadresProposes !== false;
 
   // Chargement de la bibliothèque (personnages + variantes de slots + fonds).
   const [data] = createResource(async () => {
     const [library, backgrounds, cadres] = await Promise.all([
       browserApi.characters(),
       browserApi.backgrounds(props.product.id),
-      browserApi.frames().catch(() => []),
+      // Pas de cadres à proposer : une liste vide, et le configurateur
+      // n'affiche pas la rubrique du tout (StepFormat).
+      cadresProposes ? browserApi.frames().catch(() => []) : [],
     ]);
     return {
       characters: library.characters,
@@ -113,14 +124,22 @@ export default function ConfiguratorIsland(
       // Le décor d'avant-plan est un réglage produit : on l'injecte dans le
       // snapshot pour que le PDF d'impression le rende aussi.
       if (props.foregroundUrl) config = { ...config, foregroundUrl: props.foregroundUrl };
+      // Une ligne rouverte depuis le panier peut porter un cadre choisi avant
+      // que le site ne les retire : la rubrique n'est plus là pour l'enlever,
+      // on ne le renvoie pas.
+      if (!cadresProposes) {
+        const { frameId: _retire, ...sansCadre } = config;
+        config = sansCadre;
+      }
       const cartId = getCartId();
       const unitPriceCents = priceForConfig(
         config,
         props.product.basePriceCents,
         props.prices,
       );
+      let ligne: OrderItem;
       if (mode === "edit" && props.itemId != null) {
-        await browserApi.updateCartItem(cartId, props.itemId, {
+        ligne = await browserApi.updateCartItem(cartId, props.itemId, {
           config,
           unitPriceCents,
         });
@@ -129,7 +148,7 @@ export default function ConfiguratorIsland(
         // la boutique doit savoir ce qu'elle a vendu sur le stand. Au stand
         // aussi, l'affiche validée part au panier — c'est lui qui y sert de
         // récapitulatif et de dernière étape.
-        await browserApi.addCartItem(cartId, {
+        ligne = await browserApi.addCartItem(cartId, {
           productId: props.product.id,
           unitPriceCents,
           quantity: quantite,
@@ -137,7 +156,9 @@ export default function ConfiguratorIsland(
           config,
         });
       }
-      window.location.href = "/panier";
+      // Le serveur a écrit la ligne sans son cadre (page ouverte avant que la
+      // boutique ne les retire du site) : le panier le dit à la cliente.
+      window.location.href = ligne.cadreRetire ? "/panier?cadres=retires" : "/panier";
     } catch (e) {
       setError(String(e));
       setSaving(false);
