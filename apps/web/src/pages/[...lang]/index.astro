@@ -1,11 +1,10 @@
 ---
-import AfficheVide from "../../components/AfficheVide.astro";
 import Base from "../../layouts/Base.astro";
+import VignetteAffiche from "../../components/VignetteAffiche.astro";
 import Newsletter from "../../islands/Newsletter.tsx";
 import {
   api,
   setting,
-  formatPrice,
   assetUrl,
   assetSrcset,
   type Product,
@@ -90,24 +89,13 @@ const vitrineNombre = Math.max(
   Math.min(24, Number(await setting("home.vitrine.count", "8")) || 8),
 );
 
-const vitrine = products.slice(0, vitrineNombre);
-
 /*
- * Au stand, la vitrine se montre sans prix, comme les vignettes du rayon
- * (VignetteAffiche.astro) : c'est l'accueil qui s'ouvre en premier sur la
- * tablette, et la vendeuse y annonce ses tarifs de salon.
+ * Au stand, la vitrine se montre sans prix : c'est la vignette du rayon
+ * (VignetteAffiche.astro) qui s'en charge, comme partout ailleurs — l'accueil
+ * est ce qui s'ouvre en premier sur la tablette, et la vendeuse y annonce ses
+ * tarifs de salon.
  */
-const sansPrix = Astro.locals.stand;
-
-function fourchette(p: Product): string {
-  const prix = p.variants.map((v) => v.priceCents).filter((c) => c > 0);
-  if (prix.length === 0) return formatPrice(p.basePriceCents);
-  const min = Math.min(...prix);
-  const max = Math.max(...prix);
-  return min === max
-    ? formatPrice(min)
-    : `${formatPrice(min)} – ${formatPrice(max)}`;
-}
+const vitrine = products.slice(0, vitrineNombre);
 
 /** Intitulé de la lettre d'information, réglable au back-office. */
 /**
@@ -158,9 +146,6 @@ const lettreTitre = await texte(
   "home.newsletter.title",
   "Subscribe to our emails",
 );
-
-/** Retire le suffixe « - Affiche personnalisée » des noms importés. */
-const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
 ---
 
 <Base langue={langue}>
@@ -209,7 +194,7 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
   {/* ---------------- Les affiches ---------------- */}
   {
     vitrineVisible && vitrine.length > 0 && (
-      <section class="w-full px-6 pt-12 pb-4 lg:px-12">
+      <section class="w-full px-4 pt-12 pb-4 sm:px-6 lg:px-12">
         <div class="mb-8 flex flex-wrap items-end justify-between gap-3">
           <div>
             {/* Devenu le titre de la page depuis que le bandeau d'accroche
@@ -237,31 +222,20 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
           </a>
         </div>
 
-        <ul class="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-          {vitrine.map((p) => (
-            <li class="group ml-apparition">
-              <a href={lien(langue, `/affiches/${p.slug}`)} class="block">
-                <div
-                  class="flex items-center justify-center overflow-hidden bg-paper-deep"
-                  style="aspect-ratio:1020/1400"
-                >
-                  {assetUrl(p.image) ? (
-                    <img
-                      src={assetUrl(p.image)}
-                      alt={p.name}
-                      loading="lazy"
-                      class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                    />
-                  ) : (
-                    <AfficheVide nom={titreCourt(p.name)} />
-                  )}
-                </div>
-                <h3 class="mt-4 text-[17px] leading-snug group-hover:underline underline-offset-4">
-                  {titreCourt(p.name)}
-                </h3>
-                {!sansPrix && <p class="mt-1 text-ink-soft">{fourchette(p)}</p>}
-              </a>
-            </li>
+        {/* La vignette du rayon, et ses gouttières (affiches.astro) : la
+            vitrine avait sa propre copie, avec 24 px entre les affiches, un
+            nom en grand et une image chargée en pleine taille, sans choix de
+            résolution. Les colonnes, elles, restent celles de l'accueil — la
+            page est pleine largeur —, d'où un `sizes` écrit ici, calculé sur
+            ces colonnes et ces marges. */}
+        <ul class="-mx-2 grid grid-cols-2 gap-x-1 gap-y-5 sm:mx-0 sm:gap-x-2 sm:gap-y-8 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          {vitrine.map((p, rang) => (
+            <VignetteAffiche
+              affiche={p}
+              langue={langue}
+              prioritaire={rang < 4}
+              sizes="(min-width: 1536px) calc((100vw - 128px) / 5), (min-width: 1280px) calc((100vw - 120px) / 4), (min-width: 1024px) calc((100vw - 112px) / 3), (min-width: 640px) calc((100vw - 56px) / 2), calc((100vw - 20px) / 2)"
+            />
           ))}
         </ul>
 

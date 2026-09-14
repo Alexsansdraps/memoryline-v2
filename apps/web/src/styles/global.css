@@ -31,6 +31,14 @@ h4 {
   letter-spacing: 0.6px;
 }
 
+/* Exception : le nom d'une affiche sous sa vignette, en semi-gras et en
+   petit, comme sur memoryline.fr (VignetteAffiche.astro). Il faut une règle
+   ici : celle des titres juste au-dessus passe devant les classes Tailwind,
+   et un `font-semibold` posé sur le titre n'y changerait rien. */
+.ml-vignette-nom {
+  font-weight: 600;
+}
+
 /* Angles droits partout, comme sur memoryline.fr (--buttons-radius: 0,
    --media-radius: 0). Plutôt que de réécrire chaque classe d'arrondi dans
    quinze fichiers, on les neutralise ici : le jour où la cliente voudra des
@@ -362,25 +370,131 @@ body {
 }
 
 /* --------------------------------------------------------------------------
- * La recherche de l'en-tête : un CADRE bleu, et le texte en gras.
+ * La recherche : un CADRE bleu de 2 px, et le texte en gras.
+ *
+ * Le même style pour le champ de l'en-tête (grands écrans) et pour celui de
+ * la page de recherche, le seul qu'on voit sur téléphone et tablette en
+ * portrait, où l'en-tête n'a qu'une loupe.
  *
  * Le bleu est celui du tour, pas celui des lettres : c'est le cadre qui doit
  * attraper l'œil dans un en-tête par ailleurs noir et blanc. Le texte saisi
  * garde l'encre du site — un texte coloré se lit moins bien, et c'est lui
  * qu'on relit en tapant.
  *
- * Le cadre s'épaissit au clic plutôt que de changer de couleur : le champ
- * reste reconnaissable, et rien ne se déplace, la bordure gardant sa place.
+ * Deux pixels EN PERMANENCE : le cadre d'un pixel ne s'épaississait qu'au
+ * clic, et tant qu'on n'avait pas cliqué, le champ passait inaperçu. Au clic,
+ * un halo bleu pâle s'ajoute autour, sans rien déplacer.
+ *
+ * L'indication (« Rechercher une affiche ») est en gras et presque aussi
+ * sombre que le texte : le gris clair par défaut du navigateur la faisait
+ * disparaître.
  * ------------------------------------------------------------------------ */
 .ml-recherche {
-  border-color: #1352ac;
+  border: 2px solid #1352ac;
 }
 .ml-recherche:focus-within {
-  border-color: #1352ac;
-  box-shadow: inset 0 0 0 1px #1352ac;
+  box-shadow: 0 0 0 3px rgba(19, 82, 172, 0.2);
+}
+.ml-recherche-champ {
+  font-weight: 700;
 }
 .ml-recherche-champ::placeholder {
-  font-weight: 600;
+  font-weight: 700;
+  color: rgba(18, 18, 18, 0.62);
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------------------
+ * Les boutons pleins noirs : l'appui doit SE VOIR, au doigt comme à la souris.
+ *
+ * Ils ne réagissaient qu'au survol (`hover:bg-ink/85`) — et un survol
+ * n'existe pas sur une tablette. On touchait « Ajouter au panier » ou
+ * « Valider mon affiche », rien ne bougeait pendant que la page travaillait,
+ * et on touchait une deuxième fois.
+ *
+ * Écrit UNE fois ici, pour tous les boutons `bg-ink` du site (Personnaliser,
+ * Ajouter au panier, Rechercher, les boutons du stand et du compte…) et pour
+ * ceux du configurateur (`ml-cfg-btn` : Continuer, Valider), plutôt que
+ * bouton par bouton : le prochain bouton noir en profitera sans qu'on y pense.
+ *
+ * À l'appui : le bouton se tasse légèrement, passe au noir franc et s'entoure
+ * d'un halo. Le halo est ce qui se voit sous le doigt — il déborde du bouton,
+ * alors que le doigt en couvre le centre. Il s'efface en un quart de seconde
+ * au relâcher, assez lentement pour qu'un appui bref reste perceptible.
+ * Un bouton désactivé ne réagit pas : il ne ferait rien.
+ * ------------------------------------------------------------------------ */
+:is(button, a, input[type="submit"]).bg-ink,
+.ml-cfg-btn {
+  -webkit-tap-highlight-color: transparent;
+  /* Cette règle remplace les `transition-colors` des boutons : la liste
+     reprend donc leurs propriétés, en plus de celles de l'appui. */
+  transition-property: color, background-color, border-color, opacity,
+    box-shadow, transform, filter;
+  transition-duration: 0.25s;
+  transition-timing-function: ease-out;
+}
+:is(button, a, input[type="submit"]).bg-ink:active:not(:disabled) {
+  background-color: #000;
+  box-shadow: 0 0 0 4px rgba(18, 18, 18, 0.22);
+  transition-duration: 0.04s;
+}
+/* Le configurateur pose sa couleur de fond en style en ligne, qu'une feuille
+   de style ne peut pas remplacer : on l'assombrit par un filtre. */
+.ml-cfg-btn:active:not(:disabled) {
+  filter: brightness(0.85);
+  box-shadow: 0 0 0 4px rgba(18, 18, 18, 0.18);
+  transition-duration: 0.04s;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :is(button, a, input[type="submit"]).bg-ink:active:not(:disabled),
+  .ml-cfg-btn:active:not(:disabled),
+  .ml-choix:active {
+    transform: scale(0.96);
+  }
+}
+/* Au clavier, un contour net, décollé du bouton : sur un fond noir, le
+   contour par défaut du navigateur se confondait avec le bouton lui-même. */
+:is(button, a, input[type="submit"]).bg-ink:focus-visible,
+.ml-cfg-btn:focus-visible,
+.ml-choix:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 3px;
+}
+
+/* --------------------------------------------------------------------------
+ * Un choix fait doit se voir d'un coup d'œil — le format A4 / A3 de la fiche.
+ *
+ * La case choisie n'avait qu'un trait d'un pixel un peu plus foncé et un fond
+ * à peine gris : on ne savait plus lequel des deux formats était pris. Elle
+ * reçoit maintenant un cadre noir de 2 px — le second pixel en ombre
+ * intérieure, pour que rien ne bouge — et une coche dans son coin, comme les
+ * styles de l'affiche IA.
+ *
+ * L'état se lit sur `aria-checked` : c'est déjà lui que le script de la fiche
+ * met à jour, et un lecteur d'écran annonce ainsi exactement ce qu'on voit.
+ * ------------------------------------------------------------------------ */
+.ml-choix {
+  position: relative;
+  -webkit-tap-highlight-color: transparent;
+  transition-property: border-color, background-color, box-shadow, transform;
+  transition-duration: 0.15s;
+  transition-timing-function: ease-out;
+}
+.ml-choix[aria-checked="true"] {
+  border-color: var(--color-ink);
+  background-color: var(--color-paper-deep);
+  box-shadow: inset 0 0 0 1px var(--color-ink);
+}
+.ml-choix[aria-checked="true"]::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 20px;
+  height: 20px;
+  background: var(--color-ink)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpolyline points='5 10.5 8.5 14 15 6.5' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / 14px no-repeat;
 }
 
 /* --------------------------------------------------------------------------

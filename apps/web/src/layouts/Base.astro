@@ -272,6 +272,12 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
         JavaScript rien n'est masqué. */}
     <script is:inline>
       document.documentElement.classList.add("ml-js");
+      // Safari sur iPad et iPhone n'applique l'état « appuyé » (:active) d'un
+      // bouton que si la page écoute les contacts du doigt. Sans cet
+      // écouteur vide, l'effet d'appui des boutons noirs (global.css) ne
+      // s'affichait jamais sur la tablette du stand — précisément là où il
+      // sert. `passive` : il ne ralentit pas le défilement.
+      document.addEventListener("touchstart", function () {}, { passive: true });
     </script>
     {/* Le code du stand, arrivé par l'adresse que donne le back-office
         (« /?stand=1&code=… »). Il est rangé dans la tablette — c'est là que
@@ -426,14 +432,20 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
             recherche.
 
             Sa largeur suit l'écran sans jamais l'étouffer : le logo et le
-            menu gardent leur place, le champ prend le reste, entre 170 et
-            360 px. */}
-        <div class="hidden w-[clamp(170px,16vw,360px)] lg:block">
+            menu gardent leur place, le champ prend le reste, entre 230 et
+            360 px. 230, c'est ce qu'il faut à « Rechercher une affiche » en
+            gras pour se lire en entier à côté de la loupe et de la petite
+            croix que le navigateur réserve pour vider le champ — y compris
+            dans la police des iPad et des Mac, plus large que celle de
+            Windows. À 170 px, la phrase se coupait. Le cadre bleu et le gras
+            sont dans global.css (`ml-recherche`), partagés avec le champ de
+            la page de recherche. */}
+        <div class="hidden w-[clamp(230px,18vw,360px)] lg:block">
           <form
             method="get"
             action={lien(langue, "/recherche")}
             role="search"
-            class="ml-recherche flex w-full items-center border transition-colors"
+            class="ml-recherche flex w-full items-center"
           >
             <label for="ml-q" class="sr-only">{tr("recherche.champ")}</label>
             <input
@@ -442,8 +454,8 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
               name="q"
               value={rechercheEnCours}
               autocomplete="off"
-              placeholder={tr("recherche.champ_court")}
-              class="ml-recherche-champ w-full bg-transparent px-3 py-2 text-[13px] font-semibold focus:outline-none"
+              placeholder={tr("recherche.champ")}
+              class="ml-recherche-champ w-full min-w-0 bg-transparent px-3 py-2 text-[13px] focus:outline-none"
             />
             <button
               type="submit"

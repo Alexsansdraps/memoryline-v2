@@ -240,7 +240,7 @@ const breadcrumbLd = {
                 <button
                   type="button"
                   role="radio"
-                  class="js-format rounded-lg border border-ink/20 px-4 py-3 text-left text-sm transition-colors hover:border-ink/45"
+                  class="js-format ml-choix border border-ink/20 px-4 py-3 text-left text-sm hover:border-ink/45"
                   data-format={v.format}
                   aria-checked={i === 0 ? "true" : "false"}
                 >
@@ -276,12 +276,10 @@ const breadcrumbLd = {
           var cases = document.querySelectorAll(".js-format");
           if (!cases.length) return;
           function choisir(bouton) {
+            // Seul `aria-checked` change : le cadre noir et la coche de la
+            // case choisie en découlent (`ml-choix`, global.css).
             cases.forEach(function (c) {
-              var actif = c === bouton;
-              c.setAttribute("aria-checked", actif ? "true" : "false");
-              c.classList.toggle("border-ink", actif);
-              c.classList.toggle("bg-paper-deep", actif);
-              c.classList.toggle("border-ink/20", !actif);
+              c.setAttribute("aria-checked", c === bouton ? "true" : "false");
             });
             window.dispatchEvent(
               new CustomEvent("ml:format", {

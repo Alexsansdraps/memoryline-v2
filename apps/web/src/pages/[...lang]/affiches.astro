@@ -345,8 +345,17 @@ const libelleTri: Record<string, string> = {
         vignettes sont remplies bord à bord, sans rognage. Il est DANS les
         photos — ce sont des mises en situation où l'affiche n'occupe qu'une
         partie de l'image. Agrandir la vignette agrandit donc aussi ce blanc ;
-        seule une photo recadrée le supprimerait. */}
-    <ul class="grid grid-cols-2 gap-x-5 gap-y-10 sm:gap-x-6 lg:grid-cols-3">
+        seule une photo recadrée le supprimerait.
+
+        LES GOUTTIÈRES SONT CELLES DE MEMORYLINE.FR : 4 px sur téléphone,
+        8 px au-delà. À 20 et 24 px, le blanc entre les affiches se voyait
+        autant que les affiches. Sur téléphone, la grille déborde en plus de
+        8 px sur la marge de la page (`-mx-2`) : chaque vignette y gagne une
+        dizaine de pixels, et les noms, rentrés d'autant, restent alignés sur
+        le titre. La vitrine de l'accueil et les résultats de recherche
+        reprennent ces mêmes réglages — et si on les change ici, `sizes`
+        dans VignetteAffiche.astro doit suivre. */}
+    <ul class="-mx-2 grid grid-cols-2 gap-x-1 gap-y-5 sm:mx-0 sm:gap-x-2 sm:gap-y-8 lg:grid-cols-3">
       {
         products.map((p, rang) => (
           <VignetteAffiche affiche={p} langue={langue} prioritaire={rang < 4} />

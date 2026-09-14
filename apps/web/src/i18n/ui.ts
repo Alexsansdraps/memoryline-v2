@@ -85,10 +85,11 @@ export const ui = {
     "catalogue.suivante": "Suivante",
     /* Recherche */
     "recherche.titre": "Rechercher",
-    "recherche.champ": "Rechercher une ville ou un lieu…",
-    /* Version courte, pour le champ de l'en-tête : la place y est
-       comptée, et la phrase entière poussait le champ hors de sa piste. */
-    "recherche.champ_court": "Recherche…",
+    /* Le même texte dans l'en-tête et sur la page de recherche : c'est ce
+       qu'on cherche ici, des affiches. « Recherche… » ne disait pas quoi, et
+       « une ville ou un lieu » oubliait les affiches prêtes à imprimer. Le
+       champ de l'en-tête a été élargi pour le tenir en entier. */
+    "recherche.champ": "Rechercher une affiche",
     "recherche.bouton": "Rechercher",
     "recherche.invite": "Cherchez une ville, un lieu, un thème.",
     "recherche.trop_court": "Tapez au moins deux lettres.",
@@ -503,8 +504,7 @@ export const ui = {
     "catalogue.precedente": "Previous",
     "catalogue.suivante": "Next",
     "recherche.titre": "Search",
-    "recherche.champ": "Search for a town or a place…",
-    "recherche.champ_court": "Search…",
+    "recherche.champ": "Search for a poster",
     "recherche.bouton": "Search",
     "recherche.invite": "Search for a city, a place, a theme.",
     "recherche.trop_court": "Type at least two letters.",
@@ -906,8 +906,7 @@ export const ui = {
     "catalogue.precedente": "Zurück",
     "catalogue.suivante": "Weiter",
     "recherche.titre": "Suche",
-    "recherche.champ": "Stadt oder Ort suchen…",
-    "recherche.champ_court": "Suche…",
+    "recherche.champ": "Poster suchen",
     "recherche.bouton": "Suchen",
     "recherche.invite": "Suchen Sie nach einer Stadt, einem Ort, einem Thema.",
     "recherche.trop_court": "Geben Sie mindestens zwei Buchstaben ein.",
@@ -1316,8 +1315,7 @@ export const ui = {
     "catalogue.precedente": "Precedente",
     "catalogue.suivante": "Successiva",
     "recherche.titre": "Cerca",
-    "recherche.champ": "Cerca una città o un luogo…",
-    "recherche.champ_court": "Cerca…",
+    "recherche.champ": "Cerca un poster",
     "recherche.bouton": "Cerca",
     "recherche.invite": "Cerca una città, un luogo, un tema.",
     "recherche.trop_court": "Digita almeno due lettere.",
@@ -1721,8 +1719,7 @@ export const ui = {
     "catalogue.precedente": "Anterior",
     "catalogue.suivante": "Siguiente",
     "recherche.titre": "Buscar",
-    "recherche.champ": "Buscar una ciudad o un lugar…",
-    "recherche.champ_court": "Buscar…",
+    "recherche.champ": "Buscar una lámina",
     "recherche.bouton": "Buscar",
     "recherche.invite": "Busca una ciudad, un lugar, un tema.",
     "recherche.trop_court": "Escribe al menos dos letras.",

@@ -97,11 +97,18 @@ const titre = assezLong
   precedente={precedente}
   suivante={suivante}
 >
-  <section class="mx-auto max-w-[1200px] px-6 pt-12 pb-8 lg:px-12">
+  {/* Le même cadre que le rayon — 1600 px, les mêmes marges : la grille de
+      résultats EST celle du rayon, et elle se lit pareil. */}
+  <section class="mx-auto max-w-[1600px] px-4 pt-12 pb-8 sm:px-6 lg:px-10">
     <h1 class="text-3xl sm:text-4xl">{tr("recherche.titre")}</h1>
 
     {/* Le champ est REPRIS ici, pré-rempli : on corrige une faute de frappe
-        là où on lit le résultat, sans remonter à l'en-tête. */}
+        là où on lit le résultat, sans remonter à l'en-tête.
+
+        Il porte le cadre bleu et le texte gras du champ de l'en-tête
+        (`ml-recherche`, global.css). Sur téléphone et tablette en portrait,
+        l'en-tête n'a qu'une loupe : c'est CE champ-ci que la cliente voit,
+        et il doit se reconnaître autant que celui des grands écrans. */}
     <form
       method="get"
       action={lien(langue, "/recherche")}
@@ -115,13 +122,32 @@ const titre = assezLong
         autocomplete="off"
         placeholder={tr("recherche.champ")}
         aria-label={tr("recherche.champ")}
-        class="flex-1 border border-ink/20 bg-paper px-4 py-2.5 focus:border-ink focus:outline-none"
+        class="ml-recherche ml-recherche-champ min-w-0 flex-1 bg-paper px-4 py-2.5 focus:outline-none"
       />
+      {/* Sur téléphone, le bouton n'est qu'une loupe : avec son libellé, il
+          prenait près d'un tiers de la largeur, et « Rechercher une
+          affiche » ne tenait plus dans le champ. Le mot revient dès qu'il y
+          a la place, et reste lu par les lecteurs d'écran partout. */}
       <button
         type="submit"
-        class="bg-ink px-5 py-2.5 text-paper hover:bg-ink/85 transition-colors"
-        >{tr("recherche.bouton")}</button
+        class="inline-flex shrink-0 items-center justify-center bg-ink px-3.5 py-2.5 text-paper hover:bg-ink/85 transition-colors sm:px-5"
       >
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          aria-hidden="true"
+          class="sm:hidden"
+        >
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.5-3.5" />
+        </svg>
+        <span class="sr-only sm:not-sr-only">{tr("recherche.bouton")}</span>
+      </button>
     </form>
 
     {/* Le compte ne s'écrit que s'il y a quelque chose à compter : « 0 affiche
@@ -143,13 +169,13 @@ const titre = assezLong
 
   {
     error && (
-      <p class="mx-auto max-w-[1200px] px-6 text-terracotta-deep lg:px-12">
+      <p class="mx-auto max-w-[1600px] px-4 text-terracotta-deep sm:px-6 lg:px-10">
         {tr("catalogue.erreur")} ({error}).
       </p>
     )
   }
 
-  <section class="mx-auto max-w-[1200px] px-6 pb-16 lg:px-12">
+  <section class="mx-auto max-w-[1600px] px-4 pb-16 sm:px-6 lg:px-10">
     {
       assezLong && !error && total === 0 && (
         <div class="max-w-xl">
@@ -164,7 +190,11 @@ const titre = assezLong
       )
     }
 
-    <ul class="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-4">
+    {/* La grille du rayon à l'identique (affiches.astro) : mêmes colonnes,
+        mêmes gouttières. Elle en avait quatre dans 1200 px, et les affiches
+        trouvées sortaient plus petites que celles du rayon d'où elles
+        venaient. */}
+    <ul class="-mx-2 grid grid-cols-2 gap-x-1 gap-y-5 sm:mx-0 sm:gap-x-2 sm:gap-y-8 lg:grid-cols-3">
       {
         resultats.map((p, rang) => (
           <VignetteAffiche affiche={p} langue={langue} prioritaire={rang < 4} />

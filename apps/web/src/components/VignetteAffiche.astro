@@ -2,10 +2,11 @@
 /**
  * Une affiche dans une grille : l'image, le nom, le prix.
  *
- * Écrite une fois et partagée par le rayon et la page de résultats : deux
- * grilles écrites séparément finissent par diverger — l'une sait montrer un
- * prix barré, l'autre l'a oublié — et c'est précisément le défaut qu'on
- * répare ici.
+ * Écrite une fois et partagée par le rayon, la page de résultats et la
+ * vitrine de l'accueil : des grilles écrites séparément finissent par
+ * diverger — l'une sait montrer un prix barré, l'autre l'a oublié, la
+ * troisième charge l'image en pleine taille — et c'est précisément le défaut
+ * qu'on répare ici.
  *
  * L'image porte tout, le texte se fait discret dessous, comme sur
  * memoryline.fr. Le rapport 1020/1400 est celui des visuels de la boutique.
@@ -33,9 +34,31 @@ interface Props {
    * chargées d'un coup ne serviraient personne.
    */
   prioritaire?: boolean;
+  /**
+   * La largeur que la vignette occupe VRAIMENT à l'écran, pour `sizes`.
+   *
+   * Seule la grille la connaît : ses colonnes, ses marges et ses gouttières.
+   * Une valeur fausse ne se voit pas tout de suite — le navigateur prend
+   * simplement une image trop petite et l'étire, et l'affiche paraît floue sur
+   * un grand écran. Par défaut, la grille du rayon (GRILLE_RAYON), que la page
+   * de résultats reprend à l'identique.
+   */
+  sizes?: string;
 }
 
-const { affiche, langue, prioritaire = false } = Astro.props;
+/**
+ * La largeur d'une vignette dans la grille du rayon et des résultats.
+ *
+ * Écrite d'après la grille elle-même (affiches.astro) : deux colonnes, trois
+ * dès 1024 px, dans un cadre de 1600 px au plus, 8 px de marge sur téléphone
+ * (24 puis 40 au-delà) et des gouttières de 4 puis 8 px. L'ancienne valeur
+ * annonçait 300 px au-dessus de 1536 px d'écran alors que la vignette en
+ * mesure 500 : l'image servie était deux fois trop petite.
+ */
+const GRILLE_RAYON =
+  "(min-width: 1600px) 502px, (min-width: 1024px) calc((100vw - 96px) / 3), (min-width: 640px) calc((100vw - 56px) / 2), calc((100vw - 20px) / 2)";
+
+const { affiche, langue, prioritaire = false, sizes = GRILLE_RAYON } = Astro.props;
 const tr = t(langue);
 
 /*
@@ -85,16 +108,16 @@ const prix =
   promo || mini === maxi
     ? formatPrice(mini)
     : `${formatPrice(mini)} – ${formatPrice(maxi)}`;
-// Quatre cents pixels de large suffisent à une vignette de grille ; le
-// navigateur prend la plus petite qui lui va parmi celles proposées.
 /*
  * Le visuel, et les tailles dans lesquelles le navigateur peut le prendre.
  *
- * Les vignettes ont grandi — trois colonnes au lieu de quatre, soit environ
- * 355 px de large sur un écran de 1440, et le double de pixels réels sur un
- * écran à haute densité. L'ancien jeu s'arrêtait à 600 px et `sizes` annonçait
- * 300 : le navigateur choisissait donc une image de 400 px qu'il agrandissait,
- * et l'affiche paraissait molle.
+ * Les vignettes ont grandi — trois colonnes au lieu de quatre et des
+ * gouttières resserrées, soit environ 450 px de large sur un écran de 1440, et
+ * le double de pixels réels sur un écran à haute densité. L'ancien jeu
+ * s'arrêtait à 600 px et `sizes` annonçait 300 : le navigateur choisissait
+ * donc une image de 400 px qu'il agrandissait, et l'affiche paraissait molle.
+ * Le navigateur prend, parmi celles proposées, la plus petite qui couvre la
+ * largeur annoncée par `sizes`.
  *
  * 900 et 1400 existent déjà côté API (`/assets/:fichier?l=`) : il n'y avait
  * qu'à les proposer.
@@ -114,7 +137,7 @@ const imageJeu = assetSrcset(affiche.image, [400, 600, 900, 1400]);
           <img
             src={image}
             srcset={imageJeu}
-            sizes="(min-width: 1536px) 300px, (min-width: 1024px) 380px, (min-width: 640px) 46vw, 46vw"
+            sizes={sizes}
             alt={nom}
             width="1020"
             height="1400"
@@ -136,13 +159,21 @@ const imageJeu = assetSrcset(affiche.image, [400, 600, 900, 1400]);
           )
       }
     </div>
-    <div class="mt-4">
-      <h2 class="text-[17px] leading-snug group-hover:underline underline-offset-4">
+    {/* Le nom, plus petit et un peu plus gras — comme sur memoryline.fr, où
+        il fait 12 à 13 px. À 17 px et en poids normal, il se lisait comme
+        un titre sous chaque image et tirait l'œil loin des affiches.
+
+        Le texte est rentré de 8 px : les gouttières ne font plus que 4 à
+        8 px, et sans ce retrait le nom d'une colonne venait toucher celui de
+        la voisine. Le prix garde une taille de lecture, un cran au-dessus du
+        nom : c'est la ligne qu'on vient chercher. */}
+    <div class="px-2 pt-2.5 sm:pt-3">
+      <h2 class="ml-vignette-nom text-[13px] leading-snug group-hover:underline underline-offset-4 lg:text-[14px]">
         {nom}
       </h2>
       {
         sansPrix ? null : promo ? (
-          <p class="mt-1 flex flex-wrap items-baseline gap-2">
+          <p class="mt-1 flex flex-wrap items-baseline gap-2 text-[14px] sm:text-[15px]">
             <span class="text-terracotta-deep">{prix}</span>
             <s class="text-ink/45">
               <span class="sr-only">{tr("promo.ancien_prix")} </span>
@@ -150,7 +181,7 @@ const imageJeu = assetSrcset(affiche.image, [400, 600, 900, 1400]);
             </s>
           </p>
         ) : (
-          <p class="mt-1 text-ink-soft">{prix}</p>
+          <p class="mt-1 text-[14px] text-ink-soft sm:text-[15px]">{prix}</p>
         )
       }
     </div>
