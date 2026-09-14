@@ -1,5 +1,6 @@
 ---
 import AfficheVide from "../../../components/AfficheVide.astro";
+import ActionEnAttente from "../../../components/ActionEnAttente.astro";
 import { dimensionsFormat } from "@memoryline/types";
 import Base from "../../../layouts/Base.astro";
 import {
@@ -308,7 +309,13 @@ const breadcrumbLd = {
               format: v.format,
               priceCents: v.priceCents,
             }))}
-          />
+          >
+            <ActionEnAttente
+              slot="fallback"
+              libelle={tr("produit.personnaliser")}
+              note={tr("ia.intro")}
+            />
+          </AfficheIA>
         ) : product.kind === "personnalisable" ? (
           <ProductConfigurator
             langue={langue}
@@ -332,7 +339,15 @@ const breadcrumbLd = {
               ],
               view: product.defaultView ?? null,
             }}
-          />
+          >
+            {/* En modification depuis le panier, l'îlot n'affiche pas la
+                quantité : sa silhouette non plus. */}
+            <ActionEnAttente
+              slot="fallback"
+              libelle={tr("produit.personnaliser")}
+              quantite={!Astro.url.searchParams.has("edit")}
+            />
+          </ProductConfigurator>
         ) : (
           <AddToCartButton
             langue={langue}
@@ -343,7 +358,9 @@ const breadcrumbLd = {
               basePriceCents: minPrice,
               defaultView: product.defaultView ?? null,
             }}
-          />
+          >
+            <ActionEnAttente slot="fallback" libelle={tr("produit.ajouter")} quantite />
+          </AddToCartButton>
         )
       }
 
