@@ -134,6 +134,13 @@ export const ui = {
     "ia.depot_bouton": "Choisir une photo",
     "ia.depot_formats": "JPEG, PNG ou WebP",
     "ia.changer_photo": "Choisir une autre photo",
+    "ia.photo_titre": "Votre photo",
+    "ia.photo_reduite":
+      "Inutile de la réduire : c'est fait automatiquement avant l'envoi.",
+    "ia.style_titre": "Quel genre d'affiche ?",
+    "ia.style_aide":
+      "Choisissez le style qui vous plaît : votre affiche sera créée dans cet esprit.",
+    "ia.style_manquant": "Choisissez d'abord un style, ci-dessus.",
     "ia.conseils_titre": "Ce qui donne les meilleurs résultats",
     "ia.conseil_nette": "Une photo nette et bien éclairée.",
     "ia.conseil_lieu":
@@ -143,7 +150,7 @@ export const ui = {
     "ia.precision": "Une précision à ajouter ? (facultatif)",
     "ia.precision_exemple":
       "Par exemple : au coucher du soleil, dans des tons chauds…",
-    "ia.generer": "Générer mon affiche",
+    "ia.generer": "Créer mon affiche",
     "ia.regenerer": "Générer une autre version",
     "ia.regenerer_aide": "Autant de fois que vous voulez, sans supplément.",
     "ia.recommencer": "Repartir de zéro",
@@ -156,7 +163,6 @@ export const ui = {
     "ia.apercu_alt": "Aperçu de l'affiche générée",
     "ia.filigrane_note":
       "Le filigrane disparaît de l'affiche imprimée, après paiement.",
-    "ia.poids_max": "Photo de {n} Mo maximum.",
     "ia.err.indisponible":
       "La création d'affiches n'est pas disponible pour l'instant. Réessayez dans quelques minutes, ou écrivez-nous.",
     "ia.err.format":
@@ -540,6 +546,13 @@ export const ui = {
     "ia.depot_bouton": "Choose a photo",
     "ia.depot_formats": "JPEG, PNG or WebP",
     "ia.changer_photo": "Choose another photo",
+    "ia.photo_titre": "Your photo",
+    "ia.photo_reduite":
+      "No need to resize it: this is done automatically before upload.",
+    "ia.style_titre": "What kind of poster?",
+    "ia.style_aide":
+      "Choose the style you like: your poster will be created in that spirit.",
+    "ia.style_manquant": "First choose a style, above.",
     "ia.conseils_titre": "What works best",
     "ia.conseil_nette": "A sharp, well-lit photo.",
     "ia.conseil_lieu":
@@ -561,7 +574,6 @@ export const ui = {
     "ia.apercu_alt": "Preview of the generated poster",
     "ia.filigrane_note":
       "The watermark disappears from the printed poster, once paid.",
-    "ia.poids_max": "Photos up to {n} MB.",
     "ia.err.indisponible":
       "Poster creation is unavailable right now. Try again in a few minutes, or write to us.",
     "ia.err.format":
@@ -938,6 +950,13 @@ export const ui = {
     "ia.depot_bouton": "Foto auswählen",
     "ia.depot_formats": "JPEG, PNG oder WebP",
     "ia.changer_photo": "Anderes Foto auswählen",
+    "ia.photo_titre": "Ihr Foto",
+    "ia.photo_reduite":
+      "Sie müssen es nicht verkleinern: Das geschieht vor dem Hochladen automatisch.",
+    "ia.style_titre": "Welche Art von Poster?",
+    "ia.style_aide":
+      "Wählen Sie den Stil, der Ihnen gefällt: Ihr Poster wird in diesem Sinne gestaltet.",
+    "ia.style_manquant": "Wählen Sie zuerst oben einen Stil.",
     "ia.conseils_titre": "Das funktioniert am besten",
     "ia.conseil_nette": "Ein scharfes, gut belichtetes Foto.",
     "ia.conseil_lieu":
@@ -960,7 +979,6 @@ export const ui = {
     "ia.apercu_alt": "Vorschau des erstellten Posters",
     "ia.filigrane_note":
       "Das Wasserzeichen verschwindet nach der Bezahlung auf dem gedruckten Poster.",
-    "ia.poids_max": "Fotos bis {n} MB.",
     "ia.err.indisponible":
       "Die Postererstellung ist derzeit nicht verfügbar. Versuchen Sie es in ein paar Minuten erneut oder schreiben Sie uns.",
     "ia.err.format":
@@ -1342,6 +1360,13 @@ export const ui = {
     "ia.depot_bouton": "Scegli una foto",
     "ia.depot_formats": "JPEG, PNG o WebP",
     "ia.changer_photo": "Scegli un'altra foto",
+    "ia.photo_titre": "La tua foto",
+    "ia.photo_reduite":
+      "Non serve ridurla: lo facciamo automaticamente prima dell'invio.",
+    "ia.style_titre": "Che tipo di poster?",
+    "ia.style_aide":
+      "Scegli lo stile che preferisci: il tuo poster sarà creato in quello spirito.",
+    "ia.style_manquant": "Scegli prima uno stile, qui sopra.",
     "ia.conseils_titre": "Cosa funziona meglio",
     "ia.conseil_nette": "Una foto nitida e ben illuminata.",
     "ia.conseil_lieu":
@@ -1363,7 +1388,6 @@ export const ui = {
     "ia.apercu_alt": "Anteprima del poster creato",
     "ia.filigrane_note":
       "La filigrana sparisce dal poster stampato, dopo il pagamento.",
-    "ia.poids_max": "Foto fino a {n} MB.",
     "ia.err.indisponible":
       "La creazione dei poster non è disponibile al momento. Riprova tra qualche minuto, oppure scrivici.",
     "ia.err.format":
@@ -1741,6 +1765,13 @@ export const ui = {
     "ia.depot_bouton": "Elegir una foto",
     "ia.depot_formats": "JPEG, PNG o WebP",
     "ia.changer_photo": "Elegir otra foto",
+    "ia.photo_titre": "Tu foto",
+    "ia.photo_reduite":
+      "No hace falta reducirla: se hace automáticamente antes del envío.",
+    "ia.style_titre": "¿Qué tipo de lámina?",
+    "ia.style_aide":
+      "Elige el estilo que te guste: tu lámina se creará con ese espíritu.",
+    "ia.style_manquant": "Elige primero un estilo, más arriba.",
     "ia.conseils_titre": "Lo que da mejores resultados",
     "ia.conseil_nette": "Una foto nítida y bien iluminada.",
     "ia.conseil_lieu":
@@ -1762,7 +1793,6 @@ export const ui = {
     "ia.apercu_alt": "Vista previa de la lámina creada",
     "ia.filigrane_note":
       "La marca de agua desaparece en la lámina impresa, tras el pago.",
-    "ia.poids_max": "Fotos de hasta {n} MB.",
     "ia.err.indisponible":
       "La creación de láminas no está disponible ahora mismo. Inténtalo de nuevo en unos minutos, o escríbenos.",
     "ia.err.format":

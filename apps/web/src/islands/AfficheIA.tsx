@@ -14,11 +14,12 @@ import {
   COULEURS_TEXTE_AFFICHE,
   COULEUR_TEXTE_DEFAUT,
   NB_LIGNES_AFFICHE,
-  POLICES_AFFICHE,
   POLICE_SOUSTITRE_DEFAUT,
   POLICE_TITRE_DEFAUT,
   familleCss,
+  ligneEnMajuscules,
   policeParId,
+  policesDeLaLigne,
   type PosterConfig,
   type TextBlock,
 } from "@memoryline/types";
@@ -31,17 +32,16 @@ import {
   verifierFormatPhoto,
   type StyleIA,
   genererAffiche,
-  verifierPhoto,
   ErreurIA,
-  POIDS_PHOTO_MAX,
   TYPES_PHOTO,
   type EchecIA,
 } from "../lib/ia.ts";
 
 /**
- * Parcours des affiches IA : le client envoie une photo, voit l'affiche
- * générée, recommence autant de fois qu'il le souhaite, puis met au panier
- * celle qu'il garde.
+ * Parcours des affiches IA : le client choisit un style (quand la boutique en
+ * propose), envoie une photo, lance la création, voit l'affiche générée,
+ * recommence autant de fois qu'il le souhaite, puis met au panier celle qu'il
+ * garde.
  *
  * AUCUN quota côté client — décision de la cliente, prise en connaissance du
  * coût. Le seul frein possible vient du serveur (anti-rafale, plafond de
@@ -67,6 +67,24 @@ export interface AfficheIAProps {
 
 /** Étapes du parcours, dans l'ordre où le client les traverse. */
 type Etape = "depot" | "envoi" | "generation" | "pret";
+
+/**
+ * Le numéro d'une étape, devant son titre.
+ *
+ * Il ne s'affiche que lorsque le parcours en compte vraiment plusieurs —
+ * style, puis photo : c'est lui qui dit, sans une phrase de plus, dans quel
+ * ordre les faire.
+ */
+function Numero(props: { n: number }): JSX.Element {
+  return (
+    <span
+      aria-hidden="true"
+      class="inline-flex h-6 w-6 shrink-0 items-center justify-center bg-ink text-xs font-medium text-paper"
+    >
+      {props.n}
+    </span>
+  );
+}
 
 export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   const tr = t(props.langue ?? LANGUE_DEFAUT);
@@ -95,15 +113,31 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    *
    * Lus une fois à l'ouverture. Une liste vide — boutique qui n'en a pas
    * encore créé, ou API muette — fait simplement disparaître le bloc : le
-   * parcours redevient celui d'avant, sans message d'erreur pour un choix
-   * qui n'est pas obligatoire.
+   * parcours redevient celui d'avant, où l'envoi de la photo lance la
+   * création dans la foulée.
+   *
+   * Dès qu'il y en a un, le style se choisit AVANT la photo, et la création
+   * attend le bouton « Créer mon affiche ». Le choix se trouvait sous la zone
+   * de dépôt, et l'envoi de la photo lançait tout : la première génération —
+   * payée comme les suivantes — partait sans le style, et la cliente devait
+   * en payer une deuxième pour obtenir celui qu'elle venait de toucher.
    */
   const [styles, setStyles] = createSignal<StyleIA[]>([]);
   const [styleChoisi, setStyleChoisi] = createSignal<number | null>(null);
-  onMount(async () => {
-    const lus = await lireStyles(props.langue);
-    setStyles(lus);
+  /**
+   * La lecture elle-même, gardée : une photo choisie avant qu'elle ait
+   * répondu doit pouvoir attendre de savoir s'il fallait d'abord un style,
+   * plutôt que de partir sans.
+   */
+  let stylesLus: Promise<StyleIA[]> = Promise.resolve([]);
+  onMount(() => {
+    stylesLus = lireStyles(props.langue);
+    void stylesLus.then(setStyles);
   });
+  /** La boutique propose des styles : il faut en choisir un. */
+  const choixDuStyle = () => styles().length > 0;
+  /** Un style reste à choisir avant d'envoyer la photo ou de créer. */
+  const styleManquant = () => choixDuStyle() && styleChoisi() === null;
 
   /**
    * Les trois lignes de texte, « comme sur les autres affiches » : mêmes
@@ -122,6 +156,31 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   const [couleur, setCouleur] = createSignal(COULEUR_TEXTE_DEFAUT);
   const modifierLigne = (rang: number, patch: Partial<Ligne>) =>
     setLignes((l) => l.map((x, i) => (i === rang ? { ...x, ...patch } : x)));
+
+  /**
+   * La frappe dans une ligne, avec la règle des affiches personnalisables :
+   * la première ligne passe en capitales À LA SAISIE (voir
+   * `ligneEnMajuscules`). Le texte enregistré est ainsi celui que l'aperçu
+   * montre et que le fichier d'impression écrira — le moteur d'impression ne
+   * transforme rien, il imprime ce que la ligne contient.
+   *
+   * Le champ est réécrit ici, curseur compris : sans cela, taper au milieu
+   * d'un mot renverrait le curseur en fin de ligne à chaque lettre.
+   */
+  function saisirLigne(rang: number, champ: HTMLInputElement) {
+    const brut = champ.value;
+    const value = ligneEnMajuscules(rang) ? brut.toLocaleUpperCase() : brut;
+    if (value !== brut) {
+      const debut = champ.selectionStart;
+      const fin = champ.selectionEnd;
+      champ.value = value;
+      // `ß` devient `SS` : la longueur change, l'ancienne position ne veut
+      // plus rien dire, et le curseur reste alors où le navigateur le met.
+      if (value.length === brut.length && debut !== null && fin !== null)
+        champ.setSelectionRange(debut, fin);
+    }
+    modifierLigne(rang, { value });
+  }
 
   /**
    * Déplacement d'une ligne à la souris (ou au doigt).
@@ -279,6 +338,9 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
      * parfaitement acceptable. Le format, lui, se vérifie toujours — un PDF
      * n'est pas une photo, et aucune réduction n'y changera rien.
      */
+    // Le style d'abord : la zone de dépôt est déjà éteinte tant qu'il manque,
+    // ceci ne couvre qu'un fichier lâché dessus malgré tout.
+    if (styleManquant()) return;
     const refus = verifierFormatPhoto(fichier);
     if (refus) {
       setEchec(refus);
@@ -295,8 +357,27 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     setEtape("envoi");
     demarrerChrono();
     try {
-      const distant = await envoyerPhoto(fichier);
+      // La liste des styles est attendue avec la photo : si elle n'avait pas
+      // encore répondu quand le fichier a été choisi, c'est elle qui dit s'il
+      // faut créer tout de suite ou attendre le bouton.
+      const [distant, proposes] = await Promise.all([
+        envoyerPhoto(fichier),
+        stylesLus,
+      ]);
       setChemin(distant);
+      if (proposes.length > 0) {
+        // Des styles existent : la photo est sur le serveur, la création
+        // attend « Créer mon affiche ». Le temps de relire son style, de
+        // changer de photo si ce n'est pas la bonne, ou d'ajouter une
+        // précision, avant une génération qui se paie.
+        arreterChrono();
+        setEtape("depot");
+        // Le bouton est sous les conseils et la précision : sur la tablette,
+        // juste sous le bord de l'écran. On l'amène au bord, sans plus — la
+        // cliente garde sous les yeux la zone où elle vient de toucher.
+        boutonCreer?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        return;
+      }
       await lancerGeneration(distant);
     } catch (e) {
       arreterChrono();
@@ -308,7 +389,9 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   /** Lance (ou relance) une génération sur la photo déjà envoyée. */
   async function lancerGeneration(cheminPhoto?: string) {
     const source = cheminPhoto ?? chemin();
-    if (!source) return;
+    // Jamais de génération sans le style quand la boutique en propose : le
+    // bouton est éteint, ceci garde la règle si un autre chemin y menait.
+    if (!source || styleManquant()) return;
     setEchec(null);
     setEtape("generation");
     demarrerChrono();
@@ -397,6 +480,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   }
 
   let champFichier: HTMLInputElement | undefined;
+  let boutonCreer: HTMLButtonElement | undefined;
 
   const occupe = () => etape() === "envoi" || etape() === "generation";
 
@@ -454,7 +538,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     <div class="ml-modal-panel">
       <header class="ml-modal-head">
         <h2 class="text-xl sm:text-2xl">{tr("ia.titre")}</h2>
-        <button type="button" class="ml-modal-close" aria-label="Fermer" onClick={fermer}>
+        <button type="button" class="ml-modal-close" aria-label={tr("cfg.fermer")} onClick={fermer}>
           ✕
         </button>
       </header>
@@ -463,7 +547,11 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           l'on juge une affiche, les réglages à droite. */}
       <div class="grid gap-8 items-start md:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
         {/* ------------------------------ Aperçu ------------------------- */}
-        <div>
+        {/* Collé en haut dès qu'il y a deux colonnes : sur la tablette, la
+            colonne des réglages dépasse l'écran, et l'aperçu — la photo, la
+            création en cours, les textes qu'on tape — sortait de la vue au
+            moment précis où l'on touchait ce qui le change. */}
+        <div class="md:sticky md:top-0">
           <div
             ref={boiteAffiche}
             class="relative w-full overflow-hidden border border-ink/10 bg-paper-deep"
@@ -620,18 +708,95 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
         <div>
           <p class="text-sm text-ink-soft">{tr("ia.intro")}</p>
 
+          {/* 1. Le style, EN PREMIER quand la boutique en propose : c'est lui
+              qui fait la première génération, pas seulement les suivantes.
+              Une carte par style — sa première image, son nom —, assez
+              grande pour le doigt sur la tablette du stand. */}
+          <Show when={choixDuStyle()}>
+            <div class="mt-5">
+              <p class="flex items-center gap-2 font-medium">
+                <Numero n={1} />
+                {tr("ia.style_titre")}
+              </p>
+              <p class="mt-1 text-sm text-ink-soft">{tr("ia.style_aide")}</p>
+              <div class="mt-3 grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-3">
+                <For each={styles()}>
+                  {(st) => {
+                    const actif = () => styleChoisi() === st.id;
+                    const image = assetUrl(st.images[0], 400);
+                    return (
+                      <button
+                        type="button"
+                        aria-pressed={actif()}
+                        disabled={occupe()}
+                        // Toucher le style déjà choisi le GARDE : il est
+                        // obligatoire, et un second appui involontaire sur
+                        // la tablette ne doit pas éteindre la suite.
+                        onClick={() => setStyleChoisi(st.id)}
+                        class={`relative flex flex-col overflow-hidden border-2 text-left transition-colors disabled:opacity-60 ${
+                          actif()
+                            ? "border-ink"
+                            : "border-ink/15 hover:border-ink/45"
+                        }`}
+                      >
+                        <Show
+                          when={image}
+                          fallback={
+                            <span class="block aspect-[4/5] w-full bg-paper-deep" />
+                          }
+                        >
+                          <img
+                            src={image!}
+                            alt=""
+                            loading="lazy"
+                            class="aspect-[4/5] w-full object-cover"
+                          />
+                        </Show>
+                        <span
+                          class={`px-3 py-2.5 text-sm transition-colors ${
+                            actif() ? "bg-ink font-medium text-paper" : ""
+                          }`}
+                        >
+                          {st.titre}
+                        </span>
+                        <Show when={actif()}>
+                          <span
+                            aria-hidden="true"
+                            class="absolute right-2 top-2 flex h-7 w-7 items-center justify-center bg-ink text-sm text-paper"
+                          >
+                            ✓
+                          </span>
+                        </Show>
+                      </button>
+                    );
+                  }}
+                </For>
+              </div>
+            </div>
+
+            <p class="mt-6 flex items-center gap-2 font-medium">
+              <Numero n={2} />
+              {tr("ia.photo_titre")}
+            </p>
+          </Show>
+
           {/* Zone de dépôt : clic OU glisser-déposer. Le champ fichier reste
               un vrai <input>, donc utilisable au clavier et aux lecteurs
-              d'écran ; le cadre n'est que sa décoration. */}
+              d'écran ; le cadre n'est que sa décoration. Éteinte tant qu'un
+              style reste à choisir, et elle dit pourquoi. */}
           <label
-            class={`mt-5 flex cursor-pointer flex-col items-center justify-center gap-1 border-2 border-dashed p-6 text-center transition-colors ${
-              survol()
-                ? "border-terracotta bg-terracotta/5"
-                : "border-ink/25 hover:border-ink/50"
+            class={`${choixDuStyle() ? "mt-3" : "mt-5"} flex flex-col items-center justify-center gap-1 border-2 border-dashed p-6 text-center transition-colors ${
+              styleManquant()
+                ? "cursor-not-allowed border-ink/15 opacity-60"
+                : survol()
+                  ? "cursor-pointer border-terracotta bg-terracotta/5"
+                  : "cursor-pointer border-ink/25 hover:border-ink/50"
             } ${occupe() ? "pointer-events-none opacity-60" : ""}`}
             onDragOver={(e) => {
+              // Toujours retenu, même éteinte : une photo lâchée à côté du
+              // but ne doit pas remplacer la boutique par l'image seule.
               e.preventDefault();
-              setSurvol(true);
+              if (!styleManquant()) setSurvol(true);
             }}
             onDragLeave={() => setSurvol(false)}
             onDrop={(e) => {
@@ -646,7 +811,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               type="file"
               accept={TYPES_PHOTO.join(",")}
               class="sr-only"
-              disabled={occupe()}
+              disabled={occupe() || styleManquant()}
               onChange={(e) => {
                 const f = e.currentTarget.files?.[0];
                 // Remise à zéro : rechoisir LE MÊME fichier doit relancer.
@@ -655,9 +820,17 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               }}
             />
             <span class="text-sm font-medium">
-              {nomPhoto() ? tr("ia.changer_photo") : tr("ia.depot")}
+              {styleManquant()
+                ? tr("ia.style_manquant")
+                : nomPhoto()
+                  ? tr("ia.changer_photo")
+                  : tr("ia.depot")}
             </span>
             <span class="text-xs text-ink-soft">{tr("ia.depot_formats")}</span>
+            {/* Aucune limite de poids à annoncer : la photo est réduite
+                dans le navigateur avant de partir. « 10 Mo maximum » faisait
+                renoncer à des photos de téléphone parfaitement acceptées. */}
+            <span class="text-xs text-ink-soft">{tr("ia.photo_reduite")}</span>
             <Show when={nomPhoto()}>
               <span class="mt-1 max-w-full truncate text-xs text-ink-soft">
                 {nomPhoto()}
@@ -676,48 +849,6 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
             </ul>
           </div>
 
-            <Show when={styles().length > 0}>
-            <div class="mb-6">
-              <span class="font-medium">Quel genre d'affiche ?</span>
-              <div class="mt-3 flex flex-wrap gap-3">
-                <For each={styles()}>
-                  {(st) => {
-                    const actif = () => styleChoisi() === st.id;
-                    return (
-                      <button
-                        type="button"
-                        aria-pressed={actif()}
-                        onClick={() =>
-                          setStyleChoisi(actif() ? null : st.id)
-                        }
-                        class={`flex w-28 flex-col overflow-hidden border text-left transition-colors ${
-                          actif()
-                            ? "border-ink"
-                            : "border-ink/20 hover:border-ink/45"
-                        }`}
-                      >
-                        <Show when={assetUrl(st.images[0], 400)}>
-                          <img
-                            src={assetUrl(st.images[0], 400) ?? ""}
-                            alt=""
-                            loading="lazy"
-                            class="aspect-square w-full object-cover"
-                          />
-                        </Show>
-                        <span class="px-2 py-1.5 text-[13px]">
-                          {st.titre}
-                        </span>
-                      </button>
-                    );
-                  }}
-                </For>
-              </div>
-              <p class="mt-2 text-sm text-ink-soft">
-                Facultatif : sans choix, nous composons selon votre photo.
-              </p>
-            </div>
-          </Show>
-
           <label class="mt-4 block text-sm">
             <span class="font-medium">{tr("ia.precision")}</span>
             <input
@@ -730,9 +861,65 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
             />
           </label>
 
-          {/* Les trois lignes, comme sur les autres affiches. Chaque ligne
-              choisit sa police — montrée DANS la police, le client juge un
-              rendu, pas un nom — et la couleur est commune aux trois. */}
+          {/* Tant qu'aucune affiche n'est obtenue, l'action suivante est ICI,
+              juste sous la photo, et non tout en bas après les textes et le
+              format : sur la tablette, « Créer mon affiche » tombait à plus
+              d'un écran de la photo qu'il concerne, et l'aperçu qui montre la
+              création en cours sortait de la vue au moment de toucher. */}
+          <Show when={!apercu()}>
+            <Show when={messageEchec()}>
+              <p
+                role="status"
+                class="mt-4 border border-terracotta/40 bg-terracotta/10 px-4 py-3 text-sm text-terracotta-deep"
+              >
+                {messageEchec()}
+              </p>
+            </Show>
+            <div class="mt-5 flex flex-wrap items-center gap-3">
+              <Show
+                when={chemin()}
+                fallback={
+                  <button
+                    type="button"
+                    disabled={occupe() || styleManquant()}
+                    onClick={() => champFichier?.click()}
+                    class="rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
+                  >
+                    {tr("ia.depot_bouton")}
+                  </button>
+                }
+              >
+                <button
+                  ref={boutonCreer}
+                  type="button"
+                  disabled={occupe() || styleManquant()}
+                  onClick={() => void lancerGeneration()}
+                  class="rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
+                >
+                  {tr("ia.generer")}
+                </button>
+                <button
+                  type="button"
+                  disabled={occupe()}
+                  onClick={reprendreDepart}
+                  class="text-sm text-ink-soft underline underline-offset-4 hover:text-terracotta transition-colors disabled:opacity-60"
+                >
+                  {tr("ia.recommencer")}
+                </button>
+              </Show>
+            </div>
+            {/* La photo est partie avant que la liste des styles réponde : le
+                bouton est éteint, et il faut dire pourquoi. */}
+            <Show when={chemin() && styleManquant()}>
+              <p class="mt-2 text-sm text-ink-soft">{tr("ia.style_manquant")}</p>
+            </Show>
+          </Show>
+
+          {/* Les trois lignes, avec les règles des affiches personnalisables
+              (packages/types/src/fonts.ts) : chaque ligne ne propose que SES
+              polices — `policesDeLaLigne` —, et la première s'écrit en
+              capitales. Chaque police est montrée DANS la police, sous son
+              nom, comme au configurateur ; la couleur est commune aux trois. */}
           <div class="mt-5 space-y-3">
             <Index each={lignes()}>
               {(ligne, rang) => (
@@ -743,25 +930,25 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                     value={ligne().value}
                     maxLength={60}
                     placeholder={tr(CLES_LIGNES[rang]!.exemple)}
-                    onInput={(e) => modifierLigne(rang, { value: e.currentTarget.value })}
+                    onInput={(e) => saisirLigne(rang, e.currentTarget)}
                     class="mt-1 w-full border border-ink/20 bg-paper px-3 py-2 text-sm focus:border-ink focus:outline-none"
                   />
                   <div class="mt-1.5 flex flex-wrap gap-1.5">
-                    <For each={POLICES_AFFICHE}>
+                    <For each={policesDeLaLigne(rang)}>
                       {(police) => (
                         <button
                           type="button"
                           aria-pressed={ligne().font === police.id}
                           title={police.libelle}
                           onClick={() => modifierLigne(rang, { font: police.id })}
-                          class={`border px-2.5 py-1 text-base leading-none transition-colors ${
+                          class={`border px-3 py-1.5 text-lg leading-snug transition-colors ${
                             ligne().font === police.id
                               ? "border-ink bg-ink text-paper"
                               : "border-ink/20 hover:border-ink"
                           }`}
                           style={{ "font-family": familleCss(police) }}
                         >
-                          Aa
+                          {police.libelle}
                         </button>
                       )}
                     </For>
@@ -821,83 +1008,72 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
             </div>
           </Show>
 
-          <Show when={messageEchec()}>
-            <p
-              role="status"
-              class="mt-4 border border-terracotta/40 bg-terracotta/10 px-4 py-3 text-sm text-terracotta-deep"
-            >
-              {messageEchec()}
-            </p>
-          </Show>
+          {/* Une fois l'affiche obtenue, les actions se regroupent en bas :
+              on a lu ses textes et choisi son format, reste à recommencer ou
+              à la garder. */}
+          <Show when={apercu()}>
+            <Show when={messageEchec()}>
+              <p
+                role="status"
+                class="mt-4 border border-terracotta/40 bg-terracotta/10 px-4 py-3 text-sm text-terracotta-deep"
+              >
+                {messageEchec()}
+              </p>
+            </Show>
 
-          <div class="mt-6 flex flex-wrap items-center gap-3">
-            <Show
-              when={chemin()}
-              fallback={
-                <button
-                  type="button"
-                  disabled={occupe()}
-                  onClick={() => champFichier?.click()}
-                  class="rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
-                >
-                  {tr("ia.depot_bouton")}
-                </button>
-              }
-            >
+            <div class="mt-6 flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                disabled={occupe()}
+                disabled={occupe() || styleManquant()}
                 onClick={() => void lancerGeneration()}
                 class="rounded-full border border-ink px-6 py-3 text-sm font-medium hover:bg-ink hover:text-paper transition-colors disabled:opacity-60"
               >
-                {apercu() ? tr("ia.regenerer") : tr("ia.generer")}
+                {tr("ia.regenerer")}
               </button>
-              <Show when={apercu()}>
-                {/* Les mêmes boutons qu'ailleurs dans la boutique : deux
-                    touches plutôt qu'un champ seul, parce que sur un
-                    téléphone passer de 1 à 3 se fait au pouce sans ouvrir le
-                    clavier. */}
-                <div class="inline-flex items-center border border-ink/20">
-                  <button
-                    type="button"
-                    onClick={() => setQuantite((q) => bornerQuantite(q - 1))}
-                    disabled={ajout() || occupe() || quantite() <= 1}
-                    aria-label={tr("panier.moins")}
-                    class="px-3 py-2.5 text-lg leading-none text-ink-soft transition-colors hover:text-ink disabled:opacity-40"
-                  >
-                    −
-                  </button>
-                  <input
-                    type="number"
-                    min="1"
-                    max="20"
-                    value={quantite()}
-                    onInput={(e) =>
-                      setQuantite(bornerQuantite(Number(e.currentTarget.value)))
-                    }
-                    disabled={ajout() || occupe()}
-                    aria-label={tr("panier.quantite")}
-                    class="w-12 border-x border-ink/20 bg-transparent py-2.5 text-center text-sm focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setQuantite((q) => bornerQuantite(q + 1))}
-                    disabled={ajout() || occupe() || quantite() >= 20}
-                    aria-label={tr("panier.plus")}
-                    class="px-3 py-2.5 text-lg leading-none text-ink-soft transition-colors hover:text-ink disabled:opacity-40"
-                  >
-                    +
-                  </button>
-                </div>
+              {/* Les mêmes boutons qu'ailleurs dans la boutique : deux
+                  touches plutôt qu'un champ seul, parce que sur un
+                  téléphone passer de 1 à 3 se fait au pouce sans ouvrir le
+                  clavier. */}
+              <div class="inline-flex items-center border border-ink/20">
                 <button
                   type="button"
-                  disabled={ajout() || occupe()}
-                  onClick={() => void ajouterAuPanier()}
-                  class="rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
+                  onClick={() => setQuantite((q) => bornerQuantite(q - 1))}
+                  disabled={ajout() || occupe() || quantite() <= 1}
+                  aria-label={tr("panier.moins")}
+                  class="px-3 py-2.5 text-lg leading-none text-ink-soft transition-colors hover:text-ink disabled:opacity-40"
                 >
-                  {ajout() ? "…" : tr("produit.ajouter")}
+                  −
                 </button>
-              </Show>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={quantite()}
+                  onInput={(e) =>
+                    setQuantite(bornerQuantite(Number(e.currentTarget.value)))
+                  }
+                  disabled={ajout() || occupe()}
+                  aria-label={tr("panier.quantite")}
+                  class="w-12 border-x border-ink/20 bg-transparent py-2.5 text-center text-sm focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setQuantite((q) => bornerQuantite(q + 1))}
+                  disabled={ajout() || occupe() || quantite() >= 20}
+                  aria-label={tr("panier.plus")}
+                  class="px-3 py-2.5 text-lg leading-none text-ink-soft transition-colors hover:text-ink disabled:opacity-40"
+                >
+                  +
+                </button>
+              </div>
+              <button
+                type="button"
+                disabled={ajout() || occupe()}
+                onClick={() => void ajouterAuPanier()}
+                class="rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
+              >
+                {ajout() ? "…" : tr("produit.ajouter")}
+              </button>
               <button
                 type="button"
                 disabled={occupe()}
@@ -906,16 +1082,8 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               >
                 {tr("ia.recommencer")}
               </button>
-            </Show>
-          </div>
-
-
-          <p class="mt-4 text-xs text-ink-soft">
-            {tr("ia.poids_max").replace(
-              "{n}",
-              String(Math.round(POIDS_PHOTO_MAX / (1024 * 1024))),
-            )}
-          </p>
+            </div>
+          </Show>
         </div>
       </div>
     </div>
