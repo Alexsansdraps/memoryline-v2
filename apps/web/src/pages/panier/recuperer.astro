@@ -23,6 +23,7 @@
  */
 import Base from "../../layouts/Base.astro";
 import { api, formatPrice, type PanierRecupere } from "../../lib/api.ts";
+import { jsonPourScript } from "../../lib/html-sur.ts";
 
 export const prerender = false;
 
@@ -76,14 +77,27 @@ const souci = "cartId" in reponse ? null : EXPLICATIONS[reponse.erreur];
  * l'adresse e-mail, ceux-là mêmes que la cliente nous a donnés à l'étape
  * précédente : rien de plus n'a à traverser le navigateur.
  */
-const consigne = panier
-  ? JSON.stringify({
-      cartId: panier.cartId,
-      codePromo: panier.promoCode ?? "",
-      nom: panier.nom ?? "",
-      email: panier.email ?? "",
-    })
-  : "null";
+/*
+ * Échappée pour vivre dans une balise <script>, et non passée par
+ * `define:vars`.
+ *
+ * Le nom et l'adresse sont ceux que la cliente a TAPÉS. `define:vars` les
+ * insère dans le script, et Astro 5 ne neutralise pas complètement la
+ * séquence `</script>` à cet endroit (faille connue, corrigée en version 6) :
+ * un nom écrit « </script><script>… » en sortait pour s'exécuter. Ici, les
+ * chevrons sont échappés avant d'entrer, et la balise ne contient que des
+ * données, jamais du code.
+ */
+const consigne = jsonPourScript(
+  panier
+    ? {
+        cartId: panier.cartId,
+        codePromo: panier.promoCode ?? "",
+        nom: panier.nom ?? "",
+        email: panier.email ?? "",
+      }
+    : null,
+);
 ---
 
 <Base
@@ -179,9 +193,11 @@ const consigne = panier
       fermante du document, où il ne tient qu'à la tolérance des navigateurs.
       S'il échoue (navigation privée verrouillée, stockage plein), on reste sur
       cette page plutôt que d'emmener la cliente vers un tunnel vide. */}
-  <script is:inline define:vars={{ consigne }}>
+  <script type="application/json" id="ml-consigne" set:html={consigne} />
+  <script is:inline>
   (function () {
-    const d = JSON.parse(consigne);
+    var source = document.getElementById("ml-consigne");
+    const d = source ? JSON.parse(source.textContent || "null") : null;
     if (!d) return;
     try {
       localStorage.setItem("ml_cart_id", d.cartId);

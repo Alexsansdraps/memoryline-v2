@@ -14,6 +14,7 @@ import {
 import ProductConfigurator from "../../../islands/ProductConfigurator.tsx";
 import AddToCartButton from "../../../islands/AddToCartButton.tsx";
 import AfficheIA from "../../../islands/AfficheIA.tsx";
+import { htmlSur } from "../../../lib/html-sur.ts";
 import {
   estLangue,
   langueDepuisParam,
@@ -350,7 +351,7 @@ const breadcrumbLd = {
         product.description && (
           <div
             class="mt-8 prose prose-sm text-ink-soft max-w-none"
-            set:html={product.description}
+            set:html={htmlSur(product.description)}
           />
         )
       }

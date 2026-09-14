@@ -17,6 +17,7 @@
  */
 import Base from "../../../layouts/Base.astro";
 import { api, assetUrl, formatPrice, type PageCms } from "../../../lib/api.ts";
+import { htmlSur } from "../../../lib/html-sur.ts";
 import {
   estLangue,
   langueDepuisParam,
@@ -125,7 +126,7 @@ const titreOnglet = page.seoTitle?.trim() || `${page.title} — Memory Line`;
           return (
             <div
               class="ml-page-texte mt-6 leading-relaxed text-ink-soft"
-              set:html={String(bloc.html ?? "")}
+              set:html={htmlSur(String(bloc.html ?? ""))}
             />
           );
         }
