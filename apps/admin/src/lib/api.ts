@@ -307,6 +307,8 @@ export interface EtatCourriers {
   boiteTestUrl: string | null;
   /** La phrase que la boutiquière lira : « si j'envoie maintenant, où ça va ». */
   resume: string;
+  /** L'adresse du site écrite dans les courriers ; null = ni logo ni liens valables. */
+  adressePublique: string | null;
 }
 
 /** Un des courriers que la boutique sait envoyer. */

@@ -29,7 +29,15 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # La commande est écrite ici, et non laissée à l'image : l'image de
+    # production porte le même nom (memoryline-v2-api) quand on la construit
+    # sur ce poste, et la remplace. Le conteneur de développement démarrait
+    # alors en mode production, sans lire .env — sans adresse publique, donc
+    # des courriers sans logo, et sans rechargement automatique.
+    command: ["pnpm", "--filter", "@memoryline/api", "run", "dev"]
     environment:
+      # L'adresse du site écrite dans les courriers (logo, vignettes, liens).
+      PUBLIC_ORIGIN: "${PUBLIC_ORIGIN:-http://localhost:8080}"
       # Base de données : par défaut le Postgres local (service "db" du réseau
       # Docker). Définir DATABASE_URL dans .env bascule sur une base hébergée
       # ailleurs — la stack n'a alors plus besoin du conteneur db.

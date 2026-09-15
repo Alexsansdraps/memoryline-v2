@@ -31,6 +31,7 @@ import {
   courrierPanierAbandonne,
   courrierReinitialisation,
   courrierRemboursee,
+  adressePublique,
   envoyer,
   estConfigure,
   estEnEssai,
@@ -620,6 +621,9 @@ export function mountCourriers(app: Hono): void {
       copie: COPIE || null,
       boiteTestUrl: BOITE_TEST_NAVIGATEUR || null,
       resume: resumeDestination(),
+      // Null : les courriers partent sans logo, sans vignettes, et avec des
+      // liens qui ne mènent pas au site (voir adressePublique dans mail.ts).
+      adressePublique: adressePublique(),
     }),
   );
 

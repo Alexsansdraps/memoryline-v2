@@ -226,6 +226,29 @@ export interface LigneCourrier {
  * chose, et une mise en page qui casse fait plus de mal qu'une simple.
  */
 /**
+ * L'adresse publique du site (PUBLIC_ORIGIN), sans barre finale — ou null si
+ * elle n'est pas réglée, ou pas sous la forme « https://… ».
+ *
+ * Sans elle, un courrier part SANS logo (le nom écrit à la place), sans les
+ * vignettes des affiches, et avec des liens qui ne mènent pas au site. Rien
+ * ne casse à l'écran : c'est exactement pourquoi ça peut durer des jours sans
+ * que personne le voie. D'où l'alerte au démarrage ci-dessous, et le bandeau
+ * de l'écran « Courriers » du back-office (courriers.ts).
+ */
+export function adressePublique(): string | null {
+  const origine = (process.env.PUBLIC_ORIGIN ?? "").trim().replace(/\/+$/, "");
+  return /^https?:\/\//i.test(origine) ? origine : null;
+}
+
+if (!adressePublique()) {
+  console.warn(
+    "[courriers] PUBLIC_ORIGIN n'est pas définie : les courriers partent sans " +
+      "logo ni vignettes, et leurs liens ne mènent pas au site. Renseignez " +
+      "l'adresse publique du site (ex. https://memoryline.fr) dans .env.",
+  );
+}
+
+/**
  * L'en-tête d'un courrier : le logo, ou le nom de la boutique à défaut.
  *
  * Une messagerie ne sait pas résoudre « /logo.png » ni joindre le réseau
@@ -237,8 +260,8 @@ export interface LigneCourrier {
  * alors « Memory Line » lisiblement au lieu d'un rectangle vide.
  */
 function enteteMarque(): string {
-  const origine = (process.env.PUBLIC_ORIGIN ?? "").trim().replace(/\/+$/, "");
-  if (!/^https?:\/\//i.test(origine))
+  const origine = adressePublique();
+  if (!origine)
     return `<div style="font-size:20px;letter-spacing:.6px">Memory Line</div>`;
   return `<img src="${origine}/logo-memory-line.png" width="150" height="67" alt="Memory Line" style="display:block;border:0;outline:none;text-decoration:none;height:auto;width:150px;max-width:150px;font-size:20px;letter-spacing:.6px;color:#121212" />`;
 }

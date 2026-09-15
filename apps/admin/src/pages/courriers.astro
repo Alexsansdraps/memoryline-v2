@@ -234,6 +234,21 @@ const TONS: Record<Ton, string> = {
     )}
   </section>
 
+  {/* Sans adresse publique, rien ne casse à l'écran : les courriers partent,
+      mais sans logo, sans vignettes et avec des liens morts. C'est resté
+      invisible plusieurs jours ; ce bandeau le dit dès qu'on ouvre l'écran. */}
+  {etat && !etat.adressePublique && (
+    <section class="mb-6 rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-red-700">
+      <p class="font-semibold">Vos courriers partent sans logo</p>
+      <p class="mt-1 max-w-3xl text-sm">
+        L'adresse du site n'est pas réglée sur le serveur (réglage PUBLIC_ORIGIN).
+        Les courriers affichent le nom « Memory Line » au lieu du logo, sans les
+        vignettes des affiches, et leurs liens ne mènent pas au site. À corriger
+        avant d'envoyer quoi que ce soit à une cliente.
+      </p>
+    </section>
+  )}
+
   {/* =============================================================== */}
   {/* 2 : les quatre courriers                                        */}
   {/* =============================================================== */}
