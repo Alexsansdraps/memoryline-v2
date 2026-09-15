@@ -5,8 +5,8 @@
  * Jusqu'ici, ajouter une page au site demandait de nous appeler : la page
  * d'accueil et les fiches produits vivaient dans le code, et rien d'autre
  * n'existait. La propriétaire de la boutique doit pouvoir monter seule une
- * page « Magnets » le jour où elle décide d'en vendre, y poser un texte, une
- * image et une grille de produits, puis la mettre en ligne.
+ * page « Magnets » le jour où elle décide d'en vendre, l'écrire, puis la
+ * mettre en ligne.
  *
  * Cet écran ne fait que deux choses : ouvrir une page existante et en créer
  * une nouvelle. Tout le reste se règle dans l'éditeur, sur pages/[id].astro.
@@ -43,8 +43,14 @@ function originePublique(): string {
     entetes.get("x-forwarded-proto") ?? Astro.url.protocol.replace(":", "");
   return hote ? `${protocole}://${hote}` : Astro.url.origin;
 }
-/** Sans le protocole : « memoryline.fr », pas « https://memoryline.fr ». */
-const NOM_DU_SITE = originePublique().replace(/^https?:\/\//, "");
+/**
+ * Le début de l'adresse d'une page, sans le protocole : « memoryline.fr/pages/ ».
+ *
+ * La boutique sert ces pages sous « /pages/ », jamais à la racine (voir
+ * apps/web/src/pages/[...lang]/pages/[slug].astro). Annoncer
+ * « memoryline.fr/magnets » faisait partager une adresse introuvable.
+ */
+const RACINE_DES_PAGES = `${originePublique().replace(/^https?:\/\//, "")}/pages/`;
 
 /** Une date de la base, rendue lisible. Vide si elle n'est pas exploitable. */
 function dateCourte(brut: unknown): string {
@@ -138,9 +144,10 @@ const boutonPrincipal =
 
   <p class="mb-6 max-w-3xl text-sm text-bo-muted">
     Les pages du site que vous écrivez vous-même : « Magnets », « Qui sommes
-    nous », « Livraison et retours ». Chacune se compose de blocs que vous
-    empilez dans l'ordre que vous voulez : un titre, un texte, une image, une
-    grille de produits, un bouton. Une fois la page en ligne, ajoutez-la au
+    nous », « Livraison et retours ». Chacune s'écrit d'un seul tenant, comme
+    dans un traitement de texte : les titres de section, le gras, les listes et
+    les liens se font dans l'éditeur, et les traductions se saisissent en
+    dessous. Une fois la page en ligne, ajoutez-la au
     <a class="underline" href={url("/menu")}>menu du site</a> pour que vos
     clients la trouvent.
   </p>
@@ -168,7 +175,7 @@ const boutonPrincipal =
               </a>
             </td>
             <td class="px-4 py-3 text-bo-muted">
-              {NOM_DU_SITE}/{p.slug}
+              {RACINE_DES_PAGES}{p.slug}
             </td>
             <td class="px-4 py-3">
               {p.status === "active" ? (
@@ -234,7 +241,7 @@ const boutonPrincipal =
       <label class="block max-w-md">
         <span class="font-medium">Adresse de la page</span>
         <span class="mt-1 flex flex-wrap items-center gap-1">
-          <span class="text-bo-muted">{NOM_DU_SITE}/</span>
+          <span class="text-bo-muted">{RACINE_DES_PAGES}</span>
           <input
             id="champ-adresse"
             name="slug"
@@ -245,7 +252,7 @@ const boutonPrincipal =
           />
         </span>
         <span class="mt-1 block text-xs text-bo-muted">
-          L'adresse où la page sera visible : ici, {NOM_DU_SITE}/magnets. Elle
+          L'adresse où la page sera visible : ici, {RACINE_DES_PAGES}magnets. Elle
           se propose toute seule à partir du nom, vous pouvez la modifier tant
           que la page n'est pas créée. Des lettres minuscules sans accent, des
           chiffres et des traits d'union, rien d'autre.

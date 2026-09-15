@@ -24,6 +24,13 @@
  *    commande passée à 23 h 30 doit compter pour ce jour-là, pas pour le
  *    lendemain — et le serveur, lui, vit en temps universel.
  *
+ * Et une lecture au choix : le SITE, les STANDS, ou TOUT. Une vente de marché
+ * de Noël et une vente en ligne ne se jugent pas pareil — le panier moyen
+ * d'un samedi de stand n'a rien à voir avec celui d'un mardi sur le site — et
+ * les additionner sans pouvoir les séparer cachait l'un derrière l'autre.
+ * Chaque chiffre suit ce choix ; ceux qui n'ont pas de sens au stand (paniers
+ * abandonnés, transformation) n'y sont pas calculés du tout.
+ *
  * Tout passe par le client SQL brut plutôt que par le constructeur de
  * requêtes : ce sont des agrégats, et les écrire en SQL les rend lisibles par
  * quelqu'un qui connaît SQL — ce qui est le cas de la personne qui devra les
@@ -38,9 +45,44 @@ const FUSEAU = "Europe/Paris";
 /** Les seuls statuts qui comptent comme une vente. */
 const VENDUE = sql`status = 'paid' and cancelled_at is null`;
 
+/** Ce qu'on regarde : les ventes du site, celles des stands, ou toutes. */
+type Canal = "site" | "stands" | "tout";
+
+/** Le canal demandé (?canal=site). Inconnu ou absent : tout, comme avant le choix. */
+function canalDemande(v: string | undefined): Canal {
+  return v === "site" || v === "stands" ? v : "tout";
+}
+
+/**
+ * La condition qui garde les commandes du canal choisi.
+ *
+ * Le canal d'une commande (`web` ou `salon`) est posé à la vente et ne bouge
+ * plus : c'est lui qui fait foi pour une commande payée. La colonne se passe
+ * en paramètre parce que certaines requêtes lisent la commande sous un alias.
+ */
+function duCanal(canal: Canal, colonne = sql`channel`) {
+  if (canal === "site") return sql`${colonne} = 'web'`;
+  if (canal === "stands") return sql`${colonne} = 'salon'`;
+  return sql`true`;
+}
+
 interface Periode {
   debut: Date;
   fin: Date;
+}
+
+/**
+ * Une borne de période telle qu'elle part dans une requête : en TEXTE ISO 8601,
+ * converti par Postgres (`::timestamptz`), jamais en objet Date.
+ *
+ * Le client SQL est partagé avec Drizzle, qui remplace la mise en forme des
+ * dates par un passe-plat — lui les écrit déjà en texte. Une Date passée telle
+ * quelle ici n'était donc plus convertie, et chaque requête tombait sur une
+ * erreur de type avant même de partir : l'écran des statistiques ne pouvait
+ * rien afficher. Même précaution que dans relance-panier.ts.
+ */
+function enTexte(d: Date): string {
+  return d.toISOString();
 }
 
 /**
@@ -63,15 +105,17 @@ function periodes(depuis: string | undefined, jusqu: string | undefined) {
   return { courante: { debut, fin } as Periode, avant };
 }
 
-/** Le total et le nombre de ventes d'une période. */
-async function totaux(p: Periode) {
+/** Le total et le nombre de ventes d'une période, pour un canal. */
+async function totaux(p: Periode, canal: Canal) {
   const [r] = await sql`
     select
       coalesce(sum(total_cents), 0)::int as ca_cents,
       count(*)::int                      as commandes,
       count(distinct customer_id)::int   as clients
     from "public"."order"
-    where ${VENDUE} and created_at between ${p.debut} and ${p.fin}`;
+    where ${VENDUE} and ${duCanal(canal)}
+      and created_at between ${enTexte(p.debut)}::timestamptz
+                         and ${enTexte(p.fin)}::timestamptz`;
   const ca = Number(r?.ca_cents ?? 0);
   const n = Number(r?.commandes ?? 0);
   return {
@@ -98,11 +142,19 @@ export function mountAnalytiqueRoutes(app: Hono): void {
       c.req.query("depuis"),
       c.req.query("jusqu"),
     );
+    /** Les bornes de la période, prêtes pour les requêtes (voir `enTexte`). */
+    const du = enTexte(courante.debut);
+    const au = enTexte(courante.fin);
+    const canal = canalDemande(c.req.query("canal"));
+    /** Le canal appliqué aux requêtes qui lisent la commande sous l'alias « o ». */
+    const canalO = duCanal(canal, sql`o.channel`);
+    /** Ce qu'une requête sans objet renvoie : rien, sans aller-retour. */
+    const aucuneLigne = Promise.resolve([] as Record<string, unknown>[]);
 
     /*
-     * Tout part ENSEMBLE. Ce sont huit agrégats indépendants ; les enchaîner
-     * ferait huit allers-retours là où un seul suffit — c'est ce qui rendait
-     * les écrans du back-office lents avant qu'on déménage la base.
+     * Tout part ENSEMBLE. Ce sont une dizaine d'agrégats indépendants ; les
+     * enchaîner ferait autant d'allers-retours là où un seul suffit — c'est ce
+     * qui rendait les écrans du back-office lents avant qu'on déménage la base.
      */
     const [
       maintenant,
@@ -114,9 +166,10 @@ export function mountAnalytiqueRoutes(app: Hono): void {
       clients,
       paniers,
       lieux,
+      parStand,
     ] = await Promise.all([
-      totaux(courante),
-      totaux(avant),
+      totaux(courante, canal),
+      totaux(avant, canal),
 
       // La courbe. `generate_series` remplit les jours SANS vente : sans lui,
       // une semaine creuse se lirait comme une semaine absente, et la courbe
@@ -124,8 +177,8 @@ export function mountAnalytiqueRoutes(app: Hono): void {
       sql`
         with jours as (
           select generate_series(
-            date_trunc('day', ${courante.debut}::timestamptz at time zone ${FUSEAU}),
-            date_trunc('day', ${courante.fin}::timestamptz at time zone ${FUSEAU}),
+            date_trunc('day', ${du}::timestamptz at time zone ${FUSEAU}),
+            date_trunc('day', ${au}::timestamptz at time zone ${FUSEAU}),
             interval '1 day'
           )::date as jour
         ),
@@ -134,7 +187,8 @@ export function mountAnalytiqueRoutes(app: Hono): void {
                  sum(total_cents)::int as ca_cents,
                  count(*)::int         as commandes
           from "public"."order"
-          where ${VENDUE} and created_at between ${courante.debut} and ${courante.fin}
+          where ${VENDUE} and ${duCanal(canal)}
+            and created_at between ${du}::timestamptz and ${au}::timestamptz
           group by 1
         )
         select to_char(j.jour, 'YYYY-MM-DD') as jour,
@@ -154,8 +208,8 @@ export function mountAnalytiqueRoutes(app: Hono): void {
         from "public"."order_item" i
         join "public"."order" o on o.id = i.order_id
         left join "public"."product" p on p.id = i.product_id
-        where o.status = 'paid' and o.cancelled_at is null
-          and o.created_at between ${courante.debut} and ${courante.fin}
+        where o.status = 'paid' and o.cancelled_at is null and ${canalO}
+          and o.created_at between ${du}::timestamptz and ${au}::timestamptz
         group by 1, 2
         order by "caCents" desc
         limit 10`,
@@ -165,7 +219,8 @@ export function mountAnalytiqueRoutes(app: Hono): void {
                count(*)::int as commandes,
                sum(total_cents)::int as "caCents"
         from "public"."order"
-        where ${VENDUE} and created_at between ${courante.debut} and ${courante.fin}
+        where ${VENDUE} and ${duCanal(canal)}
+          and created_at between ${du}::timestamptz and ${au}::timestamptz
         group by 1
         order by "caCents" desc`,
 
@@ -186,15 +241,27 @@ export function mountAnalytiqueRoutes(app: Hono): void {
         from "public"."order_item" i
         join "public"."order" o on o.id = i.order_id
         left join "public"."variant" v on v.id = i.variant_id
-        where o.status = 'paid' and o.cancelled_at is null
-          and o.created_at between ${courante.debut} and ${courante.fin}
+        where o.status = 'paid' and o.cancelled_at is null and ${canalO}
+          and o.created_at between ${du}::timestamptz and ${au}::timestamptz
         group by 1
         order by quantite desc`,
 
-      // Nouvelles clientes contre clientes qui reviennent. « Nouvelle » se
-      // juge sur la PREMIÈRE commande payée, et non sur la date de création du
-      // compte : quelqu'un qui s'inscrit en janvier et achète en mars est une
-      // nouvelle cliente en mars, pas une revenante.
+      /*
+       * Nouvelles clientes contre clientes qui reviennent. « Nouvelle » se
+       * juge sur la PREMIÈRE commande payée, et non sur la date de création du
+       * compte : quelqu'un qui s'inscrit en janvier et achète en mars est une
+       * nouvelle cliente en mars, pas une revenante.
+       *
+       * Cette première commande se cherche sur TOUS les canaux, quel que soit
+       * le choix : une cliente du site qui vient acheter au stand n'est pas
+       * une inconnue, c'est une fidèle — et c'est précisément ce que la
+       * boutique veut savoir de ses stands. Seules les ventes de la période
+       * suivent le canal choisi.
+       *
+       * On compte des PERSONNES, et non des commandes : deux commandes d'une
+       * même nouvelle cliente ne font pas deux nouvelles clientes. Les deux
+       * nombres s'additionnent ainsi en « clientes servies ».
+       */
       sql`
         with premiere as (
           select customer_id, min(created_at) as le_jour
@@ -203,48 +270,85 @@ export function mountAnalytiqueRoutes(app: Hono): void {
           group by 1
         )
         select
-          count(*) filter (
-            where pr.le_jour between ${courante.debut} and ${courante.fin}
+          count(distinct o.customer_id) filter (
+            where pr.le_jour between ${du}::timestamptz and ${au}::timestamptz
           )::int as nouvelles,
-          count(*) filter (
-            where pr.le_jour < ${courante.debut}
+          count(distinct o.customer_id) filter (
+            where pr.le_jour < ${du}::timestamptz
           )::int as revenantes
         from "public"."order" o
         join premiere pr on pr.customer_id = o.customer_id
-        where o.status = 'paid' and o.cancelled_at is null
-          and o.created_at between ${courante.debut} and ${courante.fin}`,
+        where o.status = 'paid' and o.cancelled_at is null and ${canalO}
+          and o.created_at between ${du}::timestamptz and ${au}::timestamptz`,
 
-      // Les paniers laissés en route. Un « draft » est un panier en cours ou
-      // abandonné ; un « pending » attend un paiement qui n'est jamais venu.
-      // Les deux racontent la même chose : quelqu'un a commencé et n'a pas
-      // fini.
-      sql`
-        select
-          count(*) filter (where status = 'draft')::int   as paniers,
-          count(*) filter (where status = 'pending')::int as attente,
-          coalesce(sum(total_cents) filter (where status in ('draft','pending')), 0)::int as "perduCents"
-        from "public"."order"
-        where cancelled_at is null
-          and created_at between ${courante.debut} and ${courante.fin}`,
+      /*
+       * Les paniers laissés en route — ceux du SITE, quel que soit le choix,
+       * et aucun sous « Stands ».
+       *
+       * Un « draft » est un panier en cours ou abandonné ; un « pending »
+       * attend un paiement qui n'est jamais venu. Les deux racontent la même
+       * chose : quelqu'un a commencé et n'a pas fini.
+       *
+       * Au stand, cela n'a pas de sens : la vente se règle sur place, devant
+       * la vendeuse, et un client qui repart sans commander n'a rien
+       * « abandonné » qu'on puisse relancer. Or son panier naît sur le canal
+       * « web », comme tous les paniers : c'est `panier_du_stand` qui l'écarte
+       * ici. Une commande en attente, elle, est toujours passée par la caisse
+       * du site.
+       *
+       * Les ventes payées du site sont comptées dans la même lecture : la
+       * transformation se calcule entre paniers du site et ventes du site,
+       * sans quoi les ventes du stand la gonfleraient sous « Tout ».
+       */
+      canal === "stands"
+        ? aucuneLigne
+        : sql`
+            select
+              count(*) filter (where status = 'draft')::int   as paniers,
+              count(*) filter (where status = 'pending')::int as attente,
+              count(*) filter (where status = 'paid')::int    as payees,
+              coalesce(sum(total_cents) filter (where status in ('draft','pending')), 0)::int as "perduCents"
+            from "public"."order"
+            where channel = 'web' and cancelled_at is null
+              and not (status = 'draft' and panier_du_stand)
+              and created_at between ${du}::timestamptz and ${au}::timestamptz`,
 
       // Où partent les affiches. La ville d'expédition, pas celle de
-      // l'affiche : c'est la carte des clientes, pas celle du catalogue.
-      sql`
-        select upper(trim(shipping_city)) as ville,
-               count(*)::int as commandes
-        from "public"."order"
-        where ${VENDUE} and created_at between ${courante.debut} and ${courante.fin}
-          and shipping_city is not null and trim(shipping_city) <> ''
-        group by 1
-        order by commandes desc
-        limit 8`,
+      // l'affiche : c'est la carte des clientes, pas celle du catalogue. Une
+      // vente de stand est remise en main propre et n'a pas de ville : sous
+      // « Stands », c'est le tableau par stand qui prend la place.
+      canal === "stands"
+        ? aucuneLigne
+        : sql`
+            select upper(trim(shipping_city)) as ville,
+                   count(*)::int as commandes
+            from "public"."order"
+            where ${VENDUE} and ${duCanal(canal)}
+              and created_at between ${du}::timestamptz and ${au}::timestamptz
+              and shipping_city is not null and trim(shipping_city) <> ''
+            group by 1
+            order by commandes desc
+            limit 8`,
+
+      // Stand par stand : lequel a bien marché. Une vente d'avant les stands
+      // multiples n'a pas de stand rattaché ; elle reste comptée, sous un nom
+      // qui le dit, plutôt que de disparaître du total.
+      canal === "stands"
+        ? sql`
+            select coalesce(s.nom, 'Stand non précisé') as stand,
+                   count(*)::int                         as commandes,
+                   sum(o.total_cents)::int               as "caCents"
+            from "public"."order" o
+            left join "public"."stand" s on s.id = o.stand_id
+            where o.status = 'paid' and o.cancelled_at is null and ${canalO}
+              and o.created_at between ${du}::timestamptz and ${au}::timestamptz
+            group by s.id, s.nom
+            order by "caCents" desc`
+        : aucuneLigne,
     ]);
 
-    const debut = paniers[0] ?? { paniers: 0, attente: 0, perduCents: 0 };
-    const commences =
-      Number(debut.paniers) + Number(debut.attente) + maintenant.commandes;
-
     return c.json({
+      canal,
       periode: {
         debut: courante.debut.toISOString().slice(0, 10),
         fin: courante.fin.toISOString().slice(0, 10),
@@ -280,18 +384,28 @@ export function mountAnalytiqueRoutes(app: Hono): void {
         nouvelles: Number(clients[0]?.nouvelles ?? 0),
         revenantes: Number(clients[0]?.revenantes ?? 0),
       },
-      paniers: {
-        abandonnes: Number(debut.paniers),
-        enAttente: Number(debut.attente),
-        perduCents: Number(debut.perduCents),
-        // Le taux de transformation : sur cent parcours commencés, combien
-        // sont allés jusqu'au paiement. C'est le chiffre que Shopify affiche
-        // en premier, et celui qui dit le plus sur la boutique.
-        transformation: commences
-          ? Math.round((maintenant.commandes / commences) * 100)
-          : null,
-      },
+      // Null sous « Stands » : l'écran le dit, plutôt que d'afficher des zéros
+      // qui laisseraient croire que chaque client du stand a acheté.
+      paniers: canal === "stands" ? null : paniersDuSite(paniers[0]),
       lieux,
+      parStand,
     });
   });
+}
+
+/** Les paniers du site, et la transformation qu'ils donnent. */
+function paniersDuSite(ligne: Record<string, unknown> | undefined) {
+  const abandonnes = Number(ligne?.paniers ?? 0);
+  const enAttente = Number(ligne?.attente ?? 0);
+  const payees = Number(ligne?.payees ?? 0);
+  const commences = abandonnes + enAttente + payees;
+  return {
+    abandonnes,
+    enAttente,
+    perduCents: Number(ligne?.perduCents ?? 0),
+    // Le taux de transformation : sur cent parcours commencés sur le site,
+    // combien sont allés jusqu'au paiement. C'est le chiffre que Shopify
+    // affiche en premier, et celui qui dit le plus sur la boutique.
+    transformation: commences ? Math.round((payees / commences) * 100) : null,
+  };
 }

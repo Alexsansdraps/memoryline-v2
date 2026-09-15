@@ -30,6 +30,17 @@ import { db, schema } from "./db/client.js";
  */
 const COOKIE_STAND = "ml_stand";
 
+/**
+ * Cette requête vient-elle d'une tablette en mode stand ?
+ *
+ * Même réserve que plus bas : c'est un repère, pas un droit. Il sert à garder
+ * son cadre à une ligne de panier, et à ranger le panier parmi ceux du stand
+ * dans les statistiques (configurator-routes.ts, `panierModifie`).
+ */
+export function requeteDuStand(c: Context): boolean {
+  return getCookie(c, COOKIE_STAND) === "1";
+}
+
 /** Le site propose-t-il les cadres ? Lu à chaque fois : un seul SELECT. */
 export async function cadresSurLeSite(): Promise<boolean> {
   const [reglage] = await db
@@ -51,6 +62,6 @@ export async function cadresSurLeSite(): Promise<boolean> {
  * stand (salon.ts).
  */
 export async function cadresProposesA(c: Context): Promise<boolean> {
-  if (getCookie(c, COOKIE_STAND) === "1") return true;
+  if (requeteDuStand(c)) return true;
   return cadresSurLeSite();
 }

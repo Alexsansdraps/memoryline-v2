@@ -403,14 +403,20 @@ const isActive = (href: string) =>
               if (!titre) return;
               var groupe = titre.closest("[data-groupe]");
               if (!groupe) return;
+              var corps = groupe.querySelector("[data-corps]");
+              // Le clic inverse ce qui est À L'ÉCRAN, et non ce qu'a retenu le
+              // navigateur. Le groupe où l'on se trouve est ouvert sans figurer
+              // dans la liste : la basculer l'y ajoutait, il restait donc
+              // ouvert, et le premier clic ne faisait rien de visible.
+              var ouvrir = !!corps && corps.hidden;
               // Son clic passe devant la règle qui déroule le groupe où l'on
               // se trouve : un titre sur lequel on appuie sans que rien ne
               // bouge serait pire qu'un titre qui ne s'ouvre pas du tout.
               groupe.removeAttribute("data-ici");
               var ouverts = lire();
               var rang = ouverts.indexOf(groupe.dataset.groupe);
-              if (rang === -1) ouverts.push(groupe.dataset.groupe);
-              else ouverts.splice(rang, 1);
+              if (ouvrir && rang === -1) ouverts.push(groupe.dataset.groupe);
+              if (!ouvrir && rang !== -1) ouverts.splice(rang, 1);
               ecrire(ouverts);
               appliquer();
             });

@@ -1116,12 +1116,17 @@ export interface ListeCartesCadeaux {
   cartesEnCirculation: number;
 }
 
+/** Les ventes que regardent les statistiques : le site, les stands, ou toutes. */
+export type CanalAnalytique = "site" | "stands" | "tout";
+
 /**
  * Crée un client API lié au cookie de session de la requête entrante.
  * À utiliser dans les pages : `const api = adminApi(Astro.request)`.
  */
 /** Ce que l'écran des statistiques reçoit, en un seul appel. */
 export interface Analytique {
+  /** Le canal effectivement lu : « tout » quand la demande n'en nommait aucun. */
+  canal: CanalAnalytique;
   periode: { debut: string; fin: string; jours: number };
   resume: {
     caCents: number;
@@ -1145,14 +1150,22 @@ export interface Analytique {
   }[];
   parCanal: { canal: string; commandes: number; caCents: number }[];
   parFormat: { format: string; quantite: number; caCents: number }[];
+  /** Des personnes : « nouvelle » se juge sur la première commande payée, tous canaux. */
   clients: { nouvelles: number; revenantes: number };
+  /**
+   * Les paniers du SITE — y compris sous « Tout ». Null sous « Stands », où la
+   * vente se règle sur place et où rien ne s'abandonne.
+   */
   paniers: {
     abandonnes: number;
     enAttente: number;
     perduCents: number;
     transformation: number | null;
-  };
+  } | null;
+  /** Les villes de livraison. Vide sous « Stands » : une vente de stand est remise sur place. */
   lieux: { ville: string; commandes: number }[];
+  /** Stand par stand. Rempli sous « Stands » seulement. */
+  parStand: { stand: string; commandes: number; caCents: number }[];
 }
 
 /**
@@ -1876,13 +1889,17 @@ export function adminApi(request?: Request) {
 
     /* --- Statistiques de vente ----------------------------------------- */
     /** Tout l'écran en un appel : résumé, courbe, meilleures ventes, clientes. */
-    analytique: (depuis?: string, jusqu?: string) =>
-      req<Analytique>(
+    analytique: (filtres: { depuis?: string; jusqu?: string; canal?: CanalAnalytique } = {}) => {
+      const p = new URLSearchParams();
+      for (const [k, v] of Object.entries(filtres)) if (v) p.set(k, v);
+      const qs = p.toString();
+      return req<Analytique>(
         "GET",
-        `/admin/analytique${depuis ? `?depuis=${depuis}${jusqu ? `&jusqu=${jusqu}` : ""}` : ""}`,
+        `/admin/analytique${qs ? `?${qs}` : ""}`,
         undefined,
         cookie,
-      ),
+      );
+    },
 
     /* --- Styles d'affiche IA ------------------------------------------- */
     /** Tous les styles, éteints compris : c'est l'écran qui les range. */

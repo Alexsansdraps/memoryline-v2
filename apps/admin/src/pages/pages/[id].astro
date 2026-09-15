@@ -35,12 +35,20 @@ function originePublique(): string {
   return propre || "http://localhost:8080";
 }
 const ORIGINE_PUBLIQUE = originePublique();
-const NOM_DU_SITE = ORIGINE_PUBLIQUE.replace(/^https?:\/\//, "");
+/**
+ * Le début de l'adresse d'une page, jusqu'à la barre qui précède son nom.
+ *
+ * La boutique sert ses pages sous « /pages/ » (voir le commentaire de
+ * apps/web/src/pages/[...lang]/pages/[slug].astro : posées à la racine, elles
+ * masquaient les accueils traduits). Montrer ou ouvrir « memoryline.fr/cgv »
+ * menait à une page introuvable.
+ */
+const RACINE_DES_PAGES = `${ORIGINE_PUBLIQUE.replace(/^https?:\/\//, "")}/pages/`;
 
 /**
  * Ce qu'une adresse de page peut contenir : des minuscules sans accent, des
  * chiffres, des traits d'union. Ni espace, ni barre oblique — l'adresse est un
- * seul segment, collé au nom du domaine.
+ * seul segment, collé à « /pages/ ».
  */
 const ADRESSE_VALIDE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -182,24 +190,49 @@ async function enregistrerTraduction(
   const francaisARanger =
     blocsFrancais.length > 1 ||
     (blocsFrancais.length === 1 && blocsFrancais[0]!.type !== "texte");
+  /** Le français tel qu'il sera en base après cet envoi : le patron de la traduction. */
+  const francaisRange = francaisARanger
+    ? blocsDepuisCorps(corpsDepuisBlocs(blocsFrancais))
+    : blocsFrancais;
+
+  // Un texte traduit se cale sur le texte français, bloc pour bloc : face à
+  // une page française vide, il n'aurait rien en face de quoi s'afficher, et
+  // le serveur le refuserait en parlant de blocs. On le dit dans ses mots.
+  if (corpsTraduit && !francaisRange.length)
+    throw new Error(
+      "Le texte français de cette page est vide : écrivez-le et enregistrez-le " +
+        "d'abord, la traduction s'affiche à sa place. Le nom traduit, lui, peut " +
+        "s'enregistrer seul.",
+    );
+
+  /*
+   * Le texte ne part QUE s'il est écrit.
+   *
+   * Envoyé vide, il partait comme une liste de zéro bloc, que le serveur
+   * comparait à l'unique bloc du français et refusait comme « désynchronisée » :
+   * traduire le nom seul — ce que l'écran propose en toutes lettres — tombait
+   * en erreur. Absent, il laisse le nom s'enregistrer seul, et le site affiche
+   * le texte français. Une traduction de texte déjà enregistrée disparaît
+   * avec, comme promis : vider un champ, c'est revenir au français.
+   */
+  const traduction: { title: string; blocks?: BlocPage[] } = {
+    title: titreTraduit,
+  };
+  if (corpsTraduit) traduction.blocks = blocsDepuisCorps(corpsTraduit);
 
   await api.enregistrerPage(idPage, {
-    ...(francaisARanger
-      ? { blocks: blocsDepuisCorps(corpsDepuisBlocs(blocsFrancais)) }
-      : {}),
-    translations: {
-      [lang]: quelqueChose
-        ? { title: titreTraduit, blocks: blocsDepuisCorps(corpsTraduit) }
-        : null,
-    },
+    ...(francaisARanger ? { blocks: francaisRange } : {}),
+    translations: { [lang]: quelqueChose ? traduction : null },
   });
 
   const rangement = francaisARanger
     ? " Le texte français, encore découpé en morceaux, a été réuni au passage."
     : "";
-  return quelqueChose
+  if (!quelqueChose)
+    return `Traduction en ${nomLangue} effacée : le site affichera le français.${rangement}`;
+  return corpsTraduit
     ? `Traduction en ${nomLangue} enregistrée. Ce qui est laissé vide affiche le français.${rangement}`
-    : `Traduction en ${nomLangue} effacée : le site affichera le français.${rangement}`;
+    : `Nom de la page en ${nomLangue} enregistré. Le texte, laissé vide, s'affiche en français.${rangement}`;
 }
 
 if (Astro.request.method === "POST") {
@@ -404,7 +437,7 @@ const boutonDiscret =
         <div class="mt-4">
           <span class="text-sm font-medium">Adresse de la page</span>
           <span class="mt-1 flex flex-wrap items-center gap-1">
-            <span class="text-sm text-bo-muted">{NOM_DU_SITE}/</span>
+            <span class="text-sm text-bo-muted">{RACINE_DES_PAGES}</span>
             <input
               name="slug"
               value={adresse}
@@ -413,7 +446,7 @@ const boutonDiscret =
             />
           </span>
           <span class="mt-1 block text-xs text-bo-muted">
-            L'adresse où la page sera visible, par exemple {NOM_DU_SITE}/magnets.
+            L'adresse où la page sera visible, par exemple {RACINE_DES_PAGES}magnets.
             La changer casse les liens déjà partagés vers cette page : ne le
             faites que si son nom a vraiment changé.
           </span>
@@ -421,9 +454,11 @@ const boutonDiscret =
 
         <div class="mt-4 flex flex-wrap items-center gap-3">
           <button class={boutonPrincipal}>Enregistrer</button>
-          {statut === "active" && adresse && (
+          {/* L'adresse ENREGISTRÉE, pas celle du champ : après un refus, le
+              champ garde la saisie rejetée, et le lien mènerait nulle part. */}
+          {page?.status === "active" && page.slug && (
             <a
-              href={`${ORIGINE_PUBLIQUE}/${adresse}`}
+              href={`${ORIGINE_PUBLIQUE}/pages/${encodeURIComponent(page.slug)}`}
               target="_blank"
               rel="noopener"
               class={boutonDiscret}

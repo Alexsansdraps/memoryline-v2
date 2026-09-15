@@ -1006,6 +1006,21 @@ export const orders = pgTable(
       onDelete: "set null",
     }),
     /**
+     * Ce panier se remplit sur la tablette du stand.
+     *
+     * Un panier du stand naît sur le canal « web », comme tous les paniers :
+     * il ne devient une vente « salon » qu'au moment où la vendeuse la valide
+     * (salon.ts). Jusque-là rien ne le distinguait d'un panier du site, et
+     * chaque client reparti du stand sans commander gonflait les paniers
+     * abandonnés EN LIGNE des statistiques.
+     *
+     * Suit le mode de la dernière modification du panier (ajout, changement,
+     * retrait d'une affiche) et retombe à faux au passage par la caisse du
+     * site. Ce n'est qu'un repère de comptage : le cookie du stand qui le pose
+     * ne donne aucun droit (voir cadres.ts).
+     */
+    panierDuStand: boolean("panier_du_stand").notNull().default(false),
+    /**
      * Part du total réglée par une carte cadeau, en centimes.
      *
      * Gardée sur la commande et pas seulement dans le journal de la carte :

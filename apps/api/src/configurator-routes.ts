@@ -25,7 +25,7 @@ import {
 } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import { cheminApercu } from "./apercus.js";
-import { cadresProposesA, cadresSurLeSite } from "./cadres.js";
+import { cadresProposesA, cadresSurLeSite, requeteDuStand } from "./cadres.js";
 import { poidsDesCollections } from "./collections.js";
 import {
   fichierDImpression,
@@ -589,10 +589,16 @@ async function loadCartItem(tx: Transaction, cartId: string, itemId: number) {
  * Le total reste ensuite à jour à chaque nouvelle modification : c'est lui
  * que la relance de panier abandonné annonce à la cliente. Un panier qui
  * n'est jamais passé en caisse, lui, n'a pas de total à tenir.
+ *
+ * `auStand` range le panier du côté où il vient d'être touché — tablette du
+ * stand ou site (voir `panierDuStand` dans le schéma). Obligatoire, pour que
+ * chaque appel se pose la question : un oubli rangerait des paniers du stand
+ * parmi les abandons du site.
  */
 async function panierModifie(
   tx: Transaction,
   order: typeof schema.orders.$inferSelect,
+  auStand: boolean,
 ): Promise<void> {
   const maintenant = new Date();
   const rouverte = order.status === "pending";
@@ -601,7 +607,7 @@ async function panierModifie(
   if (!rouverte && order.customerId == null) {
     await tx
       .update(schema.orders)
-      .set({ lastActivityAt: maintenant })
+      .set({ lastActivityAt: maintenant, panierDuStand: auStand })
       .where(eq(schema.orders.id, order.id));
     return;
   }
@@ -622,6 +628,7 @@ async function panierModifie(
     .set({
       status: "draft",
       lastActivityAt: maintenant,
+      panierDuStand: auStand,
       ...(valeur
         ? {
             totalCents: valeur.totalCents,
@@ -1532,7 +1539,7 @@ export function mountConfiguratorRoutes(app: Hono) {
       const n = await retirerLesCadres(tx, order.id);
       // Une commande en attente de paiement repasse en panier : son total
       // comptait les cadres.
-      if (n > 0) await panierModifie(tx, order);
+      if (n > 0) await panierModifie(tx, order, requeteDuStand(c));
       return n;
     });
     return c.json({ retires });
@@ -1605,7 +1612,7 @@ export function mountConfiguratorRoutes(app: Hono) {
           quantity: Math.max(1, Number(body.quantity ?? 1)),
         })
         .returning();
-      await panierModifie(tx, order);
+      await panierModifie(tx, order, requeteDuStand(c));
       return ligne;
     });
     if (!item) return c.json({ error: "panier_clos" }, 409);
@@ -1651,7 +1658,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         })
         .where(eq(schema.orderItems.id, itemId))
         .returning();
-      await panierModifie(tx, trouve.order);
+      await panierModifie(tx, trouve.order, requeteDuStand(c));
       return ligne ?? null;
     });
     if (!item) return c.notFound();
@@ -1673,7 +1680,7 @@ export function mountConfiguratorRoutes(app: Hono) {
       // Retirer un article est aussi une activité : quelqu'un qui vide à
       // moitié son panier est là, devant l'écran, et n'a rien abandonné du
       // tout.
-      await panierModifie(tx, trouve.order);
+      await panierModifie(tx, trouve.order, requeteDuStand(c));
       return true;
     });
     if (!retiree) return c.notFound();
@@ -1812,7 +1819,8 @@ export function mountConfiguratorRoutes(app: Hono) {
       // avant de payer, pas le découvrir sur son relevé.
       if (!cadresSite && lignes.some((l) => porteUnCadre(l.config))) {
         await retirerLesCadres(tx, panier.id);
-        await panierModifie(tx, panier);
+        // Faux quoi que dise le cookie : c'est la caisse du SITE (voir plus haut).
+        await panierModifie(tx, panier, false);
         return {
           erreur:
             "Les cadres ne sont plus proposés sur le site : nous les avons retirés de votre panier. Vérifiez le nouveau montant, puis validez à nouveau.",
@@ -1864,6 +1872,9 @@ export function mountConfiguratorRoutes(app: Hono) {
           // Le passage au tunnel est LA dernière activité du panier : c'est à
           // partir d'ici que se compte l'inactivité qui en fera un abandon.
           lastActivityAt: maintenant,
+          // Passé par la caisse du site, c'est un panier du site : s'il n'est
+          // pas payé, c'est ici qu'il a été abandonné, pas au stand.
+          panierDuStand: false,
         })
         .where(eq(schema.orders.id, panier.id))
         .returning();

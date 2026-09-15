@@ -323,6 +323,13 @@
       "when": 1789420436263,
       "tag": "0045_prix_cadre_par_format",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1789429345510,
+      "tag": "0046_panier_du_stand",
+      "breakpoints": true
     }
   ]
 }
