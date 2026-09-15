@@ -5,6 +5,7 @@ import {
   calagePour,
   BASE_COLOR_SCOPE,
   colorsForScope,
+  couleursDeLaPiece,
   empilerPersonnage,
   scopeSvgStyles,
 } from "@memoryline/types";
@@ -129,9 +130,10 @@ export function CharacterStack(props: {
         svg: fillSvg(
           scopeSvgStyles(
             // Calage de la pièce sur ce personnage : même fonction que
-            // pour l'impression, l'aperçu ne peut donc pas mentir.
+            // pour l'impression, l'aperçu ne peut donc pas mentir. Idem pour
+            // les couleurs : les zones non proposées gardent leur défaut.
             appliquerCalage(
-              recolorForCharacter(raw, colorsForScope(colors, slot)),
+              recolorForCharacter(raw, couleursDeLaPiece(colors, slot, variant)),
               calagePour(props.base?.slotAdjust, slot, variant.position),
             ),
             `${uid}-${slot}-${variant.id}`,

@@ -130,6 +130,8 @@ async function donneesDeRendu(): Promise<ResolveData> {
       slot: a.slot,
       svgUrl: a.svgUrl,
       colorZones: a.colorZones,
+      // Même règle que le fichier d'impression : l'aperçu montre ce qui s'imprime.
+      zonesMasquees: a.zonesMasquees,
       position: a.position,
     });
   const charMap = new Map<string, unknown>();

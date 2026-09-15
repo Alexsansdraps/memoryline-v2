@@ -42,6 +42,7 @@ import {
   calagePour,
   BASE_COLOR_SCOPE,
   colorsForScope,
+  couleursDeLaPiece,
   empilerPersonnage,
   recolorSvg,
 } from "@memoryline/types";
@@ -101,6 +102,8 @@ export interface ResolvedAsset {
   svgUrl: string;
   /** Couleurs par défaut du SVG : { st0: "#BA6821", … }. */
   colorZones?: Record<string, string> | null;
+  /** Zones non proposées au client : elles s'impriment dans leur couleur par défaut. */
+  zonesMasquees?: string[] | null;
   position?: number | null;
 }
 
@@ -310,10 +313,12 @@ export async function resolveConfig(
 
       // Couleurs : zones par défaut de l'asset surchargées par celles du perso
       // POUR CE SLOT uniquement (clés "slot:zone" — le slot vient de la config,
-      // même clé que celle écrite par le configurateur).
+      // même clé que celle écrite par le configurateur). Les zones que le
+      // client ne peut pas changer gardent leur défaut : même règle que
+      // l'aperçu de la boutique (couleursDeLaPiece).
       const overrides: Record<string, string> = {
         ...(asset.colorZones ?? {}),
-        ...colorsForScope(character.colors, slot),
+        ...couleursDeLaPiece(character.colors, slot, asset),
       };
       // Calage de la pièce sur CE personnage : même fonction qu'à l'écran,
       // donc impossible que l'impression tombe ailleurs que l'aperçu validé.

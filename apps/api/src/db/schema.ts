@@ -605,6 +605,18 @@ export const assets = pgTable(
      * Accessoires inclus (lève la limitation citée par la cliente).
      */
     colorZones: jsonb("color_zones").$type<Record<string, string>>(),
+    /**
+     * Zones de couleur que le client ne peut PAS changer : ["st3"]. Les petits
+     * détails (ruban du chapeau, élastique des cheveux) ajoutaient chacun une
+     * rangée de pastilles au configurateur, sans rien apporter.
+     *
+     * On range les zones MASQUÉES plutôt que les proposées : liste vide = tout
+     * est proposé, comme avant ce réglage, et une zone apparue avec un nouveau
+     * dessin reste proposée tant que la boutique ne l'a pas décochée. Une zone
+     * masquée garde sa couleur par défaut (`colorZones`), à l'écran comme à
+     * l'impression, même si un ancien panier en avait choisi une autre.
+     */
+    zonesMasquees: jsonb("zones_masquees").$type<string[]>().default([]).notNull(),
     position: integer("position").default(0).notNull(),
     legacyAssetId: integer("legacy_asset_id"), // id numérique dans les properties
     /**

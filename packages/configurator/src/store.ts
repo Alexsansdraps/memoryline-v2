@@ -57,6 +57,12 @@ export interface VariantDTO {
   view: PosterView | string | null;
   /** Zones de couleur par défaut : { st0: "#hex", … } ou null. */
   colorZones: Record<string, string> | null;
+  /**
+   * Zones que le client ne recolore pas (petits détails : ruban, élastique…),
+   * décochées au back-office. Pas de pastilles pour elles, et elles gardent
+   * leur couleur par défaut (cf. couleursDeLaPiece). Absent = tout proposé.
+   */
+  zonesMasquees?: string[] | null;
   position: number;
   /** Catégorie de la pièce (« Casquettes »…) : elle porte le nuancier. */
   pieceCategoryId?: number | null;

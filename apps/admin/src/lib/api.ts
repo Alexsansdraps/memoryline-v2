@@ -921,6 +921,11 @@ export interface Asset {
   /** Type d'affiche (slug) sous lequel cette pièce est dessinée. */
   view: string | null;
   colorZones: Record<string, string> | null;
+  /**
+   * Zones de couleur que le client ne peut pas changer (petits détails :
+   * ruban, élastique…). Vide = toutes les zones sont proposées.
+   */
+  zonesMasquees?: string[];
   position: number;
   /** Non null = pièce archivée : masquée du configurateur, jamais supprimée. */
   archivedAt?: string | null;

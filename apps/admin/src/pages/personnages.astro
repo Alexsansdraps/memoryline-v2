@@ -1,6 +1,7 @@
 ---
 import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
+import ApercusZones from "../components/ApercusZones.astro";
 import {
   adminApi,
   type CharacterType,
@@ -694,6 +695,12 @@ for (const a of pieces) {
     en vue avant / arrière, avec leurs zones de couleur. Elles servent à
     composer les personnages.
   </p>
+  <p class="mb-4 text-sm text-bo-muted max-w-3xl">
+    Chaque zone de couleur est surlignée en rouge sur sa vignette. Décochez
+    « Proposée au client » sur les petits détails (ruban d'un chapeau,
+    élastique des cheveux) : le client ne pourra plus en changer la couleur,
+    et la zone gardera celle réglée ici, à l'écran comme à l'impression.
+  </p>
 
   {
     SLOTS.map((s) => {
@@ -709,6 +716,8 @@ for (const a of pieces) {
                 <div
                   class="border border-bo-border rounded p-3 bg-bo-surface"
                   data-asset-id={a.id}
+                  data-apercu-svg={a.svgUrl ? svgSrc(a.svgUrl) : undefined}
+                  data-apercu-cadrage={SLOT_THUMB_VIEWBOX[a.slot as keyof typeof SLOT_THUMB_VIEWBOX] ?? "0 0 500 1000"}
                 >
                   <div class="flex items-center gap-2 mb-2">
                     {/* Cadré sur la zone de la pièce : dans le repère du
@@ -761,18 +770,47 @@ for (const a of pieces) {
                     <p class="text-xs text-bo-muted">Pas de zone de couleur.</p>
                   ) : (
                     <>
+                      {/* Une vignette par zone, la zone surlignée : « st3 »
+                          ne dit rien, un ruban en rouge vif, si. Décocher
+                          retire la rangée de pastilles du configurateur ; la
+                          zone garde la couleur réglée ici. */}
                       <div class="flex flex-wrap gap-2 mb-2">
-                        {Object.entries(a.colorZones ?? {}).map(([zone, hex]) => (
-                          <label class="flex items-center gap-1 text-xs">
-                            <input
-                              type="color"
-                              value={hex}
-                              data-zone={zone}
-                              class="h-7 w-7 border border-bo-border rounded cursor-pointer"
-                            />
-                            <span class="text-bo-muted">{zone}</span>
-                          </label>
-                        ))}
+                        {Object.entries(a.colorZones ?? {}).map(([zone, hex]) => {
+                          const proposee = !(a.zonesMasquees ?? []).includes(zone);
+                          return (
+                            <div
+                              class:list={[
+                                "js-zone flex w-[104px] flex-col items-center gap-1 rounded border border-bo-border p-1.5",
+                                !proposee && "bg-bo-bg",
+                              ]}
+                            >
+                              <img
+                                class="js-zone-apercu h-16 w-16 rounded border border-bo-border bg-white object-contain"
+                                data-zone={zone}
+                                alt={`Zone ${zone} surlignée sur le dessin`}
+                                style="visibility:hidden"
+                              />
+                              <label class="flex items-center gap-1 text-xs">
+                                <input
+                                  type="color"
+                                  value={hex}
+                                  data-zone={zone}
+                                  class="h-7 w-7 border border-bo-border rounded cursor-pointer"
+                                />
+                                <span class="text-bo-muted">{zone}</span>
+                              </label>
+                              <label class="flex cursor-pointer items-start gap-1 text-[11px] leading-tight">
+                                <input
+                                  type="checkbox"
+                                  class="js-zone-proposee mt-px"
+                                  data-zone={zone}
+                                  checked={proposee}
+                                />
+                                <span>Proposée au client</span>
+                              </label>
+                            </div>
+                          );
+                        })}
                       </div>
                       <button
                         type="button"
@@ -834,6 +872,9 @@ for (const a of pieces) {
   <datalist id="base-svg-list">
     {knownBaseSvgs.map((u) => <option value={u} />)}
   </datalist>
+
+  {/* Vignettes des zones de couleur : après les cartes, qu'il va chercher. */}
+  <ApercusZones />
 
   <script is:inline>
     // --- Catégories : déplacement immédiat au changement du sélecteur ---
@@ -1130,6 +1171,60 @@ for (const a of pieces) {
           }
         }
       });
+    });
+
+    // ===== SECTION B : zones de couleur proposées au client =====
+    // Enregistrées dès que la case change, comme la catégorie de la pièce :
+    // pas de bouton à ne pas oublier. On envoie la liste complète des zones
+    // décochées de la pièce, pas un changement isolé.
+    document.addEventListener("change", async (e) => {
+      const caseZone = e.target.closest?.(".js-zone-proposee");
+      if (!caseZone) return;
+      const card = caseZone.closest("[data-asset-id]");
+      if (!card) return;
+      const id = card.getAttribute("data-asset-id");
+      const status = card.querySelector(".js-color-status");
+      const cases = Array.from(card.querySelectorAll(".js-zone-proposee"));
+      const zonesMasquees = cases
+        .filter((c) => !c.checked)
+        .map((c) => c.getAttribute("data-zone"));
+      const teinter = (c) =>
+        c.closest(".js-zone")?.classList.toggle("bg-bo-bg", !c.checked);
+      teinter(caseZone);
+      for (const c of cases) c.disabled = true;
+      if (status) {
+        status.textContent = "…";
+        status.className = "js-color-status ml-2 text-xs";
+      }
+      try {
+        const res = await fetch(
+          `${PUBLIC_API_URL}/admin/assets/${id}/zones-masquees`,
+          {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ zonesMasquees }),
+          },
+        );
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        if (status) {
+          status.textContent = caseZone.checked
+            ? "Zone proposée au client ✓"
+            : "Zone retirée du configurateur ✓";
+          status.className = "js-color-status ml-2 text-xs text-green-700";
+        }
+      } catch (err) {
+        // Rien n'est enregistré : la case revient où elle était, pour que
+        // l'écran ne promette pas un réglage que la boutique n'a pas.
+        caseZone.checked = !caseZone.checked;
+        teinter(caseZone);
+        if (status) {
+          status.textContent = "Erreur, zone non enregistrée";
+          status.className = "js-color-status ml-2 text-xs text-red-600";
+        }
+      } finally {
+        for (const c of cases) c.disabled = false;
+      }
     });
 
     // ===== SECTION B : archivage d'une pièce =====

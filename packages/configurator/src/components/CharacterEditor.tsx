@@ -11,6 +11,7 @@ import {
   BASE_COLOR_SCOPE,
   colorKey,
   colorsForScope,
+  couleursDeLaPiece,
   scopeSvgStyles,
 } from "@memoryline/types";
 import {
@@ -454,18 +455,25 @@ export function CharacterEditor(props: {
    * `zone` = clé NAMESPACÉE "slot:stN" (cf. colorKey) : la couleur choisie ne
    * s'applique qu'à ce slot, pas aux autres couches qui réutilisent stN.
    * Repli sur la clé plate (anciens paniers) puis sur le défaut de la variante.
+   *
+   * Seules les zones PROPOSÉES au client : les petits détails décochés au
+   * back-office (ruban du chapeau…) n'ont pas de rangée de pastilles, et
+   * gardent leur couleur par défaut dans l'aperçu (cf. couleursDeLaPiece).
    */
   const zonesForSlot = (slot: Slot): { zone: string; current: string }[] => {
     const variant = findVariant(props.slots[slot], props.character.assets[slot]);
     if (!variant?.colorZones) return [];
-    return Object.keys(variant.colorZones).map((zone) => ({
-      zone: colorKey(slot, zone),
-      current:
-        props.character.colors[colorKey(slot, zone)] ??
-        props.character.colors[zone] ??
-        variant.colorZones?.[zone] ??
-        "#000000",
-    }));
+    const masquees = variant.zonesMasquees ?? [];
+    return Object.keys(variant.colorZones)
+      .filter((zone) => !masquees.includes(zone))
+      .map((zone) => ({
+        zone: colorKey(slot, zone),
+        current:
+          props.character.colors[colorKey(slot, zone)] ??
+          props.character.colors[zone] ??
+          variant.colorZones?.[zone] ??
+          "#000000",
+      }));
   };
 
   /** Zones de peau de la base = ses baseColorZones. */
@@ -522,7 +530,9 @@ export function CharacterEditor(props: {
                     // Seules les couleurs de CE slot : les zones stN étant
                     // partagées entre couches, la map complète recolorerait
                     // aussi ces vignettes quand on change une autre couche.
-                    colorsForScope(props.character.colors, opts.slot),
+                    // Les zones non proposées de CETTE pièce restent à leur
+                    // défaut, comme sur le personnage.
+                    couleursDeLaPiece(props.character.colors, opts.slot, variant),
                     viewBox,
                     `${uid}-${opts.slot}-${variant.id}`,
                   )}

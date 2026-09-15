@@ -413,6 +413,27 @@ function zonesPropres(brut: unknown): Record<string, string> {
   return propre;
 }
 
+/**
+ * Liste de zones masquées d'une pièce, nettoyée : des noms stN, sans doublon,
+ * et — quand on connaît les zones du dessin — seulement celles qui existent.
+ * Une zone fantôme ne masquerait rien, mais resterait en base à tromper le
+ * prochain qui lira la liste.
+ */
+function zonesMasqueesPropres(
+  brut: unknown,
+  zonesDuDessin?: Record<string, string> | null,
+): string[] {
+  if (!Array.isArray(brut)) return [];
+  const propres = new Set<string>();
+  for (const z of brut) {
+    const zone = String(z);
+    if (!/^st\d+$/.test(zone)) continue;
+    if (zonesDuDessin && !(zone in zonesDuDessin)) continue;
+    propres.add(zone);
+  }
+  return [...propres];
+}
+
 async function typeAfficheValide(slug: unknown): Promise<string | null> {
   const s = String(slug ?? "").trim();
   if (!s) return null;
@@ -1354,6 +1375,9 @@ export function mountConfiguratorRoutes(app: Hono) {
         svgUrl: a.svgUrl,
         view,
         colorZones: a.colorZones,
+        // Zones que le client ne recolore pas (ruban, élastique…) : pas de
+        // pastilles pour elles, et leur couleur par défaut à l'écran.
+        zonesMasquees: a.zonesMasquees,
         position: a.position,
         // Catégorie de la pièce : c'est elle qui porte le nuancier proposé.
         pieceCategoryId: a.pieceCategoryId,
@@ -3093,6 +3117,29 @@ export function mountConfiguratorRoutes(app: Hono) {
   });
 
   /**
+   * Zones de couleur NON proposées au client pour une pièce (« ruban du
+   * chapeau »…). Enregistrées dès que la case change, séparément des
+   * couleurs : décocher une zone ne doit pas enregistrer au passage une
+   * couleur en cours de réglage.
+   */
+  app.post("/admin/assets/:id/zones-masquees", async (c) => {
+    const id = Number(c.req.param("id"));
+    const b = await c.req.json().catch(() => ({}));
+    const [piece] = await db
+      .select({ colorZones: schema.assets.colorZones })
+      .from(schema.assets)
+      .where(eq(schema.assets.id, id));
+    if (!piece) return c.notFound();
+    const [row] = await db
+      .update(schema.assets)
+      .set({ zonesMasquees: zonesMasqueesPropres(b.zonesMasquees, piece.colorZones) })
+      .where(eq(schema.assets.id, id))
+      .returning();
+    if (!row) return c.notFound();
+    return c.json(row);
+  });
+
+  /**
    * Définit le SVG de BASE d'un personnage prédéfini + ses couleurs par défaut.
    * Permet de composer un perso depuis le BO (baseSvgUrl = un perso complet,
    * ou un assemblage exporté). baseColorZones = couleurs par défaut (peau/tenue).
@@ -3145,6 +3192,11 @@ export function mountConfiguratorRoutes(app: Hono) {
       svgUrl: String(b.svgUrl ?? ""),
       view: (await typeAfficheValide(b.view)) ?? "front",
       colorZones: Object.keys(cleanZones).length ? cleanZones : null,
+      // Absent = on ne touche pas au réglage (une édition qui ne le connaît
+      // pas ne doit pas re-proposer d'un coup toutes les zones).
+      ...(b.zonesMasquees !== undefined
+        ? { zonesMasquees: zonesMasqueesPropres(b.zonesMasquees, cleanZones) }
+        : {}),
       position: Number(b.position ?? 0),
       characterTypeId: b.characterTypeId ? Number(b.characterTypeId) : null,
       ...(b.pieceCategoryId !== undefined

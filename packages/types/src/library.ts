@@ -15,6 +15,8 @@ export interface AssetDTO {
   view: PosterView | string | null;
   /** Zones de couleur par défaut : { st0: "#BA6821", … } (§18.1 D). */
   colorZones: Record<string, string> | null;
+  /** Zones que le client ne peut pas recolorer (petits détails) : ["st3"]. */
+  zonesMasquees?: string[];
   position: number;
 }
 

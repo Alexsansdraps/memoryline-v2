@@ -84,6 +84,10 @@ export async function donneesDImpression(): Promise<ResolveData> {
       slot: a.slot,
       svgUrl: a.svgUrl,
       colorZones: a.colorZones,
+      // Zones non proposées au client : imprimées dans leur couleur par défaut,
+      // comme la boutique les montre. Elles entrent aussi dans l'empreinte :
+      // une zone décochée refait le fichier.
+      zonesMasquees: a.zonesMasquees,
       position: a.position,
     });
   // Personnages (SVG de base pré-composé) pour le rendu PDF du nouveau modèle.

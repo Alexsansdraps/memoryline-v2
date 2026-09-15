@@ -330,6 +330,13 @@
       "when": 1789429345510,
       "tag": "0046_panier_du_stand",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1789461939907,
+      "tag": "0047_zones_masquees",
+      "breakpoints": true
     }
   ]
 }

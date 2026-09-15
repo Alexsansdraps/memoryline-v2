@@ -1,6 +1,7 @@
 ---
 import { url } from "../../lib/url.ts";
 import Admin from "../../layouts/Admin.astro";
+import ApercusZones from "../../components/ApercusZones.astro";
 import { adminApi, type TypeAffiche } from "../../lib/api.ts";
 
 const PUBLIC_API_URL =
@@ -22,12 +23,15 @@ if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   try {
     const zones = JSON.parse(String(f.get("colorZones") || "{}"));
+    const masquees = JSON.parse(String(f.get("zonesMasquees") || "[]"));
     await api.upsertAsset({
       slot: String(f.get("slot") || "clothes"),
       name: (f.get("name") as string) || undefined,
       svgUrl: String(f.get("svgUrl") || ""),
       view: String(f.get("view") || "front"),
       colorZones: Object.keys(zones).length ? zones : undefined,
+      // L'API ne garde que les zones qui existent dans `colorZones`.
+      zonesMasquees: Array.isArray(masquees) ? masquees.map(String) : [],
       position: Number(f.get("position") || 0),
     });
     return Astro.redirect(url("/personnages?piece=1"), 303);
@@ -142,6 +146,11 @@ try {
         <span class="text-bo-muted block mb-1">
           Zones de couleur (relues dans le dessin)
         </span>
+        <p class="text-xs text-bo-muted mb-2">
+          Chaque zone est surlignée en rouge sur sa vignette. Décochez
+          « Proposée au client » sur les petits détails (ruban, élastique…) :
+          ils garderont la couleur réglée ici.
+        </p>
         <div id="piece-zones" class="flex flex-wrap gap-2 mb-2"></div>
         <div class="flex items-center gap-2">
           <input
@@ -158,6 +167,7 @@ try {
           </button>
         </div>
         <input type="hidden" name="colorZones" id="piece-colorzones" value="{}" />
+        <input type="hidden" name="zonesMasquees" id="piece-zonesmasquees" value="[]" />
       </div>
     </section>
 
@@ -182,6 +192,7 @@ try {
     const boiteZones = document.getElementById("piece-zones");
     const nomZone = document.getElementById("piece-zone-nom");
     const champZones = document.getElementById("piece-colorzones");
+    const champMasquees = document.getElementById("piece-zonesmasquees");
 
     function syncZones() {
       const cz = {};
@@ -191,10 +202,26 @@ try {
           cz[i.getAttribute("data-zone")] = i.value;
         });
       champZones.value = JSON.stringify(cz);
+      const masquees = [];
+      boiteZones.querySelectorAll(".js-zone-proposee").forEach((c) => {
+        c.closest(".js-zone")?.classList.toggle("bg-bo-bg", !c.checked);
+        if (!c.checked) masquees.push(c.getAttribute("data-zone"));
+      });
+      champMasquees.value = JSON.stringify(masquees);
     }
 
+    /** Une zone : sa vignette surlignée, sa couleur par défaut, sa case. */
     function ajouterZone(zone, hex) {
       if (boiteZones.querySelector(`input[data-zone="${zone}"]`)) return;
+      const bloc = document.createElement("div");
+      bloc.className =
+        "js-zone flex w-[104px] flex-col items-center gap-1 rounded border border-bo-border p-1.5";
+      const vignette = document.createElement("img");
+      vignette.className =
+        "js-zone-apercu h-16 w-16 rounded border border-bo-border bg-white object-contain";
+      vignette.setAttribute("data-zone", zone);
+      vignette.alt = `Zone ${zone} surlignée sur le dessin`;
+      vignette.style.visibility = "hidden";
       const label = document.createElement("label");
       label.className = "flex items-center gap-1 text-xs";
       const color = document.createElement("input");
@@ -207,14 +234,43 @@ try {
       span.className = "text-bo-muted";
       span.textContent = zone;
       label.append(color, span);
-      boiteZones.appendChild(label);
+      // Proposée par défaut : c'est la boutique qui retire les petits détails.
+      const labelCase = document.createElement("label");
+      labelCase.className =
+        "flex cursor-pointer items-start gap-1 text-[11px] leading-tight";
+      const caseZone = document.createElement("input");
+      caseZone.type = "checkbox";
+      caseZone.checked = true;
+      caseZone.className = "js-zone-proposee mt-px";
+      caseZone.setAttribute("data-zone", zone);
+      caseZone.addEventListener("change", syncZones);
+      const texteCase = document.createElement("span");
+      texteCase.textContent = "Proposée au client";
+      labelCase.append(caseZone, texteCase);
+      bloc.append(vignette, label, labelCase);
+      boiteZones.appendChild(bloc);
       syncZones();
     }
 
-    function montrer() {
+    /** Adresse absolue du dessin saisi, ou "" s'il n'y en a pas. */
+    function adresseDuDessin() {
       const v = (champ.value || "").trim();
-      apercu.style.visibility = v ? "visible" : "hidden";
-      if (v) apercu.src = v.startsWith("http") ? v : PUBLIC_API_URL + v;
+      if (!v) return "";
+      return v.startsWith("http") ? v : PUBLIC_API_URL + v;
+    }
+
+    function montrer() {
+      const src = adresseDuDessin();
+      apercu.style.visibility = src ? "visible" : "hidden";
+      if (src) apercu.src = src;
+    }
+
+    /** (Re)dessine les vignettes des zones sur le dessin actuel. */
+    function vignettesDesZones() {
+      const src = adresseDuDessin();
+      if (src) boiteZones.setAttribute("data-apercu-svg", src);
+      else boiteZones.removeAttribute("data-apercu-svg");
+      window.mlApercusZones?.(boiteZones);
     }
 
     async function relire() {
@@ -235,8 +291,10 @@ try {
         // celles d'un autre dessin donnerait des couleurs sans effet.
         boiteZones.innerHTML = "";
         champZones.value = "{}";
+        champMasquees.value = "[]";
         for (const [zone, hex] of Object.entries(info.colorZones || {}))
           ajouterZone(zone, hex);
+        vignettesDesZones();
         const n = Object.keys(info.colorZones || {}).length;
         note.textContent = `${n} zone${n > 1 ? "s" : ""} de couleur relue${
           n > 1 ? "s" : ""
@@ -286,6 +344,10 @@ try {
       if (!z) return;
       ajouterZone(z, "#000000");
       nomZone.value = "";
+      vignettesDesZones();
     });
   </script>
+
+  {/* Après le formulaire : le script ci-dessus l'appelle à chaque dessin relu. */}
+  <ApercusZones />
 </Admin>
