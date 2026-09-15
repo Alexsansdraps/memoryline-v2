@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
-import { createSignal, type JSX } from "solid-js";
-import type { PosterConfig } from "@memoryline/types";
+import { createSignal, onCleanup, onMount, type JSX } from "solid-js";
+import type { PosterConfig, PosterFormat } from "@memoryline/types";
 import { browserApi, getCartId } from "../lib/api.ts";
 
 /**
@@ -18,6 +18,8 @@ export interface AddToCartButtonProps {
     /** Type d'affiche du produit — repli sur « de face » s'il n'en a pas. */
     defaultView?: string | null;
   };
+  /** Le format coché d'emblée sur la fiche — le moins cher, en général. */
+  formatInitial?: string;
 }
 
 export default function AddToCartButton(
@@ -36,6 +38,31 @@ export default function AddToCartButton(
   const [quantite, setQuantite] = createSignal(1);
   const borner = (n: number) => Math.min(20, Math.max(1, Math.trunc(n) || 1));
 
+  /*
+   * Le format choisi sur la fiche.
+   *
+   * Même mécanique que le configurateur (ProductConfigurator) : les cases de
+   * taille sont rendues par le serveur, ce bouton est un îlot monté après
+   * coup, et l'événement « ml:format » est la seule chose qu'ils partagent.
+   * Sans lui, la ligne partait sans format : le serveur la facturait alors
+   * au prix de l'A4 et le fichier d'impression sortait en A4, même A3 coché.
+   *
+   * La valeur de départ vient d'une prop et non de l'événement : la fiche
+   * coche sa première case dès le chargement, bien avant que l'îlot soit là
+   * pour l'entendre.
+   */
+  const [formatChoisi, setFormatChoisi] = createSignal<string | undefined>(
+    props.formatInitial,
+  );
+  onMount(() => {
+    const surChoix = (e: Event) => {
+      const f = (e as CustomEvent<{ format?: string }>).detail?.format;
+      if (f) setFormatChoisi(f);
+    };
+    window.addEventListener("ml:format", surChoix);
+    onCleanup(() => window.removeEventListener("ml:format", surChoix));
+  });
+
   async function add() {
     if (busy()) return;
     setBusy(true);
@@ -45,6 +72,8 @@ export default function AddToCartButton(
       view: props.product.defaultView || "front",
       texts: {},
       characters: [],
+      // C'est ce format que le serveur lit pour le prix et pour l'impression.
+      ...(formatChoisi() ? { format: formatChoisi() as PosterFormat } : {}),
     };
     try {
       await browserApi.addCartItem(getCartId(), {

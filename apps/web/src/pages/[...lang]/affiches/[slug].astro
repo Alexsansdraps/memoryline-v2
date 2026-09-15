@@ -368,6 +368,7 @@ const breadcrumbLd = {
               basePriceCents: minPrice,
               defaultView: product.defaultView ?? null,
             }}
+            formatInitial={product.variants[0]?.format}
           >
             <ActionEnAttente slot="fallback" libelle={tr("produit.ajouter")} quantite />
           </AddToCartButton>
