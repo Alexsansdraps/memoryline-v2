@@ -29,16 +29,16 @@ const LOGO_FILIGRANE = "/logo-filigrane.png";
 const LARGEUR = 1000;
 const HAUTEUR = 1414;
 
-/** Le cercle : 52 % de la largeur de l'affiche, centré. */
+/** Le cercle : 60 % de la largeur de l'affiche, centré. */
 const CENTRE_X = LARGEUR / 2;
 const CENTRE_Y = HAUTEUR / 2;
-const RAYON = 260;
+const RAYON = 300;
 
 /**
  * Le logo fait 500×222 : on garde son rapport, à 70 % du diamètre — assez
  * grand pour se lire d'un coup d'œil, ses coins restant dans le cercle.
  */
-const LOGO_LARGEUR = 360;
+const LOGO_LARGEUR = 420;
 const LOGO_HAUTEUR = Math.round((LOGO_LARGEUR * 222) / 500);
 
 export function Filigrane() {
