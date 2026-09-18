@@ -23,9 +23,14 @@ import {
   desc,
   eq,
   gte,
+  inArray,
   isNull,
   isNotNull,
   lt,
+  ne,
+  not,
+  notInArray,
+  or,
   sql as raw,
   type SQL,
 } from "drizzle-orm";
@@ -36,6 +41,7 @@ import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { db, schema } from "./db/client.js";
 import { clientDeLaRequete } from "./comptes.js";
+import { HORS_VENTES } from "./statuts-vente.js";
 import {
   STYLE_MEMORY_LINE,
   ajouterDemandeClient,
@@ -598,56 +604,345 @@ export async function rattacherGenerationsAuPanier(
 /*  Purge                                                                     */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Efface photos, aperçus et pleines définitions des générations NON PAYÉES de
- * plus de `jours` jours.
+/*
+ * La photo d'un visiteur est une donnée personnelle, et c'est souvent un
+ * visage : on ne la garde pas « au cas où ». La purge tourne donc TOUTE
+ * SEULE, dans l'API, une fois au démarrage puis toutes les heures
+ * (`demarrerPurgeIa`). Le bouton du back-office lance exactement la même
+ * fonction, avec les mêmes règles : il ne fait que ne pas attendre l'heure.
  *
- * La photo d'un visiteur est une donnée personnelle : on ne la garde pas « au
- * cas où ». La LIGNE, elle, reste — vidée de ses chemins : c'est ce qui permet
- * de répondre « combien a coûté le mois de mars » un an plus tard, sans
- * conserver le moindre visage.
+ * Elle efface trois sortes de restes :
+ *   - les générations jamais achetées, passé le délai réglé au back-office
+ *     (« ia.purgeJours ») : la photo, l'aperçu, la pleine définition et le
+ *     fichier d'impression. La LIGNE reste, vidée de ses chemins : c'est ce
+ *     qui permet de répondre « combien a coûté le mois de mars » un an plus
+ *     tard, sans conserver le moindre visage ;
+ *   - les photos envoyées qui n'ont jamais servi à une génération — le
+ *     visiteur a changé d'avis, fermé la page. Aucune ligne ne les désigne :
+ *     sans ce balayage, rien ne les effaçait jamais ;
+ *   - les photos du relais téléphone → tablette que son propre ménage
+ *     (ia-relais.ts, toutes les minutes) aurait laissées passer.
  */
-export async function purgerGenerationsIa(
+
+/**
+ * Six heures : l'âge à partir duquel une photo qui n'a servi à aucune
+ * génération est effacée.
+ *
+ * Le chemin de la photo ne vit que dans la page ouverte (AfficheIA.tsx) : il
+ * ne survit ni à un rechargement, ni au lendemain. Six heures couvrent donc
+ * largement le visiteur qui hésite entre deux styles, l'onglet resté ouvert
+ * pendant le déjeuner, la tablette du stand dont le client revient dans
+ * l'après-midi — sans qu'aucun visage passe la nuit sur le serveur.
+ *
+ * C'est aussi un PLANCHER pour les générations : un délai de conservation
+ * réglé à 0 jour ne doit pas effacer, au passage automatique suivant,
+ * l'aperçu qu'un visiteur est en train de regarder — ni l'affiche d'un panier
+ * payé dans l'heure, qui perdrait son image.
+ */
+const DELAI_PHOTO_INUTILISEE_MS = 6 * 60 * 60_000;
+
+/**
+ * Une heure pour les restes du relais : une photo relayée ne vit jamais plus
+ * d'un quart d'heure, et le ménage du relais passe toutes les minutes. Ce
+ * délai ne rattrape que ce qu'il aurait manqué — une API arrêtée pendant une
+ * session, un stand supprimé entre-temps.
+ */
+const DELAI_RESTES_RELAIS_MS = 60 * 60_000;
+
+/** Un passage par heure : bien en deçà de tous les délais ci-dessus. */
+const PERIODE_PURGE_MS = 60 * 60_000;
+
+/**
+ * Les fichiers de data/assets/ia que la purge sait reconnaître : la photo
+ * d'un visiteur (« <uuid>.jpg », /ia/photo) et ce qu'une génération en tire
+ * (« <publicId>-apercu.jpg », « -pleine.png », « -impression.png »). Tout
+ * autre nom n'est jamais touché ; les photos relayées ont leur propre
+ * balayage (`balayerPhotosRelayees`).
+ */
+const FICHIER_VISITEUR =
+  /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(\.jpg|-apercu\.jpg|-pleine\.png|-impression\.png)$/;
+
+/**
+ * Ce qu'une génération laisse sur le disque, que la base en garde le chemin
+ * ou non. Le fichier d'impression n'est rangé dans aucune colonne, et une
+ * génération tombée en échec après avoir écrit sa pleine définition n'en
+ * garde pas non plus le chemin : les retrouver par leur nom est la seule
+ * façon de ne pas les oublier.
+ */
+const FICHIERS_D_UNE_GENERATION = ["-apercu.jpg", "-pleine.png", "-impression.png"];
+
+/** Ce qu'une purge a effacé — ou, en simulation, effacerait. */
+export interface BilanPurgeIa {
+  jours: number;
+  simulation: boolean;
+  /** Générations jamais achetées vidées de leurs fichiers. */
+  lignes: number;
+  /** Fichiers de ces générations : photo, aperçu, pleine définition, impression. */
+  fichiers: number;
+  /** Photos qui n'ont servi à aucune génération (et fichiers sans génération). */
+  orphelins: number;
+  /** Photos du relais téléphone → tablette restées sur le disque. */
+  relais: number;
+  /** L'âge, en heures, à partir duquel une photo inutilisée est effacée. */
+  heuresPhotosInutilisees: number;
+  /** Pourquoi la purge n'a rien fait, quand elle n'a rien fait exprès. */
+  motif: string | null;
+}
+
+/** Vrai pendant une purge réelle : deux purges ne se chevauchent jamais. */
+let purgeEnCours = false;
+
+/**
+ * Les commandes qui mettent leurs générations à l'abri de la purge.
+ *
+ * Une VENTE d'abord (statuts-vente.ts) : ni un panier, ni une commande
+ * annulée ou avortée. Mais pas toute commande « en attente » : sur le site,
+ * c'est le passage en caisse qui la pose, AVANT le paiement — et le client
+ * qui s'en va sans payer la laisse ainsi pour toujours, rien ne la fait
+ * jamais passer « annulée ». La compter comme une vente gardait sans limite
+ * sa photo, son aperçu, sa pleine définition et son fichier d'impression,
+ * alors que rien n'avait été payé.
+ *
+ * Une commande du site en attente ne protège donc que tant qu'elle a bougé
+ * depuis moins que le délai de conservation (`limite`) : de quoi laisser
+ * aboutir un paiement qui traîne, ou le virement annoncé à la propriétaire.
+ * Passé ce délai, ses photos partent comme celles d'un panier abandonné.
+ *
+ * Au STAND, « en attente » reste une vente : c'est ainsi que naissaient les
+ * ventes du stand avant de naître payées (salon.ts), réglées de la main à la
+ * main — aucune ne passera jamais « payée ».
+ */
+function commandeProtectrice(limite: Date): SQL {
+  const o = schema.orders;
+  return and(
+    notInArray(o.status, HORS_VENTES),
+    or(
+      ne(o.status, "pending"),
+      eq(o.channel, "salon"),
+      gte(o.lastActivityAt, limite),
+      // Les commandes d'avant l'horloge d'inactivité : leur date de
+      // création en tient lieu, comme le prévoit le schéma.
+      and(isNull(o.lastActivityAt), gte(o.createdAt, limite)),
+    ),
+  )!;
+}
+
+/**
+ * Les générations qu'aucune purge ne touche : payées, ou rattachées à une
+ * commande protectrice — par leur ligne de commande, ou parce qu'une ligne
+ * de commande annonce leur identifiant (`config.aiPublicId`).
+ *
+ * `paidAt` suffit d'ordinaire : c'est lui que pose le paiement
+ * (`rattacherGenerationsAuPanier`). Mais ce rattachement « ne lève jamais » :
+ * s'il échoue, la commande est payée et la génération ne le sait pas. Et les
+ * ventes du stand d'avant le rattachement au stand n'ont jamais reçu de date.
+ * Une purge, elle, ne se rattrape pas : dans le doute, on garde.
+ *
+ * Les lignes protectrices se lisent par des sous-requêtes qui ne dépendent
+ * pas de la génération (IN) : Postgres les lit une fois et les range dans
+ * une table de hachage. Une sous-requête liée à chaque génération
+ * reparcourait toutes les lignes de commande pour chacune d'elles — un coût
+ * qui grandit comme le produit des deux tables, à chaque passage horaire et
+ * à chaque ouverture de la page IA du back-office.
+ */
+function generationProtegee(limite: Date): SQL {
+  const g = schema.aiGenerations;
+  const oi = schema.orderItems;
+  const annonce = raw<string>`${oi.config} ->> 'aiPublicId'`;
+  return or(
+    isNotNull(g.paidAt),
+    // « x IN (…) » vaut NULL, et non faux, quand x est NULL : sans cette
+    // garde, NOT(…) vaudrait NULL aussi, et une génération sans ligne de
+    // commande ne serait ni gardée ni purgée — absente des deux listes.
+    and(
+      isNotNull(g.orderItemId),
+      inArray(
+        g.orderItemId,
+        db
+          .select({ id: oi.id })
+          .from(oi)
+          .innerJoin(schema.orders, eq(oi.orderId, schema.orders.id))
+          .where(commandeProtectrice(limite)),
+      ),
+    ),
+    // Pour la même raison, la liste ne contient jamais NULL : une seule
+    // ligne sans annonce rendrait NULL toute génération qu'elle ne cite pas.
+    inArray(
+      g.publicId,
+      db
+        .select({ publicId: annonce })
+        .from(oi)
+        .innerJoin(schema.orders, eq(oi.orderId, schema.orders.id))
+        .where(and(commandeProtectrice(limite), isNotNull(annonce))),
+    ),
+  )!;
+}
+
+/** Une génération que la purge doit vider : ni protégée, ni trop récente. */
+function generationPerimee(limite: Date): SQL {
+  return and(
+    lt(schema.aiGenerations.createdAt, limite),
+    not(generationProtegee(limite)),
+  )!;
+}
+
+/** Le nom, dans data/assets/ia, d'un fichier désigné par un chemin en base. */
+function nomDansIa(relatif: string | null | undefined): string | null {
+  const chemin = cheminDisque(relatif);
+  if (!chemin) return null;
+  const nom = basename(chemin);
+  return resolve(IA_DIR, nom) === chemin ? nom : null;
+}
+
+/**
+ * Efface un fichier de data/assets/ia dont on sait qu'il est là (il sort
+ * d'un `readdir`). Vrai s'il est parti — ou, en simulation, s'il partirait.
+ */
+async function effacerDansIa(nom: string, simulation: boolean): Promise<boolean> {
+  if (simulation) return true;
+  try {
+    await rm(resolve(IA_DIR, nom));
+    return true;
+  } catch (e) {
+    // Effacé entre-temps (le relais, une autre purge) : rien à compter.
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT")
+      console.error("Purge IA : suppression impossible de ia/" + nom + " :", e);
+    return false;
+  }
+}
+
+/**
+ * La purge des photos de visiteurs : générations jamais achetées de plus de
+ * `jours` jours, photos jamais utilisées, restes du relais. `simulation`
+ * compte sans rien effacer.
+ *
+ * Le disque fait foi pour savoir ce qui existe, la base pour savoir ce qui
+ * doit rester : on liste le dossier une fois, et chaque fichier est gardé
+ * dès qu'une génération GARDÉE le désigne. Une photo partagée par plusieurs
+ * essais reste donc tant qu'un seul d'entre eux est gardé — l'ancienne purge
+ * l'effaçait avec le premier essai périmé, sous une affiche payée.
+ */
+export async function purgerPhotosVisiteurs(
   jours: number,
   simulation = false,
-): Promise<{ lignes: number; fichiers: number; jours: number }> {
-  const limite = new Date(Date.now() - Math.max(0, jours) * 86_400_000);
-  const anciennes = await db
-    .select()
-    .from(schema.aiGenerations)
-    .where(
-      and(
-        isNull(schema.aiGenerations.paidAt),
-        lt(schema.aiGenerations.createdAt, limite),
+): Promise<BilanPurgeIa> {
+  const bilan: BilanPurgeIa = {
+    jours,
+    simulation,
+    lignes: 0,
+    fichiers: 0,
+    orphelins: 0,
+    relais: 0,
+    heuresPhotosInutilisees: DELAI_PHOTO_INUTILISEE_MS / 3_600_000,
+    motif: null,
+  };
+  // Une simulation ne fait que lire : elle peut tourner à côté d'une purge.
+  if (!simulation) {
+    if (purgeEnCours) {
+      bilan.motif = "Une purge est déjà en cours : celle-ci n'a rien fait.";
+      return bilan;
+    }
+    purgeEnCours = true;
+  }
+  try {
+    const maintenant = Date.now();
+    const limite = new Date(
+      Math.min(
+        maintenant - Math.max(0, jours) * 86_400_000,
+        maintenant - DELAI_PHOTO_INUTILISEE_MS,
       ),
     );
+    const g = schema.aiGenerations;
+    const [perimees, gardees] = await Promise.all([
+      db
+        .select({
+          id: g.id,
+          publicId: g.publicId,
+          sourcePath: g.sourcePath,
+          previewPath: g.previewPath,
+          fullPath: g.fullPath,
+        })
+        .from(g)
+        .where(generationPerimee(limite)),
+      db
+        .select({ publicId: g.publicId, sourcePath: g.sourcePath })
+        .from(g)
+        .where(not(generationPerimee(limite))),
+    ]);
 
-  // Les photos relayées depuis un téléphone que rien n'a effacées — une API
-  // arrêtée pendant leur session, un stand supprimé entre-temps. Une heure
-  // suffit largement : elles ne vivent jamais plus d'un quart d'heure.
-  let fichiers = await balayerPhotosRelayees(60 * 60_000, simulation);
-  for (const g of anciennes) {
-    for (const relatif of [g.sourcePath, g.previewPath, g.fullPath]) {
-      const chemin = cheminDisque(relatif);
-      if (!chemin) continue;
-      if (simulation) {
-        fichiers++;
-        continue;
+    let presents: string[];
+    try {
+      presents = await readdir(IA_DIR);
+    } catch {
+      presents = [];
+    }
+    const surLeDisque = new Set(presents);
+
+    const photosGardees = new Set(gardees.map((l) => nomDansIa(l.sourcePath)));
+    const photosConnues = new Set([
+      ...photosGardees,
+      ...perimees.map((l) => nomDansIa(l.sourcePath)),
+    ]);
+    const generationsConnues = new Set([
+      ...gardees.map((l) => l.publicId),
+      ...perimees.map((l) => l.publicId),
+    ]);
+
+    // 1. Les générations jamais achetées, passé le délai.
+    for (const ligne of perimees) {
+      const noms = new Set<string>();
+      for (const relatif of [ligne.previewPath, ligne.fullPath]) {
+        const nom = nomDansIa(relatif);
+        if (nom) noms.add(nom);
       }
-      try {
-        await rm(chemin, { force: true });
-        fichiers++;
-      } catch (e) {
-        console.error("Purge IA : suppression impossible de " + relatif + " :", e);
+      const photo = nomDansIa(ligne.sourcePath);
+      if (photo && !photosGardees.has(photo)) noms.add(photo);
+      for (const suffixe of FICHIERS_D_UNE_GENERATION) noms.add(ligne.publicId + suffixe);
+      const presentes = [...noms].filter((n) => surLeDisque.has(n));
+      const aDesChemins = !!(ligne.sourcePath || ligne.previewPath || ligne.fullPath);
+      // Déjà vidée par un passage précédent : rien à refaire, rien à compter.
+      if (!presentes.length && !aDesChemins) continue;
+
+      if (!simulation && aDesChemins) {
+        // Revérifiée AU MOMENT D'ÉCRIRE : payée depuis la lecture, elle est
+        // gardée, fichiers compris.
+        const [videe] = await db
+          .update(g)
+          .set({ sourcePath: null, previewPath: null, fullPath: null })
+          .where(and(eq(g.id, ligne.id), generationPerimee(limite)))
+          .returning({ id: g.id });
+        if (!videe) continue;
+      }
+      bilan.lignes++;
+      for (const nom of presentes) {
+        if (await effacerDansIa(nom, simulation)) bilan.fichiers++;
+        surLeDisque.delete(nom);
       }
     }
-    if (!simulation)
-      await db
-        .update(schema.aiGenerations)
-        .set({ sourcePath: null, previewPath: null, fullPath: null })
-        .where(eq(schema.aiGenerations.id, g.id));
+
+    // 2. Les photos qui n'ont servi à aucune génération — et, par la même
+    // règle, les fichiers d'une génération dont la ligne n'existe pas.
+    const seuil = maintenant - DELAI_PHOTO_INUTILISEE_MS;
+    for (const nom of surLeDisque) {
+      const reconnu = FICHIER_VISITEUR.exec(nom);
+      if (!reconnu) continue;
+      const connu =
+        reconnu[2] === ".jpg" ? photosConnues.has(nom) : generationsConnues.has(reconnu[1]!);
+      if (connu) continue;
+      try {
+        if ((await stat(resolve(IA_DIR, nom))).mtimeMs >= seuil) continue;
+      } catch {
+        continue;
+      }
+      if (await effacerDansIa(nom, simulation)) bilan.orphelins++;
+    }
+
+    // 3. Les restes du relais téléphone → tablette.
+    bilan.relais = await balayerPhotosRelayees(DELAI_RESTES_RELAIS_MS, simulation);
+    return bilan;
+  } finally {
+    if (!simulation) purgeEnCours = false;
   }
-  return { lignes: anciennes.length, fichiers, jours };
 }
 
 /**
@@ -661,10 +956,11 @@ export const PREFIXE_RELAIS = "relais-";
  * Efface les photos relayées plus vieilles que `ageMs`.
  *
  * Une photo relayée ne vit que le temps de sa session — un quart d'heure au
- * plus, puis la tablette l'a prise ou le code a expiré. Passé ce délai, un
- * fichier « relais-* » encore sur le disque est un reste, par définition : on
- * n'a donc pas besoin de la base pour décider de l'effacer. C'est ce qui rend
- * ce balayage sûr même quand la base et le disque ne sont plus d'accord.
+ * plus, puis la tablette a confirmé l'avoir reçue ou le code a expiré. Passé
+ * ce délai, un fichier « relais-* » encore sur le disque est un reste, par
+ * définition : on n'a donc pas besoin de la base pour décider de l'effacer.
+ * C'est ce qui rend ce balayage sûr même quand la base et le disque ne sont
+ * plus d'accord.
  */
 export async function balayerPhotosRelayees(
   ageMs: number,
@@ -690,6 +986,45 @@ export async function balayerPhotosRelayees(
     }
   }
   return effacees;
+}
+
+let minuteriePurge: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Un passage de la purge automatique, avec le délai réglé au back-office.
+ *
+ * Une ligne au journal à CHAQUE passage, même quand rien n'est parti : c'est
+ * ce qui permet de vérifier, sur le serveur, que la purge tourne vraiment.
+ * Ne lève jamais : une erreur ici emporterait la minuterie, et avec elle
+ * toutes les purges suivantes.
+ */
+export async function passageDePurgeIa(): Promise<void> {
+  try {
+    const jours = (await reglages())["ia.purgeJours"];
+    const b = await purgerPhotosVisiteurs(jours);
+    console.log(
+      `[purge ia] ${b.lignes} génération(s) non achetée(s) de plus de ${jours} j vidée(s) ` +
+        `(${b.fichiers} fichier(s)), ${b.orphelins} photo(s) inutilisée(s) de plus de ` +
+        `${b.heuresPhotosInutilisees} h, ${b.relais} reste(s) du relais` +
+        (b.motif ? ` — ${b.motif}` : ""),
+    );
+  } catch (e) {
+    console.error("[purge ia] passage interrompu :", e);
+  }
+}
+
+/**
+ * Démarre la purge automatique : un passage dès que l'API écoute — ce
+ * qu'un arrêt a laissé en plan —, puis un par heure, dans le processus de
+ * l'API, comme la relance des paniers (relance-panier.ts). `purgeEnCours`
+ * empêche deux passages de se chevaucher, bouton du back-office compris.
+ * `unref()` évite que la minuterie retienne le processus à l'arrêt.
+ */
+export function demarrerPurgeIa(): void {
+  if (minuteriePurge) return;
+  void passageDePurgeIa();
+  minuteriePurge = setInterval(() => void passageDePurgeIa(), PERIODE_PURGE_MS);
+  minuteriePurge.unref?.();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1272,8 +1607,10 @@ export function mountIaRoutes(app: Hono): void {
   });
 
   /**
-   * Purge les photos et aperçus non payés de plus de N jours.
-   * `simulation: true` compte sans rien effacer.
+   * Lance tout de suite la purge qui passe d'elle-même toutes les heures
+   * (`purgerPhotosVisiteurs`) : mêmes règles, même délai par défaut.
+   * `simulation: true` compte sans rien effacer — c'est ce que le
+   * back-office affiche sous « Ce qui partira ».
    */
   app.post("/admin/ia/purger", async (c) => {
     const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -1281,7 +1618,7 @@ export function mountIaRoutes(app: Hono): void {
     const jours = b.jours != null ? Number(b.jours) : reg["ia.purgeJours"];
     if (!Number.isFinite(jours) || jours < 0)
       return c.json({ error: "jours invalide" }, 400);
-    return c.json(await purgerGenerationsIa(jours, b.simulation === true));
+    return c.json(await purgerPhotosVisiteurs(jours, b.simulation === true));
   });
 
   /** Active la création par IA sur une affiche et règle son style. */

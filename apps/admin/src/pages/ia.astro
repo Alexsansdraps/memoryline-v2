@@ -12,6 +12,7 @@ import { apiUrl, url } from "../lib/url.ts";
 import {
   adminApi,
   formatPrice,
+  type BilanPurgeIa,
   type ListeGenerationsIA,
   type StatsIA,
 } from "../lib/api.ts";
@@ -51,6 +52,23 @@ function centimes(v: FormDataEntryValue | null): number {
   return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : 0;
 }
 
+/**
+ * Ce qu'une purge a effacé, en une phrase. L'API répondait autrefois
+ * { lignes, fichiers } quand l'écran lisait « supprimees » : il annonçait
+ * « Rien à effacer » même après avoir effacé.
+ */
+function bilanDePurge(r: BilanPurgeIa): string {
+  if (r.motif) return r.motif;
+  const parties = [
+    r.lignes ? `${r.lignes} génération(s) non achetée(s) vidée(s) (${r.fichiers} fichier(s))` : "",
+    r.orphelins ? `${r.orphelins} photo(s) jamais utilisée(s)` : "",
+    r.relais ? `${r.relais} photo(s) oubliée(s) par le relais du stand` : "",
+  ].filter(Boolean);
+  return parties.length
+    ? `Effacé : ${parties.join(", ")}.`
+    : "Rien à effacer : aucune photo non achetée n'a dépassé le délai.";
+}
+
 /** Entier positif saisi, ou la valeur de repli. */
 function entier(v: FormDataEntryValue | null, defaut: number): number {
   const n = Math.round(Number(String(v ?? "").trim()));
@@ -64,11 +82,7 @@ if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   try {
     if (f.get("_action") === "purger") {
-      const r = await api.purgerIa();
-      flash =
-        r.supprimees > 0
-          ? `${r.supprimees} génération(s) non achetée(s) effacée(s).`
-          : "Rien à effacer : aucune photo non achetée n'a dépassé le délai.";
+      flash = bilanDePurge(await api.purgerIa());
     } else {
       // Montants et durées partent en NOMBRES : l'API compare et additionne
       // ces réglages, une chaîne s'y additionnerait bout à bout.
@@ -150,21 +164,17 @@ const echecs = stats?.mois?.echecs ?? 0;
 const tauxEchec = essais > 0 ? Math.round((echecs / essais) * 100) : null;
 
 /**
- * Décompte de la purge. Il porte sur les dernières générations, filtre de la
- * galerie mis à part : ce qui va être effacé ne dépend pas de l'onglet ouvert.
+ * Décompte de la purge : la purge elle-même, en simulation. Mêmes règles,
+ * même historique complet que le passage horaire — un décompte refait ici à
+ * part, sur un échantillon, finissait toujours par dire autre chose que ce
+ * que la purge efface vraiment.
  */
-let echantillon: ListeGenerationsIA | null = null;
+let apercuPurge: BilanPurgeIa | null = null;
 try {
-  echantillon = await api.iaGenerations({ limite: 100 });
+  apercuPurge = await api.purgerIa(true);
 } catch {
-  // Sans échantillon, le bloc de purge le dit et n'annonce aucun chiffre.
+  // Sans décompte, le bloc de purge le dit et n'annonce aucun chiffre.
 }
-const nonAchetees = (echantillon?.lignes ?? []).filter((g) => !g.paidAt);
-const limitePurge = Date.now() - purgeJours * 86400000;
-const perimees = nonAchetees.filter((g) => {
-  const t = Date.parse(g.createdAt);
-  return Number.isFinite(t) && t < limitePurge;
-});
 
 const STATUTS: Record<string, { texte: string; classe: string }> = {
   prete: { texte: "Prête", classe: "bg-green-100 text-green-900" },
@@ -400,7 +410,8 @@ const derniere = premiere + lignes.length;
           />
           <span class="mt-1 block text-xs text-bo-muted">
             Passé ce délai, la photo envoyée par le visiteur et son aperçu
-            peuvent être effacés. Ce qui a été acheté n'est jamais concerné.
+            sont effacés d'eux-mêmes (la purge passe toutes les heures). Ce
+            qui a été acheté n'est jamais concerné.
           </span>
         </label>
       </div>
@@ -565,46 +576,56 @@ const derniere = premiere + lignes.length;
     <p class="mb-3 max-w-3xl text-sm text-bo-muted">
       Les visiteurs envoient leur photo pour voir un aperçu ; la plupart
       n'achètent pas. Ni ces photos ni leurs aperçus n'ont à rester sur le
-      serveur au-delà du délai de conservation. Rien de ce qui a été payé n'est
-      touché, et l'affiche imprimable d'une commande payée ne l'est jamais non
-      plus.
+      serveur au-delà du délai de conservation. Rien de ce qui a été payé — ou
+      vendu au stand — n'est touché, et l'affiche imprimable d'une commande
+      payée ne l'est jamais non plus.
+    </p>
+    <p class="mb-3 max-w-3xl text-sm text-bo-muted">
+      Une commande du site restée « en attente de paiement » garde ses photos
+      le temps du délai de conservation, compté depuis son dernier passage en
+      caisse : de quoi laisser arriver un paiement en retard. Au-delà, elles
+      partent comme celles d'un panier abandonné.
+    </p>
+    <p class="mb-3 max-w-3xl text-sm text-bo-muted">
+      Cette purge passe d'elle-même toutes les heures. Le bouton ne fait que la
+      lancer tout de suite, avec les mêmes règles.
     </p>
 
     <div class="mb-3 rounded border border-bo-border bg-bo-bg px-4 py-3 text-sm">
-      <div class="font-medium">Ce qui partira</div>
-      {echantillon ? (
-        <>
-          <ul class="mt-1 space-y-0.5 text-bo-muted">
-            <li>
-              <strong>{perimees.length}</strong> génération(s) jamais achetée(s)
-              de plus de {purgeJours} jour(s) — celles que la purge efface.
-            </li>
-            <li>
-              {nonAchetees.length - perimees.length} autre(s) non achetée(s),
-              trop récente(s) : elles restent.
-            </li>
-            <li>
-              {echantillon.lignes.length - nonAchetees.length} payée(s) : jamais
-              touchée(s).
-            </li>
-          </ul>
-          <p class="mt-2 text-xs text-bo-muted">
-            {echantillon.total > echantillon.lignes.length
-              ? `Compté sur les ${echantillon.lignes.length} dernières générations, l'historique en comptant ${echantillon.total}.`
-              : `Compté sur les ${echantillon.lignes.length} générations de l'historique.`}
-            {" "}La purge, elle, passe sur tout l'historique.
-          </p>
-        </>
+      <div class="font-medium">Ce qui partirait maintenant</div>
+      {apercuPurge ? (
+        <ul class="mt-1 space-y-0.5 text-bo-muted">
+          <li>
+            <strong>{apercuPurge.lignes}</strong> génération(s) jamais achetée(s)
+            de plus de {apercuPurge.jours} jour(s) : leur photo, leur aperçu et
+            leur affiche ({apercuPurge.fichiers} fichier(s)).
+          </li>
+          <li>
+            <strong>{apercuPurge.orphelins}</strong> photo(s) envoyée(s) il y a
+            plus de {apercuPurge.heuresPhotosInutilisees} heures sans jamais
+            servir à une affiche.
+          </li>
+          <li>
+            <strong>{apercuPurge.relais}</strong> photo(s) envoyée(s) d'un
+            téléphone au stand et oubliée(s) sur le serveur.
+          </li>
+        </ul>
       ) : (
         <p class="mt-1 text-bo-muted">
-          Le décompte n'a pas pu être établi : la liste des générations est
-          injoignable. La purge efface les générations jamais achetées de plus
-          de {purgeJours} jour(s).
+          Le décompte n'a pas pu être établi. La purge efface les générations
+          jamais achetées de plus de {purgeJours} jour(s), et les photos qui
+          n'ont servi à aucune affiche.
         </p>
       )}
     </div>
 
-    <form method="POST" class="js-purger" data-nombre={perimees.length}>
+    <form
+      method="POST"
+      class="js-purger"
+      data-nombre={apercuPurge
+        ? apercuPurge.lignes + apercuPurge.orphelins + apercuPurge.relais
+        : ""}
+    >
       <input type="hidden" name="_action" value="purger" />
       <button class="rounded border border-bo-border px-4 py-2 text-sm hover:border-red-300 hover:text-red-700">
         Effacer maintenant
@@ -616,10 +637,12 @@ const derniere = premiere + lignes.length;
     // Effacement irréversible : on redit le nombre avant de lancer.
     document.querySelectorAll("form.js-purger").forEach((f) => {
       f.addEventListener("submit", (e) => {
-        const n = f.getAttribute("data-nombre") || "0";
+        const n = f.getAttribute("data-nombre");
         if (
           !confirm(
-            `Effacer les photos et aperçus des générations non achetées (au moins ${n}) ? C'est définitif.`,
+            n
+              ? `Effacer ${n} génération(s) et photo(s) de visiteurs ? C'est définitif.`
+              : "Effacer les photos et aperçus des générations non achetées ? C'est définitif.",
           )
         )
           e.preventDefault();

@@ -355,7 +355,13 @@ export async function ouvrirRelais(codeStand: string): Promise<RelaisOuvert> {
 /** Ce que la tablette trouve en passant relever le relais. */
 export type ReleveRelais =
   | { etat: "attente"; resteSecondes: number | null }
-  | { etat: "photo"; fichier: File; resteSecondes: number | null }
+  | {
+      etat: "photo";
+      fichier: File;
+      /** Le numéro de la photo sur ce code : c'est lui qu'on confirme. */
+      envoi: number;
+      resteSecondes: number | null;
+    }
   | { etat: "expire" };
 
 /**
@@ -364,11 +370,15 @@ export type ReleveRelais =
  * La photo revient comme un fichier, exactement comme si on l'avait choisie
  * sur la tablette : l'écran la traite ensuite par le même chemin. Une erreur
  * réseau LÈVE — l'appelant réessaie au passage suivant, un wifi de marché qui
- * hoquette ne ferme pas le relais.
+ * hoquette ne ferme pas le relais. La photo reste sur le serveur tant que
+ * `confirmerReception` n'a pas été appelée : une réponse coupée en route est
+ * resservie au passage suivant.
  */
 export async function releverRelais(jeton: string, nomFichier: string): Promise<ReleveRelais> {
   const reponse = await fetch(`${PUBLIC_API_URL}/ia/relais`, {
-    headers: { "X-Relais-Jeton": jeton },
+    // X-Relais-Confirmation : cette page confirme la réception
+    // (`confirmerReception`), le serveur garde donc la photo jusque-là.
+    headers: { "X-Relais-Jeton": jeton, "X-Relais-Confirmation": "1" },
     cache: "no-store",
   });
   if (reponse.status === 404 || reponse.status === 410) return { etat: "expire" };
@@ -376,12 +386,50 @@ export async function releverRelais(jeton: string, nomFichier: string): Promise<
   const resteSecondes = Number.isFinite(reste) && reponse.headers.has("X-Relais-Reste") ? reste : null;
   if (reponse.status === 204) return { etat: "attente", resteSecondes };
   if (!reponse.ok) throw new Error(`relais HTTP ${reponse.status}`);
+  const envoi = Number(reponse.headers.get("X-Relais-Envoi"));
+  // Lue en entier AVANT de répondre « photo » : une coupure au milieu du
+  // transfert lève ici, et la photo attend toujours sur le serveur.
   const blob = await reponse.blob();
   return {
     etat: "photo",
     fichier: new File([blob], nomFichier, { type: "image/jpeg" }),
+    envoi: Number.isInteger(envoi) && envoi > 0 ? envoi : 0,
     resteSecondes,
   };
+}
+
+/**
+ * Dit au serveur que la photo n° `envoi` est arrivée entière : il l'efface.
+ *
+ * Renvoie `autre: true` quand le téléphone en a déposé une plus récente
+ * entre-temps — la tablette doit alors repasser la chercher. Null si la
+ * confirmation n'a pas pu partir, même après trois essais : la photo
+ * s'efface de toute façon avec le code, le ménage du serveur y veille.
+ */
+export async function confirmerReception(
+  jeton: string,
+  envoi: number,
+): Promise<{ autre: boolean } | null> {
+  for (let essai = 0; essai < 3; essai++) {
+    if (essai) await new Promise((r) => setTimeout(r, 1000));
+    try {
+      const reponse = await fetch(`${PUBLIC_API_URL}/ia/relais/recue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Relais-Jeton": jeton },
+        body: JSON.stringify({ envoi }),
+      });
+      // Relais fermé ou inconnu : il n'y a plus rien à confirmer.
+      if (reponse.status === 404) return { autre: false };
+      // Refusée pour de bon : la redemander n'y changerait rien.
+      if (reponse.status >= 400 && reponse.status < 500) return null;
+      if (!reponse.ok) continue;
+      const d = (await reponse.json().catch(() => null)) as { autre?: unknown } | null;
+      return { autre: d?.autre === true };
+    } catch {
+      // Un hoquet du réseau : l'essai suivant.
+    }
+  }
+  return null;
 }
 
 /**
@@ -457,12 +505,16 @@ function causeEnvoiTelephone(statut: number): EchecEnvoiTelephone {
  * XMLHttpRequest plutôt que fetch : c'est le seul qui dise où en est un
  * envoi, et une barre qui avance est ce qui retient le client de réessayer
  * pendant que sa photo monte.
+ *
+ * Renvoie le rang de la photo sur ce code (1 pour la première, 0 s'il n'a
+ * pas pu être lu) : une fois la première reçue, la tablette n'affiche plus
+ * les suivantes d'elle-même, et la page du téléphone doit le dire.
  */
 export async function envoyerPhotoTelephone(
   code: string,
   fichier: File,
   progression: (etape: "preparation" | "envoi", pourcent: number) => void,
-): Promise<void> {
+): Promise<number> {
   progression("preparation", 0);
   const aEnvoyer = (await reduirePhoto(fichier)) ?? fichier;
   const cause = verifierPhoto(aEnvoyer);
@@ -471,16 +523,26 @@ export async function envoyerPhotoTelephone(
   progression("envoi", 0);
   const corps = new FormData();
   corps.append("photo", aEnvoyer, aEnvoyer.name);
-  await new Promise<void>((resoudre, rejeter) => {
+  return new Promise<number>((resoudre, rejeter) => {
     const requete = new XMLHttpRequest();
     requete.open("POST", `${PUBLIC_API_URL}/ia/relais/${encodeURIComponent(code)}/photo`);
     requete.upload.onprogress = (e) => {
       if (e.lengthComputable) progression("envoi", Math.round((e.loaded / e.total) * 100));
     };
-    requete.onload = () =>
-      requete.status >= 200 && requete.status < 300
-        ? resoudre()
-        : rejeter(new ErreurEnvoiTelephone(causeEnvoiTelephone(requete.status)));
+    requete.onload = () => {
+      if (requete.status < 200 || requete.status >= 300) {
+        rejeter(new ErreurEnvoiTelephone(causeEnvoiTelephone(requete.status)));
+        return;
+      }
+      // La photo est arrivée : un rang illisible ne doit pas en faire un échec.
+      let rang = 0;
+      try {
+        rang = Number((JSON.parse(requete.responseText) as { envois?: unknown }).envois);
+      } catch {
+        rang = 0;
+      }
+      resoudre(Number.isInteger(rang) && rang > 0 ? rang : 0);
+    };
     requete.onerror = () => rejeter(new ErreurEnvoiTelephone("reseau"));
     requete.ontimeout = () => rejeter(new ErreurEnvoiTelephone("reseau"));
     // Deux minutes : large pour une photo réduite, même sur un réseau lent.

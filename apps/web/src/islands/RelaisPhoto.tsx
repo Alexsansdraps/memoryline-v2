@@ -11,6 +11,7 @@ import { lien, t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
 import { codeMemorise, oublierCode, retenirCode } from "../lib/code-stand.ts";
 import {
   ErreurRelais,
+  confirmerReception,
   fermerRelais,
   ouvrirRelais,
   releverRelais,
@@ -36,6 +37,13 @@ import {
  * La tablette RELÈVE le relais toutes les secondes et demie, plutôt que de
  * garder une connexion ouverte : un wifi de marché coupe les connexions
  * longues sans prévenir, une relève manquée se rattrape à la suivante.
+ *
+ * Une fois la photo arrivée, la tablette CONFIRME l'avoir reçue — c'est
+ * seulement alors que le serveur l'efface — et CESSE de relever : sans quoi,
+ * un quart d'heure plus tard, le code arrivait à échéance et l'écran
+ * annonçait « Ce code a expiré » à un client occupé à composer son affiche.
+ * Pour une autre photo, la vendeuse touche « Recevoir une autre photo » : la
+ * tablette se remet à l'écoute du même code.
  */
 
 /** Une photo déposée sur le téléphone arrive ici en moins de deux secondes. */
@@ -93,6 +101,12 @@ export default function RelaisPhoto(props: {
    * sans cela, une photo destinée au client précédent pourrait s'afficher.
    */
   let numero = 0;
+  /**
+   * Le numéro de la dernière photo montrée, sur le relais en cours. Si la
+   * confirmation s'est perdue en route, le serveur la ressert au passage
+   * suivant : elle est alors confirmée de nouveau, sans repasser à l'écran.
+   */
+  let derniereRecue: number | null = null;
 
   /**
    * Demande le code du stand, curseur dans le champ : la vendeuse n'a pas à
@@ -140,6 +154,7 @@ export default function RelaisPhoto(props: {
   function abandonner() {
     const r = relais();
     numero++;
+    derniereRecue = null;
     arreterMinuteries();
     setRelais(null);
     setQr(null);
@@ -262,8 +277,22 @@ export default function RelaisPhoto(props: {
       if (releve.resteSecondes !== null)
         setFin(Date.now() + releve.resteSecondes * 1000);
       if (releve.etat === "photo") {
-        setEtat("recue");
-        props.onPhoto(releve.fichier);
+        const nouvelle = releve.envoi !== derniereRecue;
+        if (nouvelle) {
+          derniereRecue = releve.envoi;
+          setEtat("recue");
+          props.onPhoto(releve.fichier);
+        }
+        const suite = await confirmerReception(r.jeton, releve.envoi);
+        if (moi !== numero) return;
+        // La photo est là : plus rien à attendre, plus de relève. Sauf si le
+        // téléphone en a déjà déposé une plus récente — on repasse la
+        // prendre — ou si c'était une photo déjà montrée, resservie faute de
+        // confirmation : on attend toujours la suivante.
+        if (nouvelle && !suite?.autre) {
+          arreterMinuteries();
+          return;
+        }
       }
     } catch {
       // Un hoquet du réseau : on repasse au prochain tour.
@@ -271,6 +300,27 @@ export default function RelaisPhoto(props: {
     if (moi !== numero) return;
     if (Date.now() > fin() + TOLERANCE_MS) expirer();
     else planifier(moi);
+  }
+
+  /**
+   * « Recevoir une autre photo » : la tablette se remet à l'écoute du MÊME
+   * code, et le client renvoie depuis la page déjà ouverte sur son
+   * téléphone. Un code qui n'a plus qu'une minute à vivre est remplacé par un
+   * neuf : le client n'aurait pas le temps de s'en servir.
+   */
+  function reprendre() {
+    const r = relais();
+    if (!r || fin() - Date.now() < 60_000) {
+      demarrer();
+      return;
+    }
+    arreterMinuteries();
+    const moi = numero;
+    setMessage(null);
+    setEtat("attente");
+    setMaintenant(Date.now());
+    horloge = setInterval(() => setMaintenant(Date.now()), 1000);
+    void relever(moi);
   }
 
   // « Créer mon affiche » : la photo est choisie, le relais se ferme. Une
@@ -396,8 +446,9 @@ export default function RelaisPhoto(props: {
           </Show>
 
           {/* La photo est arrivée : elle est déjà dans l'aperçu, comme si on
-              l'avait choisie ici. Le relais reste ouvert — un client qui s'est
-              trompé de photo en renvoie une autre de son téléphone. */}
+              l'avait choisie ici, et la tablette ne relève plus rien. Le code
+              reste ouvert : un client qui s'est trompé de photo en renvoie une
+              autre de son téléphone, une fois la tablette remise à l'écoute. */}
           <Show when={etat() === "recue" && relais()}>
             <p class="flex items-center gap-2 font-medium">
               <span
@@ -408,17 +459,16 @@ export default function RelaisPhoto(props: {
               </span>
               {tr("ia.relais.recue")}
             </p>
-            <p class="mt-1 text-sm text-ink-soft">
-              {tr("ia.relais.recue_aide")}{" "}
-              <span class="[overflow-wrap:anywhere]">
-                {debutAdresse()}
-                <wbr />
-                <span class="font-semibold tracking-[0.12em] whitespace-nowrap">
-                  {relais()!.code}
-                </span>
-              </span>
-            </p>
-            <div class="mt-3">
+            <p class="mt-1 text-sm text-ink-soft">{tr("ia.relais.recue_aide")}</p>
+            <div class="mt-3 flex flex-wrap gap-3">
+              <button
+                type="button"
+                class={SECONDAIRE}
+                disabled={props.occupe}
+                onClick={reprendre}
+              >
+                {tr("ia.relais.autre")}
+              </button>
               <button type="button" class={SECONDAIRE} onClick={fermer}>
                 {tr("ia.relais.fermer")}
               </button>

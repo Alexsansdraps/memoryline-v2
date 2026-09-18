@@ -21,9 +21,12 @@
  *     aperçu par-dessus l'épaule ne donne accès au visage de personne.
  *
  * La photo d'un client est une donnée personnelle, et c'est souvent un
- * visage : elle quitte le serveur dès que la tablette l'a prise, et au plus
- * tard à l'expiration du code. Le ménage passe toutes les minutes, et la
- * purge du back-office (ia.ts) rattrape ce qui aurait pu lui échapper.
+ * visage : elle quitte le serveur dès que la tablette a CONFIRMÉ l'avoir
+ * reçue, et au plus tard à l'expiration du code. Pas au moment où elle part :
+ * une coupure du wifi pendant le transfert la perdait alors sans que personne
+ * le sache. Le ménage passe toutes les minutes, et la purge des photos de
+ * visiteurs (ia.ts, toutes les heures) rattrape ce qui aurait pu lui
+ * échapper.
  *
  * Les sessions vivent EN BASE (table ia_relais_photo) : l'API redémarre à
  * chaque mise en ligne, et un relais tenu en mémoire se perdrait entre le
@@ -186,7 +189,9 @@ async function fermerRelais(ligne: { id: number; photoPath: string | null }): Pr
 /**
  * Le ménage : photos des codes expirés effacées, lignes anciennes
  * supprimées, puis tout fichier « relais-* » plus vieux qu'une session —
- * qu'un arrêt de l'API au mauvais moment aurait laissé derrière lui.
+ * qu'un arrêt de l'API au mauvais moment aurait laissé derrière lui. C'est
+ * aussi le filet d'une confirmation de la tablette perdue en route : la photo
+ * ne survit pas à son code.
  *
  * Ne lève jamais : c'est un travailleur de fond, une erreur ici ne doit pas
  * emporter sa minuterie.
@@ -303,12 +308,24 @@ export function mountRelaisPhotoRoutes(app: Hono): void {
    * La tablette vient chercher la photo. En-tête X-Relais-Jeton.
    *
    * 204 tant que rien n'est arrivé, la photo en JPEG quand elle est là, 410
-   * quand le code a expiré. La photo est effacée du serveur AU MOMENT où elle
-   * est remise : elle n'y a plus rien à faire, la tablette l'envoie ensuite
-   * par le chemin ordinaire de la boutique (/ia/photo).
+   * quand le code a expiré. La photo RESTE sur le serveur après être partie :
+   * elle n'en est effacée que lorsque la tablette confirme l'avoir reçue
+   * entière (POST /ia/relais/recue). Une réponse perdue en route — le wifi
+   * d'un marché coupe sans prévenir — est ainsi resservie au passage suivant,
+   * au lieu d'emporter la photo avec elle.
    *
-   * Le temps restant voyage dans l'en-tête X-Relais-Reste, pour que le compte
-   * à rebours de la tablette ne dérive pas.
+   * X-Relais-Envoi numérote la photo servie : c'est ce numéro que la tablette
+   * confirme, pour qu'une confirmation n'efface jamais une photo plus récente
+   * que celle qu'elle a reçue. Le temps restant voyage dans X-Relais-Reste,
+   * pour que le compte à rebours de la tablette ne dérive pas.
+   *
+   * Seule une tablette qui ANNONCE sa confirmation (X-Relais-Confirmation: 1)
+   * voit la photo rester après l'envoi. Les autres la reçoivent à l'ancienne,
+   * effacée au moment où elle part : une page ouverte avant la mise en ligne
+   * de la confirmation garde son ancien code tant qu'on ne la recharge pas.
+   * Resservie à chaque passage, un quart d'heure durant, la même photo y
+   * repartait chaque fois vers /ia/photo — autant de copies du visage sur le
+   * disque — et l'aperçu repartait de zéro toutes les secondes et demie.
    */
   app.get("/ia/relais", async (c) => {
     const ligne = await relaisDuJeton(c);
@@ -332,18 +349,60 @@ export function mountRelaisPhotoRoutes(app: Hono): void {
       // suivante sera servie au prochain passage de la tablette.
       return c.body(null, 204, entetes);
     }
-    // La condition sur le chemin compte : si le téléphone a déposé une autre
-    // photo entre-temps, c'est elle qui reste en attente, pas un vide.
-    await db
-      .update(relais)
-      .set({ photoPath: null })
-      .where(and(eq(relais.id, ligne.id), eq(relais.photoPath, ligne.photoPath!)));
-    await effacerFichier(ligne.photoPath);
+    if (c.req.header("X-Relais-Confirmation") !== "1") {
+      // La condition sur le chemin compte : si le téléphone a déposé une
+      // autre photo entre-temps, c'est elle qui reste en attente, pas un vide.
+      await db
+        .update(relais)
+        .set({ photoPath: null })
+        .where(and(eq(relais.id, ligne.id), eq(relais.photoPath, ligne.photoPath!)));
+      await effacerFichier(ligne.photoPath);
+    }
     return c.body(new Uint8Array(donnees), 200, {
       ...entetes,
       "Content-Type": "image/jpeg",
       "X-Content-Type-Options": "nosniff",
+      "X-Relais-Envoi": String(ligne.envois),
     });
+  });
+
+  /**
+   * La tablette confirme avoir reçu la photo n° `envoi` (corps JSON).
+   * En-tête X-Relais-Jeton.
+   *
+   * La photo est alors effacée du serveur — seulement si c'est TOUJOURS
+   * celle-là qui attend : si le téléphone en a déposé une autre entre-temps,
+   * c'est elle qui compte, et la réponse le dit (`autre: true`) pour que la
+   * tablette repasse la chercher au lieu de s'arrêter là.
+   *
+   * Le code, lui, reste ouvert jusqu'à son échéance : le client qui s'est
+   * trompé de photo en renvoie une autre depuis la même page, et la tablette
+   * la reçoit quand la vendeuse le lui demande.
+   */
+  app.post("/ia/relais/recue", async (c) => {
+    const ligne = await relaisDuJeton(c);
+    if (!ligne) return c.json({ error: "Relais inconnu." }, 404);
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const envoi = Number(b.envoi);
+    if (!Number.isInteger(envoi) || envoi < 1)
+      return c.json({ error: "Numéro de photo invalide." }, 400);
+
+    // Sous le verrou de la ligne, comme le dépôt : une photo qui arriverait à
+    // cet instant attend que la confirmation soit tranchée, et ne peut pas
+    // être effacée à la place de celle-ci.
+    const { effacee, autre } = await db.transaction(async (tx) => {
+      const [verrou] = await tx
+        .select({ envois: relais.envois, photoPath: relais.photoPath })
+        .from(relais)
+        .where(eq(relais.id, ligne.id))
+        .for("update");
+      if (!verrou?.photoPath) return { effacee: null, autre: false };
+      if (verrou.envois !== envoi) return { effacee: null, autre: true };
+      await tx.update(relais).set({ photoPath: null }).where(eq(relais.id, ligne.id));
+      return { effacee: verrou.photoPath, autre: false };
+    });
+    await effacerFichier(effacee);
+    return c.json({ ok: true, autre });
   });
 
   /** La tablette renonce (Annuler, Nouveau code, création lancée). */
@@ -387,7 +446,7 @@ export function mountRelaisPhotoRoutes(app: Hono): void {
    * rien de ce que portait le fichier d'origine, position GPS comprise.
    *
    * Une nouvelle photo REMPLACE celle que la tablette n'aurait pas encore
-   * prise : le client qui s'est trompé renvoie la bonne, c'est elle qui compte.
+   * reçue : le client qui s'est trompé renvoie la bonne, c'est elle qui compte.
    */
   app.post(
     "/ia/relais/:code/photo",
@@ -427,24 +486,49 @@ export function mountRelaisPhotoRoutes(app: Hono): void {
 
       const nom = `${PREFIXE_RELAIS}${randomUUID()}.jpg`;
       await writeFile(resolve(IA_DIR, nom), photo.donnees);
-      // Revérifié au moment d'écrire : la tablette a pu annuler, ou le code
-      // expirer, pendant que la photo montait.
-      const [pris] = await db
-        .update(relais)
-        .set({
-          photoPath: `ia/${nom}`,
-          envois: raw`${relais.envois} + 1`,
-          recueAt: new Date(),
-        })
-        .where(and(eq(relais.id, ligne.id), gt(relais.expiresAt, new Date())))
-        .returning({ envois: relais.envois });
-      if (!pris) {
+      // Le remplacement se fait SOUS LE VERROU de la ligne : la photo qu'on
+      // remplace est lue au même instant que l'on écrit la nouvelle. Lue plus
+      // haut, avant l'envoi, elle était la même pour deux envois simultanés
+      // — et la photo du premier, écrasée par le second sans être effacée,
+      // restait sur le disque sans que rien ne la désigne plus. Tout est
+      // revérifié ici : la tablette a pu annuler, le code expirer, ou le
+      // plafond d'envois être atteint pendant que la photo montait.
+      const issue = await db.transaction(async (tx) => {
+        const [verrou] = await tx
+          .select({
+            envois: relais.envois,
+            photoPath: relais.photoPath,
+            expiresAt: relais.expiresAt,
+          })
+          .from(relais)
+          .where(eq(relais.id, ligne.id))
+          .for("update");
+        if (!verrou || verrou.expiresAt.getTime() <= Date.now())
+          return { refus: "expire" as const };
+        if (verrou.envois >= ENVOIS_PAR_RELAIS) return { refus: "trop" as const };
+        const [pris] = await tx
+          .update(relais)
+          .set({
+            photoPath: `ia/${nom}`,
+            envois: raw`${relais.envois} + 1`,
+            recueAt: new Date(),
+          })
+          .where(eq(relais.id, ligne.id))
+          .returning({ envois: relais.envois });
+        return { envois: pris!.envois, precedente: verrou.photoPath };
+      });
+      if ("refus" in issue) {
         await effacerFichier(`ia/${nom}`);
-        return c.json({ error: "Ce code a expiré." }, 410);
+        return issue.refus === "expire"
+          ? c.json({ error: "Ce code a expiré." }, 410)
+          : c.json(
+              { error: "Trop de photos sur ce code : demandez-en un nouveau sur la tablette." },
+              429,
+            );
       }
-      // La photo précédente, si la tablette ne l'avait pas encore prise.
-      await effacerFichier(ligne.photoPath);
-      return c.json({ ok: true, envois: pris.envois });
+      // La photo remplacée, si la tablette ne l'avait pas encore reçue.
+      await effacerFichier(issue.precedente);
+      return c.json({ ok: true, envois: issue.envois });
     },
   );
 }

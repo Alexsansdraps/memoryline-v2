@@ -39,6 +39,14 @@ export default function EnvoiPhotoTelephone(props: {
   const [erreur, setErreur] = createSignal<string | null>(null);
   /** La vignette de la photo choisie : le client voit que c'est la bonne. */
   const [vignette, setVignette] = createSignal<string | null>(null);
+  /**
+   * Le rang de la dernière photo partie sur ce code. La première s'affiche
+   * d'elle-même sur la tablette ; une fois celle-ci reçue, la tablette cesse
+   * d'écouter, et la suivante attend que le stand la remette à l'écoute : le
+   * message le dit. Le rang vient du serveur, pour rester juste après un
+   * rechargement de la page ; à défaut, on compte ici.
+   */
+  const [envoyees, setEnvoyees] = createSignal(0);
 
   function changerVignette(url: string | null) {
     const ancienne = vignette();
@@ -81,10 +89,11 @@ export default function EnvoiPhotoTelephone(props: {
     changerVignette(URL.createObjectURL(fichier));
     setPourcent(0);
     try {
-      await envoyerPhotoTelephone(props.code, fichier, (etape, p) => {
+      const rang = await envoyerPhotoTelephone(props.code, fichier, (etape, p) => {
         setEtat(etape);
         setPourcent(p);
       });
+      setEnvoyees((n) => Math.max(n + 1, rang));
       setEtat("envoye");
     } catch (e) {
       const cause = e instanceof ErreurEnvoiTelephone ? e.code : "reseau";
@@ -166,7 +175,7 @@ export default function EnvoiPhotoTelephone(props: {
 
         <Show when={etat() === "envoye"}>
           <p class="mt-6 text-center text-2xl" role="status">
-            {tr("photo.envoyee")}
+            {tr(envoyees() > 1 ? "photo.envoyee_autre" : "photo.envoyee")}
           </p>
         </Show>
 

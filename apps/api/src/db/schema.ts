@@ -1834,8 +1834,9 @@ export const aiPrompts = pgTable(
  * où le client envoie sa photo — sans que personne comprenne pourquoi.
  *
  * La ligne ne porte AUCUNE donnée personnelle : un code, l'empreinte d'un
- * jeton, un compteur. La photo elle-même vit sur le disque le temps que la
- * tablette la prenne, et pas une minute de plus.
+ * jeton, un compteur. La photo elle-même vit sur le disque jusqu'à ce que
+ * la tablette confirme l'avoir reçue, et jamais au-delà de l'expiration du
+ * code.
  */
 export const aiPhotoRelays = pgTable(
   "ia_relais_photo",
@@ -1856,7 +1857,10 @@ export const aiPhotoRelays = pgTable(
     standId: integer("stand_id")
       .notNull()
       .references(() => stands.id, { onDelete: "cascade" }),
-    /** La dernière photo reçue, en attente de la tablette (« ia/relais-….jpg »). */
+    /**
+     * La dernière photo reçue (« ia/relais-….jpg »), tant que la tablette n'a
+     * pas confirmé l'avoir reçue.
+     */
     photoPath: text("photo_path"),
     /** Photos reçues sur ce code : borne les envois d'une même session. */
     envois: integer("envois").notNull().default(0),

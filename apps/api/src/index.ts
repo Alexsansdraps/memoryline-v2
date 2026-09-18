@@ -140,7 +140,7 @@ import {
   mountOrdreAffichageRoutes,
   ordreManuelDuGenre,
 } from "./ordre-affichage.js";
-import { mountIaRoutes } from "./ia.js";
+import { demarrerPurgeIa, mountIaRoutes } from "./ia.js";
 import { demarrerMenageRelais, mountRelaisPhotoRoutes } from "./ia-relais.js";
 import { mountContact } from "./contact.js";
 
@@ -2723,6 +2723,10 @@ serve({ fetch: app.fetch, port }, (info) => {
   // Le ménage des photos relayées du téléphone à la tablette : chacune
   // disparaît au plus tard une minute après l'expiration de son code.
   demarrerMenageRelais();
+  // La purge des photos de visiteurs (apps/api/src/ia.ts) : au démarrage,
+  // puis toutes les heures. Sans elle, une photo envoyée pour un aperçu
+  // restait sur le disque tant que personne ne cliquait au back-office.
+  demarrerPurgeIa();
 });
 
 export type AppType = typeof app;

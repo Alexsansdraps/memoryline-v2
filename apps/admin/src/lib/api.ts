@@ -1065,6 +1065,27 @@ export interface StatsIA {
 }
 
 /**
+ * Ce que la purge des photos de visiteurs a effacé — ou, en simulation,
+ * effacerait. La même purge passe d'elle-même toutes les heures dans l'API.
+ */
+export interface BilanPurgeIa {
+  jours: number;
+  simulation: boolean;
+  /** Générations jamais achetées vidées de leurs fichiers. */
+  lignes: number;
+  /** Fichiers de ces générations : photo, aperçu, pleine définition, impression. */
+  fichiers: number;
+  /** Photos qui n'ont servi à aucune génération. */
+  orphelins: number;
+  /** Photos du relais téléphone → tablette restées sur le disque. */
+  relais: number;
+  /** L'âge, en heures, à partir duquel une photo inutilisée est effacée. */
+  heuresPhotosInutilisees: number;
+  /** Pourquoi la purge n'a rien fait, quand elle n'a rien fait exprès. */
+  motif: string | null;
+}
+
+/**
  * Une carte cadeau : de l'argent déjà encaissé, à rendre en affiches.
  *
  * `initialAmountCents` ne bouge jamais, c'est ce qui a été payé le jour de la
@@ -2147,14 +2168,12 @@ export function adminApi(request?: Request) {
       id: number | string,
       data: { aiEnabled: boolean; aiStylePrompt: string | null },
     ) => req<ProduitIA>("POST", `/admin/products/${id}/ia`, data, cookie),
-    /** Efface les photos et aperçus des générations jamais achetées. */
-    purgerIa: () =>
-      req<{ ok: boolean; supprimees: number }>(
-        "POST",
-        "/admin/ia/purger",
-        {},
-        cookie,
-      ),
+    /**
+     * Lance la purge des photos de visiteurs sans attendre son passage
+     * horaire. `simulation` compte ce qui partirait, sans rien effacer.
+     */
+    purgerIa: (simulation = false) =>
+      req<BilanPurgeIa>("POST", "/admin/ia/purger", { simulation }, cookie),
 
     /* --- Cartes cadeaux -------------------------------------------------- */
 

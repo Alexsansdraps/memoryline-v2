@@ -193,7 +193,8 @@ export const ui = {
     "ia.relais.reste": "Code valable encore {minutes} min",
     "ia.relais.recue": "Photo reçue du téléphone.",
     "ia.relais.recue_aide":
-      "Une autre photo envoyée à la même adresse remplacera celle-ci :",
+      "Pas la bonne ? Touchez le bouton ci-dessous, puis envoyez-en une autre depuis la même page du téléphone.",
+    "ia.relais.autre": "Recevoir une autre photo",
     "ia.relais.expire": "Ce code a expiré. Demandez-en un nouveau.",
     "ia.relais.nouveau_code": "Nouveau code",
     "ia.relais.annuler": "Annuler",
@@ -217,9 +218,12 @@ export const ui = {
     "photo.preparation": "Préparation de la photo…",
     "photo.envoi": "Envoi… {pourcent} %",
     "photo.envoyee": "C'est envoyé ! Regardez la tablette.",
+    /* Une fois la première photo reçue, la tablette n'écoute plus : la
+       suivante attend qu'on la remette à l'écoute. */
+    "photo.envoyee_autre": "C'est envoyé ! Demandez au stand de la recevoir sur la tablette.",
     "photo.autre": "Envoyer une autre photo",
     "photo.autre_aide":
-      "La dernière photo envoyée remplace la précédente sur la tablette.",
+      "Une autre photo ? Envoyez-la, puis demandez au stand de la recevoir sur la tablette.",
     "photo.apercu_alt": "La photo choisie",
     "photo.code_inconnu":
       "Ce code ne correspond à aucun envoi en cours. Vérifiez l'adresse affichée sur la tablette.",
@@ -651,7 +655,8 @@ export const ui = {
     "ia.relais.reste": "Code valid for {minutes} more min",
     "ia.relais.recue": "Photo received from the phone.",
     "ia.relais.recue_aide":
-      "Another photo sent to the same address will replace this one:",
+      "Not the right one? Tap the button below, then send another one from the same page on the phone.",
+    "ia.relais.autre": "Receive another photo",
     "ia.relais.expire": "This code has expired. Ask for a new one.",
     "ia.relais.nouveau_code": "New code",
     "ia.relais.annuler": "Cancel",
@@ -673,9 +678,10 @@ export const ui = {
     "photo.preparation": "Preparing the photo…",
     "photo.envoi": "Sending… {pourcent}%",
     "photo.envoyee": "Sent! Look at the tablet.",
+    "photo.envoyee_autre": "Sent! Ask the stand to receive it on the tablet.",
     "photo.autre": "Send another photo",
     "photo.autre_aide":
-      "The last photo sent replaces the previous one on the tablet.",
+      "Another photo? Send it, then ask the stand to receive it on the tablet.",
     "photo.apercu_alt": "The chosen photo",
     "photo.code_inconnu":
       "This code doesn't match any upload in progress. Check the address shown on the tablet.",
@@ -1102,7 +1108,8 @@ export const ui = {
     "ia.relais.reste": "Code noch {minutes} Min. gültig",
     "ia.relais.recue": "Foto vom Handy erhalten.",
     "ia.relais.recue_aide":
-      "Ein weiteres Foto an dieselbe Adresse ersetzt dieses:",
+      "Nicht das richtige? Tippen Sie auf die Schaltfläche unten und senden Sie dann ein anderes von derselben Seite auf dem Handy.",
+    "ia.relais.autre": "Weiteres Foto empfangen",
     "ia.relais.expire": "Dieser Code ist abgelaufen. Fordern Sie einen neuen an.",
     "ia.relais.nouveau_code": "Neuer Code",
     "ia.relais.annuler": "Abbrechen",
@@ -1124,9 +1131,10 @@ export const ui = {
     "photo.preparation": "Foto wird vorbereitet…",
     "photo.envoi": "Wird gesendet… {pourcent} %",
     "photo.envoyee": "Gesendet! Schauen Sie auf das Tablet.",
+    "photo.envoyee_autre": "Gesendet! Bitten Sie am Stand darum, es auf dem Tablet zu empfangen.",
     "photo.autre": "Ein anderes Foto senden",
     "photo.autre_aide":
-      "Das zuletzt gesendete Foto ersetzt das vorherige auf dem Tablet.",
+      "Ein anderes Foto? Senden Sie es und bitten Sie dann am Stand darum, es auf dem Tablet zu empfangen.",
     "photo.apercu_alt": "Das ausgewählte Foto",
     "photo.code_inconnu":
       "Dieser Code gehört zu keiner laufenden Übertragung. Prüfen Sie die Adresse auf dem Tablet.",
@@ -1555,7 +1563,8 @@ export const ui = {
     "ia.relais.reste": "Codice valido ancora {minutes} min",
     "ia.relais.recue": "Foto ricevuta dal telefono.",
     "ia.relais.recue_aide":
-      "Un'altra foto inviata allo stesso indirizzo sostituirà questa:",
+      "Non è quella giusta? Tocca il pulsante qui sotto, poi inviane un'altra dalla stessa pagina sul telefono.",
+    "ia.relais.autre": "Ricevi un'altra foto",
     "ia.relais.expire": "Questo codice è scaduto. Chiedine uno nuovo.",
     "ia.relais.nouveau_code": "Nuovo codice",
     "ia.relais.annuler": "Annulla",
@@ -1577,9 +1586,10 @@ export const ui = {
     "photo.preparation": "Preparazione della foto…",
     "photo.envoi": "Invio… {pourcent} %",
     "photo.envoyee": "Inviata! Guarda il tablet.",
+    "photo.envoyee_autre": "Inviata! Chiedi allo stand di riceverla sul tablet.",
     "photo.autre": "Invia un'altra foto",
     "photo.autre_aide":
-      "L'ultima foto inviata sostituisce la precedente sul tablet.",
+      "Un'altra foto? Inviala, poi chiedi allo stand di riceverla sul tablet.",
     "photo.apercu_alt": "La foto scelta",
     "photo.code_inconnu":
       "Questo codice non corrisponde a nessun invio in corso. Controlla l'indirizzo mostrato sul tablet.",
@@ -2005,7 +2015,8 @@ export const ui = {
     "ia.relais.reste": "Código válido durante {minutes} min más",
     "ia.relais.recue": "Foto recibida del móvil.",
     "ia.relais.recue_aide":
-      "Otra foto enviada a la misma dirección sustituirá a esta:",
+      "¿No es la correcta? Toca el botón de abajo y envía otra desde la misma página del móvil.",
+    "ia.relais.autre": "Recibir otra foto",
     "ia.relais.expire": "Este código ha caducado. Pide uno nuevo.",
     "ia.relais.nouveau_code": "Nuevo código",
     "ia.relais.annuler": "Cancelar",
@@ -2027,9 +2038,10 @@ export const ui = {
     "photo.preparation": "Preparando la foto…",
     "photo.envoi": "Enviando… {pourcent} %",
     "photo.envoyee": "¡Enviada! Mira la tableta.",
+    "photo.envoyee_autre": "¡Enviada! Pide en el puesto que la reciban en la tableta.",
     "photo.autre": "Enviar otra foto",
     "photo.autre_aide":
-      "La última foto enviada sustituye a la anterior en la tableta.",
+      "¿Otra foto? Envíala y pide en el puesto que la reciban en la tableta.",
     "photo.apercu_alt": "La foto elegida",
     "photo.code_inconnu":
       "Este código no corresponde a ningún envío en curso. Comprueba la dirección que aparece en la tableta.",
