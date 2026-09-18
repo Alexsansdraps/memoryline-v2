@@ -126,8 +126,15 @@ export async function reduirePhoto(fichier: File): Promise<File | null> {
     );
     if (!blob || !blob.size) return null;
     // Si la « réduction » a grossi le fichier — une petite image déjà
-    // compressée au maximum — on garde l'original.
-    if (blob.size >= fichier.size && fichier.size <= POIDS_PHOTO_MAX) return null;
+    // compressée au maximum — on garde l'original. Sauf s'il est dans un
+    // format que le serveur refuse (le HEIC d'un iPhone, que Safari sait
+    // décoder) : le JPEG, même plus lourd, est alors la seule photo qui passe.
+    if (
+      blob.size >= fichier.size &&
+      fichier.size <= POIDS_PHOTO_MAX &&
+      (TYPES_PHOTO as readonly string[]).includes(fichier.type)
+    )
+      return null;
     return new File([blob], "photo.jpg", { type: "image/jpeg" });
   } catch {
     return null;
@@ -283,6 +290,203 @@ export function urlApercu(publicId: string): string {
 /** Rend absolue une adresse d'aperçu renvoyée par l'API (souvent relative). */
 export function apercuAbsolu(url: string): string {
   return /^https?:\/\//.test(url) ? url : `${PUBLIC_API_URL}${url}`;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Relais de photo : du téléphone du client à la tablette du stand            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Au stand, la photo est dans le téléphone du client. La tablette ouvre un
+ * relais (un code court, montré en QR et en adresse), le téléphone y dépose
+ * la photo, la tablette la relève. Voir apps/api/src/ia-relais.ts.
+ */
+
+/** Un relais ouvert par la tablette. */
+export interface RelaisOuvert {
+  /** Le code court de l'adresse : /photo/K7M2QX. */
+  code: string;
+  /** Le chemin de la page du téléphone, sans préfixe de langue. */
+  chemin: string;
+  /** Ce qui permet à la tablette, et à elle seule, de relever la photo. */
+  jeton: string;
+  resteSecondes: number;
+}
+
+/**
+ * Pourquoi un relais n'a pas pu s'ouvrir : le code du stand refusé (fermé,
+ * changé, mal tapé), trop de demandes, ou pas de réseau.
+ */
+export type EchecRelais = "code_stand" | "rafale" | "injoignable";
+
+export class ErreurRelais extends Error {
+  readonly code: EchecRelais;
+  constructor(code: EchecRelais) {
+    super(code);
+    this.name = "ErreurRelais";
+    this.code = code;
+  }
+}
+
+/** Ouvre un relais. Le code du stand voyage dans un en-tête, comme au panier. */
+export async function ouvrirRelais(codeStand: string): Promise<RelaisOuvert> {
+  let reponse: Response;
+  try {
+    reponse = await fetch(`${PUBLIC_API_URL}/ia/relais`, {
+      method: "POST",
+      headers: { "X-Salon-Code": codeStand },
+    });
+  } catch {
+    throw new ErreurRelais("injoignable");
+  }
+  if (reponse.status === 403) throw new ErreurRelais("code_stand");
+  if (reponse.status === 429) throw new ErreurRelais("rafale");
+  if (!reponse.ok) throw new ErreurRelais("injoignable");
+  const d = (await reponse.json().catch(() => null)) as Partial<RelaisOuvert> | null;
+  if (!d?.code || !d.jeton || !d.chemin) throw new ErreurRelais("injoignable");
+  return {
+    code: d.code,
+    chemin: d.chemin,
+    jeton: d.jeton,
+    resteSecondes: Number(d.resteSecondes) || 0,
+  };
+}
+
+/** Ce que la tablette trouve en passant relever le relais. */
+export type ReleveRelais =
+  | { etat: "attente"; resteSecondes: number | null }
+  | { etat: "photo"; fichier: File; resteSecondes: number | null }
+  | { etat: "expire" };
+
+/**
+ * Passe voir si le téléphone a déposé une photo.
+ *
+ * La photo revient comme un fichier, exactement comme si on l'avait choisie
+ * sur la tablette : l'écran la traite ensuite par le même chemin. Une erreur
+ * réseau LÈVE — l'appelant réessaie au passage suivant, un wifi de marché qui
+ * hoquette ne ferme pas le relais.
+ */
+export async function releverRelais(jeton: string, nomFichier: string): Promise<ReleveRelais> {
+  const reponse = await fetch(`${PUBLIC_API_URL}/ia/relais`, {
+    headers: { "X-Relais-Jeton": jeton },
+    cache: "no-store",
+  });
+  if (reponse.status === 404 || reponse.status === 410) return { etat: "expire" };
+  const reste = Number(reponse.headers.get("X-Relais-Reste"));
+  const resteSecondes = Number.isFinite(reste) && reponse.headers.has("X-Relais-Reste") ? reste : null;
+  if (reponse.status === 204) return { etat: "attente", resteSecondes };
+  if (!reponse.ok) throw new Error(`relais HTTP ${reponse.status}`);
+  const blob = await reponse.blob();
+  return {
+    etat: "photo",
+    fichier: new File([blob], nomFichier, { type: "image/jpeg" }),
+    resteSecondes,
+  };
+}
+
+/**
+ * Ferme le relais : la photo qui attendrait encore est effacée du serveur, le
+ * code expire. `keepalive` : la demande part même si la page se ferme.
+ * Silencieuse — le ménage du serveur finit de toute façon le travail.
+ */
+export async function fermerRelais(jeton: string): Promise<void> {
+  try {
+    await fetch(`${PUBLIC_API_URL}/ia/relais`, {
+      method: "DELETE",
+      headers: { "X-Relais-Jeton": jeton },
+      keepalive: true,
+    });
+  } catch {
+    /* le code expirera de lui-même */
+  }
+}
+
+/** Ce que le téléphone apprend de son code avant de proposer l'envoi. */
+export type EtatCodeRelais = "valide" | "inconnu" | "expire" | "rafale" | "injoignable";
+
+export async function verifierCodeRelais(code: string): Promise<EtatCodeRelais> {
+  let reponse: Response;
+  try {
+    reponse = await fetch(`${PUBLIC_API_URL}/ia/relais/${encodeURIComponent(code)}`, {
+      cache: "no-store",
+    });
+  } catch {
+    return "injoignable";
+  }
+  if (reponse.ok) return "valide";
+  if (reponse.status === 404) return "inconnu";
+  if (reponse.status === 410) return "expire";
+  if (reponse.status === 429) return "rafale";
+  return "injoignable";
+}
+
+/** Pourquoi une photo n'est pas partie du téléphone. */
+export type EchecEnvoiTelephone =
+  | "inconnu"
+  | "expire"
+  | "format"
+  | "trop_lourde"
+  | "rafale"
+  | "reseau";
+
+export class ErreurEnvoiTelephone extends Error {
+  readonly code: EchecEnvoiTelephone;
+  constructor(code: EchecEnvoiTelephone) {
+    super(code);
+    this.name = "ErreurEnvoiTelephone";
+    this.code = code;
+  }
+}
+
+function causeEnvoiTelephone(statut: number): EchecEnvoiTelephone {
+  if (statut === 404) return "inconnu";
+  if (statut === 410) return "expire";
+  if (statut === 413) return "trop_lourde";
+  if (statut === 400 || statut === 415) return "format";
+  if (statut === 429) return "rafale";
+  return "reseau";
+}
+
+/**
+ * Envoie la photo du téléphone vers la tablette.
+ *
+ * Réduite AVANT de partir, comme sur la boutique : une photo de 12 Mo sur le
+ * réseau 4G saturé d'un marché de Noël, c'est une minute d'attente ; réduite,
+ * quelques secondes. Le serveur la ré-encode de toute façon.
+ *
+ * XMLHttpRequest plutôt que fetch : c'est le seul qui dise où en est un
+ * envoi, et une barre qui avance est ce qui retient le client de réessayer
+ * pendant que sa photo monte.
+ */
+export async function envoyerPhotoTelephone(
+  code: string,
+  fichier: File,
+  progression: (etape: "preparation" | "envoi", pourcent: number) => void,
+): Promise<void> {
+  progression("preparation", 0);
+  const aEnvoyer = (await reduirePhoto(fichier)) ?? fichier;
+  const cause = verifierPhoto(aEnvoyer);
+  if (cause === "format" || cause === "trop_lourde") throw new ErreurEnvoiTelephone(cause);
+
+  progression("envoi", 0);
+  const corps = new FormData();
+  corps.append("photo", aEnvoyer, aEnvoyer.name);
+  await new Promise<void>((resoudre, rejeter) => {
+    const requete = new XMLHttpRequest();
+    requete.open("POST", `${PUBLIC_API_URL}/ia/relais/${encodeURIComponent(code)}/photo`);
+    requete.upload.onprogress = (e) => {
+      if (e.lengthComputable) progression("envoi", Math.round((e.loaded / e.total) * 100));
+    };
+    requete.onload = () =>
+      requete.status >= 200 && requete.status < 300
+        ? resoudre()
+        : rejeter(new ErreurEnvoiTelephone(causeEnvoiTelephone(requete.status)));
+    requete.onerror = () => rejeter(new ErreurEnvoiTelephone("reseau"));
+    requete.ontimeout = () => rejeter(new ErreurEnvoiTelephone("reseau"));
+    // Deux minutes : large pour une photo réduite, même sur un réseau lent.
+    requete.timeout = 120_000;
+    requete.send(corps);
+  });
 }
 
 /**

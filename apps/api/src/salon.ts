@@ -35,16 +35,16 @@ import { HORS_VENTES } from "./statuts-vente.js";
  * salon, et se retape sur une tablette. Une lettre ambiguë coûte une minute
  * devant un client qui attend.
  */
-const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+export const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-function nouveauCode(): string {
+export function nouveauCode(): string {
   let code = "";
   for (let i = 0; i < 6; i++) code += ALPHABET[randomInt(ALPHABET.length)];
   return code;
 }
 
 /** Le stand désigné par ce code, s'il en existe un. */
-async function standDuCode(code: string) {
+export async function standDuCode(code: string) {
   const propre = code.trim().toUpperCase();
   if (!propre) return undefined;
   const [stand] = await db
@@ -62,7 +62,7 @@ async function standDuCode(code: string) {
  * la commande n'est pas payée et qu'elle passe sous les yeux de la vendeuse
  * avant d'être imprimée.
  */
-function codeFourni(c: Context): string {
+export function codeFourni(c: Context): string {
   return String(
     c.req.query("code") ?? c.req.header("x-salon-code") ?? "",
   ).trim();

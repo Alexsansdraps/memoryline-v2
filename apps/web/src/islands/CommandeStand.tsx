@@ -2,6 +2,7 @@
 import { createSignal, onMount, Show, type JSX } from "solid-js";
 import { lien, t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
 import { ErreurSalon, getCartId, nouveauCartId, salonApi } from "../lib/api.ts";
+import { codeMemorise, oublierCode, retenirCode } from "../lib/code-stand.ts";
 
 /**
  * La dernière étape, au stand.
@@ -26,35 +27,6 @@ import { ErreurSalon, getCartId, nouveauCartId, salonApi } from "../lib/api.ts";
  * le range dans la tablette et l'ôte aussitôt de la barre d'adresse
  * (Base.astro).
  */
-
-/**
- * Le code du stand, retenu par la tablette : le retaper entre deux clients
- * est intenable un jour de salon. Le nom de la clé date du « salon » ; le
- * changer ferait redemander le code à toutes les tablettes déjà réglées.
- */
-const CLE_CODE = "ml_salon_code";
-
-function codeMemorise(): string | null {
-  try {
-    return localStorage.getItem(CLE_CODE);
-  } catch {
-    return null;
-  }
-}
-function retenirCode(valeur: string) {
-  try {
-    localStorage.setItem(CLE_CODE, valeur);
-  } catch {
-    /* navigation privée : le stand marche, il faudra retaper le code */
-  }
-}
-function oublierCode() {
-  try {
-    localStorage.removeItem(CLE_CODE);
-  } catch {
-    /* rien à oublier */
-  }
-}
 
 /** Une adresse e-mail plausible : la même règle que l'API (salon.ts). */
 const COURRIEL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

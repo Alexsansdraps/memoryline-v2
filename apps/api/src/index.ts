@@ -141,6 +141,7 @@ import {
   ordreManuelDuGenre,
 } from "./ordre-affichage.js";
 import { mountIaRoutes } from "./ia.js";
+import { demarrerMenageRelais, mountRelaisPhotoRoutes } from "./ia-relais.js";
 import { mountContact } from "./contact.js";
 
 const app = new Hono();
@@ -1762,6 +1763,9 @@ mountConfiguratorRoutes(app);
 // filigrané, back-office. Monté APRÈS les autres : « /admin/products/:id/ia »
 // ne doit pas être avalé par une route paramétrée déclarée plus haut.
 mountIaRoutes(app);
+// La photo du client, de son téléphone à la tablette du stand
+// (apps/api/src/ia-relais.ts). Routes publiques /ia/relais*, aucune /admin.
+mountRelaisPhotoRoutes(app);
 mountAnalytiqueRoutes(app);
 mountOrdreAffichageRoutes(app);
 
@@ -2716,6 +2720,9 @@ serve({ fetch: app.fetch, port }, (info) => {
   // passage toutes les cinq minutes, qui ne fait rien tant que la marchande
   // n'a pas allumé la relance automatique dans le back-office.
   demarrerRelancePanier();
+  // Le ménage des photos relayées du téléphone à la tablette : chacune
+  // disparaît au plus tard une minute après l'expiration de son code.
+  demarrerMenageRelais();
 });
 
 export type AppType = typeof app;

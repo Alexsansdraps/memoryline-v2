@@ -45,7 +45,7 @@ import {
 /** Mêmes assets que le reste de l'API (cf. ASSETS_DIR dans index.ts). */
 const ASSETS_DIR = resolve(fileURLToPath(import.meta.url), "../../../../data/assets");
 /** Sous-dossier dédié : rien de ce qui vit ici n'est servi par /assets/:file. */
-const IA_DIR = resolve(ASSETS_DIR, "ia");
+export const IA_DIR = resolve(ASSETS_DIR, "ia");
 await mkdir(IA_DIR, { recursive: true });
 
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
@@ -254,7 +254,7 @@ function rafaleDepassee(ip: string, parMinute: number): boolean {
   return recentes.length > parMinute;
 }
 
-function ipDeLaRequete(c: Context): string {
+export function ipDeLaRequete(c: Context): string {
   return (
     c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
     c.req.header("x-real-ip") ||
@@ -286,7 +286,7 @@ async function depenseDuMoisCents(): Promise<number> {
  * Renvoie null si la valeur essaie de sortir du dossier des assets : les
  * chemins viennent de la base, mais un jour l'un d'eux viendra d'ailleurs.
  */
-function cheminDisque(relatif: string | null | undefined): string | null {
+export function cheminDisque(relatif: string | null | undefined): string | null {
   if (!relatif) return null;
   const chemin = resolve(ASSETS_DIR, relatif);
   return chemin.startsWith(IA_DIR) ? chemin : null;
@@ -622,7 +622,10 @@ export async function purgerGenerationsIa(
       ),
     );
 
-  let fichiers = 0;
+  // Les photos relayées depuis un téléphone que rien n'a effacées — une API
+  // arrêtée pendant leur session, un stand supprimé entre-temps. Une heure
+  // suffit largement : elles ne vivent jamais plus d'un quart d'heure.
+  let fichiers = await balayerPhotosRelayees(60 * 60_000, simulation);
   for (const g of anciennes) {
     for (const relatif of [g.sourcePath, g.previewPath, g.fullPath]) {
       const chemin = cheminDisque(relatif);
@@ -647,16 +650,100 @@ export async function purgerGenerationsIa(
   return { lignes: anciennes.length, fichiers, jours };
 }
 
+/**
+ * Le nom des photos relayées depuis un téléphone (ia-relais.ts) commence par
+ * ce préfixe. C'est ce qui permet de les retrouver sans la base : elles ne
+ * figurent dans aucune génération, la purge ci-dessus ne les verrait jamais.
+ */
+export const PREFIXE_RELAIS = "relais-";
+
+/**
+ * Efface les photos relayées plus vieilles que `ageMs`.
+ *
+ * Une photo relayée ne vit que le temps de sa session — un quart d'heure au
+ * plus, puis la tablette l'a prise ou le code a expiré. Passé ce délai, un
+ * fichier « relais-* » encore sur le disque est un reste, par définition : on
+ * n'a donc pas besoin de la base pour décider de l'effacer. C'est ce qui rend
+ * ce balayage sûr même quand la base et le disque ne sont plus d'accord.
+ */
+export async function balayerPhotosRelayees(
+  ageMs: number,
+  simulation = false,
+): Promise<number> {
+  const limite = Date.now() - ageMs;
+  let effacees = 0;
+  let noms: string[];
+  try {
+    noms = await readdir(IA_DIR);
+  } catch {
+    return 0;
+  }
+  for (const nom of noms) {
+    if (!nom.startsWith(PREFIXE_RELAIS) || !nom.endsWith(".jpg")) continue;
+    const chemin = resolve(IA_DIR, nom);
+    try {
+      if ((await stat(chemin)).mtimeMs >= limite) continue;
+      if (!simulation) await rm(chemin, { force: true });
+      effacees++;
+    } catch {
+      // Effacé entre-temps par la tablette ou par le ménage : rien à faire.
+    }
+  }
+  return effacees;
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Routes                                                                    */
 /* -------------------------------------------------------------------------- */
 
-const PHOTO_MAX_OCTETS = 12 * 1024 * 1024;
+export const PHOTO_MAX_OCTETS = 12 * 1024 * 1024;
 const PHOTO_FORMATS = new Set(["jpeg", "png", "webp"]);
 /** Au-delà, on paierait des pixels que le modèle n'utilise pas. */
 const PHOTO_COTE_MAX = 2048;
 /** La précision du client est reprise telle quelle dans la consigne : on la borne. */
 const PRECISION_MAX = 400;
+
+export type PhotoNormalisee =
+  | { ok: true; donnees: Buffer; largeur: number; hauteur: number }
+  | { ok: false; erreur: string };
+
+/**
+ * Remet d'aplomb une photo reçue d'un client : c'est sharp qui dit ce qu'est
+ * le fichier, jamais le type annoncé par le navigateur.
+ *
+ * L'image est réduite à 2048 px au grand côté et RÉ-ENCODÉE en JPEG, ce qui a
+ * un effet de bord voulu — les métadonnées EXIF disparaissent, dont la
+ * position GPS que porte toute photo de vacances prise au téléphone. Sharp ne
+ * recopie aucune métadonnée tant qu'on ne le lui demande pas.
+ *
+ * Partagée par l'envoi depuis la boutique (/ia/photo) et par le relais du
+ * téléphone vers la tablette (ia-relais.ts) : une photo qui arrive par le
+ * téléphone ne doit pas échapper au moindre de ces contrôles.
+ */
+export async function normaliserPhoto(brut: Buffer): Promise<PhotoNormalisee> {
+  try {
+    const meta = await sharp(brut).metadata();
+    if (!meta.format || !PHOTO_FORMATS.has(meta.format))
+      return { ok: false, erreur: "Format refusé : envoyez un JPEG, un PNG ou un WebP" };
+    const donnees = await sharp(brut)
+      // .rotate() applique l'orientation EXIF AVANT qu'on la jette, sinon
+      // les photos prises à la verticale arriveraient couchées.
+      .rotate()
+      .resize({
+        width: PHOTO_COTE_MAX,
+        height: PHOTO_COTE_MAX,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .flatten({ background: "#ffffff" })
+      .jpeg({ quality: 90 })
+      .toBuffer();
+    const apres = await sharp(donnees).metadata();
+    return { ok: true, donnees, largeur: apres.width ?? 0, hauteur: apres.height ?? 0 };
+  } catch {
+    return { ok: false, erreur: "Fichier illisible : ce n'est pas une image valide" };
+  }
+}
 
 export function mountIaRoutes(app: Hono): void {
   /* ---------------------------------------------------------------------- */
@@ -671,10 +758,9 @@ export function mountIaRoutes(app: Hono): void {
    * la garder entière en mémoire des deux côtés. Le navigateur, lui, sait
    * envoyer un File sans rien encoder.
    *
-   * Le type DÉCLARÉ n'est pas cru : c'est sharp qui dit ce qu'est le fichier.
-   * L'image est réduite à 2048 px au grand côté et ré-encodée en JPEG, ce qui
-   * a un effet de bord voulu — les métadonnées EXIF disparaissent, dont la
-   * position GPS que porte toute photo de vacances prise au téléphone.
+   * Le type DÉCLARÉ n'est pas cru : c'est sharp qui dit ce qu'est le fichier,
+   * et la photo est réduite puis ré-encodée, métadonnées GPS comprises
+   * effacées (voir `normaliserPhoto`).
    *
    * Renvoie { photo } : le chemin à repasser à /ia/generer.
    */
@@ -697,41 +783,16 @@ export function mountIaRoutes(app: Hono): void {
     if (fichier.size > PHOTO_MAX_OCTETS)
       return c.json({ error: "Photo trop lourde (12 Mo maximum)" }, 413);
 
-    const brut = Buffer.from(await fichier.arrayBuffer());
-    let largeur = 0;
-    let hauteur = 0;
-    let normalisee: Buffer;
-    try {
-      const meta = await sharp(brut).metadata();
-      if (!meta.format || !PHOTO_FORMATS.has(meta.format))
-        return c.json({ error: "Format refusé : envoyez un JPEG, un PNG ou un WebP" }, 415);
-      normalisee = await sharp(brut)
-        // .rotate() applique l'orientation EXIF AVANT qu'on la jette, sinon
-        // les photos prises à la verticale arriveraient couchées.
-        .rotate()
-        .resize({
-          width: PHOTO_COTE_MAX,
-          height: PHOTO_COTE_MAX,
-          fit: "inside",
-          withoutEnlargement: true,
-        })
-        .flatten({ background: "#ffffff" })
-        .jpeg({ quality: 90 })
-        .toBuffer();
-      const apres = await sharp(normalisee).metadata();
-      largeur = apres.width ?? 0;
-      hauteur = apres.height ?? 0;
-    } catch {
-      return c.json({ error: "Fichier illisible : ce n'est pas une image valide" }, 415);
-    }
+    const photo = await normaliserPhoto(Buffer.from(await fichier.arrayBuffer()));
+    if (!photo.ok) return c.json({ error: photo.erreur }, 415);
 
     const nom = `${randomUUID()}.jpg`;
-    await writeFile(resolve(IA_DIR, nom), normalisee);
+    await writeFile(resolve(IA_DIR, nom), photo.donnees);
     return c.json({
       photo: `ia/${nom}`,
-      largeur,
-      hauteur,
-      octets: normalisee.byteLength,
+      largeur: photo.largeur,
+      hauteur: photo.hauteur,
+      octets: photo.donnees.byteLength,
     });
   });
 

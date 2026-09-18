@@ -179,6 +179,56 @@ export const ui = {
     "ia.err.attente":
       "L'affiche met plus longtemps que prévu. Relancez la génération.",
     "ia.err.inconnu": "Quelque chose s'est mal passé. Relancez la génération.",
+    /* Le relais de photo, au stand : la photo part du téléphone du client et
+       arrive sur la tablette (RelaisPhoto.tsx). */
+    "ia.relais.ouvrir": "Envoyer la photo depuis votre téléphone",
+    "ia.relais.ouvrir_aide":
+      "Votre photo est dans votre téléphone ? Scannez un code : elle arrive ici.",
+    "ia.relais.code_stand_aide":
+      "Pour afficher le code, saisissez d'abord le code du stand. La tablette le retient ensuite.",
+    "ia.relais.preparation": "Préparation du code…",
+    "ia.relais.scanner": "Scannez ce code avec l'appareil photo de votre téléphone",
+    "ia.relais.ou_adresse": "ou ouvrez cette adresse :",
+    "ia.relais.attente": "En attente de la photo…",
+    "ia.relais.reste": "Code valable encore {minutes} min",
+    "ia.relais.recue": "Photo reçue du téléphone.",
+    "ia.relais.recue_aide":
+      "Une autre photo envoyée à la même adresse remplacera celle-ci :",
+    "ia.relais.expire": "Ce code a expiré. Demandez-en un nouveau.",
+    "ia.relais.nouveau_code": "Nouveau code",
+    "ia.relais.annuler": "Annuler",
+    "ia.relais.fermer": "Fermer",
+    "ia.relais.reessayer": "Réessayer",
+    "ia.relais.injoignable":
+      "Le code n'a pas pu être créé. Vérifiez la connexion, puis réessayez.",
+    "ia.relais.rafale":
+      "Trop de codes demandés d'affilée. Patientez quelques minutes.",
+    "ia.relais.qr": "QR code de la page d'envoi de la photo",
+    "ia.relais.nom_photo": "Photo du téléphone",
+
+    /* La page du téléphone (/photo/CODE) : le client la lit lui-même, debout
+       devant le stand. */
+    "photo.meta_titre": "Envoyer votre photo — Memory Line",
+    "photo.titre": "Envoyez votre photo",
+    "photo.intro":
+      "Elle s'affichera aussitôt sur la tablette du stand, pour créer votre affiche.",
+    "photo.verification": "Vérification du code…",
+    "photo.choisir": "Prendre ou choisir une photo",
+    "photo.preparation": "Préparation de la photo…",
+    "photo.envoi": "Envoi… {pourcent} %",
+    "photo.envoyee": "C'est envoyé ! Regardez la tablette.",
+    "photo.autre": "Envoyer une autre photo",
+    "photo.autre_aide":
+      "La dernière photo envoyée remplace la précédente sur la tablette.",
+    "photo.apercu_alt": "La photo choisie",
+    "photo.code_inconnu":
+      "Ce code ne correspond à aucun envoi en cours. Vérifiez l'adresse affichée sur la tablette.",
+    "photo.code_expire":
+      "Ce code a expiré. Demandez un nouveau code sur la tablette.",
+    "photo.err.rafale":
+      "Trop d'envois d'affilée. Patientez quelques minutes, puis réessayez.",
+    "photo.err.reseau":
+      "L'envoi n'a pas abouti. Vérifiez votre connexion, puis réessayez.",
 
 
     "panier.titre": "Votre panier",
@@ -589,6 +639,52 @@ export const ui = {
     "ia.err.attente":
       "The poster is taking longer than expected. Start the creation again.",
     "ia.err.inconnu": "Something went wrong. Start the creation again.",
+    "ia.relais.ouvrir": "Send the photo from your phone",
+    "ia.relais.ouvrir_aide":
+      "Is your photo on your phone? Scan a code and it arrives here.",
+    "ia.relais.code_stand_aide":
+      "To show the code, first enter the stand code. The tablet then remembers it.",
+    "ia.relais.preparation": "Preparing the code…",
+    "ia.relais.scanner": "Scan this code with your phone's camera",
+    "ia.relais.ou_adresse": "or open this address:",
+    "ia.relais.attente": "Waiting for the photo…",
+    "ia.relais.reste": "Code valid for {minutes} more min",
+    "ia.relais.recue": "Photo received from the phone.",
+    "ia.relais.recue_aide":
+      "Another photo sent to the same address will replace this one:",
+    "ia.relais.expire": "This code has expired. Ask for a new one.",
+    "ia.relais.nouveau_code": "New code",
+    "ia.relais.annuler": "Cancel",
+    "ia.relais.fermer": "Close",
+    "ia.relais.reessayer": "Try again",
+    "ia.relais.injoignable":
+      "The code could not be created. Check the connection, then try again.",
+    "ia.relais.rafale":
+      "Too many codes requested in a row. Please wait a few minutes.",
+    "ia.relais.qr": "QR code for the photo upload page",
+    "ia.relais.nom_photo": "Photo from the phone",
+
+    "photo.meta_titre": "Send your photo — Memory Line",
+    "photo.titre": "Send your photo",
+    "photo.intro":
+      "It will appear straight away on the stand's tablet, to create your poster.",
+    "photo.verification": "Checking the code…",
+    "photo.choisir": "Take or choose a photo",
+    "photo.preparation": "Preparing the photo…",
+    "photo.envoi": "Sending… {pourcent}%",
+    "photo.envoyee": "Sent! Look at the tablet.",
+    "photo.autre": "Send another photo",
+    "photo.autre_aide":
+      "The last photo sent replaces the previous one on the tablet.",
+    "photo.apercu_alt": "The chosen photo",
+    "photo.code_inconnu":
+      "This code doesn't match any upload in progress. Check the address shown on the tablet.",
+    "photo.code_expire":
+      "This code has expired. Ask for a new code on the tablet.",
+    "photo.err.rafale":
+      "Too many uploads in a row. Please wait a few minutes, then try again.",
+    "photo.err.reseau":
+      "The upload didn't go through. Check your connection, then try again.",
 
 
     "panier.titre": "Your basket",
@@ -994,6 +1090,52 @@ export const ui = {
       "Das Poster dauert länger als erwartet. Starten Sie die Erstellung erneut.",
     "ia.err.inconnu":
       "Etwas ist schiefgelaufen. Starten Sie die Erstellung erneut.",
+    "ia.relais.ouvrir": "Foto vom Handy senden",
+    "ia.relais.ouvrir_aide":
+      "Ist Ihr Foto auf Ihrem Handy? Scannen Sie einen Code – es erscheint hier.",
+    "ia.relais.code_stand_aide":
+      "Um den Code anzuzeigen, geben Sie zuerst den Stand-Code ein. Das Tablet merkt ihn sich danach.",
+    "ia.relais.preparation": "Code wird vorbereitet…",
+    "ia.relais.scanner": "Scannen Sie diesen Code mit der Kamera Ihres Handys",
+    "ia.relais.ou_adresse": "oder öffnen Sie diese Adresse:",
+    "ia.relais.attente": "Warten auf das Foto…",
+    "ia.relais.reste": "Code noch {minutes} Min. gültig",
+    "ia.relais.recue": "Foto vom Handy erhalten.",
+    "ia.relais.recue_aide":
+      "Ein weiteres Foto an dieselbe Adresse ersetzt dieses:",
+    "ia.relais.expire": "Dieser Code ist abgelaufen. Fordern Sie einen neuen an.",
+    "ia.relais.nouveau_code": "Neuer Code",
+    "ia.relais.annuler": "Abbrechen",
+    "ia.relais.fermer": "Schließen",
+    "ia.relais.reessayer": "Erneut versuchen",
+    "ia.relais.injoignable":
+      "Der Code konnte nicht erstellt werden. Prüfen Sie die Verbindung und versuchen Sie es erneut.",
+    "ia.relais.rafale":
+      "Zu viele Codes nacheinander angefordert. Bitte warten Sie einige Minuten.",
+    "ia.relais.qr": "QR-Code der Seite zum Senden des Fotos",
+    "ia.relais.nom_photo": "Foto vom Handy",
+
+    "photo.meta_titre": "Ihr Foto senden — Memory Line",
+    "photo.titre": "Senden Sie Ihr Foto",
+    "photo.intro":
+      "Es erscheint sofort auf dem Tablet am Stand, um Ihr Poster zu gestalten.",
+    "photo.verification": "Code wird geprüft…",
+    "photo.choisir": "Foto aufnehmen oder auswählen",
+    "photo.preparation": "Foto wird vorbereitet…",
+    "photo.envoi": "Wird gesendet… {pourcent} %",
+    "photo.envoyee": "Gesendet! Schauen Sie auf das Tablet.",
+    "photo.autre": "Ein anderes Foto senden",
+    "photo.autre_aide":
+      "Das zuletzt gesendete Foto ersetzt das vorherige auf dem Tablet.",
+    "photo.apercu_alt": "Das ausgewählte Foto",
+    "photo.code_inconnu":
+      "Dieser Code gehört zu keiner laufenden Übertragung. Prüfen Sie die Adresse auf dem Tablet.",
+    "photo.code_expire":
+      "Dieser Code ist abgelaufen. Fordern Sie am Tablet einen neuen Code an.",
+    "photo.err.rafale":
+      "Zu viele Sendungen nacheinander. Bitte warten Sie einige Minuten und versuchen Sie es dann erneut.",
+    "photo.err.reseau":
+      "Das Senden ist fehlgeschlagen. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
 
 
     "panier.titre": "Ihr Warenkorb",
@@ -1401,6 +1543,52 @@ export const ui = {
     "ia.err.attente":
       "Il poster sta impiegando più tempo del previsto. Rilancia la creazione.",
     "ia.err.inconnu": "Qualcosa è andato storto. Rilancia la creazione.",
+    "ia.relais.ouvrir": "Invia la foto dal tuo telefono",
+    "ia.relais.ouvrir_aide":
+      "La tua foto è sul telefono? Scansiona un codice: arriva qui.",
+    "ia.relais.code_stand_aide":
+      "Per mostrare il codice, inserisci prima il codice dello stand. Poi il tablet lo ricorda.",
+    "ia.relais.preparation": "Preparazione del codice…",
+    "ia.relais.scanner": "Scansiona questo codice con la fotocamera del tuo telefono",
+    "ia.relais.ou_adresse": "oppure apri questo indirizzo:",
+    "ia.relais.attente": "In attesa della foto…",
+    "ia.relais.reste": "Codice valido ancora {minutes} min",
+    "ia.relais.recue": "Foto ricevuta dal telefono.",
+    "ia.relais.recue_aide":
+      "Un'altra foto inviata allo stesso indirizzo sostituirà questa:",
+    "ia.relais.expire": "Questo codice è scaduto. Chiedine uno nuovo.",
+    "ia.relais.nouveau_code": "Nuovo codice",
+    "ia.relais.annuler": "Annulla",
+    "ia.relais.fermer": "Chiudi",
+    "ia.relais.reessayer": "Riprova",
+    "ia.relais.injoignable":
+      "Non è stato possibile creare il codice. Controlla la connessione, poi riprova.",
+    "ia.relais.rafale":
+      "Troppi codici richiesti di seguito. Attendi qualche minuto.",
+    "ia.relais.qr": "Codice QR della pagina di invio della foto",
+    "ia.relais.nom_photo": "Foto dal telefono",
+
+    "photo.meta_titre": "Invia la tua foto — Memory Line",
+    "photo.titre": "Invia la tua foto",
+    "photo.intro":
+      "Apparirà subito sul tablet dello stand, per creare il tuo poster.",
+    "photo.verification": "Verifica del codice…",
+    "photo.choisir": "Scatta o scegli una foto",
+    "photo.preparation": "Preparazione della foto…",
+    "photo.envoi": "Invio… {pourcent} %",
+    "photo.envoyee": "Inviata! Guarda il tablet.",
+    "photo.autre": "Invia un'altra foto",
+    "photo.autre_aide":
+      "L'ultima foto inviata sostituisce la precedente sul tablet.",
+    "photo.apercu_alt": "La foto scelta",
+    "photo.code_inconnu":
+      "Questo codice non corrisponde a nessun invio in corso. Controlla l'indirizzo mostrato sul tablet.",
+    "photo.code_expire":
+      "Questo codice è scaduto. Chiedi un nuovo codice sul tablet.",
+    "photo.err.rafale":
+      "Troppi invii di seguito. Attendi qualche minuto, poi riprova.",
+    "photo.err.reseau":
+      "L'invio non è riuscito. Controlla la connessione, poi riprova.",
 
 
     "panier.titre": "Il tuo carrello",
@@ -1805,6 +1993,52 @@ export const ui = {
     "ia.err.attente":
       "La lámina tarda más de lo previsto. Vuelve a lanzar la creación.",
     "ia.err.inconnu": "Algo ha salido mal. Vuelve a lanzar la creación.",
+    "ia.relais.ouvrir": "Enviar la foto desde tu móvil",
+    "ia.relais.ouvrir_aide":
+      "¿Tu foto está en el móvil? Escanea un código: llegará aquí.",
+    "ia.relais.code_stand_aide":
+      "Para mostrar el código, introduce primero el código del puesto. Después la tableta lo recuerda.",
+    "ia.relais.preparation": "Preparando el código…",
+    "ia.relais.scanner": "Escanea este código con la cámara de tu móvil",
+    "ia.relais.ou_adresse": "o abre esta dirección:",
+    "ia.relais.attente": "Esperando la foto…",
+    "ia.relais.reste": "Código válido durante {minutes} min más",
+    "ia.relais.recue": "Foto recibida del móvil.",
+    "ia.relais.recue_aide":
+      "Otra foto enviada a la misma dirección sustituirá a esta:",
+    "ia.relais.expire": "Este código ha caducado. Pide uno nuevo.",
+    "ia.relais.nouveau_code": "Nuevo código",
+    "ia.relais.annuler": "Cancelar",
+    "ia.relais.fermer": "Cerrar",
+    "ia.relais.reessayer": "Reintentar",
+    "ia.relais.injoignable":
+      "No se ha podido crear el código. Comprueba la conexión y vuelve a intentarlo.",
+    "ia.relais.rafale":
+      "Demasiados códigos pedidos seguidos. Espera unos minutos.",
+    "ia.relais.qr": "Código QR de la página para enviar la foto",
+    "ia.relais.nom_photo": "Foto del móvil",
+
+    "photo.meta_titre": "Envía tu foto — Memory Line",
+    "photo.titre": "Envía tu foto",
+    "photo.intro":
+      "Aparecerá enseguida en la tableta del puesto, para crear tu lámina.",
+    "photo.verification": "Comprobando el código…",
+    "photo.choisir": "Hacer o elegir una foto",
+    "photo.preparation": "Preparando la foto…",
+    "photo.envoi": "Enviando… {pourcent} %",
+    "photo.envoyee": "¡Enviada! Mira la tableta.",
+    "photo.autre": "Enviar otra foto",
+    "photo.autre_aide":
+      "La última foto enviada sustituye a la anterior en la tableta.",
+    "photo.apercu_alt": "La foto elegida",
+    "photo.code_inconnu":
+      "Este código no corresponde a ningún envío en curso. Comprueba la dirección que aparece en la tableta.",
+    "photo.code_expire":
+      "Este código ha caducado. Pide un código nuevo en la tableta.",
+    "photo.err.rafale":
+      "Demasiados envíos seguidos. Espera unos minutos y vuelve a intentarlo.",
+    "photo.err.reseau":
+      "El envío no se ha completado. Comprueba tu conexión y vuelve a intentarlo.",
 
 
     "panier.titre": "Tu cesta",

@@ -1819,3 +1819,57 @@ export const aiPrompts = pgTable(
   },
   (t) => [index("ia_prompt_position_idx").on(t.position, t.id)],
 );
+
+/**
+ * Une photo qui voyage du téléphone du client à la tablette du stand
+ * (apps/api/src/ia-relais.ts).
+ *
+ * Au marché de Noël, la photo à mettre en affiche est dans le téléphone du
+ * client, pas dans la tablette. La tablette affiche un code — QR et adresse
+ * courte —, le téléphone y envoie la photo, la tablette la récupère.
+ *
+ * EN BASE et non en mémoire : l'API redémarre à chaque mise en ligne (et à
+ * chaque modification en développement). Un relais tenu dans une variable
+ * disparaîtrait alors entre le moment où la tablette montre le code et celui
+ * où le client envoie sa photo — sans que personne comprenne pourquoi.
+ *
+ * La ligne ne porte AUCUNE donnée personnelle : un code, l'empreinte d'un
+ * jeton, un compteur. La photo elle-même vit sur le disque le temps que la
+ * tablette la prenne, et pas une minute de plus.
+ */
+export const aiPhotoRelays = pgTable(
+  "ia_relais_photo",
+  {
+    id: serial("id").primaryKey(),
+    /**
+     * Le code court de l'adresse (/photo/K7M2QX), dicté ou scanné. Il ne
+     * permet QUE d'envoyer une photo vers la tablette, jamais d'en lire une.
+     */
+    code: text("code").notNull(),
+    /**
+     * SHA-256 du jeton remis à la tablette : c'est lui, et lui seul, qui
+     * permet de récupérer la photo. Comme pour les sessions, la base ne garde
+     * que l'empreinte.
+     */
+    jetonHash: text("jeton_hash").notNull(),
+    /** Le stand dont la tablette a ouvert le relais. */
+    standId: integer("stand_id")
+      .notNull()
+      .references(() => stands.id, { onDelete: "cascade" }),
+    /** La dernière photo reçue, en attente de la tablette (« ia/relais-….jpg »). */
+    photoPath: text("photo_path"),
+    /** Photos reçues sur ce code : borne les envois d'une même session. */
+    envois: integer("envois").notNull().default(0),
+    recueAt: timestamp("recue_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex("ia_relais_photo_code_uniq").on(t.code),
+    uniqueIndex("ia_relais_photo_jeton_uniq").on(t.jetonHash),
+    index("ia_relais_photo_expire_idx").on(t.expiresAt),
+    index("ia_relais_photo_stand_idx").on(t.standId),
+  ],
+);

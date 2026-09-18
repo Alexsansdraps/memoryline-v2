@@ -36,6 +36,7 @@ import {
   TYPES_PHOTO,
   type EchecIA,
 } from "../lib/ia.ts";
+import RelaisPhoto from "./RelaisPhoto.tsx";
 
 /**
  * Parcours des affiches IA : le client choisit un style (quand la boutique en
@@ -63,6 +64,12 @@ export interface AfficheIAProps {
    * calculé et enregistré avec la ligne du panier.
    */
   sansPrix?: boolean;
+  /**
+   * La tablette du stand : la photo peut alors venir du téléphone du client
+   * (RelaisPhoto.tsx). Sur le site, rien ne change — le visiteur a sa photo
+   * sous la main, dans l'appareil qui affiche la page.
+   */
+  stand?: boolean;
 }
 
 /** Étapes du parcours, dans l'ordre où le client les traverse. */
@@ -330,7 +337,16 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     return e instanceof ErreurIA ? e.code : "inconnu";
   }
 
-  async function choisirPhoto(fichier: File) {
+  async function choisirPhoto(
+    fichier: File,
+    /**
+     * `lancer: false` : même s'il n'y a pas de style à choisir, la création
+     * attend le bouton. C'est le cas de la photo arrivée du téléphone — elle
+     * tombe sur la tablette sans que personne y ait touché, et une création
+     * se paie : elle ne part jamais toute seule.
+     */
+    options: { lancer?: boolean } = {},
+  ) {
     /*
      * On ne contrôle plus le POIDS ici : `envoyerPhoto` réduit la photo avant
      * de l'envoyer, et une photo de téléphone de 20 Mo devient 400 Ko. La
@@ -365,11 +381,11 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
         stylesLus,
       ]);
       setChemin(distant);
-      if (proposes.length > 0) {
-        // Des styles existent : la photo est sur le serveur, la création
-        // attend « Créer mon affiche ». Le temps de relire son style, de
-        // changer de photo si ce n'est pas la bonne, ou d'ajouter une
-        // précision, avant une génération qui se paie.
+      if (proposes.length > 0 || options.lancer === false) {
+        // Des styles existent, ou la photo vient du téléphone : elle est sur
+        // le serveur, la création attend « Créer mon affiche ». Le temps de
+        // relire son style, de changer de photo si ce n'est pas la bonne, ou
+        // d'ajouter une précision, avant une génération qui se paie.
         arreterChrono();
         setEtape("depot");
         // Le bouton est sous les conseils et la précision : sur la tablette,
@@ -837,6 +853,19 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               </span>
             </Show>
           </label>
+
+          {/* Au stand, la photo est souvent dans le téléphone du client : la
+              tablette montre un QR code, la photo arrive ici. Même règle que
+              la zone de dépôt — éteinte tant qu'un style reste à choisir. */}
+          <Show when={props.stand}>
+            <RelaisPhoto
+              langue={props.langue}
+              disponible={!styleManquant()}
+              occupe={occupe()}
+              interrompre={etape() === "generation"}
+              onPhoto={(f) => void choisirPhoto(f, { lancer: false })}
+            />
+          </Show>
 
           <div class="mt-4 border border-ink/10 bg-paper-deep/50 p-4">
             <p class="text-xs font-medium uppercase tracking-[0.08em] text-ink-soft">
