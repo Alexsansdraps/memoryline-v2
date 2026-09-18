@@ -24,6 +24,12 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile.dev
+    # Un nom d'image PROPRE au développement. Sans lui, l'image s'appelle
+    # memoryline-v2-<service>, exactement comme celle que fabrique
+    # docker-compose.prod.yml construit sur ce poste : l'une écrasait l'autre, et
+    # le site de test démarrait sur l'image de production (sans .env, sans
+    # rechargement, ou en cherchant un site « construit » qui n'existe pas ici).
+    image: memoryline-dev-api
     container_name: memoryline-api
     restart: unless-stopped
     depends_on:
@@ -70,6 +76,8 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile.dev
+    # Nom d'image propre au développement : voir le service api.
+    image: memoryline-dev-web
     container_name: memoryline-web
     restart: unless-stopped
     depends_on:
@@ -104,6 +112,8 @@ services:
     build:
       context: .
       dockerfile: apps/admin/Dockerfile.dev
+    # Nom d'image propre au développement : voir le service api.
+    image: memoryline-dev-admin
     container_name: memoryline-admin
     restart: unless-stopped
     depends_on:

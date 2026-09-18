@@ -78,13 +78,13 @@ const souci = "cartId" in reponse ? null : EXPLICATIONS[reponse.erreur];
  * précédente : rien de plus n'a à traverser le navigateur.
  */
 /*
- * Échappée pour vivre dans une balise <script>, et non passée par
+ * Échappée pour vivre dans une balise script, et non passée par
  * `define:vars`.
  *
  * Le nom et l'adresse sont ceux que la cliente a TAPÉS. `define:vars` les
- * insère dans le script, et Astro 5 ne neutralise pas complètement la
- * séquence `</script>` à cet endroit (faille connue, corrigée en version 6) :
- * un nom écrit « </script><script>… » en sortait pour s'exécuter. Ici, les
+ * insère dans le script, et Astro 5 ne neutralise pas complètement la balise
+ * fermante de script à cet endroit (faille connue, corrigée en version 6) :
+ * un nom qui la contenait, suivi d'un nouveau script, s'exécutait. Ici, les
  * chevrons sont échappés avant d'entrer, et la balise ne contient que des
  * données, jamais du code.
  */

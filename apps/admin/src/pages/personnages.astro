@@ -36,7 +36,7 @@ function svgSrc(url: string | null | undefined): string {
 // --- Traitement des formulaires (SSR) ----------------------------------
 // Les créations / éditions simples passent en POST classique (robuste, même
 // pattern que promotions.astro). Les actions dynamiques par élément (couleurs,
-// suppressions, base) se font côté client (voir <script> en bas).
+// suppressions, base) se font côté client (voir le script en bas de page).
 let flash: string | null = null;
 // Retour des pages de création : le message se lit ici, pas là-bas — c'est
 // sur cette page que le résultat se voit.
