@@ -88,6 +88,9 @@ export async function donneesDImpression(): Promise<ResolveData> {
       // comme la boutique les montre. Elles entrent aussi dans l'empreinte :
       // une zone décochée refait le fichier.
       zonesMasquees: a.zonesMasquees,
+      // Un groupe masqué garde le défaut de toutes ses nuances ; regrouper
+      // refait donc le fichier, lui aussi.
+      groupesCouleurs: a.groupesCouleurs,
       position: a.position,
     });
   // Personnages (SVG de base pré-composé) pour le rendu PDF du nouveau modèle.

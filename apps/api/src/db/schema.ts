@@ -10,6 +10,7 @@
  *    traçabilité de l'import et les redirections 301 (§13).
  */
 import { sql } from "drizzle-orm";
+import type { GroupeCouleur } from "@memoryline/types";
 import {
   type AnyPgColumn,
   pgTable,
@@ -472,6 +473,23 @@ export const characterTypes = pgTable(
     /** Zones de couleur par défaut du SVG de base (recoloration peau/tenue). */
     baseColorZones: jsonb("base_color_zones").$type<Record<string, string>>(),
     /**
+     * Groupes de couleurs du dessin de base : les nuances d'une même couleur
+     * (ombres, reflets) réunies sous une seule couleur au choix du client,
+     * avec le nom qu'il lit (« pelage », « robe »). Voir couleurs-groupes.ts.
+     * Null = une zone par groupe, comme avant ce réglage.
+     */
+    baseGroupesCouleurs: jsonb("base_groupes_couleurs").$type<GroupeCouleur[]>(),
+    /**
+     * Zones de référence des groupes que le client peut recolorer.
+     *
+     * On range ici les groupes PROPOSÉS, à l'inverse des pièces (qui rangent
+     * les masqués) : la règle d'un personnage a toujours été « la première
+     * zone seulement » — la peau. Null garde cette règle, et un groupe apparu
+     * avec un nouveau dessin reste non proposé tant que la boutique ne l'a pas
+     * coché.
+     */
+    baseZonesProposees: jsonb("base_zones_proposees").$type<string[]>(),
+    /**
      * Position du BAS réel du contenu dans le viewBox (0..1, 1 = tout en bas).
      * Les SVG animaux/bébés ont du vide sous le dessin (chat ~0.59) : ce ratio
      * permet d'aligner les pieds de tous les persos au sol (mesuré par script).
@@ -617,6 +635,13 @@ export const assets = pgTable(
      * l'impression, même si un ancien panier en avait choisi une autre.
      */
     zonesMasquees: jsonb("zones_masquees").$type<string[]>().default([]).notNull(),
+    /**
+     * Groupes de couleurs : les nuances d'une même couleur (ombres, reflets)
+     * réunies sous une seule rangée de pastilles, avec le nom que le client
+     * lit (« ruban »). Un groupe masqué l'est par sa zone de référence, dans
+     * `zonesMasquees`. Null = une zone par groupe, comme avant ce réglage.
+     */
+    groupesCouleurs: jsonb("groupes_couleurs").$type<GroupeCouleur[]>(),
     position: integer("position").default(0).notNull(),
     legacyAssetId: integer("legacy_asset_id"), // id numérique dans les properties
     /**

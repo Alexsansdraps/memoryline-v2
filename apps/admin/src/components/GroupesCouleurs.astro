@@ -1,0 +1,547 @@
+---
+/**
+ * Les couleurs d'un dessin, groupe par groupe : ce que le client pourra
+ * recolorer, sous quel nom, et avec quelles nuances.
+ *
+ * Un dessin vectorisé par IA ou exporté de Canva arrive avec des dizaines de
+ * nuances presque identiques. « Détecter les couleurs » les range en zones et
+ * réunit les nuances proches en GROUPES : le client choisit une couleur par
+ * groupe, et les ombres suivent (cf. couleurs-groupes.ts). Ici, la boutique :
+ *   - nomme chaque groupe (« pelage », « robe ») — le client lit ce nom ;
+ *   - décide s'il est « Proposé au client » ;
+ *   - règle sa couleur par défaut (les nuances suivent) ;
+ *   - corrige le regroupement : séparer une nuance, rattacher un groupe à un
+ *     autre.
+ *
+ * Deux usages :
+ *   - `enregistrer` fourni (cartes des pièces) : chaque changement part tout
+ *     de suite à cette adresse, comme les autres réglages de la page ;
+ *   - sinon (fiche personnage, nouvelle pièce) : l'état vit dans la page, et
+ *     c'est le formulaire qui l'envoie. `champs` nomme alors les champs
+ *     cachés à remplir, et l'événement « groupes:change » prévient la page.
+ * La page peut demander une lecture d'un nouveau dessin en envoyant
+ * l'événement « groupes:detecter » ({ url }) au bloc.
+ *
+ * À placer APRÈS <ApercusZones /> dans la page : les vignettes des groupes
+ * passent par lui.
+ */
+import type { GroupeCouleur } from "@memoryline/types";
+
+interface Props {
+  /**
+   * « piece » : tout est proposé par défaut, on range les groupes masqués.
+   * « personnage » : seule la peau (le premier groupe) l'est par défaut.
+   */
+  mode: "piece" | "personnage";
+  apiUrl: string;
+  svgUrl: string | null;
+  zones: Record<string, string> | null;
+  groupes: GroupeCouleur[] | null | undefined;
+  /** Pièce : zones de référence des groupes masqués. */
+  masquees?: string[] | null;
+  /** Personnage : zones de référence des groupes proposés (null = la peau). */
+  proposees?: string[] | null;
+  /** Adresse d'enregistrement automatique (relative à l'API). */
+  enregistrer?: string;
+  /** Champs cachés à tenir à jour pour un formulaire. */
+  champs?: { zones: string; groupes: string; masquees: string };
+  /** Cadrage de repli des vignettes (viewBox). */
+  cadrage?: string;
+  /** Texte d'aide sous le bouton. */
+  aide?: string;
+  /**
+   * Sans enregistrement automatique : ce que la page rappelle après chaque
+   * changement (« Pensez à enregistrer le dessin. »).
+   */
+  rappel?: string;
+}
+
+const {
+  mode,
+  apiUrl,
+  svgUrl,
+  zones,
+  groupes,
+  masquees,
+  proposees,
+  enregistrer,
+  champs,
+  cadrage,
+  aide,
+  rappel,
+} = Astro.props;
+
+const etat = {
+  mode,
+  svgUrl: svgUrl ?? "",
+  zones: zones ?? {},
+  groupes: groupes ?? null,
+  masquees: masquees ?? [],
+  proposees: proposees ?? null,
+};
+// « < » échappé : un nom de groupe ne doit pas pouvoir fermer la balise.
+const json = JSON.stringify(etat).replace(/</g, "\\u003c");
+const src = (u: string | null) =>
+  !u ? undefined : u.startsWith("http") ? u : `${apiUrl}${u}`;
+---
+
+<div
+  class="js-groupes"
+  data-api={apiUrl}
+  data-enregistrer={enregistrer}
+  data-apercu-svg={src(svgUrl)}
+  data-apercu-cadrage={cadrage ?? "0 0 500 1000"}
+  data-rappel={rappel}
+>
+  <script is:inline type="application/json" class="js-groupes-etat" set:html={json} />
+  <div class="mb-2 flex flex-wrap items-center gap-2">
+    <button
+      type="button"
+      class="js-groupes-detecter rounded border border-bo-border px-2.5 py-1 text-xs hover:bg-bo-bg"
+      title="Relit les couleurs du dessin et réunit les nuances proches. Le fichier d'origine est conservé."
+    >
+      Détecter les couleurs
+    </button>
+    <span class="js-groupes-statut text-xs text-bo-muted"></span>
+  </div>
+  {aide && <p class="mb-2 text-xs text-bo-muted">{aide}</p>}
+  <div class="js-groupes-liste flex flex-wrap gap-2"></div>
+  {champs && (
+    <>
+      <input type="hidden" name={champs.zones} class="js-champ-zones" value="{}" />
+      <input type="hidden" name={champs.groupes} class="js-champ-groupes" value="[]" />
+      <input type="hidden" name={champs.masquees} class="js-champ-masquees" value="[]" />
+    </>
+  )}
+</div>
+
+<script>
+  import {
+    NUANCIERS_BASE,
+    couleursDuGroupe,
+    groupesDuDessin,
+    hexVersRgb,
+    rgbVersHex,
+    zonesDuGroupe,
+    type GroupeCouleur,
+    type NuancierBase,
+  } from "@memoryline/types/couleurs";
+
+  declare global {
+    interface Window {
+      /** Remplit les vignettes « zone surlignée » d'un bloc (ApercusZones). */
+      mlApercusZones?: (bloc: HTMLElement) => void;
+    }
+  }
+
+  /** L'état d'un bloc : le dessin, ses zones, ses groupes, ce qui est caché. */
+  interface Etat {
+    mode: "piece" | "personnage";
+    svgUrl: string;
+    zones: Record<string, string>;
+    groupes: GroupeCouleur[];
+    /** Zones de référence des groupes NON proposés au client. */
+    cachees: string[];
+  }
+
+  /** Réponse de l'API après lecture d'un dessin. */
+  interface Lecture {
+    url: string;
+    colorZones: Record<string, string>;
+    groupesCouleurs: GroupeCouleur[];
+    zonesCreees: number;
+    images: number;
+  }
+
+  const LIBELLES_NUANCIERS: Record<NuancierBase, string> = {
+    peau: "Nuancier peau",
+    cheveux: "Nuancier cheveux / pelage",
+    vetements: "Nuancier vêtements",
+    pantalon: "Nuancier pantalon",
+  };
+
+  /** Les zones de référence cachées, quel que soit le mode d'enregistrement. */
+  function cacheesDepuis(
+    mode: Etat["mode"],
+    groupes: GroupeCouleur[],
+    masquees: string[],
+    proposees: string[] | null,
+  ): string[] {
+    if (mode === "piece")
+      return groupes.filter((g) => masquees.includes(g.zone)).map((g) => g.zone);
+    // Personnage : null = la peau seule, la règle d'avant ce réglage.
+    const ouvertes = proposees ?? groupes.slice(0, 1).map((g) => g.zone);
+    return groupes.filter((g) => !ouvertes.includes(g.zone)).map((g) => g.zone);
+  }
+
+  /**
+   * Les réglages d'avant reportés sur une nouvelle lecture du MÊME dessin :
+   * un groupe qui partage une zone avec un ancien en reprend le nom, le
+   * nuancier, la case et les couleurs par défaut réglées ici. Les zones
+   * nouvelles (couleurs qui étaient écrites sur les formes) partent des
+   * couleurs du fichier, proposées pour une pièce, pas pour un personnage.
+   */
+  function reprendre(ancien: Etat, lecture: Lecture, garder: boolean): Etat {
+    const zones = { ...lecture.colorZones };
+    const groupes = groupesDuDessin(zones, lecture.groupesCouleurs);
+    if (!garder || Object.keys(ancien.zones).length === 0) {
+      return {
+        ...ancien,
+        svgUrl: lecture.url,
+        zones,
+        groupes,
+        cachees: cacheesDepuis(ancien.mode, groupes, [], null),
+      };
+    }
+    for (const z of Object.keys(zones))
+      if (ancien.zones[z]) zones[z] = ancien.zones[z]!;
+    const cachees: string[] = [];
+    const reprises = groupes.map((g) => {
+      const membres = zonesDuGroupe(g);
+      const anciens = ancien.groupes.filter((a) =>
+        zonesDuGroupe(a).some((z) => membres.includes(z)),
+      );
+      const cache =
+        anciens.length > 0
+          ? anciens.every((a) => ancien.cachees.includes(a.zone))
+          : ancien.mode === "personnage";
+      if (cache) cachees.push(g.zone);
+      const nomme = anciens.find((a) => a.nom);
+      const nuancier = anciens.find((a) => a.nuancier)?.nuancier;
+      return {
+        ...g,
+        ...(nomme?.nom ? { nom: nomme.nom } : {}),
+        ...(nuancier ? { nuancier } : {}),
+      };
+    });
+    return { ...ancien, svgUrl: lecture.url, zones, groupes: reprises, cachees };
+  }
+
+  function monter(bloc: HTMLElement) {
+    const api = bloc.dataset.api ?? "";
+    const adresseEnregistrement = bloc.dataset.enregistrer;
+    const liste = bloc.querySelector<HTMLElement>(".js-groupes-liste")!;
+    const statut = bloc.querySelector<HTMLElement>(".js-groupes-statut")!;
+    const source = bloc.querySelector<HTMLScriptElement>(".js-groupes-etat")!;
+    const brut = JSON.parse(source.textContent || "{}");
+    const groupesInitiaux = groupesDuDessin(brut.zones, brut.groupes);
+    let etat: Etat = {
+      mode: brut.mode === "personnage" ? "personnage" : "piece",
+      svgUrl: brut.svgUrl ?? "",
+      zones: brut.zones ?? {},
+      groupes: groupesInitiaux,
+      cachees: cacheesDepuis(
+        brut.mode,
+        groupesInitiaux,
+        Array.isArray(brut.masquees) ? brut.masquees : [],
+        Array.isArray(brut.proposees) ? brut.proposees : null,
+      ),
+    };
+    let visible = false;
+
+    const dire = (texte: string, ton: "ok" | "erreur" | "" = "") => {
+      statut.textContent = texte;
+      statut.className =
+        "js-groupes-statut text-xs " +
+        (ton === "ok" ? "text-green-700" : ton === "erreur" ? "text-red-600" : "text-bo-muted");
+    };
+
+    /** Ce que la page (ou l'API) enregistre. */
+    function aEnregistrer() {
+      const references = etat.groupes.map((g) => g.zone);
+      return {
+        svgUrl: etat.svgUrl,
+        colorZones: etat.zones,
+        groupesCouleurs: etat.groupes,
+        zonesMasquees: etat.cachees.filter((z) => references.includes(z)),
+        zonesProposees: references.filter((z) => !etat.cachees.includes(z)),
+      };
+    }
+
+    function publier() {
+      const e = aEnregistrer();
+      source.textContent = JSON.stringify({ mode: etat.mode, ...e });
+      const champ = (c: string) => bloc.querySelector<HTMLInputElement>(c);
+      const cz = champ(".js-champ-zones");
+      if (cz) cz.value = JSON.stringify(e.colorZones);
+      const cg = champ(".js-champ-groupes");
+      if (cg) cg.value = JSON.stringify(e.groupesCouleurs);
+      const cm = champ(".js-champ-masquees");
+      if (cm) cm.value = JSON.stringify(e.zonesMasquees);
+      bloc.dispatchEvent(new CustomEvent("groupes:change", { detail: e }));
+    }
+
+    /** Sans enregistrement automatique, la page rappelle ce qu'il reste à faire. */
+    const rappeler = (message: string) =>
+      bloc.dataset.rappel ? `${message} ${bloc.dataset.rappel}` : message;
+
+    async function enregistrerTout(message: string) {
+      publier();
+      if (!adresseEnregistrement) {
+        if (bloc.dataset.rappel) dire(rappeler(message));
+        return;
+      }
+      dire("Enregistrement…");
+      try {
+        const e = aEnregistrer();
+        const res = await fetch(`${api}${adresseEnregistrement}`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            svgUrl: e.svgUrl,
+            colorZones: e.colorZones,
+            groupesCouleurs: e.groupesCouleurs,
+            zonesMasquees: e.zonesMasquees,
+          }),
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        dire(`${message} Enregistré ✓`, "ok");
+      } catch (err) {
+        dire("Erreur, rien n'est enregistré : " + String(err), "erreur");
+      }
+    }
+
+    const el = <K extends keyof HTMLElementTagNameMap>(
+      tag: K,
+      classe = "",
+      texte = "",
+    ): HTMLElementTagNameMap[K] => {
+      const n = document.createElement(tag);
+      if (classe) n.className = classe;
+      if (texte) n.textContent = texte;
+      return n;
+    };
+
+    const nomAffiche = (g: GroupeCouleur, i: number) =>
+      g.nom || `Couleur ${i + 1}`;
+
+    function dessiner() {
+      liste.innerHTML = "";
+      if (etat.groupes.length === 0) {
+        liste.append(
+          el("p", "text-xs text-bo-muted", "Pas de couleur recolorable dans ce dessin."),
+        );
+        publier();
+        return;
+      }
+      const premier = etat.groupes[0]?.zone;
+      etat.groupes.forEach((g, i) => {
+        const cache = etat.cachees.includes(g.zone);
+        const carte = el(
+          "div",
+          "flex w-[156px] flex-col gap-1 rounded border border-bo-border p-1.5 text-[11px]" +
+            (cache ? " bg-bo-bg" : ""),
+        );
+
+        const vignette = el(
+          "img",
+          "js-zone-apercu h-16 w-full rounded border border-bo-border bg-white object-contain",
+        );
+        vignette.dataset.zone = zonesDuGroupe(g).join(" ");
+        vignette.alt = `${nomAffiche(g, i)} surligné sur le dessin`;
+        vignette.style.visibility = "hidden";
+
+        // Couleur par défaut : celle de la référence ; les nuances suivent.
+        const ligneCouleur = el("label", "flex items-center gap-1");
+        const couleur = el("input", "h-7 w-7 cursor-pointer rounded border border-bo-border");
+        couleur.type = "color";
+        // Le sélecteur n'accepte que « #rrggbb » : « #fff » y deviendrait noir.
+        couleur.value = rgbVersHex(...(hexVersRgb(etat.zones[g.zone] ?? "") ?? [0, 0, 0])).toLowerCase();
+        couleur.title = "Couleur par défaut";
+        couleur.addEventListener("change", () => {
+          Object.assign(etat.zones, couleursDuGroupe(g, etat.zones, couleur.value.toUpperCase()));
+          dessiner();
+          void enregistrerTout("Couleur par défaut changée.");
+        });
+        const nbNuances = g.nuances?.length ?? 0;
+        ligneCouleur.append(
+          couleur,
+          el(
+            "span",
+            "text-bo-muted",
+            nbNuances ? `+ ${nbNuances} nuance${nbNuances > 1 ? "s" : ""}` : "une seule teinte",
+          ),
+        );
+
+        // Les nuances, chacune détachable de son groupe.
+        const nuances = el("div", "flex flex-wrap gap-1");
+        for (const z of g.nuances ?? []) {
+          const puce = el(
+            "button",
+            "inline-flex items-center gap-0.5 rounded border border-bo-border px-1 hover:bg-bo-bg",
+          );
+          puce.type = "button";
+          puce.title = "Séparer cette nuance : elle devient une couleur à part";
+          const pastille = el("span", "inline-block h-3 w-3 rounded-sm border border-bo-border");
+          pastille.style.background = etat.zones[z] ?? "#000";
+          puce.append(pastille, el("span", "", "×"));
+          puce.addEventListener("click", () => {
+            g.nuances = (g.nuances ?? []).filter((n) => n !== z);
+            if (g.nuances.length === 0) delete g.nuances;
+            etat.groupes.splice(i + 1, 0, { zone: z });
+            if (cache) etat.cachees.push(z);
+            dessiner();
+            void enregistrerTout("Nuance séparée.");
+          });
+          nuances.append(puce);
+        }
+
+        const nom = el("input", "w-full rounded border border-bo-border px-1.5 py-0.5");
+        nom.type = "text";
+        nom.maxLength = 40;
+        nom.placeholder = "Nom (ex. robe, pelage)";
+        nom.value = g.nom ?? "";
+        nom.title = "Le nom que le client lit au-dessus des pastilles";
+        nom.addEventListener("change", () => {
+          const v = nom.value.trim();
+          if (v) g.nom = v;
+          else delete g.nom;
+          publier();
+          void enregistrerTout("Nom changé.");
+        });
+
+        carte.append(vignette, ligneCouleur);
+        if (nbNuances) carte.append(nuances);
+        carte.append(nom);
+
+        if (etat.mode === "personnage") {
+          const nuancier = el("select", "w-full rounded border border-bo-border px-1 py-0.5");
+          nuancier.title = "Les couleurs proposées au client pour ce groupe";
+          const defaut: NuancierBase = g.zone === premier ? "peau" : "vetements";
+          for (const n of NUANCIERS_BASE) {
+            const o = el("option", "", LIBELLES_NUANCIERS[n]);
+            o.value = n;
+            o.selected = (g.nuancier ?? defaut) === n;
+            nuancier.append(o);
+          }
+          nuancier.addEventListener("change", () => {
+            g.nuancier = nuancier.value as NuancierBase;
+            publier();
+            void enregistrerTout("Nuancier changé.");
+          });
+          carte.append(nuancier);
+        }
+
+        const libelleCase = el("label", "flex cursor-pointer items-start gap-1 leading-tight");
+        const caseProposee = el("input", "mt-px");
+        caseProposee.type = "checkbox";
+        caseProposee.checked = !cache;
+        caseProposee.addEventListener("change", () => {
+          etat.cachees = etat.cachees.filter((z) => z !== g.zone);
+          if (!caseProposee.checked) etat.cachees.push(g.zone);
+          dessiner();
+          void enregistrerTout(
+            caseProposee.checked ? "Proposée au client." : "Retirée du configurateur.",
+          );
+        });
+        libelleCase.append(caseProposee, el("span", "", "Proposée au client"));
+        carte.append(libelleCase);
+
+        // Rattacher tout le groupe à un autre : ses teintes deviennent des
+        // nuances de celui-là.
+        if (etat.groupes.length > 1) {
+          const rattacher = el("select", "w-full rounded border border-bo-border px-1 py-0.5 text-bo-muted");
+          rattacher.title = "Même couleur qu'un autre groupe ? Rattachez-le : il suivra sa couleur.";
+          const vide = el("option", "", "Rattacher à…");
+          vide.value = "";
+          rattacher.append(vide);
+          etat.groupes.forEach((autre, j) => {
+            if (autre === g) return;
+            const o = el("option", "", nomAffiche(autre, j));
+            o.value = autre.zone;
+            rattacher.append(o);
+          });
+          rattacher.addEventListener("change", () => {
+            const cible = etat.groupes.find((x) => x.zone === rattacher.value);
+            if (!cible) return;
+            cible.nuances = [...(cible.nuances ?? []), ...zonesDuGroupe(g)];
+            etat.groupes = etat.groupes.filter((x) => x !== g);
+            etat.cachees = etat.cachees.filter((z) => z !== g.zone);
+            dessiner();
+            void enregistrerTout("Groupes réunis.");
+          });
+          carte.append(rattacher);
+        }
+
+        liste.append(carte);
+      });
+      publier();
+      if (visible) window.mlApercusZones?.(bloc);
+    }
+
+    /** Lit (ou relit) les couleurs d'un dessin et les range. */
+    async function detecter(url: string, garder: boolean) {
+      if (!url) {
+        dire("Aucun dessin à lire.", "erreur");
+        return;
+      }
+      dire("Lecture des couleurs du dessin…");
+      try {
+        const res = await fetch(`${api}/admin/svg/couleurs`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const lecture = (await res.json()) as Lecture;
+        etat = reprendre(etat, lecture, garder);
+        const src = etat.svgUrl.startsWith("http") ? etat.svgUrl : api + etat.svgUrl;
+        bloc.dataset.apercuSvg = src;
+        dessiner();
+        const n = etat.groupes.length;
+        let message: string;
+        if (n === 0 && lecture.images > 0)
+          message =
+            "Ce dessin est une image en pixels enregistrée en SVG : ses couleurs ne peuvent pas changer. Il faut un vrai dessin vectoriel (vectoriser l'image, puis l'exporter en SVG).";
+        else if (n === 0) message = "Aucune couleur recolorable dans ce dessin.";
+        else
+          message =
+            `${n} couleur${n > 1 ? "s" : ""} dans ce dessin` +
+            (lecture.zonesCreees
+              ? ` (${lecture.zonesCreees} teinte${lecture.zonesCreees > 1 ? "s" : ""} lue${lecture.zonesCreees > 1 ? "s" : ""} sur les formes du dessin ; version préparée enregistrée à part, l'original est conservé)`
+              : "") +
+            ".";
+        if (adresseEnregistrement) await enregistrerTout(message);
+        else dire(rappeler(message), n === 0 ? "erreur" : "ok");
+      } catch (err) {
+        dire("Lecture impossible : " + String(err), "erreur");
+      }
+    }
+
+    bloc.querySelector(".js-groupes-detecter")?.addEventListener("click", () => {
+      if (
+        adresseEnregistrement &&
+        !confirm(
+          "Relire les couleurs de ce dessin ? Les nuances proches seront réunies. Le fichier d'origine est conservé, et les noms déjà donnés sont gardés.",
+        )
+      )
+        return;
+      void detecter(etat.svgUrl, true);
+    });
+    bloc.addEventListener("groupes:detecter", (e) => {
+      const detail = (e as CustomEvent<{ url: string }>).detail;
+      void detecter(detail?.url ?? "", false);
+    });
+
+    // Vignettes à l'approche de l'écran seulement : la page des pièces en
+    // compte plus de cent cinquante.
+    if ("IntersectionObserver" in window) {
+      const guet = new IntersectionObserver(
+        (entrees) => {
+          if (!entrees.some((x) => x.isIntersecting)) return;
+          guet.disconnect();
+          visible = true;
+          window.mlApercusZones?.(bloc);
+        },
+        { rootMargin: "400px" },
+      );
+      guet.observe(bloc);
+    } else visible = true;
+
+    dessiner();
+  }
+
+  document.querySelectorAll<HTMLElement>(".js-groupes").forEach(monter);
+</script>

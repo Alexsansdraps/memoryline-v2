@@ -10,9 +10,15 @@ import {
 import {
   BASE_COLOR_SCOPE,
   colorKey,
-  colorsForScope,
+  couleursDeLaBase,
   couleursDeLaPiece,
+  couleursDuGroupePourScope,
+  groupesDuDessin,
+  groupesProposesDeLaBase,
+  groupesProposesDeLaPiece,
   scopeSvgStyles,
+  type GroupeCouleur,
+  type NuancierBase,
 } from "@memoryline/types";
 import {
   NONE_ASSET,
@@ -21,6 +27,9 @@ import {
   withViewBox,
   paletteForVariant,
   type PieceCategoryDTO,
+  CLOTHES_TONES,
+  HAIR_TONES,
+  PANTS_TONES,
   SKIN_TONES,
   SLOT_THUMB_VIEWBOX,
   type CharacterDTO,
@@ -47,6 +56,18 @@ import type { MessagesConfigurateur } from "../messages";
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * Nuancier d'un groupe du dessin de BASE, tel que choisi au back-office : la
+ * peau d'un humain, le pelage d'un chat (celui des cheveux lui va), une robe
+ * dessinée sur le personnage…
+ */
+const NUANCIERS: Record<NuancierBase, readonly string[]> = {
+  peau: SKIN_TONES,
+  cheveux: HAIR_TONES,
+  vetements: CLOTHES_TONES,
+  pantalon: PANTS_TONES,
+};
 
 /**
  * SVG inline (string) prêt à être injecté : recolorié + cadré (viewBox zoomé)
@@ -232,37 +253,63 @@ function SvgThumb(props: { svg: string | undefined; label: string }) {
   );
 }
 
+/** Une rangée de pastilles : un groupe de couleurs d'une couche. */
+interface LigneCouleur {
+  /** Clé namespacée de la zone de référence (« clothes:st0 »). */
+  zone: string;
+  /** Couleur portée par la référence. */
+  current: string;
+  /** Nom du groupe réglé au back-office (« robe »), s'il en a un. */
+  nom?: string;
+  /** Les couleurs à écrire quand le client choisit `hex` : référence et nuances. */
+  couleurs: (hex: string) => Record<string, string>;
+}
+
+/** Intitulé au-dessus d'une rangée (ou d'un ensemble de rangées). */
+function Intitule(props: { children: JSX.Element }) {
+  return (
+    <span
+      style={{
+        display: "block",
+        "font-size": "11px",
+        "font-weight": "700",
+        color: "#6b7280",
+        "letter-spacing": ".04em",
+        "margin-bottom": "8px",
+      }}
+    >
+      {props.children}
+    </span>
+  );
+}
+
 /**
- * Rangée de couleurs : presets cliquables + saisie libre, par zone.
+ * Rangée de couleurs : presets cliquables + saisie libre, par groupe.
  *
  * Les pastilles sont celles de la couleur du texte (cf. PastilleCouleur) :
  * mêmes 40 px, même coche sur la couleur portée.
+ *
+ * Sans aucun nom de groupe, un seul intitulé coiffe les rangées, comme avant
+ * les groupes. Dès qu'un groupe est nommé au back-office, chaque rangée porte
+ * le sien : « Robe », « Ceinture » disent au client ce qu'il colore.
  */
 function ColorRow(props: {
-  zones: { zone: string; current: string }[];
+  zones: LigneCouleur[];
   presets: readonly string[];
   /** Saisie hors nuancier autorisée ? Non dès qu'une catégorie a ses couleurs. */
   libre: boolean;
-  onSetColor: (zone: string, hex: string) => void;
+  onSetColor: (ligne: LigneCouleur, hex: string) => void;
   /** Intitulé traduit, fourni par l'éditeur. */
   libelle: string;
 }) {
   const memeCouleur = (a: string, b: string) =>
     a.toUpperCase() === b.toUpperCase();
+  const nommees = () => props.zones.some((z) => !!z.nom);
   return (
     <div style={{ "margin-top": "8px" }}>
-      <span
-        style={{
-          display: "block",
-          "font-size": "11px",
-          "font-weight": "700",
-          color: "#6b7280",
-          "letter-spacing": ".04em",
-          "margin-bottom": "8px",
-        }}
-      >
-        {props.libelle}
-      </span>
+      <Show when={!nommees()}>
+        <Intitule>{props.libelle}</Intitule>
+      </Show>
       <For each={props.zones}>
         {(z) => {
           // Couleur saisie hors nuancier : c'est la pastille arc-en-ciel qui
@@ -270,90 +317,95 @@ function ColorRow(props: {
           const horsNuancier = () =>
             !props.presets.some((hex) => memeCouleur(hex, z.current));
           return (
-            <div
-              style={{
-                display: "flex",
-                "align-items": "center",
-                // 10 px : l'anneau de la couleur choisie déborde de 4 px, il
-                // ne doit pas toucher la pastille voisine ni la rangée d'en
-                // dessous.
-                gap: "10px",
-                "flex-wrap": "wrap",
-                "margin-bottom": "10px",
-              }}
-            >
-              <For each={props.presets}>
-                {(hex) => (
-                  <PastilleCouleur
-                    couleur={hex}
-                    libelle={hex}
-                    actif={memeCouleur(z.current, hex)}
-                    onClick={() => props.onSetColor(z.zone, hex)}
-                  />
-                )}
-              </For>
-              <Show when={props.libre}>
-                {/* Le sélecteur du navigateur, invisible, recouvre toute la
-                    pastille : un toucher n'importe où l'ouvre, et c'est lui
-                    qui renvoie la couleur. Sa propre case, minuscule et
-                    différente d'un navigateur à l'autre, ne se voit plus. */}
-                <span
-                  title="Couleur personnalisée"
-                  style={{
-                    position: "relative",
-                    flex: "0 0 auto",
-                    width: "40px",
-                    height: "40px",
-                    "border-radius": "9999px",
-                    background:
-                      "conic-gradient(#ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444)",
-                    "box-shadow": horsNuancier() ? ANNEAU_COULEUR_CHOISIE : "none",
-                    display: "inline-flex",
-                    "align-items": "center",
-                    "justify-content": "center",
-                  }}
-                >
+            <div>
+              <Show when={nommees()}>
+                <Intitule>{z.nom ?? props.libelle}</Intitule>
+              </Show>
+              <div
+                style={{
+                  display: "flex",
+                  "align-items": "center",
+                  // 10 px : l'anneau de la couleur choisie déborde de 4 px, il
+                  // ne doit pas toucher la pastille voisine ni la rangée d'en
+                  // dessous.
+                  gap: "10px",
+                  "flex-wrap": "wrap",
+                  "margin-bottom": "10px",
+                }}
+              >
+                <For each={props.presets}>
+                  {(hex) => (
+                    <PastilleCouleur
+                      couleur={hex}
+                      libelle={hex}
+                      actif={memeCouleur(z.current, hex)}
+                      onClick={() => props.onSetColor(z, hex)}
+                    />
+                  )}
+                </For>
+                <Show when={props.libre}>
+                  {/* Le sélecteur du navigateur, invisible, recouvre toute la
+                      pastille : un toucher n'importe où l'ouvre, et c'est lui
+                      qui renvoie la couleur. Sa propre case, minuscule et
+                      différente d'un navigateur à l'autre, ne se voit plus. */}
                   <span
-                    aria-hidden="true"
+                    title="Couleur personnalisée"
                     style={{
-                      width: "26px",
-                      height: "26px",
+                      position: "relative",
+                      flex: "0 0 auto",
+                      width: "40px",
+                      height: "40px",
                       "border-radius": "9999px",
-                      border: "2px solid #ffffff",
-                      "box-sizing": "border-box",
-                      background: horsNuancier() ? z.current : "#ffffff",
-                      color: "#374151",
-                      "font-size": "18px",
-                      "line-height": "1",
+                      background:
+                        "conic-gradient(#ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444)",
+                      "box-shadow": horsNuancier() ? ANNEAU_COULEUR_CHOISIE : "none",
                       display: "inline-flex",
                       "align-items": "center",
                       "justify-content": "center",
                     }}
                   >
-                    <Show when={horsNuancier()} fallback="+">
-                      <CocheCouleur fond={z.current} />
-                    </Show>
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: "26px",
+                        height: "26px",
+                        "border-radius": "9999px",
+                        border: "2px solid #ffffff",
+                        "box-sizing": "border-box",
+                        background: horsNuancier() ? z.current : "#ffffff",
+                        color: "#374151",
+                        "font-size": "18px",
+                        "line-height": "1",
+                        display: "inline-flex",
+                        "align-items": "center",
+                        "justify-content": "center",
+                      }}
+                    >
+                      <Show when={horsNuancier()} fallback="+">
+                        <CocheCouleur fond={z.current} />
+                      </Show>
+                    </span>
+                    <input
+                      type="color"
+                      value={z.current}
+                      onInput={(e) => props.onSetColor(z, e.currentTarget.value)}
+                      aria-label="Couleur personnalisée"
+                      style={{
+                        position: "absolute",
+                        top: "0",
+                        left: "0",
+                        width: "100%",
+                        height: "100%",
+                        margin: "0",
+                        padding: "0",
+                        border: "none",
+                        opacity: "0",
+                        cursor: "pointer",
+                      }}
+                    />
                   </span>
-                  <input
-                    type="color"
-                    value={z.current}
-                    onInput={(e) => props.onSetColor(z.zone, e.currentTarget.value)}
-                    aria-label="Couleur personnalisée"
-                    style={{
-                      position: "absolute",
-                      top: "0",
-                      left: "0",
-                      width: "100%",
-                      height: "100%",
-                      margin: "0",
-                      padding: "0",
-                      border: "none",
-                      opacity: "0",
-                      cursor: "pointer",
-                    }}
-                  />
-                </span>
-              </Show>
+                </Show>
+              </div>
             </div>
           );
         }}
@@ -398,7 +450,8 @@ export function CharacterEditor(props: {
   pieceCategories?: PieceCategoryDTO[];
   onSetAsset: (slot: Slot, variantId: string | number) => void;
   onClearSlot: (slot: Slot) => void;
-  onSetColor: (zone: string, hex: string) => void;
+  /** Couleurs choisies : clé namespacée -> couleur (un groupe entier d'un coup). */
+  onSetColors: (couleurs: Record<string, string>) => void;
   onChangeCharacter: (base: CharacterDTO) => void;
   onBack: () => void;
   onValidate: () => void;
@@ -451,49 +504,73 @@ export function CharacterEditor(props: {
   );
 
   /**
-   * Zones de couleur d'une variante (slot courant) + valeur actuelle.
-   * `zone` = clé NAMESPACÉE "slot:stN" (cf. colorKey) : la couleur choisie ne
-   * s'applique qu'à ce slot, pas aux autres couches qui réutilisent stN.
-   * Repli sur la clé plate (anciens paniers) puis sur le défaut de la variante.
+   * Une rangée de pastilles par groupe de couleurs d'une couche (scope).
+   * `zone` = clé NAMESPACÉE "scope:stN" de la référence du groupe (cf.
+   * colorKey) : la couleur choisie ne s'applique qu'à cette couche, pas aux
+   * autres qui réutilisent stN. Repli sur la clé plate (anciens paniers) puis
+   * sur le défaut du dessin.
    *
-   * Seules les zones PROPOSÉES au client : les petits détails décochés au
-   * back-office (ruban du chapeau…) n'ont pas de rangée de pastilles, et
-   * gardent leur couleur par défaut dans l'aperçu (cf. couleursDeLaPiece).
+   * Choisir une couleur écrit la référence ET ses nuances (ombres, reflets),
+   * recalculées depuis les couleurs par défaut du dessin : c'est ce qui est
+   * enregistré, puis dessiné tel quel à l'écran comme à l'impression.
    */
-  const zonesForSlot = (slot: Slot): { zone: string; current: string }[] => {
+  const lignes = (
+    scope: string,
+    groupes: GroupeCouleur[],
+    defauts: Record<string, string> | null | undefined,
+    repli: string,
+  ): LigneCouleur[] =>
+    groupes.map((g) => ({
+      zone: colorKey(scope, g.zone),
+      current:
+        props.character.colors[colorKey(scope, g.zone)] ??
+        props.character.colors[g.zone] ??
+        defauts?.[g.zone] ??
+        repli,
+      nom: g.nom,
+      couleurs: (hex) => couleursDuGroupePourScope(scope, g, defauts, hex),
+    }));
+
+  /**
+   * Groupes de la pièce portée dans un emplacement. Seuls ceux PROPOSÉS au
+   * client : les petits détails décochés au back-office (ruban du chapeau…)
+   * n'ont pas de rangée de pastilles, et gardent leur couleur par défaut dans
+   * l'aperçu (cf. couleursDeLaPiece).
+   */
+  const zonesForSlot = (slot: Slot): LigneCouleur[] => {
     const variant = findVariant(props.slots[slot], props.character.assets[slot]);
     if (!variant?.colorZones) return [];
-    const masquees = variant.zonesMasquees ?? [];
-    return Object.keys(variant.colorZones)
-      .filter((zone) => !masquees.includes(zone))
-      .map((zone) => ({
-        zone: colorKey(slot, zone),
-        current:
-          props.character.colors[colorKey(slot, zone)] ??
-          props.character.colors[zone] ??
-          variant.colorZones?.[zone] ??
-          "#000000",
-      }));
+    return lignes(
+      slot,
+      groupesProposesDeLaPiece(variant),
+      variant.colorZones,
+      "#000000",
+    );
   };
 
-  /** Zones de peau de la base = ses baseColorZones. */
-  const skinZones = createMemo<{ zone: string; current: string }[]>(() => {
-    const base = props.base;
-    if (!base?.baseColorZones) return [];
-    // Heuristique : la 1ʳᵉ zone de la base = teinte de peau principale.
-    const first = Object.keys(base.baseColorZones)[0];
-    if (!first) return [];
-    return [
-      {
-        zone: colorKey(BASE_COLOR_SCOPE, first),
-        current:
-          props.character.colors[colorKey(BASE_COLOR_SCOPE, first)] ??
-          props.character.colors[first] ??
-          base.baseColorZones[first] ??
-          "#E0AC7E",
-      },
-    ];
-  });
+  /**
+   * Groupes proposés du dessin de BASE : la peau seulement, sauf réglage du
+   * back-office (pelage d'un chat, robe dessinée sur le personnage…). Chacun
+   * a son nuancier : celui de la peau pour le premier, sauf choix contraire.
+   */
+  const baseZones = createMemo<{ ligne: LigneCouleur; presets: readonly string[] }[]>(
+    () => {
+      const base = props.base;
+      if (!base?.baseColorZones) return [];
+      const groupes = groupesProposesDeLaBase(base);
+      const tous = lignes(BASE_COLOR_SCOPE, groupes, base.baseColorZones, "#E0AC7E");
+      const premier = groupesDuDessin(base.baseColorZones, base.baseGroupesCouleurs)[0];
+      return tous.map((ligne, i) => {
+        const g = groupes[i]!;
+        const nuancier = g.nuancier ?? (g.zone === premier?.zone ? "peau" : "vetements");
+        return { ligne, presets: NUANCIERS[nuancier] };
+      });
+    },
+  );
+
+  /** Le client choisit une couleur : sa référence et les nuances qui la suivent. */
+  const choisirCouleur = (ligne: LigneCouleur, hex: string) =>
+    props.onSetColors(ligne.couleurs(hex));
 
   /** Section galerie pour un slot (vêtements/pantalon/cheveux/accessoire). */
   function SlotSection(opts: { slot: Slot; allowNone: boolean }) {
@@ -557,7 +634,7 @@ export function CharacterEditor(props: {
                 zones={zonesForSlot(opts.slot)}
                 presets={palette.couleurs}
                 libre={palette.libre}
-                onSetColor={props.onSetColor}
+                onSetColor={choisirCouleur}
               />
             );
           })()}
@@ -672,9 +749,14 @@ export function CharacterEditor(props: {
                       svg={thumbSvg(
                         props.cache,
                         base.baseSvgUrl,
-                        String(props.character.characterId) === String(base.id)
-                          ? colorsForScope(props.character.colors, BASE_COLOR_SCOPE)
-                          : (base.baseColorZones ?? {}),
+                        // Mêmes couleurs que sur l'affiche : les défauts du
+                        // back-office, et celles du client pour le sien.
+                        couleursDeLaBase(
+                          String(props.character.characterId) === String(base.id)
+                            ? props.character.colors
+                            : undefined,
+                          base,
+                        ),
                         undefined,
                         `${uid}-charbase-${base.id}`,
                       )}
@@ -689,16 +771,20 @@ export function CharacterEditor(props: {
               style={{ bottom: "0" }}
             />
           </div>
-          {/* Couleur de peau (zones de la base) */}
-          <Show when={skinZones().length > 0}>
-            <ColorRow
-              libelle={m().choixCouleur}
-              zones={skinZones()}
-              presets={SKIN_TONES}
-              libre={true}
-              onSetColor={props.onSetColor}
-            />
-          </Show>
+          {/* Couleurs du dessin de base : la peau, et les groupes que le
+              back-office propose en plus (pelage, robe dessinée…). Une
+              rangée chacun, avec son propre nuancier. */}
+          <For each={baseZones()}>
+            {(b) => (
+              <ColorRow
+                libelle={m().choixCouleur}
+                zones={[b.ligne]}
+                presets={b.presets}
+                libre={true}
+                onSetColor={choisirCouleur}
+              />
+            )}
+          </For>
 
           <SlotSection slot="clothes" allowNone={false} />
           <SlotSection slot="pants" allowNone={false} />

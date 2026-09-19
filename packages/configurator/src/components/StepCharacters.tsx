@@ -33,7 +33,8 @@ export function StepCharacters(props: {
   onReorder: (depuis: number, vers: number) => void;
   onSetAsset: (index: number, slot: Slot, variantId: string | number) => void;
   onClearSlot: (index: number, slot: Slot) => void;
-  onSetColor: (index: number, zone: string, hex: string) => void;
+  /** Couleurs choisies : clé namespacée -> couleur (un groupe entier d'un coup). */
+  onSetColors: (index: number, couleurs: Record<string, string>) => void;
   onChangeCharacter: (index: number, base: CharacterDTO) => void;
   messages: MessagesConfigurateur;
 }) {
@@ -212,7 +213,7 @@ export function StepCharacters(props: {
               props.onSetAsset(editing()!, slot, variantId)
             }
             onClearSlot={(slot) => props.onClearSlot(editing()!, slot)}
-            onSetColor={(zone, hex) => props.onSetColor(editing()!, zone, hex)}
+            onSetColors={(couleurs) => props.onSetColors(editing()!, couleurs)}
             onChangeCharacter={(base) =>
               props.onChangeCharacter(editing()!, base)
             }

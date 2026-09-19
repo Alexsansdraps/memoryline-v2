@@ -15,6 +15,8 @@ import { unwrap } from "solid-js/store";
 import {
   BASE_COLOR_SCOPE,
   colorKey,
+  couleursDuGroupePourScope,
+  groupesDuDessin,
   ligneEnMajuscules,
   prixDuCadreCents,
 } from "@memoryline/types";
@@ -402,6 +404,17 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
         const key = colorKey(slot, zone);
         if (c.colors[key] === undefined) c.colors[key] = hex;
       }
+      // Les nuances de la nouvelle pièce suivent la couleur que porte déjà sa
+      // référence : un pull passé au vert garde des ombres vertes, pas celles
+      // du pull d'avant ni celles du dessin.
+      for (const g of groupesDuDessin(v?.colorZones, v?.groupesCouleurs)) {
+        const choisie = c.colors[colorKey(slot, g.zone)];
+        if (!choisie || !g.nuances?.length) continue;
+        Object.assign(
+          c.colors,
+          couleursDuGroupePourScope(slot, g, v?.colorZones, choisie),
+        );
+      }
     });
   }
   /**
@@ -417,10 +430,15 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       else c.assets[slot] = NONE_ASSET;
     });
   }
-  function setColor(index: number, zone: string, hex: string) {
+  /**
+   * Couleurs choisies par le client, clé namespacée -> couleur. Un choix de
+   * groupe arrive d'un seul tenant — la référence et ses nuances —, écrit en
+   * une fois : l'aperçu ne se redessine qu'une fois par geste.
+   */
+  function setColors(index: number, couleurs: Record<string, string>) {
     mutate((s) => {
       const c = s.characters[index];
-      if (c) c.colors[zone] = hex;
+      if (c) Object.assign(c.colors, couleurs);
     });
   }
   /** Change la base (type) d'un personnage : conserve les variantes choisies
@@ -700,7 +718,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             onReorder={reordonner}
             onSetAsset={setAsset}
             onClearSlot={clearSlot}
-            onSetColor={setColor}
+            onSetColors={setColors}
             onChangeCharacter={changeCharacter}
             messages={msg()}
           />

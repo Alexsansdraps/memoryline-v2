@@ -3,8 +3,7 @@ import { For, createMemo, createUniqueId } from "solid-js";
 import {
   appliquerCalage,
   calagePour,
-  BASE_COLOR_SCOPE,
-  colorsForScope,
+  couleursDeLaBase,
   couleursDeLaPiece,
   empilerPersonnage,
   scopeSvgStyles,
@@ -103,16 +102,17 @@ export function CharacterStack(props: {
       ? empilerPersonnage(brute, pieces, retires)
       : pieces.map((piece) => ({ piece }));
 
+    // Couleurs de la base : les défauts du back-office, puis celles du
+    // client — la même fonction que le fichier d'impression.
+    const couleursBase = couleursDeLaBase(colors, base);
+
     etages.forEach((etage, i) => {
       if ("base" in etage) {
         out.push({
           key: `base:${i}`,
           svg: fillSvg(
             scopeSvgStyles(
-              recolorForCharacter(
-                etage.base,
-                colorsForScope(colors, BASE_COLOR_SCOPE),
-              ),
+              recolorForCharacter(etage.base, couleursBase),
               // Une portée par tranche : chacune porte son propre <style>.
               `${uid}-base-${i}`,
             ),

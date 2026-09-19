@@ -128,6 +128,7 @@ import { mountFinances } from "./finances.js";
 import { mountRecherche } from "./recherche.js";
 import { mountDecors } from "./decors.js";
 import { mountApercus } from "./apercus.js";
+import { mountCouleursDessins } from "./couleurs-dessins.js";
 import { mountCourriers } from "./courriers.js";
 import {
   demarrerRelancePanier,
@@ -1734,6 +1735,10 @@ mountRecherche(app);
 // propose, et ce qu'il devine quand une affiche n'a rien à elle.
 mountDecors(app);
 mountApercus(app);
+
+// Les couleurs des dessins téléversés, qu'ils sortent d'Illustrator, de Canva
+// ou d'une vectorisation d'image IA : zones recolorables et nuances groupées.
+mountCouleursDessins(app);
 
 // Pages libres et menu du site, écrits depuis le back-office. Ouvrir un rayon
 // « Magnets » ne demande plus de toucher au code.

@@ -112,12 +112,16 @@
      * Le dessin, la zone voulue en rouge et les autres en gris clair.
      * Même lecture des zones que recolorSvg (@memoryline/types) : leurs
      * couleurs vivent dans les règles « .stN{fill:…} » du bloc <style>.
+     *
+     * `zone` peut en citer plusieurs, séparées d'espaces : un groupe de
+     * couleurs (une teinte et ses ombres) se surligne d'un bloc.
      */
     function apercuDeZone(svg, zone, cadrage) {
+      var voulues = String(zone).split(/\s+/);
       var sortie = svg.replace(
         /(\.(st\d+)\s*\{[^}]*?fill\s*:\s*)#[0-9a-fA-F]{3,8}/g,
         function (_m, debut, z) {
-          return debut + (z === zone ? SURLIGNE : ESTOMPE);
+          return debut + (voulues.indexOf(z) >= 0 ? SURLIGNE : ESTOMPE);
         },
       );
       // Les formes sans zone (contours, ombres) passent en gris moyen : elles

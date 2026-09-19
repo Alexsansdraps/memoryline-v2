@@ -132,6 +132,7 @@ async function donneesDeRendu(): Promise<ResolveData> {
       colorZones: a.colorZones,
       // Même règle que le fichier d'impression : l'aperçu montre ce qui s'imprime.
       zonesMasquees: a.zonesMasquees,
+      groupesCouleurs: a.groupesCouleurs,
       position: a.position,
     });
   const charMap = new Map<string, unknown>();

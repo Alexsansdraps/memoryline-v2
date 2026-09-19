@@ -48,6 +48,7 @@ import {
   calageNeutre,
   calagePropre,
   fraisDePort,
+  groupesDuDessin,
   lignesRemplies,
   poidsPanier,
   normaliserCode,
@@ -58,6 +59,7 @@ import {
   seuilPortOffertCents,
   sousTotalCents,
   totalPanierCents,
+  type GroupeCouleur,
   type PosterConfig,
   type TextesAffiche,
 } from "@memoryline/types";
@@ -432,6 +434,20 @@ function zonesMasqueesPropres(
     propres.add(zone);
   }
   return [...propres];
+}
+
+/**
+ * Groupes de couleurs d'un dessin, nettoyés contre ses zones : chaque zone
+ * dans un seul groupe, noms bornés, nuanciers connus (cf. groupesDuDessin).
+ * Absent ou illisible : null, c'est-à-dire « une zone par groupe », le
+ * comportement d'avant les groupes.
+ */
+function groupesPropres(
+  brut: unknown,
+  zonesDuDessin: Record<string, string> | null | undefined,
+): GroupeCouleur[] | null {
+  if (!Array.isArray(brut)) return null;
+  return groupesDuDessin(zonesDuDessin ?? {}, brut);
 }
 
 async function typeAfficheValide(slug: unknown): Promise<string | null> {
@@ -1378,6 +1394,8 @@ export function mountConfiguratorRoutes(app: Hono) {
         // Zones que le client ne recolore pas (ruban, élastique…) : pas de
         // pastilles pour elles, et leur couleur par défaut à l'écran.
         zonesMasquees: a.zonesMasquees,
+        // Nuances réunies sous une seule rangée de pastilles, et leurs noms.
+        groupesCouleurs: a.groupesCouleurs ?? null,
         position: a.position,
         // Catégorie de la pièce : c'est elle qui porte le nuancier proposé.
         pieceCategoryId: a.pieceCategoryId,
@@ -1410,6 +1428,10 @@ export function mountConfiguratorRoutes(app: Hono) {
         archived: t.archivedAt != null,
         baseSvgUrl: t.baseSvgUrl,
         baseColorZones: t.baseColorZones,
+        // Groupes de couleurs du dessin, et ceux que le client peut changer
+        // (null : la première zone seulement, la règle d'avant).
+        baseGroupesCouleurs: t.baseGroupesCouleurs ?? null,
+        baseZonesProposees: t.baseZonesProposees ?? null,
         orientation: t.orientation ?? "front",
         bottomPct: t.bottomPct ?? 1,
         // Taille propre au personnage : c'est le configurateur qui l'applique
@@ -2770,6 +2792,24 @@ export function mountConfiguratorRoutes(app: Hono) {
       ...(b.baseColorZones !== undefined
         ? { baseColorZones: zonesPropres(b.baseColorZones) }
         : {}),
+      // Groupes de couleurs lus au téléversement. Ils ne valent qu'avec les
+      // zones du même dessin, envoyées avec eux : sans elles, on ne saurait
+      // pas contre quoi les vérifier, et on n'y touche pas.
+      ...(b.baseColorZones !== undefined && b.baseGroupesCouleurs !== undefined
+        ? {
+            baseGroupesCouleurs: groupesPropres(
+              b.baseGroupesCouleurs,
+              zonesPropres(b.baseColorZones),
+            ),
+          }
+        : {}),
+      ...(b.baseColorZones !== undefined && b.baseZonesProposees !== undefined
+        ? {
+            baseZonesProposees: Array.isArray(b.baseZonesProposees)
+              ? zonesMasqueesPropres(b.baseZonesProposees, zonesPropres(b.baseColorZones))
+              : null,
+          }
+        : {}),
     };
     if (b.id) {
       const [row] = await db
@@ -3140,6 +3180,42 @@ export function mountConfiguratorRoutes(app: Hono) {
   });
 
   /**
+   * Les couleurs d'une pièce, telles que l'éditeur de groupes du back-office
+   * les tient : couleurs par défaut, groupes (nuances, noms) et groupes non
+   * proposés. Enregistrées dès qu'elles changent, d'un seul envoi : le
+   * regroupement, les noms et les cases se tiennent entre eux.
+   *
+   * `svgUrl` n'arrive qu'après « Détecter les couleurs » d'un dessin qui
+   * écrivait ses couleurs sur ses formes : la pièce pointe alors sur la
+   * version normalisée, l'original reste intact à côté.
+   */
+  app.post("/admin/assets/:id/groupes", async (c) => {
+    const id = Number(c.req.param("id"));
+    const b = await c.req.json().catch(() => ({}));
+    const [piece] = await db
+      .select({ colorZones: schema.assets.colorZones })
+      .from(schema.assets)
+      .where(eq(schema.assets.id, id));
+    if (!piece) return c.notFound();
+    const zones =
+      b.colorZones !== undefined ? zonesPropres(b.colorZones) : (piece.colorZones ?? {});
+    const set: Partial<typeof schema.assets.$inferInsert> = {
+      colorZones: Object.keys(zones).length ? zones : null,
+      groupesCouleurs: groupesPropres(b.groupesCouleurs, zones),
+      zonesMasquees: zonesMasqueesPropres(b.zonesMasquees, zones),
+    };
+    if (typeof b.svgUrl === "string" && /^\/assets\/[^/]+\.svg$/i.test(b.svgUrl))
+      set.svgUrl = b.svgUrl;
+    const [row] = await db
+      .update(schema.assets)
+      .set(set)
+      .where(eq(schema.assets.id, id))
+      .returning();
+    if (!row) return c.notFound();
+    return c.json(row);
+  });
+
+  /**
    * Définit le SVG de BASE d'un personnage prédéfini + ses couleurs par défaut.
    * Permet de composer un perso depuis le BO (baseSvgUrl = un perso complet,
    * ou un assemblage exporté). baseColorZones = couleurs par défaut (peau/tenue).
@@ -3151,6 +3227,25 @@ export function mountConfiguratorRoutes(app: Hono) {
     if (b.baseSvgUrl !== undefined) set.baseSvgUrl = b.baseSvgUrl || null;
     if (b.baseColorZones !== undefined)
       set.baseColorZones = zonesPropres(b.baseColorZones);
+    // Groupes et groupes proposés : vérifiés contre les zones de CE dessin —
+    // celles envoyées, sinon celles déjà enregistrées.
+    if (b.baseGroupesCouleurs !== undefined || b.baseZonesProposees !== undefined) {
+      let zones = set.baseColorZones as Record<string, string> | undefined;
+      if (!zones) {
+        const [actuel] = await db
+          .select({ z: schema.characterTypes.baseColorZones })
+          .from(schema.characterTypes)
+          .where(eq(schema.characterTypes.id, id));
+        if (!actuel) return c.notFound();
+        zones = actuel.z ?? {};
+      }
+      if (b.baseGroupesCouleurs !== undefined)
+        set.baseGroupesCouleurs = groupesPropres(b.baseGroupesCouleurs, zones);
+      if (b.baseZonesProposees !== undefined)
+        set.baseZonesProposees = Array.isArray(b.baseZonesProposees)
+          ? zonesMasqueesPropres(b.baseZonesProposees, zones)
+          : null;
+    }
     const [row] = await db
       .update(schema.characterTypes)
       .set(set)
@@ -3196,6 +3291,10 @@ export function mountConfiguratorRoutes(app: Hono) {
       // pas ne doit pas re-proposer d'un coup toutes les zones).
       ...(b.zonesMasquees !== undefined
         ? { zonesMasquees: zonesMasqueesPropres(b.zonesMasquees, cleanZones) }
+        : {}),
+      // Même règle pour les groupes de couleurs lus au téléversement.
+      ...(b.groupesCouleurs !== undefined
+        ? { groupesCouleurs: groupesPropres(b.groupesCouleurs, cleanZones) }
         : {}),
       position: Number(b.position ?? 0),
       characterTypeId: b.characterTypeId ? Number(b.characterTypeId) : null,

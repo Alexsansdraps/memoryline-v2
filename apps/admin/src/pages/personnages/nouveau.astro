@@ -26,6 +26,15 @@ if (Astro.request.method === "POST") {
       ...(f.get("baseColorZones")
         ? {
             baseColorZones: JSON.parse(String(f.get("baseColorZones") || "{}")),
+            // Nuances réunies à la lecture du dessin. La peau (le premier
+            // groupe) reste seule proposée : le reste se coche sur sa carte.
+            ...(f.get("baseGroupesCouleurs")
+              ? {
+                  baseGroupesCouleurs: JSON.parse(
+                    String(f.get("baseGroupesCouleurs") || "[]"),
+                  ),
+                }
+              : {}),
           }
         : {}),
       ...(f.get("bottomPct")
@@ -141,6 +150,7 @@ try {
             (500 × 1000).
           </p>
           <input type="hidden" name="baseColorZones" id="perso-zones" value="" />
+          <input type="hidden" name="baseGroupesCouleurs" id="perso-groupes" value="" />
           <input type="hidden" name="bottomPct" id="perso-bottom" value="" />
         </div>
       </div>
@@ -180,6 +190,7 @@ try {
     const apercu = document.getElementById("perso-apercu");
     const note = document.getElementById("perso-analyse");
     const zones = document.getElementById("perso-zones");
+    const groupes = document.getElementById("perso-groupes");
     const bas = document.getElementById("perso-bottom");
 
     function montrer() {
@@ -188,27 +199,43 @@ try {
       if (v) apercu.src = v.startsWith("http") ? v : PUBLIC_API_URL + v;
     }
 
+    const appel = (chemin, url) =>
+      fetch(`${PUBLIC_API_URL}${chemin}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+        credentials: "include",
+      }).then((res) => {
+        if (!res.ok) throw new Error(res.status);
+        return res.json();
+      });
+
     async function relire() {
       const v = (champ.value || "").trim();
       montrer();
       if (!v) return;
       note.textContent = "Lecture du dessin…";
       try {
-        const res = await fetch(`${PUBLIC_API_URL}/admin/svg/analyse`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: v }),
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error(res.status);
-        const info = await res.json();
-        zones.value = JSON.stringify(info.colorZones || {});
+        // Les couleurs d'abord : un dessin venu de Canva ou d'une IA écrit ses
+        // couleurs forme par forme, et revient sous une nouvelle adresse — sa
+        // version préparée, l'original restant intact. C'est elle qu'on garde.
+        const couleurs = await appel("/admin/svg/couleurs", v);
+        champ.value = couleurs.url;
+        montrer();
+        zones.value = JSON.stringify(couleurs.colorZones || {});
+        groupes.value = JSON.stringify(couleurs.groupesCouleurs || []);
+        const info = await appel("/admin/svg/analyse", couleurs.url);
         if (info.bottomPct != null) bas.value = String(info.bottomPct);
-        const n = Object.keys(info.colorZones || {}).length;
+        const n = (couleurs.groupesCouleurs || []).length;
+        if (n === 0 && couleurs.images > 0) {
+          note.textContent =
+            "Ce dessin est une image en pixels enregistrée en SVG : ses couleurs ne pourront pas changer. Il faut un vrai dessin vectoriel (vectoriser l'image, puis l'exporter en SVG).";
+          return;
+        }
         note.textContent =
-          `${n} zone${n > 1 ? "s" : ""} de couleur` +
+          `${n} couleur${n > 1 ? "s" : ""}` +
           (info.bottomPct != null ? ` · calage au sol ${info.bottomPct}` : "") +
-          " — relus dans le dessin.";
+          " — relus dans le dessin. Seule la première (la peau) sera proposée au client : les autres se cochent ensuite sur sa carte.";
       } catch {
         note.textContent =
           "Dessin illisible : il sera enregistré tel quel, à régler ensuite sur sa carte.";

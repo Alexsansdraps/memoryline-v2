@@ -40,11 +40,11 @@ import {
   ORDRE_CALQUES,
   appliquerCalage,
   calagePour,
-  BASE_COLOR_SCOPE,
-  colorsForScope,
+  couleursDeLaBase,
   couleursDeLaPiece,
   empilerPersonnage,
   recolorSvg,
+  type GroupeCouleur,
 } from "@memoryline/types";
 import {
   familleCss,
@@ -104,6 +104,8 @@ export interface ResolvedAsset {
   colorZones?: Record<string, string> | null;
   /** Zones non proposées au client : elles s'impriment dans leur couleur par défaut. */
   zonesMasquees?: string[] | null;
+  /** Groupes de couleurs : un groupe masqué garde le défaut de TOUTES ses nuances. */
+  groupesCouleurs?: GroupeCouleur[] | null;
   position?: number | null;
 }
 
@@ -289,11 +291,9 @@ export async function resolveConfig(
 
     // Couleurs namespacées "scope:zone" : la base ne reçoit que son scope
     // (les zones stN sont réutilisées par les pièces — une map plate ferait
-    // déteindre les couleurs d'une pièce sur la base).
-    const couleursBase: Record<string, string> = {
-      ...(base?.baseColorZones ?? {}),
-      ...colorsForScope(character.colors, BASE_COLOR_SCOPE),
-    };
+    // déteindre les couleurs d'une pièce sur la base). Même fonction que
+    // l'aperçu de la boutique : défauts du back-office, puis la configuration.
+    const couleursBase = couleursDeLaBase(character.colors, base);
 
     for (const etage of etages) {
       if ("base" in etage) {
@@ -313,13 +313,10 @@ export async function resolveConfig(
 
       // Couleurs : zones par défaut de l'asset surchargées par celles du perso
       // POUR CE SLOT uniquement (clés "slot:zone" — le slot vient de la config,
-      // même clé que celle écrite par le configurateur). Les zones que le
+      // même clé que celle écrite par le configurateur). Les groupes que le
       // client ne peut pas changer gardent leur défaut : même règle que
       // l'aperçu de la boutique (couleursDeLaPiece).
-      const overrides: Record<string, string> = {
-        ...(asset.colorZones ?? {}),
-        ...couleursDeLaPiece(character.colors, slot, asset),
-      };
+      const overrides = couleursDeLaPiece(character.colors, slot, asset);
       // Calage de la pièce sur CE personnage : même fonction qu'à l'écran,
       // donc impossible que l'impression tombe ailleurs que l'aperçu validé.
       layers.push({

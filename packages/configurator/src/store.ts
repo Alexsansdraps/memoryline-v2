@@ -4,6 +4,7 @@ import { createSignal, type Accessor, type Setter } from "solid-js";
 import type {
   PosterConfig,
   Character,
+  GroupeCouleur,
   PosterFormat,
   PosterView,
   PrixDuCadre,
@@ -63,6 +64,12 @@ export interface VariantDTO {
    * leur couleur par défaut (cf. couleursDeLaPiece). Absent = tout proposé.
    */
   zonesMasquees?: string[] | null;
+  /**
+   * Nuances réunies sous une seule rangée de pastilles (ombres, reflets d'un
+   * dessin vectorisé), avec le nom affiché au-dessus. Absent = une rangée par
+   * zone, comme avant.
+   */
+  groupesCouleurs?: GroupeCouleur[] | null;
   position: number;
   /** Catégorie de la pièce (« Casquettes »…) : elle porte le nuancier. */
   pieceCategoryId?: number | null;
@@ -92,6 +99,13 @@ export interface CharacterDTO {
   baseSvgUrl: string;
   /** Zones de couleur par défaut de la base : { stN: "#hex" }. */
   baseColorZones: Record<string, string> | null;
+  /** Groupes de couleurs du dessin de base (nuances réunies, noms, nuanciers). */
+  baseGroupesCouleurs?: GroupeCouleur[] | null;
+  /**
+   * Zones de référence des groupes proposés au client. Absent = le premier
+   * groupe seulement (la peau), la règle d'avant ce réglage.
+   */
+  baseZonesProposees?: string[] | null;
   /** Type d'affiche du perso (slug) : « front », « back », ou créé au BO. */
   orientation?: string;
   /** Bas réel du contenu dans le viewBox (0..1) pour aligner les pieds au sol. */
@@ -618,11 +632,11 @@ export function findVariant(
 }
 
 /**
- * Crée un personnage par défaut pour une base. `colors` reste VIDE : le SVG de
- * base a déjà ses bonnes couleurs intégrées (peau, tenue). On ne ré-applique pas
- * baseColorZones — sinon les zones .stN, qui n'ont pas la même sémantique entre
- * la base et les variantes de slots, se mélangent (peau qui devient bleue, etc.).
- * Les couleurs ne sont surchargées que si le client en change explicitement.
+ * Crée un personnage par défaut pour une base. Aucune couleur de la BASE dans
+ * `colors` : l'aperçu comme l'impression partent des couleurs par défaut du
+ * back-office (couleursDeLaBase), sous le seul scope de la base — les recopier
+ * ici figerait celles du jour dans le panier. Les couleurs de la base ne sont
+ * surchargées que si le client en change explicitement.
  */
 export function defaultCharacter(
   character: CharacterDTO,

@@ -87,39 +87,6 @@ export function colorsForScope(
 }
 
 /**
- * Les couleurs à appliquer à UNE pièce portée : celles du personnage pour son
- * emplacement (cf. {@link colorsForScope}), sauf sur les zones que la boutique
- * ne propose pas au client (`zonesMasquees`, réglées au back-office).
- *
- * Une zone masquée reprend TOUJOURS la couleur par défaut de la pièce, même si
- * la configuration en porte une autre : un panier rempli avant que la zone
- * soit décochée garde sa couleur en mémoire, et le client n'aurait plus aucun
- * moyen de la changer. L'aperçu de la boutique et le fichier d'impression
- * passent tous deux par ici : ils ne peuvent pas se contredire.
- *
- * Sans couleur par défaut connue pour la zone, on retire simplement la
- * surcharge : le dessin garde la couleur écrite dans son fichier.
- */
-export function couleursDeLaPiece(
-  colors: Record<string, string> | undefined | null,
-  slot: string,
-  piece: {
-    colorZones?: Record<string, string> | null;
-    zonesMasquees?: readonly string[] | null;
-  },
-): Record<string, string> {
-  const out = colorsForScope(colors, slot);
-  // Garde-fou : une donnée mal formée ne doit jamais empêcher de dessiner.
-  const masquees = Array.isArray(piece.zonesMasquees) ? piece.zonesMasquees : [];
-  for (const zone of masquees) {
-    const defaut = piece.colorZones?.[zone];
-    if (defaut) out[zone] = defaut;
-    else delete out[zone];
-  }
-  return out;
-}
-
-/**
  * Scope les règles CSS d'un SVG destiné à être INLINÉ dans le DOM.
  *
  * Problème : chaque SVG exporté définit ses couleurs via un bloc
