@@ -11,9 +11,9 @@
  *    lisible, pas un oubli invisible.
  *
  * 2. LA FORME NE SE TRADUIT PAS. Une image, un lien, un interrupteur, un
- *    nombre valent pour les cinq langues. Le jour où l'espagnol peut pointer
- *    une autre image, chaque langue devient une page indépendante que
- *    personne ne tient plus à jour.
+ *    nombre, une collection valent pour les cinq langues. Le jour où
+ *    l'espagnol peut pointer une autre image, chaque langue devient une page
+ *    indépendante que personne ne tient plus à jour.
  *
  * 3. ON NE CHANGE PAS DE PAGE POUR CHANGER DE LANGUE. Les cinq versions sont
  *    déjà à l'écran ; les onglets ne font que les montrer. Un onglet qui
@@ -21,7 +21,7 @@
  *    l'écran des pages libres, qu'on ne reproduit pas ici.
  */
 import Admin from "../layouts/Admin.astro";
-import { adminApi } from "../lib/api.ts";
+import { adminApi, type CollectionBo } from "../lib/api.ts";
 import { apiUrl } from "../lib/url.ts";
 
 const api = adminApi(Astro.request);
@@ -80,6 +80,22 @@ try {
 const parCle = new Map(lignes.map((l) => [l.key, l.value]));
 
 /**
+ * Les collections, pour le choix de ce que montre la vitrine de l'accueil.
+ *
+ * Toutes, même vides ou désactivées : ce sont celles de l'écran
+ * « Collections », et une collection qu'on prépare doit pouvoir se choisir
+ * d'avance. La liste le signale simplement, parce que le site, lui, montre
+ * alors les plus récentes à la place.
+ */
+let collections: CollectionBo[] = [];
+let collectionsIllisibles = false;
+try {
+  collections = (await api.collections()).collections;
+} catch {
+  collectionsIllisibles = true;
+}
+
+/**
  * La valeur d'une clé dans une langue.
  *
  * Une valeur restée en chaîne est du français — c'est la forme d'origine,
@@ -114,9 +130,48 @@ function avancement(cles: string[]): { faites: number; total: number } {
 type Champ = {
   key: string;
   label: string;
-  type: "switch" | "texte" | "long" | "nombre" | "image" | "lien";
+  type: "switch" | "texte" | "long" | "nombre" | "image" | "lien" | "collection";
   aide?: string;
 };
+
+/**
+ * Le choix d'une collection, prêt à afficher : les options, et ce qu'il faut
+ * en dire quand le site ne peut pas suivre ce choix.
+ *
+ * Une collection choisie puis supprimée n'est plus dans la liste : l'écran
+ * propose alors « Les plus récentes », ce que le site montre déjà, et le dit.
+ * Si la liste n'a pas pu être lue, en revanche, la valeur en place reste une
+ * option cochée — sans quoi enregistrer les textes effacerait ce choix sans
+ * que personne l'ait voulu.
+ */
+function choixCollection(cle: string) {
+  const choisie = valeur(cle).trim();
+  const options = collections.map((col) => {
+    const etats = [
+      col.produits === 0
+        ? "vide"
+        : `${col.produits} produit${col.produits > 1 ? "s" : ""}`,
+      ...(col.active ? [] : ["désactivée"]),
+    ];
+    return { slug: col.slug, libelle: `${col.name} (${etats.join(", ")})` };
+  });
+  const trouvee = collections.find((col) => col.slug === choisie);
+  if (choisie && !trouvee && collectionsIllisibles)
+    options.push({ slug: choisie, libelle: `« ${choisie} » (choix actuel)` });
+
+  let alerte: string | null = null;
+  if (collectionsIllisibles)
+    alerte =
+      "La liste des collections n'a pas pu être lue. Le choix actuel est conservé si vous enregistrez.";
+  else if (choisie && !trouvee)
+    alerte = `La collection choisie auparavant (« ${choisie} ») n'existe plus : le site montre les plus récentes à sa place.`;
+  else if (trouvee && (!trouvee.active || trouvee.produits === 0))
+    alerte =
+      "Cette collection est désactivée ou vide : le site montre les plus récentes à sa place, jusqu'à ce qu'elle contienne des affiches en vente.";
+
+  const selection = options.some((o) => o.slug === choisie) ? choisie : "";
+  return { options, selection, alerte };
+}
 
 const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
   {
@@ -160,6 +215,16 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
         type: "long",
         aide: "Une ligne par ligne ; commencez par « - » pour une puce.",
       },
+      {
+        key: "home.vitrine.collection",
+        label: "Collection affichée dans la vitrine",
+        type: "collection",
+        aide:
+          "« Les plus récentes » montre les dernières affiches créées. Une " +
+          "collection montre ses affiches dans l'ordre que vous leur avez " +
+          "donné dans Produits › Collections. Le nombre d'affiches ci-dessous " +
+          "s'applique dans les deux cas.",
+      },
       { key: "home.vitrine.count", label: "Nombre d'affiches (1 à 24)", type: "nombre" },
     ],
   },
@@ -189,7 +254,10 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
   },
 ];
 
-/** Un texte se traduit ; une image, un lien, un nombre, un interrupteur non. */
+/**
+ * Un texte se traduit ; une image, un lien, un nombre, un interrupteur, une
+ * collection non.
+ */
 const traduisible = (t: Champ["type"]) => t === "texte" || t === "long";
 
 const champsTraduisibles = SECTIONS.flatMap((s) =>
@@ -285,6 +353,44 @@ const global = avancement(champsTraduisibles);
                     class="mt-1 w-24 border border-bo-border rounded px-3 py-2"
                   />
                 </label>
+              ) : champ.type === "collection" ? (
+                (() => {
+                  const choix = choixCollection(champ.key);
+                  return (
+                    <label class="block">
+                      <span class="text-bo-muted">{champ.label}</span>
+                      <span class="ml-2 text-xs text-bo-muted">
+                        (vaut pour les 5 langues)
+                      </span>
+                      <select
+                        name={champ.key}
+                        class="mt-1 block w-full max-w-md rounded border border-bo-border bg-white px-3 py-2"
+                      >
+                        <option value="" selected={choix.selection === ""}>
+                          Les plus récentes
+                        </option>
+                        {choix.options.map((o) => (
+                          <option
+                            value={o.slug}
+                            selected={o.slug === choix.selection}
+                          >
+                            {o.libelle}
+                          </option>
+                        ))}
+                      </select>
+                      {champ.aide && (
+                        <span class="mt-1 block text-xs text-bo-muted">
+                          {champ.aide}
+                        </span>
+                      )}
+                      {choix.alerte && (
+                        <span class="mt-1 block rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs">
+                          {choix.alerte}
+                        </span>
+                      )}
+                    </label>
+                  );
+                })()
               ) : champ.type === "image" ? (
                 <div class="js-image" data-cle={champ.key}>
                   <span class="text-bo-muted">{champ.label}</span>

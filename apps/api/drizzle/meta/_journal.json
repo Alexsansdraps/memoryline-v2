@@ -351,6 +351,13 @@
       "when": 1789772882274,
       "tag": "0049_groupes_couleurs",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1789776414613,
+      "tag": "0050_creer_mon_affiche",
+      "breakpoints": true
     }
   ]
 }

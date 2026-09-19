@@ -47,14 +47,6 @@ try {
   // API non joignable au build/SSR -> on dégrade proprement
 }
 
-// Les affiches mises en avant : c'est ce qui manquait à l'accueil.
-let products: Product[] = [];
-try {
-  products = await api.products(60, langue);
-} catch {
-  // Sans API, la vitrine s'efface plutôt que d'afficher une grille vide.
-}
-
 /** Un réglage vaut « activé » sauf s'il est explicitement à "off"/"non"/"0". */
 async function visible(cle: string): Promise<boolean> {
   // Un interrupteur ne se traduit pas : on le lit toujours en français, la
@@ -89,13 +81,65 @@ const vitrineNombre = Math.max(
   Math.min(24, Number(await setting("home.vitrine.count", "8")) || 8),
 );
 
+/**
+ * La collection que montre la vitrine, choisie au back-office (« Accueil et
+ * pied de page »). Vide : les plus récentes, comme avant que le réglage
+ * existe. Ce n'est pas un texte : il vaut pour les cinq langues, et se lit
+ * donc en français, la langue de référence.
+ */
+const vitrineCollection = (
+  await setting("home.vitrine.collection", "")
+).trim();
+
+/**
+ * Les affiches de la vitrine, et elles seules : la page n'en demande que le
+ * nombre réglé, là où elle en chargeait soixante pour en garder huit.
+ *
+ * Une collection se présente dans l'ordre que la propriétaire lui a donné au
+ * glisser-déposer — c'est tout l'intérêt de la choisir. « Les plus
+ * récentes » demande EXPLICITEMENT les nouveautés : sans tri, l'API sert
+ * l'ordre des pages de genre, qui intercale le rang 1 des personnalisables et
+ * celui des prêtes à imprimer — un ordre que personne n'a réglé, et que le
+ * libellé du back-office démentirait.
+ *
+ * Une collection qui ne rend rien — désactivée, vidée, supprimée depuis —
+ * laisse la place aux plus récentes. La vitrine porte le titre de la page :
+ * elle ne doit pas disparaître parce qu'un rayon a été fermé ailleurs.
+ */
+async function affichesDeLaVitrine(): Promise<Product[]> {
+  if (vitrineCollection) {
+    try {
+      const rayon = await api.catalogue({
+        langue,
+        collection: vitrineCollection,
+        tri: "manuel",
+        limite: vitrineNombre,
+      });
+      if (rayon.items.length) return rayon.items;
+    } catch {
+      // API muette sur ce rayon : on tente les plus récentes ci-dessous.
+    }
+  }
+  try {
+    const rayon = await api.catalogue({
+      langue,
+      tri: "nouveautes",
+      limite: vitrineNombre,
+    });
+    return rayon.items;
+  } catch {
+    // Sans API, la vitrine s'efface plutôt que d'afficher une grille vide.
+    return [];
+  }
+}
+
 /*
  * Au stand, la vitrine se montre sans prix : c'est la vignette du rayon
  * (VignetteAffiche.astro) qui s'en charge, comme partout ailleurs — l'accueil
  * est ce qui s'ouvre en premier sur la tablette, et la vendeuse y annonce ses
  * tarifs de salon.
  */
-const vitrine = products.slice(0, vitrineNombre);
+const vitrine = vitrineVisible ? await affichesDeLaVitrine() : [];
 
 /** Intitulé de la lettre d'information, réglable au back-office. */
 /**

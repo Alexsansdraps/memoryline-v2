@@ -64,7 +64,11 @@ const MENU_DE_SECOURS: EntreeMenuPublique[] = [
     label: tr("nav.personnalisables"),
     href: "/affiches?genre=personnalisable",
     enfants: [
-      { id: -6, label: tr("nav.creer"), href: "/affiches" },
+      // Vers les personnalisables, et non « /affiches » : on ne crée qu'une
+      // affiche personnalisable, et c'est cette page qui suit l'ordre réglé
+      // au back-office. « /affiches » mêlait les prêtes à imprimer, par
+      // nouveautés. La même adresse est posée en base par la migration 0050.
+      { id: -6, label: tr("nav.creer"), href: "/affiches?genre=personnalisable" },
       { id: -2, label: tr("nav.tout_voir"), href: "/affiches?genre=personnalisable" },
       {
         id: -3,
