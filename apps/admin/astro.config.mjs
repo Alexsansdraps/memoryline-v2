@@ -9,6 +9,10 @@ import node from "@astrojs/node";
 // réécrit pas les liens écrits en dur : ils passent par src/lib/url.ts.
 const base = process.env.ADMIN_BASE ?? "/";
 
+// Vrai pour « astro dev », faux à la construction : le serveur de
+// développement et le site construit ne servent pas les fichiers pareil.
+const enDeveloppement = process.argv.includes("dev");
+
 // Les domaines que l'application accepte de servir et de se reconnaître.
 //
 // Vide en local : http://localhost suffit. En ligne, le domaine du site y
@@ -53,6 +57,31 @@ export default defineConfig({
     // (1,5 Go d'assets) et node_modules pour que ça reste peu coûteux.
     server: {
       ...(allowedHosts.length ? { allowedHosts } : {}),
+      /*
+       * En développement, le back-office s'ouvre sur SA propre adresse
+       * (http://localhost:4322/bo), et il y sert aussi l'API.
+       *
+       * Pourquoi : derrière le proxy, ses pages sont sous « /bo » mais Astro
+       * réclame ses fichiers à la racine (« /src/… »), et pire, un fichier qui
+       * en appelle un autre ne dit plus de quelle page il vient. Le proxy ne
+       * peut donc pas savoir à qui les donner, et les envoyait à la boutique :
+       * « No cached compile metadata found ». Sur sa propre adresse, la
+       * question ne se pose plus — tout vient du même serveur.
+       *
+       * Rien de tout ça en ligne : les fichiers y sont construits avec le
+       * préfixe « /bo », et l'API est servie par le proxy.
+       */
+      ...(enDeveloppement
+        ? {
+            proxy: {
+              "/api": {
+                target: process.env.API_URL_INTERNAL ?? "http://api:3000",
+                changeOrigin: true,
+                rewrite: (chemin) => chemin.replace(/^\/api/, ""),
+              },
+            },
+          }
+        : {}),
       watch: {
         usePolling: true,
         interval: 400,

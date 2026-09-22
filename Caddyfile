@@ -48,32 +48,19 @@
 		reverse_proxy api:3000
 	}
 
-	# « /bo » tout court ne correspond pas au motif « /bo/* » : sans cette
-	# redirection, le raccourci affiché sur le site tombe sur un 404.
-	redir /bo /bo/
-
-	handle /bo/* {
-		reverse_proxy admin:4322
-	}
-
-	# Les fichiers du serveur de développement du back-office.
+	# LE BACK-OFFICE, EN DÉVELOPPEMENT, VIT SUR SON PROPRE PORT.
 	#
-	# Astro sert les PAGES du back-office sous « /bo », mais demande ses
-	# propres fichiers à la racine (« /@vite/client », « /src/… ») : sans la
-	# règle ci-dessous, ces demandes tombent sur la boutique, qui ne les
-	# connaît pas. Invisible tant qu'aucun composant du back-office n'avait de
-	# script ; le premier (les groupes de couleurs) échouait avec « No cached
-	# compile metadata found ».
+	# Ses pages étaient servies ici sous « /bo », mais Astro réclame ses
+	# fichiers à la racine (« /src/… ») et un fichier qui en appelle un autre
+	# ne dit pas de quelle page il vient : impossible, ici, de savoir s'ils
+	# sont pour la boutique ou pour le back-office. Ils partaient donc à la
+	# boutique, qui ne les connaît pas (« No cached compile metadata found »).
 	#
-	# On les reconnaît à la page qui les demande (en-tête Referer) : une page
-	# du back-office. La boutique, elle, garde les siennes.
-	@fichiersBo {
-		path /@vite/* /@id/* /@fs/* /src/* /node_modules/*
-		header_regexp Referer ^[a-z]+://[^/]+/bo/
-	}
-	handle @fichiersBo {
-		reverse_proxy admin:4322
-	}
+	# On renvoie donc le back-office vers son serveur, où pages, fichiers et
+	# API sont sur la même adresse. En ligne, rien de tout cela : les fichiers
+	# du back-office y sont construits avec leur préfixe.
+	redir /bo http://localhost:4322/bo/
+	redir /bo/* http://localhost:4322{uri}
 
 	handle {
 		reverse_proxy web:4321
