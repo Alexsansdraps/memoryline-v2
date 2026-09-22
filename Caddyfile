@@ -56,6 +56,25 @@
 		reverse_proxy admin:4322
 	}
 
+	# Les fichiers du serveur de développement du back-office.
+	#
+	# Astro sert les PAGES du back-office sous « /bo », mais demande ses
+	# propres fichiers à la racine (« /@vite/client », « /src/… ») : sans la
+	# règle ci-dessous, ces demandes tombent sur la boutique, qui ne les
+	# connaît pas. Invisible tant qu'aucun composant du back-office n'avait de
+	# script ; le premier (les groupes de couleurs) échouait avec « No cached
+	# compile metadata found ».
+	#
+	# On les reconnaît à la page qui les demande (en-tête Referer) : une page
+	# du back-office. La boutique, elle, garde les siennes.
+	@fichiersBo {
+		path /@vite/* /@id/* /@fs/* /src/* /node_modules/*
+		header_regexp Referer ^[a-z]+://[^/]+/bo/
+	}
+	handle @fichiersBo {
+		reverse_proxy admin:4322
+	}
+
 	handle {
 		reverse_proxy web:4321
 	}
