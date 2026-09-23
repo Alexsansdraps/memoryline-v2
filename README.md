@@ -25,6 +25,18 @@ packages/types → types TypeScript partagés
 docs/         → specs & schémas
 ```
 
+## Rien ne se supprime
+
+Chez Memory Line, **supprimer n'existe pas : on archive**. Une chose archivée quitte la boutique et
+les listes ordinaires, garde tout ce qu'elle contenait, reste visible dans le back-office sous
+**Réglages → Archives**, et se restaure d'un clic. Les commandes déjà passées continuent de
+s'imprimer à l'identique. Trois exceptions seulement, listées dans cet écran : les photos de
+visiteurs et leur purge, les fichiers de cache, et ce qu'un client fait sur ses propres données.
+
+`pnpm --filter @memoryline/api verifier:archivage` relit toute l'API et **échoue** sur toute
+suppression réelle (`db.delete` / `tx.delete`) qui n'est pas nommément justifiée dans
+`apps/api/scripts/verifier-archivage.mjs`.
+
 ## État
 
 🚧 **Phase 0 — fondations.** Squelette en place, stack à valider (voir §8–9 du plan de dev).

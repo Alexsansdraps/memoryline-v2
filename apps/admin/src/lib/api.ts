@@ -1314,9 +1314,63 @@ export interface StyleIa {
   translations: Partial<Record<string, { title?: string }>> | null;
 }
 
+/** Une chose archivée, telle que l'écran « Archives » l'affiche. */
+export interface ElementArchive {
+  id: number;
+  libelle: string;
+  detail: string | null;
+  /** ISO, ou null quand la ligne n'a gardé aucune date. */
+  date: string | null;
+}
+
+/**
+ * Une nature de chose archivée : les pages, les collections, les fonds…
+ *
+ * `dateSource` dit ce que la date raconte. « archivage » = l'heure exacte du
+ * rangement. « modification » = le dernier enregistrement, seule date connue
+ * pour les produits, dont l'archivage est un statut et non une date : l'écran
+ * doit écrire « Modifié le » plutôt qu'une date d'archivage inventée.
+ */
+export interface GroupeArchives {
+  cle: string;
+  titre: string;
+  /** L'écran où cette nature se range et se restaure aussi. */
+  ecran: string;
+  /** Son nom dans le menu de gauche, pour que le lien se lise. */
+  ecranNom: string;
+  dateSource: "archivage" | "modification";
+  elements: ElementArchive[];
+}
+
 export function adminApi(request?: Request) {
   const cookie = request?.headers.get("cookie") ?? undefined;
   return {
+    /**
+     * Tout ce qui est archivé, d'un coup. Lecture seule : la restauration
+     * passe par la route d'archivage de chaque nature, la seule qui en
+     * connaisse les règles.
+     */
+    archives: () =>
+      req<{
+        groupes: GroupeArchives[];
+        total: number;
+        /** Comptées seulement : elles ont leur onglet « Archivées ». */
+        commandesArchivees: number;
+        /** Comptés seulement : un lien se restaure avec sa famille, côté menu. */
+        liensMenuArchives: number;
+      }>("GET", "/admin/archives", undefined, cookie),
+    /**
+     * Archive une lettre, ou la restaure. Il n'y a plus de suppression : une
+     * lettre partie garde la trace de qui l'a reçue, et l'effacer emportait
+     * cette trace avec elle.
+     */
+    archiverLettre: (id: number, archived = true) =>
+      req<{ ok: boolean }>(
+        "POST",
+        `/admin/lettres/${id}/archive`,
+        { archived },
+        cookie,
+      ),
     stats: () => req<Stats>("GET", "/admin/stats", undefined, cookie),
     promos: () => req<PromoRule[]>("GET", "/admin/promos", undefined, cookie),
     upsertPromo: (data: Partial<PromoRule>) =>

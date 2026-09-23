@@ -499,8 +499,26 @@ export function mountCompteRoutes(app: Hono): void {
    * commande, en salon). Le système, lui, n'a aucun moyen de le faire tant que
    * l'adresse n'est pas vérifiée par e-mail.
    *
-   * Les fiches vidées sont supprimées : deux fiches pour une même personne
-   * finissent toujours par produire deux historiques et deux vérités.
+   * Les fiches en double sont VIDÉES puis retirées : deux fiches pour une même
+   * personne finissent toujours par produire deux historiques et deux vérités.
+   * C'est la seule disparition de tout le back-office, et elle ne tient que
+   * parce que la fiche gardée reprend d'abord tout ce que sa jumelle portait :
+   * ses commandes, ses adresses, ses cartes cadeaux, ses essais d'affiche IA,
+   * ses étiquettes de classement, sa note, et les renseignements qui manquaient
+   * ici (téléphone, prénom, nom, identifiant Shopify, ancienneté).
+   *
+   * Cette reprise se relit DEUX FOIS à chaque changement : les colonnes de
+   * `customer`, et les six tables qui pointent vers elle (schema.ts). Les
+   * colonnes se voient ; les tables, non — une ligne en « set null » se coupe
+   * toute seule au delete, sans erreur, sans trace et sans rien à l'écran. Une
+   * carte cadeau remise à cette personne a déjà perdu son destinataire de
+   * cette façon. Deux tables restent en cascade, sans dommage :
+   * `customer_session` et `customer_token` s'ouvrent l'une et l'autre sur un
+   * `passwordHash` qu'une fiche fondue ici n'a par définition pas.
+   *
+   * Une seule chose n'est PAS reprise, et c'est voulu : le consentement
+   * marketing. Refuser de recontacter quelqu'un est l'erreur qui se rattrape,
+   * l'inverse non.
    */
   app.post("/admin/customers/:id/rattacher-commandes", async (c) => {
     const id = Number(c.req.param("id"));
@@ -513,7 +531,7 @@ export function mountCompteRoutes(app: Hono): void {
       return c.json({ error: "Cette fiche n'a pas d'adresse e-mail" }, 400);
 
     const fiches = await db
-      .select({ id: schema.customers.id })
+      .select()
       .from(schema.customers)
       .where(
         and(
@@ -521,7 +539,8 @@ export function mountCompteRoutes(app: Hono): void {
           isNull(schema.customers.passwordHash),
         ),
       );
-    const doublons = fiches.map((f) => f.id).filter((v) => v !== id);
+    const aFondre = fiches.filter((f) => f.id !== id);
+    const doublons = aFondre.map((f) => f.id);
     if (!doublons.length)
       return c.json({ ok: true, commandes: 0, fiches: 0 });
 
@@ -534,6 +553,92 @@ export function mountCompteRoutes(app: Hono): void {
       .update(schema.customerAddresses)
       .set({ customerId: id })
       .where(inArray(schema.customerAddresses.customerId, doublons));
+
+    /*
+     * Les deux liens que la base couperait d'elle-même au delete (« set null »,
+     * schema.ts) : la carte cadeau remise à cette personne et ses essais
+     * d'affiche IA. Les repointer AVANT, sans quoi « à qui cette carte a-t-elle
+     * été remise ? » n'a plus de réponse, et rien à l'écran n'aura prévenu.
+     */
+    await db
+      .update(schema.giftCards)
+      .set({ customerId: id })
+      .where(inArray(schema.giftCards.customerId, doublons));
+    await db
+      .update(schema.aiGenerations)
+      .set({ customerId: id })
+      .where(inArray(schema.aiGenerations.customerId, doublons));
+
+    /*
+     * Ce que la fiche gardée n'a pas et qu'une jumelle a : on le reprend avant
+     * qu'elle ne parte. Uniquement les champs VIDES de la fiche gardée — on
+     * complète, on n'écrase jamais : la fiche que la patronne a choisi de
+     * garder est celle qui fait foi.
+     */
+    const repris: Partial<typeof schema.customers.$inferInsert> = {};
+    const vide = (v: string | null | undefined) => !String(v ?? "").trim();
+    for (const champ of ["name", "phone", "firstName", "lastName"] as const) {
+      if (!vide(compte[champ])) continue;
+      const donneur = aFondre.find((f) => !vide(f[champ]));
+      if (donneur) repris[champ] = donneur[champ];
+    }
+
+    // L'identifiant Shopify : le fil qui relie la fiche à l'historique importé.
+    // Il ne se retrouve pas si on le laisse partir.
+    if (compte.legacyId === null) {
+      const donneur = aFondre.find((f) => f.legacyId !== null);
+      if (donneur) repris.legacyId = donneur.legacyId;
+    }
+
+    /*
+     * La note se concatène plutôt qu'elle ne se choisit : deux notes écrites à
+     * deux moments sont deux renseignements, et en jeter une serait le seul
+     * endroit de cette fusion où quelque chose se perdrait pour de bon.
+     */
+    const notes = [compte.note, ...aFondre.map((f) => f.note)]
+      .map((n) => String(n ?? "").trim())
+      .filter(Boolean);
+    const notesUniques = [...new Set(notes)];
+    if (notesUniques.length > 1) repris.note = notesUniques.join("\n\n");
+    else if (notesUniques.length === 1 && vide(compte.note))
+      repris.note = notesUniques[0];
+
+    /*
+     * Les étiquettes de classement se RÉUNISSENT, comme les notes : ce n'est
+     * pas un champ qui se remplace, chacune est un rangement voulu. Garder
+     * « VIP » en laissant filer « salon de Vannes » serait déjà une perte.
+     */
+    const etiquettes = [
+      ...new Set(
+        [compte.tags ?? [], ...aFondre.map((f) => f.tags ?? [])]
+          .flat()
+          .map((t) => String(t).trim())
+          .filter(Boolean),
+      ),
+    ];
+    if (
+      etiquettes.length &&
+      JSON.stringify(etiquettes) !== JSON.stringify(compte.tags ?? [])
+    )
+      repris.tags = etiquettes;
+
+    /*
+     * « Client depuis » prend la plus ancienne des deux dates : les commandes
+     * de la jumelle viennent d'arriver ici, et une fiche plus jeune que sa
+     * première commande se lirait comme une erreur de la boutique.
+     */
+    const plusAncienne = aFondre.reduce(
+      (a, f) => (f.createdAt < a ? f.createdAt : a),
+      compte.createdAt,
+    );
+    if (plusAncienne < compte.createdAt) repris.createdAt = plusAncienne;
+
+    if (Object.keys(repris).length)
+      await db
+        .update(schema.customers)
+        .set(repris)
+        .where(eq(schema.customers.id, id));
+
     await db
       .delete(schema.customers)
       .where(inArray(schema.customers.id, doublons));

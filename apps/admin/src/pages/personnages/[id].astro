@@ -836,7 +836,18 @@ const piecesACaler = SLOTS.flatMap((s) => {
         </div>
       </section>
 
-      <form method="POST">
+      {/* La même phrase que dans la liste des personnages : on doit lire la
+          même chose avant le même geste, d'où qu'on le fasse. */}
+      <form
+        method="POST"
+        onsubmit={`return confirm(${JSON.stringify(
+          [
+            `Archiver le personnage « ${perso.name} » ?`,
+            "Il ne sera plus proposé dans le configurateur. Ses pièces, ses couleurs et ses réglages sont gardés entiers, et les commandes déjà passées dessus restent imprimables à l'identique.",
+            "Rien n'est supprimé : vous pourrez le restaurer quand vous voudrez, dans « Personnages archivés », au bas de l'écran « Personnages ».",
+          ].join("\n\n"),
+        )})`}
+      >
         <input type="hidden" name="_action" value="archive" />
         <input type="hidden" name="archived" value="true" />
         <button class="text-xs text-bo-muted hover:text-bo-accent">

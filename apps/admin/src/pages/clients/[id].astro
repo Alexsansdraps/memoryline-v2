@@ -416,12 +416,19 @@ const nom = client?.name?.trim() || "Client sans nom";
               <input type="hidden" name="_action" value="rattacher" />
               <p class="text-xs text-bo-muted">
                 Si la même adresse e-mail existe sur d'autres fiches sans
-                compte, leurs commandes et leurs adresses viennent ici, et les
-                fiches vidées disparaissent.
+                compte, tout ce qu'elles portent vient ici : leurs commandes,
+                leurs adresses, leurs cartes cadeaux, leurs étiquettes, leur
+                note, et les renseignements qui manquent à cette fiche
+                (téléphone, prénom, nom). Une seule chose ne suit pas, et c'est
+                exprès : leur accord pour recevoir la lettre d'information — un
+                accord ne se réactive pas par une fusion. Les fiches ainsi
+                vidées disparaissent, et c'est le seul endroit du back-office où
+                quelque chose disparaît : garder deux vérités sur la même
+                personne coûterait plus cher.
               </p>
               <button
                 class="rounded border border-bo-border px-3 py-1.5 hover:bg-bo-bg"
-                onclick="return confirm('Rattacher à cette fiche toutes les commandes passées avec la même adresse e-mail ? Les fiches en double, une fois vidées, seront supprimées. Cette opération ne se défait pas.')"
+                onclick="return confirm('Réunir ici toutes les fiches qui portent la même adresse e-mail ?\n\nTout ce qu\'elles portent vient sur cette fiche : commandes, adresses, cartes cadeaux, étiquettes, note, et les renseignements qui manquent ici. Seul leur accord pour la lettre d\'information n\'est pas repris.\n\nLes fiches vidées, elles, disparaissent : cette opération ne se défait pas.')"
               >
                 Rattacher les doublons
               </button>

@@ -87,8 +87,9 @@ if (Astro.request.method === "POST") {
       });
       flash = "Zone enregistrée.";
     } else {
-      // La grille part entière : une tranche retirée de l'écran doit
-      // disparaître de la base, ligne à ligne on l'oublierait.
+      // La grille part entière : une tranche retirée de l'écran doit quitter
+      // la grille — l'API l'ARCHIVE alors, elle ne l'efface pas (elle attend
+      // dans « Tranches archivées »). Ligne à ligne, on l'oublierait.
       const mins = f.getAll("min");
       const maxs = f.getAll("max");
       const prix = f.getAll("price");
@@ -555,7 +556,7 @@ const NOM_TRANSPORTEUR: Record<string, string> = Object.fromEntries(
                           <button
                             type="button"
                             class="js-retirer-ligne rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-red-300 hover:text-red-700"
-                            title="Retirer cette tranche"
+                            title="Retirer cette tranche de la grille — elle sera archivée à l'enregistrement, et restaurable plus bas"
                             aria-label="Retirer cette tranche"
                           >
                             ✕
@@ -717,7 +718,7 @@ const NOM_TRANSPORTEUR: Record<string, string> = Object.fromEntries(
       <td class="px-3 py-1"><input name="min" type="number" min="0" step="1" value="" class="w-28 border border-bo-border rounded px-2 py-1" /></td>
       <td class="px-3 py-1"><input name="max" type="number" min="0" step="1" value="" placeholder="sans limite" class="w-28 border border-bo-border rounded px-2 py-1" /></td>
       <td class="px-3 py-1"><input name="price" type="number" min="0" step="0.01" value="" class="w-24 border border-bo-border rounded px-2 py-1" /></td>
-      <td class="px-3 py-1 text-right"><button type="button" class="js-retirer-ligne rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-red-300 hover:text-red-700" title="Retirer cette tranche" aria-label="Retirer cette tranche">✕</button></td>`;
+      <td class="px-3 py-1 text-right"><button type="button" class="js-retirer-ligne rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-red-300 hover:text-red-700" title="Retirer cette tranche de la grille — elle sera archivée à l'enregistrement, et restaurable plus bas" aria-label="Retirer cette tranche">✕</button></td>`;
 
     for (const form of document.querySelectorAll("form.js-grille")) {
       const corps = form.querySelector(".js-lignes");

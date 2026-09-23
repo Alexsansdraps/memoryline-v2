@@ -136,6 +136,7 @@ import { mountDecors } from "./decors.js";
 import { mountApercus } from "./apercus.js";
 import { mountCouleursDessins } from "./couleurs-dessins.js";
 import { mountCourriers } from "./courriers.js";
+import { mountArchives } from "./archives.js";
 import {
   demarrerRelancePanier,
   mountRelancePanier,
@@ -1913,6 +1914,10 @@ mountCms(app);
 // Banc d'essai des courriers : les voir et s'en envoyer un, sans attendre
 // qu'une commande passe.
 mountCourriers(app);
+
+// Tout ce qui est archivé, relu d'un coup. Lecture seule : on restaure par la
+// route d'archivage de chaque nature, la seule qui en connaisse les règles.
+mountArchives(app);
 
 // Relance des paniers abandonnés : les trois critères d'abandon, les cinq
 // garde-fous, le travailleur d'envoi, le lien de récupération et le refus.

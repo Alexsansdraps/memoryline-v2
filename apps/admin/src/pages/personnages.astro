@@ -220,6 +220,15 @@ function messageArchivageCategorie(c: CharacterCategory): string {
   return l.join("\n\n");
 }
 
+/** Ce qu'il faut avoir lu avant d'archiver un personnage. */
+function messageArchivagePersonnage(t: { name: string }): string {
+  return [
+    `Archiver le personnage « ${t.name} » ?`,
+    "Il ne sera plus proposé dans le configurateur. Ses pièces, ses couleurs et ses réglages sont gardés entiers, et les commandes déjà passées dessus restent imprimables à l'identique.",
+    "Rien n'est supprimé : vous pourrez le restaurer quand vous voudrez, dans « Personnages archivés », plus bas dans cet écran.",
+  ].join("\n\n");
+}
+
 // Types d'affiche : ils alimentent les sélecteurs « Type d'affiche » des
 // personnages et des pièces. La liste se gère dans son propre écran.
 try {
@@ -715,7 +724,11 @@ for (const a of pieces) {
               </div>
 
               <div class="px-4 py-3">
-                <form method="POST" class="inline">
+                <form
+                  method="POST"
+                  class="inline"
+                  onsubmit={`return confirm(${JSON.stringify(messageArchivagePersonnage(t))})`}
+                >
                   <input type="hidden" name="_action" value="archive" />
                   <input type="hidden" name="id" value={t.id} />
                   <input type="hidden" name="archived" value="true" />
@@ -863,6 +876,7 @@ for (const a of pieces) {
                     <button
                       type="button"
                       class="js-archive-asset ml-auto text-xs text-bo-muted hover:text-bo-accent"
+                      data-nom={a.name}
                     >
                       Archiver
                     </button>
@@ -1210,6 +1224,20 @@ for (const a of pieces) {
         const card = btn.closest("[data-asset-id]");
         if (!card) return;
         const restaurer = btn.dataset.restaurer === "1";
+        // Archiver une pièce la retire du configurateur : on le dit avant,
+        // comme partout ailleurs. Restaurer, lui, ne demande rien — remettre
+        // en place n'a jamais fait de dégât.
+        if (
+          !restaurer &&
+          !confirm(
+            `Archiver la pièce « ${btn.dataset.nom || "sans nom"} » ?\n\n` +
+              "Elle ne sera plus proposée dans le configurateur. Rien n'est " +
+              "supprimé : les commandes déjà passées dessus restent " +
+              "imprimables, et vous pourrez la restaurer quand vous voudrez, " +
+              "dans « Pièces archivées », en bas de cet écran.",
+          )
+        )
+          return;
         const id = card.getAttribute("data-asset-id");
         try {
           const res = await fetch(`${PUBLIC_API_URL}/admin/assets/${id}/archive`, {

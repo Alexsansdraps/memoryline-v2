@@ -765,7 +765,19 @@ const TON_CLASSE: Record<Ton, string> = {
     document.querySelectorAll("form.js-retirer").forEach((f) => {
       f.addEventListener("submit", (ev) => {
         const nom = f.getAttribute("data-nom") || "cette adresse";
-        if (!confirm(`Retirer « ${nom} » de la liste ?`)) ev.preventDefault();
+        // Une des trois exceptions à l'archivage : une adresse e-mail
+        // appartient à la personne, pas à la boutique. Garder « au cas où »
+        // celle de quelqu'un qui demande à partir est exactement ce qu'il ne
+        // faut pas faire — la phrase doit donc le dire sans détour.
+        if (
+          !confirm(
+            `Retirer « ${nom} » de la lettre d'information ?\n\n` +
+              "Cette adresse appartient à la personne : elle part pour de bon, " +
+              "elle ne s'archive pas. La personne pourra se réinscrire depuis " +
+              "le site quand elle voudra.",
+          )
+        )
+          ev.preventDefault();
       });
     });
 

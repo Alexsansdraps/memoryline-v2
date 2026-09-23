@@ -8,6 +8,7 @@
     "dev:local": "tsx watch --env-file-if-exists=../../.env src/index.ts",
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
+    "verifier:archivage": "node scripts/verifier-archivage.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file-if-exists=../../.env src/db/migrate.ts",
     "db:studio": "drizzle-kit studio",
