@@ -31,7 +31,15 @@
  * la boutique sans navigation, sans que rien à l'écran ne dise pourquoi.
  */
 import type { Context, Hono } from "hono";
-import { and, asc, eq, inArray, notInArray, sql as raw } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNull,
+  notInArray,
+  sql as raw,
+} from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import type { BlocPage } from "./db/schema.js";
 
@@ -650,7 +658,10 @@ async function produitsDuneReference(
 ): Promise<LigneProduit[]> {
   const filtre =
     source === "collection"
-      ? raw`exists (select 1 from ${schema.productCollections} pc join ${schema.collections} col on col.id = pc.collection_id where pc.product_id = ${schema.products.id} and col.slug = ${reference} and col.active = true)`
+      ? // `col.archived_at is null` : une collection archivée ne sort plus de
+        // produits. La rangée d'une page qui la montrait reste en ligne, vide,
+        // et se remplit à nouveau dès qu'on restaure la collection.
+        raw`exists (select 1 from ${schema.productCollections} pc join ${schema.collections} col on col.id = pc.collection_id where pc.product_id = ${schema.products.id} and col.slug = ${reference} and col.active = true and col.archived_at is null)`
       : /^\d+$/.test(reference)
         ? raw`exists (select 1 from ${schema.productCategories} cat where cat.id = ${schema.products.categoryId} and cat.id = ${Number(reference)} and cat.active = true)`
         : null;
@@ -946,12 +957,16 @@ async function lireAdresse(valeur: unknown, pageId: number | null): Promise<stri
       `L'adresse « ${slug} » est déjà celle d'une page du site. Choisissez-en une autre, par exemple « ${slug}-2 ».`,
     );
   const [prise] = await db
-    .select({ id: schema.pages.id })
+    .select({ id: schema.pages.id, archivedAt: schema.pages.archivedAt })
     .from(schema.pages)
     .where(eq(schema.pages.slug, slug));
   if (prise && prise.id !== pageId)
     throw new SaisieRefusee(
-      `L'adresse « ${slug} » est déjà utilisée par une autre page. Choisissez-en une autre.`,
+      prise.archivedAt
+        ? // Une page archivée garde son adresse : sans cette phrase, l'adresse
+          // paraîtrait prise par une page introuvable dans la liste.
+          `L'adresse « ${slug} » est celle d'une page archivée. Restaurez-la depuis « Pages archivées », ou choisissez une autre adresse.`
+        : `L'adresse « ${slug} » est déjà utilisée par une autre page. Choisissez-en une autre.`,
     );
   return slug;
 }
@@ -1110,7 +1125,14 @@ export function mountCms(app: Hono): void {
         translations: schema.menuItems.translations,
       })
       .from(schema.menuItems)
-      .where(eq(schema.menuItems.visible, true))
+      .where(
+        and(
+          eq(schema.menuItems.visible, true),
+          // Un lien retiré du menu est archivé, pas effacé : il ne revient
+          // sur le site que lorsqu'on le restaure au back-office.
+          isNull(schema.menuItems.archivedAt),
+        ),
+      )
       .orderBy(asc(schema.menuItems.position), asc(schema.menuItems.id));
 
     const libelle = (l: { label: string; translations: TraductionsMenu | null }) =>
@@ -1163,6 +1185,9 @@ export function mountCms(app: Hono): void {
         and(
           eq(schema.pages.slug, slug),
           eq(schema.pages.status, "active"),
+          // Une page archivée n'existe plus pour le site, même pour qui en
+          // aurait gardé l'adresse : c'est la même règle qu'un brouillon.
+          isNull(schema.pages.archivedAt),
           inArray(schema.pages.affichage, AFFICHAGES_SITE),
         ),
       );
@@ -1199,6 +1224,7 @@ export function mountCms(app: Hono): void {
       .where(
         and(
           eq(schema.pages.status, "active"),
+          isNull(schema.pages.archivedAt),
           inArray(schema.pages.affichage, AFFICHAGES_STAND),
         ),
       )
@@ -1223,6 +1249,9 @@ export function mountCms(app: Hono): void {
    * Par titre et non par date : c'est ainsi qu'on retrouve « Livraison et
    * retours » quand on le cherche, alors qu'un classement par date change de
    * place à chaque enregistrement.
+   *
+   * Les pages archivées viennent AVEC, marquées : l'écran les range dans sa
+   * section « Archivées » sans avoir à redemander la liste.
    */
   app.get("/admin/pages", async (c) => {
     const lignes = await db
@@ -1232,12 +1261,17 @@ export function mountCms(app: Hono): void {
         title: schema.pages.title,
         status: schema.pages.status,
         affichage: schema.pages.affichage,
+        archivedAt: schema.pages.archivedAt,
         updatedAt: schema.pages.updatedAt,
       })
       .from(schema.pages)
       .orderBy(asc(schema.pages.title));
     return c.json({
-      pages: lignes.map((p) => ({ ...p, updatedAt: p.updatedAt.toISOString() })),
+      pages: lignes.map((p) => ({
+        ...p,
+        archivedAt: p.archivedAt?.toISOString() ?? null,
+        updatedAt: p.updatedAt.toISOString(),
+      })),
     });
   });
 
@@ -1266,11 +1300,16 @@ export function mountCms(app: Hono): void {
         name: schema.collections.name,
       })
       .from(schema.collections)
-      // Seulement les collections actives, pour la même raison que les
-      // catégories juste en dessous : une collection retirée ne sort plus de
-      // produits, et la proposer ici ferait composer une rangée condamnée à
-      // rester vide sans que rien n'explique pourquoi.
-      .where(eq(schema.collections.active, true))
+      // Seulement les collections actives et non archivées, pour la même
+      // raison que les catégories juste en dessous : une collection retirée ne
+      // sort plus de produits, et la proposer ici ferait composer une rangée
+      // condamnée à rester vide sans que rien n'explique pourquoi.
+      .where(
+        and(
+          eq(schema.collections.active, true),
+          isNull(schema.collections.archivedAt),
+        ),
+      )
       .orderBy(asc(schema.collections.position), asc(schema.collections.name));
     // Seulement les catégories actives : une catégorie désactivée est une
     // catégorie retirée, et la proposer ici ferait composer une rangée qui
@@ -1386,28 +1425,48 @@ export function mountCms(app: Hono): void {
   });
 
   /**
-   * Supprime une page.
+   * Archive une page, ou la restaure.
    *
-   * Supprimer une page déjà supprimée n'est pas une erreur : le résultat voulu
-   * est obtenu, et afficher un échec pour cela ne ferait qu'inquiéter.
+   * La suppression définitive a été RETIRÉE : ce qu'une page contenait partait
+   * avec elle, et rien ne la ramenait. Archivée, elle quitte le site et la
+   * liste ordinaire, garde son texte et son adresse, et revient entière.
+   *
+   * Les entrées de menu qui pointaient sur elle ne sont pas touchées : le lien
+   * mènera à une page introuvable tant qu'elle est rangée, ce qui se répare en
+   * la restaurant — alors qu'un lien effacé au passage ne se répare pas.
    */
-  app.delete("/admin/pages/:id", async (c) => {
+  app.post("/admin/pages/:id/archive", async (c) => {
     const id = Number(c.req.param("id"));
     if (!Number.isInteger(id)) return c.notFound();
-    await db.delete(schema.pages).where(eq(schema.pages.id, id));
-    return c.json({ ok: true });
+    const corps = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    // Défaut : on archive. Seul un « archived: false » explicite restaure.
+    const archiver = corps.archived !== false;
+    const [page] = await db
+      .update(schema.pages)
+      .set({ archivedAt: archiver ? new Date() : null, updatedAt: new Date() })
+      .where(eq(schema.pages.id, id))
+      .returning({ id: schema.pages.id, archivedAt: schema.pages.archivedAt });
+    if (!page) return c.notFound();
+    return c.json({ ok: true, archived: page.archivedAt != null });
   });
 
   /* ---------------------------------------------------------------------- */
   /*  Menu — back-office                                                    */
   /* ---------------------------------------------------------------------- */
 
-  /** Le menu entier, entrées masquées comprises. */
+  /**
+   * Le menu entier, entrées masquées comprises — mais pas les archivées.
+   *
+   * Les liens retirés du menu partent dans `archives`, à part : l'écran les
+   * montre sous le menu, avec un bouton « Restaurer ». Les mêler à l'arbre les
+   * ferait réenregistrer dans le menu au premier « Enregistrer ».
+   */
   app.get("/admin/menu", async (c) => {
-    const lignes = await db
+    const toutes = await db
       .select()
       .from(schema.menuItems)
       .orderBy(asc(schema.menuItems.position), asc(schema.menuItems.id));
+    const lignes = toutes.filter((l) => l.archivedAt === null);
 
     const enfantsPar = new Map<number, unknown[]>();
     for (const l of lignes) {
@@ -1424,6 +1483,10 @@ export function mountCms(app: Hono): void {
       else enfantsPar.set(l.parentId, [enfant]);
     }
 
+    // Le nom de l'entrée dont un sous-lien archivé dépendait : « Magnets »
+    // tout seul dans la liste des archives ne dit pas d'où il vient.
+    const nomPar = new Map(toutes.map((l) => [l.id, l.label]));
+
     return c.json({
       entrees: lignes
         .filter((l) => l.parentId === null)
@@ -1434,6 +1497,15 @@ export function mountCms(app: Hono): void {
           visible: l.visible,
           translations: l.translations ?? null,
           enfants: enfantsPar.get(l.id) ?? [],
+        })),
+      archives: toutes
+        .filter((l) => l.archivedAt !== null)
+        .map((l) => ({
+          id: l.id,
+          label: l.label,
+          href: l.href,
+          parent: l.parentId === null ? null : (nomPar.get(l.parentId) ?? null),
+          archivedAt: l.archivedAt!.toISOString(),
         })),
     });
   });
@@ -1494,6 +1566,10 @@ export function mountCms(app: Hono): void {
             position,
             visible: entree.visible,
             translations: entree.translations,
+            // Une entrée présente dans l'arbre est, par définition, dans le
+            // menu : la réécrire lève l'archivage, ce qui fait qu'un lien
+            // restauré puis enregistré ne retombe pas dans les archives.
+            archivedAt: null,
           };
           if (entree.id !== null) {
             await tx
@@ -1524,20 +1600,89 @@ export function mountCms(app: Hono): void {
         }
 
         // Le ménage vient en DERNIER, une fois chaque sous-entrée conservée
-        // rattachée à son nouveau parent : supprimer d'abord emporterait en
-        // cascade des sous-entrées qu'on voulait garder.
+        // rattachée à son nouveau parent : archiver d'abord rangerait des
+        // sous-entrées qu'on voulait garder.
+        //
+        // Archiver, et non supprimer : un lien retiré du menu se retrouve dans
+        // « Liens retirés du menu », d'où il se restaure. La date d'archivage
+        // déjà posée n'est pas réécrite — sinon toute la liste des archives
+        // se redaterait d'aujourd'hui à chaque enregistrement du menu.
+        const ranger = { archivedAt: new Date() };
+        const dejaRangees = isNull(schema.menuItems.archivedAt);
         if (gardees.length)
           await tx
-            .delete(schema.menuItems)
-            .where(notInArray(schema.menuItems.id, gardees));
+            .update(schema.menuItems)
+            .set(ranger)
+            .where(and(notInArray(schema.menuItems.id, gardees), dejaRangees));
         // Un menu volontairement vidé : la boutique gardera ses liens de
-        // secours, mais plus aucune entrée ne doit traîner en base.
-        else await tx.delete(schema.menuItems);
+        // secours, et tout ce qu'il contenait part aux archives.
+        else await tx.update(schema.menuItems).set(ranger).where(dejaRangees);
       });
 
       return c.json({ ok: true });
     } catch (erreur) {
       return reponseErreur(c, erreur, "Le menu n'a pas pu être enregistré.");
+    }
+  });
+
+  /**
+   * Remet dans le menu un lien qui en avait été retiré.
+   *
+   * On restaure ce qui était parti ENSEMBLE, dans les deux sens. Un même
+   * enregistrement du menu pose la même date d'archivage sur toutes les lignes
+   * qu'il retire : cette date suffit à retrouver le geste d'origine.
+   *
+   *  - un sous-lien ramène son entrée principale, sinon il ne serait rattaché
+   *    à rien et ne réapparaîtrait nulle part — ni dans le menu, ni ailleurs ;
+   *  - une entrée principale ramène les sous-liens partis avec elle, ce que
+   *    l'écran avait annoncé en les retirant (« ses sous-liens partiront avec
+   *    elle »). Un sous-lien retiré un autre jour, lui, reste rangé.
+   *
+   * Chacun revient à sa place d'avant, celle que sa `position` a gardée. Si le
+   * menu a changé entre-temps, les flèches de l'écran le remettent où il faut.
+   */
+  app.post("/admin/menu/:id/restaurer", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.notFound();
+    try {
+      await db.transaction(async (tx) => {
+        const [ligne] = await tx
+          .select({
+            id: schema.menuItems.id,
+            parentId: schema.menuItems.parentId,
+            archivedAt: schema.menuItems.archivedAt,
+          })
+          .from(schema.menuItems)
+          .where(eq(schema.menuItems.id, id));
+        if (!ligne)
+          throw new SaisieRefusee(
+            "Ce lien n'existe plus. Rechargez la page et reprenez.",
+          );
+
+        const aRendre = new Set([ligne.id]);
+        if (ligne.parentId !== null) aRendre.add(ligne.parentId);
+        if (ligne.archivedAt !== null) {
+          // Les sous-liens de cette entrée rangés dans le même geste.
+          const compagnons = await tx
+            .select({ id: schema.menuItems.id })
+            .from(schema.menuItems)
+            .where(
+              and(
+                eq(schema.menuItems.parentId, ligne.id),
+                eq(schema.menuItems.archivedAt, ligne.archivedAt),
+              ),
+            );
+          for (const l of compagnons) aRendre.add(l.id);
+        }
+
+        await tx
+          .update(schema.menuItems)
+          .set({ archivedAt: null })
+          .where(inArray(schema.menuItems.id, [...aRendre]));
+      });
+      return c.json({ ok: true });
+    } catch (erreur) {
+      return reponseErreur(c, erreur, "Ce lien n'a pas pu être restauré.");
     }
   });
 }

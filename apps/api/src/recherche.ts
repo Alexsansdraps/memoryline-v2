@@ -521,6 +521,7 @@ async function chercherCollections(motif: string): Promise<ResultatRecherche[]> 
       id: schema.collections.id,
       nom: schema.collections.name,
       active: schema.collections.active,
+      archivedAt: schema.collections.archivedAt,
     })
     .from(schema.collections)
     .where(
@@ -550,7 +551,10 @@ async function chercherCollections(motif: string): Promise<ResultatRecherche[]> 
         combien === 0
           ? "Aucune affiche"
           : `${combien} affiche${combien > 1 ? "s" : ""}`,
-        l.active ? null : "Désactivée",
+        // Une collection archivée reste trouvable, comme une affiche archivée :
+        // on la cherche justement pour la restaurer. Elle se dit, plutôt que
+        // de se cacher — sans quoi on la croirait perdue.
+        l.archivedAt ? "Archivée" : l.active ? null : "Désactivée",
       ),
       href: `/collections/${l.id}`,
     };

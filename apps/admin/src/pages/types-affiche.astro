@@ -13,9 +13,12 @@ if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   const action = f.get("_action");
   try {
-    if (action === "supprimer") {
-      await api.deleteView(Number(f.get("id")));
-      flash = "Type d'affiche supprimé.";
+    if (action === "archiver") {
+      const restaurer = f.get("archived") === "false";
+      await api.archiverView(Number(f.get("id")), !restaurer);
+      flash = restaurer
+        ? "Type d'affiche restauré."
+        : "Type d'affiche archivé. Vous pouvez le restaurer à tout moment, plus bas.";
     } else {
       const vue = await api.upsertView({
         id: f.get("id") ? Number(f.get("id")) : undefined,
@@ -27,10 +30,7 @@ if (Astro.request.method === "POST") {
       flash = `Type d'affiche « ${vue.name} » enregistré.`;
     }
   } catch (e) {
-    // Le refus le plus courant : le type sert encore. On le dit en clair.
-    flash = String(e).includes("409")
-      ? "Ce type est encore utilisé par des produits, des personnages ou des pièces. Décochez « Proposé » pour le retirer du site sans rien casser."
-      : "Erreur : " + String(e);
+    flash = "Erreur : " + String(e);
     flashErreur = true;
   }
 }
@@ -55,8 +55,32 @@ function rattache(v: TypeAffiche): string {
   return bouts.length ? bouts.join(" · ") : "rien pour l'instant";
 }
 
-const libre = (v: TypeAffiche) =>
-  !v.usage || v.usage.produits + v.usage.personnages + v.usage.pieces === 0;
+/**
+ * Ce qu'il faut avoir lu avant d'archiver un type d'affiche.
+ *
+ * Un type utilisé peut s'archiver, contrairement à ce que faisait la
+ * suppression : la ligne reste, donc les dessins qui la citent la trouvent
+ * toujours. On dit quand même ce qui s'y rattache — un type rangé ne se
+ * propose plus, et les affiches qui en dépendent n'auront plus de quoi se
+ * composer tant qu'il l'est.
+ */
+function messageArchivage(v: TypeAffiche): string {
+  const l = [`Archiver le type d'affiche « ${v.name} » ?`];
+  const u = v.usage;
+  const total = u ? u.produits + u.personnages + u.pieces : 0;
+  if (total > 0)
+    l.push(
+      `Il sert encore à : ${rattache(v)}. Rien n'est cassé — ces dessins gardent leur type — mais il ne sera plus proposé sur le site tant qu'il est archivé.`,
+    );
+  l.push(
+    "Rien n'est supprimé : vous pourrez le restaurer quand vous voudrez, dans « Types d'affiche archivés ».",
+  );
+  return l.join("\n\n");
+}
+
+// Les types archivés quittent la liste ordinaire pour leur propre section.
+const actifs = vues.filter((v) => !v.archivedAt);
+const archives = vues.filter((v) => v.archivedAt);
 ---
 
 <Admin title="Types d'affiche">
@@ -114,7 +138,7 @@ const libre = (v: TypeAffiche) =>
         </tr>
       </thead>
       <tbody>
-        {vues.map((v) => (
+        {actifs.map((v) => (
           <tr class="border-t border-bo-border align-top">
             <td class="px-4 py-3">
               {v.foregroundUrl ? (
@@ -186,30 +210,25 @@ const libre = (v: TypeAffiche) =>
               </form>
             </td>
             <td class="px-2 py-3 text-right">
-              {libre(v) ? (
-                <form method="POST" class="js-retirer inline" data-nom={v.name}>
-                  <input type="hidden" name="_action" value="supprimer" />
-                  <input type="hidden" name="id" value={v.id} />
-                  <button
-                    class="rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-red-300 hover:text-red-700"
-                    title={`Supprimer « ${v.name} »`}
-                    aria-label={`Supprimer ${v.name}`}
-                  >
-                    ✕
-                  </button>
-                </form>
-              ) : (
-                <span
-                  class="text-xs text-bo-muted"
-                  title="Ce type sert encore : décochez « Proposé » pour le retirer du site."
+              <form
+                method="POST"
+                class="inline"
+                onsubmit={`return confirm(${JSON.stringify(messageArchivage(v))})`}
+              >
+                <input type="hidden" name="_action" value="archiver" />
+                <input type="hidden" name="id" value={v.id} />
+                <input type="hidden" name="archived" value="true" />
+                <button
+                  class="rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-bo-accent hover:text-bo-accent"
+                  title={`Archiver « ${v.name} »`}
                 >
-                  —
-                </span>
-              )}
+                  Archiver
+                </button>
+              </form>
             </td>
           </tr>
         ))}
-        {vues.length === 0 && !error && (
+        {actifs.length === 0 && !error && (
           <tr>
             <td class="px-4 py-6 text-bo-muted" colspan="3">
               Aucun type d'affiche.
@@ -219,6 +238,42 @@ const libre = (v: TypeAffiche) =>
       </tbody>
     </table>
   </section>
+
+  {/* ====== Types d'affiche archivés ====== */}
+  {archives.length > 0 && (
+    <section class="mb-6">
+      <h2 class="mb-1 font-semibold">Types d'affiche archivés</h2>
+      <p class="mb-3 max-w-3xl text-xs text-bo-muted">
+        Retirés du site et de la liste ci-dessus. Les personnages, pièces et
+        affiches qui les citent les retrouvent toujours : rien n'est cassé, et
+        « Restaurer » les remet en place.
+      </p>
+      <div class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface opacity-70">
+        <table class="w-full text-sm">
+          <tbody>
+            {archives.map((v) => (
+              <tr class="border-t border-bo-border first:border-t-0">
+                <td class="px-4 py-2 font-medium">{v.name}</td>
+                <td class="px-4 py-2 text-bo-muted">
+                  <code>{v.slug}</code> — rattaché à : {rattache(v)}
+                </td>
+                <td class="px-4 py-2 text-right">
+                  <form method="POST" class="inline">
+                    <input type="hidden" name="_action" value="archiver" />
+                    <input type="hidden" name="id" value={v.id} />
+                    <input type="hidden" name="archived" value="false" />
+                    <button class="text-bo-accent hover:underline">
+                      Restaurer
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )}
 
   <details class="bg-bo-surface border border-bo-border rounded-lg">
     <summary class="cursor-pointer px-5 py-3 font-semibold select-none">
@@ -272,14 +327,6 @@ const libre = (v: TypeAffiche) =>
   </details>
 
   <script is:inline define:vars={{ PUBLIC_API_URL }}>
-    // Suppression : irréversible, on demande confirmation.
-    document.querySelectorAll("form.js-retirer").forEach((f) => {
-      f.addEventListener("submit", (e) => {
-        const nom = f.getAttribute("data-nom") || "ce type";
-        if (!confirm(`Supprimer « ${nom} » ?`)) e.preventDefault();
-      });
-    });
-
     // Téléversement du décor : évite d'avoir à connaître le chemin d'un
     // fichier sur le serveur. Le champ reçoit l'URL renvoyée par l'API.
     document.querySelectorAll(".js-televerser").forEach((btn) => {

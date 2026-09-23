@@ -1705,12 +1705,19 @@ export function mountConfiguratorRoutes(app: Hono) {
       position: b.position,
     });
 
+    // Un fond archivé ne se propose plus, par aucun des trois chemins : il a
+    // quitté le catalogue des choix, tout en restant imprimable pour les
+    // commandes déjà passées dessus.
+    const vivant = isNull(schema.backgrounds.archivedAt);
+
     if (productId) {
       // 1. rattachement explicite
       const linked = await db
         .select()
         .from(schema.backgrounds)
-        .where(eq(schema.backgrounds.productId, Number(productId)))
+        .where(
+          and(eq(schema.backgrounds.productId, Number(productId)), vivant),
+        )
         .orderBy(asc(schema.backgrounds.position));
       if (linked.length > 0) return c.json(linked.map(project));
 
@@ -1738,6 +1745,7 @@ export function mountConfiguratorRoutes(app: Hono) {
           const all = await db
             .select()
             .from(schema.backgrounds)
+            .where(vivant)
             .orderBy(asc(schema.backgrounds.position));
           // `includes` plutôt que `startsWith` : le nom du fond peut être
           // préfixé par l'article ("LE_TOUQUET_..." pour le candidat "TOUQUET").
@@ -1753,6 +1761,7 @@ export function mountConfiguratorRoutes(app: Hono) {
     const rows = await db
       .select()
       .from(schema.backgrounds)
+      .where(vivant)
       .orderBy(asc(schema.backgrounds.position))
       .limit(500);
     return c.json(rows.map(project));
@@ -3587,7 +3596,12 @@ export function mountConfiguratorRoutes(app: Hono) {
 
   // === Config CONFIGURATEUR par produit (BO) ===============================
 
-  /** Détail config configurateur d'un produit : défauts + visuels (fonds). */
+  /**
+   * Détail config configurateur d'un produit : défauts + visuels (fonds).
+   *
+   * Les fonds archivés viennent AVEC, marqués par leur `archivedAt` : la fiche
+   * les range dans « Visuels archivés », d'où ils se restaurent.
+   */
   app.get("/admin/products/:id/config", async (c) => {
     const id = Number(c.req.param("id"));
     const [product] = await db
@@ -3770,10 +3784,26 @@ export function mountConfiguratorRoutes(app: Hono) {
     return c.json(row);
   });
 
-  /** Retire un visuel (fond) d'un produit. */
-  app.delete("/admin/backgrounds/:bgId", async (c) => {
+  /**
+   * Archive un visuel (fond), ou le restaure.
+   *
+   * La suppression définitive a été RETIRÉE, pour la même raison que sur les
+   * pièces : un fond effacé empêchait de régénérer le PDF des commandes qui
+   * l'utilisaient, et la cliente se retrouvait avec une affiche impossible à
+   * réimprimer. Archivé, il quitte les choix du configurateur et reste
+   * parfaitement imprimable — `donneesDImpression()` prend tous les fonds.
+   */
+  app.post("/admin/backgrounds/:bgId/archive", async (c) => {
     const bgId = Number(c.req.param("bgId"));
-    await db.delete(schema.backgrounds).where(eq(schema.backgrounds.id, bgId));
-    return c.json({ ok: true });
+    if (!Number.isInteger(bgId)) return c.notFound();
+    const b = await c.req.json().catch(() => ({}));
+    const [row] = await db
+      .update(schema.backgrounds)
+      // Défaut : on archive. Seul un « archived: false » explicite restaure.
+      .set({ archivedAt: b.archived === false ? null : new Date() })
+      .where(eq(schema.backgrounds.id, bgId))
+      .returning();
+    if (!row) return c.notFound();
+    return c.json({ ok: true, archived: row.archivedAt != null });
   });
 }

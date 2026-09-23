@@ -180,6 +180,9 @@ export function mountCollections(app: Hono): void {
         description: col.description,
         position: col.position,
         active: col.active,
+        // Les archivées viennent AVEC, marquées : l'écran les range dans sa
+        // section « Archivées » sans redemander la liste.
+        archivedAt: col.archivedAt?.toISOString() ?? null,
         defaultWeightGrams: col.defaultWeightGrams,
         produits: parCollection.get(col.id) ?? 0,
       })),
@@ -444,33 +447,54 @@ export function mountCollections(app: Hono): void {
   });
 
   /**
-   * Supprime une collection vide.
+   * Archive une collection, ou la restaure.
    *
-   * On refuse tant qu'elle contient des produits : la supprimer les laisserait
-   * sans poids par défaut, donc avec des frais de port faux, et sans rangement
-   * en boutique, sans que rien ne le signale.
+   * La suppression définitive a été RETIRÉE. Elle n'était permise que sur une
+   * collection vide, et pour cause : effacer la ligne emportait en cascade
+   * tout le rangement (`product_collection`), et rien n'aurait su remettre les
+   * affiches dedans.
+   *
+   * Archivée, la collection quitte la boutique et la liste ordinaire, mais le
+   * rangement reste INTACT — c'est ce qui permet de la restaurer complète, avec
+   * ses affiches à la place où elles étaient. Elle peut donc s'archiver pleine.
+   *
+   * `dedans` dit combien d'affiches elle range, pour que l'écran puisse le
+   * redire : elles ne sont ni supprimées ni déplacées, et gardent même le
+   * poids par défaut qu'elle leur donne (voir catalogue.ts) — ranger un rayon
+   * ne doit pas alléger des colis en silence.
    */
-  app.delete("/admin/collections/:id", async (c) => {
+  app.post("/admin/collections/:id/archive", async (c) => {
     const id = identifiant(c.req.param("id"));
     if (id === null)
       return c.json(
         { error: "Cette collection n'existe plus. Rechargez la liste." },
         400,
       );
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    // Défaut : on archive. Seul un « archived: false » explicite restaure.
+    const archiver = b.archived !== false;
 
-    // Combien d'affiches en sortent : l'écran le redit ensuite à la
-    // propriétaire, pour qu'une suppression ne se fasse pas à l'aveugle.
-    const [dedans] = await db
+    const [ligne] = await db
+      .update(schema.collections)
+      .set({ archivedAt: archiver ? new Date() : null })
+      .where(eq(schema.collections.id, id))
+      .returning({ archivedAt: schema.collections.archivedAt });
+    if (!ligne)
+      return c.json(
+        { error: "Cette collection n'existe plus. Rechargez la liste." },
+        400,
+      );
+
+    const [compte] = await db
       .select({ n: count() })
       .from(schema.productCollections)
       .where(eq(schema.productCollections.collectionId, id));
-    const detachees = Number(dedans?.n ?? 0);
 
-    // Les affiches ne sont pas supprimées, ni modifiées : seules les lignes de
-    // rangement disparaissent, emportées par la clé étrangère en cascade.
-    // Une collection range des affiches, elle ne les contient pas.
-    await db.delete(schema.collections).where(eq(schema.collections.id, id));
-    return c.json({ ok: true, detachees });
+    return c.json({
+      ok: true,
+      archived: ligne.archivedAt != null,
+      dedans: Number(compte?.n ?? 0),
+    });
   });
 
   /* ---------------------------------------------------------------------- */
@@ -523,13 +547,28 @@ export function mountCollections(app: Hono): void {
       );
 
     const [collection] = await db
-      .select({ id: schema.collections.id })
+      .select({
+        id: schema.collections.id,
+        archivedAt: schema.collections.archivedAt,
+      })
       .from(schema.collections)
       .where(eq(schema.collections.id, id));
     if (!collection)
       return c.json(
         { error: "Cette collection n'existe plus. Rechargez la liste." },
         404,
+      );
+    // Sortir une affiche d'une collection archivée reste permis — c'est du
+    // ménage. Y en ranger une, non : la collection étant rangée, le rayon
+    // resterait introuvable en boutique, et le seul effet visible serait le
+    // poids par défaut qu'elle donne aux colis.
+    if (ajouter.length && collection.archivedAt)
+      return c.json(
+        {
+          error:
+            "Cette collection est archivée. Restaurez-la avant d'y ranger des affiches.",
+        },
+        400,
       );
 
     // Vérifié AVANT d'écrire : un produit supprimé entre-temps ferait échouer

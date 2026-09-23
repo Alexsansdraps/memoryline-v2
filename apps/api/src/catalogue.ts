@@ -196,6 +196,11 @@ export function mountCatalogueRoutes(app: Hono): void {
     // Le poids annoncé par les collections du produit. La plus lourde
     // l'emporte : un colis surestimé se paie quelques centimes, un colis
     // sous-affranchi revient en surtaxe sans que rien ne l'ait signalé.
+    //
+    // Les collections ARCHIVÉES comptent ici, et c'est voulu : le rangement
+    // survit à l'archivage, et une affiche ne change pas de poids parce qu'on
+    // a rangé le rayon où elle se trouvait. Les ignorer allégerait des colis
+    // en silence, le jour où l'on fait du ménage.
     const liens = await db
       .select({ defaultWeightGrams: schema.collections.defaultWeightGrams })
       .from(schema.productCollections)

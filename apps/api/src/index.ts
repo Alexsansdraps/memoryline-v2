@@ -11,6 +11,7 @@ import {
   desc,
   gte,
   inArray,
+  isNull,
   or,
   sql as sqlOp,
 } from "drizzle-orm";
@@ -632,9 +633,10 @@ app.get("/products", async (c) => {
   if (collection)
     // `col.active` : une collection désactivée est retirée de la boutique, pas
     // seulement du menu. Sans cette condition, son adresse continuait d'ouvrir
-    // un rayon que la propriétaire croyait fermé.
+    // un rayon que la propriétaire croyait fermé. Une collection archivée est
+    // fermée de la même façon — et rouvre telle quelle si on la restaure.
     filtres.push(
-      sqlOp`exists (select 1 from ${schema.productCollections} pc join ${schema.collections} col on col.id = pc.collection_id where pc.product_id = ${schema.products.id} and col.slug = ${collection} and col.active = true)`,
+      sqlOp`exists (select 1 from ${schema.productCollections} pc join ${schema.collections} col on col.id = pc.collection_id where pc.product_id = ${schema.products.id} and col.slug = ${collection} and col.active = true and col.archived_at is null)`,
     );
 
   /*
@@ -776,7 +778,8 @@ app.get("/products", async (c) => {
  * Une collection DÉSACTIVÉE n'en fait pas partie non plus. La case existe au
  * back-office et n'était lue que par les pages du CMS : le menu de la boutique
  * et le filtre `?collection=` continuaient de servir un rayon que la
- * propriétaire avait fermé.
+ * propriétaire avait fermé. Une collection ARCHIVÉE en sort pareillement — et
+ * y revient entière, avec ses affiches, le jour où on la restaure.
  */
 app.get("/collections", async (c) => {
   const rows = await db
@@ -799,7 +802,12 @@ app.get("/collections", async (c) => {
         eq(schema.products.status, "active"),
       ),
     )
-    .where(eq(schema.collections.active, true))
+    .where(
+      and(
+        eq(schema.collections.active, true),
+        isNull(schema.collections.archivedAt),
+      ),
+    )
     .groupBy(
       schema.collections.id,
       schema.collections.slug,
@@ -1019,7 +1027,13 @@ app.get("/views", async (c) => {
   const rows = await db
     .select()
     .from(schema.posterViews)
-    .where(eq(schema.posterViews.active, true))
+    // Archivé = rangé : retiré du site comme un type décoché, mais restaurable.
+    .where(
+      and(
+        eq(schema.posterViews.active, true),
+        isNull(schema.posterViews.archivedAt),
+      ),
+    )
     .orderBy(asc(schema.posterViews.position));
   return c.json(rows);
 });
@@ -2351,13 +2365,18 @@ app.delete("/admin/frames/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/** Tous les types d'affiche, avec ce qui s'y rattache (pour le BO). */
+/**
+ * Tous les types d'affiche, avec ce qui s'y rattache (pour le BO).
+ *
+ * Les archivés viennent AVEC, marqués par leur `archivedAt` : l'écran les
+ * range dans sa section « Archivés », d'où ils se restaurent.
+ */
 app.get("/admin/views", async (c) => {
   const rows = await db
     .select()
     .from(schema.posterViews)
     .orderBy(asc(schema.posterViews.position));
-  // Un type rattaché à des dessins ne se supprime pas : on compte d'abord.
+  // Ce qui se rattache à un type : l'écran le redit avant de l'archiver.
   const usages = await Promise.all(
     rows.map(async (v) => {
       const [p] = await db
@@ -2433,19 +2452,30 @@ app.post("/admin/views", async (c) => {
 });
 
 /**
- * Supprime un type d'affiche — seulement s'il ne sert plus à rien.
+ * Archive un type d'affiche, ou le restaure.
  *
- * Sinon ses personnages, pièces et produits pointeraient sur un type qui
- * n'existe plus : le configurateur n'aurait plus rien à proposer. Le BO
- * propose alors de le désactiver, ce qui le retire du site sans casser
- * l'existant.
+ * La suppression définitive a été RETIRÉE. Elle n'était d'ailleurs possible
+ * que pour un type inutilisé : ailleurs, ses personnages, ses pièces et ses
+ * produits auraient pointé sur un type disparu, et le configurateur n'aurait
+ * plus rien eu à proposer.
+ *
+ * Archiver marche dans tous les cas, justement parce que rien ne disparaît :
+ * la ligne reste, son `slug` avec elle, et tout ce qui la cite continue de la
+ * trouver. Le type quitte le site et les listes, et revient sur « Restaurer ».
+ * Le décompte de ce qui s'y rattache repart quand même avec la réponse : c'est
+ * ce que l'écran redit avant d'archiver.
  */
-app.delete("/admin/views/:id", async (c) => {
+app.post("/admin/views/:id/archive", async (c) => {
   const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.notFound();
+  const corps = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  // Défaut : on archive. Seul un « archived: false » explicite restaure.
+  const archiver = corps.archived !== false;
   const [vue] = await db
-    .select()
-    .from(schema.posterViews)
-    .where(eq(schema.posterViews.id, id));
+    .update(schema.posterViews)
+    .set({ archivedAt: archiver ? new Date() : null })
+    .where(eq(schema.posterViews.id, id))
+    .returning();
   if (!vue) return c.notFound();
   const [p] = await db
     .select({ n: count() })
@@ -2459,16 +2489,15 @@ app.delete("/admin/views/:id", async (c) => {
     .select({ n: count() })
     .from(schema.assets)
     .where(eq(schema.assets.view, vue.slug));
-  const usage = {
-    produits: Number(p?.n ?? 0),
-    personnages: Number(ct?.n ?? 0),
-    pieces: Number(a?.n ?? 0),
-  };
-  if (usage.produits + usage.personnages + usage.pieces > 0) {
-    return c.json({ error: "type encore utilisé", usage }, 409);
-  }
-  await db.delete(schema.posterViews).where(eq(schema.posterViews.id, id));
-  return c.json({ ok: true });
+  return c.json({
+    ok: true,
+    archived: vue.archivedAt != null,
+    usage: {
+      produits: Number(p?.n ?? 0),
+      personnages: Number(ct?.n ?? 0),
+      pieces: Number(a?.n ?? 0),
+    },
+  });
 });
 
 app.get("/admin/promos", async (c) => {

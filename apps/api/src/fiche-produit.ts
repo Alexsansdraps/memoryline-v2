@@ -21,7 +21,15 @@
  * trouerait l'historique des ventes.
  */
 import type { Hono } from "hono";
-import { and, asc, eq, inArray, notInArray, sql as raw } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNull,
+  notInArray,
+  sql as raw,
+} from "drizzle-orm";
 import { poidsArticle, POSTER_FORMATS } from "@memoryline/types";
 import { poidsDesCollections } from "./collections.js";
 import { db, schema } from "./db/client.js";
@@ -424,9 +432,14 @@ export function mountFicheProduit(app: Hono): void {
         asc(schema.productCategories.position),
         asc(schema.productCategories.name),
       );
+    // Le choix des collections où ranger l'affiche : les archivées n'y sont
+    // pas. Celles où elle est DÉJÀ rangée arrivent par `liens` juste en
+    // dessous, archivées comprises — une affiche ne doit pas sortir d'une
+    // collection parce qu'on a rangé cette collection.
     const collections = await db
       .select({ id: schema.collections.id, name: schema.collections.name })
       .from(schema.collections)
+      .where(isNull(schema.collections.archivedAt))
       .orderBy(asc(schema.collections.position), asc(schema.collections.name));
     // Le poids par défaut vient avec les liens : c'est la collection qui le
     // porte, et la fiche doit pouvoir montrer ce qui sera réellement pesé.

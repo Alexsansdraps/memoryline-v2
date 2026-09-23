@@ -638,7 +638,12 @@ const poidsHerite =
   logistique?.categorie?.defaultWeightGrams ??
   0;
 
-const backgrounds = config?.backgrounds ?? [];
+// Les fonds archivés quittent la grille des visuels proposés et se retrouvent
+// dans leur propre bloc, plus bas : ils restent imprimables pour les commandes
+// passées dessus, et se restaurent d'un clic.
+const tousLesFonds = config?.backgrounds ?? [];
+const backgrounds = tousLesFonds.filter((bg) => !bg.archivedAt);
+const fondsArchives = tousLesFonds.filter((bg) => bg.archivedAt);
 
 // --- Ce que la fiche marchande donne à afficher ------------------------
 const produit = fiche?.produit ?? null;
@@ -1359,11 +1364,11 @@ try {
                 />
                 <button
                   type="button"
-                  class="js-del-bg absolute top-1 right-1 h-6 w-6 rounded-full bg-white/90 border border-bo-border text-sm leading-none text-bo-muted hover:text-red-600 hover:border-red-300 shadow"
-                  title="Supprimer ce visuel"
-                  aria-label="Supprimer ce visuel"
+                  class="js-archive-bg absolute top-1 right-1 rounded-full bg-white/90 border border-bo-border px-2 py-0.5 text-xs leading-none text-bo-muted hover:text-bo-accent hover:border-bo-accent shadow"
+                  title="Archiver ce visuel"
+                  aria-label="Archiver ce visuel"
                 >
-                  ✕
+                  Archiver
                 </button>
                 {bg.name && (
                   <figcaption class="px-2 py-1 text-xs text-bo-muted truncate">
@@ -1379,6 +1384,47 @@ try {
           >
             Aucun visuel pour le moment.
           </p>
+
+          {/* ====== Visuels archivés ====== */}
+          {fondsArchives.length > 0 && (
+            <div class="mt-5 border-t border-bo-border pt-4">
+              <h4 class="mb-1 text-sm font-semibold">Visuels archivés</h4>
+              <p class="mb-3 text-xs text-bo-muted">
+                Retirés des choix du client. Ils restent imprimables : les
+                commandes déjà passées sur ces fonds se réimpriment à
+                l'identique.
+              </p>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 opacity-60">
+                {fondsArchives.map((bg) => (
+                  <figure
+                    class="relative border border-bo-border rounded overflow-hidden bg-white"
+                    data-bg-id={bg.id}
+                  >
+                    <img
+                      src={imgSrc(bg.url)}
+                      alt={bg.name ?? ""}
+                      class="w-full aspect-square object-cover"
+                      loading="lazy"
+                    />
+                    <button
+                      type="button"
+                      class="js-archive-bg absolute top-1 right-1 rounded-full bg-white/90 border border-bo-border px-2 py-0.5 text-xs leading-none text-bo-accent hover:border-bo-accent shadow"
+                      data-restaurer="1"
+                      title="Restaurer ce visuel"
+                      aria-label="Restaurer ce visuel"
+                    >
+                      Restaurer
+                    </button>
+                    {bg.name && (
+                      <figcaption class="px-2 py-1 text-xs text-bo-muted truncate">
+                        {bg.name}
+                      </figcaption>
+                    )}
+                  </figure>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -2359,28 +2405,47 @@ try {
     const grid = document.getElementById("bg-grid");
     const empty = document.getElementById("bg-empty");
 
-    function bindDelete(btn) {
+    // Il n'y a plus de suppression définitive : un fond effacé empêchait de
+    // régénérer le PDF des commandes qui l'utilisaient. Archivé, il sort des
+    // choix du client et reste imprimable.
+    function bindArchive(btn) {
       btn.addEventListener("click", async () => {
         const fig = btn.closest("[data-bg-id]");
         if (!fig) return;
-        if (!confirm("Supprimer ce visuel ?")) return;
+        const restaurer = btn.dataset.restaurer === "1";
+        if (
+          !restaurer &&
+          !confirm(
+            "Archiver ce visuel ? Il ne sera plus proposé au client. Les " +
+              "commandes déjà passées dessus restent imprimables, et vous " +
+              "pourrez le restaurer quand vous voudrez.",
+          )
+        )
+          return;
         const bgId = fig.getAttribute("data-bg-id");
         try {
-          const res = await fetch(`${PUBLIC_API_URL}/admin/backgrounds/${bgId}`, {
-            method: "DELETE",
-            credentials: "include",
-          });
+          const res = await fetch(
+            `${PUBLIC_API_URL}/admin/backgrounds/${bgId}/archive`,
+            {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ archived: !restaurer }),
+            },
+          );
           if (!res.ok) throw new Error("HTTP " + res.status);
-          fig.remove();
-          if (empty && !grid.querySelector("[data-bg-id]"))
-            empty.classList.remove("hidden");
+          // Rechargement : le visuel change de bloc, et le recopier à la main
+          // d'une grille à l'autre finirait par mentir sur ce qu'il y a.
+          location.reload();
         } catch (e) {
-          alert("Suppression impossible : " + e);
+          alert(
+            (restaurer ? "Restauration" : "Archivage") + " impossible : " + e,
+          );
         }
       });
     }
 
-    document.querySelectorAll(".js-del-bg").forEach(bindDelete);
+    document.querySelectorAll(".js-archive-bg").forEach(bindArchive);
 
     // --- Téléversement d'un ou plusieurs visuels ---
     // Deux temps : on dépose le fichier (POST /admin/uploads), puis on
@@ -2464,12 +2529,12 @@ try {
         fig.setAttribute("data-bg-id", bg.id);
         fig.innerHTML =
           `<img src="${abs(bg.url)}" alt="${bg.name ?? ""}" class="w-full aspect-square object-cover" loading="lazy" />` +
-          `<button type="button" class="js-del-bg absolute top-1 right-1 h-6 w-6 rounded-full bg-white/90 border border-bo-border text-sm leading-none text-bo-muted hover:text-red-600 hover:border-red-300 shadow" title="Supprimer ce visuel" aria-label="Supprimer ce visuel">✕</button>` +
+          `<button type="button" class="js-archive-bg absolute top-1 right-1 rounded-full bg-white/90 border border-bo-border px-2 py-0.5 text-xs leading-none text-bo-muted hover:text-bo-accent hover:border-bo-accent shadow" title="Archiver ce visuel" aria-label="Archiver ce visuel">Archiver</button>` +
           (bg.name
             ? `<figcaption class="px-2 py-1 text-xs text-bo-muted truncate">${bg.name}</figcaption>`
             : "");
         grid.appendChild(fig);
-        bindDelete(fig.querySelector(".js-del-bg"));
+        bindArchive(fig.querySelector(".js-archive-bg"));
         empty?.classList.add("hidden");
 
         addInput.value = "";

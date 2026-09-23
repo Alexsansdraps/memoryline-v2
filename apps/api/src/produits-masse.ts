@@ -22,6 +22,7 @@ import {
   count,
   eq,
   inArray,
+  isNull,
   notInArray,
   or,
   sql as raw,
@@ -689,9 +690,13 @@ app.get("/admin/products/export.csv", async (c) => {
           asc(schema.productCategories.position),
           asc(schema.productCategories.name),
         ),
+      // Les collections où l'on peut ranger un lot : pas les archivées. Y
+      // envoyer des affiches les ferait disparaître de la boutique sans que
+      // rien ne le dise.
       db
         .select({ id: schema.collections.id, name: schema.collections.name })
         .from(schema.collections)
+        .where(isNull(schema.collections.archivedAt))
         .orderBy(asc(schema.collections.position), asc(schema.collections.name)),
     ]);
 
@@ -1130,13 +1135,29 @@ app.get("/admin/products/export.csv", async (c) => {
       const collectionId = Number(b.collectionId);
       const [collection] = Number.isFinite(collectionId)
         ? await db
-            .select({ id: schema.collections.id })
+            .select({
+              id: schema.collections.id,
+              archivedAt: schema.collections.archivedAt,
+            })
             .from(schema.collections)
             .where(eq(schema.collections.id, collectionId))
         : [];
       if (!collection)
         return c.json(
           { error: "Cette collection n'existe plus. Rechargez la page." },
+          400,
+        );
+      // On peut toujours SORTIR d'une collection archivée — c'est du ménage.
+      // Y ranger un lot, non : la collection étant rangée, le rayon resterait
+      // introuvable en boutique, et le seul effet visible serait le poids par
+      // défaut qu'elle donne aux colis. Un rangement qui ne range rien et
+      // change l'affranchissement n'est pas ce qu'on croit avoir demandé.
+      if (action === "collection-ajouter" && collection.archivedAt)
+        return c.json(
+          {
+            error:
+              "Cette collection est archivée. Restaurez-la avant d'y ranger des affiches.",
+          },
           400,
         );
 

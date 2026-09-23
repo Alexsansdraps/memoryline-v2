@@ -78,6 +78,11 @@ export function mountDecors(app: Hono): void {
         schema.products,
         eq(schema.products.id, schema.backgrounds.productId),
       )
+      // Les décors archivés sortent de l'inventaire : la question posée ici est
+      // « qu'est-ce que le configurateur a sous la main ? », et il ne les
+      // propose plus. Ils restent sur la fiche de leur affiche, dans
+      // « Visuels archivés », avec leur bouton « Restaurer ».
+      .where(isNull(schema.backgrounds.archivedAt))
       .orderBy(asc(schema.backgrounds.name), asc(schema.backgrounds.id));
 
     // Les affiches qui n'ont AUCUN décar à elles : ce sont celles pour
@@ -91,7 +96,10 @@ export function mountDecors(app: Hono): void {
       })
       .from(schema.products)
       .where(
-        raw`${schema.products.kind} = 'personnalisable' and not exists (select 1 from ${schema.backgrounds} b where b.product_id = ${schema.products.id})`,
+        // « Aucun décor » veut dire aucun décor PROPOSABLE : une affiche dont
+        // tous les décors sont archivés retombe sur la pêche au nom de ville,
+        // exactement comme une affiche qui n'en a jamais eu.
+        raw`${schema.products.kind} = 'personnalisable' and not exists (select 1 from ${schema.backgrounds} b where b.product_id = ${schema.products.id} and b.archived_at is null)`,
       )
       .orderBy(asc(schema.products.name));
 

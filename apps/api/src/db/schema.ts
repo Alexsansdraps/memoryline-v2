@@ -82,6 +82,16 @@ export const collections = pgTable(
     defaultWeightGrams: integer("default_weight_grams"),
     /** Désactivée : conservée au back-office, absente de la boutique. */
     active: boolean("active").notNull().default(true),
+    /**
+     * Archivée : sortie de la boutique ET des listes ordinaires du
+     * back-office, restaurable depuis la section « Archivés ».
+     *
+     * Distinct de `active`, qui masque la collection du site tout en la
+     * laissant sous les yeux : archiver, c'est la ranger. Les lignes de
+     * `product_collection` restent en place — c'est ce qui permet de la
+     * restaurer COMPLÈTE, avec les affiches qu'elle rangeait.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     legacyId: bigint("legacy_id", { mode: "number" }), // Shopify Collection ID
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -407,6 +417,14 @@ export const posterViews = pgTable(
     foregroundUrl: text("foreground_url"),
     active: boolean("active").notNull().default(true),
     position: integer("position").notNull().default(0),
+    /**
+     * Archivé : retiré des listes et des sélecteurs, restaurable.
+     *
+     * Le `slug` reste en base, et c'est tout l'intérêt : produits, personnages
+     * et pièces citent leur type PAR SON SLUG. Un type effacé les laissait
+     * pointer dans le vide, et le configurateur n'avait plus rien à proposer.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => [uniqueIndex("poster_view_slug_uniq").on(t.slug)],
 );
@@ -420,6 +438,14 @@ export const backgrounds = pgTable("background", {
   url: text("url").notNull(),
   name: text("name"),
   position: integer("position").default(0).notNull(),
+  /**
+   * Archivé : retiré des choix du configurateur, restaurable.
+   *
+   * La ligne reste lisible pour l'impression — `donneesDImpression()` prend
+   * TOUS les fonds, archivés compris. Une commande passée sur ce fond doit
+   * pouvoir se réimprimer des mois plus tard, à l'identique.
+   */
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
 });
 
 // --- Bibliothèque configurateur ------------------------------------------
@@ -1763,6 +1789,15 @@ export const pages = pgTable(
     translations: jsonb("translations").$type<
       Partial<Record<string, { title?: string; blocks?: BlocPage[] }>>
     >(),
+    /**
+     * Archivée : hors du site, hors de la liste ordinaire du back-office,
+     * restaurable depuis la section « Archivées ».
+     *
+     * Son adresse reste RÉSERVÉE — l'index unique porte sur toutes les pages.
+     * C'est voulu : deux pages « magnets », dont une rangée, se disputeraient
+     * la même adresse le jour où l'on restaure la première.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -1780,8 +1815,9 @@ export const pages = pgTable(
  * bandeau du site déroule un sous-menu, pas deux, et une entrée cachée à trois
  * niveaux serait invisible pour tout le monde sauf pour celle qui l'a écrite.
  *
- * La suppression en cascade suit la même idée : retirer « Affiches
- * personnalisables » retire ses sous-entrées, qui n'ont aucun sens seules.
+ * Retirer une entrée du menu l'ARCHIVE, sous-entrées comprises : « Affiches
+ * personnalisables » sans ses sous-entrées n'aurait aucun sens. La cascade de
+ * la clé étrangère ne joue donc plus — plus rien ne s'efface ici.
  */
 export const menuItems = pgTable(
   "menu_item",
@@ -1796,6 +1832,14 @@ export const menuItems = pgTable(
     position: integer("position").notNull().default(0),
     /** Masquée : préparée dans le back-office, absente du site. */
     visible: boolean("visible").notNull().default(true),
+    /**
+     * Archivée : retirée du menu, gardée dans « Liens retirés du menu ».
+     *
+     * Une entrée retirée de l'arbre n'est plus effacée : on la range ici, avec
+     * son libellé, son adresse et ses traductions, et « Restaurer » la remet
+     * dans le menu telle quelle.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     translations: jsonb("translations").$type<
       Partial<Record<string, { label?: string }>>
     >(),

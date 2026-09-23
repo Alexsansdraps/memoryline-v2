@@ -123,7 +123,9 @@ export interface TypeAffiche {
   foregroundUrl: string | null;
   active: boolean;
   position: number;
-  /** Ce qui s'y rattache — un type utilisé ne se supprime pas. */
+  /** Non nul = archivé : hors du site et des listes, restaurable. */
+  archivedAt?: string | null;
+  /** Ce qui s'y rattache — redit avant d'archiver. */
   usage?: { produits: number; personnages: number; pieces: number };
 }
 
@@ -183,6 +185,8 @@ export interface ResumePage {
   slug: string;
   title: string;
   status: string;
+  /** Non nul = archivée : hors du site, rangée dans « Pages archivées ». */
+  archivedAt?: string | null;
   updatedAt: string;
 }
 
@@ -214,8 +218,20 @@ export interface EntreeMenu {
   enfants: EntreeMenu[];
 }
 
+/** Un lien retiré du menu, gardé pour pouvoir le remettre. */
+export interface LienArchive {
+  id: number;
+  label: string;
+  href: string;
+  /** Nom de l'entrée dont il était le sous-lien, ou null au premier niveau. */
+  parent: string | null;
+  archivedAt: string;
+}
+
 export interface MenuCms {
   entrees: EntreeMenu[];
+  /** Les liens retirés du menu, restaurables. Absent des anciennes réponses. */
+  archives?: LienArchive[];
 }
 
 /** Ce qu'un import ferait, ou vient de faire, sur une fiche produit. */
@@ -261,6 +277,11 @@ export interface CollectionBo {
   description: string | null;
   position: number;
   active: boolean;
+  /**
+   * Non nul = archivée : hors boutique et hors liste ordinaire, rangée dans
+   * « Collections archivées ». Son rangement d'affiches reste intact.
+   */
+  archivedAt?: string | null;
   /** Poids d'un article de cette collection, quand rien de plus précis ne le dit. */
   defaultWeightGrams: number | null;
   /** Nombre de produits dedans, tous statuts confondus. */
@@ -971,6 +992,11 @@ export interface ProductBackground {
   url: string;
   name: string | null;
   position: number;
+  /**
+   * Non nul = archivé : retiré des choix du configurateur, mais toujours
+   * imprimable pour les commandes passées dessus.
+   */
+  archivedAt?: string | null;
 }
 
 /** Configuration du configurateur pour un produit donné. */
@@ -1675,8 +1701,17 @@ export function adminApi(request?: Request) {
       active?: boolean;
       position?: number;
     }) => req<TypeAffiche>("POST", "/admin/views", data, cookie),
-    deleteView: (id: number) =>
-      req<{ ok: boolean }>("DELETE", `/admin/views/${id}`, undefined, cookie),
+    /**
+     * Archive un type d'affiche, ou le restaure. Il n'y a plus de suppression :
+     * le `slug` relie produits, personnages et pièces à leur type, et l'effacer
+     * les laissait pointer dans le vide.
+     */
+    archiverView: (id: number, archived = true) =>
+      req<{
+        ok: boolean;
+        archived: boolean;
+        usage: { produits: number; personnages: number; pieces: number };
+      }>("POST", `/admin/views/${id}/archive`, { archived }, cookie),
     pieceCategories: () =>
       req<CategoriePiece[]>("GET", "/admin/piece-categories", undefined, cookie),
     upsertPieceCategory: (data: {
@@ -1857,16 +1892,18 @@ export function adminApi(request?: Request) {
         position?: number;
       },
     ) => req<{ ok: true }>("POST", `/admin/collections/${id}`, corps, cookie),
-    /** Supprime une collection vide. Refusé si elle contient des produits. */
     /**
-     * Supprime la collection. Les affiches qui y étaient rangées en sortent
-     * simplement : `detachees` dit combien, pour pouvoir le redire à l'écran.
+     * Archive la collection, ou la restaure.
+     *
+     * Le rangement des affiches n'est pas touché : `dedans` dit combien elle en
+     * range, pour pouvoir le redire à l'écran. C'est ce qui permet de la
+     * restaurer complète.
      */
-    supprimerCollection: (id: number) =>
-      req<{ ok: true; detachees: number }>(
-        "DELETE",
-        `/admin/collections/${id}`,
-        undefined,
+    archiverCollection: (id: number, archived = true) =>
+      req<{ ok: true; archived: boolean; dedans: number }>(
+        "POST",
+        `/admin/collections/${id}/archive`,
+        { archived },
         cookie,
       ),
     /** Range des produits dans la collection, ou les en sort. */
@@ -1906,13 +1943,28 @@ export function adminApi(request?: Request) {
     /** Enregistre une page. Les clés absentes ne sont pas touchées. */
     enregistrerPage: (id: number, corps: Record<string, unknown>) =>
       req<{ ok: true }>("POST", `/admin/pages/${id}`, corps, cookie),
-    supprimerPage: (id: number) =>
-      req<{ ok: true }>("DELETE", `/admin/pages/${id}`, undefined, cookie),
-    /** Le menu du site, entrées masquées comprises. */
+    /**
+     * Archive une page, ou la restaure. La page garde son texte et son
+     * adresse : elle quitte le site, elle ne disparaît pas.
+     */
+    archiverPage: (id: number, archived = true) =>
+      req<{ ok: true; archived: boolean }>(
+        "POST",
+        `/admin/pages/${id}/archive`,
+        { archived },
+        cookie,
+      ),
+    /** Le menu du site, entrées masquées comprises — et les liens retirés. */
     menu: () => req<MenuCms>("GET", "/admin/menu", undefined, cookie),
-    /** Remplace TOUT l'arbre du menu : l'ordre du tableau fait la position. */
+    /**
+     * Remplace TOUT l'arbre du menu : l'ordre du tableau fait la position.
+     * Ce qui n'y figure plus part aux archives, d'où il se restaure.
+     */
     enregistrerMenu: (entrees: unknown[]) =>
       req<{ ok: true }>("POST", "/admin/menu", { entrees }, cookie),
+    /** Remet dans le menu un lien qui en avait été retiré. */
+    restaurerLienMenu: (id: number) =>
+      req<{ ok: true }>("POST", `/admin/menu/${id}/restaurer`, {}, cookie),
 
     /* --- Ordre d'affichage des pages de genre ------------------------- */
     /** Les affiches actives d'un genre, dans l'ordre où la boutique les montre. */
@@ -2158,11 +2210,15 @@ export function adminApi(request?: Request) {
         data,
         cookie,
       ),
-    deleteBackground: (bgId: number | string) =>
-      req<{ ok: boolean }>(
-        "DELETE",
-        `/admin/backgrounds/${bgId}`,
-        undefined,
+    /**
+     * Archive un visuel (fond), ou le restaure. Archivé, il quitte les choix
+     * du configurateur et reste imprimable pour les commandes passées dessus.
+     */
+    archiverBackground: (bgId: number | string, archived = true) =>
+      req<{ ok: boolean; archived: boolean }>(
+        "POST",
+        `/admin/backgrounds/${bgId}/archive`,
+        { archived },
         cookie,
       ),
     /** Générations récentes, filtrables par statut et paginées. */

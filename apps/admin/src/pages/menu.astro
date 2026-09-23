@@ -11,7 +11,8 @@
  * un troisième niveau ne se déplierait nulle part.
  *
  * L'enregistrement remplace l'arbre entier en une fois : ce qui a été retiré
- * ici disparaît du site.
+ * ici quitte le site — et rejoint « Liens retirés du menu », en bas de l'écran,
+ * d'où il se remet en place. Rien ne s'efface.
  *
  * Le menu se saisit dans les cinq langues, mais UNE À LA FOIS : les boutons du
  * haut choisissent la langue affichée, et chaque ligne montre alors son nom
@@ -22,7 +23,7 @@
  */
 import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
-import { adminApi, type MenuCms } from "../lib/api.ts";
+import { adminApi, type LienArchive, type MenuCms } from "../lib/api.ts";
 
 const api = adminApi(Astro.request);
 
@@ -148,26 +149,41 @@ let saisie: EntreeSouple[] | null = null;
 
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
-  const brut = String(f.get("entrees") ?? "");
-  let souples: EntreeSouple[] = [];
-  let lectureCassee = false;
-  try {
-    souples = entreesSouples(JSON.parse(brut || "[]"));
-  } catch {
-    lectureCassee = true;
-  }
-  try {
-    if (lectureCassee)
-      throw new Error(
-        "Le menu n'a pas pu être relu par le navigateur. Rien n'a été " +
-          "enregistré. Rechargez l'écran et reprenez vos modifications.",
-      );
-    await api.enregistrerMenu(verifierArbre(souples));
-    flash = "Menu enregistré. Il est à jour sur le site.";
-  } catch (e) {
-    flash = String(e).replace(/^Error:\s*/, "");
-    flashErreur = true;
-    saisie = lectureCassee ? null : souples;
+
+  // Remettre un lien dans le menu : un geste à part, qui ne passe pas par
+  // l'arbre affiché — celui-ci ne montre que ce qui est DANS le menu, et le
+  // lien à restaurer n'y est justement plus.
+  if (String(f.get("_action") ?? "") === "restaurer") {
+    try {
+      await api.restaurerLienMenu(Number(f.get("id")));
+      flash =
+        "Lien remis dans le menu. Vérifiez sa place avec les flèches, puis enregistrez.";
+    } catch (e) {
+      flash = String(e).replace(/^Error:\s*/, "");
+      flashErreur = true;
+    }
+  } else {
+    const brut = String(f.get("entrees") ?? "");
+    let souples: EntreeSouple[] = [];
+    let lectureCassee = false;
+    try {
+      souples = entreesSouples(JSON.parse(brut || "[]"));
+    } catch {
+      lectureCassee = true;
+    }
+    try {
+      if (lectureCassee)
+        throw new Error(
+          "Le menu n'a pas pu être relu par le navigateur. Rien n'a été " +
+            "enregistré. Rechargez l'écran et reprenez vos modifications.",
+        );
+      await api.enregistrerMenu(verifierArbre(souples));
+      flash = "Menu enregistré. Il est à jour sur le site.";
+    } catch (e) {
+      flash = String(e).replace(/^Error:\s*/, "");
+      flashErreur = true;
+      saisie = lectureCassee ? null : souples;
+    }
   }
 }
 
@@ -180,6 +196,9 @@ try {
 }
 
 const entrees: EntreeSouple[] = saisie ?? entreesSouples(menu?.entrees);
+
+/** Les liens retirés du menu, gardés pour pouvoir les remettre. */
+const archives: LienArchive[] = menu?.archives ?? [];
 
 /**
  * Le champ caché part rempli : sans JavaScript, l'écran ne sait ni ajouter ni
@@ -367,10 +386,10 @@ const boutonOutil =
               </button>
               <button
                 type="button"
-                data-action="supprimer"
-                class={`${boutonOutil} hover:border-red-300 hover:text-red-700`}
-                title="Supprimer cette entrée"
-                aria-label="Supprimer cette entrée"
+                data-action="retirer"
+                class={`${boutonOutil} hover:border-bo-accent hover:text-bo-accent`}
+                title="Retirer cette entrée du menu"
+                aria-label="Retirer cette entrée du menu"
               >
                 ✕
               </button>
@@ -452,10 +471,10 @@ const boutonOutil =
                     </button>
                     <button
                       type="button"
-                      data-action="supprimer"
-                      class={`${boutonOutil} hover:border-red-300 hover:text-red-700`}
-                      title="Supprimer ce sous-lien"
-                      aria-label="Supprimer ce sous-lien"
+                      data-action="retirer"
+                      class={`${boutonOutil} hover:border-bo-accent hover:text-bo-accent`}
+                      title="Retirer ce sous-lien du menu"
+                      aria-label="Retirer ce sous-lien du menu"
                     >
                       ✕
                     </button>
@@ -483,10 +502,55 @@ const boutonOutil =
     </div>
     <p class="mt-2 max-w-3xl text-xs text-bo-muted">
       L'enregistrement remplace le menu du site par ce qui est affiché ici :
-      une entrée supprimée sur cet écran disparaît du site. Décochez « Visible »
-      plutôt que de supprimer, si vous comptez la remettre plus tard.
+      une entrée retirée sur cet écran quitte le site. Elle n'est pas perdue
+      pour autant — elle descend dans « Liens retirés du menu », en bas de cet
+      écran, d'où vous pouvez la remettre. Pour une absence courte, décocher
+      « Visible » reste plus simple : la ligne garde sa place.
     </p>
   </form>
+
+  {/* ====== Liens retirés du menu ====== */}
+  {archives.length > 0 && (
+    <section class="mt-10">
+      <h2 class="mb-1 font-semibold">Liens retirés du menu</h2>
+      <p class="mb-3 max-w-3xl text-xs text-bo-muted">
+        Ces liens ne sont plus dans le menu du site. Leur nom, leur adresse et
+        leurs traductions sont gardés : « Restaurer » les remet dans le menu
+        ci-dessus, où vous pouvez les replacer avec les flèches avant
+        d'enregistrer.
+      </p>
+      <div class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface opacity-70">
+        <table class="w-full text-sm">
+          <tbody>
+            {archives.map((lien) => (
+              <tr class="border-t border-bo-border first:border-t-0">
+                <td class="px-4 py-2">
+                  <span class="font-medium">{lien.label}</span>
+                  {lien.parent && (
+                    <span class="block text-xs text-bo-muted">
+                      sous-lien de « {lien.parent} »
+                    </span>
+                  )}
+                </td>
+                <td class="px-4 py-2 text-bo-muted">
+                  <code>{lien.href}</code>
+                </td>
+                <td class="px-4 py-2 text-right">
+                  <form method="POST" class="inline">
+                    <input type="hidden" name="_action" value="restaurer" />
+                    <input type="hidden" name="id" value={lien.id} />
+                    <button class="text-bo-accent hover:underline">
+                      Restaurer
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )}
 
   <script is:inline>
     const formulaire = document.getElementById("form-menu");
@@ -653,7 +717,9 @@ const boutonOutil =
           const apres = ligne.nextElementSibling;
           if (apres && !apres.hasAttribute("data-reserve"))
             ligne.parentElement.insertBefore(apres, ligne);
-        } else if (action === "supprimer") {
+        } else if (action === "retirer") {
+          // Retirer n'efface rien : au prochain enregistrement, le lien
+          // descend dans « Liens retirés du menu », d'où il se restaure.
           const nom = valeur(ligne, "label") || "ce lien";
           const sousLiens = ligne.hasAttribute("data-entree")
             ? reels(ligne.querySelector("[data-enfants]"), "data-enfant").length
@@ -661,7 +727,17 @@ const boutonOutil =
           const avertissement = sousLiens
             ? " Ses " + sousLiens + " sous-lien(s) partiront avec elle."
             : "";
-          if (!confirm("Retirer « " + nom + " » du menu ?" + avertissement))
+          if (
+            !confirm(
+              "Retirer « " +
+                nom +
+                " » du menu ?" +
+                avertissement +
+                " Rien n'est supprimé : après enregistrement, vous le " +
+                "retrouverez dans « Liens retirés du menu », en bas de cet " +
+                "écran, avec un bouton pour le remettre.",
+            )
+          )
             return;
           ligne.remove();
         }
