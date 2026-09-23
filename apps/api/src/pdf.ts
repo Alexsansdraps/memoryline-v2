@@ -50,6 +50,8 @@ import {
 import { dessinRecolore } from "./couleurs-image-fichier.js";
 import {
   familleCss,
+  morceauxDeTexte,
+  type MorceauDeTexte,
   policeParId,
   POLICE_TITRE_DEFAUT,
   POLICE_SOUSTITRE_DEFAUT,
@@ -437,6 +439,25 @@ const LARGEUR_UTILE = 0.88;
 const CORPS_MESURE = 96;
 
 /**
+ * Le contenu d'une ligne, chaque morceau dans sa police.
+ *
+ * Un seul morceau — le cas courant — sort exactement comme avant : du texte
+ * nu, sans balise en plus. Le découpage ne sert qu'aux caractères qu'une
+ * police ne sait pas écrire (cf. morceauxDeTexte), et chaque morceau porte
+ * alors sa propre famille.
+ */
+function contenuDeLigne(morceaux: MorceauDeTexte[]): string {
+  if (morceaux.length <= 1) return escapeXml(morceaux[0]?.texte ?? "");
+  return morceaux
+    .map(
+      (m) =>
+        `<tspan font-family="${escapeXml(familleCss(m.police))}">` +
+        `${escapeXml(m.texte)}</tspan>`,
+    )
+    .join("");
+}
+
+/**
  * Largeur d'une ligne, en multiples de son corps.
  *
  * Le texte est centré : une ligne trop longue ne déborde pas, elle est ROGNÉE
@@ -450,17 +471,17 @@ const CORPS_MESURE = 96;
  * `null` si la mesure échoue : mieux vaut le rendu d'avant que pas de texte.
  */
 async function largeurParCorps(
-  texte: string,
-  famille: string,
+  morceaux: MorceauDeTexte[],
   gras: boolean,
 ): Promise<number | null> {
+  const texte = morceaux.map((m) => m.texte).join("");
   const w = Math.ceil(CORPS_MESURE * (texte.length + 4) * 1.6);
   const h = CORPS_MESURE * 3;
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
-    `<text x="${CORPS_MESURE}" y="${CORPS_MESURE * 2}" font-family="${escapeXml(famille)}"` +
+    `<text x="${CORPS_MESURE}" y="${CORPS_MESURE * 2}"` +
     `${gras ? ' font-weight="700"' : ""} font-size="${CORPS_MESURE}" fill="#000000">` +
-    `${escapeXml(texte)}</text></svg>`;
+    `${contenuDeLigne(morceaux)}</text></svg>`;
   try {
     const { info } = await sharp(Buffer.from(svg))
       .trim({ threshold: 0 })
@@ -503,9 +524,14 @@ async function buildTextSvg(
   const rendus = await Promise.all(
     lignes.map(async (ligne, i) => {
       const texte = ligne.value.trim();
-      const famille = familleCss(
-        policeParId(ligne.font, POLICE_LIGNE_DEFAUT[i] ?? POLICE_SOUSTITRE_DEFAUT),
+      const police = policeParId(
+        ligne.font,
+        POLICE_LIGNE_DEFAUT[i] ?? POLICE_SOUSTITRE_DEFAUT,
       );
+      const famille = familleCss(police);
+      // Les caractères que la police ne sait pas écrire passent dans une
+      // autre — les chiffres de la manuscrite, notamment (cf. morceauxDeTexte).
+      const morceaux = morceauxDeTexte(texte, police);
       // Gras sur la première ligne seulement : c'est ainsi que le titre était
       // imprimé, et une réimpression doit ressembler à l'affiche d'origine.
       const gras = i === 0;
@@ -516,11 +542,12 @@ async function buildTextSvg(
       );
       // On ne rétrécit QUE ce qui dépasserait : une ligne qui tenait déjà
       // s'imprime exactement comme avant.
-      const parCorps = await largeurParCorps(texte, famille, gras);
+      const parCorps = await largeurParCorps(morceaux, gras);
       const occupee = parCorps === null ? 0 : parCorps * taille;
       const utile = width * LARGEUR_UTILE;
       return {
         texte,
+        morceaux,
         famille,
         gras,
         taille:
@@ -542,7 +569,7 @@ async function buildTextSvg(
         `<text x="${Math.round(ligne.x * width)}" y="${Math.round(ligne.y * height)}" ` +
           `text-anchor="middle" dominant-baseline="central" ` +
           `font-family="${escapeXml(r.famille)}"${r.gras ? ' font-weight="700"' : ""} ` +
-          `font-size="${r.taille}" fill="${escapeXml(couleur)}">${escapeXml(r.texte)}</text>`,
+          `font-size="${r.taille}" fill="${escapeXml(couleur)}">${contenuDeLigne(r.morceaux)}</text>`,
       );
       continue;
     }
@@ -552,7 +579,7 @@ async function buildTextSvg(
     parts.push(
       `<text x="${width / 2}" y="${y}" text-anchor="middle" ` +
         `font-family="${escapeXml(r.famille)}"${r.gras ? ' font-weight="700"' : ""} ` +
-        `font-size="${r.taille}" fill="${escapeXml(couleur)}">${escapeXml(r.texte)}</text>`,
+        `font-size="${r.taille}" fill="${escapeXml(couleur)}">${contenuDeLigne(r.morceaux)}</text>`,
     );
     precedente = r;
   }

@@ -13,7 +13,12 @@ import {
   type SvgCache,
   variantesDeVue,
 } from "../store";
-import { familleCss, policeParId, urlAsset } from "@memoryline/types";
+import {
+  familleCss,
+  morceauxDeTexte,
+  policeParId,
+  urlAsset,
+} from "@memoryline/types";
 import { CharacterStack } from "./CharacterLayer";
 import { Filigrane } from "./Filigrane";
 
@@ -509,7 +514,21 @@ export function PosterPreview(props: {
                     opacity: vide() ? "0.5" : "1",
                   }}
                 >
-                  {ligne.value}
+                  {/* Chaque morceau dans la police qui sait l'écrire : la
+                      manuscrite ne connaît pas les chiffres, ils s'écrivent
+                      alors en Caveat — ici comme à l'impression. */}
+                  <For
+                    each={morceauxDeTexte(
+                      ligne.value,
+                      policeParId(ligne.font, policeDefautLigne(rang())),
+                    )}
+                  >
+                    {(morceau) => (
+                      <span style={{ "font-family": familleCss(morceau.police) }}>
+                        {morceau.texte}
+                      </span>
+                    )}
+                  </For>
                 </div>
               )}
             </For>

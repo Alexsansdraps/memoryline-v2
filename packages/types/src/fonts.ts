@@ -122,6 +122,59 @@ const POLICES_PAR_LIGNE: readonly (readonly string[])[] = [
 ];
 
 /**
+ * Ce qu'une police ne sait pas écrire, et qui s'écrit alors dans une autre.
+ *
+ * « another shabby » est distribuée en version d'essai : ses lettres sont
+ * complètes, mais ses CHIFFRES et cinq symboles (€ $ & @ #) sont remplacés par
+ * le logo de l'éditeur — un petit rond noir. Une cliente qui écrivait
+ * « 24/12/2025 » en sous-titre obtenait huit ronds, à l'écran comme sur le
+ * papier, sans que rien ne la prévienne.
+ *
+ * Ces caractères-là sont donc écrits en Caveat, l'autre manuscrite de la
+ * maison, déjà installée des deux côtés. Le jour où la licence complète sera
+ * achetée, il suffira de vider cette liste.
+ */
+const CARACTERES_ABSENTS: Readonly<Record<string, RegExp>> = {
+  shabby: /[0-9€$&@#]/,
+};
+
+/** La police qui prend le relais sur ces caractères-là. */
+const ID_POLICE_DE_SECOURS = "caveat";
+
+/** Un bout de ligne à écrire d'une seule police. */
+export interface MorceauDeTexte {
+  texte: string;
+  police: PoliceAffiche;
+}
+
+/**
+ * Découpe une ligne en morceaux, chacun avec la police qui sait l'écrire.
+ *
+ * Un seul morceau dans l'immense majorité des cas : le découpage n'a lieu que
+ * pour les caractères listés dans {@link CARACTERES_ABSENTS}. L'écran et
+ * l'impression appellent la MÊME fonction — sans quoi l'affiche livrée
+ * n'aurait pas les mêmes chiffres que celle validée par la cliente.
+ */
+export function morceauxDeTexte(
+  texte: string,
+  police: PoliceAffiche,
+): MorceauDeTexte[] {
+  const absents = CARACTERES_ABSENTS[police.id];
+  const secours = POLICES_AFFICHE.find((p) => p.id === ID_POLICE_DE_SECOURS);
+  if (!texte || !absents || !secours || !absents.test(texte))
+    return [{ texte, police }];
+
+  const morceaux: MorceauDeTexte[] = [];
+  for (const caractere of texte) {
+    const voulue = absents.test(caractere) ? secours : police;
+    const dernier = morceaux[morceaux.length - 1];
+    if (dernier && dernier.police === voulue) dernier.texte += caractere;
+    else morceaux.push({ texte: caractere, police: voulue });
+  }
+  return morceaux;
+}
+
+/**
  * Les polices proposées sur une ligne, dans l'ordre d'affichage.
  *
  * Une ligne au-delà de la troisième — il n'y en a pas aujourd'hui — retombe
