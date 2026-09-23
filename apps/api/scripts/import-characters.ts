@@ -30,6 +30,7 @@ import { resolve, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { sql, db, schema } from "../src/db/client.js";
+import { confirmerAvantDeVider } from "./garde-base.js";
 
 const HERE = fileURLToPath(import.meta.url);
 const CHARACTERS_DIR = resolve(HERE, "../../../../data/memoryline-archive/characters");
@@ -254,6 +255,12 @@ function labelFromFilename(file: string): string {
 }
 
 async function main(): Promise<void> {
+  // Ce script vide la bibliothèque des pièces génériques avant de la
+  // réimporter (cf. scripts/garde-base.ts).
+  await confirmerAvantDeVider("L'import des personnages", [
+    "les pièces qui n'appartiennent à aucun personnage (vêtements, coupes, accessoires)",
+  ]);
+
   // ====================================================================
   // 1. CHARACTER TYPES (un par SVG complet)
   // ====================================================================
