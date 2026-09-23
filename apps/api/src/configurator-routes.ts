@@ -1478,9 +1478,17 @@ export function mountConfiguratorRoutes(app: Hono) {
         categoryPosition: schema.characterCategories.position,
       })
       .from(schema.characterTypes)
+      // La jointure ignore les catégories ARCHIVÉES : un rayon rangé n'a plus
+      // à paraître dans le configurateur. Ses personnages, eux, restent
+      // proposés — ils arrivent simplement sans catégorie, comme ceux qui n'en
+      // ont jamais eu. Filtrer sur les personnages, à l'inverse, aurait fait
+      // disparaître trente dessins du site pour un simple rangement.
       .leftJoin(
         schema.characterCategories,
-        eq(schema.characterTypes.categoryId, schema.characterCategories.id),
+        and(
+          eq(schema.characterTypes.categoryId, schema.characterCategories.id),
+          isNull(schema.characterCategories.archivedAt),
+        ),
       )
       .where(includeArchived ? undefined : isNull(schema.characterTypes.archivedAt))
       .orderBy(
@@ -1538,11 +1546,18 @@ export function mountConfiguratorRoutes(app: Hono) {
     }
 
     // Catégories de pièces + leurs nuanciers : le configurateur n'a plus de
-    // couleurs en dur, il lit celles-ci.
+    // couleurs en dur, il lit celles-ci. Les archivées n'en sont pas : leurs
+    // pièces restent proposées et reprennent le nuancier de leur emplacement,
+    // exactement comme celles d'une catégorie décochée.
     const categoriesPieces = await db
       .select()
       .from(schema.pieceCategories)
-      .where(eq(schema.pieceCategories.active, true))
+      .where(
+        and(
+          eq(schema.pieceCategories.active, true),
+          isNull(schema.pieceCategories.archivedAt),
+        ),
+      )
       .orderBy(asc(schema.pieceCategories.position));
 
     return c.json({
@@ -2859,7 +2874,13 @@ export function mountConfiguratorRoutes(app: Hono) {
 
   // === Catégories de personnages (BO) =====================================
 
-  /** Catégories, avec le nombre de personnages non archivés dans chacune. */
+  /**
+   * Catégories, avec le nombre de personnages non archivés dans chacune.
+   *
+   * Les catégories ARCHIVÉES viennent avec, marquées par leur `archivedAt` :
+   * l'écran les range dans sa section « Catégories archivées » sans redemander
+   * la liste.
+   */
   app.get("/admin/categories", async (c) => {
     const rows = await db
       .select({
@@ -2867,6 +2888,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         slug: schema.characterCategories.slug,
         name: schema.characterCategories.name,
         position: schema.characterCategories.position,
+        archivedAt: schema.characterCategories.archivedAt,
         count: sql<number>`count(${schema.characterTypes.id})::int`,
       })
       .from(schema.characterCategories)
@@ -2931,18 +2953,48 @@ export function mountConfiguratorRoutes(app: Hono) {
   });
 
   /**
-   * Supprime une catégorie. Les personnages ne sont PAS supprimés : la clé
-   * étrangère est en ON DELETE SET NULL, ils se retrouvent sans catégorie et
-   * restent modifiables. Supprimer une catégorie n'est donc jamais destructif.
+   * Archive une catégorie de personnages, ou la restaure.
+   *
+   * La suppression définitive a été RETIRÉE. Elle passait pour anodine — les
+   * personnages survivaient — mais elle emportait la COMPOSITION du rayon : la
+   * clé étrangère en ON DELETE SET NULL vidait le `category_id` de chacun, et
+   * une trentaine de personnages se retrouvaient en vrac dans « sans
+   * catégorie ». Les recoller un à un était le seul retour en arrière.
+   *
+   * Archivée, la catégorie garde ses personnages : ils restent proposés dans
+   * le configurateur, simplement rangés sous « sans catégorie » le temps de
+   * l'archivage, et « Restaurer » rend le rayon tel qu'il était. `dedans` dit
+   * combien elle en range, pour que l'écran puisse le redire.
    */
-  app.delete("/admin/categories/:id", async (c) => {
+  app.post("/admin/categories/:id/archive", async (c) => {
     const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.notFound();
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    // Défaut : on archive. Seul un « archived: false » explicite restaure.
+    const archiver = b.archived !== false;
+
     const [row] = await db
-      .delete(schema.characterCategories)
+      .update(schema.characterCategories)
+      .set({ archivedAt: archiver ? new Date() : null })
       .where(eq(schema.characterCategories.id, id))
-      .returning();
+      .returning({ archivedAt: schema.characterCategories.archivedAt });
     if (!row) return c.notFound();
-    return c.json({ ok: true });
+
+    const [compte] = await db
+      .select({ n: count() })
+      .from(schema.characterTypes)
+      .where(
+        and(
+          eq(schema.characterTypes.categoryId, id),
+          isNull(schema.characterTypes.archivedAt),
+        ),
+      );
+
+    return c.json({
+      ok: true,
+      archived: row.archivedAt != null,
+      dedans: Number(compte?.n ?? 0),
+    });
   });
 
   /**
@@ -2962,6 +3014,17 @@ export function mountConfiguratorRoutes(app: Hono) {
       .from(schema.characterCategories)
       .where(eq(schema.characterCategories.id, id));
     if (!category) return c.notFound();
+    // On peut toujours VIDER une catégorie archivée — c'est du ménage. Y
+    // cocher des personnages, non : la catégorie étant rangée, ils s'y
+    // rangeraient sans que le configurateur montre le moindre rayon.
+    if (ids.length && category.archivedAt)
+      return c.json(
+        {
+          error:
+            "Cette catégorie est archivée. Restaurez-la avant d'y ranger des personnages.",
+        },
+        400,
+      );
 
     // Sortie : les persos actuellement dans la catégorie et plus cochés.
     const detached = await db
@@ -3123,10 +3186,23 @@ export function mountConfiguratorRoutes(app: Hono) {
 
     if (categoryId != null) {
       const [cat] = await db
-        .select({ id: schema.characterCategories.id })
+        .select({
+          id: schema.characterCategories.id,
+          archivedAt: schema.characterCategories.archivedAt,
+        })
         .from(schema.characterCategories)
         .where(eq(schema.characterCategories.id, categoryId));
       if (!cat) return c.json({ error: "catégorie inconnue" }, 404);
+      // On peut toujours en SORTIR un lot (`categoryId: null`), mais pas le
+      // ranger dans un rayon rangé : le configurateur n'en montrerait rien.
+      if (cat.archivedAt)
+        return c.json(
+          {
+            error:
+              "Cette catégorie est archivée. Restaurez-la avant d'y ranger des personnages.",
+          },
+          400,
+        );
     }
 
     const moved = await db
@@ -3274,7 +3350,12 @@ export function mountConfiguratorRoutes(app: Hono) {
     return c.json({ ok: true, count: list.length });
   });
 
-  /** Catégories de pièces, toutes, avec le nombre de pièces rangées dedans. */
+  /**
+   * Catégories de pièces, toutes, avec le nombre de pièces rangées dedans.
+   *
+   * Les archivées viennent AVEC, marquées par leur `archivedAt` : l'écran les
+   * range dans sa section « Catégories archivées » sans redemander la liste.
+   */
   app.get("/admin/piece-categories", async (c) => {
     const cats = await db
       .select()
@@ -3348,17 +3429,44 @@ export function mountConfiguratorRoutes(app: Hono) {
   });
 
   /**
-   * Supprime une catégorie de pièces. Les pièces qui s'y trouvaient ne sont
-   * pas touchées : elles se retrouvent sans catégorie et reprennent le
-   * nuancier de leur emplacement (`on delete set null`).
+   * Archive une catégorie de pièces, ou la restaure.
+   *
+   * La suppression définitive a été RETIRÉE. Elle passait pour anodine — les
+   * pièces survivaient — mais elle emportait deux choses irremplaçables : le
+   * RANGEMENT (la clé étrangère en ON DELETE SET NULL vidait le
+   * `piece_category_id` de chaque pièce, et « Casquettes » se dispersait dans
+   * les accessoires) et le NUANCIER écrit à la main, teinte par teinte, que
+   * rien ne conservait ailleurs.
+   *
+   * Archivée, la catégorie garde tout : ses pièces restent proposées et
+   * reprennent le nuancier de leur emplacement, comme celles d'une catégorie
+   * décochée, et « Restaurer » rend le rayon et ses couleurs tels quels.
+   * `dedans` dit combien de pièces elle range, pour que l'écran le redise.
    */
-  app.delete("/admin/piece-categories/:id", async (c) => {
+  app.post("/admin/piece-categories/:id/archive", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.notFound();
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    // Défaut : on archive. Seul un « archived: false » explicite restaure.
+    const archiver = b.archived !== false;
+
     const [row] = await db
-      .delete(schema.pieceCategories)
-      .where(eq(schema.pieceCategories.id, Number(c.req.param("id"))))
-      .returning();
+      .update(schema.pieceCategories)
+      .set({ archivedAt: archiver ? new Date() : null })
+      .where(eq(schema.pieceCategories.id, id))
+      .returning({ archivedAt: schema.pieceCategories.archivedAt });
     if (!row) return c.notFound();
-    return c.json({ ok: true });
+
+    const [compte] = await db
+      .select({ n: count() })
+      .from(schema.assets)
+      .where(eq(schema.assets.pieceCategoryId, id));
+
+    return c.json({
+      ok: true,
+      archived: row.archivedAt != null,
+      dedans: Number(compte?.n ?? 0),
+    });
   });
 
   /** Range un lot de pièces dans une catégorie (ou les en sort). */
@@ -3372,6 +3480,24 @@ export function mountConfiguratorRoutes(app: Hono) {
       b.pieceCategoryId == null || b.pieceCategoryId === ""
         ? null
         : Number(b.pieceCategoryId);
+    // On peut toujours en SORTIR des pièces (« aucune catégorie »), mais pas
+    // en ranger dans un rayon rangé : la catégorie étant archivée, elles n'en
+    // prendraient même pas le nuancier, et rien à l'écran ne le dirait.
+    if (categoryId != null) {
+      const [cat] = await db
+        .select({ archivedAt: schema.pieceCategories.archivedAt })
+        .from(schema.pieceCategories)
+        .where(eq(schema.pieceCategories.id, categoryId));
+      if (!cat) return c.json({ error: "catégorie inconnue" }, 404);
+      if (cat.archivedAt)
+        return c.json(
+          {
+            error:
+              "Cette catégorie est archivée. Restaurez-la avant d'y ranger des pièces.",
+          },
+          400,
+        );
+    }
     await db
       .update(schema.assets)
       .set({ pieceCategoryId: categoryId })

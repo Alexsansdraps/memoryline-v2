@@ -28,6 +28,7 @@ import {
   inArray,
   isNull,
   notInArray,
+  or,
   sql as raw,
 } from "drizzle-orm";
 import { poidsArticle, POSTER_FORMATS } from "@memoryline/types";
@@ -421,6 +422,10 @@ export function mountFicheProduit(app: Hono): void {
       .where(eq(schema.products.id, id));
     if (!produit) return c.notFound();
 
+    // Même règle que pour les collections : les archivées ne se proposent
+    // plus, mais celle où l'affiche est DÉJÀ rangée reste dans la liste. Sans
+    // elle, le premier enregistrement de la fiche la sortirait de sa catégorie
+    // sans que personne ne l'ait demandé.
     const categories = await db
       .select({
         id: schema.productCategories.id,
@@ -428,6 +433,14 @@ export function mountFicheProduit(app: Hono): void {
         defaultWeightGrams: schema.productCategories.defaultWeightGrams,
       })
       .from(schema.productCategories)
+      .where(
+        produit.categoryId
+          ? or(
+              isNull(schema.productCategories.archivedAt),
+              eq(schema.productCategories.id, produit.categoryId),
+            )
+          : isNull(schema.productCategories.archivedAt),
+      )
       .orderBy(
         asc(schema.productCategories.position),
         asc(schema.productCategories.name),
@@ -668,13 +681,24 @@ export function mountFicheProduit(app: Hono): void {
               const categoryId = Number(brut);
               const [categorie] = Number.isFinite(categoryId)
                 ? await tx
-                    .select({ id: schema.productCategories.id })
+                    .select({
+                      id: schema.productCategories.id,
+                      archivedAt: schema.productCategories.archivedAt,
+                    })
                     .from(schema.productCategories)
                     .where(eq(schema.productCategories.id, categoryId))
                 : [];
               if (!categorie)
                 throw new SaisieRefusee(
                   "Cette catégorie n'existe plus. Rechargez la page.",
+                );
+              // Une catégorie archivée ne se choisit plus. Celle où l'affiche
+              // se trouve DÉJÀ reste acceptée : la fiche la renvoie à chaque
+              // enregistrement, et la refuser rendrait le produit immodifiable
+              // le jour où l'on range sa catégorie.
+              if (categorie.archivedAt && produit.categoryId !== categoryId)
+                throw new SaisieRefusee(
+                  "Cette catégorie est archivée. Restaurez-la avant d'y ranger cette affiche.",
                 );
               champs.categoryId = categoryId;
             }

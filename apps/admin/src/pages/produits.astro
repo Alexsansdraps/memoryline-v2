@@ -86,6 +86,12 @@ if (Astro.request.method === "POST") {
       if (!brut) throw new Error("Choisissez une collection.");
       params = { collectionId: Number(brut) };
     } else if (quoi !== "supprimer") {
+      // « supprimer » n'existe plus : retirer une affiche, c'est l'ARCHIVER,
+      // et l'onglet « Archivées » la garde entière. Le bouton rouge a disparu
+      // de cet écran, mais un onglet resté ouvert avant la bascule peut encore
+      // l'envoyer : on laisse alors l'action descendre jusqu'à l'API, qui la
+      // refuse en disant quoi faire à la place. « Action inconnue » laisserait
+      // croire à une panne.
       throw new Error("Action inconnue.");
     }
 
@@ -339,14 +345,11 @@ const PAGE_SIZE = 25;
         >
           Modifier en masse
         </button>
-        <button
-          type="button"
-          data-bulk="supprimer"
-          data-confirme="Supprimer définitivement les produits sélectionnés ? Ceux qui figurent dans une commande seront conservés."
-          class="ml-auto rounded border border-red-300 px-3 py-1.5 text-red-700 hover:bg-red-50"
-        >
-          Supprimer
-        </button>
+        {/* Le bouton rouge « Supprimer » a été RETIRÉ : une affiche ne
+            s'efface pas, elle s'archive — c'est ce que fait « Archiver »
+            juste au-dessus, et elle se retrouve dans l'onglet « Archivées »,
+            d'où elle se remet en vente. Supprimer emportait aussi ses photos,
+            ses fonds de configurateur et son rangement en collections. */}
       </div>
 
       <div

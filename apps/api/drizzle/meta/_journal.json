@@ -372,6 +372,13 @@
       "when": 1790168113303,
       "tag": "0052_archivage_contenu",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1790171210895,
+      "tag": "0053_archivage_catalogue",
+      "breakpoints": true
     }
   ]
 }

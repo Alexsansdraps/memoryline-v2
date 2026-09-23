@@ -15,7 +15,16 @@
  * prononcent qui l'emporte (voir `poidsDesCollections`).
  */
 import type { Hono } from "hono";
-import { and, asc, count, eq, inArray, isNull, sql as raw } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  eq,
+  inArray,
+  isNull,
+  or,
+  sql as raw,
+} from "drizzle-orm";
 import { poidsDesCollections } from "./collections.js";
 import { db, schema } from "./db/client.js";
 
@@ -49,7 +58,13 @@ export function mountCatalogueRoutes(app: Hono): void {
     const rows = await db
       .select()
       .from(schema.productCategories)
-      .where(eq(schema.productCategories.active, true))
+      .where(
+        and(
+          eq(schema.productCategories.active, true),
+          // Archivée = rangée : elle quitte le site, comme une décochée.
+          isNull(schema.productCategories.archivedAt),
+        ),
+      )
       .orderBy(
         asc(schema.productCategories.position),
         asc(schema.productCategories.name),
@@ -57,7 +72,12 @@ export function mountCatalogueRoutes(app: Hono): void {
     return c.json(rows);
   });
 
-  /** Catégories du back-office, avec le nombre de produits rangés dedans. */
+  /**
+   * Catégories du back-office, avec le nombre de produits rangés dedans.
+   *
+   * Les archivées viennent AVEC, marquées par leur `archivedAt` : l'écran les
+   * range dans sa section « Catégories archivées » sans redemander la liste.
+   */
   app.get("/admin/product-categories", async (c) => {
     const rows = await db
       .select()
@@ -117,29 +137,50 @@ export function mountCatalogueRoutes(app: Hono): void {
   });
 
   /**
-   * Supprime une catégorie vide.
+   * Archive une catégorie de produits, ou la restaure.
    *
-   * On refuse tant qu'elle contient des produits : la supprimer les laisserait
-   * sans poids par défaut, et donc avec des frais de port faux, sans que rien
-   * ne le signale.
+   * La suppression définitive a été RETIRÉE. Elle n'était permise que sur une
+   * catégorie vide, et pour cause : effacer la ligne remettait à zéro le
+   * `category_id` de tout ce qu'elle rangeait (`on delete set null`). Les
+   * produits perdaient d'un coup leur rangement ET le poids par défaut qu'elle
+   * leur donnait — donc leur affranchissement —, sans que rien ne le signale.
+   *
+   * Archivée, elle peut donc l'être PLEINE : le rangement reste intact, c'est
+   * ce qui permet de la restaurer complète. `dedans` dit combien de produits
+   * elle range, pour que l'écran puisse le redire.
    */
-  app.delete("/admin/product-categories/:id", async (c) => {
+  app.post("/admin/product-categories/:id/archive", async (c) => {
     const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0)
+      return c.json(
+        { error: "Cette catégorie n'existe plus. Rechargez la liste." },
+        400,
+      );
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    // Défaut : on archive. Seul un « archived: false » explicite restaure.
+    const archiver = b.archived !== false;
+
+    const [ligne] = await db
+      .update(schema.productCategories)
+      .set({ archivedAt: archiver ? new Date() : null })
+      .where(eq(schema.productCategories.id, id))
+      .returning({ archivedAt: schema.productCategories.archivedAt });
+    if (!ligne)
+      return c.json(
+        { error: "Cette catégorie n'existe plus. Rechargez la liste." },
+        400,
+      );
+
     const [{ n } = { n: 0 }] = await db
       .select({ n: count() })
       .from(schema.products)
       .where(eq(schema.products.categoryId, id));
-    if (Number(n) > 0)
-      return c.json(
-        {
-          error: `${n} produit(s) sont rangés dans cette catégorie. Déplacez-les d'abord.`,
-        },
-        409,
-      );
-    await db
-      .delete(schema.productCategories)
-      .where(eq(schema.productCategories.id, id));
-    return c.json({ ok: true });
+
+    return c.json({
+      ok: true,
+      archived: ligne.archivedAt != null,
+      dedans: Number(n),
+    });
   });
 
   /** Range un lot de produits dans une catégorie (null = les en sort). */
@@ -150,6 +191,29 @@ export function mountCatalogueRoutes(app: Hono): void {
       .filter((n) => Number.isFinite(n));
     if (!ids.length) return c.json({ error: "aucun produit" }, 400);
     const categoryId = b.categoryId === null ? null : Number(b.categoryId);
+    // On peut toujours SORTIR d'une catégorie archivée — c'est du ménage. Y
+    // ranger un lot, non : la catégorie étant rangée, le rayon resterait
+    // introuvable sur le site, et le seul effet visible serait le poids par
+    // défaut qu'elle donne aux colis.
+    if (categoryId !== null) {
+      const [cible] = await db
+        .select({ archivedAt: schema.productCategories.archivedAt })
+        .from(schema.productCategories)
+        .where(eq(schema.productCategories.id, categoryId));
+      if (!cible)
+        return c.json(
+          { error: "Cette catégorie n'existe plus. Rechargez la page." },
+          400,
+        );
+      if (cible.archivedAt)
+        return c.json(
+          {
+            error:
+              "Cette catégorie est archivée. Restaurez-la avant d'y ranger des produits.",
+          },
+          400,
+        );
+    }
     await db
       .update(schema.products)
       .set({ categoryId })
@@ -188,9 +252,21 @@ export function mountCatalogueRoutes(app: Hono): void {
       .from(schema.variants)
       .where(eq(schema.variants.productId, id))
       .orderBy(asc(schema.variants.format));
+    // Le choix proposé : les catégories non archivées, PLUS celle où le
+    // produit se trouve déjà. Sans elle, une catégorie rangée disparaîtrait
+    // de la liste déroulante, et le premier enregistrement de la fiche en
+    // sortirait l'affiche sans que personne ne l'ait demandé.
     const categories = await db
       .select()
       .from(schema.productCategories)
+      .where(
+        produit.categoryId
+          ? or(
+              isNull(schema.productCategories.archivedAt),
+              eq(schema.productCategories.id, produit.categoryId),
+            )
+          : isNull(schema.productCategories.archivedAt),
+      )
       .orderBy(asc(schema.productCategories.position));
 
     // Le poids annoncé par les collections du produit. La plus lourde

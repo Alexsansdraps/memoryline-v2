@@ -9,11 +9,11 @@
  * bouton.
  *
  * Deux principes gouvernent ce fichier, parce qu'une action de masse se
- * trompe en masse. D'abord, un produit déjà vendu ne s'efface jamais : les
- * commandes passées le citent, et le supprimer reviendrait à trouer
- * l'historique des ventes. Ensuite, une ligne fautive ne fait pas tomber
- * les autres : elle ressort seule, nommée et expliquée, pendant que le reste
- * du lot est bien enregistré.
+ * trompe en masse. D'abord, aucun produit ne s'efface : retirer une affiche,
+ * c'est l'ARCHIVER — elle quitte le site et garde tout, ses photos, ses fonds
+ * de configurateur, son rangement, et le lien des commandes qui la citent.
+ * Ensuite, une ligne fautive ne fait pas tomber les autres : elle ressort
+ * seule, nommée et expliquée, pendant que le reste du lot est bien enregistré.
  */
 import type { Hono } from "hono";
 import {
@@ -23,11 +23,9 @@ import {
   eq,
   inArray,
   isNull,
-  notInArray,
   or,
   sql as raw,
 } from "drizzle-orm";
-import { HORS_VENTES } from "./statuts-vente.js";
 import { poidsArticle } from "@memoryline/types";
 import { poidsDesCollections } from "./collections.js";
 import { db, schema } from "./db/client.js";
@@ -680,12 +678,15 @@ app.get("/admin/products/export.csv", async (c) => {
         // le nom, pas une création récente.
         .orderBy(asc(schema.products.name), asc(schema.products.id))
         .limit(limite),
+      // Les catégories où l'on peut ranger un lot : pas les archivées, pour
+      // la même raison que les collections juste en dessous.
       db
         .select({
           id: schema.productCategories.id,
           name: schema.productCategories.name,
         })
         .from(schema.productCategories)
+        .where(isNull(schema.productCategories.archivedAt))
         .orderBy(
           asc(schema.productCategories.position),
           asc(schema.productCategories.name),
@@ -909,13 +910,26 @@ app.get("/admin/products/export.csv", async (c) => {
         categoryId = Number(brut);
         const [existe] = Number.isFinite(categoryId)
           ? await db
-              .select({ id: schema.productCategories.id })
+              .select({
+                id: schema.productCategories.id,
+                archivedAt: schema.productCategories.archivedAt,
+              })
               .from(schema.productCategories)
               .where(eq(schema.productCategories.id, categoryId))
           : [];
         if (!existe)
           return c.json(
             { error: "Cette catégorie n'existe plus. Rechargez la page." },
+            400,
+          );
+        // Même règle que pour les collections : on peut toujours en SORTIR un
+        // lot (« aucune catégorie »), mais pas en ranger dans un rayon rangé.
+        if (existe.archivedAt)
+          return c.json(
+            {
+              error:
+                "Cette catégorie est archivée. Restaurez-la avant d'y ranger des affiches.",
+            },
             400,
           );
       }
@@ -1207,95 +1221,27 @@ app.get("/admin/products/export.csv", async (c) => {
       return c.json({ ok: true, count: faits.length });
     }
 
-    if (action === "supprimer") {
-      const selection = new Set(ids);
-      const refuses: { id: number; name: string; raison: string }[] = [];
-
-      // La lecture et la suppression dans le même mouvement : entre les deux,
-      // rien ne doit pouvoir se glisser qui rendrait le verdict faux.
-      const { supprimes, proteges } = await db.transaction(async (tx) => {
-        // Une commande PAYÉE cite le produit qu'elle contient. L'effacer
-        // viderait des ventes déjà faites de leur libellé et de leur lien, et
-        // aucune comptabilité ne se relit après ça. Un panier abandonné, lui,
-        // est une commande en brouillon : il n'a rien vendu et ne protège
-        // rien, sans quoi le passage d'un visiteur suffirait à rendre une
-        // affiche indéboulonnable pour toujours.
-        //
-        // Deux chemins mènent au produit : la ligne le cite directement, ou
-        // elle ne cite que le format acheté. Une seule requête couvre les
-        // deux, faute de quoi une vente ancienne passerait au travers.
-        const lignesVendues = await tx
-          .select({
-            produitDeLaLigne: schema.orderItems.productId,
-            produitDuFormat: schema.variants.productId,
-          })
-          .from(schema.orderItems)
-          .innerJoin(
-            schema.orders,
-            eq(schema.orderItems.orderId, schema.orders.id),
-          )
-          .leftJoin(
-            schema.variants,
-            eq(schema.orderItems.variantId, schema.variants.id),
-          )
-          .where(
-            and(
-              notInArray(schema.orders.status, HORS_VENTES),
-              or(
-                inArray(schema.orderItems.productId, ids),
-                inArray(schema.variants.productId, ids),
-              )!,
-            ),
-          );
-
-        const vendus = new Set<number>();
-        for (const ligne of lignesVendues) {
-          for (const candidat of [
-            ligne.produitDeLaLigne,
-            ligne.produitDuFormat,
-          ])
-            if (candidat !== null && selection.has(candidat))
-              vendus.add(candidat);
-        }
-
-        const aSupprimer = ids.filter((id) => !vendus.has(id));
-        const effaces = aSupprimer.length
-          ? await tx
-              .delete(schema.products)
-              .where(inArray(schema.products.id, aSupprimer))
-              .returning({ id: schema.products.id })
-          : [];
-        return { supprimes: effaces, proteges: vendus };
-      });
-
-      if (proteges.size) {
-        const noms = await db
-          .select({ id: schema.products.id, name: schema.products.name })
-          .from(schema.products)
-          .where(inArray(schema.products.id, [...proteges]));
-        for (const p of noms)
-          refuses.push({
-            id: p.id,
-            name: p.name,
-            raison:
-              "Ce produit a déjà été vendu, il ne peut pas être supprimé. Archivez-le plutôt.",
-          });
-      }
-
-      return c.json({
-        ok: true,
-        count: supprimes.length,
-        // Ce qui part avec le produit et ne se récupère pas : mieux vaut le
-        // lire après coup que le découvrir en cherchant une image disparue.
-        ...(supprimes.length
-          ? {
-              message:
-                "Leurs photos, leurs fonds du configurateur et leur rangement en collections ont été supprimés avec eux. Les affiches déjà créées par l'IA ne leur sont plus rattachées.",
-            }
-          : {}),
-        ...(refuses.length ? { refuses } : {}),
-      });
-    }
+    /*
+     * « Supprimer » N'EXISTE PLUS, et c'est une action de moins, pas une
+     * action de plus : une affiche a toujours eu son statut « archivé », qui
+     * la retire du site en la gardant entière. Le bouton rouge faisait autre
+     * chose — il effaçait la ligne, et avec elle les photos de la fiche, les
+     * fonds du configurateur, le rangement en collections et le lien des
+     * affiches déjà créées par l'IA. Rien de tout cela ne se récupérait.
+     *
+     * Le garde-fou des produits vendus est donc lui aussi sans objet : ce
+     * qu'il protégeait ne peut plus arriver. On garde en revanche la réponse
+     * explicite pour un écran resté ouvert avant la bascule, plutôt qu'un
+     * « Action inconnue » qui laisserait croire à une panne.
+     */
+    if (action === "supprimer")
+      return c.json(
+        {
+          error:
+            "Les affiches ne se suppriment plus : choisissez « Archiver ». Elles quittent le site et restent dans l'onglet « Archivées », d'où elles se remettent en vente.",
+        },
+        400,
+      );
 
     return c.json({ error: "Action inconnue." }, 400);
   });
@@ -1338,6 +1284,10 @@ app.get("/admin/products/export.csv", async (c) => {
     const proprietaireDuSlug = new Map(
       tousLesSlugs.map((p) => [p.slug, p.id] as const),
     );
+    // Les archivées comptent ici, exprès : la grille renvoie pour chaque
+    // ligne la catégorie qu'elle a déjà, et la refuser rendrait immodifiable
+    // toute affiche dont on vient de ranger la catégorie. C'est la liste
+    // déroulante, elle, qui ne propose plus les archivées.
     const categories = await db
       .select({ id: schema.productCategories.id })
       .from(schema.productCategories);

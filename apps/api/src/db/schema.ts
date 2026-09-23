@@ -118,6 +118,17 @@ export const productCategories = pgTable(
     defaultWeightGrams: integer("default_weight_grams").notNull().default(0),
     active: boolean("active").notNull().default(true),
     position: integer("position").notNull().default(0),
+    /**
+     * Archivée : sortie du site ET de la liste ordinaire du back-office,
+     * restaurable depuis « Catégories archivées ».
+     *
+     * Distinct de `active`, qui la retire du site en la laissant sous les yeux.
+     * Les produits gardent leur `category_id` : c'est ce qui permet de la
+     * restaurer COMPLÈTE, avec ce qu'elle rangeait. La supprimer, à l'inverse,
+     * remettait tous ses produits à zéro (`on delete set null`) sans que rien
+     * ne sache les y remettre.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -454,7 +465,7 @@ export const backgrounds = pgTable("background", {
  * Catégorie de personnages, gérée depuis le back-office (backlog A3).
  *
  * Remplace le texte libre `character_type.category` : on peut créer une
- * catégorie vide, la renommer, la réordonner ou la supprimer sans toucher aux
+ * catégorie vide, la renommer, la réordonner ou la ranger sans toucher aux
  * personnages — ce que du texte recopié sur chaque ligne ne permettait pas.
  */
 export const characterCategories = pgTable(
@@ -465,6 +476,16 @@ export const characterCategories = pgTable(
     name: text("name").notNull(),
     /** Ordre d'affichage des catégories entre elles (BO et configurateur). */
     position: integer("position").default(0).notNull(),
+    /**
+     * Archivée : hors du configurateur et de la liste ordinaire, restaurable.
+     *
+     * Ses PERSONNAGES ne bougent pas : ils gardent leur `category_id` et
+     * restent proposés, simplement rangés sous « sans catégorie » le temps de
+     * l'archivage. C'est toute la différence avec la suppression, qui vidait
+     * leur `category_id` (`on delete set null`) — la composition du rayon était
+     * alors perdue, et aucune restauration ne pouvait la rendre.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => [uniqueIndex("character_category_slug_uniq").on(t.slug)],
 );
@@ -625,6 +646,16 @@ export const pieceCategories = pgTable(
     colors: jsonb("colors").$type<string[]>(),
     active: boolean("active").notNull().default(true),
     position: integer("position").notNull().default(0),
+    /**
+     * Archivée : hors du configurateur et de la liste ordinaire, restaurable.
+     *
+     * Ses PIÈCES gardent leur `piece_category_id` et restent proposées : elles
+     * reprennent simplement le nuancier de leur emplacement, comme le font
+     * déjà celles d'une catégorie décochée. La supprimer, elle, effaçait ce
+     * rangement (`on delete set null`) — et avec lui le nuancier écrit à la
+     * main, que rien ne savait rendre.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => [uniqueIndex("piece_category_slug_uniq").on(t.slug)],
 );
@@ -1889,6 +1920,16 @@ export const aiPrompts = pgTable(
     position: integer("position").notNull().default(0),
     /** Éteint : gardé au back-office, absent du site. */
     active: boolean("active").notNull().default(true),
+    /**
+     * Archivé : hors du site ET de la liste ordinaire, restaurable depuis
+     * « Styles archivés ».
+     *
+     * Distinct de `active`, qui l'éteint en le laissant sous les yeux. La
+     * ligne reste : elle garde son titre, sa consigne — la recette de la
+     * boutique, réécrite essai après essai — et ses images, que rien d'autre
+     * ne conserve. Restaurer redonne le style entier, pas son squelette.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     /** Le titre dans les autres langues ; vide, le français s'affiche. */
     translations: jsonb("translations").$type<
       Partial<Record<string, { title?: string }>>

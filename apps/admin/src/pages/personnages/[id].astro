@@ -101,17 +101,23 @@ if (Astro.request.method === "POST") {
 
 let perso: CharacterType | undefined;
 let assets: Asset[] = [];
-let categories: CharacterCategory[] = [];
+let toutesCategories: CharacterCategory[] = [];
 let vues: TypeAffiche[] = [];
 try {
   const data = await api.characters();
   perso = (data.types ?? []).find((t) => t.id === id);
   assets = await api.assets();
-  categories = await api.categories();
+  toutesCategories = await api.categories();
   vues = await api.views();
 } catch (e) {
   if (!erreur) erreur = String(e);
 }
+// Les catégories ouvertes, plus celle de ce personnage si elle vient d'être
+// archivée : sans elle, le sélecteur retomberait sur « Sans catégorie » et le
+// premier enregistrement de la fiche lui ferait perdre son rayon.
+const categories = toutesCategories.filter(
+  (c) => !c.archivedAt || perso?.categoryId === c.id,
+);
 
 const vueDuPerso = perso?.orientation ?? vues[0]?.slug ?? "front";
 
@@ -262,6 +268,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
                   selected={perso!.categoryId === c.id}
                 >
                   {c.name}
+                  {c.archivedAt ? " (archivée)" : ""}
                 </option>
               ))}
             </select>

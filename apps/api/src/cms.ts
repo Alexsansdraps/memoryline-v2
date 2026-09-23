@@ -663,7 +663,10 @@ async function produitsDuneReference(
         // et se remplit à nouveau dès qu'on restaure la collection.
         raw`exists (select 1 from ${schema.productCollections} pc join ${schema.collections} col on col.id = pc.collection_id where pc.product_id = ${schema.products.id} and col.slug = ${reference} and col.active = true and col.archived_at is null)`
       : /^\d+$/.test(reference)
-        ? raw`exists (select 1 from ${schema.productCategories} cat where cat.id = ${schema.products.categoryId} and cat.id = ${Number(reference)} and cat.active = true)`
+        ? // `cat.archived_at is null` : même règle que pour les collections —
+          // une catégorie archivée ne sort plus de produits, et la rangée de
+          // la page qui la montrait se remplit à nouveau dès la restauration.
+          raw`exists (select 1 from ${schema.productCategories} cat where cat.id = ${schema.products.categoryId} and cat.id = ${Number(reference)} and cat.active = true and cat.archived_at is null)`
         : null;
   if (filtre === null) return [];
 
@@ -1311,16 +1314,21 @@ export function mountCms(app: Hono): void {
         ),
       )
       .orderBy(asc(schema.collections.position), asc(schema.collections.name));
-    // Seulement les catégories actives : une catégorie désactivée est une
-    // catégorie retirée, et la proposer ici ferait composer une rangée qui
-    // restera vide sans que rien n'explique pourquoi.
+    // Seulement les catégories actives et non archivées : une catégorie
+    // retirée ne sort plus de produits, et la proposer ici ferait composer une
+    // rangée qui restera vide sans que rien n'explique pourquoi.
     const categories = await db
       .select({
         id: schema.productCategories.id,
         name: schema.productCategories.name,
       })
       .from(schema.productCategories)
-      .where(eq(schema.productCategories.active, true))
+      .where(
+        and(
+          eq(schema.productCategories.active, true),
+          isNull(schema.productCategories.archivedAt),
+        ),
+      )
       .orderBy(asc(schema.productCategories.position), asc(schema.productCategories.name));
 
     return c.json({

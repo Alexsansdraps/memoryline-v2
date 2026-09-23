@@ -142,10 +142,19 @@ if (Astro.request.method === "POST") {
         position: Number(form.get("position")),
       });
       flash = "Ordre des catégories mis à jour.";
-    } else if (action === "cat-delete") {
-      await api.deleteCategory(Number(form.get("id")));
-      flash =
-        "Catégorie supprimée. Ses personnages sont revenus dans « sans catégorie ».";
+    } else if (action === "cat-archive") {
+      const restaurer = form.get("archived") === "false";
+      const r = await api.archiverCategoriePersonnage(
+        Number(form.get("id")),
+        !restaurer,
+      );
+      flash = restaurer
+        ? "Catégorie restaurée, avec les personnages qu'elle rangeait."
+        : `Catégorie archivée${
+            r.dedans > 0
+              ? `. Ses ${r.dedans} personnage${r.dedans > 1 ? "s restent proposés" : " reste proposé"} sur le site, rangé${r.dedans > 1 ? "s" : ""} dans « sans catégorie » le temps de l'archivage`
+              : ""
+          }. Vous pouvez la restaurer à tout moment, plus bas.`;
     } else if (action === "reorder") {
       const items = JSON.parse(String(form.get("items") || "[]"));
       if (items.length) await api.reorderCharacters(items);
@@ -184,11 +193,31 @@ try {
   if (!error) error = String(e);
 }
 
-let catalogue: CharacterCategory[] = [];
+let toutesCategories: CharacterCategory[] = [];
 try {
-  catalogue = await api.categories();
+  toutesCategories = await api.categories();
 } catch (e) {
   if (!error) error = String(e);
+}
+// Les catégories archivées quittent les groupes, les sélecteurs et le
+// glisser-déposer : elles se retrouvent dans leur propre section, avec
+// « Restaurer ». Leurs personnages, eux, restent proposés — ils se rangent
+// simplement dans « sans catégorie » le temps de l'archivage.
+const catalogue = toutesCategories.filter((c) => !c.archivedAt);
+const categoriesArchivees = toutesCategories.filter((c) => c.archivedAt);
+
+/** Ce qu'il faut avoir lu avant d'archiver une catégorie de personnages. */
+function messageArchivageCategorie(c: CharacterCategory): string {
+  const l = [`Archiver la catégorie « ${c.name} » ?`];
+  const n = c.count ?? 0;
+  if (n > 0)
+    l.push(
+      `Ses ${n} personnage${n > 1 ? "s restent proposés" : " reste proposé"} sur le site : ${n > 1 ? "ils apparaîtront" : "il apparaîtra"} dans « sans catégorie » le temps de l'archivage, et ${n > 1 ? "retrouveront leur rayon" : "retrouvera son rayon"} à la restauration.`,
+    );
+  l.push(
+    "Rien n'est supprimé : vous pourrez la restaurer quand vous voudrez, dans « Catégories archivées ».",
+  );
+  return l.join("\n\n");
 }
 
 // Types d'affiche : ils alimentent les sélecteurs « Type d'affiche » des
@@ -219,9 +248,12 @@ const archived = types.filter((t) => t.archivedAt);
 
 // --- Regroupement par catégorie (table character_category) ---------------
 // Les groupes suivent l'ordre des catégories, et « sans catégorie » ferme la
-// marche : il existe TOUJOURS, même vide — c'est là que reviennent les
-// personnages quand on supprime leur catégorie.
+// marche : il existe TOUJOURS, même vide — c'est là que se rangent les
+// personnages dont la catégorie est archivée, exactement comme le fait le
+// configurateur. Sans cela, ils ne seraient dans AUCUN groupe et
+// disparaîtraient de cet écran alors qu'ils sont toujours en ligne.
 const SANS = { id: null as number | null, name: "(sans catégorie)" };
+const categorieRangee = new Set(categoriesArchivees.map((c) => c.id));
 
 const groupes: { cat: CharacterCategory | null; label: string; list: CharacterType[] }[] =
   [
@@ -236,7 +268,9 @@ const groupes: { cat: CharacterCategory | null; label: string; list: CharacterTy
       cat: null,
       label: SANS.name,
       list: active
-        .filter((t) => t.categoryId == null)
+        .filter(
+          (t) => t.categoryId == null || categorieRangee.has(t.categoryId),
+        )
         .sort((a, b) => a.position - b.position),
     },
   ];
@@ -246,6 +280,28 @@ const optionsCategorie = [
   { value: "", label: SANS.name },
   ...catalogue.map((c) => ({ value: String(c.id), label: c.name })),
 ];
+
+/**
+ * Les options pour UN personnage : les catégories ouvertes, plus la sienne si
+ * elle vient d'être archivée.
+ *
+ * Sans cette dernière, le sélecteur retomberait sur « sans catégorie » et
+ * laisserait croire que le rangement est perdu — alors qu'il est intact et
+ * revient à la restauration. Elle est marquée, et on n'y range personne
+ * d'autre : l'API refuse une catégorie archivée.
+ */
+function optionsPour(t: CharacterType) {
+  const sienne =
+    t.categoryId != null && categorieRangee.has(t.categoryId)
+      ? toutesCategories.find((c) => c.id === t.categoryId)
+      : undefined;
+  return sienne
+    ? [
+        ...optionsCategorie,
+        { value: String(sienne.id), label: `${sienne.name} (archivée)` },
+      ]
+    : optionsCategorie;
+}
 
 // Liste des baseSvgUrl déjà utilisées : sert de "bibliothèque" de SVG plein
 // personnage pour le sélecteur de base.
@@ -445,14 +501,19 @@ for (const a of pieces) {
               <button class="px-1 text-bo-muted hover:text-bo-accent" title="Descendre">↓</button>
             </form>
           )}
-          <form method="POST" class="inline">
-            <input type="hidden" name="_action" value="cat-delete" />
+          <form
+            method="POST"
+            class="inline"
+            onsubmit={`return confirm(${JSON.stringify(messageArchivageCategorie(c))})`}
+          >
+            <input type="hidden" name="_action" value="cat-archive" />
             <input type="hidden" name="id" value={c.id} />
+            <input type="hidden" name="archived" value="true" />
             <button
-              class="px-1 text-bo-muted hover:text-red-600"
-              title="Supprimer — ses personnages reviennent dans « sans catégorie »"
+              class="px-1 text-xs text-bo-muted hover:text-bo-accent"
+              title={`Archiver « ${c.name} » — ses personnages restent en ligne`}
             >
-              ×
+              Archiver
             </button>
           </form>
         </div>
@@ -469,9 +530,36 @@ for (const a of pieces) {
         <button class="rounded bg-bo-accent px-3 py-1.5 text-sm text-white">Créer</button>
       </form>
     </div>
+    {categoriesArchivees.length > 0 && (
+      <div class="mt-4 border-t border-bo-border pt-3">
+        <h4 class="mb-1 text-sm font-semibold">Catégories archivées</h4>
+        <p class="mb-2 text-xs text-bo-muted">
+          Retirées du site et des groupes ci-dessous. Les personnages qu'elles
+          rangeaient sont toujours en ligne, dans « sans catégorie » :
+          « Restaurer » remet le rayon tel qu'il était.
+        </p>
+        <div class="flex flex-wrap items-center gap-2">
+          {categoriesArchivees.map((c) => (
+            <div class="flex items-center gap-2 rounded border border-bo-border px-2 py-1 opacity-70">
+              <span class="text-sm">{c.name}</span>
+              <span class="text-xs text-bo-muted">{c.count ?? 0}</span>
+              <form method="POST" class="inline">
+                <input type="hidden" name="_action" value="cat-archive" />
+                <input type="hidden" name="id" value={c.id} />
+                <input type="hidden" name="archived" value="false" />
+                <button class="text-xs text-bo-accent hover:underline">
+                  Restaurer
+                </button>
+              </form>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
     <p class="mt-2 text-xs text-bo-muted">
-      Supprimer une catégorie ne supprime aucun personnage : ils reviennent dans
-      « sans catégorie ».
+      Rien ne se supprime ici : archiver une catégorie la range, sans toucher à
+      un seul personnage. Ils restent en ligne, et « Restaurer » les remet dans
+      leur rayon.
     </p>
   </section>
 
@@ -598,7 +686,7 @@ for (const a of pieces) {
                   name="categoryId"
                   class="js-cat-select flex-1 border border-bo-border rounded px-2 py-1"
                 >
-                  {optionsCategorie.map((o) => (
+                  {optionsPour(t).map((o) => (
                     <option value={o.value} selected={o.value === String(t.categoryId ?? "")}>
                       {o.label}
                     </option>
@@ -750,13 +838,24 @@ for (const a of pieces) {
                           Sans catégorie
                         </option>
                         {categoriesPieces
-                          .filter((c) => c.slot === a.slot)
+                          .filter(
+                            (c) =>
+                              c.slot === a.slot &&
+                              // Une catégorie archivée ne se choisit plus,
+                              // sauf pour la pièce qui s'y trouve déjà :
+                              // sinon le sélecteur retomberait sur « Sans
+                              // catégorie » et laisserait croire que son
+                              // rangement est perdu.
+                              (!c.archivedAt || a.pieceCategoryId === c.id),
+                          )
                           .map((c) => (
                             <option
                               value={String(c.id)}
                               selected={a.pieceCategoryId === c.id}
                             >
-                              {c.name} ({c.colors.length} couleurs)
+                              {c.name}
+                              {c.archivedAt ? " (archivée)" : ""} (
+                              {c.colors.length} couleurs)
                             </option>
                           ))}
                       </select>

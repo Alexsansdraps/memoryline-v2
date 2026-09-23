@@ -50,9 +50,12 @@ if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   const action = String(f.get("_action") ?? "");
   try {
-    if (action === "supprimer") {
-      await api.supprimerStyleIa(Number(f.get("id")));
-      flash = "Style supprimé. Ses images restent dans la bibliothèque.";
+    if (action === "archiver") {
+      const restaurer = f.get("archived") === "false";
+      await api.archiverStyleIa(Number(f.get("id")), !restaurer);
+      flash = restaurer
+        ? "Style restauré, avec sa consigne et ses images."
+        : "Style archivé. Il ne s'affiche plus sur le site ; vous pouvez le restaurer à tout moment, plus bas.";
     } else {
       // Les images arrivent en autant de champs « image » que de lignes
       // remplies : on garde celles qui portent quelque chose, dans l'ordre.
@@ -83,17 +86,32 @@ if (Astro.request.method === "POST") {
   }
 }
 
-let styles: StyleIa[] = [];
+let tous: StyleIa[] = [];
 let erreur: string | null = null;
 try {
-  styles = await api.stylesIa();
+  tous = await api.stylesIa();
 } catch (e) {
   erreur = String(e).replace(/^Error:\s*/, "");
 }
 
+// Les archivés quittent la liste ordinaire pour leur propre section.
+const styles = tous.filter((s) => !s.archivedAt);
+const archives = tous.filter((s) => s.archivedAt);
+
+/** Ce qu'il faut avoir lu avant d'archiver un style. */
+function messageArchivage(s: StyleIa): string {
+  return [
+    `Archiver le style « ${s.title} » ?`,
+    "Il ne sera plus proposé sur le site. Sa consigne et ses images sont gardées entières — rien n'est supprimé.",
+    "Vous pourrez le restaurer quand vous voudrez, dans « Styles archivés ».",
+  ].join("\n\n");
+}
+
 /** Le style ouvert à la modification, lu dans l'adresse. */
 const idOuvert = Number(Astro.url.searchParams.get("style") ?? 0);
-const ouvert = styles.find((s) => s.id === idOuvert) ?? null;
+// Cherché parmi TOUS : on doit pouvoir rouvrir un style archivé pour le relire
+// avant de décider s'il mérite de revenir.
+const ouvert = tous.find((s) => s.id === idOuvert) ?? null;
 const creation = Astro.url.searchParams.get("nouveau") === "1";
 const formulaire = ouvert ?? (creation ? null : null);
 
@@ -184,16 +202,68 @@ const boutonDiscret =
           Modifier
         </a>
 
-        <form method="POST" onsubmit="return confirm('Supprimer ce style ?')">
-          <input type="hidden" name="_action" value="supprimer" />
+        <form
+          method="POST"
+          onsubmit={`return confirm(${JSON.stringify(messageArchivage(s))})`}
+        >
+          <input type="hidden" name="_action" value="archiver" />
           <input type="hidden" name="id" value={s.id} />
-          <button class="rounded px-3 py-1.5 text-sm text-red-700 hover:bg-red-50">
-            Supprimer
-          </button>
+          <input type="hidden" name="archived" value="true" />
+          <button class={boutonDiscret}>Archiver</button>
         </form>
       </div>
     ))}
   </div>
+
+  {/* ==================================================================== */}
+  {/* Les styles archivés                                                  */}
+  {/* ==================================================================== */}
+  {archives.length > 0 && (
+    <section class="mb-8">
+      <h2 class="mb-1 font-semibold">Styles archivés</h2>
+      <p class="mb-3 max-w-3xl text-xs text-bo-muted">
+        Retirés du site et de la liste ci-dessus. Leur consigne et leurs images
+        sont gardées entières : « Restaurer » remet le style tel qu'il était.
+      </p>
+      <div class="space-y-2 opacity-70">
+        {archives.map((s) => (
+          <div class="flex flex-wrap items-center gap-4 rounded-lg border border-bo-border bg-bo-surface p-3">
+            <div class="flex gap-1.5">
+              {(s.images ?? []).slice(0, IMAGES_MAX).map((src) => (
+                <img
+                  src={imgSrc(src)}
+                  alt=""
+                  loading="lazy"
+                  class="h-10 w-10 rounded object-cover"
+                />
+              ))}
+            </div>
+            <div class="min-w-40 flex-1">
+              <p class="font-medium">{s.title}</p>
+              <p class="text-xs text-bo-muted">
+                {(s.images ?? []).length} image
+                {(s.images ?? []).length > 1 ? "s" : ""} ·{" "}
+                {s.prompt.trim()
+                  ? `${s.prompt.trim().length} caractères de consigne`
+                  : "aucune consigne"}
+              </p>
+            </div>
+            <a href={`${url("/ia/styles")}?style=${s.id}`} class={boutonDiscret}>
+              Relire
+            </a>
+            <form method="POST">
+              <input type="hidden" name="_action" value="archiver" />
+              <input type="hidden" name="id" value={s.id} />
+              <input type="hidden" name="archived" value="false" />
+              <button class="text-sm text-bo-accent hover:underline">
+                Restaurer
+              </button>
+            </form>
+          </div>
+        ))}
+      </div>
+    </section>
+  )}
 
   {!ouvert && !creation && (
     <a href={`${url("/ia/styles")}?nouveau=1`} class={boutonPrincipal}>
@@ -211,6 +281,17 @@ const boutonDiscret =
       class="space-y-5 rounded-lg border border-bo-border bg-bo-surface p-5"
     >
       <input type="hidden" name="id" value={ouvert?.id ?? ""} />
+
+      {/* Un style archivé se relit et se corrige, mais il reste archivé tant
+          qu'on ne l'a pas restauré : le dire évite d'enregistrer en croyant
+          le remettre en ligne. */}
+      {ouvert?.archivedAt && (
+        <p class="rounded border border-bo-border bg-bo-bg px-3 py-2 text-sm text-bo-muted">
+          Ce style est <strong>archivé</strong> : il ne s'affiche pas sur le
+          site. Enregistrer ici ne le remet pas en ligne — utilisez
+          « Restaurer », dans « Styles archivés ».
+        </p>
+      )}
 
       <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <label class="block lg:col-span-2">

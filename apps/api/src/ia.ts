@@ -1180,9 +1180,9 @@ export function mountIaRoutes(app: Hono): void {
      *
      * Facultatif, et il doit le rester : une affiche créée avant que les
      * styles existent, ou depuis un écran qui n'en propose pas, part avec la
-     * seule consigne générale de la boutique, comme avant. Un style éteint au
-     * back-office est traité comme absent — on ne refuse pas la génération,
-     * on retombe sur le général.
+     * seule consigne générale de la boutique, comme avant. Un style éteint ou
+     * archivé au back-office est traité comme absent — on ne refuse pas la
+     * génération, on retombe sur le général.
      */
     const idStyle = Number(body.promptId);
     const [style] = Number.isFinite(idStyle)
@@ -1193,6 +1193,7 @@ export function mountIaRoutes(app: Hono): void {
             and(
               eq(schema.aiPrompts.id, idStyle),
               eq(schema.aiPrompts.active, true),
+              isNull(schema.aiPrompts.archivedAt),
             ),
           )
       : [];
@@ -1686,7 +1687,13 @@ export function mountIaRoutes(app: Hono): void {
     const lignes = await db
       .select()
       .from(schema.aiPrompts)
-      .where(eq(schema.aiPrompts.active, true))
+      // Archivé = rangé : le style quitte le site, comme un style éteint.
+      .where(
+        and(
+          eq(schema.aiPrompts.active, true),
+          isNull(schema.aiPrompts.archivedAt),
+        ),
+      )
       .orderBy(asc(schema.aiPrompts.position), asc(schema.aiPrompts.id));
     return c.json(
       lignes.map((l) => ({
@@ -1697,6 +1704,11 @@ export function mountIaRoutes(app: Hono): void {
     );
   });
 
+  /**
+   * Tous les styles pour le back-office, archivés compris : ils arrivent
+   * marqués par leur `archivedAt`, et c'est l'écran qui les range dans sa
+   * section « Styles archivés ».
+   */
   app.get("/admin/ia/prompts", async (c) => {
     const lignes = await db
       .select()
@@ -1755,14 +1767,32 @@ export function mountIaRoutes(app: Hono): void {
     return c.json(ligne);
   });
 
-  app.delete("/admin/ia/prompts/:id", async (c) => {
+  /**
+   * Archive un style, ou le restaure.
+   *
+   * La suppression définitive a été RETIRÉE. Un style, c'est une consigne
+   * réécrite essai après essai et jusqu'à cinq images choisies pour aller
+   * avec : rien de tout cela ne vit ailleurs, et l'effacer emportait le
+   * travail d'une après-midi sur un clic. Les images, elles, restaient dans
+   * data/assets — mais orphelines, sans rien pour dire de quel style elles
+   * venaient ni dans quel ordre.
+   *
+   * Archivé, le style quitte le site et la liste ordinaire, et « Restaurer »
+   * le rend entier, consigne et images comprises.
+   */
+  app.post("/admin/ia/prompts/:id/archive", async (c) => {
     const id = Number(c.req.param("id"));
     if (!Number.isFinite(id)) return c.json({ error: "identifiant invalide" }, 400);
-    // Les images restent dans data/assets : elles peuvent servir ailleurs, et
-    // une suppression de style ne doit pas faire disparaître un visuel qu'une
-    // fiche produit afficherait encore.
-    await db.delete(schema.aiPrompts).where(eq(schema.aiPrompts.id, id));
-    return c.json({ ok: true });
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    // Défaut : on archive. Seul un « archived: false » explicite restaure.
+    const archiver = b.archived !== false;
+    const [ligne] = await db
+      .update(schema.aiPrompts)
+      .set({ archivedAt: archiver ? new Date() : null, updatedAt: new Date() })
+      .where(eq(schema.aiPrompts.id, id))
+      .returning({ archivedAt: schema.aiPrompts.archivedAt });
+    if (!ligne) return c.json({ error: "Style introuvable" }, 404);
+    return c.json({ ok: true, archived: ligne.archivedAt != null });
   });
 }
 

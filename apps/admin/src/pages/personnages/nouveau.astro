@@ -58,14 +58,17 @@ if (Astro.request.method === "POST") {
   }
 }
 
-let categories: CharacterCategory[] = [];
+let toutesCategories: CharacterCategory[] = [];
 let vues: TypeAffiche[] = [];
 try {
-  categories = await api.categories();
+  toutesCategories = await api.categories();
   vues = await api.views();
 } catch (e) {
   if (!erreur) erreur = String(e);
 }
+// On ne range pas un personnage tout neuf dans un rayon archivé : l'API le
+// refuserait, et la création entière échouerait sur ce seul choix.
+const categories = toutesCategories.filter((c) => !c.archivedAt);
 ---
 
 <Admin title="Nouveau personnage">

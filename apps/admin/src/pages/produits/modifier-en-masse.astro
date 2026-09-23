@@ -373,22 +373,61 @@ try {
 }
 
 /**
- * Le poids par défaut de chaque catégorie. La liste des produits ne renvoie
- * que les noms ; or c'est ce poids-là que pèsera un produit dont la case
- * reste vide, et l'annoncer faux serait pire que se taire.
+ * Toutes les catégories, ARCHIVÉES COMPRISES, avec leur nom et leur poids.
+ *
+ * Le poids d'abord : la liste des produits ne renvoie que les noms, or c'est
+ * ce poids-là que pèsera un produit dont la case reste vide, et l'annoncer
+ * faux serait pire que se taire. Le nom ensuite : la liste déroulante ne
+ * propose plus les catégories archivées, et il faut tout de même savoir
+ * comment s'appelle celle où une affiche est déjà rangée.
  */
-const poidsParCategorie = new Map<number, number>();
+const toutesCategories = new Map<
+  number,
+  { name: string; defaultWeightGrams: number }
+>();
 let poidsCategoriesConnus = true;
 try {
   for (const c of await api.productCategories())
-    poidsParCategorie.set(c.id, c.defaultWeightGrams);
+    toutesCategories.set(c.id, {
+      name: c.name,
+      defaultWeightGrams: c.defaultWeightGrams,
+    });
 } catch {
   // La grille reste utilisable sans ces poids, mais elle se tait alors au lieu
   // d'annoncer « aucun poids » à des produits qui en ont peut-être un.
   poidsCategoriesConnus = false;
 }
 
+/** Les catégories où l'on peut ranger : l'API en retire les archivées. */
 const categories = liste?.categories ?? [];
+const categoriesOuvertes = new Set(categories.map((c) => c.id));
+
+/**
+ * La catégorie d'une ligne quand la liste déroulante ne la propose plus —
+ * c'est-à-dire quand elle vient d'être archivée. `null` le reste du temps.
+ *
+ * Son option DOIT exister, sans quoi aucune ne correspondrait et le navigateur
+ * retomberait sur « Aucune » alors que `data-initial` garde l'identifiant :
+ * la ligne se dirait modifiée sans que personne n'y ait touché, et le premier
+ * enregistrement écrirait `categoryId: null`. L'affiche quitterait son
+ * rangement, et avec lui le poids par défaut qui décide de son affranchissement
+ * — exactement la perte que l'archivage est là pour empêcher.
+ *
+ * On n'y range personne d'autre pour autant : l'option n'apparaît que sur sa
+ * propre ligne, la recopie vers le bas l'ignore (`optionExiste`), et l'API
+ * refuse une catégorie archivée à toute affiche qui n'y est pas déjà.
+ */
+function categorieArchiveeDe(id: number | null) {
+  if (id === null || categoriesOuvertes.has(id)) return null;
+  const connue = toutesCategories.get(id);
+  return {
+    id,
+    // Nom inconnu si /admin/product-categories n'a pas répondu : l'option doit
+    // exister quand même, c'est elle qui tient le rangement en place.
+    label: connue ? `${connue.name} (archivée)` : `Catégorie n° ${id} (archivée)`,
+    poids: connue?.defaultWeightGrams ?? null,
+  };
+}
 const selection: ProduitAdmin[] =
   idsDemandes.length > 0
     ? // Ceinture et bretelles : l'écran ne montre que ce qui a été coché, même
@@ -494,7 +533,7 @@ function resumeSaisie(saisie: Record<string, unknown> | undefined): string {
     const id = saisie.categoryId;
     const nom =
       typeof id === "number"
-        ? (categories.find((c) => c.id === id)?.name ?? `n° ${id}`)
+        ? (toutesCategories.get(id)?.name ?? `n° ${id}`)
         : "aucune";
     bouts.push(`catégorie : ${nom}`);
   }
@@ -819,6 +858,12 @@ const inerte = "block text-xs text-bo-muted";
                 nombreSaisi(saisie, "basePriceCents", p.basePriceCents) ??
                 p.basePriceCents;
               const categorieId = nombreSaisi(saisie, "categoryId", p.categoryId);
+              // Le rangement de CETTE affiche, si sa catégorie vient d'être
+              // archivée : la liste ne le propose plus, l'option ci-dessous le
+              // garde. Calculé sur `p.categoryId` et non sur le choix en
+              // cours, parce que c'est lui que porte `data-initial` — et que
+              // le bouton « remettre comme avant » y revient.
+              const sienneArchivee = categorieArchiveeDe(p.categoryId);
               const poids = nombreSaisi(saisie, "weightGrams", p.weightGrams);
               const ia = boolSaisi(saisie, "aiEnabled", p.aiEnabled);
               const statutInconnu = !STATUTS.some((s) => s.valeur === p.status);
@@ -994,11 +1039,22 @@ const inerte = "block text-xs text-bo-muted";
                           <option
                             value={c.id}
                             selected={c.id === categorieId}
-                            data-poids={String(poidsParCategorie.get(c.id) ?? "")}
+                            data-poids={String(
+                              toutesCategories.get(c.id)?.defaultWeightGrams ?? "",
+                            )}
                           >
                             {c.name}
                           </option>
                         ))}
+                        {sienneArchivee && (
+                          <option
+                            value={sienneArchivee.id}
+                            selected={sienneArchivee.id === categorieId}
+                            data-poids={String(sienneArchivee.poids ?? "")}
+                          >
+                            {sienneArchivee.label}
+                          </option>
+                        )}
                       </select>
                       <span data-souci class={soucisChamp} hidden></span>
                     </td>

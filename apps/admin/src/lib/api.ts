@@ -91,6 +91,11 @@ export interface CharacterCategory {
   slug: string;
   name: string;
   position: number;
+  /**
+   * Non nul = archivée : hors du configurateur et de la liste ordinaire,
+   * rangée dans « Catégories archivées ». Ses personnages ne bougent pas.
+   */
+  archivedAt?: string | null;
   /** Nombre de personnages non archivés rattachés (renvoyé par /admin/categories). */
   count?: number;
 }
@@ -163,6 +168,11 @@ export interface CategorieProduit {
   defaultWeightGrams: number;
   active: boolean;
   position: number;
+  /**
+   * Non nul = archivée : hors du site et de la liste ordinaire, rangée dans
+   * « Catégories archivées ». Ses produits gardent leur rangement.
+   */
+  archivedAt?: string | null;
   /** Nombre de produits rangés dedans (renvoyé par /admin/product-categories). */
   produits?: number;
 }
@@ -982,6 +992,12 @@ export interface CategoriePiece {
   colors: string[];
   active: boolean;
   position: number;
+  /**
+   * Non nul = archivée : hors du configurateur et de la liste ordinaire,
+   * rangée dans « Catégories archivées ». Ses pièces gardent leur rangement
+   * et reprennent le nuancier de leur emplacement.
+   */
+  archivedAt?: string | null;
   /** Nombre de pièces rangées dedans. */
   pieces?: number;
 }
@@ -1249,6 +1265,11 @@ export interface StyleIa {
   images: string[];
   position: number;
   active: boolean;
+  /**
+   * Non nul = archivé : hors du site et de la liste ordinaire, rangé dans
+   * « Styles archivés ». Sa consigne et ses images sont gardées entières.
+   */
+  archivedAt?: string | null;
   translations: Partial<Record<string, { title?: string }>> | null;
 }
 
@@ -1722,11 +1743,16 @@ export function adminApi(request?: Request) {
       active?: boolean;
       position?: number;
     }) => req<CategoriePiece>("POST", "/admin/piece-categories", data, cookie),
-    deletePieceCategory: (id: number) =>
-      req<{ ok: boolean }>(
-        "DELETE",
-        `/admin/piece-categories/${id}`,
-        undefined,
+    /**
+     * Archive une catégorie de pièces, ou la restaure. Il n'y a plus de
+     * suppression : l'effacer dispersait ses pièces et emportait son nuancier.
+     * `dedans` dit combien de pièces elle range, pour le redire à l'écran.
+     */
+    archiverCategoriePiece: (id: number, archived = true) =>
+      req<{ ok: boolean; archived: boolean; dedans: number }>(
+        "POST",
+        `/admin/piece-categories/${id}/archive`,
+        { archived },
         cookie,
       ),
     /** Range un lot de pièces dans une catégorie (null = les en sort). */
@@ -1741,8 +1767,19 @@ export function adminApi(request?: Request) {
       req<CharacterCategory[]>("GET", "/admin/categories", undefined, cookie),
     upsertCategory: (data: { id?: number; name: string; position?: number }) =>
       req<CharacterCategory>("POST", "/admin/categories", data, cookie),
-    deleteCategory: (id: number) =>
-      req<{ ok: boolean }>("DELETE", `/admin/categories/${id}`, undefined, cookie),
+    /**
+     * Archive une catégorie de personnages, ou la restaure. Il n'y a plus de
+     * suppression : l'effacer vidait le rangement de chaque personnage, et
+     * seule une remise à la main les y ramenait. `dedans` dit combien elle en
+     * range, pour le redire à l'écran.
+     */
+    archiverCategoriePersonnage: (id: number, archived = true) =>
+      req<{ ok: boolean; archived: boolean; dedans: number }>(
+        "POST",
+        `/admin/categories/${id}/archive`,
+        { archived },
+        cookie,
+      ),
     /** Remplace la composition de la catégorie par la liste cochée. */
     setCategoryCharacters: (id: number, characterIds: number[]) =>
       req<{ category: string; attached: number; detached: number }>(
@@ -2006,8 +2043,17 @@ export function adminApi(request?: Request) {
       req<StyleIa>("POST", "/admin/ia/prompts", corps, cookie),
     majStyleIa: (id: number, corps: Record<string, unknown>) =>
       req<StyleIa>("PUT", `/admin/ia/prompts/${id}`, corps, cookie),
-    supprimerStyleIa: (id: number) =>
-      req<{ ok: true }>("DELETE", `/admin/ia/prompts/${id}`, undefined, cookie),
+    /**
+     * Archive un style, ou le restaure. Il n'y a plus de suppression : la
+     * consigne et les images d'un style ne vivent nulle part ailleurs.
+     */
+    archiverStyleIa: (id: number, archived = true) =>
+      req<{ ok: true; archived: boolean }>(
+        "POST",
+        `/admin/ia/prompts/${id}/archive`,
+        { archived },
+        cookie,
+      ),
 
     /* --- Essai des courriers ------------------------------------------- */
     /** Où partent les courriers en ce moment : boîte d'essai, ou vrais clients. */
@@ -2097,11 +2143,17 @@ export function adminApi(request?: Request) {
       position?: number;
     }) =>
       req<CategorieProduit>("POST", "/admin/product-categories", data, cookie),
-    deleteProductCategory: (id: number) =>
-      req<{ ok: boolean }>(
-        "DELETE",
-        `/admin/product-categories/${id}`,
-        undefined,
+    /**
+     * Archive une catégorie de produits, ou la restaure. Il n'y a plus de
+     * suppression : l'effacer remettait à zéro le rangement de ses produits,
+     * et donc le poids par défaut qui décide de leur affranchissement.
+     * `dedans` dit combien elle en range, pour le redire à l'écran.
+     */
+    archiverCategorieProduit: (id: number, archived = true) =>
+      req<{ ok: boolean; archived: boolean; dedans: number }>(
+        "POST",
+        `/admin/product-categories/${id}/archive`,
+        { archived },
         cookie,
       ),
     /** Range un lot de produits dans une catégorie (null = les en sort). */
