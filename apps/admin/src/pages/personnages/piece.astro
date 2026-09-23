@@ -26,6 +26,9 @@ if (Astro.request.method === "POST") {
     const zones = JSON.parse(String(f.get("colorZones") || "{}"));
     const masquees = JSON.parse(String(f.get("zonesMasquees") || "[]"));
     const groupes = JSON.parse(String(f.get("groupesCouleurs") || "[]"));
+    // Familles de teintes, quand le dessin téléversé est une image en pixels.
+    const brutFamilles = String(f.get("couleursImage") || "");
+    const familles = brutFamilles ? JSON.parse(brutFamilles) : null;
     await api.upsertAsset({
       slot: String(f.get("slot") || "clothes"),
       name: (f.get("name") as string) || undefined,
@@ -35,6 +38,7 @@ if (Astro.request.method === "POST") {
       // L'API ne garde que les zones qui existent dans `colorZones`.
       zonesMasquees: Array.isArray(masquees) ? masquees.map(String) : [],
       groupesCouleurs: Array.isArray(groupes) ? groupes : null,
+      couleursImage: familles,
       position: Number(f.get("position") || 0),
     });
     return Astro.redirect(url("/personnages?piece=1"), 303);
@@ -153,7 +157,10 @@ try {
           Chaque couleur est surlignée en rouge sur sa vignette ; ses nuances
           (ombres, reflets) suivent la couleur que le client choisit. Donnez-lui
           un nom, et décochez « Proposée au client » sur les petits détails
-          (ruban, élastique…) : ils garderont la couleur réglée ici.
+          (ruban, élastique…) : ils garderont la couleur réglée ici. Si le
+          dessin est une image en pixels (une photo, une illustration), ce sont
+          ses couleurs principales qui apparaissent ici : rien n'est proposé au
+          client tant que vous n'en avez coché aucune.
         </p>
         <GroupesCouleurs
           mode="piece"
@@ -165,6 +172,7 @@ try {
             zones: "colorZones",
             groupes: "groupesCouleurs",
             masquees: "zonesMasquees",
+            familles: "couleursImage",
           }}
         />
       </div>

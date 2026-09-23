@@ -10,7 +10,7 @@
  *    traçabilité de l'import et les redirections 301 (§13).
  */
 import { sql } from "drizzle-orm";
-import type { GroupeCouleur } from "@memoryline/types";
+import type { CouleursImage, GroupeCouleur } from "@memoryline/types";
 import {
   type AnyPgColumn,
   pgTable,
@@ -490,6 +490,14 @@ export const characterTypes = pgTable(
      */
     baseZonesProposees: jsonb("base_zones_proposees").$type<string[]>(),
     /**
+     * Couleurs du dessin de base quand celui-ci est une IMAGE EN PIXELS (photo
+     * ou illustration enregistrée en SVG, sans le moindre tracé) : ses familles
+     * de teintes, celles que le client peut recolorer, et la carte qui dit où
+     * elles se trouvent dans le dessin. Voir couleurs-image.ts.
+     * Null = rien de détecté, le dessin s'affiche exactement comme son fichier.
+     */
+    baseCouleursImage: jsonb("base_couleurs_image").$type<CouleursImage>(),
+    /**
      * Position du BAS réel du contenu dans le viewBox (0..1, 1 = tout en bas).
      * Les SVG animaux/bébés ont du vide sous le dessin (chat ~0.59) : ce ratio
      * permet d'aligner les pieds de tous les persos au sol (mesuré par script).
@@ -642,6 +650,12 @@ export const assets = pgTable(
      * `zonesMasquees`. Null = une zone par groupe, comme avant ce réglage.
      */
     groupesCouleurs: jsonb("groupes_couleurs").$type<GroupeCouleur[]>(),
+    /**
+     * Familles de couleurs de la pièce quand son dessin est une image en
+     * pixels : même réglage que pour un personnage (couleurs-image.ts).
+     * Null = rien de détecté, le dessin s'affiche exactement comme son fichier.
+     */
+    couleursImage: jsonb("couleurs_image").$type<CouleursImage>(),
     position: integer("position").default(0).notNull(),
     legacyAssetId: integer("legacy_asset_id"), // id numérique dans les properties
     /**

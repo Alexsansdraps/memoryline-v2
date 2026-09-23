@@ -7,7 +7,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./couleurs": "./src/couleurs-groupes.ts"
+    "./couleurs": "./src/couleurs.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

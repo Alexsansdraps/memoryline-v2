@@ -3,6 +3,14 @@
  * Les couleurs d'un dessin, groupe par groupe : ce que le client pourra
  * recolorer, sous quel nom, et avec quelles nuances.
  *
+ * DEUX SORTES DE DESSINS, UN SEUL ÉCRAN. Un dessin VECTORIEL se range en
+ * zones réunies en groupes ; une image EN PIXELS (une photo, une illustration
+ * enregistrée en SVG — les chiens et les chats téléversés) se range en
+ * FAMILLES de teintes (cf. couleurs-image.ts). Le bouton est le même, et c'est
+ * le fichier qui décide : la boutique n'a pas à savoir de quelle sorte est son
+ * dessin. Les réglages sont les mêmes des deux côtés — un nom, une case
+ * « Proposée au client », une couleur par défaut, un nuancier.
+ *
  * Un dessin vectorisé par IA ou exporté de Canva arrive avec des dizaines de
  * nuances presque identiques. « Détecter les couleurs » les range en zones et
  * réunit les nuances proches en GROUPES : le client choisit une couleur par
@@ -25,7 +33,7 @@
  * À placer APRÈS <ApercusZones /> dans la page : les vignettes des groupes
  * passent par lui.
  */
-import type { GroupeCouleur } from "@memoryline/types";
+import type { CouleursImage, GroupeCouleur } from "@memoryline/types";
 
 interface Props {
   /**
@@ -41,10 +49,15 @@ interface Props {
   masquees?: string[] | null;
   /** Personnage : zones de référence des groupes proposés (null = la peau). */
   proposees?: string[] | null;
+  /**
+   * Familles de couleurs, quand le dessin est une image en PIXELS. Null = ce
+   * n'est pas le cas, ou rien n'a encore été détecté.
+   */
+  couleursImage?: CouleursImage | null;
   /** Adresse d'enregistrement automatique (relative à l'API). */
   enregistrer?: string;
   /** Champs cachés à tenir à jour pour un formulaire. */
-  champs?: { zones: string; groupes: string; masquees: string };
+  champs?: { zones: string; groupes: string; masquees: string; familles: string };
   /** Cadrage de repli des vignettes (viewBox). */
   cadrage?: string;
   /** Texte d'aide sous le bouton. */
@@ -64,6 +77,7 @@ const {
   groupes,
   masquees,
   proposees,
+  couleursImage,
   enregistrer,
   champs,
   cadrage,
@@ -78,6 +92,7 @@ const etat = {
   groupes: groupes ?? null,
   masquees: masquees ?? [],
   proposees: proposees ?? null,
+  couleursImage: couleursImage ?? null,
 };
 // « < » échappé : un nom de groupe ne doit pas pouvoir fermer la balise.
 const json = JSON.stringify(etat).replace(/</g, "\\u003c");
@@ -111,6 +126,7 @@ const src = (u: string | null) =>
       <input type="hidden" name={champs.zones} class="js-champ-zones" value="{}" />
       <input type="hidden" name={champs.groupes} class="js-champ-groupes" value="[]" />
       <input type="hidden" name={champs.masquees} class="js-champ-masquees" value="[]" />
+      <input type="hidden" name={champs.familles} class="js-champ-familles" value="" />
     </>
   )}
 </div>
@@ -119,10 +135,16 @@ const src = (u: string | null) =>
   import {
     NUANCIERS_BASE,
     couleursDuGroupe,
+    famillesDuDessin,
     groupesDuDessin,
     hexVersRgb,
+    memeCouleur,
+    partEnPourcent,
     rgbVersHex,
+    teintesDeLaFamille,
     zonesDuGroupe,
+    type CouleursImage,
+    type FamilleCouleur,
     type GroupeCouleur,
     type NuancierBase,
   } from "@memoryline/types/couleurs";
@@ -142,6 +164,8 @@ const src = (u: string | null) =>
     groupes: GroupeCouleur[];
     /** Zones de référence des groupes NON proposés au client. */
     cachees: string[];
+    /** Familles de teintes, quand le dessin est une image en pixels. */
+    couleursImage: CouleursImage | null;
   }
 
   /** Réponse de l'API après lecture d'un dessin. */
@@ -151,6 +175,135 @@ const src = (u: string | null) =>
     groupesCouleurs: GroupeCouleur[];
     zonesCreees: number;
     images: number;
+    couleursImage: CouleursImage | null;
+  }
+
+  /** Le dessin en cours est-il une image en pixels ? */
+  function enPixels(etat: Etat): boolean {
+    return (etat.couleursImage?.familles.length ?? 0) > 0;
+  }
+
+  /**
+   * Les réglages d'avant reportés sur une nouvelle lecture d'un dessin EN
+   * PIXELS : une famille qui retrouve sa teinte de référence reprend son nom,
+   * sa case, sa couleur par défaut, son nuancier — ET SA CLÉ.
+   *
+   * La clé compte plus que le reste : c'est elle que portent les paniers et
+   * les commandes déjà passés. La perdre ferait retomber une affiche commandée
+   * sur les couleurs du fichier, sans que rien ne le signale.
+   */
+  function reprendreFamilles(
+    anciennes: FamilleCouleur[],
+    nouvelles: FamilleCouleur[],
+  ): FamilleCouleur[] {
+    const prises = new Set<string>();
+    return nouvelles.map((f) => {
+      const ancienne = anciennes.find(
+        (a) => !prises.has(a.cle) && memeCouleur(a.reference, f.reference),
+      );
+      if (!ancienne) return f;
+      prises.add(ancienne.cle);
+      return {
+        ...f,
+        cle: ancienne.cle,
+        ...(ancienne.nom ? { nom: ancienne.nom } : {}),
+        ...(ancienne.proposee ? { proposee: true } : {}),
+        ...(ancienne.defaut ? { defaut: ancienne.defaut } : {}),
+        ...(ancienne.nuancier ? { nuancier: ancienne.nuancier } : {}),
+      };
+    });
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /*  Vignettes « où est cette famille ? »                                   */
+  /* ---------------------------------------------------------------------- */
+
+  const SURLIGNE_FAMILLE = "#E11D48";
+  const ESTOMPE_FAMILLE = "#D1D5DB";
+
+  /** Les cartes de teintes déjà décodées : une par dessin, pas une par famille. */
+  const cartes = new Map<string, Promise<ImageData | null>>();
+
+  /**
+   * La carte des teintes d'un dessin, décodée.
+   *
+   * C'est le serveur qui l'a écrite au moment de la détection : une vignette
+   * minuscule où le niveau de gris de chaque pixel dit à quelle TEINTE il
+   * appartient. On la relit ici pour colorier n'importe quelle famille — y
+   * compris celles que la boutique vient de réunir à l'instant, et qu'aucune
+   * vignette toute faite ne pourrait montrer.
+   */
+  function carteDecodee(carte: string): Promise<ImageData | null> {
+    let en = cartes.get(carte);
+    if (!en) {
+      en = new Promise<ImageData | null>((fin) => {
+        const image = new Image();
+        image.onload = () => {
+          try {
+            const toile = document.createElement("canvas");
+            toile.width = image.naturalWidth;
+            toile.height = image.naturalHeight;
+            const ctx = toile.getContext("2d");
+            if (!ctx) return fin(null);
+            ctx.drawImage(image, 0, 0);
+            fin(ctx.getImageData(0, 0, toile.width, toile.height));
+          } catch {
+            fin(null); // canevas verrouillé : pas de vignette, rien de cassé
+          }
+        };
+        image.onerror = () => fin(null);
+        image.src = carte;
+      });
+      cartes.set(carte, en);
+    }
+    return en;
+  }
+
+  /**
+   * Le dessin avec les teintes voulues en rouge vif et le reste en gris, en
+   * image prête à poser dans une vignette. `null` si la carte manque.
+   *
+   * Les niveaux de gris de la carte sont espacés de 25 : on cherche donc le
+   * plus proche, pour qu'un arrondi du décodage ne fasse pas changer une
+   * teinte de famille.
+   */
+  async function vignetteDeFamille(
+    couleursImage: CouleursImage,
+    teintes: string[],
+  ): Promise<string | null> {
+    if (!couleursImage.carte || !couleursImage.carteTeintes?.length) return null;
+    const source = await carteDecodee(couleursImage.carte);
+    if (!source) return null;
+    const NIVEAU_BASE = 20;
+    const NIVEAU_PAS = 25;
+    const voulus = new Set(
+      couleursImage.carteTeintes
+        .map((t, i) => (teintes.some((x) => memeCouleur(x, t)) ? i : -1))
+        .filter((i) => i >= 0),
+    );
+    const toile = document.createElement("canvas");
+    toile.width = source.width;
+    toile.height = source.height;
+    const ctx = toile.getContext("2d");
+    if (!ctx) return null;
+    const sortie = ctx.createImageData(source.width, source.height);
+    const rouge = hexVersRgb(SURLIGNE_FAMILLE)!;
+    const gris = hexVersRgb(ESTOMPE_FAMILLE)!;
+    for (let i = 0; i < source.data.length; i += 4) {
+      if (source.data[i + 3]! < 128) continue; // hors dessin
+      const rang = Math.round((source.data[i]! - NIVEAU_BASE) / NIVEAU_PAS);
+      const c = voulus.has(rang) ? rouge : gris;
+      sortie.data[i] = c[0];
+      sortie.data[i + 1] = c[1];
+      sortie.data[i + 2] = c[2];
+      sortie.data[i + 3] = 255;
+    }
+    ctx.putImageData(sortie, 0, 0);
+    try {
+      return toile.toDataURL("image/png");
+    } catch {
+      return null;
+    }
   }
 
   const LIBELLES_NUANCIERS: Record<NuancierBase, string> = {
@@ -182,6 +335,24 @@ const src = (u: string | null) =>
    * couleurs du fichier, proposées pour une pièce, pas pour un personnage.
    */
   function reprendre(ancien: Etat, lecture: Lecture, garder: boolean): Etat {
+    // Dessin en PIXELS : il n'a ni zone ni groupe, seulement des familles de
+    // teintes. On garde les réglages d'avant quand c'est le même dessin.
+    if (lecture.couleursImage) {
+      const nouvelles = famillesDuDessin(lecture.couleursImage);
+      return {
+        ...ancien,
+        svgUrl: lecture.url,
+        zones: {},
+        groupes: [],
+        cachees: [],
+        couleursImage: {
+          ...lecture.couleursImage,
+          familles: garder
+            ? reprendreFamilles(ancien.couleursImage?.familles ?? [], nouvelles)
+            : nouvelles,
+        },
+      };
+    }
     const zones = { ...lecture.colorZones };
     const groupes = groupesDuDessin(zones, lecture.groupesCouleurs);
     if (!garder || Object.keys(ancien.zones).length === 0) {
@@ -191,6 +362,9 @@ const src = (u: string | null) =>
         zones,
         groupes,
         cachees: cacheesDepuis(ancien.mode, groupes, [], null),
+        // Ce dessin-ci est vectoriel : les familles d'un dessin en pixels
+        // remplacé n'ont plus rien à décrire.
+        couleursImage: null,
       };
     }
     for (const z of Object.keys(zones))
@@ -214,7 +388,14 @@ const src = (u: string | null) =>
         ...(nuancier ? { nuancier } : {}),
       };
     });
-    return { ...ancien, svgUrl: lecture.url, zones, groupes: reprises, cachees };
+    return {
+      ...ancien,
+      svgUrl: lecture.url,
+      zones,
+      groupes: reprises,
+      cachees,
+      couleursImage: null,
+    };
   }
 
   function monter(bloc: HTMLElement) {
@@ -236,6 +417,12 @@ const src = (u: string | null) =>
         Array.isArray(brut.masquees) ? brut.masquees : [],
         Array.isArray(brut.proposees) ? brut.proposees : null,
       ),
+      couleursImage: brut.couleursImage
+        ? {
+            ...brut.couleursImage,
+            familles: famillesDuDessin(brut.couleursImage),
+          }
+        : null,
     };
     let visible = false;
 
@@ -255,6 +442,7 @@ const src = (u: string | null) =>
         groupesCouleurs: etat.groupes,
         zonesMasquees: etat.cachees.filter((z) => references.includes(z)),
         zonesProposees: references.filter((z) => !etat.cachees.includes(z)),
+        couleursImage: etat.couleursImage,
       };
     }
 
@@ -268,6 +456,8 @@ const src = (u: string | null) =>
       if (cg) cg.value = JSON.stringify(e.groupesCouleurs);
       const cm = champ(".js-champ-masquees");
       if (cm) cm.value = JSON.stringify(e.zonesMasquees);
+      const cf = champ(".js-champ-familles");
+      if (cf) cf.value = e.couleursImage ? JSON.stringify(e.couleursImage) : "";
       bloc.dispatchEvent(new CustomEvent("groupes:change", { detail: e }));
     }
 
@@ -293,6 +483,7 @@ const src = (u: string | null) =>
             colorZones: e.colorZones,
             groupesCouleurs: e.groupesCouleurs,
             zonesMasquees: e.zonesMasquees,
+            couleursImage: e.couleursImage,
           }),
         });
         if (!res.ok) throw new Error("HTTP " + res.status);
@@ -316,8 +507,195 @@ const src = (u: string | null) =>
     const nomAffiche = (g: GroupeCouleur, i: number) =>
       g.nom || `Couleur ${i + 1}`;
 
+    /**
+     * Les cartes d'un dessin EN PIXELS : une par famille de teintes.
+     *
+     * Mêmes réglages que pour un groupe d'un dessin vectoriel — vignette, nom,
+     * couleur par défaut, case « Proposée au client », nuancier, rattachement.
+     * Seule la part du dessin s'ajoute : elle dit d'un coup d'œil si une
+     * famille est le pelage ou un reflet dans l'œil.
+     */
+    function dessinerFamilles(couleursImage: CouleursImage) {
+      const familles = couleursImage.familles;
+      const proposees = familles.filter((f) => f.proposee).length;
+
+      liste.append(
+        el(
+          "p",
+          "w-full mb-2 text-xs " + (proposees ? "text-bo-muted" : "text-amber-700"),
+          proposees
+            ? `Le client choisira ${proposees} couleur${proposees > 1 ? "s" : ""} sur ce dessin.`
+            : "Rien n'est proposé au client pour l'instant : cochez au moins une " +
+              "famille ci-dessous pour qu'il puisse en changer la couleur.",
+        ),
+      );
+
+      familles.forEach((f, i) => {
+        const carte = el(
+          "div",
+          "flex w-[156px] flex-col gap-1 rounded border border-bo-border p-1.5 text-[11px]" +
+            (f.proposee ? "" : " bg-bo-bg"),
+        );
+
+        const vignette = el(
+          "img",
+          "h-16 w-full rounded border border-bo-border bg-white object-contain",
+        );
+        vignette.alt = `${f.nom || `Couleur ${i + 1}`} surlignée sur le dessin`;
+        vignette.style.visibility = "hidden";
+        void vignetteDeFamille(couleursImage, teintesDeLaFamille(f)).then((src) => {
+          if (!src) return;
+          vignette.src = src;
+          vignette.style.visibility = "visible";
+        });
+
+        // Couleur par défaut : celle que le dessin prend sans choix du client.
+        const ligneCouleur = el("label", "flex items-center gap-1");
+        const couleur = el(
+          "input",
+          "h-7 w-7 cursor-pointer rounded border border-bo-border",
+        );
+        couleur.type = "color";
+        couleur.value = (f.defaut ?? f.reference).toLowerCase();
+        couleur.title = "Couleur par défaut du dessin";
+        couleur.addEventListener("change", () => {
+          f.defaut = couleur.value.toUpperCase();
+          dessiner();
+          void enregistrerTout("Couleur par défaut changée.");
+        });
+        ligneCouleur.append(
+          couleur,
+          el("span", "text-bo-muted", `${partEnPourcent(f)} % du dessin`),
+        );
+
+        // Les teintes rattachées, chacune détachable — comme les nuances d'un
+        // groupe d'un dessin vectoriel.
+        const teintes = el("div", "flex flex-wrap gap-1");
+        for (const t of f.teintes ?? []) {
+          const puce = el(
+            "button",
+            "inline-flex items-center gap-0.5 rounded border border-bo-border px-1 hover:bg-bo-bg",
+          );
+          puce.type = "button";
+          puce.title = "Séparer cette teinte : elle devient une couleur à part";
+          const pastille = el(
+            "span",
+            "inline-block h-3 w-3 rounded-sm border border-bo-border",
+          );
+          pastille.style.background = t;
+          puce.append(pastille, el("span", "", "×"));
+          puce.addEventListener("click", () => {
+            f.teintes = (f.teintes ?? []).filter((x) => x !== t);
+            if (f.teintes.length === 0) delete f.teintes;
+            // La famille détachée prend la première clé libre, et n'est pas
+            // proposée : une teinte séparée est une couleur qu'on n'a pas
+            // encore regardée.
+            const prises = new Set(familles.map((x) => x.cle));
+            let n = 0;
+            while (prises.has(`fam${n}`)) n++;
+            familles.splice(i + 1, 0, { cle: `fam${n}`, reference: t, part: 0 });
+            dessiner();
+            void enregistrerTout("Teinte séparée.");
+          });
+          teintes.append(puce);
+        }
+
+        const nom = el("input", "w-full rounded border border-bo-border px-1.5 py-0.5");
+        nom.type = "text";
+        nom.maxLength = 40;
+        nom.placeholder = "Nom (ex. pelage, poitrail)";
+        nom.value = f.nom ?? "";
+        nom.title = "Le nom que le client lit au-dessus des pastilles";
+        nom.addEventListener("change", () => {
+          const v = nom.value.trim();
+          if (v) f.nom = v;
+          else delete f.nom;
+          publier();
+          void enregistrerTout("Nom changé.");
+        });
+
+        carte.append(vignette, ligneCouleur);
+        if (f.teintes?.length) carte.append(teintes);
+        carte.append(nom);
+
+        if (etat.mode === "personnage") {
+          const nuancier = el("select", "w-full rounded border border-bo-border px-1 py-0.5");
+          nuancier.title = "Les couleurs proposées au client pour cette famille";
+          for (const x of NUANCIERS_BASE) {
+            const o = el("option", "", LIBELLES_NUANCIERS[x]);
+            o.value = x;
+            // Le nuancier des cheveux va au pelage d'un animal : c'est le
+            // repli le plus utile ici, ces dessins étant tous des animaux.
+            o.selected = (f.nuancier ?? "cheveux") === x;
+            nuancier.append(o);
+          }
+          nuancier.addEventListener("change", () => {
+            f.nuancier = nuancier.value as NuancierBase;
+            publier();
+            void enregistrerTout("Nuancier changé.");
+          });
+          carte.append(nuancier);
+        }
+
+        const libelleCase = el("label", "flex cursor-pointer items-start gap-1 leading-tight");
+        const caseProposee = el("input", "mt-px");
+        caseProposee.type = "checkbox";
+        caseProposee.checked = f.proposee === true;
+        caseProposee.addEventListener("change", () => {
+          if (caseProposee.checked) f.proposee = true;
+          else delete f.proposee;
+          dessiner();
+          void enregistrerTout(
+            caseProposee.checked ? "Proposée au client." : "Retirée du configurateur.",
+          );
+        });
+        libelleCase.append(caseProposee, el("span", "", "Proposée au client"));
+        carte.append(libelleCase);
+
+        // Rattacher toute la famille à une autre : ses teintes suivront la
+        // couleur de celle-là. C'est ainsi qu'on réunit le fauve clair et le
+        // fauve sombre d'un même pelage.
+        if (familles.length > 1) {
+          const rattacher = el(
+            "select",
+            "w-full rounded border border-bo-border px-1 py-0.5 text-bo-muted",
+          );
+          rattacher.title =
+            "Même couleur qu'une autre famille ? Rattachez-la : elle suivra sa couleur.";
+          const vide = el("option", "", "Rattacher à…");
+          vide.value = "";
+          rattacher.append(vide);
+          familles.forEach((autre, j) => {
+            if (autre === f) return;
+            const o = el("option", "", autre.nom || `Couleur ${j + 1}`);
+            o.value = autre.cle;
+            rattacher.append(o);
+          });
+          rattacher.addEventListener("change", () => {
+            const cible = familles.find((x) => x.cle === rattacher.value);
+            if (!cible) return;
+            cible.teintes = [...(cible.teintes ?? []), ...teintesDeLaFamille(f)];
+            cible.part = Math.min(1, cible.part + f.part);
+            couleursImage.familles = familles.filter((x) => x !== f);
+            dessiner();
+            void enregistrerTout("Familles réunies.");
+          });
+          carte.append(rattacher);
+        }
+
+        liste.append(carte);
+      });
+      publier();
+    }
+
     function dessiner() {
       liste.innerHTML = "";
+      // Un dessin en pixels n'a pas de zone : ce sont ses familles de teintes
+      // que la boutique règle, dans le même écran et avec les mêmes gestes.
+      if (enPixels(etat)) {
+        dessinerFamilles(etat.couleursImage!);
+        return;
+      }
       if (etat.groupes.length === 0) {
         liste.append(
           el("p", "text-xs text-bo-muted", "Pas de couleur recolorable dans ce dessin."),
@@ -490,11 +868,23 @@ const src = (u: string | null) =>
         const src = etat.svgUrl.startsWith("http") ? etat.svgUrl : api + etat.svgUrl;
         bloc.dataset.apercuSvg = src;
         dessiner();
+        const familles = etat.couleursImage?.familles.length ?? 0;
         const n = etat.groupes.length;
         let message: string;
-        if (n === 0 && lecture.images > 0)
+        if (familles > 0) {
+          // Dessin en pixels : on dit ce qu'on y a trouvé, et ce qu'il reste
+          // à faire — rien n'est proposé au client tant que rien n'est coché.
+          const proposees =
+            etat.couleursImage?.familles.filter((f) => f.proposee).length ?? 0;
           message =
-            "Ce dessin est une image en pixels enregistrée en SVG : ses couleurs ne peuvent pas changer. Il faut un vrai dessin vectoriel (vectoriser l'image, puis l'exporter en SVG).";
+            `Image en pixels : ${familles} couleur${familles > 1 ? "s" : ""} principale` +
+            `${familles > 1 ? "s" : ""} trouvée${familles > 1 ? "s" : ""}. ` +
+            (proposees
+              ? `${proposees} proposée${proposees > 1 ? "s" : ""} au client.`
+              : "Cochez celles que le client pourra changer.");
+        } else if (n === 0 && lecture.images > 0)
+          message =
+            "Ce dessin est une image en pixels, mais ses couleurs n'ont pas pu être lues (image illisible ou entièrement transparente).";
         else if (n === 0) message = "Aucune couleur recolorable dans ce dessin.";
         else
           message =
@@ -504,7 +894,7 @@ const src = (u: string | null) =>
               : "") +
             ".";
         if (adresseEnregistrement) await enregistrerTout(message);
-        else dire(rappeler(message), n === 0 ? "erreur" : "ok");
+        else dire(rappeler(message), n === 0 && familles === 0 ? "erreur" : "ok");
       } catch (err) {
         dire("Lecture impossible : " + String(err), "erreur");
       }

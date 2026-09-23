@@ -23,6 +23,15 @@ if (Astro.request.method === "POST") {
       orientation: String(f.get("orientation") || "front"),
       position: Number(f.get("position") || 0),
       baseSvgUrl: String(f.get("baseSvgUrl") || "") || null,
+      // Familles de teintes d'une image en pixels : lues au téléversement,
+      // elles valent seules — ce dessin-là n'a aucune zone.
+      ...(f.get("baseCouleursImage")
+        ? {
+            baseCouleursImage: JSON.parse(
+              String(f.get("baseCouleursImage") || "null"),
+            ),
+          }
+        : {}),
       ...(f.get("baseColorZones")
         ? {
             baseColorZones: JSON.parse(String(f.get("baseColorZones") || "{}")),
@@ -151,6 +160,7 @@ try {
           </p>
           <input type="hidden" name="baseColorZones" id="perso-zones" value="" />
           <input type="hidden" name="baseGroupesCouleurs" id="perso-groupes" value="" />
+          <input type="hidden" name="baseCouleursImage" id="perso-familles" value="" />
           <input type="hidden" name="bottomPct" id="perso-bottom" value="" />
         </div>
       </div>
@@ -191,6 +201,7 @@ try {
     const note = document.getElementById("perso-analyse");
     const zones = document.getElementById("perso-zones");
     const groupes = document.getElementById("perso-groupes");
+    const familles = document.getElementById("perso-familles");
     const bas = document.getElementById("perso-bottom");
 
     function montrer() {
@@ -224,12 +235,27 @@ try {
         montrer();
         zones.value = JSON.stringify(couleurs.colorZones || {});
         groupes.value = JSON.stringify(couleurs.groupesCouleurs || []);
+        familles.value = couleurs.couleursImage
+          ? JSON.stringify(couleurs.couleursImage)
+          : "";
         const info = await appel("/admin/svg/analyse", couleurs.url);
         if (info.bottomPct != null) bas.value = String(info.bottomPct);
         const n = (couleurs.groupesCouleurs || []).length;
+        // Image en pixels : ses couleurs principales ont été lues, mais rien
+        // n'est proposé au client tant que la boutique n'a rien coché — ce qui
+        // se fait sur la fiche du personnage, une fois celui-ci créé.
+        const nbFamilles = couleurs.couleursImage?.familles?.length || 0;
+        if (nbFamilles > 0) {
+          note.textContent =
+            `Image en pixels : ${nbFamilles} couleur${nbFamilles > 1 ? "s" : ""} ` +
+            `principale${nbFamilles > 1 ? "s" : ""} trouvée${nbFamilles > 1 ? "s" : ""}` +
+            (info.bottomPct != null ? ` · calage au sol ${info.bottomPct}` : "") +
+            ". Une fois le personnage créé, cochez sur sa fiche celles que le client pourra changer.";
+          return;
+        }
         if (n === 0 && couleurs.images > 0) {
           note.textContent =
-            "Ce dessin est une image en pixels enregistrée en SVG : ses couleurs ne pourront pas changer. Il faut un vrai dessin vectoriel (vectoriser l'image, puis l'exporter en SVG).";
+            "Ce dessin est une image en pixels, mais ses couleurs n'ont pas pu être lues (image illisible ou entièrement transparente).";
           return;
         }
         note.textContent =

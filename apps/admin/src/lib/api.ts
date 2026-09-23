@@ -1,4 +1,4 @@
-import type { GroupeCouleur } from "@memoryline/types";
+import type { CouleursImage, GroupeCouleur } from "@memoryline/types";
 import { apiInterne } from "./api-interne.ts";
 /**
  * Client API du back-office. Lecture ET écriture (le BO modifie la config).
@@ -878,6 +878,11 @@ export interface CharacterType {
   baseGroupesCouleurs?: GroupeCouleur[] | null;
   /** Groupes proposés au client (zones de référence) ; null = la peau seule. */
   baseZonesProposees?: string[] | null;
+  /**
+   * Familles de couleurs, quand le dessin de base est une image EN PIXELS
+   * (photo ou illustration enregistrée en SVG). Null = dessin vectoriel.
+   */
+  baseCouleursImage?: CouleursImage | null;
   /** Type d'affiche (slug) sous lequel ce personnage est dessiné. */
   orientation?: string;
   /**
@@ -935,6 +940,8 @@ export interface Asset {
   zonesMasquees?: string[];
   /** Nuances réunies sous une seule couleur, et leurs noms (« ruban »). */
   groupesCouleurs?: GroupeCouleur[] | null;
+  /** Familles de couleurs, quand le dessin de la pièce est une image en pixels. */
+  couleursImage?: CouleursImage | null;
   position: number;
   /** Non null = pièce archivée : masquée du configurateur, jamais supprimée. */
   archivedAt?: string | null;
@@ -1725,6 +1732,7 @@ export function adminApi(request?: Request) {
         baseColorZones?: Record<string, string> | null;
         baseGroupesCouleurs?: GroupeCouleur[] | null;
         baseZonesProposees?: string[] | null;
+        baseCouleursImage?: CouleursImage | null;
       },
     ) => req<CharacterType>("POST", `/admin/characters/${id}/base`, data, cookie),
     /** Archive ou restaure une pièce (la suppression définitive n'existe plus). */

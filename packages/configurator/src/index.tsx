@@ -710,6 +710,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             slots={slotVariants()}
             pieceCategories={props.pieceCategories}
             cache={cache}
+            assetBaseUrl={props.assetBaseUrl}
             characterById={characterById}
             onAdd={addCharacter}
             onDuplicate={duplicateCharacter}

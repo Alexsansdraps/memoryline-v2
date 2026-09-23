@@ -780,6 +780,7 @@ for (const a of pieces) {
                     zones={a.colorZones}
                     groupes={a.groupesCouleurs}
                     masquees={a.zonesMasquees ?? []}
+                    couleursImage={a.couleursImage ?? null}
                     enregistrer={`/admin/assets/${a.id}/groupes`}
                     cadrage={SLOT_THUMB_VIEWBOX[a.slot as keyof typeof SLOT_THUMB_VIEWBOX] ?? "0 0 500 1000"}
                   />

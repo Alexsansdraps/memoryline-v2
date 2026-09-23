@@ -24,6 +24,8 @@ export function StepCharacters(props: {
   slots: SlotVariants;
   pieceCategories?: PieceCategoryDTO[];
   cache: SvgCache;
+  /** Racine de l'API : elle sert les images recolorées des dessins en pixels. */
+  assetBaseUrl?: string;
   characterById: (id: string | number) => CharacterDTO | undefined;
   onAdd: () => void;
   onDuplicate: (index: number) => void;
@@ -209,6 +211,7 @@ export function StepCharacters(props: {
             slots={props.slots}
             pieceCategories={props.pieceCategories}
             cache={props.cache}
+            assetBaseUrl={props.assetBaseUrl}
             onSetAsset={(slot, variantId) =>
               props.onSetAsset(editing()!, slot, variantId)
             }

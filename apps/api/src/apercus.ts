@@ -34,7 +34,16 @@ import { eq } from "drizzle-orm";
 import sharp from "sharp";
 
 import { db, schema } from "./db/client.js";
-import { renderPosterPng, type ResolveData } from "./pdf.js";
+import { renderPosterPng } from "./pdf.js";
+/*
+ * Les données du rendu sont celles du FICHIER D'IMPRESSION, à la lettre.
+ *
+ * Cette fonction était recopiée ici, et la copie a vieilli : les zones de
+ * couleur non proposées, les groupes, puis les familles d'un dessin en pixels
+ * sont arrivés d'un côté sans passer de l'autre. Or l'aperçu n'a qu'une seule
+ * raison d'être — montrer ce qui part à l'atelier. On lit donc la même.
+ */
+import { donneesDImpression } from "./fichiers-impression.js";
 import type { PosterConfig } from "@memoryline/types";
 
 const ASSETS_DIR = resolve(fileURLToPath(import.meta.url), "../../../../data/assets");
@@ -114,43 +123,6 @@ function jetonValide(orderItemId: number, fourni: string): boolean {
  */
 export function cheminApercu(orderItemId: number): string {
   return `/apercus/ligne/${orderItemId}/image.jpg?j=${jetonApercu(orderItemId)}`;
-}
-
-/** Les données d'assets nécessaires au moteur de rendu. */
-async function donneesDeRendu(): Promise<ResolveData> {
-  const [assets, backgrounds, types] = await Promise.all([
-    db.select().from(schema.assets),
-    db.select().from(schema.backgrounds),
-    db.select().from(schema.characterTypes),
-  ]);
-  const assetMap = new Map<string, unknown>();
-  for (const a of assets)
-    assetMap.set(String(a.id), {
-      id: a.id,
-      slot: a.slot,
-      svgUrl: a.svgUrl,
-      colorZones: a.colorZones,
-      // Même règle que le fichier d'impression : l'aperçu montre ce qui s'imprime.
-      zonesMasquees: a.zonesMasquees,
-      groupesCouleurs: a.groupesCouleurs,
-      position: a.position,
-    });
-  const charMap = new Map<string, unknown>();
-  for (const t of types)
-    charMap.set(String(t.id), {
-      id: t.id,
-      baseSvgUrl: t.baseSvgUrl,
-      baseColorZones: t.baseColorZones,
-      bottomPct: t.bottomPct ?? 1,
-      slotAdjust: t.slotAdjust ?? null,
-    });
-  const bgMap = new Map<string, unknown>();
-  for (const b of backgrounds) bgMap.set(String(b.id), { id: b.id, url: b.url });
-  return {
-    assets: assetMap,
-    characters: charMap,
-    backgrounds: bgMap,
-  } as ResolveData;
 }
 
 /** Un fichier existe-t-il déjà ? */
@@ -245,7 +217,7 @@ export async function apercuDeLaLigne(
 
   try {
     const pleine = await renderPosterPng(config!, {
-      data: await donneesDeRendu(),
+      data: await donneesDImpression(),
       // Toujours l'A4 : la vignette ne sert qu'à reconnaître l'affiche, et le
       // rapport des deux formats est le même.
       format: "A4",

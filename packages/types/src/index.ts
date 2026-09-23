@@ -2,6 +2,7 @@ export * from "./config.js";
 export * from "./library.js";
 export * from "./svg-color.js";
 export * from "./couleurs-groupes.js";
+export * from "./couleurs-image.js";
 export * from "./svg-normalisation.js";
 export * from "./empilement-personnage.js";
 export * from "./promo.js";

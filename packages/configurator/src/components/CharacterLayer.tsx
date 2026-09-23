@@ -11,6 +11,7 @@ import {
 import {
   NONE_ASSET,
   SLOT_ZORDER,
+  dessinPourLEcran,
   findVariant,
   recolorForCharacter,
   type CharacterDTO,
@@ -70,6 +71,13 @@ export function CharacterStack(props: {
   base: CharacterDTO | undefined;
   slots: SlotVariants | undefined;
   cache: SvgCache;
+  /**
+   * Racine de l'API, pour aller chercher l'image recolorée d'un personnage
+   * dessiné en pixels (cf. dessinPourLEcran). Absente, ces personnages
+   * s'affichent dans les couleurs de leur fichier — jamais faux, juste pas
+   * recoloré.
+   */
+  assetBaseUrl?: string;
 }) {
   // Scope CSS unique par instance : les <style> des SVG inlinés sont globaux
   // au document, sans scoping la dernière couche écrase les couleurs des
@@ -96,15 +104,29 @@ export function CharacterStack(props: {
     );
 
     const base = props.base;
-    const brute = base ? props.cache.raw[base.baseSvgUrl] : undefined;
+    // Couleurs de la base : les défauts du back-office, puis celles du
+    // client — la même fonction que le fichier d'impression.
+    const couleursBase = couleursDeLaBase(colors, base);
+
+    const fichier = base ? props.cache.raw[base.baseSvgUrl] : undefined;
+    // Personnage dessiné en PIXELS : son image devient celle que le serveur a
+    // recolorée. Remplacée AVANT le découpage en tranches, pour que la suite
+    // ne voie qu'un dessin ordinaire — c'est aussi l'ordre que suit le
+    // fichier d'impression.
+    const brute =
+      fichier && base
+        ? dessinPourLEcran(
+            fichier,
+            couleursBase,
+            base.baseCouleursImage,
+            `/characters/${base.id}`,
+            props.assetBaseUrl,
+          )
+        : fichier;
     // Base pas encore chargée (ou illisible) : les pièces seules, dans l'ordre.
     const etages = brute
       ? empilerPersonnage(brute, pieces, retires)
       : pieces.map((piece) => ({ piece }));
-
-    // Couleurs de la base : les défauts du back-office, puis celles du
-    // client — la même fonction que le fichier d'impression.
-    const couleursBase = couleursDeLaBase(colors, base);
 
     etages.forEach((etage, i) => {
       if ("base" in etage) {
@@ -123,8 +145,17 @@ export function CharacterStack(props: {
       const slot = etage.piece as (typeof SLOT_ZORDER)[number];
       const variant = choisie(slot);
       if (!variant) return;
-      const raw = props.cache.raw[variant.svgUrl];
-      if (raw === undefined || raw === "") return;
+      const fichierPiece = props.cache.raw[variant.svgUrl];
+      if (fichierPiece === undefined || fichierPiece === "") return;
+      const couleursPiece = couleursDeLaPiece(colors, slot, variant);
+      // Une pièce dessinée en pixels se recolore comme un personnage.
+      const raw = dessinPourLEcran(
+        fichierPiece,
+        couleursPiece,
+        variant.couleursImage,
+        `/pieces/${variant.id}`,
+        props.assetBaseUrl,
+      );
       out.push({
         key: `${slot}:${variant.id}`,
         svg: fillSvg(
@@ -133,7 +164,7 @@ export function CharacterStack(props: {
             // pour l'impression, l'aperçu ne peut donc pas mentir. Idem pour
             // les couleurs : les zones non proposées gardent leur défaut.
             appliquerCalage(
-              recolorForCharacter(raw, couleursDeLaPiece(colors, slot, variant)),
+              recolorForCharacter(raw, couleursPiece),
               calagePour(props.base?.slotAdjust, slot, variant.position),
             ),
             `${uid}-${slot}-${variant.id}`,

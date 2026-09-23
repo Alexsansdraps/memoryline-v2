@@ -47,6 +47,8 @@ import { noterLaRecuperation } from "./relance-panier.js";
 import {
   calageNeutre,
   calagePropre,
+  famillesDuDessin,
+  famillesDuParametre,
   fraisDePort,
   groupesDuDessin,
   lignesRemplies,
@@ -59,10 +61,12 @@ import {
   seuilPortOffertCents,
   sousTotalCents,
   totalPanierCents,
+  type CouleursImage,
   type GroupeCouleur,
   type PosterConfig,
   type TextesAffiche,
 } from "@memoryline/types";
+import { imageRecoloree } from "./couleurs-image-fichier.js";
 import { rattacherGenerationsAuPanier } from "./ia.js";
 import {
   createPaypalOrder,
@@ -448,6 +452,133 @@ function groupesPropres(
 ): GroupeCouleur[] | null {
   if (!Array.isArray(brut)) return null;
   return groupesDuDessin(zonesDuDessin ?? {}, brut);
+}
+
+/**
+ * Familles de couleurs d'un dessin en pixels, nettoyées avant d'être rangées
+ * en base : couleurs relues, clés uniques, noms bornés (cf. famillesDuDessin).
+ * La CARTE des teintes est gardée telle quelle — c'est le serveur qui l'écrit,
+ * le back-office ne fait que la relire.
+ */
+function couleursImagePropres(brut: unknown): CouleursImage | null {
+  if (!brut || typeof brut !== "object") return null;
+  const source = brut as CouleursImage;
+  const familles = famillesDuDessin(source);
+  if (familles.length === 0) return null;
+  return {
+    familles,
+    ...(typeof source.carte === "string" && source.carte.startsWith("data:image/")
+      ? { carte: source.carte }
+      : {}),
+    ...(Array.isArray(source.carteTeintes)
+      ? { carteTeintes: source.carteTeintes.map((t) => String(t)) }
+      : {}),
+  };
+}
+
+/**
+ * Ce que la BOUTIQUE reçoit des familles d'un dessin : les familles, sans la
+ * carte des teintes. La carte pèse plus d'un kilo-octet par dessin et ne sert
+ * qu'aux vignettes du back-office ; la charger pour chaque visiteur, sur
+ * chaque personnage de la bibliothèque, serait la plus grosse dépense de la
+ * page pour rien.
+ */
+function famillesPourLaBoutique(brut: unknown): CouleursImage | null {
+  const familles = famillesDuDessin(brut);
+  return familles.length ? { familles } : null;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Limite de débit des images recolorées                                      */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Recolorer une image coûte cher : un tiers de seconde de calcul et trois à
+ * cinq cents kilo-octets rangés sur le disque, pour CHAQUE couleur jamais vue.
+ * Or le client choisit sa couleur librement — il y en a seize millions — et
+ * l'adresse est publique : sans garde, une boucle de quelques lignes occupe le
+ * serveur en continu. Le dossier, lui, a son propre plafond
+ * (couleurs-image-fichier.ts) ; ce qui se limite ici, c'est le CALCUL.
+ *
+ * Les autres routes publiques coûteuses de la boutique répondent 429 au-delà
+ * d'un certain rythme (contact.ts, courriers.ts, ia.ts, comptes.ts) : celle-ci
+ * fait pareil.
+ *
+ * ON NE COMPTE QUE LE TRAVAIL RÉEL. Une image déjà rangée est relue en
+ * quelques millisecondes : revenir sur une couleur déjà essayée, recharger la
+ * page, revoir sa vignette dans le panier ne rapproche donc jamais un client
+ * de la limite. Seules les couleurs neuves comptent.
+ */
+
+/**
+ * Quatre images neuves par seconde en moyenne, par adresse d'appel.
+ *
+ * Ce nombre se règle sur CE QU'UN CLIENT HONNÊTE PEUT DEMANDER, et il faut
+ * lui laisser de la marge : rien n'est plus fâcheux qu'une boutique qui
+ * refuse son chien à quelqu'un qui joue avec le nuancier. Le sélecteur libre
+ * du configurateur laisse passer au plus UNE couleur neuve par seconde
+ * (REPOS_SELECTEUR_MS, CharacterEditor.tsx), soit soixante par minute : la
+ * limite est donc à quatre fois ce qu'un client peut produire, de quoi tenir
+ * quatre tablettes derrière la même adresse — un stand, un café, un réseau
+ * d'entreprise. Les deux nombres vont ensemble.
+ *
+ * En face, une boucle de script ne s'arrête plus à quelques couleurs : elle
+ * en demanderait des milliers par minute. Le compte la coupe net, et le
+ * dossier, lui, ne dépasse de toute façon jamais son plafond.
+ */
+const IMAGES_MAX = 240;
+const IMAGES_FENETRE_MS = 60_000;
+
+const imagesCalculees = new Map<string, { compte: number; finFenetre: number }>();
+
+/**
+ * L'adresse d'où vient l'appel, telle qu'on peut la croire.
+ *
+ * Recopié de `clientIp` (apps/api/src/index.ts), où il n'est pas exporté,
+ * comme `adresseAppelante` de contact.ts. Le raisonnement compte plus que le
+ * code : le proxy AJOUTE son entrée à « X-Forwarded-For » sans effacer celle
+ * qui arrive, donc le PREMIER élément est écrit par l'appelant et se change à
+ * chaque requête — un compteur fondé dessus ne se déclencherait jamais. Le
+ * DERNIER a été posé par notre propre proxy.
+ *
+ * Si la lecture change là-bas, celle-ci doit suivre.
+ */
+function adresseAppelante(c: Context): string {
+  const chaine = c.req.header("x-forwarded-for");
+  if (chaine) {
+    const morceaux = chaine
+      .split(",")
+      .map((m) => m.trim())
+      .filter(Boolean);
+    const dernier = morceaux[morceaux.length - 1];
+    if (dernier) return dernier;
+  }
+  return c.req.header("x-real-ip") || "local";
+}
+
+/** Vrai quand cette adresse a déjà fait calculer tout ce qu'elle pouvait. */
+function tropDImagesCalculees(adresse: string): boolean {
+  const compteur = imagesCalculees.get(adresse);
+  return Boolean(
+    compteur && compteur.finFenetre > Date.now() && compteur.compte >= IMAGES_MAX,
+  );
+}
+
+/** Compte une image CALCULÉE de plus pour cette adresse. */
+function noterImageCalculee(adresse: string): void {
+  const maintenant = Date.now();
+  // Ménage opportuniste : la table ne doit pas grossir indéfiniment sur un
+  // serveur qui tourne des mois.
+  if (imagesCalculees.size > 500)
+    for (const [k, v] of imagesCalculees)
+      if (v.finFenetre < maintenant) imagesCalculees.delete(k);
+  const compteur = imagesCalculees.get(adresse);
+  if (!compteur || compteur.finFenetre < maintenant)
+    imagesCalculees.set(adresse, {
+      compte: 1,
+      finFenetre: maintenant + IMAGES_FENETRE_MS,
+    });
+  else compteur.compte += 1;
 }
 
 async function typeAfficheValide(slug: unknown): Promise<string | null> {
@@ -1396,6 +1527,10 @@ export function mountConfiguratorRoutes(app: Hono) {
         zonesMasquees: a.zonesMasquees,
         // Nuances réunies sous une seule rangée de pastilles, et leurs noms.
         groupesCouleurs: a.groupesCouleurs ?? null,
+        // Familles de couleurs d'un dessin en PIXELS. La carte des teintes
+        // n'en fait pas partie : elle ne sert qu'au back-office, et pèse plus
+        // que tout le reste de la bibliothèque réuni.
+        couleursImage: famillesPourLaBoutique(a.couleursImage),
         position: a.position,
         // Catégorie de la pièce : c'est elle qui porte le nuancier proposé.
         pieceCategoryId: a.pieceCategoryId,
@@ -1432,6 +1567,10 @@ export function mountConfiguratorRoutes(app: Hono) {
         // (null : la première zone seulement, la règle d'avant).
         baseGroupesCouleurs: t.baseGroupesCouleurs ?? null,
         baseZonesProposees: t.baseZonesProposees ?? null,
+        // Familles de couleurs, pour un personnage dessiné en pixels (photo ou
+        // illustration enregistrée en SVG) : c'est ce qui lui donne enfin des
+        // pastilles de couleur. Null = dessin vectoriel, ou rien de détecté.
+        baseCouleursImage: famillesPourLaBoutique(t.baseCouleursImage),
         orientation: t.orientation ?? "front",
         bottomPct: t.bottomPct ?? 1,
         // Taille propre au personnage : c'est le configurateur qui l'applique
@@ -1450,6 +1589,96 @@ export function mountConfiguratorRoutes(app: Hono) {
       })),
       slots,
     });
+  });
+
+  /* --- Dessins en pixels recolorés ------------------------------------- */
+
+  /*
+   * L'image d'un personnage (ou d'une pièce) dessiné en PIXELS, recolorée
+   * selon les couleurs choisies par le client.
+   *
+   * C'EST LA MÊME IMAGE QUE CELLE DU FICHIER D'IMPRESSION, au sens strict :
+   * les deux lisent le même fichier rangé dans data/assets/cache. La boutique
+   * ne recolore donc rien elle-même — elle ne pourrait pas garantir que le
+   * papier ressemble à l'écran. Voir couleurs-image-fichier.ts.
+   *
+   * L'adresse porte les couleurs (« ?c=fam0:2060C0 ») : elle change dès
+   * qu'une couleur change, et le navigateur garde en cache ce qu'il a déjà vu.
+   * Ce sont les FAMILLES ENREGISTRÉES qui décident de ce qui est recolorable :
+   * une couleur demandée pour une famille que la boutique ne propose pas est
+   * ignorée ici comme partout ailleurs (couleursDesFamilles).
+   */
+  const servirImageRecoloree = async (
+    c: Context,
+    dessin: { url: string | null; couleursImage: CouleursImage | null } | undefined,
+  ) => {
+    if (!dessin?.url) return c.json({ error: "dessin introuvable" }, 404);
+
+    // La limite ne se consulte qu'au moment où une couleur va vraiment être
+    // CALCULÉE : une image déjà rangée continue d'être servie même au-delà —
+    // elle ne coûte rien, et un client qui repasse sur ses couleurs ne doit
+    // pas voir son chien disparaître.
+    const adresse = adresseAppelante(c);
+    const png = await imageRecoloree(
+      dessin.url,
+      dessin.couleursImage,
+      famillesDuParametre(c.req.query("c") ?? ""),
+      {
+        avantCalcul: () => {
+          if (tropDImagesCalculees(adresse)) return false;
+          noterImageCalculee(adresse);
+          return true;
+        },
+      },
+    ).catch((e) => {
+      console.error("[couleurs image] recoloration impossible :", e);
+      return null;
+    });
+    if (png === "plafond")
+      return c.json(
+        { error: "Trop de couleurs demandées d'affilée. Patientez une minute." },
+        429,
+        { "Retry-After": String(Math.ceil(IMAGES_FENETRE_MS / 1000)) },
+      );
+    // Rien à recolorer (dessin vectoriel, aucune famille proposée, couleurs
+    // d'origine) : on renvoie vers le dessin lui-même, tel qu'il est servi
+    // aujourd'hui. La boutique n'a alors rien de particulier à faire.
+    if (!png) return c.redirect(dessin.url, 302);
+    return c.body(new Uint8Array(png), 200, {
+      "Content-Type": "image/png",
+      // Une minute : l'adresse change à chaque couleur, il n'y a donc rien à
+      // craindre côté client ; seule une nouvelle détection au back-office
+      // doit finir par se voir.
+      "Cache-Control": "public, max-age=60",
+    });
+  };
+
+  /** L'image recolorée du dessin de base d'un personnage. */
+  app.get("/characters/:id/image-couleurs", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "id invalide" }, 400);
+    const [t] = await db
+      .select({
+        url: schema.characterTypes.baseSvgUrl,
+        couleursImage: schema.characterTypes.baseCouleursImage,
+      })
+      .from(schema.characterTypes)
+      .where(eq(schema.characterTypes.id, id));
+    return servirImageRecoloree(c, t);
+  });
+
+  /** L'image recolorée d'une pièce (même réglage qu'un personnage). */
+  app.get("/pieces/:id/image-couleurs", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id)) return c.json({ error: "id invalide" }, 400);
+    const [a] = await db
+      .select({
+        url: schema.assets.svgUrl,
+        couleursImage: schema.assets.couleursImage,
+      })
+      .from(schema.assets)
+      .where(eq(schema.assets.id, id));
+    return servirImageRecoloree(c, a);
   });
 
   /**
@@ -2810,6 +3039,11 @@ export function mountConfiguratorRoutes(app: Hono) {
               : null,
           }
         : {}),
+      // Familles de couleurs, quand le dessin téléversé est une image en
+      // pixels. Elles ne dépendent d'aucune zone : elles valent seules.
+      ...(b.baseCouleursImage !== undefined
+        ? { baseCouleursImage: couleursImagePropres(b.baseCouleursImage) }
+        : {}),
     };
     if (b.id) {
       const [row] = await db
@@ -3204,6 +3438,10 @@ export function mountConfiguratorRoutes(app: Hono) {
       groupesCouleurs: groupesPropres(b.groupesCouleurs, zones),
       zonesMasquees: zonesMasqueesPropres(b.zonesMasquees, zones),
     };
+    // Un dessin en pixels n'a pas de zone : ce sont ses familles de teintes
+    // que la boutique règle, dans le même écran et le même envoi.
+    if (b.couleursImage !== undefined)
+      set.couleursImage = couleursImagePropres(b.couleursImage);
     if (typeof b.svgUrl === "string" && /^\/assets\/[^/]+\.svg$/i.test(b.svgUrl))
       set.svgUrl = b.svgUrl;
     const [row] = await db
@@ -3246,6 +3484,10 @@ export function mountConfiguratorRoutes(app: Hono) {
           ? zonesMasqueesPropres(b.baseZonesProposees, zones)
           : null;
     }
+    // Familles de couleurs d'un dessin en pixels : elles ne se vérifient pas
+    // contre les zones du dessin, puisqu'il n'en a aucune.
+    if (b.baseCouleursImage !== undefined)
+      set.baseCouleursImage = couleursImagePropres(b.baseCouleursImage);
     const [row] = await db
       .update(schema.characterTypes)
       .set(set)
@@ -3295,6 +3537,10 @@ export function mountConfiguratorRoutes(app: Hono) {
       // Même règle pour les groupes de couleurs lus au téléversement.
       ...(b.groupesCouleurs !== undefined
         ? { groupesCouleurs: groupesPropres(b.groupesCouleurs, cleanZones) }
+        : {}),
+      // Familles de couleurs, quand le dessin téléversé est une image en pixels.
+      ...(b.couleursImage !== undefined
+        ? { couleursImage: couleursImagePropres(b.couleursImage) }
         : {}),
       position: Number(b.position ?? 0),
       characterTypeId: b.characterTypeId ? Number(b.characterTypeId) : null,

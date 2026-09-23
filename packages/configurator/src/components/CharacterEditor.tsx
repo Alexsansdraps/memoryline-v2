@@ -13,15 +13,19 @@ import {
   couleursDeLaBase,
   couleursDeLaPiece,
   couleursDuGroupePourScope,
+  estCleFamille,
+  famillesProposees,
   groupesDuDessin,
   groupesProposesDeLaBase,
   groupesProposesDeLaPiece,
   scopeSvgStyles,
+  type CouleursImage,
   type GroupeCouleur,
   type NuancierBase,
 } from "@memoryline/types";
 import {
   NONE_ASSET,
+  dessinPourLEcran,
   findVariant,
   recolorForCharacter,
   withViewBox,
@@ -80,10 +84,29 @@ function thumbSvg(
   colors: Record<string, string>,
   viewBox: string | undefined,
   scopeUid: string,
+  /**
+   * Dessin en PIXELS : de quoi aller chercher son image recolorée, pour que la
+   * vignette montre la même chose que l'aperçu (cf. dessinPourLEcran).
+   */
+  pixels?: {
+    couleursImage?: CouleursImage | null;
+    /** « /characters/58 » ou « /pieces/12 ». */
+    chemin: string;
+    assetBaseUrl?: string;
+  },
 ): string | undefined {
   if (!svgUrl) return undefined;
-  const raw = cache.raw[svgUrl];
-  if (raw === undefined || raw === "") return undefined;
+  const fichier = cache.raw[svgUrl];
+  if (fichier === undefined || fichier === "") return undefined;
+  const raw = pixels
+    ? dessinPourLEcran(
+        fichier,
+        colors,
+        pixels.couleursImage,
+        pixels.chemin,
+        pixels.assetBaseUrl,
+      )
+    : fichier;
   // Scope CSS : sans lui, le <style> global de la dernière vignette inlinée
   // écraserait les couleurs de toutes les autres (cf. scopeSvgStyles).
   let svg = scopeSvgStyles(recolorForCharacter(raw, colors), scopeUid);
@@ -283,6 +306,90 @@ function Intitule(props: { children: JSX.Element }) {
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Saisie libre sur un dessin en pixels                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Repos minimal entre deux couleurs envoyées depuis le SÉLECTEUR LIBRE, sur
+ * une rangée de dessin en pixels.
+ *
+ * Le sélecteur du navigateur émet « input » en continu tant que le doigt
+ * glisse — des dizaines de couleurs par seconde. Sur un dessin vectoriel,
+ * c'est sans conséquence : tout se recolore dans la page. Sur un dessin en
+ * PIXELS, chaque couleur est une image que le serveur calcule et range
+ * (couleurs-image-fichier.ts) : un seul glissement lui en demanderait des
+ * centaines, et, au stand, autant de fois trois cents kilo-octets à faire
+ * descendre sur la tablette.
+ *
+ * On garde donc la PREMIÈRE couleur du glissement — le client voit tout de
+ * suite que l'animal suit son doigt — et la DERNIÈRE, celle qu'il a vraiment
+ * choisie, en laissant passer une couleur par seconde entre les deux. Les
+ * pastilles du nuancier, elles, ne sont jamais retardées : un clic reste un
+ * clic, et les rangées d'un dessin vectoriel ne passent pas par ici.
+ *
+ * UNE SECONDE, ET PAS MOINS, POUR DEUX RAISONS.
+ *
+ * D'abord parce qu'aller plus vite ne montre rien de plus : le serveur met
+ * près d'un tiers de seconde à calculer chaque image, et il y a trois à cinq
+ * cents kilo-octets à faire descendre derrière — sur le réseau d'un stand,
+ * demander quatre couleurs par seconde ne fait que les mettre en file.
+ * Ensuite et surtout parce que la route qui les sert compte les couleurs
+ * neuves par adresse et refuse au-delà (IMAGES_MAX, configurator-routes.ts) :
+ * à quatre couleurs par seconde, un client qui s'amusait quarante secondes
+ * avec le sélecteur se faisait refuser — et voyait son animal disparaître.
+ * MESURÉ. À une par seconde, il reste très loin sous la limite, même à
+ * plusieurs derrière la même adresse. Ces deux nombres vont ensemble : en
+ * changer un sans regarder l'autre remet ce piège en place.
+ */
+const REPOS_SELECTEUR_MS = 1000;
+
+/**
+ * Où en est le glissement de chaque rangée.
+ *
+ * Au niveau du module, et non dans la rangée : changer une couleur reconstruit
+ * la rangée (ses lignes sont recalculées à chaque passage), une variable
+ * locale repartirait donc de zéro à chaque couleur et ne retiendrait jamais
+ * rien. Une entrée par rangée déjà touchée, c'est quelques dizaines d'octets.
+ */
+const glissements = new Map<
+  string,
+  { dernier: number; couleur: string; minuterie?: ReturnType<typeof setTimeout> }
+>();
+
+/** La rangée s'adresse-t-elle aux pixels d'un dessin (« base:fam0 ») ? */
+function rangeeEnPixels(zone: string): boolean {
+  return estCleFamille(zone.split(":").pop() ?? "");
+}
+
+/**
+ * Laisse passer la couleur tout de suite, ou la met en attente — cf.
+ * {@link REPOS_SELECTEUR_MS}. La dernière couleur d'un glissement finit
+ * toujours par passer : c'est elle que le client garde.
+ */
+function couleurEspacee(
+  zone: string,
+  hex: string,
+  envoyer: (hex: string) => void,
+): void {
+  const maintenant = Date.now();
+  const etat = glissements.get(zone) ?? { dernier: 0, couleur: hex };
+  etat.couleur = hex;
+  glissements.set(zone, etat);
+  const attente = REPOS_SELECTEUR_MS - (maintenant - etat.dernier);
+  if (attente <= 0) {
+    etat.dernier = maintenant;
+    envoyer(hex);
+    return;
+  }
+  if (etat.minuterie) return; // une couleur attend déjà : elle prendra celle-ci
+  etat.minuterie = setTimeout(() => {
+    etat.minuterie = undefined;
+    etat.dernier = Date.now();
+    envoyer(etat.couleur);
+  }, attente);
+}
+
 /**
  * Rangée de couleurs : presets cliquables + saisie libre, par groupe.
  *
@@ -388,7 +495,15 @@ function ColorRow(props: {
                     <input
                       type="color"
                       value={z.current}
-                      onInput={(e) => props.onSetColor(z, e.currentTarget.value)}
+                      onInput={(e) => {
+                        const hex = e.currentTarget.value;
+                        // Un dessin en pixels se recolore sur le serveur : on
+                        // espace les couleurs d'un glissement (cf.
+                        // couleurEspacee). Tout le reste passe sans délai.
+                        if (rangeeEnPixels(z.zone))
+                          couleurEspacee(z.zone, hex, (c) => props.onSetColor(z, c));
+                        else props.onSetColor(z, hex);
+                      }}
                       aria-label="Couleur personnalisée"
                       style={{
                         position: "absolute",
@@ -446,6 +561,8 @@ export function CharacterEditor(props: {
   characters: CharacterDTO[];
   slots: SlotVariants;
   cache: SvgCache;
+  /** Racine de l'API : elle sert les images recolorées des dessins en pixels. */
+  assetBaseUrl?: string;
   /** Catégories de pièces et leurs nuanciers (vide = nuanciers de repli). */
   pieceCategories?: PieceCategoryDTO[];
   onSetAsset: (slot: Slot, variantId: string | number) => void;
@@ -539,32 +656,72 @@ export function CharacterEditor(props: {
    */
   const zonesForSlot = (slot: Slot): LigneCouleur[] => {
     const variant = findVariant(props.slots[slot], props.character.assets[slot]);
-    if (!variant?.colorZones) return [];
-    return lignes(
-      slot,
-      groupesProposesDeLaPiece(variant),
-      variant.colorZones,
-      "#000000",
-    );
+    if (!variant) return [];
+    const rangees = variant.colorZones
+      ? lignes(slot, groupesProposesDeLaPiece(variant), variant.colorZones, "#000000")
+      : [];
+    // Pièce dessinée en pixels : ses familles de couleurs, comme pour un
+    // personnage (cf. baseZones).
+    for (const f of famillesProposees(variant.couleursImage)) {
+      const cle = colorKey(slot, f.cle);
+      rangees.push({
+        zone: cle,
+        current: props.character.colors[cle] ?? f.defaut ?? f.reference,
+        nom: f.nom,
+        couleurs: (hex) => ({ [cle]: hex }),
+      });
+    }
+    return rangees;
   };
 
   /**
    * Groupes proposés du dessin de BASE : la peau seulement, sauf réglage du
    * back-office (pelage d'un chat, robe dessinée sur le personnage…). Chacun
    * a son nuancier : celui de la peau pour le premier, sauf choix contraire.
+   *
+   * Un personnage dessiné en PIXELS (un chien photographié) n'a pas de zone :
+   * ses rangées viennent de ses FAMILLES de couleurs, à la suite des autres.
+   * Pour le client, rien ne les distingue — une rangée de pastilles sous un
+   * nom, « Pelage », « Poitrail ».
    */
   const baseZones = createMemo<{ ligne: LigneCouleur; presets: readonly string[] }[]>(
     () => {
       const base = props.base;
-      if (!base?.baseColorZones) return [];
-      const groupes = groupesProposesDeLaBase(base);
-      const tous = lignes(BASE_COLOR_SCOPE, groupes, base.baseColorZones, "#E0AC7E");
-      const premier = groupesDuDessin(base.baseColorZones, base.baseGroupesCouleurs)[0];
-      return tous.map((ligne, i) => {
-        const g = groupes[i]!;
-        const nuancier = g.nuancier ?? (g.zone === premier?.zone ? "peau" : "vetements");
-        return { ligne, presets: NUANCIERS[nuancier] };
-      });
+      if (!base) return [];
+      const rangees: { ligne: LigneCouleur; presets: readonly string[] }[] = [];
+
+      if (base.baseColorZones) {
+        const groupes = groupesProposesDeLaBase(base);
+        const tous = lignes(BASE_COLOR_SCOPE, groupes, base.baseColorZones, "#E0AC7E");
+        const premier = groupesDuDessin(base.baseColorZones, base.baseGroupesCouleurs)[0];
+        tous.forEach((ligne, i) => {
+          const g = groupes[i]!;
+          const nuancier = g.nuancier ?? (g.zone === premier?.zone ? "peau" : "vetements");
+          rangees.push({ ligne, presets: NUANCIERS[nuancier] });
+        });
+      }
+
+      for (const f of famillesProposees(base.baseCouleursImage)) {
+        const cle = colorKey(BASE_COLOR_SCOPE, f.cle);
+        rangees.push({
+          ligne: {
+            zone: cle,
+            // La couleur portée : celle du client, sinon celle que la boutique
+            // a réglée par défaut, sinon la teinte du fichier.
+            current:
+              props.character.colors[cle] ?? f.defaut ?? f.reference,
+            nom: f.nom,
+            // Une famille se choisit d'un seul coup : il n'y a pas de nuance à
+            // écrire à côté, ce sont les PIXELS qui suivront la couleur au
+            // moment du rendu (cf. couleurs-image.ts).
+            couleurs: (hex) => ({ [cle]: hex }),
+          },
+          // Le nuancier des cheveux va au pelage d'un animal : c'est celui que
+          // la boutique choisit au back-office, faute d'autre indication.
+          presets: NUANCIERS[f.nuancier ?? "cheveux"],
+        });
+      }
+      return rangees;
     },
   );
 
@@ -612,6 +769,11 @@ export function CharacterEditor(props: {
                     couleursDeLaPiece(props.character.colors, opts.slot, variant),
                     viewBox,
                     `${uid}-${opts.slot}-${variant.id}`,
+                    {
+                      couleursImage: variant.couleursImage,
+                      chemin: `/pieces/${variant.id}`,
+                      assetBaseUrl: props.assetBaseUrl,
+                    },
                   )}
                   label={variant.name ?? `#${variant.id}`}
                 />
@@ -693,6 +855,7 @@ export function CharacterEditor(props: {
               base={props.base}
               slots={props.slots}
               cache={props.cache}
+              assetBaseUrl={props.assetBaseUrl}
             />
           </div>
         </div>
@@ -759,6 +922,11 @@ export function CharacterEditor(props: {
                         ),
                         undefined,
                         `${uid}-charbase-${base.id}`,
+                        {
+                          couleursImage: base.baseCouleursImage,
+                          chemin: `/characters/${base.id}`,
+                          assetBaseUrl: props.assetBaseUrl,
+                        },
                       )}
                       label={base.name}
                     />

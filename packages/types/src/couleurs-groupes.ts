@@ -145,26 +145,57 @@ export function memeCouleur(a: string, b: string): boolean {
   return !!x && !!y && x[0] === y[0] && x[1] === y[1] && x[2] === y[2];
 }
 
-/** RGB -> TSL : teinte en degrés, saturation et clarté entre 0 et 1. */
-function rgbVersTsl([r, g, b]: [number, number, number]): [number, number, number] {
+/**
+ * RGB -> TSL, SANS RIEN ALLOUER : la teinte (en degrés), la saturation et la
+ * clarté (0..1) sont écrites dans `sortie`.
+ *
+ * Cette version sans allocation existe pour les dessins en PIXELS
+ * (couleurs-image.ts) : elle y est appelée une fois par pixel, soit trois
+ * millions de fois pour un chien. Rendre un tableau à chaque appel, c'est
+ * trois millions de tableaux jetés aussitôt — le calcul en double de durée.
+ */
+export function versTsl(
+  r: number,
+  g: number,
+  b: number,
+  sortie: [number, number, number],
+): void {
   const R = r / 255;
   const G = g / 255;
   const B = b / 255;
   const max = Math.max(R, G, B);
   const min = Math.min(R, G, B);
   const l = (max + min) / 2;
-  if (max === min) return [0, 0, l];
+  if (max === min) {
+    sortie[0] = 0;
+    sortie[1] = 0;
+    sortie[2] = l;
+    return;
+  }
   const d = max - min;
   const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
   let h: number;
   if (max === R) h = (G - B) / d + (G < B ? 6 : 0);
   else if (max === G) h = (B - R) / d + 2;
   else h = (R - G) / d + 4;
-  return [h * 60, s, l];
+  sortie[0] = h * 60;
+  sortie[1] = s;
+  sortie[2] = l;
 }
 
-/** TSL -> "#RRGGBB". */
-function tslVersHex(h: number, s: number, l: number): string {
+/** TSL -> RGB (0..255, non arrondi), sans rien allouer non plus. */
+export function versRgb(
+  h: number,
+  s: number,
+  l: number,
+  sortie: [number, number, number],
+): void {
+  if (s === 0) {
+    sortie[0] = l * 255;
+    sortie[1] = l * 255;
+    sortie[2] = l * 255;
+    return;
+  }
   const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
   const p = 2 * l - q;
   const canal = (t: number) => {
@@ -177,15 +208,97 @@ function tslVersHex(h: number, s: number, l: number): string {
     return p;
   };
   const hn = (((h % 360) + 360) % 360) / 360;
-  if (s === 0) return rgbVersHex(l * 255, l * 255, l * 255);
-  return rgbVersHex(
-    canal(hn + 1 / 3) * 255,
-    canal(hn) * 255,
-    canal(hn - 1 / 3) * 255,
-  );
+  sortie[0] = canal(hn + 1 / 3) * 255;
+  sortie[1] = canal(hn) * 255;
+  sortie[2] = canal(hn - 1 / 3) * 255;
 }
 
 const borne01 = (v: number) => Math.min(1, Math.max(0, v));
+
+/**
+ * « Vraiment colorée » : l'écart entre canaux, et non la saturation TSL.
+ *
+ * Un blanc cassé paraît saturé en TSL ; s'en servir pour reporter un décalage
+ * de teinte virerait un pull bleu au violet.
+ */
+export function couleurVive(r: number, g: number, b: number): boolean {
+  return (Math.max(r, g, b) - Math.min(r, g, b)) / 255 >= 0.08;
+}
+
+/**
+ * Ce qu'il faut savoir d'un couple (couleur d'origine -> couleur choisie)
+ * pour faire suivre toutes ses nuances : calculé UNE fois, appliqué ensuite à
+ * chaque nuance (dessin vectoriel) ou à chaque pixel (dessin en pixels).
+ */
+export interface RelationNuance {
+  /** Teinte, saturation et clarté de la couleur de RÉFÉRENCE. */
+  hr: number;
+  sr: number;
+  lr: number;
+  /** Teinte, saturation et clarté de la couleur CHOISIE. */
+  hc: number;
+  sc: number;
+  lc: number;
+  /** La référence est-elle vraiment colorée (cf. {@link couleurVive}) ? */
+  refVive: boolean;
+}
+
+/** La relation entre une couleur de référence et la couleur choisie (RGB 0..255). */
+export function relationDeNuance(
+  reference: readonly [number, number, number],
+  choisie: readonly [number, number, number],
+): RelationNuance {
+  const tr: [number, number, number] = [0, 0, 0];
+  const tc: [number, number, number] = [0, 0, 0];
+  versTsl(reference[0], reference[1], reference[2], tr);
+  versTsl(choisie[0], choisie[1], choisie[2], tc);
+  return {
+    hr: tr[0],
+    sr: tr[1],
+    lr: tr[2],
+    hc: tc[0],
+    sc: tc[1],
+    lc: tc[2],
+    refVive: couleurVive(reference[0], reference[1], reference[2]),
+  };
+}
+
+/**
+ * La couleur que prend UNE nuance (ou un pixel) sous une relation donnée.
+ * Le cœur de {@link nuanceSuivante} — voir son commentaire pour la règle.
+ * Écrit dans `sortie` (0..255, non arrondi) pour ne rien allouer.
+ */
+export function nuanceSuivanteRgb(
+  r: number,
+  g: number,
+  b: number,
+  rel: RelationNuance,
+  sortie: [number, number, number],
+): void {
+  const t: [number, number, number] = tampon;
+  versTsl(r, g, b, t);
+  const hn = t[0];
+  const sn = t[1];
+  const ln = t[2];
+
+  let l: number;
+  if (ln <= rel.lr) l = rel.lr > 0 ? rel.lc * (ln / rel.lr) : rel.lc;
+  else l = rel.lr < 1 ? 1 - (1 - rel.lc) * ((1 - ln) / (1 - rel.lr)) : rel.lc;
+
+  const s =
+    rel.refVive && rel.sr > 0
+      ? borne01(rel.sc * Math.min(2.5, Math.max(0.4, sn / rel.sr)))
+      : rel.sc;
+
+  let h = rel.hc;
+  if (rel.refVive && couleurVive(r, g, b) && rel.sc >= 0.05)
+    h = rel.hc + (((hn - rel.hr + 540) % 360) - 180);
+
+  versRgb(h, s, borne01(l), sortie);
+}
+
+/** Tampon de travail de {@link nuanceSuivanteRgb} : un seul pour tout le module. */
+const tampon: [number, number, number] = [0, 0, 0];
 
 /**
  * La couleur que prend une nuance quand la référence de son groupe passe de
@@ -208,6 +321,11 @@ const borne01 = (v: number) => Math.min(1, Math.max(0, v));
  *
  * Choisir la couleur d'origine de la référence rend la nuance d'origine, au
  * chiffre près : revenir à la couleur par défaut ne laisse aucune trace.
+ *
+ * LE CALCUL LUI-MÊME VIT DANS {@link nuanceSuivanteRgb}, et c'est important :
+ * un dessin en PIXELS (photo ou illustration enregistrée en SVG) recolore ses
+ * pixels par la même fonction, un pixel valant une nuance. Les deux sortes de
+ * dessins ne peuvent donc pas se mettre à ombrer différemment.
  */
 export function nuanceSuivante(
   nuance: string,
@@ -219,28 +337,9 @@ export function nuanceSuivante(
   const c = hexVersRgb(choisie);
   if (!n) return nuance;
   if (!r || !c || memeCouleur(reference, choisie)) return rgbVersHex(...n);
-  const [hn, sn, ln] = rgbVersTsl(n);
-  const [hr, sr, lr] = rgbVersTsl(r);
-  const [hc, sc, lc] = rgbVersTsl(c);
-
-  let l: number;
-  if (ln <= lr) l = lr > 0 ? lc * (ln / lr) : lc;
-  else l = lr < 1 ? 1 - (1 - lc) * ((1 - ln) / (1 - lr)) : lc;
-
-  const coloree = ([x, y, z]: [number, number, number]) =>
-    (Math.max(x, y, z) - Math.min(x, y, z)) / 255 >= 0.08;
-
-  const s =
-    coloree(r) && sr > 0
-      ? borne01(sc * Math.min(2.5, Math.max(0.4, sn / sr)))
-      : sc;
-
-  let h = hc;
-  if (coloree(r) && coloree(n) && sc >= 0.05) {
-    const ecart = ((hn - hr + 540) % 360) - 180;
-    h = hc + ecart;
-  }
-  return tslVersHex(h, s, borne01(l));
+  const out: [number, number, number] = [0, 0, 0];
+  nuanceSuivanteRgb(n[0], n[1], n[2], relationDeNuance(r, c), out);
+  return rgbVersHex(out[0], out[1], out[2]);
 }
 
 /**

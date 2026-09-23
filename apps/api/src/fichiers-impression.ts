@@ -91,6 +91,10 @@ export async function donneesDImpression(): Promise<ResolveData> {
       // Un groupe masqué garde le défaut de toutes ses nuances ; regrouper
       // refait donc le fichier, lui aussi.
       groupesCouleurs: a.groupesCouleurs,
+      // Familles de couleurs d'une pièce dessinée en pixels : une famille
+      // renommée, rattachée ou décochée change ce qui s'imprime, donc
+      // l'empreinte — et le fichier est refait plutôt que resservi.
+      couleursImage: a.couleursImage,
       position: a.position,
     });
   // Personnages (SVG de base pré-composé) pour le rendu PDF du nouveau modèle.
@@ -100,6 +104,10 @@ export async function donneesDImpression(): Promise<ResolveData> {
       id: t.id,
       baseSvgUrl: t.baseSvgUrl,
       baseColorZones: t.baseColorZones,
+      // Familles de couleurs d'un personnage dessiné en pixels. Elles entrent
+      // dans l'empreinte comme le reste : relire les couleurs du dessin au
+      // back-office refait le fichier d'impression.
+      baseCouleursImage: t.baseCouleursImage,
       bottomPct: t.bottomPct ?? 1,
       // Calage des pièces : sans lui, le PDF poserait les coupes et les
       // vêtements ailleurs que l'aperçu validé par le client.
@@ -435,8 +443,9 @@ async function ranger(orderItemId: number, chemin: string, pdf: Buffer): Promise
 
 /**
  * Efface ce qui n'a pas servi depuis {@link JOURS_DE_GARDE} jours : fichiers
- * d'impression et fonds rasterisés (pdf.ts). Une fois par jour au plus, à
- * l'occasion d'un rangement — pas de minuterie à entretenir.
+ * d'impression, fonds rasterisés (pdf.ts) et images recolorées des dessins en
+ * pixels (couleurs-image-fichier.ts). Une fois par jour au plus, à l'occasion
+ * d'un rangement — pas de minuterie à entretenir.
  */
 let dernierMenage = 0;
 async function menageDuCache(): Promise<void> {
@@ -444,7 +453,14 @@ async function menageDuCache(): Promise<void> {
   if (maintenant - dernierMenage < 24 * 3600 * 1000) return;
   dernierMenage = maintenant;
   const limite = maintenant - JOURS_DE_GARDE * 24 * 3600 * 1000;
-  for (const dossier of [DOSSIER_IMPRESSIONS, resolve(DOSSIER_CACHE, "fonds")]) {
+  for (const dossier of [
+    DOSSIER_IMPRESSIONS,
+    resolve(DOSSIER_CACHE, "fonds"),
+    // Une couleur essayée puis abandonnée par un client laisse une image
+    // derrière elle : sans ménage, le disque se remplirait de pelages bleus
+    // que plus personne ne regardera.
+    resolve(DOSSIER_CACHE, "images-couleurs"),
+  ]) {
     let noms: string[];
     try {
       noms = await readdir(dossier);

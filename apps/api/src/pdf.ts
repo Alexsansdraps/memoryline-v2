@@ -44,8 +44,10 @@ import {
   couleursDeLaPiece,
   empilerPersonnage,
   recolorSvg,
+  type CouleursImage,
   type GroupeCouleur,
 } from "@memoryline/types";
+import { dessinRecolore } from "./couleurs-image-fichier.js";
 import {
   familleCss,
   policeParId,
@@ -106,6 +108,8 @@ export interface ResolvedAsset {
   zonesMasquees?: string[] | null;
   /** Groupes de couleurs : un groupe masqué garde le défaut de TOUTES ses nuances. */
   groupesCouleurs?: GroupeCouleur[] | null;
+  /** Familles de couleurs, quand le dessin de la pièce est une image en pixels. */
+  couleursImage?: CouleursImage | null;
   position?: number | null;
 }
 
@@ -124,6 +128,11 @@ export interface ResolvedCharacter {
   id: number | string;
   baseSvgUrl: string | null;
   baseColorZones?: Record<string, string> | null;
+  /**
+   * Familles de couleurs, quand le dessin de base est une IMAGE EN PIXELS
+   * (photo ou illustration enregistrée en SVG). Voir couleurs-image.ts.
+   */
+  baseCouleursImage?: CouleursImage | null;
   /** Bas réel du contenu (0..1) pour aligner les pieds au sol. */
   bottomPct?: number;
   /** Calage des pièces sur ce personnage, par emplacement. */
@@ -272,6 +281,12 @@ export async function resolveConfig(
       .filter(([, id]) => id === "none")
       .map(([slot]) => slot);
 
+    // Couleurs namespacées "scope:zone" : la base ne reçoit que son scope
+    // (les zones stN sont réutilisées par les pièces — une map plate ferait
+    // déteindre les couleurs d'une pièce sur la base). Même fonction que
+    // l'aperçu de la boutique : défauts du back-office, puis la configuration.
+    const couleursBase = couleursDeLaBase(character.colors, base);
+
     let brute: string | null = null;
     if (base?.baseSvgUrl) {
       try {
@@ -279,6 +294,26 @@ export async function resolveConfig(
       } catch {
         // base illisible : on continue avec les pièces seules
       }
+      // Personnage dessiné en PIXELS (un chien photographié, par exemple) :
+      // son image est remplacée par la version recolorée — LE MÊME FICHIER
+      // que la boutique a montré au client, lu dans le même cache. Recoloré
+      // avant le découpage en tranches, pour que la suite ne voie qu'un
+      // dessin ordinaire.
+      //
+      // VOLONTAIREMENT HORS du rattrapage ci-dessus, et sans le sien : une
+      // recoloration qui échoue en silence enverrait à l'imprimeur un animal
+      // dans ses couleurs d'usine, alors que le client en a choisi d'autres
+      // et les a vues à l'écran — personne ne s'en apercevrait avant le colis.
+      // Les pièces, plus bas, laissent déjà remonter l'erreur ; la base fait
+      // pareil. Mieux vaut une erreur bruyante qu'un chien de la mauvaise
+      // couleur glissé dans un colis (cf. fichiers-impression.ts).
+      if (brute)
+        brute = await dessinRecolore(
+          brute,
+          base.baseSvgUrl,
+          base.baseCouleursImage,
+          couleursBase,
+        );
     }
 
     // 1) et 2) La base en tranches, les pièces choisies intercalées à leur
@@ -288,12 +323,6 @@ export async function resolveConfig(
     const etages = brute
       ? empilerPersonnage(brute, pieces, retires)
       : [...pieces].sort((a, b) => slotZ(a) - slotZ(b)).map((piece) => ({ piece }));
-
-    // Couleurs namespacées "scope:zone" : la base ne reçoit que son scope
-    // (les zones stN sont réutilisées par les pièces — une map plate ferait
-    // déteindre les couleurs d'une pièce sur la base). Même fonction que
-    // l'aperçu de la boutique : défauts du back-office, puis la configuration.
-    const couleursBase = couleursDeLaBase(character.colors, base);
 
     for (const etage of etages) {
       if ("base" in etage) {
@@ -309,14 +338,20 @@ export async function resolveConfig(
       const asset = data.assets.get(String(character.assets[slot]));
       if (!asset) continue; // asset manquant : on saute (best-effort)
 
-      const raw = (await readSource(asset.svgUrl)).toString("utf8");
-
       // Couleurs : zones par défaut de l'asset surchargées par celles du perso
       // POUR CE SLOT uniquement (clés "slot:zone" — le slot vient de la config,
       // même clé que celle écrite par le configurateur). Les groupes que le
       // client ne peut pas changer gardent leur défaut : même règle que
       // l'aperçu de la boutique (couleursDeLaPiece).
       const overrides = couleursDeLaPiece(character.colors, slot, asset);
+      // Une pièce dessinée en pixels se recolore comme un personnage : c'est
+      // le même cache, donc la même image qu'à l'écran.
+      const raw = await dessinRecolore(
+        (await readSource(asset.svgUrl)).toString("utf8"),
+        asset.svgUrl,
+        asset.couleursImage,
+        overrides,
+      );
       // Calage de la pièce sur CE personnage : même fonction qu'à l'écran,
       // donc impossible que l'impression tombe ailleurs que l'aperçu validé.
       layers.push({

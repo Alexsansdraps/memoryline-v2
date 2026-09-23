@@ -4,6 +4,7 @@ import { createSignal, type Accessor, type Setter } from "solid-js";
 import type {
   PosterConfig,
   Character,
+  CouleursImage,
   GroupeCouleur,
   PosterFormat,
   PosterView,
@@ -13,6 +14,8 @@ import type {
 import {
   ORDRE_CALQUES,
   colorKey,
+  dessinAvecImage,
+  parametreDesFamilles,
   recolorSvg,
   POLICE_TITRE_DEFAUT,
   POLICE_SOUSTITRE_DEFAUT,
@@ -70,6 +73,12 @@ export interface VariantDTO {
    * zone, comme avant.
    */
   groupesCouleurs?: GroupeCouleur[] | null;
+  /**
+   * Familles de couleurs, quand le dessin de la pièce est une image en pixels
+   * et non un tracé. Absent = dessin vectoriel, ou rien de réglé au
+   * back-office : la pièce s'affiche exactement comme son fichier.
+   */
+  couleursImage?: CouleursImage | null;
   position: number;
   /** Catégorie de la pièce (« Casquettes »…) : elle porte le nuancier. */
   pieceCategoryId?: number | null;
@@ -106,6 +115,13 @@ export interface CharacterDTO {
    * groupe seulement (la peau), la règle d'avant ce réglage.
    */
   baseZonesProposees?: string[] | null;
+  /**
+   * Familles de couleurs du dessin de base, quand celui-ci est une IMAGE EN
+   * PIXELS (photo ou illustration enregistrée en SVG). C'est ce qui donne des
+   * pastilles de couleur à un chien photographié. Absent = dessin vectoriel,
+   * ou rien de réglé au back-office.
+   */
+  baseCouleursImage?: CouleursImage | null;
   /** Type d'affiche du perso (slug) : « front », « back », ou créé au BO. */
   orientation?: string;
   /** Bas réel du contenu dans le viewBox (0..1) pour aligner les pieds au sol. */
@@ -818,6 +834,43 @@ export function recolorForCharacter(
 ): string {
   if (!rawSvg) return rawSvg;
   return recolorSvg(rawSvg, colors);
+}
+
+/**
+ * Le dessin d'une couche prêt à être affiché, quand ce dessin est une IMAGE EN
+ * PIXELS (un chien photographié, un chat illustré) dont le client a changé les
+ * couleurs.
+ *
+ * LA BOUTIQUE NE RECOLORE RIEN ELLE-MÊME. Elle remplace l'adresse de l'image
+ * par celle d'une route de l'API qui rend la version recolorée. Cette image
+ * est, aux octets près, celle que le fichier d'impression contiendra : les
+ * deux lisent le même fichier rangé sur le serveur. Recolorer ici, sur un
+ * canevas, aurait demandé de refaire le même calcul dans deux langages et deux
+ * bibliothèques d'images — et un jour, l'imprimé n'aurait plus été l'aperçu.
+ *
+ * L'adresse porte les couleurs voulues : elle ne change que si une couleur
+ * change, et le navigateur garde donc en cache tout ce qu'il a déjà montré.
+ *
+ * Sans famille à recolorer, le dessin est rendu tel quel : un personnage
+ * vectoriel, ou un personnage en pixels que la boutique n'a pas réglé, ne fait
+ * pas un aller-retour de plus.
+ */
+export function dessinPourLEcran(
+  rawSvg: string,
+  colors: Record<string, string>,
+  couleursImage: CouleursImage | null | undefined,
+  /** « /characters/58 » ou « /pieces/12 ». */
+  chemin: string,
+  assetBaseUrl: string | undefined,
+): string {
+  if (!rawSvg) return rawSvg;
+  const parametre = parametreDesFamilles(colors, couleursImage);
+  if (!parametre) return rawSvg;
+  const base = (assetBaseUrl ?? "").replace(/\/$/, "");
+  return dessinAvecImage(
+    rawSvg,
+    `${base}${chemin}/image-couleurs?c=${encodeURIComponent(parametre)}`,
+  );
 }
 
 /**

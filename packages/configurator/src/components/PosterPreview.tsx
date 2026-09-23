@@ -429,6 +429,7 @@ export function PosterPreview(props: {
                   )
                 }
                 cache={props.cache}
+                assetBaseUrl={props.assetBaseUrl}
               />
             </div>
           );

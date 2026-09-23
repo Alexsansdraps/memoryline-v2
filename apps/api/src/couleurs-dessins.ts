@@ -12,6 +12,11 @@
  * un nouveau fichier, et c'est l'enregistrement du personnage ou de la pièce
  * qui pointe dessus. Un dessin qui n'a rien à changer (Illustrator, ou déjà
  * normalisé) garde son adresse.
+ *
+ * CERTAINS DESSINS N'EN SONT PAS. Sept animaux téléversés sont des photos ou
+ * des illustrations simplement enregistrées en SVG : pas un tracé, une image
+ * en pixels. Ils passent par la même porte et par le même bouton, mais leurs
+ * couleurs se lisent dans leurs pixels — voir couleurs-image-fichier.ts.
  */
 import type { Hono } from "hono";
 import { resolve, basename, extname } from "node:path";
@@ -22,8 +27,10 @@ import sharp from "sharp";
 import {
   normaliserCouleursSvg,
   recolorSvg,
+  type CouleursImage,
   type GroupeCouleur,
 } from "@memoryline/types";
+import { detecterCouleursImage } from "./couleurs-image-fichier.js";
 
 const ASSETS_DIR = resolve(fileURLToPath(import.meta.url), "../../../../data/assets");
 
@@ -39,6 +46,13 @@ export interface CouleursDuDessin {
   zonesCreees: number;
   /** Images en pixels dans le dessin (hors masques). */
   images: number;
+  /**
+   * Familles de couleurs, quand le dessin est une IMAGE EN PIXELS et non un
+   * vrai dessin vectoriel. Le même bouton « Détecter les couleurs » sert aux
+   * deux sortes de dessins : c'est le fichier qui décide ce qu'on y lit, pas
+   * la boutique. Null = dessin vectoriel, ou image illisible.
+   */
+  couleursImage: CouleursImage | null;
 }
 
 /**
@@ -116,12 +130,37 @@ export async function couleursDuDessin(url: string): Promise<CouleursDuDessin | 
       groupesCouleurs: [],
       zonesCreees: 0,
       images: 1,
+      couleursImage: null,
     };
 
   // Premier passage pour connaître les zones, puis la surface réelle de
   // chacune, puis le passage définitif : il numérote les nouvelles zones de
   // la plus étendue à la plus petite et choisit les références des groupes.
   const essai = normaliserCouleursSvg(texte);
+
+  // Une image en pixels enregistrée en SVG n'a aucun tracé à normaliser : ses
+  // couleurs se lisent dans ses PIXELS, rangés en familles. C'est le MÊME
+  // bouton du back-office qui mène ici, et c'est voulu — la boutique n'a pas à
+  // savoir d'avance de quelle sorte est son fichier.
+  //
+  // ON NE LIT LES PIXELS QUE FAUTE DE TRACÉS. Un dessin vectoriel peut très
+  // bien porter une image quelque part (un logo, une texture) : ses zones de
+  // couleur restent alors la bonne façon de le recolorer, et les familles
+  // lui feraient perdre ce qu'il savait déjà faire.
+  if (Object.keys(essai.zones).length === 0) {
+    const couleursImage = await detecterCouleursImage(texte).catch(() => null);
+    if (couleursImage)
+      return {
+        url: urlOrigine,
+        urlOrigine,
+        colorZones: {},
+        groupesCouleurs: [],
+        zonesCreees: 0,
+        images: 1,
+        couleursImage,
+      };
+  }
+
   let surfaces: Record<string, number> | undefined;
   if (Object.keys(essai.zones).length > 1) {
     try {
@@ -146,6 +185,7 @@ export async function couleursDuDessin(url: string): Promise<CouleursDuDessin | 
     groupesCouleurs: r.groupes,
     zonesCreees: r.zonesCreees.length,
     images: r.images,
+    couleursImage: null,
   };
 }
 
