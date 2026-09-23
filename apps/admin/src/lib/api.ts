@@ -114,6 +114,12 @@ export interface Cadre {
   previewColor: string | null;
   active: boolean;
   position: number;
+  /**
+   * Non nul = archivé : hors du configurateur et de la liste ordinaire, rangé
+   * dans « Cadres archivés ». Son nom reste lisible sur les commandes déjà
+   * passées et dans le nom des fichiers d'impression.
+   */
+  archivedAt?: string | null;
 }
 
 /**
@@ -145,6 +151,12 @@ export interface CompteAdmin {
   connecte: boolean;
   /** C'est le compte avec lequel on est connecté. */
   moi: boolean;
+  /**
+   * Non nul = archivé : le compte ne peut plus se connecter et quitte la
+   * liste ordinaire, rangé dans « Comptes archivés ». L'historique des
+   * commandes garde son nom.
+   */
+  archivedAt?: string | null;
 }
 
 /** Adresse laissée dans le formulaire de la lettre d'information. */
@@ -323,6 +335,12 @@ export interface StandBo {
   ouvert: boolean;
   createdAt: string;
   closedAt: string | null;
+  /**
+   * Non nul = archivé : hors de la liste ordinaire, rangé dans « Stands
+   * archivés ». Toujours fermé, donc sa tablette n'accepte plus rien. Ses
+   * ventes gardent son nom.
+   */
+  archivedAt?: string | null;
   /** Commandes prises sur ce stand, paniers en cours exclus. */
   commandes: number;
   /** Ce qu'elles totalisent, en centimes. */
@@ -512,6 +530,11 @@ export interface TarifLivraisonBO {
   /** Null = pas de limite haute. */
   maxWeightGrams: number | null;
   active: boolean;
+  /**
+   * Non nul = archivée : la tranche ne facture plus rien et quitte la grille,
+   * rangée dans « Tranches archivées ».
+   */
+  archivedAt?: string | null;
 }
 
 /** Catalogue de livraison tel que le back-office le manipule. */
@@ -533,6 +556,12 @@ export interface CatalogueLivraisonBO {
     pickupLocation: string | null;
     active: boolean;
     position: number;
+    /**
+     * Non nul = archivé : hors du tunnel de commande et de la liste
+     * ordinaire, rangé dans « Modes archivés ». Les commandes déjà parties
+     * continuent d'afficher son nom.
+     */
+    archivedAt?: string | null;
     /**
      * Pourquoi ce mode ne sort pas sur le site, ou null quand il en sort.
      *
@@ -612,6 +641,12 @@ export interface OrderRow {
   tags?: string[] | null;
   shippingLabel?: string | null;
   legacyName?: string | null;
+  /**
+   * Non nul = archivée : hors de la liste ordinaire, de l'export et des
+   * actions groupées. Elle se relit et se restaure depuis « Commandes
+   * archivées ». Rien n'est effacé, et son statut n'a pas bougé.
+   */
+  archivedAt?: string | null;
 }
 
 /** Filtres de la liste des commandes — tous combinables. */
@@ -626,6 +661,12 @@ export interface FiltresCommandes {
   from?: string;
   to?: string;
   limit?: number;
+  /**
+   * « 1 » pour ne voir QUE les commandes archivées — la vue « Archivées ».
+   * Absent, la liste ne montre que les autres : les deux ne se mélangent
+   * jamais, sinon on ne saurait plus ce qui est rangé.
+   */
+  archived?: string;
 }
 
 /** Une expédition et ce qu'elle contenait. */
@@ -1370,20 +1411,33 @@ export function adminApi(request?: Request) {
         corps,
         cookie,
       ),
-    /** Supprime un stand qui n'a rien vendu. Refusé sinon. */
-    supprimerStand: (id: number) =>
-      req<{ ok: true }>("DELETE", `/admin/stands/${id}`, undefined, cookie),
     /**
-     * Efface une commande et tout ce qui pend après elle.
-     *
-     * À ne pas confondre avec l'annulation : une commande annulée reste
-     * lisible, une commande supprimée disparaît des chiffres.
+     * Archive un stand, ou le restaure. Il n'y a plus de suppression : un
+     * stand effacé laissait ses ventes sans rien qui dise où elles avaient
+     * été faites. Archiver le FERME aussi — sa tablette n'accepte plus rien.
+     * `commandes` dit combien de ventes s'y rattachent, pour le redire.
      */
-    supprimerCommande: (id: number) =>
-      req<{ ok: true; numero: string }>(
-        "DELETE",
-        `/admin/orders/${id}`,
-        undefined,
+    archiverStand: (id: number, archived = true) =>
+      req<{ ok: true; archived: boolean; commandes: number }>(
+        "POST",
+        `/admin/stands/${id}/archive`,
+        { archived },
+        cookie,
+      ),
+    /**
+     * Archive une commande, ou la restaure. Il n'y a plus de suppression :
+     * elle emportait en cascade les lignes, les expéditions, les
+     * remboursements et les mouvements d'argent.
+     *
+     * À ne pas confondre avec l'annulation : archiver RANGE — la commande
+     * quitte la liste mais garde son statut, son argent et sa place dans les
+     * chiffres. C'est l'annulation qui la sort du chiffre d'affaires.
+     */
+    archiverCommande: (id: number, archived = true) =>
+      req<{ ok: true; archived: boolean; numero: string }>(
+        "POST",
+        `/admin/orders/${id}/archive`,
+        { archived },
         cookie,
       ),
     /** Étiquettes déjà employées, les plus fréquentes d'abord. */
@@ -1402,14 +1456,19 @@ export function adminApi(request?: Request) {
         { tags },
         cookie,
       ),
-    /** Action groupée sur les commandes cochées. */
+    /**
+     * Action groupée sur les commandes cochées.
+     *
+     * « supprimer » n'existe plus : elle effaçait les ventes pour de bon.
+     * « archiver » les range, « restaurer » les ressort.
+     */
     bulkOrders: (
       ids: number[],
-      action: "fulfil" | "unfulfil" | "tag" | "untag" | "supprimer",
+      action: "fulfil" | "unfulfil" | "tag" | "untag" | "archiver" | "restaurer",
       tags?: string[],
     ) =>
-      // `numeros` n'accompagne que la suppression : nommer ce qui a disparu
-      // est la seule trace qu'il en reste.
+      // `numeros` n'accompagne que l'archivage : nommer ce qui a quitté la
+      // liste évite d'avoir à la relire pour savoir ce qu'on vient de ranger.
       req<{ ok: boolean; count: number; numeros?: string[] }>(
         "POST",
         "/admin/orders/bulk",
@@ -1552,8 +1611,20 @@ export function adminApi(request?: Request) {
       active: boolean;
       position: number;
     }) => req<Cadre>("POST", "/admin/frames", data, cookie),
-    deleteFrame: (id: number) =>
-      req<{ ok: boolean }>("DELETE", `/admin/frames/${id}`, undefined, cookie),
+    /**
+     * Archive un cadre, ou le restaure. Il n'y a plus de suppression : le
+     * prix est bien figé sur la ligne de commande, mais le NOM du cadre se
+     * relit — sur les commandes passées, dans les courriers, et jusque dans
+     * le nom du fichier d'impression. `commandes` dit combien de lignes
+     * vendues le citent, pour le redire à l'écran.
+     */
+    archiverCadre: (id: number, archived = true) =>
+      req<{ ok: boolean; archived: boolean; commandes: number }>(
+        "POST",
+        `/admin/frames/${id}/archive`,
+        { archived },
+        cookie,
+      ),
     /** Poids d'un cadre seul — se règle en pesant, pas en vendant. */
     setFrameWeight: (id: number, weightGrams: number) =>
       req<Cadre>("POST", `/admin/frames/${id}/poids`, { weightGrams }, cookie),
@@ -1571,8 +1642,20 @@ export function adminApi(request?: Request) {
       description?: string;
       pickupLocation?: string;
     }) => req<unknown>("POST", "/admin/shipping/methods", data, cookie),
-    deleteShippingMethod: (id: number) =>
-      req<unknown>("DELETE", `/admin/shipping/methods/${id}`, undefined, cookie),
+    /**
+     * Archive un mode de livraison, ou le restaure. Il n'y a plus de
+     * suppression : elle était refusée dès qu'une commande était partie avec
+     * ce mode, et quand elle passait, elle emportait toute la grille
+     * tarifaire. Archiver le décoche aussi. `commandes` dit combien sont
+     * parties avec lui.
+     */
+    archiverModeLivraison: (id: number, archived = true) =>
+      req<{ ok: boolean; archived: boolean; commandes: number }>(
+        "POST",
+        `/admin/shipping/methods/${id}/archive`,
+        { archived },
+        cookie,
+      ),
     updateShippingMethod: (
       id: number,
       data: {
@@ -1593,11 +1676,17 @@ export function adminApi(request?: Request) {
       maxWeightGrams: number | null;
       active: boolean;
     }) => req<TarifLivraisonBO>("POST", "/admin/shipping/rates", data, cookie),
-    deleteShippingRate: (id: number) =>
-      req<{ ok: boolean }>(
-        "DELETE",
-        `/admin/shipping/rates/${id}`,
-        undefined,
+    /**
+     * Archive une tranche de la grille, ou la restaure. Il n'y a plus de
+     * suppression : un prix négocié, une borne de poids et une franchise de
+     * port ne vivent nulle part ailleurs. La restauration est refusée si une
+     * autre tranche a repris cette borne de poids entre-temps.
+     */
+    archiverTarifLivraison: (id: number, archived = true) =>
+      req<{ ok: boolean; archived: boolean }>(
+        "POST",
+        `/admin/shipping/rates/${id}/archive`,
+        { archived },
         cookie,
       ),
     /**
@@ -1704,8 +1793,21 @@ export function adminApi(request?: Request) {
       role: string;
       password?: string;
     }) => req<{ id: number; email: string }>("POST", "/admin/users", data, cookie),
-    deleteUser: (id: number) =>
-      req<{ ok: boolean }>("DELETE", `/admin/users/${id}`, undefined, cookie),
+    /**
+     * Archive un compte, ou le restaure. Il n'y a plus de suppression : les
+     * journaux des commandes citent le NOM de qui a expédié, remboursé ou
+     * annulé, et un compte effacé rendait ces lignes anonymes.
+     *
+     * Un compte archivé ne peut plus se connecter, et ses sessions ouvertes
+     * sont fermées — c'est la seule suppression que cet archivage s'autorise.
+     */
+    archiverCompte: (id: number, archived = true) =>
+      req<{ ok: boolean; archived: boolean }>(
+        "POST",
+        `/admin/users/${id}/archive`,
+        { archived },
+        cookie,
+      ),
     logoutUser: (id: number) =>
       req<{ ok: boolean }>(
         "POST",

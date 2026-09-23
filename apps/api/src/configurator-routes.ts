@@ -626,10 +626,14 @@ async function resolveUnitPriceCents(
         priceA3Cents: schema.frames.priceA3Cents,
       })
       .from(schema.frames)
+      // Un cadre archivé ne se vend plus : il ne porte plus de prix ici, tout
+      // comme un cadre décoché. Ailleurs — fiches de commandes passées, noms
+      // des fichiers d'impression — il continue de se lire par son nom.
       .where(
         and(
           eq(schema.frames.id, Number(frameId)),
           eq(schema.frames.active, true),
+          isNull(schema.frames.archivedAt),
         ),
       );
     cadre = f ? prixDuCadreCents(f, format ?? "A4") : 0;
@@ -866,11 +870,22 @@ async function computeShippingCents(
 } | null> {
   const [zones, modes, tarifs, regles] = await Promise.all([
     ex.select().from(schema.shippingZones),
+    // Archivés écartés, mode comme tranches : ce calcul décide de ce qu'on
+    // FACTURE. Un mode rangé ne doit pas pouvoir être choisi au passage en
+    // caisse, ni une tranche retirée continuer d'y poser son prix.
     ex
       .select()
       .from(schema.shippingMethods)
-      .where(eq(schema.shippingMethods.active, true)),
-    ex.select().from(schema.shippingRates),
+      .where(
+        and(
+          eq(schema.shippingMethods.active, true),
+          isNull(schema.shippingMethods.archivedAt),
+        ),
+      ),
+    ex
+      .select()
+      .from(schema.shippingRates)
+      .where(isNull(schema.shippingRates.archivedAt)),
     ex.select().from(schema.promoRules),
   ]);
   const lignes = items.map((it) => ({

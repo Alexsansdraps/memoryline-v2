@@ -93,6 +93,11 @@ interface LettreVue {
   echecs: number;
   restants: number;
   createdAt: string;
+  /**
+   * Non nul = archivée : hors de la liste ordinaire, rangée dans « Lettres
+   * archivées ». Son texte et ses destinataires sont gardés entiers.
+   */
+  archivedAt: string | null;
 }
 interface EtatEnvoi {
   configure: boolean;
@@ -180,9 +185,17 @@ if (Astro.request.method === "POST") {
       });
       idOuverte = id;
       flash = { ton: "ok", message: "Lettre enregistrée." };
-    } else if (action === "supprimer" && id) {
-      await appelApi<{ ok: boolean }>("DELETE", `/admin/lettres/${id}`);
-      flash = { ton: "ok", message: "Brouillon supprimé." };
+    } else if (action === "archiver" && id) {
+      const restaurer = String(f.get("archived") ?? "") === "false";
+      await appelApi<{ ok: boolean }>("POST", `/admin/lettres/${id}/archive`, {
+        archived: !restaurer,
+      });
+      flash = {
+        ton: "ok",
+        message: restaurer
+          ? "Lettre restaurée : elle revient dans la liste, telle qu'elle était."
+          : "Lettre archivée. Son texte et ses destinataires sont gardés entiers ; vous pouvez la restaurer à tout moment, dans « Lettres archivées ».",
+      };
     } else if (action === "essai" && id) {
       const retour = await appelApi<{ resume: string }>(
         "POST",
@@ -244,8 +257,14 @@ const demandee = Astro.url.searchParams.get("lettre");
 if (idOuverte === null && demandee && /^\d+$/.test(demandee)) idOuverte = Number(demandee);
 if (Astro.url.searchParams.get("nouvelle") !== null && idOuverte === null) enCreation = true;
 
+// Les archivées quittent la liste ordinaire pour leur propre section.
+const actives = lettres.filter((l) => !l.archivedAt);
+const archivees = lettres.filter((l) => l.archivedAt);
+
+// Cherchée parmi TOUTES : on doit pouvoir rouvrir une lettre archivée pour la
+// relire avant de décider si elle mérite de revenir.
 const ouverte = idOuverte === null ? null : (lettres.find((l) => l.id === idOuverte) ?? null);
-// Une lettre supprimée n'a plus de formulaire à rouvrir.
+// Une lettre introuvable n'a plus de formulaire à rouvrir.
 if (!ouverte && !enCreation) idOuverte = null;
 
 /** Les champs affichés : la saisie refusée d'abord, la base ensuite. */
@@ -345,7 +364,7 @@ const TON_CLASSE: Record<Ton, string> = {
           </tr>
         </thead>
         <tbody>
-          {lettres.map((l) => (
+          {actives.map((l) => (
             <tr class={`border-t border-bo-border ${ouverte?.id === l.id ? "bg-bo-bg" : ""}`}>
               <td class="px-4 py-2">
                 <div class="font-medium">{l.titre}</div>
@@ -379,7 +398,7 @@ const TON_CLASSE: Record<Ton, string> = {
               </td>
             </tr>
           ))}
-          {lettres.length === 0 && !panne && (
+          {actives.length === 0 && !panne && (
             <tr>
               <td class="px-4 py-6 text-bo-muted" colspan="5">
                 Aucune lettre pour l'instant. Cliquez sur « Écrire une nouvelle lettre ».
@@ -391,6 +410,47 @@ const TON_CLASSE: Record<Ton, string> = {
     </div>
   </section>
 
+  {/* --- Les lettres archivées -------------------------------------------- */}
+  {archivees.length > 0 && (
+    <section class="mb-8">
+      <h2 class="mb-1 text-sm font-semibold">Lettres archivées</h2>
+      <p class="mb-3 max-w-3xl text-sm text-bo-muted">
+        Retirées de la liste ci-dessus, et rien de plus : leur texte est gardé
+        entier, et celles qui sont parties gardent la trace de qui les a
+        reçues. « Restaurer » remet la lettre telle qu'elle était.
+      </p>
+      <div class="space-y-2 opacity-70">
+        {archivees.map((l) => (
+          <div class="flex flex-wrap items-center gap-4 rounded-lg border border-bo-border bg-bo-surface p-3">
+            <div class="min-w-56 flex-1">
+              <p class="font-medium">{l.titre}</p>
+              <p class="text-xs text-bo-muted">
+                {l.etatLibelle} ·{" "}
+                {l.etat === "brouillon"
+                  ? `écrite le ${leJour(l.createdAt)}`
+                  : `${l.envoisReussis} sur ${l.destinatairesPrevus}, le ${leJour(l.envoyeeLe ?? l.createdAt)}`}
+              </p>
+            </div>
+            <a
+              href={url(`/lettre?lettre=${l.id}`)}
+              class="text-sm text-bo-accent hover:underline"
+            >
+              Relire
+            </a>
+            <form method="POST">
+              <input type="hidden" name="_action" value="archiver" />
+              <input type="hidden" name="id" value={l.id} />
+              <input type="hidden" name="archived" value="false" />
+              <button class="text-sm text-bo-accent hover:underline">
+                Restaurer
+              </button>
+            </form>
+          </div>
+        ))}
+      </div>
+    </section>
+  )}
+
   {/* --- Écrire une lettre ----------------------------------------------- */}
   {(ouverte || enCreation) && (
     <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-5">
@@ -401,10 +461,22 @@ const TON_CLASSE: Record<Ton, string> = {
         <a href={url("/lettre")} class="text-sm text-bo-muted hover:underline">Fermer</a>
       </div>
 
+      {/* Une lettre archivée se relit, mais elle reste archivée tant qu'on ne
+          l'a pas restaurée : le dire évite d'enregistrer en croyant la
+          remettre dans la liste. */}
+      {ouverte?.archivedAt && (
+        <p class="mb-4 rounded border border-bo-border bg-bo-bg px-3 py-2 text-sm text-bo-muted">
+          Cette lettre est <strong>archivée</strong> : elle ne s'affiche plus
+          dans la liste et ne peut pas être envoyée. Enregistrer ici ne la
+          remet pas en place — utilisez « Restaurer », dans « Lettres
+          archivées ».
+        </p>
+      )}
+
       {ouverte && !ouverte.modifiable && (
         <p class={`mb-4 rounded border px-3 py-2 text-sm ${TON_CLASSE.attention}`}>
           {ouverte.etat === "envoyee"
-            ? "Cette lettre est partie chez vos lecteurs. Elle ne se modifie plus et ne se supprime plus : elle garde la trace de qui l'a reçue."
+            ? "Cette lettre est partie chez vos lecteurs. Elle ne se modifie plus : elle garde la trace de qui l'a reçue. Elle peut en revanche être archivée, ce qui la range sans rien effacer."
             : "L'envoi de cette lettre est en cours. Elle ne peut plus être modifiée tant qu'il n'est pas terminé."}
         </p>
       )}
@@ -587,13 +659,17 @@ const TON_CLASSE: Record<Ton, string> = {
             )}
           </div>
 
-          {ouverte.modifiable && (
+          {/* Une lettre EN COURS d'envoi ne se range pas : la boucle tourne
+              encore, par paquets, et la faire disparaître de l'écran
+              n'arrêterait rien. */}
+          {ouverte.etat !== "en_cours" && !ouverte.archivedAt && (
             <div class="mt-5 border-t border-bo-border pt-4">
-              <form method="POST" class="js-supprimer" data-nom={ouverte.titre}>
-                <input type="hidden" name="_action" value="supprimer" />
+              <form method="POST" class="js-archiver" data-nom={ouverte.titre}>
+                <input type="hidden" name="_action" value="archiver" />
                 <input type="hidden" name="id" value={ouverte.id} />
-                <button class="rounded border border-bo-border px-3 py-1.5 text-xs text-bo-muted hover:border-red-300 hover:text-red-700">
-                  Supprimer ce brouillon
+                <input type="hidden" name="archived" value="true" />
+                <button class="rounded border border-bo-border px-3 py-1.5 text-xs text-bo-muted hover:border-bo-accent hover:text-bo-accent">
+                  Archiver cette lettre
                 </button>
               </form>
             </div>
@@ -693,10 +769,14 @@ const TON_CLASSE: Record<Ton, string> = {
       });
     });
 
-    document.querySelectorAll("form.js-supprimer").forEach((f) => {
+    document.querySelectorAll("form.js-archiver").forEach((f) => {
       f.addEventListener("submit", (ev) => {
-        const nom = f.getAttribute("data-nom") || "ce brouillon";
-        if (!confirm(`Supprimer le brouillon « ${nom} » ? Il ne sera pas récupérable.`))
+        const nom = f.getAttribute("data-nom") || "cette lettre";
+        if (
+          !confirm(
+            `Archiver la lettre « ${nom} » ?\n\nElle quitte la liste, et rien de plus : son texte est gardé entier, et si elle est partie, la trace de qui l'a reçue aussi.\n\nVous pourrez la restaurer dans « Lettres archivées ».`,
+          )
+        )
           ev.preventDefault();
       });
     });

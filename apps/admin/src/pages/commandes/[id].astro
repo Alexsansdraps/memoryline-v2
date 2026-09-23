@@ -47,13 +47,16 @@ if (Astro.request.method === "POST") {
       flash = f.get("remise")
         ? "Affiche remise au client."
         : "Expédition enregistrée.";
-    } else if (action === "supprimer-commande") {
-      // Un retour à la liste plutôt qu'un rendu : la commande n'existe plus,
-      // la page qui la montre non plus.
-      const r = await api.supprimerCommande(id);
-      return Astro.redirect(
-        `${url("/commandes")}?supprimee=${encodeURIComponent(r.numero)}`,
-      );
+    } else if (action === "archiver-commande") {
+      const restaurer = String(f.get("archived") ?? "") === "false";
+      await api.archiverCommande(id, !restaurer);
+      if (restaurer) {
+        flash = "Commande restaurée : elle revient dans la liste ordinaire.";
+      } else {
+        // Un retour à la liste des archivées plutôt qu'un rendu : la commande
+        // vient de quitter la liste ordinaire, et c'est là qu'on la retrouve.
+        return Astro.redirect(`${url("/commandes")}?onglet=archivees`);
+      }
     } else if (action === "annuler-expedition") {
       await api.cancelFulfillment(Number(f.get("fulfillmentId")));
       flash = "Expédition annulée.";
@@ -365,6 +368,13 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
             <span class={`rounded-full px-2 py-0.5 text-xs ${badgeTraitement.classe}`}>
               {badgeTraitement.texte}
             </span>
+            {/* Dit dès le titre que cette fiche vient du rangement : sans
+                cela, on la croit dans la liste et on la cherche en vain. */}
+            {order.archivedAt && (
+              <span class="rounded-full bg-bo-bg px-2 py-0.5 text-xs text-bo-muted">
+                Archivée
+              </span>
+            )}
           </div>
           <p class="mt-1 text-sm text-bo-muted">
             {quand(order.createdAt)} · {NOM_CANAL[order.channel] ?? order.channel}
@@ -1297,25 +1307,53 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
             </section>
           )}
 
-          {/* En dernier, et en rouge : ce qu'on ne défait pas se range là où
-              on ne clique pas par mégarde. */}
-          <section class="rounded-lg border border-red-300 bg-bo-surface px-4 py-3">
-            <h3 class="mb-2 font-medium text-red-800">Supprimer la commande</h3>
-            <p class="mb-3 text-sm text-bo-muted">
-              Les articles, les expéditions, les remboursements, les mouvements
-              d'argent et la chronologie partent avec elle, et elle sort de vos
-              chiffres. Pour retirer une vente sans effacer son histoire,
-              annulez-la plutôt.
-            </p>
-            <form
-              method="POST"
-              onsubmit="return confirm('Supprimer définitivement cette commande ? Cette action est sans retour.')"
-            >
-              <input type="hidden" name="_action" value="supprimer-commande" />
-              <button class="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50">
-                Supprimer définitivement {order.number}
-              </button>
-            </form>
+          {/* En dernier : ranger une commande, ce qui se défait. Il n'y a
+              plus de suppression — elle emportait les articles, les
+              expéditions, les remboursements et les mouvements d'argent. */}
+          <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+            <h3 class="mb-2 font-medium">
+              {order.archivedAt ? "Commande archivée" : "Archiver la commande"}
+            </h3>
+            {order.archivedAt ? (
+              <>
+                <p class="mb-3 text-sm text-bo-muted">
+                  Elle ne s'affiche plus dans la liste ordinaire, ni dans
+                  l'export : elle attend dans l'onglet « Archivées ». La
+                  recherche la trouve toujours par son numéro, marquée
+                  « Archivée ». Rien n'a été effacé, et son statut n'a pas
+                  bougé.
+                </p>
+                <form method="POST">
+                  <input type="hidden" name="_action" value="archiver-commande" />
+                  <input type="hidden" name="archived" value="false" />
+                  <button class="rounded border border-bo-border px-3 py-1.5 text-sm hover:bg-bo-bg">
+                    Restaurer {order.number}
+                  </button>
+                </form>
+              </>
+            ) : (
+              <>
+                <p class="mb-3 text-sm text-bo-muted">
+                  Elle quitte la liste et l'export, et se range dans l'onglet
+                  « Archivées », d'où elle se restaure ; la recherche
+                  continue de la trouver, marquée « Archivée ». Rien n'est
+                  effacé : ses articles, ses expéditions, son argent et sa
+                  chronologie restent, et son statut ne change pas — une
+                  vente archivée compte toujours dans vos chiffres. Pour
+                  qu'elle cesse d'y compter, annulez-la plutôt.
+                </p>
+                <form
+                  method="POST"
+                  onsubmit="return confirm('Archiver cette commande ? Elle quitte la liste et se range dans « Archivées », d\'où vous pourrez la restaurer. Rien n\'est supprimé.')"
+                >
+                  <input type="hidden" name="_action" value="archiver-commande" />
+                  <input type="hidden" name="archived" value="true" />
+                  <button class="rounded border border-bo-border px-3 py-1.5 text-sm hover:bg-bo-bg">
+                    Archiver {order.number}
+                  </button>
+                </form>
+              </>
+            )}
           </section>
 
           <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">

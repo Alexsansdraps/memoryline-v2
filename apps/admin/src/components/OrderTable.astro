@@ -54,12 +54,14 @@ if (Astro.request.method === "POST") {
           quoi === "tag"
             ? `Étiquette ajoutée à ${r.count} commande(s).`
             : `Étiquette retirée de ${r.count} commande(s).`;
-      } else if (quoi === "supprimer") {
-        const r = await api.bulkOrders(ids, "supprimer");
+      } else if (quoi === "archiver" || quoi === "restaurer") {
+        const r = await api.bulkOrders(ids, quoi);
         const numeros = Array.isArray(r.numeros) ? r.numeros : [];
+        const liste = numeros.length ? ` : ${numeros.join(", ")}.` : ".";
         flash =
-          `${r.count} commande(s) supprimée(s) définitivement` +
-          (numeros.length ? ` : ${numeros.join(", ")}.` : ".");
+          quoi === "archiver"
+            ? `${r.count} commande(s) archivée(s)${liste} Rien n'est effacé : elles attendent dans l'onglet « Archivées ».`
+            : `${r.count} commande(s) restaurée(s)${liste}`;
       }
     }
   } catch (e) {
@@ -96,6 +98,9 @@ const ONGLETS: {
     label: "Remboursées",
     filtres: { financial: "refunded,partially_refunded" },
   },
+  // Le rangement, et non une corbeille : rien n'y est détruit, et les
+  // commandes en sortent entières. Les autres onglets ne les montrent pas.
+  { cle: "archivees", label: "Archivées", filtres: { archived: "1" } },
 ];
 
 const params = Astro.url.searchParams;
@@ -115,6 +120,11 @@ const filtres: FiltresCommandes = {
   from: params.get("from") ?? undefined,
   to: params.get("to") ?? undefined,
 };
+
+// Dans l'onglet « Archivées », le bouton d'action groupée devient
+// « Restaurer » : proposer « Archiver » sur ce qui l'est déjà n'aurait aucun
+// sens, et c'est de là qu'on ressort une commande rangée par erreur.
+const vueArchivees = onglet.cle === "archivees";
 
 let orders: OrderRow[] = [];
 let etiquettes: { name: string; n: number }[] = [];
@@ -381,14 +391,24 @@ const filtreActif =
       <button type="button" id="bo-export" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
         Exporter la sélection
       </button>
-      <button
-        type="button"
-        data-bulk="supprimer"
-        data-confirme="Supprimer définitivement les commandes sélectionnées ? Leurs articles, expéditions, remboursements et mouvements d'argent partent avec elles, et elles sortent de vos chiffres. Pour retirer une vente sans effacer son histoire, annulez-la plutôt."
-        class="ml-auto rounded border border-red-300 px-3 py-1.5 text-red-700 hover:bg-red-50"
-      >
-        Supprimer
-      </button>
+      {vueArchivees ? (
+        <button
+          type="button"
+          data-bulk="restaurer"
+          class="ml-auto rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+        >
+          Restaurer
+        </button>
+      ) : (
+        <button
+          type="button"
+          data-bulk="archiver"
+          data-confirme="Archiver les commandes sélectionnées ? Elles quittent cette liste et l'export, et se rangent dans l'onglet « Archivées », d'où elles se restaurent. La recherche continue de les trouver, marquées « Archivée ». Rien n'est effacé, et leur statut ne change pas : une vente archivée compte toujours dans vos chiffres. Pour qu'elle cesse d'y compter, annulez-la plutôt."
+          class="ml-auto rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+        >
+          Archiver
+        </button>
+      )}
     </div>
   </form>
 
@@ -559,7 +579,8 @@ const filtreActif =
       const ids = selection();
       if (!ids.length) return;
       const quoi = b.dataset.bulk;
-      // Une action destructrice s'annonce, et nomme ce qu'elle détruit.
+      // Une action qui retire des commandes de la liste s'annonce, et dit ce
+      // qu'elle change — et ce qu'elle ne change pas.
       const avertissement = b.dataset.confirme;
       if (avertissement && !confirm(avertissement)) return;
       if (quoi === "tag" || quoi === "untag") {

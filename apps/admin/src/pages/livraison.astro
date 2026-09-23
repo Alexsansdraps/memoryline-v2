@@ -42,9 +42,9 @@ let flashErreur = false;
 
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
-  // Lu AVANT `_action` : le bouton Supprimer vit dans le formulaire de
+  // Lu AVANT `_action` : le bouton Archiver vit dans le formulaire de
   // modification, qui porte son propre `_action` caché.
-  const action = f.get("supprimer") ? "mode-supprimer" : f.get("_action");
+  const action = f.get("archiver") ? "mode-archiver" : f.get("_action");
   try {
     if (action === "mode") {
       await api.updateShippingMethod(Number(f.get("id")), {
@@ -63,9 +63,23 @@ if (Astro.request.method === "POST") {
       });
       flash =
         "Mode créé. Il est décoché : fixez ses tarifs plus bas, puis cochez « Proposé ».";
-    } else if (action === "mode-supprimer") {
-      await api.deleteShippingMethod(Number(f.get("id")));
-      flash = "Mode supprimé.";
+    } else if (action === "mode-archiver") {
+      const restaurer = f.get("archived") === "false";
+      const { commandes } = await api.archiverModeLivraison(
+        Number(f.get("id")),
+        !restaurer,
+      );
+      const nom = String(f.get("libelle") || "Ce mode");
+      flash = restaurer
+        ? `Mode « ${nom} » restauré, avec toute sa grille tarifaire. Il est décoché : cochez « Proposé » quand vous voudrez le reproposer.`
+        : `Mode « ${nom} » archivé : il n'est plus proposé au client.${
+            commandes > 0
+              ? ` Les ${commandes} commande${commandes > 1 ? "s" : ""} parties avec lui continuent de l'afficher.`
+              : ""
+          } Sa grille est gardée entière ; vous pouvez le restaurer plus bas.`;
+    } else if (action === "tarif-restaurer") {
+      await api.archiverTarifLivraison(Number(f.get("id")), false);
+      flash = "Tranche restaurée : elle facture de nouveau dans sa grille.";
     } else if (action === "zone") {
       await api.updateShippingZone(Number(f.get("id")), {
         name: String(f.get("name") || ""),
@@ -140,17 +154,42 @@ try {
   erreurStandard = lisible(e);
 }
 
+// Les archivés quittent les listes ordinaires pour leurs propres sections.
+const modesActifs = cat.modes.filter((m) => !m.archivedAt);
+const modesArchives = cat.modes.filter((m) => m.archivedAt);
+const tarifsVivants = cat.tarifs.filter((t) => !t.archivedAt);
+const tarifsArchives = cat.tarifs.filter((t) => t.archivedAt);
+
 /** Les tranches proposées au client, de la plus légère à la plus lourde. */
 const grille = (methodId: number, zoneId: number) =>
-  cat.tarifs
+  tarifsVivants
     .filter((t) => t.methodId === methodId && t.zoneId === zoneId && t.active)
     .sort((a, b) => a.minWeightGrams - b.minWeightGrams);
 
 /** Lignes désactivées : elles bloquent le mode sans apparaître dans la grille. */
 const retire = (methodId: number, zoneId: number) =>
-  cat.tarifs.some(
+  tarifsVivants.some(
     (t) => t.methodId === methodId && t.zoneId === zoneId && !t.active,
   );
+
+/** Le nom d'un mode et d'une zone, pour nommer une tranche archivée. */
+const nomMode = (id: number) =>
+  cat.modes.find((m) => m.id === id)?.name ?? "mode retiré";
+const nomZone = (id: number) =>
+  cat.zones.find((z) => z.id === id)?.name ?? "zone retirée";
+
+/** Une borne de poids en toutes lettres : « de 0 g à 500 g ». */
+const bornes = (min: number, max: number | null) =>
+  max === null ? `à partir de ${min} g` : `de ${min} g à ${max} g`;
+
+/** Ce qu'il faut avoir lu avant d'archiver un mode de livraison. */
+function messageArchivage(m: { name: string }): string {
+  return [
+    `Archiver le mode « ${m.name} » ?`,
+    "Il ne sera plus proposé au client. Sa grille tarifaire est gardée entière, et les commandes déjà parties avec lui continuent de l'afficher — rien n'est supprimé.",
+    "Vous pourrez le restaurer quand vous voudrez, dans « Modes archivés ».",
+  ].join("\n\n");
+}
 
 const NOM_NATURE: Record<string, string> = {
   relay: "Point relais",
@@ -194,7 +233,7 @@ const NOM_TRANSPORTEUR: Record<string, string> = Object.fromEntries(
 
   <h3 class="font-semibold mb-3">Modes de livraison</h3>
   <section class="mb-8 space-y-3">
-    {cat.modes.map((m) => (
+    {modesActifs.map((m) => (
       <form
         method="POST"
         class="bg-bo-surface border border-bo-border rounded-lg p-4 text-sm"
@@ -268,18 +307,68 @@ const NOM_TRANSPORTEUR: Record<string, string> = Object.fromEntries(
           </span>
           {/* Son propre champ, et non `_action` : le formulaire en porte
               déjà un, caché, et c'est le premier envoyé qui compte. */}
+          <input type="hidden" name="libelle" value={m.name} />
+          <input type="hidden" name="archived" value="true" />
           <button
             type="submit"
-            name="supprimer"
+            name="archiver"
             value="1"
             formnovalidate
-            class="ml-auto rounded border border-bo-border px-2 py-1 hover:bg-red-50 hover:text-red-700"
+            data-archiver={messageArchivage(m)}
+            class="ml-auto rounded border border-bo-border px-2 py-1 hover:border-bo-accent hover:text-bo-accent"
           >
-            Supprimer
+            Archiver
           </button>
         </p>
       </form>
     ))}
+
+    {/* ---------------------------------------------------------------- */}
+    {/* Les modes archivés                                                */}
+    {/* ---------------------------------------------------------------- */}
+    {modesArchives.length > 0 && (
+      <div class="pt-2">
+        <h4 class="mb-1 text-sm font-semibold">Modes archivés</h4>
+        <p class="mb-2 max-w-3xl text-xs text-bo-muted">
+          Retirés du tunnel de commande et de la liste ci-dessus. Leur grille
+          tarifaire est gardée entière, et les commandes parties avec eux
+          continuent de les nommer. « Restaurer » rend le mode et sa grille ;
+          il revient décoché.
+        </p>
+        <div class="space-y-2 opacity-70">
+          {modesArchives.map((m) => (
+            <form
+              method="POST"
+              class="flex flex-wrap items-center gap-4 rounded-lg border border-bo-border bg-bo-surface p-3 text-sm"
+            >
+              <input type="hidden" name="_action" value="mode-archiver" />
+              <input type="hidden" name="id" value={m.id} />
+              <input type="hidden" name="libelle" value={m.name} />
+              <input type="hidden" name="archived" value="false" />
+              <div class="min-w-48 flex-1">
+                <p class="font-medium">{m.name}</p>
+                <p class="text-xs text-bo-muted">
+                  {NOM_NATURE[m.kind] ?? m.kind} · identifiant{" "}
+                  <code>{m.slug}</code>
+                  {m.carrier
+                    ? ` · ${NOM_TRANSPORTEUR[m.carrier] ?? m.carrier}`
+                    : ""}
+                </p>
+              </div>
+              <button
+                type="submit"
+                name="archiver"
+                value="1"
+                formnovalidate
+                class="text-sm text-bo-accent hover:underline"
+              >
+                Restaurer
+              </button>
+            </form>
+          ))}
+        </div>
+      </div>
+    )}
 
     {/* Créer un mode. Il naît décoché : un mode sans tarif afficherait
         0 € de port au client. */}
@@ -385,7 +474,7 @@ const NOM_TRANSPORTEUR: Record<string, string> = Object.fromEntries(
       <div class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
         <div class="bg-bo-bg px-4 py-2 text-sm font-medium">{z.name}</div>
         <div class="divide-y divide-bo-border">
-          {cat.modes.map((m) => {
+          {modesActifs.map((m) => {
             const lignes = grille(m.id, z.id);
             const franco = lignes[0]?.freeFromCents ?? null;
             const transporteur = m.carrier ?? "";
@@ -523,6 +612,47 @@ const NOM_TRANSPORTEUR: Record<string, string> = Object.fromEntries(
       </div>
     ))}
   </section>
+
+  {/* ------------------------------------------------------------------ */}
+  {/* Les tranches archivées                                              */}
+  {/* ------------------------------------------------------------------ */}
+  {tarifsArchives.length > 0 && (
+    <section class="mb-8">
+      <h3 class="mb-1 font-semibold">Tranches archivées</h3>
+      <p class="mb-3 max-w-3xl text-sm text-bo-muted">
+        Les tranches retirées d'une grille ne sont pas effacées : elles
+        attendent ici, avec leur prix. « Restaurer » remet la tranche dans sa
+        grille — refusé si une autre tranche a repris la même borne de poids
+        depuis, car deux prix pour un même colis ne se départagent pas.
+      </p>
+      <div class="space-y-2 opacity-70">
+        {tarifsArchives.map((t) => (
+          <form
+            method="POST"
+            class="flex flex-wrap items-center gap-4 rounded-lg border border-bo-border bg-bo-surface p-3 text-sm"
+          >
+            <input type="hidden" name="_action" value="tarif-restaurer" />
+            <input type="hidden" name="id" value={t.id} />
+            <div class="min-w-56 flex-1">
+              <p class="font-medium">
+                {nomMode(t.methodId)} · {nomZone(t.zoneId)}
+              </p>
+              <p class="text-xs text-bo-muted">
+                {bornes(t.minWeightGrams, t.maxWeightGrams)} ·{" "}
+                {formatPrice(t.priceCents)}
+                {t.freeFromCents != null
+                  ? ` · offert à partir de ${formatPrice(t.freeFromCents)}`
+                  : ""}
+              </p>
+            </div>
+            <button class="text-sm text-bo-accent hover:underline">
+              Restaurer
+            </button>
+          </form>
+        ))}
+      </div>
+    </section>
+  )}
 
   {/* ------------------------------------------------------------------ */}
   {/* Zones                                                               */}
@@ -710,6 +840,14 @@ const NOM_TRANSPORTEUR: Record<string, string> = Object.fromEntries(
       });
 
       couverture();
+    }
+
+    // Archiver un mode le retire de la vente : on demande confirmation, avec
+    // ce que cela change — et ce que cela NE change pas pour les commandes.
+    for (const bouton of document.querySelectorAll("[data-archiver]")) {
+      bouton.addEventListener("click", (e) => {
+        if (!confirm(bouton.getAttribute("data-archiver"))) e.preventDefault();
+      });
     }
   </script>
 </Admin>

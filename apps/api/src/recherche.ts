@@ -421,6 +421,7 @@ async function chercherCommandes(
       quand: schema.orders.createdAt,
       destinataire: schema.orders.shippingName,
       client: schema.customers.name,
+      archivedAt: schema.orders.archivedAt,
     })
     .from(schema.orders)
     .leftJoin(schema.customers, eq(schema.orders.customerId, schema.customers.id))
@@ -448,6 +449,10 @@ async function chercherCommandes(
       jour(l.quand),
       l.canal === "salon" ? "Stand" : "En ligne",
       euros(l.total),
+      // Une commande archivée reste trouvable par son numéro : c'est
+      // justement ainsi qu'on la retrouve pour la relire ou la restaurer,
+      // puisqu'elle a quitté la liste. Elle se dit, plutôt que de se cacher.
+      l.archivedAt ? "Archivée" : null,
     ),
     href: `/commandes/${l.id}`,
   }));
@@ -575,6 +580,7 @@ async function chercherStands(motif: string): Promise<ResultatRecherche[]> {
       id: schema.stands.id,
       nom: schema.stands.nom,
       ouvert: schema.stands.ouvert,
+      archivedAt: schema.stands.archivedAt,
     })
     .from(schema.stands)
     .where(contient(schema.stands.nom, motif))
@@ -585,7 +591,10 @@ async function chercherStands(motif: string): Promise<ResultatRecherche[]> {
   return lignes.map((l) => ({
     id: `stand:${l.id}`,
     titre: l.nom,
-    detail: l.ouvert ? "Ouvert" : "Fermé",
+    // Un stand archivé reste trouvable : on le cherche justement pour relire
+    // ce qu'il a vendu, ou pour le restaurer avant le salon de l'an prochain.
+    // Il se dit, plutôt que de se cacher.
+    detail: l.archivedAt ? "Archivé" : l.ouvert ? "Ouvert" : "Fermé",
     href: `/ventes-salon?stand=${l.id}`,
   }));
 }

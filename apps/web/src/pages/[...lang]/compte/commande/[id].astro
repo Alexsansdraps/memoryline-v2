@@ -4,12 +4,10 @@ import { lignesRemplies } from "@memoryline/types";
 import { formatPrice, PUBLIC_API_URL } from "../../../../lib/api.ts";
 import {
   adresseLivraison,
-  cadres,
   commande,
   exigerSession,
   formatDate,
   libelleStatut,
-  type Cadre,
   type CommandeDetail,
 } from "../../../../lib/compte.ts";
 import {
@@ -33,7 +31,6 @@ const session = await exigerSession(Astro, langue);
 if (session.etat === "anonyme") return session.redirection;
 
 let detail: CommandeDetail | null = null;
-let listeCadres: Cadre[] = [];
 let erreur: CleUi | null =
   session.etat === "indisponible" ? session.erreur : null;
 
@@ -41,7 +38,6 @@ if (session.etat === "connecte") {
   const r = await commande(Astro, id);
   if (r.ok) {
     detail = r.donnees;
-    listeCadres = await cadres(Astro);
   } else {
     // Ici un 404 est un vrai 404 métier : la commande n'existe pas ou
     // appartient à quelqu'un d'autre. À ne pas confondre avec l'API absente.
@@ -49,10 +45,18 @@ if (session.etat === "connecte") {
   }
 }
 
-/** Nom du cadre choisi : la configuration n'en garde que l'identifiant. */
+/**
+ * Nom du cadre choisi : la configuration n'en garde que l'identifiant.
+ *
+ * La liste vient AVEC la commande, pas du catalogue en vente : un cadre
+ * archivé ou décoché depuis garde ainsi son nom sur les commandes où il a
+ * été vendu, au lieu de se réduire au générique « Cadre ».
+ */
 const nomCadre = (idCadre: unknown): string | null => {
   if (idCadre === null || idCadre === undefined || idCadre === "") return null;
-  const trouve = listeCadres.find((c) => String(c.id) === String(idCadre));
+  const trouve = (detail?.cadres ?? []).find(
+    (c) => String(c.id) === String(idCadre),
+  );
   return trouve ? trouve.name : tr("panier.cadre");
 };
 

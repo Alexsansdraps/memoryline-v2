@@ -97,9 +97,14 @@ function raisonMasquage(
     carrier: string | null;
     active: boolean;
     pickupLocation: string | null;
+    archivedAt: Date | null;
   },
   standsOuverts: number,
 ): string | null {
+  // L'archivage passe AVANT tout le reste : un mode rangé ne sort pas, et
+  // annoncer un compte Mondial Relay manquant sur un mode qu'on n'offre plus
+  // enverrait chercher une panne là où il n'y en a pas.
+  if (m.archivedAt) return "Archivé : il ne sort plus du rangement.";
   if (!m.active) return "Décoché : vous ne le proposez pas.";
   if (m.kind === "relay") {
     const t = TRANSPORTEURS.find((x) => x.code === m.carrier);
@@ -1014,7 +1019,9 @@ app.get("/frames", async (c) => {
   const rows = await db
     .select()
     .from(schema.frames)
-    .where(eq(schema.frames.active, true))
+    // Archivé = rangé : le cadre quitte le configurateur, comme un cadre
+    // décoché. Son nom reste lisible sur les commandes déjà passées.
+    .where(and(eq(schema.frames.active, true), isNull(schema.frames.archivedAt)))
     .orderBy(asc(schema.frames.position));
   return c.json(rows);
 });
@@ -1121,9 +1128,21 @@ app.get("/shipping", async (c) => {
     db
       .select()
       .from(schema.shippingMethods)
-      .where(eq(schema.shippingMethods.active, true))
+      // Archivé = rangé : le mode quitte le tunnel de commande, comme un mode
+      // décoché. Il n'y a pas à choisir une livraison qu'on ne fait plus.
+      .where(
+        and(
+          eq(schema.shippingMethods.active, true),
+          isNull(schema.shippingMethods.archivedAt),
+        ),
+      )
       .orderBy(asc(schema.shippingMethods.position)),
-    db.select().from(schema.shippingRates),
+    // Les tranches archivées ne facturent plus rien : les laisser entrer ici
+    // remettrait un ancien prix au panier sans que rien ne le montre.
+    db
+      .select()
+      .from(schema.shippingRates)
+      .where(isNull(schema.shippingRates.archivedAt)),
     // Le CODE ne sort pas : c'est lui qui ouvre la tablette de vente.
     db
       .select({ id: schema.stands.id, nom: schema.stands.nom })
@@ -1242,14 +1261,27 @@ app.post("/admin/shipping/methods", async (c) => {
 });
 
 /**
- * Supprime un mode — seulement s'il n'a jamais servi.
+ * Archive un mode de livraison, ou le restaure.
  *
- * Une commande passée garde le nom du mode choisi ; effacer le mode d'une
- * commande déjà expédiée ferait disparaître de son historique la façon dont
- * elle est partie. Dans ce cas on refuse, et il reste à le décocher.
+ * La suppression définitive a été RETIRÉE. Elle n'était permise que sur un
+ * mode dont aucune commande n'était jamais partie — un mode qui avait servi
+ * n'avait donc aucun moyen de quitter la liste — et, quand elle passait, elle
+ * emportait au passage toute la grille tarifaire, en silence.
+ *
+ * Archivé, le mode quitte le tunnel de commande et la liste ordinaire, mais
+ * sa ligne reste : les commandes déjà parties ont figé son `slug`, et c'est
+ * par lui qu'elles savent encore dire comment le colis est parti. Ses tarifs
+ * restent attachés, intacts, et « Restaurer » rend le mode avec sa grille.
+ *
+ * `commandes` dit combien sont parties avec lui, pour que l'écran le redise.
  */
-app.delete("/admin/shipping/methods/:id", async (c) => {
+app.post("/admin/shipping/methods/:id/archive", async (c) => {
   const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) return c.json({ error: "identifiant invalide" }, 400);
+  const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  // Défaut : on archive. Seul un « archived: false » explicite restaure.
+  const archiver = b.archived !== false;
+
   const [m] = await db
     .select()
     .from(schema.shippingMethods)
@@ -1258,17 +1290,25 @@ app.delete("/admin/shipping/methods/:id", async (c) => {
   const lignes = await sql`
     select count(*)::int as n from "order" where shipping_method = ${m.slug}
   `;
-  const n = Number(lignes[0]?.n ?? 0);
-  if (n > 0)
-    return c.json(
-      {
-        error: `${n} commande(s) sont parties avec ce mode : il ne peut pas être supprimé. Décochez « Proposé » pour cesser de l'offrir.`,
-      },
-      409,
-    );
-  await db.delete(schema.shippingRates).where(eq(schema.shippingRates.methodId, id));
-  await db.delete(schema.shippingMethods).where(eq(schema.shippingMethods.id, id));
-  return c.json({ ok: true });
+
+  const [ligne] = await db
+    .update(schema.shippingMethods)
+    .set({
+      archivedAt: archiver ? new Date() : null,
+      // Rangé et décoché d'un même geste : laisser « Proposé » sur un mode
+      // archivé ferait réapparaître la livraison au premier rétablissement,
+      // sans que personne l'ait redemandé.
+      ...(archiver ? { active: false } : {}),
+    })
+    .where(eq(schema.shippingMethods.id, id))
+    .returning({ archivedAt: schema.shippingMethods.archivedAt });
+  if (!ligne) return c.notFound();
+
+  return c.json({
+    ok: true,
+    archived: ligne.archivedAt != null,
+    commandes: Number(lignes[0]?.n ?? 0),
+  });
 });
 
 /** Modifie un mode de livraison : nom, texte, emplacement de retrait, actif. */
@@ -1354,6 +1394,11 @@ app.post("/admin/shipping/rates", async (c) => {
             eq(schema.shippingRates.methodId, methodId),
             eq(schema.shippingRates.zoneId, zoneId),
             eq(schema.shippingRates.minWeightGrams, tranche.min),
+            // Une tranche ARCHIVÉE ne se laisse pas retrouver ainsi : saisir
+            // ce poids poserait une tranche neuve, comme on s'y attend, au
+            // lieu de réécrire par-dessus une ligne rangée qui resterait
+            // invisible, et le prix saisi n'apparaîtrait nulle part.
+            isNull(schema.shippingRates.archivedAt),
           ),
         );
   if (existant) {
@@ -1371,19 +1416,70 @@ app.post("/admin/shipping/rates", async (c) => {
   return c.json(row);
 });
 
-/** Retire une tranche de la grille. */
-app.delete("/admin/shipping/rates/:id", async (c) => {
+/**
+ * Archive une tranche de la grille, ou la restaure.
+ *
+ * Elle était effacée. Une tranche, c'est un prix négocié avec un
+ * transporteur, une borne de poids et une franchise de port : rien de tout
+ * cela ne vit ailleurs, et un clic de trop le redemandait à la main.
+ *
+ * Archivée, elle ne facture plus rien et sort de la grille ; sa borne basse
+ * redevient libre pour une nouvelle tranche (l'unicité ne porte que sur les
+ * tranches vivantes, voir le schéma). D'où le refus de restaurer quand une
+ * autre tranche a repris cette borne depuis : deux prix pour le même poids,
+ * c'est la base qui trancherait, au hasard.
+ */
+app.post("/admin/shipping/rates/:id/archive", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isFinite(id)) return c.json({ error: "identifiant invalide" }, 400);
-  await db.delete(schema.shippingRates).where(eq(schema.shippingRates.id, id));
-  return c.json({ ok: true });
+  const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  // Défaut : on archive. Seul un « archived: false » explicite restaure.
+  const archiver = b.archived !== false;
+
+  const [tranche] = await db
+    .select()
+    .from(schema.shippingRates)
+    .where(eq(schema.shippingRates.id, id));
+  if (!tranche) return c.notFound();
+
+  if (!archiver) {
+    const [occupee] = await db
+      .select({ id: schema.shippingRates.id })
+      .from(schema.shippingRates)
+      .where(
+        and(
+          eq(schema.shippingRates.methodId, tranche.methodId),
+          eq(schema.shippingRates.zoneId, tranche.zoneId),
+          eq(schema.shippingRates.minWeightGrams, tranche.minWeightGrams),
+          isNull(schema.shippingRates.archivedAt),
+        ),
+      );
+    if (occupee)
+      return c.json(
+        {
+          error: `Une tranche couvre déjà ce poids dans cette zone : restaurer celle-ci en poserait deux au même endroit. Retirez l'autre d'abord, ou saisissez ce prix dans la grille.`,
+        },
+        409,
+      );
+  }
+
+  const [ligne] = await db
+    .update(schema.shippingRates)
+    .set({ archivedAt: archiver ? new Date() : null })
+    .where(eq(schema.shippingRates.id, id))
+    .returning({ archivedAt: schema.shippingRates.archivedAt });
+  if (!ligne) return c.notFound();
+  return c.json({ ok: true, archived: ligne.archivedAt != null });
 });
 
 /**
- * Remplace TOUTE la grille tarifaire d'un mode dans une zone.
+ * Enregistre TOUTE la grille tarifaire d'un mode dans une zone.
  *
- * Saisir tranche par tranche laissait vivre les anciennes bornes à côté des
- * nouvelles ; on repart donc de zéro à chaque enregistrement.
+ * L'écran envoie la grille entière, jamais une tranche isolée : c'est la
+ * seule façon de vérifier d'un bloc qu'elle se tient — les bornes s'enchaînent
+ * et se répondent, une tranche seule ne dit rien. Ce qui n'y figure plus
+ * cesse de facturer, sans rien perdre : le détail est plus bas, au moment de
+ * l'écrire.
  *
  * Une grille est refusée si elle laisse un trou ou si deux tranches se
  * chevauchent : un trou, c'est un colis d'un certain poids que plus personne
@@ -1430,31 +1526,74 @@ app.post("/admin/shipping/rates/grille", async (c) => {
       );
   }
 
+  /*
+   * La grille se réécrit SANS rien détruire.
+   *
+   * Elle partait autrefois d'une table rase : toutes les tranches du couple
+   * (mode, zone) effacées, puis réinsérées. C'était la seule façon, depuis cet
+   * écran, de perdre un prix négocié — retirer une ligne de la grille et
+   * enregistrer l'effaçait pour de bon.
+   *
+   * On compare donc tranche à tranche, par leur borne basse, qui est ce qui
+   * les identifie :
+   *   - une borne déjà là est MISE À JOUR sur place (son identifiant ne
+   *     bouge pas, et la ligne archivée qui lui correspondrait ailleurs n'est
+   *     pas touchée) ;
+   *   - une borne nouvelle est AJOUTÉE ;
+   *   - une borne qui disparaît de l'écran est ARCHIVÉE, jamais effacée. Elle
+   *     cesse aussitôt de facturer et se retrouve dans « Tranches archivées ».
+   *
+   * Conséquence voulue : réenregistrer une grille inchangée n'archive rien.
+   * Archiver à chaque enregistrement aurait rempli la vue des archivées d'une
+   * copie par clic, et ce qu'on y cherche serait devenu introuvable.
+   */
   const count = await db.transaction(async (tx) => {
-    await tx
-      .delete(schema.shippingRates)
+    const vivantes = await tx
+      .select({
+        id: schema.shippingRates.id,
+        minWeightGrams: schema.shippingRates.minWeightGrams,
+      })
+      .from(schema.shippingRates)
       .where(
         and(
           eq(schema.shippingRates.methodId, methodId),
           eq(schema.shippingRates.zoneId, zoneId),
+          isNull(schema.shippingRates.archivedAt),
         ),
       );
-    if (tranches.length === 0) return 0;
-    const posees = await tx
-      .insert(schema.shippingRates)
-      .values(
-        tranches.map((t) => ({
-          methodId,
-          zoneId,
-          priceCents: t.priceCents,
-          freeFromCents,
-          minWeightGrams: t.min,
-          maxWeightGrams: t.max,
-          active: true,
-        })),
-      )
-      .returning({ id: schema.shippingRates.id });
-    return posees.length;
+    const parBorne = new Map(vivantes.map((v) => [v.minWeightGrams, v.id]));
+    const gardees = new Set(tranches.map((t) => t.min));
+
+    // Les disparues d'abord : leur borne redevient libre AVANT qu'une
+    // nouvelle tranche ne vienne éventuellement l'occuper.
+    const aArchiver = vivantes
+      .filter((v) => !gardees.has(v.minWeightGrams))
+      .map((v) => v.id);
+    if (aArchiver.length)
+      await tx
+        .update(schema.shippingRates)
+        .set({ archivedAt: new Date() })
+        .where(inArray(schema.shippingRates.id, aArchiver));
+
+    for (const t of tranches) {
+      const valeurs = {
+        methodId,
+        zoneId,
+        priceCents: t.priceCents,
+        freeFromCents,
+        minWeightGrams: t.min,
+        maxWeightGrams: t.max,
+        active: true,
+      };
+      const existante = parBorne.get(t.min);
+      if (existante !== undefined)
+        await tx
+          .update(schema.shippingRates)
+          .set(valeurs)
+          .where(eq(schema.shippingRates.id, existante));
+      else await tx.insert(schema.shippingRates).values(valeurs);
+    }
+    return tranches.length;
   });
   return c.json({ ok: true, count });
 });
@@ -1666,6 +1805,19 @@ app.post("/auth/login", async (c) => {
   if (!user || !ok) {
     noteFailedLogin(ip);
     return c.json({ error: "Identifiants invalides" }, 401);
+  }
+  // Un compte archivé n'entre plus. Le contrôle vient APRÈS la vérification
+  // du mot de passe, exprès : il ne se déclenche que pour qui le connaissait
+  // déjà, et ne dit donc à personne d'autre que cette adresse a un compte.
+  if (user.archivedAt) {
+    noteFailedLogin(ip);
+    return c.json(
+      {
+        error:
+          "Ce compte est archivé : il ne donne plus accès au back-office. La propriétaire peut le restaurer depuis « Comptes ».",
+      },
+      403,
+    );
   }
   loginAttempts.delete(ip);
   const token = await createSession(user.id);
@@ -2061,12 +2213,24 @@ async function exigerProprietaire(jeton: string | undefined) {
   return user;
 }
 
-/** Combien de propriétaires reste-t-il ? Sert à ne jamais tomber à zéro. */
+/**
+ * Combien de propriétaires reste-t-il ? Sert à ne jamais tomber à zéro.
+ *
+ * Les comptes ARCHIVÉS ne comptent pas : ils ne peuvent plus se connecter, et
+ * les laisser dans le total autoriserait à archiver le dernier propriétaire
+ * encore capable d'entrer — un back-office sans propriétaire ne se répare pas
+ * depuis le back-office.
+ */
 async function nombreProprietaires(): Promise<number> {
   const [n] = await db
     .select({ n: count() })
     .from(schema.adminUsers)
-    .where(eq(schema.adminUsers.role, OWNER_ROLE));
+    .where(
+      and(
+        eq(schema.adminUsers.role, OWNER_ROLE),
+        isNull(schema.adminUsers.archivedAt),
+      ),
+    );
   return Number(n?.n ?? 0);
 }
 
@@ -2176,6 +2340,9 @@ app.get("/admin/users", async (c) => {
       email: schema.adminUsers.email,
       role: schema.adminUsers.role,
       createdAt: schema.adminUsers.createdAt,
+      // Les archivés viennent AVEC, marqués : l'écran les range dans sa
+      // section « Comptes archivés », d'où ils se restaurent.
+      archivedAt: schema.adminUsers.archivedAt,
     })
     .from(schema.adminUsers)
     .orderBy(asc(schema.adminUsers.id));
@@ -2254,9 +2421,23 @@ app.post("/admin/users", async (c) => {
   if (!motDePasse)
     return c.json({ error: "mot de passe requis pour un nouveau compte" }, 400);
   const [existe] = await db
-    .select({ id: schema.adminUsers.id })
+    .select({
+      id: schema.adminUsers.id,
+      archivedAt: schema.adminUsers.archivedAt,
+    })
     .from(schema.adminUsers)
     .where(eq(schema.adminUsers.email, email));
+  // Un compte archivé garde son adresse réservée : la recréer échouerait sur
+  // l'index unique, et le message générique aurait envoyé chercher un compte
+  // qui ne s'affiche nulle part. On dit donc où il est.
+  if (existe?.archivedAt)
+    return c.json(
+      {
+        error:
+          "Cette adresse a un compte archivé. Restaurez-le depuis « Comptes archivés » plutôt que d'en créer un second.",
+      },
+      409,
+    );
   if (existe) return c.json({ error: "cette adresse a déjà un compte" }, 409);
   const [row] = await db
     .insert(schema.adminUsers)
@@ -2266,24 +2447,62 @@ app.post("/admin/users", async (c) => {
 });
 
 /**
- * Supprime un compte. Ni le sien (on se mettrait dehors), ni le dernier
- * propriétaire. Les sessions du compte tombent avec lui (cascade).
+ * Archive un compte, ou le restaure.
+ *
+ * La suppression définitive a été RETIRÉE. Un compte effacé emportait son
+ * nom, et le nom est justement ce que l'historique cite : les journaux des
+ * commandes gardent qui a expédié, remboursé, encaissé ou annulé. Effacer la
+ * vendeuse rendait anonymes des mois d'écritures.
+ *
+ * Archivé, le compte ne peut plus entrer (le contrôle est dans /auth/login)
+ * et quitte la liste ordinaire ; l'historique garde son nom, et « Restaurer »
+ * lui rend son accès avec son rôle.
+ *
+ * Ses SESSIONS, elles, sont réellement supprimées : une session n'est pas un
+ * souvenir mais une porte ouverte, et la laisser ouverte pendant un mois
+ * viderait l'archivage de son sens. C'est la seule suppression que cet
+ * archivage s'autorise, et elle ne coûte rien à personne — il suffit de se
+ * reconnecter après une restauration.
+ *
+ * Les deux garde-fous de la création restent : ni son propre compte (on se
+ * mettrait dehors), ni le dernier propriétaire encore capable d'entrer.
  */
-app.delete("/admin/users/:id", async (c) => {
+app.post("/admin/users/:id/archive", async (c) => {
   const moi = await exigerProprietaire(getCookie(c, SESSION_COOKIE));
   if (!moi) return c.json({ error: "Réservé au propriétaire" }, 403);
   const id = Number(c.req.param("id"));
-  if (id === moi.adminUserId)
-    return c.json({ error: "on ne supprime pas son propre compte" }, 400);
+  if (!Number.isFinite(id)) return c.json({ error: "identifiant invalide" }, 400);
+  const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  // Défaut : on archive. Seul un « archived: false » explicite restaure.
+  const archiver = b.archived !== false;
+
+  if (archiver && id === moi.adminUserId)
+    return c.json({ error: "on n'archive pas son propre compte" }, 400);
   const [cible] = await db
-    .select({ role: schema.adminUsers.role })
+    .select({
+      role: schema.adminUsers.role,
+      archivedAt: schema.adminUsers.archivedAt,
+    })
     .from(schema.adminUsers)
     .where(eq(schema.adminUsers.id, id));
   if (!cible) return c.notFound();
-  if (cible.role === OWNER_ROLE && (await nombreProprietaires()) <= 1)
+  if (
+    archiver &&
+    !cible.archivedAt &&
+    cible.role === OWNER_ROLE &&
+    (await nombreProprietaires()) <= 1
+  )
     return c.json({ error: "il faut au moins un propriétaire" }, 400);
-  await db.delete(schema.adminUsers).where(eq(schema.adminUsers.id, id));
-  return c.json({ ok: true });
+
+  const [ligne] = await db
+    .update(schema.adminUsers)
+    .set({ archivedAt: archiver ? new Date() : null })
+    .where(eq(schema.adminUsers.id, id))
+    .returning({ archivedAt: schema.adminUsers.archivedAt });
+  if (!ligne) return c.notFound();
+  if (archiver)
+    await db.delete(schema.sessions).where(eq(schema.sessions.adminUserId, id));
+  return c.json({ ok: true, archived: ligne.archivedAt != null });
 });
 
 /** Ferme toutes les sessions d'un compte — le remet à la porte. */
@@ -2353,16 +2572,58 @@ app.post("/admin/frames", async (c) => {
 });
 
 /**
- * Retire un cadre du catalogue. Les commandes passées ne bougent pas : leur
- * prix a été figé à l'achat, le cadre n'y est plus relu.
+ * Archive un cadre, ou le restaure.
+ *
+ * La suppression définitive a été RETIRÉE. Elle se croyait sans conséquence
+ * parce que le PRIX est figé sur la ligne de commande — mais le NOM, lui, se
+ * relit ici, et à trois endroits qui regardent en arrière : la fiche d'une
+ * commande passée, le courrier de confirmation, et le nom du fichier
+ * d'impression. Effacer un cadre laissait donc des commandes anciennes sans
+ * cadre nommé, et un atelier qui ne savait plus lequel poser.
+ *
+ * Archivé, le cadre quitte le configurateur et la liste ordinaire ; son nom
+ * continue de s'afficher partout où il a été vendu, et « Restaurer » le
+ * remet au catalogue avec ses prix et son poids.
  */
-app.delete("/admin/frames/:id", async (c) => {
+app.post("/admin/frames/:id/archive", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) return c.json({ error: "identifiant invalide" }, 400);
+  const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  // Défaut : on archive. Seul un « archived: false » explicite restaure.
+  const archiver = b.archived !== false;
+
+  // Combien de fois il a été vendu : l'écran le redit, pour que la
+  // propriétaire voie ce que son archivage laisse derrière lui.
+  //
+  // La comparaison se fait en TEXTE, et surtout pas en `::int`. « Sans
+  // cadre » s'écrit tantôt `null`, tantôt la chaîne VIDE — le reste du code
+  // attend explicitement les deux (configurator-routes.ts, le panier, les
+  // courriers). Or cette requête balaie TOUTES les lignes de commande : une
+  // seule chaîne vide quelque part dans l'historique et Postgres refuse le
+  // cast, ce qui rendrait impossible l'archivage de N'IMPORTE QUEL cadre,
+  // pas seulement celui-là. En texte, une valeur inattendue ne correspond
+  // simplement à rien.
+  const [vendu] = await db
+    .select({ n: count() })
+    .from(schema.orderItems)
+    .where(sqlOp`${schema.orderItems.config} ->> 'frameId' = ${String(id)}`);
+
   const [row] = await db
-    .delete(schema.frames)
-    .where(eq(schema.frames.id, Number(c.req.param("id"))))
-    .returning();
+    .update(schema.frames)
+    .set({
+      archivedAt: archiver ? new Date() : null,
+      // Rangé et décoché d'un même geste, comme un mode de livraison : sinon
+      // la restauration le remettrait en vente sans qu'on l'ait demandé.
+      ...(archiver ? { active: false } : {}),
+    })
+    .where(eq(schema.frames.id, id))
+    .returning({ archivedAt: schema.frames.archivedAt });
   if (!row) return c.notFound();
-  return c.json({ ok: true });
+  return c.json({
+    ok: true,
+    archived: row.archivedAt != null,
+    commandes: Number(vendu?.n ?? 0),
+  });
 });
 
 /**

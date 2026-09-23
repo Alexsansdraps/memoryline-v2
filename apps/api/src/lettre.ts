@@ -411,7 +411,7 @@ interface LettreVue {
   contenuHtml: string;
   etat: EtatLettre;
   etatLibelle: string;
-  /** Vrai tant que la lettre peut être modifiée ou supprimée. */
+  /** Vrai tant que la lettre peut être modifiée. */
   modifiable: boolean;
   envoyeeLe: string | null;
   destinatairesPrevus: number;
@@ -419,6 +419,11 @@ interface LettreVue {
   echecs: number;
   restants: number;
   createdAt: string;
+  /**
+   * Non nul = archivée : elle quitte la liste ordinaire pour la section
+   * « Lettres archivées », d'où elle se restaure. Rien n'est effacé.
+   */
+  archivedAt: string | null;
 }
 
 type LigneLettre = typeof schema.lettres.$inferSelect;
@@ -468,6 +473,7 @@ async function vueDeLaLettre(ligne: LigneLettre): Promise<LettreVue> {
     echecs: comptes.echecs,
     restants: comptes.enAttente + comptes.enCours,
     createdAt: ligne.createdAt.toISOString(),
+    archivedAt: ligne.archivedAt ? ligne.archivedAt.toISOString() : null,
   };
 }
 
@@ -605,25 +611,51 @@ export function mountLettre(app: Hono): void {
     return c.json(await vueDeLaLettre(modifiee));
   });
 
-  /** Supprimer un brouillon. Une lettre partie reste, c'est une archive. */
-  app.delete("/admin/lettres/:id", async (c) => {
+  /**
+   * Archive une lettre, ou la restaure.
+   *
+   * La suppression définitive a été RETIRÉE. Une lettre PARTIE ne s'effaçait
+   * déjà pas, et c'était la bonne règle : ses `lettre_envoi` disent qui l'a
+   * reçue, et cette liste est la seule chose qui empêche d'écrire deux fois à
+   * la même personne. Mais le brouillon, lui, était bel et bien détruit — et
+   * un brouillon, c'est un texte écrit, relu, mis en forme.
+   *
+   * L'archivage range les deux. La lettre quitte la liste ordinaire, garde
+   * son contenu et ses destinataires, et « Restaurer » la remet telle quelle.
+   *
+   * Seul un envoi EN COURS est refusé : la boucle d'envoi tourne encore, par
+   * paquets, et ranger sa lettre en plein milieu ferait disparaître de
+   * l'écran ce qui est en train de partir, sans rien arrêter.
+   */
+  app.post("/admin/lettres/:id/archive", async (c) => {
     const id = identifiant(c.req.param("id"));
     if (!id) return c.json({ error: "Cette lettre n'existe pas." }, 404);
     const ligne = await lireLettre(id);
     if (!ligne) return c.json({ error: "Cette lettre n'existe pas." }, 404);
+    const corps = (await c.req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+    // Défaut : on archive. Seul un « archived: false » explicite restaure.
+    const archiver = corps.archived !== false;
 
-    if (etatDe(ligne.etat) !== "brouillon")
+    if (archiver && etatDe(ligne.etat) === "en_cours")
       return c.json(
         {
           error:
-            "Cette lettre est partie chez vos lecteurs : elle ne peut plus être supprimée. " +
-            "Elle reste ici pour garder la trace de qui l'a reçue.",
+            "Cette lettre est en train de partir : attendez la fin de l'envoi pour l'archiver.",
         },
         409,
       );
 
-    await db.delete(schema.lettres).where(eq(schema.lettres.id, id));
-    return c.json({ ok: true });
+    const lignes = await db
+      .update(schema.lettres)
+      .set({ archivedAt: archiver ? new Date() : null, updatedAt: new Date() })
+      .where(eq(schema.lettres.id, id))
+      .returning();
+    const touchee = lignes[0];
+    if (!touchee) return c.json({ error: "Cette lettre n'existe pas." }, 404);
+    return c.json({ ok: true, archived: touchee.archivedAt != null });
   });
 
   /** La lettre telle qu'elle arrivera, sans rien envoyer. */
@@ -742,6 +774,17 @@ export function mountLettre(app: Hono): void {
       });
     }
 
+    // Une lettre rangée ne part pas. Elle ne s'affiche plus dans la liste
+    // ordinaire : la voir partir depuis un onglet resté ouvert serait un envoi
+    // que personne n'a vu venir, et un courrier ne se rattrape pas.
+    if (ligne.archivedAt)
+      return c.json(
+        {
+          error:
+            "Cette lettre est archivée : restaurez-la avant de l'envoyer.",
+        },
+        409,
+      );
     if (!ligne.objet.trim())
       return c.json({ error: "Indiquez l'objet du courrier avant d'envoyer." }, 400);
     if (!ligne.contenuHtml.trim())

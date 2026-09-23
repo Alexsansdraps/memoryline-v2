@@ -136,13 +136,22 @@ export interface Commande {
 export interface CommandeDetail {
   order: Commande;
   items: LigneCommande[];
+  /**
+   * Les cadres vendus sur CETTE commande, nommés — y compris ceux qui ont
+   * depuis quitté le catalogue. Ils arrivent avec la commande justement pour
+   * ça : le catalogue public, lui, ne rend que ce qui est encore en vente.
+   *
+   * Absente sur une API d'une version antérieure : la ligne retombe alors sur
+   * son libellé générique plutôt que la page refuse de s'ouvrir.
+   */
+  cadres?: Cadre[];
   expeditions: Expedition[];
   montants: Montants;
   statutFinancier: string;
   statutExpedition: string;
 }
 
-/** Un cadre du catalogue — sert à nommer l'option choisie sur une ligne. */
+/** Un cadre vendu sur une commande — sert à nommer l'option de la ligne. */
 export interface Cadre {
   id: number;
   name: string;
@@ -367,16 +376,6 @@ export const supprimerAdresse = (astro: ContexteAstro, id: number | string) =>
   appel<{ ok: boolean }>(astro, `/compte/adresses/${encodeURIComponent(id)}`, {
     methode: "DELETE",
   });
-
-/**
- * Catalogue des cadres, pour nommer l'option choisie sur une ligne de
- * commande : la configuration ne garde que l'identifiant du cadre, pas son
- * nom. Route publique, sans session — l'échec n'est pas bloquant.
- */
-export async function cadres(astro: ContexteAstro): Promise<Cadre[]> {
-  const r = await appel<Cadre[]>(astro, "/frames");
-  return r.ok ? (r.donnees ?? []) : [];
-}
 
 /* --- Redirections et session ----------------------------------------------- */
 

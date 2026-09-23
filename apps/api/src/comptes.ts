@@ -864,6 +864,36 @@ export function mountCompteRoutes(app: Hono): void {
      * dans les courriers, qui eux ne savent pas exécuter de code.
      */
     const items = lignes.map((l) => ({ ...l, apercu: cheminApercu(l.id) }));
+
+    /*
+     * Les cadres de CETTE commande, nommés — archivés compris.
+     *
+     * La configuration d'une ligne ne garde que l'identifiant du cadre. La
+     * page les nommait en relisant le catalogue public `/frames`, qui ne rend
+     * que ce qui est en vente : le jour où un cadre est décoché ou archivé,
+     * une commande vieille de six mois se remettait à afficher « Cadre :
+     * Cadre ». Le nom d'un cadre vendu fait partie de l'histoire de la
+     * commande — il part donc AVEC elle, comme le nom du mode de livraison
+     * figé sur `shippingLabel`, et comme le font déjà les noms des fichiers
+     * d'impression côté atelier.
+     *
+     * « Sans cadre » s'écrit tantôt `null`, tantôt la chaîne vide : on ne
+     * garde que ce qui est un vrai identifiant.
+     */
+    const cadreIds = [
+      ...new Set(
+        lignes
+          .map((l) => Number((l.config as { frameId?: unknown } | null)?.frameId))
+          .filter((n) => Number.isFinite(n) && n > 0),
+      ),
+    ];
+    const cadres = cadreIds.length
+      ? await db
+          .select({ id: schema.frames.id, name: schema.frames.name })
+          .from(schema.frames)
+          .where(inArray(schema.frames.id, cadreIds))
+      : [];
+
     const expeditions = await db
       .select()
       .from(schema.fulfillments)
@@ -888,6 +918,7 @@ export function mountCompteRoutes(app: Hono): void {
     return c.json({
       order,
       items,
+      cadres,
       expeditions: expeditions.map((f) => ({
         ...f,
         trackingUrl: f.trackingUrl ?? lienDeSuivi(f.carrier, f.trackingNumber),

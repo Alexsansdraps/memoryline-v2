@@ -76,10 +76,17 @@ if (Astro.request.method === "POST") {
           flash = `Nouveau code pour « ${stand.nom} ». L'adresse précédente ne fonctionne plus : ouvrez la nouvelle sur la tablette.`;
           break;
         }
-        case "supprimer": {
-          await api.supprimerStand(cible);
-          const nom = texte("libelle");
-          flash = nom ? `Stand « ${nom} » supprimé.` : "Stand supprimé.";
+        case "archiver": {
+          const restaurer = texte("archived") === "false";
+          const { commandes } = await api.archiverStand(cible, !restaurer);
+          const nom = texte("libelle") || "Ce stand";
+          flash = restaurer
+            ? `Stand « ${nom} » restauré. Il revient dans la liste, fermé : ouvrez-le le jour du salon.`
+            : `Stand « ${nom} » archivé et fermé.${
+                commandes > 0
+                  ? ` Ses ${pluriel(commandes, "vente")} gardent son nom et restent comptées.`
+                  : ""
+              } Vous pouvez le restaurer à tout moment, plus bas.`;
           break;
         }
       }
@@ -106,7 +113,22 @@ try {
     "La liste des stands n'a pas pu être chargée. Réessayez dans un instant.";
 }
 
-const ouverts = stands.filter((s) => s.ouvert).length;
+// Les archivés quittent la liste ordinaire pour leur propre section.
+const actifs = stands.filter((s) => !s.archivedAt);
+const archives = stands.filter((s) => s.archivedAt);
+
+const ouverts = actifs.filter((s) => s.ouvert).length;
+
+/** Ce qu'il faut avoir lu avant d'archiver un stand. */
+function messageArchivage(stand: StandBo): string {
+  return [
+    `Archiver le stand « ${stand.nom} » ?`,
+    stand.commandes > 0
+      ? `Il sera fermé et quittera la liste. Ses ${pluriel(stand.commandes, "vente")} ne bougent pas : elles gardent son nom et restent comptées dans vos chiffres.`
+      : "Il sera fermé et quittera la liste. Son adresse ne répondra plus.",
+    "Vous pourrez le restaurer quand vous voudrez, dans « Stands archivés ».",
+  ].join("\n\n");
+}
 
 /**
  * Origine publique de la boutique, jamais écrite en dur : l'environnement
@@ -266,7 +288,7 @@ const classeBouton =
 
   <div class="grid gap-4">
     {
-      stands.map((stand) => (
+      actifs.map((stand) => (
         <article
           class={`rounded-lg border bg-bo-surface p-5 ${
             nouveaute?.id === stand.id
@@ -407,30 +429,20 @@ const classeBouton =
               <button class={classeBouton}>Nouveau code</button>
             </form>
 
-            {stand.commandes > 0 ? (
-              <span class="text-xs text-bo-muted">
-                Ce stand a vendu : il se ferme, il ne se supprime plus.
-              </span>
-            ) : (
-              <form
-                method="POST"
-                data-confirme={`Supprimer le stand « ${stand.nom} » ? Il quitte la liste et son adresse ne répond plus. Rien n'a encore été vendu ici, donc aucune vente ne sera perdue.`}
-              >
-                <input type="hidden" name="_action" value="supprimer" />
-                <input type="hidden" name="id" value={stand.id} />
-                <input type="hidden" name="libelle" value={stand.nom} />
-                <button class="rounded border border-red-300 px-3 py-1.5 text-red-700 hover:bg-red-50">
-                  Supprimer
-                </button>
-              </form>
-            )}
+            <form method="POST" data-confirme={messageArchivage(stand)}>
+              <input type="hidden" name="_action" value="archiver" />
+              <input type="hidden" name="id" value={stand.id} />
+              <input type="hidden" name="libelle" value={stand.nom} />
+              <input type="hidden" name="archived" value="true" />
+              <button class={classeBouton}>Archiver</button>
+            </form>
           </div>
         </article>
       ))
     }
 
     {
-      stands.length === 0 && !erreur && (
+      actifs.length === 0 && !erreur && (
         <p class="rounded-lg border border-bo-border bg-bo-surface p-5 text-sm text-bo-muted">
           Aucun stand pour l'instant. Ouvrez le premier ci-dessous : son code
           d'accès sera tiré au sort à ce moment-là.
@@ -438,6 +450,51 @@ const classeBouton =
       )
     }
   </div>
+
+  {/* ==================================================================== */}
+  {/* Les stands archivés                                                  */}
+  {/* ==================================================================== */}
+  {archives.length > 0 && (
+    <section class="mt-6">
+      <h2 class="mb-1 text-base font-semibold">Stands archivés</h2>
+      <p class="mb-3 max-w-3xl text-xs text-bo-muted">
+        Retirés de la liste ci-dessus, fermés, leur adresse ne répond plus.
+        Leurs ventes n'ont pas bougé : elles gardent leur nom et restent
+        comptées. « Restaurer » remet le stand dans la liste, toujours fermé.
+      </p>
+      <div class="grid gap-2 opacity-70">
+        {archives.map((stand) => (
+          <article class="flex flex-wrap items-center gap-4 rounded-lg border border-bo-border bg-bo-surface p-4">
+            <div class="min-w-48 flex-1">
+              <p class="font-medium">{stand.nom}</p>
+              <p class="text-xs text-bo-muted">
+                {stand.commandes > 0
+                  ? `${pluriel(stand.commandes, "vente")} · ${formatPrice(stand.cents)}`
+                  : "Aucune vente"}
+              </p>
+            </div>
+            {stand.commandes > 0 && (
+              <a
+                href={`${url("/ventes-salon")}?stand=${stand.id}`}
+                class="text-sm text-bo-accent hover:underline"
+              >
+                Voir ses commandes
+              </a>
+            )}
+            <form method="POST">
+              <input type="hidden" name="_action" value="archiver" />
+              <input type="hidden" name="id" value={stand.id} />
+              <input type="hidden" name="libelle" value={stand.nom} />
+              <input type="hidden" name="archived" value="false" />
+              <button class="text-sm text-bo-accent hover:underline">
+                Restaurer
+              </button>
+            </form>
+          </article>
+        ))}
+      </div>
+    </section>
+  )}
 
   {/* Pas d'ouverture de stand quand on en regarde un : on est venu voir les
       ventes de celui-là, un formulaire de création à côté se lit comme s'il

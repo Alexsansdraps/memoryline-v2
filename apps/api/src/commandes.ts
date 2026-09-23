@@ -12,7 +12,18 @@
  */
 import type { Context, Hono } from "hono";
 import type { SQL } from "drizzle-orm";
-import { and, desc, eq, gte, inArray, lte, or, sql as raw } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  or,
+  sql as raw,
+} from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import {
   capturePaypalDeLaCommande,
@@ -453,6 +464,14 @@ export function mountOrderRoutes(app: Hono): void {
     const q = c.req.query();
     const limit = Math.min(Number(q.limit ?? 100), 500);
     const conditions = [];
+    // Les archivées sont hors de la liste ordinaire, et « archived=1 » les
+    // montre SEULES : c'est la vue « Commandes archivées ». Les mélanger aux
+    // autres ferait une liste où l'on ne saurait plus ce qui est rangé.
+    conditions.push(
+      q.archived === "1"
+        ? isNotNull(schema.orders.archivedAt)
+        : isNull(schema.orders.archivedAt),
+    );
     if (q.channel === "web" || q.channel === "salon")
       conditions.push(eq(schema.orders.channel, q.channel));
     // Un stand précis : c'est la question qu'on se pose au retour d'un salon,
@@ -582,6 +601,14 @@ export function mountOrderRoutes(app: Hono): void {
       .map((v) => Number(v))
       .filter((n) => Number.isFinite(n) && n > 0);
     if (ids.length) conditions.push(inArray(schema.orders.id, ids));
+    // Le même partage que la liste : l'export suit ce qu'on a sous les yeux.
+    // Une commande rangée n'a pas à reparaître dans un fichier envoyé au
+    // comptable sans que personne l'ait redemandée.
+    conditions.push(
+      q.archived === "1"
+        ? isNotNull(schema.orders.archivedAt)
+        : isNull(schema.orders.archivedAt),
+    );
 
     const rows = await db
       .select({
@@ -795,54 +822,77 @@ export function mountOrderRoutes(app: Hono): void {
       return c.json({ ok: true, count: rows.length });
     }
 
-    if (action === "supprimer") {
-      const detruites = await supprimerCommandes(ids);
-      return c.json({ ok: true, count: detruites.length, numeros: detruites });
+    // « archiver » range le lot, « restaurer » le ressort. L'ancienne action
+    // « supprimer » n'existe plus : elle effaçait les ventes pour de bon.
+    if (action === "archiver" || action === "restaurer") {
+      const archiver = action === "archiver";
+      const touchees = await archiverCommandes(ids, archiver);
+      return c.json({
+        ok: true,
+        archived: archiver,
+        count: touchees.length,
+        numeros: touchees,
+      });
     }
 
     return c.json({ error: "action inconnue" }, 400);
   });
 
   /**
-   * Efface une commande et tout ce qui pend après elle.
+   * Archive une commande, ou la restaure.
    *
-   * Rien n'est refusé, pas même une commande payée : c'est la boutiquière qui
-   * sait ce qu'elle veut garder, et l'écran la prévient nommément avant
-   * d'agir. Une vente supprimée disparaît en revanche des chiffres, ce qui la
-   * distingue d'une commande annulée — celle-ci reste et se lit encore.
+   * La suppression définitive a été RETIRÉE, et elle ne manquait à personne :
+   * elle emportait en cascade les lignes, les expéditions, les
+   * remboursements, les mouvements d'argent et le journal, laissait dans la
+   * numérotation un trou que plus rien ne pouvait expliquer, et ne demandait
+   * même pas si la commande était payée.
+   *
+   * Archivée, la commande quitte la liste ordinaire et l'export, et se range
+   * dans « Commandes archivées ». Sa fiche reste lisible, ses fichiers
+   * d'impression aussi, la recherche continue de la rendre — marquée
+   * « Archivée », c'est ainsi qu'on la retrouve — et « Restaurer » la remet
+   * dans la liste.
+   *
+   * Ce que l'archivage ne fait PAS, et c'est voulu : il ne touche ni au
+   * statut, ni à l'argent, ni au stock, et ne prévient pas la cliente. Une
+   * vente archivée continue donc de compter dans le chiffre d'affaires. Pour
+   * qu'elle cesse d'y compter, c'est l'ANNULATION qu'il faut — elle existe
+   * déjà, elle rend l'argent, rouvre le stock et écrit au journal.
    */
-  app.delete("/admin/orders/:id", async (c) => {
+  app.post("/admin/orders/:id/archive", async (c) => {
     const id = Number(c.req.param("id"));
     if (!Number.isInteger(id) || id <= 0)
       return c.json({ error: "commande inconnue" }, 400);
-    const detruites = await supprimerCommandes([id]);
-    if (!detruites.length)
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    // Défaut : on archive. Seul un « archived: false » explicite restaure.
+    const archiver = b.archived !== false;
+    const touchees = await archiverCommandes([id], archiver);
+    if (!touchees.length)
       return c.json(
         { error: "Cette commande n'existe plus. Rechargez la liste." },
         404,
       );
-    return c.json({ ok: true, numero: detruites[0] });
+    return c.json({ ok: true, archived: archiver, numero: touchees[0] });
   });
 
   /**
-   * Efface les commandes demandées et rend les numéros réellement effacés.
+   * Range (ou ressort) les commandes demandées et rend leurs numéros.
    *
-   * Les lignes, expéditions, remboursements, mouvements d'argent et journaux
-   * partent en cascade : les clés étrangères le déclarent, inutile de les
-   * énumérer ici et de risquer d'en oublier une à la prochaine table ajoutée.
-   *
-   * Les affiches générées par IA survivent, leur lien vers la ligne se vidant
-   * de lui-même : ce sont des images déjà fabriquées et payées, et leur propre
-   * purge s'en occupe. Les fichiers d'impression écrits sur le disque restent
-   * eux aussi, faute de savoir ici lesquels ne servent plus à personne.
+   * Une seule écriture pour tout le lot : la date d'archivage est la même
+   * pour toutes, ce qui permet de les retrouver ensemble dans la vue des
+   * archivées quand on en a rangé vingt d'un coup.
    */
-  async function supprimerCommandes(ids: number[]): Promise<string[]> {
+  async function archiverCommandes(
+    ids: number[],
+    archiver: boolean,
+  ): Promise<string[]> {
     if (!ids.length) return [];
-    const partis = await db
-      .delete(schema.orders)
+    const touchees = await db
+      .update(schema.orders)
+      .set({ archivedAt: archiver ? new Date() : null })
       .where(inArray(schema.orders.id, ids))
       .returning({ numero: schema.orders.number });
-    return partis.map((p) => p.numero);
+    return touchees.map((p) => p.numero);
   }
 
   /** Crée une expédition : ce qui part, par qui, avec quel numéro de suivi. */

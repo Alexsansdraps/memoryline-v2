@@ -327,6 +327,9 @@ export function mountSalonRoutes(app: Hono): void {
           ouvert: s.ouvert,
           createdAt: s.createdAt,
           closedAt: s.closedAt,
+          // Les archivés viennent AVEC, marqués : l'écran les range dans sa
+          // section « Stands archivés » sans redemander la liste.
+          archivedAt: s.archivedAt,
           ...(parStand.get(s.id) ?? { commandes: 0, cents: 0 }),
         }))
         // Les stands ouverts d'abord : ce sont eux qu'on regarde.
@@ -383,6 +386,17 @@ export function mountSalonRoutes(app: Hono): void {
     if ("ouvert" in b) {
       if (typeof b.ouvert !== "boolean")
         return c.json({ error: "Dites si le stand est ouvert ou fermé." }, 400);
+      // Un stand archivé ne se rouvre pas d'ici : il est rangé, et sa tablette
+      // ne doit rien accepter tant qu'il l'est. Le restaurer d'abord force à
+      // le remettre dans la liste ordinaire avant d'y vendre quoi que ce soit.
+      if (b.ouvert && stand.archivedAt)
+        return c.json(
+          {
+            error:
+              "Ce stand est archivé : restaurez-le avant de l'ouvrir, sinon sa tablette accepterait des commandes sur un stand rangé.",
+          },
+          400,
+        );
       champs.ouvert = b.ouvert;
       // La date de fermeture ne se remet pas à zéro à la réouverture : on veut
       // savoir quand le stand a fermé la dernière fois.
@@ -411,29 +425,56 @@ export function mountSalonRoutes(app: Hono): void {
   });
 
   /**
-   * Supprime un stand qui n'a rien vendu.
+   * Archive un stand, ou le restaure.
    *
-   * Un stand qui a des ventes ne s'efface pas : la clé étrangère détacherait
-   * les commandes sans rien dire, et on perdrait la seule trace de l'endroit
-   * où elles ont été prises. On ferme un stand, on ne le supprime pas.
+   * La suppression définitive a été RETIRÉE. Elle n'était permise que sur un
+   * stand sans la moindre vente, et pour cause : `order.stand_id` se vide en
+   * silence quand le stand s'en va (« set null »), et les ventes du salon
+   * perdaient alors la seule chose qui disait où elles avaient été faites.
+   * Un stand bien rempli, lui, n'avait donc AUCUN moyen de quitter la liste.
+   *
+   * Archivé, il la quitte sans rien emporter : ses ventes gardent son nom,
+   * son code reste réservé — aucun nouveau stand ne peut le reprendre et
+   * hériter de ses ventes — et « Restaurer » le remet tel quel.
+   *
+   * L'archivage FERME le stand : un stand rangé dont la tablette accepterait
+   * encore des commandes serait un piège, et ces commandes-là arriveraient
+   * sur un nom que plus personne ne regarde.
    */
-  app.delete("/admin/stands/:id", async (c) => {
+  app.post("/admin/stands/:id/archive", async (c) => {
     const id = Number(c.req.param("id"));
     if (!Number.isInteger(id) || id <= 0)
       return c.json({ error: "stand inconnu" }, 400);
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    // Défaut : on archive. Seul un « archived: false » explicite restaure.
+    const archiver = b.archived !== false;
+
+    // Combien de ventes s'y rattachent : l'écran le redit ensuite, pour que la
+    // propriétaire sache ce qu'elle range — rien n'est perdu, mais un salon de
+    // deux cents commandes ne se met pas de côté par mégarde.
     const [vendu] = await db
       .select({ n: count() })
       .from(schema.orders)
       .where(eq(schema.orders.standId, id));
-    if (Number(vendu?.n ?? 0) > 0)
-      return c.json(
-        {
-          error:
-            "Ce stand a des commandes : il ne peut pas être supprimé, sinon elles perdraient leur origine. Fermez-le plutôt.",
-        },
-        400,
-      );
-    await db.delete(schema.stands).where(eq(schema.stands.id, id));
-    return c.json({ ok: true });
+
+    const [ligne] = await db
+      .update(schema.stands)
+      .set({
+        archivedAt: archiver ? new Date() : null,
+        // Fermé en même temps qu'archivé. La restauration ne rouvre PAS : on
+        // rouvre un stand exprès, le jour du salon, pas par un clic qui
+        // voulait seulement le ressortir du rangement.
+        ...(archiver ? { ouvert: false, closedAt: new Date() } : {}),
+      })
+      .where(eq(schema.stands.id, id))
+      .returning({ archivedAt: schema.stands.archivedAt });
+    if (!ligne)
+      return c.json({ error: "Ce stand n'existe plus. Rechargez la page." }, 404);
+
+    return c.json({
+      ok: true,
+      archived: ligne.archivedAt != null,
+      commandes: Number(vendu?.n ?? 0),
+    });
   });
 }

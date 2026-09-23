@@ -96,6 +96,7 @@ export async function validateSession(
       adminUserId: schema.adminUsers.id,
       email: schema.adminUsers.email,
       role: schema.adminUsers.role,
+      archivedAt: schema.adminUsers.archivedAt,
     })
     .from(schema.sessions)
     .innerJoin(
@@ -106,6 +107,14 @@ export async function validateSession(
   const row = rows[0];
   if (!row) return null;
   if (row.expiresAt.getTime() < Date.now()) {
+    await db.delete(schema.sessions).where(eq(schema.sessions.id, id));
+    return null;
+  }
+  // Compte archivé : la porte se referme, même si la session date d'avant.
+  // L'archivage ferme déjà les sessions ouvertes ; ce contrôle-ci est la
+  // ceinture qui va avec les bretelles, pour le cas où une session serait
+  // créée entre-temps, ou l'archivage posé à la main dans la base.
+  if (row.archivedAt) {
     await db.delete(schema.sessions).where(eq(schema.sessions.id, id));
     return null;
   }

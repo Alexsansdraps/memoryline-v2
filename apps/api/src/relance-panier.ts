@@ -351,6 +351,11 @@ async function requetePaniers(
       and(
         eq(schema.orders.channel, "web"),
         notInArray(schema.orders.status, STATUTS_CLOS),
+        // Un panier ARCHIVÉ n'est plus un panier à relancer : la boutique l'a
+        // rangé, et lui écrire « vous avez oublié quelque chose » serait le
+        // contraire de ce qu'elle vient de demander. Il quitte donc aussi la
+        // liste des paniers abandonnés, comme il quitte celle des commandes.
+        isNull(schema.orders.archivedAt),
         sql`not exists (select 1 from ${schema.payments} where ${schema.payments.orderId} = ${schema.orders.id} and ${schema.payments.status} = 'montant_different')`,
         isNotNull(schema.customers.email),
         ne(schema.customers.email, ""),

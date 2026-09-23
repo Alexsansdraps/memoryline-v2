@@ -399,6 +399,18 @@ export const frames = pgTable(
     previewColor: text("preview_color"),
     active: boolean("active").notNull().default(true),
     position: integer("position").notNull().default(0),
+    /**
+     * Non nul = archivé : le cadre quitte le configurateur et la liste
+     * ordinaire du back-office, et se range dans « Cadres archivés ».
+     *
+     * La ligne RESTE, et c'est indispensable : le prix est bien figé sur la
+     * ligne de commande, mais le NOM du cadre, lui, se relit ici — sur la
+     * fiche d'une commande passée, dans le courrier de confirmation, et
+     * jusque dans le nom du fichier d'impression (configurator-routes.ts).
+     * Effacer le cadre laissait donc des commandes anciennes sans cadre
+     * nommé, et des fichiers d'impression qui ne disaient plus lequel poser.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => [uniqueIndex("frame_slug_uniq").on(t.slug)],
 );
@@ -779,6 +791,16 @@ export const shippingMethods = pgTable(
     pickupLocation: text("pickup_location"),
     active: boolean("active").notNull().default(true),
     position: integer("position").notNull().default(0),
+    /**
+     * Non nul = archivé : le mode quitte le tunnel de commande et la liste
+     * ordinaire du back-office, et se range dans « Modes archivés ».
+     *
+     * La ligne RESTE, avec son `slug` : c'est lui que les commandes déjà
+     * parties ont figé dans `order.shipping_method`, et c'est par lui qu'on
+     * retrouve de quelle façon un colis est parti. Ses tarifs restent
+     * attachés, intacts : restaurer le mode rend la grille entière.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => [uniqueIndex("shipping_method_slug_uniq").on(t.slug)],
 );
@@ -814,9 +836,22 @@ export const shippingRates = pgTable(
     maxWeightGrams: integer("max_weight_grams"),
     /** Mode indisponible dans cette zone (ex. retrait sur place à l'étranger). */
     active: boolean("active").notNull().default(true),
+    /**
+     * Non nul = archivée : la tranche ne facture plus rien et quitte la
+     * grille, sans être détruite. Elle se relit et se restaure depuis
+     * « Tranches archivées ».
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => [
-    uniqueIndex("shipping_rate_uniq").on(t.methodId, t.zoneId, t.minWeightGrams),
+    // L'unicité ne porte QUE sur les tranches vivantes. Une tranche archivée
+    // garde sa borne basse, et cette borne doit pouvoir être reprise par une
+    // nouvelle grille : sans ce « where », archiver une tranche à 0 g
+    // interdirait d'en reposer une à 0 g, et la grille deviendrait
+    // insaisissable après le premier archivage.
+    uniqueIndex("shipping_rate_uniq")
+      .on(t.methodId, t.zoneId, t.minWeightGrams)
+      .where(sql`${t.archivedAt} is null`),
   ],
 );
 
@@ -984,6 +1019,17 @@ export const stands = pgTable(
       .notNull(),
     /** Dernière fermeture. Null tant qu'il n'a jamais été fermé. */
     closedAt: timestamp("closed_at", { withTimezone: true }),
+    /**
+     * Non nul = archivé : le stand quitte la liste ordinaire et se range dans
+     * « Stands archivés ». Il est toujours fermé — l'archivage le ferme —,
+     * donc sa tablette n'accepte plus rien.
+     *
+     * La ligne RESTE, et son code avec elle : les ventes du salon pointent
+     * ici par `order.stand_id`, et c'est la seule chose qui sache encore dire
+     * où elles ont été faites. Le code garde sa place pour qu'aucun nouveau
+     * stand ne le reprenne et n'hérite des ventes d'un autre.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => [uniqueIndex("stand_code_uniq").on(t.code)],
 );
@@ -1237,6 +1283,25 @@ export const orders = pgTable(
      */
     tags: jsonb("tags").$type<string[]>(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    /**
+     * Non nul = archivée : la commande quitte la liste ordinaire et l'export,
+     * et se range dans « Commandes archivées », d'où elle se restaure. Sa
+     * fiche reste lisible par son adresse. La RECHERCHE, elle, continue de la
+     * rendre, marquée « Archivée » : c'est par là qu'on la retrouve pour la
+     * relire ou la restaurer, puisqu'elle n'est plus dans la liste.
+     *
+     * C'est ce qui a remplacé la suppression : une vente effacée emportait en
+     * cascade ses lignes, ses expéditions, ses remboursements et ses
+     * mouvements d'argent, et laissait un trou dans la numérotation que rien
+     * ne pouvait expliquer.
+     *
+     * À ne pas confondre avec l'annulation. Archiver RANGE, cela ne touche ni
+     * au statut, ni à l'argent, ni au stock, et ne prévient personne : une
+     * vente archivée qui compte dans le chiffre d'affaires continue d'y
+     * compter (voir HORS_VENTES dans statuts-vente.ts). Pour qu'elle cesse de
+     * compter, c'est l'annulation qu'il faut, et elle existe déjà.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("order_number_uniq").on(t.number),
@@ -1500,6 +1565,20 @@ export const adminUsers = pgTable(
     passwordHash: text("password_hash").notNull(),
     role: text("role").notNull().default("staff"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    /**
+     * Non nul = archivé : le compte ne peut plus se connecter et quitte la
+     * liste ordinaire, sans disparaître. Il se restaure depuis « Comptes
+     * archivés », et retrouve alors son adresse et son rôle.
+     *
+     * La ligne RESTE parce que l'historique la cite : les journaux des
+     * commandes gardent le nom de qui a expédié, remboursé ou annulé, et un
+     * compte effacé rendait ces lignes anonymes.
+     *
+     * Ses sessions, elles, sont bel et bien fermées à l'archivage : une
+     * session n'est pas un souvenir, c'est une porte ouverte, et c'est la
+     * seule suppression que cette table s'autorise.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => [uniqueIndex("admin_user_email_uniq").on(t.email)],
 );
@@ -1585,6 +1664,16 @@ export const lettres = pgTable("lettre", {
   envoisReussis: integer("envois_reussis").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  /**
+   * Non nul = archivée : la lettre quitte la liste ordinaire et se range dans
+   * « Lettres archivées », d'où elle se restaure.
+   *
+   * Une lettre PARTIE ne s'effaçait déjà pas, et c'était la bonne règle : ses
+   * `lettre_envoi` disent qui l'a reçue, et cette liste est ce qui empêche
+   * d'écrire deux fois à la même personne. L'archivage étend la règle au
+   * brouillon, qui était, lui, réellement détruit.
+   */
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
 });
 
 /**
