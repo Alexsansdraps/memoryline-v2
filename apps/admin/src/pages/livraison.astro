@@ -50,16 +50,41 @@ if (Astro.request.method === "POST") {
       await api.updateShippingMethod(Number(f.get("id")), {
         name: String(f.get("name") || ""),
         description: String(f.get("description") || ""),
+        // Le champ n'existe pas sur un mode sans transporteur (un retrait sur
+        // place) : ne rien envoyer vaut mieux que d'envoyer du vide, qui
+        // effacerait le transporteur d'un point relais.
+        ...(f.has("carrier") ? { carrier: String(f.get("carrier") || "") } : {}),
         pickupLocation: String(f.get("pickupLocation") || ""),
+        notePreparation: String(f.get("notePreparation") || ""),
         active: f.get("active") === "on",
       });
       flash = "Mode de livraison enregistré.";
+    } else if (action === "mode-ordre") {
+      // L'écran connaît l'ordre affiché ; il envoie la liste ENTIÈRE, le mode
+      // déplacé d'un cran. Un « monte d'un cran » côté API ne saurait pas
+      // départager deux modes posés à la même position.
+      const ordre = f
+        .getAll("ordre")
+        .map((v) => Number(v))
+        .filter((n) => Number.isFinite(n));
+      const id = Number(f.get("id"));
+      const sens = String(f.get("sens") || "");
+      const i = ordre.indexOf(id);
+      const j = sens === "haut" ? i - 1 : i + 1;
+      if (i < 0 || j < 0 || j >= ordre.length)
+        throw new Error("Ce mode est déjà au bout de la liste.");
+      [ordre[i], ordre[j]] = [ordre[j]!, ordre[i]!];
+      await api.ordonnerModesLivraison(ordre);
+      flash = `Ordre enregistré : « ${String(f.get("libelle") || "ce mode")} » ${
+        sens === "haut" ? "remonte" : "descend"
+      } d'un cran. C'est dans cet ordre que le client les verra.`;
     } else if (action === "mode-creer") {
       await api.createShippingMethod({
         name: String(f.get("name") || ""),
         kind: String(f.get("kind") || "home"),
         carrier: String(f.get("carrier") || "") || undefined,
         description: String(f.get("description") || ""),
+        notePreparation: String(f.get("notePreparation") || ""),
       });
       flash =
         "Mode créé. Il est décoché : fixez ses tarifs plus bas, puis cochez « Proposé ».";
@@ -192,19 +217,28 @@ function messageArchivage(m: { name: string }): string {
   ].join("\n\n");
 }
 
-const NOM_NATURE: Record<string, string> = {
-  relay: "Point relais",
-  home: "À domicile",
-  pickup: "Retrait sur place",
-};
 /**
- * Les transporteurs, tels que l'API les connaît. La liste vit là-bas : une
- * copie ici finirait par proposer un transporteur que l'API refuse.
+ * Les natures et les transporteurs, tels que l'API les connaît. Les deux
+ * listes vivent là-bas : une copie ici finirait par proposer une nature ou un
+ * transporteur que l'API refuse.
  */
+const natures = cat.natures ?? [];
+const NOM_NATURE: Record<string, string> = Object.fromEntries(
+  natures.map((n) => [n.code, n.nom]),
+);
 const transporteurs = cat.transporteurs ?? [];
 const NOM_TRANSPORTEUR: Record<string, string> = Object.fromEntries(
   transporteurs.map((t) => [t.code, t.nom]),
 );
+
+/**
+ * L'ordre affiché, tel qu'il partira aux boutons « monter / descendre ».
+ *
+ * Le même tableau sert à l'affichage et au déplacement : l'API reçoit ainsi
+ * exactement la liste qu'Alexandra a sous les yeux, et non une reconstruction
+ * qui pourrait différer d'un tri.
+ */
+const ordreModes = modesActifs.map((m) => m.id);
 ---
 
 <Admin title="Livraison">
@@ -219,11 +253,22 @@ const NOM_TRANSPORTEUR: Record<string, string> = Object.fromEntries(
   )}
   {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
 
-  <p class="mb-6 text-sm text-bo-muted max-w-3xl">
+  <p class="mb-3 text-sm text-bo-muted max-w-3xl">
     Ce que le client peut choisir au moment de payer, et combien ça lui coûte.
     Le prix dépend du <strong>mode</strong>, de la <strong>zone</strong> et du
     <strong>poids du colis</strong> : c'est le croisement des trois, dans les
     grilles plus bas, qui décide.
+  </p>
+  {/* Les modes préparés d'avance arrivent décochés et sans prix. Sans cette
+      explication, la liste a l'air de s'être remplie toute seule. */}
+  <p class="mb-6 rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm text-bo-muted max-w-3xl">
+    Les modes habituels d'une boutique d'affiches sont déjà là, <strong
+      >décochés et sans prix</strong
+    > : lettre suivie, Colissimo, Mondial Relay, Relais Colis, Chronopost. Rien
+    n'apparaît sur le site tant que vous ne les avez pas cochés. Le jour où vous
+    signez un contrat, il n'y a qu'à <strong>saisir le prix</strong> dans la
+    grille, puis cocher « Proposé » — aucun développeur à appeler. Chaque mode
+    dit lui-même ce qui lui manque encore.
   </p>
 
   {/* ------------------------------------------------------------------ */}
@@ -235,6 +280,7 @@ const NOM_TRANSPORTEUR: Record<string, string> = Object.fromEntries(
   <h3 class="font-semibold mb-3">Modes de livraison</h3>
   <section class="mb-8 space-y-3">
     {modesActifs.map((m) => (
+      <Fragment>
       <form
         method="POST"
         class="bg-bo-surface border border-bo-border rounded-lg p-4 text-sm"
@@ -287,13 +333,63 @@ const NOM_TRANSPORTEUR: Record<string, string> = Object.fromEntries(
         {m.kind !== "pickup" && (
           <input type="hidden" name="pickupLocation" value={m.pickupLocation ?? ""} />
         )}
+
+        {/* Le transporteur se change ici : un mode préparé pour Relais Colis
+            peut finir chez Chronopost si c'est ce contrat-là qui se signe.
+            Un mode sans transporteur — un retrait sur place — n'en a pas
+            besoin, et le champ absent laisse l'API tranquille. */}
+        {m.kind !== "pickup" && (
+          <label class="mt-3 block">
+            <span class="text-bo-muted text-xs">Transporteur</span>
+            <select
+              name="carrier"
+              class="mt-1 block w-64 border border-bo-border rounded px-2 py-1"
+            >
+              {m.kind !== "relay" && (
+                <option value="" selected={!m.carrier}>
+                  Aucun
+                </option>
+              )}
+              {transporteurs.map((t) => (
+                <option value={t.code} selected={m.carrier === t.code}>
+                  {t.nom}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {/* Ce qui reste à faire avant d'ouvrir ce mode : contrat, compte, ou
+            rien. Écrit pour vous, jamais montré au client — videz-le le jour
+            où il n'y a plus rien à attendre. */}
+        <label class="mt-3 block">
+          <span class="text-bo-muted text-xs">
+            Ce qu'il reste à faire — note pour vous, jamais vue par le client
+          </span>
+          <textarea
+            name="notePreparation"
+            rows="2"
+            placeholder="Rien à attendre : videz cette note."
+            class="mt-1 block w-full border border-bo-border rounded px-2 py-1"
+          >{m.notePreparation ?? ""}</textarea>
+        </label>
+
         {/* L'état RÉEL : « Proposé » coché ne suffit pas à faire apparaître un
-            mode sur le site. Sans cette ligne, on coche, on ne voit rien, et
-            on cherche l'erreur ailleurs. */}
-        {m.masquePourquoi ? (
-          <p class="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs">
-            <strong>Pas visible sur le site.</strong> {m.masquePourquoi}
-          </p>
+            mode sur le site. Sans ces lignes, on coche, on ne voit rien, et
+            on cherche l'erreur ailleurs. Elles sont listées TOUTES : un mode
+            préparé d'avance en cumule plusieurs, et n'en montrer qu'une
+            obligeait à revenir trois fois pour découvrir la suivante. */}
+        {(m.masqueRaisons ?? []).length > 0 ? (
+          <div class="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs">
+            <p>
+              <strong>Pas visible sur le site.</strong> Il manque :
+            </p>
+            <ul class="mt-1 list-disc space-y-0.5 pl-4">
+              {(m.masqueRaisons ?? []).map((r) => (
+                <li>{r}</li>
+              ))}
+            </ul>
+          </div>
         ) : (
           <p class="mt-3 text-xs text-green-700">
             Visible sur le site : les clients peuvent le choisir.
@@ -322,6 +418,39 @@ const NOM_TRANSPORTEUR: Record<string, string> = Object.fromEntries(
           </button>
         </p>
       </form>
+
+      {/* L'ordre des modes, dans son propre formulaire : imbriquer deux
+          formulaires est interdit, et l'ordre n'a rien à voir avec le reste
+          de la fiche — le déplacer ne doit pas enregistrer une saisie en
+          cours par surprise. */}
+      <form method="POST" class="-mt-1 flex items-center gap-2 px-4 text-xs text-bo-muted">
+        <input type="hidden" name="_action" value="mode-ordre" />
+        <input type="hidden" name="id" value={m.id} />
+        <input type="hidden" name="libelle" value={m.name} />
+        {ordreModes.map((id) => (
+          <input type="hidden" name="ordre" value={id} />
+        ))}
+        <span>Ordre d'affichage chez le client :</span>
+        <button
+          name="sens"
+          value="haut"
+          disabled={ordreModes[0] === m.id}
+          class="rounded border border-bo-border px-2 py-0.5 hover:border-bo-accent hover:text-bo-accent disabled:opacity-40"
+          aria-label={`Remonter ${m.name}`}
+        >
+          ↑ Monter
+        </button>
+        <button
+          name="sens"
+          value="bas"
+          disabled={ordreModes[ordreModes.length - 1] === m.id}
+          class="rounded border border-bo-border px-2 py-0.5 hover:border-bo-accent hover:text-bo-accent disabled:opacity-40"
+          aria-label={`Descendre ${m.name}`}
+        >
+          ↓ Descendre
+        </button>
+      </form>
+      </Fragment>
     ))}
 
     {/* ---------------------------------------------------------------- */}
@@ -395,9 +524,11 @@ const NOM_TRANSPORTEUR: Record<string, string> = Object.fromEntries(
             name="kind"
             class="mt-1 block w-44 border border-bo-border rounded px-2 py-1"
           >
-            <option value="home">À domicile</option>
-            <option value="relay">Point relais</option>
-            <option value="pickup">Retrait sur place</option>
+            {natures.map((n) => (
+              <option value={n.code} title={n.aide}>
+                {n.nom}
+              </option>
+            ))}
           </select>
         </label>
         <label class="block">
@@ -426,6 +557,16 @@ const NOM_TRANSPORTEUR: Record<string, string> = Object.fromEntries(
           Ajouter
         </button>
       </div>
+      <label class="mt-3 block">
+        <span class="text-bo-muted text-xs">
+          Ce qu'il reste à faire — note pour vous, jamais vue par le client
+        </span>
+        <input
+          name="notePreparation"
+          placeholder="Contrat à signer, compte à ouvrir…"
+          class="mt-1 block w-full border border-bo-border rounded px-2 py-1"
+        />
+      </label>
       <p class="mt-2 text-xs text-bo-muted">
         Un <strong>point relais</strong> demande un transporteur : c'est lui
         qui fournit la liste des points où le client choisit. Les
@@ -434,6 +575,20 @@ const NOM_TRANSPORTEUR: Record<string, string> = Object.fromEntries(
         tant que la recherche de points n'existe pas — proposer un point
         relais qu'on ne sait pas transmettre reviendrait à vendre une
         livraison impossible.
+      </p>
+      <p class="mt-2 text-xs text-bo-muted">
+        La <strong>nature</strong> se choisit ici une fois pour toutes : elle
+        décide de ce qu'on demande au client — une adresse, un point relais,
+        ou rien. La changer ensuite laisserait des commandes avec une adresse
+        et sans point de retrait ; en cas d'erreur, créez l'autre mode et
+        archivez celui-ci, rien n'est perdu.
+      </p>
+      <p class="mt-2 text-xs text-bo-muted">
+        Pour un <strong>marché de Noël</strong>, pas besoin d'un mode à part :
+        « Retrait sur place » propose déjà les stands ouverts, chacun par son
+        nom. Ouvrez le stand dans
+        <a class="underline" href={url("/ventes-salon")}>Ventes stand</a> et il
+        apparaît tout seul au moment de payer.
       </p>
     </form>
   </section>

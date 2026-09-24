@@ -31,94 +31,24 @@ import {
   verifyPassword,
   purgeExpiredSessions,
 } from "./auth.js";
-import { formaterPoids, normaliserCode } from "@memoryline/types";
 import {
-  estConfigure as mondialRelayConfigure,
-  rechercherPointsRelais,
-} from "./mondial-relay.js";
+  CODES_NATURE,
+  NATURES_LIVRAISON,
+  formaterPoids,
+  normaliserCode,
+} from "@memoryline/types";
+import { rechercherPointsRelais } from "./mondial-relay.js";
+import { rechercherPointsRetrait } from "./colissimo.js";
+// La règle qui décide si un mode de livraison sort sur le site vit à part :
+// le site la consulte pour filtrer, le back-office pour expliquer.
 import {
-  estConfigure as colissimoConfigure,
-  rechercherPointsRetrait,
-} from "./colissimo.js";
+  SANS_TARIF,
+  TRANSPORTEURS,
+  couverturesParMode,
+  raisonsMasquage,
+  transporteurConfigure,
+} from "./livraison-regles.js";
 
-/**
- * Les transporteurs connus, et ce qu'il faut pour qu'ils fonctionnent.
- *
- * Écrit ICI et nulle part ailleurs : le back-office lit cette liste plutôt
- * que d'en tenir une copie, qui finirait par annoncer un transporteur que
- * l'API ne sait pas interroger.
- *
- * `integre` dit si le code sait chercher les points de ce réseau. Les autres
- * peuvent être préparés dès maintenant — la cliente crée le mode, fixe ses
- * tarifs — mais restent masqués du site tant que l'intégration n'est pas
- * écrite : laisser choisir un point relais qu'on ne saurait pas transmettre
- * au transporteur reviendrait à vendre une livraison impossible.
- */
-export const TRANSPORTEURS = [
-  {
-    code: "mondial_relay",
-    nom: "Mondial Relay",
-    integre: true,
-    variables: ["MONDIAL_RELAY_ENSEIGNE", "MONDIAL_RELAY_CLE"],
-  },
-  {
-    code: "colissimo",
-    nom: "Colissimo (La Poste)",
-    integre: true,
-    variables: ["COLISSIMO_CONTRAT", "COLISSIMO_MOTDEPASSE"],
-  },
-  { code: "chronopost", nom: "Chronopost / Pickup", integre: false, variables: [] },
-  { code: "relais_colis", nom: "Relais Colis", integre: false, variables: [] },
-  { code: "dpd", nom: "DPD Relais", integre: false, variables: [] },
-  { code: "ups", nom: "UPS Access Point", integre: false, variables: [] },
-  { code: "gls", nom: "GLS ParcelShop", integre: false, variables: [] },
-  { code: "shop2shop", nom: "Shop2Shop (Chronopost)", integre: false, variables: [] },
-] as const;
-
-/** Un transporteur sait-il chercher ses points ? */
-function transporteurConfigure(carrier: string | null | undefined): boolean {
-  if (carrier === "colissimo") return colissimoConfigure();
-  if (carrier === "mondial_relay") return mondialRelayConfigure();
-  // Transporteur inconnu, ou connu mais pas encore intégré : on ne prétend
-  // pas savoir chercher ses points.
-  return false;
-}
-
-/**
- * Pourquoi ce mode ne sort pas sur le site — ou null quand il en sort.
- *
- * Une seule fonction pour la règle, appelée par le site (qui filtre) et par
- * le back-office (qui explique). Deux versions de cette règle finiraient par
- * afficher « proposé » sur un mode que le site cache.
- */
-function raisonMasquage(
-  m: {
-    kind: string;
-    carrier: string | null;
-    active: boolean;
-    pickupLocation: string | null;
-    archivedAt: Date | null;
-  },
-  standsOuverts: number,
-): string | null {
-  // L'archivage passe AVANT tout le reste : un mode rangé ne sort pas, et
-  // annoncer un compte Mondial Relay manquant sur un mode qu'on n'offre plus
-  // enverrait chercher une panne là où il n'y en a pas.
-  if (m.archivedAt) return "Archivé : il ne sort plus du rangement.";
-  if (!m.active) return "Décoché : vous ne le proposez pas.";
-  if (m.kind === "relay") {
-    const t = TRANSPORTEURS.find((x) => x.code === m.carrier);
-    if (!t)
-      return `Transporteur « ${m.carrier ?? "non renseigné"} » inconnu : la recherche de points relais est impossible.`;
-    if (!t.integre)
-      return `L'intégration ${t.nom} n'est pas encore écrite : le client ne pourrait pas choisir son point.`;
-    if (!transporteurConfigure(m.carrier))
-      return `Compte ${t.nom} absent : ajoutez ${t.variables.join(" et ")} dans le fichier .env, puis redémarrez l'API.`;
-  }
-  if (m.kind === "pickup" && standsOuverts === 0 && !m.pickupLocation?.trim())
-    return "Aucun stand ouvert et aucun lieu de retrait renseigné : personne ne pourrait remettre la commande.";
-  return null;
-}
 import { mountConfiguratorRoutes } from "./configurator-routes.js";
 import { mountOrderRoutes } from "./commandes.js";
 import { mountCatalogueRoutes } from "./catalogue.js";
@@ -1154,10 +1084,15 @@ app.get("/shipping", async (c) => {
   // Un mode « point relais » suppose de pouvoir CHOISIR son point. Tant que
   // le compte du transporteur n'est pas branché, on ne le propose pas : une
   // adresse saisie à la main ne vaut rien pour l'expédition.
+  // Un mode sans le moindre tarif ne sort pas non plus : préparé d'avance, il
+  // attend son prix, et l'afficher à 0 € offrirait le port sans le vouloir.
   // Et un « retrait sur place » suppose un endroit où retirer. La règle est
-  // celle de `raisonMasquage`, la même que celle expliquée au back-office.
+  // celle de `raisonsMasquage`, la même que celle expliquée au back-office.
+  const couvertures = couverturesParMode(tarifs);
   const modes = tousModes.filter(
-    (m) => raisonMasquage(m, standsOuverts.length) === null,
+    (m) =>
+      raisonsMasquage(m, standsOuverts.length, couvertures.get(m.id) ?? SANS_TARIF)
+        .length === 0,
   );
   return c.json({
     zones,
@@ -1186,17 +1121,23 @@ app.get("/admin/shipping", async (c) => {
       .from(schema.stands)
       .where(eq(schema.stands.ouvert, true)),
   ]);
+  // Chaque mode porte TOUT ce qui l'empêche de sortir sur le site. Sans ces
+  // raisons, l'écran affiche « proposé » sur un mode que personne ne voit, et
+  // on cherche l'erreur ailleurs pendant une heure.
+  const couvertures = couverturesParMode(tarifs);
   return c.json({
     zones,
-    // Chaque mode porte sa raison de ne pas sortir sur le site, s'il en a
-    // une. Sans elle, l'écran affiche « proposé » sur un mode que personne
-    // ne voit, et on cherche l'erreur ailleurs pendant une heure.
     modes: modes.map((m) => ({
       ...m,
-      masquePourquoi: raisonMasquage(m, ouverts.length),
+      masqueRaisons: raisonsMasquage(
+        m,
+        ouverts.length,
+        couvertures.get(m.id) ?? SANS_TARIF,
+      ),
     })),
     tarifs,
     transporteurs: TRANSPORTEURS,
+    natures: NATURES_LIVRAISON,
     standsOuverts: ouverts.length,
   });
 });
@@ -1212,9 +1153,7 @@ app.post("/admin/shipping/methods", async (c) => {
   const b = await c.req.json();
   const nom = String(b.name ?? "").trim();
   if (!nom) return c.json({ error: "nom obligatoire" }, 400);
-  const kind = ["home", "relay", "pickup"].includes(String(b.kind))
-    ? String(b.kind)
-    : "home";
+  const kind = CODES_NATURE.includes(String(b.kind)) ? String(b.kind) : "home";
   const carrier = String(b.carrier ?? "").trim() || null;
   if (kind === "relay" && !carrier)
     return c.json({ error: "un point relais demande un transporteur" }, 400);
@@ -1253,6 +1192,7 @@ app.post("/admin/shipping/methods", async (c) => {
       carrier,
       description: String(b.description ?? "").trim() || null,
       pickupLocation: String(b.pickupLocation ?? "").trim() || null,
+      notePreparation: String(b.notePreparation ?? "").trim() || null,
       // Décoché au départ : un mode sans tarif afficherait 0 € de port.
       active: false,
       position: (dernier?.p ?? 0) + 1,
@@ -1312,16 +1252,75 @@ app.post("/admin/shipping/methods/:id/archive", async (c) => {
   });
 });
 
-/** Modifie un mode de livraison : nom, texte, emplacement de retrait, actif. */
+/**
+ * Remet les modes dans l'ordre voulu, d'après la liste d'identifiants reçue.
+ *
+ * L'écran envoie l'ordre ENTIER plutôt qu'un « monte d'un cran » : les
+ * positions en base ont le droit d'être égales (deux modes à 1, c'est le cas
+ * aujourd'hui), et un échange deux à deux n'aurait alors rien échangé du
+ * tout. Renuméroter de 0 à n remet la liste d'aplomb du même geste.
+ *
+ * Les modes absents de la liste — les archivés, notamment — gardent leur
+ * position : ils ne figurent pas dans la liste ordinaire, il n'y a pas
+ * d'ordre à leur imposer.
+ */
+app.post("/admin/shipping/methods/ordre", async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  const ids = (Array.isArray(b.ids) ? b.ids : [])
+    .map((v: unknown) => Number(v))
+    .filter((n: number) => Number.isFinite(n));
+  if (!ids.length) return c.json({ error: "aucun mode à ranger" }, 400);
+  await db.transaction(async (tx) => {
+    for (const [i, id] of ids.entries())
+      await tx
+        .update(schema.shippingMethods)
+        .set({ position: i })
+        .where(eq(schema.shippingMethods.id, id));
+  });
+  return c.json({ ok: true, count: ids.length });
+});
+
+/**
+ * Modifie un mode de livraison : nom, texte, transporteur, emplacement de
+ * retrait, note de préparation, actif.
+ *
+ * Le SLUG et la NATURE ne bougent pas. Le slug voyage dans les commandes déjà
+ * parties. La nature, elle, décide de ce qu'on demande au client — passer un
+ * mode « à domicile » en « point relais » laisserait des commandes avec une
+ * adresse et sans point de retrait, et personne ne saurait plus où livrer.
+ * Se tromper de nature se répare en créant l'autre mode et en archivant
+ * celui-ci : rien n'est perdu.
+ */
 app.post("/admin/shipping/methods/:id", async (c) => {
   const id = Number(c.req.param("id"));
   const b = await c.req.json();
+  const [avant] = await db
+    .select()
+    .from(schema.shippingMethods)
+    .where(eq(schema.shippingMethods.id, id));
+  if (!avant) return c.notFound();
+
   const set: Record<string, unknown> = {};
   if (b.name !== undefined) set.name = String(b.name).trim() || "Livraison";
   if (b.description !== undefined)
     set.description = String(b.description).trim() || null;
   if (b.pickupLocation !== undefined)
     set.pickupLocation = String(b.pickupLocation).trim() || null;
+  if (b.notePreparation !== undefined)
+    set.notePreparation = String(b.notePreparation).trim() || null;
+  if (b.carrier !== undefined) {
+    const carrier = String(b.carrier).trim() || null;
+    if (carrier && !TRANSPORTEURS.some((t) => t.code === carrier))
+      return c.json({ error: "transporteur inconnu" }, 400);
+    // Un point relais sans transporteur n'a personne à qui demander sa liste
+    // de points : le mode disparaîtrait du site sans qu'on ait rien décoché.
+    if (!carrier && avant.kind === "relay")
+      return c.json(
+        { error: "un point relais demande un transporteur" },
+        400,
+      );
+    set.carrier = carrier;
+  }
   if (b.active !== undefined) set.active = b.active !== false;
   if (b.position !== undefined) set.position = Number(b.position) || 0;
   const [row] = await db

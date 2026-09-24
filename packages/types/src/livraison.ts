@@ -9,6 +9,74 @@
  * Les montants sont en CENTIMES, entiers.
  */
 
+/**
+ * Les NATURES de mode de livraison, écrites ici et nulle part ailleurs.
+ *
+ * La nature ne décrit pas le transporteur : elle dit ce qu'il faut DEMANDER
+ * au client pour que le colis arrive quelque part. Une adresse, un point
+ * relais, ou rien du tout. C'est la seule chose dont le tunnel de commande a
+ * besoin pour savoir quels champs afficher, et le serveur pour savoir quoi
+ * exiger avant d'accepter la commande.
+ *
+ * « Lettre suivie » et « à domicile » partagent la même nature de besoin —
+ * une adresse — mais restent deux natures distinctes : une lettre suivie ne
+ * se remet pas contre signature, ne s'assure pas, et ne porte qu'une affiche
+ * roulée. Les confondre reviendrait à laisser choisir un affranchissement de
+ * lettre pour un colis avec cadre.
+ */
+export const NATURES_LIVRAISON = [
+  {
+    code: "home",
+    nom: "À domicile",
+    /** Ce qu'on demande au client : "adresse", "point" ou rien. */
+    demande: "adresse",
+    aide: "Le colis part à l'adresse du client.",
+  },
+  {
+    code: "relay",
+    nom: "Point relais",
+    demande: "point",
+    aide: "Le client choisit un point de retrait dans la liste du transporteur.",
+  },
+  {
+    code: "letter",
+    nom: "Lettre suivie",
+    demande: "adresse",
+    aide: "Une affiche seule, roulée et sans cadre, à l'adresse du client — sans signature.",
+  },
+  {
+    code: "pickup",
+    nom: "Retrait sur place",
+    demande: "rien",
+    aide: "Le client vient chercher sa commande : rien à saisir.",
+  },
+] as const;
+
+/** Les codes de nature acceptés — pour valider ce qui arrive du navigateur. */
+export const CODES_NATURE = NATURES_LIVRAISON.map((n) => n.code) as readonly string[];
+
+/** Le nom lisible d'une nature, ou le code brut si elle est inconnue. */
+export function nomNature(kind: string): string {
+  return NATURES_LIVRAISON.find((n) => n.code === kind)?.nom ?? kind;
+}
+
+/**
+ * Ce mode demande-t-il une adresse de livraison ?
+ *
+ * Passe par la table plutôt que par « kind === "home" » : une nature ajoutée
+ * ensuite (la lettre suivie, justement) serait sinon oubliée dans l'un des
+ * trois endroits qui posent la question, et le client paierait un envoi
+ * postal sans jamais avoir donné son adresse.
+ */
+export function demandeUneAdresse(kind: string): boolean {
+  return NATURES_LIVRAISON.find((n) => n.code === kind)?.demande === "adresse";
+}
+
+/** Ce mode demande-t-il de choisir un point de retrait ? */
+export function demandeUnPointRelais(kind: string): boolean {
+  return NATURES_LIVRAISON.find((n) => n.code === kind)?.demande === "point";
+}
+
 /** Zone de livraison : un groupe de pays aux mêmes tarifs. */
 export interface ZoneLivraison {
   id: number;
@@ -25,7 +93,7 @@ export interface ModeLivraison {
   slug: string;
   name: string;
   description?: string | null;
-  /** relay = point relais · home = adresse · pickup = retrait sur place. */
+  /** Une des natures de `NATURES_LIVRAISON` : ce qu'on demande au client. */
   kind: string;
   carrier?: string | null;
   /** Où retirer, pour un mode « pickup » — la boutique est itinérante. */

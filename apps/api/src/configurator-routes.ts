@@ -47,6 +47,8 @@ import { noterLaRecuperation } from "./relance-panier.js";
 import {
   calageNeutre,
   calagePropre,
+  demandeUnPointRelais,
+  demandeUneAdresse,
   famillesDuDessin,
   famillesDuParametre,
   fraisDePort,
@@ -2152,10 +2154,11 @@ export function mountConfiguratorRoutes(app: Hono) {
       if (!port)
         return { erreur: "mode de livraison indisponible", statut: 400 as const };
       // Une livraison à domicile sans adresse n'arrive nulle part ; un point
-      // relais sans point relais non plus.
-      if (port.kind === "home" && (!ligne1 || !ville || !cp))
+      // relais sans point relais non plus. La lettre suivie passe par la même
+      // porte que le domicile : elle aussi va à une adresse.
+      if (demandeUneAdresse(port.kind) && (!ligne1 || !ville || !cp))
         return { erreur: "adresse de livraison incomplète", statut: 400 as const };
-      if (port.kind === "relay" && !String(liv.relayPointId ?? "").trim())
+      if (demandeUnPointRelais(port.kind) && !String(liv.relayPointId ?? "").trim())
         return { erreur: "point relais requis", statut: 400 as const };
 
       const total = articles + port.cents;
@@ -2207,7 +2210,7 @@ export function mountConfiguratorRoutes(app: Hono) {
     // L'adresse rejoint le carnet de la cliente : saisie une fois, elle
     // revient toute seule la prochaine fois. Une livraison en point relais n'a
     // pas d'adresse à elle, il n'y a rien à ranger.
-    if (port.kind === "home" && ligne1 && ville && cp) {
+    if (demandeUneAdresse(port.kind) && ligne1 && ville && cp) {
       try {
         const connues = await db
           .select()

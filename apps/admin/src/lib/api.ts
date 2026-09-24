@@ -554,6 +554,11 @@ export interface CatalogueLivraisonBO {
     kind: string;
     carrier: string | null;
     pickupLocation: string | null;
+    /**
+     * Ce qu'il reste a faire avant de proposer ce mode. Back-office
+     * uniquement : le client ne le voit jamais.
+     */
+    notePreparation: string | null;
     active: boolean;
     position: number;
     /**
@@ -563,13 +568,14 @@ export interface CatalogueLivraisonBO {
      */
     archivedAt?: string | null;
     /**
-     * Pourquoi ce mode ne sort pas sur le site, ou null quand il en sort.
+     * TOUT ce qui empêche ce mode de sortir sur le site — liste vide quand il
+     * en sort.
      *
      * Calculé par l'API, avec la règle qui filtre vraiment le site. Le
      * back-office ne la recalcule pas : deux versions finiraient par
      * afficher « proposé » sur un mode que personne ne voit.
      */
-    masquePourquoi?: string | null;
+    masqueRaisons?: string[];
   }[];
   tarifs: TarifLivraisonBO[];
   /** Les transporteurs connus de l'API, avec leur état d'intégration. */
@@ -578,6 +584,17 @@ export interface CatalogueLivraisonBO {
     nom: string;
     integre: boolean;
     variables: readonly string[];
+  }[];
+  /**
+   * Les natures de mode connues de l'API (à domicile, point relais, lettre
+   * suivie, retrait). La liste vit là-bas : une copie ici finirait par
+   * proposer une nature que l'API refuse.
+   */
+  natures?: {
+    code: string;
+    nom: string;
+    demande: string;
+    aide: string;
   }[];
   /** Nombre de stands ouverts en ce moment. */
   standsOuverts?: number;
@@ -1695,7 +1712,20 @@ export function adminApi(request?: Request) {
       carrier?: string;
       description?: string;
       pickupLocation?: string;
+      notePreparation?: string;
     }) => req<unknown>("POST", "/admin/shipping/methods", data, cookie),
+    /**
+     * Range les modes dans l'ordre voulu. On envoie la liste ENTIÈRE, pas un
+     * « monte d'un cran » : deux modes ont le droit d'être à la même position
+     * en base, et un échange deux à deux n'aurait alors rien échangé.
+     */
+    ordonnerModesLivraison: (ids: number[]) =>
+      req<{ ok: boolean; count: number }>(
+        "POST",
+        "/admin/shipping/methods/ordre",
+        { ids },
+        cookie,
+      ),
     /**
      * Archive un mode de livraison, ou le restaure. Il n'y a plus de
      * suppression : elle était refusée dès qu'une commande était partie avec
@@ -1710,12 +1740,20 @@ export function adminApi(request?: Request) {
         { archived },
         cookie,
       ),
+    /**
+     * Modifie un mode. Ni le slug ni la NATURE ne se changent : le slug
+     * voyage dans les commandes déjà parties, et la nature décide de ce qu'on
+     * demande au client — la changer laisserait des commandes avec une
+     * adresse et sans point de retrait.
+     */
     updateShippingMethod: (
       id: number,
       data: {
         name?: string;
         description?: string;
+        carrier?: string;
         pickupLocation?: string;
+        notePreparation?: string;
         active?: boolean;
       },
     ) => req<unknown>("POST", `/admin/shipping/methods/${id}`, data, cookie),

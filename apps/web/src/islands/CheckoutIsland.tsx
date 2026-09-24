@@ -9,6 +9,8 @@ import {
   type JSX,
 } from "solid-js";
 import {
+  demandeUnPointRelais,
+  demandeUneAdresse,
   formaterPoids,
   optionsLivraison,
   seuilPortOffertCents,
@@ -486,7 +488,7 @@ export default function CheckoutIsland(props: {
   const livraisonValide = () => {
     const o = optionChoisie();
     if (!o) return false;
-    if (o.mode.kind === "home") {
+    if (demandeUneAdresse(o.mode.kind)) {
       const a = adresse();
       return (
         a.line1.trim().length > 0 &&
@@ -494,7 +496,8 @@ export default function CheckoutIsland(props: {
         a.city.trim().length > 0
       );
     }
-    if (o.mode.kind === "relay") return pointRelais().id.trim().length > 0;
+    if (demandeUnPointRelais(o.mode.kind))
+      return pointRelais().id.trim().length > 0;
     return true;
   };
 
@@ -952,8 +955,9 @@ export default function CheckoutIsland(props: {
                 </div>
               </Show>
 
-              {/* Adresse : demandée seulement quand le mode en a besoin. */}
-              <Show when={optionChoisie()?.mode.kind === "home"}>
+              {/* Adresse : demandée seulement quand le mode en a besoin —
+                  une lettre suivie va, elle aussi, à une adresse. */}
+              <Show when={demandeUneAdresse(optionChoisie()?.mode.kind ?? "")}>
                 <div class="space-y-4">
                   {/* Le carnet : une adresse déjà enregistrée se choisit d'un
                       clic plutôt que de se retaper. */}
@@ -1077,7 +1081,7 @@ export default function CheckoutIsland(props: {
 
               {/* Point relais : le client cherche autour de chez lui et choisit
                   dans la liste renvoyée par le transporteur. */}
-              <Show when={optionChoisie()?.mode.kind === "relay"}>
+              <Show when={demandeUnPointRelais(optionChoisie()?.mode.kind ?? "")}>
                 <div class="space-y-3">
                   <span class="block text-sm font-medium">
                     {tr("livraison.point_relais")}
