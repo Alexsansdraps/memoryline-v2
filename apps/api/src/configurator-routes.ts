@@ -45,6 +45,7 @@ import {
 } from "./mail.js";
 import { noterLaRecuperation } from "./relance-panier.js";
 import {
+  CODES_NATURE,
   calageNeutre,
   calagePropre,
   demandeUnPointRelais,
@@ -2153,9 +2154,14 @@ export function mountConfiguratorRoutes(app: Hono) {
       const port = await computeShippingCents(lignes, modeSlug, pays, code, maintenant, tx);
       if (!port)
         return { erreur: "mode de livraison indisponible", statut: 400 as const };
+      // Une nature que la liste ne connaît plus ne dit pas quoi demander au
+      // client : ni adresse, ni point relais. On refuse la commande plutôt que
+      // de l'accepter sans savoir où livrer — c'est ce qui arriverait à un
+      // vieux mode restauré des archives, dont la nature a disparu depuis.
+      if (!CODES_NATURE.includes(port.kind))
+        return { erreur: "mode de livraison indisponible", statut: 400 as const };
       // Une livraison à domicile sans adresse n'arrive nulle part ; un point
-      // relais sans point relais non plus. La lettre suivie passe par la même
-      // porte que le domicile : elle aussi va à une adresse.
+      // relais sans point relais non plus.
       if (demandeUneAdresse(port.kind) && (!ligne1 || !ville || !cp))
         return { erreur: "adresse de livraison incomplète", statut: 400 as const };
       if (demandeUnPointRelais(port.kind) && !String(liv.relayPointId ?? "").trim())

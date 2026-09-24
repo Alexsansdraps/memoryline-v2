@@ -955,8 +955,7 @@ export default function CheckoutIsland(props: {
                 </div>
               </Show>
 
-              {/* Adresse : demandée seulement quand le mode en a besoin —
-                  une lettre suivie va, elle aussi, à une adresse. */}
+              {/* Adresse : demandée seulement quand le mode en a besoin. */}
               <Show when={demandeUneAdresse(optionChoisie()?.mode.kind ?? "")}>
                 <div class="space-y-4">
                   {/* Le carnet : une adresse déjà enregistrée se choisit d'un

@@ -226,10 +226,35 @@ const natures = cat.natures ?? [];
 const NOM_NATURE: Record<string, string> = Object.fromEntries(
   natures.map((n) => [n.code, n.nom]),
 );
+/**
+ * Le nom lisible d'une nature — et, si l'API ne la connaît plus, un
+ * avertissement plutôt qu'un code brut : un vieux mode restauré des archives
+ * porte une nature abandonnée, et « letter » tout seul ne veut rien dire.
+ */
+const libelleNature = (kind: string) =>
+  NOM_NATURE[kind] ?? `nature « ${kind} » inconnue`;
 const transporteurs = cat.transporteurs ?? [];
 const NOM_TRANSPORTEUR: Record<string, string> = Object.fromEntries(
   transporteurs.map((t) => [t.code, t.nom]),
 );
+
+/** Ce mode est-il prêt de bout en bout ? */
+const toutEstFait = (etapes: { fait: boolean }[]) => etapes.every((e) => e.fait);
+
+/**
+ * Ce que le repli « ce qu'il reste à faire » annonce, plié.
+ *
+ * Le compte AVANT le détail : replié, l'écran doit déjà dire s'il reste du
+ * travail sur ce mode, sans qu'on ait à le déplier pour l'apprendre.
+ */
+const resumeOuverture = (etapes: { fait: boolean }[]) => {
+  const restants = etapes.filter((e) => !e.fait).length;
+  return restants === 0
+    ? `Les ${etapes.length} étapes sont faites — dépliez pour les revoir.`
+    : `Il reste ${restants} chose(s) à faire pour l'ouvrir, ${
+        etapes.length - restants
+      } déjà faite(s) — dépliez pour voir lesquelles.`;
+};
 
 /**
  * L'ordre affiché, tel qu'il partira aux boutons « monter / descendre ».
@@ -262,13 +287,20 @@ const ordreModes = modesActifs.map((m) => m.id);
   {/* Les modes préparés d'avance arrivent décochés et sans prix. Sans cette
       explication, la liste a l'air de s'être remplie toute seule. */}
   <p class="mb-6 rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm text-bo-muted max-w-3xl">
-    Les modes habituels d'une boutique d'affiches sont déjà là, <strong
-      >décochés et sans prix</strong
-    > : lettre suivie, Colissimo, Mondial Relay, Relais Colis, Chronopost. Rien
-    n'apparaît sur le site tant que vous ne les avez pas cochés. Le jour où vous
-    signez un contrat, il n'y a qu'à <strong>saisir le prix</strong> dans la
-    grille, puis cocher « Proposé » — aucun développeur à appeler. Chaque mode
-    dit lui-même ce qui lui manque encore.
+    Tous les transporteurs qu'une boutique d'affiches peut ouvrir sont déjà là,
+    <strong>décochés et sans prix</strong> : Colissimo, Mondial Relay, Relais
+    Colis, Chronopost, Colis Privé, DPD, GLS, Shop2Shop, UPS et DHL, à domicile
+    et en point relais. Rien n'apparaît sur le site tant que vous ne les avez
+    pas cochés. Le jour où vous signez un contrat, il n'y a qu'à <strong
+      >saisir le prix</strong
+    > dans la grille, puis cocher « Proposé » — aucun développeur à appeler.
+    Chaque mode dit lui-même, sous « Ce qu'il reste à faire pour l'ouvrir », ce
+    qui lui manque encore et ce qui est déjà fait.
+  </p>
+  <p class="mb-6 text-sm text-bo-muted max-w-3xl">
+    Pas de <strong>lettre suivie</strong> : une affiche part roulée dans un tube
+    ou sous pli rigide, c'est un colis. Un affranchissement de lettre ne
+    couvrirait ni l'épaisseur, ni le cadre, ni la casse.
   </p>
 
   {/* ------------------------------------------------------------------ */}
@@ -359,27 +391,77 @@ const ordreModes = modesActifs.map((m) => m.id);
           </label>
         )}
 
-        {/* Ce qui reste à faire avant d'ouvrir ce mode : contrat, compte, ou
-            rien. Écrit pour vous, jamais montré au client — videz-le le jour
-            où il n'y a plus rien à attendre. */}
+        {/* Votre propre remarque sur ce mode, à côté de la liste calculée
+            plus bas : le nom de votre interlocuteur, une date de rendez-vous,
+            un piège à ne pas oublier. Écrite pour vous, jamais montrée au
+            client — videz-la le jour où elle n'a plus lieu d'être. */}
         <label class="mt-3 block">
           <span class="text-bo-muted text-xs">
-            Ce qu'il reste à faire — note pour vous, jamais vue par le client
+            Votre note sur ce mode — jamais vue par le client
           </span>
           <textarea
             name="notePreparation"
             rows="2"
-            placeholder="Rien à attendre : videz cette note."
+            placeholder="Devis demandé le 3 mars, relancer Mme X…"
             class="mt-1 block w-full border border-bo-border rounded px-2 py-1"
           >{m.notePreparation ?? ""}</textarea>
         </label>
 
-        {/* L'état RÉEL : « Proposé » coché ne suffit pas à faire apparaître un
-            mode sur le site. Sans ces lignes, on coche, on ne voit rien, et
-            on cherche l'erreur ailleurs. Elles sont listées TOUTES : un mode
-            préparé d'avance en cumule plusieurs, et n'en montrer qu'une
-            obligeait à revenir trois fois pour découvrir la suivante. */}
-        {(m.masqueRaisons ?? []).length > 0 ? (
+        {/* L'état RÉEL, et ce qu'il faut faire pour en changer.
+
+            « Proposé » coché ne suffit pas à faire apparaître un mode sur le
+            site : sans cette liste, on coche, on ne voit rien, et on cherche
+            l'erreur ailleurs. Elle dit TOUT d'un coup — contrat, prix, carte
+            des points, case à cocher — parce que la question est « qu'est-ce
+            qu'il me reste à faire », et que n'en montrer qu'un obligeait à
+            revenir trois fois pour découvrir le suivant.
+
+            Un repli, et non une liste toujours ouverte : dépliée pour quinze
+            modes, la page ne se lirait plus. Il reste que tout est là, sur le
+            même écran, sans rien aller chercher ailleurs — et un mode coché
+            qui n'apparaît pourtant pas s'ouvre tout seul, parce que celui-là
+            est une surprise à expliquer tout de suite.
+            La liste est calculée par l'API — c'est elle qui sait quels
+            comptes transporteurs sont branchés. Si elle ne la donne pas
+            encore (API pas redémarrée), on retombe sur les raisons seules,
+            plutôt que d'afficher un écran vide. */}
+        {m.ouverture ? (
+          <details
+            class={`mt-3 rounded border px-3 py-2 text-xs ${
+              toutEstFait(m.ouverture)
+                ? "border-green-200 bg-green-50"
+                : "border-amber-200 bg-amber-50"
+            }`}
+            open={m.active && !toutEstFait(m.ouverture)}
+          >
+            <summary class="cursor-pointer">
+              <strong>
+                {toutEstFait(m.ouverture)
+                  ? "Visible sur le site : les clients peuvent le choisir."
+                  : "Pas encore visible sur le site."}
+              </strong>{" "}
+              {resumeOuverture(m.ouverture)}
+            </summary>
+            <ul class="mt-2 space-y-1.5">
+              {m.ouverture.map((e) => (
+                <li class="flex gap-2">
+                  <span
+                    class={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 font-semibold ${
+                      e.fait
+                        ? "bg-green-100 text-green-800"
+                        : "bg-amber-100 text-amber-900"
+                    }`}
+                  >
+                    {e.fait ? "FAIT" : "À FAIRE"}
+                  </span>
+                  <span>
+                    <strong>{e.titre}</strong> — {e.detail}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : (m.masqueRaisons ?? []).length > 0 ? (
           <div class="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs">
             <p>
               <strong>Pas visible sur le site.</strong> Il manque :
@@ -397,7 +479,7 @@ const ordreModes = modesActifs.map((m) => m.id);
         )}
         <p class="mt-2 flex flex-wrap items-center gap-2 text-xs text-bo-muted">
           <span>
-            {NOM_NATURE[m.kind] ?? m.kind} · identifiant <code>{m.slug}</code>
+            {libelleNature(m.kind)} · identifiant <code>{m.slug}</code>
             {m.carrier
               ? ` · ${NOM_TRANSPORTEUR[m.carrier] ?? m.carrier}`
               : ""}
@@ -478,7 +560,7 @@ const ordreModes = modesActifs.map((m) => m.id);
               <div class="min-w-48 flex-1">
                 <p class="font-medium">{m.name}</p>
                 <p class="text-xs text-bo-muted">
-                  {NOM_NATURE[m.kind] ?? m.kind} · identifiant{" "}
+                  {libelleNature(m.kind)} · identifiant{" "}
                   <code>{m.slug}</code>
                   {m.carrier
                     ? ` · ${NOM_TRANSPORTEUR[m.carrier] ?? m.carrier}`
@@ -559,11 +641,11 @@ const ordreModes = modesActifs.map((m) => m.id);
       </div>
       <label class="mt-3 block">
         <span class="text-bo-muted text-xs">
-          Ce qu'il reste à faire — note pour vous, jamais vue par le client
+          Votre note sur ce mode — jamais vue par le client
         </span>
         <input
           name="notePreparation"
-          placeholder="Contrat à signer, compte à ouvrir…"
+          placeholder="Contrat demandé, devis attendu…"
           class="mt-1 block w-full border border-bo-border rounded px-2 py-1"
         />
       </label>
@@ -643,7 +725,7 @@ const ordreModes = modesActifs.map((m) => m.id);
                   <div>
                     <span class="font-medium">{m.name}</span>
                     <span class="ml-2 text-xs text-bo-muted">
-                      {NOM_NATURE[m.kind] ?? m.kind}
+                      {libelleNature(m.kind)}
                       {m.carrier ? ` · ${NOM_TRANSPORTEUR[m.carrier] ?? m.carrier}` : ""}
                       {!m.active && " · mode désactivé partout"}
                     </span>

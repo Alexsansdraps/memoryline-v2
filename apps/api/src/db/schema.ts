@@ -778,7 +778,6 @@ export const shippingMethods = pgTable(
      * Nature du mode, qui décide de ce qu'on demande au client :
      *   relay  → un point relais à choisir (Mondial Relay) ;
      *   home   → une adresse de livraison (Colissimo) ;
-     *   letter → une adresse aussi, pour une affiche seule (lettre suivie) ;
      *   pickup → rien du tout (retrait sur place).
      *
      * La liste fait foi dans `NATURES_LIVRAISON` (@memoryline/types) : c'est
@@ -790,7 +789,9 @@ export const shippingMethods = pgTable(
     /**
      * Ce qu'il reste à faire AVANT de proposer ce mode — contrat à signer,
      * compte à ouvrir, ou rien. Back-office uniquement : le client ne le voit
-     * jamais, contrairement à `description`.
+     * jamais, contrairement à `description`. C'est à la route `/shipping` de
+     * tenir cette promesse, en nommant les colonnes qu'elle publie au lieu de
+     * recopier la ligne entière.
      *
      * Les modes préparés d'avance arrivent avec cette note déjà écrite. Sans
      * elle, une liste de modes décochés ne dit pas lesquels attendent une

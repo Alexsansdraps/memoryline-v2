@@ -44,9 +44,11 @@ import { rechercherPointsRetrait } from "./colissimo.js";
 import {
   SANS_TARIF,
   TRANSPORTEURS,
+  checklistOuverture,
   couverturesParMode,
   raisonsMasquage,
   transporteurConfigure,
+  transporteursEnService,
 } from "./livraison-regles.js";
 
 import { mountConfiguratorRoutes } from "./configurator-routes.js";
@@ -1096,7 +1098,22 @@ app.get("/shipping", async (c) => {
   );
   return c.json({
     zones,
-    modes,
+    // Les colonnes sortent une à une, JAMAIS la ligne entière : la note
+    // « ce qu'il reste à faire » est écrite pour la boutique, et une réponse
+    // qui recopie la ligne de base l'aurait publiée dans le tunnel de
+    // commande, lisible par n'importe quel client. Une colonne ajoutée
+    // demain reste dedans tant que personne ne l'a écrite ici.
+    modes: modes.map((m) => ({
+      id: m.id,
+      slug: m.slug,
+      name: m.name,
+      description: m.description,
+      kind: m.kind,
+      carrier: m.carrier,
+      pickupLocation: m.pickupLocation,
+      active: m.active,
+      position: m.position,
+    })),
     stands: standsOuverts,
     tarifs: tarifs.map((t) => ({
       methodId: t.methodId,
@@ -1124,7 +1141,13 @@ app.get("/admin/shipping", async (c) => {
   // Chaque mode porte TOUT ce qui l'empêche de sortir sur le site. Sans ces
   // raisons, l'écran affiche « proposé » sur un mode que personne ne voit, et
   // on cherche l'erreur ailleurs pendant une heure.
+  //
+  // Et il porte la même chose vue à l'endroit — `ouverture` : la liste de ce
+  // qu'il reste à faire pour l'ouvrir, contrat compris, avec ce qui est déjà
+  // fait. Calculée ici, et non à l'écran : c'est l'API qui sait quels comptes
+  // transporteurs sont branchés.
   const couvertures = couverturesParMode(tarifs);
+  const enService = transporteursEnService(modes, couvertures);
   return c.json({
     zones,
     modes: modes.map((m) => ({
@@ -1134,6 +1157,12 @@ app.get("/admin/shipping", async (c) => {
         ouverts.length,
         couvertures.get(m.id) ?? SANS_TARIF,
       ),
+      ouverture: checklistOuverture(m, {
+        zones,
+        couverture: couvertures.get(m.id) ?? SANS_TARIF,
+        standsOuverts: ouverts.length,
+        transporteursEnService: enService,
+      }),
     })),
     tarifs,
     transporteurs: TRANSPORTEURS,

@@ -555,8 +555,9 @@ export interface CatalogueLivraisonBO {
     carrier: string | null;
     pickupLocation: string | null;
     /**
-     * Ce qu'il reste a faire avant de proposer ce mode. Back-office
-     * uniquement : le client ne le voit jamais.
+     * Votre remarque libre sur ce mode, à côté de la liste calculée
+     * `ouverture`. Back-office uniquement : la route `/shipping` du site ne
+     * publie pas cette colonne, le client ne la voit jamais.
      */
     notePreparation: string | null;
     active: boolean;
@@ -576,19 +577,34 @@ export interface CatalogueLivraisonBO {
      * afficher « proposé » sur un mode que personne ne voit.
      */
     masqueRaisons?: string[];
+    /**
+     * La même chose vue à l'endroit : ce qu'il reste à faire pour ouvrir ce
+     * mode, et ce qui est déjà fait, une ligne par étape.
+     *
+     * Calculée par l'API elle aussi : c'est elle qui sait quels comptes
+     * transporteurs sont branchés, et c'est la même règle que
+     * `masqueRaisons` — deux copies finiraient par se contredire sur le même
+     * écran.
+     */
+    ouverture?: { fait: boolean; titre: string; detail: string }[];
   }[];
   tarifs: TarifLivraisonBO[];
-  /** Les transporteurs connus de l'API, avec leur état d'intégration. */
+  /**
+   * Les transporteurs connus de l'API, avec leur état d'intégration et le
+   * contrat à demander — dans les mots du transporteur, pour pouvoir le
+   * réclamer tel quel au téléphone.
+   */
   transporteurs?: {
     code: string;
     nom: string;
     integre: boolean;
-    variables: readonly string[];
+    contrat: string;
+    aupres: string;
   }[];
   /**
-   * Les natures de mode connues de l'API (à domicile, point relais, lettre
-   * suivie, retrait). La liste vit là-bas : une copie ici finirait par
-   * proposer une nature que l'API refuse.
+   * Les natures de mode connues de l'API (à domicile, point relais, retrait).
+   * La liste vit là-bas : une copie ici finirait par proposer une nature que
+   * l'API refuse.
    */
   natures?: {
     code: string;

@@ -18,11 +18,10 @@
  * besoin pour savoir quels champs afficher, et le serveur pour savoir quoi
  * exiger avant d'accepter la commande.
  *
- * « Lettre suivie » et « à domicile » partagent la même nature de besoin —
- * une adresse — mais restent deux natures distinctes : une lettre suivie ne
- * se remet pas contre signature, ne s'assure pas, et ne porte qu'une affiche
- * roulée. Les confondre reviendrait à laisser choisir un affranchissement de
- * lettre pour un colis avec cadre.
+ * Il n'y a PAS de nature « lettre » : une affiche part roulée dans un tube ou
+ * sous pli rigide, c'est un colis. Un affranchissement de lettre ne couvrirait
+ * ni l'épaisseur, ni le cadre, ni la casse — « c'est pas possible c'est un
+ * colis ». Les envois postaux passent donc tous par « à domicile ».
  */
 export const NATURES_LIVRAISON = [
   {
@@ -37,12 +36,6 @@ export const NATURES_LIVRAISON = [
     nom: "Point relais",
     demande: "point",
     aide: "Le client choisit un point de retrait dans la liste du transporteur.",
-  },
-  {
-    code: "letter",
-    nom: "Lettre suivie",
-    demande: "adresse",
-    aide: "Une affiche seule, roulée et sans cadre, à l'adresse du client — sans signature.",
   },
   {
     code: "pickup",
@@ -64,9 +57,9 @@ export function nomNature(kind: string): string {
  * Ce mode demande-t-il une adresse de livraison ?
  *
  * Passe par la table plutôt que par « kind === "home" » : une nature ajoutée
- * ensuite (la lettre suivie, justement) serait sinon oubliée dans l'un des
- * trois endroits qui posent la question, et le client paierait un envoi
- * postal sans jamais avoir donné son adresse.
+ * ensuite serait sinon oubliée dans l'un des trois endroits qui posent la
+ * question, et le client paierait un envoi postal sans jamais avoir donné son
+ * adresse.
  */
 export function demandeUneAdresse(kind: string): boolean {
   return NATURES_LIVRAISON.find((n) => n.code === kind)?.demande === "adresse";
