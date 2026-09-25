@@ -5,6 +5,7 @@ import {
   createMemo,
   createSignal,
   createUniqueId,
+  onCleanup,
   type JSX,
 } from "solid-js";
 import {
@@ -46,8 +47,9 @@ import {
 import { CharacterStack } from "./CharacterLayer";
 import {
   BarreActions,
-  IndiceDefilement,
-  createResteDessous,
+  brancherDemiRangee,
+  createCaleDuBord,
+  largeurDemiVignette,
 } from "./Defilement";
 import {
   ANNEAU_COULEUR_CHOISIE,
@@ -125,11 +127,54 @@ function thumbSvg(
 /*  Petits composants UI                                                       */
 /* -------------------------------------------------------------------------- */
 
-/** Galerie horizontale scrollable avec flèches gauche/droite. */
+/* Galeries horizontales : les mesures dont dépend la règle de la demi-vignette. */
+const GALERIE_ESPACE = 8; // le `gap` entre deux vignettes
+const GALERIE_MARGE = 2; // la marge intérieure gauche/droite du défilement
+const VIGNETTE_LARGEUR = 72;
+/** En dessous, un vêtement ne se reconnaît plus : on garde la largeur normale. */
+const VIGNETTE_MINI = 56;
+
+/**
+ * Galerie horizontale scrollable avec flèches gauche/droite.
+ *
+ * Quand elle déborde, ses vignettes sont rétrécies juste ce qu'il faut pour
+ * que la dernière visible soit COUPÉE EN DEUX au bord droit : c'est ce qui
+ * dit au doigt qu'il peut pousser (cf. largeurDemiVignette). La largeur passe
+ * par une propriété CSS que chaque vignette lit — la grille des personnages,
+ * elle, garde ses cases pleine largeur (global.css).
+ */
 function Gallery(props: { children: JSX.Element }) {
   let scroller: HTMLDivElement | undefined;
   const scroll = (dir: number) => {
     scroller?.scrollBy({ left: dir * 180, behavior: "smooth" });
+  };
+  const brancher = (el: HTMLDivElement) => {
+    scroller = el;
+    const mesurer = () =>
+      el.style.setProperty(
+        "--ml-vignette",
+        `${largeurDemiVignette(
+          el.clientWidth - 2 * GALERIE_MARGE,
+          el.childElementCount,
+          GALERIE_ESPACE,
+          VIGNETTE_MINI,
+          VIGNETTE_LARGEUR,
+        )}px`,
+      );
+    mesurer();
+    // La largeur dépend de l'écran, et les pièces arrivent en asynchrone :
+    // une seule mesure au montage ne suffirait pas.
+    const taille =
+      typeof ResizeObserver === "undefined"
+        ? undefined
+        : new ResizeObserver(mesurer);
+    taille?.observe(el);
+    const contenu = new MutationObserver(mesurer);
+    contenu.observe(el, { childList: true });
+    onCleanup(() => {
+      taille?.disconnect();
+      contenu.disconnect();
+    });
   };
   return (
     <div
@@ -144,13 +189,13 @@ function Gallery(props: { children: JSX.Element }) {
         ‹
       </button>
       <div
-        ref={scroller}
+        ref={brancher}
         style={{
           display: "flex",
-          gap: "8px",
+          gap: `${GALERIE_ESPACE}px`,
           "overflow-x": "auto",
           "scroll-behavior": "smooth",
-          padding: "4px 2px",
+          padding: `4px ${GALERIE_MARGE}px`,
           flex: "1",
         }}
       >
@@ -196,10 +241,15 @@ function Thumb(props: {
       type="button"
       onClick={props.onClick}
       title={props.title}
+      // Un choix, donc un item que le bord bas peut couper en deux.
+      data-item
       style={{
         position: "relative",
         flex: "0 0 auto",
-        width: "72px",
+        // La galerie qui déborde rétrécit ses vignettes pour couper la
+        // dernière en deux ; ailleurs (grille des personnages), c'est la
+        // largeur normale.
+        width: `var(--ml-vignette, ${VIGNETTE_LARGEUR}px)`,
         height: "88px",
         border: props.selected ? "2px solid #4f46e5" : "1px solid #d1d5db",
         "border-radius": "8px",
@@ -457,6 +507,7 @@ function ColorRow(props: {
                       différente d'un navigateur à l'autre, ne se voit plus. */}
                   <span
                     title="Couleur personnalisée"
+                    data-item
                     style={{
                       position: "relative",
                       flex: "0 0 auto",
@@ -608,9 +659,12 @@ export function CharacterEditor(props: {
   });
 
   const [choisie, setChoisie] = createSignal<string | null>(null);
-  /** La grille défile d'elle-même : l'indice dit quand elle cache des personnages. */
-  let grillePersos: HTMLDivElement | undefined;
-  const grilleResteDessous = createResteDessous(() => grillePersos);
+  /**
+   * La cale qui fait tomber le bord bas de la fenêtre au milieu d'un item —
+   * une vignette de vêtement, une pastille de couleur — au lieu d'une marge,
+   * où la page avait l'air finie.
+   */
+  const { cale, brancher: brancherCale } = createCaleDuBord();
   const categorieActive = () => choisie() ?? categorieDuPerso();
   const setCategorieActive = (cat: string) => setChoisie(cat);
 
@@ -860,8 +914,16 @@ export function CharacterEditor(props: {
           </div>
         </div>
 
-        {/* Colonne droite : sections */}
-        <div style={{ "min-width": "0" }}>
+        {/* Colonne droite : sections.
+            La cale se pose ICI, au-dessus de tous les choix : ce qui suit
+            descend d'un bloc, et le bord bas de la fenêtre retombe au milieu
+            d'un item. Sur téléphone, elle est juste sous le bandeau collant
+            de l'aperçu et disparaît dessous au premier geste. */}
+        <div
+          class="ml-cfg-choix"
+          ref={brancherCale}
+          style={{ "min-width": "0", "padding-top": `${cale()}px` }}
+        >
           {/* Choix du personnage, PAR CATÉGORIE.
               Une galerie horizontale unique imposait de faire défiler les 62
               personnages pour atteindre le bon. On choisit d'abord la
@@ -897,47 +959,45 @@ export function CharacterEditor(props: {
             </For>
           </div>
 
-          {/* Enveloppe positionnée : l'indice se pose sur le bas de la
-              grille, qui défile, sans défiler avec elle. */}
-          <div style={{ position: "relative" }}>
-            <div ref={grillePersos} class="ml-cfg-grille-persos">
-              <For each={personnagesDeLaCategorie()}>
-                {(base) => (
-                  <Thumb
-                    selected={String(props.character.characterId) === String(base.id)}
-                    onClick={() => props.onChangeCharacter(base)}
-                    title={base.name}
-                  >
-                    <SvgThumb
-                      svg={thumbSvg(
-                        props.cache,
-                        base.baseSvgUrl,
-                        // Mêmes couleurs que sur l'affiche : les défauts du
-                        // back-office, et celles du client pour le sien.
-                        couleursDeLaBase(
-                          String(props.character.characterId) === String(base.id)
-                            ? props.character.colors
-                            : undefined,
-                          base,
-                        ),
-                        undefined,
-                        `${uid}-charbase-${base.id}`,
-                        {
-                          couleursImage: base.baseCouleursImage,
-                          chemin: `/characters/${base.id}`,
-                          assetBaseUrl: props.assetBaseUrl,
-                        },
-                      )}
-                      label={base.name}
-                    />
-                  </Thumb>
-                )}
-              </For>
-            </div>
-            <IndiceDefilement
-              visible={grilleResteDessous()}
-              style={{ bottom: "0" }}
-            />
+          {/* La grille défile d'elle-même : sa hauteur s'arrête au MILIEU
+              d'une rangée quand elle cache des personnages — une demi-tête
+              au bord dit qu'il y en a d'autres dessous (cf. Defilement). */}
+          <div
+            ref={(el) => brancherDemiRangee(el)}
+            class="ml-cfg-grille-persos"
+          >
+            <For each={personnagesDeLaCategorie()}>
+              {(base) => (
+                <Thumb
+                  selected={String(props.character.characterId) === String(base.id)}
+                  onClick={() => props.onChangeCharacter(base)}
+                  title={base.name}
+                >
+                  <SvgThumb
+                    svg={thumbSvg(
+                      props.cache,
+                      base.baseSvgUrl,
+                      // Mêmes couleurs que sur l'affiche : les défauts du
+                      // back-office, et celles du client pour le sien.
+                      couleursDeLaBase(
+                        String(props.character.characterId) === String(base.id)
+                          ? props.character.colors
+                          : undefined,
+                        base,
+                      ),
+                      undefined,
+                      `${uid}-charbase-${base.id}`,
+                      {
+                        couleursImage: base.baseCouleursImage,
+                        chemin: `/characters/${base.id}`,
+                        assetBaseUrl: props.assetBaseUrl,
+                      },
+                    )}
+                    label={base.name}
+                  />
+                </Thumb>
+              )}
+            </For>
           </div>
           {/* Couleurs du dessin de base : la peau, et les groupes que le
               back-office propose en plus (pelage, robe dessinée…). Une
@@ -965,7 +1025,9 @@ export function CharacterEditor(props: {
           à portée, comme Retour / Continuer entre les étapes (retour
           cliente). Les deux ramènent à la liste : le personnage est modifié
           au fil des choix, il n'y a rien à annuler. */}
-      <BarreActions>
+      {/* Sans fondu : le bord bas tombe maintenant au milieu d'un item, et
+          le fondu recouvrirait précisément la moitié qui sert d'indice. */}
+      <BarreActions indice={false}>
         <Button variant="secondary" onClick={() => props.onBack()}>
           ‹ {m().retour}
         </Button>

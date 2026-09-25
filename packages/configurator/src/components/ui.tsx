@@ -149,6 +149,9 @@ export function PastilleCouleur(props: {
       aria-pressed={props.actif}
       aria-label={props.libelle}
       title={props.libelle}
+      // Un choix, donc un item que le bord bas peut couper en deux
+      // (cf. la règle de la demi-rangée, Defilement.tsx).
+      data-item
       style={{
         flex: "0 0 auto",
         width: "40px",

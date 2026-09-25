@@ -341,11 +341,16 @@ body {
 }
 
 /*
- * Indice « la suite est plus bas », posé au-dessus de cette barre et au bas
- * de la grille des personnages. Il s'efface en fondu une fois le bas atteint,
- * et sa flèche descend trois fois de quelques pixels quand il apparaît — puis
- * se tient tranquille : au stand, la tablette reste ouverte des heures, une
- * flèche qui sautille sans fin finit par agacer.
+ * Indice « la suite est plus bas », posé au-dessus de cette barre. Il s'efface
+ * en fondu une fois le bas atteint, et sa flèche descend trois fois de
+ * quelques pixels quand il apparaît — puis se tient tranquille : au stand, la
+ * tablette reste ouverte des heures, une flèche qui sautille sans fin finit
+ * par agacer.
+ *
+ * Il ne paraît plus à l'étape des personnages : là, le bord bas de ce qu'on
+ * voit tombe au milieu d'une vignette (règle de la demi-rangée, cf.
+ * Defilement.tsx du configurateur), et ce fondu recouvrirait précisément la
+ * moitié de dessin qui sert d'indice.
  *
  * Rien de tout cela quand l'appareil demande moins d'animations : l'indice
  * apparaît et disparaît d'un coup, la flèche ne bouge pas.
@@ -579,6 +584,10 @@ body {
   scrollbar-width: thin;
 }
 
+/* `max-height` est le PLAFOND de la grille, et rien de plus : la hauteur
+   exacte est posée par le configurateur, qui choisit en dessous celle qui
+   s'arrête au milieu d'une rangée — une demi-vignette au bord dit qu'il reste
+   des personnages dessous (règle de la demi-rangée, Defilement.tsx). */
 .ml-cfg-grille-persos {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
