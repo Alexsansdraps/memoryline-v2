@@ -8,8 +8,10 @@ import {
   type JSX,
 } from "solid-js";
 import type { PosterConfig, PosterFormat } from "@memoryline/types";
-import { browserApi, getCartId } from "../lib/api.ts";
+import { sourceVideo } from "@memoryline/types";
+import { browserApi, getCartId, type EncartVideoDTO } from "../lib/api.ts";
 import ConfiguratorIsland from "./ConfiguratorIsland.tsx";
+import { EncartVideo, LecteurVideo, facadeEncart } from "./EncartVideo.tsx";
 
 /**
  * Bouton UNIQUE « Personnaliser » de la fiche produit + configurateur en
@@ -42,6 +44,17 @@ export interface ProductConfiguratorProps {
   defaults?: { lignes?: (string | null)[]; view?: string | null };
   /** Le format coché d'emblée sur la fiche — le moins cher, en général. */
   formatInitial?: string;
+  /**
+   * L'encart vidéo explicative, déjà résolu dans la langue de la page.
+   *
+   * Absent ou `null` : la marchande l'a éteint au back-office, ou l'on est au
+   * stand — rien n'est monté du tout, pas même le rond de l'en-tête.
+   *
+   * C'est de la DONNÉE, pas un nœud : la modale est montée `client:only`, et
+   * Astro sérialise ses props. C'est ici, dans le navigateur, qu'on en fait
+   * la fonction attendue par le paquet du configurateur.
+   */
+  video?: EncartVideoDTO | null;
 }
 
 export default function ProductConfigurator(
@@ -97,10 +110,45 @@ export default function ProductConfigurator(
   function closeModal() {
     setOpen(false);
     lockScroll(false);
+    // La couche vidéo est montée dans la modale : la laisser « ouverte » la
+    // ferait reparaître à la réouverture, par-dessus l'étape 1.
+    setVideoOuverte(false);
+  }
+
+  /* ---------------------------------------------------------------------
+   * L'encart vidéo explicative.
+   *
+   * Rien de tiers n'existe tant que `videoOuverte()` est faux : ni iframe, ni
+   * <video>, ni preconnect. C'est le clic de la cliente qui crée le lecteur,
+   * et sa fermeture qui le démonte — donc qui coupe la connexion à l'hôte.
+   * ------------------------------------------------------------------- */
+  const [videoOuverte, setVideoOuverte] = createSignal(false);
+  const source = () => sourceVideo(props.video?.url);
+  /** Le bouton qui a ouvert la couche : c'est à lui que le focus revient. */
+  let declencheur: HTMLElement | null = null;
+  let boutonRouvrir: HTMLButtonElement | undefined;
+  function ouvrirVideo(origine?: HTMLElement) {
+    declencheur = origine ?? null;
+    setVideoOuverte(true);
+  }
+  function fermerVideo() {
+    setVideoOuverte(false);
+    // Après le démontage de la couche, sinon le focus part sur un nœud qui
+    // n'existe déjà plus et le navigateur le renvoie sur <body>.
+    queueMicrotask(() => declencheur?.focus());
   }
 
   function onKey(e: KeyboardEvent) {
-    if (e.key === "Escape" && open()) closeModal();
+    if (e.key !== "Escape") return;
+    // Échap ferme la couche la plus haute, une seule à la fois. Sans cette
+    // ligne, regarder la vidéo puis appuyer sur Échap refermait TOUTE la
+    // personnalisation en cours — la régression la plus facile à écrire et
+    // la plus dure à pardonner.
+    if (videoOuverte()) {
+      fermerVideo();
+      return;
+    }
+    if (open()) closeModal();
   }
 
   onMount(async () => {
@@ -210,10 +258,33 @@ export default function ProductConfigurator(
               <h2 class="text-xl sm:text-2xl">
                 {tr("cfg.titre")}
               </h2>
+              {/* Revoir la vidéo, aux TROIS étapes.
+
+                  Ici et pas dans le fil d'étapes : cette rangée-là est pleine
+                  (neuf pixels libres mesurés à 375 px, sans `flex-wrap`), et
+                  un quatrième bouton la casserait sur téléphone. L'en-tête,
+                  lui, est `flex: 0 0 auto` et vit hors du conteneur qui
+                  défile : ce rond ne coûte aucun pixel de hauteur.
+
+                  Il n'existe QUE s'il y a une vidéo : un rond qui n'ouvre
+                  rien est un piège. Le visuel d'attente, lui, reste visible
+                  dans l'encart de l'étape 1 — c'est là qu'est la fente. */}
+              <Show when={source()}>
+                <button
+                  type="button"
+                  class="ml-modal-video"
+                  ref={boutonRouvrir}
+                  aria-label={tr("cfg.video.rouvrir")}
+                  title={tr("cfg.video.rouvrir")}
+                  onClick={() => ouvrirVideo(boutonRouvrir)}
+                >
+                  ▶
+                </button>
+              </Show>
               <button
                 type="button"
                 class="ml-modal-close"
-                aria-label="Fermer"
+                aria-label={tr("cfg.fermer")}
                 onClick={closeModal}
               >
                 ✕
@@ -241,9 +312,36 @@ export default function ProductConfigurator(
                 initialConfig={initialConfig()}
                 itemId={editItemId() ?? undefined}
                 onCancel={closeModal}
+                /* Une FONCTION, pas un nœud : `<Show>` démonte l'étape 1 à
+                   chaque changement d'étape, et un nœud unique ne se remonte
+                   pas proprement. Bénéfice second : quitter l'étape 1
+                   démonte l'encart, donc rien ne peut y survivre. */
+                encartVideo={
+                  props.video
+                    ? () => (
+                        <EncartVideo
+                          video={props.video!}
+                          source={source()}
+                          langue={props.langue}
+                          onLancer={ouvrirVideo}
+                        />
+                      )
+                    : undefined
+                }
               />
             </div>
           </div>
+          <Show when={videoOuverte() && source()}>
+            {(s) => (
+              <LecteurVideo
+                source={s()}
+                poster={facadeEncart(props.video?.poster ?? "")}
+                titre={props.video?.titre || tr("cfg.video.titre")}
+                langue={props.langue}
+                onFermer={fermerVideo}
+              />
+            )}
+          </Show>
         </div>
       </Show>
     </>
