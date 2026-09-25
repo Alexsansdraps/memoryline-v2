@@ -386,6 +386,18 @@ export const ui = {
     "cfg.erreur":
       "Le configurateur n'a pas pu démarrer. Vérifiez que l'API est démarrée",
 
+    /* L'encart vidéo de l'étape 1 (apps/web/src/islands/EncartVideo.tsx).
+       Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
+       back-office, ils passent devant. */
+    "cfg.video.titre": "Comment ça marche ?",
+    "cfg.video.intro":
+      "Une courte vidéo vous montre les trois étapes.",
+    "cfg.video.lancer": "Lancer la vidéo",
+    "cfg.video.bientot":
+      "La vidéo explicative arrive très bientôt. En attendant, laissez-vous guider : 1. Fond & texte, 2. Personnages, 3. Format.",
+    "cfg.video.indisponible": "Vidéo bientôt disponible",
+    "cfg.video.rouvrir": "Revoir la vidéo explicative",
+
     "nav.compte": "Compte",
 
     "compte.titre": "Mon compte",
@@ -844,6 +856,18 @@ export const ui = {
     "cfg.erreur":
       "The designer could not start. Check that the API is running",
 
+    /* L'encart vidéo de l'étape 1 (apps/web/src/islands/EncartVideo.tsx).
+       Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
+       back-office, ils passent devant. */
+    "cfg.video.titre": "How does it work?",
+    "cfg.video.intro":
+      "A short video walks you through the three steps.",
+    "cfg.video.lancer": "Play the video",
+    "cfg.video.bientot":
+      "The explainer video is coming very soon. In the meantime, just follow the three steps: 1. Background & text, 2. Characters, 3. Size.",
+    "cfg.video.indisponible": "Video coming soon",
+    "cfg.video.rouvrir": "Watch the explainer video again",
+
     "nav.compte": "Account",
 
     "compte.titre": "My account",
@@ -1299,6 +1323,18 @@ export const ui = {
     "cfg.chargement": "Konfigurator wird geladen…",
     "cfg.erreur":
       "Der Konfigurator konnte nicht starten. Prüfen Sie, ob die API läuft",
+
+    /* L'encart vidéo de l'étape 1 (apps/web/src/islands/EncartVideo.tsx).
+       Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
+       back-office, ils passent devant. */
+    "cfg.video.titre": "Wie funktioniert das?",
+    "cfg.video.intro":
+      "Ein kurzes Video zeigt Ihnen die drei Schritte.",
+    "cfg.video.lancer": "Video abspielen",
+    "cfg.video.bientot":
+      "Das Erklärvideo kommt in Kürze. Folgen Sie so lange einfach den drei Schritten: 1. Hintergrund & Text, 2. Figuren, 3. Format.",
+    "cfg.video.indisponible": "Video folgt in Kürze",
+    "cfg.video.rouvrir": "Erklärvideo erneut ansehen",
 
     "nav.compte": "Konto",
 
@@ -1756,6 +1792,18 @@ export const ui = {
     "cfg.erreur":
       "Il configuratore non è riuscito ad avviarsi. Verifica che l'API sia attiva",
 
+    /* L'encart vidéo de l'étape 1 (apps/web/src/islands/EncartVideo.tsx).
+       Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
+       back-office, ils passent devant. */
+    "cfg.video.titre": "Come funziona?",
+    "cfg.video.intro":
+      "Un breve video ti mostra i tre passaggi.",
+    "cfg.video.lancer": "Guarda il video",
+    "cfg.video.bientot":
+      "Il video esplicativo arriverà molto presto. Nel frattempo segui i tre passaggi: 1. Sfondo e testo, 2. Personaggi, 3. Formato.",
+    "cfg.video.indisponible": "Video presto disponibile",
+    "cfg.video.rouvrir": "Rivedi il video esplicativo",
+
     "nav.compte": "Account",
 
     "compte.titre": "Il mio account",
@@ -2209,6 +2257,18 @@ export const ui = {
     "cfg.chargement": "Cargando el configurador…",
     "cfg.erreur":
       "El configurador no ha podido arrancar. Comprueba que la API esté activa",
+
+    /* L'encart vidéo de l'étape 1 (apps/web/src/islands/EncartVideo.tsx).
+       Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
+       back-office, ils passent devant. */
+    "cfg.video.titre": "¿Cómo funciona?",
+    "cfg.video.intro":
+      "Un vídeo corto te muestra los tres pasos.",
+    "cfg.video.lancer": "Ver el vídeo",
+    "cfg.video.bientot":
+      "El vídeo explicativo llegará muy pronto. Mientras tanto, sigue los tres pasos: 1. Fondo y texto, 2. Personajes, 3. Formato.",
+    "cfg.video.indisponible": "Vídeo disponible muy pronto",
+    "cfg.video.rouvrir": "Volver a ver el vídeo",
 
     "nav.compte": "Cuenta",
 

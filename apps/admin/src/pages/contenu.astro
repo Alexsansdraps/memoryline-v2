@@ -23,6 +23,7 @@
 import Admin from "../layouts/Admin.astro";
 import { adminApi, type CollectionBo } from "../lib/api.ts";
 import { apiUrl } from "../lib/url.ts";
+import { sourceVideo } from "@memoryline/types";
 
 const api = adminApi(Astro.request);
 
@@ -130,9 +131,47 @@ function avancement(cles: string[]): { faites: number; total: number } {
 type Champ = {
   key: string;
   label: string;
-  type: "switch" | "texte" | "long" | "nombre" | "image" | "lien" | "collection";
+  type:
+    | "switch"
+    | "texte"
+    | "long"
+    | "nombre"
+    | "image"
+    | "lien"
+    | "collection"
+    | "video";
   aide?: string;
 };
+
+/**
+ * Ce que la boutique fera de l'adresse saisie, dit en français.
+ *
+ * Calculé AU RENDU, par la même fonction que la boutique (`sourceVideo`) :
+ * il n'y a donc qu'une seule définition de « adresse reconnue » dans tout le
+ * projet. Le verdict ne se met pas à jour à la frappe — on le dit sous le
+ * champ plutôt que de laisser croire à un bug.
+ */
+function verdictVideo(cle: string): { texte: string; alerte: boolean } {
+  const brut = valeur(cle).trim();
+  const s = sourceVideo(brut);
+  if (!s)
+    return brut
+      ? {
+          texte:
+            "Adresse non reconnue : l'encart affichera son visuel d'attente. " +
+            "Attendu : un lien YouTube, un lien Vimeo, ou un fichier .mp4 / .webm.",
+          alerte: true,
+        }
+      : {
+          texte: "Aucune vidéo : l'encart affiche son visuel d'attente.",
+          alerte: false,
+        };
+  if (s.genre === "youtube")
+    return { texte: "Lien YouTube reconnu.", alerte: false };
+  if (s.genre === "vimeo")
+    return { texte: "Lien Vimeo reconnu.", alerte: false };
+  return { texte: "Vidéo hébergée par la boutique.", alerte: false };
+}
 
 /**
  * Le choix d'une collection, prêt à afficher : les options, et ce qu'il faut
@@ -174,6 +213,60 @@ function choixCollection(cle: string) {
 }
 
 const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
+  {
+    titre: "Personnalisation — vidéo explicative",
+    aide:
+      "L'encart montré à la première étape de la personnalisation, et " +
+      "rejouable aux étapes suivantes par le petit bouton rond en haut de la " +
+      "fenêtre. Tant qu'aucune adresse n'est donnée, l'encart reste en place " +
+      "avec un visuel d'attente : la cliente voit qu'une vidéo est prévue. " +
+      "Rien de YouTube ni de Vimeo n'est chargé tant que la cliente n'a pas " +
+      "cliqué — c'est ce qui permet de ne pas toucher au bandeau cookies. " +
+      "Au stand, l'encart ne s'affiche pas.",
+    champs: [
+      {
+        key: "configurateur.video.visible",
+        label: "Afficher l'encart vidéo",
+        type: "switch",
+      },
+      {
+        key: "configurateur.video.url",
+        label: "Vidéo (lien ou fichier)",
+        type: "video",
+        aide:
+          "Collez un lien YouTube ou Vimeo, ou envoyez un fichier .mp4 / " +
+          ".webm (120 Mo maximum, une à deux minutes). Pour retirer la " +
+          "vidéo, videz cette case et enregistrez : l'encart revient à son " +
+          "visuel d'attente. Le fichier déjà envoyé, lui, reste rangé sur le " +
+          "serveur — rien ne se supprime.",
+      },
+      {
+        key: "configurateur.video.poster",
+        label: "Image d'attente (facultative)",
+        type: "image",
+        aide:
+          "L'image figée montrée avant le clic. Laissez vide : la boutique " +
+          "affiche son propre visuel. Elle n'utilise jamais la vignette de " +
+          "YouTube, qui préviendrait YouTube de la visite avant même le clic.",
+      },
+      {
+        key: "configurateur.video.titre",
+        label: "Titre de l'encart",
+        type: "texte",
+        aide:
+          "Laissez vide pour le texte par défaut, déjà traduit dans les cinq " +
+          "langues.",
+      },
+      {
+        key: "configurateur.video.texte",
+        label: "Texte de l'encart",
+        type: "long",
+        aide:
+          "Laissez vide pour le texte par défaut, déjà traduit dans les cinq " +
+          "langues.",
+      },
+    ],
+  },
   {
     titre: "Accueil — encart en tête de page",
     aide:
@@ -422,7 +515,61 @@ const global = avancement(champsTraduisibles);
                         l'adresse se remplit seule. Enregistrez ensuite pour le
                         publier.
                       </p>
+                      {champ.aide && (
+                        <p class="mt-1 text-xs text-bo-muted">{champ.aide}</p>
+                      )}
                     </div>
+                  </div>
+                </div>
+              ) : champ.type === "video" ? (
+                /* Jumeau du bloc des images, à trois différences près : pas
+                   d'aperçu <img>, un verdict calculé au rendu, et le MÊME
+                   champ texte pour un lien collé et pour un fichier envoyé —
+                   les deux aboutissent à une adresse, il n'y a donc qu'une
+                   clé à tenir. */
+                <div class="js-video" data-cle={champ.key}>
+                  <span class="text-bo-muted">{champ.label}</span>
+                  <span class="ml-2 text-xs text-bo-muted">
+                    (vaut pour les 5 langues)
+                  </span>
+                  <div class="mt-1">
+                    <input
+                      type="file"
+                      accept="video/mp4,video/webm"
+                      class="js-fichier block w-full text-xs"
+                    />
+                    <input
+                      type="text"
+                      name={champ.key}
+                      value={valeur(champ.key)}
+                      placeholder="https://youtu.be/… ou /assets/…"
+                      class="js-url mt-2 w-full rounded border border-bo-border px-3 py-2 font-mono text-xs"
+                    />
+                    <p class="js-etat mt-1 text-xs text-bo-muted">
+                      Choisissez un fichier : il est envoyé tout de suite, et
+                      l'adresse se remplit seule. Enregistrez ensuite pour le
+                      publier.
+                    </p>
+                    {(() => {
+                      const v = verdictVideo(champ.key);
+                      return (
+                        <p
+                          class={
+                            v.alerte
+                              ? "mt-1 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs"
+                              : "mt-1 text-xs text-bo-muted"
+                          }
+                        >
+                          {v.texte}
+                        </p>
+                      );
+                    })()}
+                    <p class="mt-1 text-xs text-bo-muted">
+                      Le verdict se met à jour après Enregistrer.
+                    </p>
+                    {champ.aide && (
+                      <p class="mt-1 text-xs text-bo-muted">{champ.aide}</p>
+                    )}
                   </div>
                 </div>
               ) : champ.type === "lien" ? (
@@ -582,6 +729,43 @@ const global = avancement(champsTraduisibles);
             apercu.style.visibility = "visible";
             etat.textContent =
               "Image envoyée. Enregistrez pour la publier sur le site.";
+          } catch (e) {
+            etat.textContent = "Envoi impossible : " + e.message;
+          }
+        });
+      });
+
+      /* --- Le téléversement des vidéos -------------------------------- */
+      document.querySelectorAll(".js-video").forEach((bloc) => {
+        const fichier = bloc.querySelector(".js-fichier");
+        const url = bloc.querySelector(".js-url");
+        const etat = bloc.querySelector(".js-etat");
+        if (!fichier) return;
+
+        fichier.addEventListener("change", async () => {
+          const f = fichier.files && fichier.files[0];
+          if (!f) return;
+          etat.textContent = "Envoi en cours… (une vidéo peut prendre une minute)";
+          try {
+            const corps = new FormData();
+            corps.append("file", f);
+            // Mêmes règles absolues que pour une image : pas d'en-tête
+            // Content-Type posée à la main (le navigateur doit écrire
+            // lui-même la frontière du multipart), et `credentials` pour
+            // porter le cookie d'administration, sans quoi l'API refuse.
+            const res = await fetch(API + "/admin/uploads", {
+              method: "POST",
+              credentials: "include",
+              body: corps,
+            });
+            if (res.status === 413)
+              throw new Error("Fichier trop lourd (120 Mo maximum)");
+            if (res.status === 415)
+              throw new Error("Format refusé : .mp4 ou .webm");
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            const data = await res.json();
+            url.value = data.url;
+            etat.textContent = "Vidéo envoyée. Enregistrez pour la publier.";
           } catch (e) {
             etat.textContent = "Envoi impossible : " + e.message;
           }

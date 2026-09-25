@@ -65,6 +65,14 @@ export interface ConfiguratorIslandProps {
    * ligne de panier porte ce nombre ; les exemplaires sont identiques.
    */
   quantite?: number;
+  /**
+   * L'encart vidéo de l'étape 1, fabriqué par la fiche produit.
+   *
+   * Pur transit : aucune ligne à ajouter au bloc `messages={{…}}` ci-dessous,
+   * c'est tout l'intérêt d'une fente. Le paquet réserve la place, la boutique
+   * fournit le contenu déjà traduit.
+   */
+  encartVideo?: () => JSX.Element;
 }
 
 /** Prix selon le format choisi, depuis les prix réels des variantes. */
@@ -271,6 +279,7 @@ export default function ConfiguratorIsland(
               defaults={props.defaults}
               initialConfig={props.initialConfig}
               assetBaseUrl={PUBLIC_API_URL}
+              encartVideo={props.encartVideo}
               onSubmit={handleSubmit}
               onBack={handleBack}
             />

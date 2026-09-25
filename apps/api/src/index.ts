@@ -19,6 +19,9 @@ import type { Column, SQL } from "drizzle-orm";
 import { resolve, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+// Une vidéo se sert en TRANCHES, pas d'un bloc : cf. GET /assets/:file.
+import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
 import { randomBytes } from "node:crypto";
 import sharp from "sharp";
 import { db, sql, schema } from "./db/client.js";
@@ -195,6 +198,21 @@ const MIME: Record<string, string> = {
   ".webp": "image/webp",
   ".svg": "image/svg+xml",
   ".gif": "image/gif",
+  /*
+   * La vidéo explicative du configurateur, quand la boutique l'héberge
+   * elle-même.
+   *
+   * Sans son type déclaré ici, le fichier part en « application/octet-stream »
+   * et la réponse porte « X-Content-Type-Options: nosniff » (plus bas) : un
+   * <video> REFUSE de lire ça. La vidéo serait téléversée, bien présente dans
+   * data/assets, et muette — le genre de panne qu'on met une journée à
+   * comprendre.
+   *
+   * Pas de « .mov » : QuickTime n'est pas lu par tous les navigateurs, et la
+   * liste blanche d'envoi ne l'accepte pas non plus.
+   */
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
 };
 
 /**
@@ -281,8 +299,77 @@ app.get("/assets/:file", async (c) => {
   try {
     await stat(path);
     const servi = await fichierALaTaille(path, file, largeur);
-    const buf = await readFile(servi.chemin);
     const mime = servi.mime;
+
+    /*
+     * Une vidéo ne se lit pas comme une image : le navigateur demande des
+     * TRANCHES (en-tête Range) pour démarrer sans tout télécharger et pour
+     * qu'on puisse se déplacer dedans. Sans 206, la barre de lecture est
+     * morte — et surtout on chargerait cent mégaoctets en mémoire à chaque
+     * visiteur, ce que readFile fait aujourd'hui pour une vignette de 200 ko
+     * sans que ça se voie.
+     *
+     * On garde « immutable » (les noms portent un suffixe unique) et
+     * « nosniff » : le type annoncé est désormais le bon.
+     */
+    if (mime.startsWith("video/")) {
+      const total = (await stat(servi.chemin)).size;
+      const enTetes: Record<string, string> = {
+        "Content-Type": mime,
+        "Cache-Control": "public, max-age=31536000, immutable",
+        "Accept-Ranges": "bytes",
+        "X-Content-Type-Options": "nosniff",
+      };
+      const range = c.req.header("Range");
+      const demande = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
+      if (!demande) {
+        return c.body(
+          Readable.toWeb(
+            createReadStream(servi.chemin),
+          ) as unknown as ReadableStream,
+          200,
+          { ...enTetes, "Content-Length": String(total) },
+        );
+      }
+      // « bytes=-500 » demande les cinq cents DERNIERS octets ; « bytes=100- »
+      // demande tout à partir du centième. Les deux formes existent dans la
+      // nature, et un lecteur vidéo se sert des deux.
+      const aBrut = demande[1] ?? "";
+      const bBrut = demande[2] ?? "";
+      let debut: number;
+      let fin: number;
+      if (aBrut === "") {
+        const longueur = Number(bBrut);
+        if (!bBrut || !Number.isFinite(longueur) || longueur <= 0)
+          return c.body(null, 416, { "Content-Range": `bytes */${total}` });
+        debut = Math.max(0, total - longueur);
+        fin = total - 1;
+      } else {
+        debut = Number(aBrut);
+        fin = bBrut === "" ? total - 1 : Number(bBrut);
+      }
+      if (
+        !Number.isFinite(debut) ||
+        !Number.isFinite(fin) ||
+        debut > fin ||
+        debut >= total
+      )
+        return c.body(null, 416, { "Content-Range": `bytes */${total}` });
+      fin = Math.min(fin, total - 1);
+      return c.body(
+        Readable.toWeb(
+          createReadStream(servi.chemin, { start: debut, end: fin }),
+        ) as unknown as ReadableStream,
+        206,
+        {
+          ...enTetes,
+          "Content-Range": `bytes ${debut}-${fin}/${total}`,
+          "Content-Length": String(fin - debut + 1),
+        },
+      );
+    }
+
+    const buf = await readFile(servi.chemin);
     return c.body(buf, 200, {
       "Content-Type": mime,
       "Cache-Control": "public, max-age=31536000, immutable",
@@ -2119,8 +2206,28 @@ app.get("/admin/stats", async (c) => {
  * figurer dans la liste blanche : c'est ce fichier qui sera ensuite servi par
  * /assets/:file, et rasterisé dans le PDF d'impression.
  */
-const UPLOAD_EXT = new Set([".svg", ".png", ".jpg", ".jpeg", ".webp"]);
+const UPLOAD_EXT = new Set([
+  ".svg",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".mp4",
+  ".webm",
+]);
 const UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
+/**
+ * Une vidéo pèse un autre ordre de grandeur qu'une image : une minute
+ * d'explication en 1080p fait couramment 30 à 80 Mo, et le plafond des
+ * visuels la refuserait sans que personne comprenne pourquoi.
+ *
+ * Cent vingt mégaoctets, pas davantage : le multipart est analysé EN MÉMOIRE
+ * par c.req.formData(), et le VPS qui sert la boutique n'a pas de mémoire à
+ * gaspiller. Au-delà, c'est une vidéo à héberger chez YouTube ou Vimeo — ce
+ * que l'autre option de l'écran permet justement.
+ */
+const UPLOAD_MAX_VIDEO_BYTES = 120 * 1024 * 1024;
+const EXT_VIDEO = new Set([".mp4", ".webm"]);
 
 app.post("/admin/uploads", async (c) => {
   const form = await c.req.formData();
@@ -2128,17 +2235,30 @@ app.post("/admin/uploads", async (c) => {
   if (!(file instanceof File) || !file.size) {
     return c.json({ error: "aucun fichier reçu" }, 400);
   }
-  if (file.size > UPLOAD_MAX_BYTES) {
-    return c.json(
-      { error: `fichier trop lourd (max ${UPLOAD_MAX_BYTES / 1048576} Mo)` },
-      413,
-    );
-  }
+  /*
+   * L'EXTENSION D'ABORD, LE POIDS ENSUITE — l'ordre compte.
+   *
+   * L'inverse refusait un .exe de 30 Mo pour la mauvaise raison (« trop
+   * lourd »), et surtout : le plafond dépend maintenant du type de fichier,
+   * on ne peut donc pas le choisir avant de savoir ce qu'on tient.
+   */
   const ext = extname(file.name).toLowerCase();
   if (!UPLOAD_EXT.has(ext)) {
     return c.json(
       { error: `extension refusée (acceptées : ${[...UPLOAD_EXT].join(", ")})` },
       415,
+    );
+  }
+  const estVideo = EXT_VIDEO.has(ext);
+  const plafond = estVideo ? UPLOAD_MAX_VIDEO_BYTES : UPLOAD_MAX_BYTES;
+  if (file.size > plafond) {
+    return c.json(
+      {
+        error: `fichier trop lourd (max ${plafond / 1048576} Mo${
+          estVideo ? " pour une vidéo" : ""
+        })`,
+      },
+      413,
     );
   }
 

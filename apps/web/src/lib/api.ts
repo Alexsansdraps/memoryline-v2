@@ -9,6 +9,12 @@ import type {
 import {
   REGLAGE_CADRES_SITE,
   cadresProposesSurLeSite,
+  encartVideoAffiche,
+  REGLAGE_VIDEO_POSTER,
+  REGLAGE_VIDEO_TEXTE,
+  REGLAGE_VIDEO_TITRE,
+  REGLAGE_VIDEO_URL,
+  REGLAGE_VIDEO_VISIBLE,
 } from "@memoryline/types";
 import type {
   CadreDTO,
@@ -466,6 +472,47 @@ export async function cadresSurLeSite(): Promise<boolean> {
     return cadresProposesSurLeSite(all[REGLAGE_CADRES_SITE]);
   } catch {
     return true;
+  }
+}
+
+/** L'encart vidéo du configurateur, tel que la fiche produit le descend. */
+export interface EncartVideoDTO {
+  /** Adresse brute telle que la marchande l'a saisie. Le tri se fait au rendu. */
+  url: string;
+  /** Façade téléversée, ou "" : la boutique a sa propre illustration. */
+  poster: string;
+  /** Titre et texte de la marchande, ou "" : l'île met alors les siens. */
+  titre: string;
+  texte: string;
+}
+
+/**
+ * L'encart vidéo du configurateur, dans la langue de la page.
+ *
+ * `null` quand la marchande l'a éteint : la fiche produit ne descend alors
+ * aucune prop, et rien n'est monté du tout.
+ *
+ * Aucune requête de plus : les réglages sont déjà lus une fois par page
+ * (cache de 2 s, CACHE_REGLAGES_MS) — on ne fait que piocher dedans.
+ *
+ * Réglages injoignables : on rend l'encart avec tout à vide, c'est-à-dire le
+ * visuel d'attente. Une panne de l'API ne doit pas faire disparaître la fente.
+ */
+export async function encartVideoDuSite(
+  langue = "fr",
+): Promise<EncartVideoDTO | null> {
+  const chaine = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  try {
+    const all = await reglagesDeLaLangue(langue);
+    if (!encartVideoAffiche(all[REGLAGE_VIDEO_VISIBLE])) return null;
+    return {
+      url: chaine(all[REGLAGE_VIDEO_URL]),
+      poster: chaine(all[REGLAGE_VIDEO_POSTER]),
+      titre: chaine(all[REGLAGE_VIDEO_TITRE]),
+      texte: chaine(all[REGLAGE_VIDEO_TEXTE]),
+    };
+  } catch {
+    return { url: "", poster: "", titre: "", texte: "" };
   }
 }
 

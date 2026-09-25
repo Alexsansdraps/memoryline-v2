@@ -8,6 +8,7 @@ import {
   assetSrcset,
   assetUrl,
   cadresSurLeSite,
+  encartVideoDuSite,
   formatPrice,
   promotion,
   varianteLaMoinsChere,
@@ -58,6 +59,19 @@ const sansPrix = Astro.locals.stand;
  * pas du tout la rubrique.
  */
 const cadresProposes = Astro.locals.stand || (await cadresSurLeSite());
+
+/*
+ * L'encart vidéo de la personnalisation.
+ *
+ * Au stand, jamais : la vidéo remplace une vendeuse absente, et au stand la
+ * vendeuse est là, debout à côté du client — une minute de vidéo sur le wifi
+ * d'un salon est la dernière chose à charger sur une tablette. C'est
+ * l'inverse exact des cadres, qui eux sont TOUJOURS proposés au stand, d'où
+ * deux lignes qui se ressemblent et disent le contraire.
+ *
+ * Aucune requête de plus : les réglages sont déjà lus une fois par page.
+ */
+const encartVideo = Astro.locals.stand ? null : await encartVideoDuSite(langue);
 
 let product: ProductDetail | null = null;
 try {
@@ -338,6 +352,7 @@ const breadcrumbLd = {
             client:only="solid-js"
             sansPrix={sansPrix}
             cadresProposes={cadresProposes}
+            video={encartVideo}
             product={{
               id: product.id,
               name: cleanName,

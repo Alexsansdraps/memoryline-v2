@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" width="320" height="180" role="img" aria-hidden="true">
+  <!--
+    Le visuel d'attente de l'encart vidéo du configurateur.
+
+    Livré AVEC le site, et servi par la boutique : c'est ce qui permet de
+    montrer une façade sans prévenir YouTube qu'une cliente est là. Ne jamais
+    le remplacer par « img.youtube.com/vi/… » — la vignette de YouTube est une
+    requête vers YouTube, et elle romprait la promesse faite au bandeau
+    cookies.
+
+    Aucun texte : il faudrait le traduire cinq fois. Aucune police externe :
+    il faudrait la charger. Les couleurs sont celles de la charte
+    (global.css) : papier, encre, et le rouge du bandeau pour le triangle.
+  -->
+  <rect width="320" height="180" fill="#f3f3f3" />
+
+  <!-- La pellicule : deux bandes perforées, haut et bas. -->
+  <g fill="#121212" opacity="0.10">
+    <rect x="0" y="0" width="320" height="22" />
+    <rect x="0" y="158" width="320" height="22" />
+  </g>
+  <g fill="#f3f3f3">
+    <rect x="10" y="6" width="16" height="10" rx="2" />
+    <rect x="42" y="6" width="16" height="10" rx="2" />
+    <rect x="74" y="6" width="16" height="10" rx="2" />
+    <rect x="106" y="6" width="16" height="10" rx="2" />
+    <rect x="138" y="6" width="16" height="10" rx="2" />
+    <rect x="170" y="6" width="16" height="10" rx="2" />
+    <rect x="202" y="6" width="16" height="10" rx="2" />
+    <rect x="234" y="6" width="16" height="10" rx="2" />
+    <rect x="266" y="6" width="16" height="10" rx="2" />
+    <rect x="298" y="6" width="16" height="10" rx="2" />
+    <rect x="10" y="164" width="16" height="10" rx="2" />
+    <rect x="42" y="164" width="16" height="10" rx="2" />
+    <rect x="74" y="164" width="16" height="10" rx="2" />
+    <rect x="106" y="164" width="16" height="10" rx="2" />
+    <rect x="138" y="164" width="16" height="10" rx="2" />
+    <rect x="170" y="164" width="16" height="10" rx="2" />
+    <rect x="202" y="164" width="16" height="10" rx="2" />
+    <rect x="234" y="164" width="16" height="10" rx="2" />
+    <rect x="266" y="164" width="16" height="10" rx="2" />
+    <rect x="298" y="164" width="16" height="10" rx="2" />
+  </g>
+
+  <!-- Le cadre de l'image, en trait d'encre léger. -->
+  <rect
+    x="0.5"
+    y="0.5"
+    width="319"
+    height="179"
+    fill="none"
+    stroke="#121212"
+    stroke-opacity="0.14"
+  />
+
+  <!-- Le bouton de lecture, au centre. -->
+  <circle cx="160" cy="90" r="34" fill="#ffffff" />
+  <circle cx="160" cy="90" r="34" fill="none" stroke="#121212" stroke-opacity="0.12" />
+  <path d="M151 74 L151 106 L177 90 Z" fill="#9c1616" />
+
+  <!-- Le filigrane : trois traits, comme la ligne d'horizon des affiches. -->
+  <g stroke="#121212" stroke-opacity="0.16" stroke-linecap="round" stroke-width="3">
+    <line x1="248" y1="140" x2="304" y2="140" />
+    <line x1="264" y1="148" x2="304" y2="148" />
+    <line x1="280" y1="156" x2="304" y2="156" />
+  </g>
+</svg>
