@@ -741,9 +741,11 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
 
         {/* Navigation globale (masquée quand on édite un perso : l'éditeur a ses
             propres boutons Retour / Valider §18.2 F). Collée au bas de la
-            fenêtre, avec l'indice qui dit qu'il reste à voir plus bas. */}
+            fenêtre, avec l'indice qui dit qu'il reste à voir plus bas — sauf
+            à l'étape des personnages, où le bord bas tombe déjà au milieu
+            d'une ligne et où le fondu la recouvrirait. */}
         <Show when={!editingActive()}>
-          <BarreActions>
+          <BarreActions indice={state.step !== "characters"}>
             <Button variant="secondary" onClick={prev}>
               {msg().retour}
             </Button>

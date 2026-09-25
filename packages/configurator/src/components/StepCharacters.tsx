@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import { createSignal, For, Show } from "solid-js";
 import { Button } from "./ui";
+import { createCaleDuBord } from "./Defilement";
 import { CharacterEditor } from "./CharacterEditor";
 import type { MessagesConfigurateur } from "../messages";
 import type {
@@ -46,6 +47,12 @@ export function StepCharacters(props: {
   /** Le rang en cours de déplacement, ou rien quand personne ne glisse. */
   const [rangSaisi, setRangSaisi] = createSignal<number | null>(null);
   let liste: HTMLDivElement | undefined;
+  /**
+   * Avec beaucoup de personnages, la liste passe sous le bord de la fenêtre :
+   * la cale fait tomber ce bord au milieu d'une ligne, qui se voit coupée
+   * (cf. la règle de la demi-rangée, Defilement.tsx).
+   */
+  const { cale, brancher: brancherCale } = createCaleDuBord();
 
   /**
    * Prend un personnage dans la liste et le suit jusqu'au relâchement.
@@ -99,7 +106,11 @@ export function StepCharacters(props: {
       <Show
         when={editing() !== null && editingChar()}
         fallback={
-          <div>
+          <div
+            class="ml-cfg-choix"
+            ref={brancherCale}
+            style={{ "padding-top": `${cale()}px` }}
+          >
             <h3 style={{ "font-weight": "700", "margin-bottom": "10px" }}>
               {m().personnages}
             </h3>
@@ -113,6 +124,9 @@ export function StepCharacters(props: {
                     return (
                       <div
                         data-rang={i()}
+                        // Une ligne de la liste : un item que le bord bas
+                        // peut couper en deux.
+                        data-item
                         style={{
                           display: "flex",
                           "align-items": "center",
