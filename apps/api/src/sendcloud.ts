@@ -742,12 +742,28 @@ function resumeExpedition(
       return `SendCloud a refusé ces clés${quand ? ` le ${quand}` : ""}. Tant que ce message reste, votre compte n'est pas relié : recollez la paire, ou refaites-en une chez SendCloud et collez la nouvelle. ${ACHAT_PAS_ENCORE}`;
     }
     case "non_verifie":
+      /*
+       * TROIS ÉTATS SOUS UN SEUL VOYANT, ET LA PHRASE EST LA SEULE À POUVOIR
+       * LES DISTINGUER.
+       *
+       * « Jamais confirmées » ne dit pas POURQUOI, et c'est précisément ce que
+       * le message du clic disait avant de s'effacer. N'écrire que deux
+       * phrases pour trois raisons refaisait le défaut réparé, dans l'autre
+       * sens : après un incident CHEZ EUX, le bandeau qui survivait racontait
+       * que personne n'avait encore essayé — et le seul geste utile, revenir
+       * cliquer plus tard, n'était plus expliqué nulle part.
+       */
       // Recliquer ne peut pas aboutir : ne pas le demander. C'est le cas du
       // 404 — l'adresse que la boutique interroge est fausse, les clés n'y
       // sont pour rien, et c'est à nous de le réparer.
-      return reessayer === false
-        ? `Les clés sont en place, mais SendCloud n'a jamais confirmé qu'il les accepte : le dernier essai a échoué sur un défaut de la boutique, pas sur vos clés. Recliquer n'y changera rien — signalez-le-nous. Vos clés restent enregistrées, vous n'aurez pas à les recoller. ${ACHAT_PAS_ENCORE}`
-        : `Les clés sont en place, mais SendCloud n'a jamais confirmé qu'il les accepte. Cliquez sur « Vérifier le compte » : c'est une simple lecture, elle n'achète rien. ${ACHAT_PAS_ENCORE}`;
+      if (reessayer === false)
+        return `Les clés sont en place, mais SendCloud n'a jamais confirmé qu'il les accepte : le dernier essai a échoué sur un défaut de la boutique, pas sur vos clés. Recliquer n'y changera rien — signalez-le-nous. Vos clés restent enregistrées, vous n'aurez pas à les recoller. ${ACHAT_PAS_ENCORE}`;
+      // Recliquer a un sens, et il faut le dire : cadence, panne passagère,
+      // délai dépassé. « N'a pas abouti » couvre les trois — un 429 est bien
+      // une réponse, un silence n'en est pas une.
+      if (reessayer === true)
+        return `Les clés sont en place, et le dernier essai n'a pas abouti chez SendCloud : ce n'est pas un refus, vos clés restent enregistrées. C'est un incident passager de leur côté — recliquez sur « Vérifier le compte » dans un moment, c'est une simple lecture, elle n'achète rien. ${ACHAT_PAS_ENCORE}`;
+      return `Les clés sont en place, mais SendCloud n'a jamais confirmé qu'il les accepte. Cliquez sur « Vérifier le compte » : c'est une simple lecture, elle n'achète rien. ${ACHAT_PAS_ENCORE}`;
     case "essai":
       return `Mode essai : les bordereaux que la boutique fabriquera seront des « lettres non affranchies ». SendCloud ne vous facturera rien, et l'étiquette produite ne fera partir aucun colis — c'est fait pour tout essayer sans dépenser. ${ACHAT_PAS_ENCORE}`;
     case "reel":
