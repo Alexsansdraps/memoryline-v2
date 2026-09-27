@@ -54,6 +54,7 @@ import {
   PART_FAMILLE_MIN,
   type CouleursImage,
   type FamilleCouleur,
+  type MotifSansCouleur,
 } from "@memoryline/types";
 
 const ASSETS_DIR = resolve(fileURLToPath(import.meta.url), "../../../../data/assets");
@@ -90,6 +91,25 @@ export function imageDuDessin(svg: string): Buffer | null {
  * détail, et cela tient l'analyse sous la demi-seconde.
  */
 const LARGEUR_ANALYSE = 400;
+
+/**
+ * Budget de la SECONDE lecture, en pixels rendus.
+ *
+ * 400 pixels de large suffisent à un pelage, mais pas à un DESSIN AU TRAIT :
+ * réduit à 400, un trait de 6 pixels dans une image de 3 000 n'en pèse plus
+ * que 0,8 — pas un seul pixel n'y reste pleinement opaque, et la lecture
+ * concluait « image entièrement transparente » d'un fichier franchement noir.
+ * Quand la première passe ne trouve rien, on relit donc le dessin à SA taille.
+ *
+ * Le budget se compte en pixels et non en largeur, pour que le rendu reste
+ * borné quelle que soit la forme du dessin : une affiche très haute serait
+ * énorme à 2 000 pixels de large. Quatre millions de pixels, c'est seize
+ * méga-octets de pixels bruts — et, mesuré, 2 000 pixels de large pour un
+ * dessin carré, de quoi rattraper un trait de 2 pixels dans un export de
+ * 3 000. Le surcoût (environ un tiers de seconde) n'est payé que dans la
+ * branche qui, sans lui, REFUSERAIT le dessin.
+ */
+const PIXELS_ANALYSE_FINE = 4_000_000;
 
 /** Largeur de la carte des teintes montrée au back-office. */
 const LARGEUR_CARTE = 130;
@@ -150,6 +170,35 @@ async function rendu(
     .raw()
     .toBuffer({ resolveWithObject: true });
   return { data, width: info.width, height: info.height, channels: info.channels };
+}
+
+/**
+ * Le même dessin relu EN GRAND, ou `null` quand il n'y a rien à y gagner.
+ *
+ * Sert uniquement de session de rattrapage : on n'y vient qu'après une
+ * première lecture restée vide (cf. {@link PIXELS_ANALYSE_FINE}). Un dessin
+ * qui a déjà rendu des teintes ne repasse jamais par ici — les sept animaux
+ * photographiés et les dessins qui marchent aujourd'hui gardent donc, au pixel
+ * près, les familles qu'ils donnent actuellement.
+ */
+async function renduFin(
+  svg: string,
+  premier: { width: number; height: number },
+): Promise<Awaited<ReturnType<typeof rendu>> | null> {
+  // Moins large que demandé : le fichier est plus petit que 400 pixels, il a
+  // donc DÉJÀ été lu à sa taille. Le relire ne montrerait pas un pixel de plus.
+  if (premier.width < LARGEUR_ANALYSE) return null;
+  const largeur = Math.round(
+    Math.sqrt((PIXELS_ANALYSE_FINE * premier.width) / premier.height),
+  );
+  if (largeur <= premier.width) return null;
+  try {
+    return await rendu(svg, largeur);
+  } catch {
+    // Le grand rendu échoue là où le petit passait (mémoire) : on s'en tient
+    // à ce que la première lecture a dit.
+    return null;
+  }
 }
 
 /**
@@ -369,24 +418,77 @@ async function carteDesTeintes(
   return `data:image/png;base64,${png.toString("base64")}`;
 }
 
+/** Ce qu'a donné la lecture d'un dessin en pixels, et pourquoi si rien. */
+export interface LectureCouleursImage {
+  couleurs: CouleursImage | null;
+  /** Renseigné seulement quand `couleurs` est null. */
+  motif?: MotifSansCouleur;
+}
+
 /**
- * Lit les couleurs d'un dessin en pixels : ses familles, leur part du dessin,
- * et la carte qui dit où elles sont. Rien n'est proposé au client : c'est la
- * boutique qui coche, une famille après l'autre, au back-office.
+ * Lit les couleurs d'un dessin en pixels EN DISANT POURQUOI quand elle
+ * n'obtient rien.
  *
- * Rend `null` si le dessin n'est pas une image en pixels, ou s'il est
- * illisible : l'appelant retombe alors sur les couleurs vectorielles.
+ * Quatre échecs très différents se ressemblaient ici : un fichier qui n'est
+ * pas une image, un rendu qui échoue, un dessin AU TRAIT dont la lecture ne
+ * sait rien tirer, et une image réellement vide. Tous rendaient `null`, et le
+ * back-office, faute de mieux, accusait le fichier d'être illisible. Chacun
+ * porte maintenant son motif, et le back-office en fait une phrase juste.
  */
-export async function detecterCouleursImage(svg: string): Promise<CouleursImage | null> {
-  if (!baliseImageDuDessin(svg)) return null;
+export async function lireCouleursImage(svg: string): Promise<LectureCouleursImage> {
+  if (!baliseImageDuDessin(svg)) return { couleurs: null, motif: "format-non-traite" };
   let rendus: Awaited<ReturnType<typeof rendu>>;
   try {
     rendus = await rendu(svg, LARGEUR_ANALYSE);
   } catch {
-    return null;
+    // Le dessin porte bien une image, mais elle n'a pas pu être décodée :
+    // fichier tronqué, encodage exotique, mémoire insuffisante.
+    return { couleurs: null, motif: "echec-lecture" };
   }
-  const { teintes } = teintesDuRendu(rendus.data, rendus.channels);
-  if (teintes.length === 0) return null;
+  let { teintes } = teintesDuRendu(rendus.data, rendus.channels);
+  if (teintes.length === 0) {
+    // Rendu sans erreur, et pas un seul pixel visible à 400 pixels de large.
+    // ON N'EN CONCLUT ENCORE RIEN : un DESSIN AU TRAIT est franchement opaque
+    // et disparaît quand même à cette taille-là (cf. PIXELS_ANALYSE_FINE).
+    // Cette branche ne recevait autrefois que les sept animaux photographiés,
+    // qui sont des aplats ; elle reçoit maintenant tous les fichiers téléversés,
+    // cadres et traits d'encre compris. On relit donc le dessin en grand
+    // AVANT de décider quoi que ce soit — le plus souvent, il n'y avait aucun
+    // problème à annoncer.
+    const fin = await renduFin(svg, rendus);
+    const teintesFines = fin ? teintesDuRendu(fin.data, fin.channels).teintes : [];
+    if (fin && teintesFines.length > 0) {
+      rendus = fin;
+      teintes = teintesFines;
+    } else {
+      // Vraiment rien, même à sa taille. TROIS CAUSES QUI N'ONT RIEN À VOIR
+      // se ressemblent ici : une image réellement vide, une image ABÎMÉE dont
+      // le rasteriseur n'a rien tiré sans se plaindre, et un dessin au trait
+      // bon mais sans le moindre aplat. Un PNG coupé garde un en-tête valide —
+      // `metadata()` y croit, et le rendu rend du vide en silence : mesuré, un
+      // fichier tronqué s'annonçait « entièrement transparent », ce qui est
+      // faux et envoie refaire l'export au lieu de renvoyer le fichier.
+      //
+      // Seul un VRAI décodage tranche, et il dit les deux choses à la fois :
+      // qu'il échoue désigne le fichier abîmé, et son canal alpha dit si le
+      // fichier est VIDE (maximum 0) ou opaque (255, ou pas de canal alpha du
+      // tout). Sans ce test, un dessin au trait parfaitement bon s'entendait
+      // dire qu'il était « entièrement transparent » : c'était faux, et c'est
+      // le seul reproche que le fichier ne méritait pas.
+      //
+      // Il coûte quelques centièmes de seconde et n'est payé que dans ce
+      // cas-là, qui est rare.
+      const octets = imageDuDessin(svg);
+      let alphaMax: number | undefined;
+      if (octets)
+        try {
+          alphaMax = (await sharp(octets).stats()).channels[3]?.max;
+        } catch {
+          return { couleurs: null, motif: "echec-lecture" };
+        }
+      return { couleurs: null, motif: alphaMax === 0 ? "image-vide" : "traits-trop-fins" };
+    }
+  }
   const familles = famillesDesTeintes(teintes);
   // La carte doit ranger les pixels EXACTEMENT comme la recoloration le fera :
   // mêmes teintes, dans le même ordre que `planDeRecoloration` les met à plat.
@@ -403,7 +505,7 @@ export async function detecterCouleursImage(svg: string): Promise<CouleursImage 
   } catch {
     // Vignette impossible : les familles restent utilisables sans elle.
   }
-  return { familles, ...(carte ? { carte, carteTeintes } : {}) };
+  return { couleurs: { familles, ...(carte ? { carte, carteTeintes } : {}) } };
 }
 
 /* -------------------------------------------------------------------------- */

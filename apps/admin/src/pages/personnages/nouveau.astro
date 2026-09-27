@@ -256,9 +256,14 @@ const categories = toutesCategories.filter((c) => !c.archivedAt);
             ". Une fois le personnage créé, cochez sur sa fiche celles que le client pourra changer.";
           return;
         }
-        if (n === 0 && couleurs.images > 0) {
-          note.textContent =
-            "Ce dessin est une image en pixels, mais ses couleurs n'ont pas pu être lues (image illisible ou entièrement transparente).";
+        if (n === 0 && couleurs.motif) {
+          // NE JAMAIS ACCUSER LE FICHIER SANS PREUVE : le message d'avant
+          // disait « image illisible » d'un export Canva parfaitement bon, et
+          // on refaisait dix fois un fichier qui n'avait rien. Le serveur dit
+          // maintenant lequel des cinq cas s'est produit, PHRASE COMPRISE :
+          // ce script tourne en « is:inline » et ne peut rien importer, donc
+          // recopier les cinq phrases ici les ferait diverger.
+          note.textContent = couleurs.phrase;
           return;
         }
         note.textContent =
