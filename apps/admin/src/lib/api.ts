@@ -19,12 +19,16 @@ async function req<T>(
   cookie?: string,
 ): Promise<T> {
   const headers: Record<string, string> = {};
-  if (body) headers["Content-Type"] = "application/json";
+  // Un envoi de fichier passe par un FormData, que `fetch` sérialise lui-même
+  // avec sa frontière (« boundary ») : lui poser un Content-Type à la main
+  // écraserait cette frontière, et l'API recevrait un corps illisible.
+  const fichiers = body instanceof FormData;
+  if (body && !fichiers) headers["Content-Type"] = "application/json";
   if (cookie) headers["cookie"] = cookie;
   const res = await fetch(`${API_URL}${path}`, {
     method,
     headers,
-    body: body ? JSON.stringify(body) : undefined,
+    body: body ? (fichiers ? body : JSON.stringify(body)) : undefined,
   });
   if (!res.ok) {
     // L'API refuse parfois pour une raison qui se lit (« 3 produits sont
@@ -359,6 +363,61 @@ export interface EtatCourriers {
   resume: string;
   /** L'adresse du site écrite dans les courriers ; null = ni logo ni liens valables. */
   adressePublique: string | null;
+}
+
+/**
+ * L'adresse qui s'imprime en haut du bordereau, et où le transporteur renvoie
+ * un colis refusé. Elle n'existe nulle part ailleurs dans la boutique.
+ */
+export interface ExpediteurBordereau {
+  nom: string;
+  rue: string;
+  complement: string;
+  codePostal: string;
+  ville: string;
+  pays: string;
+  telephone: string;
+}
+
+/**
+ * L'état du compte d'expédition, nommé par l'API.
+ *
+ * C'est le serveur qui sait ce qu'un clic ferait : l'écran n'y met que des
+ * couleurs et des mots. Refaire ce raisonnement ici ferait vivre deux vérités.
+ */
+export type VoyantExpedition = "absent" | "refuse" | "non_verifie" | "essai" | "reel";
+
+/** Où en est le branchement SendCloud. Rien ici n'est secret. */
+export interface EtatExpedition {
+  configure: boolean;
+  /** Les quatre derniers caractères de la clé PUBLIQUE. La secrète ne sort jamais. */
+  cleVisible: string | null;
+  posePar: string | null;
+  poseeAt: string | null;
+  verifieeAt: string | null;
+  /** null = jamais vérifiées ; false = SendCloud les a refusées. */
+  verificationOk: boolean | null;
+  /**
+   * Recliquer « Vérifier le compte » peut-il aboutir ?
+   *
+   * false = le dernier essai a buté sur un défaut de la boutique (adresse
+   * d'appel inconnue) : la phrase du bandeau ne redemande pas de cliquer.
+   * null = rien à signaler, ou API pas encore redémarrée.
+   */
+  verificationReessayer: boolean | null;
+  modeEssai: boolean;
+  expediteur: ExpediteurBordereau;
+  expediteurComplet: boolean;
+  /** Les champs obligatoires encore vides, nommés comme sur l'écran. */
+  expediteurManquants: string[];
+  /** Vrai quand RIEN n'a jamais été saisi — à ne pas confondre avec incomplet. */
+  expediteurVide: boolean;
+  plafondCents: number;
+  /** Vrai quand la boutique parle au vrai SendCloud. */
+  reel: boolean;
+  voyant: VoyantExpedition;
+  /** La phrase du bandeau : « si je clique maintenant, que se passe-t-il ». */
+  resume: string;
 }
 
 /** Un des courriers que la boutique sait envoyer. */
@@ -715,6 +774,46 @@ export interface Expedition {
   lignes: { id: number; orderItemId: number; quantity: number }[];
 }
 
+/**
+ * Un BORDEREAU transporteur : l'étiquette A6 qui se colle SUR le colis.
+ *
+ * À ne pas confondre avec le BON DE LIVRAISON, le récapitulatif A4 qui voyage
+ * DANS le colis (/commandes/bons). Deux documents, deux formats.
+ *
+ * `fichier` est un NOM, pas un chemin : le PDF ne s'obtient que par
+ * `apiUrl('/admin/bordereaux/<id>/fichier.pdf')`, qui exige la session — le
+ * dossier où il vit n'est servi par aucune adresse publique.
+ *
+ * Les champs de l'achat direct (`cleDemande`, `parcelId`, les prix…) existent
+ * en base mais restent vides tant que la boutique n'achète pas elle-même : ils
+ * ne sont pas repris ici, l'écran n'en a rien à faire aujourd'hui.
+ */
+export interface Bordereau {
+  id: number;
+  orderId: number;
+  /** L'expédition à laquelle il a servi, posée au moment d'expédier. */
+  fulfillmentId: number | null;
+  /** « depose » (acheté chez le transporteur) — « achete » viendra plus tard. */
+  source: string;
+  statut: string;
+  /** Le CODE machine du transporteur, celui de la liste de l'API. */
+  transporteur: string;
+  /** Le libellé figé le jour du dépôt : c'est lui qu'on affiche. */
+  transporteurNom: string;
+  trackingNumber: string;
+  trackingUrl: string | null;
+  /** Le poids DÉCLARÉ au transporteur, en grammes. Peut valoir 0. */
+  poidsGrammes: number;
+  /** Nom du fichier PDF ; null quand le dépôt n'en a pas gardé. */
+  fichier: string | null;
+  fichierOctets: number | null;
+  createdAt: string;
+  /** L'adresse de la session qui l'a déposé. */
+  createdBy: string;
+  /** Retiré ≠ supprimé : la ligne reste, le fichier aussi. */
+  retireAt: string | null;
+}
+
 /** Un remboursement et son détail. */
 export interface Remboursement {
   id: number;
@@ -835,6 +934,15 @@ export interface OrderDetail {
     internalNote?: string | null;
     tags?: string[] | null;
     shippingMethod?: string | null;
+    /**
+     * Le poids du colis, figé au moment de la commande, en grammes.
+     *
+     * Zéro veut dire « jamais renseigné » — c'est le défaut de la colonne, pas
+     * un colis sans poids. La fiche l'affiche tel quel et le dit en rouge :
+     * une étiquette déclarée à 0 g se fait refuser au dépôt, ou se paie au
+     * mauvais tarif.
+     */
+    weightGrams?: number;
     /** Quand la commande a été annulée, et pourquoi. Null = elle ne l'est pas. */
     cancelledAt?: string | null;
     cancelReason?: string | null;
@@ -1562,7 +1670,14 @@ export function adminApi(request?: Request) {
         { ids, action, tags },
         cookie,
       ),
-    /** Enregistre une expédition (transporteur + suivi + contenu du colis). */
+    /**
+     * Enregistre une expédition (transporteur + suivi + contenu du colis).
+     *
+     * `bordereauId` dispense des trois champs de suivi : l'API les lit alors
+     * sur l'étiquette déjà déposée, et ignore ce qui est envoyé ici. C'est ce
+     * qui évite de retaper un numéro de colis à côté de celui qui est imprimé
+     * sur le carton. Sans lui, rien ne change.
+     */
     createFulfillment: (
       id: number,
       data: {
@@ -1570,9 +1685,68 @@ export function adminApi(request?: Request) {
         carrier?: string;
         trackingNumber?: string;
         trackingUrl?: string;
+        bordereauId?: number;
       },
     ) =>
       req<Expedition>("POST", `/admin/orders/${id}/fulfillments`, data, cookie),
+    /**
+     * Les bordereaux d'une commande, le plus récent d'abord — les retirés
+     * compris, pour qu'on retrouve l'étiquette qu'on vient de remplacer.
+     *
+     * Réservée à la propriétaire : pour un vendeur, l'API répond « rien ici ».
+     * L'écran ne l'appelle donc que là où il affiche le bloc, c'est-à-dire
+     * jamais sur une vente de stand.
+     */
+    bordereauxDeLaCommande: (orderId: number) =>
+      req<Bordereau[]>(
+        "GET",
+        `/admin/orders/${orderId}/bordereaux`,
+        undefined,
+        cookie,
+      ),
+    /**
+     * Dépose le PDF d'une étiquette achetée chez le transporteur.
+     *
+     * Multipart : le fichier part tel quel, avec son nom d'origine — c'est
+     * l'API qui vérifie que c'est bien un PDF, le renomme et le range. Ce
+     * dépôt n'expédie RIEN et n'écrit pas à la cliente.
+     */
+    deposerBordereau: (
+      orderId: number,
+      donnees: {
+        fichier: File;
+        transporteur: string;
+        trackingNumber: string;
+        trackingUrl?: string;
+        poidsGrammes?: number;
+      },
+    ) => {
+      const corps = new FormData();
+      corps.set("fichier", donnees.fichier);
+      corps.set("transporteur", donnees.transporteur);
+      corps.set("trackingNumber", donnees.trackingNumber);
+      // Un champ laissé vide ne s'envoie pas : l'API sait le fabriquer pour
+      // les transporteurs qu'elle connaît, et reprendre le poids de la
+      // commande pour les autres.
+      if (donnees.trackingUrl) corps.set("trackingUrl", donnees.trackingUrl);
+      if (donnees.poidsGrammes)
+        corps.set("poidsGrammes", String(donnees.poidsGrammes));
+      return req<Bordereau>(
+        "POST",
+        `/admin/orders/${orderId}/bordereau`,
+        corps,
+        cookie,
+      );
+    },
+    /**
+     * Retire le bordereau joint, pour pouvoir en déposer un autre.
+     *
+     * Ne supprime rien : la ligne garde sa date de retrait et le PDF reste sur
+     * le serveur. Refuse tant qu'une expédition vivante porte ce suivi — il
+     * faut alors annuler l'expédition d'abord.
+     */
+    retirerBordereau: (id: number) =>
+      req<Bordereau>("POST", `/admin/bordereaux/${id}/retirer`, {}, cookie),
     cancelFulfillment: (id: number) =>
       req<Expedition>("POST", `/admin/fulfillments/${id}/cancel`, {}, cookie),
     /** Rembourse tout ou partie d'une commande. */
@@ -2262,6 +2436,43 @@ export function adminApi(request?: Request) {
         "POST",
         `/admin/ia/prompts/${id}/archive`,
         { archived },
+        cookie,
+      ),
+
+    /* --- Compte d'expédition (SendCloud) -------------------------------- */
+    /** Où en est le branchement : clés posées, vérifiées, mode essai, expéditeur. */
+    etatExpedition: () =>
+      req<EtatExpedition>("GET", "/admin/expedition/etat", undefined, cookie),
+    /**
+     * Pose les clés — ou revérifie celles en place, en envoyant les deux
+     * champs vides (« vide = on ne change rien »).
+     *
+     * Le secret ne fait le voyage QUE dans ce sens : la réponse ne porte que
+     * l'état, jamais une clé, pas même celle qui vient d'être collée.
+     */
+    poserClesExpedition: (corps: { clePublique?: string; cleSecrete?: string }) =>
+      req<{ ok: boolean; message: string; etat: EtatExpedition }>(
+        "POST",
+        "/admin/expedition/cles",
+        corps,
+        cookie,
+      ),
+    /**
+     * L'adresse d'expéditeur, dans la table des réglages — elle n'a rien de
+     * secret, contrairement aux clés. Posée avec son libellé et son groupe :
+     * la migration ne l'a volontairement pas créée, pour que son absence se
+     * voie à l'écran plutôt que de s'imprimer inventée sur une étiquette.
+     */
+    enregistrerExpediteur: (expediteur: ExpediteurBordereau) =>
+      req<unknown>(
+        "POST",
+        "/admin/settings",
+        {
+          key: "expedition.expediteur",
+          value: expediteur,
+          label: "Adresse d'expéditeur des bordereaux",
+          group: "expedition",
+        },
         cookie,
       ),
 

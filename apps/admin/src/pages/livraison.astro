@@ -5,7 +5,9 @@ import {
   adminApi,
   formatPrice,
   type CatalogueLivraisonBO,
+  type EtatExpedition,
   type TranchesStandard,
+  type VoyantExpedition,
 } from "../lib/api.ts";
 
 const api = adminApi(Astro.request);
@@ -39,6 +41,18 @@ function lisible(e: unknown): string {
 
 let flash: string | null = null;
 let flashErreur = false;
+/**
+ * Enregistré, mais il reste quelque chose à faire : ni vert, ni rouge.
+ *
+ * Le vert dit « c'est fini », et il ne doit pas s'afficher deux centimètres
+ * au-dessus d'un bandeau qui annonce qu'il manque un champ.
+ */
+let flashAttention = false;
+/**
+ * L'adresse d'expéditeur vient d'être enregistrée : le message attend de
+ * SAVOIR ce qui manque encore, et l'état n'est relu que plus bas.
+ */
+let expediteurEnregistre = false;
 
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
@@ -111,6 +125,44 @@ if (Astro.request.method === "POST") {
         countries: String(f.get("countries") || ""),
       });
       flash = "Zone enregistrée.";
+    } else if (action === "expedition-cles") {
+      /*
+       * Les deux champs partent tels quels, VIDES COMPRIS : c'est l'API qui
+       * décide qu'un champ vide ne change rien. Le bouton « Vérifier le
+       * compte » est le même envoi, depuis un formulaire qui n'a aucun champ
+       * de clé — de cette façon, vérifier ne peut jamais enregistrer par
+       * mégarde ce qui traîne dans les cases.
+       */
+      const r = await api.poserClesExpedition({
+        clePublique: String(f.get("clePublique") ?? ""),
+        cleSecrete: String(f.get("cleSecrete") ?? ""),
+      });
+      flash = r.message;
+      flashErreur = !r.ok;
+    } else if (action === "expedition-mode-essai") {
+      const versReel = String(f.get("vers") ?? "") === "reel";
+      await api.setSetting("expedition.mode_essai", !versReel);
+      flash = versReel
+        ? "Mode essai quitté. Le jour où la boutique achètera vos bordereaux, chaque bouton « Acheter le bordereau » dépensera pour de bon la somme écrite dessus, sur votre compte SendCloud."
+        : "Mode essai rallumé : les bordereaux que la boutique fabriquera repartiront en « lettre non affranchie », et SendCloud ne vous facturera rien.";
+    } else if (action === "expedition-expediteur") {
+      const champ = (n: string) => String(f.get(n) ?? "").trim();
+      await api.enregistrerExpediteur({
+        nom: champ("nom"),
+        rue: champ("rue"),
+        complement: champ("complement"),
+        codePostal: champ("codePostal"),
+        ville: champ("ville"),
+        // Le code pays s'écrit en deux lettres majuscules sur une étiquette :
+        // « fr » saisi en minuscules ne doit pas devenir un refus chez le
+        // transporteur.
+        pays: champ("pays").toUpperCase() || "FR",
+        telephone: champ("telephone"),
+      });
+      // Le message est composé plus bas, une fois l'état relu : lui seul sait
+      // ce qui manque encore, et l'annoncer ici « enregistrée » tout court
+      // contredisait le bandeau juste en dessous.
+      expediteurEnregistre = true;
     } else {
       // La grille part entière : une tranche retirée de l'écran doit quitter
       // la grille — l'API l'ARCHIVE alors, elle ne l'efface pas (elle attend
@@ -179,6 +231,153 @@ try {
 } catch (e) {
   erreurStandard = lisible(e);
 }
+
+/*
+ * L'état du compte d'expédition. Lu APRÈS le traitement du formulaire, pour
+ * que le bandeau montre la situation d'après le clic et non celle d'avant.
+ */
+let expedition: EtatExpedition | null = null;
+try {
+  expedition = await api.etatExpedition();
+} catch {
+  // Le bandeau dira alors qu'il ne sait pas, ce qui vaut un avertissement.
+}
+
+/**
+ * Une liste de manques, écrite comme on la dirait : « la ville et le
+ * téléphone », pas « la ville, le téléphone ».
+ */
+function enumerer(mots: readonly string[]): string {
+  if (mots.length <= 1) return mots[0] ?? "";
+  return `${mots.slice(0, -1).join(", ")} et ${mots[mots.length - 1]}`;
+}
+
+/**
+ * Les champs vides de l'adresse d'expéditeur, NOMMÉS PAR L'API.
+ *
+ * Par l'API et pas ici : c'est elle qui allume le bandeau, et deux
+ * raisonnements parallèles finiraient par se contredire dans le même écran —
+ * ce qui est précisément ce qu'on répare.
+ *
+ * `null` couvre le seul cas où elle ne les donne pas : une API pas encore
+ * redémarrée, qui ne connaît pas ce champ. L'écran retombe alors sur l'ancien
+ * oui/non, moins précis, plutôt que de tomber en panne.
+ */
+const manquants: string[] | null = Array.isArray(expedition?.expediteurManquants)
+  ? expedition.expediteurManquants
+  : null;
+
+/*
+ * LE MESSAGE DE SUCCÈS DIT CE QUI MANQUE ENCORE.
+ *
+ * Il posait « Adresse d'expéditeur enregistrée » en vert sans aucune
+ * vérification, pendant que le bandeau ambre juste en dessous annonçait
+ * « Aucune adresse n'est renseignée » — les deux dans le même écran, pour une
+ * adresse à laquelle il ne manquait que le téléphone.
+ */
+if (expediteurEnregistre) {
+  if (!expedition) {
+    flash =
+      "Adresse d'expéditeur envoyée, mais l'écran n'a pas pu relire l'état du compte d'expédition. Rechargez la page pour voir ce qui est enregistré.";
+    flashAttention = true;
+  } else if (expedition.expediteurComplet) {
+    flash =
+      "Adresse d'expéditeur enregistrée, et complète. C'est elle qui s'imprimera en haut de vos bordereaux, et c'est là que reviendra un colis refusé.";
+  } else {
+    flash = `Adresse d'expéditeur enregistrée, mais elle reste incomplète : il manque ${
+      manquants?.length
+        ? enumerer(manquants)
+        : "au moins un champ obligatoire, signalé juste en dessous"
+    }. Aucune étiquette ne peut être fabriquée tant qu'il manque quelque chose.`;
+    flashAttention = true;
+  }
+}
+
+/**
+ * Le bandeau du compte d'expédition.
+ *
+ * LES COULEURS SONT INVERSÉES PAR RAPPORT AUX COURRIERS, et c'est voulu : là-bas
+ * l'état à remarquer est celui où la boutique n'envoie rien ; ici, c'est celui
+ * où chaque clic dépense de l'argent. Le vert dit « vous ne risquez rien », pas
+ * « tout est branché ».
+ *
+ * L'état lui-même est nommé par l'API (`voyant`), pas recalculé ici : c'est le
+ * serveur qui sait ce qu'un achat ferait, et deux raisonnements parallèles
+ * finiraient par ne plus dire la même chose.
+ */
+const BANDEAUX: Record<VoyantExpedition, { classe: string; titre: string }> = {
+  absent: {
+    classe: "border-red-200 bg-red-50 text-red-700",
+    titre: "Aucun bordereau ne peut être acheté",
+  },
+  refuse: {
+    classe: "border-red-200 bg-red-50 text-red-700",
+    titre: "SendCloud a refusé ces clés",
+  },
+  non_verifie: {
+    classe: "border-red-200 bg-red-50 text-red-700",
+    titre: "Ces clés n'ont jamais été vérifiées",
+  },
+  essai: {
+    classe: "border-green-200 bg-green-50 text-green-900",
+    titre: "Rien ne vous est facturé",
+  },
+  reel: {
+    classe: "border-amber-200 bg-amber-50 text-amber-900",
+    titre: "Chaque bordereau acheté vous est facturé",
+  },
+};
+
+const bandeau = expedition
+  ? { ...BANDEAUX[expedition.voyant], phrase: expedition.resume }
+  : {
+      classe: "border-red-200 bg-red-50 text-red-700",
+      titre: "Impossible de savoir où en est le compte d'expédition",
+      phrase:
+        "L'état du branchement SendCloud n'a pas pu être lu. Rechargez l'écran dans un instant ; tant que ce message reste, n'achetez aucun bordereau.",
+    };
+
+/** Une date de l'API en date française, ou null. */
+function jour(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString("fr-FR");
+}
+
+/**
+ * « Clé en place (…aabb), posée par … le … ».
+ *
+ * Ces quatre caractères sont ceux de la clé PUBLIQUE — la moitié
+ * « identifiant » de la paire : de quoi reconnaître laquelle est collée, sans
+ * rien apprendre à qui lirait par-dessus l'épaule. La clé secrète, elle, ne
+ * quitte jamais le serveur, et l'API ne la renvoie à personne.
+ */
+const cleEnPlace = expedition?.configure
+  ? `Clé en place (…${expedition.cleVisible})${
+      expedition.posePar ? `, posée par ${expedition.posePar}` : ""
+    }${jour(expedition.poseeAt) ? ` le ${jour(expedition.poseeAt)}` : ""}.`
+  : null;
+
+/** Date de la dernière réponse de SendCloud, réussie ou non. */
+const verifieeLe = jour(expedition?.verifieeAt);
+
+/** L'expéditeur à remettre dans les champs : ce qui est enregistré, ou du vide. */
+const expediteur = expedition?.expediteur ?? {
+  nom: "",
+  rue: "",
+  complement: "",
+  codePostal: "",
+  ville: "",
+  pays: "FR",
+  telephone: "",
+};
+
+/** Ce que redit la confirmation avant de quitter le mode essai. */
+const QUITTER_ESSAI = [
+  "Quitter le mode essai ?",
+  "Le jour où la boutique achètera vos bordereaux, chaque bouton « Acheter le bordereau » dépensera vraiment la somme écrite dessus, sur votre compte SendCloud. Aucune étiquette achetée ne sera gratuite.",
+  "Vous pourrez revenir au mode essai à tout moment, sur cet écran.",
+].join("\n\n");
 
 // Les archivés quittent les listes ordinaires pour leurs propres sections.
 const modesActifs = cat.modes.filter((m) => !m.archivedAt);
@@ -270,13 +469,317 @@ const ordreModes = modesActifs.map((m) => m.id);
   {flash && (
     <p
       class={`mb-4 text-sm rounded px-3 py-2 border ${
-        flashErreur ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"
+        flashErreur
+          ? "bg-red-50 border-red-200"
+          : flashAttention
+            ? "bg-amber-50 border-amber-200 text-amber-900"
+            : "bg-green-50 border-green-200"
       }`}
     >
       {flash}
     </p>
   )}
   {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
+
+  {/* ================================================================== */}
+  {/* Compte d'expédition : ce qu'un clic « Acheter » ferait, maintenant  */}
+  {/* ================================================================== */}
+  <section class={`mb-6 rounded-lg border px-5 py-4 ${bandeau.classe}`}>
+    <p class="font-semibold">{bandeau.titre}</p>
+    <p class="mt-1 max-w-3xl text-sm">{bandeau.phrase}</p>
+    {cleEnPlace && (
+      <p class="mt-3 max-w-3xl text-sm">
+        {cleEnPlace} La clé secrète n'est jamais réaffichée, pas même à vous :
+        c'est normal, et c'est voulu.
+      </p>
+    )}
+    {/* Un serveur d'essai répond « oui » à tout : le dire évite de croire
+        qu'un vrai compte a été vérifié. En production, cette ligne n'existe pas. */}
+    {expedition && !expedition.reel && (
+      <p class="mt-2 max-w-3xl text-sm">
+        Attention : cette boutique est branchée sur un <strong>serveur
+        d'essai</strong>, pas sur SendCloud. C'est normal en développement, et
+        aucune étiquette fabriquée ici n'a la moindre valeur.
+      </p>
+    )}
+  </section>
+
+  {/* « Aucune adresse » et « il manque le téléphone » ne se réparent pas du
+      même geste, et la première, affichée sur la seconde, fait croire que
+      l'enregistrement n'a pas marché. Le champ manquant est TOUJOURS nommé. */}
+  {expedition && !expedition.expediteurComplet && (
+    <p class="mb-6 max-w-3xl rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      {manquants?.length && expedition.expediteurVide === false ? (
+        <>
+          <strong>
+            Adresse d'expéditeur incomplète : il manque{" "}
+            {enumerer(manquants)}.
+          </strong>{" "}
+          Le reste est bien enregistré, mais aucune étiquette ne peut être
+          fabriquée tant qu'il manque un champ. Complétez-le juste en dessous.
+        </>
+      ) : (
+        <>
+          <strong>Aucune adresse d'expéditeur n'est renseignée.</strong> Aucune
+          étiquette ne peut être fabriquée sans elle : c'est l'adresse imprimée
+          en haut du bordereau, et celle où le transporteur renvoie un colis
+          refusé. Elle se saisit juste en dessous.
+        </>
+      )}
+    </p>
+  )}
+
+  <details
+    class="mb-8 rounded-lg border border-bo-border bg-bo-surface p-5"
+    open={expedition ? !expedition.configure || !expedition.expediteurComplet : false}
+  >
+    <summary class="cursor-pointer font-semibold">
+      Compte d'expédition (SendCloud) — clés, adresse d'expéditeur, mode essai
+    </summary>
+
+    {/* Ce que ces clés font AUJOURD'HUI. Le bouton « Acheter le bordereau »
+        n'existe sur aucun écran : promettre au présent ce qui arrive plus tard
+        ferait conclure à Alexandra qu'elle a mal collé ses clés, le jour où
+        elle ouvrira une commande et n'y trouvera que le dépôt manuel. */}
+    <p class="mt-3 max-w-3xl text-sm text-bo-muted">
+      Ce compte servira à <strong>acheter les bordereaux</strong> (les
+      étiquettes qui se collent sur le colis) sans rouvrir le site du
+      transporteur. <strong>Pour l'instant, ces clés servent seulement à
+      vérifier votre compte</strong> : l'achat depuis la fiche commande arrive
+      dans une prochaine mise à jour. D'ici là — et tant qu'aucune clé n'est
+      posée — rien ne change : vous achetez vos étiquettes chez SendCloud comme
+      aujourd'hui et vous les déposez sur la fiche de la commande.
+    </p>
+
+    {/* ---- Les deux clés ------------------------------------------- */}
+    <form method="POST" class="mt-5 max-w-3xl text-sm">
+      <input type="hidden" name="_action" value="expedition-cles" />
+      {/* L'ADRESSE EXACTE, ET LE PIÈGE, AVANT LE PREMIER CLIC. La clé
+          secrète disparaît dès qu'on quitte la page de SendCloud : quelqu'un
+          qui y va d'abord et revient ici ensuite doit refaire l'intégration.
+          Le dire après coup ne sert plus à rien. */}
+      <p class="text-bo-muted">
+        <strong>Avant de commencer</strong> : gardez CET écran ouvert, et
+        ouvrez SendCloud dans un <em>autre</em> onglet. La clé secrète ne
+        s'affiche <strong>qu'une seule fois</strong> chez eux et disparaît dès
+        que vous fermez leur page — si cela arrive, il faut refaire une
+        intégration.
+      </p>
+      <p class="mt-2 text-bo-muted">
+        Vos deux clés se fabriquent sur{" "}
+        <a
+          href="https://app.sendcloud.com/v2/settings/integrations/manage"
+          target="_blank"
+          rel="noopener"
+          class="text-bo-accent hover:underline"
+        >
+          Réglages &gt; Intégrations ↗
+        </a>{" "}
+        : cliquez « Connecter » sur « Sendcloud API », nommez l'intégration
+        « Memory Line », puis collez les deux clés ci-dessous. Ne nous les
+        envoyez jamais — ni par message, ni par capture d'écran.
+      </p>
+      <div class="mt-3 flex flex-wrap items-end gap-3">
+        <label class="block">
+          <span class="text-bo-muted text-xs">Clé publique</span>
+          {/*
+            Jamais pré-remplis, et en `password` : ces deux champs ne
+            RÉAFFICHENT rien, ils ne font qu'envoyer. `new-password` empêche
+            le navigateur de proposer un mot de passe enregistré à la place.
+
+            Le marque-place change au premier remplissage : « laisser vide
+            pour ne pas changer » n'a aucun sens quand il n'y a justement rien
+            à conserver, et laisse croire que les deux champs sont
+            facultatifs.
+          */}
+          <input
+            type="password"
+            name="clePublique"
+            autocomplete="new-password"
+            placeholder={
+              expedition?.configure
+                ? "laisser vide pour ne pas changer"
+                : "collez ici votre clé publique"
+            }
+            class="mt-1 block w-72 border border-bo-border rounded px-2 py-1"
+          />
+        </label>
+        <label class="block">
+          <span class="text-bo-muted text-xs">Clé secrète</span>
+          <input
+            type="password"
+            name="cleSecrete"
+            autocomplete="new-password"
+            placeholder={
+              expedition?.configure
+                ? "laisser vide pour ne pas changer"
+                : "collez ici votre clé secrète"
+            }
+            class="mt-1 block w-72 border border-bo-border rounded px-2 py-1"
+          />
+        </label>
+        <button class="rounded bg-bo-accent text-white px-3 py-1.5">
+          Enregistrer les clés
+        </button>
+      </div>
+      <p class="mt-2 text-xs text-bo-muted">
+        Un champ laissé vide ne change pas la clé qui est en place : c'est ce
+        qui évite d'effacer votre branchement en enregistrant l'écran par
+        habitude.
+      </p>
+    </form>
+
+    {/* Formulaire SÉPARÉ, et sans aucun champ de clé : vérifier ne peut donc
+        jamais enregistrer au passage ce qui traîne dans les cases au-dessus. */}
+    <form method="POST" class="mt-4 text-sm">
+      <input type="hidden" name="_action" value="expedition-cles" />
+      <button class="rounded border border-bo-border px-3 py-1.5 hover:border-bo-accent hover:text-bo-accent">
+        Vérifier le compte
+      </button>
+      <span class="ml-2 text-xs text-bo-muted">
+        Une simple lecture chez SendCloud : n'achète rien, ne change rien.
+        {verifieeLe ? ` Dernière vérification le ${verifieeLe}.` : ""}
+      </span>
+    </form>
+
+    {/* ---- L'adresse d'expéditeur ---------------------------------- */}
+    <form method="POST" class="mt-8 max-w-3xl text-sm">
+      <input type="hidden" name="_action" value="expedition-expediteur" />
+      <h3 class="font-semibold">Adresse d'expéditeur</h3>
+      <p class="mt-1 text-bo-muted">
+        Celle qui s'imprime en haut du bordereau, et où le transporteur
+        renvoie un colis refusé. Ce n'est pas forcément l'adresse de l'atelier
+        : c'est vous qui choisissez.
+      </p>
+      <div class="mt-3 flex flex-wrap gap-3">
+        <label class="block">
+          <span class="text-bo-muted text-xs">Nom affiché</span>
+          <input
+            name="nom"
+            value={expediteur.nom}
+            placeholder="Memory Line"
+            class="mt-1 block w-60 border border-bo-border rounded px-2 py-1"
+          />
+        </label>
+        <label class="block">
+          <span class="text-bo-muted text-xs">Rue et numéro</span>
+          <input
+            name="rue"
+            value={expediteur.rue}
+            class="mt-1 block w-72 border border-bo-border rounded px-2 py-1"
+          />
+        </label>
+        <label class="block">
+          <span class="text-bo-muted text-xs">Complément (facultatif)</span>
+          <input
+            name="complement"
+            value={expediteur.complement}
+            class="mt-1 block w-60 border border-bo-border rounded px-2 py-1"
+          />
+        </label>
+        <label class="block">
+          <span class="text-bo-muted text-xs">Code postal</span>
+          <input
+            name="codePostal"
+            value={expediteur.codePostal}
+            class="mt-1 block w-28 border border-bo-border rounded px-2 py-1"
+          />
+        </label>
+        <label class="block">
+          <span class="text-bo-muted text-xs">Ville</span>
+          <input
+            name="ville"
+            value={expediteur.ville}
+            class="mt-1 block w-52 border border-bo-border rounded px-2 py-1"
+          />
+        </label>
+        <label class="block">
+          <span class="text-bo-muted text-xs">Pays (2 lettres)</span>
+          <input
+            name="pays"
+            value={expediteur.pays}
+            maxlength="2"
+            class="mt-1 block w-20 border border-bo-border rounded px-2 py-1"
+          />
+        </label>
+        <label class="block">
+          <span class="text-bo-muted text-xs">Téléphone</span>
+          <input
+            name="telephone"
+            value={expediteur.telephone}
+            class="mt-1 block w-44 border border-bo-border rounded px-2 py-1"
+          />
+        </label>
+      </div>
+      <p class="mt-2 text-xs text-bo-muted">
+        Le téléphone est celui que le transporteur appelle quand il ne trouve
+        pas l'adresse de retour : il est obligatoire pour fabriquer une
+        étiquette.
+      </p>
+      <button class="mt-3 rounded bg-bo-accent text-white px-3 py-1.5">
+        Enregistrer l'adresse
+      </button>
+    </form>
+
+    {/* ---- Le mode essai ------------------------------------------- */}
+    <div class="mt-8 max-w-3xl border-t border-bo-border pt-5 text-sm">
+      <h3 class="font-semibold">Mode essai</h3>
+      {/* TROIS branches et non deux. Sans la première, une API injoignable
+          affichait « Éteint. Chaque bordereau vous sera facturé » — l'inverse
+          du défaut du serveur, qui est le mode essai quand le réglage est
+          absent. Annoncer une dépense là où il n'y en a pas est la mauvaise
+          erreur à faire. */}
+      {!expedition ? (
+        <p class="mt-1 text-bo-muted">
+          On ne sait pas : l'état du compte d'expédition n'a pas pu être lu,
+          comme le dit le bandeau plus haut. Rechargez l'écran — tant que ce
+          message reste, n'achetez aucun bordereau.
+        </p>
+      ) : expedition.modeEssai ? (
+        <>
+          <p class="mt-1 text-bo-muted">
+            Allumé. Les bordereaux que la boutique fabriquera seront des
+            « lettres non affranchies » : SendCloud ne vous facturera rien, et
+            l'étiquette ne fera partir aucun colis. C'est fait pour tout
+            essayer sans dépenser.
+          </p>
+          {/* Un geste ISOLÉ, dans son propre formulaire, avec sa confirmation :
+              on ne quitte pas le mode essai en enregistrant autre chose. */}
+          <form method="POST" class="mt-3">
+            <input type="hidden" name="_action" value="expedition-mode-essai" />
+            <input type="hidden" name="vers" value="reel" />
+            <button
+              data-confirmer={QUITTER_ESSAI}
+              class="rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-amber-900 hover:border-amber-500"
+            >
+              Quitter le mode essai
+            </button>
+          </form>
+        </>
+      ) : (
+        <>
+          <p class="mt-1 text-bo-muted">
+            Éteint. Chaque bordereau que la boutique achètera vous sera facturé
+            par SendCloud, au prix écrit sur le bouton.
+          </p>
+          <form method="POST" class="mt-3">
+            <input type="hidden" name="_action" value="expedition-mode-essai" />
+            <input type="hidden" name="vers" value="essai" />
+            <button class="rounded border border-bo-border px-3 py-1.5 hover:border-bo-accent hover:text-bo-accent">
+              Revenir au mode essai
+            </button>
+          </form>
+        </>
+      )}
+      {expedition && (
+        <p class="mt-3 text-xs text-bo-muted">
+          Plafond de sécurité : aucun bordereau ne pourra être acheté au-dessus
+          de {formatPrice(expedition.plafondCents)}. Il arrêtera net le colis
+          mal pesé.
+        </p>
+      )}
+    </div>
+  </details>
 
   <p class="mb-3 text-sm text-bo-muted max-w-3xl">
     Ce que le client peut choisir au moment de payer, et combien ça lui coûte.
@@ -1085,6 +1588,16 @@ const ordreModes = modesActifs.map((m) => m.id);
     for (const bouton of document.querySelectorAll("[data-archiver]")) {
       bouton.addEventListener("click", (e) => {
         if (!confirm(bouton.getAttribute("data-archiver"))) e.preventDefault();
+      });
+    }
+
+    // Les gestes qui changent ce qu'un clic coûtera plus tard : ils redemandent
+    // en toutes lettres. Sans script, le bouton fonctionne quand même — et
+    // c'est voulu : une confirmation est un garde-fou d'attention, jamais la
+    // garde elle-même, qui est côté serveur.
+    for (const bouton of document.querySelectorAll("[data-confirmer]")) {
+      bouton.addEventListener("click", (e) => {
+        if (!confirm(bouton.getAttribute("data-confirmer"))) e.preventDefault();
       });
     }
   </script>

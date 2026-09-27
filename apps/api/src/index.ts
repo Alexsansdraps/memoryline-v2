@@ -56,6 +56,8 @@ import {
 
 import { mountConfiguratorRoutes } from "./configurator-routes.js";
 import { mountOrderRoutes } from "./commandes.js";
+import { mountBordereaux } from "./bordereaux.js";
+import { mountExpedition } from "./sendcloud.js";
 import { mountCatalogueRoutes } from "./catalogue.js";
 import { mountProduitsMasse } from "./produits-masse.js";
 import { mountVentesProduit } from "./ventes-produit.js";
@@ -948,8 +950,13 @@ app.get("/banner", async (c) => {
  * qui a sa propre route (GET /admin/salon). « relance. » de même : le rythme
  * auquel la boutique écrit à ses clientes et la base légale qu'elle invoque
  * la regardent, et la vitrine n'en a aucun usage.
+ *
+ * « expedition. » est arrivé avec les bordereaux : l'adresse d'expéditeur est
+ * l'adresse personnelle d'Alexandra (celle où un colis refusé revient), et le
+ * plafond d'achat dit combien la boutique accepte de dépenser. Ni l'une ni
+ * l'autre ne regardent un visiteur, et aucune page du site ne les lit.
  */
-const PREFIXES_PRIVES = ["salon.", "ia.", "relance."];
+const PREFIXES_PRIVES = ["salon.", "ia.", "relance.", "expedition."];
 
 /**
  * La valeur d'un réglage dans une langue.
@@ -1971,6 +1978,18 @@ app.get("/auth/me", async (c) => {
 // qui avalerait sinon « /admin/orders/tags » et « /admin/orders/export.csv ».
 // Hono retient la première route déclarée qui correspond.
 mountOrderRoutes(app);
+
+// Les bordereaux transporteur : déposer le PDF d'une étiquette achetée chez le
+// transporteur, le relire, le retirer (apps/api/src/bordereaux.ts). Juste
+// après les commandes, dont il prolonge la fiche, et comme elles AVANT le
+// configurateur et son « /admin/orders/:id ».
+mountBordereaux(app);
+
+// Le compte d'expédition : l'état du branchement SendCloud et les deux champs
+// où Alexandra colle ses clés elle-même (apps/api/src/sendcloud.ts). Ces deux
+// routes vivent avec le client SendCloud, seul endroit du dépôt qui ait le
+// droit de lire la valeur d'une clé.
+mountExpedition(app);
 
 // Catégories de produits et poids d'expédition (apps/api/src/catalogue.ts).
 mountCatalogueRoutes(app);

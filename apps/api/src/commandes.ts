@@ -21,6 +21,7 @@ import {
   isNotNull,
   isNull,
   lte,
+  ne,
   or,
   sql as raw,
 } from "drizzle-orm";
@@ -50,6 +51,7 @@ import {
 import { markOrderPaid } from "./configurator-routes.js";
 import { renderInvoicePdf, type LigneFacture } from "./pdf.js";
 import { cheminApercu } from "./apercus.js";
+import { codeDuTransporteur } from "./livraison-regles.js";
 
 /**
  * L'adresse publique du site, pour les images des courriers.
@@ -125,24 +127,70 @@ export const LIBELLE_EXPEDITION: Record<StatutExpedition, string> = {
   fulfilled: "Traitée",
 };
 
-/** Lien de suivi public, quand on sait le fabriquer. */
+/**
+ * Comment se fabrique le lien de suivi de chaque transporteur, PAR SON CODE.
+ *
+ * Une table de codes exacts, et surtout pas une suite de « ce texte
+ * contient-il… » sur le libellé : le libellé de Shop2Shop est « Shop2Shop
+ * (Cdiscount / Chronopost) », et le reconnaître au mot « chronopost » lui
+ * fabriquait un lien Chronopost qui ne suivra jamais ce colis-là. Ce lien
+ * part dans le bouton « Suivre mon colis » du courrier d'expédition : il ne
+ * se rattrape pas, et un numéro sans lien vaut mille fois mieux qu'un lien
+ * qui ment.
+ *
+ * Les cinq autres transporteurs de la liste — GLS, DPD, Relais Colis, Colis
+ * Privé, Shop2Shop — n'y figurent pas exprès : la boutique ne sait pas
+ * fabriquer leur lien, et le seul qui vaille est celui que le transporteur
+ * donne, collé à la main au moment du dépôt du bordereau.
+ *
+ * Une Map et non un objet : un code de transporteur venu d'un formulaire ne
+ * doit pas pouvoir tomber sur une propriété héritée d'`Object`.
+ */
+const SUIVI_PAR_CODE = new Map<string, (numero: string) => string>([
+  [
+    "mondial_relay",
+    (n) => `https://www.mondialrelay.fr/suivi-de-colis?numeroExpedition=${n}`,
+  ],
+  ["colissimo", (n) => `https://www.laposte.fr/outils/suivre-vos-envois?code=${n}`],
+  [
+    "chronopost",
+    (n) => `https://www.chronopost.fr/tracking-no-cms/suivi-page?listeNumerosLT=${n}`,
+  ],
+  ["dhl", (n) => `https://www.dhl.com/fr-fr/home/tracking.html?tracking-id=${n}`],
+  ["ups", (n) => `https://www.ups.com/track?tracknum=${n}`],
+]);
+
+/**
+ * Lien de suivi public, à partir du CODE du transporteur.
+ *
+ * Le code machine, et rien d'autre : « colissimo », jamais « Colissimo (La
+ * Poste) ». Un code inconnu ne rend rien — voir `SUIVI_PAR_CODE` pour la
+ * raison, qui a déjà coûté un faux lien.
+ */
 export function lienDeSuivi(
-  carrier: string | null | undefined,
+  code: string | null | undefined,
   numero: string | null | undefined,
 ): string | null {
   if (!numero) return null;
-  const c = (carrier ?? "").toLowerCase();
-  const n = encodeURIComponent(numero.trim());
-  if (c.includes("mondial"))
-    return `https://www.mondialrelay.fr/suivi-de-colis?numeroExpedition=${n}`;
-  if (c.includes("colissimo") || c.includes("poste"))
-    return `https://www.laposte.fr/outils/suivre-vos-envois?code=${n}`;
-  if (c.includes("chronopost"))
-    return `https://www.chronopost.fr/tracking-no-cms/suivi-page?listeNumerosLT=${n}`;
-  if (c.includes("dhl"))
-    return `https://www.dhl.com/fr-fr/home/tracking.html?tracking-id=${n}`;
-  if (c.includes("ups")) return `https://www.ups.com/track?tracknum=${n}`;
-  return null;
+  const fabriquer = SUIVI_PAR_CODE.get(String(code ?? "").trim().toLowerCase());
+  return fabriquer ? fabriquer(encodeURIComponent(numero.trim())) : null;
+}
+
+/**
+ * Le même lien, mais à partir du LIBELLÉ gardé sur une expédition.
+ *
+ * La colonne `carrier` porte depuis toujours un libellé — c'est ce que les
+ * écrans, l'export CSV, le bon de livraison et les courriers y lisent, et
+ * c'est aussi ce qu'une saisie à la main y dépose. Pour en tirer un lien il
+ * faut donc d'abord retrouver le code, et le retrouver exactement : c'est
+ * `codeDuTransporteur` qui s'en charge, et qui ne reconnaît rien plutôt que
+ * de reconnaître de travers.
+ */
+export function lienDeSuiviDepuisLibelle(
+  libelle: string | null | undefined,
+  numero: string | null | undefined,
+): string | null {
+  return lienDeSuivi(codeDuTransporteur(libelle), numero);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -423,6 +471,235 @@ async function annulerExpeditions(ids: number[]): Promise<void> {
         eq(schema.fulfillments.status, "success"),
       ),
     );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Créer une expédition                                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Ce qu'on répond quand une commande annulée voudrait encore faire partir
+ * quelque chose.
+ *
+ * Écrite une fois et partagée : le dépôt d'un bordereau oppose exactement le
+ * même refus (bordereaux.ts), et deux phrases distinctes pour une seule règle
+ * finissent toujours par se contredire — l'une des deux vieillit.
+ */
+export const COMMANDE_ANNULEE =
+  "Cette commande est annulée : plus rien ne peut en partir. Si l'annulation était une erreur, il faut repasser une commande.";
+
+/**
+ * Ce qu'on demande à faire partir, tel que ça arrive : rien n'est encore
+ * nettoyé.
+ *
+ * Les champs sont en `unknown` parce que les appelantes ne se ressemblent pas.
+ * L'une est un formulaire du back-office — du JSON quelconque, où une quantité
+ * peut arriver en chaîne de caractères et un numéro de suivi avec des espaces
+ * autour. L'autre sera l'achat d'un bordereau, qui lira des colonnes de base.
+ * Le nettoyage se fait donc DANS `creerExpedition` et nulle part ailleurs :
+ * c'est ce qui empêche les deux chemins de diverger un jour sur un détail.
+ */
+export interface DemandeDExpedition {
+  /** Les lignes à faire partir ; absent ou vide = tout ce qui reste. */
+  items?: unknown;
+  carrier?: unknown;
+  trackingNumber?: unknown;
+  trackingUrl?: unknown;
+  /**
+   * Le bordereau joint à cette commande, quand il y en a un.
+   *
+   * Présent, c'est LUI qui dit par qui et sous quel numéro le colis part : les
+   * trois champs ci-dessus sont alors ignorés. Absent, rien ne change — c'est
+   * la saisie à la main, et elle doit continuer de marcher sans réseau.
+   */
+  bordereauId?: unknown;
+}
+
+/**
+ * Le compte rendu d'une demande d'expédition.
+ *
+ * Un objet, pas une réponse HTTP. L'appelante décide elle-même quoi répondre,
+ * et surtout ce qu'elle fait ensuite : le formulaire prévient la cliente tout
+ * de suite, alors que l'achat d'un bordereau aura d'autres écritures à finir
+ * avant. C'est le patron de `enregistrerRemboursement`, pour la même raison.
+ */
+export interface ResultatDExpedition {
+  /** La commande n'existe pas ; à l'appelante d'en faire ce qu'elle veut. */
+  introuvable?: true;
+  /** La phrase à montrer telle quelle. C'est toujours un refus de saisie. */
+  erreur?: string;
+  expedition?: typeof schema.fulfillments.$inferSelect;
+}
+
+/**
+ * Crée une expédition : ce qui part, par qui, avec quel numéro de suivi.
+ *
+ * Détachée de sa route parce qu'un second chemin va la rejoindre — l'achat
+ * d'un bordereau chez le transporteur. Les deux doivent valider les quantités
+ * de la même façon, écrire le même événement au journal et recalculer
+ * `fulfilledAt` pareil ; une seconde façon d'expédier aurait fini par diverger
+ * de celle-ci sur un détail, et l'écart ne se serait vu que le jour d'une
+ * commande partiellement partie — c'est-à-dire trop tard.
+ *
+ * Ce qu'elle ne fait PAS : prévenir la cliente. Le courrier est irréversible
+ * (l'annulation d'une expédition n'envoie aucun démenti), il doit donc rester
+ * le tout dernier geste de l'appelante, une fois que plus rien ne peut échouer.
+ */
+export async function creerExpedition(
+  orderId: number,
+  b: DemandeDExpedition,
+): Promise<ResultatDExpedition> {
+  const [order] = await db
+    .select()
+    .from(schema.orders)
+    .where(eq(schema.orders.id, orderId));
+  if (!order) return { introuvable: true };
+  // Une commande annulée ne fait plus rien partir : c'est tout le sens de
+  // l'annulation, et la cliente a reçu un courrier qui le lui dit.
+  if (order.status === "cancelled" || order.status === "voided")
+    return { erreur: COMMANDE_ANNULEE };
+
+  const lignes = await db
+    .select()
+    .from(schema.orderItems)
+    .where(eq(schema.orderItems.orderId, orderId));
+  const resume = await resumeCommandes([orderId]);
+  const dejaParti = await quantitesExpediees(orderId);
+
+  const demande = new Map<number, number>();
+  const detailDemande = Array.isArray(b.items)
+    ? (b.items as { orderItemId: number; quantity: number }[])
+    : [];
+  if (detailDemande.length) {
+    for (const it of detailDemande) {
+      const q = Math.max(0, Math.floor(Number(it.quantity) || 0));
+      if (q > 0) demande.set(Number(it.orderItemId), q);
+    }
+  } else {
+    // Sans détail, on expédie tout ce qui reste : c'est le cas courant.
+    for (const l of lignes) {
+      const reste = l.quantity - (dejaParti.get(l.id) ?? 0);
+      if (reste > 0) demande.set(l.id, reste);
+    }
+  }
+
+  const aInserer: { orderItemId: number; quantity: number }[] = [];
+  for (const l of lignes) {
+    const q = demande.get(l.id) ?? 0;
+    if (q <= 0) continue;
+    const reste = l.quantity - (dejaParti.get(l.id) ?? 0);
+    if (q > reste)
+      return {
+        erreur: `Il ne reste que ${reste} exemplaire(s) à expédier sur « ${l.title ?? "cet article"} ».`,
+      };
+    aInserer.push({ orderItemId: l.id, quantity: q });
+  }
+  if (!aInserer.length)
+    return { erreur: "Rien à expédier : tout est déjà parti." };
+
+  /*
+   * LE BORDEREAU A LE DERNIER MOT SUR LE SUIVI.
+   *
+   * L'étiquette est déjà imprimée et collée sur le carton : un transporteur ou
+   * un numéro retapés à la main ne pourraient que la contredire, et c'est la
+   * cliente qui recevrait le mauvais lien. On lit donc la ligne, et on ignore
+   * ce que le formulaire raconte.
+   *
+   * `carrier` reçoit le LIBELLÉ et non le code machine : c'est ce que les
+   * écrans, l'export CSV, le bon de livraison et le courrier lisent depuis
+   * toujours dans cette colonne. Écrire « mondial_relay » à la place de
+   * « Mondial Relay » aurait fait bouger tout l'aval d'un coup.
+   */
+  const bordereauId = Math.max(0, Math.floor(Number(b.bordereauId) || 0));
+  const [bordereau] = bordereauId
+    ? await db
+        .select()
+        .from(schema.bordereaux)
+        .where(
+          and(
+            eq(schema.bordereaux.id, bordereauId),
+            // Sur CETTE commande, et vivant : un bordereau retiré entre
+            // l'affichage de la fiche et le clic ne doit pas faire partir un
+            // colis sous un numéro que plus rien ne justifie.
+            eq(schema.bordereaux.orderId, orderId),
+            isNull(schema.bordereaux.retireAt),
+            ne(schema.bordereaux.statut, "annule"),
+          ),
+        )
+    : [];
+  if (bordereauId && !bordereau)
+    return {
+      erreur:
+        "Ce bordereau n'est plus joint à cette commande. Rechargez la fiche avant d'enregistrer l'expédition.",
+    };
+
+  const carrier = bordereau
+    ? bordereau.transporteurNom
+    : String(b.carrier ?? "").trim() || null;
+  const trackingNumber = bordereau
+    ? bordereau.trackingNumber
+    : String(b.trackingNumber ?? "").trim() || null;
+  /*
+   * LE LIEN NE SE DEVINE PAS DEUX FOIS.
+   *
+   * Avec un bordereau, c'est le DÉPÔT qui a tranché, et il l'a fait à partir
+   * du CODE du transporteur (« shop2shop »), pas de son libellé (« Shop2Shop
+   * (Cdiscount / Chronopost) »). Redemander le lien ici, depuis le libellé,
+   * rendait un lien Chronopost pour un colis Shop2Shop — et ce lien-là part
+   * dans le bouton « Suivre mon colis » d'un courrier qui ne se rappelle pas.
+   * On reprend donc la décision du dépôt telle quelle, y compris quand elle
+   * est « aucun lien » : c'est le bon côté à choisir.
+   *
+   * Sans bordereau, le lien collé dans le formulaire gagne ; à défaut il se
+   * déduit du libellé saisi, par une reconnaissance exacte qui préfère ne
+   * rien rendre plutôt que n'importe quoi.
+   */
+  const trackingUrl = bordereau
+    ? bordereau.trackingUrl
+    : String(b.trackingUrl ?? "").trim() ||
+      lienDeSuiviDepuisLibelle(carrier, trackingNumber);
+  const [ful] = await db
+    .insert(schema.fulfillments)
+    .values({
+      orderId,
+      carrier,
+      trackingNumber,
+      trackingUrl,
+      status: "success",
+    })
+    .returning();
+  await db
+    .insert(schema.fulfillmentItems)
+    .values(aInserer.map((l) => ({ ...l, fulfillmentId: ful!.id })));
+  // Le rattachement se pose APRÈS l'insertion : c'est l'expédition qui vient
+  // de naître, pas le bordereau. Et il se remettra à null tout seul si elle
+  // disparaît — la preuve d'une dépense ne s'évapore pas avec le colis.
+  if (bordereau)
+    await db
+      .update(schema.bordereaux)
+      .set({ fulfillmentId: ful!.id })
+      .where(eq(schema.bordereaux.id, bordereau.id));
+
+  // La commande est « traitée » quand il ne reste plus rien à envoyer.
+  const envoyes = aInserer.reduce((s, l) => s + l.quantity, 0);
+  const total = resume.get(orderId)!.articles;
+  const partis = resume.get(orderId)!.expedies + envoyes;
+  await db
+    .update(schema.orders)
+    .set({ fulfilledAt: partis >= total ? new Date() : null })
+    .where(eq(schema.orders.id, orderId));
+
+  await db.insert(schema.orderEvents).values({
+    orderId,
+    kind: "event",
+    message:
+      `Expédition créée (${envoyes} article(s))` +
+      (carrier ? ` — ${carrier}` : "") +
+      (trackingNumber ? `, suivi ${trackingNumber}` : "") +
+      ".",
+  });
+
+  return { expedition: ful! };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -899,104 +1176,18 @@ export function mountOrderRoutes(app: Hono): void {
   app.post("/admin/orders/:id/fulfillments", async (c) => {
     const id = Number(c.req.param("id"));
     const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-    const [order] = await db
-      .select()
-      .from(schema.orders)
-      .where(eq(schema.orders.id, id));
-    if (!order) return c.notFound();
-    // Une commande annulée ne fait plus rien partir : c'est tout le sens de
-    // l'annulation, et la cliente a reçu un courrier qui le lui dit.
-    if (order.status === "cancelled" || order.status === "voided")
-      return c.json(
-        {
-          error:
-            "Cette commande est annulée : plus rien ne peut en partir. Si l'annulation était une erreur, il faut repasser une commande.",
-        },
-        400,
-      );
-
-    const lignes = await db
-      .select()
-      .from(schema.orderItems)
-      .where(eq(schema.orderItems.orderId, id));
-    const resume = await resumeCommandes([id]);
-    const dejaParti = await quantitesExpediees(id);
-
-    const demande = new Map<number, number>();
-    const detailDemande = Array.isArray(b.items)
-      ? (b.items as { orderItemId: number; quantity: number }[])
-      : [];
-    if (detailDemande.length) {
-      for (const it of detailDemande) {
-        const q = Math.max(0, Math.floor(Number(it.quantity) || 0));
-        if (q > 0) demande.set(Number(it.orderItemId), q);
-      }
-    } else {
-      // Sans détail, on expédie tout ce qui reste : c'est le cas courant.
-      for (const l of lignes) {
-        const reste = l.quantity - (dejaParti.get(l.id) ?? 0);
-        if (reste > 0) demande.set(l.id, reste);
-      }
-    }
-
-    const aInserer: { orderItemId: number; quantity: number }[] = [];
-    for (const l of lignes) {
-      const q = demande.get(l.id) ?? 0;
-      if (q <= 0) continue;
-      const reste = l.quantity - (dejaParti.get(l.id) ?? 0);
-      if (q > reste)
-        return c.json(
-          {
-            error: `Il ne reste que ${reste} exemplaire(s) à expédier sur « ${l.title ?? "cet article"} ».`,
-          },
-          400,
-        );
-      aInserer.push({ orderItemId: l.id, quantity: q });
-    }
-    if (!aInserer.length)
-      return c.json({ error: "Rien à expédier : tout est déjà parti." }, 400);
-
-    const carrier = String(b.carrier ?? "").trim() || null;
-    const trackingNumber = String(b.trackingNumber ?? "").trim() || null;
-    const [ful] = await db
-      .insert(schema.fulfillments)
-      .values({
-        orderId: id,
-        carrier,
-        trackingNumber,
-        trackingUrl:
-          String(b.trackingUrl ?? "").trim() ||
-          lienDeSuivi(carrier, trackingNumber),
-        status: "success",
-      })
-      .returning();
-    await db
-      .insert(schema.fulfillmentItems)
-      .values(aInserer.map((l) => ({ ...l, fulfillmentId: ful!.id })));
-
-    // La commande est « traitée » quand il ne reste plus rien à envoyer.
-    const envoyes = aInserer.reduce((s, l) => s + l.quantity, 0);
-    const total = resume.get(id)!.articles;
-    const partis = resume.get(id)!.expedies + envoyes;
-    await db
-      .update(schema.orders)
-      .set({ fulfilledAt: partis >= total ? new Date() : null })
-      .where(eq(schema.orders.id, id));
-
-    await db.insert(schema.orderEvents).values({
-      orderId: id,
-      kind: "event",
-      message:
-        `Expédition créée (${envoyes} article(s))` +
-        (carrier ? ` — ${carrier}` : "") +
-        (trackingNumber ? `, suivi ${trackingNumber}` : "") +
-        ".",
-    });
-
+    const r = await creerExpedition(id, b);
+    if (r.introuvable) return c.notFound();
+    if (r.erreur) return c.json({ error: r.erreur }, 400);
+    const ful = r.expedition!;
+    // Le courrier reste ici, hors de creerExpedition : il est irréversible, et
+    // le chemin qui achètera un bordereau aura d'abord d'autres écritures à
+    // terminer. Une cliente prévenue « en route » pour un colis dont
+    // l'enregistrement a échoué ne peut pas être détrompée.
     await previenirDeLExpedition(id, {
-      carrier,
-      trackingNumber,
-      trackingUrl: ful!.trackingUrl ?? null,
+      carrier: ful.carrier,
+      trackingNumber: ful.trackingNumber,
+      trackingUrl: ful.trackingUrl ?? null,
     });
     return c.json(ful);
   });

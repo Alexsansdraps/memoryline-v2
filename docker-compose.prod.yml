@@ -91,9 +91,16 @@ services:
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN}
     volumes:
       # Les visuels, les affiches générées et les fichiers d'impression. Avec
-      # le volume « db_data », c'est l'un des DEUX endroits qui portent des
-      # données, et les deux se sauvegardent ensemble.
+      # le volume « db_data » et data/prive, c'est l'un des TROIS endroits qui
+      # portent des données ; `scripts/sauvegarder.sh` les traite ensemble.
       - ./data/assets:/app/data/assets
+      # Les bordereaux transporteur, et les identifiants qu'Alexandra pose
+      # elle-même depuis le back-office. À PART de data/assets, parce que
+      # celui-ci se sert en public sans session et que ceux-là ne doivent
+      # jamais l'être (voir apps/api/src/stockage-prive.ts). Ce montage ne
+      # porte aucun secret : il ouvre seulement l'endroit où elle posera les
+      # siens, sans SSH et sans redémarrage.
+      - ./data/prive:/app/data/prive
     depends_on:
       db:
         # Pas « démarrée » mais « prête » : l'API interroge la base dès son

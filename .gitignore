@@ -18,6 +18,12 @@ wetransfer_*/
 # Images/SVG rapatriés depuis Shopify (binaires volumineux)
 data/assets/
 
+# Le rangement privé du serveur : les bordereaux transporteur — qui portent
+# une adresse cliente et un code-barres payé — et les identifiants qu'Alexandra
+# pose elle-même depuis le back-office. Ce dépôt est PUBLIC : ni les uns ni les
+# autres n'y entrent, jamais, même par mégarde.
+data/prive/
+
 # Turborepo
 .turbo
 # Drizzle

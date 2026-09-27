@@ -109,6 +109,55 @@ export const TRANSPORTEURS = [
   },
 ] as const;
 
+/**
+ * Les libellés courts que le back-office proposait AVANT que cette liste
+ * existe, et qui dorment encore dans la colonne `carrier` d'expéditions
+ * parties depuis longtemps. Les reconnaître évite de faire disparaître le
+ * lien de suivi d'un colis de l'an dernier.
+ */
+const LIBELLES_ANCIENS = new Map<string, string>([
+  ["colissimo", "colissimo"],
+  ["la poste", "colissimo"],
+  ["dhl", "dhl"],
+]);
+
+/** Casse, accents et espaces mis de côté : « Colissimo » = « colissimo ». */
+function aplatir(texte: string): string {
+  return texte
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Le CODE d'un transporteur, retrouvé depuis un libellé écrit à la main.
+ *
+ * La colonne `carrier` d'une expédition porte un LIBELLÉ — « Colissimo (La
+ * Poste) », ou ce qu'Alexandra a tapé —, jamais un code. Pour en déduire quoi
+ * que ce soit, un lien de suivi par exemple, il faut donc retraverser cette
+ * liste, et la retraverser EXACTEMENT.
+ *
+ * Exactement, parce qu'une reconnaissance par morceaux de texte prenait
+ * « Shop2Shop (Cdiscount / Chronopost) » pour du Chronopost, et fabriquait à
+ * la cliente un lien qui ne suivrait jamais son colis. Un libellé qu'on ne
+ * reconnaît pas rend donc `null`, et l'appelant n'en tire rien : c'est le
+ * seul défaut acceptable ici.
+ */
+export function codeDuTransporteur(
+  libelle: string | null | undefined,
+): string | null {
+  const l = aplatir(String(libelle ?? ""));
+  if (!l) return null;
+  const parNom = TRANSPORTEURS.find((t) => aplatir(t.nom) === l);
+  if (parNom) return parNom.code;
+  // Le code machine écrit tel quel, par un script ou une reprise de données.
+  const parCode = TRANSPORTEURS.find((t) => t.code === l);
+  if (parCode) return parCode.code;
+  return LIBELLES_ANCIENS.get(l) ?? null;
+}
+
 /** Un transporteur sait-il chercher ses points ? */
 export function transporteurConfigure(carrier: string | null | undefined): boolean {
   if (carrier === "colissimo") return colissimoConfigure();
@@ -351,7 +400,7 @@ export function checklistOuverture(
               dejaEnService
                 ? ` Vous expédiez déjà avec ${t.nom} : le contrat existe, ce sont les codes d'accès qui manquent — ils se réclament sur le compte que vous avez déjà.`
                 : ""
-            } Dès que vous nous les transmettez, nous les posons dans les réglages du site et la carte des points s'allume.`,
+            } Ces codes-là passent encore par nous : transmettez-les-nous, nous les posons dans la configuration du serveur et la carte des points s'allume. Vos clés SendCloud, elles, ne s'envoient à personne — vous les collez vous-même dans l'écran Livraison.`,
           },
     );
   else if (t)

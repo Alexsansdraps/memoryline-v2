@@ -373,8 +373,18 @@ const filtreActif =
     <input type="hidden" name="tags" id="bo-tags" />
     <div class="flex flex-wrap items-center gap-2 text-sm">
       <span id="bo-compte" class="font-medium"></span>
-      <button type="button" data-bulk="fulfil" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
-        Marquer comme traitées
+      {/* « Sans colis », écrit dans le bouton lui-même : cette action pose le
+          drapeau « traitée » et prévient la cliente, mais n'enregistre NI
+          transporteur NI numéro de suivi. Deux boutons ne peuvent pas porter
+          le mot « traiter » pour deux effets différents — celui de la fiche
+          commande enregistre un vrai colis, celui-ci n'en enregistre aucun. */}
+      <button
+        type="button"
+        data-bulk="fulfil"
+        data-confirme="Marquer les commandes sélectionnées comme traitées, SANS COLIS ? Aucun transporteur ni numéro de suivi ne sera enregistré : les clientes seront prévenues que leur commande est partie, mais sans lien pour la suivre. Pour enregistrer un vrai colis avec son suivi, ouvrez la fiche de la commande."
+        class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+      >
+        Marquer traitées (sans colis)
       </button>
       <button type="button" data-bulk="unfulfil" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
         Remettre à traiter
@@ -489,7 +499,10 @@ const filtreActif =
                     title={
                       o.statutExpedition === "fulfilled"
                         ? "Remettre dans les commandes à traiter"
-                        : "Marquer comme traitée"
+                        : // Le même effet que l'action groupée, donc le même
+                          // avertissement : ce clic prévient la cliente sans
+                          // aucun numéro de suivi à lui donner.
+                          "Marquer comme traitée, sans colis : aucun transporteur ni numéro de suivi ne sera enregistré"
                     }
                   >
                     <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />

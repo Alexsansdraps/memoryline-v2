@@ -61,6 +61,14 @@ services:
       MAIL_FROM: "${MAIL_FROM:-}"
       MAIL_BCC: "${MAIL_BCC:-}"
       RESEND_API_KEY: "${RESEND_API_KEY:-}"
+      # Où l'on demande les étiquettes. En développement : le faux serveur du
+      # dépôt (profil « essais »), JAMAIS le vrai SendCloud — en v3 il n'y a ni
+      # brouillon ni bac à sable, /shipments/announce achète pour de bon. Le
+      # défaut est posé ici, et non dans .env, pour qu'il soit versionné et
+      # qu'aucun poste ne se retrouve à appeler le vrai service par simple
+      # oubli d'une ligne. Aucune clé ne passe par cette variable : elles sont
+      # dans data/prive/secrets/, posées par Alexandra depuis le back-office.
+      SENDCLOUD_BASE_URL: "${SENDCLOUD_BASE_URL:-http://faux-sendcloud:3100/api/v3}"
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
@@ -166,6 +174,58 @@ services:
       MP_MAX_MESSAGES: "500"
     ports:
       - "8025:8025"
+
+  # Un FAUX SendCloud, pour éprouver l'achat d'étiquettes transporteur sans
+  # dépenser un centime. Chez SendCloud il n'y a pas de bac à sable, et l'API
+  # v3 n'a aucun brouillon : « announce » ACHÈTE. Ce service répond à sa place,
+  # sur cette machine, et sait en plus tomber en panne sur commande — délai
+  # dépassé, refus, clés refusées — trois cas qu'on ne peut pas provoquer chez
+  # un vrai transporteur.
+  #
+  # Il ne démarre QU'À LA DEMANDE, comme mailpit : un faux transporteur qui
+  # tournerait en permanence finirait par servir sans qu'on s'en aperçoive.
+  #   docker compose --profile essais up -d faux-sendcloud
+  # puis, dans le .env de la racine (que l'API lit en développement) :
+  #   SENDCLOUD_BASE_URL=http://faux-sendcloud:3100/api/v3
+  #
+  # Il ne lit lui-même AUCUN .env et ne connaît aucune clé : c'est la garantie
+  # la plus simple qu'un banc d'essai n'en laisse pas fuir une.
+  faux-sendcloud:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile.dev
+    # Son propre nom d'image : bâtie sur le même Dockerfile que l'API, elle en
+    # réutilise toutes les couches sans écraser aucune autre étiquette.
+    image: memoryline-dev-faux-sendcloud
+    container_name: memoryline-faux-sendcloud
+    restart: unless-stopped
+    profiles: ["essais"]
+    # Lancé par tsx DIRECTEMENT, et non par `pnpm run` comme les autres
+    # services : pnpm vérifie les dépendances avant d'exécuter un script et
+    # réinstalle tout le workspace au démarrage. Cette installation-là écrirait
+    # des node_modules Linux dans les dossiers du poste d'Alexandra (Windows),
+    # pour un serveur d'essai qui n'a besoin que de ce que l'image contient
+    # déjà. Le script `faux-sendcloud` du package.json reste, lui, la façon de
+    # le lancer à la main.
+    working_dir: /app/apps/api
+    command: ["npx", "tsx", "watch", "scripts/faux-sendcloud.ts"]
+    environment:
+      FAUX_SENDCLOUD_PORT: "3100"
+      # Aucune question posée au démarrage : si jamais tsx manquait, npx
+      # échouerait franchement au lieu d'attendre un « o/n » que personne ne
+      # verra jamais dans un conteneur.
+      CI: "true"
+    ports:
+      # Attaché à cette machine SEULEMENT, comme la base : un serveur qui
+      # fabrique de fausses étiquettes n'a rien à faire sur le réseau.
+      - "127.0.0.1:3100:3100"
+    volumes:
+      # Même montage que l'API : le script vit dans apps/api/scripts, et
+      # `tsx watch` le recharge dès qu'on l'améliore.
+      - .:/app
+      - /app/node_modules
+      - /app/apps/api/node_modules
+      - /app/packages/types/node_modules
 
 volumes:
   memoryline_pgdata:

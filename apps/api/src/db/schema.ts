@@ -1428,6 +1428,146 @@ export const fulfillmentItems = pgTable(
 );
 
 /**
+ * Un BORDEREAU transporteur : l'étiquette A6 qui se colle SUR le colis.
+ *
+ * À ne pas confondre avec le BON DE LIVRAISON, le récapitulatif A4 qui voyage
+ * DANS le colis (apps/admin/src/pages/commandes/bons.astro). Deux documents,
+ * deux formats, deux usages — et le vocabulaire des écrans les distingue
+ * partout.
+ *
+ * POURQUOI UNE TABLE, ET PAS TROIS COLONNES SUR `fulfillment`. Trois raisons,
+ * dans cet ordre d'importance :
+ *
+ *  - la ligne doit naître AVANT l'appel au transporteur, pour qu'une dépense
+ *    laisse toujours une trace même si la réponse se perd. Elle ne peut donc
+ *    pas être une colonne d'une expédition qui n'existe pas encore ;
+ *  - une expédition vit très bien sans bordereau — remise en main propre au
+ *    stand, action groupée, suivi saisi à la main. Ces trois chemins-là ne
+ *    doivent rien apprendre de neuf ;
+ *  - un bordereau a une vie à lui (déposé, acheté, puis annulé chez le
+ *    transporteur) qui n'est pas la vie comptable du colis.
+ *
+ * `fulfillment` GARDE la main sur le suivi : carrier / trackingNumber /
+ * trackingUrl restent le seul endroit où le reste de la boutique — les
+ * courriers, l'espace client, le bon de livraison — va le lire. Le bordereau
+ * les ALIMENTE, il ne les remplace pas ; c'est ce qui fait que rien en aval
+ * ne bouge.
+ *
+ * Les colonnes marquées « étape 2 » servent à l'achat direct chez le
+ * transporteur, qui n'est pas encore écrit. Elles sont créées maintenant,
+ * nullables : elles ne coûtent rien aujourd'hui et évitent une seconde
+ * migration sur une table déjà pleine le jour où l'achat arrivera.
+ *
+ * RIEN NE SE SUPPRIME : retirer un bordereau pose `retireAt`, et le PDF reste
+ * sur le disque. Un bordereau annulé chez le transporteur garde lui aussi son
+ * fichier — c'est la preuve d'une dépense.
+ */
+export const bordereaux = pgTable(
+  "bordereau",
+  {
+    id: serial("id").primaryKey(),
+    orderId: integer("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    /**
+     * Rempli APRÈS coup, quand l'expédition est enregistrée — et remis à null
+     * si elle disparaît : la preuve d'une dépense ne doit pas s'évaporer
+     * parce qu'on a annulé le colis.
+     */
+    fulfillmentId: integer("fulfillment_id").references(() => fulfillments.id, {
+      onDelete: "set null",
+    }),
+    /** « depose » (acheté ailleurs, déposé ici) ou « achete » (étape 2). */
+    source: text("source").notNull(),
+    /**
+     * « depose » | « en_cours » | « achete » | « echoue » | « a_verifier »
+     * | « annulation_demandee » | « annule ».
+     */
+    statut: text("statut").notNull().default("depose"),
+    /** Le CODE machine de TRANSPORTEURS (livraison-regles.ts), jamais un libellé. */
+    transporteur: text("transporteur").notNull(),
+    /**
+     * Le libellé figé le jour du dépôt. Le transporteur d'un mode de livraison
+     * se change à tout moment depuis l'écran Livraison, y compris après des
+     * expéditions : sans cette copie, un vieux bordereau se relirait sous le
+     * nom d'un transporteur qui n'a jamais porté ce colis.
+     */
+    transporteurNom: text("transporteur_nom").notNull(),
+    trackingNumber: text("tracking_number").notNull(),
+    trackingUrl: text("tracking_url"),
+    /** Le poids DÉCLARÉ au transporteur, pas celui que la commande porte aujourd'hui. */
+    poidsGrammes: integer("poids_grammes").notNull(),
+    /** Nom du fichier sous data/prive/bordereaux/, jamais un chemin absolu. */
+    fichier: text("fichier"),
+    fichierOctets: integer("fichier_octets"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    /** L'e-mail de la session, comme `orderEvents.author`. */
+    createdBy: text("created_by").notNull(),
+    /** « Retiré » n'est pas « supprimé » : la ligne reste, le fichier aussi. */
+    retireAt: timestamp("retire_at", { withTimezone: true }),
+
+    /* --- Étape 2 : l'achat chez le transporteur --------------------------- */
+
+    /**
+     * L'anti-double-achat, fabriqué par l'écran et unique en base. Un
+     * double-clic, un F5, un formulaire renvoyé : le second INSERT viole
+     * l'index et la route rend la ligne existante au lieu de payer deux fois.
+     * Une contrainte de base, pas une politesse d'écran.
+     */
+    cleDemande: text("cle_demande"),
+    /**
+     * « ML-<id> », envoyée au transporteur comme référence externe. Seconde
+     * couche d'idempotence, celle qui couvre « la requête est partie, la
+     * réponse s'est perdue » : rejouer la même référence fait répondre
+     * « déjà acheté » au lieu d'acheter à nouveau.
+     */
+    reference: text("reference"),
+    fournisseur: text("fournisseur"),
+    /** Acheté en « lettre non affranchie » : le transporteur ne facture rien. */
+    essai: boolean("essai").notNull().default(false),
+    optionCode: text("option_code"),
+    contractId: integer("contract_id"),
+    /** Sert à ANNULER chez le transporteur. */
+    shipmentId: text("shipment_id"),
+    /** Sert à RE-TÉLÉCHARGER le PDF : c'est lui la source durable, pas `fichier`. */
+    parcelId: text("parcel_id"),
+    /** « label_creation » ou « first_scan » : dit QUAND l'argent part. */
+    chargingType: text("charging_type"),
+    /** Le prix qui était à l'écran au moment du clic, en centimes. */
+    prixAnnonceCents: integer("prix_annonce_cents"),
+    /** Saisi à la main d'après la facture du transporteur, en centimes. */
+    prixConstateCents: integer("prix_constate_cents"),
+    devise: text("devise").default("EUR"),
+    /**
+     * L'identifiant du point relais chez le transporteur, DISTINCT de
+     * `orders.relayPointId` qui porte le « Num » natif Mondial Relay. On
+     * n'écrase JAMAIS ce dernier : c'est ce que la cliente a choisi, et ce
+     * qu'on lui a écrit.
+     */
+    pointRelaisSendcloudId: text("point_relais_sendcloud_id"),
+    acheteAt: timestamp("achete_at", { withTimezone: true }),
+    annuleAt: timestamp("annule_at", { withTimezone: true }),
+    /** Le refus du transporteur en clair, pour le relire. Jamais une clé. */
+    erreur: text("erreur"),
+  },
+  (t) => [
+    index("bordereau_order_idx").on(t.orderId),
+    uniqueIndex("bordereau_cle_demande_uniq").on(t.cleDemande),
+    uniqueIndex("bordereau_reference_uniq").on(t.reference),
+    uniqueIndex("bordereau_parcel_uniq")
+      .on(t.parcelId)
+      .where(sql`${t.parcelId} is not null`),
+    // UN SEUL bordereau vivant par commande. Le multi-colis est hors champ
+    // aujourd'hui — une expédition ne porte qu'un numéro de suivi —, et cette
+    // contrainte tombera proprement le jour où il entrera. Un bordereau retiré
+    // ou annulé ne compte pas : il faut bien pouvoir en reposer un autre.
+    uniqueIndex("bordereau_actif_uniq")
+      .on(t.orderId)
+      .where(sql`${t.retireAt} is null and ${t.statut} <> 'annule'`),
+  ],
+);
+
+/**
  * Un REMBOURSEMENT, total ou partiel.
  *
  * On garde le détail (quelles lignes, quelles quantités, quelle part du port)

@@ -9,6 +9,8 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "verifier:archivage": "node scripts/verifier-archivage.mjs",
+    "verifier:bordereaux": "tsx --env-file-if-exists=../../.env scripts/verifier-bordereaux.ts",
+    "faux-sendcloud": "tsx watch scripts/faux-sendcloud.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file-if-exists=../../.env src/db/migrate.ts",
     "db:studio": "drizzle-kit studio",

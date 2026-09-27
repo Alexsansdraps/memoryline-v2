@@ -37,7 +37,7 @@ if [ ! -f docker-compose.prod.yml ]; then
   exit 1
 fi
 
-mkdir -p "$COPIES/base" "$COPIES/fichiers"
+mkdir -p "$COPIES/base" "$COPIES/fichiers" "$COPIES/prive"
 
 # --- La base --------------------------------------------------------------
 # Le format « plain », compressé : il se lit dans un éditeur de texte, se
@@ -102,6 +102,39 @@ else
   FICHIERS_FAITS=1
 fi
 
+# --- Les bordereaux transporteur -----------------------------------------
+# Les étiquettes achetées chez les transporteurs vivent sous data/prive, et
+# PAS sous data/assets : ce dossier-ci ne se sert jamais en public. Il lui
+# faut donc sa propre copie — sans lui, une étiquette payée disparaîtrait
+# avec le disque sans que personne s'en aperçoive, puisqu'elle ne se
+# recalcule pas.
+#
+# « secrets/ » est EXCLU, et ce n'est pas un oubli. Ce dossier porte les
+# identifiants qu'Alexandra pose depuis le back-office — ceux qui peuvent
+# DÉPENSER DE L'ARGENT chez un transporteur. Tout ce qui passe ici est recopié
+# en clair, autant de fois qu'il y a de jours gardés, et la dernière ligne de
+# ce script apprend justement à rapatrier le tout par scp sur un ordinateur
+# portable : une clé recopiée dix fois est dix fois plus facile à perdre — et
+# les dumps de la base, eux, sont déjà la raison pour laquelle elle n'est pas
+# rangée dans la table « setting ». Si le fichier venait à manquer, elle en
+# refait une paire chez le transporteur en deux minutes et la recolle dans
+# l'écran Livraison. « À refaire en deux minutes » est un bien meilleur mode
+# de panne que « recopiée dans toutes les archives ».
+echo "→ Les bordereaux transporteur."
+if [ ! -d data/prive ]; then
+  echo "   (aucun dossier data/prive — rien à copier)"
+elif ! command -v rsync >/dev/null 2>&1; then
+  # Même raisonnement que plus haut : on annonce, on ne s'arrête pas.
+  echo "   ✗ rsync n'est pas installé : les bordereaux n'ont PAS été copiés." >&2
+else
+  VEILLE_PRIVE=$(ls -1d "$COPIES/prive"/*/ 2>/dev/null | sort | tail -1 || true)
+  rsync -a --delete \
+    --exclude=/secrets/ \
+    ${VEILLE_PRIVE:+--link-dest="$VEILLE_PRIVE"} \
+    data/prive/ "$COPIES/prive/$JOUR/"
+  echo "   $(du -sh --apparent-size "$COPIES/prive/$JOUR" | cut -f1) de bordereaux"
+fi
+
 # --- La rotation ----------------------------------------------------------
 # Quatorze jours pour la base, sept pour les fichiers. Une erreur se remarque
 # rarement au-delà de deux semaines, et garder tout indéfiniment finit par
@@ -111,6 +144,13 @@ ls -1 "$COPIES/base"/*.sql.gz 2>/dev/null | sort | head -n -14 | while read -r v
   rm -f "$v" && echo "   retiré $(basename "$v")"
 done
 ls -1d "$COPIES/fichiers"/*/ 2>/dev/null | sort | head -n -7 | while read -r v; do
+  rm -rf "$v" && echo "   retiré $(basename "$v")"
+done
+# Les bordereaux suivent les fichiers : sept jours. Un bordereau ne change
+# jamais une fois écrit, donc chaque jour de plus ne coûte que des liens vers
+# les mêmes fichiers — mais garder la même fenêtre partout évite d'avoir à se
+# rappeler laquelle s'applique à quoi.
+ls -1d "$COPIES/prive"/*/ 2>/dev/null | sort | head -n -7 | while read -r v; do
   rm -rf "$v" && echo "   retiré $(basename "$v")"
 done
 

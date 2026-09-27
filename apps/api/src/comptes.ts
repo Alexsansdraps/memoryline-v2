@@ -32,7 +32,7 @@ import {
 import { db, schema } from "./db/client.js";
 import { hashPassword, verifyPassword } from "./auth.js";
 import {
-  lienDeSuivi,
+  lienDeSuiviDepuisLibelle,
   resumeCommandes,
   statutExpedition,
   statutFinancier,
@@ -928,7 +928,8 @@ export function mountCompteRoutes(app: Hono): void {
             .map((f) => ({
               carrier: f.carrier,
               trackingNumber: f.trackingNumber,
-              trackingUrl: f.trackingUrl ?? lienDeSuivi(f.carrier, f.trackingNumber),
+              trackingUrl:
+                f.trackingUrl ?? lienDeSuiviDepuisLibelle(f.carrier, f.trackingNumber),
             })),
         };
       }),
@@ -1026,7 +1027,7 @@ export function mountCompteRoutes(app: Hono): void {
       cadres,
       expeditions: expeditions.map((f) => ({
         ...f,
-        trackingUrl: f.trackingUrl ?? lienDeSuivi(f.carrier, f.trackingNumber),
+        trackingUrl: f.trackingUrl ?? lienDeSuiviDepuisLibelle(f.carrier, f.trackingNumber),
       })),
       montants: {
         sousTotalCents: sousTotal,

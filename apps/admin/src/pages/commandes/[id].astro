@@ -17,6 +17,7 @@ import {
   adminApi,
   formatPrice,
   lignesDeLAffiche,
+  type Bordereau,
   type OrderDetail,
 } from "../../lib/api.ts";
 
@@ -42,11 +43,49 @@ if (Astro.request.method === "POST") {
         items,
         carrier: String(f.get("carrier") ?? ""),
         trackingNumber: String(f.get("trackingNumber") ?? ""),
+        // Quand une étiquette est jointe, c'est ELLE qui dit le transporteur
+        // et le numéro : l'API les relit sur la ligne et ignore le reste du
+        // formulaire, qui ne pourrait que contredire ce qui est déjà collé
+        // sur le carton.
+        bordereauId: Number(f.get("bordereauId")) || undefined,
       });
       // Au stand, il n'y a pas de colis : le mot doit dire ce qui s'est passé.
       flash = f.get("remise")
         ? "Affiche remise au client."
         : "Expédition enregistrée.";
+    } else if (action === "deposer-bordereau") {
+      /*
+       * Le dépôt de l'étiquette achetée chez le transporteur.
+       *
+       * Ce geste n'expédie RIEN et n'écrit à personne : il range le PDF et
+       * retient le numéro de suivi, pour que le bouton d'expédition n'ait plus
+       * rien à retaper. C'est « Enregistrer l'expédition » qui fait partir le
+       * colis, et lui seul qui prévient la cliente.
+       */
+      const fichier = f.get("fichier");
+      if (!(fichier instanceof File) || !fichier.size) {
+        flash =
+          "Aucun fichier reçu : choisissez le PDF de l'étiquette téléchargé chez le transporteur.";
+        flashErreur = true;
+      } else {
+        const b = await api.deposerBordereau(id, {
+          fichier,
+          transporteur: String(f.get("transporteur") ?? ""),
+          trackingNumber: String(f.get("trackingNumber") ?? ""),
+          trackingUrl: String(f.get("trackingUrl") ?? ""),
+          poidsGrammes: Math.max(
+            0,
+            Math.floor(Number(f.get("poidsGrammes")) || 0),
+          ),
+        });
+        // Le mot dit ce qui vient de se passer ET ce qui ne s'est pas passé :
+        // sans la seconde moitié, on croit le colis annoncé à la cliente.
+        flash = `Bordereau ${b.transporteurNom} joint, suivi ${b.trackingNumber}. Rien n'est parti : la cliente sera prévenue à l'enregistrement de l'expédition.`;
+      }
+    } else if (action === "retirer-bordereau") {
+      await api.retirerBordereau(Number(f.get("bordereauId")));
+      flash =
+        "Bordereau retiré : vous pouvez en joindre un autre. Le fichier, lui, reste sur le serveur — une étiquette a coûté de l'argent.";
     } else if (action === "archiver-commande") {
       const restaurer = String(f.get("archived") ?? "") === "false";
       await api.archiverCommande(id, !restaurer);
@@ -147,7 +186,12 @@ if (Astro.request.method === "POST") {
       }
     }
   } catch (e) {
-    flash = "Erreur : " + String(e);
+    // La PHRASE de l'API, pas l'objet qui la porte. Le client la remonte déjà
+    // telle quelle (« Ce fichier porte bien .pdf, mais son contenu n'en est
+    // pas un ») ; `String(e)` la préfixait d'un « Error: » qui ne veut rien
+    // dire pour qui lit, et qui faisait commencer le bandeau par
+    // « Erreur : Error: ».
+    flash = "Erreur : " + (e instanceof Error ? e.message : String(e));
     flashErreur = true;
   }
 }
@@ -290,13 +334,141 @@ const MOYENS_HORS_LIGNE = [
   ["autre", "Autre"],
 ];
 
-/** Transporteurs proposés — la saisie libre reste possible. */
-const TRANSPORTEURS = [
-  "Colissimo",
-  "Mondial Relay",
-  "Chronopost",
-  "Remise en main propre",
-];
+/* ---------------------------------------------------------------------- */
+/* Le bordereau transporteur                                               */
+/* ---------------------------------------------------------------------- */
+
+/**
+ * Peut-on encore joindre une étiquette ?
+ *
+ * La même condition que « Traiter les articles » juste en dessous : joindre
+ * le bordereau et enregistrer l'expédition sont les deux gestes d'un même
+ * colis, ils apparaissent et disparaissent ensemble.
+ *
+ * Une vente au stand en est écartée — l'affiche est remise en main propre, il
+ * n'y a pas de colis à étiqueter. La route du dépôt oppose le même refus de
+ * son côté : un écran qui masque un bouton est une politesse, pas une garde.
+ */
+const peutDeposer = resteAExpedier > 0 && !annulee && !auStand;
+
+/**
+ * Les bordereaux de la commande, les retirés compris.
+ *
+ * Un appel de plus, borné à ce qui peut en avoir : l'API répond « rien ici »
+ * à un vendeur, et une vente au stand n'a pas de colis. S'il échoue, la fiche
+ * reste entière — une étiquette manquante n'empêche ni de rembourser, ni
+ * d'annuler, ni de lire la commande.
+ */
+let bordereaux: Bordereau[] = [];
+if (order && !auStand) {
+  try {
+    bordereaux = await api.bordereauxDeLaCommande(id);
+  } catch {
+    /* Bloc replié sur son état le plus simple : aucune étiquette connue. */
+  }
+}
+
+/**
+ * Le bordereau VIVANT : ni retiré, ni annulé chez le transporteur.
+ *
+ * Il n'y en a jamais qu'un — un index de base le garantit. Les autres restent
+ * dans la liste, et c'est voulu : « retiré » n'est pas « supprimé », et on
+ * doit pouvoir retrouver l'étiquette qu'on vient de remplacer.
+ */
+const bordereau =
+  bordereaux.find((b) => !b.retireAt && b.statut !== "annule") ?? null;
+const bordereauxRetires = bordereaux.filter((b) => b.id !== bordereau?.id);
+
+/**
+ * Le bordereau a-t-il déjà servi ? Alors le colis est parti avec.
+ *
+ * UNE EXPÉDITION ANNULÉE NE COMPTE PAS, et s'arrêter à `fulfillmentId`
+ * fermait la seule porte de sortie. Ce champ n'est jamais remis à null : il
+ * est posé à l'enregistrement de l'expédition, et l'annulation ne supprime pas
+ * la ligne — elle pose `status = "cancelled"` et une date. Une étiquette
+ * déposée par erreur devenait donc impossible à retirer DÈS qu'une expédition
+ * avait existé, pendant que la phrase d'à côté demandait d'annuler cette
+ * expédition-là : le geste ne changeait rien, aucune autre étiquette ne
+ * pouvait être jointe (le dépôt répond 409), et le formulaire d'expédition
+ * cessait de reprendre le transporteur et le numéro — c'est-à-dire qu'il
+ * fallait les retaper, à l'endroit exact d'où sort un mauvais lien de suivi.
+ *
+ * La route de retrait, elle, ne refuse que devant une expédition VIVANTE
+ * (`if (expedition && !expedition.cancelledAt)`). L'écran dit maintenant la
+ * même chose qu'elle.
+ */
+const bordereauServi =
+  !!bordereau?.fulfillmentId &&
+  !expeditions.find((f) => f.id === bordereau?.fulfillmentId)?.cancelledAt;
+
+/**
+ * Les transporteurs viennent de l'API, jamais d'une copie locale.
+ *
+ * La liste de référence vit dans `livraison-regles.ts` ; la fiche en portait
+ * jusqu'ici quatre noms écrits à la main, qui ne connaissaient ni GLS, ni DPD,
+ * ni les points relais. Deux listes finissent toujours par se contredire, et
+ * c'est celle qu'on a sous les yeux qui a tort.
+ */
+let transporteurs: { code: string; nom: string }[] = [];
+/**
+ * Le transporteur du mode choisi par la cliente, proposé et jamais imposé :
+ * c'est lui qui porte le colis neuf fois sur dix, mais une étiquette achetée
+ * ailleurs le contredit parfois, et c'est le bordereau qui a raison.
+ */
+let transporteurPropose = "";
+if (peutDeposer) {
+  try {
+    const catalogue = await api.shipping();
+    transporteurs = catalogue.transporteurs ?? [];
+    transporteurPropose =
+      catalogue.modes.find((m) => m.slug === order?.shippingMethod)?.carrier ??
+      "";
+  } catch {
+    /* Liste vide : le formulaire le dit lui-même plutôt que de proposer un
+       choix incomplet recopié ici. */
+  }
+}
+
+/**
+ * Le poids du colis, tel que la commande l'a figé.
+ *
+ * Zéro veut dire « personne ne l'a jamais saisi » — c'est le défaut de la
+ * colonne, et aucune route d'expédition ne la lisait jusqu'ici. Une étiquette
+ * déclarée à 0 g se fait refuser au dépôt ou se paie au mauvais tarif : le
+ * champ est donc visible, modifiable, et le dit en rouge quand il est vide.
+ */
+const poidsColis = order?.weightGrams ?? 0;
+
+/**
+ * Un retrait sur place n'est PAS un point relais.
+ *
+ * `relayPointId` sert à deux choses : l'identifiant du point chez le
+ * transporteur, et « stand:<n> » quand la cliente vient chercher son affiche.
+ * Copier ce second-là chez SendCloud ferait demander une étiquette vers un
+ * point qui n'existe nulle part.
+ */
+const retraitSurPlace = String(order?.relayPointId ?? "").startsWith("stand:");
+
+/**
+ * Ce que le formulaire de SendCloud réclame, dans l'ordre où il le demande.
+ *
+ * Le poids n'y est pas : il est ajouté au moment du clic, depuis le champ
+ * ci-dessous — c'est celui qu'elle vient éventuellement de corriger qu'il faut
+ * copier, pas celui qui était là au chargement de la page.
+ */
+const adresseACopier = [
+  order?.shippingName,
+  order?.shippingLine1,
+  order?.shippingLine2,
+  [order?.shippingPostalCode, order?.shippingCity].filter(Boolean).join(" "),
+  order?.shippingCountry,
+  order?.shippingPhone ? `Téléphone : ${order.shippingPhone}` : null,
+  !retraitSurPlace && order?.relayPointLabel
+    ? `Point relais : ${order.relayPointLabel}${order.relayPointId ? ` (${order.relayPointId})` : ""}`
+    : null,
+]
+  .filter(Boolean)
+  .join("\n");
 
 const LIBELLE_MOUVEMENT: Record<string, string> = {
   sale: "Encaissement",
@@ -667,6 +839,343 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
               </div>
             )}
 
+            {/* ------------------------------------------------------- */}
+            {/* Bordereau transporteur                                   */}
+            {/*                                                          */}
+            {/* L'étiquette A6 qui se colle SUR le colis. Le BON DE      */}
+            {/* LIVRAISON, lui, est le récapitulatif A4 qui voyage       */}
+            {/* DEDANS : deux documents, deux formats, et les écrans     */}
+            {/* doivent les distinguer partout.                          */}
+            {/*                                                          */}
+            {/* Placé AU-DESSUS de « Traiter les articles » parce que    */}
+            {/* c'est l'ordre des gestes : on colle l'étiquette, puis on */}
+            {/* enregistre le départ du colis.                           */}
+            {/* ------------------------------------------------------- */}
+            {/* `bordereauxRetires.length` fait partie de la condition : sans
+                lui, le jour où l'unique bordereau est retiré ET où tout est
+                parti, le bloc disparaît — et avec lui le repli « bordereaux
+                retirés » et le lien vers le PDF conservé. La page promet que
+                rien ne se supprime ; elle ne doit pas le cacher. */}
+            {!auStand && (peutDeposer || bordereau || bordereauxRetires.length > 0) && (
+              <div class="border-t border-bo-border px-4 py-3">
+                <h4 class="mb-2 text-xs font-medium tracking-wide text-bo-muted uppercase">
+                  Bordereau transporteur
+                </h4>
+
+                {bordereau ? (
+                  <>
+                    <div class="rounded border border-bo-border bg-bo-bg px-3 py-2 text-sm">
+                      <div class="flex flex-wrap items-baseline gap-x-2">
+                        <span class="font-medium">
+                          {bordereau.transporteurNom}
+                        </span>
+                        {/* Le numéro EN GROS : c'est celui qu'on relit sur le
+                            carton avant d'enregistrer l'expédition, et un
+                            chiffre de travers envoie la cliente suivre le
+                            colis de quelqu'un d'autre. */}
+                        <span class="font-mono text-lg">
+                          {bordereau.trackingNumber}
+                        </span>
+                      </div>
+                      <p class="mt-0.5 text-xs text-bo-muted">
+                        Joint le {quand(bordereau.createdAt)}
+                        {bordereau.createdBy && ` par ${bordereau.createdBy}`}
+                        {bordereau.poidsGrammes > 0
+                          ? ` · ${bordereau.poidsGrammes} g déclarés`
+                          : " · poids non déclaré"}
+                      </p>
+                      {bordereau.trackingUrl && (
+                        <p class="mt-0.5 text-xs">
+                          <a
+                            href={bordereau.trackingUrl}
+                            target="_blank"
+                            rel="noopener"
+                            class="text-bo-accent hover:underline"
+                          >
+                            Le lien que la cliente recevra ↗
+                          </a>
+                        </p>
+                      )}
+                    </div>
+
+                    <div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                      <a
+                        href={apiUrl(`/admin/bordereaux/${bordereau.id}/fichier.pdf`)}
+                        target="_blank"
+                        rel="noopener"
+                        class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+                      >
+                        Ouvrir le bordereau
+                      </a>
+                      {/* Deux onglets, jamais un document fusionné : l'un
+                          s'imprime en A6 pour être collé, l'autre en A4 pour
+                          être glissé dans le colis. */}
+                      <button
+                        type="button"
+                        class="js-imprimer-colis rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+                        data-bordereau={apiUrl(
+                          `/admin/bordereaux/${bordereau.id}/fichier.pdf`,
+                        )}
+                        data-bon={url(`/commandes/bons?ids=${order.id}`)}
+                      >
+                        Imprimer bordereau + bon de livraison
+                      </button>
+                      <span class="js-imprimer-etat text-xs text-bo-muted" />
+                      {!bordereauServi && (
+                        <form method="POST">
+                          <input
+                            type="hidden"
+                            name="_action"
+                            value="retirer-bordereau"
+                          />
+                          <input
+                            type="hidden"
+                            name="bordereauId"
+                            value={bordereau.id}
+                          />
+                          <button class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
+                            Retirer
+                          </button>
+                        </form>
+                      )}
+                    </div>
+
+                    {/* La phrase suit l'état, et ne promet jamais un
+                        formulaire qui n'est pas rendu : « ci-dessous » n'a de
+                        sens que tant qu'il reste quelque chose à expédier. */}
+                    {!bordereauServi && peutDeposer ? (
+                      <p class="mt-2 text-xs text-bo-muted">
+                        Le transporteur et le numéro sont repris tels quels
+                        ci-dessous, à l'enregistrement de l'expédition : rien à
+                        retaper.
+                      </p>
+                    ) : (
+                      <>
+                        <p class="mt-2 text-xs text-bo-muted">
+                          Réimpression : l'ouvrir n'achète rien et ne renvoie
+                          aucun courrier.
+                          {bordereauServi &&
+                            " Pour le retirer, annulez d'abord l'expédition qui le porte."}
+                        </p>
+                        {bordereauServi && resteAExpedier > 0 && (
+                          <p class="mt-1 text-xs text-bo-muted">
+                            Ce bordereau a déjà servi : ce qui reste partira
+                            dans un autre colis, avec sa propre étiquette.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <details class="text-sm">
+                      <summary class="cursor-pointer text-bo-accent">
+                        Acheter l'étiquette chez SendCloud
+                      </summary>
+                      <ol class="mt-2 ml-5 list-decimal space-y-1 text-bo-muted">
+                        <li>
+                          « Copier l'adresse » : tout ce que SendCloud demande
+                          passe dans le presse-papier.
+                        </li>
+                        <li>
+                          Sur{" "}
+                          <a
+                            href="https://app.sendcloud.com"
+                            target="_blank"
+                            rel="noopener"
+                            class="text-bo-accent hover:underline"
+                          >
+                            app.sendcloud.com
+                          </a>
+                          , créez l'envoi, collez l'adresse, payez l'étiquette.
+                        </li>
+                        <li>
+                          Téléchargez le PDF de l'étiquette et relevez le
+                          numéro de suivi.
+                        </li>
+                        <li>
+                          Revenez ici : déposez le PDF, collez le numéro,
+                          joignez le bordereau.
+                        </li>
+                      </ol>
+                    </details>
+
+                    <form
+                      method="POST"
+                      enctype="multipart/form-data"
+                      class="mt-3 space-y-3 text-sm"
+                    >
+                      <input
+                        type="hidden"
+                        name="_action"
+                        value="deposer-bordereau"
+                      />
+
+                      {/* Le poids est à gauche du bouton de copie, et ce n'est
+                          pas un hasard : c'est la valeur qu'on corrige AVANT
+                          de copier, et c'est celle-là que le presse-papier
+                          emporte. */}
+                      <div class="flex flex-wrap items-end gap-3">
+                        <label>
+                          <span class="mb-1 block text-xs text-bo-muted">
+                            Poids du colis (grammes)
+                          </span>
+                          <input
+                            id="bo-poids-bordereau"
+                            type="number"
+                            name="poidsGrammes"
+                            min="0"
+                            step="10"
+                            value={poidsColis || ""}
+                            placeholder="1200"
+                            class="w-32 rounded border border-bo-border px-3 py-2"
+                          />
+                        </label>
+                        <div class="flex items-center gap-2 pb-1">
+                          <button
+                            type="button"
+                            data-adresse={adresseACopier}
+                            class="rounded border border-bo-border bg-bo-surface px-3 py-2 hover:bg-bo-bg"
+                          >
+                            Copier l'adresse
+                          </button>
+                          <span class="copie-ok text-xs text-bo-muted" />
+                        </div>
+                      </div>
+                      {poidsColis === 0 && (
+                        <p class="text-xs text-red-700">
+                          Poids inconnu : une étiquette déclarée à 0 g se fait
+                          refuser au dépôt, ou se paie au mauvais tarif. Pesez
+                          le colis emballé et écrivez son poids ici avant de
+                          copier l'adresse.
+                        </p>
+                      )}
+
+                      <div class="flex flex-wrap gap-3">
+                        <label>
+                          <span class="mb-1 block text-xs text-bo-muted">
+                            Étiquette (PDF)
+                          </span>
+                          <input
+                            type="file"
+                            name="fichier"
+                            accept="application/pdf,.pdf"
+                            required
+                            class="block w-64 py-2 text-xs"
+                          />
+                        </label>
+                        <label>
+                          <span class="mb-1 block text-xs text-bo-muted">
+                            Transporteur
+                          </span>
+                          <select
+                            name="transporteur"
+                            required
+                            class="rounded border border-bo-border px-3 py-2"
+                          >
+                            <option value="">Choisir…</option>
+                            {transporteurs.map((t) => (
+                              <option
+                                value={t.code}
+                                selected={t.code === transporteurPropose}
+                              >
+                                {t.nom}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          <span class="mb-1 block text-xs text-bo-muted">
+                            Numéro de suivi
+                          </span>
+                          <input
+                            name="trackingNumber"
+                            required
+                            placeholder="6A123456789FR"
+                            class="rounded border border-bo-border px-3 py-2"
+                          />
+                        </label>
+                        <label>
+                          <span class="mb-1 block text-xs text-bo-muted">
+                            Lien de suivi (facultatif)
+                          </span>
+                          <input
+                            name="trackingUrl"
+                            type="url"
+                            placeholder="https://…"
+                            class="w-64 rounded border border-bo-border px-3 py-2"
+                          />
+                        </label>
+                        <div class="flex items-end">
+                          <button class="rounded bg-bo-nav px-4 py-2 text-white">
+                            Joindre le bordereau
+                          </button>
+                        </div>
+                      </div>
+
+                      {transporteurs.length === 0 && (
+                        <p class="text-xs text-red-700">
+                          La liste des transporteurs n'a pas pu être lue :
+                          rechargez la page avant de déposer l'étiquette.
+                        </p>
+                      )}
+                      {/* La boutique ne sait fabriquer un lien de suivi que
+                          pour cinq transporteurs. Pour les autres, le lien
+                          collé ici est le SEUL que la cliente puisse recevoir
+                          — et le moment de le coller est celui-ci, quand on
+                          l'a encore sous les yeux. */}
+                      <p class="text-xs text-bo-muted">
+                        Pour GLS, DPD, Relais Colis, Colis Privé et Shop2Shop,
+                        collez le lien donné par le transporteur : sinon la
+                        cliente recevra un numéro sans lien. Il se fabrique
+                        tout seul pour Colissimo, Mondial Relay, Chronopost,
+                        UPS et DHL.
+                      </p>
+                      <p class="text-xs text-bo-muted">
+                        Joindre l'étiquette n'expédie rien et n'écrit à
+                        personne : c'est « Enregistrer l'expédition », en
+                        dessous, qui prévient la cliente.
+                      </p>
+                    </form>
+                  </>
+                )}
+
+                {/* « Retiré » n'est pas « supprimé » : le fichier reste sur le
+                    serveur, parce qu'une étiquette a coûté de l'argent et que
+                    sa trace ne dépend pas d'un clic de plus. */}
+                {bordereauxRetires.length > 0 && (
+                  <details class="mt-3 text-xs text-bo-muted">
+                    <summary class="cursor-pointer">
+                      {bordereauxRetires.length} bordereau
+                      {bordereauxRetires.length > 1 ? "x" : ""} retiré
+                      {bordereauxRetires.length > 1 ? "s" : ""}
+                    </summary>
+                    <ul class="mt-1 space-y-0.5">
+                      {bordereauxRetires.map((b) => (
+                        <li>
+                          {b.transporteurNom} · {b.trackingNumber} · retiré le{" "}
+                          {quand(b.retireAt)}
+                          {b.fichier && (
+                            <>
+                              {" · "}
+                              <a
+                                href={apiUrl(`/admin/bordereaux/${b.id}/fichier.pdf`)}
+                                target="_blank"
+                                rel="noopener"
+                                class="text-bo-accent hover:underline"
+                              >
+                                ouvrir le PDF
+                              </a>
+                            </>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            )}
+
             {resteAExpedier > 0 && !annulee && !auStand && (
               <details class="border-t border-bo-border">
                 <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-bo-accent">
@@ -704,37 +1213,92 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                     </tbody>
                   </table>
                   <div class="flex flex-wrap gap-3">
-                    <label class="text-sm">
-                      <span class="mb-1 block text-xs text-bo-muted">Transporteur</span>
-                      <input
-                        name="carrier"
-                        list="bo-transporteurs"
-                        placeholder="Colissimo"
-                        class="rounded border border-bo-border px-3 py-2"
-                      />
-                      <datalist id="bo-transporteurs">
-                        {TRANSPORTEURS.map((t) => <option value={t} />)}
-                      </datalist>
-                    </label>
-                    <label class="text-sm">
-                      <span class="mb-1 block text-xs text-bo-muted">
-                        Numéro de suivi
-                      </span>
-                      <input
-                        name="trackingNumber"
-                        placeholder="6A123456789FR"
-                        class="rounded border border-bo-border px-3 py-2"
-                      />
-                    </label>
+                    {bordereau && !bordereauServi ? (
+                      /* L'étiquette est déjà imprimée et collée sur le carton :
+                         un transporteur ou un numéro retapés ne pourraient que
+                         la contredire, et c'est la cliente qui recevrait le
+                         mauvais lien. Le champ caché porte la ligne, l'API y
+                         relit les trois valeurs et ignore le reste. */
+                      <div class="text-sm">
+                        <input
+                          type="hidden"
+                          name="bordereauId"
+                          value={bordereau.id}
+                        />
+                        <span class="mb-1 block text-xs text-bo-muted">
+                          Transporteur et suivi — repris du bordereau joint
+                        </span>
+                        <p class="rounded border border-bo-border bg-bo-bg px-3 py-2">
+                          {bordereau.transporteurNom} ·{" "}
+                          <span class="font-mono">
+                            {bordereau.trackingNumber}
+                          </span>
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <label class="text-sm">
+                          <span class="mb-1 block text-xs text-bo-muted">
+                            Transporteur
+                          </span>
+                          <input
+                            name="carrier"
+                            list="bo-transporteurs"
+                            placeholder="Colissimo"
+                            class="rounded border border-bo-border px-3 py-2"
+                          />
+                          {/* La liste vient de l'API : c'est là que vit la
+                              liste de référence des transporteurs. Les DIX
+                              sont proposés, y compris ceux dont la boutique
+                              ne sait pas fabriquer le lien — c'est le champ
+                              « Lien de suivi » à côté qui répond à ce
+                              manque-là, plutôt que de retirer de la liste des
+                              transporteurs avec lesquels Alexandra expédie
+                              pour de bon. La saisie reste libre : « Remise en
+                              main propre » n'est le transporteur de
+                              personne. */}
+                          <datalist id="bo-transporteurs">
+                            {transporteurs.map((t) => <option value={t.nom} />)}
+                          </datalist>
+                        </label>
+                        <label class="text-sm">
+                          <span class="mb-1 block text-xs text-bo-muted">
+                            Numéro de suivi
+                          </span>
+                          <input
+                            name="trackingNumber"
+                            placeholder="6A123456789FR"
+                            class="rounded border border-bo-border px-3 py-2"
+                          />
+                        </label>
+                        <label class="text-sm">
+                          <span class="mb-1 block text-xs text-bo-muted">
+                            Lien de suivi (facultatif)
+                          </span>
+                          <input
+                            name="trackingUrl"
+                            type="url"
+                            placeholder="https://…"
+                            class="w-64 rounded border border-bo-border px-3 py-2"
+                          />
+                        </label>
+                      </>
+                    )}
                     <div class="flex items-end">
                       <button class="rounded bg-bo-nav px-4 py-2 text-sm text-white">
                         Enregistrer l'expédition
                       </button>
                     </div>
                   </div>
+                  {/* Cette phrase-là promet à Alexandra ce que la cliente va
+                      recevoir : elle doit être vraie dans les trois cas, y
+                      compris celui du bordereau sans lien. */}
                   <p class="text-xs text-bo-muted">
-                    Le lien de suivi est fabriqué tout seul pour Colissimo, Mondial
-                    Relay et Chronopost.
+                    {bordereau && !bordereauServi
+                      ? bordereau.trackingUrl
+                        ? "Ces deux valeurs viennent du bordereau joint : ce qui est collé sur le carton fait foi, et la cliente recevra le lien de suivi affiché plus haut."
+                        : "Ces deux valeurs viennent du bordereau joint : ce qui est collé sur le carton fait foi. Aucun lien n'est joint à ce bordereau — la cliente recevra le numéro seul. Pour lui en donner un, retirez le bordereau et redéposez-le avec le lien du transporteur."
+                      : "Le lien de suivi se fabrique tout seul pour Colissimo, Mondial Relay, Chronopost, UPS et DHL. Pour GLS, DPD, Relais Colis, Colis Privé et Shop2Shop, collez celui du transporteur dans le champ ci-dessus : sinon la cliente recevra un numéro sans lien."}
                   </p>
                 </form>
               </details>
@@ -1394,4 +1958,55 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
       </div>
     </>
   )}
+
+  <script is:inline>
+    // Le presse-papier de « Copier l'adresse », sur le modèle des adresses de
+    // stand : on écoute la page une fois, le bouton n'existe que dans un des
+    // trois états du bloc.
+    document.addEventListener("click", async (evenement) => {
+      const cible = evenement.target;
+      const bouton =
+        cible instanceof Element ? cible.closest("[data-adresse]") : null;
+      if (!bouton) return;
+      // Le poids est lu au clic, et pas rendu avec le reste : c'est celui
+      // qu'elle vient de corriger qu'il faut emporter chez le transporteur,
+      // pas celui qui était là au chargement de la page.
+      const poids = document.getElementById("bo-poids-bordereau");
+      const grammes = poids && Number(poids.value) > 0 ? Number(poids.value) : 0;
+      const adresse =
+        (bouton.getAttribute("data-adresse") || "") +
+        (grammes ? `\nPoids : ${grammes} g` : "");
+      const dit = bouton.parentElement?.querySelector(".copie-ok");
+      try {
+        await navigator.clipboard.writeText(adresse);
+        if (dit)
+          dit.textContent = grammes
+            ? "Adresse et poids copiés."
+            : "Adresse copiée — sans le poids, il est à zéro.";
+      } catch {
+        // Presse-papiers refusé (page non sécurisée, permission) : on montre
+        // l'adresse pour qu'elle reste copiable à la main.
+        if (dit) dit.textContent = "Copie refusée par le navigateur.";
+        window.prompt("Adresse de la cliente :", adresse);
+      }
+    });
+
+    // Les deux documents du colis, dans deux onglets. On ne les fusionne pas :
+    // le bordereau s'imprime en A6 pour être collé DESSUS, le bon de livraison
+    // en A4 pour être glissé DEDANS.
+    document.addEventListener("click", (evenement) => {
+      const cible = evenement.target;
+      const bouton =
+        cible instanceof Element ? cible.closest(".js-imprimer-colis") : null;
+      if (!bouton) return;
+      const dit = bouton.parentElement?.querySelector(".js-imprimer-etat");
+      window.open(bouton.getAttribute("data-bordereau"), "_blank");
+      const second = window.open(bouton.getAttribute("data-bon"), "_blank");
+      // Certains navigateurs n'accordent qu'un seul onglet par clic : le dire
+      // vaut mieux que de laisser partir un colis sans son bon de livraison.
+      if (!second && dit)
+        dit.textContent =
+          "Second onglet bloqué : ouvrez le bon de livraison par le bouton en haut de la fiche.";
+    });
+  </script>
 </Admin>
