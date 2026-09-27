@@ -478,3 +478,97 @@ export function familleDeLaTeinte(familles: FamilleCouleur[], teinte: string): n
     teintesDeLaFamille(f).some((t) => memeCouleur(t, teinte)),
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Quand un dessin ne rend aucune couleur                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Pourquoi la lecture des couleurs d'un dessin n'a rien donné.
+ *
+ * CINQ SITUATIONS QUI N'ONT RIEN À VOIR, et qui ne tenaient jusqu'ici qu'en
+ * une seule phrase : « image illisible ou entièrement transparente ». Elle
+ * était FAUSSE dans la plupart des cas — un export PNG de Canva parfaitement
+ * bon s'entendait dire qu'il était abîmé, alors que c'était notre lecture qui
+ * s'arrêtait au format. La boutique en concluait que ses fichiers étaient
+ * mauvais et les refaisait dix fois.
+ *
+ * On ne met donc en cause le fichier QUE lorsque le fichier est en cause, et
+ * chaque motif dit ce qu'il y a à faire ensuite.
+ */
+export type MotifSansCouleur =
+  /** Format dont on ne sait pas encore lire les pixels. Le fichier est bon. */
+  | "format-non-traite"
+  /**
+   * Fichier bon et lu, mais RÉELLEMENT sans un pixel opaque : il n'y a rien
+   * dedans. Ne se dit plus que prouvé, le canal alpha du fichier à l'appui —
+   * c'est le seul reproche qu'un dessin au trait ne méritait pas.
+   */
+  | "image-vide"
+  /**
+   * Fichier bon et franchement opaque, mais dessiné AU TRAIT : la lecture
+   * cherche des APLATS de couleur et n'en trouve aucun. Le fichier n'y est
+   * pour rien, et on ne lui demande pas de recommencer son export.
+   */
+  | "traits-trop-fins"
+  /** Fichier bon, mais trop grand pour être lu sans mettre le serveur à genoux. */
+  | "image-trop-grande"
+  /** Fichier qui n'a pas pu être ouvert : incomplet, tronqué ou abîmé. */
+  | "echec-lecture";
+
+/**
+ * Ce qu'on dit à la boutique, et ce qu'elle doit faire ensuite.
+ *
+ * LE TEXTE VIT ICI, et non dans les écrans, parce que plusieurs écrans le
+ * montrent : la création d'un personnage, celle d'une pièce, et le bouton
+ * « Détecter les couleurs » d'une fiche existante. Écrit à chaque endroit, il
+ * a déjà divergé une fois.
+ *
+ * `precision` ajoute le détail que seul l'appelant connaît : l'extension du
+ * fichier, ou ses dimensions.
+ */
+export function phraseSansCouleur(
+  motif: MotifSansCouleur,
+  precision?: string,
+): string {
+  const detail = precision ? ` (${precision})` : "";
+  switch (motif) {
+    case "format-non-traite":
+      return (
+        `Ce format${detail} n'est pas encore lu : ses couleurs ne peuvent pas ` +
+        `être proposées au client. Le dessin est bon et s'enregistre tel quel. ` +
+        `Pour pouvoir le recolorer, réexportez-le en PNG ou en SVG, puis relisez ` +
+        `ses couleurs.`
+      );
+    case "image-vide":
+      return (
+        `Cette image n'a aucun pixel visible${detail} : elle est entièrement ` +
+        `transparente. Le dessin s'enregistre tel quel, mais il n'y a aucune ` +
+        `couleur à proposer. Vérifiez l'export — un fond transparent ne suffit ` +
+        `pas, il faut que le dessin lui-même soit dedans —, puis relisez ses ` +
+        `couleurs.`
+      );
+    case "traits-trop-fins":
+      return (
+        `Ce dessin est bon${detail} et s'enregistre tel quel : ses traits ` +
+        `sont seulement trop fins pour que leurs couleurs soient lues. ` +
+        `La lecture cherche des aplats — des zones de couleur assez larges ` +
+        `pour être proposées au client — et n'en a trouvé aucun. Épaississez ` +
+        `les traits, ou remplissez les zones de couleur, puis relisez ses ` +
+        `couleurs.`
+      );
+    case "image-trop-grande":
+      return (
+        `Cette image est trop grande${detail} pour que ses couleurs soient lues. ` +
+        `Le dessin est bon et s'enregistre tel quel. Réexportez-le en plus ` +
+        `petit — 4 000 pixels de côté suffisent largement pour l'impression —, ` +
+        `puis relisez ses couleurs.`
+      );
+    case "echec-lecture":
+      return (
+        `Ce fichier n'a pas pu être ouvert${detail} : il est sans doute ` +
+        `incomplet ou abîmé. Le dessin s'enregistre tel quel. Réexportez-le ` +
+        `depuis l'outil qui l'a produit, puis relisez ses couleurs.`
+      );
+  }
+}

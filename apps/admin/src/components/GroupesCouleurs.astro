@@ -146,6 +146,7 @@ const src = (u: string | null) =>
     type CouleursImage,
     type FamilleCouleur,
     type GroupeCouleur,
+    type MotifSansCouleur,
     type NuancierBase,
   } from "@memoryline/types/couleurs";
 
@@ -176,6 +177,10 @@ const src = (u: string | null) =>
     zonesCreees: number;
     images: number;
     couleursImage: CouleursImage | null;
+    /** Pourquoi rien n'est sorti d'une image. Absent si la lecture a donné. */
+    motif?: MotifSansCouleur;
+    /** La phrase toute faite qui va avec le motif (fabriquée par l'API). */
+    phrase?: string;
   }
 
   /** Le dessin en cours est-il une image en pixels ? */
@@ -882,9 +887,14 @@ const src = (u: string | null) =>
             (proposees
               ? `${proposees} proposée${proposees > 1 ? "s" : ""} au client.`
               : "Cochez celles que le client pourra changer.");
-        } else if (n === 0 && lecture.images > 0)
-          message =
-            "Ce dessin est une image en pixels, mais ses couleurs n'ont pas pu être lues (image illisible ou entièrement transparente).";
+        } else if (n === 0 && lecture.motif)
+          // AUCUN MESSAGE N'ACCUSE UN FICHIER SANS PREUVE. L'ancien disait
+          // « image illisible ou entièrement transparente » à un export Canva
+          // parfaitement bon, dont le seul tort était son format : la boutique
+          // en refaisait dix fois un fichier qui n'avait rien. Le serveur dit
+          // maintenant lequel des cinq cas s'est produit, et la phrase —
+          // partagée par tous les écrans — dit quoi faire ensuite.
+          message = lecture.phrase ?? "Aucune couleur lue dans cette image.";
         else if (n === 0) message = "Aucune couleur recolorable dans ce dessin.";
         else
           message =
@@ -894,7 +904,21 @@ const src = (u: string | null) =>
               : "") +
             ".";
         if (adresseEnregistrement) await enregistrerTout(message);
-        else dire(rappeler(message), n === 0 && familles === 0 ? "erreur" : "ok");
+        else
+          dire(
+            rappeler(message),
+            // SEULE une vraie panne de lecture s'affiche en rouge. Un format
+            // qu'on ne sait pas encore lire, un dessin au trait, une image
+            // vide ou trop grande : le dessin est bon et s'enregistre — le
+            // motif dit ce qu'il faut savoir. Le peindre en rouge ferait
+            // croire à une avarie, et c'est exactement ce qui poussait la
+            // boutique à refaire ses fichiers pour rien.
+            lecture.motif && lecture.motif !== "echec-lecture"
+              ? ""
+              : n === 0 && familles === 0
+                ? "erreur"
+                : "ok",
+          );
       } catch (err) {
         dire("Lecture impossible : " + String(err), "erreur");
       }
