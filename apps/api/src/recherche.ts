@@ -34,6 +34,7 @@ import {
   or,
   sql as raw,
 } from "drizzle-orm";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { HORS_VENTES } from "./statuts-vente.js";
 
@@ -165,6 +166,9 @@ function jour(quand: Date): string {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    // Nommé : une commande de 0 h 30 se lirait « la veille » sans lui, et la
+    // recherche renverrait un jour qui ne correspond à aucun autre écran.
+    timeZone: FUSEAU_BOUTIQUE,
   });
 }
 

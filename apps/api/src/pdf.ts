@@ -58,6 +58,7 @@ import {
 } from "@memoryline/types";
 import {
   COULEUR_TEXTE_DEFAUT,
+  FUSEAU_BOUTIQUE,
   lignesRemplies,
   styleDesLignes,
 } from "@memoryline/types";
@@ -1104,13 +1105,21 @@ function euros(cents: number): string {
   return (cents / 100).toFixed(2).replace(".", ",") + " €";
 }
 
-/** « 10 septembre 2026 ». */
+/**
+ * « 10 septembre 2026 ».
+ *
+ * Le fuseau est nommé, et c'est ici qu'il compte le plus : une facture est une
+ * pièce comptable, elle part chez le client et ne se rattrape pas. Une
+ * commande passée le 10 à 0 h 30 à Paris aurait été facturée « 9 septembre »
+ * par un serveur en temps universel.
+ */
 function jourFrancais(quand: Date): string {
   return pourPolicePdf(
     quand.toLocaleDateString("fr-FR", {
       day: "numeric",
       month: "long",
       year: "numeric",
+      timeZone: FUSEAU_BOUTIQUE,
     }),
   );
 }

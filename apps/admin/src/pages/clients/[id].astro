@@ -15,6 +15,7 @@ import { apiInterne } from "../../lib/api-interne.ts";
 import Admin from "../../layouts/Admin.astro";
 import { url } from "../../lib/url.ts";
 import { adminApi, formatPrice, type ClientDetail } from "../../lib/api.ts";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 
 const id = Number(Astro.params.id);
 const api = adminApi(Astro.request);
@@ -90,12 +91,12 @@ const adresses = detail?.adresses ?? [];
 const commandes = detail?.commandes ?? [];
 const stats = detail?.stats ?? { commandes: 0, caCents: 0, panierMoyenCents: 0 };
 
-/** « 27 août 2026 à 22:36 » */
+/** « 27 août 2026 à 22:36 », à l'heure de la boutique. */
 function quand(iso: string | null | undefined): string {
   if (!iso) return "";
   try {
     const d = new Date(iso);
-    return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} à ${d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
+    return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric", timeZone: FUSEAU_BOUTIQUE })} à ${d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: FUSEAU_BOUTIQUE })}`;
   } catch {
     return "";
   }
@@ -109,6 +110,7 @@ function leJour(iso: string | null | undefined): string {
       day: "numeric",
       month: "long",
       year: "numeric",
+      timeZone: FUSEAU_BOUTIQUE,
     });
   } catch {
     return "";

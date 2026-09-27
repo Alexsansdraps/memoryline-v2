@@ -22,6 +22,7 @@
 import Admin from "../layouts/Admin.astro";
 import { adminApi, type Analytique, type CanalAnalytique } from "../lib/api.ts";
 import { url } from "../lib/url.ts";
+import { FUSEAU_JOUR_CIVIL, jourDecale } from "@memoryline/types";
 
 const api = adminApi(Astro.request);
 
@@ -58,9 +59,18 @@ function lien(j: number, c: CanalAnalytique): string {
   return `${url("/statistiques")}?jours=${j}${c === "tout" ? "" : `&canal=${c}`}`;
 }
 
-const depuis = new Date(Date.now() - (jours - 1) * 86400000)
-  .toISOString()
-  .slice(0, 10);
+/**
+ * Le premier jour de la fenêtre, sur le CALENDRIER de Paris.
+ *
+ * Cette ligne découpait son jour en temps universel
+ * (`toISOString().slice(0, 10)`) alors que /admin/analytique le relit
+ * désormais à l'heure de Paris : entre minuit et 2 h du matin, les deux ne
+ * disaient plus la même chose. Mesuré à 0 h 30 le 10 septembre : « 7 jours »
+ * demandait le 2026-09-03 quand le septième jour de Paris est le 2026-09-04 —
+ * la courbe portait huit colonnes et le bandeau « du … au … » annonçait un
+ * jour de début que le bouton n'avait pas promis.
+ */
+const depuis = jourDecale(new Date(), -(jours - 1));
 
 let a: Analytique | null = null;
 let erreur: string | null = null;
@@ -113,7 +123,16 @@ const chemin = points
 /** La même, refermée en bas : c'est elle qui porte l'aplat. */
 const aplat = chemin ? `${chemin} L${L},${H} L0,${H} Z` : "";
 
-/** Trois repères de date sous la courbe : début, milieu, fin. */
+/**
+ * Trois repères de date sous la courbe : début, milieu, fin.
+ *
+ * ATTENTION AU DOUBLE DÉCALAGE. `jour` est un jour civil (« 2026-09-10 ») que
+ * Postgres a DÉJÀ découpé à l'heure de Paris (apps/api/src/analytique.ts). Cet
+ * écran-là n'a jamais menti, et c'est précisément pourquoi il faut le laisser
+ * tranquille : `new Date("2026-09-10")` place le jour à minuit universel, et
+ * le relire à Paris le rendrait « 10 septembre » aujourd'hui mais « 9 » sous
+ * n'importe quel fuseau en retard. On le relit donc tel qu'il a été écrit.
+ */
 const reperes = points.length
   ? [0, Math.floor(points.length / 2), points.length - 1]
       .filter((v, i, t) => t.indexOf(v) === i)
@@ -122,6 +141,7 @@ const reperes = points.length
         texte: new Date(points[i]!.jour).toLocaleDateString("fr-FR", {
           day: "numeric",
           month: "short",
+          timeZone: FUSEAU_JOUR_CIVIL,
         }),
       }))
   : [];
@@ -246,10 +266,14 @@ const choix = (actif: boolean) =>
             <p class="text-sm text-bo-muted">
               Meilleure journée :{" "}
               <strong>
+                {/* Jour civil déjà découpé à Paris : relu tel quel, sans
+                    second décalage — voir `reperes` plus haut. Le nom du jour
+                    de la semaine rendrait l'erreur visible immédiatement. */}
                 {new Date(meilleurJour.jour).toLocaleDateString("fr-FR", {
                   weekday: "long",
                   day: "numeric",
                   month: "long",
+                  timeZone: FUSEAU_JOUR_CIVIL,
                 })}
               </strong>{" "}
               — {euros(meilleurJour.caCents)}

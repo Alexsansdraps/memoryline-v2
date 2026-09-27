@@ -3,6 +3,13 @@ services:
     image: postgres:16-alpine
     container_name: memoryline-db
     restart: unless-stopped
+    # PAS de TZ ici, et c'est VOLONTAIRE. Les 88 colonnes de date sont des
+    # `timestamptz` : elles portent un instant absolu, que le fuseau du serveur
+    # ne change pas. Le seul SQL qui découpe des journées nomme lui-même
+    # « Europe/Paris » (apps/api/src/analytique.ts). Poser TZ ne corrigerait
+    # donc rien, mais une base réinstallée un jour naîtrait avec un réglage
+    # différent de celle d'aujourd'hui — deux bases qui ne répondent pas
+    # pareil, c'est précisément ce qu'on vient de supprimer ailleurs.
     environment:
       POSTGRES_USER: memoryline
       POSTGRES_PASSWORD: memoryline
@@ -42,6 +49,18 @@ services:
     # des courriers sans logo, et sans rechargement automatique.
     command: ["pnpm", "--filter", "@memoryline/api", "run", "dev"]
     environment:
+      # L'heure de la boutique. Sans cette ligne le conteneur vit en temps
+      # universel : une commande passée à 16 h 40 s'affichait « 14:40 » l'été.
+      # Node porte ses propres données de fuseaux, il n'y a aucun paquet à
+      # installer — la commande `date` du conteneur, elle, continuera de
+      # répondre en UTC (l'image Alpine n'embarque pas les fichiers de
+      # fuseaux), ce qui est sans effet sur l'application.
+      #
+      # Le code NE S'Y FIE PAS : chaque affichage et chaque borne de période
+      # nomment « Europe/Paris » eux-mêmes (packages/types/src/fuseau.ts).
+      # Cette ligne confirme, elle ne décide pas — un conteneur relancé sans
+      # elle continue d'afficher les bonnes heures.
+      TZ: "Europe/Paris"
       # L'adresse du site écrite dans les courriers (logo, vignettes, liens).
       PUBLIC_ORIGIN: "${PUBLIC_ORIGIN:-http://localhost:8080}"
       # Base de données : par défaut le Postgres local (service "db" du réseau
@@ -91,6 +110,9 @@ services:
     depends_on:
       - api
     environment:
+      # L'heure de la boutique : le site rend ses pages sur le serveur, et
+      # l'espace client y affiche la date des commandes. Voir le service api.
+      TZ: "Europe/Paris"
       # SSR / build : on parle à l'API via le réseau interne Docker.
       API_URL_INTERNAL: "http://api:3000"
       # Navigateur : même origine que le site, le proxy route /api vers l'API.
@@ -127,6 +149,10 @@ services:
     depends_on:
       - api
     environment:
+      # L'heure de la boutique. C'est LE conteneur qui affichait des heures
+      # fausses : le back-office rend ses écrans sur le serveur, donc toutes
+      # ses dates prenaient le fuseau d'ici. Voir le service api.
+      TZ: "Europe/Paris"
       API_URL_INTERNAL: "http://api:3000"
       # Navigateur : même origine, le proxy route /api vers l'API.
       PUBLIC_API_URL: "/api"

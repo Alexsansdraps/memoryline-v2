@@ -37,10 +37,23 @@
  * vérifier le jour où un chiffre surprendra.
  */
 import type { Hono } from "hono";
+import {
+  debutDuJour,
+  finDuJour,
+  FUSEAU_BOUTIQUE,
+  jourDansLeFuseau,
+} from "@memoryline/types";
 import { sql } from "./db/client.js";
 
-/** Le fuseau qui fait foi pour découper les jours. */
-const FUSEAU = "Europe/Paris";
+/**
+ * Le fuseau qui fait foi pour découper les jours.
+ *
+ * Il vient désormais du seul endroit qui le nomme (packages/types/src/fuseau.ts) :
+ * cet écran découpait déjà ses journées à Paris quand tous les autres les
+ * découpaient en temps universel, et deux écrans qui se contredisent coûtent
+ * plus cher qu'un écran qui se trompe franchement.
+ */
+const FUSEAU = FUSEAU_BOUTIQUE;
 
 /** Les seuls statuts qui comptent comme une vente. */
 const VENDUE = sql`status = 'paid' and cancelled_at is null`;
@@ -91,12 +104,21 @@ function enTexte(d: Date): string {
  * Par défaut les trente derniers jours : c'est la fenêtre qui montre à la fois
  * une tendance et le détail d'une semaine. Une période plus courte ferait du
  * bruit, une plus longue cacherait ce qui vient de changer.
+ *
+ * LES BORNES SE LISENT À PARIS, comme le découpage des journées plus bas. Les
+ * deux ne se contredisent plus : elles se contredisaient, et c'est ce qui
+ * faisait le trou. Les jours étaient bien groupés à l'heure française, mais la
+ * période s'ouvrait à minuit UNIVERSEL — soit 2 h du matin à Paris l'été. Une
+ * vente de 0 h 30 avait donc sa colonne dans la courbe, vide, et son montant
+ * nulle part. Poser les bornes à Paris remet les deux d'accord ; ATTENTION à
+ * ne pas décaler une seconde fois ce que Postgres découpe déjà (le `at time
+ * zone` des requêtes), ce qui ferait glisser toute la courbe d'un jour.
  */
 function periodes(depuis: string | undefined, jusqu: string | undefined) {
-  const fin = jusqu ? new Date(`${jusqu}T23:59:59.999Z`) : new Date();
-  const debut = depuis
-    ? new Date(`${depuis}T00:00:00.000Z`)
-    : new Date(fin.getTime() - 29 * 86400000);
+  const fin = (jusqu ? finDuJour(jusqu) : null) ?? new Date();
+  const debut =
+    (depuis ? debutDuJour(depuis) : null) ??
+    new Date(fin.getTime() - 29 * 86400000);
   const duree = Math.max(1, fin.getTime() - debut.getTime());
   const avant: Periode = {
     debut: new Date(debut.getTime() - duree),
@@ -350,8 +372,12 @@ export function mountAnalytiqueRoutes(app: Hono): void {
     return c.json({
       canal,
       periode: {
-        debut: courante.debut.toISOString().slice(0, 10),
-        fin: courante.fin.toISOString().slice(0, 10),
+        // Le JOUR de Paris, et non la tranche d'une date universelle : la
+        // borne de début est désormais un 9 septembre 22 h en temps
+        // universel, dont la tranche dirait « 9 » quand l'écran doit
+        // annoncer « du 10 ».
+        debut: jourDansLeFuseau(courante.debut),
+        fin: jourDansLeFuseau(courante.fin),
         jours: Math.max(
           1,
           Math.round((courante.fin.getTime() - courante.debut.getTime()) / 86400000),

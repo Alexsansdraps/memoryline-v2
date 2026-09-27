@@ -1,5 +1,6 @@
 import { apiInterne } from "./api-interne.ts";
 import type { PosterConfig } from "@memoryline/types";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 import { ui } from "../i18n/ui.ts";
 import {
   LOCALE_COMPLETE,
@@ -463,7 +464,14 @@ export function libelleStatut(
   return cle in ui.fr ? tr(cle as CleUi) : valeur;
 }
 
-/** Date lisible dans la langue de la page. */
+/**
+ * Date lisible dans la langue de la page.
+ *
+ * La LANGUE change, le FUSEAU non : une commande est passée à l'heure de la
+ * boutique, et c'est cette date-là qui figure sur la facture. Un client
+ * allemand doit lire le même jour que celui qu'il verra sur son document,
+ * pas le jour de son propre fuseau.
+ */
 export function formatDate(
   iso: string | null | undefined,
   langue: Langue,
@@ -475,6 +483,7 @@ export function formatDate(
     day: "2-digit",
     month: "long",
     year: "numeric",
+    timeZone: FUSEAU_BOUTIQUE,
   }).format(d);
 }
 

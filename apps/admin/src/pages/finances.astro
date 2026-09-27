@@ -15,6 +15,7 @@ import { apiInterne } from "../lib/api-interne.ts";
 import Admin from "../layouts/Admin.astro";
 import { formatPrice } from "../lib/api.ts";
 import { apiUrl, url } from "../lib/url.ts";
+import { FUSEAU_BOUTIQUE, jourDansLeFuseau } from "@memoryline/types";
 
 /**
  * L'API vue du serveur : en conteneur par le réseau interne, sinon en direct.
@@ -90,18 +91,30 @@ async function lireFinances(chemin: string): Promise<Finances> {
 
 /* --- La période, portée par l'adresse ----------------------------------- */
 
-/** « 2026-09-09 » en heure locale : la journée telle qu'on la vit. */
-function jourISO(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
+/**
+ * « 2026-09-09 » : la journée telle qu'on la vit À PARIS, et non celle du
+ * serveur. Le 1er du mois à 0 h 30, un serveur en temps universel est encore
+ * au mois d'avant : le raccourci « Ce mois-ci » ouvrait alors sur le mois
+ * précédent, et personne ne pouvait deviner pourquoi.
+ */
+const AUJOURDHUI = jourDansLeFuseau(new Date());
+const [ANNEE_EN_COURS = 0, MOIS_EN_COURS_NUM = 1] = AUJOURDHUI.split("-").map(Number);
 
-const aujourdhui = new Date();
+/**
+ * Arithmétique de CALENDRIER : « le 1er du mois », « le dernier jour du mois
+ * d'avant ». Elle se fait en temps universel EXPRÈS, parce qu'on ne manipule
+ * plus des instants mais des jours déjà ramenés à l'heure de Paris — les
+ * repasser dans un fuseau les décalerait une seconde fois, et « Le mois
+ * dernier » sauterait d'un jour.
+ */
+function jourCivil(annee: number, mois: number, jour: number): string {
+  return new Date(Date.UTC(annee, mois - 1, jour)).toISOString().slice(0, 10);
+}
 
 /** Ce que l'API affiche quand l'adresse ne dit rien : le mois en cours. */
 const MOIS_EN_COURS = {
-  du: jourISO(new Date(aujourdhui.getFullYear(), aujourdhui.getMonth(), 1)),
-  au: jourISO(aujourdhui),
+  du: jourCivil(ANNEE_EN_COURS, MOIS_EN_COURS_NUM, 1),
+  au: AUJOURDHUI,
 };
 
 const RACCOURCIS = [
@@ -109,15 +122,15 @@ const RACCOURCIS = [
   {
     cle: "mois-dernier",
     label: "Le mois dernier",
-    du: jourISO(new Date(aujourdhui.getFullYear(), aujourdhui.getMonth() - 1, 1)),
+    du: jourCivil(ANNEE_EN_COURS, MOIS_EN_COURS_NUM - 1, 1),
     // Le jour 0 du mois courant, c'est le dernier jour du mois d'avant.
-    au: jourISO(new Date(aujourdhui.getFullYear(), aujourdhui.getMonth(), 0)),
+    au: jourCivil(ANNEE_EN_COURS, MOIS_EN_COURS_NUM, 0),
   },
   {
     cle: "annee",
     label: "Cette année",
-    du: jourISO(new Date(aujourdhui.getFullYear(), 0, 1)),
-    au: jourISO(aujourdhui),
+    du: jourCivil(ANNEE_EN_COURS, 1, 1),
+    au: AUJOURDHUI,
   },
 ];
 
@@ -274,14 +287,24 @@ mouvements.sort((a, b) => {
 });
 const totalMouvements = mouvements.reduce((somme, m) => somme + m.cents, 0);
 
-/** « le 27 août à 22:36 », comme partout ailleurs dans le back-office. */
+/**
+ * « le 27 août à 22:36 », comme partout ailleurs dans le back-office.
+ *
+ * Le fuseau est nommé : un encaissement doit porter la même heure ici, sur la
+ * fiche de commande et dans l'export envoyé au comptable.
+ */
 function quand(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  const jour = d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+  const jour = d.toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "long",
+    timeZone: FUSEAU_BOUTIQUE,
+  });
   const heure = d.toLocaleTimeString("fr-FR", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: FUSEAU_BOUTIQUE,
   });
   return `le ${jour} à ${heure}`;
 }
@@ -295,6 +318,7 @@ function jourDit(iso: string): string {
         day: "numeric",
         month: "long",
         year: "numeric",
+        timeZone: FUSEAU_BOUTIQUE,
       });
 }
 

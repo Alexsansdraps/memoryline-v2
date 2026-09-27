@@ -21,6 +21,7 @@
 import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
 import { adminApi, type ResumePage } from "../lib/api.ts";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 
 const api = adminApi(Astro.request);
 
@@ -52,7 +53,10 @@ function originePublique(): string {
  */
 const RACINE_DES_PAGES = `${originePublique().replace(/^https?:\/\//, "")}/pages/`;
 
-/** Une date de la base, rendue lisible. Vide si elle n'est pas exploitable. */
+/**
+ * Une date de la base, rendue lisible à l'heure de la boutique. Vide si elle
+ * n'est pas exploitable.
+ */
 function dateCourte(brut: unknown): string {
   if (typeof brut !== "string" && typeof brut !== "number" && !(brut instanceof Date))
     return "";
@@ -62,6 +66,7 @@ function dateCourte(brut: unknown): string {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    timeZone: FUSEAU_BOUTIQUE,
   });
 }
 

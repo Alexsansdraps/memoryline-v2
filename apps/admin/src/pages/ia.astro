@@ -9,6 +9,7 @@
  */
 import Admin from "../layouts/Admin.astro";
 import { apiUrl, url } from "../lib/url.ts";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 import {
   adminApi,
   formatPrice,
@@ -186,10 +187,18 @@ function quand(iso: string | null | undefined): string {
   if (!iso) return "—";
   try {
     const d = new Date(iso);
-    const jour = d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+    // Fuseau nommé : cet écran sert à comprendre quand une image a été
+    // demandée et quand elle est revenue. Deux heures d'écart rendraient la
+    // chronologie incompréhensible.
+    const jour = d.toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "long",
+      timeZone: FUSEAU_BOUTIQUE,
+    });
     const heure = d.toLocaleTimeString("fr-FR", {
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: FUSEAU_BOUTIQUE,
     });
     return `le ${jour} à ${heure}`;
   } catch {

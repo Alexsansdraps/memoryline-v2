@@ -39,6 +39,7 @@ import { fileURLToPath } from "node:url";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
+import { debutDuJour, jourDansLeFuseau } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { clientDeLaRequete } from "./comptes.js";
 import { HORS_VENTES } from "./statuts-vente.js";
@@ -268,10 +269,27 @@ export function ipDeLaRequete(c: Context): string {
   );
 }
 
-/** Premier jour du mois en cours (UTC) — borne du plafond et des statistiques. */
+/**
+ * Premier instant du mois en cours, à l'heure de PARIS — borne du plafond et
+ * des statistiques.
+ *
+ * Cette borne sert à deux choses visibles : le « dépensé ce mois-ci » de
+ * /bo/ia, et l'arrêt d'urgence qui suspend la génération quand le plafond est
+ * atteint. Comptée en temps universel, elle laissait le serveur dans le mois
+ * PRÉCÉDENT le 1er de chaque mois entre 0 h et 2 h : l'écran affichait encore
+ * la dépense du mois écoulé, et un plafond atteint restait fermé deux heures
+ * de plus alors que le mois avait changé pour la boutique.
+ */
 function debutDuMois(): Date {
   const n = new Date();
-  return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), 1));
+  const premier = `${jourDansLeFuseau(n).slice(0, 7)}-01`;
+  // `debutDuJour` ne rend `null` que sur une date absente du calendrier ; le
+  // 1er d'un mois existe toujours. Le repli garde l'ancien comportement plutôt
+  // que d'ouvrir la fenêtre sur tout l'historique, ce qui fermerait le robinet.
+  return (
+    debutDuJour(premier) ??
+    new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), 1))
+  );
 }
 
 /** Dépense estimée depuis le 1er du mois, en centimes. */

@@ -41,6 +41,13 @@ import {
   or,
   sql as raw,
 } from "drizzle-orm";
+import {
+  anneeDansLeFuseau,
+  debutDuJour,
+  finDuJour,
+  FUSEAU_BOUTIQUE,
+  jourDansLeFuseau,
+} from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { HORS_VENTES } from "./statuts-vente.js";
 
@@ -75,29 +82,25 @@ const LIMITE_ANOMALIES = 200;
 
 const FORMAT_JOUR = /^\d{4}-\d{2}-\d{2}$/;
 
-/** « 2026-09-09 » en heure locale : c'est la journée commerciale. */
+/** « 2026-09-09 » à l'heure de PARIS : c'est la journée commerciale. */
 function jourISO(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return jourDansLeFuseau(d);
 }
 
 /**
- * Un jour saisi, converti en instant local.
+ * Un jour saisi, converti en instant — À L'HEURE DE PARIS.
+ *
+ * Le fuseau est nommé et n'est plus pris au serveur : lue en temps universel,
+ * une période « du 1er au 31 » commençait le 1er à 2 h du matin, et les
+ * encaissements de la nuit manquaient au rapprochement sans rien signaler.
  *
  * Le repli silencieux de JavaScript est refusé : « 2026-02-31 » deviendrait le
  * 3 mars sans que personne ne le voie, et la période affichée ne serait plus
- * celle qu'on a demandée.
+ * celle qu'on a demandée. C'est `debutDuJour` / `finDuJour` qui le refusent.
  */
 function instantDuJour(jour: string, finDeJournee: boolean): Date | null {
   if (!FORMAT_JOUR.test(jour)) return null;
-  const [a, m, j] = jour.split("-").map(Number);
-  if (a === undefined || m === undefined || j === undefined) return null;
-  const d = finDeJournee
-    ? new Date(a, m - 1, j, 23, 59, 59, 999)
-    : new Date(a, m - 1, j, 0, 0, 0, 0);
-  if (d.getFullYear() !== a || d.getMonth() !== m - 1 || d.getDate() !== j)
-    return null;
-  return d;
+  return finDeJournee ? finDuJour(jour) : debutDuJour(jour);
 }
 
 interface Periode {
@@ -118,12 +121,11 @@ function lirePeriode(
   auBrut: string,
 ): { periode: Periode } | { erreur: string } {
   const aujourdhui = new Date();
-  const premierDuMois = new Date(
-    aujourdhui.getFullYear(),
-    aujourdhui.getMonth(),
-    1,
-  );
-  const du = duBrut.trim() || jourISO(premierDuMois);
+  // Le mois en cours DU CALENDRIER DE PARIS : le 1er du mois à 0 h 30, un
+  // serveur en temps universel est encore au mois précédent, et l'écran
+  // s'ouvrirait sur trente jours qui ne sont plus les bons.
+  const premierDuMois = `${jourDansLeFuseau(aujourdhui).slice(0, 7)}-01`;
+  const du = duBrut.trim() || premierDuMois;
   const au = auBrut.trim() || jourISO(aujourdhui);
 
   const debut = instantDuJour(du, false);
@@ -144,15 +146,14 @@ function lirePeriode(
       erreur:
         "La période se termine avant d'avoir commencé. Inversez les deux dates.",
     };
-  if (debut.getFullYear() < PREMIERE_ANNEE)
+  if (anneeDansLeFuseau(debut) < PREMIERE_ANNEE)
     return {
       erreur: `La boutique n'a aucune vente avant ${PREMIERE_ANNEE}. Choisissez une date de début plus récente.`,
     };
-  const finDuMondeConnu = new Date(
-    aujourdhui.getFullYear() + 1,
-    aujourdhui.getMonth(),
-    aujourdhui.getDate(),
-  );
+  // Un an devant nous, compté en jours plutôt qu'en mois : c'est un garde-fou
+  // contre une date absurde, pas une date de calendrier, et le compter en
+  // jours lui évite de dépendre du fuseau du serveur.
+  const finDuMondeConnu = new Date(aujourdhui.getTime() + 366 * 86400000);
   if (debut.getTime() > Date.now())
     return {
       erreur: "La période commence dans le futur : il n'y a rien à y lire.",
@@ -836,7 +837,9 @@ export function mountFinances(app: Hono): void {
     const euros = (cents: number) => (cents / 100).toFixed(2).replace(".", ",");
     const lignes = finances.mouvements.map((m) =>
       [
-        new Date(m.date).toLocaleString("fr-FR"),
+        // Le fuseau est nommé : ce fichier sert de pièce au rapprochement
+        // bancaire, et une heure fausse y devient une heure officielle.
+        new Date(m.date).toLocaleString("fr-FR", { timeZone: FUSEAU_BOUTIQUE }),
         m.numero,
         m.canal,
         m.stand ?? "",

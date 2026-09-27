@@ -32,7 +32,14 @@ import {
   refundPaypal,
   refundStripe,
 } from "./payments.js";
-import { lignesRemplies, type TextesAffiche } from "@memoryline/types";
+import {
+  anneeDansLeFuseau,
+  debutDuJour,
+  finDuJour,
+  FUSEAU_BOUTIQUE,
+  lignesRemplies,
+  type TextesAffiche,
+} from "@memoryline/types";
 import {
   courrierAnnulee,
   courrierExpediee,
@@ -295,6 +302,26 @@ function fusionner(a: string[], b: string[]): string[] {
       out.push(t);
     }
   return out;
+}
+
+/**
+ * Une borne du filtre par dates, lue À L'HEURE DE PARIS.
+ *
+ * C'est la ligne qui perdait des commandes. Le champ « Du » envoie un jour nu
+ * (« 2026-09-10 ») ; lu comme un instant universel, il commençait le 10 à 2 h
+ * du matin, et toutes les commandes passées entre minuit et 2 h ce jour-là
+ * tombaient hors du filtre — sans message, sans trou visible, juste un total
+ * qui ne correspondait à rien.
+ *
+ * Le repli sur `new Date` couvre une adresse écrite à la main qui porterait un
+ * instant complet : elle désigne alors un instant, pas une journée, et on la
+ * respecte telle quelle.
+ */
+function borneDuFiltre(brut: string, cote: "debut" | "fin"): Date | null {
+  const journee = cote === "debut" ? debutDuJour(brut) : finDuJour(brut);
+  if (journee) return journee;
+  const instant = new Date(brut);
+  return Number.isNaN(instant.getTime()) ? null : instant;
 }
 
 /** Échappe une cellule CSV (Excel français : point-virgule, guillemets doublés). */
@@ -757,13 +784,17 @@ export function mountOrderRoutes(app: Hono): void {
     if (Number.isInteger(stand) && stand > 0)
       conditions.push(eq(schema.orders.standId, stand));
     conditions.push(...limiterAuStand(c));
-    if (q.from) conditions.push(gte(schema.orders.createdAt, new Date(q.from)));
+    // Les deux bornes se lisent à l'heure de Paris (voir `borneDuFiltre`) :
+    // « depuis le 10 » commence le 10 à 0 h 00 dans l'atelier, pas à 2 h.
+    if (q.from) {
+      const debut = borneDuFiltre(q.from, "debut");
+      if (debut) conditions.push(gte(schema.orders.createdAt, debut));
+    }
     if (q.to) {
       // Une date de fin s'entend « jusqu'au soir » : sinon un filtre « du 1er
       // au 3 » perdrait toutes les commandes du 3.
-      const fin = new Date(q.to);
-      fin.setHours(23, 59, 59, 999);
-      conditions.push(lte(schema.orders.createdAt, fin));
+      const fin = borneDuFiltre(q.to, "fin");
+      if (fin) conditions.push(lte(schema.orders.createdAt, fin));
     }
     const cherche = (q.q ?? "").trim();
     if (cherche) {
@@ -867,11 +898,15 @@ export function mountOrderRoutes(app: Hono): void {
     if (Number.isInteger(stand) && stand > 0)
       conditions.push(eq(schema.orders.standId, stand));
     conditions.push(...limiterAuStand(c));
-    if (q.from) conditions.push(gte(schema.orders.createdAt, new Date(q.from)));
+    // Mêmes bornes que la liste, à l'heure de Paris : un export doit ramener
+    // exactement ce que l'écran montrait, la nuit du 10 comprise.
+    if (q.from) {
+      const debut = borneDuFiltre(q.from, "debut");
+      if (debut) conditions.push(gte(schema.orders.createdAt, debut));
+    }
     if (q.to) {
-      const fin = new Date(q.to);
-      fin.setHours(23, 59, 59, 999);
-      conditions.push(lte(schema.orders.createdAt, fin));
+      const fin = borneDuFiltre(q.to, "fin");
+      if (fin) conditions.push(lte(schema.orders.createdAt, fin));
     }
     const ids = (q.ids ?? "")
       .split(",")
@@ -948,7 +983,14 @@ export function mountOrderRoutes(app: Hono): void {
       const s = resume.get(r.id)!;
       return [
         r.number,
-        r.createdAt ? new Date(r.createdAt).toLocaleString("fr-FR") : "",
+        // Le fuseau est NOMMÉ : ce fichier part chez le comptable, et une
+        // ligne datée de 14:40 pour une commande de 16:40 s'y installe pour
+        // toujours.
+        r.createdAt
+          ? new Date(r.createdAt).toLocaleString("fr-FR", {
+              timeZone: FUSEAU_BOUTIQUE,
+            })
+          : "",
         r.customerName ?? "",
         r.customerEmail ?? "",
         r.channel,
@@ -1664,7 +1706,7 @@ export function mountOrderRoutes(app: Hono): void {
         {
           error: `La commande ${order.number} est déjà annulée${
             order.cancelledAt
-              ? ` depuis le ${order.cancelledAt.toLocaleDateString("fr-FR")}`
+              ? ` depuis le ${order.cancelledAt.toLocaleDateString("fr-FR", { timeZone: FUSEAU_BOUTIQUE })}`
               : ""
           }. Rien n'a été refait.`,
         },
@@ -2379,7 +2421,11 @@ export function mountOrderRoutes(app: Hono): void {
         return { numero: commande.numero, emiseLe: commande.emiseLe ?? new Date() };
 
       const maintenant = new Date();
-      const annee = maintenant.getFullYear();
+      // L'année de PARIS, pas celle du serveur. Le 1er janvier entre 0 h et
+      // 1 h heure française, un serveur en temps universel est encore au
+      // 31 décembre : la facture porterait le millésime de l'année écoulée,
+      // et un numéro de facture ne se reprend pas (index unique, schema.ts).
+      const annee = anneeDansLeFuseau(maintenant);
       // « on conflict do update » plutôt que « do nothing » : c'est ce qui
       // rend la ligne verrouillée même quand elle existait déjà, et donc ce
       // qui sérialise deux demandes simultanées.
@@ -2552,7 +2598,7 @@ export function mountOrderRoutes(app: Hono): void {
     if (order.status === "cancelled" || order.status === "voided")
       return `Commande annulée${
         order.cancelledAt
-          ? ` le ${order.cancelledAt.toLocaleDateString("fr-FR")}`
+          ? ` le ${order.cancelledAt.toLocaleDateString("fr-FR", { timeZone: FUSEAU_BOUTIQUE })}`
           : ""
       }${order.cancelReason ? ` — ${order.cancelReason}` : ""}.`;
     if (order.status === "paid") return "Commande réglée. Facture acquittée.";

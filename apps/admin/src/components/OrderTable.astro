@@ -9,6 +9,7 @@
  * rafraîchissement.
  */
 import { apiUrl, url } from "../lib/url.ts";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 import {
   adminApi,
   formatPrice,
@@ -154,15 +155,28 @@ const lienExport = (() => {
   return apiUrl(`/admin/orders/export.csv?${p.toString()}`);
 })();
 
-/** « le 27 août à 22:36 », comme sur la boutique. */
+/**
+ * « le 27 août à 22:36 », comme sur la boutique.
+ *
+ * Le fuseau est NOMMÉ. Cet écran est rendu sur le serveur, qui vit en temps
+ * universel tant qu'on ne lui dit rien : c'est ici qu'une commande de 16 h 40
+ * s'affichait « 14:40 ». Les conteneurs portent maintenant TZ=Europe/Paris,
+ * mais un conteneur relancé sans cette variable remettrait l'heure à mentir —
+ * et personne ne s'en apercevrait avant la première dispute avec un client.
+ */
 function quand(iso: string | null | undefined): string {
   if (!iso) return "—";
   try {
     const d = new Date(iso);
-    const jour = d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+    const jour = d.toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "long",
+      timeZone: FUSEAU_BOUTIQUE,
+    });
     const heure = d.toLocaleTimeString("fr-FR", {
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: FUSEAU_BOUTIQUE,
     });
     return `le ${jour} à ${heure}`;
   } catch {

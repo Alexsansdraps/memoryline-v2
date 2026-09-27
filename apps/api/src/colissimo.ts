@@ -14,6 +14,7 @@
  * Colissimo » est masqué sur le site — on ne propose pas un mode dont on ne
  * saurait pas dire où livrer.
  */
+import { jourDansLeFuseau } from "@memoryline/types";
 
 const CONTRAT = (process.env.COLISSIMO_CONTRAT ?? "").trim();
 const MOTDEPASSE = (process.env.COLISSIMO_MOTDEPASSE ?? "").trim();
@@ -39,12 +40,15 @@ export interface PointRetrait {
  *
  * Le service refuse une date passée : on demande le lendemain, qui convient
  * pour une boutique qui prépare ses colis dans la journée.
+ *
+ * « Le lendemain » se compte sur le calendrier de PARIS. Entre minuit et 2 h
+ * du matin, un serveur en temps universel est encore la veille : il demandait
+ * alors le jour même, que le service peut refuser comme déjà commencé.
  */
 function dateExpedition(): string {
-  const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const jj = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${jj}/${mm}/${d.getFullYear()}`;
+  const jour = jourDansLeFuseau(new Date(Date.now() + 24 * 60 * 60 * 1000));
+  const [annee, mois, jourDuMois] = jour.split("-");
+  return `${jourDuMois}/${mois}/${annee}`;
 }
 
 /** Rassemble les lignes d'adresse renvoyées, sans trous ni virgules en double. */

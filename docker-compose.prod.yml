@@ -37,6 +37,14 @@ services:
     # l'environnement du conteneur évite de l'écrire sur une ligne de commande,
     # où elle s'inscrirait — mot de passe compris — dans l'historique du
     # terminal et dans la liste des processus.
+    #
+    # PAS de TZ ici, et c'est VOLONTAIRE. Les 88 colonnes de date sont des
+    # `timestamptz` : elles portent un instant absolu, que le fuseau du serveur
+    # ne change pas. Le seul SQL qui découpe des journées nomme lui-même
+    # « Europe/Paris » (apps/api/src/analytique.ts). Poser TZ ne corrigerait
+    # donc rien, mais une base réinstallée un jour naîtrait avec un réglage
+    # différent de celle d'aujourd'hui — deux bases qui ne répondent pas
+    # pareil, c'est précisément ce qu'on vient de supprimer ailleurs.
     env_file: .env
     environment:
       POSTGRES_USER: memoryline
@@ -82,6 +90,19 @@ services:
     env_file: .env
     environment:
       NODE_ENV: production
+      # L'heure de la boutique. Sans cette ligne le conteneur vit en temps
+      # universel : une commande passée à 16 h 40 s'affichait « 14:40 » l'été,
+      # et un filtre « depuis le 10 » perdait les commandes de la nuit. Node
+      # porte ses propres données de fuseaux, il n'y a aucun paquet à
+      # installer — la commande `date` du conteneur, elle, continuera de
+      # répondre en UTC (l'image Alpine n'embarque pas les fichiers de
+      # fuseaux), ce qui est sans effet sur l'application.
+      #
+      # Le code NE S'Y FIE PAS : chaque affichage et chaque borne de période
+      # nomment « Europe/Paris » eux-mêmes (packages/types/src/fuseau.ts).
+      # Cette ligne confirme, elle ne décide pas — un conteneur relancé sans
+      # elle continue d'afficher les bonnes heures.
+      TZ: Europe/Paris
       API_PORT: 3000
       # Les adresses autorisées à appeler l'API depuis un navigateur. Le site
       # et le back-office passant par le même hôte, une seule suffit.
@@ -130,6 +151,9 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      # L'heure de la boutique : le site rend ses pages sur le serveur, et
+      # l'espace client y affiche la date des commandes. Voir le service api.
+      TZ: Europe/Paris
       PUBLIC_API_URL: /api
       API_URL_INTERNAL: http://api:3000
     depends_on:
@@ -151,6 +175,10 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      # L'heure de la boutique. C'est LE conteneur qui affichait des heures
+      # fausses : le back-office rend ses écrans sur le serveur, donc toutes
+      # ses dates prenaient le fuseau d'ici. Voir le service api.
+      TZ: Europe/Paris
       PUBLIC_API_URL: /api
       API_URL_INTERNAL: http://api:3000
     depends_on:

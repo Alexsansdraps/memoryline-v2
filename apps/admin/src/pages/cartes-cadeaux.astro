@@ -16,6 +16,7 @@
  */
 import Admin from "../layouts/Admin.astro";
 import { apiUrl, url } from "../lib/url.ts";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 import {
   adminApi,
   formatPrice,
@@ -57,7 +58,13 @@ function centimesDepuisEuros(saisie: string): number {
   return Math.round(valeur * 100);
 }
 
-/** « 3 janvier 2027 ». Chaîne vide quand il n'y a pas de date. */
+/**
+ * « 3 janvier 2027 ». Chaîne vide quand il n'y a pas de date.
+ *
+ * Le fuseau est nommé, et il doit être le MÊME que celui où la date de fin est
+ * construite (apps/api/src/cartes-cadeaux.ts, `dateDeFin`) : une carte réglée
+ * pour expirer au soir du 31 décembre se lirait sinon « 1er janvier » ici.
+ */
 function jour(iso: string | null): string {
   if (!iso) return "";
   const quand = new Date(iso);
@@ -67,6 +74,7 @@ function jour(iso: string | null): string {
         day: "numeric",
         month: "long",
         year: "numeric",
+        timeZone: FUSEAU_BOUTIQUE,
       });
 }
 

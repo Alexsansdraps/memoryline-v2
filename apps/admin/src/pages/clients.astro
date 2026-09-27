@@ -12,6 +12,7 @@
 import Admin from "../layouts/Admin.astro";
 import { url } from "../lib/url.ts";
 import { adminApi, formatPrice, type Client } from "../lib/api.ts";
+import { anneeDansLeFuseau, FUSEAU_BOUTIQUE } from "@memoryline/types";
 
 const api = adminApi(Astro.request);
 const params = Astro.url.searchParams;
@@ -79,11 +80,15 @@ function quand(iso: string | null | undefined): string {
   if (!iso) return "—";
   try {
     const d = new Date(iso);
-    const annee = d.getFullYear();
+    // L'année se compare elle aussi à l'heure de Paris : le 1er janvier au
+    // petit matin, un serveur en temps universel est encore à l'année
+    // précédente, et la liste se mettrait à afficher une année partout.
+    const annee = anneeDansLeFuseau(d);
     return d.toLocaleDateString("fr-FR", {
       day: "numeric",
       month: "long",
-      ...(annee === new Date().getFullYear() ? {} : { year: "numeric" }),
+      timeZone: FUSEAU_BOUTIQUE,
+      ...(annee === anneeDansLeFuseau(new Date()) ? {} : { year: "numeric" }),
     });
   } catch {
     return "—";

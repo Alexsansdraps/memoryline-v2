@@ -37,6 +37,7 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import {
   courrierPanierAbandonne,
@@ -959,16 +960,23 @@ function depuis(date: Date): string {
   return `il y a ${jours} jours`;
 }
 
-/** « le 4 mars à 14:05 ». */
+/**
+ * « le 4 mars à 14:05 ».
+ *
+ * C'était le SEUL formatage du projet à nommer son fuseau — d'où l'écran des
+ * paniers abandonnés qui donnait l'heure juste pendant que la liste des
+ * commandes se trompait de deux heures. Le fuseau vient maintenant du module
+ * partagé, pour qu'il n'y ait plus qu'un endroit à corriger le jour où.
+ */
 function leJour(date: Date): string {
   return `le ${date.toLocaleDateString("fr-FR", {
     day: "numeric",
     month: "long",
-    timeZone: "Europe/Paris",
+    timeZone: FUSEAU_BOUTIQUE,
   })} à ${date.toLocaleTimeString("fr-FR", {
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "Europe/Paris",
+    timeZone: FUSEAU_BOUTIQUE,
   })}`;
 }
 

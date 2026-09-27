@@ -1,4 +1,5 @@
 export * from "./config.js";
+export * from "./fuseau.js";
 export * from "./library.js";
 export * from "./svg-color.js";
 export * from "./couleurs-groupes.js";

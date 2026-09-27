@@ -11,7 +11,7 @@
  * partir des expéditions et des remboursements enregistrés.
  */
 import { apiUrl, url } from "../../lib/url.ts";
-import { libelleFormat } from "@memoryline/types";
+import { FUSEAU_BOUTIQUE, libelleFormat } from "@memoryline/types";
 import Admin from "../../layouts/Admin.astro";
 import {
   adminApi,
@@ -217,12 +217,19 @@ const auStand = order?.channel === "salon";
 const remboursements = detail?.remboursements ?? [];
 const mouvements = detail?.mouvements ?? [];
 
-/** « 27 août 2026 à 22:36 » */
+/**
+ * « 27 août 2026 à 22:36 »
+ *
+ * Le fuseau est nommé, et il sert deux fois sur cet écran : la date de la
+ * commande, et le JOURNAL DES ÉVÉNEMENTS juste en dessous. C'est le journal
+ * qui fait le plus de dégâts quand il ment — on s'en sert pour dire à un
+ * client à quelle heure sa commande a été prise, puis expédiée.
+ */
 function quand(iso: string | null | undefined): string {
   if (!iso) return "";
   try {
     const d = new Date(iso);
-    return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} à ${d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
+    return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric", timeZone: FUSEAU_BOUTIQUE })} à ${d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: FUSEAU_BOUTIQUE })}`;
   } catch {
     return "";
   }

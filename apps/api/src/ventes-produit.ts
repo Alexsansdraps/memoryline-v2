@@ -21,6 +21,7 @@
  */
 import type { Hono } from "hono";
 import { and, eq, gte, inArray, notInArray } from "drizzle-orm";
+import { jourDansLeFuseau, jourDecale } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { HORS_VENTES } from "./statuts-vente.js";
 
@@ -29,10 +30,15 @@ const JOURS_MIN = 1;
 const JOURS_MAX = 365;
 const JOURS_DEFAUT = 90;
 
-/** « 2026-09-09 », en heure locale du serveur : c'est la journée commerciale. */
+/**
+ * « 2026-09-09 », à l'heure de PARIS : c'est la journée commerciale.
+ *
+ * Le fuseau est nommé, il n'est plus pris au serveur : une vente de 0 h 30
+ * comptait pour la veille, et la courbe de l'affiche ne racontait pas la même
+ * histoire que l'écran des statistiques, qui découpe déjà ses jours à Paris.
+ */
 function jourISO(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return jourDansLeFuseau(d);
 }
 
 export function mountVentesProduit(app: Hono) {
@@ -125,9 +131,15 @@ export function mountVentesProduit(app: Hono) {
 
     // La courbe porte un point par jour, y compris les jours sans vente :
     // sans eux, deux ventes espacées d'un mois se toucheraient sur le dessin.
+    //
+    // Les jours se comptent sur le CALENDRIER de Paris, pas sur le compteur de
+    // millisecondes : les journées du changement d'heure durent 23 h et 25 h,
+    // et reculer par bonds fixes de 24 h rendait alors le même jour DEUX FOIS
+    // (son chiffre d'affaires dessiné deux fois) tout en en escamotant un
+    // autre. Voir `jourDecale`, qui porte la mesure.
     const serie: { jour: string; cents: number }[] = [];
     for (let i = jours - 1; i >= 0; i--) {
-      const j = jourISO(new Date(fin.getTime() - i * 86400000));
+      const j = jourDecale(fin, -i);
       serie.push({ jour: j, cents: parJour.get(j) ?? 0 });
     }
 

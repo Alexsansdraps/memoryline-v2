@@ -4,6 +4,7 @@ import OrderStats from "../components/OrderStats.astro";
 import OrderTable from "../components/OrderTable.astro";
 import { adminApi, formatPrice, type StandBo } from "../lib/api.ts";
 import { url } from "../lib/url.ts";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 
 const api = adminApi(Astro.request);
 
@@ -180,7 +181,12 @@ function lienStand(id: number | null): string {
   return url(`/ventes-salon${qs ? `?${qs}` : ""}`);
 }
 
-/** « 3 février 2026 », pour situer un salon dans l'année. */
+/**
+ * « 3 février 2026 », pour situer un salon dans l'année.
+ *
+ * Le fuseau est nommé : un stand fermé le dimanche soir à 23 h se lirait
+ * « lundi » sans lui, et la date ne correspondrait plus au souvenir du salon.
+ */
 function jour(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -190,6 +196,7 @@ function jour(iso: string | null): string {
         day: "numeric",
         month: "long",
         year: "numeric",
+        timeZone: FUSEAU_BOUTIQUE,
       });
 }
 

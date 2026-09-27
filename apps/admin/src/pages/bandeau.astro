@@ -16,17 +16,34 @@ import { apiInterne } from "../lib/api-interne.ts";
 import Admin from "../layouts/Admin.astro";
 import { url } from "../lib/url.ts";
 import { adminApi, formatPrice, type BannerBo, type PromoRule } from "../lib/api.ts";
-import { libelleRegle, remisesPanier, seuilDeclenchement } from "@memoryline/types";
+import {
+  champLocalDepuisInstant,
+  instantDepuisChampLocal,
+  libelleRegle,
+  remisesPanier,
+  seuilDeclenchement,
+} from "@memoryline/types";
 
 const api = adminApi(Astro.request);
 
 let flash: string | null = null;
 let flashErreur = false;
 
-/** Un champ date-heure de formulaire vers ce que l'API attend, ou rien. */
+/**
+ * Un champ date-heure de formulaire vers ce que l'API attend, ou rien.
+ *
+ * L'heure saisie est celle de PARIS, parce que c'est l'heure qu'a en tête la
+ * personne devant l'écran. Lue dans le fuseau du serveur, « 18:00 » devenait
+ * 18 h en temps universel, soit 20 h à Paris : le bandeau de Noël s'allumait
+ * deux heures après l'heure annoncée, et la remise avec lui.
+ *
+ * Forme une paire avec `pourChamp` plus bas : les deux lisent le même fuseau,
+ * sinon la date dérive un peu plus à chaque enregistrement.
+ */
 function quandOuRien(v: FormDataEntryValue | null): string | null {
   const s = String(v ?? "").trim();
-  return s ? new Date(s).toISOString() : null;
+  if (!s) return null;
+  return instantDepuisChampLocal(s)?.toISOString() ?? null;
 }
 
 if (Astro.request.method === "POST") {
@@ -184,13 +201,18 @@ function exemple(r: PromoRule): {
 
 const exempleRegle = regle ? exemple(regle) : null;
 
-/** Une date pour un champ `datetime-local` (qui n'accepte pas le fuseau). */
+/**
+ * Une date pour un champ `datetime-local` (qui n'accepte pas le fuseau) :
+ * écrite à l'heure de Paris, celle que la propriétaire a saisie.
+ *
+ * Voir `quandOuRien` : ces deux fonctions doivent toujours lire le même
+ * fuseau, c'est ce qui fait qu'une date rouvre sur elle-même.
+ */
 function pourChamp(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  return champLocalDepuisInstant(d);
 }
 
 const cfg = (regle?.config ?? {}) as Record<string, unknown>;

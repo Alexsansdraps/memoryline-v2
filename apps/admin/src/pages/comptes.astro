@@ -1,6 +1,7 @@
 ---
 import Admin from "../layouts/Admin.astro";
 import { adminApi, type CompteAdmin } from "../lib/api.ts";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 
 const api = adminApi(Astro.request);
 
@@ -18,13 +19,14 @@ const ROLES = [
 ];
 const nomRole = (v: string) => ROLES.find((r) => r.value === v)?.label ?? v;
 
-/** Date lisible, sans dépendance : « 8 septembre 2026 ». */
+/** Date lisible, à l'heure de la boutique : « 8 septembre 2026 ». */
 function leJour(iso: string): string {
   try {
     return new Date(iso).toLocaleDateString("fr-FR", {
       day: "numeric",
       month: "long",
       year: "numeric",
+      timeZone: FUSEAU_BOUTIQUE,
     });
   } catch {
     return "";

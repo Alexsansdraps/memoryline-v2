@@ -35,6 +35,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { PDFFont, PDFPage, RGB } from "pdf-lib";
+import { finDuJour, FUSEAU_BOUTIQUE } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 
 /* -------------------------------------------------------------------------- */
@@ -165,26 +166,18 @@ function dateDeFin(v: unknown): { valeur: Date | null } | null {
   if (typeof v !== "string") return null;
   const propre = v.trim();
   if (!propre) return { valeur: null };
-  // Un jour seul (« 2027-12-31 ») est construit dans le fuseau du serveur, puis
-  // poussé à son soir. Le lire comme un instant universel le ferait basculer
-  // d'un jour dans les fuseaux à l'ouest, et la carte perdrait sa dernière
-  // journée sans que personne ne comprenne pourquoi.
-  const jourSeul = /^(\d{4})-(\d{2})-(\d{2})$/.exec(propre);
-  if (jourSeul) {
-    const annee = Number(jourSeul[1]);
-    const mois = Number(jourSeul[2]);
-    const jourDuMois = Number(jourSeul[3]);
-    const quand = new Date(annee, mois - 1, jourDuMois, 23, 59, 59, 999);
-    // « 2027-02-31 » se lit sans broncher et donne le 3 mars. Une date que le
-    // calendrier ne contient pas est refusée plutôt que remplacée en silence
-    // par une autre, que la propriétaire n'a pas choisie.
-    if (
-      quand.getFullYear() !== annee ||
-      quand.getMonth() !== mois - 1 ||
-      quand.getDate() !== jourDuMois
-    )
-      return null;
-    return { valeur: quand };
+  // Un jour seul (« 2027-12-31 ») est poussé au soir du jour choisi, À L'HEURE
+  // DE PARIS — et le fuseau est nommé, il n'est plus pris au serveur. Une carte
+  // « valable jusqu'au 31 décembre » expirait sinon à 0 h 59 le 1er janvier
+  // pour la cliente : elle marchait encore une heure après son terme, ou
+  // cessait une heure trop tôt selon le réglage du conteneur.
+  //
+  // `finDuJour` refuse aussi les dates que le calendrier ne contient pas :
+  // « 2027-02-31 » se lit sans broncher en JavaScript et donne le 3 mars,
+  // c'est-à-dire une date que la propriétaire n'a pas choisie.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(propre)) {
+    const quand = finDuJour(propre);
+    return quand ? { valeur: quand } : null;
   }
 
   const quand = new Date(propre);
@@ -258,12 +251,20 @@ function montantEnToutesLettres(cents: number): string {
   return `${texte} €`;
 }
 
-/** « 31 décembre 2027 ». */
+/**
+ * « 31 décembre 2027 ».
+ *
+ * Le fuseau est nommé : cette date-là s'imprime sur la carte offerte, et la
+ * cliente la lira le jour où elle voudra s'en servir. La carte expire au soir
+ * de ce jour à Paris (voir `dateDeFin`) ; l'écrire dans un autre fuseau la
+ * ferait paraître valable un jour de plus ou un jour de moins.
+ */
 function jourEnFrancais(quand: Date): string {
   return quand.toLocaleDateString("fr-FR", {
     day: "numeric",
     month: "long",
     year: "numeric",
+    timeZone: FUSEAU_BOUTIQUE,
   });
 }
 

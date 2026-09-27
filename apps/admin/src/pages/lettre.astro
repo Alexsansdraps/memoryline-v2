@@ -24,6 +24,7 @@ import { apiInterne } from "../lib/api-interne.ts";
 import Admin from "../layouts/Admin.astro";
 import EditeurTexte from "../components/EditeurTexte.astro";
 import { url, apiUrl } from "../lib/url.ts";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 
 /**
  * L'API, vue du serveur. Même chemin que le reste du back-office : le réseau
@@ -125,6 +126,7 @@ interface Avancee {
   resume: string;
 }
 
+/** Le jour d'un envoi, à l'heure de la boutique. */
 function leJour(iso: string | null): string {
   if (!iso) return "";
   try {
@@ -132,6 +134,7 @@ function leJour(iso: string | null): string {
       day: "numeric",
       month: "short",
       year: "numeric",
+      timeZone: FUSEAU_BOUTIQUE,
     });
   } catch {
     return "";

@@ -16,6 +16,7 @@
 import Admin from "../layouts/Admin.astro";
 import { url } from "../lib/url.ts";
 import { adminApi, type GroupeArchives } from "../lib/api.ts";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 
 const api = adminApi(Astro.request);
 
@@ -136,12 +137,14 @@ try {
 // Un groupe vide n'a rien à montrer : il ne laisse pas son titre derrière lui.
 const remplis = groupes.filter((g) => g.elements.length > 0);
 
+/** Le jour où la chose a été rangée, à l'heure de la boutique. */
 const leJour = (iso: string | null): string =>
   iso
     ? new Date(iso).toLocaleDateString("fr-FR", {
         day: "2-digit",
         month: "long",
         year: "numeric",
+        timeZone: FUSEAU_BOUTIQUE,
       })
     : "—";
 ---

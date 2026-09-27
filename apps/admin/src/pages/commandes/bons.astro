@@ -7,7 +7,7 @@
  * l'adresse, le contenu, rien d'autre. Une page par bon (`break-after`), pour
  * qu'un lot de dix commandes sorte en dix feuilles sans découpage.
  */
-import { libelleFormat } from "@memoryline/types";
+import { FUSEAU_BOUTIQUE, libelleFormat } from "@memoryline/types";
 import {
   adminApi,
   formatPrice,
@@ -32,6 +32,7 @@ try {
   erreur = String(e);
 }
 
+/** Le jour de la commande, à l'heure de la boutique : ce bon part au client. */
 function dateCourte(iso: string | null | undefined): string {
   if (!iso) return "";
   try {
@@ -39,6 +40,7 @@ function dateCourte(iso: string | null | undefined): string {
       day: "numeric",
       month: "long",
       year: "numeric",
+      timeZone: FUSEAU_BOUTIQUE,
     });
   } catch {
     return "";

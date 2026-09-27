@@ -19,7 +19,11 @@ import { apiInterne } from "../../lib/api-interne.ts";
  * champs, et l'API ne touche pas au reste : ce qui n'a pas été envoyé n'est
  * jamais effacé.
  */
-import { formaterPoids } from "@memoryline/types";
+import {
+  formaterPoids,
+  FUSEAU_BOUTIQUE,
+  FUSEAU_JOUR_CIVIL,
+} from "@memoryline/types";
 import { url } from "../../lib/url.ts";
 import Admin from "../../layouts/Admin.astro";
 import EditeurTexte from "../../components/EditeurTexte.astro";
@@ -704,7 +708,12 @@ const recurrents = ventes?.clients.recurrents ?? 0;
 const totalClients = nouveaux + recurrents;
 const partNouveaux = totalClients ? Math.round((nouveaux / totalClients) * 100) : 0;
 
-/** « 11 juin 2026 », pour les bornes de la période. */
+/**
+ * « 11 juin 2026 », pour les bornes de la période.
+ *
+ * Ce sont de vrais INSTANTS (l'API les renvoie en ISO complet) : ils se lisent
+ * donc à l'heure de la boutique.
+ */
 function jourLong(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -714,15 +723,27 @@ function jourLong(iso: string | null | undefined): string {
         day: "numeric",
         month: "long",
         year: "numeric",
+        timeZone: FUSEAU_BOUTIQUE,
       });
 }
-/** « 11 juin », pour les repères sous la courbe. */
+/**
+ * « 11 juin », pour les repères sous la courbe.
+ *
+ * ATTENTION, ce n'est PAS le même cas que juste au-dessus : la courbe porte
+ * des jours civils (« 2026-06-11 ») que l'API a déjà découpés à l'heure de
+ * Paris. Les relire dans un fuseau les décalerait une SECONDE fois, et toute
+ * la courbe glisserait d'un jour — un chiffre juste rendu faux.
+ */
 function jourCourt(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? iso
-    : d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+    : d.toLocaleDateString("fr-FR", {
+        day: "numeric",
+        month: "short",
+        timeZone: FUSEAU_JOUR_CIVIL,
+      });
 }
 const reperesCourbe = serie.length
   ? [

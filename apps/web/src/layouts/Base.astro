@@ -15,6 +15,7 @@ import {
   type Langue,
 } from "../i18n/utils.ts";
 import { api, type EntreeMenuPublique } from "../lib/api.ts";
+import { anneeDansLeFuseau } from "@memoryline/types";
 interface Props {
   /** Langue de la page — pilote les libellés, les liens et le hreflang. */
   langue?: Langue;
@@ -736,7 +737,10 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
         </div>
 
         <p class="mt-12 border-t border-ink/10 pt-6 text-sm text-ink-soft">
-          © {new Date().getFullYear()} {tr("pied.droits")}
+          {/* L'année de Paris : le 1er janvier au petit matin, un serveur en
+              temps universel afficherait encore l'année écoulée en bas de
+              chaque page de la boutique. */}
+          © {anneeDansLeFuseau(new Date())} {tr("pied.droits")}
         </p>
       </div>
     </footer>

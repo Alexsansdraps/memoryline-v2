@@ -1,6 +1,7 @@
 ---
 import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 import {
   adminApi,
   formatPrice,
@@ -337,11 +338,13 @@ const bandeau = expedition
         "L'état du branchement SendCloud n'a pas pu être lu. Rechargez l'écran dans un instant ; tant que ce message reste, n'achetez aucun bordereau.",
     };
 
-/** Une date de l'API en date française, ou null. */
+/** Une date de l'API en date française — heure de la boutique —, ou null. */
 function jour(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString("fr-FR");
+  return Number.isNaN(d.getTime())
+    ? null
+    : d.toLocaleDateString("fr-FR", { timeZone: FUSEAU_BOUTIQUE });
 }
 
 /**

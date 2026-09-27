@@ -33,6 +33,7 @@ import type { Hono } from "hono";
 import { chmod, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { eq } from "drizzle-orm";
 import { resolve } from "node:path";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { DOSSIER_SECRETS } from "./stockage-prive.js";
 
@@ -682,11 +683,13 @@ export interface EtatExpedition {
   resume: string;
 }
 
-/** Une date ISO en date française, ou null. */
+/** Une date ISO en date française — à l'heure de Paris —, ou null. */
 function enFrancais(iso: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString("fr-FR");
+  return Number.isNaN(d.getTime())
+    ? null
+    : d.toLocaleDateString("fr-FR", { timeZone: FUSEAU_BOUTIQUE });
 }
 
 /**

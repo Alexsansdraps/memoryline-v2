@@ -29,6 +29,7 @@ import {
   or,
   sql as raw,
 } from "drizzle-orm";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { hashPassword, verifyPassword } from "./auth.js";
 import {
@@ -1201,8 +1202,14 @@ export function mountCompteRoutes(app: Hono): void {
       const t = v === null || v === undefined ? "" : String(v);
       return /[";\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
     };
+    // Le fuseau est nommé : ce fichier se relit des mois plus tard, quand
+    // plus personne ne saura dans quelle heure il a été écrit.
     const jour = (iso: string | null) =>
-      iso ? new Date(iso).toLocaleDateString("fr-FR") : "";
+      iso
+        ? new Date(iso).toLocaleDateString("fr-FR", {
+            timeZone: FUSEAU_BOUTIQUE,
+          })
+        : "";
 
     const entetes = [
       "Nom",
