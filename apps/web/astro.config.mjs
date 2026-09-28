@@ -7,9 +7,11 @@ import node from "@astrojs/node";
 // Domaine de prod (memoryline.fr) — surchargeable par SITE_URL au build.
 const site = process.env.SITE_URL ?? "https://memoryline.fr";
 
-// Derrière un tunnel, le serveur de dev reçoit un Host public qu'il refuse
-// par défaut (« Blocked request. This host is not allowed »). On autorise
-// explicitement le domaine du tunnel, plutôt que d'ouvrir à tout.
+// Les domaines que l'application accepte de servir et de se reconnaître.
+//
+// Vide en local : http://localhost suffit. En ligne, le domaine du site y
+// entre (cf. ALLOWED_HOSTS dans docker-compose.prod.yml), sans quoi Astro se
+// croit sur localhost derrière le proxy et refuse tous les formulaires.
 const allowedHosts = (process.env.ALLOWED_HOSTS ?? "")
   .split(",")
   .map((h) => h.trim())
@@ -62,6 +64,24 @@ export default defineConfig({
    * trois pages à la demande, le reste continuant d'être servi en fichiers.
    */
   adapter: node({ mode: "standalone" }),
+  /*
+   * Les noms de domaine que l'application accepte de se reconnaître.
+   *
+   * Derrière le proxy, Astro reçoit la requête en HTTP simple et ne fait
+   * confiance aux en-têtes X-Forwarded-* QUE pour les domaines listés ici.
+   * Sans cette liste, il se croit sur « localhost » : l'origine du
+   * formulaire (https://le-domaine) ne correspond plus à celle de la page
+   * telle qu'il la voit, et chaque envoi de formulaire — connexion,
+   * inscription, commande — est refusé avec « Cross-site POST form
+   * submissions are forbidden ». En développement, localhost est toujours
+   * accepté, ce qui expliquait que tout marche sur le PC et rien en ligne.
+   *
+   * Même variable que les hôtes du serveur de développement (ALLOWED_HOSTS) :
+   * un seul réglage, lu AU BUILD. Le changer demande de reconstruire.
+   */
+  security: {
+    allowedDomains: allowedHosts.map((hostname) => ({ hostname })),
+  },
   integrations: [
     solid(),
     sitemap({

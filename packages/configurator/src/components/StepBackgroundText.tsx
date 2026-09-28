@@ -1,43 +1,47 @@
 /// <reference lib="dom" />
 import { For, Show } from "solid-js";
 import {
-  POLICES_AFFICHE,
+  COULEURS_TEXTE_AFFICHE,
+  couleurTexteParValeur,
+  policesDeLaLigne,
   familleCss,
   type BackgroundDTO,
+  type CouleurTexteAffiche,
 } from "@memoryline/types";
 import type { ConfiguratorState } from "../store";
-import { Field } from "./ui";
+import { Field, PastilleCouleur } from "./ui";
 import type { MessagesConfigurateur } from "../messages";
 
-/** Étape 1 : fond + textes (titre + sous-titre, symboles & chiffres autorisés). */
+/** Étape 1 : fond + les trois lignes de texte (symboles & chiffres autorisés). */
 export function StepBackgroundText(props: {
   state: ConfiguratorState;
   backgrounds: BackgroundDTO[];
   assetBaseUrl: string;
   onSelectBackground: (bg: BackgroundDTO) => void;
-  onTextValue: (which: "title" | "subtitle", value: string) => void;
+  /** Texte d'UNE ligne, désignée par son rang (0, 1, 2). */
+  onTextValue: (ligne: number, value: string) => void;
   onTextStyle: (
     patch: Partial<{ font: string; color: string; size: number }>,
   ) => void;
-  /** Change la police d'un seul bloc (titre ou sous-titre). */
-  onTextFont: (which: "title" | "subtitle", font: string) => void;
+  /** Police d'UNE ligne : chacune choisit la sienne. */
+  onTextFont: (ligne: number, font: string) => void;
   messages: MessagesConfigurateur;
 }) {
   const m = () => props.messages;
   /**
    * Choix rapide de la police, montrée DANS la police : le client juge le
-   * rendu, pas un nom. Une rangée par bloc, car titre et sous-titre se
-   * choisissent séparément.
+   * rendu, pas un nom. Une rangée par ligne, car chacune a la sienne.
    */
-  const ChoixPolice = (p: { which: "title" | "subtitle" }) => (
+  const ChoixPolice = (p: { ligne: number }) => (
     <div class="ml-cfg-polices">
-      <For each={POLICES_AFFICHE}>
+      <For each={policesDeLaLigne(p.ligne)}>
         {(police) => {
-          const actif = () => props.state[p.which].font === police.id;
+          const actif = () =>
+            props.state.lignes[p.ligne]?.font === police.id;
           return (
             <button
               type="button"
-              onClick={() => props.onTextFont(p.which, police.id)}
+              onClick={() => props.onTextFont(p.ligne, police.id)}
               aria-pressed={actif()}
               title={police.libelle}
               style={{
@@ -71,6 +75,21 @@ export function StepBackgroundText(props: {
     border: "1px solid #d1d5db",
     "font-size": "14px",
   } as const;
+
+  /**
+   * Couleurs proposées : les deux de la charte, plus — le cas échéant — celle
+   * que porte déjà l'affiche. Une commande composée du temps du nuancier libre
+   * garde SA couleur : on la montre, sélectionnée, au lieu de la réécrire dans
+   * le dos du client.
+   */
+  const couleursProposees = (): CouleurTexteAffiche[] => {
+    const actuelle = props.state.textStyle.color;
+    if (couleurTexteParValeur(actuelle)) return [...COULEURS_TEXTE_AFFICHE];
+    return [
+      ...COULEURS_TEXTE_AFFICHE,
+      { id: "actuelle", libelle: actuelle, hex: actuelle },
+    ];
+  };
 
   return (
     <div class="ml-cfg-step">
@@ -128,31 +147,26 @@ export function StepBackgroundText(props: {
         </Field>
       </Show>
 
-      {/* Textes : seul le contenu diffère entre titre et sous-titre. */}
-      <Field label={m().champTitre}>
-        <input
-          type="text"
-          value={props.state.title.value}
-          placeholder="Memory Line"
-          onInput={(e) => props.onTextValue("title", e.currentTarget.value)}
-          style={inputStyle}
-        />
-        <ChoixPolice which="title" />
-      </Field>
-      <Field label={m().champSousTitre}>
-        <input
-          type="text"
-          value={props.state.subtitle.value}
-          placeholder="Votre ville, votre histoire"
-          onInput={(e) => props.onTextValue("subtitle", e.currentTarget.value)}
-          style={inputStyle}
-        />
-        <ChoixPolice which="subtitle" />
-      </Field>
+      {/* Les lignes de l'affiche : même champ pour toutes, aucune n'est le
+          titre. Une ligne laissée vide n'est pas dessinée. */}
+      <For each={props.state.lignes}>
+        {(ligne, i) => (
+          <Field label={m().champsLignes[i()] ?? `Ligne ${i() + 1}`}>
+            <input
+              type="text"
+              value={ligne.value}
+              placeholder={m().exemplesLignes[i()] ?? ""}
+              onInput={(e) => props.onTextValue(i(), e.currentTarget.value)}
+              style={inputStyle}
+            />
+            <ChoixPolice ligne={i()} />
+          </Field>
+        )}
+      </For>
 
-      {/* Style PARTAGÉ par le titre ET le sous-titre (police + couleur).
-          Pas de réglage de taille : la taille est fixe (titre en gros, sous-titre
-          plus petit), comme la charte des affiches. */}
+      {/* Couleur PARTAGÉE par les trois lignes. Deux teintes seulement : un
+          nuancier libre laissait choisir un texte illisible sur le fond, et
+          l'affiche ratée ne se voit qu'une fois imprimée. */}
       <div
         style={{
           "margin-top": "8px",
@@ -161,12 +175,23 @@ export function StepBackgroundText(props: {
         }}
       >
         <Field label={m().couleurTexte}>
-          <input
-            type="color"
-            value={props.state.textStyle.color}
-            onInput={(e) => props.onTextStyle({ color: e.currentTarget.value })}
-            style={{ width: "48px", height: "38px", border: "none" }}
-          />
+          <div style={{ display: "flex", gap: "10px" }}>
+            <For each={couleursProposees()}>
+              {(couleur) => {
+                const actif = () =>
+                  props.state.textStyle.color.toUpperCase() ===
+                  couleur.hex.toUpperCase();
+                return (
+                  <PastilleCouleur
+                    couleur={couleur.hex}
+                    libelle={couleur.libelle}
+                    actif={actif()}
+                    onClick={() => props.onTextStyle({ color: couleur.hex })}
+                  />
+                );
+              }}
+            </For>
+          </div>
         </Field>
       </div>
     </div>

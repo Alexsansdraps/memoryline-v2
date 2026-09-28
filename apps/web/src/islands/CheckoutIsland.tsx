@@ -9,12 +9,25 @@ import {
   type JSX,
 } from "solid-js";
 import {
+  demandeUnPointRelais,
+  demandeUneAdresse,
+  formaterPoids,
   optionsLivraison,
+  seuilPortOffertCents,
   remisesPanier,
   totalPanierCents,
+  urlAsset,
   type OptionLivraison,
   type RegleParier,
 } from "@memoryline/types";
+import {
+  PosterPreview,
+  createSvgCache,
+  stateFromConfig,
+  SLOTS,
+  findVariant,
+  variantesDeVue,
+} from "@memoryline/configurator";
 
 /**
  * Pays proposés à la livraison. Volontairement court : ceux où la boutique
@@ -43,7 +56,12 @@ import {
   getCartId,
   PUBLIC_API_URL,
 } from "../lib/api.ts";
+import { apercuAbsolu, urlApercu } from "../lib/ia.ts";
 import { codePromoRetenu } from "./CartIsland.tsx";
+import { clientFictif } from "./jeu-essai.ts";
+// Le même découpage que la fiche client : deux versions finiraient par
+// proposer deux noms pour la même personne.
+import { decouperNom as decouper } from "../lib/compte.ts";
 
 /**
  * Tunnel de commande (§11 — canal web), en DEUX phases :
@@ -100,10 +118,56 @@ function loadPaypalSdk(clientId: string): Promise<PayPalNamespace> {
   return paypalSdk;
 }
 
-export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element {
+/** Une adresse du carnet, telle que la page la transmet. */
+interface AdresseCarnet {
+  id: number;
+  label: string | null;
+  name: string | null;
+  line1: string | null;
+  line2: string | null;
+  postalCode: string | null;
+  city: string | null;
+  country: string | null;
+  phone: string | null;
+  parDefaut: boolean;
+}
+
+export default function CheckoutIsland(props: {
+  langue?: Langue;
+  /** La cliente connectée. La page ne rend le tunnel qu'à elle. */
+  compte?: {
+    nom: string;
+    prenom?: string;
+    nomFamille?: string;
+    email: string;
+    telephone: string;
+  };
+  /** Ses adresses déjà enregistrées, la première étant celle par défaut. */
+  carnet?: AdresseCarnet[];
+}): JSX.Element {
   const tr = t(props.langue ?? LANGUE_DEFAUT);
-  const [name, setName] = createSignal("");
-  const [email, setEmail] = createSignal("");
+  /*
+   * Prénom et nom, séparés — comme sur la fiche client.
+   *
+   * Un champ unique obligeait à deviner où couper pour l'étiquette de colis :
+   * « Marie Dupont » se coupe bien, « Jean-Pierre de la Tour » beaucoup moins.
+   * Le compte connaît déjà les deux ; on les reprend tels quels.
+   */
+  const [prenom, setPrenom] = createSignal(
+    props.compte?.prenom ?? decouper(props.compte?.nom ?? "").prenom,
+  );
+  const [nomFamille, setNomFamille] = createSignal(
+    props.compte?.nomFamille ?? decouper(props.compte?.nom ?? "").nom,
+  );
+  /** Ce qui part à l'API : toujours la concaténation des deux. */
+  const name = (): string => `${prenom().trim()} ${nomFamille().trim()}`.trim();
+  /** Repose un nom complet venu d'ailleurs (carnet, relance, jeu d'essai). */
+  const setName = (complet: string) => {
+    const d = decouper(complet);
+    setPrenom(d.prenom);
+    setNomFamille(d.nom);
+  };
+  const [email, setEmail] = createSignal(props.compte?.email ?? "");
   const [method, setMethod] = createSignal<Method | null>(null);
   const [phase, setPhase] = createSignal<"details" | "pay">("details");
   const [submitting, setSubmitting] = createSignal(false);
@@ -113,13 +177,72 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
 
   // Config paiement (moyens actifs + clés publiques).
   const [config] = createResource(async () => browserApi.paymentsConfig());
-  // Récapitulatif du panier (lecture seule).
-  const [cart] = createResource(async () => browserApi.cart(getCartId()));
+  /**
+   * Des cadres que le site ne propose plus ont quitté le panier à l'ouverture
+   * de la caisse. On y arrive aussi sans passer par le panier — le lien d'un
+   * courrier de relance mène droit ici —, le retrait doit donc se voir ici.
+   */
+  const [cadresRetires, setCadresRetires] = createSignal(false);
+  // Récapitulatif du panier (lecture seule, sauf les cadres hors site).
+  const [cart, { refetch: relirePanier }] = createResource(async () => {
+    const cartId = getCartId();
+    const panier = await browserApi.cart(cartId);
+    if ((panier.cadresHorsSite ?? 0) === 0) return panier;
+    // Un échec ne cache pas la caisse : la validation de la commande retire
+    // de toute façon ces cadres, et le dit.
+    const { retires } = await browserApi
+      .retirerCadres(cartId)
+      .catch(() => ({ retires: 0 }));
+    if (retires === 0) return panier;
+    setCadresRetires(true);
+    return browserApi.cart(cartId);
+  });
   const subtotal = () =>
     (cart()?.items ?? []).reduce(
       (s, it) => s + it.unitPriceCents * it.quantity,
       0,
     );
+  /**
+   * Poids du colis, tel que le serveur l'a pesé. Le refaire ici demanderait
+   * de connaître le poids des variantes, des catégories et des cadres : deux
+   * pesées finiraient par se contredire, et c'est la facture qui aurait
+   * raison. Champ absent (API pas encore à jour) = 0, comme avant.
+   */
+  const poidsColis = () => cart()?.poidsGrammes ?? 0;
+
+  /**
+   * Bibliothèque de personnages : le récapitulatif montre les affiches, pas
+   * seulement leurs noms. Le client doit voir CE QU'IL PAIE avant de payer —
+   * et l'aperçu porte le filigrane jusqu'au règlement.
+   */
+  const [biblio] = createResource(async () => {
+    try {
+      return await browserApi.characters();
+    } catch {
+      return null;
+    }
+  });
+  const { cache, fetchSvg } = createSvgCache(PUBLIC_API_URL);
+  const personnageParId = (id: string | number) =>
+    biblio()?.characters.find((c) => String(c.id) === String(id));
+
+  // Sans ce préchargement, les personnages resteraient absents de l'aperçu.
+  createEffect(() => {
+    const lib = biblio();
+    if (!lib) return;
+    for (const ligne of cart()?.items ?? []) {
+      for (const perso of ligne.config.characters ?? []) {
+        const base = personnageParId(perso.typeId);
+        if (!base) continue;
+        void fetchSvg(base.baseSvgUrl);
+        const jeu = variantesDeVue(lib.slots, base.orientation);
+        for (const slot of SLOTS) {
+          const v = findVariant(jeu[slot], perso.assets?.[slot]);
+          if (v) void fetchSvg(v.svgUrl);
+        }
+      }
+    }
+  });
 
   // Promos actives. Le calcul lui-même vient du moteur PARTAGÉ : plus de
   // réplique locale à maintenir en phase avec le serveur.
@@ -174,21 +297,126 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
       return null;
     }
   });
-  const [pays, setPays] = createSignal("FR");
+  const [pays, setPays] = createSignal(
+    (props.carnet ?? []).find((a) => a.parDefaut)?.country ??
+      (props.carnet ?? [])[0]?.country ??
+      "FR",
+  );
   const [modeChoisi, setModeChoisi] = createSignal<string | null>(null);
+  /** L'adresse à proposer d'emblée : celle par défaut, sinon la première. */
+  const adresseDepart = (): AdresseCarnet | null => {
+    const c = props.carnet ?? [];
+    return c.find((a) => a.parDefaut) ?? c[0] ?? null;
+  };
+  const [adresseChoisie, setAdresseChoisie] = createSignal<number | null>(
+    adresseDepart()?.id ?? null,
+  );
+  const depart = adresseDepart();
   const [adresse, setAdresse] = createSignal({
-    line1: "",
-    line2: "",
-    postalCode: "",
-    city: "",
-    phone: "",
+    line1: depart?.line1 ?? "",
+    line2: depart?.line2 ?? "",
+    postalCode: depart?.postalCode ?? "",
+    city: depart?.city ?? "",
+    phone: depart?.phone ?? props.compte?.telephone ?? "",
   });
+
+  /** Recopie une adresse du carnet dans le formulaire. */
+  function choisirAdresse(id: number | null) {
+    setAdresseChoisie(id);
+    if (id === null) {
+      setAdresse({ line1: "", line2: "", postalCode: "", city: "", phone: "" });
+      return;
+    }
+    const a = (props.carnet ?? []).find((x) => x.id === id);
+    if (!a) return;
+    setAdresse({
+      line1: a.line1 ?? "",
+      line2: a.line2 ?? "",
+      postalCode: a.postalCode ?? "",
+      city: a.city ?? "",
+      phone: a.phone ?? "",
+    });
+    if (a.country) setPays(a.country);
+    if (a.name) setName(a.name);
+  }
   const [pointRelais, setPointRelais] = createSignal({ id: "", label: "" });
+
+  /*
+   * Retrait sur place : quel stand.
+   *
+   * Les stands ouverts arrivent avec le catalogue de livraison. Un seul
+   * ouvert, il est choisi d'office — faire cliquer sur l'unique possibilité
+   * n'apporte rien. Plusieurs, le client choisit ; tant qu'il n'a pas choisi,
+   * la commande ne part pas, sinon personne ne saurait où la remettre.
+   */
+  const standsOuverts = (): { id: number; nom: string }[] =>
+    catalogue()?.stands ?? [];
+  const [standChoisi, setStandChoisi] = createSignal<number | null>(null);
+  const standRetenu = (): { id: number; nom: string } | null => {
+    const l = standsOuverts();
+    return l.find((x) => x.id === standChoisi()) ?? l[0] ?? null;
+  };
+  /** Vrai quand le mode choisi est un retrait et qu'il reste à dire où. */
+  const standManquant = (): boolean =>
+    optionChoisie()?.mode.kind === "pickup" &&
+    standsOuverts().length > 0 &&
+    standRetenu() === null;
+
 
   /* Recherche de points relais : on interroge le transporteur avec un code
      postal, le client choisit dans la liste. Pas de champ libre — une adresse
      saisie à la main ne correspondrait à aucun point réel. */
   const [cpRecherche, setCpRecherche] = createSignal("");
+  // Jeu d'essai : hors production, le formulaire arrive rempli d'un client
+  // tiré au sort. `clientFictif()` renvoie null partout ailleurs — c'est le
+  // seul garde-fou, et il tient à une variable d'environnement absente en
+  // production (voir islands/jeu-essai.ts).
+  //
+  // Il ne remplit QUE ce qui est vide. Connectée, la cliente arrive avec son
+  // nom, son e-mail et son adresse déjà en place : les remplacer par un
+  // client tiré au sort lui ferait croire, sur le site de test, que ses
+  // informations ne sont pas reprises. Un compte connu l'emporte toujours.
+  const essai = clientFictif();
+  if (essai) {
+    if (!name()) setName(essai.nom);
+    if (!email()) setEmail(essai.email);
+    if (!adresse().line1) {
+      setAdresse({
+        line1: essai.line1,
+        line2: essai.line2,
+        postalCode: essai.postalCode,
+        city: essai.city,
+        phone: adresse().phone || essai.phone,
+      });
+      setCpRecherche(essai.postalCode);
+    } else {
+      setCpRecherche(adresse().postalCode);
+    }
+  }
+
+  /*
+   * Retour par un lien de relance : la page de récupération vient de déposer
+   * le nom et l'adresse que la cliente nous avait déjà donnés. Les lui faire
+   * retaper serait la première chose qu'on lui demanderait après lui avoir
+   * écrit « votre commande vous attend » — exactement ce qu'on veut éviter.
+   *
+   * APRÈS le jeu d'essai, et c'est voulu : de vraies coordonnées l'emportent
+   * toujours sur un client tiré au sort. Lues PUIS effacées, car elles ne
+   * valent que pour ce retour-là — le client suivant, sur le même navigateur,
+   * ne doit pas trouver le nom de quelqu'un d'autre dans ses champs.
+   */
+  try {
+    const garde = localStorage.getItem("ml_relance_client");
+    if (garde) {
+      localStorage.removeItem("ml_relance_client");
+      const d = JSON.parse(garde) as { nom?: string; email?: string };
+      if (d.nom) setName(d.nom);
+      if (d.email) setEmail(d.email);
+    }
+  } catch {
+    /* stockage indisponible : la cliente saisira ses coordonnées, comme avant */
+  }
+
   const [relais, setRelais] = createSignal<
     { id: string; nom: string; adresse: string; codePostal: string; ville: string }[]
   >([]);
@@ -227,9 +455,21 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
   /** Panier après remises : c'est lui qui décide de la franchise de port. */
   const apresRemise = () => Math.max(0, subtotal() - discount());
 
+  /**
+   * Le seuil de la promotion « livraison offerte dès X € », s'il y en a une.
+   *
+   * L'écran l'affiche, le serveur le recalcule avant d'encaisser : c'est la
+   * même fonction des deux côtés, donc le port annoncé ne peut pas différer
+   * du port facturé.
+   */
+  const seuilPort = () =>
+    seuilPortOffertCents(reglesEnJeu(), new Date(), codes());
+
   const optionsPort = (): OptionLivraison[] => {
     const cat = catalogue();
-    return cat ? optionsLivraison(cat, pays(), apresRemise()) : [];
+    return cat
+      ? optionsLivraison(cat, pays(), apresRemise(), poidsColis(), seuilPort())
+      : [];
   };
   const optionChoisie = () =>
     optionsPort().find((o) => o.mode.slug === modeChoisi()) ?? null;
@@ -248,7 +488,7 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
   const livraisonValide = () => {
     const o = optionChoisie();
     if (!o) return false;
-    if (o.mode.kind === "home") {
+    if (demandeUneAdresse(o.mode.kind)) {
       const a = adresse();
       return (
         a.line1.trim().length > 0 &&
@@ -256,7 +496,8 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
         a.city.trim().length > 0
       );
     }
-    if (o.mode.kind === "relay") return pointRelais().id.trim().length > 0;
+    if (demandeUnPointRelais(o.mode.kind))
+      return pointRelais().id.trim().length > 0;
     return true;
   };
 
@@ -278,7 +519,10 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
 
   const emailValid = () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email().trim());
   const formValid = () =>
-    name().trim().length > 0 && emailValid() && livraisonValide();
+    name().trim().length > 0 &&
+    emailValid() &&
+    livraisonValide() &&
+    !standManquant();
 
   /* --- Stripe --------------------------------------------------------- */
   let stripe: Stripe | null = null;
@@ -317,7 +561,16 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
         express.mount(expressMountRef);
       }
 
-      elements.create("payment").mount(stripeMountRef);
+      /* La CARTE d'abord, et rien d'autre par défaut.
+       *
+       * Sans cet ordre, Stripe met Link en tête — son service de carte
+       * enregistrée. Une adresse déjà connue de Link déclenche alors son
+       * propre formulaire, qui refuse les cartes d'essai avec « We weren't
+       * able to add this card » et laisse croire à une panne de la boutique.
+       * Link reste proposé, il ne passe plus devant. */
+      elements
+        .create("payment", { paymentMethodOrder: ["card"] })
+        .mount(stripeMountRef);
     }
   });
 
@@ -386,7 +639,14 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
     setError(null);
     try {
       const a = adresse();
-      const relais = pointRelais();
+      // Un retrait sur stand se range là où se range un point relais : ces
+      // deux champs disent « où va la commande », et le mode de livraison dit
+      // de quelle sorte d'endroit il s'agit. Le préfixe « stand: » évite de
+      // confondre un identifiant de stand avec un identifiant de transporteur.
+      const st = optionChoisie()?.mode.kind === "pickup" ? standRetenu() : null;
+      const relais = st
+        ? { id: `stand:${st.id}`, label: st.nom }
+        : pointRelais();
       const order = await browserApi.createOrder(
         getCartId(),
         { name: name().trim(), email: email().trim() },
@@ -418,7 +678,14 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
       // PayPal : les boutons se rendent via l'effet une fois en phase "pay".
       setPhase("pay");
     } catch (err) {
-      setError(String(err));
+      if (String(err).includes("cadres_retires")) {
+        // La boutique a retiré les cadres du site pendant que la cliente
+        // remplissait la caisse : le serveur les a ôtés du panier et refusé la
+        // commande. Le récapitulatif se relit, et elle valide en voyant le
+        // nouveau montant.
+        setError(tr("panier.cadres_retires"));
+        void relirePanier();
+      } else setError(String(err));
     } finally {
       setSubmitting(false);
     }
@@ -440,6 +707,17 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
     setSubmitting(true);
     setError(null);
     try {
+      // Le panier a-t-il bougé depuis l'ouverture du paiement — un autre
+      // onglet, un retour au panier ? Il est alors revenu à l'état de panier,
+      // et le serveur refusera de valider l'ancien montant ; mais la carte,
+      // elle, serait déjà débitée. Mieux vaut le dire AVANT de payer.
+      const panier = await browserApi.cart(getCartId());
+      if (panier.status === "draft") {
+        setError(
+          "Votre panier a changé depuis le calcul du total. Revenez à l'étape précédente pour le recalculer avant de payer.",
+        );
+        return;
+      }
       const { error: stripeErr, paymentIntent } = await stripe.confirmPayment({
         elements,
         redirect: "if_required",
@@ -503,27 +781,54 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
             {/* Coordonnées */}
             <fieldset class="space-y-4" disabled={phase() === "pay"}>
               <legend class="text-2xl mb-2">Vos coordonnées</legend>
-              <label class="block">
-                <span class="text-sm font-medium">{tr("commande.nom")}</span>
-                <input
-                  type="text"
-                  required
-                  value={name()}
-                  onInput={(e) => setName(e.currentTarget.value)}
-                  class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
-                  placeholder="Camille Durand"
-                />
-              </label>
+              <div class="grid gap-4 sm:grid-cols-2">
+                <label class="block">
+                  <span class="text-sm font-medium">{tr("compte.prenom")}</span>
+                  <input
+                    type="text"
+                    required
+                    value={prenom()}
+                    onInput={(e) => setPrenom(e.currentTarget.value)}
+                    autocomplete="given-name"
+                    class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
+                    placeholder="Camille"
+                  />
+                </label>
+                <label class="block">
+                  <span class="text-sm font-medium">{tr("compte.nom")}</span>
+                  <input
+                    type="text"
+                    required
+                    value={nomFamille()}
+                    onInput={(e) => setNomFamille(e.currentTarget.value)}
+                    autocomplete="family-name"
+                    class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
+                    placeholder="Durand"
+                  />
+                </label>
+              </div>
               <label class="block">
                 <span class="text-sm font-medium">{tr("commande.email")}</span>
                 <input
                   type="email"
                   required
                   value={email()}
+                  readOnly={Boolean(props.compte)}
                   onInput={(e) => setEmail(e.currentTarget.value)}
-                  class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
+                  class={`mt-1 w-full rounded-lg border border-ink/20 px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60 ${
+                    props.compte ? "bg-paper-deep text-ink-soft" : "bg-paper"
+                  }`}
                   placeholder="camille@example.com"
                 />
+                {/* Celle du compte : c'est elle qui identifie la commande et
+                    l'historique. La changer ici rattacherait la commande à
+                    quelqu'un d'autre. */}
+                <Show when={props.compte}>
+                  <span class="mt-1 block text-xs text-ink-soft">
+                    C'est l'adresse de votre compte. Pour en changer, passez par
+                    « Mes informations ».
+                  </span>
+                </Show>
                 <Show when={email().length > 0 && !emailValid()}>
                   <span class="mt-1 block text-xs text-terracotta-deep">
                     E-mail invalide.
@@ -549,12 +854,27 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
                 </select>
               </label>
 
+              {/* Le poids commande la tranche d'affranchissement : l'écrire
+                  ici est ce qui rend compréhensible un prix de port qui monte
+                  parce qu'on a ajouté un cadre. */}
+              <Show when={poidsColis() > 0}>
+                <p class="text-xs text-ink-soft">
+                  {tr("livraison.poids_colis")} {formaterPoids(poidsColis())}
+                </p>
+              </Show>
+
               <Show
                 when={optionsPort().length > 0}
                 fallback={
-                  <p class="text-sm text-terracotta-deep">
-                    {tr("livraison.aucune")}
-                  </p>
+                  /* Rien tant que le catalogue n'est pas arrivé : une liste
+                     vide en cours de chargement n'est pas un refus. */
+                  <Show when={!catalogue.loading}>
+                    <p class="text-sm text-terracotta-deep">
+                      {poidsColis() > 0
+                        ? tr("livraison.aucune_pour_ce_poids")
+                        : tr("livraison.aucune")}
+                    </p>
+                  </Show>
                 }
               >
                 <div class="space-y-2">
@@ -588,8 +908,8 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
                               {o.mode.description}
                             </span>
                           </Show>
-                          {/* Retrait sur place : l'emplacement change de salon
-                              en salon, il vient du back-office. */}
+                          {/* Retrait sur place : le lieu fixe du back-office,
+                              quand il y en a un. */}
                           <Show
                             when={
                               o.mode.kind === "pickup" && o.mode.pickupLocation
@@ -597,6 +917,35 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
                           >
                             <span class="mt-1 block text-sm">
                               {o.mode.pickupLocation}
+                            </span>
+                          </Show>
+                          {/* Et les stands ouverts en ce moment. Un seul, on
+                              l'annonce ; plusieurs, on fait choisir — sans
+                              quoi personne ne saurait où remettre la
+                              commande. */}
+                          <Show
+                            when={
+                              o.mode.kind === "pickup" &&
+                              standsOuverts().length > 0
+                            }
+                          >
+                            <span class="mt-2 block space-y-1">
+                              <span class="block text-sm text-ink-soft">
+                                Où souhaitez-vous retirer&nbsp;?
+                              </span>
+                              <For each={standsOuverts()}>
+                                {(st) => (
+                                  <label class="flex items-center gap-2 text-sm">
+                                    <input
+                                      type="radio"
+                                      name="stand-retrait"
+                                      checked={standRetenu()?.id === st.id}
+                                      onChange={() => setStandChoisi(st.id)}
+                                    />
+                                    <span>{st.nom}</span>
+                                  </label>
+                                )}
+                              </For>
                             </span>
                           </Show>
                         </span>
@@ -607,8 +956,50 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
               </Show>
 
               {/* Adresse : demandée seulement quand le mode en a besoin. */}
-              <Show when={optionChoisie()?.mode.kind === "home"}>
+              <Show when={demandeUneAdresse(optionChoisie()?.mode.kind ?? "")}>
                 <div class="space-y-4">
+                  {/* Le carnet : une adresse déjà enregistrée se choisit d'un
+                      clic plutôt que de se retaper. */}
+                  <Show when={(props.carnet ?? []).length > 0}>
+                    <div class="rounded-lg border border-ink/15 p-3">
+                      <p class="mb-2 text-sm font-medium">
+                        Vos adresses enregistrées
+                      </p>
+                      <div class="flex flex-wrap gap-2">
+                        <For each={props.carnet}>
+                          {(a) => (
+                            <button
+                              type="button"
+                              onClick={() => choisirAdresse(a.id)}
+                              class={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                                adresseChoisie() === a.id
+                                  ? "border-terracotta bg-terracotta/10"
+                                  : "border-ink/20 hover:border-ink"
+                              }`}
+                            >
+                              <span class="block font-medium">
+                                {a.label || a.line1 || "Adresse"}
+                              </span>
+                              <span class="block text-xs text-ink-soft">
+                                {[a.postalCode, a.city].filter(Boolean).join(" ")}
+                              </span>
+                            </button>
+                          )}
+                        </For>
+                        <button
+                          type="button"
+                          onClick={() => choisirAdresse(null)}
+                          class={`rounded-lg border px-3 py-2 text-sm transition-colors ${
+                            adresseChoisie() === null
+                              ? "border-terracotta bg-terracotta/10"
+                              : "border-ink/20 hover:border-ink"
+                          }`}
+                        >
+                          Une autre adresse
+                        </button>
+                      </div>
+                    </div>
+                  </Show>
                   <label class="block">
                     <span class="text-sm font-medium">
                       {tr("livraison.adresse")}
@@ -689,7 +1080,7 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
 
               {/* Point relais : le client cherche autour de chez lui et choisit
                   dans la liste renvoyée par le transporteur. */}
-              <Show when={optionChoisie()?.mode.kind === "relay"}>
+              <Show when={demandeUnPointRelais(optionChoisie()?.mode.kind ?? "")}>
                 <div class="space-y-3">
                   <span class="block text-sm font-medium">
                     {tr("livraison.point_relais")}
@@ -794,6 +1185,30 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
                 </div>
               </Show>
 
+              {/* Mode essai : ce qu'il faut saisir. Sans ce rappel on cherche
+                  le numéro de carte de test ailleurs à chaque fois, et devant
+                  PayPal on essaie son vrai compte, qui ne marche pas. */}
+              <Show when={config()?.essai && methods().length > 0}>
+                <div class="rounded-lg border border-sage/40 bg-sage/10 p-4 text-sm">
+                  <p class="font-medium">
+                    Boutique en mode essai : aucun paiement réel.
+                  </p>
+                  <ul class="mt-2 space-y-1 text-ink-soft">
+                    <li>
+                      <b>Carte bancaire :</b> 4242 4242 4242 4242, une date
+                      future, trois chiffres au dos, et n'importe quel code
+                      postal.
+                    </li>
+                    <li>
+                      <b>PayPal :</b> connectez-vous avec le compte acheteur
+                      d'essai, pas le vôtre. Il se trouve sur
+                      developer.paypal.com, « Testing Tools » puis « Sandbox
+                      accounts », en <code>@personal.example.com</code>.
+                    </li>
+                  </ul>
+                </div>
+              </Show>
+
               <Show when={methods().length > 0}>
                 {/* Onglets moyens de paiement */}
                 <div class="flex gap-3">
@@ -877,18 +1292,78 @@ export default function CheckoutIsland(props: { langue?: Langue }): JSX.Element 
           {/* Récapitulatif */}
           <aside class="rounded-2xl border border-ink/10 bg-paper-deep/40 p-6 lg:sticky lg:top-24">
             <h2 class="text-xl mb-4">Récapitulatif</h2>
+            <Show when={cadresRetires()}>
+              <p
+                role="status"
+                class="mb-4 rounded-lg border border-ink/15 bg-paper px-3 py-2 text-sm"
+              >
+                {tr("panier.cadres_retires")}
+              </p>
+            </Show>
             <ul class="space-y-3 text-sm">
               <For each={cart()?.items ?? []}>
                 {(it) => (
                   <li class="flex justify-between gap-3">
-                    <span class="min-w-0">
-                      <span class="block truncate">
-                        {it.title ?? "Affiche personnalisée"}
-                      </span>
-                      <span class="text-ink-soft">
-                        {it.config.format ?? "A4"} · Qté {it.quantity}
-                      </span>
-                    </span>
+                    <div class="flex min-w-0 gap-3">
+                      {/* Aperçu FILIGRANÉ : la commande n'est pas encore
+                          payée, l'affiche montrée ici en porte donc un,
+                          exactement comme au panier. */}
+                      <div class="ml-panier-vignette w-14 shrink-0">
+                        <Show
+                          when={it.config.aiPublicId}
+                          fallback={
+                            <Show
+                              when={biblio()}
+                              fallback={
+                                <div class="ml-skeleton aspect-[1/1.4142] w-full" />
+                              }
+                            >
+                              <PosterPreview
+                                state={stateFromConfig(it.config)}
+                                characterById={personnageParId}
+                                slots={biblio()!.slots}
+                                cache={cache}
+                                assetBaseUrl={PUBLIC_API_URL}
+                                foregroundUrl={
+                                  urlAsset(
+                                    PUBLIC_API_URL,
+                                    it.config.foregroundUrl ||
+                                      (it.config.view === "back"
+                                        ? "/assets/muret_officiel.svg"
+                                        : ""),
+                                  ) || undefined
+                                }
+                              />
+                            </Show>
+                          }
+                        >
+                          <div
+                            class="relative w-full overflow-hidden bg-paper-deep"
+                            style={{ "aspect-ratio": "1 / 1.4142" }}
+                          >
+                            <img
+                              src={apercuAbsolu(
+                                it.config.aiApercuUrl ||
+                                  urlApercu(it.config.aiPublicId!),
+                              )}
+                              alt=""
+                              class="absolute inset-0 h-full w-full object-contain"
+                              onError={(e) => {
+                                e.currentTarget.hidden = true;
+                              }}
+                            />
+                          </div>
+                        </Show>
+                      </div>
+                      <div class="min-w-0">
+                        <span class="block truncate">
+                          {it.title ?? "Affiche personnalisée"}
+                        </span>
+                        <span class="text-ink-soft">
+                          {it.config.format ?? "A4"} · Qté {it.quantity}
+                        </span>
+                      </div>
+                    </div>
                     <span class="shrink-0">
                       {formatPrice(it.unitPriceCents * it.quantity)}
                     </span>

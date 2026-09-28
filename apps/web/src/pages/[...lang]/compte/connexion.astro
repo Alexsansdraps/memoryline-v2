@@ -1,0 +1,117 @@
+---
+import CompteCadre from "../../../components/CompteCadre.astro";
+import {
+  estLangue,
+  langueDepuisParam,
+  lien,
+  t,
+  type CleUi,
+  type Langue,
+} from "../../../i18n/utils.ts";
+import { connexion, moi, rediriger, retourSur } from "../../../lib/compte.ts";
+
+/** Formulaire posté sur lui-même : rendu à la demande, jamais mis en cache. */
+export const prerender = false;
+
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
+const tr = t(langue);
+
+let erreur: CleUi | null = null;
+let email = "";
+// D'où l'on vient, pour y retourner une fois connectée. Le champ caché du
+// formulaire le fait survivre à l'envoi.
+let retour = retourSur(Astro.url.searchParams.get("retour"));
+const apresConnexion = () => retour ?? lien(langue, "/compte");
+
+if (Astro.request.method === "POST") {
+  const formulaire = await Astro.request.formData();
+  retour = retourSur(String(formulaire.get("retour") ?? "")) ?? retour;
+  email = String(formulaire.get("email") ?? "").trim();
+  const motDePasse = String(formulaire.get("password") ?? "");
+  if (!email || !motDePasse) {
+    erreur = "compte.err.champs";
+  } else {
+    const r = await connexion(Astro, { email, password: motDePasse });
+    // La redirection doit passer par `rediriger` : `Astro.redirect` perdrait
+    // le cookie de session que l'API vient de poser.
+    if (r.ok) return rediriger(Astro, apresConnexion());
+    erreur = r.erreur;
+  }
+} else {
+  // Déjà connecté : la page de connexion n'a plus rien à proposer.
+  const session = await moi(Astro);
+  if (session.ok) return rediriger(Astro, apresConnexion(), 302);
+}
+
+const champ =
+  "mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none";
+---
+
+<CompteCadre
+  langue={langue}
+  titre={tr("compte.connexion.titre")}
+  chemin="/compte/connexion"
+  menu={false}
+>
+  <p class="text-ink-soft">{tr("compte.connexion.intro")}</p>
+
+  {
+    erreur && (
+      <p class="mt-6 border border-terracotta/40 bg-terracotta/5 px-4 py-3 text-terracotta-deep">
+        {tr(erreur)}
+      </p>
+    )
+  }
+
+  <form method="post" class="mt-6 space-y-4">
+    {retour && <input type="hidden" name="retour" value={retour} />}
+    <label class="block">
+      <span class="text-sm font-medium">{tr("compte.email")}</span>
+      <input
+        type="email"
+        name="email"
+        value={email}
+        required
+        autocomplete="email"
+        class={champ}
+      />
+    </label>
+    <label class="block">
+      <span class="text-sm font-medium">{tr("compte.mdp")}</span>
+      <input
+        type="password"
+        name="password"
+        required
+        autocomplete="current-password"
+        class={champ}
+      />
+    </label>
+    <button
+      type="submit"
+      class="w-full rounded-full bg-ink px-6 py-3 font-medium text-paper transition-colors hover:bg-ink/85"
+    >
+      {tr("compte.connexion.bouton")}
+    </button>
+  </form>
+
+  <p class="mt-4 text-sm">
+    <a
+      href={lien(langue, "/compte/mot-de-passe-oublie")}
+      class="underline underline-offset-4 hover:text-terracotta"
+    >
+      {tr("compte.connexion.oubli")}
+    </a>
+  </p>
+
+  <p class="mt-8 border-t border-ink/10 pt-6 text-sm text-ink-soft">
+    {tr("compte.connexion.pas_de_compte")}{" "}
+    <a
+      href={`${lien(langue, "/compte/inscription")}${retour ? `?retour=${encodeURIComponent(retour)}` : ""}`}
+      class="text-ink underline underline-offset-4 hover:text-terracotta"
+    >
+      {tr("compte.connexion.creer")}
+    </a>
+  </p>
+</CompteCadre>

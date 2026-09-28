@@ -1,0 +1,565 @@
+---
+/**
+ * Les cartes cadeaux : l'argent déjà encaissé, et ce qu'il reste à livrer.
+ *
+ * Cet écran répond à quatre questions, et c'est tout ce qu'il fait. Vendre une
+ * carte et l'imprimer pour l'offrir. Retrouver un code quand un client appelle.
+ * Savoir ce qu'il reste sur une carte avant de la laisser payer. Et voir, d'un
+ * coup d'œil en haut de page, ce que la boutique doit encore en affiches.
+ *
+ * Deux choix méritent d'être dits. Le journal d'une carte ne se charge que pour
+ * la carte qu'on ouvre, par « ?carte=… » : le charger pour toutes ferait autant
+ * d'allers-retours que de cartes vendues, pour des lignes que personne ne
+ * regarde. Et rien ici ne modifie un solde à la main : une recharge ou une
+ * correction passe par le journal, la seule écriture qui laisse une trace de ce
+ * qui a été décidé et pourquoi.
+ */
+import Admin from "../layouts/Admin.astro";
+import { apiUrl, url } from "../lib/url.ts";
+import {
+  adminApi,
+  formatPrice,
+  type CarteCadeau,
+  type Client,
+  type DetailCarteCadeau,
+  type ListeCartesCadeaux,
+} from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+/**
+ * L'API refuse en français et dit pourquoi. Quand elle ne renvoie qu'un code
+ * technique, il n'apprend rien à personne ici : on met notre phrase à la place.
+ */
+function raisonLisible(souci: unknown, repli: string): string {
+  const brut = (souci instanceof Error ? souci.message : String(souci))
+    .replace(/^Error:\s*/, "")
+    .trim();
+  return !brut || brut.startsWith("API ") ? repli : brut;
+}
+
+/**
+ * Une saisie en euros, rendue en centimes.
+ *
+ * La case vide est refusée, jamais convertie : `Number("")` vaut zéro, et une
+ * carte à zéro euro remise à quelqu'un qui vient de payer cinquante serait une
+ * erreur que rien à l'écran ne signalerait. La virgule française et les espaces
+ * des milliers sont acceptés, parce que c'est ainsi qu'on écrit un prix.
+ */
+function centimesDepuisEuros(saisie: string): number {
+  const propre = saisie.replace(/\s/g, "").replace(",", ".").trim();
+  if (!propre) throw new Error("Indiquez le montant, en euros.");
+  const valeur = Number(propre);
+  if (!Number.isFinite(valeur))
+    throw new Error(
+      "Le montant doit être un nombre d'euros, par exemple 50 ou 49,50.",
+    );
+  return Math.round(valeur * 100);
+}
+
+/** « 3 janvier 2027 ». Chaîne vide quand il n'y a pas de date. */
+function jour(iso: string | null): string {
+  if (!iso) return "";
+  const quand = new Date(iso);
+  return Number.isNaN(quand.getTime())
+    ? ""
+    : quand.toLocaleDateString("fr-FR", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+}
+
+/** « 1 carte », « 3 cartes » : le « (s) » se lit mal. */
+const pluriel = (nombre: number, mot: string) =>
+  `${nombre} ${mot}${nombre > 1 ? "s" : ""}`;
+
+/** Une carte périmée n'est plus échangeable, même si elle reste « active ». */
+function perimee(carte: CarteCadeau): boolean {
+  if (!carte.expiresAt) return false;
+  const fin = new Date(carte.expiresAt);
+  return !Number.isNaN(fin.getTime()) && fin.getTime() < Date.now();
+}
+
+/** L'état de la carte, tel qu'il se lit dans la liste. */
+function etatDit(carte: CarteCadeau): { texte: string; classe: string } {
+  if (carte.status !== "active")
+    return { texte: "Hors service", classe: "bg-bo-bg text-bo-muted" };
+  if (perimee(carte))
+    return { texte: "Périmée", classe: "bg-amber-100 text-amber-900" };
+  if (carte.balanceCents <= 0)
+    return { texte: "Épuisée", classe: "bg-bo-bg text-bo-muted" };
+  return { texte: "Utilisable", classe: "bg-green-100 text-green-900" };
+}
+
+let flash: string | null = null;
+let flashErreur = false;
+/**
+ * La carte qui vient d'être vendue, montrée en grand juste au-dessus de la
+ * liste. Son code est la seule chose qu'on cherche dans la seconde qui suit :
+ * il faut l'imprimer, ou le dicter au client qui attend devant la table.
+ */
+let nouvelle: CarteCadeau | null = null;
+
+if (Astro.request.method === "POST") {
+  const champs = await Astro.request.formData();
+  const texte = (nom: string) => String(champs.get(nom) ?? "").trim();
+  const action = texte("_action");
+  const numero = Number(texte("id"));
+  // Sans identifiant, le formulaire ne désigne aucune carte : mieux vaut ne
+  // rien faire que d'agir sur la voisine.
+  const cible = Number.isInteger(numero) && numero > 0 ? numero : 0;
+
+  try {
+    if (action === "creer") {
+      const reponse = await api.creerCarteCadeau({
+        montantCents: centimesDepuisEuros(texte("montant")),
+        expiresAt: texte("expiresAt") || null,
+        customerId: Number(texte("customerId")) || null,
+        note: texte("note") || null,
+      });
+      nouvelle = reponse.carte;
+      flash = `Carte de ${formatPrice(reponse.carte.initialAmountCents)} créée. Imprimez-la pour l'offrir.`;
+    } else if (cible && action === "basculer") {
+      const versHorsService = texte("status") === "disabled";
+      await api.majCarteCadeau(cible, {
+        status: versHorsService ? "disabled" : "active",
+      });
+      flash = versHorsService
+        ? "Carte mise hors service. Elle ne peut plus payer, et son historique reste."
+        : "Carte remise en service.";
+    } else if (cible && action === "ajuster") {
+      const montant = centimesDepuisEuros(texte("montant"));
+      if (montant <= 0)
+        throw new Error(
+          "Indiquez combien ajouter ou retirer, en euros. Le sens se choisit juste avant.",
+        );
+      const motif = texte("motif");
+      if (!motif)
+        throw new Error(
+          "Dites en quelques mots pourquoi le solde change : c'est ce qui restera dans l'historique.",
+        );
+      const retrait = texte("sens") === "retirer";
+      const { solde } = await api.ajusterCarteCadeau(cible, {
+        amountCents: retrait ? -montant : montant,
+        label: motif,
+      });
+      flash = `${retrait ? "Retrait" : "Ajout"} enregistré. Il reste ${formatPrice(solde)} sur cette carte.`;
+    }
+  } catch (e) {
+    flash = raisonLisible(e, "L'enregistrement n'a pas abouti. Réessayez.");
+    flashErreur = true;
+  }
+}
+
+let liste: ListeCartesCadeaux = {
+  cartes: [],
+  totalEnCirculationCents: 0,
+  cartesEnCirculation: 0,
+};
+let clients: Client[] = [];
+let erreur: string | null = null;
+try {
+  liste = await api.cartesCadeaux();
+} catch (e) {
+  erreur = raisonLisible(e, "La liste des cartes n'a pas pu être chargée.");
+}
+try {
+  clients = await api.customers({ limit: 500 });
+} catch {
+  // Le carnet d'adresses n'est pas indispensable pour vendre une carte : sans
+  // lui, la case « client » reste vide et le reste de l'écran fonctionne.
+}
+
+/** La carte dont on regarde l'historique, désignée par « ?carte=… ». */
+const ouverte = Number(Astro.url.searchParams.get("carte")) || 0;
+let detail: DetailCarteCadeau | null = null;
+if (ouverte) {
+  try {
+    detail = await api.carteCadeau(ouverte);
+  } catch {
+    // Carte effacée entre-temps ou adresse tapée à la main : la liste seule
+    // s'affiche, sans message d'échec pour une ligne qu'on voulait seulement
+    // déplier.
+  }
+}
+
+/**
+ * Les cartes encore échangeables d'abord.
+ *
+ * C'est l'ordre du travail : celles-là se dictent, s'impriment et se
+ * dépensent. Les épuisées, périmées et hors service ne servent plus qu'à
+ * répondre à une question, et cette question commence toujours par un code
+ * qu'on cherche plus bas.
+ */
+const echangeable = (c: CarteCadeau) =>
+  c.status === "active" && !perimee(c) && c.balanceCents > 0;
+const rangees = [...liste.cartes].sort((a, b) => {
+  if (echangeable(a) !== echangeable(b)) return echangeable(a) ? -1 : 1;
+  return 0;
+});
+
+const classePastille =
+  "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium";
+const classeChamp = "rounded border border-bo-border px-3 py-2 text-sm";
+const classeBouton =
+  "rounded border border-bo-border px-2 py-1 text-xs hover:bg-bo-bg";
+---
+
+<Admin title="Cartes cadeaux">
+  {
+    flash && (
+      <p
+        class={`mb-4 rounded border px-3 py-2 text-sm ${
+          flashErreur
+            ? "border-red-300 bg-red-50 text-red-700"
+            : "border-green-300 bg-green-50 text-green-800"
+        }`}
+      >
+        {flash}
+      </p>
+    )
+  }
+  {
+    erreur && (
+      <p class="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        {erreur}
+      </p>
+    )
+  }
+
+  <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+    Une carte cadeau n'est pas une remise : c'est de l'argent que quelqu'un vous
+    a déjà payé, et que vous devez encore rendre en affiches. C'est pour cette
+    raison qu'une carte ne se supprime jamais. On la met hors service, ce qui
+    l'empêche de payer tout en gardant la trace de ce qui a été vendu.
+  </p>
+
+  <section
+    class="mb-6 rounded-lg border border-bo-border bg-bo-surface px-5 py-4"
+  >
+    <p class="text-sm text-bo-muted">Ce que vous devez encore en affiches</p>
+    <p class="mt-1 text-3xl font-semibold">
+      {formatPrice(liste.totalEnCirculationCents)}
+    </p>
+    <p class="mt-1 text-sm text-bo-muted">
+      {
+        liste.cartesEnCirculation === 0
+          ? "Aucune carte n'attend d'être dépensée."
+          : `Réparti sur ${pluriel(liste.cartesEnCirculation, "carte")} encore ${
+              liste.cartesEnCirculation > 1 ? "utilisables" : "utilisable"
+            }. Les cartes épuisées, périmées et hors service n'y sont pas comptées.`
+      }
+    </p>
+  </section>
+
+  {/* Le code tiré à l'instant, en grand : c'est ce qu'on cherche dans la
+      seconde qui suit, pour l'imprimer ou le dicter au client. */}
+  {
+    nouvelle && (
+      <section class="mb-6 rounded-lg border border-green-300 bg-green-50 p-5 text-green-900">
+        <p class="text-sm">
+          Carte de {formatPrice(nouvelle.initialAmountCents)} créée. Son code :
+        </p>
+        <p class="mt-1 font-mono text-3xl font-bold tracking-[0.2em]">
+          {nouvelle.code}
+        </p>
+        <div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
+          <a
+            href={apiUrl(`/admin/gift-cards/${nouvelle.id}/imprimer`)}
+            target="_blank"
+            rel="noopener"
+            class="rounded border border-green-200 px-2 py-1 text-xs hover:bg-green-100"
+          >
+            Imprimer la carte
+          </a>
+          <button
+            type="button"
+            data-code={nouvelle.code}
+            class="rounded border border-green-200 px-2 py-1 text-xs hover:bg-green-100"
+          >
+            Copier le code
+          </button>
+          <span class="copie-ok text-xs" />
+        </div>
+      </section>
+    )
+  }
+
+  <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-5">
+    <h2 class="mb-1 text-base font-semibold">Vendre une carte</h2>
+    <p class="mb-4 text-sm text-bo-muted">
+      Le code est tiré au hasard par la boutique : vous n'avez pas à l'inventer,
+      et personne ne peut le deviner.
+    </p>
+    <form method="POST" class="flex flex-wrap items-end gap-4">
+      <input type="hidden" name="_action" value="creer" />
+      <label class="text-sm">
+        <span class="mb-1 block text-xs text-bo-muted">Montant en euros</span>
+        <input
+          name="montant"
+          required
+          inputmode="decimal"
+          placeholder="50"
+          class={`w-32 ${classeChamp}`}
+        />
+      </label>
+      <label class="text-sm">
+        <span class="mb-1 block text-xs text-bo-muted">
+          Date de fin (facultative)
+        </span>
+        <input type="date" name="expiresAt" class={`w-44 ${classeChamp}`} />
+      </label>
+      <label class="text-sm">
+        <span class="mb-1 block text-xs text-bo-muted">
+          Pour un client (facultatif)
+        </span>
+        <select name="customerId" class={`w-64 max-w-full ${classeChamp}`}>
+          <option value="">Personne en particulier</option>
+          {
+            clients.map((client) => (
+              <option value={client.id}>
+                {client.name || client.email || `Client ${client.id}`}
+              </option>
+            ))
+          }
+        </select>
+      </label>
+      <label class="text-sm">
+        <span class="mb-1 block text-xs text-bo-muted">Note (facultative)</span>
+        <input
+          name="note"
+          placeholder="offerte au salon de Vannes"
+          class={`w-64 max-w-full ${classeChamp}`}
+        />
+      </label>
+      <button class="rounded bg-bo-accent px-4 py-2 text-sm text-white">
+        Créer la carte
+      </button>
+    </form>
+  </section>
+
+  <section
+    class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface"
+  >
+    <table class="w-full text-sm">
+      <thead class="bg-bo-bg text-left text-bo-muted">
+        <tr>
+          <th class="px-4 py-2 font-medium">Code</th>
+          <th class="px-4 py-2 font-medium text-right">Montant vendu</th>
+          <th class="px-4 py-2 font-medium text-right">Reste</th>
+          <th class="px-4 py-2 font-medium">État</th>
+          <th class="px-4 py-2 font-medium">Client</th>
+          <th class="px-4 py-2 font-medium">Vendue le</th>
+          <th class="px-4 py-2"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          rangees.map((carte) => {
+            const etat = etatDit(carte);
+            const finit = jour(carte.expiresAt);
+            const affichee = ouverte === carte.id;
+            return (
+              <>
+                <tr class="border-t border-bo-border align-top">
+                  <td class="px-4 py-3">
+                    <span class="font-mono font-semibold tracking-wider">
+                      {carte.code}
+                    </span>
+                    <button
+                      type="button"
+                      data-code={carte.code}
+                      class="ml-2 align-middle text-xs text-bo-muted hover:text-bo-accent hover:underline"
+                    >
+                      copier
+                    </button>
+                    {carte.note && (
+                      <span class="mt-1 block text-xs text-bo-muted">
+                        {carte.note}
+                      </span>
+                    )}
+                  </td>
+                  <td class="px-4 py-3 text-right whitespace-nowrap">
+                    {formatPrice(carte.initialAmountCents)}
+                  </td>
+                  <td class="px-4 py-3 text-right font-medium whitespace-nowrap">
+                    {formatPrice(carte.balanceCents)}
+                  </td>
+                  <td class="px-4 py-3">
+                    <span class={`${classePastille} ${etat.classe}`}>
+                      {etat.texte}
+                    </span>
+                    {finit && (
+                      <span class="mt-1 block text-xs text-bo-muted">
+                        {perimee(carte) ? "Finie le" : "Jusqu'au"} {finit}
+                      </span>
+                    )}
+                  </td>
+                  <td class="px-4 py-3">
+                    {carte.clientNom || carte.clientEmail || (
+                      <span class="text-bo-muted">Sans destinataire</span>
+                    )}
+                  </td>
+                  <td class="px-4 py-3 whitespace-nowrap">
+                    {jour(carte.createdAt)}
+                  </td>
+                  <td class="px-4 py-3 text-right whitespace-nowrap">
+                    <a
+                      href={apiUrl(`/admin/gift-cards/${carte.id}/imprimer`)}
+                      target="_blank"
+                      rel="noopener"
+                      class={classeBouton}
+                    >
+                      Imprimer
+                    </a>
+                    <form method="POST" class="ml-2 inline">
+                      <input type="hidden" name="_action" value="basculer" />
+                      <input type="hidden" name="id" value={carte.id} />
+                      <input
+                        type="hidden"
+                        name="status"
+                        value={carte.status === "active" ? "disabled" : "active"}
+                      />
+                      <button class={classeBouton}>
+                        {carte.status === "active" ? "Désactiver" : "Réactiver"}
+                      </button>
+                    </form>
+                    <a
+                      href={
+                        affichee
+                          ? url("/cartes-cadeaux")
+                          : `${url("/cartes-cadeaux")}?carte=${carte.id}`
+                      }
+                      class="ml-3 text-xs text-bo-accent hover:underline"
+                    >
+                      {affichee
+                        ? "Masquer l'historique"
+                        : `Historique${carte.utilisations ? ` (${carte.utilisations})` : ""}`}
+                    </a>
+                  </td>
+                </tr>
+                {affichee && (
+                  <tr class="border-t border-bo-border bg-bo-bg">
+                    <td colspan="7" class="px-4 py-4">
+                      <h3 class="mb-2 text-sm font-semibold">
+                        Historique de la carte {carte.code}
+                      </h3>
+                      {detail && detail.mouvements.length > 0 ? (
+                        <table class="w-full max-w-3xl text-sm">
+                          <tbody>
+                            {detail.mouvements.map((m) => (
+                              <tr class="border-t border-bo-border first:border-t-0">
+                                <td class="py-1.5 pr-4 whitespace-nowrap text-bo-muted">
+                                  {jour(m.createdAt)}
+                                </td>
+                                <td class="py-1.5 pr-4">
+                                  {m.label || "Mouvement"}
+                                  {m.numeroCommande && (
+                                    <span class="text-bo-muted">
+                                      {" "}
+                                      · commande {m.numeroCommande}
+                                    </span>
+                                  )}
+                                </td>
+                                <td class="py-1.5 text-right whitespace-nowrap font-medium">
+                                  {m.amountCents > 0 ? "+ " : ""}
+                                  {formatPrice(m.amountCents)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <p class="text-sm text-bo-muted">
+                          Rien à montrer pour l'instant.
+                        </p>
+                      )}
+
+                      <form
+                        method="POST"
+                        class="mt-4 flex flex-wrap items-end gap-3 border-t border-bo-border pt-4"
+                      >
+                        <input type="hidden" name="_action" value="ajuster" />
+                        <input type="hidden" name="id" value={carte.id} />
+                        <label class="text-sm">
+                          <span class="mb-1 block text-xs text-bo-muted">
+                            Recharger ou corriger
+                          </span>
+                          <select name="sens" class={`w-32 ${classeChamp}`}>
+                            <option value="ajouter">Ajouter</option>
+                            <option value="retirer">Retirer</option>
+                          </select>
+                        </label>
+                        <label class="text-sm">
+                          <span class="mb-1 block text-xs text-bo-muted">
+                            Montant en euros
+                          </span>
+                          <input
+                            name="montant"
+                            required
+                            inputmode="decimal"
+                            placeholder="10"
+                            class={`w-28 ${classeChamp}`}
+                          />
+                        </label>
+                        <label class="text-sm">
+                          <span class="mb-1 block text-xs text-bo-muted">
+                            Pourquoi
+                          </span>
+                          <input
+                            name="motif"
+                            required
+                            placeholder="geste commercial"
+                            class={`w-72 max-w-full ${classeChamp}`}
+                          />
+                        </label>
+                        <button class="rounded border border-bo-border px-3 py-2 text-sm hover:bg-bo-surface">
+                          Enregistrer
+                        </button>
+                        <p class="w-full text-xs text-bo-muted">
+                          Rien ne s'efface de cet historique : une erreur se
+                          répare en enregistrant le mouvement inverse, et les
+                          deux lignes restent visibles.
+                        </p>
+                      </form>
+                    </td>
+                  </tr>
+                )}
+              </>
+            );
+          })
+        }
+      </tbody>
+    </table>
+    {
+      rangees.length === 0 && !erreur && (
+        <p class="px-4 py-6 text-center text-sm text-bo-muted">
+          Aucune carte cadeau pour le moment.
+        </p>
+      )
+    }
+  </section>
+
+  <script is:inline>
+    // Il y a un bouton par carte, et la liste change à chaque vente : on écoute
+    // la page une fois pour toutes plutôt que chaque bouton un à un.
+    document.addEventListener("click", async (evenement) => {
+      const cible = evenement.target;
+      const bouton =
+        cible instanceof Element ? cible.closest("[data-code]") : null;
+      if (!bouton) return;
+      const code = bouton.getAttribute("data-code") || "";
+      const dit = bouton.parentElement?.querySelector(".copie-ok");
+      try {
+        await navigator.clipboard.writeText(code);
+        if (dit) dit.textContent = "Code copié.";
+      } catch {
+        // Presse-papiers refusé (page non sécurisée, permission) : on montre le
+        // code pour qu'il reste copiable à la main.
+        if (dit) dit.textContent = "Copie refusée par le navigateur.";
+        window.prompt("Code de la carte :", code);
+      }
+    });
+  </script>
+</Admin>

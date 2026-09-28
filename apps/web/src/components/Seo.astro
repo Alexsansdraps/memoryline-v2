@@ -4,6 +4,8 @@
  * Twitter Card, robots, hreflang, et JSON-LD optionnel.
  * Utilisé par le layout Base pour que CHAQUE page ait un SEO propre.
  */
+import { jsonPourScript } from "../lib/html-sur.ts";
+
 interface Props {
   title: string;
   description: string;
@@ -64,7 +66,7 @@ const jsonLdList = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
   jsonLdList.map((data) => (
     <script
       type="application/ld+json"
-      set:html={JSON.stringify(data)}
+      set:html={jsonPourScript(data)}
     />
   ))
 }

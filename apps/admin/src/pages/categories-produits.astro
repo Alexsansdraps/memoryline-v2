@@ -1,0 +1,406 @@
+---
+import { formaterPoids } from "@memoryline/types";
+import { url } from "../lib/url.ts";
+import Admin from "../layouts/Admin.astro";
+import { adminApi, type CategorieProduit } from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+/** Grammes saisis -> entier. Un champ vide vaut zéro, pas « non renseigné ». */
+function grammes(v: FormDataEntryValue | null): number {
+  const n = Math.round(Number(String(v ?? "").replace(",", ".").trim()));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+let flash: string | null = null;
+let flashErreur = false;
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const action = f.get("_action");
+  try {
+    if (action === "archiver") {
+      const restaurer = f.get("archived") === "false";
+      const r = await api.archiverCategorieProduit(
+        Number(f.get("id")),
+        !restaurer,
+      );
+      flash = restaurer
+        ? "Catégorie restaurée, avec les produits qu'elle rangeait."
+        : `Catégorie archivée${
+            r.dedans > 0
+              ? ` avec ${r.dedans} produit${r.dedans > 1 ? "s" : ""}, qui y restent rangés`
+              : ""
+          }. Vous pouvez la restaurer à tout moment, plus bas.`;
+    } else if (action === "ranger") {
+      const ids = f.getAll("ids").map(Number).filter(Boolean);
+      const cible = String(f.get("categoryId") || "");
+      if (!ids.length) throw new Error("Aucun produit coché.");
+      if (!cible) throw new Error("Choisissez la catégorie de destination.");
+      const r = await api.setProductsCategory(ids, Number(cible));
+      flash = `${r.count} produit(s) rangé(s).`;
+    } else {
+      const cat = await api.upsertProductCategory({
+        id: f.get("id") ? Number(f.get("id")) : undefined,
+        name: String(f.get("name") || ""),
+        description: String(f.get("description") || "") || null,
+        defaultWeightGrams: grammes(f.get("defaultWeightGrams")),
+        active: f.get("active") === "on",
+        position: Number(f.get("position") || 0),
+      });
+      flash = `Catégorie « ${cat.name} » enregistrée.`;
+    }
+  } catch (e) {
+    flash = "Erreur : " + String(e).replace(/^Error:\s*/, "");
+    flashErreur = true;
+  }
+}
+
+let toutes: CategorieProduit[] = [];
+let error: string | null = null;
+try {
+  toutes = await api.productCategories();
+} catch (e) {
+  error = String(e);
+}
+
+// Les archivées quittent la liste ordinaire pour leur propre section, et
+// disparaissent du choix « Ranger dans » plus bas — y envoyer des produits
+// les rangerait dans un rayon que le site ne montre plus.
+const categories = toutes.filter((c) => !c.archivedAt);
+const archivees = toutes.filter((c) => c.archivedAt);
+
+/** Ce qu'il faut avoir lu avant d'archiver une catégorie de produits. */
+function messageArchivage(c: CategorieProduit): string {
+  const l = [`Archiver la catégorie « ${c.name} » ?`];
+  const n = c.produits ?? 0;
+  if (n > 0)
+    l.push(
+      `Les ${n} produit${n > 1 ? "s qu'elle range y restent rangés" : " qu'elle range y reste rangé"} : rien n'est déplacé, et le poids par défaut continue de s'appliquer à ${n > 1 ? "leurs colis" : "son colis"}.`,
+    );
+  l.push(
+    "Rien n'est supprimé : vous pourrez la restaurer quand vous voudrez, dans « Catégories archivées ».",
+  );
+  return l.join("\n\n");
+}
+
+// Le garde-fou : un produit sans poids connu part avec un affranchissement
+// calculé sur zéro gramme, et rien d'autre ne le signalerait.
+let sansPoids: { id: number; name: string; slug: string }[] = [];
+try {
+  sansPoids = await api.productsSansPoids();
+} catch {
+  // Section masquée si la route ne répond pas : le reste de l'écran sert.
+}
+---
+
+<Admin title="Catégories de produits">
+  {flash && (
+    <p
+      class={`mb-4 text-sm rounded px-3 py-2 border ${
+        flashErreur ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+  {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
+
+  <p class="mb-4 text-sm text-bo-muted max-w-3xl">
+    Les catégories rangent le catalogue — « Affiches », « Magnets », « Cartes »
+    — et portent surtout le <strong>poids par défaut</strong> de ce qu'elles
+    contiennent. C'est ce poids qui décide de la tranche d'affranchissement au
+    panier : réglé ici une fois, il vaut pour tous les produits de la catégorie
+    qui n'ont pas de poids à eux.
+  </p>
+  <p class="mb-6 text-sm text-bo-muted max-w-3xl">
+    Un produit ou un format qui sort de l'ordinaire garde son poids propre,
+    saisi sur sa fiche (<a class="underline" href={url("/produits")}>Produits</a
+    >, bloc « Expédition »). Les tranches et leurs prix se règlent, eux, dans
+    <a class="underline" href={url("/livraison")}>Livraison</a>.
+  </p>
+
+  <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-bo-bg text-left text-bo-muted">
+        <tr>
+          <th class="px-4 py-2 font-medium">Catégorie</th>
+          <th class="px-2 py-2 w-10"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {categories.map((c) => (
+          <tr class="border-t border-bo-border align-top">
+            <td class="px-4 py-3">
+              <form method="POST" class="flex flex-wrap items-end gap-3">
+                <input type="hidden" name="id" value={c.id} />
+                <label class="block">
+                  <span class="text-bo-muted text-xs">Nom</span>
+                  <input
+                    name="name"
+                    value={c.name}
+                    required
+                    class="mt-1 block w-44 border border-bo-border rounded px-2 py-1"
+                  />
+                </label>
+                <label class="block flex-1 min-w-[16rem]">
+                  <span class="text-bo-muted text-xs">Description</span>
+                  <input
+                    name="description"
+                    value={c.description ?? ""}
+                    class="mt-1 block w-full border border-bo-border rounded px-2 py-1"
+                  />
+                </label>
+                <label class="block">
+                  <span class="text-bo-muted text-xs">Poids par défaut (g)</span>
+                  <input
+                    name="defaultWeightGrams"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={c.defaultWeightGrams}
+                    class="mt-1 block w-28 border border-bo-border rounded px-2 py-1"
+                  />
+                </label>
+                <label class="block">
+                  <span class="text-bo-muted text-xs">Ordre</span>
+                  <input
+                    name="position"
+                    type="number"
+                    value={c.position}
+                    class="mt-1 block w-16 border border-bo-border rounded px-2 py-1"
+                  />
+                </label>
+                <label class="flex items-center gap-1 pb-1.5">
+                  <input type="checkbox" name="active" checked={c.active} />
+                  <span>Active</span>
+                </label>
+                <button class="rounded bg-bo-accent text-white px-3 py-1.5">
+                  Enregistrer
+                </button>
+                <p class="basis-full text-xs text-bo-muted">
+                  {c.produits ?? 0} produit{(c.produits ?? 0) > 1 ? "s" : ""} ·
+                  identifiant <code>{c.slug}</code>
+                  {c.defaultWeightGrams > 0 ? (
+                    <> · pèse {formaterPoids(c.defaultWeightGrams)} par défaut</>
+                  ) : (
+                    <span class="text-amber-800">
+                      {" "}· aucun poids par défaut : ses produits seront
+                      affranchis comme s'ils ne pesaient rien
+                    </span>
+                  )}
+                </p>
+              </form>
+            </td>
+            <td class="px-2 py-3 text-right">
+              <form
+                method="POST"
+                class="inline"
+                onsubmit={`return confirm(${JSON.stringify(messageArchivage(c))})`}
+              >
+                <input type="hidden" name="_action" value="archiver" />
+                <input type="hidden" name="id" value={c.id} />
+                <input type="hidden" name="archived" value="true" />
+                <button
+                  class="rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-bo-accent hover:text-bo-accent"
+                  title={`Archiver « ${c.name} »`}
+                >
+                  Archiver
+                </button>
+              </form>
+            </td>
+          </tr>
+        ))}
+        {categories.length === 0 && !error && (
+          <tr>
+            <td class="px-4 py-6 text-bo-muted" colspan="2">
+              Aucune catégorie de produits. Créez-en une ci-dessous — c'est elle
+              qui donnera un poids à vos affiches.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </section>
+
+  {/* ====== Catégories archivées ====== */}
+  {archivees.length > 0 && (
+    <section class="mb-6">
+      <h2 class="mb-1 font-semibold">Catégories archivées</h2>
+      <p class="mb-3 max-w-3xl text-xs text-bo-muted">
+        Retirées du site et de la liste ci-dessus. Les produits qu'elles
+        rangeaient y sont toujours rangés, poids par défaut compris :
+        « Restaurer » remet la catégorie en place, telle qu'elle était.
+      </p>
+      <div class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface opacity-70">
+        <table class="w-full text-sm">
+          <tbody>
+            {archivees.map((c) => (
+              <tr class="border-t border-bo-border first:border-t-0">
+                <td class="px-4 py-2 font-medium">{c.name}</td>
+                <td class="px-4 py-2 text-bo-muted">
+                  <code>{c.slug}</code> — {c.produits ?? 0} produit
+                  {(c.produits ?? 0) > 1 ? "s" : ""} rangé
+                  {(c.produits ?? 0) > 1 ? "s" : ""} dedans
+                  {c.defaultWeightGrams > 0 && (
+                    <> · {formaterPoids(c.defaultWeightGrams)} par défaut</>
+                  )}
+                </td>
+                <td class="px-4 py-2 text-right">
+                  <form method="POST" class="inline">
+                    <input type="hidden" name="_action" value="archiver" />
+                    <input type="hidden" name="id" value={c.id} />
+                    <input type="hidden" name="archived" value="false" />
+                    <button class="text-bo-accent hover:underline">
+                      Restaurer
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )}
+
+  <details class="mb-8 bg-bo-surface border border-bo-border rounded-lg" open={categories.length === 0}>
+    <summary class="cursor-pointer px-5 py-3 font-semibold select-none">
+      <span class="mr-1 text-bo-accent">+</span> Ajouter une catégorie
+    </summary>
+    <form method="POST" class="flex flex-wrap items-end gap-3 px-5 pb-5 text-sm">
+      <label class="block">
+        <span class="text-bo-muted">Nom</span>
+        <input
+          name="name"
+          required
+          placeholder="Affiches"
+          class="mt-1 block w-44 border border-bo-border rounded px-3 py-2"
+        />
+      </label>
+      <label class="block flex-1 min-w-[16rem]">
+        <span class="text-bo-muted">Description</span>
+        <input
+          name="description"
+          placeholder="Affiches personnalisées, roulées dans un tube"
+          class="mt-1 block w-full border border-bo-border rounded px-3 py-2"
+        />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Poids par défaut (g)</span>
+        <input
+          name="defaultWeightGrams"
+          type="number"
+          min="0"
+          step="1"
+          value="0"
+          class="mt-1 block w-32 border border-bo-border rounded px-3 py-2"
+        />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Ordre</span>
+        <input
+          name="position"
+          type="number"
+          value={categories.length}
+          class="mt-1 block w-20 border border-bo-border rounded px-3 py-2"
+        />
+      </label>
+      <label class="flex items-center gap-2 pb-2">
+        <input type="checkbox" name="active" checked />
+        <span>Active</span>
+      </label>
+      <button class="rounded bg-bo-accent text-white px-4 py-2">Créer</button>
+      <p class="basis-full text-xs text-bo-muted">
+        Le poids se saisit en <strong>grammes</strong>, emballage compris :
+        c'est le colis qui est affranchi, pas l'affiche seule.
+      </p>
+    </form>
+  </details>
+
+  {/* ------------------------------------------------------------------ */}
+  {/* Produits sans poids                                                 */}
+  {/* ------------------------------------------------------------------ */}
+  {sansPoids.length > 0 && (
+    <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+      <h3 class="font-semibold mb-1">
+        {sansPoids.length} produit{sansPoids.length > 1 ? "s" : ""} sans poids
+        connu
+      </h3>
+      <p class="mb-4 text-sm text-bo-muted max-w-3xl">
+        Ni le format, ni le produit, ni sa catégorie ne disent ce qu'ils pèsent
+        : au panier, ils comptent pour <strong>0 g</strong> et peuvent faire
+        tomber le colis dans une tranche trop basse. Rangez-les dans une
+        catégorie qui a un poids par défaut — c'est le plus rapide.
+      </p>
+      {categories.length === 0 ? (
+        <p class="text-sm text-amber-800">
+          Créez d'abord une catégorie avec un poids par défaut.
+        </p>
+      ) : (
+        <form method="POST">
+          <input type="hidden" name="_action" value="ranger" />
+          <div class="mb-3 max-h-80 overflow-y-auto rounded border border-bo-border">
+            <table class="w-full text-sm">
+              <tbody>
+                {sansPoids.map((p) => (
+                  <tr class="border-b border-bo-border last:border-0">
+                    <td class="px-3 py-1.5 w-8">
+                      <input type="checkbox" name="ids" value={p.id} class="js-coche" />
+                    </td>
+                    <td class="px-2 py-1.5">
+                      <a
+                        class="hover:underline"
+                        href={url(`/produits/${p.id}`)}
+                        title="Ouvrir la fiche produit"
+                      >
+                        {p.name}
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div class="flex flex-wrap items-end gap-3">
+            <button
+              type="button"
+              id="tout-cocher"
+              class="rounded border border-bo-border px-3 py-1.5 text-sm"
+            >
+              Tout cocher
+            </button>
+            <label class="block text-sm">
+              <span class="text-bo-muted text-xs">Ranger dans</span>
+              <select
+                name="categoryId"
+                class="mt-1 block border border-bo-border rounded px-2 py-1"
+              >
+                {categories.map((c) => (
+                  <option value={c.id}>
+                    {c.name}
+                    {c.defaultWeightGrams > 0
+                      ? ` — ${formaterPoids(c.defaultWeightGrams)}`
+                      : " — sans poids"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button class="rounded bg-bo-accent text-white px-3 py-1.5 text-sm">
+              Ranger les produits cochés
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
+  )}
+
+  <script is:inline>
+    const tout = document.getElementById("tout-cocher");
+    tout?.addEventListener("click", () => {
+      const cases = document.querySelectorAll(".js-coche");
+      const toutCocher = [...cases].some((c) => !c.checked);
+      cases.forEach((c) => (c.checked = toutCocher));
+      tout.textContent = toutCocher ? "Tout décocher" : "Tout cocher";
+    });
+  </script>
+</Admin>

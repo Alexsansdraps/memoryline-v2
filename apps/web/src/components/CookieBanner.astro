@@ -23,7 +23,11 @@ const tr = t(langue);
   >
     <p class="text-sm text-ink-soft flex-1">
       {tr("cookies.texte")}{" "}
-      <a href={lien(langue, "/cookies")} class="underline"
+      {/* Les pages libres du site vivent sous « /pages/{adresse} » : ce lien
+          pointait sur « /cookies », qui n'est une route de personne et
+          renvoyait 404 — juste sous une phrase qui promet d'expliquer ce
+          qu'on fait des données. */}
+      <a href={lien(langue, "/pages/cookies")} class="underline"
         >{tr("cookies.politique")}</a
       >.
     </p>

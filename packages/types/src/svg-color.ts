@@ -87,44 +87,6 @@ export function colorsForScope(
 }
 
 /**
- * Mots-clés des groupes du SVG de BASE d'un personnage, par slot.
- * Nomenclature archive : `<g id="Male_Clothes_1">`, `<g id="Female_Bottoms1">`,
- * `<g id="Teenage_Girl_Hair_1">`… Les groupes "Base" et "Collar" (animaux) ne
- * matchent aucun mot-clé et ne sont jamais masqués.
- */
-const SLOT_GROUP_KEYWORD: Record<string, RegExp> = {
-  clothes: /Clothes/i,
-  pants: /Bottoms/i,
-  hair: /Hair/i,
-  accessory: /Accessor/i,
-  // alias legacy (ancien site : head = accessoires)
-  head: /Accessor/i,
-};
-
-/**
- * Masque (display="none") dans le SVG de BASE pré-composé les groupes des
- * slots REMPLACÉS par une variante choisie. Sans ça, la tenue/coiffure
- * d'origine du personnage reste visible sous/derrière la variante empilée
- * (doublons, bords qui dépassent). Pure string-transform : utilisable côté
- * navigateur (configurateur) ET côté serveur (worker PDF).
- */
-export function hideSlotGroups(
-  svg: string,
-  slots: readonly string[],
-): string {
-  const patterns = slots
-    .map((s) => SLOT_GROUP_KEYWORD[s])
-    .filter((re): re is RegExp => re !== undefined);
-  if (patterns.length === 0) return svg;
-  return svg.replace(/<g\b([^>]*)>/g, (m, attrs: string) => {
-    const id = /\sid\s*=\s*"([^"]*)"/.exec(attrs)?.[1];
-    if (id && patterns.some((re) => re.test(id)))
-      return `<g${attrs} display="none">`;
-    return m;
-  });
-}
-
-/**
  * Scope les règles CSS d'un SVG destiné à être INLINÉ dans le DOM.
  *
  * Problème : chaque SVG exporté définit ses couleurs via un bloc

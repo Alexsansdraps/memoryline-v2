@@ -4,8 +4,18 @@ import { adminApi, formatPrice, type StatsCommandes } from "../lib/api.ts";
 interface Props {
   /** Canal des commandes : « web », « salon », ou tous si absent. */
   channel?: "web" | "salon";
+  /** Un stand précis. Absent, les chiffres portent sur tout le canal. */
+  stand?: number;
+  /**
+   * Ce que les chiffres additionnent, en toutes lettres.
+   *
+   * Un bloc de statistiques qui ne dit pas son périmètre se lit comme celui
+   * qu'on a sous les yeux : sur un écran où l'on vient de choisir un stand,
+   * c'est une erreur de lecture garantie.
+   */
+  portee?: string;
 }
-const { channel } = Astro.props;
+const { channel, stand, portee } = Astro.props;
 
 /**
  * Période affichée, portée par l'URL : elle survit à un rechargement et se
@@ -23,7 +33,7 @@ const periode = PERIODES.find((p) => p.jours === demande) ?? PERIODES[2]!;
 let stats: StatsCommandes | null = null;
 let error: string | null = null;
 try {
-  stats = await adminApi(Astro.request).orderStats(periode.jours, channel);
+  stats = await adminApi(Astro.request).orderStats(periode.jours, channel, stand);
 } catch (e) {
   error = String(e);
 }
@@ -113,6 +123,14 @@ function lienPeriode(jours: number): string {
 
 {stats && (
   <section class="mb-6">
+    {/* Ce que ces chiffres additionnent, dit avant de les montrer. Sans cette
+        ligne, un total lu sous une liste filtrée passe pour celui de la
+        liste. */}
+    {portee && (
+      <p class="mb-2 text-sm font-medium">
+        Chiffres de <span class="text-bo-accent">{portee}</span>
+      </p>
+    )}
     {/* Choix de la période, en liens : l'adresse garde la sélection. */}
     <div class="mb-3 flex flex-wrap items-center gap-2 text-sm">
       {PERIODES.map((p) => (

@@ -26,6 +26,32 @@ export type PosterView = (typeof POSTER_VIEWS)[number];
 /** Type d'affiche par défaut quand rien n'est précisé. */
 export const POSTER_VIEW_DEFAUT = "front";
 
+/**
+ * L'ordre d'empilement des pièces sur un personnage, du bas vers le haut.
+ *
+ * Une seule liste, et elle est ici. Il y en avait deux : celle de l'aperçu et
+ * celle de l'impression, portant le même commentaire et des valeurs inversées
+ * sur le pantalon et le vêtement. À la taille, là où les deux se recouvrent,
+ * l'affiche livrée ne ressemblait donc pas à celle que la cliente avait
+ * validée — un défaut qu'aucun écran ne montre, et qui ne se découvre qu'en
+ * ouvrant l'enveloppe.
+ *
+ * C'est l'APERÇU qui fait foi : c'est lui que la cliente regarde avant de
+ * payer. Le vêtement passe donc par-dessus le pantalon, ici comme à l'écran.
+ *
+ * « shoes » et « head » ne sont pas proposés par le configurateur d'
+ * aujourd'hui ; ils restent dans la liste parce que des personnages importés
+ * en portent, et qu'ils doivent s'empiler quelque part.
+ */
+export const ORDRE_CALQUES = [
+  "pants",
+  "clothes",
+  "shoes",
+  "hair",
+  "head",
+  "accessory",
+] as const;
+
 /** Slots d'assets empilables sur un personnage (ouvert, pas figé). */
 export const ASSET_SLOTS = [
   "head",
@@ -61,6 +87,15 @@ export const textBlockSchema = z.object({
   color: z.string().optional(),
   /** Facteur de taille relatif (1 = défaut). Partagé titre/sous-titre. */
   size: z.number().optional(),
+  /**
+   * Position du CENTRE de la ligne, en fractions de la largeur et de la
+   * hauteur de l'affiche (0..1). Absente, la ligne suit la mise en page
+   * automatique : empilée en haut, centrée. Elle n'apparaît que lorsque le
+   * client a déplacé la ligne à la main — et alors l'aperçu et le PDF la
+   * posent au même endroit, puisque c'est le même chiffre.
+   */
+  x: z.number().min(0).max(1).optional(),
+  y: z.number().min(0).max(1).optional(),
 });
 export type TextBlock = z.infer<typeof textBlockSchema>;
 
@@ -73,6 +108,15 @@ export const characterSchema = z.object({
   x: z.number().optional(),
   y: z.number().optional(),
   scale: z.number().optional(),
+  /**
+   * Le client a posé ce personnage lui-même, `x`/`y` sont SON choix.
+   *
+   * Absent, `x`/`y` ne sont que la trace du rangement automatique du jour où
+   * la configuration a été enregistrée : les rouvrir comme un choix figerait
+   * la rangée des paniers et des commandes d'avant le glisser-déposer, qui
+   * doivent continuer à se ranger toutes seules.
+   */
+  placementManuel: z.boolean().optional(),
   /** Asset choisi par slot : slot -> assetId. */
   assets: z.record(z.string(), z.union([z.string(), z.number()])),
   /** Couleurs personnalisées : zone -> couleur hex. */
@@ -98,7 +142,27 @@ export const posterConfigSchema = z.object({
   // Chaîne libre, et non plus une paire figée : refuser un type créé au
   // back-office ferait échouer l'ajout au panier pour un produit tout neuf.
   view: z.string().min(1).default(POSTER_VIEW_DEFAUT),
+  /**
+   * Génération IA retenue par le client — `publicId` de la table
+   * `ai_generation`. Présent, il fait de la ligne une affiche IA : le visuel
+   * n'est plus la pile de calques mais l'image produite, et c'est par cet
+   * identifiant que le serveur retrouve le fichier sans filigrane à imprimer
+   * une fois la commande payée.
+   */
+  aiPublicId: z.string().optional(),
+  /** Aperçu FILIGRANÉ de cette génération, pour la vignette du panier. */
+  aiApercuUrl: z.string().optional(),
+  /**
+   * Textes de l'affiche : TROIS LIGNES, sans hiérarchie imposée.
+   *
+   * `title` et `subtitle` restent acceptés en LECTURE : les commandes déjà
+   * passées les portent, et une commande ne se réécrit pas. Le rendu passe
+   * toujours par `lignesDuTexte()` (textes-affiche.ts), qui sait lire les deux
+   * formes — c'est ce qui garantit qu'une affiche de l'an dernier sort encore
+   * de l'imprimante telle qu'elle a été validée.
+   */
   texts: z.object({
+    lines: z.array(textBlockSchema).max(3).optional(),
     title: textBlockSchema.optional(),
     subtitle: textBlockSchema.optional(),
   }),

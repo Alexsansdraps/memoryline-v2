@@ -1,0 +1,81 @@
+---
+/**
+ * La page introuvable.
+ *
+ * Il n'y en avait aucune : une adresse fautive tombait sur l'écran nu d'Astro,
+ * sans menu, sans pied de page, sans même le logo — un cul-de-sac dont on ne
+ * sort qu'en fermant l'onglet. Elle sert bien plus souvent qu'on ne le croit :
+ * une affiche retirée de la vente, un lien de courrier vieux d'un an, une page
+ * du back-office pas encore écrite.
+ *
+ * Elle est posée à la RACINE et non sous « [...lang] », parce que c'est ce que
+ * Astro rend quand plus aucune route ne correspond — y compris pour une
+ * adresse préfixée d'une langue. La langue est donc relue dans l'adresse
+ * demandée, et non reçue en paramètre.
+ */
+import Base from "../layouts/Base.astro";
+import {
+  LANGUE_DEFAUT,
+  estLangue,
+  lien,
+  t,
+  type Langue,
+} from "../i18n/utils.ts";
+
+/** Rendue à la demande : sans cela, l'adresse demandée serait inconnue. */
+export const prerender = false;
+
+/**
+ * La langue du visiteur, lue dans l'adresse qui a échoué.
+ *
+ * « /de/nimportequoi » doit répondre en allemand : quelqu'un qui lit le site
+ * en allemand n'a pas à recevoir du français au moment précis où il est déjà
+ * perdu. Un préfixe inconnu vaut le français, comme partout ailleurs.
+ */
+const premierSegment = Astro.url.pathname.split("/")[1] ?? "";
+const langue: Langue = estLangue(premierSegment) ? premierSegment : LANGUE_DEFAUT;
+const tr = t(langue);
+
+/**
+ * Le code 404 est REDIT ici.
+ *
+ * Astro rend bien cette page pour une adresse sans route, mais elle est aussi
+ * rendue par les routes qui refusent elles-mêmes ce qu'on leur demande. Sans
+ * cette ligne, certaines de ces réponses partiraient en 200 : le visiteur
+ * verrait la bonne page, et un moteur indexerait « Cette page n'existe pas »
+ * comme un contenu ordinaire.
+ */
+Astro.response.status = 404;
+---
+
+<Base langue={langue} title={`${tr("404.titre")} — Memory Line`} noindex>
+  <section
+    class="mx-auto flex max-w-[720px] flex-col items-start px-6 pt-20 pb-24 lg:px-12"
+  >
+    <p class="text-sm uppercase tracking-wide text-terracotta">404</p>
+    <h1 class="mt-2 text-3xl sm:text-4xl">{tr("404.titre")}</h1>
+    <p class="mt-4 text-ink-soft">{tr("404.texte")}</p>
+
+    {/* Deux portes de sortie, pas une liste : le catalogue pour qui flâne,
+        la recherche pour qui cherchait quelque chose de précis — et c'est
+        précisément le cas de qui atterrit ici. */}
+    <div class="mt-8 flex flex-wrap gap-3">
+      <a
+        href={lien(langue, "/affiches")}
+        class="bg-ink px-5 py-2.5 text-paper hover:bg-ink/85 transition-colors"
+        >{tr("404.affiches")}</a
+      >
+      <a
+        href={lien(langue, "/recherche")}
+        class="border border-ink/20 px-5 py-2.5 hover:border-ink transition-colors"
+        >{tr("404.recherche")}</a
+      >
+    </div>
+
+    <a
+      href={lien(langue, "/")}
+      class="mt-8 text-sm text-ink-soft underline underline-offset-4 hover:text-terracotta transition-colors"
+      >{tr("404.accueil")}</a
+    >
+  </section>
+</Base>

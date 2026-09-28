@@ -1,0 +1,189 @@
+---
+/**
+ * Une affiche dans une grille : l'image, le nom, le prix.
+ *
+ * Écrite une fois et partagée par le rayon, la page de résultats et la
+ * vitrine de l'accueil : des grilles écrites séparément finissent par
+ * diverger — l'une sait montrer un prix barré, l'autre l'a oublié, la
+ * troisième charge l'image en pleine taille — et c'est précisément le défaut
+ * qu'on répare ici.
+ *
+ * L'image porte tout, le texte se fait discret dessous, comme sur
+ * memoryline.fr. Le rapport 1020/1400 est celui des visuels de la boutique.
+ */
+import AfficheVide from "./AfficheVide.astro";
+import {
+  assetSrcset,
+  assetUrl,
+  formatPrice,
+  promotion,
+  varianteLaMoinsChere,
+  type Product,
+} from "../lib/api.ts";
+import { lien, t, type Langue } from "../i18n/utils.ts";
+
+interface Props {
+  affiche: Product;
+  langue: Langue;
+  /**
+   * Charger l'image tout de suite plutôt qu'à l'approche de l'écran.
+   *
+   * Réservé aux premières vignettes : ce sont elles que la visiteuse voit
+   * avant d'avoir bougé, et les différer retarde l'affichage de la page pour
+   * rien. Au-delà, la paresse reprend ses droits — cent quatre-vingts images
+   * chargées d'un coup ne serviraient personne.
+   */
+  prioritaire?: boolean;
+  /**
+   * La largeur que la vignette occupe VRAIMENT à l'écran, pour `sizes`.
+   *
+   * Seule la grille la connaît : ses colonnes, ses marges et ses gouttières.
+   * Une valeur fausse ne se voit pas tout de suite — le navigateur prend
+   * simplement une image trop petite et l'étire, et l'affiche paraît floue sur
+   * un grand écran. Par défaut, la grille du rayon (GRILLE_RAYON), que la page
+   * de résultats reprend à l'identique.
+   */
+  sizes?: string;
+}
+
+/**
+ * La largeur d'une vignette dans la grille du rayon et des résultats.
+ *
+ * Écrite d'après la grille elle-même (affiches.astro) : deux colonnes, trois
+ * dès 1024 px, dans un cadre de 1600 px au plus, 8 px de marge sur téléphone
+ * (24 puis 40 au-delà) et des gouttières de 4 puis 8 px. L'ancienne valeur
+ * annonçait 300 px au-dessus de 1536 px d'écran alors que la vignette en
+ * mesure 500 : l'image servie était deux fois trop petite.
+ */
+const GRILLE_RAYON =
+  "(min-width: 1600px) 502px, (min-width: 1024px) calc((100vw - 96px) / 3), (min-width: 640px) calc((100vw - 56px) / 2), calc((100vw - 20px) / 2)";
+
+const { affiche, langue, prioritaire = false, sizes = GRILLE_RAYON } = Astro.props;
+const tr = t(langue);
+
+/*
+ * Au stand, aucun montant.
+ *
+ * La vendeuse annonce ses prix de salon, qui ne sont pas ceux du site : un
+ * chiffre affiché sous la vignette la contredirait devant le client. La
+ * remise, elle, disparaît aussi — une étiquette « −20 % » sans prix ne veut
+ * plus rien dire.
+ */
+const sansPrix = Astro.locals.stand;
+
+/**
+ * Le nom sans son suffixe commercial.
+ *
+ * Les noms viennent de Shopify et finissent presque tous par « - Affiche
+ * personnalisée ». Répété sous cent quatre-vingts vignettes, il n'apprend
+ * rien et mange deux lignes de chaque cartouche.
+ */
+const nom = affiche.name.replace(/\s*[-–]\s*Affiche.*$/i, "");
+
+/**
+ * La promotion, s'il y en a une — celle de la variante la MOINS CHÈRE.
+ *
+ * C'est son prix que la vignette affiche : barrer l'ancien prix d'un autre
+ * format annoncerait une remise qui ne correspond à rien de ce qui est écrit
+ * juste à côté.
+ */
+const moinsChere = varianteLaMoinsChere(affiche.variants);
+const promo = moinsChere
+  ? promotion(moinsChere.priceCents, moinsChere.compareAtCents)
+  : null;
+
+/**
+ * Le prix montré : le plus bas, et « – » jusqu'au plus haut s'il varie.
+ *
+ * En promotion, la fourchette s'efface au profit du seul prix soldé. « 23 € –
+ * 29 € » suivi d'un « 29 € » barré se lit deux fois : le 29 € de la fourchette
+ * est le prix du grand format, celui qui est barré était celui du petit. Une
+ * vignette n'a pas la place d'expliquer la différence — la fiche, elle, montre
+ * les deux formats et leurs deux prix.
+ */
+const tarifs = affiche.variants.map((v) => v.priceCents).filter((c) => c > 0);
+const mini = tarifs.length ? Math.min(...tarifs) : affiche.basePriceCents;
+const maxi = tarifs.length ? Math.max(...tarifs) : affiche.basePriceCents;
+const prix =
+  promo || mini === maxi
+    ? formatPrice(mini)
+    : `${formatPrice(mini)} – ${formatPrice(maxi)}`;
+/*
+ * Le visuel, et les tailles dans lesquelles le navigateur peut le prendre.
+ *
+ * Les vignettes ont grandi — trois colonnes au lieu de quatre et des
+ * gouttières resserrées, soit environ 450 px de large sur un écran de 1440, et
+ * le double de pixels réels sur un écran à haute densité. L'ancien jeu
+ * s'arrêtait à 600 px et `sizes` annonçait 300 : le navigateur choisissait
+ * donc une image de 400 px qu'il agrandissait, et l'affiche paraissait molle.
+ * Le navigateur prend, parmi celles proposées, la plus petite qui couvre la
+ * largeur annoncée par `sizes`.
+ *
+ * 900 et 1400 existent déjà côté API (`/assets/:fichier?l=`) : il n'y avait
+ * qu'à les proposer.
+ */
+const image = assetUrl(affiche.image, 600);
+const imageJeu = assetSrcset(affiche.image, [400, 600, 900, 1400]);
+---
+
+<li class="group ml-apparition">
+  <a href={lien(langue, `/affiches/${affiche.slug}`)} class="block">
+    <div
+      class="relative flex items-center justify-center overflow-hidden bg-paper-deep"
+      style="aspect-ratio:1020/1400"
+    >
+      {
+        image ? (
+          <img
+            src={image}
+            srcset={imageJeu}
+            sizes={sizes}
+            alt={nom}
+            width="1020"
+            height="1400"
+            loading={prioritaire ? "eager" : "lazy"}
+            class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+          />
+        ) : (
+          <AfficheVide nom={nom} />
+        )
+      }
+      {
+        /* L'étiquette de remise sur l'image, pas sous le prix : c'est ce
+           qu'on repère en balayant une grille des yeux. */
+        promo &&
+          !sansPrix && (
+            <span class="absolute left-0 top-0 bg-terracotta px-2.5 py-1 text-[13px] font-semibold text-paper">
+              −{promo.pourcent} %
+            </span>
+          )
+      }
+    </div>
+    {/* Le nom, plus petit et un peu plus gras — comme sur memoryline.fr, où
+        il fait 12 à 13 px. À 17 px et en poids normal, il se lisait comme
+        un titre sous chaque image et tirait l'œil loin des affiches.
+
+        Le texte est rentré de 8 px : les gouttières ne font plus que 4 à
+        8 px, et sans ce retrait le nom d'une colonne venait toucher celui de
+        la voisine. Le prix garde une taille de lecture, un cran au-dessus du
+        nom : c'est la ligne qu'on vient chercher. */}
+    <div class="px-2 pt-2.5 sm:pt-3">
+      <h2 class="ml-vignette-nom text-[13px] leading-snug group-hover:underline underline-offset-4 lg:text-[14px]">
+        {nom}
+      </h2>
+      {
+        sansPrix ? null : promo ? (
+          <p class="mt-1 flex flex-wrap items-baseline gap-2 text-[14px] sm:text-[15px]">
+            <span class="text-terracotta-deep">{prix}</span>
+            <s class="text-ink/45">
+              <span class="sr-only">{tr("promo.ancien_prix")} </span>
+              {formatPrice(promo.avantCents)}
+            </s>
+          </p>
+        ) : (
+          <p class="mt-1 text-[14px] text-ink-soft sm:text-[15px]">{prix}</p>
+        )
+      }
+    </div>
+  </a>
+</li>

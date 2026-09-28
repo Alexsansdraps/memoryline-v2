@@ -1,18 +1,80 @@
 ---
+/**
+ * Le tunnel de commande. Un compte est nécessaire pour l'atteindre.
+ *
+ * Commander en tant qu'invitée créait une fiche cliente par achat : la même
+ * personne finissait éparpillée en autant de fiches que de commandes, sans
+ * historique, sans carnet d'adresses, et sans moyen de retrouver ce qu'elle
+ * avait déjà acheté. On demande donc le compte AVANT de valider le panier.
+ *
+ * La redirection emporte l'adresse de retour : après la connexion ou la
+ * création du compte, on revient ici, panier intact. Sans cela il faudrait
+ * retrouver son panier tout seul, et beaucoup abandonneraient là.
+ *
+ * Le compte et le carnet d'adresses sont lus ici, côté serveur, et passés au
+ * tunnel : il n'a plus qu'à les afficher, et la cliente retrouve son nom et
+ * son adresse déjà remplis.
+ */
 import Base from "../../layouts/Base.astro";
 import CheckoutIsland from "../../islands/CheckoutIsland.tsx";
-import { cheminsLangues, lien, t, type Langue } from "../../i18n/utils.ts";
+import { lien, t, type Langue } from "../../i18n/utils.ts";
+import {
+  adresses as lireAdresses,
+  moi,
+  rediriger,
+  type Adresse,
+} from "../../lib/compte.ts";
+import { estLangue, langueDepuisParam } from "../../i18n/utils.ts";
 
-export const getStaticPaths = cheminsLangues;
+/** Rendu à la demande : la page dépend de qui est connectée. */
+export const prerender = false;
 
-const { langue } = Astro.props as { langue: Langue };
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
 const tr = t(langue);
+
+const ici = lien(langue, "/commande");
+
+/*
+ * Au stand, ce tunnel n'existe pas.
+ *
+ * Le client paie sur place : ni compte, ni adresse, ni carte bancaire. Sa
+ * dernière étape est le récapitulatif du panier, où il laisse son nom et son
+ * adresse e-mail (CartIsland + CommandeStand). Une tablette qui arrive
+ * quand même ici — un lien gardé, un retour arrière — y est renvoyée, plutôt
+ * que de tomber sur un écran de connexion puis sur un paiement en ligne.
+ *
+ * Il y avait auparavant ICI un second formulaire de stand, en plus de celui du
+ * panier : deux dernières étapes pour un même parcours, dont une que le
+ * panier sans prix ne permettait même plus d'atteindre.
+ */
+if (Astro.locals.stand) return Astro.redirect(lien(langue, "/panier"), 302);
+
+const session = await moi(Astro);
+if (!session.ok)
+  return rediriger(
+    Astro,
+    `${lien(langue, "/compte/connexion")}?retour=${encodeURIComponent(ici)}`,
+    302,
+  );
+
+const client = session.donnees!;
+// Le carnet est un confort : s'il ne répond pas, le tunnel s'ouvre quand même
+// avec des champs vides plutôt que de refuser la commande.
+let carnet: Adresse[] = [];
+try {
+  const r = await lireAdresses(Astro);
+  if (r.ok && Array.isArray(r.donnees)) carnet = r.donnees;
+} catch {
+  carnet = [];
+}
 ---
 
 <Base
   langue={langue}
   title={`${tr("commande.titre")} — Memory Line`}
-  path={lien(langue, "/commande")}
+  path={ici}
   noindex={true}
 >
   <section class="mx-auto max-w-[1200px] px-4 sm:px-6 pt-12 pb-16">
@@ -26,6 +88,28 @@ const tr = t(langue);
       {tr("commande.titre")}
     </h1>
 
-    <CheckoutIsland client:only="solid-js" langue={langue} />
+    <CheckoutIsland
+      client:only="solid-js"
+      langue={langue}
+      compte={{
+        nom: client.name ?? "",
+        prenom: client.firstName ?? undefined,
+        nomFamille: client.lastName ?? undefined,
+        email: client.email,
+        telephone: client.phone ?? "",
+      }}
+      carnet={carnet.map((a) => ({
+        id: a.id,
+        label: a.label,
+        name: a.name,
+        line1: a.line1,
+        line2: a.line2,
+        postalCode: a.postalCode,
+        city: a.city,
+        country: a.country,
+        phone: a.phone,
+        parDefaut: a.isDefaultShipping,
+      }))}
+    />
   </section>
 </Base>

@@ -1,37 +1,208 @@
 ---
+/**
+ * Contenu du site — les textes de la vitrine, dans les cinq langues.
+ *
+ * Trois principes, et ils expliquent tout le reste de l'écran.
+ *
+ * 1. LE FRANÇAIS EST LA RÉFÉRENCE. Une langue qu'on n'a pas traduite retombe
+ *    sur le français, jamais sur du vide. C'est pour cela que les champs des
+ *    autres langues affichent le texte français en filigrane : on voit ce
+ *    qu'on est en train de traduire, et une case laissée blanche est un choix
+ *    lisible, pas un oubli invisible.
+ *
+ * 2. LA FORME NE SE TRADUIT PAS. Une image, un lien, un interrupteur, un
+ *    nombre, une collection valent pour les cinq langues. Le jour où
+ *    l'espagnol peut pointer une autre image, chaque langue devient une page
+ *    indépendante que personne ne tient plus à jour.
+ *
+ * 3. ON NE CHANGE PAS DE PAGE POUR CHANGER DE LANGUE. Les cinq versions sont
+ *    déjà à l'écran ; les onglets ne font que les montrer. Un onglet qui
+ *    rechargerait la page perdrait la saisie en cours — c'est le défaut de
+ *    l'écran des pages libres, qu'on ne reproduit pas ici.
+ */
 import Admin from "../layouts/Admin.astro";
-import { adminApi } from "../lib/api.ts";
+import { adminApi, type CollectionBo } from "../lib/api.ts";
+import { apiUrl } from "../lib/url.ts";
 
 const api = adminApi(Astro.request);
+
+/** Les langues du site. Le français en tête : c'est la référence. */
+const LANGUES = [
+  { code: "fr", nom: "Français" },
+  { code: "en", nom: "English" },
+  { code: "de", nom: "Deutsch" },
+  { code: "it", nom: "Italiano" },
+  { code: "es", nom: "Español" },
+] as const;
+
 let flash: string | null = null;
+let flashErreur = false;
+
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   try {
-    // Chaque champ du formulaire est une clé de réglage. Les cases à cocher
-    // envoient deux valeurs ("off" caché puis "on" si cochée) : on ne garde
-    // que la DERNIÈRE, qui reflète l'état de la case.
+    /*
+     * Le nom d'un champ porte sa clé et, pour un texte traduisible, sa langue
+     * après une arobase : « home.encart.title@de ».
+     *
+     * Les cases à cocher envoient deux valeurs — un « off » caché, puis « on »
+     * si elles sont cochées. On ne garde que la dernière, qui reflète l'état
+     * réel de la case.
+     */
     const valeurs = new Map<string, string>();
-    for (const [key, value] of f.entries()) valeurs.set(key, String(value));
-    for (const [key, value] of valeurs) await api.setSetting(key, value);
-    flash = "Contenu enregistré.";
+    for (const [nom, value] of f.entries()) valeurs.set(nom, String(value));
+
+    let ecrits = 0;
+    for (const [nom, value] of valeurs) {
+      const [cle, langue] = nom.split("@");
+      if (!cle) continue;
+      await api.setSetting(cle, value, langue || undefined);
+      ecrits++;
+    }
+    flash = `Contenu enregistré (${ecrits} champ${ecrits > 1 ? "s" : ""}).`;
   } catch (e) {
     flash = "Erreur : " + String(e);
+    flashErreur = true;
   }
 }
 
-let settings: Record<string, unknown> = {};
+/**
+ * Les réglages, LIGNES ENTIÈRES : on a besoin des cinq langues, pas
+ * seulement de celle qu'on servirait au visiteur.
+ */
+let lignes: { key: string; value: unknown }[] = [];
+let erreur: string | null = null;
 try {
-  settings = await api.settings();
-} catch {}
+  lignes = await api.settingsLignes();
+} catch (e) {
+  erreur = String(e);
+}
+const parCle = new Map(lignes.map((l) => [l.key, l.value]));
 
 /**
- * Contenu editable, regroupe par section de la page d'accueil.
+ * Les collections, pour le choix de ce que montre la vitrine de l'accueil.
  *
- * `type: "switch"` = section affichee ou masquee sur le site. Une valeur vide
- * vaut « affichee » : rien ne disparait tant qu'on n'a pas explicitement
- * decoche.
+ * Toutes, même vides ou désactivées : ce sont celles de l'écran
+ * « Collections », et une collection qu'on prépare doit pouvoir se choisir
+ * d'avance. La liste le signale simplement, parce que le site, lui, montre
+ * alors les plus récentes à la place.
  */
-const SECTIONS = [
+let collections: CollectionBo[] = [];
+let collectionsIllisibles = false;
+try {
+  collections = (await api.collections()).collections;
+} catch {
+  collectionsIllisibles = true;
+}
+
+/**
+ * La valeur d'une clé dans une langue.
+ *
+ * Une valeur restée en chaîne est du français — c'est la forme d'origine,
+ * d'avant que les réglages se traduisent, et elle reste valable.
+ */
+function valeur(cle: string, langue = "fr"): string {
+  const brut = parCle.get(cle);
+  if (brut === undefined || brut === null) return "";
+  if (typeof brut === "string") return langue === "fr" ? brut : "";
+  if (typeof brut === "object" && !Array.isArray(brut)) {
+    const v = (brut as Record<string, unknown>)[langue];
+    return typeof v === "string" ? v : "";
+  }
+  return String(brut);
+}
+
+/** Une section est affichée sauf si elle vaut explicitement « off ». */
+const estAffichee = (cle: string) =>
+  !["off", "non", "no", "0", "false"].includes(
+    valeur(cle).trim().toLowerCase(),
+  );
+
+/** Combien de langues sont traduites, sur les quatre autres que le français. */
+function avancement(cles: string[]): { faites: number; total: number } {
+  const aTraduire = LANGUES.filter((l) => l.code !== "fr");
+  let faites = 0;
+  for (const l of aTraduire)
+    if (cles.some((c) => valeur(c, l.code).trim())) faites++;
+  return { faites, total: aTraduire.length };
+}
+
+type Champ = {
+  key: string;
+  label: string;
+  type: "switch" | "texte" | "long" | "nombre" | "image" | "lien" | "collection";
+  aide?: string;
+};
+
+/**
+ * Le choix d'une collection, prêt à afficher : les options, et ce qu'il faut
+ * en dire quand le site ne peut pas suivre ce choix.
+ *
+ * Une collection choisie puis supprimée n'est plus dans la liste : l'écran
+ * propose alors « Les plus récentes », ce que le site montre déjà, et le dit.
+ * Si la liste n'a pas pu être lue, en revanche, la valeur en place reste une
+ * option cochée — sans quoi enregistrer les textes effacerait ce choix sans
+ * que personne l'ait voulu.
+ */
+function choixCollection(cle: string) {
+  const choisie = valeur(cle).trim();
+  const options = collections.map((col) => {
+    const etats = [
+      col.produits === 0
+        ? "vide"
+        : `${col.produits} produit${col.produits > 1 ? "s" : ""}`,
+      ...(col.active ? [] : ["désactivée"]),
+    ];
+    return { slug: col.slug, libelle: `${col.name} (${etats.join(", ")})` };
+  });
+  const trouvee = collections.find((col) => col.slug === choisie);
+  if (choisie && !trouvee && collectionsIllisibles)
+    options.push({ slug: choisie, libelle: `« ${choisie} » (choix actuel)` });
+
+  let alerte: string | null = null;
+  if (collectionsIllisibles)
+    alerte =
+      "La liste des collections n'a pas pu être lue. Le choix actuel est conservé si vous enregistrez.";
+  else if (choisie && !trouvee)
+    alerte = `La collection choisie auparavant (« ${choisie} ») n'existe plus : le site montre les plus récentes à sa place.`;
+  else if (trouvee && (!trouvee.active || trouvee.produits === 0))
+    alerte =
+      "Cette collection est désactivée ou vide : le site montre les plus récentes à sa place, jusqu'à ce qu'elle contienne des affiches en vente.";
+
+  const selection = options.some((o) => o.slug === choisie) ? choisie : "";
+  return { options, selection, alerte };
+}
+
+const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
+  {
+    titre: "Accueil — encart en tête de page",
+    aide:
+      "Le premier bloc de la page d'accueil, au-dessus des affiches. Il ne " +
+      "s'affiche QUE si une image lui est donnée : c'est elle qui fait son " +
+      "intérêt, et un encart sans visuel ferait un trou en haut de la page. " +
+      "Pour une annonce en texte seul, utilisez plutôt le bandeau.",
+    champs: [
+      { key: "home.encart.visible", label: "Afficher cet encart", type: "switch" },
+      { key: "home.encart.image", label: "Image", type: "image" },
+      {
+        key: "home.encart.alt",
+        label: "Description de l'image",
+        type: "texte",
+        aide:
+          "Lue à voix haute par les lecteurs d'écran et affichée si l'image " +
+          "ne charge pas. Décrivez ce qu'on y voit.",
+      },
+      { key: "home.encart.title", label: "Titre", type: "texte" },
+      { key: "home.encart.text", label: "Texte", type: "long" },
+      {
+        key: "home.encart.cta",
+        label: "Libellé du bouton",
+        type: "texte",
+        aide: "Laissez vide pour ne pas afficher de bouton.",
+      },
+      { key: "home.encart.link", label: "Lien du bouton", type: "lien" },
+    ],
+  },
   {
     titre: "Accueil — les affiches",
     aide: "La grille d'affiches mise en avant sur l'accueil.",
@@ -40,19 +211,41 @@ const SECTIONS = [
       { key: "home.vitrine.title", label: "Titre de la section", type: "texte" },
       {
         key: "home.vitrine.subtitle",
-        label:
-          "Texte d'introduction — une ligne par ligne ; commencez par « - » pour une puce",
+        label: "Texte d'introduction",
         type: "long",
+        aide: "Une ligne par ligne ; commencez par « - » pour une puce.",
+      },
+      {
+        key: "home.vitrine.collection",
+        label: "Collection affichée dans la vitrine",
+        type: "collection",
+        aide:
+          "« Les plus récentes » montre les dernières affiches créées. Une " +
+          "collection montre ses affiches dans l'ordre que vous leur avez " +
+          "donné dans Produits › Collections. Le nombre d'affiches ci-dessous " +
+          "s'applique dans les deux cas.",
       },
       { key: "home.vitrine.count", label: "Nombre d'affiches (1 à 24)", type: "nombre" },
     ],
   },
   {
+    titre: "Accueil — l'affiche à partir d'une photo",
+    aide:
+      "Le bloc qui met en avant l'affiche générée à partir de la photo du " +
+      "client. Il ne s'affiche QUE si une image est renseignée.",
+    champs: [
+      { key: "home.ia.visible", label: "Afficher cette section", type: "switch" },
+      { key: "home.ia.image", label: "Image", type: "image" },
+      { key: "home.ia.title", label: "Titre", type: "texte" },
+      { key: "home.ia.text", label: "Texte", type: "long" },
+      { key: "home.ia.cta", label: "Libellé du bouton", type: "texte" },
+      { key: "home.ia.link", label: "Lien du bouton", type: "lien" },
+    ],
+  },
+  {
     titre: "Accueil — lettre d'information",
     aide: "Le bloc d'inscription, tout en bas de la page d'accueil.",
-    champs: [
-      { key: "home.newsletter.title", label: "Intitulé", type: "texte" },
-    ],
+    champs: [{ key: "home.newsletter.title", label: "Intitulé", type: "texte" }],
   },
   {
     titre: "Pied de page",
@@ -61,22 +254,68 @@ const SECTIONS = [
   },
 ];
 
-/** Valeur enregistree, sinon chaine vide. */
-const valeur = (cle: string) =>
-  typeof settings[cle] === "string" ? (settings[cle] as string) : "";
+/**
+ * Un texte se traduit ; une image, un lien, un nombre, un interrupteur, une
+ * collection non.
+ */
+const traduisible = (t: Champ["type"]) => t === "texte" || t === "long";
 
-/** Une section est affichee sauf si elle vaut explicitement "off". */
-const estAffichee = (cle: string) =>
-  !["off", "non", "no", "0", "false"].includes(valeur(cle).trim().toLowerCase());
+const champsTraduisibles = SECTIONS.flatMap((s) =>
+  s.champs.filter((c) => traduisible(c.type)).map((c) => c.key),
+);
+const global = avancement(champsTraduisibles);
 ---
 
 <Admin title="Contenu du site">
-  {flash && <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">{flash}</p>}
-  <section class="bg-bo-surface border border-bo-border rounded-lg p-5 max-w-2xl">
+  {flash && (
+    <p
+      class={`mb-4 rounded border px-3 py-2 text-sm ${
+        flashErreur
+          ? "border-red-200 bg-red-50"
+          : "border-green-200 bg-green-50"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+  {erreur && (
+    <p class="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+      Réglages illisibles : {erreur}. Les champs ci-dessous sont vides, ne les
+      enregistrez pas — vous effaceriez les textes en place.
+    </p>
+  )}
+
+  <section class="bg-bo-surface border border-bo-border rounded-lg p-5 max-w-3xl">
     <p class="text-sm text-bo-muted mb-4">
       Modifiez les textes du site et choisissez les sections affichées, sans
-      toucher au code. Les changements sont pris en compte immédiatement.
+      toucher au code. Les changements sont visibles immédiatement.
     </p>
+
+    {/* Les onglets de langue. Ils ne rechargent RIEN : les cinq versions sont
+        déjà à l'écran, on ne fait que les montrer. Un onglet qui rechargerait
+        perdrait la saisie en cours. */}
+    <div class="mb-5 flex flex-wrap items-center gap-2 border-b border-bo-border pb-4">
+      {LANGUES.map((l) => (
+        <button
+          type="button"
+          data-langue={l.code}
+          class="js-onglet rounded-full border border-bo-border px-3 py-1 text-sm"
+        >
+          {l.nom}
+        </button>
+      ))}
+      <span class="ml-auto text-xs text-bo-muted">
+        {global.faites === global.total
+          ? "Toutes les langues sont traduites."
+          : `${global.faites} langue${global.faites > 1 ? "s" : ""} traduite${global.faites > 1 ? "s" : ""} sur ${global.total}`}
+      </span>
+    </div>
+
+    <p class="js-note-langue mb-4 hidden rounded border border-bo-border bg-bo-bg px-3 py-2 text-xs text-bo-muted">
+      Le texte français apparaît en filigrane. Une case laissée vide affichera
+      le français aux visiteurs de cette langue — jamais du vide.
+    </p>
+
     <form method="POST" class="space-y-6 text-sm">
       {SECTIONS.map((section) => (
         <fieldset class="rounded border border-bo-border p-4">
@@ -84,7 +323,7 @@ const estAffichee = (cle: string) =>
           {section.aide && (
             <p class="mb-3 text-xs text-bo-muted">{section.aide}</p>
           )}
-          <div class="space-y-3">
+          <div class="space-y-4">
             {section.champs.map((champ) =>
               champ.type === "switch" ? (
                 <label class="flex items-center gap-2">
@@ -98,6 +337,9 @@ const estAffichee = (cle: string) =>
                     checked={estAffichee(champ.key)}
                   />
                   <span>{champ.label}</span>
+                  <span class="text-xs text-bo-muted">
+                    (vaut pour les 5 langues)
+                  </span>
                 </label>
               ) : champ.type === "nombre" ? (
                 <label class="block">
@@ -111,22 +353,195 @@ const estAffichee = (cle: string) =>
                     class="mt-1 w-24 border border-bo-border rounded px-3 py-2"
                   />
                 </label>
-              ) : (
+              ) : champ.type === "collection" ? (
+                (() => {
+                  const choix = choixCollection(champ.key);
+                  return (
+                    <label class="block">
+                      <span class="text-bo-muted">{champ.label}</span>
+                      <span class="ml-2 text-xs text-bo-muted">
+                        (vaut pour les 5 langues)
+                      </span>
+                      <select
+                        name={champ.key}
+                        class="mt-1 block w-full max-w-md rounded border border-bo-border bg-white px-3 py-2"
+                      >
+                        <option value="" selected={choix.selection === ""}>
+                          Les plus récentes
+                        </option>
+                        {choix.options.map((o) => (
+                          <option
+                            value={o.slug}
+                            selected={o.slug === choix.selection}
+                          >
+                            {o.libelle}
+                          </option>
+                        ))}
+                      </select>
+                      {champ.aide && (
+                        <span class="mt-1 block text-xs text-bo-muted">
+                          {champ.aide}
+                        </span>
+                      )}
+                      {choix.alerte && (
+                        <span class="mt-1 block rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs">
+                          {choix.alerte}
+                        </span>
+                      )}
+                    </label>
+                  );
+                })()
+              ) : champ.type === "image" ? (
+                <div class="js-image" data-cle={champ.key}>
+                  <span class="text-bo-muted">{champ.label}</span>
+                  <span class="ml-2 text-xs text-bo-muted">
+                    (vaut pour les 5 langues)
+                  </span>
+                  <div class="mt-1 flex flex-wrap items-start gap-3">
+                    <img
+                      class="js-apercu h-24 w-24 rounded border border-bo-border bg-white object-contain"
+                      src={valeur(champ.key) ? apiUrl(valeur(champ.key)) : ""}
+                      alt=""
+                      style={valeur(champ.key) ? "" : "visibility:hidden"}
+                    />
+                    <div class="flex-1 min-w-[240px]">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        class="js-fichier block w-full text-xs"
+                      />
+                      <input
+                        type="text"
+                        name={champ.key}
+                        value={valeur(champ.key)}
+                        placeholder="/assets/…"
+                        class="js-url mt-2 w-full rounded border border-bo-border px-3 py-2 font-mono text-xs"
+                      />
+                      <p class="js-etat mt-1 text-xs text-bo-muted">
+                        Choisissez un fichier : il est envoyé tout de suite, et
+                        l'adresse se remplit seule. Enregistrez ensuite pour le
+                        publier.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : champ.type === "lien" ? (
                 <label class="block">
                   <span class="text-bo-muted">{champ.label}</span>
-                  <textarea
+                  <span class="ml-2 text-xs text-bo-muted">
+                    (vaut pour les 5 langues)
+                  </span>
+                  <input
+                    type="text"
                     name={champ.key}
-                    rows={champ.type === "long" ? 2 : 1}
-                    class="mt-1 w-full border border-bo-border rounded px-3 py-2"
-                    set:html={valeur(champ.key)}
+                    value={valeur(champ.key)}
+                    placeholder="/affiches ou https://…"
+                    class="mt-1 w-full rounded border border-bo-border px-3 py-2 font-mono text-xs"
                   />
+                  <span class="mt-1 block text-xs text-bo-muted">
+                    Une adresse interne (« /affiches ») reçoit d'elle-même le
+                    préfixe de la langue du visiteur.
+                  </span>
                 </label>
+              ) : (
+                <div class="block">
+                  <span class="text-bo-muted">{champ.label}</span>
+                  {(() => {
+                    const a = avancement([champ.key]);
+                    return (
+                      <span class="ml-2 text-xs text-bo-muted">
+                        {a.faites}/{a.total} traduit{a.faites > 1 ? "s" : ""}
+                      </span>
+                    );
+                  })()}
+                  {champ.aide && (
+                    <span class="mt-1 block text-xs text-bo-muted">
+                      {champ.aide}
+                    </span>
+                  )}
+                  {LANGUES.map((l) => (
+                    <textarea
+                      name={`${champ.key}@${l.code}`}
+                      data-langue={l.code}
+                      rows={champ.type === "long" ? 3 : 1}
+                      placeholder={
+                        l.code === "fr" ? "" : valeur(champ.key, "fr")
+                      }
+                      class="js-champ-langue mt-1 w-full rounded border border-bo-border px-3 py-2"
+                    >{valeur(champ.key, l.code)}</textarea>
+                  ))}
+                </div>
               ),
             )}
           </div>
         </fieldset>
       ))}
-      <button class="rounded bg-bo-accent text-white px-4 py-2 hover:opacity-90">Enregistrer</button>
+      <button class="rounded bg-bo-accent text-white px-4 py-2 hover:opacity-90">
+        Enregistrer
+      </button>
     </form>
   </section>
+
+  <script is:inline define:vars={{ API: apiUrl("") }}>
+    (function () {
+      /* --- Les onglets de langue ------------------------------------- */
+      const onglets = document.querySelectorAll(".js-onglet");
+      const champs = document.querySelectorAll(".js-champ-langue");
+      const note = document.querySelector(".js-note-langue");
+
+      function montrer(code) {
+        champs.forEach((c) => {
+          c.hidden = c.dataset.langue !== code;
+        });
+        onglets.forEach((o) => {
+          const actif = o.dataset.langue === code;
+          o.style.background = actif ? "#4f46e5" : "";
+          o.style.color = actif ? "#fff" : "";
+          o.style.borderColor = actif ? "#4f46e5" : "";
+          o.setAttribute("aria-pressed", actif ? "true" : "false");
+        });
+        if (note) note.hidden = code === "fr";
+      }
+      onglets.forEach((o) =>
+        o.addEventListener("click", () => montrer(o.dataset.langue)),
+      );
+      montrer("fr");
+
+      /* --- Le téléversement des images -------------------------------- */
+      document.querySelectorAll(".js-image").forEach((bloc) => {
+        const fichier = bloc.querySelector(".js-fichier");
+        const url = bloc.querySelector(".js-url");
+        const apercu = bloc.querySelector(".js-apercu");
+        const etat = bloc.querySelector(".js-etat");
+        if (!fichier) return;
+
+        fichier.addEventListener("change", async () => {
+          const f = fichier.files && fichier.files[0];
+          if (!f) return;
+          etat.textContent = "Envoi en cours…";
+          try {
+            const corps = new FormData();
+            corps.append("file", f);
+            // Pas d'en-tête Content-Type posée à la main : le navigateur doit
+            // écrire lui-même la frontière du multipart. `credentials` porte
+            // le cookie d'administration, sans quoi l'API refuse.
+            const res = await fetch(API + "/admin/uploads", {
+              method: "POST",
+              credentials: "include",
+              body: corps,
+            });
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            const data = await res.json();
+            url.value = data.url;
+            apercu.src = API + data.url;
+            apercu.style.visibility = "visible";
+            etat.textContent =
+              "Image envoyée. Enregistrez pour la publier sur le site.";
+          } catch (e) {
+            etat.textContent = "Envoi impossible : " + e.message;
+          }
+        });
+      });
+    })();
+  </script>
 </Admin>

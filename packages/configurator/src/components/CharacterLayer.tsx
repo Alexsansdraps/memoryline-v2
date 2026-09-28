@@ -3,14 +3,15 @@ import { For, createMemo, createUniqueId } from "solid-js";
 import {
   appliquerCalage,
   calagePour,
-  BASE_COLOR_SCOPE,
-  colorsForScope,
-  hideSlotGroups,
+  couleursDeLaBase,
+  couleursDeLaPiece,
+  empilerPersonnage,
   scopeSvgStyles,
 } from "@memoryline/types";
 import {
   NONE_ASSET,
   SLOT_ZORDER,
+  dessinPourLEcran,
   findVariant,
   recolorForCharacter,
   type CharacterDTO,
@@ -20,22 +21,33 @@ import {
 } from "../store";
 
 /**
- * Force `preserveAspectRatio="xMidYMax meet"` (centré + ancré EN BAS) et fait
- * remplir le conteneur (width/height 100%, display block) sur la balise <svg>
- * racine. Toutes les couches partagent le cadre 500×1000 : empilées alignées,
- * elles composent le personnage (cf. RENDU-SPEC.md).
+ * Fait remplir le conteneur (width/height 100%, display block) à la balise
+ * <svg> racine. Toutes les couches d'un humain partagent le cadre 500×1000 :
+ * empilées alignées, elles composent le personnage (cf. RENDU-SPEC.md).
+ *
+ * L'ALIGNEMENT EST CELUI DU FICHIER, et c'est une correction. Cette fonction
+ * forçait `xMidYMax` — le dessin collé au BAS de son cadre. Pour un dessin au
+ * format du cadre (1:2), l'ancrage ne change rien : il remplit tout. Mais cinq
+ * personnages ne le sont pas — les chiens, dessinés en 2:3 — et eux se
+ * posaient 12,5 % plus bas que partout ailleurs :
+ *
+ *   - l'écran de calage du back-office les centre dans leur cadre ;
+ *   - le fichier d'impression aussi, parce que le SVG le demande lui-même
+ *     (`xMidYMid meet`) et que sharp le respecte ;
+ *   - seule la boutique les collait en bas.
+ *
+ * Résultat : un chien calé au pixel près au back-office descendait sur la
+ * boutique, et la cliente le voyait plus bas que là où il serait IMPRIMÉ —
+ * près de deux centimètres sur une affiche A3. En respectant l'alignement du
+ * fichier, les trois rendus disent enfin la même chose.
+ *
+ * Les chiens n'ont aucune couche de vêtement à aligner (variantes vides) : ce
+ * que l'ancrage forcé protégeait n'existe pas pour eux.
  */
 function fillSvg(rawSvg: string): string {
   if (!rawSvg) return rawSvg;
   let out = rawSvg.replace(/<svg\b([^>]*)>/, (_m, attrs: string) => {
     let a = attrs;
-    // preserveAspectRatio = bas-centré
-    a = /\spreserveAspectRatio\s*=/.test(a)
-      ? a.replace(
-          /(\spreserveAspectRatio\s*=\s*")[^"]*(")/,
-          `$1xMidYMax meet$2`,
-        )
-      : `${a} preserveAspectRatio="xMidYMax meet"`;
     // width/height/style = 100% (le viewBox d'origine est conservé)
     a = a
       .replace(/\swidth\s*=\s*"[^"]*"/g, "")
@@ -48,16 +60,24 @@ function fillSvg(rawSvg: string): string {
 }
 
 /**
- * Rend un personnage composé : la base pré-composée + chaque variante choisie
- * empilée par-dessus (bottoms -> clothes -> hair -> accessory), toutes au même
- * cadre 500×1000, recoloriées avec les couleurs du perso. Positionné en % par
- * le parent (indépendant de la résolution).
+ * Rend un personnage composé : sa base et les pièces choisies, toutes au même
+ * cadre 500×1000, recoloriées avec les couleurs du perso, dans l'ordre corps →
+ * pantalon → haut → cheveux → accessoires. La base est découpée en tranches
+ * intercalées entre les pièces (cf. empilerPersonnage) : un t-shirt choisi
+ * passe SOUS les cheveux d'origine. Positionné en % par le parent.
  */
 export function CharacterStack(props: {
   character: WorkingCharacter;
   base: CharacterDTO | undefined;
   slots: SlotVariants | undefined;
   cache: SvgCache;
+  /**
+   * Racine de l'API, pour aller chercher l'image recolorée d'un personnage
+   * dessiné en pixels (cf. dessinPourLEcran). Absente, ces personnages
+   * s'affichent dans les couleurs de leur fichier — jamais faux, juste pas
+   * recoloré.
+   */
+  assetBaseUrl?: string;
 }) {
   // Scope CSS unique par instance : les <style> des SVG inlinés sont globaux
   // au document, sans scoping la dernière couche écrase les couleurs des
@@ -72,61 +92,86 @@ export function CharacterStack(props: {
     // base et slots se recolorent mutuellement (cf. colorsForScope).
     const colors = props.character.colors;
 
-    // Slots dont la couche de la base pré-composée doit être masquée : ceux
-    // remplacés par une variante choisie (sinon la tenue d'origine reste
-    // visible sous la variante — doublons) ET ceux explicitement mis à
-    // « aucun » (NONE_ASSET : perso sans casquette / sans coupe).
-    const replacedSlots = SLOT_ZORDER.filter(
-      (slot) =>
-        props.character.assets[slot] === NONE_ASSET ||
-        findVariant(props.slots?.[slot] ?? [], props.character.assets[slot]) !==
-          undefined,
+    const slots = props.slots;
+    const choisie = (slot: (typeof SLOT_ZORDER)[number]) =>
+      findVariant(slots?.[slot] ?? [], props.character.assets[slot]);
+    // Les emplacements qui portent une pièce choisie, et ceux mis à « aucun »
+    // (sans casquette, sans coupe) : leur groupe d'origine disparaît de la
+    // base, et seules les premières prennent sa place.
+    const pieces = SLOT_ZORDER.filter((slot) => choisie(slot) !== undefined);
+    const retires = SLOT_ZORDER.filter(
+      (slot) => props.character.assets[slot] === NONE_ASSET,
     );
 
-    // Couche de base (SVG pré-composé complet).
     const base = props.base;
-    if (base) {
-      const raw = props.cache.raw[base.baseSvgUrl];
-      if (raw !== undefined && raw !== "") {
-        out.push({
-          key: "base",
-          svg: fillSvg(
-            scopeSvgStyles(
-              hideSlotGroups(
-                recolorForCharacter(raw, colorsForScope(colors, BASE_COLOR_SCOPE)),
-                replacedSlots,
-              ),
-              `${uid}-base`,
-            ),
-          ),
-        });
-      }
-    }
+    // Couleurs de la base : les défauts du back-office, puis celles du
+    // client — la même fonction que le fichier d'impression.
+    const couleursBase = couleursDeLaBase(colors, base);
 
-    // Couches de variantes choisies (par-dessus la base).
-    const slots = props.slots;
-    if (slots) {
-      for (const slot of SLOT_ZORDER) {
-        const variant = findVariant(slots[slot], props.character.assets[slot]);
-        if (!variant) continue;
-        const raw = props.cache.raw[variant.svgUrl];
-        if (raw === undefined || raw === "") continue;
+    const fichier = base ? props.cache.raw[base.baseSvgUrl] : undefined;
+    // Personnage dessiné en PIXELS : son image devient celle que le serveur a
+    // recolorée. Remplacée AVANT le découpage en tranches, pour que la suite
+    // ne voie qu'un dessin ordinaire — c'est aussi l'ordre que suit le
+    // fichier d'impression.
+    const brute =
+      fichier && base
+        ? dessinPourLEcran(
+            fichier,
+            couleursBase,
+            base.baseCouleursImage,
+            `/characters/${base.id}`,
+            props.assetBaseUrl,
+          )
+        : fichier;
+    // Base pas encore chargée (ou illisible) : les pièces seules, dans l'ordre.
+    const etages = brute
+      ? empilerPersonnage(brute, pieces, retires)
+      : pieces.map((piece) => ({ piece }));
+
+    etages.forEach((etage, i) => {
+      if ("base" in etage) {
         out.push({
-          key: `${slot}:${variant.id}`,
+          key: `base:${i}`,
           svg: fillSvg(
             scopeSvgStyles(
-              // Calage de la pièce sur ce personnage : même fonction que
-              // pour l'impression, l'aperçu ne peut donc pas mentir.
-              appliquerCalage(
-                recolorForCharacter(raw, colorsForScope(colors, slot)),
-                calagePour(props.base?.slotAdjust, slot, variant.position),
-              ),
-              `${uid}-${slot}-${variant.id}`,
+              recolorForCharacter(etage.base, couleursBase),
+              // Une portée par tranche : chacune porte son propre <style>.
+              `${uid}-base-${i}`,
             ),
           ),
         });
+        return;
       }
-    }
+      const slot = etage.piece as (typeof SLOT_ZORDER)[number];
+      const variant = choisie(slot);
+      if (!variant) return;
+      const fichierPiece = props.cache.raw[variant.svgUrl];
+      if (fichierPiece === undefined || fichierPiece === "") return;
+      const couleursPiece = couleursDeLaPiece(colors, slot, variant);
+      // Une pièce dessinée en pixels se recolore comme un personnage.
+      const raw = dessinPourLEcran(
+        fichierPiece,
+        couleursPiece,
+        variant.couleursImage,
+        `/pieces/${variant.id}`,
+        props.assetBaseUrl,
+      );
+      out.push({
+        key: `${slot}:${variant.id}`,
+        svg: fillSvg(
+          scopeSvgStyles(
+            // Calage de la pièce sur ce personnage : même fonction que
+            // pour l'impression, l'aperçu ne peut donc pas mentir. Idem pour
+            // les couleurs : les zones non proposées gardent leur défaut.
+            appliquerCalage(
+              recolorForCharacter(raw, couleursPiece),
+              calagePour(props.base?.slotAdjust, slot, variant.position),
+            ),
+            `${uid}-${slot}-${variant.id}`,
+          ),
+        ),
+      });
+    });
     return out;
   });
 

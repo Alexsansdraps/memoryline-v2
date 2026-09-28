@@ -1,0 +1,766 @@
+---
+/**
+ * Le menu du site : ce que les clients voient tout en haut de la boutique.
+ *
+ * Une page créée dans « Pages du site » n'existe pour personne tant qu'aucun
+ * lien n'y mène. Cet écran est la deuxième moitié du geste : créer la page
+ * « Magnets », puis poser « Magnets » dans le menu.
+ *
+ * Le menu tient sur deux niveaux, pas trois : une entrée, et éventuellement
+ * des sous-liens dessous. C'est ce qu'un bandeau de boutique sait afficher, et
+ * un troisième niveau ne se déplierait nulle part.
+ *
+ * L'enregistrement remplace l'arbre entier en une fois : ce qui a été retiré
+ * ici quitte le site — et rejoint « Liens retirés du menu », en bas de l'écran,
+ * d'où il se remet en place. Rien ne s'efface.
+ *
+ * Le menu se saisit dans les cinq langues, mais UNE À LA FOIS : les boutons du
+ * haut choisissent la langue affichée, et chaque ligne montre alors son nom
+ * français à côté du champ à remplir. Un champ laissé vide n'est pas un trou :
+ * le site affiche le français à sa place. Les quatre langues sont rendues dès
+ * le départ et simplement masquées — c'est ce qui permet à un ajout de ligne,
+ * fait par recopie du patron, d'emporter ses champs de traduction avec lui.
+ */
+import { url } from "../lib/url.ts";
+import Admin from "../layouts/Admin.astro";
+import { adminApi, type LienArchive, type MenuCms } from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+/**
+ * Ce qu'une adresse de menu peut viser : une page du site, une autre adresse
+ * sur internet, ou une adresse électronique.
+ */
+const LIEN_VALIDE = /^(\/\S*|https?:\/\/\S+|mailto:\S+)$/;
+
+/**
+ * Les quatre langues qui se traduisent. Le français n'en fait pas partie :
+ * c'est lui qu'on traduit, il vit dans le champ « Nom dans le menu ».
+ */
+const LANGUES_TRADUISIBLES = [
+  { code: "en", nom: "Anglais" },
+  { code: "de", nom: "Allemand" },
+  { code: "it", nom: "Italien" },
+  { code: "es", nom: "Espagnol" },
+] as const;
+
+/** Les libellés traduits d'une entrée, par code de langue. */
+type Traductions = Record<string, { label?: string }>;
+
+/** Une entrée telle qu'elle s'affiche : tout en texte, rien de jugé. */
+interface EntreeSouple {
+  id: string;
+  label: string;
+  href: string;
+  visible: boolean;
+  traductions: Traductions | null;
+  enfants: EntreeSouple[];
+}
+
+function entreeVide(): EntreeSouple {
+  return { id: "", label: "", href: "", visible: true, traductions: null, enfants: [] };
+}
+
+/** Le libellé déjà traduit dans cette langue, ou rien. */
+function libelleTraduit(entree: EntreeSouple, code: string): string {
+  const valeur = entree.traductions?.[code]?.label;
+  return typeof valeur === "string" ? valeur : "";
+}
+
+function chaine(objet: Record<string, unknown>, cle: string): string {
+  const v = objet[cle];
+  if (typeof v === "string") return v;
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  return "";
+}
+
+/** Lecture tolérante, pour REMPLIR l'écran : la base et le champ caché y passent. */
+function entreesSouples(brut: unknown, profondeur = 0): EntreeSouple[] {
+  if (!Array.isArray(brut)) return [];
+  const sortie: EntreeSouple[] = [];
+  for (const item of brut) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const entree = entreeVide();
+    entree.id = chaine(o, "id");
+    entree.label = chaine(o, "label");
+    entree.href = chaine(o, "href");
+    // Une entrée sans réponse sur « visible » est montrée : rien ne doit
+    // disparaître du site sans que personne ne l'ait décoché.
+    entree.visible = o.visible !== false;
+    entree.traductions =
+      o.translations && typeof o.translations === "object"
+        ? (o.translations as Traductions)
+        : null;
+    // Un seul niveau de sous-liens : au-delà, le site n'aurait pas où les mettre.
+    entree.enfants = profondeur === 0 ? entreesSouples(o.enfants, 1) : [];
+    sortie.push(entree);
+  }
+  return sortie;
+}
+
+/** Une entrée vérifiée, dans la forme que l'API attend. */
+function verifierEntree(
+  e: EntreeSouple,
+  ou: string,
+): Record<string, unknown> {
+  const label = e.label.trim();
+  const href = e.href.trim();
+  if (!label)
+    throw new Error(
+      `${ou} : écrivez ce qui doit être marqué dans le menu, par exemple « Magnets ».`,
+    );
+  if (!href)
+    throw new Error(
+      `${ou} (« ${label} ») : indiquez où ce lien emmène, par exemple /magnets.`,
+    );
+  if (!LIEN_VALIDE.test(href))
+    throw new Error(
+      `${ou} (« ${label} ») : « ${href} » ne mène nulle part. Commencez par ` +
+        `une barre oblique pour une page du site, par exemple /magnets, ou ` +
+        `par https:// pour un autre site.`,
+    );
+  const sortie: Record<string, unknown> = { label, href, visible: e.visible };
+  const identifiant = Number(e.id);
+  if (e.id && Number.isFinite(identifiant) && identifiant > 0)
+    sortie.id = identifiant;
+  // Toujours envoyé, même vide : c'est ainsi qu'un libellé traduit effacé à
+  // l'écran disparaît vraiment. Omettre la clé le laisserait en place.
+  sortie.translations = e.traductions ?? null;
+  return sortie;
+}
+
+function verifierArbre(entrees: EntreeSouple[]): Record<string, unknown>[] {
+  return entrees.map((e, i) => {
+    const parent = verifierEntree(e, `Entrée n°${i + 1}`);
+    parent.enfants = e.enfants.map((enfant, j) =>
+      verifierEntree(
+        enfant,
+        `Sous-lien n°${j + 1} de « ${e.label.trim() || "l'entrée n°" + (i + 1)} »`,
+      ),
+    );
+    return parent;
+  });
+}
+
+let flash: string | null = null;
+let flashErreur = false;
+let saisie: EntreeSouple[] | null = null;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+
+  // Remettre un lien dans le menu : un geste à part, qui ne passe pas par
+  // l'arbre affiché — celui-ci ne montre que ce qui est DANS le menu, et le
+  // lien à restaurer n'y est justement plus.
+  if (String(f.get("_action") ?? "") === "restaurer") {
+    try {
+      await api.restaurerLienMenu(Number(f.get("id")));
+      flash =
+        "Lien remis dans le menu. Vérifiez sa place avec les flèches, puis enregistrez.";
+    } catch (e) {
+      flash = String(e).replace(/^Error:\s*/, "");
+      flashErreur = true;
+    }
+  } else {
+    const brut = String(f.get("entrees") ?? "");
+    let souples: EntreeSouple[] = [];
+    let lectureCassee = false;
+    try {
+      souples = entreesSouples(JSON.parse(brut || "[]"));
+    } catch {
+      lectureCassee = true;
+    }
+    try {
+      if (lectureCassee)
+        throw new Error(
+          "Le menu n'a pas pu être relu par le navigateur. Rien n'a été " +
+            "enregistré. Rechargez l'écran et reprenez vos modifications.",
+        );
+      await api.enregistrerMenu(verifierArbre(souples));
+      flash = "Menu enregistré. Il est à jour sur le site.";
+    } catch (e) {
+      flash = String(e).replace(/^Error:\s*/, "");
+      flashErreur = true;
+      saisie = lectureCassee ? null : souples;
+    }
+  }
+}
+
+let menu: MenuCms | null = null;
+let erreur: string | null = null;
+try {
+  menu = await api.menu();
+} catch (e) {
+  erreur = String(e).replace(/^Error:\s*/, "");
+}
+
+const entrees: EntreeSouple[] = saisie ?? entreesSouples(menu?.entrees);
+
+/** Les liens retirés du menu, gardés pour pouvoir les remettre. */
+const archives: LienArchive[] = menu?.archives ?? [];
+
+/**
+ * Le champ caché part rempli : sans JavaScript, l'écran ne sait ni ajouter ni
+ * déplacer, mais un enregistrement ne viderait pas le menu pour autant.
+ */
+const entreesJson = JSON.stringify(
+  entrees.map((e) => ({
+    id: e.id,
+    label: e.label,
+    href: e.href,
+    visible: e.visible,
+    translations: e.traductions,
+    enfants: e.enfants.map((c) => ({
+      id: c.id,
+      label: c.label,
+      href: c.href,
+      visible: c.visible,
+      translations: c.traductions,
+    })),
+  })),
+);
+
+/**
+ * Les entrées de l'écran, suivies d'un exemplaire vide qui sert de patron au
+ * bouton « Ajouter ». Le patron est rendu par le serveur comme les autres :
+ * une seule écriture du formulaire, donc un seul endroit à corriger.
+ */
+const aRendre = [
+  ...entrees.map((entree) => ({ entree, modele: false })),
+  { entree: entreeVide(), modele: true },
+];
+
+const champ =
+  "mt-1 w-full rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm";
+const boutonPrincipal =
+  "rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90";
+const boutonDiscret =
+  "rounded border border-bo-border bg-bo-surface px-3 py-1.5 text-sm hover:bg-bo-bg";
+const boutonOutil =
+  "flex h-7 w-7 items-center justify-center rounded border border-bo-border text-bo-muted hover:bg-bo-bg";
+---
+
+<Admin title="Menu du site">
+  {flash && (
+    <p
+      class={`mb-4 rounded border px-3 py-2 text-sm ${
+        flashErreur ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+  {erreur && (
+    <p class="mb-4 text-sm text-red-600">Le menu n'a pas pu être lu : {erreur}</p>
+  )}
+
+  <p class="mb-2 max-w-3xl text-sm text-bo-muted">
+    Le menu est la barre de liens en haut du site. Chaque entrée porte un nom,
+    celui que vos clients lisent, et une adresse, l'endroit où le lien les
+    emmène. Une entrée peut recevoir des sous-liens, qui s'affichent en dessous
+    quand la souris passe dessus.
+  </p>
+  <div class="mb-6 max-w-3xl rounded-lg border border-bo-border bg-bo-surface p-4 text-sm">
+    <p class="mb-2 font-medium">Que mettre dans « Adresse » ?</p>
+    <ul class="space-y-1 text-bo-muted">
+      <li>
+        Une page que vous avez créée dans
+        <a class="underline" href={url("/pages")}>Pages du site</a> :
+        <code class="rounded bg-bo-bg px-1">/pages/magnets</code>
+      </li>
+      <li>
+        Un rayon d'affiches :
+        <code class="rounded bg-bo-bg px-1">/affiches</code> pour toutes, ou
+        <code class="rounded bg-bo-bg px-1">/affiches?collection=noel</code>
+        pour une seule collection.
+      </li>
+    </ul>
+  </div>
+
+  {/* Le choix de la langue affichée. Des boutons et non des liens : changer de
+      langue ne doit pas recharger l'écran, ce qui perdrait tout ce qui vient
+      d'être déplacé ou ajouté sans être encore enregistré. */}
+  <div class="mb-2 flex flex-wrap items-center gap-2">
+    <span class="text-sm text-bo-muted">Langue affichée :</span>
+    <button
+      type="button"
+      data-choix-langue="fr"
+      aria-pressed="true"
+      class={`${boutonDiscret} border-bo-accent font-medium`}
+    >
+      Français
+    </button>
+    {LANGUES_TRADUISIBLES.map((l) => (
+      <button
+        type="button"
+        data-choix-langue={l.code}
+        aria-pressed="false"
+        class={boutonDiscret}
+      >
+        {l.nom}
+      </button>
+    ))}
+  </div>
+  <p
+    id="aide-langue"
+    class="mb-6 hidden max-w-3xl rounded-lg border border-bo-border bg-bo-surface p-4 text-sm text-bo-muted"
+  >
+    Le nom français reste affiché à gauche : c'est la référence.
+    <strong>Laissez un champ vide et c'est lui qui s'affichera</strong> sur le
+    site, dans cette langue — jamais un blanc. L'adresse, elle, est la même
+    partout : une page traduite vit à la même adresse que la française.
+  </p>
+
+  <form method="POST" id="form-menu">
+    <input type="hidden" name="entrees" id="champ-entrees" value={entreesJson} />
+
+    <div id="arbre" class="space-y-4">
+      {aRendre.map(({ entree, modele }) => (
+        <article
+          data-entree
+          data-reserve={modele ? "1" : undefined}
+          hidden={modele}
+          style={modele ? "display:none" : undefined}
+          class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface"
+        >
+          <div class="flex flex-wrap items-end gap-3 p-4">
+            <input type="hidden" data-valeur="id" value={entree.id} />
+            <label class="block min-w-[12rem] flex-1">
+              <span class="text-xs text-bo-muted">Nom dans le menu</span>
+              <input
+                data-valeur="label"
+                value={entree.label}
+                placeholder="Magnets"
+                class={champ}
+              />
+            </label>
+            {LANGUES_TRADUISIBLES.map((l) => (
+              <label data-langue={l.code} hidden class="min-w-[12rem] flex-1">
+                <span class="text-xs text-bo-muted">
+                  Nom en {l.nom.toLowerCase()}
+                </span>
+                <input
+                  data-trad={l.code}
+                  value={libelleTraduit(entree, l.code)}
+                  placeholder={entree.label || "Magnets"}
+                  class={champ}
+                />
+              </label>
+            ))}
+            <label class="block min-w-[14rem] flex-1">
+              <span class="text-xs text-bo-muted">Adresse</span>
+              <input
+                data-valeur="href"
+                value={entree.href}
+                placeholder="/magnets"
+                class={champ}
+              />
+            </label>
+            <label class="flex items-center gap-2 pb-2.5 text-sm">
+              <input
+                type="checkbox"
+                data-valeur="visible"
+                checked={entree.visible}
+              />
+              <span>Visible</span>
+            </label>
+            <span class="flex items-center gap-1 pb-1.5">
+              <button
+                type="button"
+                data-action="monter"
+                class={boutonOutil}
+                title="Monter cette entrée"
+                aria-label="Monter cette entrée"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                data-action="descendre"
+                class={boutonOutil}
+                title="Descendre cette entrée"
+                aria-label="Descendre cette entrée"
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                data-action="retirer"
+                class={`${boutonOutil} hover:border-bo-accent hover:text-bo-accent`}
+                title="Retirer cette entrée du menu"
+                aria-label="Retirer cette entrée du menu"
+              >
+                ✕
+              </button>
+            </span>
+          </div>
+
+          <div class="border-t border-bo-border bg-bo-bg px-4 py-3">
+            <div data-enfants class="space-y-2">
+              {[
+                ...entree.enfants.map((enfant) => ({ enfant, modele: false })),
+                { enfant: entreeVide(), modele: true },
+              ].map(({ enfant, modele: enfantModele }) => (
+                <div
+                  data-enfant
+                  data-reserve={enfantModele ? "1" : undefined}
+                  hidden={enfantModele}
+                  style={enfantModele ? "display:none" : undefined}
+                  class="flex flex-wrap items-end gap-3 rounded border border-bo-border bg-bo-surface p-3"
+                >
+                  <span class="pb-2 text-bo-muted" aria-hidden="true">└</span>
+                  <input type="hidden" data-valeur="id" value={enfant.id} />
+                  <label class="block min-w-[10rem] flex-1">
+                    <span class="text-xs text-bo-muted">Nom du sous-lien</span>
+                    <input
+                      data-valeur="label"
+                      value={enfant.label}
+                      placeholder="Magnets ronds"
+                      class={champ}
+                    />
+                  </label>
+                  {LANGUES_TRADUISIBLES.map((l) => (
+                    <label data-langue={l.code} hidden class="min-w-[10rem] flex-1">
+                      <span class="text-xs text-bo-muted">
+                        Nom en {l.nom.toLowerCase()}
+                      </span>
+                      <input
+                        data-trad={l.code}
+                        value={libelleTraduit(enfant, l.code)}
+                        placeholder={enfant.label || "Magnets ronds"}
+                        class={champ}
+                      />
+                    </label>
+                  ))}
+                  <label class="block min-w-[12rem] flex-1">
+                    <span class="text-xs text-bo-muted">Adresse</span>
+                    <input
+                      data-valeur="href"
+                      value={enfant.href}
+                      placeholder="/magnets-ronds"
+                      class={champ}
+                    />
+                  </label>
+                  <label class="flex items-center gap-2 pb-2.5 text-sm">
+                    <input
+                      type="checkbox"
+                      data-valeur="visible"
+                      checked={enfant.visible}
+                    />
+                    <span>Visible</span>
+                  </label>
+                  <span class="flex items-center gap-1 pb-1.5">
+                    <button
+                      type="button"
+                      data-action="monter"
+                      class={boutonOutil}
+                      title="Monter ce sous-lien"
+                      aria-label="Monter ce sous-lien"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      data-action="descendre"
+                      class={boutonOutil}
+                      title="Descendre ce sous-lien"
+                      aria-label="Descendre ce sous-lien"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      data-action="retirer"
+                      class={`${boutonOutil} hover:border-bo-accent hover:text-bo-accent`}
+                      title="Retirer ce sous-lien du menu"
+                      aria-label="Retirer ce sous-lien du menu"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+            <button type="button" data-ajouter-enfant class={`${boutonDiscret} mt-2`}>
+              + Ajouter un sous-lien
+            </button>
+          </div>
+        </article>
+      ))}
+    </div>
+
+    <p id="menu-vide" class="mt-4 hidden text-sm text-bo-muted">
+      Le menu est vide : aucun lien n'apparaît en haut du site.
+    </p>
+
+    <div class="mt-4 flex flex-wrap items-center gap-3">
+      <button type="button" id="ajouter-entree" class={boutonDiscret}>
+        + Ajouter une entrée
+      </button>
+      <button class={boutonPrincipal}>Enregistrer le menu</button>
+    </div>
+    <p class="mt-2 max-w-3xl text-xs text-bo-muted">
+      L'enregistrement remplace le menu du site par ce qui est affiché ici :
+      une entrée retirée sur cet écran quitte le site. Elle n'est pas perdue
+      pour autant — elle descend dans « Liens retirés du menu », en bas de cet
+      écran, d'où vous pouvez la remettre. Pour une absence courte, décocher
+      « Visible » reste plus simple : la ligne garde sa place.
+    </p>
+  </form>
+
+  {/* ====== Liens retirés du menu ====== */}
+  {archives.length > 0 && (
+    <section class="mt-10">
+      <h2 class="mb-1 font-semibold">Liens retirés du menu</h2>
+      <p class="mb-3 max-w-3xl text-xs text-bo-muted">
+        Ces liens ne sont plus dans le menu du site. Leur nom, leur adresse et
+        leurs traductions sont gardés : « Restaurer » les remet dans le menu
+        ci-dessus, où vous pouvez les replacer avec les flèches avant
+        d'enregistrer.
+      </p>
+      <div class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface opacity-70">
+        <table class="w-full text-sm">
+          <tbody>
+            {archives.map((lien) => (
+              <tr class="border-t border-bo-border first:border-t-0">
+                <td class="px-4 py-2">
+                  <span class="font-medium">{lien.label}</span>
+                  {lien.parent && (
+                    <span class="block text-xs text-bo-muted">
+                      sous-lien de « {lien.parent} »
+                    </span>
+                  )}
+                </td>
+                <td class="px-4 py-2 text-bo-muted">
+                  <code>{lien.href}</code>
+                </td>
+                <td class="px-4 py-2 text-right">
+                  <form method="POST" class="inline">
+                    <input type="hidden" name="_action" value="restaurer" />
+                    <input type="hidden" name="id" value={lien.id} />
+                    <button class="text-bo-accent hover:underline">
+                      Restaurer
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )}
+
+  <script is:inline>
+    const formulaire = document.getElementById("form-menu");
+    const arbre = document.getElementById("arbre");
+    const champEntrees = document.getElementById("champ-entrees");
+    const menuVide = document.getElementById("menu-vide");
+
+    if (formulaire && arbre && champEntrees) {
+      /** Les vrais éléments d'un conteneur : le patron caché n'en est pas un. */
+      function reels(conteneur, marqueur) {
+        if (!conteneur) return [];
+        return Array.prototype.slice
+          .call(conteneur.children)
+          .filter(
+            (n) => n.hasAttribute(marqueur) && !n.hasAttribute("data-reserve"),
+          );
+      }
+
+      /** Le champ d'une entrée, sans jamais descendre dans ses sous-liens. */
+      function lire(entree, cle) {
+        const champs = entree.querySelectorAll('[data-valeur="' + cle + '"]');
+        for (let i = 0; i < champs.length; i++) {
+          if (champs[i].closest("[data-entree], [data-enfant]") === entree)
+            return champs[i];
+        }
+        return null;
+      }
+
+      function valeur(entree, cle) {
+        const el = lire(entree, cle);
+        if (!el) return "";
+        return el.type === "checkbox"
+          ? el.checked
+          : String(el.value == null ? "" : el.value);
+      }
+
+      /**
+       * Les libellés traduits d'UNE ligne, sans descendre dans ses sous-liens.
+       *
+       * Un champ vide n'est pas enregistré : « vide » et « pas traduit » disent
+       * la même chose, et le site affiche alors le français. C'est aussi ce qui
+       * permet d'effacer une traduction devenue fausse — on vide, on enregistre.
+       */
+      function traductions(ligne) {
+        const sortie = {};
+        ligne.querySelectorAll("[data-trad]").forEach((n) => {
+          if (n.closest("[data-entree], [data-enfant]") !== ligne) return;
+          const texte = String(n.value == null ? "" : n.value).trim();
+          if (texte) sortie[n.getAttribute("data-trad")] = { label: texte };
+        });
+        return Object.keys(sortie).length ? sortie : null;
+      }
+
+      function serialiser() {
+        const sortie = reels(arbre, "data-entree").map((entree) => {
+          const enfants = entree.querySelector("[data-enfants]");
+          return {
+            id: valeur(entree, "id"),
+            label: valeur(entree, "label"),
+            href: valeur(entree, "href"),
+            visible: valeur(entree, "visible") === true,
+            enfants: enfants
+              ? reels(enfants, "data-enfant").map((enfant) => ({
+                  id: valeur(enfant, "id"),
+                  label: valeur(enfant, "label"),
+                  href: valeur(enfant, "href"),
+                  visible: valeur(enfant, "visible") === true,
+                  translations: traductions(enfant),
+                }))
+              : [],
+            translations: traductions(entree),
+          };
+        });
+        champEntrees.value = JSON.stringify(sortie);
+      }
+
+      /* --- La langue affichée ------------------------------------------- */
+
+      const boutonsLangue = document.querySelectorAll("[data-choix-langue]");
+      const aideLangue = document.getElementById("aide-langue");
+      let langueAffichee = "fr";
+
+      /**
+       * Montre les champs d'UNE langue et cache ceux des autres.
+       *
+       * Appelée aussi après chaque ajout de ligne : une ligne recopiée du
+       * patron arrive avec ses quatre champs cachés, et resterait muette en
+       * pleine saisie d'une traduction.
+       */
+      function afficherLangue(code) {
+        langueAffichee = code;
+        arbre.querySelectorAll("[data-langue]").forEach((n) => {
+          n.hidden = n.getAttribute("data-langue") !== code;
+        });
+        boutonsLangue.forEach((b) => {
+          const actif = b.getAttribute("data-choix-langue") === code;
+          b.classList.toggle("border-bo-accent", actif);
+          b.classList.toggle("font-medium", actif);
+          b.setAttribute("aria-pressed", actif ? "true" : "false");
+        });
+        if (aideLangue) aideLangue.classList.toggle("hidden", code === "fr");
+      }
+
+      boutonsLangue.forEach((bouton) => {
+        bouton.addEventListener("click", () => {
+          afficherLangue(bouton.getAttribute("data-choix-langue"));
+        });
+      });
+
+      // Le nom français sert d'invite grisée aux champs traduits de sa ligne :
+      // on voit du premier coup d'œil ce qui s'affichera si on ne remplit pas.
+      arbre.addEventListener("input", (ev) => {
+        const champFrancais = ev.target.closest('[data-valeur="label"]');
+        if (!champFrancais) return;
+        const ligne =
+          champFrancais.closest("[data-enfant]") ||
+          champFrancais.closest("[data-entree]");
+        if (!ligne) return;
+        ligne.querySelectorAll("[data-trad]").forEach((n) => {
+          if (n.closest("[data-entree], [data-enfant]") === ligne)
+            n.placeholder = champFrancais.value;
+        });
+      });
+
+      function rafraichir() {
+        if (menuVide)
+          menuVide.classList.toggle(
+            "hidden",
+            reels(arbre, "data-entree").length > 0,
+          );
+        // Les lignes tout juste ajoutées arrivent avec leurs champs traduits
+        // cachés : on les remet dans la langue affichée.
+        afficherLangue(langueAffichee);
+      }
+
+      arbre.addEventListener("click", (ev) => {
+        const bouton = ev.target.closest("[data-action], [data-ajouter-enfant]");
+        if (!bouton) return;
+
+        if (bouton.hasAttribute("data-ajouter-enfant")) {
+          const entree = bouton.closest("[data-entree]");
+          const conteneur = entree && entree.querySelector("[data-enfants]");
+          const modele = conteneur && conteneur.querySelector("[data-reserve]");
+          if (!conteneur || !modele) return;
+          const neuf = modele.cloneNode(true);
+          neuf.removeAttribute("data-reserve");
+          neuf.removeAttribute("hidden");
+          neuf.removeAttribute("style");
+          conteneur.insertBefore(neuf, modele);
+          rafraichir();
+          const premier = neuf.querySelector("input:not([type=hidden])");
+          if (premier) premier.focus();
+          return;
+        }
+
+        const ligne = bouton.closest("[data-enfant]") || bouton.closest("[data-entree]");
+        if (!ligne || !ligne.parentElement) return;
+        const action = bouton.getAttribute("data-action");
+        if (action === "monter") {
+          const avant = ligne.previousElementSibling;
+          if (avant && !avant.hasAttribute("data-reserve"))
+            ligne.parentElement.insertBefore(ligne, avant);
+        } else if (action === "descendre") {
+          const apres = ligne.nextElementSibling;
+          if (apres && !apres.hasAttribute("data-reserve"))
+            ligne.parentElement.insertBefore(apres, ligne);
+        } else if (action === "retirer") {
+          // Retirer n'efface rien : au prochain enregistrement, le lien
+          // descend dans « Liens retirés du menu », d'où il se restaure.
+          const nom = valeur(ligne, "label") || "ce lien";
+          const sousLiens = ligne.hasAttribute("data-entree")
+            ? reels(ligne.querySelector("[data-enfants]"), "data-enfant").length
+            : 0;
+          const avertissement = sousLiens
+            ? " Ses " + sousLiens + " sous-lien(s) partiront avec elle."
+            : "";
+          if (
+            !confirm(
+              "Retirer « " +
+                nom +
+                " » du menu ?" +
+                avertissement +
+                " Rien n'est supprimé : après enregistrement, vous le " +
+                "retrouverez dans « Liens retirés du menu », en bas de cet " +
+                "écran, avec un bouton pour le remettre.",
+            )
+          )
+            return;
+          ligne.remove();
+        }
+        rafraichir();
+      });
+
+      const ajouter = document.getElementById("ajouter-entree");
+      ajouter?.addEventListener("click", () => {
+        const modele = arbre.querySelector(":scope > [data-reserve]");
+        if (!modele) return;
+        const neuf = modele.cloneNode(true);
+        neuf.removeAttribute("data-reserve");
+        neuf.removeAttribute("hidden");
+        neuf.removeAttribute("style");
+        arbre.insertBefore(neuf, modele);
+        rafraichir();
+        neuf.scrollIntoView({ behavior: "smooth", block: "center" });
+        const premier = neuf.querySelector("input:not([type=hidden])");
+        if (premier) premier.focus();
+      });
+
+      formulaire.addEventListener("submit", serialiser);
+      rafraichir();
+    }
+  </script>
+</Admin>

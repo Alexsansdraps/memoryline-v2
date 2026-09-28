@@ -1,0 +1,325 @@
+---
+/**
+ * Les collections : la façon dont la boutique range ses affiches.
+ *
+ * C'est ce que l'ancienne boutique appelait déjà collection, et ce que ce
+ * back-office appelait catégorie. Un seul mot désormais, et un seul écran :
+ * les catégories étaient restées vides depuis le premier jour, tandis que les
+ * collections portaient tout le catalogue.
+ *
+ * Une collection sert à trois choses : ranger, alimenter une page du site, et
+ * dire ce que pèse un article quand rien de plus précis ne le dit.
+ */
+import Admin from "../layouts/Admin.astro";
+import { url } from "../lib/url.ts";
+import { adminApi, type CollectionBo } from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+let flash: string | null = null;
+let flashErreur = false;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const action = String(f.get("_action") ?? "");
+  try {
+    if (action === "creer") {
+      const name = String(f.get("name") ?? "").trim();
+      if (!name) throw new Error("Donnez un nom à la collection.");
+      const r = await api.creerCollection({ name });
+      return Astro.redirect(`${url(`/collections/${r.id}`)}?creee=1`);
+    }
+    if (action === "modifier") {
+      const id = Number(f.get("id"));
+      const brutPoids = String(f.get("defaultWeightGrams") ?? "").trim();
+      // Un champ vidé veut dire « je ne sais pas », pas « ça ne pèse rien ».
+      // Confondre les deux ferait partir des colis sous-affranchis.
+      const poids = brutPoids === "" ? null : Number(brutPoids);
+      if (poids !== null && (!Number.isInteger(poids) || poids < 0))
+        throw new Error("Le poids doit être un nombre de grammes, ou rester vide.");
+      await api.majCollection(id, {
+        name: String(f.get("name") ?? "").trim(),
+        active: f.get("active") === "1",
+        defaultWeightGrams: poids,
+      });
+      flash = "Collection enregistrée.";
+    }
+    if (action === "archiver") {
+      const restaurer = f.get("archived") === "false";
+      const r = await api.archiverCollection(Number(f.get("id")), !restaurer);
+      const n = r.dedans ?? 0;
+      const affiches =
+        n === 0
+          ? ""
+          : n === 1
+            ? " L'affiche qui y est rangée le reste, et revient avec elle."
+            : ` Les ${n} affiches qui y sont rangées le restent, et reviennent avec elle.`;
+      flash = restaurer
+        ? `Collection restaurée. Elle est de nouveau en boutique.${affiches}`
+        : `Collection archivée. Vous pouvez la restaurer à tout moment, plus bas.${affiches}`;
+    }
+  } catch (e) {
+    flash = e instanceof Error ? e.message : String(e);
+    flashErreur = true;
+  }
+}
+
+/**
+ * Ce qu'il faut avoir lu avant d'archiver une collection.
+ *
+ * Rien n'est perdu, et c'est le premier mot dit : la collection se restaure
+ * entière, avec les affiches qu'elle range. Le poids par défaut continue de
+ * s'appliquer, et c'est dit aussi — archiver un rangement ne doit pas alléger
+ * des colis en silence, et personne ne s'attendrait à ce que ça le fasse.
+ */
+function messageArchivage(c: CollectionBo): string {
+  const l = [
+    `Archiver la collection « ${c.name} » ?`,
+    "Elle sort de la boutique et de cette liste. Rien n'est supprimé : vous pourrez la restaurer telle quelle, avec les affiches qu'elle range.",
+  ];
+  if (c.produits === 1)
+    l.push(
+      "L'affiche qui y est rangée n'est ni supprimée ni déplacée : elle reste dans le catalogue et se vend comme avant.",
+    );
+  else if (c.produits > 1)
+    l.push(
+      `Les ${c.produits} affiches qui y sont rangées ne sont ni supprimées ni déplacées : elles restent dans le catalogue et se vendent comme avant.`,
+    );
+  if (c.produits > 0 && c.defaultWeightGrams != null)
+    l.push(
+      `Le poids ne bouge pas : ses affiches continuent de peser ${c.defaultWeightGrams} g par défaut, pour que les frais de port restent justes.`,
+    );
+  l.push(
+    "Les pages du site qui affichaient cette collection resteront en ligne, la rangée sera simplement vide.",
+  );
+  return l.join("\n\n");
+}
+
+let collections: CollectionBo[] = [];
+let erreur: string | null = null;
+try {
+  collections = (await api.collections()).collections;
+} catch (e) {
+  erreur = e instanceof Error ? e.message : String(e);
+}
+
+/** Les collections vides passent après : ce sont des vestiges de l'import. */
+const rangees = [...collections]
+  // Les archivées quittent la liste ordinaire pour leur propre section, plus
+  // bas : c'est là qu'on les restaure.
+  .filter((c) => !c.archivedAt)
+  .sort((a, b) => {
+    if (a.produits === 0 !== (b.produits === 0)) return a.produits === 0 ? 1 : -1;
+    return a.position - b.position || a.name.localeCompare(b.name, "fr");
+  });
+
+const archivees = collections
+  .filter((c) => c.archivedAt)
+  .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+---
+
+<Admin title="Collections">
+  {
+    flash && (
+      <p
+        class={`mb-4 rounded border px-3 py-2 text-sm ${
+          flashErreur
+            ? "border-red-300 bg-red-50 text-red-800"
+            : "border-green-300 bg-green-50 text-green-800"
+        }`}
+      >
+        {flash}
+      </p>
+    )
+  }
+  {erreur && <p class="mb-4 text-sm text-red-600">API injoignable : {erreur}</p>}
+
+  <p class="mb-5 max-w-3xl text-sm text-bo-muted">
+    Une collection range vos affiches. Elle alimente les grilles de produits de
+    vos pages, et donne le poids d'un article quand ni le format ni l'affiche
+    n'en portent un.
+  </p>
+
+  <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-5">
+    <h2 class="mb-1 text-base font-semibold">Nouvelle collection</h2>
+    <p class="mb-3 text-sm text-bo-muted">
+      Par exemple « Magnets », « Noël » ou « Bord de mer ».
+    </p>
+    <form method="POST" class="flex flex-wrap items-end gap-3">
+      <input type="hidden" name="_action" value="creer" />
+      <label class="text-sm">
+        <span class="mb-1 block text-xs text-bo-muted">Nom</span>
+        <input
+          name="name"
+          required
+          placeholder="Magnets"
+          class="w-72 max-w-full rounded border border-bo-border px-3 py-2 text-sm"
+        />
+      </label>
+      <button class="rounded bg-bo-accent px-4 py-2 text-sm text-white">
+        Créer
+      </button>
+    </form>
+  </section>
+
+  <section
+    class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface"
+  >
+    <table class="w-full text-sm">
+      <thead class="bg-bo-bg text-left text-bo-muted">
+        <tr>
+          <th class="px-4 py-2 font-medium">Collection</th>
+          <th class="px-4 py-2 font-medium text-right">Affiches</th>
+          <th class="px-4 py-2 font-medium">Poids par défaut</th>
+          <th class="px-4 py-2 font-medium">Visible</th>
+          <th class="px-4 py-2"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          rangees.map((c) => (
+            <tr class="border-t border-bo-border align-middle">
+              <td class="px-4 py-2">
+                <a
+                  href={url(`/collections/${c.id}`)}
+                  class="font-medium text-bo-accent hover:underline"
+                >
+                  {c.name}
+                </a>
+                <span class="block text-xs text-bo-muted">/{c.slug}</span>
+              </td>
+              <td class="px-4 py-2 text-right">
+                {c.produits === 0 ? (
+                  <span class="text-bo-muted">vide</span>
+                ) : (
+                  c.produits
+                )}
+              </td>
+              <td class="px-4 py-2">
+                <form method="POST" class="flex items-center gap-2">
+                  <input type="hidden" name="_action" value="modifier" />
+                  <input type="hidden" name="id" value={c.id} />
+                  <input type="hidden" name="name" value={c.name} />
+                  <input
+                    type="hidden"
+                    name="active"
+                    value={c.active ? "1" : "0"}
+                  />
+                  <input
+                    name="defaultWeightGrams"
+                    type="text"
+                    inputmode="numeric"
+                    value={c.defaultWeightGrams ?? ""}
+                    placeholder="non renseigné"
+                    class="w-32 rounded border border-bo-border px-2 py-1"
+                  />
+                  <span class="text-xs text-bo-muted">g</span>
+                  <button class="rounded border border-bo-border px-2 py-1 text-xs hover:bg-bo-bg">
+                    Enregistrer
+                  </button>
+                </form>
+              </td>
+              <td class="px-4 py-2">
+                <form method="POST">
+                  <input type="hidden" name="_action" value="modifier" />
+                  <input type="hidden" name="id" value={c.id} />
+                  <input type="hidden" name="name" value={c.name} />
+                  <input
+                    type="hidden"
+                    name="defaultWeightGrams"
+                    value={c.defaultWeightGrams ?? ""}
+                  />
+                  <input type="hidden" name="active" value={c.active ? "0" : "1"} />
+                  <button
+                    title={
+                      c.active
+                        ? "Cliquer pour masquer cette collection"
+                        : "Cliquer pour la rendre visible"
+                    }
+                    class={`cursor-pointer rounded-full px-2 py-0.5 text-xs ${
+                      c.active
+                        ? "bg-green-100 text-green-800"
+                        : "bg-bo-bg text-bo-muted"
+                    }`}
+                  >
+                    {c.active ? "Visible" : "Masquée"}
+                  </button>
+                </form>
+              </td>
+              <td class="px-4 py-2 text-right whitespace-nowrap">
+                <a
+                  href={url(`/collections/${c.id}`)}
+                  class="text-bo-accent hover:underline"
+                >
+                  Ouvrir
+                </a>
+                <form
+                  method="POST"
+                  class="ml-3 inline"
+                  onsubmit={`return confirm(${JSON.stringify(messageArchivage(c))})`}
+                >
+                  <input type="hidden" name="_action" value="archiver" />
+                  <input type="hidden" name="id" value={c.id} />
+                  <input type="hidden" name="archived" value="true" />
+                  <button class="text-xs text-bo-muted hover:text-bo-accent hover:underline">
+                    Archiver
+                  </button>
+                </form>
+              </td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+    {
+      rangees.length === 0 && !erreur && (
+        <p class="px-4 py-6 text-center text-sm text-bo-muted">
+          Aucune collection pour le moment.
+        </p>
+      )
+    }
+  </section>
+
+  {/* ====== Collections archivées ====== */}
+  {
+    archivees.length > 0 && (
+      <section class="mt-8">
+        <h2 class="mb-1 font-semibold">Collections archivées</h2>
+        <p class="mb-3 max-w-3xl text-xs text-bo-muted">
+          Retirées de la boutique et de la liste ci-dessus. Le rangement est
+          gardé intact : « Restaurer » remet la collection en place avec les
+          affiches qu'elle contenait, à l'ordre près.
+        </p>
+        <div class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface opacity-70">
+          <table class="w-full text-sm">
+            <tbody>
+              {archivees.map((c) => (
+                <tr class="border-t border-bo-border first:border-t-0">
+                  <td class="px-4 py-2">
+                    <span class="font-medium">{c.name}</span>
+                    <span class="block text-xs text-bo-muted">/{c.slug}</span>
+                  </td>
+                  <td class="px-4 py-2 text-right text-bo-muted">
+                    {c.produits === 0
+                      ? "vide"
+                      : `${c.produits} affiche${c.produits > 1 ? "s" : ""}`}
+                  </td>
+                  <td class="px-4 py-2 text-right">
+                    <form method="POST" class="inline">
+                      <input type="hidden" name="_action" value="archiver" />
+                      <input type="hidden" name="id" value={c.id} />
+                      <input type="hidden" name="archived" value="false" />
+                      <button class="text-bo-accent hover:underline">
+                        Restaurer
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    )
+  }
+</Admin>

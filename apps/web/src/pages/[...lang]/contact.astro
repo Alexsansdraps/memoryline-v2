@@ -1,0 +1,467 @@
+---
+import { apiInterne } from "../../lib/api-interne.ts";
+/**
+ * Le formulaire de contact.
+ *
+ * Le site vendait sans donner aucun moyen d'écrire à la boutique : une cliente
+ * qui voulait corriger un prénom ou savoir où était son colis n'avait pas
+ * d'adresse sous les yeux. Cette page est cette adresse.
+ *
+ * Elle poste sur ELLE-MÊME, en HTML ordinaire : sans JavaScript, le formulaire
+ * marche quand même. C'est le serveur d'Astro qui appelle ensuite l'API, comme
+ * le font déjà les pages du compte client.
+ *
+ * Deux détails valent d'être expliqués.
+ *
+ * 1. L'adresse d'où vient le visiteur est RECOPIÉE dans l'appel sortant. Sans
+ *    cela, l'API verrait toujours la même adresse — celle du serveur du site —
+ *    et sa limite d'envois enfermerait tout le monde dans le compteur d'un
+ *    seul. L'en-tête part tel que le proxy l'a écrit ; c'est l'API qui décide
+ *    quel morceau croire (voir apps/api/src/contact.ts).
+ *
+ * 2. Les refus prévisibles — un champ vide, une adresse mal écrite — sont
+ *    dits ICI, dans la langue du visiteur. L'API répond en français, comme
+ *    tout le reste de la boutique : ses phrases ne servent qu'en dernier
+ *    recours, pour ce que cette page ne pouvait pas voir venir.
+ *
+ * Les textes vivent dans ce fichier plutôt que dans i18n/ui.ts : ils ne
+ * servent qu'ici, et cette page n'a pas à faire bouger un fichier que tout le
+ * site partage.
+ */
+import Base from "../../layouts/Base.astro";
+import {
+  estLangue,
+  langueDepuisParam,
+  lien,
+  type Langue,
+} from "../../i18n/utils.ts";
+
+export const prerender = false;
+
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
+
+/**
+ * L'API, vue du SERVEUR du site : le réseau interne de Docker, jamais « /api »
+ * qui n'existe que dans le navigateur du visiteur. Même lecture que lib/api.ts
+ * et lib/compte.ts.
+ */
+const API_URL =
+  apiInterne();
+
+/* -------------------------------------------------------------------------- */
+/*  Les textes, dans les cinq langues                                         */
+/* -------------------------------------------------------------------------- */
+
+type Cle =
+  | "titre"
+  | "intro"
+  | "nom"
+  | "email"
+  | "sujet"
+  | "message"
+  | "commande"
+  | "commandeAide"
+  | "envoyer"
+  | "envoiEnCours"
+  | "merciTitre"
+  | "merciTexte"
+  | "autreMessage"
+  | "errNom"
+  | "errEmail"
+  | "errSujet"
+  | "errMessage"
+  | "errEnvoi"
+  | "errTrop"
+  | "confidentialite";
+
+const TEXTES: Record<Langue, Record<Cle, string>> = {
+  fr: {
+    titre: "Nous écrire",
+    intro:
+      "Une question sur une affiche, une commande en cours, une personnalisation à corriger ? Écrivez-nous, nous répondons sous deux jours ouvrés.",
+    nom: "Votre nom",
+    email: "Votre adresse électronique",
+    sujet: "Sujet",
+    message: "Votre message",
+    commande: "Numéro de commande (facultatif)",
+    commandeAide:
+      "Il figure dans le courrier de confirmation. Il nous fait gagner du temps, mais n'est pas obligatoire.",
+    envoyer: "Envoyer le message",
+    envoiEnCours: "Envoi…",
+    merciTitre: "Message envoyé",
+    merciTexte:
+      "Merci. Votre message est parti, et un accusé de réception vient de vous être envoyé. Nous vous répondons sous deux jours ouvrés.",
+    autreMessage: "Écrire un autre message",
+    errNom: "Écrivez votre nom, pour que nous sachions à qui répondre.",
+    errEmail:
+      "Écrivez une adresse électronique valable : c'est là que partira notre réponse.",
+    errSujet: "Donnez un sujet à votre message.",
+    errMessage: "Écrivez votre message, en quelques mots au moins.",
+    errEnvoi:
+      "Votre message n'a pas pu être envoyé. Réessayez dans quelques minutes.",
+    errTrop:
+      "Vous nous avez déjà écrit plusieurs fois. Laissez-nous le temps d'y répondre, puis réessayez dans une heure.",
+    confidentialite:
+      "Vos coordonnées ne servent qu'à vous répondre. Voir la politique de confidentialité.",
+  },
+  en: {
+    titre: "Contact us",
+    intro:
+      "A question about a poster, an order on its way, a personalisation to correct? Write to us — we reply within two working days.",
+    nom: "Your name",
+    email: "Your email address",
+    sujet: "Subject",
+    message: "Your message",
+    commande: "Order number (optional)",
+    commandeAide:
+      "You will find it in your confirmation email. It saves us time, but it is not required.",
+    envoyer: "Send message",
+    envoiEnCours: "Sending…",
+    merciTitre: "Message sent",
+    merciTexte:
+      "Thank you. Your message is on its way, and a confirmation email has just been sent to you. We reply within two working days.",
+    autreMessage: "Write another message",
+    errNom: "Please write your name, so we know who to reply to.",
+    errEmail: "Please write a valid email address: that is where our reply will go.",
+    errSujet: "Please give your message a subject.",
+    errMessage: "Please write your message, at least a few words.",
+    errEnvoi: "Your message could not be sent. Please try again in a few minutes.",
+    errTrop:
+      "You have already written to us several times. Give us time to reply, then try again in an hour.",
+    confidentialite:
+      "Your details are used only to reply to you. See the privacy policy.",
+  },
+  de: {
+    titre: "Schreiben Sie uns",
+    intro:
+      "Eine Frage zu einem Poster, zu einer laufenden Bestellung oder eine Personalisierung, die korrigiert werden soll? Schreiben Sie uns — wir antworten innerhalb von zwei Werktagen.",
+    nom: "Ihr Name",
+    email: "Ihre E-Mail-Adresse",
+    sujet: "Betreff",
+    message: "Ihre Nachricht",
+    commande: "Bestellnummer (optional)",
+    commandeAide:
+      "Sie steht in Ihrer Bestellbestätigung. Sie spart uns Zeit, ist aber nicht verpflichtend.",
+    envoyer: "Nachricht senden",
+    envoiEnCours: "Wird gesendet…",
+    merciTitre: "Nachricht gesendet",
+    merciTexte:
+      "Vielen Dank. Ihre Nachricht ist unterwegs, und eine Empfangsbestätigung wurde Ihnen soeben zugeschickt. Wir antworten innerhalb von zwei Werktagen.",
+    autreMessage: "Eine weitere Nachricht schreiben",
+    errNom: "Bitte schreiben Sie Ihren Namen, damit wir wissen, wem wir antworten.",
+    errEmail:
+      "Bitte geben Sie eine gültige E-Mail-Adresse an: dorthin geht unsere Antwort.",
+    errSujet: "Bitte geben Sie Ihrer Nachricht einen Betreff.",
+    errMessage: "Bitte schreiben Sie Ihre Nachricht, wenigstens ein paar Worte.",
+    errEnvoi:
+      "Ihre Nachricht konnte nicht gesendet werden. Bitte versuchen Sie es in einigen Minuten erneut.",
+    errTrop:
+      "Sie haben uns bereits mehrfach geschrieben. Geben Sie uns Zeit zu antworten und versuchen Sie es in einer Stunde erneut.",
+    confidentialite:
+      "Ihre Angaben dienen ausschließlich unserer Antwort. Siehe Datenschutzerklärung.",
+  },
+  it: {
+    titre: "Scrivici",
+    intro:
+      "Una domanda su un poster, un ordine in corso, una personalizzazione da correggere? Scrivici: rispondiamo entro due giorni lavorativi.",
+    nom: "Il tuo nome",
+    email: "Il tuo indirizzo email",
+    sujet: "Oggetto",
+    message: "Il tuo messaggio",
+    commande: "Numero d'ordine (facoltativo)",
+    commandeAide:
+      "Lo trovi nell'email di conferma. Ci fa risparmiare tempo, ma non è obbligatorio.",
+    envoyer: "Invia il messaggio",
+    envoiEnCours: "Invio in corso…",
+    merciTitre: "Messaggio inviato",
+    merciTexte:
+      "Grazie. Il tuo messaggio è partito e ti abbiamo appena inviato una conferma di ricezione. Rispondiamo entro due giorni lavorativi.",
+    autreMessage: "Scrivere un altro messaggio",
+    errNom: "Scrivi il tuo nome, così sappiamo a chi rispondere.",
+    errEmail:
+      "Scrivi un indirizzo email valido: è lì che arriverà la nostra risposta.",
+    errSujet: "Indica l'oggetto del messaggio.",
+    errMessage: "Scrivi il tuo messaggio, almeno qualche parola.",
+    errEnvoi:
+      "Non è stato possibile inviare il messaggio. Riprova tra qualche minuto.",
+    errTrop:
+      "Ci hai già scritto più volte. Dacci il tempo di risponderti, poi riprova tra un'ora.",
+    confidentialite:
+      "I tuoi dati servono soltanto a risponderti. Vedi l'informativa sulla privacy.",
+  },
+  es: {
+    titre: "Escríbenos",
+    intro:
+      "¿Una pregunta sobre una lámina, un pedido en curso o una personalización que corregir? Escríbenos: respondemos en dos días laborables.",
+    nom: "Tu nombre",
+    email: "Tu correo electrónico",
+    sujet: "Asunto",
+    message: "Tu mensaje",
+    commande: "Número de pedido (opcional)",
+    commandeAide:
+      "Aparece en el correo de confirmación. Nos ahorra tiempo, pero no es obligatorio.",
+    envoyer: "Enviar el mensaje",
+    envoiEnCours: "Enviando…",
+    merciTitre: "Mensaje enviado",
+    merciTexte:
+      "Gracias. Tu mensaje ha salido y acabamos de enviarte un acuse de recibo. Respondemos en dos días laborables.",
+    autreMessage: "Escribir otro mensaje",
+    errNom: "Escribe tu nombre, para que sepamos a quién responder.",
+    errEmail:
+      "Escribe un correo electrónico válido: ahí es donde llegará nuestra respuesta.",
+    errSujet: "Indica el asunto de tu mensaje.",
+    errMessage: "Escribe tu mensaje, aunque sean unas pocas palabras.",
+    errEnvoi:
+      "No hemos podido enviar tu mensaje. Inténtalo de nuevo dentro de unos minutos.",
+    errTrop:
+      "Ya nos has escrito varias veces. Danos tiempo para responderte y vuelve a intentarlo dentro de una hora.",
+    confidentialite:
+      "Tus datos solo sirven para responderte. Consulta la política de privacidad.",
+  },
+};
+
+const tr = (cle: Cle): string => TEXTES[langue][cle] ?? TEXTES.fr[cle];
+
+/* -------------------------------------------------------------------------- */
+/*  Envoi                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Même exigence que celle de l'API : une adresse sans espace, avec une arobase
+ * et un point après. Ce qui est refusé ici l'aurait été là-bas, mais en
+ * français et après un aller-retour.
+ */
+const EMAIL_VALIDE = /^[^\s@,;<>"]+@[^\s@,;<>"]+\.[a-z]{2,}$/i;
+
+let erreur: string | null = null;
+let saisie = { nom: "", email: "", sujet: "", message: "", commande: "" };
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  saisie = {
+    nom: String(f.get("nom") ?? "").trim(),
+    email: String(f.get("email") ?? "").trim(),
+    sujet: String(f.get("sujet") ?? "").trim(),
+    message: String(f.get("message") ?? "").trim(),
+    commande: String(f.get("commande") ?? "").trim(),
+  };
+  // Le champ piège part tel quel : c'est l'API qui tranche, pour que la règle
+  // vive à un seul endroit.
+  const piege = String(f.get("societe") ?? "");
+
+  if (saisie.nom.length < 2) erreur = tr("errNom");
+  else if (!EMAIL_VALIDE.test(saisie.email)) erreur = tr("errEmail");
+  else if (saisie.sujet.length < 2) erreur = tr("errSujet");
+  else if (saisie.message.length < 10) erreur = tr("errMessage");
+
+  if (!erreur) {
+    // L'adresse du visiteur, recopiée telle que le proxy l'a écrite : voir
+    // l'en-tête de ce fichier.
+    const entetes: Record<string, string> = { "Content-Type": "application/json" };
+    const transmise = Astro.request.headers.get("x-forwarded-for");
+    const reelle = Astro.request.headers.get("x-real-ip");
+    if (transmise) entetes["x-forwarded-for"] = transmise;
+    else if (reelle) entetes["x-real-ip"] = reelle;
+
+    try {
+      const reponse = await fetch(`${API_URL}/contact`, {
+        method: "POST",
+        headers: entetes,
+        body: JSON.stringify({ ...saisie, societe: piege, langue }),
+      });
+      const corps = (await reponse.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+      if (reponse.ok) {
+        // Redirection après envoi : sans elle, un rafraîchissement de la page
+        // renverrait le même message une seconde fois.
+        return Astro.redirect(`${lien(langue, "/contact")}?envoye=1`, 303);
+      }
+      if (reponse.status === 429) erreur = tr("errTrop");
+      // Un refus de saisie que cette page n'avait pas prévu : la phrase de
+      // l'API vaut mieux que rien, même en français.
+      else if (reponse.status === 400 && corps.error) erreur = corps.error;
+      else erreur = tr("errEnvoi");
+    } catch {
+      erreur = tr("errEnvoi");
+    }
+  }
+}
+
+const envoye = Astro.url.searchParams.get("envoye") === "1";
+
+const champ =
+  "mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none";
+---
+
+<Base
+  langue={langue}
+  title={`${tr("titre")} — Memory Line`}
+  description={tr("intro")}
+  path={lien(langue, "/contact")}
+>
+  <section class="mx-auto max-w-[680px] px-6 pt-12 pb-16 lg:px-12">
+    <nav class="text-sm text-ink-soft">
+      <a href={lien(langue, "/")} class="hover:text-terracotta">Memory Line</a>
+    </nav>
+    <h1 class="mt-4 text-3xl sm:text-4xl">{tr("titre")}</h1>
+
+    {
+      envoye ? (
+        <Fragment>
+          <p class="mt-8 border border-sage/50 bg-sage/10 px-4 py-4">
+            <strong class="block">{tr("merciTitre")}</strong>
+            <span class="mt-1 block text-ink-soft">{tr("merciTexte")}</span>
+          </p>
+          <p class="mt-6">
+            <a
+              href={lien(langue, "/contact")}
+              class="underline underline-offset-4 hover:text-terracotta"
+            >
+              {tr("autreMessage")}
+            </a>
+          </p>
+        </Fragment>
+      ) : (
+        <Fragment>
+          <p class="mt-4 text-ink-soft">{tr("intro")}</p>
+
+          {erreur && (
+            <p class="mt-6 border border-terracotta/40 bg-terracotta/5 px-4 py-3 text-terracotta-deep">
+              {erreur}
+            </p>
+          )}
+
+          <form method="post" class="mt-8 space-y-4" id="form-contact">
+            <label class="block">
+              <span class="text-sm font-medium">{tr("nom")}</span>
+              <input
+                type="text"
+                name="nom"
+                value={saisie.nom}
+                required
+                maxlength="100"
+                autocomplete="name"
+                class={champ}
+              />
+            </label>
+
+            <label class="block">
+              <span class="text-sm font-medium">{tr("email")}</span>
+              <input
+                type="email"
+                name="email"
+                value={saisie.email}
+                required
+                maxlength="200"
+                autocomplete="email"
+                class={champ}
+              />
+            </label>
+
+            <label class="block">
+              <span class="text-sm font-medium">{tr("sujet")}</span>
+              <input
+                type="text"
+                name="sujet"
+                value={saisie.sujet}
+                required
+                maxlength="150"
+                class={champ}
+              />
+            </label>
+
+            <label class="block">
+              <span class="text-sm font-medium">{tr("commande")}</span>
+              <input
+                type="text"
+                name="commande"
+                value={saisie.commande}
+                maxlength="40"
+                class={champ}
+              />
+              <span class="mt-1 block text-sm text-ink-soft">
+                {tr("commandeAide")}
+              </span>
+            </label>
+
+            <label class="block">
+              <span class="text-sm font-medium">{tr("message")}</span>
+              {/* La valeur COLLÉE aux balises, sans retour à la ligne : tout
+                  ce qui se trouve entre les deux balises d'un « textarea » en
+                  fait partie, y compris l'indentation du code. */}
+              <textarea
+                name="message"
+                rows="8"
+                required
+                maxlength="5000"
+                class={champ}>{saisie.message}</textarea>
+            </label>
+
+            {/* Le champ piège.
+                Il est sorti de l'écran plutôt que masqué par « display:none » :
+                les robots les plus soignés ignorent ce qui est caché ainsi,
+                mais remplissent tout de même un champ nommé « société ».
+                aria-hidden et tabindex le retirent des lecteurs d'écran et du
+                parcours au clavier : une personne ne peut pas le remplir par
+                accident. */}
+            <div
+              aria-hidden="true"
+              class="pointer-events-none absolute -left-[9999px] h-0 w-0 overflow-hidden"
+            >
+              <label>
+                Société
+                <input
+                  type="text"
+                  name="societe"
+                  value=""
+                  tabindex="-1"
+                  autocomplete="off"
+                />
+              </label>
+            </div>
+
+            <button
+              type="submit"
+              data-envoi={tr("envoiEnCours")}
+              class="w-full rounded-full bg-ink px-6 py-3 font-medium text-paper transition-colors hover:bg-ink/85"
+            >
+              {tr("envoyer")}
+            </button>
+          </form>
+
+          <p class="mt-6 border-t border-ink/10 pt-6 text-sm text-ink-soft">
+            <a
+              href={lien(langue, "/pages/confidentialite")}
+              class="underline underline-offset-4 hover:text-terracotta"
+            >
+              {tr("confidentialite")}
+            </a>
+          </p>
+        </Fragment>
+      )
+    }
+  </section>
+
+  {/* Sans JavaScript le formulaire marche déjà ; ce script n'ajoute qu'un
+      garde-fou contre le double clic, qui enverrait le message deux fois. */}
+  <script is:inline>
+    document.getElementById("form-contact")?.addEventListener("submit", (ev) => {
+      const bouton = ev.currentTarget.querySelector("button[type=submit]");
+      if (!bouton) return;
+      if (bouton.disabled) {
+        ev.preventDefault();
+        return;
+      }
+      // Désactivé APRÈS l'envoi du formulaire : un bouton désactivé pendant
+      // que le navigateur compose la requête n'est pas transmis.
+      setTimeout(() => {
+        bouton.disabled = true;
+        bouton.textContent = bouton.getAttribute("data-envoi") || bouton.textContent;
+      }, 0);
+    });
+  </script>
+</Base>

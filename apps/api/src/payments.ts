@@ -59,18 +59,64 @@ export async function createStripeIntent(
 }
 
 /**
- * Statut serveur d'un PaymentIntent (pour confirmer un paiement SANS attendre
- * le webhook — pratique en dev, et filet de sécurité si le webhook rate).
+ * Un PaymentIntent tel que Stripe le voit (pour confirmer un paiement SANS
+ * attendre le webhook — pratique en dev, et filet de sécurité si le webhook
+ * rate).
+ *
+ * Le MONTANT ENCAISSÉ remonte avec le statut : « succeeded » dit que de
+ * l'argent est arrivé, pas combien. C'est ce montant-là que la commande doit
+ * valoir pour être marquée payée (markOrderPaid).
  */
-export async function getStripeIntentStatus(id: string): Promise<string> {
+export async function getStripeIntent(id: string): Promise<{
+  status: string;
+  montantCents: number;
+  devise: string;
+}> {
   if (!STRIPE_SECRET) throw new Error("Stripe non configuré");
   const res = await fetch(`https://api.stripe.com/v1/payment_intents/${id}`, {
     headers: { Authorization: `Bearer ${STRIPE_SECRET}` },
   });
   if (!res.ok)
     throw new Error(`Stripe get intent HTTP ${res.status} ${await res.text()}`);
-  const j = (await res.json()) as { status: string };
-  return j.status;
+  const j = (await res.json()) as {
+    status: string;
+    amount_received?: number;
+    currency?: string;
+  };
+  return {
+    status: j.status,
+    montantCents: Number(j.amount_received ?? 0),
+    devise: String(j.currency ?? ""),
+  };
+}
+
+/**
+ * Rend l'argent au client sur le moyen de paiement d'origine.
+ *
+ * `amountCents` permet le remboursement PARTIEL : sans lui Stripe rendrait
+ * tout, ce qui n'est presque jamais ce qu'on veut quand une seule affiche
+ * d'une commande pose problème.
+ */
+export async function refundStripe(
+  paymentIntentId: string,
+  amountCents: number,
+): Promise<{ id: string; status: string }> {
+  if (!STRIPE_SECRET) throw new Error("Stripe non configuré");
+  const body = new URLSearchParams();
+  body.set("payment_intent", paymentIntentId);
+  body.set("amount", String(amountCents));
+  const res = await fetch("https://api.stripe.com/v1/refunds", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${STRIPE_SECRET}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+  });
+  if (!res.ok)
+    throw new Error(`Stripe refund HTTP ${res.status} ${await res.text()}`);
+  const j = (await res.json()) as { id: string; status: string };
+  return { id: j.id, status: j.status };
 }
 
 export interface StripeEvent {
@@ -175,19 +221,82 @@ export async function createPaypalOrder(
       ],
     }),
   });
-  if (!res.ok)
-    throw new Error(`PayPal create HTTP ${res.status} ${await res.text()}`);
+  if (!res.ok) throw await refusPaypal(res);
   const j = (await res.json()) as { id: string };
   return j.id;
 }
 
 /**
+ * Un refus de PayPal, traduit.
+ *
+ * PayPal range la vraie cause dans `details[].issue`, un mot en majuscules
+ * anglaises, sous un message générique qui ne dit rien. Les plus fréquentes
+ * ne sont pas des pannes mais des états du COMPTE, et chacune appelle un
+ * geste précis : aucune ligne de code ne les répare.
+ */
+export class RefusPaypal extends Error {
+  constructor(
+    readonly issue: string,
+    readonly explication: string,
+    readonly brut: string,
+  ) {
+    super(`PayPal a refusé : ${issue || "raison inconnue"} — ${explication}`);
+    this.name = "RefusPaypal";
+  }
+}
+
+const RAISONS: Record<string, string> = {
+  PAYEE_ACCOUNT_RESTRICTED:
+    "Le compte PayPal de la boutique est restreint : PayPal lui interdit d'encaisser tant qu'une vérification n'est pas faite. Connectez-vous sur paypal.com et regardez les notifications ou le centre de résolution.",
+  PAYEE_ACCOUNT_LOCKED_OR_CLOSED:
+    "Le compte PayPal de la boutique est bloqué ou fermé. Rien ne peut être encaissé avant de le rouvrir avec PayPal.",
+  PAYEE_ACCOUNT_INVALID:
+    "Le compte destinataire déclaré n'est pas reconnu par PayPal. Vérifiez que les identifiants viennent bien du compte de la boutique.",
+  CURRENCY_NOT_SUPPORTED:
+    "Le compte PayPal de la boutique n'accepte pas l'euro. Ajoutez cette devise dans les réglages du compte.",
+  PERMISSION_DENIED:
+    "L'application PayPal n'a pas le droit de créer des paiements. Regardez les autorisations de l'application sur developer.paypal.com.",
+  INVALID_RESOURCE_ID:
+    "PayPal ne retrouve pas ce paiement. Il a peut-être expiré : refaites la commande.",
+  INSTRUMENT_DECLINED:
+    "Le moyen de paiement du client a été refusé. C'est au client de réessayer avec un autre.",
+};
+
+async function refusPaypal(res: Response): Promise<RefusPaypal> {
+  const brut = await res.text();
+  let issue = "";
+  try {
+    const j = JSON.parse(brut) as {
+      name?: string;
+      details?: { issue?: string }[];
+    };
+    issue = j.details?.[0]?.issue ?? j.name ?? "";
+  } catch {
+    // Une réponse qui n'est pas du JSON : on garde le texte tel quel.
+  }
+  const explication =
+    RAISONS[issue] ??
+    `PayPal a répondu ${res.status} sans raison connue de nous. Le détail est dans le journal du serveur.`;
+  console.error("[paypal] refus", issue || res.status, brut.slice(0, 500));
+  return new RefusPaypal(issue, explication, brut.slice(0, 1000));
+}
+
+/**
  * Capture une commande PayPal approuvée. Renvoie ok=true si COMPLETED.
- * Le montant réel a été fixé à la création côté serveur (non falsifiable).
+ *
+ * Le montant a été fixé à la création, côté serveur — mais pour le panier
+ * de CE moment-là. Le montant réellement capturé remonte donc aussi : c'est
+ * lui que la commande doit valoir pour être marquée payée (markOrderPaid).
  */
 export async function capturePaypalOrder(
   paypalOrderId: string,
-): Promise<{ ok: boolean; status: string }> {
+): Promise<{
+  ok: boolean;
+  status: string;
+  captureId: string | null;
+  montantCents: number;
+  devise: string;
+}> {
   if (!paypalConfigured) throw new Error("PayPal non configuré");
   const token = await paypalToken();
   const res = await fetch(
@@ -200,8 +309,109 @@ export async function capturePaypalOrder(
       },
     },
   );
-  if (!res.ok)
-    throw new Error(`PayPal capture HTTP ${res.status} ${await res.text()}`);
-  const j = (await res.json()) as { status: string };
-  return { ok: j.status === "COMPLETED", status: j.status };
+  if (!res.ok) throw await refusPaypal(res);
+  const j = (await res.json()) as ReponsePaypalCommande;
+  return {
+    ok: j.status === "COMPLETED",
+    status: j.status,
+    // L'identifiant de la CAPTURE, pas celui de la commande : c'est lui, et
+    // lui seul, que PayPal accepte de rembourser plus tard.
+    captureId: captureDe(j),
+    ...montantCapture(j),
+  };
+}
+
+/** La forme, réduite au nécessaire, de ce que PayPal rend sur une commande. */
+interface ReponsePaypalCommande {
+  status: string;
+  purchase_units?: {
+    payments?: {
+      captures?: {
+        id?: string;
+        status?: string;
+        amount?: { currency_code?: string; value?: string };
+      }[];
+    };
+  }[];
+}
+
+/**
+ * Ce qui a réellement été capturé : la somme des captures abouties.
+ *
+ * PayPal écrit les montants en texte décimal (« 19.00 ») : on repasse en
+ * centimes en arrondissant, un nombre à virgule ne tombant jamais juste.
+ * Deux devises différentes dans une même commande ne devraient pas exister ;
+ * si c'était le cas, la devise rendue vide fait échouer la vérification.
+ */
+function montantCapture(j: ReponsePaypalCommande): { montantCents: number; devise: string } {
+  let montantCents = 0;
+  const devises = new Set<string>();
+  for (const unite of j.purchase_units ?? [])
+    for (const capture of unite.payments?.captures ?? []) {
+      if (capture.status !== "COMPLETED" || !capture.amount) continue;
+      montantCents += Math.round(Number(capture.amount.value ?? 0) * 100);
+      devises.add(String(capture.amount.currency_code ?? ""));
+    }
+  return { montantCents, devise: devises.size === 1 ? [...devises][0]! : "" };
+}
+
+/** L'identifiant de la capture, quand il y en a une. */
+function captureDe(j: ReponsePaypalCommande): string | null {
+  for (const unite of j.purchase_units ?? [])
+    for (const capture of unite.payments?.captures ?? [])
+      if (capture.id) return capture.id;
+  return null;
+}
+
+/**
+ * Retrouve la capture d'une commande PayPal déjà encaissée.
+ *
+ * Sert aux ventes passées avant qu'on garde cet identifiant : sans lui, leur
+ * premier remboursement échouerait sans qu'on comprenne pourquoi.
+ */
+export async function capturePaypalDeLaCommande(
+  paypalOrderId: string,
+): Promise<string | null> {
+  if (!paypalConfigured) throw new Error("PayPal non configuré");
+  const token = await paypalToken();
+  const res = await fetch(`${PAYPAL_BASE}/v2/checkout/orders/${paypalOrderId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return null;
+  return captureDe((await res.json()) as ReponsePaypalCommande);
+}
+
+/**
+ * Rend l'argent d'une capture PayPal, en totalité ou en partie.
+ *
+ * PayPal ne rembourse pas une commande mais une CAPTURE : c'est la même
+ * distinction que chez Stripe entre l'intention de paiement et le paiement.
+ * Le montant part en euros avec deux décimales, la devise étant celle de la
+ * boutique.
+ */
+export async function refundPaypal(
+  captureId: string,
+  amountCents: number,
+): Promise<{ id: string; status: string }> {
+  if (!paypalConfigured) throw new Error("PayPal non configuré");
+  const token = await paypalToken();
+  const res = await fetch(
+    `${PAYPAL_BASE}/v2/payments/captures/${captureId}/refund`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        amount: {
+          currency_code: "EUR",
+          value: (amountCents / 100).toFixed(2),
+        },
+      }),
+    },
+  );
+  if (!res.ok) throw await refusPaypal(res);
+  const j = (await res.json()) as { id: string; status: string };
+  return { id: j.id, status: j.status };
 }

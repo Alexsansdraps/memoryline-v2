@@ -1,0 +1,300 @@
+---
+/**
+ * Archives : tout ce qui a été rangé, au même endroit.
+ *
+ * Chaque écran garde SA section « Archivés » — c'est là qu'on range et qu'on
+ * restaure au fil du travail, sans changer d'écran. Celui-ci répond à l'autre
+ * question, celle qu'on se pose trois mois plus tard : « j'avais retiré une
+ * affiche cet hiver, où est-elle ? ». Il faut sinon se souvenir de l'écran
+ * avant de pouvoir chercher.
+ *
+ * La restauration ne passe PAS par une route à elle : chaque nature est
+ * restaurée par sa propre route d'archivage, la seule qui en connaisse les
+ * règles — une tranche de livraison refuse de revenir si une autre couvre
+ * déjà son poids, et c'est ce refus, écrit en clair, qui doit s'afficher ici.
+ */
+import Admin from "../layouts/Admin.astro";
+import { url } from "../lib/url.ts";
+import { adminApi, type GroupeArchives } from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+/**
+ * Remet en place une chose archivée.
+ *
+ * Un `switch` explicite, et surtout pas une table de chemins construite à la
+ * volée : l'identifiant vient du formulaire, et une nature inconnue doit se
+ * refuser ici plutôt que de partir vers une adresse devinée.
+ */
+async function restaurer(cle: string, id: number): Promise<void> {
+  switch (cle) {
+    case "pages":
+      await api.archiverPage(id, false);
+      return;
+    case "produits": {
+      // Le statut « archivé » d'un produit n'est pas une date : on le remet
+      // en vente, exactement ce que fait « Activer » depuis la liste.
+      //
+      // Cette route-là ne lève pas quand elle refuse : elle rend la liste de
+      // ce qu'elle n'a pas fait, avec la raison. Sans cette relecture, l'écran
+      // annoncerait « revenu à sa place » une affiche restée archivée.
+      const r = await api.produitsEnMasse([id], "statut", { valeur: "active" });
+      const refuse = r.refuses?.[0];
+      if (refuse) throw new Error(refuse.raison);
+      return;
+    }
+    case "collections":
+      await api.archiverCollection(id, false);
+      return;
+    case "categories-produits":
+      await api.archiverCategorieProduit(id, false);
+      return;
+    case "cadres":
+      await api.archiverCadre(id, false);
+      return;
+    case "personnages":
+      await api.archiveCharacter(id, false);
+      return;
+    case "pieces":
+      await api.archiveAsset(id, false);
+      return;
+    case "categories-personnages":
+      await api.archiverCategoriePersonnage(id, false);
+      return;
+    case "categories-pieces":
+      await api.archiverCategoriePiece(id, false);
+      return;
+    case "types-affiche":
+      await api.archiverView(id, false);
+      return;
+    case "fonds":
+      await api.archiverBackground(id, false);
+      return;
+    case "styles-ia":
+      await api.archiverStyleIa(id, false);
+      return;
+    case "stands":
+      await api.archiverStand(id, false);
+      return;
+    case "modes-livraison":
+      await api.archiverModeLivraison(id, false);
+      return;
+    case "tarifs-livraison":
+      await api.archiverTarifLivraison(id, false);
+      return;
+    case "lettres":
+      await api.archiverLettre(id, false);
+      return;
+    case "comptes":
+      await api.archiverCompte(id, false);
+      return;
+    default:
+      throw new Error(
+        "Cette nature d'archive n'est pas reconnue. Rechargez la page.",
+      );
+  }
+}
+
+let flash: string | null = null;
+let flashErreur = false;
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const cle = String(f.get("cle") ?? "");
+  const id = Number(f.get("id"));
+  const nom = String(f.get("nom") ?? "");
+  try {
+    if (f.get("_action") !== "restaurer") throw new Error("Action inconnue.");
+    if (!Number.isInteger(id) || id <= 0)
+      throw new Error("Ligne introuvable. Rechargez la page.");
+    await restaurer(cle, id);
+    // « revient » plutôt que « est restauré » : la liste mêle du masculin et
+    // du féminin, et « la collection est restauré » se lit comme une faute.
+    flash = nom
+      ? `« ${nom} » revient à sa place, comme avant l'archivage.`
+      : "C'est revenu à sa place, comme avant l'archivage.";
+  } catch (e) {
+    flash = "Rien n'a été restauré : " + String(e).replace(/^Error:\s*/, "");
+    flashErreur = true;
+  }
+}
+
+let groupes: GroupeArchives[] = [];
+let total = 0;
+let commandesArchivees = 0;
+let liensMenuArchives = 0;
+let panne: string | null = null;
+try {
+  const r = await api.archives();
+  groupes = r.groupes;
+  total = r.total;
+  commandesArchivees = r.commandesArchivees;
+  liensMenuArchives = r.liensMenuArchives;
+} catch (e) {
+  panne = String(e).replace(/^Error:\s*/, "");
+}
+
+// Un groupe vide n'a rien à montrer : il ne laisse pas son titre derrière lui.
+const remplis = groupes.filter((g) => g.elements.length > 0);
+
+const leJour = (iso: string | null): string =>
+  iso
+    ? new Date(iso).toLocaleDateString("fr-FR", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      })
+    : "—";
+---
+
+<Admin title="Archives">
+  {flash && (
+    <p
+      class={`mb-4 rounded border px-3 py-2 text-sm ${
+        flashErreur
+          ? "border-red-200 bg-red-50"
+          : "border-green-200 bg-green-50"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+  {panne && (
+    <p class="mb-4 text-sm text-red-600">L'écran n'a pas pu charger ses données : {panne}</p>
+  )}
+
+  <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+    Ici se retrouve <strong>tout ce que vous avez archivé</strong>, quelle que
+    soit la page où vous l'avez fait. Archiver n'efface rien : la chose quitte
+    la boutique et les listes ordinaires, elle garde tout ce qu'elle contenait,
+    et « Restaurer » la fait revenir à sa place, entière. Les commandes déjà
+    passées, elles, continuent de s'imprimer comme avant, même sur un fond ou un
+    personnage archivé.
+  </p>
+  <p class="mb-6 max-w-3xl text-sm text-bo-muted">
+    Chaque chose se restaure aussi depuis son propre écran, dans sa section
+    « Archivés ». Cette page-ci évite d'avoir à se souvenir duquel il s'agissait.
+  </p>
+
+  {/* Les commandes et les liens du menu comptent dans ce « rien » : sans eux,
+      l'écran annonçait « rien n'est archivé » juste au-dessus des deux
+      paragraphes qui disaient le contraire. */}
+  {!panne && total === 0 && commandesArchivees === 0 && liensMenuArchives === 0 && (
+    <p class="mb-6 rounded-lg border border-bo-border bg-bo-surface px-4 py-6 text-sm text-bo-muted">
+      Rien n'est archivé pour le moment.
+    </p>
+  )}
+
+  {remplis.map((groupe) => (
+    <section class="mb-8">
+      <h2 class="mb-1 font-semibold">
+        {groupe.titre}
+        <span class="ml-2 text-sm font-normal text-bo-muted">
+          {groupe.elements.length}
+        </span>
+      </h2>
+      <p class="mb-3 text-xs text-bo-muted">
+        Se restaure aussi depuis
+        <a class="underline" href={url(groupe.ecran)}>{groupe.ecranNom}</a>.
+        {/* Une affiche n'a pas de date d'archivage mais un STATUT, et la
+            restauration la repasse en vente. Une affiche archivée depuis un
+            brouillon revient donc en vente : le dire ici, plutôt que de la
+            laisser paraître sur la boutique sans prévenir. */}
+        {groupe.cle === "produits" &&
+          " Une affiche restaurée revient EN VENTE : remettez-la en brouillon depuis sa fiche si c'est là qu'elle en était."}
+      </p>
+      <div class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface">
+        <table class="w-full text-sm">
+          <tbody>
+            {groupe.elements.map((el) => (
+              <tr class="border-t border-bo-border first:border-t-0">
+                <td class="px-4 py-2 font-medium">{el.libelle}</td>
+                <td class="px-4 py-2 text-bo-muted">{el.detail ?? ""}</td>
+                <td class="whitespace-nowrap px-4 py-2 text-bo-muted">
+                  {/* « Modifié le » pour les produits : leur archivage est un
+                      statut et non une date, et annoncer une date d'archivage
+                      qu'on ne connaît pas serait un mensonge tranquille. */}
+                  {groupe.dateSource === "archivage" ? "Archivé le " : "Modifié le "}
+                  {leJour(el.date)}
+                </td>
+                <td class="px-4 py-2 text-right">
+                  <form method="POST" class="inline">
+                    <input type="hidden" name="_action" value="restaurer" />
+                    <input type="hidden" name="cle" value={groupe.cle} />
+                    <input type="hidden" name="id" value={el.id} />
+                    <input type="hidden" name="nom" value={el.libelle} />
+                    <button class="text-bo-accent hover:underline">
+                      Restaurer
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  ))}
+
+  {commandesArchivees > 0 && (
+    <section class="mb-8">
+      <h2 class="mb-1 font-semibold">Commandes</h2>
+      <p class="max-w-3xl text-sm text-bo-muted">
+        {commandesArchivees} commande{commandesArchivees > 1 ? "s" : ""} archivée
+        {commandesArchivees > 1 ? "s" : ""}. Elles gardent leur propre vue, qui
+        sait les chercher et les filtrer :
+        <a class="underline" href={url("/commandes?onglet=archivees")}>
+          Commandes → Archivées</a
+        >.
+      </p>
+    </section>
+  )}
+
+  {liensMenuArchives > 0 && (
+    <section class="mb-8">
+      <h2 class="mb-1 font-semibold">Liens du menu</h2>
+      <p class="max-w-3xl text-sm text-bo-muted">
+        {liensMenuArchives} lien{liensMenuArchives > 1 ? "s" : ""} retiré
+        {liensMenuArchives > 1 ? "s" : ""} du menu. Ils se restaurent depuis
+        l'écran du menu, et pas d'ici : remettre un sous-lien ramène l'entrée
+        qui le portait, et remettre une entrée ramène les sous-liens partis avec
+        elle — un bouton isolé ici en ferait revenir plus qu'annoncé :
+        <a class="underline" href={url("/menu")}>
+          Menu du site → Liens retirés du menu</a
+        >.
+      </p>
+    </section>
+  )}
+
+  {/* --- Les trois exceptions, dans ses mots --------------------------- */}
+  <section class="mb-6 max-w-3xl rounded-lg border border-bo-border bg-bo-bg p-4">
+    <h2 class="mb-2 font-semibold">Ce qui disparaît vraiment</h2>
+    <p class="mb-3 text-sm text-bo-muted">
+      Votre règle est « <em>rien ne se supprime entièrement ça n'existe pas, ça
+      sera de l'archivage, partout</em> ». Elle vaut partout sauf sur trois
+      choses, dont aucune ne vous appartient. Les voici, pour que vous sachiez
+      exactement ce qui part pour de bon.
+    </p>
+    <ol class="ml-5 list-decimal space-y-2 text-sm text-bo-muted">
+      <li>
+        <strong>Les photos des visiteurs</strong> prises pour l'affiche IA, et
+        leur effacement automatique. Ce sont des visages : la loi demande qu'ils
+        ne restent pas, et les garder « au cas où » serait précisément ce qu'il
+        ne faut pas faire. L'affiche achetée, elle, reste.
+      </li>
+      <li>
+        <strong>Les fichiers de cache</strong> — fonds mis en image, fichiers
+        d'impression préparés, images redimensionnées, restes des envois depuis
+        le téléphone. Ils se refabriquent tout seuls à partir de vos originaux,
+        qui, eux, ne bougent pas. Les archiver reviendrait à garder le brouillon
+        d'un calcul.
+      </li>
+      <li>
+        <strong>Ce qu'un client fait sur ses propres données</strong> : retirer
+        une ligne de son panier, effacer une de ses adresses, se désinscrire de
+        la lettre d'information. Ce sont ses affaires, pas votre contenu. Les
+        sessions de connexion partent de même : une session n'est pas un
+        souvenir, c'est une porte ouverte.
+      </li>
+    </ol>
+  </section>
+</Admin>

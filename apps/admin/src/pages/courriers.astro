@@ -1,0 +1,506 @@
+---
+/**
+ * Courriers de la boutique : où ils partent, à quoi ils ressemblent, et de
+ * quoi s'en envoyer un pour vérifier.
+ *
+ * Un courrier part tout seul, au moment d'un paiement ou d'un panier oublié :
+ * personne ne le voit avant le client. Cet écran existe pour lever ce doute
+ * sans nous appeler, et il répond dans cet ordre à trois questions : si
+ * j'envoie maintenant, où va le courrier ; à quoi ressemble celui-ci ; est-ce
+ * qu'il arrive vraiment.
+ *
+ * La question dangereuse est la première. Tant que la boîte d'essai tourne,
+ * rien n'atteint un client et on peut tout essayer ; le jour où elle sera
+ * coupée, le même bouton écrira à une vraie personne. Le bandeau du haut ne
+ * sert qu'à rendre cette différence impossible à manquer.
+ *
+ * Les aperçus et les essais passent par la page elle-même plutôt que par le
+ * navigateur : la session du back-office vit dans son cookie, et l'API n'est
+ * jointe que côté serveur. Le script en bas ne fait que rejouer ce même envoi
+ * sans recharger l'écran ; sans lui, les boutons restent des formulaires qui
+ * fonctionnent.
+ */
+import Admin from "../layouts/Admin.astro";
+import { url } from "../lib/url.ts";
+import { adminApi, type EtatCourriers, type ModeleCourrier } from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+/** Ce que l'API rend pour un aperçu, avant d'être réduit à ce qui s'affiche. */
+interface ApercuBrut {
+  modele: string;
+  sujet: string;
+  html: string;
+  source: string;
+  commande?: string;
+}
+
+type Ton = "ok" | "attention" | "erreur";
+
+/** Ce qu'a produit le dernier bouton pressé, rattaché à son courrier. */
+interface Resultat {
+  modele: string;
+  ton: Ton;
+  message: string | null;
+  apercu: { sujet: string; note: string; html: string } | null;
+  /** Saisies à remettre dans les champs après un envoi sans script. */
+  commande: string;
+  destinataire: string;
+}
+
+/**
+ * Messages d'erreur montrables. L'API explique en français ce qu'elle refuse
+ * (« commande introuvable », marche à suivre d'un envoi non configuré) et
+ * cette phrase-là a sa place à l'écran. Le reste, code de statut ou panne de
+ * réseau, ne veut rien dire pour la boutique et devient une phrase à nous.
+ */
+const TECHNIQUE = /^API\s|fetch|ECONN|ENOTFOUND|Unexpected|JSON|socket/i;
+
+function messageLisible(e: unknown, repli: string): string {
+  const brut = (e instanceof Error ? e.message : String(e)).trim();
+  if (!brut || TECHNIQUE.test(brut)) return repli;
+  return brut;
+}
+
+/**
+ * L'expéditeur s'écrit « Memory Line <bonjour@…> » : seule l'adresse peut
+ * pré-remplir un champ où l'on attend un destinataire.
+ */
+function adresseSeule(expediteur: string | null | undefined): string {
+  if (!expediteur) return "";
+  const entreChevrons = expediteur.match(/<([^>]+)>/);
+  return (entreChevrons?.[1] ?? expediteur).trim();
+}
+
+/** Dit avec quoi l'aperçu a été rempli, pour qu'on ne lise pas un faux prix. */
+function noteSource(a: ApercuBrut): string {
+  if (a.source === "commande") {
+    return a.commande
+      ? `Rempli avec les vraies données de la commande ${a.commande}.`
+      : "Rempli avec les vraies données de la commande demandée.";
+  }
+  return "Rempli avec une commande d'exemple : ces affiches et cette adresse n'existent pas.";
+}
+
+let resultat: Resultat | null = null;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  // Touche Entrée dans un champ : le navigateur presse le premier bouton du
+  // formulaire, « Voir », mais n'en dit pas toujours le nom. C'est celui qui
+  // n'envoie rien, il peut servir de repli.
+  const action = String(f.get("_action") ?? "") || "apercu";
+  const modele = String(f.get("modele") ?? "");
+  const commande = String(f.get("commande") ?? "").trim();
+  const destinataire = String(f.get("destinataire") ?? "").trim();
+
+  resultat = {
+    modele,
+    ton: "ok",
+    message: null,
+    apercu: null,
+    commande,
+    destinataire,
+  };
+
+  try {
+    if (action === "apercu") {
+      // Sans numéro saisi, la clé « commande » ne part pas du tout : c'est ce
+      // qui vaut à l'API de rendre son jeu d'exemple.
+      const a = await api.apercuCourrier(modele, commande || undefined);
+      resultat.apercu = { sujet: a.sujet, note: noteSource(a), html: a.html };
+    } else if (action === "essai") {
+      const envoi = await api.essaiCourrier({
+        modele,
+        destinataire,
+        ...(commande ? { commande } : {}),
+      });
+      // Le résumé de l'API commence déjà par « Le courrier n'a pas pu
+      // partir » : le préfixer faisait bégayer la phrase à l'écran.
+      resultat.message = envoi.resume;
+      resultat.ton = envoi.parti ? "ok" : "attention";
+    } else {
+      resultat.message = "Ce bouton n'a pas été compris. Réessayez.";
+      resultat.ton = "erreur";
+    }
+  } catch (e) {
+    resultat.message = messageLisible(
+      e,
+      action === "apercu"
+        ? "Le courrier n'a pas pu être affiché. Réessayez dans un instant."
+        : "L'envoi n'a pas abouti. Réessayez dans un instant.",
+    );
+    resultat.ton = "erreur";
+  }
+
+  // Appel du script de la page : il attend la réponse en données, pas en HTML,
+  // et met à jour l'écran sans le recharger.
+  if ((Astro.request.headers.get("accept") ?? "").includes("application/json")) {
+    return new Response(JSON.stringify(resultat), {
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  }
+}
+
+let etat: EtatCourriers | null = null;
+try {
+  etat = await api.etatCourriers();
+} catch {
+  // Le bandeau dit alors qu'il ne sait pas, ce qui vaut un avertissement.
+}
+
+let modeles: ModeleCourrier[] = [];
+let modelesIllisibles = false;
+try {
+  const r = await api.modelesCourriers();
+  modeles = r.modeles;
+} catch {
+  modelesIllisibles = true;
+}
+
+/**
+ * Le bandeau ne répond qu'à « où va un courrier envoyé maintenant ». L'ordre
+ * des cas compte : mal réglée, la boutique n'envoie rien du tout, et c'est
+ * plus important à dire que le mode d'essai.
+ */
+const bandeau = !etat
+  ? {
+      classe: "border-red-200 bg-red-50 text-red-700",
+      titre: "Impossible de savoir où partent les courriers",
+      phrase:
+        "L'état des envois n'a pas pu être lu. Rechargez l'écran dans un instant ; tant que ce message reste, n'envoyez rien.",
+    }
+  : !etat.configure
+    ? {
+        classe: "border-red-200 bg-red-50 text-red-700",
+        titre: "Aucun courrier ne peut partir",
+        phrase: etat.resume,
+      }
+    : etat.enEssai
+      ? {
+          classe: "border-green-200 bg-green-50 text-green-900",
+          titre: "Rien n'arrive chez vos clients",
+          phrase: etat.resume,
+        }
+      : {
+          classe: "border-amber-200 bg-amber-50 text-amber-900",
+          titre: "Les courriers partent pour de vrai",
+          phrase: etat.resume,
+        };
+
+/** Adresse proposée pour les essais : celle de la boutique, si on la connaît. */
+const adresseProposee = adresseSeule(etat?.expediteur);
+
+const TONS: Record<Ton, string> = {
+  ok: "border-green-200 bg-green-50 text-green-900",
+  attention: "border-amber-200 bg-amber-50 text-amber-900",
+  erreur: "border-red-200 bg-red-50 text-red-700",
+};
+---
+
+<Admin title="Courriers">
+  {/* =============================================================== */}
+  {/* 1 : où part un courrier envoyé maintenant                       */}
+  {/* =============================================================== */}
+  <section class={`mb-6 rounded-lg border px-5 py-4 ${bandeau.classe}`}>
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div class="min-w-0">
+        <p class="font-semibold">{bandeau.titre}</p>
+        <p class="mt-1 max-w-3xl text-sm">{bandeau.phrase}</p>
+      </div>
+      {etat?.enEssai && etat.boiteTestUrl && (
+        <a
+          href={etat.boiteTestUrl}
+          target="_blank"
+          rel="noopener"
+          class="shrink-0 rounded border border-bo-border bg-bo-surface px-3 py-1.5 text-sm text-bo-accent hover:underline"
+        >
+          Ouvrir la boîte d'essai ↗
+        </a>
+      )}
+    </div>
+
+    {etat && (
+      <p class="mt-3 text-sm">
+        {etat.expediteur
+          ? `Vos clients verront ce courrier arriver de : ${etat.expediteur}`
+          : "Aucune adresse d'expéditeur n'est réglée pour l'instant."}
+        {etat.copie && (
+          <span class="block">
+            Une copie discrète de chaque courrier part aussi à {etat.copie}.
+          </span>
+        )}
+      </p>
+    )}
+  </section>
+
+  {/* Sans adresse publique, rien ne casse à l'écran : les courriers partent,
+      mais sans logo, sans vignettes et avec des liens morts. C'est resté
+      invisible plusieurs jours ; ce bandeau le dit dès qu'on ouvre l'écran. */}
+  {etat && !etat.adressePublique && (
+    <section class="mb-6 rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-red-700">
+      <p class="font-semibold">Vos courriers partent sans logo</p>
+      <p class="mt-1 max-w-3xl text-sm">
+        L'adresse du site n'est pas réglée sur le serveur (réglage PUBLIC_ORIGIN).
+        Les courriers affichent le nom « Memory Line » au lieu du logo, sans les
+        vignettes des affiches, et leurs liens ne mènent pas au site. À corriger
+        avant d'envoyer quoi que ce soit à une cliente.
+      </p>
+    </section>
+  )}
+
+  {/* =============================================================== */}
+  {/* 2 : les quatre courriers                                        */}
+  {/* =============================================================== */}
+  <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+    Voici les courriers que la boutique écrit toute seule. « Voir » montre le
+    courrier tel qu'il arrivera, sans rien envoyer à personne. « M'en envoyer
+    un » l'expédie pour de bon, à l'adresse indiquée.
+  </p>
+
+  {modelesIllisibles && (
+    <p class="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+      La liste des courriers n'a pas pu être lue. Rechargez l'écran dans un
+      instant.
+    </p>
+  )}
+
+  <div class="space-y-4">
+    {modeles.map((m) => {
+      const sien = resultat?.modele === m.id ? resultat : null;
+      return (
+        <article
+          id={`courrier-${m.id}`}
+          data-carte={m.id}
+          class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface"
+        >
+          <div class="p-5">
+            <h3 class="font-semibold">{m.nom}</h3>
+            <p class="mt-1 max-w-3xl text-sm text-bo-muted">{m.quand}</p>
+
+            <form
+              method="POST"
+              action={url(`/courriers#courrier-${m.id}`)}
+              class="js-courrier mt-4 flex flex-wrap items-end gap-3 text-sm"
+            >
+              <input type="hidden" name="modele" value={m.id} />
+
+              {m.besoinCommande && (
+                <label class="block">
+                  <span class="text-xs text-bo-muted">
+                    Numéro de commande (facultatif)
+                  </span>
+                  <input
+                    name="commande"
+                    value={sien?.commande ?? ""}
+                    placeholder="1043"
+                    class="mt-1 block w-40 rounded border border-bo-border px-2 py-1"
+                  />
+                </label>
+              )}
+
+              <label class="block">
+                <span class="text-xs text-bo-muted">M'envoyer l'essai à</span>
+                <input
+                  type="email"
+                  name="destinataire"
+                  value={sien?.destinataire || adresseProposee}
+                  required
+                  placeholder="vous@exemple.fr"
+                  class="mt-1 block w-64 rounded border border-bo-border px-2 py-1"
+                />
+              </label>
+
+              {/* « Voir » n'envoie rien : il n'a pas à réclamer une adresse. */}
+              <button
+                name="_action"
+                value="apercu"
+                formnovalidate
+                class="rounded border border-bo-border px-3 py-1.5 hover:bg-bo-bg"
+              >
+                Voir
+              </button>
+              <button
+                name="_action"
+                value="essai"
+                class="rounded bg-bo-accent px-3 py-1.5 text-white hover:opacity-90"
+              >
+                M'en envoyer un
+              </button>
+
+              {m.besoinCommande && (
+                <p class="basis-full text-xs text-bo-muted">
+                  Ce courrier parle d'une commande. Laissé vide, le numéro est
+                  remplacé par une commande d'exemple ; renseigné, vous lisez le
+                  courrier avec les vraies affiches, les vrais montants et la
+                  vraie adresse de cette commande.
+                </p>
+              )}
+            </form>
+
+            <p
+              data-message
+              aria-live="polite"
+              hidden={!sien?.message}
+              class={`mt-3 rounded border px-3 py-2 text-sm ${
+                TONS[sien?.ton ?? "ok"]
+              }`}
+            >
+              {sien?.message}
+            </p>
+          </div>
+
+          {/*
+            Le courrier apporte ses propres styles, pensés pour une messagerie.
+            Posé dans la page, il repeindrait le back-office : il est donc lu
+            dans un cadre à part, qui n'exécute rien de ce qu'il contient.
+          */}
+          <div data-apercu hidden={!sien?.apercu} class="border-t border-bo-border">
+            <div class="flex flex-wrap items-start justify-between gap-3 bg-bo-bg px-5 py-3">
+              <div class="min-w-0">
+                <div class="text-xs text-bo-muted">
+                  Objet, tel qu'il s'affichera dans la boîte de réception
+                </div>
+                <div data-sujet class="text-sm font-medium">
+                  {sien?.apercu?.sujet}
+                </div>
+                <div data-note class="mt-0.5 text-xs text-bo-muted">
+                  {sien?.apercu?.note}
+                </div>
+              </div>
+              <button
+                type="button"
+                data-fermer
+                class="shrink-0 rounded border border-bo-border bg-bo-surface px-3 py-1.5 text-sm hover:bg-bo-bg"
+              >
+                Fermer l'aperçu
+              </button>
+            </div>
+            <iframe
+              data-cadre
+              title={`Aperçu du courrier : ${m.nom}`}
+              sandbox=""
+              srcdoc={sien?.apercu?.html}
+              class="block h-[36rem] w-full border-0 bg-bo-bg"
+            ></iframe>
+          </div>
+        </article>
+      );
+    })}
+
+    {modeles.length === 0 && !modelesIllisibles && (
+      <p class="rounded-lg border border-bo-border bg-bo-surface px-5 py-6 text-sm text-bo-muted">
+        Aucun courrier n'est prévu pour l'instant.
+      </p>
+    )}
+  </div>
+
+  {/* =============================================================== */}
+  {/* 3 : sortir du mode d'essai                                      */}
+  {/* =============================================================== */}
+  <section class="mt-8 rounded-lg border border-bo-border bg-bo-surface p-5">
+    <h3 class="mb-1 font-semibold">Le jour où les courriers devront vraiment partir</h3>
+    <p class="max-w-3xl text-sm text-bo-muted">
+      Tant que la boîte d'essai est en place, elle attrape tout : c'est elle qui
+      reçoit, jamais vos clients. Pour lui rendre la main, ouvrez le fichier de
+      réglages de la boutique (le fichier « .env », à la racine du dossier),
+      effacez ce qui suit <strong>MAIL_TEST_URL</strong> en laissant la ligne
+      vide, puis relancez la boutique. Les courriers repartiront alors vers les
+      adresses des clients, et le bandeau du haut passera de vert à ambre pour
+      vous le rappeler.
+    </p>
+  </section>
+
+  <script is:inline>
+    // Voir un courrier ou s'en envoyer un ne change rien à l'écran : le
+    // recharger ferait perdre l'aperçu déjà ouvert et la place dans la page.
+    // Les formulaires restent complets, c'est le même envoi qui est rejoué.
+    (function () {
+      var TONS = {
+        ok: "border-green-200 bg-green-50 text-green-900",
+        attention: "border-amber-200 bg-amber-50 text-amber-900",
+        erreur: "border-red-200 bg-red-50 text-red-700",
+      };
+      var CLASSES_MESSAGE = "mt-3 rounded border px-3 py-2 text-sm ";
+
+      document.querySelectorAll("form.js-courrier").forEach(function (form) {
+        var carte = form.closest("[data-carte]");
+        if (!carte) return;
+        var zoneMessage = carte.querySelector("[data-message]");
+        var panneau = carte.querySelector("[data-apercu]");
+        var sujet = carte.querySelector("[data-sujet]");
+        var note = carte.querySelector("[data-note]");
+        var cadre = carte.querySelector("[data-cadre]");
+        var fermer = carte.querySelector("[data-fermer]");
+        var boutons = form.querySelectorAll("button[name='_action']");
+
+        function afficherMessage(texte, ton) {
+          if (!zoneMessage) return;
+          zoneMessage.className = CLASSES_MESSAGE + (TONS[ton] || TONS.ok);
+          zoneMessage.textContent = texte || "";
+          zoneMessage.hidden = !texte;
+        }
+
+        fermer?.addEventListener("click", function () {
+          if (!panneau) return;
+          panneau.hidden = true;
+          // Le courrier fermé cesse d'être chargé, images comprises.
+          if (cadre) cadre.removeAttribute("srcdoc");
+        });
+
+        form.addEventListener("submit", async function (e) {
+          e.preventDefault();
+          // Sans bouton nommé (validation par la touche Entrée), on retombe
+          // sur l'aperçu : c'est l'action qui n'envoie rien.
+          var demande = e.submitter?.value || "apercu";
+
+          var donnees = new FormData(form);
+          // Le bouton pressé n'entre pas de lui-même dans les données.
+          donnees.set("_action", demande);
+
+          boutons.forEach(function (b) {
+            b.disabled = true;
+          });
+          afficherMessage(
+            demande === "essai" ? "Envoi en cours…" : "Ouverture du courrier…",
+            "ok",
+          );
+
+          try {
+            var reponse = await fetch(window.location.href, {
+              method: "POST",
+              headers: { Accept: "application/json" },
+              body: donnees,
+            });
+            if (!reponse.ok) throw new Error("refus");
+            var r = await reponse.json();
+
+            afficherMessage(r.message, r.ton);
+
+            if (r.apercu && panneau) {
+              if (sujet) sujet.textContent = r.apercu.sujet;
+              if (note) note.textContent = r.apercu.note;
+              if (cadre) cadre.srcdoc = r.apercu.html;
+              panneau.hidden = false;
+            } else if (demande === "apercu" && panneau) {
+              // L'aperçu demandé n'est pas venu : garder le précédent à
+              // l'écran le ferait passer pour le courrier qu'on vient de
+              // demander, avec d'autres données.
+              panneau.hidden = true;
+              if (cadre) cadre.removeAttribute("srcdoc");
+            }
+          } catch (erreur) {
+            afficherMessage(
+              "L'écran n'a pas répondu. Rechargez la page, puis réessayez.",
+              "erreur",
+            );
+          } finally {
+            boutons.forEach(function (b) {
+              b.disabled = false;
+            });
+          }
+        });
+      });
+    })();
+  </script>
+</Admin>

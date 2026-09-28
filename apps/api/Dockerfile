@@ -20,12 +20,14 @@ RUN corepack enable
 #                        utilisé côté web, les deux rendus concordent donc.
 RUN apk add --no-cache fontconfig
 COPY apps/api/fonts/ /usr/share/fonts/memoryline/
-RUN fc-cache -f && fc-list | grep -Ei "dm serif|caveat"
+RUN fc-cache -f && fc-list | grep -Ei "dm serif" && fc-list | grep -Ei "league spartan" && fc-list | grep -Ei "another shabby"
 
 WORKDIR /app
 
 # 1) Manifests d'abord (cache de couches Docker).
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# `tsconfig.base.json` et `turbo.json` sont référencés depuis les paquets :
+# sans eux, Astro s'arrête sur « Cannot find module '../../tsconfig.base.json' ».
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json turbo.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY packages/types/package.json packages/types/package.json
 

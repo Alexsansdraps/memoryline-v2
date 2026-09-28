@@ -1,51 +1,306 @@
 ---
+import { apiInterne } from "../lib/api-interne.ts";
+/**
+ * L'accueil du back-office : ce que la boutique a fait, et ce qui reste à faire.
+ *
+ * Il affichait quatre compteurs cumulés depuis toujours — combien d'affiches,
+ * combien de commandes, combien de clientes — et pas un euro. En ouvrant le
+ * matin, on ne savait donc pas ce que la veille avait donné, ni s'il y avait
+ * des colis à préparer. C'était la seule page qu'on regarde tous les jours, et
+ * la seule qui ne répondait à aucune question du jour.
+ *
+ * Les montants sont réservés à la propriétaire. Une vendeuse recrutée pour un
+ * salon voit ce qu'elle a à voir : les ventes du stand, et rien du site.
+ */
 import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
-import { adminApi } from "../lib/api.ts";
+import { adminApi, formatPrice, type Stats } from "../lib/api.ts";
 
 const isOwner = Astro.locals.user?.role === "owner";
 
-let stats = null;
+/** Les périodes proposées. Trente jours par défaut : c'est le mois écoulé. */
+const PERIODES = [
+  { jours: 7, label: "7 jours" },
+  { jours: 30, label: "30 jours" },
+  { jours: 90, label: "90 jours" },
+];
+const demande = Number(Astro.url.searchParams.get("jours"));
+const jours = PERIODES.some((p) => p.jours === demande) ? demande : 30;
+
+let stats: Stats | null = null;
 let error: string | null = null;
 try {
   stats = await adminApi(Astro.request).stats();
 } catch (e) {
   error = String(e);
 }
+
+/** Ce qu'a fait la période, et la période précédente pour comparer. */
+interface Ventes {
+  jours: number;
+  periode: {
+    commandes: number;
+    articles: number;
+    caCents: number;
+    portCents: number;
+    aTraiter: number;
+  };
+  precedent: { commandes: number; articles: number; caCents: number; portCents: number };
+  serie: number[];
+}
+
+let ventes: Ventes | null = null;
+if (isOwner) {
+  // Appel direct plutôt que par le client partagé : cet écran est le seul à
+  // avoir besoin de cette route, et le client partagé sert déjà à tout le reste.
+  try {
+    const base =
+      apiInterne();
+    const res = await fetch(`${base}/admin/stats/orders?jours=${jours}`, {
+      headers: { cookie: Astro.request.headers.get("cookie") ?? "" },
+    });
+    if (res.ok) ventes = (await res.json()) as Ventes;
+  } catch {
+    // Un accueil sans chiffres reste un accueil : les raccourcis suffisent.
+  }
+}
+
+/**
+ * L'écart avec la période précédente, en clair.
+ *
+ * Partir de zéro n'est pas une hausse infinie : quand il n'y avait rien
+ * avant, on le dit plutôt que d'afficher un pourcentage qui ne veut rien dire.
+ */
+function ecart(maintenant: number, avant: number): { texte: string; sens: string } {
+  if (avant === 0)
+    return maintenant > 0
+      ? { texte: "rien sur la période précédente", sens: "haut" }
+      : { texte: "comme la période précédente", sens: "plat" };
+  const pct = Math.round(((maintenant - avant) / avant) * 100);
+  if (pct === 0) return { texte: "comme la période précédente", sens: "plat" };
+  return {
+    texte: `${pct > 0 ? "+" : ""}${pct} % par rapport aux ${jours} jours d'avant`,
+    sens: pct > 0 ? "haut" : "bas",
+  };
+}
+
+const p = ventes?.periode;
+const avant = ventes?.precedent;
+const panierMoyen =
+  p && p.commandes > 0 ? Math.round(p.caCents / p.commandes) : 0;
+const panierMoyenAvant =
+  avant && avant.commandes > 0 ? Math.round(avant.caCents / avant.commandes) : 0;
+
+/**
+ * Les moyens de paiement réellement branchés.
+ *
+ * Un moyen dont les clés manquent n'apparaît tout simplement pas sur le site :
+ * le bouton ne s'affiche pas, et rien ne le dit. On l'a donc écrit ici, où on
+ * regarde tous les jours, plutôt que de le découvrir en se demandant pourquoi
+ * personne ne paie par PayPal.
+ */
+let paiements: { stripe: boolean; paypal: boolean } | null = null;
+if (isOwner) {
+  try {
+    const base =
+      apiInterne();
+    const res = await fetch(`${base}/payments/config`);
+    if (res.ok) {
+      const d = (await res.json()) as {
+        stripe: unknown | null;
+        paypal: unknown | null;
+      };
+      paiements = { stripe: Boolean(d.stripe), paypal: Boolean(d.paypal) };
+    }
+  } catch {
+    // Sans réponse, on n'affiche rien : mieux vaut se taire qu'annoncer une
+    // panne qui n'existe pas.
+  }
+}
+
+/** La courbe des ventes, en un tracé simple. */
+function courbe(serie: number[]): string {
+  if (serie.length < 2) return "";
+  const max = Math.max(...serie, 1);
+  const pas = 100 / (serie.length - 1);
+  return serie
+    .map((v, i) => `${(i * pas).toFixed(2)},${(28 - (v / max) * 26).toFixed(2)}`)
+    .join(" ");
+}
+const trace = ventes ? courbe(ventes.serie) : "";
+const meilleurJour = ventes ? Math.max(...ventes.serie, 0) : 0;
+
+const teinte = (sens: string) =>
+  sens === "haut"
+    ? "text-green-700"
+    : sens === "bas"
+      ? "text-red-700"
+      : "text-bo-muted";
 ---
 
 <Admin title="Accueil">
-  {error && <p class="text-red-600">API injoignable : {error}</p>}
+  {error && <p class="mb-4 text-sm text-red-600">API injoignable : {error}</p>}
+
+  {
+    isOwner && (
+      <>
+        <nav class="mb-4 flex flex-wrap items-center gap-1 text-sm">
+          <span class="mr-2 text-bo-muted">Sur les</span>
+          {PERIODES.map((o) => (
+            <a
+              href={`${url("/")}?jours=${o.jours}`}
+              class={`rounded px-3 py-1 ${
+                o.jours === jours
+                  ? "bg-bo-nav text-white"
+                  : "border border-bo-border hover:bg-bo-bg"
+              }`}
+            >
+              {o.label}
+            </a>
+          ))}
+        </nav>
+
+        {ventes && p && avant ? (
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="rounded-lg border border-bo-border bg-bo-surface p-4">
+              <p class="text-sm text-bo-muted">Encaissé</p>
+              <p class="mt-1 text-2xl font-semibold">{formatPrice(p.caCents)}</p>
+              <p class={`mt-1 text-xs ${teinte(ecart(p.caCents, avant.caCents).sens)}`}>
+                {ecart(p.caCents, avant.caCents).texte}
+              </p>
+              <p class="mt-1 text-xs text-bo-muted">
+                dont {formatPrice(p.portCents)} de livraison
+              </p>
+            </div>
+            <div class="rounded-lg border border-bo-border bg-bo-surface p-4">
+              <p class="text-sm text-bo-muted">Commandes payées</p>
+              <p class="mt-1 text-2xl font-semibold">{p.commandes}</p>
+              <p class={`mt-1 text-xs ${teinte(ecart(p.commandes, avant.commandes).sens)}`}>
+                {ecart(p.commandes, avant.commandes).texte}
+              </p>
+              <p class="mt-1 text-xs text-bo-muted">
+                {p.articles} affiche{p.articles > 1 ? "s" : ""} vendue
+                {p.articles > 1 ? "s" : ""}
+              </p>
+            </div>
+            <div class="rounded-lg border border-bo-border bg-bo-surface p-4">
+              <p class="text-sm text-bo-muted">Panier moyen</p>
+              <p class="mt-1 text-2xl font-semibold">
+                {panierMoyen ? formatPrice(panierMoyen) : "—"}
+              </p>
+              <p class={`mt-1 text-xs ${teinte(ecart(panierMoyen, panierMoyenAvant).sens)}`}>
+                {ecart(panierMoyen, panierMoyenAvant).texte}
+              </p>
+            </div>
+            <div
+              class={`rounded-lg border p-4 ${
+                p.aTraiter > 0
+                  ? "border-amber-300 bg-amber-50"
+                  : "border-bo-border bg-bo-surface"
+              }`}
+            >
+              <p class="text-sm text-bo-muted">À préparer</p>
+              <p class="mt-1 text-2xl font-semibold">{p.aTraiter}</p>
+              <p class="mt-1 text-xs text-bo-muted">
+                {p.aTraiter > 0 ? (
+                  <a class="text-bo-accent hover:underline" href={url("/commandes")}>
+                    Voir ce qui attend
+                  </a>
+                ) : (
+                  "Rien n'attend."
+                )}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p class="mb-4 rounded border border-bo-border bg-bo-surface px-4 py-3 text-sm text-bo-muted">
+            Les chiffres de vente n'ont pas pu être lus. Les raccourcis
+            ci-dessous restent utilisables.
+          </p>
+        )}
+
+        {ventes && meilleurJour > 0 && (
+          <div class="mt-4 rounded-lg border border-bo-border bg-bo-surface p-4">
+            <p class="mb-2 text-sm text-bo-muted">
+              Jour par jour, sur les {jours} derniers jours. Meilleure journée :{" "}
+              {formatPrice(meilleurJour)}.
+            </p>
+            <svg
+              viewBox="0 0 100 30"
+              preserveAspectRatio="none"
+              class="h-20 w-full"
+              role="img"
+              aria-label={`Courbe des ventes des ${jours} derniers jours`}
+            >
+              <polyline
+                points={trace}
+                fill="none"
+                stroke="currentColor"
+                stroke-width="0.7"
+                class="text-bo-accent"
+                vector-effect="non-scaling-stroke"
+              />
+            </svg>
+          </div>
+        )}
+      </>
+    )
+  }
+
   {
     stats && (
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div class="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
         {[
-          ["Produits", stats.products],
+          ["Affiches au catalogue", stats.products],
           ["Commandes en ligne", stats.ordersByChannel.web ?? 0],
-          ["Ventes salon", stats.ordersByChannel.salon ?? 0],
-          ["Clients", stats.customers],
+          ["Ventes stand", stats.ordersByChannel.salon ?? 0],
+          ["Clientes", stats.customers],
         ].map(([label, value]) => (
-          <div class="bg-bo-surface border border-bo-border rounded-lg p-4">
+          <div class="rounded-lg border border-bo-border bg-bo-surface p-4">
             <p class="text-sm text-bo-muted">{label}</p>
-            <p class="text-2xl font-semibold mt-1">{value}</p>
+            <p class="mt-1 text-2xl font-semibold">{value}</p>
           </div>
         ))}
       </div>
     )
   }
-  <div class="mt-6 bg-bo-surface border border-bo-border rounded-lg p-5">
+  <p class="mt-2 text-xs text-bo-muted">Ces quatre-là comptent depuis l'ouverture.</p>
+
+  {
+    paiements && !(paiements.stripe && paiements.paypal) && (
+      <div class="mt-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        <p class="font-medium">
+          {!paiements.stripe && !paiements.paypal
+            ? "Aucun moyen de paiement n'est branché : personne ne peut payer sur le site."
+            : !paiements.paypal
+              ? "PayPal n'est pas branché : le bouton ne s'affiche pas sur le site."
+              : "La carte bancaire n'est pas branchée : seul PayPal s'affiche sur le site."}
+        </p>
+        <p class="mt-1">
+          Un moyen de paiement n'apparaît que si ses identifiants sont
+          renseignés sur le serveur. Rien ne le signale au client : le bouton
+          est simplement absent.
+        </p>
+      </div>
+    )
+  }
+
+  <div class="mt-6 rounded-lg border border-bo-border bg-bo-surface p-5">
     <h2 class="font-semibold">Raccourcis</h2>
-    <ul class="mt-3 grid sm:grid-cols-2 gap-2 text-sm">
+    <ul class="mt-3 grid gap-2 text-sm sm:grid-cols-2">
       {isOwner && (
         <>
           <li><a class="text-bo-accent hover:underline" href={url("/promotions")}>→ Gérer les promotions (offre du moment)</a></li>
           <li><a class="text-bo-accent hover:underline" href={url("/bandeau")}>→ Modifier le bandeau du site</a></li>
         </>
       )}
-      <li><a class="text-bo-accent hover:underline" href={url("/ventes-salon")}>→ Voir les ventes salon</a></li>
+      <li><a class="text-bo-accent hover:underline" href={url("/ventes-salon")}>→ Voir les ventes stand</a></li>
       <li><a class="text-bo-accent hover:underline" href={url("/commandes")}>→ Voir les commandes en ligne</a></li>
       {isOwner && (
-        <li><a class="text-bo-accent hover:underline" href={url("/contenu")}>→ Éditer le contenu du site</a></li>
+        <>
+          <li><a class="text-bo-accent hover:underline" href={url("/finances")}>→ Les finances, source par source</a></li>
+          <li><a class="text-bo-accent hover:underline" href={url("/contenu")}>→ Éditer le contenu du site</a></li>
+        </>
       )}
     </ul>
   </div>

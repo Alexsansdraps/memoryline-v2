@@ -1,0 +1,1488 @@
+---
+/**
+ * Modification en masse des produits.
+ *
+ * Corriger vingt prix ou ranger trente affiches dans une catégorie, fiche par
+ * fiche, prend une matinée. Cet écran présente les mêmes réglages sous forme
+ * de grille : une ligne par produit, une colonne par champ, et un seul
+ * enregistrement à la fin. Le bouton « recopier vers le bas » de chaque
+ * colonne reprend la valeur de la première ligne et la pose sur toutes les
+ * autres, ce qui est le geste qui fait gagner la matinée.
+ *
+ * La page ne renvoie que les lignes réellement touchées. Le navigateur garde
+ * la valeur d'origine de chaque champ et compare avant d'envoyer : réécrire
+ * deux cents produits parce que la page a été ouverte serait le meilleur moyen
+ * d'écraser un travail fait ailleurs.
+ *
+ * Le prix se règle FORMAT PAR FORMAT : c'est le format qui porte le prix payé
+ * au panier, le prix de base n'étant qu'un repli pour un produit qui n'a aucun
+ * format. Une colonne par format présent dans la sélection, donc, plutôt
+ * qu'une colonne « prix » qui ne changerait rien à la caisse.
+ *
+ * Règle qui gouverne toute la saisie : une valeur incomprise est refusée et
+ * dite sur la ligne, jamais rattrapée en douce. Un « 5e » tapé dans un poids
+ * ne doit pas devenir un poids vide, et un prix négatif ne doit pas devenir
+ * zéro : le colis partirait sous-affranchi, ou l'affiche partirait gratuite,
+ * sans que rien ne le signale.
+ *
+ * Les produits à éditer arrivent soit par leurs identifiants (« ?ids=12,45 »,
+ * ce que passe la liste des produits quand on coche des lignes), soit par le
+ * filtre courant, repris tel quel de la liste.
+ */
+import { url } from "../../lib/url.ts";
+import Admin from "../../layouts/Admin.astro";
+import {
+  adminApi,
+  formatPrice,
+  type ListeProduitsAdmin,
+  type ProduitAdmin,
+} from "../../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+/**
+ * Au-delà, la grille devient illisible et le navigateur rame sur des milliers
+ * de champs. Mieux vaut deux passages qu'une page qui ne répond plus.
+ */
+const PLAFOND = 100;
+
+const STATUTS = [
+  { valeur: "active", libelle: "Actif" },
+  { valeur: "draft", libelle: "Brouillon" },
+  { valeur: "archived", libelle: "Archivé" },
+];
+
+function libelleStatut(valeur: string): string {
+  return STATUTS.find((s) => s.valeur === valeur)?.libelle ?? valeur;
+}
+
+/** Les images de l'API sont servies en chemin relatif : le navigateur, lui, a besoin de l'adresse complète. */
+const API_PUBLIQUE = import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
+function imgSrc(chemin: string | null): string {
+  if (!chemin) return "";
+  return chemin.startsWith("http") ? chemin : `${API_PUBLIQUE}${chemin}`;
+}
+
+/** Centimes vers la saisie à l'écran, en français : 2390 devient « 23,90 ». */
+function euros(cents: number): string {
+  return (cents / 100).toFixed(2).replace(".", ",");
+}
+
+const parametres = Astro.url.searchParams;
+
+const idsDemandes = [
+  ...new Set(
+    (parametres.get("ids") ?? "")
+      .split(",")
+      .map((t) => Number(t.trim()))
+      .filter((n) => Number.isInteger(n) && n > 0),
+  ),
+];
+
+const STATUTS_FILTRE = ["tous", "active", "draft", "archived"];
+const statutDemande = parametres.get("statut") ?? "";
+const statutFiltre = STATUTS_FILTRE.includes(statutDemande)
+  ? statutDemande
+  : "tous";
+const recherche = (parametres.get("q") ?? "").trim();
+const categorieFiltre = Number(parametres.get("categorie") ?? "");
+const collectionFiltre = Number(parametres.get("collection") ?? "");
+
+/** Ce qu'une ligne du tableau demande à l'API. Le prix est indexé par format. */
+type LigneModifiee = {
+  id: number;
+  name?: string;
+  slug?: string;
+  status?: string;
+  basePriceCents?: number;
+  categoryId?: number | null;
+  weightGrams?: number | null;
+  aiEnabled?: boolean;
+  /** Centimes, uniquement les formats dont le prix change. */
+  prix?: Record<string, number>;
+};
+
+/** Une ligne écartée avant l'envoi, avec de quoi la réafficher telle quelle. */
+interface RefusLocal {
+  id: number;
+  message: string;
+  saisie: Record<string, unknown>;
+}
+
+interface LectureCharge {
+  lignes: LigneModifiee[];
+  refus: RefusLocal[];
+}
+
+const MESSAGE_PRIX =
+  "Ce prix n'a pas été compris. Retapez-le, par exemple 24,90.";
+const MESSAGE_POIDS =
+  "Ce poids n'a pas été compris. Tapez un nombre de grammes, par exemple 350, ou laissez la case vide pour reprendre celui de la catégorie.";
+
+/** Un prix tel qu'il doit arriver du navigateur : des centimes entiers, jamais négatifs. */
+function centimesValides(v: unknown): number | null {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : null;
+}
+
+/**
+ * Relit UNE ligne de la charge. Rend le motif du refus, ou null si tout est
+ * lisible.
+ *
+ * Rien n'est corrigé ici. Un prix négatif arrondi à zéro ou un poids
+ * incompréhensible transformé en « vide » seraient acceptés par l'API sans un
+ * mot : une donnée fausse deviendrait une donnée plausible, et la propriétaire
+ * ne verrait le résultat qu'au moment d'affranchir le colis.
+ */
+function relireLigne(
+  ligne: Record<string, unknown>,
+  sortie: LigneModifiee,
+): string | null {
+  if ("name" in ligne) {
+    const nom = typeof ligne.name === "string" ? ligne.name.trim() : "";
+    if (!nom) return "Le nom ne peut pas rester vide.";
+    sortie.name = nom;
+  }
+
+  if ("slug" in ligne) {
+    const slug = typeof ligne.slug === "string" ? ligne.slug.trim() : "";
+    if (!slug) return "L'identifiant ne peut pas rester vide.";
+    sortie.slug = slug;
+  }
+
+  if ("status" in ligne) {
+    const statut = ligne.status;
+    if (typeof statut !== "string" || !STATUTS.some((s) => s.valeur === statut))
+      return "Ce statut n'existe pas. Choisissez Actif, Brouillon ou Archivé.";
+    sortie.status = statut;
+  }
+
+  if ("basePriceCents" in ligne) {
+    const cents = centimesValides(ligne.basePriceCents);
+    if (cents === null) return MESSAGE_PRIX;
+    sortie.basePriceCents = cents;
+  }
+
+  if ("prix" in ligne) {
+    const brut = ligne.prix;
+    if (typeof brut !== "object" || brut === null || Array.isArray(brut))
+      return MESSAGE_PRIX;
+    const prix: Record<string, number> = {};
+    for (const [format, valeur] of Object.entries(
+      brut as Record<string, unknown>,
+    )) {
+      const cents = centimesValides(valeur);
+      if (cents === null)
+        return `Le prix du format ${format} n'a pas été compris. Retapez-le, par exemple 24,90.`;
+      prix[format] = cents;
+    }
+    if (Object.keys(prix).length > 0) sortie.prix = prix;
+  }
+
+  if ("categoryId" in ligne) {
+    if (ligne.categoryId === null) {
+      sortie.categoryId = null;
+    } else {
+      const cat = Number(ligne.categoryId);
+      if (!Number.isInteger(cat) || cat <= 0)
+        return "Cette catégorie n'existe plus. Rechargez la page.";
+      sortie.categoryId = cat;
+    }
+  }
+
+  if ("weightGrams" in ligne) {
+    if (ligne.weightGrams === null) {
+      sortie.weightGrams = null;
+    } else {
+      const poids = ligne.weightGrams;
+      if (typeof poids !== "number" || !Number.isInteger(poids) || poids < 0)
+        return MESSAGE_POIDS;
+      sortie.weightGrams = poids;
+    }
+  }
+
+  if ("aiEnabled" in ligne) {
+    if (typeof ligne.aiEnabled !== "boolean")
+      return "Le réglage « Affiche IA » n'a pas été compris.";
+    sortie.aiEnabled = ligne.aiEnabled;
+  }
+
+  return null;
+}
+
+/**
+ * Relit la charge envoyée par le navigateur. Elle traverse un formulaire, donc
+ * rien de ce qu'elle contient n'est digne de confiance : ce qui n'est pas
+ * lisible ressort dans `refus` et s'affiche, au lieu d'être deviné.
+ */
+function lireModifications(brut: string): LectureCharge {
+  const lignes: LigneModifiee[] = [];
+  const refus: RefusLocal[] = [];
+
+  let donnees: unknown;
+  try {
+    donnees = JSON.parse(brut);
+  } catch {
+    return { lignes, refus };
+  }
+  if (!Array.isArray(donnees)) return { lignes, refus };
+
+  for (const entree of donnees) {
+    if (typeof entree !== "object" || entree === null) continue;
+    const ligne = entree as Record<string, unknown>;
+    const id = Number(ligne.id);
+    // Sans identifiant lisible, il n'y a aucune ligne sur laquelle afficher
+    // quoi que ce soit : c'est le seul cas qu'on laisse tomber en silence.
+    if (!Number.isInteger(id) || id <= 0) continue;
+
+    const sortie: LigneModifiee = { id };
+    const message = relireLigne(ligne, sortie);
+    if (message !== null) {
+      refus.push({ id, message, saisie: ligne });
+      continue;
+    }
+    if (Object.keys(sortie).length > 1) lignes.push(sortie);
+  }
+  return { lignes, refus };
+}
+
+let flash: string | null = null;
+/** Trois tons, parce qu'un enregistrement sans effet n'est pas un succès. */
+let flashTon: "succes" | "avertissement" | "erreur" = "succes";
+
+/** Le motif du refus, produit par produit, affiché sur la ligne concernée. */
+const messagesErreur = new Map<number, string>();
+
+/**
+ * Ce que la propriétaire avait tapé pour les lignes que l'API n'a pas gardées.
+ * Sans ça, la page se recharge sur les anciennes valeurs et son travail est
+ * perdu au moment précis où il faudrait le corriger.
+ */
+const valeursSaisies = new Map<number, Record<string, unknown>>();
+
+function accord(n: number, singulier: string, pluriel: string): string {
+  return n > 1 ? pluriel : singulier;
+}
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const { lignes: modifications, refus } = lireModifications(
+    String(f.get("modifications") ?? ""),
+  );
+  for (const r of refus) {
+    messagesErreur.set(r.id, r.message);
+    valeursSaisies.set(r.id, r.saisie);
+  }
+
+  if (modifications.length === 0 && refus.length === 0) {
+    flash = "Rien à enregistrer : aucune valeur n'avait changé.";
+    flashTon = "avertissement";
+  } else if (modifications.length === 0) {
+    flash = `Rien n'a été envoyé à la boutique : ${refus.length} ${accord(refus.length, "ligne n'a", "lignes n'ont")} pas pu être ${accord(refus.length, "relue", "relues")}. La raison est indiquée en rouge, et vos valeurs sont toujours à l'écran.`;
+    flashTon = "erreur";
+  } else {
+    try {
+      const r = await api.enregistrerProduitsEnMasse(modifications);
+      const refusesApi = r.erreurs ?? [];
+      for (const e of refusesApi) messagesErreur.set(e.id, e.message);
+      for (const m of modifications)
+        if (messagesErreur.has(m.id)) valeursSaisies.set(m.id, m);
+
+      // L'API ne compte que les lignes qu'elle a vraiment écrites. Ce qui
+      // manque à l'appel n'a été ni écrit ni refusé : la valeur envoyée était
+      // déjà celle de la boutique, et le taire ferait passer une saisie
+      // disparue de l'écran pour un enregistrement réussi.
+      const sansEffet = Math.max(
+        0,
+        modifications.length - r.count - refusesApi.length,
+      );
+      const bloquees = refusesApi.length + refus.length;
+
+      const morceaux: string[] = [
+        r.count === 0
+          ? "Aucun produit enregistré."
+          : `${r.count} ${accord(r.count, "produit enregistré", "produits enregistrés")}.`,
+      ];
+      if (bloquees > 0)
+        morceaux.push(
+          `${bloquees} ${accord(bloquees, "ligne n'a", "lignes n'ont")} pas pu être ${accord(bloquees, "enregistrée", "enregistrées")} : la raison est indiquée en rouge, sur la ligne quand le produit est encore dans le tableau, en haut de cette page sinon. Vos valeurs y sont toujours.`,
+        );
+      if (sansEffet > 0)
+        morceaux.push(
+          `${sansEffet} ${accord(sansEffet, "ligne n'a", "lignes n'ont")} rien changé : ce qui a été tapé revenait à ce que la boutique enregistre déjà. Ces cases sont revenues à la valeur de la boutique. L'identifiant, par exemple, est toujours mis en forme sans majuscule ni accent.`,
+        );
+
+      flash = morceaux.join(" ");
+      flashTon =
+        bloquees > 0
+          ? "erreur"
+          : sansEffet > 0 || r.count === 0
+            ? "avertissement"
+            : "succes";
+    } catch (e) {
+      for (const m of modifications) valeursSaisies.set(m.id, m);
+      flash =
+        "Rien n'a été enregistré, la boutique n'a pas répondu : " +
+        String(e).replace(/^Error:\s*/, "") +
+        ". Vos valeurs sont toujours à l'écran, réessayez dans un instant.";
+      flashTon = "erreur";
+    }
+  }
+}
+
+/**
+ * Ce que la page demande à `api.produitsAdmin`.
+ *
+ * Le champ `ids` est en cours d'ajout au client API : le déclarer ici permet
+ * d'écrire l'appel juste tout de suite, au lieu de ramener cinq cents produits
+ * avec leurs variantes pour en modifier trois, et de rater ceux qui tombent
+ * après le cinq centième dans l'ordre alphabétique.
+ */
+interface FiltresProduits {
+  statut?: string;
+  q?: string;
+  categorie?: number;
+  collection?: number;
+  limit?: number;
+  ids?: number[];
+}
+
+const filtres: FiltresProduits =
+  idsDemandes.length > 0
+    ? // Une sélection se respecte quel que soit le statut des produits cochés.
+      { ids: idsDemandes, statut: "tous", limit: idsDemandes.length }
+    : {
+        statut: statutFiltre,
+        ...(recherche ? { q: recherche } : {}),
+        ...(Number.isInteger(categorieFiltre) && categorieFiltre > 0
+          ? { categorie: categorieFiltre }
+          : {}),
+        ...(Number.isInteger(collectionFiltre) && collectionFiltre > 0
+          ? { collection: collectionFiltre }
+          : {}),
+        // Un de plus que le plafond : c'est ce qui distingue « il y en a
+        // exactement cent » de « il y en a davantage et on en cache ».
+        limit: PLAFOND + 1,
+      };
+
+let liste: ListeProduitsAdmin | null = null;
+let error: string | null = null;
+try {
+  liste = await api.produitsAdmin(filtres);
+} catch (e) {
+  error = String(e).replace(/^Error:\s*/, "");
+}
+
+/**
+ * Toutes les catégories, ARCHIVÉES COMPRISES, avec leur nom et leur poids.
+ *
+ * Le poids d'abord : la liste des produits ne renvoie que les noms, or c'est
+ * ce poids-là que pèsera un produit dont la case reste vide, et l'annoncer
+ * faux serait pire que se taire. Le nom ensuite : la liste déroulante ne
+ * propose plus les catégories archivées, et il faut tout de même savoir
+ * comment s'appelle celle où une affiche est déjà rangée.
+ */
+const toutesCategories = new Map<
+  number,
+  { name: string; defaultWeightGrams: number }
+>();
+let poidsCategoriesConnus = true;
+try {
+  for (const c of await api.productCategories())
+    toutesCategories.set(c.id, {
+      name: c.name,
+      defaultWeightGrams: c.defaultWeightGrams,
+    });
+} catch {
+  // La grille reste utilisable sans ces poids, mais elle se tait alors au lieu
+  // d'annoncer « aucun poids » à des produits qui en ont peut-être un.
+  poidsCategoriesConnus = false;
+}
+
+/** Les catégories où l'on peut ranger : l'API en retire les archivées. */
+const categories = liste?.categories ?? [];
+const categoriesOuvertes = new Set(categories.map((c) => c.id));
+
+/**
+ * La catégorie d'une ligne quand la liste déroulante ne la propose plus —
+ * c'est-à-dire quand elle vient d'être archivée. `null` le reste du temps.
+ *
+ * Son option DOIT exister, sans quoi aucune ne correspondrait et le navigateur
+ * retomberait sur « Aucune » alors que `data-initial` garde l'identifiant :
+ * la ligne se dirait modifiée sans que personne n'y ait touché, et le premier
+ * enregistrement écrirait `categoryId: null`. L'affiche quitterait son
+ * rangement, et avec lui le poids par défaut qui décide de son affranchissement
+ * — exactement la perte que l'archivage est là pour empêcher.
+ *
+ * On n'y range personne d'autre pour autant : l'option n'apparaît que sur sa
+ * propre ligne, la recopie vers le bas l'ignore (`optionExiste`), et l'API
+ * refuse une catégorie archivée à toute affiche qui n'y est pas déjà.
+ */
+function categorieArchiveeDe(id: number | null) {
+  if (id === null || categoriesOuvertes.has(id)) return null;
+  const connue = toutesCategories.get(id);
+  return {
+    id,
+    // Nom inconnu si /admin/product-categories n'a pas répondu : l'option doit
+    // exister quand même, c'est elle qui tient le rangement en place.
+    label: connue ? `${connue.name} (archivée)` : `Catégorie n° ${id} (archivée)`,
+    poids: connue?.defaultWeightGrams ?? null,
+  };
+}
+const selection: ProduitAdmin[] =
+  idsDemandes.length > 0
+    ? // Ceinture et bretelles : l'écran ne montre que ce qui a été coché, même
+      // si la réponse contenait autre chose.
+      (liste?.produits ?? []).filter((p) => idsDemandes.includes(p.id))
+    : (liste?.produits ?? []);
+const produits = selection.slice(0, PLAFOND);
+
+const listeCoupee = selection.length > PLAFOND;
+/** Des produits cochés que l'API ne connaît plus. Sans réponse, on ne sait rien. */
+const introuvables =
+  liste !== null && idsDemandes.length > 0
+    ? idsDemandes.length - selection.length
+    : 0;
+
+/**
+ * Une colonne de prix par format présent dans la sélection, dans l'ordre du
+ * catalogue. Un produit qui n'a pas le format laisse la case vide : il n'y a
+ * rien à y écrire.
+ */
+const formatsPresents = [
+  ...new Set([
+    ...(liste?.formats ?? []).filter((f) =>
+      produits.some((p) => p.formats.includes(f)),
+    ),
+    ...produits.flatMap((p) => p.formats),
+  ]),
+];
+/** Le prix de repli ne concerne que les produits sans aucun format. */
+const afficherRepli = produits.some((p) => p.formats.length === 0);
+const nbColonnes =
+  7 + formatsPresents.length + (afficherRepli ? 1 : 0);
+const largeurTable = 80 + 7 * (formatsPresents.length + (afficherRepli ? 1 : 0));
+
+/**
+ * Le prix exact de chaque format n'est pas dans la réponse de l'API : on ne
+ * peut le déduire que lorsque tous les formats du produit sont au même prix.
+ * Ailleurs la case reste vide, parce qu'écrire une fourchette dans une case de
+ * saisie ferait passer un repère pour un prix.
+ */
+function prixDuFormat(p: ProduitAdmin): number | null {
+  if (p.prixMin === null || p.prixMax === null) return null;
+  return p.prixMin === p.prixMax ? p.prixMin : null;
+}
+const prixParFormatIncertain = produits.some(
+  (p) => p.formats.length > 0 && prixDuFormat(p) === null,
+);
+
+/** Ce que l'API a refusé reste affiché tel quel : ces lectures s'en chargent. */
+function texteSaisi(
+  saisie: Record<string, unknown> | undefined,
+  cle: string,
+  defaut: string,
+): string {
+  const v = saisie?.[cle];
+  return typeof v === "string" ? v : defaut;
+}
+function nombreSaisi(
+  saisie: Record<string, unknown> | undefined,
+  cle: string,
+  defaut: number | null,
+): number | null {
+  if (!saisie || !(cle in saisie)) return defaut;
+  const v = saisie[cle];
+  if (v === null) return null;
+  return typeof v === "number" && Number.isFinite(v) ? v : defaut;
+}
+function boolSaisi(
+  saisie: Record<string, unknown> | undefined,
+  cle: string,
+  defaut: boolean,
+): boolean {
+  const v = saisie?.[cle];
+  return typeof v === "boolean" ? v : defaut;
+}
+function prixSaisi(
+  saisie: Record<string, unknown> | undefined,
+  format: string,
+  defaut: number | null,
+): number | null {
+  const brut = saisie?.prix;
+  if (typeof brut !== "object" || brut === null) return defaut;
+  const v = (brut as Record<string, unknown>)[format];
+  return typeof v === "number" && Number.isFinite(v) ? v : defaut;
+}
+
+/** Ce qu'elle avait tapé, en toutes lettres, pour une ligne qui a disparu du tableau. */
+function resumeSaisie(saisie: Record<string, unknown> | undefined): string {
+  if (!saisie) return "";
+  const bouts: string[] = [];
+  if (typeof saisie.name === "string") bouts.push(`nom : « ${saisie.name} »`);
+  if (typeof saisie.slug === "string")
+    bouts.push(`identifiant : ${saisie.slug}`);
+  if (typeof saisie.status === "string")
+    bouts.push(`statut : ${libelleStatut(saisie.status)}`);
+  const prix = saisie.prix;
+  if (typeof prix === "object" && prix !== null)
+    for (const [format, v] of Object.entries(prix as Record<string, unknown>))
+      if (typeof v === "number") bouts.push(`prix ${format} : ${euros(v)} €`);
+  if (typeof saisie.basePriceCents === "number")
+    bouts.push(`prix de repli : ${euros(saisie.basePriceCents)} €`);
+  if ("categoryId" in saisie) {
+    const id = saisie.categoryId;
+    const nom =
+      typeof id === "number"
+        ? (toutesCategories.get(id)?.name ?? `n° ${id}`)
+        : "aucune";
+    bouts.push(`catégorie : ${nom}`);
+  }
+  if ("weightGrams" in saisie) {
+    const g = saisie.weightGrams;
+    bouts.push(`poids : ${typeof g === "number" ? `${g} g` : "case vide"}`);
+  }
+  if (typeof saisie.aiEnabled === "boolean")
+    bouts.push(`affiche IA : ${saisie.aiEnabled ? "oui" : "non"}`);
+  return bouts.join(" ; ");
+}
+
+/**
+ * Un refus qui porte sur un produit absent du tableau : effacé entre-temps,
+ * ou hors de la page. Le dire ici est la seule façon qu'il soit lu, et de
+ * tenir la promesse « vos valeurs sont toujours là ».
+ */
+const idsAffiches = new Set(produits.map((p) => p.id));
+const refusHorsTableau = [...messagesErreur.entries()]
+  .filter(([id]) => !idsAffiches.has(id))
+  .map(([id, message]) => ({
+    id,
+    message,
+    resume: resumeSaisie(valeursSaisies.get(id)),
+  }));
+
+/** Bordures posées cellule par cellule : la grille est en `border-separate` pour que l'en-tête collant garde les siennes. */
+const cellule = "border-t border-bo-border px-2 py-2 align-top";
+const enTete =
+  "sticky top-0 z-20 border-b border-bo-border bg-bo-bg px-2 py-2 text-left font-medium";
+const champ =
+  "w-full rounded border border-bo-border px-2 py-1 text-sm bg-transparent";
+const bouton =
+  "rounded border border-bo-border px-1 text-xs leading-4 text-bo-muted hover:bg-bo-surface";
+const soucisChamp = "mt-0.5 block text-xs text-red-600";
+const inerte = "block text-xs text-bo-muted";
+---
+
+<Admin title="Modifier plusieurs produits">
+  <p class="mb-4">
+    <a href={url("/produits")} class="text-sm text-bo-accent hover:underline">
+      ← Retour à la liste
+    </a>
+  </p>
+
+  {flash && (
+    <p
+      class={`mb-4 text-sm rounded px-3 py-2 border ${
+        flashTon === "erreur"
+          ? "bg-red-50 border-red-200"
+          : flashTon === "avertissement"
+            ? "bg-amber-50 border-amber-200"
+            : "bg-green-50 border-green-200"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+  {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
+
+  {refusHorsTableau.length > 0 && (
+    <div class="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm">
+      <p class="font-medium">
+        {refusHorsTableau.length > 1
+          ? "Ces produits n'ont pas pu être enregistrés et ne sont plus dans le tableau ci-dessous."
+          : "Ce produit n'a pas pu être enregistré et n'est plus dans le tableau ci-dessous."}
+      </p>
+      <ul class="mt-1 list-disc pl-5">
+        {refusHorsTableau.map((r) => (
+          <li>
+            Produit n° {r.id} : {r.message}
+            {r.resume && (
+              <span class="block text-bo-muted">
+                Ce que vous aviez tapé : {r.resume}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )}
+
+  <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+    Une ligne par produit, une colonne par réglage, comme dans un tableur. Rien
+    ne part tant que vous n'avez pas cliqué sur <strong>Enregistrer</strong>, et
+    seules les lignes que vous avez touchées sont envoyées : les autres ne
+    bougent pas, même si elles restent affichées.
+    {formatsPresents.length > 0 && (
+      <>
+        {" "}Le prix se règle format par format : la colonne{" "}
+        <strong>Prix {formatsPresents[0]}</strong> ne change que le prix des{" "}
+        {formatsPresents[0]}, et un produit qui n'a pas ce format n'a rien à y
+        saisir.
+      </>
+    )}
+  </p>
+
+  {prixParFormatIncertain && (
+    <p class="mb-4 max-w-3xl rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+      Quand les formats d'un produit n'ont pas tous le même prix, la case de
+      prix reste vide : la boutique ne dit pas ici le prix de chaque format, et
+      afficher une valeur approchante reviendrait à vous la faire enregistrer.
+      Tapez un prix pour changer ce format, laissez la case vide pour ne pas y
+      toucher. La fourchette actuelle du produit est rappelée sous son nom.
+    </p>
+  )}
+
+  {listeCoupee && (
+    <p class="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+      {idsDemandes.length > 0
+        ? `Vous avez sélectionné ${selection.length} produits ; cette page en modifie ${PLAFOND} à la fois. Enregistrez ces ${PLAFOND}, puis revenez cocher les suivants.`
+        : `Cette page modifie ${PLAFOND} produits à la fois au maximum. Affinez votre recherche dans la liste des produits, ou faites le travail en deux fois.`}
+    </p>
+  )}
+  {introuvables > 0 && (
+    <p class="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+      {introuvables > 1
+        ? `${introuvables} produits de votre sélection n'existent plus et n'apparaissent donc pas ci-dessous.`
+        : "Un produit de votre sélection n'existe plus et n'apparaît donc pas ci-dessous."}
+    </p>
+  )}
+
+  {produits.length === 0 && !error && (
+    <p class="rounded-lg border border-bo-border bg-bo-surface px-4 py-6 text-sm text-bo-muted">
+      Aucun produit à modifier ici. Repassez par la
+      <a class="text-bo-accent underline" href={url("/produits")}> liste des produits</a>
+      {" "}pour choisir ceux que vous voulez retoucher.
+    </p>
+  )}
+
+  {produits.length > 0 && (
+    <form
+      method="POST"
+      id="grille"
+      autocomplete="off"
+      novalidate
+      data-poids-connus={poidsCategoriesConnus ? "1" : "0"}
+    >
+      {/* `novalidate` : la vérification du navigateur bloquait l'envoi sans
+          que la page le sache, avec une bulle sur un champ souvent hors du
+          cadre défilant. Une seule voix décide de ce qui part, celle d'ici. */}
+      <input type="hidden" name="modifications" id="charge-modifications" />
+
+      {/* La grille défile dans son propre cadre : c'est ce qui permet à la
+          ligne d'en-tête de rester visible, avec ses boutons de recopie, et à
+          la colonne du produit de ne pas disparaître vers la gauche. */}
+      <div class="max-h-[70vh] overflow-auto rounded-lg border border-bo-border bg-bo-surface">
+        <table
+          class="w-full border-separate border-spacing-0 text-sm"
+          style={`min-width:${largeurTable}rem`}
+        >
+          <thead class="text-bo-muted">
+            <tr>
+              <th class={`${enTete} sticky left-0 z-30 w-64`}>Produit</th>
+              {/* Ni le nom ni l'identifiant n'ont de bouton de recopie : cent
+                  produits homonymes, ou quatre-vingt-dix-neuf refus d'adresse
+                  déjà prise, sont tout ce qu'ils pourraient produire. */}
+              <th class={`${enTete} w-56`}>Nom</th>
+              <th class={`${enTete} w-48`}>
+                <span
+                  class="flex items-center gap-1"
+                  title="L'identifiant est ce qui apparaît dans l'adresse de la page du produit sur la boutique."
+                >
+                  Identifiant
+                </span>
+              </th>
+              <th class={`${enTete} w-36`}>
+                <span class="flex items-center gap-1">
+                  Statut
+                  <button
+                    type="button"
+                    data-recopier="statut"
+                    data-libelle="Statut"
+                    class={bouton}
+                    title="Recopier le statut de la première ligne sur toutes les autres"
+                    aria-label="Recopier le statut de la première ligne sur toutes les autres"
+                  >↓</button>
+                  <button
+                    type="button"
+                    data-annuler="statut"
+                    data-libelle="Statut"
+                    class={bouton}
+                    title="Remettre la colonne Statut comme elle était"
+                    aria-label="Remettre la colonne Statut comme elle était"
+                  >↺</button>
+                </span>
+              </th>
+
+              {formatsPresents.map((format) => (
+                <th class={`${enTete} w-28`}>
+                  <span
+                    class="flex items-center gap-1"
+                    title={`Prix payé au panier pour un ${format}. Une case vide ne change rien.`}
+                  >
+                    Prix {format} (€)
+                    <button
+                      type="button"
+                      data-recopier={`prix:${format}`}
+                      data-libelle={`Prix ${format}`}
+                      class={bouton}
+                      title={`Recopier le prix ${format} de la première ligne sur toutes les autres`}
+                      aria-label={`Recopier le prix ${format} de la première ligne sur toutes les autres`}
+                    >↓</button>
+                    <button
+                      type="button"
+                      data-annuler={`prix:${format}`}
+                      data-libelle={`Prix ${format}`}
+                      class={bouton}
+                      title={`Remettre la colonne Prix ${format} comme elle était`}
+                      aria-label={`Remettre la colonne Prix ${format} comme elle était`}
+                    >↺</button>
+                  </span>
+                </th>
+              ))}
+
+              {afficherRepli && (
+                <th class={`${enTete} w-28`}>
+                  <span
+                    class="flex items-center gap-1"
+                    title="Ce prix ne sert qu'aux produits qui n'ont aucun format. Dès qu'un produit a des formats, c'est le prix du format qui est payé au panier."
+                  >
+                    Prix de repli (€)
+                    <button
+                      type="button"
+                      data-recopier="repli"
+                      data-libelle="Prix de repli"
+                      class={bouton}
+                      title="Recopier le prix de repli de la première ligne sur toutes les autres"
+                      aria-label="Recopier le prix de repli de la première ligne sur toutes les autres"
+                    >↓</button>
+                    <button
+                      type="button"
+                      data-annuler="repli"
+                      data-libelle="Prix de repli"
+                      class={bouton}
+                      title="Remettre la colonne Prix de repli comme elle était"
+                      aria-label="Remettre la colonne Prix de repli comme elle était"
+                    >↺</button>
+                  </span>
+                </th>
+              )}
+
+              <th class={`${enTete} w-48`}>
+                <span class="flex items-center gap-1">
+                  Catégorie
+                  <button
+                    type="button"
+                    data-recopier="categorie"
+                    data-libelle="Catégorie"
+                    class={bouton}
+                    title="Recopier la catégorie de la première ligne sur toutes les autres"
+                    aria-label="Recopier la catégorie de la première ligne sur toutes les autres"
+                  >↓</button>
+                  <button
+                    type="button"
+                    data-annuler="categorie"
+                    data-libelle="Catégorie"
+                    class={bouton}
+                    title="Remettre la colonne Catégorie comme elle était"
+                    aria-label="Remettre la colonne Catégorie comme elle était"
+                  >↺</button>
+                </span>
+              </th>
+              <th class={`${enTete} w-40`}>
+                <span
+                  class="flex items-center gap-1"
+                  title="Laissez la case vide pour que le produit prenne le poids de la catégorie choisie sur sa ligne. Ce poids est rappelé sous la case."
+                >
+                  Poids (g)
+                  <button
+                    type="button"
+                    data-recopier="poids"
+                    data-libelle="Poids"
+                    class={bouton}
+                    title="Recopier le poids de la première ligne sur toutes les autres"
+                    aria-label="Recopier le poids de la première ligne sur toutes les autres"
+                  >↓</button>
+                  <button
+                    type="button"
+                    data-annuler="poids"
+                    data-libelle="Poids"
+                    class={bouton}
+                    title="Remettre la colonne Poids comme elle était"
+                    aria-label="Remettre la colonne Poids comme elle était"
+                  >↺</button>
+                </span>
+              </th>
+              <th class={`${enTete} w-28 text-center`}>
+                <span
+                  class="flex items-center justify-center gap-1"
+                  title="Le client peut faire dessiner cette affiche par l'ordinateur."
+                >
+                  Affiche IA
+                  <button
+                    type="button"
+                    data-recopier="ia"
+                    data-libelle="Affiche IA"
+                    class={bouton}
+                    title="Recopier le réglage de la première ligne sur toutes les autres"
+                    aria-label="Recopier le réglage de la première ligne sur toutes les autres"
+                  >↓</button>
+                  <button
+                    type="button"
+                    data-annuler="ia"
+                    data-libelle="Affiche IA"
+                    class={bouton}
+                    title="Remettre la colonne Affiche IA comme elle était"
+                    aria-label="Remettre la colonne Affiche IA comme elle était"
+                  >↺</button>
+                </span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {produits.map((p) => {
+              const saisie = valeursSaisies.get(p.id);
+              const erreur = messagesErreur.get(p.id);
+              const nom = texteSaisi(saisie, "name", p.name);
+              const slug = texteSaisi(saisie, "slug", p.slug);
+              const statut = texteSaisi(saisie, "status", p.status);
+              const repliCents =
+                nombreSaisi(saisie, "basePriceCents", p.basePriceCents) ??
+                p.basePriceCents;
+              const categorieId = nombreSaisi(saisie, "categoryId", p.categoryId);
+              // Le rangement de CETTE affiche, si sa catégorie vient d'être
+              // archivée : la liste ne le propose plus, l'option ci-dessous le
+              // garde. Calculé sur `p.categoryId` et non sur le choix en
+              // cours, parce que c'est lui que porte `data-initial` — et que
+              // le bouton « remettre comme avant » y revient.
+              const sienneArchivee = categorieArchiveeDe(p.categoryId);
+              const poids = nombreSaisi(saisie, "weightGrams", p.weightGrams);
+              const ia = boolSaisi(saisie, "aiEnabled", p.aiEnabled);
+              const statutInconnu = !STATUTS.some((s) => s.valeur === p.status);
+              const prixConnu = prixDuFormat(p);
+              return (
+                <>
+                  <tr data-ligne data-id={p.id}>
+                    <td class={`${cellule} sticky left-0 z-10 bg-bo-surface`}>
+                      <span class="flex items-start gap-2">
+                        {p.imageUrl ? (
+                          <img
+                            src={imgSrc(p.imageUrl)}
+                            alt=""
+                            class="h-10 w-10 shrink-0 rounded border border-bo-border object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <span class="h-10 w-10 shrink-0 rounded border border-bo-border bg-bo-bg" />
+                        )}
+                        <span class="min-w-0">
+                          <a
+                            href={url(`/produits/${p.id}`)}
+                            class="block truncate text-bo-accent hover:underline"
+                            title={`Ouvrir la fiche de ${p.name}`}
+                          >
+                            {p.name}
+                          </a>
+                          <span class="block text-xs text-bo-muted">
+                            {p.formats.length > 0
+                              ? p.formats.join(", ")
+                              : "aucun format"}
+                            {p.formats.length > 0 &&
+                              prixConnu === null &&
+                              p.prixMin !== null &&
+                              p.prixMax !== null && (
+                                <span class="block">
+                                  de {formatPrice(p.prixMin)} à{" "}
+                                  {formatPrice(p.prixMax)}
+                                </span>
+                              )}
+                            <span data-modifie class="ml-1 text-bo-accent" hidden>
+                              · modifié
+                            </span>
+                            <span data-bloquee class="ml-1 text-red-600" hidden>
+                              · à corriger
+                            </span>
+                          </span>
+                        </span>
+                      </span>
+                    </td>
+
+                    <td class={cellule}>
+                      {/* La comparaison se fait sur la valeur nettoyée : garder
+                          l'espace en trop de la base ferait compter la ligne
+                          comme modifiée avant que personne n'y touche. */}
+                      <input
+                        data-champ="nom"
+                        data-colonne="nom"
+                        data-initial={p.name.trim()}
+                        value={nom}
+                        class={champ}
+                        aria-label={`Nom de ${p.name}`}
+                      />
+                      <span data-souci class={soucisChamp} hidden></span>
+                    </td>
+
+                    <td class={cellule}>
+                      <input
+                        data-champ="slug"
+                        data-colonne="slug"
+                        data-initial={p.slug.trim()}
+                        value={slug}
+                        class={`${champ} font-mono text-xs`}
+                        aria-label={`Identifiant de ${p.name}`}
+                      />
+                      <span data-souci class={soucisChamp} hidden></span>
+                    </td>
+
+                    <td class={cellule}>
+                      <select
+                        data-champ="statut"
+                        data-colonne="statut"
+                        data-initial={p.status}
+                        class={champ}
+                        aria-label={`Statut de ${p.name}`}
+                      >
+                        {STATUTS.map((s) => (
+                          <option value={s.valeur} selected={s.valeur === statut}>
+                            {s.libelle}
+                          </option>
+                        ))}
+                        {/* Un statut venu de l'API que la liste ne connaît pas
+                            resterait sélectionné à tort sur « Actif ». */}
+                        {statutInconnu && (
+                          <option value={p.status} selected={p.status === statut}>
+                            {p.status}
+                          </option>
+                        )}
+                      </select>
+                      <span data-souci class={soucisChamp} hidden></span>
+                    </td>
+
+                    {formatsPresents.map((format) => {
+                      const affiche = prixSaisi(saisie, format, prixConnu);
+                      return (
+                        <td class={cellule}>
+                          {p.formats.includes(format) ? (
+                            <>
+                              {/* `type="text"` et non `number` : un navigateur
+                                  rend une case vide dès que la saisie n'est pas
+                                  un nombre, si bien qu'une faute de frappe
+                                  passerait pour un champ effacé. Il faut voir
+                                  ce qui a été tapé pour pouvoir le refuser. */}
+                              <input
+                                type="text"
+                                inputmode="decimal"
+                                data-champ="prix"
+                                data-colonne={`prix:${format}`}
+                                data-format={format}
+                                data-initial={
+                                  prixConnu === null ? "" : String(prixConnu)
+                                }
+                                value={affiche === null ? "" : euros(affiche)}
+                                class={`${champ} text-right`}
+                                aria-label={`Prix ${format} de ${p.name}, en euros`}
+                              />
+                              <span data-souci class={soucisChamp} hidden></span>
+                            </>
+                          ) : (
+                            <span class={inerte}>sans ce format</span>
+                          )}
+                        </td>
+                      );
+                    })}
+
+                    {afficherRepli && (
+                      <td class={cellule}>
+                        {p.formats.length === 0 ? (
+                          <>
+                            <input
+                              type="text"
+                              inputmode="decimal"
+                              data-champ="prix"
+                              data-colonne="repli"
+                              data-initial={String(p.basePriceCents)}
+                              value={euros(repliCents)}
+                              class={`${champ} text-right`}
+                              aria-label={`Prix de ${p.name}, en euros`}
+                            />
+                            <span data-souci class={soucisChamp} hidden></span>
+                          </>
+                        ) : (
+                          <span class={inerte}>suit les formats</span>
+                        )}
+                      </td>
+                    )}
+
+                    <td class={cellule}>
+                      <select
+                        data-champ="categorie"
+                        data-colonne="categorie"
+                        data-initial={p.categoryId === null ? "" : String(p.categoryId)}
+                        class={champ}
+                        aria-label={`Catégorie de ${p.name}`}
+                      >
+                        <option value="" selected={categorieId === null}>
+                          Aucune
+                        </option>
+                        {/* Le poids par défaut voyage avec l'option : c'est lui
+                            que la ligne annoncera si la case du poids reste
+                            vide, sans avoir à redemander quoi que ce soit. */}
+                        {categories.map((c) => (
+                          <option
+                            value={c.id}
+                            selected={c.id === categorieId}
+                            data-poids={String(
+                              toutesCategories.get(c.id)?.defaultWeightGrams ?? "",
+                            )}
+                          >
+                            {c.name}
+                          </option>
+                        ))}
+                        {sienneArchivee && (
+                          <option
+                            value={sienneArchivee.id}
+                            selected={sienneArchivee.id === categorieId}
+                            data-poids={String(sienneArchivee.poids ?? "")}
+                          >
+                            {sienneArchivee.label}
+                          </option>
+                        )}
+                      </select>
+                      <span data-souci class={soucisChamp} hidden></span>
+                    </td>
+
+                    <td class={cellule}>
+                      <input
+                        type="text"
+                        inputmode="numeric"
+                        data-champ="poids"
+                        data-colonne="poids"
+                        data-initial={p.weightGrams === null ? "" : String(p.weightGrams)}
+                        value={poids === null ? "" : String(poids)}
+                        class={`${champ} text-right`}
+                        aria-label={`Poids de ${p.name}, en grammes`}
+                      />
+                      <span data-souci class={soucisChamp} hidden></span>
+                      {/* Rempli par le navigateur : ce qui est annoncé ici doit
+                          suivre la catégorie choisie sur CETTE ligne, pas celle
+                          qui était enregistrée en ouvrant la page. */}
+                      <span data-heritage class={inerte} hidden></span>
+                    </td>
+
+                    <td class={`${cellule} text-center`}>
+                      <input
+                        type="checkbox"
+                        data-champ="ia"
+                        data-colonne="ia"
+                        data-initial={p.aiEnabled ? "1" : "0"}
+                        checked={ia}
+                        class="mt-1"
+                        aria-label={`Affiche IA pour ${p.name}`}
+                      />
+                    </td>
+                  </tr>
+                  {erreur && (
+                    <tr>
+                      <td colspan={nbColonnes} class="border-t border-bo-border bg-red-50 px-3 py-2 text-sm">
+                        « {p.name} » n'a pas pu être enregistré : {erreur}
+                      </td>
+                    </tr>
+                  )}
+                </>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* La barre suit le bas de l'écran : avec cent lignes, un bouton posé
+          sous le tableau se retrouve à trois écrans de la valeur qu'on tape. */}
+      <div class="sticky bottom-0 z-40 -mx-6 mt-4 border-t border-bo-border bg-bo-surface px-6 py-3">
+        <div class="flex flex-wrap items-center gap-3">
+          <span id="compteur" class="text-sm text-bo-muted">
+            Aucune modification pour l'instant.
+          </span>
+          <span class="flex-1"></span>
+          <button
+            type="button"
+            id="remettre"
+            disabled
+            class="rounded border border-bo-border px-3 py-1.5 text-sm hover:bg-bo-bg disabled:opacity-40"
+          >
+            Tout remettre comme avant
+          </button>
+          <button
+            id="enregistrer"
+            disabled
+            class="rounded bg-bo-accent px-4 py-2 text-sm text-white disabled:opacity-40"
+          >
+            Enregistrer
+          </button>
+        </div>
+        <p id="annonce" class="mt-2 text-sm text-bo-muted" aria-live="polite" hidden></p>
+        <p id="problemes" class="mt-2 text-sm text-red-600" hidden></p>
+      </div>
+    </form>
+  )}
+
+  <script is:inline>
+    (function () {
+      var formulaire = document.getElementById("grille");
+      if (!formulaire) return;
+
+      var lignes = Array.prototype.slice.call(
+        document.querySelectorAll("[data-ligne]"),
+      );
+      var champs = Array.prototype.slice.call(
+        document.querySelectorAll("[data-champ]"),
+      );
+      var compteur = document.getElementById("compteur");
+      var problemesEl = document.getElementById("problemes");
+      var annonceEl = document.getElementById("annonce");
+      var enregistrer = document.getElementById("enregistrer");
+      var remettre = document.getElementById("remettre");
+      var charge = document.getElementById("charge-modifications");
+      var modifiees = 0;
+      var envoyables = 0;
+      var envoiEnCours = false;
+
+      // Ce que le navigateur accepte de lire. `parseFloat` rend 12 pour
+      // « 12 g » et 5 pour « 5e » : sans ces motifs, une faute de frappe
+      // deviendrait un prix ou un poids parfaitement plausible.
+      var MOTIF_PRIX = /^\d+(\.\d{1,2})?$/;
+      var MOTIF_POIDS = /^\d+$/;
+
+      // Toute comparaison passe par cette forme : le prix est comparé en
+      // centimes, pas en « 24,9 » contre « 24,90 », sinon la moitié des lignes
+      // partirait à l'enregistrement sans avoir été touchée. « ? » veut dire
+      // « pas compris », et ce n'est jamais confondu avec « vide ».
+      function valeur(c) {
+        if (c.type === "checkbox") return c.checked ? "1" : "0";
+        var brut = String(c.value).replace(",", ".").trim();
+        var genre = c.dataset.champ;
+        if (genre === "prix") {
+          if (brut === "") return "";
+          if (!MOTIF_PRIX.test(brut)) return "?";
+          return String(Math.round(parseFloat(brut) * 100));
+        }
+        if (genre === "poids") {
+          if (brut === "") return "";
+          if (!MOTIF_POIDS.test(brut)) return "?";
+          return String(parseInt(brut, 10));
+        }
+        return String(c.value).trim();
+      }
+
+      function initial(c) {
+        return c.dataset.initial || "";
+      }
+
+      function souci(c) {
+        var genre = c.dataset.champ;
+        var v = valeur(c);
+        if (genre === "nom" && v === "") return "Le nom ne peut pas rester vide.";
+        if (genre === "slug" && v === "")
+          return "L'identifiant ne peut pas rester vide.";
+        if (genre === "statut" && v === "") return "Choisissez un statut.";
+        if (genre === "prix") {
+          if (v === "?")
+            return "Ce prix n'a pas été compris. Tapez par exemple 24,90.";
+          if (v === "")
+            return "Ce prix ne peut pas rester vide. Retapez-le, ou remettez la colonne comme elle était.";
+        }
+        if (genre === "poids" && v === "?")
+          return "Ce poids se tape en grammes entiers, par exemple 350. Laissez la case vide pour reprendre celui de la catégorie.";
+        return null;
+      }
+
+      /** « 340 g » ou « 1,25 kg » — pour l'affichage seulement. */
+      function texteGrammes(g) {
+        if (g < 1000) return g + " g";
+        var kg = g % 1000 === 0 ? String(g / 1000) : (g / 1000).toFixed(2);
+        return kg.replace(".", ",") + " kg";
+      }
+
+      // Ce que le produit pèsera si la case reste vide : le poids de la
+      // catégorie choisie sur la ligne, à l'instant où on la choisit.
+      function majHeritage(ligne) {
+        var champPoids = ligne.querySelector('[data-champ="poids"]');
+        var note = ligne.querySelector("[data-heritage]");
+        if (!champPoids || !note) return;
+        // Les poids des catégories n'ont pas pu être lus : annoncer « aucun
+        // poids » serait aussi faux qu'annoncer un chiffre au hasard.
+        if (formulaire.dataset.poidsConnus !== "1") {
+          note.hidden = true;
+          return;
+        }
+        var select = ligne.querySelector('[data-champ="categorie"]');
+        var option = select ? select.options[select.selectedIndex] : null;
+        var herite = option ? Number(option.dataset.poids || "0") : 0;
+        if (!Number.isFinite(herite) || herite <= 0) herite = 0;
+
+        champPoids.placeholder = herite > 0 ? String(herite) : "";
+        if (String(champPoids.value).trim() !== "") {
+          note.hidden = true;
+          return;
+        }
+        note.hidden = false;
+        if (herite > 0) {
+          note.textContent = "Vide : " + texteGrammes(herite) + ", celui de la catégorie.";
+          note.className = "block text-xs text-bo-muted";
+        } else {
+          note.textContent = "Vide : aucun poids connu.";
+          note.className = "block text-xs text-amber-800";
+        }
+      }
+
+      function annoncer(texte) {
+        if (!annonceEl) return;
+        annonceEl.textContent = texte;
+        annonceEl.hidden = texte === "";
+      }
+
+      function recalculer() {
+        modifiees = 0;
+        var bloquees = 0;
+
+        lignes.forEach(function (ligne) {
+          var bouge = false;
+          var fautive = false;
+          Array.prototype.forEach.call(
+            ligne.querySelectorAll("[data-champ]"),
+            function (c) {
+              var change = valeur(c) !== initial(c);
+              if (change) bouge = true;
+              var probleme = change ? souci(c) : null;
+              if (probleme) fautive = true;
+              if (c.type !== "checkbox") {
+                c.classList.toggle("border-red-600", !!probleme);
+                c.classList.toggle("border-bo-accent", change && !probleme);
+                c.classList.toggle("border-bo-border", !change);
+              }
+              // Le motif du refus se lit sous la case fautive : une liste au
+              // bas de l'écran ne dit pas quelle ligne corriger.
+              var boite = c.parentElement
+                ? c.parentElement.querySelector("[data-souci]")
+                : null;
+              if (boite) {
+                boite.textContent = probleme || "";
+                boite.hidden = !probleme;
+              }
+            },
+          );
+          majHeritage(ligne);
+          var marque = ligne.querySelector("[data-modifie]");
+          if (marque) marque.hidden = !bouge || fautive;
+          var alerte = ligne.querySelector("[data-bloquee]");
+          if (alerte) alerte.hidden = !fautive;
+          if (bouge) modifiees++;
+          if (fautive) bloquees++;
+        });
+
+        envoyables = modifiees - bloquees;
+
+        if (compteur) {
+          var texte;
+          if (modifiees === 0) {
+            texte = "Aucune modification pour l'instant.";
+          } else {
+            var bouts = [];
+            if (envoyables > 0)
+              bouts.push(
+                envoyables +
+                  (envoyables > 1
+                    ? " produits modifiés, prêts à partir"
+                    : " produit modifié, prêt à partir"),
+              );
+            if (bloquees > 0)
+              bouts.push(
+                bloquees +
+                  (bloquees > 1 ? " lignes à corriger" : " ligne à corriger"),
+              );
+            texte = bouts.join(" et ") + ".";
+          }
+          compteur.textContent = texte;
+          compteur.className =
+            modifiees === 0 ? "text-sm text-bo-muted" : "text-sm font-medium";
+        }
+
+        if (problemesEl) {
+          problemesEl.hidden = bloquees === 0;
+          problemesEl.textContent =
+            bloquees === 0
+              ? ""
+              : bloquees > 1
+                ? bloquees +
+                  " lignes comportent une erreur, signalée en rouge sous la case concernée. Elles ne partiront pas ; les autres seront enregistrées normalement."
+                : "Une ligne comporte une erreur, signalée en rouge sous la case concernée. Elle ne partira pas ; les autres seront enregistrées normalement.";
+        }
+
+        // Une cellule fautive n'empêche plus tout le lot : seules ses propres
+        // lignes restent à quai.
+        if (enregistrer) enregistrer.disabled = envoyables === 0;
+        if (remettre) remettre.disabled = modifiees === 0;
+      }
+
+      champs.forEach(function (c) {
+        c.addEventListener("input", recalculer);
+        c.addEventListener("change", recalculer);
+      });
+
+      function colonneDe(nom) {
+        return champs.filter(function (c) {
+          return c.dataset.colonne === nom;
+        });
+      }
+
+      function remettreChamp(c) {
+        var depart = initial(c);
+        if (c.type === "checkbox") c.checked = depart === "1";
+        else if (c.dataset.champ === "prix")
+          c.value =
+            depart === ""
+              ? ""
+              : (Number(depart) / 100).toFixed(2).replace(".", ",");
+        else c.value = depart;
+      }
+
+      function optionExiste(select, valeurCherchee) {
+        return Array.prototype.some.call(select.options, function (o) {
+          return o.value === valeurCherchee;
+        });
+      }
+
+      // Recopier vers le bas : la première ligne sert de modèle à la colonne.
+      // La recopie touche aussi les lignes hors du cadre défilant, d'où
+      // l'annonce du nombre de lignes changées et le bouton qui l'annule.
+      Array.prototype.forEach.call(
+        document.querySelectorAll("[data-recopier]"),
+        function (b) {
+          b.addEventListener("click", function () {
+            var colonne = colonneDe(b.dataset.recopier);
+            if (colonne.length < 2) return;
+            var source = colonne[0];
+            var poses = 0;
+            var ignores = 0;
+            for (var i = 1; i < colonne.length; i++) {
+              var c = colonne[i];
+              if (source.type === "checkbox") {
+                c.checked = source.checked;
+                poses++;
+              } else if (
+                c.tagName === "SELECT" &&
+                !optionExiste(c, source.value)
+              ) {
+                // Poser une valeur qu'une liste ne propose pas la viderait :
+                // la ligne serait comptée modifiée et ne partirait jamais.
+                ignores++;
+              } else {
+                c.value = source.value;
+                poses++;
+              }
+            }
+            recalculer();
+            var texte =
+              poses === 0
+                ? "Aucune ligne n'a pu recevoir « " +
+                  b.dataset.libelle +
+                  " » de la première ligne."
+                : "« " +
+                  b.dataset.libelle +
+                  " » recopié sur " +
+                  poses +
+                  (poses > 1 ? " lignes" : " ligne") +
+                  ", y compris celles qui ne sont pas à l'écran. Le bouton ↺ de la colonne annule cette recopie.";
+            if (ignores > 0 && poses > 0)
+              texte +=
+                " " +
+                ignores +
+                (ignores > 1 ? " lignes n'ont" : " ligne n'a") +
+                " pas pu recevoir cette valeur.";
+            annoncer(texte);
+          });
+        },
+      );
+
+      Array.prototype.forEach.call(
+        document.querySelectorAll("[data-annuler]"),
+        function (b) {
+          b.addEventListener("click", function () {
+            colonneDe(b.dataset.annuler).forEach(remettreChamp);
+            recalculer();
+            annoncer("« " + b.dataset.libelle + " » remis comme avant.");
+          });
+        },
+      );
+
+      if (remettre)
+        remettre.addEventListener("click", function () {
+          champs.forEach(remettreChamp);
+          recalculer();
+          annoncer("Toutes les colonnes ont été remises comme avant.");
+        });
+
+      formulaire.addEventListener("submit", function (e) {
+        var modifications = [];
+        lignes.forEach(function (ligne) {
+          var diff = { id: Number(ligne.dataset.id) };
+          var bouge = false;
+          var fautive = false;
+          Array.prototype.forEach.call(
+            ligne.querySelectorAll("[data-champ]"),
+            function (c) {
+              if (valeur(c) === initial(c)) return;
+              if (souci(c)) {
+                fautive = true;
+                return;
+              }
+              bouge = true;
+              var genre = c.dataset.champ;
+              if (genre === "nom") diff.name = String(c.value).trim();
+              else if (genre === "slug") diff.slug = String(c.value).trim();
+              else if (genre === "statut") diff.status = c.value;
+              else if (genre === "prix") {
+                if (c.dataset.format) {
+                  if (!diff.prix) diff.prix = {};
+                  diff.prix[c.dataset.format] = Number(valeur(c));
+                } else diff.basePriceCents = Number(valeur(c));
+              } else if (genre === "categorie")
+                diff.categoryId = c.value === "" ? null : Number(c.value);
+              else if (genre === "poids")
+                diff.weightGrams = valeur(c) === "" ? null : Number(valeur(c));
+              else if (genre === "ia") diff.aiEnabled = c.checked;
+            },
+          );
+          // Une ligne à moitié envoyée laisserait le produit dans un état que
+          // personne n'a demandé : elle reste entière à l'écran, avec sa faute.
+          if (bouge && !fautive) modifications.push(diff);
+        });
+
+        if (modifications.length === 0) {
+          e.preventDefault();
+          annoncer(
+            "Rien n'a été envoyé : les lignes modifiées comportent toutes une erreur, indiquée en rouge dans le tableau.",
+          );
+          return;
+        }
+        charge.value = JSON.stringify(modifications);
+        envoiEnCours = true;
+      });
+
+      window.addEventListener("beforeunload", function (e) {
+        if (envoiEnCours || modifiees === 0) return;
+        e.preventDefault();
+        e.returnValue = "";
+      });
+
+      recalculer();
+    })();
+  </script>
+</Admin>

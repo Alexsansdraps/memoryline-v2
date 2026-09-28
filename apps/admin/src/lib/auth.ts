@@ -1,3 +1,4 @@
+import { apiInterne } from "./api-interne.ts";
 /**
  * Auth côté back-office (SSR Astro).
  *
@@ -7,9 +8,7 @@
  * Set-Cookie de l'API vers le navigateur lors du login/logout.
  */
 const API_URL =
-  import.meta.env.API_URL_INTERNAL ??
-  import.meta.env.PUBLIC_API_URL ??
-  "http://localhost:3000";
+  apiInterne();
 
 export const SESSION_COOKIE = "ml_admin_session";
 

@@ -1,0 +1,24 @@
+---
+/**
+ * L'ancienne adresse du stand.
+ *
+ * Le stand avait ici sa propre interface : un catalogue, un configurateur et
+ * une validation à part, qui divergeaient de la boutique à chaque
+ * amélioration — l'affiche tirée d'une photo n'y était pas vendable, le
+ * nombre d'exemplaires n'y existait pas. Le stand est désormais LE SITE, en
+ * mode stand : mêmes pages, sans aucun prix, et seule la dernière étape
+ * change (le panier demande un nom et une adresse e-mail au lieu d'un
+ * paiement).
+ *
+ * L'adresse survit parce qu'elle est peut-être gardée en favori sur une
+ * tablette, ou envoyée par message avec son code. Elle ouvre le site en mode
+ * stand, code compris : la mise en page le range dans la tablette et l'ôte
+ * aussitôt de la barre d'adresse (Base.astro).
+ */
+export const prerender = false;
+
+const code = Astro.url.searchParams.get("code")?.trim();
+const suite = new URLSearchParams({ stand: "1" });
+if (code) suite.set("code", code);
+return Astro.redirect(`/?${suite.toString()}`, 301);
+---

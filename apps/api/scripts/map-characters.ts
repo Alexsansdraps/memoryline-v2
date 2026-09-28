@@ -19,6 +19,7 @@
  */
 import { eq, inArray } from "drizzle-orm";
 import { db, schema } from "../src/db/client.js";
+import { confirmerAvantDeVider } from "./garde-base.js";
 
 /** Nom de base = nom sans le suffixe UUID d'import. */
 function baseName(name: string | null): string {
@@ -98,6 +99,12 @@ async function upsertType(
 }
 
 async function main() {
+  // Ce script supprime les pièces en double avant de refaire les liens
+  // (cf. scripts/garde-base.ts).
+  await confirmerAvantDeVider("Le rangement des pièces de personnages", [
+    "les pièces repérées comme des doublons",
+  ]);
+
   const all = await db.select().from(schema.assets);
   console.log(`→ ${all.length} assets en base`);
 

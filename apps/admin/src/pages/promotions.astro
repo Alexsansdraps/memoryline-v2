@@ -1,6 +1,9 @@
 ---
+import { apiInterne } from "../lib/api-interne.ts";
 import Admin from "../layouts/Admin.astro";
 import { adminApi, type PromoRule } from "../lib/api.ts";
+import { url } from "../lib/url.ts";
+import { libelleRegle } from "@memoryline/types";
 
 const api = adminApi(Astro.request);
 
@@ -13,7 +16,7 @@ if (Astro.request.method === "POST") {
     if (action === "toggle") {
       const id = Number(form.get("id"));
       await fetch(
-        `${import.meta.env.API_URL_INTERNAL ?? import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000"}/admin/promos/${id}/toggle`,
+        `${apiInterne()}/admin/promos/${id}/toggle`,
         {
           method: "POST",
           headers: { cookie: Astro.request.headers.get("cookie") ?? "" },
@@ -28,15 +31,21 @@ if (Astro.request.method === "POST") {
         config = {
           buyQty: Number(form.get("buyQty") || 3),
           getQty: Number(form.get("getQty") || 1),
-          format: String(form.get("format") || "A4"),
+          // 100 = offerte, c'est le cas courant ; en dessous, la suivante est
+          // simplement remisee (« la 2e a moitie prix »).
+          percent: Number(form.get("remiseOffertes") ?? 100),
+          // Vide = tous les formats.
+          format: String(form.get("format") || "") || undefined,
         };
       else if (type === "percent")
         config = { percent: Number(form.get("percent") || 10) };
       else if (type === "fixed")
         config = { amountCents: Math.round(Number(form.get("amount") || 5) * 100) };
       else if (type === "free_shipping_over")
+        // Le seuil se compare au panier APRÈS remises : c'est le montant que
+        // la cliente paie vraiment pour ses affiches.
         config = {
-          thresholdCents: Math.round(Number(form.get("threshold") || 50) * 100),
+          thresholdCents: Math.round(Number(form.get("seuil") || 60) * 100),
         };
 
       await api.upsertPromo({
@@ -63,31 +72,28 @@ try {
 } catch {}
 
 const TYPES = [
-  { value: "buy_x_get_y", label: "X achetées = Y offerte(s)" },
+  { value: "buy_x_get_y", label: "X achetées, la suivante remisée" },
   { value: "percent", label: "Pourcentage de remise" },
   { value: "fixed", label: "Montant fixe de remise" },
-  { value: "free_shipping_over", label: "Livraison offerte dès X €" },
+  { value: "free_shipping_over", label: "Livraison offerte à partir d'un montant" },
 ];
 
-function describe(p: PromoRule): string {
-  const c = p.config as Record<string, number | string>;
-  switch (p.type) {
-    case "buy_x_get_y":
-      return `${c.buyQty} achetée(s) = ${c.getQty} ${c.format} offerte(s)`;
-    case "percent":
-      return `-${c.percent}%`;
-    case "fixed":
-      return `-${Number(c.amountCents) / 100} €`;
-    case "free_shipping_over":
-      return `Livraison offerte dès ${Number(c.thresholdCents) / 100} €`;
-    default:
-      return p.type;
-  }
-}
+// La phrase vient du moteur qui facture, pas d'une copie tenue a la main :
+// deux textes finissent toujours par ne plus dire la meme chose.
+const describe = libelleRegle;
 ---
 
 <Admin title="Promotions">
   {flash && <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">{flash}</p>}
+
+  <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+    Une promotion sans code s'applique à tout le monde, silencieusement. Pour
+    qu'elle soit annoncée en haut du site en même temps qu'elle s'applique,
+    elle se règle depuis <a href={url("/bandeau")} class="underline">le bandeau</a>.
+    La livraison offerte au-delà d'un montant, elle, ne se règle pas ici mais
+    dans <a href={url("/livraison")} class="underline">Livraison</a>, par mode
+    d'envoi : c'est le transporteur qu'on cesse de facturer.
+  </p>
 
   <section class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
     <table class="w-full text-sm">
@@ -147,10 +153,12 @@ function describe(p: PromoRule): string {
         </select>
       </label>
 
-      <fieldset data-type="buy_x_get_y" class="grid grid-cols-3 gap-2 sm:col-span-2">
-        <label class="block"><span class="text-bo-muted">Quantité achetée</span><input name="buyQty" type="number" value="3" class="mt-1 w-full border border-bo-border rounded px-3 py-2" /></label>
-        <label class="block"><span class="text-bo-muted">Quantité offerte</span><input name="getQty" type="number" value="1" class="mt-1 w-full border border-bo-border rounded px-3 py-2" /></label>
-        <label class="block"><span class="text-bo-muted">Format offert</span><select name="format" class="mt-1 w-full border border-bo-border rounded px-3 py-2"><option>A4</option><option>A3</option></select></label>
+      <fieldset data-type="buy_x_get_y" class="grid grid-cols-2 gap-2 sm:col-span-2">
+        <label class="block"><span class="text-bo-muted">Affiches à payer</span><input name="buyQty" type="number" min="1" value="3" class="mt-1 w-full border border-bo-border rounded px-3 py-2" /></label>
+        <label class="block"><span class="text-bo-muted">Affiches remisées ensuite</span><input name="getQty" type="number" min="1" value="1" class="mt-1 w-full border border-bo-border rounded px-3 py-2" /></label>
+        <label class="block"><span class="text-bo-muted">Remise sur celles-ci (%)</span><input name="remiseOffertes" type="number" min="0" max="100" value="100" class="mt-1 w-full border border-bo-border rounded px-3 py-2" /><span class="mt-1 block text-xs text-bo-muted">100 = offerte. 50 = à moitié prix.</span></label>
+        <label class="block"><span class="text-bo-muted">Format concerné</span><select name="format" class="mt-1 w-full border border-bo-border rounded px-3 py-2"><option value="">Tous les formats</option><option value="A4">A4 seulement</option><option value="A3">A3 seulement</option></select></label>
+        <p class="text-xs text-bo-muted sm:col-span-2">Il faut les deux dans le panier : 3 payées et 1 remisée, c'est un panier de 4 affiches.</p>
       </fieldset>
       <fieldset data-type="percent" hidden class="sm:col-span-2">
         <label class="block"><span class="text-bo-muted">Pourcentage (%)</span><input name="percent" type="number" value="10" class="mt-1 w-full border border-bo-border rounded px-3 py-2" /></label>
@@ -159,7 +167,25 @@ function describe(p: PromoRule): string {
         <label class="block"><span class="text-bo-muted">Montant remisé (€)</span><input name="amount" type="number" step="0.01" value="5" class="mt-1 w-full border border-bo-border rounded px-3 py-2" /></label>
       </fieldset>
       <fieldset data-type="free_shipping_over" hidden class="sm:col-span-2">
-        <label class="block"><span class="text-bo-muted">Seuil (€)</span><input name="threshold" type="number" step="0.01" value="50" class="mt-1 w-full border border-bo-border rounded px-3 py-2" /></label>
+        <label class="block">
+          <span class="text-bo-muted">Livraison offerte à partir de (€)</span>
+          <input
+            name="seuil"
+            type="number"
+            step="0.01"
+            min="0"
+            value="60"
+            class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+          />
+          <span class="mt-1 block text-xs text-bo-muted">
+            Le montant est celui du panier APRÈS remises — ce que la cliente
+            paie vraiment pour ses affiches. L'offre vaut pour tous les modes
+            de livraison et toutes les zones. Pour n'offrir le port que sur un
+            transporteur précis, utilisez plutôt la franchise de sa grille
+            tarifaire, dans l'écran Livraison : les deux se cumulent, le port
+            est offert dès que l'un des deux seuils est atteint.
+          </span>
+        </label>
       </fieldset>
 
       <label class="block">

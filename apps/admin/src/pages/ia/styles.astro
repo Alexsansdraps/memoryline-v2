@@ -1,0 +1,465 @@
+---
+/**
+ * Les styles d'affiche IA.
+ *
+ * Un style, c'est ce que la cliente choisit avant d'envoyer sa photo :
+ * « Couple », « Paysage », « Famille ». Elle ne voit que ce mot-là.
+ *
+ * Derrière, trois choses :
+ *   - le TITRE, seul élément visible sur le site ;
+ *   - la CONSIGNE, envoyée au modèle avec celle de la boutique, et qui ne
+ *     sort jamais d'ici — c'est la recette ;
+ *   - jusqu'à CINQ IMAGES, qui servent deux fois : montrées à la cliente comme
+ *     exemples, et envoyées au modèle comme références de style.
+ *
+ * Rien n'est écrit dans le code : ajouter un style, c'est remplir ce
+ * formulaire. La boutique n'avait auparavant qu'une consigne unique, dans les
+ * réglages, et trois images posées dans un dossier du serveur que personne ne
+ * pouvait voir.
+ */
+import Admin from "../../layouts/Admin.astro";
+import EditeurTexte from "../../components/EditeurTexte.astro";
+import { adminApi, type StyleIa } from "../../lib/api.ts";
+import { url } from "../../lib/url.ts";
+
+const api = adminApi(Astro.request);
+
+const PUBLIC_API_URL =
+  import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
+
+/**
+ * L'adresse d'affichage d'une image téléversée.
+ *
+ * Les chemins sont enregistrés tels que l'API les rend — « /assets/... » —
+ * et c'est l'API qui les sert. Affichés tels quels depuis le back-office,
+ * qui vit sous /bo, ils désigneraient « /bo/assets/... » et ne s'afficheraient
+ * pas : un cadre vide, sans le moindre message.
+ */
+function imgSrc(url: string | null | undefined): string {
+  if (!url) return "";
+  return url.startsWith("http") ? url : `${PUBLIC_API_URL}${url}`;
+}
+
+/** Le plafond demandé par la boutique, tenu aussi par l'API. */
+const IMAGES_MAX = 5;
+
+let flash: string | null = null;
+let flashErreur = false;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const action = String(f.get("_action") ?? "");
+  try {
+    if (action === "archiver") {
+      const restaurer = f.get("archived") === "false";
+      await api.archiverStyleIa(Number(f.get("id")), !restaurer);
+      flash = restaurer
+        ? "Style restauré, avec sa consigne et ses images."
+        : "Style archivé. Il ne s'affiche plus sur le site ; vous pouvez le restaurer à tout moment, plus bas.";
+    } else {
+      // Les images arrivent en autant de champs « image » que de lignes
+      // remplies : on garde celles qui portent quelque chose, dans l'ordre.
+      const images = f
+        .getAll("image")
+        .map((v) => String(v ?? "").trim())
+        .filter(Boolean)
+        .slice(0, IMAGES_MAX);
+
+      const corps = {
+        title: String(f.get("title") ?? "").trim(),
+        prompt: String(f.get("prompt") ?? "").trim(),
+        images,
+        position: Number(f.get("position") ?? 0),
+        active: f.get("active") === "on",
+      };
+      if (!corps.title) throw new Error("Donnez un titre à ce style.");
+
+      const id = f.get("id") ? Number(f.get("id")) : 0;
+      const ligne = id
+        ? await api.majStyleIa(id, corps)
+        : await api.creerStyleIa(corps);
+      flash = `Style « ${ligne.title} » enregistré.`;
+    }
+  } catch (e) {
+    flash = String(e).replace(/^Error:\s*/, "");
+    flashErreur = true;
+  }
+}
+
+let tous: StyleIa[] = [];
+let erreur: string | null = null;
+try {
+  tous = await api.stylesIa();
+} catch (e) {
+  erreur = String(e).replace(/^Error:\s*/, "");
+}
+
+// Les archivés quittent la liste ordinaire pour leur propre section.
+const styles = tous.filter((s) => !s.archivedAt);
+const archives = tous.filter((s) => s.archivedAt);
+
+/** Ce qu'il faut avoir lu avant d'archiver un style. */
+function messageArchivage(s: StyleIa): string {
+  return [
+    `Archiver le style « ${s.title} » ?`,
+    "Il ne sera plus proposé sur le site. Sa consigne et ses images sont gardées entières — rien n'est supprimé.",
+    "Vous pourrez le restaurer quand vous voudrez, dans « Styles archivés ».",
+  ].join("\n\n");
+}
+
+/** Le style ouvert à la modification, lu dans l'adresse. */
+const idOuvert = Number(Astro.url.searchParams.get("style") ?? 0);
+// Cherché parmi TOUS : on doit pouvoir rouvrir un style archivé pour le relire
+// avant de décider s'il mérite de revenir.
+const ouvert = tous.find((s) => s.id === idOuvert) ?? null;
+const creation = Astro.url.searchParams.get("nouveau") === "1";
+const formulaire = ouvert ?? (creation ? null : null);
+
+/** Les cinq emplacements d'images, remplis par ce qui existe. */
+const emplacements = Array.from(
+  { length: IMAGES_MAX },
+  (_, i) => ouvert?.images?.[i] ?? "",
+);
+
+const champ =
+  "mt-1 w-full rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm";
+const boutonPrincipal =
+  "rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90";
+const boutonDiscret =
+  "rounded border border-bo-border bg-bo-surface px-3 py-1.5 text-sm hover:bg-bo-bg";
+---
+
+<Admin title="Styles d'affiche IA">
+  <p class="mb-4">
+    <a href={url("/ia")} class="text-sm text-bo-accent hover:underline">
+      ← Retour aux affiches IA
+    </a>
+  </p>
+
+  {flash && (
+    <p
+      class={`mb-4 rounded border px-3 py-2 text-sm ${
+        flashErreur ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+  {erreur && <p class="mb-4 text-sm text-red-600">{erreur}</p>}
+
+  <p class="mb-6 max-w-3xl text-sm text-bo-muted">
+    Un style, c'est ce que la cliente choisit avant d'envoyer sa photo. Elle ne
+    voit que son <strong>titre</strong> et ses <strong>images</strong> ; la
+    consigne, elle, ne sort jamais d'ici.
+  </p>
+
+  {/* ==================================================================== */}
+  {/* La liste                                                             */}
+  {/* ==================================================================== */}
+  <div class="mb-8 space-y-3">
+    {styles.length === 0 && !erreur && (
+      <p class="rounded border border-bo-border bg-bo-surface px-4 py-6 text-sm text-bo-muted">
+        Aucun style pour l'instant. Tant qu'il n'y en a pas, le site continue
+        de fonctionner comme avant : la cliente envoie sa photo et la consigne
+        générale de la boutique s'applique seule.
+      </p>
+    )}
+
+    {styles.map((s) => (
+      <div class="flex flex-wrap items-center gap-4 rounded-lg border border-bo-border bg-bo-surface p-4">
+        <div class="flex gap-1.5">
+          {(s.images ?? []).slice(0, IMAGES_MAX).map((src) => (
+            <img
+              src={imgSrc(src)}
+              alt=""
+              loading="lazy"
+              class="h-14 w-14 rounded object-cover"
+            />
+          ))}
+          {(s.images ?? []).length === 0 && (
+            <span class="flex h-14 w-14 items-center justify-center rounded border border-dashed border-bo-border text-[10px] text-bo-muted">
+              aucune
+            </span>
+          )}
+        </div>
+
+        <div class="min-w-40 flex-1">
+          <p class="font-medium">{s.title}</p>
+          <p class="text-xs text-bo-muted">
+            {(s.images ?? []).length} image
+            {(s.images ?? []).length > 1 ? "s" : ""} ·{" "}
+            {s.prompt.trim() ? `${s.prompt.trim().length} caractères de consigne` : "aucune consigne"}
+          </p>
+        </div>
+
+        {!s.active && (
+          <span class="rounded-full bg-bo-bg px-2 py-0.5 text-xs text-bo-muted">
+            éteint
+          </span>
+        )}
+
+        <a href={`${url("/ia/styles")}?style=${s.id}`} class={boutonDiscret}>
+          Modifier
+        </a>
+
+        <form
+          method="POST"
+          onsubmit={`return confirm(${JSON.stringify(messageArchivage(s))})`}
+        >
+          <input type="hidden" name="_action" value="archiver" />
+          <input type="hidden" name="id" value={s.id} />
+          <input type="hidden" name="archived" value="true" />
+          <button class={boutonDiscret}>Archiver</button>
+        </form>
+      </div>
+    ))}
+  </div>
+
+  {/* ==================================================================== */}
+  {/* Les styles archivés                                                  */}
+  {/* ==================================================================== */}
+  {archives.length > 0 && (
+    <section class="mb-8">
+      <h2 class="mb-1 font-semibold">Styles archivés</h2>
+      <p class="mb-3 max-w-3xl text-xs text-bo-muted">
+        Retirés du site et de la liste ci-dessus. Leur consigne et leurs images
+        sont gardées entières : « Restaurer » remet le style tel qu'il était.
+      </p>
+      <div class="space-y-2 opacity-70">
+        {archives.map((s) => (
+          <div class="flex flex-wrap items-center gap-4 rounded-lg border border-bo-border bg-bo-surface p-3">
+            <div class="flex gap-1.5">
+              {(s.images ?? []).slice(0, IMAGES_MAX).map((src) => (
+                <img
+                  src={imgSrc(src)}
+                  alt=""
+                  loading="lazy"
+                  class="h-10 w-10 rounded object-cover"
+                />
+              ))}
+            </div>
+            <div class="min-w-40 flex-1">
+              <p class="font-medium">{s.title}</p>
+              <p class="text-xs text-bo-muted">
+                {(s.images ?? []).length} image
+                {(s.images ?? []).length > 1 ? "s" : ""} ·{" "}
+                {s.prompt.trim()
+                  ? `${s.prompt.trim().length} caractères de consigne`
+                  : "aucune consigne"}
+              </p>
+            </div>
+            <a href={`${url("/ia/styles")}?style=${s.id}`} class={boutonDiscret}>
+              Relire
+            </a>
+            <form method="POST">
+              <input type="hidden" name="_action" value="archiver" />
+              <input type="hidden" name="id" value={s.id} />
+              <input type="hidden" name="archived" value="false" />
+              <button class="text-sm text-bo-accent hover:underline">
+                Restaurer
+              </button>
+            </form>
+          </div>
+        ))}
+      </div>
+    </section>
+  )}
+
+  {!ouvert && !creation && (
+    <a href={`${url("/ia/styles")}?nouveau=1`} class={boutonPrincipal}>
+      Ajouter un style
+    </a>
+  )}
+
+  {/* ==================================================================== */}
+  {/* Le formulaire                                                        */}
+  {/* ==================================================================== */}
+  {(ouvert || creation) && (
+    <form
+      method="POST"
+      id="form-style"
+      class="space-y-5 rounded-lg border border-bo-border bg-bo-surface p-5"
+    >
+      <input type="hidden" name="id" value={ouvert?.id ?? ""} />
+
+      {/* Un style archivé se relit et se corrige, mais il reste archivé tant
+          qu'on ne l'a pas restauré : le dire évite d'enregistrer en croyant
+          le remettre en ligne. */}
+      {ouvert?.archivedAt && (
+        <p class="rounded border border-bo-border bg-bo-bg px-3 py-2 text-sm text-bo-muted">
+          Ce style est <strong>archivé</strong> : il ne s'affiche pas sur le
+          site. Enregistrer ici ne le remet pas en ligne — utilisez
+          « Restaurer », dans « Styles archivés ».
+        </p>
+      )}
+
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <label class="block lg:col-span-2">
+          <span class="text-sm font-medium">Titre</span>
+          <input
+            name="title"
+            value={ouvert?.title ?? ""}
+            required
+            placeholder="Couple, Paysage, Famille…"
+            class={champ}
+          />
+          <span class="mt-1 block text-xs text-bo-muted">
+            Le seul mot que la cliente voit. Court et concret.
+          </span>
+        </label>
+
+        <label class="block">
+          <span class="text-sm font-medium">Ordre d'affichage</span>
+          <input
+            name="position"
+            type="number"
+            value={ouvert?.position ?? 0}
+            class={champ}
+          />
+          <span class="mt-1 block text-xs text-bo-muted">
+            Le plus petit d'abord.
+          </span>
+        </label>
+      </div>
+
+      <label class="flex items-center gap-2">
+        <input
+          type="checkbox"
+          name="active"
+          checked={ouvert ? ouvert.active : true}
+        />
+        <span class="text-sm">Proposé sur le site</span>
+      </label>
+
+      <div>
+        <span class="text-sm font-medium">Consigne envoyée au modèle</span>
+        <p class="mt-1 mb-1 text-xs text-bo-muted">
+          Elle s'ajoute à la consigne générale de la boutique, et passe après
+          elle. Décrivez ce que ce style change : le cadrage, l'ambiance, ce
+          qu'il faut garder de la photo. La cliente ne la lit jamais.
+        </p>
+        <EditeurTexte
+          nom="prompt"
+          valeur={ouvert?.prompt ?? ""}
+          invite="Par exemple : deux personnes au premier plan, cadrage serré, lumière de fin de journée…"
+          etiquette="Consigne du style"
+        />
+      </div>
+
+      <div>
+        <span class="text-sm font-medium">
+          Images du style ({IMAGES_MAX} au maximum)
+        </span>
+        <p class="mt-1 mb-3 text-xs text-bo-muted">
+          Elles servent deux fois : montrées à la cliente comme exemples, et
+          envoyées au modèle comme références. C'est pour cela qu'il n'y en a
+          qu'un jeu — deux séries séparées finiraient par ne plus se
+          ressembler, et l'exemple montré deviendrait faux.
+        </p>
+
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {emplacements.map((src, i) => (
+            <div class="rounded border border-bo-border p-2" data-emplacement>
+              <div class="mb-2 flex aspect-square items-center justify-center overflow-hidden rounded bg-bo-bg">
+                <img
+                  data-apercu
+                  src={imgSrc(src)}
+                  alt=""
+                  class={src ? "h-full w-full object-cover" : "hidden"}
+                />
+                <span
+                  data-vide
+                  class={`text-xs text-bo-muted ${src ? "hidden" : ""}`}
+                  >{i + 1}</span
+                >
+              </div>
+              <input type="hidden" name="image" data-chemin value={src} />
+              <input
+                type="file"
+                accept="image/*"
+                data-fichier
+                class="w-full text-[11px]"
+              />
+              <button
+                type="button"
+                data-retirer
+                class={`mt-1 w-full text-[11px] text-red-700 hover:underline ${src ? "" : "hidden"}`}
+              >
+                Retirer
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3">
+        <button class={boutonPrincipal}>Enregistrer</button>
+        <a href={url("/ia/styles")} class={boutonDiscret}>Annuler</a>
+      </div>
+    </form>
+  )}
+
+  <script is:inline define:vars={{ apiBase: import.meta.env.PUBLIC_API_URL ?? "/api" }}>
+    (function () {
+      var form = document.getElementById("form-style");
+      if (!form) return;
+
+      /*
+       * Chaque emplacement téléverse pour son compte, dès qu'un fichier est
+       * choisi : le chemin rendu par l'API se pose dans le champ caché, et
+       * c'est lui qui part à l'enregistrement. Téléverser au moment
+       * d'enregistrer ferait attendre cinq envois d'un coup, et une seule
+       * image en échec ferait perdre tout le formulaire.
+       */
+      form.querySelectorAll("[data-emplacement]").forEach(function (bloc) {
+        var fichier = bloc.querySelector("[data-fichier]");
+        var chemin = bloc.querySelector("[data-chemin]");
+        var apercu = bloc.querySelector("[data-apercu]");
+        var vide = bloc.querySelector("[data-vide]");
+        var retirer = bloc.querySelector("[data-retirer]");
+
+        function montrer(src) {
+          chemin.value = src || "";
+          // Le champ caché garde le chemin NU — c'est lui qui part en base ;
+          // seul l'aperçu est préfixé pour s'afficher depuis /bo.
+          apercu.src = src ? (src.startsWith("http") ? src : apiBase + src) : "";
+          apercu.classList.toggle("hidden", !src);
+          vide.classList.toggle("hidden", !!src);
+          retirer.classList.toggle("hidden", !src);
+        }
+
+        fichier.addEventListener("change", async function () {
+          var f = fichier.files && fichier.files[0];
+          if (!f) return;
+          vide.textContent = "envoi…";
+          try {
+            var corps = new FormData();
+            corps.append("file", f);
+            var r = await fetch(apiBase + "/admin/uploads", {
+              method: "POST",
+              body: corps,
+              credentials: "include",
+            });
+            var d = await r.json();
+            if (!r.ok || !d.url) throw new Error(d.error || "envoi refusé");
+            montrer(d.url);
+          } catch (e) {
+            vide.textContent = "échec";
+            window.alert(
+              "Cette image n'a pas pu être envoyée : " + (e && e.message ? e.message : e),
+            );
+          } finally {
+            // Le champ se vide pour qu'on puisse rechoisir le MÊME fichier
+            // après un échec : sans cela, « change » ne se déclencherait pas.
+            fichier.value = "";
+          }
+        });
+
+        retirer.addEventListener("click", function () {
+          montrer("");
+          vide.textContent = "";
+        });
+      });
+    })();
+  </script>
+</Admin>

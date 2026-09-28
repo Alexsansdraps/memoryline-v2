@@ -1,0 +1,15 @@
+---
+/**
+ * L'adresse la plus ancienne du stand, du temps où il s'appelait « salon ».
+ *
+ * Même destination que /stand, et directement : un détour par /stand
+ * coûterait une redirection de plus à une tablette sur le réseau d'un salon.
+ * Le site s'ouvre en mode stand, code compris (voir stand.astro).
+ */
+export const prerender = false;
+
+const code = Astro.url.searchParams.get("code")?.trim();
+const suite = new URLSearchParams({ stand: "1" });
+if (code) suite.set("code", code);
+return Astro.redirect(`/?${suite.toString()}`, 301);
+---

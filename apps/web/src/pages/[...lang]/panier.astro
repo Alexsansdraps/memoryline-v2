@@ -1,17 +1,37 @@
 ---
 import Base from "../../layouts/Base.astro";
 import CartIsland from "../../islands/CartIsland.tsx";
-import { cheminsLangues, lien, t, type Langue } from "../../i18n/utils.ts";
+import {
+  estLangue,
+  langueDepuisParam,
+  lien,
+  t,
+  type Langue,
+} from "../../i18n/utils.ts";
 
-export const getStaticPaths = cheminsLangues;
+/**
+ * Rendue À LA DEMANDE, et plus au build.
+ *
+ * Au stand, cette page est la dernière étape : récapitulatif sans prix, puis
+ * nom, adresse e-mail et validation. Or le mode stand se lit dans un cookie,
+ * à chaque requête (middleware.ts). Figée au build, la page n'en savait rien :
+ * en développement tout semblait marcher, puisque tout s'y rend à la demande,
+ * mais en ligne la tablette recevait le panier de la boutique — prix, bandeau
+ * d'offre, lien de compte et bouton de paiement compris.
+ */
+export const prerender = false;
 
-const { langue } = Astro.props as { langue: Langue };
+// Préfixe de langue inconnu : 404, comme les autres pages rendues à la demande.
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
 const tr = t(langue);
+const auStand = Astro.locals.stand;
 ---
 
 <Base
   langue={langue}
-  title={`${tr("panier.titre")} — Memory Line`}
+  title={`${auStand ? tr("stand.titre") : tr("panier.titre")} — Memory Line`}
   path={lien(langue, "/panier")}
   noindex={true}
 >
@@ -23,17 +43,23 @@ const tr = t(langue);
       >
     </nav>
     {/* Titre et retour à la boutique sur la même ligne : le client garde
-        sous les yeux la sortie qui ne vide pas son panier. */}
-    <div class="mt-4 mb-8 flex flex-wrap items-baseline justify-between gap-4">
-      <h1 class="text-3xl sm:text-4xl">{tr("panier.titre")}</h1>
-      <a
-        href={lien(langue, "/affiches")}
-        class="text-sm underline underline-offset-4 hover:text-terracotta transition-colors"
-      >
-        {tr("panier.continuer")}
-      </a>
-    </div>
+        sous les yeux la sortie qui ne vide pas son panier. Au stand, c'est
+        l'îlot qui les porte : ils doivent s'effacer quand la vente est
+        enregistrée. */}
+    {
+      !auStand && (
+        <div class="mt-4 mb-8 flex flex-wrap items-baseline justify-between gap-4">
+          <h1 class="text-3xl sm:text-4xl">{tr("panier.titre")}</h1>
+          <a
+            href={lien(langue, "/affiches")}
+            class="text-sm underline underline-offset-4 hover:text-terracotta transition-colors"
+          >
+            {tr("panier.continuer")}
+          </a>
+        </div>
+      )
+    }
 
-    <CartIsland client:only="solid-js" langue={langue} />
+    <CartIsland client:only="solid-js" langue={langue} stand={auStand} />
   </section>
 </Base>

@@ -4,6 +4,7 @@
  * Source de vérité unique du contrat (§18.1 / §14).
  */
 import type { AssetSlot, PosterView } from "./config.js";
+import type { GroupeCouleur } from "./couleurs-groupes.js";
 
 /** Un asset recolorable (cheveux, vêtement, accessoire…). */
 export interface AssetDTO {
@@ -15,6 +16,10 @@ export interface AssetDTO {
   view: PosterView | string | null;
   /** Zones de couleur par défaut : { st0: "#BA6821", … } (§18.1 D). */
   colorZones: Record<string, string> | null;
+  /** Zones que le client ne peut pas recolorer (petits détails) : ["st3"]. */
+  zonesMasquees?: string[];
+  /** Nuances réunies sous une seule couleur, et leurs noms (cf. couleurs-groupes). */
+  groupesCouleurs?: GroupeCouleur[] | null;
   position: number;
 }
 

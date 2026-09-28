@@ -10,8 +10,13 @@ export interface MessagesConfigurateur {
   etapeFond: string;
   etapePersonnages: string;
   etapeFormat: string;
-  champTitre: string;
-  champSousTitre: string;
+  /** Libellé de chaque ligne de texte, dans l'ordre (« Ligne 1 »…). */
+  champsLignes: string[];
+  /** Exemple montré en filigrane dans chaque champ, dans l'ordre. */
+  exemplesLignes: string[];
+  quantite: string;
+  quantiteMoins: string;
+  quantitePlus: string;
   couleurTexte: string;
   choisirFond: string;
   personnages: string;
@@ -34,6 +39,10 @@ export interface MessagesConfigurateur {
   aucun: string;
   cadre: string;
   sansCadre: string;
+  /** Sur la poignée de chaque ligne : dit ce que le geste fait. */
+  reordonnerAide: string;
+  /** Sur l'icône de copie d'un personnage. */
+  dupliquer: string;
 }
 
 export const MESSAGES_DEFAUT: MessagesConfigurateur = {
@@ -41,9 +50,12 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   etapeFond: "Fond & texte",
   etapePersonnages: "Personnages",
   etapeFormat: "Format",
-  champTitre: "Titre (symboles et chiffres autorisés)",
-  champSousTitre: "Sous-titre (symboles et chiffres autorisés)",
-  couleurTexte: "Couleur du texte (titre & sous-titre)",
+  champsLignes: ["Ligne 1", "Ligne 2", "Ligne 3"],
+  exemplesLignes: ["MERS-LES-BAINS", "la maison bleue", "été 2019"],
+  quantite: "Nombre d'exemplaires",
+  quantiteMoins: "Un exemplaire de moins",
+  quantitePlus: "Un exemplaire de plus",
+  couleurTexte: "Couleur du texte",
   choisirFond: "Choisir un fond",
   personnages: "Personnages",
   nouveauPersonnage: "+ Nouveau personnage",
@@ -65,6 +77,8 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   aucun: "Aucun",
   cadre: "Cadre (option)",
   sansCadre: "Sans cadre",
+  reordonnerAide: "Glissez pour changer l'ordre des personnages",
+  dupliquer: "Dupliquer ce personnage",
 };
 
 /** Complète un dictionnaire partiel par les valeurs françaises. */

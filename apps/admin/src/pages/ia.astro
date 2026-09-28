@@ -1,0 +1,652 @@
+---
+/**
+ * Affiches IA : ce que la génération coûte, comment elle est réglée, ce
+ * qu'elle a produit.
+ *
+ * Le visiteur n'a aucun quota — c'est un choix assumé. Ce qui est surveillé
+ * ici, ce n'est donc pas lui, c'est la dépense : elle est le premier chiffre
+ * de l'écran, et le plafond mensuel le seul arrêt d'urgence.
+ */
+import Admin from "../layouts/Admin.astro";
+import { apiUrl, url } from "../lib/url.ts";
+import {
+  adminApi,
+  formatPrice,
+  type BilanPurgeIa,
+  type ListeGenerationsIA,
+  type StatsIA,
+} from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+// URL de l'API vue du navigateur : les aperçus sont servis sous /assets et
+// s'affichent dans la page, pas côté serveur.
+const PUBLIC_API_URL =
+  import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
+
+/** Modèles d'image disponibles sur la clé de la boutique. */
+const MODELES = [
+  { valeur: "gpt-image-2", label: "gpt-image-2 — le plus récent" },
+  { valeur: "gpt-image-1.5", label: "gpt-image-1.5" },
+  { valeur: "gpt-image-1", label: "gpt-image-1" },
+  { valeur: "gpt-image-1-mini", label: "gpt-image-1-mini — le plus économique" },
+];
+
+/** Une affiche se lit en hauteur : le portrait est le format normal ici. */
+const TAILLES = [
+  { valeur: "1024x1536", label: "1024 × 1536 — portrait (affiche)" },
+  { valeur: "1024x1024", label: "1024 × 1024 — carré" },
+  { valeur: "1536x1024", label: "1536 × 1024 — paysage" },
+  { valeur: "auto", label: "auto — le modèle décide" },
+];
+
+const MODELE_DEFAUT = "gpt-image-1-mini";
+const TAILLE_DEFAUT = "1024x1536";
+const PURGE_DEFAUT = 30;
+/** Générations montrées d'un coup dans la galerie. */
+const PAR_PAGE = 60;
+
+/** Euros saisis (« 49,90 ») -> centimes entiers, jamais négatifs. */
+function centimes(v: FormDataEntryValue | null): number {
+  const n = Number(String(v ?? "").replace(",", ".").trim());
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : 0;
+}
+
+/**
+ * Ce qu'une purge a effacé, en une phrase. L'API répondait autrefois
+ * { lignes, fichiers } quand l'écran lisait « supprimees » : il annonçait
+ * « Rien à effacer » même après avoir effacé.
+ */
+function bilanDePurge(r: BilanPurgeIa): string {
+  if (r.motif) return r.motif;
+  const parties = [
+    r.lignes ? `${r.lignes} génération(s) non achetée(s) vidée(s) (${r.fichiers} fichier(s))` : "",
+    r.orphelins ? `${r.orphelins} photo(s) jamais utilisée(s)` : "",
+    r.relais ? `${r.relais} photo(s) oubliée(s) par le relais du stand` : "",
+  ].filter(Boolean);
+  return parties.length
+    ? `Effacé : ${parties.join(", ")}.`
+    : "Rien à effacer : aucune photo non achetée n'a dépassé le délai.";
+}
+
+/** Entier positif saisi, ou la valeur de repli. */
+function entier(v: FormDataEntryValue | null, defaut: number): number {
+  const n = Math.round(Number(String(v ?? "").trim()));
+  return Number.isFinite(n) && n >= 0 ? n : defaut;
+}
+
+let flash: string | null = null;
+let flashErreur = false;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  try {
+    if (f.get("_action") === "purger") {
+      flash = bilanDePurge(await api.purgerIa());
+    } else {
+      // Montants et durées partent en NOMBRES : l'API compare et additionne
+      // ces réglages, une chaîne s'y additionnerait bout à bout.
+      await api.setSetting("ia.stylePrompt", String(f.get("stylePrompt") ?? ""));
+      await api.setSetting("ia.modele", String(f.get("modele") ?? MODELE_DEFAUT));
+      await api.setSetting("ia.taille", String(f.get("taille") ?? TAILLE_DEFAUT));
+      await api.setSetting(
+        "ia.plafondMensuelCents",
+        centimes(f.get("plafondEuros")),
+      );
+      await api.setSetting("ia.purgeJours", entier(f.get("purgeJours"), PURGE_DEFAUT));
+      flash = "Réglages enregistrés.";
+    }
+  } catch (e) {
+    flash = String(e);
+    flashErreur = true;
+  }
+}
+
+const ONGLETS = [
+  { cle: "toutes", label: "Toutes" },
+  { cle: "prete", label: "Prêtes" },
+  { cle: "en_cours", label: "En cours" },
+  { cle: "echec", label: "Échecs" },
+];
+const statut = Astro.url.searchParams.get("statut") ?? "toutes";
+const page = Math.max(0, Number(Astro.url.searchParams.get("page") ?? 0) || 0);
+
+let stats: StatsIA | null = null;
+let erreurStats: string | null = null;
+try {
+  stats = await api.iaStats();
+} catch (e) {
+  erreurStats = String(e);
+}
+
+let galerie: ListeGenerationsIA | null = null;
+let erreurGalerie: string | null = null;
+try {
+  galerie = await api.iaGenerations({
+    statut: statut === "toutes" ? undefined : statut,
+    page,
+    limite: PAR_PAGE,
+  });
+} catch (e) {
+  erreurGalerie = String(e);
+}
+const lignes = galerie?.lignes ?? [];
+
+let reglages: Record<string, unknown> = {};
+let erreurReglages: string | null = null;
+try {
+  reglages = await api.settings();
+} catch (e) {
+  erreurReglages = String(e);
+}
+
+const texte = (cle: string) =>
+  typeof reglages[cle] === "string" ? (reglages[cle] as string) : "";
+
+// Ce que l'API applique fait foi : c'est elle qui lit les réglages et facture.
+const modele = stats?.modele ?? texte("ia.modele") ?? MODELE_DEFAUT;
+const taille = stats?.taille ?? texte("ia.taille") ?? TAILLE_DEFAUT;
+const plafondCents = stats?.plafondCents ?? 0;
+const purgeJours = stats?.purgeJours ?? PURGE_DEFAUT;
+
+const depenseCents = stats?.mois?.depenseCents ?? 0;
+const partDuPlafond = plafondCents > 0 ? depenseCents / plafondCents : 0;
+const coutParImage = stats?.coutParImageCents ?? 0;
+const apercusRestants =
+  coutParImage > 0 ? Math.floor((stats?.resteCents ?? 0) / coutParImage) : null;
+
+/**
+ * Taux d'échec recalculé sur les deux compteurs : une part (0,12) et un
+ * pourcentage (12) se ressemblent trop pour qu'on affiche l'un pour l'autre.
+ */
+const essais = stats?.mois?.essais ?? 0;
+const echecs = stats?.mois?.echecs ?? 0;
+const tauxEchec = essais > 0 ? Math.round((echecs / essais) * 100) : null;
+
+/**
+ * Décompte de la purge : la purge elle-même, en simulation. Mêmes règles,
+ * même historique complet que le passage horaire — un décompte refait ici à
+ * part, sur un échantillon, finissait toujours par dire autre chose que ce
+ * que la purge efface vraiment.
+ */
+let apercuPurge: BilanPurgeIa | null = null;
+try {
+  apercuPurge = await api.purgerIa(true);
+} catch {
+  // Sans décompte, le bloc de purge le dit et n'annonce aucun chiffre.
+}
+
+const STATUTS: Record<string, { texte: string; classe: string }> = {
+  prete: { texte: "Prête", classe: "bg-green-100 text-green-900" },
+  en_cours: { texte: "En cours", classe: "bg-amber-100 text-amber-900" },
+  echec: { texte: "Échec", classe: "bg-red-50 text-red-700" },
+};
+
+function quand(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    const jour = d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+    const heure = d.toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    return `le ${jour} à ${heure}`;
+  } catch {
+    return "—";
+  }
+}
+
+/** Aperçu filigrané : chemin d'assets à préfixer, ou adresse déjà complète. */
+function apercuSrc(u: string | null): string {
+  if (!u) return "";
+  return u.startsWith("http") ? u : `${PUBLIC_API_URL}${u}`;
+}
+
+/** Reconstruit l'URL de la page en changeant une seule clé. */
+function lienAvec(modif: Record<string, string | null>): string {
+  const p = new URLSearchParams(Astro.url.searchParams);
+  for (const [k, v] of Object.entries(modif)) {
+    if (v === null || v === "") p.delete(k);
+    else p.set(k, v);
+  }
+  const qs = p.toString();
+  return url(`/ia${qs ? `?${qs}` : ""}`);
+}
+
+const total = galerie?.total ?? 0;
+const premiere = page * PAR_PAGE;
+const derniere = premiere + lignes.length;
+---
+
+<Admin title="Affiches IA">
+  {flash && (
+    <p
+      class={`mb-4 rounded border px-3 py-2 text-sm ${
+        flashErreur ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+
+  {erreurStats && (
+    <p class="mb-4 text-sm text-red-600">
+      Chiffres du mois indisponibles : {erreurStats}
+    </p>
+  )}
+
+  {stats && !stats.configuree && (
+    <p class="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm">
+      La clé OpenAI manque à l'appel : aucune affiche IA ne peut être générée
+      pour l'instant. Les visiteurs voient une erreur.
+    </p>
+  )}
+
+  {/* =============================================================== */}
+  {/* 1 — Le mois en cours                                            */}
+  {/* =============================================================== */}
+  <section class="mb-6">
+    <div class="grid gap-px overflow-hidden rounded-lg border border-bo-border bg-bo-border sm:grid-cols-2 lg:grid-cols-5">
+      <div class="bg-bo-surface px-4 py-3 sm:col-span-2">
+        <div class="text-xs text-bo-muted">Dépensé ce mois-ci chez OpenAI</div>
+        <div class="mt-1 flex items-baseline gap-2">
+          <span class="text-3xl">{formatPrice(depenseCents)}</span>
+          {plafondCents > 0 && (
+            <span class="text-sm text-bo-muted">
+              sur {formatPrice(plafondCents)} autorisés
+            </span>
+          )}
+        </div>
+        {plafondCents > 0 && (
+          <div class="mt-2 h-2 w-full overflow-hidden rounded bg-bo-bg">
+            <div
+              class={`h-2 ${
+                partDuPlafond >= 1
+                  ? "bg-red-600"
+                  : partDuPlafond >= 0.8
+                    ? "bg-amber-500"
+                    : "bg-bo-accent"
+              }`}
+              style={`width:${Math.min(100, Math.round(partDuPlafond * 100))}%`}
+            >
+            </div>
+          </div>
+        )}
+        <p class="mt-2 text-xs text-bo-muted">
+          {plafondCents === 0
+            ? "Aucun plafond n'est réglé : réglez-en un plus bas, sans quoi la dépense n'est bornée par rien."
+            : stats?.plafondAtteint
+              ? "Plafond atteint : plus aucune affiche n'est générée jusqu'au mois prochain."
+              : partDuPlafond >= 0.8
+                ? "Le plafond approche. Au-delà, la génération s'arrête d'elle-même."
+                : `Il reste ${formatPrice(stats?.resteCents ?? 0)} ce mois-ci. Chaque aperçu demandé est facturé, que le visiteur achète ou non.`}
+        </p>
+      </div>
+
+      <div class="bg-bo-surface px-4 py-3">
+        <div class="text-xs text-bo-muted">Aperçus demandés</div>
+        <div class="mt-1 text-2xl">{stats ? essais : "—"}</div>
+        <div class="text-xs text-bo-muted">
+          {stats ? `dont ${stats.mois.payees} achetée(s)` : "depuis le 1er du mois"}
+        </div>
+      </div>
+
+      <div class="bg-bo-surface px-4 py-3">
+        <div class="text-xs text-bo-muted">Taux d'échec</div>
+        <div class="mt-1 flex items-baseline gap-2">
+          <span class="text-2xl">{tauxEchec === null ? "—" : `${tauxEchec} %`}</span>
+          {echecs > 0 && <span class="text-xs text-bo-muted">{echecs} raté(s)</span>}
+        </div>
+        <div class="text-xs text-bo-muted">
+          {tauxEchec !== null && tauxEchec >= 20
+            ? "Anormalement haut : voyez les échecs plus bas."
+            : "Un échec n'est pas facturé."}
+        </div>
+      </div>
+
+      <div class="bg-bo-surface px-4 py-3">
+        <div class="text-xs text-bo-muted">Coût d'un aperçu</div>
+        <div class="mt-1 text-2xl">
+          {coutParImage > 0 ? formatPrice(coutParImage) : "—"}
+        </div>
+        <div class="text-xs text-bo-muted">
+          {apercusRestants === null
+            ? `modèle ${modele}`
+            : `soit ${apercusRestants} aperçu(s) avant le plafond`}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {/* =============================================================== */}
+  {/* 2 — Réglages communs                                            */}
+  {/* =============================================================== */}
+  <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-5">
+    <h3 class="mb-1 font-semibold">Réglages</h3>
+    <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+      Ces réglages valent pour <strong>toutes</strong> les affiches IA. Le style
+      propre à une affiche se saisit sur sa fiche produit et vient s'ajouter à
+      celui-ci.
+    </p>
+
+    {erreurReglages && (
+      <p class="mb-3 text-sm text-red-600">Réglages illisibles : {erreurReglages}</p>
+    )}
+
+    <form method="POST" class="space-y-4 text-sm">
+      <label class="block">
+        <span class="text-bo-muted">Style commun de la boutique</span>
+        <textarea
+          name="stylePrompt"
+          rows="4"
+          class="mt-1 w-full rounded border border-bo-border px-3 py-2"
+          placeholder="Illustration à l'aquarelle, traits doux, couleurs pastel, fond uni crème, cadrage en pied, aucune écriture dans l'image."
+          >{texte("ia.stylePrompt")}</textarea
+        >
+        <span class="mt-1 block text-xs text-bo-muted">
+          Ce texte est envoyé au modèle avec la photo du visiteur. Décrivez le
+          rendu voulu, pas la personne : le modèle a déjà la photo.
+        </span>
+      </label>
+
+      <div class="flex flex-wrap items-end gap-4">
+        <label class="block">
+          <span class="text-bo-muted">Modèle</span>
+          <select
+            name="modele"
+            class="mt-1 block w-72 rounded border border-bo-border px-3 py-2"
+          >
+            {MODELES.map((m) => (
+              <option value={m.valeur} selected={m.valeur === modele}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label class="block">
+          <span class="text-bo-muted">Taille de l'image</span>
+          <select
+            name="taille"
+            class="mt-1 block w-72 rounded border border-bo-border px-3 py-2"
+          >
+            {TAILLES.map((t) => (
+              <option value={t.valeur} selected={t.valeur === taille}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div class="flex flex-wrap items-end gap-4">
+        <label class="block">
+          <span class="text-bo-muted">Plafond de dépense par mois (€)</span>
+          <input
+            name="plafondEuros"
+            type="number"
+            min="0"
+            step="0.01"
+            value={plafondCents ? (plafondCents / 100).toFixed(2) : ""}
+            placeholder="50.00"
+            class="mt-1 block w-40 rounded border border-bo-border px-3 py-2"
+          />
+          <span class="mt-1 block text-xs text-bo-muted">
+            Atteint, il coupe la génération jusqu'au mois suivant. C'est le
+            garde-fou contre un robot qui demanderait mille aperçus la nuit.
+          </span>
+        </label>
+
+        <label class="block">
+          <span class="text-bo-muted">Conservation des photos non achetées (jours)</span>
+          <input
+            name="purgeJours"
+            type="number"
+            min="0"
+            step="1"
+            value={purgeJours}
+            class="mt-1 block w-40 rounded border border-bo-border px-3 py-2"
+          />
+          <span class="mt-1 block text-xs text-bo-muted">
+            Passé ce délai, la photo envoyée par le visiteur et son aperçu
+            sont effacés d'eux-mêmes (la purge passe toutes les heures). Ce
+            qui a été acheté n'est jamais concerné.
+          </span>
+        </label>
+      </div>
+
+      <button class="rounded bg-bo-accent px-4 py-2 text-white hover:opacity-90">
+        Enregistrer les réglages
+      </button>
+    </form>
+  </section>
+
+  {/* =============================================================== */}
+  {/* 3 — Galerie des générations                                     */}
+  {/* =============================================================== */}
+  <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface">
+    <div class="flex flex-wrap items-center gap-1 border-b border-bo-border px-3 pt-3">
+      {ONGLETS.map((o) => (
+        <a
+          href={lienAvec({
+            statut: o.cle === "toutes" ? null : o.cle,
+            page: null,
+          })}
+          class={`rounded-t px-3 py-2 text-sm ${
+            o.cle === statut
+              ? "bg-bo-bg font-medium text-bo-ink"
+              : "text-bo-muted hover:bg-bo-bg/60"
+          }`}
+        >
+          {o.label}
+        </a>
+      ))}
+    </div>
+
+    <div class="p-5">
+      <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+        Toutes les affiches portent le filigrane tant que la commande n'est pas
+        payée — celles-ci comme les autres. Une fois payée, l'image nette
+        s'ouvre depuis sa vignette.
+      </p>
+
+      {erreurGalerie && (
+        <p class="mb-4 text-sm text-red-600">
+          Générations indisponibles : {erreurGalerie}
+        </p>
+      )}
+
+      {galerie && (
+        <p class="mb-4 text-sm text-bo-muted">
+          {total === 0
+            ? "Aucune génération."
+            : `${premiere + 1}–${derniere} sur ${total} · ${formatPrice(galerie.coutCents)} pour ce qui est affiché`}
+        </p>
+      )}
+
+      <div class="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
+        {lignes.map((g) => {
+          const badge = STATUTS[g.status] ?? {
+            texte: g.status,
+            classe: "bg-bo-bg text-bo-muted",
+          };
+          return (
+            <figure class="overflow-hidden rounded border border-bo-border">
+              <div class="flex aspect-[2/3] items-center justify-center bg-bo-bg">
+                {g.apercu ? (
+                  <img
+                    src={apercuSrc(g.apercu)}
+                    alt="Aperçu filigrané"
+                    class="h-full w-full object-contain"
+                    loading="lazy"
+                  />
+                ) : (
+                  <span class="px-3 text-center text-xs text-bo-muted">
+                    {g.status === "en_cours" ? "En fabrication…" : "Pas d'image"}
+                  </span>
+                )}
+              </div>
+              <figcaption class="space-y-1 px-3 py-2 text-xs">
+                <div class="flex flex-wrap items-center gap-1">
+                  <span class={`rounded-full px-2 py-0.5 ${badge.classe}`}>
+                    {badge.texte}
+                  </span>
+                  {g.paidAt && (
+                    <span class="rounded-full bg-sky-100 px-2 py-0.5 text-sky-900">
+                      Payée
+                    </span>
+                  )}
+                </div>
+                <div class="truncate" title={g.produit ?? undefined}>
+                  {g.productId ? (
+                    <a
+                      href={url(`/produits/${g.productId}`)}
+                      class="text-bo-accent hover:underline"
+                    >
+                      {g.produit ?? `Produit #${g.productId}`}
+                    </a>
+                  ) : (
+                    <span class="text-bo-muted">Produit inconnu</span>
+                  )}
+                </div>
+                <div class="text-bo-muted">{quand(g.createdAt)}</div>
+                <div class="text-bo-muted">
+                  {g.costCents > 0 ? formatPrice(g.costCents) : "non facturée"}
+                </div>
+                {g.erreur && (
+                  <div class="text-red-700" title={g.erreur}>
+                    {g.erreur.length > 70 ? g.erreur.slice(0, 70) + "…" : g.erreur}
+                  </div>
+                )}
+                {g.paidAt && g.aPleine && (
+                  <a
+                    href={apiUrl(`/admin/ia/full/${g.publicId}`)}
+                    target="_blank"
+                    rel="noopener"
+                    class="block text-bo-accent hover:underline"
+                  >
+                    Image sans filigrane ↗
+                  </a>
+                )}
+              </figcaption>
+            </figure>
+          );
+        })}
+      </div>
+
+      {lignes.length === 0 && !erreurGalerie && (
+        <p class="py-6 text-center text-sm text-bo-muted">
+          {statut === "toutes"
+            ? "Aucune affiche n'a encore été générée."
+            : "Aucune génération dans cet onglet."}
+        </p>
+      )}
+
+      {(page > 0 || derniere < total) && (
+        <nav class="mt-4 flex items-center justify-between gap-2 text-sm">
+          {page > 0 ? (
+            <a
+              href={lienAvec({ page: page > 1 ? String(page - 1) : null })}
+              class="rounded border border-bo-border px-3 py-1.5"
+            >
+              ← Plus récentes
+            </a>
+          ) : (
+            <span></span>
+          )}
+          {derniere < total && (
+            <a
+              href={lienAvec({ page: String(page + 1) })}
+              class="rounded border border-bo-border px-3 py-1.5"
+            >
+              Plus anciennes →
+            </a>
+          )}
+        </nav>
+      )}
+    </div>
+  </section>
+
+  {/* =============================================================== */}
+  {/* 4 — Purge                                                       */}
+  {/* =============================================================== */}
+  <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+    <h3 class="mb-1 font-semibold">Effacer les photos non achetées</h3>
+    <p class="mb-3 max-w-3xl text-sm text-bo-muted">
+      Les visiteurs envoient leur photo pour voir un aperçu ; la plupart
+      n'achètent pas. Ni ces photos ni leurs aperçus n'ont à rester sur le
+      serveur au-delà du délai de conservation. Rien de ce qui a été payé — ou
+      vendu au stand — n'est touché, et l'affiche imprimable d'une commande
+      payée ne l'est jamais non plus.
+    </p>
+    <p class="mb-3 max-w-3xl text-sm text-bo-muted">
+      Une commande du site restée « en attente de paiement » garde ses photos
+      le temps du délai de conservation, compté depuis son dernier passage en
+      caisse : de quoi laisser arriver un paiement en retard. Au-delà, elles
+      partent comme celles d'un panier abandonné.
+    </p>
+    <p class="mb-3 max-w-3xl text-sm text-bo-muted">
+      Cette purge passe d'elle-même toutes les heures. Le bouton ne fait que la
+      lancer tout de suite, avec les mêmes règles.
+    </p>
+
+    <div class="mb-3 rounded border border-bo-border bg-bo-bg px-4 py-3 text-sm">
+      <div class="font-medium">Ce qui partirait maintenant</div>
+      {apercuPurge ? (
+        <ul class="mt-1 space-y-0.5 text-bo-muted">
+          <li>
+            <strong>{apercuPurge.lignes}</strong> génération(s) jamais achetée(s)
+            de plus de {apercuPurge.jours} jour(s) : leur photo, leur aperçu et
+            leur affiche ({apercuPurge.fichiers} fichier(s)).
+          </li>
+          <li>
+            <strong>{apercuPurge.orphelins}</strong> photo(s) envoyée(s) il y a
+            plus de {apercuPurge.heuresPhotosInutilisees} heures sans jamais
+            servir à une affiche.
+          </li>
+          <li>
+            <strong>{apercuPurge.relais}</strong> photo(s) envoyée(s) d'un
+            téléphone au stand et oubliée(s) sur le serveur.
+          </li>
+        </ul>
+      ) : (
+        <p class="mt-1 text-bo-muted">
+          Le décompte n'a pas pu être établi. La purge efface les générations
+          jamais achetées de plus de {purgeJours} jour(s), et les photos qui
+          n'ont servi à aucune affiche.
+        </p>
+      )}
+    </div>
+
+    <form
+      method="POST"
+      class="js-purger"
+      data-nombre={apercuPurge
+        ? apercuPurge.lignes + apercuPurge.orphelins + apercuPurge.relais
+        : ""}
+    >
+      <input type="hidden" name="_action" value="purger" />
+      <button class="rounded border border-bo-border px-4 py-2 text-sm hover:border-red-300 hover:text-red-700">
+        Effacer maintenant
+      </button>
+    </form>
+  </section>
+
+  <script is:inline>
+    // Effacement irréversible : on redit le nombre avant de lancer.
+    document.querySelectorAll("form.js-purger").forEach((f) => {
+      f.addEventListener("submit", (e) => {
+        const n = f.getAttribute("data-nombre");
+        if (
+          !confirm(
+            n
+              ? `Effacer ${n} génération(s) et photo(s) de visiteurs ? C'est définitif.`
+              : "Effacer les photos et aperçus des générations non achetées ? C'est définitif.",
+          )
+        )
+          e.preventDefault();
+      });
+    });
+  </script>
+</Admin>

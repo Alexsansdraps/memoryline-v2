@@ -1,0 +1,266 @@
+---
+/**
+ * Les pages écrites depuis le back-office.
+ *
+ * C'est la sortie du contenu éditable : la boutique crée « Magnets », y pose
+ * un texte, une image et une grille de produits, et cette page l'affiche. Elle
+ * ne connaît que cinq formes de bloc, et refuse tout le reste en silence
+ * plutôt que d'afficher un morceau de page cassé.
+ *
+ * L'adresse porte le préfixe « /pages/ », et ce n'est pas un choix esthétique.
+ * Posée à la racine, cette route se glissait devant les accueils traduits :
+ * pour « /en », le routeur préfère un segment nommé à un segment de reste, et
+ * l'anglais tombait en page introuvable. Le préfixe lève l'ambiguïté sans
+ * toucher à l'accueil, qui est la page qu'on casse en dernier.
+ *
+ * Une adresse inconnue rend une page introuvable, jamais une page vide.
+ */
+import Base from "../../../layouts/Base.astro";
+import { api, assetUrl, formatPrice, type PageCms } from "../../../lib/api.ts";
+import { htmlSur } from "../../../lib/html-sur.ts";
+import {
+  estLangue,
+  langueDepuisParam,
+  lien,
+  type Langue,
+} from "../../../i18n/utils.ts";
+
+/** Le contenu vient de la base : le figer au build le gèlerait. */
+export const prerender = false;
+
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
+
+const slug = Astro.params.slug ?? "";
+
+/** La personne du back-office qui regarde, résolue par le middleware. */
+const admin = Astro.locals.admin ?? null;
+/** Le back-office vit sous /bo derrière le proxy ; surchargeable en prod. */
+const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
+let page: PageCms | null = null;
+try {
+  page = await api.page(slug, langue);
+} catch {
+  // Page absente, brouillon, ou API muette : dans les trois cas la page
+  // n'existe pas pour le visiteur, et le dire est plus honnête qu'un cadre
+  // vide qui laisserait croire à une panne d'affichage.
+  page = null;
+}
+if (!page) return new Response(null, { status: 404 });
+
+/** Une adresse écrite dans un bloc, prête à être cliquée. */
+function adresse(href: string): string {
+  if (/^https?:\/\//i.test(href)) return href;
+  const [chemin, requete] = href.split("?");
+  return lien(langue, chemin || "/") + (requete ? `?${requete}` : "");
+}
+
+/**
+ * Au stand, les affiches qu'une page met en avant se montrent sans prix,
+ * comme partout ailleurs sur la tablette : la vendeuse annonce les siens.
+ */
+const sansPrix = Astro.locals.stand;
+
+/** Le prix affiché sous une vignette : « à partir de » quand il varie. */
+function prix(p: {
+  basePriceCents: number;
+  variants?: { priceCents: number }[];
+}): string {
+  const montants = (p.variants ?? [])
+    .map((v) => v.priceCents)
+    .filter((c) => c > 0);
+  if (!montants.length) return formatPrice(p.basePriceCents);
+  const min = Math.min(...montants);
+  const max = Math.max(...montants);
+  return min === max ? formatPrice(min) : `${formatPrice(min)} – ${formatPrice(max)}`;
+}
+
+const titreOnglet = page.seoTitle?.trim() || `${page.title} — Memory Line`;
+---
+
+<Base
+  langue={langue}
+  title={titreOnglet}
+  description={page.seoDescription ?? undefined}
+>
+  <article class="mx-auto max-w-[1000px] px-6 py-12 lg:px-12">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <h1 class="text-3xl sm:text-4xl">{page.title}</h1>
+      {/* Le raccourci d'édition, pour la boutique seulement.
+          Lire une coquille sur une page légale et devoir ouvrir le
+          back-office, trouver la liste des pages, retrouver la bonne : trois
+          écrans pour corriger un mot. Ce crayon-ci mène droit à l'éditeur.
+          Un visiteur ne le voit pas, et n'apprend pas qu'il existe. */}
+      {admin && (
+        <a
+          href={`${lienBackOffice}/pages/${page.id}`}
+          rel="nofollow"
+          class="inline-flex shrink-0 items-center gap-1.5 border border-ink/15 px-3 py-1.5 text-[13px] text-ink/60 transition-colors hover:border-terracotta/40 hover:text-terracotta"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+          </svg>
+          Modifier cette page
+        </a>
+      )}
+    </div>
+
+    {
+      page.blocks.map((bloc) => {
+        if (bloc.type === "titre") {
+          const texte = String(bloc.texte ?? "");
+          return bloc.niveau === 3 ? (
+            <h3 class="mt-10 text-xl font-medium">{texte}</h3>
+          ) : (
+            <h2 class="mt-12 text-2xl font-medium">{texte}</h2>
+          );
+        }
+
+        if (bloc.type === "texte") {
+          return (
+            <div
+              class="ml-page-texte mt-6 leading-relaxed text-ink-soft"
+              set:html={htmlSur(String(bloc.html ?? ""))}
+            />
+          );
+        }
+
+        if (bloc.type === "image") {
+          const src = assetUrl(String(bloc.url ?? ""));
+          if (!src) return null;
+          const legende = String(bloc.legende ?? "");
+          return (
+            <figure class="mt-10">
+              <img
+                src={src}
+                alt={String(bloc.alt ?? "")}
+                loading="lazy"
+                class="w-full rounded-lg"
+              />
+              {legende && (
+                <figcaption class="mt-2 text-sm text-ink-soft">
+                  {legende}
+                </figcaption>
+              )}
+            </figure>
+          );
+        }
+
+        if (bloc.type === "bouton") {
+          return (
+            <p class="mt-8">
+              <a
+                href={adresse(String(bloc.href ?? "/"))}
+                class="inline-block rounded-full bg-ink px-6 py-3 text-paper transition-opacity hover:opacity-90"
+              >
+                {String(bloc.texte ?? "")}
+              </a>
+            </p>
+          );
+        }
+
+        if (bloc.type === "produits") {
+          const produits = Array.isArray(bloc.produits) ? bloc.produits : [];
+          if (!produits.length) return null;
+          return (
+            <div class="mt-10 grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-4">
+              {produits.map((p) => (
+                <a
+                  href={lien(langue, `/affiches/${p.slug}`)}
+                  class="group block"
+                >
+                  <div class="bg-paper-deep aspect-[3/4] overflow-hidden rounded">
+                    {p.image ? (
+                      <img
+                        src={assetUrl(p.image) ?? ""}
+                        alt=""
+                        loading="lazy"
+                        class="h-full w-full object-cover transition-transform group-hover:scale-[1.02]"
+                      />
+                    ) : (
+                      <span class="block h-full w-full" />
+                    )}
+                  </div>
+                  <p class="mt-2 text-sm">{p.name}</p>
+                  {!sansPrix && <p class="text-sm text-ink-soft">{prix(p)}</p>}
+                </a>
+              ))}
+            </div>
+          );
+        }
+
+        // Un genre de bloc que cette version du site ne sait pas dessiner :
+        // on le saute. Mieux vaut une page incomplète qu'une page en erreur.
+        return null;
+      })
+    }
+  </article>
+</Base>
+
+<style is:global>
+  /* Le texte vient de l'éditeur visuel : paragraphes, listes, gras, italique,
+     liens, images — et, pour les pages qui sont de vrais documents, deux
+     niveaux de titre.
+
+     Ces deux règles-là reprennent au mot près l'allure qu'avaient les anciens
+     blocs « titre » (mt-12 text-2xl / mt-10 text-xl, en font-medium) : les
+     conditions de vente ne doivent pas changer d'aspect le jour où leurs
+     quatorze intertitres cessent d'être des blocs pour devenir du texte. La
+     couleur, elle, est rendue explicitement : le cadre porte « text-ink-soft »
+     pour le corps, et un titre qui en hériterait paraîtrait effacé. */
+  .ml-page-texte h2 {
+    margin: 3rem 0 0;
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 500;
+    color: var(--color-ink, currentColor);
+  }
+  .ml-page-texte h3 {
+    margin: 2.5rem 0 0;
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+    font-weight: 500;
+    color: var(--color-ink, currentColor);
+  }
+  /* Un titre suivi de son paragraphe ne doit pas cumuler les deux marges :
+     l'espace au-dessus du titre sépare les sections, celui du paragraphe
+     ferait un trou entre le titre et le texte qu'il annonce. */
+  .ml-page-texte h2 + p,
+  .ml-page-texte h3 + p {
+    margin-top: 0.6rem;
+  }
+  .ml-page-texte p {
+    margin: 0.9rem 0;
+  }
+  .ml-page-texte ul,
+  .ml-page-texte ol {
+    margin: 0.9rem 0;
+    padding-left: 1.5rem;
+  }
+  .ml-page-texte ul {
+    list-style: disc;
+  }
+  .ml-page-texte ol {
+    list-style: decimal;
+  }
+  .ml-page-texte a {
+    text-decoration: underline;
+  }
+  .ml-page-texte img {
+    max-width: 100%;
+    height: auto;
+    margin: 1rem 0;
+  }
+</style>

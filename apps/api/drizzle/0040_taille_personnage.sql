@@ -1,0 +1,1 @@
+ALTER TABLE "character_type" ADD COLUMN "facteur_taille" double precision DEFAULT 1 NOT NULL;

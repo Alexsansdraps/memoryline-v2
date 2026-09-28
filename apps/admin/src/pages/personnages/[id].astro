@@ -1,6 +1,10 @@
 ---
+import { apiInterne } from "../../lib/api-interne.ts";
 import { url } from "../../lib/url.ts";
 import Admin from "../../layouts/Admin.astro";
+import ApercusZones from "../../components/ApercusZones.astro";
+import GroupesCouleurs from "../../components/GroupesCouleurs.astro";
+import { Y_SOL_PERSONNAGES } from "@memoryline/types";
 import {
   adminApi,
   type Asset,
@@ -70,6 +74,23 @@ if (Astro.request.method === "POST") {
         ...(f.get("bottomPct")
           ? { bottomPct: Number(String(f.get("bottomPct")).replace(",", ".")) }
           : {}),
+        ...(f.get("facteurTaille")
+          ? {
+              facteurTaille: Number(
+                String(f.get("facteurTaille")).replace(",", "."),
+              ),
+            }
+          : {}),
+        // Zéro est une vraie valeur — « au centre » — et doit partir aussi :
+        // tester la chaîne vide plutôt que la valeur, sinon ramener un
+        // personnage au centre ne s'enregistrerait jamais.
+        ...(f.get("decalageX") !== null && String(f.get("decalageX")) !== ""
+          ? {
+              decalageX: Number(
+                String(f.get("decalageX")).replace(",", "."),
+              ),
+            }
+          : {}),
       });
       flash = "Personnage enregistré.";
     }
@@ -80,19 +101,76 @@ if (Astro.request.method === "POST") {
 
 let perso: CharacterType | undefined;
 let assets: Asset[] = [];
-let categories: CharacterCategory[] = [];
+let toutesCategories: CharacterCategory[] = [];
 let vues: TypeAffiche[] = [];
 try {
   const data = await api.characters();
   perso = (data.types ?? []).find((t) => t.id === id);
   assets = await api.assets();
-  categories = await api.categories();
+  toutesCategories = await api.categories();
   vues = await api.views();
 } catch (e) {
   if (!erreur) erreur = String(e);
 }
+// Les catégories ouvertes, plus celle de ce personnage si elle vient d'être
+// archivée : sans elle, le sélecteur retomberait sur « Sans catégorie » et le
+// premier enregistrement de la fiche lui ferait perdre son rayon.
+const categories = toutesCategories.filter(
+  (c) => !c.archivedAt || perso?.categoryId === c.id,
+);
 
 const vueDuPerso = perso?.orientation ?? vues[0]?.slug ?? "front";
+
+/**
+ * L'avant-plan du type d'affiche de ce personnage : le muret pour un
+ * personnage de dos, rien pour un personnage de face. C'est exactement ce que
+ * la boutique dessinera devant lui.
+ */
+const avantPlan = vues.find((v) => v.slug === vueDuPerso)?.foregroundUrl ?? null;
+
+/** Quelques décors réels, pour ne pas calibrer sur un fond blanc. */
+interface DecorChoix {
+  id: number;
+  nom: string;
+  url: string;
+}
+let decors: DecorChoix[] = [];
+try {
+  const base =
+    apiInterne();
+  const res = await fetch(`${base}/admin/decors`, {
+    headers: { cookie: Astro.request.headers.get("cookie") ?? "" },
+  });
+  if (res.ok) {
+    const d = (await res.json()) as {
+      decors: { id: number; nom: string | null; url: string }[];
+    };
+    decors = d.decors
+      .filter((x) => x.url)
+      .map((x) => ({ id: x.id, nom: x.nom ?? `Décor ${x.id}`, url: x.url }))
+      // Les décors correctement nommés d'abord : ceux sortis de l'ancienne
+      // boutique s'appellent « AFFICHES_Villes_2_.pdf.png » et ne montrent
+      // rien de reconnaissable. On calibre sur une vraie ville.
+      .sort((a, b) => {
+        const propre = (n: string) =>
+          /\.(pdf|png|jpe?g)/i.test(n) || /_/.test(n) ? 1 : 0;
+        return propre(a.nom) - propre(b.nom) || a.nom.localeCompare(b.nom, "fr");
+      });
+  }
+} catch {
+  // Sans décors, la calibration se fait sur un fond uni : moins parlant, mais
+  // la géométrie reste juste.
+}
+
+/* Les constantes du configurateur, recopiées telles quelles. Elles décident
+   de la taille et de la place d'un personnage sur l'affiche ; les changer ici
+   sans les changer là-bas ferait mentir la calibration. */
+const CHAR_BASE_WIDTH = 0.22; // largeur de référence, en fraction de l'affiche
+const ECHELLE_SEUL = 0.7; // échelle d'un personnage seul sur l'affiche
+// La hauteur où les pieds se posent : la MÊME valeur que la rangée du site,
+// partagée plutôt que recopiée. Le site y ajoutait une pente que cet écran
+// ignorait — un personnage calé ici ressortait décalé sur la boutique.
+const Y_MURET = Y_SOL_PERSONNAGES;
 
 /**
  * Pièces génériques du type d'affiche de CE personnage, par emplacement.
@@ -162,7 +240,11 @@ const piecesACaler = SLOTS.flatMap((s) => {
       {/* ---------------------------------------------------------------- */}
       <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
         <h3 class="font-semibold mb-4">Le personnage</h3>
-        <form method="POST" class="grid sm:grid-cols-4 gap-4 text-sm items-end">
+        <form
+          id="fiche-personnage"
+          method="POST"
+          class="grid sm:grid-cols-4 gap-4 text-sm items-end"
+        >
           <label class="block">
             <span class="text-bo-muted">Nom</span>
             <input
@@ -186,6 +268,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
                   selected={perso!.categoryId === c.id}
                 >
                   {c.name}
+                  {c.archivedAt ? " (archivée)" : ""}
                 </option>
               ))}
             </select>
@@ -213,27 +296,274 @@ const piecesACaler = SLOTS.flatMap((s) => {
               class="mt-1 w-full border border-bo-border rounded px-3 py-2"
             />
           </label>
-          <label class="block">
-            <span class="text-bo-muted">Calage au sol</span>
-            <input
-              name="bottomPct"
-              type="number"
-              step="0.005"
-              min="0.05"
-              max="1"
-              value={perso.bottomPct ?? 1}
-              class="mt-1 w-full border border-bo-border rounded px-3 py-2"
-            />
-            <span class="mt-1 block text-xs text-bo-muted">
-              Il flotte au-dessus du muret : baissez. Il s'enfonce : montez.
-            </span>
-          </label>
+          {/* « Calage au sol » a rejoint le bloc « Taille et calage » : il y
+              chiffre le geste qu'on fait sur l'affiche. */}
           <div class="sm:col-span-4">
             <button class="rounded bg-bo-accent text-white px-4 py-2">
               Enregistrer
             </button>
           </div>
         </form>
+      </section>
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Calibrage en conditions réelles                                   */}
+      {/* ---------------------------------------------------------------- */}
+      <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+        <h3 class="mb-1 font-semibold">Taille et calage, en conditions réelles</h3>
+        <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+          Le personnage est posé sur un vrai décor, à la taille exacte qu'il
+          aura dans le configurateur{avantPlan ? ", avec le muret devant lui" : ""}.
+          Bougez les curseurs, l'affiche se recompose. Puis enregistrez.
+        </p>
+
+        <div class="flex flex-wrap items-start gap-6">
+          <div
+            id="calibrage-scene"
+            class="relative w-[420px] max-w-full shrink-0 overflow-hidden rounded border border-bo-border bg-bo-bg shadow-sm"
+            style="aspect-ratio: 1 / 1.4142"
+            data-base={svgSrc(perso.baseSvgUrl)}
+            data-avant-plan={avantPlan ? svgSrc(avantPlan) : ""}
+            data-largeur={CHAR_BASE_WIDTH}
+            data-echelle={ECHELLE_SEUL}
+            data-y={Y_MURET}
+          >
+            <img id="calibrage-fond" alt="" class="absolute inset-0 h-full w-full object-cover" />
+            {/* Le personnage passe DEVANT le rebord, comme sur la boutique. */}
+            {/* Silhouette d'un adulte à 100 %, pour comparer à une taille
+                connue. Masquée tant qu'on ne la demande pas. */}
+            <img
+              id="calibrage-repere-img"
+              alt=""
+              hidden
+              class="absolute opacity-30"
+              style="z-index: 9; object-fit: contain; filter: grayscale(1)"
+            />
+            <img
+              id="calibrage-perso"
+              alt=""
+              class="absolute"
+              style="z-index: 10; object-fit: contain; cursor: grab; touch-action: none"
+            />
+            {/* La poignée de taille, au coin haut-droit du personnage. */}
+            <button
+              type="button"
+              id="calibrage-poignee"
+              aria-label="Tirer pour changer la taille du personnage"
+              title="Tirez pour changer la taille"
+              class="absolute rounded-full border-2 border-white bg-bo-accent shadow"
+              style="z-index: 20; width: 18px; height: 18px; cursor: nwse-resize; touch-action: none"
+            ></button>
+            {avantPlan && (
+              <img
+                id="calibrage-muret"
+                src={svgSrc(avantPlan)}
+                alt=""
+                class="absolute bottom-0 left-0 w-full"
+                style="z-index: 5; height: auto"
+              />
+            )}
+            {/* Le texte est à sa vraie place, aux vraies tailles : c'est lui
+                qui donne l'échelle de l'affiche, et sans lui un personnage
+                paraît toujours bien dimensionné. Les polices de la boutique ne
+                sont pas chargées ici, seule la place compte. */}
+            <div
+              class="pointer-events-none absolute left-0 right-0 text-center"
+              style="top: 5%; padding: 0 6%; container-type: inline-size; z-index: 200; color: #1c1c1c"
+            >
+              <div style="font-family: Georgia, serif; font-size: 8cqw; line-height: 1.05">
+                PARIS
+              </div>
+              <div style="font-family: Georgia, serif; font-size: 5.5cqw; line-height: 1.15">
+                Mon amour
+              </div>
+            </div>
+          </div>
+
+          <div class="min-w-[300px] flex-1 space-y-4 text-sm">
+            {decors.length > 0 && (
+              <label class="block">
+                <span class="text-bo-muted">Décor d'essai</span>
+                <select
+                  id="calibrage-decor"
+                  class="mt-1 w-full rounded border border-bo-border px-3 py-2"
+                >
+                  {decors.map((d) => (
+                    <option value={svgSrc(d.url)}>{d.nom}</option>
+                  ))}
+                </select>
+                <span class="mt-1 block text-xs text-bo-muted">
+                  Le décor ne change rien au réglage : il sert à juger.
+                </span>
+              </label>
+            )}
+
+            {/* La commande, c'est l'affiche elle-même. Ces champs ne font
+                que porter le résultat jusqu'à l'enregistrement. */}
+            <input
+              id="calibrage-taille"
+              name="facteurTaille"
+              form="fiche-personnage"
+              type="hidden"
+              value={perso.facteurTaille ?? 1}
+            />
+            <input
+              id="calibrage-sol"
+              type="hidden"
+              value={perso.bottomPct ?? 1}
+            />
+            <input
+              id="calibrage-decalage"
+              name="decalageX"
+              form="fiche-personnage"
+              type="hidden"
+              value={perso.decalageX ?? 0}
+            />
+
+            <div class="rounded-lg border border-bo-border bg-bo-bg p-4">
+              <p class="mb-3 font-medium">
+                Attrapez le personnage sur l'affiche.
+              </p>
+              <ul class="space-y-1.5 text-xs text-bo-muted">
+                <li>
+                  <b class="text-bo-ink">Pour le poser :</b> montez-le ou
+                  descendez-le jusqu'à ce que ses pieds touchent le rebord.
+                </li>
+                <li>
+                  <b class="text-bo-ink">Pour le décaler :</b> glissez-le vers
+                  la gauche ou la droite. Sur le site, il gardera cet écart
+                  par rapport à sa place dans la rangée.
+                </li>
+                <li>
+                  <b class="text-bo-ink">Pour le dimensionner :</b> tirez la
+                  poignée ronde, en haut à droite de lui.
+                </li>
+              </ul>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-bo-muted">Taille :</span>
+              <button
+                type="button"
+                id="calibrage-moins"
+                class="h-9 w-9 rounded border border-bo-border text-lg leading-none hover:bg-bo-bg"
+                title="Rapetisser de 5 %"
+                aria-label="Rapetisser le personnage"
+              >
+                −
+              </button>
+              <b id="calibrage-taille-val" class="min-w-[70px] text-center">100 %</b>
+              <button
+                type="button"
+                id="calibrage-plus"
+                class="h-9 w-9 rounded border border-bo-border text-lg leading-none hover:bg-bo-bg"
+                title="Agrandir de 5 %"
+                aria-label="Agrandir le personnage"
+              >
+                +
+              </button>
+              <button
+                type="button"
+                id="calibrage-reset"
+                class="rounded border border-bo-border px-3 py-2 text-xs hover:bg-bo-bg"
+              >
+                Taille d'un adulte
+              </button>
+            </div>
+            <p class="text-xs text-bo-muted">
+              100 %, c'est la taille d'un adulte debout. Un chat ou un bébé
+              descendent bien plus bas, un couple monte au-dessus.
+            </p>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-bo-muted">Côté :</span>
+              <button
+                type="button"
+                id="calibrage-gauche"
+                class="h-9 w-9 rounded border border-bo-border text-lg leading-none hover:bg-bo-bg"
+                title="Décaler vers la gauche"
+                aria-label="Décaler le personnage vers la gauche"
+              >
+                ←
+              </button>
+              <b id="calibrage-decalage-val" class="min-w-[90px] text-center">au centre</b>
+              <button
+                type="button"
+                id="calibrage-droite"
+                class="h-9 w-9 rounded border border-bo-border text-lg leading-none hover:bg-bo-bg"
+                title="Décaler vers la droite"
+                aria-label="Décaler le personnage vers la droite"
+              >
+                →
+              </button>
+              <button
+                type="button"
+                id="calibrage-centre"
+                class="rounded border border-bo-border px-3 py-2 text-xs hover:bg-bo-bg"
+              >
+                Au centre
+              </button>
+            </div>
+
+            {/* Le chiffre du geste « poser sur le rebord ». Il suit le
+                personnage quand on l'attrape, et le personnage le suit quand on
+                tape une valeur.
+
+                `step="any"`, et c'est la correction : le geste écrit une valeur
+                à quatre décimales, qu'un pas de 0,005 faisait refuser par le
+                navigateur — le formulaire ne partait plus, sans rien dire. */}
+            <label class="flex flex-wrap items-center gap-2">
+              <span class="text-bo-muted">Calage au sol :</span>
+              <input
+                id="calibrage-sol-chiffre"
+                name="bottomPct"
+                form="fiche-personnage"
+                type="number"
+                step="any"
+                min="0.05"
+                max="1"
+                value={perso.bottomPct ?? 1}
+                class="w-28 rounded border border-bo-border px-3 py-2"
+              />
+              <span class="text-xs text-bo-muted">
+                Il flotte au-dessus du muret : baissez. Il s'enfonce : montez.
+              </span>
+            </label>
+
+            <label class="flex items-center gap-2">
+              <input id="calibrage-repere" type="checkbox" />
+              <span>Comparer à un adulte</span>
+            </label>
+
+            {avantPlan ? (
+              <label class="flex items-center gap-2">
+                <input id="calibrage-rebord" type="checkbox" checked />
+                <span>
+                  Montrer le rebord — ce personnage est dessiné pour s'y poser
+                </span>
+              </label>
+            ) : (
+              <p class="rounded border border-bo-border bg-bo-bg px-3 py-2 text-xs text-bo-muted">
+                Ce personnage n'est pas dessiné pour un rebord : son type
+                d'affiche n'en a pas. Il se pose directement sur le décor.
+              </p>
+            )}
+
+            <div class="flex flex-wrap items-center gap-3 border-t border-bo-border pt-3">
+              <button
+                type="submit"
+                form="fiche-personnage"
+                class="rounded bg-bo-accent text-white px-4 py-2"
+              >
+                Enregistrer la calibration
+              </button>
+              <span class="text-xs text-bo-muted">
+                La taille et le calage au sol ne sont gardés qu'une fois ce
+                bouton pressé — l'aperçu ci-dessus ne fait que les montrer.
+              </span>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* ---------------------------------------------------------------- */}
@@ -263,30 +593,21 @@ const piecesACaler = SLOTS.flatMap((s) => {
                 Remplacer…
               </button>
             </div>
-            <div class="js-base-zones mt-3 flex flex-wrap gap-2">
-              {Object.entries(perso.baseColorZones ?? {}).map(([zone, hex]) => (
-                <label class="flex items-center gap-1 text-xs">
-                  <input
-                    type="color"
-                    value={hex}
-                    data-zone={zone}
-                    class="h-7 w-7 border border-bo-border rounded cursor-pointer"
-                  />
-                  <span class="text-bo-muted">{zone}</span>
-                </label>
-              ))}
+            <div class="js-base-couleurs mt-4">
+              <span class="text-bo-muted block mb-1">Couleurs</span>
+              <GroupesCouleurs
+                mode="personnage"
+                apiUrl={PUBLIC_API_URL}
+                svgUrl={perso.baseSvgUrl}
+                zones={perso.baseColorZones}
+                groupes={perso.baseGroupesCouleurs}
+                proposees={perso.baseZonesProposees ?? null}
+                couleursImage={perso.baseCouleursImage ?? null}
+                rappel="Pensez à enregistrer le dessin."
+                aide="Seule la première couleur (la peau) est proposée au client, sauf si vous en cochez d'autres : le pelage d'un animal, une robe dessinée sur le personnage… Le nom et le nuancier sont ceux que le client verra. Si le dessin est une image en pixels (une photo, une illustration : les chiens et les chats), ce sont ses couleurs principales qui apparaissent, et RIEN n'est proposé au client tant que vous n'en avez coché aucune."
+              />
             </div>
             <div class="mt-3 flex items-center gap-2">
-              <input
-                class="js-base-newzone border border-bo-border rounded px-2 py-1 text-xs w-24"
-                placeholder="st0"
-              />
-              <button
-                type="button"
-                class="js-base-addzone rounded border border-bo-border px-2 py-1 text-xs"
-              >
-                + Zone
-              </button>
               <button
                 type="button"
                 class="js-base-save rounded bg-bo-accent text-white px-3 py-1.5 text-xs"
@@ -515,7 +836,18 @@ const piecesACaler = SLOTS.flatMap((s) => {
         </div>
       </section>
 
-      <form method="POST">
+      {/* La même phrase que dans la liste des personnages : on doit lire la
+          même chose avant le même geste, d'où qu'on le fasse. */}
+      <form
+        method="POST"
+        onsubmit={`return confirm(${JSON.stringify(
+          [
+            `Archiver le personnage « ${perso.name} » ?`,
+            "Il ne sera plus proposé dans le configurateur. Ses pièces, ses couleurs et ses réglages sont gardés entiers, et les commandes déjà passées dessus restent imprimables à l'identique.",
+            "Rien n'est supprimé : vous pourrez le restaurer quand vous voudrez, dans « Personnages archivés », au bas de l'écran « Personnages ».",
+          ].join("\n\n"),
+        )})`}
+      >
         <input type="hidden" name="_action" value="archive" />
         <input type="hidden" name="archived" value="true" />
         <button class="text-xs text-bo-muted hover:text-bo-accent">
@@ -538,37 +870,39 @@ const piecesACaler = SLOTS.flatMap((s) => {
         .forEach((c) => (c.checked = coche));
     });
 
-    // --- Dessin de base : remplacer le SVG, relire ses zones --------------
+    // --- Dessin de base : remplacer le SVG, relire ses couleurs -----------
     const base = document.querySelector(".js-base");
     if (base) {
       const champ = base.querySelector(".js-base-url");
       const apercu = base.querySelector(".js-base-preview");
-      const boiteZones = base.querySelector(".js-base-zones");
+      const couleurs = base.querySelector(".js-base-couleurs .js-groupes");
       const statut = base.querySelector(".js-base-status");
+      // Les couleurs telles que l'éditeur les tient : c'est ce qui part à
+      // l'enregistrement du dessin.
+      let reglages = null;
 
-      function ajouterZone(zone, hex) {
-        if (boiteZones.querySelector(`input[data-zone="${zone}"]`)) return;
-        const label = document.createElement("label");
-        label.className = "flex items-center gap-1 text-xs";
-        const color = document.createElement("input");
-        color.type = "color";
-        color.value = hex || "#000000";
-        color.setAttribute("data-zone", zone);
-        color.className =
-          "h-7 w-7 border border-bo-border rounded cursor-pointer";
-        const span = document.createElement("span");
-        span.className = "text-bo-muted";
-        span.textContent = zone;
-        label.append(color, span);
-        boiteZones.appendChild(label);
+      couleurs?.addEventListener("groupes:change", (e) => {
+        reglages = e.detail;
+        // « Détecter les couleurs » a pu préparer une version du dessin à
+        // part (couleurs écrites forme par forme) : c'est elle qui s'enregistre.
+        if (reglages.svgUrl && reglages.svgUrl !== champ.value.trim()) {
+          champ.value = reglages.svgUrl;
+          apercu.src = PUBLIC_API_URL + reglages.svgUrl;
+          apercu.style.visibility = "visible";
+          statut.textContent = "Couleurs relues — pensez à enregistrer.";
+        }
+      });
+
+      /** Couleurs d'un NOUVEAU dessin : celles de l'ancien n'y voudraient rien dire. */
+      function relireCouleurs(url) {
+        couleurs?.dispatchEvent(
+          new CustomEvent("groupes:detecter", { detail: { url } }),
+        );
       }
 
-      base.querySelector(".js-base-addzone")?.addEventListener("click", () => {
-        const champZone = base.querySelector(".js-base-newzone");
-        const z = (champZone.value || "").trim();
-        if (!z) return;
-        ajouterZone(z, "#000000");
-        champZone.value = "";
+      champ.addEventListener("change", () => {
+        const v = champ.value.trim();
+        if (v) relireCouleurs(v);
       });
 
       base.querySelector(".js-base-upload")?.addEventListener("click", async (e) => {
@@ -595,19 +929,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
             champ.value = data.url;
             apercu.src = PUBLIC_API_URL + data.url;
             apercu.style.visibility = "visible";
-            // Les zones du nouveau dessin remplacent les anciennes : garder
-            // celles d'avant donnerait des couleurs sans effet.
-            const info = await fetch(`${PUBLIC_API_URL}/admin/svg/analyse`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ url: data.url }),
-              credentials: "include",
-            }).then((r) => (r.ok ? r.json() : null));
-            if (info) {
-              boiteZones.innerHTML = "";
-              for (const [zone, hex] of Object.entries(info.colorZones || {}))
-                ajouterZone(zone, hex);
-            }
+            relireCouleurs(data.url);
             statut.textContent = "Dessin remplacé — pensez à enregistrer.";
           } catch (err) {
             alert("Téléversement impossible : " + err);
@@ -620,10 +942,6 @@ const piecesACaler = SLOTS.flatMap((s) => {
       });
 
       base.querySelector(".js-base-save")?.addEventListener("click", async () => {
-        const zones = {};
-        boiteZones
-          .querySelectorAll('input[type="color"][data-zone]')
-          .forEach((i) => (zones[i.getAttribute("data-zone")] = i.value));
         statut.textContent = "Enregistrement…";
         try {
           const res = await fetch(
@@ -633,7 +951,18 @@ const piecesACaler = SLOTS.flatMap((s) => {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 baseSvgUrl: champ.value.trim() || null,
-                baseColorZones: zones,
+                // Sans réglage lu (éditeur pas encore prêt), on ne touche pas
+                // aux couleurs enregistrées.
+                ...(reglages
+                  ? {
+                      baseColorZones: reglages.colorZones,
+                      baseGroupesCouleurs: reglages.groupesCouleurs,
+                      baseZonesProposees: reglages.zonesProposees,
+                      // Familles de teintes, quand le dessin est une image en
+                      // pixels : elles remplacent alors zones et groupes.
+                      baseCouleursImage: reglages.couleursImage,
+                    }
+                  : {}),
               }),
               credentials: "include",
             },
@@ -997,4 +1326,252 @@ const piecesACaler = SLOTS.flatMap((s) => {
       afficher();
     }
   </script>
+
+  <script is:inline>
+    /*
+     * Le calibrage, en conditions réelles.
+     *
+     * La géométrie est celle du configurateur, recopiée :
+     *   largeur du cadre = 22 % × échelle × facteur de taille
+     *   hauteur du cadre = largeur × 2 (le cadre est deux fois plus haut que
+     *     large), puis rapportée à la hauteur de l'affiche : × √2
+     *   descente = (1 − calage au sol) × hauteur du cadre
+     * Le personnage est centré sur (0,5 ; 0,816 + descente), comme un
+     * personnage seul posé sur le muret.
+     */
+    (function () {
+      const scene = document.getElementById("calibrage-scene");
+      if (!scene) return;
+      const perso = document.getElementById("calibrage-perso");
+      const fond = document.getElementById("calibrage-fond");
+      const decor = document.getElementById("calibrage-decor");
+      const taille = document.getElementById("calibrage-taille");
+      const sol = document.getElementById("calibrage-sol");
+      const tailleVal = document.getElementById("calibrage-taille-val");
+      const poignee = document.getElementById("calibrage-poignee");
+      const repere = document.getElementById("calibrage-repere");
+      const repereImg = document.getElementById("calibrage-repere-img");
+      const champSol = document.querySelector('input[name="bottomPct"]');
+      const decalage = document.getElementById("calibrage-decalage");
+      const decalageVal = document.getElementById("calibrage-decalage-val");
+
+      const LARGEUR = Number(scene.dataset.largeur || 0.22);
+      const ECHELLE = Number(scene.dataset.echelle || 0.7);
+      const Y = Number(scene.dataset.y || 0.816);
+
+      perso.src = scene.dataset.base || "";
+      if (!scene.dataset.base) perso.style.visibility = "hidden";
+      if (decor && decor.value) fond.src = decor.value;
+
+      function dessiner() {
+        const f = Number(taille.value);
+        const bp = Number(sol.value);
+        // L'écart de côté, en points de largeur d'affiche.
+        const dx = decalage ? Number(decalage.value) || 0 : 0;
+        const centreX = 50 + dx * 100;
+        // Largeur du cadre en % de la largeur d'affiche.
+        const largeurPct = LARGEUR * ECHELLE * f * 100;
+        // Hauteur du cadre en % de la HAUTEUR d'affiche (aspect 1:2, page √2).
+        const hauteurPct = largeurPct * Math.SQRT2;
+        const descente = (1 - bp) * hauteurPct;
+        perso.style.width = largeurPct + "%";
+        perso.style.height = hauteurPct + "%";
+        perso.style.left = centreX + "%";
+        perso.style.top = Y * 100 + descente + "%";
+        perso.style.transform = "translate(-50%, -50%)";
+        // La poignée suit le coin haut-droit du personnage.
+        if (poignee) {
+          poignee.style.left = centreX + largeurPct / 2 + "%";
+          poignee.style.top = Y * 100 + descente - hauteurPct / 2 + "%";
+          poignee.style.transform = "translate(-50%, -50%)";
+        }
+        // La silhouette de comparaison : un adulte à 100 %, posé au même
+        // endroit, pour juger d'une taille connue plutôt que dans le vide.
+        if (repereImg && !repereImg.hidden) {
+          const lRep = LARGEUR * ECHELLE * 100;
+          const hRep = lRep * Math.SQRT2;
+          repereImg.style.width = lRep + "%";
+          repereImg.style.height = hRep + "%";
+          repereImg.style.left = centreX - largeurPct / 2 - lRep / 2 - 2 + "%";
+          repereImg.style.top = Y * 100 + (1 - bp) * hRep + "%";
+          repereImg.style.transform = "translate(-50%, -50%)";
+        }
+        tailleVal.textContent = Math.round(f * 100) + " %";
+        if (decalageVal) {
+          const pts = Math.round(Math.abs(dx) * 100);
+          decalageVal.textContent =
+            pts === 0 ? "au centre" : pts + " % " + (dx < 0 ? "à gauche" : "à droite");
+        }
+        // Le champ chiffré du bloc du dessus reste la source enregistrée pour
+        // le calage : deux endroits qui diraient deux choses se
+        // contrediraient tôt ou tard.
+        if (champSol) champSol.value = bp.toFixed(4);
+      }
+
+      /** Borne une valeur, comme la base le fera de toute façon. */
+      const borner = (v, min, max) => Math.min(max, Math.max(min, v));
+
+      /* --- Attraper le personnage : le poser sur le rebord --------------- */
+      perso.addEventListener("pointerdown", function (ev) {
+        ev.preventDefault();
+        // Capturer le pointeur garde le geste même si le doigt sort de
+        // l'image. Si le navigateur refuse, on continue sans : un réglage qui
+        // marche moins bien vaut mieux qu'un réglage qui ne marche pas.
+        try {
+          perso.setPointerCapture(ev.pointerId);
+        } catch {}
+        perso.style.cursor = "grabbing";
+        const depart = ev.clientY;
+        const departX = ev.clientX;
+        const bpDepart = Number(sol.value);
+        const dxDepart = decalage ? Number(decalage.value) || 0 : 0;
+        const boite = scene.getBoundingClientRect();
+        // Hauteur du cadre du personnage, en fraction de la hauteur d'affiche.
+        const hauteurCadre =
+          LARGEUR * ECHELLE * Number(taille.value) * Math.SQRT2;
+
+        const bouger = (e) => {
+          // Monter à l'écran = remonter le dessin dans son cadre.
+          const d = (e.clientY - depart) / boite.height;
+          sol.value = String(borner(bpDepart - d / hauteurCadre, 0.05, 1));
+          // Le côté suit le doigt au pixel près : contrairement à la taille,
+          // une position se lit directement sur l'affiche, sans amortir.
+          if (decalage) {
+            const ddx = (e.clientX - departX) / boite.width;
+            decalage.value = String(borner(dxDepart + ddx, -0.4, 0.4));
+          }
+          dessiner();
+        };
+        const lacher = () => {
+          perso.style.cursor = "grab";
+          perso.removeEventListener("pointermove", bouger);
+          perso.removeEventListener("pointerup", lacher);
+          perso.removeEventListener("pointercancel", lacher);
+        };
+        perso.addEventListener("pointermove", bouger);
+        perso.addEventListener("pointerup", lacher);
+        perso.addEventListener("pointercancel", lacher);
+      });
+
+      /* --- Tirer la poignée : changer la taille -------------------------- */
+      poignee?.addEventListener("pointerdown", function (ev) {
+        ev.preventDefault();
+        try {
+          poignee.setPointerCapture(ev.pointerId);
+        } catch {}
+        const boite = scene.getBoundingClientRect();
+        const departX = ev.clientX;
+        const facteurDepart = Number(taille.value);
+
+        const bouger = (e) => {
+          // On écarte pour agrandir, on rapproche pour rapetisser. Le geste
+          // est AMORTI : coller la poignée au doigt rendrait le réglage
+          // inutilisable, parce qu'un personnage n'occupe que quinze pour cent
+          // de la largeur — trente pixels doubleraient sa taille. Ici,
+          // traverser la moitié de l'affiche change la taille de moitié.
+          const d = (e.clientX - departX) / boite.width;
+          taille.value = String(borner(facteurDepart + d, 0.3, 2));
+          dessiner();
+        };
+        const lacher = () => {
+          poignee.removeEventListener("pointermove", bouger);
+          poignee.removeEventListener("pointerup", lacher);
+          poignee.removeEventListener("pointercancel", lacher);
+        };
+        poignee.addEventListener("pointermove", bouger);
+        poignee.addEventListener("pointerup", lacher);
+        poignee.addEventListener("pointercancel", lacher);
+      });
+
+      /* --- Les boutons, pour finir au détail près ------------------------ */
+      const pas = (facteur) => {
+        taille.value = String(borner(Number(taille.value) * facteur, 0.3, 2));
+        dessiner();
+      };
+      document
+        .getElementById("calibrage-moins")
+        ?.addEventListener("click", () => pas(0.95));
+      document
+        .getElementById("calibrage-plus")
+        ?.addEventListener("click", () => pas(1 / 0.95));
+      document
+        .getElementById("calibrage-reset")
+        ?.addEventListener("click", function () {
+          taille.value = "1";
+          dessiner();
+        });
+
+      /* --- Le calage au sol, tapé au clavier ----------------------------- */
+      // Le champ chiffré et le geste se tiennent à jour : dessiner() écrit la
+      // valeur du geste dans le champ, et une valeur tapée repose le
+      // personnage. Une saisie incomplète (« 0, ») ne déplace rien tant
+      // qu'elle n'est pas un nombre.
+      champSol?.addEventListener("input", function () {
+        const v = Number(String(champSol.value).replace(",", "."));
+        if (!Number.isFinite(v)) return;
+        sol.value = String(borner(v, 0.05, 1));
+        dessiner();
+      });
+
+      /* --- Le côté, au détail près --------------------------------------- */
+      // Un point de largeur d'affiche par clic : assez fin pour ajuster, assez
+      // franc pour qu'on voie le personnage bouger.
+      const decaler = (delta) => {
+        if (!decalage) return;
+        decalage.value = String(
+          borner((Number(decalage.value) || 0) + delta, -0.4, 0.4),
+        );
+        dessiner();
+      };
+      document
+        .getElementById("calibrage-gauche")
+        ?.addEventListener("click", () => decaler(-0.01));
+      document
+        .getElementById("calibrage-droite")
+        ?.addEventListener("click", () => decaler(0.01));
+      document
+        .getElementById("calibrage-centre")
+        ?.addEventListener("click", function () {
+          if (decalage) decalage.value = "0";
+          dessiner();
+        });
+
+      /* --- La silhouette de comparaison ---------------------------------- */
+      repere?.addEventListener("change", function () {
+        repereImg.hidden = !repere.checked;
+        if (repere.checked && !repereImg.src)
+          repereImg.src = scene.dataset.base || "";
+        dessiner();
+      });
+
+      // Le champ chiffré du bloc du dessus peut encore être saisi à la main :
+      // il reste la référence, et l'affiche le suit.
+      if (champSol)
+        champSol.addEventListener("input", function () {
+          const v = Number(String(champSol.value).replace(",", "."));
+          if (Number.isFinite(v) && v >= 0.05 && v <= 1) {
+            sol.value = String(v);
+            dessiner();
+          }
+        });
+      decor?.addEventListener("change", function () {
+        fond.src = decor.value;
+      });
+
+      // Le rebord se montre et se cache : c'est en le retirant qu'on voit si
+      // le personnage tient debout tout seul, et en le remettant qu'on juge
+      // s'il s'y pose bien.
+      const rebord = document.getElementById("calibrage-rebord");
+      const muret = document.getElementById("calibrage-muret");
+      if (rebord && muret)
+        rebord.addEventListener("change", function () {
+          muret.hidden = !rebord.checked;
+        });
+
+      dessiner();
+    })();
+  </script>
+
+  {/* Vignettes des couleurs du dessin (éditeur des groupes). */}
+  <ApercusZones />
 </Admin>

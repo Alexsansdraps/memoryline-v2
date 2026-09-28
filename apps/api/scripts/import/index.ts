@@ -4,6 +4,7 @@ import { readCsv, IMPORT_DIR, bump, type ImportReport } from "./lib.js";
 import { importCatalogue } from "./catalogue.js";
 import { importCustomersAndOrders } from "./orders.js";
 import { importAssets } from "./assets.js";
+import { confirmerAvantDeVider } from "../garde-base.js";
 
 async function importRedirects(report: ImportReport) {
   await db.delete(schema.redirects);
@@ -23,6 +24,16 @@ async function importRedirects(report: ImportReport) {
 }
 
 async function main() {
+  // Cet import repart de tables vides : sans ce verrou, la même commande
+  // lancée avec l'adresse de la base du serveur effacerait la boutique et
+  // ses ventes (cf. scripts/garde-base.ts).
+  await confirmerAvantDeVider("L'import de la boutique", [
+    "le catalogue : collections, affiches, formats, images, fonds",
+    "les clientes, leurs commandes, leurs lignes et leurs paiements",
+    "la bibliothèque des pièces de personnages",
+    "les redirections d'adresses",
+  ]);
+
   const report: ImportReport = {};
   console.log(`▶ Import depuis ${IMPORT_DIR}\n`);
 

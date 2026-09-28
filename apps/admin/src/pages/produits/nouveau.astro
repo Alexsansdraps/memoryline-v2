@@ -48,6 +48,7 @@ if (Astro.request.method === "POST") {
       defaultView: String(f.get("defaultView") || "") || null,
       defaultTitle: String(f.get("defaultTitle") || "") || null,
       defaultSubtitle: String(f.get("defaultSubtitle") || "") || null,
+      defaultLine3: String(f.get("defaultLine3") || "") || null,
       variants,
       images: visuel ? [visuel] : [],
       backgrounds: fonds,
@@ -229,9 +230,11 @@ try {
 
     <section class="bg-bo-surface border border-bo-border rounded-lg p-5 space-y-4">
       <h3 class="font-semibold">Textes pré-remplis</h3>
-      <div class="grid sm:grid-cols-2 gap-4">
+      {/* Les champs gardent les noms des colonnes (defaultTitle,
+          defaultSubtitle) : ce sont les lignes 1 et 2. */}
+      <div class="grid sm:grid-cols-3 gap-4">
         <label class="block">
-          <span class="text-bo-muted text-sm">Titre</span>
+          <span class="text-bo-muted text-sm">Ligne 1</span>
           <input
             name="defaultTitle"
             placeholder="LE CROTOY"
@@ -239,17 +242,25 @@ try {
           />
         </label>
         <label class="block">
-          <span class="text-bo-muted text-sm">Sous-titre</span>
+          <span class="text-bo-muted text-sm">Ligne 2</span>
           <input
             name="defaultSubtitle"
             placeholder="en famille"
             class="mt-1 w-full border border-bo-border rounded px-3 py-2"
           />
         </label>
+        <label class="block">
+          <span class="text-bo-muted text-sm">Ligne 3</span>
+          <input
+            name="defaultLine3"
+            placeholder="été 2019"
+            class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+          />
+        </label>
       </div>
       <p class="text-xs text-bo-muted">
-        Ce que le client voit déjà écrit sur l'affiche en ouvrant le
-        configurateur. Il peut tout changer.
+        Les trois lignes que le client voit déjà écrites sur l'affiche en
+        ouvrant le configurateur. Il peut tout changer.
       </p>
     </section>
 

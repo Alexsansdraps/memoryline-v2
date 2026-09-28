@@ -1,0 +1,288 @@
+---
+import CompteCadre from "../../../components/CompteCadre.astro";
+import {
+  adresses,
+  enregistrerAdresse,
+  exigerSession,
+  rediriger,
+  supprimerAdresse,
+  type Adresse,
+} from "../../../lib/compte.ts";
+import {
+  estLangue,
+  langueDepuisParam,
+  lien,
+  t,
+  type CleUi,
+  type Langue,
+} from "../../../i18n/utils.ts";
+
+export const prerender = false;
+
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
+const tr = t(langue);
+
+const session = await exigerSession(Astro, langue);
+if (session.etat === "anonyme") return session.redirection;
+
+let erreur: CleUi | null =
+  session.etat === "indisponible" ? session.erreur : null;
+
+if (session.etat === "connecte" && Astro.request.method === "POST") {
+  const formulaire = await Astro.request.formData();
+  const texte = (nom: string) => String(formulaire.get(nom) ?? "").trim();
+
+  if (formulaire.get("action") === "supprimer") {
+    const r = await supprimerAdresse(Astro, texte("id"));
+    if (r.ok) return rediriger(Astro, lien(langue, "/compte/adresses"));
+    erreur = r.erreur;
+  } else if (!texte("line1") || !texte("city") || !texte("country")) {
+    erreur = "compte.err.champs";
+  } else {
+    const idModifie = texte("id");
+    const r = await enregistrerAdresse(Astro, {
+      // `id` absent = création ; présent = modification de cette adresse.
+      ...(idModifie ? { id: Number(idModifie) } : {}),
+      label: texte("label"),
+      name: texte("name"),
+      line1: texte("line1"),
+      line2: texte("line2"),
+      postalCode: texte("postalCode"),
+      city: texte("city"),
+      country: texte("country"),
+      phone: texte("phone"),
+      isDefaultShipping: formulaire.get("isDefaultShipping") !== null,
+      isDefaultBilling: formulaire.get("isDefaultBilling") !== null,
+    });
+    // Redirection après enregistrement : un rafraîchissement ne doit pas
+    // recréer une deuxième fois la même adresse.
+    if (r.ok) return rediriger(Astro, lien(langue, "/compte/adresses"));
+    erreur = r.erreur;
+  }
+}
+
+let liste: Adresse[] = [];
+if (session.etat === "connecte") {
+  const r = await adresses(Astro);
+  if (r.ok) liste = r.donnees ?? [];
+  else if (!erreur) erreur = r.erreur;
+}
+
+// `?modifier=<id>` ouvre le formulaire pré-rempli sur une adresse existante ;
+// sans lui, le formulaire sert à en créer une.
+const aModifier = Astro.url.searchParams.get("modifier");
+const edite = aModifier
+  ? (liste.find((a) => String(a.id) === aModifier) ?? null)
+  : null;
+
+const champ =
+  "mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none";
+---
+
+<CompteCadre
+  langue={langue}
+  titre={tr("compte.adresses.titre")}
+  chemin="/compte/adresses"
+  menu={session.etat === "connecte"}
+>
+  {
+    erreur && (
+      <p class="mb-6 border border-terracotta/40 bg-terracotta/5 px-4 py-3 text-terracotta-deep">
+        {tr(erreur)}
+      </p>
+    )
+  }
+
+  {
+    session.etat === "connecte" && liste.length === 0 && (
+      <p class="mb-8 text-ink-soft">{tr("compte.adresses.vide")}</p>
+    )
+  }
+
+  <ul class="mb-10 grid gap-4 sm:grid-cols-2">
+    {
+      liste.map((a) => (
+        <li class="border border-ink/10 p-5">
+          {a.label && <p class="font-semibold">{a.label}</p>}
+          <address class="mt-1 text-ink-soft not-italic">
+            {[
+              a.name,
+              a.line1,
+              a.line2,
+              [a.postalCode, a.city].filter(Boolean).join(" "),
+              a.country,
+              a.phone,
+            ]
+              .filter(Boolean)
+              .map((l) => (
+                <span class="block">{l}</span>
+              ))}
+          </address>
+          <p class="mt-3 flex flex-wrap gap-2 text-xs">
+            {a.isDefaultShipping && (
+              <span class="border border-ink/15 bg-paper-deep px-2 py-1">
+                {tr("compte.adresses.badge_livraison")}
+              </span>
+            )}
+            {a.isDefaultBilling && (
+              <span class="border border-ink/15 bg-paper-deep px-2 py-1">
+                {tr("compte.adresses.badge_facturation")}
+              </span>
+            )}
+          </p>
+          <div class="mt-4 flex items-center gap-4 text-sm">
+            <a
+              href={`${lien(langue, "/compte/adresses")}?modifier=${a.id}`}
+              class="underline underline-offset-4 hover:text-terracotta"
+            >
+              {tr("compte.adresses.modifier")}
+            </a>
+            <form method="post">
+              <input type="hidden" name="action" value="supprimer" />
+              <input type="hidden" name="id" value={a.id} />
+              <button
+                type="submit"
+                class="underline underline-offset-4 hover:text-terracotta"
+              >
+                {tr("compte.adresses.supprimer")}
+              </button>
+            </form>
+          </div>
+        </li>
+      ))
+    }
+  </ul>
+
+  {
+    session.etat === "connecte" && (
+      <section class="border-t border-ink/10 pt-8">
+        <h2 class="mb-4 text-2xl">
+          {edite ? tr("compte.adresses.modifier") : tr("compte.adresses.nouvelle")}
+        </h2>
+        <form method="post" class="max-w-lg space-y-4">
+          {edite && <input type="hidden" name="id" value={edite.id} />}
+          <label class="block">
+            <span class="text-sm font-medium">{tr("compte.adresses.libelle")}</span>
+            <input
+              type="text"
+              name="label"
+              value={edite?.label ?? ""}
+              class={champ}
+            />
+          </label>
+          <label class="block">
+            <span class="text-sm font-medium">{tr("compte.nom")}</span>
+            <input
+              type="text"
+              name="name"
+              value={edite?.name ?? ""}
+              autocomplete="name"
+              class={champ}
+            />
+          </label>
+          <label class="block">
+            <span class="text-sm font-medium">{tr("livraison.adresse")}</span>
+            <input
+              type="text"
+              name="line1"
+              value={edite?.line1 ?? ""}
+              required
+              autocomplete="address-line1"
+              class={champ}
+            />
+          </label>
+          <label class="block">
+            <span class="text-sm font-medium">{tr("livraison.complement")}</span>
+            <input
+              type="text"
+              name="line2"
+              value={edite?.line2 ?? ""}
+              autocomplete="address-line2"
+              class={champ}
+            />
+          </label>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <label class="block">
+              <span class="text-sm font-medium">{tr("livraison.code_postal")}</span>
+              <input
+                type="text"
+                name="postalCode"
+                value={edite?.postalCode ?? ""}
+                autocomplete="postal-code"
+                class={champ}
+              />
+            </label>
+            <label class="block">
+              <span class="text-sm font-medium">{tr("livraison.ville")}</span>
+              <input
+                type="text"
+                name="city"
+                value={edite?.city ?? ""}
+                required
+                autocomplete="address-level2"
+                class={champ}
+              />
+            </label>
+          </div>
+          <label class="block">
+            <span class="text-sm font-medium">{tr("livraison.pays")}</span>
+            <input
+              type="text"
+              name="country"
+              value={edite?.country ?? ""}
+              required
+              autocomplete="country-name"
+              class={champ}
+            />
+          </label>
+          <label class="block">
+            <span class="text-sm font-medium">{tr("livraison.telephone")}</span>
+            <input
+              type="tel"
+              name="phone"
+              value={edite?.phone ?? ""}
+              autocomplete="tel"
+              class={champ}
+            />
+          </label>
+          <label class="flex items-start gap-3 text-sm">
+            <input
+              type="checkbox"
+              name="isDefaultShipping"
+              checked={edite?.isDefaultShipping ?? false}
+              class="mt-1"
+            />
+            <span>{tr("compte.adresses.defaut_livraison")}</span>
+          </label>
+          <label class="flex items-start gap-3 text-sm">
+            <input
+              type="checkbox"
+              name="isDefaultBilling"
+              checked={edite?.isDefaultBilling ?? false}
+              class="mt-1"
+            />
+            <span>{tr("compte.adresses.defaut_facturation")}</span>
+          </label>
+          <div class="flex flex-wrap items-center gap-4">
+            <button
+              type="submit"
+              class="rounded-full bg-ink px-6 py-3 font-medium text-paper transition-colors hover:bg-ink/85"
+            >
+              {tr("compte.adresses.enregistrer")}
+            </button>
+            {edite && (
+              <a
+                href={lien(langue, "/compte/adresses")}
+                class="text-sm underline underline-offset-4 hover:text-terracotta"
+              >
+                {tr("compte.adresses.annuler")}
+              </a>
+            )}
+          </div>
+        </form>
+      </section>
+    )
+  }
+</CompteCadre>

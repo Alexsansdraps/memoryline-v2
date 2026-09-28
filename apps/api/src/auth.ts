@@ -61,6 +61,27 @@ export interface SessionUser {
   adminUserId: number;
   email: string;
   role: string;
+  /**
+   * Le stand confié à ce vendeur, quand il y en a un.
+   *
+   * Un propriétaire n'en a pas : il voit tout. Un vendeur sans stand attribué
+   * voit les ventes de stand mais aucune du site — le refus par défaut vaut
+   * mieux qu'un accès complet en attendant qu'on lui en confie un.
+   */
+  standId?: number | null;
+}
+
+/**
+ * L'utilisateur connecté, posé sur la requête par la garde de « /admin/* ».
+ *
+ * Déclaré ici plutôt que sur l'application : une route qui borne ce qu'elle
+ * renvoie doit pouvoir lire ce champ sans que chaque fichier de routes ait à
+ * connaître le type de l'application entière.
+ */
+declare module "hono" {
+  interface ContextVariableMap {
+    utilisateur: SessionUser;
+  }
 }
 
 export async function validateSession(
@@ -75,6 +96,7 @@ export async function validateSession(
       adminUserId: schema.adminUsers.id,
       email: schema.adminUsers.email,
       role: schema.adminUsers.role,
+      archivedAt: schema.adminUsers.archivedAt,
     })
     .from(schema.sessions)
     .innerJoin(
@@ -85,6 +107,14 @@ export async function validateSession(
   const row = rows[0];
   if (!row) return null;
   if (row.expiresAt.getTime() < Date.now()) {
+    await db.delete(schema.sessions).where(eq(schema.sessions.id, id));
+    return null;
+  }
+  // Compte archivé : la porte se referme, même si la session date d'avant.
+  // L'archivage ferme déjà les sessions ouvertes ; ce contrôle-ci est la
+  // ceinture qui va avec les bretelles, pour le cas où une session serait
+  // créée entre-temps, ou l'archivage posé à la main dans la base.
+  if (row.archivedAt) {
     await db.delete(schema.sessions).where(eq(schema.sessions.id, id));
     return null;
   }

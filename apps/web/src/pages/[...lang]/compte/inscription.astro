@@ -1,0 +1,186 @@
+---
+import CompteCadre from "../../../components/CompteCadre.astro";
+import {
+  estLangue,
+  langueDepuisParam,
+  lien,
+  t,
+  type CleUi,
+  type Langue,
+} from "../../../i18n/utils.ts";
+import {
+  inscription,
+  moi,
+  rediriger,
+  retourSur,
+} from "../../../lib/compte.ts";
+import { compteFictif } from "../../../islands/jeu-essai.ts";
+
+export const prerender = false;
+
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
+const tr = t(langue);
+
+let erreur: CleUi | null = null;
+let email = "";
+let prenom = "";
+let nomFamille = "";
+let marketing = false;
+// D'où l'on vient, pour y retourner une fois le compte créé.
+let retour = retourSur(Astro.url.searchParams.get("retour"));
+const apresInscription = () => retour ?? lien(langue, "/compte");
+
+if (Astro.request.method === "POST") {
+  const formulaire = await Astro.request.formData();
+  retour = retourSur(String(formulaire.get("retour") ?? "")) ?? retour;
+  email = String(formulaire.get("email") ?? "").trim();
+  prenom = String(formulaire.get("firstName") ?? "").trim();
+  nomFamille = String(formulaire.get("lastName") ?? "").trim();
+  marketing = formulaire.get("acceptsMarketing") !== null;
+  const motDePasse = String(formulaire.get("password") ?? "");
+
+  if (!email || !motDePasse) {
+    erreur = "compte.err.champs";
+  } else if (motDePasse.length < 8) {
+    // Contrôlé ici aussi : autant le dire avant l'aller-retour réseau.
+    erreur = "compte.err.mdp_court";
+  } else {
+    const r = await inscription(Astro, {
+      email,
+      password: motDePasse,
+      firstName: prenom || undefined,
+      lastName: nomFamille || undefined,
+      acceptsMarketing: marketing,
+    });
+    if (r.ok) return rediriger(Astro, apresInscription());
+    // Le seul 400 que l'API renvoie ici concerne la longueur du mot de passe.
+    erreur = r.statut === 400 ? "compte.err.mdp_court" : r.erreur;
+  }
+} else {
+  const session = await moi(Astro);
+  if (session.ok) return rediriger(Astro, apresInscription(), 302);
+}
+
+/**
+ * Jeu d'essai : hors production, le formulaire arrive rempli.
+ *
+ * Uniquement en arrivant sur la page — jamais après un envoi. Sinon une
+ * inscription refusée verrait les corrections de la cliente remplacées par un
+ * nouveau tirage, et le message d'erreur porterait sur des valeurs qui ne
+ * sont plus à l'écran.
+ */
+const essai = Astro.request.method === "POST" ? null : compteFictif();
+if (essai) {
+  prenom = essai.prenom;
+  nomFamille = essai.nom;
+  email = essai.email;
+}
+
+const champ =
+  "mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none";
+---
+
+<CompteCadre
+  langue={langue}
+  titre={tr("compte.inscription.titre")}
+  chemin="/compte/inscription"
+  menu={false}
+>
+  <p class="text-ink-soft">{tr("compte.inscription.intro")}</p>
+
+  {
+    erreur && (
+      <p class="mt-6 border border-terracotta/40 bg-terracotta/5 px-4 py-3 text-terracotta-deep">
+        {tr(erreur)}
+      </p>
+    )
+  }
+
+  {
+    essai && (
+      <p class="mt-6 border border-dashed border-ink/30 bg-paper-deep px-4 py-3 text-sm text-ink-soft">
+        <b>Site de test.</b> Ce compte est pré-rempli au hasard pour vous
+        éviter la saisie. Mot de passe&nbsp;: <code>{essai.motDePasse}</code> —
+        notez l'adresse e-mail si vous voulez vous reconnecter dessus. Ce
+        bandeau et ce pré-remplissage n'existent pas en production.
+      </p>
+    )
+  }
+
+  <form method="post" class="mt-6 space-y-4">
+    {retour && <input type="hidden" name="retour" value={retour} />}
+    <div class="grid gap-4 sm:grid-cols-2">
+      <label class="block">
+        <span class="text-sm font-medium">{tr("compte.prenom")}</span>
+        <input
+          type="text"
+          name="firstName"
+          value={prenom}
+          autocomplete="given-name"
+          class={champ}
+        />
+      </label>
+      <label class="block">
+        <span class="text-sm font-medium">{tr("compte.nom")}</span>
+        <input
+          type="text"
+          name="lastName"
+          value={nomFamille}
+          autocomplete="family-name"
+          class={champ}
+        />
+      </label>
+    </div>
+    <label class="block">
+      <span class="text-sm font-medium">{tr("compte.email")}</span>
+      <input
+        type="email"
+        name="email"
+        value={email}
+        required
+        autocomplete="email"
+        class={champ}
+      />
+    </label>
+    <label class="block">
+      <span class="text-sm font-medium">{tr("compte.mdp")}</span>
+      <input
+        type={essai ? "text" : "password"}
+        name="password"
+        value={essai?.motDePasse ?? ""}
+        required
+        minlength="8"
+        autocomplete="new-password"
+        class={champ}
+      />
+      <span class="mt-1 block text-xs text-ink-soft">{tr("compte.mdp_aide")}</span>
+    </label>
+    <label class="flex items-start gap-3 text-sm">
+      <input
+        type="checkbox"
+        name="acceptsMarketing"
+        checked={marketing}
+        class="mt-1"
+      />
+      <span>{tr("compte.marketing")}</span>
+    </label>
+    <button
+      type="submit"
+      class="w-full rounded-full bg-ink px-6 py-3 font-medium text-paper transition-colors hover:bg-ink/85"
+    >
+      {tr("compte.inscription.bouton")}
+    </button>
+  </form>
+
+  <p class="mt-8 border-t border-ink/10 pt-6 text-sm text-ink-soft">
+    {tr("compte.inscription.deja")}{" "}
+    <a
+      href={`${lien(langue, "/compte/connexion")}${retour ? `?retour=${encodeURIComponent(retour)}` : ""}`}
+      class="text-ink underline underline-offset-4 hover:text-terracotta"
+    >
+      {tr("compte.connexion.bouton")}
+    </a>
+  </p>
+</CompteCadre>

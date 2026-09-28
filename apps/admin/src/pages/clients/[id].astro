@@ -1,0 +1,488 @@
+---
+import { apiInterne } from "../../lib/api-interne.ts";
+/**
+ * Fiche d'un client.
+ *
+ * Deux colonnes comme la fiche de commande : à GAUCHE ce qu'il a acheté (les
+ * chiffres, puis l'historique), à DROITE ce qu'on connaît de lui et qu'on
+ * corrige (coordonnées, consentement, étiquettes, note).
+ *
+ * Le carnet d'adresses est en lecture seule : il appartient au client, qui le
+ * gère depuis son espace. Corriger une adresse d'ici ne changerait rien aux
+ * commandes déjà passées — celles-ci portent leur propre adresse, modifiable
+ * sur leur fiche.
+ */
+import Admin from "../../layouts/Admin.astro";
+import { url } from "../../lib/url.ts";
+import { adminApi, formatPrice, type ClientDetail } from "../../lib/api.ts";
+
+const id = Number(Astro.params.id);
+const api = adminApi(Astro.request);
+
+let flash: string | null = null;
+let flashErreur = false;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const action = f.get("_action");
+  try {
+    if (action === "coordonnees") {
+      await api.updateCustomer(id, {
+        name: String(f.get("name") ?? ""),
+        email: String(f.get("email") ?? ""),
+        phone: String(f.get("phone") ?? ""),
+      });
+      flash = "Coordonnées enregistrées.";
+    } else if (action === "marketing") {
+      await api.updateCustomer(id, {
+        acceptsMarketing: f.get("acceptsMarketing") === "on",
+      });
+      flash = "Consentement mis à jour.";
+    } else if (action === "etiquettes") {
+      await api.updateCustomer(id, {
+        tags: String(f.get("tags") ?? "")
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
+      });
+      flash = "Étiquettes enregistrées.";
+    } else if (action === "note") {
+      await api.updateCustomer(id, { note: String(f.get("note") ?? "") });
+      flash = "Note enregistrée.";
+    } else if (action === "rattacher") {
+      // Appel direct : le client partagé ne connaît pas encore cette route,
+      // et la fiche est le seul écran qui en a besoin.
+      const base =
+        apiInterne();
+      const res = await fetch(
+        `${base}/admin/customers/${id}/rattacher-commandes`,
+        {
+          method: "POST",
+          headers: { cookie: Astro.request.headers.get("cookie") ?? "" },
+        },
+      );
+      const r = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        commandes?: number;
+        fiches?: number;
+      };
+      if (!res.ok) throw new Error(r.error ?? "Le rattachement a échoué.");
+      flash = r.fiches
+        ? `${r.fiches} fiche${r.fiches > 1 ? "s" : ""} en double rattachée${r.fiches > 1 ? "s" : ""} à celle-ci, avec ${r.commandes ?? 0} commande${(r.commandes ?? 0) > 1 ? "s" : ""}.`
+        : "Aucune fiche en double à rattacher : cette adresse n'apparaît qu'ici.";
+    }
+  } catch (e) {
+    flash = "Erreur : " + String(e);
+    flashErreur = true;
+  }
+}
+
+let detail: ClientDetail | null = null;
+let error: string | null = null;
+try {
+  detail = await api.customerDetail(id);
+} catch (e) {
+  error = String(e);
+}
+
+const client = detail?.customer ?? null;
+const adresses = detail?.adresses ?? [];
+const commandes = detail?.commandes ?? [];
+const stats = detail?.stats ?? { commandes: 0, caCents: 0, panierMoyenCents: 0 };
+
+/** « 27 août 2026 à 22:36 » */
+function quand(iso: string | null | undefined): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} à ${d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
+  } catch {
+    return "";
+  }
+}
+
+/** « 27 août 2026 » — pour les dates dont l'heure n'apprend rien. */
+function leJour(iso: string | null | undefined): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  } catch {
+    return "";
+  }
+}
+
+/* Mêmes pastilles que la liste des commandes : les deux écrans se lisent
+   pareil, un statut n'a pas deux apparences dans le back-office. */
+const BADGE_PAIEMENT: Record<string, { texte: string; classe: string }> = {
+  paid: { texte: "Payée", classe: "bg-bo-bg text-bo-ink" },
+  pending: { texte: "En attente", classe: "bg-amber-100 text-amber-900" },
+  authorized: { texte: "Autorisée", classe: "bg-sky-100 text-sky-900" },
+  partially_refunded: {
+    texte: "Remb. en partie",
+    classe: "bg-violet-100 text-violet-900",
+  },
+  refunded: { texte: "Remboursée", classe: "bg-violet-100 text-violet-900" },
+  voided: { texte: "Annulée", classe: "bg-bo-bg text-bo-muted" },
+  draft: { texte: "Panier", classe: "bg-bo-bg text-bo-muted" },
+};
+const BADGE_TRAITEMENT: Record<string, { texte: string; classe: string }> = {
+  fulfilled: { texte: "Traitée", classe: "bg-green-100 text-green-900" },
+  partially_fulfilled: {
+    texte: "En partie",
+    classe: "bg-orange-100 text-orange-900",
+  },
+  unfulfilled: { texte: "Non traitée", classe: "bg-amber-100 text-amber-900" },
+};
+
+const nom = client?.name?.trim() || "Client sans nom";
+---
+
+<Admin title={nom}>
+  <p class="mb-4">
+    <a href={url("/clients")} class="text-sm text-bo-accent hover:underline">
+      ← Retour aux clients
+    </a>
+  </p>
+
+  {flash && (
+    <p
+      class={`mb-4 rounded border px-3 py-2 text-sm ${
+        flashErreur ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+  {error && <p class="mb-4 text-sm text-red-600">API injoignable : {error}</p>}
+
+  {client && (
+    <>
+      <div class="mb-6">
+        <div class="flex flex-wrap items-center gap-2">
+          <h2 class="text-xl font-semibold">{nom}</h2>
+          {client.compte ? (
+            <span class="rounded-full bg-bo-bg px-2 py-0.5 text-xs text-bo-ink">
+              Compte client
+            </span>
+          ) : (
+            <span class="rounded-full bg-bo-bg px-2 py-0.5 text-xs text-bo-muted">
+              Sans compte
+            </span>
+          )}
+          {client.acceptsMarketing && (
+            <span class="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-900">
+              Accepte le marketing
+            </span>
+          )}
+        </div>
+        <p class="mt-1 text-sm text-bo-muted">
+          Client depuis le {leJour(client.createdAt)}
+          {client.lastLoginAt && ` · dernière connexion le ${leJour(client.lastLoginAt)}`}
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+        {/* ============================================================ */}
+        {/* Colonne de gauche : ce qu'il a acheté                        */}
+        {/* ============================================================ */}
+        <div class="space-y-6 lg:col-span-2">
+          <div class="grid gap-px overflow-hidden rounded-lg border border-bo-border bg-bo-border sm:grid-cols-3">
+            <div class="bg-bo-surface px-4 py-3">
+              <div class="text-xs text-bo-muted">Chiffre d'affaires</div>
+              <div class="mt-1 text-xl">{formatPrice(stats.caCents)}</div>
+            </div>
+            <div class="bg-bo-surface px-4 py-3">
+              <div class="text-xs text-bo-muted">Commandes</div>
+              <div class="mt-1 text-xl">{stats.commandes}</div>
+            </div>
+            <div class="bg-bo-surface px-4 py-3">
+              <div class="text-xs text-bo-muted">Panier moyen</div>
+              <div class="mt-1 text-xl">
+                {formatPrice(stats.panierMoyenCents)}
+              </div>
+            </div>
+          </div>
+
+          <section class="rounded-lg border border-bo-border bg-bo-surface">
+            <header class="border-b border-bo-border px-4 py-3">
+              <h3 class="font-medium">
+                Historique des commandes
+                <span class="ml-2 text-sm font-normal text-bo-muted">
+                  {commandes.length} commande{commandes.length > 1 ? "s" : ""}
+                </span>
+              </h3>
+            </header>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="bg-bo-bg text-left text-bo-muted">
+                  <tr>
+                    <th class="px-4 py-2 font-medium">Commande</th>
+                    <th class="px-4 py-2 font-medium">Date</th>
+                    <th class="px-4 py-2 font-medium">Paiement</th>
+                    <th class="px-4 py-2 font-medium">Traitement</th>
+                    <th class="px-4 py-2 font-medium">Articles</th>
+                    <th class="px-4 py-2 text-right font-medium">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {commandes.map((o) => {
+                    const p = BADGE_PAIEMENT[o.statutFinancier ?? "pending"] ?? {
+                      texte: "—",
+                      classe: "bg-bo-bg text-bo-muted",
+                    };
+                    const t = BADGE_TRAITEMENT[o.statutExpedition ?? "unfulfilled"]!;
+                    return (
+                      <tr
+                        class="cursor-pointer border-t border-bo-border hover:bg-bo-bg/50"
+                        data-lien={url(`/commandes/${o.id}`)}
+                      >
+                        <td class="px-4 py-2 whitespace-nowrap">
+                          <a
+                            href={url(`/commandes/${o.id}`)}
+                            class="font-medium text-bo-accent hover:underline"
+                          >
+                            {o.number}
+                          </a>
+                        </td>
+                        <td class="px-4 py-2 whitespace-nowrap text-bo-muted">
+                          {leJour(o.createdAt)}
+                        </td>
+                        <td class="px-4 py-2">
+                          <span
+                            class={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${p.classe}`}
+                          >
+                            <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+                            {p.texte}
+                          </span>
+                        </td>
+                        <td class="px-4 py-2">
+                          <span
+                            class={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${t.classe}`}
+                          >
+                            <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+                            {t.texte}
+                          </span>
+                        </td>
+                        <td class="px-4 py-2 whitespace-nowrap text-bo-muted">
+                          {o.articles} article{o.articles > 1 ? "s" : ""}
+                        </td>
+                        <td class="px-4 py-2 text-right whitespace-nowrap">
+                          {formatPrice(o.totalCents)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {commandes.length === 0 && (
+                    <tr>
+                      <td colspan="6" class="px-4 py-6 text-center text-bo-muted">
+                        Aucune commande pour l'instant.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        {/* ============================================================ */}
+        {/* Colonne de droite : ce qu'on sait de lui                     */}
+        {/* ============================================================ */}
+        <div class="space-y-6">
+          <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+            <h3 class="mb-2 font-medium">Coordonnées</h3>
+            <form method="POST" class="space-y-2 text-sm">
+              <input type="hidden" name="_action" value="coordonnees" />
+              <label class="block">
+                <span class="mb-1 block text-xs text-bo-muted">Nom</span>
+                <input
+                  name="name"
+                  value={client.name ?? ""}
+                  class="w-full rounded border border-bo-border px-2 py-1"
+                />
+              </label>
+              <label class="block">
+                <span class="mb-1 block text-xs text-bo-muted">E-mail</span>
+                <input
+                  type="email"
+                  name="email"
+                  value={client.email ?? ""}
+                  class="w-full rounded border border-bo-border px-2 py-1"
+                />
+              </label>
+              <label class="block">
+                <span class="mb-1 block text-xs text-bo-muted">Téléphone</span>
+                <input
+                  name="phone"
+                  value={client.phone ?? ""}
+                  class="w-full rounded border border-bo-border px-2 py-1"
+                />
+              </label>
+              <button class="rounded border border-bo-border px-3 py-1.5 hover:bg-bo-bg">
+                Enregistrer
+              </button>
+            </form>
+            {client.email && (
+              <p class="mt-2 text-sm">
+                <a
+                  href={`mailto:${client.email}`}
+                  class="text-bo-accent hover:underline"
+                >
+                  Écrire à {client.email}
+                </a>
+              </p>
+            )}
+          </section>
+
+          <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+            <h3 class="mb-2 font-medium">Carnet d'adresses</h3>
+            {adresses.length ? (
+              <ul class="space-y-3 text-sm">
+                {adresses.map((a) => (
+                  <li class="border-b border-bo-border pb-3 last:border-0 last:pb-0">
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      <span class="font-medium">{a.label || "Adresse"}</span>
+                      {a.isDefaultShipping && (
+                        <span class="rounded bg-bo-bg px-1.5 py-0.5 text-xs text-bo-muted">
+                          Livraison par défaut
+                        </span>
+                      )}
+                      {a.isDefaultBilling && (
+                        <span class="rounded bg-bo-bg px-1.5 py-0.5 text-xs text-bo-muted">
+                          Facturation par défaut
+                        </span>
+                      )}
+                    </div>
+                    <div class="mt-0.5 space-y-0.5 text-bo-muted">
+                      {a.name && <div>{a.name}</div>}
+                      {a.line1 && <div>{a.line1}</div>}
+                      {a.line2 && <div>{a.line2}</div>}
+                      <div>{[a.postalCode, a.city].filter(Boolean).join(" ")}</div>
+                      {a.country && <div>{a.country}</div>}
+                      {a.phone && <div>{a.phone}</div>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p class="text-sm text-bo-muted">Aucune adresse enregistrée.</p>
+            )}
+            <p class="mt-2 text-xs text-bo-muted">
+              Le client gère ce carnet depuis son espace ; il n'est pas
+              modifiable ici. L'adresse d'une commande se corrige sur sa fiche.
+            </p>
+          </section>
+
+          <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+            <h3 class="mb-2 font-medium">Consentement marketing</h3>
+            <p class="mb-2 text-sm text-bo-muted">
+              {client.acceptsMarketing
+                ? client.marketingOptInAt
+                  ? `Accepté le ${quand(client.marketingOptInAt)}.`
+                  : "Accepté."
+                : "N'accepte pas d'être démarché."}
+            </p>
+            <form method="POST" class="space-y-2 text-sm">
+              <input type="hidden" name="_action" value="marketing" />
+              <label class="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  name="acceptsMarketing"
+                  checked={client.acceptsMarketing}
+                />
+                Accepte de recevoir la lettre d'information
+              </label>
+              {/* Le consentement se donne depuis la boutique ; d'ici on le
+                  retire surtout, quand la demande arrive par téléphone. */}
+              <p class="text-xs text-bo-muted">
+                À ne cocher que sur demande explicite du client.
+              </p>
+              <button class="rounded border border-bo-border px-3 py-1.5 hover:bg-bo-bg">
+                Enregistrer
+              </button>
+            </form>
+          </section>
+
+          {/* Une même personne finit avec plusieurs fiches : une par commande
+              passée sans compte, une de plus le jour où elle en ouvre un. Le
+              rattachement les réunit sous celle-ci, commandes comprises. */}
+          <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+            <h3 class="mb-2 font-medium">Fiches en double</h3>
+            <form method="POST" class="space-y-2 text-sm">
+              <input type="hidden" name="_action" value="rattacher" />
+              <p class="text-xs text-bo-muted">
+                Si la même adresse e-mail existe sur d'autres fiches sans
+                compte, tout ce qu'elles portent vient ici : leurs commandes,
+                leurs adresses, leurs cartes cadeaux, leurs étiquettes, leur
+                note, et les renseignements qui manquent à cette fiche
+                (téléphone, prénom, nom). Une seule chose ne suit pas, et c'est
+                exprès : leur accord pour recevoir la lettre d'information — un
+                accord ne se réactive pas par une fusion. Les fiches ainsi
+                vidées disparaissent, et c'est le seul endroit du back-office où
+                quelque chose disparaît : garder deux vérités sur la même
+                personne coûterait plus cher.
+              </p>
+              <button
+                class="rounded border border-bo-border px-3 py-1.5 hover:bg-bo-bg"
+                onclick="return confirm('Réunir ici toutes les fiches qui portent la même adresse e-mail ?\n\nTout ce qu\'elles portent vient sur cette fiche : commandes, adresses, cartes cadeaux, étiquettes, note, et les renseignements qui manquent ici. Seul leur accord pour la lettre d\'information n\'est pas repris.\n\nLes fiches vidées, elles, disparaissent : cette opération ne se défait pas.')"
+              >
+                Rattacher les doublons
+              </button>
+            </form>
+          </section>
+
+          <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+            <h3 class="mb-2 font-medium">Étiquettes</h3>
+            <form method="POST" class="space-y-2 text-sm">
+              <input type="hidden" name="_action" value="etiquettes" />
+              <input
+                name="tags"
+                value={(client.tags ?? []).join(", ")}
+                placeholder="fidèle, stand de Nantes, revendeur"
+                class="w-full rounded border border-bo-border px-2 py-1"
+              />
+              <p class="text-xs text-bo-muted">Séparées par des virgules.</p>
+              <button class="rounded border border-bo-border px-3 py-1.5 hover:bg-bo-bg">
+                Enregistrer
+              </button>
+            </form>
+          </section>
+
+          <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+            <h3 class="mb-2 font-medium">Note interne</h3>
+            <form method="POST" class="space-y-2 text-sm">
+              <input type="hidden" name="_action" value="note" />
+              <textarea
+                name="note"
+                rows="4"
+                placeholder="« Commande toujours pour ses petits-enfants, prévenir avant l'envoi »"
+                class="w-full rounded border border-bo-border px-2 py-1"
+                set:text={client.note ?? ""}
+              />
+              <p class="text-xs text-bo-muted">Jamais montrée au client.</p>
+              <button class="rounded border border-bo-border px-3 py-1.5 hover:bg-bo-bg">
+                Enregistrer
+              </button>
+            </form>
+          </section>
+        </div>
+      </div>
+    </>
+  )}
+
+  <script is:inline>
+    // Toute la ligne ouvre la commande : viser le numéro n'est pas naturel
+    // quand on parcourt un historique. Le lien du numéro reste là pour le
+    // clavier et l'ouverture dans un nouvel onglet.
+    document.querySelectorAll("tr[data-lien]").forEach((tr) => {
+      tr.addEventListener("click", (e) => {
+        if (e.target.closest("a")) return;
+        window.location.href = tr.dataset.lien;
+      });
+    });
+  </script>
+</Admin>

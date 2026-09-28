@@ -1,0 +1,222 @@
+---
+/**
+ * La page qui remet un panier abandonné dans le navigateur de la cliente.
+ *
+ * C'est la destination du bouton « Reprendre ma commande » des courriers de
+ * relance. Le jeton qu'elle reçoit ne dit rien de personne : il désigne un
+ * panier, et rien d'autre.
+ *
+ * Elle vit HORS du routage [...lang], comme le stand : le courrier de relance
+ * n'existe qu'en français, l'adresse qu'il porte n'a donc qu'une version. Le
+ * jour où le courrier sera traduit, cette page suivra.
+ *
+ * Ce qu'elle fait tient en trois gestes, dans cet ordre : réinstaller
+ * l'identifiant de panier là où la boutique le cherche (`ml_cart_id`),
+ * reprendre le code de réduction déjà saisi (`ml_code_promo`), puis emmener
+ * la cliente au tunnel avec ses coordonnées déjà connues. Le panier lui-même
+ * n'a pas à être recopié : il n'a jamais quitté la base, seul le navigateur
+ * l'avait perdu.
+ *
+ * Un jeton inconnu, périmé ou déjà réglé donne une page qui l'explique. Une
+ * erreur technique nue, sur un lien reçu par courrier, ne dit à personne quoi
+ * faire ensuite.
+ */
+import Base from "../../layouts/Base.astro";
+import { api, formatPrice, type PanierRecupere } from "../../lib/api.ts";
+import { jsonPourScript } from "../../lib/html-sur.ts";
+
+export const prerender = false;
+
+const jeton = (Astro.url.searchParams.get("jeton") ?? "").trim();
+const reponse = jeton
+  ? await api.panierARecuperer(jeton)
+  : ({ erreur: "jeton_inconnu" } as const);
+
+const panier: PanierRecupere | null = "cartId" in reponse ? reponse : null;
+
+/**
+ * Ce qu'on dit quand le lien n'ouvre rien. Chaque cas a sa phrase : « ce lien
+ * ne marche pas » laisserait la cliente sans rien à faire, alors que dans
+ * trois cas sur quatre son panier ou sa commande existent toujours.
+ */
+const EXPLICATIONS = {
+  jeton_inconnu: {
+    titre: "Ce lien n'est plus valable",
+    texte:
+      "Nous ne reconnaissons pas ce lien. Il a peut-être été coupé en deux par votre messagerie, ou votre panier a été réglé depuis un autre appareil.",
+  },
+  deja_payee: {
+    titre: "Cette commande est déjà réglée",
+    texte:
+      "Bonne nouvelle : votre commande a bien été payée. Vous n'avez rien à reprendre, nous préparons votre affiche.",
+  },
+  panier_clos: {
+    titre: "Ce panier a été clos",
+    texte:
+      "Cette commande a été annulée ou remboursée. Elle ne peut plus être reprise, mais rien ne vous empêche d'en composer une nouvelle.",
+  },
+  trop_ancien: {
+    titre: "Ce lien a expiré",
+    texte:
+      "Passé quatorze jours, nous cessons de garder un panier en attente : nos prix et nos affiches ont pu changer entre-temps. Reprenez depuis la boutique, votre affiche s'y compose en deux minutes.",
+  },
+  indisponible: {
+    titre: "Nous n'arrivons pas à ouvrir votre panier",
+    texte:
+      "Quelque chose s'est mal passé de notre côté. Réessayez dans un instant, ou écrivez-nous en répondant simplement au message que vous avez reçu.",
+  },
+} as const;
+
+// Le test porte sur `reponse` et non sur `panier` : c'est lui qui distingue
+// les deux formes de la réponse, et donc le seul qui apprenne au compilateur
+// qu'il y a bien un motif à lire dans cette branche.
+const souci = "cartId" in reponse ? null : EXPLICATIONS[reponse.erreur];
+
+/**
+ * Les coordonnées repassées au tunnel. On ne transmet QUE le nom et
+ * l'adresse e-mail, ceux-là mêmes que la cliente nous a donnés à l'étape
+ * précédente : rien de plus n'a à traverser le navigateur.
+ */
+/*
+ * Échappée pour vivre dans une balise script, et non passée par
+ * `define:vars`.
+ *
+ * Le nom et l'adresse sont ceux que la cliente a TAPÉS. `define:vars` les
+ * insère dans le script, et Astro 5 ne neutralise pas complètement la balise
+ * fermante de script à cet endroit (faille connue, corrigée en version 6) :
+ * un nom qui la contenait, suivi d'un nouveau script, s'exécutait. Ici, les
+ * chevrons sont échappés avant d'entrer, et la balise ne contient que des
+ * données, jamais du code.
+ */
+const consigne = jsonPourScript(
+  panier
+    ? {
+        cartId: panier.cartId,
+        codePromo: panier.promoCode ?? "",
+        nom: panier.nom ?? "",
+        email: panier.email ?? "",
+      }
+    : null,
+);
+---
+
+<Base
+  title="Votre panier — Memory Line"
+  path="/panier/recuperer"
+  noindex={true}
+>
+  <section class="mx-auto max-w-[720px] px-4 sm:px-6 pt-16 pb-24">
+    {
+      panier ? (
+        <Fragment>
+          <h1 class="text-3xl sm:text-4xl">Votre panier vous attend</h1>
+          <p class="mt-4 text-ink-soft">
+            Nous le remettons en place, puis nous vous emmenons à la commande.
+          </p>
+
+          <ul class="mt-8 divide-y divide-ink/10 border-y border-ink/10">
+            {panier.articles.map((a) => (
+              <li class="flex items-center gap-4 py-4">
+                {a.imageUrl && (
+                  <img
+                    src={a.imageUrl}
+                    alt=""
+                    width="56"
+                    height="79"
+                    class="w-14 shrink-0 bg-ink/5"
+                    loading="lazy"
+                  />
+                )}
+                <span class="flex-1">
+                  <span class="block">{a.titre}</span>
+                  <span class="block text-sm text-ink-soft">
+                    Format {a.format ?? "A4"} · ×{a.quantite}
+                    {a.indisponible && " · cette affiche n'est plus disponible"}
+                  </span>
+                </span>
+                <span class="whitespace-nowrap">
+                  {formatPrice(a.unitPriceCents * a.quantite)}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          <p class="mt-4 flex justify-between text-lg">
+            <span>Total</span>
+            <span>{formatPrice(panier.totalCents)}</span>
+          </p>
+
+          {panier.promoCode && (
+            <p class="mt-2 text-sm text-ink-soft">
+              Votre code de réduction {panier.promoCode} est repris.
+            </p>
+          )}
+
+          <p class="mt-8">
+            <a
+              href="/commande"
+              class="inline-block rounded-full bg-ink px-8 py-3 font-medium text-paper transition-colors hover:bg-ink/85"
+            >
+              Reprendre ma commande
+            </a>
+          </p>
+          {/* Sans JavaScript, rien n'a été réinstallé dans le navigateur : le
+              lien ci-dessus mènerait à un tunnel vide. On le dit plutôt que de
+              laisser la cliente s'en apercevoir toute seule. */}
+          <noscript>
+            <p class="mt-4 text-sm text-ink-soft">
+              Votre navigateur n'exécute pas JavaScript : nous ne pouvons pas
+              remettre votre panier en place. Écrivez-nous en répondant au
+              message que vous avez reçu, nous terminerons la commande avec vous.
+            </p>
+          </noscript>
+        </Fragment>
+      ) : (
+        <Fragment>
+          <h1 class="text-3xl sm:text-4xl">{souci!.titre}</h1>
+          <p class="mt-4 text-ink-soft">{souci!.texte}</p>
+          <p class="mt-8">
+            <a
+              href="/affiches"
+              class="inline-block rounded-full bg-ink px-8 py-3 font-medium text-paper transition-colors hover:bg-ink/85"
+            >
+              Voir les affiches
+            </a>
+          </p>
+        </Fragment>
+      )
+    }
+  </section>
+
+  {/* La remise en place, et elle seule. Le script est DANS la page, et non
+      après elle : posé hors du gabarit, Astro l'écrivait après la balise
+      fermante du document, où il ne tient qu'à la tolérance des navigateurs.
+      S'il échoue (navigation privée verrouillée, stockage plein), on reste sur
+      cette page plutôt que d'emmener la cliente vers un tunnel vide. */}
+  <script type="application/json" id="ml-consigne" set:html={consigne} />
+  <script is:inline>
+  (function () {
+    var source = document.getElementById("ml-consigne");
+    const d = source ? JSON.parse(source.textContent || "null") : null;
+    if (!d) return;
+    try {
+      localStorage.setItem("ml_cart_id", d.cartId);
+      if (d.codePromo) localStorage.setItem("ml_code_promo", d.codePromo);
+      else localStorage.removeItem("ml_code_promo");
+      // Les coordonnées voyagent à part et ne servent qu'une fois : le tunnel
+      // les lit, remplit ses champs, puis les efface.
+      if (d.nom || d.email)
+        localStorage.setItem(
+          "ml_relance_client",
+          JSON.stringify({ nom: d.nom, email: d.email }),
+        );
+    } catch (e) {
+      console.warn("Panier non réinstallé :", e);
+      return;
+    }
+    // `replace` et non `assign` : le bouton « Précédent » doit ramener au
+    // courrier, pas rejouer cette page-ci.
+    location.replace("/commande");
+  })();
+  </script>
+</Base>

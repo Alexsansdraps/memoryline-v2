@@ -38,9 +38,13 @@ if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   const action = f.get("_action");
   try {
-    if (action === "supprimer") {
-      await api.deleteUser(Number(f.get("id")));
-      flash = "Compte supprimé.";
+    if (action === "archiver") {
+      const restaurer = f.get("archived") === "false";
+      await api.archiverCompte(Number(f.get("id")), !restaurer);
+      const nom = String(f.get("libelle") || "Ce compte");
+      flash = restaurer
+        ? `Compte « ${nom} » restauré : il peut se reconnecter, avec son rôle et son mot de passe.`
+        : `Compte « ${nom} » archivé : il ne peut plus entrer, et ses sessions ouvertes sont fermées. L'historique garde son nom. Vous pouvez le restaurer plus bas.`;
     } else if (action === "deconnecter") {
       await api.logoutUser(Number(f.get("id")));
       flash = "Sessions fermées : ce compte devra se reconnecter.";
@@ -75,13 +79,20 @@ try {
   error = String(e);
 }
 
-const proprietaires = comptes.filter((c) => c.role === "owner").length;
+// Les archivés quittent le tableau ordinaire pour leur propre section.
+const actifs = comptes.filter((c) => !c.archivedAt);
+const archives = comptes.filter((c) => c.archivedAt);
+
+// Seuls les propriétaires ENCORE capables d'entrer comptent : un compte
+// archivé ne se connecte plus, et le compter ici laisserait archiver le
+// dernier qui le peut. C'est la règle que l'API applique de son côté.
+const proprietaires = actifs.filter((c) => c.role === "owner").length;
 /**
- * Un compte supprimable : ni le sien, ni le dernier propriétaire.
+ * Un compte archivable : ni le sien, ni le dernier propriétaire.
  * Calculé ici et pas dans le gabarit : un « <= » au milieu du JSX est lu
  * comme l'ouverture d'un fragment et casse la compilation.
  */
-const supprimable = (c: CompteAdmin) =>
+const archivable = (c: CompteAdmin) =>
   !c.moi && !(c.role === "owner" && proprietaires === 1);
 ---
 
@@ -117,7 +128,7 @@ const supprimable = (c: CompteAdmin) =>
         </tr>
       </thead>
       <tbody>
-        {comptes.map((c) => (
+        {actifs.map((c) => (
           <tr class="border-t border-bo-border align-top">
             <td class="px-4 py-3">
               <form method="POST" class="flex flex-wrap items-end gap-3">
@@ -184,27 +195,29 @@ const supprimable = (c: CompteAdmin) =>
                   </button>
                 </form>
               )}
-              {supprimable(c) && (
+              {archivable(c) && (
                 <form
                   method="POST"
-                  class="js-retirer ml-1 inline"
+                  class="js-archiver ml-1 inline"
                   data-nom={c.email}
                 >
-                  <input type="hidden" name="_action" value="supprimer" />
+                  <input type="hidden" name="_action" value="archiver" />
                   <input type="hidden" name="id" value={c.id} />
+                  <input type="hidden" name="libelle" value={c.email} />
+                  <input type="hidden" name="archived" value="true" />
                   <button
-                    class="rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-red-300 hover:text-red-700"
-                    title={`Supprimer le compte ${c.email}`}
-                    aria-label={`Supprimer ${c.email}`}
+                    class="rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-bo-accent hover:text-bo-accent"
+                    title={`Archiver le compte ${c.email}`}
+                    aria-label={`Archiver ${c.email}`}
                   >
-                    ✕
+                    Archiver
                   </button>
                 </form>
               )}
             </td>
           </tr>
         ))}
-        {comptes.length === 0 && !error && (
+        {actifs.length === 0 && !error && (
           <tr>
             <td class="px-4 py-6 text-bo-muted" colspan="2">
               Aucun compte.
@@ -214,6 +227,42 @@ const supprimable = (c: CompteAdmin) =>
       </tbody>
     </table>
   </section>
+
+  {/* ==================================================================== */}
+  {/* Les comptes archivés                                                 */}
+  {/* ==================================================================== */}
+  {archives.length > 0 && (
+    <section class="mb-6">
+      <h2 class="mb-1 font-semibold">Comptes archivés</h2>
+      <p class="mb-3 max-w-3xl text-xs text-bo-muted">
+        Ils ne peuvent plus entrer dans le back-office, et leurs sessions ont
+        été fermées. Rien n'est effacé : l'historique des commandes garde leur
+        nom, là où ils ont expédié, remboursé ou encaissé. « Restaurer » rend
+        l'accès, avec le rôle et le mot de passe d'avant.
+      </p>
+      <div class="space-y-2 opacity-70">
+        {archives.map((c) => (
+          <div class="flex flex-wrap items-center gap-4 rounded-lg border border-bo-border bg-bo-surface p-3">
+            <div class="min-w-56 flex-1">
+              <p class="font-medium">{c.email}</p>
+              <p class="text-xs text-bo-muted">
+                {nomRole(c.role)} · créé le {leJour(c.createdAt)}
+              </p>
+            </div>
+            <form method="POST">
+              <input type="hidden" name="_action" value="archiver" />
+              <input type="hidden" name="id" value={c.id} />
+              <input type="hidden" name="libelle" value={c.email} />
+              <input type="hidden" name="archived" value="false" />
+              <button class="text-sm text-bo-accent hover:underline">
+                Restaurer
+              </button>
+            </form>
+          </div>
+        ))}
+      </div>
+    </section>
+  )}
 
   <details class="bg-bo-surface border border-bo-border rounded-lg">
     <summary class="cursor-pointer px-5 py-3 font-semibold select-none">
@@ -259,16 +308,21 @@ const supprimable = (c: CompteAdmin) =>
   </details>
 
   <p class="mt-6 text-xs text-bo-muted max-w-3xl">
-    Deux règles que le back-office fait respecter tout seul : il reste toujours
-    au moins un propriétaire, et on ne peut ni supprimer son propre compte ni
-    changer son propre rôle — de quoi éviter de se retrouver dehors.
+    Un compte ne se supprime pas : il s'archive. Deux règles que le back-office
+    fait respecter tout seul : il reste toujours au moins un propriétaire
+    capable d'entrer, et on ne peut ni archiver son propre compte ni changer
+    son propre rôle — de quoi éviter de se retrouver dehors.
   </p>
 
   <script is:inline>
-    document.querySelectorAll("form.js-retirer").forEach((f) => {
+    document.querySelectorAll("form.js-archiver").forEach((f) => {
       f.addEventListener("submit", (e) => {
         const nom = f.getAttribute("data-nom") || "ce compte";
-        if (!confirm(`Supprimer le compte « ${nom} » ? Il perdra l'accès immédiatement.`))
+        if (
+          !confirm(
+            `Archiver le compte « ${nom} » ?\n\nIl perdra l'accès immédiatement et ses sessions seront fermées. Rien n'est supprimé : l'historique des commandes garde son nom.\n\nVous pourrez le restaurer dans « Comptes archivés ».`,
+          )
+        )
           e.preventDefault();
       });
     });

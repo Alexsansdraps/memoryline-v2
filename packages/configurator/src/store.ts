@@ -4,14 +4,27 @@ import { createSignal, type Accessor, type Setter } from "solid-js";
 import type {
   PosterConfig,
   Character,
+  CouleursImage,
+  GroupeCouleur,
   PosterFormat,
   PosterView,
+  PrixDuCadre,
+  TextBlock,
 } from "@memoryline/types";
 import {
+  ORDRE_CALQUES,
   colorKey,
+  dessinAvecImage,
+  parametreDesFamilles,
   recolorSvg,
   POLICE_TITRE_DEFAUT,
   POLICE_SOUSTITRE_DEFAUT,
+  COULEUR_TEXTE_DEFAUT,
+  NB_LIGNES_AFFICHE,
+  lignesDuTexte,
+  styleDesLignes,
+  textesDepuisLignes,
+  Y_SOL_PERSONNAGES,
 } from "@memoryline/types";
 
 /** Étapes du flow configurateur (§18.2 F). */
@@ -48,6 +61,24 @@ export interface VariantDTO {
   view: PosterView | string | null;
   /** Zones de couleur par défaut : { st0: "#hex", … } ou null. */
   colorZones: Record<string, string> | null;
+  /**
+   * Zones que le client ne recolore pas (petits détails : ruban, élastique…),
+   * décochées au back-office. Pas de pastilles pour elles, et elles gardent
+   * leur couleur par défaut (cf. couleursDeLaPiece). Absent = tout proposé.
+   */
+  zonesMasquees?: string[] | null;
+  /**
+   * Nuances réunies sous une seule rangée de pastilles (ombres, reflets d'un
+   * dessin vectorisé), avec le nom affiché au-dessus. Absent = une rangée par
+   * zone, comme avant.
+   */
+  groupesCouleurs?: GroupeCouleur[] | null;
+  /**
+   * Familles de couleurs, quand le dessin de la pièce est une image en pixels
+   * et non un tracé. Absent = dessin vectoriel, ou rien de réglé au
+   * back-office : la pièce s'affiche exactement comme son fichier.
+   */
+  couleursImage?: CouleursImage | null;
   position: number;
   /** Catégorie de la pièce (« Casquettes »…) : elle porte le nuancier. */
   pieceCategoryId?: number | null;
@@ -77,10 +108,35 @@ export interface CharacterDTO {
   baseSvgUrl: string;
   /** Zones de couleur par défaut de la base : { stN: "#hex" }. */
   baseColorZones: Record<string, string> | null;
+  /** Groupes de couleurs du dessin de base (nuances réunies, noms, nuanciers). */
+  baseGroupesCouleurs?: GroupeCouleur[] | null;
+  /**
+   * Zones de référence des groupes proposés au client. Absent = le premier
+   * groupe seulement (la peau), la règle d'avant ce réglage.
+   */
+  baseZonesProposees?: string[] | null;
+  /**
+   * Familles de couleurs du dessin de base, quand celui-ci est une IMAGE EN
+   * PIXELS (photo ou illustration enregistrée en SVG). C'est ce qui donne des
+   * pastilles de couleur à un chien photographié. Absent = dessin vectoriel,
+   * ou rien de réglé au back-office.
+   */
+  baseCouleursImage?: CouleursImage | null;
   /** Type d'affiche du perso (slug) : « front », « back », ou créé au BO. */
   orientation?: string;
   /** Bas réel du contenu dans le viewBox (0..1) pour aligner les pieds au sol. */
   bottomPct?: number;
+  /**
+   * Taille de CE personnage, en facteur de la largeur de référence. Un chat
+   * n'occupe pas la place d'un adulte. Absent, il vaut 1 : c'est ce que
+   * faisaient tous les personnages avant que ce réglage existe.
+   */
+  facteurTaille?: number;
+  /**
+   * Décalage de CÔTÉ réglé au back-office, en fraction de la largeur de
+   * l'affiche. Absent, il vaut 0 : le personnage reste au centre de sa case.
+   */
+  decalageX?: number;
   /**
    * Variantes AUTORISÉES pour ce perso, par slot, dans l'ordre d'affichage.
    * Les nombres = `position` des VariantDTO (ids d'ancienne config), pas
@@ -176,7 +232,8 @@ export function variantesDeVue(
  *   qu'une couleur choisie pour un slot déteigne sur les autres (cf.
  *   colorsForScope). Les clés plates "stN" (anciens paniers) restent acceptées
  *   et s'appliquent à toutes les couches.
- * - x/y/scale/position = placement automatique sur l'affiche.
+ * - x/y/scale/position = placement automatique sur l'affiche, sauf x/y quand
+ *   `placementManuel` est vrai : le client a posé le personnage lui-même.
  */
 export interface WorkingCharacter {
   characterId: string | number;
@@ -184,18 +241,28 @@ export interface WorkingCharacter {
   x: number;
   y: number;
   scale: number;
+  /**
+   * Le client a déplacé ce personnage : x/y valent les siens, il ne suit plus
+   * la rangée. Faux tant qu'il n'y a pas touché — c'est le rangement
+   * automatique qui reste la règle.
+   */
+  placementManuel: boolean;
   /** slot -> variantId (optionnel). */
   assets: Partial<Record<Slot, string | number>>;
   /** "scope:zone" -> hex (scope = "base" | slot ; clés plates legacy tolérées). */
   colors: Record<string, string>;
 }
 
-/** Cadre proposé en option, tel que l'API le renvoie. */
-export interface CadreDTO {
+/**
+ * Cadre proposé en option, tel que l'API le renvoie.
+ *
+ * Deux suppléments, un par format : le montant à montrer se choisit avec
+ * `prixDuCadreCents` (@memoryline/types), la fonction qui facture aussi.
+ */
+export interface CadreDTO extends PrixDuCadre {
   id: number | string;
   slug: string;
   name: string;
-  priceCents: number;
   previewColor?: string | null;
 }
 
@@ -208,23 +275,48 @@ export interface ConfiguratorState {
   view: string;
   /** Cadre choisi, ou null si le client n'en veut pas. */
   frameId: string | number | null;
-  /** Texte ET police, choisis séparément pour le titre et le sous-titre. */
-  title: { value: string; font: string };
-  subtitle: { value: string; font: string };
-  /** Style PARTAGÉ : la couleur et la taille valent pour les deux. */
+  /** Les lignes de l'affiche, dans l'ordre : toujours NB_LIGNES_AFFICHE entrées. */
+  lignes: LigneTexte[];
+  /** Style PARTAGÉ : la couleur et la taille valent pour toutes les lignes. */
   textStyle: { font: string; color: string; size: number };
   characters: WorkingCharacter[];
   /** index du personnage en cours d'édition, sinon null. */
   editingIndex: number | null;
 }
 
-const DEFAULT_TEXT_COLOR = "#FFFFFF"; // blanc par défaut (charte affiches)
+const DEFAULT_TEXT_COLOR = COULEUR_TEXTE_DEFAUT; // blanc (charte affiches)
 const DEFAULT_FONT = "sans-serif";
-/** Polices par défaut de la charte : titre en serif, sous-titre manuscrit. */
-const DEFAUT_POLICE_TITRE = POLICE_TITRE_DEFAUT;
-const DEFAUT_POLICE_SOUSTITRE = POLICE_SOUSTITRE_DEFAUT;
-/** Taille de texte = facteur relatif (1 = défaut). Appliqué au titre et sous-titre. */
+/** Taille de texte = facteur relatif (1 = défaut). Commun à toutes les lignes. */
 const DEFAULT_TEXT_SIZE = 1;
+
+/** Une ligne de l'affiche : son texte et la police qui la dessine. */
+export interface LigneTexte {
+  value: string;
+  font: string;
+}
+
+/**
+ * Police de départ, ligne par ligne. Les deux premières reprennent celles de
+ * l'ancien titre et de l'ancien sous-titre — la charte n'a pas changé, seul
+ * le nombre de lignes — et la troisième suit la deuxième.
+ */
+const POLICES_LIGNES_DEFAUT: readonly string[] = [
+  POLICE_TITRE_DEFAUT,
+  POLICE_SOUSTITRE_DEFAUT,
+  POLICE_SOUSTITRE_DEFAUT,
+];
+
+/** Police de départ d'une ligne, quel que soit son rang. */
+export function policeDefautLigne(index: number): string {
+  return POLICES_LIGNES_DEFAUT[index] ?? POLICE_SOUSTITRE_DEFAUT;
+}
+
+function lignesVides(): LigneTexte[] {
+  return Array.from({ length: NB_LIGNES_AFFICHE }, (_, i) => ({
+    value: "",
+    font: policeDefautLigne(i),
+  }));
+}
 
 function emptyState(): ConfiguratorState {
   return {
@@ -234,8 +326,7 @@ function emptyState(): ConfiguratorState {
     format: "A4",
     view: "front",
     frameId: null,
-    title: { value: "", font: DEFAUT_POLICE_TITRE },
-    subtitle: { value: "", font: DEFAUT_POLICE_SOUSTITRE },
+    lignes: lignesVides(),
     textStyle: {
       font: DEFAULT_FONT,
       color: DEFAULT_TEXT_COLOR,
@@ -254,22 +345,20 @@ export function stateFromConfig(cfg: PosterConfig): ConfiguratorState {
   base.format = cfg.format ?? "A4";
   base.frameId = cfg.frameId ?? null;
   base.view = cfg.view ?? "front";
-  if (cfg.texts.title)
-    base.title = {
-      value: cfg.texts.title.value,
-      font: cfg.texts.title.font ?? DEFAUT_POLICE_TITRE,
-    };
-  if (cfg.texts.subtitle)
-    base.subtitle = {
-      value: cfg.texts.subtitle.value,
-      font: cfg.texts.subtitle.font ?? DEFAUT_POLICE_SOUSTITRE,
-    };
-  // Style partagé : repris du titre en priorité, sinon du sous-titre.
-  const src = cfg.texts.title ?? cfg.texts.subtitle;
+  // Une commande d'avant les trois lignes porte un titre et un sous-titre :
+  // lignesDuTexte() les rend ici en lignes 1 et 2, sans qu'on ait à le savoir.
+  base.lignes = lignesDuTexte(cfg.texts).map((bloc, i) => ({
+    value: bloc?.value ?? "",
+    font: bloc?.font ?? policeDefautLigne(i),
+  }));
+  // Style partagé, lu sur la première ligne remplie. Une couleur libre choisie
+  // avant le passage aux deux pastilles est CONSERVÉE telle quelle : la
+  // réécrire changerait une affiche que le client a validée.
+  const src = styleDesLignes(cfg.texts);
   base.textStyle = {
     font: src?.font ?? DEFAULT_FONT,
     color: src?.color ?? DEFAULT_TEXT_COLOR,
-    size: (src as { size?: number })?.size ?? DEFAULT_TEXT_SIZE,
+    size: src?.size ?? DEFAULT_TEXT_SIZE,
   };
   base.characters = cfg.characters.map((c, i) => {
     const assets: Partial<Record<Slot, string | number>> = {};
@@ -283,6 +372,7 @@ export function stateFromConfig(cfg: PosterConfig): ConfiguratorState {
       x: c.x ?? 0.5,
       y: c.y ?? 0.5,
       scale: c.scale ?? 1,
+      placementManuel: c.placementManuel === true,
       assets,
       colors: { ...(c.colors ?? {}) },
     };
@@ -301,13 +391,32 @@ export const CHAR_BASE_WIDTH = 0.22;
  * BAS de l'affiche, centrée en groupe et recentrée à chaque ajout.
  * Les persos rétrécissent quand ils sont nombreux pour tenir côte à côte sans
  * déborder, et sont espacés régulièrement autour du centre (x=0.5).
- * Le client ne positionne plus à la main (§18.2 F).
+ *
+ * C'est le comportement par DÉFAUT : un personnage auquel le client n'a pas
+ * touché se range ici, et la rangée se recompose à chaque ajout. Voir
+ * `placementsAffiche` pour ceux qu'il a déplacés lui-même.
  */
 export function autoPlace(
   characters: WorkingCharacter[],
+  /**
+   * La taille propre à chaque personnage, en facteur de la largeur de
+   * référence. Absente, tout le monde fait la même largeur — c'est ce que
+   * faisait la rangée avant qu'un chat puisse être plus petit qu'un homme.
+   */
+  facteurDe?: (c: WorkingCharacter) => number,
+  /**
+   * Le décalage de côté de chaque personnage, réglé au back-office. Absent,
+   * tout le monde reste au centre de sa case, comme avant ce réglage.
+   */
+  decalageDe?: (c: WorkingCharacter) => number,
 ): { x: number; y: number; scale: number }[] {
   const n = characters.length;
   if (n === 0) return [];
+  // Bornés comme en base : un facteur aberrant ne doit pas faire disparaître
+  // la rangée entière.
+  const facteurs = characters.map((c) =>
+    Math.min(2, Math.max(0.3, facteurDe?.(c) ?? 1)),
+  );
 
   // NB : ce calage suppose bottom_pct MESURÉ en base (pnpm run measure-anchors) —
   // sans ça les persos flottent (vide sous les pieds non compensé).
@@ -315,29 +424,132 @@ export function autoPlace(
   // compenser la correction du drop (facteur √2 oublié) sans bouger les
   // humains (bp≈0.86) déjà calés — seuls les persos à fort vide (animaux)
   // descendent maintenant jusqu'au muret.
-  const Y = 0.816; // posés sur le muret
+  // La même ligne que l'écran de calage du back-office — la valeur est
+  // partagée, voir Y_SOL_PERSONNAGES. C'est là-bas qu'on règle comment chaque
+  // personnage se pose ; ici, on ne fait que les ranger dessus.
+  const Y = Y_SOL_PERSONNAGES;
   // Échelle : persos plus petits ; rétrécit avec le nombre pour tenir côte à
   // côte sans déborder (rangée dans ~90% de la largeur).
   const usable = 0.9;
-  const scale = Math.min(0.7, usable / (n * CHAR_BASE_WIDTH));
-  const slotW = CHAR_BASE_WIDTH * scale; // largeur effective d'un perso
+  // On compte la place réellement demandée, pas le nombre de personnages :
+  // deux chats à 0,6 tiennent dans ce qu'un adulte occupe.
+  const demande = facteurs.reduce((s, f) => s + f, 0);
+  const scale = Math.min(0.7, usable / (demande * CHAR_BASE_WIDTH));
+  // Largeur effective de CHAQUE perso, la sienne.
+  const largeurs = facteurs.map((f) => CHAR_BASE_WIDTH * scale * f);
   // Resserrement : distance entre centres < largeur d'un perso (les cadres se
   // chevauchent légèrement, les dessins ont de la marge). 1 = côte à côte.
   const GAP = 0.8;
-  const stepW = slotW * GAP; // distance entre centres de persos voisins
-  const rowW = slotW + stepW * (n - 1); // largeur totale de la rangée
+  // Le pas entre deux voisins tient compte des DEUX largeurs : un chat collé à
+  // un adulte ne s'écarte pas comme deux adultes.
+  const pas = largeurs.map((w, i) =>
+    i === 0 ? 0 : ((largeurs[i - 1]! + w) / 2) * GAP,
+  );
+  const rowW =
+    largeurs[0]! / 2 +
+    pas.reduce((s, v) => s + v, 0) +
+    largeurs[n - 1]! / 2; // largeur totale de la rangée
   const start = 0.5 - rowW / 2; // bord gauche pour centrer le groupe
 
-  // PENTE DU MURET : il descend de gauche à droite (~+9% de bas en haut sur
-  // toute la largeur). Chaque perso suit cette pente -> y augmente avec x pour
-  // que les pieds restent sur le bord incliné (gauche plus haut, droite plus bas).
-  const SLOPE = 0.09; // dénivelé total sur la largeur de l'affiche
+  /*
+   * PLUS DE PENTE. Une pente de 9 % faisait descendre chaque personnage un
+   * peu plus bas que son voisin de gauche. Elle avait été réglée pour UN
+   * fond — un muret incliné — et s'appliquait depuis à toutes les affiches du
+   * catalogue : sur un fond à sol plat, les personnages apparaissaient en
+   * escalier.
+   *
+   * Et l'écran de calage du back-office, lui, pose les pieds sur une ligne
+   * PLATE. Un personnage calé parfaitement là-bas ressortait donc décalé ici.
+   * Tout le monde sur la même ligne : c'est le calage du back-office, et lui
+   * seul, qui décide comment chacun se pose.
+   */
 
-  return characters.map((_, i) => {
-    const x = start + slotW / 2 + stepW * i; // centre du i-ème perso (0..1)
-    // décalage selon la position : centré sur 0.5 -> +/- la moitié de la pente.
-    const slopeY = (x - 0.5) * SLOPE;
-    return { x, y: Y + slopeY, scale };
+  let curseur = start + largeurs[0]! / 2; // centre du premier
+  return characters.map((c, i) => {
+    if (i > 0) curseur += pas[i]!;
+    // Sa case dans la rangée, plus l'écart réglé pour CE personnage au
+    // back-office. Ramené dans l'affiche : un décalage vers la droite sur le
+    // dernier de la rangée ne doit pas le faire sortir du cadre.
+    const ecart = Math.min(0.4, Math.max(-0.4, decalageDe?.(c) ?? 0));
+    const demiLargeur = largeurs[i]! / 2;
+    const x = Math.min(1 - demiLargeur, Math.max(demiLargeur, curseur + ecart));
+    // L'échelle rendue est celle du personnage : la rangée décide de la place,
+    // le facteur décide de la taille dans cette place.
+    return { x, y: Y, scale: scale * facteurs[i]! };
+  });
+}
+
+/**
+ * Placement d'un personnage sur l'affiche : le centre de son cadre et son
+ * échelle, en fractions de la zone d'affiche.
+ */
+export interface PlacementPersonnage {
+  x: number;
+  y: number;
+  scale: number;
+}
+
+/**
+ * Hauteur du cadre d'un personnage en fraction de la HAUTEUR de l'affiche.
+ *
+ * Le cadre est deux fois plus haut que large et l'affiche est un portrait
+ * 1:√2 : une largeur comptée en fraction de largeur devient une hauteur en
+ * fraction de hauteur en la multipliant par √2 (2 ÷ √2).
+ */
+function hauteurCadre(scale: number): number {
+  return CHAR_BASE_WIDTH * scale * Math.SQRT2;
+}
+
+function entre(valeur: number, mini: number, maxi: number): number {
+  return Math.min(Math.max(valeur, mini), maxi);
+}
+
+/**
+ * Ramène une position dans l'affiche : le dessin doit y tenir en entier.
+ *
+ * `bas` = part du cadre réellement occupée par le dessin (bottomPct). C'est
+ * elle qui dit de combien le cadre a été descendu pour poser les pieds au sol,
+ * donc où tombe vraiment le haut du dessin : sans elle, un animal, tout en bas
+ * de son cadre, refuserait de descendre jusqu'au muret.
+ */
+export function bornerPlacement(
+  position: { x: number; y: number },
+  scale: number,
+  bas: number,
+): { x: number; y: number } {
+  const largeur = CHAR_BASE_WIDTH * scale;
+  const hauteur = hauteurCadre(scale);
+  const descente = (1 - bas) * hauteur;
+  return {
+    x: entre(position.x, largeur / 2, 1 - largeur / 2),
+    y: entre(position.y, hauteur / 2 - descente, 1 - hauteur / 2),
+  };
+}
+
+/**
+ * Placement final des personnages : la rangée automatique, sauf pour ceux que
+ * le client a posés lui-même, qui gardent leur position.
+ *
+ * L'ÉCHELLE reste toujours celle de la rangée, même après un déplacement :
+ * glisser un personnage ne le redimensionne pas, et ajouter un personnage
+ * continue de resserrer tout le monde — sinon le nouveau venu rapetisserait
+ * seul, à côté de géants.
+ *
+ * `basDuDessin` donne le bottomPct de chaque personnage ; sans lui on suppose
+ * un dessin qui remplit son cadre, ce qui borne un peu plus court.
+ */
+export function placementsAffiche(
+  characters: WorkingCharacter[],
+  basDuDessin?: (c: WorkingCharacter) => number,
+  facteurDe?: (c: WorkingCharacter) => number,
+  decalageDe?: (c: WorkingCharacter) => number,
+): PlacementPersonnage[] {
+  const rangee = autoPlace(characters, facteurDe, decalageDe);
+  return characters.map((c, i) => {
+    const auto = rangee[i] ?? { x: 0.5, y: 0.816, scale: 0.6 };
+    if (!c.placementManuel) return auto;
+    const pose = bornerPlacement(c, auto.scale, basDuDessin?.(c) ?? 1);
+    return { x: pose.x, y: pose.y, scale: auto.scale };
   });
 }
 
@@ -345,8 +557,16 @@ export function autoPlace(
 export function configFromState(
   state: ConfiguratorState,
   productId: string | number | undefined,
+  basDuDessin?: (c: WorkingCharacter) => number,
+  facteurDe?: (c: WorkingCharacter) => number,
+  decalageDe?: (c: WorkingCharacter) => number,
 ): PosterConfig {
-  const placement = autoPlace(state.characters);
+  const placement = placementsAffiche(
+    state.characters,
+    basDuDessin,
+    facteurDe,
+    decalageDe,
+  );
   const characters: Character[] = state.characters.map((c, i) => {
     const p = placement[i] ?? { x: c.x, y: c.y, scale: c.scale };
     // assets : slot -> variantId, sans les slots vides.
@@ -355,7 +575,7 @@ export function configFromState(
       const v = c.assets[slot];
       if (v !== undefined) assets[slot] = v;
     }
-    return {
+    const perso: Character = {
       typeId: c.characterId,
       position: c.position,
       x: p.x,
@@ -364,6 +584,10 @@ export function configFromState(
       assets,
       colors: { ...c.colors },
     };
+    // Le drapeau ne part QUE s'il a lieu d'être : une configuration sans lui se
+    // range automatiquement à la réouverture, comme toutes les précédentes.
+    if (c.placementManuel) perso.placementManuel = true;
+    return perso;
   });
   return {
     schemaVersion: 1,
@@ -373,32 +597,46 @@ export function configFromState(
     format: state.format,
     view: state.view,
     frameId: state.frameId,
-    texts: {
-      // La POLICE est propre à chaque bloc ; couleur et taille restent
-      // communes (charte : un seul coloris de texte sur l'affiche).
-      title: state.title.value
-        ? {
-            value: state.title.value,
-            font: state.title.font,
-            color: state.textStyle.color,
-            size: state.textStyle.size,
-          }
-        : undefined,
-      subtitle: state.subtitle.value
-        ? {
-            value: state.subtitle.value,
-            font: state.subtitle.font,
-            color: state.textStyle.color,
-            size: state.textStyle.size,
-          }
-        : undefined,
-    },
+    texts: { lines: lignesEnregistrees(state) },
     characters,
   };
 }
 
-/** Slots dans l'ordre d'empilement bas -> haut (par-dessus la base). */
-export const SLOT_ZORDER = ["pants", "clothes", "hair", "accessory"] as const;
+/**
+ * Les lignes telles qu'elles partent dans la commande : les REMPLIES, dans
+ * l'ordre, et rien d'autre.
+ *
+ * Une ligne laissée vide ne laisse pas de trou dans la liste — l'API refuse un
+ * trou (400), et le rendu ne lit de toute façon que la suite des lignes
+ * remplies. La POLICE reste propre à chaque ligne ; couleur et taille sont
+ * communes (charte : un seul coloris de texte sur l'affiche).
+ */
+function lignesEnregistrees(state: ConfiguratorState): TextBlock[] {
+  const remplies = state.lignes
+    .filter((l) => l.value.trim() !== "")
+    .map((l) => ({
+      value: l.value,
+      font: l.font,
+      color: state.textStyle.color,
+      size: state.textStyle.size,
+    }));
+  // Passage par textesDepuisLignes() : c'est lui qui dit la forme enregistrée,
+  // et il borne au passage le nombre de lignes.
+  return (textesDepuisLignes(remplies).lines ?? []).filter(
+    (b): b is TextBlock => b !== undefined,
+  );
+}
+
+/**
+ * Slots dans l'ordre d'empilement bas vers haut, par-dessus la base.
+ *
+ * Repris de l'ordre partagé et réduit à ce que le configurateur propose : une
+ * seconde liste écrite à la main a fini par contredire celle de l'impression,
+ * et l'affiche livrée ne ressemblait plus à l'aperçu validé.
+ */
+export const SLOT_ZORDER = ORDRE_CALQUES.filter((s): s is Slot =>
+  (SLOTS as readonly string[]).includes(s),
+);
 
 /** Trouve une variante par id dans la liste d'un slot. */
 export function findVariant(
@@ -410,11 +648,11 @@ export function findVariant(
 }
 
 /**
- * Crée un personnage par défaut pour une base. `colors` reste VIDE : le SVG de
- * base a déjà ses bonnes couleurs intégrées (peau, tenue). On ne ré-applique pas
- * baseColorZones — sinon les zones .stN, qui n'ont pas la même sémantique entre
- * la base et les variantes de slots, se mélangent (peau qui devient bleue, etc.).
- * Les couleurs ne sont surchargées que si le client en change explicitement.
+ * Crée un personnage par défaut pour une base. Aucune couleur de la BASE dans
+ * `colors` : l'aperçu comme l'impression partent des couleurs par défaut du
+ * back-office (couleursDeLaBase), sous le seul scope de la base — les recopier
+ * ici figerait celles du jour dans le panier. Les couleurs de la base ne sont
+ * surchargées que si le client en change explicitement.
  */
 export function defaultCharacter(
   character: CharacterDTO,
@@ -447,6 +685,7 @@ export function defaultCharacter(
     x: 0.5,
     y: 0.55,
     scale: 1,
+    placementManuel: false,
     assets,
     colors,
   };
@@ -595,6 +834,43 @@ export function recolorForCharacter(
 ): string {
   if (!rawSvg) return rawSvg;
   return recolorSvg(rawSvg, colors);
+}
+
+/**
+ * Le dessin d'une couche prêt à être affiché, quand ce dessin est une IMAGE EN
+ * PIXELS (un chien photographié, un chat illustré) dont le client a changé les
+ * couleurs.
+ *
+ * LA BOUTIQUE NE RECOLORE RIEN ELLE-MÊME. Elle remplace l'adresse de l'image
+ * par celle d'une route de l'API qui rend la version recolorée. Cette image
+ * est, aux octets près, celle que le fichier d'impression contiendra : les
+ * deux lisent le même fichier rangé sur le serveur. Recolorer ici, sur un
+ * canevas, aurait demandé de refaire le même calcul dans deux langages et deux
+ * bibliothèques d'images — et un jour, l'imprimé n'aurait plus été l'aperçu.
+ *
+ * L'adresse porte les couleurs voulues : elle ne change que si une couleur
+ * change, et le navigateur garde donc en cache tout ce qu'il a déjà montré.
+ *
+ * Sans famille à recolorer, le dessin est rendu tel quel : un personnage
+ * vectoriel, ou un personnage en pixels que la boutique n'a pas réglé, ne fait
+ * pas un aller-retour de plus.
+ */
+export function dessinPourLEcran(
+  rawSvg: string,
+  colors: Record<string, string>,
+  couleursImage: CouleursImage | null | undefined,
+  /** « /characters/58 » ou « /pieces/12 ». */
+  chemin: string,
+  assetBaseUrl: string | undefined,
+): string {
+  if (!rawSvg) return rawSvg;
+  const parametre = parametreDesFamilles(colors, couleursImage);
+  if (!parametre) return rawSvg;
+  const base = (assetBaseUrl ?? "").replace(/\/$/, "");
+  return dessinAvecImage(
+    rawSvg,
+    `${base}${chemin}/image-couleurs?c=${encodeURIComponent(parametre)}`,
+  );
 }
 
 /**

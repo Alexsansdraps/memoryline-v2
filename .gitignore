@@ -25,3 +25,6 @@ data/assets/
 
 # Dumps pg locaux (sauvegardes, ne pas versionner)
 data/backups/
+
+# Sauvegardes locales : dumps de la base (données clientes) et fichiers
+sauvegardes/

@@ -9,6 +9,67 @@
  * Les montants sont en CENTIMES, entiers.
  */
 
+/**
+ * Les NATURES de mode de livraison, écrites ici et nulle part ailleurs.
+ *
+ * La nature ne décrit pas le transporteur : elle dit ce qu'il faut DEMANDER
+ * au client pour que le colis arrive quelque part. Une adresse, un point
+ * relais, ou rien du tout. C'est la seule chose dont le tunnel de commande a
+ * besoin pour savoir quels champs afficher, et le serveur pour savoir quoi
+ * exiger avant d'accepter la commande.
+ *
+ * Il n'y a PAS de nature « lettre » : une affiche part roulée dans un tube ou
+ * sous pli rigide, c'est un colis. Un affranchissement de lettre ne couvrirait
+ * ni l'épaisseur, ni le cadre, ni la casse — « c'est pas possible c'est un
+ * colis ». Les envois postaux passent donc tous par « à domicile ».
+ */
+export const NATURES_LIVRAISON = [
+  {
+    code: "home",
+    nom: "À domicile",
+    /** Ce qu'on demande au client : "adresse", "point" ou rien. */
+    demande: "adresse",
+    aide: "Le colis part à l'adresse du client.",
+  },
+  {
+    code: "relay",
+    nom: "Point relais",
+    demande: "point",
+    aide: "Le client choisit un point de retrait dans la liste du transporteur.",
+  },
+  {
+    code: "pickup",
+    nom: "Retrait sur place",
+    demande: "rien",
+    aide: "Le client vient chercher sa commande : rien à saisir.",
+  },
+] as const;
+
+/** Les codes de nature acceptés — pour valider ce qui arrive du navigateur. */
+export const CODES_NATURE = NATURES_LIVRAISON.map((n) => n.code) as readonly string[];
+
+/** Le nom lisible d'une nature, ou le code brut si elle est inconnue. */
+export function nomNature(kind: string): string {
+  return NATURES_LIVRAISON.find((n) => n.code === kind)?.nom ?? kind;
+}
+
+/**
+ * Ce mode demande-t-il une adresse de livraison ?
+ *
+ * Passe par la table plutôt que par « kind === "home" » : une nature ajoutée
+ * ensuite serait sinon oubliée dans l'un des trois endroits qui posent la
+ * question, et le client paierait un envoi postal sans jamais avoir donné son
+ * adresse.
+ */
+export function demandeUneAdresse(kind: string): boolean {
+  return NATURES_LIVRAISON.find((n) => n.code === kind)?.demande === "adresse";
+}
+
+/** Ce mode demande-t-il de choisir un point de retrait ? */
+export function demandeUnPointRelais(kind: string): boolean {
+  return NATURES_LIVRAISON.find((n) => n.code === kind)?.demande === "point";
+}
+
 /** Zone de livraison : un groupe de pays aux mêmes tarifs. */
 export interface ZoneLivraison {
   id: number;
@@ -25,7 +86,7 @@ export interface ModeLivraison {
   slug: string;
   name: string;
   description?: string | null;
-  /** relay = point relais · home = adresse · pickup = retrait sur place. */
+  /** Une des natures de `NATURES_LIVRAISON` : ce qu'on demande au client. */
   kind: string;
   carrier?: string | null;
   /** Où retirer, pour un mode « pickup » — la boutique est itinérante. */
@@ -34,14 +95,31 @@ export interface ModeLivraison {
   position?: number;
 }
 
-/** Tarif d'un mode dans une zone. */
+/**
+ * Tarif d'un mode dans une zone, pour une tranche de poids.
+ *
+ * Un même mode peut avoir plusieurs tarifs dans la même zone : « de 0 à 2 kg,
+ * 5 € ; de 2 à 5 kg, 8 € ». Le cas simple — un seul tarif de 0 à l'infini —
+ * reste le défaut, personne n'est obligé de découper quoi que ce soit.
+ */
 export interface TarifLivraison {
   methodId: number;
   zoneId: number;
   priceCents: number;
   /** Montant à partir duquel c'est offert. Null = jamais. */
   freeFromCents?: number | null;
+  /** Borne basse de la tranche, en grammes (incluse). */
+  minWeightGrams?: number | null;
+  /** Borne haute, en grammes (exclue). Null = pas de limite. */
+  maxWeightGrams?: number | null;
   active?: boolean;
+}
+
+/** Le tarif couvre-t-il ce poids ? */
+function couvreLePoids(t: TarifLivraison, poidsGrammes: number): boolean {
+  const min = t.minWeightGrams ?? 0;
+  const max = t.maxWeightGrams;
+  return poidsGrammes >= min && (max === null || max === undefined || poidsGrammes < max);
 }
 
 /** Ce que l'API expose au site : de quoi calculer sans rien redemander. */
@@ -49,6 +127,20 @@ export interface CatalogueLivraison {
   zones: ZoneLivraison[];
   modes: ModeLivraison[];
   tarifs: TarifLivraison[];
+  /**
+   * Les stands OUVERTS, pour un mode « retrait sur place ».
+   *
+   * Sans eux, « retrait à convenir » ne disait rien de concret : le client
+   * validait sans savoir où ni quand, et il fallait lui écrire ensuite. Le
+   * code du stand n'y figure jamais — c'est lui qui ouvre la caisse.
+   */
+  stands?: StandOuvert[];
+}
+
+/** Un stand ouvert, tel que le tunnel de commande le montre. */
+export interface StandOuvert {
+  id: number;
+  nom: string;
 }
 
 /** Code pays normalisé : deux lettres majuscules, ou chaîne vide. */
@@ -99,19 +191,37 @@ export function optionsLivraison(
   catalogue: CatalogueLivraison,
   pays: string,
   sousTotalCents: number,
+  poidsGrammes = 0,
+  /**
+   * Le seuil d'une promotion « livraison offerte dès X € », s'il y en a une.
+   *
+   * Il s'ajoute à la franchise propre à chaque grille tarifaire, sans la
+   * remplacer : le port est offert dès que l'UN des deux est atteint. Une
+   * franchise négociée avec un transporteur n'a pas à disparaître parce
+   * qu'une promotion passe, et l'inverse non plus.
+   *
+   * Cf. `seuilPortOffertCents` dans promo.ts, qui le lit dans les règles.
+   */
+  seuilPromotionCents: number | null = null,
 ): OptionLivraison[] {
   const zone = zonePourPays(catalogue.zones, pays);
   if (!zone) return [];
   return catalogue.modes
     .filter((m) => m.active !== false)
     .map((mode) => {
-      const tarif = catalogue.tarifs.find(
-        (t) => t.methodId === mode.id && t.zoneId === zone.id,
-      );
+      // Aucune tranche ne couvre le poids = le mode ne SAIT PAS transporter ce
+      // colis. On le retire au lieu de retomber sur un tarif au hasard : mieux
+      // vaut proposer moins de modes qu'un affranchissement faux.
+      const tarif = catalogue.tarifs
+        .filter((t) => t.methodId === mode.id && t.zoneId === zone.id)
+        .filter((t) => couvreLePoids(t, poidsGrammes))
+        .sort((a, b) => (a.minWeightGrams ?? 0) - (b.minWeightGrams ?? 0))
+        .at(-1);
       if (!tarif || tarif.active === false) return null;
-      const seuil = tarif.freeFromCents;
+      const atteint = (s: number | null | undefined) =>
+        typeof s === "number" && s >= 0 && sousTotalCents >= s;
       const offert =
-        typeof seuil === "number" && seuil >= 0 && sousTotalCents >= seuil;
+        atteint(tarif.freeFromCents) || atteint(seuilPromotionCents);
       return {
         mode,
         tarif,
@@ -133,10 +243,16 @@ export function fraisDePort(
   modeSlug: string,
   pays: string,
   sousTotalCents: number,
+  poidsGrammes = 0,
+  seuilPromotionCents: number | null = null,
 ): OptionLivraison | null {
   return (
-    optionsLivraison(catalogue, pays, sousTotalCents).find(
-      (o) => o.mode.slug === modeSlug,
-    ) ?? null
+    optionsLivraison(
+      catalogue,
+      pays,
+      sousTotalCents,
+      poidsGrammes,
+      seuilPromotionCents,
+    ).find((o) => o.mode.slug === modeSlug) ?? null
   );
 }

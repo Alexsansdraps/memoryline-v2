@@ -6,11 +6,13 @@ import type {
   BackgroundDTO,
   CharacterTypeDTO,
   PosterConfig,
+  PosterFormat,
 } from "@memoryline/types";
 import {
   PUBLIC_API_URL,
   browserApi,
   getCartId,
+  type OrderItem,
 } from "../lib/api.ts";
 
 /**
@@ -32,8 +34,12 @@ export interface ConfiguratorIslandProps {
   prices?: Partial<Record<string, number>>;
   /** Décor d'avant-plan du produit (muret/banc…), rendu au 1er plan. */
   foregroundUrl?: string | null;
-  /** Réglages par défaut du produit (pré-remplissage). */
-  defaults?: { title?: string | null; subtitle?: string | null; view?: string | null };
+  /** Réglages par défaut du produit (pré-remplissage), une entrée par ligne. */
+  defaults?: {
+    lignes?: (string | null)[];
+    view?: string | null;
+    format?: PosterFormat;
+  };
   /** "add" depuis la fiche produit, "edit" depuis le panier. */
   mode?: "add" | "edit";
   /** Réouverture (edit) : config de la ligne à modifier. */
@@ -42,6 +48,23 @@ export interface ConfiguratorIslandProps {
   itemId?: number;
   /** Fermeture de la modale (bouton « Retour » à l'étape 1). */
   onCancel?: () => void;
+  /** Stand de salon : aucun montant à l'écran (cf. ConfiguratorProps). */
+  sansPrix?: boolean;
+  /**
+   * Faux quand le site ne propose pas les cadres (réglage du back-office,
+   * jamais au stand) : la rubrique « Cadre » disparaît du configurateur, et
+   * une ligne rouverte depuis le panier repart sans son cadre. Absent, les
+   * cadres sont proposés.
+   */
+  cadresProposes?: boolean;
+  /**
+   * Le nombre d'exemplaires, choisi sur la fiche produit.
+   *
+   * Il vient de l'extérieur et non du configurateur : on décide combien avant
+   * de composer, au même endroit que pour une affiche prête à imprimer. Une
+   * ligne de panier porte ce nombre ; les exemplaires sont identiques.
+   */
+  quantite?: number;
 }
 
 /** Prix selon le format choisi, depuis les prix réels des variantes. */
@@ -60,13 +83,16 @@ export default function ConfiguratorIsland(
 ): JSX.Element {
   const tr = t(props.langue ?? LANGUE_DEFAUT);
   const mode = props.mode ?? "add";
+  const cadresProposes = props.cadresProposes !== false;
 
   // Chargement de la bibliothèque (personnages + variantes de slots + fonds).
   const [data] = createResource(async () => {
     const [library, backgrounds, cadres] = await Promise.all([
       browserApi.characters(),
       browserApi.backgrounds(props.product.id),
-      browserApi.frames().catch(() => []),
+      // Pas de cadres à proposer : une liste vide, et le configurateur
+      // n'affiche pas la rubrique du tout (StepFormat).
+      cadresProposes ? browserApi.frames().catch(() => []) : [],
     ]);
     return {
       characters: library.characters,
@@ -80,7 +106,17 @@ export default function ConfiguratorIsland(
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
+  /**
+   * L'affiche validée part au panier, avec son nombre d'exemplaires.
+   *
+   * La quantité vient du configurateur et non de la configuration : trois
+   * exemplaires d'une affiche, c'est la même affiche trois fois, pas trois
+   * affiches différentes.
+   */
   async function handleSubmit(config: PosterConfig) {
+    // Borné ici aussi : la fiche le borne déjà, mais cet îlot est appelé
+    // depuis plusieurs écrans et rien ne garantit qu'ils le feront tous.
+    const quantite = Math.min(20, Math.max(1, Math.trunc(props.quantite ?? 1) || 1));
     if (saving()) return;
     setSaving(true);
     setError(null);
@@ -88,27 +124,41 @@ export default function ConfiguratorIsland(
       // Le décor d'avant-plan est un réglage produit : on l'injecte dans le
       // snapshot pour que le PDF d'impression le rende aussi.
       if (props.foregroundUrl) config = { ...config, foregroundUrl: props.foregroundUrl };
+      // Une ligne rouverte depuis le panier peut porter un cadre choisi avant
+      // que le site ne les retire : la rubrique n'est plus là pour l'enlever,
+      // on ne le renvoie pas.
+      if (!cadresProposes) {
+        const { frameId: _retire, ...sansCadre } = config;
+        config = sansCadre;
+      }
       const cartId = getCartId();
       const unitPriceCents = priceForConfig(
         config,
         props.product.basePriceCents,
         props.prices,
       );
+      let ligne: OrderItem;
       if (mode === "edit" && props.itemId != null) {
-        await browserApi.updateCartItem(cartId, props.itemId, {
+        ligne = await browserApi.updateCartItem(cartId, props.itemId, {
           config,
           unitPriceCents,
         });
       } else {
-        await browserApi.addCartItem(cartId, {
+        // Le prix est CALCULÉ et enregistré même quand il n'est pas affiché :
+        // la boutique doit savoir ce qu'elle a vendu sur le stand. Au stand
+        // aussi, l'affiche validée part au panier — c'est lui qui y sert de
+        // récapitulatif et de dernière étape.
+        ligne = await browserApi.addCartItem(cartId, {
           productId: props.product.id,
           unitPriceCents,
-          quantity: 1,
+          quantity: quantite,
           title: props.product.name,
           config,
         });
       }
-      window.location.href = "/panier";
+      // Le serveur a écrit la ligne sans son cadre (page ouverte avant que la
+      // boutique ne les retire du site) : le panier le dit à la cliente.
+      window.location.href = ligne.cadreRetire ? "/panier?cadres=retires" : "/panier";
     } catch (e) {
       setError(String(e));
       setSaving(false);
@@ -170,8 +220,16 @@ export default function ConfiguratorIsland(
                 etapeFond: tr("cfg.etape.fond"),
                 etapePersonnages: tr("cfg.etape.personnages"),
                 etapeFormat: tr("cfg.etape.format"),
-                champTitre: tr("cfg.titre_champ"),
-                champSousTitre: tr("cfg.soustitre_champ"),
+                champsLignes: [
+                  tr("cfg.ligne1_champ"),
+                  tr("cfg.ligne2_champ"),
+                  tr("cfg.ligne3_champ"),
+                ],
+                exemplesLignes: [
+                  tr("cfg.ligne1_exemple"),
+                  tr("cfg.ligne2_exemple"),
+                  tr("cfg.ligne3_exemple"),
+                ],
                 couleurTexte: tr("cfg.couleur_texte"),
                 choisirFond: tr("cfg.fond"),
                 personnages: tr("cfg.personnages"),
@@ -192,6 +250,10 @@ export default function ConfiguratorIsland(
                 coupes: tr("cfg.coupes"),
                 accessoires: tr("cfg.accessoires"),
                 aucun: tr("cfg.aucun"),
+                cadre: tr("cfg.cadre"),
+                sansCadre: tr("cfg.sans_cadre"),
+                reordonnerAide: tr("cfg.reordonner_aide"),
+                dupliquer: tr("cfg.dupliquer"),
               }}
               product={{
                 id: props.product.id,
@@ -204,6 +266,7 @@ export default function ConfiguratorIsland(
               characters={d().characters as never}
               slots={d().slots as never}
               prices={props.prices}
+              sansPrix={props.sansPrix}
               foregroundUrl={props.foregroundUrl}
               defaults={props.defaults}
               initialConfig={props.initialConfig}

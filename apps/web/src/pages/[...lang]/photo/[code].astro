@@ -1,0 +1,75 @@
+---
+import "../../../styles/global.css";
+import Seo from "../../../components/Seo.astro";
+import EnvoiPhotoTelephone from "../../../islands/EnvoiPhotoTelephone.tsx";
+import {
+  estLangue,
+  langueDepuisParam,
+  lien,
+  t,
+  type Langue,
+} from "../../../i18n/utils.ts";
+
+/**
+ * La page que le client ouvre sur SON téléphone, au stand : il a scanné le
+ * QR code de la tablette, ou tapé l'adresse courte (/photo/K7M2QX). Il y
+ * choisit une photo, elle part vers la tablette (RelaisPhoto.tsx côté
+ * tablette, apps/api/src/ia-relais.ts côté serveur).
+ *
+ * PAS la mise en page du site, délibérément. Ni menu, ni bandeau d'offre, ni
+ * pied de page : les prix du site y seraient à un geste, alors qu'au stand
+ * c'est la vendeuse qui annonce les siens, et chaque lien est une occasion
+ * de se perdre au lieu d'envoyer sa photo. Le logo, les couleurs et les
+ * polices restent ceux de la boutique — le client doit reconnaître le stand
+ * qu'il a devant lui.
+ *
+ * Rendue à la demande : le code change à chaque client.
+ */
+export const prerender = false;
+
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
+const tr = t(langue);
+
+// En capitales : « k7m2qx » tapé sur un téléphone est le même code. La
+// validité, elle, se vérifie auprès de l'API — une page ne sait pas quels
+// codes sont en vie.
+const code = String(Astro.params.code ?? "")
+  .trim()
+  .toUpperCase()
+  .slice(0, 12);
+---
+
+<!doctype html>
+<html lang={langue}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <Seo
+      title={tr("photo.meta_titre")}
+      description={tr("photo.intro")}
+      path={lien(langue, `/photo/${code}`)}
+      noindex={true}
+    />
+  </head>
+  <body class="min-h-screen bg-paper text-ink">
+    <main class="mx-auto flex min-h-screen w-full max-w-md flex-col px-5 pt-8 pb-10">
+      <img
+        src="/logo-memory-line.png"
+        alt="Memory Line"
+        width="500"
+        height="222"
+        class="mx-auto h-12 w-auto"
+      />
+      <EnvoiPhotoTelephone client:only="solid-js" langue={langue} code={code}>
+        {/* Le temps que le script arrive sur un réseau de marché : le titre
+            est déjà là, la page ne saute pas quand le bouton apparaît. */}
+        <div slot="fallback" class="mt-8" aria-busy="true">
+          <h1 class="text-center text-3xl">{tr("photo.titre")}</h1>
+          <p class="mt-8 text-center text-ink-soft">{tr("photo.verification")}</p>
+        </div>
+      </EnvoiPhotoTelephone>
+    </main>
+  </body>
+</html>

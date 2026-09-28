@@ -31,7 +31,13 @@ export default function CartBadge() {
     void rafraichir();
     const auRetour = () => void rafraichir();
     window.addEventListener("pageshow", auRetour);
-    onCleanup(() => window.removeEventListener("pageshow", auRetour));
+    // « ml:panier » : un îlot de la page vient de changer de panier sans
+    // recharger — la vente du stand, qui repart d'un panier neuf.
+    window.addEventListener("ml:panier", auRetour);
+    onCleanup(() => {
+      window.removeEventListener("pageshow", auRetour);
+      window.removeEventListener("ml:panier", auRetour);
+    });
   });
 
   return (

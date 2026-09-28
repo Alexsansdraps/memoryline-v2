@@ -10,16 +10,30 @@ import {
 import {
   BASE_COLOR_SCOPE,
   colorKey,
-  colorsForScope,
+  couleursDeLaBase,
+  couleursDeLaPiece,
+  couleursDuGroupePourScope,
+  estCleFamille,
+  famillesProposees,
+  groupesDuDessin,
+  groupesProposesDeLaBase,
+  groupesProposesDeLaPiece,
   scopeSvgStyles,
+  type CouleursImage,
+  type GroupeCouleur,
+  type NuancierBase,
 } from "@memoryline/types";
 import {
   NONE_ASSET,
+  dessinPourLEcran,
   findVariant,
   recolorForCharacter,
   withViewBox,
   paletteForVariant,
   type PieceCategoryDTO,
+  CLOTHES_TONES,
+  HAIR_TONES,
+  PANTS_TONES,
   SKIN_TONES,
   SLOT_THUMB_VIEWBOX,
   type CharacterDTO,
@@ -30,11 +44,34 @@ import {
   type WorkingCharacter,
 } from "../store";
 import { CharacterStack } from "./CharacterLayer";
+import {
+  BarreActions,
+  IndiceDefilement,
+  createResteDessous,
+} from "./Defilement";
+import {
+  ANNEAU_COULEUR_CHOISIE,
+  Button,
+  CocheCouleur,
+  PastilleCouleur,
+} from "./ui";
 import type { MessagesConfigurateur } from "../messages";
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * Nuancier d'un groupe du dessin de BASE, tel que choisi au back-office : la
+ * peau d'un humain, le pelage d'un chat (celui des cheveux lui va), une robe
+ * dessinée sur le personnage…
+ */
+const NUANCIERS: Record<NuancierBase, readonly string[]> = {
+  peau: SKIN_TONES,
+  cheveux: HAIR_TONES,
+  vetements: CLOTHES_TONES,
+  pantalon: PANTS_TONES,
+};
 
 /**
  * SVG inline (string) prêt à être injecté : recolorié + cadré (viewBox zoomé)
@@ -47,10 +84,29 @@ function thumbSvg(
   colors: Record<string, string>,
   viewBox: string | undefined,
   scopeUid: string,
+  /**
+   * Dessin en PIXELS : de quoi aller chercher son image recolorée, pour que la
+   * vignette montre la même chose que l'aperçu (cf. dessinPourLEcran).
+   */
+  pixels?: {
+    couleursImage?: CouleursImage | null;
+    /** « /characters/58 » ou « /pieces/12 ». */
+    chemin: string;
+    assetBaseUrl?: string;
+  },
 ): string | undefined {
   if (!svgUrl) return undefined;
-  const raw = cache.raw[svgUrl];
-  if (raw === undefined || raw === "") return undefined;
+  const fichier = cache.raw[svgUrl];
+  if (fichier === undefined || fichier === "") return undefined;
+  const raw = pixels
+    ? dessinPourLEcran(
+        fichier,
+        colors,
+        pixels.couleursImage,
+        pixels.chemin,
+        pixels.assetBaseUrl,
+      )
+    : fichier;
   // Scope CSS : sans lui, le <style> global de la dernière vignette inlinée
   // écraserait les couleurs de toutes les autres (cf. scopeSvgStyles).
   let svg = scopeSvgStyles(recolorForCharacter(raw, colors), scopeUid);
@@ -220,79 +276,254 @@ function SvgThumb(props: { svg: string | undefined; label: string }) {
   );
 }
 
-/** Rangée de couleurs : presets cliquables + input type=color, par zone. */
+/** Une rangée de pastilles : un groupe de couleurs d'une couche. */
+interface LigneCouleur {
+  /** Clé namespacée de la zone de référence (« clothes:st0 »). */
+  zone: string;
+  /** Couleur portée par la référence. */
+  current: string;
+  /** Nom du groupe réglé au back-office (« robe »), s'il en a un. */
+  nom?: string;
+  /** Les couleurs à écrire quand le client choisit `hex` : référence et nuances. */
+  couleurs: (hex: string) => Record<string, string>;
+}
+
+/** Intitulé au-dessus d'une rangée (ou d'un ensemble de rangées). */
+function Intitule(props: { children: JSX.Element }) {
+  return (
+    <span
+      style={{
+        display: "block",
+        "font-size": "11px",
+        "font-weight": "700",
+        color: "#6b7280",
+        "letter-spacing": ".04em",
+        "margin-bottom": "8px",
+      }}
+    >
+      {props.children}
+    </span>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Saisie libre sur un dessin en pixels                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Repos minimal entre deux couleurs envoyées depuis le SÉLECTEUR LIBRE, sur
+ * une rangée de dessin en pixels.
+ *
+ * Le sélecteur du navigateur émet « input » en continu tant que le doigt
+ * glisse — des dizaines de couleurs par seconde. Sur un dessin vectoriel,
+ * c'est sans conséquence : tout se recolore dans la page. Sur un dessin en
+ * PIXELS, chaque couleur est une image que le serveur calcule et range
+ * (couleurs-image-fichier.ts) : un seul glissement lui en demanderait des
+ * centaines, et, au stand, autant de fois trois cents kilo-octets à faire
+ * descendre sur la tablette.
+ *
+ * On garde donc la PREMIÈRE couleur du glissement — le client voit tout de
+ * suite que l'animal suit son doigt — et la DERNIÈRE, celle qu'il a vraiment
+ * choisie, en laissant passer une couleur par seconde entre les deux. Les
+ * pastilles du nuancier, elles, ne sont jamais retardées : un clic reste un
+ * clic, et les rangées d'un dessin vectoriel ne passent pas par ici.
+ *
+ * UNE SECONDE, ET PAS MOINS, POUR DEUX RAISONS.
+ *
+ * D'abord parce qu'aller plus vite ne montre rien de plus : le serveur met
+ * près d'un tiers de seconde à calculer chaque image, et il y a trois à cinq
+ * cents kilo-octets à faire descendre derrière — sur le réseau d'un stand,
+ * demander quatre couleurs par seconde ne fait que les mettre en file.
+ * Ensuite et surtout parce que la route qui les sert compte les couleurs
+ * neuves par adresse et refuse au-delà (IMAGES_MAX, configurator-routes.ts) :
+ * à quatre couleurs par seconde, un client qui s'amusait quarante secondes
+ * avec le sélecteur se faisait refuser — et voyait son animal disparaître.
+ * MESURÉ. À une par seconde, il reste très loin sous la limite, même à
+ * plusieurs derrière la même adresse. Ces deux nombres vont ensemble : en
+ * changer un sans regarder l'autre remet ce piège en place.
+ */
+const REPOS_SELECTEUR_MS = 1000;
+
+/**
+ * Où en est le glissement de chaque rangée.
+ *
+ * Au niveau du module, et non dans la rangée : changer une couleur reconstruit
+ * la rangée (ses lignes sont recalculées à chaque passage), une variable
+ * locale repartirait donc de zéro à chaque couleur et ne retiendrait jamais
+ * rien. Une entrée par rangée déjà touchée, c'est quelques dizaines d'octets.
+ */
+const glissements = new Map<
+  string,
+  { dernier: number; couleur: string; minuterie?: ReturnType<typeof setTimeout> }
+>();
+
+/** La rangée s'adresse-t-elle aux pixels d'un dessin (« base:fam0 ») ? */
+function rangeeEnPixels(zone: string): boolean {
+  return estCleFamille(zone.split(":").pop() ?? "");
+}
+
+/**
+ * Laisse passer la couleur tout de suite, ou la met en attente — cf.
+ * {@link REPOS_SELECTEUR_MS}. La dernière couleur d'un glissement finit
+ * toujours par passer : c'est elle que le client garde.
+ */
+function couleurEspacee(
+  zone: string,
+  hex: string,
+  envoyer: (hex: string) => void,
+): void {
+  const maintenant = Date.now();
+  const etat = glissements.get(zone) ?? { dernier: 0, couleur: hex };
+  etat.couleur = hex;
+  glissements.set(zone, etat);
+  const attente = REPOS_SELECTEUR_MS - (maintenant - etat.dernier);
+  if (attente <= 0) {
+    etat.dernier = maintenant;
+    envoyer(hex);
+    return;
+  }
+  if (etat.minuterie) return; // une couleur attend déjà : elle prendra celle-ci
+  etat.minuterie = setTimeout(() => {
+    etat.minuterie = undefined;
+    etat.dernier = Date.now();
+    envoyer(etat.couleur);
+  }, attente);
+}
+
+/**
+ * Rangée de couleurs : presets cliquables + saisie libre, par groupe.
+ *
+ * Les pastilles sont celles de la couleur du texte (cf. PastilleCouleur) :
+ * mêmes 40 px, même coche sur la couleur portée.
+ *
+ * Sans aucun nom de groupe, un seul intitulé coiffe les rangées, comme avant
+ * les groupes. Dès qu'un groupe est nommé au back-office, chaque rangée porte
+ * le sien : « Robe », « Ceinture » disent au client ce qu'il colore.
+ */
 function ColorRow(props: {
-  zones: { zone: string; current: string }[];
+  zones: LigneCouleur[];
   presets: readonly string[];
   /** Saisie hors nuancier autorisée ? Non dès qu'une catégorie a ses couleurs. */
   libre: boolean;
-  onSetColor: (zone: string, hex: string) => void;
+  onSetColor: (ligne: LigneCouleur, hex: string) => void;
   /** Intitulé traduit, fourni par l'éditeur. */
   libelle: string;
 }) {
+  const memeCouleur = (a: string, b: string) =>
+    a.toUpperCase() === b.toUpperCase();
+  const nommees = () => props.zones.some((z) => !!z.nom);
   return (
     <div style={{ "margin-top": "8px" }}>
-      <span
-        style={{
-          display: "block",
-          "font-size": "11px",
-          "font-weight": "700",
-          color: "#6b7280",
-          "letter-spacing": ".04em",
-          "margin-bottom": "6px",
-        }}
-      >
-        {props.libelle}
-      </span>
+      <Show when={!nommees()}>
+        <Intitule>{props.libelle}</Intitule>
+      </Show>
       <For each={props.zones}>
-        {(z) => (
-          <div
-            style={{
-              display: "flex",
-              "align-items": "center",
-              gap: "6px",
-              "flex-wrap": "wrap",
-              "margin-bottom": "6px",
-            }}
-          >
-            <For each={props.presets}>
-              {(hex) => (
-                <button
-                  type="button"
-                  title={hex}
-                  onClick={() => props.onSetColor(z.zone, hex)}
-                  style={{
-                    width: "22px",
-                    height: "22px",
-                    "border-radius": "9999px",
-                    background: hex,
-                    border:
-                      z.current.toUpperCase() === hex.toUpperCase()
-                        ? "2px solid #4f46e5"
-                        : "1px solid #d1d5db",
-                    cursor: "pointer",
-                  }}
-                />
-              )}
-            </For>
-            <Show when={props.libre}>
-              <input
-                type="color"
-                value={z.current}
-                onInput={(e) => props.onSetColor(z.zone, e.currentTarget.value)}
-                title="Couleur personnalisée"
+        {(z) => {
+          // Couleur saisie hors nuancier : c'est la pastille arc-en-ciel qui
+          // porte la coche, sinon aucune couleur ne paraîtrait choisie.
+          const horsNuancier = () =>
+            !props.presets.some((hex) => memeCouleur(hex, z.current));
+          return (
+            <div>
+              <Show when={nommees()}>
+                <Intitule>{z.nom ?? props.libelle}</Intitule>
+              </Show>
+              <div
                 style={{
-                  width: "26px",
-                  height: "26px",
-                  border: "none",
-                  padding: "0",
-                  background: "transparent",
-                  cursor: "pointer",
+                  display: "flex",
+                  "align-items": "center",
+                  // 10 px : l'anneau de la couleur choisie déborde de 4 px, il
+                  // ne doit pas toucher la pastille voisine ni la rangée d'en
+                  // dessous.
+                  gap: "10px",
+                  "flex-wrap": "wrap",
+                  "margin-bottom": "10px",
                 }}
-              />
-            </Show>
-          </div>
-        )}
+              >
+                <For each={props.presets}>
+                  {(hex) => (
+                    <PastilleCouleur
+                      couleur={hex}
+                      libelle={hex}
+                      actif={memeCouleur(z.current, hex)}
+                      onClick={() => props.onSetColor(z, hex)}
+                    />
+                  )}
+                </For>
+                <Show when={props.libre}>
+                  {/* Le sélecteur du navigateur, invisible, recouvre toute la
+                      pastille : un toucher n'importe où l'ouvre, et c'est lui
+                      qui renvoie la couleur. Sa propre case, minuscule et
+                      différente d'un navigateur à l'autre, ne se voit plus. */}
+                  <span
+                    title="Couleur personnalisée"
+                    style={{
+                      position: "relative",
+                      flex: "0 0 auto",
+                      width: "40px",
+                      height: "40px",
+                      "border-radius": "9999px",
+                      background:
+                        "conic-gradient(#ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444)",
+                      "box-shadow": horsNuancier() ? ANNEAU_COULEUR_CHOISIE : "none",
+                      display: "inline-flex",
+                      "align-items": "center",
+                      "justify-content": "center",
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: "26px",
+                        height: "26px",
+                        "border-radius": "9999px",
+                        border: "2px solid #ffffff",
+                        "box-sizing": "border-box",
+                        background: horsNuancier() ? z.current : "#ffffff",
+                        color: "#374151",
+                        "font-size": "18px",
+                        "line-height": "1",
+                        display: "inline-flex",
+                        "align-items": "center",
+                        "justify-content": "center",
+                      }}
+                    >
+                      <Show when={horsNuancier()} fallback="+">
+                        <CocheCouleur fond={z.current} />
+                      </Show>
+                    </span>
+                    <input
+                      type="color"
+                      value={z.current}
+                      onInput={(e) => {
+                        const hex = e.currentTarget.value;
+                        // Un dessin en pixels se recolore sur le serveur : on
+                        // espace les couleurs d'un glissement (cf.
+                        // couleurEspacee). Tout le reste passe sans délai.
+                        if (rangeeEnPixels(z.zone))
+                          couleurEspacee(z.zone, hex, (c) => props.onSetColor(z, c));
+                        else props.onSetColor(z, hex);
+                      }}
+                      aria-label="Couleur personnalisée"
+                      style={{
+                        position: "absolute",
+                        top: "0",
+                        left: "0",
+                        width: "100%",
+                        height: "100%",
+                        margin: "0",
+                        padding: "0",
+                        border: "none",
+                        opacity: "0",
+                        cursor: "pointer",
+                      }}
+                    />
+                  </span>
+                </Show>
+              </div>
+            </div>
+          );
+        }}
       </For>
     </div>
   );
@@ -319,10 +550,10 @@ function SectionTitle(props: { children: JSX.Element }) {
 
 /**
  * Éditeur d'un personnage (maquette client §18.2 F) : deux colonnes.
- * Gauche ~35% = prévisualisation isolée du perso composé. Droite = barre
- * Retour, puis sections : choix du personnage (galerie de bases) + nuancier
- * peau, puis vêtements / pantalon / cheveux / accessoires (galeries zoomées +
- * nuanciers). Plus aucun placement libre.
+ * Gauche ~35% = prévisualisation isolée du perso composé. Droite = sections :
+ * choix du personnage (galerie de bases) + nuancier peau, puis vêtements /
+ * pantalon / cheveux / accessoires (galeries zoomées + nuanciers). En bas, une
+ * barre collée : Retour à gauche, Valider à droite. Plus aucun placement libre.
  */
 export function CharacterEditor(props: {
   character: WorkingCharacter;
@@ -330,11 +561,14 @@ export function CharacterEditor(props: {
   characters: CharacterDTO[];
   slots: SlotVariants;
   cache: SvgCache;
+  /** Racine de l'API : elle sert les images recolorées des dessins en pixels. */
+  assetBaseUrl?: string;
   /** Catégories de pièces et leurs nuanciers (vide = nuanciers de repli). */
   pieceCategories?: PieceCategoryDTO[];
   onSetAsset: (slot: Slot, variantId: string | number) => void;
   onClearSlot: (slot: Slot) => void;
-  onSetColor: (zone: string, hex: string) => void;
+  /** Couleurs choisies : clé namespacée -> couleur (un groupe entier d'un coup). */
+  onSetColors: (couleurs: Record<string, string>) => void;
   onChangeCharacter: (base: CharacterDTO) => void;
   onBack: () => void;
   onValidate: () => void;
@@ -374,6 +608,9 @@ export function CharacterEditor(props: {
   });
 
   const [choisie, setChoisie] = createSignal<string | null>(null);
+  /** La grille défile d'elle-même : l'indice dit quand elle cache des personnages. */
+  let grillePersos: HTMLDivElement | undefined;
+  const grilleResteDessous = createResteDessous(() => grillePersos);
   const categorieActive = () => choisie() ?? categorieDuPerso();
   const setCategorieActive = (cat: string) => setChoisie(cat);
 
@@ -384,42 +621,113 @@ export function CharacterEditor(props: {
   );
 
   /**
-   * Zones de couleur d'une variante (slot courant) + valeur actuelle.
-   * `zone` = clé NAMESPACÉE "slot:stN" (cf. colorKey) : la couleur choisie ne
-   * s'applique qu'à ce slot, pas aux autres couches qui réutilisent stN.
-   * Repli sur la clé plate (anciens paniers) puis sur le défaut de la variante.
+   * Une rangée de pastilles par groupe de couleurs d'une couche (scope).
+   * `zone` = clé NAMESPACÉE "scope:stN" de la référence du groupe (cf.
+   * colorKey) : la couleur choisie ne s'applique qu'à cette couche, pas aux
+   * autres qui réutilisent stN. Repli sur la clé plate (anciens paniers) puis
+   * sur le défaut du dessin.
+   *
+   * Choisir une couleur écrit la référence ET ses nuances (ombres, reflets),
+   * recalculées depuis les couleurs par défaut du dessin : c'est ce qui est
+   * enregistré, puis dessiné tel quel à l'écran comme à l'impression.
    */
-  const zonesForSlot = (slot: Slot): { zone: string; current: string }[] => {
-    const variant = findVariant(props.slots[slot], props.character.assets[slot]);
-    if (!variant?.colorZones) return [];
-    return Object.keys(variant.colorZones).map((zone) => ({
-      zone: colorKey(slot, zone),
+  const lignes = (
+    scope: string,
+    groupes: GroupeCouleur[],
+    defauts: Record<string, string> | null | undefined,
+    repli: string,
+  ): LigneCouleur[] =>
+    groupes.map((g) => ({
+      zone: colorKey(scope, g.zone),
       current:
-        props.character.colors[colorKey(slot, zone)] ??
-        props.character.colors[zone] ??
-        variant.colorZones?.[zone] ??
-        "#000000",
+        props.character.colors[colorKey(scope, g.zone)] ??
+        props.character.colors[g.zone] ??
+        defauts?.[g.zone] ??
+        repli,
+      nom: g.nom,
+      couleurs: (hex) => couleursDuGroupePourScope(scope, g, defauts, hex),
     }));
+
+  /**
+   * Groupes de la pièce portée dans un emplacement. Seuls ceux PROPOSÉS au
+   * client : les petits détails décochés au back-office (ruban du chapeau…)
+   * n'ont pas de rangée de pastilles, et gardent leur couleur par défaut dans
+   * l'aperçu (cf. couleursDeLaPiece).
+   */
+  const zonesForSlot = (slot: Slot): LigneCouleur[] => {
+    const variant = findVariant(props.slots[slot], props.character.assets[slot]);
+    if (!variant) return [];
+    const rangees = variant.colorZones
+      ? lignes(slot, groupesProposesDeLaPiece(variant), variant.colorZones, "#000000")
+      : [];
+    // Pièce dessinée en pixels : ses familles de couleurs, comme pour un
+    // personnage (cf. baseZones).
+    for (const f of famillesProposees(variant.couleursImage)) {
+      const cle = colorKey(slot, f.cle);
+      rangees.push({
+        zone: cle,
+        current: props.character.colors[cle] ?? f.defaut ?? f.reference,
+        nom: f.nom,
+        couleurs: (hex) => ({ [cle]: hex }),
+      });
+    }
+    return rangees;
   };
 
-  /** Zones de peau de la base = ses baseColorZones. */
-  const skinZones = createMemo<{ zone: string; current: string }[]>(() => {
-    const base = props.base;
-    if (!base?.baseColorZones) return [];
-    // Heuristique : la 1ʳᵉ zone de la base = teinte de peau principale.
-    const first = Object.keys(base.baseColorZones)[0];
-    if (!first) return [];
-    return [
-      {
-        zone: colorKey(BASE_COLOR_SCOPE, first),
-        current:
-          props.character.colors[colorKey(BASE_COLOR_SCOPE, first)] ??
-          props.character.colors[first] ??
-          base.baseColorZones[first] ??
-          "#E0AC7E",
-      },
-    ];
-  });
+  /**
+   * Groupes proposés du dessin de BASE : la peau seulement, sauf réglage du
+   * back-office (pelage d'un chat, robe dessinée sur le personnage…). Chacun
+   * a son nuancier : celui de la peau pour le premier, sauf choix contraire.
+   *
+   * Un personnage dessiné en PIXELS (un chien photographié) n'a pas de zone :
+   * ses rangées viennent de ses FAMILLES de couleurs, à la suite des autres.
+   * Pour le client, rien ne les distingue — une rangée de pastilles sous un
+   * nom, « Pelage », « Poitrail ».
+   */
+  const baseZones = createMemo<{ ligne: LigneCouleur; presets: readonly string[] }[]>(
+    () => {
+      const base = props.base;
+      if (!base) return [];
+      const rangees: { ligne: LigneCouleur; presets: readonly string[] }[] = [];
+
+      if (base.baseColorZones) {
+        const groupes = groupesProposesDeLaBase(base);
+        const tous = lignes(BASE_COLOR_SCOPE, groupes, base.baseColorZones, "#E0AC7E");
+        const premier = groupesDuDessin(base.baseColorZones, base.baseGroupesCouleurs)[0];
+        tous.forEach((ligne, i) => {
+          const g = groupes[i]!;
+          const nuancier = g.nuancier ?? (g.zone === premier?.zone ? "peau" : "vetements");
+          rangees.push({ ligne, presets: NUANCIERS[nuancier] });
+        });
+      }
+
+      for (const f of famillesProposees(base.baseCouleursImage)) {
+        const cle = colorKey(BASE_COLOR_SCOPE, f.cle);
+        rangees.push({
+          ligne: {
+            zone: cle,
+            // La couleur portée : celle du client, sinon celle que la boutique
+            // a réglée par défaut, sinon la teinte du fichier.
+            current:
+              props.character.colors[cle] ?? f.defaut ?? f.reference,
+            nom: f.nom,
+            // Une famille se choisit d'un seul coup : il n'y a pas de nuance à
+            // écrire à côté, ce sont les PIXELS qui suivront la couleur au
+            // moment du rendu (cf. couleurs-image.ts).
+            couleurs: (hex) => ({ [cle]: hex }),
+          },
+          // Le nuancier des cheveux va au pelage d'un animal : c'est celui que
+          // la boutique choisit au back-office, faute d'autre indication.
+          presets: NUANCIERS[f.nuancier ?? "cheveux"],
+        });
+      }
+      return rangees;
+    },
+  );
+
+  /** Le client choisit une couleur : sa référence et les nuances qui la suivent. */
+  const choisirCouleur = (ligne: LigneCouleur, hex: string) =>
+    props.onSetColors(ligne.couleurs(hex));
 
   /** Section galerie pour un slot (vêtements/pantalon/cheveux/accessoire). */
   function SlotSection(opts: { slot: Slot; allowNone: boolean }) {
@@ -456,9 +764,16 @@ export function CharacterEditor(props: {
                     // Seules les couleurs de CE slot : les zones stN étant
                     // partagées entre couches, la map complète recolorerait
                     // aussi ces vignettes quand on change une autre couche.
-                    colorsForScope(props.character.colors, opts.slot),
+                    // Les zones non proposées de CETTE pièce restent à leur
+                    // défaut, comme sur le personnage.
+                    couleursDeLaPiece(props.character.colors, opts.slot, variant),
                     viewBox,
                     `${uid}-${opts.slot}-${variant.id}`,
+                    {
+                      couleursImage: variant.couleursImage,
+                      chemin: `/pieces/${variant.id}`,
+                      assetBaseUrl: props.assetBaseUrl,
+                    },
                   )}
                   label={variant.name ?? `#${variant.id}`}
                 />
@@ -481,7 +796,7 @@ export function CharacterEditor(props: {
                 zones={zonesForSlot(opts.slot)}
                 presets={palette.couleurs}
                 libre={palette.libre}
-                onSetColor={props.onSetColor}
+                onSetColor={choisirCouleur}
               />
             );
           })()}
@@ -492,49 +807,19 @@ export function CharacterEditor(props: {
 
   return (
     <div class="ml-cfg-editor">
-      {/* Barre Retour + titre */}
-      <div
+      {/* Titre seul : « Retour » a rejoint « Valider » dans la barre du bas.
+          Collé en haut, il finissait sous l'aperçu du personnage, collé lui
+          aussi, sur téléphone et tablette en portrait. */}
+      <h3
         style={{
-          display: "flex",
-          "align-items": "center",
-          gap: "10px",
-          "margin-bottom": "12px",
-          position: "sticky",
-          top: "0",
-          background: "#fafafa",
-          "z-index": "2",
-          "padding-bottom": "6px",
+          "font-weight": "800",
+          "letter-spacing": ".06em",
+          "font-size": "15px",
+          margin: "0 0 12px",
         }}
       >
-        <button
-          type="button"
-          onClick={() => props.onBack()}
-          style={{
-            display: "inline-flex",
-            "align-items": "center",
-            gap: "4px",
-            border: "1px solid #2453b8",
-            "border-radius": "9999px",
-            background: "#2453b8",
-            color: "#fff",
-            padding: "6px 12px",
-            cursor: "pointer",
-            "font-size": "13px",
-          }}
-        >
-          ‹ {m().retour}
-        </button>
-        <h3
-          style={{
-            "font-weight": "800",
-            "letter-spacing": ".06em",
-            "font-size": "15px",
-            margin: "0",
-          }}
-        >
-          {m().personnalisation}
-        </h3>
-      </div>
+        {m().personnalisation}
+      </h3>
 
       {/* Deux colonnes — une seule sur mobile (cf. global.css) : à 375 px, la
           colonne des galeries ne faisait plus que ~200 px de large. */}
@@ -548,7 +833,7 @@ export function CharacterEditor(props: {
         }}
       >
         {/* Colonne gauche : prévisualisation du perso composé */}
-        <div class="ml-cfg-perso-col" style={{ position: "sticky", top: "48px" }}>
+        <div class="ml-cfg-perso-col" style={{ position: "sticky", top: "0" }}>
           <div
             class="ml-cfg-perso-apercu"
             style={{
@@ -570,6 +855,7 @@ export function CharacterEditor(props: {
               base={props.base}
               slots={props.slots}
               cache={props.cache}
+              assetBaseUrl={props.assetBaseUrl}
             />
           </div>
         </div>
@@ -611,40 +897,62 @@ export function CharacterEditor(props: {
             </For>
           </div>
 
-          <div class="ml-cfg-grille-persos">
-            <For each={personnagesDeLaCategorie()}>
-              {(base) => (
-                <Thumb
-                  selected={String(props.character.characterId) === String(base.id)}
-                  onClick={() => props.onChangeCharacter(base)}
-                  title={base.name}
-                >
-                  <SvgThumb
-                    svg={thumbSvg(
-                      props.cache,
-                      base.baseSvgUrl,
-                      String(props.character.characterId) === String(base.id)
-                        ? colorsForScope(props.character.colors, BASE_COLOR_SCOPE)
-                        : (base.baseColorZones ?? {}),
-                      undefined,
-                      `${uid}-charbase-${base.id}`,
-                    )}
-                    label={base.name}
-                  />
-                </Thumb>
-              )}
-            </For>
-          </div>
-          {/* Couleur de peau (zones de la base) */}
-          <Show when={skinZones().length > 0}>
-            <ColorRow
-              libelle={m().choixCouleur}
-              zones={skinZones()}
-              presets={SKIN_TONES}
-              libre={true}
-              onSetColor={props.onSetColor}
+          {/* Enveloppe positionnée : l'indice se pose sur le bas de la
+              grille, qui défile, sans défiler avec elle. */}
+          <div style={{ position: "relative" }}>
+            <div ref={grillePersos} class="ml-cfg-grille-persos">
+              <For each={personnagesDeLaCategorie()}>
+                {(base) => (
+                  <Thumb
+                    selected={String(props.character.characterId) === String(base.id)}
+                    onClick={() => props.onChangeCharacter(base)}
+                    title={base.name}
+                  >
+                    <SvgThumb
+                      svg={thumbSvg(
+                        props.cache,
+                        base.baseSvgUrl,
+                        // Mêmes couleurs que sur l'affiche : les défauts du
+                        // back-office, et celles du client pour le sien.
+                        couleursDeLaBase(
+                          String(props.character.characterId) === String(base.id)
+                            ? props.character.colors
+                            : undefined,
+                          base,
+                        ),
+                        undefined,
+                        `${uid}-charbase-${base.id}`,
+                        {
+                          couleursImage: base.baseCouleursImage,
+                          chemin: `/characters/${base.id}`,
+                          assetBaseUrl: props.assetBaseUrl,
+                        },
+                      )}
+                      label={base.name}
+                    />
+                  </Thumb>
+                )}
+              </For>
+            </div>
+            <IndiceDefilement
+              visible={grilleResteDessous()}
+              style={{ bottom: "0" }}
             />
-          </Show>
+          </div>
+          {/* Couleurs du dessin de base : la peau, et les groupes que le
+              back-office propose en plus (pelage, robe dessinée…). Une
+              rangée chacun, avec son propre nuancier. */}
+          <For each={baseZones()}>
+            {(b) => (
+              <ColorRow
+                libelle={m().choixCouleur}
+                zones={[b.ligne]}
+                presets={b.presets}
+                libre={true}
+                onSetColor={choisirCouleur}
+              />
+            )}
+          </For>
 
           <SlotSection slot="clothes" allowNone={false} />
           <SlotSection slot="pants" allowNone={false} />
@@ -653,33 +961,18 @@ export function CharacterEditor(props: {
         </div>
       </div>
 
-      {/* Valider §18.2 F */}
-      <div
-        style={{
-          display: "flex",
-          "justify-content": "flex-end",
-          "margin-top": "18px",
-          "border-top": "1px solid #e5e7eb",
-          "padding-top": "14px",
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => props.onValidate()}
-          style={{
-            background: "#4f46e5",
-            color: "#fff",
-            border: "1px solid transparent",
-            "border-radius": "6px",
-            padding: "10px 18px",
-            "font-size": "14px",
-            "font-weight": "600",
-            cursor: "pointer",
-          }}
-        >
+      {/* Retour à gauche, Valider à droite §18.2 F — côte à côte et toujours
+          à portée, comme Retour / Continuer entre les étapes (retour
+          cliente). Les deux ramènent à la liste : le personnage est modifié
+          au fil des choix, il n'y a rien à annuler. */}
+      <BarreActions>
+        <Button variant="secondary" onClick={() => props.onBack()}>
+          ‹ {m().retour}
+        </Button>
+        <Button variant="primary" onClick={() => props.onValidate()}>
           {m().validerPersonnage}
-        </button>
-      </div>
+        </Button>
+      </BarreActions>
     </div>
   );
 }

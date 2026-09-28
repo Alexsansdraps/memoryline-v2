@@ -1,0 +1,252 @@
+---
+import CompteCadre from "../../../../components/CompteCadre.astro";
+import { lignesRemplies } from "@memoryline/types";
+import { formatPrice, PUBLIC_API_URL } from "../../../../lib/api.ts";
+import {
+  adresseLivraison,
+  commande,
+  exigerSession,
+  formatDate,
+  libelleStatut,
+  type CommandeDetail,
+} from "../../../../lib/compte.ts";
+import {
+  estLangue,
+  langueDepuisParam,
+  lien,
+  t,
+  type CleUi,
+  type Langue,
+} from "../../../../i18n/utils.ts";
+
+export const prerender = false;
+
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
+const tr = t(langue);
+const id = Astro.params.id ?? "";
+
+const session = await exigerSession(Astro, langue);
+if (session.etat === "anonyme") return session.redirection;
+
+let detail: CommandeDetail | null = null;
+let erreur: CleUi | null =
+  session.etat === "indisponible" ? session.erreur : null;
+
+if (session.etat === "connecte") {
+  const r = await commande(Astro, id);
+  if (r.ok) {
+    detail = r.donnees;
+  } else {
+    // Ici un 404 est un vrai 404 métier : la commande n'existe pas ou
+    // appartient à quelqu'un d'autre. À ne pas confondre avec l'API absente.
+    erreur = r.statut === 404 ? "compte.commande.introuvable" : r.erreur;
+  }
+}
+
+/**
+ * Nom du cadre choisi : la configuration n'en garde que l'identifiant.
+ *
+ * La liste vient AVEC la commande, pas du catalogue en vente : un cadre
+ * archivé ou décoché depuis garde ainsi son nom sur les commandes où il a
+ * été vendu, au lieu de se réduire au générique « Cadre ».
+ */
+const nomCadre = (idCadre: unknown): string | null => {
+  if (idCadre === null || idCadre === undefined || idCadre === "") return null;
+  const trouve = (detail?.cadres ?? []).find(
+    (c) => String(c.id) === String(idCadre),
+  );
+  return trouve ? trouve.name : tr("panier.cadre");
+};
+
+const titre = detail
+  ? `${tr("compte.commandes.numero")} ${detail.order.number}`
+  : tr("compte.commandes.titre");
+
+const lignesAdresse = detail ? adresseLivraison(detail.order) : [];
+const expeditions = (detail?.expeditions ?? []).filter(
+  (e) => e.trackingUrl || e.trackingNumber,
+);
+---
+
+<CompteCadre
+  langue={langue}
+  titre={titre}
+  chemin="/compte"
+  menu={session.etat === "connecte"}
+>
+  <p class="mb-6">
+    <a
+      href={lien(langue, "/compte")}
+      class="text-sm underline underline-offset-4 hover:text-terracotta"
+    >
+      {tr("compte.commandes.retour")}
+    </a>
+  </p>
+
+  {
+    erreur && (
+      <p class="border border-terracotta/40 bg-terracotta/5 px-4 py-3 text-terracotta-deep">
+        {tr(erreur)}
+      </p>
+    )
+  }
+
+  {
+    detail && (
+      <div class="space-y-10">
+        <div class="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+          <p class="text-ink-soft">{formatDate(detail.order.createdAt, langue)}</p>
+          <p class="flex flex-wrap gap-2 text-sm">
+            <span class="border border-ink/15 bg-paper-deep px-3 py-1">
+              {tr("compte.commande.paiement")} :{" "}
+              {libelleStatut(tr, "financier", detail.statutFinancier)}
+            </span>
+            <span class="border border-ink/15 bg-paper-deep px-3 py-1">
+              {tr("compte.commande.traitement")} :{" "}
+              {libelleStatut(tr, "expedition", detail.statutExpedition)}
+            </span>
+          </p>
+        </div>
+
+        <section>
+          <h2 class="mb-4 text-2xl">{tr("compte.commande.articles")}</h2>
+          <ul class="divide-y divide-ink/10 border-y border-ink/10">
+            {detail.items.map((ligne) => (
+              <li class="flex flex-wrap justify-between gap-4 py-4">
+                <div class="flex min-w-0 gap-4">
+                  {/* L'affiche, pas seulement son titre. « MERS-LES-BAINS
+                      Baigneurs #2 » et « MERS-LES-BAINS Baigneurs » ne se
+                      distinguent pas à la lecture, et c'est pour la revoir
+                      qu'on ouvre cette page. Le rendu vient du serveur : la
+                      page n'a pas à charger la bibliothèque des personnages
+                      pour une vignette. */}
+                  {ligne.apercu && (
+                    <img
+                      src={`${PUBLIC_API_URL}${ligne.apercu}`}
+                      alt=""
+                      loading="lazy"
+                      width="80"
+                      height="113"
+                      class="w-20 shrink-0 rounded border border-ink/10 bg-paper-deep object-cover"
+                      style="aspect-ratio: 1 / 1.4142"
+                    />
+                  )}
+                <div class="min-w-0">
+                  <p>{ligne.title ?? "—"}</p>
+                  <p class="mt-1 text-sm text-ink-soft">
+                    {[
+                      ligne.config?.format
+                        ? `${tr("panier.format")} : ${ligne.config.format}`
+                        : null,
+                      `${tr("panier.cadre")} : ${
+                        nomCadre(ligne.config?.frameId) ?? tr("panier.sans_cadre")
+                      }`,
+                      // Les commandes passées portent un titre et un
+                      // sous-titre, les nouvelles trois lignes : lignesRemplies
+                      // lit les deux formes.
+                      ...lignesRemplies(ligne.config?.texts).map(
+                        (bloc) => bloc.value,
+                      ),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                  <p class="mt-1 text-sm text-ink-soft">
+                    {tr("compte.commande.quantite")} : {ligne.quantity}
+                  </p>
+                </div>
+                </div>
+                <p class="shrink-0">
+                  {formatPrice(ligne.unitPriceCents * ligne.quantity)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section class="grid gap-10 sm:grid-cols-2">
+          <div>
+            <h2 class="mb-3 text-2xl">{tr("compte.commande.adresse")}</h2>
+            {lignesAdresse.length ? (
+              <address class="text-ink-soft not-italic">
+                {lignesAdresse.map((l) => (
+                  <span class="block">{l}</span>
+                ))}
+              </address>
+            ) : (
+              <p class="text-ink-soft">—</p>
+            )}
+          </div>
+
+          <dl class="space-y-2">
+            <div class="flex justify-between gap-4">
+              <dt class="text-ink-soft">{tr("compte.commande.sous_total")}</dt>
+              <dd>{formatPrice(detail.montants.sousTotalCents)}</dd>
+            </div>
+            {detail.montants.remiseCents > 0 && (
+              <div class="flex justify-between gap-4">
+                <dt class="text-ink-soft">{tr("compte.commande.remise")}</dt>
+                <dd>- {formatPrice(detail.montants.remiseCents)}</dd>
+              </div>
+            )}
+            <div class="flex justify-between gap-4">
+              <dt class="text-ink-soft">{tr("compte.commande.port")}</dt>
+              <dd>
+                {detail.montants.portCents > 0
+                  ? formatPrice(detail.montants.portCents)
+                  : tr("livraison.offerte")}
+              </dd>
+            </div>
+            <div class="flex justify-between gap-4 border-t border-ink/10 pt-2 text-lg">
+              <dt>{tr("compte.commande.total")}</dt>
+              <dd>{formatPrice(detail.montants.totalCents)}</dd>
+            </div>
+            {detail.montants.rembourseCents > 0 && (
+              <div class="flex justify-between gap-4">
+                <dt class="text-ink-soft">{tr("compte.commande.rembourse")}</dt>
+                <dd>- {formatPrice(detail.montants.rembourseCents)}</dd>
+              </div>
+            )}
+          </dl>
+        </section>
+
+        <section>
+          <h2 class="mb-3 text-2xl">{tr("compte.commande.expeditions")}</h2>
+          {expeditions.length ? (
+            <ul class="space-y-2">
+              {expeditions.map((e) => (
+                <li>
+                  {e.trackingUrl ? (
+                    <a
+                      href={e.trackingUrl}
+                      rel="noopener noreferrer"
+                      target="_blank"
+                      class="underline underline-offset-4 hover:text-terracotta"
+                    >
+                      {e.carrier ? `${e.carrier} — ` : ""}
+                      {e.trackingNumber ?? tr("compte.commandes.suivre")}
+                    </a>
+                  ) : (
+                    <span class="text-ink-soft">
+                      {e.carrier ? `${e.carrier} — ` : ""}
+                      {e.trackingNumber}
+                    </span>
+                  )}
+                  {e.shippedAt && (
+                    <span class="ml-2 text-sm text-ink-soft">
+                      {formatDate(e.shippedAt, langue)}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p class="text-ink-soft">{tr("compte.commande.sans_suivi")}</p>
+          )}
+        </section>
+      </div>
+    )
+  }
+</CompteCadre>

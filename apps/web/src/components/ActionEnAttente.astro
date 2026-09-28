@@ -1,0 +1,63 @@
+---
+/**
+ * Ce qui tient la place du bouton d'une fiche produit pendant que son script
+ * se charge.
+ *
+ * Les boutons « Personnaliser » et « Ajouter au panier » sont dessinés par le
+ * navigateur, une fois leur script arrivé (îlots `client:only`). Le serveur ne
+ * rendait donc RIEN à leur place : sur un réseau lent — un marché de Noël, une
+ * tablette de stand —, la fiche s'affichait sans aucun moyen d'acheter, puis
+ * le bouton surgissait et poussait la description vers le bas.
+ *
+ * On pose ici leur silhouette exacte — mêmes classes, même libellé —, grisée
+ * et inerte. Astro la retire dès que le vrai bouton est prêt : la page ne
+ * bouge pas, et on voit tout de suite ce qu'on va pouvoir faire.
+ */
+interface Props {
+  /** Le libellé du bouton, déjà traduit. */
+  libelle: string;
+  /** Le sélecteur de quantité à gauche du bouton, comme dans l'îlot. */
+  quantite?: boolean;
+  /** La phrase sous le bouton (affiche IA), déjà traduite. */
+  note?: string;
+}
+
+const { libelle, quantite = false, note } = Astro.props;
+---
+
+<div aria-busy="true">
+  <div class="mt-8 flex flex-wrap items-center gap-4">
+    {
+      quantite && (
+        <div class="inline-flex items-center border border-ink/20 opacity-40" aria-hidden="true">
+          <span class="px-3 py-2.5 text-lg leading-none text-ink-soft">−</span>
+          <span class="w-12 border-x border-ink/20 py-2.5 text-center text-sm">1</span>
+          <span class="px-3 py-2.5 text-lg leading-none text-ink-soft">+</span>
+        </div>
+      )
+    }
+    <button
+      type="button"
+      disabled
+      class="ml-action-attente inline-block cursor-wait rounded-full bg-ink px-8 py-3 font-medium text-paper opacity-60"
+    >
+      {libelle}
+    </button>
+  </div>
+  {note && <p class="mt-3 text-sm text-ink-soft">{note}</p>}
+</div>
+
+<style>
+  /* Une respiration lente : le bouton est là, il n'est pas encore prêt. Rien
+     pour qui a demandé moins d'animations. */
+  @media (prefers-reduced-motion: no-preference) {
+    .ml-action-attente {
+      animation: ml-attente 1.4s ease-in-out infinite;
+    }
+  }
+  @keyframes ml-attente {
+    50% {
+      opacity: 0.35;
+    }
+  }
+</style>

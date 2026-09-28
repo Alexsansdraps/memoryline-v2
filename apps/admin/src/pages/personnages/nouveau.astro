@@ -23,9 +23,27 @@ if (Astro.request.method === "POST") {
       orientation: String(f.get("orientation") || "front"),
       position: Number(f.get("position") || 0),
       baseSvgUrl: String(f.get("baseSvgUrl") || "") || null,
+      // Familles de teintes d'une image en pixels : lues au téléversement,
+      // elles valent seules — ce dessin-là n'a aucune zone.
+      ...(f.get("baseCouleursImage")
+        ? {
+            baseCouleursImage: JSON.parse(
+              String(f.get("baseCouleursImage") || "null"),
+            ),
+          }
+        : {}),
       ...(f.get("baseColorZones")
         ? {
             baseColorZones: JSON.parse(String(f.get("baseColorZones") || "{}")),
+            // Nuances réunies à la lecture du dessin. La peau (le premier
+            // groupe) reste seule proposée : le reste se coche sur sa carte.
+            ...(f.get("baseGroupesCouleurs")
+              ? {
+                  baseGroupesCouleurs: JSON.parse(
+                    String(f.get("baseGroupesCouleurs") || "[]"),
+                  ),
+                }
+              : {}),
           }
         : {}),
       ...(f.get("bottomPct")
@@ -40,14 +58,17 @@ if (Astro.request.method === "POST") {
   }
 }
 
-let categories: CharacterCategory[] = [];
+let toutesCategories: CharacterCategory[] = [];
 let vues: TypeAffiche[] = [];
 try {
-  categories = await api.categories();
+  toutesCategories = await api.categories();
   vues = await api.views();
 } catch (e) {
   if (!erreur) erreur = String(e);
 }
+// On ne range pas un personnage tout neuf dans un rayon archivé : l'API le
+// refuserait, et la création entière échouerait sur ce seul choix.
+const categories = toutesCategories.filter((c) => !c.archivedAt);
 ---
 
 <Admin title="Nouveau personnage">
@@ -141,6 +162,8 @@ try {
             (500 × 1000).
           </p>
           <input type="hidden" name="baseColorZones" id="perso-zones" value="" />
+          <input type="hidden" name="baseGroupesCouleurs" id="perso-groupes" value="" />
+          <input type="hidden" name="baseCouleursImage" id="perso-familles" value="" />
           <input type="hidden" name="bottomPct" id="perso-bottom" value="" />
         </div>
       </div>
@@ -180,6 +203,8 @@ try {
     const apercu = document.getElementById("perso-apercu");
     const note = document.getElementById("perso-analyse");
     const zones = document.getElementById("perso-zones");
+    const groupes = document.getElementById("perso-groupes");
+    const familles = document.getElementById("perso-familles");
     const bas = document.getElementById("perso-bottom");
 
     function montrer() {
@@ -188,27 +213,58 @@ try {
       if (v) apercu.src = v.startsWith("http") ? v : PUBLIC_API_URL + v;
     }
 
+    const appel = (chemin, url) =>
+      fetch(`${PUBLIC_API_URL}${chemin}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+        credentials: "include",
+      }).then((res) => {
+        if (!res.ok) throw new Error(res.status);
+        return res.json();
+      });
+
     async function relire() {
       const v = (champ.value || "").trim();
       montrer();
       if (!v) return;
       note.textContent = "Lecture du dessin…";
       try {
-        const res = await fetch(`${PUBLIC_API_URL}/admin/svg/analyse`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: v }),
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error(res.status);
-        const info = await res.json();
-        zones.value = JSON.stringify(info.colorZones || {});
+        // Les couleurs d'abord : un dessin venu de Canva ou d'une IA écrit ses
+        // couleurs forme par forme, et revient sous une nouvelle adresse — sa
+        // version préparée, l'original restant intact. C'est elle qu'on garde.
+        const couleurs = await appel("/admin/svg/couleurs", v);
+        champ.value = couleurs.url;
+        montrer();
+        zones.value = JSON.stringify(couleurs.colorZones || {});
+        groupes.value = JSON.stringify(couleurs.groupesCouleurs || []);
+        familles.value = couleurs.couleursImage
+          ? JSON.stringify(couleurs.couleursImage)
+          : "";
+        const info = await appel("/admin/svg/analyse", couleurs.url);
         if (info.bottomPct != null) bas.value = String(info.bottomPct);
-        const n = Object.keys(info.colorZones || {}).length;
+        const n = (couleurs.groupesCouleurs || []).length;
+        // Image en pixels : ses couleurs principales ont été lues, mais rien
+        // n'est proposé au client tant que la boutique n'a rien coché — ce qui
+        // se fait sur la fiche du personnage, une fois celui-ci créé.
+        const nbFamilles = couleurs.couleursImage?.familles?.length || 0;
+        if (nbFamilles > 0) {
+          note.textContent =
+            `Image en pixels : ${nbFamilles} couleur${nbFamilles > 1 ? "s" : ""} ` +
+            `principale${nbFamilles > 1 ? "s" : ""} trouvée${nbFamilles > 1 ? "s" : ""}` +
+            (info.bottomPct != null ? ` · calage au sol ${info.bottomPct}` : "") +
+            ". Une fois le personnage créé, cochez sur sa fiche celles que le client pourra changer.";
+          return;
+        }
+        if (n === 0 && couleurs.images > 0) {
+          note.textContent =
+            "Ce dessin est une image en pixels, mais ses couleurs n'ont pas pu être lues (image illisible ou entièrement transparente).";
+          return;
+        }
         note.textContent =
-          `${n} zone${n > 1 ? "s" : ""} de couleur` +
+          `${n} couleur${n > 1 ? "s" : ""}` +
           (info.bottomPct != null ? ` · calage au sol ${info.bottomPct}` : "") +
-          " — relus dans le dessin.";
+          " — relus dans le dessin. Seule la première (la peau) sera proposée au client : les autres se cochent ensuite sur sa carte.";
       } catch {
         note.textContent =
           "Dessin illisible : il sera enregistré tel quel, à régler ensuite sur sa carte.";

@@ -1,0 +1,127 @@
+---
+import CompteCadre from "../../../components/CompteCadre.astro";
+import { reinitialiserMotDePasse, rediriger } from "../../../lib/compte.ts";
+import {
+  estLangue,
+  langueDepuisParam,
+  lien,
+  t,
+  type CleUi,
+  type Langue,
+} from "../../../i18n/utils.ts";
+
+export const prerender = false;
+
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
+const tr = t(langue);
+
+// Le jeton arrive par l'URL du courrier ; il repart en champ caché pour
+// survivre à l'envoi du formulaire.
+const jeton = Astro.url.searchParams.get("token") ?? "";
+let erreur: CleUi | null = null;
+
+if (Astro.request.method === "POST") {
+  const formulaire = await Astro.request.formData();
+  const jetonPoste = String(formulaire.get("token") ?? "");
+  const nouveau = String(formulaire.get("nouveau") ?? "");
+  const confirmation = String(formulaire.get("confirmation") ?? "");
+
+  if (!jetonPoste) erreur = "compte.reinit.lien_incomplet";
+  else if (!nouveau) erreur = "compte.err.champs";
+  else if (nouveau !== confirmation) erreur = "compte.err.mdp_different";
+  else if (nouveau.length < 8) erreur = "compte.err.mdp_court";
+  else {
+    const r = await reinitialiserMotDePasse(Astro, {
+      token: jetonPoste,
+      nouveau,
+    });
+    if (r.ok)
+      return rediriger(Astro, `${lien(langue, "/compte/reinitialiser")}?ok=1`);
+    // 400 ici veut dire jeton inconnu, expiré ou déjà utilisé : la longueur
+    // du mot de passe a été vérifiée juste au-dessus.
+    erreur = r.statut === 400 ? "compte.err.jeton" : r.erreur;
+  }
+}
+
+const reussi = Astro.url.searchParams.get("ok") === "1";
+const champ =
+  "mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none";
+---
+
+<CompteCadre
+  langue={langue}
+  titre={tr("compte.reinit.titre")}
+  chemin="/compte/reinitialiser"
+  menu={false}
+>
+  {
+    erreur && (
+      <p class="mb-6 border border-terracotta/40 bg-terracotta/5 px-4 py-3 text-terracotta-deep">
+        {tr(erreur)}
+      </p>
+    )
+  }
+
+  {
+    reussi ? (
+      <p class="border border-sage/50 bg-sage/10 px-4 py-3">
+        {tr("compte.reinit.ok")}
+      </p>
+    ) : !jeton && !erreur ? (
+      <p class="border border-terracotta/40 bg-terracotta/5 px-4 py-3 text-terracotta-deep">
+        {tr("compte.reinit.lien_incomplet")}
+      </p>
+    ) : (
+      <Fragment>
+        <p class="text-ink-soft">{tr("compte.reinit.intro")}</p>
+        <form method="post" class="mt-6 space-y-4">
+          <input type="hidden" name="token" value={jeton} />
+          <label class="block">
+            <span class="text-sm font-medium">{tr("compte.infos.mdp_nouveau")}</span>
+            <input
+              type="password"
+              name="nouveau"
+              required
+              minlength="8"
+              autocomplete="new-password"
+              class={champ}
+            />
+            <span class="mt-1 block text-xs text-ink-soft">
+              {tr("compte.mdp_aide")}
+            </span>
+          </label>
+          <label class="block">
+            <span class="text-sm font-medium">
+              {tr("compte.infos.mdp_confirmer")}
+            </span>
+            <input
+              type="password"
+              name="confirmation"
+              required
+              minlength="8"
+              autocomplete="new-password"
+              class={champ}
+            />
+          </label>
+          <button
+            type="submit"
+            class="w-full rounded-full bg-ink px-6 py-3 font-medium text-paper transition-colors hover:bg-ink/85"
+          >
+            {tr("compte.reinit.bouton")}
+          </button>
+        </form>
+      </Fragment>
+    )
+  }
+
+  <p class="mt-8 text-sm">
+    <a
+      href={lien(langue, "/compte/connexion")}
+      class="underline underline-offset-4 hover:text-terracotta"
+    >
+      {tr("compte.oubli.retour")}
+    </a>
+  </p>
+</CompteCadre>

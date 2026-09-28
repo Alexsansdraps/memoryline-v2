@@ -1,15 +1,40 @@
 ---
+import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
-import { adminApi, formatPrice, type CatalogueLivraisonBO } from "../lib/api.ts";
+import {
+  adminApi,
+  formatPrice,
+  type CatalogueLivraisonBO,
+  type TranchesStandard,
+} from "../lib/api.ts";
 
 const api = adminApi(Astro.request);
 
-/** Euros saisis -> centimes. Champ vide = pas de franchise de port. */
-function centimes(v: FormDataEntryValue | null): number | null {
+/** Euros saisis -> centimes. Champ vide = pas de valeur. */
+function centimes(v: FormDataEntryValue | null | undefined): number | null {
   const t = String(v ?? "").replace(",", ".").trim();
   if (!t) return null;
   const n = Number(t);
   return Number.isFinite(n) ? Math.round(n * 100) : null;
+}
+
+/** Borne de poids saisie -> grammes entiers. Champ vide = pas de borne. */
+function borne(v: FormDataEntryValue | null | undefined): number | null {
+  const t = String(v ?? "").replace(",", ".").trim();
+  if (!t) return null;
+  const n = Math.round(Number(t));
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/**
+ * Une route pas encore déployée doit se lire, pas se deviner : la cliente
+ * n'a pas à traduire un 404 en « redémarrez l'API ».
+ */
+function lisible(e: unknown): string {
+  const t = String(e).replace(/^Error:\s*/, "");
+  return t.includes("404")
+    ? "Cette fonction n'est pas encore disponible côté API. Redémarrez l'API, puis réessayez."
+    : t;
 }
 
 let flash: string | null = null;
@@ -17,16 +42,69 @@ let flashErreur = false;
 
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
-  const action = f.get("_action");
+  // Lu AVANT `_action` : le bouton Archiver vit dans le formulaire de
+  // modification, qui porte son propre `_action` caché.
+  const action = f.get("archiver") ? "mode-archiver" : f.get("_action");
   try {
     if (action === "mode") {
       await api.updateShippingMethod(Number(f.get("id")), {
         name: String(f.get("name") || ""),
         description: String(f.get("description") || ""),
+        // Le champ n'existe pas sur un mode sans transporteur (un retrait sur
+        // place) : ne rien envoyer vaut mieux que d'envoyer du vide, qui
+        // effacerait le transporteur d'un point relais.
+        ...(f.has("carrier") ? { carrier: String(f.get("carrier") || "") } : {}),
         pickupLocation: String(f.get("pickupLocation") || ""),
+        notePreparation: String(f.get("notePreparation") || ""),
         active: f.get("active") === "on",
       });
       flash = "Mode de livraison enregistré.";
+    } else if (action === "mode-ordre") {
+      // L'écran connaît l'ordre affiché ; il envoie la liste ENTIÈRE, le mode
+      // déplacé d'un cran. Un « monte d'un cran » côté API ne saurait pas
+      // départager deux modes posés à la même position.
+      const ordre = f
+        .getAll("ordre")
+        .map((v) => Number(v))
+        .filter((n) => Number.isFinite(n));
+      const id = Number(f.get("id"));
+      const sens = String(f.get("sens") || "");
+      const i = ordre.indexOf(id);
+      const j = sens === "haut" ? i - 1 : i + 1;
+      if (i < 0 || j < 0 || j >= ordre.length)
+        throw new Error("Ce mode est déjà au bout de la liste.");
+      [ordre[i], ordre[j]] = [ordre[j]!, ordre[i]!];
+      await api.ordonnerModesLivraison(ordre);
+      flash = `Ordre enregistré : « ${String(f.get("libelle") || "ce mode")} » ${
+        sens === "haut" ? "remonte" : "descend"
+      } d'un cran. C'est dans cet ordre que le client les verra.`;
+    } else if (action === "mode-creer") {
+      await api.createShippingMethod({
+        name: String(f.get("name") || ""),
+        kind: String(f.get("kind") || "home"),
+        carrier: String(f.get("carrier") || "") || undefined,
+        description: String(f.get("description") || ""),
+        notePreparation: String(f.get("notePreparation") || ""),
+      });
+      flash =
+        "Mode créé. Il est décoché : fixez ses tarifs plus bas, puis cochez « Proposé ».";
+    } else if (action === "mode-archiver") {
+      const restaurer = f.get("archived") === "false";
+      const { commandes } = await api.archiverModeLivraison(
+        Number(f.get("id")),
+        !restaurer,
+      );
+      const nom = String(f.get("libelle") || "Ce mode");
+      flash = restaurer
+        ? `Mode « ${nom} » restauré, avec toute sa grille tarifaire. Il est décoché : cochez « Proposé » quand vous voudrez le reproposer.`
+        : `Mode « ${nom} » archivé : il n'est plus proposé au client.${
+            commandes > 0
+              ? ` Les ${commandes} commande${commandes > 1 ? "s" : ""} parties avec lui continuent de l'afficher.`
+              : ""
+          } Sa grille est gardée entière ; vous pouvez le restaurer plus bas.`;
+    } else if (action === "tarif-restaurer") {
+      await api.archiverTarifLivraison(Number(f.get("id")), false);
+      flash = "Tranche restaurée : elle facture de nouveau dans sa grille.";
     } else if (action === "zone") {
       await api.updateShippingZone(Number(f.get("id")), {
         name: String(f.get("name") || ""),
@@ -34,35 +112,55 @@ if (Astro.request.method === "POST") {
       });
       flash = "Zone enregistrée.";
     } else {
-      await api.updateShippingRate({
+      // La grille part entière : une tranche retirée de l'écran doit quitter
+      // la grille — l'API l'ARCHIVE alors, elle ne l'efface pas (elle attend
+      // dans « Tranches archivées »). Ligne à ligne, on l'oublierait.
+      const mins = f.getAll("min");
+      const maxs = f.getAll("max");
+      const prix = f.getAll("price");
+      const tranches: {
+        minWeightGrams: number;
+        maxWeightGrams: number | null;
+        priceCents: number;
+      }[] = [];
+      for (let i = 0; i < mins.length; i++) {
+        const min = borne(mins[i]);
+        const max = borne(maxs[i]);
+        const p = centimes(prix[i]);
+        if (min === null && max === null && p === null) continue;
+        // Aucun prix n'est deviné : une tranche sans prix est une erreur de
+        // saisie, pas un port gratuit.
+        if (p === null)
+          throw new Error(
+            `La tranche à partir de ${min ?? 0} g n'a pas de prix : saisissez-le, ou retirez la ligne.`,
+          );
+        if (max !== null && max <= (min ?? 0))
+          throw new Error(
+            `Tranche impossible : ${max} g n'est pas au-dessus de ${min ?? 0} g.`,
+          );
+        tranches.push({
+          minWeightGrams: min ?? 0,
+          maxWeightGrams: max,
+          priceCents: p,
+        });
+      }
+      tranches.sort((a, b) => a.minWeightGrams - b.minWeightGrams);
+      const r = await api.setShippingGrille({
         methodId: Number(f.get("methodId")),
         zoneId: Number(f.get("zoneId")),
-        priceCents: centimes(f.get("price")) ?? 0,
         freeFromCents: centimes(f.get("freeFrom")),
-        active: f.get("active") === "on",
+        tranches,
       });
-      flash = "Tarif enregistré.";
+      flash = tranches.length
+        ? `Grille enregistrée : ${r.count} tranche(s).`
+        : "Grille vidée : ce mode ne sera plus proposé dans cette zone.";
     }
   } catch (e) {
-    flash = "Erreur : " + String(e);
+    flash = "Erreur : " + lisible(e);
     flashErreur = true;
   }
 }
 
-/**
- * La recherche de points relais est-elle branchée ? On le déduit du catalogue
- * PUBLIC : il masque le mode « relay » tant que le compte manque.
- */
-let relaisPret = true;
-try {
-  const res = await fetch(
-    `${import.meta.env.API_URL_INTERNAL ?? import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000"}/shipping`,
-  );
-  const publique = (await res.json()) as { modes: { kind: string }[] };
-  relaisPret = publique.modes.some((m) => m.kind === "relay");
-} catch {
-  // API injoignable : on ne dit rien plutôt que d'alarmer à tort.
-}
 
 let cat: CatalogueLivraisonBO = { zones: [], modes: [], tarifs: [] };
 let error: string | null = null;
@@ -72,14 +170,100 @@ try {
   error = String(e);
 }
 
-const tarif = (methodId: number, zoneId: number) =>
-  cat.tarifs.find((t) => t.methodId === methodId && t.zoneId === zoneId);
+// Bornes habituelles des transporteurs : une aide à la saisie, jamais des
+// prix. Si la route manque, les boutons disparaissent et on le dit.
+let standard: TranchesStandard | null = null;
+let erreurStandard: string | null = null;
+try {
+  standard = await api.tranchesStandard();
+} catch (e) {
+  erreurStandard = lisible(e);
+}
 
-const NOM_NATURE: Record<string, string> = {
-  relay: "Point relais",
-  home: "À domicile",
-  pickup: "Retrait sur place",
+// Les archivés quittent les listes ordinaires pour leurs propres sections.
+const modesActifs = cat.modes.filter((m) => !m.archivedAt);
+const modesArchives = cat.modes.filter((m) => m.archivedAt);
+const tarifsVivants = cat.tarifs.filter((t) => !t.archivedAt);
+const tarifsArchives = cat.tarifs.filter((t) => t.archivedAt);
+
+/** Les tranches proposées au client, de la plus légère à la plus lourde. */
+const grille = (methodId: number, zoneId: number) =>
+  tarifsVivants
+    .filter((t) => t.methodId === methodId && t.zoneId === zoneId && t.active)
+    .sort((a, b) => a.minWeightGrams - b.minWeightGrams);
+
+/** Lignes désactivées : elles bloquent le mode sans apparaître dans la grille. */
+const retire = (methodId: number, zoneId: number) =>
+  tarifsVivants.some(
+    (t) => t.methodId === methodId && t.zoneId === zoneId && !t.active,
+  );
+
+/** Le nom d'un mode et d'une zone, pour nommer une tranche archivée. */
+const nomMode = (id: number) =>
+  cat.modes.find((m) => m.id === id)?.name ?? "mode retiré";
+const nomZone = (id: number) =>
+  cat.zones.find((z) => z.id === id)?.name ?? "zone retirée";
+
+/** Une borne de poids en toutes lettres : « de 0 g à 500 g ». */
+const bornes = (min: number, max: number | null) =>
+  max === null ? `à partir de ${min} g` : `de ${min} g à ${max} g`;
+
+/** Ce qu'il faut avoir lu avant d'archiver un mode de livraison. */
+function messageArchivage(m: { name: string }): string {
+  return [
+    `Archiver le mode « ${m.name} » ?`,
+    "Il ne sera plus proposé au client. Sa grille tarifaire est gardée entière, et les commandes déjà parties avec lui continuent de l'afficher — rien n'est supprimé.",
+    "Vous pourrez le restaurer quand vous voudrez, dans « Modes archivés ».",
+  ].join("\n\n");
+}
+
+/**
+ * Les natures et les transporteurs, tels que l'API les connaît. Les deux
+ * listes vivent là-bas : une copie ici finirait par proposer une nature ou un
+ * transporteur que l'API refuse.
+ */
+const natures = cat.natures ?? [];
+const NOM_NATURE: Record<string, string> = Object.fromEntries(
+  natures.map((n) => [n.code, n.nom]),
+);
+/**
+ * Le nom lisible d'une nature — et, si l'API ne la connaît plus, un
+ * avertissement plutôt qu'un code brut : un vieux mode restauré des archives
+ * porte une nature abandonnée, et « letter » tout seul ne veut rien dire.
+ */
+const libelleNature = (kind: string) =>
+  NOM_NATURE[kind] ?? `nature « ${kind} » inconnue`;
+const transporteurs = cat.transporteurs ?? [];
+const NOM_TRANSPORTEUR: Record<string, string> = Object.fromEntries(
+  transporteurs.map((t) => [t.code, t.nom]),
+);
+
+/** Ce mode est-il prêt de bout en bout ? */
+const toutEstFait = (etapes: { fait: boolean }[]) => etapes.every((e) => e.fait);
+
+/**
+ * Ce que le repli « ce qu'il reste à faire » annonce, plié.
+ *
+ * Le compte AVANT le détail : replié, l'écran doit déjà dire s'il reste du
+ * travail sur ce mode, sans qu'on ait à le déplier pour l'apprendre.
+ */
+const resumeOuverture = (etapes: { fait: boolean }[]) => {
+  const restants = etapes.filter((e) => !e.fait).length;
+  return restants === 0
+    ? `Les ${etapes.length} étapes sont faites — dépliez pour les revoir.`
+    : `Il reste ${restants} chose(s) à faire pour l'ouvrir, ${
+        etapes.length - restants
+      } déjà faite(s) — dépliez pour voir lesquelles.`;
 };
+
+/**
+ * L'ordre affiché, tel qu'il partira aux boutons « monter / descendre ».
+ *
+ * Le même tableau sert à l'affichage et au déplacement : l'API reçoit ainsi
+ * exactement la liste qu'Alexandra a sous les yeux, et non une reconstruction
+ * qui pourrait différer d'un tri.
+ */
+const ordreModes = modesActifs.map((m) => m.id);
 ---
 
 <Admin title="Livraison">
@@ -94,31 +278,41 @@ const NOM_NATURE: Record<string, string> = {
   )}
   {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
 
-  <p class="mb-6 text-sm text-bo-muted max-w-3xl">
+  <p class="mb-3 text-sm text-bo-muted max-w-3xl">
     Ce que le client peut choisir au moment de payer, et combien ça lui coûte.
-    Le prix dépend du <strong>mode</strong> et de la <strong>zone</strong> :
-    c'est le croisement des deux, dans le tableau plus bas, qui décide.
+    Le prix dépend du <strong>mode</strong>, de la <strong>zone</strong> et du
+    <strong>poids du colis</strong> : c'est le croisement des trois, dans les
+    grilles plus bas, qui décide.
+  </p>
+  {/* Les modes préparés d'avance arrivent décochés et sans prix. Sans cette
+      explication, la liste a l'air de s'être remplie toute seule. */}
+  <p class="mb-6 rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm text-bo-muted max-w-3xl">
+    Tous les transporteurs qu'une boutique d'affiches peut ouvrir sont déjà là,
+    <strong>décochés et sans prix</strong> : Colissimo, Mondial Relay, Relais
+    Colis, Chronopost, Colis Privé, DPD, GLS, Shop2Shop, UPS et DHL, à domicile
+    et en point relais. Rien n'apparaît sur le site tant que vous ne les avez
+    pas cochés. Le jour où vous signez un contrat, il n'y a qu'à <strong
+      >saisir le prix</strong
+    > dans la grille, puis cocher « Proposé » — aucun développeur à appeler.
+    Chaque mode dit lui-même, sous « Ce qu'il reste à faire pour l'ouvrir », ce
+    qui lui manque encore et ce qui est déjà fait.
+  </p>
+  <p class="mb-6 text-sm text-bo-muted max-w-3xl">
+    Pas de <strong>lettre suivie</strong> : une affiche part roulée dans un tube
+    ou sous pli rigide, c'est un colis. Un affranchissement de lettre ne
+    couvrirait ni l'épaisseur, ni le cadre, ni la casse.
   </p>
 
   {/* ------------------------------------------------------------------ */}
   {/* Modes                                                               */}
   {/* ------------------------------------------------------------------ */}
-  {/* Le point relais suppose un compte transporteur : tant qu'il manque, le
-      mode est masqué côté site et il vaut mieux le dire ici. */}
-  {cat.modes.some((m) => m.kind === "relay") && !relaisPret && (
-    <p class="mb-6 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
-      <strong>Point relais masqué sur le site.</strong> La recherche de points
-      relais demande un compte Mondial Relay : ajoutez
-      <code> MONDIAL_RELAY_ENSEIGNE</code> et <code>MONDIAL_RELAY_CLE</code>
-      dans le fichier <code>.env</code>, puis redémarrez l'API. Sans eux, le
-      client ne pourrait pas choisir son point relais — et une adresse saisie
-      à la main ne sert à rien pour l'expédition.
-    </p>
-  )}
+  {/* Chaque mode dit lui-même s'il sort sur le site : un avertissement
+      général ne disait pas LEQUEL des modes était masqué, ni pourquoi. */}
 
   <h3 class="font-semibold mb-3">Modes de livraison</h3>
   <section class="mb-8 space-y-3">
-    {cat.modes.map((m) => (
+    {modesActifs.map((m) => (
+      <Fragment>
       <form
         method="POST"
         class="bg-bo-surface border border-bo-border rounded-lg p-4 text-sm"
@@ -171,94 +365,532 @@ const NOM_NATURE: Record<string, string> = {
         {m.kind !== "pickup" && (
           <input type="hidden" name="pickupLocation" value={m.pickupLocation ?? ""} />
         )}
-        <p class="mt-2 text-xs text-bo-muted">
-          {NOM_NATURE[m.kind] ?? m.kind} · identifiant <code>{m.slug}</code>
-          {m.carrier ? ` · transporteur ${m.carrier}` : ""}
+
+        {/* Le transporteur se change ici : un mode préparé pour Relais Colis
+            peut finir chez Chronopost si c'est ce contrat-là qui se signe.
+            Un mode sans transporteur — un retrait sur place — n'en a pas
+            besoin, et le champ absent laisse l'API tranquille. */}
+        {m.kind !== "pickup" && (
+          <label class="mt-3 block">
+            <span class="text-bo-muted text-xs">Transporteur</span>
+            <select
+              name="carrier"
+              class="mt-1 block w-64 border border-bo-border rounded px-2 py-1"
+            >
+              {m.kind !== "relay" && (
+                <option value="" selected={!m.carrier}>
+                  Aucun
+                </option>
+              )}
+              {transporteurs.map((t) => (
+                <option value={t.code} selected={m.carrier === t.code}>
+                  {t.nom}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {/* Votre propre remarque sur ce mode, à côté de la liste calculée
+            plus bas : le nom de votre interlocuteur, une date de rendez-vous,
+            un piège à ne pas oublier. Écrite pour vous, jamais montrée au
+            client — videz-la le jour où elle n'a plus lieu d'être. */}
+        <label class="mt-3 block">
+          <span class="text-bo-muted text-xs">
+            Votre note sur ce mode — jamais vue par le client
+          </span>
+          <textarea
+            name="notePreparation"
+            rows="2"
+            placeholder="Devis demandé le 3 mars, relancer Mme X…"
+            class="mt-1 block w-full border border-bo-border rounded px-2 py-1"
+          >{m.notePreparation ?? ""}</textarea>
+        </label>
+
+        {/* L'état RÉEL, et ce qu'il faut faire pour en changer.
+
+            « Proposé » coché ne suffit pas à faire apparaître un mode sur le
+            site : sans cette liste, on coche, on ne voit rien, et on cherche
+            l'erreur ailleurs. Elle dit TOUT d'un coup — contrat, prix, carte
+            des points, case à cocher — parce que la question est « qu'est-ce
+            qu'il me reste à faire », et que n'en montrer qu'un obligeait à
+            revenir trois fois pour découvrir le suivant.
+
+            Un repli, et non une liste toujours ouverte : dépliée pour quinze
+            modes, la page ne se lirait plus. Il reste que tout est là, sur le
+            même écran, sans rien aller chercher ailleurs — et un mode coché
+            qui n'apparaît pourtant pas s'ouvre tout seul, parce que celui-là
+            est une surprise à expliquer tout de suite.
+            La liste est calculée par l'API — c'est elle qui sait quels
+            comptes transporteurs sont branchés. Si elle ne la donne pas
+            encore (API pas redémarrée), on retombe sur les raisons seules,
+            plutôt que d'afficher un écran vide. */}
+        {m.ouverture ? (
+          <details
+            class={`mt-3 rounded border px-3 py-2 text-xs ${
+              toutEstFait(m.ouverture)
+                ? "border-green-200 bg-green-50"
+                : "border-amber-200 bg-amber-50"
+            }`}
+            open={m.active && !toutEstFait(m.ouverture)}
+          >
+            <summary class="cursor-pointer">
+              <strong>
+                {toutEstFait(m.ouverture)
+                  ? "Visible sur le site : les clients peuvent le choisir."
+                  : "Pas encore visible sur le site."}
+              </strong>{" "}
+              {resumeOuverture(m.ouverture)}
+            </summary>
+            <ul class="mt-2 space-y-1.5">
+              {m.ouverture.map((e) => (
+                <li class="flex gap-2">
+                  <span
+                    class={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 font-semibold ${
+                      e.fait
+                        ? "bg-green-100 text-green-800"
+                        : "bg-amber-100 text-amber-900"
+                    }`}
+                  >
+                    {e.fait ? "FAIT" : "À FAIRE"}
+                  </span>
+                  <span>
+                    <strong>{e.titre}</strong> — {e.detail}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : (m.masqueRaisons ?? []).length > 0 ? (
+          <div class="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs">
+            <p>
+              <strong>Pas visible sur le site.</strong> Il manque :
+            </p>
+            <ul class="mt-1 list-disc space-y-0.5 pl-4">
+              {(m.masqueRaisons ?? []).map((r) => (
+                <li>{r}</li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p class="mt-3 text-xs text-green-700">
+            Visible sur le site : les clients peuvent le choisir.
+          </p>
+        )}
+        <p class="mt-2 flex flex-wrap items-center gap-2 text-xs text-bo-muted">
+          <span>
+            {libelleNature(m.kind)} · identifiant <code>{m.slug}</code>
+            {m.carrier
+              ? ` · ${NOM_TRANSPORTEUR[m.carrier] ?? m.carrier}`
+              : ""}
+          </span>
+          {/* Son propre champ, et non `_action` : le formulaire en porte
+              déjà un, caché, et c'est le premier envoyé qui compte. */}
+          <input type="hidden" name="libelle" value={m.name} />
+          <input type="hidden" name="archived" value="true" />
+          <button
+            type="submit"
+            name="archiver"
+            value="1"
+            formnovalidate
+            data-archiver={messageArchivage(m)}
+            class="ml-auto rounded border border-bo-border px-2 py-1 hover:border-bo-accent hover:text-bo-accent"
+          >
+            Archiver
+          </button>
         </p>
       </form>
+
+      {/* L'ordre des modes, dans son propre formulaire : imbriquer deux
+          formulaires est interdit, et l'ordre n'a rien à voir avec le reste
+          de la fiche — le déplacer ne doit pas enregistrer une saisie en
+          cours par surprise. */}
+      <form method="POST" class="-mt-1 flex items-center gap-2 px-4 text-xs text-bo-muted">
+        <input type="hidden" name="_action" value="mode-ordre" />
+        <input type="hidden" name="id" value={m.id} />
+        <input type="hidden" name="libelle" value={m.name} />
+        {ordreModes.map((id) => (
+          <input type="hidden" name="ordre" value={id} />
+        ))}
+        <span>Ordre d'affichage chez le client :</span>
+        <button
+          name="sens"
+          value="haut"
+          disabled={ordreModes[0] === m.id}
+          class="rounded border border-bo-border px-2 py-0.5 hover:border-bo-accent hover:text-bo-accent disabled:opacity-40"
+          aria-label={`Remonter ${m.name}`}
+        >
+          ↑ Monter
+        </button>
+        <button
+          name="sens"
+          value="bas"
+          disabled={ordreModes[ordreModes.length - 1] === m.id}
+          class="rounded border border-bo-border px-2 py-0.5 hover:border-bo-accent hover:text-bo-accent disabled:opacity-40"
+          aria-label={`Descendre ${m.name}`}
+        >
+          ↓ Descendre
+        </button>
+      </form>
+      </Fragment>
     ))}
+
+    {/* ---------------------------------------------------------------- */}
+    {/* Les modes archivés                                                */}
+    {/* ---------------------------------------------------------------- */}
+    {modesArchives.length > 0 && (
+      <div class="pt-2">
+        <h4 class="mb-1 text-sm font-semibold">Modes archivés</h4>
+        <p class="mb-2 max-w-3xl text-xs text-bo-muted">
+          Retirés du tunnel de commande et de la liste ci-dessus. Leur grille
+          tarifaire est gardée entière, et les commandes parties avec eux
+          continuent de les nommer. « Restaurer » rend le mode et sa grille ;
+          il revient décoché.
+        </p>
+        <div class="space-y-2 opacity-70">
+          {modesArchives.map((m) => (
+            <form
+              method="POST"
+              class="flex flex-wrap items-center gap-4 rounded-lg border border-bo-border bg-bo-surface p-3 text-sm"
+            >
+              <input type="hidden" name="_action" value="mode-archiver" />
+              <input type="hidden" name="id" value={m.id} />
+              <input type="hidden" name="libelle" value={m.name} />
+              <input type="hidden" name="archived" value="false" />
+              <div class="min-w-48 flex-1">
+                <p class="font-medium">{m.name}</p>
+                <p class="text-xs text-bo-muted">
+                  {libelleNature(m.kind)} · identifiant{" "}
+                  <code>{m.slug}</code>
+                  {m.carrier
+                    ? ` · ${NOM_TRANSPORTEUR[m.carrier] ?? m.carrier}`
+                    : ""}
+                </p>
+              </div>
+              <button
+                type="submit"
+                name="archiver"
+                value="1"
+                formnovalidate
+                class="text-sm text-bo-accent hover:underline"
+              >
+                Restaurer
+              </button>
+            </form>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {/* Créer un mode. Il naît décoché : un mode sans tarif afficherait
+        0 € de port au client. */}
+    <form
+      method="POST"
+      class="bg-bo-surface border border-dashed border-bo-border rounded-lg p-4 text-sm"
+    >
+      <input type="hidden" name="_action" value="mode-creer" />
+      <p class="mb-3 font-medium">Ajouter un mode</p>
+      <div class="flex flex-wrap items-end gap-3">
+        <label class="block">
+          <span class="text-bo-muted text-xs">Nom vu par le client</span>
+          <input
+            name="name"
+            required
+            placeholder="Point relais Chronopost"
+            class="mt-1 block w-52 border border-bo-border rounded px-2 py-1"
+          />
+        </label>
+        <label class="block">
+          <span class="text-bo-muted text-xs">Nature</span>
+          <select
+            name="kind"
+            class="mt-1 block w-44 border border-bo-border rounded px-2 py-1"
+          >
+            {natures.map((n) => (
+              <option value={n.code} title={n.aide}>
+                {n.nom}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label class="block">
+          <span class="text-bo-muted text-xs">Transporteur</span>
+          <select
+            name="carrier"
+            class="mt-1 block w-56 border border-bo-border rounded px-2 py-1"
+          >
+            <option value="">Aucun</option>
+            {transporteurs.map((t) => (
+              <option value={t.code}>
+                {t.nom}
+                {t.integre ? "" : " — intégration à écrire"}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label class="block flex-1 min-w-[220px]">
+          <span class="text-bo-muted text-xs">Précision (délai…)</span>
+          <input
+            name="description"
+            class="mt-1 block w-full border border-bo-border rounded px-2 py-1"
+          />
+        </label>
+        <button class="rounded bg-bo-accent text-white px-3 py-1.5">
+          Ajouter
+        </button>
+      </div>
+      <label class="mt-3 block">
+        <span class="text-bo-muted text-xs">
+          Votre note sur ce mode — jamais vue par le client
+        </span>
+        <input
+          name="notePreparation"
+          placeholder="Contrat demandé, devis attendu…"
+          class="mt-1 block w-full border border-bo-border rounded px-2 py-1"
+        />
+      </label>
+      <p class="mt-2 text-xs text-bo-muted">
+        Un <strong>point relais</strong> demande un transporteur : c'est lui
+        qui fournit la liste des points où le client choisit. Les
+        transporteurs marqués « intégration à écrire » peuvent être préparés
+        dès maintenant (tarifs, zones), mais leur mode restera masqué du site
+        tant que la recherche de points n'existe pas — proposer un point
+        relais qu'on ne sait pas transmettre reviendrait à vendre une
+        livraison impossible.
+      </p>
+      <p class="mt-2 text-xs text-bo-muted">
+        La <strong>nature</strong> se choisit ici une fois pour toutes : elle
+        décide de ce qu'on demande au client — une adresse, un point relais,
+        ou rien. La changer ensuite laisserait des commandes avec une adresse
+        et sans point de retrait ; en cas d'erreur, créez l'autre mode et
+        archivez celui-ci, rien n'est perdu.
+      </p>
+      <p class="mt-2 text-xs text-bo-muted">
+        Pour un <strong>marché de Noël</strong>, pas besoin d'un mode à part :
+        « Retrait sur place » propose déjà les stands ouverts, chacun par son
+        nom. Ouvrez le stand dans
+        <a class="underline" href={url("/ventes-salon")}>Ventes stand</a> et il
+        apparaît tout seul au moment de payer.
+      </p>
+    </form>
   </section>
 
   {/* ------------------------------------------------------------------ */}
-  {/* Tarifs                                                              */}
+  {/* Grilles tarifaires                                                  */}
   {/* ------------------------------------------------------------------ */}
-  <h3 class="font-semibold mb-1">Tarifs</h3>
-  <p class="mb-3 text-sm text-bo-muted max-w-3xl">
-    Un prix par mode et par zone. Le champ « offert à partir de » se compare au
-    panier <strong>après remises</strong> — laissez-le vide pour ne jamais
-    offrir le port. Décochez « Disponible » pour retirer un mode d'une zone
-    (le retrait sur place n'a pas de sens à l'étranger).
+  <h3 class="font-semibold mb-1">Tarifs par poids</h3>
+  <p class="mb-2 text-sm text-bo-muted max-w-3xl">
+    Pour chaque mode et chaque zone, une grille : « de tel poids à tel poids,
+    tel prix ». Le poids du colis est calculé à partir du poids des affiches
+    (<a class="underline" href={url("/collections")}>collections</a> et fiches
+    produit) et de celui des
+    <a class="underline" href={url("/cadres")}> cadres</a>.
   </p>
+  <p class="mb-2 text-sm text-bo-muted max-w-3xl">
+    La borne haute est <strong>exclue</strong> : une tranche « 0 → 250 » couvre
+    jusqu'à 249 g, et la suivante commence à 250. Laissez la borne haute vide
+    pour « sans limite ». <strong>Un poids qu'aucune tranche ne couvre fait
+    disparaître le mode</strong> du tunnel de commande — la note sous chaque
+    grille dit ce qui est couvert.
+  </p>
+  <p class="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm max-w-3xl">
+    <strong>Les prix ne sont jamais devinés.</strong> Ni Colissimo ni Mondial
+    Relay ne publient de tarifs interrogeables : les boutons « Reprendre les
+    tranches… » ne remplissent que les <strong>bornes de poids</strong>
+    habituelles du transporteur, pour éviter de les retaper. Les
+    <strong>prix</strong>, eux, se recopient depuis votre grille contractuelle.
+  </p>
+  {erreurStandard && (
+    <p class="mb-4 text-sm text-bo-muted max-w-3xl">
+      Bornes habituelles indisponibles : {erreurStandard} Les tranches restent
+      saisissables à la main.
+    </p>
+  )}
+
   <section class="mb-8 space-y-6">
     {cat.zones.map((z) => (
       <div class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
         <div class="bg-bo-bg px-4 py-2 text-sm font-medium">{z.name}</div>
-        <table class="w-full text-sm">
-          <tbody>
-            {cat.modes.map((m) => {
-              const t = tarif(m.id, z.id);
-              return (
-                <tr class="border-t border-bo-border">
-                  <td class="px-4 py-3">
-                    <form method="POST" class="flex flex-wrap items-end gap-3">
-                      <input type="hidden" name="methodId" value={m.id} />
-                      <input type="hidden" name="zoneId" value={z.id} />
-                      <span class="w-40 pb-1.5">{m.name}</span>
-                      <label class="block">
-                        <span class="text-bo-muted text-xs">Prix (€)</span>
-                        <input
-                          name="price"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={((t?.priceCents ?? 0) / 100).toFixed(2)}
-                          class="mt-1 block w-24 border border-bo-border rounded px-2 py-1"
-                        />
-                      </label>
-                      <label class="block">
-                        <span class="text-bo-muted text-xs">
-                          Offert à partir de (€)
-                        </span>
-                        <input
-                          name="freeFrom"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={
-                            t?.freeFromCents == null
-                              ? ""
-                              : (t.freeFromCents / 100).toFixed(2)
-                          }
-                          placeholder="jamais"
-                          class="mt-1 block w-32 border border-bo-border rounded px-2 py-1"
-                        />
-                      </label>
-                      <label class="flex items-center gap-2 pb-1.5">
-                        <input
-                          type="checkbox"
-                          name="active"
-                          checked={t?.active ?? true}
-                        />
-                        <span>Disponible</span>
-                      </label>
-                      <button class="rounded bg-bo-accent text-white px-3 py-1.5">
-                        Enregistrer
-                      </button>
-                      <span class="pb-1.5 text-xs text-bo-muted">
-                        {t
-                          ? `actuellement ${formatPrice(t.priceCents)}`
-                          : "aucun tarif"}
-                      </span>
-                    </form>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div class="divide-y divide-bo-border">
+          {modesActifs.map((m) => {
+            const lignes = grille(m.id, z.id);
+            const franco = lignes[0]?.freeFromCents ?? null;
+            const transporteur = m.carrier ?? "";
+            return (
+              <form method="POST" class="js-grille p-4 text-sm">
+                <input type="hidden" name="methodId" value={m.id} />
+                <input type="hidden" name="zoneId" value={z.id} />
+
+                <div class="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <span class="font-medium">{m.name}</span>
+                    <span class="ml-2 text-xs text-bo-muted">
+                      {libelleNature(m.kind)}
+                      {m.carrier ? ` · ${NOM_TRANSPORTEUR[m.carrier] ?? m.carrier}` : ""}
+                      {!m.active && " · mode désactivé partout"}
+                    </span>
+                  </div>
+                  <label class="block">
+                    <span class="text-bo-muted text-xs">
+                      Offert à partir de (€)
+                    </span>
+                    <input
+                      name="freeFrom"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={franco == null ? "" : (franco / 100).toFixed(2)}
+                      placeholder="jamais"
+                      class="mt-1 block w-32 border border-bo-border rounded px-2 py-1"
+                    />
+                  </label>
+                </div>
+
+                <table class="mt-3 w-full text-sm">
+                  <thead class="text-left text-bo-muted">
+                    <tr>
+                      <th class="w-36 px-3 py-1 font-medium">De (g, inclus)</th>
+                      <th class="w-36 px-3 py-1 font-medium">À (g, exclu)</th>
+                      <th class="w-32 px-3 py-1 font-medium">Prix (€)</th>
+                      <th class="px-3 py-1"></th>
+                    </tr>
+                  </thead>
+                  <tbody class="js-lignes">
+                    {lignes.map((t) => (
+                      <tr class="js-ligne">
+                        <td class="px-3 py-1">
+                          <input
+                            name="min"
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={t.minWeightGrams}
+                            class="w-28 border border-bo-border rounded px-2 py-1"
+                          />
+                        </td>
+                        <td class="px-3 py-1">
+                          <input
+                            name="max"
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={t.maxWeightGrams ?? ""}
+                            placeholder="sans limite"
+                            class="w-28 border border-bo-border rounded px-2 py-1"
+                          />
+                        </td>
+                        <td class="px-3 py-1">
+                          <input
+                            name="price"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={(t.priceCents / 100).toFixed(2)}
+                            class="w-24 border border-bo-border rounded px-2 py-1"
+                          />
+                        </td>
+                        <td class="px-3 py-1 text-right">
+                          <button
+                            type="button"
+                            class="js-retirer-ligne rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-red-300 hover:text-red-700"
+                            title="Retirer cette tranche de la grille — elle sera archivée à l'enregistrement, et restaurable plus bas"
+                            aria-label="Retirer cette tranche"
+                          >
+                            ✕
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    class="js-ajouter-ligne rounded border border-bo-border px-3 py-1.5 text-xs"
+                  >
+                    + Ajouter une tranche
+                  </button>
+                  {standard && transporteur && NOM_TRANSPORTEUR[transporteur] && (
+                    <button
+                      type="button"
+                      class="js-standard rounded border border-bo-border px-3 py-1.5 text-xs"
+                      data-transporteur={transporteur}
+                      title="Ne remplit que les bornes de poids ; les prix restent à saisir"
+                    >
+                      Reprendre les tranches {NOM_TRANSPORTEUR[transporteur]}
+                    </button>
+                  )}
+                  <button class="rounded bg-bo-accent text-white px-3 py-1.5">
+                    Enregistrer la grille
+                  </button>
+                  <span class="text-xs text-bo-muted">
+                    {lignes.length === 0
+                      ? "aucune tranche enregistrée"
+                      : `${lignes.length} tranche(s) · de ${formatPrice(
+                          Math.min(...lignes.map((t) => t.priceCents)),
+                        )} à ${formatPrice(
+                          Math.max(...lignes.map((t) => t.priceCents)),
+                        )}`}
+                  </span>
+                </div>
+
+                <p class="js-couverture mt-2 text-xs"></p>
+                {retire(m.id, z.id) && (
+                  <p class="mt-1 text-xs text-bo-muted">
+                    Ce mode a été retiré de cette zone. Enregistrer une grille
+                    ici le remet en service ; laissez-la vide pour qu'il reste
+                    retiré.
+                  </p>
+                )}
+              </form>
+            );
+          })}
+        </div>
       </div>
     ))}
   </section>
+
+  {/* ------------------------------------------------------------------ */}
+  {/* Les tranches archivées                                              */}
+  {/* ------------------------------------------------------------------ */}
+  {tarifsArchives.length > 0 && (
+    <section class="mb-8">
+      <h3 class="mb-1 font-semibold">Tranches archivées</h3>
+      <p class="mb-3 max-w-3xl text-sm text-bo-muted">
+        Les tranches retirées d'une grille ne sont pas effacées : elles
+        attendent ici, avec leur prix. « Restaurer » remet la tranche dans sa
+        grille — refusé si une autre tranche a repris la même borne de poids
+        depuis, car deux prix pour un même colis ne se départagent pas.
+      </p>
+      <div class="space-y-2 opacity-70">
+        {tarifsArchives.map((t) => (
+          <form
+            method="POST"
+            class="flex flex-wrap items-center gap-4 rounded-lg border border-bo-border bg-bo-surface p-3 text-sm"
+          >
+            <input type="hidden" name="_action" value="tarif-restaurer" />
+            <input type="hidden" name="id" value={t.id} />
+            <div class="min-w-56 flex-1">
+              <p class="font-medium">
+                {nomMode(t.methodId)} · {nomZone(t.zoneId)}
+              </p>
+              <p class="text-xs text-bo-muted">
+                {bornes(t.minWeightGrams, t.maxWeightGrams)} ·{" "}
+                {formatPrice(t.priceCents)}
+                {t.freeFromCents != null
+                  ? ` · offert à partir de ${formatPrice(t.freeFromCents)}`
+                  : ""}
+              </p>
+            </div>
+            <button class="text-sm text-bo-accent hover:underline">
+              Restaurer
+            </button>
+          </form>
+        ))}
+      </div>
+    </section>
+  )}
 
   {/* ------------------------------------------------------------------ */}
   {/* Zones                                                               */}
@@ -305,4 +937,155 @@ const NOM_NATURE: Record<string, string> = {
       </form>
     ))}
   </section>
+
+  <script is:inline define:vars={{ STANDARD: standard }}>
+    // Une grille se compose à l'écran : on ajoute et on retire des lignes, et
+    // la note de couverture dit tout de suite ce qui restera sans mode de
+    // livraison. Le tout part en un seul POST — la grille entière remplace
+    // l'ancienne, sans quoi une tranche retirée survivrait en base.
+
+    /** Affichage seulement : le calcul du poids vit dans @memoryline/types. */
+    function poids(g) {
+      return g >= 1000
+        ? `${(g / 1000).toFixed(g % 1000 === 0 ? 0 : 2).replace(".", ",")} kg`
+        : `${g} g`;
+    }
+
+    const LIGNE = `
+      <td class="px-3 py-1"><input name="min" type="number" min="0" step="1" value="" class="w-28 border border-bo-border rounded px-2 py-1" /></td>
+      <td class="px-3 py-1"><input name="max" type="number" min="0" step="1" value="" placeholder="sans limite" class="w-28 border border-bo-border rounded px-2 py-1" /></td>
+      <td class="px-3 py-1"><input name="price" type="number" min="0" step="0.01" value="" class="w-24 border border-bo-border rounded px-2 py-1" /></td>
+      <td class="px-3 py-1 text-right"><button type="button" class="js-retirer-ligne rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-red-300 hover:text-red-700" title="Retirer cette tranche de la grille — elle sera archivée à l'enregistrement, et restaurable plus bas" aria-label="Retirer cette tranche">✕</button></td>`;
+
+    for (const form of document.querySelectorAll("form.js-grille")) {
+      const corps = form.querySelector(".js-lignes");
+      const note = form.querySelector(".js-couverture");
+
+      function lignes() {
+        return [...corps.querySelectorAll(".js-ligne")]
+          // Une ligne entièrement vide est ignorée à l'enregistrement : la
+          // note de couverture doit dire la même chose que ce qui sera gardé.
+          .filter((tr) =>
+            ["min", "max", "price"].some(
+              (n) => tr.querySelector(`[name=${n}]`).value !== "",
+            ),
+          )
+          .map((tr) => ({
+            min: Number(tr.querySelector("[name=min]").value || 0),
+            max:
+              tr.querySelector("[name=max]").value === ""
+                ? null
+                : Number(tr.querySelector("[name=max]").value),
+          }))
+          .sort((a, b) => a.min - b.min);
+      }
+
+      function couverture() {
+        const l = lignes();
+        if (!l.length) {
+          note.textContent =
+            "Aucune tranche : ce mode ne sera pas proposé dans cette zone.";
+          note.className = "js-couverture mt-2 text-xs text-amber-800";
+          return;
+        }
+        const trous = [];
+        if (l[0].min > 0)
+          trous.push(`en dessous de ${poids(l[0].min)}, ce mode ne sera pas proposé`);
+        for (let i = 0; i < l.length - 1; i++) {
+          if (l[i].max === null) break;
+          if (l[i].max < l[i + 1].min)
+            trous.push(
+              `de ${poids(l[i].max)} à ${poids(l[i + 1].min)}, aucune tranche : ce mode ne sera pas proposé`,
+            );
+        }
+        // Une seule tranche sans borne haute suffit à tout couvrir vers le
+        // haut, même si elle n'est pas la dernière de la liste.
+        if (!l.some((t) => t.max === null))
+          trous.push(
+            `au-delà de ${poids(Math.max(...l.map((t) => t.max)))}, ce mode ne sera pas proposé`,
+          );
+        if (trous.length) {
+          note.textContent = "Couverture : " + trous.join(" · ") + ".";
+          note.className = "js-couverture mt-2 text-xs text-amber-800";
+        } else {
+          note.textContent =
+            "Couverture : tous les poids, de 0 g à sans limite.";
+          note.className = "js-couverture mt-2 text-xs text-bo-muted";
+        }
+      }
+
+      form.querySelector(".js-ajouter-ligne")?.addEventListener("click", () => {
+        const tr = document.createElement("tr");
+        tr.className = "js-ligne";
+        tr.innerHTML = LIGNE;
+        corps.appendChild(tr);
+        tr.querySelector("[name=min]").focus();
+        couverture();
+      });
+
+      corps.addEventListener("click", (e) => {
+        const b = e.target.closest(".js-retirer-ligne");
+        if (!b) return;
+        b.closest(".js-ligne").remove();
+        couverture();
+      });
+
+      corps.addEventListener("input", couverture);
+
+      // Bornes habituelles du transporteur : on ne touche PAS aux prix, et on
+      // reprend ceux déjà saisis quand la borne basse est la même.
+      form.querySelector(".js-standard")?.addEventListener("click", (e) => {
+        const liste = STANDARD?.[e.currentTarget.dataset.transporteur] ?? [];
+        if (!liste.length) return;
+        const anciens = new Map(
+          [...corps.querySelectorAll(".js-ligne")].map((tr) => [
+            tr.querySelector("[name=min]").value,
+            tr.querySelector("[name=price]").value,
+          ]),
+        );
+        if (
+          anciens.size &&
+          !confirm(
+            "Remplacer les tranches actuelles par les bornes du transporteur ? Les prix déjà saisis sur les mêmes bornes sont conservés.",
+          )
+        )
+          return;
+        corps.innerHTML = "";
+        for (const t of liste) {
+          const tr = document.createElement("tr");
+          tr.className = "js-ligne";
+          tr.innerHTML = LIGNE;
+          tr.querySelector("[name=min]").value = t.minWeightGrams;
+          tr.querySelector("[name=max]").value = t.maxWeightGrams ?? "";
+          tr.querySelector("[name=price]").value =
+            anciens.get(String(t.minWeightGrams)) ?? "";
+          tr.querySelector("[name=price]").title = t.label;
+          corps.appendChild(tr);
+        }
+        couverture();
+      });
+
+      // Vider une grille retire le mode de la zone : ça se confirme.
+      form.addEventListener("submit", (e) => {
+        if (!corps.querySelector(".js-ligne")) {
+          if (
+            !confirm(
+              "Aucune tranche : ce mode ne sera plus proposé dans cette zone. Continuer ?",
+            )
+          )
+            e.preventDefault();
+        }
+      });
+
+      couverture();
+    }
+
+    // Archiver un mode le retire de la vente : on demande confirmation, avec
+    // ce que cela change — et ce que cela NE change pas pour les commandes.
+    for (const bouton of document.querySelectorAll("[data-archiver]")) {
+      bouton.addEventListener("click", (e) => {
+        if (!confirm(bouton.getAttribute("data-archiver"))) e.preventDefault();
+      });
+    }
+  </script>
 </Admin>

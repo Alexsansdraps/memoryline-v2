@@ -1,0 +1,99 @@
+---
+import CompteCadre from "../../../components/CompteCadre.astro";
+import { motDePasseOublie, rediriger } from "../../../lib/compte.ts";
+import {
+  estLangue,
+  langueDepuisParam,
+  lien,
+  t,
+  type CleUi,
+  type Langue,
+} from "../../../i18n/utils.ts";
+
+export const prerender = false;
+
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
+const tr = t(langue);
+
+let erreur: CleUi | null = null;
+let email = "";
+
+if (Astro.request.method === "POST") {
+  const formulaire = await Astro.request.formData();
+  email = String(formulaire.get("email") ?? "").trim();
+  if (!email) {
+    erreur = "compte.err.champs";
+  } else {
+    const r = await motDePasseOublie(Astro, email);
+    // L'API répond 200 que l'adresse existe ou non — le message affiché ne
+    // doit rien laisser deviner de plus.
+    if (r.ok)
+      return rediriger(
+        Astro,
+        `${lien(langue, "/compte/mot-de-passe-oublie")}?envoye=1`,
+      );
+    erreur = r.erreur;
+  }
+}
+
+const envoye = Astro.url.searchParams.get("envoye") === "1";
+const champ =
+  "mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none";
+---
+
+<CompteCadre
+  langue={langue}
+  titre={tr("compte.oubli.titre")}
+  chemin="/compte/mot-de-passe-oublie"
+  menu={false}
+>
+  {
+    erreur && (
+      <p class="mb-6 border border-terracotta/40 bg-terracotta/5 px-4 py-3 text-terracotta-deep">
+        {tr(erreur)}
+      </p>
+    )
+  }
+
+  {
+    envoye ? (
+      <p class="border border-sage/50 bg-sage/10 px-4 py-3">
+        {tr("compte.oubli.envoye")}
+      </p>
+    ) : (
+      <Fragment>
+        <p class="text-ink-soft">{tr("compte.oubli.intro")}</p>
+        <form method="post" class="mt-6 space-y-4">
+          <label class="block">
+            <span class="text-sm font-medium">{tr("compte.email")}</span>
+            <input
+              type="email"
+              name="email"
+              value={email}
+              required
+              autocomplete="email"
+              class={champ}
+            />
+          </label>
+          <button
+            type="submit"
+            class="w-full rounded-full bg-ink px-6 py-3 font-medium text-paper transition-colors hover:bg-ink/85"
+          >
+            {tr("compte.oubli.bouton")}
+          </button>
+        </form>
+      </Fragment>
+    )
+  }
+
+  <p class="mt-8 text-sm">
+    <a
+      href={lien(langue, "/compte/connexion")}
+      class="underline underline-offset-4 hover:text-terracotta"
+    >
+      {tr("compte.oubli.retour")}
+    </a>
+  </p>
+</CompteCadre>

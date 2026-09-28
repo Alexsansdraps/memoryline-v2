@@ -1,0 +1,189 @@
+---
+/**
+ * Vignettes « quelle partie du dessin est cette zone de couleur ? ».
+ *
+ * Les zones d'une pièce portent les noms que l'export du dessin leur donne :
+ * st0, st1, st3… Pour décider lesquelles proposer au client, la boutique doit
+ * savoir laquelle est le ruban du chapeau et laquelle est le chapeau. Chaque
+ * vignette montre donc la pièce, CETTE zone en rouge vif, le reste en gris.
+ *
+ * Mode d'emploi : un bloc porte `data-apercu-svg` (l'adresse du dessin) et,
+ * en option, `data-apercu-cadrage` (un viewBox de repli) ; il contient des
+ * `<img class="js-zone-apercu" data-zone="st3">`. Les blocs présents au
+ * chargement se remplissent quand ils approchent de l'écran — la page des
+ * personnages en compte plus de cent cinquante. Un bloc construit plus tard
+ * (formulaire de nouvelle pièce) appelle `window.mlApercusZones(bloc)`.
+ *
+ * Les vignettes sont des images (data:), jamais du SVG inséré dans la page :
+ * un dessin inséré tel quel pourrait y exécuter ce qu'il contient, et ses
+ * règles de style déteindraient sur les autres dessins de la page.
+ *
+ * À placer APRÈS les blocs dans la page : le script les cherche en s'exécutant.
+ */
+---
+
+<script is:inline>
+  (function () {
+    var SURLIGNE = "#E11D48";
+    var ESTOMPE = "#E5E7EB";
+    var CONTOUR = "#9CA3AF";
+
+    /** Un seul téléchargement par dessin, même s'il revient plusieurs fois. */
+    var textes = new Map();
+    function lire(url) {
+      if (!textes.has(url)) {
+        textes.set(
+          url,
+          fetch(url).then(function (res) {
+            if (!res.ok) throw new Error(String(res.status));
+            return res.text();
+          }),
+        );
+      }
+      return textes.get(url);
+    }
+
+    function enImage(svg) {
+      return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+    }
+
+    /**
+     * Le rectangle qu'occupe VRAIMENT le dessin, en unités de son viewBox.
+     *
+     * Toutes les pièces partagent le cadre 500 × 1000 du personnage : une
+     * casquette n'en occupe qu'un coin, et entière elle serait illisible.
+     * Le cadrage fixe par emplacement ne suffit pas non plus : certains
+     * « accessoires » sont un fauteuil roulant ou un pantalon. On mesure donc
+     * le dessin lui-même, sur un petit canevas. Si le navigateur refuse de
+     * laisser lire ce canevas, on retombe sur le cadrage de l'emplacement.
+     */
+    function cadrageDuDessin(svg, repli) {
+      return new Promise(function (fin) {
+        var brut = (svg.match(/<svg\b[^>]*\sviewBox\s*=\s*"([^"]*)"/) || [])[1];
+        var vb = String(brut || "0 0 500 1000").trim().split(/[\s,]+/).map(Number);
+        if (vb.length !== 4 || vb.some(isNaN) || !vb[2] || !vb[3]) return fin(repli);
+        var W = 150;
+        var H = Math.max(1, Math.round((W * vb[3]) / vb[2]));
+        var image = new Image();
+        image.onload = function () {
+          try {
+            var toile = document.createElement("canvas");
+            toile.width = W;
+            toile.height = H;
+            var ctx = toile.getContext("2d");
+            ctx.drawImage(image, 0, 0, W, H);
+            var px = ctx.getImageData(0, 0, W, H).data;
+            var gauche = W, haut = H, droite = -1, bas = -1;
+            for (var y = 0; y < H; y++) {
+              for (var x = 0; x < W; x++) {
+                if (px[(y * W + x) * 4 + 3] <= 20) continue;
+                if (x < gauche) gauche = x;
+                if (x > droite) droite = x;
+                if (y < haut) haut = y;
+                if (y > bas) bas = y;
+              }
+            }
+            if (droite < 0) return fin(repli);
+            var x0 = vb[0] + (gauche / W) * vb[2];
+            var y0 = vb[1] + (haut / H) * vb[3];
+            var l = ((droite + 1 - gauche) / W) * vb[2];
+            var h = ((bas + 1 - haut) / H) * vb[3];
+            // Un peu d'air autour, pour que le bord du dessin ne colle pas au cadre.
+            var marge = Math.max(l, h) * 0.08;
+            fin(
+              [x0 - marge, y0 - marge, l + 2 * marge, h + 2 * marge]
+                .map(function (v) {
+                  return Math.round(v * 10) / 10;
+                })
+                .join(" "),
+            );
+          } catch (e) {
+            fin(repli);
+          }
+        };
+        image.onerror = function () {
+          fin(repli);
+        };
+        image.src = enImage(svg);
+      });
+    }
+
+    /**
+     * Le dessin, la zone voulue en rouge et les autres en gris clair.
+     * Même lecture des zones que recolorSvg (@memoryline/types) : leurs
+     * couleurs vivent dans les règles « .stN{fill:…} » du bloc <style>.
+     *
+     * `zone` peut en citer plusieurs, séparées d'espaces : un groupe de
+     * couleurs (une teinte et ses ombres) se surligne d'un bloc.
+     */
+    function apercuDeZone(svg, zone, cadrage) {
+      var voulues = String(zone).split(/\s+/);
+      var sortie = svg.replace(
+        /(\.(st\d+)\s*\{[^}]*?fill\s*:\s*)#[0-9a-fA-F]{3,8}/g,
+        function (_m, debut, z) {
+          return debut + (voulues.indexOf(z) >= 0 ? SURLIGNE : ESTOMPE);
+        },
+      );
+      // Les formes sans zone (contours, ombres) passent en gris moyen : elles
+      // situent la pièce sans voler la vedette à la zone.
+      sortie = sortie.replace(
+        /<\/style>/,
+        "path:not([class]),polygon:not([class]),rect:not([class]),circle:not([class]),ellipse:not([class]){fill:" +
+          CONTOUR +
+          "}</style>",
+      );
+      return sortie.replace(/<svg\b([^>]*)>/, function (_m, attrs) {
+        var a = attrs.replace(/\s(viewBox|width|height)\s*=\s*"[^"]*"/g, "");
+        return "<svg" + a + ' viewBox="' + cadrage + '">';
+      });
+    }
+
+    async function remplir(bloc) {
+      var url = bloc && bloc.getAttribute("data-apercu-svg");
+      if (!url) return;
+      // Seulement les vignettes de CE bloc : un bloc imbriqué a son propre dessin.
+      var images = Array.prototype.filter.call(
+        bloc.querySelectorAll("img.js-zone-apercu[data-zone]"),
+        function (img) {
+          return img.closest("[data-apercu-svg]") === bloc;
+        },
+      );
+      if (!images.length) return;
+      var svg;
+      try {
+        svg = await lire(url);
+      } catch (e) {
+        return; // dessin introuvable : les vignettes restent vides, rien ne casse
+      }
+      // Le dessin a pu changer pendant le téléchargement (nouvelle pièce).
+      if (bloc.getAttribute("data-apercu-svg") !== url) return;
+      var repli = bloc.getAttribute("data-apercu-cadrage") || "0 0 500 1000";
+      var cadrage = await cadrageDuDessin(svg, repli);
+      images.forEach(function (img) {
+        img.src = enImage(apercuDeZone(svg, img.getAttribute("data-zone"), cadrage));
+        img.style.visibility = "visible";
+      });
+    }
+
+    window.mlApercusZones = remplir;
+
+    var blocs = document.querySelectorAll("[data-apercu-svg]");
+    if (!("IntersectionObserver" in window)) {
+      blocs.forEach(remplir);
+      return;
+    }
+    var guet = new IntersectionObserver(
+      function (entrees) {
+        entrees.forEach(function (e) {
+          if (!e.isIntersecting) return;
+          guet.unobserve(e.target);
+          remplir(e.target);
+        });
+      },
+      { rootMargin: "400px" },
+    );
+    blocs.forEach(function (b) {
+      guet.observe(b);
+    });
+  })();
+</script>

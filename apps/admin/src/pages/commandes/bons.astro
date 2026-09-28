@@ -1,0 +1,276 @@
+---
+/**
+ * Bons de livraison à imprimer, pour les commandes cochées dans la liste.
+ *
+ * Page volontairement nue : pas de menu, pas de couleurs de marque. Ce qui est
+ * imprimé doit tenir dans le colis et se lire au moment de l'emballage —
+ * l'adresse, le contenu, rien d'autre. Une page par bon (`break-after`), pour
+ * qu'un lot de dix commandes sorte en dix feuilles sans découpage.
+ */
+import { libelleFormat } from "@memoryline/types";
+import {
+  adminApi,
+  formatPrice,
+  lignesDeLAffiche,
+  type OrderDetail,
+} from "../../lib/api.ts";
+
+export const prerender = false;
+
+const api = adminApi(Astro.request);
+const ids = (Astro.url.searchParams.get("ids") ?? "")
+  .split(",")
+  .map((v) => Number(v))
+  .filter((n) => Number.isFinite(n) && n > 0)
+  .slice(0, 50);
+
+const bons: OrderDetail[] = [];
+let erreur: string | null = null;
+try {
+  for (const id of ids) bons.push(await api.orderDetail(id));
+} catch (e) {
+  erreur = String(e);
+}
+
+function dateCourte(iso: string | null | undefined): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  } catch {
+    return "";
+  }
+}
+---
+
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Bons de livraison · Memory Line</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #f1f1f1;
+        color: #1a1a1a;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 13px;
+      }
+      .bon {
+        background: #fff;
+        max-width: 190mm;
+        margin: 0 auto 24px;
+        padding: 18mm 16mm;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 2px;
+        font-weight: 600;
+      }
+      h2 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #6b7177;
+        margin: 20px 0 6px;
+        font-weight: 600;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th {
+        text-align: left;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #6b7177;
+        border-bottom: 1px solid #e1e3e5;
+        padding: 6px 0;
+      }
+      td {
+        padding: 8px 0;
+        border-bottom: 1px solid #f1f1f1;
+        vertical-align: top;
+      }
+      .droite {
+        text-align: right;
+      }
+      .colonnes {
+        display: flex;
+        gap: 32px;
+      }
+      .colonnes > div {
+        flex: 1;
+      }
+      .discret {
+        color: #6b7177;
+      }
+      /* Le texte de l'affiche est ce qu'on vérifie l'affiche en main : il se
+         lit en un coup d'œil, pas en petit sous le nom de l'article. */
+      .lignes {
+        margin-top: 5px;
+        padding-left: 9px;
+        border-left: 2px solid #1a1a1a;
+      }
+      .lignes div {
+        font-size: 14px;
+        line-height: 1.4;
+      }
+      .note {
+        margin-top: 16px;
+        padding: 8px 10px;
+        background: #f7f7f7;
+        border-left: 3px solid #d9d9d9;
+      }
+      .barre {
+        max-width: 190mm;
+        margin: 0 auto 16px;
+        display: flex;
+        gap: 8px;
+      }
+      button,
+      .lien {
+        font: inherit;
+        padding: 8px 16px;
+        border: 1px solid #d9d9d9;
+        background: #fff;
+        cursor: pointer;
+        text-decoration: none;
+        color: inherit;
+      }
+      @media print {
+        body {
+          background: #fff;
+          padding: 0;
+        }
+        .barre {
+          display: none;
+        }
+        .bon {
+          box-shadow: none;
+          margin: 0;
+          padding: 0;
+          max-width: none;
+          break-after: page;
+        }
+        .bon:last-child {
+          break-after: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="barre">
+      <button onclick="window.print()">Imprimer</button>
+      <a class="lien" href="javascript:window.close()">Fermer</a>
+    </div>
+
+    {erreur && <p class="bon">Erreur : {erreur}</p>}
+    {!erreur && bons.length === 0 && (
+      <p class="bon">Aucune commande sélectionnée.</p>
+    )}
+
+    {
+      bons.map(({ order, items, customer }) => (
+        <article class="bon">
+          <div class="colonnes">
+            <div>
+              <h1>Memory Line</h1>
+              <div class="discret">Affiches personnalisées</div>
+            </div>
+            <div style="text-align:right">
+              <h1>{order.number}</h1>
+              <div class="discret">{dateCourte(order.createdAt)}</div>
+            </div>
+          </div>
+
+          <div class="colonnes" style="margin-top:24px">
+            <div>
+              <h2>Livrer à</h2>
+              <div>{order.shippingName ?? customer?.name ?? "—"}</div>
+              {order.relayPointLabel && <div>{order.relayPointLabel}</div>}
+              {order.shippingLine1 && <div>{order.shippingLine1}</div>}
+              {order.shippingLine2 && <div>{order.shippingLine2}</div>}
+              <div>
+                {[order.shippingPostalCode, order.shippingCity]
+                  .filter(Boolean)
+                  .join(" ")}
+              </div>
+              {order.shippingCountry && <div>{order.shippingCountry}</div>}
+              {order.shippingPhone && (
+                <div class="discret">{order.shippingPhone}</div>
+              )}
+            </div>
+            <div>
+              <h2>Livraison</h2>
+              <div>{order.shippingLabel ?? "—"}</div>
+              {customer?.email && <div class="discret">{customer.email}</div>}
+            </div>
+          </div>
+
+          <h2>Contenu du colis</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Article</th>
+                <th>Format</th>
+                <th>Cadre</th>
+                <th class="droite">Qté</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((it) => (
+                <tr>
+                  <td>
+                    <strong>{it.title ?? "Affiche personnalisée"}</strong>
+                    {lignesDeLAffiche(it).length > 0 && (
+                      <div class="lignes">
+                        {lignesDeLAffiche(it).map((ligne) => (
+                          <div>{ligne}</div>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td>{it.format ? libelleFormat(it.format) : "—"}</td>
+                  <td>{it.cadre ?? "Sans cadre"}</td>
+                  <td class="droite">{it.quantity}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div class="colonnes" style="margin-top:16px">
+            <div />
+            <div class="droite">
+              <div class="discret">
+                Total commande : {formatPrice(order.totalCents)}
+              </div>
+            </div>
+          </div>
+
+          {order.internalNote && (
+            <div class="note">
+              <strong>Note interne :</strong> {order.internalNote}
+            </div>
+          )}
+
+          <p class="discret" style="margin-top:24px">
+            Merci pour votre commande ! Une question ? Écrivez-nous, nous
+            répondons vite.
+            <br />
+            TVA non applicable, article 293 B du CGI.
+          </p>
+        </article>
+      ))
+    }
+  </body>
+</html>

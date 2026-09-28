@@ -1,11 +1,25 @@
 /// <reference lib="dom" />
-import { createEffect, createMemo, Show, type JSX } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  Show,
+  type JSX,
+} from "solid-js";
 import type {
   PosterConfig,
   PosterFormat,
   BackgroundDTO,
 } from "@memoryline/types";
-import { BASE_COLOR_SCOPE, colorKey } from "@memoryline/types";
+import { unwrap } from "solid-js/store";
+import {
+  BASE_COLOR_SCOPE,
+  colorKey,
+  couleursDuGroupePourScope,
+  groupesDuDessin,
+  ligneEnMajuscules,
+  prixDuCadreCents,
+} from "@memoryline/types";
 import {
   STEPS,
   SLOTS,
@@ -27,6 +41,7 @@ import {
   NONE_ASSET,
   type CadreDTO,
   type PieceCategoryDTO,
+  type WorkingCharacter,
 } from "./store";
 import { PosterPreview } from "./components/PosterPreview";
 import { StepBackgroundText } from "./components/StepBackgroundText";
@@ -37,6 +52,7 @@ import {
   type MessagesConfigurateur,
 } from "./messages";
 import { Button } from "./components/ui";
+import { BarreActions } from "./components/Defilement";
 
 /** Produit minimal injecté par l'hôte (pas d'appel réseau interne). */
 export interface ConfiguratorProduct {
@@ -56,6 +72,15 @@ export interface ConfiguratorProps {
    *  sélectionné met à jour le prix affiché (demande cliente). */
   prices?: Partial<Record<PosterFormat, number>>;
   /**
+   * Masque TOUT montant, sans rien retirer des choix (format, cadre).
+   *
+   * Sur un stand de salon, le tarif n'est pas celui du site — pas de port, des
+   * remises, des lots — et c'est la vendeuse qui l'annonce de vive voix : un
+   * prix à l'écran la contredirait devant le client. Les prix continuent
+   * d'arriver par `prices`, ils servent au panier, plus à l'affichage.
+   */
+  sansPrix?: boolean;
+  /**
    * Libellés traduits. Le paquet ne connaît pas les langues du site : l'hôte
    * fournit un dictionnaire déjà traduit, complété par le français.
    */
@@ -72,14 +97,30 @@ export interface ConfiguratorProps {
   foregroundUrl?: string | null;
   /** Réglages par défaut du produit (pré-remplissage à l'ouverture). */
   defaults?: {
-    title?: string | null;
-    subtitle?: string | null;
+    /** Textes pré-remplis, une entrée par ligne, dans l'ordre. */
+    lignes?: (string | null)[];
     view?: string | null;
+    /**
+     * Le format choisi sur la fiche, avant d'ouvrir le configurateur.
+     *
+     * Sans lui, quelqu'un qui a cliqué « A3 » sur la fiche devait le
+     * rechoisir à l'étape 3 : deux fois le même geste, dont un pour rien.
+     */
+    format?: PosterFormat;
   };
   /** Réouverture (panier "edit" §18.3) : restaure tout l'état. */
   initialConfig?: PosterConfig;
   /** Préfixe pour fetch le texte SVG, ex "http://localhost:3100". */
   assetBaseUrl: string;
+  /**
+   * L'affiche validée.
+   *
+   * Le nombre d'exemplaires ne passe PAS par ici : il se choisit sur la fiche
+   * produit, avant d'ouvrir le configurateur, au même endroit que pour une
+   * affiche prête à imprimer. Une affiche commandée en trois exemplaires est
+   * la même affiche — c'est la ligne de panier qui porte le nombre, pas le
+   * dessin.
+   */
   onSubmit: (config: PosterConfig) => void;
   onBack?: () => void;
 }
@@ -106,15 +147,17 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     ? stateFromConfig(props.initialConfig)
     : emptyState();
 
-  // Pré-remplissage depuis les réglages par défaut du produit (titre/sous-titre/
-  // position) — seulement en mode AJOUT (pas en réouverture panier).
+  // Pré-remplissage depuis les réglages par défaut du produit (lignes de texte
+  // et type d'affiche) — seulement en mode AJOUT (pas en réouverture panier).
   if (!props.initialConfig && props.defaults) {
-    if (props.defaults.title) initialState.title.value = props.defaults.title;
-    if (props.defaults.subtitle)
-      initialState.subtitle.value = props.defaults.subtitle;
+    (props.defaults.lignes ?? []).forEach((texte, i) => {
+      const ligne = initialState.lignes[i];
+      if (ligne && texte) ligne.value = texte;
+    });
     // N'importe quel type d'affiche, y compris ceux créés au back-office :
     // filtrer sur une paire figée aurait ignoré tout nouveau type.
     if (props.defaults.view) initialState.view = props.defaults.view;
+    if (props.defaults.format) initialState.format = props.defaults.format;
   }
 
   // À l'ouverture, l'affiche est VIDE de personnages (retour cliente) : le
@@ -218,8 +261,27 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     const target = STEPS[i - 1];
     if (target) goToStep(target);
   }
+  /** Bas réel du dessin d'un personnage, pour aligner ses pieds au sol. */
+  const basDuDessin = (c: WorkingCharacter): number =>
+    characterById(c.characterId)?.bottomPct ?? 1;
+
   function submit() {
-    props.onSubmit(configFromState(state, props.product.id));
+    // Le même calage qu'à l'écran part dans la commande : c'est ce x/y-là que
+    // le PDF d'impression relit, l'affiche imprimée ne peut donc pas différer
+    // de celle que le client a composée.
+    props.onSubmit(
+      configFromState(
+        state,
+        props.product.id,
+        basDuDessin,
+        // La taille propre au personnage entre dans l'échelle enregistrée :
+        // le PDF relit ce chiffre-là et ne recalcule rien.
+        (c) => characterById(c.characterId)?.facteurTaille ?? 1,
+        // Le décalage réglé au back-office entre dans la position enregistrée :
+        // l'impression relit ce chiffre, elle ne recalcule rien.
+        (c) => characterById(c.characterId)?.decalageX ?? 0,
+      ),
+    );
   }
 
   /* --------------------------- étape 1 ------------------------------------ */
@@ -233,20 +295,31 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       s.backgroundUrl = bg.url;
     });
   }
-  /** Met à jour SEULEMENT le texte d'un bloc (titre ou sous-titre). */
-  function setTextValue(which: "title" | "subtitle", value: string) {
+  /**
+   * Met à jour SEULEMENT le texte d'une ligne.
+   *
+   * La première passe en capitales à la frappe, et pas seulement à l'écran :
+   * c'est la ligne du lieu — AMIENS, MERS-LES-BAINS — et la charte la veut
+   * ainsi partout. Transformer à l'affichage seulement laisserait le texte
+   * enregistré différer du fichier d'impression, et personne ne saurait
+   * lequel des deux fait foi. `toLocaleUpperCase` et non `toUpperCase` :
+   * c'est lui qui traite correctement les accents et le ß allemand.
+   */
+  function setTextValue(ligne: number, value: string) {
     mutate((s) => {
-      s[which].value = value;
+      const l = s.lignes[ligne];
+      if (l) l.value = ligneEnMajuscules(ligne) ? value.toLocaleUpperCase() : value;
     });
   }
-  /** Change la police d'UN bloc (titre ou sous-titre), indépendamment. */
-  function setTextFont(which: "title" | "subtitle", font: string) {
+  /** Change la police d'UNE ligne, indépendamment des autres. */
+  function setTextFont(ligne: number, font: string) {
     mutate((s) => {
-      s[which].font = font;
+      const l = s.lignes[ligne];
+      if (l) l.font = font;
     });
   }
 
-  /** Met à jour le STYLE PARTAGÉ (couleur/taille) titre + sous-titre. */
+  /** Met à jour le STYLE PARTAGÉ (couleur/taille) de toutes les lignes. */
   function setTextStyle(
     patch: Partial<{ font: string; color: string; size: number }>,
   ) {
@@ -277,6 +350,36 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       s.editingIndex = s.characters.length - 1;
     });
   }
+  /**
+   * Dupliquer un personnage.
+   *
+   * Une famille de quatre se compose rarement de quatre inconnus : on pose un
+   * enfant, on l'habille, puis on veut le même en changeant la couleur du
+   * pull. Le refaire de zéro demandait de reprendre chaque vêtement et chaque
+   * teinte, une dizaine de choix, pour arriver au même point.
+   *
+   * La copie est PROFONDE — `structuredClone` — parce que les tenues et les
+   * couleurs sont des objets : copiés par référence, changer le pull du double
+   * changerait aussi celui de l'original, et personne ne comprendrait pourquoi.
+   *
+   * Elle se glisse juste derrière son modèle plutôt qu'en fin de liste : c'est
+   * là que l'œil la cherche, et l'ordre de la liste décide de qui passe devant
+   * qui sur l'affiche.
+   */
+  function duplicateCharacter(index: number) {
+    mutate((s) => {
+      const source = s.characters[index];
+      if (!source) return;
+      // `source` est un reflet du magasin, pas l'objet lui-même : le cloner tel
+      // quel lève une erreur (DataCloneError), avalée par le clic — le bouton
+      // ne faisait rien. On clone l'objet réel qu'il reflète.
+      const copie = structuredClone(unwrap(source));
+      s.characters.splice(index + 1, 0, copie);
+      s.characters.forEach((c, i) => (c.position = i));
+      // On ouvre la copie : on duplique pour modifier, jamais pour contempler.
+      s.editingIndex = index + 1;
+    });
+  }
   function removeCharacter(index: number) {
     mutate((s) => {
       s.characters.splice(index, 1);
@@ -301,6 +404,17 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
         const key = colorKey(slot, zone);
         if (c.colors[key] === undefined) c.colors[key] = hex;
       }
+      // Les nuances de la nouvelle pièce suivent la couleur que porte déjà sa
+      // référence : un pull passé au vert garde des ombres vertes, pas celles
+      // du pull d'avant ni celles du dessin.
+      for (const g of groupesDuDessin(v?.colorZones, v?.groupesCouleurs)) {
+        const choisie = c.colors[colorKey(slot, g.zone)];
+        if (!choisie || !g.nuances?.length) continue;
+        Object.assign(
+          c.colors,
+          couleursDuGroupePourScope(slot, g, v?.colorZones, choisie),
+        );
+      }
     });
   }
   /**
@@ -316,10 +430,15 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       else c.assets[slot] = NONE_ASSET;
     });
   }
-  function setColor(index: number, zone: string, hex: string) {
+  /**
+   * Couleurs choisies par le client, clé namespacée -> couleur. Un choix de
+   * groupe arrive d'un seul tenant — la référence et ses nuances —, écrit en
+   * une fois : l'aperçu ne se redessine qu'une fois par geste.
+   */
+  function setColors(index: number, couleurs: Record<string, string>) {
     mutate((s) => {
       const c = s.characters[index];
-      if (c) c.colors[zone] = hex;
+      if (c) Object.assign(c.colors, couleurs);
     });
   }
   /** Change la base (type) d'un personnage : conserve les variantes choisies
@@ -380,9 +499,64 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   function bringForward(index: number) {
     if (index < state.characters.length - 1) swap(index, index + 1);
   }
+
+  /**
+   * Sort un personnage de la liste et le repose à un autre rang.
+   *
+   * Un échange deux à deux ne suffit pas ici : le geste peut traverser
+   * plusieurs lignes d'un coup, et enchaîner des échanges ferait remonter les
+   * voisins dans le désordre. Les rangs de superposition sont renumérotés
+   * d'après l'ordre obtenu, pour que le dessin suive la liste.
+   */
+  function reordonner(depuis: number, vers: number) {
+    if (depuis === vers) return;
+    mutate((s) => {
+      if (
+        depuis < 0 ||
+        vers < 0 ||
+        depuis >= s.characters.length ||
+        vers >= s.characters.length
+      )
+        return;
+      const [pris] = s.characters.splice(depuis, 1);
+      if (!pris) return;
+      s.characters.splice(vers, 0, pris);
+      s.characters.forEach((c, rang) => {
+        c.position = rang;
+      });
+    });
+  }
   function sendBackward(index: number) {
     if (index > 0) swap(index, index - 1);
   }
+
+  /**
+   * Le client vient de poser un personnage sur l'affiche : sa place devient la
+   * sienne, et ce personnage quitte la rangée automatique.
+   */
+  function deplacerPersonnage(
+    index: number,
+    position: { x: number; y: number },
+  ) {
+    mutate((s) => {
+      const c = s.characters[index];
+      if (!c) return;
+      c.x = position.x;
+      c.y = position.y;
+      c.placementManuel = true;
+    });
+  }
+
+  /** Tout le monde retourne dans la rangée : les places posées sont oubliées. */
+  function replacerAutomatiquement() {
+    mutate((s) => {
+      for (const c of s.characters) c.placementManuel = false;
+    });
+  }
+
+  /** Au moins un personnage a été posé à la main. */
+  const aDesPlacesPosees = () =>
+    state.characters.some((c) => c.placementManuel);
 
   /* --------------------------- étape 3 ------------------------------------ */
   /** Choix du cadre — null = sans cadre. */
@@ -404,17 +578,25 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       : props.cadres?.find((c) => String(c.id) === String(state.frameId));
 
   /**
-   * Prix courant : format sélectionné + supplément du cadre.
+   * Prix courant : format sélectionné + supplément du cadre POUR CE FORMAT.
    *
-   * Même addition que côté serveur (`resolveUnitPriceCents`) : le montant
-   * affiché ici doit être celui qui sera facturé, sinon le client découvre
-   * le supplément au panier.
+   * Même addition que côté serveur (`resolveUnitPriceCents`), et même choix
+   * du prix du cadre (`prixDuCadreCents`) : le montant affiché ici doit être
+   * celui qui sera facturé, sinon le client découvre le supplément au panier.
    */
   const currentPrice = (): number => {
     const p = props.prices?.[state.format];
     const affiche = typeof p === "number" ? p : props.product.basePriceCents;
-    return affiche + (cadreChoisi()?.priceCents ?? 0);
+    const cadre = cadreChoisi();
+    return affiche + (cadre ? prixDuCadreCents(cadre, state.format) : 0);
   };
+
+  /** Rappel du choix — le format courant s'il sort de l'ordinaire, le cadre.
+   *  Vide en A4 sans cadre : il n'y aurait rien à rappeler. */
+  const rappelChoix = (): string =>
+    [state.format === "A3" ? "A3" : null, cadreChoisi()?.name]
+      .filter(Boolean)
+      .join(" · ");
 
   const isLast = () => stepIndex() === STEPS.length - 1;
   const editingActive = () =>
@@ -455,6 +637,10 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
               : undefined
           }
           assetBaseUrl={props.assetBaseUrl}
+          cadre={cadreChoisi() ?? null}
+          // On ne compose qu'ici, et seulement à l'étape des personnages :
+          // ailleurs, un glissement n'aurait aucun sens et l'affiche doit
+          // rester une image.
         />
       </div>
       </Show>
@@ -524,24 +710,28 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             slots={slotVariants()}
             pieceCategories={props.pieceCategories}
             cache={cache}
+            assetBaseUrl={props.assetBaseUrl}
             characterById={characterById}
             onAdd={addCharacter}
+            onDuplicate={duplicateCharacter}
             onRemove={removeCharacter}
             onSelect={selectCharacter}
-            onBringForward={bringForward}
-            onSendBackward={sendBackward}
+            onReorder={reordonner}
             onSetAsset={setAsset}
             onClearSlot={clearSlot}
-            onSetColor={setColor}
+            onSetColors={setColors}
             onChangeCharacter={changeCharacter}
             messages={msg()}
           />
+          {/* Le placement sur l'affiche reste automatique : la boutique veut
+              qu'on réordonne la LISTE, pas qu'on pousse les dessins. */}
         </Show>
 
         <Show when={state.step === "format"}>
           <StepFormat
             state={state}
             prices={props.prices}
+            sansPrix={props.sansPrix}
             onSelect={setFormat}
             cadres={props.cadres}
             onSelectCadre={setCadre}
@@ -550,40 +740,36 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
         </Show>
 
         {/* Navigation globale (masquée quand on édite un perso : l'éditeur a ses
-            propres boutons Retour / Valider §18.2 F). */}
+            propres boutons Retour / Valider §18.2 F). Collée au bas de la
+            fenêtre, avec l'indice qui dit qu'il reste à voir plus bas. */}
         <Show when={!editingActive()}>
-          <div
-            style={{
-              display: "flex",
-              "justify-content": "space-between",
-              "align-items": "center",
-              "margin-top": "18px",
-              "border-top": "1px solid #e5e7eb",
-              "padding-top": "14px",
-              gap: "12px",
-            }}
-          >
+          <BarreActions>
             <Button variant="secondary" onClick={prev}>
               {msg().retour}
             </Button>
             {/* Prix mis à jour selon le format ET le cadre choisis. Le
                 détail entre parenthèses reprend le nom du cadre tel qu'il est
-                saisi au back-office : rien à traduire. */}
+                saisi au back-office : rien à traduire. Sans prix, ce rappel
+                reste seul et tient le milieu de la barre — les deux boutons
+                s'écarteraient sinon aux extrémités, autour d'un vide. */}
             <div style={{ "font-weight": "700", "font-size": "18px", "white-space": "nowrap" }}>
-              {fmtPrice(currentPrice())}
-              <Show when={state.format === "A3" || cadreChoisi()}>
-                <span style={{ "font-size": "12px", color: "#6b7280", "font-weight": "500" }}>
-                  {" "}
-                  ({[state.format === "A3" ? "A3" : null, cadreChoisi()?.name]
-                    .filter(Boolean)
-                    .join(" · ")})
+              <Show when={!props.sansPrix}>{fmtPrice(currentPrice())}</Show>
+              <Show when={rappelChoix()}>
+                <span
+                  style={{
+                    "font-size": props.sansPrix ? "14px" : "12px",
+                    color: "#6b7280",
+                    "font-weight": "500",
+                  }}
+                >
+                  {props.sansPrix ? rappelChoix() : ` (${rappelChoix()})`}
                 </span>
               </Show>
             </div>
             <Button variant="primary" onClick={next}>
               {isLast() ? msg().validerAffiche : msg().continuer}
             </Button>
-          </div>
+          </BarreActions>
         </Show>
       </div>
     </div>

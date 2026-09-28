@@ -9,18 +9,17 @@ import { url, relPath } from "./lib/url.ts";
 const PUBLIC_PATHS = new Set(["/login"]);
 
 /**
- * Écrans de configuration : réservés au propriétaire. Un compte « seller »
- * qui saisirait l'URL directement verrait sinon une interface d'édition dont
- * chaque bouton échouerait en 403 côté API — mieux vaut le renvoyer d'emblée.
+ * Les seuls écrans qu'un VENDEUR peut ouvrir.
+ *
+ * On énumère ce qui est permis, pas ce qui est interdit, exactement comme la
+ * garde de l'API : un écran ajouté demain ne doit pas s'ouvrir tout seul à qui
+ * ne l'a pas demandé. Un vendeur tient une table un samedi après-midi ; il n'a
+ * à voir ni le chiffre du site, ni les fiches clients, ni les marges.
+ *
+ * L'API refuse de toute façon le reste. Ce filtre-ci évite seulement à
+ * quelqu'un de tomber sur un écran vide et un message qu'il ne comprend pas.
  */
-const OWNER_PATHS = [
-  "/produits",
-  "/cadres",
-  "/personnages",
-  "/promotions",
-  "/bandeau",
-  "/contenu",
-];
+const ECRANS_DU_VENDEUR = ["/ventes-salon", "/logout"];
 
 export const onRequest = defineMiddleware(async (context, next) => {
   // Chemin logique : le préfixe de déploiement (/bo) est retiré pour que les
@@ -36,17 +35,22 @@ export const onRequest = defineMiddleware(async (context, next) => {
   if (!user && !PUBLIC_PATHS.has(pathname)) {
     return context.redirect(url("/login"));
   }
-  // Déjà connecté et sur /login -> vers l'accueil.
+  // Déjà connecté et sur /login : chacun chez soi. Le vendeur n'a rien à
+  // faire sur le tableau de bord, qui mêle les ventes du site aux siennes.
   if (user && pathname === "/login") {
-    return context.redirect(url("/"));
+    return context.redirect(
+      url(user.role === "owner" ? "/" : "/ventes-salon"),
+    );
   }
-  // Écran de configuration demandé par un compte sans les droits.
+  // Un écran qui n'est pas sur la liste du vendeur le renvoie à son stand.
   if (
     user &&
     user.role !== "owner" &&
-    OWNER_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"))
+    !ECRANS_DU_VENDEUR.some(
+      (p) => pathname === p || pathname.startsWith(p + "/"),
+    )
   ) {
-    return context.redirect(url("/"));
+    return context.redirect(url("/ventes-salon"));
   }
   return next();
 });

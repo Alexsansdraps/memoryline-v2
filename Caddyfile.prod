@@ -1,0 +1,71 @@
+# Point d'entrée UNIQUE de la stack Memory Line — PRODUCTION.
+#
+# Même routage qu'en développement, pour que ce qui marche en local marche
+# aussi en ligne :
+#
+#   /api/*  -> API Hono      préfixe RETIRÉ  (l'API ne connaît pas /api)
+#   /bo/*   -> back-office   préfixe GARDÉ   (Astro est servi avec base=/bo)
+#   /*      -> site public
+#
+# La différence tient en une ligne : le nom de domaine remplace « :80 ». Caddy
+# demande alors le certificat à Let's Encrypt tout seul, le renouvelle tout
+# seul, et redirige http vers https tout seul. Rien à installer, rien à
+# programmer dans une tâche planifiée.
+
+{
+	admin off
+	# L'adresse qui reçoit les avertissements d'expiration de certificat. Le
+	# renouvellement est automatique ; ce courriel sert le jour où il échoue.
+	email {$COURRIEL_TLS}
+}
+
+{$DOMAINE} {
+	# Compression : la liste des affiches passe de 316 Ko à 25 Ko de HTML.
+	encode zstd gzip
+
+	# En-têtes de sécurité, posés une fois pour les trois applications.
+	header {
+		Content-Security-Policy "frame-ancestors 'none'"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Le navigateur refuse de revenir en clair pendant six mois. À ne
+		# mettre qu'une fois le certificat en place et le site accessible :
+		# revenir en arrière ensuite demande d'attendre l'expiration.
+		Strict-Transport-Security "max-age=15552000"
+		-Server
+	}
+
+	# --- Ce que le navigateur a le droit de garder -----------------------
+	#
+	# Sans en-tête de cache, un navigateur décide TOUT SEUL combien de temps
+	# garder une page. Chrome s'autorise alors à resservir la sienne pendant
+	# toute la session : on déploie un correctif, le site le sert, et la
+	# visiteuse continue de voir l'ancienne version sans comprendre pourquoi.
+	# C'est arrivé, et c'est ce que ces deux règles évitent.
+	#
+	# « no-cache » ne veut pas dire « ne garde rien » : le navigateur garde la
+	# page mais demande au serveur si elle a changé avant de la réafficher.
+	# Une page inchangée coûte alors un aller-retour de quelques octets.
+	@pages not path /api/* /_astro/*
+	header @pages Cache-Control "no-cache"
+
+	# Les fichiers construits par Astro portent une empreinte dans leur nom :
+	# un contenu qui change change aussi d'adresse. Ceux-là peuvent être
+	# gardés un an sans risque, et c'est autant de moins à retélécharger.
+	@construits path /_astro/*
+	header @construits Cache-Control "public, max-age=31536000, immutable"
+
+	handle_path /api/* {
+		reverse_proxy api:3000
+	}
+
+	redir /bo /bo/
+
+	handle /bo/* {
+		reverse_proxy admin:4322
+	}
+
+	handle {
+		reverse_proxy web:4321
+	}
+}

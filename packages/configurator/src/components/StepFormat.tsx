@@ -1,6 +1,11 @@
 /// <reference lib="dom" />
 import { For, Show, createSignal, onCleanup } from "solid-js";
-import { POSTER_FORMATS, type PosterFormat } from "@memoryline/types";
+import {
+  dimensionsFormat,
+  POSTER_FORMATS,
+  prixDuCadreCents,
+  type PosterFormat,
+} from "@memoryline/types";
 import type { CadreDTO, ConfiguratorState } from "../store";
 import type { MessagesConfigurateur } from "../messages";
 
@@ -16,6 +21,8 @@ import type { MessagesConfigurateur } from "../messages";
 export function StepFormat(props: {
   state: ConfiguratorState;
   prices?: Partial<Record<PosterFormat, number>>;
+  /** Stand de salon : les choix restent, les montants disparaissent. */
+  sansPrix?: boolean;
   onSelect: (format: PosterFormat) => void;
   /** Cadres proposés en option (vide = aucun cadre configuré). */
   cadres?: CadreDTO[];
@@ -127,7 +134,12 @@ export function StepFormat(props: {
               style={tile(props.state.format === fmt)}
             >
               <div>{fmt}</div>
-              {typeof props.prices?.[fmt] === "number" && (
+              {/* La question qu'on se pose devant un mur vide n'est pas
+                  « A4 ou A3 » mais « est-ce que ça rentre ». */}
+              <div style={{ "font-size": "12px", color: "#6b7280", "margin-top": "2px" }}>
+                {dimensionsFormat(fmt)}
+              </div>
+              {!props.sansPrix && typeof props.prices?.[fmt] === "number" && (
                 <div style={{ "font-size": "14px", "font-weight": "600", color: "#4f46e5", "margin-top": "4px" }}>
                   {fmtPrice(props.prices[fmt]!)}
                 </div>
@@ -195,16 +207,21 @@ export function StepFormat(props: {
                     }}
                   />
                   <div>{cadre.name}</div>
-                  <div
-                    style={{
-                      "font-size": "13px",
-                      "font-weight": "600",
-                      color: "#4f46e5",
-                      "margin-top": "2px",
-                    }}
-                  >
-                    + {fmtPrice(cadre.priceCents)}
-                  </div>
+                  <Show when={!props.sansPrix}>
+                    <div
+                      style={{
+                        "font-size": "13px",
+                        "font-weight": "600",
+                        color: "#4f46e5",
+                        "margin-top": "2px",
+                      }}
+                    >
+                      {/* Le supplément du format COCHÉ au-dessus : passer
+                          de l'A4 à l'A3 change le prix du cadre sous les
+                          yeux, pas seulement celui de l'affiche. */}
+                      + {fmtPrice(prixDuCadreCents(cadre, props.state.format))}
+                    </div>
+                  </Show>
                 </button>
               )}
             </For>

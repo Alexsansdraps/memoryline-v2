@@ -1,6 +1,8 @@
 ---
 import { url } from "../../lib/url.ts";
 import Admin from "../../layouts/Admin.astro";
+import ApercusZones from "../../components/ApercusZones.astro";
+import GroupesCouleurs from "../../components/GroupesCouleurs.astro";
 import { adminApi, type TypeAffiche } from "../../lib/api.ts";
 
 const PUBLIC_API_URL =
@@ -22,12 +24,21 @@ if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   try {
     const zones = JSON.parse(String(f.get("colorZones") || "{}"));
+    const masquees = JSON.parse(String(f.get("zonesMasquees") || "[]"));
+    const groupes = JSON.parse(String(f.get("groupesCouleurs") || "[]"));
+    // Familles de teintes, quand le dessin téléversé est une image en pixels.
+    const brutFamilles = String(f.get("couleursImage") || "");
+    const familles = brutFamilles ? JSON.parse(brutFamilles) : null;
     await api.upsertAsset({
       slot: String(f.get("slot") || "clothes"),
       name: (f.get("name") as string) || undefined,
       svgUrl: String(f.get("svgUrl") || ""),
       view: String(f.get("view") || "front"),
       colorZones: Object.keys(zones).length ? zones : undefined,
+      // L'API ne garde que les zones qui existent dans `colorZones`.
+      zonesMasquees: Array.isArray(masquees) ? masquees.map(String) : [],
+      groupesCouleurs: Array.isArray(groupes) ? groupes : null,
+      couleursImage: familles,
       position: Number(f.get("position") || 0),
     });
     return Astro.redirect(url("/personnages?piece=1"), 303);
@@ -138,26 +149,32 @@ try {
         </div>
       </div>
 
-      <div class="mt-4 text-sm">
+      <div class="mt-4 text-sm" id="piece-couleurs">
         <span class="text-bo-muted block mb-1">
-          Zones de couleur (relues dans le dessin)
+          Couleurs (relues dans le dessin)
         </span>
-        <div id="piece-zones" class="flex flex-wrap gap-2 mb-2"></div>
-        <div class="flex items-center gap-2">
-          <input
-            id="piece-zone-nom"
-            class="border border-bo-border rounded px-2 py-1 text-xs w-24"
-            placeholder="st0"
-          />
-          <button
-            type="button"
-            id="piece-ajout-zone"
-            class="rounded border border-bo-border px-2 py-1 text-xs"
-          >
-            + Zone
-          </button>
-        </div>
-        <input type="hidden" name="colorZones" id="piece-colorzones" value="{}" />
+        <p class="text-xs text-bo-muted mb-2">
+          Chaque couleur est surlignée en rouge sur sa vignette ; ses nuances
+          (ombres, reflets) suivent la couleur que le client choisit. Donnez-lui
+          un nom, et décochez « Proposée au client » sur les petits détails
+          (ruban, élastique…) : ils garderont la couleur réglée ici. Si le
+          dessin est une image en pixels (une photo, une illustration), ce sont
+          ses couleurs principales qui apparaissent ici : rien n'est proposé au
+          client tant que vous n'en avez coché aucune.
+        </p>
+        <GroupesCouleurs
+          mode="piece"
+          apiUrl={PUBLIC_API_URL}
+          svgUrl={null}
+          zones={{}}
+          groupes={[]}
+          champs={{
+            zones: "colorZones",
+            groupes: "groupesCouleurs",
+            masquees: "zonesMasquees",
+            familles: "couleursImage",
+          }}
+        />
       </div>
     </section>
 
@@ -178,74 +195,43 @@ try {
     const champ = document.getElementById("piece-url");
     const apercu = document.getElementById("piece-apercu");
     const bouton = document.getElementById("piece-televerser");
-    const note = document.getElementById("piece-analyse");
-    const boiteZones = document.getElementById("piece-zones");
-    const nomZone = document.getElementById("piece-zone-nom");
-    const champZones = document.getElementById("piece-colorzones");
+    const couleurs = document.querySelector("#piece-couleurs .js-groupes");
 
-    function syncZones() {
-      const cz = {};
-      boiteZones
-        .querySelectorAll('input[type="color"][data-zone]')
-        .forEach((i) => {
-          cz[i.getAttribute("data-zone")] = i.value;
-        });
-      champZones.value = JSON.stringify(cz);
-    }
-
-    function ajouterZone(zone, hex) {
-      if (boiteZones.querySelector(`input[data-zone="${zone}"]`)) return;
-      const label = document.createElement("label");
-      label.className = "flex items-center gap-1 text-xs";
-      const color = document.createElement("input");
-      color.type = "color";
-      color.value = hex || "#000000";
-      color.setAttribute("data-zone", zone);
-      color.className = "h-7 w-7 border border-bo-border rounded cursor-pointer";
-      color.addEventListener("input", syncZones);
-      const span = document.createElement("span");
-      span.className = "text-bo-muted";
-      span.textContent = zone;
-      label.append(color, span);
-      boiteZones.appendChild(label);
-      syncZones();
+    /** Adresse absolue du dessin saisi, ou "" s'il n'y en a pas. */
+    function adresseDuDessin() {
+      const v = (champ.value || "").trim();
+      if (!v) return "";
+      return v.startsWith("http") ? v : PUBLIC_API_URL + v;
     }
 
     function montrer() {
-      const v = (champ.value || "").trim();
-      apercu.style.visibility = v ? "visible" : "hidden";
-      if (v) apercu.src = v.startsWith("http") ? v : PUBLIC_API_URL + v;
+      const src = adresseDuDessin();
+      apercu.style.visibility = src ? "visible" : "hidden";
+      if (src) apercu.src = src;
     }
 
-    async function relire() {
+    /**
+     * Lit les couleurs du nouveau dessin. Celles d'un autre dessin ne
+     * voudraient rien dire sur celui-ci : elles sont remplacées. Un dessin qui
+     * écrivait ses couleurs forme par forme (Canva, IA) revient sous une
+     * nouvelle adresse, sa version préparée ; l'original reste intact.
+     */
+    function relire() {
       const v = (champ.value || "").trim();
       montrer();
       if (!v) return;
-      note.textContent = "Lecture du dessin…";
-      try {
-        const res = await fetch(`${PUBLIC_API_URL}/admin/svg/analyse`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: v }),
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error(res.status);
-        const info = await res.json();
-        // Les zones du nouveau dessin remplacent les précédentes : garder
-        // celles d'un autre dessin donnerait des couleurs sans effet.
-        boiteZones.innerHTML = "";
-        champZones.value = "{}";
-        for (const [zone, hex] of Object.entries(info.colorZones || {}))
-          ajouterZone(zone, hex);
-        const n = Object.keys(info.colorZones || {}).length;
-        note.textContent = `${n} zone${n > 1 ? "s" : ""} de couleur relue${
-          n > 1 ? "s" : ""
-        } dans le dessin.`;
-      } catch {
-        note.textContent =
-          "Dessin illisible : zones de couleur à saisir à la main.";
-      }
+      couleurs?.dispatchEvent(
+        new CustomEvent("groupes:detecter", { detail: { url: v } }),
+      );
     }
+
+    couleurs?.addEventListener("groupes:change", (e) => {
+      const url = e.detail && e.detail.svgUrl;
+      if (url && url !== champ.value.trim()) {
+        champ.value = url;
+        montrer();
+      }
+    });
 
     bouton.addEventListener("click", () => {
       const input = document.createElement("input");
@@ -268,7 +254,7 @@ try {
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || res.status);
           champ.value = data.url;
-          await relire();
+          relire();
         } catch (e) {
           alert("Téléversement impossible : " + e);
         } finally {
@@ -280,12 +266,8 @@ try {
     });
 
     champ.addEventListener("change", relire);
-
-    document.getElementById("piece-ajout-zone").addEventListener("click", () => {
-      const z = (nomZone.value || "").trim();
-      if (!z) return;
-      ajouterZone(z, "#000000");
-      nomZone.value = "";
-    });
   </script>
+
+  {/* Après le formulaire : les vignettes des couleurs passent par lui. */}
+  <ApercusZones />
 </Admin>

@@ -5,6 +5,15 @@ dist
 .turbo
 .astro
 *.log
-data/exports
 wetransfer_*
 .DS_Store
+
+# Les visuels, les affiches générées et les fichiers d'impression : 2,8 Go.
+# Ils sont MONTÉS dans le conteneur, jamais copiés dedans — les inclure dans
+# le contexte de construction ferait transférer 2,8 Go au démon Docker à
+# chaque build, pour rien.
+data
+
+# Les sauvegardes du serveur : elles vivent à côté du projet, elles n'ont
+# rien à faire dans une image.
+sauvegardes

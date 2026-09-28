@@ -1,11 +1,12 @@
 ---
 import Base from "../../layouts/Base.astro";
+import VignetteAffiche from "../../components/VignetteAffiche.astro";
 import Newsletter from "../../islands/Newsletter.tsx";
 import {
   api,
   setting,
-  formatPrice,
   assetUrl,
+  assetSrcset,
   type Product,
 } from "../../lib/api.ts";
 import {
@@ -46,29 +47,27 @@ try {
   // API non joignable au build/SSR -> on dégrade proprement
 }
 
-// Les affiches mises en avant : c'est ce qui manquait à l'accueil.
-let products: Product[] = [];
-try {
-  products = await api.products(60, langue);
-} catch {
-  // Sans API, la vitrine s'efface plutôt que d'afficher une grille vide.
-}
-
 /** Un réglage vaut « activé » sauf s'il est explicitement à "off"/"non"/"0". */
 async function visible(cle: string): Promise<boolean> {
+  // Un interrupteur ne se traduit pas : on le lit toujours en français, la
+  // langue de référence. Sans quoi masquer une section en français la
+  // laisserait visible sur /de.
   const v = (await setting(cle, "on")).trim().toLowerCase();
   return !["off", "non", "no", "0", "false"].includes(v);
 }
 
+/** Un texte réglable, dans la langue de la page. */
+const texte = (cle: string, defaut: string) => setting(cle, defaut, langue);
+
 const vitrineVisible = await visible("home.vitrine.visible");
-const vitrineTitre = await setting("home.vitrine.title", "Nos best-sellers ❤️");
+const vitrineTitre = await texte("home.vitrine.title", "Nos best-sellers ❤️");
 /**
  * Texte d'introduction de la vitrine : une ligne par ligne saisie au
  * back-office. Celles qui commencent par un tiret deviennent une puce, les
  * autres restent des phrases — c'est ce que fait la boutique actuelle, et ça
  * laisse la cliente écrire ce qu'elle veut sans passer par un développeur.
  */
-const vitrineTexte = await setting(
+const vitrineTexte = await texte(
   "home.vitrine.subtitle",
   "- Choisissez votre fond\n- Personnalisez votre texte\n- Choisissez vos personnages et personnalisez-les\nVotre affiche prête en 2 minutes !",
 );
@@ -82,33 +81,164 @@ const vitrineNombre = Math.max(
   Math.min(24, Number(await setting("home.vitrine.count", "8")) || 8),
 );
 
-const vitrine = products.slice(0, vitrineNombre);
+/**
+ * La collection que montre la vitrine, choisie au back-office (« Accueil et
+ * pied de page »). Vide : les plus récentes, comme avant que le réglage
+ * existe. Ce n'est pas un texte : il vaut pour les cinq langues, et se lit
+ * donc en français, la langue de référence.
+ */
+const vitrineCollection = (
+  await setting("home.vitrine.collection", "")
+).trim();
 
-function fourchette(p: Product): string {
-  const prix = p.variants.map((v) => v.priceCents).filter((c) => c > 0);
-  if (prix.length === 0) return formatPrice(p.basePriceCents);
-  const min = Math.min(...prix);
-  const max = Math.max(...prix);
-  return min === max
-    ? formatPrice(min)
-    : `${formatPrice(min)} – ${formatPrice(max)}`;
+/**
+ * Les affiches de la vitrine, et elles seules : la page n'en demande que le
+ * nombre réglé, là où elle en chargeait soixante pour en garder huit.
+ *
+ * Une collection se présente dans l'ordre que la propriétaire lui a donné au
+ * glisser-déposer — c'est tout l'intérêt de la choisir. « Les plus
+ * récentes » demande EXPLICITEMENT les nouveautés : sans tri, l'API sert
+ * l'ordre des pages de genre, qui intercale le rang 1 des personnalisables et
+ * celui des prêtes à imprimer — un ordre que personne n'a réglé, et que le
+ * libellé du back-office démentirait.
+ *
+ * Une collection qui ne rend rien — désactivée, vidée, supprimée depuis —
+ * laisse la place aux plus récentes. La vitrine porte le titre de la page :
+ * elle ne doit pas disparaître parce qu'un rayon a été fermé ailleurs.
+ */
+async function affichesDeLaVitrine(): Promise<Product[]> {
+  if (vitrineCollection) {
+    try {
+      const rayon = await api.catalogue({
+        langue,
+        collection: vitrineCollection,
+        tri: "manuel",
+        limite: vitrineNombre,
+      });
+      if (rayon.items.length) return rayon.items;
+    } catch {
+      // API muette sur ce rayon : on tente les plus récentes ci-dessous.
+    }
+  }
+  try {
+    const rayon = await api.catalogue({
+      langue,
+      tri: "nouveautes",
+      limite: vitrineNombre,
+    });
+    return rayon.items;
+  } catch {
+    // Sans API, la vitrine s'efface plutôt que d'afficher une grille vide.
+    return [];
+  }
 }
 
+/*
+ * Au stand, la vitrine se montre sans prix : c'est la vignette du rayon
+ * (VignetteAffiche.astro) qui s'en charge, comme partout ailleurs — l'accueil
+ * est ce qui s'ouvre en premier sur la tablette, et la vendeuse y annonce ses
+ * tarifs de salon.
+ */
+const vitrine = vitrineVisible ? await affichesDeLaVitrine() : [];
+
 /** Intitulé de la lettre d'information, réglable au back-office. */
-const lettreTitre = await setting(
+/**
+ * Mise en avant de l'affiche tirée d'une photo.
+ *
+ * Le bloc ne s'affiche QUE si une image lui a été donnée au back-office :
+ * une mise en avant sans visuel est un trou au milieu de la page, et ce
+ * produit-là se vend précisément par l'image. Tout le reste — titre, texte,
+ * libellé du bouton — se règle sans développeur, comme la vitrine.
+ */
+const iaVisible = await visible("home.ia.visible");
+const iaImage = (await setting("home.ia.image", "")).trim();
+const iaTitre = await texte("home.ia.title", "Votre photo, en affiche");
+const iaTexte = await texte(
+  "home.ia.text",
+  "Envoyez une photo — une maison, une plage, une rue, un souvenir — et retrouvez-la illustrée dans le style Memory Line. Vous voyez le résultat avant de commander.",
+);
+const iaBouton = await texte("home.ia.cta", "Essayer avec ma photo");
+const iaLien = await setting(
+  "home.ia.link",
+  "/affiches/affiche-ia-a-partir-de-votre-photo",
+);
+
+/**
+ * L'ENCART D'ACCUEIL — le premier bloc de la page.
+ *
+ * Une image, un titre, un texte, un bouton. Il sert à annoncer ce qui compte
+ * en ce moment : une nouveauté, une collection, un salon, une promesse.
+ *
+ * Il ne s'affiche QUE si une image lui a été donnée. Un encart sans visuel
+ * est un trou en haut de la page, et c'est l'image qui fait son intérêt —
+ * pour du texte seul, le bandeau d'annonce existe déjà.
+ *
+ * L'image est COMMUNE aux cinq langues, les textes se traduisent. C'est la
+ * règle du reste du site : la forme et les adresses ne se traduisent pas,
+ * sinon chaque langue devient une page indépendante que personne ne tient
+ * plus à jour.
+ */
+const encartVisible = await visible("home.encart.visible");
+const encartImage = (await setting("home.encart.image", "")).trim();
+const encartAlt = await texte("home.encart.alt", "");
+const encartTitre = await texte("home.encart.title", "");
+const encartTexte = await texte("home.encart.text", "");
+const encartBouton = await texte("home.encart.cta", "");
+const encartLien = (await setting("home.encart.link", "")).trim();
+
+const lettreTitre = await texte(
   "home.newsletter.title",
   "Subscribe to our emails",
 );
-
-/** Retire le suffixe « - Affiche personnalisée » des noms importés. */
-const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
 ---
 
 <Base langue={langue}>
+  {/* ---------------- Encart d'accueil ----------------
+      Tout en haut, AVANT les affiches — et surtout HORS de la condition de
+      la vitrine : à l'intérieur, il disparaîtrait le jour où la cliente
+      masque la vitrine, ou simplement quand l'API ne renvoie rien. */}
+  {
+    encartVisible && encartImage && (
+      <section class="w-full px-6 pt-10 lg:px-12">
+        <div class="mx-auto grid max-w-[1200px] items-center gap-8 sm:grid-cols-2">
+          <img
+            src={assetUrl(encartImage) ?? encartImage}
+            srcset={assetSrcset(encartImage, [400, 600, 900, 1400])}
+            sizes="(min-width: 640px) 50vw, 100vw"
+            alt={encartAlt || encartTitre}
+            class="w-full rounded-lg object-cover"
+          />
+          <div>
+            {encartTitre && (
+              <h2 class="text-3xl leading-tight">{encartTitre}</h2>
+            )}
+            {encartTexte && (
+              <p class="mt-4 text-lg leading-relaxed text-ink-soft">
+                {encartTexte}
+              </p>
+            )}
+            {encartBouton && encartLien && (
+              <a
+                href={
+                  encartLien.startsWith("http")
+                    ? encartLien
+                    : lien(langue, encartLien)
+                }
+                class="mt-8 inline-block bg-ink px-8 py-3 font-medium text-paper transition-colors hover:bg-ink/85"
+              >
+                {encartBouton}
+              </a>
+            )}
+          </div>
+        </div>
+      </section>
+    )
+  }
+
   {/* ---------------- Les affiches ---------------- */}
   {
     vitrineVisible && vitrine.length > 0 && (
-      <section class="w-full px-6 pt-12 pb-4 lg:px-12">
+      <section class="w-full px-4 pt-12 pb-4 sm:px-6 lg:px-12">
         <div class="mb-8 flex flex-wrap items-end justify-between gap-3">
           <div>
             {/* Devenu le titre de la page depuis que le bandeau d'accroche
@@ -136,33 +266,20 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
           </a>
         </div>
 
-        <ul class="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-          {vitrine.map((p) => (
-            <li class="group ml-apparition">
-              <a href={lien(langue, `/affiches/${p.slug}`)} class="block">
-                <div
-                  class="flex items-center justify-center overflow-hidden bg-paper-deep"
-                  style="aspect-ratio:1020/1400"
-                >
-                  {assetUrl(p.image) ? (
-                    <img
-                      src={assetUrl(p.image)}
-                      alt={p.name}
-                      loading="lazy"
-                      class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                    />
-                  ) : (
-                    <span class="px-4 text-center text-lg text-ink-soft">
-                      {titreCourt(p.name)}
-                    </span>
-                  )}
-                </div>
-                <h3 class="mt-4 text-[17px] leading-snug group-hover:underline underline-offset-4">
-                  {titreCourt(p.name)}
-                </h3>
-                <p class="mt-1 text-ink-soft">{fourchette(p)}</p>
-              </a>
-            </li>
+        {/* La vignette du rayon, et ses gouttières (affiches.astro) : la
+            vitrine avait sa propre copie, avec 24 px entre les affiches, un
+            nom en grand et une image chargée en pleine taille, sans choix de
+            résolution. Les colonnes, elles, restent celles de l'accueil — la
+            page est pleine largeur —, d'où un `sizes` écrit ici, calculé sur
+            ces colonnes et ces marges. */}
+        <ul class="-mx-2 grid grid-cols-2 gap-x-1 gap-y-5 sm:mx-0 sm:gap-x-2 sm:gap-y-8 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          {vitrine.map((p, rang) => (
+            <VignetteAffiche
+              affiche={p}
+              langue={langue}
+              prioritaire={rang < 4}
+              sizes="(min-width: 1536px) calc((100vw - 128px) / 5), (min-width: 1280px) calc((100vw - 120px) / 4), (min-width: 1024px) calc((100vw - 112px) / 3), (min-width: 640px) calc((100vw - 56px) / 2), calc((100vw - 20px) / 2)"
+            />
           ))}
         </ul>
 
@@ -175,6 +292,41 @@ const titreCourt = (nom: string) => nom.replace(/\s*[-–]\s*Affiche.*$/i, "");
           >
             {tr("accueil.tout_afficher")}
           </a>
+        </div>
+      </section>
+    )
+  }
+
+  {
+    /* ---------------- L'affiche à partir d'une photo ---------------- */
+    iaVisible && iaImage && (
+      <section class="mt-16 border-t border-ink/10">
+        <div
+          class="mx-auto grid max-w-[1200px] items-center gap-10 px-6 py-14 lg:grid-cols-2 lg:px-12"
+        >
+          {/* `assetUrl` et pas l'adresse brute : « /assets/… » se
+              résoudrait sinon sur l'origine du site, qui ne sert aucun
+              /assets — l'image serait cassée dès que la cliente en pose une.
+              Le srcset laisse un téléphone télécharger la version qu'il
+              affiche, pas celle d'un grand écran. */}
+          <img
+            src={assetUrl(iaImage) ?? iaImage}
+            srcset={assetSrcset(iaImage, [400, 600, 900, 1400])}
+            sizes="(min-width: 1024px) 50vw, 100vw"
+            alt={iaTitre}
+            loading="lazy"
+            class="w-full object-cover"
+          />
+          <div>
+            <h2 class="text-3xl leading-tight">{iaTitre}</h2>
+            <p class="mt-4 text-lg leading-relaxed text-ink-soft">{iaTexte}</p>
+            <a
+              href={iaLien.startsWith("http") ? iaLien : lien(langue, iaLien)}
+              class="mt-8 inline-block bg-ink px-8 py-3 font-medium text-paper transition-colors hover:bg-ink/85"
+            >
+              {iaBouton}
+            </a>
+          </div>
         </div>
       </section>
     )

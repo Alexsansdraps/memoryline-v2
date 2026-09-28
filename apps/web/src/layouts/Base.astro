@@ -1,4 +1,5 @@
 ---
+import { apiInterne } from "../lib/api-interne.ts";
 import "../styles/global.css";
 import Seo from "../components/Seo.astro";
 import AnnouncementBanner from "../components/AnnouncementBanner.astro";
@@ -13,6 +14,7 @@ import {
   t,
   type Langue,
 } from "../i18n/utils.ts";
+import { api, type EntreeMenuPublique } from "../lib/api.ts";
 interface Props {
   /** Langue de la page — pilote les libellés, les liens et le hreflang. */
   langue?: Langue;
@@ -23,6 +25,16 @@ interface Props {
   type?: "website" | "product" | "article";
   noindex?: boolean;
   jsonLd?: Record<string, unknown> | Record<string, unknown>[];
+  /**
+   * Page précédente et page suivante d'une liste paginée.
+   *
+   * Elles disent à un moteur que ces adresses sont les morceaux d'une SEULE
+   * suite : sans elles, la page 4 d'un rayon passe pour une page isolée,
+   * pauvre en texte et sans lien entrant, et sort de l'index avec les
+   * quarante-huit affiches qu'elle porte.
+   */
+  precedente?: string | null;
+  suivante?: string | null;
 }
 const {
   langue = LANGUE_DEFAUT,
@@ -33,13 +45,195 @@ const {
   type,
   noindex,
   jsonLd,
+  precedente,
+  suivante,
 } = Astro.props;
 
 const tr = t(langue);
+
+/**
+ * Le menu du haut, tel que le back-office l'a rangé.
+ *
+ * Le repli n'est pas un luxe : une boutique dont la navigation disparaît
+ * parce qu'une route est tombée est une boutique fermée. Ces deux entrées
+ * sont celles qui vivaient en dur ici avant que le menu devienne modifiable.
+ */
+const MENU_DE_SECOURS: EntreeMenuPublique[] = [
+  {
+    id: -1,
+    label: tr("nav.personnalisables"),
+    href: "/affiches?genre=personnalisable",
+    enfants: [
+      // Vers les personnalisables, et non « /affiches » : on ne crée qu'une
+      // affiche personnalisable, et c'est cette page qui suit l'ordre réglé
+      // au back-office. « /affiches » mêlait les prêtes à imprimer, par
+      // nouveautés. La même adresse est posée en base par la migration 0050.
+      { id: -6, label: tr("nav.creer"), href: "/affiches?genre=personnalisable" },
+      { id: -2, label: tr("nav.tout_voir"), href: "/affiches?genre=personnalisable" },
+      {
+        id: -3,
+        label: tr("nav.villes"),
+        href: "/affiches?genre=personnalisable&collection=villes",
+      },
+      {
+        id: -4,
+        label: tr("nav.themes_paysages"),
+        href: "/affiches?genre=personnalisable&collection=balades-paysages",
+      },
+    ],
+  },
+  {
+    id: -5,
+    label: tr("nav.pretes"),
+    href: "/affiches?genre=prete_a_imprimer",
+    enfants: [],
+  },
+];
+
+/*
+ * Le menu et la baseline du pied de page partent ENSEMBLE.
+ *
+ * Ils étaient demandés l'un après l'autre, à trente lignes d'écart : deux
+ * allers-retours pour deux informations qui ne dépendent pas l'une de
+ * l'autre, sur CHAQUE page du site. Ensemble, ils n'en coûtent qu'un.
+ *
+ * Chacun garde son repli : un menu qui ne répond pas laisse celui d'origine,
+ * une baseline absente laisse celle du dictionnaire. Une page publique ne
+ * tombe jamais parce qu'un ornement n'a pas pu être lu.
+ */
+const [reponseMenu, reponseReglages] = await Promise.all([
+  api.menu(langue).catch(() => null),
+  // La baseline n'est lue qu'en français : elle n'a pas de traduction, et la
+  // servir partout remplacerait quatre phrases traduites par une française.
+  langue === LANGUE_DEFAUT
+    ? api.settings("footer").catch(() => null)
+    : Promise.resolve(null),
+]);
+
+let entreesMenu: EntreeMenuPublique[] = MENU_DE_SECOURS;
+if (reponseMenu?.entrees.length) entreesMenu = reponseMenu.entrees;
+
+/**
+ * Une adresse de menu, prête à être cliquée.
+ *
+ * Une adresse interne reçoit le préfixe de langue : sans lui, un visiteur
+ * anglais serait renvoyé sur la page française au premier clic. Une adresse
+ * absolue désigne un autre site et part telle quelle.
+ */
+function adresseMenu(href: string): string {
+  if (/^https?:\/\//i.test(href)) return href;
+  const [chemin, requete] = href.split("?");
+  return lien(langue, chemin || "/") + (requete ? `?${requete}` : "");
+}
+
 const chemin = cheminSansLangue(Astro.url.pathname);
 const versions = autresVersions(langue, chemin);
+
+/**
+ * Ce que le champ de l'en-tête affiche déjà.
+ *
+ * Sur la page de résultats, il reprend la saisie : le vider ferait croire que
+ * la recherche a été oubliée, et obligerait à tout retaper pour corriger une
+ * lettre. Ailleurs, il est vide.
+ */
+const rechercheEnCours =
+  chemin === "/recherche" ? (Astro.url.searchParams.get("q") ?? "") : "";
 const titre = title ?? tr("meta.titre");
 const desc = description ?? tr("meta.description");
+
+/**
+ * La baseline du pied de page, telle que le back-office la règle.
+ *
+ * Le champ « Baseline » de l'écran « Contenu du site » était enregistré et
+ * jamais lu : le site affichait une constante du dictionnaire, et la
+ * propriétaire pouvait écrire ce qu'elle voulait sans que rien ne bouge.
+ *
+ * Il ne s'applique qu'au FRANÇAIS, et c'est délibéré : le réglage est une
+ * chaîne unique, sans colonne de traduction, alors que le dictionnaire porte
+ * les cinq langues. Le servir partout remplacerait quatre phrases traduites
+ * par une phrase française. La visiteuse allemande garde donc la sienne, et
+ * la boutiquière retrouve la sienne là où elle l'a écrite.
+ */
+let baseline = tr("pied.baseline");
+{
+  const saisie = reponseReglages?.["footer.baseline"];
+  if (typeof saisie === "string" && saisie.trim()) baseline = saisie.trim();
+}
+
+/**
+ * Les liens du pied de page.
+ *
+ * Les pages libres du site vivent sous « /pages/{adresse} » — préfixe
+ * volontaire, documenté dans pages/[...lang]/pages/[slug].astro : posée à la
+ * racine, cette route se glissait devant les accueils traduits. « Contact »
+ * fait exception, c'est une page à elle.
+ *
+ * Ces pages sont en cours d'écriture au back-office. Un lien qui pointe vers
+ * l'une d'elles avant qu'elle existe ne casse rien : la route rend une page
+ * introuvable, qui porte le menu, le pied de page et de quoi rebondir. C'est
+ * le seul comportement possible ici — aucune route publique ne dit quelles
+ * pages sont publiées, et interroger les cinq une par une coûterait cinq
+ * allers-retours sur CHAQUE page du site.
+ */
+const liensBoutique = [
+  { href: "/affiches", texte: tr("nav.affiches") },
+  { href: "/affiches?genre=personnalisable", texte: tr("nav.personnalisables") },
+  { href: "/affiches?genre=prete_a_imprimer", texte: tr("nav.pretes") },
+  { href: "/recherche", texte: tr("recherche.titre") },
+];
+const liensAide = [
+  { href: "/contact", texte: tr("pied.contact") },
+  { href: "/pages/conditions-de-vente", texte: tr("pied.conditions") },
+  { href: "/pages/mentions-legales", texte: tr("pied.mentions") },
+  { href: "/pages/confidentialite", texte: tr("pied.confidentialite") },
+  { href: "/pages/cookies", texte: tr("pied.cookies") },
+];
+
+/**
+ * Destination du lien « Compte » : le tableau de bord si une session est
+ * ouverte, la page de connexion sinon.
+ *
+ * On se contente de repérer le cookie — le valider coûterait un appel à l'API
+ * sur CHAQUE page du site. Une session périmée mène à /compte, qui renvoie
+ * alors vers la connexion : le visiteur atterrit au bon endroit dans tous les
+ * cas. Le court-circuit sur `isPrerendered` évite l'avertissement d'Astro sur
+ * les pages générées au build, où aucune requête n'existe.
+ */
+const connecte =
+  !Astro.isPrerendered &&
+  (Astro.request.headers.get("cookie") ?? "").includes("ml_client=");
+const lienCompte = lien(langue, connecte ? "/compte" : "/compte/connexion");
+
+/**
+ * Le pied de page renvoie vers le même compte que l'en-tête — sauf au stand,
+ * où le compte n'existe pas : il n'y reste que le panier.
+ */
+const liensCompte = Astro.locals.stand
+  ? [{ href: "/panier", texte: tr("nav.panier") }]
+  : [
+      {
+        href: connecte ? "/compte" : "/compte/connexion",
+        texte: tr("nav.compte"),
+      },
+      { href: "/panier", texte: tr("nav.panier") },
+    ];
+
+/**
+ * Raccourci vers le back-office, pour qui y est déjà connecté.
+ *
+ * La session est VRAIMENT validée, contrairement au lien « Compte » plus
+ * haut : afficher l'entrée du back-office sur la foi d'un cookie périmé
+ * indiquerait à n'importe quel visiteur d'un poste partagé qu'il y a une
+ * porte, et laquelle. Le coût est nul pour un vrai client — sans le cookie,
+ * aucun appel n'est fait — et d'un aller-retour interne pour la boutique.
+ */
+// Résolue par le middleware, une fois par requête. La redemander ici
+// coûtait un aller-retour de plus à l'API pour la même réponse. Une page
+// figée au build n'a pas de session : `locals` y est vide, et le raccourci
+// ne s'affiche pas — ce qui est exactement ce qu'on veut.
+const admin = Astro.isPrerendered ? null : (Astro.locals.admin ?? null);
+/** Le back-office vit sous /bo derrière le proxy ; surchargeable en prod. */
+const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
 ---
 
 <!doctype html>
@@ -64,12 +258,61 @@ const desc = description ?? tr("meta.description");
       hreflang="x-default"
       href={new URL(chemin, Astro.site ?? "https://memoryline.fr").toString()}
     />
+    {/* Les morceaux d'une liste paginée se tiennent par la main. */}
+    {precedente && (
+      <link
+        rel="prev"
+        href={new URL(precedente, Astro.site ?? "https://memoryline.fr").toString()}
+      />
+    )}
+    {suivante && (
+      <link
+        rel="next"
+        href={new URL(suivante, Astro.site ?? "https://memoryline.fr").toString()}
+      />
+    )}
     {/* Marque la page comme animée avant qu'elle ne s'affiche : la règle
         d'apparition ne s'applique que sous cette classe, donc sans
         JavaScript rien n'est masqué. */}
     <script is:inline>
       document.documentElement.classList.add("ml-js");
+      // Safari sur iPad et iPhone n'applique l'état « appuyé » (:active) d'un
+      // bouton que si la page écoute les contacts du doigt. Sans cet
+      // écouteur vide, l'effet d'appui des boutons noirs (global.css) ne
+      // s'affichait jamais sur la tablette du stand — précisément là où il
+      // sert. `passive` : il ne ralentit pas le défilement.
+      document.addEventListener("touchstart", function () {}, { passive: true });
     </script>
+    {/* Le code du stand, arrivé par l'adresse que donne le back-office
+        (« /?stand=1&code=… »). Il est rangé dans la tablette — c'est là que
+        la dernière étape le relit (CommandeStand.tsx) — puis retiré aussitôt
+        de la barre d'adresse : un code affiché devant le client, et gardé
+        dans l'historique d'une tablette qui passe de main en main, n'est plus
+        un code. Rien n'est vérifié ici : l'étape de validation le soumet au
+        stand avant de s'en servir. */}
+    {
+      Astro.locals.stand && (
+        <script is:inline>
+          (function () {
+            try {
+              var adresse = new URL(window.location.href);
+              var code = (adresse.searchParams.get("code") || "").trim();
+              if (!code) return;
+              localStorage.setItem("ml_salon_code", code);
+              adresse.searchParams.delete("code");
+              history.replaceState(
+                history.state,
+                "",
+                adresse.pathname + adresse.search + adresse.hash,
+              );
+            } catch (e) {
+              // Stockage refusé (navigation privée) : le code se saisira à la
+              // main, à la dernière étape.
+            }
+          })();
+        </script>
+      )
+    }
     <Seo
       title={titre}
       description={desc}
@@ -81,33 +324,245 @@ const desc = description ?? tr("meta.description");
     />
   </head>
   <body class="min-h-screen flex flex-col bg-paper text-ink">
-    <AnnouncementBanner />
+    {/* Pas de bandeau au stand : il annonce une offre chiffrée — « 3 achetées,
+        1 offerte » — et la vendeuse a ses propres tarifs de salon. Une remise
+        affichée qui ne s'applique pas ici la contredirait devant le client. */}
+    {!Astro.locals.stand && <AnnouncementBanner />}
     {/* En-tête calquée sur memoryline.fr : logo à gauche, navigation au
         centre, actions à droite, sur 1200 px de large. */}
     <header class="border-b border-ink/10 bg-paper sticky top-0 z-10">
-      <nav
-        class="mx-auto flex max-w-[1200px] items-center justify-between gap-6 px-6 py-5 lg:px-12"
+      {/*
+        UNE rangée : logo · menu · « Créer mon affiche » · RECHERCHE · actions.
+
+        Toute la largeur, sans conteneur centré : le contenu des pages garde
+        sa largeur de lecture, mais un en-tête serré au milieu d'un grand
+        écran se lit mal alors qu'il reste de la place de chaque côté.
+
+        LE CHAMP DE RECHERCHE EST À DROITE, avec les icônes.
+
+        Il a d'abord été centré au pixel, ce qui demandait une grille à trois
+        pistes dont les deux côtés faisaient la même largeur. C'était ce qui
+        bridait tout le reste : le côté droit ne portant que trois icônes, le
+        côté gauche recevait la même largeur qu'elles — et le logo plus le
+        menu n'y tenaient qu'à peine, les libellés se coupant en deux lignes.
+
+        À droite, cette contrainte tombe. La rangée redevient une simple
+        ligne, le champ peut être plus large ET apparaître plus tôt : dès
+        1024 px au lieu de 1290.
+      */}
+      <div
+        class="flex w-full items-center gap-4 px-4 py-4 sm:gap-6 sm:px-6 lg:px-10"
       >
-        <a
-          href={lien(langue, "/")}
-          class="inline-flex shrink-0 items-center"
-          aria-label={tr("nav.accueil")}
-        >
-          <img
-            src="/logo-memory-line.png"
-            alt="Memory Line"
-            width="500"
-            height="222"
-            class="h-12 w-auto"
-          />
-        </a>
-        <div class="hidden md:flex items-center gap-8 text-[17px] font-semibold">
+        {/* Le logo et le menu, à leur largeur naturelle. `shrink-0` est ce
+            qui empêche les libellés de se couper : sans lui, le navigateur
+            comprime ce groupe dès que la rangée est chargée. */}
+        <div class="mr-auto flex min-w-0 items-center gap-3 sm:gap-5 lg:shrink-0 lg:gap-6">
           <a
-            href={lien(langue, "/affiches")}
-            class="hover:text-terracotta transition-colors">{tr("nav.affiches")}</a
+            href={lien(langue, "/")}
+            class="inline-flex shrink-0 items-center"
+            aria-label={tr("nav.accueil")}
           >
+            <img
+              src="/logo-memory-line.png"
+              alt="Memory Line"
+              width="500"
+              height="222"
+              class="h-12 w-auto"
+            />
+          </a>
+
+          <nav
+            aria-label={tr("nav.accueil")}
+            class="hidden md:flex items-center gap-5 text-[13px] font-semibold lg:gap-6 lg:text-[14px] lg:whitespace-nowrap"
+          >
+            {/* Le menu vient du back-office. Une entrée sans sous-lien est un
+                simple lien ; les autres se déroulent au clic, et se referment au
+                clic ailleurs ou avec Échap — un survol seul laisserait les
+                écrans tactiles sans porte d'entrée. */}
+            {
+              entreesMenu.map((entree) =>
+                entree.enfants.length === 0 ? (
+                  <a
+                    href={adresseMenu(entree.href)}
+                    class="hover:text-terracotta transition-colors"
+                  >
+                    {entree.label}
+                  </a>
+                ) : (
+                  <details class="ml-menu relative">
+                    <summary class="hover:text-terracotta flex cursor-pointer list-none items-center gap-1 transition-colors">
+                      {entree.label}
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 12 12"
+                        aria-hidden="true"
+                        class="ml-menu-fleche transition-transform"
+                      >
+                        <path
+                          d="M2 4.5 6 8.5 10 4.5"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.6"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        />
+                      </svg>
+                    </summary>
+                    <div class="border-ink/10 bg-paper absolute top-full left-0 z-20 mt-3 min-w-56 rounded-lg border py-2 text-[14px] font-medium shadow-lg">
+                      {entree.enfants.map((enfant) => (
+                        <a
+                          href={adresseMenu(enfant.href)}
+                          class="hover:bg-ink/5 hover:text-terracotta block px-4 py-2 transition-colors"
+                        >
+                          {enfant.label}
+                        </a>
+                      ))}
+                    </div>
+                  </details>
+                ),
+              )
+            }
+          </nav>
+
         </div>
-        <div class="flex items-center gap-5 text-sm">
+
+        {/* La recherche.
+            Un vrai formulaire en GET vers /recherche : la saisie finit dans
+            l'adresse, donc un résultat se recopie dans un message et le
+            bouton « précédent » ramène la liste qu'on quittait. Sur les
+            petits écrans le champ prendrait toute la place : c'est la loupe,
+            à droite, qui prend le relais et mène au grand champ de la page de
+            recherche.
+
+            Sa largeur suit l'écran sans jamais l'étouffer : le logo et le
+            menu gardent leur place, le champ prend le reste, entre 230 et
+            360 px. 230, c'est ce qu'il faut à « Rechercher une affiche » en
+            gras pour se lire en entier à côté de la loupe et de la petite
+            croix que le navigateur réserve pour vider le champ — y compris
+            dans la police des iPad et des Mac, plus large que celle de
+            Windows. À 170 px, la phrase se coupait. Le cadre bleu et le gras
+            sont dans global.css (`ml-recherche`), partagés avec le champ de
+            la page de recherche. */}
+        <div class="hidden w-[clamp(230px,18vw,360px)] lg:block">
+          <form
+            method="get"
+            action={lien(langue, "/recherche")}
+            role="search"
+            class="ml-recherche flex w-full items-center"
+          >
+            <label for="ml-q" class="sr-only">{tr("recherche.champ")}</label>
+            <input
+              id="ml-q"
+              type="search"
+              name="q"
+              value={rechercheEnCours}
+              autocomplete="off"
+              placeholder={tr("recherche.champ")}
+              class="ml-recherche-champ w-full min-w-0 bg-transparent px-3 py-2 text-[13px] focus:outline-none"
+            />
+            <button
+              type="submit"
+              class="px-2 py-1.5 text-ink/60 hover:text-terracotta transition-colors"
+              aria-label={tr("recherche.bouton")}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" />
+              </svg>
+            </button>
+          </form>
+        </div>
+
+        {/* Les icônes, à la suite du champ, contre le bord droit. */}
+        <div class="flex shrink-0 items-center justify-end gap-3 text-sm sm:gap-4">
+          <a
+            href={lien(langue, "/recherche")}
+            class="inline-flex items-center hover:text-terracotta transition-colors lg:hidden"
+            aria-label={tr("recherche.titre")}
+          >
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <span class="sr-only">{tr("recherche.titre")}</span>
+          </a>
+          {/* Raccourci d'administration. Volontairement discret : il ne
+              s'affiche que pour une session de back-office valide, et ne doit
+              pas concurrencer le panier dans l'œil du client. */}
+          {admin && (
+            <a
+              href={lienBackOffice}
+              rel="nofollow"
+              title={`Back-office — ${admin.email} (${
+                admin.role === "owner" ? "propriétaire" : "vendeur"
+              })`}
+              class="hidden sm:inline-flex items-center gap-1.5 border border-ink/15 px-2.5 py-1 text-[12px] text-ink/55 hover:text-terracotta hover:border-terracotta/40 transition-colors"
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 4h18v16H3z" />
+                <path d="M3 9h18" />
+                <path d="M8 9v11" />
+              </svg>
+              Back-office
+            </a>
+          )}
+          {/* Compte : même traitement que le panier — une icône, le mot en
+              lecture d'écran seulement, pour ne pas charger l'en-tête.
+              Absent au stand : le client est devant la vendeuse, il n'a ni
+              adresse à retrouver ni historique à consulter, et le seul effet
+              du lien serait de l'envoyer sur un écran de mot de passe. */}
+          {!Astro.locals.stand && (
+          <a
+            href={lienCompte}
+            class="inline-flex items-center gap-2 hover:text-terracotta transition-colors"
+            aria-label={tr("nav.compte")}
+          >
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+              <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+            </svg>
+            <span class="sr-only">{tr("nav.compte")}</span>
+          </a>
+          )}
           <a
             href={lien(langue, "/panier")}
             class="ml-panier-lien inline-flex items-center gap-2 hover:text-terracotta transition-colors"
@@ -132,12 +587,6 @@ const desc = description ?? tr("meta.description");
             <span class="sr-only">{tr("nav.panier")}</span>
             <CartBadge client:load />
           </a>
-          <a
-            href={lien(langue, "/affiches")}
-            class="bg-ink px-5 py-2.5 text-paper hover:bg-ink/85 transition-colors"
-            >{tr("nav.creer")}</a
-          >
-
           {/* Sélecteur de langue, en haut à droite. Ce sont de vrais liens :
               chaque langue a son URL, indexable et partageable. */}
           <div class="ml-langues">
@@ -167,19 +616,128 @@ const desc = description ?? tr("meta.description");
             </ul>
           </div>
         </div>
-      </nav>
+      </div>
+
     </header>
+
+    <style is:global>
+      /* Le triangle par défaut de <details> n'a rien à faire dans un menu. */
+      .ml-menu > summary::-webkit-details-marker {
+        display: none;
+      }
+      .ml-menu[open] .ml-menu-fleche {
+        transform: rotate(180deg);
+      }
+    </style>
+
+    <script is:inline>
+      // Un menu ouvert doit se fermer quand on clique ailleurs ou qu'on appuie
+      // sur Échap : <details> ne le fait pas tout seul, et un menu resté
+      // ouvert par-dessus la page passe pour un bogue.
+      (function () {
+        var menus = document.querySelectorAll("details.ml-menu");
+        if (!menus.length) return;
+        function fermerSauf(garde) {
+          menus.forEach(function (m) {
+            if (m !== garde) m.removeAttribute("open");
+          });
+        }
+        menus.forEach(function (m) {
+          m.addEventListener("toggle", function () {
+            if (m.open) fermerSauf(m);
+          });
+        });
+        document.addEventListener("click", function (e) {
+          var dedans = e.target instanceof Node && e.target;
+          menus.forEach(function (m) {
+            if (dedans && m.contains(dedans)) return;
+            m.removeAttribute("open");
+          });
+        });
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape") fermerSauf(null);
+        });
+      })();
+    </script>
 
     <main class="flex-1">
       <slot />
     </main>
 
+    {/* Le pied de page ne contenait AUCUN lien : deux phrases, et rien pour
+        aller aux conditions de vente, au contact ou à la livraison — c'est
+        pourtant là qu'on les cherche, tout en bas, après avoir fait défiler. */}
     <footer class="border-t border-ink/10 mt-16">
-      <div
-        class="mx-auto flex max-w-[1200px] flex-col justify-between gap-2 px-6 py-9 text-sm text-ink-soft sm:flex-row lg:px-12"
-      >
-        <p>© {new Date().getFullYear()} {tr("pied.droits")}</p>
-        <p>{tr("pied.baseline")}</p>
+      {/* Toute la largeur, comme la barre du haut. Les quatre colonnes se
+          répartissaient dans 1 200 px centrés : sur un grand écran elles se
+          serraient au milieu alors qu'il restait de la place des deux côtés.
+          Un pied de page est une liste de liens, pas un texte suivi — il n'a
+          pas besoin d'une largeur de lecture. */}
+      <div class="w-full px-4 py-12 sm:px-6 lg:px-10">
+        <div class="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <img
+              src="/logo-memory-line.png"
+              alt="Memory Line"
+              width="500"
+              height="222"
+              class="h-10 w-auto"
+            />
+            <p class="mt-4 text-sm text-ink-soft">{baseline}</p>
+          </div>
+
+          <nav aria-labelledby="pied-boutique">
+            <h2 id="pied-boutique" class="text-sm font-semibold">
+              {tr("pied.navigation")}
+            </h2>
+            <ul class="mt-4 space-y-2 text-sm text-ink-soft">
+              {liensBoutique.map((l) => (
+                <li>
+                  <a
+                    href={adresseMenu(l.href)}
+                    class="hover:text-terracotta transition-colors">{l.texte}</a
+                  >
+                </li>
+              ))}
+            </ul>
+          </nav>
+
+          <nav aria-labelledby="pied-aide">
+            <h2 id="pied-aide" class="text-sm font-semibold">
+              {tr("pied.aide")}
+            </h2>
+            <ul class="mt-4 space-y-2 text-sm text-ink-soft">
+              {liensAide.map((l) => (
+                <li>
+                  <a
+                    href={adresseMenu(l.href)}
+                    class="hover:text-terracotta transition-colors">{l.texte}</a
+                  >
+                </li>
+              ))}
+            </ul>
+          </nav>
+
+          <nav aria-labelledby="pied-compte">
+            <h2 id="pied-compte" class="text-sm font-semibold">
+              {tr("nav.compte")}
+            </h2>
+            <ul class="mt-4 space-y-2 text-sm text-ink-soft">
+              {liensCompte.map((l) => (
+                <li>
+                  <a
+                    href={adresseMenu(l.href)}
+                    class="hover:text-terracotta transition-colors">{l.texte}</a
+                  >
+                </li>
+              ))}
+            </ul>
+          </nav>
+        </div>
+
+        <p class="mt-12 border-t border-ink/10 pt-6 text-sm text-ink-soft">
+          © {new Date().getFullYear()} {tr("pied.droits")}
+        </p>
       </div>
     </footer>
     <CookieBanner langue={langue} />

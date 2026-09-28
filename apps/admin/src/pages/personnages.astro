@@ -1,6 +1,8 @@
 ---
 import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
+import ApercusZones from "../components/ApercusZones.astro";
+import GroupesCouleurs from "../components/GroupesCouleurs.astro";
 import {
   adminApi,
   type CharacterType,
@@ -35,7 +37,7 @@ function svgSrc(url: string | null | undefined): string {
 // --- Traitement des formulaires (SSR) ----------------------------------
 // Les créations / éditions simples passent en POST classique (robuste, même
 // pattern que promotions.astro). Les actions dynamiques par élément (couleurs,
-// suppressions, base) se font côté client (voir <script> en bas).
+// suppressions, base) se font côté client (voir le script en bas de page).
 let flash: string | null = null;
 // Retour des pages de création : le message se lit ici, pas là-bas — c'est
 // sur cette page que le résultat se voit.
@@ -140,10 +142,19 @@ if (Astro.request.method === "POST") {
         position: Number(form.get("position")),
       });
       flash = "Ordre des catégories mis à jour.";
-    } else if (action === "cat-delete") {
-      await api.deleteCategory(Number(form.get("id")));
-      flash =
-        "Catégorie supprimée. Ses personnages sont revenus dans « sans catégorie ».";
+    } else if (action === "cat-archive") {
+      const restaurer = form.get("archived") === "false";
+      const r = await api.archiverCategoriePersonnage(
+        Number(form.get("id")),
+        !restaurer,
+      );
+      flash = restaurer
+        ? "Catégorie restaurée, avec les personnages qu'elle rangeait."
+        : `Catégorie archivée${
+            r.dedans > 0
+              ? `. Ses ${r.dedans} personnage${r.dedans > 1 ? "s restent proposés" : " reste proposé"} sur le site, rangé${r.dedans > 1 ? "s" : ""} dans « sans catégorie » le temps de l'archivage`
+              : ""
+          }. Vous pouvez la restaurer à tout moment, plus bas.`;
     } else if (action === "reorder") {
       const items = JSON.parse(String(form.get("items") || "[]"));
       if (items.length) await api.reorderCharacters(items);
@@ -182,11 +193,40 @@ try {
   if (!error) error = String(e);
 }
 
-let catalogue: CharacterCategory[] = [];
+let toutesCategories: CharacterCategory[] = [];
 try {
-  catalogue = await api.categories();
+  toutesCategories = await api.categories();
 } catch (e) {
   if (!error) error = String(e);
+}
+// Les catégories archivées quittent les groupes, les sélecteurs et le
+// glisser-déposer : elles se retrouvent dans leur propre section, avec
+// « Restaurer ». Leurs personnages, eux, restent proposés — ils se rangent
+// simplement dans « sans catégorie » le temps de l'archivage.
+const catalogue = toutesCategories.filter((c) => !c.archivedAt);
+const categoriesArchivees = toutesCategories.filter((c) => c.archivedAt);
+
+/** Ce qu'il faut avoir lu avant d'archiver une catégorie de personnages. */
+function messageArchivageCategorie(c: CharacterCategory): string {
+  const l = [`Archiver la catégorie « ${c.name} » ?`];
+  const n = c.count ?? 0;
+  if (n > 0)
+    l.push(
+      `Ses ${n} personnage${n > 1 ? "s restent proposés" : " reste proposé"} sur le site : ${n > 1 ? "ils apparaîtront" : "il apparaîtra"} dans « sans catégorie » le temps de l'archivage, et ${n > 1 ? "retrouveront leur rayon" : "retrouvera son rayon"} à la restauration.`,
+    );
+  l.push(
+    "Rien n'est supprimé : vous pourrez la restaurer quand vous voudrez, dans « Catégories archivées ».",
+  );
+  return l.join("\n\n");
+}
+
+/** Ce qu'il faut avoir lu avant d'archiver un personnage. */
+function messageArchivagePersonnage(t: { name: string }): string {
+  return [
+    `Archiver le personnage « ${t.name} » ?`,
+    "Il ne sera plus proposé dans le configurateur. Ses pièces, ses couleurs et ses réglages sont gardés entiers, et les commandes déjà passées dessus restent imprimables à l'identique.",
+    "Rien n'est supprimé : vous pourrez le restaurer quand vous voudrez, dans « Personnages archivés », plus bas dans cet écran.",
+  ].join("\n\n");
 }
 
 // Types d'affiche : ils alimentent les sélecteurs « Type d'affiche » des
@@ -217,9 +257,12 @@ const archived = types.filter((t) => t.archivedAt);
 
 // --- Regroupement par catégorie (table character_category) ---------------
 // Les groupes suivent l'ordre des catégories, et « sans catégorie » ferme la
-// marche : il existe TOUJOURS, même vide — c'est là que reviennent les
-// personnages quand on supprime leur catégorie.
+// marche : il existe TOUJOURS, même vide — c'est là que se rangent les
+// personnages dont la catégorie est archivée, exactement comme le fait le
+// configurateur. Sans cela, ils ne seraient dans AUCUN groupe et
+// disparaîtraient de cet écran alors qu'ils sont toujours en ligne.
 const SANS = { id: null as number | null, name: "(sans catégorie)" };
+const categorieRangee = new Set(categoriesArchivees.map((c) => c.id));
 
 const groupes: { cat: CharacterCategory | null; label: string; list: CharacterType[] }[] =
   [
@@ -234,7 +277,9 @@ const groupes: { cat: CharacterCategory | null; label: string; list: CharacterTy
       cat: null,
       label: SANS.name,
       list: active
-        .filter((t) => t.categoryId == null)
+        .filter(
+          (t) => t.categoryId == null || categorieRangee.has(t.categoryId),
+        )
         .sort((a, b) => a.position - b.position),
     },
   ];
@@ -244,6 +289,28 @@ const optionsCategorie = [
   { value: "", label: SANS.name },
   ...catalogue.map((c) => ({ value: String(c.id), label: c.name })),
 ];
+
+/**
+ * Les options pour UN personnage : les catégories ouvertes, plus la sienne si
+ * elle vient d'être archivée.
+ *
+ * Sans cette dernière, le sélecteur retomberait sur « sans catégorie » et
+ * laisserait croire que le rangement est perdu — alors qu'il est intact et
+ * revient à la restauration. Elle est marquée, et on n'y range personne
+ * d'autre : l'API refuse une catégorie archivée.
+ */
+function optionsPour(t: CharacterType) {
+  const sienne =
+    t.categoryId != null && categorieRangee.has(t.categoryId)
+      ? toutesCategories.find((c) => c.id === t.categoryId)
+      : undefined;
+  return sienne
+    ? [
+        ...optionsCategorie,
+        { value: String(sienne.id), label: `${sienne.name} (archivée)` },
+      ]
+    : optionsCategorie;
+}
 
 // Liste des baseSvgUrl déjà utilisées : sert de "bibliothèque" de SVG plein
 // personnage pour le sélecteur de base.
@@ -443,14 +510,19 @@ for (const a of pieces) {
               <button class="px-1 text-bo-muted hover:text-bo-accent" title="Descendre">↓</button>
             </form>
           )}
-          <form method="POST" class="inline">
-            <input type="hidden" name="_action" value="cat-delete" />
+          <form
+            method="POST"
+            class="inline"
+            onsubmit={`return confirm(${JSON.stringify(messageArchivageCategorie(c))})`}
+          >
+            <input type="hidden" name="_action" value="cat-archive" />
             <input type="hidden" name="id" value={c.id} />
+            <input type="hidden" name="archived" value="true" />
             <button
-              class="px-1 text-bo-muted hover:text-red-600"
-              title="Supprimer — ses personnages reviennent dans « sans catégorie »"
+              class="px-1 text-xs text-bo-muted hover:text-bo-accent"
+              title={`Archiver « ${c.name} » — ses personnages restent en ligne`}
             >
-              ×
+              Archiver
             </button>
           </form>
         </div>
@@ -467,9 +539,36 @@ for (const a of pieces) {
         <button class="rounded bg-bo-accent px-3 py-1.5 text-sm text-white">Créer</button>
       </form>
     </div>
+    {categoriesArchivees.length > 0 && (
+      <div class="mt-4 border-t border-bo-border pt-3">
+        <h4 class="mb-1 text-sm font-semibold">Catégories archivées</h4>
+        <p class="mb-2 text-xs text-bo-muted">
+          Retirées du site et des groupes ci-dessous. Les personnages qu'elles
+          rangeaient sont toujours en ligne, dans « sans catégorie » :
+          « Restaurer » remet le rayon tel qu'il était.
+        </p>
+        <div class="flex flex-wrap items-center gap-2">
+          {categoriesArchivees.map((c) => (
+            <div class="flex items-center gap-2 rounded border border-bo-border px-2 py-1 opacity-70">
+              <span class="text-sm">{c.name}</span>
+              <span class="text-xs text-bo-muted">{c.count ?? 0}</span>
+              <form method="POST" class="inline">
+                <input type="hidden" name="_action" value="cat-archive" />
+                <input type="hidden" name="id" value={c.id} />
+                <input type="hidden" name="archived" value="false" />
+                <button class="text-xs text-bo-accent hover:underline">
+                  Restaurer
+                </button>
+              </form>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
     <p class="mt-2 text-xs text-bo-muted">
-      Supprimer une catégorie ne supprime aucun personnage : ils reviennent dans
-      « sans catégorie ».
+      Rien ne se supprime ici : archiver une catégorie la range, sans toucher à
+      un seul personnage. Ils restent en ligne, et « Restaurer » les remet dans
+      leur rayon.
     </p>
   </section>
 
@@ -596,7 +695,7 @@ for (const a of pieces) {
                   name="categoryId"
                   class="js-cat-select flex-1 border border-bo-border rounded px-2 py-1"
                 >
-                  {optionsCategorie.map((o) => (
+                  {optionsPour(t).map((o) => (
                     <option value={o.value} selected={o.value === String(t.categoryId ?? "")}>
                       {o.label}
                     </option>
@@ -625,7 +724,11 @@ for (const a of pieces) {
               </div>
 
               <div class="px-4 py-3">
-                <form method="POST" class="inline">
+                <form
+                  method="POST"
+                  class="inline"
+                  onsubmit={`return confirm(${JSON.stringify(messageArchivagePersonnage(t))})`}
+                >
                   <input type="hidden" name="_action" value="archive" />
                   <input type="hidden" name="id" value={t.id} />
                   <input type="hidden" name="archived" value="true" />
@@ -694,6 +797,15 @@ for (const a of pieces) {
     en vue avant / arrière, avec leurs zones de couleur. Elles servent à
     composer les personnages.
   </p>
+  <p class="mb-4 text-sm text-bo-muted max-w-3xl">
+    Chaque couleur est surlignée en rouge sur sa vignette, avec ses nuances
+    (ombres, reflets) qui suivent la couleur choisie par le client. Donnez-lui
+    un nom : c'est lui que le client lit. Décochez « Proposée au client » sur
+    les petits détails (ruban d'un chapeau, élastique des cheveux) : ils
+    gardent la couleur réglée ici, à l'écran comme à l'impression. Une pièce
+    dessinée dans Canva ou par une IA n'a pas de couleur ? « Détecter les
+    couleurs » les lit sur le dessin — le fichier d'origine est conservé.
+  </p>
 
   {
     SLOTS.map((s) => {
@@ -739,13 +851,24 @@ for (const a of pieces) {
                           Sans catégorie
                         </option>
                         {categoriesPieces
-                          .filter((c) => c.slot === a.slot)
+                          .filter(
+                            (c) =>
+                              c.slot === a.slot &&
+                              // Une catégorie archivée ne se choisit plus,
+                              // sauf pour la pièce qui s'y trouve déjà :
+                              // sinon le sélecteur retomberait sur « Sans
+                              // catégorie » et laisserait croire que son
+                              // rangement est perdu.
+                              (!c.archivedAt || a.pieceCategoryId === c.id),
+                          )
                           .map((c) => (
                             <option
                               value={String(c.id)}
                               selected={a.pieceCategoryId === c.id}
                             >
-                              {c.name} ({c.colors.length} couleurs)
+                              {c.name}
+                              {c.archivedAt ? " (archivée)" : ""} (
+                              {c.colors.length} couleurs)
                             </option>
                           ))}
                       </select>
@@ -753,36 +876,27 @@ for (const a of pieces) {
                     <button
                       type="button"
                       class="js-archive-asset ml-auto text-xs text-bo-muted hover:text-bo-accent"
+                      data-nom={a.name}
                     >
                       Archiver
                     </button>
                   </div>
-                  {Object.keys(a.colorZones ?? {}).length === 0 ? (
-                    <p class="text-xs text-bo-muted">Pas de zone de couleur.</p>
-                  ) : (
-                    <>
-                      <div class="flex flex-wrap gap-2 mb-2">
-                        {Object.entries(a.colorZones ?? {}).map(([zone, hex]) => (
-                          <label class="flex items-center gap-1 text-xs">
-                            <input
-                              type="color"
-                              value={hex}
-                              data-zone={zone}
-                              class="h-7 w-7 border border-bo-border rounded cursor-pointer"
-                            />
-                            <span class="text-bo-muted">{zone}</span>
-                          </label>
-                        ))}
-                      </div>
-                      <button
-                        type="button"
-                        class="js-save-colors rounded bg-bo-accent text-white px-3 py-1.5 text-xs hover:opacity-90"
-                      >
-                        Enregistrer les couleurs
-                      </button>
-                      <span class="js-color-status ml-2 text-xs" />
-                    </>
-                  )}
+                  {/* Un bloc par groupe de couleurs, surligné sur sa vignette :
+                      « st3 » ne dit rien, un ruban en rouge vif, si. Chaque
+                      réglage s'enregistre aussitôt. « Détecter les couleurs »
+                      range les dessins venus de Canva ou d'une IA, dont les
+                      couleurs étaient écrites forme par forme. */}
+                  <GroupesCouleurs
+                    mode="piece"
+                    apiUrl={PUBLIC_API_URL}
+                    svgUrl={a.svgUrl}
+                    zones={a.colorZones}
+                    groupes={a.groupesCouleurs}
+                    masquees={a.zonesMasquees ?? []}
+                    couleursImage={a.couleursImage ?? null}
+                    enregistrer={`/admin/assets/${a.id}/groupes`}
+                    cadrage={SLOT_THUMB_VIEWBOX[a.slot as keyof typeof SLOT_THUMB_VIEWBOX] ?? "0 0 500 1000"}
+                  />
                 </div>
               ))}
             </div>
@@ -834,6 +948,9 @@ for (const a of pieces) {
   <datalist id="base-svg-list">
     {knownBaseSvgs.map((u) => <option value={u} />)}
   </datalist>
+
+  {/* Vignettes des zones de couleur : après les cartes, qu'il va chercher. */}
+  <ApercusZones />
 
   <script is:inline>
     // --- Catégories : déplacement immédiat au changement du sélecteur ---
@@ -1099,39 +1216,6 @@ for (const a of pieces) {
       input.addEventListener("input", update);
     }
 
-    // ===== SECTION B : enregistrement des couleurs d'une pièce =====
-    document.querySelectorAll(".js-save-colors").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const card = btn.closest("[data-asset-id]");
-        if (!card) return;
-        const id = card.getAttribute("data-asset-id");
-        const status = card.querySelector(".js-color-status");
-        const colorZones = {};
-        card.querySelectorAll('input[type="color"][data-zone]').forEach((i) => {
-          colorZones[i.getAttribute("data-zone")] = i.value;
-        });
-        if (status) status.textContent = "…";
-        try {
-          const res = await fetch(`${PUBLIC_API_URL}/admin/assets/${id}/colors`, {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ colorZones }),
-          });
-          if (!res.ok) throw new Error("HTTP " + res.status);
-          if (status) {
-            status.textContent = "Enregistré ✓";
-            status.className = "js-color-status ml-2 text-xs text-green-700";
-          }
-        } catch (e) {
-          if (status) {
-            status.textContent = "Erreur";
-            status.className = "js-color-status ml-2 text-xs text-red-600";
-          }
-        }
-      });
-    });
-
     // ===== SECTION B : archivage d'une pièce =====
     // Il n'y a plus de suppression définitive : une pièce effacée empêchait de
     // régénérer le PDF des commandes qui l'utilisaient.
@@ -1140,6 +1224,20 @@ for (const a of pieces) {
         const card = btn.closest("[data-asset-id]");
         if (!card) return;
         const restaurer = btn.dataset.restaurer === "1";
+        // Archiver une pièce la retire du configurateur : on le dit avant,
+        // comme partout ailleurs. Restaurer, lui, ne demande rien — remettre
+        // en place n'a jamais fait de dégât.
+        if (
+          !restaurer &&
+          !confirm(
+            `Archiver la pièce « ${btn.dataset.nom || "sans nom"} » ?\n\n` +
+              "Elle ne sera plus proposée dans le configurateur. Rien n'est " +
+              "supprimé : les commandes déjà passées dessus restent " +
+              "imprimables, et vous pourrez la restaurer quand vous voudrez, " +
+              "dans « Pièces archivées », en bas de cet écran.",
+          )
+        )
+          return;
         const id = card.getAttribute("data-asset-id");
         try {
           const res = await fetch(`${PUBLIC_API_URL}/admin/assets/${id}/archive`, {
