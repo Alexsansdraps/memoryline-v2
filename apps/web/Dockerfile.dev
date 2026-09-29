@@ -14,4 +14,14 @@ RUN pnpm install --frozen-lockfile
 
 EXPOSE 4321
 
-CMD ["pnpm", "--filter", "@memoryline/web", "run", "dev"]
+# Au démarrage, les dépendances sont d'abord remises en accord avec le
+# lockfile. Les node_modules vivent dans des volumes anonymes (cf.
+# docker-compose.yml), et Docker les REPREND d'un conteneur au suivant,
+# même après une reconstruction de l'image : un vieux volume masquait alors
+# les dépendances neuves (« tsx: not found », « Failed to resolve import
+# @memoryline/types »). Quand rien n'a changé, c'est « Already up to date »
+# en une seconde ; le magasin pnpm est dans le dépôt monté (.pnpm-store).
+# Le filtre « ... » installe ce paquet ET ses dépendances du workspace, et
+# rien d'autre : les node_modules des autres applis sont sur le disque de
+# l'hôte, et ce n'est pas à ce conteneur d'y écrire.
+CMD ["sh", "-c", "pnpm install --frozen-lockfile --prefer-offline --filter @memoryline/web... && exec pnpm --filter @memoryline/web run dev"]

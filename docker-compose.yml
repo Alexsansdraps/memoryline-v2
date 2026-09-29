@@ -38,6 +38,12 @@ services:
       WEB_ORIGINS: "http://localhost:8080,http://localhost:4321,http://localhost:4322,${PUBLIC_ORIGIN:-http://localhost:8080}"
       # Évite le purge interactif des node_modules par pnpm au démarrage.
       CI: "true"
+      # Le code arrive de Windows par un montage : les notifications de
+      # fichiers n'y traversent pas, et `tsx watch` ne voyait aucune
+      # modification — il fallait redémarrer l'API à la main. On l'oblige à
+      # regarder lui-même, chaque seconde (comme Vite, cf. astro.config).
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "1000"
     ports:
       - "3000:3000"
     volumes:
