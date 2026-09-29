@@ -28,3 +28,9 @@ data/backups/
 
 # Sauvegardes locales : dumps de la base (données clientes) et fichiers
 sauvegardes/
+
+# La police « another shabby » est une version d'essai sous licence Creative
+# Commons NON COMMERCIALE, et ce dépôt est public : la versionner reviendrait à
+# la redistribuer. Elle reste sur le disque, jamais dans Git.
+apps/api/fonts/AnotherShabby-Regular.ttf
+apps/web/public/fonts/AnotherShabby-Regular.ttf
