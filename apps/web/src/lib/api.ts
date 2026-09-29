@@ -218,6 +218,17 @@ export interface PointRelais {
   /** Un jour ouvert par ligne : « Lun 09:00 - 19:00 ». */
   horairesSemaine?: string[];
   horaires?: string;
+  latitude?: string;
+  longitude?: string;
+}
+
+/** Une adresse proposée pendant la frappe. */
+export interface SuggestionAdresse {
+  label: string;
+  codePostal: string;
+  ville: string;
+  latitude: number;
+  longitude: number;
 }
 
 export interface Collection {
@@ -556,9 +567,20 @@ export const browserApi = {
     country: string,
     carrier: string,
     city?: string,
-  ) =>
-    browserGet<PointRelais[]>(
-      `/shipping/relay-points?postalCode=${encodeURIComponent(postalCode)}&country=${encodeURIComponent(country)}&carrier=${encodeURIComponent(carrier)}${city ? `&city=${encodeURIComponent(city)}` : ""}`,
+    coordonnees?: { latitude: number; longitude: number },
+  ) => {
+    const p = new URLSearchParams({ postalCode, country, carrier });
+    if (city) p.set("city", city);
+    if (coordonnees) {
+      p.set("lat", String(coordonnees.latitude));
+      p.set("lng", String(coordonnees.longitude));
+    }
+    return browserGet<PointRelais[]>(`/shipping/relay-points?${p.toString()}`);
+  },
+  /** Adresses françaises qui commencent comme la saisie (Base Adresse Nationale). */
+  suggestionsAdresse: (q: string) =>
+    browserGet<SuggestionAdresse[]>(
+      `/shipping/adresses?q=${encodeURIComponent(q)}`,
     ),
   /** Vérifie un code promo ; rejette si le code est inconnu ou expiré. */
   verifierCode: (code: string) =>

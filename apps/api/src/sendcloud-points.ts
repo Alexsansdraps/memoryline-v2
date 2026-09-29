@@ -144,6 +144,9 @@ export async function rechercherPoints(opts: {
   codePostal: string;
   pays?: string;
   ville?: string;
+  /** L'adresse exacte du client, quand il l'a choisie dans les suggestions. */
+  latitude?: number;
+  longitude?: number;
   nombre?: number;
 }): Promise<PointRelais[]> {
   const code = TRANSPORTEURS[opts.carrier];
@@ -151,24 +154,43 @@ export async function rechercherPoints(opts: {
   const pays = (opts.pays ?? "FR").toUpperCase().slice(0, 2);
   const cp = opts.codePostal.replace(/\s+/g, "").slice(0, 10);
   const ville = (opts.ville ?? "").trim().slice(0, 60);
-  const res = await requete("/service-points/", {
-    country: pays,
-    carrier: code,
-    postal_code: cp,
-    // `address` est ce que SendCloud géolocalise pour classer par distance ;
-    // le code postal seul y suffit, la ville lève les ambiguïtés.
-    address: [cp, ville].filter(Boolean).join(" "),
-    ...(ville ? { city: ville } : {}),
-    radius: "15000",
-  });
-  if (!res.ok) throw new Error(`SendCloud HTTP ${res.status}`);
-  const corps = (await res.json()) as unknown;
-  if (!Array.isArray(corps)) throw new Error("SendCloud : réponse inattendue");
-  return (corps as PointSendcloud[])
-    .map((p) => versPoint(p, pays))
-    .filter((p): p is PointRelais => p !== null)
-    .sort((a, b) => (a.distanceMetres ?? Infinity) - (b.distanceMetres ?? Infinity))
-    .slice(0, Math.min(30, Math.max(1, opts.nombre ?? 12)));
+  const nombre = Math.min(30, Math.max(1, opts.nombre ?? 12));
+  const avecCoordonnees =
+    Number.isFinite(opts.latitude) && Number.isFinite(opts.longitude);
+
+  const chercher = async (rayon: number): Promise<PointRelais[]> => {
+    const res = await requete("/service-points/", {
+      country: pays,
+      carrier: code,
+      // Des coordonnées classent depuis la porte du client ; sans elles,
+      // SendCloud géolocalise l'adresse donnée — le code postal et la ville,
+      // c'est-à-dire le centre de la commune.
+      //
+      // JAMAIS `postal_code` ni `city` : chez SendCloud, ce sont des FILTRES,
+      // pas des points de départ. Ils ne gardaient que les points situés dans
+      // la commune même, et un village sans point relais (Meyrueis, en
+      // Lozère) n'en trouvait aucun alors que Florac est à vingt kilomètres.
+      ...(avecCoordonnees
+        ? { latitude: String(opts.latitude), longitude: String(opts.longitude) }
+        : { address: [cp, ville].filter(Boolean).join(" ") }),
+      // Sans rayon, SendCloud renvoie mille points : il en faut une douzaine.
+      radius: String(rayon),
+    });
+    if (!res.ok) throw new Error(`SendCloud HTTP ${res.status}`);
+    const corps = (await res.json()) as unknown;
+    if (!Array.isArray(corps)) throw new Error("SendCloud : réponse inattendue");
+    return (corps as PointSendcloud[])
+      .map((p) => versPoint(p, pays))
+      .filter((p): p is PointRelais => p !== null)
+      .sort((a, b) => (a.distanceMetres ?? Infinity) - (b.distanceMetres ?? Infinity))
+      .slice(0, nombre);
+  };
+
+  // En ville, cinq kilomètres suffisent largement ; à la campagne, le point le
+  // plus proche peut être plus loin — on élargit plutôt que de répondre
+  // « aucun point par ici » à quelqu'un qui en a un à douze kilomètres.
+  const proches = await chercher(avecCoordonnees ? 5000 : 15000);
+  return proches.length >= 3 ? proches : chercher(30000);
 }
 
 /**

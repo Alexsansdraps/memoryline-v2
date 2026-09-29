@@ -57,7 +57,9 @@ import {
   getCartId,
   PUBLIC_API_URL,
   type PointRelais,
+  type SuggestionAdresse,
 } from "../lib/api.ts";
+import CarteRelais from "./CarteRelais.tsx";
 import { apercuAbsolu, urlApercu } from "../lib/ia.ts";
 import { codePromoRetenu } from "./CartIsland.tsx";
 import { clientFictif } from "./jeu-essai.ts";
@@ -438,30 +440,132 @@ export default function CheckoutIsland(props: {
     // recherche à chaque chiffre.
     untrack(() => {
       if (!demandeUnPointRelais(optionChoisie()?.mode.kind ?? "")) return;
-      if (!cpRecherche().trim() && adresse().postalCode.trim())
-        setCpRecherche(adresse().postalCode.trim());
+      // L'adresse entière plutôt que le seul code postal : les points se
+      // classent alors depuis sa rue, pas depuis le centre de la commune.
+      if (!cpRecherche().trim()) {
+        const a = adresse();
+        const complete = [a.line1.trim(), `${a.postalCode.trim()} ${a.city.trim()}`.trim()]
+          .filter(Boolean)
+          .join(" ");
+        if (a.postalCode.trim()) setCpRecherche(complete);
+      }
       if (cpRecherche().trim()) void chercherRelais();
     });
   });
+
+  /*
+   * La recherche par ADRESSE, avec suggestions pendant la frappe.
+   *
+   * On tape « 12 rue des Trois… », la Base Adresse Nationale propose les
+   * adresses qui commencent ainsi, on en choisit une : les points se classent
+   * depuis cette porte-là. Un code postal seul marche toujours, et c'est ce
+   * qui reste hors de France, où la base ne sait rien.
+   */
+  type Depart = { latitude: number; longitude: number; codePostal: string; ville: string };
+  const [departRelais, setDepartRelais] = createSignal<Depart | null>(null);
+  const [suggestions, setSuggestions] = createSignal<SuggestionAdresse[]>([]);
+  const [suggestionActive, setSuggestionActive] = createSignal(-1);
+  /** La base ne couvre que la France (Monaco et outre-mer compris). */
+  const adressesConnues = () => pays() === "FR" || pays() === "MC";
+  let minuterieSuggestions: ReturnType<typeof setTimeout> | undefined;
+  let derniereSuggestion = 0;
+
+  function saisirRecherche(v: string) {
+    setCpRecherche(v);
+    // L'adresse choisie ne vaut plus dès qu'on retouche le texte.
+    setDepartRelais(null);
+    clearTimeout(minuterieSuggestions);
+    if (!adressesConnues() || v.trim().length < 3) {
+      setSuggestions([]);
+      return;
+    }
+    // Un quart de seconde après la dernière touche : assez pour ne pas
+    // interroger la base à chaque lettre, assez peu pour paraître immédiat.
+    minuterieSuggestions = setTimeout(async () => {
+      const numero = ++derniereSuggestion;
+      try {
+        const liste = await browserApi.suggestionsAdresse(v);
+        if (numero !== derniereSuggestion) return;
+        setSuggestions(liste);
+        setSuggestionActive(-1);
+      } catch {
+        // Service indisponible : le champ reste un simple code postal.
+        setSuggestions([]);
+      }
+    }, 250);
+  }
+
+  function choisirSuggestion(s: SuggestionAdresse) {
+    clearTimeout(minuterieSuggestions);
+    derniereSuggestion++;
+    setSuggestions([]);
+    setCpRecherche(s.label);
+    setDepartRelais({
+      latitude: s.latitude,
+      longitude: s.longitude,
+      codePostal: s.codePostal,
+      ville: s.ville,
+    });
+    void chercherRelais();
+  }
+
+  function toucheRecherche(e: KeyboardEvent) {
+    const liste = suggestions();
+    if (e.key === "ArrowDown" && liste.length) {
+      e.preventDefault();
+      setSuggestionActive((i) => (i + 1) % liste.length);
+    } else if (e.key === "ArrowUp" && liste.length) {
+      e.preventDefault();
+      setSuggestionActive((i) => (i <= 0 ? liste.length - 1 : i - 1));
+    } else if (e.key === "Escape") {
+      setSuggestions([]);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const s = liste[suggestionActive()];
+      if (s) choisirSuggestion(s);
+      else void chercherRelais();
+    }
+  }
 
   /** Numéro de la dernière recherche : une réponse plus ancienne est ignorée. */
   let derniereRecherche = 0;
 
   async function chercherRelais(e?: Event) {
     e?.preventDefault();
-    const cp = cpRecherche().trim();
-    if (!cp) return;
+    const saisie = cpRecherche().trim();
+    if (!saisie) return;
+    clearTimeout(minuterieSuggestions);
+    setSuggestions([]);
     const numero = ++derniereRecherche;
     setRelaisEtat("recherche");
     try {
-      // La ville aide le transporteur à situer un code postal partagé par
-      // plusieurs communes — seulement si c'est bien celle de ce code-là.
-      const a = adresse();
+      // D'où chercher. Une adresse choisie dans les suggestions donne sa
+      // position exacte. Sinon, en France, une saisie qui n'est pas un simple
+      // code postal est une adresse : on prend la première que la base
+      // reconnaît, comme si le client l'avait choisie.
+      let d = departRelais();
+      const codeSeul = /^\d{4,5}$/.test(saisie);
+      if (!d && adressesConnues() && !codeSeul) {
+        const [premiere] = await browserApi.suggestionsAdresse(saisie).catch(() => []);
+        if (numero !== derniereRecherche) return;
+        if (premiere) {
+          d = {
+            latitude: premiere.latitude,
+            longitude: premiere.longitude,
+            codePostal: premiere.codePostal,
+            ville: premiere.ville,
+          };
+          setDepartRelais(d);
+          setCpRecherche(premiere.label);
+        }
+      }
+      const cp = d?.codePostal || /\b\d{4,5}\b/.exec(saisie)?.[0] || saisie;
       const liste = await browserApi.pointsRelais(
         cp,
         pays(),
         optionChoisie()?.mode.carrier ?? "mondial_relay",
-        a.postalCode.trim() === cp ? a.city.trim() : undefined,
+        d?.ville,
+        d ? { latitude: d.latitude, longitude: d.longitude } : undefined,
       );
       if (numero !== derniereRecherche) return;
       setRelais(liste);
@@ -471,6 +575,20 @@ export default function CheckoutIsland(props: {
       setRelais([]);
       setRelaisEtat("erreur");
     }
+  }
+
+  function choisirRelais(r: PointRelais) {
+    setPointRelais({
+      id: r.id,
+      // Le numéro du point voyage avec son nom : c'est lui qu'on donne au
+      // transporteur pour préparer le colis, et que le point relais
+      // retrouve au guichet.
+      label: `${r.nom}, ${r.adresse}, ${r.codePostal} ${r.ville}${r.code ? ` (n° ${r.code})` : ""}`,
+    });
+    // Choisi sur la carte, le point doit aussi se voir dans la liste.
+    document
+      .getElementById(`relais-${r.id}`)
+      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 
   /** « 350 m », « 1,2 km » : la distance au code postal cherché. */
@@ -1113,20 +1231,63 @@ export default function CheckoutIsland(props: {
                     {tr("livraison.point_relais")}
                   </span>
                   <div class="flex items-stretch gap-2">
-                    <input
-                      type="text"
-                      inputmode="numeric"
-                      value={cpRecherche()}
-                      onInput={(e) => setCpRecherche(e.currentTarget.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          void chercherRelais();
+                    <div class="relative min-w-0 flex-1">
+                      <input
+                        type="text"
+                        role="combobox"
+                        aria-autocomplete="list"
+                        aria-expanded={suggestions().length > 0}
+                        aria-controls="ml-suggestions-adresse"
+                        aria-activedescendant={
+                          suggestionActive() >= 0
+                            ? `ml-suggestion-${suggestionActive()}`
+                            : undefined
                         }
-                      }}
-                      class="min-w-0 flex-1 rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
-                      placeholder={tr("livraison.cp_recherche")}
-                    />
+                        autocomplete="off"
+                        value={cpRecherche()}
+                        onInput={(e) => saisirRecherche(e.currentTarget.value)}
+                        onKeyDown={toucheRecherche}
+                        // Le temps d'un clic sur une suggestion avant de fermer
+                        // la liste : sinon elle disparaît sous le doigt.
+                        onBlur={() => setTimeout(() => setSuggestions([]), 150)}
+                        class="w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
+                        placeholder={
+                          adressesConnues()
+                            ? tr("livraison.adresse_recherche")
+                            : tr("livraison.cp_recherche")
+                        }
+                      />
+                      <Show when={suggestions().length > 0}>
+                        <ul
+                          id="ml-suggestions-adresse"
+                          role="listbox"
+                          class="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-ink/20 bg-paper text-sm shadow-lg"
+                        >
+                          <For each={suggestions()}>
+                            {(s, i) => (
+                              <li
+                                id={`ml-suggestion-${i()}`}
+                                role="option"
+                                aria-selected={suggestionActive() === i()}
+                                class={`cursor-pointer px-4 py-2 ${
+                                  suggestionActive() === i()
+                                    ? "bg-paper-deep"
+                                    : "hover:bg-paper-deep"
+                                }`}
+                                // mousedown plutôt que click : il passe avant
+                                // la perte de focus du champ.
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  choisirSuggestion(s);
+                                }}
+                              >
+                                {s.label}
+                              </li>
+                            )}
+                          </For>
+                        </ul>
+                      </Show>
+                    </div>
                     <button
                       type="button"
                       onClick={chercherRelais}
@@ -1154,10 +1315,18 @@ export default function CheckoutIsland(props: {
                   </Show>
 
                   <Show when={relais().length > 0}>
+                    <Show when={relais().some((r) => r.latitude && r.longitude)}>
+                      <CarteRelais
+                        points={relais()}
+                        choisi={pointRelais().id}
+                        depart={departRelais()}
+                        onChoisir={choisirRelais}
+                      />
+                    </Show>
                     <ul class="max-h-72 space-y-2 overflow-y-auto">
                       <For each={relais()}>
-                        {(r) => (
-                          <li>
+                        {(r, i) => (
+                          <li id={`relais-${r.id}`}>
                             <label
                               class={`flex cursor-pointer items-start gap-3 border p-3 text-sm transition-colors ${
                                 pointRelais().id === r.id
@@ -1170,17 +1339,17 @@ export default function CheckoutIsland(props: {
                                 name="point-relais"
                                 class="mt-1"
                                 checked={pointRelais().id === r.id}
-                                onChange={() =>
-                                  setPointRelais({
-                                    id: r.id,
-                                    // Le numéro du point voyage avec son nom :
-                                    // c'est lui qu'on donne au transporteur
-                                    // pour préparer le colis, et que le
-                                    // point relais retrouve au guichet.
-                                    label: `${r.nom}, ${r.adresse}, ${r.codePostal} ${r.ville}${r.code ? ` (n° ${r.code})` : ""}`,
-                                  })
-                                }
+                                onChange={() => choisirRelais(r)}
                               />
+                              {/* Le même numéro que son repère sur la carte. */}
+                              <span
+                                class={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-paper ${
+                                  pointRelais().id === r.id ? "bg-terracotta" : "bg-ink"
+                                }`}
+                                aria-hidden="true"
+                              >
+                                {i() + 1}
+                              </span>
                               <span class="min-w-0 flex-1">
                                 <span class="flex items-baseline justify-between gap-3">
                                   <span class="font-medium">{r.nom}</span>

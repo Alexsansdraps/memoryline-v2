@@ -733,3 +733,44 @@ body {
     transform: none;
   }
 }
+
+/* ─── Carte des points relais (islands/CarteRelais.tsx) ─────────────────
+   Les repères portent le numéro de leur ligne dans la liste. Le choisi
+   passe au rouge de la charte et grossit : on doit le retrouver d'un coup
+   d'œil au milieu des autres. */
+.ml-repere {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9999px;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font: 600 13px/1 system-ui, sans-serif;
+  border: 2px solid var(--color-paper);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.ml-repere:hover {
+  transform: scale(1.1);
+}
+.ml-repere-actif {
+  background: var(--color-terracotta);
+  transform: scale(1.2);
+}
+.ml-repere-depart {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #2563eb;
+  border: 3px solid var(--color-paper);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.35);
+}
+/* Le fond de carte reste lisible sous le bandeau de cookies et les menus :
+   Leaflet pose des z-index jusqu'à 1000 dans son propre empilement. */
+.ml-carte-relais {
+  isolation: isolate;
+}

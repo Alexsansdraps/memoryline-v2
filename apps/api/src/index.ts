@@ -38,6 +38,7 @@ import {
   normaliserCode,
 } from "@memoryline/types";
 import { rechercherPointsRelais } from "./mondial-relay.js";
+import { suggererAdresses } from "./adresses.js";
 import {
   gerePoints as sendcloudGerePoints,
   rechercherPoints as rechercherPointsSendcloud,
@@ -1064,11 +1065,27 @@ app.get("/shipping/relay-points", async (c) => {
     return c.json({ error: "code postal invalide" }, 400);
   const pays = String(c.req.query("country") ?? "FR");
   const ville = String(c.req.query("city") ?? "");
+  // L'adresse exacte, quand le client l'a choisie dans les suggestions : les
+  // points se classent alors depuis sa porte, pas depuis le centre-ville.
+  // Hors des bornes du globe, on l'ignore et on s'en tient au code postal.
+  const lat = Number(c.req.query("lat"));
+  const lng = Number(c.req.query("lng"));
+  const coordonnees =
+    c.req.query("lat") && c.req.query("lng") &&
+    Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+      ? { latitude: lat, longitude: lng }
+      : {};
   try {
     // SendCloud d'abord quand il sait chercher ce transporteur : c'est lui qui
     // fabriquera l'étiquette, et l'identifiant du point doit être le sien.
     const points = sendcloudGerePoints(carrier)
-      ? await rechercherPointsSendcloud({ carrier, codePostal: cp, pays, ville })
+      ? await rechercherPointsSendcloud({
+          carrier,
+          codePostal: cp,
+          pays,
+          ville,
+          ...coordonnees,
+        })
       : carrier === "colissimo"
         ? await rechercherPointsRetrait({ codePostal: cp, pays, ville })
         : await rechercherPointsRelais({
@@ -1081,6 +1098,22 @@ app.get("/shipping/relay-points", async (c) => {
   } catch (e) {
     console.error("[points de retrait]", carrier, e);
     return c.json({ error: "recherche indisponible" }, 502);
+  }
+});
+
+/**
+ * Suggestions d'adresses pour la recherche de points relais (France).
+ *
+ * Une liste vide n'est pas une erreur — l'adresse n'existe pas, ou pas encore
+ * assez tapée. Un 502 dit que le service ne répond pas : le tunnel garde alors
+ * la recherche par code postal, qui ne dépend pas de lui.
+ */
+app.get("/shipping/adresses", async (c) => {
+  try {
+    return c.json(await suggererAdresses(String(c.req.query("q") ?? "")));
+  } catch (e) {
+    console.error("[adresses]", e);
+    return c.json({ error: "suggestions indisponibles" }, 502);
   }
 });
 
