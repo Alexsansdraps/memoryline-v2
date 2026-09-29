@@ -1,0 +1,293 @@
+---
+/**
+ * Aide : les questions qui reviennent, avec leur réponse.
+ *
+ * Une page statique, volontairement : elle doit s'ouvrir même quand l'API est
+ * en panne, puisque c'est souvent à ce moment-là qu'on la cherche. Chaque
+ * question a son ancre (/aide#commande-test) pour qu'on puisse l'envoyer par
+ * message plutôt que de la réexpliquer.
+ *
+ * Tout ce qui est écrit ici décrit ce que fait VRAIMENT le code : une réponse
+ * fausse dans une aide est pire qu'une absence de réponse. Quand un écran
+ * change, sa question change avec lui.
+ */
+import Admin from "../layouts/Admin.astro";
+import { url } from "../lib/url.ts";
+
+/** La consigne à coller dans ChatGPT pour préparer un fichier d'import. */
+const CONSIGNE_CHATGPT = `Tu vas m'aider à préparer un fichier CSV d'import de fiches produits pour ma boutique d'affiches.
+
+Règles du fichier :
+- Séparateur : point-virgule (;). Première ligne = les noms de colonnes, exactement :
+  Handle;Title;Body (HTML);Tags;Status;Option1 Value;Variant Price;SEO Title;SEO Description
+- DEUX lignes par affiche : une pour le format A4, une pour le format A3.
+  La colonne "Handle" est IDENTIQUE sur les deux lignes (adresse de la fiche : minuscules, sans accents, mots séparés par des tirets, ex. "amiens-cathedrale-affiche-personnalisee").
+- "Title" : le nom de l'affiche. Convention : la ville en MAJUSCULES, puis le sujet (ex. "AMIENS Cathédrale ciel bleu").
+- "Option1 Value" : "A4 (21 x 29.7 cm)" sur la première ligne, "A3 (29.7 x 42 cm)" sur la seconde.
+- "Variant Price" : le prix en euros avec une virgule (ex. 23,00 pour l'A4 et 29,00 pour l'A3).
+- "Body (HTML)" : une description de 2 à 4 phrases, chaleureuse, en HTML simple (<p>…</p>), seulement sur la première ligne de chaque affiche.
+- "Tags" : les collections où ranger l'affiche, séparées par des virgules (ex. "Villes, Hauts-de-France"), seulement sur la première ligne.
+- "Status" : "draft" (brouillon) sur les deux lignes.
+- "SEO Title" (60 caractères max) et "SEO Description" (155 caractères max) : seulement sur la première ligne.
+- Pas de guillemets inutiles, pas de ligne vide, pas de texte avant ou après le tableau.
+
+Voici les affiches à créer :
+[colle ici ta liste : nom de l'affiche, ville, ce qu'elle représente, collections]
+
+Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
+---
+
+<Admin title="Aide">
+  <p class="mb-6 max-w-3xl text-sm text-bo-muted">
+    Les questions qui reviennent, et comment faire. Cliquez sur une question
+    pour lire la réponse. Chacune a son lien : clic droit sur le titre,
+    « Copier l'adresse du lien », pour l'envoyer à quelqu'un.
+  </p>
+
+  <div class="max-w-3xl space-y-3">
+    {/* ------------------------------------------------------------ */}
+    <details id="commande-test" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Comment passer une commande test ?
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          <strong>Uniquement sur le site de test.</strong> Il est en « mode
+          essai » : aucun paiement n'est réel, aucun courrier ne part chez un
+          client. Sur la vraie boutique, une commande est une vraie commande.
+        </p>
+        <ol class="list-decimal space-y-2 pl-5">
+          <li>
+            Ouvrez le site de test comme un client, mettez une ou plusieurs
+            affiches au panier et cliquez « Commander ».
+          </li>
+          <li>
+            Il faut un compte client : créez-en un avec votre propre adresse
+            e-mail (ou connectez-vous). Les formulaires arrivent pré-remplis
+            avec un client fictif, que vous pouvez garder.
+          </li>
+          <li>
+            Choisissez la livraison. En point relais, tapez une adresse ou un
+            code postal, puis choisissez un point sur la carte ou dans la liste.
+          </li>
+          <li>
+            Au paiement, un encadré rappelle quoi saisir :
+            <ul class="mt-1 list-disc space-y-1 pl-5">
+              <li>
+                <strong>Carte bancaire :</strong>
+                <code class="rounded bg-bo-bg px-1">4242 4242 4242 4242</code>,
+                n'importe quelle date future, n'importe quels trois chiffres au
+                dos.
+              </li>
+              <li>
+                <strong>PayPal :</strong> le compte acheteur d'essai (en
+                <code class="rounded bg-bo-bg px-1">@personal.example.com</code>),
+                pas votre vrai compte, qui serait refusé.
+              </li>
+            </ul>
+          </li>
+          <li>
+            La commande apparaît aussitôt dans
+            <a href={url("/commandes")} class="text-bo-accent underline">Commandes en ligne</a>,
+            payée, avec ses fichiers d'impression.
+          </li>
+        </ol>
+        <p>
+          <strong>Après vos essais</strong>, ouvrez chaque commande test et
+          cliquez « Archiver la commande » (colonne de droite) : elle quitte la
+          liste sans rien effacer, et se retrouve dans
+          <a href={url("/archives")} class="text-bo-accent underline">Archives</a>.
+        </p>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
+    <details id="courriers-essai" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Où arrivent les courriers pendant les tests ?
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          Sur le site de test, <strong>aucun courrier ne part chez le client</strong>,
+          même si l'adresse saisie est réelle : confirmations de commande,
+          avis d'expédition, relances de panier… tout est retenu dans une boîte
+          aux lettres d'essai (« Mailpit »), où on peut les relire tels que le
+          client les recevrait.
+        </p>
+        <p>
+          Cette boîte n'est pas ouverte sur Internet, pour que personne ne lise
+          les courriers des clients. Pour la consulter, demandez à la personne
+          qui s'occupe du site.
+        </p>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
+    <details id="bordereau" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Comment imprimer un bordereau Mondial Relay ?
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <ol class="list-decimal space-y-2 pl-5">
+          <li>Ouvrez la commande (elle doit être payée).</li>
+          <li>
+            Dans le bloc <strong>« Bordereau transporteur »</strong>, vérifiez
+            le poids du colis <em>emballé</em> et cliquez « Recalculer » si vous
+            l'avez changé : le prix dépend de la tranche de poids.
+          </li>
+          <li>
+            Choisissez l'option (en général « Mondial Relay Point Relais ») et
+            cliquez <strong>« Acheter le bordereau — 3,42 € »</strong>. Une
+            confirmation redit le prix : c'est SendCloud qui le prélève, dès la
+            création de l'étiquette.
+          </li>
+          <li>
+            Cliquez « Imprimer l'étiquette » : format 10×15 pour une imprimante
+            d'étiquettes, ou « Version A4 » pour une imprimante ordinaire.
+          </li>
+          <li>
+            Une fois le colis déposé, enregistrez l'expédition (bloc du haut) :
+            Mondial Relay et le numéro de suivi sont déjà remplis, et le client
+            reçoit son lien de suivi.
+          </li>
+        </ol>
+        <p>
+          <strong>Une erreur ?</strong> « Annuler le bordereau » l'invalide chez
+          SendCloud (possible pendant 42 jours, tant que le colis n'a pas été
+          déposé). Un double-clic ne peut pas acheter deux étiquettes.
+        </p>
+        <p>
+          <strong>Badge « Mode essai »</strong> : SendCloud fabrique alors une
+          lettre non affranchie, gratuite, qui n'est pas une vraie étiquette.
+          C'est le réglage du site de test.
+        </p>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
+    <details id="import-chatgpt" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Comment importer des fiches produits préparées avec ChatGPT (fichier CSV) ?
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          On prépare un tableau (un fichier <strong>CSV</strong>) avec toutes
+          les affiches, puis on le dépose dans
+          <a href={url("/produits/import")} class="text-bo-accent underline">Produits › Importer un fichier</a>.
+          ChatGPT peut écrire ce tableau à votre place.
+        </p>
+
+        <h4 class="pt-1 font-medium">1. Faire écrire le fichier par ChatGPT</h4>
+        <p>
+          Copiez la consigne ci-dessous dans ChatGPT, remplacez la dernière
+          partie par votre liste d'affiches, et envoyez.
+        </p>
+        <div class="relative">
+          <pre
+            id="consigne-chatgpt"
+            class="max-h-72 overflow-auto whitespace-pre-wrap rounded border border-bo-border bg-bo-bg p-3 text-xs">{CONSIGNE_CHATGPT}</pre>
+          <button
+            type="button"
+            data-copier="consigne-chatgpt"
+            class="absolute right-2 top-2 rounded bg-bo-nav px-3 py-1 text-xs text-white"
+          >
+            Copier
+          </button>
+        </div>
+        <p class="text-bo-muted">
+          Astuce : pour qu'il colle parfaitement à votre catalogue, joignez-lui
+          aussi un export de vos produits
+          (<a href={url("/produits")} class="text-bo-accent underline">Produits</a> ›
+          « Exporter le catalogue ») en lui disant « fais pareil ».
+        </p>
+
+        <h4 class="pt-1 font-medium">2. En faire un fichier</h4>
+        <p>
+          ChatGPT répond par un bloc de texte. Copiez-le dans le Bloc-notes et
+          enregistrez-le avec un nom qui finit par <code class="rounded bg-bo-bg px-1">.csv</code>
+          (par exemple <code class="rounded bg-bo-bg px-1">affiches-octobre.csv</code>),
+          en choisissant l'encodage « UTF-8 ». Vous pouvez aussi lui demander
+          directement « donne-moi le fichier CSV à télécharger ».
+        </p>
+
+        <h4 class="pt-1 font-medium">3. L'importer</h4>
+        <ol class="list-decimal space-y-2 pl-5">
+          <li>
+            Déposez le fichier dans
+            <a href={url("/produits/import")} class="text-bo-accent underline">Importer un fichier</a>.
+          </li>
+          <li>
+            <strong>Rien n'est encore enregistré</strong> : l'écran montre ce
+            qui serait créé, mis à jour ou écarté, avec la raison. Corrigez le
+            fichier si une ligne est refusée.
+          </li>
+          <li>
+            Ajoutez les visuels ligne par ligne, directement dans cet aperçu.
+          </li>
+          <li>Confirmez : tout entre d'un coup, ou rien du tout.</li>
+        </ol>
+
+        <h4 class="pt-1 font-medium">Bon à savoir</h4>
+        <ul class="list-disc space-y-1 pl-5">
+          <li>
+            <strong>Colonnes indispensables</strong> : Handle, Title,
+            Option1 Value (A4 ou A3), Variant Price. Les autres sont facultatives.
+          </li>
+          <li>
+            <strong>« Status » à « draft »</strong> (brouillon) : les affiches
+            arrivent sans être en ligne, vous les relisez puis les activez.
+            <em>Sans cette colonne, elles sont mises en ligne tout de suite.</em>
+          </li>
+          <li>
+            <strong>« Tags »</strong> = les collections. Une collection qui
+            n'existe pas encore est créée.
+          </li>
+          <li>
+            Les affiches importées sont créées <strong>personnalisables</strong>.
+          </li>
+          <li>
+            Un import <strong>ajoute et corrige, il n'efface jamais</strong> :
+            une case vide dans le fichier ne vide pas la fiche, et réimporter
+            une affiche existante (même « Handle ») la met à jour.
+          </li>
+          <li>
+            Virgule ou point-virgule, <code class="rounded bg-bo-bg px-1">23,00</code>
+            ou <code class="rounded bg-bo-bg px-1">23.00 €</code> : tout est accepté.
+          </li>
+        </ul>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
+    <details id="heures" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        À quelle heure sont affichées les commandes ?
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          À l'heure de Paris (heure d'été et d'hiver comprises). Une commande
+          passée à 1 h du matin compte pour ce jour-là, dans la liste comme dans
+          les statistiques.
+        </p>
+      </div>
+    </details>
+  </div>
+
+  <script is:inline>
+    // « Copier » : met le texte dans le presse-papier et le dit.
+    document.querySelectorAll("[data-copier]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var cible = document.getElementById(b.getAttribute("data-copier"));
+        if (!cible || !navigator.clipboard) return;
+        navigator.clipboard.writeText(cible.textContent || "").then(function () {
+          var avant = b.textContent;
+          b.textContent = "Copié ✓";
+          setTimeout(function () { b.textContent = avant; }, 1800);
+        });
+      });
+    });
+    // Arrivée par un lien /aide#question : la question s'ouvre toute seule.
+    var ancre = location.hash && document.getElementById(location.hash.slice(1));
+    if (ancre && ancre.tagName === "DETAILS") ancre.open = true;
+  </script>
+</Admin>

@@ -81,6 +81,9 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
+      # L'heure de la boutique : sans elle, les conteneurs vivent à l'heure
+      # universelle et le back-office affiche tout avec 2 h de retard l'été.
+      TZ: "Europe/Paris"
       NODE_ENV: production
       API_PORT: 3000
       # Les adresses autorisées à appeler l'API depuis un navigateur. Le site
@@ -122,6 +125,9 @@ services:
         PUBLIC_JEU_ESSAI: ${PUBLIC_JEU_ESSAI:-0}
     restart: unless-stopped
     environment:
+      # L'heure de la boutique : sans elle, les conteneurs vivent à l'heure
+      # universelle et le back-office affiche tout avec 2 h de retard l'été.
+      TZ: "Europe/Paris"
       NODE_ENV: production
       PUBLIC_API_URL: /api
       API_URL_INTERNAL: http://api:3000
@@ -143,6 +149,9 @@ services:
         API_URL_INTERNAL: http://api:3000
     restart: unless-stopped
     environment:
+      # L'heure de la boutique : sans elle, les conteneurs vivent à l'heure
+      # universelle et le back-office affiche tout avec 2 h de retard l'été.
+      TZ: "Europe/Paris"
       NODE_ENV: production
       PUBLIC_API_URL: /api
       API_URL_INTERNAL: http://api:3000

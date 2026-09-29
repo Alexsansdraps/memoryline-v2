@@ -27,6 +27,9 @@ services:
       db:
         condition: service_healthy
     environment:
+      # L'heure de la boutique : sans elle, les conteneurs vivent à l'heure
+      # universelle et le back-office affiche tout avec 2 h de retard l'été.
+      TZ: "Europe/Paris"
       # Base de données : par défaut le Postgres local (service "db" du réseau
       # Docker). Définir DATABASE_URL dans .env bascule sur une base hébergée
       # ailleurs — la stack n'a alors plus besoin du conteneur db.
@@ -64,6 +67,9 @@ services:
     depends_on:
       - api
     environment:
+      # L'heure de la boutique : sans elle, les conteneurs vivent à l'heure
+      # universelle et le back-office affiche tout avec 2 h de retard l'été.
+      TZ: "Europe/Paris"
       # SSR / build : on parle à l'API via le réseau interne Docker.
       API_URL_INTERNAL: "http://api:3000"
       # Navigateur : même origine que le site, le proxy route /api vers l'API.
@@ -95,6 +101,9 @@ services:
     depends_on:
       - api
     environment:
+      # L'heure de la boutique : sans elle, les conteneurs vivent à l'heure
+      # universelle et le back-office affiche tout avec 2 h de retard l'été.
+      TZ: "Europe/Paris"
       API_URL_INTERNAL: "http://api:3000"
       # Navigateur : même origine, le proxy route /api vers l'API.
       PUBLIC_API_URL: "/api"

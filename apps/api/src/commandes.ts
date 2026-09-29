@@ -74,6 +74,18 @@ export type StatutFinancier =
   | "voided";
 
 /**
+ * Minuit, heure de la boutique, pour une date « 2026-09-29 ».
+ *
+ * `new Date("2026-09-29")` se lit en heure UNIVERSELLE : un filtre « à partir
+ * du 29 » commençait à 2 heures du matin à Paris, et les commandes de la nuit
+ * glissaient au jour d'avant. Écrite sans « Z », l'heure se lit dans le fuseau
+ * du serveur — Europe/Paris (TZ dans docker-compose).
+ */
+function debutDuJour(date: string): Date {
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T00:00:00`) : new Date(date);
+}
+
+/**
  * Statut financier d'une commande — déduit, jamais stocké.
  *
  * Un champ figé finirait par mentir : il suffirait d'un remboursement
@@ -480,7 +492,7 @@ export function mountOrderRoutes(app: Hono): void {
     if (Number.isInteger(stand) && stand > 0)
       conditions.push(eq(schema.orders.standId, stand));
     conditions.push(...limiterAuStand(c));
-    if (q.from) conditions.push(gte(schema.orders.createdAt, new Date(q.from)));
+    if (q.from) conditions.push(gte(schema.orders.createdAt, debutDuJour(q.from)));
     if (q.to) {
       // Une date de fin s'entend « jusqu'au soir » : sinon un filtre « du 1er
       // au 3 » perdrait toutes les commandes du 3.
@@ -590,7 +602,7 @@ export function mountOrderRoutes(app: Hono): void {
     if (Number.isInteger(stand) && stand > 0)
       conditions.push(eq(schema.orders.standId, stand));
     conditions.push(...limiterAuStand(c));
-    if (q.from) conditions.push(gte(schema.orders.createdAt, new Date(q.from)));
+    if (q.from) conditions.push(gte(schema.orders.createdAt, debutDuJour(q.from)));
     if (q.to) {
       const fin = new Date(q.to);
       fin.setHours(23, 59, 59, 999);

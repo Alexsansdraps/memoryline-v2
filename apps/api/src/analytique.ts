@@ -93,9 +93,9 @@ function enTexte(d: Date): string {
  * bruit, une plus longue cacherait ce qui vient de changer.
  */
 function periodes(depuis: string | undefined, jusqu: string | undefined) {
-  const fin = jusqu ? new Date(`${jusqu}T23:59:59.999Z`) : new Date();
+  const fin = jusqu ? new Date(`${jusqu}T23:59:59.999`) : new Date();
   const debut = depuis
-    ? new Date(`${depuis}T00:00:00.000Z`)
+    ? new Date(`${depuis}T00:00:00.000`)
     : new Date(fin.getTime() - 29 * 86400000);
   const duree = Math.max(1, fin.getTime() - debut.getTime());
   const avant: Periode = {
