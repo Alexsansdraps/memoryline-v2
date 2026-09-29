@@ -110,6 +110,21 @@ services:
       - /app/apps/admin/node_modules
       - /app/packages/types/node_modules
 
+  # La boîte aux lettres d'essai : tous les courriers de la boutique y
+  # arrivent au lieu de partir chez de vrais clients, et se lisent sur
+  # http://localhost:8025. Activée par MAIL_TEST_URL=http://mailpit:8025
+  # dans le .env (cf. apps/api/src/mail.ts).
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: memoryline-mailpit
+    restart: unless-stopped
+    environment:
+      # Les messages restent en mémoire : ils disparaissent au redémarrage,
+      # ce qui est exactement ce qu'on veut d'une boîte d'essai.
+      MP_MAX_MESSAGES: "500"
+    ports:
+      - "8025:8025"
+
   # Point d'entrée UNIQUE : un seul hôte, routage par chemin (cf. Caddyfile).
   # C'est ce service, et lui seul, que le tunnel Cloudflare expose.
   proxy:

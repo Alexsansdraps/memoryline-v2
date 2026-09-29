@@ -17,6 +17,7 @@ import {
   adminApi,
   formatPrice,
   lignesDeLAffiche,
+  type EtatBordereau,
   type OrderDetail,
 } from "../../lib/api.ts";
 
@@ -132,6 +133,37 @@ if (Astro.request.method === "POST") {
         shippingPhone: String(f.get("shippingPhone") ?? ""),
       });
       flash = "Adresse mise à jour.";
+    } else if (action === "acheter-bordereau") {
+      const [methodeCode, prix] = String(f.get("methode") ?? "").split("|");
+      const b = await api.acheterBordereau(id, {
+        methodeCode: methodeCode ?? "",
+        poidsGrammes: Number(f.get("poidsGrammes") ?? 0),
+        prixAnnonceCents: prix === undefined || prix === "" ? null : Number(prix),
+        cleDemande: String(f.get("cleDemande") ?? ""),
+        auteur: Astro.locals.user?.email ?? undefined,
+      });
+      if (b.statut === "echec") {
+        flash = `SendCloud a refusé le bordereau : ${b.erreur ?? "raison inconnue"}`;
+        flashErreur = true;
+      } else if (b.statut === "en_cours") {
+        flash =
+          "SendCloud n'a pas répondu à temps. Cliquez « Terminer l'achat » pour savoir s'il a été fait — sans risque d'en acheter deux.";
+        flashErreur = true;
+      } else {
+        flash = b.essai
+          ? "Bordereau d'ESSAI fabriqué (lettre non affranchie, gratuite) : ce n'est pas une vraie étiquette Mondial Relay."
+          : `Bordereau acheté : suivi ${b.trackingNumber ?? "en attente"}.`;
+      }
+    } else if (action === "terminer-bordereau") {
+      const b = await api.terminerBordereau(id);
+      flash =
+        b.statut === "achete"
+          ? `Achat terminé : suivi ${b.trackingNumber ?? "en attente"}.`
+          : `SendCloud a refusé le bordereau : ${b.erreur ?? "raison inconnue"}`;
+      flashErreur = b.statut !== "achete";
+    } else if (action === "annuler-bordereau") {
+      const r = await api.annulerBordereau(id);
+      flash = r.message;
     } else if (action === "renvoyer") {
       await api.resendConfirmation(id);
       flash = "Confirmation renvoyée au client.";
@@ -170,6 +202,30 @@ const expeditions = detail?.expeditions ?? [];
  * « c'est fait ».
  */
 const auStand = order?.channel === "salon";
+
+/**
+ * Le bordereau transporteur (SendCloud). Chargé à part : si SendCloud ne
+ * répond pas, la fiche s'affiche quand même, avec le bloc qui le dit. Le poids
+ * se corrige par l'adresse (?poids=…) : les prix dépendent de la tranche.
+ */
+let etatBordereau: EtatBordereau | null = null;
+let erreurBordereau: string | null = null;
+if (order && !auStand) {
+  try {
+    const poids = Number(Astro.url.searchParams.get("poids"));
+    etatBordereau = await api.bordereau(id, Number.isFinite(poids) && poids > 0 ? poids : undefined);
+  } catch (e) {
+    erreurBordereau = String(e).replace(/^Error: /, "");
+  }
+}
+const bordereau = etatBordereau?.bordereau ?? null;
+const bordereauActif = bordereau?.statut === "achete" ? bordereau : null;
+/** Nom du transporteur tel que l'écrit le formulaire « Expédier ». */
+const NOM_TRANSPORTEUR: Record<string, string> = {
+  mondial_relay: "Mondial Relay",
+  colissimo: "Colissimo",
+  chronopost: "Chronopost",
+};
 const remboursements = detail?.remboursements ?? [];
 const mouvements = detail?.mouvements ?? [];
 
@@ -710,6 +766,11 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                         name="carrier"
                         list="bo-transporteurs"
                         placeholder="Colissimo"
+                        value={
+                          bordereauActif && !bordereauActif.essai
+                            ? (NOM_TRANSPORTEUR[bordereauActif.transporteur ?? ""] ?? "")
+                            : ""
+                        }
                         class="rounded border border-bo-border px-3 py-2"
                       />
                       <datalist id="bo-transporteurs">
@@ -723,6 +784,11 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                       <input
                         name="trackingNumber"
                         placeholder="6A123456789FR"
+                        value={
+                          bordereauActif && !bordereauActif.essai
+                            ? (bordereauActif.trackingNumber ?? "")
+                            : ""
+                        }
                         class="rounded border border-bo-border px-3 py-2"
                       />
                     </label>
@@ -740,6 +806,211 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
               </details>
             )}
           </section>
+
+          {/* ---------------------------------------------------------- */}
+          {/* Bordereau transporteur (SendCloud)                          */}
+          {/* ---------------------------------------------------------- */}
+          {order && !auStand && (
+            <section class="rounded-lg border border-bo-border bg-bo-surface">
+              <header class="flex items-center justify-between gap-3 border-b border-bo-border px-4 py-3">
+                <h3 class="font-medium">Bordereau transporteur</h3>
+                {etatBordereau?.essai && (
+                  <span
+                    class="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-900"
+                    title="SENDCLOUD_ACHATS_REELS=oui dans le .env pour acheter de vraies étiquettes"
+                  >
+                    Mode essai : rien n'est facturé
+                  </span>
+                )}
+              </header>
+
+              <div class="space-y-3 px-4 py-3 text-sm">
+                {erreurBordereau && <p class="text-red-700">{erreurBordereau}</p>}
+
+                {etatBordereau?.pointRelais && (
+                  <p class="text-bo-muted">
+                    Point relais choisi : <span class="text-inherit">{etatBordereau.pointRelais}</span>
+                  </p>
+                )}
+
+                {/* Acheté : l'étiquette, le suivi, l'annulation. */}
+                {bordereauActif && (
+                  <div class="space-y-3">
+                    <p>
+                      <span class="font-medium">{bordereauActif.methodeNom}</span>
+                      {bordereauActif.prixAnnonceCents !== null && !bordereauActif.essai && (
+                        <span class="text-bo-muted"> · {formatPrice(bordereauActif.prixAnnonceCents)}</span>
+                      )}
+                      <span class="text-bo-muted"> · {bordereauActif.poidsGrammes} g · acheté {quand(bordereauActif.acheteAt)}</span>
+                    </p>
+                    {bordereauActif.trackingNumber && (
+                      <p>
+                        Suivi :{" "}
+                        {bordereauActif.trackingUrl ? (
+                          <a
+                            href={bordereauActif.trackingUrl}
+                            target="_blank"
+                            rel="noopener"
+                            class="font-mono text-bo-accent underline"
+                          >
+                            {bordereauActif.trackingNumber}
+                          </a>
+                        ) : (
+                          <span class="font-mono">{bordereauActif.trackingNumber}</span>
+                        )}
+                      </p>
+                    )}
+                    <div class="flex flex-wrap gap-2">
+                      <a
+                        href={apiUrl(`/admin/orders/${order.id}/bordereau/etiquette.pdf?format=a6`)}
+                        target="_blank"
+                        class="rounded bg-bo-nav px-4 py-2 text-white"
+                      >
+                        Imprimer l'étiquette (10×15)
+                      </a>
+                      <a
+                        href={apiUrl(`/admin/orders/${order.id}/bordereau/etiquette.pdf?format=a4`)}
+                        target="_blank"
+                        class="rounded border border-bo-border px-4 py-2"
+                      >
+                        Version A4
+                      </a>
+                      <form
+                        method="POST"
+                        class="ml-auto"
+                        data-confirmer="Annuler ce bordereau chez SendCloud ? L'étiquette ne sera plus valable. SendCloud dira s'il la rembourse."
+                      >
+                        <input type="hidden" name="_action" value="annuler-bordereau" />
+                        <button class="rounded border border-red-300 px-4 py-2 text-red-700">
+                          Annuler le bordereau
+                        </button>
+                      </form>
+                    </div>
+                    {!bordereauActif.essai && resteAExpedier > 0 && (
+                      <p class="text-xs text-bo-muted">
+                        Une fois le colis déposé, enregistrez l'expédition ci-dessus : le
+                        transporteur et le numéro de suivi y sont déjà remplis, et le
+                        client reçoit son lien de suivi.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Achat interrompu : on ne sait pas encore s'il a eu lieu. */}
+                {bordereau?.statut === "en_cours" && (
+                  <div class="space-y-2">
+                    <p class="text-amber-800">
+                      Un achat a été lancé {quand(bordereau.createdAt)} sans réponse de SendCloud.
+                      Rejouer la demande ne peut PAS acheter deux étiquettes : SendCloud
+                      rend celle qui existe déjà, ou fabrique celle qui manquait.
+                    </p>
+                    <form method="POST">
+                      <input type="hidden" name="_action" value="terminer-bordereau" />
+                      <button class="rounded bg-bo-nav px-4 py-2 text-white">Terminer l'achat</button>
+                    </form>
+                  </div>
+                )}
+
+                {/* Rien de vivant : on peut acheter. */}
+                {etatBordereau && !bordereauActif && bordereau?.statut !== "en_cours" && (
+                  <div class="space-y-3">
+                    {bordereau?.statut === "echec" && (
+                      <p class="text-red-700">Dernière tentative refusée : {bordereau.erreur}</p>
+                    )}
+                    {bordereau?.statut === "annule" && (
+                      <p class="text-bo-muted">
+                        Bordereau {bordereau.trackingNumber ?? ""} annulé {quand(bordereau.annuleAt)}.
+                      </p>
+                    )}
+
+                    {etatBordereau.empechement ? (
+                      <p class="text-bo-muted">{etatBordereau.empechement}</p>
+                    ) : (
+                      <>
+                        {/* Le poids décide de la tranche, donc du prix : on le
+                            corrige AVANT d'acheter (l'emballage pèse). */}
+                        <form method="GET" class="flex flex-wrap items-end gap-2">
+                          <label>
+                            <span class="mb-1 block text-xs text-bo-muted">Poids du colis emballé</span>
+                            <span class="flex items-center gap-1">
+                              <input
+                                type="number"
+                                name="poids"
+                                min="1"
+                                max="70000"
+                                value={etatBordereau.poidsGrammes}
+                                class="w-24 rounded border border-bo-border px-2 py-1.5"
+                              />
+                              <span class="text-bo-muted">g</span>
+                            </span>
+                          </label>
+                          <button class="rounded border border-bo-border px-3 py-1.5">Recalculer</button>
+                        </form>
+
+                        {etatBordereau.erreurMethodes && (
+                          <p class="text-red-700">{etatBordereau.erreurMethodes}</p>
+                        )}
+                        {!etatBordereau.erreurMethodes && etatBordereau.methodes.length === 0 && (
+                          <p class="text-bo-muted">
+                            SendCloud ne propose aucune option pour ce colis (poids, pays ou
+                            point relais). Vérifiez le poids, ou créez l'envoi dans SendCloud.
+                          </p>
+                        )}
+
+                        {etatBordereau.methodes.length > 0 && (
+                          <form
+                            method="POST"
+                            class="space-y-3"
+                            id="ml-achat-bordereau"
+                            data-essai={etatBordereau.essai ? "1" : ""}
+                          >
+                            <input type="hidden" name="_action" value="acheter-bordereau" />
+                            <input type="hidden" name="poidsGrammes" value={etatBordereau.poidsGrammes} />
+                            {/* Une clé par affichage : un double-clic ou un F5
+                                renvoient la même, et l'API ne l'achète qu'une fois. */}
+                            <input type="hidden" name="cleDemande" value={crypto.randomUUID()} />
+                            <fieldset class="space-y-1.5">
+                              {etatBordereau.methodes.map((m, i) => (
+                                <label class="flex cursor-pointer items-center justify-between gap-3 rounded border border-bo-border px-3 py-2 hover:bg-bo-bg">
+                                  <span class="flex items-center gap-2">
+                                    <input
+                                      type="radio"
+                                      name="methode"
+                                      value={`${m.code}|${m.prixCents ?? ""}`}
+                                      data-prix={m.prixCents === null ? "" : formatPrice(m.prixCents)}
+                                      checked={i === 0}
+                                    />
+                                    {m.nom}
+                                  </span>
+                                  <span class="font-medium">
+                                    {m.prixCents === null ? "—" : formatPrice(m.prixCents)}
+                                  </span>
+                                </label>
+                              ))}
+                            </fieldset>
+                            <button class="rounded bg-bo-nav px-4 py-2 text-white" data-bouton-achat>
+                              {etatBordereau.essai
+                                ? "Fabriquer un bordereau d'essai (gratuit)"
+                                : `Acheter le bordereau — ${
+                                    etatBordereau.methodes[0]!.prixCents === null
+                                      ? "prix inconnu"
+                                      : formatPrice(etatBordereau.methodes[0]!.prixCents)
+                                  }`}
+                            </button>
+                            <p class="text-xs text-bo-muted">
+                              {etatBordereau.essai
+                                ? "Mode essai : SendCloud fabrique une lettre non affranchie, qu'il ne facture pas. Ce n'est pas une étiquette Mondial Relay valable."
+                                : "Le montant est prélevé par SendCloud dès la création de l'étiquette. Une étiquette annulée avant dépôt est en principe remboursée."}
+                            </p>
+                          </form>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
 
           {/* ---------------------------------------------------------- */}
           {/* Paiement & mouvements                                       */}
@@ -1394,4 +1665,48 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
       </div>
     </>
   )}
+  <script is:inline>
+    // Bordereau : le bouton porte le prix de l'option cochée, et l'achat
+    // redemande confirmation en redisant le montant — c'est de l'argent qui
+    // part chez SendCloud au clic. Le bouton se désactive aussitôt : un
+    // second clic ne ferait rien de plus (la clé de demande est la même),
+    // mais il n'a pas à laisser croire le contraire.
+    (function () {
+      var achat = document.getElementById("ml-achat-bordereau");
+      if (achat) {
+        var bouton = achat.querySelector("[data-bouton-achat]");
+        var essai = achat.getAttribute("data-essai") === "1";
+        var prixCoche = function () {
+          var r = achat.querySelector('input[name="methode"]:checked');
+          return r ? r.getAttribute("data-prix") || "" : "";
+        };
+        if (!essai)
+          achat.addEventListener("change", function () {
+            var p = prixCoche();
+            bouton.textContent = "Acheter le bordereau — " + (p || "prix inconnu");
+          });
+        achat.addEventListener("submit", function (e) {
+          var p = prixCoche();
+          var ok = essai
+            ? window.confirm("Fabriquer un bordereau d'ESSAI (lettre non affranchie, gratuite) ?")
+            : window.confirm(
+                "Acheter ce bordereau chez SendCloud pour " +
+                  (p || "un prix non communiqué") +
+                  " ?\nLe montant est prélevé dès la création de l'étiquette.",
+              );
+          if (!ok) {
+            e.preventDefault();
+            return;
+          }
+          bouton.disabled = true;
+          bouton.textContent = "Achat en cours…";
+        });
+      }
+      document.querySelectorAll("form[data-confirmer]").forEach(function (f) {
+        f.addEventListener("submit", function (e) {
+          if (!window.confirm(f.getAttribute("data-confirmer"))) e.preventDefault();
+        });
+      });
+    })();
+  </script>
 </Admin>

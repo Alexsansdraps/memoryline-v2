@@ -151,6 +151,24 @@ services:
     expose:
       - "4322"
 
+  # La boîte aux lettres d'essai du SERVEUR DE TEST : avec
+  # MAIL_TEST_URL=http://mailpit:8025 dans le .env, tous les courriers de la
+  # boutique y arrivent au lieu de partir chez de vrais clients.
+  #
+  # Elle n'écoute QUE sur la machine elle-même (127.0.0.1) : ouverte sur
+  # Internet, n'importe qui lirait les courriers des clients. On la lit depuis
+  # son ordinateur par un tunnel SSH :
+  #   ssh -L 8025:127.0.0.1:8025 debian@<serveur>   puis http://localhost:8025
+  # En production réelle (Resend), retirer MAIL_TEST_URL du .env suffit : ce
+  # service tourne alors à vide.
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: "500"
+    ports:
+      - "127.0.0.1:8025:8025"
+
   proxy:
     image: caddy:2-alpine
     restart: unless-stopped

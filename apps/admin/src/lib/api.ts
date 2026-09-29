@@ -1573,6 +1573,34 @@ export function adminApi(request?: Request) {
       },
     ) =>
       req<Expedition>("POST", `/admin/orders/${id}/fulfillments`, data, cookie),
+    /** Le bloc « Bordereau transporteur » : état, options SendCloud et prix. */
+    bordereau: (id: number, poidsGrammes?: number) =>
+      req<EtatBordereau>(
+        "GET",
+        `/admin/orders/${id}/bordereau${poidsGrammes ? `?poids=${poidsGrammes}` : ""}`,
+        undefined,
+        cookie,
+      ),
+    /** ACHÈTE le bordereau chez SendCloud (sauf en mode essai). */
+    acheterBordereau: (
+      id: number,
+      data: {
+        methodeCode: string;
+        poidsGrammes: number;
+        prixAnnonceCents: number | null;
+        cleDemande: string;
+        auteur?: string;
+      },
+    ) => req<Bordereau>("POST", `/admin/orders/${id}/bordereau`, data, cookie),
+    terminerBordereau: (id: number) =>
+      req<Bordereau>("POST", `/admin/orders/${id}/bordereau/terminer`, {}, cookie),
+    annulerBordereau: (id: number) =>
+      req<{ bordereau: Bordereau; message: string }>(
+        "POST",
+        `/admin/orders/${id}/bordereau/annuler`,
+        {},
+        cookie,
+      ),
     cancelFulfillment: (id: number) =>
       req<Expedition>("POST", `/admin/fulfillments/${id}/cancel`, {}, cookie),
     /** Rembourse tout ou partie d'une commande. */
@@ -2580,4 +2608,38 @@ export function formatPrice(cents: number): string {
     currency: "EUR",
     minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
   }).format(cents / 100);
+}
+
+/** Un bordereau transporteur acheté chez SendCloud (apps/api/src/sendcloud-colis.ts). */
+export interface Bordereau {
+  id: number;
+  orderId: number;
+  statut: "en_cours" | "achete" | "echec" | "annule";
+  essai: boolean;
+  methodeCode: string;
+  methodeNom: string;
+  transporteur: string | null;
+  poidsGrammes: number;
+  prixAnnonceCents: number | null;
+  shipmentId: string | null;
+  parcelId: number | null;
+  trackingNumber: string | null;
+  trackingUrl: string | null;
+  erreur: string | null;
+  auteur: string | null;
+  createdAt: string;
+  acheteAt: string | null;
+  annuleAt: string | null;
+}
+
+export interface EtatBordereau {
+  configure: boolean;
+  essai: boolean;
+  /** Pourquoi on ne peut pas acheter, s'il y a lieu. */
+  empechement: string | null;
+  bordereau: Bordereau | null;
+  poidsGrammes: number;
+  pointRelais: string | null;
+  methodes: { code: string; nom: string; transporteur: string; prixCents: number | null }[];
+  erreurMethodes: string | null;
 }

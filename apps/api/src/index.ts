@@ -39,6 +39,7 @@ import {
 } from "@memoryline/types";
 import { rechercherPointsRelais } from "./mondial-relay.js";
 import { suggererAdresses } from "./adresses.js";
+import { mountBordereaux } from "./sendcloud-colis.js";
 import {
   gerePoints as sendcloudGerePoints,
   rechercherPoints as rechercherPointsSendcloud,
@@ -1946,6 +1947,9 @@ app.get("/auth/me", async (c) => {
 // qui avalerait sinon « /admin/orders/tags » et « /admin/orders/export.csv ».
 // Hono retient la première route déclarée qui correspond.
 mountOrderRoutes(app);
+
+// Bordereaux transporteur achetés chez SendCloud (apps/api/src/sendcloud-colis.ts).
+mountBordereaux(app);
 
 // Catégories de produits et poids d'expédition (apps/api/src/catalogue.ts).
 mountCatalogueRoutes(app);

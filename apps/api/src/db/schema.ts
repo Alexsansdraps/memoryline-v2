@@ -1428,6 +1428,64 @@ export const fulfillmentItems = pgTable(
 );
 
 /**
+ * Un BORDEREAU transporteur acheté chez SendCloud depuis la fiche commande.
+ *
+ * La ligne naît AVANT l'appel à SendCloud (« en_cours »), avec la clé de la
+ * demande : un double-clic, un F5 ou une panne au mauvais moment retombent
+ * sur cette ligne au lieu d'acheter une seconde étiquette. Elle devient
+ * « achete » avec le colis SendCloud, ou « echec » avec le refus en clair.
+ *
+ * L'étiquette elle-même n'est pas gardée : elle contient l'adresse d'une
+ * cliente, et SendCloud la redonne à la demande par `parcelId`.
+ */
+export const bordereaux = pgTable(
+  "bordereau",
+  {
+    id: serial("id").primaryKey(),
+    orderId: integer("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    /** La clé tirée par le formulaire : une demande = un achat au plus. */
+    cleDemande: text("cle_demande").notNull(),
+    /** « en_cours », « achete », « echec » ou « annule ». */
+    statut: text("statut").notNull().default("en_cours"),
+    /** Vrai pour une « lettre non affranchie » d'essai, que SendCloud ne facture pas. */
+    essai: boolean("essai").notNull().default(false),
+    /** Code de l'option d'envoi chez SendCloud (« mondial_relay:service_point,… »). */
+    methodeCode: text("methode_code").notNull(),
+    methodeNom: text("methode_nom").notNull(),
+    /** Code SendCloud du transporteur (« mondial_relay »). */
+    transporteur: text("transporteur"),
+    poidsGrammes: integer("poids_grammes").notNull(),
+    /** Le prix affiché sur le bouton au moment du clic. */
+    prixAnnonceCents: integer("prix_annonce_cents"),
+    /** L'ENVOI chez SendCloud : c'est lui qu'on annule. */
+    shipmentId: text("shipment_id"),
+    /** Le COLIS chez SendCloud : c'est lui qui porte l'étiquette. */
+    parcelId: integer("parcel_id"),
+    trackingNumber: text("tracking_number"),
+    trackingUrl: text("tracking_url"),
+    /** Le refus de SendCloud, en clair, pour le relire. Jamais une clé. */
+    erreur: text("erreur"),
+    auteur: text("auteur"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    acheteAt: timestamp("achete_at", { withTimezone: true }),
+    annuleAt: timestamp("annule_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("bordereau_order_idx").on(t.orderId),
+    uniqueIndex("bordereau_cle_demande_uniq").on(t.cleDemande),
+    // UN SEUL bordereau vivant par commande : la base elle-même refuse le
+    // second achat, quoi qu'il arrive dans le code au-dessus.
+    uniqueIndex("bordereau_vivant_uniq")
+      .on(t.orderId)
+      .where(sql`${t.statut} in ('en_cours', 'achete')`),
+  ],
+);
+
+/**
  * Un REMBOURSEMENT, total ou partiel.
  *
  * On garde le détail (quelles lignes, quelles quantités, quelle part du port)
