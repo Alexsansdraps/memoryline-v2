@@ -100,16 +100,30 @@ function horairesDe(p: PointSendcloud): string[] {
   });
 }
 
+/**
+ * Un texte tel que SendCloud le recopie de Mondial Relay, remis au propre :
+ * les apostrophes y arrivent doublées (« PLACE DE L''HOTEL DE VILLE »).
+ */
+function propre(v: string | undefined): string {
+  return (v ?? "").replace(/''/g, "'").replace(/\s+/g, " ").trim();
+}
+
 function versPoint(p: PointSendcloud, paysDemande: string): PointRelais | null {
   if (p.id === undefined || p.id === null || p.is_active === false) return null;
-  const rue = [p.house_number, p.street].filter(Boolean).join(" ").trim();
+  // Certains points (les consignes, surtout) portent « 80000 AMIENS » en guise
+  // de numéro de rue : le code postal et la ville, déjà affichés à côté. On
+  // ne garde le numéro que s'il en est vraiment un.
+  const numero = propre(p.house_number);
+  const numeroUtile =
+    numero && !(p.postal_code && numero.includes(p.postal_code.trim())) ? numero : "";
+  const rue = [numeroUtile, propre(p.street)].filter(Boolean).join(" ");
   return {
     id: `${PREFIXE_SENDCLOUD}${p.id}`,
     code: p.code ? String(p.code) : undefined,
-    nom: (p.name ?? "").trim() || String(p.code ?? p.id),
+    nom: propre(p.name) || String(p.code ?? p.id),
     adresse: rue,
-    codePostal: (p.postal_code ?? "").trim(),
-    ville: (p.city ?? "").trim(),
+    codePostal: propre(p.postal_code),
+    ville: propre(p.city),
     pays: (p.country ?? paysDemande).toUpperCase(),
     latitude: p.latitude !== undefined ? String(p.latitude) : undefined,
     longitude: p.longitude !== undefined ? String(p.longitude) : undefined,
