@@ -240,7 +240,12 @@ function dateCourte(iso: string | null | undefined): string {
                       </div>
                     )}
                   </td>
-                  <td>{it.format ? libelleFormat(it.format) : "—"}</td>
+                  <td>
+                    {it.format ? libelleFormat(it.format) : "—"}
+                    {it.orientation === "paysage" && (
+                      <div><strong>Paysage</strong></div>
+                    )}
+                  </td>
                   <td>{it.cadre ?? "Sans cadre"}</td>
                   <td class="droite">{it.quantity}</td>
                 </tr>

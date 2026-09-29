@@ -2643,6 +2643,8 @@ export function mountConfiguratorRoutes(app: Hono) {
         quantity: it.quantity,
         unitPriceCents: it.unitPriceCents,
         format: it.format,
+        // Le sens de la feuille, pour qui imprime : absent = portrait.
+        orientation: cfg.orientation === "paysage" ? "paysage" : null,
         cadre: cadre?.name ?? null,
         lignesAffiche: lignes,
         // Les deux anciens champs restent servis tant que le back-office ne

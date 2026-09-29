@@ -100,6 +100,23 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   const [echec, setEchec] = createSignal<EchecIA | null>(null);
   const [survol, setSurvol] = createSignal(false);
   const [precision, setPrecision] = createSignal("");
+  /**
+   * Le sens de l'affiche : celui que le client CHOISIT pour la prochaine
+   * génération, et celui de l'aperçu À L'ÉCRAN — les deux divergent le temps
+   * qu'il change d'avis et relance. C'est le second qui part au panier : on
+   * imprime l'affiche qu'il a vue, pas celle qu'il s'apprêtait à demander.
+   */
+  const [orientation, setOrientation] = createSignal<"portrait" | "paysage">("portrait");
+  const [orientationApercu, setOrientationApercu] =
+    createSignal<"portrait" | "paysage">("portrait");
+  /** Le sens du cadre d'aperçu : celui de l'affiche montrée, sinon celui choisi. */
+  const sensAffiche = () => (apercu() ? orientationApercu() : orientation());
+  /**
+   * Les tailles de texte sont en cqw (largeur du cadre). En paysage, le cadre
+   * est 1,41 fois plus large pour la même feuille : on les ramène au petit
+   * côté, exactement comme le PDF (voir pdf.ts, buildTextSvg).
+   */
+  const echelleTexte = () => (sensAffiche() === "paysage" ? 1 / Math.SQRT2 : 1);
 
   /**
    * Le nombre d'exemplaires.
@@ -411,6 +428,9 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     setEchec(null);
     setEtape("generation");
     demarrerChrono();
+    // Le sens demandé À CE MOMENT : s'il change pendant la génération,
+    // l'aperçu garde celui dans lequel il a été fabriqué.
+    const sens = orientation();
     try {
       const gen = await genererAffiche({
         productId: props.product.id,
@@ -418,12 +438,14 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
         cartId: getCartId(),
         precision: precision(),
         promptId: styleChoisi(),
+        orientation: sens,
       });
       const url = apercuAbsolu(gen.apercuUrl);
       // « en_cours » : l'image n'existe pas encore, on attend qu'elle réponde.
       const prete = gen.status === "prete" ? url : await attendreApercu(url);
       setPublicId(gen.publicId);
       setApercuChemin(gen.apercuUrl);
+      setOrientationApercu(sens);
       setApercu(prete);
       setEtape("pret");
     } catch (e) {
@@ -459,6 +481,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
         schemaVersion: 1,
         productId: props.product.id,
         format: format() === "A3" ? "A3" : "A4",
+        ...(orientationApercu() === "paysage" ? { orientation: "paysage" as const } : {}),
         view: "front",
         // Compacte, sans trou : l'API refuse une entrée vide au milieu, et
         // le rendu ne lit de toute façon que la suite des lignes remplies.
@@ -571,7 +594,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           <div
             ref={boiteAffiche}
             class="relative w-full overflow-hidden border border-ink/10 bg-paper-deep"
-            style={{ "aspect-ratio": "1 / 1.4142" }}
+            style={{ "aspect-ratio": sensAffiche() === "paysage" ? "1.4142 / 1" : "1 / 1.4142" }}
           >
             <Show
               when={apercu()}
@@ -644,7 +667,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                             ),
                           ),
                           color: couleur(),
-                          "font-size": `${TAILLES_LIGNES[rang] ?? TAILLES_LIGNES.at(-1)}cqw`,
+                          "font-size": `${(TAILLES_LIGNES[rang] ?? TAILLES_LIGNES.at(-1)!) * echelleTexte()}cqw`,
                           "line-height": rang === 0 ? "1.05" : "1.15",
                           "letter-spacing": rang === 0 ? "0.04em" : "normal",
                           "margin-top": rang === 0 ? "0" : "0.1em",
@@ -690,7 +713,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                             ),
                           ),
                           color: couleur(),
-                          "font-size": `${TAILLES_LIGNES[rang] ?? TAILLES_LIGNES.at(-1)}cqw`,
+                          "font-size": `${(TAILLES_LIGNES[rang] ?? TAILLES_LIGNES.at(-1)!) * echelleTexte()}cqw`,
                           "line-height": "1.1",
                           "letter-spacing": rang === 0 ? "0.04em" : "normal",
                         }}
@@ -872,6 +895,42 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
             <span aria-hidden="true">📸</span>
             {tr("ia.photo_nette")}
           </p>
+
+          {/* Le sens de l'affiche, choisi AVANT de créer : il décide du cadrage
+              que l'IA compose. Deux gros boutons plutôt qu'une liste — on doit
+              voir d'un coup d'œil lequel est pris, sur la tablette du stand. */}
+          <div class="mt-4">
+            <span class="block text-sm font-medium">{tr("ia.orientation")}</span>
+            <div class="mt-2 grid grid-cols-2 gap-2" role="radiogroup">
+              <For each={["portrait", "paysage"] as const}>
+                {(sens) => (
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={orientation() === sens}
+                    disabled={occupe()}
+                    onClick={() => setOrientation(sens)}
+                    class={`flex items-center justify-center gap-2 border-2 px-3 py-2.5 text-sm transition-colors disabled:opacity-60 ${
+                      orientation() === sens
+                        ? "border-ink bg-ink font-medium text-paper"
+                        : "border-ink/15 hover:border-ink/45"
+                    }`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      class={`inline-block border-2 border-current ${
+                        sens === "portrait" ? "h-5 w-3.5" : "h-3.5 w-5"
+                      }`}
+                    />
+                    {tr(sens === "portrait" ? "ia.portrait" : "ia.paysage")}
+                  </button>
+                )}
+              </For>
+            </div>
+            <Show when={apercu() && orientation() !== orientationApercu()}>
+              <p class="mt-2 text-xs text-ink-soft">{tr("ia.orientation_relancer")}</p>
+            </Show>
+          </div>
 
           <label class="mt-4 block text-sm">
             <span class="font-medium">{tr("ia.precision")}</span>

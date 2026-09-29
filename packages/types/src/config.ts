@@ -13,6 +13,10 @@ import { z } from "zod";
 export const POSTER_FORMATS = ["A4", "A3"] as const;
 export type PosterFormat = (typeof POSTER_FORMATS)[number];
 
+/** Sens de la feuille : « portrait » (en hauteur) ou « paysage » (en largeur). */
+export const POSTER_ORIENTATIONS = ["portrait", "paysage"] as const;
+export type PosterOrientation = (typeof POSTER_ORIENTATIONS)[number];
+
 /**
  * Type d'affiche : « de face », « de dos », et ceux que la cliente crée au
  * back-office (table `poster_view`).
@@ -133,6 +137,12 @@ export const posterConfigSchema = z.object({
   /** URL du décor d'avant-plan (muret/banc…), rendu au 1er plan. */
   foregroundUrl: z.string().optional(),
   format: z.enum(POSTER_FORMATS).optional(),
+  /**
+   * Sens de la feuille. Absent = portrait : c'est le sens de toutes les
+   * affiches d'avant ce champ, et leur réimpression ne doit pas bouger.
+   * Seule l'affiche IA le propose, au choix du client.
+   */
+  orientation: z.enum(POSTER_ORIENTATIONS).optional(),
   /**
    * Cadre choisi en option — identifiant de la table `frame`, ou absent si le
    * client n'en veut pas. Le PRIX n'est pas stocké ici : il est relu côté

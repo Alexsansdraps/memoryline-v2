@@ -598,6 +598,10 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                       <div class="mt-0.5 text-bo-muted">
                         {[
                           it.format ? `Format ${libelleFormat(it.format)}` : null,
+                          // Une affiche IA couchée s'imprime couchée : à voir AVANT de lancer l'impression.
+                          it.orientation === "paysage"
+                            ? "PAYSAGE (à l'horizontale)"
+                            : null,
                           it.cadre ?? "Sans cadre",
                           it.personnages
                             ? `${it.personnages} personnage${it.personnages > 1 ? "s" : ""}`

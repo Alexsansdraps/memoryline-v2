@@ -78,6 +78,20 @@ const FORMAT_PT: Record<PosterFormat, { width: number; height: number }> = {
 };
 
 /**
+ * Les dimensions d'un format dans le sens voulu. Les tables ci-dessus sont en
+ * portrait ; en paysage, largeur et hauteur s'échangent — même feuille, posée
+ * de l'autre côté.
+ */
+function dansLeSens(
+  table: Record<PosterFormat, { width: number; height: number }>,
+  format: PosterFormat,
+  orientation: PosterConfig["orientation"],
+): { width: number; height: number } {
+  const d = table[format];
+  return orientation === "paysage" ? { width: d.height, height: d.width } : d;
+}
+
+/**
  * Ordre d'empilement des slots sur un personnage, du bas vers le haut.
  *
  * Repris du paquet partagé : cette liste disait autrefois le contraire de
@@ -535,8 +549,11 @@ async function buildTextSvg(
       // Gras sur la première ligne seulement : c'est ainsi que le titre était
       // imprimé, et une réimpression doit ressembler à l'affiche d'origine.
       const gras = i === 0;
+      // Rapportée au PETIT côté : c'est la largeur en portrait (rien ne
+      // change pour les affiches d'avant), la hauteur en paysage — sinon le
+      // titre d'une affiche couchée grossirait de 41 %.
       const taille = Math.round(
-        width *
+        Math.min(width, height) *
           (TAILLE_LIGNE[i] ?? TAILLE_LIGNE[TAILLE_LIGNE.length - 1]!) *
           facteur,
       );
@@ -608,7 +625,7 @@ export async function renderPosterPng(
   opts: RenderOptions,
 ): Promise<Buffer> {
   const format: PosterFormat = opts.format ?? config.format ?? "A4";
-  const { width: W, height: H } = FORMAT_PX[format];
+  const { width: W, height: H } = dansLeSens(FORMAT_PX, format, config.orientation);
 
   // 1) Fond plein cadre.
   const base = await renderBackground(config, opts.data, W, H);
@@ -910,7 +927,7 @@ export async function renderPosterPdf(
   opts: RenderOptions,
 ): Promise<Buffer> {
   const format: PosterFormat = opts.format ?? config.format ?? "A4";
-  return pdfPleinePage(await renderPosterPng(config, opts), format);
+  return pdfPleinePage(await renderPosterPng(config, opts), format, config.orientation);
 }
 
 /**
@@ -956,8 +973,12 @@ export async function renderImagePdf(
 }
 
 /** Une page aux dimensions exactes du format, le PNG posé plein cadre. */
-async function pdfPleinePage(pngBytes: Buffer, format: PosterFormat): Promise<Buffer> {
-  const { width: pw, height: ph } = FORMAT_PT[format];
+async function pdfPleinePage(
+  pngBytes: Buffer,
+  format: PosterFormat,
+  orientation?: PosterConfig["orientation"],
+): Promise<Buffer> {
+  const { width: pw, height: ph } = dansLeSens(FORMAT_PT, format, orientation);
 
   const doc = await PDFDocument.create();
   const page = doc.addPage([pw, ph]);

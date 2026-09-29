@@ -249,6 +249,8 @@ export async function genererAffiche(entree: {
   precision?: string;
   /** Le style choisi, s'il y en a un. */
   promptId?: number | null;
+  /** Le sens de l'affiche ; absent = portrait. */
+  orientation?: "portrait" | "paysage";
 }): Promise<GenerationIA> {
   let reponse: Response;
   try {
@@ -261,6 +263,7 @@ export async function genererAffiche(entree: {
         cartId: entree.cartId,
         precision: entree.precision?.trim() || undefined,
         promptId: entree.promptId ?? undefined,
+        orientation: entree.orientation === "paysage" ? "paysage" : undefined,
       }),
     });
   } catch {

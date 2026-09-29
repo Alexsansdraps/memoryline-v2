@@ -113,9 +113,30 @@ const DEFAUTS = {
 type CleReglage = keyof typeof DEFAUTS;
 type Reglages = { [K in CleReglage]: (typeof DEFAUTS)[K] };
 
+/** L'A3 couché : 420:297, deux multiples de 16. */
+const TAILLE_PAYSAGE = "2240x1584";
+
+/**
+ * Ce qui remplace, pour une affiche en paysage, la section « A3 VERTICAL —
+ * MANDATORY » de la consigne officielle. En anglais, comme elle.
+ */
+const CONSIGNE_PAYSAGE = `==================================================
+ORIENTATION OVERRIDE — A3 HORIZONTAL (LANDSCAPE) — MANDATORY
+==================================================
+
+This poster is ordered in LANDSCAPE orientation.
+IGNORE every instruction above about a vertical / portrait A3 format.
+
+The final artwork is an A3 HORIZONTAL poster: width:height ratio 420:297.
+Compose for a wide canvas: keep the whole scene of the source photo, use the
+horizontal space naturally, and keep the upper part of the image calm and
+uncluttered (sky, wall, soft background) — the poster title is printed there.
+Do not add borders, frames, text or letters.`;
+
 /** Tailles acceptées par l'API images : un réglage fantaisiste ferait 400. */
 const TAILLES = new Set([
   "1584x2240",
+  TAILLE_PAYSAGE,
   "1024x1024",
   "1024x1536",
   "1536x1024",
@@ -415,11 +436,13 @@ const IMPRESSION_A3 = { largeur: 3508, hauteur: 4961, dpi: 300 } as const;
 export async function fabriquerFichierImpression(
   pleine: Buffer,
   nom: string,
+  /** En paysage, la même feuille couchée : sinon « cover » en couperait les côtés. */
+  paysage = false,
 ): Promise<string> {
   const fichier = await sharp(pleine)
     .resize({
-      width: IMPRESSION_A3.largeur,
-      height: IMPRESSION_A3.hauteur,
+      width: paysage ? IMPRESSION_A3.hauteur : IMPRESSION_A3.largeur,
+      height: paysage ? IMPRESSION_A3.largeur : IMPRESSION_A3.hauteur,
       fit: "cover",
       kernel: "lanczos3",
     })
@@ -1174,6 +1197,8 @@ export function mountIaRoutes(app: Hono): void {
       .replace(/[\u0000-\u001f\u007f]+/g, " ")
       .trim()
       .slice(0, PRECISION_MAX);
+    /** Le sens de l'affiche, au choix du client. Tout autre mot vaut portrait. */
+    const paysage = body.orientation === "paysage";
 
     /*
      * Le style choisi par la cliente — « Couple », « Paysage ».
@@ -1230,18 +1255,20 @@ export function mountIaRoutes(app: Hono): void {
     // (consigne de la boutique) : une photo de plage en largeur rendue en
     // portrait perdrait la moitié de la scène, ou serait complétée par du
     // décor inventé — ce que la consigne interdit par ailleurs.
-    // TOUJOURS l'A3 vertical. On choisissait autrefois le portrait ou le
-    // paysage selon la photo ; une affiche se vend en A3 vertical, et c'est la
-    // composition qui s'adapte, pas le format. La consigne dit au modèle
-    // comment adapter une photo en largeur sans amputer la scène.
-    const tailleChoisie = TAILLES.has(reg["ia.taille"])
-      ? reg["ia.taille"]
-      : DEFAUTS["ia.taille"];
+    // Le CLIENT choisit le sens. Par défaut l'A3 vertical, comme avant : la
+    // consigne dit au modèle comment y adapter une photo en largeur. En
+    // paysage, l'A3 couché — 2240 × 1584, le même rapport 420:297 et deux
+    // multiples de 16, comme le modèle l'exige.
+    const tailleChoisie = paysage
+      ? TAILLE_PAYSAGE
+      : TAILLES.has(reg["ia.taille"])
+        ? reg["ia.taille"]
+        : DEFAUTS["ia.taille"];
 
     const consigne = ajouterDemandeClient(
       [
         appliquerVariables(reg["ia.stylePrompt"], {
-          OUTPUT_FORMAT: "A3 vertical poster",
+          OUTPUT_FORMAT: paysage ? "A3 horizontal (landscape) poster" : "A3 vertical poster",
           CUSTOMER_REQUEST: precision,
         }),
         produit.aiStylePrompt ?? "",
@@ -1249,6 +1276,11 @@ export function mountIaRoutes(app: Hono): void {
         // qui se contrediraient, c'est celle que la cliente a choisie qui doit
         // l'emporter, et le modèle retient mieux ce qui vient en dernier.
         style?.prompt ?? "",
+        // La consigne officielle impose « A3 VERTICAL — MANDATORY » en toutes
+        // lettres. Plutôt que de la réécrire (elle est à la boutique, et se
+        // règle au back-office), le paysage la contredit EN DERNIER,
+        // explicitement : c'est ce que le modèle retient.
+        paysage ? CONSIGNE_PAYSAGE : "",
       ]
         .map((s) => s.trim())
         .filter(Boolean)
@@ -1292,7 +1324,7 @@ export function mountIaRoutes(app: Hono): void {
       // Le fichier d'impression, tout de suite : le jour où la commande part
       // en fabrication, personne n'a envie de dépendre d'un agrandissement qui
       // reste à faire. L'original généré reste à côté, intact.
-      await fabriquerFichierImpression(pleine, `${publicId}-impression.png`);
+      await fabriquerFichierImpression(pleine, `${publicId}-impression.png`, paysage);
       const apercu = await fabriquerApercu(pleine, `${publicId}-apercu.jpg`);
 
       await db

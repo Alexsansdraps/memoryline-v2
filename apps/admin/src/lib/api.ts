@@ -847,6 +847,8 @@ export interface OrderDetail {
   };
   items: (OrderItem & {
     format?: string | null;
+    /** « paysage » pour une affiche couchée ; null = portrait. */
+    orientation?: "paysage" | null;
     cadre?: string | null;
     /** Les lignes du texte de l'affiche, dans l'ordre où elles s'impriment. */
     lignesAffiche?: (string | null)[] | null;
