@@ -2232,6 +2232,12 @@ export function mountConfiguratorRoutes(app: Hono) {
           // Le passage au tunnel est LA dernière activité du panier : c'est à
           // partir d'ici que se compte l'inactivité qui en fera un abandon.
           lastActivityAt: maintenant,
+          // Et c'est ICI que naît la commande. La ligne existait depuis le
+          // premier article mis au panier — parfois des jours plus tôt — et
+          // gardait cette date : une commande payée le 29 s'affichait au 21,
+          // se rangeait au 21 dans la liste, les filtres et les statistiques.
+          // Les paniers abandonnés, eux, se comptent sur `lastActivityAt`.
+          createdAt: maintenant,
           // Passé par la caisse du site, c'est un panier du site : s'il n'est
           // pas payé, c'est ici qu'il a été abandonné, pas au stand.
           panierDuStand: false,
