@@ -108,3 +108,36 @@ html[data-theme="dark"] input::placeholder,
 html[data-theme="dark"] textarea::placeholder {
   color: var(--color-bo-muted);
 }
+
+/* ─── Tri des tableaux (lib/tri-tableaux.ts) ───────────────────────────
+   Chaque en-tête de colonne se clique : une flèche discrète dit qu'on
+   peut trier, une flèche franche dit dans quel sens on a trié. */
+th[data-triable] {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+th[data-triable]:hover,
+th[data-triable]:focus-visible {
+  color: var(--color-bo-accent, #2563eb);
+  outline: none;
+}
+.ml-tri-indicateur {
+  display: inline-block;
+  margin-left: 0.3em;
+  font-size: 0.8em;
+  opacity: 0.35;
+}
+.ml-tri-indicateur::after {
+  content: "↕";
+}
+th[aria-sort="ascending"] .ml-tri-indicateur,
+th[aria-sort="descending"] .ml-tri-indicateur {
+  opacity: 1;
+}
+th[aria-sort="ascending"] .ml-tri-indicateur::after {
+  content: "▲";
+}
+th[aria-sort="descending"] .ml-tri-indicateur::after {
+  content: "▼";
+}
