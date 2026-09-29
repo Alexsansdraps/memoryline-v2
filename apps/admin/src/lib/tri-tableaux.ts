@@ -48,11 +48,28 @@ type Valeur =
   | { genre: "texte"; v: string };
 
 function lireDate(t: string): number | null {
-  const s = sansAccent(t.toLowerCase()).replace(/\s+/g, " ").trim();
-  // « 29 septembre 2026 à 13:06 », « 29 sept. 2026 », « 1er mars 2026 »
-  let m = /^(\d{1,2})(?:er)? ([a-z]+)\.? (\d{4})(?:,? (?:a )?(\d{1,2})[:h](\d{2}))?$/.exec(s);
-  if (m && MOIS[m[2]!] !== undefined)
-    return new Date(+m[3]!, MOIS[m[2]!]!, +m[1]!, +(m[4] ?? 0), +(m[5] ?? 0)).getTime();
+  // Une date ISO complète (« 2026-09-29T12:32:11.428Z », celle d'un
+  // `data-tri`) se lit telle quelle, fuseau compris.
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(t)) {
+    const iso = Date.parse(t);
+    if (Number.isFinite(iso)) return iso;
+  }
+  const s = sansAccent(t.toLowerCase())
+    .replace(/\s+/g, " ")
+    .trim()
+    // « le 27 août à 22:36 » : la liste des commandes écrit ainsi.
+    .replace(/^le /, "");
+  // « 29 septembre 2026 à 13:06 », « 29 sept. 2026 », « 1er mars 2026 »,
+  // et sans l'année : « 27 août à 22:36 ».
+  let m = /^(\d{1,2})(?:er)? ([a-z]+)\.?(?: (\d{4}))?(?:,? (?:a )?(\d{1,2})[:h](\d{2}))?$/.exec(s);
+  if (m && MOIS[m[2]!] !== undefined) {
+    const annee = m[3] ? +m[3] : new Date().getFullYear();
+    const d = new Date(annee, MOIS[m[2]!]!, +m[1]!, +(m[4] ?? 0), +(m[5] ?? 0));
+    // Sans année, une date « dans le futur » est celle de l'an dernier :
+    // le 28 décembre, lu un 3 janvier, n'est pas dans un an.
+    if (!m[3] && d.getTime() > Date.now() + 2 * 86_400_000) d.setFullYear(annee - 1);
+    return d.getTime();
+  }
   // « 29/09/2026 » ou « 29/09/2026 14:01 »
   m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:,? (?:a )?(\d{1,2})[:h](\d{2}))?$/.exec(s);
   if (m) return new Date(+m[3]!, +m[2]! - 1, +m[1]!, +(m[4] ?? 0), +(m[5] ?? 0)).getTime();

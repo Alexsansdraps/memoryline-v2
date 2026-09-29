@@ -450,7 +450,10 @@ const filtreActif =
                   {o.number}
                 </a>
               </td>
-              <td class="px-4 py-2 whitespace-nowrap align-top text-bo-muted">
+              <td
+                class="px-4 py-2 whitespace-nowrap align-top text-bo-muted"
+                data-tri={o.createdAt ?? ""}
+              >
                 {quand(o.createdAt)}
               </td>
               <td class="px-4 py-2 align-top">
