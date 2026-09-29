@@ -108,6 +108,17 @@ export default defineConfig({
     // (1,5 Go d'assets) et node_modules pour que ça reste peu coûteux.
     server: {
       ...(allowedHosts.length ? { allowedHosts } : {}),
+      // Le navigateur appelle l'API en `/api` — images comprises. Derrière le
+      // proxy (:8080) c'est Caddy qui aiguille ; ouvert en direct sur :4321,
+      // personne ne le faisait, et toutes les images tombaient en 404. Le
+      // serveur de dev fait donc le même aiguillage que Caddy.
+      proxy: {
+        "/api": {
+          target: process.env.API_URL_INTERNAL ?? "http://localhost:3000",
+          changeOrigin: true,
+          rewrite: (chemin) => chemin.replace(/^\/api/, ""),
+        },
+      },
       watch: {
         usePolling: true,
         interval: 400,

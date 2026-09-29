@@ -38,6 +38,10 @@ import {
   normaliserCode,
 } from "@memoryline/types";
 import { rechercherPointsRelais } from "./mondial-relay.js";
+import {
+  gerePoints as sendcloudGerePoints,
+  rechercherPoints as rechercherPointsSendcloud,
+} from "./sendcloud-points.js";
 import { rechercherPointsRetrait } from "./colissimo.js";
 // La règle qui décide si un mode de livraison sort sur le site vit à part :
 // le site la consulte pour filtrer, le back-office pour expliquer.
@@ -1061,8 +1065,11 @@ app.get("/shipping/relay-points", async (c) => {
   const pays = String(c.req.query("country") ?? "FR");
   const ville = String(c.req.query("city") ?? "");
   try {
-    const points =
-      carrier === "colissimo"
+    // SendCloud d'abord quand il sait chercher ce transporteur : c'est lui qui
+    // fabriquera l'étiquette, et l'identifiant du point doit être le sien.
+    const points = sendcloudGerePoints(carrier)
+      ? await rechercherPointsSendcloud({ carrier, codePostal: cp, pays, ville })
+      : carrier === "colissimo"
         ? await rechercherPointsRetrait({ codePostal: cp, pays, ville })
         : await rechercherPointsRelais({
             codePostal: cp,

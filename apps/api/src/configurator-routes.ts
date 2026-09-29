@@ -45,6 +45,11 @@ import {
 } from "./mail.js";
 import { noterLaRecuperation } from "./relance-panier.js";
 import {
+  PREFIXE_SENDCLOUD,
+  gerePoints as sendcloudGerePoints,
+  verifierPoint as verifierPointSendcloud,
+} from "./sendcloud-points.js";
+import {
   CODES_NATURE,
   calageNeutre,
   calagePropre,
@@ -869,6 +874,7 @@ async function computeShippingCents(
   cents: number;
   label: string;
   kind: string;
+  carrier: string | null;
   poidsGrammes: number;
 } | null> {
   const [zones, modes, tarifs, regles] = await Promise.all([
@@ -921,6 +927,7 @@ async function computeShippingCents(
     cents: option.fraisCents,
     label: option.mode.name,
     kind: option.mode.kind,
+    carrier: option.mode.carrier ?? null,
     poidsGrammes: poids,
   };
 }
@@ -2110,6 +2117,25 @@ export function mountConfiguratorRoutes(app: Hono) {
     // n'y change rien : c'est la caisse du SITE, le stand a la sienne.
     const cadresSite = await cadresSurLeSite();
 
+    // Un point relais choisi chez SendCloud est redemandé à SendCloud, avant
+    // la transaction pour la même raison : le navigateur peut avoir gardé un
+    // point fermé depuis, ou envoyer n'importe quoi. Un point INCONNU est
+    // refusé ; une panne de SendCloud ne bloque pas la commande, le point a
+    // été choisi dans leur liste quelques minutes plus tôt.
+    const idRelais = String(liv.relayPointId ?? "").trim();
+    if (
+      idRelais.startsWith(PREFIXE_SENDCLOUD) &&
+      (await verifierPointSendcloud(idRelais, pays)) === "inconnu"
+    )
+      return c.json(
+        {
+          error:
+            "Ce point relais n'est plus disponible. Choisissez-en un autre dans la liste.",
+          code: "point_relais_inconnu",
+        },
+        400,
+      );
+
     // Le total se calcule SOUS LE VERROU de la commande (commandeVerrouillee),
     // sur les lignes relues dans la même transaction. Une modification du
     // panier partie au même instant passe soit avant — et le total la
@@ -2164,8 +2190,19 @@ export function mountConfiguratorRoutes(app: Hono) {
       // relais sans point relais non plus.
       if (demandeUneAdresse(port.kind) && (!ligne1 || !ville || !cp))
         return { erreur: "adresse de livraison incomplète", statut: 400 as const };
-      if (demandeUnPointRelais(port.kind) && !String(liv.relayPointId ?? "").trim())
+      if (demandeUnPointRelais(port.kind) && !idRelais)
         return { erreur: "point relais requis", statut: 400 as const };
+      // Quand SendCloud cherche les points de ce transporteur, le point doit
+      // venir de sa liste : c'est son identifiant qui servira à l'étiquette.
+      if (
+        demandeUnPointRelais(port.kind) &&
+        sendcloudGerePoints(port.carrier) &&
+        !idRelais.startsWith(PREFIXE_SENDCLOUD)
+      )
+        return {
+          erreur: "Choisissez votre point relais dans la liste proposée.",
+          statut: 400 as const,
+        };
 
       const total = articles + port.cents;
       const [order] = await tx

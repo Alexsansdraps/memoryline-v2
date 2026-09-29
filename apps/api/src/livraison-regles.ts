@@ -12,6 +12,7 @@
 import { CODES_NATURE, nomNature } from "@memoryline/types";
 import { estConfigure as mondialRelayConfigure } from "./mondial-relay.js";
 import { estConfigure as colissimoConfigure } from "./colissimo.js";
+import { gerePoints as sendcloudGerePoints } from "./sendcloud-points.js";
 
 /**
  * Les transporteurs connus, et ce qu'il faut pour qu'ils fonctionnent.
@@ -41,8 +42,9 @@ export const TRANSPORTEURS = [
     code: "mondial_relay",
     nom: "Mondial Relay",
     integre: true,
-    contrat: "compte Mondial Relay : code enseigne, code marque et clé privée",
-    aupres: "Mondial Relay, dans votre espace marchand",
+    contrat:
+      "compte SendCloud : clé publique d'API (à défaut, un contrat Mondial Relay direct : code enseigne et clé privée)",
+    aupres: "SendCloud, dans Paramètres › Intégrations › API",
   },
   {
     code: "colissimo",
@@ -112,7 +114,10 @@ export const TRANSPORTEURS = [
 /** Un transporteur sait-il chercher ses points ? */
 export function transporteurConfigure(carrier: string | null | undefined): boolean {
   if (carrier === "colissimo") return colissimoConfigure();
-  if (carrier === "mondial_relay") return mondialRelayConfigure();
+  // Mondial Relay : par SendCloud, qui revend ses étiquettes à la boutique,
+  // ou en direct pour qui aurait un contrat avec eux.
+  if (carrier === "mondial_relay")
+    return sendcloudGerePoints(carrier) || mondialRelayConfigure();
   // Transporteur inconnu, ou connu mais pas encore intégré : on ne prétend
   // pas savoir chercher ses points.
   return false;

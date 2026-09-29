@@ -34,6 +34,12 @@ export interface PointRelais {
   pays: string;
   /** Horaires du jour, quand le service les renvoie. */
   horaires?: string;
+  /** Un jour ouvert par ligne : « Lun 09:00 - 19:00 ». */
+  horairesSemaine?: string[];
+  /** Le numéro du point chez le transporteur, quand l'id est celui d'un tiers. */
+  code?: string;
+  /** Distance au code postal cherché, quand le service la calcule. */
+  distanceMetres?: number;
   latitude?: string;
   longitude?: string;
 }

@@ -205,6 +205,21 @@ export interface EntreeMenuPublique {
 }
 
 /** Une collection du catalogue, telle que le menu la propose. */
+/** Un point relais tel que l'API le renvoie au tunnel de commande. */
+export interface PointRelais {
+  id: string;
+  nom: string;
+  adresse: string;
+  codePostal: string;
+  ville: string;
+  /** Le numéro du point chez le transporteur (« 063210 » chez Mondial Relay). */
+  code?: string;
+  distanceMetres?: number;
+  /** Un jour ouvert par ligne : « Lun 09:00 - 19:00 ». */
+  horairesSemaine?: string[];
+  horaires?: string;
+}
+
 export interface Collection {
   id: number;
   slug: string;
@@ -536,18 +551,14 @@ export const browserApi = {
   /** Zones, modes et tarifs de livraison. */
   shipping: () => browserGet<CatalogueLivraison>("/shipping"),
   /** Points relais autour d'un code postal. */
-  pointsRelais: (postalCode: string, country: string, carrier: string) =>
-    browserGet<
-      {
-        id: string;
-        nom: string;
-        adresse: string;
-        codePostal: string;
-        ville: string;
-        horaires?: string;
-      }[]
-    >(
-      `/shipping/relay-points?postalCode=${encodeURIComponent(postalCode)}&country=${encodeURIComponent(country)}&carrier=${encodeURIComponent(carrier)}`,
+  pointsRelais: (
+    postalCode: string,
+    country: string,
+    carrier: string,
+    city?: string,
+  ) =>
+    browserGet<PointRelais[]>(
+      `/shipping/relay-points?postalCode=${encodeURIComponent(postalCode)}&country=${encodeURIComponent(country)}&carrier=${encodeURIComponent(carrier)}${city ? `&city=${encodeURIComponent(city)}` : ""}`,
     ),
   /** Vérifie un code promo ; rejette si le code est inconnu ou expiré. */
   verifierCode: (code: string) =>

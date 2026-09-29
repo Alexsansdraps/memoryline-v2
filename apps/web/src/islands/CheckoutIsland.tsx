@@ -4,6 +4,7 @@ import {
   createResource,
   createSignal,
   createEffect,
+  untrack,
   Show,
   For,
   type JSX,
@@ -55,6 +56,7 @@ import {
   formatPrice,
   getCartId,
   PUBLIC_API_URL,
+  type PointRelais,
 } from "../lib/api.ts";
 import { apercuAbsolu, urlApercu } from "../lib/ia.ts";
 import { codePromoRetenu } from "./CartIsland.tsx";
@@ -417,9 +419,7 @@ export default function CheckoutIsland(props: {
     /* stockage indisponible : la cliente saisira ses coordonnées, comme avant */
   }
 
-  const [relais, setRelais] = createSignal<
-    { id: string; nom: string; adresse: string; codePostal: string; ville: string }[]
-  >([]);
+  const [relais, setRelais] = createSignal<PointRelais[]>([]);
   const [relaisEtat, setRelaisEtat] = createSignal<
     "repos" | "recherche" | "vide" | "erreur"
   >("repos");
@@ -431,25 +431,52 @@ export default function CheckoutIsland(props: {
     setRelais([]);
     setPointRelais({ id: "", label: "" });
     setRelaisEtat("repos");
+    // Et si c'est un mode point relais, on cherche tout de suite autour du
+    // code postal qu'on connaît déjà : la cliente connectée a son adresse, la
+    // faire retaper puis cliquer « Chercher » est un pas de trop avant de
+    // payer. Lu sans suivi : taper son adresse ne doit pas relancer la
+    // recherche à chaque chiffre.
+    untrack(() => {
+      if (!demandeUnPointRelais(optionChoisie()?.mode.kind ?? "")) return;
+      if (!cpRecherche().trim() && adresse().postalCode.trim())
+        setCpRecherche(adresse().postalCode.trim());
+      if (cpRecherche().trim()) void chercherRelais();
+    });
   });
+
+  /** Numéro de la dernière recherche : une réponse plus ancienne est ignorée. */
+  let derniereRecherche = 0;
 
   async function chercherRelais(e?: Event) {
     e?.preventDefault();
     const cp = cpRecherche().trim();
     if (!cp) return;
+    const numero = ++derniereRecherche;
     setRelaisEtat("recherche");
     try {
+      // La ville aide le transporteur à situer un code postal partagé par
+      // plusieurs communes — seulement si c'est bien celle de ce code-là.
+      const a = adresse();
       const liste = await browserApi.pointsRelais(
         cp,
         pays(),
         optionChoisie()?.mode.carrier ?? "mondial_relay",
+        a.postalCode.trim() === cp ? a.city.trim() : undefined,
       );
+      if (numero !== derniereRecherche) return;
       setRelais(liste);
       setRelaisEtat(liste.length ? "repos" : "vide");
     } catch {
+      if (numero !== derniereRecherche) return;
       setRelais([]);
       setRelaisEtat("erreur");
     }
+  }
+
+  /** « 350 m », « 1,2 km » : la distance au code postal cherché. */
+  function distanceLisible(metres: number): string {
+    if (metres < 1000) return `${Math.max(10, Math.round(metres / 10) * 10)} m`;
+    return `${(metres / 1000).toLocaleString(props.langue ?? LANGUE_DEFAUT, { maximumFractionDigits: 1 })} km`;
   }
 
   /** Panier après remises : c'est lui qui décide de la franchise de port. */
@@ -1146,15 +1173,38 @@ export default function CheckoutIsland(props: {
                                 onChange={() =>
                                   setPointRelais({
                                     id: r.id,
-                                    label: `${r.nom}, ${r.adresse}, ${r.codePostal} ${r.ville}`,
+                                    // Le numéro du point voyage avec son nom :
+                                    // c'est lui qu'on donne au transporteur
+                                    // pour préparer le colis, et que le
+                                    // point relais retrouve au guichet.
+                                    label: `${r.nom}, ${r.adresse}, ${r.codePostal} ${r.ville}${r.code ? ` (n° ${r.code})` : ""}`,
                                   })
                                 }
                               />
-                              <span>
-                                <span class="block font-medium">{r.nom}</span>
+                              <span class="min-w-0 flex-1">
+                                <span class="flex items-baseline justify-between gap-3">
+                                  <span class="font-medium">{r.nom}</span>
+                                  <Show when={r.distanceMetres !== undefined}>
+                                    <span class="shrink-0 text-xs text-ink-soft">
+                                      {distanceLisible(r.distanceMetres!)}
+                                    </span>
+                                  </Show>
+                                </span>
                                 <span class="block text-ink-soft">
                                   {r.adresse}, {r.codePostal} {r.ville}
                                 </span>
+                                <Show when={(r.horairesSemaine ?? []).length > 0}>
+                                  <details class="mt-1 text-xs text-ink-soft">
+                                    <summary class="cursor-pointer select-none">
+                                      {tr("livraison.horaires")}
+                                    </summary>
+                                    <ul class="mt-1 space-y-0.5">
+                                      <For each={r.horairesSemaine}>
+                                        {(ligne) => <li>{ligne}</li>}
+                                      </For>
+                                    </ul>
+                                  </details>
+                                </Show>
                               </span>
                             </label>
                           </li>
