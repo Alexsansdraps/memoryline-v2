@@ -134,20 +134,13 @@ export const ui = {
     "ia.depot": "Déposez votre photo ici, ou cliquez pour la choisir",
     "ia.depot_bouton": "Choisir une photo",
     "ia.depot_formats": "JPEG, PNG ou WebP",
+    "ia.photo_nette": "Votre photo doit être nette et lumineuse.",
     "ia.changer_photo": "Choisir une autre photo",
     "ia.photo_titre": "Votre photo",
-    "ia.photo_reduite":
-      "Inutile de la réduire : c'est fait automatiquement avant l'envoi.",
     "ia.style_titre": "Quel genre d'affiche ?",
     "ia.style_aide":
       "Choisissez le style qui vous plaît : votre affiche sera créée dans cet esprit.",
     "ia.style_manquant": "Choisissez d'abord un style, ci-dessus.",
-    "ia.conseils_titre": "Ce qui donne les meilleurs résultats",
-    "ia.conseil_nette": "Une photo nette et bien éclairée.",
-    "ia.conseil_lieu":
-      "Un seul lieu — un paysage, une rue, une façade —, pas un montage de plusieurs images.",
-    "ia.conseil_cadrage":
-      "Un cadrage large plutôt qu'un gros plan : l'affiche a besoin d'espace.",
     "ia.precision": "Une précision à ajouter ? (facultatif)",
     "ia.precision_exemple":
       "Par exemple : au coucher du soleil, dans des tons chauds…",
@@ -601,20 +594,13 @@ export const ui = {
     "ia.depot": "Drop your photo here, or click to choose one",
     "ia.depot_bouton": "Choose a photo",
     "ia.depot_formats": "JPEG, PNG or WebP",
+    "ia.photo_nette": "Your photo must be sharp and bright.",
     "ia.changer_photo": "Choose another photo",
     "ia.photo_titre": "Your photo",
-    "ia.photo_reduite":
-      "No need to resize it: this is done automatically before upload.",
     "ia.style_titre": "What kind of poster?",
     "ia.style_aide":
       "Choose the style you like: your poster will be created in that spirit.",
     "ia.style_manquant": "First choose a style, above.",
-    "ia.conseils_titre": "What works best",
-    "ia.conseil_nette": "A sharp, well-lit photo.",
-    "ia.conseil_lieu":
-      "One single place — a landscape, a street, a façade — not a montage of several images.",
-    "ia.conseil_cadrage":
-      "A wide shot rather than a close-up: the poster needs room to breathe.",
     "ia.precision": "Anything to add? (optional)",
     "ia.precision_exemple": "For example: at sunset, in warm tones…",
     "ia.generer": "Create my poster",
@@ -1054,20 +1040,13 @@ export const ui = {
     "ia.depot": "Foto hier ablegen oder klicken, um eines auszuwählen",
     "ia.depot_bouton": "Foto auswählen",
     "ia.depot_formats": "JPEG, PNG oder WebP",
+    "ia.photo_nette": "Ihr Foto muss scharf und hell sein.",
     "ia.changer_photo": "Anderes Foto auswählen",
     "ia.photo_titre": "Ihr Foto",
-    "ia.photo_reduite":
-      "Sie müssen es nicht verkleinern: Das geschieht vor dem Hochladen automatisch.",
     "ia.style_titre": "Welche Art von Poster?",
     "ia.style_aide":
       "Wählen Sie den Stil, der Ihnen gefällt: Ihr Poster wird in diesem Sinne gestaltet.",
     "ia.style_manquant": "Wählen Sie zuerst oben einen Stil.",
-    "ia.conseils_titre": "Das funktioniert am besten",
-    "ia.conseil_nette": "Ein scharfes, gut belichtetes Foto.",
-    "ia.conseil_lieu":
-      "Ein einziger Ort – eine Landschaft, eine Straße, eine Fassade – keine Montage aus mehreren Bildern.",
-    "ia.conseil_cadrage":
-      "Lieber eine weite Aufnahme als eine Nahaufnahme: Das Poster braucht Raum.",
     "ia.precision": "Möchten Sie etwas ergänzen? (optional)",
     "ia.precision_exemple":
       "Zum Beispiel: bei Sonnenuntergang, in warmen Farbtönen…",
@@ -1513,20 +1492,13 @@ export const ui = {
     "ia.depot": "Trascina qui la tua foto, oppure clicca per sceglierla",
     "ia.depot_bouton": "Scegli una foto",
     "ia.depot_formats": "JPEG, PNG o WebP",
+    "ia.photo_nette": "La foto deve essere nitida e luminosa.",
     "ia.changer_photo": "Scegli un'altra foto",
     "ia.photo_titre": "La tua foto",
-    "ia.photo_reduite":
-      "Non serve ridurla: lo facciamo automaticamente prima dell'invio.",
     "ia.style_titre": "Che tipo di poster?",
     "ia.style_aide":
       "Scegli lo stile che preferisci: il tuo poster sarà creato in quello spirito.",
     "ia.style_manquant": "Scegli prima uno stile, qui sopra.",
-    "ia.conseils_titre": "Cosa funziona meglio",
-    "ia.conseil_nette": "Una foto nitida e ben illuminata.",
-    "ia.conseil_lieu":
-      "Un solo luogo — un paesaggio, una strada, una facciata —, non un collage di più immagini.",
-    "ia.conseil_cadrage":
-      "Un'inquadratura ampia più che un primo piano: il poster ha bisogno di spazio.",
     "ia.precision": "Vuoi aggiungere qualcosa? (facoltativo)",
     "ia.precision_exemple": "Per esempio: al tramonto, con toni caldi…",
     "ia.generer": "Crea il mio poster",
@@ -1967,20 +1939,13 @@ export const ui = {
     "ia.depot": "Suelta aquí tu foto, o haz clic para elegirla",
     "ia.depot_bouton": "Elegir una foto",
     "ia.depot_formats": "JPEG, PNG o WebP",
+    "ia.photo_nette": "Tu foto debe ser nítida y luminosa.",
     "ia.changer_photo": "Elegir otra foto",
     "ia.photo_titre": "Tu foto",
-    "ia.photo_reduite":
-      "No hace falta reducirla: se hace automáticamente antes del envío.",
     "ia.style_titre": "¿Qué tipo de lámina?",
     "ia.style_aide":
       "Elige el estilo que te guste: tu lámina se creará con ese espíritu.",
     "ia.style_manquant": "Elige primero un estilo, más arriba.",
-    "ia.conseils_titre": "Lo que da mejores resultados",
-    "ia.conseil_nette": "Una foto nítida y bien iluminada.",
-    "ia.conseil_lieu":
-      "Un solo lugar — un paisaje, una calle, una fachada —, no un montaje de varias imágenes.",
-    "ia.conseil_cadrage":
-      "Un encuadre amplio mejor que un primer plano: la lámina necesita espacio.",
     "ia.precision": "¿Quieres añadir algo? (opcional)",
     "ia.precision_exemple": "Por ejemplo: al atardecer, en tonos cálidos…",
     "ia.generer": "Crear mi lámina",

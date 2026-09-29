@@ -722,7 +722,6 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
 
         {/* ---------------------------- Commandes ------------------------ */}
         <div>
-          <p class="text-sm text-ink-soft">{tr("ia.intro")}</p>
 
           {/* 1. Le style, EN PREMIER quand la boutique en propose : c'est lui
               qui fait la première génération, pas seulement les suivantes.
@@ -842,11 +841,10 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                   ? tr("ia.changer_photo")
                   : tr("ia.depot")}
             </span>
-            <span class="text-xs text-ink-soft">{tr("ia.depot_formats")}</span>
             {/* Aucune limite de poids à annoncer : la photo est réduite
                 dans le navigateur avant de partir. « 10 Mo maximum » faisait
                 renoncer à des photos de téléphone parfaitement acceptées. */}
-            <span class="text-xs text-ink-soft">{tr("ia.photo_reduite")}</span>
+            <span class="text-xs text-ink-soft">{tr("ia.depot_formats")}</span>
             <Show when={nomPhoto()}>
               <span class="mt-1 max-w-full truncate text-xs text-ink-soft">
                 {nomPhoto()}
@@ -867,16 +865,13 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
             />
           </Show>
 
-          <div class="mt-4 border border-ink/10 bg-paper-deep/50 p-4">
-            <p class="text-xs font-medium uppercase tracking-[0.08em] text-ink-soft">
-              {tr("ia.conseils_titre")}
-            </p>
-            <ul class="mt-2 space-y-1 text-sm text-ink-soft">
-              <li>{tr("ia.conseil_nette")}</li>
-              <li>{tr("ia.conseil_lieu")}</li>
-              <li>{tr("ia.conseil_cadrage")}</li>
-            </ul>
-          </div>
+          {/* UNE consigne, et qu'on la voie : la boutique a retiré les autres
+              (cadrage, « un seul lieu »…) — elles décourageaient les photos de
+              famille, qui donnent justement de belles affiches. */}
+          <p class="mt-4 flex items-center gap-2 border-l-4 border-terracotta bg-terracotta/5 px-4 py-3 text-sm font-medium text-ink">
+            <span aria-hidden="true">📸</span>
+            {tr("ia.photo_nette")}
+          </p>
 
           <label class="mt-4 block text-sm">
             <span class="font-medium">{tr("ia.precision")}</span>
