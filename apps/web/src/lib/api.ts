@@ -442,6 +442,8 @@ export async function setting(
   try {
     const all = await reglagesDeLaLangue(langue);
     const v = all[key];
+    // Un réglage chiffré (« affichage.colonnes ») peut revenir en nombre.
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
     if (typeof v !== "string") return fallback;
     // Une valeur blanche n'est pas une valeur : elle vaut « rien saisi ».
     return v.trim() ? v : fallback;

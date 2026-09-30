@@ -17,6 +17,9 @@
  */
 import Base from "../../../layouts/Base.astro";
 import { api, assetUrl, formatPrice, type PageCms } from "../../../lib/api.ts";
+import { grilleProduits, styleGrille } from "../../../lib/grille.ts";
+/** Colonnes réglées au back-office (Accueil et pied de page › Affichage des produits). */
+const grille = await grilleProduits();
 import { htmlSur } from "../../../lib/html-sur.ts";
 import {
   estLangue,
@@ -175,7 +178,7 @@ const titreOnglet = page.seoTitle?.trim() || `${page.title} — Memory Line`;
           const produits = Array.isArray(bloc.produits) ? bloc.produits : [];
           if (!produits.length) return null;
           return (
-            <div class="mt-10 grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-4">
+            <div class="ml-grille-produits mt-10 gap-6" style={styleGrille(grille)}>
               {produits.map((p) => (
                 <a
                   href={lien(langue, `/affiches/${p.slug}`)}

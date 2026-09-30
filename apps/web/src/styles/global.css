@@ -783,3 +783,21 @@ body {
 .ml-carte-relais {
   isolation: isolate;
 }
+
+/* ─── Grilles d'affiches (lib/grille.ts) ───────────────────────────────
+   Le nombre de colonnes vient du back-office, par variables CSS : une
+   seule règle pour le catalogue, l'accueil, la recherche et les pages. */
+.ml-grille-produits {
+  display: grid;
+  grid-template-columns: repeat(var(--ml-col-mobile, 2), minmax(0, 1fr));
+}
+@media (min-width: 768px) {
+  .ml-grille-produits {
+    grid-template-columns: repeat(var(--ml-col-tablette, 2), minmax(0, 1fr));
+  }
+}
+@media (min-width: 1024px) {
+  .ml-grille-produits {
+    grid-template-columns: repeat(var(--ml-col-ordi, 3), minmax(0, 1fr));
+  }
+}

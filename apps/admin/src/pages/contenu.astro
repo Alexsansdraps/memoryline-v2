@@ -476,6 +476,51 @@ const global = avancement(champsTraduisibles);
           </div>
         </fieldset>
       ))}
+      {/* Le nombre d'affiches par ligne, pour TOUTES les grilles du site :
+          catalogue, rayons et collections, accueil, recherche, pages. Deux
+          réglages seulement ; la tablette en découle (lib/grille.ts du site). */}
+      <fieldset class="rounded border border-bo-border p-4">
+        <legend class="px-2 font-semibold">Affichage des produits</legend>
+        <p class="mb-3 text-xs text-bo-muted">
+          Le nombre d'affiches par ligne, sur toutes les pages du site. Sur
+          tablette, c'est une de moins que sur ordinateur (trois au plus).
+        </p>
+        <div class="flex flex-wrap gap-6">
+          <label class="block">
+            <span class="mb-1 block font-medium">Sur ordinateur</span>
+            <select
+              name="affichage.colonnes"
+              class="rounded border border-bo-border px-3 py-2"
+            >
+              {[2, 3, 4, 5, 6].map((n) => (
+                <option
+                  value={String(n)}
+                  selected={(valeur("affichage.colonnes") || "3") === String(n)}
+                >
+                  {n} par ligne
+                </option>
+              ))}
+            </select>
+          </label>
+          <label class="block">
+            <span class="mb-1 block font-medium">Sur téléphone</span>
+            <select
+              name="affichage.colonnesMobile"
+              class="rounded border border-bo-border px-3 py-2"
+            >
+              {[1, 2].map((n) => (
+                <option
+                  value={String(n)}
+                  selected={(valeur("affichage.colonnesMobile") || "2") === String(n)}
+                >
+                  {n} par ligne
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </fieldset>
+
       <button class="rounded bg-bo-accent text-white px-4 py-2 hover:opacity-90">
         Enregistrer
       </button>

@@ -14,6 +14,9 @@
 import Base from "../../layouts/Base.astro";
 import VignetteAffiche from "../../components/VignetteAffiche.astro";
 import { api, type Product } from "../../lib/api.ts";
+import { grilleProduits, sizesGrille, styleGrille } from "../../lib/grille.ts";
+/** Colonnes réglées au back-office (Accueil et pied de page › Affichage des produits). */
+const grille = await grilleProduits();
 import {
   estLangue,
   langueDepuisParam,
@@ -194,10 +197,18 @@ const titre = assezLong
         mêmes gouttières. Elle en avait quatre dans 1200 px, et les affiches
         trouvées sortaient plus petites que celles du rayon d'où elles
         venaient. */}
-    <ul class="-mx-2 grid grid-cols-2 gap-x-1 gap-y-5 sm:mx-0 sm:gap-x-2 sm:gap-y-8 lg:grid-cols-3">
+    <ul
+      class="ml-grille-produits -mx-2 gap-x-1 gap-y-5 sm:mx-0 sm:gap-x-2 sm:gap-y-8"
+      style={styleGrille(grille)}
+    >
       {
         resultats.map((p, rang) => (
-          <VignetteAffiche affiche={p} langue={langue} prioritaire={rang < 4} />
+          <VignetteAffiche
+            affiche={p}
+            langue={langue}
+            prioritaire={rang < 4}
+            sizes={sizesGrille(grille)}
+          />
         ))
       }
     </ul>

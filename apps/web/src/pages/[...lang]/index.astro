@@ -1,6 +1,9 @@
 ---
 import Base from "../../layouts/Base.astro";
 import VignetteAffiche from "../../components/VignetteAffiche.astro";
+import { grilleProduits, sizesGrille, styleGrille } from "../../lib/grille.ts";
+/** Colonnes réglées au back-office (Accueil et pied de page › Affichage des produits). */
+const grille = await grilleProduits();
 import Newsletter from "../../islands/Newsletter.tsx";
 import {
   api,
@@ -272,13 +275,16 @@ const lettreTitre = await texte(
             résolution. Les colonnes, elles, restent celles de l'accueil — la
             page est pleine largeur —, d'où un `sizes` écrit ici, calculé sur
             ces colonnes et ces marges. */}
-        <ul class="-mx-2 grid grid-cols-2 gap-x-1 gap-y-5 sm:mx-0 sm:gap-x-2 sm:gap-y-8 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+        <ul
+          class="ml-grille-produits -mx-2 gap-x-1 gap-y-5 sm:mx-0 sm:gap-x-2 sm:gap-y-8"
+          style={styleGrille(grille)}
+        >
           {vitrine.map((p, rang) => (
             <VignetteAffiche
               affiche={p}
               langue={langue}
               prioritaire={rang < 4}
-              sizes="(min-width: 1536px) calc((100vw - 128px) / 5), (min-width: 1280px) calc((100vw - 120px) / 4), (min-width: 1024px) calc((100vw - 112px) / 3), (min-width: 640px) calc((100vw - 56px) / 2), calc((100vw - 20px) / 2)"
+              sizes={sizesGrille(grille)}
             />
           ))}
         </ul>

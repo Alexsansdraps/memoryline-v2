@@ -166,7 +166,13 @@ const breadcrumbLd = {
 
       `self-start` enfin, avec `h-auto` sur l'image : le cadre prenait la
       hauteur de la colonne de texte, et `object-cover` ROGNAIT l'affiche pour
-      la remplir. On perdait un morceau du dessin sans que rien ne le signale. */}
+      la remplir. On perdait un morceau du dessin sans que rien ne le signale.
+
+      Sur tablette et ordinateur, l'image est bornée à la HAUTEUR de l'écran
+      (retour de la boutique : « les photos s'affichent en trop gros ») : pleine
+      largeur, une affiche en hauteur faisait 1 300 px et il fallait défiler
+      pour la voir entière. Largeur automatique, donc jamais rognée ni
+      déformée ; le fond de la carte comble les côtés. */}
   <article class="mx-auto grid max-w-[1500px] gap-8 px-4 py-6 sm:px-6 md:grid-cols-[1.7fr_1fr]">
     <div class="self-start overflow-hidden rounded-2xl border border-ink/10 bg-paper-deep">
       {
@@ -178,7 +184,7 @@ const breadcrumbLd = {
             alt={cleanName}
             width="1020"
             height="1400"
-            class="h-auto w-full"
+            class="h-auto w-full md:mx-auto md:max-h-[calc(100svh-9rem)] md:w-auto md:max-w-full"
           />
         ) : (
           <div class="aspect-[3/4]">

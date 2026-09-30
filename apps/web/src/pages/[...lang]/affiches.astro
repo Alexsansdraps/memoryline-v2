@@ -2,6 +2,9 @@
 import Base from "../../layouts/Base.astro";
 import VignetteAffiche from "../../components/VignetteAffiche.astro";
 import { api, type Collection, type Product } from "../../lib/api.ts";
+import { grilleProduits, sizesGrille, styleGrille } from "../../lib/grille.ts";
+/** Colonnes réglées au back-office (Accueil et pied de page › Affichage des produits). */
+const grille = await grilleProduits();
 import {
   estLangue,
   langueDepuisParam,
@@ -359,10 +362,18 @@ const libelleTri: Record<string, string> = {
         le titre. La vitrine de l'accueil et les résultats de recherche
         reprennent ces mêmes réglages — et si on les change ici, `sizes`
         dans VignetteAffiche.astro doit suivre. */}
-    <ul class="-mx-2 grid grid-cols-2 gap-x-1 gap-y-5 sm:mx-0 sm:gap-x-2 sm:gap-y-8 lg:grid-cols-3">
+    <ul
+      class="ml-grille-produits -mx-2 gap-x-1 gap-y-5 sm:mx-0 sm:gap-x-2 sm:gap-y-8"
+      style={styleGrille(grille)}
+    >
       {
         products.map((p, rang) => (
-          <VignetteAffiche affiche={p} langue={langue} prioritaire={rang < 4} />
+          <VignetteAffiche
+            affiche={p}
+            langue={langue}
+            prioritaire={rang < 4}
+            sizes={sizesGrille(grille)}
+          />
         ))
       }
     </ul>
