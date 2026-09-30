@@ -28,6 +28,7 @@
  */
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { asc, eq } from "drizzle-orm";
@@ -64,11 +65,40 @@ const DOSSIER_IMPRESSIONS = resolve(DOSSIER_CACHE, "impressions");
 const JOURS_DE_GARDE = 60;
 
 /**
- * Change à chaque lancement de l'API. Un correctif du rendu arrive toujours
- * par une mise à jour, donc par un lancement : aucun fichier calculé par
- * l'ancien code ne peut être resservi, sans que personne ait à y penser.
+ * L'empreinte du CODE qui dessine les affiches.
+ *
+ * Elle changeait à chaque lancement de l'API (`Date.now()`) : un correctif du
+ * rendu ne pouvait pas être oublié, mais chaque redémarrage — chaque mise en
+ * ligne, chaque reboot du serveur — jetait TOUS les fichiers déjà prêts, et le
+ * premier « Télécharger » de chaque affiche reprenait jusqu'à une minute.
+ *
+ * Elle porte désormais le CONTENU des fichiers qui dessinent : le moteur
+ * (pdf.ts), ce module, la recoloration, et les règles communes du paquet
+ * types (empilement, formats, polices, couleurs…). Un correctif du rendu
+ * change l'un d'eux, donc l'empreinte, donc les fichiers sont refaits ; une
+ * mise en ligne qui ne touche pas au rendu les garde. Si un fichier ne se lit
+ * pas, on retombe sur l'ancienne règle, prudente.
  */
-const LANCEMENT = String(Date.now());
+const LANCEMENT = (() => {
+  try {
+    const ici = fileURLToPath(new URL(".", import.meta.url));
+    const types = resolve(ici, "../../../packages/types/src");
+    const fichiers = [
+      resolve(ici, "pdf.ts"),
+      resolve(ici, "fichiers-impression.ts"),
+      resolve(ici, "couleurs-image-fichier.ts"),
+      ...readdirSync(types)
+        .filter((n) => n.endsWith(".ts"))
+        .sort()
+        .map((n) => resolve(types, n)),
+    ];
+    const h = createHash("sha1");
+    for (const f of fichiers) h.update(readFileSync(f));
+    return `code-${h.digest("hex").slice(0, 16)}`;
+  } catch {
+    return String(Date.now());
+  }
+})();
 
 /** Charge les données nécessaires au rendu PDF d'un snapshot. */
 export async function donneesDImpression(): Promise<ResolveData> {
