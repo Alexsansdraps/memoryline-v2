@@ -36,6 +36,7 @@ export const LOCALE_COMPLETE: Record<Langue, string> = {
 export const ui = {
   fr: {
     "nav.accueil": "Memory Line — accueil",
+    "nav.menu": "Menu",
     "nav.affiches": "Affiches",
     "nav.personnalisables": "Affiches personnalisables",
     "nav.tout_voir": "Tout voir",
@@ -513,6 +514,7 @@ export const ui = {
 
   en: {
     "nav.accueil": "Memory Line — home",
+    "nav.menu": "Menu",
     "nav.affiches": "Posters",
     "nav.personnalisables": "Customisable posters",
     "nav.tout_voir": "See all",
@@ -964,6 +966,7 @@ export const ui = {
 
   de: {
     "nav.accueil": "Memory Line — Startseite",
+    "nav.menu": "Menü",
     "nav.affiches": "Poster",
     "nav.personnalisables": "Personalisierbare Poster",
     "nav.tout_voir": "Alle ansehen",
@@ -1422,6 +1425,7 @@ export const ui = {
 
   it: {
     "nav.accueil": "Memory Line — home",
+    "nav.menu": "Menu",
     "nav.affiches": "Poster",
     "nav.personnalisables": "Poster personalizzabili",
     "nav.tout_voir": "Vedi tutto",
@@ -1875,6 +1879,7 @@ export const ui = {
 
   es: {
     "nav.accueil": "Memory Line — inicio",
+    "nav.menu": "Menú",
     "nav.affiches": "Láminas",
     "nav.personnalisables": "Láminas personalizables",
     "nav.tout_voir": "Ver todo",

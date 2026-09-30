@@ -351,12 +351,119 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
         1024 px au lieu de 1290.
       */}
       <div
-        class="flex w-full items-center gap-4 px-4 py-4 sm:gap-6 sm:px-6 lg:px-10"
+        class="flex w-full items-center gap-4 px-4 py-4 max-[359px]:gap-3 sm:gap-6 sm:px-6 lg:px-10"
       >
         {/* Le logo et le menu, à leur largeur naturelle. `shrink-0` est ce
             qui empêche les libellés de se couper : sans lui, le navigateur
             comprime ce groupe dès que la rangée est chargée. */}
-        <div class="mr-auto flex min-w-0 items-center gap-3 sm:gap-5 lg:shrink-0 lg:gap-6">
+        <div class="mr-auto flex min-w-0 items-center gap-3 max-[359px]:gap-2 sm:gap-5 lg:shrink-0 lg:gap-6">
+          {/* LE MENU SUR TÉLÉPHONE.
+
+              Sous 768 px, la barre de menu est masquée (`hidden md:flex`,
+              plus bas) : il n'y avait RIEN à sa place, et un visiteur sur
+              téléphone ne pouvait atteindre ni les rayons, ni les
+              collections, ni les pages — retour de la boutique.
+
+              Le bouton ☰ ouvre un panneau sous la barre, avec les MÊMES
+              entrées que le menu de bureau (celles du back-office) ; une
+              entrée à sous-liens se déplie sur place. Des <details> natifs,
+              comme le menu de bureau : il s'ouvre même sans JavaScript, et le
+              script plus bas ajoute la fermeture au clic ailleurs et à Échap.
+              Le panneau se positionne sur l'en-tête, qui est `sticky`.
+
+              Sous 360 px (les plus petits téléphones), le ☰ en plus ne
+              laissait plus d'espace entre le logo et la loupe : le logo
+              passe de 48 à 40 px de haut et les espacements se resserrent
+              (les `max-[359px]:` de cette rangée), rien qu'à cette taille. */}
+          <details class="ml-menu-mobile md:hidden">
+            <summary
+              class="-ml-2 flex h-10 w-10 cursor-pointer list-none items-center justify-center hover:text-terracotta transition-colors"
+              aria-label={tr("nav.menu")}
+            >
+              <svg
+                class="ml-burger-ouvrir"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <path d="M4 7h16M4 12h16M4 17h16" />
+              </svg>
+              <svg
+                class="ml-burger-fermer"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <path d="M6 6l12 12M18 6 6 18" />
+              </svg>
+            </summary>
+            <nav
+              aria-label={tr("nav.menu")}
+              class="absolute left-0 right-0 top-full z-30 max-h-[calc(100svh-6rem)] overflow-y-auto border-b border-ink/10 bg-paper px-4 pb-6 shadow-lg sm:px-6"
+            >
+              <ul class="divide-y divide-ink/10">
+                {entreesMenu.map((entree) =>
+                  entree.enfants.length === 0 ? (
+                    <li>
+                      <a
+                        href={adresseMenu(entree.href)}
+                        class="block py-3.5 text-base font-semibold hover:text-terracotta transition-colors"
+                      >
+                        {entree.label}
+                      </a>
+                    </li>
+                  ) : (
+                    <li>
+                      <details class="ml-menu-mobile-groupe">
+                        <summary class="flex cursor-pointer list-none items-center justify-between py-3.5 text-base font-semibold hover:text-terracotta transition-colors">
+                          {entree.label}
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 12 12"
+                            aria-hidden="true"
+                            class="ml-menu-fleche transition-transform"
+                          >
+                            <path
+                              d="M2 4.5 6 8.5 10 4.5"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="1.6"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                            />
+                          </svg>
+                        </summary>
+                        <ul class="pb-3 pl-3">
+                          {entree.enfants.map((enfant) => (
+                            <li>
+                              <a
+                                href={adresseMenu(enfant.href)}
+                                class="block py-2.5 text-[15px] text-ink-soft hover:text-terracotta transition-colors"
+                              >
+                                {enfant.label}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    </li>
+                  ),
+                )}
+              </ul>
+            </nav>
+          </details>
+
           <a
             href={lien(langue, "/")}
             class="inline-flex shrink-0 items-center"
@@ -367,7 +474,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
               alt="Memory Line"
               width="500"
               height="222"
-              class="h-12 w-auto"
+              class="h-12 w-auto max-[359px]:h-10"
             />
           </a>
 
@@ -484,7 +591,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
         </div>
 
         {/* Les icônes, à la suite du champ, contre le bord droit. */}
-        <div class="flex shrink-0 items-center justify-end gap-3 text-sm sm:gap-4">
+        <div class="flex shrink-0 items-center justify-end gap-3 text-sm max-[359px]:gap-2 sm:gap-4">
           <a
             href={lien(langue, "/recherche")}
             class="inline-flex items-center hover:text-terracotta transition-colors lg:hidden"
@@ -628,7 +735,60 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
       .ml-menu[open] .ml-menu-fleche {
         transform: rotate(180deg);
       }
+      /* Le menu du téléphone : ☰ fermé, ✕ ouvert ; ses groupes se déplient. */
+      .ml-menu-mobile > summary::-webkit-details-marker,
+      .ml-menu-mobile-groupe > summary::-webkit-details-marker {
+        display: none;
+      }
+      .ml-menu-mobile[open] .ml-burger-ouvrir,
+      .ml-menu-mobile:not([open]) .ml-burger-fermer {
+        display: none;
+      }
+      .ml-menu-mobile-groupe[open] .ml-menu-fleche {
+        transform: rotate(180deg);
+      }
     </style>
+
+    <script is:inline>
+      // Le menu du téléphone se referme quand on touche ailleurs ou qu'on
+      // appuie sur Échap — comme celui du bureau. Un toucher DANS le panneau
+      // (ouvrir un groupe) le laisse ouvert.
+      (function () {
+        var menu = document.querySelector("details.ml-menu-mobile");
+        if (!menu) return;
+        function fermer() {
+          menu.removeAttribute("open");
+          menu.querySelectorAll("details[open]").forEach(function (d) {
+            d.removeAttribute("open");
+          });
+        }
+        document.addEventListener("click", function (e) {
+          if (!menu.open || !(e.target instanceof Element)) return;
+          // Ailleurs, ou sur un LIEN du panneau : on s'en va, le menu se
+          // ferme (sinon le retour arrière le retrouverait ouvert).
+          if (!menu.contains(e.target) || e.target.closest("nav a")) fermer();
+        });
+        // Au clavier, quitter le panneau le ferme : resté ouvert, il cachait
+        // les champs qui recevaient le focus ensuite (WCAG 2.4.11). Un focus
+        // qui ne va nulle part (toucher sur le fond du panneau) ne compte pas.
+        menu.addEventListener("focusout", function (e) {
+          if (menu.open && e.relatedTarget instanceof Node && !menu.contains(e.relatedTarget))
+            fermer();
+        });
+        document.addEventListener("keydown", function (e) {
+          if (e.key !== "Escape" || !menu.open) return;
+          // Le focus ne revient sur ☰ que s'il était DANS le menu : Échap
+          // tapé dans un champ de la page ne doit pas l'y arracher.
+          var dedans = menu.contains(document.activeElement);
+          fermer();
+          var bouton = menu.querySelector("summary");
+          if (dedans && bouton) bouton.focus();
+        });
+        // Le navigateur garde la page telle quelle pour le retour arrière :
+        // on la range menu fermé.
+        window.addEventListener("pagehide", fermer);
+      })();
+    </script>
 
     <script is:inline>
       // Un menu ouvert doit se fermer quand on clique ailleurs ou qu'on appuie

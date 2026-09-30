@@ -330,6 +330,12 @@ export function PosterPreview(props: {
       }
       style={{
         position: "relative",
+        // Les calques de l'aperçu (personnages z 10+, texte z 200, filigrane
+        // z 300) restent ENTRE EUX : sans cette isolation ils remontaient au
+        // niveau de la page, et passaient par-dessus l'en-tête collant et
+        // le menu du téléphone sur le panier et la commande. L'ordre des
+        // calques à l'intérieur de l'affiche ne change pas.
+        isolation: "isolate",
         width: "100%",
         "aspect-ratio": aspectFor(props.state.format),
         background: "#f3f4f6",
