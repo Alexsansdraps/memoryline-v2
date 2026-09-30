@@ -734,6 +734,11 @@ export function getCartId(): string {
  * Au stand, chaque client a sa commande : la vendeuse enchaîne, et le panier
  * du client servi ne doit rien laisser au suivant (CommandeStand.tsx).
  */
+/** Rend à la tablette le panier d'une vente rouverte (voir ConfirmationStand). */
+export function reprendreCartId(id: string): void {
+  localStorage.setItem(CART_ID_KEY, id);
+}
+
 export function nouveauCartId(): string {
   const id = crypto.randomUUID();
   localStorage.setItem(CART_ID_KEY, id);
@@ -816,6 +821,9 @@ export const salonApi = {
     code: string | null,
     corps: { cartId: string; name: string; email: string },
   ) => salonFetch<CommandeSalon>("/salon/commandes", code, corps),
+  /** Rouvre une vente tout juste validée : elle redevient le panier de la tablette. */
+  rouvrir: (code: string | null, corps: { cartId: string; numero: string }) =>
+    salonFetch<{ ok: true }>("/salon/commandes/rouvrir", code, corps),
 };
 
 /** "2300" centimes -> "23 €" (format FR). */

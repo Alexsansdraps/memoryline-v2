@@ -117,6 +117,99 @@ export function mountSalonRoutes(app: Hono): void {
    * a vendu, même si l'écran ne l'a jamais montré au client. Ce qui change,
    * c'est uniquement ce qu'on AFFICHE.
    */
+  /**
+   * ROUVRIR une vente tout juste validée, pour la corriger.
+   *
+   * Retour de la boutique : un client voit son erreur APRÈS avoir validé, et
+   * la tablette, repartie sur un panier neuf, ne permettait plus d'y revenir.
+   * La vente redevient un panier : son encaissement au grand livre passe en
+   * « annule » (il sort des finances, qui ne comptent que les écritures
+   * réussies), elle garde son numéro — la revalidation le reprend, sans trou
+   * ni doublon —, et le journal de la commande raconte ce qui s'est passé.
+   *
+   * Garde-fous : seule la tablette qui l'a validée (même panier), au même
+   * stand, dans les deux heures, et tant que l'affiche n'a été ni remise ni
+   * remboursée. Au-delà, c'est une correction de back-office, pas de stand.
+   */
+  app.post("/salon/commandes/rouvrir", async (c) => {
+    const stand = await standDuCode(codeFourni(c));
+    if (!stand) return c.json({ error: "Code du stand incorrect." }, 403);
+    const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const cartId = String(body.cartId ?? "");
+    const numero = String(body.numero ?? "");
+    if (!cartId || !numero) return c.json({ error: "Commande introuvable." }, 404);
+
+    const resultat = await db.transaction(async (tx) => {
+      const [commande] = await tx
+        .select()
+        .from(schema.orders)
+        .where(
+          and(
+            eq(schema.orders.clientOrderId, cartId),
+            eq(schema.orders.number, numero),
+            eq(schema.orders.standId, stand.id),
+          ),
+        )
+        .for("no key update");
+      if (!commande) return { erreur: "Commande introuvable.", statut: 404 as const };
+      if (commande.status === "draft") return { ok: true as const };
+      if (commande.status !== "paid" || commande.cancelledAt)
+        return { erreur: "Cette commande ne peut plus être modifiée ici.", statut: 409 as const };
+
+      const [remise] = await tx
+        .select({ id: schema.fulfillments.id })
+        .from(schema.fulfillments)
+        .where(
+          and(
+            eq(schema.fulfillments.orderId, commande.id),
+            eq(schema.fulfillments.status, "success"),
+          ),
+        )
+        .limit(1);
+      if (remise)
+        return { erreur: "L'affiche a déjà été remise : corrigez la commande au back-office.", statut: 409 as const };
+
+      const ecritures = await tx
+        .select()
+        .from(schema.orderTransactions)
+        .where(
+          and(
+            eq(schema.orderTransactions.orderId, commande.id),
+            eq(schema.orderTransactions.status, "success"),
+          ),
+        );
+      if (ecritures.some((e) => e.kind === "refund"))
+        return { erreur: "Cette commande a été remboursée : corrigez-la au back-office.", statut: 409 as const };
+      const vente = ecritures.find((e) => e.kind === "sale" && e.gateway === "stand");
+      if (vente && Date.now() - vente.createdAt.getTime() > 2 * 3600_000)
+        return { erreur: "Validée il y a plus de deux heures : corrigez-la au back-office.", statut: 409 as const };
+
+      await tx
+        .update(schema.orderTransactions)
+        .set({ status: "annule" })
+        .where(
+          and(
+            eq(schema.orderTransactions.orderId, commande.id),
+            eq(schema.orderTransactions.kind, "sale"),
+            eq(schema.orderTransactions.gateway, "stand"),
+            eq(schema.orderTransactions.status, "success"),
+          ),
+        );
+      await tx
+        .update(schema.orders)
+        .set({ status: "draft", lastActivityAt: new Date() })
+        .where(eq(schema.orders.id, commande.id));
+      await tx.insert(schema.orderEvents).values({
+        orderId: commande.id,
+        kind: "event",
+        message: "Commande rouverte au stand pour être corrigée (encaissement annulé).",
+      });
+      return { ok: true as const };
+    });
+    if ("erreur" in resultat) return c.json({ error: resultat.erreur }, resultat.statut);
+    return c.json({ ok: true });
+  });
+
   app.post("/salon/commandes", async (c) => {
     const stand = await standDuCode(codeFourni(c));
     if (!stand) return c.json({ error: "Code du stand incorrect." }, 403);
@@ -195,7 +288,8 @@ export function mountSalonRoutes(app: Hono): void {
         .set({
           channel: "salon",
           standId: stand.id,
-          number: numero,
+          // Une vente rouverte puis revalidée garde SON numéro : pas de trou.
+          number: /^SAL-\d+$/.test(verrouille.number) ? verrouille.number : numero,
           // Payée d'emblée : au stand, le client règle avant de partir avec
           // son affiche, ou il ne commande pas. Un état « en attente »
           // obligeait à se souvenir de cocher chaque vente du samedi, et

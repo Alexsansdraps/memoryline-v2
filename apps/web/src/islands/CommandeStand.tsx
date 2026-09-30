@@ -1,7 +1,13 @@
 /// <reference lib="dom" />
-import { createSignal, onMount, Show, type JSX } from "solid-js";
+import { createSignal, onCleanup, onMount, Show, type JSX } from "solid-js";
 import { lien, t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
-import { ErreurSalon, getCartId, nouveauCartId, salonApi } from "../lib/api.ts";
+import {
+  ErreurSalon,
+  getCartId,
+  nouveauCartId,
+  reprendreCartId,
+  salonApi,
+} from "../lib/api.ts";
 import { codeMemorise, oublierCode, retenirCode } from "../lib/code-stand.ts";
 
 /**
@@ -35,6 +41,10 @@ const COURRIEL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export interface VenteStand {
   numero: string;
   email: string;
+  /** Le panier de la vente, pour pouvoir la ROUVRIR (« Revenir à ma commande »). */
+  cartId: string;
+  /** Le code du stand qui l'a validée. */
+  code: string | null;
 }
 
 /** Des champs larges et hauts : on les touche du doigt, sur une tablette. */
@@ -173,15 +183,22 @@ export default function CommandeStand(props: {
 
     setEnvoi(true);
     try {
+      const panierServi = getCartId();
       const commande = await salonApi.commander(valable, {
-        cartId: getCartId(),
+        cartId: panierServi,
         name: n,
         email: m,
       });
       // Le panier servi est clos : la tablette repart d'un panier neuf tout de
-      // suite, même si personne ne touche « Client suivant ».
+      // suite, même si personne ne touche « Client suivant ». On retient
+      // l'ancien : « Revenir à ma commande » le rouvre.
       nouveauCartId();
-      props.onEnregistree({ numero: commande.number, email: m });
+      props.onEnregistree({
+        numero: commande.number,
+        email: m,
+        cartId: panierServi,
+        code: valable,
+      });
     } catch (err) {
       if (err instanceof ErreurSalon && err.statut === 403) {
         // Stand refermé ou code changé en plein salon : le panier, le nom et
@@ -354,8 +371,48 @@ export function ConfirmationStand(props: {
 }): JSX.Element {
   const langue = props.langue ?? LANGUE_DEFAUT;
   const tr = t(langue);
+  const [retour, setRetour] = createSignal<"repos" | "encours" | "erreur">("repos");
+  const [raison, setRaison] = createSignal("");
+
+  /*
+   * « Revenir à ma commande » — le bouton, ET la flèche retour de la
+   * tablette. Le client voit une erreur après avoir validé : la vente est
+   * rouverte côté serveur (salon.ts, /salon/commandes/rouvrir), son panier
+   * rendu à la tablette, et la page se recharge dessus, prête à corriger.
+   */
+  async function revenir() {
+    if (retour() === "encours") return;
+    setRetour("encours");
+    try {
+      await salonApi.rouvrir(props.vente.code ?? codeMemorise(), {
+        cartId: props.vente.cartId,
+        numero: props.vente.numero,
+      });
+      reprendreCartId(props.vente.cartId);
+      window.dispatchEvent(new Event("ml:panier"));
+      window.location.reload();
+    } catch (e) {
+      setRaison(e instanceof ErreurSalon && e.message ? e.message : "");
+      setRetour("erreur");
+      // La flèche retour a déjà consommé l'entrée d'historique : on la
+      // remet, pour qu'un second appui retente.
+      history.pushState({ mlVenteStand: true }, "");
+    }
+  }
+
+  onMount(() => {
+    // Une entrée d'historique à nous : la flèche retour de la tablette
+    // revient à la commande au lieu de quitter la page sur un panier vide.
+    history.pushState({ mlVenteStand: true }, "");
+    const surRetour = () => void revenir();
+    window.addEventListener("popstate", surRetour);
+    onCleanup(() => window.removeEventListener("popstate", surRetour));
+  });
+
   return (
     <div class="mx-auto mt-6 max-w-2xl border border-ink/15 bg-paper-deep px-6 py-10 text-center sm:px-10">
+      {/* Le message que la boutique a demandé : le client sait qu'il a fini,
+          et à qui s'adresser. Plus de « nous vous écrirons à… ». */}
       <p class="text-2xl sm:text-3xl">{tr("stand.merci")}</p>
       <p class="mt-8 text-sm uppercase tracking-[0.08em] text-ink-soft">
         {tr("stand.numero")}
@@ -363,12 +420,20 @@ export function ConfirmationStand(props: {
       <p class="mt-1 text-5xl font-medium tabular-nums sm:text-6xl">
         {props.vente.numero}
       </p>
-      <p class="mt-8 text-lg text-ink-soft">
-        {tr("stand.prevenu").replace("{email}", props.vente.email)}
-      </p>
+      <Show when={retour() === "erreur"}>
+        <p class="mt-6 text-terracotta-deep">{raison() || tr("stand.revenir_erreur")}</p>
+      </Show>
+      <button
+        type="button"
+        onClick={() => void revenir()}
+        disabled={retour() === "encours"}
+        class="mt-10 inline-flex items-center justify-center border-2 border-ink px-10 py-4 text-lg font-medium transition-colors hover:bg-ink hover:text-paper disabled:opacity-50"
+      >
+        ← {tr("stand.revenir")}
+      </button>
       <a
         href={`${lien(langue, "/affiches")}?stand=1`}
-        class={`${PRINCIPAL} mt-10 px-10`}
+        class={`${PRINCIPAL} mt-4 flex px-10 sm:mx-auto sm:max-w-xs`}
         onClick={() => {
           // Le panier a déjà été remis à neuf à l'enregistrement. On le refait
           // ici au cas où une affiche y serait entrée depuis — un retour

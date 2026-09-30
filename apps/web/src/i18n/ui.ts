@@ -330,7 +330,10 @@ export const ui = {
     "stand.sans_paiement":
       "Aucun paiement en ligne : le règlement se fait directement sur le stand.",
     "stand.erreur": "La commande n'a pas pu être enregistrée. Réessayez.",
-    "stand.merci": "Merci, votre commande est enregistrée",
+    "stand.merci":
+      "Votre commande est validée, vous pouvez maintenant vous adresser au vendeur",
+    "stand.revenir": "Revenir à ma commande",
+    "stand.revenir_erreur": "La commande n'a pas pu être rouverte. Adressez-vous au vendeur.",
     "stand.numero": "Numéro de commande",
     "stand.prevenu":
       "Nous vous écrirons à {email} dès que votre commande sera prête.",
@@ -785,7 +788,9 @@ export const ui = {
     "stand.sans_paiement":
       "No online payment: you pay directly at the stand.",
     "stand.erreur": "The order could not be saved. Please try again.",
-    "stand.merci": "Thank you, your order is saved",
+    "stand.merci": "Your order is confirmed, you can now go to the seller",
+    "stand.revenir": "Back to my order",
+    "stand.revenir_erreur": "The order could not be reopened. Please ask the seller.",
     "stand.numero": "Order number",
     "stand.prevenu":
       "We will write to {email} as soon as your order is ready.",
@@ -1238,7 +1243,9 @@ export const ui = {
       "Keine Online-Zahlung: Sie bezahlen direkt am Stand.",
     "stand.erreur":
       "Die Bestellung konnte nicht gespeichert werden. Bitte erneut versuchen.",
-    "stand.merci": "Danke, Ihre Bestellung ist gespeichert",
+    "stand.merci": "Ihre Bestellung ist bestätigt, Sie können sich jetzt an den Verkäufer wenden",
+    "stand.revenir": "Zurück zu meiner Bestellung",
+    "stand.revenir_erreur": "Die Bestellung konnte nicht wieder geöffnet werden. Bitte wenden Sie sich an den Verkäufer.",
     "stand.numero": "Bestellnummer",
     "stand.prevenu":
       "Wir schreiben Ihnen an {email}, sobald Ihre Bestellung fertig ist.",
@@ -1691,7 +1698,9 @@ export const ui = {
     "stand.sans_paiement":
       "Nessun pagamento online: paghi direttamente allo stand.",
     "stand.erreur": "Non è stato possibile salvare l'ordine. Riprova.",
-    "stand.merci": "Grazie, il tuo ordine è registrato",
+    "stand.merci": "Il tuo ordine è confermato, ora puoi rivolgerti al venditore",
+    "stand.revenir": "Torna al mio ordine",
+    "stand.revenir_erreur": "Non è stato possibile riaprire l'ordine. Rivolgiti al venditore.",
     "stand.numero": "Numero d'ordine",
     "stand.prevenu":
       "Ti scriveremo a {email} non appena il tuo ordine sarà pronto.",
@@ -2142,7 +2151,9 @@ export const ui = {
     "stand.sans_paiement":
       "Sin pago en línea: pagas directamente en el puesto.",
     "stand.erreur": "No se ha podido registrar el pedido. Vuelve a intentarlo.",
-    "stand.merci": "Gracias, tu pedido está registrado",
+    "stand.merci": "Tu pedido está validado, ahora puedes dirigirte al vendedor",
+    "stand.revenir": "Volver a mi pedido",
+    "stand.revenir_erreur": "No se ha podido reabrir el pedido. Dirígete al vendedor.",
     "stand.numero": "Número de pedido",
     "stand.prevenu":
       "Te escribiremos a {email} en cuanto tu pedido esté listo.",
