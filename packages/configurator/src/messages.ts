@@ -58,7 +58,7 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   couleurTexte: "Couleur du texte",
   choisirFond: "Choisir un fond",
   personnages: "Personnages",
-  nouveauPersonnage: "+ Nouveau personnage",
+  nouveauPersonnage: "+ Ajouter un personnage",
   modifier: "Modifier",
   retirer: "Retirer",
   monter: "Monter",

@@ -16,7 +16,7 @@ import type {
 /**
  * Étape 2 : gestion des personnages.
  * - liste des personnages ajoutés (Modifier / supprimer / réordonner),
- *   bouton « + Nouveau personnage ».
+ *   bouton « + Ajouter un personnage ».
  * - clic Modifier / Nouveau -> éditeur de personnage (CharacterEditor).
  */
 export function StepCharacters(props: {
