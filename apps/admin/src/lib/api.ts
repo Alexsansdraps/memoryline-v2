@@ -670,6 +670,10 @@ export interface OrderRow {
   fulfilledAt?: string | null;
   /** Nombre d'articles, quantités comprises. */
   articles?: number;
+  /** Aperçus des premières affiches (3 au plus), adresses relatives à l'API, signées. */
+  apercus?: string[];
+  /** Nombre d'affiches différentes (lignes de commande). */
+  lignes?: number;
   /** Quantités déjà parties. */
   expedies?: number;
   rembourseCents?: number;

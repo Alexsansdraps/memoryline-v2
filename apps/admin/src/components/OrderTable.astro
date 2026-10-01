@@ -501,6 +501,33 @@ const filtreActif =
                 </form>
               </td>
               <td class="px-4 py-2 whitespace-nowrap align-top text-bo-muted">
+                {/* Les affiches elles-mêmes, en vignettes, comme dans le
+                    panier (demande de la boutique). Rendues par le moteur du
+                    fichier d'impression ; chargées au fil du défilement. Une
+                    ligne sans aperçu possible (commande importée) disparaît
+                    au lieu de laisser une image cassée. */}
+                {(o.apercus?.length ?? 0) > 0 && (
+                  <a
+                    href={url(`/commandes/${o.id}`)}
+                    class="mb-1 flex items-center gap-1"
+                    title="Ouvrir la commande"
+                  >
+                    {o.apercus!.map((a) => (
+                      <img
+                        src={apiUrl(a)}
+                        alt=""
+                        loading="lazy"
+                        width="34"
+                        height="48"
+                        class="h-12 w-[34px] rounded-sm border border-bo-border bg-bo-bg object-cover"
+                        onerror="this.remove()"
+                      />
+                    ))}
+                    {(o.lignes ?? 0) > o.apercus!.length && (
+                      <span class="text-xs">+{(o.lignes ?? 0) - o.apercus!.length}</span>
+                    )}
+                  </a>
+                )}
                 {o.articles ?? 0} article{(o.articles ?? 0) > 1 ? "s" : ""}
                 {(o.expedies ?? 0) > 0 && (o.expedies ?? 0) < (o.articles ?? 0) && (
                   <span class="text-xs"> · {o.expedies} parti(s)</span>

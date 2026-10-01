@@ -14,6 +14,7 @@ import type { Context, Hono } from "hono";
 import type { SQL } from "drizzle-orm";
 import {
   and,
+  asc,
   desc,
   eq,
   gte,
@@ -541,10 +542,31 @@ export function mountOrderRoutes(app: Hono): void {
       .limit(limit);
 
     const resume = await resumeCommandes(rows.map((r) => r.id));
+    // Les aperçus des premières affiches de chaque commande, pour la liste
+    // (demande de la boutique : voir les affiches sans ouvrir la commande,
+    // comme dans le panier). Trois au plus ; le reste se dit « +N ».
+    const lignesApercu = rows.length
+      ? await db
+          .select({ id: schema.orderItems.id, orderId: schema.orderItems.orderId })
+          .from(schema.orderItems)
+          .where(inArray(schema.orderItems.orderId, rows.map((r) => r.id)))
+          .orderBy(asc(schema.orderItems.id))
+      : [];
+    const apercusParCommande = new Map<number, string[]>();
+    const lignesParCommande = new Map<number, number>();
+    for (const l of lignesApercu) {
+      const liste = apercusParCommande.get(l.orderId) ?? [];
+      if (liste.length < 3) liste.push(cheminApercu(l.id));
+      lignesParCommande.set(l.orderId, (lignesParCommande.get(l.orderId) ?? 0) + 1);
+      apercusParCommande.set(l.orderId, liste);
+    }
     let enrichies = rows.map((r) => {
       const s = resume.get(r.id)!;
       return {
         ...r,
+        apercus: apercusParCommande.get(r.id) ?? [],
+        /** Nombre d'affiches DIFFÉRENTES (lignes), pour le « +N » des vignettes. */
+        lignes: lignesParCommande.get(r.id) ?? 0,
         articles: s.articles,
         expedies: s.expedies,
         rembourseCents: s.rembourseCents,
