@@ -39,13 +39,23 @@ const BASE = (
 export const PREFIXE_SENDCLOUD = "sendcloud:";
 
 /**
- * Les transporteurs dont on cherche les points chez SendCloud, sous le code
- * que SendCloud leur donne. Mondial Relay seulement, pour l'instant : c'est
- * le seul mode relais que la boutique vend par SendCloud, et Colissimo garde
- * son propre service (`colissimo.ts`).
+ * Nos codes de transporteur → ceux de SendCloud, pour ses points relais comme
+ * pour ses bordereaux (`sendcloud-colis.ts` lit la même table).
+ *
+ * Le compte SendCloud de la boutique donne accès à tout Colissimo et tout
+ * Chronopost, aux tarifs négociés par SendCloud : aucun contrat à signer chez
+ * La Poste. Shop2Shop n'a pas de réseau à lui chez SendCloud : ce sont les
+ * points Pickup de Chronopost, qui acceptent les deux services. C'est au
+ * bordereau que se fait la différence (`chronopost:shop2shop`).
+ *
+ * Colissimo garde son service direct (`colissimo.ts`) pour qui aurait un
+ * contrat Colissimo Entreprise : SendCloud passe devant quand il est là.
  */
-const TRANSPORTEURS: Record<string, string> = {
+export const CODES_SENDCLOUD: Readonly<Record<string, string>> = {
   mondial_relay: "mondial_relay",
+  colissimo: "colissimo",
+  chronopost: "chronopost",
+  shop2shop: "chronopost",
 };
 
 export function estConfigure(): boolean {
@@ -54,7 +64,15 @@ export function estConfigure(): boolean {
 
 /** SendCloud sait-il chercher les points de ce transporteur ? */
 export function gerePoints(carrier: string | null | undefined): boolean {
-  return estConfigure() && !!carrier && carrier in TRANSPORTEURS;
+  return estConfigure() && !!carrier && carrier in CODES_SENDCLOUD;
+}
+
+/**
+ * SendCloud sait-il acheter les bordereaux de ce transporteur ? Il y faut les
+ * DEUX clés : la publique suffit pour chercher des points, pas pour acheter.
+ */
+export function expedie(carrier: string | null | undefined): boolean {
+  return estConfigure() && CLE_SECRETE.length > 0 && !!carrier && carrier in CODES_SENDCLOUD;
 }
 
 /** Les jours tels que SendCloud les numérote : 0 = lundi. */
@@ -65,6 +83,8 @@ interface PointSendcloud {
   id?: number | string;
   code?: string;
   is_active?: boolean;
+  /** Le code SendCloud du transporteur : « colissimo », « chronopost »… */
+  carrier?: string;
   name?: string;
   street?: string;
   house_number?: string;
@@ -149,7 +169,7 @@ export async function rechercherPoints(opts: {
   longitude?: number;
   nombre?: number;
 }): Promise<PointRelais[]> {
-  const code = TRANSPORTEURS[opts.carrier];
+  const code = CODES_SENDCLOUD[opts.carrier];
   if (!estConfigure() || !code) throw new Error("SendCloud non configuré");
   const pays = (opts.pays ?? "FR").toUpperCase().slice(0, 2);
   const cp = opts.codePostal.replace(/\s+/g, "").slice(0, 10);
@@ -196,17 +216,22 @@ export async function rechercherPoints(opts: {
 /**
  * Ce que SendCloud dit d'un point déjà choisi.
  *
- *   « existe »      : il est connu et ouvert ;
- *   « inconnu »     : SendCloud répond, et ce point n'existe pas ou plus ;
- *   « injoignable » : on ne sait pas — panne réseau, clé refusée.
+ *   « existe »             : il est connu et ouvert ;
+ *   « inconnu »            : SendCloud répond, et ce point n'existe pas ou plus ;
+ *   « autre_transporteur » : il existe, mais chez un autre transporteur que
+ *                            celui du mode payé — un point Mondial Relay
+ *                            pour un Colissimo, que personne ne livrerait ;
+ *   « injoignable »        : on ne sait pas — panne réseau, clé refusée.
  *
- * La distinction compte au paiement : on refuse un point inconnu, jamais une
- * commande sur une simple panne de SendCloud.
+ * La distinction compte au paiement : on refuse un point inconnu ou d'un autre
+ * réseau, jamais une commande sur une simple panne de SendCloud.
  */
 export async function verifierPoint(
   relayPointId: string,
   pays: string,
-): Promise<"existe" | "inconnu" | "injoignable"> {
+  /** Le transporteur du mode choisi ; sans lui, on ne vérifie que l'existence. */
+  carrier?: string | null,
+): Promise<"existe" | "inconnu" | "autre_transporteur" | "injoignable"> {
   const id = relayPointId.startsWith(PREFIXE_SENDCLOUD)
     ? relayPointId.slice(PREFIXE_SENDCLOUD.length)
     : "";
@@ -219,7 +244,9 @@ export async function verifierPoint(
     if (res.status === 404) return "inconnu";
     if (!res.ok) return "injoignable";
     const p = (await res.json()) as PointSendcloud;
-    return p?.is_active === false ? "inconnu" : "existe";
+    if (p?.is_active === false) return "inconnu";
+    const attendu = carrier ? CODES_SENDCLOUD[carrier] : undefined;
+    return attendu && p?.carrier && p.carrier !== attendu ? "autre_transporteur" : "existe";
   } catch {
     return "injoignable";
   }

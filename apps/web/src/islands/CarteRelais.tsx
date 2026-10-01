@@ -15,10 +15,12 @@
 import { createEffect, createSignal, on, onCleanup, onMount } from "solid-js";
 import type { Map as CarteLeaflet, LayerGroup } from "leaflet";
 import type { PointRelais } from "../lib/api.ts";
+import { t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
 
 type Leaflet = typeof import("leaflet");
 
 export default function CarteRelais(props: {
+  langue?: Langue;
   points: PointRelais[];
   /** L'identifiant du point choisi, ou "" . */
   choisi: string;
@@ -26,6 +28,7 @@ export default function CarteRelais(props: {
   depart?: { latitude: number; longitude: number } | null;
   onChoisir: (p: PointRelais) => void;
 }) {
+  const tr = t(props.langue ?? LANGUE_DEFAUT);
   let conteneur!: HTMLDivElement;
   let L: Leaflet | undefined;
   let carte: CarteLeaflet | undefined;
@@ -133,7 +136,7 @@ export default function CarteRelais(props: {
       class="ml-carte-relais relative z-0 h-64 w-full border border-ink/20 bg-paper-deep sm:h-72"
       classList={{ hidden: panne() }}
       role="region"
-      aria-label="Carte des points relais"
+      aria-label={tr("livraison.carte")}
     />
   );
 }

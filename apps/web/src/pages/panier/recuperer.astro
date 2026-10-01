@@ -7,8 +7,8 @@
  * panier, et rien d'autre.
  *
  * Elle vit HORS du routage [...lang], comme le stand : le courrier de relance
- * n'existe qu'en français, l'adresse qu'il porte n'a donc qu'une version. Le
- * jour où le courrier sera traduit, cette page suivra.
+ * n'existe qu'en français, l'adresse qu'il porte n'a donc qu'une version. Sa
+ * langue se lit ailleurs que dans l'adresse — voir `langueDuVisiteur`.
  *
  * Ce qu'elle fait tient en trois gestes, dans cet ordre : réinstaller
  * l'identifiant de panier là où la boutique le cherche (`ml_cart_id`),
@@ -24,8 +24,31 @@
 import Base from "../../layouts/Base.astro";
 import { api, formatPrice, type PanierRecupere } from "../../lib/api.ts";
 import { jsonPourScript } from "../../lib/html-sur.ts";
+import {
+  LANGUE_DEFAUT,
+  LOCALE_COMPLETE,
+  estLangue,
+  lien,
+  t,
+  type Langue,
+} from "../../i18n/utils.ts";
 
 export const prerender = false;
+
+/**
+ * La langue de la page.
+ *
+ * L'adresse n'a pas de préfixe, et le panier ne retient pas la langue dans
+ * laquelle il a été rempli. Seul un `?lang=` posé sur le lien la choisit : le
+ * jour où le courrier de relance sera traduit, il n'aura qu'à l'ajouter. Sans
+ * lui, c'est le français, la langue du courrier. Deviner d'après le
+ * navigateur ferait passer en anglais une cliente française dont le téléphone
+ * est réglé en anglais, alors qu'elle vient de lire un courrier en français.
+ */
+const demandee = Astro.url.searchParams.get("lang");
+const langue: Langue = estLangue(demandee) ? demandee : LANGUE_DEFAUT;
+const tr = t(langue);
+const locale = LOCALE_COMPLETE[langue];
 
 const jeton = (Astro.url.searchParams.get("jeton") ?? "").trim();
 const reponse = jeton
@@ -41,29 +64,24 @@ const panier: PanierRecupere | null = "cartId" in reponse ? reponse : null;
  */
 const EXPLICATIONS = {
   jeton_inconnu: {
-    titre: "Ce lien n'est plus valable",
-    texte:
-      "Nous ne reconnaissons pas ce lien. Il a peut-être été coupé en deux par votre messagerie, ou votre panier a été réglé depuis un autre appareil.",
+    titre: tr("panier.recuperer.jeton_inconnu.titre"),
+    texte: tr("panier.recuperer.jeton_inconnu.texte"),
   },
   deja_payee: {
-    titre: "Cette commande est déjà réglée",
-    texte:
-      "Bonne nouvelle : votre commande a bien été payée. Vous n'avez rien à reprendre, nous préparons votre affiche.",
+    titre: tr("panier.recuperer.deja_payee.titre"),
+    texte: tr("panier.recuperer.deja_payee.texte"),
   },
   panier_clos: {
-    titre: "Ce panier a été clos",
-    texte:
-      "Cette commande a été annulée ou remboursée. Elle ne peut plus être reprise, mais rien ne vous empêche d'en composer une nouvelle.",
+    titre: tr("panier.recuperer.panier_clos.titre"),
+    texte: tr("panier.recuperer.panier_clos.texte"),
   },
   trop_ancien: {
-    titre: "Ce lien a expiré",
-    texte:
-      "Passé quatorze jours, nous cessons de garder un panier en attente : nos prix et nos affiches ont pu changer entre-temps. Reprenez depuis la boutique, votre affiche s'y compose en deux minutes.",
+    titre: tr("panier.recuperer.trop_ancien.titre"),
+    texte: tr("panier.recuperer.trop_ancien.texte"),
   },
   indisponible: {
-    titre: "Nous n'arrivons pas à ouvrir votre panier",
-    texte:
-      "Quelque chose s'est mal passé de notre côté. Réessayez dans un instant, ou écrivez-nous en répondant simplement au message que vous avez reçu.",
+    titre: tr("panier.recuperer.indisponible.titre"),
+    texte: tr("panier.recuperer.indisponible.texte"),
   },
 } as const;
 
@@ -75,7 +93,8 @@ const souci = "cartId" in reponse ? null : EXPLICATIONS[reponse.erreur];
 /**
  * Les coordonnées repassées au tunnel. On ne transmet QUE le nom et
  * l'adresse e-mail, ceux-là mêmes que la cliente nous a donnés à l'étape
- * précédente : rien de plus n'a à traverser le navigateur.
+ * précédente : rien de plus n'a à traverser le navigateur. S'y ajoute
+ * l'adresse du tunnel dans la langue de la page, où le script l'emmène.
  */
 /*
  * Échappée pour vivre dans une balise script, et non passée par
@@ -95,13 +114,15 @@ const consigne = jsonPourScript(
         codePromo: panier.promoCode ?? "",
         nom: panier.nom ?? "",
         email: panier.email ?? "",
+        suite: lien(langue, "/commande"),
       }
     : null,
 );
 ---
 
 <Base
-  title="Votre panier — Memory Line"
+  langue={langue}
+  title={`${tr("panier.titre")} — Memory Line`}
   path="/panier/recuperer"
   noindex={true}
 >
@@ -109,10 +130,8 @@ const consigne = jsonPourScript(
     {
       panier ? (
         <Fragment>
-          <h1 class="text-3xl sm:text-4xl">Votre panier vous attend</h1>
-          <p class="mt-4 text-ink-soft">
-            Nous le remettons en place, puis nous vous emmenons à la commande.
-          </p>
+          <h1 class="text-3xl sm:text-4xl">{tr("panier.recuperer.titre")}</h1>
+          <p class="mt-4 text-ink-soft">{tr("panier.recuperer.intro")}</p>
 
           <ul class="mt-8 divide-y divide-ink/10 border-y border-ink/10">
             {panier.articles.map((a) => (
@@ -130,34 +149,35 @@ const consigne = jsonPourScript(
                 <span class="flex-1">
                   <span class="block">{a.titre}</span>
                   <span class="block text-sm text-ink-soft">
-                    Format {a.format ?? "A4"} · ×{a.quantite}
-                    {a.indisponible && " · cette affiche n'est plus disponible"}
+                    {tr("panier.format")} {a.format ?? "A4"} · ×{a.quantite}
+                    {a.indisponible &&
+                      ` · ${tr("panier.recuperer.article_indisponible")}`}
                   </span>
                 </span>
                 <span class="whitespace-nowrap">
-                  {formatPrice(a.unitPriceCents * a.quantite)}
+                  {formatPrice(a.unitPriceCents * a.quantite, locale)}
                 </span>
               </li>
             ))}
           </ul>
 
           <p class="mt-4 flex justify-between text-lg">
-            <span>Total</span>
-            <span>{formatPrice(panier.totalCents)}</span>
+            <span>{tr("panier.total")}</span>
+            <span>{formatPrice(panier.totalCents, locale)}</span>
           </p>
 
           {panier.promoCode && (
             <p class="mt-2 text-sm text-ink-soft">
-              Votre code de réduction {panier.promoCode} est repris.
+              {tr("panier.recuperer.code").replace("{code}", panier.promoCode)}
             </p>
           )}
 
           <p class="mt-8">
             <a
-              href="/commande"
+              href={lien(langue, "/commande")}
               class="inline-block rounded-full bg-ink px-8 py-3 font-medium text-paper transition-colors hover:bg-ink/85"
             >
-              Reprendre ma commande
+              {tr("panier.recuperer.bouton")}
             </a>
           </p>
           {/* Sans JavaScript, rien n'a été réinstallé dans le navigateur : le
@@ -165,9 +185,7 @@ const consigne = jsonPourScript(
               laisser la cliente s'en apercevoir toute seule. */}
           <noscript>
             <p class="mt-4 text-sm text-ink-soft">
-              Votre navigateur n'exécute pas JavaScript : nous ne pouvons pas
-              remettre votre panier en place. Écrivez-nous en répondant au
-              message que vous avez reçu, nous terminerons la commande avec vous.
+              {tr("panier.recuperer.sans_js")}
             </p>
           </noscript>
         </Fragment>
@@ -177,10 +195,10 @@ const consigne = jsonPourScript(
           <p class="mt-4 text-ink-soft">{souci!.texte}</p>
           <p class="mt-8">
             <a
-              href="/affiches"
+              href={lien(langue, "/affiches")}
               class="inline-block rounded-full bg-ink px-8 py-3 font-medium text-paper transition-colors hover:bg-ink/85"
             >
-              Voir les affiches
+              {tr("panier.recuperer.voir_affiches")}
             </a>
           </p>
         </Fragment>
@@ -215,8 +233,9 @@ const consigne = jsonPourScript(
       return;
     }
     // `replace` et non `assign` : le bouton « Précédent » doit ramener au
-    // courrier, pas rejouer cette page-ci.
-    location.replace("/commande");
+    // courrier, pas rejouer cette page-ci. Le tunnel, dans la langue de la
+    // page.
+    location.replace(d.suite);
   })();
   </script>
 </Base>

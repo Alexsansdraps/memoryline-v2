@@ -11,6 +11,7 @@ import {
   type CommandeResume,
 } from "../../../lib/compte.ts";
 import {
+  LOCALE_COMPLETE,
   estLangue,
   langueDepuisParam,
   lien,
@@ -25,6 +26,7 @@ if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
   return new Response(null, { status: 404 });
 const langue: Langue = langueDepuisParam(Astro.params.lang);
 const tr = t(langue);
+const locale = LOCALE_COMPLETE[langue];
 
 // Le menu de TOUTES les pages du compte poste sa déconnexion ici : une seule
 // page à traiter, plutôt que le même bloc recopié six fois.
@@ -103,7 +105,7 @@ if (session.etat === "connecte") {
           <p class="mt-2 text-sm text-ink-soft">
             {c.articles}{" "}
             {c.articles > 1 ? tr("compte.articles") : tr("compte.article")} ·{" "}
-            {formatPrice(c.totalCents)}
+            {formatPrice(c.totalCents, locale)}
           </p>
 
           <p class="mt-3 flex flex-wrap gap-2 text-sm">

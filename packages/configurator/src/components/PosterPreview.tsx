@@ -17,10 +17,15 @@ import {
   familleCss,
   morceauxDeTexte,
   policeParId,
+  sousLignes,
   urlAsset,
 } from "@memoryline/types";
 import { CharacterStack } from "./CharacterLayer";
 import { Filigrane } from "./Filigrane";
+import {
+  messagesAvecDefauts,
+  type MessagesConfigurateur,
+} from "../messages";
 
 /**
  * Taille des lignes, en cqw (largeur du bloc de texte), par rang parmi les
@@ -32,12 +37,6 @@ import { Filigrane } from "./Filigrane";
  * personnages.
  */
 const TAILLES_LIGNES = [8, 5.5, 4.6];
-
-/** Texte montré tant que le client n'a rien saisi. */
-const LIGNES_EXEMPLE: LigneTexte[] = [
-  { value: "Memory Line", font: policeDefautLigne(0) },
-  { value: "Votre ville, votre histoire", font: policeDefautLigne(1) },
-];
 
 /**
  * Couleur de repli d'un cadre dont le back-office n'a pas fixé la teinte :
@@ -121,7 +120,25 @@ export function PosterPreview(props: {
    * fractions (0..1) de la zone d'affiche, déjà bornée à l'intérieur du cadre.
    */
   onDeplace?: (index: number, position: { x: number; y: number }) => void;
+  /**
+   * Libellés traduits. Facultatifs : le panier et la commande montrent la
+   * même affiche que le configurateur, et un appelant qui ne passe rien
+   * garde le français.
+   */
+  messages?: Partial<MessagesConfigurateur>;
 }) {
+  const m = () => messagesAvecDefauts(props.messages);
+
+  /**
+   * Texte montré tant que le client n'a rien saisi. Mémorisé : `<For>`
+   * retrouve les mêmes lignes d'une lecture à l'autre, comme avec la
+   * constante d'avant, et ne les redessine pas.
+   */
+  const lignesExemple = createMemo<LigneTexte[]>(() => [
+    { value: "Memory Line", font: policeDefautLigne(0) },
+    { value: m().exempleAffiche, font: policeDefautLigne(1) },
+  ]);
+
   /** La couleur du cadre, ou rien du tout s'il n'y en a pas. */
   const couleurCadre = () =>
     props.cadre ? props.cadre.previewColor || COULEUR_CADRE_DEFAUT : null;
@@ -326,7 +343,11 @@ export function PosterPreview(props: {
       class="ml-cfg-poster"
       role={props.cadre ? "img" : undefined}
       aria-label={
-        props.cadre ? `Aperçu de l'affiche dans un ${props.cadre.name ?? "cadre"}` : undefined
+        props.cadre
+          ? props.cadre.name == null
+            ? m().apercuCadreSansNom
+            : m().apercuCadre.replace("{cadre}", props.cadre.name)
+          : undefined
       }
       style={{
         position: "relative",
@@ -391,7 +412,7 @@ export function PosterPreview(props: {
           const bp = () => basDuDessin(c.characterId);
           const dropPct = () => (1 - bp()) * widthPct() * Math.SQRT2;
           const nom = () =>
-            props.characterById(c.characterId)?.name ?? "Personnage";
+            props.characterById(c.characterId)?.name ?? m().personnage;
           return (
             <div
               onPointerDown={(e) =>
@@ -402,7 +423,7 @@ export function PosterPreview(props: {
               role={props.deplacable ? "button" : undefined}
               aria-label={
                 props.deplacable
-                  ? `${nom()} : glissez-le pour le déplacer sur l'affiche, ou utilisez les flèches`
+                  ? m().deplacerAide.replace("{nom}", nom())
                   : undefined
               }
               style={{
@@ -496,7 +517,7 @@ export function PosterPreview(props: {
           const remplies = () =>
             props.state.lignes.filter((l) => l.value.trim() !== "");
           const vide = () => remplies().length === 0;
-          const aDessiner = () => (vide() ? LIGNES_EXEMPLE : remplies());
+          const aDessiner = () => (vide() ? lignesExemple() : remplies());
           return (
             <For each={aDessiner()}>
               {(ligne, rang) => (
@@ -517,15 +538,20 @@ export function PosterPreview(props: {
                     "letter-spacing": rang() === 0 ? "0.04em" : "normal",
                     "margin-top": rang() === 0 ? "0" : "0.1em",
                     "word-break": "break-word",
+                    // Un retour à la ligne tapé par le client (touche Entrée)
+                    // coupe la ligne ici comme à l'impression.
+                    "white-space": "pre-line",
                     opacity: vide() ? "0.5" : "1",
                   }}
                 >
                   {/* Chaque morceau dans la police qui sait l'écrire : la
                       manuscrite ne connaît pas les chiffres, ils s'écrivent
-                      alors en Caveat — ici comme à l'impression. */}
+                      alors en Caveat — ici comme à l'impression. Les
+                      morceaux vides d'une ligne coupée ne laissent pas de
+                      trou (sousLignes), comme dans le PDF. */}
                   <For
                     each={morceauxDeTexte(
-                      ligne.value,
+                      sousLignes(ligne.value).join("\n"),
                       policeParId(ligne.font, policeDefautLigne(rang())),
                     )}
                   >

@@ -101,10 +101,8 @@ const champ =
   {
     essai && (
       <p class="mt-6 border border-dashed border-ink/30 bg-paper-deep px-4 py-3 text-sm text-ink-soft">
-        <b>Site de test.</b> Ce compte est pré-rempli au hasard pour vous
-        éviter la saisie. Mot de passe&nbsp;: <code>{essai.motDePasse}</code> —
-        notez l'adresse e-mail si vous voulez vous reconnecter dessus. Ce
-        bandeau et ce pré-remplissage n'existent pas en production.
+        <b>{tr("compte.essai.titre")}</b> {tr("compte.essai.avant")}{" "}
+        <code>{essai.motDePasse}</code> {tr("compte.essai.apres")}
       </p>
     )
   }

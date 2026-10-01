@@ -314,6 +314,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
       )
     }
     <Seo
+      langue={langue}
       title={titre}
       description={desc}
       path={path}
@@ -327,7 +328,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
     {/* Pas de bandeau au stand : il annonce une offre chiffrée — « 3 achetées,
         1 offerte » — et la vendeuse a ses propres tarifs de salon. Une remise
         affichée qui ne s'applique pas ici la contredirait devant le client. */}
-    {!Astro.locals.stand && <AnnouncementBanner />}
+    {!Astro.locals.stand && <AnnouncementBanner langue={langue} />}
     {/* En-tête calquée sur memoryline.fr : logo à gauche, navigation au
         centre, actions à droite, sur 1200 px de large. */}
     <header class="border-b border-ink/10 bg-paper sticky top-0 z-10">
@@ -692,7 +693,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
               <path d="M9 8V6a3 3 0 0 1 6 0v2" />
             </svg>
             <span class="sr-only">{tr("nav.panier")}</span>
-            <CartBadge client:load />
+            <CartBadge client:load langue={langue} />
           </a>
           {/* Sélecteur de langue, en haut à droite. Ce sont de vrais liens :
               chaque langue a son URL, indexable et partageable. */}

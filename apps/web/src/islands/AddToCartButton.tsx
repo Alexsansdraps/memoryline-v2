@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
+import { t, lien, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
 import { createSignal, onCleanup, onMount, type JSX } from "solid-js";
 import type { PosterConfig, PosterFormat } from "@memoryline/types";
 import { browserApi, getCartId } from "../lib/api.ts";
@@ -63,6 +63,20 @@ export default function AddToCartButton(
     onCleanup(() => window.removeEventListener("ml:format", surChoix));
   });
 
+  /**
+   * Le message d'un ajout refusé.
+   *
+   * Ce que le site sait reconnaître se dit dans la langue de la page : l'API
+   * injoignable (le navigateur lève alors une TypeError, sans réponse) et une
+   * ligne que l'API refuse (« config invalide »). Le reste garde le texte de
+   * l'API, qui dit au moins ce qui s'est passé.
+   */
+  function messageEchec(e: unknown): string {
+    if (e instanceof TypeError) return tr("panier.err.ajout");
+    if (String(e).includes("config invalide")) return tr("panier.err.config");
+    return String(e);
+  }
+
   async function add() {
     if (busy()) return;
     setBusy(true);
@@ -83,9 +97,9 @@ export default function AddToCartButton(
         title: props.product.name,
         config,
       });
-      window.location.href = "/panier";
+      window.location.href = lien(props.langue ?? LANGUE_DEFAUT, "/panier");
     } catch (e) {
-      setError(String(e));
+      setError(messageEchec(e));
       setBusy(false);
     }
   }

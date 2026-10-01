@@ -89,7 +89,7 @@ const suivante = pageDemandee < pages ? adressePage(pageDemandee + 1) : null;
  * c'est par elles qu'on doit arriver.
  */
 const titre = assezLong
-  ? `${tr("recherche.titre")} : ${saisie} — Memory Line`
+  ? `${tr("recherche.titre")}${tr("ponct.deux_points")}${saisie} — Memory Line`
   : `${tr("recherche.titre")} — Memory Line`;
 ---
 

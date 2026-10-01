@@ -13,6 +13,7 @@
 import { apiUrl, url } from "../../lib/url.ts";
 import { libelleFormat } from "@memoryline/types";
 import Admin from "../../layouts/Admin.astro";
+import ChampsAdresse from "../../components/ChampsAdresse.astro";
 import {
   adminApi,
   formatPrice,
@@ -123,16 +124,36 @@ if (Astro.request.method === "POST") {
       await api.setOrderTags(id, tags);
       flash = "Étiquettes enregistrées.";
     } else if (action === "adresse") {
-      await api.updateOrderAddress(id, {
-        shippingName: String(f.get("shippingName") ?? ""),
-        shippingLine1: String(f.get("shippingLine1") ?? ""),
-        shippingLine2: String(f.get("shippingLine2") ?? ""),
-        shippingPostalCode: String(f.get("shippingPostalCode") ?? ""),
-        shippingCity: String(f.get("shippingCity") ?? ""),
-        shippingCountry: String(f.get("shippingCountry") ?? ""),
-        shippingPhone: String(f.get("shippingPhone") ?? ""),
+      // Seuls les champs PRÉSENTS dans le formulaire partent : celui du
+      // bordereau d'un point relais n'a que le nom et le téléphone, et
+      // l'adresse qu'il n'affiche pas ne doit pas s'effacer.
+      const champs = [
+        "shippingName",
+        "shippingLine1",
+        "shippingLine2",
+        "shippingPostalCode",
+        "shippingCity",
+        "shippingCountry",
+        "shippingPhone",
+      ];
+      const data: Record<string, string | boolean> = {};
+      for (const c of champs) if (f.has(c)) data[c] = String(f.get(c) ?? "");
+      const livrerALAdresse = f.get("livrerALAdresse") === "1";
+      if (livrerALAdresse) data.livrerALAdresse = true;
+      const r = await api.updateOrderAddress(id, {
+        ...data,
+        author: Astro.locals.user?.email ?? undefined,
       });
-      flash = "Adresse mise à jour.";
+      flash = !r.modifie
+        ? "Rien n'a changé : l'adresse était déjà celle-ci."
+        : livrerALAdresse
+          ? "Le colis partira à cette adresse, et non plus au point relais."
+          : "Adresse mise à jour.";
+      if (r.bordereauVivant) {
+        flash +=
+          " Attention : le bordereau déjà acheté porte encore l'ancienne adresse. Annulez-le, puis rachetez-en un.";
+        flashErreur = true;
+      }
     } else if (action === "acheter-bordereau") {
       const [methodeCode, prix] = String(f.get("methode") ?? "").split("|");
       const b = await api.acheterBordereau(id, {
@@ -151,7 +172,7 @@ if (Astro.request.method === "POST") {
         flashErreur = true;
       } else {
         flash = b.essai
-          ? "Bordereau d'ESSAI fabriqué (lettre non affranchie, gratuite) : ce n'est pas une vraie étiquette Mondial Relay."
+          ? "Bordereau d'ESSAI fabriqué (lettre non affranchie, gratuite) : ce n'est pas une étiquette valable chez le transporteur."
           : `Bordereau acheté : suivi ${b.trackingNumber ?? "en attente"}.`;
       }
     } else if (action === "terminer-bordereau") {
@@ -162,7 +183,7 @@ if (Astro.request.method === "POST") {
           : `SendCloud a refusé le bordereau : ${b.erreur ?? "raison inconnue"}`;
       flashErreur = b.statut !== "achete";
     } else if (action === "annuler-bordereau") {
-      const r = await api.annulerBordereau(id);
+      const r = await api.annulerBordereau(id, Astro.locals.user?.email ?? undefined);
       flash = r.message;
     } else if (action === "renvoyer") {
       await api.resendConfirmation(id);
@@ -206,20 +227,84 @@ const auStand = order?.channel === "salon";
 /**
  * Le bordereau transporteur (SendCloud). Chargé à part : si SendCloud ne
  * répond pas, la fiche s'affiche quand même, avec le bloc qui le dit. Le poids
- * se corrige par l'adresse (?poids=…) : les prix dépendent de la tranche.
+ * se corrige par l'adresse (?poids=…) : les prix dépendent de la tranche ;
+ * ?tous=1 montre les services de tous les transporteurs.
+ *
+ * Pour TOUTE commande, ventes du stand comprises : une affiche commandée au
+ * stand peut devoir voyager. Seul un panier n'a pas de bloc — ce n'est pas
+ * une commande.
  */
+const voirTous = Astro.url.searchParams.get("tous") === "1";
 let etatBordereau: EtatBordereau | null = null;
 let erreurBordereau: string | null = null;
-if (order && !auStand) {
+if (order && order.status !== "draft") {
   try {
     const poids = Number(Astro.url.searchParams.get("poids"));
-    etatBordereau = await api.bordereau(id, Number.isFinite(poids) && poids > 0 ? poids : undefined);
+    etatBordereau = await api.bordereau(
+      id,
+      Number.isFinite(poids) && poids > 0 ? poids : undefined,
+      voirTous,
+    );
   } catch (e) {
     erreurBordereau = String(e).replace(/^Error: /, "");
   }
 }
 const bordereau = etatBordereau?.bordereau ?? null;
 const bordereauActif = bordereau?.statut === "achete" ? bordereau : null;
+const situation = etatBordereau?.situation ?? null;
+const versPointRelais = situation?.destination === "point_relais";
+const manquesDestinataire = (etatBordereau?.manques ?? []).filter(
+  (m) => m.champ === "destinataire",
+);
+const manquesEmail = (etatBordereau?.manques ?? []).filter((m) => m.champ === "email");
+/** La commande a-t-elle la moindre ligne d'adresse ? Sinon, on la « saisit ». */
+const aUneAdresse = !!(
+  order?.shippingLine1 ||
+  order?.shippingPostalCode ||
+  order?.shippingCity
+);
+/**
+ * Une vente du stand repart en main propre, sauf si une vraie étiquette a été
+ * achetée pour elle : elle s'expédie alors comme une commande du site, avec
+ * son transporteur et son numéro de suivi.
+ */
+const remiseAuStand = auStand && !(bordereauActif && !bordereauActif.essai);
+
+/**
+ * Pourquoi aucun service n'est « celui qu'elle a payé », dit au-dessus de la
+ * liste : sans cette phrase, une liste sans badge vert passe pour une panne.
+ */
+const SANS_ENVOI_PAYE: Record<string, string> = {
+  retrait:
+    "La cliente avait choisi le retrait sur place : elle n'a payé aucun envoi. L'étiquette est à la charge de la boutique, sauf si vous lui facturez le port à part.",
+  stand:
+    "Vente du stand : aucun envoi n'a été payé. L'étiquette est à la charge de la boutique, sauf si le port a été réglé à part.",
+  inconnu:
+    "Le mode de livraison de cette commande n'est relié à aucun transporteur (commande ancienne ou importée) : choisissez le service vous-même.",
+};
+
+/**
+ * « Voir tous les services », et le retour à la liste courte. Le poids suit :
+ * il a pu être corrigé, et les prix en dépendent.
+ */
+const lienAutresServices = `?${new URLSearchParams({
+  ...(voirTous ? {} : { tous: "1" }),
+  poids: String(etatBordereau?.poidsGrammes ?? ""),
+}).toString()}#bordereau`;
+const libelleAutresServices = voirTous
+  ? `N'afficher que les services ${situation?.transporteurPaye ?? "du transporteur payé"}`
+  : `Voir tous les services (${etatBordereau?.autresServices ?? 0} d'autres transporteurs)`;
+
+/**
+ * Les pays qu'on propose au clavier : ceux où la boutique expédie (comme sa
+ * caisse), plus Monaco et l'Outre-mer, qui ont leur propre code. Tout autre
+ * code à deux lettres reste accepté.
+ */
+const nomsPays = new Intl.DisplayNames(["fr"], { type: "region" });
+const PAYS_PROPOSES = [
+  "FR", "BE", "CH", "LU", "DE", "ES", "IT", "NL", "PT", "GB", "CA", "US",
+  "MC", "GP", "MQ", "GF", "RE", "YT",
+].map((code) => ({ code, nom: nomsPays.of(code) ?? code }));
 /** Nom du transporteur tel que l'écrit le formulaire « Expédier ». */
 const NOM_TRANSPORTEUR: Record<string, string> = {
   mondial_relay: "Mondial Relay",
@@ -711,11 +796,12 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
               </p>
             )}
 
-            {resteAExpedier > 0 && !annulee && auStand && (
+            {resteAExpedier > 0 && !annulee && remiseAuStand && (
               <div class="flex flex-wrap items-center justify-between gap-3 border-t border-bo-border px-4 py-3">
                 <p class="text-sm text-bo-muted">
                   {resteAExpedier} affiche(s) à remettre au client. Commande prise
-                  au stand : rien à expédier.
+                  au stand : elle se remet en main propre. Si elle doit voyager,
+                  achetez son bordereau ci-dessous.
                 </p>
                 <form method="POST">
                   <input type="hidden" name="_action" value="expedier" />
@@ -727,7 +813,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
               </div>
             )}
 
-            {resteAExpedier > 0 && !annulee && !auStand && (
+            {resteAExpedier > 0 && !annulee && !remiseAuStand && (
               <details class="border-t border-bo-border">
                 <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-bo-accent">
                   Traiter les articles ({resteAExpedier} en attente)
@@ -814,8 +900,8 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
           {/* ---------------------------------------------------------- */}
           {/* Bordereau transporteur (SendCloud)                          */}
           {/* ---------------------------------------------------------- */}
-          {order && !auStand && (
-            <section class="rounded-lg border border-bo-border bg-bo-surface">
+          {order && !estPanier && (
+            <section id="bordereau" class="rounded-lg border border-bo-border bg-bo-surface">
               <header class="flex items-center justify-between gap-3 border-b border-bo-border px-4 py-3">
                 <h3 class="font-medium">Bordereau transporteur</h3>
                 {etatBordereau?.essai && (
@@ -831,9 +917,9 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
               <div class="space-y-3 px-4 py-3 text-sm">
                 {erreurBordereau && <p class="text-red-700">{erreurBordereau}</p>}
 
-                {etatBordereau?.pointRelais && (
+                {versPointRelais && (bordereauActif || bordereau?.statut === "en_cours") && (
                   <p class="text-bo-muted">
-                    Point relais choisi : <span class="text-inherit">{etatBordereau.pointRelais}</span>
+                    Point relais choisi : <span class="text-inherit">{etatBordereau?.pointRelais}</span>
                   </p>
                 )}
 
@@ -897,6 +983,11 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                         client reçoit son lien de suivi.
                       </p>
                     )}
+                    <p class="text-xs text-bo-muted">
+                      Une erreur d'adresse, de service ou de poids ? SendCloud ne
+                      modifie pas une étiquette : annulez celle-ci, corrigez, puis
+                      rachetez-en une.
+                    </p>
                   </div>
                 )}
 
@@ -928,12 +1019,147 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                     )}
 
                     {etatBordereau.empechement ? (
-                      <p class="text-bo-muted">{etatBordereau.empechement}</p>
+                      <p class="rounded border border-bo-border bg-bo-bg px-3 py-2">
+                        {etatBordereau.empechement}
+                      </p>
                     ) : (
+                      <>
+                        {/* Le destinataire, tel que l'étiquette l'imprimera, et
+                            de quoi le saisir ou le corriger SANS quitter le bloc :
+                            un retrait sur place, une vente du stand ou une
+                            adresse fausse ne bloquent plus l'achat. La commande
+                            garde ce qui est saisi ici, et la chronologie le note. */}
+                        <div class="space-y-2 rounded border border-bo-border px-3 py-2">
+                          <p class="text-xs text-bo-muted">Destinataire de l'étiquette</p>
+                          {versPointRelais ? (
+                            <p>
+                              {order.shippingName || "—"}
+                              {order.shippingPhone && (
+                                <span class="text-bo-muted"> · {order.shippingPhone}</span>
+                              )}
+                              <span class="block text-bo-muted">
+                                au point relais {etatBordereau.pointRelais ?? ""}
+                              </span>
+                            </p>
+                          ) : aUneAdresse ? (
+                            <p>
+                              {order.shippingName || "—"}
+                              {order.shippingPhone && (
+                                <span class="text-bo-muted"> · {order.shippingPhone}</span>
+                              )}
+                              <span class="block">
+                                {[order.shippingLine1, order.shippingLine2].filter(Boolean).join(", ")}
+                              </span>
+                              <span class="block">
+                                {[order.shippingPostalCode, order.shippingCity, order.shippingCountry || "FR"]
+                                  .filter(Boolean)
+                                  .join(" ")}
+                              </span>
+                            </p>
+                          ) : (
+                            <p class="text-bo-muted">
+                              {order.shippingName || "Aucun nom"} — aucune adresse de livraison.
+                            </p>
+                          )}
+
+                          {manquesDestinataire.map((m) => (
+                            <p class="text-amber-900">{m.message}</p>
+                          ))}
+
+                          {versPointRelais ? (
+                            <>
+                              {/* Au point relais, l'étiquette porte l'adresse du
+                                  point : seuls le nom et le téléphone sont à elle. */}
+                              <details open={manquesDestinataire.length > 0}>
+                                <summary class="cursor-pointer text-bo-accent">
+                                  Corriger le nom ou le téléphone
+                                </summary>
+                                <form method="POST" class="mt-2 space-y-2">
+                                  <input type="hidden" name="_action" value="adresse" />
+                                  <input
+                                    name="shippingName"
+                                    value={order.shippingName ?? ""}
+                                    placeholder="Nom du destinataire"
+                                    required
+                                    class="w-full rounded border border-bo-border px-2 py-1"
+                                  />
+                                  <input
+                                    name="shippingPhone"
+                                    value={order.shippingPhone ?? ""}
+                                    placeholder="Téléphone (le point relais prévient par SMS)"
+                                    class="w-full rounded border border-bo-border px-2 py-1"
+                                  />
+                                  <button class="rounded border border-bo-border px-3 py-1.5 hover:bg-bo-bg">
+                                    Enregistrer
+                                  </button>
+                                </form>
+                              </details>
+                              <details>
+                                <summary class="cursor-pointer text-bo-accent">
+                                  Envoyer à une adresse plutôt qu'au point relais
+                                </summary>
+                                <form
+                                  method="POST"
+                                  class="mt-2 space-y-2"
+                                  data-confirmer={`Envoyer ce colis à cette adresse plutôt qu'au point relais « ${etatBordereau.pointRelais ?? ""} » ? Le point relais quitte la commande ; la chronologie le garde.`}
+                                >
+                                  <p class="text-xs text-bo-muted">
+                                    Pour un point relais fermé, ou une cliente qui préfère
+                                    être livrée chez elle. Elle a payé un point relais : un
+                                    envoi à domicile coûte en général plus cher.
+                                  </p>
+                                  <input type="hidden" name="_action" value="adresse" />
+                                  <input type="hidden" name="livrerALAdresse" value="1" />
+                                  <ChampsAdresse adresse={order} />
+                                  <button class="rounded border border-bo-border px-3 py-1.5 hover:bg-bo-bg">
+                                    Envoyer à cette adresse
+                                  </button>
+                                </form>
+                              </details>
+                            </>
+                          ) : (
+                            <details
+                              open={manquesDestinataire.length > 0 && situation?.envoiPaye !== "stand"}
+                            >
+                              {/* Ouvert d'office quand il manque l'adresse — sauf
+                                  pour une vente du stand, qui se remet le plus
+                                  souvent en main propre : on ne l'invite pas à voyager. */}
+                              <summary class="cursor-pointer text-bo-accent">
+                                {aUneAdresse ? "Corriger l'adresse" : "Saisir l'adresse du destinataire"}
+                              </summary>
+                              <form method="POST" class="mt-2 space-y-2">
+                                <input type="hidden" name="_action" value="adresse" />
+                                <ChampsAdresse adresse={order} />
+                                <button class="rounded border border-bo-border px-3 py-1.5 hover:bg-bo-bg">
+                                  Enregistrer l'adresse
+                                </button>
+                                <p class="text-xs text-bo-muted">
+                                  Elle devient l'adresse de livraison de la commande
+                                  (colonne de droite), et la chronologie note le
+                                  changement.
+                                </p>
+                              </form>
+                            </details>
+                          )}
+                        </div>
+
+                        {manquesEmail.map((m) => (
+                          <p class="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
+                            {m.message}{" "}
+                            {client && (
+                              <a href={url(`/clients/${client.id}`)} class="underline">
+                                Ouvrir la fiche de la cliente
+                              </a>
+                            )}
+                          </p>
+                        ))}
+
+                        {etatBordereau.manques.length === 0 && (
                       <>
                         {/* Le poids décide de la tranche, donc du prix : on le
                             corrige AVANT d'acheter (l'emballage pèse). */}
-                        <form method="GET" class="flex flex-wrap items-end gap-2">
+                        <form method="GET" action="#bordereau" class="flex flex-wrap items-end gap-2">
+                          {voirTous && <input type="hidden" name="tous" value="1" />}
                           <label>
                             <span class="mb-1 block text-xs text-bo-muted">Poids du colis emballé</span>
                             <span class="flex items-center gap-1">
@@ -956,8 +1182,9 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                         )}
                         {!etatBordereau.erreurMethodes && etatBordereau.methodes.length === 0 && (
                           <p class="text-bo-muted">
-                            SendCloud ne propose aucune option pour ce colis (poids, pays ou
-                            point relais). Vérifiez le poids, ou créez l'envoi dans SendCloud.
+                            {etatBordereau.autresServices > 0 && !voirTous
+                              ? `SendCloud ne propose aucun service ${situation?.transporteurPaye ?? "du transporteur payé"} pour ce colis (poids, pays ou point relais). D'autres transporteurs le peuvent :`
+                              : "SendCloud ne propose aucun service pour ce colis (poids, pays ou point relais). Vérifiez le poids et l'adresse, ou créez l'envoi directement dans SendCloud."}
                           </p>
                         )}
 
@@ -973,18 +1200,69 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                             {/* Une clé par affichage : un double-clic ou un F5
                                 renvoient la même, et l'API ne l'achète qu'une fois. */}
                             <input type="hidden" name="cleDemande" value={crypto.randomUUID()} />
+                            {/* Ce que la cliente a choisi, sous les yeux au moment
+                                de choisir : c'est la promesse que l'étiquette
+                                doit tenir (signature, heure, point relais…). */}
+                            {order.shippingLabel && (
+                              <p>
+                                {situation?.envoiPaye === "transporteur" ||
+                                situation?.envoiPaye === "hors_sendcloud"
+                                  ? "La cliente a payé : "
+                                  : "Mode choisi : "}
+                                <strong>{order.shippingLabel}</strong>
+                                {order.shippingDescription && (
+                                  <span class="text-bo-muted"> — {order.shippingDescription}</span>
+                                )}
+                              </p>
+                            )}
+                            {/* Pourquoi aucune ligne n'est « celle qu'elle a
+                                payée », avant de choisir : sans cette phrase,
+                                une liste sans badge vert passe pour une panne. */}
+                            {situation && SANS_ENVOI_PAYE[situation.envoiPaye] ? (
+                              <p class="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
+                                {SANS_ENVOI_PAYE[situation.envoiPaye]}
+                              </p>
+                            ) : situation?.envoiPaye === "hors_sendcloud" ? (
+                              <p class="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
+                                La cliente a payé un envoi {situation.transporteurPaye}, que
+                                SendCloud n'expédie pas pour la boutique : voici les services
+                                des autres transporteurs. Choisissez le plus proche de ce
+                                qu'elle a payé (délai, signature, point relais).
+                              </p>
+                            ) : (
+                              !etatBordereau.methodes[0]!.conforme && (
+                                <p class="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
+                                  {etatBordereau.autresServices > 0 && !voirTous
+                                    ? "Aucun service SendCloud ne correspond exactement à ce mode pour ce colis. Vérifiez lequel convient avant d'acheter — d'autres transporteurs l'ont peut-être : « Voir tous les services »."
+                                    : "Aucun service SendCloud ne correspond exactement à ce mode pour ce colis. Vérifiez lequel convient avant d'acheter."}
+                                </p>
+                              )
+                            )}
                             <fieldset class="space-y-1.5">
                               {etatBordereau.methodes.map((m, i) => (
                                 <label class="flex cursor-pointer items-center justify-between gap-3 rounded border border-bo-border px-3 py-2 hover:bg-bo-bg">
-                                  <span class="flex items-center gap-2">
+                                  <span class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                                     <input
                                       type="radio"
                                       name="methode"
                                       value={`${m.code}|${m.prixCents ?? ""}`}
                                       data-prix={m.prixCents === null ? "" : formatPrice(m.prixCents)}
+                                      data-nom={m.nom}
+                                      data-ecart={m.conforme ? "" : (m.ecart ?? "")}
                                       checked={i === 0}
                                     />
                                     {m.nom}
+                                    {m.conforme ? (
+                                      <span class="rounded bg-green-50 px-1.5 text-xs text-green-800">
+                                        correspond au mode payé
+                                      </span>
+                                    ) : (
+                                      m.ecart && (
+                                        <span class="rounded bg-amber-50 px-1.5 text-xs text-amber-900">
+                                          {m.ecart}
+                                        </span>
+                                      )
+                                    )}
                                   </span>
                                   <span class="font-medium">
                                     {m.prixCents === null ? "—" : formatPrice(m.prixCents)}
@@ -992,6 +1270,13 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                                 </label>
                               ))}
                             </fieldset>
+                            {etatBordereau.autresServices > 0 && (
+                              <p>
+                                <a href={lienAutresServices} class="text-bo-accent underline">
+                                  {libelleAutresServices}
+                                </a>
+                              </p>
+                            )}
                             <button class="rounded bg-bo-nav px-4 py-2 text-white" data-bouton-achat>
                               {etatBordereau.essai
                                 ? "Fabriquer un bordereau d'essai (gratuit)"
@@ -1003,10 +1288,21 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                             </button>
                             <p class="text-xs text-bo-muted">
                               {etatBordereau.essai
-                                ? "Mode essai : SendCloud fabrique une lettre non affranchie, qu'il ne facture pas. Ce n'est pas une étiquette Mondial Relay valable."
+                                ? "Mode essai : SendCloud fabrique une lettre non affranchie, qu'il ne facture pas. Ce n'est pas une étiquette valable chez le transporteur."
                                 : "Le montant est prélevé par SendCloud dès la création de l'étiquette. Une étiquette annulée avant dépôt est en principe remboursée."}
                             </p>
                           </form>
+                        )}
+                        {/* Liste vide : le lien vers les autres transporteurs
+                            est la seule chose à faire, il se montre seul. */}
+                        {etatBordereau.methodes.length === 0 && etatBordereau.autresServices > 0 && (
+                          <p>
+                            <a href={lienAutresServices} class="text-bo-accent underline">
+                              {libelleAutresServices}
+                            </a>
+                          </p>
+                        )}
+                      </>
                         )}
                       </>
                     )}
@@ -1395,7 +1691,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
             ) : (
               <p class="text-sm text-bo-muted">
                 {order.shippingLabel === "Retrait sur place"
-                  ? "Retrait sur place — pas d'expédition."
+                  ? "Retrait sur place — pas d'adresse. S'il faut l'expédier quand même, saisissez-la ci-dessous ou dans le bloc du bordereau."
                   : "Aucune adresse enregistrée."}
               </p>
             )}
@@ -1438,9 +1734,20 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                 <input
                   name="shippingCountry"
                   value={order.shippingCountry ?? ""}
-                  placeholder="Pays"
-                  class="w-full rounded border border-bo-border px-2 py-1"
+                  placeholder="Pays (FR, BE, CH…)"
+                  list="bo-pays"
+                  maxlength="2"
+                  pattern="[A-Za-z]{2}"
+                  title="Le code du pays, en deux lettres : FR, BE, CH…"
+                  class="w-full rounded border border-bo-border px-2 py-1 uppercase"
                 />
+                {/* Une seule liste pour toute la page : les formulaires
+                    d'adresse du bloc du bordereau s'en servent aussi. */}
+                <datalist id="bo-pays">
+                  {PAYS_PROPOSES.map((p) => (
+                    <option value={p.code}>{p.nom}</option>
+                  ))}
+                </datalist>
                 <input
                   name="shippingPhone"
                   value={order.shippingPhone ?? ""}
@@ -1680,23 +1987,46 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
       if (achat) {
         var bouton = achat.querySelector("[data-bouton-achat]");
         var essai = achat.getAttribute("data-essai") === "1";
+        var coche = function () {
+          return achat.querySelector('input[name="methode"]:checked');
+        };
+        var attribut = function (nom) {
+          var r = coche();
+          return r ? r.getAttribute(nom) || "" : "";
+        };
         var prixCoche = function () {
-          var r = achat.querySelector('input[name="methode"]:checked');
-          return r ? r.getAttribute("data-prix") || "" : "";
+          return attribut("data-prix");
         };
         if (!essai)
           achat.addEventListener("change", function () {
             var p = prixCoche();
             bouton.textContent = "Acheter le bordereau — " + (p || "prix inconnu");
           });
+        // La confirmation nomme le service et redit son écart avec le mode
+        // payé : depuis « Voir tous les services », un Chrono samedi ou un
+        // autre transporteur se coche d'un clic, et l'étiquette achetée ne se
+        // modifie plus.
         achat.addEventListener("submit", function (e) {
           var p = prixCoche();
+          var nom = attribut("data-nom");
+          var ecart = attribut("data-ecart");
+          var service = nom ? " « " + nom + " »" : "";
+          var alerte = ecart ? "\n\nÀ vérifier : " + ecart + "." : "";
           var ok = essai
-            ? window.confirm("Fabriquer un bordereau d'ESSAI (lettre non affranchie, gratuite) ?")
+            ? window.confirm(
+                "Fabriquer un bordereau d'ESSAI" +
+                  service +
+                  " (lettre non affranchie, gratuite) ?" +
+                  alerte,
+              )
             : window.confirm(
-                "Acheter ce bordereau chez SendCloud pour " +
+                "Acheter le bordereau" +
+                  service +
+                  " chez SendCloud pour " +
                   (p || "un prix non communiqué") +
-                  " ?\nLe montant est prélevé dès la création de l'étiquette.",
+                  " ?" +
+                  alerte +
+                  "\n\nLe montant est prélevé dès la création de l'étiquette.",
               );
           if (!ok) {
             e.preventDefault();

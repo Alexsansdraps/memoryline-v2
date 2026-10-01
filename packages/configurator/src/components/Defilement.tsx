@@ -1,6 +1,8 @@
 /// <reference lib="dom" />
 import {
+  createEffect,
   createSignal,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -126,6 +128,12 @@ export function BarreActions(props: {
   children: JSX.Element;
   /** Fondu + flèche au-dessus de la barre. Vrai par défaut. */
   indice?: boolean;
+  /**
+   * Ce qui flotte juste au-dessus de la barre, au milieu : l'invitation à
+   * descendre ({@link InviteADescendre}). La barre est collée en bas, c'est
+   * donc le seul endroit dont on soit sûr qu'il est à l'écran.
+   */
+  invite?: JSX.Element;
 }) {
   const [resteDessous, setResteDessous] = createSignal(false);
   let repere: HTMLDivElement | undefined;
@@ -174,6 +182,7 @@ export function BarreActions(props: {
             style={{ bottom: "calc(100% + 1px)" }}
           />
         </Show>
+        {props.invite}
         {props.children}
       </div>
       <div
@@ -182,6 +191,259 @@ export function BarreActions(props: {
         style={{ height: "1px", "margin-top": "-1px" }}
       />
     </>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  L'invitation à descendre                                                   */
+/* -------------------------------------------------------------------------- */
+
+/** Écart laissé au-dessus du titre visé, une fois descendu. */
+const MARGE_ARRIVEE = 12;
+
+/** L'appareil demande moins d'animations. */
+function moinsDAnimations(): boolean {
+  return (
+    typeof matchMedia === "function" &&
+    matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+/**
+ * « Personnaliser ce personnage ↓ » : une invitation EN TOUTES LETTRES à
+ * descendre jusqu'aux réglages, posée au-dessus de la barre d'actions.
+ *
+ * Ni le fondu, ni la demi-vignette au ras du bord n'ont suffi : on choisissait
+ * son personnage dans la grille, on apercevait au mieux la rangée de la peau,
+ * et on validait sans avoir vu que les vêtements, les cheveux et les
+ * accessoires attendaient dessous (retour cliente, une fois de plus). Un
+ * indice muet se devine ; une phrase se lit.
+ *
+ * - Elle ne paraît que tant que le titre des réglages ne se lit pas encore
+ *   AU-DESSUS d'elle : sous le bord, ou caché par elle. Dès qu'il se lit, elle
+ *   s'efface — ce titre dit les mêmes mots, et elle découvre en partant le
+ *   haut de la première rangée de réglages —, et revient si l'on remonte. Sur
+ *   un écran où tout tient, on ne la voit jamais.
+ * - Un toucher fait défiler en douceur jusqu'au titre des réglages — sous
+ *   l'aperçu collant du personnage, sur téléphone — et y pose le focus : la
+ *   bulle qu'on vient d'actionner va s'effacer, le clavier ne doit pas se
+ *   retrouver nulle part.
+ * - Elle ne défile JAMAIS d'elle-même. Choisir un personnage, c'est souvent en
+ *   essayer plusieurs : une page qui partirait vers le bas à chaque essai
+ *   ferait perdre la grille, et prendrait la main au lecteur d'écran comme au
+ *   clavier. À la place, elle sautille trois fois quand elle apparaît, puis à
+ *   chaque nouveau personnage choisi (`relance`) — l'œil y revient au moment
+ *   où l'on a fini de choisir.
+ * - Moins d'animations demandées : ni défilement doux, ni fondu, ni
+ *   sautillement. Elle apparaît, disparaît, et le toucher saute d'un coup.
+ *
+ * Mesures et défilement passent par la page elle-même et non par un
+ * observateur d'intersection : la barre, collée, recouvre le bas de la zone
+ * qui défile, la bulle flotte au-dessus d'elle, et c'est le haut de la BULLE
+ * qui compte — un observateur ne le connaît pas. Un `scroll` écouté en capture sur le document entend toutes
+ * les zones qui défilent, la fenêtre de personnalisation comme la page du
+ * stand.
+ */
+export function InviteADescendre(props: {
+  /** Le titre des réglages : ce qu'on vise, et ce qui doit être vu. */
+  cible: HTMLElement | undefined;
+  libelle: string;
+  /**
+   * Hauteur de ce qui reste collé en haut de la zone qui défile, par-dessus
+   * le contenu : l'aperçu du personnage, sur téléphone. Le titre visé
+   * s'arrête dessous, pas derrière.
+   */
+  masqueHaut?: () => number;
+  /** Chaque changement de cette valeur refait sautiller l'invitation. */
+  relance?: () => unknown;
+}) {
+  const [visible, setVisible] = createSignal(false);
+  let racine: HTMLDivElement | undefined;
+  let bouton: HTMLButtonElement | undefined;
+  /** Elle a déjà sautillé en apparaissant : les retours suivants sont muets. */
+  let dejaVue = false;
+  /** Le sautillement en cours : un nouveau le remplace, sans s'y ajouter. */
+  let sautillement: Animation | undefined;
+
+  const attirer = () => {
+    if (!bouton || !visible() || moinsDAnimations()) return;
+    // Trois personnages cliqués d'affilée : sans cela, les sautillements
+    // s'empilaient et la bulle s'agitait encore trois secondes après.
+    sautillement?.cancel();
+    // `animate` manque sur de très vieux navigateurs : l'invitation reste,
+    // immobile, et c'est tout ce qui compte.
+    sautillement = bouton.animate?.(
+      [
+        { transform: "translateY(0)" },
+        { transform: "translateY(5px)" },
+        { transform: "translateY(0)" },
+      ],
+      { duration: 900, delay: 250, iterations: 3, easing: "ease-in-out" },
+    );
+  };
+
+  let image = 0;
+  const mesurer = () => {
+    cancelAnimationFrame(image);
+    // Une mesure par image au plus : un défilement envoie bien davantage.
+    image = requestAnimationFrame(() => {
+      const cible = props.cible;
+      if (!cible || !racine || !cible.isConnected) {
+        setVisible(false);
+        return;
+      }
+      // Le bas de ce qu'on lit, au milieu, c'est le haut de la bulle, et non
+      // celui de la barre : tant que le titre n'est pas au-dessus d'elle, il
+      // est dessous, ou caché par elle. Une marge fixe comptée depuis la
+      // barre laissait une bande où le titre se lisait juste au-dessus de la
+      // bulle — les mêmes mots deux fois, l'un sur l'autre : c'était l'écran
+      // d'arrivée d'un portable en 1536 × 730.
+      // Mesuré sur le conteneur, que le sautillement ne déplace pas ; masqué
+      // (`visibility`), il garde sa place : la mesure vaut dans les deux sens,
+      // et l'invitation ne clignote pas d'un état à l'autre.
+      const haut = racine.getBoundingClientRect().top;
+      const neuf = cible.getBoundingClientRect().bottom > haut;
+      if (neuf === visible()) return;
+      setVisible(neuf);
+      if (neuf && !dejaVue) {
+        dejaVue = true;
+        attirer();
+      }
+    });
+  };
+
+  onMount(() => {
+    const options = { capture: true, passive: true } as const;
+    document.addEventListener("scroll", mesurer, options);
+    window.addEventListener("resize", mesurer);
+    onCleanup(() => {
+      cancelAnimationFrame(image);
+      document.removeEventListener("scroll", mesurer, options);
+      window.removeEventListener("resize", mesurer);
+    });
+  });
+
+  // Les réglages bougent aussi SANS défilement : la grille qui prend sa
+  // hauteur de demi-rangée, une catégorie plus courte, la cale du bord. Tous
+  // changent la taille de la colonne qui porte le titre.
+  createEffect(() => {
+    const cible = props.cible;
+    mesurer();
+    const colonne = cible?.parentElement;
+    if (!colonne || typeof ResizeObserver === "undefined") return;
+    const taille = new ResizeObserver(mesurer);
+    taille.observe(colonne);
+    onCleanup(() => taille.disconnect());
+  });
+
+  createEffect(on(() => props.relance?.(), attirer, { defer: true }));
+
+  const descendre = () => {
+    const cible = props.cible;
+    if (!cible) return;
+    const comportement: ScrollBehavior = moinsDAnimations() ? "auto" : "smooth";
+    const masque = props.masqueHaut?.() ?? 0;
+    const haut = cible.getBoundingClientRect().top;
+    const trouvee = ancetreDefilant(cible);
+    // Une page qui pose `overflow` sur <html> ou <body> défile quand même par
+    // la fenêtre : leur cadre, lui, part avec le défilement, et le calcul
+    // ci-dessous compterait celui-ci deux fois.
+    const defilante =
+      trouvee === document.documentElement || trouvee === document.body
+        ? null
+        : trouvee;
+    if (defilante) {
+      // Ce qui colle en haut s'arrête au bord INTÉRIEUR de la marge de la
+      // zone qui défile : le titre doit s'arrêter sous la marge ET sous lui.
+      const cadre = defilante.getBoundingClientRect();
+      const marge = Number.parseFloat(getComputedStyle(defilante).paddingTop) || 0;
+      defilante.scrollTo({
+        top: defilante.scrollTop + haut - (cadre.top + marge + masque + MARGE_ARRIVEE),
+        behavior: comportement,
+      });
+    } else {
+      window.scrollTo({
+        top: window.scrollY + haut - (masque + MARGE_ARRIVEE),
+        behavior: comportement,
+      });
+    }
+    // Sans faire défiler une seconde fois : le défilement doux est en route.
+    cible.focus({ preventScroll: true });
+  };
+
+  return (
+    <div
+      ref={racine}
+      style={{
+        position: "absolute",
+        // Assez haut pour que l'ombre ne touche pas le trait de la barre.
+        bottom: "calc(100% + 10px)",
+        left: "0",
+        right: "0",
+        display: "flex",
+        "justify-content": "center",
+        // Le conteneur, pleine largeur, ne doit pas capter les touchers à
+        // côté de la bulle : la demi-vignette dessous reste cliquable.
+        "pointer-events": "none",
+        opacity: visible() ? "1" : "0",
+        // Masquée, elle quitte aussi l'ordre de tabulation et le lecteur
+        // d'écran ; le fondu se joue AVANT que `visibility` ne bascule.
+        visibility: visible() ? "visible" : "hidden",
+        transition: moinsDAnimations()
+          ? "none"
+          : visible()
+            ? "opacity 0.2s ease-out"
+            : "opacity 0.2s ease-out, visibility 0s linear 0.2s",
+      }}
+    >
+      <button
+        ref={bouton}
+        type="button"
+        onClick={descendre}
+        style={{
+          "pointer-events": visible() ? "auto" : "none",
+          display: "inline-flex",
+          "align-items": "center",
+          gap: "8px",
+          "min-height": "42px",
+          padding: "9px 16px 9px 18px",
+          border: "none",
+          "border-radius": "9999px",
+          // L'encre, et non le violet des boutons : juste au-dessus de
+          // « Valider mon personnage », un second violet se lirait comme une
+          // seconde action principale.
+          background: "#111827",
+          color: "#ffffff",
+          "box-shadow": "0 4px 14px rgba(17, 24, 39, 0.28)",
+          "font-family": "inherit",
+          "font-size": "14px",
+          "font-weight": "600",
+          "line-height": "1.2",
+          cursor: "pointer",
+          // Sur un téléphone étroit, un libellé long (« Personalizza questo
+          // personaggio ») passe à la ligne plutôt que de déborder du panneau.
+          "max-width": "100%",
+          "box-sizing": "border-box",
+          "text-align": "center",
+          "-webkit-tap-highlight-color": "transparent",
+        }}
+      >
+        {props.libelle}
+        <svg
+          viewBox="0 0 16 16"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <polyline points="3.5 6 8 10.5 12.5 6" />
+        </svg>
+      </button>
+    </div>
   );
 }
 

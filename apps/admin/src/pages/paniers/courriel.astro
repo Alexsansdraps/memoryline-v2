@@ -1,0 +1,487 @@
+---
+/**
+ * Le courriel de relance des paniers abandonnés, réécrit par la boutique.
+ *
+ * Trois relances au plus (1re, 2e, 3e), un courriel chacune. On y réécrit les
+ * MOTS — objet, accroche, message, bouton, mot de la fin — et rien d'autre :
+ * le panier (vignettes, prix, total), le bouton lui-même et le lien de
+ * désinscription sont fabriqués par le code, parce que ce sont eux qui font
+ * qu'un courrier marche, ou qu'il est en règle. Pas de HTML non plus : du
+ * texte, des retours à la ligne, du **gras**. L'API échappe tout le reste.
+ *
+ * L'aperçu passe par le MÊME modèle que l'envoi réel (mail.ts) : ce qu'on lit
+ * ici est ce que la cliente recevra, au panier d'exemple près. Tant que la
+ * boutique n'a rien changé, la 1re relance reste le courrier d'origine, à
+ * l'octet près — et « Revenir au texte d'origine » y ramène.
+ *
+ * Comme l'écran des courriers, tout passe par la page elle-même : la session
+ * vit dans son cookie, l'API ne se joint que côté serveur. Le script du bas
+ * rejoue les mêmes envois sans recharger (aperçu en direct, essai) ; sans
+ * lui, les boutons restent des formulaires qui fonctionnent.
+ */
+import Admin from "../../layouts/Admin.astro";
+import { url } from "../../lib/url.ts";
+import {
+  adminApi,
+  type CourrielRelance,
+  type EcranCourrielsRelance,
+  type TextesRelance,
+} from "../../lib/api.ts";
+
+const api = adminApi(Astro.request);
+const moi = Astro.locals.user;
+
+/** La relance demandée, 1 par défaut. */
+const brut = Number(Astro.url.searchParams.get("relance") ?? "1");
+const etape: 1 | 2 | 3 = brut === 2 || brut === 3 ? brut : 1;
+
+type Ton = "ok" | "attention" | "erreur";
+
+/**
+ * Les messages d'erreur montrables. L'API explique en français ce qu'elle
+ * refuse (« {nom} n'est pas une variable connue ») et cette phrase-là a sa
+ * place à l'écran. Le reste — un code, une panne de réseau — ne dit rien à la
+ * boutique et devient une phrase à nous.
+ */
+const TECHNIQUE = /^API\s|fetch|ECONN|ENOTFOUND|Unexpected|JSON|socket/i;
+function messageLisible(e: unknown, repli: string): string {
+  const texte = (e instanceof Error ? e.message : String(e)).trim();
+  if (!texte || TECHNIQUE.test(texte)) return repli;
+  return texte;
+}
+
+/** Les textes tels qu'ils arrivent du formulaire. */
+function textesDuFormulaire(f: FormData): TextesRelance {
+  const champ = (n: string) => String(f.get(n) ?? "");
+  return {
+    objet: champ("objet"),
+    accroche: champ("accroche"),
+    message: champ("message"),
+    bouton: champ("bouton"),
+    conclusion: champ("conclusion"),
+  };
+}
+
+let message: string | null = null;
+let ton: Ton = "ok";
+/** Ce que la boutique a saisi, à remettre dans les champs après un POST. */
+let saisie: TextesRelance | null = null;
+let apercu: { sujet: string; html: string } | null = null;
+let erreurApercu: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  // Touche Entrée dans un champ : le navigateur presse le premier bouton,
+  // « Enregistrer », sans toujours dire son nom. Le repli est l'aperçu, qui
+  // n'écrit rien : mieux vaut ne rien faire que d'enregistrer par surprise.
+  const action = String(f.get("_action") ?? "") || "apercu";
+  saisie = textesDuFormulaire(f);
+  const json = (Astro.request.headers.get("accept") ?? "").includes("application/json");
+
+  try {
+    if (action === "apercu") {
+      apercu = await api.apercuCourrielRelance(etape, saisie);
+    } else if (action === "essai") {
+      const r = await api.essaiCourrielRelance(etape, saisie);
+      message = r.resume;
+      ton = r.parti ? "ok" : "attention";
+    } else if (action === "enregistrer") {
+      const r = await api.enregistrerCourrielRelance(etape, saisie);
+      saisie = r.textes;
+      message = r.personnalise
+        ? "Courriel enregistré. Les prochaines relances partiront avec ce texte."
+        : "Courriel enregistré : c'est le texte d'origine, il part tel qu'avant.";
+    } else if (action === "retablir") {
+      const r = await api.retablirCourrielRelance(etape);
+      saisie = r.textes;
+      message = "Le texte d'origine est revenu. Les prochaines relances partiront avec lui.";
+    } else {
+      message = "Ce bouton n'a pas été compris. Réessayez.";
+      ton = "erreur";
+    }
+  } catch (e) {
+    const repli =
+      action === "essai"
+        ? "L'essai n'est pas parti. Réessayez dans un instant."
+        : action === "apercu"
+          ? "L'aperçu n'a pas pu être affiché. Réessayez dans un instant."
+          : "Le courriel n'a pas été enregistré. Réessayez dans un instant.";
+    if (action === "apercu") erreurApercu = messageLisible(e, repli);
+    else {
+      message = messageLisible(e, repli);
+      ton = "erreur";
+    }
+  }
+
+  // Appel du script de la page : il attend des données, pas une page.
+  if (json) {
+    return new Response(JSON.stringify({ message, ton, apercu, erreurApercu }), {
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  }
+}
+
+let ecran: EcranCourrielsRelance | null = null;
+let erreur: string | null = null;
+try {
+  ecran = await api.courrielsRelance();
+} catch (e) {
+  erreur = messageLisible(e, "Les courriels de relance n'ont pas pu être lus. Rechargez l'écran.");
+}
+
+const courriel: CourrielRelance | undefined = ecran?.etapes.find((c) => c.etape === etape);
+const textes: TextesRelance | null = saisie ?? courriel?.textes ?? null;
+
+// L'aperçu de départ : celui des textes affichés (enregistrés, ou saisis si
+// l'on revient d'un enregistrement refusé). Sans script, c'est aussi le seul.
+if (!apercu && !erreurApercu && textes) {
+  try {
+    apercu = await api.apercuCourrielRelance(etape, textes);
+  } catch (e) {
+    erreurApercu = messageLisible(e, "L'aperçu n'a pas pu être affiché.");
+  }
+}
+
+const TONS: Record<Ton, string> = {
+  ok: "border-green-200 bg-green-50 text-green-900",
+  attention: "border-amber-200 bg-amber-50 text-amber-900",
+  erreur: "border-red-200 bg-red-50 text-red-700",
+};
+
+const CHAMP = "mt-1 block w-full rounded border border-bo-border px-3 py-2 text-sm";
+---
+
+<Admin title="Courriel de relance">
+  <p class="mb-4 text-sm">
+    <a href={url("/paniers")} class="text-bo-accent hover:underline">← Paniers abandonnés</a>
+  </p>
+
+  {erreur && (
+    <p class="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+      {erreur}
+    </p>
+  )}
+
+  {/* Les trois relances, en onglets : on passe de l'une à l'autre sans
+      perdre de vue laquelle on réécrit. */}
+  <nav class="mb-5 flex flex-wrap gap-2" aria-label="Choisir la relance">
+    {(ecran?.etapes ?? []).map((c) => (
+      <a
+        href={url(`/paniers/courriel?relance=${c.etape}`)}
+        aria-current={c.etape === etape ? "page" : undefined}
+        class={`rounded border px-3 py-2 text-sm ${
+          c.etape === etape
+            ? "border-bo-nav bg-bo-nav text-white"
+            : "border-bo-border bg-bo-surface hover:bg-bo-bg"
+        }`}
+      >
+        <span class="font-medium">{c.nom}</span>
+        <span class={`block text-xs ${c.etape === etape ? "text-white/80" : "text-bo-muted"}`}>
+          {c.programmee ? c.quand : "pas programmée"}
+          {c.personnalise ? " · votre texte" : " · texte d'origine"}
+        </span>
+      </a>
+    ))}
+  </nav>
+
+  {courriel && !courriel.programmee && (
+    <p class="mb-4 max-w-3xl rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      La {courriel.nom} n'est pas programmée : ce courriel ne part pas tout
+      seul. Vous pouvez le préparer ici, puis la programmer dans les
+      <a href={url("/paniers")} class="underline">réglages des paniers abandonnés</a>.
+    </p>
+  )}
+  {courriel && courriel.programmee && ecran && !ecran.active && (
+    <p class="mb-4 max-w-3xl rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      La relance automatique est éteinte : aucun courriel ne part tout seul
+      pour l'instant. Elle s'allume dans les
+      <a href={url("/paniers")} class="underline">réglages des paniers abandonnés</a>.
+    </p>
+  )}
+
+  <p
+    data-message
+    aria-live="polite"
+    hidden={!message}
+    class={`mb-4 max-w-3xl rounded border px-3 py-2 text-sm ${TONS[ton]}`}
+  >
+    {message}
+  </p>
+
+  {textes && (
+    <div class="grid gap-6 xl:grid-cols-2">
+      {/* ----------------------------------------------------------- */}
+      {/* Le texte                                                     */}
+      {/* ----------------------------------------------------------- */}
+      <form
+        method="POST"
+        action={url(`/paniers/courriel?relance=${etape}`)}
+        class="js-courriel space-y-4 rounded-lg border border-bo-border bg-bo-surface p-5"
+      >
+        {/* La touche Entrée dans un champ presse le PREMIER bouton du
+            formulaire. Sans celui-ci, c'était « Enregistrer » : un objet à
+            moitié tapé partait à la prochaine relance. Celui-ci, invisible,
+            ne fait que l'aperçu, qui n'écrit rien. */}
+        <button
+          name="_action"
+          value="apercu"
+          formnovalidate
+          tabindex="-1"
+          aria-hidden="true"
+          style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden"
+        ></button>
+        <label class="block">
+          <span class="text-sm font-medium">Objet</span>
+          <input name="objet" value={textes.objet} maxlength="150" required class={CHAMP} />
+          <span class="mt-1 block text-xs text-bo-muted">
+            Ce qu'on lit dans la boîte de réception, avant d'ouvrir.
+          </span>
+        </label>
+
+        <label class="block">
+          <span class="text-sm font-medium">Accroche</span>
+          <input name="accroche" value={textes.accroche} maxlength="150" required class={CHAMP} />
+          <span class="mt-1 block text-xs text-bo-muted">La grande ligne du haut.</span>
+        </label>
+
+        <label class="block">
+          <span class="text-sm font-medium">Message</span>
+          <textarea name="message" rows="6" maxlength="3000" class={CHAMP}>{textes.message}</textarea>
+        </label>
+
+        <p class="rounded border border-dashed border-bo-border bg-bo-bg px-3 py-2 text-xs text-bo-muted">
+          Ici s'ajoute tout seul le panier de la cliente : ses affiches avec
+          leur vignette, leurs prix, le total, l'avertissement si l'une n'est
+          plus disponible, et son code de réduction s'il y en a un.
+        </p>
+
+        <label class="block">
+          <span class="text-sm font-medium">Libellé du bouton</span>
+          <input name="bouton" value={textes.bouton} maxlength="60" required class={CHAMP} />
+          <span class="mt-1 block text-xs text-bo-muted">
+            Le bouton rouvre le panier de la cliente, tel qu'elle l'a laissé,
+            code de réduction compris. Son lien est fabriqué par la boutique.
+          </span>
+        </label>
+
+        <label class="block">
+          <span class="text-sm font-medium">Mot de la fin</span>
+          <textarea name="conclusion" rows="3" maxlength="1000" class={CHAMP}>{textes.conclusion}</textarea>
+        </label>
+
+        <p class="rounded border border-dashed border-bo-border bg-bo-bg px-3 py-2 text-xs text-bo-muted">
+          Puis, toujours, le lien « Ne plus recevoir de rappel de panier ». Il
+          est obligatoire, et une cliente qui l'utilise n'est plus jamais
+          relancée.
+        </p>
+
+        <details class="rounded border border-bo-border px-3 py-2 text-sm" open>
+          <summary class="cursor-pointer font-medium">Ce qu'on peut écrire</summary>
+          <ul class="mt-2 space-y-1 text-xs">
+            {(ecran?.variables ?? []).map((v) => (
+              <li>
+                <code class="rounded bg-bo-bg px-1">{`{${v.nom}}`}</code> : {v.sens}
+              </li>
+            ))}
+            <li>
+              <code class="rounded bg-bo-bg px-1">**mots**</code> : met
+              « mots » en gras, dans le message et le mot de la fin (ailleurs,
+              les astérisques resteraient tels quels).
+            </li>
+            <li>
+              Une ligne vide commence un nouveau paragraphe. Le HTML n'est pas
+              interprété : il s'affiche tel quel.
+            </li>
+          </ul>
+        </details>
+
+        <div class="flex flex-wrap items-center gap-3 pt-1">
+          <button
+            name="_action"
+            value="enregistrer"
+            class="rounded bg-bo-nav px-4 py-2 text-sm text-white"
+          >
+            Enregistrer
+          </button>
+          <button
+            name="_action"
+            value="apercu"
+            formnovalidate
+            class="rounded border border-bo-border px-4 py-2 text-sm hover:bg-bo-bg"
+          >
+            Actualiser l'aperçu
+          </button>
+          <button
+            name="_action"
+            value="essai"
+            class="rounded border border-bo-border px-4 py-2 text-sm hover:bg-bo-bg"
+          >
+            M'envoyer un essai
+          </button>
+          <span data-modifie hidden class="text-xs text-amber-800">
+            Modifications non enregistrées
+          </span>
+        </div>
+        <p class="text-xs text-bo-muted">
+          L'essai part à {moi?.email ?? "l'adresse de votre compte"}, avec le
+          texte tel qu'il est à l'écran (même non enregistré) et un panier
+          d'exemple.
+        </p>
+      </form>
+
+      {/* ----------------------------------------------------------- */}
+      {/* L'aperçu                                                     */}
+      {/* ----------------------------------------------------------- */}
+      <section class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface xl:sticky xl:top-4 xl:self-start">
+        <div class="bg-bo-bg px-5 py-3">
+          <div class="text-xs text-bo-muted">
+            Objet, tel qu'il s'affichera dans la boîte de réception
+          </div>
+          <div data-sujet class="text-sm font-medium">{apercu?.sujet}</div>
+          <div class="mt-0.5 text-xs text-bo-muted">
+            Rempli avec un panier d'exemple : Camille, deux affiches et un code
+            de réduction, qui n'existent pas.
+          </div>
+          <p
+            data-erreur-apercu
+            hidden={!erreurApercu}
+            class="mt-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700"
+          >
+            {erreurApercu}
+          </p>
+        </div>
+        {/* Le courrier apporte ses propres styles : posé dans la page, il
+            repeindrait le back-office. Il est lu dans un cadre à part, qui
+            n'exécute rien de ce qu'il contient. */}
+        <iframe
+          data-cadre
+          title="Aperçu du courriel de relance"
+          sandbox=""
+          srcdoc={apercu?.html}
+          class="block h-[44rem] w-full border-0 bg-bo-bg"
+        ></iframe>
+      </section>
+    </div>
+  )}
+
+  {courriel?.personnalise && (
+    <form
+      method="POST"
+      action={url(`/paniers/courriel?relance=${etape}`)}
+      class="mt-6"
+      onsubmit="return confirm('Remettre le texte d’origine de ce courriel ? Votre texte sera effacé.')"
+    >
+      <input type="hidden" name="_action" value="retablir" />
+      <button class="rounded border border-bo-border px-4 py-2 text-sm hover:bg-bo-bg">
+        Revenir au texte d'origine
+      </button>
+      <span class="ml-2 text-xs text-bo-muted">
+        Efface votre texte : la {courriel.nom} repart avec celui de la boutique.
+      </span>
+    </form>
+  )}
+
+  <script is:inline>
+    // L'aperçu suit la frappe, l'essai part sans recharger l'écran. Le
+    // formulaire reste complet : c'est le même envoi qui est rejoué, avec
+    // l'en-tête qui demande des données plutôt qu'une page.
+    (function () {
+      var form = document.querySelector("form.js-courriel");
+      if (!form) return;
+      var TONS = {
+        ok: "border-green-200 bg-green-50 text-green-900",
+        attention: "border-amber-200 bg-amber-50 text-amber-900",
+        erreur: "border-red-200 bg-red-50 text-red-700",
+      };
+      var zoneMessage = document.querySelector("[data-message]");
+      var sujet = document.querySelector("[data-sujet]");
+      var cadre = document.querySelector("[data-cadre]");
+      var erreurApercu = document.querySelector("[data-erreur-apercu]");
+      var modifie = document.querySelector("[data-modifie]");
+      var boutons = form.querySelectorAll("button[name='_action']");
+
+      function etat() {
+        return new URLSearchParams(new FormData(form)).toString();
+      }
+      var depart = etat();
+      var envoiEnCours = false;
+
+      function afficherMessage(texte, ton) {
+        if (!zoneMessage) return;
+        zoneMessage.className =
+          "mb-4 max-w-3xl rounded border px-3 py-2 text-sm " + (TONS[ton] || TONS.ok);
+        zoneMessage.textContent = texte || "";
+        zoneMessage.hidden = !texte;
+      }
+
+      async function demander(action) {
+        var donnees = new FormData(form);
+        donnees.set("_action", action);
+        var reponse = await fetch(form.action, {
+          method: "POST",
+          headers: { Accept: "application/json" },
+          body: donnees,
+        });
+        if (!reponse.ok) throw new Error("refus");
+        return reponse.json();
+      }
+
+      async function actualiser() {
+        try {
+          var r = await demander("apercu");
+          if (erreurApercu) {
+            erreurApercu.textContent = r.erreurApercu || "";
+            erreurApercu.hidden = !r.erreurApercu;
+          }
+          if (r.apercu) {
+            if (sujet) sujet.textContent = r.apercu.sujet;
+            if (cadre) cadre.srcdoc = r.apercu.html;
+          }
+        } catch (e) {
+          if (erreurApercu) {
+            erreurApercu.textContent = "L'aperçu n'a pas répondu. Il se mettra à jour à la prochaine frappe.";
+            erreurApercu.hidden = false;
+          }
+        }
+      }
+
+      // Une demande par pause de frappe, pas une par lettre.
+      var minuterie = null;
+      form.addEventListener("input", function () {
+        if (modifie) modifie.hidden = etat() === depart;
+        clearTimeout(minuterie);
+        minuterie = setTimeout(actualiser, 500);
+      });
+
+      form.addEventListener("submit", async function (e) {
+        var action = (e.submitter && e.submitter.value) || "apercu";
+        // L'enregistrement recharge la page, exprès : l'écran repart des
+        // textes enregistrés, et l'onglet dit « votre texte ».
+        if (action === "enregistrer") {
+          envoiEnCours = true;
+          return;
+        }
+        e.preventDefault();
+        if (action === "apercu") return actualiser();
+        boutons.forEach(function (b) { b.disabled = true; });
+        afficherMessage("Envoi de l'essai…", "ok");
+        try {
+          var r = await demander(action);
+          afficherMessage(r.message, r.ton);
+        } catch (err) {
+          afficherMessage("L'écran n'a pas répondu. Rechargez la page, puis réessayez.", "erreur");
+        } finally {
+          boutons.forEach(function (b) { b.disabled = false; });
+        }
+      });
+
+      // Quitter l'écran avec un texte non enregistré : le navigateur demande
+      // confirmation. Une demi-heure de rédaction ne se perd pas d'un clic.
+      window.addEventListener("beforeunload", function (e) {
+        if (envoiEnCours || etat() === depart) return;
+        e.preventDefault();
+        e.returnValue = "";
+      });
+    })();
+  </script>
+</Admin>

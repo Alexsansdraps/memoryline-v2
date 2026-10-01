@@ -12,7 +12,10 @@
 import { CODES_NATURE, nomNature } from "@memoryline/types";
 import { estConfigure as mondialRelayConfigure } from "./mondial-relay.js";
 import { estConfigure as colissimoConfigure } from "./colissimo.js";
-import { gerePoints as sendcloudGerePoints } from "./sendcloud-points.js";
+import {
+  expedie as sendcloudExpedie,
+  gerePoints as sendcloudGerePoints,
+} from "./sendcloud-points.js";
 
 /**
  * Les transporteurs connus, et ce qu'il faut pour qu'ils fonctionnent.
@@ -50,15 +53,16 @@ export const TRANSPORTEURS = [
     code: "colissimo",
     nom: "Colissimo (La Poste)",
     integre: true,
-    contrat: "contrat Colissimo Entreprise : numéro de contrat et mot de passe",
-    aupres: "La Poste, auprès de votre conseiller Colissimo Entreprise",
+    contrat:
+      "compte SendCloud : clés d'API (à défaut, un contrat Colissimo Entreprise : numéro de contrat et mot de passe)",
+    aupres: "SendCloud, dans Paramètres › Intégrations › API",
   },
   {
     code: "chronopost",
     nom: "Chronopost",
-    integre: false,
-    contrat: "compte Chronopost : numéro de compte et identifiants d'expédition",
-    aupres: "Chronopost, au service commercial",
+    integre: true,
+    contrat: "compte SendCloud : clés d'API",
+    aupres: "SendCloud, dans Paramètres › Intégrations › API",
   },
   {
     code: "relais_colis",
@@ -91,9 +95,9 @@ export const TRANSPORTEURS = [
   {
     code: "shop2shop",
     nom: "Shop2Shop (Cdiscount / Chronopost)",
-    integre: false,
-    contrat: "compte Shop2Shop professionnel : identifiant d'expéditeur",
-    aupres: "Shop2Shop, sur leur espace professionnel",
+    integre: true,
+    contrat: "compte SendCloud : clés d'API",
+    aupres: "SendCloud, dans Paramètres › Intégrations › API",
   },
   {
     code: "ups",
@@ -113,14 +117,15 @@ export const TRANSPORTEURS = [
 
 /** Un transporteur sait-il chercher ses points ? */
 export function transporteurConfigure(carrier: string | null | undefined): boolean {
-  if (carrier === "colissimo") return colissimoConfigure();
-  // Mondial Relay : par SendCloud, qui revend ses étiquettes à la boutique,
-  // ou en direct pour qui aurait un contrat avec eux.
+  // Mondial Relay et Colissimo : par SendCloud, qui revend leurs étiquettes à
+  // la boutique, ou en direct pour qui aurait un contrat avec eux.
+  if (carrier === "colissimo") return sendcloudGerePoints(carrier) || colissimoConfigure();
   if (carrier === "mondial_relay")
     return sendcloudGerePoints(carrier) || mondialRelayConfigure();
-  // Transporteur inconnu, ou connu mais pas encore intégré : on ne prétend
+  // Chronopost et Shop2Shop : par SendCloud seulement. Un transporteur
+  // inconnu, ou connu mais pas encore intégré, répond faux : on ne prétend
   // pas savoir chercher ses points.
-  return false;
+  return sendcloudGerePoints(carrier);
 }
 
 /**
@@ -340,6 +345,17 @@ export function checklistOuverture(
       titre: `Transporteur « ${m.carrier} » inconnu`,
       detail:
         "Ce transporteur ne figure pas dans la liste du site. Choisissez-en un autre au-dessus, ou demandez-nous de l'ajouter.",
+    });
+  // Le second cas où le site PEUT vérifier : un transporteur que SendCloud
+  // expédie, et les deux clés SendCloud posées. Le compte SendCloud tient lieu
+  // de contrat — ses tarifs négociés suffisent, rien à signer chez La Poste.
+  else if (t && sendcloudExpedie(t.code))
+    etapes.push({
+      fait: true,
+      titre: "Le compte SendCloud est en place",
+      detail: `${t.nom} passe par SendCloud, qui fournit ${
+        m.kind === "relay" ? "les points relais et " : ""
+      }les bordereaux : rien à ouvrir chez le transporteur.`,
     });
   else if (t && verifiable)
     etapes.push(

@@ -681,6 +681,8 @@ export interface OrderRow {
   statutExpedition?: StatutExpedition;
   tags?: string[] | null;
   shippingLabel?: string | null;
+  /** La description du mode le jour de la commande (« livré avant 13 h »). */
+  shippingDescription?: string | null;
   legacyName?: string | null;
   /**
    * Non nul = archivée : hors de la liste ordinaire, de l'export et des
@@ -776,14 +778,57 @@ export interface PanierAbandonne {
   /** Le lien qui remet ce panier dans le navigateur de la cliente. */
   lienRecuperation: string;
   relancable: boolean;
+  /** Combien de relances sont parties pour ce panier. */
+  nombreRelances: number;
+  /** « 2e relance prévue le 3 octobre à 09:00 », ou null s'il n'y en aura pas. */
+  prochaineRelance: string | null;
 }
 
 /** Les réglages de la relance, tenus dans le back-office. */
 export interface ReglagesRelance {
   active: boolean;
+  /** La 1re relance, en heures après l'abandon. */
   palierHeures: number;
   plancherMinutes: number;
   baseLegale: "consentement" | "interet_legitime";
+  /** La 2e relance, en heures après l'abandon ; null = pas de 2e relance. */
+  relance2Heures: number | null;
+  /** La 3e, de même. */
+  relance3Heures: number | null;
+  /** N'envoyer qu'entre ces heures (heure de Paris) ; null = à toute heure. */
+  plage: { debut: number; fin: number } | null;
+}
+
+/** Les cinq morceaux du courriel de relance que la boutique réécrit. */
+export interface TextesRelance {
+  objet: string;
+  accroche: string;
+  message: string;
+  bouton: string;
+  conclusion: string;
+}
+
+/** Une relance (1re, 2e, 3e) et son courriel. */
+export interface CourrielRelance {
+  etape: 1 | 2 | 3;
+  /** « 1re relance ». */
+  nom: string;
+  /** Les textes qui partiront. */
+  textes: TextesRelance;
+  /** Les textes d'origine, pour « Revenir au texte d'origine ». */
+  origine: TextesRelance;
+  personnalise: boolean;
+  /** Vrai si cette relance est programmée dans les réglages. */
+  programmee: boolean;
+  /** « 10 h après l'abandon », ou null si elle n'est pas programmée. */
+  quand: string | null;
+}
+
+/** L'écran de réécriture des courriels de relance. */
+export interface EcranCourrielsRelance {
+  etapes: CourrielRelance[];
+  variables: { nom: string; sens: string }[];
+  active: boolean;
 }
 
 /** Ce que rapporte la relance, en chiffres. */
@@ -801,11 +846,15 @@ export interface EcranPaniers {
   /** Le délai plancher réellement appliqué à cette liste, en minutes. */
   plancher: number;
   paliers: number[];
+  /** Les délais proposés pour la 2e et la 3e relance, en heures après l'abandon. */
+  paliersSuivants: number[];
   /** La limite au-delà de laquelle plus rien ne part : 336 h, soit 14 jours. */
   fenetreHeures: number;
   courrierConfigure: boolean;
   chiffres: ChiffresRelance;
   paniers: PanierAbandonne[];
+  /** Pour chaque relance, ses textes ont-ils été réécrits ? */
+  courriels: { etape: 1 | 2 | 3; personnalise: boolean }[];
 }
 
 /** Ce qu'un passage du travailleur a fait. */
@@ -1583,14 +1632,22 @@ export function adminApi(request?: Request) {
       },
     ) =>
       req<Expedition>("POST", `/admin/orders/${id}/fulfillments`, data, cookie),
-    /** Le bloc « Bordereau transporteur » : état, options SendCloud et prix. */
-    bordereau: (id: number, poidsGrammes?: number) =>
-      req<EtatBordereau>(
+    /**
+     * Le bloc « Bordereau transporteur » : état, options SendCloud et prix.
+     * `tous` : les services de tous les transporteurs, pas seulement le payé.
+     */
+    bordereau: (id: number, poidsGrammes?: number, tous?: boolean) => {
+      const q = new URLSearchParams();
+      if (poidsGrammes) q.set("poids", String(poidsGrammes));
+      if (tous) q.set("tous", "1");
+      const qs = q.toString();
+      return req<EtatBordereau>(
         "GET",
-        `/admin/orders/${id}/bordereau${poidsGrammes ? `?poids=${poidsGrammes}` : ""}`,
+        `/admin/orders/${id}/bordereau${qs ? `?${qs}` : ""}`,
         undefined,
         cookie,
-      ),
+      );
+    },
     /** ACHÈTE le bordereau chez SendCloud (sauf en mode essai). */
     acheterBordereau: (
       id: number,
@@ -1604,11 +1661,11 @@ export function adminApi(request?: Request) {
     ) => req<Bordereau>("POST", `/admin/orders/${id}/bordereau`, data, cookie),
     terminerBordereau: (id: number) =>
       req<Bordereau>("POST", `/admin/orders/${id}/bordereau/terminer`, {}, cookie),
-    annulerBordereau: (id: number) =>
+    annulerBordereau: (id: number, auteur?: string) =>
       req<{ bordereau: Bordereau; message: string }>(
         "POST",
         `/admin/orders/${id}/bordereau/annuler`,
-        {},
+        { auteur },
         cookie,
       ),
     cancelFulfillment: (id: number) =>
@@ -1626,12 +1683,21 @@ export function adminApi(request?: Request) {
         author?: string;
       },
     ) => req<Remboursement>("POST", `/admin/orders/${id}/refunds`, data, cookie),
-    /** Corrige l'adresse de livraison d'une commande passée. */
+    /**
+     * Corrige l'adresse de livraison d'une commande passée. Seuls les champs
+     * envoyés changent ; `livrerALAdresse` quitte le point relais choisi.
+     * `bordereauVivant` : une étiquette déjà achetée porte l'ancienne adresse.
+     */
     updateOrderAddress: (
       id: number,
-      data: Record<string, string | null | undefined>,
+      data: Record<string, string | boolean | null | undefined>,
     ) =>
-      req<{ ok: boolean }>("POST", `/admin/orders/${id}/address`, data, cookie),
+      req<{ ok: boolean; modifie: boolean; bordereauVivant: boolean }>(
+        "POST",
+        `/admin/orders/${id}/address`,
+        data,
+        cookie,
+      ),
     /**
      * Annule une commande.
      *
@@ -1723,6 +1789,44 @@ export function adminApi(request?: Request) {
     /** Déclenche un passage du travailleur tout de suite. */
     passageRelance: () =>
       req<{ bilan: BilanPassage }>("POST", "/admin/relance/passage", {}, cookie),
+    /** Les courriels des trois relances : textes, textes d'origine, variables. */
+    courrielsRelance: () =>
+      req<EcranCourrielsRelance>("GET", "/admin/relance/courriels", undefined, cookie),
+    /** Enregistre les textes d'une relance. */
+    enregistrerCourrielRelance: (etape: number, textes: TextesRelance) =>
+      req<{ textes: TextesRelance; personnalise: boolean }>(
+        "PUT",
+        `/admin/relance/courriels/${etape}`,
+        { textes },
+        cookie,
+      ),
+    /** « Revenir au texte d'origine ». */
+    retablirCourrielRelance: (etape: number) =>
+      req<{ textes: TextesRelance; personnalise: boolean }>(
+        "DELETE",
+        `/admin/relance/courriels/${etape}`,
+        undefined,
+        cookie,
+      ),
+    /**
+     * Le courriel d'une relance tel qu'il partira, avec les textes en cours de
+     * saisie (rien n'est enregistré ni envoyé). Sans textes : ceux d'aujourd'hui.
+     */
+    apercuCourrielRelance: (etape: number, textes?: TextesRelance) =>
+      req<{ sujet: string; html: string; texte: string }>(
+        "POST",
+        "/admin/courriers/relance/apercu",
+        { etape, ...(textes ? { textes } : {}) },
+        cookie,
+      ),
+    /** S'envoie le courriel d'une relance, à l'adresse du compte connecté. */
+    essaiCourrielRelance: (etape: number, textes?: TextesRelance) =>
+      req<{ ok: boolean; parti: boolean; destinataire: string; resume: string }>(
+        "POST",
+        "/admin/courriers/relance/essai",
+        { etape, ...(textes ? { textes } : {}) },
+        cookie,
+      ),
     orderDetail: (id: number) =>
       req<OrderDetail>("GET", `/admin/orders/${id}`, undefined, cookie),
     frames: () => req<Cadre[]>("GET", "/admin/frames", undefined, cookie),
@@ -2654,11 +2758,40 @@ export interface Bordereau {
 export interface EtatBordereau {
   configure: boolean;
   essai: boolean;
-  /** Pourquoi on ne peut pas acheter, s'il y a lieu. */
+  /**
+   * Pourquoi on ne peut pas acheter, quoi qu'on saisisse : commande annulée,
+   * non payée, panier, clés absentes. La phrase dit aussi quoi faire.
+   */
   empechement: string | null;
+  /**
+   * Ce qu'il faut encore à l'étiquette et qui se corrige depuis la fiche :
+   * « destinataire » dans le bloc du bordereau, « email » sur la fiche cliente.
+   */
+  manques: { champ: "destinataire" | "email"; message: string }[];
+  /** Ce que la commande dit de l'envoi (apps/api/src/sendcloud-colis.ts). */
+  situation: {
+    destination: "point_relais" | "adresse";
+    envoiPaye: "transporteur" | "hors_sendcloud" | "retrait" | "stand" | "inconnu";
+    transporteurPaye: string | null;
+    transporteurSendcloud: string | null;
+  };
   bordereau: Bordereau | null;
   poidsGrammes: number;
   pointRelais: string | null;
-  methodes: { code: string; nom: string; transporteur: string; prixCents: number | null }[];
+  /** La liste montre-t-elle tous les transporteurs ? */
+  tous: boolean;
+  /** Celles qui tiennent la promesse du mode payé d'abord (`conforme`). */
+  methodes: {
+    code: string;
+    nom: string;
+    transporteur: string;
+    prixCents: number | null;
+    conforme: boolean;
+    /** Ce qui l'éloigne du mode payé, en clair. */
+    ecart: string | null;
+    duTransporteurPaye: boolean;
+  }[];
+  /** Combien de services d'autres transporteurs la liste courte laisse de côté. */
+  autresServices: number;
   erreurMethodes: string | null;
 }

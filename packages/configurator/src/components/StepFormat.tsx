@@ -30,6 +30,8 @@ export function StepFormat(props: {
   messages: MessagesConfigurateur;
 }) {
   const m = () => props.messages;
+  /** Locale d'affichage des montants et des dimensions. */
+  const locale = () => m().locale;
 
   // Rail des cadres : largeurs de vignette.
   const ESPACE = 10; // même valeur que le `gap` du rail
@@ -101,7 +103,7 @@ export function StepFormat(props: {
     onCleanup(() => ro.disconnect());
   };
   const fmtPrice = (cents: number) =>
-    new Intl.NumberFormat("fr-FR", {
+    new Intl.NumberFormat(locale(), {
       style: "currency",
       currency: "EUR",
       minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
@@ -137,7 +139,7 @@ export function StepFormat(props: {
               {/* La question qu'on se pose devant un mur vide n'est pas
                   « A4 ou A3 » mais « est-ce que ça rentre ». */}
               <div style={{ "font-size": "12px", color: "#6b7280", "margin-top": "2px" }}>
-                {dimensionsFormat(fmt)}
+                {dimensionsFormat(fmt, locale())}
               </div>
               {!props.sansPrix && typeof props.prices?.[fmt] === "number" && (
                 <div style={{ "font-size": "14px", "font-weight": "600", color: "#4f46e5", "margin-top": "4px" }}>

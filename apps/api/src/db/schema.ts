@@ -1158,6 +1158,12 @@ export const orders = pgTable(
     shippingMethod: text("shipping_method"),
     /** Nom du mode tel qu'il s'appelait le jour de la commande. */
     shippingLabel: text("shipping_label"),
+    /**
+     * Sa description le même jour (« livré le lendemain avant 13 h ») : la
+     * cliente l'a lue avant de payer, c'est la promesse que le bordereau doit
+     * tenir, même si le mode est réécrit depuis.
+     */
+    shippingDescription: text("shipping_description"),
     /** Frais réellement facturés, en centimes. Compris dans `totalCents`. */
     shippingCents: integer("shipping_cents").notNull().default(0),
     /**
@@ -1273,6 +1279,18 @@ export const orders = pgTable(
      * `recovery_email_sent_at` en double : c'est cette colonne-ci.
      */
     reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }),
+    /**
+     * Combien de relances sont parties pour ce panier : la 1re, la 2e, la 3e.
+     *
+     * La boutique peut désormais programmer jusqu'à trois relances, et la date
+     * seule ne dit plus à laquelle on en est. `reminderSentAt` reste la date
+     * de la DERNIÈRE, et le drapeau « relancé au moins une fois ».
+     *
+     * Les paniers relancés avant cette colonne y portent 0 avec une date :
+     * le code les lit comme « une relance partie » (voir `nombreDeRelances`
+     * dans relance-panier.ts) plutôt que de réécrire l'historique.
+     */
+    reminderCount: integer("reminder_count").notNull().default(0),
     /**
      * Dernière fois que ce panier a bougé : article ajouté, modifié, retiré,
      * ou passage au tunnel de commande. C'est L'HORLOGE D'INACTIVITÉ, celle

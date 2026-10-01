@@ -19,7 +19,10 @@ const tr = t(langue);
 
 // Le jeton arrive par l'URL du courrier ; il repart en champ caché pour
 // survivre à l'envoi du formulaire.
-const jeton = Astro.url.searchParams.get("token") ?? "";
+// « jeton » est le nom que porte le lien du courrier (apps/api/src/comptes.ts) ;
+// « token » reste lu pour un lien plus ancien qui l'aurait gardé.
+const jeton =
+  Astro.url.searchParams.get("jeton") ?? Astro.url.searchParams.get("token") ?? "";
 let erreur: CleUi | null = null;
 
 if (Astro.request.method === "POST") {

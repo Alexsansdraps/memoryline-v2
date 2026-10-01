@@ -11,6 +11,7 @@ import {
   type CommandeDetail,
 } from "../../../../lib/compte.ts";
 import {
+  LOCALE_COMPLETE,
   estLangue,
   langueDepuisParam,
   lien,
@@ -25,6 +26,7 @@ if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
   return new Response(null, { status: 404 });
 const langue: Langue = langueDepuisParam(Astro.params.lang);
 const tr = t(langue);
+const locale = LOCALE_COMPLETE[langue];
 const id = Astro.params.id ?? "";
 
 const session = await exigerSession(Astro, langue);
@@ -64,6 +66,13 @@ const titre = detail
   ? `${tr("compte.commandes.numero")} ${detail.order.number}`
   : tr("compte.commandes.titre");
 
+/**
+ * Les deux-points d'un « Libellé : valeur », espace après comprise. Le
+ * français met aussi une espace devant, les autres langues non : écrite en
+ * dur, elle donnait « Payment : Paid ». Même clé que le panier.
+ */
+const deuxPoints = tr("ponct.deux_points");
+
 const lignesAdresse = detail ? adresseLivraison(detail.order) : [];
 const expeditions = (detail?.expeditions ?? []).filter(
   (e) => e.trackingUrl || e.trackingNumber,
@@ -100,11 +109,11 @@ const expeditions = (detail?.expeditions ?? []).filter(
           <p class="text-ink-soft">{formatDate(detail.order.createdAt, langue)}</p>
           <p class="flex flex-wrap gap-2 text-sm">
             <span class="border border-ink/15 bg-paper-deep px-3 py-1">
-              {tr("compte.commande.paiement")} :{" "}
+              {tr("compte.commande.paiement")}{deuxPoints}
               {libelleStatut(tr, "financier", detail.statutFinancier)}
             </span>
             <span class="border border-ink/15 bg-paper-deep px-3 py-1">
-              {tr("compte.commande.traitement")} :{" "}
+              {tr("compte.commande.traitement")}{deuxPoints}
               {libelleStatut(tr, "expedition", detail.statutExpedition)}
             </span>
           </p>
@@ -138,9 +147,9 @@ const expeditions = (detail?.expeditions ?? []).filter(
                   <p class="mt-1 text-sm text-ink-soft">
                     {[
                       ligne.config?.format
-                        ? `${tr("panier.format")} : ${ligne.config.format}`
+                        ? `${tr("panier.format")}${deuxPoints}${ligne.config.format}`
                         : null,
-                      `${tr("panier.cadre")} : ${
+                      `${tr("panier.cadre")}${deuxPoints}${
                         nomCadre(ligne.config?.frameId) ?? tr("panier.sans_cadre")
                       }`,
                       // Les commandes passées portent un titre et un
@@ -154,12 +163,12 @@ const expeditions = (detail?.expeditions ?? []).filter(
                       .join(" · ")}
                   </p>
                   <p class="mt-1 text-sm text-ink-soft">
-                    {tr("compte.commande.quantite")} : {ligne.quantity}
+                    {tr("compte.commande.quantite")}{deuxPoints}{ligne.quantity}
                   </p>
                 </div>
                 </div>
                 <p class="shrink-0">
-                  {formatPrice(ligne.unitPriceCents * ligne.quantity)}
+                  {formatPrice(ligne.unitPriceCents * ligne.quantity, locale)}
                 </p>
               </li>
             ))}
@@ -183,30 +192,30 @@ const expeditions = (detail?.expeditions ?? []).filter(
           <dl class="space-y-2">
             <div class="flex justify-between gap-4">
               <dt class="text-ink-soft">{tr("compte.commande.sous_total")}</dt>
-              <dd>{formatPrice(detail.montants.sousTotalCents)}</dd>
+              <dd>{formatPrice(detail.montants.sousTotalCents, locale)}</dd>
             </div>
             {detail.montants.remiseCents > 0 && (
               <div class="flex justify-between gap-4">
                 <dt class="text-ink-soft">{tr("compte.commande.remise")}</dt>
-                <dd>- {formatPrice(detail.montants.remiseCents)}</dd>
+                <dd>- {formatPrice(detail.montants.remiseCents, locale)}</dd>
               </div>
             )}
             <div class="flex justify-between gap-4">
               <dt class="text-ink-soft">{tr("compte.commande.port")}</dt>
               <dd>
                 {detail.montants.portCents > 0
-                  ? formatPrice(detail.montants.portCents)
+                  ? formatPrice(detail.montants.portCents, locale)
                   : tr("livraison.offerte")}
               </dd>
             </div>
             <div class="flex justify-between gap-4 border-t border-ink/10 pt-2 text-lg">
               <dt>{tr("compte.commande.total")}</dt>
-              <dd>{formatPrice(detail.montants.totalCents)}</dd>
+              <dd>{formatPrice(detail.montants.totalCents, locale)}</dd>
             </div>
             {detail.montants.rembourseCents > 0 && (
               <div class="flex justify-between gap-4">
                 <dt class="text-ink-soft">{tr("compte.commande.rembourse")}</dt>
-                <dd>- {formatPrice(detail.montants.rembourseCents)}</dd>
+                <dd>- {formatPrice(detail.montants.rembourseCents, locale)}</dd>
               </div>
             )}
           </dl>

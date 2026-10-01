@@ -22,6 +22,8 @@ import { grilleProduits, styleGrille } from "../../../lib/grille.ts";
 const grille = await grilleProduits();
 import { htmlSur } from "../../../lib/html-sur.ts";
 import {
+  LANGUE_DEFAUT,
+  LOCALE_COMPLETE,
   estLangue,
   langueDepuisParam,
   lien,
@@ -34,6 +36,7 @@ export const prerender = false;
 if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
   return new Response(null, { status: 404 });
 const langue: Langue = langueDepuisParam(Astro.params.lang);
+const locale = LOCALE_COMPLETE[langue];
 
 const slug = Astro.params.slug ?? "";
 
@@ -73,19 +76,32 @@ function prix(p: {
   const montants = (p.variants ?? [])
     .map((v) => v.priceCents)
     .filter((c) => c > 0);
-  if (!montants.length) return formatPrice(p.basePriceCents);
+  if (!montants.length) return formatPrice(p.basePriceCents, locale);
   const min = Math.min(...montants);
   const max = Math.max(...montants);
-  return min === max ? formatPrice(min) : `${formatPrice(min)} – ${formatPrice(max)}`;
+  return min === max
+    ? formatPrice(min, locale)
+    : `${formatPrice(min, locale)} – ${formatPrice(max, locale)}`;
 }
 
-const titreOnglet = page.seoTitle?.trim() || `${page.title} — Memory Line`;
+/*
+ * Le titre et la description SEO sont saisis au back-office en FRANÇAIS :
+ * l'API traduit le titre et les blocs, pas ces deux champs. Hors français, on
+ * s'en passe — le titre traduit fait l'onglet, et la description du site
+ * (dans la langue de la page) remplace celle qui serait restée en français.
+ */
+const seoSaisiDansLaLangue = langue === LANGUE_DEFAUT;
+const titreOnglet =
+  (seoSaisiDansLaLangue && page.seoTitle?.trim()) ||
+  `${page.title} — Memory Line`;
 ---
 
 <Base
   langue={langue}
   title={titreOnglet}
-  description={page.seoDescription ?? undefined}
+  description={
+    seoSaisiDansLaLangue ? (page.seoDescription ?? undefined) : undefined
+  }
 >
   <article class="mx-auto max-w-[1000px] px-6 py-12 lg:px-12">
     <div class="flex flex-wrap items-center justify-between gap-3">

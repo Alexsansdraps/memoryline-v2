@@ -1,9 +1,17 @@
 /// <reference lib="dom" />
-import { t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
+import {
+  t,
+  lien,
+  LANGUE_DEFAUT,
+  LOCALE_COMPLETE,
+  type CleUi,
+  type Langue,
+} from "../i18n/utils.ts";
 import {
   createResource,
   createSignal,
   createEffect,
+  onMount,
   untrack,
   Show,
   For,
@@ -32,23 +40,51 @@ import {
 
 /**
  * Pays proposés à la livraison. Volontairement court : ceux où la boutique
- * expédie vraiment, plus « autre pays », qui tombe dans la zone de repli.
+ * expédie vraiment, plus « autre pays » (ZZ), qui tombe dans la zone de repli.
+ * Leurs noms, le navigateur les connaît dans toutes les langues (nomPays).
  */
 const PAYS = [
-  { code: "FR", nom: "France" },
-  { code: "BE", nom: "Belgique" },
-  { code: "CH", nom: "Suisse" },
-  { code: "LU", nom: "Luxembourg" },
-  { code: "DE", nom: "Allemagne" },
-  { code: "ES", nom: "Espagne" },
-  { code: "IT", nom: "Italie" },
-  { code: "NL", nom: "Pays-Bas" },
-  { code: "PT", nom: "Portugal" },
-  { code: "GB", nom: "Royaume-Uni" },
-  { code: "CA", nom: "Canada" },
-  { code: "US", nom: "États-Unis" },
-  { code: "ZZ", nom: "Autre pays" },
+  "FR",
+  "BE",
+  "CH",
+  "LU",
+  "DE",
+  "ES",
+  "IT",
+  "NL",
+  "PT",
+  "GB",
+  "CA",
+  "US",
+  "ZZ",
 ];
+
+/**
+ * Les refus de l'API que la caisse sait dire elle-même, par leur code. Leur
+ * texte français est celui de l'API ; les autres langues ont enfin le leur.
+ */
+/** Les jours abrégés tels que l'API les écrit dans les horaires des points. */
+const JOURS_API = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+
+const ERREURS_PAR_CODE: Record<string, CleUi> = {
+  compte_requis: "commande.err.compte_requis",
+  point_relais_inconnu: "livraison.relais_plus_disponible",
+  point_relais_requis: "livraison.relais_requis",
+  point_relais_transporteur: "livraison.relais_autre_reseau",
+  mode_indisponible: "commande.err.mode_indisponible",
+  adresse_incomplete: "commande.err.adresse_incomplete",
+  panier_vide: "panier.vide",
+  panier_modifie: "commande.err.panier_modifie",
+};
+
+/**
+ * Un encaissement qui n'aboutit pas, par carte comme par PayPal : 402, le
+ * paiement n'est pas complet ; 502, le prestataire n'a pas répondu.
+ */
+const ECHEC_ENCAISSEMENT: Partial<Record<number, CleUi>> = {
+  402: "commande.err.paiement",
+  502: "commande.err.paiement",
+};
 import { loadStripe } from "@stripe/stripe-js";
 import type { Stripe, StripeElements } from "@stripe/stripe-js";
 import {
@@ -104,14 +140,21 @@ declare global {
 }
 
 let paypalSdk: Promise<PayPalNamespace> | null = null;
-function loadPaypalSdk(clientId: string): Promise<PayPalNamespace> {
+/**
+ * `locale` au format de PayPal (« fr_FR ») : sans lui, boutons et fenêtre
+ * suivent le navigateur et le pays du visiteur, pas la langue de la page.
+ */
+function loadPaypalSdk(
+  clientId: string,
+  locale: string,
+): Promise<PayPalNamespace> {
   if (window.paypal) return Promise.resolve(window.paypal);
   if (paypalSdk) return paypalSdk;
   paypalSdk = new Promise((resolve, reject) => {
     const s = document.createElement("script");
     s.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(
       clientId,
-    )}&currency=EUR`;
+    )}&currency=EUR&locale=${locale}`;
     s.onload = () =>
       window.paypal
         ? resolve(window.paypal)
@@ -149,7 +192,73 @@ export default function CheckoutIsland(props: {
   /** Ses adresses déjà enregistrées, la première étant celle par défaut. */
   carnet?: AdresseCarnet[];
 }): JSX.Element {
-  const tr = t(props.langue ?? LANGUE_DEFAUT);
+  const langue = props.langue ?? LANGUE_DEFAUT;
+  const tr = t(langue);
+  const locale = LOCALE_COMPLETE[langue];
+  const nomsPays = new Intl.DisplayNames([langue], { type: "region" });
+  /**
+   * « Lun 09:00 - 19:00 » tel que l'API l'écrit (sendcloud-points.ts), avec le
+   * jour dans la langue de la page : « Mon 09:00 - 19:00 ». Le 1er janvier
+   * 2024 était un lundi ; UTC, pour que le fuseau ne décale pas le jour.
+   */
+  const joursLocaux = JOURS_API.map((_, i) =>
+    new Intl.DateTimeFormat(locale, { weekday: "short", timeZone: "UTC" }).format(
+      new Date(Date.UTC(2024, 0, 1 + i)),
+    ),
+  );
+  const horaireLocal = (ligne: string): string => {
+    const i = JOURS_API.indexOf(ligne.slice(0, 3));
+    return i < 0 || ligne[3] !== " " || langue === LANGUE_DEFAUT
+      ? ligne
+      : joursLocaux[i] + ligne.slice(3);
+  };
+  /** Le nom d'un pays dans la langue de la page ; ZZ n'en a pas. */
+  const nomPays = (code: string): string =>
+    code === "ZZ" ? tr("livraison.autre_pays") : (nomsPays.of(code) ?? code);
+
+  /*
+   * Ce que la caisse affiche quand l'API refuse.
+   *
+   * browserSend rend « API POST /orders -> 401 {"error":…,"code":…} » :
+   * affiché tel quel, c'était du jargon, et en français dans toutes les
+   * langues. Un refus connu — par son code, sinon par son statut (`parStatut`,
+   * propre à chaque étape) — a sa phrase dans la langue du visiteur. Les
+   * autres gardent le texte de l'API, sans l'enveloppe technique.
+   */
+  function messageErreur(
+    err: unknown,
+    parStatut: Partial<Record<number, CleUi>>,
+  ): string {
+    const brut = String(err);
+    const m = /-> (\d{3})(?: (\{.*\}))?\s*$/s.exec(brut);
+    if (!m) return brut;
+    let corps: { error?: unknown; code?: unknown } = {};
+    try {
+      if (m[2]) corps = JSON.parse(m[2]) as typeof corps;
+    } catch {
+      /* corps illisible : le statut suffit */
+    }
+    const cle =
+      (typeof corps.code === "string" ? ERREURS_PAR_CODE[corps.code] : undefined) ??
+      parStatut[Number(m[1])];
+    if (cle) return tr(cle);
+    return typeof corps.error === "string" ? corps.error : brut;
+  }
+
+  /**
+   * Une phrase traduite dont un nom technique s'affiche en <code> : la phrase
+   * garde l'ordre de sa langue, le nom reste tel quel.
+   */
+  const avecCode = (cle: CleUi, variable: string, code: string): JSX.Element => {
+    const [avant, apres] = tr(cle).split(variable);
+    return (
+      <>
+        {avant}
+        <code>{code}</code>
+        {apres}
+      </>
+    );
+  };
   /*
    * Prénom et nom, séparés — comme sur la fiche client.
    *
@@ -343,7 +452,16 @@ export default function CheckoutIsland(props: {
     if (a.country) setPays(a.country);
     if (a.name) setName(a.name);
   }
-  const [pointRelais, setPointRelais] = createSignal({ id: "", label: "" });
+  /**
+   * Le point relais choisi. `label` part avec la commande, en français :
+   * c'est lui que lisent le back-office et le transporteur. `affiche` est le
+   * même, dans la langue du visiteur, pour l'écran seulement.
+   */
+  const [pointRelais, setPointRelais] = createSignal({
+    id: "",
+    label: "",
+    affiche: "",
+  });
 
   /*
    * Retrait sur place : quel stand.
@@ -431,7 +549,7 @@ export default function CheckoutIsland(props: {
     // plus cours, et le point choisi encore moins.
     modeChoisi();
     setRelais([]);
-    setPointRelais({ id: "", label: "" });
+    setPointRelais({ id: "", label: "", affiche: "" });
     setRelaisEtat("repos");
     // Et si c'est un mode point relais, on cherche tout de suite autour du
     // code postal qu'on connaît déjà : la cliente connectée a son adresse, la
@@ -470,8 +588,51 @@ export default function CheckoutIsland(props: {
   let minuterieSuggestions: ReturnType<typeof setTimeout> | undefined;
   let derniereSuggestion = 0;
 
+  /**
+   * « Me localiser » : la position du téléphone ou de l'ordinateur sert de
+   * point de départ, comme une adresse choisie dans les suggestions. Le
+   * navigateur ne la donne qu'en HTTPS (ou en local) et avec l'accord du
+   * client : sans HTTPS, le bouton n'est pas proposé ; sans accord, il dit
+   * pourquoi il n'a rien donné.
+   */
+  const [localisable, setLocalisable] = createSignal(false);
+  onMount(() => setLocalisable(window.isSecureContext && "geolocation" in navigator));
+  const [localisation, setLocalisation] = createSignal<
+    "repos" | "en_cours" | "refusee" | "introuvable"
+  >("repos");
+
+  function meLocaliser() {
+    if (!localisable() || localisation() === "en_cours") return;
+    setLocalisation("en_cours");
+    clearTimeout(minuterieSuggestions);
+    setSuggestions([]);
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        const { latitude, longitude } = coords;
+        // L'adresse dit au client d'où l'on cherche (« 80000 Amiens ») ; la
+        // position, elle, classe les points depuis sa porte. Hors de France,
+        // pas d'adresse : on cherche sur la seule position.
+        const adresse = await browserApi.adresseDuLieu(latitude, longitude).catch(() => null);
+        setLocalisation("repos");
+        setCpRecherche(adresse?.label ?? tr("livraison.ma_position"));
+        setDepartRelais({
+          latitude,
+          longitude,
+          codePostal: adresse?.codePostal ?? "",
+          ville: adresse?.ville ?? "",
+        });
+        void chercherRelais();
+      },
+      (err) => setLocalisation(err.code === err.PERMISSION_DENIED ? "refusee" : "introuvable"),
+      // Quelques centaines de mètres suffisent pour des points relais : la
+      // demander précise réveillerait le GPS pour rien, et ferait attendre.
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+    );
+  }
+
   function saisirRecherche(v: string) {
     setCpRecherche(v);
+    setLocalisation("repos");
     // L'adresse choisie ne vaut plus dès qu'on retouche le texte.
     setDepartRelais(null);
     clearTimeout(minuterieSuggestions);
@@ -559,7 +720,9 @@ export default function CheckoutIsland(props: {
           setCpRecherche(premiere.label);
         }
       }
-      const cp = d?.codePostal || /\b\d{4,5}\b/.exec(saisie)?.[0] || saisie;
+      // Une position sans adresse (client localisé hors de France) n'a pas de
+      // code postal : l'API cherche alors sur ses seules coordonnées.
+      const cp = d ? d.codePostal : /\b\d{4,5}\b/.exec(saisie)?.[0] || saisie;
       const liste = await browserApi.pointsRelais(
         cp,
         pays(),
@@ -578,12 +741,14 @@ export default function CheckoutIsland(props: {
   }
 
   function choisirRelais(r: PointRelais) {
+    const lieu = `${r.nom}, ${r.adresse}, ${r.codePostal} ${r.ville}`;
     setPointRelais({
       id: r.id,
       // Le numéro du point voyage avec son nom : c'est lui qu'on donne au
       // transporteur pour préparer le colis, et que le point relais
       // retrouve au guichet.
-      label: `${r.nom}, ${r.adresse}, ${r.codePostal} ${r.ville}${r.code ? ` (n° ${r.code})` : ""}`,
+      label: `${lieu}${r.code ? ` (n° ${r.code})` : ""}`,
+      affiche: `${lieu}${r.code ? ` ${tr("livraison.relais_numero").replace("{code}", r.code)}` : ""}`,
     });
     // Choisi sur la carte, le point doit aussi se voir dans la liste.
     document
@@ -594,7 +759,7 @@ export default function CheckoutIsland(props: {
   /** « 350 m », « 1,2 km » : la distance au code postal cherché. */
   function distanceLisible(metres: number): string {
     if (metres < 1000) return `${Math.max(10, Math.round(metres / 10) * 10)} m`;
-    return `${(metres / 1000).toLocaleString(props.langue ?? LANGUE_DEFAUT, { maximumFractionDigits: 1 })} km`;
+    return `${(metres / 1000).toLocaleString(locale, { maximumFractionDigits: 1 })} km`;
   }
 
   /** Panier après remises : c'est lui qui décide de la franchise de port. */
@@ -690,6 +855,8 @@ export default function CheckoutIsland(props: {
     ) {
       elements = stripe.elements({
         clientSecret: stripeClientSecret()!,
+        // La langue de la page : sans elle, Stripe prend celle du navigateur.
+        locale: langue,
         appearance: { theme: "stripe" },
       });
 
@@ -733,7 +900,7 @@ export default function CheckoutIsland(props: {
       !paypalRendered
     ) {
       paypalRendered = true;
-      loadPaypalSdk(cfg.clientId)
+      loadPaypalSdk(cfg.clientId, locale.replace("-", "_"))
         .then((pp) =>
           pp
             .Buttons({
@@ -750,16 +917,20 @@ export default function CheckoutIsland(props: {
                   await browserApi.paypalCapture(oid, data.orderID);
                   finishSuccess();
                 } catch (e) {
-                  setError(String(e));
+                  setError(messageErreur(e, ECHEC_ENCAISSEMENT));
                 }
               },
-              onError: (e) => setError(String(e)),
+              // 502 : PayPal n'a pas ouvert le paiement (refus de son côté).
+              onError: (e) =>
+                setError(
+                  messageErreur(e, { 502: "commande.err.paypal_ouverture" }),
+                ),
             })
             .render(paypalMountRef!),
         )
-        .catch((e) => {
+        .catch(() => {
           paypalRendered = false;
-          setError(String(e));
+          setError(tr("commande.err.paypal_indisponible"));
         });
     }
   });
@@ -814,9 +985,13 @@ export default function CheckoutIsland(props: {
 
       if (method() === "stripe") {
         const cfg = config()?.stripe;
-        if (!cfg) throw new Error("Stripe non disponible");
-        stripe = await loadStripe(cfg.publicKey);
-        if (!stripe) throw new Error("Stripe indisponible");
+        // Stripe.js qui ne se charge pas (réseau, bloqueur) : la carte est
+        // indisponible pour l'instant, la commande attend d'être payée.
+        stripe = cfg ? await loadStripe(cfg.publicKey).catch(() => null) : null;
+        if (!stripe) {
+          setError(tr("commande.err.carte_indisponible"));
+          return;
+        }
         const { clientSecret } = await browserApi.stripeIntent(order.orderId);
         setStripeClientSecret(clientSecret);
       }
@@ -830,7 +1005,19 @@ export default function CheckoutIsland(props: {
         // nouveau montant.
         setError(tr("panier.cadres_retires"));
         void relirePanier();
-      } else setError(String(err));
+      } else {
+        // 400 : des coordonnées ou une livraison que le serveur refuse. Les
+        // refus connus ont leur code ; un refus sans code garde, en français,
+        // le texte de l'API, qui dit précisément quoi corriger. Les autres
+        // langues ne peuvent pas le lire : elles ont la phrase générique.
+        // 502 : le paiement par carte n'a pas pu être préparé chez Stripe.
+        setError(
+          messageErreur(err, {
+            502: "commande.err.carte_indisponible",
+            ...(langue === LANGUE_DEFAUT ? {} : { 400: "commande.err.generique" as const }),
+          }),
+        );
+      }
     } finally {
       setSubmitting(false);
     }
@@ -856,20 +1043,26 @@ export default function CheckoutIsland(props: {
       // onglet, un retour au panier ? Il est alors revenu à l'état de panier,
       // et le serveur refusera de valider l'ancien montant ; mais la carte,
       // elle, serait déjà débitée. Mieux vaut le dire AVANT de payer.
-      const panier = await browserApi.cart(getCartId());
+      // Une panne ICI a lieu avant la carte : rien n'est débité, et le dire
+      // évite à la cliente de guetter son relevé.
+      const panier = await browserApi.cart(getCartId()).catch(() => null);
+      if (!panier) {
+        setError(tr("commande.err.avant_paiement"));
+        return;
+      }
       if (panier.status === "draft") {
-        setError(
-          "Votre panier a changé depuis le calcul du total. Revenez à l'étape précédente pour le recalculer avant de payer.",
-        );
+        setError(tr("commande.err.panier_modifie"));
         return;
       }
       const { error: stripeErr, paymentIntent } = await stripe.confirmPayment({
         elements,
         redirect: "if_required",
-        confirmParams: { return_url: `${window.location.origin}/commande` },
+        confirmParams: {
+          return_url: `${window.location.origin}${lien(langue, "/commande")}`,
+        },
       });
       if (stripeErr) {
-        setError(stripeErr.message ?? "Paiement refusé.");
+        setError(stripeErr.message ?? tr("commande.err.refuse"));
         return;
       }
       if (paymentIntent && paymentIntent.status === "succeeded") {
@@ -877,10 +1070,10 @@ export default function CheckoutIsland(props: {
         if (oid != null) await browserApi.stripeConfirm(oid);
         finishSuccess();
       } else {
-        setError("Paiement non finalisé. Réessayez.");
+        setError(tr("commande.err.non_finalise"));
       }
     } catch (err) {
-      setError(String(err));
+      setError(messageErreur(err, ECHEC_ENCAISSEMENT));
     } finally {
       setSubmitting(false);
     }
@@ -891,31 +1084,29 @@ export default function CheckoutIsland(props: {
       when={!paid()}
       fallback={
         <div class="rounded-2xl border border-sage/40 bg-sage/10 p-8 text-center">
-          <h2 class="font-serif text-3xl">Merci !</h2>
-          <p class="mt-3 text-ink-soft">
-            Votre paiement a bien été reçu et votre commande est confirmée.
-          </p>
+          <h2 class="font-serif text-3xl">{tr("commande.merci_titre")}</h2>
+          <p class="mt-3 text-ink-soft">{tr("commande.merci_texte")}</p>
           <p class="mt-4 text-lg">
-            Numéro de commande :{" "}
+            {tr("commande.numero")}{" "}
             <span class="text-2xl">{orderNumber()}</span>
           </p>
           <a
-            href="/affiches"
+            href={lien(langue, "/affiches")}
             class="mt-6 inline-block rounded-full bg-ink px-6 py-3 text-paper font-medium hover:bg-ink/85 transition-colors"
           >
-            Retour aux affiches
+            {tr("produit.retour")}
           </a>
         </div>
       }
     >
       <Show when={cart() && cart()!.items.length === 0}>
         <div class="rounded-2xl border border-ink/10 bg-paper-deep/40 p-8 text-center">
-          <p class="text-ink-soft">Votre panier est vide.</p>
+          <p class="text-ink-soft">{tr("panier.vide")}</p>
           <a
-            href="/affiches"
+            href={lien(langue, "/affiches")}
             class="mt-6 inline-block rounded-full bg-ink px-6 py-3 text-paper font-medium hover:bg-ink/85 transition-colors"
           >
-            Découvrir les affiches
+            {tr("accueil.cta")}
           </a>
         </div>
       </Show>
@@ -925,7 +1116,7 @@ export default function CheckoutIsland(props: {
           <div class="space-y-8">
             {/* Coordonnées */}
             <fieldset class="space-y-4" disabled={phase() === "pay"}>
-              <legend class="text-2xl mb-2">Vos coordonnées</legend>
+              <legend class="text-2xl mb-2">{tr("commande.coordonnees")}</legend>
               <div class="grid gap-4 sm:grid-cols-2">
                 <label class="block">
                   <span class="text-sm font-medium">{tr("compte.prenom")}</span>
@@ -970,13 +1161,12 @@ export default function CheckoutIsland(props: {
                     quelqu'un d'autre. */}
                 <Show when={props.compte}>
                   <span class="mt-1 block text-xs text-ink-soft">
-                    C'est l'adresse de votre compte. Pour en changer, passez par
-                    « Mes informations ».
+                    {tr("commande.email_compte")}
                   </span>
                 </Show>
                 <Show when={email().length > 0 && !emailValid()}>
                   <span class="mt-1 block text-xs text-terracotta-deep">
-                    E-mail invalide.
+                    {tr("commande.email_invalide")}
                   </span>
                 </Show>
               </label>
@@ -994,7 +1184,7 @@ export default function CheckoutIsland(props: {
                   class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
                 >
                   <For each={PAYS}>
-                    {(p) => <option value={p.code}>{p.nom}</option>}
+                    {(code) => <option value={code}>{nomPays(code)}</option>}
                   </For>
                 </select>
               </label>
@@ -1004,7 +1194,7 @@ export default function CheckoutIsland(props: {
                   parce qu'on a ajouté un cadre. */}
               <Show when={poidsColis() > 0}>
                 <p class="text-xs text-ink-soft">
-                  {tr("livraison.poids_colis")} {formaterPoids(poidsColis())}
+                  {tr("livraison.poids_colis")} {formaterPoids(poidsColis(), locale)}
                 </p>
               </Show>
 
@@ -1045,7 +1235,7 @@ export default function CheckoutIsland(props: {
                             <span>
                               {o.offert
                                 ? tr("livraison.offerte")
-                                : formatPrice(o.fraisCents)}
+                                : formatPrice(o.fraisCents, locale)}
                             </span>
                           </span>
                           <Show when={o.mode.description}>
@@ -1076,7 +1266,7 @@ export default function CheckoutIsland(props: {
                           >
                             <span class="mt-2 block space-y-1">
                               <span class="block text-sm text-ink-soft">
-                                Où souhaitez-vous retirer&nbsp;?
+                                {tr("livraison.ou_retirer")}
                               </span>
                               <For each={standsOuverts()}>
                                 {(st) => (
@@ -1108,7 +1298,7 @@ export default function CheckoutIsland(props: {
                   <Show when={(props.carnet ?? []).length > 0}>
                     <div class="rounded-lg border border-ink/15 p-3">
                       <p class="mb-2 text-sm font-medium">
-                        Vos adresses enregistrées
+                        {tr("livraison.carnet")}
                       </p>
                       <div class="flex flex-wrap gap-2">
                         <For each={props.carnet}>
@@ -1123,7 +1313,7 @@ export default function CheckoutIsland(props: {
                               }`}
                             >
                               <span class="block font-medium">
-                                {a.label || a.line1 || "Adresse"}
+                                {a.label || a.line1 || tr("livraison.adresse")}
                               </span>
                               <span class="block text-xs text-ink-soft">
                                 {[a.postalCode, a.city].filter(Boolean).join(" ")}
@@ -1140,7 +1330,7 @@ export default function CheckoutIsland(props: {
                               : "border-ink/20 hover:border-ink"
                           }`}
                         >
-                          Une autre adresse
+                          {tr("livraison.autre_adresse")}
                         </button>
                       </div>
                     </div>
@@ -1156,7 +1346,7 @@ export default function CheckoutIsland(props: {
                         setAdresse({ ...adresse(), line1: e.currentTarget.value })
                       }
                       class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
-                      placeholder="12 rue des Bains"
+                      placeholder={tr("livraison.adresse_exemple")}
                     />
                   </label>
                   <label class="block">
@@ -1170,7 +1360,7 @@ export default function CheckoutIsland(props: {
                         setAdresse({ ...adresse(), line2: e.currentTarget.value })
                       }
                       class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
-                      placeholder="Bâtiment B, 3e étage"
+                      placeholder={tr("livraison.complement_exemple")}
                     />
                   </label>
                   <div class="grid grid-cols-[8rem_1fr] gap-4">
@@ -1292,11 +1482,53 @@ export default function CheckoutIsland(props: {
                       type="button"
                       onClick={chercherRelais}
                       disabled={relaisEtat() === "recherche" || !cpRecherche().trim()}
-                      class="border border-ink px-5 font-medium hover:bg-ink hover:text-paper disabled:opacity-40 transition-colors"
+                      class="border border-ink px-3 font-medium hover:bg-ink hover:text-paper disabled:opacity-40 transition-colors sm:px-5"
                     >
                       {tr("livraison.chercher")}
                     </button>
+                    <Show when={localisable()}>
+                      <button
+                        type="button"
+                        onClick={meLocaliser}
+                        disabled={localisation() === "en_cours"}
+                        aria-label={
+                          localisation() === "en_cours"
+                            ? tr("livraison.localisation_en_cours")
+                            : tr("livraison.me_localiser")
+                        }
+                        title={tr("livraison.me_localiser")}
+                        class="flex w-12 shrink-0 items-center justify-center border border-ink hover:bg-ink hover:text-paper disabled:opacity-60 transition-colors"
+                      >
+                        {/* Le symbole « ma position » que tout le monde connaît
+                            des applications de cartes : une cible, un point au
+                            centre. Il pulse le temps que le navigateur réponde. */}
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          class={`h-5 w-5 ${localisation() === "en_cours" ? "animate-pulse" : ""}`}
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                        >
+                          <circle cx="12" cy="12" r="7" />
+                          <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
+                          <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+                        </svg>
+                      </button>
+                    </Show>
                   </div>
+
+                  <Show when={localisation() === "refusee"}>
+                    <p class="text-sm text-terracotta-deep" role="status">
+                      {tr("livraison.position_refusee")}
+                    </p>
+                  </Show>
+                  <Show when={localisation() === "introuvable"}>
+                    <p class="text-sm text-terracotta-deep" role="status">
+                      {tr("livraison.position_introuvable")}
+                    </p>
+                  </Show>
 
                   <Show when={relaisEtat() === "recherche"}>
                     <p class="text-sm text-ink-soft">
@@ -1317,6 +1549,7 @@ export default function CheckoutIsland(props: {
                   <Show when={relais().length > 0}>
                     <Show when={relais().some((r) => r.latitude && r.longitude)}>
                       <CarteRelais
+                        langue={langue}
                         points={relais()}
                         choisi={pointRelais().id}
                         depart={departRelais()}
@@ -1369,7 +1602,7 @@ export default function CheckoutIsland(props: {
                                     </summary>
                                     <ul class="mt-1 space-y-0.5">
                                       <For each={r.horairesSemaine}>
-                                        {(ligne) => <li>{ligne}</li>}
+                                        {(ligne) => <li>{horaireLocal(ligne)}</li>}
                                       </For>
                                     </ul>
                                   </details>
@@ -1384,7 +1617,7 @@ export default function CheckoutIsland(props: {
 
                   <Show when={pointRelais().id}>
                     <p class="text-sm text-sage">
-                      {tr("livraison.relais_choisi")} {pointRelais().label}
+                      {tr("livraison.relais_choisi")} {pointRelais().affiche}
                     </p>
                   </Show>
                 </div>
@@ -1393,14 +1626,15 @@ export default function CheckoutIsland(props: {
 
             {/* Paiement */}
             <fieldset class="space-y-4">
-              <legend class="text-2xl mb-2">Paiement</legend>
+              <legend class="text-2xl mb-2">
+                {tr("compte.commande.paiement")}
+              </legend>
 
               {/* Aucun moyen configuré */}
               <Show when={config() && methods().length === 0}>
                 <div class="rounded-lg border border-dashed border-terracotta/40 bg-terracotta/5 p-4 text-sm text-ink-soft">
-                  Le paiement en ligne n'est pas encore activé. Ajoutez vos clés
-                  Stripe et/ou PayPal dans le fichier <code>.env</code> pour
-                  l'activer.
+                  {tr("commande.paiement_indisponible")}{" "}
+                  {avecCode("commande.paiement_indisponible_env", "{fichier}", ".env")}
                 </div>
               </Show>
 
@@ -1409,20 +1643,19 @@ export default function CheckoutIsland(props: {
                   PayPal on essaie son vrai compte, qui ne marche pas. */}
               <Show when={config()?.essai && methods().length > 0}>
                 <div class="rounded-lg border border-sage/40 bg-sage/10 p-4 text-sm">
-                  <p class="font-medium">
-                    Boutique en mode essai : aucun paiement réel.
-                  </p>
+                  <p class="font-medium">{tr("commande.essai.titre")}</p>
                   <ul class="mt-2 space-y-1 text-ink-soft">
                     <li>
-                      <b>Carte bancaire :</b> 4242 4242 4242 4242, une date
-                      future, trois chiffres au dos, et n'importe quel code
-                      postal.
+                      <b>{tr("commande.essai.carte_libelle")}</b>{" "}
+                      {tr("commande.essai.carte")}
                     </li>
                     <li>
-                      <b>PayPal :</b> connectez-vous avec le compte acheteur
-                      d'essai, pas le vôtre. Il se trouve sur
-                      developer.paypal.com, « Testing Tools » puis « Sandbox
-                      accounts », en <code>@personal.example.com</code>.
+                      <b>{tr("commande.essai.paypal_libelle")}</b>{" "}
+                      {avecCode(
+                        "commande.essai.paypal",
+                        "{domaine}",
+                        "@personal.example.com",
+                      )}
                     </li>
                   </ul>
                 </div>
@@ -1443,7 +1676,7 @@ export default function CheckoutIsland(props: {
                             : "border-ink/20 hover:border-ink"
                         }`}
                       >
-                        {m === "stripe" ? "Carte bancaire" : "PayPal"}
+                        {m === "stripe" ? tr("commande.carte") : "PayPal"}
                       </button>
                     )}
                   </For>
@@ -1458,8 +1691,11 @@ export default function CheckoutIsland(props: {
                     class="w-full rounded-full bg-terracotta px-8 py-4 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {submitting()
-                      ? "Préparation…"
-                      : `Continuer vers le paiement · ${formatPrice(total())}`}
+                      ? tr("commande.preparation")
+                      : tr("commande.continuer_paiement").replace(
+                          "{total}",
+                          formatPrice(total(), locale),
+                        )}
                   </button>
                 </Show>
 
@@ -1479,7 +1715,7 @@ export default function CheckoutIsland(props: {
                       disabled={submitting()}
                       class="w-full bg-ink px-8 py-4 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-50"
                     >
-                      {submitting() ? "…" : `${tr("commande.payer")} ${formatPrice(total())}`}
+                      {submitting() ? "…" : `${tr("commande.payer")} ${formatPrice(total(), locale)}`}
                     </button>
                   </Show>
 
@@ -1495,7 +1731,7 @@ export default function CheckoutIsland(props: {
                     onClick={backToDetails}
                     class="text-sm text-ink-soft hover:text-terracotta"
                   >
-                    ← Modifier mes coordonnées
+                    {tr("commande.modifier_coordonnees")}
                   </button>
                 </Show>
               </Show>
@@ -1510,7 +1746,7 @@ export default function CheckoutIsland(props: {
 
           {/* Récapitulatif */}
           <aside class="rounded-2xl border border-ink/10 bg-paper-deep/40 p-6 lg:sticky lg:top-24">
-            <h2 class="text-xl mb-4">Récapitulatif</h2>
+            <h2 class="text-xl mb-4">{tr("commande.recapitulatif")}</h2>
             <Show when={cadresRetires()}>
               <p
                 role="status"
@@ -1543,6 +1779,9 @@ export default function CheckoutIsland(props: {
                                 slots={biblio()!.slots}
                                 cache={cache}
                                 assetBaseUrl={PUBLIC_API_URL}
+                                messages={{
+                                  exempleAffiche: tr("cfg.exemple_affiche"),
+                                }}
                                 foregroundUrl={
                                   urlAsset(
                                     PUBLIC_API_URL,
@@ -1576,15 +1815,16 @@ export default function CheckoutIsland(props: {
                       </div>
                       <div class="min-w-0">
                         <span class="block truncate">
-                          {it.title ?? "Affiche personnalisée"}
+                          {it.title ?? tr("panier.affiche_sans_titre")}
                         </span>
                         <span class="text-ink-soft">
-                          {it.config.format ?? "A4"} · Qté {it.quantity}
+                          {it.config.format ?? "A4"} · {tr("commande.qte")}{" "}
+                          {it.quantity}
                         </span>
                       </div>
                     </div>
                     <span class="shrink-0">
-                      {formatPrice(it.unitPriceCents * it.quantity)}
+                      {formatPrice(it.unitPriceCents * it.quantity, locale)}
                     </span>
                   </li>
                 )}
@@ -1592,12 +1832,12 @@ export default function CheckoutIsland(props: {
             </ul>
             <Show when={discount() > 0}>
               <div class="mt-4 flex justify-between text-sm text-ink-soft">
-                <span>Sous-total</span>
-                <span>{formatPrice(subtotal())}</span>
+                <span>{tr("panier.sous_total")}</span>
+                <span>{formatPrice(subtotal(), locale)}</span>
               </div>
               <div class="mt-1 flex justify-between text-sm text-sage">
-                <span>✨ Remise</span>
-                <span>− {formatPrice(discount())}</span>
+                <span>✨ {tr("compte.commande.remise")}</span>
+                <span>− {formatPrice(discount(), locale)}</span>
               </div>
             </Show>
             <Show when={optionChoisie()}>
@@ -1606,19 +1846,19 @@ export default function CheckoutIsland(props: {
                 <span>
                   {optionChoisie()!.offert
                     ? tr("livraison.offerte")
-                    : formatPrice(fraisPort())}
+                    : formatPrice(fraisPort(), locale)}
                 </span>
               </div>
             </Show>
             <div class="mt-4 flex justify-between border-t border-ink/10 pt-4">
               <span class="font-medium">{tr("panier.total")}</span>
-              <span class="text-xl">{formatPrice(total())}</span>
+              <span class="text-xl">{formatPrice(total(), locale)}</span>
             </div>
             <a
-              href="/panier"
+              href={lien(langue, "/panier")}
               class="mt-4 block text-center text-sm text-ink-soft hover:text-terracotta"
             >
-              Modifier le panier
+              {tr("commande.modifier_panier")}
             </a>
           </aside>
         </div>

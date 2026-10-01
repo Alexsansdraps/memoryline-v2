@@ -69,3 +69,54 @@ export async function suggererAdresses(saisie: string): Promise<SuggestionAdress
   }
   throw new Error("suggestions d'adresses indisponibles");
 }
+
+/** Les mêmes services, dans l'autre sens : d'une position à une adresse. */
+const SERVICES_INVERSES = [
+  "https://data.geopf.fr/geocodage/reverse",
+  "https://api-adresse.data.gouv.fr/reverse/",
+];
+
+/**
+ * L'adresse la plus proche d'une position — celle que le client vient de
+ * donner avec « Me localiser ».
+ *
+ * Elle sert à écrire « 80000 Amiens » dans le champ, pour qu'il voie d'où l'on
+ * cherche, et à donner un code postal aux recherches qui en exigent un. La
+ * position elle-même reste le point de départ : les points se classent depuis
+ * sa porte. Hors de France, la base ne connaît rien : `null`, et la recherche
+ * se fait sur les seules coordonnées.
+ */
+export async function adresseDuLieu(
+  latitude: number,
+  longitude: number,
+): Promise<SuggestionAdresse | null> {
+  const params = new URLSearchParams({
+    lat: String(latitude),
+    lon: String(longitude),
+    limit: "1",
+  });
+  for (const base of SERVICES_INVERSES) {
+    try {
+      const res = await fetch(`${base}?${params.toString()}`, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(4000),
+      });
+      if (!res.ok) continue;
+      const [f] = ((await res.json()) as ReponseBan).features ?? [];
+      const p = f?.properties ?? {};
+      if (!p.postcode) return null;
+      // « 80000 Amiens » plutôt que le numéro et la rue : la position d'un
+      // téléphone est approximative, et une rue fausse inquiéterait.
+      return {
+        label: `${p.postcode} ${p.city ?? ""}`.trim(),
+        codePostal: p.postcode,
+        ville: p.city ?? "",
+        latitude,
+        longitude,
+      };
+    } catch {
+      // Service suivant.
+    }
+  }
+  return null;
+}

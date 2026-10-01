@@ -637,6 +637,11 @@ export const browserApi = {
     browserGet<SuggestionAdresse[]>(
       `/shipping/adresses?q=${encodeURIComponent(q)}`,
     ),
+  /** L'adresse d'une position (« Me localiser ») ; null hors de France. */
+  adresseDuLieu: (latitude: number, longitude: number) =>
+    browserGet<SuggestionAdresse | null>(
+      `/shipping/adresses/position?lat=${latitude}&lng=${longitude}`,
+    ),
   /** Vérifie un code promo ; rejette si le code est inconnu ou expiré. */
   verifierCode: (code: string) =>
     browserSend<{
@@ -879,9 +884,15 @@ export const salonApi = {
     salonFetch<{ ok: true }>("/salon/commandes/rouvrir", code, corps),
 };
 
-/** "2300" centimes -> "23 €" (format FR). */
-export function formatPrice(cents: number): string {
-  return new Intl.NumberFormat("fr-FR", {
+/**
+ * "2300" centimes -> "23 €".
+ *
+ * `locale` est le code complet de la langue de la page (LOCALE_COMPLETE) :
+ * « 23,50 € » en français, « €23.50 » en anglais. Sans lui, le format
+ * français.
+ */
+export function formatPrice(cents: number, locale = "fr-FR"): string {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: "EUR",
     minimumFractionDigits: cents % 100 === 0 ? 0 : 2,

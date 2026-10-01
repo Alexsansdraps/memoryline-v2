@@ -5,8 +5,11 @@ import {
   couleurTexteParValeur,
   policesDeLaLigne,
   familleCss,
+  limiterRetours,
+  MORCEAUX_PAR_LIGNE,
   type BackgroundDTO,
   type CouleurTexteAffiche,
+  type PoliceAffiche,
 } from "@memoryline/types";
 import type { ConfiguratorState } from "../store";
 import { Field, PastilleCouleur } from "./ui";
@@ -35,6 +38,9 @@ export function StepBackgroundText(props: {
   messages: MessagesConfigurateur;
 }) {
   const m = () => props.messages;
+  /** Nom traduit d'une police ; l'identifiant enregistré ne change pas. */
+  const nomPolice = (police: PoliceAffiche) =>
+    m().libellesPolices[police.id] ?? police.libelle;
   /**
    * Choix rapide de la police, montrée DANS la police : le client juge le
    * rendu, pas un nom. Une rangée par ligne, car chacune a la sienne.
@@ -50,7 +56,7 @@ export function StepBackgroundText(props: {
               type="button"
               onClick={() => props.onTextFont(p.ligne, police.id)}
               aria-pressed={actif()}
-              title={police.libelle}
+              title={nomPolice(police)}
               style={{
                 flex: "0 0 auto",
                 border: actif() ? "2px solid #4f46e5" : "1px solid #d1d5db",
@@ -65,7 +71,7 @@ export function StepBackgroundText(props: {
                 "white-space": "nowrap",
               }}
             >
-              {police.libelle}
+              {nomPolice(police)}
             </button>
           );
         }}
@@ -173,18 +179,37 @@ export function StepBackgroundText(props: {
           titre. Une ligne laissée vide n'est pas dessinée. */}
       <For each={props.state.lignes}>
         {(ligne, i) => (
-          <Field label={m().champsLignes[i()] ?? `Ligne ${i() + 1}`}>
-            <input
-              type="text"
+          <Field
+            label={
+              m().champsLignes[i()] ?? m().ligneN.replace("{n}", String(i() + 1))
+            }
+          >
+            {/* Une zone de texte, pour que la touche Entrée coupe la ligne
+                (« SAINT-VALERY- » / « SUR-SOMME ») ; elle grandit avec le
+                nombre de morceaux, trois au plus. */}
+            <textarea
+              rows={Math.min(MORCEAUX_PAR_LIGNE, ligne.value.split("\n").length)}
               value={ligne.value}
               placeholder={m().exemplesLignes[i()] ?? ""}
-              onInput={(e) => props.onTextValue(i(), e.currentTarget.value)}
-              style={inputStyle}
+              aria-describedby="ml-aide-retour-ligne"
+              onInput={(e) => {
+                const champ = e.currentTarget;
+                const value = limiterRetours(champ.value);
+                if (value !== champ.value) champ.value = value;
+                props.onTextValue(i(), value);
+              }}
+              style={{ ...inputStyle, resize: "none", "line-height": "1.4" }}
             />
             <ChoixPolice ligne={i()} />
           </Field>
         )}
       </For>
+      <p
+        id="ml-aide-retour-ligne"
+        style={{ margin: "-4px 0 0", "font-size": "12px", color: "#6b7280" }}
+      >
+        {m().aideRetourLigne}
+      </p>
 
       {/* Couleur PARTAGÉE par les trois lignes. Deux teintes seulement : un
           nuancier libre laissait choisir un texte illisible sur le fond, et
@@ -206,7 +231,11 @@ export function StepBackgroundText(props: {
                 return (
                   <PastilleCouleur
                     couleur={couleur.hex}
-                    libelle={couleur.libelle}
+                    // Traduit par l'identifiant ; la couleur d'une ancienne
+                    // commande, hors charte, garde sa valeur pour nom.
+                    libelle={
+                      m().libellesCouleursTexte[couleur.id] ?? couleur.libelle
+                    }
                     actif={actif()}
                     onClick={() => props.onTextStyle({ color: couleur.hex })}
                   />

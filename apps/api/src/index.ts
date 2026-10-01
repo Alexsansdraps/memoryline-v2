@@ -41,7 +41,7 @@ import {
   normaliserCode,
 } from "@memoryline/types";
 import { rechercherPointsRelais } from "./mondial-relay.js";
-import { suggererAdresses } from "./adresses.js";
+import { adresseDuLieu, suggererAdresses } from "./adresses.js";
 import { langueDuVisiteur, mountTraduction, nomTraduit } from "./traductions.js";
 import { mountBordereaux } from "./sendcloud-colis.js";
 import {
@@ -1158,20 +1158,27 @@ app.get("/shipping/relay-points", async (c) => {
   if (!transporteurConfigure(carrier))
     return c.json({ error: "Recherche de points non configurée" }, 503);
   const cp = String(c.req.query("postalCode") ?? "").trim();
-  if (!/^[A-Za-z0-9 -]{3,10}$/.test(cp))
-    return c.json({ error: "code postal invalide" }, 400);
   const pays = String(c.req.query("country") ?? "FR");
   const ville = String(c.req.query("city") ?? "");
-  // L'adresse exacte, quand le client l'a choisie dans les suggestions : les
-  // points se classent alors depuis sa porte, pas depuis le centre-ville.
-  // Hors des bornes du globe, on l'ignore et on s'en tient au code postal.
+  // L'adresse exacte, quand le client l'a choisie dans les suggestions ou a
+  // donné sa position : les points se classent alors depuis sa porte, pas
+  // depuis le centre-ville. Hors des bornes du globe, on l'ignore et on s'en
+  // tient au code postal.
   const lat = Number(c.req.query("lat"));
   const lng = Number(c.req.query("lng"));
   const coordonnees =
     c.req.query("lat") && c.req.query("lng") &&
+    Number.isFinite(lat) && Number.isFinite(lng) &&
     Math.abs(lat) <= 90 && Math.abs(lng) <= 180
       ? { latitude: lat, longitude: lng }
       : {};
+  // SendCloud cherche depuis des coordonnées : avec elles, le code postal
+  // devient facultatif — c'est le cas d'un client localisé hors de France,
+  // que la base d'adresses ne sait pas traduire en code postal. Les services
+  // directs, eux, ne cherchent que par code postal.
+  const parPosition = "latitude" in coordonnees && sendcloudGerePoints(carrier);
+  if (!/^[A-Za-z0-9 -]{3,10}$/.test(cp) && !(parPosition && cp === ""))
+    return c.json({ error: "code postal invalide" }, 400);
   try {
     // SendCloud d'abord quand il sait chercher ce transporteur : c'est lui qui
     // fabriquera l'étiquette, et l'identifiant du point doit être le sien.
@@ -1212,6 +1219,18 @@ app.get("/shipping/adresses", async (c) => {
     console.error("[adresses]", e);
     return c.json({ error: "suggestions indisponibles" }, 502);
   }
+});
+
+/**
+ * L'adresse d'une position (« Me localiser ») : `null` hors de France ou si la
+ * base ne répond pas — le tunnel cherche alors sur les seules coordonnées.
+ */
+app.get("/shipping/adresses/position", async (c) => {
+  const lat = Number(c.req.query("lat"));
+  const lng = Number(c.req.query("lng"));
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180)
+    return c.json({ error: "position invalide" }, 400);
+  return c.json(await adresseDuLieu(lat, lng));
 });
 
 app.get("/shipping", async (c) => {

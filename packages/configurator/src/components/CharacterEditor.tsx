@@ -36,6 +36,7 @@ import {
   HAIR_TONES,
   PANTS_TONES,
   SKIN_TONES,
+  SLOTS,
   SLOT_THUMB_VIEWBOX,
   type CharacterDTO,
   type Slot,
@@ -49,6 +50,7 @@ import {
   BarreActions,
   brancherDemiRangee,
   createCaleDuBord,
+  InviteADescendre,
   largeurDemiVignette,
 } from "./Defilement";
 import {
@@ -143,7 +145,12 @@ const VIGNETTE_MINI = 56;
  * par une propriété CSS que chaque vignette lit — la grille des personnages,
  * elle, garde ses cases pleine largeur (global.css).
  */
-function Gallery(props: { children: JSX.Element }) {
+function Gallery(props: {
+  children: JSX.Element;
+  /** Noms des deux flèches, traduits, pour le lecteur d'écran. */
+  precedent: string;
+  suivant: string;
+}) {
   let scroller: HTMLDivElement | undefined;
   const scroll = (dir: number) => {
     scroller?.scrollBy({ left: dir * 180, behavior: "smooth" });
@@ -182,7 +189,7 @@ function Gallery(props: { children: JSX.Element }) {
     >
       <button
         type="button"
-        aria-label="Précédent"
+        aria-label={props.precedent}
         onClick={() => scroll(-1)}
         style={arrowStyle()}
       >
@@ -203,7 +210,7 @@ function Gallery(props: { children: JSX.Element }) {
       </div>
       <button
         type="button"
-        aria-label="Suivant"
+        aria-label={props.suivant}
         onClick={() => scroll(1)}
         style={arrowStyle()}
       >
@@ -458,6 +465,8 @@ function ColorRow(props: {
   onSetColor: (ligne: LigneCouleur, hex: string) => void;
   /** Intitulé traduit, fourni par l'éditeur. */
   libelle: string;
+  /** Nom traduit de la pastille de saisie libre. */
+  couleurPerso: string;
 }) {
   const memeCouleur = (a: string, b: string) =>
     a.toUpperCase() === b.toUpperCase();
@@ -506,7 +515,7 @@ function ColorRow(props: {
                       qui renvoie la couleur. Sa propre case, minuscule et
                       différente d'un navigateur à l'autre, ne se voit plus. */}
                   <span
-                    title="Couleur personnalisée"
+                    title={props.couleurPerso}
                     data-item
                     style={{
                       position: "relative",
@@ -555,7 +564,7 @@ function ColorRow(props: {
                           couleurEspacee(z.zone, hex, (c) => props.onSetColor(z, c));
                         else props.onSetColor(z, hex);
                       }}
-                      aria-label="Couleur personnalisée"
+                      aria-label={props.couleurPerso}
                       style={{
                         position: "absolute",
                         top: "0",
@@ -580,14 +589,35 @@ function ColorRow(props: {
   );
 }
 
-function SectionTitle(props: { children: JSX.Element }) {
+function SectionTitle(props: {
+  children: JSX.Element;
+  /**
+   * Titre qui ouvre une nouvelle PARTIE de l'éditeur (les réglages, après le
+   * choix du personnage) : un trait au-dessus l'en sépare, et il reçoit le
+   * focus quand l'invitation à descendre y mène (cf. InviteADescendre).
+   */
+  ref?: (el: HTMLHeadingElement) => void;
+  partie?: boolean;
+}) {
   return (
     <h4
+      ref={props.ref}
+      tabindex={props.partie ? -1 : undefined}
       style={{
         "font-size": "14px",
         "font-weight": "700",
         color: "#111827",
         margin: "16px 0 6px",
+        ...(props.partie
+          ? {
+              "padding-top": "14px",
+              "border-top": "1px solid #e5e7eb",
+              // Le focus n'y arrive que par l'invitation, jamais par
+              // tabulation : un contour autour d'un titre ressemblerait à un
+              // bouton qu'on ne peut pas actionner.
+              outline: "none",
+            }
+          : {}),
       }}
     >
       {props.children}
@@ -638,6 +668,8 @@ export function CharacterEditor(props: {
   const uid = createUniqueId();
 
   /* ---- Choix du personnage par catégorie -------------------------------- */
+  // Clé de regroupement, jamais montrée telle quelle : la pastille affiche
+  // `m().autres`, dans la langue de la page.
   const SANS_CAT = "Autres";
 
   /** Catégories présentes, dans l'ordre renvoyé par l'API (= ordre du BO). */
@@ -783,6 +815,36 @@ export function CharacterEditor(props: {
   const choisirCouleur = (ligne: LigneCouleur, hex: string) =>
     props.onSetColors(ligne.couleurs(hex));
 
+  /* ---- Les réglages, et l'invitation à y descendre ----------------------- */
+  /**
+   * Y a-t-il quelque chose à régler sur ce personnage : une couleur, une
+   * galerie ? Sans rien, ni titre ni invitation — elle mènerait au vide.
+   */
+  const aDesReglages = () =>
+    baseZones().length > 0 || SLOTS.some((slot) => props.slots[slot].length > 0);
+
+  /** Le titre des réglages : là où mène l'invitation à descendre. */
+  const [titreReglages, setTitreReglages] = createSignal<HTMLElement>();
+  let colonnePerso: HTMLDivElement | undefined;
+
+  /**
+   * Ce que l'aperçu du personnage cache en haut de la zone qui défile.
+   *
+   * Sur téléphone, il devient un bandeau collé AU-DESSUS des réglages : le
+   * titre visé doit s'arrêter sous lui. Sur un écran large, il est collé À
+   * CÔTÉ, dans sa colonne, et ne cache rien. On le lit sur la page plutôt
+   * que sur la largeur de l'écran : c'est la feuille de style de l'hôte qui
+   * décide du point de bascule.
+   */
+  const masqueHaut = (): number => {
+    const titre = titreReglages();
+    if (!colonnePerso || !titre) return 0;
+    const apercu = colonnePerso.getBoundingClientRect();
+    const reglages = titre.getBoundingClientRect();
+    const auDessus = apercu.left < reglages.right && apercu.right > reglages.left;
+    return auDessus ? apercu.height : 0;
+  };
+
   /** Section galerie pour un slot (vêtements/pantalon/cheveux/accessoire). */
   function SlotSection(opts: { slot: Slot; allowNone: boolean }) {
     const list = (): VariantDTO[] => props.slots[opts.slot];
@@ -794,7 +856,7 @@ export function CharacterEditor(props: {
     return (
       <Show when={list().length > 0}>
         <SectionTitle>{titreSlot()[opts.slot]}</SectionTitle>
-        <Gallery>
+        <Gallery precedent={m().precedent} suivant={m().suivant}>
           <Show when={opts.allowNone}>
             <Thumb
               selected={hasNone()}
@@ -847,6 +909,7 @@ export function CharacterEditor(props: {
             return (
               <ColorRow
                 libelle={m().choixCouleur}
+                couleurPerso={m().couleurPerso}
                 zones={zonesForSlot(opts.slot)}
                 presets={palette.couleurs}
                 libre={palette.libre}
@@ -887,7 +950,11 @@ export function CharacterEditor(props: {
         }}
       >
         {/* Colonne gauche : prévisualisation du perso composé */}
-        <div class="ml-cfg-perso-col" style={{ position: "sticky", top: "0" }}>
+        <div
+          ref={colonnePerso}
+          class="ml-cfg-perso-col"
+          style={{ position: "sticky", top: "0" }}
+        >
           <div
             class="ml-cfg-perso-apercu"
             style={{
@@ -953,7 +1020,7 @@ export function CharacterEditor(props: {
                     cursor: "pointer",
                   }}
                 >
-                  {cat}
+                  {cat === SANS_CAT ? m().autres : cat}
                 </button>
               )}
             </For>
@@ -999,6 +1066,15 @@ export function CharacterEditor(props: {
               )}
             </For>
           </div>
+
+          {/* La seconde partie de l'éditeur : tout ce qui se règle sur le
+              personnage choisi. Son titre reprend mot pour mot l'invitation
+              de la barre du bas — on arrive là où elle promettait de mener. */}
+          <Show when={aDesReglages()}>
+            <SectionTitle ref={setTitreReglages} partie>
+              {m().personnaliserPerso}
+            </SectionTitle>
+          </Show>
           {/* Couleurs du dessin de base : la peau, et les groupes que le
               back-office propose en plus (pelage, robe dessinée…). Une
               rangée chacun, avec son propre nuancier. */}
@@ -1006,6 +1082,7 @@ export function CharacterEditor(props: {
             {(b) => (
               <ColorRow
                 libelle={m().choixCouleur}
+                couleurPerso={m().couleurPerso}
                 zones={[b.ligne]}
                 presets={b.presets}
                 libre={true}
@@ -1026,8 +1103,23 @@ export function CharacterEditor(props: {
           cliente). Les deux ramènent à la liste : le personnage est modifié
           au fil des choix, il n'y a rien à annuler. */}
       {/* Sans fondu : le bord bas tombe maintenant au milieu d'un item, et
-          le fondu recouvrirait précisément la moitié qui sert d'indice. */}
-      <BarreActions indice={false}>
+          le fondu recouvrirait précisément la moitié qui sert d'indice.
+          L'invitation, elle, se lit : tant que les réglages sont sous le
+          bord, elle dit en toutes lettres qu'ils sont là, et y mène. Elle
+          sautille de nouveau à chaque personnage choisi dans la grille. */}
+      <BarreActions
+        indice={false}
+        invite={
+          <Show when={aDesReglages()}>
+            <InviteADescendre
+              cible={titreReglages()}
+              libelle={m().personnaliserPerso}
+              masqueHaut={masqueHaut}
+              relance={() => props.character.characterId}
+            />
+          </Show>
+        }
+      >
         <Button variant="secondary" onClick={() => props.onBack()}>
           ‹ {m().retour}
         </Button>

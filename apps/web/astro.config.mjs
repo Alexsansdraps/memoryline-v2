@@ -102,6 +102,15 @@ export default defineConfig({
     // Le .env est à la racine du monorepo, pas dans apps/web.
     envDir: "../../",
     plugins: [tailwindcss()],
+    // Modules chargés à la demande (import() au clic) : Vite ne les découvre
+    // qu'au moment où la page les réclame, refait alors son pré-chargement
+    // et répond 504 à la page déjà ouverte. La carte des points relais se
+    // masquait sans rien dire (Leaflet) et la page de commande ne se montait
+    // plus (Stripe). Nommés ici, ils sont prêts dès le démarrage. Sans effet
+    // sur le site en ligne, qui est construit d'avance.
+    optimizeDeps: {
+      include: ["leaflet", "@stripe/stripe-js"],
+    },
     // Docker Desktop sous Windows ne propage PAS les événements de fichiers
     // dans le conteneur : sans scrutation active, Vite ne voit aucune
     // modification du code et sert indéfiniment son cache. On exclut data/

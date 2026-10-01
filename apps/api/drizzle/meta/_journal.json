@@ -407,6 +407,27 @@
       "when": 1790843944696,
       "tag": "0057_traductions_cadres_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1790847126845,
+      "tag": "0058_modes_livraison_sendcloud",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1790848380993,
+      "tag": "0059_commande_description_livraison",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1790850994071,
+      "tag": "0060_relances_multiples",
+      "breakpoints": true
     }
   ]
 }

@@ -477,6 +477,12 @@ export function courrierPanierAbandonne(d: {
   codePromo?: string | null;
   /** Adresse de la page de désinscription. Absente = base légale du consentement. */
   lienDesinscription?: string | null;
+  /**
+   * Les textes réécrits par la boutique (voir `TextesRelance`). Absents, le
+   * courrier est celui d'origine, à l'octet près : tant que la boutique n'a
+   * rien changé, rien ne doit changer chez ses clientes.
+   */
+  textes?: TextesRelance | null;
 }): Courrier {
   const manquants = d.lignes.filter((l) => l.indisponible);
   const avertissement = manquants.length
@@ -494,19 +500,41 @@ export function courrierPanierAbandonne(d: {
         <a href="${h(d.lienDesinscription)}" style="color:#5b5b54">Ne plus recevoir de rappel de panier</a>.</p>`
     : "";
 
+  /*
+   * Ce que le code fabrique seul, quel que soit le texte : le panier (vignettes,
+   * prix, total, articles manquants, code repris) et le bouton. Les mettre à
+   * part sert les deux versions du courrier sans les dupliquer — et garantit
+   * qu'un texte réécrit ne peut ni les retirer, ni les déformer.
+   */
+  const panier = `${tableauLignesAvecImage(d.lignes)}
+       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px">
+         <tr><td style="padding:4px 0"><strong style="font-weight:500">Votre panier</strong></td><td align="right"><strong style="font-weight:500">${prix(d.totalCents)}</strong></td></tr>
+       </table>
+       ${avertissement}
+       ${promo}`;
+  const bouton = (libelle: string) =>
+    `<p style="margin:20px 0"><a href="${h(d.lien)}" style="display:inline-block;background:#121212;color:#ffffff;padding:14px 28px;text-decoration:none">${h(libelle)}</a></p>`;
+  // Le bouton « Se désabonner » des messageries. Les deux en-têtes vont
+  // ensemble : sans le second, Gmail affiche un lien, pas le bouton.
+  const entetes = d.lienDesinscription
+    ? {
+        entetes: {
+          "List-Unsubscribe": `<${d.lienDesinscription}>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
+      }
+    : {};
+
+  if (d.textes) return courrierRelanceReecrit(d, d.textes, { panier, bouton, desinscription, entetes });
+
   return {
     to: "",
     subject: "Votre affiche vous attend",
     html: gabarit(
       `Bonjour ${h(d.prenomClient)},`,
       `<p style="margin:0">Vous avez composé une affiche sans finir votre commande. Elle est toujours là, telle que vous l'avez laissée.</p>
-       ${tableauLignesAvecImage(d.lignes)}
-       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px">
-         <tr><td style="padding:4px 0"><strong style="font-weight:500">Votre panier</strong></td><td align="right"><strong style="font-weight:500">${prix(d.totalCents)}</strong></td></tr>
-       </table>
-       ${avertissement}
-       ${promo}
-       <p style="margin:20px 0"><a href="${h(d.lien)}" style="display:inline-block;background:#121212;color:#ffffff;padding:14px 28px;text-decoration:none">Reprendre ma commande</a></p>
+       ${panier}
+       ${bouton("Reprendre ma commande")}
        <p style="margin:0;color:#5b5b54;font-size:14px">Si vous avez changé d'avis, ignorez simplement ce message.</p>
        ${desinscription}`,
     ),
@@ -527,16 +555,314 @@ export function courrierPanierAbandonne(d: {
         ? `\nNe plus recevoir de rappel de panier : ${d.lienDesinscription}\n`
         : "") +
       `\nMemory Line`,
-    // Le bouton « Se désabonner » des messageries. Les deux en-têtes vont
-    // ensemble : sans le second, Gmail affiche un lien, pas le bouton.
-    ...(d.lienDesinscription
-      ? {
-          entetes: {
-            "List-Unsubscribe": `<${d.lienDesinscription}>`,
-            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-          },
-        }
-      : {}),
+    ...entetes,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Le courrier de relance, réécrit par la boutique                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Les cinq morceaux du courrier de relance que la boutique peut réécrire
+ * elle-même, depuis l'écran « Paniers abandonnés ».
+ *
+ * Le reste ne se réécrit pas, et c'est voulu : le tableau du panier
+ * (vignettes, prix, total), l'avertissement d'affiche indisponible, le code de
+ * réduction repris, le BOUTON et le lien de désinscription sont fabriqués par
+ * le code. Ce sont eux qui font qu'un courrier marche, ou qu'il est en règle ;
+ * aucun texte saisi ne doit pouvoir les retirer.
+ *
+ * Et pas de HTML : la boutique écrit du texte, avec des retours à la ligne et
+ * du **gras**, rien d'autre. Un courrier mis en page à la main casse dans la
+ * moitié des messageries, et un HTML collé depuis ailleurs peut emporter
+ * n'importe quoi avec lui.
+ */
+export interface TextesRelance {
+  /** L'objet, tel qu'il s'affiche dans la boîte de réception. */
+  objet: string;
+  /** La grande ligne du haut : « Bonjour {prenom}, ». */
+  accroche: string;
+  /** Le texte avant le panier. */
+  message: string;
+  /** Le libellé du bouton qui rouvre le panier. */
+  bouton: string;
+  /** Le petit texte sous le bouton. */
+  conclusion: string;
+}
+
+/** La 1re, la 2e ou la 3e relance d'un même panier. */
+export type EtapeRelance = 1 | 2 | 3;
+
+/**
+ * Les textes d'origine de chaque relance.
+ *
+ * Celui de la 1re est le courrier d'avant cet écran, mot pour mot : c'est ce
+ * qui s'affiche dans les champs tant que la boutique n'a rien changé. (Le
+ * courrier lui-même, dans ce cas, ne passe même pas par ces textes : voir
+ * `courrierPanierAbandonne`.) Les deux suivants disent qu'on insiste, sans
+ * insister lourdement — la 3e annonce qu'elle est la dernière, et c'est vrai.
+ */
+export const TEXTES_RELANCE_DEFAUT: Record<EtapeRelance, TextesRelance> = {
+  1: {
+    objet: "Votre affiche vous attend",
+    accroche: "Bonjour {prenom},",
+    message:
+      "Vous avez composé une affiche sans finir votre commande. Elle est toujours là, telle que vous l'avez laissée.",
+    bouton: "Reprendre ma commande",
+    conclusion: "Si vous avez changé d'avis, ignorez simplement ce message.",
+  },
+  2: {
+    objet: "Votre panier vous attend toujours",
+    accroche: "Bonjour {prenom},",
+    message:
+      "Petit rappel : votre affiche est toujours dans votre panier, prête à partir à l'impression. Il ne vous reste qu'à valider votre commande.",
+    bouton: "Reprendre ma commande",
+    conclusion:
+      "Une question sur le format ou le cadre ? Répondez simplement à ce message.",
+  },
+  3: {
+    objet: "Dernier rappel pour votre affiche",
+    accroche: "Bonjour {prenom},",
+    message:
+      "C'est notre dernier message au sujet de votre panier : nous ne vous écrirons plus à son propos. Votre affiche vous attend encore quelques jours.",
+    bouton: "Terminer ma commande",
+    conclusion: "Si vous avez changé d'avis, ignorez simplement ce message.",
+  },
+};
+
+/**
+ * Les variables que la boutique peut glisser dans ses textes, et ce qu'elles
+ * deviennent. La liste est courte exprès : chacune doit avoir un sens dans
+ * TOUS les courriers, sans quoi un « {code} » vide partirait chez une cliente
+ * qui n'a jamais saisi de code.
+ */
+export const VARIABLES_RELANCE = [
+  { nom: "prenom", sens: "le prénom de la cliente (« vous » si on ne le connaît pas)" },
+  { nom: "articles", sens: "le nom des affiches du panier, entre guillemets" },
+  { nom: "montant", sens: "le total du panier, par exemple 49,00 €" },
+  {
+    nom: "lien",
+    sens: "l'adresse qui rouvre le panier, en lien cliquable — le bouton est déjà là, ce lien est en plus",
+  },
+] as const;
+
+type NomVariable = (typeof VARIABLES_RELANCE)[number]["nom"];
+
+/** Les plafonds de chaque champ. Au-delà, ce n'est plus un courrier de relance. */
+const LONGUEURS_RELANCE: Record<keyof TextesRelance, number> = {
+  objet: 150,
+  accroche: 150,
+  message: 3000,
+  bouton: 60,
+  conclusion: 1000,
+};
+
+const NOMS_CHAMPS_RELANCE: Record<keyof TextesRelance, string> = {
+  objet: "L'objet",
+  accroche: "L'accroche",
+  message: "Le message",
+  bouton: "Le libellé du bouton",
+  conclusion: "Le mot de la fin",
+};
+
+/** « Prénom », « PRENOM » → « prenom » : la variable telle que le code la connaît. */
+function nomCanonique(brut: string): string {
+  return brut
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+}
+
+function estVariable(nom: string): nom is NomVariable {
+  return VARIABLES_RELANCE.some((v) => v.nom === nom);
+}
+
+/**
+ * Met au propre ce que la boutique a saisi, ou dit en une phrase ce qui ne va
+ * pas.
+ *
+ * Trois règles. Les champs d'une ligne (objet, accroche, bouton) restent sur
+ * une ligne, et l'objet surtout : un retour à la ligne dans un objet de
+ * courrier est une faille connue des en-têtes. Les variables s'écrivent comme
+ * on les pense — « {Prénom} » vaut « {prenom} » — mais une variable inconnue
+ * est REFUSÉE plutôt que laissée telle quelle : sinon « {nom} » partirait
+ * entre ses accolades chez toutes les clientes. Et « {lien} » n'a sa place
+ * que dans le texte : dans un objet ou sur le bouton, il afficherait une
+ * adresse de cent caractères.
+ */
+export function normaliserTextesRelance(
+  brut: unknown,
+): { ok: true; textes: TextesRelance } | { ok: false; erreur: string } {
+  const source = (brut && typeof brut === "object" ? brut : {}) as Record<string, unknown>;
+  const textes = {} as TextesRelance;
+  for (const champ of Object.keys(LONGUEURS_RELANCE) as (keyof TextesRelance)[]) {
+    const uneLigne = champ === "objet" || champ === "accroche" || champ === "bouton";
+    let v = String(source[champ] ?? "")
+      .replace(/\r\n?/g, "\n")
+      // Les caractères de contrôle n'ont rien à faire dans un courrier, et
+      // certains cassent les en-têtes ou l'affichage de la messagerie.
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "");
+    v = uneLigne ? v.replace(/\s*\n\s*/g, " ").trim() : v.replace(/\n{3,}/g, "\n\n").trim();
+
+    if (!v && champ !== "message" && champ !== "conclusion")
+      return { ok: false, erreur: `${NOMS_CHAMPS_RELANCE[champ]} ne peut pas rester vide.` };
+    if (v.length > LONGUEURS_RELANCE[champ])
+      return {
+        ok: false,
+        erreur: `${NOMS_CHAMPS_RELANCE[champ]} est trop long : ${v.length} caractères pour ${LONGUEURS_RELANCE[champ]} au plus.`,
+      };
+
+    let erreur: string | null = null;
+    v = v.replace(/\{([^{}\n]{1,30})\}/g, (tel, nom: string) => {
+      const canonique = nomCanonique(nom.trim());
+      if (!estVariable(canonique)) {
+        erreur ??= `« ${tel} » n'est pas une variable connue. Celles qui existent : ${VARIABLES_RELANCE.map((x) => `{${x.nom}}`).join(", ")}.`;
+        return tel;
+      }
+      if (canonique === "lien" && uneLigne)
+        erreur ??= `{lien} ne peut servir que dans le message ou le mot de la fin : ${NOMS_CHAMPS_RELANCE[champ].toLowerCase()} afficherait une adresse entière.`;
+      return `{${canonique}}`;
+    });
+    if (erreur) return { ok: false, erreur };
+    textes[champ] = v;
+  }
+  return { ok: true, textes };
+}
+
+/** Deux jeux de textes disent-ils exactement la même chose ? */
+export function memesTextesRelance(a: TextesRelance, b: TextesRelance): boolean {
+  return (Object.keys(LONGUEURS_RELANCE) as (keyof TextesRelance)[]).every(
+    (k) => a[k] === b[k],
+  );
+}
+
+/** Ce que valent les variables pour CE courrier. */
+type ValeursRelance = Record<NomVariable, string>;
+
+/** « A », « A » et « B », « A », « B » et « C ». */
+function listeDesTitres(lignes: LigneCourrier[]): string {
+  const titres = lignes.map((l) => `« ${l.titre} »`);
+  if (titres.length <= 1) return titres[0] ?? "votre affiche";
+  return `${titres.slice(0, -1).join(", ")} et ${titres[titres.length - 1]}`;
+}
+
+/** Un champ d'une ligne, variables remplies, en TEXTE (échappé plus tard). */
+function remplirLigne(t: string, v: ValeursRelance): string {
+  return t.replace(/\{([a-z_]+)\}/g, (tel, nom: string) => (estVariable(nom) ? v[nom] : tel));
+}
+
+/**
+ * Un texte de plusieurs lignes, en HTML de courrier.
+ *
+ * L'ordre des opérations est ce qui rend la chose sûre : on ÉCHAPPE d'abord
+ * tout ce que la boutique a écrit, et seulement ensuite on pose nos balises —
+ * le gras, les retours à la ligne, les variables (elles-mêmes échappées). Rien
+ * de ce qui a été saisi ne peut donc devenir une balise.
+ *
+ * Une ligne vide sépare deux paragraphes ; un simple retour à la ligne reste
+ * un retour à la ligne. Le premier paragraphe garde le style du courrier
+ * d'origine, les suivants prennent l'espace qui les sépare.
+ */
+function paragraphesHtml(
+  t: string,
+  v: ValeursRelance,
+  styles: { premier: string; suivant: string },
+): string {
+  return t
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p, i) => {
+      const corps = h(p)
+        .replace(/\*\*([^*]+?)\*\*/g, '<strong style="font-weight:600">$1</strong>')
+        .replace(/\{([a-z_]+)\}/g, (tel, nom: string) => {
+          if (!estVariable(nom)) return tel;
+          if (nom === "lien")
+            return `<a href="${h(v.lien)}" style="color:#121212;word-break:break-all">${h(v.lien)}</a>`;
+          return h(v[nom]);
+        })
+        .replace(/\n/g, "<br />");
+      return `<p style="${i === 0 ? styles.premier : styles.suivant}">${corps}</p>`;
+    })
+    .join("\n       ");
+}
+
+/** Le même texte, pour la version sans mise en page du courrier. */
+function paragraphesTexte(t: string, v: ValeursRelance): string {
+  return remplirLigne(t, v).replace(/\*\*([^*]+?)\*\*/g, "$1").trim();
+}
+
+/**
+ * Le courrier de relance avec les textes de la boutique.
+ *
+ * Même gabarit, même panier, même bouton que le courrier d'origine : seuls les
+ * mots changent. C'est ce qui permet à l'aperçu de l'écran d'être fidèle — il
+ * passe par ici, exactement comme l'envoi.
+ */
+function courrierRelanceReecrit(
+  d: Parameters<typeof courrierPanierAbandonne>[0],
+  t: TextesRelance,
+  morceaux: {
+    panier: string;
+    bouton: (libelle: string) => string;
+    desinscription: string;
+    entetes: { entetes?: Record<string, string> };
+  },
+): Courrier {
+  const v: ValeursRelance = {
+    prenom: d.prenomClient,
+    articles: listeDesTitres(d.lignes),
+    montant: prix(d.totalCents),
+    lien: d.lien,
+  };
+  const message = paragraphesHtml(t.message, v, {
+    premier: "margin:0",
+    suivant: "margin:12px 0 0",
+  });
+  const conclusion = paragraphesHtml(t.conclusion, v, {
+    premier: "margin:0;color:#5b5b54;font-size:14px",
+    suivant: "margin:10px 0 0;color:#5b5b54;font-size:14px",
+  });
+  const libelleBouton = remplirLigne(t.bouton, v);
+
+  return {
+    to: "",
+    // Une ligne, toujours : les variables pourraient en théorie apporter un
+    // retour à la ligne (un titre d'affiche mal saisi), et l'objet est un
+    // en-tête.
+    subject: remplirLigne(t.objet, v).replace(/\s+/g, " ").trim(),
+    html: gabarit(
+      remplirLigne(t.accroche, v),
+      [message, morceaux.panier, morceaux.bouton(libelleBouton), conclusion, morceaux.desinscription]
+        .filter(Boolean)
+        .join("\n       "),
+    ),
+    text:
+      [
+        remplirLigne(t.accroche, v),
+        paragraphesTexte(t.message, v),
+        d.lignes
+          .map(
+            (l) =>
+              `- ${l.titre} (${l.format ?? "A4"}) × ${l.quantite} — ${prix(l.unitPriceCents * l.quantite)}` +
+              (l.indisponible ? " — plus disponible" : ""),
+          )
+          .join("\n") +
+          `\nTotal : ${prix(d.totalCents)}` +
+          (d.codePromo ? `\nVotre code de réduction ${d.codePromo} est déjà appliqué.` : ""),
+        `${libelleBouton} : ${d.lien}`,
+        paragraphesTexte(t.conclusion, v),
+        d.lienDesinscription
+          ? `Ne plus recevoir de rappel de panier : ${d.lienDesinscription}`
+          : "",
+        "Memory Line",
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+    ...morceaux.entetes,
   };
 }
 

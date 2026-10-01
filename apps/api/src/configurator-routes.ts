@@ -874,6 +874,8 @@ async function computeShippingCents(
 ): Promise<{
   cents: number;
   label: string;
+  /** La description du mode, telle que la cliente la lit avant de payer. */
+  description: string | null;
   kind: string;
   carrier: string | null;
   poidsGrammes: number;
@@ -927,6 +929,7 @@ async function computeShippingCents(
   return {
     cents: option.fraisCents,
     label: option.mode.name,
+    description: option.mode.description?.trim() || null,
     kind: option.mode.kind,
     carrier: option.mode.carrier ?? null,
     poidsGrammes: poids,
@@ -2051,7 +2054,7 @@ export function mountConfiguratorRoutes(app: Hono) {
       .select()
       .from(schema.orderItems)
       .where(eq(schema.orderItems.orderId, draft.id));
-    if (items.length === 0) return c.json({ error: "panier vide" }, 400);
+    if (items.length === 0) return c.json({ error: "panier vide", code: "panier_vide" }, 400);
 
     // Une fiche client par commande : c'est ce que produisait l'INSERT
     // systématique d'avant, et un même client finissait éparpillé en autant de
@@ -2115,7 +2118,7 @@ export function mountConfiguratorRoutes(app: Hono) {
     const liv = (body.shipping ?? {}) as Record<string, unknown>;
     const modeSlug = String(liv.method ?? "").trim();
     const pays = normaliserPays(liv.country) || "FR";
-    if (!modeSlug) return c.json({ error: "mode de livraison requis" }, 400);
+    if (!modeSlug) return c.json({ error: "mode de livraison requis", code: "mode_indisponible" }, 400);
     const ligne1 = String(liv.line1 ?? "").trim();
     const ville = String(liv.city ?? "").trim();
     const cp = String(liv.postalCode ?? "").trim();
@@ -2130,18 +2133,35 @@ export function mountConfiguratorRoutes(app: Hono) {
     // refusé ; une panne de SendCloud ne bloque pas la commande, le point a
     // été choisi dans leur liste quelques minutes plus tôt.
     const idRelais = String(liv.relayPointId ?? "").trim();
-    if (
-      idRelais.startsWith(PREFIXE_SENDCLOUD) &&
-      (await verifierPointSendcloud(idRelais, pays)) === "inconnu"
-    )
-      return c.json(
-        {
-          error:
-            "Ce point relais n'est plus disponible. Choisissez-en un autre dans la liste.",
-          code: "point_relais_inconnu",
-        },
-        400,
-      );
+    if (idRelais.startsWith(PREFIXE_SENDCLOUD)) {
+      // Le point doit aussi être du réseau du mode payé : un point Mondial
+      // Relay envoyé avec un mode Colissimo serait un colis que personne ne
+      // sait livrer. Le mode n'est relu sous verrou que plus bas ; ici, il
+      // ne sert qu'à nommer le réseau attendu.
+      const [modeVise] = await db
+        .select({ carrier: schema.shippingMethods.carrier })
+        .from(schema.shippingMethods)
+        .where(eq(schema.shippingMethods.slug, modeSlug));
+      const etat = await verifierPointSendcloud(idRelais, pays, modeVise?.carrier);
+      if (etat === "inconnu")
+        return c.json(
+          {
+            error:
+              "Ce point relais n'est plus disponible. Choisissez-en un autre dans la liste.",
+            code: "point_relais_inconnu",
+          },
+          400,
+        );
+      if (etat === "autre_transporteur")
+        return c.json(
+          {
+            error:
+              "Ce point relais ne correspond pas au mode de livraison choisi. Choisissez-en un dans la liste.",
+            code: "point_relais_transporteur",
+          },
+          400,
+        );
+    }
 
     // Le total se calcule SOUS LE VERROU de la commande (commandeVerrouillee),
     // sur les lignes relues dans la même transaction. Une modification du
@@ -2159,7 +2179,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         .from(schema.orderItems)
         .where(eq(schema.orderItems.orderId, panier.id));
       if (lignes.length === 0)
-        return { erreur: "panier vide", statut: 400 as const };
+        return { erreur: "panier vide", statut: 400 as const, code: "panier_vide" };
 
       // Un cadre que le site ne propose plus ne part pas par sa caisse : c'est
       // ici que le réglage protège vraiment, quoi que le navigateur ait gardé
@@ -2186,19 +2206,19 @@ export function mountConfiguratorRoutes(app: Hono) {
       const articles = await computeOrderTotalCents(lignes, code, maintenant, tx);
       const port = await computeShippingCents(lignes, modeSlug, pays, code, maintenant, tx);
       if (!port)
-        return { erreur: "mode de livraison indisponible", statut: 400 as const };
+        return { erreur: "mode de livraison indisponible", statut: 400 as const, code: "mode_indisponible" };
       // Une nature que la liste ne connaît plus ne dit pas quoi demander au
       // client : ni adresse, ni point relais. On refuse la commande plutôt que
       // de l'accepter sans savoir où livrer — c'est ce qui arriverait à un
       // vieux mode restauré des archives, dont la nature a disparu depuis.
       if (!CODES_NATURE.includes(port.kind))
-        return { erreur: "mode de livraison indisponible", statut: 400 as const };
+        return { erreur: "mode de livraison indisponible", statut: 400 as const, code: "mode_indisponible" };
       // Une livraison à domicile sans adresse n'arrive nulle part ; un point
       // relais sans point relais non plus.
       if (demandeUneAdresse(port.kind) && (!ligne1 || !ville || !cp))
-        return { erreur: "adresse de livraison incomplète", statut: 400 as const };
+        return { erreur: "adresse de livraison incomplète", statut: 400 as const, code: "adresse_incomplete" };
       if (demandeUnPointRelais(port.kind) && !idRelais)
-        return { erreur: "point relais requis", statut: 400 as const };
+        return { erreur: "point relais requis", statut: 400 as const, code: "point_relais_requis" };
       // Quand SendCloud cherche les points de ce transporteur, le point doit
       // venir de sa liste : c'est son identifiant qui servira à l'étiquette.
       if (
@@ -2209,6 +2229,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         return {
           erreur: "Choisissez votre point relais dans la liste proposée.",
           statut: 400 as const,
+          code: "point_relais_requis",
         };
 
       const total = articles + port.cents;
@@ -2224,6 +2245,7 @@ export function mountConfiguratorRoutes(app: Hono) {
           promoCode: code || null,
           shippingMethod: modeSlug,
           shippingLabel: port.label,
+          shippingDescription: port.description,
           shippingCents: port.cents,
           // Poids figé : le catalogue changera, le colis a pesé ce qu'il a pesé.
           weightGrams: port.poidsGrammes,

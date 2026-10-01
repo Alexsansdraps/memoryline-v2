@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
+import { t, lien, LANGUE_DEFAUT, LOCALE_COMPLETE, type Langue } from "../i18n/utils.ts";
 import { createResource, createSignal, Show, type JSX } from "solid-js";
 import { Configurator } from "@memoryline/configurator";
 import type {
@@ -89,7 +89,9 @@ function priceForConfig(
 export default function ConfiguratorIsland(
   props: ConfiguratorIslandProps,
 ): JSX.Element {
-  const tr = t(props.langue ?? LANGUE_DEFAUT);
+  const langue = props.langue ?? LANGUE_DEFAUT;
+  const tr = t(langue);
+  const locale = LOCALE_COMPLETE[langue];
   const mode = props.mode ?? "add";
   const cadresProposes = props.cadresProposes !== false;
 
@@ -166,7 +168,9 @@ export default function ConfiguratorIsland(
       }
       // Le serveur a écrit la ligne sans son cadre (page ouverte avant que la
       // boutique ne les retire du site) : le panier le dit à la cliente.
-      window.location.href = ligne.cadreRetire ? "/panier?cadres=retires" : "/panier";
+      // Le panier dans la langue de la fiche, pas celui du français.
+      const panier = lien(langue, "/panier");
+      window.location.href = ligne.cadreRetire ? `${panier}?cadres=retires` : panier;
     } catch (e) {
       setError(String(e));
       setSaving(false);
@@ -177,11 +181,11 @@ export default function ConfiguratorIsland(
     // Étape 1 « Retour » : en édition on revient au panier ; en ajout on
     // ferme simplement la modale (reste sur la fiche produit).
     if (mode === "edit") {
-      window.location.href = "/panier";
+      window.location.href = lien(langue, "/panier");
     } else if (props.onCancel) {
       props.onCancel();
     } else {
-      window.location.href = "/affiches";
+      window.location.href = lien(langue, "/affiches");
     }
   }
 
@@ -192,7 +196,7 @@ export default function ConfiguratorIsland(
         <div
           class="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,320px)]"
           aria-busy="true"
-          aria-label="Chargement du configurateur"
+          aria-label={tr("cfg.chargement")}
         >
           <div class="ml-skeleton mx-auto aspect-[1/1.4142] w-full max-w-[280px]" />
           <div class="space-y-3">
@@ -206,8 +210,7 @@ export default function ConfiguratorIsland(
 
       <Show when={data.error}>
         <p class="text-terracotta-deep">
-          Impossible de charger le configurateur. Vérifiez que l'API est
-          démarrée ({PUBLIC_API_URL}).
+          {tr("cfg.erreur")}
         </p>
       </Show>
 
@@ -262,6 +265,32 @@ export default function ConfiguratorIsland(
                 sansCadre: tr("cfg.sans_cadre"),
                 reordonnerAide: tr("cfg.reordonner_aide"),
                 dupliquer: tr("cfg.dupliquer"),
+                aideRetourLigne: tr("cfg.aide_retour_ligne"),
+                ligneN: tr("cfg.ligne_n"),
+                precedent: tr("cfg.precedent"),
+                suivant: tr("cfg.suivant"),
+                couleurPerso: tr("cfg.couleur_perso"),
+                autres: tr("cfg.autres"),
+                personnageN: tr("cfg.personnage_n"),
+                personnage: tr("cfg.personnage"),
+                deplacerAide: tr("cfg.deplacer_aide"),
+                exempleAffiche: tr("cfg.exemple_affiche"),
+                apercuCadre: tr("cfg.apercu_cadre"),
+                apercuCadreSansNom: tr("cfg.apercu_cadre_sans_nom"),
+                // Seules les polices et couleurs proposées aujourd'hui : une
+                // police absente d'ici garde son nom français.
+                libellesPolices: {
+                  serif: tr("cfg.police.serif"),
+                  spartan: tr("cfg.police.spartan"),
+                  shabby: tr("cfg.police.shabby"),
+                },
+                libellesCouleursTexte: {
+                  blanc: tr("cfg.couleur.blanc"),
+                  anthracite: tr("cfg.couleur.anthracite"),
+                },
+                // Montants et dimensions à la manière de la langue de la page.
+                locale,
+                personnaliserPerso: tr("cfg.personnaliser_perso"),
               }}
               product={{
                 id: props.product.id,

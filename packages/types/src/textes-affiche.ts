@@ -46,6 +46,39 @@ export function lignesDuTexte(
   return out;
 }
 
+/**
+ * Une ligne peut être coupée à la main (touche Entrée) : « SAINT-VALERY- » /
+ * « SUR-SOMME » se lit mieux qu'un nom rapetissé pour tenir en largeur. Trois
+ * morceaux au plus par ligne : au-delà, le bloc de texte descendrait dans le
+ * dessin.
+ */
+export const MORCEAUX_PAR_LIGNE = 3;
+
+/**
+ * Les morceaux d'une ligne, dans l'ordre, sans les morceaux vides : un retour
+ * à la ligne tapé en trop, au début ou à la fin, ne laisse pas de trou.
+ * C'est elle que lisent l'aperçu et le PDF, pour couper au même endroit.
+ */
+export function sousLignes(valeur: string | null | undefined): string[] {
+  return String(valeur ?? "")
+    .split(/\r?\n/)
+    .map((m) => m.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Une saisie ramenée à `MORCEAUX_PAR_LIGNE` morceaux : les retours à la ligne
+ * en trop deviennent des espaces, sans perdre un seul mot.
+ */
+export function limiterRetours(valeur: string): string {
+  const morceaux = valeur.split(/\r?\n/);
+  if (morceaux.length <= MORCEAUX_PAR_LIGNE) return valeur;
+  return [
+    ...morceaux.slice(0, MORCEAUX_PAR_LIGNE - 1),
+    morceaux.slice(MORCEAUX_PAR_LIGNE - 1).join(" "),
+  ].join("\n");
+}
+
 /** Les lignes réellement remplies, dans l'ordre — pratique pour le rendu. */
 export function lignesRemplies(
   textes: TextesAffiche | null | undefined,

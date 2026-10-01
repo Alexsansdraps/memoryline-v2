@@ -59,11 +59,16 @@ async function visible(cle: string): Promise<boolean> {
   return !["off", "non", "no", "0", "false"].includes(v);
 }
 
-/** Un texte réglable, dans la langue de la page. */
+/**
+ * Un texte réglable, dans la langue de la page.
+ *
+ * Le repli vient du dictionnaire, dans la langue de la page : il ne sert que
+ * si rien n'a été saisi au back-office, ni dans cette langue ni en français.
+ */
 const texte = (cle: string, defaut: string) => setting(cle, defaut, langue);
 
 const vitrineVisible = await visible("home.vitrine.visible");
-const vitrineTitre = await texte("home.vitrine.title", "Nos best-sellers ❤️");
+const vitrineTitre = await texte("home.vitrine.title", tr("accueil.vitrine_titre"));
 /**
  * Texte d'introduction de la vitrine : une ligne par ligne saisie au
  * back-office. Celles qui commencent par un tiret deviennent une puce, les
@@ -72,7 +77,7 @@ const vitrineTitre = await texte("home.vitrine.title", "Nos best-sellers ❤️"
  */
 const vitrineTexte = await texte(
   "home.vitrine.subtitle",
-  "- Choisissez votre fond\n- Personnalisez votre texte\n- Choisissez vos personnages et personnalisez-les\nVotre affiche prête en 2 minutes !",
+  tr("accueil.vitrine_texte"),
 );
 const vitrineLignes = vitrineTexte
   .split(/\r?\n/)
@@ -155,12 +160,9 @@ const vitrine = vitrineVisible ? await affichesDeLaVitrine() : [];
  */
 const iaVisible = await visible("home.ia.visible");
 const iaImage = (await setting("home.ia.image", "")).trim();
-const iaTitre = await texte("home.ia.title", "Votre photo, en affiche");
-const iaTexte = await texte(
-  "home.ia.text",
-  "Envoyez une photo — une maison, une plage, une rue, un souvenir — et retrouvez-la illustrée dans le style Memory Line. Vous voyez le résultat avant de commander.",
-);
-const iaBouton = await texte("home.ia.cta", "Essayer avec ma photo");
+const iaTitre = await texte("home.ia.title", tr("accueil.ia_titre"));
+const iaTexte = await texte("home.ia.text", tr("accueil.ia_texte"));
+const iaBouton = await texte("home.ia.cta", tr("accueil.ia_bouton"));
 const iaLien = await setting(
   "home.ia.link",
   "/affiches/affiche-ia-a-partir-de-votre-photo",
@@ -191,7 +193,7 @@ const encartLien = (await setting("home.encart.link", "")).trim();
 
 const lettreTitre = await texte(
   "home.newsletter.title",
-  "Subscribe to our emails",
+  tr("accueil.lettre_titre"),
 );
 ---
 

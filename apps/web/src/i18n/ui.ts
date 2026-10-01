@@ -245,6 +245,13 @@ export const ui = {
     "panier.erreur": "Impossible de charger le panier",
     "livraison.cp_recherche": "Code postal",
     "livraison.chercher": "Chercher",
+    "livraison.me_localiser": "Me localiser",
+    "livraison.localisation_en_cours": "Localisation…",
+    "livraison.ma_position": "Autour de ma position",
+    "livraison.position_refusee":
+      "La localisation n'a pas été autorisée. Saisissez votre adresse ou votre code postal.",
+    "livraison.position_introuvable":
+      "Votre position n'a pas pu être trouvée. Saisissez votre adresse ou votre code postal.",
     "livraison.recherche_en_cours": "Recherche des points près de chez vous…",
     "livraison.aucun_relais": "Aucun point trouvé pour ce code postal.",
     "livraison.relais_indisponible": "Recherche indisponible pour le moment.",
@@ -384,7 +391,7 @@ export const ui = {
     "cfg.sans_cadre": "Sans cadre",
     "cfg.chargement": "Chargement du configurateur…",
     "cfg.erreur":
-      "Le configurateur n'a pas pu démarrer. Vérifiez que l'API est démarrée",
+      "Le configurateur n'a pas pu se charger. Rechargez la page, ou réessayez dans quelques instants.",
 
     /* L'encart vidéo de l'étape 1 (apps/web/src/islands/EncartVideo.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
@@ -522,6 +529,129 @@ export const ui = {
       "Ce lien de réinitialisation n'est plus valable. Demandez-en un nouveau.",
     "compte.err.champs": "Merci de remplir les champs obligatoires.",
     "compte.err.generique": "Une erreur est survenue. Réessayez.",
+    // Textes sortis du code en dur (octobre 2026).
+    "cfg.precedent": "Précédent",
+    "cfg.suivant": "Suivant",
+    "cfg.couleur_perso": "Couleur personnalisée",
+    "cfg.autres": "Autres",
+    "cfg.personnage_n": "Personnage {id}",
+    "cfg.personnage": "Personnage",
+    "cfg.deplacer_aide":
+      "{nom} : glissez-le pour le déplacer sur l'affiche, ou utilisez les flèches",
+    "cfg.exemple_affiche": "Votre ville, votre histoire",
+    "cfg.apercu_cadre": "Aperçu de l'affiche dans un {cadre}",
+    "cfg.apercu_cadre_sans_nom": "Aperçu de l'affiche dans un cadre",
+    "cfg.ligne_n": "Ligne {n}",
+    "cfg.aide_retour_ligne": "Touche Entrée pour passer à la ligne.",
+    "cfg.personnaliser_perso": "Personnaliser ce personnage",
+    "cfg.police.serif": "Classique",
+    "cfg.police.spartan": "Bâton",
+    "cfg.police.shabby": "Manuscrite",
+    "cfg.couleur.blanc": "Blanc",
+    "cfg.couleur.anthracite": "Gris anthracite",
+    "commande.modifier_panier": "Modifier le panier",
+    "commande.merci_titre": "Merci !",
+    "commande.merci_texte": "Votre paiement a bien été reçu et votre commande est confirmée.",
+    "commande.numero": "Numéro de commande :",
+    "commande.coordonnees": "Vos coordonnées",
+    "commande.email_compte":
+      "C'est l'adresse de votre compte. Pour en changer, passez par « Mes informations ».",
+    "commande.email_invalide": "E-mail invalide.",
+    "livraison.autre_pays": "Autre pays",
+    "livraison.ou_retirer": "Où souhaitez-vous retirer ?",
+    "livraison.carnet": "Vos adresses enregistrées",
+    "livraison.autre_adresse": "Une autre adresse",
+    "livraison.adresse_exemple": "12 rue des Bains",
+    "livraison.complement_exemple": "Bâtiment B, 3e étage",
+    "livraison.relais_numero": "(n° {code})",
+    "livraison.carte": "Carte des points relais",
+    "livraison.relais_plus_disponible":
+      "Ce point relais n'est plus disponible. Choisissez-en un autre dans la liste.",
+    "commande.paiement_indisponible_env":
+      "Ajoutez vos clés Stripe et/ou PayPal dans le fichier {fichier} pour l'activer.",
+    "commande.essai.titre": "Boutique en mode essai : aucun paiement réel.",
+    "commande.essai.carte_libelle": "Carte bancaire :",
+    "commande.essai.carte":
+      "4242 4242 4242 4242, une date future, trois chiffres au dos, et n'importe quel code postal.",
+    "commande.essai.paypal_libelle": "PayPal :",
+    "commande.essai.paypal":
+      "connectez-vous avec le compte acheteur d'essai, pas le vôtre. Il se trouve sur developer.paypal.com, « Testing Tools » puis « Sandbox accounts », en {domaine}.",
+    "commande.carte": "Carte bancaire",
+    "commande.preparation": "Préparation…",
+    "commande.continuer_paiement": "Continuer vers le paiement · {total}",
+    "commande.modifier_coordonnees": "← Modifier mes coordonnées",
+    "commande.recapitulatif": "Récapitulatif",
+    "panier.affiche_sans_titre": "Affiche personnalisée",
+    "commande.qte": "Qté",
+    "commande.err.panier_modifie":
+      "Votre panier a changé depuis le calcul du total. Revenez à l'étape précédente pour le recalculer avant de payer.",
+    "commande.err.refuse": "Paiement refusé.",
+    "commande.err.non_finalise": "Paiement non finalisé. Réessayez.",
+    "commande.err.carte_indisponible":
+      "Le paiement par carte est indisponible pour le moment. Réessayez dans quelques instants.",
+    "commande.err.paypal_indisponible":
+      "PayPal n'a pas pu se charger. Réessayez, ou payez par carte.",
+    "commande.err.paypal_ouverture":
+      "Le paiement par PayPal n'a pas pu être ouvert. Essayez la carte bancaire, ou revenez dans quelques minutes.",
+    "commande.err.compte_requis":
+      "Il faut être connectée pour valider la commande. Créez votre compte ou connectez-vous, votre panier vous attend.",
+    "commande.err.generique":
+      "La commande n'a pas pu être préparée. Vérifiez vos informations, puis réessayez.",
+    "commande.err.paiement":
+      "Le paiement n'a pas pu être confirmé. Réessayez, ou écrivez-nous si le montant a été débité.",
+    "ponct.deux_points": " : ",
+    "ponct.guillemets": "« {texte} »",
+    "panier.pastille": "{nombre} article(s) dans le panier",
+    "panier.err.ajout": "L'affiche n'a pas pu être ajoutée au panier. Réessayez dans un instant.",
+    "panier.err.config":
+      "Votre affiche n'a pas pu être ajoutée au panier. Rechargez la page et réessayez.",
+    "accueil.vitrine_titre": "Nos best-sellers ❤️",
+    "accueil.vitrine_texte":
+      "- Choisissez votre fond\n- Personnalisez votre texte\n- Choisissez vos personnages et personnalisez-les\nVotre affiche prête en 2 minutes !",
+    "accueil.ia_titre": "Votre photo, en affiche",
+    "accueil.ia_texte":
+      "Envoyez une photo — une maison, une plage, une rue, un souvenir — et retrouvez-la illustrée dans le style Memory Line. Vous voyez le résultat avant de commander.",
+    "accueil.ia_bouton": "Essayer avec ma photo",
+    "accueil.lettre_titre": "Abonnez-vous à notre lettre d'information",
+    "produit.meta_repli": "Affiche {nom} — {genre}, imprimée en A4 ou A3. Memory Line.",
+    "seo.fil_accueil": "Accueil",
+    "compte.essai.titre": "Site de test.",
+    "compte.essai.avant":
+      "Ce compte est pré-rempli au hasard pour vous éviter la saisie. Mot de passe :",
+    "compte.essai.apres":
+      "— notez l'adresse e-mail si vous voulez vous reconnecter dessus. Ce bandeau et ce pré-remplissage n'existent pas en production.",
+    "panier.recuperer.titre": "Votre panier vous attend",
+    "panier.recuperer.intro": "Nous le remettons en place, puis nous vous emmenons à la commande.",
+    "panier.recuperer.article_indisponible": "cette affiche n'est plus disponible",
+    "panier.recuperer.code": "Votre code de réduction {code} est repris.",
+    "panier.recuperer.bouton": "Reprendre ma commande",
+    "panier.recuperer.sans_js":
+      "Votre navigateur n'exécute pas JavaScript : nous ne pouvons pas remettre votre panier en place. Écrivez-nous en répondant au message que vous avez reçu, nous terminerons la commande avec vous.",
+    "panier.recuperer.voir_affiches": "Voir les affiches",
+    "panier.recuperer.jeton_inconnu.titre": "Ce lien n'est plus valable",
+    "panier.recuperer.jeton_inconnu.texte":
+      "Nous ne reconnaissons pas ce lien. Il a peut-être été coupé en deux par votre messagerie, ou votre panier a été réglé depuis un autre appareil.",
+    "panier.recuperer.deja_payee.titre": "Cette commande est déjà réglée",
+    "panier.recuperer.deja_payee.texte":
+      "Bonne nouvelle : votre commande a bien été payée. Vous n'avez rien à reprendre, nous préparons votre affiche.",
+    "panier.recuperer.panier_clos.titre": "Ce panier a été clos",
+    "panier.recuperer.panier_clos.texte":
+      "Cette commande a été annulée ou remboursée. Elle ne peut plus être reprise, mais rien ne vous empêche d'en composer une nouvelle.",
+    "panier.recuperer.trop_ancien.titre": "Ce lien a expiré",
+    "panier.recuperer.trop_ancien.texte":
+      "Passé quatorze jours, nous cessons de garder un panier en attente : nos prix et nos affiches ont pu changer entre-temps. Reprenez depuis la boutique, votre affiche s'y compose en deux minutes.",
+    "panier.recuperer.indisponible.titre": "Nous n'arrivons pas à ouvrir votre panier",
+    "panier.recuperer.indisponible.texte":
+      "Quelque chose s'est mal passé de notre côté. Réessayez dans un instant, ou écrivez-nous en répondant simplement au message que vous avez reçu.",
+    "livraison.relais_requis": "Choisissez votre point relais dans la liste proposée.",
+    "livraison.relais_autre_reseau":
+      "Ce point relais ne correspond pas au mode de livraison choisi. Choisissez-en un dans la liste.",
+    "commande.err.mode_indisponible":
+      "Ce mode de livraison n'est plus disponible. Choisissez-en un autre.",
+    "commande.err.adresse_incomplete":
+      "Votre adresse de livraison est incomplète : vérifiez la rue, le code postal et la ville.",
+    "commande.err.avant_paiement":
+      "Nous n'avons pas pu vérifier votre panier avant le paiement. Rien n'a été débité : réessayez dans quelques instants.",
   },
 
   en: {
@@ -718,6 +848,13 @@ export const ui = {
     "panier.erreur": "Could not load the basket",
     "livraison.cp_recherche": "Postcode",
     "livraison.chercher": "Search",
+    "livraison.me_localiser": "Use my location",
+    "livraison.localisation_en_cours": "Finding your location…",
+    "livraison.ma_position": "Around my location",
+    "livraison.position_refusee":
+      "Location access wasn't allowed. Please enter your address or postcode.",
+    "livraison.position_introuvable":
+      "We couldn't find your location. Please enter your address or postcode.",
     "livraison.recherche_en_cours": "Looking for points near you…",
     "livraison.aucun_relais": "No point found for this postcode.",
     "livraison.relais_indisponible": "Search unavailable right now.",
@@ -854,7 +991,7 @@ export const ui = {
     "cfg.sans_cadre": "No frame",
     "cfg.chargement": "Loading the designer…",
     "cfg.erreur":
-      "The designer could not start. Check that the API is running",
+      "The designer couldn't load. Please reload the page, or try again in a moment.",
 
     /* L'encart vidéo de l'étape 1 (apps/web/src/islands/EncartVideo.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
@@ -986,6 +1123,128 @@ export const ui = {
       "This reset link is no longer valid. Please request a new one.",
     "compte.err.champs": "Please fill in the required fields.",
     "compte.err.generique": "Something went wrong. Please try again.",
+    // Textes sortis du code en dur (octobre 2026).
+    "cfg.precedent": "Previous",
+    "cfg.suivant": "Next",
+    "cfg.couleur_perso": "Custom colour",
+    "cfg.autres": "Other",
+    "cfg.personnage_n": "Character {id}",
+    "cfg.personnage": "Character",
+    "cfg.deplacer_aide": "{nom}: drag to move it on the poster, or use the arrow keys",
+    "cfg.exemple_affiche": "Your city, your story",
+    "cfg.apercu_cadre": "Poster preview with frame: {cadre}",
+    "cfg.apercu_cadre_sans_nom": "Poster preview with a frame",
+    "cfg.ligne_n": "Line {n}",
+    "cfg.aide_retour_ligne": "Press Enter to start a new line.",
+    "cfg.personnaliser_perso": "Customise this character",
+    "cfg.police.serif": "Classic",
+    "cfg.police.spartan": "Block",
+    "cfg.police.shabby": "Handwritten",
+    "cfg.couleur.blanc": "White",
+    "cfg.couleur.anthracite": "Charcoal grey",
+    "commande.modifier_panier": "Edit basket",
+    "commande.merci_titre": "Thank you!",
+    "commande.merci_texte": "Your payment has been received and your order is confirmed.",
+    "commande.numero": "Order number:",
+    "commande.coordonnees": "Your details",
+    "commande.email_compte":
+      "This is your account's email address. To change it, go to “My details”.",
+    "commande.email_invalide": "Invalid email address.",
+    "livraison.autre_pays": "Other country",
+    "livraison.ou_retirer": "Where would you like to collect your order?",
+    "livraison.carnet": "Your saved addresses",
+    "livraison.autre_adresse": "Another address",
+    "livraison.adresse_exemple": "12 Station Road",
+    "livraison.complement_exemple": "Building B, 3rd floor",
+    "livraison.relais_numero": "(No. {code})",
+    "livraison.carte": "Map of pickup points",
+    "livraison.relais_plus_disponible":
+      "This pickup point is no longer available. Please choose another one from the list.",
+    "commande.paiement_indisponible_env":
+      "Add your Stripe and/or PayPal keys to the {fichier} file to enable it.",
+    "commande.essai.titre": "Shop in test mode: no real payment is taken.",
+    "commande.essai.carte_libelle": "Card:",
+    "commande.essai.carte":
+      "4242 4242 4242 4242, any future date, any three digits on the back and any postcode.",
+    "commande.essai.paypal_libelle": "PayPal:",
+    "commande.essai.paypal":
+      "log in with the sandbox buyer account, not your own. You will find it on developer.paypal.com under “Testing Tools” then “Sandbox accounts”, ending in {domaine}.",
+    "commande.carte": "Card",
+    "commande.preparation": "Preparing…",
+    "commande.continuer_paiement": "Continue to payment · {total}",
+    "commande.modifier_coordonnees": "← Edit my details",
+    "commande.recapitulatif": "Order summary",
+    "panier.affiche_sans_titre": "Personalised poster",
+    "commande.qte": "Qty",
+    "commande.err.panier_modifie":
+      "Your basket has changed since the total was calculated. Go back to the previous step to recalculate it before paying.",
+    "commande.err.refuse": "Payment declined.",
+    "commande.err.non_finalise": "Payment not completed. Please try again.",
+    "commande.err.carte_indisponible":
+      "Card payment is unavailable right now. Please try again in a moment.",
+    "commande.err.paypal_indisponible":
+      "PayPal could not be loaded. Please try again, or pay by card.",
+    "commande.err.paypal_ouverture":
+      "The PayPal payment could not be opened. Try paying by card, or come back in a few minutes.",
+    "commande.err.compte_requis":
+      "You need to be logged in to place your order. Create your account or log in — your basket is waiting for you.",
+    "commande.err.generique":
+      "Your order could not be prepared. Please check your details and try again.",
+    "commande.err.paiement":
+      "The payment could not be confirmed. Please try again, or contact us if you have been charged.",
+    "ponct.deux_points": ": ",
+    "ponct.guillemets": "“{texte}”",
+    "panier.pastille": "Items in your basket: {nombre}",
+    "panier.err.ajout":
+      "The poster could not be added to your basket. Please try again in a moment.",
+    "panier.err.config":
+      "Your poster could not be added to the basket. Please reload the page and try again.",
+    "accueil.vitrine_titre": "Our best-sellers ❤️",
+    "accueil.vitrine_texte":
+      "- Choose your background\n- Personalise your text\n- Choose your characters and personalise them\nYour poster ready in 2 minutes!",
+    "accueil.ia_titre": "Your photo, as a poster",
+    "accueil.ia_texte":
+      "Send us a photo — a house, a beach, a street, a memory — and get it back illustrated in the Memory Line style. You'll see the result before you order.",
+    "accueil.ia_bouton": "Try it with my photo",
+    "accueil.lettre_titre": "Subscribe to our emails",
+    "produit.meta_repli": "{nom} poster — {genre}, printed in A4 or A3. Memory Line.",
+    "seo.fil_accueil": "Home",
+    "compte.essai.titre": "Test site.",
+    "compte.essai.avant": "This account is pre-filled at random to save you typing. Password:",
+    "compte.essai.apres":
+      "— note down the email address if you want to sign in with it again. This notice and the pre-filling don't exist in production.",
+    "panier.recuperer.titre": "Your basket is waiting for you",
+    "panier.recuperer.intro": "We're restoring it, then taking you to checkout.",
+    "panier.recuperer.article_indisponible": "this poster is no longer available",
+    "panier.recuperer.code": "Your discount code {code} has been reapplied.",
+    "panier.recuperer.bouton": "Resume my order",
+    "panier.recuperer.sans_js":
+      "Your browser isn't running JavaScript, so we can't restore your basket. Write to us by replying to the email you received, and we'll complete the order with you.",
+    "panier.recuperer.voir_affiches": "See the posters",
+    "panier.recuperer.jeton_inconnu.titre": "This link is no longer valid",
+    "panier.recuperer.jeton_inconnu.texte":
+      "We don't recognise this link. Your email app may have split it in two, or your basket may have been paid for on another device.",
+    "panier.recuperer.deja_payee.titre": "This order has already been paid",
+    "panier.recuperer.deja_payee.texte":
+      "Good news: your order has been paid. There's nothing to resume — we're preparing your poster.",
+    "panier.recuperer.panier_clos.titre": "This basket has been closed",
+    "panier.recuperer.panier_clos.texte":
+      "This order has been cancelled or refunded. It can no longer be resumed, but you're very welcome to create a new one.",
+    "panier.recuperer.trop_ancien.titre": "This link has expired",
+    "panier.recuperer.trop_ancien.texte":
+      "After fourteen days, we stop holding a basket: our prices and posters may have changed in the meantime. Start again from the shop — your poster only takes two minutes to create.",
+    "panier.recuperer.indisponible.titre": "We can't open your basket",
+    "panier.recuperer.indisponible.texte":
+      "Something went wrong on our side. Please try again in a moment, or write to us by simply replying to the email you received.",
+    "livraison.relais_requis": "Please choose your pickup point from the list.",
+    "livraison.relais_autre_reseau":
+      "This pickup point doesn't match the delivery method you chose. Please choose one from the list.",
+    "commande.err.mode_indisponible":
+      "This delivery method is no longer available. Please choose another one.",
+    "commande.err.adresse_incomplete":
+      "Your delivery address is incomplete: please check the street, postcode and town.",
+    "commande.err.avant_paiement":
+      "We couldn't check your basket before payment. Nothing has been charged: please try again in a moment.",
   },
 
   de: {
@@ -1185,6 +1444,13 @@ export const ui = {
     "panier.erreur": "Warenkorb konnte nicht geladen werden",
     "livraison.cp_recherche": "PLZ",
     "livraison.chercher": "Suchen",
+    "livraison.me_localiser": "Meinen Standort verwenden",
+    "livraison.localisation_en_cours": "Standort wird ermittelt…",
+    "livraison.ma_position": "In meiner Nähe",
+    "livraison.position_refusee":
+      "Der Standortzugriff wurde nicht erlaubt. Bitte geben Sie Ihre Adresse oder Postleitzahl ein.",
+    "livraison.position_introuvable":
+      "Ihr Standort konnte nicht ermittelt werden. Bitte geben Sie Ihre Adresse oder Postleitzahl ein.",
     "livraison.recherche_en_cours": "Suche nach Standorten in Ihrer Nähe…",
     "livraison.aucun_relais": "Kein Standort für diese PLZ gefunden.",
     "livraison.relais_indisponible": "Suche derzeit nicht verfügbar.",
@@ -1322,7 +1588,7 @@ export const ui = {
     "cfg.sans_cadre": "Ohne Rahmen",
     "cfg.chargement": "Konfigurator wird geladen…",
     "cfg.erreur":
-      "Der Konfigurator konnte nicht starten. Prüfen Sie, ob die API läuft",
+      "Der Konfigurator konnte nicht geladen werden. Bitte laden Sie die Seite neu oder versuchen Sie es gleich noch einmal.",
 
     /* L'encart vidéo de l'étape 1 (apps/web/src/islands/EncartVideo.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
@@ -1457,6 +1723,130 @@ export const ui = {
     "compte.err.champs": "Bitte füllen Sie die Pflichtfelder aus.",
     "compte.err.generique":
       "Es ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut.",
+    // Textes sortis du code en dur (octobre 2026).
+    "cfg.precedent": "Zurückblättern",
+    "cfg.suivant": "Weiterblättern",
+    "cfg.couleur_perso": "Eigene Farbe",
+    "cfg.autres": "Sonstige",
+    "cfg.personnage_n": "Figur {id}",
+    "cfg.personnage": "Figur",
+    "cfg.deplacer_aide":
+      "{nom}: Ziehen Sie die Figur, um sie auf dem Poster zu verschieben, oder verwenden Sie die Pfeiltasten",
+    "cfg.exemple_affiche": "Ihre Stadt, Ihre Geschichte",
+    "cfg.apercu_cadre": "Postervorschau mit Rahmen: {cadre}",
+    "cfg.apercu_cadre_sans_nom": "Postervorschau mit Rahmen",
+    "cfg.ligne_n": "Zeile {n}",
+    "cfg.aide_retour_ligne": "Mit der Eingabetaste beginnen Sie eine neue Zeile.",
+    "cfg.personnaliser_perso": "Diese Figur gestalten",
+    "cfg.police.serif": "Klassisch",
+    "cfg.police.spartan": "Blockschrift",
+    "cfg.police.shabby": "Handschrift",
+    "cfg.couleur.blanc": "Weiß",
+    "cfg.couleur.anthracite": "Anthrazitgrau",
+    "commande.modifier_panier": "Warenkorb bearbeiten",
+    "commande.merci_titre": "Vielen Dank!",
+    "commande.merci_texte": "Ihre Zahlung ist eingegangen und Ihre Bestellung ist bestätigt.",
+    "commande.numero": "Bestellnummer:",
+    "commande.coordonnees": "Ihre Kontaktdaten",
+    "commande.email_compte":
+      "Das ist die E-Mail-Adresse Ihres Kontos. Um sie zu ändern, gehen Sie zu „Meine Daten“.",
+    "commande.email_invalide": "Ungültige E-Mail-Adresse.",
+    "livraison.autre_pays": "Anderes Land",
+    "livraison.ou_retirer": "Wo möchten Sie Ihre Bestellung abholen?",
+    "livraison.carnet": "Ihre gespeicherten Adressen",
+    "livraison.autre_adresse": "Andere Adresse",
+    "livraison.adresse_exemple": "Bahnhofstraße 12",
+    "livraison.complement_exemple": "Gebäude B, 3. Stock",
+    "livraison.relais_numero": "(Nr. {code})",
+    "livraison.carte": "Karte der Paketshops",
+    "livraison.relais_plus_disponible":
+      "Dieser Paketshop ist nicht mehr verfügbar. Bitte wählen Sie einen anderen aus der Liste.",
+    "commande.paiement_indisponible_env":
+      "Fügen Sie Ihre Stripe- und/oder PayPal-Schlüssel in die Datei {fichier} ein, um sie zu aktivieren.",
+    "commande.essai.titre": "Shop im Testmodus: Es wird keine echte Zahlung ausgeführt.",
+    "commande.essai.carte_libelle": "Kreditkarte:",
+    "commande.essai.carte":
+      "4242 4242 4242 4242, ein beliebiges Datum in der Zukunft, drei beliebige Ziffern auf der Rückseite und eine beliebige Postleitzahl.",
+    "commande.essai.paypal_libelle": "PayPal:",
+    "commande.essai.paypal":
+      "Melden Sie sich mit dem Test-Käuferkonto an, nicht mit Ihrem eigenen. Sie finden es auf developer.paypal.com unter „Testing Tools“ und dann „Sandbox accounts“, mit der Endung {domaine}.",
+    "commande.carte": "Kreditkarte",
+    "commande.preparation": "Wird vorbereitet…",
+    "commande.continuer_paiement": "Weiter zur Zahlung · {total}",
+    "commande.modifier_coordonnees": "← Meine Kontaktdaten ändern",
+    "commande.recapitulatif": "Zusammenfassung",
+    "panier.affiche_sans_titre": "Personalisiertes Poster",
+    "commande.qte": "Menge",
+    "commande.err.panier_modifie":
+      "Ihr Warenkorb hat sich seit der Berechnung der Gesamtsumme geändert. Gehen Sie einen Schritt zurück, um sie vor dem Bezahlen neu zu berechnen.",
+    "commande.err.refuse": "Zahlung abgelehnt.",
+    "commande.err.non_finalise": "Zahlung nicht abgeschlossen. Bitte versuchen Sie es erneut.",
+    "commande.err.carte_indisponible":
+      "Die Kartenzahlung ist im Moment nicht verfügbar. Bitte versuchen Sie es gleich noch einmal.",
+    "commande.err.paypal_indisponible":
+      "PayPal konnte nicht geladen werden. Bitte versuchen Sie es erneut oder zahlen Sie mit Karte.",
+    "commande.err.paypal_ouverture":
+      "Die PayPal-Zahlung konnte nicht gestartet werden. Versuchen Sie es mit Karte oder kommen Sie in ein paar Minuten wieder.",
+    "commande.err.compte_requis":
+      "Um die Bestellung abzuschließen, müssen Sie angemeldet sein. Erstellen Sie Ihr Konto oder melden Sie sich an – Ihr Warenkorb wartet auf Sie.",
+    "commande.err.generique":
+      "Ihre Bestellung konnte nicht vorbereitet werden. Bitte prüfen Sie Ihre Angaben und versuchen Sie es erneut.",
+    "commande.err.paiement":
+      "Die Zahlung konnte nicht bestätigt werden. Bitte versuchen Sie es erneut oder schreiben Sie uns, falls der Betrag abgebucht wurde.",
+    "ponct.deux_points": ": ",
+    "ponct.guillemets": "„{texte}“",
+    "panier.pastille": "Artikel im Warenkorb: {nombre}",
+    "panier.err.ajout":
+      "Das Poster konnte nicht in den Warenkorb gelegt werden. Bitte versuchen Sie es gleich noch einmal.",
+    "panier.err.config":
+      "Ihr Poster konnte nicht in den Warenkorb gelegt werden. Bitte laden Sie die Seite neu und versuchen Sie es erneut.",
+    "accueil.vitrine_titre": "Unsere Bestseller ❤️",
+    "accueil.vitrine_texte":
+      "- Wählen Sie Ihren Hintergrund\n- Personalisieren Sie Ihren Text\n- Wählen Sie Ihre Figuren und personalisieren Sie sie\nIhr Poster in 2 Minuten fertig!",
+    "accueil.ia_titre": "Ihr Foto als Poster",
+    "accueil.ia_texte":
+      "Senden Sie uns ein Foto — ein Haus, einen Strand, eine Straße, eine Erinnerung — und erhalten Sie es im Memory-Line-Stil illustriert zurück. Sie sehen das Ergebnis, bevor Sie bestellen.",
+    "accueil.ia_bouton": "Mit meinem Foto ausprobieren",
+    "accueil.lettre_titre": "Abonnieren Sie unseren Newsletter",
+    "produit.meta_repli": "Poster {nom} — {genre}, gedruckt in A4 oder A3. Memory Line.",
+    "seo.fil_accueil": "Startseite",
+    "compte.essai.titre": "Testseite.",
+    "compte.essai.avant":
+      "Dieses Konto ist zufällig vorausgefüllt, damit Sie nichts eintippen müssen. Passwort:",
+    "compte.essai.apres":
+      "— notieren Sie sich die E-Mail-Adresse, wenn Sie sich später wieder damit anmelden möchten. Diesen Hinweis und das Vorausfüllen gibt es in der Produktivumgebung nicht.",
+    "panier.recuperer.titre": "Ihr Warenkorb wartet auf Sie",
+    "panier.recuperer.intro": "Wir stellen ihn wieder her und bringen Sie dann zur Kasse.",
+    "panier.recuperer.article_indisponible": "dieses Poster ist nicht mehr erhältlich",
+    "panier.recuperer.code": "Ihr Rabattcode {code} wurde übernommen.",
+    "panier.recuperer.bouton": "Meine Bestellung fortsetzen",
+    "panier.recuperer.sans_js":
+      "Ihr Browser führt kein JavaScript aus, daher können wir Ihren Warenkorb nicht wiederherstellen. Antworten Sie einfach auf die E-Mail, die Sie erhalten haben — wir schließen die Bestellung gemeinsam mit Ihnen ab.",
+    "panier.recuperer.voir_affiches": "Poster ansehen",
+    "panier.recuperer.jeton_inconnu.titre": "Dieser Link ist nicht mehr gültig",
+    "panier.recuperer.jeton_inconnu.texte":
+      "Wir erkennen diesen Link nicht. Vielleicht hat Ihr E-Mail-Programm ihn in zwei Teile getrennt, oder Ihr Warenkorb wurde auf einem anderen Gerät bezahlt.",
+    "panier.recuperer.deja_payee.titre": "Diese Bestellung ist bereits bezahlt",
+    "panier.recuperer.deja_payee.texte":
+      "Gute Nachricht: Ihre Bestellung wurde bezahlt. Sie müssen nichts weiter tun, wir bereiten Ihr Poster vor.",
+    "panier.recuperer.panier_clos.titre": "Dieser Warenkorb wurde geschlossen",
+    "panier.recuperer.panier_clos.texte":
+      "Diese Bestellung wurde storniert oder zurückerstattet. Sie kann nicht mehr fortgesetzt werden, aber Sie können gerne eine neue zusammenstellen.",
+    "panier.recuperer.trop_ancien.titre": "Dieser Link ist abgelaufen",
+    "panier.recuperer.trop_ancien.texte":
+      "Nach vierzehn Tagen halten wir einen Warenkorb nicht mehr bereit: Unsere Preise und Poster können sich inzwischen geändert haben. Beginnen Sie im Shop einfach neu — Ihr Poster ist dort in zwei Minuten gestaltet.",
+    "panier.recuperer.indisponible.titre": "Wir können Ihren Warenkorb nicht öffnen",
+    "panier.recuperer.indisponible.texte":
+      "Bei uns ist etwas schiefgelaufen. Versuchen Sie es gleich noch einmal, oder schreiben Sie uns, indem Sie einfach auf die erhaltene E-Mail antworten.",
+    "livraison.relais_requis": "Bitte wählen Sie Ihren Paketshop aus der Liste.",
+    "livraison.relais_autre_reseau":
+      "Dieser Paketshop passt nicht zur gewählten Versandart. Bitte wählen Sie einen aus der Liste.",
+    "commande.err.mode_indisponible":
+      "Diese Versandart ist nicht mehr verfügbar. Bitte wählen Sie eine andere.",
+    "commande.err.adresse_incomplete":
+      "Ihre Lieferadresse ist unvollständig: Bitte prüfen Sie Straße, Postleitzahl und Ort.",
+    "commande.err.avant_paiement":
+      "Wir konnten Ihren Warenkorb vor der Zahlung nicht prüfen. Es wurde nichts abgebucht: Bitte versuchen Sie es gleich noch einmal.",
   },
 
   it: {
@@ -1654,6 +2044,13 @@ export const ui = {
     "panier.erreur": "Impossibile caricare il carrello",
     "livraison.cp_recherche": "CAP",
     "livraison.chercher": "Cerca",
+    "livraison.me_localiser": "Usa la mia posizione",
+    "livraison.localisation_en_cours": "Ricerca della posizione…",
+    "livraison.ma_position": "Vicino a me",
+    "livraison.position_refusee":
+      "La posizione non è stata autorizzata. Inserisci il tuo indirizzo o il CAP.",
+    "livraison.position_introuvable":
+      "Non siamo riusciti a trovare la tua posizione. Inserisci il tuo indirizzo o il CAP.",
     "livraison.recherche_en_cours": "Ricerca dei punti vicini…",
     "livraison.aucun_relais": "Nessun punto trovato per questo CAP.",
     "livraison.relais_indisponible": "Ricerca non disponibile al momento.",
@@ -1790,7 +2187,7 @@ export const ui = {
     "cfg.sans_cadre": "Senza cornice",
     "cfg.chargement": "Caricamento del configuratore…",
     "cfg.erreur":
-      "Il configuratore non è riuscito ad avviarsi. Verifica che l'API sia attiva",
+      "Il configuratore non si è caricato. Ricarica la pagina, oppure riprova tra qualche istante.",
 
     /* L'encart vidéo de l'étape 1 (apps/web/src/islands/EncartVideo.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
@@ -1923,6 +2320,129 @@ export const ui = {
     "compte.err.jeton": "Questo link non è più valido. Richiedine uno nuovo.",
     "compte.err.champs": "Compila i campi obbligatori.",
     "compte.err.generique": "Si è verificato un errore. Riprova.",
+    // Textes sortis du code en dur (octobre 2026).
+    "cfg.precedent": "Precedente",
+    "cfg.suivant": "Successivo",
+    "cfg.couleur_perso": "Colore personalizzato",
+    "cfg.autres": "Altri",
+    "cfg.personnage_n": "Personaggio {id}",
+    "cfg.personnage": "Personaggio",
+    "cfg.deplacer_aide": "{nom}: trascinalo per spostarlo sul poster, oppure usa le frecce",
+    "cfg.exemple_affiche": "La tua città, la tua storia",
+    "cfg.apercu_cadre": "Anteprima del poster con cornice: {cadre}",
+    "cfg.apercu_cadre_sans_nom": "Anteprima del poster con cornice",
+    "cfg.ligne_n": "Riga {n}",
+    "cfg.aide_retour_ligne": "Premi Invio per andare a capo.",
+    "cfg.personnaliser_perso": "Personalizza questo personaggio",
+    "cfg.police.serif": "Classico",
+    "cfg.police.spartan": "Lineare",
+    "cfg.police.shabby": "Scritto a mano",
+    "cfg.couleur.blanc": "Bianco",
+    "cfg.couleur.anthracite": "Grigio antracite",
+    "commande.modifier_panier": "Modifica il carrello",
+    "commande.merci_titre": "Grazie!",
+    "commande.merci_texte": "Abbiamo ricevuto il tuo pagamento e il tuo ordine è confermato.",
+    "commande.numero": "Numero d'ordine:",
+    "commande.coordonnees": "I tuoi dati",
+    "commande.email_compte":
+      "È l'indirizzo e-mail del tuo account. Per cambiarlo, vai su «I miei dati».",
+    "commande.email_invalide": "Indirizzo e-mail non valido.",
+    "livraison.autre_pays": "Altro paese",
+    "livraison.ou_retirer": "Dove vuoi ritirare il tuo ordine?",
+    "livraison.carnet": "I tuoi indirizzi salvati",
+    "livraison.autre_adresse": "Un altro indirizzo",
+    "livraison.adresse_exemple": "Via Roma 12",
+    "livraison.complement_exemple": "Scala B, 3° piano",
+    "livraison.relais_numero": "(n. {code})",
+    "livraison.carte": "Mappa dei punti di ritiro",
+    "livraison.relais_plus_disponible":
+      "Questo punto di ritiro non è più disponibile. Scegline un altro dall'elenco.",
+    "commande.paiement_indisponible_env":
+      "Aggiungi le tue chiavi Stripe e/o PayPal nel file {fichier} per attivarlo.",
+    "commande.essai.titre": "Negozio in modalità di prova: nessun pagamento reale.",
+    "commande.essai.carte_libelle": "Carta di credito:",
+    "commande.essai.carte":
+      "4242 4242 4242 4242, una data futura, tre cifre qualsiasi sul retro e un CAP qualsiasi.",
+    "commande.essai.paypal_libelle": "PayPal:",
+    "commande.essai.paypal":
+      "accedi con l'account acquirente di prova, non con il tuo. Lo trovi su developer.paypal.com, in «Testing Tools» e poi «Sandbox accounts»: termina con {domaine}.",
+    "commande.carte": "Carta di credito",
+    "commande.preparation": "Preparazione in corso…",
+    "commande.continuer_paiement": "Continua con il pagamento · {total}",
+    "commande.modifier_coordonnees": "← Modifica i miei dati",
+    "commande.recapitulatif": "Riepilogo",
+    "panier.affiche_sans_titre": "Poster personalizzato",
+    "commande.qte": "Q.tà",
+    "commande.err.panier_modifie":
+      "Il tuo carrello è cambiato dopo il calcolo del totale. Torna al passaggio precedente per ricalcolarlo prima di pagare.",
+    "commande.err.refuse": "Pagamento rifiutato.",
+    "commande.err.non_finalise": "Pagamento non completato. Riprova.",
+    "commande.err.carte_indisponible":
+      "Il pagamento con carta non è disponibile al momento. Riprova tra qualche istante.",
+    "commande.err.paypal_indisponible":
+      "Non è stato possibile caricare PayPal. Riprova, oppure paga con carta.",
+    "commande.err.paypal_ouverture":
+      "Non è stato possibile avviare il pagamento con PayPal. Prova con la carta di credito, oppure torna tra qualche minuto.",
+    "commande.err.compte_requis":
+      "Devi aver effettuato l'accesso per confermare l'ordine. Crea il tuo account o accedi: il tuo carrello ti aspetta.",
+    "commande.err.generique":
+      "Non è stato possibile preparare l'ordine. Controlla i tuoi dati e riprova.",
+    "commande.err.paiement":
+      "Non è stato possibile confermare il pagamento. Riprova, oppure scrivici se l'importo è stato addebitato.",
+    "ponct.deux_points": ": ",
+    "ponct.guillemets": "«{texte}»",
+    "panier.pastille": "Articoli nel carrello: {nombre}",
+    "panier.err.ajout":
+      "Non è stato possibile aggiungere il poster al carrello. Riprova tra un istante.",
+    "panier.err.config":
+      "Non è stato possibile aggiungere il poster al carrello. Ricarica la pagina e riprova.",
+    "accueil.vitrine_titre": "I nostri best seller ❤️",
+    "accueil.vitrine_texte":
+      "- Scegli lo sfondo\n- Personalizza il testo\n- Scegli i tuoi personaggi e personalizzali\nIl tuo poster pronto in 2 minuti!",
+    "accueil.ia_titre": "La tua foto, in un poster",
+    "accueil.ia_texte":
+      "Inviaci una foto — una casa, una spiaggia, una via, un ricordo — e ritrovala illustrata nello stile Memory Line. Vedrai il risultato prima di ordinare.",
+    "accueil.ia_bouton": "Prova con la mia foto",
+    "accueil.lettre_titre": "Iscriviti alla nostra newsletter",
+    "produit.meta_repli": "Poster {nom} — {genre}, stampato in A4 o A3. Memory Line.",
+    "seo.fil_accueil": "Home",
+    "compte.essai.titre": "Sito di prova.",
+    "compte.essai.avant":
+      "Questo account è precompilato a caso per evitarti di digitare. Password:",
+    "compte.essai.apres":
+      "— annota l'indirizzo email se vuoi accedere di nuovo con questo account. Questo avviso e la precompilazione non esistono in produzione.",
+    "panier.recuperer.titre": "Il tuo carrello ti aspetta",
+    "panier.recuperer.intro": "Lo stiamo ripristinando, poi ti portiamo a completare l'ordine.",
+    "panier.recuperer.article_indisponible": "questo poster non è più disponibile",
+    "panier.recuperer.code": "Il tuo codice sconto {code} è stato riapplicato.",
+    "panier.recuperer.bouton": "Riprendi il mio ordine",
+    "panier.recuperer.sans_js":
+      "Il tuo browser non esegue JavaScript: non possiamo ripristinare il tuo carrello. Scrivici rispondendo al messaggio che hai ricevuto, completeremo l'ordine insieme a te.",
+    "panier.recuperer.voir_affiches": "Vedi i poster",
+    "panier.recuperer.jeton_inconnu.titre": "Questo link non è più valido",
+    "panier.recuperer.jeton_inconnu.texte":
+      "Non riconosciamo questo link. Forse il tuo programma di posta l'ha spezzato in due, oppure il carrello è stato pagato da un altro dispositivo.",
+    "panier.recuperer.deja_payee.titre": "Questo ordine è già stato pagato",
+    "panier.recuperer.deja_payee.texte":
+      "Buone notizie: il tuo ordine è stato pagato. Non c'è niente da riprendere, stiamo preparando il tuo poster.",
+    "panier.recuperer.panier_clos.titre": "Questo carrello è stato chiuso",
+    "panier.recuperer.panier_clos.texte":
+      "Questo ordine è stato annullato o rimborsato. Non può più essere ripreso, ma puoi comporne uno nuovo quando vuoi.",
+    "panier.recuperer.trop_ancien.titre": "Questo link è scaduto",
+    "panier.recuperer.trop_ancien.texte":
+      "Dopo quattordici giorni smettiamo di conservare un carrello in sospeso: nel frattempo prezzi e poster potrebbero essere cambiati. Ricomincia dal negozio, il tuo poster si crea in due minuti.",
+    "panier.recuperer.indisponible.titre": "Non riusciamo ad aprire il tuo carrello",
+    "panier.recuperer.indisponible.texte":
+      "Qualcosa è andato storto da parte nostra. Riprova tra un attimo, oppure scrivici rispondendo semplicemente al messaggio che hai ricevuto.",
+    "livraison.relais_requis": "Scegli il tuo punto di ritiro dall'elenco.",
+    "livraison.relais_autre_reseau":
+      "Questo punto di ritiro non corrisponde al metodo di consegna scelto. Scegline uno dall'elenco.",
+    "commande.err.mode_indisponible":
+      "Questo metodo di consegna non è più disponibile. Scegline un altro.",
+    "commande.err.adresse_incomplete":
+      "L'indirizzo di consegna è incompleto: controlla via, CAP e città.",
+    "commande.err.avant_paiement":
+      "Non siamo riusciti a verificare il carrello prima del pagamento. Non è stato addebitato nulla: riprova tra qualche istante.",
   },
 
   es: {
@@ -2120,6 +2640,13 @@ export const ui = {
     "panier.erreur": "No se ha podido cargar la cesta",
     "livraison.cp_recherche": "Código postal",
     "livraison.chercher": "Buscar",
+    "livraison.me_localiser": "Usar mi ubicación",
+    "livraison.localisation_en_cours": "Buscando tu ubicación…",
+    "livraison.ma_position": "Cerca de mí",
+    "livraison.position_refusee":
+      "No se ha permitido la ubicación. Escribe tu dirección o tu código postal.",
+    "livraison.position_introuvable":
+      "No hemos podido encontrar tu ubicación. Escribe tu dirección o tu código postal.",
     "livraison.recherche_en_cours": "Buscando puntos cerca de ti…",
     "livraison.aucun_relais": "No se ha encontrado ningún punto para este código postal.",
     "livraison.relais_indisponible": "Búsqueda no disponible por ahora.",
@@ -2256,7 +2783,7 @@ export const ui = {
     "cfg.sans_cadre": "Sin marco",
     "cfg.chargement": "Cargando el configurador…",
     "cfg.erreur":
-      "El configurador no ha podido arrancar. Comprueba que la API esté activa",
+      "El configurador no se ha podido cargar. Recarga la página o vuelve a intentarlo en unos instantes.",
 
     /* L'encart vidéo de l'étape 1 (apps/web/src/islands/EncartVideo.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
@@ -2390,6 +2917,128 @@ export const ui = {
     "compte.err.jeton": "Este enlace ya no es válido. Pide uno nuevo.",
     "compte.err.champs": "Rellena los campos obligatorios.",
     "compte.err.generique": "Se ha producido un error. Inténtalo de nuevo.",
+    // Textes sortis du code en dur (octobre 2026).
+    "cfg.precedent": "Anterior",
+    "cfg.suivant": "Siguiente",
+    "cfg.couleur_perso": "Color personalizado",
+    "cfg.autres": "Otros",
+    "cfg.personnage_n": "Personaje {id}",
+    "cfg.personnage": "Personaje",
+    "cfg.deplacer_aide": "{nom}: arrástralo para moverlo por la lámina o usa las flechas",
+    "cfg.exemple_affiche": "Tu ciudad, tu historia",
+    "cfg.apercu_cadre": "Vista previa de la lámina con marco: {cadre}",
+    "cfg.apercu_cadre_sans_nom": "Vista previa de la lámina con marco",
+    "cfg.ligne_n": "Línea {n}",
+    "cfg.aide_retour_ligne": "Pulsa Intro para pasar a la línea siguiente.",
+    "cfg.personnaliser_perso": "Personaliza este personaje",
+    "cfg.police.serif": "Clásica",
+    "cfg.police.spartan": "Palo seco",
+    "cfg.police.shabby": "Manuscrita",
+    "cfg.couleur.blanc": "Blanco",
+    "cfg.couleur.anthracite": "Gris antracita",
+    "commande.modifier_panier": "Modificar la cesta",
+    "commande.merci_titre": "¡Gracias!",
+    "commande.merci_texte": "Hemos recibido tu pago y tu pedido está confirmado.",
+    "commande.numero": "Número de pedido:",
+    "commande.coordonnees": "Tus datos",
+    "commande.email_compte":
+      "Es la dirección de correo de tu cuenta. Para cambiarla, ve a «Mis datos».",
+    "commande.email_invalide": "Dirección de correo no válida.",
+    "livraison.autre_pays": "Otro país",
+    "livraison.ou_retirer": "¿Dónde quieres recoger tu pedido?",
+    "livraison.carnet": "Tus direcciones guardadas",
+    "livraison.autre_adresse": "Otra dirección",
+    "livraison.adresse_exemple": "Calle Mayor 12",
+    "livraison.complement_exemple": "Edificio B, 3.º piso",
+    "livraison.relais_numero": "(n.º {code})",
+    "livraison.carte": "Mapa de puntos de recogida",
+    "livraison.relais_plus_disponible":
+      "Este punto de recogida ya no está disponible. Elige otro de la lista.",
+    "commande.paiement_indisponible_env":
+      "Añade tus claves de Stripe y/o PayPal en el archivo {fichier} para activarlo.",
+    "commande.essai.titre": "Tienda en modo de prueba: no se realiza ningún pago real.",
+    "commande.essai.carte_libelle": "Tarjeta bancaria:",
+    "commande.essai.carte":
+      "4242 4242 4242 4242, una fecha futura, tres cifras cualesquiera del reverso y cualquier código postal.",
+    "commande.essai.paypal_libelle": "PayPal:",
+    "commande.essai.paypal":
+      "inicia sesión con la cuenta de comprador de prueba, no con la tuya. La encontrarás en developer.paypal.com, en «Testing Tools» y luego «Sandbox accounts»: termina en {domaine}.",
+    "commande.carte": "Tarjeta bancaria",
+    "commande.preparation": "Preparando…",
+    "commande.continuer_paiement": "Continuar con el pago · {total}",
+    "commande.modifier_coordonnees": "← Modificar mis datos",
+    "commande.recapitulatif": "Resumen",
+    "panier.affiche_sans_titre": "Lámina personalizada",
+    "commande.qte": "Cant.",
+    "commande.err.panier_modifie":
+      "Tu cesta ha cambiado desde que se calculó el total. Vuelve al paso anterior para recalcularlo antes de pagar.",
+    "commande.err.refuse": "Pago rechazado.",
+    "commande.err.non_finalise": "Pago no completado. Inténtalo de nuevo.",
+    "commande.err.carte_indisponible":
+      "El pago con tarjeta no está disponible en este momento. Inténtalo de nuevo en unos instantes.",
+    "commande.err.paypal_indisponible":
+      "No se ha podido cargar PayPal. Inténtalo de nuevo o paga con tarjeta.",
+    "commande.err.paypal_ouverture":
+      "No se ha podido abrir el pago con PayPal. Prueba con la tarjeta bancaria o vuelve dentro de unos minutos.",
+    "commande.err.compte_requis":
+      "Tienes que iniciar sesión para confirmar el pedido. Crea tu cuenta o inicia sesión: tu cesta te espera.",
+    "commande.err.generique":
+      "No se ha podido preparar tu pedido. Revisa tus datos y vuelve a intentarlo.",
+    "commande.err.paiement":
+      "No se ha podido confirmar el pago. Inténtalo de nuevo o escríbenos si se te ha cobrado.",
+    "ponct.deux_points": ": ",
+    "ponct.guillemets": "«{texte}»",
+    "panier.pastille": "Artículos en la cesta: {nombre}",
+    "panier.err.ajout":
+      "No se ha podido añadir la lámina a la cesta. Inténtalo de nuevo en un momento.",
+    "panier.err.config":
+      "No se ha podido añadir la lámina a la cesta. Vuelve a cargar la página e inténtalo de nuevo.",
+    "accueil.vitrine_titre": "Nuestros más vendidos ❤️",
+    "accueil.vitrine_texte":
+      "- Elige el fondo\n- Personaliza el texto\n- Elige tus personajes y personalízalos\n¡Tu lámina lista en 2 minutos!",
+    "accueil.ia_titre": "Tu foto, en lámina",
+    "accueil.ia_texte":
+      "Envíanos una foto — una casa, una playa, una calle, un recuerdo — y recíbela ilustrada con el estilo Memory Line. Verás el resultado antes de hacer el pedido.",
+    "accueil.ia_bouton": "Probar con mi foto",
+    "accueil.lettre_titre": "Suscríbete a nuestro boletín",
+    "produit.meta_repli": "Lámina {nom} — {genre}, impresa en A4 o A3. Memory Line.",
+    "seo.fil_accueil": "Inicio",
+    "compte.essai.titre": "Sitio de prueba.",
+    "compte.essai.avant":
+      "Esta cuenta se ha rellenado al azar para ahorrarte escribir. Contraseña:",
+    "compte.essai.apres":
+      "— apunta la dirección de correo si quieres volver a iniciar sesión con ella. Este aviso y el relleno automático no existen en producción.",
+    "panier.recuperer.titre": "Tu cesta te espera",
+    "panier.recuperer.intro": "La estamos recuperando y después te llevamos a finalizar el pedido.",
+    "panier.recuperer.article_indisponible": "esta lámina ya no está disponible",
+    "panier.recuperer.code": "Tu código de descuento {code} se ha vuelto a aplicar.",
+    "panier.recuperer.bouton": "Retomar mi pedido",
+    "panier.recuperer.sans_js":
+      "Tu navegador no ejecuta JavaScript: no podemos recuperar tu cesta. Escríbenos respondiendo al mensaje que has recibido y terminaremos el pedido contigo.",
+    "panier.recuperer.voir_affiches": "Ver las láminas",
+    "panier.recuperer.jeton_inconnu.titre": "Este enlace ya no es válido",
+    "panier.recuperer.jeton_inconnu.texte":
+      "No reconocemos este enlace. Puede que tu programa de correo lo haya cortado en dos, o que tu cesta se haya pagado desde otro dispositivo.",
+    "panier.recuperer.deja_payee.titre": "Este pedido ya está pagado",
+    "panier.recuperer.deja_payee.texte":
+      "Buenas noticias: tu pedido ya está pagado. No tienes nada que retomar, estamos preparando tu lámina.",
+    "panier.recuperer.panier_clos.titre": "Esta cesta se ha cerrado",
+    "panier.recuperer.panier_clos.texte":
+      "Este pedido se ha cancelado o reembolsado. Ya no se puede retomar, pero puedes crear uno nuevo cuando quieras.",
+    "panier.recuperer.trop_ancien.titre": "Este enlace ha caducado",
+    "panier.recuperer.trop_ancien.texte":
+      "Pasados catorce días, dejamos de guardar una cesta pendiente: nuestros precios y láminas pueden haber cambiado entretanto. Vuelve a empezar desde la tienda: tu lámina se crea en dos minutos.",
+    "panier.recuperer.indisponible.titre": "No conseguimos abrir tu cesta",
+    "panier.recuperer.indisponible.texte":
+      "Algo ha fallado por nuestra parte. Inténtalo de nuevo en un momento o escríbenos respondiendo simplemente al mensaje que has recibido.",
+    "livraison.relais_requis": "Elige tu punto de recogida en la lista.",
+    "livraison.relais_autre_reseau":
+      "Este punto de recogida no corresponde al método de envío elegido. Elige uno de la lista.",
+    "commande.err.mode_indisponible": "Este método de envío ya no está disponible. Elige otro.",
+    "commande.err.adresse_incomplete":
+      "Tu dirección de entrega está incompleta: revisa la calle, el código postal y la ciudad.",
+    "commande.err.avant_paiement":
+      "No hemos podido comprobar tu cesta antes del pago. No se ha cobrado nada: vuelve a intentarlo en unos instantes.",
   },
 } as const;
 

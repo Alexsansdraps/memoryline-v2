@@ -20,19 +20,44 @@ import {
   formatPrice,
   type EcranPaniers,
   type PanierAbandonne,
+  type ReglagesRelance,
 } from "../lib/api.ts";
 
 const api = adminApi(Astro.request);
 
 let flash: string | null = null;
 let flashErreur = false;
+/**
+ * Les réglages tels que la boutique vient de les saisir, quand l'API les a
+ * refusés (une 2e relance programmée avant la 1re…). On les remet dans le
+ * formulaire : lui faire tout ressaisir pour une seule valeur à corriger
+ * serait la punir de s'être trompée.
+ */
+let reglagesSaisis: ReglagesRelance | null = null;
+
+/** « 10 h », « 2 jours » — un délai tel qu'on le dit. */
+function duree(heures: number): string {
+  if (heures < 24 || heures % 24 !== 0) return `${heures} h`;
+  const jours = heures / 24;
+  return jours === 1 ? "1 jour" : `${jours} jours`;
+}
+
+/** Une liste lue à voix haute : « a », « a et b », « a, b et c ». */
+function enumeration(morceaux: string[]): string {
+  if (morceaux.length <= 1) return morceaux[0] ?? "";
+  return `${morceaux.slice(0, -1).join(", ")} et ${morceaux[morceaux.length - 1]}`;
+}
 
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   const action = String(f.get("action") ?? "relancer");
   try {
     if (action === "reglages") {
-      const r = await api.reglagesRelance({
+      // Un champ vide veut dire « pas de 2e (ou 3e) relance » : c'est la
+      // première option de la liste.
+      const r2 = String(f.get("relance2Heures") ?? "");
+      const r3 = String(f.get("relance3Heures") ?? "");
+      const saisie: ReglagesRelance = {
         active: f.get("active") === "on",
         palierHeures: Number(f.get("palierHeures")),
         plancherMinutes: Number(f.get("plancherMinutes")),
@@ -40,9 +65,28 @@ if (Astro.request.method === "POST") {
           String(f.get("baseLegale")) === "interet_legitime"
             ? "interet_legitime"
             : "consentement",
-      });
-      flash = r.reglages.active
-        ? `Réglages enregistrés. Les relances partent toutes seules, ${r.reglages.palierHeures} h après le dernier geste de la cliente.`
+        relance2Heures: r2 ? Number(r2) : null,
+        relance3Heures: r3 ? Number(r3) : null,
+        plage:
+          f.get("plageActive") === "on"
+            ? { debut: Number(f.get("plageDebut")), fin: Number(f.get("plageFin")) }
+            : null,
+      };
+      reglagesSaisis = saisie;
+      const { reglages: r } = await api.reglagesRelance(saisie);
+      reglagesSaisis = null;
+      // La phrase redit le programme en entier : c'est la meilleure façon de
+      // vérifier qu'on a réglé ce qu'on croyait régler.
+      const quand = [
+        `la 1re ${duree(r.palierHeures)} après le dernier geste de la cliente`,
+        ...(r.relance2Heures !== null ? [`la 2e ${duree(r.relance2Heures)} après`] : []),
+        ...(r.relance3Heures !== null ? [`la 3e ${duree(r.relance3Heures)} après`] : []),
+      ];
+      const plage = r.plage
+        ? `, seulement entre ${r.plage.debut} h et ${r.plage.fin} h (heure de Paris)`
+        : "";
+      flash = r.active
+        ? `Réglages enregistrés. Les relances partent toutes seules : ${enumeration(quand)}${plage}.`
         : "Réglages enregistrés. La relance automatique est éteinte : seul le bouton « Relancer » envoie un courrier.";
     } else if (action === "passage") {
       const { bilan } = await api.passageRelance();
@@ -79,12 +123,16 @@ try {
   erreur = e instanceof Error ? e.message : String(e);
 }
 
-const reglages = ecran?.reglages ?? {
-  active: false,
-  palierHeures: 10,
-  plancherMinutes: 10,
-  baseLegale: "consentement" as const,
-};
+const reglages: ReglagesRelance = reglagesSaisis ??
+  ecran?.reglages ?? {
+    active: false,
+    palierHeures: 10,
+    plancherMinutes: 10,
+    baseLegale: "consentement" as const,
+    relance2Heures: null,
+    relance3Heures: null,
+    plage: null,
+  };
 const paniers: PanierAbandonne[] = ecran?.paniers ?? [];
 const chiffres = ecran?.chiffres ?? {
   relancables: 0,
@@ -94,19 +142,46 @@ const chiffres = ecran?.chiffres ?? {
   montantRecupere: 0,
 };
 
-/** Les quatre paliers de Shopify, avec la phrase qui dit ce qu'ils valent. */
-const PALIERS = [
-  { h: 1, label: "1 heure", aide: "Très tôt : la cliente est peut-être encore devant son écran." },
-  { h: 6, label: "6 heures", aide: "Le message arrive dans la même demi-journée." },
-  { h: 10, label: "10 heures", aide: "Le réglage conseillé : le panier du soir est rappelé le matin." },
-  { h: 24, label: "24 heures", aide: "Un jour plus tard, à la même heure qu'hier." },
-];
+/**
+ * Les délais de la 1re relance, avec la phrase qui dit ce qu'ils valent. Les
+ * quatre de Shopify, et quelques autres : la liste vient de l'API, la phrase
+ * d'ici — un délai sans phrase s'affiche quand même.
+ */
+const AIDES_PALIERS: Record<number, string> = {
+  1: "Très tôt : la cliente est peut-être encore devant son écran.",
+  2: "Tôt : le message arrive pendant qu'elle y pense encore.",
+  3: "Tôt : le message arrive pendant qu'elle y pense encore.",
+  6: "Le message arrive dans la même demi-journée.",
+  10: "Le réglage conseillé : le panier du soir est rappelé le matin.",
+  12: "Une demi-journée plus tard.",
+  24: "Un jour plus tard, à la même heure qu'hier.",
+  48: "Deux jours plus tard : discret, mais la cliente a peut-être déjà oublié.",
+};
+const PALIERS = (ecran?.paliers ?? [1, 6, 10, 24]).map((h) => ({
+  h,
+  label: h === 1 ? "1 heure" : h % 24 === 0 ? duree(h) : `${h} heures`,
+  aide: AIDES_PALIERS[h] ?? "",
+}));
+
+/** Les délais proposés pour la 2e et la 3e relance, comptés depuis l'abandon. */
+const PALIERS_SUIVANTS = ecran?.paliersSuivants ?? [24, 48, 72, 96, 120, 168, 240, 312];
+
+/** Les heures d'une journée, pour la plage d'envoi. */
+const HEURES = Array.from({ length: 25 }, (_, h) => h);
 
 /** Le plancher d'affichage : Shopify ne descend pas sous 10, ni au-delà de 15. */
 const PLANCHERS = [10, 11, 12, 13, 14, 15];
 
 const palierChoisi =
-  PALIERS.find((p) => p.h === reglages.palierHeures) ?? PALIERS[2]!;
+  PALIERS.find((p) => p.h === reglages.palierHeures) ??
+  PALIERS.find((p) => p.h === 10) ??
+  PALIERS[0]!;
+
+/** Les trois relances, telles que le tableau du programme les présente. */
+const courriels = [1, 2, 3].map((etape) => ({
+  etape,
+  personnalise: ecran?.courriels?.find((c) => c.etape === etape)?.personnalise ?? false,
+}));
 
 /** Couleur de la pastille d'état — le lisible avant le décoratif. */
 function tonEtat(etat: PanierAbandonne["etat"]): string {
@@ -142,9 +217,9 @@ function tonEtat(etat: PanierAbandonne["etat"]): string {
   <p class="mb-5 max-w-3xl text-sm text-bo-muted">
     Un panier devient « abandonné » quand une cliente a laissé son adresse
     e-mail au tunnel de commande et que plus rien n'a bougé depuis le délai
-    d'affichage réglé plus bas. Il apparaît alors ici. Le courrier de relance,
-    lui, ne part qu'au terme du palier d'envoi — et jamais au-delà de quatorze
-    jours, où le panier est définitivement laissé tranquille.
+    d'affichage réglé plus bas. Il apparaît alors ici. Les courriers de
+    relance, eux, ne partent qu'aux délais du programme — et jamais au-delà de
+    quatorze jours, où le panier est définitivement laissé tranquille.
   </p>
 
   {/* --- Les chiffres qui comptent -------------------------------------- */}
@@ -199,25 +274,136 @@ function tonEtat(etat: PanierAbandonne["etat"]): string {
         </span>
       </label>
 
-      <div class="grid max-w-3xl gap-5 sm:grid-cols-2">
-        <label class="block">
-          <span class="text-sm font-medium">Envoyer le courrier après</span>
+      {/* Le programme : jusqu'à trois relances, chacune avec son délai et
+          son courriel. Une seule ligne par relance, pour que le rythme entier
+          se lise d'un coup d'œil. */}
+      <fieldset class="max-w-3xl">
+        <legend class="text-sm font-medium">Programme des relances</legend>
+        <p class="mt-0.5 text-xs text-bo-muted">
+          Les délais se comptent à partir du dernier geste de la cliente
+          (article ajouté, adresse saisie…), pas de la création du panier.
+          Une relance ne part jamais avant l'écart prévu depuis la précédente,
+          et plus aucune ne part après quatorze jours.
+        </p>
+        <div class="mt-3 divide-y divide-bo-border rounded border border-bo-border">
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-3">
+            <span class="w-24 text-sm font-medium">1re relance</span>
+            <label class="flex items-center gap-2 text-sm">
+              <select
+                name="palierHeures"
+                class="rounded border border-bo-border px-3 py-1.5 text-sm"
+              >
+                {PALIERS.map((p) => (
+                  <option value={p.h} selected={p.h === reglages.palierHeures}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+              <span class="text-bo-muted">après l'abandon</span>
+            </label>
+            <a
+              href={url("/paniers/courriel?relance=1")}
+              class="ml-auto text-sm text-bo-accent hover:underline"
+            >
+              Modifier le courriel
+            </a>
+            <span class="basis-full text-xs text-bo-muted">
+              {palierChoisi.aide}
+              {courriels[0]!.personnalise
+                ? " Courriel : votre texte."
+                : " Courriel : le texte d'origine."}
+            </span>
+          </div>
+
+          {[2, 3].map((etape) => {
+            const valeur =
+              etape === 2 ? reglages.relance2Heures : reglages.relance3Heures;
+            return (
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-3">
+                <span class="w-24 text-sm font-medium">{etape}e relance</span>
+                <label class="flex items-center gap-2 text-sm">
+                  <select
+                    name={`relance${etape}Heures`}
+                    class="rounded border border-bo-border px-3 py-1.5 text-sm"
+                  >
+                    <option value="" selected={valeur === null}>
+                      Pas de {etape}e relance
+                    </option>
+                    {PALIERS_SUIVANTS.map((h) => (
+                      <option value={h} selected={h === valeur}>
+                        {duree(h)}
+                      </option>
+                    ))}
+                  </select>
+                  <span class="text-bo-muted">après l'abandon</span>
+                </label>
+                <a
+                  href={url(`/paniers/courriel?relance=${etape}`)}
+                  class="ml-auto text-sm text-bo-accent hover:underline"
+                >
+                  Modifier le courriel
+                </a>
+                <span class="basis-full text-xs text-bo-muted">
+                  {etape === 2
+                    ? "Facultative. Elle ne part qu'aux clientes qui n'ont toujours pas commandé."
+                    : "Facultative, et seulement s'il y a une 2e relance. Son courriel d'origine annonce qu'elle est la dernière."}
+                  {courriels[etape - 1]!.personnalise
+                    ? " Courriel : votre texte."
+                    : " Courriel : le texte d'origine."}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </fieldset>
+
+      <div class="max-w-3xl">
+        <label class="flex items-start gap-3">
+          <input
+            type="checkbox"
+            name="plageActive"
+            checked={reglages.plage !== null}
+            class="mt-1"
+          />
+          <span>
+            <span class="text-sm font-medium">N'envoyer qu'en journée</span>
+            <span class="mt-0.5 block text-xs text-bo-muted">
+              Une relance qui tombe en dehors de ces heures attend le début de
+              la plage suivante. Décochée, elles partent à toute heure. Le
+              bouton « Relancer » d'une ligne, lui, part tout de suite.
+            </span>
+          </span>
+        </label>
+        <div class="mt-2 flex flex-wrap items-center gap-2 pl-7 text-sm">
+          <span>De</span>
           <select
-            name="palierHeures"
-            class="mt-1 w-full rounded border border-bo-border px-3 py-2 text-sm"
+            name="plageDebut"
+            aria-label="Début de la plage d'envoi"
+            class="rounded border border-bo-border px-2 py-1.5 text-sm"
           >
-            {PALIERS.map((p) => (
-              <option value={p.h} selected={p.h === reglages.palierHeures}>
-                {p.label}
+            {HEURES.slice(0, 24).map((h) => (
+              <option value={h} selected={h === (reglages.plage?.debut ?? 9)}>
+                {h} h
               </option>
             ))}
           </select>
-          <span class="mt-1 block text-xs text-bo-muted">
-            {palierChoisi.aide} Le délai se compte à partir du dernier geste de
-            la cliente, pas de la création du panier.
-          </span>
-        </label>
+          <span>à</span>
+          <select
+            name="plageFin"
+            aria-label="Fin de la plage d'envoi"
+            class="rounded border border-bo-border px-2 py-1.5 text-sm"
+          >
+            {HEURES.slice(1).map((h) => (
+              <option value={h} selected={h === (reglages.plage?.fin ?? 20)}>
+                {h} h
+              </option>
+            ))}
+          </select>
+          <span class="text-bo-muted">(heure de Paris)</span>
+        </div>
+      </div>
 
+      <div class="grid max-w-3xl gap-5 sm:grid-cols-2">
         <label class="block">
           <span class="text-sm font-medium">Afficher le panier après</span>
           <select
@@ -365,6 +551,11 @@ function tonEtat(etat: PanierAbandonne["etat"]): string {
                   Envoi renoncé : {p.motifRenoncement}
                 </span>
               )}
+              {p.prochaineRelance && (
+                <span class="mt-1 block text-xs text-bo-muted">
+                  {p.prochaineRelance}
+                </span>
+              )}
             </td>
             <td class="px-4 py-3">
               <div>{p.nom ?? "—"}</div>
@@ -413,12 +604,15 @@ function tonEtat(etat: PanierAbandonne["etat"]): string {
 
   <p class="mt-3 max-w-3xl text-sm text-bo-muted">
     Avant chaque envoi, la boutique vérifie cinq choses : que la cliente n'a
-    pas commandé entre-temps avec la même adresse, qu'on ne l'a pas déjà
-    relancée, qu'on a le droit de lui écrire, que ses affiches sont toujours
-    disponibles, et que le panier a moins de quatorze jours. Le motif s'affiche
-    dans la colonne « État » chaque fois qu'un envoi est écarté. Le bouton
-    « Relancer » passe outre l'unicité et le consentement — jamais les trois
-    autres —, et le courrier qu'il envoie à une cliente sans consentement
-    porte alors son lien de désinscription, quel que soit le réglage.
+    pas commandé entre-temps avec la même adresse, que cette relance-là n'est
+    pas déjà partie, qu'on a le droit de lui écrire (et qu'elle n'a pas
+    demandé à ne plus recevoir de rappel), que ses affiches sont toujours
+    disponibles — un panier vidé n'est jamais relancé —, et que le panier a
+    moins de quatorze jours. Le motif s'affiche dans la colonne « État »
+    chaque fois qu'un envoi est écarté, et la prochaine relance prévue juste
+    en dessous. Le bouton « Relancer » passe outre l'unicité et le
+    consentement — jamais les trois autres —, et le courrier qu'il envoie à
+    une cliente sans consentement porte alors son lien de désinscription,
+    quel que soit le réglage.
   </p>
 </Admin>

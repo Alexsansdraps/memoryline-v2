@@ -1863,7 +1863,38 @@ export function mountOrderRoutes(app: Hono): void {
     }
   }
 
-  /** Corrige l'adresse de livraison d'une commande déjà passée. */
+  /**
+   * Les champs de l'adresse de livraison, et leur nom dans la chronologie.
+   * Le même ordre que le formulaire : c'est celui dans lequel on les relit.
+   */
+  const CHAMPS_ADRESSE = {
+    shippingName: "nom",
+    shippingLine1: "adresse",
+    shippingLine2: "complément",
+    shippingPostalCode: "code postal",
+    shippingCity: "ville",
+    shippingCountry: "pays",
+    shippingPhone: "téléphone",
+  } as const;
+  type ChampAdresse = keyof typeof CHAMPS_ADRESSE;
+
+  /**
+   * Corrige l'adresse de livraison d'une commande déjà passée — depuis la
+   * colonne de droite de la fiche, ou depuis le bloc du bordereau, qui en a
+   * besoin avant d'acheter : un retrait sur place qu'on finit par envoyer, une
+   * vente du stand qui doit voyager, une adresse fausse.
+   *
+   * Seuls les champs ENVOYÉS changent. Le bloc du bordereau d'une commande en
+   * point relais ne corrige que le nom et le téléphone : il n'a pas à renvoyer
+   * une adresse qu'il n'affiche pas pour qu'elle survive.
+   *
+   * `livrerALAdresse` envoie le colis à cette adresse plutôt qu'au point
+   * relais choisi — un point fermé depuis, une cliente qui préfère être
+   * livrée chez elle. Le point quitte la commande ; la chronologie le garde.
+   *
+   * La chronologie dit QUI a changé QUOI, ancienne et nouvelle valeur : une
+   * étiquette partie à la mauvaise adresse se comprend en la relisant.
+   */
   app.post("/admin/orders/:id/address", async (c) => {
     const id = Number(c.req.param("id"));
     const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -1871,26 +1902,68 @@ export function mountOrderRoutes(app: Hono): void {
       const s = String(v ?? "").trim();
       return s ? s.slice(0, 200) : null;
     };
-    const [row] = await db
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, id));
+    if (!order) return c.notFound();
+
+    const maj: Partial<Record<ChampAdresse, string | null>> = {};
+    for (const champ of Object.keys(CHAMPS_ADRESSE) as ChampAdresse[])
+      if (champ in b) maj[champ] = txt(b[champ]);
+    // Le pays sert de code aux transporteurs (« FR », « BE ») : « France »
+    // écrit en toutes lettres ferait refuser l'étiquette bien plus tard, en
+    // anglais. Mieux vaut le refuser ici, en français.
+    if (maj.shippingCountry) {
+      const pays = maj.shippingCountry.toUpperCase();
+      if (!/^[A-Z]{2}$/.test(pays))
+        return c.json(
+          { error: "Le pays s'écrit avec son code à deux lettres : FR, BE, CH, LU…" },
+          400,
+        );
+      maj.shippingCountry = pays;
+    }
+    // Un retrait sur stand se range lui aussi dans `relayPointId` (« stand:3 ») :
+    // ce n'est pas un point relais à quitter, le colis va déjà à l'adresse.
+    const pointQuitte =
+      b.livrerALAdresse === true &&
+      !!order.relayPointId &&
+      !order.relayPointId.startsWith("stand:")
+        ? (order.relayPointLabel ?? order.relayPointId)
+        : null;
+
+    const changes = (Object.keys(maj) as ChampAdresse[])
+      .filter((k) => (order[k] ?? null) !== maj[k])
+      .map((k) => `${CHAMPS_ADRESSE[k]} : « ${order[k] ?? "—"} » → « ${maj[k] ?? "—"} »`);
+    if (!changes.length && !pointQuitte) return c.json({ ok: true, modifie: false, bordereauVivant: false });
+
+    await db
       .update(schema.orders)
-      .set({
-        shippingName: txt(b.shippingName),
-        shippingLine1: txt(b.shippingLine1),
-        shippingLine2: txt(b.shippingLine2),
-        shippingPostalCode: txt(b.shippingPostalCode),
-        shippingCity: txt(b.shippingCity),
-        shippingCountry: txt(b.shippingCountry),
-        shippingPhone: txt(b.shippingPhone),
-      })
-      .where(eq(schema.orders.id, id))
-      .returning({ id: schema.orders.id });
-    if (!row) return c.notFound();
+      .set({ ...maj, ...(pointQuitte ? { relayPointId: null, relayPointLabel: null } : {}) })
+      .where(eq(schema.orders.id, id));
+
+    // Une étiquette déjà achetée porte l'ANCIENNE adresse : SendCloud ne la
+    // modifie pas. La fiche le redit, pour qu'on l'annule et qu'on la rachète.
+    const [vivant] = await db
+      .select({ id: schema.bordereaux.id })
+      .from(schema.bordereaux)
+      .where(
+        and(
+          eq(schema.bordereaux.orderId, id),
+          inArray(schema.bordereaux.statut, ["achete", "en_cours"]),
+        ),
+      );
+    const auteur = String(b.author ?? "").trim() || c.get("utilisateur")?.email || null;
     await db.insert(schema.orderEvents).values({
       orderId: id,
       kind: "event",
-      message: "Adresse de livraison modifiée au back-office.",
+      author: auteur,
+      message:
+        (pointQuitte
+          ? `Livraison au point relais « ${pointQuitte} » remplacée par une livraison à l'adresse, au back-office`
+          : "Adresse de livraison modifiée au back-office") +
+        (changes.length ? ` (${changes.join(" ; ")})` : "") +
+        "." +
+        (vivant ? " Le bordereau déjà acheté porte encore l'ancienne adresse." : ""),
     });
-    return c.json({ ok: true });
+    return c.json({ ok: true, modifie: true, bordereauVivant: !!vivant });
   });
 
   /* ------------------------------------------------------------------ */

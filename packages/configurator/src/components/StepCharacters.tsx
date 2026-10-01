@@ -165,7 +165,8 @@ export function StepCharacters(props: {
                           ⠿
                         </span>
                         <span style={{ flex: "1", "font-size": "13px" }}>
-                          {base?.name ?? `Personnage ${c.characterId}`}
+                          {base?.name ??
+                            m().personnageN.replace("{id}", String(c.characterId))}
                         </span>
                         <Button
                           variant="secondary"
@@ -197,9 +198,13 @@ export function StepCharacters(props: {
                             <path d="M10.5 2.5H3a.5.5 0 0 0-.5.5v7.5" />
                           </svg>
                         </Button>
+                        {/* « ✕ » seul ne dit rien au lecteur d'écran : le
+                            bouton porte son nom, comme celui de la copie. */}
                         <Button
                           variant="ghost"
                           onClick={() => props.onRemove(i())}
+                          title={m().retirer}
+                          aria-label={m().retirer}
                         >
                           ✕
                         </Button>

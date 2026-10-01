@@ -47,6 +47,7 @@ const code = String(Astro.params.code ?? "")
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <Seo
+      langue={langue}
       title={tr("photo.meta_titre")}
       description={tr("photo.intro")}
       path={lien(langue, `/photo/${code}`)}

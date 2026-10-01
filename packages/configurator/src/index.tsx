@@ -134,9 +134,9 @@ export interface ConfiguratorProps {
   encartVideo?: () => JSX.Element;
 }
 
-/** Formate un prix en centimes -> "23 €" (FR). */
-function fmtPrice(cents: number): string {
-  return new Intl.NumberFormat("fr-FR", {
+/** Formate un prix en centimes -> "23 €" (FR), « €23 » (EN)… selon la locale. */
+function fmtPrice(cents: number, locale: string): string {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: "EUR",
     minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
@@ -146,6 +146,8 @@ function fmtPrice(cents: number): string {
 export function Configurator(props: ConfiguratorProps): JSX.Element {
   /** Libellés traduits, complétés par le français pour les clés absentes. */
   const msg = () => messagesAvecDefauts(props.messages);
+  /** Locale d'affichage des montants (« fr-FR » si l'hôte n'en donne pas). */
+  const locale = () => msg().locale;
   const STEP_LABELS = (): Record<Step, string> => ({
     background: msg().etapeFond,
     characters: msg().etapePersonnages,
@@ -647,6 +649,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
           }
           assetBaseUrl={props.assetBaseUrl}
           cadre={cadreChoisi() ?? null}
+          messages={msg()}
           // On ne compose qu'ici, et seulement à l'étape des personnages :
           // ailleurs, un glissement n'aurait aucun sens et l'affiche doit
           // rester une image.
@@ -765,7 +768,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
                 reste seul et tient le milieu de la barre — les deux boutons
                 s'écarteraient sinon aux extrémités, autour d'un vide. */}
             <div style={{ "font-weight": "700", "font-size": "18px", "white-space": "nowrap" }}>
-              <Show when={!props.sansPrix}>{fmtPrice(currentPrice())}</Show>
+              <Show when={!props.sansPrix}>{fmtPrice(currentPrice(), locale())}</Show>
               <Show when={rappelChoix()}>
                 <span
                   style={{

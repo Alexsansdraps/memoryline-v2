@@ -1,3 +1,5 @@
+import { COULEURS_TEXTE_AFFICHE, POLICES_AFFICHE } from "@memoryline/types";
+
 /**
  * Libellés du configurateur, fournis par l'application hôte.
  *
@@ -43,6 +45,47 @@ export interface MessagesConfigurateur {
   reordonnerAide: string;
   /** Sur l'icône de copie d'un personnage. */
   dupliquer: string;
+  /** Sous les lignes de texte : la touche Entrée coupe une ligne. */
+  aideRetourLigne: string;
+  /** Libellé d'une ligne de texte au-delà de `champsLignes` ; `{n}` = son rang. */
+  ligneN: string;
+  /** Flèches des galeries de l'éditeur, pour le lecteur d'écran. */
+  precedent: string;
+  suivant: string;
+  /** La pastille arc-en-ciel qui ouvre le sélecteur de couleur libre. */
+  couleurPerso: string;
+  /** Catégorie des personnages qui n'en ont pas au back-office. */
+  autres: string;
+  /** Personnage absent du catalogue (archivé…) ; `{id}` = son identifiant. */
+  personnageN: string;
+  /** Nom de repli d'un personnage sur l'aperçu de l'affiche. */
+  personnage: string;
+  /** Personnage déplaçable sur l'aperçu ; `{nom}` = son nom. */
+  deplacerAide: string;
+  /** Deuxième ligne d'exemple sur l'affiche, tant qu'aucun texte n'est saisi. */
+  exempleAffiche: string;
+  /** Aperçu encadré, pour le lecteur d'écran ; `{cadre}` = le nom du cadre. */
+  apercuCadre: string;
+  /** Le même, pour un cadre sans nom. */
+  apercuCadreSansNom: string;
+  /**
+   * Nom montré de chaque police, par identifiant. L'identifiant reste celui
+   * qui est enregistré ; une police absente garde son nom français.
+   */
+  libellesPolices: Record<string, string>;
+  /** Nom montré de chaque couleur de texte, par identifiant (même règle). */
+  libellesCouleursTexte: Record<string, string>;
+  /**
+   * Locale de mise en forme des montants et des dimensions (« fr-FR »,
+   * « en-GB »…). Seul l'affichage en dépend, jamais ce qui est enregistré.
+   */
+  locale: string;
+  /**
+   * L'invitation flottante qui mène aux réglages d'un personnage (couleurs,
+   * vêtements, accessoires), et le titre de ces réglages : les mêmes mots,
+   * pour qu'on reconnaisse en arrivant l'endroit promis.
+   */
+  personnaliserPerso: string;
 }
 
 export const MESSAGES_DEFAUT: MessagesConfigurateur = {
@@ -79,6 +122,28 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   sansCadre: "Sans cadre",
   reordonnerAide: "Glissez pour changer l'ordre des personnages",
   dupliquer: "Dupliquer ce personnage",
+  aideRetourLigne: "Touche Entrée pour passer à la ligne.",
+  ligneN: "Ligne {n}",
+  precedent: "Précédent",
+  suivant: "Suivant",
+  couleurPerso: "Couleur personnalisée",
+  autres: "Autres",
+  personnageN: "Personnage {id}",
+  personnage: "Personnage",
+  deplacerAide:
+    "{nom} : glissez-le pour le déplacer sur l'affiche, ou utilisez les flèches",
+  exempleAffiche: "Votre ville, votre histoire",
+  apercuCadre: "Aperçu de l'affiche dans un {cadre}",
+  apercuCadreSansNom: "Aperçu de l'affiche dans un cadre",
+  // Les noms français vivent avec les polices et les couleurs elles-mêmes.
+  libellesPolices: Object.fromEntries(
+    POLICES_AFFICHE.map((p) => [p.id, p.libelle]),
+  ),
+  libellesCouleursTexte: Object.fromEntries(
+    COULEURS_TEXTE_AFFICHE.map((c) => [c.id, c.libelle]),
+  ),
+  locale: "fr-FR",
+  personnaliserPerso: "Personnaliser ce personnage",
 };
 
 /** Complète un dictionnaire partiel par les valeurs françaises. */

@@ -15,8 +15,14 @@
  *
  * Deux horloges, et il ne faut jamais les confondre. Celle de L'AFFICHAGE :
  * dès le délai plancher, le panier apparaît au back-office. Celle de L'ENVOI :
- * le palier réglé par la marchande (1 h, 6 h, 10 h par défaut, 24 h). Un
- * panier peut donc être visible longtemps avant qu'un courrier ne parte.
+ * le programme réglé par la marchande — une 1re relance (10 h par défaut),
+ * puis, si elle le veut, une 2e et une 3e, chacune à son délai, et au besoin
+ * dans une plage horaire. Un panier peut donc être visible longtemps avant
+ * qu'un courrier ne parte.
+ *
+ * Les mots du courrier se réécrivent au back-office (voir `TextesRelance`
+ * dans mail.ts) ; tant qu'on n'y a pas touché, la 1re relance part avec le
+ * courrier d'origine, à l'identique.
  *
  * Et une limite qui ne se discute pas : passé QUATORZE JOURS, plus aucun
  * envoi. Shopify purge à ce terme, et un rappel qui arrive deux semaines plus
@@ -42,7 +48,13 @@ import {
   courrierPanierAbandonne,
   envoyer,
   estConfigure as courrierConfigure,
+  memesTextesRelance,
+  normaliserTextesRelance,
+  TEXTES_RELANCE_DEFAUT,
+  VARIABLES_RELANCE,
+  type EtapeRelance,
   type LigneCourrier,
+  type TextesRelance,
 } from "./mail.js";
 
 /* -------------------------------------------------------------------------- */
@@ -66,9 +78,24 @@ const LIEN_RECUPERATION = `${ORIGINE}/panier/recuperer`;
  */
 const LIEN_DESINSCRIPTION = `${ORIGINE}/api/relance/desabonnement`;
 
-/** Les quatre paliers d'envoi proposés par Shopify, en heures. */
-export const PALIERS_ENVOI = [1, 6, 10, 24] as const;
+/**
+ * Les délais proposés pour la 1re relance, en heures d'inactivité. Les quatre
+ * de Shopify (1, 6, 10, 24 h), et quelques intermédiaires : la boutique
+ * programme seule son rythme, elle n'a pas à se plier à celui d'un autre.
+ */
+export const PALIERS_ENVOI = [1, 2, 3, 6, 10, 12, 24, 48] as const;
 export type PalierEnvoi = (typeof PALIERS_ENVOI)[number];
+
+/**
+ * Les délais proposés pour la 2e et la 3e relance, en heures APRÈS L'ABANDON
+ * — la même horloge que la 1re, pour qu'une seule phrase suffise à les
+ * expliquer toutes. De un jour à treize : la fenêtre de quatorze jours ferme
+ * de toute façon la porte au-delà.
+ */
+export const PALIERS_SUIVANTS = [24, 48, 72, 96, 120, 168, 240, 312] as const;
+
+/** Trois relances au plus pour un même panier. Au-delà, c'est du harcèlement. */
+export const ETAPES: readonly EtapeRelance[] = [1, 2, 3];
 
 /**
  * Le délai plancher d'affichage, en minutes. Shopify n'attend jamais moins de
@@ -90,6 +117,13 @@ const STATUTS_CLOS: string[] = ["paid", "cancelled", "refunded", "voided"];
 
 /** Toutes les cinq minutes. Assez fin pour un palier d'une heure. */
 const PERIODE_PASSAGE_MS = 5 * 60_000;
+
+/**
+ * Le délai en deçà duquel une relance manuelle ne repart pas : de quoi
+ * absorber un double clic ou une page rechargée, pas de quoi gêner une
+ * boutique qui veut vraiment relancer.
+ */
+const ANTI_DOUBLON_MS = 10 * 60_000;
 
 /* -------------------------------------------------------------------------- */
 /*  Les réglages, tenus dans le back-office                                   */
@@ -115,6 +149,22 @@ export interface ReglagesRelance {
    * lien de désinscription devient alors OBLIGATOIRE dans le courrier.
    */
   baseLegale: "consentement" | "interet_legitime";
+  /**
+   * La 2e relance, en heures après l'abandon. Null : il n'y en a pas — c'est
+   * le réglage d'origine, une seule relance.
+   */
+  relance2Heures: number | null;
+  /** La 3e, de même. Elle suppose une 2e, et vient forcément après elle. */
+  relance3Heures: number | null;
+  /**
+   * La plage horaire des envois automatiques, heure de Paris : on n'écrit
+   * qu'entre `debut` heures et `fin` heures. Null : à toute heure, comme
+   * avant que ce réglage n'existe.
+   *
+   * Une relance qui tombe la nuit attend le matin ; le bouton « Relancer »,
+   * lui, n'attend pas — c'est la boutique qui choisit son moment.
+   */
+  plage: { debut: number; fin: number } | null;
 }
 
 const REGLAGES_DEFAUT: ReglagesRelance = {
@@ -122,6 +172,9 @@ const REGLAGES_DEFAUT: ReglagesRelance = {
   palierHeures: 10,
   plancherMinutes: 10,
   baseLegale: "consentement",
+  relance2Heures: null,
+  relance3Heures: null,
+  plage: null,
 };
 
 /**
@@ -134,17 +187,35 @@ const CLES = {
   palier: "relance.palier_heures",
   plancher: "relance.plancher_minutes",
   baseLegale: "relance.base_legale",
+  relance2: "relance.relance2_heures",
+  relance3: "relance.relance3_heures",
+  plage: "relance.plage_horaire",
 } as const;
+
+/**
+ * La clé des textes réécrits d'une relance. ABSENTE tant que la boutique n'y
+ * a pas touché : c'est cette absence, et rien d'autre, qui garantit le
+ * courrier d'origine. « Revenir au texte d'origine » efface donc la clé.
+ */
+function cleTextes(etape: EtapeRelance): string {
+  return `relance.courrier_${etape}`;
+}
 
 /** Le groupe sous lequel le back-office range ces réglages. */
 const GROUPE = "relance";
+
+/**
+ * Un réglage refusé, avec la phrase à montrer. Distinct d'une panne : la
+ * route le rend en 400, et l'écran l'affiche tel quel.
+ */
+export class ReglageRefuse extends Error {}
 
 function nombreOuDefaut(v: unknown, defaut: number): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : defaut;
 }
 
-/** Ramène un palier saisi n'importe comment à l'un des quatre proposés. */
+/** Ramène un palier saisi n'importe comment à l'un de ceux proposés. */
 function palierValide(v: unknown): PalierEnvoi {
   const n = nombreOuDefaut(v, REGLAGES_DEFAUT.palierHeures);
   return (PALIERS_ENVOI as readonly number[]).includes(n)
@@ -159,6 +230,28 @@ function plancherValide(v: unknown): number {
 }
 
 /**
+ * Le délai d'une relance suivante, ou null pour « pas de relance ». Une
+ * valeur hors de la liste se lit comme « pas de relance » : mieux vaut un
+ * courrier de moins qu'un courrier à une heure que personne n'a choisie.
+ */
+function suivanteValide(v: unknown): number | null {
+  if (v === null || v === undefined || v === "" || v === 0 || v === "0") return null;
+  const n = Number(v);
+  return (PALIERS_SUIVANTS as readonly number[]).includes(n) ? n : null;
+}
+
+/** Une plage horaire lisible, ou null. Début avant fin, dans la journée. */
+function plageValide(v: unknown): { debut: number; fin: number } | null {
+  if (!v || typeof v !== "object") return null;
+  const { debut, fin } = v as Record<string, unknown>;
+  const d = Number(debut);
+  const f = Number(fin);
+  if (!Number.isInteger(d) || !Number.isInteger(f)) return null;
+  if (d < 0 || d > 23 || f < 1 || f > 24 || d >= f) return null;
+  return { debut: d, fin: f };
+}
+
+/**
  * Les réglages tels qu'ils sont enregistrés, complétés par les valeurs par
  * défaut. Une clé absente n'est pas une panne : c'est une boutique qui n'a pas
  * encore touché à ce réglage.
@@ -169,6 +262,8 @@ export async function lireReglages(): Promise<ReglagesRelance> {
     .from(schema.settings)
     .where(eq(schema.settings.group, GROUPE));
   const valeurs = new Map(lignes.map((l) => [l.key, l.value]));
+  const relance2Heures = suivanteValide(valeurs.get(CLES.relance2));
+  const relance3 = suivanteValide(valeurs.get(CLES.relance3));
   return {
     active: valeurs.get(CLES.active) === true,
     palierHeures: palierValide(valeurs.get(CLES.palier)),
@@ -177,10 +272,46 @@ export async function lireReglages(): Promise<ReglagesRelance> {
       valeurs.get(CLES.baseLegale) === "interet_legitime"
         ? "interet_legitime"
         : "consentement",
+    relance2Heures,
+    // Une 3e sans 2e ne se lit pas : l'écriture le refuse, et la lecture ne
+    // fait pas confiance à une base qu'on aurait modifiée à la main.
+    relance3Heures:
+      relance2Heures !== null && relance3 !== null && relance3 > relance2Heures
+        ? relance3
+        : null,
+    plage: plageValide(valeurs.get(CLES.plage)),
   };
 }
 
-/** Enregistre les réglages, en les bornant à ce qui a un sens. */
+/** Écrit une ligne de réglage, créée au besoin. */
+async function ecrireUnReglage(key: string, value: unknown, label: string): Promise<void> {
+  await db
+    .insert(schema.settings)
+    .values({
+      key,
+      value: value as never,
+      label,
+      group: GROUPE,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: schema.settings.key,
+      set: {
+        value: value as never,
+        label,
+        group: GROUPE,
+        updatedAt: new Date(),
+      },
+    });
+}
+
+/**
+ * Enregistre les réglages, en les bornant à ce qui a un sens.
+ *
+ * Le rythme des relances, lui, ne se borne pas en silence : une 2e relance
+ * programmée AVANT la 1re ne peut pas être « corrigée » sans deviner ce que
+ * la boutique voulait. On refuse, avec la phrase qui dit quoi changer.
+ */
 async function ecrireReglages(brut: Record<string, unknown>): Promise<ReglagesRelance> {
   const actuels = await lireReglages();
   const suivants: ReglagesRelance = {
@@ -200,39 +331,191 @@ async function ecrireReglages(brut: Record<string, unknown>): Promise<ReglagesRe
         : brut.baseLegale === "consentement"
           ? "consentement"
           : actuels.baseLegale,
+    relance2Heures:
+      brut.relance2Heures === undefined
+        ? actuels.relance2Heures
+        : suivanteValide(brut.relance2Heures),
+    relance3Heures:
+      brut.relance3Heures === undefined
+        ? actuels.relance3Heures
+        : suivanteValide(brut.relance3Heures),
+    plage: brut.plage === undefined ? actuels.plage : plageValide(brut.plage),
   };
 
-  const aEcrire: { key: string; value: unknown; label: string }[] = [
-    { key: CLES.active, value: suivants.active, label: "Relance automatique" },
-    { key: CLES.palier, value: suivants.palierHeures, label: "Palier d'envoi (heures)" },
-    {
-      key: CLES.plancher,
-      value: suivants.plancherMinutes,
-      label: "Délai d'affichage (minutes)",
-    },
-    { key: CLES.baseLegale, value: suivants.baseLegale, label: "Base légale" },
-  ];
-  for (const r of aEcrire) {
-    await db
-      .insert(schema.settings)
-      .values({
-        key: r.key,
-        value: r.value as never,
-        label: r.label,
-        group: GROUPE,
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: schema.settings.key,
-        set: {
-          value: r.value as never,
-          label: r.label,
-          group: GROUPE,
-          updatedAt: new Date(),
-        },
-      });
-  }
+  if (suivants.relance3Heures !== null && suivants.relance2Heures === null)
+    throw new ReglageRefuse(
+      "La 3e relance suppose une 2e : programmez d'abord la 2e, ou retirez la 3e.",
+    );
+  if (suivants.relance2Heures !== null && suivants.relance2Heures <= suivants.palierHeures)
+    throw new ReglageRefuse(
+      `La 2e relance doit partir après la 1re : ${duree(suivants.relance2Heures)} après l'abandon, c'est avant (ou en même temps que) la 1re, prévue ${duree(suivants.palierHeures)} après.`,
+    );
+  if (
+    suivants.relance3Heures !== null &&
+    suivants.relance2Heures !== null &&
+    suivants.relance3Heures <= suivants.relance2Heures
+  )
+    throw new ReglageRefuse(
+      `La 3e relance doit partir après la 2e : choisissez un délai de plus de ${duree(suivants.relance2Heures)}.`,
+    );
+  if (brut.plage !== undefined && brut.plage !== null && suivants.plage === null)
+    throw new ReglageRefuse(
+      "La plage d'envoi doit commencer avant de finir : par exemple de 9 h à 20 h.",
+    );
+
+  await ecrireUnReglage(CLES.active, suivants.active, "Relance automatique");
+  await ecrireUnReglage(CLES.palier, suivants.palierHeures, "1re relance (heures après l'abandon)");
+  await ecrireUnReglage(CLES.plancher, suivants.plancherMinutes, "Délai d'affichage (minutes)");
+  await ecrireUnReglage(CLES.baseLegale, suivants.baseLegale, "Base légale");
+  await ecrireUnReglage(CLES.relance2, suivants.relance2Heures ?? 0, "2e relance (heures après l'abandon, 0 = aucune)");
+  await ecrireUnReglage(CLES.relance3, suivants.relance3Heures ?? 0, "3e relance (heures après l'abandon, 0 = aucune)");
+  // `false` et non `null` : la colonne refuse le vide, et « pas de plage » est
+  // une réponse, pas une absence de réponse.
+  await ecrireUnReglage(CLES.plage, suivants.plage ?? false, "Plage d'envoi (heure de Paris)");
   return suivants;
+}
+
+/** « 10 h », « 2 jours » — un délai tel qu'on le dit. */
+export function duree(heures: number): string {
+  if (heures < 24 || heures % 24 !== 0) return `${heures} h`;
+  const jours = heures / 24;
+  return jours === 1 ? "1 jour" : `${jours} jours`;
+}
+
+/**
+ * Les délais de toutes les relances programmées, dans l'ordre, en heures
+ * après l'abandon : [10], [10, 48], [10, 48, 120]…
+ */
+export function delaisDesRelances(r: ReglagesRelance): number[] {
+  const delais: number[] = [r.palierHeures];
+  if (r.relance2Heures !== null) {
+    delais.push(r.relance2Heures);
+    if (r.relance3Heures !== null) delais.push(r.relance3Heures);
+  }
+  return delais;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  La plage horaire                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * L'heure qu'il est à Paris à cet instant, de 0 à 23.
+ *
+ * On lit la PIÈCE « heure » du formatage, pas la chaîne entière : en
+ * français, une heure seule s'écrit « 08 h », que `Number` ne sait pas lire.
+ * La première version s'y était trompée et retombait en silence sur l'heure
+ * universelle — deux heures d'écart l'été, une l'hiver.
+ */
+const HEURE_DE_PARIS = new Intl.DateTimeFormat("fr-FR", {
+  hour: "numeric",
+  hourCycle: "h23",
+  timeZone: "Europe/Paris",
+});
+function heureDeParis(date: Date): number {
+  const piece = HEURE_DE_PARIS.formatToParts(date).find((p) => p.type === "hour");
+  const h = Number(piece?.value);
+  return Number.isInteger(h) ? h % 24 : date.getUTCHours();
+}
+
+/** Cet instant tombe-t-il dans la plage d'envoi ? Sans plage, toujours. */
+export function dansLaPlage(r: ReglagesRelance, date: Date): boolean {
+  if (!r.plage) return true;
+  const h = heureDeParis(date);
+  return h >= r.plage.debut && h < r.plage.fin;
+}
+
+/**
+ * Le premier instant, à partir de `date`, où un envoi est permis.
+ *
+ * On avance d'heure pleine en heure pleine : le décalage de Paris sur l'heure
+ * universelle se compte en heures entières, été comme hiver, donc une heure
+ * pleine en UTC en est une à Paris. Deux jours de recherche suffisent
+ * largement à une plage d'au moins une heure par jour.
+ */
+function prochaineOuverture(r: ReglagesRelance, date: Date): Date {
+  if (dansLaPlage(r, date)) return date;
+  const t = new Date(date);
+  t.setUTCMinutes(0, 0, 0);
+  for (let i = 0; i < 48; i++) {
+    t.setTime(t.getTime() + 3600_000);
+    if (dansLaPlage(r, t)) return new Date(t);
+  }
+  return date;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Les textes des courriers                                                  */
+/* -------------------------------------------------------------------------- */
+
+/** « 1re », « 2e », « 3e ». */
+export function ordinal(etape: number): string {
+  return etape === 1 ? "1re" : `${etape}e`;
+}
+
+/** Lit une étape venue d'une adresse ou d'un formulaire. */
+export function etapeLue(v: unknown): EtapeRelance | null {
+  const n = Number(v);
+  return n === 1 || n === 2 || n === 3 ? n : null;
+}
+
+/**
+ * Les textes que la boutique a réécrits pour cette relance, ou null si elle
+ * n'y a pas touché. Une valeur illisible en base vaut « pas touché » : mieux
+ * vaut le courrier d'origine qu'un courrier cassé.
+ */
+async function textesEnregistres(etape: EtapeRelance): Promise<TextesRelance | null> {
+  const [ligne] = await db
+    .select({ value: schema.settings.value })
+    .from(schema.settings)
+    .where(eq(schema.settings.key, cleTextes(etape)))
+    .limit(1);
+  if (!ligne) return null;
+  const n = normaliserTextesRelance(ligne.value);
+  return n.ok ? n.textes : null;
+}
+
+/**
+ * Les textes avec lesquels part la relance de cette étape.
+ *
+ * Null pour une 1re relance que la boutique n'a pas réécrite : c'est le signal
+ * qui fait partir le courrier d'origine, à l'octet près (voir
+ * `courrierPanierAbandonne`). Les 2e et 3e n'ont pas d'« avant » à préserver :
+ * elles partent avec leurs textes par défaut.
+ *
+ * Lu à CHAQUE envoi, jamais gardé en mémoire : un texte corrigé au
+ * back-office vaut pour le courrier suivant, sans redémarrer quoi que ce soit.
+ */
+export async function textesDeLaRelance(etape: EtapeRelance): Promise<TextesRelance | null> {
+  const propres = await textesEnregistres(etape);
+  if (propres) return propres;
+  return etape === 1 ? null : TEXTES_RELANCE_DEFAUT[etape];
+}
+
+/**
+ * Enregistre les textes d'une relance.
+ *
+ * Des textes identiques à ceux d'origine EFFACENT la clé au lieu de
+ * l'écrire : la boutique qui enregistre sans rien changer doit garder le
+ * courrier d'origine, et non une copie qui lui ressemble.
+ */
+async function enregistrerTextes(
+  etape: EtapeRelance,
+  brut: unknown,
+): Promise<{ textes: TextesRelance; personnalise: boolean }> {
+  const n = normaliserTextesRelance(brut);
+  if (!n.ok) throw new ReglageRefuse(n.erreur);
+  if (memesTextesRelance(n.textes, TEXTES_RELANCE_DEFAUT[etape])) {
+    await revenirAuTexteDOrigine(etape);
+    return { textes: TEXTES_RELANCE_DEFAUT[etape], personnalise: false };
+  }
+  await ecrireUnReglage(cleTextes(etape), n.textes, `Courrier de la ${ordinal(etape)} relance`);
+  return { textes: n.textes, personnalise: true };
+}
+
+/** « Revenir au texte d'origine » : la clé disparaît, et avec elle les textes. */
+async function revenirAuTexteDOrigine(etape: EtapeRelance): Promise<void> {
+  await db.delete(schema.settings).where(eq(schema.settings.key, cleTextes(etape)));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -250,6 +533,8 @@ export interface PanierAbandonne {
   /** L'horloge d'inactivité : `lastActivityAt`, ou `createdAt` à défaut. */
   derniereActivite: Date;
   relanceAt: Date | null;
+  /** Le compteur tel qu'il est en base, pour la réservation de l'envoi. */
+  relancesEnregistrees: number;
   recupereLe: Date | null;
   motifRenoncement: string | null;
   renoncementLe: Date | null;
@@ -336,6 +621,7 @@ async function requetePaniers(
       createdAt: schema.orders.createdAt,
       lastActivityAt: schema.orders.lastActivityAt,
       relanceAt: schema.orders.reminderSentAt,
+      relancesEnregistrees: schema.orders.reminderCount,
       recupereLe: schema.orders.recoveredAt,
       motifRenoncement: schema.orders.recoveryDeclinedReason,
       renoncementLe: schema.orders.recoveryDeclinedAt,
@@ -376,6 +662,48 @@ async function requetePaniers(
 /** Depuis combien d'heures ce panier ne bouge plus. */
 function heuresDInactivite(p: PanierAbandonne): number {
   return (Date.now() - p.derniereActivite.getTime()) / 3600_000;
+}
+
+/**
+ * Combien de relances sont parties pour ce panier.
+ *
+ * Le compteur, sauf pour les paniers relancés avant qu'il n'existe : ils y
+ * portent 0 avec une date d'envoi, et cette date dit à elle seule qu'une
+ * relance est partie. Lire « 0 » les ferait relancer une seconde fois sous le
+ * nom de la première.
+ */
+function nombreDeRelances(p: PanierAbandonne): number {
+  return Math.max(p.relancesEnregistrees, p.relanceAt ? 1 : 0);
+}
+
+/**
+ * La prochaine relance AUTOMATIQUE de ce panier : laquelle, et à partir de
+ * quand elle peut partir. Null quand toutes les relances programmées sont
+ * parties, ou quand la suivante tomberait après les quatorze jours.
+ *
+ * Deux conditions, et la plus tardive l'emporte :
+ *   - le délai de cette relance, compté depuis l'abandon ;
+ *   - l'ÉCART prévu depuis la relance précédente. Sans lui, une boutique qui
+ *     allume la relance sur un panier vieux de trois jours enverrait la 1re
+ *     puis la 2e à cinq minutes d'intervalle, toutes deux « en retard ».
+ *
+ * Ni la plage horaire ni les gardes-fous n'entrent ici : c'est le calendrier,
+ * pas la décision.
+ */
+function prochaineRelance(
+  p: PanierAbandonne,
+  r: ReglagesRelance,
+): { etape: EtapeRelance; des: Date } | null {
+  const delais = delaisDesRelances(r);
+  const n = nombreDeRelances(p);
+  const delai = delais[n];
+  if (delai === undefined) return null;
+  let des = p.derniereActivite.getTime() + delai * 3600_000;
+  const precedent = delais[n - 1];
+  if (n > 0 && p.relanceAt && precedent !== undefined)
+    des = Math.max(des, p.relanceAt.getTime() + (delai - precedent) * 3600_000);
+  if (des > p.derniereActivite.getTime() + FENETRE_HEURES * 3600_000) return null;
+  return { etape: (n + 1) as EtapeRelance, des: new Date(des) };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -548,10 +876,19 @@ async function achatCroise(panier: PanierAbandonne): Promise<boolean> {
 
 /** Cette adresse a-t-elle refusé qu'on lui rappelle ses paniers ? */
 async function aRefuse(email: string): Promise<boolean> {
+  // On cherche UN REFUS, pas une ligne : la même adresse peut en avoir deux
+  // (écrite avec et sans majuscule, l'unicité de la colonne ne voit pas la
+  // casse), et « la première venue » pouvait être celle sans refus — la
+  // relance repartait alors chez quelqu'un qui avait dit non.
   const [ligne] = await db
     .select({ refuseLe: schema.relanceRefus.refuseLe })
     .from(schema.relanceRefus)
-    .where(sql`lower(${schema.relanceRefus.email}) = ${email.toLowerCase()}`)
+    .where(
+      and(
+        sql`lower(${schema.relanceRefus.email}) = ${email.toLowerCase()}`,
+        isNotNull(schema.relanceRefus.refuseLe),
+      ),
+    )
     .limit(1);
   return Boolean(ligne?.refuseLe);
 }
@@ -583,9 +920,19 @@ async function verifierGardesFous(
       motif: "Panier de plus de 14 jours : plus aucune relance.",
     };
 
-  // 2. Unicité : le drapeau, jamais une heuristique.
-  if (panier.relanceAt && !sauter.includes("deja_relance"))
-    return { envoyer: false, code: "deja_relance", motif: "Déjà relancé une fois." };
+  // 2. Unicité : le compteur, jamais une heuristique. Chaque relance
+  // programmée part une fois ; quand elles sont toutes parties, plus rien ne
+  // part tout seul.
+  const envoyees = nombreDeRelances(panier);
+  if (envoyees >= delaisDesRelances(reglages).length && !sauter.includes("deja_relance"))
+    return {
+      envoyer: false,
+      code: "deja_relance",
+      motif:
+        envoyees > 1
+          ? `Déjà relancé ${envoyees} fois : toutes les relances prévues sont parties.`
+          : "Déjà relancé une fois.",
+    };
 
   // 1. Achat croisé.
   if (await achatCroise(panier))
@@ -706,7 +1053,15 @@ export interface ResultatEnvoi {
  */
 export async function relancerUnPanier(
   orderId: number,
-  options: { forcer?: boolean } = {},
+  options: {
+    forcer?: boolean;
+    /**
+     * La relance que le travailleur croit envoyer. Si une autre est partie
+     * entre-temps (un clic sur « Relancer » pendant le passage), celle-ci
+     * n'a plus lieu d'être : on s'arrête, sans rien noter.
+     */
+    etape?: EtapeRelance;
+  } = {},
 ): Promise<ResultatEnvoi> {
   const reglages = await lireReglages();
   const panier = await panierAbandonne(orderId);
@@ -715,6 +1070,26 @@ export async function relancerUnPanier(
 
   if (!courrierConfigure())
     return { parti: false, motif: "L'envoi de courriers n'est pas configuré." };
+
+  const dejaParties = nombreDeRelances(panier);
+  if (options.etape !== undefined && dejaParties >= options.etape)
+    return { parti: false, motif: `La ${ordinal(options.etape)} relance est déjà partie.` };
+  // Le bouton « Relancer » passe outre l'unicité, c'est son rôle. Pas le
+  // double clic, ni la page rechargée qui renvoie le formulaire : une relance
+  // partie il y a quelques minutes ne repart pas, quoi qu'on presse.
+  if (
+    options.forcer &&
+    panier.relanceAt &&
+    Date.now() - panier.relanceAt.getTime() < ANTI_DOUBLON_MS
+  )
+    return {
+      parti: false,
+      motif: "Une relance est partie vers cette adresse il y a moins de dix minutes : celle-ci n'est pas partie, pour ne pas écrire deux fois.",
+    };
+  // Le texte suit le rang de l'envoi : la 2e relance dit « toujours », la 3e
+  // dit « dernier ». Un « Relancer à nouveau » au-delà de la 3e reprend le
+  // texte de la 3e plutôt que d'en inventer un.
+  const etape: EtapeRelance = options.etape ?? (Math.min(dejaParties + 1, 3) as EtapeRelance);
 
   const verdict = await verifierGardesFous(panier, reglages);
   let lignes: LigneCourrier[];
@@ -763,9 +1138,53 @@ export async function relancerUnPanier(
     totalCents: panier.totalCents,
     codePromo: panier.promoCode,
     lienDesinscription: desinscription,
+    textes: await textesDeLaRelance(etape),
   });
+
+  /*
+   * La réservation, juste avant l'envoi : le compteur ne passe à la valeur
+   * suivante que s'il vaut encore ce qu'on a lu. Deux envois simultanés du
+   * même panier — le travailleur et un clic, ou deux clics — ne peuvent donc
+   * pas partir tous les deux : le second trouve le compteur déjà avancé et
+   * s'arrête. Le verrou du travailleur ne protège que contre lui-même.
+   *
+   * La date d'envoi se pose DANS LA MÊME écriture, et pas après l'envoi : un
+   * second clic qui arrive pendant que le serveur de courrier répond lirait
+   * sinon le compteur déjà avancé, mais aucune date — l'anti-doublon des dix
+   * minutes ne verrait rien, et la réservation suivante lui serait accordée.
+   * Deux clics rapprochés envoyaient ainsi deux courriers (vérifié).
+   */
+  const [reserve] = await db
+    .update(schema.orders)
+    .set({ reminderCount: dejaParties + 1, reminderSentAt: new Date() })
+    .where(
+      and(
+        eq(schema.orders.id, panier.id),
+        eq(schema.orders.reminderCount, panier.relancesEnregistrees),
+      ),
+    )
+    .returning({ id: schema.orders.id });
+  if (!reserve)
+    return {
+      parti: false,
+      motif: "Une autre relance de ce panier vient de partir : celle-ci est retenue, pour ne pas écrire deux fois.",
+    };
+
   const parti = await envoyer({ ...courrier, to: panier.email });
-  if (!parti) return { parti: false, motif: "Le courrier n'a pas pu partir." };
+  if (!parti) {
+    // Rien n'est parti : le compteur et la date reprennent leur valeur, et la
+    // relance pourra être retentée au passage suivant.
+    await db
+      .update(schema.orders)
+      .set({ reminderCount: panier.relancesEnregistrees, reminderSentAt: panier.relanceAt })
+      .where(
+        and(
+          eq(schema.orders.id, panier.id),
+          eq(schema.orders.reminderCount, dejaParties + 1),
+        ),
+      );
+    return { parti: false, motif: "Le courrier n'a pas pu partir." };
+  }
 
   await db
     .update(schema.orders)
@@ -778,7 +1197,10 @@ export async function relancerUnPanier(
   await db.insert(schema.orderEvents).values({
     orderId: panier.id,
     kind: "event",
-    message: `Relance de panier envoyée à ${panier.email}.`,
+    message:
+      dejaParties === 0
+        ? `Relance de panier envoyée à ${panier.email}.`
+        : `${ordinal(dejaParties + 1)} relance de panier envoyée à ${panier.email}.`,
   });
   return { parti: true, motif: null };
 }
@@ -846,6 +1268,9 @@ export async function passageDeRelance(): Promise<BilanPassage> {
   }
   passageEnCours = true;
   try {
+    // Les réglages se relisent à CHAQUE passage : une relance éteinte, un
+    // délai changé ou une plage resserrée au back-office valent dès le
+    // passage suivant, sans redémarrer l'API.
     const reglages = await lireReglages();
     if (!reglages.active) {
       bilan.motif =
@@ -858,20 +1283,31 @@ export async function passageDeRelance(): Promise<BilanPassage> {
         "L'envoi de courriers n'est pas configuré : rien ne peut partir.";
       return bilan;
     }
+    const maintenant = new Date();
+    if (reglages.plage && !dansLaPlage(reglages, maintenant)) {
+      bilan.motif = `Hors de la plage d'envoi (de ${reglages.plage.debut} h à ${reglages.plage.fin} h, heure de Paris) : les relances dues partiront à ${reglages.plage.debut} h.`;
+      return bilan;
+    }
 
-    // Le palier d'envoi s'exprime en heures d'inactivité : on le convertit en
-    // minutes pour réutiliser la même horloge que l'affichage.
+    // Le délai de la 1re relance s'exprime en heures d'inactivité : on le
+    // convertit en minutes pour réutiliser la même horloge que l'affichage.
+    // Aucun panier ne peut devoir une relance avant ce délai-là, puisque les
+    // suivantes viennent forcément après.
     //
     // Les deux tris qui suivent redisent des garde-fous que `verifierGardesFous`
     // vérifie de toute façon, et c'est voulu : ils écartent d'emblée le gros du
-    // troupeau — les paniers déjà relancés une fois pour toutes, et les vieux —
-    // pour ne pas noter un renoncement à chaque passage sur des paniers dont le
-    // sort est réglé depuis longtemps.
-    const candidats = (await paniersAbandonnes(reglages.palierHeures * 60, 200)).filter(
-      (p) => !p.relanceAt && heuresDInactivite(p) <= FENETRE_HEURES,
-    );
+    // troupeau — les paniers dont toutes les relances sont parties, ceux dont
+    // la suivante n'est pas encore due, et les vieux — pour ne pas noter un
+    // renoncement à chaque passage sur des paniers dont le sort est réglé.
+    const candidats = (await paniersAbandonnes(reglages.palierHeures * 60, 200))
+      .filter((p) => heuresDInactivite(p) <= FENETRE_HEURES)
+      .map((p) => ({ panier: p, prochaine: prochaineRelance(p, reglages) }))
+      .filter(
+        (c): c is { panier: PanierAbandonne; prochaine: { etape: EtapeRelance; des: Date } } =>
+          c.prochaine !== null && c.prochaine.des.getTime() <= maintenant.getTime(),
+      );
 
-    for (const panier of candidats) {
+    for (const { panier, prochaine } of candidats) {
       bilan.examines += 1;
       const verdict = await verifierGardesFous(panier, reglages);
       if (!verdict.envoyer) {
@@ -882,7 +1318,7 @@ export async function passageDeRelance(): Promise<BilanPassage> {
       // `relancerUnPanier` revérifie tout avant d'écrire : entre la décision
       // ci-dessus et l'envoi, une commande a pu être payée. Deux vérifications
       // coûtent une requête ; un courrier de trop coûte un client.
-      const resultat = await relancerUnPanier(panier.id);
+      const resultat = await relancerUnPanier(panier.id, { etape: prochaine.etape });
       if (resultat.parti) bilan.envoyes += 1;
       else bilan.echecs += 1;
     }
@@ -947,6 +1383,44 @@ export interface LignePanierVue {
   lienRecuperation: string;
   /** Vrai tant qu'une relance peut encore partir. */
   relancable: boolean;
+  /** Combien de relances sont parties pour ce panier. */
+  nombreRelances: number;
+  /**
+   * La prochaine relance automatique, en une phrase : « 2e relance prévue le
+   * 3 octobre à 09:00 ». Null quand il n'y en aura pas — relance éteinte,
+   * toutes parties, ou envoi déjà écarté par un garde-fou.
+   */
+  prochaineRelance: string | null;
+}
+
+/**
+ * La prochaine relance d'un panier, telle que l'écran l'annonce.
+ *
+ * C'est une PRÉVISION, et elle le dit : les gardes-fous ne se jugent qu'au
+ * moment de l'envoi (la cliente peut acheter d'ici là). On ne l'annonce
+ * d'ailleurs pas quand on sait déjà qu'elle ne partira pas — envoi déjà
+ * écarté, ou cliente sans consentement sous la base du consentement. La
+ * plage horaire, elle, est prise en compte : une relance due à 23 h est
+ * annoncée pour le matin.
+ */
+function prochaineRelanceVue(
+  p: PanierAbandonne,
+  r: ReglagesRelance,
+  etat: EtatPanier,
+): string | null {
+  if (!r.active) return null;
+  if (etat !== "abandonne" && etat !== "relance") return null;
+  if (p.motifRenoncement) return null;
+  if (r.baseLegale === "consentement" && !p.accepteMarketing) return null;
+  const prochaine = prochaineRelance(p, r);
+  if (!prochaine) return null;
+  const maintenant = Date.now();
+  const quand = prochaineOuverture(r, new Date(Math.max(prochaine.des.getTime(), maintenant)));
+  // Le travailleur passe toutes les cinq minutes : une relance déjà due
+  // partira au prochain passage, et le dire vaut mieux qu'une heure passée.
+  if (quand.getTime() <= maintenant + PERIODE_PASSAGE_MS)
+    return `${ordinal(prochaine.etape)} relance : au prochain passage, d'ici cinq minutes`;
+  return `${ordinal(prochaine.etape)} relance prévue ${leJour(quand)}`;
 }
 
 /** « il y a 3 h », « il y a 2 jours » — la durée telle qu'on la dit. */
@@ -992,8 +1466,17 @@ function etatDuPanier(p: PanierAbandonne): {
       libelle: "Trop ancien, plus de relance",
       relancable: false,
     };
-  if (p.relanceAt)
-    return { etat: "relance", libelle: `Relancé ${leJour(p.relanceAt)}`, relancable: true };
+  if (p.relanceAt) {
+    const n = nombreDeRelances(p);
+    return {
+      etat: "relance",
+      libelle:
+        n > 1
+          ? `Relancé ${n} fois, la dernière ${leJour(p.relanceAt)}`
+          : `Relancé ${leJour(p.relanceAt)}`,
+      relancable: true,
+    };
+  }
   // Un envoi renoncé garde son âge : le motif s'écrit juste en dessous, et
   // remplacer « abandonné il y a 3 h » par « envoi renoncé » ferait perdre la
   // seule information qui dise si le panier est encore tiède.
@@ -1026,8 +1509,14 @@ export interface ChiffresRelance {
  */
 async function chiffres(paniers: PanierAbandonne[]): Promise<ChiffresRelance> {
   const relancables = paniers.filter((p) => etatDuPanier(p).relancable);
+  // Des COURRIERS, pas des paniers : depuis qu'un panier peut être relancé
+  // deux ou trois fois, compter les paniers relancés sous-estimait ce chiffre.
+  // `greatest(…, 1)` pour les paniers relancés avant le compteur (0 et une
+  // date), comme `nombreDeRelances`.
   const [envoyees] = await db
-    .select({ n: sql<number>`count(*)::int` })
+    .select({
+      n: sql<number>`coalesce(sum(greatest(${schema.orders.reminderCount}, 1)), 0)::int`,
+    })
     .from(schema.orders)
     .where(isNotNull(schema.orders.reminderSentAt));
   const [recuperes] = await db
@@ -1121,6 +1610,26 @@ export function mountRelancePanier(app: Hono): void {
         compte.set(a.orderId, (compte.get(a.orderId) ?? 0) + a.quantity);
     }
 
+    // Les adresses qui ont demandé à ne plus être relancées, en une requête
+    // pour toute la liste : l'écran n'annonce pas une relance qu'on sait déjà
+    // ne pas devoir envoyer.
+    const refus = new Set<string>();
+    if (paniers.length) {
+      const lignesRefus = await db
+        .select({ email: schema.relanceRefus.email })
+        .from(schema.relanceRefus)
+        .where(
+          and(
+            isNotNull(schema.relanceRefus.refuseLe),
+            inArray(
+              sql`lower(${schema.relanceRefus.email})`,
+              [...new Set(paniers.map((p) => p.email.toLowerCase()))],
+            ),
+          ),
+        );
+      for (const l of lignesRefus) refus.add(l.email.toLowerCase());
+    }
+
     // Le lien de récupération est montré tel qu'il partira. Le jeton se crée
     // ici quand il n'existe pas : la boutique doit pouvoir copier le lien et
     // le donner au téléphone, sans avoir envoyé de courrier.
@@ -1143,6 +1652,13 @@ export function mountRelancePanier(app: Hono): void {
         motifRenoncement: p.motifRenoncement,
         lienRecuperation: lienDeRecuperation(await jetonDeRecuperation(p.id)),
         relancable: etat.relancable,
+        nombreRelances: nombreDeRelances(p),
+        // Un panier vidé, ou une adresse qui a refusé les rappels : les
+        // gardes-fous l'écarteront à coup sûr, l'écran ne promet donc rien.
+        prochaineRelance:
+          (compte.get(p.id) ?? 0) === 0 || refus.has(p.email.toLowerCase())
+            ? null
+            : prochaineRelanceVue(p, reglages, etat.etat),
       });
     }
 
@@ -1150,17 +1666,82 @@ export function mountRelancePanier(app: Hono): void {
       reglages,
       plancher,
       paliers: PALIERS_ENVOI,
+      paliersSuivants: PALIERS_SUIVANTS,
       fenetreHeures: FENETRE_HEURES,
       courrierConfigure: courrierConfigure(),
       chiffres: await chiffres(paniers),
       paniers: lignes,
+      // Pour chaque relance : ses textes ont-ils été réécrits ? L'écran le
+      // dit à côté du lien « Modifier le courriel ».
+      courriels: await Promise.all(
+        ETAPES.map(async (etape) => ({
+          etape,
+          personnalise: (await textesEnregistres(etape)) !== null,
+        })),
+      ),
     });
   });
 
   /** Enregistre les réglages de la relance. */
   app.post("/admin/relance/reglages", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-    return c.json({ reglages: await ecrireReglages(body) });
+    try {
+      return c.json({ reglages: await ecrireReglages(body) });
+    } catch (e) {
+      if (e instanceof ReglageRefuse) return c.json({ error: e.message }, 400);
+      throw e;
+    }
+  });
+
+  /* --- Les textes des courriels ------------------------------------------ */
+
+  /**
+   * Les textes des trois relances : ceux qui partiront, ceux d'origine, et
+   * les variables qu'on peut y glisser. L'écran d'édition n'a besoin de rien
+   * d'autre.
+   */
+  app.get("/admin/relance/courriels", async (c) => {
+    const reglages = await lireReglages();
+    const delais = delaisDesRelances(reglages);
+    const etapes = [];
+    for (const etape of ETAPES) {
+      const propres = await textesEnregistres(etape);
+      const delai = delais[etape - 1];
+      etapes.push({
+        etape,
+        nom: `${ordinal(etape)} relance`,
+        textes: propres ?? TEXTES_RELANCE_DEFAUT[etape],
+        origine: TEXTES_RELANCE_DEFAUT[etape],
+        personnalise: propres !== null,
+        // Programmée ou non : un courriel qu'on soigne mais qui ne partira
+        // jamais tout seul doit le dire, sinon on attend un envoi qui ne
+        // viendra pas.
+        programmee: delai !== undefined,
+        quand: delai !== undefined ? `${duree(delai)} après l'abandon` : null,
+      });
+    }
+    return c.json({ etapes, variables: VARIABLES_RELANCE, active: reglages.active });
+  });
+
+  /** Enregistre les textes d'une relance. */
+  app.put("/admin/relance/courriels/:etape", async (c) => {
+    const etape = etapeLue(c.req.param("etape"));
+    if (!etape) return c.json({ error: "Cette relance n'existe pas." }, 400);
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    try {
+      return c.json(await enregistrerTextes(etape, body.textes ?? body));
+    } catch (e) {
+      if (e instanceof ReglageRefuse) return c.json({ error: e.message }, 400);
+      throw e;
+    }
+  });
+
+  /** « Revenir au texte d'origine ». */
+  app.delete("/admin/relance/courriels/:etape", async (c) => {
+    const etape = etapeLue(c.req.param("etape"));
+    if (!etape) return c.json({ error: "Cette relance n'existe pas." }, 400);
+    await revenirAuTexteDOrigine(etape);
+    return c.json({ textes: TEXTES_RELANCE_DEFAUT[etape], personnalise: false });
   });
 
   /**

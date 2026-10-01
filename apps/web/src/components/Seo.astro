@@ -5,8 +5,16 @@
  * Utilisé par le layout Base pour que CHAQUE page ait un SEO propre.
  */
 import { jsonPourScript } from "../lib/html-sur.ts";
+import {
+  LANGUES,
+  LANGUE_DEFAUT,
+  LOCALE_COMPLETE,
+  type Langue,
+} from "../i18n/utils.ts";
 
 interface Props {
+  /** Langue de la page — c'est elle qu'on déclare aux réseaux (og:locale). */
+  langue?: Langue;
   title: string;
   description: string;
   /** Chemin de la page (ex. "/affiches/soissons-..."). Sert au canonical. */
@@ -21,6 +29,7 @@ interface Props {
 }
 
 const {
+  langue = LANGUE_DEFAUT,
   title,
   description,
   path = Astro.url.pathname,
@@ -37,6 +46,14 @@ const ogImage = image.startsWith("http") ? image : new URL(image, siteUrl + "/")
 // robots.txt seul n'empêche pas une URL de finir dans l'index.
 const blockIndex = noindex || import.meta.env.PUBLIC_NOINDEX === "true";
 const jsonLdList = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
+/**
+ * La locale à la mode d'Open Graph : « fr_FR », avec un tiret bas.
+ *
+ * Elle était écrite en dur en français : la page anglaise partagée sur
+ * Facebook ou WhatsApp se déclarait française. Les autres langues suivent en
+ * « alternate », comme les hreflang du gabarit.
+ */
+const localeOg = (l: Langue) => LOCALE_COMPLETE[l].replace("-", "_");
 ---
 
 <!-- Primaire -->
@@ -48,7 +65,12 @@ const jsonLdList = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 
 <!-- Open Graph (Facebook, LinkedIn, etc.) -->
 <meta property="og:site_name" content="Memory Line" />
-<meta property="og:locale" content="fr_FR" />
+<meta property="og:locale" content={localeOg(langue)} />
+{
+  LANGUES.filter((l) => l !== langue).map((l) => (
+    <meta property="og:locale:alternate" content={localeOg(l)} />
+  ))
+}
 <meta property="og:type" content={type} />
 <meta property="og:title" content={title} />
 <meta property="og:description" content={description} />

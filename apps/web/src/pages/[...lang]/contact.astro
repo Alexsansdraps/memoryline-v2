@@ -22,7 +22,8 @@ import { apiInterne } from "../../lib/api-interne.ts";
  * 2. Les refus prévisibles — un champ vide, une adresse mal écrite — sont
  *    dits ICI, dans la langue du visiteur. L'API répond en français, comme
  *    tout le reste de la boutique : ses phrases ne servent qu'en dernier
- *    recours, pour ce que cette page ne pouvait pas voir venir.
+ *    recours, pour ce que cette page ne pouvait pas voir venir — et sur la
+ *    page française seulement.
  *
  * Les textes vivent dans ce fichier plutôt que dans i18n/ui.ts : ils ne
  * servent qu'ici, et cette page n'a pas à faire bouger un fichier que tout le
@@ -30,6 +31,7 @@ import { apiInterne } from "../../lib/api-interne.ts";
  */
 import Base from "../../layouts/Base.astro";
 import {
+  LANGUE_DEFAUT,
   estLangue,
   langueDepuisParam,
   lien,
@@ -74,6 +76,7 @@ type Cle =
   | "errMessage"
   | "errEnvoi"
   | "errTrop"
+  | "errIllisible"
   | "confidentialite";
 
 const TEXTES: Record<Langue, Record<Cle, string>> = {
@@ -103,6 +106,7 @@ const TEXTES: Record<Langue, Record<Cle, string>> = {
       "Votre message n'a pas pu être envoyé. Réessayez dans quelques minutes.",
     errTrop:
       "Vous nous avez déjà écrit plusieurs fois. Laissez-nous le temps d'y répondre, puis réessayez dans une heure.",
+    errIllisible: "Votre message n'a pas pu être lu. Réessayez.",
     confidentialite:
       "Vos coordonnées ne servent qu'à vous répondre. Voir la politique de confidentialité.",
   },
@@ -130,6 +134,7 @@ const TEXTES: Record<Langue, Record<Cle, string>> = {
     errEnvoi: "Your message could not be sent. Please try again in a few minutes.",
     errTrop:
       "You have already written to us several times. Give us time to reply, then try again in an hour.",
+    errIllisible: "Your message could not be read. Please try again.",
     confidentialite:
       "Your details are used only to reply to you. See the privacy policy.",
   },
@@ -159,6 +164,8 @@ const TEXTES: Record<Langue, Record<Cle, string>> = {
       "Ihre Nachricht konnte nicht gesendet werden. Bitte versuchen Sie es in einigen Minuten erneut.",
     errTrop:
       "Sie haben uns bereits mehrfach geschrieben. Geben Sie uns Zeit zu antworten und versuchen Sie es in einer Stunde erneut.",
+    errIllisible:
+      "Ihre Nachricht konnte nicht gelesen werden. Bitte versuchen Sie es erneut.",
     confidentialite:
       "Ihre Angaben dienen ausschließlich unserer Antwort. Siehe Datenschutzerklärung.",
   },
@@ -188,6 +195,7 @@ const TEXTES: Record<Langue, Record<Cle, string>> = {
       "Non è stato possibile inviare il messaggio. Riprova tra qualche minuto.",
     errTrop:
       "Ci hai già scritto più volte. Dacci il tempo di risponderti, poi riprova tra un'ora.",
+    errIllisible: "Non è stato possibile leggere il tuo messaggio. Riprova.",
     confidentialite:
       "I tuoi dati servono soltanto a risponderti. Vedi l'informativa sulla privacy.",
   },
@@ -217,6 +225,7 @@ const TEXTES: Record<Langue, Record<Cle, string>> = {
       "No hemos podido enviar tu mensaje. Inténtalo de nuevo dentro de unos minutos.",
     errTrop:
       "Ya nos has escrito varias veces. Danos tiempo para responderte y vuelve a intentarlo dentro de una hora.",
+    errIllisible: "No hemos podido leer tu mensaje. Inténtalo de nuevo.",
     confidentialite:
       "Tus datos solo sirven para responderte. Consulta la política de privacidad.",
   },
@@ -281,9 +290,11 @@ if (Astro.request.method === "POST") {
         return Astro.redirect(`${lien(langue, "/contact")}?envoye=1`, 303);
       }
       if (reponse.status === 429) erreur = tr("errTrop");
-      // Un refus de saisie que cette page n'avait pas prévu : la phrase de
-      // l'API vaut mieux que rien, même en français.
-      else if (reponse.status === 400 && corps.error) erreur = corps.error;
+      // Un refus de saisie que cette page n'avait pas prévu. La phrase de
+      // l'API est plus précise, mais elle est en français : elle sert telle
+      // quelle à la page française, les autres langues reçoivent la leur.
+      else if (reponse.status === 400 && corps.error)
+        erreur = langue === LANGUE_DEFAUT ? corps.error : tr("errIllisible");
       else erreur = tr("errEnvoi");
     } catch {
       erreur = tr("errEnvoi");

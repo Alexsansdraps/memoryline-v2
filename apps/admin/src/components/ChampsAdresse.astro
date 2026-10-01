@@ -1,0 +1,86 @@
+---
+/**
+ * Les champs d'une adresse de livraison, tels que les attend la route
+ * /admin/orders/:id/address : nom, rue, complément, code postal, ville, pays,
+ * téléphone.
+ *
+ * Partagés par les deux formulaires du bloc « Bordereau transporteur » de la
+ * fiche commande — saisir ou corriger l'adresse, et envoyer à une adresse
+ * plutôt qu'au point relais —, pour qu'ils ne divergent jamais : un champ
+ * oublié dans l'un ne partirait pas, et l'étiquette serait fausse.
+ *
+ * Le pays est un code à deux lettres, celui qu'attendent les transporteurs ;
+ * la liste `#bo-pays` (une seule par page) le propose au clavier.
+ */
+interface Props {
+  adresse: {
+    shippingName?: string | null;
+    shippingLine1?: string | null;
+    shippingLine2?: string | null;
+    shippingPostalCode?: string | null;
+    shippingCity?: string | null;
+    shippingCountry?: string | null;
+    shippingPhone?: string | null;
+  };
+}
+
+const { adresse } = Astro.props;
+const champ = "w-full rounded border border-bo-border px-2 py-1";
+---
+
+<div class="space-y-2">
+  <input
+    name="shippingName"
+    value={adresse.shippingName ?? ""}
+    placeholder="Nom du destinataire"
+    required
+    class={champ}
+  />
+  <input
+    name="shippingLine1"
+    value={adresse.shippingLine1 ?? ""}
+    placeholder="Numéro et rue"
+    required
+    class={champ}
+  />
+  <input
+    name="shippingLine2"
+    value={adresse.shippingLine2 ?? ""}
+    placeholder="Complément (bâtiment, étage…)"
+    class={champ}
+  />
+  <div class="flex gap-2">
+    <input
+      name="shippingPostalCode"
+      value={adresse.shippingPostalCode ?? ""}
+      placeholder="Code postal"
+      required
+      class="w-28 rounded border border-bo-border px-2 py-1"
+    />
+    <input
+      name="shippingCity"
+      value={adresse.shippingCity ?? ""}
+      placeholder="Ville"
+      required
+      class="min-w-0 flex-1 rounded border border-bo-border px-2 py-1"
+    />
+  </div>
+  <div class="flex gap-2">
+    <input
+      name="shippingCountry"
+      value={adresse.shippingCountry || "FR"}
+      list="bo-pays"
+      maxlength="2"
+      pattern="[A-Za-z]{2}"
+      title="Le code du pays, en deux lettres : FR, BE, CH…"
+      required
+      class="w-20 rounded border border-bo-border px-2 py-1 uppercase"
+    />
+    <input
+      name="shippingPhone"
+      value={adresse.shippingPhone ?? ""}
+      placeholder="Téléphone (le transporteur prévient par SMS)"
+      class="min-w-0 flex-1 rounded border border-bo-border px-2 py-1"
+    />
+  </div>
+</div>

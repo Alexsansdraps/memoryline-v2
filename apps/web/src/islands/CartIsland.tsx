@@ -1,5 +1,11 @@
 /// <reference lib="dom" />
-import { lien, t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
+import {
+  lien,
+  t,
+  LANGUE_DEFAUT,
+  LOCALE_COMPLETE,
+  type Langue,
+} from "../i18n/utils.ts";
 import {
   createEffect,
   createResource,
@@ -139,6 +145,8 @@ export default function CartIsland(props: {
 }): JSX.Element {
   const langue = props.langue ?? LANGUE_DEFAUT;
   const tr = t(langue);
+  /** Les montants s'écrivent à la manière de la langue de la page. */
+  const locale = LOCALE_COMPLETE[langue];
   const [busy, setBusy] = createSignal<number | null>(null);
   /** La vente du stand, une fois enregistrée : elle remplace le panier à l'écran. */
   const [vente, setVente] = createSignal<VenteStand | null>(null);
@@ -296,8 +304,8 @@ export default function CartIsland(props: {
    * mieux que « A4 » — c'est ce que faisait l'ancien site.
    */
   const DIMENSIONS: Record<string, string> = {
-    A4: dimensionsFormat("A4"),
-    A3: dimensionsFormat("A3"),
+    A4: dimensionsFormat("A4", locale),
+    A3: dimensionsFormat("A3", locale),
   };
 
   /**
@@ -309,7 +317,7 @@ export default function CartIsland(props: {
     const out: string[] = [];
     const format = it.config.format ?? "A4";
     out.push(
-      `${tr("panier.format")} : ${format}${DIMENSIONS[format] ? ` (${DIMENSIONS[format]})` : ""}`,
+      `${tr("panier.format")}${tr("ponct.deux_points")}${format}${DIMENSIONS[format] ? ` (${DIMENSIONS[format]})` : ""}`,
     );
     // Une affiche IA n'a ni cadre, ni texte, ni personnages : lui lister des
     // rubriques vides ne dirait rien au client.
@@ -321,12 +329,17 @@ export default function CartIsland(props: {
       (c) => String(c.id) === String(it.config.frameId),
     );
     out.push(
-      `${tr("panier.cadre")} : ${cadre ? cadre.name : tr("panier.sans_cadre")}`,
+      `${tr("panier.cadre")}${tr("ponct.deux_points")}${cadre ? cadre.name : tr("panier.sans_cadre")}`,
     );
     // lignesRemplies() lit aussi bien les trois lignes d'aujourd'hui que le
     // titre/sous-titre des paniers composés avant.
     const lignes = lignesRemplies(it.config.texts).map((b) => b.value);
-    if (lignes.length) out.push(`« ${lignes.join(" — ")} »`);
+    // Remplacement par une fonction : un « $ » tapé par le client sur son
+    // affiche serait sinon lu comme un motif de remplacement.
+    if (lignes.length)
+      out.push(
+        tr("ponct.guillemets").replace("{texte}", () => lignes.join(" — ")),
+      );
     const n = it.config.characters?.length ?? 0;
     if (n > 0)
       out.push(
@@ -389,7 +402,13 @@ export default function CartIsland(props: {
     );
     return {
       amount: remiseCents,
-      label: detail.map((d) => d.regle).join(" · "),
+      // Le nom des promotions est saisi en français au back-office, sans
+      // traduction : dans une autre langue, la ligne dit « Remise », comme le
+      // récapitulatif de la commande.
+      label:
+        langue === LANGUE_DEFAUT
+          ? detail.map((d) => d.regle).join(" · ")
+          : tr("compte.commande.remise"),
     };
   };
 
@@ -406,7 +425,7 @@ export default function CartIsland(props: {
     if (pretAImprimer(it)) return null;
     const slug =
       it.productId != null ? cart()?.fiches.get(it.productId)?.slug : null;
-    return slug ? `/affiches/${slug}?edit=${it.id}` : null;
+    return slug ? `${lien(langue, `/affiches/${slug}`)}?edit=${it.id}` : null;
   }
 
   /**
@@ -504,7 +523,7 @@ export default function CartIsland(props: {
       {/* Attente : un squelette aux dimensions des vraies lignes, pour que
           la page ne saute pas quand le contenu arrive. */}
       <Show when={cart.loading}>
-        <div class="space-y-4" aria-busy="true" aria-label="Chargement du panier">
+        <div class="space-y-4" aria-busy="true" aria-label={tr("panier.chargement")}>
           <For each={[0, 1]}>
             {() => (
               <div class="flex gap-4 rounded-2xl border border-ink/10 p-4">
@@ -530,10 +549,10 @@ export default function CartIsland(props: {
         <div class="rounded-2xl border border-ink/10 bg-paper-deep/40 p-10 text-center">
           <p class="text-ink-soft">{tr("panier.vide")}</p>
           <a
-            href="/affiches"
+            href={lien(langue, "/affiches")}
             class="mt-6 inline-block rounded-full bg-ink px-6 py-3 text-paper font-medium hover:bg-ink/85 transition-colors"
           >
-            Découvrir les affiches
+            {tr("accueil.cta")}
           </a>
         </div>
       </Show>
@@ -588,6 +607,7 @@ export default function CartIsland(props: {
                           slots={biblio()!.slots}
                           cache={cache}
                           assetBaseUrl={PUBLIC_API_URL}
+                          messages={{ exempleAffiche: tr("cfg.exemple_affiche") }}
                           foregroundUrl={
                             // Le décor est enregistré dans la configuration au
                             // moment de l'ajout au panier. Les lignes ajoutées
@@ -642,11 +662,11 @@ export default function CartIsland(props: {
 
                     <div class="min-w-0">
                       <h2 class="text-lg leading-tight">
-                        {it.title ?? "Affiche personnalisée"}
+                        {it.title ?? tr("panier.affiche_sans_titre")}
                       </h2>
                       <Show when={!props.stand}>
                         <p class="mt-1 text-sm">
-                          {formatPrice(it.unitPriceCents)}
+                          {formatPrice(it.unitPriceCents, locale)}
                         </p>
                       </Show>
                       <ul class="mt-2 space-y-0.5 text-sm text-ink-soft">
@@ -715,7 +735,7 @@ export default function CartIsland(props: {
 
                   <Show when={!props.stand}>
                     <p class="font-medium sm:text-right">
-                      {formatPrice(it.unitPriceCents * it.quantity)}
+                      {formatPrice(it.unitPriceCents * it.quantity, locale)}
                     </p>
                   </Show>
                 </li>
@@ -743,11 +763,11 @@ export default function CartIsland(props: {
             <Show when={discount().amount > 0}>
               <div class="flex items-center justify-between text-sm text-ink-soft">
                 <span>{tr("panier.sous_total")}</span>
-                <span>{formatPrice(subtotal())}</span>
+                <span>{formatPrice(subtotal(), locale)}</span>
               </div>
               <div class="mt-1 flex items-center justify-between text-sm text-sage">
                 <span>✨ {discount().label}</span>
-                <span>− {formatPrice(discount().amount)}</span>
+                <span>− {formatPrice(discount().amount, locale)}</span>
               </div>
             </Show>
             {/* Code promo : un champ, un bouton, et la remise se voit tout
@@ -809,7 +829,7 @@ export default function CartIsland(props: {
 
             <div class="mt-3 flex items-center justify-end gap-4">
               <span class="text-ink-soft">{tr("panier.total_estime")}</span>
-              <span class="text-2xl">{formatPrice(total())}</span>
+              <span class="text-2xl">{formatPrice(total(), locale)}</span>
             </div>
             <p class="mt-2 text-xs text-ink-soft">{tr("panier.taxes")}</p>
             {/* Le port se chiffre au tunnel, mais son ingrédient principal se
@@ -818,11 +838,11 @@ export default function CartIsland(props: {
             <Show when={cart()!.poidsGrammes > 0}>
               <p class="mt-1 text-xs text-ink-soft">
                 {tr("livraison.poids_colis")}{" "}
-                {formaterPoids(cart()!.poidsGrammes)}
+                {formaterPoids(cart()!.poidsGrammes, locale)}
               </p>
             </Show>
             <a
-              href="/commande"
+              href={lien(langue, "/commande")}
               class="mt-4 block rounded-md bg-ink px-8 py-4 text-center font-medium text-paper hover:bg-ink-soft transition-colors"
             >
               {tr("panier.payer")}

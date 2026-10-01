@@ -59,6 +59,7 @@ import {
 import {
   COULEUR_TEXTE_DEFAUT,
   lignesRemplies,
+  sousLignes,
   styleDesLignes,
 } from "@memoryline/types";
 import type { PosterConfig, PosterFormat } from "@memoryline/types";
@@ -537,15 +538,16 @@ async function buildTextSvg(
 
   const rendus = await Promise.all(
     lignes.map(async (ligne, i) => {
-      const texte = ligne.value.trim();
       const police = policeParId(
         ligne.font,
         POLICE_LIGNE_DEFAUT[i] ?? POLICE_SOUSTITRE_DEFAUT,
       );
       const famille = familleCss(police);
+      // Une ligne coupée à la main par le client (touche Entrée) s'imprime en
+      // autant de lignes, coupées au même endroit que dans l'aperçu.
       // Les caractères que la police ne sait pas écrire passent dans une
       // autre — les chiffres de la manuscrite, notamment (cf. morceauxDeTexte).
-      const morceaux = morceauxDeTexte(texte, police);
+      const decoupe = sousLignes(ligne.value).map((s) => morceauxDeTexte(s, police));
       // Gras sur la première ligne seulement : c'est ainsi que le titre était
       // imprimé, et une réimpression doit ressembler à l'affiche d'origine.
       const gras = i === 0;
@@ -558,15 +560,18 @@ async function buildTextSvg(
           facteur,
       );
       // On ne rétrécit QUE ce qui dépasserait : une ligne qui tenait déjà
-      // s'imprime exactement comme avant.
-      const parCorps = await largeurParCorps(morceaux, gras);
-      const occupee = parCorps === null ? 0 : parCorps * taille;
+      // s'imprime exactement comme avant. Les morceaux d'une ligne coupée
+      // gardent la même taille entre eux : c'est le plus long qui décide.
+      const largeurs = await Promise.all(decoupe.map((m) => largeurParCorps(m, gras)));
+      const occupee = Math.max(0, ...largeurs.map((l) => (l === null ? 0 : l * taille)));
       const utile = width * LARGEUR_UTILE;
       return {
-        texte,
-        morceaux,
+        decoupe,
         famille,
         gras,
+        // L'interligne entre les morceaux d'une même ligne : celui de
+        // l'aperçu (line-height 1,05 en tête, 1,15 ensuite).
+        interligne: i === 0 ? 1.05 : 1.15,
         taille:
           occupee > utile ? Math.max(1, Math.floor((taille * utile) / occupee)) : taille,
       };
@@ -578,26 +583,37 @@ async function buildTextSvg(
   let precedente: (typeof rendus)[number] | null = null;
   for (const [i, r] of rendus.entries()) {
     const ligne = lignes[i]!;
+    const pas = Math.round(r.taille * r.interligne);
+    const attributs =
+      `font-family="${escapeXml(r.famille)}"${r.gras ? ' font-weight="700"' : ""} ` +
+      `font-size="${r.taille}" fill="${escapeXml(couleur)}"`;
     // Une ligne déplacée à la main s'imprime là où le client l'a posée : le
     // centre de la ligne vaut (x·largeur, y·hauteur), exactement comme dans
-    // l'aperçu. Elle sort de l'empilement, qui continue sans elle.
+    // l'aperçu. Elle sort de l'empilement, qui continue sans elle. Coupée en
+    // plusieurs morceaux, c'est le centre du bloc qui tombe sur ce point.
     if (typeof ligne.x === "number" && typeof ligne.y === "number") {
-      parts.push(
-        `<text x="${Math.round(ligne.x * width)}" y="${Math.round(ligne.y * height)}" ` +
-          `text-anchor="middle" dominant-baseline="central" ` +
-          `font-family="${escapeXml(r.famille)}"${r.gras ? ' font-weight="700"' : ""} ` +
-          `font-size="${r.taille}" fill="${escapeXml(couleur)}">${contenuDeLigne(r.morceaux)}</text>`,
-      );
+      const centre = ligne.y * height;
+      // L'aperçu de l'affiche IA pose ces lignes en line-height 1,1.
+      const pasPose = Math.round(r.taille * 1.1);
+      for (const [j, morceaux] of r.decoupe.entries()) {
+        const yj = Math.round(centre + (j - (r.decoupe.length - 1) / 2) * pasPose);
+        parts.push(
+          `<text x="${Math.round(ligne.x * width)}" y="${yj}" ` +
+            `text-anchor="middle" dominant-baseline="central" ${attributs}>` +
+            `${contenuDeLigne(morceaux)}</text>`,
+        );
+      }
       continue;
     }
-    if (precedente) {
-      y += Math.round(Math.max(precedente.taille, r.taille * INTERLIGNE_MINIMAL));
+    for (const [j, morceaux] of r.decoupe.entries()) {
+      if (j > 0) y += pas;
+      else if (precedente)
+        y += Math.round(Math.max(precedente.taille, r.taille * INTERLIGNE_MINIMAL));
+      parts.push(
+        `<text x="${width / 2}" y="${y}" text-anchor="middle" ${attributs}>` +
+          `${contenuDeLigne(morceaux)}</text>`,
+      );
     }
-    parts.push(
-      `<text x="${width / 2}" y="${y}" text-anchor="middle" ` +
-        `font-family="${escapeXml(r.famille)}"${r.gras ? ' font-weight="700"' : ""} ` +
-        `font-size="${r.taille}" fill="${escapeXml(couleur)}">${contenuDeLigne(r.morceaux)}</text>`,
-    );
     precedente = r;
   }
 

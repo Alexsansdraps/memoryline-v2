@@ -35,9 +35,18 @@ import {
   envoyer,
   estConfigure,
   estEnEssai,
+  memesTextesRelance,
+  normaliserTextesRelance,
+  TEXTES_RELANCE_DEFAUT,
   type Courrier,
+  type EtapeRelance,
   type LigneCourrier,
+  type TextesRelance,
 } from "./mail.js";
+// Les textes que la boutique a réécrits pour ses relances : l'aperçu de ce
+// banc doit montrer ceux-là, pas ceux d'origine, sans quoi il montrerait un
+// courrier qui ne part plus.
+import { etapeLue, ordinal, textesDeLaRelance } from "./relance-panier.js";
 // La vignette d'un produit se compose au même endroit que la relance de
 // panier, seul courrier qui l'affiche : deux façons de fabriquer cette adresse
 // finiraient par diverger, et l'aperçu montrerait une image que le vrai
@@ -413,7 +422,15 @@ async function donneesDeCommande(
  * par modèle : c'est le genre de détail qu'on vient justement vérifier ici.
  * Le destinataire reste vide, comme partout : c'est l'appelant qui le pose.
  */
-function rendre(modele: IdModele, d: DonneesCourrier): Courrier {
+function rendre(
+  modele: IdModele,
+  d: DonneesCourrier,
+  /**
+   * Les textes de la relance de panier, tels que `textesDeLaRelance` les
+   * rend : null pour le courrier d'origine. Ignorés par les autres modèles.
+   */
+  textesRelance: TextesRelance | null = null,
+): Courrier {
   switch (modele) {
     case "confirmation":
       return courrierConfirmation({
@@ -511,6 +528,7 @@ function rendre(modele: IdModele, d: DonneesCourrier): Courrier {
         totalCents: d.totalCents,
         codePromo: d.codePromo,
         lienDesinscription: `${ORIGINE}/api/relance/desabonnement?jeton=essai`,
+        textes: textesRelance,
       });
     case "bienvenue":
       return courrierBienvenue({
@@ -654,7 +672,11 @@ export function mountCourriers(app: Hono): void {
     }
 
     const source = donnees ? "commande" : "exemple";
-    const courrier = rendre(modele, donnees ?? jeuExemple());
+    const courrier = rendre(
+      modele,
+      donnees ?? jeuExemple(),
+      modele === "panier-abandonne" ? await textesDeLaRelance(1) : null,
+    );
     return c.json({
       modele,
       sujet: courrier.subject,
@@ -735,8 +757,107 @@ export function mountCourriers(app: Hono): void {
       );
     }
 
-    const courrier = rendre(modele, donnees ?? jeuExemple());
+    const courrier = rendre(
+      modele,
+      donnees ?? jeuExemple(),
+      modele === "panier-abandonne" ? await textesDeLaRelance(1) : null,
+    );
     const parti = await envoyer({ ...courrier, to: destinataire });
     return c.json({ ok: true, parti, resume: resumeEnvoi(destinataire, parti) });
+  });
+
+  /* --- Le courriel de relance, pendant qu'on le réécrit ------------------ */
+
+  /**
+   * Le courriel d'une relance, avec les textes EN COURS DE SAISIE (pas encore
+   * enregistrés) ou, sans eux, avec ceux qui partiront aujourd'hui.
+   *
+   * Il passe par `rendre`, donc par le même modèle que l'envoi réel : c'est
+   * tout l'intérêt d'un aperçu. Des textes identiques à ceux d'origine de la
+   * 1re relance donnent le courrier d'origine lui-même, exactement comme à
+   * l'enregistrement (voir `enregistrerTextes`).
+   */
+  async function courrierDeRelance(
+    etape: EtapeRelance,
+    brut: unknown,
+  ): Promise<{ courrier: Courrier } | { erreur: string }> {
+    let textes: TextesRelance | null;
+    if (brut === undefined || brut === null) {
+      textes = await textesDeLaRelance(etape);
+    } else {
+      const n = normaliserTextesRelance(brut);
+      if (!n.ok) return { erreur: n.erreur };
+      textes =
+        etape === 1 && memesTextesRelance(n.textes, TEXTES_RELANCE_DEFAUT[1])
+          ? null
+          : n.textes;
+    }
+    return { courrier: rendre("panier-abandonne", jeuExemple(), textes) };
+  }
+
+  /** L'aperçu d'une relance : rien n'est envoyé, rien n'est enregistré. */
+  app.post("/admin/courriers/relance/apercu", async (c) => {
+    const corps = (await c.req.json().catch(() => null)) as {
+      etape?: unknown;
+      textes?: unknown;
+    } | null;
+    const etape = etapeLue(corps?.etape);
+    if (!etape) return c.json({ error: "Cette relance n'existe pas." }, 400);
+    const r = await courrierDeRelance(etape, corps?.textes);
+    if ("erreur" in r) return c.json({ error: r.erreur }, 400);
+    return c.json({
+      etape,
+      sujet: r.courrier.subject,
+      html: r.courrier.html,
+      texte: r.courrier.text ?? "",
+    });
+  });
+
+  /**
+   * « M'envoyer un essai » : le courriel en cours de saisie, à l'adresse de
+   * la personne connectée, et à elle seule.
+   *
+   * Pas de champ « destinataire » ici, exprès : cet écran sert à relire son
+   * propre texte, et une adresse tapée à la main finirait un jour par être
+   * celle d'une cliente. Le banc des courriers garde ce choix pour qui en a
+   * besoin.
+   */
+  app.post("/admin/courriers/relance/essai", async (c) => {
+    const corps = (await c.req.json().catch(() => null)) as {
+      etape?: unknown;
+      textes?: unknown;
+    } | null;
+    const etape = etapeLue(corps?.etape);
+    if (!etape) return c.json({ error: "Cette relance n'existe pas." }, 400);
+
+    const destinataire = (c.get("utilisateur")?.email ?? "").trim();
+    if (!adresseAcceptable(destinataire))
+      return c.json(
+        {
+          error: `Votre compte du back-office porte l'adresse « ${destinataire} », qui ne peut pas recevoir de courrier. L'essai n'est pas parti.`,
+        },
+        400,
+      );
+    if (!estConfigure()) return c.json({ error: RIEN_POUR_ENVOYER }, 503);
+
+    const r = await courrierDeRelance(etape, corps?.textes);
+    if ("erreur" in r) return c.json({ error: r.erreur }, 400);
+
+    if (cadenceDepassee())
+      return c.json(
+        {
+          error: `Vous avez envoyé ${ENVOIS_PAR_MINUTE} courriers d'essai en moins d'une minute. Patientez un instant avant le suivant.`,
+        },
+        429,
+      );
+
+    const parti = await envoyer({ ...r.courrier, to: destinataire });
+    return c.json({
+      ok: true,
+      parti,
+      destinataire,
+      etape: `${ordinal(etape)} relance`,
+      resume: resumeEnvoi(destinataire, parti),
+    });
   });
 }

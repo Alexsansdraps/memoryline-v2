@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import { t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { getCartId, browserApi } from "../lib/api.ts";
 
@@ -9,7 +10,11 @@ import { getCartId, browserApi } from "../lib/api.ts";
  * depuis le cache du navigateur (`pageshow`), sinon la pastille resterait
  * périmée après un ajout suivi d'un retour.
  */
-export default function CartBadge() {
+export default function CartBadge(props: {
+  /** Langue de la page — pilote l'intitulé lu par les lecteurs d'écran. */
+  langue?: Langue;
+}) {
+  const tr = t(props.langue ?? LANGUE_DEFAUT);
   const [nombre, setNombre] = createSignal(0);
 
   async function rafraichir() {
@@ -44,7 +49,7 @@ export default function CartBadge() {
     <Show when={nombre() > 0}>
       <span
         class="ml-panier-pastille"
-        aria-label={`${nombre()} article(s) dans le panier`}
+        aria-label={tr("panier.pastille").replace("{nombre}", String(nombre()))}
       >
         {nombre()}
       </span>

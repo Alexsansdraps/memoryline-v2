@@ -22,6 +22,7 @@
  * et c'est l'erreur qu'on ne voit pas passer : le second se paie en centimes
  * d'avance, le premier revient en surtaxe, en retard, ou en colis refusé.
  */
+import { separateurDecimal } from "./formats.js";
 
 /** Un entier de grammes, ou rien. Les valeurs absurdes sont écartées. */
 function grammes(v: unknown): number | null {
@@ -71,9 +72,14 @@ export function poidsPanier(lignes: readonly LignePesee[]): number {
   );
 }
 
-/** « 1,25 kg » ou « 340 g » — pour l'affichage, jamais pour le calcul. */
-export function formaterPoids(grammes: number): string {
+/**
+ * « 1,25 kg » ou « 340 g » (« 1.25 kg » en anglais) — pour l'affichage,
+ * jamais pour le calcul.
+ */
+export function formaterPoids(grammes: number, locale = "fr-FR"): string {
   if (grammes >= 1000)
-    return `${(grammes / 1000).toFixed(grammes % 1000 === 0 ? 0 : 2).replace(".", ",")} kg`;
+    return `${(grammes / 1000)
+      .toFixed(grammes % 1000 === 0 ? 0 : 2)
+      .replace(".", separateurDecimal(locale))} kg`;
   return `${Math.round(grammes)} g`;
 }

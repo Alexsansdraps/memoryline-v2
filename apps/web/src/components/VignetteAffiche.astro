@@ -20,7 +20,7 @@ import {
   varianteLaMoinsChere,
   type Product,
 } from "../lib/api.ts";
-import { lien, t, type Langue } from "../i18n/utils.ts";
+import { LOCALE_COMPLETE, lien, t, type Langue } from "../i18n/utils.ts";
 
 interface Props {
   affiche: Product;
@@ -60,6 +60,7 @@ const GRILLE_RAYON =
 
 const { affiche, langue, prioritaire = false, sizes = GRILLE_RAYON } = Astro.props;
 const tr = t(langue);
+const locale = LOCALE_COMPLETE[langue];
 
 /*
  * Au stand, aucun montant.
@@ -106,8 +107,8 @@ const mini = tarifs.length ? Math.min(...tarifs) : affiche.basePriceCents;
 const maxi = tarifs.length ? Math.max(...tarifs) : affiche.basePriceCents;
 const prix =
   promo || mini === maxi
-    ? formatPrice(mini)
-    : `${formatPrice(mini)} – ${formatPrice(maxi)}`;
+    ? formatPrice(mini, locale)
+    : `${formatPrice(mini, locale)} – ${formatPrice(maxi, locale)}`;
 /*
  * Le visuel, et les tailles dans lesquelles le navigateur peut le prendre.
  *
@@ -177,7 +178,7 @@ const imageJeu = assetSrcset(affiche.image, [400, 600, 900, 1400]);
             <span class="text-terracotta-deep">{prix}</span>
             <s class="text-ink/45">
               <span class="sr-only">{tr("promo.ancien_prix")} </span>
-              {formatPrice(promo.avantCents)}
+              {formatPrice(promo.avantCents, locale)}
             </s>
           </p>
         ) : (

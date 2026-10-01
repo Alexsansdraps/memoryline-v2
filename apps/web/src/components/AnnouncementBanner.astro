@@ -1,11 +1,30 @@
 ---
 import { api, type Banner } from "../lib/api.ts";
+import { LANGUE_DEFAUT, lien, type Langue } from "../i18n/utils.ts";
+
+interface Props {
+  /** Langue de la page : un lien interne du bandeau y garde la visiteuse. */
+  langue?: Langue;
+}
+const { langue = LANGUE_DEFAUT } = Astro.props;
 
 let banner: Banner | null = null;
 try {
   banner = await api.banner();
 } catch {
   // API non joignable -> pas de bandeau
+}
+
+/**
+ * L'adresse du lien, prête à être cliquée. Une adresse interne reçoit le
+ * préfixe de langue, comme celles du menu : sans lui, la visiteuse anglaise
+ * repartait sur la page française. Le reste (autre site, courriel) part tel
+ * quel.
+ */
+function adresse(href: string): string {
+  if (!href.startsWith("/") || href.startsWith("//")) return href;
+  const [chemin, requete] = href.split("?");
+  return lien(langue, chemin || "/") + (requete ? `?${requete}` : "");
 }
 ---
 
@@ -17,7 +36,7 @@ try {
     >
       <span>{banner.message}</span>
       {banner.linkUrl && banner.linkLabel && (
-        <a href={banner.linkUrl} class="underline underline-offset-2 ml-2">
+        <a href={adresse(banner.linkUrl)} class="underline underline-offset-2 ml-2">
           {banner.linkLabel}
         </a>
       )}

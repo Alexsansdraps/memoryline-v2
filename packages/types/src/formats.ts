@@ -20,10 +20,26 @@ export const DIMENSIONS_FORMAT: Record<PosterFormat, { l: number; h: number }> =
   A3: { l: 297, h: 420 },
 };
 
-/** « 297 » → « 29,7 ». Les entiers restent entiers : « 21 », pas « 21,0 ». */
-function centimetres(mm: number): string {
+/**
+ * Le séparateur décimal d'une langue : « , » en français, « . » en anglais.
+ * Exporté pour `formaterPoids`, qui suit la même règle.
+ */
+export function separateurDecimal(locale: string): string {
+  return (
+    new Intl.NumberFormat(locale).formatToParts(1.5).find((p) => p.type === "decimal")
+      ?.value ?? ","
+  );
+}
+
+/**
+ * « 297 » → « 29,7 » (« 29.7 » en anglais). Les entiers restent entiers :
+ * « 21 », pas « 21,0 ».
+ */
+function centimetres(mm: number, locale: string): string {
   const cm = mm / 10;
-  return Number.isInteger(cm) ? String(cm) : cm.toFixed(1).replace(".", ",");
+  return Number.isInteger(cm)
+    ? String(cm)
+    : cm.toFixed(1).replace(".", separateurDecimal(locale));
 }
 
 /**
@@ -32,16 +48,16 @@ function centimetres(mm: number): string {
  * Rend une chaîne vide pour un format inconnu plutôt que d'inventer une
  * taille : mieux vaut ne rien dire que mentir sur ce qu'on livre.
  */
-export function dimensionsFormat(format: string): string {
+export function dimensionsFormat(format: string, locale = "fr-FR"): string {
   const d = (DIMENSIONS_FORMAT as Record<string, { l: number; h: number }>)[
     format
   ];
-  return d ? `${centimetres(d.l)} × ${centimetres(d.h)} cm` : "";
+  return d ? `${centimetres(d.l, locale)} × ${centimetres(d.h, locale)} cm` : "";
 }
 
 /** Le nom et les dimensions : « A4 (21 × 29,7 cm) ». */
-export function libelleFormat(format: string): string {
-  const d = dimensionsFormat(format);
+export function libelleFormat(format: string, locale = "fr-FR"): string {
+  const d = dimensionsFormat(format, locale);
   return d ? `${format} (${d})` : format;
 }
 

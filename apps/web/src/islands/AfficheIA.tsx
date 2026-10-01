@@ -1,5 +1,12 @@
 /// <reference lib="dom" />
-import { t, lien, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
+import {
+  t,
+  lien,
+  LANGUE_DEFAUT,
+  LOCALE_COMPLETE,
+  type CleUi,
+  type Langue,
+} from "../i18n/utils.ts";
 import {
   createSignal,
   createMemo,
@@ -19,7 +26,10 @@ import {
   familleCss,
   ligneEnMajuscules,
   policeParId,
+  limiterRetours,
+  MORCEAUX_PAR_LIGNE,
   policesDeLaLigne,
+  sousLignes,
   type PosterConfig,
   type TextBlock,
 } from "@memoryline/types";
@@ -95,6 +105,7 @@ function Numero(props: { n: number }): JSX.Element {
 
 export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   const tr = t(props.langue ?? LANGUE_DEFAUT);
+  const locale = LOCALE_COMPLETE[props.langue ?? LANGUE_DEFAUT];
 
   const [etape, setEtape] = createSignal<Etape>("depot");
   const [echec, setEchec] = createSignal<EchecIA | null>(null);
@@ -191,9 +202,12 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    * Le champ est réécrit ici, curseur compris : sans cela, taper au milieu
    * d'un mot renverrait le curseur en fin de ligne à chaque lettre.
    */
-  function saisirLigne(rang: number, champ: HTMLInputElement) {
+  function saisirLigne(rang: number, champ: HTMLTextAreaElement) {
+    // Trois morceaux au plus : les retours à la ligne en trop deviennent des
+    // espaces (limiterRetours), sans perdre un mot.
     const brut = champ.value;
-    const value = ligneEnMajuscules(rang) ? brut.toLocaleUpperCase() : brut;
+    const limite = limiterRetours(brut);
+    const value = ligneEnMajuscules(rang) ? limite.toLocaleUpperCase() : limite;
     if (value !== brut) {
       const debut = champ.selectionStart;
       const fin = champ.selectionEnd;
@@ -275,6 +289,29 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     { champ: "cfg.ligne2_champ", exemple: "cfg.ligne2_exemple" },
     { champ: "cfg.ligne3_champ", exemple: "cfg.ligne3_exemple" },
   ] as const;
+
+  /*
+   * Le nom des polices et des couleurs : la liste partagée
+   * (@memoryline/types) ne le connaît qu'en français. La traduction se choisit
+   * d'après l'identifiant, le même que celui du configurateur ; un
+   * identifiant sans clé garde son nom français plutôt que de rester sans nom.
+   */
+  const CLES_POLICES: Record<string, CleUi> = {
+    serif: "cfg.police.serif",
+    spartan: "cfg.police.spartan",
+    shabby: "cfg.police.shabby",
+  };
+  const CLES_COULEURS: Record<string, CleUi> = {
+    blanc: "cfg.couleur.blanc",
+    anthracite: "cfg.couleur.anthracite",
+  };
+  const nomTraduit = (
+    cles: Record<string, CleUi>,
+    choix: { id: string; libelle: string },
+  ) => {
+    const cle = cles[choix.id];
+    return cle ? tr(cle) : choix.libelle;
+  };
   const [ajout, setAjout] = createSignal(false);
 
   /** Chemin de la photo côté serveur, réutilisé à chaque nouvel essai. */
@@ -672,9 +709,12 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                           "letter-spacing": rang === 0 ? "0.04em" : "normal",
                           "margin-top": rang === 0 ? "0" : "0.1em",
                           "word-break": "break-word",
+                          // Un retour à la ligne tapé coupe la ligne ici comme
+                          // à l'impression.
+                          "white-space": "pre-line",
                         }}
                       >
-                        {ligne().value}
+                        {sousLignes(ligne().value).join("\n")}
                       </div>
                     </Show>
                   )}
@@ -701,7 +741,9 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                           left: `${(ligne().x ?? 0.5) * 100}%`,
                           top: `${(ligne().y ?? 0.1) * 100}%`,
                           transform: "translate(-50%, -50%)",
-                          "white-space": "nowrap",
+                          // « pre » et non « nowrap » : une ligne coupée à la main
+                          // garde ses retours, sans jamais se replier seule.
+                          "white-space": "pre",
                           "pointer-events": "auto",
                           cursor: "move",
                           "touch-action": "none",
@@ -718,7 +760,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                           "letter-spacing": rang === 0 ? "0.04em" : "normal",
                         }}
                       >
-                        {ligne().value}
+                        {sousLignes(ligne().value).join("\n")}
                       </div>
                     </Show>
                   )}
@@ -1008,13 +1050,16 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               {(ligne, rang) => (
                 <label class="block text-sm">
                   <span class="font-medium">{tr(CLES_LIGNES[rang]!.champ)}</span>
-                  <input
-                    type="text"
+                  {/* Une zone de texte : la touche Entrée coupe la ligne,
+                      trois morceaux au plus, comme au configurateur. */}
+                  <textarea
+                    rows={Math.min(MORCEAUX_PAR_LIGNE, ligne().value.split("\n").length)}
                     value={ligne().value}
                     maxLength={60}
                     placeholder={tr(CLES_LIGNES[rang]!.exemple)}
+                    aria-describedby="ml-ia-aide-retour-ligne"
                     onInput={(e) => saisirLigne(rang, e.currentTarget)}
-                    class="mt-1 w-full border border-ink/20 bg-paper px-3 py-2 text-sm focus:border-ink focus:outline-none"
+                    class="mt-1 w-full resize-none border border-ink/20 bg-paper px-3 py-2 text-sm leading-snug focus:border-ink focus:outline-none"
                   />
                   <div class="mt-1.5 flex flex-wrap gap-1.5">
                     <For each={policesDeLaLigne(rang)}>
@@ -1022,7 +1067,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                         <button
                           type="button"
                           aria-pressed={ligne().font === police.id}
-                          title={police.libelle}
+                          title={nomTraduit(CLES_POLICES, police)}
                           onClick={() => modifierLigne(rang, { font: police.id })}
                           class={`border px-3 py-1.5 text-lg leading-snug transition-colors ${
                             ligne().font === police.id
@@ -1031,7 +1076,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                           }`}
                           style={{ "font-family": familleCss(police) }}
                         >
-                          {police.libelle}
+                          {nomTraduit(CLES_POLICES, police)}
                         </button>
                       )}
                     </For>
@@ -1039,6 +1084,9 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                 </label>
               )}
             </Index>
+            <p id="ml-ia-aide-retour-ligne" class="-mt-1 text-xs text-ink/60">
+              {tr("cfg.aide_retour_ligne")}
+            </p>
 
             <div>
               <p class="text-sm font-medium">{tr("cfg.couleur_texte")}</p>
@@ -1048,8 +1096,8 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                     <button
                       type="button"
                       aria-pressed={couleur() === c.hex}
-                      aria-label={c.libelle}
-                      title={c.libelle}
+                      aria-label={nomTraduit(CLES_COULEURS, c)}
+                      title={nomTraduit(CLES_COULEURS, c)}
                       onClick={() => setCouleur(c.hex)}
                       class={`h-9 w-9 border-2 transition-colors ${
                         couleur() === c.hex ? "border-terracotta" : "border-ink/30"
@@ -1081,7 +1129,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                       <span class="block font-medium">{f.format}</span>
                       <Show when={!props.sansPrix}>
                         <span class="block opacity-80">
-                          {formatPrice(f.priceCents)}
+                          {formatPrice(f.priceCents, locale)}
                         </span>
                       </Show>
                     </button>

@@ -123,21 +123,76 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
     </details>
 
     {/* ------------------------------------------------------------ */}
+    <details id="relance-paniers" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Relance des paniers abandonnés
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          Quand une cliente laisse son adresse au moment de commander puis
+          s'en va sans payer, la boutique peut lui écrire pour lui rappeler
+          son affiche. Tout se règle dans
+          <a href={url("/paniers")} class="text-bo-accent hover:underline">Paniers abandonnés</a>.
+        </p>
+        <ul class="list-disc space-y-2 pl-5">
+          <li>
+            <strong>Allumer ou éteindre</strong> : case « Relancer
+            automatiquement ». Éteinte, rien ne part tout seul ; le bouton
+            « Relancer » d'une ligne fonctionne toujours.
+          </li>
+          <li>
+            <strong>Programmer</strong> : la 1re relance part au délai choisi
+            après le dernier geste de la cliente (10 heures est le réglage
+            conseillé). Une 2e, puis une 3e, sont facultatives, chacune avec
+            son délai. « N'envoyer qu'en journée » fait attendre le matin aux
+            relances qui tomberaient la nuit. La liste indique, sous chaque
+            panier, la prochaine relance prévue.
+          </li>
+          <li>
+            <strong>Modifier le courriel</strong> : lien « Modifier le
+            courriel » en face de chaque relance. On y change l'objet,
+            l'accroche, le message, le bouton et le mot de la fin, avec les
+            variables <code class="rounded bg-bo-bg px-1">{"{prenom}"}</code>,
+            <code class="rounded bg-bo-bg px-1">{"{articles}"}</code>,
+            <code class="rounded bg-bo-bg px-1">{"{montant}"}</code> et
+            <code class="rounded bg-bo-bg px-1">{"{lien}"}</code>, et du
+            <code class="rounded bg-bo-bg px-1">**gras**</code>. L'aperçu se
+            met à jour pendant qu'on écrit ; « M'envoyer un essai » l'envoie à
+            l'adresse de votre compte. « Revenir au texte d'origine » efface
+            votre version.
+          </li>
+        </ul>
+        <p>
+          <strong>Ce qui ne part jamais</strong>, quels que soient les
+          réglages : une relance pour un panier payé, vidé, ou dont plus
+          aucune affiche n'est disponible ; à une cliente qui a commandé
+          depuis avec la même adresse, ou qui a demandé à ne plus recevoir de
+          rappel ; pour un panier de plus de quatorze jours. Chaque relance
+          automatique ne part qu'une fois ; le bouton « Relancer » en renvoie
+          une de plus, mais jamais deux en moins de dix minutes.
+        </p>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
     <details id="bordereau" class="group rounded-lg border border-bo-border bg-bo-surface">
       <summary class="cursor-pointer px-4 py-3 font-medium">
-        Comment imprimer un bordereau Mondial Relay ?
+        Comment acheter et imprimer un bordereau (Mondial Relay, Colissimo, Chronopost) ?
       </summary>
       <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
         <ol class="list-decimal space-y-2 pl-5">
           <li>Ouvrez la commande (elle doit être payée).</li>
           <li>
             Dans le bloc <strong>« Bordereau transporteur »</strong>, vérifiez
-            le poids du colis <em>emballé</em> et cliquez « Recalculer » si vous
-            l'avez changé : le prix dépend de la tranche de poids.
+            le destinataire, puis le poids du colis <em>emballé</em> : cliquez
+            « Recalculer » si vous l'avez changé, le prix dépend de la tranche
+            de poids.
           </li>
           <li>
-            Choisissez l'option (en général « Mondial Relay Point Relais ») et
-            cliquez <strong>« Acheter le bordereau — 3,42 € »</strong>. Une
+            Les services du transporteur payé par la cliente s'affichent
+            d'abord ; celui qui tient sa promesse (signature, délai, point
+            relais…) porte « correspond au mode payé » et est coché d'office.
+            Cliquez <strong>« Acheter le bordereau — 3,42 € »</strong>. Une
             confirmation redit le prix : c'est SendCloud qui le prélève, dès la
             création de l'étiquette.
           </li>
@@ -147,14 +202,39 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
           </li>
           <li>
             Une fois le colis déposé, enregistrez l'expédition (bloc du haut) :
-            Mondial Relay et le numéro de suivi sont déjà remplis, et le client
-            reçoit son lien de suivi.
+            le transporteur et le numéro de suivi sont déjà remplis, et le
+            client reçoit son lien de suivi.
           </li>
         </ol>
         <p>
-          <strong>Une erreur ?</strong> « Annuler le bordereau » l'invalide chez
-          SendCloud (possible pendant 42 jours, tant que le colis n'a pas été
-          déposé). Un double-clic ne peut pas acheter deux étiquettes.
+          <strong>Un autre transporteur ?</strong> « Voir tous les services »
+          liste ceux de Mondial Relay, Colissimo et Chronopost pour ce colis
+          (pour un point relais, ceux qui y livrent). Ceux qui ne sont pas ce
+          que la cliente a payé le disent en orange : « autre transporteur »,
+          « sans la signature payée », « en boîte aux lettres »…
+        </p>
+        <p>
+          <strong>Retrait sur place, vente du stand, commande sans adresse ?</strong>
+          Elles ont aussi leur bordereau : « Saisir l'adresse du destinataire »
+          dans le bloc, puis choisissez le service. L'adresse saisie devient
+          celle de la commande, et la chronologie garde l'ancienne. Une
+          adresse fausse se corrige au même endroit (« Corriger l'adresse »).
+          Pour un point relais fermé ou une cliente qui préfère être livrée
+          chez elle : « Envoyer à une adresse plutôt qu'au point relais ».
+        </p>
+        <p>
+          <strong>Le bloc dit pourquoi il n'achète pas</strong>, et quoi faire :
+          une commande annulée ou un panier ne s'expédient jamais ; une
+          commande non payée attend d'être encaissée ; un e-mail manquant
+          s'ajoute sur la fiche de la cliente (le transporteur la prévient
+          par là).
+        </p>
+        <p>
+          <strong>Une erreur ?</strong> SendCloud ne modifie pas une étiquette :
+          « Annuler le bordereau » l'invalide (possible pendant 42 jours, tant
+          que le colis n'a pas été déposé), corrigez, puis rachetez-en un. Un
+          double-clic ne peut pas acheter deux étiquettes, et une commande n'a
+          jamais qu'un seul bordereau valable à la fois.
         </p>
         <p>
           <strong>Badge « Mode essai »</strong> : SendCloud fabrique alors une

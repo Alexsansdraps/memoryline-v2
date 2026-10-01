@@ -19,6 +19,8 @@ import AddToCartButton from "../../../islands/AddToCartButton.tsx";
 import AfficheIA from "../../../islands/AfficheIA.tsx";
 import { htmlSur } from "../../../lib/html-sur.ts";
 import {
+  LANGUE_DEFAUT,
+  LOCALE_COMPLETE,
   estLangue,
   langueDepuisParam,
   lien,
@@ -40,6 +42,7 @@ if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
   return new Response(null, { status: 404 });
 const langue: Langue = langueDepuisParam(Astro.params.lang);
 const tr = t(langue);
+const locale = LOCALE_COMPLETE[langue];
 
 /*
  * Au stand, aucun montant sur la fiche.
@@ -107,16 +110,27 @@ const kindLabel =
     ? tr("genre.personnalisable")
     : tr("genre.prete_a_imprimer");
 
+/*
+ * Le titre et la description SEO sont saisis au back-office en FRANÇAIS, et
+ * l'API ne les traduit pas (elle ne traduit que le nom et la description).
+ * Tant que c'est le cas, ils ne servent qu'à la page française : ailleurs,
+ * Google et les partages afficheraient du français sur /en ou /de. Les autres
+ * langues retombent sur le nom et la description, eux traduits.
+ */
+const seoSaisiDansLaLangue = langue === LANGUE_DEFAUT;
+
 // Le texte du référencement, dans l'ordre : ce que la boutique a écrit
 // elle-même, puis le début de la description, puis une phrase de repli. Le
 // découpage à cent soixante caractères coupe au milieu d'un mot ; il ne sert
 // donc que faute de mieux.
 const description =
-  product.seoDescription?.trim() ||
+  (seoSaisiDansLaLangue ? product.seoDescription?.trim() : "") ||
   product.description?.replace(/<[^>]+>/g, "").slice(0, 160) ||
-  `Affiche ${cleanName} — ${kindLabel.toLowerCase()}, imprimée en A4 ou A3. Memory Line.`;
+  tr("produit.meta_repli")
+    .replace("{nom}", cleanName)
+    .replace("{genre}", kindLabel.toLowerCase());
 /** Le titre de l'onglet et du résultat Google, quand il doit différer du nom. */
-const titreSeo = product.seoTitle?.trim() || null;
+const titreSeo = (seoSaisiDansLaLangue && product.seoTitle?.trim()) || null;
 
 // --- Données structurées Schema.org (SEO riche) ------------------------
 const siteUrl = Astro.site?.toString().replace(/\/$/, "") ?? "https://memoryline.fr";
@@ -138,22 +152,29 @@ const productLd = {
     availability: "https://schema.org/InStock",
   },
 };
+// Le fil d'Ariane que Google affiche sous le résultat : dans la langue de la
+// page, et vers les adresses de cette langue.
 const breadcrumbLd = {
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   itemListElement: [
-    { "@type": "ListItem", position: 1, name: "Accueil", item: siteUrl + "/" },
+    {
+      "@type": "ListItem",
+      position: 1,
+      name: tr("seo.fil_accueil"),
+      item: siteUrl + lien(langue, "/"),
+    },
     {
       "@type": "ListItem",
       position: 2,
-      name: "Affiches",
-      item: siteUrl + "/affiches",
+      name: tr("nav.affiches"),
+      item: siteUrl + lien(langue, "/affiches"),
     },
     {
       "@type": "ListItem",
       position: 3,
       name: cleanName,
-      item: `${siteUrl}/affiches/${product.slug}`,
+      item: siteUrl + lien(langue, `/affiches/${product.slug}`),
     },
   ],
 };
@@ -226,18 +247,18 @@ const breadcrumbLd = {
         sansPrix ? null : promoPrincipale ? (
           <p class="mt-4 flex flex-wrap items-baseline gap-3">
             <span class="text-2xl text-terracotta-deep">
-              {formatPrice(minPrice)}
+              {formatPrice(minPrice, locale)}
             </span>
             <s class="text-lg text-ink/45">
               <span class="sr-only">{tr("promo.ancien_prix")} </span>
-              {formatPrice(promoPrincipale.avantCents)}
+              {formatPrice(promoPrincipale.avantCents, locale)}
             </s>
             <span class="bg-terracotta px-2 py-0.5 text-sm font-semibold text-paper">
               −{promoPrincipale.pourcent} %
             </span>
           </p>
         ) : (
-          <p class="mt-4 text-2xl">{formatPrice(minPrice)}</p>
+          <p class="mt-4 text-2xl">{formatPrice(minPrice, locale)}</p>
         )
       }
 
@@ -265,19 +286,19 @@ const breadcrumbLd = {
                   aria-checked={i === 0 ? "true" : "false"}
                 >
                   <div class="font-medium">{v.format}</div>
-                  <div class="text-ink-soft text-xs">{dimensionsFormat(v.format)}</div>
+                  <div class="text-ink-soft text-xs">{dimensionsFormat(v.format, locale)}</div>
                   {sansPrix ? null : promo ? (
                     <div class="flex flex-wrap items-baseline gap-2">
                       <span class="text-terracotta-deep">
-                        {formatPrice(v.priceCents)}
+                        {formatPrice(v.priceCents, locale)}
                       </span>
                       <s class="text-ink/45">
                         <span class="sr-only">{tr("promo.ancien_prix")} </span>
-                        {formatPrice(promo.avantCents)}
+                        {formatPrice(promo.avantCents, locale)}
                       </s>
                     </div>
                   ) : (
-                    <div class="text-ink-soft">{formatPrice(v.priceCents)}</div>
+                    <div class="text-ink-soft">{formatPrice(v.priceCents, locale)}</div>
                   )}
                 </button>
               );

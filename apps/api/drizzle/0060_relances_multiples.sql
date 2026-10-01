@@ -1,0 +1,1 @@
+ALTER TABLE "order" ADD COLUMN "reminder_count" integer DEFAULT 0 NOT NULL;
