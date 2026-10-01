@@ -249,7 +249,7 @@ export default function CartIsland(props: {
    */
   const [biblio] = createResource(async () => {
     try {
-      return await browserApi.characters();
+      return await browserApi.characters(props.langue);
     } catch {
       return null;
     }
@@ -285,7 +285,7 @@ export default function CartIsland(props: {
    */
   const [cadres] = createResource(async () => {
     try {
-      return await browserApi.frames();
+      return await browserApi.frames(props.langue);
     } catch {
       return [];
     }

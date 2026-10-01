@@ -96,6 +96,8 @@ export interface CharacterCategory {
    * rangée dans « Catégories archivées ». Ses personnages ne bougent pas.
    */
   archivedAt?: string | null;
+  /** Le nom dans les autres langues : { en: { name }, … }. */
+  translations?: Partial<Record<string, { name?: string }>> | null;
   /** Nombre de personnages non archivés rattachés (renvoyé par /admin/categories). */
   count?: number;
 }
@@ -103,6 +105,8 @@ export interface CharacterCategory {
 /** Cadre proposé en option lors de la personnalisation. */
 export interface Cadre {
   id: number;
+  /** Le nom (la couleur) dans les autres langues : { en: { name }, … }. */
+  translations?: Partial<Record<string, { name?: string }>> | null;
   slug: string;
   name: string;
   /** Supplément pour une affiche A4, en centimes. */
@@ -1718,6 +1722,15 @@ export function adminApi(request?: Request) {
     orderDetail: (id: number) =>
       req<OrderDetail>("GET", `/admin/orders/${id}`, undefined, cookie),
     frames: () => req<Cadre[]>("GET", "/admin/frames", undefined, cookie),
+    /** Traduction AUTOMATIQUE proposée (rien n'est enregistré) : champ → texte traduit. */
+    proposerTraduction: (lang: string, champs: Record<string, string>) =>
+      req<{ champs: Record<string, string> }>("POST", "/admin/traduire", { lang, champs }, cookie),
+    /** Nom d'une catégorie de personnages dans une langue (vide = retire). */
+    traduireCategorie: (id: number, lang: string, name: string) =>
+      req<unknown>("POST", `/admin/categories/${id}/translations`, { lang, name }, cookie),
+    /** Nom (couleur) d'un cadre dans une langue (vide = retire). */
+    traduireCadre: (id: number, lang: string, name: string) =>
+      req<unknown>("POST", `/admin/frames/${id}/translations`, { lang, name }, cookie),
     upsertFrame: (data: {
       id?: number;
       name: string;

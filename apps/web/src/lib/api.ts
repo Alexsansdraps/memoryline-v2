@@ -559,8 +559,14 @@ export interface CharacterLibrary {
 
 /** Client API navigateur (configurateur, panier, commande). */
 export const browserApi = {
-  characters: () => browserGet<CharacterLibrary>("/characters"),
-  frames: () => browserGet<CadreDTO[]>("/frames"),
+  /** La bibliothèque de personnages ; les noms de catégories dans la langue du visiteur. */
+  characters: (langue?: string) =>
+    browserGet<CharacterLibrary>(
+      `/characters${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,
+    ),
+  /** Les cadres proposés ; leur nom (leur couleur) dans la langue du visiteur. */
+  frames: (langue?: string) =>
+    browserGet<CadreDTO[]>(`/frames${langue && langue !== "fr" ? `?lang=${langue}` : ""}`),
   /** Zones, modes et tarifs de livraison. */
   shipping: () => browserGet<CatalogueLivraison>("/shipping"),
   /** Points relais autour d'un code postal. */

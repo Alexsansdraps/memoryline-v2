@@ -242,6 +242,11 @@ let ia: { aiEnabled: boolean; aiStylePrompt: string } | null = null;
 
 let flash: string | null = null;
 let flashErreur = false;
+/**
+ * Traductions AUTOMATIQUES proposées, par langue, à afficher dans les champs
+ * sans les enregistrer (voir les actions « traduction » + auto, plus bas).
+ */
+const propositionsTraduction: Record<string, { name?: string; description?: string }> = {};
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const action = String(form.get("_action") ?? "");
@@ -292,6 +297,38 @@ if (Astro.request.method === "POST") {
         })),
       });
       flash = "Expédition enregistrée.";
+    } else if (action === "traduction" && form.get("auto")) {
+      // « Proposer une traduction automatique » d'UNE langue : le nom et la
+      // description françaises sont traduits et posés dans les champs, SANS
+      // être enregistrés — la boutique relit, corrige, puis enregistre.
+      const lang = String(form.get("lang") || "");
+      const source = await api.productTranslations(id!);
+      const { champs } = await api.proposerTraduction(lang, {
+        name: source.fr.name ?? "",
+        description: source.fr.description ?? "",
+      });
+      propositionsTraduction[lang] = champs;
+      const nom = LANGUES_TRADUISIBLES.find((l) => l.code === lang)?.nom ?? lang;
+      flash = `Traduction ${nom.toLowerCase()} proposée : relisez-la, corrigez si besoin, puis cliquez « Enregistrer ${nom.toLowerCase()} ». Rien n'est enregistré pour l'instant.`;
+    } else if (action === "traduction-auto-tout") {
+      // Les quatre langues d'un coup, mais SEULEMENT ce qui manque : une
+      // traduction déjà rédigée n'est jamais remplacée par la machine.
+      const source = await api.productTranslations(id!);
+      let n = 0;
+      for (const l of LANGUES_TRADUISIBLES) {
+        const t = source.translations?.[l.code] ?? {};
+        const manque: Record<string, string> = {};
+        if (!t.name?.trim() && source.fr.name) manque.name = source.fr.name;
+        if (!t.description?.trim() && source.fr.description)
+          manque.description = source.fr.description;
+        if (!Object.keys(manque).length) continue;
+        const { champs } = await api.proposerTraduction(l.code, manque);
+        propositionsTraduction[l.code] = champs;
+        n++;
+      }
+      flash = n
+        ? `Traductions proposées pour ${n} langue${n > 1 ? "s" : ""} (seulement ce qui manquait) : relisez chaque langue, puis enregistrez-la. Rien n'est enregistré pour l'instant.`
+        : "Rien à proposer : toutes les langues sont déjà traduites.";
     } else if (action === "traduction") {
       const lang = String(form.get("lang") || "");
       await api.setProductTranslation(id!, {
@@ -1486,17 +1523,40 @@ try {
             pouvez donc ne traduire que le nom, ou traduire plus tard.
           </p>
 
+          {/* La traduction automatique PRÉ-REMPLIT, elle n'enregistre jamais :
+              la boutique garde la main sur le ton (demande de la cliente). */}
+          <form method="POST" class="mb-4 flex flex-wrap items-center gap-2">
+            <input type="hidden" name="_action" value="traduction-auto-tout" />
+            <button class="rounded border border-bo-border px-3 py-1.5 text-sm hover:border-bo-accent hover:text-bo-accent">
+              ✨ Proposer les traductions manquantes (4 langues)
+            </button>
+            <span class="text-xs text-bo-muted">
+              Ne remplit que ce qui n'est pas encore traduit. Rien n'est
+              enregistré : vous relisez chaque langue, puis vous l'enregistrez.
+            </span>
+          </form>
+
           <div class="space-y-3">
             {LANGUES_TRADUISIBLES.map((l) => {
-              const t = trad!.translations?.[l.code] ?? {};
+              const proposition = propositionsTraduction[l.code];
+              const t = {
+                name: proposition?.name ?? trad!.translations?.[l.code]?.name,
+                description:
+                  proposition?.description ?? trad!.translations?.[l.code]?.description,
+              };
               const etat = etatLangue(l.code);
               return (
-                <details class="rounded border border-bo-border">
+                <details class="rounded border border-bo-border" open={!!proposition}>
                   <summary class="cursor-pointer select-none px-4 py-2.5 text-sm font-medium flex items-center gap-2">
                     <span>{l.nom}</span>
                     <span class={`rounded-full px-2 py-0.5 text-xs font-normal ${etat.classe}`}>
                       {etat.texte}
                     </span>
+                    {proposition && (
+                      <span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-normal text-amber-800">
+                        proposition à relire — pas encore enregistrée
+                      </span>
+                    )}
                   </summary>
 
                   <form method="POST" class="border-t border-bo-border p-4 space-y-3">
@@ -1509,7 +1569,9 @@ try {
                         name="name"
                         value={t.name ?? ""}
                         placeholder={trad!.fr.name}
-                        class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
+                        class={`mt-1 w-full border rounded px-3 py-2 text-sm ${
+                          proposition?.name ? "border-amber-400 bg-amber-50" : "border-bo-border"
+                        }`}
                       />
                       <span class="mt-1 block text-xs text-bo-muted">
                         Français : {trad!.fr.name}
@@ -1539,9 +1601,22 @@ try {
                       </details>
                     </div>
 
-                    <button class="rounded bg-bo-accent text-white px-4 py-2 text-sm hover:opacity-90">
-                      Enregistrer {l.nom.toLowerCase()}
-                    </button>
+                    <div class="flex flex-wrap items-center gap-2">
+                      {/* « Enregistrer » d'abord : c'est le bouton que la
+                          touche Entrée déclenche, et Entrée doit enregistrer,
+                          pas relancer une traduction. */}
+                      <button class="rounded bg-bo-accent text-white px-4 py-2 text-sm hover:opacity-90">
+                        Enregistrer {l.nom.toLowerCase()}
+                      </button>
+                      <button
+                        name="auto"
+                        value="1"
+                        class="rounded border border-bo-border px-3 py-2 text-sm hover:border-bo-accent hover:text-bo-accent"
+                        title="Traduit le nom et la description françaises dans les champs, sans enregistrer"
+                      >
+                        ✨ Proposer une traduction automatique
+                      </button>
+                    </div>
                   </form>
                 </details>
               );

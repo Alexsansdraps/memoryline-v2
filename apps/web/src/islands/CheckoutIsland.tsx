@@ -221,7 +221,7 @@ export default function CheckoutIsland(props: {
    */
   const [biblio] = createResource(async () => {
     try {
-      return await browserApi.characters();
+      return await browserApi.characters(props.langue);
     } catch {
       return null;
     }

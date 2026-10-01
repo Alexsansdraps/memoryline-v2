@@ -44,6 +44,7 @@ import {
   estConfigure as mailConfigure,
 } from "./mail.js";
 import { noterLaRecuperation } from "./relance-panier.js";
+import { langueDuVisiteur, nomTraduit } from "./traductions.js";
 import {
   PREFIXE_SENDCLOUD,
   gerePoints as sendcloudGerePoints,
@@ -1492,6 +1493,7 @@ export function mountConfiguratorRoutes(app: Hono) {
    * en piochant dans `slots`, et recolore via les zones .stN.
    */
   app.get("/characters", async (c) => {
+    const langue = langueDuVisiteur(c);
     const includeArchived = c.req.query("all") === "1";
     // La catégorie vient de la table character_category (jointure), mais le
     // contrat exposé au front ne change pas : `category` reste son NOM.
@@ -1500,6 +1502,7 @@ export function mountConfiguratorRoutes(app: Hono) {
       .select({
         t: schema.characterTypes,
         categoryName: schema.characterCategories.name,
+        categoryTranslations: schema.characterCategories.translations,
         categoryPosition: schema.characterCategories.position,
       })
       .from(schema.characterTypes)
@@ -1593,11 +1596,15 @@ export function mountConfiguratorRoutes(app: Hono) {
         slot: p.slot,
         colors: p.colors ?? [],
       })),
-      characters: types.map(({ t, categoryName }) => ({
+      characters: types.map(({ t, categoryName, categoryTranslations }) => ({
         id: t.id,
         slug: t.slug,
         name: t.name,
-        category: categoryName ?? null,
+        // Le nom de l'onglet dans la langue du visiteur (?lang=), le
+        // français à défaut : il ne sert qu'à regrouper, jamais d'identifiant.
+        category: categoryName
+          ? (nomTraduit(categoryTranslations, langue) ?? categoryName)
+          : null,
         categoryId: t.categoryId,
         position: t.position,
         archived: t.archivedAt != null,
@@ -2956,6 +2963,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         id: schema.characterCategories.id,
         slug: schema.characterCategories.slug,
         name: schema.characterCategories.name,
+        translations: schema.characterCategories.translations,
         position: schema.characterCategories.position,
         archivedAt: schema.characterCategories.archivedAt,
         count: sql<number>`count(${schema.characterTypes.id})::int`,

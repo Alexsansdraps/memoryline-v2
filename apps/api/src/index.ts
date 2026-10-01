@@ -39,6 +39,7 @@ import {
 } from "@memoryline/types";
 import { rechercherPointsRelais } from "./mondial-relay.js";
 import { suggererAdresses } from "./adresses.js";
+import { langueDuVisiteur, mountTraduction, nomTraduit } from "./traductions.js";
 import { mountBordereaux } from "./sendcloud-colis.js";
 import {
   gerePoints as sendcloudGerePoints,
@@ -977,6 +978,7 @@ app.get("/redirects", async (c) => {
 /** Promos actives (pour info front / calcul panier ultérieur). */
 /** Cadres proposés au client (actifs uniquement), dans l'ordre du BO. */
 app.get("/frames", async (c) => {
+  const langue = langueDuVisiteur(c);
   const rows = await db
     .select()
     .from(schema.frames)
@@ -984,7 +986,14 @@ app.get("/frames", async (c) => {
     // décoché. Son nom reste lisible sur les commandes déjà passées.
     .where(and(eq(schema.frames.active, true), isNull(schema.frames.archivedAt)))
     .orderBy(asc(schema.frames.position));
-  return c.json(rows);
+  // Le nom — c'est-à-dire la couleur — dans la langue du visiteur (?lang=),
+  // le français à défaut. Les commandes, elles, gardent le nom français.
+  return c.json(
+    rows.map(({ translations, ...r }) => ({
+      ...r,
+      name: nomTraduit(translations, langue) ?? r.name,
+    })),
+  );
 });
 
 /**
@@ -1950,6 +1959,9 @@ mountOrderRoutes(app);
 
 // Bordereaux transporteur achetés chez SendCloud (apps/api/src/sendcloud-colis.ts).
 mountBordereaux(app);
+
+// Proposition de traduction automatique pour le back-office (traductions.ts).
+mountTraduction(app);
 
 // Catégories de produits et poids d'expédition (apps/api/src/catalogue.ts).
 mountCatalogueRoutes(app);

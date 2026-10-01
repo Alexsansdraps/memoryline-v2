@@ -1,6 +1,8 @@
 ---
 import Admin from "../layouts/Admin.astro";
 import { adminApi, type Cadre } from "../lib/api.ts";
+import TraductionsNoms from "../components/TraductionsNoms.astro";
+import { enregistrerTraductionsNoms, proposerTraductionsNoms } from "../lib/traductions-noms.ts";
 import {
   REGLAGE_CADRES_SITE,
   cadresProposesSurLeSite,
@@ -17,11 +19,33 @@ function centimes(v: FormDataEntryValue | null): number {
 }
 
 let flash: string | null = null;
+/** Traductions des noms de cadres : propositions automatiques à relire, et bloc ouvert. */
+let propositionsCadres: Record<number, Partial<Record<string, string>>> = {};
+let traductionsOuvertes = false;
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   const action = f.get("_action");
   try {
-    if (action === "site") {
+    if (action === "cadres-traductions") {
+      const actifs = (await api.frames()).filter((c) => !c.archivedAt);
+      const n = await enregistrerTraductionsNoms(f, actifs, (id, l, nom) =>
+        api.traduireCadre(id, l, nom),
+      );
+      flash = n
+        ? `${n} traduction${n > 1 ? "s" : ""} de cadre enregistrée${n > 1 ? "s" : ""}.`
+        : "Aucune traduction modifiée.";
+      traductionsOuvertes = true;
+    } else if (action === "cadres-traduire") {
+      const actifs = (await api.frames()).filter((c) => !c.archivedAt);
+      propositionsCadres = await proposerTraductionsNoms(actifs, (l, champs) =>
+        api.proposerTraduction(l, champs),
+      );
+      const n = Object.values(propositionsCadres).reduce((s, p) => s + Object.keys(p).length, 0);
+      flash = n
+        ? `${n} proposition${n > 1 ? "s" : ""} de traduction : relisez les cases en jaune, puis « Enregistrer les traductions ».`
+        : "Rien à proposer : tous les noms sont déjà traduits.";
+      traductionsOuvertes = true;
+    } else if (action === "site") {
       // Booléen et non « on »/« off » : l'API et le site lisent ce réglage
       // tel quel (cadresProposesSurLeSite).
       const proposes = f.get("site") === "on";
@@ -268,6 +292,22 @@ function messageArchivage(c: Cadre): string {
       </tbody>
     </table>
   </section>
+
+  {/* Le nom de chaque cadre — sa couleur — dans les autres langues : c'est
+      ce que le client lit en choisissant son cadre. */}
+  {cadres.length > 0 && (
+    <section class="mb-8">
+      <TraductionsNoms
+        titre="Traductions des cadres"
+        aide="Le nom de chaque cadre (sa couleur, « Bois naturel », « Noir »…) tel que le client le lit en le choisissant. Une case vide affiche le nom français. Les commandes et les fichiers d'impression gardent le nom français."
+        elements={cadres}
+        propositions={propositionsCadres}
+        actionEnregistrer="cadres-traductions"
+        actionProposer="cadres-traduire"
+        ouvert={traductionsOuvertes}
+      />
+    </section>
+  )}
 
   {/* ==================================================================== */}
   {/* Les cadres archivés                                                  */}

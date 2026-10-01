@@ -411,6 +411,16 @@ export const frames = pgTable(
      * nommé, et des fichiers d'impression qui ne disaient plus lequel poser.
      */
     archivedAt: timestamp("archived_at", { withTimezone: true }),
+    /**
+     * Le nom du cadre dans les autres langues — c'est sa COULEUR que le client
+     * lit (« Bois naturel », « Noir »). { en: { name }, de: { … }, … } ; un
+     * nom absent affiche le français, comme pour les produits. Le français
+     * (`name`) reste celui du back-office, des commandes et des fichiers
+     * d'impression.
+     */
+    translations: jsonb("translations").$type<
+      Partial<Record<string, { name?: string }>>
+    >(),
   },
   (t) => [uniqueIndex("frame_slug_uniq").on(t.slug)],
 );
@@ -498,6 +508,14 @@ export const characterCategories = pgTable(
      * alors perdue, et aucune restauration ne pouvait la rendre.
      */
     archivedAt: timestamp("archived_at", { withTimezone: true }),
+    /**
+     * Le nom de la catégorie dans les autres langues (« Femmes » → « Women »),
+     * tel que l'onglet du module de personnalisation l'affiche. Un nom absent
+     * affiche le français.
+     */
+    translations: jsonb("translations").$type<
+      Partial<Record<string, { name?: string }>>
+    >(),
   },
   (t) => [uniqueIndex("character_category_slug_uniq").on(t.slug)],
 );

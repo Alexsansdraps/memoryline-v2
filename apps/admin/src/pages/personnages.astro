@@ -3,6 +3,8 @@ import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
 import ApercusZones from "../components/ApercusZones.astro";
 import GroupesCouleurs from "../components/GroupesCouleurs.astro";
+import TraductionsNoms from "../components/TraductionsNoms.astro";
+import { enregistrerTraductionsNoms, proposerTraductionsNoms } from "../lib/traductions-noms.ts";
 import {
   adminApi,
   type CharacterType,
@@ -45,6 +47,9 @@ if (Astro.url.searchParams.get("piece"))
   flash = "Pièce ajoutée à la bibliothèque.";
 else if (Astro.url.searchParams.get("archive"))
   flash = "Personnage archivé. Les commandes passées restent imprimables.";
+/** Traductions des catégories : propositions automatiques à relire, et bloc ouvert. */
+let propositionsCategories: Record<number, Partial<Record<string, string>>> = {};
+let traductionsOuvertes = false;
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const action = form.get("_action");
@@ -129,6 +134,28 @@ if (Astro.request.method === "POST") {
         name: String(form.get("name") || ""),
       });
       flash = `Catégorie renommée en « ${cat.name} ».`;
+    } else if (action === "cat-traductions") {
+      const cats = (await api.categories()).filter((c) => !c.archivedAt);
+      const n = await enregistrerTraductionsNoms(form, cats, (id, l, nom) =>
+        api.traduireCategorie(id, l, nom),
+      );
+      flash = n
+        ? `${n} traduction${n > 1 ? "s" : ""} de catégorie enregistrée${n > 1 ? "s" : ""}.`
+        : "Aucune traduction modifiée.";
+      traductionsOuvertes = true;
+    } else if (action === "cat-traduire") {
+      const cats = (await api.categories()).filter((c) => !c.archivedAt);
+      propositionsCategories = await proposerTraductionsNoms(cats, (l, champs) =>
+        api.proposerTraduction(l, champs),
+      );
+      const n = Object.values(propositionsCategories).reduce(
+        (s, p) => s + Object.keys(p).length,
+        0,
+      );
+      flash = n
+        ? `${n} proposition${n > 1 ? "s" : ""} de traduction : relisez les cases en jaune, puis « Enregistrer les traductions ».`
+        : "Rien à proposer : tous les noms sont déjà traduits.";
+      traductionsOuvertes = true;
     } else if (action === "cat-move") {
       // Échange de position avec la voisine.
       await api.upsertCategory({
@@ -539,6 +566,17 @@ for (const a of pieces) {
         <button class="rounded bg-bo-accent px-3 py-1.5 text-sm text-white">Créer</button>
       </form>
     </div>
+    {/* Les noms des catégories dans les autres langues : ce sont les onglets
+        du module de personnalisation (« Femmes » → « Women »). */}
+    <TraductionsNoms
+      titre="Traductions des catégories"
+      aide="Le nom de chaque catégorie, tel que le client le lit en onglet dans le module de personnalisation. Une case vide affiche le nom français."
+      elements={catalogue}
+      propositions={propositionsCategories}
+      actionEnregistrer="cat-traductions"
+      actionProposer="cat-traduire"
+      ouvert={traductionsOuvertes}
+    />
     {categoriesArchivees.length > 0 && (
       <div class="mt-4 border-t border-bo-border pt-3">
         <h4 class="mb-1 text-sm font-semibold">Catégories archivées</h4>

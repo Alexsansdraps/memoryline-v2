@@ -1,0 +1,125 @@
+---
+/**
+ * Les noms d'une liste (catégories de personnages, cadres…) dans les quatre
+ * autres langues du site, en un tableau : une ligne par élément, une colonne
+ * par langue.
+ *
+ * Une case vide affiche le français sur le site — on peut donc ne traduire
+ * que ce qui compte. « Proposer les traductions manquantes » ne remplit QUE
+ * les cases vides, par la traduction automatique, et n'enregistre rien : on
+ * relit, on corrige, puis « Enregistrer les traductions ».
+ *
+ * Les champs s'appellent `tr-<id>-<langue>` ; la page qui pose ce composant
+ * traite les deux actions dont elle lui donne le nom.
+ */
+interface Element {
+  id: number;
+  name: string;
+  translations?: Partial<Record<string, { name?: string }>> | null;
+}
+
+interface Props {
+  titre: string;
+  aide: string;
+  elements: Element[];
+  /** Propositions automatiques à afficher (non enregistrées) : id → langue → nom. */
+  propositions?: Record<number, Partial<Record<string, string>>>;
+  actionEnregistrer: string;
+  actionProposer: string;
+  /** Ouvert d'office (après une proposition, pour qu'on la voie). */
+  ouvert?: boolean;
+}
+
+const { titre, aide, elements, propositions = {}, actionEnregistrer, actionProposer, ouvert } =
+  Astro.props;
+
+const LANGUES = [
+  { code: "en", nom: "Anglais" },
+  { code: "de", nom: "Allemand" },
+  { code: "it", nom: "Italien" },
+  { code: "es", nom: "Espagnol" },
+] as const;
+
+const valeur = (e: Element, l: string) =>
+  propositions[e.id]?.[l] ?? e.translations?.[l]?.name ?? "";
+const propose = (e: Element, l: string) =>
+  propositions[e.id]?.[l] !== undefined && !e.translations?.[l]?.name;
+const manquantes = elements.reduce(
+  (n, e) => n + LANGUES.filter((l) => !e.translations?.[l.code]?.name?.trim()).length,
+  0,
+);
+---
+
+<details class="mt-4 rounded border border-bo-border" open={ouvert}>
+  <summary class="cursor-pointer select-none px-4 py-2.5 text-sm font-medium">
+    {titre}
+    <span class="ml-2 text-xs font-normal text-bo-muted">
+      {manquantes === 0
+        ? "tout est traduit"
+        : `${manquantes} nom${manquantes > 1 ? "s" : ""} encore en français`}
+    </span>
+  </summary>
+  <div class="border-t border-bo-border p-4">
+    <p class="mb-3 text-xs text-bo-muted">{aide}</p>
+
+    <form method="POST" class="mb-3">
+      <input type="hidden" name="_action" value={actionProposer} />
+      <button
+        class="rounded border border-bo-border px-3 py-1.5 text-sm hover:border-bo-accent hover:text-bo-accent"
+        disabled={manquantes === 0}
+      >
+        ✨ Proposer les traductions manquantes
+      </button>
+      <span class="ml-2 text-xs text-bo-muted">
+        Traduction automatique des cases vides, à relire. Rien n'est enregistré
+        tant que vous n'avez pas cliqué « Enregistrer ».
+      </span>
+    </form>
+
+    <form method="POST">
+      <input type="hidden" name="_action" value={actionEnregistrer} />
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm" data-sans-tri>
+          <thead class="text-left text-xs text-bo-muted">
+            <tr>
+              <th class="py-1 pr-3 font-medium">Français</th>
+              {LANGUES.map((l) => <th class="py-1 pr-3 font-medium">{l.nom}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {elements.map((e) => (
+              <tr class="border-t border-bo-border">
+                <td class="py-1.5 pr-3 font-medium whitespace-nowrap">{e.name}</td>
+                {LANGUES.map((l) => (
+                  <td class="py-1.5 pr-3">
+                    <input
+                      name={`tr-${e.id}-${l.code}`}
+                      value={valeur(e, l.code)}
+                      placeholder={e.name}
+                      aria-label={`${e.name} en ${l.nom.toLowerCase()}`}
+                      class={`w-full min-w-[9rem] rounded border px-2 py-1 ${
+                        propose(e, l.code)
+                          ? "border-amber-400 bg-amber-50"
+                          : "border-bo-border"
+                      }`}
+                      title={propose(e, l.code) ? "Proposition automatique : à relire" : undefined}
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <button class="mt-3 rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90">
+        Enregistrer les traductions
+      </button>
+      {Object.keys(propositions).length > 0 && (
+        <span class="ml-2 text-xs text-amber-700">
+          Les cases en jaune sont des propositions automatiques : relisez-les
+          avant d'enregistrer.
+        </span>
+      )}
+    </form>
+  </div>
+</details>

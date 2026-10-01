@@ -88,11 +88,11 @@ export default function ConfiguratorIsland(
   // Chargement de la bibliothèque (personnages + variantes de slots + fonds).
   const [data] = createResource(async () => {
     const [library, backgrounds, cadres] = await Promise.all([
-      browserApi.characters(),
+      browserApi.characters(props.langue),
       browserApi.backgrounds(props.product.id),
       // Pas de cadres à proposer : une liste vide, et le configurateur
       // n'affiche pas la rubrique du tout (StepFormat).
-      cadresProposes ? browserApi.frames().catch(() => []) : [],
+      cadresProposes ? browserApi.frames(props.langue).catch(() => []) : [],
     ]);
     return {
       characters: library.characters,
