@@ -1411,6 +1411,81 @@ const inerte = "block text-xs text-bo-muted";
         },
       );
 
+      // « Appliquer à tout », comme dans l'éditeur en masse de Shopify (retour
+      // de la boutique) : une ligne sous les en-têtes, avec pour chaque
+      // colonne recopiable une case du même genre que la colonne — liste,
+      // nombre, case à cocher — et un bouton. On choisit une valeur, on
+      // applique, et toutes les lignes la prennent. Construite ici, d'après
+      // les colonnes elles-mêmes : une colonne ajoutée demain l'aura aussi.
+      // Rien n'est enregistré avant « Enregistrer », et ↺ annule toujours.
+      (function () {
+        var entete = document.querySelector("table thead tr");
+        if (!entete) return;
+        var ligne = document.createElement("tr");
+        ligne.className = "ml-appliquer-tout";
+        Array.prototype.forEach.call(entete.children, function (th, rang) {
+          var cellule = document.createElement("th");
+          cellule.className = th.className.replace(/\bw-\S+/g, "");
+          cellule.style.top = "auto";
+          var cle = th.querySelector("[data-recopier]");
+          if (rang === 0) {
+            cellule.innerHTML =
+              '<span class="text-xs font-medium text-bo-muted">Appliquer à tout ↓</span>';
+          } else if (cle) {
+            var colonne = colonneDe(cle.dataset.recopier);
+            if (colonne.length) {
+              var modele = colonne[0].cloneNode(true);
+              // Hors du formulaire : ni nom, ni place dans la comparaison.
+              modele.removeAttribute("name");
+              modele.removeAttribute("data-champ");
+              modele.removeAttribute("data-colonne");
+              modele.removeAttribute("data-initial");
+              modele.removeAttribute("required");
+              modele.removeAttribute("id");
+              modele.setAttribute("aria-label", "Valeur à appliquer à toute la colonne " + cle.dataset.libelle);
+              if (modele.type === "checkbox") modele.checked = false;
+              else if (modele.tagName === "SELECT") modele.selectedIndex = 0;
+              else modele.value = "";
+              var appliquer = document.createElement("button");
+              appliquer.type = "button";
+              appliquer.textContent = "Appliquer";
+              appliquer.className =
+                "ml-1 rounded border border-bo-border px-2 py-0.5 text-xs text-bo-text hover:border-bo-accent hover:text-bo-accent";
+              appliquer.addEventListener("click", function () {
+                var poses = 0;
+                var ignores = 0;
+                colonneDe(cle.dataset.recopier).forEach(function (c) {
+                  if (modele.type === "checkbox") {
+                    c.checked = modele.checked;
+                    poses++;
+                  } else if (c.tagName === "SELECT" && !optionExiste(c, modele.value)) {
+                    ignores++;
+                  } else {
+                    c.value = modele.value;
+                    poses++;
+                  }
+                });
+                recalculer();
+                var texte =
+                  "« " + cle.dataset.libelle + " » appliqué à " + poses +
+                  (poses > 1 ? " lignes" : " ligne") +
+                  ", y compris celles qui ne sont pas à l'écran. Le bouton ↺ de la colonne annule.";
+                if (ignores > 0)
+                  texte += " " + ignores + (ignores > 1 ? " lignes n'ont" : " ligne n'a") +
+                    " pas pu recevoir cette valeur.";
+                annoncer(texte);
+              });
+              var groupe = document.createElement("span");
+              groupe.className = "flex items-center";
+              groupe.append(modele, appliquer);
+              cellule.append(groupe);
+            }
+          }
+          ligne.append(cellule);
+        });
+        entete.parentNode.append(ligne);
+      })();
+
       Array.prototype.forEach.call(
         document.querySelectorAll("[data-annuler]"),
         function (b) {
