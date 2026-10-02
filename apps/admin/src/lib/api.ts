@@ -808,16 +808,24 @@ export interface TextesRelance {
   conclusion: string;
 }
 
-/** Une relance (1re, 2e, 3e) et son courriel. */
+/** Les langues des courriels, le français d'abord. */
+export type LangueCourriel = "fr" | "en" | "de" | "it" | "es";
+
+/** Une relance (1re, 2e, 3e) et son courriel, dans la langue demandée. */
 export interface CourrielRelance {
   etape: 1 | 2 | 3;
   /** « 1re relance ». */
   nom: string;
-  /** Les textes qui partiront. */
+  /** Les textes qui partiront dans cette langue. */
   textes: TextesRelance;
-  /** Les textes d'origine, pour « Revenir au texte d'origine ». */
+  /** Les textes d'origine de cette langue, pour « Revenir au texte d'origine ». */
   origine: TextesRelance;
+  /** La boutique a-t-elle écrit son texte dans CETTE langue ? */
   personnalise: boolean;
+  /** Les langues dans lesquelles cette relance a déjà son texte. */
+  langues: LangueCourriel[];
+  /** Hors du français : les textes français, d'où l'on traduit. */
+  francais: TextesRelance | null;
   /** Vrai si cette relance est programmée dans les réglages. */
   programmee: boolean;
   /** « 10 h après l'abandon », ou null si elle n'est pas programmée. */
@@ -826,9 +834,12 @@ export interface CourrielRelance {
 
 /** L'écran de réécriture des courriels de relance. */
 export interface EcranCourrielsRelance {
+  langue: LangueCourriel;
   etapes: CourrielRelance[];
   variables: { nom: string; sens: string }[];
   active: boolean;
+  /** Faux si le serveur n'a pas de clé de traduction automatique. */
+  traductionDisponible: boolean;
 }
 
 /** Ce que rapporte la relance, en chiffres. */
@@ -853,8 +864,11 @@ export interface EcranPaniers {
   courrierConfigure: boolean;
   chiffres: ChiffresRelance;
   paniers: PanierAbandonne[];
-  /** Pour chaque relance, ses textes ont-ils été réécrits ? */
-  courriels: { etape: 1 | 2 | 3; personnalise: boolean }[];
+  /**
+   * Pour chaque relance, ses textes ont-ils été réécrits (dans au moins une
+   * langue), et dans quelles langues ?
+   */
+  courriels: { etape: 1 | 2 | 3; personnalise: boolean; langues?: LangueCourriel[] }[];
 }
 
 /** Ce qu'un passage du travailleur a fait. */
@@ -1789,42 +1803,74 @@ export function adminApi(request?: Request) {
     /** Déclenche un passage du travailleur tout de suite. */
     passageRelance: () =>
       req<{ bilan: BilanPassage }>("POST", "/admin/relance/passage", {}, cookie),
-    /** Les courriels des trois relances : textes, textes d'origine, variables. */
-    courrielsRelance: () =>
-      req<EcranCourrielsRelance>("GET", "/admin/relance/courriels", undefined, cookie),
-    /** Enregistre les textes d'une relance. */
-    enregistrerCourrielRelance: (etape: number, textes: TextesRelance) =>
+    /**
+     * Les courriels des trois relances dans une langue : textes, textes
+     * d'origine, variables. Sans langue : le français.
+     */
+    courrielsRelance: (langue: LangueCourriel = "fr") =>
+      req<EcranCourrielsRelance>(
+        "GET",
+        `/admin/relance/courriels?langue=${encodeURIComponent(langue)}`,
+        undefined,
+        cookie,
+      ),
+    /** Enregistre les textes d'une relance dans une langue. */
+    enregistrerCourrielRelance: (
+      etape: number,
+      textes: TextesRelance,
+      langue: LangueCourriel = "fr",
+    ) =>
       req<{ textes: TextesRelance; personnalise: boolean }>(
         "PUT",
         `/admin/relance/courriels/${etape}`,
-        { textes },
+        { textes, langue },
         cookie,
       ),
-    /** « Revenir au texte d'origine ». */
-    retablirCourrielRelance: (etape: number) =>
+    /** « Revenir au texte d'origine », dans une langue. */
+    retablirCourrielRelance: (etape: number, langue: LangueCourriel = "fr") =>
       req<{ textes: TextesRelance; personnalise: boolean }>(
         "DELETE",
-        `/admin/relance/courriels/${etape}`,
+        `/admin/relance/courriels/${etape}?langue=${encodeURIComponent(langue)}`,
         undefined,
+        cookie,
+      ),
+    /**
+     * Le texte français d'une relance, traduit automatiquement dans une autre
+     * langue. RIEN n'est enregistré : l'écran pose la proposition dans les
+     * champs. `avertissement` dit ce qu'il faut vérifier (variable perdue…).
+     */
+    proposerTraductionRelance: (etape: number, langue: LangueCourriel) =>
+      req<{ textes: Partial<TextesRelance>; avertissement: string | null }>(
+        "POST",
+        `/admin/relance/courriels/${etape}/traduction`,
+        { langue },
         cookie,
       ),
     /**
      * Le courriel d'une relance tel qu'il partira, avec les textes en cours de
      * saisie (rien n'est enregistré ni envoyé). Sans textes : ceux d'aujourd'hui.
      */
-    apercuCourrielRelance: (etape: number, textes?: TextesRelance) =>
+    apercuCourrielRelance: (
+      etape: number,
+      textes?: TextesRelance,
+      langue: LangueCourriel = "fr",
+    ) =>
       req<{ sujet: string; html: string; texte: string }>(
         "POST",
         "/admin/courriers/relance/apercu",
-        { etape, ...(textes ? { textes } : {}) },
+        { etape, langue, ...(textes ? { textes } : {}) },
         cookie,
       ),
     /** S'envoie le courriel d'une relance, à l'adresse du compte connecté. */
-    essaiCourrielRelance: (etape: number, textes?: TextesRelance) =>
+    essaiCourrielRelance: (
+      etape: number,
+      textes?: TextesRelance,
+      langue: LangueCourriel = "fr",
+    ) =>
       req<{ ok: boolean; parti: boolean; destinataire: string; resume: string }>(
         "POST",
         "/admin/courriers/relance/essai",
-        { etape, ...(textes ? { textes } : {}) },
+        { etape, langue, ...(textes ? { textes } : {}) },
         cookie,
       ),
     orderDetail: (id: number) =>
@@ -2428,26 +2474,36 @@ export function adminApi(request?: Request) {
         cookie,
       ),
     /** Le courrier tel qu'il arrivera, sans rien envoyer. */
-    apercuCourrier: (modele: string, commande?: string) =>
-      req<{
+    /**
+     * `langue` : celle du courrier. Absente, c'est celle que la cliente de la
+     * commande recevrait (le français pour la commande d'exemple).
+     */
+    apercuCourrier: (modele: string, commande?: string, langue?: string) => {
+      const p = new URLSearchParams();
+      if (commande) p.set("commande", commande);
+      if (langue) p.set("langue", langue);
+      const qs = p.toString();
+      return req<{
         modele: string;
         sujet: string;
         html: string;
         source: string;
         commande?: string;
+        /** La langue dans laquelle le courrier a été rendu. */
+        langue?: string;
       }>(
         "GET",
-        `/admin/courriers/apercu/${encodeURIComponent(modele)}${
-          commande ? `?commande=${encodeURIComponent(commande)}` : ""
-        }`,
+        `/admin/courriers/apercu/${encodeURIComponent(modele)}${qs ? `?${qs}` : ""}`,
         undefined,
         cookie,
-      ),
+      );
+    },
     /** Envoie un courrier d'essai. La réponse dit où il est réellement allé. */
     essaiCourrier: (corps: {
       modele: string;
       destinataire: string;
       commande?: string;
+      langue?: string;
     }) =>
       req<{ ok: true; parti: boolean; resume: string }>(
         "POST",

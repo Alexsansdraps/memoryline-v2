@@ -54,6 +54,12 @@ export interface Client {
   lastName: string | null;
   phone: string | null;
   acceptsMarketing: boolean;
+  /**
+   * La langue de ses e-mails, CHOISIE par le client ; null tant qu'il ne l'a
+   * jamais choisie (comptes d'avant ce réglage). Absente sur une API d'une
+   * version antérieure.
+   */
+  langue?: Langue | null;
   createdAt?: string | null;
 }
 
@@ -315,6 +321,8 @@ export const inscription = (
     lastName?: string;
     name?: string;
     acceptsMarketing?: boolean;
+    /** La langue de ses e-mails : celle de la page, sauf choix contraire. */
+    langue?: Langue;
   },
 ) => appelClient(astro, "/compte/inscription", { methode: "POST", corps });
 
@@ -329,27 +337,41 @@ export const majInfos = (
     name?: string;
     phone?: string;
     acceptsMarketing?: boolean;
+    langue?: Langue;
   },
 ) => appelClient(astro, "/compte/moi", { methode: "POST", corps });
 
+/**
+ * `langue` : celle de la page, pour l'avis de sécurité d'un compte qui n'a
+ * pas encore choisi la sienne. Celle du compte, quand elle existe, l'emporte.
+ */
 export const changerMotDePasse = (
   astro: ContexteAstro,
-  corps: { ancien: string; nouveau: string },
+  corps: { ancien: string; nouveau: string; langue?: Langue },
 ) =>
   appel<{ ok: boolean }>(astro, "/compte/mot-de-passe", {
     methode: "POST",
     corps,
   });
 
-export const motDePasseOublie = (astro: ContexteAstro, email: string) =>
+/**
+ * `langue` : celle de la page. Le courrier part pourtant dans la langue du
+ * compte quand le client l'a choisie — c'est l'API qui tranche.
+ */
+export const motDePasseOublie = (
+  astro: ContexteAstro,
+  email: string,
+  langue?: Langue,
+) =>
   appel<{ ok: boolean }>(astro, "/compte/mot-de-passe-oublie", {
     methode: "POST",
-    corps: { email },
+    corps: { email, ...(langue ? { langue } : {}) },
   });
 
+/** `langue` : celle de la page, même rôle que pour `changerMotDePasse`. */
 export const reinitialiserMotDePasse = (
   astro: ContexteAstro,
-  corps: { token: string; nouveau: string },
+  corps: { token: string; nouveau: string; langue?: Langue },
 ) =>
   appel<{ ok: boolean }>(astro, "/compte/mot-de-passe-reinitialiser", {
     methode: "POST",

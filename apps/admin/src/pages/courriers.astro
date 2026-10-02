@@ -33,6 +33,36 @@ interface ApercuBrut {
   html: string;
   source: string;
   commande?: string;
+  langue?: string;
+}
+
+/**
+ * Les langues dans lesquelles un courrier peut partir. La clé vide laisse
+ * l'API choisir comme pour un envoi réel : la langue de la cliente de la
+ * commande, ou le français pour la commande d'exemple.
+ */
+const LANGUES_COURRIER: [string, string][] = [
+  ["", "Celle de la cliente"],
+  ["fr", "Français"],
+  ["en", "Anglais"],
+  ["de", "Allemand"],
+  ["it", "Italien"],
+  ["es", "Espagnol"],
+];
+
+/** « anglais », pour la note sous l'objet. */
+const NOM_LANGUE: Record<string, string> = {
+  fr: "français",
+  en: "anglais",
+  de: "allemand",
+  it: "italien",
+  es: "espagnol",
+};
+
+/** La langue du formulaire, si c'est l'une des cinq ; vide sinon. */
+function langueSaisie(v: unknown): string {
+  const l = String(v ?? "").trim();
+  return Object.prototype.hasOwnProperty.call(NOM_LANGUE, l) ? l : "";
 }
 
 type Ton = "ok" | "attention" | "erreur";
@@ -46,6 +76,7 @@ interface Resultat {
   /** Saisies à remettre dans les champs après un envoi sans script. */
   commande: string;
   destinataire: string;
+  langue: string;
 }
 
 /**
@@ -72,14 +103,23 @@ function adresseSeule(expediteur: string | null | undefined): string {
   return (entreChevrons?.[1] ?? expediteur).trim();
 }
 
-/** Dit avec quoi l'aperçu a été rempli, pour qu'on ne lise pas un faux prix. */
+/**
+ * Dit avec quoi l'aperçu a été rempli, pour qu'on ne lise pas un faux prix, et
+ * dans quelle langue il est écrit.
+ */
 function noteSource(a: ApercuBrut): string {
-  if (a.source === "commande") {
-    return a.commande
-      ? `Rempli avec les vraies données de la commande ${a.commande}.`
-      : "Rempli avec les vraies données de la commande demandée.";
-  }
-  return "Rempli avec une commande d'exemple : ces affiches et cette adresse n'existent pas.";
+  const source =
+    a.source === "commande"
+      ? a.commande
+        ? `Rempli avec les vraies données de la commande ${a.commande}.`
+        : "Rempli avec les vraies données de la commande demandée."
+      : "Rempli avec une commande d'exemple : ces affiches et cette adresse n'existent pas.";
+  // Le français ne dit rien de plus : c'est le courrier de toujours. Une autre
+  // langue prévient que ce qui n'est pas encore traduit reste en français,
+  // sans quoi on croirait le sélecteur cassé.
+  const nom = a.langue ? NOM_LANGUE[a.langue] : undefined;
+  if (!nom || a.langue === "fr") return source;
+  return `${source} Écrit en ${nom} : les phrases pas encore traduites restent en français.`;
 }
 
 let resultat: Resultat | null = null;
@@ -93,6 +133,7 @@ if (Astro.request.method === "POST") {
   const modele = String(f.get("modele") ?? "");
   const commande = String(f.get("commande") ?? "").trim();
   const destinataire = String(f.get("destinataire") ?? "").trim();
+  const langue = langueSaisie(f.get("langue"));
 
   resultat = {
     modele,
@@ -101,19 +142,21 @@ if (Astro.request.method === "POST") {
     apercu: null,
     commande,
     destinataire,
+    langue,
   };
 
   try {
     if (action === "apercu") {
       // Sans numéro saisi, la clé « commande » ne part pas du tout : c'est ce
-      // qui vaut à l'API de rendre son jeu d'exemple.
-      const a = await api.apercuCourrier(modele, commande || undefined);
+      // qui vaut à l'API de rendre son jeu d'exemple. De même pour la langue.
+      const a = await api.apercuCourrier(modele, commande || undefined, langue || undefined);
       resultat.apercu = { sujet: a.sujet, note: noteSource(a), html: a.html };
     } else if (action === "essai") {
       const envoi = await api.essaiCourrier({
         modele,
         destinataire,
         ...(commande ? { commande } : {}),
+        ...(langue ? { langue } : {}),
       });
       // Le résumé de l'API commence déjà par « Le courrier n'a pas pu
       // partir » : le préfixer faisait bégayer la phrase à l'écran.
@@ -298,6 +341,22 @@ const TONS: Record<Ton, string> = {
                   />
                 </label>
               )}
+
+              {/* La langue du courrier : chaque cliente reçoit les siens dans
+                  celle de son compte, ou de sa commande. */}
+              <label class="block">
+                <span class="text-xs text-bo-muted">Langue</span>
+                <select
+                  name="langue"
+                  class="mt-1 block rounded border border-bo-border bg-bo-surface px-2 py-1"
+                >
+                  {LANGUES_COURRIER.map(([valeur, libelle]) => (
+                    <option value={valeur} selected={(sien?.langue ?? "") === valeur}>
+                      {libelle}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
               <label class="block">
                 <span class="text-xs text-bo-muted">M'envoyer l'essai à</span>

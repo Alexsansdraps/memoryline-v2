@@ -21,8 +21,9 @@
  * qu'un courrier ne parte.
  *
  * Les mots du courrier se réécrivent au back-office (voir `TextesRelance`
- * dans mail.ts) ; tant qu'on n'y a pas touché, la 1re relance part avec le
- * courrier d'origine, à l'identique.
+ * dans mail.ts), dans chacune des cinq langues : chaque cliente reçoit le
+ * texte de SA langue. Tant qu'on n'y a pas touché, la 1re relance part avec
+ * le courrier d'origine, à l'identique.
  *
  * Et une limite qui ne se discute pas : passé QUATORZE JOURS, plus aucun
  * envoi. Shopify purge à ce terme, et un rappel qui arrive deux semaines plus
@@ -38,6 +39,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  like,
   ne,
   notInArray,
   or,
@@ -51,11 +53,26 @@ import {
   memesTextesRelance,
   normaliserTextesRelance,
   TEXTES_RELANCE_DEFAUT,
+  textesRelanceParDefaut,
   VARIABLES_RELANCE,
   type EtapeRelance,
   type LigneCourrier,
   type TextesRelance,
 } from "./mail.js";
+import {
+  langueDuDestinataire,
+  langueLue,
+  LANGUES_COURRIEL,
+  tc,
+  type Langue,
+} from "./courriels/index.js";
+import {
+  EchecTraduction,
+  nomTraduit,
+  proposerTraduction,
+  traductionDisponible,
+  type LangueEtrangere,
+} from "./traductions.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Constantes de la mécanique                                                */
@@ -193,13 +210,44 @@ const CLES = {
 } as const;
 
 /**
- * La clé des textes réécrits d'une relance. ABSENTE tant que la boutique n'y
- * a pas touché : c'est cette absence, et rien d'autre, qui garantit le
- * courrier d'origine. « Revenir au texte d'origine » efface donc la clé.
+ * La clé des textes réécrits d'une relance, dans une langue. ABSENTE tant que
+ * la boutique n'y a pas touché : c'est cette absence, et rien d'autre, qui
+ * garantit le courrier d'origine. « Revenir au texte d'origine » efface donc
+ * la clé.
+ *
+ * Le français garde la clé d'avant les langues, « relance.courrier_1 » : les
+ * textes déjà réécrits par la boutique restent les siens, sans rien migrer.
+ * Les autres langues ont la leur, « relance.courrier_1.en »…
  */
-function cleTextes(etape: EtapeRelance): string {
-  return `relance.courrier_${etape}`;
+function cleTextes(etape: EtapeRelance, langue: Langue = "fr"): string {
+  return langue === "fr" ? `relance.courrier_${etape}` : `relance.courrier_${etape}.${langue}`;
 }
+
+/** Le début commun de toutes ces clés, pour les lire d'un coup. */
+const PREFIXE_TEXTES = "relance.courrier_";
+
+/** Le nom d'une langue dans une phrase du back-office : « en anglais ». */
+export const LANGUE_EN_FRANCAIS: Record<Langue, string> = {
+  fr: "français",
+  en: "anglais",
+  de: "allemand",
+  it: "italien",
+  es: "espagnol",
+};
+
+/**
+ * La langue des textes demandée par l'écran. Absente : le français, comme
+ * avant les langues. Inconnue : null, et la route refuse — un texte anglais
+ * rangé par erreur sous la clé française partirait chez toutes les clientes
+ * francophones.
+ */
+export function langueDemandee(v: unknown): Langue | null {
+  if (v === undefined || v === null || v === "") return "fr";
+  return langueLue(v);
+}
+
+export const LANGUE_INCONNUE =
+  "Cette langue n'existe pas sur le site : français, anglais, allemand, italien ou espagnol.";
 
 /** Le groupe sous lequel le back-office range ces réglages. */
 const GROUPE = "relance";
@@ -460,15 +508,18 @@ export function etapeLue(v: unknown): EtapeRelance | null {
 }
 
 /**
- * Les textes que la boutique a réécrits pour cette relance, ou null si elle
- * n'y a pas touché. Une valeur illisible en base vaut « pas touché » : mieux
- * vaut le courrier d'origine qu'un courrier cassé.
+ * Les textes que la boutique a réécrits pour cette relance dans cette langue,
+ * ou null si elle n'y a pas touché. Une valeur illisible en base vaut « pas
+ * touché » : mieux vaut le courrier d'origine qu'un courrier cassé.
  */
-async function textesEnregistres(etape: EtapeRelance): Promise<TextesRelance | null> {
+async function textesEnregistres(
+  etape: EtapeRelance,
+  langue: Langue = "fr",
+): Promise<TextesRelance | null> {
   const [ligne] = await db
     .select({ value: schema.settings.value })
     .from(schema.settings)
-    .where(eq(schema.settings.key, cleTextes(etape)))
+    .where(eq(schema.settings.key, cleTextes(etape, langue)))
     .limit(1);
   if (!ligne) return null;
   const n = normaliserTextesRelance(ligne.value);
@@ -476,47 +527,178 @@ async function textesEnregistres(etape: EtapeRelance): Promise<TextesRelance | n
 }
 
 /**
- * Les textes avec lesquels part la relance de cette étape.
+ * Pour chaque relance, les langues dans lesquelles la boutique a écrit son
+ * propre texte. Une seule lecture pour les quinze clés possibles : les écrans
+ * qui le montrent (les onglets de langue, le programme des relances) le
+ * demandent d'un coup.
+ */
+async function languesPersonnalisees(): Promise<Record<EtapeRelance, Langue[]>> {
+  const lignes = await db
+    .select({ key: schema.settings.key, value: schema.settings.value })
+    .from(schema.settings)
+    // « _ » est un joker de LIKE : échappé, il ne vaut que lui-même.
+    .where(like(schema.settings.key, `${PREFIXE_TEXTES.replace("_", "\\_")}%`));
+  const lisibles = new Set(
+    lignes.filter((l) => normaliserTextesRelance(l.value).ok).map((l) => l.key),
+  );
+  const parEtape = (etape: EtapeRelance) =>
+    LANGUES_COURRIEL.filter((langue) => lisibles.has(cleTextes(etape, langue)));
+  return { 1: parEtape(1), 2: parEtape(2), 3: parEtape(3) };
+}
+
+/** Les textes d'origine d'une relance dans une langue. */
+function textesDOrigine(etape: EtapeRelance, langue: Langue): TextesRelance {
+  return langue === "fr" ? TEXTES_RELANCE_DEFAUT[etape] : textesRelanceParDefaut(langue)[etape];
+}
+
+/**
+ * Les textes avec lesquels part la relance de cette étape, dans la langue de
+ * la cliente.
  *
- * Null pour une 1re relance que la boutique n'a pas réécrite : c'est le signal
- * qui fait partir le courrier d'origine, à l'octet près (voir
- * `courrierPanierAbandonne`). Les 2e et 3e n'ont pas d'« avant » à préserver :
- * elles partent avec leurs textes par défaut.
+ * Chaque langue a les siens : le texte que la boutique a écrit dans CETTE
+ * langue s'il existe, sinon le texte d'origine de cette langue. Jamais le
+ * texte d'une autre langue — le français réécrit ne part pas chez une cliente
+ * anglaise : un courrier dont les phrases seraient en français et les boutons
+ * en anglais ne servirait personne.
+ *
+ * Null pour une 1re relance que la boutique n'a pas réécrite dans cette
+ * langue : c'est le signal qui fait partir le courrier d'origine, à l'octet
+ * près (voir `courrierPanierAbandonne`). Les 2e et 3e n'ont pas d'« avant » à
+ * préserver : elles partent avec leurs textes par défaut.
  *
  * Lu à CHAQUE envoi, jamais gardé en mémoire : un texte corrigé au
  * back-office vaut pour le courrier suivant, sans redémarrer quoi que ce soit.
  */
-export async function textesDeLaRelance(etape: EtapeRelance): Promise<TextesRelance | null> {
-  const propres = await textesEnregistres(etape);
+export async function textesDeLaRelance(
+  etape: EtapeRelance,
+  langue: Langue = "fr",
+): Promise<TextesRelance | null> {
+  const propres = await textesEnregistres(etape, langue);
   if (propres) return propres;
-  return etape === 1 ? null : TEXTES_RELANCE_DEFAUT[etape];
+  return etape === 1 ? null : textesDOrigine(etape, langue);
 }
 
 /**
- * Enregistre les textes d'une relance.
+ * Enregistre les textes d'une relance dans une langue.
  *
- * Des textes identiques à ceux d'origine EFFACENT la clé au lieu de
- * l'écrire : la boutique qui enregistre sans rien changer doit garder le
- * courrier d'origine, et non une copie qui lui ressemble.
+ * Des textes identiques à ceux d'origine de CETTE langue EFFACENT la clé au
+ * lieu de l'écrire : la boutique qui enregistre sans rien changer doit garder
+ * le courrier d'origine, et non une copie qui lui ressemble.
  */
 async function enregistrerTextes(
   etape: EtapeRelance,
   brut: unknown,
+  langue: Langue = "fr",
 ): Promise<{ textes: TextesRelance; personnalise: boolean }> {
   const n = normaliserTextesRelance(brut);
   if (!n.ok) throw new ReglageRefuse(n.erreur);
-  if (memesTextesRelance(n.textes, TEXTES_RELANCE_DEFAUT[etape])) {
-    await revenirAuTexteDOrigine(etape);
-    return { textes: TEXTES_RELANCE_DEFAUT[etape], personnalise: false };
+  const origine = textesDOrigine(etape, langue);
+  if (memesTextesRelance(n.textes, origine)) {
+    await revenirAuTexteDOrigine(etape, langue);
+    return { textes: origine, personnalise: false };
   }
-  await ecrireUnReglage(cleTextes(etape), n.textes, `Courrier de la ${ordinal(etape)} relance`);
+  await ecrireUnReglage(
+    cleTextes(etape, langue),
+    n.textes,
+    `Courrier de la ${ordinal(etape)} relance (${LANGUE_EN_FRANCAIS[langue]})`,
+  );
   return { textes: n.textes, personnalise: true };
 }
 
-/** « Revenir au texte d'origine » : la clé disparaît, et avec elle les textes. */
-async function revenirAuTexteDOrigine(etape: EtapeRelance): Promise<void> {
-  await db.delete(schema.settings).where(eq(schema.settings.key, cleTextes(etape)));
+/**
+ * « Revenir au texte d'origine », dans une langue : sa clé disparaît, et avec
+ * elle ses textes. Les autres langues gardent les leurs.
+ */
+async function revenirAuTexteDOrigine(etape: EtapeRelance, langue: Langue = "fr"): Promise<void> {
+  await db.delete(schema.settings).where(eq(schema.settings.key, cleTextes(etape, langue)));
 }
+
+/* --- La traduction proposée ------------------------------------------------- */
+
+/**
+ * Ce que le traducteur doit savoir de CE texte, en plus des règles générales
+ * de `proposerTraduction`. Les variables d'abord : une « {prenom} » traduite
+ * en « {nome} » serait refusée à l'enregistrement — ou, pire, partirait entre
+ * ses accolades. Puis le ton de chaque langue, celui du site : l'italien et
+ * l'espagnol y tutoient, l'allemand y vouvoie, l'anglais est britannique.
+ */
+const PRECISIONS_TRADUCTION_RELANCE = `This is the e-mail that reminds a customer of the basket she left on the website without ordering (abandoned basket reminder).
+Keys: "objet" is the e-mail subject, "accroche" the greeting line at the top, "message" the text above the basket, "bouton" the label of the button that reopens the basket (60 characters at most), "conclusion" the small text under the button.
+- Words between curly braces ({prenom}, {articles}, {montant}, {lien}) are variables filled in when the e-mail is sent: copy each of them exactly, untranslated, braces included, and never add a new one.
+- Keep the **double asterisks** around the words they surround (they mark bold), and keep line breaks and blank lines where they are.
+- "objet", "accroche" and "bouton" stay on a single line.`;
+
+const TON_TRADUCTION_RELANCE: Record<LangueEtrangere, string> = {
+  en: '- Write British English, as the website does: "basket" (never "cart"), "colour", "personalise".',
+  de: '- Address the customer with the polite "Sie", as the website does.',
+  it: '- Address the customer informally with "tu", as the website does (never "Lei").',
+  es: '- Address the customer informally with "tú", as the website does (never "usted").',
+};
+
+/** Les {variables} d'un texte, dans l'ordre, pour comparer deux versions. */
+function variablesDe(texte: string): string {
+  return [...texte.matchAll(/\{([^{}\n]{1,30})\}/g)]
+    .map((m) => m[1]!)
+    .sort()
+    .join(",");
+}
+
+/**
+ * Propose la traduction des textes FRANÇAIS d'une relance — ceux qui partent
+ * aujourd'hui aux clientes francophones, réécrits ou d'origine — dans une
+ * autre langue. RIEN n'est enregistré : l'écran pose la proposition dans les
+ * champs, la boutique la relit, puis l'enregistre elle-même.
+ *
+ * La proposition est vérifiée avant d'être rendue : une variable perdue ou
+ * inventée en route, un champ resté vide, sont dits dans un avertissement —
+ * la boutique les verra avant que l'enregistrement ne les refuse.
+ */
+async function proposerTraductionRelance(
+  etape: EtapeRelance,
+  langue: LangueEtrangere,
+): Promise<{ textes: Partial<TextesRelance>; avertissement: string | null }> {
+  const francais = (await textesEnregistres(etape, "fr")) ?? TEXTES_RELANCE_DEFAUT[etape];
+  const champs: Record<string, string> = { ...francais };
+  const traduits = await proposerTraduction(
+    champs,
+    langue,
+    `${PRECISIONS_TRADUCTION_RELANCE}\n${TON_TRADUCTION_RELANCE[langue]}`,
+  );
+
+  const textes: Partial<TextesRelance> = {};
+  const soucis: string[] = [];
+  for (const champ of Object.keys(francais) as (keyof TextesRelance)[]) {
+    const source = francais[champ];
+    const propose = traduits[champ]?.trim() ?? "";
+    if (!source.trim()) {
+      // Vide en français, vide dans la traduction : rien à proposer de plus.
+      textes[champ] = "";
+      continue;
+    }
+    if (!propose) {
+      soucis.push(`${NOMS_CHAMPS[champ]} n'a pas été traduit`);
+      continue;
+    }
+    textes[champ] = propose;
+    if (variablesDe(propose) !== variablesDe(source))
+      soucis.push(`${NOMS_CHAMPS[champ]} n'a plus les mêmes variables qu'en français`);
+  }
+  return {
+    textes,
+    avertissement: soucis.length
+      ? `À vérifier : ${soucis.join(" ; ")}. Les variables s'écrivent comme en français, entre accolades : ${VARIABLES_RELANCE.map((v) => `{${v.nom}}`).join(", ")}.`
+      : null,
+  };
+}
+
+/** Les champs, tels que l'écran les nomme. */
+const NOMS_CHAMPS: Record<keyof TextesRelance, string> = {
+  objet: "l'objet",
+  accroche: "l'accroche",
+  message: "le message",
+  bouton: "le libellé du bouton",
+  conclusion: "le mot de la fin",
+};
 
 /* -------------------------------------------------------------------------- */
 /*  Le classement « abandonné » — les trois critères stricts                   */
@@ -543,6 +725,14 @@ export interface PanierAbandonne {
   nom: string | null;
   email: string;
   accepteMarketing: boolean;
+  /** La langue choisie sur le compte, et celle de la page du panier. */
+  langueCompte: string | null;
+  langueCommande: string | null;
+}
+
+/** La langue dans laquelle écrire à la personne qui a laissé ce panier. */
+function langueDuPanier(p: PanierAbandonne): Langue {
+  return langueDuDestinataire({ compte: p.langueCompte, commande: p.langueCommande });
 }
 
 /**
@@ -630,6 +820,8 @@ async function requetePaniers(
       nom: schema.customers.name,
       email: schema.customers.email,
       accepteMarketing: schema.customers.acceptsMarketing,
+      langueCompte: schema.customers.langue,
+      langueCommande: schema.orders.langue,
     })
     .from(schema.orders)
     .innerJoin(schema.customers, eq(schema.orders.customerId, schema.customers.id))
@@ -789,7 +981,11 @@ export async function vignettesDesProduits(
  * par le couple (produit, format), qui est justement ce qui identifie une
  * variante ici. Sans ça, le garde-fou du stock ne se serait jamais déclenché.
  */
-async function composerLignes(orderId: number): Promise<{
+async function composerLignes(
+  orderId: number,
+  /** La langue du courrier : le nom des cadres et le titre de repli la suivent. */
+  langue: Langue = "fr",
+): Promise<{
   lignes: LigneCourrier[];
   indisponibles: number;
 }> {
@@ -832,9 +1028,9 @@ async function composerLignes(orderId: number): Promise<{
     if (indisponible) indisponibles += 1;
 
     return {
-      titre: it.title ?? "Affiche personnalisée",
+      titre: it.title ?? tc(langue)("lignes.titreParDefaut"),
       format,
-      cadre: cadre?.name ?? null,
+      cadre: cadre ? (nomTraduit(cadre.translations, langue) ?? cadre.name) : null,
       quantite: it.quantity,
       unitPriceCents: it.unitPriceCents,
       imageUrl: it.productId != null ? (vignettes.get(it.productId) ?? null) : null,
@@ -963,7 +1159,7 @@ async function verifierGardesFous(
     };
 
   // 4. Disponibilité.
-  const { lignes, indisponibles } = await composerLignes(panier.id);
+  const { lignes, indisponibles } = await composerLignes(panier.id, langueDuPanier(panier));
   if (!lignes.length)
     return { envoyer: false, code: "vide", motif: "Panier vide." };
   if (indisponibles === lignes.length)
@@ -1006,9 +1202,17 @@ export async function jetonDeRecuperation(orderId: number): Promise<string> {
   return jeton;
 }
 
-/** L'adresse complète du lien de récupération d'un panier. */
-export function lienDeRecuperation(jeton: string): string {
-  return `${LIEN_RECUPERATION}?jeton=${encodeURIComponent(jeton)}`;
+/**
+ * L'adresse complète du lien de récupération d'un panier.
+ *
+ * La page vit HORS du préfixe de langue (apps/web/src/pages/panier/
+ * recuperer.astro) : sa langue se dit en « ?lang= », qu'elle lit. Le français
+ * n'en a pas besoin, et son lien reste celui d'avant.
+ */
+export function lienDeRecuperation(jeton: string, langue: Langue = "fr"): string {
+  return `${LIEN_RECUPERATION}?jeton=${encodeURIComponent(jeton)}${
+    langue === "fr" ? "" : `&lang=${langue}`
+  }`;
 }
 
 /**
@@ -1127,18 +1331,19 @@ export async function relancerUnPanier(
    * qu'un bouton sous la main, « courrier indésirable » : quelques clics de
    * ceux-là et c'est toute l'adresse d'expédition de la boutique qui tombe.
    */
-  const desinscription = `${LIEN_DESINSCRIPTION}?jeton=${encodeURIComponent(
-    await jetonDeRefus(panier.email),
-  )}`;
+  const langue = langueDuPanier(panier);
+  // Dans la langue du courrier : la page qui s'ouvre doit parler comme lui.
+  const desinscription = lienDeDesinscription(await jetonDeRefus(panier.email), langue);
 
   const courrier = courrierPanierAbandonne({
-    prenomClient: (panier.nom ?? "").split(" ")[0] || "vous",
-    lien: lienDeRecuperation(jeton),
+    langue,
+    prenomClient: (panier.nom ?? "").split(" ")[0] || tc(langue)("commun.prenomParDefaut"),
+    lien: lienDeRecuperation(jeton, langue),
     lignes,
     totalCents: panier.totalCents,
     codePromo: panier.promoCode,
     lienDesinscription: desinscription,
-    textes: await textesDeLaRelance(etape),
+    textes: await textesDeLaRelance(etape, langue),
   });
 
   /*
@@ -1552,9 +1757,9 @@ function h(v: unknown): string {
  * La page publique du refus. Même sobriété que celle de la lettre
  * d'information : une page, une phrase, un bouton.
  */
-function pageRefus(titre: string, corps: string): string {
+function pageRefus(titre: string, corps: string, langue: Langue = "fr"): string {
   return `<!doctype html>
-<html lang="fr">
+<html lang="${langue}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -1596,6 +1801,7 @@ export function mountRelancePanier(app: Hono): void {
     const plancher =
       demande === undefined ? reglages.plancherMinutes : plancherValide(demande);
     const paniers = await paniersAbandonnes(plancher);
+    const personnalisees = await languesPersonnalisees();
 
     const compte = new Map<number, number>();
     if (paniers.length) {
@@ -1650,7 +1856,12 @@ export function mountRelancePanier(app: Hono): void {
         etat: etat.etat,
         etatLibelle: etat.libelle,
         motifRenoncement: p.motifRenoncement,
-        lienRecuperation: lienDeRecuperation(await jetonDeRecuperation(p.id)),
+        // Le même lien que celui du courrier : la page s'ouvre dans la langue
+        // de la personne à qui la boutique le donne.
+        lienRecuperation: lienDeRecuperation(
+          await jetonDeRecuperation(p.id),
+          langueDuPanier(p),
+        ),
         relancable: etat.relancable,
         nombreRelances: nombreDeRelances(p),
         // Un panier vidé, ou une adresse qui a refusé les rappels : les
@@ -1671,14 +1882,13 @@ export function mountRelancePanier(app: Hono): void {
       courrierConfigure: courrierConfigure(),
       chiffres: await chiffres(paniers),
       paniers: lignes,
-      // Pour chaque relance : ses textes ont-ils été réécrits ? L'écran le
-      // dit à côté du lien « Modifier le courriel ».
-      courriels: await Promise.all(
-        ETAPES.map(async (etape) => ({
-          etape,
-          personnalise: (await textesEnregistres(etape)) !== null,
-        })),
-      ),
+      // Pour chaque relance : ses textes ont-ils été réécrits, et dans quelles
+      // langues ? L'écran le dit à côté du lien « Modifier le courriel ».
+      courriels: ETAPES.map((etape) => ({
+        etape,
+        personnalise: personnalisees[etape].length > 0,
+        langues: personnalisees[etape],
+      })),
     });
   });
 
@@ -1696,23 +1906,34 @@ export function mountRelancePanier(app: Hono): void {
   /* --- Les textes des courriels ------------------------------------------ */
 
   /**
-   * Les textes des trois relances : ceux qui partiront, ceux d'origine, et
-   * les variables qu'on peut y glisser. L'écran d'édition n'a besoin de rien
-   * d'autre.
+   * Les textes des trois relances dans une langue (« ?langue=en », le
+   * français à défaut) : ceux qui partiront, ceux d'origine, et les variables
+   * qu'on peut y glisser. Dans une autre langue, les textes français de
+   * chaque relance viennent avec, en regard : c'est d'eux qu'on traduit. Et,
+   * pour les onglets, les langues où chaque relance a déjà son texte.
    */
   app.get("/admin/relance/courriels", async (c) => {
+    const langue = langueDemandee(c.req.query("langue"));
+    if (!langue) return c.json({ error: LANGUE_INCONNUE }, 400);
     const reglages = await lireReglages();
     const delais = delaisDesRelances(reglages);
+    const personnalisees = await languesPersonnalisees();
     const etapes = [];
     for (const etape of ETAPES) {
-      const propres = await textesEnregistres(etape);
+      const propres = await textesEnregistres(etape, langue);
+      const origine = textesDOrigine(etape, langue);
       const delai = delais[etape - 1];
       etapes.push({
         etape,
         nom: `${ordinal(etape)} relance`,
-        textes: propres ?? TEXTES_RELANCE_DEFAUT[etape],
-        origine: TEXTES_RELANCE_DEFAUT[etape],
+        textes: propres ?? origine,
+        origine,
         personnalise: propres !== null,
+        langues: personnalisees[etape],
+        francais:
+          langue === "fr"
+            ? null
+            : ((await textesEnregistres(etape, "fr")) ?? TEXTES_RELANCE_DEFAUT[etape]),
         // Programmée ou non : un courriel qu'on soigne mais qui ne partira
         // jamais tout seul doit le dire, sinon on attend un envoi qui ne
         // viendra pas.
@@ -1720,28 +1941,69 @@ export function mountRelancePanier(app: Hono): void {
         quand: delai !== undefined ? `${duree(delai)} après l'abandon` : null,
       });
     }
-    return c.json({ etapes, variables: VARIABLES_RELANCE, active: reglages.active });
+    return c.json({
+      langue,
+      etapes,
+      variables: VARIABLES_RELANCE,
+      active: reglages.active,
+      // L'écran le sait AVANT qu'on clique : un bouton « Proposer la
+      // traduction » qui échoue à chaque fois ne dirait rien d'utile.
+      traductionDisponible: traductionDisponible(),
+    });
   });
 
-  /** Enregistre les textes d'une relance. */
+  /** Enregistre les textes d'une relance, dans une langue. */
   app.put("/admin/relance/courriels/:etape", async (c) => {
     const etape = etapeLue(c.req.param("etape"));
     if (!etape) return c.json({ error: "Cette relance n'existe pas." }, 400);
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const langue = langueDemandee(body.langue ?? c.req.query("langue"));
+    if (!langue) return c.json({ error: LANGUE_INCONNUE }, 400);
     try {
-      return c.json(await enregistrerTextes(etape, body.textes ?? body));
+      return c.json(await enregistrerTextes(etape, body.textes ?? body, langue));
     } catch (e) {
       if (e instanceof ReglageRefuse) return c.json({ error: e.message }, 400);
       throw e;
     }
   });
 
-  /** « Revenir au texte d'origine ». */
+  /** « Revenir au texte d'origine », dans une langue. */
   app.delete("/admin/relance/courriels/:etape", async (c) => {
     const etape = etapeLue(c.req.param("etape"));
     if (!etape) return c.json({ error: "Cette relance n'existe pas." }, 400);
-    await revenirAuTexteDOrigine(etape);
-    return c.json({ textes: TEXTES_RELANCE_DEFAUT[etape], personnalise: false });
+    const langue = langueDemandee(c.req.query("langue"));
+    if (!langue) return c.json({ error: LANGUE_INCONNUE }, 400);
+    await revenirAuTexteDOrigine(etape, langue);
+    return c.json({ textes: textesDOrigine(etape, langue), personnalise: false });
+  });
+
+  /**
+   * « Proposer la traduction » : les textes français de cette relance,
+   * traduits dans la langue demandée. N'ENREGISTRE RIEN — l'écran pose la
+   * proposition dans les champs, et c'est la boutique qui enregistre.
+   */
+  app.post("/admin/relance/courriels/:etape/traduction", async (c) => {
+    const etape = etapeLue(c.req.param("etape"));
+    if (!etape) return c.json({ error: "Cette relance n'existe pas." }, 400);
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const langue = langueDemandee(body.langue);
+    if (!langue || langue === "fr")
+      return c.json({ error: "Choisissez la langue dans laquelle traduire le texte français." }, 400);
+    if (!traductionDisponible())
+      return c.json(
+        {
+          error:
+            "La traduction automatique est indisponible sur ce serveur (il manque la clé OpenAI). Vous pouvez écrire la traduction vous-même.",
+        },
+        503,
+      );
+    try {
+      return c.json(await proposerTraductionRelance(etape, langue));
+    } catch (e) {
+      if (e instanceof EchecTraduction) return c.json({ error: e.message }, 502);
+      console.error("[relance] traduction", e);
+      return c.json({ error: "La traduction a échoué. Réessayez dans un instant." }, 502);
+    }
   });
 
   /**
@@ -1832,15 +2094,12 @@ export function mountRelancePanier(app: Hono): void {
    */
   app.get("/relance/desabonnement", async (c) => {
     const jeton = (c.req.query("jeton") ?? "").trim();
+    // La langue du courrier d'où vient le clic (voir `lienDeDesinscription`).
+    const langue = langueLue(c.req.query("lang")) ?? "fr";
+    const t = TEXTES_REFUS[langue];
 
     if (jeton === "essai")
-      return c.html(
-        pageRefus(
-          "Lien d'exemple",
-          `<p>Ce lien vient d'un essai : il ne retire personne d'aucune liste.</p>
-           <p class="discret">Dans un vrai rappel de panier, il arrête les relances en un clic.</p>`,
-        ),
-      );
+      return c.html(pageRefus(t.exemple.titre, t.exemple.corps, langue));
 
     const [trouve] = jeton
       ? await db
@@ -1850,38 +2109,23 @@ export function mountRelancePanier(app: Hono): void {
           .limit(1)
       : [];
 
-    if (!trouve)
-      return c.html(
-        pageRefus(
-          "Ce lien n'est plus valable",
-          `<p>Nous ne reconnaissons pas ce lien. Il a peut-être été coupé en deux par
-            votre messagerie.</p>
-           <p class="discret">Écrivez-nous en répondant simplement au message : nous
-            arrêterons les rappels à la main.</p>`,
-        ),
-        404,
-      );
+    if (!trouve) return c.html(pageRefus(t.inconnu.titre, t.inconnu.corps, langue), 404);
 
     if (trouve.refuseLe)
-      return c.html(
-        pageRefus(
-          "C'est déjà fait",
-          `<p>L'adresse ${h(trouve.email)} ne reçoit plus de rappel de panier.</p>
-           <p class="discret">Vous n'avez rien d'autre à faire.</p>`,
-        ),
-      );
+      return c.html(pageRefus(t.deja.titre, t.deja.corps(h(trouve.email)), langue));
 
+    // Le formulaire repart avec la langue : la page qui confirme le refus doit
+    // parler comme celle qui l'a demandé.
     return c.html(
       pageRefus(
-        "Ne plus recevoir de rappel de panier",
-        `<p>Vous êtes sur le point de demander que l'adresse ${h(trouve.email)} ne
-          reçoive plus de rappel lorsqu'une commande reste en cours.</p>
-         <form method="POST" action="${h(LIEN_DESINSCRIPTION)}?jeton=${encodeURIComponent(trouve.jeton)}">
+        t.demande.titre,
+        `${t.demande.avant(h(trouve.email))}
+         <form method="POST" action="${h(lienDeDesinscription(trouve.jeton, langue))}">
            <input type="hidden" name="jeton" value="${h(trouve.jeton)}" />
-           <button type="submit">Confirmer</button>
+           <button type="submit">${t.demande.bouton}</button>
          </form>
-         <p class="discret" style="margin-top:20px">Vos commandes, votre compte et la
-          lettre d'information ne changent pas : seuls les rappels de panier s'arrêtent.</p>`,
+         ${t.demande.apres}`,
+        langue,
       ),
     );
   });
@@ -1901,6 +2145,8 @@ export function mountRelancePanier(app: Hono): void {
     const jeton =
       (c.req.query("jeton") ?? "").trim() ||
       String(formulaire["jeton"] ?? "").trim().slice(0, 200);
+    const langue = langueLue(c.req.query("lang")) ?? "fr";
+    const t = TEXTES_REFUS[langue];
 
     const [trouve] = jeton
       ? await db
@@ -1911,15 +2157,7 @@ export function mountRelancePanier(app: Hono): void {
       : [];
 
     if (!trouve)
-      return c.html(
-        pageRefus(
-          "Ce lien n'est plus valable",
-          `<p>Nous ne reconnaissons pas ce lien.</p>
-           <p class="discret">Écrivez-nous en répondant simplement au message : nous
-            arrêterons les rappels à la main.</p>`,
-        ),
-        404,
-      );
+      return c.html(pageRefus(t.inconnuEnvoi.titre, t.inconnuEnvoi.corps, langue), 404);
 
     if (!trouve.refuseLe)
       await db
@@ -1927,16 +2165,223 @@ export function mountRelancePanier(app: Hono): void {
         .set({ refuseLe: new Date() })
         .where(eq(schema.relanceRefus.jeton, trouve.jeton));
 
-    return c.html(
-      pageRefus(
-        "C'est fait",
-        `<p>L'adresse ${h(trouve.email)} ne recevra plus de rappel de panier.</p>
-         <p class="discret">Votre panier reste le vôtre : vous pouvez terminer votre
-          commande à tout moment depuis la boutique.</p>`,
-      ),
-    );
+    return c.html(pageRefus(t.fait.titre, t.fait.corps(h(trouve.email)), langue));
   });
 }
+
+/**
+ * L'adresse de la page de refus des relances, dans la langue du courrier.
+ *
+ * Comme le lien de récupération, la page vit hors de tout préfixe de langue :
+ * sa langue se dit en « &lang= ». Le français n'en a pas besoin, et son lien
+ * reste celui d'avant. Sert au courrier (et à son en-tête List-Unsubscribe)
+ * comme au formulaire de la page elle-même.
+ */
+function lienDeDesinscription(jeton: string, langue: Langue = "fr"): string {
+  return `${LIEN_DESINSCRIPTION}?jeton=${encodeURIComponent(jeton)}${
+    langue === "fr" ? "" : `&lang=${langue}`
+  }`;
+}
+
+/** Ce que dit la page de refus, dans chaque état. Les adresses arrivent échappées. */
+interface TextesRefus {
+  exemple: { titre: string; corps: string };
+  /** Lien inconnu, à l'ouverture de la page. */
+  inconnu: { titre: string; corps: string };
+  /** Lien inconnu, à l'envoi du formulaire (ou par le bouton de la messagerie). */
+  inconnuEnvoi: { titre: string; corps: string };
+  deja: { titre: string; corps: (email: string) => string };
+  demande: { titre: string; avant: (email: string) => string; bouton: string; apres: string };
+  fait: { titre: string; corps: (email: string) => string };
+}
+
+/**
+ * La page de refus dans les cinq langues.
+ *
+ * C'est le lien qu'exige le RGPD au pied de chaque relance : une cliente qui
+ * vient de lire son rappel en allemand doit comprendre, en allemand, ce que
+ * fait le bouton qu'on lui demande d'appuyer. Les textes vivent ici et non
+ * dans le dictionnaire des courriels parce que c'est une PAGE, servie par
+ * l'API : ils n'ont rien à faire dans les modèles de mail.ts.
+ *
+ * Le français est celui d'avant, à la lettre (retours à la ligne compris) :
+ * la page d'un lien français ne change pas d'un octet. Mêmes tons que les
+ * courriels : « Sie » en allemand, tutoiement en italien et en espagnol,
+ * anglais britannique.
+ */
+const TEXTES_REFUS: Record<Langue, TextesRefus> = {
+  fr: {
+    exemple: {
+      titre: "Lien d'exemple",
+      corps: `<p>Ce lien vient d'un essai : il ne retire personne d'aucune liste.</p>
+           <p class="discret">Dans un vrai rappel de panier, il arrête les relances en un clic.</p>`,
+    },
+    inconnu: {
+      titre: "Ce lien n'est plus valable",
+      corps: `<p>Nous ne reconnaissons pas ce lien. Il a peut-être été coupé en deux par
+            votre messagerie.</p>
+           <p class="discret">Écrivez-nous en répondant simplement au message : nous
+            arrêterons les rappels à la main.</p>`,
+    },
+    inconnuEnvoi: {
+      titre: "Ce lien n'est plus valable",
+      corps: `<p>Nous ne reconnaissons pas ce lien.</p>
+           <p class="discret">Écrivez-nous en répondant simplement au message : nous
+            arrêterons les rappels à la main.</p>`,
+    },
+    deja: {
+      titre: "C'est déjà fait",
+      corps: (email) => `<p>L'adresse ${email} ne reçoit plus de rappel de panier.</p>
+           <p class="discret">Vous n'avez rien d'autre à faire.</p>`,
+    },
+    demande: {
+      titre: "Ne plus recevoir de rappel de panier",
+      avant: (email) => `<p>Vous êtes sur le point de demander que l'adresse ${email} ne
+          reçoive plus de rappel lorsqu'une commande reste en cours.</p>`,
+      bouton: "Confirmer",
+      apres: `<p class="discret" style="margin-top:20px">Vos commandes, votre compte et la
+          lettre d'information ne changent pas : seuls les rappels de panier s'arrêtent.</p>`,
+    },
+    fait: {
+      titre: "C'est fait",
+      corps: (email) => `<p>L'adresse ${email} ne recevra plus de rappel de panier.</p>
+         <p class="discret">Votre panier reste le vôtre : vous pouvez terminer votre
+          commande à tout moment depuis la boutique.</p>`,
+    },
+  },
+  en: {
+    exemple: {
+      titre: "Example link",
+      corps: `<p>This link comes from a test email: it doesn't remove anyone from any list.</p>
+           <p class="discret">In a real basket reminder, it stops the reminders in one click.</p>`,
+    },
+    inconnu: {
+      titre: "This link is no longer valid",
+      corps: `<p>We don't recognise this link. Your email program may have split it in two.</p>
+           <p class="discret">Just reply to our email and we'll stop the reminders ourselves.</p>`,
+    },
+    inconnuEnvoi: {
+      titre: "This link is no longer valid",
+      corps: `<p>We don't recognise this link.</p>
+           <p class="discret">Just reply to our email and we'll stop the reminders ourselves.</p>`,
+    },
+    deja: {
+      titre: "Already done",
+      corps: (email) => `<p>The address ${email} no longer receives basket reminders.</p>
+           <p class="discret">There's nothing else you need to do.</p>`,
+    },
+    demande: {
+      titre: "Stop receiving basket reminders",
+      avant: (email) => `<p>You're about to ask us to stop sending reminders to ${email} when an order is left unfinished.</p>`,
+      bouton: "Confirm",
+      apres: `<p class="discret" style="margin-top:20px">Your orders, your account and the newsletter stay as they are: only the basket reminders stop.</p>`,
+    },
+    fait: {
+      titre: "Done",
+      corps: (email) => `<p>The address ${email} will no longer receive basket reminders.</p>
+         <p class="discret">Your basket is still yours: you can complete your order at any time from the shop.</p>`,
+    },
+  },
+  de: {
+    exemple: {
+      titre: "Beispiel-Link",
+      corps: `<p>Dieser Link stammt aus einer Test-E-Mail: Er trägt niemanden aus einer Liste aus.</p>
+           <p class="discret">In einer echten Warenkorb-Erinnerung stoppt er die Erinnerungen mit einem Klick.</p>`,
+    },
+    inconnu: {
+      titre: "Dieser Link ist nicht mehr gültig",
+      corps: `<p>Wir erkennen diesen Link nicht. Vielleicht hat Ihr E-Mail-Programm ihn in zwei Teile getrennt.</p>
+           <p class="discret">Antworten Sie einfach auf unsere E-Mail: Dann stoppen wir die Erinnerungen von Hand.</p>`,
+    },
+    inconnuEnvoi: {
+      titre: "Dieser Link ist nicht mehr gültig",
+      corps: `<p>Wir erkennen diesen Link nicht.</p>
+           <p class="discret">Antworten Sie einfach auf unsere E-Mail: Dann stoppen wir die Erinnerungen von Hand.</p>`,
+    },
+    deja: {
+      titre: "Bereits erledigt",
+      corps: (email) => `<p>Die Adresse ${email} erhält keine Warenkorb-Erinnerungen mehr.</p>
+           <p class="discret">Sie müssen nichts weiter tun.</p>`,
+    },
+    demande: {
+      titre: "Warenkorb-Erinnerungen abbestellen",
+      avant: (email) => `<p>Sie möchten, dass die Adresse ${email} keine Erinnerungen mehr erhält, wenn eine Bestellung nicht abgeschlossen wurde.</p>`,
+      bouton: "Bestätigen",
+      apres: `<p class="discret" style="margin-top:20px">Ihre Bestellungen, Ihr Konto und der Newsletter bleiben unverändert: Nur die Warenkorb-Erinnerungen werden eingestellt.</p>`,
+    },
+    fait: {
+      titre: "Erledigt",
+      corps: (email) => `<p>Die Adresse ${email} erhält künftig keine Warenkorb-Erinnerungen mehr.</p>
+         <p class="discret">Ihr Warenkorb bleibt erhalten: Sie können Ihre Bestellung jederzeit im Shop abschließen.</p>`,
+    },
+  },
+  it: {
+    exemple: {
+      titre: "Link di esempio",
+      corps: `<p>Questo link viene da un'e-mail di prova: non toglie nessuno da nessuna lista.</p>
+           <p class="discret">In un vero promemoria sul carrello, interrompe i promemoria con un clic.</p>`,
+    },
+    inconnu: {
+      titre: "Questo link non è più valido",
+      corps: `<p>Non riconosciamo questo link. Forse il tuo programma di posta l'ha spezzato in due.</p>
+           <p class="discret">Rispondi semplicemente alla nostra e-mail: interromperemo i promemoria a mano.</p>`,
+    },
+    inconnuEnvoi: {
+      titre: "Questo link non è più valido",
+      corps: `<p>Non riconosciamo questo link.</p>
+           <p class="discret">Rispondi semplicemente alla nostra e-mail: interromperemo i promemoria a mano.</p>`,
+    },
+    deja: {
+      titre: "Già fatto",
+      corps: (email) => `<p>L'indirizzo ${email} non riceve più promemoria sul carrello.</p>
+           <p class="discret">Non devi fare nient'altro.</p>`,
+    },
+    demande: {
+      titre: "Non ricevere più promemoria sul carrello",
+      avant: (email) => `<p>Stai per chiedere che l'indirizzo ${email} non riceva più promemoria quando un ordine resta in sospeso.</p>`,
+      bouton: "Conferma",
+      apres: `<p class="discret" style="margin-top:20px">I tuoi ordini, il tuo account e la newsletter non cambiano: si fermano solo i promemoria sul carrello.</p>`,
+    },
+    fait: {
+      titre: "Fatto",
+      corps: (email) => `<p>L'indirizzo ${email} non riceverà più promemoria sul carrello.</p>
+         <p class="discret">Il tuo carrello resta tuo: puoi completare l'ordine in qualsiasi momento dal negozio.</p>`,
+    },
+  },
+  es: {
+    exemple: {
+      titre: "Enlace de ejemplo",
+      corps: `<p>Este enlace viene de un correo de prueba: no quita a nadie de ninguna lista.</p>
+           <p class="discret">En un recordatorio de cesta real, detiene los recordatorios con un clic.</p>`,
+    },
+    inconnu: {
+      titre: "Este enlace ya no es válido",
+      corps: `<p>No reconocemos este enlace. Puede que tu programa de correo lo haya cortado en dos.</p>
+           <p class="discret">Responde a nuestro correo y detendremos los recordatorios a mano.</p>`,
+    },
+    inconnuEnvoi: {
+      titre: "Este enlace ya no es válido",
+      corps: `<p>No reconocemos este enlace.</p>
+           <p class="discret">Responde a nuestro correo y detendremos los recordatorios a mano.</p>`,
+    },
+    deja: {
+      titre: "Ya está hecho",
+      corps: (email) => `<p>La dirección ${email} ya no recibe recordatorios de la cesta.</p>
+           <p class="discret">No tienes que hacer nada más.</p>`,
+    },
+    demande: {
+      titre: "Dejar de recibir recordatorios de la cesta",
+      avant: (email) => `<p>Vas a pedir que la dirección ${email} deje de recibir recordatorios cuando un pedido se quede a medias.</p>`,
+      bouton: "Confirmar",
+      apres: `<p class="discret" style="margin-top:20px">Tus pedidos, tu cuenta y el boletín no cambian: solo se detienen los recordatorios de la cesta.</p>`,
+    },
+    fait: {
+      titre: "Hecho",
+      corps: (email) => `<p>La dirección ${email} ya no recibirá recordatorios de la cesta.</p>
+         <p class="discret">Tu cesta sigue siendo tuya: puedes terminar tu pedido cuando quieras desde la tienda.</p>`,
+    },
+  },
+};
 
 /**
  * Marque un panier comme RÉCUPÉRÉ : il a été payé après une relance.

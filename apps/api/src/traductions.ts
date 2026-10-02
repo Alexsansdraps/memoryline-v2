@@ -96,10 +96,16 @@ export class EchecTraduction extends Error {}
 /**
  * Propose une traduction de chaque champ (texte simple ou HTML). Lève
  * EchecTraduction avec un message lisible : clé absente, service muet…
+ *
+ * `precisions` : des règles propres au texte, ajoutées après les règles
+ * générales et qui l'emportent sur elles. Le courriel de relance s'en sert :
+ * ses {variables} doivent revenir intactes, et l'italien comme l'espagnol y
+ * tutoient, comme le site — là où la règle générale dirait « Lei », « usted ».
  */
 export async function proposerTraduction(
   champs: Record<string, string>,
   langue: LangueEtrangere,
+  precisions?: string,
 ): Promise<Record<string, string>> {
   const cle = (process.env.OPENAI_API_KEY ?? "").trim();
   if (!cle)
@@ -122,7 +128,12 @@ export async function proposerTraduction(
           model: modele,
           response_format: { type: "json_object" },
           messages: [
-            { role: "system", content: CONSIGNE(langue) },
+            {
+              role: "system",
+              content: precisions?.trim()
+                ? `${CONSIGNE(langue)}\nAdditional rules for this text (they take precedence over the rules above):\n${precisions.trim()}`
+                : CONSIGNE(langue),
+            },
             { role: "user", content: JSON.stringify(aTraduire) },
           ],
         }),

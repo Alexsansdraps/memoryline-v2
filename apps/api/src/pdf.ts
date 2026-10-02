@@ -63,6 +63,13 @@ import {
   styleDesLignes,
 } from "@memoryline/types";
 import type { PosterConfig, PosterFormat } from "@memoryline/types";
+import {
+  dateLongue,
+  mentionTva,
+  prixDans,
+  tc,
+  type Langue,
+} from "./courriels/index.js";
 
 // --- Constantes format --------------------------------------------------------
 
@@ -1136,20 +1143,14 @@ function pourPolicePdf(v: unknown): string {
   );
 }
 
-/** Montant en centimes → « 49,00 € ». */
-function euros(cents: number): string {
-  return (cents / 100).toFixed(2).replace(".", ",") + " €";
+/** Montant en centimes → « 49,00 € », ou sa forme dans la langue de la facture. */
+function euros(cents: number, langue: Langue = "fr"): string {
+  return prixDans(langue, cents);
 }
 
-/** « 10 septembre 2026 ». */
-function jourFrancais(quand: Date): string {
-  return pourPolicePdf(
-    quand.toLocaleDateString("fr-FR", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    }),
-  );
+/** « 10 septembre 2026 », « 10 September 2026 »… */
+function jourEnToutesLettres(quand: Date, langue: Langue = "fr"): string {
+  return pourPolicePdf(dateLongue(langue, quand));
 }
 
 /** Une ligne de la facture, telle qu'elle s'imprime. */
@@ -1189,6 +1190,12 @@ export interface DonneesFacture {
   siret?: string | null;
   /** Portée en travers quand la commande a été annulée après sa facturation. */
   filigrane?: string | null;
+  /**
+   * La langue de la facture : celle de la cliente. Les intitulés, les
+   * montants et les dates la suivent ; la mention de TVA reste en français,
+   * avec sa traduction dessous. Absente : le français.
+   */
+  langue?: Langue;
 }
 
 /**
@@ -1200,9 +1207,11 @@ export interface DonneesFacture {
  * facturé — on ne recalcule rien, l'appelant a déjà lu la commande.
  */
 export async function renderInvoicePdf(d: DonneesFacture): Promise<Buffer> {
+  const langue = d.langue ?? "fr";
+  const t = tc(langue);
   const doc = await PDFDocument.create();
-  doc.setTitle(`Facture ${d.numeroFacture} - Memory Line`);
-  doc.setSubject(`Commande ${d.numeroCommande}`);
+  doc.setTitle(t("facturePdf.titreDocument", { facture: d.numeroFacture }));
+  doc.setSubject(t("facturePdf.sujetDocument", { numero: d.numeroCommande }));
   const page = doc.addPage([FACTURE_LARGEUR, FACTURE_HAUTEUR]);
   const normale = await doc.embedFont(StandardFonts.Helvetica);
   const grasse = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -1259,19 +1268,19 @@ export async function renderInvoicePdf(d: DonneesFacture): Promise<Buffer> {
   }
 
   let hautDroite = FACTURE_HAUTEUR - FACTURE_MARGE - 14;
-  hautDroite = ecrire("FACTURE", droite, hautDroite, {
+  hautDroite = ecrire(t("facturePdf.titre"), droite, hautDroite, {
     taille: 20,
     gras: true,
     aDroite: true,
   });
   hautDroite -= 4;
-  hautDroite = ecrire(`N° ${d.numeroFacture}`, droite, hautDroite, {
+  hautDroite = ecrire(t("facturePdf.numero", { facture: d.numeroFacture }), droite, hautDroite, {
     taille: 11,
     gras: true,
     aDroite: true,
   });
   hautDroite = ecrire(
-    `Émise le ${jourFrancais(d.dateFacture)}`,
+    t("facturePdf.emiseLe", { date: jourEnToutesLettres(d.dateFacture, langue) }),
     droite,
     hautDroite,
     { pale: true, aDroite: true },
@@ -1283,19 +1292,20 @@ export async function renderInvoicePdf(d: DonneesFacture): Promise<Buffer> {
   const colonneClient = FACTURE_LARGEUR / 2 + 10;
   const hautDesParties = y;
 
-  y = ecrire("ÉMETTEUR", gauche, y, { taille: 8, gras: true, pale: true });
+  y = ecrire(t("facturePdf.emetteur"), gauche, y, { taille: 8, gras: true, pale: true });
   y = ecrire("Memory Line", gauche, y - 2, { gras: true });
-  y = ecrire("Affiches personnalisées", gauche, y, { pale: true });
+  y = ecrire(t("facturePdf.activite"), gauche, y, { pale: true });
   for (const ligne of d.adresseBoutique ?? [])
     if (ligne) y = ecrire(ligne, gauche, y, { pale: true });
+  // Le SIRET est un identifiant français, qui ne se traduit pas.
   if (d.siret) y = ecrire(`SIRET ${d.siret}`, gauche, y, { pale: true });
 
-  let yClient = ecrire("FACTURÉ À", colonneClient, hautDesParties, {
+  let yClient = ecrire(t("facturePdf.factureA"), colonneClient, hautDesParties, {
     taille: 8,
     gras: true,
     pale: true,
   });
-  yClient = ecrire(d.clientNom || "Client", colonneClient, yClient - 2, {
+  yClient = ecrire(d.clientNom || t("facturePdf.clientParDefaut"), colonneClient, yClient - 2, {
     gras: true,
   });
   for (const ligne of d.clientAdresse)
@@ -1308,7 +1318,10 @@ export async function renderInvoicePdf(d: DonneesFacture): Promise<Buffer> {
   /* --- Ce que cette facture couvre ---------------------------------------- */
 
   y = ecrire(
-    `Commande ${d.numeroCommande} du ${jourFrancais(d.dateCommande)}`,
+    t("facturePdf.commandeDu", {
+      numero: d.numeroCommande,
+      date: jourEnToutesLettres(d.dateCommande, langue),
+    }),
     gauche,
     y,
     { taille: 10, gras: true },
@@ -1330,22 +1343,22 @@ export async function renderInvoicePdf(d: DonneesFacture): Promise<Buffer> {
       color: FILET_FACTURE,
     });
 
-  ecrire("DÉSIGNATION", gauche, y, { taille: 8, gras: true, pale: true });
-  ecrire("QTÉ", COL_QTE, y, { taille: 8, gras: true, pale: true, aDroite: true });
-  ecrire("PRIX UNIT.", COL_UNITE, y, {
+  ecrire(t("facturePdf.designation"), gauche, y, { taille: 8, gras: true, pale: true });
+  ecrire(t("facturePdf.quantite"), COL_QTE, y, { taille: 8, gras: true, pale: true, aDroite: true });
+  ecrire(t("facturePdf.prixUnitaire"), COL_UNITE, y, {
     taille: 8,
     gras: true,
     pale: true,
     aDroite: true,
   });
-  ecrire("TOTAL", droite, y, { taille: 8, gras: true, pale: true, aDroite: true });
+  ecrire(t("facturePdf.totalColonne"), droite, y, { taille: 8, gras: true, pale: true, aDroite: true });
   y -= 7;
   filet(y);
   y -= 15;
 
   for (const l of d.lignes) {
     const hautDeLaLigne = y;
-    y = ecrire(l.designation || "Affiche personnalisée", gauche, y, {
+    y = ecrire(l.designation || t("lignes.titreParDefaut"), gauche, y, {
       taille: 9.5,
     });
     if (l.precision) y = ecrire(l.precision, gauche, y, { taille: 8.5, pale: true });
@@ -1353,11 +1366,15 @@ export async function renderInvoicePdf(d: DonneesFacture): Promise<Buffer> {
     // lignes de même titre et de même prix sur une facture retrouvée un an
     // après. Il tient entre guillemets, comme partout dans la boutique.
     for (const ligne of l.lignesAffiche ?? [])
-      if (ligne) y = ecrire(`« ${ligne} »`, gauche + 8, y, { taille: 8.5, pale: true });
+      if (ligne)
+        y = ecrire(t("facturePdf.texteAffiche", { texte: ligne }), gauche + 8, y, {
+          taille: 8.5,
+          pale: true,
+        });
 
     ecrire(String(l.quantite), COL_QTE, hautDeLaLigne, { aDroite: true });
-    ecrire(euros(l.unitPriceCents), COL_UNITE, hautDeLaLigne, { aDroite: true });
-    ecrire(euros(l.unitPriceCents * l.quantite), droite, hautDeLaLigne, {
+    ecrire(euros(l.unitPriceCents, langue), COL_UNITE, hautDeLaLigne, { aDroite: true });
+    ecrire(euros(l.unitPriceCents * l.quantite, langue), droite, hautDeLaLigne, {
       aDroite: true,
     });
     y -= 5;
@@ -1383,16 +1400,16 @@ export async function renderInvoicePdf(d: DonneesFacture): Promise<Buffer> {
     y = ecrire(montant, droite, y, { aDroite: true, ...o });
   };
 
-  totalLigne("Sous-total", euros(sousTotal), { pale: true });
+  totalLigne(t("facturePdf.sousTotal"), euros(sousTotal, langue), { pale: true });
   if (d.remiseCents > 0)
     totalLigne(
-      `Réduction${d.codePromo ? ` (${d.codePromo})` : ""}`,
-      `- ${euros(d.remiseCents)}`,
+      `${t("facturePdf.reduction")}${d.codePromo ? ` (${d.codePromo})` : ""}`,
+      `- ${euros(d.remiseCents, langue)}`,
       { pale: true },
     );
   totalLigne(
-    `Livraison${d.modeLivraison ? ` (${d.modeLivraison})` : ""}`,
-    euros(d.portCents),
+    `${t("facturePdf.livraison")}${d.modeLivraison ? ` (${d.modeLivraison})` : ""}`,
+    euros(d.portCents, langue),
     { pale: true },
   );
   y -= 3;
@@ -1404,31 +1421,30 @@ export async function renderInvoicePdf(d: DonneesFacture): Promise<Buffer> {
     color: FILET_FACTURE,
   });
   y -= 15;
-  totalLigne("TOTAL À PAYER", euros(d.totalCents), { gras: true });
+  totalLigne(t("facturePdf.totalAPayer"), euros(d.totalCents, langue), { gras: true });
   if (d.rembourseCents > 0) {
     y -= 2;
-    totalLigne("Dont remboursé", `- ${euros(d.rembourseCents)}`, { pale: true });
-    totalLigne("Net encaissé", euros(d.totalCents - d.rembourseCents), {
+    totalLigne(t("facturePdf.dontRembourse"), `- ${euros(d.rembourseCents, langue)}`, {
+      pale: true,
+    });
+    totalLigne(t("facturePdf.netEncaisse"), euros(d.totalCents - d.rembourseCents, langue), {
       pale: true,
     });
   }
 
   /* --- Le pied ------------------------------------------------------------ */
 
+  // La mention de TVA est une mention légale française : elle s'imprime en
+  // français dans toutes les langues, et sa traduction vient dessous, pour
+  // que la cliente sache ce qu'elle lit. Le pied a la place d'une ligne de
+  // plus avant la marge.
+  const tva = mentionTva(langue);
   let pied = FACTURE_MARGE + 46;
   filet(pied + 14);
-  pied = ecrire(
-    "TVA non applicable, article 293 B du CGI.",
-    gauche,
-    pied,
-    { taille: 8.5, gras: true, pale: true },
-  );
-  pied = ecrire(
-    "Memory Line, affiches personnalisées. Une question sur cette facture ? Répondez au courrier qui vous l'a apportée.",
-    gauche,
-    pied,
-    { taille: 8, pale: true },
-  );
+  pied = ecrire(tva.francaise, gauche, pied, { taille: 8.5, gras: true, pale: true });
+  if (tva.traduction)
+    pied = ecrire(tva.traduction, gauche, pied, { taille: 8.5, pale: true });
+  pied = ecrire(t("facturePdf.pied"), gauche, pied, { taille: 8, pale: true });
 
   // Le filigrane, quand la commande a été annulée APRÈS avoir été facturée :
   // le numéro reste pris, la facture reste éditable, et le papier dit

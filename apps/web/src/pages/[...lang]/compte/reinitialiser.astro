@@ -36,9 +36,12 @@ if (Astro.request.method === "POST") {
   else if (nouveau !== confirmation) erreur = "compte.err.mdp_different";
   else if (nouveau.length < 8) erreur = "compte.err.mdp_court";
   else {
+    // La langue de la page : celle de l'avis « mot de passe modifié » quand le
+    // compte n'en a pas choisi.
     const r = await reinitialiserMotDePasse(Astro, {
       token: jetonPoste,
       nouveau,
+      langue,
     });
     if (r.ok)
       return rediriger(Astro, `${lien(langue, "/compte/reinitialiser")}?ok=1`);

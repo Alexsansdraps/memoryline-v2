@@ -979,6 +979,7 @@ export default function CheckoutIsland(props: {
           relayPointId: relais.id.trim(),
           relayPointLabel: relais.label.trim(),
         },
+        langue,
       );
       setOrderId(order.orderId);
       setOrderNumber(order.number);

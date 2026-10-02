@@ -37,7 +37,7 @@ import {
   estEnEssai,
   memesTextesRelance,
   normaliserTextesRelance,
-  TEXTES_RELANCE_DEFAUT,
+  textesRelanceParDefaut,
   type Courrier,
   type EtapeRelance,
   type LigneCourrier,
@@ -47,6 +47,14 @@ import {
 // banc doit montrer ceux-là, pas ceux d'origine, sans quoi il montrerait un
 // courrier qui ne part plus.
 import { etapeLue, ordinal, textesDeLaRelance } from "./relance-panier.js";
+import {
+  cheminSite,
+  langueDuDestinataire,
+  langueLue,
+  tc,
+  type Langue,
+} from "./courriels/index.js";
+import { nomTraduit } from "./traductions.js";
 // La vignette d'un produit se compose au même endroit que la relance de
 // panier, seul courrier qui l'affiche : deux façons de fabriquer cette adresse
 // finiraient par diverger, et l'aperçu montrerait une image que le vrai
@@ -253,6 +261,12 @@ interface DonneesCourrier {
   numeroFacture: string | null;
   /** La commande a-t-elle été réglée ? Change une phrase de la facture. */
   dejaPayee: boolean;
+  /**
+   * La langue du courrier : celle que l'écran demande, sinon celle à laquelle
+   * la cliente de cette commande recevrait le sien (langueDuDestinataire),
+   * sinon le français pour la commande d'exemple.
+   */
+  langue: Langue;
 }
 
 /**
@@ -263,7 +277,7 @@ interface DonneesCourrier {
  * remise ni cadre laisse justement dans l'ombre les lignes du courrier qui
  * n'apparaissent qu'à ces conditions.
  */
-function jeuExemple(): DonneesCourrier {
+function jeuExemple(langue: Langue = "fr"): DonneesCourrier {
   const lignes: LigneCourrier[] = [
     {
       titre: "Notre famille, été 2024",
@@ -287,6 +301,7 @@ function jeuExemple(): DonneesCourrier {
   const remiseCents = 1070;
   const portCents = 590;
   return {
+    langue,
     numero: "WEB-0042",
     // La commande d'exemple vient du site : c'est le seul canal dont la
     // boutique envoie une confirmation.
@@ -324,6 +339,8 @@ function jeuExemple(): DonneesCourrier {
  */
 async function donneesDeCommande(
   reference: string,
+  /** La langue demandée par l'écran ; null = celle de la cliente. */
+  langueVoulue: Langue | null = null,
 ): Promise<DonneesCourrier | null> {
   const ref = reference.trim();
   if (!ref) return null;
@@ -362,14 +379,18 @@ async function donneesDeCommande(
     .from(schema.orderItems)
     .where(eq(schema.orderItems.orderId, commande.id));
   const cadres = await db.select().from(schema.frames);
+  // La langue que la cliente recevrait : même règle que l'envoi réel.
+  const langue =
+    langueVoulue ??
+    langueDuDestinataire({ compte: client?.langue, commande: commande.langue });
 
   const lignes: LigneCourrier[] = articles.map((it) => {
     const cfg = (it.config ?? {}) as Record<string, unknown>;
     const cadre = cadres.find((f) => String(f.id) === String(cfg.frameId ?? ""));
     return {
-      titre: it.title ?? "Affiche personnalisée",
+      titre: it.title ?? tc(langue)("lignes.titreParDefaut"),
       format: typeof cfg.format === "string" ? cfg.format : "A4",
-      cadre: cadre?.name ?? null,
+      cadre: cadre ? (nomTraduit(cadre.translations, langue) ?? cadre.name) : null,
       quantite: it.quantity,
       unitPriceCents: it.unitPriceCents,
       // L'aperçu réel de CETTE ligne, en adresse absolue : une messagerie
@@ -385,6 +406,7 @@ async function donneesDeCommande(
   const portCents = commande.shippingCents ?? 0;
 
   return {
+    langue,
     numero: commande.number,
     canal: commande.channel,
     // Le numéro déjà attribué, ou celui d'exemple : l'aperçu n'en tire jamais
@@ -431,11 +453,16 @@ function rendre(
    */
   textesRelance: TextesRelance | null = null,
 ): Courrier {
+  const langue = d.langue;
+  const t = tc(langue);
+  // La formule de repli de la plupart des courriers, dans leur langue.
+  const prenom = d.prenomClient || t("commun.prenomParDefaut");
   switch (modele) {
     case "confirmation":
       return courrierConfirmation({
+        langue,
         numero: d.numero,
-        prenomClient: d.prenomClient || "et merci",
+        prenomClient: d.prenomClient || t("confirmation.prenomParDefaut"),
         lignes: d.lignes,
         sousTotalCents: d.sousTotalCents,
         remiseCents: d.remiseCents,
@@ -449,7 +476,8 @@ function rendre(
       // Le suivi d'exemple imite un envoi Colissimo : sans numéro, l'aperçu
       // cacherait justement le bouton qu'on vient vérifier.
       return courrierExpediee({
-        prenomClient: d.prenomClient || "vous",
+        langue,
+        prenomClient: prenom,
         numero: d.numero,
         transporteur: "Colissimo",
         numeroSuivi: "6A12345678901",
@@ -459,7 +487,8 @@ function rendre(
       });
     case "prete-au-stand":
       return courrierPreteAuStand({
-        prenomClient: d.prenomClient || "vous",
+        langue,
+        prenomClient: prenom,
         numero: d.numero,
         evenement: "Salon du livre de Nantes 2026",
         lignes: d.lignes,
@@ -478,7 +507,8 @@ function rendre(
       const autre = d.lignes[d.lignes.length - 1];
       const dejaRendu = d.lignes.length > 1 && autre ? autre.unitPriceCents : 0;
       return courrierRemboursee({
-        prenomClient: d.prenomClient || "vous",
+        langue,
+        prenomClient: prenom,
         numero: d.numero,
         montantCents: montant,
         portCents: d.portCents,
@@ -492,17 +522,25 @@ function rendre(
     }
     case "annulee":
       return courrierAnnulee({
-        prenomClient: d.prenomClient || "vous",
+        langue,
+        prenomClient: prenom,
         numero: d.numero,
         // Le motif est facultatif dans le modèle : sans lui, l'aperçu cacherait
-        // justement la ligne qu'on vient relire.
-        motif: "Annulée à la demande de la cliente, avant impression.",
+        // justement la ligne qu'on vient relire. Hors du français, celui de la
+        // liste du back-office, tel que la cliente le lirait dans sa langue :
+        // une phrase française au milieu d'un aperçu allemand ferait croire à
+        // un oubli de traduction.
+        motif:
+          langue === "fr"
+            ? "Annulée à la demande de la cliente, avant impression."
+            : t("annulee.motifCliente"),
         articles: d.lignes,
         dejaPayee: true,
       });
     case "facture":
       return courrierFacture({
-        prenomClient: d.prenomClient || "vous",
+        langue,
+        prenomClient: prenom,
         numero: d.numero,
         numeroFacture: d.numeroFacture ?? "F2026-0001",
         totalCents: d.totalCents,
@@ -522,35 +560,46 @@ function rendre(
       // c'est justement la ligne qu'on vient relire — un aperçu qui la cache
       // laisserait croire qu'elle manque.
       return courrierPanierAbandonne({
-        prenomClient: d.prenomClient || "vous",
-        lien: `${ORIGINE}/panier/recuperer?jeton=exemple-de-lien`,
+        langue,
+        prenomClient: prenom,
+        // La forme du lien de l'envoi réel (lienDeRecuperation) : la page vit
+        // hors du préfixe de langue et la prend en « &lang= ».
+        lien: `${ORIGINE}/panier/recuperer?jeton=exemple-de-lien${
+          langue === "fr" ? "" : `&lang=${langue}`
+        }`,
         lignes: d.lignes,
         totalCents: d.totalCents,
         codePromo: d.codePromo,
-        lienDesinscription: `${ORIGINE}/api/relance/desabonnement?jeton=essai`,
+        // La page de refus parle la langue du courrier, comme le vrai lien.
+        lienDesinscription: `${ORIGINE}/api/relance/desabonnement?jeton=essai${
+          langue === "fr" ? "" : `&lang=${langue}`
+        }`,
         textes: textesRelance,
       });
     case "bienvenue":
       return courrierBienvenue({
-        prenomClient: d.prenomClient || "vous",
-        lien: `${ORIGINE}/compte`,
+        langue,
+        prenomClient: prenom,
+        lien: `${ORIGINE}${cheminSite(langue, "/compte")}`,
       });
     case "mot-de-passe-modifie":
       // L'aperçu montre le chemin de la RÉINITIALISATION : c'est celui qui dit
       // en plus que les sessions ouvertes sont tombées, donc celui qui a le
       // plus à relire. L'autre chemin ne change qu'une phrase.
       return courrierMotDePasseModifie({
-        prenomClient: d.prenomClient || "vous",
+        langue,
+        prenomClient: prenom,
         parReinitialisation: true,
-        lien: `${ORIGINE}/compte/mot-de-passe-oublie`,
+        lien: `${ORIGINE}${cheminSite(langue, "/compte/mot-de-passe-oublie")}`,
       });
     case "reinitialisation":
       // Le jeton d'un vrai lien ne vit qu'une heure et n'existe que pour la
       // personne qui l'a demandé : l'aperçu en montre la forme, pas un jeton
       // valable, qui ouvrirait un compte à qui lirait cet écran.
       return courrierReinitialisation({
-        prenomClient: d.prenomClient || "vous",
-        lien: `${ORIGINE}/compte/reinitialiser?jeton=exemple-de-lien`,
+        langue,
+        prenomClient: prenom,
+        lien: `${ORIGINE}${cheminSite(langue, "/compte/reinitialiser")}?jeton=exemple-de-lien`,
       });
   }
 }
@@ -651,17 +700,21 @@ export function mountCourriers(app: Hono): void {
   /**
    * Rend un courrier, sans rien envoyer. Avec `?commande=`, il est rempli des
    * données de cette commande ; sans, d'un jeu d'exemple.
+   *
+   * `?langue=` choisit la langue du courrier. Sans elle, c'est celle que la
+   * cliente de la commande recevrait, et le français pour l'exemple.
    */
   app.get("/admin/courriers/apercu/:modele", async (c) => {
     const modele = c.req.param("modele");
     if (!estIdModele(modele)) {
       return c.json({ error: "Ce courrier n'existe pas dans la boutique." }, 400);
     }
+    const langueVoulue = langueLue(c.req.query("langue"));
 
     // Un paramètre vide, c'est un champ que personne n'a rempli : on montre
     // l'exemple, on ne va pas chercher une commande sans numéro.
     const reference = (c.req.query("commande") ?? "").trim();
-    const donnees = reference ? await donneesDeCommande(reference) : null;
+    const donnees = reference ? await donneesDeCommande(reference, langueVoulue) : null;
     if (reference && !donnees) {
       return c.json(
         {
@@ -672,16 +725,18 @@ export function mountCourriers(app: Hono): void {
     }
 
     const source = donnees ? "commande" : "exemple";
+    const d = donnees ?? jeuExemple(langueVoulue ?? "fr");
     const courrier = rendre(
       modele,
-      donnees ?? jeuExemple(),
-      modele === "panier-abandonne" ? await textesDeLaRelance(1) : null,
+      d,
+      modele === "panier-abandonne" ? await textesDeLaRelance(1, d.langue) : null,
     );
     return c.json({
       modele,
       sujet: courrier.subject,
       html: courrier.html,
       source,
+      langue: d.langue,
       ...(donnees ? { commande: donnees.numero } : {}),
     });
   });
@@ -697,7 +752,10 @@ export function mountCourriers(app: Hono): void {
       modele?: unknown;
       destinataire?: unknown;
       commande?: unknown;
+      /** La langue du courrier ; absente, comme l'aperçu. */
+      langue?: unknown;
     } | null;
+    const langueVoulue = langueLue(corps?.langue);
 
     const modele = typeof corps?.modele === "string" ? corps.modele.trim() : "";
     if (!estIdModele(modele)) {
@@ -721,7 +779,7 @@ export function mountCourriers(app: Hono): void {
     if (!estConfigure()) return c.json({ error: RIEN_POUR_ENVOYER }, 503);
 
     const reference = typeof corps?.commande === "string" ? corps.commande.trim() : "";
-    const donnees = reference ? await donneesDeCommande(reference) : null;
+    const donnees = reference ? await donneesDeCommande(reference, langueVoulue) : null;
     if (reference && !donnees) {
       return c.json(
         {
@@ -757,10 +815,11 @@ export function mountCourriers(app: Hono): void {
       );
     }
 
+    const d = donnees ?? jeuExemple(langueVoulue ?? "fr");
     const courrier = rendre(
       modele,
-      donnees ?? jeuExemple(),
-      modele === "panier-abandonne" ? await textesDeLaRelance(1) : null,
+      d,
+      modele === "panier-abandonne" ? await textesDeLaRelance(1, d.langue) : null,
     );
     const parti = await envoyer({ ...courrier, to: destinataire });
     return c.json({ ok: true, parti, resume: resumeEnvoi(destinataire, parti) });
@@ -776,23 +835,28 @@ export function mountCourriers(app: Hono): void {
    * tout l'intérêt d'un aperçu. Des textes identiques à ceux d'origine de la
    * 1re relance donnent le courrier d'origine lui-même, exactement comme à
    * l'enregistrement (voir `enregistrerTextes`).
+   *
+   * La langue est celle de l'onglet de l'écran : les textes saisis sont ceux
+   * de CETTE langue, et le courrier se rend comme le recevrait une cliente
+   * qui la lit — panier, prix, bouton de désinscription compris.
    */
   async function courrierDeRelance(
     etape: EtapeRelance,
     brut: unknown,
+    langue: Langue = "fr",
   ): Promise<{ courrier: Courrier } | { erreur: string }> {
     let textes: TextesRelance | null;
     if (brut === undefined || brut === null) {
-      textes = await textesDeLaRelance(etape);
+      textes = await textesDeLaRelance(etape, langue);
     } else {
       const n = normaliserTextesRelance(brut);
       if (!n.ok) return { erreur: n.erreur };
       textes =
-        etape === 1 && memesTextesRelance(n.textes, TEXTES_RELANCE_DEFAUT[1])
+        etape === 1 && memesTextesRelance(n.textes, textesRelanceParDefaut(langue)[1])
           ? null
           : n.textes;
     }
-    return { courrier: rendre("panier-abandonne", jeuExemple(), textes) };
+    return { courrier: rendre("panier-abandonne", jeuExemple(langue), textes) };
   }
 
   /** L'aperçu d'une relance : rien n'est envoyé, rien n'est enregistré. */
@@ -800,10 +864,11 @@ export function mountCourriers(app: Hono): void {
     const corps = (await c.req.json().catch(() => null)) as {
       etape?: unknown;
       textes?: unknown;
+      langue?: unknown;
     } | null;
     const etape = etapeLue(corps?.etape);
     if (!etape) return c.json({ error: "Cette relance n'existe pas." }, 400);
-    const r = await courrierDeRelance(etape, corps?.textes);
+    const r = await courrierDeRelance(etape, corps?.textes, langueLue(corps?.langue) ?? "fr");
     if ("erreur" in r) return c.json({ error: r.erreur }, 400);
     return c.json({
       etape,
@@ -826,6 +891,7 @@ export function mountCourriers(app: Hono): void {
     const corps = (await c.req.json().catch(() => null)) as {
       etape?: unknown;
       textes?: unknown;
+      langue?: unknown;
     } | null;
     const etape = etapeLue(corps?.etape);
     if (!etape) return c.json({ error: "Cette relance n'existe pas." }, 400);
@@ -840,7 +906,7 @@ export function mountCourriers(app: Hono): void {
       );
     if (!estConfigure()) return c.json({ error: RIEN_POUR_ENVOYER }, 503);
 
-    const r = await courrierDeRelance(etape, corps?.textes);
+    const r = await courrierDeRelance(etape, corps?.textes, langueLue(corps?.langue) ?? "fr");
     if ("erreur" in r) return c.json({ error: r.erreur }, 400);
 
     if (cadenceDepassee())

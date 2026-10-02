@@ -419,6 +419,9 @@ export const ui = {
     "compte.telephone": "Téléphone",
     "compte.marketing":
       "Je souhaite recevoir les nouveautés et offres Memory Line par e-mail.",
+    "compte.langue_courriels": "Langue de mes e-mails",
+    "compte.langue_courriels_aide":
+      "Nous vous écrivons dans cette langue : confirmation de commande, expédition, facture…",
     "compte.article": "article",
     "compte.articles": "articles",
     "compte.mdp_aide": "8 caractères minimum.",
@@ -1019,6 +1022,9 @@ export const ui = {
     "compte.telephone": "Phone",
     "compte.marketing":
       "I'd like to receive Memory Line news and offers by email.",
+    "compte.langue_courriels": "Language for my emails",
+    "compte.langue_courriels_aide":
+      "We'll write to you in this language: order confirmations, shipping updates, invoices…",
     "compte.article": "item",
     "compte.articles": "items",
     "compte.mdp_aide": "8 characters minimum.",
@@ -1616,6 +1622,9 @@ export const ui = {
     "compte.telephone": "Telefon",
     "compte.marketing":
       "Ich möchte Neuigkeiten und Angebote von Memory Line per E-Mail erhalten.",
+    "compte.langue_courriels": "Sprache meiner E-Mails",
+    "compte.langue_courriels_aide":
+      "In dieser Sprache schreiben wir Ihnen: Bestellbestätigung, Versand, Rechnung …",
     "compte.article": "Artikel",
     "compte.articles": "Artikel",
     "compte.mdp_aide": "Mindestens 8 Zeichen.",
@@ -2215,6 +2224,9 @@ export const ui = {
     "compte.telephone": "Telefono",
     "compte.marketing":
       "Desidero ricevere per e-mail le novità e le offerte di Memory Line.",
+    "compte.langue_courriels": "Lingua delle mie e-mail",
+    "compte.langue_courriels_aide":
+      "Ti scriviamo in questa lingua: conferma dell'ordine, spedizione, fattura…",
     "compte.article": "articolo",
     "compte.articles": "articoli",
     "compte.mdp_aide": "Almeno 8 caratteri.",
@@ -2811,6 +2823,9 @@ export const ui = {
     "compte.telephone": "Teléfono",
     "compte.marketing":
       "Quiero recibir por correo las novedades y ofertas de Memory Line.",
+    "compte.langue_courriels": "Idioma de mis correos",
+    "compte.langue_courriels_aide":
+      "Te escribimos en este idioma: confirmación del pedido, envío, factura…",
     "compte.article": "artículo",
     "compte.articles": "artículos",
     "compte.mdp_aide": "8 caracteres como mínimo.",

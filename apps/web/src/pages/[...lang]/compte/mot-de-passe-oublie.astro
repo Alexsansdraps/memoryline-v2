@@ -26,7 +26,8 @@ if (Astro.request.method === "POST") {
   if (!email) {
     erreur = "compte.err.champs";
   } else {
-    const r = await motDePasseOublie(Astro, email);
+    // La langue de la page : celle du courrier si le compte n'en a pas choisi.
+    const r = await motDePasseOublie(Astro, email, langue);
     // L'API répond 200 que l'adresse existe ou non — le message affiché ne
     // doit rien laisser deviner de plus.
     if (r.ok)

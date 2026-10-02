@@ -1,6 +1,8 @@
 ---
 import CompteCadre from "../../../components/CompteCadre.astro";
 import {
+  LANGUES,
+  NOM_LANGUE,
   estLangue,
   langueDepuisParam,
   lien,
@@ -28,6 +30,9 @@ let email = "";
 let prenom = "";
 let nomFamille = "";
 let marketing = false;
+// La langue de ses e-mails : celle de la page où l'on s'inscrit, que la
+// personne peut changer avant de valider.
+let langueCourriels: Langue = langue;
 // D'où l'on vient, pour y retourner une fois le compte créé.
 let retour = retourSur(Astro.url.searchParams.get("retour"));
 const apresInscription = () => retour ?? lien(langue, "/compte");
@@ -39,6 +44,8 @@ if (Astro.request.method === "POST") {
   prenom = String(formulaire.get("firstName") ?? "").trim();
   nomFamille = String(formulaire.get("lastName") ?? "").trim();
   marketing = formulaire.get("acceptsMarketing") !== null;
+  const langueChoisie = String(formulaire.get("langue") ?? "");
+  if (estLangue(langueChoisie)) langueCourriels = langueChoisie;
   const motDePasse = String(formulaire.get("password") ?? "");
 
   if (!email || !motDePasse) {
@@ -53,6 +60,7 @@ if (Astro.request.method === "POST") {
       firstName: prenom || undefined,
       lastName: nomFamille || undefined,
       acceptsMarketing: marketing,
+      langue: langueCourriels,
     });
     if (r.ok) return rediriger(Astro, apresInscription());
     // Le seul 400 que l'API renvoie ici concerne la longueur du mot de passe.
@@ -154,6 +162,21 @@ const champ =
         class={champ}
       />
       <span class="mt-1 block text-xs text-ink-soft">{tr("compte.mdp_aide")}</span>
+    </label>
+    <label class="block">
+      <span class="text-sm font-medium">{tr("compte.langue_courriels")}</span>
+      {/* Chaque langue écrite dans sa propre langue, comme dans « Mes
+          informations », où ce choix se change ensuite. */}
+      <select name="langue" class={champ}>
+        {LANGUES.map((l) => (
+          <option value={l} lang={l} selected={l === langueCourriels}>
+            {NOM_LANGUE[l]}
+          </option>
+        ))}
+      </select>
+      <span class="mt-1 block text-xs text-ink-soft">
+        {tr("compte.langue_courriels_aide")}
+      </span>
     </label>
     <label class="flex items-start gap-3 text-sm">
       <input

@@ -15,6 +15,15 @@
  * commandée — le courrier est un service en plus, pas une condition.
  */
 
+import {
+  mentionTva,
+  prixDans,
+  remplir,
+  tc,
+  type CleCourriel,
+  type Langue,
+} from "./courriels/index.js";
+
 const CLE = (process.env.RESEND_API_KEY ?? "").trim();
 const COPIE = (process.env.MAIL_BCC ?? "").trim();
 /** Boîte d'essai : si elle est renseignée, elle remplace Resend. */
@@ -189,9 +198,29 @@ function h(v: unknown): string {
     .replace(/"/g, "&quot;");
 }
 
-/** Montant en centimes → « 23,00 € ». */
-function prix(cents: number): string {
-  return (cents / 100).toFixed(2).replace(".", ",") + " €";
+/**
+ * Montant en centimes → « 23,00 € », ou sa forme dans la langue du client
+ * (« €23.00 »). Sans langue, le français : c'est celle des courriers à la
+ * boutique.
+ */
+function prix(cents: number, langue: Langue = "fr"): string {
+  return prixDans(langue, cents);
+}
+
+/**
+ * Un texte du dictionnaire, prêt à poser dans le HTML du courrier.
+ *
+ * L'ordre compte, comme pour les textes de relance : on ÉCHAPPE d'abord la
+ * phrase — une traduction peut contenir une esperluette ou des guillemets —,
+ * et seulement ensuite on y place les valeurs, que l'appelant a déjà mises en
+ * HTML (échappées, ou entourées de leur balise de gras).
+ */
+function texteHtml(
+  langue: Langue,
+  cle: CleCourriel,
+  valeursHtml?: Record<string, string>,
+): string {
+  return remplir(h(tc(langue)(cle)), valeursHtml);
 }
 
 export interface LigneCourrier {
@@ -266,9 +295,28 @@ function enteteMarque(): string {
   return `<img src="${origine}/logo-memory-line.png" width="150" height="67" alt="Memory Line" style="display:block;border:0;outline:none;text-decoration:none;height:auto;width:150px;max-width:150px;font-size:20px;letter-spacing:.6px;color:#121212" />`;
 }
 
-function gabarit(titre: string, contenu: string): string {
+/**
+ * Le pied de chaque courrier : la boutique, puis la mention de TVA.
+ *
+ * La mention reste écrite en français dans toutes les langues — c'est une
+ * mention légale française —, et sa traduction vient dessous quand elle
+ * existe (voir `mentionTva`). Exporté pour l'accusé de réception du formulaire
+ * de contact, qui a son propre gabarit mais doit finir pareil.
+ */
+export function piedDeCourrier(langue: Langue = "fr"): string {
+  const tva = mentionTva(langue);
+  return `${h(tc(langue)("pied.signature"))}<br />
+          ${h(tva.francaise)}${tva.traduction ? `<br />
+          ${h(tva.traduction)}` : ""}`;
+}
+
+/**
+ * `langue` pose l'attribut `lang` du document, qui suit celle du texte : un
+ * lecteur d'écran lirait sinon une phrase allemande avec l'accent français.
+ */
+function gabarit(titre: string, contenu: string, langue: Langue = "fr"): string {
   return `<!doctype html>
-<html lang="fr"><body style="margin:0;background:#f3f3f3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#121212">
+<html lang="${langue}"><body style="margin:0;background:#f3f3f3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#121212">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f3f3;padding:24px 0">
     <tr><td align="center">
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff">
@@ -280,8 +328,7 @@ function gabarit(titre: string, contenu: string): string {
         </td></tr>
         <tr><td style="padding:0 32px 32px;font-size:15px;line-height:1.5">${contenu}</td></tr>
         <tr><td style="padding:16px 32px;background:#f3f3f3;font-size:12px;color:#5b5b54">
-          Memory Line, affiches personnalisées.<br />
-          TVA non applicable, article 293 B du CGI.
+          ${piedDeCourrier(langue)}
         </td></tr>
       </table>
     </td></tr>
@@ -290,7 +337,7 @@ function gabarit(titre: string, contenu: string): string {
 }
 
 /** Tableau des articles commandés. */
-function tableauLignes(lignes: LigneCourrier[]): string {
+function tableauLignes(lignes: LigneCourrier[], langue: Langue = "fr"): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0">
     ${lignes
       .map(
@@ -308,12 +355,12 @@ function tableauLignes(lignes: LigneCourrier[]): string {
       }
       <td style="padding:8px 0;border-bottom:1px solid #eee">
         <strong style="font-weight:500">${h(l.titre)}</strong><br />
-        <span style="color:#5b5b54;font-size:13px">Format ${h(l.format ?? "A4")}${
+        <span style="color:#5b5b54;font-size:13px">${texteHtml(langue, "lignes.format", { format: h(l.format ?? "A4") })}${
           l.cadre ? ` · ${h(l.cadre)}` : ""
         } · ×${l.quantite}</span>
       </td>
       <td align="right" style="padding:8px 0;border-bottom:1px solid #eee;white-space:nowrap">
-        ${prix(l.unitPriceCents * l.quantite)}
+        ${prix(l.unitPriceCents * l.quantite, langue)}
       </td>
     </tr>`,
       )
@@ -355,24 +402,31 @@ export interface ConfirmationCommande {
   totalCents: number;
   modeLivraison?: string | null;
   adresse?: string[] | null;
+  /**
+   * La langue du destinataire (voir `langueDuDestinataire`). Absente : le
+   * français. Vaut pour tous les courriers destinés aux clients ci-dessous.
+   */
+  langue?: Langue;
 }
 
 /** Confirmation envoyée au client dès que le paiement est encaissé. */
 export function courrierConfirmation(d: ConfirmationCommande): Courrier {
+  const langue = d.langue ?? "fr";
+  const t = tc(langue);
   const totaux = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px">
-    <tr><td style="padding:4px 0;color:#5b5b54">Sous-total</td><td align="right">${prix(d.sousTotalCents)}</td></tr>
+    <tr><td style="padding:4px 0;color:#5b5b54">${texteHtml(langue, "confirmation.sousTotal")}</td><td align="right">${prix(d.sousTotalCents, langue)}</td></tr>
     ${
       d.remiseCents > 0
-        ? `<tr><td style="padding:4px 0;color:#5b5b54">Réduction${d.codePromo ? ` — ${h(d.codePromo)}` : ""}</td><td align="right">− ${prix(d.remiseCents)}</td></tr>`
+        ? `<tr><td style="padding:4px 0;color:#5b5b54">${texteHtml(langue, "confirmation.reduction")}${d.codePromo ? ` — ${h(d.codePromo)}` : ""}</td><td align="right">− ${prix(d.remiseCents, langue)}</td></tr>`
         : ""
     }
-    <tr><td style="padding:4px 0;color:#5b5b54">Livraison${d.modeLivraison ? ` — ${h(d.modeLivraison)}` : ""}</td><td align="right">${prix(d.portCents)}</td></tr>
-    <tr><td style="padding:10px 0 0;border-top:1px solid #eee"><strong style="font-weight:500">Total</strong></td><td align="right" style="padding:10px 0 0;border-top:1px solid #eee"><strong style="font-weight:500">${prix(d.totalCents)}</strong></td></tr>
+    <tr><td style="padding:4px 0;color:#5b5b54">${texteHtml(langue, "confirmation.livraison")}${d.modeLivraison ? ` — ${h(d.modeLivraison)}` : ""}</td><td align="right">${prix(d.portCents, langue)}</td></tr>
+    <tr><td style="padding:10px 0 0;border-top:1px solid #eee"><strong style="font-weight:500">${texteHtml(langue, "confirmation.total")}</strong></td><td align="right" style="padding:10px 0 0;border-top:1px solid #eee"><strong style="font-weight:500">${prix(d.totalCents, langue)}</strong></td></tr>
   </table>`;
 
   const adresse =
     d.adresse && d.adresse.length
-      ? `<p style="margin:20px 0 0;color:#5b5b54;font-size:14px">Livraison :<br />${d.adresse
+      ? `<p style="margin:20px 0 0;color:#5b5b54;font-size:14px">${texteHtml(langue, "confirmation.adresseLivraison")}<br />${d.adresse
           .filter(Boolean)
           .map(h)
           .join("<br />")}</p>`
@@ -380,16 +434,17 @@ export function courrierConfirmation(d: ConfirmationCommande): Courrier {
 
   return {
     to: "",
-    subject: `Votre commande ${d.numero} est confirmée`,
+    subject: t("confirmation.objet", { numero: d.numero }),
     html: gabarit(
-      `Merci ${d.prenomClient} !`,
-      `<p style="margin:0 0 4px">Votre commande <strong style="font-weight:500">${h(d.numero)}</strong> est bien enregistrée et payée. Nous préparons votre affiche.</p>
-       ${tableauLignes(d.lignes)}
+      t("confirmation.titre", { prenom: d.prenomClient }),
+      `<p style="margin:0 0 4px">${texteHtml(langue, "confirmation.intro", { numero: `<strong style="font-weight:500">${h(d.numero)}</strong>` })}</p>
+       ${tableauLignes(d.lignes, langue)}
        ${totaux}
        ${adresse}
-       <p style="margin:24px 0 0;color:#5b5b54;font-size:14px">Une question ? Répondez simplement à cet e-mail.</p>`,
+       <p style="margin:24px 0 0;color:#5b5b54;font-size:14px">${texteHtml(langue, "confirmation.question")}</p>`,
+      langue,
     ),
-    text: `Merci ${d.prenomClient} !\n\nVotre commande ${d.numero} est confirmée. Total : ${prix(d.totalCents)}.\n\nMemory Line`,
+    text: `${t("confirmation.titre", { prenom: d.prenomClient })}\n\n${t("confirmation.texte", { numero: d.numero, total: prix(d.totalCents, langue) })}\n\nMemory Line`,
   };
 }
 
@@ -421,7 +476,7 @@ export function courrierNouvelleCommande(d: {
  * le style et affichent alors l'image en pleine largeur, qui pousse le prix
  * hors de l'écran.
  */
-function tableauLignesAvecImage(lignes: LigneCourrier[]): string {
+function tableauLignesAvecImage(lignes: LigneCourrier[], langue: Langue): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0">
     ${lignes
       .map(
@@ -435,16 +490,16 @@ function tableauLignesAvecImage(lignes: LigneCourrier[]): string {
       }
       <td style="padding:10px 0;border-bottom:1px solid #eee;vertical-align:top">
         <strong style="font-weight:500">${h(l.titre)}</strong><br />
-        <span style="color:#5b5b54;font-size:13px">Format ${h(l.format ?? "A4")}${
+        <span style="color:#5b5b54;font-size:13px">${texteHtml(langue, "lignes.format", { format: h(l.format ?? "A4") })}${
           l.cadre ? ` · ${h(l.cadre)}` : ""
         } · ×${l.quantite}</span>${
           l.indisponible
-            ? `<br /><span style="color:#8a5a2b;font-size:13px">Cette affiche n'est plus disponible.</span>`
+            ? `<br /><span style="color:#8a5a2b;font-size:13px">${texteHtml(langue, "lignes.indisponible")}</span>`
             : ""
         }
       </td>
       <td align="right" style="padding:10px 0;border-bottom:1px solid #eee;white-space:nowrap;vertical-align:top">
-        ${prix(l.unitPriceCents * l.quantite)}
+        ${prix(l.unitPriceCents * l.quantite, langue)}
       </td>
     </tr>`,
       )
@@ -483,21 +538,23 @@ export function courrierPanierAbandonne(d: {
    * rien changé, rien ne doit changer chez ses clientes.
    */
   textes?: TextesRelance | null;
+  langue?: Langue;
 }): Courrier {
+  const langue = d.langue ?? "fr";
+  const t = tc(langue);
   const manquants = d.lignes.filter((l) => l.indisponible);
   const avertissement = manquants.length
-    ? `<p style="margin:0 0 4px;color:#8a5a2b;font-size:14px">${
-        manquants.length > 1
-          ? "Certaines de ces affiches ne sont plus disponibles"
-          : "Une de ces affiches n'est plus disponible"
-      } : le reste de votre panier vous attend toujours.</p>`
+    ? `<p style="margin:0 0 4px;color:#8a5a2b;font-size:14px">${texteHtml(
+        langue,
+        manquants.length > 1 ? "panier.indispoPlusieurs" : "panier.indispoUne",
+      )}</p>`
     : "";
   const promo = d.codePromo
-    ? `<p style="margin:0 0 4px;color:#5b5b54;font-size:14px">Votre code de réduction <strong style="font-weight:500">${h(d.codePromo)}</strong> est déjà appliqué.</p>`
+    ? `<p style="margin:0 0 4px;color:#5b5b54;font-size:14px">${texteHtml(langue, "panier.promo", { code: `<strong style="font-weight:500">${h(d.codePromo)}</strong>` })}</p>`
     : "";
   const desinscription = d.lienDesinscription
-    ? `<p style="margin:24px 0 0;color:#5b5b54;font-size:12px">Vous recevez ce message parce que vous avez laissé une commande en cours chez nous.
-        <a href="${h(d.lienDesinscription)}" style="color:#5b5b54">Ne plus recevoir de rappel de panier</a>.</p>`
+    ? `<p style="margin:24px 0 0;color:#5b5b54;font-size:12px">${texteHtml(langue, "panier.desinscriptionRaison")}
+        <a href="${h(d.lienDesinscription)}" style="color:#5b5b54">${texteHtml(langue, "panier.desinscriptionLien")}</a>.</p>`
     : "";
 
   /*
@@ -506,9 +563,9 @@ export function courrierPanierAbandonne(d: {
    * part sert les deux versions du courrier sans les dupliquer — et garantit
    * qu'un texte réécrit ne peut ni les retirer, ni les déformer.
    */
-  const panier = `${tableauLignesAvecImage(d.lignes)}
+  const panier = `${tableauLignesAvecImage(d.lignes, langue)}
        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px">
-         <tr><td style="padding:4px 0"><strong style="font-weight:500">Votre panier</strong></td><td align="right"><strong style="font-weight:500">${prix(d.totalCents)}</strong></td></tr>
+         <tr><td style="padding:4px 0"><strong style="font-weight:500">${texteHtml(langue, "panier.votrePanier")}</strong></td><td align="right"><strong style="font-weight:500">${prix(d.totalCents, langue)}</strong></td></tr>
        </table>
        ${avertissement}
        ${promo}`;
@@ -527,36 +584,45 @@ export function courrierPanierAbandonne(d: {
 
   if (d.textes) return courrierRelanceReecrit(d, d.textes, { panier, bouton, desinscription, entetes });
 
+  // Le courrier d'origine dit les mots de la 1re relance par défaut : ce sont
+  // les mêmes, et une seule clé par phrase évite de les traduire deux fois.
   return {
     to: "",
-    subject: "Votre affiche vous attend",
+    subject: t("relance.1.objet"),
     html: gabarit(
-      `Bonjour ${h(d.prenomClient)},`,
-      `<p style="margin:0">Vous avez composé une affiche sans finir votre commande. Elle est toujours là, telle que vous l'avez laissée.</p>
+      t("relance.1.accroche", { prenom: h(d.prenomClient) }),
+      `<p style="margin:0">${texteHtml(langue, "relance.1.message")}</p>
        ${panier}
-       ${bouton("Reprendre ma commande")}
-       <p style="margin:0;color:#5b5b54;font-size:14px">Si vous avez changé d'avis, ignorez simplement ce message.</p>
+       ${bouton(t("relance.1.bouton"))}
+       <p style="margin:0;color:#5b5b54;font-size:14px">${texteHtml(langue, "relance.1.conclusion")}</p>
        ${desinscription}`,
+      langue,
     ),
     text:
-      `Bonjour ${d.prenomClient},\n\n` +
-      `Vous avez composé une affiche sans finir votre commande. Elle vous attend :\n` +
-      d.lignes
-        .map(
-          (l) =>
-            `- ${l.titre} (${l.format ?? "A4"}) × ${l.quantite} — ${prix(l.unitPriceCents * l.quantite)}` +
-            (l.indisponible ? " — plus disponible" : ""),
-        )
-        .join("\n") +
-      `\nTotal : ${prix(d.totalCents)}\n` +
-      (d.codePromo ? `Votre code de réduction ${d.codePromo} est déjà appliqué.\n` : "") +
-      `\nReprendre ma commande : ${d.lien}\n` +
+      `${t("relance.1.accroche", { prenom: d.prenomClient })}\n\n` +
+      `${t("panier.texteIntro")}\n` +
+      lignesEnTexte(d.lignes, langue) +
+      `\n${t("panier.texteTotal", { montant: prix(d.totalCents, langue) })}\n` +
+      (d.codePromo ? `${t("panier.promo", { code: d.codePromo })}\n` : "") +
+      `\n${t("commun.texteLien", { libelle: t("relance.1.bouton"), lien: d.lien })}\n` +
       (d.lienDesinscription
-        ? `\nNe plus recevoir de rappel de panier : ${d.lienDesinscription}\n`
+        ? `\n${t("commun.texteLien", { libelle: t("panier.desinscriptionLien"), lien: d.lienDesinscription })}\n`
         : "") +
       `\nMemory Line`,
     ...entetes,
   };
+}
+
+/** Les articles du panier, une ligne chacun, pour la version texte du courrier. */
+function lignesEnTexte(lignes: LigneCourrier[], langue: Langue): string {
+  const t = tc(langue);
+  return lignes
+    .map(
+      (l) =>
+        `- ${l.titre} (${l.format ?? "A4"}) × ${l.quantite} — ${prix(l.unitPriceCents * l.quantite, langue)}` +
+        (l.indisponible ? ` — ${t("panier.textePlusDisponible")}` : ""),
+    )
+    .join("\n");
 }
 
 /* -------------------------------------------------------------------------- */
@@ -602,34 +668,35 @@ export type EtapeRelance = 1 | 2 | 3;
  * courrier lui-même, dans ce cas, ne passe même pas par ces textes : voir
  * `courrierPanierAbandonne`.) Les deux suivants disent qu'on insiste, sans
  * insister lourdement — la 3e annonce qu'elle est la dernière, et c'est vrai.
+ *
+ * Ils vivent dans le dictionnaire des courriels (« relance.1.objet »…), dans
+ * chaque langue : c'est avec eux que part la relance d'une cliente, tant que
+ * la boutique n'a pas écrit son propre texte dans la langue de celle-ci (voir
+ * `textesDeLaRelance` dans relance-panier.ts).
  */
-export const TEXTES_RELANCE_DEFAUT: Record<EtapeRelance, TextesRelance> = {
-  1: {
-    objet: "Votre affiche vous attend",
-    accroche: "Bonjour {prenom},",
-    message:
-      "Vous avez composé une affiche sans finir votre commande. Elle est toujours là, telle que vous l'avez laissée.",
-    bouton: "Reprendre ma commande",
-    conclusion: "Si vous avez changé d'avis, ignorez simplement ce message.",
-  },
-  2: {
-    objet: "Votre panier vous attend toujours",
-    accroche: "Bonjour {prenom},",
-    message:
-      "Petit rappel : votre affiche est toujours dans votre panier, prête à partir à l'impression. Il ne vous reste qu'à valider votre commande.",
-    bouton: "Reprendre ma commande",
-    conclusion:
-      "Une question sur le format ou le cadre ? Répondez simplement à ce message.",
-  },
-  3: {
-    objet: "Dernier rappel pour votre affiche",
-    accroche: "Bonjour {prenom},",
-    message:
-      "C'est notre dernier message au sujet de votre panier : nous ne vous écrirons plus à son propos. Votre affiche vous attend encore quelques jours.",
-    bouton: "Terminer ma commande",
-    conclusion: "Si vous avez changé d'avis, ignorez simplement ce message.",
-  },
-};
+export function textesRelanceParDefaut(
+  langue: Langue = "fr",
+): Record<EtapeRelance, TextesRelance> {
+  // Lus BRUTS, variables comprises : « {prenom} » est une variable de la
+  // relance, que le courrier remplit lui-même au moment de l'envoi.
+  const t = tc(langue);
+  const etape = (n: EtapeRelance): TextesRelance => ({
+    objet: t(`relance.${n}.objet`),
+    accroche: t(`relance.${n}.accroche`),
+    message: t(`relance.${n}.message`),
+    bouton: t(`relance.${n}.bouton`),
+    conclusion: t(`relance.${n}.conclusion`),
+  });
+  return { 1: etape(1), 2: etape(2), 3: etape(3) };
+}
+
+/**
+ * Ceux du français, gardés sous la main : ce sont les plus demandés — l'écran
+ * du courriel de relance s'ouvre sur le français, et la traduction proposée
+ * dans les autres langues part du texte français, d'origine ou réécrit.
+ */
+export const TEXTES_RELANCE_DEFAUT: Record<EtapeRelance, TextesRelance> =
+  textesRelanceParDefaut("fr");
 
 /**
  * Les variables que la boutique peut glisser dans ses textes, et ce qu'elles
@@ -743,10 +810,14 @@ export function memesTextesRelance(a: TextesRelance, b: TextesRelance): boolean 
 type ValeursRelance = Record<NomVariable, string>;
 
 /** « A », « A » et « B », « A », « B » et « C ». */
-function listeDesTitres(lignes: LigneCourrier[]): string {
-  const titres = lignes.map((l) => `« ${l.titre} »`);
-  if (titres.length <= 1) return titres[0] ?? "votre affiche";
-  return `${titres.slice(0, -1).join(", ")} et ${titres[titres.length - 1]}`;
+function listeDesTitres(lignes: LigneCourrier[], langue: Langue): string {
+  const t = tc(langue);
+  const titres = lignes.map((l) => t("relance.articleCite", { titre: l.titre }));
+  if (titres.length <= 1) return titres[0] ?? t("relance.articleParDefaut");
+  return t("relance.articlesEt", {
+    debut: titres.slice(0, -1).join(", "),
+    dernier: titres[titres.length - 1]!,
+  });
 }
 
 /** Un champ d'une ligne, variables remplies, en TEXTE (échappé plus tard). */
@@ -812,10 +883,12 @@ function courrierRelanceReecrit(
     entetes: { entetes?: Record<string, string> };
   },
 ): Courrier {
+  const langue = d.langue ?? "fr";
+  const tx = tc(langue);
   const v: ValeursRelance = {
     prenom: d.prenomClient,
-    articles: listeDesTitres(d.lignes),
-    montant: prix(d.totalCents),
+    articles: listeDesTitres(d.lignes, langue),
+    montant: prix(d.totalCents, langue),
     lien: d.lien,
   };
   const message = paragraphesHtml(t.message, v, {
@@ -839,24 +912,22 @@ function courrierRelanceReecrit(
       [message, morceaux.panier, morceaux.bouton(libelleBouton), conclusion, morceaux.desinscription]
         .filter(Boolean)
         .join("\n       "),
+      langue,
     ),
     text:
       [
         remplirLigne(t.accroche, v),
         paragraphesTexte(t.message, v),
-        d.lignes
-          .map(
-            (l) =>
-              `- ${l.titre} (${l.format ?? "A4"}) × ${l.quantite} — ${prix(l.unitPriceCents * l.quantite)}` +
-              (l.indisponible ? " — plus disponible" : ""),
-          )
-          .join("\n") +
-          `\nTotal : ${prix(d.totalCents)}` +
-          (d.codePromo ? `\nVotre code de réduction ${d.codePromo} est déjà appliqué.` : ""),
-        `${libelleBouton} : ${d.lien}`,
+        lignesEnTexte(d.lignes, langue) +
+          `\n${tx("panier.texteTotal", { montant: prix(d.totalCents, langue) })}` +
+          (d.codePromo ? `\n${tx("panier.promo", { code: d.codePromo })}` : ""),
+        tx("commun.texteLien", { libelle: libelleBouton, lien: d.lien }),
         paragraphesTexte(t.conclusion, v),
         d.lienDesinscription
-          ? `Ne plus recevoir de rappel de panier : ${d.lienDesinscription}`
+          ? tx("commun.texteLien", {
+              libelle: tx("panier.desinscriptionLien"),
+              lien: d.lienDesinscription,
+            })
           : "",
         "Memory Line",
       ]
@@ -882,29 +953,38 @@ export function courrierExpediee(d: {
   numeroSuivi: string | null;
   lienSuivi: string | null;
   lignes: LigneCourrier[];
+  langue?: Langue;
 }): Courrier {
-  const par = d.transporteur ? ` par ${h(d.transporteur)}` : "";
+  const langue = d.langue ?? "fr";
+  const t = tc(langue);
+  const intro = d.transporteur
+    ? texteHtml(langue, "expediee.introPar", { transporteur: h(d.transporteur) })
+    : texteHtml(langue, "expediee.intro");
   const suivi = d.lienSuivi
-    ? `<p style="margin:20px 0"><a href="${h(d.lienSuivi)}" style="display:inline-block;background:#121212;color:#ffffff;padding:14px 28px;text-decoration:none">Suivre mon colis</a></p>`
+    ? `<p style="margin:20px 0"><a href="${h(d.lienSuivi)}" style="display:inline-block;background:#121212;color:#ffffff;padding:14px 28px;text-decoration:none">${texteHtml(langue, "expediee.bouton")}</a></p>`
     : d.numeroSuivi
-      ? `<p style="margin:20px 0;font-size:14px">Numéro de suivi : <strong style="font-weight:500">${h(d.numeroSuivi)}</strong></p>`
+      ? `<p style="margin:20px 0;font-size:14px">${texteHtml(langue, "expediee.numeroSuivi", { numero: `<strong style="font-weight:500">${h(d.numeroSuivi)}</strong>` })}</p>`
       : "";
   return {
     to: "",
-    subject: `Votre commande ${d.numero} est en route`,
+    subject: t("expediee.objet", { numero: d.numero }),
     html: gabarit(
-      `Bonjour ${h(d.prenomClient)},`,
-      `<p style="margin:0">Votre affiche est partie${par}. Elle arrive.</p>
-       ${tableauLignes(d.lignes)}
+      t("commun.bonjour", { prenom: h(d.prenomClient) }),
+      `<p style="margin:0">${intro}</p>
+       ${tableauLignes(d.lignes, langue)}
        ${suivi}
-       <p style="margin:0;color:#5b5b54;font-size:14px">Comptez quelques jours avant que le suivi ne s'anime : le transporteur met un moment à enregistrer le colis.</p>`,
+       <p style="margin:0;color:#5b5b54;font-size:14px">${texteHtml(langue, "expediee.delai")}</p>`,
+      langue,
     ),
     text:
-      `Bonjour ${d.prenomClient},\n\nVotre commande ${d.numero} est partie${d.transporteur ? ` par ${d.transporteur}` : ""}.` +
+      `${t("commun.bonjour", { prenom: d.prenomClient })}\n\n` +
+      (d.transporteur
+        ? t("expediee.textePar", { numero: d.numero, transporteur: d.transporteur })
+        : t("expediee.texte", { numero: d.numero })) +
       (d.lienSuivi
-        ? `\nSuivi : ${d.lienSuivi}`
+        ? `\n${t("expediee.texteSuivi", { lien: d.lienSuivi })}`
         : d.numeroSuivi
-          ? `\nNuméro de suivi : ${d.numeroSuivi}`
+          ? `\n${t("expediee.numeroSuivi", { numero: d.numeroSuivi })}`
           : "") +
       `\n\nMemory Line`,
   };
@@ -923,18 +1003,26 @@ export function courrierPreteAuStand(d: {
   numero: string;
   evenement: string | null;
   lignes: LigneCourrier[];
+  langue?: Langue;
 }): Courrier {
-  const ou = d.evenement ? ` sur ${h(d.evenement)}` : "";
+  const langue = d.langue ?? "fr";
+  const t = tc(langue);
+  const intro = d.evenement
+    ? texteHtml(langue, "stand.introSur", { evenement: h(d.evenement) })
+    : texteHtml(langue, "stand.intro");
   return {
     to: "",
-    subject: "Votre affiche est prête",
+    subject: t("stand.objet"),
     html: gabarit(
-      `Bonjour ${h(d.prenomClient)},`,
-      `<p style="margin:0">Votre affiche commandée${ou} est prête. Nous vous recontactons pour la remise, ou vous la recevez sous peu si elle doit voyager.</p>
+      t("commun.bonjour", { prenom: h(d.prenomClient) }),
+      `<p style="margin:0">${intro}</p>
        ${tableauLignesSansPrix(d.lignes)}
-       <p style="margin:20px 0 0;color:#5b5b54;font-size:14px">Commande ${h(d.numero)}. Merci d'être passée nous voir.</p>`,
+       <p style="margin:20px 0 0;color:#5b5b54;font-size:14px">${texteHtml(langue, "stand.merci", { numero: h(d.numero) })}</p>`,
+      langue,
     ),
-    text: `Bonjour ${d.prenomClient},\n\nVotre affiche commandée${d.evenement ? ` sur ${d.evenement}` : ""} est prête.\nCommande ${d.numero}.\n\nMemory Line`,
+    text: `${t("commun.bonjour", { prenom: d.prenomClient })}\n\n${
+      d.evenement ? t("stand.texteSur", { evenement: d.evenement }) : t("stand.texte")
+    }\n${t("stand.texteCommande", { numero: d.numero })}\n\nMemory Line`,
   };
 }
 
@@ -950,22 +1038,27 @@ export function courrierPreteAuStand(d: {
  */
 export function courrierBienvenue(d: {
   prenomClient: string;
+  /** L'espace client, déjà dans la langue du client (« /en/compte »). */
   lien: string | null;
+  langue?: Langue;
 }): Courrier {
+  const langue = d.langue ?? "fr";
+  const t = tc(langue);
   const bouton = d.lien
-    ? `<p style="margin:20px 0"><a href="${h(d.lien)}" style="display:inline-block;background:#121212;color:#ffffff;padding:14px 28px;text-decoration:none">Ouvrir mon compte</a></p>`
+    ? `<p style="margin:20px 0"><a href="${h(d.lien)}" style="display:inline-block;background:#121212;color:#ffffff;padding:14px 28px;text-decoration:none">${texteHtml(langue, "bienvenue.bouton")}</a></p>`
     : "";
   return {
     to: "",
-    subject: "Bienvenue chez Memory Line",
+    subject: t("bienvenue.objet"),
     html: gabarit(
-      `Bonjour ${d.prenomClient},`,
-      `<p style="margin:0">Votre compte est créé. Vous y retrouvez vos commandes et leur suivi, les affiches que vous avez composées, et les adresses de livraison que vous enregistrez une fois pour toutes.</p>
+      t("commun.bonjour", { prenom: d.prenomClient }),
+      `<p style="margin:0">${texteHtml(langue, "bienvenue.intro")}</p>
        ${bouton}
-       <p style="margin:20px 0 0;color:#5b5b54;font-size:14px">Nous ne vous demanderons jamais votre mot de passe par e-mail. Une question ? Répondez simplement à ce message.</p>`,
+       <p style="margin:20px 0 0;color:#5b5b54;font-size:14px">${texteHtml(langue, "bienvenue.securite")}</p>`,
+      langue,
     ),
     text:
-      `Bonjour ${d.prenomClient},\n\nVotre compte Memory Line est créé. Vous y retrouvez vos commandes et leur suivi, vos affiches et vos adresses de livraison.` +
+      `${t("commun.bonjour", { prenom: d.prenomClient })}\n\n${t("bienvenue.texte")}` +
       (d.lien ? `\n${d.lien}` : "") +
       `\n\nMemory Line`,
   };
@@ -983,31 +1076,37 @@ export function courrierMotDePasseModifie(d: {
   prenomClient: string;
   /** Vrai quand le changement vient d'un lien de réinitialisation. */
   parReinitialisation: boolean;
+  /** La page « mot de passe oublié », déjà dans la langue du client. */
   lien: string | null;
+  langue?: Langue;
 }): Courrier {
-  const origine = d.parReinitialisation
-    ? `<p style="margin:0">Le mot de passe de votre compte Memory Line vient d'être changé, à partir du lien de réinitialisation demandé depuis la page de connexion. Toutes les sessions ouvertes ont été fermées : il faut vous reconnecter sur chaque appareil.</p>`
-    : `<p style="margin:0">Le mot de passe de votre compte Memory Line vient d'être changé depuis votre compte.</p>`;
+  const langue = d.langue ?? "fr";
+  const t = tc(langue);
+  const origine = `<p style="margin:0">${texteHtml(
+    langue,
+    d.parReinitialisation ? "mdpModifie.parReinit" : "mdpModifie.parCompte",
+  )}</p>`;
   const bouton = d.lien
-    ? `<p style="margin:20px 0"><a href="${h(d.lien)}" style="display:inline-block;background:#121212;color:#ffffff;padding:14px 28px;text-decoration:none">Reprendre la main sur mon compte</a></p>`
+    ? `<p style="margin:20px 0"><a href="${h(d.lien)}" style="display:inline-block;background:#121212;color:#ffffff;padding:14px 28px;text-decoration:none">${texteHtml(langue, "mdpModifie.bouton")}</a></p>`
     : "";
   return {
     to: "",
-    subject: "Le mot de passe de votre compte a été modifié",
+    subject: t("mdpModifie.objet"),
     html: gabarit(
-      `Bonjour ${d.prenomClient},`,
+      t("commun.bonjour", { prenom: d.prenomClient }),
       `${origine}
-       <p style="margin:16px 0 0">Si vous n'êtes pas à l'origine de ce changement, votre compte vous échappe. Demandez tout de suite un nouveau mot de passe depuis la page de connexion, puis prévenez-nous en répondant à ce message.</p>
+       <p style="margin:16px 0 0">${texteHtml(langue, "mdpModifie.alerte")}</p>
        ${bouton}
-       <p style="margin:20px 0 0;color:#5b5b54;font-size:14px">Ce message est un avis de sécurité. Il ne contient aucun mot de passe, et nous ne vous demanderons jamais le vôtre.</p>`,
+       <p style="margin:20px 0 0;color:#5b5b54;font-size:14px">${texteHtml(langue, "mdpModifie.avis")}</p>`,
+      langue,
     ),
     text:
-      `Bonjour ${d.prenomClient},\n\nLe mot de passe de votre compte Memory Line vient d'être changé` +
-      (d.parReinitialisation
-        ? `, à partir du lien de réinitialisation que vous aviez demandé. Toutes les sessions ouvertes ont été fermées.`
-        : ` depuis votre compte.`) +
-      `\n\nSi ce n'est pas vous, demandez tout de suite un nouveau mot de passe depuis la page de connexion` +
-      (d.lien ? ` : ${d.lien}` : ".") +
+      `${t("commun.bonjour", { prenom: d.prenomClient })}\n\n` +
+      t(d.parReinitialisation ? "mdpModifie.texteParReinit" : "mdpModifie.parCompte") +
+      `\n\n` +
+      (d.lien
+        ? t("mdpModifie.texteAlerteLien", { lien: d.lien })
+        : t("mdpModifie.texteAlerte")) +
       `\n\nMemory Line`,
   };
 }
@@ -1027,6 +1126,7 @@ export interface RemboursementCourrier {
   totalCommandeCents: number;
   /** L'argent repart-il par le moyen de paiement d'origine ? */
   viaPaiementEnLigne: boolean;
+  langue?: Langue;
 }
 
 /**
@@ -1041,50 +1141,50 @@ export interface RemboursementCourrier {
  * croire à une erreur de la boutique quand il ne correspond pas au total payé.
  */
 export function courrierRemboursee(d: RemboursementCourrier): Courrier {
+  const langue = d.langue ?? "fr";
+  const t = tc(langue);
   const partiel = d.totalRembourseCents < d.totalCommandeCents;
 
   const mention = partiel
-    ? `<p style="margin:16px 0 0">Il s'agit d'un remboursement partiel : le reste de votre commande n'est pas concerné.</p>`
+    ? `<p style="margin:16px 0 0">${texteHtml(langue, "remboursee.partiel")}</p>`
     : "";
 
   const port = d.portCents
-    ? `<p style="margin:16px 0 0;font-size:14px;color:#5b5b54">Dont frais de port : ${prix(d.portCents)}.</p>`
+    ? `<p style="margin:16px 0 0;font-size:14px;color:#5b5b54">${texteHtml(langue, "remboursee.port", { montant: prix(d.portCents, langue) })}</p>`
     : "";
 
   // Le cumul n'a de sens qu'à partir du deuxième remboursement : sinon il
   // répète le montant qu'on vient de lire, deux lignes plus haut.
   const cumul =
     d.totalRembourseCents > d.montantCents
-      ? `<p style="margin:16px 0 0;font-size:14px;color:#5b5b54">Au total, ${prix(d.totalRembourseCents)} vous ont été rendus sur cette commande de ${prix(d.totalCommandeCents)}.</p>`
+      ? `<p style="margin:16px 0 0;font-size:14px;color:#5b5b54">${texteHtml(langue, "remboursee.cumul", { total: prix(d.totalRembourseCents, langue), commande: prix(d.totalCommandeCents, langue) })}</p>`
       : "";
 
-  const delai = d.viaPaiementEnLigne
-    ? `<p style="margin:20px 0 0">Le montant repart vers le moyen de paiement utilisé pour la commande. Comptez quelques jours ouvrés avant de le voir sur votre relevé : ce délai est celui de votre banque, il ne dépend pas de nous.</p>`
-    : `<p style="margin:20px 0 0">Ce remboursement se fait en dehors du paiement en ligne. Nous revenons vers vous si une information nous manque pour vous le verser.</p>`;
+  const delai = `<p style="margin:20px 0 0">${texteHtml(
+    langue,
+    d.viaPaiementEnLigne ? "remboursee.delaiEnLigne" : "remboursee.horsLigne",
+  )}</p>`;
 
   return {
     to: "",
-    subject: partiel
-      ? `Remboursement partiel de votre commande ${d.numero}`
-      : `Remboursement de votre commande ${d.numero}`,
+    subject: t(partiel ? "remboursee.objetPartiel" : "remboursee.objet", {
+      numero: d.numero,
+    }),
     html: gabarit(
-      `Bonjour ${d.prenomClient},`,
-      `<p style="margin:0">Nous avons enregistré un remboursement de <strong style="font-weight:500">${prix(d.montantCents)}</strong> sur votre commande ${h(d.numero)}.</p>
+      t("commun.bonjour", { prenom: d.prenomClient }),
+      `<p style="margin:0">${texteHtml(langue, "remboursee.intro", { montant: `<strong style="font-weight:500">${prix(d.montantCents, langue)}</strong>`, numero: h(d.numero) })}</p>
        ${mention}
-       ${d.articles.length ? tableauLignes(d.articles) : ""}
+       ${d.articles.length ? tableauLignes(d.articles, langue) : ""}
        ${port}
        ${cumul}
        ${delai}
-       <p style="margin:24px 0 0;color:#5b5b54;font-size:14px">Une question sur ce remboursement ? Répondez simplement à cet e-mail.</p>`,
+       <p style="margin:24px 0 0;color:#5b5b54;font-size:14px">${texteHtml(langue, "remboursee.question")}</p>`,
+      langue,
     ),
     text:
-      `Bonjour ${d.prenomClient},\n\nUn remboursement de ${prix(d.montantCents)} a été enregistré sur votre commande ${d.numero}.` +
-      (partiel
-        ? `\nIl s'agit d'un remboursement partiel : le reste de la commande n'est pas concerné.`
-        : "") +
-      (d.viaPaiementEnLigne
-        ? `\nComptez quelques jours ouvrés avant de le voir sur votre relevé.`
-        : `\nCe remboursement se fait en dehors du paiement en ligne.`) +
+      `${t("commun.bonjour", { prenom: d.prenomClient })}\n\n${t("remboursee.texte", { montant: prix(d.montantCents, langue), numero: d.numero })}` +
+      (partiel ? `\n${t("remboursee.textePartiel")}` : "") +
+      `\n${t(d.viaPaiementEnLigne ? "remboursee.texteDelai" : "remboursee.texteHorsLigne")}` +
       `\n\nMemory Line`,
   };
 }
@@ -1108,30 +1208,32 @@ export function courrierAnnulee(d: {
   articles: LigneCourrier[];
   /** La commande avait-elle été payée avant d'être annulée ? */
   dejaPayee: boolean;
+  langue?: Langue;
 }): Courrier {
+  const langue = d.langue ?? "fr";
+  const t = tc(langue);
   const motif = d.motif
-    ? `<p style="margin:16px 0 0">Motif : ${h(d.motif)}</p>`
+    ? `<p style="margin:16px 0 0">${texteHtml(langue, "annulee.motif", { motif: h(d.motif) })}</p>`
     : "";
   const argent = d.dejaPayee
-    ? `<p style="margin:16px 0 0">Le montant réglé vous est rendu. Vous recevrez un message dédié dès que le remboursement est enregistré, avec le détail et le délai.</p>`
+    ? `<p style="margin:16px 0 0">${texteHtml(langue, "annulee.argent")}</p>`
     : "";
   return {
     to: "",
-    subject: `Votre commande ${d.numero} est annulée`,
+    subject: t("annulee.objet", { numero: d.numero }),
     html: gabarit(
-      `Bonjour ${d.prenomClient},`,
-      `<p style="margin:0">Votre commande ${h(d.numero)} est annulée. Rien ne sera fabriqué ni expédié.</p>
+      t("commun.bonjour", { prenom: d.prenomClient }),
+      `<p style="margin:0">${texteHtml(langue, "annulee.intro", { numero: h(d.numero) })}</p>
        ${motif}
        ${tableauLignesSansPrix(d.articles)}
        ${argent}
-       <p style="margin:20px 0 0;color:#5b5b54;font-size:14px">Si cette annulation vous surprend, répondez à ce message : nous reprendrons la commande avec vous.</p>`,
+       <p style="margin:20px 0 0;color:#5b5b54;font-size:14px">${texteHtml(langue, "annulee.surprise")}</p>`,
+      langue,
     ),
     text:
-      `Bonjour ${d.prenomClient},\n\nVotre commande ${d.numero} est annulée. Rien ne sera fabriqué ni expédié.` +
-      (d.motif ? `\nMotif : ${d.motif}` : "") +
-      (d.dejaPayee
-        ? `\nLe montant réglé vous est rendu ; un message dédié suivra dès que le remboursement est enregistré.`
-        : "") +
+      `${t("commun.bonjour", { prenom: d.prenomClient })}\n\n${t("annulee.intro", { numero: d.numero })}` +
+      (d.motif ? `\n${t("annulee.motif", { motif: d.motif })}` : "") +
+      (d.dejaPayee ? `\n${t("annulee.texteArgent")}` : "") +
       `\n\nMemory Line`,
   };
 }
@@ -1157,30 +1259,33 @@ export function courrierFacture(d: {
   totalCents: number;
   /** Vrai quand la commande a déjà été réglée. Change la phrase, pas le PDF. */
   dejaPayee: boolean;
+  langue?: Langue;
 }): Courrier {
-  const reglement = d.dejaPayee
-    ? `<p style="margin:16px 0 0">Cette commande est réglée : la facture est acquittée, vous n'avez rien à faire.</p>`
-    : `<p style="margin:16px 0 0">Cette commande n'est pas encore réglée. Nous revenons vers vous si un règlement nous manque.</p>`;
+  const langue = d.langue ?? "fr";
+  const t = tc(langue);
+  const reglement = `<p style="margin:16px 0 0">${texteHtml(
+    langue,
+    d.dejaPayee ? "facture.reglee" : "facture.nonReglee",
+  )}</p>`;
   return {
     to: "",
-    subject: `Votre facture ${d.numeroFacture} — commande ${d.numero}`,
+    subject: t("facture.objet", { facture: d.numeroFacture, numero: d.numero }),
     html: gabarit(
-      `Bonjour ${h(d.prenomClient)},`,
-      `<p style="margin:0">Voici la facture de votre commande ${h(d.numero)}, en pièce jointe.</p>
+      t("commun.bonjour", { prenom: h(d.prenomClient) }),
+      `<p style="margin:0">${texteHtml(langue, "facture.intro", { numero: h(d.numero) })}</p>
        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0;font-size:14px">
-         <tr><td style="padding:4px 0;color:#5b5b54">Facture n°</td><td align="right"><strong style="font-weight:500">${h(d.numeroFacture)}</strong></td></tr>
-         <tr><td style="padding:4px 0;color:#5b5b54">Commande</td><td align="right">${h(d.numero)}</td></tr>
-         <tr><td style="padding:4px 0;color:#5b5b54">Montant</td><td align="right"><strong style="font-weight:500">${prix(d.totalCents)}</strong></td></tr>
+         <tr><td style="padding:4px 0;color:#5b5b54">${texteHtml(langue, "facture.numeroFacture")}</td><td align="right"><strong style="font-weight:500">${h(d.numeroFacture)}</strong></td></tr>
+         <tr><td style="padding:4px 0;color:#5b5b54">${texteHtml(langue, "facture.commande")}</td><td align="right">${h(d.numero)}</td></tr>
+         <tr><td style="padding:4px 0;color:#5b5b54">${texteHtml(langue, "facture.montant")}</td><td align="right"><strong style="font-weight:500">${prix(d.totalCents, langue)}</strong></td></tr>
        </table>
        ${reglement}
-       <p style="margin:24px 0 0;color:#5b5b54;font-size:14px">Une question sur cette facture ? Répondez simplement à cet e-mail.</p>`,
+       <p style="margin:24px 0 0;color:#5b5b54;font-size:14px">${texteHtml(langue, "facture.question")}</p>`,
+      langue,
     ),
     text:
-      `Bonjour ${d.prenomClient},\n\nVoici la facture de votre commande ${d.numero}, en pièce jointe.\n` +
-      `Facture n° ${d.numeroFacture} — ${prix(d.totalCents)}.\n` +
-      (d.dejaPayee
-        ? `Cette commande est réglée : la facture est acquittée.\n`
-        : `Cette commande n'est pas encore réglée.\n`) +
+      `${t("commun.bonjour", { prenom: d.prenomClient })}\n\n${t("facture.intro", { numero: d.numero })}\n` +
+      `${t("facture.texteNumero", { facture: d.numeroFacture, montant: prix(d.totalCents, langue) })}\n` +
+      `${t(d.dejaPayee ? "facture.texteReglee" : "facture.texteNonReglee")}\n` +
       `\nMemory Line`,
   };
 }
@@ -1194,17 +1299,22 @@ export function courrierFacture(d: {
  */
 export function courrierReinitialisation(d: {
   prenomClient: string;
+  /** Le lien, déjà vers la page dans la langue du client. */
   lien: string;
+  langue?: Langue;
 }): Courrier {
+  const langue = d.langue ?? "fr";
+  const t = tc(langue);
   return {
     to: "",
-    subject: "Réinitialiser votre mot de passe",
+    subject: t("reinit.objet"),
     html: gabarit(
-      `Bonjour ${d.prenomClient},`,
-      `<p style="margin:0">Vous avez demandé à changer le mot de passe de votre compte Memory Line. Ce lien est valable une heure et ne servira qu'une fois.</p>
-       <p style="margin:20px 0"><a href="${h(d.lien)}" style="display:inline-block;background:#121212;color:#ffffff;padding:14px 28px;text-decoration:none">Choisir un nouveau mot de passe</a></p>
-       <p style="margin:0;color:#5b5b54;font-size:14px">Si vous n'êtes pas à l'origine de cette demande, ignorez ce message : votre mot de passe actuel reste valable.</p>`,
+      t("commun.bonjour", { prenom: d.prenomClient }),
+      `<p style="margin:0">${texteHtml(langue, "reinit.intro")}</p>
+       <p style="margin:20px 0"><a href="${h(d.lien)}" style="display:inline-block;background:#121212;color:#ffffff;padding:14px 28px;text-decoration:none">${texteHtml(langue, "reinit.bouton")}</a></p>
+       <p style="margin:0;color:#5b5b54;font-size:14px">${texteHtml(langue, "reinit.ignorer")}</p>`,
+      langue,
     ),
-    text: `Bonjour ${d.prenomClient},\n\nPour choisir un nouveau mot de passe (lien valable une heure) : ${d.lien}\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez ce message.\n\nMemory Line`,
+    text: `${t("commun.bonjour", { prenom: d.prenomClient })}\n\n${t("reinit.texteLien", { lien: d.lien })}\n\n${t("reinit.texteIgnorer")}\n\nMemory Line`,
   };
 }

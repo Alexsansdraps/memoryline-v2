@@ -6,9 +6,9 @@
  * relance. Le jeton qu'elle reçoit ne dit rien de personne : il désigne un
  * panier, et rien d'autre.
  *
- * Elle vit HORS du routage [...lang], comme le stand : le courrier de relance
- * n'existe qu'en français, l'adresse qu'il porte n'a donc qu'une version. Sa
- * langue se lit ailleurs que dans l'adresse — voir `langueDuVisiteur`.
+ * Elle vit HORS du routage [...lang], comme le stand : l'adresse que porte le
+ * courrier de relance n'a qu'une version. Sa langue se lit ailleurs que dans
+ * le chemin — voir `langue` plus bas.
  *
  * Ce qu'elle fait tient en trois gestes, dans cet ordre : réinstaller
  * l'identifiant de panier là où la boutique le cherche (`ml_cart_id`),
@@ -38,9 +38,9 @@ export const prerender = false;
 /**
  * La langue de la page.
  *
- * L'adresse n'a pas de préfixe, et le panier ne retient pas la langue dans
- * laquelle il a été rempli. Seul un `?lang=` posé sur le lien la choisit : le
- * jour où le courrier de relance sera traduit, il n'aura qu'à l'ajouter. Sans
+ * L'adresse n'a pas de préfixe : c'est le `?lang=` posé sur le lien qui la
+ * choisit. Le courrier de relance l'ajoute quand il part dans une autre langue
+ * que le français (lienDeRecuperation, apps/api/src/relance-panier.ts) ; sans
  * lui, c'est le français, la langue du courrier. Deviner d'après le
  * navigateur ferait passer en anglais une cliente française dont le téléphone
  * est réglé en anglais, alors qu'elle vient de lire un courrier en français.

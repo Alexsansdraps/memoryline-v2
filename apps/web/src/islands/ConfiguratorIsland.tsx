@@ -149,9 +149,11 @@ export default function ConfiguratorIsland(
       );
       let ligne: OrderItem;
       if (mode === "edit" && props.itemId != null) {
+        // La langue de la page suit le panier ; au stand, l'API l'ignore.
         ligne = await browserApi.updateCartItem(cartId, props.itemId, {
           config,
           unitPriceCents,
+          langue,
         });
       } else {
         // Le prix est CALCULÉ et enregistré même quand il n'est pas affiché :
@@ -164,6 +166,7 @@ export default function ConfiguratorIsland(
           quantity: quantite,
           title: props.product.name,
           config,
+          langue,
         });
       }
       // Le serveur a écrit la ligne sans son cadre (page ouverte avant que la

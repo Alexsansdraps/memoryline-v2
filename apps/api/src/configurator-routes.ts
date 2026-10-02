@@ -46,6 +46,12 @@ import {
 import { noterLaRecuperation } from "./relance-panier.js";
 import { langueDuVisiteur, nomTraduit } from "./traductions.js";
 import {
+  langueDuDestinataire,
+  langueLue,
+  tc,
+  type Langue,
+} from "./courriels/index.js";
+import {
   PREFIXE_SENDCLOUD,
   gerePoints as sendcloudGerePoints,
   verifierPoint as verifierPointSendcloud,
@@ -746,6 +752,17 @@ async function loadCartItem(tx: Transaction, cartId: string, itemId: number) {
 }
 
 /**
+ * La langue de la page qui envoie ce panier, ou null.
+ *
+ * Seules les cinq langues du site passent, et un appel qui n'en dit rien ne
+ * change rien. La tablette du stand n'en donne jamais : une vente du stand
+ * reste en français, même si la tablette a ouvert une page traduite.
+ */
+function langueDeLaPage(c: Context, brut: unknown): Langue | null {
+  return requeteDuStand(c) ? null : langueLue(brut);
+}
+
+/**
  * Une ligne du panier vient d'être ajoutée, modifiée ou retirée — dans la
  * transaction `tx`, qui tient le verrou de la commande (panierModifiable).
  *
@@ -775,20 +792,27 @@ async function loadCartItem(tx: Transaction, cartId: string, itemId: number) {
  * stand ou site (voir `panierDuStand` dans le schéma). Obligatoire, pour que
  * chaque appel se pose la question : un oubli rangerait des paniers du stand
  * parmi les abandons du site.
+ *
+ * `langue` est celle de la page qui vient de remplir le panier (voir
+ * `langueDeLaPage`) : c'est elle que gardera la commande, et dans laquelle on
+ * écrira à quelqu'un dont on ne sait rien d'autre. Null ne change rien — un
+ * retrait d'article, le stand, un ancien navigateur qui ne la dit pas.
  */
 async function panierModifie(
   tx: Transaction,
   order: typeof schema.orders.$inferSelect,
   auStand: boolean,
+  langue: Langue | null = null,
 ): Promise<void> {
   const maintenant = new Date();
   const rouverte = order.status === "pending";
+  const saLangue = langue ? { langue } : {};
   // Passé en caisse = une cliente rattachée : c'est le passage en caisse qui
   // la pose.
   if (!rouverte && order.customerId == null) {
     await tx
       .update(schema.orders)
-      .set({ lastActivityAt: maintenant, panierDuStand: auStand })
+      .set({ lastActivityAt: maintenant, panierDuStand: auStand, ...saLangue })
       .where(eq(schema.orders.id, order.id));
     return;
   }
@@ -810,6 +834,7 @@ async function panierModifie(
       status: "draft",
       lastActivityAt: maintenant,
       panierDuStand: auStand,
+      ...saLangue,
       ...(valeur
         ? {
             totalCents: valeur.totalCents,
@@ -1401,18 +1426,28 @@ async function previenirDuPaiement(orderId: number): Promise<void> {
       .from(schema.orderItems)
       .where(eq(schema.orderItems.orderId, orderId));
     const cadres = await db.select().from(schema.frames);
-
-    const lignes = items.map((it) => {
-      const cfg = (it.config ?? {}) as Record<string, unknown>;
-      const cadre = cadres.find((f) => String(f.id) === String(cfg.frameId ?? ""));
-      return {
-        titre: it.title ?? "Affiche personnalisée",
-        format: (cfg.format as string) ?? "A4",
-        cadre: cadre?.name ?? null,
-        quantite: it.quantity,
-        unitPriceCents: it.unitPriceCents,
-      };
+    // La confirmation part dans la langue du client : son compte d'abord,
+    // puis la page d'où il a commandé.
+    const langue = langueDuDestinataire({
+      compte: client?.langue,
+      commande: order.langue,
     });
+
+    const lignesDans = (l: Langue) =>
+      items.map((it) => {
+        const cfg = (it.config ?? {}) as Record<string, unknown>;
+        const cadre = cadres.find((f) => String(f.id) === String(cfg.frameId ?? ""));
+        return {
+          titre: it.title ?? tc(l)("lignes.titreParDefaut"),
+          format: (cfg.format as string) ?? "A4",
+          // Le nom du cadre est sa couleur : la boutique le traduit, comme
+          // sur la fiche du produit.
+          cadre: cadre ? (nomTraduit(cadre.translations, l) ?? cadre.name) : null,
+          quantite: it.quantity,
+          unitPriceCents: it.unitPriceCents,
+        };
+      });
+    const lignes = lignesDans(langue);
     const sousTotal = lignes.reduce(
       (s, l) => s + l.unitPriceCents * l.quantite,
       0,
@@ -1424,8 +1459,10 @@ async function previenirDuPaiement(orderId: number): Promise<void> {
 
     if (client?.email) {
       const courrier = courrierConfirmation({
+        langue,
         numero: order.number,
-        prenomClient: (client.name ?? "").split(" ")[0] || "et merci",
+        prenomClient:
+          (client.name ?? "").split(" ")[0] || tc(langue)("confirmation.prenomParDefaut"),
         lignes,
         sousTotalCents: sousTotal,
         remiseCents: remise,
@@ -1455,11 +1492,13 @@ async function previenirDuPaiement(orderId: number): Promise<void> {
     // Avis à la boutique : sans lui, il faut penser à ouvrir le back-office.
     const destinataire = (process.env.MAIL_BOUTIQUE ?? "").trim();
     if (destinataire) {
+      // Celui-ci est lu par la boutique : en français, quelle que soit la
+      // langue de la cliente.
       const avis = courrierNouvelleCommande({
         numero: order.number,
         client: client?.name ?? "client inconnu",
         totalCents: order.totalCents,
-        lignes,
+        lignes: langue === "fr" ? lignes : lignesDans("fr"),
       });
       await envoyerMail({ ...avis, to: destinataire });
     }
@@ -1887,6 +1926,10 @@ export function mountConfiguratorRoutes(app: Hono) {
     if (!parsed.success)
       return c.json({ error: "config invalide", details: parsed.error.issues }, 400);
 
+    // La langue de la page : le panier la garde dès sa naissance, pour qu'un
+    // visiteur qui ne passe jamais en caisse puisse quand même être relancé
+    // dans sa langue s'il laisse un jour son adresse.
+    const langue = langueDeLaPage(c, body.langue);
     const [existe] = await db
       .select({ id: schema.orders.id })
       .from(schema.orders)
@@ -1909,6 +1952,7 @@ export function mountConfiguratorRoutes(app: Hono) {
           status: "draft",
           totalCents: 0,
           lastActivityAt: new Date(),
+          langue,
         })
         .onConflictDoNothing();
     }
@@ -1946,7 +1990,7 @@ export function mountConfiguratorRoutes(app: Hono) {
           quantity: Math.max(1, Number(body.quantity ?? 1)),
         })
         .returning();
-      await panierModifie(tx, order, requeteDuStand(c));
+      await panierModifie(tx, order, requeteDuStand(c), langue);
       return ligne;
     });
     if (!item) return c.json({ error: "panier_clos" }, 409);
@@ -1992,7 +2036,12 @@ export function mountConfiguratorRoutes(app: Hono) {
         })
         .where(eq(schema.orderItems.id, itemId))
         .returning();
-      await panierModifie(tx, trouve.order, requeteDuStand(c));
+      await panierModifie(
+        tx,
+        trouve.order,
+        requeteDuStand(c),
+        langueDeLaPage(c, body.langue),
+      );
       return ligne ?? null;
     });
     if (!item) return c.notFound();
@@ -2111,6 +2160,9 @@ export function mountConfiguratorRoutes(app: Hono) {
       ? draft.number
       : await nextOrderNumber("web");
     const code = normaliserCode(body.promoCode);
+    // Pas `langueDeLaPage` : c'est la caisse du SITE, quoi que dise le cookie
+    // du stand (voir plus bas), et sa page parle la langue qu'elle annonce.
+    const langueCaisse = langueLue(body.langue);
 
     // Livraison : mode et adresse viennent du client, le prix vient de la
     // base. Sans mode choisi, on refuse — mieux vaut une commande bloquée
@@ -2270,6 +2322,10 @@ export function mountConfiguratorRoutes(app: Hono) {
           // Passé par la caisse du site, c'est un panier du site : s'il n'est
           // pas payé, c'est ici qu'il a été abandonné, pas au stand.
           panierDuStand: false,
+          // La langue de la page de caisse, quand elle la dit. Celle du
+          // compte n'y est pour rien et n'en est pas changée : c'est elle qui
+          // passera d'abord au moment d'écrire (langueDuDestinataire).
+          ...(langueCaisse ? { langue: langueCaisse } : {}),
         })
         .where(eq(schema.orders.id, panier.id))
         .returning();

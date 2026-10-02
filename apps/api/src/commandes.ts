@@ -51,6 +51,32 @@ import {
 import { markOrderPaid } from "./configurator-routes.js";
 import { renderInvoicePdf, type LigneFacture } from "./pdf.js";
 import { cheminApercu } from "./apercus.js";
+import {
+  dateCourte,
+  langueDuDestinataire,
+  langueLue,
+  tc,
+  type CleCourriel,
+  type Langue,
+} from "./courriels/index.js";
+import { nomTraduit } from "./traductions.js";
+
+/**
+ * Le titre de repli d'une ligne (« Affiche personnalisée ») dans la langue du
+ * courrier.
+ *
+ * Certains articles sont mis en forme AVANT qu'on sache à qui écrire — ceux
+ * d'un remboursement ou d'une annulation, composés par la route elle-même. Ils
+ * portent alors le repli français, qu'on traduit ici au dernier moment. Un
+ * titre réellement saisi n'est jamais touché ; en français, rien ne change.
+ */
+function titresDansLaLangue(lignes: LigneCourrier[], langue: Langue): LigneCourrier[] {
+  if (langue === "fr") return lignes;
+  const repli = tc("fr")("lignes.titreParDefaut");
+  return lignes.map((l) =>
+    l.titre === repli ? { ...l, titre: tc(langue)("lignes.titreParDefaut") } : l,
+  );
+}
 
 /**
  * L'adresse publique du site, pour les images des courriers.
@@ -1063,16 +1089,25 @@ export function mountOrderRoutes(app: Hono): void {
           channel: schema.orders.channel,
           customerId: schema.orders.customerId,
           note: schema.orders.internalNote,
+          langue: schema.orders.langue,
         })
         .from(schema.orders)
         .where(eq(schema.orders.id, orderId));
       if (!commande?.customerId) return;
 
       const [client] = await db
-        .select({ name: schema.customers.name, email: schema.customers.email })
+        .select({
+          name: schema.customers.name,
+          email: schema.customers.email,
+          langue: schema.customers.langue,
+        })
         .from(schema.customers)
         .where(eq(schema.customers.id, commande.customerId));
       if (!client?.email) return;
+      const langue = langueDuDestinataire({
+        compte: client.langue,
+        commande: commande.langue,
+      });
 
       const lignesCommande = await db
         .select({
@@ -1086,18 +1121,20 @@ export function mountOrderRoutes(app: Hono): void {
       const lignes = lignesCommande.map((l) => {
         const cfg = (l.config ?? {}) as { format?: unknown };
         return {
-          titre: l.title ?? "Affiche personnalisée",
+          titre: l.title ?? tc(langue)("lignes.titreParDefaut"),
           format: typeof cfg.format === "string" ? cfg.format : null,
           cadre: null,
           quantite: l.quantity,
           unitPriceCents: l.unitPriceCents,
         };
       });
-      const prenom = (client.name ?? "").split(" ")[0] || "vous";
+      const prenom =
+        (client.name ?? "").split(" ")[0] || tc(langue)("commun.prenomParDefaut");
 
       const courrier =
         commande.channel === "salon"
           ? courrierPreteAuStand({
+              langue,
               prenomClient: prenom,
               numero: commande.number,
               // Le nom du stand a été gardé dans la note interne au moment de
@@ -1107,6 +1144,7 @@ export function mountOrderRoutes(app: Hono): void {
               lignes,
             })
           : courrierExpediee({
+              langue,
               prenomClient: prenom,
               numero: commande.number,
               transporteur: envoi.carrier,
@@ -1424,6 +1462,7 @@ export function mountOrderRoutes(app: Hono): void {
           channel: schema.orders.channel,
           customerId: schema.orders.customerId,
           totalCents: schema.orders.totalCents,
+          langue: schema.orders.langue,
         })
         .from(schema.orders)
         .where(eq(schema.orders.id, orderId));
@@ -1441,17 +1480,27 @@ export function mountOrderRoutes(app: Hono): void {
       if (!commande.customerId) return;
 
       const [client] = await db
-        .select({ name: schema.customers.name, email: schema.customers.email })
+        .select({
+          name: schema.customers.name,
+          email: schema.customers.email,
+          langue: schema.customers.langue,
+        })
         .from(schema.customers)
         .where(eq(schema.customers.id, commande.customerId));
       if (!client?.email) return;
+      const langue = langueDuDestinataire({
+        compte: client.langue,
+        commande: commande.langue,
+      });
 
       const courrier = courrierRemboursee({
-        prenomClient: (client.name ?? "").split(" ")[0] || "vous",
+        langue,
+        prenomClient:
+          (client.name ?? "").split(" ")[0] || tc(langue)("commun.prenomParDefaut"),
         numero: commande.number,
         montantCents: remboursement.montantCents,
         portCents: remboursement.portCents,
-        articles: remboursement.articles,
+        articles: titresDansLaLangue(remboursement.articles, langue),
         totalRembourseCents: remboursement.totalRembourseCents,
         totalCommandeCents: commande.totalCents,
         viaPaiementEnLigne: remboursement.viaPaiementEnLigne,
@@ -1710,7 +1759,9 @@ export function mountOrderRoutes(app: Hono): void {
     /* --- 6. Le courrier ------------------------------------------------ */
 
     await previenirDeLAnnulation(id, {
-      motif,
+      // Le choix brut, pas la phrase du journal : le courrier recompose le
+      // motif dans la langue de la cliente.
+      motif: { choix: b.motif, libre: b.motifLibre },
       // Une commande payée dont on n'a rien rendu ne doit pas laisser croire
       // à la cliente que son argent revient : le modèle ne le dit que si un
       // remboursement a réellement eu lieu.
@@ -1749,26 +1800,41 @@ export function mountOrderRoutes(app: Hono): void {
    * dire la même chose, et plus rien ne se compte ni ne se retrouve. Le champ
    * libre reste là pour « autre », parce qu'aucune liste ne couvre tout.
    */
-  const MOTIFS_ANNULATION: Record<string, string> = {
-    saisie: "Erreur de saisie",
-    rupture: "Rupture — article indisponible",
-    cliente: "Demande de la cliente",
-    impaye: "Paiement non reçu",
-    autre: "Autre",
+  /*
+   * Les libellés vivent dans le dictionnaire des courriels : le même motif
+   * s'écrit en français au journal, et dans la langue de la cliente dans son
+   * courrier. « Autre » n'en a pas, il ne s'écrit jamais (voir plus bas).
+   */
+  const MOTIFS_ANNULATION: Record<string, CleCourriel | null> = {
+    saisie: "annulee.motifSaisie",
+    rupture: "annulee.motifRupture",
+    cliente: "annulee.motifCliente",
+    impaye: "annulee.motifImpaye",
+    autre: null,
   };
 
-  /** Le motif tel qu'il s'écrira au journal et dans le courrier. */
-  function motifDAnnulation(choix: unknown, libre: unknown): string | null {
+  /**
+   * Le motif tel qu'il s'écrira au journal (en français) et dans le courrier
+   * (dans la langue de la cliente). La précision saisie par la boutique, elle,
+   * reste telle qu'elle a été écrite.
+   */
+  function motifDAnnulation(
+    choix: unknown,
+    libre: unknown,
+    langue: Langue = "fr",
+  ): string | null {
     const cle = String(choix ?? "").trim();
     const precision = String(libre ?? "")
       .trim()
       .slice(0, 200);
-    const libelle = MOTIFS_ANNULATION[cle];
-    if (!libelle) return precision || null;
+    const connu = Object.prototype.hasOwnProperty.call(MOTIFS_ANNULATION, cle);
+    const libelle = connu ? MOTIFS_ANNULATION[cle] : null;
     // « Autre » sans précision ne dit rien : mieux vaut alors ne rien écrire
-    // que d'envoyer à la cliente un motif qui s'appelle « Autre ».
-    if (cle === "autre") return precision || null;
-    return precision ? `${libelle} — ${precision}` : libelle;
+    // que d'envoyer à la cliente un motif qui s'appelle « Autre ». Un choix
+    // inconnu vaut de même sa seule précision.
+    if (!libelle) return precision || null;
+    const texte = tc(langue)(libelle);
+    return precision ? `${texte} — ${precision}` : texte;
   }
 
   /**
@@ -1786,7 +1852,8 @@ export function mountOrderRoutes(app: Hono): void {
   async function previenirDeLAnnulation(
     orderId: number,
     annulation: {
-      motif: string | null;
+      /** Le motif tel que la boutique l'a choisi : il s'écrit dans la langue du courrier. */
+      motif: { choix: unknown; libre: unknown };
       dejaPayee: boolean;
       articles: LigneCourrier[];
       auStand: boolean;
@@ -1816,6 +1883,7 @@ export function mountOrderRoutes(app: Hono): void {
         .select({
           number: schema.orders.number,
           customerId: schema.orders.customerId,
+          langue: schema.orders.langue,
         })
         .from(schema.orders)
         .where(eq(schema.orders.id, orderId));
@@ -1830,7 +1898,11 @@ export function mountOrderRoutes(app: Hono): void {
       }
 
       const [client] = await db
-        .select({ name: schema.customers.name, email: schema.customers.email })
+        .select({
+          name: schema.customers.name,
+          email: schema.customers.email,
+          langue: schema.customers.langue,
+        })
         .from(schema.customers)
         .where(eq(schema.customers.id, commande.customerId));
       if (!client?.email) {
@@ -1842,12 +1914,18 @@ export function mountOrderRoutes(app: Hono): void {
         });
         return;
       }
+      const langue = langueDuDestinataire({
+        compte: client.langue,
+        commande: commande.langue,
+      });
 
       const courrier = courrierAnnulee({
-        prenomClient: (client.name ?? "").split(" ")[0] || "vous",
+        langue,
+        prenomClient:
+          (client.name ?? "").split(" ")[0] || tc(langue)("commun.prenomParDefaut"),
         numero: commande.number,
-        motif: annulation.motif,
-        articles: annulation.articles,
+        motif: motifDAnnulation(annulation.motif.choix, annulation.motif.libre, langue),
+        articles: titresDansLaLangue(annulation.articles, langue),
         dejaPayee: annulation.dejaPayee,
       });
       const parti = await envoyerCourrier({ ...courrier, to: client.email });
@@ -2191,7 +2269,10 @@ export function mountOrderRoutes(app: Hono): void {
         403,
       );
     const id = Number(c.req.param("id"));
-    const facture = await composerLaFacture(id);
+    // La facture sort dans la langue de la cliente, comme celle qui lui est
+    // envoyée : la boutique télécharge le document que la cliente a, ou aura.
+    // `?langue=fr` en demande une autre, pour la comptabilité par exemple.
+    const facture = await composerLaFacture(id, langueLue(c.req.query("langue")));
     if ("erreur" in facture) return c.json({ error: facture.erreur }, facture.code);
     // « inline » : le PDF s'ouvre dans l'onglet, d'où il s'imprime et se
     // télécharge. Forcer le téléchargement obligerait à ouvrir le fichier pour
@@ -2228,7 +2309,9 @@ export function mountOrderRoutes(app: Hono): void {
         400,
       );
 
+    // Le courrier et le PDF joint, dans la même langue : celle de la cliente.
     const courrier = courrierFacture({
+      langue: facture.langue,
       prenomClient: facture.prenomClient,
       numero: facture.numeroCommande,
       numeroFacture: facture.numeroFacture,
@@ -2326,8 +2409,15 @@ export function mountOrderRoutes(app: Hono): void {
    * Les deux routes en ont besoin des mêmes données, et surtout du même PDF :
    * en fabriquer deux, l'un pour l'écran et l'autre pour la pièce jointe,
    * aurait fini par en donner deux qui ne disent pas la même chose.
+   *
+   * Dans la langue de la cliente (`langueDuDestinataire`), sauf `langueVoulue`
+   * explicite. Les montants et les dates suivent ; la mention de TVA reste en
+   * français, sa traduction dessous (voir renderInvoicePdf).
    */
-  async function composerLaFacture(orderId: number): Promise<
+  async function composerLaFacture(
+    orderId: number,
+    langueVoulue: Langue | null = null,
+  ): Promise<
     | { erreur: string; code: 400 | 404 }
     | {
         pdf: Buffer;
@@ -2338,6 +2428,7 @@ export function mountOrderRoutes(app: Hono): void {
         dejaPayee: boolean;
         clientEmail: string | null;
         prenomClient: string;
+        langue: Langue;
       }
   > {
     if (!Number.isInteger(orderId) || orderId <= 0)
@@ -2370,16 +2461,20 @@ export function mountOrderRoutes(app: Hono): void {
       .from(schema.orderItems)
       .where(eq(schema.orderItems.orderId, orderId));
     const cadres = await db.select().from(schema.frames);
+    const langue =
+      langueVoulue ??
+      langueDuDestinataire({ compte: client?.langue, commande: order.langue });
+    const t = tc(langue);
 
     const lignes: LigneFacture[] = articles.map((it) => {
       const cfg = (it.config ?? {}) as Record<string, unknown>;
       const cadre = cadres.find((f) => String(f.id) === String(cfg.frameId ?? ""));
       return {
-        designation: it.title ?? "Affiche personnalisée",
+        designation: it.title ?? t("lignes.titreParDefaut"),
         precision:
           [
-            typeof cfg.format === "string" ? `Format ${cfg.format}` : null,
-            cadre?.name ?? null,
+            typeof cfg.format === "string" ? t("lignes.format", { format: cfg.format }) : null,
+            cadre ? (nomTraduit(cadre.translations, langue) ?? cadre.name) : null,
           ]
             .filter(Boolean)
             .join(" · ") || null,
@@ -2413,11 +2508,12 @@ export function mountOrderRoutes(app: Hono): void {
       String(reglages.find((r) => r.key === cle)?.value ?? "").trim();
 
     const pdf = await renderInvoicePdf({
+      langue,
       numeroFacture,
       dateFacture: emiseLe,
       numeroCommande: order.number,
       dateCommande: order.createdAt,
-      clientNom: order.shippingName ?? client?.name ?? "Client",
+      clientNom: order.shippingName ?? client?.name ?? t("facturePdf.clientParDefaut"),
       clientEmail: client?.email ?? null,
       clientAdresse: [
         order.relayPointLabel,
@@ -2435,7 +2531,7 @@ export function mountOrderRoutes(app: Hono): void {
       modeLivraison: order.shippingLabel,
       totalCents: order.totalCents,
       rembourseCents: resume.rembourseCents,
-      mentionReglement: mentionDeReglement(order),
+      mentionReglement: mentionDeReglement(order, langue),
       adresseBoutique: valeur("facture.adresse")
         ? valeur("facture.adresse").split("\n")
         : null,
@@ -2445,33 +2541,61 @@ export function mountOrderRoutes(app: Hono): void {
       // qu'elle ne vaut plus.
       filigrane:
         order.status === "cancelled" || order.status === "voided"
-          ? "Annulée"
+          ? t("facturePdf.filigrane")
           : null,
     });
 
     return {
       pdf,
-      nomFichier: `Facture_${numeroFacture}_${order.number}.pdf`,
+      nomFichier: `${t("facturePdf.nomFichier")}_${numeroFacture}_${order.number}.pdf`,
       numeroFacture,
       numeroCommande: order.number,
       totalCents: order.totalCents,
       dejaPayee: order.status === "paid",
       clientEmail: client?.email ?? null,
-      prenomClient: (client?.name ?? "").split(" ")[0] || "vous",
+      prenomClient: (client?.name ?? "").split(" ")[0] || t("commun.prenomParDefaut"),
+      langue,
     };
   }
 
-  /** « Réglée le 8 septembre 2026. », ou ce qui en tient lieu. */
+  /**
+   * « Commande réglée. Facture acquittée. », ou ce qui en tient lieu, dans la
+   * langue de la facture.
+   */
   function mentionDeReglement(
     order: typeof schema.orders.$inferSelect,
+    langue: Langue = "fr",
   ): string {
+    const t = tc(langue);
     if (order.status === "cancelled" || order.status === "voided")
-      return `Commande annulée${
+      return `${
         order.cancelledAt
-          ? ` le ${order.cancelledAt.toLocaleDateString("fr-FR")}`
-          : ""
-      }${order.cancelReason ? ` — ${order.cancelReason}` : ""}.`;
-    if (order.status === "paid") return "Commande réglée. Facture acquittée.";
-    return "Commande non réglée à ce jour.";
+          ? t("facturePdf.annuleeLe", { date: dateCourte(langue, order.cancelledAt) })
+          : t("facturePdf.annulee")
+      }${order.cancelReason ? ` — ${motifDansLaLangue(order.cancelReason, langue)}` : ""}.`;
+    if (order.status === "paid") return t("facturePdf.reglee");
+    return t("facturePdf.nonReglee");
+  }
+
+  /**
+   * Le motif d'annulation gardé sur la commande, dans la langue de la facture.
+   *
+   * La commande ne garde que la phrase du journal, en français : « Demande de
+   * la cliente », suivie le cas échéant de « — » et de la précision saisie.
+   * Le libellé de la liste se retrouve donc au début, et se traduit comme
+   * dans le courrier d'annulation ; la précision, écrite par la boutique,
+   * reste telle quelle. Une facture allemande ne doit pas porter un motif en
+   * français quand le courrier qui l'accompagne l'a écrit en allemand.
+   */
+  function motifDansLaLangue(motif: string, langue: Langue): string {
+    if (langue === "fr") return motif;
+    for (const cle of Object.values(MOTIFS_ANNULATION)) {
+      if (!cle) continue;
+      const francais = tc("fr")(cle);
+      if (motif === francais) return tc(langue)(cle);
+      if (motif.startsWith(`${francais} — `))
+        return `${tc(langue)(cle)}${motif.slice(francais.length)}`;
+    }
+    return motif;
   }
 }

@@ -46,6 +46,13 @@ import {
   type Courrier,
 } from "./mail.js";
 import { cheminApercu } from "./apercus.js";
+import {
+  cheminSite,
+  langueDuDestinataire,
+  langueLue,
+  tc,
+  type Langue,
+} from "./courriels/index.js";
 
 export const COOKIE_CLIENT = "ml_client";
 
@@ -91,8 +98,17 @@ async function previenirLeClient(
 }
 
 /** Le prénom tel que les courriers l'emploient, ou de quoi s'en passer. */
-function prenomDe(nom: string | null): string {
-  return (nom ?? "").split(" ")[0] || "vous";
+function prenomDe(nom: string | null, langue: Langue = "fr"): string {
+  return (nom ?? "").split(" ")[0] || tc(langue)("commun.prenomParDefaut");
+}
+
+/**
+ * Une page du compte, en adresse complète et dans la langue du client — ou
+ * null sans adresse publique, pour que le courrier se passe de bouton plutôt
+ * que d'en montrer un mort (voir ORIGINE).
+ */
+function lienDuCompte(langue: Langue, chemin: string): string | null {
+  return ORIGINE ? `${ORIGINE}${cheminSite(langue, chemin)}` : null;
 }
 
 /**
@@ -134,6 +150,8 @@ export interface ClientConnecte {
   email: string | null;
   phone: string | null;
   acceptsMarketing: boolean;
+  /** La langue choisie pour ses courriels ; null = jamais choisie. */
+  langue?: string | null;
   createdAt: Date;
 }
 
@@ -159,6 +177,7 @@ export async function clientDeLaRequete(
       email: schema.customers.email,
       phone: schema.customers.phone,
       acceptsMarketing: schema.customers.acceptsMarketing,
+      langue: schema.customers.langue,
       createdAt: schema.customers.createdAt,
     })
     .from(schema.customerSessions)
@@ -244,6 +263,7 @@ interface FicheClient {
   email: string | null;
   phone: string | null;
   acceptsMarketing: boolean;
+  langue?: string | null;
   createdAt: Date;
 }
 
@@ -277,6 +297,9 @@ function publique(cl: FicheClient) {
     email: cl.email,
     phone: cl.phone,
     acceptsMarketing: cl.acceptsMarketing,
+    // La langue CHOISIE, telle quelle : null dit « jamais choisie », et c'est
+    // à la page de compte de décider quoi proposer dans ce cas.
+    langue: langueLue(cl.langue),
     createdAt: cl.createdAt,
   };
 }
@@ -460,6 +483,10 @@ export function mountCompteRoutes(app: Hono): void {
       return c.json({ error: "Un compte existe déjà avec cette adresse" }, 409);
 
     const marketing = b.acceptsMarketing === true;
+    // La langue de ses courriels : celle que propose le formulaire, la langue
+    // de la page où l'on s'inscrit, et que la personne a pu changer. Un appel
+    // qui n'en dit rien (un ancien formulaire, le tunnel) vaut le français.
+    const langue = langueLue(b.langue) ?? "fr";
     const maintenant = new Date();
     const [client] = await db
       .insert(schema.customers)
@@ -471,6 +498,7 @@ export function mountCompteRoutes(app: Hono): void {
         passwordHash: await hashPassword(mdp),
         acceptsMarketing: marketing,
         marketingOptInAt: marketing ? maintenant : null,
+        langue,
         lastLoginAt: maintenant,
       })
       .returning();
@@ -485,8 +513,9 @@ export function mountCompteRoutes(app: Hono): void {
     await previenirLeClient(
       client.email,
       courrierBienvenue({
-        prenomClient: prenomDe(client.name),
-        lien: ORIGINE ? `${ORIGINE}/compte` : null,
+        prenomClient: prenomDe(client.name, langue),
+        lien: lienDuCompte(langue, "/compte"),
+        langue,
       }),
     );
     return c.json({ customer: publique(client) }, 201);
@@ -721,6 +750,14 @@ export function mountCompteRoutes(app: Hono): void {
       maj.name = String(b.name).trim() || null;
     }
     if (b.phone !== undefined) maj.phone = String(b.phone).trim() || null;
+    // La langue des courriels : c'est ici, et seulement ici, qu'elle change
+    // après l'inscription — par le client lui-même. Une valeur inconnue est
+    // refusée plutôt qu'ignorée : le formulaire croirait l'avoir enregistrée.
+    if (b.langue !== undefined) {
+      const langue = langueLue(b.langue);
+      if (!langue) return c.json({ error: "Langue inconnue" }, 400);
+      maj.langue = langue;
+    }
     if (b.acceptsMarketing !== undefined) {
       const veut = b.acceptsMarketing === true;
       maj.acceptsMarketing = veut;
@@ -768,12 +805,21 @@ export function mountCompteRoutes(app: Hono): void {
     // L'avis part une fois le changement écrit, et il ne peut pas partir deux
     // fois : la requête rejouée présente un ancien mot de passe qui n'est plus
     // celui du compte, et se fait refuser quelques lignes plus haut.
+    //
+    // La langue du compte d'abord ; un compte d'avant ce réglage n'en a pas,
+    // et l'avis prend alors celle de la page d'où il change son mot de passe
+    // (`langue`, envoyée par le site), comme le veut la règle commune.
+    const langue = langueDuDestinataire({
+      compte: compte.langue,
+      commande: langueLue(b.langue),
+    });
     await previenirLeClient(
       compte.email,
       courrierMotDePasseModifie({
-        prenomClient: prenomDe(compte.name),
+        prenomClient: prenomDe(compte.name, langue),
         parReinitialisation: false,
-        lien: ORIGINE ? `${ORIGINE}/compte/mot-de-passe-oublie` : null,
+        lien: lienDuCompte(langue, "/compte/mot-de-passe-oublie"),
+        langue,
       }),
     );
     return c.json({ ok: true });
@@ -784,6 +830,10 @@ export function mountCompteRoutes(app: Hono): void {
    *
    * Réponse invariable, y compris pour une adresse inconnue : distinguer les
    * deux cas donnerait à n'importe qui la liste des clients de la boutique.
+   *
+   * Le site envoie la langue de sa page (`langue`) ; le courrier part pourtant
+   * dans celle du COMPTE quand elle est choisie — c'est le compte qu'on
+   * réinitialise, et la règle est la même pour tous les courriers.
    */
   app.post("/compte/mot-de-passe-oublie", async (c) => {
     const b = await c.req.json().catch(() => ({}) as Record<string, unknown>);
@@ -803,11 +853,16 @@ export function mountCompteRoutes(app: Hono): void {
           kind: "reset",
           expiresAt: new Date(Date.now() + RESET_TTL_MS),
         });
+        const langue = langueDuDestinataire({
+          compte: compte.langue,
+          commande: langueLue(b.langue),
+        });
         const origine = (process.env.PUBLIC_ORIGIN ?? "").replace(/\/$/, "");
-        const lien = `${origine}/compte/reinitialiser?jeton=${jeton}`;
+        const lien = `${origine}${cheminSite(langue, "/compte/reinitialiser")}?jeton=${jeton}`;
         const courrier = courrierReinitialisation({
-          prenomClient: (compte.name ?? "").split(" ")[0] || "vous",
+          prenomClient: prenomDe(compte.name, langue),
           lien,
+          langue,
         });
         if (estConfigure()) {
           await envoyer({ ...courrier, to: compte.email });
@@ -865,15 +920,26 @@ export function mountCompteRoutes(app: Hono): void {
     // même le seul avertissement que recevra quelqu'un dont on a détourné la
     // boîte mail, alors il compte plus ici que sur l'autre chemin.
     const [titulaire] = await db
-      .select({ name: schema.customers.name, email: schema.customers.email })
+      .select({
+        name: schema.customers.name,
+        email: schema.customers.email,
+        langue: schema.customers.langue,
+      })
       .from(schema.customers)
       .where(eq(schema.customers.id, ligne.customerId));
+    // Même règle : le compte, sinon la page de réinitialisation — celle du
+    // lien reçu, donc déjà la bonne langue pour un compte qui n'en a pas.
+    const langue = langueDuDestinataire({
+      compte: titulaire?.langue,
+      commande: langueLue(b.langue),
+    });
     await previenirLeClient(
       titulaire?.email ?? null,
       courrierMotDePasseModifie({
-        prenomClient: prenomDe(titulaire?.name ?? null),
+        prenomClient: prenomDe(titulaire?.name ?? null, langue),
         parReinitialisation: true,
-        lien: ORIGINE ? `${ORIGINE}/compte/mot-de-passe-oublie` : null,
+        lien: lienDuCompte(langue, "/compte/mot-de-passe-oublie"),
+        langue,
       }),
     );
     return c.json({ ok: true });

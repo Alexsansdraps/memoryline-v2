@@ -10,6 +10,8 @@ import {
   type Client,
 } from "../../../lib/compte.ts";
 import {
+  LANGUES,
+  NOM_LANGUE,
   estLangue,
   langueDepuisParam,
   lien,
@@ -45,7 +47,9 @@ if (session.etat === "connecte" && Astro.request.method === "POST") {
     else if (nouveau !== confirmation) erreur = "compte.err.mdp_different";
     else if (nouveau.length < 8) erreur = "compte.err.mdp_court";
     else {
-      const r = await changerMotDePasse(Astro, { ancien, nouveau });
+      // La langue de la page : celle de l'avis de sécurité si le compte n'en
+      // a pas encore choisi.
+      const r = await changerMotDePasse(Astro, { ancien, nouveau, langue });
       if (r.ok)
         return rediriger(
           Astro,
@@ -57,11 +61,15 @@ if (session.etat === "connecte" && Astro.request.method === "POST") {
       erreur = r.statut === 400 ? "compte.err.mdp_actuel" : r.erreur;
     }
   } else {
+    // Une valeur qui n'est pas l'une des cinq langues (formulaire trafiqué)
+    // ne part pas : la langue déjà choisie reste ce qu'elle était.
+    const langueChoisie = String(formulaire.get("langue") ?? "");
     const r = await majInfos(Astro, {
       firstName: texte("firstName"),
       lastName: texte("lastName"),
       phone: texte("phone"),
       acceptsMarketing: formulaire.get("acceptsMarketing") !== null,
+      ...(estLangue(langueChoisie) ? { langue: langueChoisie } : {}),
     });
     if (r.ok)
       return rediriger(
@@ -110,6 +118,18 @@ if (client && !telAffiche) {
     /* carnet indisponible : le champ reste vide, comme avant */
   }
 }
+
+/*
+ * La langue des e-mails, telle que le compte l'a retenue.
+ *
+ * Un compte d'avant ce réglage n'en a pas : on propose alors la langue de la
+ * page, celle dans laquelle la personne est justement en train de lire. Lui
+ * présenter le français par défaut ferait basculer en français, au premier
+ * enregistrement de son téléphone, quelqu'un qui recevait jusque-là ses
+ * e-mails dans la langue de ses commandes.
+ */
+const langueRetenue = client?.langue;
+const langueCourriels: Langue = estLangue(langueRetenue) ? langueRetenue : langue;
 
 const enregistre = Astro.url.searchParams.get("enregistre");
 const champ =
@@ -186,6 +206,21 @@ const champ =
               autocomplete="tel"
               class={champ}
             />
+          </label>
+          <label class="block">
+            <span class="text-sm font-medium">{tr("compte.langue_courriels")}</span>
+            {/* Chaque langue écrite dans sa propre langue : c'est sous ce nom
+                que la personne la reconnaît, quelle que soit la page. */}
+            <select name="langue" class={champ}>
+              {LANGUES.map((l) => (
+                <option value={l} lang={l} selected={l === langueCourriels}>
+                  {NOM_LANGUE[l]}
+                </option>
+              ))}
+            </select>
+            <span class="mt-1 block text-xs text-ink-soft">
+              {tr("compte.langue_courriels_aide")}
+            </span>
           </label>
           <label class="flex items-start gap-3 text-sm">
             <input

@@ -273,6 +273,11 @@ if (Astro.request.method === "POST") {
     const reelle = Astro.request.headers.get("x-real-ip");
     if (transmise) entetes["x-forwarded-for"] = transmise;
     else if (reelle) entetes["x-real-ip"] = reelle;
+    // Le cookie de session, recopié comme le fait l'espace client : une
+    // personne connectée reçoit son accusé de réception dans la langue de son
+    // compte, et non dans celle de la page d'où elle écrit.
+    const cookie = Astro.request.headers.get("cookie");
+    if (cookie) entetes["cookie"] = cookie;
 
     try {
       const reponse = await fetch(`${API_URL}/contact`, {

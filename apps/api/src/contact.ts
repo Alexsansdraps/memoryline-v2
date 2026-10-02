@@ -27,7 +27,14 @@
  * dit qu'il a été repéré revient avec une autre méthode.
  */
 import type { Context, Hono } from "hono";
-import { envoyer, estConfigure, type Courrier } from "./mail.js";
+import { envoyer, estConfigure, piedDeCourrier, type Courrier } from "./mail.js";
+import {
+  langueDuDestinataire,
+  remplir,
+  tc,
+  type Langue,
+} from "./courriels/index.js";
+import { clientDeLaRequete } from "./comptes.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Bornes de saisie                                                          */
@@ -227,7 +234,12 @@ function lireMessage(corps: Record<string, unknown>): MessageRecu {
     sujet,
     message,
     commande: ligne(corps.commande, MAX_COMMANDE),
-    langue: langueBrute in NOM_LANGUE ? langueBrute : "fr",
+    // Ses PROPRES clés seulement : « in » laissait passer « constructor » ou
+    // « toString », hérités de tout objet, et la boutique aurait lu le code
+    // d'une fonction à la place du nom d'une langue.
+    langue: Object.prototype.hasOwnProperty.call(NOM_LANGUE, langueBrute)
+      ? langueBrute
+      : "fr",
   };
 }
 
@@ -263,15 +275,17 @@ function hLignes(v: unknown): string {
  * volontairement, pour qu'un accusé de réception ait l'air de venir de la même
  * boutique qu'une confirmation de commande. Si l'habillage change là-bas,
  * celui-ci ne suivra pas tout seul — c'est le prix de ne pas ouvrir un fichier
- * qu'un autre chantier tient.
+ * qu'un autre chantier tient. Le pied, lui, vient de mail.ts : il porte la
+ * mention de TVA et sa traduction, qui ne doivent pas diverger d'un courrier à
+ * l'autre.
  */
-function gabarit(titre: string, contenu: string): string {
+function gabarit(titre: string, contenu: string, langue: Langue = "fr"): string {
   const origine = (process.env.PUBLIC_ORIGIN ?? "").trim().replace(/\/+$/, "");
   const entete = /^https?:\/\//i.test(origine)
     ? `<img src="${origine}/logo-memory-line.png" width="150" height="67" alt="Memory Line" style="display:block;border:0;outline:none;text-decoration:none;height:auto;width:150px;max-width:150px;font-size:20px;letter-spacing:.6px;color:#121212" />`
     : `<div style="font-size:20px;letter-spacing:.6px">Memory Line</div>`;
   return `<!doctype html>
-<html lang="fr"><body style="margin:0;background:#f3f3f3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#121212">
+<html lang="${langue}"><body style="margin:0;background:#f3f3f3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#121212">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f3f3;padding:24px 0">
     <tr><td align="center">
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff">
@@ -281,8 +295,7 @@ function gabarit(titre: string, contenu: string): string {
         </td></tr>
         <tr><td style="padding:0 32px 32px;font-size:15px;line-height:1.5">${contenu}</td></tr>
         <tr><td style="padding:16px 32px;background:#f3f3f3;font-size:12px;color:#5b5b54">
-          Memory Line, affiches personnalisées.<br />
-          TVA non applicable, article 293 B du CGI.
+          ${piedDeCourrier(langue)}
         </td></tr>
       </table>
     </td></tr>
@@ -298,17 +311,35 @@ function ligneInfo(intitule: string, valeur: string): string {
     </tr>`;
 }
 
-/** Le courrier que reçoit la boutique. */
-function courrierPourLaBoutique(m: MessageRecu, destinataire: string): Courrier {
+/**
+ * Le courrier que reçoit la boutique.
+ *
+ * `langueDuCompte` : la langue que la personne, connectée, a choisie pour ses
+ * e-mails. Quand elle diffère de la page d'où elle écrit, c'est elle que la
+ * boutique doit lire en premier : l'accusé de réception est déjà parti dans
+ * cette langue-là, et une réponse dans celle de la page contredirait le choix
+ * de la cliente. Sinon, rien ne change : la langue du site, comme avant.
+ */
+function courrierPourLaBoutique(
+  m: MessageRecu,
+  destinataire: string,
+  langueDuCompte: Langue | null = null,
+): Courrier {
+  const autreLangue = langueDuCompte && langueDuCompte !== m.langue ? langueDuCompte : null;
   const infos = [
     ligneInfo("De", `${m.nom} <${m.email}>`),
     m.commande ? ligneInfo("Commande", m.commande) : "",
-    m.langue === "fr"
-      ? ""
-      : ligneInfo(
-          "Langue du site",
-          `${NOM_LANGUE[m.langue]} — la personne lit le site dans cette langue`,
-        ),
+    autreLangue
+      ? ligneInfo(
+          "Langue de réponse",
+          `${NOM_LANGUE[autreLangue]} — celle que la personne a choisie dans son compte pour ses e-mails ; elle écrivait depuis le site en ${NOM_LANGUE[m.langue]}`,
+        )
+      : m.langue === "fr"
+        ? ""
+        : ligneInfo(
+            "Langue du site",
+            `${NOM_LANGUE[m.langue]} — la personne lit le site dans cette langue`,
+          ),
   ]
     .filter(Boolean)
     .join("\n");
@@ -341,7 +372,11 @@ function courrierPourLaBoutique(m: MessageRecu, destinataire: string): Courrier 
   const enTete = [
     `De : ${m.nom} <${m.email}>`,
     m.commande ? `Commande : ${m.commande}` : "",
-    m.langue === "fr" ? "" : `Langue du site : ${NOM_LANGUE[m.langue]}`,
+    autreLangue
+      ? `Langue de réponse : ${NOM_LANGUE[autreLangue]} (choisie dans son compte ; site lu en ${NOM_LANGUE[m.langue]})`
+      : m.langue === "fr"
+        ? ""
+        : `Langue du site : ${NOM_LANGUE[m.langue]}`,
   ].filter(Boolean);
   const texteSimple =
     `${enTete.join("\n")}\n\n${m.message}\n\n` +
@@ -355,30 +390,42 @@ function courrierPourLaBoutique(m: MessageRecu, destinataire: string): Courrier 
   };
 }
 
-/** L'accusé de réception que reçoit la personne. */
-function courrierAccuse(m: MessageRecu): Courrier {
+/**
+ * Une phrase du dictionnaire, posée en HTML à l'intérieur d'un paragraphe
+ * indenté : échappée, puis ses retours à la ligne rendus à l'indentation du
+ * code (le dictionnaire les marque, voir courriels/fr.ts). Le navigateur les
+ * lit comme des espaces ; ils ne servent qu'à ce que le courrier français
+ * reste exactement celui d'avant.
+ */
+function phraseIndentee(texte: string, valeursHtml?: Record<string, string>): string {
+  return remplir(h(texte), valeursHtml).replace(/\n/g, "\n      ");
+}
+
+/**
+ * L'accusé de réception que reçoit la personne, dans `langue` : celle de son
+ * compte si elle est connectée, sinon celle de la page d'où elle a écrit.
+ */
+function courrierAccuse(m: MessageRecu, langue: Langue = m.langue as Langue): Courrier {
+  const t = tc(langue);
   const contenu = `
-    <p style="margin:0 0 16px">Bonjour ${h(m.nom)},</p>
+    <p style="margin:0 0 16px">${phraseIndentee(t("commun.bonjour"), { prenom: h(m.nom) })}</p>
     <p style="margin:0 0 16px">
-      Votre message est bien arrivé. Nous vous répondons sous deux jours ouvrés,
-      à cette même adresse.
+      ${phraseIndentee(t("contact.recu"))}
     </p>
-    <p style="margin:0 0 8px;color:#5b5b54;font-size:13px">Voici ce que vous nous avez écrit :</p>
+    <p style="margin:0 0 8px;color:#5b5b54;font-size:13px">${phraseIndentee(t("contact.rappel"))}</p>
     <div style="border-left:3px solid #e0ded8;padding-left:16px;white-space:pre-wrap">${hLignes(m.message)}</div>
     <p style="margin:24px 0 0;font-size:13px;color:#5b5b54">
-      Ce courrier est un accusé de réception : inutile d'y répondre, mais vous
-      pouvez le faire si vous avez oublié quelque chose.
+      ${phraseIndentee(t("contact.inutile"))}
     </p>`;
 
   return {
     to: m.email,
-    subject: `Nous avons bien reçu votre message — ${m.sujet}`,
-    html: gabarit("Votre message est bien arrivé", contenu),
+    subject: t("contact.objet", { sujet: m.sujet }),
+    html: gabarit(t("contact.titre"), contenu, langue),
     text:
-      `Bonjour ${m.nom},\n\n` +
-      "Votre message est bien arrivé. Nous vous répondons sous deux jours " +
-      "ouvrés, à cette même adresse.\n\n" +
-      `Voici ce que vous nous avez écrit :\n\n${m.message}\n`,
+      `${t("commun.bonjour", { prenom: m.nom })}\n\n` +
+      `${t("contact.recu").replace(/\s*\n\s*/g, " ")}\n\n` +
+      `${t("contact.rappel")}\n\n${m.message}\n`,
   };
 }
 
@@ -390,8 +437,9 @@ export function mountContact(app: Hono): void {
   /**
    * Reçoit un message du formulaire de contact.
    *
-   * Répond toujours en français : c'est la langue du back-office et des
-   * courriers de la boutique. La page de contact, elle, est traduite — les
+   * Répond toujours en français : c'est la langue du back-office et du
+   * courrier de la boutique (l'accusé de réception, lui, part dans la langue
+   * de la personne). La page de contact, elle, est traduite — les
    * refus de saisie qu'elle sait prévoir (champ vide, adresse mal écrite) sont
    * écrits dans la langue du visiteur AVANT d'arriver ici, et cette route ne
    * répond plus que sur ce que le navigateur ne pouvait pas voir.
@@ -454,8 +502,19 @@ export function mountContact(app: Hono): void {
     //    serveur, et le compteur n'est pas une punition, c'est un frein.
     noterEnvoi(adresse);
 
+    // La langue dans laquelle écrire à la personne : celle de son compte quand
+    // elle est connectée — le site recopie son cookie de session —, sinon
+    // celle de la page. Une session illisible ne doit rien empêcher : on
+    // retombe alors sur la page. Lue AVANT le courrier de la boutique, qui la
+    // signale : sa réponse doit partir dans la même langue que l'accusé.
+    const connecte = await clientDeLaRequete(c).catch(() => null);
+    const langueAccuse = langueDuDestinataire({
+      compte: connecte?.langue,
+      commande: message.langue,
+    });
+
     const partiPourLaBoutique = await envoyer(
-      courrierPourLaBoutique(message, destinataire),
+      courrierPourLaBoutique(message, destinataire, langueAccuse),
     );
     if (!partiPourLaBoutique)
       return c.json(
@@ -469,7 +528,7 @@ export function mountContact(app: Hono): void {
     // L'accusé de réception vient en second, et son échec ne fait pas échouer
     // la demande : le message EST arrivé à la boutique, dire le contraire
     // ferait recommencer la personne pour rien.
-    const partiEnAccuse = await envoyer(courrierAccuse(message));
+    const partiEnAccuse = await envoyer(courrierAccuse(message, langueAccuse));
     if (!partiEnAccuse)
       console.warn(
         "[contact] accusé de réception non parti vers",

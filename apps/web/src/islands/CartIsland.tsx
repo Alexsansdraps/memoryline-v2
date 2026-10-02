@@ -472,6 +472,7 @@ export default function CartIsland(props: {
       await browserApi.updateCartItem(getCartId(), it.id, {
         config: it.config,
         quantity: q,
+        langue,
       });
       await refetch();
     } finally {

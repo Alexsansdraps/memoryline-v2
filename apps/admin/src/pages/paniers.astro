@@ -177,11 +177,33 @@ const palierChoisi =
   PALIERS.find((p) => p.h === 10) ??
   PALIERS[0]!;
 
-/** Les trois relances, telles que le tableau du programme les présente. */
-const courriels = [1, 2, 3].map((etape) => ({
-  etape,
-  personnalise: ecran?.courriels?.find((c) => c.etape === etape)?.personnalise ?? false,
-}));
+/**
+ * Les trois relances, telles que le tableau du programme les présente : la
+ * phrase dit dans quelles langues la boutique a écrit son propre texte, car
+ * chaque cliente reçoit celui de SA langue, ou le texte d'origine de sa langue.
+ */
+const NOMS_LANGUES: Record<string, string> = {
+  fr: "français",
+  en: "anglais",
+  de: "allemand",
+  it: "italien",
+  es: "espagnol",
+};
+function phraseCourriel(langues: string[]): string {
+  if (!langues.length) return " Courriel : le texte d'origine.";
+  if (langues.length === 5) return " Courriel : votre texte, dans les cinq langues.";
+  const noms = langues.map((l) => NOMS_LANGUES[l] ?? l);
+  const liste =
+    noms.length === 1 ? noms[0] : `${noms.slice(0, -1).join(", ")} et ${noms[noms.length - 1]}`;
+  return ` Courriel : votre texte en ${liste} ; le texte d'origine dans les autres langues.`;
+}
+const courriels = [1, 2, 3].map((etape) => {
+  const c = ecran?.courriels?.find((x) => x.etape === etape);
+  // Une API d'avant les langues ne disait que « réécrit ou non » : c'était
+  // alors le français.
+  const langues = c?.langues ?? (c?.personnalise ? ["fr"] : []);
+  return { etape, personnalise: langues.length > 0, phrase: phraseCourriel(langues) };
+});
 
 /** Couleur de la pastille d'état — le lisible avant le décoratif. */
 function tonEtat(etat: PanierAbandonne["etat"]): string {
@@ -309,9 +331,7 @@ function tonEtat(etat: PanierAbandonne["etat"]): string {
             </a>
             <span class="basis-full text-xs text-bo-muted">
               {palierChoisi.aide}
-              {courriels[0]!.personnalise
-                ? " Courriel : votre texte."
-                : " Courriel : le texte d'origine."}
+              {courriels[0]!.phrase}
             </span>
           </div>
 
@@ -347,9 +367,7 @@ function tonEtat(etat: PanierAbandonne["etat"]): string {
                   {etape === 2
                     ? "Facultative. Elle ne part qu'aux clientes qui n'ont toujours pas commandé."
                     : "Facultative, et seulement s'il y a une 2e relance. Son courriel d'origine annonce qu'elle est la dernière."}
-                  {courriels[etape - 1]!.personnalise
-                    ? " Courriel : votre texte."
-                    : " Courriel : le texte d'origine."}
+                  {courriels[etape - 1]!.phrase}
                 </span>
               </div>
             );

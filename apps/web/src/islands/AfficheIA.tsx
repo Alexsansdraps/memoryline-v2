@@ -547,6 +547,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
         quantity: quantite(),
         title: props.product.name,
         config,
+        langue: props.langue ?? LANGUE_DEFAUT,
       });
       window.location.href = lien(props.langue ?? LANGUE_DEFAUT, "/panier");
     } catch {

@@ -669,6 +669,10 @@ export const browserApi = {
     return { cartId: getCartId(), items: [], poidsGrammes: 0 };
   },
 
+  /**
+   * `langue` : celle de la page. Le panier la garde, pour écrire à la cliente
+   * dans sa langue (relance, confirmation) quand son compte n'en a pas choisi.
+   */
   addCartItem: (
     cartId: string,
     body: {
@@ -678,6 +682,7 @@ export const browserApi = {
       quantity?: number;
       title?: string;
       config: PosterConfig;
+      langue?: string;
     },
   ) =>
     browserSend<OrderItem>("POST", `/cart/${cartId}/items`, body).catch(
@@ -698,6 +703,8 @@ export const browserApi = {
       variantId?: number | string;
       unitPriceCents?: number;
       quantity?: number;
+      /** La langue de la page, comme à l'ajout. */
+      langue?: string;
     },
   ) => browserSend<OrderItem>("PUT", `/cart/${cartId}/items/${itemId}`, body),
 
@@ -727,6 +734,11 @@ export const browserApi = {
       relayPointId?: string;
       relayPointLabel?: string;
     },
+    /**
+     * La langue de la page de caisse : la commande la garde. Elle ne change
+     * PAS celle du compte, qui reste le premier choix pour les e-mails.
+     */
+    langue?: string,
   ) =>
     browserSend<{
       orderId: number;
@@ -734,7 +746,13 @@ export const browserApi = {
       status: string;
       totalCents: number;
       shippingCents: number;
-    }>("POST", "/orders", { cartId, customer, promoCode, shipping }),
+    }>("POST", "/orders", {
+      cartId,
+      customer,
+      promoCode,
+      shipping,
+      ...(langue ? { langue } : {}),
+    }),
 
   /* --- Paiement (Stripe & PayPal) --------------------------------------- */
 

@@ -9,15 +9,25 @@
  * qu'un courrier marche, ou qu'il est en règle. Pas de HTML non plus : du
  * texte, des retours à la ligne, du **gras**. L'API échappe tout le reste.
  *
+ * Chaque courriel s'écrit dans les cinq langues du site, une par onglet :
+ * une cliente reçoit le texte de SA langue (celle de son compte, sinon celle
+ * de la page où elle a rempli son panier). Une langue où la boutique n'a rien
+ * écrit part avec son texte d'origine — jamais avec le texte français
+ * réécrit, qu'une cliente allemande ne lirait pas. « Proposer la traduction »
+ * pré-remplit une langue à partir du français ; rien n'est enregistré tant
+ * que la boutique n'a pas relu et cliqué « Enregistrer ».
+ *
  * L'aperçu passe par le MÊME modèle que l'envoi réel (mail.ts) : ce qu'on lit
  * ici est ce que la cliente recevra, au panier d'exemple près. Tant que la
  * boutique n'a rien changé, la 1re relance reste le courrier d'origine, à
- * l'octet près — et « Revenir au texte d'origine » y ramène.
+ * l'octet près — et « Revenir au texte d'origine » y ramène, langue par
+ * langue.
  *
  * Comme l'écran des courriers, tout passe par la page elle-même : la session
  * vit dans son cookie, l'API ne se joint que côté serveur. Le script du bas
- * rejoue les mêmes envois sans recharger (aperçu en direct, essai) ; sans
- * lui, les boutons restent des formulaires qui fonctionnent.
+ * rejoue les mêmes envois sans recharger (aperçu en direct, essai,
+ * traduction) ; sans lui, les boutons restent des formulaires qui
+ * fonctionnent.
  */
 import Admin from "../../layouts/Admin.astro";
 import { url } from "../../lib/url.ts";
@@ -25,6 +35,7 @@ import {
   adminApi,
   type CourrielRelance,
   type EcranCourrielsRelance,
+  type LangueCourriel,
   type TextesRelance,
 } from "../../lib/api.ts";
 
@@ -35,7 +46,40 @@ const moi = Astro.locals.user;
 const brut = Number(Astro.url.searchParams.get("relance") ?? "1");
 const etape: 1 | 2 | 3 = brut === 2 || brut === 3 ? brut : 1;
 
+/**
+ * Les langues du site, dans l'ordre du sélecteur de langue du site. L'onglet
+ * porte le nom de la langue dans la langue elle-même, comme sur le site ; les
+ * phrases de l'écran la disent en français.
+ */
+const LANGUES: {
+  code: LangueCourriel;
+  nom: string;
+  /** « en anglais », « texte anglais ». */
+  adjectif: string;
+  /** « les clientes qui lisent l'anglais ». */
+  article: string;
+}[] = [
+  { code: "fr", nom: "Français", adjectif: "français", article: "le français" },
+  { code: "en", nom: "English", adjectif: "anglais", article: "l'anglais" },
+  { code: "de", nom: "Deutsch", adjectif: "allemand", article: "l'allemand" },
+  { code: "it", nom: "Italiano", adjectif: "italien", article: "l'italien" },
+  { code: "es", nom: "Español", adjectif: "espagnol", article: "l'espagnol" },
+];
+
+/** La langue demandée, le français par défaut (et pour une valeur inconnue). */
+const demandee = (Astro.url.searchParams.get("langue") ?? "").toLowerCase();
+const langueChoisie = LANGUES.find((l) => l.code === demandee) ?? LANGUES[0]!;
+const langue = langueChoisie.code;
+const etrangere = langue !== "fr";
+
+/** L'adresse de cet écran pour une relance et une langue. */
+function adresse(e: number, l: LangueCourriel): string {
+  return url(`/paniers/courriel?relance=${e}${l === "fr" ? "" : `&langue=${l}`}`);
+}
+const ICI = adresse(etape, langue);
+
 type Ton = "ok" | "attention" | "erreur";
+type Champ = keyof TextesRelance;
 
 /**
  * Les messages d'erreur montrables. L'API explique en français ce qu'elle
@@ -68,6 +112,11 @@ let ton: Ton = "ok";
 let saisie: TextesRelance | null = null;
 let apercu: { sujet: string; html: string } | null = null;
 let erreurApercu: string | null = null;
+/**
+ * La traduction automatique qui vient d'être posée dans les champs : ces
+ * champs-là sont surlignés, pour qu'on sache ce qui reste à relire.
+ */
+let proposition: Partial<TextesRelance> | null = null;
 
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
@@ -80,21 +129,37 @@ if (Astro.request.method === "POST") {
 
   try {
     if (action === "apercu") {
-      apercu = await api.apercuCourrielRelance(etape, saisie);
+      apercu = await api.apercuCourrielRelance(etape, saisie, langue);
     } else if (action === "essai") {
-      const r = await api.essaiCourrielRelance(etape, saisie);
+      const r = await api.essaiCourrielRelance(etape, saisie, langue);
       message = r.resume;
       ton = r.parti ? "ok" : "attention";
+    } else if (action === "traduire") {
+      // La proposition REMPLACE les champs à l'écran, et rien d'autre : elle
+      // n'est pas enregistrée, la boutique relit d'abord.
+      const r = await api.proposerTraductionRelance(etape, langue);
+      saisie = { ...saisie, ...r.textes };
+      proposition = r.textes;
+      message =
+        `Traduction ${langueChoisie.adjectif} proposée à partir du texte français : relisez-la, corrigez-la si besoin, puis cliquez « Enregistrer ». Rien n'est enregistré pour l'instant.` +
+        (r.avertissement ? ` ${r.avertissement}` : "");
+      ton = r.avertissement ? "attention" : "ok";
     } else if (action === "enregistrer") {
-      const r = await api.enregistrerCourrielRelance(etape, saisie);
+      const r = await api.enregistrerCourrielRelance(etape, saisie, langue);
       saisie = r.textes;
       message = r.personnalise
-        ? "Courriel enregistré. Les prochaines relances partiront avec ce texte."
-        : "Courriel enregistré : c'est le texte d'origine, il part tel qu'avant.";
+        ? etrangere
+          ? `Courriel ${langueChoisie.adjectif} enregistré. Les prochaines relances aux clientes qui lisent ${langueChoisie.article} partiront avec ce texte.`
+          : "Courriel enregistré. Les prochaines relances partiront avec ce texte."
+        : etrangere
+          ? `Courriel enregistré : c'est le texte d'origine en ${langueChoisie.adjectif}, il part tel qu'avant.`
+          : "Courriel enregistré : c'est le texte d'origine, il part tel qu'avant.";
     } else if (action === "retablir") {
-      const r = await api.retablirCourrielRelance(etape);
+      const r = await api.retablirCourrielRelance(etape, langue);
       saisie = r.textes;
-      message = "Le texte d'origine est revenu. Les prochaines relances partiront avec lui.";
+      message = etrangere
+        ? `Le texte d'origine en ${langueChoisie.adjectif} est revenu. Les prochaines relances aux clientes qui lisent ${langueChoisie.article} partiront avec lui.`
+        : "Le texte d'origine est revenu. Les prochaines relances partiront avec lui.";
     } else {
       message = "Ce bouton n'a pas été compris. Réessayez.";
       ton = "erreur";
@@ -105,7 +170,9 @@ if (Astro.request.method === "POST") {
         ? "L'essai n'est pas parti. Réessayez dans un instant."
         : action === "apercu"
           ? "L'aperçu n'a pas pu être affiché. Réessayez dans un instant."
-          : "Le courriel n'a pas été enregistré. Réessayez dans un instant.";
+          : action === "traduire"
+            ? "La traduction n'a pas pu être proposée. Réessayez dans un instant."
+            : "Le courriel n'a pas été enregistré. Réessayez dans un instant.";
     if (action === "apercu") erreurApercu = messageLisible(e, repli);
     else {
       message = messageLisible(e, repli);
@@ -115,28 +182,31 @@ if (Astro.request.method === "POST") {
 
   // Appel du script de la page : il attend des données, pas une page.
   if (json) {
-    return new Response(JSON.stringify({ message, ton, apercu, erreurApercu }), {
-      headers: { "content-type": "application/json; charset=utf-8" },
-    });
+    return new Response(
+      JSON.stringify({ message, ton, apercu, erreurApercu, proposition }),
+      { headers: { "content-type": "application/json; charset=utf-8" } },
+    );
   }
 }
 
 let ecran: EcranCourrielsRelance | null = null;
 let erreur: string | null = null;
 try {
-  ecran = await api.courrielsRelance();
+  ecran = await api.courrielsRelance(langue);
 } catch (e) {
   erreur = messageLisible(e, "Les courriels de relance n'ont pas pu être lus. Rechargez l'écran.");
 }
 
 const courriel: CourrielRelance | undefined = ecran?.etapes.find((c) => c.etape === etape);
 const textes: TextesRelance | null = saisie ?? courriel?.textes ?? null;
+/** Le texte français en regard, dans les autres langues. */
+const francais: TextesRelance | null = etrangere ? (courriel?.francais ?? null) : null;
 
 // L'aperçu de départ : celui des textes affichés (enregistrés, ou saisis si
 // l'on revient d'un enregistrement refusé). Sans script, c'est aussi le seul.
 if (!apercu && !erreurApercu && textes) {
   try {
-    apercu = await api.apercuCourrielRelance(etape, textes);
+    apercu = await api.apercuCourrielRelance(etape, textes, langue);
   } catch (e) {
     erreurApercu = messageLisible(e, "L'aperçu n'a pas pu être affiché.");
   }
@@ -148,7 +218,16 @@ const TONS: Record<Ton, string> = {
   erreur: "border-red-200 bg-red-50 text-red-700",
 };
 
-const CHAMP = "mt-1 block w-full rounded border border-bo-border px-3 py-2 text-sm";
+const CHAMP = "mt-1 block w-full rounded border px-3 py-2 text-sm";
+/** Un champ proposé par la traduction automatique se voit : il reste à relire. */
+const SURLIGNE = "border-amber-400 bg-amber-50";
+function classeChamp(c: Champ): string {
+  return `${CHAMP} ${proposition?.[c] ? SURLIGNE : "border-bo-border"}`;
+}
+
+const confirmationRetablir = etrangere
+  ? `Remettre le texte d’origine en ${langueChoisie.adjectif} de ce courriel ? Votre texte ${langueChoisie.adjectif} sera effacé ; les autres langues gardent le leur.`
+  : "Remettre le texte d’origine de ce courriel ? Votre texte français sera effacé ; les autres langues gardent le leur.";
 ---
 
 <Admin title="Courriel de relance">
@@ -163,11 +242,11 @@ const CHAMP = "mt-1 block w-full rounded border border-bo-border px-3 py-2 text-
   )}
 
   {/* Les trois relances, en onglets : on passe de l'une à l'autre sans
-      perdre de vue laquelle on réécrit. */}
-  <nav class="mb-5 flex flex-wrap gap-2" aria-label="Choisir la relance">
+      perdre de vue laquelle on réécrit. La langue choisie suit. */}
+  <nav class="mb-3 flex flex-wrap gap-2" aria-label="Choisir la relance">
     {(ecran?.etapes ?? []).map((c) => (
       <a
-        href={url(`/paniers/courriel?relance=${c.etape}`)}
+        href={adresse(c.etape, langue)}
         aria-current={c.etape === etape ? "page" : undefined}
         class={`rounded border px-3 py-2 text-sm ${
           c.etape === etape
@@ -183,6 +262,46 @@ const CHAMP = "mt-1 block w-full rounded border border-bo-border px-3 py-2 text-
       </a>
     ))}
   </nav>
+
+  {/* Puis la langue : chaque langue a son propre texte, enregistré à part.
+      La relance choisie suit. */}
+  {ecran && (
+    <nav class="mb-4 flex flex-wrap items-center gap-1.5" aria-label="Choisir la langue du courriel">
+      <span class="mr-1 text-xs text-bo-muted">Langue :</span>
+      {LANGUES.map((l) => {
+        const actuelle = l.code === langue;
+        const sienne = courriel?.langues.includes(l.code) ?? false;
+        return (
+          <a
+            href={adresse(etape, l.code)}
+            aria-current={actuelle ? "page" : undefined}
+            title={sienne ? `Votre texte ${l.adjectif}` : `Le texte d'origine en ${l.adjectif}`}
+            class={`rounded-full border px-3 py-1 text-sm ${
+              actuelle
+                ? "border-bo-nav bg-bo-nav text-white"
+                : "border-bo-border bg-bo-surface hover:bg-bo-bg"
+            }`}
+          >
+            <span lang={l.code}>{l.nom}</span>
+            <span class={`ml-1 text-xs ${actuelle ? "text-white/80" : "text-bo-muted"}`}>
+              {sienne ? "· votre texte" : "· d'origine"}
+            </span>
+          </a>
+        );
+      })}
+    </nav>
+  )}
+
+  {ecran && (
+    <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+      Ce courriel part aux clientes dont le compte est en {langueChoisie.adjectif}
+      ou, si elles n'ont pas choisi de langue, qui ont rempli leur panier sur
+      le site en {langueChoisie.adjectif}.
+      {etrangere
+        ? ` Tant que vous n'avez pas écrit votre texte ${langueChoisie.adjectif}, elles reçoivent le texte d'origine en ${langueChoisie.adjectif} — jamais votre texte français.`
+        : " Les clientes des autres langues reçoivent le texte de leur langue : choisissez-la ci-dessus pour l'écrire."}
+    </p>
+  )}
 
   {courriel && !courriel.programmee && (
     <p class="mb-4 max-w-3xl rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -215,7 +334,8 @@ const CHAMP = "mt-1 block w-full rounded border border-bo-border px-3 py-2 text-
       {/* ----------------------------------------------------------- */}
       <form
         method="POST"
-        action={url(`/paniers/courriel?relance=${etape}`)}
+        action={ICI}
+        data-personnalise={courriel?.personnalise ? "1" : undefined}
         class="js-courriel space-y-4 rounded-lg border border-bo-border bg-bo-surface p-5"
       >
         {/* La touche Entrée dans un champ presse le PREMIER bouton du
@@ -230,49 +350,136 @@ const CHAMP = "mt-1 block w-full rounded border border-bo-border px-3 py-2 text-
           aria-hidden="true"
           style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden"
         ></button>
+
+        <h2 class="text-base font-semibold">
+          {courriel?.nom ? `${courriel.nom[0]!.toUpperCase()}${courriel.nom.slice(1)}` : "Relance"}, en {langueChoisie.adjectif}
+          <span
+            data-proposition
+            hidden={!proposition}
+            class="ml-2 rounded-full bg-amber-100 px-2 py-0.5 align-middle text-xs font-normal text-amber-800"
+          >
+            proposition à relire — pas encore enregistrée
+          </span>
+        </h2>
+
+        {/* La traduction automatique PRÉ-REMPLIT, elle n'enregistre jamais :
+            la boutique garde la main sur le ton, comme pour les fiches
+            produits. Sans clé de traduction sur le serveur, le bouton le dit
+            au lieu d'échouer à chaque clic. */}
+        {etrangere && (
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-bo-border bg-bo-bg px-3 py-2">
+            {ecran?.traductionDisponible ? (
+              <>
+                <button
+                  name="_action"
+                  value="traduire"
+                  formnovalidate
+                  class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 text-sm hover:border-bo-accent hover:text-bo-accent"
+                  title="Traduit le texte français dans les champs, sans enregistrer"
+                >
+                  Proposer la traduction
+                </button>
+                <span class="text-xs text-bo-muted">
+                  Traduit le texte français de cette relance en {langueChoisie.adjectif}
+                  et le pose dans les champs. Rien n'est enregistré : vous
+                  relisez, puis vous cliquez « Enregistrer ».
+                </span>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  disabled
+                  class="cursor-not-allowed rounded border border-bo-border bg-bo-surface px-3 py-1.5 text-sm text-bo-muted"
+                >
+                  Proposer la traduction : indisponible
+                </button>
+                <span class="text-xs text-bo-muted">
+                  La traduction automatique n'est pas branchée sur ce serveur
+                  (il lui manque la clé OpenAI). Écrivez le texte
+                  {" "}{langueChoisie.adjectif} vous-même : le français est
+                  rappelé sous chaque champ.
+                </span>
+              </>
+            )}
+          </div>
+        )}
+
         <label class="block">
           <span class="text-sm font-medium">Objet</span>
-          <input name="objet" value={textes.objet} maxlength="150" required class={CHAMP} />
+          <input lang={langue} name="objet" data-champ="objet" value={textes.objet} maxlength="150" required class={classeChamp("objet")} />
           <span class="mt-1 block text-xs text-bo-muted">
             Ce qu'on lit dans la boîte de réception, avant d'ouvrir.
           </span>
+          {francais && (
+            <span class="mt-0.5 block text-xs text-bo-muted">
+              Français : {francais.objet}
+            </span>
+          )}
         </label>
 
         <label class="block">
           <span class="text-sm font-medium">Accroche</span>
-          <input name="accroche" value={textes.accroche} maxlength="150" required class={CHAMP} />
+          <input lang={langue} name="accroche" data-champ="accroche" value={textes.accroche} maxlength="150" required class={classeChamp("accroche")} />
           <span class="mt-1 block text-xs text-bo-muted">La grande ligne du haut.</span>
+          {francais && (
+            <span class="mt-0.5 block text-xs text-bo-muted">
+              Français : {francais.accroche}
+            </span>
+          )}
         </label>
 
-        <label class="block">
-          <span class="text-sm font-medium">Message</span>
-          <textarea name="message" rows="6" maxlength="3000" class={CHAMP}>{textes.message}</textarea>
-        </label>
+        <div>
+          <label class="block">
+            <span class="text-sm font-medium">Message</span>
+            <textarea lang={langue} name="message" data-champ="message" rows="6" maxlength="3000" class={classeChamp("message")}>{textes.message}</textarea>
+          </label>
+          {francais && (
+            <details class="mt-1">
+              <summary class="cursor-pointer text-xs text-bo-muted">Voir le message français</summary>
+              <div class="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap rounded bg-bo-bg p-2 text-xs text-bo-muted">{francais.message || "Pas de message en français."}</div>
+            </details>
+          )}
+        </div>
 
         <p class="rounded border border-dashed border-bo-border bg-bo-bg px-3 py-2 text-xs text-bo-muted">
           Ici s'ajoute tout seul le panier de la cliente : ses affiches avec
           leur vignette, leurs prix, le total, l'avertissement si l'une n'est
-          plus disponible, et son code de réduction s'il y en a un.
+          plus disponible, et son code de réduction s'il y en a un — dans sa
+          langue.
         </p>
 
         <label class="block">
           <span class="text-sm font-medium">Libellé du bouton</span>
-          <input name="bouton" value={textes.bouton} maxlength="60" required class={CHAMP} />
+          <input lang={langue} name="bouton" data-champ="bouton" value={textes.bouton} maxlength="60" required class={classeChamp("bouton")} />
           <span class="mt-1 block text-xs text-bo-muted">
             Le bouton rouvre le panier de la cliente, tel qu'elle l'a laissé,
             code de réduction compris. Son lien est fabriqué par la boutique.
           </span>
+          {francais && (
+            <span class="mt-0.5 block text-xs text-bo-muted">
+              Français : {francais.bouton}
+            </span>
+          )}
         </label>
 
-        <label class="block">
-          <span class="text-sm font-medium">Mot de la fin</span>
-          <textarea name="conclusion" rows="3" maxlength="1000" class={CHAMP}>{textes.conclusion}</textarea>
-        </label>
+        <div>
+          <label class="block">
+            <span class="text-sm font-medium">Mot de la fin</span>
+            <textarea lang={langue} name="conclusion" data-champ="conclusion" rows="3" maxlength="1000" class={classeChamp("conclusion")}>{textes.conclusion}</textarea>
+          </label>
+          {francais && (
+            <details class="mt-1">
+              <summary class="cursor-pointer text-xs text-bo-muted">Voir le mot de la fin français</summary>
+              <div class="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap rounded bg-bo-bg p-2 text-xs text-bo-muted">{francais.conclusion || "Pas de mot de la fin en français."}</div>
+            </details>
+          )}
+        </div>
 
         <p class="rounded border border-dashed border-bo-border bg-bo-bg px-3 py-2 text-xs text-bo-muted">
-          Puis, toujours, le lien « Ne plus recevoir de rappel de panier ». Il
-          est obligatoire, et une cliente qui l'utilise n'est plus jamais
-          relancée.
+          Puis, toujours, le lien « Ne plus recevoir de rappel de panier » (dans
+          la langue de la cliente). Il est obligatoire, et une cliente qui
+          l'utilise n'est plus jamais relancée.
         </p>
 
         <details class="rounded border border-bo-border px-3 py-2 text-sm" open>
@@ -283,6 +490,15 @@ const CHAMP = "mt-1 block w-full rounded border border-bo-border px-3 py-2 text-
                 <code class="rounded bg-bo-bg px-1">{`{${v.nom}}`}</code> : {v.sens}
               </li>
             ))}
+            <li>
+              Les variables s'écrivent pareil dans toutes les langues, en
+              français et entre accolades
+              (<code class="rounded bg-bo-bg px-1">{"{prenom}"}</code>, jamais
+              <code class="rounded bg-bo-bg px-1">{"{name}"}</code>). Elles se
+              remplissent dans la langue de la cliente : le montant s'écrit à
+              la manière de son pays, et un prénom inconnu devient la formule
+              de sa langue.
+            </li>
             <li>
               <code class="rounded bg-bo-bg px-1">**mots**</code> : met
               « mots » en gras, dans le message et le mot de la fin (ailleurs,
@@ -318,14 +534,15 @@ const CHAMP = "mt-1 block w-full rounded border border-bo-border px-3 py-2 text-
           >
             M'envoyer un essai
           </button>
-          <span data-modifie hidden class="text-xs text-amber-800">
+          <span data-modifie hidden={!proposition} class="text-xs text-amber-800">
             Modifications non enregistrées
           </span>
         </div>
         <p class="text-xs text-bo-muted">
-          L'essai part à {moi?.email ?? "l'adresse de votre compte"}, avec le
-          texte tel qu'il est à l'écran (même non enregistré) et un panier
-          d'exemple.
+          L'essai part à {moi?.email ?? "l'adresse de votre compte"}, en
+          {" "}{langueChoisie.adjectif}, avec le texte tel qu'il est à l'écran
+          (même non enregistré) et un panier d'exemple.
+          {etrangere && " « Enregistrer » ne touche qu'à ce texte : les autres langues gardent le leur."}
         </p>
       </form>
 
@@ -337,9 +554,10 @@ const CHAMP = "mt-1 block w-full rounded border border-bo-border px-3 py-2 text-
           <div class="text-xs text-bo-muted">
             Objet, tel qu'il s'affichera dans la boîte de réception
           </div>
-          <div data-sujet class="text-sm font-medium">{apercu?.sujet}</div>
+          <div data-sujet class="text-sm font-medium" lang={langue}>{apercu?.sujet}</div>
           <div class="mt-0.5 text-xs text-bo-muted">
-            Rempli avec un panier d'exemple : Camille, deux affiches et un code
+            Rempli avec un panier d'exemple, tel que le recevrait une cliente
+            qui lit {langueChoisie.article} : Camille, deux affiches et un code
             de réduction, qui n'existent pas.
           </div>
           <p
@@ -355,7 +573,7 @@ const CHAMP = "mt-1 block w-full rounded border border-bo-border px-3 py-2 text-
             n'exécute rien de ce qu'il contient. */}
         <iframe
           data-cadre
-          title="Aperçu du courriel de relance"
+          title={`Aperçu du courriel de relance en ${langueChoisie.adjectif}`}
           sandbox=""
           srcdoc={apercu?.html}
           class="block h-[44rem] w-full border-0 bg-bo-bg"
@@ -367,24 +585,26 @@ const CHAMP = "mt-1 block w-full rounded border border-bo-border px-3 py-2 text-
   {courriel?.personnalise && (
     <form
       method="POST"
-      action={url(`/paniers/courriel?relance=${etape}`)}
+      action={ICI}
       class="mt-6"
-      onsubmit="return confirm('Remettre le texte d’origine de ce courriel ? Votre texte sera effacé.')"
+      onsubmit={`return confirm(${JSON.stringify(confirmationRetablir)})`}
     >
       <input type="hidden" name="_action" value="retablir" />
       <button class="rounded border border-bo-border px-4 py-2 text-sm hover:bg-bo-bg">
-        Revenir au texte d'origine
+        Revenir au texte d'origine{etrangere ? ` en ${langueChoisie.adjectif}` : ""}
       </button>
       <span class="ml-2 text-xs text-bo-muted">
-        Efface votre texte : la {courriel.nom} repart avec celui de la boutique.
+        Efface votre texte {langueChoisie.adjectif} : la {courriel.nom} repart
+        avec le texte d'origine en {langueChoisie.adjectif}. Les autres langues
+        gardent le leur.
       </span>
     </form>
   )}
 
   <script is:inline>
-    // L'aperçu suit la frappe, l'essai part sans recharger l'écran. Le
-    // formulaire reste complet : c'est le même envoi qui est rejoué, avec
-    // l'en-tête qui demande des données plutôt qu'une page.
+    // L'aperçu suit la frappe, l'essai et la traduction partent sans
+    // recharger l'écran. Le formulaire reste complet : c'est le même envoi qui
+    // est rejoué, avec l'en-tête qui demande des données plutôt qu'une page.
     (function () {
       var form = document.querySelector("form.js-courriel");
       if (!form) return;
@@ -393,17 +613,25 @@ const CHAMP = "mt-1 block w-full rounded border border-bo-border px-3 py-2 text-
         attention: "border-amber-200 bg-amber-50 text-amber-900",
         erreur: "border-red-200 bg-red-50 text-red-700",
       };
+      // Le surlignage d'un champ proposé par la traduction, et son contraire.
+      var SURLIGNE = ["border-amber-400", "bg-amber-50"];
+      var NORMAL = "border-bo-border";
       var zoneMessage = document.querySelector("[data-message]");
       var sujet = document.querySelector("[data-sujet]");
       var cadre = document.querySelector("[data-cadre]");
       var erreurApercu = document.querySelector("[data-erreur-apercu]");
       var modifie = document.querySelector("[data-modifie]");
+      var badgeProposition = document.querySelector("[data-proposition]");
       var boutons = form.querySelectorAll("button[name='_action']");
 
       function etat() {
         return new URLSearchParams(new FormData(form)).toString();
       }
-      var depart = etat();
+      // Après une traduction proposée sans script, la page arrive déjà
+      // remplie d'un texte qui n'est pas enregistré : l'état de départ est
+      // alors celui de la page vierge, inconnu ici — on considère tout
+      // modifié, pour que l'avertissement de sortie protège la proposition.
+      var depart = badgeProposition && !badgeProposition.hidden ? "" : etat();
       var envoiEnCours = false;
 
       function afficherMessage(texte, ton) {
@@ -412,6 +640,10 @@ const CHAMP = "mt-1 block w-full rounded border border-bo-border px-3 py-2 text-
           "mb-4 max-w-3xl rounded border px-3 py-2 text-sm " + (TONS[ton] || TONS.ok);
         zoneMessage.textContent = texte || "";
         zoneMessage.hidden = !texte;
+      }
+
+      function marquerModifie() {
+        if (modifie) modifie.hidden = etat() === depart;
       }
 
       async function demander(action) {
@@ -445,10 +677,26 @@ const CHAMP = "mt-1 block w-full rounded border border-bo-border px-3 py-2 text-
         }
       }
 
+      // La proposition posée dans les champs, surlignée : c'est ce qui reste
+      // à relire. Rien n'est enregistré.
+      function poserProposition(proposition) {
+        Object.keys(proposition).forEach(function (nom) {
+          var champ = form.querySelector("[data-champ='" + nom + "']");
+          if (!champ) return;
+          champ.value = proposition[nom];
+          if (proposition[nom]) {
+            champ.classList.remove(NORMAL);
+            SURLIGNE.forEach(function (c) { champ.classList.add(c); });
+          }
+        });
+        if (badgeProposition) badgeProposition.hidden = false;
+        marquerModifie();
+      }
+
       // Une demande par pause de frappe, pas une par lettre.
       var minuterie = null;
       form.addEventListener("input", function () {
-        if (modifie) modifie.hidden = etat() === depart;
+        marquerModifie();
         clearTimeout(minuterie);
         minuterie = setTimeout(actualiser, 500);
       });
@@ -456,17 +704,32 @@ const CHAMP = "mt-1 block w-full rounded border border-bo-border px-3 py-2 text-
       form.addEventListener("submit", async function (e) {
         var action = (e.submitter && e.submitter.value) || "apercu";
         // L'enregistrement recharge la page, exprès : l'écran repart des
-        // textes enregistrés, et l'onglet dit « votre texte ».
+        // textes enregistrés, et les onglets disent « votre texte ».
         if (action === "enregistrer") {
           envoiEnCours = true;
           return;
         }
         e.preventDefault();
         if (action === "apercu") return actualiser();
+        if (
+          action === "traduire" &&
+          (etat() !== depart || form.dataset.personnalise === "1") &&
+          !confirm(
+            "La traduction proposée remplacera le texte affiché. Rien ne sera enregistré tant que vous ne cliquerez pas « Enregistrer ». Continuer ?",
+          )
+        )
+          return;
         boutons.forEach(function (b) { b.disabled = true; });
-        afficherMessage("Envoi de l'essai…", "ok");
+        afficherMessage(
+          action === "traduire" ? "Traduction en cours…" : "Envoi de l'essai…",
+          "ok",
+        );
         try {
           var r = await demander(action);
+          if (action === "traduire" && r.proposition) {
+            poserProposition(r.proposition);
+            actualiser();
+          }
           afficherMessage(r.message, r.ton);
         } catch (err) {
           afficherMessage("L'écran n'a pas répondu. Rechargez la page, puis réessayez.", "erreur");
@@ -475,8 +738,9 @@ const CHAMP = "mt-1 block w-full rounded border border-bo-border px-3 py-2 text-
         }
       });
 
-      // Quitter l'écran avec un texte non enregistré : le navigateur demande
-      // confirmation. Une demi-heure de rédaction ne se perd pas d'un clic.
+      // Quitter l'écran avec un texte non enregistré — y compris pour passer
+      // à une autre langue : le navigateur demande confirmation. Une
+      // demi-heure de rédaction ne se perd pas d'un clic.
       window.addEventListener("beforeunload", function (e) {
         if (envoiEnCours || etat() === depart) return;
         e.preventDefault();

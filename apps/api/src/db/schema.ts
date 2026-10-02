@@ -931,6 +931,17 @@ export const customers = pgTable(
     tags: jsonb("tags").$type<string[]>(),
     /** Note du back-office sur ce client. */
     note: text("note"),
+    /**
+     * La langue de ses courriels — « fr », « en », « de », « it », « es » —,
+     * CHOISIE par le client : celle de la page où il s'inscrit, puis celle
+     * qu'il règle lui-même dans « Mes informations ». Rien d'autre ne la
+     * change : ni la page d'où il commande, ni celle où il remplit un panier.
+     *
+     * Null pour les fiches d'avant, et pour les visiteurs sans compte : le
+     * courrier prend alors la langue de la commande, et le français à défaut
+     * (voir `langueDuDestinataire`, apps/api/src/courriels/index.ts).
+     */
+    langue: text("langue"),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     legacyId: bigint("legacy_id", { mode: "number" }), // Shopify Customer ID
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -1215,6 +1226,18 @@ export const orders = pgTable(
      * ne donne aucun droit (voir cadres.ts).
      */
     panierDuStand: boolean("panier_du_stand").notNull().default(false),
+    /**
+     * La langue de la page où ce panier a été rempli, puis passé en caisse.
+     *
+     * C'est ce qui permet d'écrire à quelqu'un dans sa langue quand on ne sait
+     * rien d'autre de lui — la relance d'un panier, la confirmation d'une
+     * commande dont la fiche n'a pas de langue choisie. Elle ne passe
+     * qu'APRÈS celle du compte, et ne la modifie jamais : la page d'où l'on
+     * commande est un constat, la langue du compte est un choix.
+     *
+     * Null : rien de connu, ou une vente du stand, qui reste en français.
+     */
+    langue: text("langue"),
     /**
      * Part du total réglée par une carte cadeau, en centimes.
      *
