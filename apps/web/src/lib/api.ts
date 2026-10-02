@@ -240,7 +240,13 @@ export interface SuggestionAdresse {
 export interface Collection {
   id: number;
   slug: string;
+  /** Dans la langue demandée, le français à défaut. */
   name: string;
+  /**
+   * Le texte de présentation du rayon (HTML saisi au back-office), dans la
+   * langue demandée, le français à défaut ; null quand le français est vide.
+   */
+  description?: string | null;
   produits: number;
 }
 
@@ -299,7 +305,15 @@ export const api = {
     if (o.offset) p.set("offset", String(o.offset));
     return getPagine<Product>(`/products?${p.toString()}`);
   },
-  collections: () => get<Collection[]>("/collections"),
+  /**
+   * Les rayons du catalogue, nom et description dans la langue de la page
+   * (repli français, champ par champ, fait par l'API). Le `slug` ne se
+   * traduit pas : c'est l'adresse du rayon dans toutes les langues.
+   */
+  collections: (langue?: string) =>
+    get<Collection[]>(
+      `/collections${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,
+    ),
   /**
    * Les villes du catalogue, avec le nombre d'affiches de chacune.
    *
@@ -330,7 +344,15 @@ export const api = {
     get<ProductDetail>(
       `/products/${slug}${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,
     ),
-  banner: () => get<Banner | null>("/banner"),
+  /**
+   * Le bandeau d'annonce, message et texte du lien dans la langue de la page
+   * (repli français). L'adresse du lien ne se traduit pas : le bandeau y
+   * ajoute lui-même le préfixe de langue.
+   */
+  banner: (langue?: string) =>
+    get<Banner | null>(
+      `/banner${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,
+    ),
   /**
    * Les redirections d'anciennes adresses, posées au back-office.
    *
@@ -614,8 +636,15 @@ export const browserApi = {
   /** Les cadres proposés ; leur nom (leur couleur) dans la langue du visiteur. */
   frames: (langue?: string) =>
     browserGet<CadreDTO[]>(`/frames${langue && langue !== "fr" ? `?lang=${langue}` : ""}`),
-  /** Zones, modes et tarifs de livraison. */
-  shipping: () => browserGet<CatalogueLivraison>("/shipping"),
+  /**
+   * Zones, modes et tarifs de livraison ; le nom, la description et le lieu
+   * de retrait des modes dans la langue de la caisse (repli français). La
+   * commande, elle, garde le nom français : c'est celui que lit la boutique.
+   */
+  shipping: (langue?: string) =>
+    browserGet<CatalogueLivraison>(
+      `/shipping${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,
+    ),
   /** Points relais autour d'un code postal. */
   pointsRelais: (
     postalCode: string,
@@ -642,15 +671,32 @@ export const browserApi = {
     browserGet<SuggestionAdresse | null>(
       `/shipping/adresses/position?lat=${latitude}&lng=${longitude}`,
     ),
-  /** Vérifie un code promo ; rejette si le code est inconnu ou expiré. */
-  verifierCode: (code: string) =>
+  /**
+   * Vérifie un code promo ; rejette si le code est inconnu ou expiré.
+   *
+   * Le nom de la règle revient dans la langue de la page (repli français) :
+   * c'est lui qui s'écrit sur la ligne de remise. La langue passe dans
+   * l'adresse, comme pour les lectures ; le code, lui, ne se traduit jamais.
+   */
+  verifierCode: (code: string, langue?: string) =>
     browserSend<{
       code: string;
       name: string;
       type: string;
       config: unknown;
       priority: number;
-    }>("POST", "/promos/verifier", { code }),
+    }>(
+      "POST",
+      `/promos/verifier${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,
+      { code },
+    ),
+  /**
+   * Les promotions automatiques en cours, leur nom dans la langue de la page
+   * (repli français). Typées par l'appelant : le panier et la caisse ne lisent
+   * pas les mêmes champs de la règle, et chacun a déjà son type.
+   */
+  promos: <T>(langue?: string) =>
+    browserGet<T[]>(`/promos${langue && langue !== "fr" ? `?lang=${langue}` : ""}`),
   backgrounds: (productId: number | string) =>
     browserGet<BackgroundDTO[]>(`/backgrounds?productId=${productId}`),
 

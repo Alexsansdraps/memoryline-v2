@@ -269,6 +269,8 @@ export const es: Partial<Record<CleCourriel, string>> = {
     "Memory Line, láminas personalizadas. ¿Alguna pregunta sobre esta factura? Responde al correo con el que te llegó.",
   "facturePdf.filigrane": "Anulada",
 
+  "livraison.remiseStand": "Entrega en nuestro stand",
+
   /* --- Accusé de réception du formulaire de contact ------------------------ */
 
   "contact.objet": "Hemos recibido tu mensaje — {sujet}",

@@ -1,62 +1,90 @@
 /**
  * Le côté serveur du composant TraductionsNoms.astro : enregistrer les noms
  * traduits saisis, et proposer ceux qui manquent.
+ *
+ * Un nom n'est qu'un cas particulier des textes traduits (lib/traductions.ts),
+ * celui d'un champ unique `name` : ces fonctions ne font que l'y ramener.
  */
+import {
+  enregistrerTraductions,
+  proposerTraductions,
+  traiterTraductions,
+  type ChampTraduit,
+  type ElementTraduit,
+  type EtatTraductions,
+  type Propositions,
+} from "./traductions.ts";
 
-export const LANGUES_TRADUITES = ["en", "de", "it", "es"] as const;
+export { LANGUES_TRADUITES } from "./traductions.ts";
 
-interface Element {
+/** Ce qu'un écran de liste sait d'un élément à nommer. */
+export interface ElementNom {
   id: number;
   name: string;
   translations?: Partial<Record<string, { name?: string }>> | null;
 }
 
-/**
- * Enregistre les cases `tr-<id>-<langue>` qui ont CHANGÉ, et seulement
- * celles-là : un formulaire de vingt cases n'envoie pas vingt écritures pour
- * une seule correction. Rend le nombre de noms modifiés.
- */
-export async function enregistrerTraductionsNoms(
-  form: FormData,
-  elements: Element[],
-  enregistrer: (id: number, lang: string, nom: string) => Promise<unknown>,
-): Promise<number> {
-  let modifies = 0;
-  for (const e of elements) {
-    for (const l of LANGUES_TRADUITES) {
-      const saisi = form.get(`tr-${e.id}-${l}`);
-      if (saisi === null) continue;
-      const nouveau = String(saisi).trim();
-      const ancien = (e.translations?.[l]?.name ?? "").trim();
-      if (nouveau === ancien) continue;
-      await enregistrer(e.id, l, nouveau);
-      modifies++;
-    }
-  }
-  return modifies;
+export const CHAMP_NOM: ChampTraduit = { cle: "name", libelle: "Nom", max: 120 };
+
+/** Les éléments d'une liste, dans la forme du composant général. */
+export function elementsNoms(elements: ElementNom[]): ElementTraduit[] {
+  return elements.map((e) => ({
+    id: e.id,
+    libelle: e.name,
+    francais: { name: e.name },
+    translations: e.translations,
+  }));
 }
 
 /**
- * Propose, par la traduction automatique, les noms qui MANQUENT : un appel
- * par langue, avec tous les noms à traduire d'un coup. Rien n'est enregistré.
- * Rend id → langue → proposition.
+ * Enregistre les noms qui ont CHANGÉ, et seulement ceux-là : un formulaire de
+ * vingt cases n'envoie pas vingt écritures pour une seule correction. Rend le
+ * nombre de noms modifiés.
+ */
+export async function enregistrerTraductionsNoms(
+  form: FormData,
+  elements: ElementNom[],
+  enregistrer: (id: number, lang: string, nom: string) => Promise<unknown>,
+): Promise<number> {
+  const { ecrites, retirees } = await enregistrerTraductions(
+    form,
+    elementsNoms(elements),
+    [CHAMP_NOM],
+    (id, lang, modifies) => enregistrer(Number(id), lang, modifies.name ?? ""),
+  );
+  return ecrites + retirees;
+}
+
+/**
+ * Propose, par la traduction automatique, les noms qui MANQUENT dans le
+ * formulaire envoyé — ce qui y est déjà écrit n'est jamais remplacé. Un appel
+ * par langue. Rien n'est enregistré.
  */
 export async function proposerTraductionsNoms(
-  elements: Element[],
+  form: FormData,
+  elements: ElementNom[],
   proposer: (lang: string, champs: Record<string, string>) => Promise<{ champs: Record<string, string> }>,
-): Promise<Record<number, Partial<Record<string, string>>>> {
-  const propositions: Record<number, Partial<Record<string, string>>> = {};
-  for (const l of LANGUES_TRADUITES) {
-    const manquants = elements.filter((e) => !e.translations?.[l]?.name?.trim());
-    if (!manquants.length) continue;
-    const { champs } = await proposer(
-      l,
-      Object.fromEntries(manquants.map((e) => [`n${e.id}`, e.name])),
-    );
-    for (const e of manquants) {
-      const t = champs[`n${e.id}`];
-      if (t) (propositions[e.id] ??= {})[l] = t;
-    }
-  }
-  return propositions;
+): Promise<Propositions> {
+  return proposerTraductions(form, elementsNoms(elements), [CHAMP_NOM], proposer);
+}
+
+/**
+ * Les deux actions du bloc des noms (voir traiterTraductions) : l'écran n'a
+ * plus qu'à montrer le message, les propositions et la saisie rendus.
+ */
+export function traiterTraductionsNoms(
+  quoi: "enregistrer" | "proposer",
+  form: FormData,
+  elements: ElementNom[],
+  enregistrer: (id: number, lang: string, nom: string) => Promise<unknown>,
+  proposer: (lang: string, champs: Record<string, string>) => Promise<{ champs: Record<string, string> }>,
+): Promise<EtatTraductions> {
+  return traiterTraductions(
+    quoi,
+    form,
+    elementsNoms(elements),
+    [CHAMP_NOM],
+    (id, lang, modifies) => enregistrer(Number(id), lang, modifies.name ?? ""),
+    proposer,
+  );
 }

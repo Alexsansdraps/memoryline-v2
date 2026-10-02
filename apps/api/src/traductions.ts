@@ -1,6 +1,11 @@
 /**
- * Traductions : la langue du visiteur, le nom traduit d'un élément du
- * catalogue, et la PROPOSITION de traduction automatique du back-office.
+ * Traductions : la langue du visiteur, les textes saisis au back-office
+ * (noms, descriptions, messages…) dans cette langue, leur enregistrement, et
+ * la PROPOSITION de traduction automatique du back-office.
+ *
+ * La règle, partout la même : le français est la référence ET le repli. Une
+ * traduction absente ou vide affiche le français, jamais un blanc ; un
+ * français vide reste vide dans toutes les langues (texteDansLaLangue).
  *
  * Les traductions restent écrites par la boutique : le bouton « Proposer une
  * traduction » ne fait que PRÉ-REMPLIR les champs, qu'elle relit et
@@ -8,7 +13,10 @@
  */
 import type { Hono } from "hono";
 import { eq } from "drizzle-orm";
+import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 import { db, schema } from "./db/client.js";
+import { tc, type Langue } from "./courriels/index.js";
+import { fr } from "./courriels/fr.js";
 
 /** Les langues du site autres que le français, dans l'ordre du back-office. */
 export const LANGUES_ETRANGERES = ["en", "de", "it", "es"] as const;
@@ -30,6 +38,49 @@ export function langueDuVisiteur(c: {
 }
 
 /**
+ * Le dictionnaire de traductions d'une ligne : langue → champ → texte.
+ * Toutes les colonnes `translations` du schéma ont cette forme ; seuls les
+ * champs changent d'une table à l'autre (name, description, message…).
+ */
+type Traductions = Partial<Record<string, Partial<Record<string, unknown>>>>;
+
+/**
+ * Un champ traduit (nom, description, message…), ou undefined pour le
+ * français et pour une traduction absente ou vide — l'appelant affiche alors
+ * le texte français, jamais un trou.
+ */
+export function champTraduit(
+  traductions: Traductions | null | undefined,
+  langue: string,
+  champ: string,
+): string | undefined {
+  if (langue === "fr") return undefined;
+  const v = traductions?.[langue]?.[champ];
+  const texte = typeof v === "string" ? v.trim() : "";
+  return texte || undefined;
+}
+
+/**
+ * Le texte à montrer dans une langue : sa traduction quand elle existe, le
+ * français sinon.
+ *
+ * Un français VIDE reste vide dans toutes les langues, traduction ou pas.
+ * C'est le français qui décide de ce qui s'affiche : la boutique qui efface le
+ * lieu de retrait d'un mode, ou le texte du lien de son bandeau, ne doit pas
+ * le voir survivre en anglais parce qu'une ancienne traduction traîne encore
+ * dans le dictionnaire.
+ */
+export function texteDansLaLangue<T extends string | null | undefined>(
+  traductions: Traductions | null | undefined,
+  langue: string,
+  champ: string,
+  francais: T,
+): T | string {
+  if (!francais || !francais.trim()) return francais;
+  return champTraduit(traductions, langue, champ) ?? francais;
+}
+
+/**
  * Le nom traduit d'un élément du catalogue (catégorie, cadre…), ou undefined
  * pour le français et pour une traduction absente ou vide — l'appelant
  * affiche alors le nom français, jamais un trou.
@@ -38,20 +89,32 @@ export function nomTraduit(
   traductions: Partial<Record<string, { name?: string }>> | null | undefined,
   langue: string,
 ): string | undefined {
-  if (langue === "fr") return undefined;
-  const nom = traductions?.[langue]?.name?.trim();
-  return nom || undefined;
+  return champTraduit(traductions, langue, "name");
 }
 
-/** Une traduction enregistrée : champs vidés retirés, langue vide retirée. */
-export function fusionnerTraduction(
-  existantes: Partial<Record<string, { name?: string }>> | null | undefined,
+/**
+ * Une traduction enregistrée, champ par champ : un champ ENVOYÉ remplace
+ * l'ancien (vide, il est retiré), un champ non envoyé garde sa valeur. Une
+ * langue dont il ne reste aucun champ est retirée du dictionnaire.
+ *
+ * « Non envoyé = inchangé » est ce qui permet à deux écrans de traduire la
+ * même ligne sans s'effacer : la fiche produit enregistre le nom et la
+ * description, le bloc référencement le titre et la description Google.
+ */
+export function fusionnerTraductions<T extends Record<string, string>>(
+  existantes: Partial<Record<string, Partial<T>>> | null | undefined,
   langue: LangueEtrangere,
-  nom: string,
-): Partial<Record<string, { name?: string }>> {
+  champs: Partial<Record<keyof T & string, string>>,
+): Partial<Record<string, Partial<T>>> {
   const suite = { ...(existantes ?? {}) };
-  const propre = nom.trim();
-  if (propre) suite[langue] = { name: propre };
+  const entree: Record<string, string> = { ...((suite[langue] ?? {}) as Record<string, string>) };
+  for (const [champ, valeur] of Object.entries(champs)) {
+    if (valeur === undefined) continue;
+    const propre = String(valeur).trim();
+    if (propre) entree[champ] = propre;
+    else delete entree[champ];
+  }
+  if (Object.keys(entree).length) suite[langue] = entree as Partial<T>;
   else delete suite[langue];
   return suite;
 }
@@ -86,8 +149,8 @@ Translate every value of the JSON object you receive from French into ${NOM_LANG
 Rules:
 - Keep the exact same JSON keys; translate only the values. Answer with the JSON object only.
 - Keep ALL HTML tags and attributes exactly as they are; translate only the visible text between them.
-- Keep place names in their usual form for a ${NOM_LANGUE[langue]} reader, and keep words written in CAPITALS (city names such as AMIENS, BAIE DE SOMME) in capitals and unchanged.
-- Tone: warm, natural and polite e-commerce copy, as a native ${NOM_LANGUE[langue]} copywriter would write it — not a literal translation. Use the polite form of address where the language has one (German "Sie").
+- Keep place names in their usual form for a ${NOM_LANGUE[langue]} reader. Proper names written in CAPITALS (city names such as AMIENS, BAIE DE SOMME) stay in capitals and unchanged. Ordinary words written in capitals (for example a promotional banner such as "3 AFFICHES ACHETÉES = 1 OFFERTE") ARE translated, and stay in capitals.
+- Tone: warm, natural e-commerce copy, as a native ${NOM_LANGUE[langue]} copywriter would write it — not a literal translation. Address the reader as the rest of the site does: "Sie" in German, informal "tu" in Italian and Spanish.
 - Product formats (A4, A3), prices and measurements stay as they are.
 - An empty value stays empty.`;
 
@@ -171,47 +234,164 @@ export async function proposerTraduction(
 }
 
 /**
- * Enregistre le nom traduit d'une catégorie de personnages ou d'un cadre,
- * UNE langue à la fois : { lang, name }. Un nom vidé retire la traduction —
- * le français s'affiche de nouveau.
+ * Une table du schéma qui porte une colonne `translations` : c'est tout ce
+ * dont la route d'enregistrement a besoin. Les champs traduits, eux, sont
+ * donnés à `routeTraductions` — ils diffèrent d'une table à l'autre.
  */
-function routeTraductionNom(
+type TableTraduisible = PgTable & { id: AnyPgColumn; translations: AnyPgColumn };
+
+/**
+ * Enregistre les traductions d'une ligne, UNE langue à la fois :
+ * { lang, <champ>: texte, … }, pour les seuls champs listés dans `champs`
+ * (nom du champ → longueur maximale).
+ *
+ * Un champ envoyé vide retire sa traduction — le français s'affiche de
+ * nouveau ; un champ non envoyé garde la sienne (voir fusionnerTraductions).
+ * Rend { translations } : le dictionnaire entier, tel qu'enregistré.
+ *
+ * Une seule route pour toutes les tables, parce que la règle doit être la
+ * même partout : une cliente qui vide une case du mode de livraison doit
+ * obtenir exactement ce qu'elle obtient en vidant celle d'un cadre.
+ */
+function routeTraductions(
   app: Hono,
   chemin: string,
-  table: typeof schema.characterCategories | typeof schema.frames,
+  table: TableTraduisible,
+  champs: Record<string, number>,
 ): void {
   app.post(chemin, async (c) => {
     const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: "introuvable" }, 404);
     const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
     const langue = String(b.lang ?? "") as LangueEtrangere;
     if (!(LANGUES_ETRANGERES as readonly string[]).includes(langue))
       return c.json({ error: "langue inconnue" }, 400);
-    const [ligne] = await db
+    const envoyes: Record<string, string> = {};
+    for (const [champ, max] of Object.entries(champs))
+      if (champ in b) envoyes[champ] = String(b[champ] ?? "").slice(0, max);
+    if (!Object.keys(envoyes).length)
+      return c.json({ error: `rien à traduire : ${Object.keys(champs).join(", ")}` }, 400);
+
+    const [ligne] = (await db
       .select({ translations: table.translations })
       .from(table)
-      .where(eq(table.id, id));
+      .where(eq(table.id, id))) as { translations: Traductions | null }[];
     if (!ligne) return c.json({ error: "introuvable" }, 404);
-    const translations = fusionnerTraduction(
-      ligne.translations,
+    const translations = fusionnerTraductions(
+      ligne.translations as Partial<Record<string, Partial<Record<string, string>>>> | null,
       langue,
-      String(b.name ?? "").slice(0, 120),
+      envoyes,
     );
     await db
       .update(table)
-      .set({ translations: Object.keys(translations).length ? translations : null })
+      // Le type de `set` dépend de la table précise ; ici seule la colonne
+      // `translations` est écrite, et toutes les tables listées l'ont.
+      .set({ translations: Object.keys(translations).length ? translations : null } as never)
       .where(eq(table.id, id));
     return c.json({ translations });
   });
 }
 
 /**
+ * Le nom et la description du mode de livraison d'une commande, dans la
+ * langue de la cliente — pour ses courriels et sa facture.
+ *
+ * La commande garde le nom FRANÇAIS du jour où elle a été passée
+ * (`shippingLabel`) : c'est celui du back-office, des bordereaux et de
+ * l'atelier, et il ne doit pas changer. Pour une autre langue, on reprend la
+ * traduction du mode par son `slug` (`shippingMethod`) — archivé compris :
+ * une commande partie avec un mode rangé depuis reste écrite dans la langue
+ * de sa cliente. Sans traduction, le français figé sur la commande.
+ *
+ * La vente du stand n'a pas de mode : son « Remise sur le stand » est écrit
+ * par le code (salon.ts) et se traduit donc par le dictionnaire des
+ * courriels.
+ *
+ * En français, rend exactement ce que la commande porte : le courriel et la
+ * facture français ne changent pas d'un octet.
+ */
+export async function livraisonDansLaLangue(
+  commande: {
+    shippingMethod: string | null;
+    shippingLabel: string | null;
+    shippingDescription?: string | null;
+  },
+  langue: string,
+): Promise<{ nom: string | null; description: string | null }> {
+  const francais = {
+    nom: commande.shippingLabel,
+    description: commande.shippingDescription ?? null,
+  };
+  if (langue === "fr" || !(LANGUES_ETRANGERES as readonly string[]).includes(langue))
+    return francais;
+  const remiseAuStand =
+    commande.shippingLabel === fr["livraison.remiseStand"]
+      ? tc(langue as Langue)("livraison.remiseStand")
+      : undefined;
+  const [mode] = commande.shippingMethod
+    ? await db
+        .select({ translations: schema.shippingMethods.translations })
+        .from(schema.shippingMethods)
+        .where(eq(schema.shippingMethods.slug, commande.shippingMethod))
+    : [];
+  return {
+    // La traduction écrite par la boutique d'abord : si elle a appelé un de
+    // ses modes « Remise sur le stand », c'est sa traduction qui compte. Rien
+    // de figé sur la commande, rien à traduire : un nom vide le reste.
+    nom: francais.nom?.trim()
+      ? (champTraduit(mode?.translations, langue, "name") ?? remiseAuStand ?? francais.nom)
+      : francais.nom,
+    description: texteDansLaLangue(
+      mode?.translations,
+      langue,
+      "description",
+      francais.description,
+    ),
+  };
+}
+
+/**
  * POST /admin/traduire { lang, champs: { name?, description?, … } }
  *   → { champs: { … traduits } }
  * Sous /admin/* : protégée par la garde du back-office. N'ENREGISTRE RIEN.
+ *
+ * Et les routes d'enregistrement des traductions saisies au back-office,
+ * toutes sur le même modèle (voir routeTraductions) :
+ *   POST /admin/<table>/:id/translations { lang, <champ>: texte, … }
  */
 export function mountTraduction(app: Hono): void {
-  routeTraductionNom(app, "/admin/categories/:id/translations", schema.characterCategories);
-  routeTraductionNom(app, "/admin/frames/:id/translations", schema.frames);
+  routeTraductions(app, "/admin/categories/:id/translations", schema.characterCategories, {
+    name: 120,
+  });
+  routeTraductions(app, "/admin/frames/:id/translations", schema.frames, { name: 120 });
+  // Les personnages : leur nom s'affiche dans le module de personnalisation.
+  routeTraductions(app, "/admin/characters/:id/translations", schema.characterTypes, {
+    name: 120,
+  });
+  // Les modes de livraison : ce que la caisse montre, et ce que redisent les
+  // courriels et la facture. La note de préparation n'en est pas : elle est
+  // écrite pour la boutique.
+  routeTraductions(app, "/admin/shipping/methods/:id/translations", schema.shippingMethods, {
+    name: 120,
+    description: 500,
+    pickupLocation: 500,
+  });
+  // Le bandeau d'annonce : son message et le texte de son lien.
+  routeTraductions(app, "/admin/banner/:id/translations", schema.announcementBanners, {
+    message: 500,
+    linkLabel: 120,
+  });
+  // Les collections : leur nom fait le titre du rayon. La description suit
+  // la limite de la française (collections.ts), avec de la marge pour les
+  // langues plus longues.
+  routeTraductions(app, "/admin/collections/:id/translations", schema.collections, {
+    name: 120,
+    description: 4000,
+  });
+  // Les promotions : leur nom s'écrit sur la ligne de remise du panier.
+  routeTraductions(app, "/admin/promos/:id/translations", schema.promoRules, {
+    name: 120,
+  });
 
   app.post("/admin/traduire", async (c) => {
     const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;

@@ -269,7 +269,10 @@ function langueDemandee(c: {
 }
 
 type TraductionsPage = Partial<
-  Record<string, { title?: string; blocks?: BlocPage[] }>
+  Record<
+    string,
+    { title?: string; blocks?: BlocPage[]; seoTitle?: string; seoDescription?: string }
+  >
 >;
 type TraductionsMenu = Partial<Record<string, { label?: string }>>;
 
@@ -555,14 +558,25 @@ function lireTraductionsPage(
       }
       const nom = NOM_LANGUE[langue] ?? langue;
       const t = objet(contenu, `La version en ${nom}`);
-      const entree: { title?: string; blocks?: BlocPage[] } = {};
+      const entree: NonNullable<TraductionsPage[string]> = {};
       const titre = texteOuNull(t.title, 200);
       if (titre) entree.title = titre;
       if (t.blocks !== undefined && t.blocks !== null) {
         const blocs = lireBlocsTraduits(t.blocks, blocsFrancais, nom);
         if (!blocs.every(blocTraduitVide)) entree.blocks = blocs;
       }
-      if (entree.title || entree.blocks) traductions[langue] = entree;
+      // Le référencement traduit, mêmes plafonds que le français. Une clé
+      // NON envoyée garde ce qui était enregistré : l'éditeur de la page et
+      // celui du référencement peuvent ainsi enregistrer chacun sa part de
+      // la même langue sans s'effacer. Envoyée vide, elle est retirée.
+      const avant = enregistrees?.[langue];
+      const seoTitle = "seoTitle" in t ? texteOuNull(t.seoTitle, 200) : avant?.seoTitle;
+      const seoDescription =
+        "seoDescription" in t ? texteOuNull(t.seoDescription, 400) : avant?.seoDescription;
+      if (seoTitle) entree.seoTitle = seoTitle;
+      if (seoDescription) entree.seoDescription = seoDescription;
+      if (entree.title || entree.blocks || entree.seoTitle || entree.seoDescription)
+        traductions[langue] = entree;
       else delete traductions[langue];
     }
   }
@@ -888,8 +902,13 @@ async function pagePubliee(page: PageEnregistree, langue: string) {
     id: page.id,
     slug: page.slug,
     title: utile(traduction?.title) ?? page.title,
-    seoTitle: page.seoTitle,
-    seoDescription: page.seoDescription,
+    // Le référencement dans la langue de la page, et seulement elle : hors
+    // du français, non traduit, il vaut null — le site retombe alors sur le
+    // titre traduit plutôt que de servir du français à Google. Seule
+    // exception au repli sur le français, comme pour les produits.
+    seoTitle: langue === "fr" ? page.seoTitle : (utile(traduction?.seoTitle) ?? null),
+    seoDescription:
+      langue === "fr" ? page.seoDescription : (utile(traduction?.seoDescription) ?? null),
     blocks: await resoudreBlocs(blocs, langue),
   };
 }

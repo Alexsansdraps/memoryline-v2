@@ -183,7 +183,17 @@ async function enregistrerTraduction(
 
   const titreTraduit = String(f.get("titre") ?? "").trim();
   const corpsTraduit = String(f.get("corps") ?? "").trim();
-  const quelqueChose = !!(titreTraduit || corpsTraduit);
+  const seoTitreTraduit = String(f.get("seoTitle") ?? "").trim();
+  const seoDescriptionTraduite = String(f.get("seoDescription") ?? "").trim();
+  // Le référencement compte : une langue dont seuls le titre et la
+  // description Google sont remplis existe bel et bien. L'oublier ici
+  // enverrait `null`, qui efface la langue ENTIÈRE, référencement compris.
+  const quelqueChose = !!(
+    titreTraduit ||
+    corpsTraduit ||
+    seoTitreTraduit ||
+    seoDescriptionTraduite
+  );
 
   const actuel = await api.page(idPage);
   const blocsFrancais = actuel.page.blocks ?? [];
@@ -215,8 +225,17 @@ async function enregistrerTraduction(
    * le texte français. Une traduction de texte déjà enregistrée disparaît
    * avec, comme promis : vider un champ, c'est revenir au français.
    */
-  const traduction: { title: string; blocks?: BlocPage[] } = {
+  const traduction: {
+    title: string;
+    blocks?: BlocPage[];
+    seoTitle: string;
+    seoDescription: string;
+  } = {
     title: titreTraduit,
+    // Toujours envoyés : vides, ils retirent le référencement traduit, et
+    // la page retombe sur son nom traduit dans Google.
+    seoTitle: seoTitreTraduit,
+    seoDescription: seoDescriptionTraduite,
   };
   if (corpsTraduit) traduction.blocks = blocsDepuisCorps(corpsTraduit);
 
@@ -232,8 +251,82 @@ async function enregistrerTraduction(
     return `Traduction en ${nomLangue} effacée : le site affichera le français.${rangement}`;
   return corpsTraduit
     ? `Traduction en ${nomLangue} enregistrée. Ce qui est laissé vide affiche le français.${rangement}`
-    : `Nom de la page en ${nomLangue} enregistré. Le texte, laissé vide, s'affiche en français.${rangement}`;
+    : titreTraduit
+      ? `Nom de la page en ${nomLangue} enregistré. Le texte, laissé vide, s'affiche en français.${rangement}`
+      : `Référencement en ${nomLangue} enregistré. Le nom et le texte, laissés vides, s'affichent en français.${rangement}`;
 }
+
+/** Ce que l'écran d'une langue montre : ses quatre champs. */
+interface SaisieLangue {
+  titre: string;
+  corps: string;
+  seoTitle: string;
+  seoDescription: string;
+}
+
+/**
+ * Ce que /admin/traduire accepte par champ : au-delà, il couperait le texte
+ * sans le dire, et la traduction s'arrêterait au milieu d'une phrase.
+ */
+const LIMITE_TRADUCTION = 20_000;
+
+/**
+ * Propose, par la traduction automatique, les champs VIDES de la langue
+ * ouverte dont le français existe. Ce qui est déjà écrit, enregistré ou tout
+ * juste tapé, n'est pas touché. Rien n'est enregistré.
+ */
+async function proposerTraductionPage(
+  f: FormData,
+  idPage: number,
+): Promise<{ saisie: SaisieLangue; propositions: Partial<SaisieLangue>; message: string }> {
+  const lang = String(f.get("lang") ?? "");
+  if (!estLangue(lang))
+    throw new Error("Cette langue n'existe pas. Rechargez l'écran et réessayez.");
+  const nomLangue =
+    LANGUES_TRADUISIBLES.find((l) => l.code === lang)?.nom.toLowerCase() ?? lang;
+  const saisie: SaisieLangue = {
+    titre: String(f.get("titre") ?? "").trim(),
+    corps: String(f.get("corps") ?? "").trim(),
+    seoTitle: String(f.get("seoTitle") ?? "").trim(),
+    seoDescription: String(f.get("seoDescription") ?? "").trim(),
+  };
+  const { page: actuelle } = await api.page(idPage);
+  const francais: SaisieLangue = {
+    titre: actuelle.title ?? "",
+    corps: corpsDepuisBlocs(actuelle.blocks),
+    seoTitle: actuelle.seoTitle ?? "",
+    seoDescription: actuelle.seoDescription ?? "",
+  };
+  const manque: Record<string, string> = {};
+  let tropLong = false;
+  for (const cle of Object.keys(francais) as (keyof SaisieLangue)[]) {
+    if (saisie[cle] || !francais[cle].trim()) continue;
+    if (francais[cle].length > LIMITE_TRADUCTION) {
+      tropLong = true;
+      continue;
+    }
+    manque[cle] = francais[cle];
+  }
+  const avertissement = tropLong
+    ? " Le texte de la page est trop long pour la traduction automatique : traduisez-le par morceaux."
+    : "";
+  if (!Object.keys(manque).length)
+    return {
+      saisie,
+      propositions: {},
+      message: `Rien à proposer en ${nomLangue} : les champs dont le français existe sont déjà remplis.${avertissement}`,
+    };
+  const { champs } = await api.proposerTraduction(lang, manque);
+  return {
+    saisie,
+    propositions: champs as Partial<SaisieLangue>,
+    message: `Traduction en ${nomLangue} proposée pour les champs vides : relisez-la (encadrés jaunes), corrigez si besoin, puis cliquez « Enregistrer ${nomLangue} ». Rien n'est enregistré pour l'instant.${avertissement}`,
+  };
+}
+
+/** La langue ouverte telle qu'elle vient d'être envoyée, et les propositions. */
+let saisieLangue: SaisieLangue | null = null;
+let propositionsLangue: Partial<SaisieLangue> = {};
 
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
@@ -245,10 +338,24 @@ if (Astro.request.method === "POST") {
     try {
       if (!Number.isFinite(idPage) || idPage <= 0)
         throw new Error("Cette page n'a pas pu être retrouvée.");
-      flash = await enregistrerTraduction(f, idPage);
+      if (f.get("auto")) {
+        const r = await proposerTraductionPage(f, idPage);
+        saisieLangue = r.saisie;
+        propositionsLangue = r.propositions;
+        flash = r.message;
+      } else {
+        flash = await enregistrerTraduction(f, idPage);
+      }
     } catch (e) {
       flash = String(e).replace(/^Error:\s*/, "");
       flashErreur = true;
+      // Refusé : ce qui vient d'être tapé reste à l'écran.
+      saisieLangue = {
+        titre: String(f.get("titre") ?? ""),
+        corps: String(f.get("corps") ?? ""),
+        seoTitle: String(f.get("seoTitle") ?? ""),
+        seoDescription: String(f.get("seoDescription") ?? ""),
+      };
     }
   } else {
     const titre = String(f.get("title") ?? "").trim();
@@ -342,27 +449,70 @@ function lienLangue(code: string | null): string {
   return code ? `${base}?langue=${code}#traductions` : `${base}#traductions`;
 }
 
-/** Ce qu'une langue a de rempli : son nom, son texte, ou les deux. */
-function etatLangue(code: string): { texte: string; classe: string } {
+/**
+ * Ce qu'une langue a de rempli : son nom, son texte, ou les deux — et son
+ * référencement, quand le français en a un (sans titre Google français, il
+ * n'y a rien à traduire de ce côté).
+ */
+function etatLangue(code: string): { texte: string; classe: string; manque?: string } {
   const t = traductions?.[code];
-  const nom = t?.title?.trim() ? 1 : 0;
-  const texte = corpsDepuisBlocs(t?.blocks).trim() ? 1 : 0;
-  const remplis = nom + texte;
-  if (!remplis) return { texte: "à traduire", classe: "bg-bo-bg text-bo-muted" };
-  if (remplis === 2)
+  const nom = !!t?.title?.trim();
+  const texte = !!corpsDepuisBlocs(t?.blocks).trim();
+  const seo: { fait: boolean; quoi: string }[] = [];
+  if (page?.seoTitle?.trim()) seo.push({ fait: !!t?.seoTitle?.trim(), quoi: "le titre Google" });
+  if (page?.seoDescription?.trim())
+    seo.push({ fait: !!t?.seoDescription?.trim(), quoi: "la description Google" });
+  const seoFait = seo.filter((s) => s.fait).length;
+  if (!nom && !texte && !seoFait)
+    return { texte: "à traduire", classe: "bg-bo-bg text-bo-muted" };
+  if (nom && texte && seoFait === seo.length)
     return { texte: "traduit", classe: "bg-green-100 text-green-800" };
+  const manque = [
+    ...(nom ? [] : ["le nom"]),
+    ...(texte ? [] : ["le texte"]),
+    ...seo.filter((s) => !s.fait).map((s) => s.quoi),
+  ];
   return {
-    texte: nom ? "nom seulement" : "texte seulement",
+    // Les deux cas d'avant gardent leurs mots ; le référencement seul
+    // manquant se dit « partiel », le détail au survol.
+    texte:
+      seoFait === seo.length && (nom || texte)
+        ? nom
+          ? "nom seulement"
+          : "texte seulement"
+        : "partiel",
     classe: "bg-amber-100 text-amber-800",
+    manque: `Reste à traduire : ${manque.join(", ")}.`,
   };
 }
 
 /** Ce que la langue ouverte a déjà d'enregistré. */
 const dejaTraduit = langueOuverte ? (traductions?.[langueOuverte] ?? null) : null;
-const corpsTraduit = corpsDepuisBlocs(dejaTraduit?.blocks);
+/**
+ * Ce que montrent les champs de la langue ouverte : une proposition à
+ * relire, sinon ce qui vient d'être tapé (après une proposition ou un
+ * refus), sinon ce qui est enregistré.
+ */
+const champsLangue: SaisieLangue = {
+  titre: propositionsLangue.titre ?? saisieLangue?.titre ?? dejaTraduit?.title ?? "",
+  corps:
+    propositionsLangue.corps ?? saisieLangue?.corps ?? corpsDepuisBlocs(dejaTraduit?.blocks),
+  seoTitle:
+    propositionsLangue.seoTitle ?? saisieLangue?.seoTitle ?? dejaTraduit?.seoTitle ?? "",
+  seoDescription:
+    propositionsLangue.seoDescription ??
+    saisieLangue?.seoDescription ??
+    dejaTraduit?.seoDescription ??
+    "",
+};
+/** Un champ rempli par la machine, à relire. */
+const propose = (cle: keyof SaisieLangue) => propositionsLangue[cle] !== undefined;
 
 const champ =
   "mt-1 w-full rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm";
+/** Le même, encadré de jaune : une proposition automatique à relire. */
+const champPropose =
+  "mt-1 w-full rounded border border-amber-400 bg-amber-50 px-3 py-2 text-sm";
 const boutonPrincipal =
   "rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90";
 const boutonDiscret =
@@ -569,6 +719,7 @@ const boutonDiscret =
               <span>{l.nom}</span>
               <span
                 class={`rounded-full px-2 py-0.5 text-xs font-normal ${etat.classe}`}
+                title={etat.manque}
               >
                 {etat.texte}
               </span>
@@ -594,9 +745,9 @@ const boutonDiscret =
             </span>
             <input
               name="titre"
-              value={dejaTraduit?.title ?? ""}
+              value={champsLangue.titre}
               placeholder={titre}
-              class={champ}
+              class={propose("titre") ? champPropose : champ}
             />
             <span class="mt-1 block text-xs text-bo-muted">
               Français : {titre}
@@ -607,13 +758,15 @@ const boutonDiscret =
             <span class="text-sm font-medium">
               Contenu en {nomLangueOuverte.toLowerCase()}
             </span>
-            <EditeurTexte
-              nom="corps"
-              valeur={corpsTraduit}
-              titres
-              invite="Traduisez ici. Laissé vide, le site affichera le français."
-              etiquette={`Contenu en ${nomLangueOuverte.toLowerCase()}`}
-            />
+            <div class={propose("corps") ? "rounded ring-2 ring-amber-400" : ""}>
+              <EditeurTexte
+                nom="corps"
+                valeur={champsLangue.corps}
+                titres
+                invite="Traduisez ici. Laissé vide, le site affichera le français."
+                etiquette={`Contenu en ${nomLangueOuverte.toLowerCase()}`}
+              />
+            </div>
             <details class="mt-1">
               <summary class="cursor-pointer text-xs text-bo-muted">
                 Voir le texte français
@@ -624,17 +777,66 @@ const boutonDiscret =
             </details>
           </div>
 
+          {/* Le référencement de cette langue : ce que Google montre aux
+              clients étrangers. Vide, la page retombe sur son nom traduit —
+              jamais sur le français. */}
+          <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <label class="block">
+              <span class="text-sm font-medium">
+                Titre dans Google en {nomLangueOuverte.toLowerCase()}
+              </span>
+              <input
+                name="seoTitle"
+                value={champsLangue.seoTitle}
+                maxlength={200}
+                placeholder={seoTitre || "Vide : le nom traduit de la page"}
+                class={propose("seoTitle") ? champPropose : champ}
+              />
+              <span class="mt-1 block text-xs text-bo-muted">
+                Français : {seoTitre || "non rempli (le nom de la page)"}
+              </span>
+            </label>
+            <label class="block">
+              <span class="text-sm font-medium">
+                Description dans Google en {nomLangueOuverte.toLowerCase()}
+              </span>
+              <textarea
+                name="seoDescription"
+                rows="3"
+                maxlength={400}
+                placeholder={seoDescription || "Vide : Google choisit lui-même"}
+                class={propose("seoDescription") ? champPropose : champ}
+              >{champsLangue.seoDescription}</textarea>
+              <span class="mt-1 block text-xs text-bo-muted">
+                Français : {seoDescription || "non remplie"}
+              </span>
+            </label>
+          </div>
+
           <div class="flex flex-wrap items-center gap-3">
+            {/* « Enregistrer » d'abord : c'est le bouton que la touche Entrée
+                déclenche, et Entrée doit enregistrer, pas traduire. */}
             <button class={boutonPrincipal}>
               Enregistrer {nomLangueOuverte.toLowerCase()}
+            </button>
+            <button
+              name="auto"
+              value="1"
+              class={boutonDiscret}
+              title="Traduit le français dans les champs restés vides, sans enregistrer"
+            >
+              ✨ Proposer les traductions manquantes
             </button>
             <a href={lienLangue(null)} class={boutonDiscret}>
               Fermer sans enregistrer
             </a>
           </div>
           <p class="text-xs text-bo-muted">
-            Videz les deux champs d'une langue et enregistrez pour effacer sa
-            traduction : le site repassera entièrement au français.
+            « Proposer » ne remplit que les champs vides, par la traduction
+            automatique, et n'enregistre rien : relisez, corrigez, puis
+            enregistrez. Videz tous les champs d'une langue et enregistrez
+            pour effacer sa traduction : le site repassera entièrement au
+            français.
           </p>
         </form>
       )}

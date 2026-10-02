@@ -1,0 +1,268 @@
+---
+/**
+ * Les textes d'une donnée (noms, descriptions, messages…) dans les quatre
+ * autres langues du site, en un tableau.
+ *
+ * Deux dispositions, selon ce qu'on traduit :
+ *   - « elements » : une ligne par élément (et par champ), une colonne par
+ *     langue. Pour une liste de noms courts — cadres, promotions,
+ *     personnages : on parcourt la colonne d'une langue d'un coup d'œil.
+ *   - « langues » : pour chaque élément, une ligne par langue, une colonne
+ *     par champ, le français en tête. Pour un élément qui a plusieurs textes
+ *     — un mode de livraison, le bandeau : la traduction se relit en regard
+ *     du français, champ sous champ.
+ *
+ * Une case vide affiche le français sur le site — on peut donc ne traduire
+ * que ce qui compte. « Proposer les traductions manquantes » ne remplit QUE
+ * les cases vides dont le français existe, par la traduction automatique, et
+ * n'enregistre rien : on relit, on corrige, puis « Enregistrer les
+ * traductions ».
+ *
+ * Les deux boutons sont dans le MÊME formulaire : ce qu'on vient de taper
+ * survit à une proposition (le serveur ne propose que pour les cases restées
+ * vides, et réaffiche le reste). « Enregistrer » vient en premier dans le
+ * code — c'est lui que la touche Entrée déclenche —, la proposition est
+ * remontée en tête par la mise en page.
+ *
+ * La page qui pose ce composant traite les deux actions dont elle lui donne
+ * le nom (voir lib/traductions.ts).
+ */
+import {
+  LANGUES_TRADUITES,
+  compterManquants,
+  compterPropositions,
+  francaisDe,
+  nomCase,
+  traductionEnregistree,
+  type ChampTraduit,
+  type ElementTraduit,
+  type Propositions,
+} from "../lib/traductions.ts";
+
+interface Props {
+  titre: string;
+  aide: string;
+  champs: ChampTraduit[];
+  elements: ElementTraduit[];
+  /** Propositions automatiques à afficher (non enregistrées). */
+  propositions?: Propositions;
+  /**
+   * Le formulaire tel qu'il vient d'être envoyé, quand l'écran doit le
+   * réafficher tel quel : après une proposition, ou un enregistrement refusé.
+   */
+  saisies?: FormData | null;
+  actionEnregistrer: string;
+  actionProposer: string;
+  /** Ouvert d'office (après une proposition, pour qu'on la voie). */
+  ouvert?: boolean;
+  disposition?: "elements" | "langues";
+  /** Le mot du compteur : « 3 noms encore en français ». */
+  unite?: [singulier: string, pluriel: string];
+  /** Les classes du bloc, pour le poser dans la page. */
+  classe?: string;
+}
+
+const {
+  titre,
+  aide,
+  champs,
+  elements,
+  propositions = {},
+  saisies = null,
+  actionEnregistrer,
+  actionProposer,
+  ouvert,
+  disposition = "elements",
+  unite = ["texte", "textes"],
+  classe = "mt-4",
+} = Astro.props;
+
+const champsDe = (e: ElementTraduit) => e.champs ?? champs;
+const proposition = (e: ElementTraduit, c: string, l: string) =>
+  propositions[String(e.id)]?.[l]?.[c];
+const valeur = (e: ElementTraduit, c: string, l: string) => {
+  const p = proposition(e, c, l);
+  if (p !== undefined) return p;
+  const saisi = saisies?.get(nomCase(e.id, c, l));
+  if (saisi !== null && saisi !== undefined) return String(saisi);
+  return traductionEnregistree(e, c, l);
+};
+const manquantes = compterManquants(elements, champs);
+const nbPropositions = compterPropositions(propositions);
+
+/** La case d'un texte dans une langue. */
+const classeCase = (e: ElementTraduit, c: string, l: string) =>
+  `w-full rounded border px-2 py-1 ${
+    proposition(e, c, l) !== undefined ? "border-amber-400 bg-amber-50" : "border-bo-border"
+  }`;
+const invite = (e: ElementTraduit, c: string) =>
+  francaisDe(e, c) || "Pas de texte français : rien ne s'affiche";
+const etiquette = (e: ElementTraduit, c: ChampTraduit, nomLangue: string) =>
+  `${e.libelle}${champsDe(e).length > 1 ? ` — ${c.libelle.toLowerCase()}` : ""} en ${nomLangue.toLowerCase()}`;
+---
+
+<details class={`rounded border border-bo-border ${classe}`} open={ouvert || nbPropositions > 0}>
+  <summary class="cursor-pointer select-none px-4 py-2.5 text-sm font-medium">
+    {titre}
+    <span class="ml-2 text-xs font-normal text-bo-muted">
+      {manquantes === 0
+        ? "tout est traduit"
+        : `${manquantes} ${manquantes > 1 ? unite[1] : unite[0]} encore en français`}
+    </span>
+  </summary>
+  <div class="border-t border-bo-border p-4">
+    <p class="mb-3 text-xs text-bo-muted">{aide}</p>
+
+    <form method="POST" class="flex flex-col">
+      <div class="order-2 overflow-x-auto">
+        {disposition === "elements" ? (
+          <table class="w-full text-sm" data-sans-tri>
+            <thead class="text-left text-xs text-bo-muted">
+              <tr>
+                <th class="py-1 pr-3 font-medium">Français</th>
+                {LANGUES_TRADUITES.map((l) => (
+                  <th class="py-1 pr-3 font-medium">{l.nom}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {elements.map((e) => {
+                const siens = champsDe(e);
+                return siens.map((c, i) => (
+                  <tr class={i === 0 ? "border-t border-bo-border" : ""}>
+                    <td class="py-1.5 pr-3 align-top">
+                      {siens.length > 1 ? (
+                        <>
+                          {i === 0 && <span class="block font-medium">{e.libelle}</span>}
+                          <span class="block text-xs text-bo-muted">{c.libelle}</span>
+                          <span class="block max-w-[16rem] text-xs">{francaisDe(e, c.cle) || "—"}</span>
+                        </>
+                      ) : (
+                        <span class="font-medium whitespace-nowrap">{francaisDe(e, c.cle) || e.libelle}</span>
+                      )}
+                    </td>
+                    {LANGUES_TRADUITES.map((l) => (
+                      <td class="py-1.5 pr-3 align-top">
+                        {(c.lignes ?? 1) > 1 ? (
+                          <textarea
+                            name={nomCase(e.id, c.cle, l.code)}
+                            rows={c.lignes}
+                            maxlength={c.max}
+                            placeholder={invite(e, c.cle)}
+                            aria-label={etiquette(e, c, l.nom)}
+                            class={`min-w-[11rem] ${classeCase(e, c.cle, l.code)}`}
+                          >{valeur(e, c.cle, l.code)}</textarea>
+                        ) : (
+                          <input
+                            name={nomCase(e.id, c.cle, l.code)}
+                            value={valeur(e, c.cle, l.code)}
+                            maxlength={c.max}
+                            placeholder={invite(e, c.cle)}
+                            aria-label={etiquette(e, c, l.nom)}
+                            title={proposition(e, c.cle, l.code) !== undefined ? "Proposition automatique : à relire" : undefined}
+                            class={`min-w-[9rem] ${classeCase(e, c.cle, l.code)}`}
+                          />
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ));
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <div class="space-y-4">
+            {elements.map((e) => {
+              const siens = champsDe(e);
+              return (
+                <div>
+                  {elements.length > 1 && <h4 class="mb-1 text-sm font-medium">{e.libelle}</h4>}
+                  <table class="w-full text-sm" data-sans-tri>
+                    <thead class="text-left text-xs text-bo-muted">
+                      <tr>
+                        <th class="w-24 py-1 pr-3 font-medium">Langue</th>
+                        {siens.map((c) => (
+                          <th class="py-1 pr-3 font-medium">{c.libelle}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr class="border-t border-bo-border text-bo-muted">
+                        <td class="py-1.5 pr-3 align-top text-xs font-medium">Français</td>
+                        {siens.map((c) => (
+                          <td class="py-1.5 pr-3 align-top text-xs">
+                            {francaisDe(e, c.cle) || <em>vide</em>}
+                          </td>
+                        ))}
+                      </tr>
+                      {LANGUES_TRADUITES.map((l) => (
+                        <tr class="border-t border-bo-border">
+                          <td class="py-1.5 pr-3 align-top text-xs font-medium">{l.nom}</td>
+                          {siens.map((c) => (
+                            <td class="py-1.5 pr-3 align-top">
+                              {(c.lignes ?? 1) > 1 ? (
+                                <textarea
+                                  name={nomCase(e.id, c.cle, l.code)}
+                                  rows={c.lignes}
+                                  maxlength={c.max}
+                                  placeholder={invite(e, c.cle)}
+                                  aria-label={etiquette(e, c, l.nom)}
+                                  class={`min-w-[12rem] ${classeCase(e, c.cle, l.code)}`}
+                                >{valeur(e, c.cle, l.code)}</textarea>
+                              ) : (
+                                <input
+                                  name={nomCase(e.id, c.cle, l.code)}
+                                  value={valeur(e, c.cle, l.code)}
+                                  maxlength={c.max}
+                                  placeholder={invite(e, c.cle)}
+                                  aria-label={etiquette(e, c, l.nom)}
+                                  title={proposition(e, c.cle, l.code) !== undefined ? "Proposition automatique : à relire" : undefined}
+                                  class={`min-w-[9rem] ${classeCase(e, c.cle, l.code)}`}
+                                />
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div class="order-3 mt-3">
+        <button
+          name="_action"
+          value={actionEnregistrer}
+          class="rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90"
+        >
+          Enregistrer les traductions
+        </button>
+        {nbPropositions > 0 && (
+          <span class="ml-2 text-xs text-amber-700">
+            Les cases en jaune sont des propositions automatiques : relisez-les
+            avant d'enregistrer.
+          </span>
+        )}
+      </div>
+
+      <div class="order-1 mb-3">
+        <button
+          name="_action"
+          value={actionProposer}
+          class="rounded border border-bo-border px-3 py-1.5 text-sm hover:border-bo-accent hover:text-bo-accent disabled:opacity-40"
+          disabled={manquantes === 0}
+        >
+          ✨ Proposer les traductions manquantes
+        </button>
+        <span class="ml-2 text-xs text-bo-muted">
+          Traduction automatique des cases vides, à relire. Rien n'est
+          enregistré tant que vous n'avez pas cliqué « Enregistrer ».
+        </span>
+      </div>
+    </form>
+  </div>
+</details>

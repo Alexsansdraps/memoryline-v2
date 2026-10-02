@@ -42,7 +42,14 @@ import {
 } from "@memoryline/types";
 import { rechercherPointsRelais } from "./mondial-relay.js";
 import { adresseDuLieu, suggererAdresses } from "./adresses.js";
-import { langueDuVisiteur, mountTraduction, nomTraduit } from "./traductions.js";
+import {
+  champTraduit,
+  fusionnerTraductions,
+  langueDuVisiteur,
+  mountTraduction,
+  nomTraduit,
+  texteDansLaLangue,
+} from "./traductions.js";
 import { mountBordereaux } from "./sendcloud-colis.js";
 import {
   gerePoints as sendcloudGerePoints,
@@ -834,13 +841,20 @@ app.get("/products", async (c) => {
  * et le filtre `?collection=` continuaient de servir un rayon que la
  * propriétaire avait fermé. Une collection ARCHIVÉE en sort pareillement — et
  * y revient entière, avec ses affiches, le jour où on la restaure.
+ *
+ * Le nom et la description dans la langue du visiteur (?lang=), le français à
+ * défaut, champ par champ. Le `slug` ne se traduit pas : c'est l'adresse du
+ * rayon dans toutes les langues.
  */
 app.get("/collections", async (c) => {
+  const langue = langueDuVisiteur(c);
   const rows = await db
     .select({
       id: schema.collections.id,
       slug: schema.collections.slug,
       name: schema.collections.name,
+      description: schema.collections.description,
+      translations: schema.collections.translations,
       position: schema.collections.position,
       produits: count(schema.productCollections.productId),
     })
@@ -866,10 +880,19 @@ app.get("/collections", async (c) => {
       schema.collections.id,
       schema.collections.slug,
       schema.collections.name,
+      schema.collections.description,
+      schema.collections.translations,
       schema.collections.position,
     )
     .orderBy(asc(schema.collections.position), asc(schema.collections.name));
-  return c.json(rows.map(({ position: _p, ...r }) => r));
+  // Le dictionnaire ne sort pas : le site reçoit le texte de SA langue.
+  return c.json(
+    rows.map(({ position: _p, translations, ...r }) => ({
+      ...r,
+      name: texteDansLaLangue(translations, langue, "name", r.name),
+      description: texteDansLaLangue(translations, langue, "description", r.description),
+    })),
+  );
 });
 
 app.get("/products/:slug", async (c) => {
@@ -882,7 +905,22 @@ app.get("/products/:slug", async (c) => {
     .where(and(eq(schema.products.slug, slug), eq(schema.products.status, "active")));
   const brut = rows[0];
   if (!brut) return c.notFound();
-  const product = traduire(brut, langueDemandee(c));
+  const langue = langueDemandee(c);
+  const product = traduire(brut, langue);
+  /*
+   * Le référencement dans la langue de la page — et SEULEMENT elle. Hors du
+   * français, un titre Google non traduit vaut null plutôt que le français :
+   * le site retombe alors sur le nom et la description traduits, comme il le
+   * faisait déjà, au lieu de mettre du français dans les résultats anglais.
+   * C'est la seule exception au repli sur le français, et elle n'existe que
+   * parce que le site a un meilleur repli que lui.
+   */
+  const seoTitle =
+    langue === "fr" ? brut.seoTitle : (champTraduit(brut.translations, langue, "seoTitle") ?? null);
+  const seoDescription =
+    langue === "fr"
+      ? brut.seoDescription
+      : (champTraduit(brut.translations, langue, "seoDescription") ?? null);
 
   const [variants, images] = await Promise.all([
     db
@@ -912,10 +950,11 @@ app.get("/products/:slug", async (c) => {
     /**
      * Ce que la boutiquière veut voir dans Google. Vides, la page retombe sur
      * le nom du produit et sur les premiers mots de sa description : c'est un
-     * repli acceptable, pas un choix éditorial.
+     * repli acceptable, pas un choix éditorial. Hors du français : null tant
+     * que la boutique ne les a pas traduits (voir plus haut).
      */
-    seoTitle: product.seoTitle,
-    seoDescription: product.seoDescription,
+    seoTitle,
+    seoDescription,
     kind: product.kind,
     /**
      * Affiche tirée d'une photo du client. Ce n'est pas un autre genre de
@@ -952,8 +991,15 @@ app.get("/products/:slug", async (c) => {
   });
 });
 
-/** Bandeau d'annonce actif (le plus prioritaire, dans sa période). */
+/**
+ * Bandeau d'annonce actif (le plus prioritaire, dans sa période).
+ *
+ * Le message et le texte du lien dans la langue du visiteur (?lang=), le
+ * français à défaut, champ par champ. Le dictionnaire des traductions ne sort
+ * pas : le site reçoit la ligne telle qu'avant, textes déjà choisis.
+ */
 app.get("/banner", async (c) => {
+  const langue = langueDuVisiteur(c);
   const now = new Date();
   const banners = await db
     .select()
@@ -964,7 +1010,13 @@ app.get("/banner", async (c) => {
     (b) =>
       (!b.startsAt || b.startsAt <= now) && (!b.endsAt || b.endsAt >= now),
   );
-  return c.json(current ?? null);
+  if (!current) return c.json(null);
+  const { translations, ...bandeau } = current;
+  return c.json({
+    ...bandeau,
+    message: texteDansLaLangue(translations, langue, "message", bandeau.message),
+    linkLabel: texteDansLaLangue(translations, langue, "linkLabel", bandeau.linkLabel),
+  });
 });
 
 /** Réglages éditables (clé -> valeur), optionnellement filtrés par groupe. */
@@ -1234,6 +1286,9 @@ app.get("/shipping/adresses/position", async (c) => {
 });
 
 app.get("/shipping", async (c) => {
+  // La langue de la caisse (?lang=) : le nom, la description et le lieu de
+  // retrait de chaque mode s'y lisent, le français à défaut, champ par champ.
+  const langue = langueDuVisiteur(c);
   const [zones, tousModes, tarifs, standsOuverts] = await Promise.all([
     db.select().from(schema.shippingZones).orderBy(asc(schema.shippingZones.position)),
     db
@@ -1281,14 +1336,19 @@ app.get("/shipping", async (c) => {
     // qui recopie la ligne de base l'aurait publiée dans le tunnel de
     // commande, lisible par n'importe quel client. Une colonne ajoutée
     // demain reste dedans tant que personne ne l'a écrite ici.
+    //
+    // Les textes sortent dans la langue de la caisse. La commande, elle,
+    // figera le nom FRANÇAIS (calcul du port, configurator-routes.ts) : c'est
+    // celui que lit la boutique.
     modes: modes.map((m) => ({
       id: m.id,
       slug: m.slug,
-      name: m.name,
-      description: m.description,
+      name: texteDansLaLangue(m.translations, langue, "name", m.name),
+      description: texteDansLaLangue(m.translations, langue, "description", m.description),
       kind: m.kind,
       carrier: m.carrier,
-      pickupLocation: m.pickupLocation,
+      pickupLocation:
+        texteDansLaLangue(m.translations, langue, "pickupLocation", m.pickupLocation),
       active: m.active,
       position: m.position,
     })),
@@ -1875,7 +1935,14 @@ app.post("/admin/shipping/zones/:id", async (c) => {
   return c.json(row);
 });
 
+/**
+ * Les promotions automatiques en cours, pour le panier et la caisse.
+ *
+ * Le nom — celui qui s'écrit sur la ligne de remise — dans la langue du
+ * visiteur (?lang=), le français à défaut. Le dictionnaire ne sort pas.
+ */
 app.get("/promos", async (c) => {
+  const langue = langueDuVisiteur(c);
   const now = new Date();
   const rows = await db
     .select()
@@ -1888,7 +1955,12 @@ app.get("/promos", async (c) => {
       (!r.startsAt || r.startsAt <= now) &&
       (!r.endsAt || r.endsAt >= now),
   );
-  return c.json(active);
+  return c.json(
+    active.map(({ translations, ...r }) => ({
+      ...r,
+      name: texteDansLaLangue(translations, langue, "name", r.name),
+    })),
+  );
 });
 
 /**
@@ -1897,8 +1969,12 @@ app.get("/promos", async (c) => {
  * Réponse volontairement avare : la règle qui s'applique, rien de plus. On ne
  * dit jamais qu'un code existe mais est expiré ou désactivé — ce serait aider
  * à deviner les autres.
+ *
+ * Le nom de la règle dans la langue du visiteur (?lang= dans l'adresse, comme
+ * pour les lectures), le français à défaut.
  */
 app.post("/promos/verifier", async (c) => {
+  const langue = langueDuVisiteur(c);
   const b = await c.req.json().catch(() => ({}));
   const code = normaliserCode(b.code);
   if (!code || code.length > 60)
@@ -1921,7 +1997,7 @@ app.post("/promos/verifier", async (c) => {
     return c.json({ error: "code inconnu" }, 404);
   return c.json({
     code,
-    name: regle.name,
+    name: texteDansLaLangue(regle.translations, langue, "name", regle.name),
     type: regle.type,
     config: regle.config,
     priority: regle.priority,
@@ -2396,6 +2472,8 @@ app.get("/admin/products/:id/translations", async (c) => {
       id: schema.products.id,
       name: schema.products.name,
       description: schema.products.description,
+      seoTitle: schema.products.seoTitle,
+      seoDescription: schema.products.seoDescription,
       translations: schema.products.translations,
     })
     .from(schema.products)
@@ -2403,16 +2481,28 @@ app.get("/admin/products/:id/translations", async (c) => {
   if (!p) return c.notFound();
   return c.json({
     id: p.id,
-    // Le français de référence, pour l'afficher en regard des champs.
-    fr: { name: p.name, description: p.description },
+    // Le français de référence, pour l'afficher en regard des champs —
+    // référencement compris, qu'il ait été rempli ou non.
+    fr: {
+      name: p.name,
+      description: p.description,
+      seoTitle: p.seoTitle,
+      seoDescription: p.seoDescription,
+    },
     translations: p.translations ?? {},
   });
 });
 
 /**
- * Enregistre les traductions d'UNE langue. Un champ vidé est retiré du
- * dictionnaire plutôt que stocké vide : « vide » et « absent » doivent
- * signifier la même chose — le français s'affiche.
+ * Enregistre les traductions d'UNE langue :
+ *   { lang, name?, description?, seoTitle?, seoDescription? }
+ *
+ * Un champ envoyé vide est retiré du dictionnaire plutôt que stocké vide :
+ * « vide » et « absent » doivent signifier la même chose — le français
+ * s'affiche (le référencement, lui, laisse le site retomber sur le nom
+ * traduit : voir GET /products/:slug). Un champ NON envoyé garde sa
+ * traduction : la fiche enregistre le nom et la description d'un côté, le
+ * référencement de l'autre, sans que l'un efface l'autre.
  */
 app.post("/admin/products/:id/translations", async (c) => {
   const id = Number(c.req.param("id"));
@@ -2427,18 +2517,18 @@ app.post("/admin/products/:id/translations", async (c) => {
     .where(eq(schema.products.id, id));
   if (!p) return c.notFound();
 
-  const propre = (v: unknown) => {
-    const s = typeof v === "string" ? v.trim() : "";
-    return s || undefined;
-  };
-  const entree = {
-    ...(propre(b.name) ? { name: propre(b.name) } : {}),
-    ...(propre(b.description) ? { description: propre(b.description) } : {}),
-  };
+  // Les mêmes plafonds que les champs français : un titre Google de 200
+  // signes est déjà trop long pour être lu en entier.
+  const PLAFONDS = { name: 200, description: 20_000, seoTitle: 200, seoDescription: 400 };
+  const envoyes: Record<string, string> = {};
+  for (const [champ, max] of Object.entries(PLAFONDS))
+    if (champ in b) envoyes[champ] = typeof b[champ] === "string" ? b[champ].slice(0, max) : "";
 
-  const dico = { ...(p.translations ?? {}) };
-  if (Object.keys(entree).length) dico[langue] = entree;
-  else delete dico[langue];
+  const dico = fusionnerTraductions(
+    p.translations as Partial<Record<string, Record<string, string>>> | null,
+    langue as "en" | "de" | "it" | "es",
+    envoyes,
+  );
 
   const [row] = await db
     .update(schema.products)

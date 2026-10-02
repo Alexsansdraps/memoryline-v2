@@ -1,14 +1,53 @@
 ---
 import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
+import Traductions from "../components/Traductions.astro";
 import {
   adminApi,
   formatPrice,
   type CatalogueLivraisonBO,
   type TranchesStandard,
 } from "../lib/api.ts";
+import {
+  nomCase,
+  traiterTraductions,
+  type ChampTraduit,
+  type ElementTraduit,
+  type EtatTraductions,
+} from "../lib/traductions.ts";
 
 const api = adminApi(Astro.request);
+
+type ModeBO = CatalogueLivraisonBO["modes"][number];
+
+/**
+ * Ce qui se traduit d'un mode : ce que la caisse montre au client, et que
+ * redisent ses courriels et sa facture. Le lieu de retrait n'existe que pour
+ * un retrait sur place. La note de préparation, écrite pour la boutique,
+ * n'en fait pas partie.
+ */
+const CHAMPS_MODE: ChampTraduit[] = [
+  { cle: "name", libelle: "Nom vu par le client", max: 120 },
+  { cle: "description", libelle: "Précision (délai…)", max: 500 },
+];
+const CHAMP_RETRAIT: ChampTraduit = {
+  cle: "pickupLocation",
+  libelle: "Où retirer",
+  max: 500,
+};
+const elementMode = (m: ModeBO): ElementTraduit => ({
+  id: m.id,
+  libelle: m.name,
+  francais: { name: m.name, description: m.description, pickupLocation: m.pickupLocation },
+  translations: m.translations,
+  champs: m.kind === "pickup" ? [...CHAMPS_MODE, CHAMP_RETRAIT] : CHAMPS_MODE,
+});
+
+/**
+ * Le bloc de traductions qu'on vient d'utiliser : celui de ce mode reste
+ * ouvert, avec ses propositions à relire ou la saisie refusée.
+ */
+let tradMode: { id: number; etat: EtatTraductions } | null = null;
 
 /** Euros saisis -> centimes. Champ vide = pas de valeur. */
 function centimes(v: FormDataEntryValue | null | undefined): number | null {
@@ -46,7 +85,27 @@ if (Astro.request.method === "POST") {
   // modification, qui porte son propre `_action` caché.
   const action = f.get("archiver") ? "mode-archiver" : f.get("_action");
   try {
-    if (action === "mode") {
+    if (action === "mode-traductions" || action === "mode-traduire") {
+      // Chaque mode a son bloc : le formulaire ne porte que les cases du
+      // sien, et seules celles-là sont enregistrées ou complétées.
+      const modes = (await api.shipping()).modes.filter((m) => !m.archivedAt);
+      const vise = modes.find((m) =>
+        [...CHAMPS_MODE, CHAMP_RETRAIT].some((c) => f.has(nomCase(m.id, c.cle, "en"))),
+      );
+      if (!vise) throw new Error("Ce mode de livraison n'a pas été retrouvé. Rechargez l'écran.");
+      const etat = await traiterTraductions(
+        action === "mode-traductions" ? "enregistrer" : "proposer",
+        f,
+        [elementMode(vise)],
+        CHAMPS_MODE,
+        (id, lang, modifies) =>
+          api.setShippingMethodTranslation(Number(id), { lang, ...modifies }),
+        (lang, champs) => api.proposerTraduction(lang, champs),
+      );
+      tradMode = { id: vise.id, etat };
+      flash = `« ${vise.name} » : ${etat.message}`;
+      flashErreur = etat.erreur;
+    } else if (action === "mode") {
       await api.updateShippingMethod(Number(f.get("id")), {
         name: String(f.get("name") || ""),
         description: String(f.get("description") || ""),
@@ -532,6 +591,25 @@ const ordreModes = modesActifs.map((m) => m.id);
           ↓ Descendre
         </button>
       </form>
+
+      {/* Ce que le client étranger lit à la caisse, puis dans ses courriels
+          et sur sa facture. Son propre formulaire, comme l'ordre : rien ne
+          s'imbrique dans la fiche du mode. */}
+      <Traductions
+        titre={m.kind === "pickup"
+          ? "Traductions du nom, de la précision et du lieu de retrait"
+          : "Traductions du nom et de la précision"}
+        aide="Ce que le client lit en choisissant ce mode, dans sa langue — et ce que redisent son courriel de confirmation et sa facture. Une case vide affiche le français. Les bordereaux et vos écrans gardent le nom français."
+        champs={CHAMPS_MODE}
+        elements={[elementMode(m)]}
+        disposition="langues"
+        propositions={tradMode?.id === m.id ? tradMode.etat.propositions : undefined}
+        saisies={tradMode?.id === m.id ? tradMode.etat.saisies : undefined}
+        actionEnregistrer="mode-traductions"
+        actionProposer="mode-traduire"
+        ouvert={tradMode?.id === m.id}
+        classe="ml-4 bg-bo-surface"
+      />
       </Fragment>
     ))}
 

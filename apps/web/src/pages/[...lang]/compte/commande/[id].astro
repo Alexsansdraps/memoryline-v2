@@ -37,7 +37,9 @@ let erreur: CleUi | null =
   session.etat === "indisponible" ? session.erreur : null;
 
 if (session.etat === "connecte") {
-  const r = await commande(Astro, id);
+  // Dans la langue de la page : le nom des cadres (leur couleur) s'y lit,
+  // comme dans le module de personnalisation où la cliente l'a choisi.
+  const r = await commande(Astro, id, langue);
   if (r.ok) {
     detail = r.donnees;
   } else {

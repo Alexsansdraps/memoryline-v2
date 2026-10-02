@@ -14,8 +14,15 @@ import { apiInterne } from "../lib/api-interne.ts";
  * bandeau : allumés ensemble, éteints ensemble.
  */
 import Admin from "../layouts/Admin.astro";
+import Traductions from "../components/Traductions.astro";
 import { url } from "../lib/url.ts";
 import { adminApi, formatPrice, type BannerBo, type PromoRule } from "../lib/api.ts";
+import {
+  traiterTraductions,
+  type ChampTraduit,
+  type ElementTraduit,
+  type EtatTraductions,
+} from "../lib/traductions.ts";
 import { libelleRegle, remisesPanier, seuilDeclenchement } from "@memoryline/types";
 
 const api = adminApi(Astro.request);
@@ -29,8 +36,80 @@ function quandOuRien(v: FormDataEntryValue | null): string | null {
   return s ? new Date(s).toISOString() : null;
 }
 
-if (Astro.request.method === "POST") {
-  const f = await Astro.request.formData();
+/**
+ * Ce qui se traduit ici : le message du bandeau et le texte de son lien —
+ * l'adresse du lien, elle, vaut pour toutes les langues (le site y ajoute
+ * celle de la page) — et le nom de l'offre annoncée, que le client relit sur
+ * la ligne de remise de son panier.
+ *
+ * Le bandeau et sa règle vivent dans deux tables qui ont chacune leur id 1 :
+ * leurs lignes se distinguent donc par un nom, pas par un numéro.
+ */
+const CHAMPS_BANDEAU: ChampTraduit[] = [
+  { cle: "message", libelle: "Texte affiché", max: 500 },
+  { cle: "linkLabel", libelle: "Libellé du lien", max: 120 },
+];
+const CHAMPS_OFFRE: ChampTraduit[] = [
+  { cle: "name", libelle: "Nom de l'offre (ligne de remise du panier)", max: 120 },
+];
+function elementsBandeau(b: BannerBo): ElementTraduit[] {
+  const elements: ElementTraduit[] = [
+    {
+      id: "bandeau",
+      libelle: "Le bandeau",
+      francais: { message: b.message, linkLabel: b.linkLabel },
+      translations: b.translations,
+      champs: CHAMPS_BANDEAU,
+    },
+  ];
+  if (b.promo)
+    elements.push({
+      id: "offre",
+      libelle: `L'offre annoncée : ${b.promo.name}`,
+      francais: { name: b.promo.name },
+      translations: b.promo.translations,
+      champs: CHAMPS_OFFRE,
+    });
+  return elements;
+}
+
+/**
+ * Le formulaire envoyé. Le bloc des traductions a le sien, distingué par
+ * `_action` : celui du bandeau n'en porte pas, et tout ce qui n'est pas une
+ * traduction l'enregistre comme avant.
+ */
+const formulaire = Astro.request.method === "POST" ? await Astro.request.formData() : null;
+const actionTraductions = String(formulaire?.get("_action") ?? "");
+const estTraduction =
+  actionTraductions === "bandeau-traductions" || actionTraductions === "bandeau-traduire";
+/** Propositions à relire, saisie à réafficher, et bloc ouvert. */
+let tradBandeau: EtatTraductions | null = null;
+
+if (formulaire && estTraduction) {
+  try {
+    const b = await api.bannerBo();
+    if (!b) throw new Error("Enregistrez d'abord le bandeau en français : ses traductions s'y rattachent.");
+    tradBandeau = await traiterTraductions(
+      actionTraductions === "bandeau-traductions" ? "enregistrer" : "proposer",
+      formulaire,
+      elementsBandeau(b),
+      [...CHAMPS_BANDEAU, ...CHAMPS_OFFRE],
+      (id, lang, modifies) =>
+        id === "offre" && b.promo
+          ? api.setPromoTranslation(b.promo.id, { lang, name: modifies.name ?? "" })
+          : api.setBannerTranslation(b.id, { lang, ...modifies }),
+      (lang, champs) => api.proposerTraduction(lang, champs),
+    );
+    flash = tradBandeau.message;
+    flashErreur = tradBandeau.erreur;
+  } catch (e) {
+    flash = e instanceof Error ? e.message : String(e);
+    flashErreur = true;
+  }
+}
+
+if (formulaire && !estTraduction) {
+  const f = formulaire;
   try {
     // L'offre annoncée. Trois choix à l'écran, trois formes envoyées :
     // rien du tout, l'identifiant d'une règle déjà écrite, ou la règle
@@ -348,7 +427,9 @@ const nombreOu = (v: unknown, defaut: number) =>
 
       <div class="mt-3 ml-6 grid gap-4 sm:grid-cols-2">
         <label class="block">
-          <span class="text-bo-muted">Nom (interne)</span>
+          {/* Pas « interne » : le panier l'écrit sur sa ligne de remise, et
+              ses traductions se saisissent plus bas. */}
+          <span class="text-bo-muted">Nom (lu sur la ligne de remise du panier)</span>
           <input
             name="nomRegle"
             value={regle?.name ?? "Offre du bandeau"}
@@ -535,6 +616,30 @@ const nombreOu = (v: unknown, defaut: number) =>
       </button>
     </div>
   </form>
+
+  {/* Le bandeau dans les autres langues du site. À part du formulaire
+      ci-dessus, qui ne s'imbrique pas : une traduction s'enregistre sans
+      réenregistrer le bandeau ni son offre. */}
+  {banner ? (
+    <Traductions
+      titre="Traductions du bandeau et de son offre"
+      aide="Ce que lit un client qui visite le site en anglais, en allemand, en italien ou en espagnol. Une case vide affiche le français. Modifiez d'abord le texte français et enregistrez-le ci-dessus : les traductions se relisent ensuite en regard."
+      champs={CHAMPS_BANDEAU}
+      elements={elementsBandeau(banner)}
+      disposition="langues"
+      propositions={tradBandeau?.propositions}
+      saisies={tradBandeau?.saisies}
+      actionEnregistrer="bandeau-traductions"
+      actionProposer="bandeau-traduire"
+      ouvert={!!tradBandeau}
+      classe="mt-6 max-w-3xl bg-bo-surface"
+    />
+  ) : (
+    <p class="mt-6 max-w-3xl text-sm text-bo-muted">
+      Les traductions du bandeau se saisiront ici une fois le bandeau
+      enregistré en français.
+    </p>
+  )}
 
   <section class="mt-6 max-w-3xl">
     <h2 class="mb-2 text-sm font-semibold">Aperçu</h2>

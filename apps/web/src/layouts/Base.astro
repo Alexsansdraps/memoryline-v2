@@ -101,13 +101,19 @@ const MENU_DE_SECOURS: EntreeMenuPublique[] = [
  * une baseline absente laisse celle du dictionnaire. Une page publique ne
  * tombe jamais parce qu'un ornement n'a pas pu être lu.
  */
-const [reponseMenu, reponseReglages] = await Promise.all([
+const [reponseMenu, reponseReglages, reglagesFrancais] = await Promise.all([
   api.menu(langue).catch(() => null),
-  // La baseline n'est lue qu'en français : elle n'a pas de traduction, et la
-  // servir partout remplacerait quatre phrases traduites par une française.
+  // La baseline dans la langue de la page : l'écran « Contenu du site » la
+  // fait traduire, comme les textes de l'accueil. En français, la lecture
+  // est exactement celle d'avant.
   langue === LANGUE_DEFAUT
     ? api.settings("footer").catch(() => null)
-    : Promise.resolve(null),
+    : api.settings("footer", langue).catch(() => null),
+  // Ailleurs, le français aussi, pour reconnaître une baseline NON traduite :
+  // l'API rend alors le français à sa place (voir plus bas).
+  langue === LANGUE_DEFAUT
+    ? Promise.resolve(null)
+    : api.settings("footer").catch(() => null),
 ]);
 
 let entreesMenu: EntreeMenuPublique[] = MENU_DE_SECOURS;
@@ -148,16 +154,27 @@ const desc = description ?? tr("meta.description");
  * jamais lu : le site affichait une constante du dictionnaire, et la
  * propriétaire pouvait écrire ce qu'elle voulait sans que rien ne bouge.
  *
- * Il ne s'applique qu'au FRANÇAIS, et c'est délibéré : le réglage est une
- * chaîne unique, sans colonne de traduction, alors que le dictionnaire porte
- * les cinq langues. Le servir partout remplacerait quatre phrases traduites
- * par une phrase française. La visiteuse allemande garde donc la sienne, et
- * la boutiquière retrouve la sienne là où elle l'a écrite.
+ * Dans les autres langues, la traduction saisie sur ce même écran — et
+ * SEULEMENT elle. Non traduite, l'API rend la baseline française à sa place
+ * (repli de /settings) : la reprendre remplacerait la phrase traduite du
+ * dictionnaire par du français. Une valeur identique au français compte donc
+ * pour « pas traduite », et la visiteuse allemande garde celle du
+ * dictionnaire. Seul cas perdu : une baseline volontairement la même dans
+ * les deux langues (un slogan en anglais, par exemple), qui s'affiche alors
+ * dans la version du dictionnaire.
  */
 let baseline = tr("pied.baseline");
 {
   const saisie = reponseReglages?.["footer.baseline"];
-  if (typeof saisie === "string" && saisie.trim()) baseline = saisie.trim();
+  const texte = typeof saisie === "string" ? saisie.trim() : "";
+  const francais = reglagesFrancais?.["footer.baseline"];
+  // Le français illisible (API muette) : impossible de savoir si c'est une
+  // traduction, on garde le dictionnaire plutôt que risquer du français.
+  const nonTraduite =
+    langue !== LANGUE_DEFAUT &&
+    (!reglagesFrancais ||
+      texte === (typeof francais === "string" ? francais.trim() : ""));
+  if (texte && !nonTraduite) baseline = texte;
 }
 
 /**

@@ -124,8 +124,9 @@ try {
       offset: (pageDemandee - 1) * PAR_PAGE,
     }),
     // Sert seulement à nommer le rayon en titre : le nom vient de la boutique,
-    // pas d'une table de correspondance écrite en dur ici.
-    collectionDemandee ? api.collections() : Promise.resolve([]),
+    // pas d'une table de correspondance écrite en dur ici — et dans la langue
+    // de la page, quand elle l'a traduit (le français sinon).
+    collectionDemandee ? api.collections(langue) : Promise.resolve([]),
     /*
      * Les lieux partent avec le reste plutôt qu'après.
      *

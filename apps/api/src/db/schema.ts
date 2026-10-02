@@ -92,6 +92,16 @@ export const collections = pgTable(
      * restaurer COMPLÈTE, avec les affiches qu'elle rangeait.
      */
     archivedAt: timestamp("archived_at", { withTimezone: true }),
+    /**
+     * Le nom et la description dans les autres langues :
+     * { en: { name, description }, de: { … }, … }. C'est le NOM que lit la
+     * cliente, en titre du rayon (« Villes » → « Cities »). Un champ absent ou
+     * vide affiche le français ; le français (`name`) reste celui du
+     * back-office, et l'adresse (`slug`) ne change pas avec la langue.
+     */
+    translations: jsonb("translations").$type<
+      Partial<Record<string, { name?: string; description?: string }>>
+    >(),
     legacyId: bigint("legacy_id", { mode: "number" }), // Shopify Collection ID
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -206,14 +216,29 @@ export const products = pgTable(
     foregroundUrl: text("foreground_url"),
     /**
      * Traductions HUMAINES du contenu éditorial, par code langue :
-     *   { en: { name, description }, de: { … }, … }
+     *   { en: { name, description, seoTitle, seoDescription }, de: { … }, … }
      *
      * Le français vit dans les colonnes `name` / `description` ci-dessus et
      * sert de repli : un champ vide ou absent affiche le français, jamais une
      * chaîne vide. Pas de traduction automatique — la cliente les rédige.
+     *
+     * Le référencement fait exception au repli : un `seoTitle` français sur
+     * la page anglaise mettrait du français dans Google. Non traduit, il vaut
+     * null hors du français, et le site retombe sur le nom traduit (voir
+     * GET /products/:slug).
      */
     translations: jsonb("translations").$type<
-      Partial<Record<string, { name?: string; description?: string }>>
+      Partial<
+        Record<
+          string,
+          {
+            name?: string;
+            description?: string;
+            seoTitle?: string;
+            seoDescription?: string;
+          }
+        >
+      >
     >(),
     /* --- Classement interne ---------------------------------------------- */
     /**
@@ -527,6 +552,16 @@ export const characterTypes = pgTable(
     slug: text("slug").notNull(),
     name: text("name").notNull(),
     /**
+     * Le nom du personnage dans les autres langues (« Berger australien » →
+     * « Australian Shepherd ») : le module de personnalisation l'affiche dans
+     * la liste des personnages ajoutés et en bulle sur les vignettes.
+     * { en: { name }, de: { … }, … } ; un nom absent affiche le français, qui
+     * reste celui du back-office.
+     */
+    translations: jsonb("translations").$type<
+      Partial<Record<string, { name?: string }>>
+    >(),
+    /**
      * Regroupement — texte libre HISTORIQUE, conservé le temps de la bascule.
      * La source de vérité est désormais `categoryId`. Sera supprimé une fois
      * tous les écrans passés sur la table character_category.
@@ -836,6 +871,25 @@ export const shippingMethods = pgTable(
      * attachés, intacts : restaurer le mode rend la grille entière.
      */
     archivedAt: timestamp("archived_at", { withTimezone: true }),
+    /**
+     * Ce que la cliente lit, dans les autres langues :
+     * { en: { name, description, pickupLocation }, de: { … }, … }. Un champ
+     * absent ou vide affiche le français.
+     *
+     * La commande, elle, fige le nom FRANÇAIS (`order.shipping_label`) : c'est
+     * celui du back-office et des bordereaux. Les courriels et la facture
+     * d'une cliente étrangère retrouvent la traduction par le `slug` du mode,
+     * au moment de les écrire (`livraisonDansLaLangue`, traductions.ts).
+     * `notePreparation` n'a pas de traduction : le client ne la voit jamais.
+     */
+    translations: jsonb("translations").$type<
+      Partial<
+        Record<
+          string,
+          { name?: string; description?: string; pickupLocation?: string }
+        >
+      >
+    >(),
   },
   (t) => [uniqueIndex("shipping_method_slug_uniq").on(t.slug)],
 );
@@ -1927,6 +1981,15 @@ export const promoRules = pgTable(
     stackable: boolean("stackable").notNull().default(false),
     startsAt: timestamp("starts_at", { withTimezone: true }),
     endsAt: timestamp("ends_at", { withTimezone: true }),
+    /**
+     * Le nom de la promotion dans les autres langues — c'est lui qui s'écrit
+     * sur la ligne de remise du panier et de la caisse (« 3 achetées = 1 A4
+     * offerte »). { en: { name }, … } ; absent, le français s'affiche. Le
+     * CODE, lui, ne se traduit pas : c'est ce que la cliente tape.
+     */
+    translations: jsonb("translations").$type<
+      Partial<Record<string, { name?: string }>>
+    >(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -1953,6 +2016,15 @@ export const announcementBanners = pgTable(
     }),
     startsAt: timestamp("starts_at", { withTimezone: true }),
     endsAt: timestamp("ends_at", { withTimezone: true }),
+    /**
+     * Le message et le texte du lien dans les autres langues :
+     * { en: { message, linkLabel }, … }. Absents ou vides, le français
+     * s'affiche. L'adresse du lien ne se traduit pas : le site y ajoute
+     * lui-même le préfixe de la langue quand elle mène à une de ses pages.
+     */
+    translations: jsonb("translations").$type<
+      Partial<Record<string, { message?: string; linkLabel?: string }>>
+    >(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [index("banner_active_idx").on(t.active)],
@@ -2039,9 +2111,23 @@ export const pages = pgTable(
      * Traductions HUMAINES, par code langue. Le français vit dans les colonnes
      * ci-dessus et sert de repli, exactement comme pour les produits : une
      * traduction absente ou vide affiche le français, jamais un blanc.
+     *
+     * Même exception que pour les produits : un référencement (`seoTitle`,
+     * `seoDescription`) non traduit vaut null hors du français, et le site
+     * retombe sur le titre traduit plutôt que de servir du français à Google.
      */
     translations: jsonb("translations").$type<
-      Partial<Record<string, { title?: string; blocks?: BlocPage[] }>>
+      Partial<
+        Record<
+          string,
+          {
+            title?: string;
+            blocks?: BlocPage[];
+            seoTitle?: string;
+            seoDescription?: string;
+          }
+        >
+      >
     >(),
     /**
      * Archivée : hors du site, hors de la liste ordinaire du back-office,

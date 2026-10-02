@@ -59,7 +59,7 @@ import {
   type CleCourriel,
   type Langue,
 } from "./courriels/index.js";
-import { nomTraduit } from "./traductions.js";
+import { livraisonDansLaLangue, nomTraduit } from "./traductions.js";
 
 /**
  * Le titre de repli d'une ligne (« Affiche personnalisée ») dans la langue du
@@ -2528,7 +2528,9 @@ export function mountOrderRoutes(app: Hono): void {
       remiseCents: Math.max(0, sousTotal + port - order.totalCents),
       codePromo: order.promoCode,
       portCents: port,
-      modeLivraison: order.shippingLabel,
+      // Le nom français reste sur la commande ; la facture d'une cliente
+      // étrangère porte celui de sa langue, quand la boutique l'a traduit.
+      modeLivraison: (await livraisonDansLaLangue(order, langue)).nom,
       totalCents: order.totalCents,
       rembourseCents: resume.rembourseCents,
       mentionReglement: mentionDeReglement(order, langue),

@@ -356,6 +356,78 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
     </details>
 
     {/* ------------------------------------------------------------ */}
+    <details id="traductions" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Traduire ce que voient les clients étrangers
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          Le site se lit aussi en anglais, en allemand, en italien et en
+          espagnol. Ses textes fixes et ses courriels sont déjà traduits. Ce
+          que <strong>vous</strong> écrivez ici se traduit sur l'écran même où
+          vous l'écrivez en français, dans un bloc « Traductions ».
+        </p>
+        <ul class="list-disc space-y-1 pl-5">
+          <li>
+            <strong>Une case vide affiche le français</strong>, jamais un
+            blanc : vous pouvez ne traduire que ce qui compte. Un texte vide en
+            français reste vide dans toutes les langues.
+          </li>
+          <li>
+            <strong>« ✨ Proposer les traductions manquantes »</strong> remplit
+            les cases vides par une traduction automatique, surlignée en jaune.
+            Rien n'est enregistré avant que vous cliquiez « Enregistrer ».
+            Si le bouton répond que la traduction automatique n'est pas
+            branchée, demandez à la personne qui s'occupe du site.
+          </li>
+        </ul>
+        <p>Où trouver chaque traduction :</p>
+        <ul class="list-disc space-y-1 pl-5">
+          <li>
+            <a href={url("/produits")} class="text-bo-accent underline">Produits</a>,
+            fiche d'une affiche : nom, description, titre et description Google.
+          </li>
+          <li>
+            <a href={url("/collections")} class="text-bo-accent underline">Collections</a> :
+            les noms sous la liste ; la description sur la fiche de la
+            collection (« Ouvrir »).
+          </li>
+          <li>
+            <a href={url("/cadres")} class="text-bo-accent underline">Cadres</a> et
+            <a href={url("/personnages")} class="text-bo-accent underline">Personnages</a>
+            (catégories et noms des personnages).
+          </li>
+          <li>
+            <a href={url("/promotions")} class="text-bo-accent underline">Promotions</a> :
+            le nom écrit sur la ligne de remise du panier. Le code ne se
+            traduit pas.
+          </li>
+          <li>
+            <a href={url("/bandeau")} class="text-bo-accent underline">Bandeau et offre</a> :
+            le message, le texte du lien et le nom de l'offre.
+          </li>
+          <li>
+            <a href={url("/livraison")} class="text-bo-accent underline">Livraison</a>,
+            sous chaque mode : nom, précision et lieu de retrait — repris dans
+            le courriel de confirmation et sur la facture.
+          </li>
+          <li>
+            <a href={url("/pages")} class="text-bo-accent underline">Pages du site</a>,
+            <a href={url("/menu")} class="text-bo-accent underline">Menu du site</a>,
+            <a href={url("/contenu")} class="text-bo-accent underline">Accueil et pied de page</a>,
+            et le courriel de
+            <a href={url("/paniers")} class="text-bo-accent underline">relance des paniers</a>.
+          </li>
+        </ul>
+        <p>
+          Ce que vous voyez ici — commandes, bordereaux, fichiers
+          d'impression — reste en français, quelle que soit la langue du
+          client.
+        </p>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
     <details id="heures" class="group rounded-lg border border-bo-border bg-bo-surface">
       <summary class="cursor-pointer px-4 py-3 font-medium">
         À quelle heure sont affichées les commandes ?

@@ -44,6 +44,20 @@ async function req<T>(
   return res.json() as Promise<T>;
 }
 
+/**
+ * Les textes d'une ligne dans les autres langues du site, tels que saisis au
+ * back-office (sans repli sur le français) : langue → champ → texte. Une
+ * langue ou un champ absent affiche le français sur le site.
+ */
+export type TraductionsDe<Champ extends string> = Partial<
+  Record<string, Partial<Record<Champ, string>>>
+> | null;
+
+/** La réponse des routes d'enregistrement : le dictionnaire entier, enregistré. */
+interface TraductionsEnregistrees<Champ extends string> {
+  translations: TraductionsDe<Champ>;
+}
+
 export interface PromoRule {
   id: number;
   name: string;
@@ -54,6 +68,8 @@ export interface PromoRule {
   priority: number;
   startsAt: string | null;
   endsAt: string | null;
+  /** Le nom — celui de la ligne de remise du panier — dans les autres langues. */
+  translations?: TraductionsDe<"name">;
 }
 
 export interface Banner {
@@ -67,6 +83,8 @@ export interface Banner {
   startsAt?: string | null;
   endsAt?: string | null;
   promoRuleId?: number | null;
+  /** Le message et le texte du lien dans les autres langues. */
+  translations?: TraductionsDe<"message" | "linkLabel">;
 }
 
 /**
@@ -226,7 +244,15 @@ export interface PageCms {
     seoTitle: string | null;
     seoDescription: string | null;
     blocks: BlocPage[];
-    translations: Record<string, { title?: string; blocks?: BlocPage[] }> | null;
+    /**
+     * Par langue : le nom, le texte, et le référencement (titre et
+     * description Google). Hors du français, un référencement non traduit
+     * laisse le site retomber sur le nom traduit.
+     */
+    translations: Record<
+      string,
+      { title?: string; blocks?: BlocPage[]; seoTitle?: string; seoDescription?: string }
+    > | null;
     createdAt: string;
     updatedAt: string;
   };
@@ -312,6 +338,8 @@ export interface CollectionBo {
   defaultWeightGrams: number | null;
   /** Nombre de produits dedans, tous statuts confondus. */
   produits: number;
+  /** Le nom (titre du rayon) et la description dans les autres langues. */
+  translations?: TraductionsDe<"name" | "description">;
 }
 
 /** Un produit vu depuis sa collection : de quoi le reconnaître d'un coup d'œil. */
@@ -564,6 +592,12 @@ export interface CatalogueLivraisonBO {
      * publie pas cette colonne, le client ne la voit jamais.
      */
     notePreparation: string | null;
+    /**
+     * Le nom, la précision et le lieu de retrait dans les autres langues :
+     * ce que la caisse montre, et ce que redisent les courriels et la
+     * facture. La note de préparation, écrite pour la boutique, n'en a pas.
+     */
+    translations?: TraductionsDe<"name" | "description" | "pickupLocation">;
     active: boolean;
     position: number;
     /**
@@ -1044,6 +1078,8 @@ export interface CharacterType {
   id: number;
   slug: string;
   name: string;
+  /** Le nom dans les autres langues : { en: { name }, … }. */
+  translations?: TraductionsDe<"name">;
   /** Ancien champ texte, conservé le temps de la bascule — lire categoryId. */
   category: string | null;
   /** Catégorie du personnage (table character_category), null = non rangé. */
@@ -1481,6 +1517,28 @@ export function adminApi(request?: Request) {
     promos: () => req<PromoRule[]>("GET", "/admin/promos", undefined, cookie),
     upsertPromo: (data: Partial<PromoRule>) =>
       req<PromoRule>("POST", "/admin/promos", data, cookie),
+    /** Le nom d'une promotion dans UNE langue (vide = le français s'affiche). */
+    setPromoTranslation: (id: number, data: { lang: string; name: string }) =>
+      req<TraductionsEnregistrees<"name">>(
+        "POST",
+        `/admin/promos/${id}/translations`,
+        data,
+        cookie,
+      ),
+    /**
+     * Le message et le texte du lien du bandeau dans UNE langue. Un champ
+     * envoyé vide est retiré, un champ non envoyé garde sa traduction.
+     */
+    setBannerTranslation: (
+      id: number,
+      data: { lang: string; message?: string; linkLabel?: string },
+    ) =>
+      req<TraductionsEnregistrees<"message" | "linkLabel">>(
+        "POST",
+        `/admin/banner/${id}/translations`,
+        data,
+        cookie,
+      ),
     banner: () => req<Banner | null>("GET", "/banner", undefined, cookie),
     /** Le bandeau du back-office : meme eteint, et avec sa regle. */
     bannerBo: () => req<BannerBo | null>("GET", "/admin/banner", undefined, cookie),
@@ -1970,6 +2028,21 @@ export function adminApi(request?: Request) {
         active?: boolean;
       },
     ) => req<unknown>("POST", `/admin/shipping/methods/${id}`, data, cookie),
+    /**
+     * Le nom, la précision et le lieu de retrait d'un mode dans UNE langue.
+     * Un champ envoyé vide est retiré (le français s'affiche), un champ non
+     * envoyé garde sa traduction.
+     */
+    setShippingMethodTranslation: (
+      id: number,
+      data: { lang: string; name?: string; description?: string; pickupLocation?: string },
+    ) =>
+      req<TraductionsEnregistrees<"name" | "description" | "pickupLocation">>(
+        "POST",
+        `/admin/shipping/methods/${id}/translations`,
+        data,
+        cookie,
+      ),
     /** Une ligne de grille : un prix pour un mode, une zone, une tranche. */
     upsertShippingRate: (data: {
       id?: number;
@@ -2202,6 +2275,14 @@ export function adminApi(request?: Request) {
         undefined,
         cookie,
       ),
+    /** Le nom d'un personnage dans UNE langue (vide = le français s'affiche). */
+    setCharacterTranslation: (id: number, data: { lang: string; name: string }) =>
+      req<TraductionsEnregistrees<"name">>(
+        "POST",
+        `/admin/characters/${id}/translations`,
+        data,
+        cookie,
+      ),
     upsertCharacter: (data: Partial<CharacterType>) =>
       req<CharacterType>("POST", "/admin/characters", data, cookie),
     setCharacterBase: (
@@ -2336,6 +2417,20 @@ export function adminApi(request?: Request) {
         position?: number;
       },
     ) => req<{ ok: true }>("POST", `/admin/collections/${id}`, corps, cookie),
+    /**
+     * Le nom et la description (HTML) d'une collection dans UNE langue. Un
+     * champ envoyé vide est retiré, un champ non envoyé garde sa traduction.
+     */
+    setCollectionTranslation: (
+      id: number,
+      data: { lang: string; name?: string; description?: string },
+    ) =>
+      req<TraductionsEnregistrees<"name" | "description">>(
+        "POST",
+        `/admin/collections/${id}/translations`,
+        data,
+        cookie,
+      ),
     /**
      * Archive la collection, ou la restaure.
      *
@@ -2617,13 +2712,32 @@ export function adminApi(request?: Request) {
     productTranslations: (id: number | string) =>
       req<{
         id: number;
-        fr: { name: string; description: string | null };
-        translations: Record<string, { name?: string; description?: string }>;
+        fr: {
+          name: string;
+          description: string | null;
+          /** Le référencement français, rempli ou non. */
+          seoTitle?: string | null;
+          seoDescription?: string | null;
+        };
+        translations: Record<
+          string,
+          { name?: string; description?: string; seoTitle?: string; seoDescription?: string }
+        >;
       }>("GET", `/admin/products/${id}/translations`, undefined, cookie),
-    /** Enregistre UNE langue ; un champ vide retire la traduction. */
+    /**
+     * Enregistre UNE langue. Un champ envoyé vide retire sa traduction ; un
+     * champ non envoyé garde la sienne.
+     */
     setProductTranslation: (
       id: number | string,
-      data: { lang: string; name?: string; description?: string },
+      data: {
+        lang: string;
+        name?: string;
+        description?: string;
+        /** Le titre et la description Google dans cette langue. */
+        seoTitle?: string;
+        seoDescription?: string;
+      },
     ) =>
       req<{ ok: boolean; translations: Record<string, unknown> }>(
         "POST",

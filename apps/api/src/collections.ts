@@ -185,6 +185,10 @@ export function mountCollections(app: Hono): void {
         archivedAt: col.archivedAt?.toISOString() ?? null,
         defaultWeightGrams: col.defaultWeightGrams,
         produits: parCollection.get(col.id) ?? 0,
+        // Les traductions telles que saisies, sans repli : l'écran doit
+        // distinguer « pas encore traduit » de « traduit à l'identique ».
+        // Elles s'enregistrent par POST /admin/collections/:id/translations.
+        translations: col.translations ?? null,
       })),
     });
   });
@@ -287,6 +291,8 @@ export function mountCollections(app: Hono): void {
         active: collection.active,
         defaultWeightGrams: collection.defaultWeightGrams,
         produits: lignes.length,
+        // Telles que saisies, sans repli (voir la liste ci-dessus).
+        translations: collection.translations ?? null,
       },
       produits: lignes.map((p) => ({
         id: p.id,

@@ -54,7 +54,7 @@ import {
   tc,
   type Langue,
 } from "./courriels/index.js";
-import { nomTraduit } from "./traductions.js";
+import { livraisonDansLaLangue, nomTraduit } from "./traductions.js";
 // La vignette d'un produit se compose au même endroit que la relance de
 // panier, seul courrier qui l'affiche : deux façons de fabriquer cette adresse
 // finiraient par diverger, et l'aperçu montrerait une image que le vrai
@@ -423,7 +423,8 @@ async function donneesDeCommande(
     codePromo: commande.promoCode,
     portCents,
     totalCents: commande.totalCents,
-    modeLivraison: commande.shippingLabel,
+    // Comme l'envoi réel : le nom du mode dans la langue du courrier.
+    modeLivraison: (await livraisonDansLaLangue(commande, langue)).nom,
     adresse: [
       commande.shippingName,
       commande.relayPointLabel,

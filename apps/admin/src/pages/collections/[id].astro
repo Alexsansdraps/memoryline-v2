@@ -12,6 +12,7 @@
  * ce qu'on met devant est ce qui se vend.
  */
 import Admin from "../../layouts/Admin.astro";
+import EditeurTexte from "../../components/EditeurTexte.astro";
 import { apiUrl, url } from "../../lib/url.ts";
 import {
   adminApi,
@@ -20,6 +21,7 @@ import {
   type ProduitDeCollection,
   type ProduitAdmin,
 } from "../../lib/api.ts";
+import { LANGUES_TRADUITES, texteErreur } from "../../lib/traductions.ts";
 
 const id = Number(Astro.params.id);
 if (!Number.isInteger(id) || id <= 0) return Astro.redirect(url("/collections"));
@@ -28,11 +30,106 @@ const api = adminApi(Astro.request);
 let flash: string | null = null;
 let flashErreur = false;
 
+/** Les deux textes d'une collection qui se traduisent. */
+type TexteCollection = { name?: string; description?: string };
+/**
+ * Les traductions AUTOMATIQUES proposées, par langue, posées dans les champs
+ * sans être enregistrées ; et ce que la boutique venait de taper, réaffiché
+ * tel quel après une proposition ou un refus.
+ */
+const propositionsTrad: Record<string, TexteCollection> = {};
+const saisiesTrad: Record<string, TexteCollection> = {};
+
+/** Du HTML au texte, le temps de savoir s'il reste quelque chose à lire. */
+const sansBalises = (html: string | null | undefined) =>
+  (html ?? "").replace(/<[^>]*>/g, "").replace(/&nbsp;/gi, " ").trim();
+
+/**
+ * Ce qu'il faut proposer dans une langue : les champs VIDES (dans `actuel`)
+ * dont le français existe. Une traduction déjà écrite n'est jamais remplacée
+ * par la machine. La description n'en est que si le français a du texte —
+ * une description française vide reste vide dans toutes les langues.
+ */
+function aProposer(c: CollectionBo, actuel: TexteCollection): Record<string, string> {
+  const manque: Record<string, string> = {};
+  if (!actuel.name?.trim() && c.name.trim()) manque.name = c.name;
+  if (
+    actuel.description !== undefined &&
+    !sansBalises(actuel.description) &&
+    sansBalises(c.description)
+  )
+    manque.description = c.description ?? "";
+  return manque;
+}
+
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   const action = String(f.get("_action") ?? "");
   try {
-    if (action === "ordre") {
+    if (action === "traduction") {
+      const lang = String(f.get("lang") ?? "");
+      const langue = LANGUES_TRADUITES.find((l) => l.code === lang);
+      if (!langue) throw new Error("Cette langue n'existe pas. Rechargez l'écran et réessayez.");
+      const { collection: c } = await api.collection(id);
+      // La description n'est dans le formulaire que si la collection en a
+      // une en français : absente, elle n'est ni envoyée ni effacée.
+      const saisi: TexteCollection = {
+        name: String(f.get("name") ?? "").trim(),
+        ...(f.has("description")
+          ? { description: String(f.get("description") ?? "").trim() }
+          : {}),
+      };
+      if (f.get("auto")) {
+        // « Proposer » : la saisie reste, la machine ne remplit que le vide.
+        saisiesTrad[lang] = saisi;
+        const manque = aProposer(c, saisi);
+        if (!Object.keys(manque).length) {
+          flash = `Rien à proposer en ${langue.nom.toLowerCase()} : les champs sont déjà remplis.`;
+        } else {
+          const { champs } = await api.proposerTraduction(lang, manque);
+          propositionsTrad[lang] = champs;
+          flash = `Traduction en ${langue.nom.toLowerCase()} proposée : relisez-la, corrigez si besoin, puis cliquez « Enregistrer ${langue.nom.toLowerCase()} ». Rien n'est enregistré pour l'instant.`;
+        }
+      } else {
+        // Seuls les champs modifiés partent : l'API garde les autres.
+        const avant = c.translations?.[lang] ?? {};
+        const modifies: TexteCollection = {};
+        if (saisi.name !== (avant.name ?? "").trim()) modifies.name = saisi.name;
+        if (
+          saisi.description !== undefined &&
+          saisi.description !== (avant.description ?? "").trim()
+        )
+          modifies.description = saisi.description;
+        if (!Object.keys(modifies).length) {
+          flash = `Rien n'a changé en ${langue.nom.toLowerCase()}.`;
+        } else {
+          saisiesTrad[lang] = saisi;
+          await api.setCollectionTranslation(id, { lang, ...modifies });
+          delete saisiesTrad[lang];
+          flash = Object.values(modifies).some((v) => v)
+            ? `Traduction en ${langue.nom.toLowerCase()} enregistrée. Un champ vide affiche le français sur le site.`
+            : `Traduction en ${langue.nom.toLowerCase()} retirée : le site y affiche de nouveau le français.`;
+        }
+      }
+    } else if (action === "traduction-auto-tout") {
+      // Les quatre langues d'un coup, mais SEULEMENT ce qui manque.
+      const { collection: c } = await api.collection(id);
+      let n = 0;
+      for (const l of LANGUES_TRADUITES) {
+        const t = c.translations?.[l.code] ?? {};
+        const manque = aProposer(c, {
+          name: t.name ?? "",
+          description: sansBalises(c.description) ? (t.description ?? "") : undefined,
+        });
+        if (!Object.keys(manque).length) continue;
+        const { champs } = await api.proposerTraduction(l.code, manque);
+        propositionsTrad[l.code] = champs;
+        n++;
+      }
+      flash = n
+        ? `Traductions proposées pour ${n} langue${n > 1 ? "s" : ""} (seulement ce qui manquait) : relisez chaque langue, puis enregistrez-la. Rien n'est enregistré pour l'instant.`
+        : "Rien à proposer : tout ce qui a un texte français est déjà traduit.";
+    } else if (action === "ordre") {
       const ordre = String(f.get("ordre") ?? "")
         .split(",")
         .map(Number)
@@ -74,7 +171,11 @@ if (Astro.request.method === "POST") {
       flash = "Collection enregistrée.";
     }
   } catch (e) {
-    flash = e instanceof Error ? e.message : String(e);
+    // Une proposition refusée le dit : sinon « il manque OPENAI_API_KEY »
+    // pourrait se lire comme un enregistrement manqué.
+    const proposition =
+      action === "traduction-auto-tout" || (action === "traduction" && !!f.get("auto"));
+    flash = (proposition ? "Aucune traduction proposée : " : "") + texteErreur(e);
     flashErreur = true;
   }
 }
@@ -88,6 +189,43 @@ try {
   produits = r.produits;
 } catch (e) {
   erreur = e instanceof Error ? e.message : String(e);
+}
+
+/** La collection a-t-elle une description française à traduire ? */
+const descriptionFrancaise = !!collection && !!sansBalises(collection.description);
+
+/**
+ * « à traduire » / « partiel » / « traduit » — l'état d'une langue d'un coup
+ * d'œil. Seul compte ce qui a un texte français : sans description
+ * française, le nom traduit suffit.
+ */
+function etatLangue(code: string): { texte: string; classe: string } {
+  const t = collection?.translations?.[code];
+  const attendus = [!!t?.name?.trim()];
+  if (descriptionFrancaise) attendus.push(!!sansBalises(t?.description));
+  const faits = attendus.filter(Boolean).length;
+  if (faits === attendus.length) return { texte: "traduit", classe: "bg-green-100 text-green-800" };
+  if (faits) return { texte: "partiel", classe: "bg-amber-100 text-amber-800" };
+  return { texte: "à traduire", classe: "bg-bo-bg text-bo-muted" };
+}
+
+/** Le texte lisible d'une description HTML, pour la montrer en regard. */
+function texteLisible(html: string | null | undefined): string {
+  return (html ?? "")
+    .replace(/<li[^>]*>/gi, "\n• ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|ul|ol|h[1-6])\s*>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0?39;/gi, "'")
+    // L'esperluette en dernier, sinon « &amp;lt; » redeviendrait un chevron.
+    .replace(/&amp;/gi, "&")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /** Le catalogue, pour proposer ce qui n'est pas encore dans la collection. */
@@ -189,6 +327,135 @@ const ETIQUETTE_STATUT: Record<string, { texte: string; classe: string }> = {
             Le poids ne sert que si ni le format ni l'affiche n'en portent un.
             Laissé vide, il ne s'applique pas.
           </p>
+        </section>
+
+        {/* Le nom (titre du rayon) et la description dans les autres langues.
+            Une langue à la fois, chacune son formulaire : la description est
+            un texte long, quatre éditeurs ouverts ensemble ne se liraient
+            plus. Le modèle est celui des fiches produits. */}
+        <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-5">
+          <h2 class="mb-1 font-semibold">Traductions</h2>
+          <p class="mb-4 text-sm text-bo-muted">
+            Ce que le client étranger lit en titre du rayon, et sous ce titre.
+            Laissez un champ vide et c'est le français qui s'affichera. L'adresse
+            du rayon, elle, ne change pas.
+          </p>
+
+          <form method="POST" class="mb-4 flex flex-wrap items-center gap-2">
+            <input type="hidden" name="_action" value="traduction-auto-tout" />
+            <button class="rounded border border-bo-border px-3 py-1.5 text-sm hover:border-bo-accent hover:text-bo-accent">
+              ✨ Proposer les traductions manquantes (4 langues)
+            </button>
+            <span class="text-xs text-bo-muted">
+              Ne remplit que ce qui n'est pas encore traduit. Rien n'est
+              enregistré : vous relisez chaque langue, puis vous l'enregistrez.
+            </span>
+          </form>
+
+          <div class="space-y-3">
+            {LANGUES_TRADUITES.map((l) => {
+              const proposition = propositionsTrad[l.code];
+              const saisie = saisiesTrad[l.code];
+              const enregistree = collection!.translations?.[l.code];
+              const t = {
+                name: proposition?.name ?? saisie?.name ?? enregistree?.name ?? "",
+                description:
+                  proposition?.description ??
+                  saisie?.description ??
+                  enregistree?.description ??
+                  "",
+              };
+              const etat = etatLangue(l.code);
+              return (
+                <details
+                  class="rounded border border-bo-border"
+                  open={!!proposition || !!saisie}
+                >
+                  <summary class="flex cursor-pointer select-none items-center gap-2 px-4 py-2.5 text-sm font-medium">
+                    <span>{l.nom}</span>
+                    <span class={`rounded-full px-2 py-0.5 text-xs font-normal ${etat.classe}`}>
+                      {etat.texte}
+                    </span>
+                    {proposition && (
+                      <span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-normal text-amber-800">
+                        proposition à relire — pas encore enregistrée
+                      </span>
+                    )}
+                  </summary>
+
+                  <form method="POST" class="space-y-3 border-t border-bo-border p-4">
+                    <input type="hidden" name="_action" value="traduction" />
+                    <input type="hidden" name="lang" value={l.code} />
+
+                    <label class="block">
+                      <span class="text-xs text-bo-muted">Nom</span>
+                      <input
+                        name="name"
+                        value={t.name}
+                        maxlength={120}
+                        placeholder={collection!.name}
+                        class={`mt-1 w-full rounded border px-3 py-2 text-sm ${
+                          proposition?.name ? "border-amber-400 bg-amber-50" : "border-bo-border"
+                        }`}
+                      />
+                      <span class="mt-1 block text-xs text-bo-muted">
+                        Français : {collection!.name}
+                      </span>
+                    </label>
+
+                    {descriptionFrancaise ? (
+                      <div>
+                        <span class="text-xs text-bo-muted">Description</span>
+                        {/* Un éditeur par langue : le HTML de la description
+                            française (gras, listes, liens) se garde tel quel
+                            dans la traduction. */}
+                        <div
+                          class={proposition?.description ? "rounded ring-2 ring-amber-400" : ""}
+                        >
+                          <EditeurTexte
+                            nom="description"
+                            valeur={t.description}
+                            invite={texteLisible(collection!.description)}
+                            etiquette={`Description en ${l.nom.toLowerCase()}`}
+                          />
+                        </div>
+                        <details class="mt-1">
+                          <summary class="cursor-pointer text-xs text-bo-muted">
+                            Voir la description française
+                          </summary>
+                          <div class="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap rounded bg-bo-bg p-2 text-xs text-bo-muted">
+                            {texteLisible(collection!.description)}
+                          </div>
+                        </details>
+                      </div>
+                    ) : (
+                      <p class="text-xs text-bo-muted">
+                        Cette collection n'a pas de description française :
+                        rien à traduire de ce côté, le rayon n'en affiche dans
+                        aucune langue.
+                      </p>
+                    )}
+
+                    <div class="flex flex-wrap items-center gap-2">
+                      {/* « Enregistrer » d'abord : c'est le bouton que la
+                          touche Entrée déclenche. */}
+                      <button class="rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90">
+                        Enregistrer {l.nom.toLowerCase()}
+                      </button>
+                      <button
+                        name="auto"
+                        value="1"
+                        class="rounded border border-bo-border px-3 py-2 text-sm hover:border-bo-accent hover:text-bo-accent"
+                        title="Traduit le français dans les champs restés vides, sans enregistrer"
+                      >
+                        ✨ Proposer les traductions manquantes
+                      </button>
+                    </div>
+                  </form>
+                </details>
+              );
+            })}
+          </div>
         </section>
 
         <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface">

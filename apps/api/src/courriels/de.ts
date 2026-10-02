@@ -281,6 +281,8 @@ export const de: Partial<Record<CleCourriel, string>> = {
     "Memory Line, personalisierte Poster. Fragen zur Rechnung? Antworten Sie einfach auf die E-Mail, mit der sie kam.",
   "facturePdf.filigrane": "Storniert",
 
+  "livraison.remiseStand": "Übergabe an unserem Stand",
+
   /* --- Accusé de réception du formulaire de contact ------------------------ */
 
   "contact.objet": "Wir haben Ihre Nachricht erhalten — {sujet}",

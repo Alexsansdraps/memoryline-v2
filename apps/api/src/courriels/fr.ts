@@ -281,6 +281,15 @@ export const fr = {
   /** Écrit en grand, en travers de la facture d'une commande annulée. */
   "facturePdf.filigrane": "Annulée",
 
+  /**
+   * Le « mode de livraison » d'une vente du stand, qui n'en a pas : la
+   * cliente repart avec son affiche, ou revient la chercher. Écrit tel quel
+   * sur la commande par salon.ts — c'est ce texte français qui reste celui du
+   * back-office —, et traduit dans le courriel et la facture d'une cliente
+   * étrangère (livraisonDansLaLangue, traductions.ts).
+   */
+  "livraison.remiseStand": "Remise sur le stand",
+
   /* --- Accusé de réception du formulaire de contact ------------------------ */
 
   "contact.objet": "Nous avons bien reçu votre message — {sujet}",

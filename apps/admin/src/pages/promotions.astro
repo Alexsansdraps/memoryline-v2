@@ -4,16 +4,38 @@ import Admin from "../layouts/Admin.astro";
 import { adminApi, type PromoRule } from "../lib/api.ts";
 import { url } from "../lib/url.ts";
 import { libelleRegle } from "@memoryline/types";
+import TraductionsNoms from "../components/TraductionsNoms.astro";
+import { traiterTraductionsNoms } from "../lib/traductions-noms.ts";
+import type { EtatTraductions } from "../lib/traductions.ts";
 
 const api = adminApi(Astro.request);
 
 // --- Traitement des formulaires (SSR) ----------------------------------
 let flash: string | null = null;
+let flashErreur = false;
+/**
+ * Traductions des noms : propositions automatiques à relire, saisie à
+ * réafficher (après une proposition ou un refus), et bloc ouvert.
+ */
+let tradPromos: EtatTraductions | null = null;
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const action = form.get("_action");
   try {
-    if (action === "toggle") {
+    // Avant tout le reste : le dernier cas de cette chaîne enregistre une
+    // promotion, et un formulaire de traductions qui y tomberait en
+    // créerait une nouvelle.
+    if (action === "promos-traductions" || action === "promos-traduire") {
+      tradPromos = await traiterTraductionsNoms(
+        action === "promos-traductions" ? "enregistrer" : "proposer",
+        form,
+        await api.promos(),
+        (id, l, nom) => api.setPromoTranslation(id, { lang: l, name: nom }),
+        (l, champs) => api.proposerTraduction(l, champs),
+      );
+      flash = tradPromos.message;
+      flashErreur = tradPromos.erreur;
+    } else if (action === "toggle") {
       const id = Number(form.get("id"));
       await fetch(
         `${apiInterne()}/admin/promos/${id}/toggle`,
@@ -63,6 +85,7 @@ if (Astro.request.method === "POST") {
     }
   } catch (e) {
     flash = "Erreur : " + String(e);
+    flashErreur = true;
   }
 }
 
@@ -84,7 +107,15 @@ const describe = libelleRegle;
 ---
 
 <Admin title="Promotions">
-  {flash && <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">{flash}</p>}
+  {flash && (
+    <p
+      class={`mb-4 text-sm rounded border px-3 py-2 ${
+        flashErreur ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
 
   <p class="mb-4 max-w-3xl text-sm text-bo-muted">
     Une promotion sans code s'applique à tout le monde, silencieusement. Pour
@@ -138,6 +169,23 @@ const describe = libelleRegle;
       </tbody>
     </table>
   </section>
+
+  {/* Le nom d'une promotion s'écrit sur la ligne de remise du panier : un
+      client anglais doit l'y lire en anglais. Le code, lui, ne se traduit
+      jamais — c'est ce que le client tape. */}
+  {promos.length > 0 && (
+    <TraductionsNoms
+      titre="Traductions des noms de promotions"
+      aide="Le nom de chaque promotion, tel que le client le lit sur la ligne de remise de son panier. Une case vide affiche le nom français. Le code à saisir, lui, reste le même dans toutes les langues."
+      elements={promos}
+      propositions={tradPromos?.propositions}
+      saisies={tradPromos?.saisies}
+      actionEnregistrer="promos-traductions"
+      actionProposer="promos-traduire"
+      ouvert={!!tradPromos}
+      classe="mt-6 bg-bo-surface"
+    />
+  )}
 
   <section class="mt-6 bg-bo-surface border border-bo-border rounded-lg p-5">
     <h2 class="font-semibold mb-4">Nouvelle promotion</h2>

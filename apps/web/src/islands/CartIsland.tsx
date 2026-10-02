@@ -164,7 +164,9 @@ export default function CartIsland(props: {
     if (!propre) return;
     setCodeEtat("envoi");
     try {
-      const regle = await browserApi.verifierCode(propre);
+      // Dans la langue de la page : le nom de la règle s'écrit sur la ligne
+      // de remise.
+      const regle = await browserApi.verifierCode(propre, langue);
       setCodeApplique({ id: 0, ...regle } as PromoRule);
       setCodeEtat("repos");
       try {
@@ -241,11 +243,11 @@ export default function CartIsland(props: {
     return { items: data.items, fiches, poidsGrammes: data.poidsGrammes ?? 0 };
   });
 
-  // Promos actives (ex. « 3 achetées = 1 A4 offerte »).
+  // Promos actives (ex. « 3 achetées = 1 A4 offerte »), leur nom dans la
+  // langue de la page : c'est lui que la ligne de remise affiche.
   const [promos] = createResource(async () => {
     try {
-      const res = await fetch(`${PUBLIC_API_URL}/promos`);
-      return res.ok ? ((await res.json()) as PromoRule[]) : [];
+      return await browserApi.promos<PromoRule>(langue);
     } catch {
       return [];
     }
@@ -402,13 +404,12 @@ export default function CartIsland(props: {
     );
     return {
       amount: remiseCents,
-      // Le nom des promotions est saisi en français au back-office, sans
-      // traduction : dans une autre langue, la ligne dit « Remise », comme le
-      // récapitulatif de la commande.
-      label:
-        langue === LANGUE_DEFAUT
-          ? detail.map((d) => d.regle).join(" · ")
-          : tr("compte.commande.remise"),
+      // Le nom des promotions, dans la langue de la page : la boutique les
+      // traduit au back-office, et l'API retombe sur le français quand elle
+      // ne l'a pas fait. « Remise » ne sert plus que faute de règle du tout.
+      label: detail.length
+        ? detail.map((d) => d.regle).join(" · ")
+        : tr("compte.commande.remise"),
     };
   };
 

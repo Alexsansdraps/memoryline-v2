@@ -24,6 +24,7 @@ import type { Context } from "hono";
 import { and, asc, count, eq, isNull, ne, sql as raw } from "drizzle-orm";
 import { randomInt } from "node:crypto";
 import { db, schema } from "./db/client.js";
+import { fr } from "./courriels/fr.js";
 import { enregistrerFichiersDImpression } from "./configurator-routes.js";
 import { rattacherGenerationsAuPanier } from "./ia.js";
 import { HORS_VENTES } from "./statuts-vente.js";
@@ -299,7 +300,10 @@ export function mountSalonRoutes(app: Hono): void {
           customerId: client.id,
           totalCents: total,
           shippingCents: 0,
-          shippingLabel: "Remise sur le stand",
+          // Le texte vient du dictionnaire des courriels : c'est à lui que
+          // livraisonDansLaLangue le reconnaît pour le traduire dans le
+          // courriel et la facture d'une cliente étrangère.
+          shippingLabel: fr["livraison.remiseStand"],
           shippingName: nom,
           // L'événement va dans la note : c'est ce qu'on cherche des mois plus
           // tard pour savoir quel salon a bien marché.

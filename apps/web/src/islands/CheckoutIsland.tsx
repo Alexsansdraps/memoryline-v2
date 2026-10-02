@@ -358,11 +358,12 @@ export default function CheckoutIsland(props: {
   });
 
   // Promos actives. Le calcul lui-même vient du moteur PARTAGÉ : plus de
-  // réplique locale à maintenir en phase avec le serveur.
+  // réplique locale à maintenir en phase avec le serveur. Leurs noms dans la
+  // langue de la page, comme au panier : la caisse ne les affiche pas
+  // aujourd'hui, mais le jour où elle le fera, ils seront déjà les bons.
   const [promos] = createResource(async () => {
     try {
-      const res = await fetch(`${PUBLIC_API_URL}/promos`);
-      return res.ok ? ((await res.json()) as RegleParier[]) : [];
+      return await browserApi.promos<RegleParier>(langue);
     } catch {
       return [];
     }
@@ -383,7 +384,7 @@ export default function CheckoutIsland(props: {
     const code = codePromoRetenu();
     if (!code) return null;
     try {
-      const regle = await browserApi.verifierCode(code);
+      const regle = await browserApi.verifierCode(code, langue);
       return { ...regle, id: 0 } as unknown as RegleParier;
     } catch {
       return null;
@@ -403,9 +404,12 @@ export default function CheckoutIsland(props: {
     remisesPanier(lignes(), reglesEnJeu(), new Date(), codes()).remiseCents;
 
   /* --- Livraison ------------------------------------------------------- */
+  // Le nom, la description et le lieu de retrait des modes dans la langue de
+  // la page. La commande, elle, gardera le nom français (calcul du port côté
+  // serveur) : c'est celui que lit la boutique.
   const [catalogue] = createResource(async () => {
     try {
-      return await browserApi.shipping();
+      return await browserApi.shipping(langue);
     } catch {
       return null;
     }

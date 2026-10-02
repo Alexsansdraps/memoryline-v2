@@ -246,7 +246,22 @@ let flashErreur = false;
  * Traductions AUTOMATIQUES proposées, par langue, à afficher dans les champs
  * sans les enregistrer (voir les actions « traduction » + auto, plus bas).
  */
-const propositionsTraduction: Record<string, { name?: string; description?: string }> = {};
+const propositionsTraduction: Record<
+  string,
+  { name?: string; description?: string; seoTitle?: string; seoDescription?: string }
+> = {};
+
+/**
+ * Le référencement français à faire traduire, champ par champ — seulement ce
+ * qui est rempli : un titre Google vide n'a rien à traduire, et sa
+ * traduction vide laisse le site retomber sur le nom traduit.
+ */
+function seoFrancais(fr: { seoTitle?: string | null; seoDescription?: string | null }) {
+  const champs: Record<string, string> = {};
+  if (fr.seoTitle?.trim()) champs.seoTitle = fr.seoTitle;
+  if (fr.seoDescription?.trim()) champs.seoDescription = fr.seoDescription;
+  return champs;
+}
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const action = String(form.get("_action") ?? "");
@@ -306,6 +321,7 @@ if (Astro.request.method === "POST") {
       const { champs } = await api.proposerTraduction(lang, {
         name: source.fr.name ?? "",
         description: source.fr.description ?? "",
+        ...seoFrancais(source.fr),
       });
       propositionsTraduction[lang] = champs;
       const nom = LANGUES_TRADUISIBLES.find((l) => l.code === lang)?.nom ?? lang;
@@ -321,6 +337,9 @@ if (Astro.request.method === "POST") {
         if (!t.name?.trim() && source.fr.name) manque.name = source.fr.name;
         if (!t.description?.trim() && source.fr.description)
           manque.description = source.fr.description;
+        // Le référencement aussi, quand le français en a un.
+        for (const [champ, francais] of Object.entries(seoFrancais(source.fr)))
+          if (!t[champ as "seoTitle" | "seoDescription"]?.trim()) manque[champ] = francais;
         if (!Object.keys(manque).length) continue;
         const { champs } = await api.proposerTraduction(l.code, manque);
         propositionsTraduction[l.code] = champs;
@@ -335,6 +354,10 @@ if (Astro.request.method === "POST") {
         lang,
         name: String(form.get("name") ?? ""),
         description: String(form.get("description") ?? ""),
+        // Le référencement de cette langue, avec le reste : vide, il est
+        // retiré et la page retombe sur le nom et la description traduits.
+        seoTitle: String(form.get("seoTitle") ?? ""),
+        seoDescription: String(form.get("seoDescription") ?? ""),
       });
       const nom = LANGUES_TRADUISIBLES.find((l) => l.code === lang)?.nom ?? lang;
       flash = `Traduction « ${nom} » enregistrée.`;
@@ -607,13 +630,21 @@ function texteBrut(html: string | null | undefined): string {
     .trim();
 }
 
-/** « à traduire » / « partiel » / « traduit » — l'état visible d'un coup d'œil. */
+/**
+ * « à traduire » / « partiel » / « traduit » — l'état visible d'un coup d'œil.
+ *
+ * Le nom et la description comptent toujours ; le titre et la description
+ * Google seulement s'ils sont remplis en français — sinon il n'y a rien à
+ * traduire, et une fiche dont tout le reste l'est est bien « traduite ».
+ */
 function etatLangue(code: string) {
   const t = trad?.translations?.[code];
-  const nom = !!t?.name?.trim();
-  const desc = !!t?.description?.trim();
-  if (nom && desc) return { texte: "traduit", classe: "bg-green-100 text-green-800" };
-  if (nom || desc) return { texte: "partiel", classe: "bg-amber-100 text-amber-800" };
+  const attendus = [!!t?.name?.trim(), !!t?.description?.trim()];
+  if (trad?.fr.seoTitle?.trim()) attendus.push(!!t?.seoTitle?.trim());
+  if (trad?.fr.seoDescription?.trim()) attendus.push(!!t?.seoDescription?.trim());
+  const faits = attendus.filter(Boolean).length;
+  if (faits === attendus.length) return { texte: "traduit", classe: "bg-green-100 text-green-800" };
+  if (faits) return { texte: "partiel", classe: "bg-amber-100 text-amber-800" };
   return { texte: "à traduire", classe: "bg-bo-bg text-bo-muted" };
 }
 
@@ -1543,6 +1574,9 @@ try {
                 name: proposition?.name ?? trad!.translations?.[l.code]?.name,
                 description:
                   proposition?.description ?? trad!.translations?.[l.code]?.description,
+                seoTitle: proposition?.seoTitle ?? trad!.translations?.[l.code]?.seoTitle,
+                seoDescription:
+                  proposition?.seoDescription ?? trad!.translations?.[l.code]?.seoDescription,
               };
               const etat = etatLangue(l.code);
               return (
@@ -1601,6 +1635,43 @@ try {
                       </details>
                     </div>
 
+                    {/* Le référencement dans cette langue : ce que Google
+                        montre aux clients étrangers. Vide, la page retombe
+                        sur le nom et la description traduits ci-dessus —
+                        jamais sur le français. */}
+                    <div class="grid gap-3 sm:grid-cols-2">
+                      <label class="block">
+                        <span class="text-xs text-bo-muted">Titre Google</span>
+                        <input
+                          name="seoTitle"
+                          value={t.seoTitle ?? ""}
+                          maxlength={200}
+                          placeholder={trad!.fr.seoTitle?.trim() || "Vide : le nom traduit"}
+                          class={`mt-1 w-full border rounded px-3 py-2 text-sm ${
+                            proposition?.seoTitle ? "border-amber-400 bg-amber-50" : "border-bo-border"
+                          }`}
+                        />
+                        <span class="mt-1 block text-xs text-bo-muted">
+                          Français : {trad!.fr.seoTitle?.trim() || "non rempli (le nom de l'affiche)"}
+                        </span>
+                      </label>
+                      <label class="block">
+                        <span class="text-xs text-bo-muted">Description Google</span>
+                        <textarea
+                          name="seoDescription"
+                          rows="2"
+                          maxlength={400}
+                          placeholder={trad!.fr.seoDescription?.trim() || "Vide : le début de la description traduite"}
+                          class={`mt-1 w-full border rounded px-3 py-2 text-sm ${
+                            proposition?.seoDescription ? "border-amber-400 bg-amber-50" : "border-bo-border"
+                          }`}
+                        >{t.seoDescription ?? ""}</textarea>
+                        <span class="mt-1 block text-xs text-bo-muted">
+                          Français : {trad!.fr.seoDescription?.trim() || "non remplie (le début de la description)"}
+                        </span>
+                      </label>
+                    </div>
+
                     <div class="flex flex-wrap items-center gap-2">
                       {/* « Enregistrer » d'abord : c'est le bouton que la
                           touche Entrée déclenche, et Entrée doit enregistrer,
@@ -1612,7 +1683,7 @@ try {
                         name="auto"
                         value="1"
                         class="rounded border border-bo-border px-3 py-2 text-sm hover:border-bo-accent hover:text-bo-accent"
-                        title="Traduit le nom et la description françaises dans les champs, sans enregistrer"
+                        title="Traduit le nom, la description et le référencement français dans les champs, sans enregistrer"
                       >
                         ✨ Proposer une traduction automatique
                       </button>

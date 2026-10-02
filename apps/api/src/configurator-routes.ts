@@ -44,7 +44,12 @@ import {
   estConfigure as mailConfigure,
 } from "./mail.js";
 import { noterLaRecuperation } from "./relance-panier.js";
-import { langueDuVisiteur, nomTraduit } from "./traductions.js";
+import {
+  langueDuVisiteur,
+  livraisonDansLaLangue,
+  nomTraduit,
+  texteDansLaLangue,
+} from "./traductions.js";
 import {
   langueDuDestinataire,
   langueLue,
@@ -1469,7 +1474,9 @@ async function previenirDuPaiement(orderId: number): Promise<void> {
         codePromo: order.promoCode,
         portCents: port,
         totalCents: order.totalCents,
-        modeLivraison: order.shippingLabel,
+        // La commande garde le nom français du mode ; la cliente lit celui de
+        // sa langue, quand la boutique l'a traduit.
+        modeLivraison: (await livraisonDansLaLangue(order, langue)).nom,
         adresse: [
           order.shippingName,
           order.relayPointLabel,
@@ -1641,7 +1648,10 @@ export function mountConfiguratorRoutes(app: Hono) {
       characters: types.map(({ t, categoryName, categoryTranslations }) => ({
         id: t.id,
         slug: t.slug,
-        name: t.name,
+        // Le nom du personnage dans la langue du visiteur, le français à
+        // défaut : la liste « vos personnages » et les bulles des vignettes
+        // l'affichent. Les commandes, elles, ne citent que son identifiant.
+        name: texteDansLaLangue(t.translations, langue, "name", t.name),
         // Le nom de l'onglet dans la langue du visiteur (?lang=), le
         // français à défaut : il ne sert qu'à regrouper, jamais d'identifiant.
         category: categoryName

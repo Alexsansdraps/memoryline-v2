@@ -53,6 +53,7 @@ import {
   tc,
   type Langue,
 } from "./courriels/index.js";
+import { langueDuVisiteur, livraisonDansLaLangue, nomTraduit } from "./traductions.js";
 
 export const COOKIE_CLIENT = "ml_client";
 
@@ -1004,10 +1005,15 @@ export function mountCompteRoutes(app: Hono): void {
   /**
    * Détail d'une commande. 404 — et non 403 — quand elle appartient à
    * quelqu'un d'autre : répondre « interdit » confirmerait qu'elle existe.
+   *
+   * ?lang= : les noms des cadres et du mode de livraison dans la langue de la
+   * page, le français à défaut. La commande elle-même (`order`) reste telle
+   * qu'enregistrée, en français.
    */
   app.get("/compte/commandes/:id", async (c) => {
     const moi = await clientDeLaRequete(c);
     if (!moi) return c.json({ error: "Non authentifié" }, 401);
+    const langue = langueDuVisiteur(c);
     const id = Number(c.req.param("id"));
     const [order] = await db
       .select()
@@ -1058,11 +1064,22 @@ export function mountCompteRoutes(app: Hono): void {
           .filter((n) => Number.isFinite(n) && n > 0),
       ),
     ];
+    // Le nom — c'est-à-dire la couleur — dans la langue de la page, comme
+    // dans le module de personnalisation où la cliente l'a choisi.
     const cadres = cadreIds.length
-      ? await db
-          .select({ id: schema.frames.id, name: schema.frames.name })
-          .from(schema.frames)
-          .where(inArray(schema.frames.id, cadreIds))
+      ? (
+          await db
+            .select({
+              id: schema.frames.id,
+              name: schema.frames.name,
+              translations: schema.frames.translations,
+            })
+            .from(schema.frames)
+            .where(inArray(schema.frames.id, cadreIds))
+        ).map(({ translations, ...f }) => ({
+          ...f,
+          name: nomTraduit(translations, langue) ?? f.name,
+        }))
       : [];
 
     const expeditions = await db
@@ -1090,6 +1107,13 @@ export function mountCompteRoutes(app: Hono): void {
       order,
       items,
       cadres,
+      /**
+       * Le mode de livraison tel que la cliente le lit : dans la langue de la
+       * page quand la boutique l'a traduit, sinon le nom français figé sur la
+       * commande (`order.shippingLabel`, qui ne change pas). Même règle que
+       * ses courriels et sa facture.
+       */
+      livraison: await livraisonDansLaLangue(order, langue),
       expeditions: expeditions.map((f) => ({
         ...f,
         trackingUrl: f.trackingUrl ?? lienDeSuivi(f.carrier, f.trackingNumber),

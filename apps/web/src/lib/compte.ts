@@ -151,6 +151,13 @@ export interface CommandeDetail {
    * son libellé générique plutôt que la page refuse de s'ouvrir.
    */
   cadres?: Cadre[];
+  /**
+   * Le mode de livraison tel que la cliente le lit : dans la langue demandée
+   * quand la boutique l'a traduit, le nom français figé sur la commande sinon
+   * (même règle que ses courriels et sa facture). `order`, lui, reste en
+   * français. Absent sur une API d'une version antérieure.
+   */
+  livraison?: { nom: string | null; description: string | null };
   expeditions: Expedition[];
   montants: Montants;
   statutFinancier: string;
@@ -383,8 +390,16 @@ export const reinitialiserMotDePasse = (
 export const commandes = (astro: ContexteAstro) =>
   appel<CommandeResume[]>(astro, "/compte/commandes");
 
-export const commande = (astro: ContexteAstro, id: string) =>
-  appel<CommandeDetail>(astro, `/compte/commandes/${encodeURIComponent(id)}`);
+/**
+ * Le détail d'une commande. `langue` : celle de la page — le nom des cadres
+ * et du mode de livraison s'y lisent (repli français). Rien n'est demandé
+ * pour le français : la réponse y est celle d'avant.
+ */
+export const commande = (astro: ContexteAstro, id: string, langue?: Langue) =>
+  appel<CommandeDetail>(
+    astro,
+    `/compte/commandes/${encodeURIComponent(id)}${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,
+  );
 
 export const adresses = (astro: ContexteAstro) =>
   appel<Adresse[]>(astro, "/compte/adresses");

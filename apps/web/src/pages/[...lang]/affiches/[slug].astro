@@ -19,7 +19,6 @@ import AddToCartButton from "../../../islands/AddToCartButton.tsx";
 import AfficheIA from "../../../islands/AfficheIA.tsx";
 import { htmlSur } from "../../../lib/html-sur.ts";
 import {
-  LANGUE_DEFAUT,
   LOCALE_COMPLETE,
   estLangue,
   langueDepuisParam,
@@ -111,26 +110,26 @@ const kindLabel =
     : tr("genre.prete_a_imprimer");
 
 /*
- * Le titre et la description SEO sont saisis au back-office en FRANÇAIS, et
- * l'API ne les traduit pas (elle ne traduit que le nom et la description).
- * Tant que c'est le cas, ils ne servent qu'à la page française : ailleurs,
- * Google et les partages afficheraient du français sur /en ou /de. Les autres
- * langues retombent sur le nom et la description, eux traduits.
+ * Le titre et la description SEO arrivent DANS LA LANGUE DE LA PAGE : la
+ * boutique les traduit au back-office, et l'API les rend tels quels. Hors du
+ * français, non traduits, ils valent null — jamais le français, qui mettrait
+ * du français dans les résultats Google de /en ou /de. La page n'a donc pas à
+ * savoir dans quelle langue elle est : un null la fait retomber sur le nom et
+ * la description, eux traduits (ou français, faute de mieux).
  */
-const seoSaisiDansLaLangue = langue === LANGUE_DEFAUT;
 
 // Le texte du référencement, dans l'ordre : ce que la boutique a écrit
 // elle-même, puis le début de la description, puis une phrase de repli. Le
 // découpage à cent soixante caractères coupe au milieu d'un mot ; il ne sert
 // donc que faute de mieux.
 const description =
-  (seoSaisiDansLaLangue ? product.seoDescription?.trim() : "") ||
+  product.seoDescription?.trim() ||
   product.description?.replace(/<[^>]+>/g, "").slice(0, 160) ||
   tr("produit.meta_repli")
     .replace("{nom}", cleanName)
     .replace("{genre}", kindLabel.toLowerCase());
 /** Le titre de l'onglet et du résultat Google, quand il doit différer du nom. */
-const titreSeo = (seoSaisiDansLaLangue && product.seoTitle?.trim()) || null;
+const titreSeo = product.seoTitle?.trim() || null;
 
 // --- Données structurées Schema.org (SEO riche) ------------------------
 const siteUrl = Astro.site?.toString().replace(/\/$/, "") ?? "https://memoryline.fr";

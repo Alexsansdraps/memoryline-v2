@@ -3,14 +3,18 @@ import { api, type Banner } from "../lib/api.ts";
 import { LANGUE_DEFAUT, lien, type Langue } from "../i18n/utils.ts";
 
 interface Props {
-  /** Langue de la page : un lien interne du bandeau y garde la visiteuse. */
+  /**
+   * Langue de la page : le message s'y lit, et un lien interne du bandeau y
+   * garde la visiteuse.
+   */
   langue?: Langue;
 }
 const { langue = LANGUE_DEFAUT } = Astro.props;
 
 let banner: Banner | null = null;
 try {
-  banner = await api.banner();
+  // Message et texte du lien dans la langue de la page, le français à défaut.
+  banner = await api.banner(langue);
 } catch {
   // API non joignable -> pas de bandeau
 }

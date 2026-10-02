@@ -13,16 +13,36 @@
 import Admin from "../layouts/Admin.astro";
 import { url } from "../lib/url.ts";
 import { adminApi, type CollectionBo } from "../lib/api.ts";
+import TraductionsNoms from "../components/TraductionsNoms.astro";
+import { traiterTraductionsNoms } from "../lib/traductions-noms.ts";
+import type { EtatTraductions } from "../lib/traductions.ts";
 
 const api = adminApi(Astro.request);
 
 let flash: string | null = null;
 let flashErreur = false;
+/**
+ * Traductions des noms : propositions automatiques à relire, saisie à
+ * réafficher (après une proposition ou un refus), et bloc ouvert.
+ */
+let tradCollections: EtatTraductions | null = null;
 
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   const action = String(f.get("_action") ?? "");
   try {
+    if (action === "collections-traductions" || action === "collections-traduire") {
+      const vivantes = (await api.collections()).collections.filter((c) => !c.archivedAt);
+      tradCollections = await traiterTraductionsNoms(
+        action === "collections-traductions" ? "enregistrer" : "proposer",
+        f,
+        vivantes,
+        (id, l, nom) => api.setCollectionTranslation(id, { lang: l, name: nom }),
+        (l, champs) => api.proposerTraduction(l, champs),
+      );
+      flash = tradCollections.message;
+      flashErreur = tradCollections.erreur;
+    }
     if (action === "creer") {
       const name = String(f.get("name") ?? "").trim();
       if (!name) throw new Error("Donnez un nom à la collection.");
@@ -279,6 +299,25 @@ const archivees = collections
       )
     }
   </section>
+
+  {/* Le nom d'une collection fait le titre de son rayon sur le site : il se
+      lit dans la langue du client. Sa description se traduit sur sa fiche
+      (« Ouvrir »). */}
+  {
+    rangees.length > 0 && (
+      <TraductionsNoms
+        titre="Traductions des noms de collections"
+        aide="Le nom de chaque collection, tel que le client le lit en titre du rayon. Une case vide affiche le nom français. L'adresse du rayon ne change pas d'une langue à l'autre. La description d'une collection se traduit sur sa fiche."
+        elements={rangees}
+        propositions={tradCollections?.propositions}
+        saisies={tradCollections?.saisies}
+        actionEnregistrer="collections-traductions"
+        actionProposer="collections-traduire"
+        ouvert={!!tradCollections}
+        classe="mt-6 bg-bo-surface"
+      />
+    )
+  }
 
   {/* ====== Collections archivées ====== */}
   {

@@ -286,6 +286,8 @@ export const it: Partial<Record<CleCourriel, string>> = {
   /** « Fattura » est féminin : c'est elle qui est annulée. */
   "facturePdf.filigrane": "Annullata",
 
+  "livraison.remiseStand": "Ritiro al nostro stand",
+
   /* --- Accusé de réception du formulaire de contact ------------------------ */
 
   "contact.objet": "Abbiamo ricevuto il tuo messaggio — {sujet}",
