@@ -9,6 +9,7 @@ import {
 } from "solid-js";
 import type { PosterConfig, PosterFormat } from "@memoryline/types";
 import { sourceVideo } from "@memoryline/types";
+import type { SignatureApercu } from "@memoryline/configurator";
 import { browserApi, getCartId, type EncartVideoDTO } from "../lib/api.ts";
 import ConfiguratorIsland from "./ConfiguratorIsland.tsx";
 import { EncartVideo, LecteurVideo, facadeEncart } from "./EncartVideo.tsx";
@@ -61,6 +62,15 @@ export interface ProductConfiguratorProps {
    * la fonction attendue par le paquet du configurateur.
    */
   video?: EncartVideoDTO | null;
+  /**
+   * La signature de la boutique, en bas à droite de l'aperçu — celle que le
+   * fichier d'impression posera (cf. SignatureCreation).
+   *
+   * De la DONNÉE, lue par la fiche côté serveur : cette modale est montée
+   * `client:only`, Astro sérialise ses props, et un objet de quatre champs
+   * simples la traverse sans rien perdre.
+   */
+  signature?: SignatureApercu | null;
 }
 
 export default function ProductConfigurator(
@@ -299,24 +309,22 @@ export default function ProductConfigurator(
                 ✕
               </button>
             </header>
-            {/* `ml-sans-prix-cadres` tait le supplément sous chaque cadre
-                (global.css) : le paquet du configurateur n'a qu'une option
-                pour taire TOUS les montants (`sansPrix`), et c'est d'ici que
-                le réglage de la boutique peut l'atteindre sans y toucher. */}
-            <div
-              class={
-                props.prixCadres === false
-                  ? "ml-modal-body ml-sans-prix-cadres"
-                  : "ml-modal-body"
-              }
-            >
+            <div class="ml-modal-body">
               <ConfiguratorIsland
                 langue={props.langue}
                 product={props.product}
                 prices={props.prices}
                 sansPrix={props.sansPrix}
+                /* Le supplément sous chaque cadre est tu par le
+                   configurateur lui-même, qui sait quel bout de vignette il
+                   dessine. Une règle de style de la fiche (l'ancienne
+                   `.ml-sans-prix-cadres`) cachait le deuxième `div` de la
+                   vignette : elle serait tombée en panne au premier élément
+                   ajouté dans la vignette, sans que rien ne le signale. */
+                sansPrixCadres={props.prixCadres === false}
                 cadresProposes={props.cadresProposes}
                 quantite={quantite()}
+                signature={props.signature}
                 foregroundUrl={props.foregroundUrl}
                 defaults={{
                   ...props.defaults,

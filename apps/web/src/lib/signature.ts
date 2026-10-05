@@ -11,16 +11,18 @@
  */
 import { assetUrl, setting } from "./api.ts";
 
-export interface SignatureApercu {
-  /** Adresse de l'image, prête pour le navigateur. */
-  url: string;
-  /** Largeur, en fraction du petit côté de l'affiche. */
-  largeur: number;
-  /** Marge depuis les bords droit et bas, même unité. */
-  marge: number;
-  /** Opacité, de 0 à 1. */
-  opacite: number;
-}
+/*
+ * La forme attendue est celle du CALQUE qui la dessine (SignatureCreation, du
+ * paquet du configurateur), et non une copie locale : une copie aurait fini
+ * par décrire autre chose que ce que le calque sait poser.
+ *
+ * Import de TYPE pur : il disparaît à la compilation, et cette fonction
+ * continue d'être lue côté serveur, par les pages, sans jamais tirer le
+ * configurateur avec elle. Réexporté ici, parce que c'est d'ici que les pages
+ * et les îlots de la boutique le lisent.
+ */
+import type { SignatureApercu } from "@memoryline/configurator";
+export type { SignatureApercu };
 
 /** Le logo de la boutique, servi par le site : la signature par défaut. */
 const LOGO_PAR_DEFAUT = "/logo-memory-line.png";

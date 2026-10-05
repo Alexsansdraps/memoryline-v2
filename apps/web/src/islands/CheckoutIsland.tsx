@@ -18,6 +18,7 @@ import {
   type JSX,
 } from "solid-js";
 import {
+  afficheComposee,
   demandeUnPointRelais,
   demandeUneAdresse,
   formaterPoids,
@@ -31,12 +32,14 @@ import {
 } from "@memoryline/types";
 import {
   PosterPreview,
+  SignatureCreation,
   ZoneDefilante,
   createSvgCache,
   stateFromConfig,
   SLOTS,
   findVariant,
   variantesDeVue,
+  type SignatureApercu,
 } from "@memoryline/configurator";
 
 /**
@@ -192,6 +195,14 @@ export default function CheckoutIsland(props: {
   };
   /** Ses adresses déjà enregistrées, la première étant celle par défaut. */
   carnet?: AdresseCarnet[];
+  /**
+   * La signature de la boutique, sur les vignettes du récapitulatif — le même
+   * réglage que celui du fichier d'impression, lu par la page côté serveur.
+   *
+   * La dernière vue de l'affiche avant le paiement : c'est ici, plus qu'
+   * ailleurs, que l'écran doit dire la vérité sur ce qui sera imprimé.
+   */
+  signature?: SignatureApercu | null;
 }): JSX.Element {
   const langue = props.langue ?? LANGUE_DEFAUT;
   const tr = t(langue);
@@ -1815,6 +1826,17 @@ export default function CheckoutIsland(props: {
                                 slots={biblio()!.slots}
                                 cache={cache}
                                 assetBaseUrl={PUBLIC_API_URL}
+                                /* La signature suit la règle du fichier
+                                   d'impression : seules les lignes composées
+                                   sont signées. Ce récapitulatif-ci n'a pas de
+                                   branche « affiche prête à imprimer » — elles
+                                   passent donc par cet aperçu, et leur fichier
+                                   n'est pas signé. */
+                                signature={
+                                  afficheComposee(it.config)
+                                    ? props.signature
+                                    : null
+                                }
                                 messages={{
                                   exempleAffiche: tr("cfg.exemple_affiche"),
                                 }}
@@ -1833,7 +1855,19 @@ export default function CheckoutIsland(props: {
                         >
                           <div
                             class="relative w-full overflow-hidden bg-paper-deep"
-                            style={{ "aspect-ratio": "1 / 1.4142" }}
+                            /* La feuille dans son vrai sens, comme au panier :
+                               le calque de signature se cale sur cette boîte,
+                               et l'impression pose la sienne à 12 % du petit
+                               côté de la feuille tournée. Un portrait figé
+                               rejetait la signature d'une création en paysage
+                               hors de l'affiche — et c'est le dernier écran
+                               avant le paiement. */
+                            style={{
+                              "aspect-ratio":
+                                it.config.orientation === "paysage"
+                                  ? "1.4142 / 1"
+                                  : "1 / 1.4142",
+                            }}
                           >
                             <img
                               src={apercuAbsolu(
@@ -1846,6 +1880,9 @@ export default function CheckoutIsland(props: {
                                 e.currentTarget.hidden = true;
                               }}
                             />
+                            {/* Signée comme au panier : une affiche tirée
+                                d'une photo s'imprime par le même moteur. */}
+                            <SignatureCreation signature={props.signature} />
                           </div>
                         </Show>
                       </div>

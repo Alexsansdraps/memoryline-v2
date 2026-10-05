@@ -16,6 +16,15 @@ export interface MessagesConfigurateur {
   champsLignes: string[];
   /** Exemple montré en filigrane dans chaque champ, dans l'ordre. */
   exemplesLignes: string[];
+  /**
+   * Le compteur d'exemplaires. Il a quitté le module pour la fiche produit
+   * (on décide combien avant de composer, comme pour une affiche prête à
+   * imprimer) : ces trois libellés ne sont donc lus par personne
+   * aujourd'hui. Ils restent traduits par l'hôte, parce que ce dictionnaire
+   * est PARTIEL : une clé laissée de côté retombe sur le français ci-dessous
+   * dans les cinq langues, et le jour où le compteur revient — au stand, par
+   * exemple — le français reviendrait avec lui, sans que rien ne le signale.
+   */
   quantite: string;
   quantiteMoins: string;
   quantitePlus: string;

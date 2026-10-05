@@ -878,7 +878,14 @@ function caleDuBord(colonne: HTMLElement, caleActuelle: number): number {
  * liste qu'on pousse — ou les boutons.
  */
 
-/** Gris des barres : un curseur foncé sur un rail clair, lisible de loin. */
+/**
+ * Gris des barres : un curseur foncé sur un rail clair, lisible de loin.
+ *
+ * Portés en dur, parce que le module doit tenir debout sans la feuille de
+ * l'hôte. Ce sont les mêmes que `--ml-barre-curseur` et `--ml-barre-rail` du
+ * site (global.css), qui habillent la barre du navigateur : changer l'un sans
+ * l'autre ferait cohabiter deux gris dans la même fenêtre.
+ */
 const RAIL = "#e5e7eb";
 const CURSEUR = "#4b5563";
 /** Épaisseur de la barre dessinée. */

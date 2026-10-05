@@ -135,20 +135,40 @@ function avancement(cles: string[]): { faites: number; total: number } {
   return { faites, total: aTraduire.length };
 }
 
+/*
+ * UN CHAMP CHIFFRÉ PORTE SES BORNES ET SA VALEUR D'USINE, et le type l'exige :
+ * le gabarit partagé les écrivait en dur (« 1 à 24 », « 8 si vide »), c'est-à-
+ * dire celles du nombre d'affiches de la vitrine. Les trois réglages de la
+ * signature s'affichaient donc pré-remplis à 8 — et comme l'enregistrement
+ * réécrit TOUS les champs du formulaire, pas seulement ceux qu'on a touchés, le
+ * premier « Enregistrer » de cet écran, fût-ce pour une baseline, aurait posé
+ * largeur 8 %, marge 8 % et opacité ramenée au plancher sur chaque aperçu et
+ * chaque fichier d'impression, sans un mot. Dans l'autre sens, « max 24 »
+ * interdisait de saisir une opacité de 100 et « min 1 » une marge de 0.
+ *
+ * Les bornes et les replis sont ceux des DEUX lecteurs du réglage
+ * (apps/api/src/fichiers-impression.ts, apps/web/src/lib/signature.ts) : un
+ * champ pré-rempli à sa valeur d'usine écrit exactement ce que l'absence de
+ * réglage donnait déjà, donc enregistrer ne change plus rien à l'écran ni sur
+ * le papier.
+ */
 type Champ = {
   key: string;
   label: string;
-  type:
-    | "switch"
-    | "texte"
-    | "long"
-    | "nombre"
-    | "image"
-    | "lien"
-    | "collection"
-    | "video";
   aide?: string;
-};
+} & (
+  | {
+      type:
+        | "switch"
+        | "texte"
+        | "long"
+        | "image"
+        | "lien"
+        | "collection"
+        | "video";
+    }
+  | { type: "nombre"; min: number; max: number; defaut: number }
+);
 
 /**
  * Ce que la boutique fera de l'adresse saisie, dit en français.
@@ -302,7 +322,15 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
           "donné dans Produits › Collections. Le nombre d'affiches ci-dessous " +
           "s'applique dans les deux cas.",
       },
-      { key: "home.vitrine.count", label: "Nombre d'affiches (1 à 24)", type: "nombre" },
+      {
+        key: "home.vitrine.count",
+        label: "Nombre d'affiches (1 à 24)",
+        type: "nombre",
+        // Le repli de la boutique : apps/web/src/pages/[...lang]/index.astro.
+        min: 1,
+        max: 24,
+        defaut: 8,
+      },
     ],
   },
   {
@@ -355,18 +383,27 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
         key: "signature.largeur",
         label: "Largeur, en % du petit côté de l'affiche (4 à 25)",
         type: "nombre",
+        min: 4,
+        max: 25,
+        defaut: 12,
         aide: "12 si vide.",
       },
       {
         key: "signature.marge",
         label: "Marge depuis les bords, en % (0 à 10)",
         type: "nombre",
+        min: 0,
+        max: 10,
+        defaut: 3,
         aide: "3 si vide.",
       },
       {
         key: "signature.opacite",
         label: "Opacité, en % (20 à 100)",
         type: "nombre",
+        min: 20,
+        max: 100,
+        defaut: 100,
         aide: "100 si vide : la signature est pleine.",
       },
     ],
@@ -491,12 +528,14 @@ const entre = (b: { min: number; max: number }) =>
               ) : champ.type === "nombre" ? (
                 <label class="block">
                   <span class="text-bo-muted">{champ.label}</span>
+                  {/* Les bornes et le pré-remplissage viennent du champ, jamais
+                      du gabarit : voir le type `Champ` en tête de page. */}
                   <input
                     type="number"
-                    min="1"
-                    max="24"
+                    min={champ.min}
+                    max={champ.max}
                     name={champ.key}
-                    value={valeur(champ.key) || "8"}
+                    value={valeur(champ.key) || String(champ.defaut)}
                     class="mt-1 w-24 border border-bo-border rounded px-3 py-2"
                   />
                 </label>

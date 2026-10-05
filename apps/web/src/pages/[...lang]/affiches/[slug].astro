@@ -18,6 +18,7 @@ import {
 import ProductConfigurator from "../../../islands/ProductConfigurator.tsx";
 import AddToCartButton from "../../../islands/AddToCartButton.tsx";
 import AfficheIA from "../../../islands/AfficheIA.tsx";
+import { signatureDesCreations } from "../../../lib/signature.ts";
 import { htmlSur } from "../../../lib/html-sur.ts";
 import {
   LOCALE_COMPLETE,
@@ -82,6 +83,18 @@ const prixCadres = Astro.locals.stand || (await prixDesCadresSurLeSite());
  * Aucune requête de plus : les réglages sont déjà lus une fois par page.
  */
 const encartVideo = Astro.locals.stand ? null : await encartVideoDuSite(langue);
+
+/*
+ * La signature de la boutique, posée en bas à droite de l'affiche.
+ *
+ * Lue ICI, sur le serveur, et passée aux îlots : c'est le même réglage que
+ * celui du fichier d'impression, et l'aperçu doit en porter la marque dès son
+ * premier dessin. Au stand comme sur le site — l'affiche vendue sur le salon
+ * s'imprime avec sa signature elle aussi.
+ *
+ * Aucune requête de plus : les réglages de la page sont déjà lus une fois.
+ */
+const signature = await signatureDesCreations();
 
 let product: ProductDetail | null = null;
 try {
@@ -368,6 +381,7 @@ const breadcrumbLd = {
             client:only="solid-js"
             sansPrix={sansPrix}
             stand={Astro.locals.stand}
+            signature={signature}
             product={{
               id: product.id,
               name: cleanName,
@@ -391,6 +405,7 @@ const breadcrumbLd = {
             sansPrix={sansPrix}
             cadresProposes={cadresProposes}
             prixCadres={prixCadres}
+            signature={signature}
             video={encartVideo}
             product={{
               id: product.id,

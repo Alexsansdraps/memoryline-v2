@@ -16,13 +16,16 @@ import {
 } from "solid-js";
 import {
   PosterPreview,
+  SignatureCreation,
   createSvgCache,
   stateFromConfig,
   SLOTS,
   findVariant,
   variantesDeVue,
+  type SignatureApercu,
 } from "@memoryline/configurator";
 import {
+  afficheComposee,
   dimensionsFormat,
   formaterPoids,
   lignesRemplies,
@@ -142,6 +145,19 @@ export default function CartIsland(props: {
    * sous les affiches, et non sur une page de plus.
    */
   stand?: boolean;
+  /**
+   * La signature de la boutique, en bas à droite de chaque aperçu.
+   *
+   * Lue par la page, côté serveur : cet îlot est monté `client:only`, et une
+   * vignette signée une seconde après coup se verrait sauter. Absente, les
+   * aperçus ne sont pas signés.
+   *
+   * Elle ne va PAS sur une affiche prête à imprimer : celle-là s'imprime
+   * depuis le visuel de la boutique (`renderImagePdf`), qui ne passe pas par
+   * le moteur de composition — son fichier n'est donc pas signé, et une
+   * vignette signée mentirait sur ce qui part à l'atelier.
+   */
+  signature?: SignatureApercu | null;
 }): JSX.Element {
   const langue = props.langue ?? LANGUE_DEFAUT;
   const tr = t(langue);
@@ -622,6 +638,14 @@ export default function CartIsland(props: {
                           slots={biblio()!.slots}
                           cache={cache}
                           assetBaseUrl={PUBLIC_API_URL}
+                          /* Signée seulement si la ligne porte sa propre
+                             composition — la condition exacte du fichier
+                             d'impression. Une affiche prête à imprimer dont
+                             le visuel manque atterrit ici, et son fichier,
+                             lui, n'est pas signé. */
+                          signature={
+                            afficheComposee(it.config) ? props.signature : null
+                          }
                           messages={{ exempleAffiche: tr("cfg.exemple_affiche") }}
                           foregroundUrl={
                             // Le décor est enregistré dans la configuration au
@@ -655,7 +679,22 @@ export default function CartIsland(props: {
                       >
                         <div
                           class="relative w-full overflow-hidden bg-paper-deep"
-                          style={{ "aspect-ratio": "1 / 1.4142" }}
+                          /* LA FEUILLE, DANS SON VRAI SENS, et non un portrait
+                             d'office. C'est cette boîte qui sert de repère au
+                             calque de signature, et le fichier d'impression
+                             pose la sienne à 12 % du petit côté de la feuille
+                             TOURNÉE (`dansLeSens`, apps/api/src/pdf.ts). Avec
+                             un portrait figé, une création en paysage — le sens
+                             se déduit de la photo — voyait sa signature
+                             descendre SOUS l'affiche, sur le fond gris de la
+                             vignette. Même ternaire qu'AfficheIA, qui montre
+                             déjà la création dans son sens. */
+                          style={{
+                            "aspect-ratio":
+                              it.config.orientation === "paysage"
+                                ? "1.4142 / 1"
+                                : "1 / 1.4142",
+                          }}
                         >
                           <img
                             src={apercuAbsolu(
@@ -671,6 +710,11 @@ export default function CartIsland(props: {
                               e.currentTarget.hidden = true;
                             }}
                           />
+                          {/* Signée comme les autres : le fichier
+                              d'impression d'une affiche tirée d'une photo
+                              passe par le même moteur, donc par la même
+                              signature. */}
+                          <SignatureCreation signature={props.signature} />
                         </div>
                       </Show>
                     </div>

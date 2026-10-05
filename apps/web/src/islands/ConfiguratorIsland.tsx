@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { t, lien, LANGUE_DEFAUT, LOCALE_COMPLETE, type Langue } from "../i18n/utils.ts";
 import { createResource, createSignal, Show, type JSX } from "solid-js";
-import { Configurator } from "@memoryline/configurator";
+import { Configurator, type SignatureApercu } from "@memoryline/configurator";
 import type {
   BackgroundDTO,
   CharacterTypeDTO,
@@ -51,6 +51,12 @@ export interface ConfiguratorIslandProps {
   /** Stand de salon : aucun montant à l'écran (cf. ConfiguratorProps). */
   sansPrix?: boolean;
   /**
+   * Vrai quand la boutique tait le supplément de chaque cadre (« + 15 € »
+   * sous sa vignette), réglage de la page Cadres du back-office. Le cadre
+   * reste compté dans le total. Cf. StepFormat du configurateur.
+   */
+  sansPrixCadres?: boolean;
+  /**
    * Faux quand le site ne propose pas les cadres (réglage du back-office,
    * jamais au stand) : la rubrique « Cadre » disparaît du configurateur, et
    * une ligne rouverte depuis le panier repart sans son cadre. Absent, les
@@ -73,6 +79,17 @@ export interface ConfiguratorIslandProps {
    * fournit le contenu déjà traduit.
    */
   encartVideo?: () => JSX.Element;
+  /**
+   * La signature de la boutique, en bas à droite de l'aperçu.
+   *
+   * Lue dans les réglages par la PAGE (`signatureDesCreations()`), côté
+   * serveur : un îlot monté dans le navigateur ne doit pas aller rechercher
+   * un réglage que la page a déjà sous la main, et l'aperçu doit être signé
+   * dès le premier dessin — pas une seconde plus tard.
+   *
+   * Absente : l'affiche n'est pas signée à l'écran (cf. PosterPreview).
+   */
+  signature?: SignatureApercu | null;
 }
 
 /** Prix selon le format choisi, depuis les prix réels des variantes. */
@@ -256,6 +273,15 @@ export default function ConfiguratorIsland(
                   tr("cfg.ligne2_exemple"),
                   tr("cfg.ligne3_exemple"),
                 ],
+                // Le compteur d'exemplaires se tient sur la fiche produit, pas
+                // ici : ces trois libellés ne s'affichent donc nulle part
+                // aujourd'hui. On les passe quand même, parce que `messages`
+                // est un dictionnaire PARTIEL — une clé qu'on oublie retombe
+                // sur le français du paquet, dans les cinq langues. Le jour où
+                // le module reprend son compteur, rien n'est à traduire.
+                quantite: tr("cfg.quantite"),
+                quantiteMoins: tr("cfg.quantite_moins"),
+                quantitePlus: tr("cfg.quantite_plus"),
                 couleurTexte: tr("cfg.couleur_texte"),
                 choisirFond: tr("cfg.fond"),
                 personnages: tr("cfg.personnages"),
@@ -325,10 +351,12 @@ export default function ConfiguratorIsland(
               slots={d().slots as never}
               prices={props.prices}
               sansPrix={props.sansPrix}
+              sansPrixCadres={props.sansPrixCadres}
               foregroundUrl={props.foregroundUrl}
               defaults={props.defaults}
               initialConfig={props.initialConfig}
               assetBaseUrl={PUBLIC_API_URL}
+              signature={props.signature}
               encartVideo={props.encartVideo}
               onSubmit={handleSubmit}
               onBack={handleBack}

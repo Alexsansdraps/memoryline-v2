@@ -352,6 +352,10 @@ const categoriesChoisissables = categories.filter((c) => !c.archivedAt);
     }
     categorie?.addEventListener("change", annoncerRegle);
     emplacement?.addEventListener("change", annoncerRegle);
+    // Et une fois au chargement, comme le filtre ci-dessus : un retour en
+    // arrière du navigateur rend la catégorie choisie sans redéclencher
+    // « change », et les cases annonceraient alors la règle d'une autre.
+    annoncerRegle();
   </script>
 
   {/* Après le formulaire : les vignettes des couleurs passent par lui. */}

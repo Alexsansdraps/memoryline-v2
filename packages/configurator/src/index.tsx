@@ -46,6 +46,7 @@ import {
   type WorkingCharacter,
 } from "./store";
 import { PosterPreview } from "./components/PosterPreview";
+import type { SignatureApercu } from "./components/SignatureCreation";
 import { StepBackgroundText } from "./components/StepBackgroundText";
 import { StepCharacters } from "./components/StepCharacters";
 import { StepFormat } from "./components/StepFormat";
@@ -83,10 +84,21 @@ export interface ConfiguratorProps {
    */
   sansPrix?: boolean;
   /**
+   * La boutique tait le supplément de chaque cadre, sans taire le reste
+   * (réglage de la page Cadres du back-office) : voir StepFormat.
+   */
+  sansPrixCadres?: boolean;
+  /**
    * Libellés traduits. Le paquet ne connaît pas les langues du site : l'hôte
    * fournit un dictionnaire déjà traduit, complété par le français.
    */
   messages?: Partial<MessagesConfigurateur>;
+  /**
+   * La signature de la boutique, posée sur l'aperçu comme sur le fichier
+   * d'impression (cf. SignatureCreation). Lue dans les réglages par la
+   * boutique : le paquet ne parle pas à l'API.
+   */
+  signature?: SignatureApercu | null;
   /** Cadres proposés en option. */
   cadres?: CadreDTO[];
   /**
@@ -674,6 +686,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
           assetBaseUrl={props.assetBaseUrl}
           cadre={cadreChoisi() ?? null}
           messages={msg()}
+          signature={props.signature}
           // On ne compose qu'ici, et seulement à l'étape des personnages :
           // ailleurs, un glissement n'aurait aucun sens et l'affiche doit
           // rester une image.
@@ -789,6 +802,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             state={state}
             prices={props.prices}
             sansPrix={props.sansPrix}
+            sansPrixCadres={props.sansPrixCadres}
             onSelect={setFormat}
             cadres={props.cadres}
             onSelectCadre={setCadre}
@@ -843,6 +857,15 @@ export default Configurator;
  * C'est le même composant, donc les deux rendus ne peuvent pas diverger.
  */
 export { PosterPreview } from "./components/PosterPreview";
+/**
+ * La signature de la boutique en bas à droite d'une affiche. Le site s'en
+ * sert pour les aperçus qui ne passent pas par `PosterPreview` — l'affiche
+ * tirée d'une photo, dont le visuel est une image et non une pile de calques.
+ * Un seul calque pour tous : c'est ce qui garantit que l'écran et le papier
+ * signent au même endroit.
+ */
+export { SignatureCreation } from "./components/SignatureCreation";
+export type { SignatureApercu } from "./components/SignatureCreation";
 /**
  * La liste qui défile avec ses boutons et sa barre bien visibles : le site
  * s'en sert aussi (la liste des points relais), pour que toutes les listes se

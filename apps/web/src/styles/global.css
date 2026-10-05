@@ -40,17 +40,23 @@ h4 {
 }
 
 /* La description d'une affiche, sur sa fiche, dans la typographie du corps de
-   texte de memoryline.fr — relevée sur le site actuel : demi-gras (600),
-   lettres espacées de 0,6 px, interligne de 1,8, encre à 75 %. Elle sortait
-   ici en 16 px maigre et serré ; retour de la boutique : « un peu plus gras,
-   plus petit, comme sur le site actuel ». 15 px partout : c'est la taille du
-   site actuel sur téléphone, un cran sous les 16 px d'avant, et le demi-gras
-   reste confortable à lire sur un long paragraphe à cette taille-là.
+   texte de memoryline.fr — relevé d'octobre 2026 sur le site actuel : Inter
+   16 px, demi-gras (600), lettres espacées de 0,6 px, interligne de 1,8,
+   encre à 75 %. Elle sortait ici en 16 px maigre et serré.
+
+   Ces quatre valeurs sont celles du site actuel, au pixel près : la demande
+   dit « comme le site actuel », et c'est la seule phrase de la carte qui
+   donne un repère vérifiable. Un essai à 15 px a eu lieu ; il rendait la
+   fiche un peu plus petite que sa référence, pour un écart qu'on ne voit
+   qu'en superposant. Le « plus petit » de la carte, lui, est porté par les
+   deux textes qui étaient VRAIMENT trop gros à côté du site actuel : le prix
+   de la fiche (16 px au lieu de 24) et le nom sous les vignettes (13 à 14 px
+   au lieu de 17), plus le titre sur téléphone (30 px au lieu de 36).
 
    Les mots mis en gras passent à l'encre pleine : sur un texte déjà
    demi-gras, un simple gras ne se distinguait presque plus. */
 .ml-description-produit {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   letter-spacing: 0.6px;
   line-height: 1.8;
@@ -298,6 +304,64 @@ body {
 }
 
 /* --------------------------------------------------------------------------
+ * LES BARRES DE DÉFILEMENT DE TOUT LE SITE.
+ *
+ * Retour cliente : « que ce soit en horizontal et en vertical, boutons et
+ * barres : trop discret, penser aux vieux ». La fenêtre de personnalisation
+ * avait déjà sa réponse (`.ml-modal-body`, `.ml-defil-zone`, plus les boutons
+ * ‹ › ˄ ˅ de Defilement.tsx) ; les PAGES du site, elles, gardaient la barre
+ * du navigateur, c'est-à-dire un curseur gris très pâle (#c1c1c1 sur Chrome)
+ * sur un rail presque blanc. Une cliente qui voit mal ne distingue ni où elle
+ * en est dans une longue fiche produit, ni qu'il reste du catalogue dessous.
+ *
+ * Trois couleurs et une épaisseur, posées ici une fois pour toutes :
+ *   - `scrollbar-color` sur `html` SE TRANSMET à tout ce qui défile dans la
+ *     page — le menu du téléphone, le récapitulatif de la commande, les
+ *     listes du configurateur. Pas une zone qui défile ne peut être oubliée ;
+ *   - la règle `::-webkit-scrollbar` ne s'hérite pas, elle : Safari et les
+ *     navigateurs des téléphones ne lisent que celle-là, et elle vaut donc
+ *     pour toutes les zones (`*`). `-webkit-appearance: none` est ce qui
+ *     l'empêche de rester invisible tant qu'on n'a pas touché l'écran.
+ *
+ * Les deux gris sont EXACTEMENT ceux que le configurateur dessine lui-même
+ * pour les appareils qui cachent leur barre (RAIL et CURSEUR, Defilement.tsx).
+ * Il les porte en dur, parce qu'il doit tenir debout sans cette feuille ;
+ * changer l'un sans l'autre ferait cohabiter deux gris dans la même fenêtre.
+ *
+ * Pas de `scrollbar-gutter` ici : la place serait réservée sur toutes les
+ * pages, y compris les courtes qui ne défilent pas, et le contenu se
+ * décalerait de 15 px de l'une à l'autre. La fenêtre de personnalisation, qui
+ * change de hauteur à chaque étape, en a besoin — elle seule le pose.
+ * ------------------------------------------------------------------------ */
+:root {
+  --ml-barre-curseur: #4b5563;
+  --ml-barre-rail: #e5e7eb;
+  --ml-barre-epaisseur: 14px;
+}
+
+html {
+  scrollbar-width: auto;
+  scrollbar-color: var(--ml-barre-curseur) var(--ml-barre-rail);
+}
+
+*::-webkit-scrollbar {
+  -webkit-appearance: none;
+  width: var(--ml-barre-epaisseur);
+  height: var(--ml-barre-epaisseur);
+}
+*::-webkit-scrollbar-thumb {
+  border-radius: 7px;
+  background-color: var(--ml-barre-curseur);
+  /* Une bordure de la couleur du rail : le curseur se détache du bord sans
+     rien perdre de la zone que le doigt peut attraper. */
+  border: 3px solid var(--ml-barre-rail);
+}
+*::-webkit-scrollbar-track {
+  border-radius: 7px;
+  background: var(--ml-barre-rail);
+}
+
+/* --------------------------------------------------------------------------
  * Configurateur (@memoryline/configurator) — adaptations responsive (§2).
  * Le composant pose un grid 2 colonnes en style inline ; on le ramène à une
  * seule colonne sur mobile pour que l'aperçu et le panneau s'empilent et
@@ -435,7 +499,11 @@ body {
    *
    * `scrollbar-gutter: stable` réserve sa place en permanence : sans lui, la
    * barre apparaît et disparaît selon le contenu, et la fenêtre entière
-   * tressaute de quelques pixels à chaque changement d'étape.
+   * tressaute de quelques pixels à chaque changement d'étape. C'est le SEUL
+   * réglage propre à la fenêtre : l'épaisseur et les couleurs viennent des
+   * barres du site (plus haut), qu'elle redit ici parce que la fenêtre peut
+   * naître dans un hôte qui n'a pas ces variables — elle retombe alors sur
+   * les mêmes gris en clair.
    *
    * Épaisseur normale et curseur foncé sur un rail gris : la barre fine et
    * pâle d'avant ne se voyait pas (retour cliente : « trop discret, penser
@@ -444,25 +512,7 @@ body {
    */
   scrollbar-gutter: stable;
   scrollbar-width: auto;
-  scrollbar-color: #4b5563 #e5e7eb;
-}
-
-/* WebKit ne connaît pas encore `scrollbar-width` : sur Safari et sur les
-   navigateurs des téléphones, c'est ce bloc-ci qui dessine la barre — et
-   `-webkit-appearance: none` est ce qui l'empêche de rester invisible. */
-.ml-modal-body::-webkit-scrollbar {
-  -webkit-appearance: none;
-  width: 14px;
-}
-.ml-modal-body::-webkit-scrollbar-thumb {
-  border-radius: 7px;
-  background-color: #4b5563;
-  /* Une bordure de la couleur du rail : le curseur se détache du bord sans
-     rien perdre de la zone que le doigt peut attraper. */
-  border: 3px solid #e5e7eb;
-}
-.ml-modal-body::-webkit-scrollbar-track {
-  background: #e5e7eb;
+  scrollbar-color: var(--ml-barre-curseur, #4b5563) var(--ml-barre-rail, #e5e7eb);
 }
 
 /*
@@ -838,8 +888,15 @@ body {
   }
 }
 /* Au clavier, un contour net, décollé du bouton : sur un fond noir, le
-   contour par défaut du navigateur se confondait avec le bouton lui-même. */
+   contour par défaut du navigateur se confondait avec le bouton lui-même.
+
+   Les boutons à contour noir qui se remplissent au survol (`hover:bg-ink`)
+   sont de la partie : ils gardaient le contour d'office du navigateur, fin
+   d'un pixel et de sa couleur à lui, alors qu'ils reçoivent le même appui
+   rouge que les boutons pleins. Deux anneaux différents pour deux boutons
+   côte à côte, c'est ce qu'on répare ici. */
 :is(button, a, input[type="submit"]).bg-ink:focus-visible,
+:is(button, a)[class~="hover:bg-ink"]:focus-visible,
 .ml-cfg-btn:focus-visible,
 .ml-choix:focus-visible {
   outline: 2px solid var(--color-ink);
@@ -1189,25 +1246,16 @@ body {
  * épaisseur normale, un curseur gris foncé sur un rail gris clair ; là où il
  * la cache (tablettes), le configurateur en dessine une aux mêmes couleurs.
  * Les boutons ‹ › ˄ ˅ font 44 px et sont cerclés de noir.
+ *
+ * Les couleurs et l'épaisseur sont celles de tout le site (voir « LES BARRES
+ * DE DÉFILEMENT DE TOUT LE SITE », en haut de ce fichier) : la page les
+ * transmet déjà à ces listes, et Safari les reçoit par la règle universelle.
+ * On les redit ici, en clair, pour la même raison que pour la fenêtre : le
+ * module peut vivre dans un hôte qui n'a pas ces variables.
  * ------------------------------------------------------------------------ */
 .ml-defil-zone {
   scrollbar-width: auto;
-  scrollbar-color: #4b5563 #e5e7eb;
-}
-/* Safari et les navigateurs qui ignorent les deux propriétés ci-dessus. */
-.ml-defil-zone::-webkit-scrollbar {
-  -webkit-appearance: none;
-  width: 14px;
-  height: 14px;
-}
-.ml-defil-zone::-webkit-scrollbar-thumb {
-  border-radius: 7px;
-  background-color: #4b5563;
-  border: 3px solid #e5e7eb;
-}
-.ml-defil-zone::-webkit-scrollbar-track {
-  border-radius: 7px;
-  background: #e5e7eb;
+  scrollbar-color: var(--ml-barre-curseur, #4b5563) var(--ml-barre-rail, #e5e7eb);
 }
 
 /* Les boutons : l'appui doit se voir au doigt (pas de survol sur une
@@ -1239,17 +1287,13 @@ body {
 }
 
 /* Le supplément de chaque cadre (« + 15 € », sous son nom), quand la boutique
-   le tait — case « Afficher le supplément de chaque cadre » de la page
-   Cadres du back-office, posée par ProductConfigurator.tsx. Le prix du cadre
-   reste dans le total de la barre du bas : seul ce détail disparaît.
-
-   La règle s'appuie sur la vignette telle que StepFormat.tsx la dessine :
-   l'aperçu (span), le nom (1er div), puis le supplément (2e div). Le jour où
-   le configurateur recevra une option à lui pour cela (`sansPrixCadres`,
-   comme `sansPrix`), cette règle devra partir avec. */
-.ml-sans-prix-cadres .ml-cfg-rail > button > div + div {
-  display: none;
-}
+   le tait — case « Afficher le supplément de chaque cadre » de la page Cadres
+   du back-office — n'est plus caché d'ici. Une règle de style (l'ancienne
+   `.ml-sans-prix-cadres`) devait deviner le supplément à sa place dans la
+   vignette (`.ml-cfg-rail > button > div + div`) : le jour où la vignette
+   aurait gagné une ligne, elle en aurait caché une autre, en silence. Le
+   configurateur porte désormais l'option (`sansPrixCadres`, StepFormat.tsx),
+   que ProductConfigurator.tsx lui passe. */
 
 /* La vignette du panier réutilise l'aperçu du configurateur : on annule le
    plafond de hauteur prévu pour la modale, sinon l'affiche occupait la moitié

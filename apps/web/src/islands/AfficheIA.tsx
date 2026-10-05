@@ -46,6 +46,10 @@ import {
   TYPES_PHOTO,
   type EchecIA,
 } from "../lib/ia.ts";
+import {
+  SignatureCreation,
+  type SignatureApercu,
+} from "@memoryline/configurator";
 import RelaisPhoto from "./RelaisPhoto.tsx";
 
 /**
@@ -80,6 +84,18 @@ export interface AfficheIAProps {
    * sous la main, dans l'appareil qui affiche la page.
    */
   stand?: boolean;
+  /**
+   * La signature de la boutique, posée en bas à droite de la création.
+   *
+   * Une affiche tirée d'une photo est une création comme une autre : son
+   * fichier d'impression est signé (apps/api/src/pdf.ts, `signaturePosee`,
+   * atteint par `configAImprimer` qui remplace la photo par l'image pleine
+   * définition). L'aperçu la montre donc aussi — et au même endroit.
+   *
+   * Le filigrane de /ia/apercu, lui, est CUIT dans les pixels de l'image :
+   * c'est la seule marque qui n'est pas posée ici.
+   */
+  signature?: SignatureApercu | null;
 }
 
 /** Étapes du parcours, dans l'ordre où le client les traverse. */
@@ -880,6 +896,17 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               </div>
             </Show>
 
+            {/* La signature de la boutique, en bas à droite — la même que
+                celle du fichier d'impression, au même endroit.
+
+                Seulement quand une affiche est là : une photo en attente ou
+                un cadre vide ne s'imprimeront jamais. Et pas pendant la
+                création, où le voile ci-dessous couvre l'affiche — la
+                signature y flotterait au-dessus de « Création en cours ». */}
+            <Show when={apercu() && !occupe()}>
+              <SignatureCreation signature={props.signature} />
+            </Show>
+
             <Show when={occupe()}>
               <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-paper/70 p-6 text-center">
                 <span class="ml-spinner" aria-hidden="true" />
@@ -920,12 +947,18 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                           onClick={() => revoir(c)}
                           aria-label={nom()}
                           aria-current={vue() ? "true" : undefined}
-                          class={`block w-full overflow-hidden border-2 bg-paper-deep transition-colors disabled:opacity-60 ${
+                          class={`relative block w-full overflow-hidden border-2 bg-paper-deep transition-colors disabled:opacity-60 ${
                             vue() ? "border-ink" : "border-ink/15 hover:border-ink/45"
                           }`}
                           style={{ "aspect-ratio": c.sens === "paysage" ? "1.4142 / 1" : "1 / 1.4142" }}
                         >
                           <img src={c.apercu} alt="" loading="lazy" class="h-full w-full object-contain" />
+                          {/* Signée elle aussi : ces vignettes sont les
+                              créations de la séance, et l'on en met
+                              plusieurs au panier d'un même geste au stand.
+                              Une seule d'entre elles qui ne serait pas
+                              signée ferait croire à une différence. */}
+                          <SignatureCreation signature={props.signature} />
                         </button>
                         <label class="mt-1 flex cursor-pointer items-center gap-1.5 text-xs">
                           <input

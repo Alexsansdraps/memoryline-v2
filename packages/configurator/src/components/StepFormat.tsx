@@ -24,6 +24,19 @@ export function StepFormat(props: {
   prices?: Partial<Record<PosterFormat, number>>;
   /** Stand de salon : les choix restent, les montants disparaissent. */
   sansPrix?: boolean;
+  /**
+   * La boutique tait le SUPPLÉMENT de chaque cadre (« + 15 € » sous sa
+   * vignette), sans taire le reste : réglage de la page Cadres du
+   * back-office. Le cadre reste compté dans le total de la barre du bas —
+   * c'est le détail, pas le prix, qui disparaît.
+   *
+   * Une option à part de `sansPrix` : au stand, aucun montant ne s'affiche ;
+   * ici, le prix de l'affiche reste. Le site posait jusqu'ici une classe
+   * (`.ml-sans-prix-cadres`) qui cachait le deuxième `div` de chaque vignette
+   * du rail — une règle qui tombait en panne au premier élément ajouté dans
+   * la vignette, et qui ne se voyait pas d'ici.
+   */
+  sansPrixCadres?: boolean;
   onSelect: (format: PosterFormat) => void;
   /** Cadres proposés en option (vide = aucun cadre configuré). */
   cadres?: CadreDTO[];
@@ -216,7 +229,7 @@ export function StepFormat(props: {
                     }}
                   />
                   <div>{cadre.name}</div>
-                  <Show when={!props.sansPrix}>
+                  <Show when={!props.sansPrix && !props.sansPrixCadres}>
                     <div
                       style={{
                         "font-size": "13px",

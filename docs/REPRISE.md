@@ -13,7 +13,7 @@ Les demandes arrivent sous forme de cartes Trello, que l'utilisatrice colle en c
 
 ## Fait, vérifié et poussé
 
-- **Styles d'affiche IA** : « Personnes / Animaux », « Paysage » et « Maison / Bâtiment » (migration 0063). Le client en choisit un avant sa photo. Les titres se traduisent dans Affiches IA › Styles proposés.
+- **Styles d'affiche IA** : « Personnes / Animaux », « Paysage » et « Maison / Bâtiment » (migration 0063). Le client en choisit un avant sa photo. Les titres se traduisent dans Affiches IA › Styles proposés — **mais la saisie n'est pas faite** : « Portrait », « Couple » et « Paysage » sortent encore en français dans les quatre autres langues (mesuré sur /api/ia/prompts?lang=). Le mécanisme marche, les mots manquent.
 - **Affiche IA**
   - Choisir une photo ne lance plus jamais la création toute seule : c'est toujours le bouton « Créer mon affiche ».
   - Le sens (portrait ou paysage) se déduit de la photo tant que le client ne l'a pas choisi lui-même.
@@ -90,7 +90,9 @@ Le prix des cadres est aujourd'hui masqué par une règle CSS (`.ml-sans-prix-ca
 - Les couleurs de cheveux « brun clair » et « châtain clair » (codes couleur), et les « espaces chelou entre personnages » (capture).
 - Traduire ou non les textes pré-remplis imprimés sur les affiches (« et ses plages »).
 
-## Vérifications (Docker local)
+## Vérifications (pile Docker locale, mais base DISTANTE)
+
+> ⚠️ Le conteneur `memoryline-api` parle à une base PostgreSQL **hébergée chez Neon**, pas au conteneur `memoryline-db` — qui ne sert à rien. Donc : `db:migrate` écrit chez un tiers, les jeux d'essai des agents y restent, et `docker compose down -v` ne remet rien à zéro. À trancher par Alexandra : monter une vraie base locale pour le développement.
 
 `docker compose up -d`, puis sous Git Bash (mettre `MSYS_NO_PATHCONV=1` devant chaque `docker exec -w`) :
 
@@ -99,10 +101,12 @@ MSYS_NO_PATHCONV=1 docker exec -w /app/apps/api memoryline-api pnpm db:migrate
 MSYS_NO_PATHCONV=1 docker exec -w /app/apps/api memoryline-api npx tsc --noEmit -p .
 MSYS_NO_PATHCONV=1 docker exec -w /app/packages/configurator memoryline-web npx tsc --noEmit
 MSYS_NO_PATHCONV=1 docker exec -w /app/apps/admin memoryline-admin npx astro check
-MSYS_NO_PATHCONV=1 docker exec -w /app/apps/web memoryline-web npx astro check
+MSYS_NO_PATHCONV=1 docker exec -w /app/apps/web memoryline-web npx tsc --noEmit -p .
 ```
 
 - Le site doit afficher seulement 3 erreurs, anciennes, dans `src/islands/StandSalon.tsx`. Toutes les autres vérifications doivent sortir sans erreur.
+- ⚠️ **La dernière ligne n'est pas `astro check`, et ce n'est pas un oubli.** `@astrojs/check` n'est une dépendance que d'`apps/admin`, les conteneurs ne partagent pas leurs `node_modules`, et `memoryline-web` tourne avec `CI=true` : `npx` refuse donc de l'installer et la commande s'arrête net. Trois sessions l'ont constaté. `tsc --noEmit -p .` couvre tous les `.ts` / `.tsx` du site — îlots compris — mais **pas les fichiers `.astro`** : une page `.astro` se prouve autrement (elle répond, et ses propriétés sortent bien sérialisées dans le HTML servi).
+  - À trancher par Alexandra : ajouter `@astrojs/check` à `apps/web/package.json` — ce serait une dépendance nouvelle — et rétablir alors `astro check` ici.
 - Si Vite répond 504 « Outdated Optimize Dep » : `docker restart memoryline-web`.
 - Site : http://localhost:8080. BO : http://localhost:4322/bo. Mailpit : http://localhost:8025.
 
@@ -129,6 +133,6 @@ scp memoryline-deploiement.tar.gz debian@51.255.34.187:~/ ; ssh debian@51.255.34
 
 ## Règles du dépôt
 
-- Ne jamais commiter `.env`, `data/`, `sauvegardes/` ni les polices AnotherShabby. Le dépôt est **public**.
+- Ne jamais commiter `.env`, `data/`, `sauvegardes/` ni les polices AnotherShabby. Le dépôt est **privé** (vérifié auprès de GitHub le 05/10/2026 : `Alexsansdraps/memoryline-v2`, visibilité PRIVATE). La consigne ne change pas pour autant — un secret commité reste un secret à régénérer.
 - Ne jamais se connecter aux comptes de la cliente (La Poste, SendCloud…) ni saisir de mot de passe. Demander des clés d'API.
 - Commentaires en français qui expliquent le pourquoi, dans le ton des fichiers voisins. Pas de dépendance nouvelle. Le site est en 5 langues : tout nouveau texte va dans `ui.ts`, en fr, en (britannique), de (« Sie »), it et es (tutoiement).

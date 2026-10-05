@@ -181,3 +181,26 @@ export const posterConfigSchema = z.object({
 export type PosterConfig = z.infer<typeof posterConfigSchema>;
 
 export const CURRENT_CONFIG_VERSION = 1 as const;
+
+/**
+ * La ligne porte-t-elle sa propre composition ?
+ *
+ * C'est la question qui décide du chemin d'impression : une ligne composée
+ * (un fond, des personnages, ou une image générée) passe par le moteur, qui
+ * la SIGNE en dernière couche ; une affiche vendue telle quelle s'imprime
+ * depuis le visuel de sa fiche, sans rien poser dessus.
+ *
+ * La même condition, mot pour mot, qu'`apps/api/src/fichiers-impression.ts`
+ * (`composee`). Elle vit ici parce que les aperçus de la boutique doivent
+ * poser la signature exactement là où le fichier d'impression la pose : une
+ * vignette signée pour une affiche prête à imprimer mentirait sur ce qui part
+ * à l'atelier.
+ */
+export function afficheComposee(config: PosterConfig | null | undefined): boolean {
+  if (!config) return false;
+  return (
+    Boolean(config.aiPublicId || config.backgroundUrl) ||
+    (config.backgroundId != null && config.backgroundId !== "") ||
+    (config.characters?.length ?? 0) > 0
+  );
+}

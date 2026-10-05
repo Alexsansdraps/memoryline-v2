@@ -34,3 +34,8 @@ sauvegardes/
 # la redistribuer. Elle reste sur le disque, jamais dans Git.
 apps/api/fonts/AnotherShabby-Regular.ttf
 apps/web/public/fonts/AnotherShabby-Regular.ttf
+
+# Scripts jetables des agents (apps/api/.tmp-*.ts, lancés avec npx tsx puis
+# effacés). Ils sont nommés ainsi par convention, mais rien ne les ignorait :
+# un « git add -A » en embarquait un, et le dépôt est public.
+.tmp-*

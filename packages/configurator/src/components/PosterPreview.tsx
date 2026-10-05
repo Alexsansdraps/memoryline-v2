@@ -22,6 +22,7 @@ import {
 } from "@memoryline/types";
 import { CharacterStack } from "./CharacterLayer";
 import { Filigrane } from "./Filigrane";
+import { SignatureCreation, type SignatureApercu } from "./SignatureCreation";
 import {
   messagesAvecDefauts,
   type MessagesConfigurateur,
@@ -126,6 +127,16 @@ export function PosterPreview(props: {
    * garde le français.
    */
   messages?: Partial<MessagesConfigurateur>;
+  /**
+   * La signature de la boutique, en bas à droite — celle du fichier
+   * d'impression (cf. SignatureCreation).
+   *
+   * Lue dans les réglages par la page, et non ici : ce paquet ne parle pas à
+   * l'API. Absente, l'affiche n'est pas signée à l'écran — ce qui est le bon
+   * repli, puisqu'un appelant qui ne lit pas les réglages ne sait pas si
+   * l'impression signera.
+   */
+  signature?: SignatureApercu | null;
 }) {
   const m = () => messagesAvecDefauts(props.messages);
 
@@ -567,6 +578,10 @@ export function PosterPreview(props: {
           );
         })()}
       </div>
+
+      {/* Signature de la boutique — bas à droite, par-dessus les textes,
+          exactement comme la dernière couche du fichier d'impression. */}
+      <SignatureCreation signature={props.signature} />
 
       {/* Filigrane — dernière couche, au-dessus de tout le reste. */}
       <Show when={props.filigrane !== false}>

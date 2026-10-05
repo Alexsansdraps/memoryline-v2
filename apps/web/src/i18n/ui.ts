@@ -367,6 +367,17 @@ export const ui = {
     "cfg.ligne1_exemple": "MERS-LES-BAINS",
     "cfg.ligne2_exemple": "la maison bleue",
     "cfg.ligne3_exemple": "été 2019",
+    /* Le nombre d'exemplaires. Le compteur se tient aujourd'hui sur la fiche
+       produit (panier.quantite / .moins / .plus) et non dans le module : ces
+       trois libellés ne s'affichent donc nulle part. Ils existent quand même,
+       parce que le module garde les siens, en français, tant que l'hôte ne
+       lui en donne pas — le jour où il reprend son compteur, il reparlerait
+       français dans les cinq langues, sans que rien ne le signale. Ses mots à
+       lui : « exemplaires » et non « quantité », car on dit combien de fois
+       la MÊME affiche sera imprimée. */
+    "cfg.quantite": "Nombre d'exemplaires",
+    "cfg.quantite_moins": "Un exemplaire de moins",
+    "cfg.quantite_plus": "Un exemplaire de plus",
     "cfg.couleur_texte": "Couleur du texte",
     "cfg.fond": "Fond",
     "cfg.personnages": "Personnages",
@@ -985,6 +996,9 @@ export const ui = {
     "cfg.ligne1_exemple": "MERS-LES-BAINS",
     "cfg.ligne2_exemple": "the blue house",
     "cfg.ligne3_exemple": "summer 2019",
+    "cfg.quantite": "Number of copies",
+    "cfg.quantite_moins": "One copy fewer",
+    "cfg.quantite_plus": "One copy more",
     "cfg.couleur_texte": "Text colour",
     "cfg.fond": "Background",
     "cfg.personnages": "Characters",
@@ -1594,6 +1608,9 @@ export const ui = {
     "cfg.ligne1_exemple": "MERS-LES-BAINS",
     "cfg.ligne2_exemple": "das blaue Haus",
     "cfg.ligne3_exemple": "Sommer 2019",
+    "cfg.quantite": "Anzahl der Exemplare",
+    "cfg.quantite_moins": "Ein Exemplar weniger",
+    "cfg.quantite_plus": "Ein Exemplar mehr",
     "cfg.couleur_texte": "Textfarbe",
     "cfg.fond": "Hintergrund",
     "cfg.personnages": "Figuren",
@@ -2205,6 +2222,9 @@ export const ui = {
     "cfg.ligne1_exemple": "MERS-LES-BAINS",
     "cfg.ligne2_exemple": "la casa blu",
     "cfg.ligne3_exemple": "estate 2019",
+    "cfg.quantite": "Numero di copie",
+    "cfg.quantite_moins": "Una copia in meno",
+    "cfg.quantite_plus": "Una copia in più",
     "cfg.couleur_texte": "Colore del testo",
     "cfg.fond": "Sfondo",
     "cfg.personnages": "Personaggi",
@@ -2813,6 +2833,9 @@ export const ui = {
     "cfg.ligne1_exemple": "MERS-LES-BAINS",
     "cfg.ligne2_exemple": "la casa azul",
     "cfg.ligne3_exemple": "verano 2019",
+    "cfg.quantite": "Número de ejemplares",
+    "cfg.quantite_moins": "Un ejemplar menos",
+    "cfg.quantite_plus": "Un ejemplar más",
     "cfg.couleur_texte": "Color del texto",
     "cfg.fond": "Fondo",
     "cfg.personnages": "Personajes",
