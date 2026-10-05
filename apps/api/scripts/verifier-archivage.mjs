@@ -82,6 +82,15 @@ const AUTORISEES = [
       "Sessions de connexion des clients : déconnexion, mot de passe changé, sessions périmées.",
   },
 
+  {
+    fichier: "src/relance-panier.ts",
+    table: "schema.settings",
+    combien: 1,
+    motif: "client-et-technique",
+    raison:
+      "« Revenir au texte d'origine » : la marchande retire SA surcharge d'un courrier de relance dans une langue, et le texte d'usine — écrit dans le code, jamais perdu — reprend la main. Ce qui part n'est pas un contenu de la boutique, c'est une réécriture qu'elle annule elle-même ; l'archiver reviendrait à garder un texte qu'elle vient justement de renier.",
+  },
+
   /* --- Exception 3 : le client sur ses propres données ------------------- */
   {
     fichier: "src/comptes.ts",
