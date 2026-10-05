@@ -1,10 +1,14 @@
 ---
 import Base from "../../layouts/Base.astro";
+import BandeauxVisuels from "../../components/BandeauxVisuels.astro";
 import VignetteAffiche from "../../components/VignetteAffiche.astro";
 import { api, type Collection, type Product } from "../../lib/api.ts";
+import { clesPageAffiches } from "@memoryline/types";
 import { grilleProduits, sizesGrille, styleGrille } from "../../lib/grille.ts";
-/** Colonnes réglées au back-office (Accueil et pied de page › Affichage des produits). */
-const grille = await grilleProduits();
+/** Colonnes réglées au back-office (Contenu du site › Affichage des produits) :
+ *  celles de la boutique s'il y en a — tous les rayons et collections —, le
+ *  réglage général sinon. */
+const grille = await grilleProduits("boutique");
 import {
   estLangue,
   langueDepuisParam,
@@ -252,6 +256,18 @@ const libelleTri: Record<string, string> = {
   precedente={precedente}
   suivante={suivante}
 >
+  {/* Les bandeaux visuels de ce rayon (« Bandeaux visuels » au back-office),
+      sous l'en-tête. Sur la première page seulement : la suite d'un rayon,
+      on y arrive en le parcourant, et un bandeau de 480 px à chaque page
+      repousserait les affiches qu'on était venu voir. */}
+  {
+    pageDemandee === 1 && (
+      <BandeauxVisuels
+        pages={clesPageAffiches(genre, collectionDemandee)}
+        langue={langue}
+      />
+    )
+  }
   <section class="mx-auto max-w-[1600px] px-4 pt-12 pb-8 sm:px-6 lg:px-10">
     <h1 class="text-3xl sm:text-4xl">{titrePage}</h1>
     <div class="mt-3 space-y-3">

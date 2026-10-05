@@ -27,7 +27,7 @@ import {
   sql as raw,
 } from "drizzle-orm";
 import { poidsArticle } from "@memoryline/types";
-import { poidsDesCollections } from "./collections.js";
+import { ordreDesCollections, poidsDesCollections } from "./collections.js";
 import { db, schema } from "./db/client.js";
 
 /** Les seuls états qu'un produit peut prendre. */
@@ -698,7 +698,7 @@ app.get("/admin/products/export.csv", async (c) => {
         .select({ id: schema.collections.id, name: schema.collections.name })
         .from(schema.collections)
         .where(isNull(schema.collections.archivedAt))
-        .orderBy(asc(schema.collections.position), asc(schema.collections.name)),
+        .orderBy(...ordreDesCollections()),
     ]);
 
     const compte = { tous: 0, active: 0, draft: 0, archived: 0 };

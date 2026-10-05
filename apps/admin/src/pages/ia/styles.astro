@@ -19,7 +19,14 @@
  */
 import Admin from "../../layouts/Admin.astro";
 import EditeurTexte from "../../components/EditeurTexte.astro";
+import Traductions from "../../components/Traductions.astro";
 import { adminApi, type StyleIa } from "../../lib/api.ts";
+import {
+  traiterTraductions,
+  type ChampTraduit,
+  type ElementTraduit,
+  type EtatTraductions,
+} from "../../lib/traductions.ts";
 import { url } from "../../lib/url.ts";
 
 const api = adminApi(Astro.request);
@@ -46,11 +53,39 @@ const IMAGES_MAX = 5;
 let flash: string | null = null;
 let flashErreur = false;
 
+/**
+ * Le titre d'un style dans les autres langues : c'est le seul mot que la
+ * cliente étrangère lit avant d'envoyer sa photo. La consigne, elle, part au
+ * modèle et ne se traduit pas.
+ */
+const CHAMPS_TITRE: ChampTraduit[] = [{ cle: "title", libelle: "Titre", max: 120 }];
+const elementsTitres = (liste: StyleIa[]): ElementTraduit[] =>
+  liste.map((s) => ({
+    id: s.id,
+    libelle: s.title,
+    francais: { title: s.title },
+    translations: s.translations ?? undefined,
+  }));
+/** Propositions à relire, saisie à réafficher, et bloc ouvert. */
+let tradTitres: EtatTraductions | null = null;
+
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   const action = String(f.get("_action") ?? "");
   try {
-    if (action === "archiver") {
+    if (action === "styles-traductions" || action === "styles-traduire") {
+      const actifs = (await api.stylesIa()).filter((s) => !s.archivedAt);
+      tradTitres = await traiterTraductions(
+        action === "styles-traductions" ? "enregistrer" : "proposer",
+        f,
+        elementsTitres(actifs),
+        CHAMPS_TITRE,
+        (id, lang, modifies) => api.traduireStyleIa(Number(id), lang, modifies.title ?? ""),
+        (lang, champs) => api.proposerTraduction(lang, champs),
+      );
+      flash = tradTitres.message;
+      flashErreur = tradTitres.erreur;
+    } else if (action === "archiver") {
       const restaurer = f.get("archived") === "false";
       await api.archiverStyleIa(Number(f.get("id")), !restaurer);
       flash = restaurer
@@ -214,6 +249,23 @@ const boutonDiscret =
       </div>
     ))}
   </div>
+
+  {/* Les titres dans les autres langues : ce que lit un client qui visite
+      le site en anglais, en allemand, en italien ou en espagnol. */}
+  {styles.length > 0 && (
+    <Traductions
+      titre="Traductions des titres"
+      aide="Le titre de chaque style tel que le lit un client étranger. Une case vide affiche le titre français. La consigne ne se traduit pas : elle part au modèle, jamais au client."
+      champs={CHAMPS_TITRE}
+      elements={elementsTitres(styles)}
+      propositions={tradTitres?.propositions}
+      saisies={tradTitres?.saisies}
+      actionEnregistrer="styles-traductions"
+      actionProposer="styles-traduire"
+      ouvert={!!tradTitres}
+      classe="mb-8 max-w-3xl bg-bo-surface"
+    />
+  )}
 
   {/* ==================================================================== */}
   {/* Les styles archivés                                                  */}

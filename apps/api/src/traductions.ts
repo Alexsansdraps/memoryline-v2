@@ -392,6 +392,12 @@ export function mountTraduction(app: Hono): void {
   routeTraductions(app, "/admin/promos/:id/translations", schema.promoRules, {
     name: 120,
   });
+  // Les styles d'affiche IA : leur titre est le seul mot que la cliente lit
+  // avant d'envoyer sa photo (« Paysage »). La consigne, elle, part au modèle
+  // et ne se traduit pas.
+  routeTraductions(app, "/admin/ia/prompts/:id/translations", schema.aiPrompts, {
+    title: 120,
+  });
 
   app.post("/admin/traduire", async (c) => {
     const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;

@@ -77,7 +77,6 @@ export default function CommandeStand(props: {
     "verification",
   );
   const [code, setCode] = createSignal<string | null>(null);
-  const [evenement, setEvenement] = createSignal<string | null>(null);
   const [saisieCode, setSaisieCode] = createSignal("");
   const [erreurCode, setErreurCode] = createSignal<string | null>(null);
   /** La dernière saisie déjà soumise au stand : quitter le champ ne la renvoie pas. */
@@ -104,7 +103,6 @@ export default function CommandeStand(props: {
       if (etat.autorise) {
         retenirCode(saisi);
         setCode(saisi);
-        setEvenement(etat.evenement ?? null);
         setSaisieCode("");
         setEtatCode("valide");
         return true;
@@ -140,16 +138,6 @@ export default function CommandeStand(props: {
     }
     dejaVerifie = saisi;
     void verifierCode(saisi, false);
-  }
-
-  function changerDeCode() {
-    oublierCode();
-    setCode(null);
-    setEvenement(null);
-    setSaisieCode("");
-    setErreurCode(null);
-    dejaVerifie = "";
-    setEtatCode("saisie");
   }
 
   async function valider(e: Event) {
@@ -205,7 +193,6 @@ export default function CommandeStand(props: {
         // l'adresse restent en l'état, on redemande le code seulement.
         oublierCode();
         setCode(null);
-        setEvenement(null);
         setEtatCode("saisie");
         setErreurCode(tr("stand.code_refuse"));
       } else {
@@ -221,28 +208,18 @@ export default function CommandeStand(props: {
   return (
     <div class="max-w-xl">
       {/* Le code d'abord, dans son propre formulaire : « Entrée » dans ce
-          champ vérifie le code, sans envoyer une commande à moitié remplie. */}
+          champ vérifie le code, sans envoyer une commande à moitié remplie.
+          Une fois le code bon, plus rien n'en parle : c'est le client qui
+          tient la tablette, et « Stand : … — Changer de code » ne le
+          concernait pas. La vendeuse change de code par l'adresse que donne
+          le back-office (« /?stand=1&code=… »), et la saisie revient d'elle-
+          même si le code n'est plus celui d'un stand ouvert. */}
+      <Show when={etatCode() !== "valide" || erreurCode()}>
       <div class="border-b border-ink/10 pb-5">
         <Show when={etatCode() === "verification"}>
           <p class="flex items-center text-ink-soft" aria-live="polite">
             <span class="ml-spinner mr-3" aria-hidden="true" />
             {tr("stand.code_verification")}
-          </p>
-        </Show>
-
-        <Show when={etatCode() === "valide"}>
-          <p class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <span>
-              <span class="text-ink-soft">{tr("stand.stand")} :</span>{" "}
-              <span class="font-medium">{evenement() ?? "Memory Line"}</span>
-            </span>
-            <button
-              type="button"
-              onClick={changerDeCode}
-              class="text-sm text-ink-soft underline underline-offset-4 hover:text-ink"
-            >
-              {tr("stand.changer_code")}
-            </button>
           </p>
         </Show>
 
@@ -291,6 +268,7 @@ export default function CommandeStand(props: {
           </p>
         </Show>
       </div>
+      </Show>
 
       <form class="mt-5 flex flex-col gap-5" onSubmit={valider} novalidate>
         <label class="block">
@@ -324,14 +302,10 @@ export default function CommandeStand(props: {
             required
             class={CHAMP}
           />
-          {/* La promesse tenue : aucun courrier ne part à la validation. Le
-              seul que ce client recevra est « Votre affiche est prête »,
-              envoyé quand la commande est marquée prête au back-office. La
-              confirmation de commande du site, elle, détaille des montants
-              que la vendeuse n'a pas annoncés. */}
-          <span class="mt-1 block text-sm text-ink-soft">
-            {tr("stand.email_aide")}
-          </span>
+          {/* Aucune phrase sous l'adresse : au stand, le client parle à la
+              vendeuse, qui lui dit elle-même la suite. (Aucun courrier ne part
+              à la validation ; le seul qu'il recevra est « Votre affiche est
+              prête », quand la commande est marquée prête au back-office.) */}
         </label>
         <Show when={erreur()}>
           <p role="alert" class="bg-terracotta/10 px-4 py-3 text-terracotta-deep">
@@ -344,14 +318,21 @@ export default function CommandeStand(props: {
           disabled={
             envoi() || props.occupe || props.nombre === 0 || etatCode() === "verification"
           }
+          aria-busy={envoi()}
         >
-          {envoi()
-            ? tr("stand.envoi")
-            : props.nombre > 1
-              ? tr("stand.valider_plusieurs")
-              : tr("stand.valider_une")}
+          {/* Pendant l'enregistrement : un rond qui tourne à côté du libellé,
+              et le bouton reste noir (global.css lit `aria-busy`). */}
+          {envoi() ? (
+            <>
+              <span class="ml-spinner ml-spinner-clair mr-3" aria-hidden="true" />
+              {tr("stand.envoi")}
+            </>
+          ) : props.nombre > 1 ? (
+            tr("stand.valider_plusieurs")
+          ) : (
+            tr("stand.valider_une")
+          )}
         </button>
-        <p class="text-sm text-ink-soft">{tr("stand.sans_paiement")}</p>
       </form>
     </div>
   );

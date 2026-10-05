@@ -5,6 +5,7 @@ import type {
   PosterConfig,
   Character,
   CouleursImage,
+  CouleursProposees,
   GroupeCouleur,
   PosterFormat,
   PosterView,
@@ -64,9 +65,16 @@ export interface VariantDTO {
   /**
    * Zones que le client ne recolore pas (petits détails : ruban, élastique…),
    * décochées au back-office. Pas de pastilles pour elles, et elles gardent
-   * leur couleur par défaut (cf. couleursDeLaPiece). Absent = tout proposé.
+   * leur couleur par défaut (cf. couleursDeLaPiece). Une liste, même vide,
+   * est le réglage de la pièce ; `null` ou absent : la pièce suit celui de sa
+   * catégorie (`PieceCategoryDTO.couleursProposees`).
    */
   zonesMasquees?: string[] | null;
+  /**
+   * La part du dessin peinte par chaque zone (0 à 1), mesurée par l'API :
+   * elle désigne la couleur principale. Absente : le premier groupe.
+   */
+  partsDesZones?: Record<string, number> | null;
   /**
    * Nuances réunies sous une seule rangée de pastilles (ombres, reflets d'un
    * dessin vectorisé), avec le nom affiché au-dessus. Absent = une rangée par
@@ -94,6 +102,12 @@ export interface PieceCategoryDTO {
   name: string;
   slot: string;
   colors: string[];
+  /**
+   * Couleurs proposées pour chaque pièce sans réglage propre : toutes, ou la
+   * principale seule (le ruban d'un chapeau garde alors sa couleur). Absent :
+   * toutes, la règle d'avant ce réglage.
+   */
+  couleursProposees?: CouleursProposees;
 }
 
 /** Un personnage = SVG de base pré-composé + ses zones de couleur par défaut. */
@@ -818,6 +832,22 @@ export function paletteForVariant(
   if (cat && cat.colors.length > 0)
     return { couleurs: cat.colors, libre: false };
   return { couleurs: presetPaletteForSlot(slot), libre: true };
+}
+
+/**
+ * Les couleurs que la catégorie d'une pièce propose au client : toutes, ou
+ * la principale seule. Sans catégorie connue — aucune, archivée, décochée :
+ * l'API ne l'envoie pas —, toutes, comme avant ce réglage. La pièce qui a
+ * ses propres cases n'écoute pas cette règle (cf. groupesProposesDeLaPiece).
+ */
+export function regleDeLaPiece(
+  categories: readonly PieceCategoryDTO[] | undefined,
+  variant: VariantDTO | undefined,
+): CouleursProposees {
+  const cat = variant?.pieceCategoryId
+    ? categories?.find((c) => c.id === variant.pieceCategoryId)
+    : undefined;
+  return cat?.couleursProposees === "principale" ? "principale" : "toutes";
 }
 
 /**

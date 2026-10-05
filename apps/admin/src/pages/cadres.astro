@@ -6,7 +6,9 @@ import { traiterTraductionsNoms } from "../lib/traductions-noms.ts";
 import type { EtatTraductions } from "../lib/traductions.ts";
 import {
   REGLAGE_CADRES_SITE,
+  REGLAGE_PRIX_CADRES_SITE,
   cadresProposesSurLeSite,
+  prixDesCadresAffiches,
 } from "@memoryline/types";
 
 const api = adminApi(Astro.request);
@@ -40,12 +42,18 @@ if (Astro.request.method === "POST") {
       );
       flash = tradCadres.message;
     } else if (action === "site") {
-      // Booléen et non « on »/« off » : l'API et le site lisent ce réglage
-      // tel quel (cadresProposesSurLeSite).
+      // Booléens et non « on »/« off » : l'API et le site lisent ces réglages
+      // tels quels (cadresProposesSurLeSite, prixDesCadresAffiches).
       const proposes = f.get("site") === "on";
-      await api.setSetting(REGLAGE_CADRES_SITE, proposes);
+      const prix = f.get("prix") === "on";
+      await Promise.all([
+        api.setSetting(REGLAGE_CADRES_SITE, proposes),
+        api.setSetting(REGLAGE_PRIX_CADRES_SITE, prix),
+      ]);
       flash = proposes
-        ? "Les cadres sont de nouveau proposés sur le site."
+        ? prix
+          ? "Les cadres sont proposés sur le site, avec leur supplément."
+          : "Les cadres sont proposés sur le site, sans leur supplément sous chaque cadre : le prix total le compte toujours."
         : "Les cadres ne sont plus proposés sur le site. Le stand continue de les proposer.";
     } else if (action === "archiver") {
       const restaurer = f.get("archived") === "false";
@@ -90,13 +98,15 @@ if (Astro.request.method === "POST") {
 
 let tous: Cadre[] = [];
 let error: string | null = null;
-// Réglage illisible : la case s'affiche cochée, comme la boutique se
-// comporte quand elle n'a jamais touché au réglage.
+// Réglages illisibles : les cases s'affichent cochées, comme la boutique se
+// comporte quand elle n'a jamais touché aux réglages.
 let surLeSite = true;
+let prixAffiches = true;
 try {
   const [liste, reglages] = await Promise.all([api.frames(), api.settings()]);
   tous = liste;
   surLeSite = cadresProposesSurLeSite(reglages[REGLAGE_CADRES_SITE]);
+  prixAffiches = prixDesCadresAffiches(reglages[REGLAGE_PRIX_CADRES_SITE]);
 } catch (e) {
   error = String(e);
 }
@@ -124,22 +134,41 @@ function messageArchivage(c: Cadre): string {
   {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
 
   {/* En tête de page : c'est la question qui se pose avant toutes les
-      autres — le site vend-il des cadres en ce moment ? */}
+      autres — le site vend-il des cadres en ce moment, et dit-il leur
+      prix ? Les deux cases s'enregistrent ensemble. */}
   <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface">
     <form method="POST" class="flex flex-wrap items-start gap-4 px-4 py-4">
       <input type="hidden" name="_action" value="site" />
-      <label class="flex max-w-3xl flex-1 items-start gap-3">
-        <input type="checkbox" name="site" checked={surLeSite} class="mt-1" />
-        <span>
-          <span class="text-sm font-medium">Proposer les cadres sur le site</span>
-          <span class="mt-0.5 block text-xs text-bo-muted">
-            Décochée, le site ne montre plus aucun cadre, et un panier qui en
-            contenait déjà les perd, prix recalculé, avec un message à la
-            cliente. Le <strong>stand</strong> continue de les proposer : c'est
-            l'envoi par la poste qui est en cause, pas le cadre.
+      <div class="max-w-3xl flex-1 space-y-3">
+        <label class="flex items-start gap-3">
+          <input type="checkbox" name="site" checked={surLeSite} class="mt-1" />
+          <span>
+            <span class="text-sm font-medium">Proposer les cadres sur le site</span>
+            <span class="mt-0.5 block text-xs text-bo-muted">
+              Décochée, le site ne montre plus aucun cadre, et un panier qui en
+              contenait déjà les perd, prix recalculé, avec un message à la
+              cliente. Le <strong>stand</strong> continue de les proposer : c'est
+              l'envoi par la poste qui est en cause, pas le cadre.
+            </span>
           </span>
-        </span>
-      </label>
+        </label>
+        <label class="flex items-start gap-3">
+          <input type="checkbox" name="prix" checked={prixAffiches} class="mt-1" />
+          <span>
+            <span class="text-sm font-medium">
+              Afficher le supplément de chaque cadre sur le site
+            </span>
+            <span class="mt-0.5 block text-xs text-bo-muted">
+              Le « + 15 € » écrit sous chaque cadre, au moment de le choisir.
+              Décochée, le client choisit son cadre sans ce détail — mais le
+              prix du cadre reste compté : dans le total en bas du module de
+              personnalisation, au panier et à la caisse. Au
+              <strong>stand</strong>, aucun prix n'est jamais affiché : la
+              vendeuse annonce ses tarifs.
+            </span>
+          </span>
+        </label>
+      </div>
       <button class="rounded bg-bo-accent text-white px-3 py-1.5 text-sm">
         Enregistrer
       </button>

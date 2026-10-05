@@ -118,6 +118,13 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    * imprime l'affiche qu'il a vue, pas celle qu'il s'apprêtait à demander.
    */
   const [orientation, setOrientation] = createSignal<"portrait" | "paysage">("portrait");
+  /**
+   * Le client a-t-il choisi le sens lui-même ? Tant que non, la photo le
+   * propose : une photo prise en largeur donne une affiche en paysage, sans
+   * qu'il ait à y penser. Dès qu'il touche un des deux boutons, c'est son
+   * choix qui compte, pour cette photo comme pour la suivante.
+   */
+  let sensChoisiALaMain = false;
   const [orientationApercu, setOrientationApercu] =
     createSignal<"portrait" | "paysage">("portrait");
   /** Le sens du cadre d'aperçu : celui de l'affiche montrée, sinon celui choisi. */
@@ -147,28 +154,17 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    * Les styles proposés par la boutique, et celui que la cliente a choisi.
    *
    * Lus une fois à l'ouverture. Une liste vide — boutique qui n'en a pas
-   * encore créé, ou API muette — fait simplement disparaître le bloc : le
-   * parcours redevient celui d'avant, où l'envoi de la photo lance la
-   * création dans la foulée.
+   * encore créé, ou API muette — fait simplement disparaître le bloc : la
+   * photo part sans style, avec la seule consigne générale.
    *
-   * Dès qu'il y en a un, le style se choisit AVANT la photo, et la création
-   * attend le bouton « Créer mon affiche ». Le choix se trouvait sous la zone
-   * de dépôt, et l'envoi de la photo lançait tout : la première génération —
-   * payée comme les suivantes — partait sans le style, et la cliente devait
-   * en payer une deuxième pour obtenir celui qu'elle venait de toucher.
+   * Dès qu'il y en a un, le style se choisit AVANT la photo. La création,
+   * elle, attend toujours le bouton « Créer mon affiche » (voir choisirPhoto) :
+   * la première génération, payée comme les suivantes, ne part jamais sans
+   * le style ni le sens que la cliente a choisis.
    */
   const [styles, setStyles] = createSignal<StyleIA[]>([]);
   const [styleChoisi, setStyleChoisi] = createSignal<number | null>(null);
-  /**
-   * La lecture elle-même, gardée : une photo choisie avant qu'elle ait
-   * répondu doit pouvoir attendre de savoir s'il fallait d'abord un style,
-   * plutôt que de partir sans.
-   */
-  let stylesLus: Promise<StyleIA[]> = Promise.resolve([]);
-  onMount(() => {
-    stylesLus = lireStyles(props.langue);
-    void stylesLus.then(setStyles);
-  });
+  onMount(() => void lireStyles(props.langue).then(setStyles));
   /** La boutique propose des styles : il faut en choisir un. */
   const choixDuStyle = () => styles().length > 0;
   /** Un style reste à choisir avant d'envoyer la photo ou de créer. */
@@ -330,6 +326,69 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    */
   const [apercuChemin, setApercuChemin] = createSignal<string | null>(null);
 
+  /**
+   * Toutes les affiches obtenues pendant la séance, dans l'ordre.
+   *
+   * Une nouvelle création REMPLAÇAIT la précédente : au stand, une famille
+   * qui en essayait trois ne pouvait plus revoir la première, ni en garder
+   * deux — alors que chacune a été payée. Elles restent donc toutes ici, en
+   * vignettes sous l'aperçu : on en revoit une d'un toucher, on coche celles
+   * qu'on garde, et elles partent ensemble au panier.
+   *
+   * Gardées aussi dans la mémoire de l'onglet (sessionStorage) : un
+   * rechargement par erreur sur la tablette ne doit pas les faire perdre.
+   * La clé porte le PANIER : au stand, « Client suivant » repart d'un panier
+   * neuf, et le client suivant ne voit donc rien de celles du précédent.
+   * Chacune garde la photo dont elle vient, pour pouvoir la relancer.
+   */
+  type Creation = {
+    publicId: string;
+    /** Adresse brute de l'aperçu, celle qui part au panier. */
+    apercuChemin: string;
+    /** Adresse affichée. */
+    apercu: string;
+    sens: "portrait" | "paysage";
+    /** La photo côté serveur dont elle est tirée. */
+    source: string;
+  };
+  /** Lue dans le navigateur seulement : le panier n'existe pas au rendu serveur. */
+  let cleCreations = "";
+  const [creations, setCreations] = createSignal<Creation[]>([]);
+  /** Les créations cochées pour le panier, par leur identifiant. */
+  const [aAjouter, setAAjouter] = createSignal<string[]>([]);
+  onMount(() => {
+    try {
+      cleCreations = `ml_ia_creations_${getCartId()}_${props.product.id}`;
+      const lues = JSON.parse(sessionStorage.getItem(cleCreations) ?? "[]") as Creation[];
+      if (Array.isArray(lues)) setCreations(lues.filter((c) => c?.publicId && c?.apercu));
+    } catch {
+      /* mémoire indisponible (navigation privée…) : la séance repart de zéro */
+    }
+  });
+  function memoriserCreations(liste: Creation[]) {
+    setCreations(liste);
+    try {
+      if (cleCreations) sessionStorage.setItem(cleCreations, JSON.stringify(liste));
+    } catch {
+      /* mémoire pleine ou interdite : la liste vit au moins dans la page */
+    }
+  }
+  /** Montre une création dans le grand aperçu, comme si elle venait d'arriver. */
+  function revoir(c: Creation) {
+    setPublicId(c.publicId);
+    setApercuChemin(c.apercuChemin);
+    setApercu(c.apercu);
+    setOrientationApercu(c.sens);
+    setChemin(c.source);
+    setEchec(null);
+    setEtape("pret");
+  }
+  function basculerAjout(id: string) {
+    setAAjouter((liste) =>
+      liste.includes(id) ? liste.filter((x) => x !== id) : [...liste, id],
+    );
+  }
+
   /** Secondes écoulées : une attente muette laisse croire à un blocage. */
   const [secondes, setSecondes] = createSignal(0);
   let chrono: ReturnType<typeof setInterval> | undefined;
@@ -391,16 +450,39 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     return e instanceof ErreurIA ? e.code : "inconnu";
   }
 
-  async function choisirPhoto(
-    fichier: File,
-    /**
-     * `lancer: false` : même s'il n'y a pas de style à choisir, la création
-     * attend le bouton. C'est le cas de la photo arrivée du téléphone — elle
-     * tombe sur la tablette sans que personne y ait touché, et une création
-     * se paie : elle ne part jamais toute seule.
-     */
-    options: { lancer?: boolean } = {},
-  ) {
+  /**
+   * Le sens que la photo suggère : en largeur, nettement plus large que haute,
+   * elle donne une affiche en paysage. Lu sur l'image telle que le navigateur
+   * l'affiche — la rotation d'une photo de téléphone (EXIF) comprise.
+   */
+  function sensDeLaPhoto(url: string): Promise<"portrait" | "paysage" | null> {
+    return new Promise((resoudre) => {
+      const img = new Image();
+      img.onload = () =>
+        resoudre(
+          img.naturalWidth && img.naturalHeight
+            ? img.naturalWidth > img.naturalHeight * 1.1
+              ? "paysage"
+              : "portrait"
+            : null,
+        );
+      img.onerror = () => resoudre(null);
+      img.src = url;
+    });
+  }
+
+  /**
+   * Une photo arrive — du disque, d'un glisser-déposer ou du téléphone.
+   *
+   * Elle part sur le serveur, mais la création, elle, attend TOUJOURS le
+   * bouton « Créer mon affiche ». Elle partait autrefois d'elle-même quand la
+   * boutique ne proposait pas de style : le client n'avait alors pas le temps
+   * de choisir le sens de l'affiche, rangé juste sous la photo, et recevait un
+   * portrait qu'il n'avait pas demandé — une création qui se paie. Le temps de
+   * relire son style, son sens, de changer de photo ou d'ajouter une
+   * précision, c'est lui qui décide.
+   */
+  async function choisirPhoto(fichier: File) {
     /*
      * On ne contrôle plus le POIDS ici : `envoyerPhoto` réduit la photo avant
      * de l'envoyer, et une photo de téléphone de 20 Mo devient 400 Ko. La
@@ -418,8 +500,14 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     }
     const ancienne = photoLocale();
     if (ancienne) URL.revokeObjectURL(ancienne);
-    setPhotoLocale(URL.createObjectURL(fichier));
+    const locale = URL.createObjectURL(fichier);
+    setPhotoLocale(locale);
     setNomPhoto(fichier.name);
+    // Le sens suit la photo tant que le client ne l'a pas choisi lui-même.
+    if (!sensChoisiALaMain)
+      void sensDeLaPhoto(locale).then((sens) => {
+        if (sens && !sensChoisiALaMain && photoLocale() === locale) setOrientation(sens);
+      });
     setEchec(null);
     setPublicId(null);
     setApercu(null);
@@ -427,28 +515,14 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     setEtape("envoi");
     demarrerChrono();
     try {
-      // La liste des styles est attendue avec la photo : si elle n'avait pas
-      // encore répondu quand le fichier a été choisi, c'est elle qui dit s'il
-      // faut créer tout de suite ou attendre le bouton.
-      const [distant, proposes] = await Promise.all([
-        envoyerPhoto(fichier),
-        stylesLus,
-      ]);
+      const distant = await envoyerPhoto(fichier);
       setChemin(distant);
-      if (proposes.length > 0 || options.lancer === false) {
-        // Des styles existent, ou la photo vient du téléphone : elle est sur
-        // le serveur, la création attend « Créer mon affiche ». Le temps de
-        // relire son style, de changer de photo si ce n'est pas la bonne, ou
-        // d'ajouter une précision, avant une génération qui se paie.
-        arreterChrono();
-        setEtape("depot");
-        // Le bouton est sous les conseils et la précision : sur la tablette,
-        // juste sous le bord de l'écran. On l'amène au bord, sans plus — la
-        // cliente garde sous les yeux la zone où elle vient de toucher.
-        boutonCreer?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-        return;
-      }
-      await lancerGeneration(distant);
+      arreterChrono();
+      setEtape("depot");
+      // Le bouton est sous le sens et la précision : sur la tablette, juste
+      // sous le bord de l'écran. On l'amène au bord, sans plus — la cliente
+      // garde sous les yeux la zone où elle vient de toucher.
+      boutonCreer?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     } catch (e) {
       arreterChrono();
       setEchec(causeDe(e));
@@ -485,6 +559,11 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       setOrientationApercu(sens);
       setApercu(prete);
       setEtape("pret");
+      // Elle rejoint les précédentes au lieu de les effacer.
+      memoriserCreations([
+        ...creations().filter((c) => c.publicId !== gen.publicId),
+        { publicId: gen.publicId, apercuChemin: gen.apercuUrl, apercu: prete, sens, source },
+      ]);
     } catch (e) {
       setEchec(causeDe(e));
       // On garde la photo ET l'affiche déjà obtenue : un essai raté ne doit
@@ -508,52 +587,84 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     setEtape("depot");
   }
 
-  async function ajouterAuPanier() {
+  /**
+   * Les affiches qui partiront au panier : celles qu'on a cochées, dans
+   * l'ordre où elles ont été créées ; sans coche, celle qu'on regarde.
+   */
+  const affichesAAjouter = (): { publicId: string; apercuChemin: string | null; sens: "portrait" | "paysage" }[] => {
+    const cochees = creations().filter((c) => aAjouter().includes(c.publicId));
+    if (cochees.length) return cochees;
     const id = publicId();
-    if (!id || ajout()) return;
+    return id ? [{ publicId: id, apercuChemin: apercuChemin(), sens: orientationApercu() }] : [];
+  };
+
+  /** Les affiches déjà parties au panier pendant cet ajout (voir plus bas). */
+  const dejaAuPanier = new Set<string>();
+
+  async function ajouterAuPanier() {
+    const affiches = affichesAAjouter();
+    if (!affiches.length || ajout()) return;
     setAjout(true);
     setEchec(null);
     try {
-      const config: PosterConfig = {
-        schemaVersion: 1,
-        productId: props.product.id,
-        format: format() === "A3" ? "A3" : "A4",
-        ...(orientationApercu() === "paysage" ? { orientation: "paysage" as const } : {}),
-        view: "front",
-        // Compacte, sans trou : l'API refuse une entrée vide au milieu, et
-        // le rendu ne lit de toute façon que la suite des lignes remplies.
-        texts: {
-          lines: lignesRemplies().map(
-            (l): TextBlock => ({
-              value: l.value.trim(),
-              font: l.font,
-              color: couleur(),
-              ...(typeof l.x === "number" && typeof l.y === "number"
-                ? { x: l.x, y: l.y }
-                : {}),
-            }),
-          ),
-        },
-        characters: [],
-        // C'est CE champ qui rattache la ligne à la génération retenue : le
-        // serveur y retrouve le fichier sans filigrane à imprimer une fois la
-        // commande payée.
-        aiPublicId: id,
-        aiApercuUrl: apercuChemin() ?? undefined,
-      };
-      await browserApi.addCartItem(getCartId(), {
-        productId: props.product.id,
-        unitPriceCents: prixCourant(),
-        quantity: quantite(),
-        title: props.product.name,
-        config,
-        langue: props.langue ?? LANGUE_DEFAUT,
-      });
+      // Les mêmes textes, le même format et le même nombre d'exemplaires pour
+      // chacune : c'est le réglage qu'on voit à l'écran au moment d'ajouter.
+      // L'une après l'autre, pour que le panier les garde dans cet ordre ; si
+      // le réseau lâche au milieu, un nouvel essai ne remet pas en double
+      // celles qui sont déjà passées.
+      for (const a of affiches) {
+        if (dejaAuPanier.has(a.publicId)) continue;
+        await ajouterUneAffiche(a);
+        dejaAuPanier.add(a.publicId);
+      }
       window.location.href = lien(props.langue ?? LANGUE_DEFAUT, "/panier");
     } catch {
       setEchec("inconnu");
       setAjout(false);
     }
+  }
+
+  /** Une ligne de panier pour UNE affiche obtenue. */
+  async function ajouterUneAffiche(a: {
+    publicId: string;
+    apercuChemin: string | null;
+    sens: "portrait" | "paysage";
+  }) {
+    const config: PosterConfig = {
+      schemaVersion: 1,
+      productId: props.product.id,
+      format: format() === "A3" ? "A3" : "A4",
+      ...(a.sens === "paysage" ? { orientation: "paysage" as const } : {}),
+      view: "front",
+      // Compacte, sans trou : l'API refuse une entrée vide au milieu, et
+      // le rendu ne lit de toute façon que la suite des lignes remplies.
+      texts: {
+        lines: lignesRemplies().map(
+          (l): TextBlock => ({
+            value: l.value.trim(),
+            font: l.font,
+            color: couleur(),
+            ...(typeof l.x === "number" && typeof l.y === "number"
+              ? { x: l.x, y: l.y }
+              : {}),
+          }),
+        ),
+      },
+      characters: [],
+      // C'est CE champ qui rattache la ligne à la génération retenue : le
+      // serveur y retrouve le fichier sans filigrane à imprimer une fois la
+      // commande payée.
+      aiPublicId: a.publicId,
+      aiApercuUrl: a.apercuChemin ?? undefined,
+    };
+    await browserApi.addCartItem(getCartId(), {
+      productId: props.product.id,
+      unitPriceCents: prixCourant(),
+      quantity: quantite(),
+      title: props.product.name,
+      config,
+      langue: props.langue ?? LANGUE_DEFAUT,
+    });
   }
 
   let champFichier: HTMLInputElement | undefined;
@@ -784,6 +895,56 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           <Show when={apercu()}>
             <p class="mt-2 text-xs text-ink-soft">{tr("ia.filigrane_note")}</p>
           </Show>
+
+          {/* Les affiches de la séance, dès qu'il y en a deux : un toucher
+              sur une vignette la remet dans le grand aperçu ; la case la
+              garde pour le panier. Vignettes assez grandes pour le doigt,
+              sur la tablette du stand. */}
+          <Show when={creations().length > 1}>
+            <div class="mt-4">
+              <p class="text-sm font-medium">
+                {tr("ia.creations_titre").replace("{n}", String(creations().length))}
+              </p>
+              <p class="mt-0.5 text-xs text-ink-soft">{tr("ia.creations_aide")}</p>
+              <ul class="mt-2 grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2">
+                <For each={creations()}>
+                  {(c, i) => {
+                    const vue = () => publicId() === c.publicId;
+                    const gardee = () => aAjouter().includes(c.publicId);
+                    const nom = () => tr("ia.creation_n").replace("{n}", String(i() + 1));
+                    return (
+                      <li class="relative">
+                        <button
+                          type="button"
+                          disabled={occupe()}
+                          onClick={() => revoir(c)}
+                          aria-label={nom()}
+                          aria-current={vue() ? "true" : undefined}
+                          class={`block w-full overflow-hidden border-2 bg-paper-deep transition-colors disabled:opacity-60 ${
+                            vue() ? "border-ink" : "border-ink/15 hover:border-ink/45"
+                          }`}
+                          style={{ "aspect-ratio": c.sens === "paysage" ? "1.4142 / 1" : "1 / 1.4142" }}
+                        >
+                          <img src={c.apercu} alt="" loading="lazy" class="h-full w-full object-contain" />
+                        </button>
+                        <label class="mt-1 flex cursor-pointer items-center gap-1.5 text-xs">
+                          <input
+                            type="checkbox"
+                            checked={gardee()}
+                            disabled={ajout()}
+                            onChange={() => basculerAjout(c.publicId)}
+                            class="h-5 w-5 accent-ink"
+                            aria-label={`${tr("ia.garder")} — ${nom()}`}
+                          />
+                          {tr("ia.garder")}
+                        </label>
+                      </li>
+                    );
+                  }}
+                </For>
+              </ul>
+            </div>
+          </Show>
         </div>
 
         {/* ---------------------------- Commandes ------------------------ */}
@@ -814,11 +975,11 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                         // obligatoire, et un second appui involontaire sur
                         // la tablette ne doit pas éteindre la suite.
                         onClick={() => setStyleChoisi(st.id)}
-                        class={`relative flex flex-col overflow-hidden border-2 text-left transition-colors disabled:opacity-60 ${
-                          actif()
-                            ? "border-ink"
-                            : "border-ink/15 hover:border-ink/45"
-                        }`}
+                        // Le choix fait se dessine par `ml-choix` (global.css),
+                        // comme tous les choix du site : cadre noir, liseré et
+                        // coche rouges. Rien n'est rogné : la coche déborde du
+                        // coin de la carte.
+                        class="ml-choix flex flex-col border border-ink/15 text-left hover:border-ink/45 disabled:opacity-60"
                       >
                         <Show
                           when={image}
@@ -833,21 +994,14 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                             class="aspect-[4/5] w-full object-cover"
                           />
                         </Show>
+                        {/* Le nom ne se remplit plus de noir : un bandeau noir
+                            se lisait comme un bouton à presser, pas comme un
+                            choix fait. */}
                         <span
-                          class={`px-3 py-2.5 text-sm transition-colors ${
-                            actif() ? "bg-ink font-medium text-paper" : ""
-                          }`}
+                          class={`px-3 py-2.5 text-sm ${actif() ? "font-semibold" : ""}`}
                         >
                           {st.titre}
                         </span>
-                        <Show when={actif()}>
-                          <span
-                            aria-hidden="true"
-                            class="absolute right-2 top-2 flex h-7 w-7 items-center justify-center bg-ink text-sm text-paper"
-                          >
-                            ✓
-                          </span>
-                        </Show>
                       </button>
                     );
                   }}
@@ -927,7 +1081,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               disponible={!styleManquant()}
               occupe={occupe()}
               interrompre={etape() === "generation"}
-              onPhoto={(f) => void choisirPhoto(f, { lancer: false })}
+              onPhoto={(f) => void choisirPhoto(f)}
             />
           </Show>
 
@@ -944,7 +1098,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               voir d'un coup d'œil lequel est pris, sur la tablette du stand. */}
           <div class="mt-4">
             <span class="block text-sm font-medium">{tr("ia.orientation")}</span>
-            <div class="mt-2 grid grid-cols-2 gap-2" role="radiogroup">
+            <div class="mt-3 grid grid-cols-2 gap-3" role="radiogroup">
               <For each={["portrait", "paysage"] as const}>
                 {(sens) => (
                   <button
@@ -952,11 +1106,13 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                     role="radio"
                     aria-checked={orientation() === sens}
                     disabled={occupe()}
-                    onClick={() => setOrientation(sens)}
-                    class={`flex items-center justify-center gap-2 border-2 px-3 py-2.5 text-sm transition-colors disabled:opacity-60 ${
-                      orientation() === sens
-                        ? "border-ink bg-ink font-medium text-paper"
-                        : "border-ink/15 hover:border-ink/45"
+                    onClick={() => {
+                      sensChoisiALaMain = true;
+                      setOrientation(sens);
+                    }}
+                    // Choix fait : `ml-choix` (global.css), plus de noir plein.
+                    class={`ml-choix flex items-center justify-center gap-2 border border-ink/15 px-3 py-2.5 text-sm hover:border-ink/45 disabled:opacity-60 ${
+                      orientation() === sens ? "font-semibold" : ""
                     }`}
                   >
                     <span
@@ -1062,7 +1218,10 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                     onInput={(e) => saisirLigne(rang, e.currentTarget)}
                     class="mt-1 w-full resize-none border border-ink/20 bg-paper px-3 py-2 text-sm leading-snug focus:border-ink focus:outline-none"
                   />
-                  <div class="mt-1.5 flex flex-wrap gap-1.5">
+                  {/* Écarts de 10 px : la coche du choix fait (`ml-choix`)
+                      déborde de son coin d'autant, et ne doit pas mordre sur
+                      le champ au-dessus ni sur la police voisine. */}
+                  <div class="mt-2.5 flex flex-wrap gap-2.5">
                     <For each={policesDeLaLigne(rang)}>
                       {(police) => (
                         <button
@@ -1070,11 +1229,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                           aria-pressed={ligne().font === police.id}
                           title={nomTraduit(CLES_POLICES, police)}
                           onClick={() => modifierLigne(rang, { font: police.id })}
-                          class={`border px-3 py-1.5 text-lg leading-snug transition-colors ${
-                            ligne().font === police.id
-                              ? "border-ink bg-ink text-paper"
-                              : "border-ink/20 hover:border-ink"
-                          }`}
+                          class="ml-choix border border-ink/20 px-3 py-1.5 text-lg leading-snug hover:border-ink/45"
                           style={{ "font-family": familleCss(police) }}
                         >
                           {nomTraduit(CLES_POLICES, police)}
@@ -1091,7 +1246,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
 
             <div>
               <p class="text-sm font-medium">{tr("cfg.couleur_texte")}</p>
-              <div class="mt-1.5 flex gap-2">
+              <div class="mt-2.5 flex gap-3">
                 <For each={COULEURS_TEXTE_AFFICHE}>
                   {(c) => (
                     <button
@@ -1100,9 +1255,9 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                       aria-label={nomTraduit(CLES_COULEURS, c)}
                       title={nomTraduit(CLES_COULEURS, c)}
                       onClick={() => setCouleur(c.hex)}
-                      class={`h-9 w-9 border-2 transition-colors ${
-                        couleur() === c.hex ? "border-terracotta" : "border-ink/30"
-                      }`}
+                      // La couleur garde son fond (style en ligne) ; le choix
+                      // fait reçoit les marques communes (`ml-choix`).
+                      class="ml-choix h-9 w-9 border border-ink/30 hover:border-ink/60"
                       style={{ background: c.hex }}
                     />
                   )}
@@ -1114,22 +1269,21 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           <Show when={formats().length > 1}>
             <div class="mt-4">
               <p class="text-sm font-medium">{tr("produit.format")}</p>
-              <div class="mt-2 flex gap-3">
+              {/* Les mêmes cases que le format de la fiche, et le même choix
+                  fait (`ml-choix`) : plus de noir plein, qu'on prenait pour un
+                  bouton à presser. */}
+              <div class="mt-3 flex gap-3">
                 <For each={formats()}>
                   {(f) => (
                     <button
                       type="button"
                       onClick={() => setFormat(f.format)}
                       aria-pressed={format() === f.format}
-                      class={`border px-4 py-3 text-left text-sm transition-colors ${
-                        format() === f.format
-                          ? "border-ink bg-ink text-paper"
-                          : "border-ink/20 hover:border-ink"
-                      }`}
+                      class="ml-choix border border-ink/20 px-4 py-3 text-left text-sm hover:border-ink/45"
                     >
-                      <span class="block font-medium">{f.format}</span>
+                      <span class="block font-semibold">{f.format}</span>
                       <Show when={!props.sansPrix}>
-                        <span class="block opacity-80">
+                        <span class="block font-semibold text-ink-soft">
                           {formatPrice(f.priceCents, locale)}
                         </span>
                       </Show>
@@ -1201,10 +1355,25 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               <button
                 type="button"
                 disabled={ajout() || occupe()}
+                aria-busy={ajout()}
                 onClick={() => void ajouterAuPanier()}
                 class="rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
               >
-                {ajout() ? "…" : tr("produit.ajouter")}
+                {/* Pendant l'ajout, un rond qui tourne et ce qui se passe en
+                    toutes lettres : le « … » seul se lisait comme une panne. */}
+                <Show
+                  when={!ajout()}
+                  fallback={
+                    <>
+                      <span class="ml-spinner ml-spinner-clair mr-2" aria-hidden="true" />
+                      {tr("produit.ajout_en_cours")}
+                    </>
+                  }
+                >
+                  {affichesAAjouter().length > 1
+                    ? tr("ia.ajouter_n").replace("{n}", String(affichesAAjouter().length))
+                    : tr("produit.ajouter")}
+                </Show>
               </button>
               <button
                 type="button"

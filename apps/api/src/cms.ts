@@ -42,6 +42,22 @@ import {
 } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import type { BlocPage } from "./db/schema.js";
+import { ordreDesCollections } from "./collections.js";
+import { menuSuitLOrdre } from "./menu-ordre.js";
+
+/**
+ * L'ordre des pages, partout où elles se listent : celles que la boutique a
+ * rangées (« Pages du site », poignée ⠿ ou flèches) d'abord, dans son ordre ;
+ * les autres ensuite, par titre — l'ordre d'avant, qui reste celui d'une page
+ * créée après le rangement. Même règle que les collections.
+ */
+function ordreDesPages() {
+  return [
+    raw`(${schema.pages.position} = 0) asc`,
+    asc(schema.pages.position),
+    asc(schema.pages.title),
+  ];
+}
 
 /** Les seuls états qu'une page peut prendre. */
 const STATUTS = ["active", "draft"] as const;
@@ -1250,9 +1266,10 @@ export function mountCms(app: Hono): void {
           inArray(schema.pages.affichage, AFFICHAGES_STAND),
         ),
       )
-      // Par titre : la vendeuse cherche « Nos formats » dans une liste, et un
-      // classement par date changerait de place à chaque enregistrement.
-      .orderBy(asc(schema.pages.title));
+      // Dans l'ordre réglé au back-office, sinon par titre : la vendeuse
+      // cherche « Nos formats » dans une liste, et un classement par date
+      // changerait de place à chaque enregistrement.
+      .orderBy(...ordreDesPages());
 
     return c.json({
       pages: await Promise.all(
@@ -1266,14 +1283,17 @@ export function mountCms(app: Hono): void {
   /* ---------------------------------------------------------------------- */
 
   /**
-   * La liste des pages, rangée par titre.
+   * La liste des pages, dans l'ordre réglé par la boutique — par titre tant
+   * qu'elle n'en a rangé aucune.
    *
    * Par titre et non par date : c'est ainsi qu'on retrouve « Livraison et
    * retours » quand on le cherche, alors qu'un classement par date change de
    * place à chaque enregistrement.
    *
    * Les pages archivées viennent AVEC, marquées : l'écran les range dans sa
-   * section « Archivées » sans avoir à redemander la liste.
+   * section « Archivées » sans avoir à redemander la liste. Les traductions du
+   * titre aussi : le menu s'en sert pour proposer le nom d'une page dans les
+   * cinq langues quand on la choisit comme destination.
    */
   app.get("/admin/pages", async (c) => {
     const lignes = await db
@@ -1283,18 +1303,73 @@ export function mountCms(app: Hono): void {
         title: schema.pages.title,
         status: schema.pages.status,
         affichage: schema.pages.affichage,
+        position: schema.pages.position,
+        translations: schema.pages.translations,
         archivedAt: schema.pages.archivedAt,
         updatedAt: schema.pages.updatedAt,
       })
       .from(schema.pages)
-      .orderBy(asc(schema.pages.title));
+      .orderBy(...ordreDesPages());
     return c.json({
-      pages: lignes.map((p) => ({
+      pages: lignes.map(({ translations, ...p }) => ({
         ...p,
+        // Le titre seul : les blocs traduits n'ont rien à faire dans une liste.
+        titres: Object.fromEntries(
+          Object.entries(translations ?? {})
+            .map(([l, t]) => [l, (t?.title ?? "").trim()] as const)
+            .filter(([, titre]) => titre),
+        ),
         archivedAt: p.archivedAt?.toISOString() ?? null,
         updatedAt: p.updatedAt.toISOString(),
       })),
     });
+  });
+
+  /**
+   * Range les pages dans l'ordre voulu.
+   *
+   * Le tableau fait foi : la première reçoit le rang 1, la suivante le 2…
+   * L'écran envoie les pages qu'il montre, archivées exceptées : une archivée
+   * garde son ancien rang, qu'elle retrouve si on la restaure. Une seule
+   * transaction : un ordre à moitié enregistré laisserait deux pages au même
+   * rang sans que rien ne le dise.
+   *
+   * Avec `menu: true`, les liens du menu qui mènent à ces pages suivent le
+   * même ordre entre eux (menu-ordre.ts), dans la même transaction.
+   *
+   * Déclarée AVANT « /admin/pages/:id » : sinon « ordre » serait lu comme
+   * l'identifiant d'une page.
+   */
+  app.post("/admin/pages/ordre", async (c) => {
+    const corps = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const ids = [
+      ...new Set(
+        (Array.isArray(corps.pages) ? corps.pages : [])
+          .map((v) => Number(v))
+          .filter((n) => Number.isInteger(n) && n > 0),
+      ),
+    ];
+    if (!ids.length) return c.json({ error: "L'ordre envoyé était vide." }, 400);
+    const connues = await db
+      .select({ id: schema.pages.id, slug: schema.pages.slug })
+      .from(schema.pages)
+      .where(inArray(schema.pages.id, ids));
+    const slugDe = new Map(connues.map((l) => [l.id, l.slug]));
+    const rangs = ids.filter((id) => slugDe.has(id));
+    let liensMenu = 0;
+    await db.transaction(async (tx) => {
+      for (let i = 0; i < rangs.length; i++)
+        await tx
+          .update(schema.pages)
+          .set({ position: i + 1 })
+          .where(eq(schema.pages.id, rangs[i]!));
+      if (corps.menu === true)
+        liensMenu = await menuSuitLOrdre(
+          tx,
+          new Map(rangs.map((id, i) => [`page:${slugDe.get(id)!.toLowerCase()}`, i])),
+        );
+    });
+    return c.json({ ok: true, ranges: rangs.length, liensMenu });
   });
 
   /**
@@ -1332,7 +1407,7 @@ export function mountCms(app: Hono): void {
           isNull(schema.collections.archivedAt),
         ),
       )
-      .orderBy(asc(schema.collections.position), asc(schema.collections.name));
+      .orderBy(...ordreDesCollections());
     // Seulement les catégories actives et non archivées : une catégorie
     // retirée ne sort plus de produits, et la proposer ici ferait composer une
     // rangée qui restera vide sans que rien n'explique pourquoi.

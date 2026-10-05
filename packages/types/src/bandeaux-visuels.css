@@ -1,0 +1,362 @@
+/*
+ * Les bandeaux visuels — la feuille COMMUNE au site (BandeauxVisuels.astro)
+ * et à l'aperçu du back-office. Les classes sont calculées des deux côtés par
+ * la même fonction (classesBanniere, bandeaux-visuels.ts) : l'aperçu ne peut
+ * pas montrer autre chose que ce que la boutique affichera.
+ *
+ * Tout se règle sur la largeur du CADRE (.ml-bv-cadre), par des requêtes de
+ * conteneur, et non sur celle de l'écran. Sur le site, le cadre fait toute la
+ * largeur et cela revient au même ; dans le back-office, c'est ce qui permet
+ * de montrer la version téléphone dans une boîte de 375 px sur un écran
+ * d'ordinateur.
+ *
+ * Trois paliers : téléphone sous 640 px, tablette jusqu'à 1023, ordinateur
+ * au-delà. 640, c'est aussi la bascule de l'image propre au téléphone (le
+ * <source media> du site) : changer l'un sans l'autre montrerait l'image de
+ * l'ordinateur avec les proportions de celle du téléphone.
+ *
+ * Structure attendue :
+ *   .ml-bv-cadre
+ *     .ml-bv (div, ou a quand toute l'image mène au lien)
+ *       picture.ml-bv-media > img
+ *       .ml-bv-contenu > .ml-bv-boite > .ml-bv-titre, .ml-bv-texte, .ml-bv-bouton
+ *
+ * Angles droits, comme tout le site (global.css neutralise les arrondis).
+ */
+
+.ml-bv-cadre {
+  container-type: inline-size;
+}
+
+.ml-bv {
+  /* La hauteur réservée AVANT l'arrivée de l'image : c'est elle qui évite
+     que la page saute quand l'image se charge. Le contenu peut l'agrandir
+     (min-height), jamais la réduire — un texte long sur un petit téléphone
+     ne déborde pas, c'est la bannière qui grandit. */
+  --ml-bv-h: 280px;
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  min-height: var(--ml-bv-h);
+  /* « clip » et non « hidden » : rien ne déborde de la bannière (le halo du
+     texte ombré), mais elle reste libre de grandir avec son texte — une
+     boîte « hidden » devient défilante et perd ce droit en hauteur
+     « de l'image ». */
+  overflow: clip;
+  background: #f3f3f3;
+  color: #ffffff;
+  font-family: "Inter", system-ui, sans-serif;
+  text-decoration: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* Hauteurs : téléphone, puis tablette, puis ordinateur.                */
+/* « moyenne » sur ordinateur = 480 px, la bannière de Noël de l'ancienne */
+/* boutique.                                                           */
+/* ------------------------------------------------------------------ */
+.ml-bv--petite {
+  --ml-bv-h: 200px;
+}
+.ml-bv--moyenne {
+  --ml-bv-h: 280px;
+}
+.ml-bv--grande {
+  --ml-bv-h: 380px;
+}
+@container (min-width: 640px) {
+  .ml-bv--petite {
+    --ml-bv-h: 260px;
+  }
+  .ml-bv--moyenne {
+    --ml-bv-h: 360px;
+  }
+  .ml-bv--grande {
+    --ml-bv-h: 480px;
+  }
+}
+@container (min-width: 1024px) {
+  .ml-bv--petite {
+    --ml-bv-h: 340px;
+  }
+  .ml-bv--moyenne {
+    --ml-bv-h: 480px;
+  }
+  .ml-bv--grande {
+    --ml-bv-h: 640px;
+  }
+}
+
+/* « Hauteur de l'image » : les proportions de l'image, relevées à l'envoi,
+   donc rien n'est recadré. `min-height: auto` laisse un texte trop long
+   agrandir la bannière plutôt que d'en sortir. Proportions inconnues (image
+   collée à la main) : un 16/5 sobre, plutôt qu'une page qui saute. */
+.ml-bv--image {
+  min-height: auto;
+  aspect-ratio: var(--ml-bv-ratio-mobile, var(--ml-bv-ratio, 16 / 5));
+}
+@container (min-width: 640px) {
+  .ml-bv--image {
+    aspect-ratio: var(--ml-bv-ratio, 16 / 5);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* L'image, bord à bord, recadrée autour de son point de cadrage.       */
+/* ------------------------------------------------------------------ */
+.ml-bv-media {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  overflow: hidden;
+}
+.ml-bv-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  object-position: var(--ml-bv-cadrage-mobile, var(--ml-bv-cadrage, 50% 50%));
+}
+@container (min-width: 640px) {
+  .ml-bv-media img {
+    object-position: var(--ml-bv-cadrage, 50% 50%);
+  }
+}
+
+/* Texte blanc ombré : on assombrit le côté de l'image où il se pose. Une
+   ombre portée seule ne suffit pas sur un ciel blanc ou de la neige — et
+   c'est précisément l'image d'un bandeau de Noël. Le halo derrière le texte
+   (plus bas, .ml-bv-boite::before) finit le travail là où le dégradé
+   s'éclaircit. */
+.ml-bv--ombre .ml-bv-media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    rgb(0 0 0 / 0.66),
+    rgb(0 0 0 / 0.4) 45%,
+    rgb(0 0 0 / 0.1) 80%,
+    rgb(0 0 0 / 0)
+  );
+}
+.ml-bv--ombre.ml-bv--v-haut .ml-bv-media::after {
+  background: linear-gradient(
+    to bottom,
+    rgb(0 0 0 / 0.66),
+    rgb(0 0 0 / 0.4) 45%,
+    rgb(0 0 0 / 0.1) 80%,
+    rgb(0 0 0 / 0)
+  );
+}
+.ml-bv--ombre.ml-bv--v-milieu .ml-bv-media::after {
+  background: rgb(0 0 0 / 0.4);
+}
+
+/* ------------------------------------------------------------------ */
+/* Le texte, posé dans l'une des neuf cases.                            */
+/* ------------------------------------------------------------------ */
+.ml-bv-contenu {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 16px;
+}
+@container (min-width: 640px) {
+  .ml-bv-contenu {
+    padding: 28px 32px;
+  }
+}
+@container (min-width: 1024px) {
+  .ml-bv-contenu {
+    padding: 40px 48px;
+  }
+}
+.ml-bv--v-haut .ml-bv-contenu {
+  align-items: flex-start;
+}
+.ml-bv--v-milieu .ml-bv-contenu {
+  align-items: center;
+}
+.ml-bv--v-bas .ml-bv-contenu {
+  align-items: flex-end;
+}
+.ml-bv--h-gauche .ml-bv-contenu {
+  justify-content: flex-start;
+  text-align: left;
+}
+.ml-bv--h-centre .ml-bv-contenu {
+  justify-content: center;
+  text-align: center;
+}
+.ml-bv--h-droite .ml-bv-contenu {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.ml-bv-boite {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@container (min-width: 640px) {
+  .ml-bv-boite {
+    gap: 10px;
+    max-width: min(100%, 36rem);
+  }
+}
+@container (min-width: 1024px) {
+  .ml-bv-boite {
+    max-width: min(100%, 42rem);
+  }
+}
+.ml-bv--h-gauche .ml-bv-boite {
+  align-items: flex-start;
+}
+.ml-bv--h-centre .ml-bv-boite {
+  align-items: center;
+}
+.ml-bv--h-droite .ml-bv-boite {
+  align-items: flex-end;
+}
+
+/* Les trois styles. Contrastes : blanc sur #121212 et #121212 sur blanc
+   dépassent largement les 4,5:1 demandés ; le blanc ombré s'appuie sur le
+   voile ci-dessus. */
+.ml-bv--etiquette .ml-bv-boite {
+  background: #121212;
+  color: #ffffff;
+  padding: 12px 18px;
+}
+@container (min-width: 640px) {
+  .ml-bv--etiquette .ml-bv-boite {
+    padding: 14px 26px;
+  }
+}
+.ml-bv--encadre .ml-bv-boite {
+  background: rgb(255 255 255 / 0.95);
+  color: #121212;
+  padding: 16px 20px;
+}
+@container (min-width: 640px) {
+  .ml-bv--encadre .ml-bv-boite {
+    padding: 24px 32px;
+  }
+}
+.ml-bv--ombre .ml-bv-boite {
+  position: relative;
+  color: #ffffff;
+  text-shadow:
+    0 1px 2px rgb(0 0 0 / 0.55),
+    0 2px 18px rgb(0 0 0 / 0.4);
+}
+/* Un halo sombre et sans bord, juste derrière le texte : avec le dégradé, il
+   garde le blanc lisible même sur une image très claire, sans poser de
+   cadre visible. */
+.ml-bv--ombre .ml-bv-boite::before {
+  content: "";
+  position: absolute;
+  inset: -28px -44px;
+  z-index: -1;
+  background: radial-gradient(
+    closest-side,
+    rgb(0 0 0 / 0.42),
+    rgb(0 0 0 / 0.26) 55%,
+    rgb(0 0 0 / 0)
+  );
+  pointer-events: none;
+}
+
+.ml-bv-titre {
+  margin: 0;
+  /* La largeur du cadre (cqi), pas celle de l'écran : le titre de l'aperçu
+     « téléphone » a la taille qu'il aura sur un téléphone. */
+  font-size: clamp(1.375rem, 1.05rem + 1.9cqi, 2.75rem);
+  line-height: 1.15;
+  font-weight: 400;
+  letter-spacing: 0.6px;
+  text-wrap: balance;
+}
+.ml-bv-texte {
+  margin: 0;
+  font-size: clamp(0.875rem, 0.8rem + 0.4cqi, 1.125rem);
+  line-height: 1.45;
+  /* Les retours à la ligne tapés au back-office sont gardés. */
+  white-space: pre-line;
+  text-wrap: pretty;
+}
+/* L'étiquette seule — « POUR NOËL, OFFREZ UN CADEAU UNIQUE ! » : un peu plus
+   appuyée et espacée, comme sur l'ancienne boutique. */
+.ml-bv--etiquette .ml-bv-texte:only-child {
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+.ml-bv-bouton {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 12px 28px;
+  background: #121212;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0.03em;
+  text-decoration: none;
+  text-shadow: none;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+/* Sur fond noir ou sur l'image, le bouton passe en blanc pour se détacher. */
+.ml-bv--etiquette .ml-bv-bouton,
+.ml-bv--ombre .ml-bv-bouton {
+  background: #ffffff;
+  color: #121212;
+}
+.ml-bv--encadre a.ml-bv-bouton:hover,
+a.ml-bv--encadre:hover .ml-bv-bouton {
+  background: #333333;
+}
+.ml-bv--etiquette a.ml-bv-bouton:hover,
+a.ml-bv--etiquette:hover .ml-bv-bouton,
+.ml-bv--ombre a.ml-bv-bouton:hover,
+a.ml-bv--ombre:hover .ml-bv-bouton {
+  background: #e6e6e6;
+}
+/* Toute l'image cliquable, sans bouton : l'étiquette réagit au survol. */
+a.ml-bv--etiquette:hover .ml-bv-boite {
+  background: #2b2b2b;
+}
+
+/* ------------------------------------------------------------------ */
+/* Le focus clavier : un anneau blanc cerné de noir des deux côtés,     */
+/* lisible sur une image claire comme sur une image sombre. L'ombre     */
+/* s'étend plus loin que le contour, qui se peint par-dessus : c'est ce  */
+/* qui laisse paraître le noir au-delà du blanc.                         */
+/* ------------------------------------------------------------------ */
+a.ml-bv-bouton:focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 7px #121212;
+}
+a.ml-bv:focus-visible {
+  outline: none;
+}
+a.ml-bv:focus-visible::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  z-index: 2;
+  outline: 3px solid #ffffff;
+  box-shadow:
+    0 0 0 6px #121212,
+    inset 0 0 0 3px #121212;
+  pointer-events: none;
+}

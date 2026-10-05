@@ -39,6 +39,54 @@ h4 {
   font-weight: 600;
 }
 
+/* La description d'une affiche, sur sa fiche, dans la typographie du corps de
+   texte de memoryline.fr — relevée sur le site actuel : demi-gras (600),
+   lettres espacées de 0,6 px, interligne de 1,8, encre à 75 %. Elle sortait
+   ici en 16 px maigre et serré ; retour de la boutique : « un peu plus gras,
+   plus petit, comme sur le site actuel ». 15 px partout : c'est la taille du
+   site actuel sur téléphone, un cran sous les 16 px d'avant, et le demi-gras
+   reste confortable à lire sur un long paragraphe à cette taille-là.
+
+   Les mots mis en gras passent à l'encre pleine : sur un texte déjà
+   demi-gras, un simple gras ne se distinguait presque plus. */
+.ml-description-produit {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  line-height: 1.8;
+  color: var(--color-ink-soft);
+  overflow-wrap: break-word;
+}
+/* Un paragraphe, une liste, un intertitre : un blanc d'une demi-ligne entre
+   deux, jamais avant le premier. */
+.ml-description-produit > * + * {
+  margin-top: 0.9em;
+}
+.ml-description-produit :is(h2, h3) {
+  font-size: 1.07em;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: 0.6px;
+  color: var(--color-ink);
+}
+.ml-description-produit :is(strong, b) {
+  font-weight: 700;
+  color: var(--color-ink);
+}
+.ml-description-produit ul {
+  list-style: disc;
+  padding-left: 1.25em;
+}
+.ml-description-produit ol {
+  list-style: decimal;
+  padding-left: 1.25em;
+}
+.ml-description-produit a {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 /* Angles droits partout, comme sur memoryline.fr (--buttons-radius: 0,
    --media-radius: 0). Plutôt que de réécrire chaque classe d'arrondi dans
    quinze fichiers, on les neutralise ici : le jour où la cliente voudra des
@@ -165,6 +213,51 @@ h4 {
   animation: ml-spin 0.7s linear infinite;
   vertical-align: -3px;
 }
+/* Le même rond, DANS un bouton noir pendant qu'il travaille (« Ajout au
+   panier… », « Paiement en cours… ») : le gris du rond d'origine s'y perdait.
+   Il prend la couleur du texte du bouton, le blanc. */
+.ml-spinner-clair {
+  border-color: rgba(255, 255, 255, 0.3);
+  border-top-color: currentColor;
+}
+
+/* Le voile « Ajout au panier… » de la personnalisation (ConfiguratorIsland) :
+   la fenêtre se couvre d'un blanc léger le temps que l'affiche parte, et une
+   étiquette noire dit ce qui se passe, au milieu de l'écran — là où l'œil
+   est, et non tout en haut d'un panneau qu'on a fait défiler. Il passe
+   au-dessus de la fenêtre (z-index 100) et empêche de toucher deux fois. */
+.ml-attente-voile {
+  position: fixed;
+  inset: 0;
+  z-index: 105;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.72);
+  cursor: progress;
+}
+.ml-attente-voile > p {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 14px 22px;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-weight: 600;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ml-attente-voile {
+    animation: ml-voile-apparait 0.15s ease-out;
+  }
+}
+@keyframes ml-voile-apparait {
+  from {
+    opacity: 0;
+  }
+}
 
 /* Pastille du panier : le nombre d'articles, en haut à droite du lien. */
 .ml-panier-lien {
@@ -223,6 +316,46 @@ body {
 /* Empêche l'aperçu de déborder horizontalement sur petits écrans. */
 .ml-cfg-root {
   max-width: 100%;
+}
+
+/* Le fil d'étapes (« 1. Fond & texte · 2. Personnages · 3. Format ») : 44 px
+   de haut sous le doigt, la taille d'une cible tactile — le stand se tient
+   sur une tablette. Sur un téléphone, un cran plus petit, pour que les trois
+   tiennent sur une rangée jusqu'à 375 px de large : une deuxième rangée
+   repousserait d'autant la grille des personnages sous la barre du bas. À
+   320 px, ou dans une langue aux mots longs, ils passent sur deux rangées. */
+@media (pointer: coarse) {
+  .ml-cfg-etape {
+    min-height: 44px !important;
+  }
+}
+@media (max-width: 480px) {
+  .ml-cfg-etapes {
+    gap: 6px !important;
+  }
+  .ml-cfg-etape {
+    font-size: 14px !important;
+    padding: 9px 10px !important;
+  }
+}
+@media (max-width: 400px) {
+  .ml-cfg-etape {
+    font-size: 13px !important;
+    padding: 9px 8px !important;
+  }
+}
+/* À 320 px, une rangée quand même : chaque libellé passe sur deux lignes
+   dans son bouton (« 1. Fond & / texte »), comme avant, plutôt que de
+   repousser d'une rangée entière la grille des personnages. */
+@media (max-width: 359px) {
+  .ml-cfg-etapes {
+    flex-wrap: nowrap !important;
+  }
+  .ml-cfg-etape {
+    white-space: normal !important;
+    padding: 5px 8px !important;
+    line-height: 1.15 !important;
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -303,10 +436,15 @@ body {
    * `scrollbar-gutter: stable` réserve sa place en permanence : sans lui, la
    * barre apparaît et disparaît selon le contenu, et la fenêtre entière
    * tressaute de quelques pixels à chaque changement d'étape.
+   *
+   * Épaisseur normale et curseur foncé sur un rail gris : la barre fine et
+   * pâle d'avant ne se voyait pas (retour cliente : « trop discret, penser
+   * aux vieux »). Là où le navigateur la cache malgré tout (tablettes), le
+   * configurateur en dessine une, aux mêmes couleurs (Defilement.tsx).
    */
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(18, 18, 18, 0.35) transparent;
+  scrollbar-width: auto;
+  scrollbar-color: #4b5563 #e5e7eb;
 }
 
 /* WebKit ne connaît pas encore `scrollbar-width` : sur Safari et sur les
@@ -314,18 +452,17 @@ body {
    `-webkit-appearance: none` est ce qui l'empêche de rester invisible. */
 .ml-modal-body::-webkit-scrollbar {
   -webkit-appearance: none;
-  width: 10px;
+  width: 14px;
 }
 .ml-modal-body::-webkit-scrollbar-thumb {
-  border-radius: 5px;
-  background-color: rgba(18, 18, 18, 0.35);
-  /* La bordure transparente amincit le curseur sans réduire la zone que le
-     doigt peut attraper. */
-  border: 3px solid transparent;
-  background-clip: content-box;
+  border-radius: 7px;
+  background-color: #4b5563;
+  /* Une bordure de la couleur du rail : le curseur se détache du bord sans
+     rien perdre de la zone que le doigt peut attraper. */
+  border: 3px solid #e5e7eb;
 }
 .ml-modal-body::-webkit-scrollbar-track {
-  background: transparent;
+  background: #e5e7eb;
 }
 
 /*
@@ -651,38 +788,52 @@ body {
  * ceux du configurateur (`ml-cfg-btn` : Continuer, Valider), plutôt que
  * bouton par bouton : le prochain bouton noir en profitera sans qu'on y pense.
  *
- * À l'appui : le bouton se tasse légèrement, passe au noir franc et s'entoure
- * d'un halo. Le halo est ce qui se voit sous le doigt — il déborde du bouton,
- * alors que le doigt en couvre le centre. Il s'efface en un quart de seconde
- * au relâcher, assez lentement pour qu'un appui bref reste perceptible.
+ * À l'appui, le bouton PASSE AU ROUGE de la boutique (celui du bandeau), se
+ * tasse légèrement et s'entoure d'un halo rouge. Retour de la boutique :
+ * « pas assez visible quand on a cliqué ». L'appui passait du noir de
+ * l'encre (#121212) au noir franc (#000) : deux noirs que l'œil ne sépare
+ * pas, et un halo gris qui se perdait. Un éclair rouge, lui, ne se manque
+ * pas, même sous un doigt — le halo déborde du bouton, là où le doigt ne
+ * cache rien. Il s'efface en un peu moins d'une demi-seconde au relâcher :
+ * un appui bref reste perceptible.
+ *
+ * Même appui pour les boutons à contour noir qui se remplissent de noir au
+ * survol (`hover:bg-ink` : « Tout afficher », « Régénérer »…) : sur un
+ * téléphone, le survol n'existe pas, et ils ne montraient rien du tout.
+ *
  * Un bouton désactivé ne réagit pas : il ne ferait rien.
  * ------------------------------------------------------------------------ */
 :is(button, a, input[type="submit"]).bg-ink,
+:is(button, a)[class~="hover:bg-ink"],
 .ml-cfg-btn {
   -webkit-tap-highlight-color: transparent;
   /* Cette règle remplace les `transition-colors` des boutons : la liste
      reprend donc leurs propriétés, en plus de celles de l'appui. */
   transition-property: color, background-color, border-color, opacity,
     box-shadow, transform, filter;
-  transition-duration: 0.25s;
+  transition-duration: 0.4s;
   transition-timing-function: ease-out;
 }
-:is(button, a, input[type="submit"]).bg-ink:active:not(:disabled) {
-  background-color: #000;
-  box-shadow: 0 0 0 4px rgba(18, 18, 18, 0.22);
+:is(button, a, input[type="submit"]).bg-ink:active:not(:disabled),
+:is(button, a)[class~="hover:bg-ink"]:active:not(:disabled) {
+  background-color: var(--color-terracotta);
+  border-color: var(--color-terracotta);
+  color: var(--color-paper);
+  box-shadow: 0 0 0 4px rgba(156, 22, 22, 0.3);
   transition-duration: 0.04s;
 }
 /* Le configurateur pose sa couleur de fond en style en ligne, qu'une feuille
    de style ne peut pas remplacer : on l'assombrit par un filtre. */
 .ml-cfg-btn:active:not(:disabled) {
-  filter: brightness(0.85);
-  box-shadow: 0 0 0 4px rgba(18, 18, 18, 0.18);
+  filter: brightness(0.75);
+  box-shadow: 0 0 0 4px rgba(18, 18, 18, 0.22);
   transition-duration: 0.04s;
 }
 @media (prefers-reduced-motion: no-preference) {
   :is(button, a, input[type="submit"]).bg-ink:active:not(:disabled),
+  :is(button, a)[class~="hover:bg-ink"]:active:not(:disabled),
   .ml-cfg-btn:active:not(:disabled),
-  .ml-choix:active {
+  .ml-choix:active:not(:disabled) {
     transform: scale(0.96);
   }
 }
@@ -695,17 +846,44 @@ body {
   outline-offset: 3px;
 }
 
+/* Pendant que le bouton travaille — l'ajout au panier, le paiement —, il
+   reste NOIR et lisible : il n'est pas indisponible, il est occupé. Il
+   portait un « … » seul, à 60 % d'opacité, qu'on lisait comme un bouton en
+   panne, et qu'on touchait une deuxième fois. Il montre maintenant un rond
+   qui tourne (.ml-spinner-clair) et ce qu'il fait, en toutes lettres. Même
+   règle pour le bouton rouge « Continuer vers le paiement ». */
+:is(button, input[type="submit"]):is(.bg-ink, .bg-terracotta)[aria-busy="true"] {
+  opacity: 1;
+  cursor: progress;
+}
+
 /* --------------------------------------------------------------------------
- * Un choix fait doit se voir d'un coup d'œil — le format A4 / A3 de la fiche.
+ * Un choix fait doit se voir d'un coup d'œil — partout, et partout pareil.
  *
- * La case choisie n'avait qu'un trait d'un pixel un peu plus foncé et un fond
- * à peine gris : on ne savait plus lequel des deux formats était pris. Elle
- * reçoit maintenant un cadre noir de 2 px — le second pixel en ombre
- * intérieure, pour que rien ne bouge — et une coche dans son coin, comme les
- * styles de l'affiche IA.
+ * UNE classe, `ml-choix`, pour toutes les cases où l'on choisit : le format
+ * A4 / A3 de la fiche ; le style, le sens, les polices, la couleur et le
+ * format de l'affiche tirée d'une photo ; le fond, les polices, le format et
+ * le cadre de la personnalisation. L'état se lit sur `aria-checked` (boutons
+ * radio) ou `aria-pressed` (boutons bascule) : c'est lui que les scripts
+ * tiennent à jour, et un lecteur d'écran annonce ainsi exactement ce qu'on
+ * voit.
  *
- * L'état se lit sur `aria-checked` : c'est déjà lui que le script de la fiche
- * met à jour, et un lecteur d'écran annonce ainsi exactement ce qu'on voit.
+ * Retour de la boutique : « boutons plein noir, pas assez visible quand on a
+ * cliqué ». Une case choisie se remplissait de noir — l'allure exacte des
+ * boutons d'action, « Ajouter au panier » en tête : on ne savait plus si l'on
+ * regardait un choix fait ou un bouton à presser. Le choix fait garde
+ * maintenant un cadre noir de 2 px (le second pixel en ombre intérieure :
+ * rien ne bouge) sur un fond à peine gris, et reçoit deux marques à la
+ * couleur de la boutique : un liseré rouge tout autour, décollé d'un trait
+ * blanc, et une COCHE rouge à cheval sur son coin. Le survol ne fait que
+ * foncer le contour en gris (`hover:border-ink/45`) : il ne peut plus passer
+ * pour un choix.
+ *
+ * La coche déborde du coin plutôt que de s'y loger : sur une pastille de
+ * police haute de 38 px, elle mordait sur la dernière lettre. Elle passe
+ * devant les cases voisines (z-index). Contrastes (WCAG 2.1 AA, 3:1 pour un
+ * élément d'interface) : cadre noir sur blanc 18,9:1, rouge sur blanc 8,3:1,
+ * coche blanche sur rouge 8,3:1.
  * ------------------------------------------------------------------------ */
 .ml-choix {
   position: relative;
@@ -714,21 +892,62 @@ body {
   transition-duration: 0.15s;
   transition-timing-function: ease-out;
 }
-.ml-choix[aria-checked="true"] {
+.ml-choix:is([aria-checked="true"], [aria-pressed="true"]) {
   border-color: var(--color-ink);
   background-color: var(--color-paper-deep);
-  box-shadow: inset 0 0 0 1px var(--color-ink);
+  color: var(--color-ink);
+  box-shadow:
+    inset 0 0 0 1px var(--color-ink),
+    0 0 0 2px var(--color-paper),
+    0 0 0 4px var(--color-terracotta);
 }
-.ml-choix[aria-checked="true"]::after {
+.ml-choix:is([aria-checked="true"], [aria-pressed="true"])::after {
   content: "";
   position: absolute;
-  top: -1px;
-  right: -1px;
-  width: 20px;
-  height: 20px;
-  background: var(--color-ink)
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpolyline points='5 10.5 8.5 14 15 6.5' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+  z-index: 1;
+  top: -8px;
+  right: -8px;
+  width: 18px;
+  height: 18px;
+  background: var(--color-terracotta)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpolyline points='5 10.5 8.5 14 15 6.5' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
     center / 14px no-repeat;
+  /* Un trait blanc autour de la coche : elle se détache du liseré rouge
+     qu'elle chevauche. */
+  box-shadow: 0 0 0 2px var(--color-paper);
+}
+/* Dans la personnalisation, le module pose ses bordures en style en ligne
+   (en violet, de 1 px, puis 2 px une fois choisi) : ces règles-là doivent
+   passer devant. Le cadre retombe à 1 px + 1 px d'ombre, comme partout : la
+   case ne grossit plus d'un pixel en devenant le choix. */
+.ml-cfg-root .ml-choix {
+  border-width: 1px !important;
+}
+.ml-cfg-root .ml-choix:is([aria-checked="true"], [aria-pressed="true"]) {
+  border-color: var(--color-ink) !important;
+  background-color: var(--color-paper-deep) !important;
+}
+/* Le rail des cadres défile de côté, et un défilement rogne tout ce qui
+   dépasse : là, liseré et coche se logent À L'INTÉRIEUR de la case, dans sa
+   marge de 16 px. */
+.ml-cfg-rail .ml-choix:is([aria-checked="true"], [aria-pressed="true"]) {
+  box-shadow:
+    inset 0 0 0 1px var(--color-ink),
+    inset 0 0 0 3px var(--color-paper),
+    inset 0 0 0 5px var(--color-terracotta);
+}
+.ml-cfg-rail .ml-choix:is([aria-checked="true"], [aria-pressed="true"])::after {
+  top: 7px;
+  right: 7px;
+  box-shadow: none;
+}
+/* Une case qui rogne elle-même son contenu (une image aux coins arrondis, les
+   fonds de la personnalisation) : la coche se loge dans son coin, sans quoi
+   elle serait coupée. Le liseré, lui, est une ombre de la case : rien ne le
+   rogne. */
+.ml-choix-dedans:is([aria-checked="true"], [aria-pressed="true"])::after {
+  top: 4px;
+  right: 4px;
 }
 
 /* --------------------------------------------------------------------------
@@ -753,6 +972,40 @@ body {
     /* Plus court sur mobile : les commandes doivent rester visibles dessous. */
     height: min(46vh, 130vw);
   }
+}
+
+/* --------------------------------------------------------------------------
+ * L'étape « Format » sur une tablette en portrait : l'affiche à GAUCHE, les
+ * choix à droite, comme sur un ordinateur.
+ *
+ * Carte « mode stand » : « ne pas oublier que c'est sur tablette ! il faudrait
+ * qu'on n'ait pas à scroller ». En portrait (768 de large), le configurateur
+ * empilait l'affiche (46 % de la hauteur) au-dessus des formats, des cadres
+ * et du bouton de validation : sur une tablette dont le navigateur mange le
+ * haut de l'écran, les cadres passaient sous la barre du bas. Côte à côte,
+ * tout tient avec de la marge, et l'affiche se voit encore assez grande pour
+ * juger d'un cadre.
+ *
+ * Seulement à cette étape : les deux autres, plus longues, défilent de toute
+ * façon, et l'affiche au-dessus y garde sa place de téléphone. Seulement en
+ * portrait assez haut : un téléphone tenu en largeur n'a pas la hauteur pour
+ * cela. L'affiche prend la largeur de sa colonne, sans dépasser 62 % de la
+ * hauteur de l'écran.
+ * ------------------------------------------------------------------------ */
+@media (min-width: 600px) and (max-width: 768px) and (min-height: 600px) {
+  .ml-cfg-root[data-etape="format"] {
+    grid-template-columns: minmax(240px, 1fr) minmax(300px, 420px) !important;
+  }
+  .ml-cfg-root[data-etape="format"] .ml-cfg-poster {
+    width: min(100%, calc(62vh / 1.4142)) !important;
+    height: auto;
+  }
+}
+/* Sur une tablette en largeur (1024 × 768, dont le navigateur garde le haut),
+   l'étape tenait à un pixel près une fois le fil d'étapes grandi : la barre
+   du bas s'approche un peu des cadres pour lui laisser de la marge. */
+.ml-cfg-root[data-etape="format"] .ml-cfg-pied {
+  margin-top: 10px !important;
 }
 
 /* --------------------------------------------------------------------------
@@ -784,18 +1037,96 @@ body {
     background: var(--color-paper);
     padding-bottom: 8px;
     border-bottom: 1px solid rgba(32, 33, 31, 0.08);
+    /* Sur les côtés, deux ombres de la couleur du panneau (#fafafa, posée par
+       le configurateur) : l'anneau de la couleur choisie déborde de 4 px de
+       sa colonne, et passait au bord de l'aperçu pendant qu'on descendait
+       vers une partie du sommaire. Invisibles, elles le recouvrent. */
+    box-shadow:
+      -6px 0 0 #fafafa,
+      6px 0 0 #fafafa;
   }
   /* Le bandeau colle au bord intérieur de la marge de la fenêtre : dans ces
      14 px au-dessus de lui, les choix défilaient encore, coupés en deux. Une
      ombre pleine, de la couleur du bandeau, bouche l'interstice sans rien
      déplacer dans la page. Un pixel de plus pour la position fractionnaire
-     de la fenêtre : la fenêtre rogne ce qui dépasse, l'en-tête reste net. */
+     de la fenêtre : la fenêtre rogne ce qui dépasse, l'en-tête reste net.
+     Les ombres des côtés sont reprises : celle-ci remplace la liste entière. */
   .ml-modal-body .ml-cfg-perso-col {
-    box-shadow: 0 calc(-1 * var(--ml-modal-marge) - 1px) 0 var(--color-paper);
+    box-shadow:
+      0 calc(-1 * var(--ml-modal-marge) - 1px) 0 var(--color-paper),
+      -6px 0 0 #fafafa,
+      6px 0 0 #fafafa;
   }
   .ml-cfg-perso-apercu {
     height: 22vh;
     margin-inline: 0;
+    /* Le sommaire à côté ne doit pas le rétrécir : sa largeur vient de sa
+       hauteur, par le rapport 1:2 du dessin. */
+    flex: 0 0 auto;
+  }
+  /* Le sommaire des réglages prend le blanc à DROITE de l'aperçu : collé
+     avec lui, il reste à l'écran pendant qu'on descend dans les réglages.
+     Le configurateur le pose sous l'aperçu, centré, pour l'écran large. */
+  .ml-cfg-sommaire {
+    flex: 1 1 auto;
+    margin-top: 0 !important;
+    text-align: left !important;
+  }
+  .ml-cfg-sommaire-liste {
+    justify-content: flex-start !important;
+    /* 12 px entre deux rangées : de quoi loger la zone de toucher qui
+       déborde de chaque pastille (ci-dessous). */
+    row-gap: 12px !important;
+  }
+  /* 44 px de haut sous le doigt, sans grandir le bandeau : la pastille garde
+     sa taille à l'œil (32 px), et sa zone de toucher déborde de 6 px dessus
+     et dessous, dans l'écart entre les rangées — de 3 sur les côtés, la
+     moitié de l'écart entre voisines : deux zones ne se chevauchent jamais.
+     Un pixel de plus partout : le pseudo-élément se place depuis l'intérieur
+     de la bordure. Il fait partie du bouton : le toucher qui l'atteint
+     actionne la pastille. Des pastilles de 44 px pour de bon auraient
+     grandi le bandeau collé sur les téléphones courts (375 × 667), aux dépens
+     de la grille des personnages. */
+  .ml-cfg-sommaire-pastille {
+    position: relative;
+  }
+  .ml-cfg-sommaire-pastille::before {
+    content: "";
+    position: absolute;
+    inset: -7px -4px;
+  }
+}
+
+/* Sur les plus petits téléphones (320 px), il reste 176 px à côté d'un aperçu
+   haut de 141 : les pastilles se resserrent pour tenir sur trois rangées. À
+   leur taille normale, elles en prenaient cinq, débordaient de l'aperçu et
+   grandissaient le bandeau collé — au détriment de ce qui défile dessous.
+   28 px à l'œil, mais toujours 44 sous le doigt : la zone de toucher déborde
+   de 8 px dans un écart de 16 entre les rangées. Trois rangées tiennent
+   encore à côté de l'aperçu (139 px pour 141). */
+@media (max-width: 359px) {
+  .ml-cfg-sommaire-liste {
+    gap: 16px 5px !important;
+  }
+  .ml-cfg-sommaire-pastille {
+    min-height: 28px !important;
+    padding: 4px 9px !important;
+    gap: 5px !important;
+    font-size: 12px !important;
+  }
+  .ml-cfg-sommaire-pastille::before {
+    inset: -9px -3px;
+  }
+}
+
+/* Sur une tablette tactile — le stand se tient sur une tablette —, la place
+   ne manque pas à côté de l'aperçu : les pastilles du sommaire prennent pour
+   de bon la taille d'une cible au doigt, 44 px. */
+@media (min-width: 600px) and (pointer: coarse) {
+  .ml-cfg-sommaire-pastille {
+    min-height: 44px !important;
+    padding: 10px 16px !important;
+    font-size: 14px !important;
   }
 }
 
@@ -810,7 +1141,6 @@ body {
   overflow-x: auto;
   padding: 2px 0 8px;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
 }
 
 /* `max-height` est le PLAFOND de la grille, et rien de plus : la hauteur
@@ -832,23 +1162,93 @@ body {
   width: 100% !important;
 }
 
-/* Rail horizontal (choix du cadre) : barre de défilement fine et discrète,
-   visible quand même — c'est elle, avec la vignette coupée en deux, qui dit
-   au client qu'il y a d'autres cadres à droite. */
+/* À 320 px, les boutons ˄ ˅ de la grille (44 px, à sa droite) lui
+   prenaient une colonne : trois personnages par rangée en cases un peu plus
+   étroites valent mieux que deux. Le dessin, haut et étroit, y tient
+   toujours entier. */
+@media (max-width: 359px) {
+  .ml-cfg-grille-persos {
+    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  }
+}
+
+/* Rail horizontal (choix du cadre). Sa barre et ses flèches sont celles de
+   toutes les listes qui défilent, ci-dessous : la barre fine et pâle d'avant
+   ne se voyait pas. */
 .ml-cfg-rail {
-  scrollbar-width: thin;
-  scrollbar-color: #c7c7c7 transparent;
   -webkit-overflow-scrolling: touch;
 }
-.ml-cfg-rail::-webkit-scrollbar {
-  height: 6px;
+
+/* --------------------------------------------------------------------------
+ * Les listes qui défilent (ZoneDefilante, Defilement.tsx du configurateur) :
+ * galeries de pièces, catégories, grille des personnages, cadres, polices,
+ * points relais.
+ *
+ * Retour cliente : « que ce soit en horizontal et en vertical, bouton et
+ * barres : trop discret, penser aux vieux ». La barre du navigateur prend son
+ * épaisseur normale, un curseur gris foncé sur un rail gris clair ; là où il
+ * la cache (tablettes), le configurateur en dessine une aux mêmes couleurs.
+ * Les boutons ‹ › ˄ ˅ font 44 px et sont cerclés de noir.
+ * ------------------------------------------------------------------------ */
+.ml-defil-zone {
+  scrollbar-width: auto;
+  scrollbar-color: #4b5563 #e5e7eb;
 }
-.ml-cfg-rail::-webkit-scrollbar-thumb {
-  background: #c7c7c7;
-  border-radius: 3px;
+/* Safari et les navigateurs qui ignorent les deux propriétés ci-dessus. */
+.ml-defil-zone::-webkit-scrollbar {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
 }
-.ml-cfg-rail::-webkit-scrollbar-track {
-  background: transparent;
+.ml-defil-zone::-webkit-scrollbar-thumb {
+  border-radius: 7px;
+  background-color: #4b5563;
+  border: 3px solid #e5e7eb;
+}
+.ml-defil-zone::-webkit-scrollbar-track {
+  border-radius: 7px;
+  background: #e5e7eb;
+}
+
+/* Les boutons : l'appui doit se voir au doigt (pas de survol sur une
+   tablette), le focus au clavier. Un bouton estompé — arrivé au bout de ce
+   côté — ne réagit plus. */
+.ml-defil-btn {
+  -webkit-tap-highlight-color: transparent;
+}
+.ml-defil-btn:not(:disabled):hover {
+  background: #f3f4f6 !important;
+}
+.ml-defil-btn:not(:disabled):active {
+  background: #e5e7eb !important;
+}
+.ml-defil-btn:focus-visible {
+  outline: 3px solid #4f46e5;
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ml-defil-btn {
+    transition:
+      background-color 0.15s ease-out,
+      opacity 0.15s ease-out,
+      transform 0.1s ease-out;
+  }
+  .ml-defil-btn:not(:disabled):active {
+    transform: scale(0.94);
+  }
+}
+
+/* Le supplément de chaque cadre (« + 15 € », sous son nom), quand la boutique
+   le tait — case « Afficher le supplément de chaque cadre » de la page
+   Cadres du back-office, posée par ProductConfigurator.tsx. Le prix du cadre
+   reste dans le total de la barre du bas : seul ce détail disparaît.
+
+   La règle s'appuie sur la vignette telle que StepFormat.tsx la dessine :
+   l'aperçu (span), le nom (1er div), puis le supplément (2e div). Le jour où
+   le configurateur recevra une option à lui pour cela (`sansPrixCadres`,
+   comme `sansPrix`), cette règle devra partir avec. */
+.ml-sans-prix-cadres .ml-cfg-rail > button > div + div {
+  display: none;
 }
 
 /* La vignette du panier réutilise l'aperçu du configurateur : on annule le
@@ -918,12 +1318,15 @@ body {
   color: var(--color-terracotta);
 }
 
-/* Rangée de polices proposées : défile horizontalement au doigt. */
+/* Rangée de polices proposées : défile horizontalement au doigt. Le rangement
+   laisse la place des marques du choix fait (`ml-choix`) : un défilement
+   rogne tout ce qui dépasse, et la coche dépasse de 10 px au-dessus et à
+   droite, le liseré rouge de 4 px tout autour. */
 .ml-cfg-polices {
   display: flex;
-  gap: 6px;
+  gap: 10px;
   overflow-x: auto;
-  padding: 6px 2px 2px;
+  padding: 10px 12px 6px 4px;
   -webkit-overflow-scrolling: touch;
 }
 

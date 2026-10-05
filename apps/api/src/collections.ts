@@ -20,6 +20,7 @@
 import type { Hono } from "hono";
 import { and, asc, count, eq, inArray, sql as raw } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
+import { menuSuitLOrdre } from "./menu-ordre.js";
 
 /** Au-delà, ce n'est plus un nom de collection, c'est un paragraphe. */
 const NOM_MAX = 80;
@@ -140,6 +141,27 @@ export function poidsDesCollections(
   return retenu;
 }
 
+/**
+ * L'ordre des collections, partout où elles se listent.
+ *
+ * Celles que la boutique a rangées (écran « Collections », poignée ⠿ ou
+ * flèches) d'abord, dans son ordre ; les autres ensuite, par nom. Même règle
+ * que pour les affiches (ordre-affichage.ts) : `position` à zéro veut dire
+ * « pas encore rangée », et une collection créée plus tard — à la main ou par
+ * un import — arrive APRÈS l'ordre établi au lieu de le bousculer.
+ *
+ * Partagé avec la boutique, le back-office et la recherche : deux listes qui
+ * ne suivraient pas le même ordre feraient croire que le rangement n'a pas
+ * été enregistré.
+ */
+export function ordreDesCollections() {
+  return [
+    raw`(${schema.collections.position} = 0) asc`,
+    asc(schema.collections.position),
+    asc(schema.collections.name),
+  ];
+}
+
 export function mountCollections(app: Hono): void {
   /* ---------------------------------------------------------------------- */
   /*  La liste des collections                                              */
@@ -157,7 +179,7 @@ export function mountCollections(app: Hono): void {
     const lignes = await db
       .select()
       .from(schema.collections)
-      .orderBy(asc(schema.collections.position), asc(schema.collections.name));
+      .orderBy(...ordreDesCollections());
 
     // Les produits comptés d'un coup : une requête par collection serait une
     // requête de trop dès la dizaine de rayons.
@@ -312,6 +334,55 @@ export function mountCollections(app: Hono): void {
   /* ---------------------------------------------------------------------- */
   /*  Créer, modifier, supprimer                                            */
   /* ---------------------------------------------------------------------- */
+
+  /**
+   * Range les collections dans l'ordre voulu.
+   *
+   * Le tableau fait foi : la première reçoit le rang 1, la suivante le 2…
+   * L'écran envoie toutes les collections qu'il montre, archivées exceptées ;
+   * une archivée garde son ancien rang, qu'elle retrouve si on la restaure.
+   *
+   * Dans une seule transaction : un ordre enregistré à moitié laisserait deux
+   * collections au même rang, et leur ordre serait celui de leur nom, sans que
+   * rien ne le dise.
+   *
+   * Avec `menu: true`, les liens du menu qui mènent à ces collections suivent
+   * le même ordre entre eux (menu-ordre.ts) — dans la même transaction.
+   *
+   * Déclarée AVANT « /admin/collections/:id » : sinon « ordre » serait lu comme
+   * l'identifiant d'une collection.
+   */
+  app.post("/admin/collections/ordre", async (c) => {
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const ids = [
+      ...new Set(
+        (Array.isArray(b.collections) ? b.collections : [])
+          .map((v) => Number(v))
+          .filter((n) => Number.isInteger(n) && n > 0),
+      ),
+    ];
+    if (!ids.length) return c.json({ error: "L'ordre envoyé était vide." }, 400);
+    const connues = await db
+      .select({ id: schema.collections.id, slug: schema.collections.slug })
+      .from(schema.collections)
+      .where(inArray(schema.collections.id, ids));
+    const slugDe = new Map(connues.map((l) => [l.id, l.slug]));
+    const rangs = ids.filter((id) => slugDe.has(id));
+    let liensMenu = 0;
+    await db.transaction(async (tx) => {
+      for (let i = 0; i < rangs.length; i++)
+        await tx
+          .update(schema.collections)
+          .set({ position: i + 1 })
+          .where(eq(schema.collections.id, rangs[i]!));
+      if (b.menu === true)
+        liensMenu = await menuSuitLOrdre(
+          tx,
+          new Map(rangs.map((id, i) => [`collection:${slugDe.get(id)!.toLowerCase()}`, i])),
+        );
+    });
+    return c.json({ ok: true, ranges: rangs.length, liensMenu });
+  });
 
   /**
    * Crée une collection.

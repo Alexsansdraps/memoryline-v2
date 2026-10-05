@@ -32,12 +32,23 @@
  *
  * À placer APRÈS <ApercusZones /> dans la page : les vignettes des groupes
  * passent par lui.
+ *
+ * UNE PIÈCE SUIT SA CATÉGORIE tant qu'on ne touche pas à ses cases : la
+ * catégorie propose toutes ses couleurs, ou seulement la principale (la plus
+ * étendue), et les cases montrent ce que cela donne. Cocher ou décocher une
+ * case donne à la pièce SON réglage, qui passe avant celui de la catégorie ;
+ * « Revenir au réglage de la catégorie » le retire (cf. couleurs-groupes.ts,
+ * groupesProposesDeLaPiece).
  */
-import type { CouleursImage, GroupeCouleur } from "@memoryline/types";
+import type {
+  CouleursImage,
+  CouleursProposees,
+  GroupeCouleur,
+} from "@memoryline/types";
 
 interface Props {
   /**
-   * « piece » : tout est proposé par défaut, on range les groupes masqués.
+   * « piece » : la catégorie décide, sauf réglage propre à la pièce.
    * « personnage » : seule la peau (le premier groupe) l'est par défaut.
    */
   mode: "piece" | "personnage";
@@ -45,8 +56,19 @@ interface Props {
   svgUrl: string | null;
   zones: Record<string, string> | null;
   groupes: GroupeCouleur[] | null | undefined;
-  /** Pièce : zones de référence des groupes masqués. */
+  /**
+   * Pièce : zones de référence des groupes masqués — le réglage PROPRE à la
+   * pièce. Null (ou absent) : la pièce suit le réglage de sa catégorie.
+   */
   masquees?: string[] | null;
+  /**
+   * Pièce : sa catégorie, et ce qu'elle propose au client. Null : aucune
+   * catégorie qui compte (aucune, archivée, décochée) — toutes les couleurs,
+   * comme avant ce réglage.
+   */
+  regle?: { categorie: string; couleurs: CouleursProposees } | null;
+  /** Pièce : la part du dessin peinte par chaque zone (couleur principale). */
+  parts?: Record<string, number> | null;
   /** Personnage : zones de référence des groupes proposés (null = la peau). */
   proposees?: string[] | null;
   /**
@@ -76,6 +98,8 @@ const {
   zones,
   groupes,
   masquees,
+  regle,
+  parts,
   proposees,
   couleursImage,
   enregistrer,
@@ -90,7 +114,11 @@ const etat = {
   svgUrl: svgUrl ?? "",
   zones: zones ?? {},
   groupes: groupes ?? null,
-  masquees: masquees ?? [],
+  // Null se garde tel quel : il veut dire « suit sa catégorie », pas « rien
+  // de masqué ».
+  masquees: masquees ?? null,
+  regle: regle ?? null,
+  parts: parts ?? null,
   proposees: proposees ?? null,
   couleursImage: couleursImage ?? null,
 };
@@ -125,7 +153,7 @@ const src = (u: string | null) =>
     <>
       <input type="hidden" name={champs.zones} class="js-champ-zones" value="{}" />
       <input type="hidden" name={champs.groupes} class="js-champ-groupes" value="[]" />
-      <input type="hidden" name={champs.masquees} class="js-champ-masquees" value="[]" />
+      <input type="hidden" name={champs.masquees} class="js-champ-masquees" value="null" />
       <input type="hidden" name={champs.familles} class="js-champ-familles" value="" />
     </>
   )}
@@ -134,16 +162,21 @@ const src = (u: string | null) =>
 <script>
   import {
     NUANCIERS_BASE,
+    couleurVive,
     couleursDuGroupe,
+    couleursProposees,
     famillesDuDessin,
+    groupePrincipal,
     groupesDuDessin,
     hexVersRgb,
     memeCouleur,
     partEnPourcent,
     rgbVersHex,
     teintesDeLaFamille,
+    versTsl,
     zonesDuGroupe,
     type CouleursImage,
+    type CouleursProposees,
     type FamilleCouleur,
     type GroupeCouleur,
     type MotifSansCouleur,
@@ -157,6 +190,12 @@ const src = (u: string | null) =>
     }
   }
 
+  /** La catégorie d'une pièce, et ce qu'elle propose au client. */
+  interface RegleCategorie {
+    categorie: string;
+    couleurs: CouleursProposees;
+  }
+
   /** L'état d'un bloc : le dessin, ses zones, ses groupes, ce qui est caché. */
   interface Etat {
     mode: "piece" | "personnage";
@@ -167,6 +206,62 @@ const src = (u: string | null) =>
     cachees: string[];
     /** Familles de teintes, quand le dessin est une image en pixels. */
     couleursImage: CouleursImage | null;
+    /**
+     * Pièce : a-t-elle son PROPRE réglage (des cases touchées) ? Sinon, ce
+     * qui est caché vient de la règle de sa catégorie, recalculée à chaque
+     * changement des groupes.
+     */
+    propre: boolean;
+    /** Pièce : sa catégorie et sa règle (null : tout est proposé). */
+    regle: RegleCategorie | null;
+    /** Pièce : la part du dessin peinte par chaque zone (couleur principale). */
+    parts: Record<string, number> | null;
+  }
+
+  /** La règle reçue de la page, nettoyée. */
+  function regleLue(brut: unknown): RegleCategorie | null {
+    if (!brut || typeof brut !== "object") return null;
+    const r = brut as Record<string, unknown>;
+    if (typeof r.categorie !== "string") return null;
+    return { categorie: r.categorie, couleurs: couleursProposees(r.couleurs) };
+  }
+
+  /** Le groupe principal d'une pièce, quand sa catégorie ne propose que lui. */
+  function principalDe(etat: Etat): GroupeCouleur | undefined {
+    if (etat.regle?.couleurs !== "principale") return undefined;
+    return groupePrincipal(etat.groupes, etat.parts);
+  }
+
+  /** Les groupes que la catégorie d'une pièce ne propose pas. */
+  function cacheesDeLaRegle(etat: Etat): string[] {
+    const principal = principalDe(etat);
+    if (!principal) return [];
+    return etat.groupes.filter((g) => g !== principal).map((g) => g.zone);
+  }
+
+  /**
+   * Deux couleurs de la même famille — une ombre et sa couleur ? Même teinte
+   * à 12° près pour deux couleurs franches ; pour deux gris, une clarté
+   * voisine. Ce n'est qu'un conseil : un dessin d'Illustrator range souvent
+   * l'ombre d'un chapeau dans une zone à part, et seule la principale suivrait
+   * alors le choix du client. Mesuré sur les chapeaux de la boutique : une
+   * ombre s'écarte de sa couleur de 2 à 7°, un ruban orange d'un chapeau
+   * brun de 16°.
+   */
+  function memeFamille(a: string, b: string): boolean {
+    const x = hexVersRgb(a);
+    const y = hexVersRgb(b);
+    if (!x || !y) return false;
+    const vx = couleurVive(x[0], x[1], x[2]);
+    const vy = couleurVive(y[0], y[1], y[2]);
+    if (vx !== vy) return false;
+    const tx: [number, number, number] = [0, 0, 0];
+    const ty: [number, number, number] = [0, 0, 0];
+    versTsl(x[0], x[1], x[2], tx);
+    versTsl(y[0], y[1], y[2], ty);
+    if (!vx) return Math.abs(tx[2] - ty[2]) <= 0.35;
+    const ecart = Math.abs(tx[0] - ty[0]) % 360;
+    return Math.min(ecart, 360 - ecart) <= 12;
   }
 
   /** Réponse de l'API après lecture d'un dessin. */
@@ -370,6 +465,11 @@ const src = (u: string | null) =>
         // Ce dessin-ci est vectoriel : les familles d'un dessin en pixels
         // remplacé n'ont plus rien à décrire.
         couleursImage: null,
+        // Un autre dessin : les parts mesurées sur l'ancien ne valent plus.
+        // L'API mesure le nouveau à l'enregistrement ; d'ici là, la
+        // principale est le premier groupe — la zone la plus étendue, pour un
+        // dessin préparé par « Détecter les couleurs ».
+        parts: null,
       };
     }
     for (const z of Object.keys(zones))
@@ -400,6 +500,9 @@ const src = (u: string | null) =>
       groupes: reprises,
       cachees,
       couleursImage: null,
+      // Même dessin, mêmes parts ; une version préparée à part n'a pas
+      // encore été mesurée.
+      parts: lecture.url === ancien.svgUrl ? ancien.parts : null,
     };
   }
 
@@ -428,6 +531,14 @@ const src = (u: string | null) =>
             familles: famillesDuDessin(brut.couleursImage),
           }
         : null,
+      // Une liste, même vide, est le réglage de la pièce ; null, celui de
+      // sa catégorie (les cases se recalculent alors dans dessiner()).
+      propre: brut.mode !== "personnage" && Array.isArray(brut.masquees),
+      regle: regleLue(brut.regle),
+      parts:
+        brut.parts && typeof brut.parts === "object"
+          ? (brut.parts as Record<string, number>)
+          : null,
     };
     let visible = false;
 
@@ -445,7 +556,13 @@ const src = (u: string | null) =>
         svgUrl: etat.svgUrl,
         colorZones: etat.zones,
         groupesCouleurs: etat.groupes,
-        zonesMasquees: etat.cachees.filter((z) => references.includes(z)),
+        // Une pièce qui suit sa catégorie n'enregistre AUCUNE liste : en
+        // écrire une, même identique, figerait ses couleurs le jour où la
+        // catégorie changera d'avis.
+        zonesMasquees:
+          etat.mode === "piece" && !etat.propre
+            ? null
+            : etat.cachees.filter((z) => references.includes(z)),
         zonesProposees: references.filter((z) => !etat.cachees.includes(z)),
         couleursImage: etat.couleursImage,
       };
@@ -453,7 +570,15 @@ const src = (u: string | null) =>
 
     function publier() {
       const e = aEnregistrer();
-      source.textContent = JSON.stringify({ mode: etat.mode, ...e });
+      // La règle et les parts voyagent avec : `source` est relu tel quel si
+      // la page remonte le bloc.
+      source.textContent = JSON.stringify({
+        mode: etat.mode,
+        ...e,
+        masquees: e.zonesMasquees,
+        regle: etat.regle,
+        parts: etat.parts,
+      });
       const champ = (c: string) => bloc.querySelector<HTMLInputElement>(c);
       const cz = champ(".js-champ-zones");
       if (cz) cz.value = JSON.stringify(e.colorZones);
@@ -693,6 +818,54 @@ const src = (u: string | null) =>
       publier();
     }
 
+    /**
+     * La ligne qui dit d'où viennent les cases d'une pièce : de sa catégorie
+     * (et ce qu'elle propose), ou de son propre réglage — avec de quoi rendre
+     * la main à la catégorie.
+     */
+    function ligneDeLaRegle(): HTMLElement {
+      const ligne = el("p", "w-full mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-bo-muted");
+      const regle = etat.regle;
+      if (etat.propre) {
+        ligne.append(
+          el(
+            "span",
+            "",
+            regle
+              ? `Réglage propre à cette pièce : il passe avant celui de la catégorie « ${regle.categorie} ».`
+              : "Réglage propre à cette pièce.",
+          ),
+        );
+        if (regle) {
+          const revenir = el(
+            "button",
+            "rounded border border-bo-border px-2 py-0.5 text-xs text-bo-accent hover:bg-bo-bg",
+            "Revenir au réglage de la catégorie",
+          );
+          revenir.type = "button";
+          revenir.addEventListener("click", () => {
+            etat.propre = false;
+            dessiner();
+            void enregistrerTout("Réglage de la catégorie repris.");
+          });
+          ligne.append(revenir);
+        }
+        return ligne;
+      }
+      ligne.append(
+        el(
+          "span",
+          "",
+          !regle
+            ? "Toutes les couleurs sont proposées au client (pièce sans catégorie)."
+            : regle.couleurs === "principale"
+              ? `Comme le veut la catégorie « ${regle.categorie} » : seule la couleur principale (★, la plus étendue) est proposée. Cochez une case pour régler cette pièce autrement.`
+              : `Comme le veut la catégorie « ${regle.categorie} » : toutes les couleurs sont proposées. Décochez un détail pour régler cette pièce autrement.`,
+        ),
+      );
+      return ligne;
+    }
+
     function dessiner() {
       liste.innerHTML = "";
       // Un dessin en pixels n'a pas de zone : ce sont ses familles de teintes
@@ -708,6 +881,11 @@ const src = (u: string | null) =>
         publier();
         return;
       }
+      // Une pièce qui suit sa catégorie : ses cases se recalculent à chaque
+      // fois — des groupes réunis ou séparés peuvent changer la principale.
+      if (etat.mode === "piece" && !etat.propre) etat.cachees = cacheesDeLaRegle(etat);
+      if (etat.mode === "piece") liste.append(ligneDeLaRegle());
+      const principal = etat.mode === "piece" ? principalDe(etat) : undefined;
       const premier = etat.groupes[0]?.zone;
       etat.groupes.forEach((g, i) => {
         const cache = etat.cachees.includes(g.zone);
@@ -784,6 +962,16 @@ const src = (u: string | null) =>
           void enregistrerTout("Nom changé.");
         });
 
+        // La couleur principale, quand la catégorie ne propose qu'elle : la
+        // boutique voit laquelle le client pourra changer.
+        if (principal && g === principal)
+          carte.append(
+            el(
+              "span",
+              "self-start rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-900",
+              "★ Couleur principale",
+            ),
+          );
         carte.append(vignette, ligneCouleur);
         if (nbNuances) carte.append(nuances);
         carte.append(nom);
@@ -811,6 +999,9 @@ const src = (u: string | null) =>
         caseProposee.type = "checkbox";
         caseProposee.checked = !cache;
         caseProposee.addEventListener("change", () => {
+          // Une case touchée : la pièce a désormais SON réglage, qui part
+          // de ce qu'elle proposait jusque-là (celui de sa catégorie).
+          etat.propre = true;
           etat.cachees = etat.cachees.filter((z) => z !== g.zone);
           if (!caseProposee.checked) etat.cachees.push(g.zone);
           dessiner();
@@ -820,6 +1011,23 @@ const src = (u: string | null) =>
         });
         libelleCase.append(caseProposee, el("span", "", "Proposée au client"));
         carte.append(libelleCase);
+
+        // Une ombre de la principale, restée à part dans le dessin : seule la
+        // principale suivrait le choix du client, et le chapeau passé au bleu
+        // garderait son ombre rouge. On le signale, avec le geste qui règle.
+        if (
+          principal &&
+          g !== principal &&
+          cache &&
+          memeFamille(etat.zones[g.zone] ?? "", etat.zones[principal.zone] ?? "")
+        )
+          carte.append(
+            el(
+              "p",
+              "leading-tight text-amber-800",
+              "Une ombre de la couleur principale ? « Rattacher à… » ci-dessous : elle suivra sa couleur.",
+            ),
+          );
 
         // Rattacher tout le groupe à un autre : ses teintes deviennent des
         // nuances de celui-là.
@@ -937,6 +1145,14 @@ const src = (u: string | null) =>
     bloc.addEventListener("groupes:detecter", (e) => {
       const detail = (e as CustomEvent<{ url: string }>).detail;
       void detecter(detail?.url ?? "", false);
+    });
+    // La pièce change de catégorie (sélecteur de la page) : les cases d'une
+    // pièce qui la suit se redessinent selon la nouvelle règle. Rien à
+    // enregistrer ici — la catégorie l'est déjà, et la pièce garde « suit sa
+    // catégorie ».
+    bloc.addEventListener("groupes:regle", (e) => {
+      etat.regle = regleLue((e as CustomEvent<unknown>).detail);
+      dessiner();
     });
 
     // Vignettes à l'approche de l'écran seulement : la page des pièces en

@@ -57,9 +57,15 @@ const REGLES: sanitizeHtml.IOptions = {
   allowedSchemes: ["http", "https", "mailto"],
   allowedSchemesByTag: { img: ["http", "https"] },
   allowProtocolRelative: false,
-  // Un lien vers l'extérieur ne doit pas pouvoir piloter l'onglet de la
-  // boutique qu'il a ouvert.
   transformTags: {
+    // Un tiers des descriptions importées de Shopify sont écrites en
+    // intertitres de cinquième niveau, un par paragraphe : la balise était
+    // jetée (elle n'est pas permise) et les paragraphes se recollaient en un
+    // seul bloc. Ce sont des paragraphes : ils le redeviennent.
+    h5: "p",
+    h6: "p",
+    // Un lien vers l'extérieur ne doit pas pouvoir piloter l'onglet de la
+    // boutique qu'il a ouvert.
     a: (nom, attributs) => {
       const href = attributs.href ?? "";
       const externe = /^https?:\/\//i.test(href);

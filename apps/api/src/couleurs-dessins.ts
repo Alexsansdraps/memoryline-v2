@@ -103,6 +103,23 @@ async function surfacesDesCouleurs(
   svg: string,
   zones: Record<string, string>,
 ): Promise<Record<string, number>> {
+  const parZone = await pixelsParZone(svg, zones);
+  const parCouleur: Record<string, number> = {};
+  for (const [z, n] of parZone) {
+    const hex = zones[z]!.toUpperCase();
+    parCouleur[hex] = (parCouleur[hex] ?? 0) + n;
+  }
+  return parCouleur;
+}
+
+/**
+ * Le nombre de pixels VUS de chaque zone, sur un petit rendu du dessin où
+ * chaque zone porte une couleur-témoin (cf. surfacesDesCouleurs).
+ */
+async function pixelsParZone(
+  svg: string,
+  zones: Record<string, string>,
+): Promise<Map<string, number>> {
   const ids = Object.keys(zones);
   const temoins: Record<string, string> = {};
   const zoneDuTemoin = new Map<number, string>();
@@ -130,12 +147,42 @@ async function surfacesDesCouleurs(
     const z = zoneDuTemoin.get((data[i]! << 16) | (data[i + 1]! << 8) | data[i + 2]!);
     if (z) parZone.set(z, (parZone.get(z) ?? 0) + 1);
   }
-  const parCouleur: Record<string, number> = {};
-  for (const [z, n] of parZone) {
-    const hex = zones[z]!.toUpperCase();
-    parCouleur[hex] = (parCouleur[hex] ?? 0) + n;
+  return parZone;
+}
+
+/**
+ * La part du dessin que peint chaque zone, de 0 à 1 (arrondie au millième) :
+ * { st0: 0.62, st1: 0.31, st3: 0.07 }. Une zone cachée par une autre forme ne
+ * compte que pour ce qu'on en voit.
+ *
+ * C'est ce qui désigne la COULEUR PRINCIPALE d'une pièce, quand sa catégorie
+ * ne propose que celle-là (cf. couleur-principale.ts) : dans un fichier
+ * d'Illustrator, la première zone est trop souvent un détail.
+ *
+ * `null` si le dessin ne se lit pas dans le dossier des assets.
+ */
+export async function partsDesZones(
+  url: string,
+  zones: Record<string, string>,
+): Promise<Record<string, number> | null> {
+  if (Object.keys(zones).length === 0) return {};
+  // Même garde que pour la lecture des couleurs : rien hors du dossier.
+  const nom = basename(url.split("?")[0] ?? "");
+  if (!nom || extname(nom).toLowerCase() !== ".svg") return null;
+  const chemin = resolve(ASSETS_DIR, nom);
+  if (!chemin.startsWith(resolve(ASSETS_DIR))) return null;
+  let svg: string;
+  try {
+    svg = await readFile(chemin, "utf8");
+  } catch {
+    return null;
   }
-  return parCouleur;
+  const parZone = await pixelsParZone(svg, zones);
+  const total = [...parZone.values()].reduce((s, n) => s + n, 0);
+  const parts: Record<string, number> = {};
+  for (const z of Object.keys(zones))
+    parts[z] = total > 0 ? Math.round(((parZone.get(z) ?? 0) / total) * 1000) / 1000 : 0;
+  return parts;
 }
 
 /** Les formats d'image en pixels qu'on sait emballer dans un dessin. */

@@ -10,7 +10,11 @@
  *    traçabilité de l'import et les redirections 301 (§13).
  */
 import { sql } from "drizzle-orm";
-import type { CouleursImage, GroupeCouleur } from "@memoryline/types";
+import type {
+  CouleursImage,
+  CouleursProposees,
+  GroupeCouleur,
+} from "@memoryline/types";
 import {
   type AnyPgColumn,
   pgTable,
@@ -709,6 +713,20 @@ export const pieceCategories = pgTable(
      * retombe sur le nuancier de l'emplacement.
      */
     colors: jsonb("colors").$type<string[]>(),
+    /**
+     * Les couleurs proposées au client pour chaque pièce de la catégorie :
+     * « toutes » (une rangée de pastilles par couleur de la pièce) ou
+     * « principale » (la couleur principale seule ; les détails, comme le
+     * ruban d'un chapeau, gardent la couleur du dessin).
+     *
+     * Une pièce qui a son propre réglage (`asset.zones_masquees` non nul)
+     * garde le dernier mot. « toutes » par défaut : c'était la règle d'avant,
+     * et elle ne retire aucun choix (cf. couleurs-groupes.ts).
+     */
+    couleursProposees: text("couleurs_proposees")
+      .$type<CouleursProposees>()
+      .notNull()
+      .default("toutes"),
     active: boolean("active").notNull().default(true),
     position: integer("position").notNull().default(0),
     /**
@@ -759,12 +777,30 @@ export const assets = pgTable(
      * rangée de pastilles au configurateur, sans rien apporter.
      *
      * On range les zones MASQUÉES plutôt que les proposées : liste vide = tout
-     * est proposé, comme avant ce réglage, et une zone apparue avec un nouveau
-     * dessin reste proposée tant que la boutique ne l'a pas décochée. Une zone
-     * masquée garde sa couleur par défaut (`colorZones`), à l'écran comme à
-     * l'impression, même si un ancien panier en avait choisi une autre.
+     * est proposé, et une zone apparue avec un nouveau dessin reste proposée
+     * tant que la boutique ne l'a pas décochée. Une zone masquée garde sa
+     * couleur par défaut (`colorZones`), à l'écran comme à l'impression, même
+     * si un ancien panier en avait choisi une autre.
+     *
+     * NULL = la pièce n'a pas de réglage propre : elle suit celui de sa
+     * catégorie (`piece_category.couleurs_proposees`). Une liste, même vide,
+     * est le réglage de la pièce, et il a le dernier mot sur la catégorie.
      */
-    zonesMasquees: jsonb("zones_masquees").$type<string[]>().default([]).notNull(),
+    zonesMasquees: jsonb("zones_masquees").$type<string[]>(),
+    /**
+     * La part du dessin que peint chaque zone, mesurée sur un petit rendu :
+     * { signature, parts: { st0: 0.62, st1: 0.31, … } }. C'est elle qui
+     * désigne la couleur PRINCIPALE d'une pièce (la plus étendue), quand sa
+     * catégorie ne propose que celle-là.
+     *
+     * La signature (adresse du dessin + noms des zones) dit pour quel dessin
+     * la mesure vaut : une mesure d'un autre dessin est ignorée, puis refaite
+     * (cf. couleur-principale.ts). Null = pas encore mesurée.
+     */
+    partsDesZones: jsonb("parts_des_zones").$type<{
+      signature: string;
+      parts: Record<string, number>;
+    }>(),
     /**
      * Groupes de couleurs : les nuances d'une même couleur (ombres, reflets)
      * réunies sous une seule rangée de pastilles, avec le nom que le client
@@ -2103,6 +2139,15 @@ export const pages = pgTable(
      */
     seoTitle: text("seo_title"),
     seoDescription: text("seo_description"),
+    /**
+     * Le rang de la page, réglé à la main dans « Pages du site ».
+     *
+     * C'est l'ordre de toutes les listes de pages : celle du back-office, la
+     * tablette du stand, le choix d'une page dans le menu. Zéro = pas encore
+     * rangée : les pages rangées passent devant, les autres suivent par titre,
+     * comme avant que l'ordre existe.
+     */
+    position: integer("position").notNull().default(0),
     blocks: jsonb("blocks")
       .$type<BlocPage[]>()
       .notNull()

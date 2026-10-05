@@ -16,13 +16,20 @@
  * Une adresse inconnue rend une page introuvable, jamais une page vide.
  */
 import Base from "../../../layouts/Base.astro";
-import { api, assetUrl, formatPrice, type PageCms } from "../../../lib/api.ts";
-import { grilleProduits, styleGrille } from "../../../lib/grille.ts";
-/** Colonnes réglées au back-office (Accueil et pied de page › Affichage des produits). */
-const grille = await grilleProduits();
+import BandeauxVisuels from "../../../components/BandeauxVisuels.astro";
+import VignetteAffiche from "../../../components/VignetteAffiche.astro";
+import { api, assetUrl, type PageCms } from "../../../lib/api.ts";
+import { pageLibre } from "@memoryline/types";
+import {
+  grilleProduits,
+  sizesGrilleColonne,
+  styleGrille,
+} from "../../../lib/grille.ts";
+/** Colonnes réglées au back-office (Contenu du site › Affichage des produits) :
+ *  celles des pages du site s'il y en a, le réglage général sinon. */
+const grille = await grilleProduits("pages");
 import { htmlSur } from "../../../lib/html-sur.ts";
 import {
-  LOCALE_COMPLETE,
   estLangue,
   langueDepuisParam,
   lien,
@@ -35,7 +42,6 @@ export const prerender = false;
 if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
   return new Response(null, { status: 404 });
 const langue: Langue = langueDepuisParam(Astro.params.lang);
-const locale = LOCALE_COMPLETE[langue];
 
 const slug = Astro.params.slug ?? "";
 
@@ -62,25 +68,26 @@ function adresse(href: string): string {
 }
 
 /**
- * Au stand, les affiches qu'une page met en avant se montrent sans prix,
- * comme partout ailleurs sur la tablette : la vendeuse annonce les siens.
+ * Une affiche d'un bloc « produits », dans la forme qu'attend la vignette du
+ * site (VignetteAffiche.astro) — celle du rayon, de l'accueil et de la
+ * recherche.
+ *
+ * La rangée d'une page avait sa vignette à elle : rapport 3/4, nom avec son
+ * suffixe « - Affiche personnalisée », image en pleine taille, prix en maigre.
+ * Elle ne suivait donc aucune des retouches des autres grilles, la police
+ * des produits comprise. Au stand, la vignette tait les prix d'elle-même,
+ * comme partout ailleurs sur la tablette.
  */
-const sansPrix = Astro.locals.stand;
-
-/** Le prix affiché sous une vignette : « à partir de » quand il varie. */
-function prix(p: {
-  basePriceCents: number;
-  variants?: { priceCents: number }[];
-}): string {
-  const montants = (p.variants ?? [])
-    .map((v) => v.priceCents)
-    .filter((c) => c > 0);
-  if (!montants.length) return formatPrice(p.basePriceCents, locale);
-  const min = Math.min(...montants);
-  const max = Math.max(...montants);
-  return min === max
-    ? formatPrice(min, locale)
-    : `${formatPrice(min, locale)} – ${formatPrice(max, locale)}`;
+function enVignette(p: Record<string, unknown>) {
+  return {
+    slug: String(p.slug ?? ""),
+    name: String(p.name ?? ""),
+    image: typeof p.image === "string" ? p.image : null,
+    basePriceCents: Number(p.basePriceCents) || 0,
+    variants: Array.isArray(p.variants)
+      ? (p.variants as { priceCents: number }[])
+      : [],
+  };
 }
 
 /*
@@ -98,6 +105,9 @@ const titreOnglet = page.seoTitle?.trim() || `${page.title} — Memory Line`;
   title={titreOnglet}
   description={page.seoDescription ?? undefined}
 >
+  {/* Les bandeaux visuels choisis pour cette page, bord à bord sous
+      l'en-tête, hors de la colonne de lecture. */}
+  <BandeauxVisuels pages={[pageLibre(page.slug)]} langue={langue} />
   <article class="mx-auto max-w-[1000px] px-6 py-12 lg:px-12">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <h1 class="text-3xl sm:text-4xl">{page.title}</h1>
@@ -188,30 +198,22 @@ const titreOnglet = page.seoTitle?.trim() || `${page.title} — Memory Line`;
         if (bloc.type === "produits") {
           const produits = Array.isArray(bloc.produits) ? bloc.produits : [];
           if (!produits.length) return null;
+          // Les gouttières des autres grilles du site (affiches.astro), et
+          // leur nombre de colonnes : celui des pages du site, réglé au
+          // back-office.
           return (
-            <div class="ml-grille-produits mt-10 gap-6" style={styleGrille(grille)}>
+            <ul
+              class="ml-grille-produits mt-10 -mx-2 gap-x-1 gap-y-5 sm:mx-0 sm:gap-x-2 sm:gap-y-8"
+              style={styleGrille(grille)}
+            >
               {produits.map((p) => (
-                <a
-                  href={lien(langue, `/affiches/${p.slug}`)}
-                  class="group block"
-                >
-                  <div class="bg-paper-deep aspect-[3/4] overflow-hidden rounded">
-                    {p.image ? (
-                      <img
-                        src={assetUrl(p.image) ?? ""}
-                        alt=""
-                        loading="lazy"
-                        class="h-full w-full object-cover transition-transform group-hover:scale-[1.02]"
-                      />
-                    ) : (
-                      <span class="block h-full w-full" />
-                    )}
-                  </div>
-                  <p class="mt-2 text-sm">{p.name}</p>
-                  {!sansPrix && <p class="text-sm text-ink-soft">{prix(p)}</p>}
-                </a>
+                <VignetteAffiche
+                  affiche={enVignette(p)}
+                  langue={langue}
+                  sizes={sizesGrilleColonne(grille)}
+                />
               ))}
-            </div>
+            </ul>
           );
         }
 

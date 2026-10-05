@@ -8,6 +8,7 @@ import {
   assetSrcset,
   assetUrl,
   cadresSurLeSite,
+  prixDesCadresSurLeSite,
   encartVideoDuSite,
   formatPrice,
   promotion,
@@ -61,6 +62,13 @@ const sansPrix = Astro.locals.stand;
  * pas du tout la rubrique.
  */
 const cadresProposes = Astro.locals.stand || (await cadresSurLeSite());
+
+/*
+ * Le supplément de chaque cadre, sous sa vignette : la boutique peut le
+ * taire (page Cadres du back-office). Le prix du cadre reste dans le total.
+ * Au stand, `sansPrix` cache déjà tout montant : le réglage n'y est pas lu.
+ */
+const prixCadres = Astro.locals.stand || (await prixDesCadresSurLeSite());
 
 /*
  * L'encart vidéo de la personnalisation.
@@ -238,17 +246,25 @@ const breadcrumbLd = {
       <p class="mt-4 text-xs uppercase tracking-wide text-terracotta">
         {kindLabel}
       </p>
-      <h1 class="font-serif text-4xl mt-1">{cleanName}</h1>
+      {/* La typographie de la fiche reprend celle de memoryline.fr (retour
+          de la boutique : « police des produits un peu plus grasse, plus
+          petite, comme sur le site actuel »). Relevé sur le site actuel : un
+          titre de 30 px sur téléphone (36 px ici dès la tablette, la colonne
+          de texte y est étroite) ; un prix de 16 à 18 px en demi-gras, un peu
+          espacé, là où celui-ci faisait 24 px en maigre ; « Format » en
+          13 px demi-gras ; la description, enfin, en demi-gras (global.css,
+          `.ml-description-produit`). */}
+      <h1 class="font-serif mt-1 text-[30px] leading-tight md:text-4xl">{cleanName}</h1>
       {
         /* Le prix barré : saisi au back-office et jamais servi jusqu'ici, la
            fiche taisait une remise pourtant décidée. Rien ne s'affiche quand
            il est vide, nul ou déjà rattrapé par une baisse de prix. */
         sansPrix ? null : promoPrincipale ? (
           <p class="mt-4 flex flex-wrap items-baseline gap-3">
-            <span class="text-2xl text-terracotta-deep">
+            <span class="text-base font-semibold tracking-[1.3px] text-terracotta-deep md:text-lg">
               {formatPrice(minPrice, locale)}
             </span>
-            <s class="text-lg text-ink/45">
+            <s class="text-sm text-ink/45 md:text-base">
               <span class="sr-only">{tr("promo.ancien_prix")} </span>
               {formatPrice(promoPrincipale.avantCents, locale)}
             </s>
@@ -257,7 +273,9 @@ const breadcrumbLd = {
             </span>
           </p>
         ) : (
-          <p class="mt-4 text-2xl">{formatPrice(minPrice, locale)}</p>
+          <p class="mt-4 text-base font-semibold tracking-[1.3px] md:text-lg">
+            {formatPrice(minPrice, locale)}
+          </p>
         )
       }
 
@@ -267,7 +285,7 @@ const breadcrumbLd = {
           configurateur. Ce sont maintenant de vrais boutons, et le format
           choisi arrive déjà coché là-bas. */}
       <div class="mt-6 space-y-2">
-        <p class="text-sm font-medium" id="titre-format">
+        <p class="text-[13px] font-semibold tracking-[0.4px]" id="titre-format">
           {tr("produit.format")}
         </p>
         <div class="flex gap-3" role="radiogroup" aria-labelledby="titre-format">
@@ -284,11 +302,11 @@ const breadcrumbLd = {
                   data-format={v.format}
                   aria-checked={i === 0 ? "true" : "false"}
                 >
-                  <div class="font-medium">{v.format}</div>
+                  <div class="font-semibold">{v.format}</div>
                   <div class="text-ink-soft text-xs">{dimensionsFormat(v.format, locale)}</div>
                   {sansPrix ? null : promo ? (
                     <div class="flex flex-wrap items-baseline gap-2">
-                      <span class="text-terracotta-deep">
+                      <span class="font-semibold text-terracotta-deep">
                         {formatPrice(v.priceCents, locale)}
                       </span>
                       <s class="text-ink/45">
@@ -297,7 +315,7 @@ const breadcrumbLd = {
                       </s>
                     </div>
                   ) : (
-                    <div class="text-ink-soft">{formatPrice(v.priceCents, locale)}</div>
+                    <div class="font-semibold text-ink-soft">{formatPrice(v.priceCents, locale)}</div>
                   )}
                 </button>
               );
@@ -372,6 +390,7 @@ const breadcrumbLd = {
             client:only="solid-js"
             sansPrix={sansPrix}
             cadresProposes={cadresProposes}
+            prixCadres={prixCadres}
             video={encartVideo}
             product={{
               id: product.id,
@@ -418,9 +437,14 @@ const breadcrumbLd = {
       }
 
       {
+        /* La description, dans la typographie de memoryline.fr : demi-gras,
+           légèrement espacée, interligne aéré (`.ml-description-produit`,
+           global.css). Les classes « prose » qu'elle portait ne faisaient
+           rien — le greffon de typographie n'est pas installé — et le texte
+           sortait en 16 px maigre. */
         product.description && (
           <div
-            class="mt-8 prose prose-sm text-ink-soft max-w-none"
+            class="ml-description-produit mt-8"
             set:html={htmlSur(product.description)}
           />
         )

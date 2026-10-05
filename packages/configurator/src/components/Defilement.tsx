@@ -2,7 +2,7 @@
 import {
   createEffect,
   createSignal,
-  on,
+  createUniqueId,
   onCleanup,
   onMount,
   Show,
@@ -128,12 +128,6 @@ export function BarreActions(props: {
   children: JSX.Element;
   /** Fondu + flèche au-dessus de la barre. Vrai par défaut. */
   indice?: boolean;
-  /**
-   * Ce qui flotte juste au-dessus de la barre, au milieu : l'invitation à
-   * descendre ({@link InviteADescendre}). La barre est collée en bas, c'est
-   * donc le seul endroit dont on soit sûr qu'il est à l'écran.
-   */
-  invite?: JSX.Element;
 }) {
   const [resteDessous, setResteDessous] = createSignal(false);
   let repere: HTMLDivElement | undefined;
@@ -182,7 +176,6 @@ export function BarreActions(props: {
             style={{ bottom: "calc(100% + 1px)" }}
           />
         </Show>
-        {props.invite}
         {props.children}
       </div>
       <div
@@ -195,256 +188,347 @@ export function BarreActions(props: {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  L'invitation à descendre                                                   */
+/*  Le sommaire des réglages : y descendre, et savoir où l'on est              */
 /* -------------------------------------------------------------------------- */
+
+/*
+ * Il y avait ici une bulle « Personnaliser ce personnage ↓ », posée au-dessus
+ * de la barre du bas, qui sautillait à chaque personnage choisi. Elle n'a pas
+ * suffi (retour cliente, octobre 2026), et le sommaire des réglages, à côté de
+ * l'aperçu du personnage (CharacterEditor), l'a remplacée : il dit QUOI se
+ * règle, pas seulement qu'il y a quelque chose, et il reste à l'écran. Gardée
+ * à côté de lui, la bulle répétait les mêmes mots une troisième fois sur
+ * l'écran d'arrivée — sommaire, bulle, titre des réglages au ras de la barre —
+ * et cachait, sur un petit téléphone (320 × 640), la seule rangée de
+ * personnages encore visible.
+ *
+ * Ce qui en reste sert au sommaire : descendre jusqu'à un titre, le focus
+ * avec, et le même respect des animations réduites.
+ */
 
 /** Écart laissé au-dessus du titre visé, une fois descendu. */
 const MARGE_ARRIVEE = 12;
 
 /** L'appareil demande moins d'animations. */
-function moinsDAnimations(): boolean {
+export function moinsDAnimations(): boolean {
   return (
     typeof matchMedia === "function" &&
     matchMedia("(prefers-reduced-motion: reduce)").matches
   );
 }
 
-/**
- * « Personnaliser ce personnage ↓ » : une invitation EN TOUTES LETTRES à
- * descendre jusqu'aux réglages, posée au-dessus de la barre d'actions.
- *
- * Ni le fondu, ni la demi-vignette au ras du bord n'ont suffi : on choisissait
- * son personnage dans la grille, on apercevait au mieux la rangée de la peau,
- * et on validait sans avoir vu que les vêtements, les cheveux et les
- * accessoires attendaient dessous (retour cliente, une fois de plus). Un
- * indice muet se devine ; une phrase se lit.
- *
- * - Elle ne paraît que tant que le titre des réglages ne se lit pas encore
- *   AU-DESSUS d'elle : sous le bord, ou caché par elle. Dès qu'il se lit, elle
- *   s'efface — ce titre dit les mêmes mots, et elle découvre en partant le
- *   haut de la première rangée de réglages —, et revient si l'on remonte. Sur
- *   un écran où tout tient, on ne la voit jamais.
- * - Un toucher fait défiler en douceur jusqu'au titre des réglages — sous
- *   l'aperçu collant du personnage, sur téléphone — et y pose le focus : la
- *   bulle qu'on vient d'actionner va s'effacer, le clavier ne doit pas se
- *   retrouver nulle part.
- * - Elle ne défile JAMAIS d'elle-même. Choisir un personnage, c'est souvent en
- *   essayer plusieurs : une page qui partirait vers le bas à chaque essai
- *   ferait perdre la grille, et prendrait la main au lecteur d'écran comme au
- *   clavier. À la place, elle sautille trois fois quand elle apparaît, puis à
- *   chaque nouveau personnage choisi (`relance`) — l'œil y revient au moment
- *   où l'on a fini de choisir.
- * - Moins d'animations demandées : ni défilement doux, ni fondu, ni
- *   sautillement. Elle apparaît, disparaît, et le toucher saute d'un coup.
- *
- * Mesures et défilement passent par la page elle-même et non par un
- * observateur d'intersection : la barre, collée, recouvre le bas de la zone
- * qui défile, la bulle flotte au-dessus d'elle, et c'est le haut de la BULLE
- * qui compte — un observateur ne le connaît pas. Un `scroll` écouté en capture sur le document entend toutes
- * les zones qui défilent, la fenêtre de personnalisation comme la page du
- * stand.
- */
-export function InviteADescendre(props: {
-  /** Le titre des réglages : ce qu'on vise, et ce qui doit être vu. */
-  cible: HTMLElement | undefined;
-  libelle: string;
-  /**
-   * Hauteur de ce qui reste collé en haut de la zone qui défile, par-dessus
-   * le contenu : l'aperçu du personnage, sur téléphone. Le titre visé
-   * s'arrête dessous, pas derrière.
-   */
-  masqueHaut?: () => number;
-  /** Chaque changement de cette valeur refait sautiller l'invitation. */
-  relance?: () => unknown;
-}) {
-  const [visible, setVisible] = createSignal(false);
-  let racine: HTMLDivElement | undefined;
-  let bouton: HTMLButtonElement | undefined;
-  /** Elle a déjà sautillé en apparaissant : les retours suivants sont muets. */
-  let dejaVue = false;
-  /** Le sautillement en cours : un nouveau le remplace, sans s'y ajouter. */
-  let sautillement: Animation | undefined;
+/** Où mène un défilement. */
+export interface Destination {
+  /** La zone qui défile, ou le document quand c'est la page entière. */
+  zone: HTMLElement | Document;
+  /** La position visée, ramenée dans ce que la zone peut faire défiler. */
+  but: number;
+}
 
-  const attirer = () => {
-    if (!bouton || !visible() || moinsDAnimations()) return;
-    // Trois personnages cliqués d'affilée : sans cela, les sautillements
-    // s'empilaient et la bulle s'agitait encore trois secondes après.
-    sautillement?.cancel();
-    // `animate` manque sur de très vieux navigateurs : l'invitation reste,
-    // immobile, et c'est tout ce qui compte.
-    sautillement = bouton.animate?.(
-      [
-        { transform: "translateY(0)" },
-        { transform: "translateY(5px)" },
-        { transform: "translateY(0)" },
-      ],
-      { duration: 900, delay: 250, iterations: 3, easing: "ease-in-out" },
+/** Position de défilement d'une zone, ou de la page pour le document. */
+function position(zone: HTMLElement | Document): number {
+  return zone === document ? window.scrollY : (zone as HTMLElement).scrollTop;
+}
+
+/** Une position dans ce qu'une zone peut faire défiler, de 0 à `max`. */
+function borner(voulue: number, max: number): number {
+  return Math.round(Math.min(Math.max(0, voulue), Math.max(0, max)));
+}
+
+/**
+ * Fait défiler jusqu'à un titre et y pose le focus.
+ *
+ * Le titre s'arrête SOUS ce qui colle en haut de la zone qui défile
+ * (`masqueHaut` : l'aperçu du personnage, sur téléphone), pas derrière : on
+ * doit le lire en arrivant. Le focus suit, pour que le clavier et le lecteur
+ * d'écran repartent de là et non du bouton qui a mené ici.
+ *
+ * Défilement doux, sauf si l'appareil demande moins d'animations : alors on
+ * saute d'un coup.
+ *
+ * Rend la destination — bornée : une partie trop basse pour monter jusque-là
+ * s'arrête en bas de page —, pour qui doit savoir quand on y est arrivé
+ * (cf. createPartieALEcran).
+ */
+export function defilerJusqua(cible: HTMLElement, masqueHaut = 0): Destination {
+  const comportement: ScrollBehavior = moinsDAnimations() ? "auto" : "smooth";
+  const haut = cible.getBoundingClientRect().top;
+  const trouvee = ancetreDefilant(cible);
+  // Une page qui pose `overflow` sur <html> ou <body> défile quand même par
+  // la fenêtre : leur cadre, lui, part avec le défilement, et le calcul
+  // ci-dessous compterait celui-ci deux fois.
+  const defilante =
+    trouvee === document.documentElement || trouvee === document.body
+      ? null
+      : trouvee;
+  let destination: Destination;
+  if (defilante) {
+    // Ce qui colle en haut s'arrête au bord INTÉRIEUR de la marge de la
+    // zone qui défile : le titre doit s'arrêter sous la marge ET sous lui.
+    const cadre = defilante.getBoundingClientRect();
+    const marge = Number.parseFloat(getComputedStyle(defilante).paddingTop) || 0;
+    const but = borner(
+      defilante.scrollTop + haut - (cadre.top + marge + masqueHaut + MARGE_ARRIVEE),
+      defilante.scrollHeight - defilante.clientHeight,
     );
+    defilante.scrollTo({ top: but, behavior: comportement });
+    destination = { zone: defilante, but };
+  } else {
+    const but = borner(
+      window.scrollY + haut - (masqueHaut + MARGE_ARRIVEE),
+      document.documentElement.scrollHeight - window.innerHeight,
+    );
+    window.scrollTo({ top: but, behavior: comportement });
+    destination = { zone: document, but };
+  }
+  // Sans faire défiler une seconde fois : le défilement doux est en route.
+  cible.focus({ preventScroll: true });
+  return destination;
+}
+
+/**
+ * Le premier parent qui POURRAIT défiler verticalement, qu'il déborde ou non
+ * — la fenêtre de personnalisation, même quand tout y tient. Rien quand c'est
+ * la page entière qui défile.
+ */
+function conteneurDefilant(el: HTMLElement): HTMLElement | null {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    if (p === document.body || p === document.documentElement) return null;
+    const debord = getComputedStyle(p).overflowY;
+    if (debord === "auto" || debord === "scroll" || debord === "overlay")
+      return p;
+  }
+  return null;
+}
+
+/**
+ * Combien d'une colonne de choix reste sous le bord bas — le haut de la
+ * barre d'actions collée — quand la page est tout en haut. Zéro quand tout
+ * tient à l'écran.
+ *
+ * Mesuré comme si l'on n'avait pas défilé, et pas à la position du moment :
+ * ce qui en dépend (le sommaire des réglages) ne doit ni paraître ni
+ * disparaître pendant qu'on fait défiler.
+ *
+ * Le décalage se lit sur la zone qui défile ; quand rien ne déborde, sur le
+ * conteneur qui POURRAIT défiler : la fenêtre de personnalisation est posée
+ * par-dessus la page, et le défilement de la page derrière elle ne la déplace
+ * pas.
+ */
+function resteSousLeBord(colonne: HTMLElement): number {
+  const conteneur = ancetreDefilant(colonne) ?? conteneurDefilant(colonne);
+  const decalage = conteneur ? conteneur.scrollTop : window.scrollY;
+  const barre = (conteneur ?? document).querySelector<HTMLElement>(".ml-cfg-pied");
+  const bord = barre
+    ? barre.getBoundingClientRect().top
+    : conteneur
+      ? conteneur.getBoundingClientRect().bottom
+      : window.innerHeight;
+  return Math.max(0, colonne.getBoundingClientRect().bottom + decalage - bord);
+}
+
+/**
+ * Toute une colonne de choix tient-elle à l'écran, page en haut ? Alors un
+ * sommaire n'apporte rien : tout se voit déjà. Quelques pixels qui dépassent
+ * ne comptent pas — ce sont des marges, pas des choix cachés (RESTE_MINI).
+ *
+ * À brancher en `ref` sur la colonne. On remesure quand elle change de taille
+ * (un autre personnage, d'autres galeries) et quand la fenêtre en change : sa
+ * hauteur décide du bord bas sans que la colonne bouge.
+ */
+export function createToutTient(): {
+  toutTient: () => boolean;
+  brancher: (colonne: HTMLElement) => void;
+} {
+  const [toutTient, setToutTient] = createSignal(false);
+  const brancher = (colonne: HTMLElement) => {
+    let image = 0;
+    const mesurer = () => {
+      cancelAnimationFrame(image);
+      image = requestAnimationFrame(() =>
+        setToutTient(resteSousLeBord(colonne) < RESTE_MINI),
+      );
+    };
+    mesurer();
+    const taille =
+      typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(mesurer);
+    taille?.observe(colonne);
+    window.addEventListener("resize", mesurer);
+    onCleanup(() => {
+      cancelAnimationFrame(image);
+      taille?.disconnect();
+      window.removeEventListener("resize", mesurer);
+    });
+  };
+  return { toutTient, brancher };
+}
+
+/** Ce qu'il reste à faire défiler sous ce qu'on voit, en pixels. */
+function resteADefiler(el: HTMLElement): number {
+  const trouvee = ancetreDefilant(el);
+  if (trouvee && trouvee !== document.documentElement && trouvee !== document.body)
+    return trouvee.scrollHeight - trouvee.clientHeight - trouvee.scrollTop;
+  return document.documentElement.scrollHeight - window.innerHeight - window.scrollY;
+}
+
+/**
+ * À deux pixels près, on est arrivé : une page sur un écran à haute densité
+ * s'arrête volontiers sur une position fractionnaire.
+ */
+const TOLERANCE_ARRIVEE = 2;
+
+/**
+ * Quelle partie d'une page est à l'écran, pendant qu'on la fait défiler :
+ * c'est ce qu'un sommaire de page met en évidence.
+ *
+ * Une partie est « à l'écran » dès que son titre a passé la LIGNE DE LECTURE,
+ * au tiers haut de ce qu'on voit — sous ce qui colle en haut, au-dessus de la
+ * barre collée en bas. Avant le premier titre, aucune : on est encore dans ce
+ * qui précède les parties (le choix du personnage).
+ *
+ * Tout en bas, les dernières parties n'ont plus assez de page sous elles pour
+ * monter jusqu'à la ligne : la dernière dont le titre se voit prend alors le
+ * relais, sinon on n'allumerait jamais la dernière pastille.
+ *
+ * Un toucher du sommaire DÉSIGNE sa partie ({@link designer}) : elle reste
+ * allumée pendant tout le voyage, puis une fois arrivée, tant que la page ne
+ * bouge plus. Sans cela, le surlignage défilerait de pastille en pastille
+ * pendant la descente, et une partie trop basse pour monter jusqu'à la ligne
+ * laisserait allumée sa voisine — pas celle qu'on vient de toucher.
+ *
+ * L'arrivée se lit sur la POSITION, et non sur un délai : la page est arrivée
+ * quand elle a atteint la destination. Un délai sans événement de défilement
+ * se trompait dès qu'une image tardait — une tablette occupée, un écran caché
+ * —, et rendait la main au calcul avant la fin du voyage. Un geste pendant le
+ * voyage (le doigt, la molette, une touche) l'interrompt : on rend la main.
+ *
+ * Comme pour la bulle d'avant, les mesures passent par la page elle-même : un
+ * `scroll` écouté en capture sur le document entend toutes les zones qui
+ * défilent, la fenêtre de personnalisation comme la page entière.
+ */
+export function createPartieALEcran(opts: {
+  /** Le titre de chaque partie, dans l'ordre de la page (absent : pas encore là). */
+  ancres: () => (HTMLElement | null | undefined)[];
+  /** Le haut de ce qu'on lit, en coordonnées de l'écran : sous ce qui colle. */
+  hautLecture: () => number;
+  /** Le bas de ce qu'on lit : le haut de la barre collée en bas. */
+  basLecture: () => number;
+}): {
+  /** Rang de la partie à l'écran, ou `null` avant la première. */
+  active: () => number | null;
+  /**
+   * Une pastille vient d'être touchée : sa partie reste allumée jusqu'à
+   * `destination` (cf. defilerJusqua), puis tant qu'on n'en bouge pas.
+   */
+  designer: (rang: number, destination: Destination) => void;
+} {
+  const [active, setActive] = createSignal<number | null>(null);
+  /** La partie désignée, où mène son défilement, et si l'on y est. */
+  let designee: (Destination & { arrivee: boolean }) | null = null;
+  let image = 0;
+
+  const calculer = (): number | null => {
+    const ancres = opts.ancres();
+    const haut = opts.hautLecture();
+    const bas = opts.basLecture();
+    // Jamais au ras du haut : un titre posé par le sommaire s'arrête
+    // MARGE_ARRIVEE pixels plus bas, et doit compter comme passé.
+    const ligne = haut + Math.max(MARGE_ARRIVEE + 4, (bas - haut) / 3);
+    let rang: number | null = null;
+    let derniereVue: number | null = null;
+    let premiere: HTMLElement | undefined;
+    for (let i = 0; i < ancres.length; i++) {
+      const a = ancres[i];
+      if (!a || !a.isConnected) continue;
+      if (!premiere) premiere = a;
+      const r = a.getBoundingClientRect();
+      if (r.height === 0) continue;
+      if (r.top <= ligne) rang = i;
+      if (r.top < bas) derniereVue = i;
+    }
+    if (!premiere) return null;
+    if (
+      derniereVue !== null &&
+      (rang === null || derniereVue > rang) &&
+      resteADefiler(premiere) <= TOLERANCE_ARRIVEE
+    )
+      rang = derniereVue;
+    return rang;
   };
 
-  let image = 0;
   const mesurer = () => {
     cancelAnimationFrame(image);
     // Une mesure par image au plus : un défilement envoie bien davantage.
     image = requestAnimationFrame(() => {
-      const cible = props.cible;
-      if (!cible || !racine || !cible.isConnected) {
-        setVisible(false);
+      if (!designee) setActive(calculer());
+    });
+  };
+
+  const surDefilement = (e: Event) => {
+    if (designee) {
+      // Une galerie qu'on pousse du doigt, la grille des personnages qui
+      // défile dans sa case : ni l'une ni l'autre ne déplace les parties.
+      if (e.target !== designee.zone) return;
+      const ecart = Math.abs(position(designee.zone) - designee.but);
+      if (!designee.arrivee) {
+        if (ecart <= TOLERANCE_ARRIVEE) designee.arrivee = true;
         return;
       }
-      // Le bas de ce qu'on lit, au milieu, c'est le haut de la bulle, et non
-      // celui de la barre : tant que le titre n'est pas au-dessus d'elle, il
-      // est dessous, ou caché par elle. Une marge fixe comptée depuis la
-      // barre laissait une bande où le titre se lisait juste au-dessus de la
-      // bulle — les mêmes mots deux fois, l'un sur l'autre : c'était l'écran
-      // d'arrivée d'un portable en 1536 × 730.
-      // Mesuré sur le conteneur, que le sautillement ne déplace pas ; masqué
-      // (`visibility`), il garde sa place : la mesure vaut dans les deux sens,
-      // et l'invitation ne clignote pas d'un état à l'autre.
-      const haut = racine.getBoundingClientRect().top;
-      const neuf = cible.getBoundingClientRect().bottom > haut;
-      if (neuf === visible()) return;
-      setVisible(neuf);
-      if (neuf && !dejaVue) {
-        dejaVue = true;
-        attirer();
-      }
-    });
+      // Arrivée : la partie touchée reste allumée tant qu'on n'en bouge pas.
+      if (ecart <= TOLERANCE_ARRIVEE) return;
+      designee = null;
+    }
+    mesurer();
+  };
+
+  /** Un geste pendant le voyage l'interrompt : le calcul reprend la main. */
+  const surGeste = () => {
+    if (designee && !designee.arrivee) designee = null;
   };
 
   onMount(() => {
     const options = { capture: true, passive: true } as const;
-    document.addEventListener("scroll", mesurer, options);
+    document.addEventListener("scroll", surDefilement, options);
+    for (const geste of ["wheel", "touchstart", "pointerdown", "keydown"] as const)
+      document.addEventListener(geste, surGeste, options);
     window.addEventListener("resize", mesurer);
     onCleanup(() => {
       cancelAnimationFrame(image);
-      document.removeEventListener("scroll", mesurer, options);
+      document.removeEventListener("scroll", surDefilement, options);
+      for (const geste of ["wheel", "touchstart", "pointerdown", "keydown"] as const)
+        document.removeEventListener(geste, surGeste, options);
       window.removeEventListener("resize", mesurer);
     });
   });
 
-  // Les réglages bougent aussi SANS défilement : la grille qui prend sa
-  // hauteur de demi-rangée, une catégorie plus courte, la cale du bord. Tous
-  // changent la taille de la colonne qui porte le titre.
+  // Les titres bougent aussi SANS défilement : un autre personnage, avec
+  // d'autres parties ; une vignette qui arrive et allonge sa galerie. On
+  // remesure quand la colonne qui les porte change de taille.
   createEffect(() => {
-    const cible = props.cible;
+    const ancres = opts.ancres();
+    // Autre personnage, autres parties : la désignation d'avant ne vaut plus.
+    designee = null;
     mesurer();
-    const colonne = cible?.parentElement;
+    const colonne = ancres.find((a) => a?.isConnected)?.parentElement;
     if (!colonne || typeof ResizeObserver === "undefined") return;
     const taille = new ResizeObserver(mesurer);
     taille.observe(colonne);
     onCleanup(() => taille.disconnect());
   });
 
-  createEffect(on(() => props.relance?.(), attirer, { defer: true }));
-
-  const descendre = () => {
-    const cible = props.cible;
-    if (!cible) return;
-    const comportement: ScrollBehavior = moinsDAnimations() ? "auto" : "smooth";
-    const masque = props.masqueHaut?.() ?? 0;
-    const haut = cible.getBoundingClientRect().top;
-    const trouvee = ancetreDefilant(cible);
-    // Une page qui pose `overflow` sur <html> ou <body> défile quand même par
-    // la fenêtre : leur cadre, lui, part avec le défilement, et le calcul
-    // ci-dessous compterait celui-ci deux fois.
-    const defilante =
-      trouvee === document.documentElement || trouvee === document.body
-        ? null
-        : trouvee;
-    if (defilante) {
-      // Ce qui colle en haut s'arrête au bord INTÉRIEUR de la marge de la
-      // zone qui défile : le titre doit s'arrêter sous la marge ET sous lui.
-      const cadre = defilante.getBoundingClientRect();
-      const marge = Number.parseFloat(getComputedStyle(defilante).paddingTop) || 0;
-      defilante.scrollTo({
-        top: defilante.scrollTop + haut - (cadre.top + marge + masque + MARGE_ARRIVEE),
-        behavior: comportement,
-      });
-    } else {
-      window.scrollTo({
-        top: window.scrollY + haut - (masque + MARGE_ARRIVEE),
-        behavior: comportement,
-      });
-    }
-    // Sans faire défiler une seconde fois : le défilement doux est en route.
-    cible.focus({ preventScroll: true });
+  const designer = (rang: number, destination: Destination) => {
+    cancelAnimationFrame(image);
+    setActive(rang);
+    // Déjà en place — moins d'animations demandées, ou rien à faire défiler :
+    // on est arrivé avant même de partir.
+    designee = {
+      ...destination,
+      arrivee:
+        Math.abs(position(destination.zone) - destination.but) <= TOLERANCE_ARRIVEE,
+    };
   };
 
-  return (
-    <div
-      ref={racine}
-      style={{
-        position: "absolute",
-        // Assez haut pour que l'ombre ne touche pas le trait de la barre.
-        bottom: "calc(100% + 10px)",
-        left: "0",
-        right: "0",
-        display: "flex",
-        "justify-content": "center",
-        // Le conteneur, pleine largeur, ne doit pas capter les touchers à
-        // côté de la bulle : la demi-vignette dessous reste cliquable.
-        "pointer-events": "none",
-        opacity: visible() ? "1" : "0",
-        // Masquée, elle quitte aussi l'ordre de tabulation et le lecteur
-        // d'écran ; le fondu se joue AVANT que `visibility` ne bascule.
-        visibility: visible() ? "visible" : "hidden",
-        transition: moinsDAnimations()
-          ? "none"
-          : visible()
-            ? "opacity 0.2s ease-out"
-            : "opacity 0.2s ease-out, visibility 0s linear 0.2s",
-      }}
-    >
-      <button
-        ref={bouton}
-        type="button"
-        onClick={descendre}
-        style={{
-          "pointer-events": visible() ? "auto" : "none",
-          display: "inline-flex",
-          "align-items": "center",
-          gap: "8px",
-          "min-height": "42px",
-          padding: "9px 16px 9px 18px",
-          border: "none",
-          "border-radius": "9999px",
-          // L'encre, et non le violet des boutons : juste au-dessus de
-          // « Valider mon personnage », un second violet se lirait comme une
-          // seconde action principale.
-          background: "#111827",
-          color: "#ffffff",
-          "box-shadow": "0 4px 14px rgba(17, 24, 39, 0.28)",
-          "font-family": "inherit",
-          "font-size": "14px",
-          "font-weight": "600",
-          "line-height": "1.2",
-          cursor: "pointer",
-          // Sur un téléphone étroit, un libellé long (« Personalizza questo
-          // personaggio ») passe à la ligne plutôt que de déborder du panneau.
-          "max-width": "100%",
-          "box-sizing": "border-box",
-          "text-align": "center",
-          "-webkit-tap-highlight-color": "transparent",
-        }}
-      >
-        {props.libelle}
-        <svg
-          viewBox="0 0 16 16"
-          width="16"
-          height="16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <polyline points="3.5 6 8 10.5 12.5 6" />
-        </svg>
-      </button>
-    </div>
-  );
+  return { active, designer };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -672,8 +756,12 @@ export function largeurDemiVignette(
  * La mesure se fait COMME SI l'on était en haut de la page, jamais à la
  * position du moment : une cale qui changerait pendant qu'on fait défiler
  * ferait sauter le contenu sous le doigt. Elle se recalcule quand la fenêtre
- * change de taille et quand les choix changent (un personnage à quatre
- * galeries, puis un à une seule).
+ * change de taille et quand les choix changent (un personnage de plus dans
+ * la liste).
+ *
+ * L'éditeur de personnage ne s'en sert plus : sous l'aperçu collé du
+ * téléphone, elle ouvrait un blanc qui avait l'air d'un oubli, et c'est
+ * désormais son sommaire des réglages qui dit que la suite est dessous.
  */
 export function createCaleDuBord(): {
   cale: () => number;
@@ -760,4 +848,468 @@ function caleDuBord(colonne: HTMLElement, caleActuelle: number): number {
     if (meilleure === null || c < meilleure) meilleure = c;
   }
   return meilleure === null ? 0 : Math.round(meilleure);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Les listes qui défilent : une barre qu'on voit, des boutons qu'on touche   */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * « SCROLLE > que ce soit en horizontal et en vertical, bouton et barres :
+ * trop discret, penser aux vieux » (retour cliente, octobre 2026).
+ *
+ * Une liste qui défile ne se devinait pas : sur une tablette, la barre de
+ * défilement n'apparaît qu'au premier geste, et sur un ordinateur elle était
+ * réglée fine et pâle ; les flèches des galeries faisaient 26 px. Une liste
+ * qui déborde montre désormais trois choses :
+ *   - deux BOUTONS, ‹ › pour une liste horizontale, ˄ ˅ pour une verticale :
+ *     44 px, cerclés de noir, la taille d'une cible au doigt. Celui du bout où
+ *     l'on est arrivé s'estompe et se désactive ; les deux disparaissent quand
+ *     tout tient — il n'y a alors rien à faire défiler ;
+ *   - la barre du navigateur, épaissie et contrastée (`.ml-defil-zone`,
+ *     global.css du site), là où il la montre en permanence ;
+ *   - là où il la cache — tablettes, téléphones, certains ordinateurs —, une
+ *     barre DESSINÉE à sa place, aux mêmes couleurs. Pour le savoir, on mesure
+ *     la place que la barre du navigateur prend : aucune, c'est qu'elle se
+ *     superpose au contenu et n'apparaîtra qu'au premier geste. Ni Safari sur
+ *     iPad ni Chrome sur Android ne laissent une page la forcer visible.
+ *
+ * La barre dessinée n'est qu'un repère : elle ne capte pas le doigt, c'est la
+ * liste qu'on pousse — ou les boutons.
+ */
+
+/** Gris des barres : un curseur foncé sur un rail clair, lisible de loin. */
+const RAIL = "#e5e7eb";
+const CURSEUR = "#4b5563";
+/** Épaisseur de la barre dessinée. */
+const EPAISSEUR = 8;
+/** Longueur minimale du curseur : un curseur minuscule ne se voit plus. */
+const CURSEUR_MIN = 28;
+
+/** L'état d'une zone qui défile, tel que ses boutons et sa barre le lisent. */
+interface EtatDefilement {
+  /** Elle cache quelque chose : boutons et barre ont une raison d'être. */
+  deborde: boolean;
+  auDebut: boolean;
+  aLaFin: boolean;
+  /** La barre du navigateur ne prend pas de place : on dessine la nôtre. */
+  dessinee: boolean;
+  /** La part visible (0..1) et la position (0..1), pour le curseur. */
+  part: number;
+  position: number;
+}
+
+/** Mesure une zone qui défile dans un sens. */
+function etatDe(zone: HTMLElement, horizontal: boolean): EtatDefilement {
+  const total = horizontal ? zone.scrollWidth : zone.scrollHeight;
+  const vue = horizontal ? zone.clientWidth : zone.clientHeight;
+  const pos = horizontal ? zone.scrollLeft : zone.scrollTop;
+  const reste = total - vue;
+  // Deux pixels de marge : une position fractionnaire n'est pas un débord.
+  const deborde = reste > 2;
+  const style = getComputedStyle(zone);
+  const bords = horizontal
+    ? (Number.parseFloat(style.borderTopWidth) || 0) +
+      (Number.parseFloat(style.borderBottomWidth) || 0)
+    : (Number.parseFloat(style.borderLeftWidth) || 0) +
+      (Number.parseFloat(style.borderRightWidth) || 0);
+  const placeDeLaBarre = horizontal
+    ? zone.offsetHeight - zone.clientHeight - bords
+    : zone.offsetWidth - zone.clientWidth - bords;
+  return {
+    deborde,
+    auDebut: pos <= 2,
+    aLaFin: pos >= reste - 2,
+    dessinee: deborde && placeDeLaBarre < 1,
+    part: total > 0 ? Math.min(1, vue / total) : 1,
+    position: reste > 0 ? Math.min(1, Math.max(0, pos / reste)) : 0,
+  };
+}
+
+/**
+ * Le premier choix de la liste, pour régler le pas des boutons : celui qui se
+ * déclare (`data-item`), sinon le premier enfant — en descendant tant qu'il
+ * est plus grand que ce qu'on voit (une liste `<ul>` posée dans la zone).
+ */
+function premierChoix(zone: HTMLElement, horizontal: boolean): HTMLElement | null {
+  const vue = horizontal ? zone.clientWidth : zone.clientHeight;
+  let el =
+    zone.querySelector<HTMLElement>("[data-item]") ??
+    (zone.firstElementChild as HTMLElement | null);
+  while (el) {
+    const r = el.getBoundingClientRect();
+    if ((horizontal ? r.width : r.height) <= vue || !el.firstElementChild) break;
+    el = el.firstElementChild as HTMLElement;
+  }
+  return el;
+}
+
+/**
+ * Fait défiler d'une « page » moins une demi-vignette : ce que le bord coupait
+ * en deux (la règle de la demi-rangée) arrive entier, et rien ne passe sans
+ * avoir été vu. Doucement, sauf si l'appareil demande moins d'animations.
+ */
+function defilerDUnePage(zone: HTMLElement, horizontal: boolean, sens: -1 | 1): void {
+  const vue = horizontal ? zone.clientWidth : zone.clientHeight;
+  const choix = premierChoix(zone, horizontal);
+  const taille = choix
+    ? horizontal
+      ? choix.getBoundingClientRect().width
+      : choix.getBoundingClientRect().height
+    : 0;
+  const pas = Math.max(vue * 0.5, vue - taille / 2 - 8);
+  const comportement: ScrollBehavior = moinsDAnimations() ? "auto" : "smooth";
+  if (horizontal) zone.scrollBy({ left: sens * pas, behavior: comportement });
+  else zone.scrollBy({ top: sens * pas, behavior: comportement });
+}
+
+/** Chevron dessiné : net à toute taille, et le même sur tous les appareils. */
+function Chevron(props: { vers: "gauche" | "droite" | "haut" | "bas" }) {
+  const points = {
+    gauche: "10 3.5 5.5 8 10 12.5",
+    droite: "6 3.5 10.5 8 6 12.5",
+    haut: "3.5 10 8 5.5 12.5 10",
+    bas: "3.5 6 8 10.5 12.5 6",
+  }[props.vers];
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="22"
+      height="22"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.4"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points={points} />
+    </svg>
+  );
+}
+
+/**
+ * Un bouton de défilement : 44 px, fond blanc cerclé de noir, chevron épais.
+ * Le survol, l'appui et le focus clavier vivent dans la feuille de l'hôte
+ * (`.ml-defil-btn`) ; sans elle, le bouton reste entier et utilisable.
+ */
+function BoutonDefilement(props: {
+  vers: "gauche" | "droite" | "haut" | "bas";
+  libelle: string;
+  /** Arrivé au bout de ce côté : estompé et désactivé. */
+  bout: boolean;
+  controle: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      class="ml-defil-btn"
+      aria-label={props.libelle}
+      title={props.libelle}
+      aria-controls={props.controle}
+      disabled={props.bout}
+      onClick={() => props.onClick()}
+      style={{
+        flex: "0 0 auto",
+        width: "44px",
+        height: "44px",
+        padding: "0",
+        display: "inline-flex",
+        "align-items": "center",
+        "justify-content": "center",
+        "border-radius": "9999px",
+        border: "2px solid #1f2937",
+        background: "#ffffff",
+        color: "#111827",
+        "box-shadow": props.bout ? "none" : "0 1px 3px rgba(17, 24, 39, 0.2)",
+        opacity: props.bout ? "0.3" : "1",
+        cursor: props.bout ? "default" : "pointer",
+      }}
+    >
+      <Chevron vers={props.vers} />
+    </button>
+  );
+}
+
+/**
+ * Une liste qui défile, horizontalement ou verticalement, avec ses boutons et
+ * sa barre (voir plus haut).
+ *
+ * - Horizontale : ‹ à gauche, › à droite, la barre dessinée sous la liste.
+ * - Verticale : à droite de la liste, ˄ en haut, ˅ en bas, et la barre
+ *   dessinée entre les deux — une barre de défilement aux grosses flèches.
+ *
+ * La zone qui défile garde la classe, le style et le `ref` qu'on lui donne :
+ * la règle de la demi-rangée (brancherDemiRangee) et les mesures des galeries
+ * s'y branchent comme avant. Les enfants y sont posés directement : un
+ * sélecteur de l'hôte comme `.ml-cfg-rail > button` les trouve toujours.
+ */
+export function ZoneDefilante(props: {
+  sens: "horizontal" | "vertical";
+  /** Noms traduits des deux boutons : vers le début, vers la fin. */
+  versDebut: string;
+  versFin: string;
+  children: JSX.Element;
+  /** Classe et style de la zone qui défile elle-même. */
+  class?: string;
+  style?: JSX.CSSProperties;
+  ref?: (el: HTMLDivElement) => void;
+  /** Rappelé à chaque défilement (le rail des cadres suit son débord). */
+  onScroll?: () => void;
+}): JSX.Element {
+  const horizontal = props.sens === "horizontal";
+  const id = createUniqueId();
+  const [etat, setEtat] = createSignal<EtatDefilement>(
+    {
+      deborde: false,
+      auDebut: true,
+      aLaFin: true,
+      dessinee: false,
+      part: 1,
+      position: 0,
+    },
+    {
+      // Une mesure identique ne redessine rien : la grille des personnages
+      // remesure à chaque vignette recolorée.
+      equals: (a, b) =>
+        a.deborde === b.deborde &&
+        a.auDebut === b.auDebut &&
+        a.aLaFin === b.aLaFin &&
+        a.dessinee === b.dessinee &&
+        Math.abs(a.part - b.part) < 0.001 &&
+        Math.abs(a.position - b.position) < 0.001,
+    },
+  );
+  let zone: HTMLDivElement | undefined;
+  let image = 0;
+
+  const mesurer = () => {
+    cancelAnimationFrame(image);
+    // Une mesure par image au plus : un défilement envoie bien davantage.
+    image = requestAnimationFrame(() => {
+      if (zone) setEtat(etatDe(zone, horizontal));
+    });
+  };
+
+  const brancher = (el: HTMLDivElement) => {
+    zone = el;
+    props.ref?.(el);
+    mesurer();
+    // La zone change de taille (l'écran, les boutons qui paraissent), son
+    // contenu change (une autre catégorie, des vignettes recalculées), les
+    // polices finissent de charger : chaque fois, on remesure.
+    const taille =
+      typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(mesurer);
+    taille?.observe(el);
+    const contenu = new MutationObserver(mesurer);
+    contenu.observe(el, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["style"],
+    });
+    window.addEventListener("resize", mesurer);
+    void document.fonts?.ready.then(mesurer);
+    onCleanup(() => {
+      cancelAnimationFrame(image);
+      taille?.disconnect();
+      contenu.disconnect();
+      window.removeEventListener("resize", mesurer);
+    });
+  };
+
+  const surDefilement = () => {
+    mesurer();
+    props.onScroll?.();
+  };
+
+  const defiler = (sens: -1 | 1) => {
+    if (zone) defilerDUnePage(zone, horizontal, sens);
+  };
+
+  /** Le curseur : sa longueur dit la part visible, sa place où l'on en est. */
+  const curseur = (): JSX.CSSProperties => {
+    const part = `${(etat().part * 100).toFixed(2)}%`;
+    const longueur = `max(${CURSEUR_MIN}px, ${part})`;
+    const decalage = `calc((100% - ${longueur}) * ${etat().position.toFixed(4)})`;
+    return horizontal
+      ? { position: "absolute", top: "0", bottom: "0", width: longueur, left: decalage }
+      : { position: "absolute", left: "0", right: "0", height: longueur, top: decalage };
+  };
+
+  const laZone = (
+    <div
+      ref={brancher}
+      id={id}
+      class={`ml-defil-zone ${props.class ?? ""}`}
+      style={props.style}
+      onScroll={surDefilement}
+    >
+      {props.children}
+    </div>
+  );
+
+  const barreDessinee = (
+    <div
+      class="ml-defil-piste"
+      aria-hidden="true"
+      style={{
+        position: "relative",
+        "border-radius": "9999px",
+        background: RAIL,
+        ...(horizontal
+          ? { height: `${EPAISSEUR}px`, "margin-top": "6px" }
+          : { width: `${EPAISSEUR}px`, flex: "1 1 auto", "min-height": "24px" }),
+      }}
+    >
+      <div
+        class="ml-defil-curseur"
+        style={{ ...curseur(), "border-radius": "9999px", background: CURSEUR }}
+      />
+    </div>
+  );
+
+  if (horizontal)
+    return (
+      <div
+        class="ml-defil ml-defil-h"
+        style={{ display: "flex", "align-items": "center", gap: "6px", "min-width": "0" }}
+      >
+        <Show when={etat().deborde}>
+          <BoutonDefilement
+            vers="gauche"
+            libelle={props.versDebut}
+            bout={etat().auDebut}
+            controle={id}
+            onClick={() => defiler(-1)}
+          />
+        </Show>
+        <div style={{ flex: "1 1 auto", "min-width": "0" }}>
+          {laZone}
+          <Show when={etat().dessinee}>{barreDessinee}</Show>
+        </div>
+        <Show when={etat().deborde}>
+          <BoutonDefilement
+            vers="droite"
+            libelle={props.versFin}
+            bout={etat().aLaFin}
+            controle={id}
+            onClick={() => defiler(1)}
+          />
+        </Show>
+      </div>
+    );
+
+  return (
+    <div
+      class="ml-defil ml-defil-v"
+      style={{ display: "flex", "align-items": "stretch", gap: "6px", "min-width": "0" }}
+    >
+      <div style={{ flex: "1 1 auto", "min-width": "0" }}>{laZone}</div>
+      <Show when={etat().deborde}>
+        <div
+          class="ml-defil-rail"
+          style={{
+            flex: "0 0 auto",
+            display: "flex",
+            "flex-direction": "column",
+            "align-items": "center",
+            "justify-content": "space-between",
+            gap: "6px",
+          }}
+        >
+          <BoutonDefilement
+            vers="haut"
+            libelle={props.versDebut}
+            bout={etat().auDebut}
+            controle={id}
+            onClick={() => defiler(-1)}
+          />
+          {/* Entre les deux boutons : la barre dessinée, ou rien quand le
+              navigateur montre déjà la sienne au bord de la liste. */}
+          <Show when={etat().dessinee} fallback={<div style={{ flex: "1 1 auto" }} />}>
+            {barreDessinee}
+          </Show>
+          <BoutonDefilement
+            vers="bas"
+            libelle={props.versFin}
+            bout={etat().aLaFin}
+            controle={id}
+            onClick={() => defiler(1)}
+          />
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+/**
+ * La barre de la FENÊTRE de personnalisation, dessinée sur les appareils qui
+ * cachent la leur.
+ *
+ * Toute la fenêtre défile — le choix du personnage, puis ses vêtements, ses
+ * couleurs… — et, sur une tablette, rien ne le montrait avant le premier
+ * geste. Même principe que pour les listes : si la barre du navigateur prend
+ * de la place, elle se voit déjà (et global.css l'épaissit) ; sinon, on en
+ * pose une, en position fixe le long du bord droit de la zone qui défile,
+ * dans sa marge — jamais par-dessus un choix.
+ *
+ * À brancher en `ref` sur la racine du configurateur ; ne fait rien quand
+ * c'est la page entière qui défile (le configurateur posé hors fenêtre).
+ */
+export function brancherBarreDeLaFenetre(racine: HTMLElement): void {
+  // On attend que la racine soit dans la page : avant, elle n'a pas d'ancêtre.
+  onMount(() => {
+    const zone = conteneurDefilant(racine);
+    if (!zone || !zone.parentElement) return;
+    const piste = document.createElement("div");
+    piste.className = "ml-defil-piste ml-defil-piste-fenetre";
+    piste.setAttribute("aria-hidden", "true");
+    piste.style.cssText =
+      `position:fixed;width:${EPAISSEUR}px;border-radius:9999px;` +
+      `background:${RAIL};pointer-events:none;z-index:4;display:none`;
+    const curseur = document.createElement("div");
+    curseur.className = "ml-defil-curseur";
+    curseur.style.cssText =
+      `position:absolute;left:0;right:0;border-radius:9999px;background:${CURSEUR}`;
+    piste.append(curseur);
+    zone.parentElement.append(piste);
+
+    let image = 0;
+    const placer = () => {
+      cancelAnimationFrame(image);
+      image = requestAnimationFrame(() => {
+        const e = etatDe(zone, false);
+        if (!e.dessinee) {
+          piste.style.display = "none";
+          return;
+        }
+        const r = zone.getBoundingClientRect();
+        const hauteur = Math.max(0, r.height - 16);
+        piste.style.display = "block";
+        piste.style.top = `${r.top + 8}px`;
+        piste.style.height = `${hauteur}px`;
+        // Dans la marge de droite : la marge de la fenêtre fait 14 px au moins.
+        piste.style.left = `${r.right - EPAISSEUR - 3}px`;
+        const longueur = Math.max(CURSEUR_MIN, hauteur * e.part);
+        curseur.style.height = `${longueur}px`;
+        curseur.style.top = `${(hauteur - longueur) * e.position}px`;
+      });
+    };
+    placer();
+    zone.addEventListener("scroll", placer, { passive: true });
+    window.addEventListener("resize", placer);
+    const taille =
+      typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(placer);
+    taille?.observe(zone);
+    taille?.observe(racine);
+    onCleanup(() => {
+      cancelAnimationFrame(image);
+      zone.removeEventListener("scroll", placer);
+      window.removeEventListener("resize", placer);
+      taille?.disconnect();
+      piste.remove();
+    });
+  });
 }

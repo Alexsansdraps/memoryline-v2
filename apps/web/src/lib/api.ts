@@ -8,13 +8,20 @@ import type {
 } from "@memoryline/types";
 import {
   REGLAGE_CADRES_SITE,
+  REGLAGE_PRIX_CADRES_SITE,
   cadresProposesSurLeSite,
+  prixDesCadresAffiches,
   encartVideoAffiche,
   REGLAGE_VIDEO_POSTER,
   REGLAGE_VIDEO_TEXTE,
   REGLAGE_VIDEO_TITRE,
   REGLAGE_VIDEO_URL,
   REGLAGE_VIDEO_VISIBLE,
+  REGLAGE_BANDEAUX_VISUELS,
+  bandeauDepuisEncart,
+  bandeauxDeLaPage,
+  lireBandeauxVisuels,
+  type BandeauVisuel,
 } from "@memoryline/types";
 import type {
   CadreDTO,
@@ -49,9 +56,9 @@ export const PUBLIC_API_URL =
  * une fois la taille demandée et la garde — une vignette de rayon pèse alors
  * neuf kilo-octets au lieu d'un mégaoctet et demi.
  *
- * Les largeurs que l'API sait servir sont 200, 400, 600, 900 et 1400. Une
- * autre valeur lui fait rendre l'original : rien ne casse, mais rien
- * n'allège non plus.
+ * Les largeurs que l'API sait servir sont 200, 400, 600, 900 et 1400, plus
+ * 1920 et 2560 pour les bandeaux visuels, bord à bord. Une autre valeur lui
+ * fait rendre l'original : rien ne casse, mais rien n'allège non plus.
  */
 export function assetUrl(
   path: string | null | undefined,
@@ -497,6 +504,21 @@ export async function cadresSurLeSite(): Promise<boolean> {
   }
 }
 
+/**
+ * Le site affiche-t-il le supplément de chaque cadre (« + 15 € » sous sa
+ * vignette) ? Réglage de la page Cadres du back-office. Il ne touche qu'à ce
+ * détail : le prix du cadre reste dans le total. Réglages injoignables : oui,
+ * comme avant que le réglage existe.
+ */
+export async function prixDesCadresSurLeSite(): Promise<boolean> {
+  try {
+    const all = await reglagesDeLaLangue("fr");
+    return prixDesCadresAffiches(all[REGLAGE_PRIX_CADRES_SITE]);
+  } catch {
+    return true;
+  }
+}
+
 /** L'encart vidéo du configurateur, tel que la fiche produit le descend. */
 export interface EncartVideoDTO {
   /** Adresse brute telle que la marchande l'a saisie. Le tri se fait au rendu. */
@@ -535,6 +557,44 @@ export async function encartVideoDuSite(
     };
   } catch {
     return { url: "", poster: "", titre: "", texte: "" };
+  }
+}
+
+/**
+ * Les bandeaux visuels d'une page, en ligne maintenant, dans l'ordre réglé au
+ * back-office (« Bandeaux visuels »).
+ *
+ * `pages` : les clés de la page — « accueil », « rayon:villes »… (voir
+ * clesPageAffiches). Les textes restent dans le bandeau avec leurs
+ * traductions : c'est au rendu de choisir la langue (texteBandeau).
+ *
+ * Aucune requête de plus : la liste voyage avec les réglages, déjà lus une
+ * fois par page (cache de 2 s). On la prend dans ceux du français, que les
+ * grilles d'affiches ont déjà demandés — elle est identique dans toutes les
+ * langues.
+ *
+ * Tant que la liste n'a jamais été enregistrée, l'ancien encart de l'accueil
+ * fait foi, lu dans la langue de la page comme il l'était (voir
+ * bandeauDepuisEncart) : le site ne change pas tant que la boutique n'a rien
+ * réglé. API muette : aucun bandeau — un ornement ne fait pas tomber la page.
+ */
+export async function bandeauxVisuels(
+  pages: readonly string[],
+  langue = "fr",
+): Promise<BandeauVisuel[]> {
+  const chaine = (v: unknown) => (typeof v === "string" ? v : "");
+  try {
+    const francais = await reglagesDeLaLangue("fr");
+    let liste = lireBandeauxVisuels(francais[REGLAGE_BANDEAUX_VISUELS]);
+    if (liste === null) {
+      const dansLaLangue =
+        langue === "fr" ? francais : await reglagesDeLaLangue(langue);
+      const encart = bandeauDepuisEncart((cle) => chaine(dansLaLangue[cle]));
+      liste = encart ? [encart] : [];
+    }
+    return bandeauxDeLaPage(liste, pages, new Date());
+  } catch {
+    return [];
   }
 }
 

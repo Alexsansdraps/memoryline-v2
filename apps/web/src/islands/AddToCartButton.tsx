@@ -141,13 +141,25 @@ export default function AddToCartButton(
             +
           </button>
         </div>
+        {/* Pendant l'ajout, le bouton reste noir (global.css lit
+            `aria-busy`) et dit ce qu'il fait, un rond qui tourne à côté. Il
+            n'affichait qu'un « … » grisé : on le prenait pour une panne et on
+            touchait une deuxième fois. */}
         <button
           type="button"
           onClick={add}
           disabled={busy()}
+          aria-busy={busy()}
           class="inline-block rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
         >
-          {busy() ? "…" : tr("produit.ajouter")}
+          {busy() ? (
+            <>
+              <span class="ml-spinner ml-spinner-clair mr-2" aria-hidden="true" />
+              {tr("produit.ajout_en_cours")}
+            </>
+          ) : (
+            tr("produit.ajouter")
+          )}
         </button>
       </div>
       {error() && (

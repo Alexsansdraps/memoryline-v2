@@ -412,7 +412,20 @@ const filtreActif =
     </div>
   </form>
 
-  <div class="overflow-x-auto">
+  {/* Les PDF d'impression, téléchargés depuis la liste (lib/impression-bo.ts).
+      Rien ne s'y prépare d'office : la liste montre des commandes parties
+      depuis longtemps ; un clic sur un fichier pas encore prêt le prépare, et
+      le téléchargement part tout seul. */}
+  <div
+    class="overflow-x-auto"
+    data-impression
+    data-url-etat={apiUrl("/admin/print-files/etat")}
+  >
+    <p
+      data-pdf-alerte
+      hidden
+      class="border-b border-bo-border bg-amber-50 px-4 py-2 text-xs text-amber-900"
+    />
     <table class="w-full text-sm">
       <thead class="bg-bo-bg text-left text-bo-muted">
         <tr>
@@ -425,6 +438,8 @@ const filtreActif =
           <th class="px-4 py-2 font-medium">Paiement</th>
           <th class="px-4 py-2 font-medium">Traitement</th>
           <th class="px-4 py-2 font-medium">Articles</th>
+          {/* Des boutons, pas une valeur : rien à trier dans cette colonne. */}
+          <th class="px-2 py-2 font-medium" data-sans-tri>Impression</th>
           <th class="px-4 py-2 font-medium">Livraison</th>
           <th class="px-4 py-2 font-medium">Étiquettes</th>
           <th class="px-4 py-2 font-medium text-right">Total</th>
@@ -533,6 +548,64 @@ const filtreActif =
                   <span class="text-xs"> · {o.expedies} parti(s)</span>
                 )}
               </td>
+              <td class="px-2 py-2 align-top">
+                {/* Les PDF d'impression sans ouvrir la commande (demande de la
+                    boutique) : « PDF » pour une affiche seule, sinon un bouton
+                    par affiche — « 1 », « 2 »…, dans l'ordre des vignettes —
+                    et « Tout » pour l'archive. Seulement une fois payée, comme
+                    sur la fiche. */}
+                {o.status === "paid" && (o.affiches?.length ?? 0) > 0 ? (
+                  <div
+                    data-pdf-groupe
+                    class={(o.affiches?.length ?? 0) > 1 ? "min-w-[8rem]" : undefined}
+                  >
+                    {/* Assez large pour « 1 » et « 2 » côte à côte, « Tout »
+                        dessous : sinon le tableau, plus large que l'écran,
+                        les empile un par ligne. Une affiche seule n'a que
+                        « PDF », qui n'a pas besoin de place en plus. */}
+                    <div class="flex flex-wrap items-center gap-1">
+                      {o.affiches!.map((a, i) => {
+                        const nom =
+                          o.affiches!.length > 1
+                            ? `Affiche ${i + 1} (${a.titre ?? "affiche personnalisée"}${a.format ? `, ${a.format}` : ""})`
+                            : `${a.titre ?? "Affiche personnalisée"}${a.format ? ` (${a.format})` : ""}`;
+                        return (
+                          <a
+                            href={apiUrl(`/admin/print-files/${a.id}`)}
+                            download
+                            data-pdf-ligne={a.id}
+                            data-pdf-nom={nom}
+                            data-pdf-court={o.affiches!.length > 1 ? `Affiche ${i + 1}` : "PDF"}
+                            title={`${nom} : télécharger le PDF d'impression`}
+                            aria-label={`${nom} : télécharger le PDF d'impression`}
+                            class="bo-pdf bo-pdf-bouton"
+                          >
+                            <svg aria-hidden="true" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M2.5 13.5h11" /></svg>
+                            {o.affiches!.length > 1 ? i + 1 : "PDF"}
+                          </a>
+                        );
+                      })}
+                      {o.affiches!.length > 1 && (
+                        <a
+                          href={apiUrl(`/admin/orders/${o.id}/impression.zip`)}
+                          download
+                          data-pdf-tout
+                          data-pdf-lignes={o.affiches!.map((a) => a.id).join(",")}
+                          title={`Tout télécharger : les ${o.affiches!.length} PDF de la commande dans une archive .zip`}
+                          aria-label={`Tout télécharger : les ${o.affiches!.length} PDF de la commande dans une archive .zip`}
+                          class="bo-pdf bo-pdf-bouton"
+                        >
+                          <svg aria-hidden="true" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M2.5 13.5h11" /></svg>
+                          Tout
+                        </a>
+                      )}
+                    </div>
+                    <div data-pdf-messages class="bo-pdf-messages" aria-live="polite" />
+                  </div>
+                ) : (
+                  <span class="text-bo-muted">—</span>
+                )}
+              </td>
               <td class="px-4 py-2 align-top text-bo-muted">
                 {o.shippingLabel ?? "—"}
               </td>
@@ -565,7 +638,7 @@ const filtreActif =
         })}
         {orders.length === 0 && !error && (
           <tr>
-            <td colspan="10" class="px-4 py-6 text-center text-bo-muted">
+            <td colspan="11" class="px-4 py-6 text-center text-bo-muted">
               Aucune commande pour ces filtres.
             </td>
           </tr>
@@ -575,6 +648,11 @@ const filtreActif =
   </div>
 </section>
 <p class="mt-2 text-sm text-bo-muted">{orders.length} commande(s) affichée(s).</p>
+
+{/* Les PDF d'impression de la colonne « Impression ». */}
+<script>
+  import "../lib/impression-bo.ts";
+</script>
 
 <script is:inline define:vars={{ exportBase: lienExport, bonsBase: url("/commandes/bons") }}>
   // Sélection multiple : la barre d'actions n'existe que quand elle sert.

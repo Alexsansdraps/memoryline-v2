@@ -126,6 +126,8 @@ export const ui = {
     "produit.personnaliser": "Personnaliser",
     "produit.aide": "Choisissez le fond, le texte et vos personnages.",
     "produit.ajouter": "Ajouter au panier",
+    // Ce que dit le bouton pendant qu'il travaille (rond qui tourne à côté).
+    "produit.ajout_en_cours": "Ajout au panier…",
     "produit.retour": "Retour aux affiches",
     "panier.affiche_ia": "Affiche générée à partir de votre photo",
 
@@ -140,6 +142,12 @@ export const ui = {
     "ia.portrait": "Portrait (en hauteur)",
     "ia.paysage": "Paysage (en largeur)",
     "ia.orientation_relancer": "Relancez la création pour obtenir l'affiche dans ce sens.",
+    "ia.creations_titre": "Vos créations ({n})",
+    "ia.creations_aide":
+      "Touchez une affiche pour la revoir, cochez celles à garder : elles partiront ensemble au panier.",
+    "ia.creation_n": "Création {n}",
+    "ia.garder": "Garder",
+    "ia.ajouter_n": "Ajouter les {n} affiches au panier",
     "ia.changer_photo": "Choisir une autre photo",
     "ia.photo_titre": "Votre photo",
     "ia.style_titre": "Quel genre d'affiche ?",
@@ -305,6 +313,7 @@ export const ui = {
     "commande.nom": "Nom",
     "commande.email": "E-mail",
     "commande.payer": "Payer",
+    "commande.paiement_en_cours": "Paiement en cours…",
     "commande.paiement_indisponible":
       "Le paiement en ligne n'est pas encore activé.",
 
@@ -324,19 +333,13 @@ export const ui = {
       "Le code retenu par cette tablette ne correspond plus à un stand ouvert. Saisissez le code du jour.",
     "stand.code_injoignable":
       "Le stand n'a pas répondu. Vérifiez la connexion, puis réessayez.",
-    "stand.stand": "Stand",
-    "stand.changer_code": "Changer de code",
     "stand.nom": "Votre nom",
     "stand.email": "Votre adresse e-mail",
-    "stand.email_aide":
-      "Nous vous écrivons à cette adresse quand votre commande est prête.",
     "stand.nom_vide": "Indiquez votre nom.",
     "stand.email_invalide": "Cette adresse e-mail est incomplète.",
     "stand.valider_une": "Valider mon affiche",
     "stand.valider_plusieurs": "Valider mes affiches",
     "stand.envoi": "Enregistrement…",
-    "stand.sans_paiement":
-      "Aucun paiement en ligne : le règlement se fait directement sur le stand.",
     "stand.erreur": "La commande n'a pas pu être enregistrée. Réessayez.",
     "stand.merci":
       "Votre commande est validée, vous pouvez maintenant vous adresser au vendeur",
@@ -375,6 +378,9 @@ export const ui = {
     "cfg.retour": "Retour",
     "cfg.continuer": "Continuer",
     "cfg.valider_affiche": "Valider l'affiche",
+    // Une affiche rouverte depuis le panier : on enregistre la ligne, on
+    // n'ajoute rien (l'ajout dit « produit.ajout_en_cours »).
+    "cfg.enregistrement_en_cours": "Enregistrement de votre affiche…",
     "cfg.valider_perso": "Valider mon personnage",
     "cfg.personnalisation": "PERSONNALISATION",
     "cfg.previsualisation": "PRÉVISUALISATION",
@@ -535,6 +541,10 @@ export const ui = {
     // Textes sortis du code en dur (octobre 2026).
     "cfg.precedent": "Précédent",
     "cfg.suivant": "Suivant",
+    // Les flèches ˄ ˅ des listes qui défilent de haut en bas (grille des
+    // personnages, points relais) : infobulle et lecteur d'écran.
+    "defiler.haut": "Faire défiler vers le haut",
+    "defiler.bas": "Faire défiler vers le bas",
     "cfg.couleur_perso": "Couleur personnalisée",
     "cfg.autres": "Autres",
     "cfg.personnage_n": "Personnage {id}",
@@ -547,6 +557,12 @@ export const ui = {
     "cfg.ligne_n": "Ligne {n}",
     "cfg.aide_retour_ligne": "Touche Entrée pour passer à la ligne.",
     "cfg.personnaliser_perso": "Personnaliser ce personnage",
+    // Le sommaire des réglages, à côté de l'aperçu du personnage. Espace
+    // insécable avant les deux-points : pas de retour à la ligne entre eux.
+    "cfg.sommaire.titre": "Personnaliser :",
+    "cfg.sommaire.peau": "Peau",
+    "cfg.sommaire.couleur": "Couleur",
+    "cfg.sommaire.cheveux": "Cheveux",
     "cfg.police.serif": "Classique",
     "cfg.police.spartan": "Bâton",
     "cfg.police.shabby": "Manuscrite",
@@ -739,6 +755,7 @@ export const ui = {
     "produit.personnaliser": "Personalise",
     "produit.aide": "Choose the background, the text and your characters.",
     "produit.ajouter": "Add to basket",
+    "produit.ajout_en_cours": "Adding to basket…",
     "produit.retour": "Back to posters",
     "panier.affiche_ia": "Poster created from your photo",
 
@@ -753,6 +770,12 @@ export const ui = {
     "ia.portrait": "Portrait (vertical)",
     "ia.paysage": "Landscape (horizontal)",
     "ia.orientation_relancer": "Create again to get the poster in this orientation.",
+    "ia.creations_titre": "Your creations ({n})",
+    "ia.creations_aide":
+      "Tap a poster to see it again, and tick the ones you want to keep: they'll go to your basket together.",
+    "ia.creation_n": "Creation {n}",
+    "ia.garder": "Keep",
+    "ia.ajouter_n": "Add the {n} posters to basket",
     "ia.changer_photo": "Choose another photo",
     "ia.photo_titre": "Your photo",
     "ia.style_titre": "What kind of poster?",
@@ -911,6 +934,7 @@ export const ui = {
     "commande.nom": "Name",
     "commande.email": "Email",
     "commande.payer": "Pay",
+    "commande.paiement_en_cours": "Processing payment…",
     "commande.paiement_indisponible":
       "Online payment is not enabled yet.",
 
@@ -928,19 +952,13 @@ export const ui = {
       "The code saved on this tablet no longer matches an open stand. Enter today's code.",
     "stand.code_injoignable":
       "The stand did not respond. Check the connection, then try again.",
-    "stand.stand": "Stand",
-    "stand.changer_code": "Change code",
     "stand.nom": "Your name",
     "stand.email": "Your email address",
-    "stand.email_aide":
-      "We will write to this address when your order is ready.",
     "stand.nom_vide": "Please enter your name.",
     "stand.email_invalide": "This email address is incomplete.",
     "stand.valider_une": "Confirm my poster",
     "stand.valider_plusieurs": "Confirm my posters",
     "stand.envoi": "Saving…",
-    "stand.sans_paiement":
-      "No online payment: you pay directly at the stand.",
     "stand.erreur": "The order could not be saved. Please try again.",
     "stand.merci": "Your order is confirmed, you can now go to the seller",
     "stand.revenir": "Back to my order",
@@ -978,6 +996,7 @@ export const ui = {
     "cfg.retour": "Back",
     "cfg.continuer": "Continue",
     "cfg.valider_affiche": "Confirm poster",
+    "cfg.enregistrement_en_cours": "Saving your poster…",
     "cfg.valider_perso": "Confirm character",
     "cfg.personnalisation": "PERSONALISATION",
     "cfg.previsualisation": "PREVIEW",
@@ -1132,6 +1151,8 @@ export const ui = {
     // Textes sortis du code en dur (octobre 2026).
     "cfg.precedent": "Previous",
     "cfg.suivant": "Next",
+    "defiler.haut": "Scroll up",
+    "defiler.bas": "Scroll down",
     "cfg.couleur_perso": "Custom colour",
     "cfg.autres": "Other",
     "cfg.personnage_n": "Character {id}",
@@ -1143,6 +1164,10 @@ export const ui = {
     "cfg.ligne_n": "Line {n}",
     "cfg.aide_retour_ligne": "Press Enter to start a new line.",
     "cfg.personnaliser_perso": "Customise this character",
+    "cfg.sommaire.titre": "Customise:",
+    "cfg.sommaire.peau": "Skin",
+    "cfg.sommaire.couleur": "Colour",
+    "cfg.sommaire.cheveux": "Hair",
     "cfg.police.serif": "Classic",
     "cfg.police.spartan": "Block",
     "cfg.police.shabby": "Handwritten",
@@ -1336,6 +1361,7 @@ export const ui = {
     "produit.personnaliser": "Personalisieren",
     "produit.aide": "Wählen Sie Hintergrund, Text und Ihre Figuren.",
     "produit.ajouter": "In den Warenkorb",
+    "produit.ajout_en_cours": "Wird in den Warenkorb gelegt…",
     "produit.retour": "Zurück zu den Postern",
     "panier.affiche_ia": "Poster aus Ihrem Foto erstellt",
 
@@ -1350,6 +1376,12 @@ export const ui = {
     "ia.portrait": "Hochformat",
     "ia.paysage": "Querformat",
     "ia.orientation_relancer": "Erstellen Sie das Poster erneut, um es in dieser Ausrichtung zu erhalten.",
+    "ia.creations_titre": "Ihre Kreationen ({n})",
+    "ia.creations_aide":
+      "Tippen Sie auf ein Poster, um es erneut anzusehen, und haken Sie die an, die Sie behalten möchten: Sie kommen gemeinsam in den Warenkorb.",
+    "ia.creation_n": "Kreation {n}",
+    "ia.garder": "Behalten",
+    "ia.ajouter_n": "Die {n} Poster in den Warenkorb legen",
     "ia.changer_photo": "Anderes Foto auswählen",
     "ia.photo_titre": "Ihr Foto",
     "ia.style_titre": "Welche Art von Poster?",
@@ -1510,6 +1542,7 @@ export const ui = {
     "commande.nom": "Name",
     "commande.email": "E-Mail",
     "commande.payer": "Bezahlen",
+    "commande.paiement_en_cours": "Zahlung wird verarbeitet…",
     "commande.paiement_indisponible":
       "Die Online-Zahlung ist noch nicht aktiviert.",
 
@@ -1527,19 +1560,13 @@ export const ui = {
       "Der auf diesem Tablet gespeicherte Code gehört zu keinem geöffneten Stand mehr. Bitte den heutigen Code eingeben.",
     "stand.code_injoignable":
       "Der Stand antwortet nicht. Prüfen Sie die Verbindung und versuchen Sie es erneut.",
-    "stand.stand": "Stand",
-    "stand.changer_code": "Code ändern",
     "stand.nom": "Ihr Name",
     "stand.email": "Ihre E-Mail-Adresse",
-    "stand.email_aide":
-      "Wir schreiben Ihnen an diese Adresse, sobald Ihre Bestellung fertig ist.",
     "stand.nom_vide": "Bitte geben Sie Ihren Namen ein.",
     "stand.email_invalide": "Diese E-Mail-Adresse ist unvollständig.",
     "stand.valider_une": "Mein Poster bestätigen",
     "stand.valider_plusieurs": "Meine Poster bestätigen",
     "stand.envoi": "Wird gespeichert…",
-    "stand.sans_paiement":
-      "Keine Online-Zahlung: Sie bezahlen direkt am Stand.",
     "stand.erreur":
       "Die Bestellung konnte nicht gespeichert werden. Bitte erneut versuchen.",
     "stand.merci": "Ihre Bestellung ist bestätigt, Sie können sich jetzt an den Verkäufer wenden",
@@ -1578,6 +1605,7 @@ export const ui = {
     "cfg.retour": "Zurück",
     "cfg.continuer": "Weiter",
     "cfg.valider_affiche": "Poster bestätigen",
+    "cfg.enregistrement_en_cours": "Ihr Poster wird gespeichert…",
     "cfg.valider_perso": "Figur bestätigen",
     "cfg.personnalisation": "PERSONALISIERUNG",
     "cfg.previsualisation": "VORSCHAU",
@@ -1735,6 +1763,8 @@ export const ui = {
     // Textes sortis du code en dur (octobre 2026).
     "cfg.precedent": "Zurückblättern",
     "cfg.suivant": "Weiterblättern",
+    "defiler.haut": "Nach oben blättern",
+    "defiler.bas": "Nach unten blättern",
     "cfg.couleur_perso": "Eigene Farbe",
     "cfg.autres": "Sonstige",
     "cfg.personnage_n": "Figur {id}",
@@ -1747,6 +1777,10 @@ export const ui = {
     "cfg.ligne_n": "Zeile {n}",
     "cfg.aide_retour_ligne": "Mit der Eingabetaste beginnen Sie eine neue Zeile.",
     "cfg.personnaliser_perso": "Diese Figur gestalten",
+    "cfg.sommaire.titre": "Gestalten:",
+    "cfg.sommaire.peau": "Haut",
+    "cfg.sommaire.couleur": "Farbe",
+    "cfg.sommaire.cheveux": "Haare",
     "cfg.police.serif": "Klassisch",
     "cfg.police.spartan": "Blockschrift",
     "cfg.police.shabby": "Handschrift",
@@ -1941,6 +1975,7 @@ export const ui = {
     "produit.personnaliser": "Personalizza",
     "produit.aide": "Scegli lo sfondo, il testo e i tuoi personaggi.",
     "produit.ajouter": "Aggiungi al carrello",
+    "produit.ajout_en_cours": "Aggiunta al carrello…",
     "produit.retour": "Torna ai poster",
     "panier.affiche_ia": "Poster creato dalla tua foto",
 
@@ -1955,6 +1990,12 @@ export const ui = {
     "ia.portrait": "Verticale",
     "ia.paysage": "Orizzontale",
     "ia.orientation_relancer": "Crea di nuovo il poster per averlo in questo orientamento.",
+    "ia.creations_titre": "Le tue creazioni ({n})",
+    "ia.creations_aide":
+      "Tocca un poster per rivederlo e spunta quelli da tenere: finiranno insieme nel carrello.",
+    "ia.creation_n": "Creazione {n}",
+    "ia.garder": "Tieni",
+    "ia.ajouter_n": "Aggiungi i {n} poster al carrello",
     "ia.changer_photo": "Scegli un'altra foto",
     "ia.photo_titre": "La tua foto",
     "ia.style_titre": "Che tipo di poster?",
@@ -2113,6 +2154,7 @@ export const ui = {
     "commande.nom": "Nome",
     "commande.email": "E-mail",
     "commande.payer": "Paga",
+    "commande.paiement_en_cours": "Pagamento in corso…",
     "commande.paiement_indisponible":
       "Il pagamento online non è ancora attivo.",
 
@@ -2130,19 +2172,13 @@ export const ui = {
       "Il codice salvato su questo tablet non corrisponde più a uno stand aperto. Inserisci il codice di oggi.",
     "stand.code_injoignable":
       "Lo stand non ha risposto. Controlla la connessione e riprova.",
-    "stand.stand": "Stand",
-    "stand.changer_code": "Cambia codice",
     "stand.nom": "Il tuo nome",
     "stand.email": "Il tuo indirizzo e-mail",
-    "stand.email_aide":
-      "Ti scriveremo a questo indirizzo quando il tuo ordine sarà pronto.",
     "stand.nom_vide": "Inserisci il tuo nome.",
     "stand.email_invalide": "Questo indirizzo e-mail è incompleto.",
     "stand.valider_une": "Conferma il mio poster",
     "stand.valider_plusieurs": "Conferma i miei poster",
     "stand.envoi": "Salvataggio…",
-    "stand.sans_paiement":
-      "Nessun pagamento online: paghi direttamente allo stand.",
     "stand.erreur": "Non è stato possibile salvare l'ordine. Riprova.",
     "stand.merci": "Il tuo ordine è confermato, ora puoi rivolgerti al venditore",
     "stand.revenir": "Torna al mio ordine",
@@ -2180,6 +2216,7 @@ export const ui = {
     "cfg.retour": "Indietro",
     "cfg.continuer": "Continua",
     "cfg.valider_affiche": "Conferma il poster",
+    "cfg.enregistrement_en_cours": "Salvataggio del tuo poster…",
     "cfg.valider_perso": "Conferma il personaggio",
     "cfg.personnalisation": "PERSONALIZZAZIONE",
     "cfg.previsualisation": "ANTEPRIMA",
@@ -2335,6 +2372,8 @@ export const ui = {
     // Textes sortis du code en dur (octobre 2026).
     "cfg.precedent": "Precedente",
     "cfg.suivant": "Successivo",
+    "defiler.haut": "Scorri verso l'alto",
+    "defiler.bas": "Scorri verso il basso",
     "cfg.couleur_perso": "Colore personalizzato",
     "cfg.autres": "Altri",
     "cfg.personnage_n": "Personaggio {id}",
@@ -2346,6 +2385,10 @@ export const ui = {
     "cfg.ligne_n": "Riga {n}",
     "cfg.aide_retour_ligne": "Premi Invio per andare a capo.",
     "cfg.personnaliser_perso": "Personalizza questo personaggio",
+    "cfg.sommaire.titre": "Personalizza:",
+    "cfg.sommaire.peau": "Pelle",
+    "cfg.sommaire.couleur": "Colore",
+    "cfg.sommaire.cheveux": "Capelli",
     "cfg.police.serif": "Classico",
     "cfg.police.spartan": "Lineare",
     "cfg.police.shabby": "Scritto a mano",
@@ -2540,6 +2583,7 @@ export const ui = {
     "produit.personnaliser": "Personalizar",
     "produit.aide": "Elige el fondo, el texto y tus personajes.",
     "produit.ajouter": "Añadir a la cesta",
+    "produit.ajout_en_cours": "Añadiendo a la cesta…",
     "produit.retour": "Volver a las láminas",
     "panier.affiche_ia": "Lámina creada a partir de tu foto",
 
@@ -2554,6 +2598,12 @@ export const ui = {
     "ia.portrait": "Vertical",
     "ia.paysage": "Horizontal",
     "ia.orientation_relancer": "Vuelve a crear el póster para obtenerlo en esta orientación.",
+    "ia.creations_titre": "Tus creaciones ({n})",
+    "ia.creations_aide":
+      "Toca un póster para volver a verlo y marca los que quieras conservar: irán juntos a la cesta.",
+    "ia.creation_n": "Creación {n}",
+    "ia.garder": "Conservar",
+    "ia.ajouter_n": "Añadir los {n} pósteres a la cesta",
     "ia.changer_photo": "Elegir otra foto",
     "ia.photo_titre": "Tu foto",
     "ia.style_titre": "¿Qué tipo de lámina?",
@@ -2712,6 +2762,7 @@ export const ui = {
     "commande.nom": "Nombre",
     "commande.email": "Correo electrónico",
     "commande.payer": "Pagar",
+    "commande.paiement_en_cours": "Procesando el pago…",
     "commande.paiement_indisponible":
       "El pago en línea aún no está activado.",
 
@@ -2729,19 +2780,13 @@ export const ui = {
       "El código guardado en esta tableta ya no corresponde a un puesto abierto. Introduce el código de hoy.",
     "stand.code_injoignable":
       "El puesto no ha respondido. Comprueba la conexión y vuelve a intentarlo.",
-    "stand.stand": "Puesto",
-    "stand.changer_code": "Cambiar de código",
     "stand.nom": "Tu nombre",
     "stand.email": "Tu correo electrónico",
-    "stand.email_aide":
-      "Te escribiremos a esta dirección cuando tu pedido esté listo.",
     "stand.nom_vide": "Indica tu nombre.",
     "stand.email_invalide": "Esta dirección de correo está incompleta.",
     "stand.valider_une": "Validar mi lámina",
     "stand.valider_plusieurs": "Validar mis láminas",
     "stand.envoi": "Guardando…",
-    "stand.sans_paiement":
-      "Sin pago en línea: pagas directamente en el puesto.",
     "stand.erreur": "No se ha podido registrar el pedido. Vuelve a intentarlo.",
     "stand.merci": "Tu pedido está validado, ahora puedes dirigirte al vendedor",
     "stand.revenir": "Volver a mi pedido",
@@ -2779,6 +2824,7 @@ export const ui = {
     "cfg.retour": "Volver",
     "cfg.continuer": "Continuar",
     "cfg.valider_affiche": "Confirmar la lámina",
+    "cfg.enregistrement_en_cours": "Guardando tu lámina…",
     "cfg.valider_perso": "Confirmar el personaje",
     "cfg.personnalisation": "PERSONALIZACIÓN",
     "cfg.previsualisation": "VISTA PREVIA",
@@ -2935,6 +2981,8 @@ export const ui = {
     // Textes sortis du code en dur (octobre 2026).
     "cfg.precedent": "Anterior",
     "cfg.suivant": "Siguiente",
+    "defiler.haut": "Desplázate hacia arriba",
+    "defiler.bas": "Desplázate hacia abajo",
     "cfg.couleur_perso": "Color personalizado",
     "cfg.autres": "Otros",
     "cfg.personnage_n": "Personaje {id}",
@@ -2946,6 +2994,10 @@ export const ui = {
     "cfg.ligne_n": "Línea {n}",
     "cfg.aide_retour_ligne": "Pulsa Intro para pasar a la línea siguiente.",
     "cfg.personnaliser_perso": "Personaliza este personaje",
+    "cfg.sommaire.titre": "Personaliza:",
+    "cfg.sommaire.peau": "Piel",
+    "cfg.sommaire.couleur": "Color",
+    "cfg.sommaire.cheveux": "Pelo",
     "cfg.police.serif": "Clásica",
     "cfg.police.spartan": "Palo seco",
     "cfg.police.shabby": "Manuscrita",

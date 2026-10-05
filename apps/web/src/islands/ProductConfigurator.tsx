@@ -33,6 +33,12 @@ export interface ProductConfiguratorProps {
   sansPrix?: boolean;
   /** Faux : le site ne propose pas les cadres (cf. ConfiguratorIslandProps). */
   cadresProposes?: boolean;
+  /**
+   * Faux : la boutique tait le supplément de chaque cadre (« + 15 € » sous sa
+   * vignette), réglage de la page Cadres du back-office. Le prix du cadre
+   * reste compté dans le total. Absent : le supplément s'affiche.
+   */
+  prixCadres?: boolean;
   /** Langue de la page — pilote tous les libellés affichés. */
   langue?: Langue;
   product: { id: number; name: string; basePriceCents: number };
@@ -227,11 +233,14 @@ export default function ProductConfigurator(
           type="button"
           onClick={openModal}
           disabled={loadingEdit()}
+          aria-busy={loadingEdit()}
           class="inline-block rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
         >
           {loadingEdit() ? (
             <>
-              <span class="ml-spinner mr-2" aria-hidden="true" />
+              {/* Le rond clair : le gris du rond d'origine disparaissait sur
+                  le noir du bouton. */}
+              <span class="ml-spinner ml-spinner-clair mr-2" aria-hidden="true" />
               {tr("cfg.chargement")}
             </>
           ) : (
@@ -290,7 +299,17 @@ export default function ProductConfigurator(
                 ✕
               </button>
             </header>
-            <div class="ml-modal-body">
+            {/* `ml-sans-prix-cadres` tait le supplément sous chaque cadre
+                (global.css) : le paquet du configurateur n'a qu'une option
+                pour taire TOUS les montants (`sansPrix`), et c'est d'ici que
+                le réglage de la boutique peut l'atteindre sans y toucher. */}
+            <div
+              class={
+                props.prixCadres === false
+                  ? "ml-modal-body ml-sans-prix-cadres"
+                  : "ml-modal-body"
+              }
+            >
               <ConfiguratorIsland
                 langue={props.langue}
                 product={props.product}

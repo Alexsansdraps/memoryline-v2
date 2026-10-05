@@ -35,6 +35,7 @@ import {
   sql as raw,
 } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
+import { ordreDesCollections } from "./collections.js";
 import { HORS_VENTES } from "./statuts-vente.js";
 
 /* -------------------------------------------------------------------------- */
@@ -535,7 +536,7 @@ async function chercherCollections(motif: string): Promise<ResultatRecherche[]> 
         contient(schema.collections.slug, motif),
       ),
     )
-    .orderBy(asc(schema.collections.position), asc(schema.collections.name))
+    .orderBy(...ordreDesCollections())
     .limit(PAR_CATEGORIE);
   if (!lignes.length) return [];
 

@@ -26,7 +26,7 @@
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Hono } from "hono";
@@ -43,7 +43,7 @@ import { renderPosterPng } from "./pdf.js";
  * sont arrivés d'un côté sans passer de l'autre. Or l'aperçu n'a qu'une seule
  * raison d'être — montrer ce qui part à l'atelier. On lit donc la même.
  */
-import { donneesDImpression } from "./fichiers-impression.js";
+import { donneesDImpression, enFile } from "./fichiers-impression.js";
 import type { PosterConfig } from "@memoryline/types";
 
 const ASSETS_DIR = resolve(fileURLToPath(import.meta.url), "../../../../data/assets");
@@ -135,15 +135,43 @@ async function existe(chemin: string): Promise<boolean> {
 }
 
 /**
+ * Range une vignette : écrite à côté puis renommée.
+ *
+ * Écrite directement, une vignette lue PENDANT l'écriture — la liste et la
+ * fiche de la même commande la demandent ensemble — partait tronquée, avec un
+ * en-tête qui dit au navigateur de la garder un an.
+ */
+async function rangerVignette(cache: string, vignette: Buffer): Promise<void> {
+  const provisoire = `${cache}.${process.pid}.tmp`;
+  await writeFile(provisoire, vignette);
+  await rename(provisoire, cache);
+}
+
+/**
+ * Les vignettes en cours de calcul : la liste des commandes, la fiche et un
+ * courrier qui demandent la même en même temps n'en lancent qu'un.
+ */
+const vignettesEnCours = new Map<number, Promise<Buffer | null>>();
+
+/**
  * Fabrique (ou relit) la vignette d'une ligne de commande.
  *
  * Renvoie null quand la ligne n'a rien à montrer : pas de configuration, ou
  * un rendu qui échoue. L'appelant affiche alors un cadre vide plutôt qu'une
  * image cassée.
  */
-export async function apercuDeLaLigne(
-  orderItemId: number,
-): Promise<Buffer | null> {
+export function apercuDeLaLigne(orderItemId: number): Promise<Buffer | null> {
+  let vignette = vignettesEnCours.get(orderItemId);
+  if (!vignette) {
+    vignette = fabriquerApercu(orderItemId).finally(() =>
+      vignettesEnCours.delete(orderItemId),
+    );
+    vignettesEnCours.set(orderItemId, vignette);
+  }
+  return vignette;
+}
+
+async function fabriquerApercu(orderItemId: number): Promise<Buffer | null> {
   await prepararerDossier();
   const cache = resolve(APERCUS_DIR, `${orderItemId}.jpg`);
   if (await existe(cache)) return readFile(cache);
@@ -176,7 +204,7 @@ export async function apercuDeLaLigne(
           .resize({ width: LARGEUR_APERCU, withoutEnlargement: true })
           .jpeg({ quality: 78, mozjpeg: true })
           .toBuffer();
-        await writeFile(cache, vignette);
+        await rangerVignette(cache, vignette);
         return vignette;
       } catch {
         /* aperçu introuvable : on tente le rendu complet ci-dessous */
@@ -208,7 +236,7 @@ export async function apercuDeLaLigne(
         .resize({ width: LARGEUR_APERCU, withoutEnlargement: true })
         .jpeg({ quality: 78, mozjpeg: true })
         .toBuffer();
-      await writeFile(cache, vignette);
+      await rangerVignette(cache, vignette);
       return vignette;
     } catch {
       return null;
@@ -216,17 +244,26 @@ export async function apercuDeLaLigne(
   }
 
   try {
-    const pleine = await renderPosterPng(config!, {
-      data: await donneesDImpression(),
-      // Toujours l'A4 : la vignette ne sert qu'à reconnaître l'affiche, et le
-      // rapport des deux formats est le même.
-      format: "A4",
+    /*
+     * Le rendu complet passe par la file des fichiers d'impression, APRÈS
+     * eux (fichiers-impression.ts). Lancées toutes ensemble à l'ouverture de
+     * la liste des commandes, ces vignettes — un rendu à 300 points par
+     * pouce chacune — occupaient le serveur au point qu'un PDF demandé au
+     * même moment mettait plus de deux minutes à venir, quand il venait.
+     */
+    const vignette = await enFile("apercu", async () => {
+      const pleine = await renderPosterPng(config!, {
+        data: await donneesDImpression(),
+        // Toujours l'A4 : la vignette ne sert qu'à reconnaître l'affiche, et le
+        // rapport des deux formats est le même.
+        format: "A4",
+      });
+      return sharp(pleine)
+        .resize({ width: LARGEUR_APERCU })
+        .jpeg({ quality: 78, mozjpeg: true })
+        .toBuffer();
     });
-    const vignette = await sharp(pleine)
-      .resize({ width: LARGEUR_APERCU })
-      .jpeg({ quality: 78, mozjpeg: true })
-      .toBuffer();
-    await writeFile(cache, vignette);
+    await rangerVignette(cache, vignette);
     return vignette;
   } catch (e) {
     console.error("[aperçu ligne]", orderItemId, e);

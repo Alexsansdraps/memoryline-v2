@@ -225,8 +225,20 @@ export default function ConfiguratorIsland(
                 {error()}
               </p>
             </Show>
+            {/* L'affiche validée part au panier : un voile couvre la fenêtre
+                et dit ce qui se passe, au milieu de l'écran. Ce n'était qu'un
+                « … » gris tout en haut du panneau — hors de la vue de qui
+                vient de toucher « Valider », en bas —, et l'on retouchait le
+                bouton en croyant qu'il n'avait rien fait. */}
             <Show when={saving()}>
-              <p class="mb-4 text-sm text-ink-soft">…</p>
+              <div class="ml-attente-voile" role="status">
+                <p>
+                  <span class="ml-spinner ml-spinner-clair" aria-hidden="true" />
+                  {mode === "edit"
+                    ? tr("cfg.enregistrement_en_cours")
+                    : tr("produit.ajout_en_cours")}
+                </p>
+              </div>
             </Show>
             <Configurator
               messages={{
@@ -272,6 +284,8 @@ export default function ConfiguratorIsland(
                 ligneN: tr("cfg.ligne_n"),
                 precedent: tr("cfg.precedent"),
                 suivant: tr("cfg.suivant"),
+                defilerHaut: tr("defiler.haut"),
+                defilerBas: tr("defiler.bas"),
                 couleurPerso: tr("cfg.couleur_perso"),
                 autres: tr("cfg.autres"),
                 personnageN: tr("cfg.personnage_n"),
@@ -294,6 +308,10 @@ export default function ConfiguratorIsland(
                 // Montants et dimensions à la manière de la langue de la page.
                 locale,
                 personnaliserPerso: tr("cfg.personnaliser_perso"),
+                sommaireTitre: tr("cfg.sommaire.titre"),
+                sommairePeau: tr("cfg.sommaire.peau"),
+                sommaireCouleur: tr("cfg.sommaire.couleur"),
+                sommaireCheveux: tr("cfg.sommaire.cheveux"),
               }}
               product={{
                 id: props.product.id,

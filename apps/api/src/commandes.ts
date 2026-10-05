@@ -573,18 +573,36 @@ export function mountOrderRoutes(app: Hono): void {
     // comme dans le panier). Trois au plus ; le reste se dit « +N ».
     const lignesApercu = rows.length
       ? await db
-          .select({ id: schema.orderItems.id, orderId: schema.orderItems.orderId })
+          .select({
+            id: schema.orderItems.id,
+            orderId: schema.orderItems.orderId,
+            title: schema.orderItems.title,
+            format: raw<string | null>`(${schema.orderItems.config} ->> 'format')`,
+            imprimable: raw<boolean>`(${schema.orderItems.config} is not null)`,
+          })
           .from(schema.orderItems)
           .where(inArray(schema.orderItems.orderId, rows.map((r) => r.id)))
           .orderBy(asc(schema.orderItems.id))
       : [];
     const apercusParCommande = new Map<number, string[]>();
     const lignesParCommande = new Map<number, number>();
+    // Les affiches à imprimer de chaque commande, dans l'ordre des vignettes :
+    // la liste propose leurs PDF sans ouvrir la commande (demande de la
+    // boutique), « 1 », « 2 »… comme les vignettes de gauche à droite.
+    const affichesParCommande = new Map<
+      number,
+      { id: number; titre: string | null; format: string | null }[]
+    >();
     for (const l of lignesApercu) {
       const liste = apercusParCommande.get(l.orderId) ?? [];
       if (liste.length < 3) liste.push(cheminApercu(l.id));
       lignesParCommande.set(l.orderId, (lignesParCommande.get(l.orderId) ?? 0) + 1);
       apercusParCommande.set(l.orderId, liste);
+      if (l.imprimable)
+        affichesParCommande.set(l.orderId, [
+          ...(affichesParCommande.get(l.orderId) ?? []),
+          { id: l.id, titre: l.title, format: l.format },
+        ]);
     }
     let enrichies = rows.map((r) => {
       const s = resume.get(r.id)!;
@@ -593,6 +611,7 @@ export function mountOrderRoutes(app: Hono): void {
         apercus: apercusParCommande.get(r.id) ?? [],
         /** Nombre d'affiches DIFFÉRENTES (lignes), pour le « +N » des vignettes. */
         lignes: lignesParCommande.get(r.id) ?? 0,
+        affiches: affichesParCommande.get(r.id) ?? [],
         articles: s.articles,
         expedies: s.expedies,
         rembourseCents: s.rembourseCents,

@@ -28,9 +28,14 @@ import { cheminApercu } from "./apercus.js";
 import { cadresProposesA, cadresSurLeSite, requeteDuStand } from "./cadres.js";
 import { poidsDesCollections } from "./collections.js";
 import {
+  donneesDImpression,
+  etatDuFichierDImpression,
   fichierDImpression,
   preparerFichierDImpression,
+  raisonLisible,
+  type EtatImpression,
 } from "./fichiers-impression.js";
+import { archiveZip } from "./archive-zip.js";
 import {
   resumeCommandes,
   statutExpedition,
@@ -65,6 +70,7 @@ import {
   CODES_NATURE,
   calageNeutre,
   calagePropre,
+  couleursProposees,
   demandeUnPointRelais,
   demandeUneAdresse,
   famillesDuDessin,
@@ -87,6 +93,7 @@ import {
   type TextesAffiche,
 } from "@memoryline/types";
 import { imageRecoloree } from "./couleurs-image-fichier.js";
+import { mesurerLaPiece, partsPourLaBoutique } from "./couleur-principale.js";
 import { rattacherGenerationsAuPanier } from "./ia.js";
 import {
   createPaypalOrder,
@@ -242,6 +249,62 @@ export async function enregistrerFichiersDImpression(
     // télécharger.
     if (preparer) preparerFichierDImpression(it.id, cfg);
   }
+}
+
+/**
+ * Le nom de fichier de chaque ligne, pour le téléchargement d'une affiche
+ * comme pour l'archive de toute la commande.
+ *
+ * Le nom retenu au moment de la commande fait foi : le fichier téléchargé
+ * aujourd'hui doit s'appeler comme celui rangé le jour de l'impression, même
+ * si le cadre a été renommé entre-temps.
+ */
+async function nomsDesFichiersDImpression(
+  order: { id: number; status: string; customerId: number | null },
+  lignes: { id: number; config: unknown }[],
+): Promise<Map<number, string>> {
+  const ids = lignes.map((l) => l.id);
+  const retenus = () =>
+    db
+      .select({
+        orderItemId: schema.printFiles.orderItemId,
+        filename: schema.printFiles.filename,
+      })
+      .from(schema.printFiles)
+      .where(inArray(schema.printFiles.orderItemId, ids));
+  let noms = await retenus();
+  // Une commande payée sans nom retenu — vente du stand d'avant qu'on les
+  // enregistre, commande reprise — reçoit les noms de TOUTES ses lignes
+  // maintenant, dans leur ordre, numérotation comprise : recalculé ici à
+  // chaque clic, le nom de deux affiches identiques était le même.
+  if (order.status === "paid" && new Set(noms.map((n) => n.orderItemId)).size < ids.length) {
+    await enregistrerFichiersDImpression(order.id, { preparer: false });
+    noms = await retenus();
+  }
+  const parLigne = new Map(noms.map((n) => [n.orderItemId, n.filename]));
+  const sansNom = lignes.filter((l) => !parLigne.has(l.id));
+  if (sansNom.length) {
+    const [client] = order.customerId
+      ? await db
+          .select({ name: schema.customers.name })
+          .from(schema.customers)
+          .where(eq(schema.customers.id, order.customerId))
+      : [];
+    const cadres = await db
+      .select({ id: schema.frames.id, name: schema.frames.name })
+      .from(schema.frames);
+    for (const l of sansNom) {
+      const cfg = (l.config ?? {}) as PosterConfig;
+      const cadre = cfg.frameId
+        ? cadres.find((f) => f.id === Number(cfg.frameId))
+        : undefined;
+      parLigne.set(
+        l.id,
+        `${slugifyName(client?.name ?? "client")}_${cfg.format ?? "A4"}_${suffixeCadre(cadre?.name)}.pdf`,
+      );
+    }
+  }
+  return parLigne;
 }
 
 // --- Tarification & paiement -------------------------------------------------
@@ -1608,8 +1671,12 @@ export function mountConfiguratorRoutes(app: Hono) {
         view,
         colorZones: a.colorZones,
         // Zones que le client ne recolore pas (ruban, élastique…) : pas de
-        // pastilles pour elles, et leur couleur par défaut à l'écran.
+        // pastilles pour elles, et leur couleur par défaut à l'écran. Null :
+        // la pièce suit le réglage de sa catégorie (`couleursProposees`).
         zonesMasquees: a.zonesMasquees,
+        // La part du dessin peinte par chaque zone : elle désigne la couleur
+        // principale, quand la catégorie ne propose que celle-là.
+        partsDesZones: partsPourLaBoutique(a),
         // Nuances réunies sous une seule rangée de pastilles, et leurs noms.
         groupesCouleurs: a.groupesCouleurs ?? null,
         // Familles de couleurs d'un dessin en PIXELS. La carte des teintes
@@ -1644,6 +1711,9 @@ export function mountConfiguratorRoutes(app: Hono) {
         name: p.name,
         slot: p.slot,
         colors: p.colors ?? [],
+        // Toutes les couleurs de chaque pièce, ou seulement la principale :
+        // le réglage des pièces qui n'ont pas le leur.
+        couleursProposees: couleursProposees(p.couleursProposees),
       })),
       characters: types.map(({ t, categoryName, categoryTranslations }) => ({
         id: t.id,
@@ -2715,7 +2785,12 @@ export function mountConfiguratorRoutes(app: Hono) {
         format: sql<string>`(${schema.orderItems.config} ->> 'format')`,
       })
       .from(schema.orderItems)
-      .where(eq(schema.orderItems.orderId, id));
+      .where(eq(schema.orderItems.orderId, id))
+      // Dans l'ordre où elles ont été ajoutées, comme les vignettes et les
+      // boutons « 1 », « 2 » de la liste, et comme la numérotation des
+      // fichiers (« -2 ») : sans ordre, la base les rendait au hasard, et
+      // l'« affiche 1 » de la fiche n'était pas toujours celle de la liste.
+      .orderBy(asc(schema.orderItems.id));
     const [customer] = order.customerId
       ? await db
           .select()
@@ -2936,15 +3011,83 @@ export function mountConfiguratorRoutes(app: Hono) {
   // === Téléchargement PDF (BO uniquement — §12) ============================
 
   /**
+   * Où en sont les fichiers d'impression de quelques lignes, SANS attendre
+   * aucun calcul : `?lignes=12,13` → `{ lignes: { 12: { etat: "pret", … } } }`.
+   *
+   * C'est par elle que le back-office (fiche et liste des commandes) sait
+   * quoi afficher : « prêt », « en préparation… », « échec : la raison ».
+   * Avant, il n'y avait que le lien de téléchargement, et la boutique cliquait
+   * dans le noir : un onglet blanc pendant que le fichier se fabriquait, une
+   * ligne de code en guise d'erreur, ou rien du tout.
+   *
+   * `preparer=1` lance la fabrication des fichiers absents, `reessayer=1`
+   * relance aussi ceux qui ont échoué (voir etatDuFichierDImpression).
+   *
+   * Déclarée AVANT « /admin/print-files/:orderItemId » : Hono retient la
+   * première route qui correspond, et « etat » y passerait pour un numéro de
+   * ligne.
+   */
+  app.get("/admin/print-files/etat", async (c) => {
+    const ids = [
+      ...new Set(
+        (c.req.query("lignes") ?? "")
+          .split(",")
+          .map(Number)
+          .filter((n) => Number.isInteger(n) && n > 0),
+      ),
+    ].slice(0, 300);
+    const preparer = c.req.query("preparer") === "1";
+    const reessayer = c.req.query("reessayer") === "1";
+    const lignes: Record<number, EtatImpression> = {};
+    const items = ids.length
+      ? await db
+          .select({
+            id: schema.orderItems.id,
+            orderId: schema.orderItems.orderId,
+            config: schema.orderItems.config,
+          })
+          .from(schema.orderItems)
+          .where(inArray(schema.orderItems.id, ids))
+      : [];
+    if (items.length) {
+      const commandes = await db
+        .select({ id: schema.orders.id, channel: schema.orders.channel })
+        .from(schema.orders)
+        .where(inArray(schema.orders.id, [...new Set(items.map((i) => i.orderId))]));
+      const canal = new Map(commandes.map((o) => [o.id, o.channel]));
+      // Une fois pour toutes les lignes : ce sont les mêmes personnages et
+      // les mêmes fonds pour toute la liste.
+      const donnees = await donneesDImpression();
+      for (const it of items) {
+        // Même règle que le téléchargement : une ligne qu'on ne peut pas
+        // télécharger n'a pas d'état à montrer.
+        if (!it.config || !commandeVisiblePar(c, canal.get(it.orderId))) continue;
+        lignes[it.id] = await etatDuFichierDImpression(it.id, it.config as PosterConfig, {
+          preparer,
+          reessayer,
+          donnees,
+        });
+      }
+    }
+    // L'état change d'une seconde à l'autre : aucun cache ne doit le figer.
+    return c.json({ lignes }, 200, { "Cache-Control": "no-store" });
+  });
+
+  /**
    * Renvoie le PDF d'une ligne de commande, régénéré à la demande depuis le
    * snapshot (idempotent). Disponible pour TOUTE commande, même ancienne.
    * C'est la cliente qui télécharge/imprime (depuis le BO ou l'app salon).
+   *
+   * Le back-office ne fait pointer son lien ici qu'une fois le fichier prêt
+   * (voir /admin/print-files/etat) : il part alors aussitôt. Appelé avant,
+   * il attend la fabrication, en tête de file.
    *
    * PROTÉGÉ : l'id de ligne est un entier séquentiel — en accès libre, il
    * suffisait de l'incrémenter pour aspirer les affiches de tous les clients.
    */
   app.get("/admin/print-files/:orderItemId", async (c) => {
     const itemId = Number(c.req.param("orderItemId"));
+    if (!Number.isInteger(itemId) || itemId <= 0) return c.notFound();
     const [item] = await db
       .select()
       .from(schema.orderItems)
@@ -2956,15 +3099,8 @@ export function mountConfiguratorRoutes(app: Hono) {
       .where(eq(schema.orders.id, item.orderId));
     // Même règle que pour la fiche : l'affiche d'une cliente du site, avec son
     // nom dans le nom de fichier, n'est pas à portée d'un compte de stand.
-    if (!commandeVisiblePar(c, order?.channel)) return c.notFound();
-    const [customer] = order?.customerId
-      ? await db
-          .select()
-          .from(schema.customers)
-          .where(eq(schema.customers.id, order.customerId))
-      : [];
+    if (!order || !commandeVisiblePar(c, order.channel)) return c.notFound();
     const cfg = item.config as PosterConfig;
-    const fmt = (cfg.format ?? "A4") as "A4" | "A3";
     // Rangé au paiement, le fichier part aussitôt ; sinon il se fabrique ici.
     let pdf: Buffer;
     try {
@@ -2972,39 +3108,86 @@ export function mountConfiguratorRoutes(app: Hono) {
     } catch (e) {
       console.error(`[impression] ligne ${itemId} :`, e);
       return c.json(
-        { error: `Fichier d'impression impossible à fabriquer : ${(e as Error).message}` },
+        { error: `Fichier d'impression impossible à fabriquer : ${raisonLisible(e)}` },
         500,
       );
     }
-    // Le nom retenu au moment de la commande fait foi : le fichier téléchargé
-    // aujourd'hui doit s'appeler comme celui rangé le jour de l'impression,
-    // même si le cadre a été renommé entre-temps.
-    const nomRetenu = () =>
-      db
-        .select({ filename: schema.printFiles.filename })
-        .from(schema.printFiles)
-        .where(eq(schema.printFiles.orderItemId, itemId));
-    let [fichier] = await nomRetenu();
-    // Une commande payée sans nom retenu — vente du stand d'avant qu'on les
-    // enregistre, commande reprise — reçoit les noms de TOUTES ses lignes
-    // maintenant, dans leur ordre, numérotation comprise : recalculé ici à
-    // chaque clic, le nom de deux affiches identiques était le même.
-    if (!fichier && order?.status === "paid") {
-      await enregistrerFichiersDImpression(item.orderId, { preparer: false });
-      [fichier] = await nomRetenu();
-    }
-    const [cadre] = cfg.frameId
-      ? await db
-          .select({ name: schema.frames.name })
-          .from(schema.frames)
-          .where(eq(schema.frames.id, Number(cfg.frameId)))
-      : [];
-    const filename =
-      fichier?.filename ??
-      `${slugifyName(customer?.name ?? "client")}_${fmt}_${suffixeCadre(cadre?.name)}.pdf`;
+    const noms = await nomsDesFichiersDImpression(order, [item]);
     return c.body(new Uint8Array(pdf), 200, {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": `attachment; filename="${noms.get(itemId)}"`,
+    });
+  });
+
+  /**
+   * Tous les fichiers d'impression d'une commande, dans une seule archive
+   * .zip : le « Tout télécharger » de la liste et de la fiche, pour ne pas
+   * cliquer affiche par affiche. Chaque PDF y garde son nom (voir
+   * archive-zip.ts).
+   *
+   * Comme pour une ligne seule, le back-office ne propose le lien qu'une fois
+   * tous les fichiers prêts ; appelé avant, il attend ceux qui manquent. Une
+   * affiche qui ne peut pas s'imprimer fait refuser l'archive entière, en
+   * disant laquelle : une archive incomplète passerait pour la commande.
+   */
+  app.get("/admin/orders/:id/impression.zip", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.notFound();
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, id));
+    if (!order || !commandeVisiblePar(c, order.channel)) return c.notFound();
+    const lignes = (
+      await db
+        .select({
+          id: schema.orderItems.id,
+          title: schema.orderItems.title,
+          config: schema.orderItems.config,
+        })
+        .from(schema.orderItems)
+        .where(eq(schema.orderItems.orderId, id))
+        .orderBy(asc(schema.orderItems.id))
+    ).filter((l) => l.config);
+    if (!lignes.length)
+      return c.json({ error: "Cette commande n'a aucune affiche à imprimer." }, 404);
+    const noms = await nomsDesFichiersDImpression(order, lignes);
+    const fichiers: { nom: string; contenu: Uint8Array }[] = [];
+    for (const [i, l] of lignes.entries()) {
+      try {
+        fichiers.push({
+          nom: noms.get(l.id) ?? `affiche-${i + 1}.pdf`,
+          contenu: await fichierDImpression(l.id, l.config as PosterConfig),
+        });
+      } catch (e) {
+        console.error(`[impression] ligne ${l.id} :`, e);
+        return c.json(
+          {
+            error: `Affiche ${i + 1} (${l.title ?? "affiche personnalisée"}) : fichier d'impression impossible à fabriquer : ${raisonLisible(e)}`,
+          },
+          500,
+        );
+      }
+    }
+    const [client] = order.customerId
+      ? await db
+          .select({ name: schema.customers.name })
+          .from(schema.customers)
+          .where(eq(schema.customers.id, order.customerId))
+      : [];
+    const nom = `${slugifyName(client?.name ?? "client")}_${slugifyName(order.number)}.zip`;
+    // Envoyée morceau par morceau : les PDF ne sont pas recopiés dans un
+    // second tampon de plusieurs dizaines de Mo.
+    const morceaux = archiveZip(fichiers);
+    const taille = morceaux.reduce((n, m) => n + m.length, 0);
+    const flux = new ReadableStream<Uint8Array>({
+      pull(controleur) {
+        const morceau = morceaux.shift();
+        if (morceau) controleur.enqueue(morceau);
+        else controleur.close();
+      },
+    });
+    return c.body(flux, 200, {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="${nom}"`,
+      "Content-Length": String(taille),
     });
   });
 
@@ -3560,6 +3743,11 @@ export function mountConfiguratorRoutes(app: Hono) {
       colors,
       active: b.active !== false,
       position: Number(b.position ?? 0),
+      // Absent = inchangé : un écran qui ne connaît pas encore ce réglage ne
+      // doit pas le ramener à « toutes » en enregistrant le reste.
+      ...(b.couleursProposees !== undefined
+        ? { couleursProposees: couleursProposees(b.couleursProposees) }
+        : {}),
     };
     if (b.id) {
       const [row] = await db
@@ -3687,6 +3875,8 @@ export function mountConfiguratorRoutes(app: Hono) {
       .where(eq(schema.assets.id, id))
       .returning();
     if (!row) return c.notFound();
+    // D'autres zones, peut-être : la couleur principale se remesure.
+    void mesurerLaPiece(id);
     return c.json(row);
   });
 
@@ -3706,7 +3896,13 @@ export function mountConfiguratorRoutes(app: Hono) {
     if (!piece) return c.notFound();
     const [row] = await db
       .update(schema.assets)
-      .set({ zonesMasquees: zonesMasqueesPropres(b.zonesMasquees, piece.colorZones) })
+      .set({
+        // `null` : la pièce rend la main à sa catégorie.
+        zonesMasquees:
+          b.zonesMasquees === null
+            ? null
+            : zonesMasqueesPropres(b.zonesMasquees, piece.colorZones),
+      })
       .where(eq(schema.assets.id, id))
       .returning();
     if (!row) return c.notFound();
@@ -3736,8 +3932,13 @@ export function mountConfiguratorRoutes(app: Hono) {
     const set: Partial<typeof schema.assets.$inferInsert> = {
       colorZones: Object.keys(zones).length ? zones : null,
       groupesCouleurs: groupesPropres(b.groupesCouleurs, zones),
-      zonesMasquees: zonesMasqueesPropres(b.zonesMasquees, zones),
     };
+    // Le réglage propre de la pièce : une liste (même vide) a le dernier mot
+    // sur la catégorie, `null` lui rend la main. Absent : on n'y touche pas —
+    // renommer un groupe ne doit pas figer d'un coup les couleurs proposées.
+    if (b.zonesMasquees === null) set.zonesMasquees = null;
+    else if (b.zonesMasquees !== undefined)
+      set.zonesMasquees = zonesMasqueesPropres(b.zonesMasquees, zones);
     // Un dessin en pixels n'a pas de zone : ce sont ses familles de teintes
     // que la boutique règle, dans le même écran et le même envoi.
     if (b.couleursImage !== undefined)
@@ -3750,6 +3951,9 @@ export function mountConfiguratorRoutes(app: Hono) {
       .where(eq(schema.assets.id, id))
       .returning();
     if (!row) return c.notFound();
+    // « Détecter les couleurs » change le dessin et ses zones : la couleur
+    // principale se remesure (rien n'est refait si le dessin n'a pas changé).
+    void mesurerLaPiece(id);
     return c.json(row);
   });
 
@@ -3812,7 +4016,9 @@ export function mountConfiguratorRoutes(app: Hono) {
       .select()
       .from(schema.assets)
       .orderBy(asc(schema.assets.slot), asc(schema.assets.position));
-    return c.json(rows);
+    // Les parts des zones telles que le configurateur les reçoit : le
+    // back-office désigne la même couleur principale que lui.
+    return c.json(rows.map((r) => ({ ...r, partsDesZones: partsPourLaBoutique(r) })));
   });
 
   /** Crée ou met à jour une pièce (vêtement, coupe, accessoire…). */
@@ -3830,10 +4036,14 @@ export function mountConfiguratorRoutes(app: Hono) {
       view: (await typeAfficheValide(b.view)) ?? "front",
       colorZones: Object.keys(cleanZones).length ? cleanZones : null,
       // Absent = on ne touche pas au réglage (une édition qui ne le connaît
-      // pas ne doit pas re-proposer d'un coup toutes les zones).
-      ...(b.zonesMasquees !== undefined
-        ? { zonesMasquees: zonesMasqueesPropres(b.zonesMasquees, cleanZones) }
-        : {}),
+      // pas ne doit pas re-proposer d'un coup toutes les zones). `null` = la
+      // pièce suit sa catégorie : c'est ce que reçoit une pièce créée sans
+      // qu'on ait touché à ses cases.
+      ...(b.zonesMasquees === null
+        ? { zonesMasquees: null }
+        : b.zonesMasquees !== undefined
+          ? { zonesMasquees: zonesMasqueesPropres(b.zonesMasquees, cleanZones) }
+          : {}),
       // Même règle pour les groupes de couleurs lus au téléversement.
       ...(b.groupesCouleurs !== undefined
         ? { groupesCouleurs: groupesPropres(b.groupesCouleurs, cleanZones) }
@@ -3860,9 +4070,14 @@ export function mountConfiguratorRoutes(app: Hono) {
         .set(values)
         .where(eq(schema.assets.id, Number(b.id)))
         .returning();
+      // Un autre dessin, peut-être : la couleur principale se remesure.
+      if (row) void mesurerLaPiece(row.id);
       return c.json(row);
     }
     const [row] = await db.insert(schema.assets).values(values).returning();
+    // Une pièce neuve : sa couleur principale se mesure tout de suite, en
+    // arrière-plan.
+    if (row) void mesurerLaPiece(row.id);
     return c.json(row);
   });
 

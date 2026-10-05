@@ -9,10 +9,17 @@
  *
  * Une collection sert à trois choses : ranger, alimenter une page du site, et
  * dire ce que pèse un article quand rien de plus précis ne le dit.
+ *
+ * Les collections se RANGENT ici, à la main (poignée ⠿ ou flèches) : c'est
+ * l'ordre de toutes les listes de collections, site compris (voir
+ * `ordreDesCollections`, apps/api/src/collections.ts). Le menu en haut du site
+ * garde le sien, puisqu'il mêle collections, pages et rayons : la colonne
+ * « Dans le menu » dit où chaque collection y figure, et y mène.
  */
 import Admin from "../layouts/Admin.astro";
 import { url } from "../lib/url.ts";
-import { adminApi, type CollectionBo } from "../lib/api.ts";
+import { adminApi, type CollectionBo, type MenuCms } from "../lib/api.ts";
+import { comparerCollections, liensVers } from "../lib/destinations.ts";
 import TraductionsNoms from "../components/TraductionsNoms.astro";
 import { traiterTraductionsNoms } from "../lib/traductions-noms.ts";
 import type { EtatTraductions } from "../lib/traductions.ts";
@@ -42,6 +49,19 @@ if (Astro.request.method === "POST") {
       );
       flash = tradCollections.message;
       flashErreur = tradCollections.erreur;
+    }
+    if (action === "ordre") {
+      const ordre = String(f.get("ordre") ?? "")
+        .split(",")
+        .map(Number)
+        .filter((n) => Number.isInteger(n) && n > 0);
+      if (!ordre.length) throw new Error("L'ordre envoyé était vide.");
+      const r = await api.ordonnerCollections(ordre, f.get("menu") === "on");
+      flash =
+        `Ordre enregistré : ${r.ranges} collection${r.ranges > 1 ? "s" : ""} rangée${r.ranges > 1 ? "s" : ""}. C'est désormais l'ordre de toutes les listes de collections.` +
+        (r.liensMenu > 0
+          ? ` Dans le menu du site, ${r.liensMenu} lien${r.liensMenu > 1 ? "s" : ""} vers ces collections ${r.liensMenu > 1 ? "ont" : "a"} suivi le nouvel ordre.`
+          : "");
     }
     if (action === "creer") {
       const name = String(f.get("name") ?? "").trim();
@@ -117,21 +137,35 @@ function messageArchivage(c: CollectionBo): string {
 
 let collections: CollectionBo[] = [];
 let erreur: string | null = null;
+// Le menu, pour dire où chaque collection y figure. Illisible, la colonne
+// reste vide plutôt que d'empêcher l'écran de s'ouvrir.
+let menu: MenuCms | null = null;
 try {
-  collections = (await api.collections()).collections;
+  [collections, menu] = await Promise.all([
+    api.collections().then((r) => r.collections),
+    api.menu().catch(() => null),
+  ]);
 } catch (e) {
   erreur = e instanceof Error ? e.message : String(e);
 }
 
-/** Les collections vides passent après : ce sont des vestiges de l'import. */
+/**
+ * Dans l'ordre réglé ici : les collections rangées d'abord, à leur rang. Tant
+ * qu'une collection n'est pas rangée (rang 0), elle suit — les vides après
+ * les autres, ce sont des vestiges de l'import — puis par nom. Enregistrer
+ * l'ordre fige ce qu'on voit.
+ */
 const rangees = [...collections]
   // Les archivées quittent la liste ordinaire pour leur propre section, plus
   // bas : c'est là qu'on les restaure.
   .filter((c) => !c.archivedAt)
-  .sort((a, b) => {
-    if (a.produits === 0 !== (b.produits === 0)) return a.produits === 0 ? 1 : -1;
-    return a.position - b.position || a.name.localeCompare(b.name, "fr");
-  });
+  .sort(comparerCollections);
+
+/** Aucune n'est encore rangée : l'écran le dit, pour qu'on sache d'où vient l'ordre. */
+const aucuneRangee = rangees.every((c) => c.position === 0);
+
+const boutonOutil =
+  "flex h-6 w-6 items-center justify-center rounded border border-bo-border text-xs text-bo-muted hover:bg-bo-bg disabled:cursor-default disabled:opacity-30";
 
 const archivees = collections
   .filter((c) => c.archivedAt)
@@ -185,20 +219,98 @@ const archivees = collections
   <section
     class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface"
   >
-    <table class="w-full text-sm">
+    {/* Le rangement : glisser la poignée ⠿ ou cliquer les flèches, puis
+        enregistrer. Rien ne part avant ce bouton (lib/rangement.ts). */}
+    <form
+      method="POST"
+      id="form-ordre"
+      class="flex flex-wrap items-center justify-between gap-3 border-b border-bo-border px-4 py-3"
+    >
+      <input type="hidden" name="_action" value="ordre" />
+      <input type="hidden" name="ordre" data-rangement-champ />
+      <div class="max-w-3xl space-y-1.5 text-xs text-bo-muted">
+        <p>
+          <strong class="text-bo-ink">L'ordre des collections</strong> :
+          attrapez la poignée ⠿ ou utilisez les flèches, puis enregistrez.
+          C'est l'ordre dans lequel elles se proposent partout — fiche d'une
+          affiche, blocs de produits d'une page, choix d'une page dans le menu,
+          recherche, liste des rayons dans
+          <a href={url("/pages")} class="underline">Pages du site</a>.
+          {aucuneRangee && " Rien n'est encore rangé : elles sont pour l'instant par nom, les vides à la fin."}
+        </p>
+        {/* Le menu mêle collections, pages et rayons : il garde son ordre,
+            mais les liens vers des collections peuvent suivre celui-ci entre
+            eux (menu-ordre.ts). Coché d'office : c'est ce qu'on attend en
+            rangeant ses collections. */}
+        <label class="flex items-start gap-2">
+          <input type="checkbox" name="menu" checked class="mt-0.5" />
+          <span>
+            Ranger aussi, dans le
+            <a href={url("/menu")} class="underline">menu du site</a>, les liens
+            qui mènent à ces collections (« Villes », « Thèmes & paysages »…) :
+            ils échangent leur place entre eux, les autres entrées ne bougent
+            pas.
+          </span>
+        </label>
+      </div>
+      <button
+        data-rangement-bouton
+        disabled
+        class="rounded bg-bo-nav px-3 py-1.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        Enregistrer l'ordre
+      </button>
+    </form>
+    {/* Pas de tri par colonne ici (data-sans-tri) : l'ordre des lignes EST
+        ce qu'on règle, et un tri pour regarder le brouillerait. */}
+    <table class="w-full text-sm" data-sans-tri>
       <thead class="bg-bo-bg text-left text-bo-muted">
         <tr>
+          <th class="w-28 px-4 py-2 font-medium">Ordre</th>
           <th class="px-4 py-2 font-medium">Collection</th>
           <th class="px-4 py-2 font-medium text-right">Affiches</th>
           <th class="px-4 py-2 font-medium">Poids par défaut</th>
           <th class="px-4 py-2 font-medium">Visible</th>
+          <th class="px-4 py-2 font-medium">Dans le menu</th>
           <th class="px-4 py-2"></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody data-rangement="form-ordre">
         {
-          rangees.map((c) => (
-            <tr class="border-t border-bo-border align-middle">
+          rangees.map((c, i) => (
+            <tr class="border-t border-bo-border align-middle" data-rang-id={c.id}>
+              <td class="px-4 py-2 whitespace-nowrap">
+                <span class="flex items-center gap-1.5">
+                  <span
+                    class="ml-poignee cursor-grab select-none text-bo-muted"
+                    title="Glissez pour changer la place"
+                    aria-hidden="true"
+                  >
+                    ⠿
+                  </span>
+                  <span data-rang class="w-5 text-right text-xs tabular-nums text-bo-muted">
+                    {i + 1}
+                  </span>
+                  <button
+                    type="button"
+                    data-monter
+                    class={boutonOutil}
+                    title={`Monter « ${c.name} »`}
+                    aria-label={`Monter ${c.name}`}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    data-descendre
+                    class={boutonOutil}
+                    title={`Descendre « ${c.name} »`}
+                    aria-label={`Descendre ${c.name}`}
+                  >
+                    ↓
+                  </button>
+                </span>
+              </td>
               <td class="px-4 py-2">
                 <a
                   href={url(`/collections/${c.id}`)}
@@ -266,6 +378,23 @@ const archivees = collections
                   </button>
                 </form>
               </td>
+              <td class="px-4 py-2 text-xs">
+                {(() => {
+                  const liens = liensVers(menu, `/affiches?collection=${c.slug}`);
+                  return liens.length ? (
+                    <a href={url("/menu")} class="text-bo-accent hover:underline">
+                      {liens
+                        .map(
+                          (l) =>
+                            `« ${l.label} »${l.parent ? ` sous ${l.parent}` : ""}${l.visible ? "" : " (masqué)"}`,
+                        )
+                        .join(", ")}
+                    </a>
+                  ) : (
+                    <span class="text-bo-muted">—</span>
+                  );
+                })()}
+              </td>
               <td class="px-4 py-2 text-right whitespace-nowrap">
                 <a
                   href={url(`/collections/${c.id}`)}
@@ -318,6 +447,14 @@ const archivees = collections
       />
     )
   }
+
+  <style is:global>
+    /* La ligne qu'on fait glisser se voit : elle pâlit et se soulève. */
+    tr.ml-tenue { opacity: 0.55; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); }
+  </style>
+  <script>
+    import "../lib/rangement.ts";
+  </script>
 
   {/* ====== Collections archivées ====== */}
   {

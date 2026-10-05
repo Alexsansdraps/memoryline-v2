@@ -1,0 +1,1389 @@
+---
+/**
+ * Un bandeau visuel : son image, son texte, sa mise en forme, ses pages et
+ * ses dates — avec, à côté, l'aperçu de ce que la boutique affichera.
+ *
+ * L'APERÇU N'EST PAS UNE IMITATION. Il est bâti avec la feuille de style du
+ * site (@memoryline/types/bandeaux-visuels.css) et les mêmes fonctions de
+ * calcul des classes : seules la page autour et l'échelle sont simulées. La
+ * feuille se règle sur la largeur de son cadre, pas sur celle de l'écran, ce
+ * qui permet de montrer ici la version « téléphone » dans une boîte de
+ * 375 px.
+ *
+ * Le formulaire n'enregistre que le français et la forme. Les traductions
+ * ont leur bloc, plus bas, comme sur les autres écrans : « Proposer les
+ * traductions manquantes » remplit les cases vides en jaune, et rien n'est
+ * enregistré avant « Enregistrer les traductions ».
+ *
+ * « nouveau » à la place de l'identifiant ouvre un bandeau vierge ; il prend
+ * son identifiant au premier enregistrement.
+ */
+import Admin from "../../layouts/Admin.astro";
+import Traductions from "../../components/Traductions.astro";
+import "@memoryline/types/bandeaux-visuels.css";
+import {
+  HAUTEURS_BANDEAU,
+  POSITIONS_TEXTE_BANDEAU,
+  STYLES_TEXTE_BANDEAU,
+  etatBandeau,
+  lienBandeau,
+  normaliserBandeau,
+  normaliserLienSaisi,
+  nouveauBandeau,
+  type BandeauVisuel,
+  type HauteurBandeau,
+  type PositionTexteBandeau,
+  type StyleTexteBandeau,
+} from "@memoryline/types";
+import { adminApi, type CollectionBo, type ResumePage } from "../../lib/api.ts";
+import { apiUrl, url } from "../../lib/url.ts";
+import {
+  PASTILLES,
+  ecrireBandeaux,
+  groupesDePages,
+  lireBandeaux,
+  nomDuBandeau,
+  nouvelId,
+  periode,
+} from "../../lib/bandeaux-visuels.ts";
+import {
+  traiterTraductions,
+  type ChampTraduit,
+  type ElementTraduit,
+  type EtatTraductions,
+} from "../../lib/traductions.ts";
+
+const api = adminApi(Astro.request);
+const idDemande = String(Astro.params.id ?? "");
+const creation = idDemande === "nouveau";
+
+/** Ce qui se traduit : les mêmes longueurs que les champs français. */
+const CHAMPS_TRADUITS: ChampTraduit[] = [
+  { cle: "titre", libelle: "Titre", max: 160 },
+  { cle: "texte", libelle: "Texte ou étiquette", max: 400, lignes: 2 },
+  { cle: "bouton", libelle: "Bouton", max: 60 },
+  { cle: "alt", libelle: "Description de l'image", max: 250 },
+];
+const elementTraduit = (b: BandeauVisuel): ElementTraduit => ({
+  id: b.id,
+  libelle: nomDuBandeau(b),
+  francais: { titre: b.titre, texte: b.texte, bouton: b.bouton, alt: b.alt },
+  translations: b.translations,
+  champs: CHAMPS_TRADUITS,
+});
+
+/** Un champ date-heure vers une date ISO, à l'heure de la boutique (TZ du serveur). */
+function quandOuRien(v: FormDataEntryValue | null): string | null {
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/** Une date pour un champ `datetime-local` (qui n'accepte pas le fuseau). */
+function pourChamp(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * Le bandeau tel que le formulaire le décrit, posé sur `base` : ce que le
+ * formulaire ne porte pas (traductions, archivage) reste celui de la base.
+ */
+function bandeauDuFormulaire(f: FormData, base: BandeauVisuel): BandeauVisuel {
+  const champ = (nom: string) => String(f.get(nom) ?? "");
+  const b = normaliserBandeau({
+    ...base,
+    nom: champ("nom"),
+    actif: f.get("actif") === "on",
+    miseEnPage: champ("miseEnPage"),
+    image: champ("image"),
+    imageLargeur: champ("imageLargeur"),
+    imageHauteur: champ("imageHauteur"),
+    cadrage: { x: champ("cadrageX"), y: champ("cadrageY") },
+    imageMobile: champ("imageMobile"),
+    imageMobileLargeur: champ("imageMobileLargeur"),
+    imageMobileHauteur: champ("imageMobileHauteur"),
+    cadrageMobile: { x: champ("cadrageMobileX"), y: champ("cadrageMobileY") },
+    alt: champ("alt"),
+    titre: champ("titre"),
+    texte: champ("texte"),
+    bouton: champ("bouton"),
+    lien: normaliserLienSaisi(champ("lien")),
+    imageCliquable: f.get("imageCliquable") === "on",
+    position: champ("position"),
+    style: champ("style"),
+    hauteur: champ("hauteur"),
+    pages: f.getAll("pages").map(String),
+    debut: quandOuRien(f.get("debut")),
+    fin: quandOuRien(f.get("fin")),
+  });
+  if (!b) throw new Error("Le formulaire est illisible : rechargez la page.");
+  // Sans image pour le téléphone, ses dimensions n'ont plus de sens.
+  if (!b.imageMobile) {
+    b.imageMobileLargeur = null;
+    b.imageMobileHauteur = null;
+  }
+  return b;
+}
+
+/**
+ * Ce qui empêche d'enregistrer, dit en clair. Chaque refus correspond à un
+ * bandeau qui s'afficherait mal ou pas du tout sans que rien ne le signale :
+ * un bouton sans lien n'apparaît pas, une image cliquable sans aucun texte
+ * est un lien muet pour un lecteur d'écran.
+ */
+function refus(b: BandeauVisuel, lienSaisi: string): string | null {
+  if (!b.image)
+    return "Choisissez une image : c'est elle qui fait le bandeau.";
+  if (lienSaisi.trim() && !lienBandeau(b.lien))
+    return `Le lien « ${lienSaisi.trim()} » n'est pas une adresse que le site sait ouvrir. Écrivez une adresse du site, comme « /affiches?collection=villes », ou une adresse complète qui commence par https://.`;
+  if (b.bouton && !b.lien)
+    return "Le bouton a besoin d'un lien : indiquez où il mène, ou videz son libellé.";
+  if (
+    b.miseEnPage === "banniere" &&
+    b.lien &&
+    (b.imageCliquable || !b.bouton) &&
+    !b.titre &&
+    !b.texte &&
+    !b.alt
+  )
+    return "Décrivez l'image (« Description de l'image ») : sans texte sur le bandeau, c'est cette description qui dit où mène le lien aux personnes qui ne voient pas l'écran.";
+  if (b.debut && b.fin && new Date(b.fin).getTime() <= new Date(b.debut).getTime())
+    return "La date de fin doit venir après la date de début.";
+  return null;
+}
+
+let flash: string | null = null;
+let flashErreur = false;
+/** Le formulaire refusé, réaffiché tel qu'il a été envoyé. */
+let saisie: BandeauVisuel | null = null;
+/** Propositions de traduction à relire, saisie à réafficher, bloc ouvert. */
+let tradEtat: EtatTraductions | null = null;
+
+const formulaire = Astro.request.method === "POST" ? await Astro.request.formData() : null;
+const action = String(formulaire?.get("_action") ?? "");
+
+if (formulaire && action === "enregistrer") {
+  try {
+    // Relue juste avant d'écrire : voir lib/bandeaux-visuels.ts.
+    const { bandeaux } = await lireBandeaux(api);
+    const existant = creation ? null : (bandeaux.find((b) => b.id === idDemande) ?? null);
+    if (!creation && !existant)
+      throw new Error("Ce bandeau n'existe plus — il a peut-être été archivé depuis un autre onglet.");
+    const id = existant?.id ?? nouvelId(bandeaux);
+    const b = bandeauDuFormulaire(formulaire, existant ?? nouveauBandeau(id));
+    const motif = refus(b, String(formulaire.get("lien") ?? ""));
+    if (motif) {
+      saisie = b;
+      throw new Error(motif);
+    }
+    await ecrireBandeaux(
+      api,
+      existant ? bandeaux.map((x) => (x.id === id ? b : x)) : [...bandeaux, b],
+    );
+    return Astro.redirect(`${url(`/bandeaux-visuels/${id}`)}?ok=${creation ? "cree" : "enregistre"}`);
+  } catch (e) {
+    flash = e instanceof Error ? e.message : String(e);
+    flashErreur = true;
+  }
+}
+
+if (formulaire && (action === "bv-traductions" || action === "bv-traduire")) {
+  try {
+    const { bandeaux } = await lireBandeaux(api);
+    const b = bandeaux.find((x) => x.id === idDemande);
+    if (!b)
+      throw new Error("Enregistrez d'abord le bandeau en français : ses traductions s'y rattachent.");
+    // Les cases modifiées, langue par langue ; écrites d'un coup ensuite,
+    // la liste entière ne se réécrit qu'une fois.
+    const modifiees = new Map<string, Record<string, string>>();
+    tradEtat = await traiterTraductions(
+      action === "bv-traductions" ? "enregistrer" : "proposer",
+      formulaire,
+      [elementTraduit(b)],
+      CHAMPS_TRADUITS,
+      async (_id, langue, champs) => {
+        modifiees.set(langue, champs);
+      },
+      (langue, champs) => api.proposerTraduction(langue, champs),
+    );
+    if (action === "bv-traductions" && !tradEtat.erreur && modifiees.size) {
+      // Même règle que fusionnerTraductions (API) : une case envoyée vide
+      // retire sa traduction, le français s'affiche de nouveau.
+      const translations: Record<string, Record<string, string>> = {};
+      for (const [langue, champs] of Object.entries(b.translations ?? {}))
+        translations[langue] = { ...(champs as Record<string, string>) };
+      for (const [langue, champs] of modifiees) {
+        const entree = { ...(translations[langue] ?? {}) };
+        for (const [cle, texte] of Object.entries(champs)) {
+          if (texte.trim()) entree[cle] = texte.trim();
+          else delete entree[cle];
+        }
+        if (Object.keys(entree).length) translations[langue] = entree;
+        else delete translations[langue];
+      }
+      const maj = normaliserBandeau({ ...b, translations });
+      if (maj) await ecrireBandeaux(api, bandeaux.map((x) => (x.id === b.id ? maj : x)));
+    }
+    flash = tradEtat.message;
+    flashErreur = tradEtat.erreur;
+  } catch (e) {
+    flash = e instanceof Error ? e.message : String(e);
+    flashErreur = true;
+  }
+}
+
+if (formulaire && action === "archiver") {
+  try {
+    const { bandeaux } = await lireBandeaux(api);
+    if (!bandeaux.some((b) => b.id === idDemande)) throw new Error("Ce bandeau n'existe plus.");
+    await ecrireBandeaux(
+      api,
+      bandeaux.map((b) => (b.id === idDemande ? { ...b, archive: true } : b)),
+    );
+    return Astro.redirect(`${url("/bandeaux-visuels")}?ok=archive`);
+  } catch (e) {
+    flash = e instanceof Error ? e.message : String(e);
+    flashErreur = true;
+  }
+}
+
+/* ---- Ce qu'on affiche ------------------------------------------------- */
+
+let liste: BandeauVisuel[] = [];
+let repriseEncart = false;
+let erreur: string | null = null;
+try {
+  ({ bandeaux: liste, repriseEncart } = await lireBandeaux(api));
+} catch (e) {
+  erreur = e instanceof Error ? e.message : String(e);
+}
+const enregistre = creation ? null : (liste.find((b) => b.id === idDemande) ?? null);
+if (!creation && !enregistre && !erreur)
+  return Astro.redirect(`${url("/bandeaux-visuels")}?ok=introuvable`);
+
+const b: BandeauVisuel = saisie ?? enregistre ?? nouveauBandeau("nouveau");
+
+const RETOURS: Record<string, string> = {
+  cree: "Bandeau créé.",
+  enregistre: "Bandeau enregistré.",
+  duplique:
+    "Copie créée, éteinte pour l'instant : réglez-la, puis cochez « Afficher ce bandeau ».",
+};
+if (!flash && RETOURS[Astro.url.searchParams.get("ok") ?? ""]) {
+  flash = RETOURS[Astro.url.searchParams.get("ok") ?? ""] ?? null;
+}
+
+let collections: CollectionBo[] = [];
+let pagesSite: ResumePage[] = [];
+let listesIllisibles = false;
+try {
+  collections = (await api.collections()).collections;
+} catch {
+  listesIllisibles = true;
+}
+try {
+  pagesSite = (await api.pages()).pages;
+} catch {
+  listesIllisibles = true;
+}
+const groupes = groupesDePages(collections, pagesSite, b.pages);
+
+const etat = enregistre ? etatBandeau(enregistre) : null;
+const pastille = etat ? PASTILLES[etat] : null;
+
+/** L'adresse d'une image pour le navigateur du back-office. */
+const urlImage = (chemin: string) => (chemin.startsWith("/") ? apiUrl(chemin) : chemin);
+
+/** Une image trop étroite pour un grand écran : dit, pas interdit. */
+const imageEtroite =
+  enregistre?.miseEnPage === "banniere" &&
+  !!enregistre.imageLargeur &&
+  enregistre.imageLargeur < 1400;
+
+const LIBELLES_POSITION: Record<PositionTexteBandeau, string> = {
+  "haut-gauche": "En haut à gauche",
+  "haut-centre": "En haut, au centre",
+  "haut-droite": "En haut à droite",
+  "milieu-gauche": "Au milieu, à gauche",
+  "milieu-centre": "Au centre",
+  "milieu-droite": "Au milieu, à droite",
+  "bas-gauche": "En bas à gauche",
+  "bas-centre": "En bas, au centre",
+  "bas-droite": "En bas à droite",
+};
+const STYLES: Record<StyleTexteBandeau, { libelle: string; aide: string }> = {
+  etiquette: {
+    libelle: "Étiquette noire",
+    aide: "Texte blanc sur fond noir, comme le bandeau de Noël.",
+  },
+  encadre: {
+    libelle: "Encadré blanc",
+    aide: "Texte foncé dans un cadre blanc : pour un texte plus long.",
+  },
+  ombre: {
+    libelle: "Texte blanc ombré",
+    aide: "Sans fond : l'image est assombrie du côté du texte.",
+  },
+};
+const HAUTEURS: Record<HauteurBandeau, { libelle: string; aide: string }> = {
+  petite: { libelle: "Petite", aide: "340 px sur ordinateur, 200 sur téléphone" },
+  moyenne: { libelle: "Moyenne", aide: "480 px sur ordinateur, 280 sur téléphone" },
+  grande: { libelle: "Grande", aide: "640 px sur ordinateur, 380 sur téléphone" },
+  image: {
+    libelle: "Celle de l'image",
+    aide: "L'image entière, sans rien couper : ses proportions décident",
+  },
+};
+---
+
+<Admin title={creation ? "Nouveau bandeau visuel" : `Bandeau visuel : ${nomDuBandeau(b)}`}>
+  <p class="mb-4 text-sm">
+    <a href={url("/bandeaux-visuels")} class="text-bo-accent hover:underline">
+      ← Tous les bandeaux visuels
+    </a>
+  </p>
+
+  {
+    flash && (
+      <p
+        class={`mb-4 max-w-5xl rounded border px-3 py-2 text-sm ${
+          flashErreur
+            ? "border-red-300 bg-red-50 text-red-800"
+            : "border-green-300 bg-green-50 text-green-800"
+        }`}
+      >
+        {flash}
+      </p>
+    )
+  }
+  {erreur && <p class="mb-4 text-sm text-red-600">API injoignable : {erreur}</p>}
+
+  {
+    pastille && enregistre && (
+      <p class="mb-4 max-w-5xl text-sm">
+        <span class={`mr-2 whitespace-nowrap rounded-full px-2 py-0.5 text-xs ${pastille.classe}`}>
+          {pastille.libelle}
+        </span>
+        <span class="text-bo-muted">
+          {pastille.aide} Période : {periode(enregistre)}.
+        </span>
+      </p>
+    )
+  }
+  {
+    repriseEncart && enregistre?.id === "encart-accueil" && (
+      <p class="mb-4 max-w-5xl rounded border border-sky-100 bg-sky-100 px-3 py-2 text-sm text-sky-900">
+        Ce bandeau reprend l'encart qui était réglé dans « Accueil et pied de
+        page », tel qu'il s'affiche aujourd'hui. Vous pouvez le garder côte à
+        côte ou le passer en bannière pleine largeur.
+      </p>
+    )
+  }
+  {
+    imageEtroite && (
+      <p class="mb-4 max-w-5xl rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        L'image ne fait que {enregistre?.imageLargeur} px de large : sur un
+        grand écran, elle est agrandie et paraît floue. Pour une bannière bord
+        à bord, comptez 1920 px de large au moins, 2560 idéalement.
+      </p>
+    )
+  }
+
+  <div class="grid items-start gap-6 xl:grid-cols-[minmax(0,36rem)_minmax(0,1fr)]">
+    <form method="POST" id="bv-formulaire" class="space-y-5 text-sm">
+      <input type="hidden" name="_action" value="enregistrer" />
+
+      {/* ------------------------------------------------------------ */}
+      <fieldset class="rounded-lg border border-bo-border bg-bo-surface p-4">
+        <legend class="px-2 font-semibold">L'image</legend>
+
+        <div class="js-image space-y-2" data-role="ordinateur" data-min="1920" data-min-cote="1200">
+          <span class="block font-medium">Image (obligatoire)</span>
+          <p class="text-xs text-bo-muted">
+            En JPEG ou WebP. Elle vaut pour les cinq langues.
+            <span data-seulement="banniere">
+              1920 px de large au moins (2560 idéalement), en longueur : par
+              exemple 2560 × 800. <strong>Cliquez sur l'image</strong> pour
+              choisir le point qui reste visible quand elle est recadrée — un
+              visage, un titre dessiné dans l'image.
+            </span>
+            <span data-seulement="cote-a-cote">
+              1200 px de large suffisent : elle occupe la moitié de la largeur
+              de lecture, et s'affiche entière.
+            </span>
+          </p>
+          <div
+            class="js-cadre relative inline-block max-w-full cursor-crosshair"
+            hidden={!b.image}
+          >
+            <img
+              class="js-vignette block max-h-48 max-w-full border border-bo-border bg-bo-bg"
+              src={b.image ? urlImage(b.image) : undefined}
+              alt="Image du bandeau : cliquez pour choisir le point de cadrage"
+            />
+            <span
+              class="js-point pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-red-600/80 shadow"
+              style={`left:${b.cadrage.x}%;top:${b.cadrage.y}%`}
+              aria-hidden="true"
+              data-seulement="banniere"
+            ></span>
+          </div>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            class="js-fichier block w-full text-xs"
+            aria-label="Envoyer l'image du bandeau"
+          />
+          <input
+            type="text"
+            name="image"
+            value={b.image}
+            required
+            placeholder="/assets/… (se remplit seul après l'envoi)"
+            aria-label="Adresse de l'image"
+            class="js-url w-full rounded border border-bo-border px-3 py-2 font-mono text-xs"
+          />
+          <input type="hidden" name="imageLargeur" class="js-largeur" value={b.imageLargeur ?? ""} />
+          <input type="hidden" name="imageHauteur" class="js-hauteur" value={b.imageHauteur ?? ""} />
+          <p class="js-etat text-xs text-bo-muted">
+            Choisissez un fichier : il est envoyé tout de suite. Enregistrez
+            ensuite pour le publier.
+          </p>
+          <div class="grid grid-cols-2 gap-3" data-seulement="banniere">
+            <label class="block text-xs text-bo-muted">
+              Cadrage horizontal
+              <input
+                type="range"
+                name="cadrageX"
+                min="0"
+                max="100"
+                value={b.cadrage.x}
+                class="js-cadrage-x block w-full"
+              />
+            </label>
+            <label class="block text-xs text-bo-muted">
+              Cadrage vertical
+              <input
+                type="range"
+                name="cadrageY"
+                min="0"
+                max="100"
+                value={b.cadrage.y}
+                class="js-cadrage-y block w-full"
+              />
+            </label>
+          </div>
+        </div>
+
+        <div class="js-image mt-5 space-y-2 border-t border-bo-border pt-4" data-role="telephone" data-min="750" data-seulement="banniere">
+          <span class="block font-medium">Image pour téléphone (facultative)</span>
+          <p class="text-xs text-bo-muted">
+            Sans elle, le téléphone montre l'image ci-dessus, recadrée autour
+            de son point de cadrage. Une image en hauteur (par exemple
+            1080 × 1200) y garde tout son dessin.
+          </p>
+          <div
+            class="js-cadre relative inline-block max-w-full cursor-crosshair"
+            hidden={!b.imageMobile}
+          >
+            <img
+              class="js-vignette block max-h-48 max-w-full border border-bo-border bg-bo-bg"
+              src={b.imageMobile ? urlImage(b.imageMobile) : undefined}
+              alt="Image pour téléphone : cliquez pour choisir le point de cadrage"
+            />
+            <span
+              class="js-point pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-red-600/80 shadow"
+              style={`left:${b.cadrageMobile.x}%;top:${b.cadrageMobile.y}%`}
+              aria-hidden="true"
+            ></span>
+          </div>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            class="js-fichier block w-full text-xs"
+            aria-label="Envoyer l'image pour téléphone"
+          />
+          <div class="flex gap-2">
+            <input
+              type="text"
+              name="imageMobile"
+              value={b.imageMobile}
+              placeholder="Aucune : l'image ci-dessus, recadrée"
+              aria-label="Adresse de l'image pour téléphone"
+              class="js-url w-full rounded border border-bo-border px-3 py-2 font-mono text-xs"
+            />
+            <button
+              type="button"
+              class="js-retirer shrink-0 rounded border border-bo-border px-3 py-1 text-xs hover:bg-bo-bg"
+            >
+              Retirer
+            </button>
+          </div>
+          <input type="hidden" name="imageMobileLargeur" class="js-largeur" value={b.imageMobileLargeur ?? ""} />
+          <input type="hidden" name="imageMobileHauteur" class="js-hauteur" value={b.imageMobileHauteur ?? ""} />
+          <p class="js-etat text-xs text-bo-muted"></p>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="block text-xs text-bo-muted">
+              Cadrage horizontal
+              <input
+                type="range"
+                name="cadrageMobileX"
+                min="0"
+                max="100"
+                value={b.cadrageMobile.x}
+                class="js-cadrage-x block w-full"
+              />
+            </label>
+            <label class="block text-xs text-bo-muted">
+              Cadrage vertical
+              <input
+                type="range"
+                name="cadrageMobileY"
+                min="0"
+                max="100"
+                value={b.cadrageMobile.y}
+                class="js-cadrage-y block w-full"
+              />
+            </label>
+          </div>
+        </div>
+
+        <label class="mt-5 block border-t border-bo-border pt-4">
+          <span class="font-medium">Description de l'image</span>
+          <span class="mt-0.5 block text-xs text-bo-muted">
+            Lue à voix haute aux personnes qui ne voient pas l'écran, et
+            affichée si l'image ne charge pas : décrivez ce qu'on y voit
+            (« Affiches de Noël encadrées sur un fond écossais »).
+            Indispensable quand l'image mène à un lien sans aucun texte posé
+            dessus.
+          </span>
+          <input
+            name="alt"
+            value={b.alt}
+            maxlength="250"
+            class="js-apercu-champ mt-1 w-full rounded border border-bo-border px-3 py-2"
+          />
+        </label>
+      </fieldset>
+
+      {/* ------------------------------------------------------------ */}
+      <fieldset class="rounded-lg border border-bo-border bg-bo-surface p-4">
+        <legend class="px-2 font-semibold">Le texte et le lien</legend>
+        <p class="mb-3 text-xs text-bo-muted">
+          Tout est facultatif. En français ici ; les autres langues se
+          saisissent dans le bloc « Traductions », sous le formulaire.
+        </p>
+        <div class="space-y-4">
+          <label class="block">
+            <span class="font-medium">Titre</span>
+            <input
+              name="titre"
+              value={b.titre}
+              maxlength="160"
+              placeholder="Noël approche"
+              class="mt-1 w-full rounded border border-bo-border px-3 py-2"
+            />
+          </label>
+          <label class="block">
+            <span class="font-medium">Texte ou étiquette</span>
+            <span class="mt-0.5 block text-xs text-bo-muted">
+              Sous le titre — ou seul, comme l'étiquette « POUR NOËL, OFFREZ
+              UN CADEAU UNIQUE ! ». Les retours à la ligne sont gardés.
+            </span>
+            <textarea
+              name="texte"
+              rows="2"
+              maxlength="400"
+              class="mt-1 w-full rounded border border-bo-border px-3 py-2"
+            >{b.texte}</textarea>
+          </label>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <label class="block">
+              <span class="font-medium">Libellé du bouton</span>
+              <input
+                name="bouton"
+                value={b.bouton}
+                maxlength="60"
+                placeholder="Je découvre"
+                class="mt-1 w-full rounded border border-bo-border px-3 py-2"
+              />
+              <span class="mt-0.5 block text-xs text-bo-muted">Vide : pas de bouton.</span>
+            </label>
+            <label class="block">
+              <span class="font-medium">Lien</span>
+              <input
+                name="lien"
+                value={b.lien}
+                maxlength="500"
+                placeholder="/affiches?collection=villes"
+                class="mt-1 w-full rounded border border-bo-border px-3 py-2 font-mono text-xs"
+              />
+              <span class="mt-0.5 block text-xs text-bo-muted">
+                Une adresse du site (elle reçoit d'elle-même la langue du
+                visiteur) ou https://…
+              </span>
+            </label>
+          </div>
+          <label class="flex items-start gap-2" data-seulement="banniere">
+            <input
+              type="checkbox"
+              name="imageCliquable"
+              checked={b.imageCliquable}
+              class="mt-0.5"
+            />
+            <span>
+              Toute l'image mène au lien
+              <span class="block text-xs text-bo-muted">
+                Décoché : seul le bouton est cliquable. Sans bouton, c'est
+                toujours toute l'image.
+              </span>
+            </span>
+          </label>
+        </div>
+      </fieldset>
+
+      {/* ------------------------------------------------------------ */}
+      <fieldset class="rounded-lg border border-bo-border bg-bo-surface p-4">
+        <legend class="px-2 font-semibold">La mise en forme</legend>
+
+        <div class="space-y-2">
+          <span class="block font-medium">Mise en page</span>
+          <label class="flex items-start gap-2">
+            <input
+              type="radio"
+              name="miseEnPage"
+              value="banniere"
+              checked={b.miseEnPage === "banniere"}
+              class="mt-0.5"
+            />
+            <span>
+              Bannière pleine largeur
+              <span class="block text-xs text-bo-muted">
+                L'image bord à bord sous le menu, le texte posé dessus.
+              </span>
+            </span>
+          </label>
+          <label class="flex items-start gap-2">
+            <input
+              type="radio"
+              name="miseEnPage"
+              value="cote-a-cote"
+              checked={b.miseEnPage === "cote-a-cote"}
+              class="mt-0.5"
+            />
+            <span>
+              Image et texte côte à côte
+              <span class="block text-xs text-bo-muted">
+                L'ancien encart de l'accueil : l'image à gauche, le texte à
+                droite (dessous sur téléphone). Pour un vrai paragraphe.
+              </span>
+            </span>
+          </label>
+        </div>
+
+        <div class="mt-5 grid gap-5 border-t border-bo-border pt-4 sm:grid-cols-[auto_1fr]" data-seulement="banniere">
+          <fieldset>
+            <legend class="mb-2 font-medium">Position du texte</legend>
+            <div class="grid w-32 grid-cols-3 gap-1 rounded border border-bo-border bg-bo-bg p-1">
+              {POSITIONS_TEXTE_BANDEAU.map((p) => (
+                <label class="block cursor-pointer" title={LIBELLES_POSITION[p]}>
+                  <input
+                    type="radio"
+                    name="position"
+                    value={p}
+                    checked={b.position === p}
+                    class="peer sr-only"
+                  />
+                  <span class="sr-only">{LIBELLES_POSITION[p]}</span>
+                  <span
+                    class="flex h-9 items-center justify-center rounded border border-transparent bg-bo-surface text-bo-muted peer-checked:border-bo-accent peer-checked:bg-bo-accent peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-bo-accent"
+                    aria-hidden="true"
+                  >
+                    ●
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p class="mt-1 text-xs text-bo-muted">Sur l'image.</p>
+          </fieldset>
+
+          <fieldset>
+            <legend class="mb-2 font-medium">Style du texte</legend>
+            <div class="space-y-2">
+              {STYLES_TEXTE_BANDEAU.map((s) => (
+                <label class="flex items-start gap-2">
+                  <input type="radio" name="style" value={s} checked={b.style === s} class="mt-1" />
+                  <span
+                    class={`mt-0.5 inline-block shrink-0 px-2 py-0.5 text-[11px] ${
+                      s === "etiquette"
+                        ? "bg-[#121212] text-white"
+                        : s === "encadre"
+                          ? "border border-bo-border bg-white text-[#121212]"
+                          : "bg-gradient-to-t from-black/70 to-black/20 text-white [text-shadow:0_1px_2px_rgb(0_0_0/0.6)]"
+                    }`}
+                    aria-hidden="true"
+                  >
+                    Aa
+                  </span>
+                  <span>
+                    {STYLES[s].libelle}
+                    <span class="block text-xs text-bo-muted">{STYLES[s].aide}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+
+        <fieldset class="mt-5 border-t border-bo-border pt-4" data-seulement="banniere">
+          <legend class="mb-2 font-medium">Hauteur</legend>
+          <div class="grid gap-2 sm:grid-cols-2">
+            {HAUTEURS_BANDEAU.map((h) => (
+              <label class="flex items-start gap-2">
+                <input type="radio" name="hauteur" value={h} checked={b.hauteur === h} class="mt-0.5" />
+                <span>
+                  {HAUTEURS[h].libelle}
+                  <span class="block text-xs text-bo-muted">{HAUTEURS[h].aide}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <p class="mt-2 text-xs text-bo-muted">
+            Toujours sur toute la largeur de l'écran. Avec une hauteur fixe,
+            l'image est recadrée autour de son point de cadrage ; un texte
+            trop long agrandit la bannière plutôt que d'en déborder.
+          </p>
+        </fieldset>
+      </fieldset>
+
+      {/* ------------------------------------------------------------ */}
+      <fieldset class="rounded-lg border border-bo-border bg-bo-surface p-4">
+        <legend class="px-2 font-semibold">Où et quand</legend>
+
+        <label class="flex items-center gap-2">
+          <input type="checkbox" name="actif" checked={b.actif} />
+          <span class="font-medium">Afficher ce bandeau</span>
+          <span class="text-xs text-bo-muted">(décoché : il est gardé, mais n'apparaît nulle part)</span>
+        </label>
+
+        <div class="mt-4 space-y-4">
+          <p class="font-medium">Sur quelles pages</p>
+          {listesIllisibles && (
+            <p class="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">
+              La liste des collections ou des pages n'a pas pu être lue. Les
+              pages déjà choisies restent cochées ; enregistrer ne les retire pas.
+            </p>
+          )}
+          {groupes.map((g) =>
+            g.choix.length === 0 ? null : (
+              <fieldset>
+                <legend class="mb-1 text-xs font-semibold uppercase tracking-wide text-bo-muted">
+                  {g.titre}
+                </legend>
+                <div class="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                  {g.choix.map((c) => (
+                    <label class="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        name="pages"
+                        value={c.cle}
+                        checked={b.pages.includes(c.cle)}
+                        class="mt-0.5"
+                      />
+                      <span class="min-w-0">
+                        <span class={c.introuvable ? "text-amber-900" : ""}>{c.libelle}</span>
+                        {c.detail && (
+                          <span class="block truncate text-xs text-bo-muted" title={c.detail}>
+                            {c.detail}
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            ),
+          )}
+          <p class="text-xs text-bo-muted">
+            Sur les rayons, le bandeau s'affiche en première page seulement :
+            on arrive aux suivantes en parcourant les affiches.
+          </p>
+        </div>
+
+        <div class="mt-4 grid gap-4 border-t border-bo-border pt-4 sm:grid-cols-2">
+          <label class="block">
+            <span class="font-medium">Début (facultatif)</span>
+            <input
+              name="debut"
+              type="datetime-local"
+              value={pourChamp(b.debut)}
+              class="mt-1 w-full rounded border border-bo-border px-3 py-2"
+            />
+          </label>
+          <label class="block">
+            <span class="font-medium">Fin (facultatif)</span>
+            <input
+              name="fin"
+              type="datetime-local"
+              value={pourChamp(b.fin)}
+              class="mt-1 w-full rounded border border-bo-border px-3 py-2"
+            />
+          </label>
+        </div>
+        <p class="mt-2 text-xs text-bo-muted">
+          À l'heure de Paris. Sans début, il s'affiche dès l'enregistrement ;
+          sans fin, jusqu'à ce que vous l'éteigniez. Le bandeau de Noël du
+          1er décembre au 26 décembre à 0 h s'allume et s'éteint tout seul.
+        </p>
+
+        <label class="mt-4 block border-t border-bo-border pt-4">
+          <span class="font-medium">Nom du bandeau (pour vous)</span>
+          <span class="mt-0.5 block text-xs text-bo-muted">
+            Pour le retrouver dans la liste — « Noël 2026 ». Jamais affiché sur
+            le site.
+          </span>
+          <input
+            name="nom"
+            value={b.nom}
+            maxlength="80"
+            class="mt-1 w-full rounded border border-bo-border px-3 py-2"
+          />
+        </label>
+      </fieldset>
+
+      <div class="flex flex-wrap items-center gap-3">
+        <button class="rounded bg-bo-accent px-4 py-2 text-white hover:opacity-90">
+          {creation ? "Créer le bandeau" : "Enregistrer"}
+        </button>
+        <a href={url("/bandeaux-visuels")} class="text-bo-muted hover:underline">Annuler</a>
+      </div>
+    </form>
+
+    {/* ------------------------------------------------------------ */}
+    {/* L'aperçu. Rendu par le script plus bas, à chaque frappe ; sans
+        JavaScript, il reste ce message. */}
+    <aside class="min-w-0 xl:sticky xl:top-4" aria-label="Aperçu du bandeau">
+      <div class="rounded-lg border border-bo-border bg-bo-surface p-4">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="font-semibold">Aperçu</h2>
+          <div class="flex gap-1 text-xs" role="group" aria-label="Taille d'écran de l'aperçu">
+            <button type="button" data-ecran="ordinateur" aria-pressed="true" class="js-ecran rounded border border-bo-border px-2 py-1">
+              Ordinateur
+            </button>
+            <button type="button" data-ecran="tablette" aria-pressed="false" class="js-ecran rounded border border-bo-border px-2 py-1">
+              Tablette
+            </button>
+            <button type="button" data-ecran="telephone" aria-pressed="false" class="js-ecran rounded border border-bo-border px-2 py-1">
+              Téléphone
+            </button>
+          </div>
+        </div>
+        <div
+          id="bv-apercu"
+          class="overflow-hidden rounded border border-bo-border bg-white"
+          data-api={apiUrl("")}
+        >
+          <p class="p-6 text-center text-sm text-bo-muted">
+            L'aperçu s'affiche ici dès que la page a fini de charger.
+          </p>
+        </div>
+        <p class="js-legende-apercu mt-2 text-xs text-bo-muted">
+          À l'échelle. L'aperçu suit le formulaire : rien n'est publié avant
+          « Enregistrer ».
+        </p>
+      </div>
+    </aside>
+  </div>
+
+  {/* Les textes dans les autres langues. À part du formulaire : une
+      traduction s'enregistre sans réenregistrer le bandeau. */}
+  {
+    enregistre ? (
+      <Traductions
+        titre="Traductions du bandeau"
+        aide="Ce que lit un client qui visite le site en anglais, en allemand, en italien ou en espagnol. Une case vide affiche le français. Modifiez d'abord le texte français et enregistrez-le ci-dessus : les traductions se relisent ensuite en regard. L'image, le lien et la mise en forme valent pour toutes les langues."
+        champs={CHAMPS_TRADUITS}
+        elements={[elementTraduit(enregistre)]}
+        disposition="langues"
+        propositions={tradEtat?.propositions}
+        saisies={tradEtat?.saisies}
+        actionEnregistrer="bv-traductions"
+        actionProposer="bv-traduire"
+        ouvert={!!tradEtat}
+        classe="mt-6 max-w-5xl bg-bo-surface"
+      />
+    ) : (
+      <p class="mt-6 max-w-5xl text-sm text-bo-muted">
+        Les traductions se saisiront ici une fois le bandeau créé en français.
+      </p>
+    )
+  }
+
+  {
+    enregistre && (
+      <form
+        method="POST"
+        class="mt-6"
+        onsubmit={`return confirm(${JSON.stringify(
+          `Archiver « ${nomDuBandeau(enregistre)} » ?\n\nIl quitte le site et la liste. Rien n'est supprimé : « Restaurer », dans la liste des bandeaux, le remet avec tous ses réglages.`,
+        )})`}
+      >
+        <input type="hidden" name="_action" value="archiver" />
+        <button class="text-xs text-bo-muted hover:text-bo-accent hover:underline">
+          Archiver ce bandeau
+        </button>
+      </form>
+    )
+  }
+
+  <style is:global>
+    /* La page simulée autour de l'aperçu : une barre d'en-tête et le début
+       du contenu, pour juger le bandeau à sa place. C'est le CADRE de
+       l'aperçu (container-type) : la mise en page « côte à côte » ci-dessous
+       s'y règle comme le site sur l'écran. */
+    .bv-scene {
+      container-type: inline-size;
+      transform-origin: top left;
+      background: #ffffff;
+      color: #121212;
+      font-family: "Inter", system-ui, sans-serif;
+    }
+    .bv-scene-entete {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      height: 80px;
+      padding: 0 40px;
+      border-bottom: 1px solid rgb(18 18 18 / 0.1);
+    }
+    .bv-scene-logo {
+      font-size: 22px;
+      font-style: italic;
+      letter-spacing: 0.5px;
+    }
+    .bv-scene-trait {
+      height: 8px;
+      width: 90px;
+      background: rgb(18 18 18 / 0.12);
+    }
+    .bv-scene-suite {
+      padding: 48px 40px;
+    }
+    .bv-scene-suite span {
+      display: block;
+      height: 14px;
+      margin-bottom: 12px;
+      background: rgb(18 18 18 / 0.08);
+    }
+    .bv-scene-vide {
+      padding: 60px 24px;
+      text-align: center;
+      color: #6b7177;
+      background: #f3f3f3;
+      font-size: 18px;
+    }
+    @container (max-width: 639px) {
+      .bv-scene-entete {
+        height: 72px;
+        padding: 0 16px;
+      }
+      .bv-scene-trait {
+        display: none;
+      }
+      .bv-scene-suite {
+        padding: 40px 16px;
+      }
+    }
+    /* « Côte à côte » : les classes de l'ancien encart (px-6 pt-10
+       lg:px-12, grille de deux colonnes dès 640 px, titre 30 px…), réécrites
+       pour un cadre plutôt que pour l'écran. */
+    .bv-cote {
+      padding: 40px 24px 0;
+    }
+    .bv-cote-grille {
+      display: grid;
+      align-items: center;
+      gap: 32px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .bv-cote-grille img {
+      display: block;
+      width: 100%;
+      height: auto;
+      object-fit: cover;
+    }
+    .bv-cote h2 {
+      margin: 0;
+      font-size: 1.875rem;
+      line-height: 1.25;
+      font-weight: 400;
+      letter-spacing: 0.6px;
+    }
+    .bv-cote p {
+      margin: 16px 0 0;
+      font-size: 1.125rem;
+      line-height: 1.625;
+      color: rgb(18 18 18 / 0.75);
+    }
+    .bv-cote a {
+      display: inline-block;
+      margin-top: 32px;
+      padding: 12px 32px;
+      background: #121212;
+      color: #ffffff;
+      font-weight: 500;
+      text-decoration: none;
+    }
+    @container (min-width: 640px) {
+      .bv-cote-grille {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @container (min-width: 1024px) {
+      .bv-cote {
+        padding: 40px 48px 0;
+      }
+    }
+    .js-ecran[aria-pressed="true"] {
+      background: var(--color-bo-accent);
+      border-color: var(--color-bo-accent);
+      color: #ffffff;
+    }
+  </style>
+
+  <script>
+    /*
+     * Le formulaire vivant : l'envoi des images, le point de cadrage, les
+     * parties propres à la bannière, et l'aperçu.
+     *
+     * Un script Astro (et non « inline ») pour une seule raison : importer
+     * les fonctions du site. Les classes de l'aperçu sont calculées par
+     * classesBanniere, comme celles de la boutique — deux copies du calcul
+     * finiraient par ne plus montrer la même chose.
+     *
+     * Tout ce qui vient du formulaire entre dans la page par textContent ou
+     * par des attributs : jamais en HTML.
+     */
+    import {
+      classesBanniere,
+      lienBandeau,
+      normaliserBandeau,
+      normaliserLienSaisi,
+      styleBanniere,
+      type BandeauVisuel,
+    } from "@memoryline/types/bandeaux-visuels";
+
+    const formulaire = document.getElementById("bv-formulaire") as HTMLFormElement | null;
+    const apercu = document.getElementById("bv-apercu");
+    if (formulaire && apercu) {
+      const API = apercu.dataset.api ?? "";
+      const LARGEURS = { ordinateur: 1280, tablette: 768, telephone: 375 } as const;
+      type Ecran = keyof typeof LARGEURS;
+      let ecran: Ecran = "ordinateur";
+
+      /** L'adresse d'une image pour ce navigateur : l'API sous /api. */
+      const adresseImage = (chemin: string) => (chemin.startsWith("/") ? API + chemin : chemin);
+
+      /* --- Ce qui ne vaut que pour une mise en page ---------------------- */
+      const parties = formulaire.querySelectorAll<HTMLElement>("[data-seulement]");
+      const enBanniere = () =>
+        (formulaire!.querySelector<HTMLInputElement>("input[name='miseEnPage']:checked")?.value ??
+          "banniere") === "banniere";
+      function selonMiseEnPage() {
+        const miseEnPage = enBanniere() ? "banniere" : "cote-a-cote";
+        parties.forEach((p) => {
+          p.hidden = p.dataset.seulement !== miseEnPage;
+        });
+      }
+
+      /* --- Les images ---------------------------------------------------- */
+      /** Les relevés de dimensions, à refaire quand la mise en page change. */
+      const releves: (() => void)[] = [];
+      formulaire.querySelectorAll<HTMLElement>(".js-image").forEach((bloc) => {
+        const fichier = bloc.querySelector<HTMLInputElement>(".js-fichier");
+        const champUrl = bloc.querySelector<HTMLInputElement>(".js-url");
+        const cadre = bloc.querySelector<HTMLElement>(".js-cadre");
+        const vignette = bloc.querySelector<HTMLImageElement>(".js-vignette");
+        const point = bloc.querySelector<HTMLElement>(".js-point");
+        const largeur = bloc.querySelector<HTMLInputElement>(".js-largeur");
+        const hauteur = bloc.querySelector<HTMLInputElement>(".js-hauteur");
+        const etat = bloc.querySelector<HTMLElement>(".js-etat");
+        const rangeX = bloc.querySelector<HTMLInputElement>(".js-cadrage-x");
+        const rangeY = bloc.querySelector<HTMLInputElement>(".js-cadrage-y");
+        const retirer = bloc.querySelector<HTMLButtonElement>(".js-retirer");
+        // La largeur conseillée dépend de la mise en page : bord à bord, il
+        // en faut bien plus que pour la moitié de la largeur de lecture.
+        const minimum = () =>
+          Number((enBanniere() ? bloc.dataset.min : bloc.dataset.minCote ?? bloc.dataset.min) || 0);
+        if (!champUrl || !cadre || !vignette || !largeur || !hauteur) return;
+
+        // Les dimensions ne se lisent que sur l'ORIGINAL : une version
+        // réduite (?l=…) donnerait sa propre largeur, pas celle de l'image.
+        // Ce sont elles qui réservent la place du bandeau sur le site.
+        function relever() {
+          if (!vignette!.naturalWidth) return;
+          largeur!.value = String(vignette!.naturalWidth);
+          hauteur!.value = String(vignette!.naturalHeight);
+          if (etat)
+            etat.textContent =
+              `${vignette!.naturalWidth} × ${vignette!.naturalHeight} px.` +
+              (vignette!.naturalWidth < minimum()
+                ? ` Un peu étroite : comptez ${minimum()} px de large au moins, sans quoi elle paraîtra floue sur un grand écran.`
+                : "");
+        }
+        vignette.addEventListener("load", () => {
+          relever();
+          rendre();
+        });
+        // Déjà chargée avant ce script (cache du navigateur) : l'événement
+        // ne viendra plus. Un bandeau repris sans dimensions les reçoit ici.
+        if (vignette.complete && vignette.naturalWidth) relever();
+        releves.push(relever);
+        vignette.addEventListener("error", () => {
+          if (etat) etat.textContent = "Cette adresse ne donne pas d'image lisible.";
+        });
+
+        function montrer(adresse: string) {
+          largeur!.value = "";
+          hauteur!.value = "";
+          cadre!.hidden = !adresse;
+          if (adresse) vignette!.src = adresseImage(adresse);
+          else vignette!.removeAttribute("src");
+          rendre();
+        }
+
+        function placerPoint() {
+          if (!point || !rangeX || !rangeY) return;
+          point.style.left = `${rangeX.value}%`;
+          point.style.top = `${rangeY.value}%`;
+        }
+
+        // Un clic sur l'image choisit le point qui reste visible au
+        // recadrage ; les deux curseurs disent la même chose au clavier.
+        vignette.addEventListener("click", (e) => {
+          // Côte à côte, l'image s'affiche entière : pas de cadrage à choisir.
+          if (!rangeX || !rangeY || !enBanniere()) return;
+          const r = vignette.getBoundingClientRect();
+          rangeX.value = String(Math.round(((e.clientX - r.left) / r.width) * 100));
+          rangeY.value = String(Math.round(((e.clientY - r.top) / r.height) * 100));
+          placerPoint();
+          rendre();
+        });
+        rangeX?.addEventListener("input", placerPoint);
+        rangeY?.addEventListener("input", placerPoint);
+
+        champUrl.addEventListener("change", () => montrer(champUrl.value.trim()));
+
+        retirer?.addEventListener("click", () => {
+          champUrl.value = "";
+          if (fichier) fichier.value = "";
+          if (etat) etat.textContent = "Retirée : le téléphone montrera l'image principale, recadrée.";
+          montrer("");
+        });
+
+        fichier?.addEventListener("change", async () => {
+          const f = fichier.files?.[0];
+          if (!f) return;
+          if (etat) etat.textContent = "Envoi en cours…";
+          try {
+            const corps = new FormData();
+            corps.append("file", f);
+            // Pas d'en-tête Content-Type à la main : le navigateur écrit
+            // lui-même la frontière du multipart. `credentials` porte le
+            // cookie d'administration, sans quoi l'API refuse.
+            const res = await fetch(API + "/admin/uploads", {
+              method: "POST",
+              credentials: "include",
+              body: corps,
+            });
+            if (res.status === 413) throw new Error("fichier trop lourd (25 Mo au plus)");
+            if (res.status === 415) throw new Error("format refusé : JPEG, PNG ou WebP");
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            const data = (await res.json()) as { url: string };
+            champUrl.value = data.url;
+            if (etat) etat.textContent = "Image envoyée. Enregistrez pour la publier.";
+            montrer(data.url);
+          } catch (e) {
+            if (etat) etat.textContent = "Envoi impossible : " + (e instanceof Error ? e.message : String(e));
+          }
+        });
+      });
+
+      /* --- L'aperçu ------------------------------------------------------ */
+      const el = <K extends keyof HTMLElementTagNameMap>(
+        balise: K,
+        classe?: string,
+        texte?: string,
+      ): HTMLElementTagNameMap[K] => {
+        const n = document.createElement(balise);
+        if (classe) n.className = classe;
+        if (texte) n.textContent = texte;
+        return n;
+      };
+
+      function lire(): BandeauVisuel | null {
+        const f = new FormData(formulaire!);
+        const champ = (nom: string) => String(f.get(nom) ?? "");
+        return normaliserBandeau({
+          id: "apercu",
+          miseEnPage: champ("miseEnPage"),
+          image: champ("image"),
+          imageLargeur: champ("imageLargeur"),
+          imageHauteur: champ("imageHauteur"),
+          cadrage: { x: champ("cadrageX"), y: champ("cadrageY") },
+          imageMobile: champ("imageMobile"),
+          imageMobileLargeur: champ("imageMobileLargeur"),
+          imageMobileHauteur: champ("imageMobileHauteur"),
+          cadrageMobile: { x: champ("cadrageMobileX"), y: champ("cadrageMobileY") },
+          alt: champ("alt"),
+          titre: champ("titre"),
+          texte: champ("texte"),
+          bouton: champ("bouton"),
+          lien: normaliserLienSaisi(champ("lien")),
+          imageCliquable: f.get("imageCliquable") === "on",
+          position: champ("position"),
+          style: champ("style"),
+          hauteur: champ("hauteur"),
+        });
+      }
+
+      /** La bannière, bâtie comme BandeauxVisuels.astro la bâtit. */
+      function banniere(b: BandeauVisuel): HTMLElement {
+        const lien = lienBandeau(b.lien);
+        const entiere = !!lien && (b.imageCliquable || !b.bouton);
+        const cadre = el("div", "ml-bv-cadre");
+        const racine = el(entiere ? "a" : "div", classesBanniere(b));
+        racine.setAttribute("style", styleBanniere(b));
+        const picture = el("picture", "ml-bv-media");
+        const img = el("img");
+        const mobile = ecran === "telephone" && b.imageMobile;
+        img.src = adresseImage(mobile ? b.imageMobile : b.image);
+        img.alt = b.alt;
+        picture.append(img);
+        racine.append(picture);
+        if (b.titre || b.texte || (b.bouton && lien)) {
+          const contenu = el("div", "ml-bv-contenu");
+          const boite = el("div", "ml-bv-boite");
+          if (b.titre) boite.append(el("h2", "ml-bv-titre", b.titre));
+          if (b.texte) boite.append(el("p", "ml-bv-texte", b.texte));
+          if (b.bouton && lien) boite.append(el(entiere ? "span" : "a", "ml-bv-bouton", b.bouton));
+          contenu.append(boite);
+          racine.append(contenu);
+        }
+        cadre.append(racine);
+        return cadre;
+      }
+
+      /** L'ancien encart, avec les règles .bv-cote de cette page. */
+      function coteACote(b: BandeauVisuel): HTMLElement {
+        const section = el("section", "bv-cote");
+        const grille = el("div", "bv-cote-grille");
+        const img = el("img");
+        img.src = adresseImage(b.image);
+        img.alt = b.alt || b.titre;
+        const textes = el("div");
+        if (b.titre) textes.append(el("h2", "", b.titre));
+        if (b.texte) textes.append(el("p", "", b.texte));
+        if (b.bouton && lienBandeau(b.lien)) textes.append(el("a", "", b.bouton));
+        grille.append(img, textes);
+        section.append(grille);
+        return section;
+      }
+
+      const scene = el("div", "bv-scene");
+
+      function rendre() {
+        const b = lire();
+        const entete = el("div", "bv-scene-entete");
+        entete.append(
+          el("span", "bv-scene-logo", "Memory Line"),
+          el("span", "bv-scene-trait"),
+          el("span", "bv-scene-trait"),
+        );
+        const suite = el("div", "bv-scene-suite");
+        for (const largeur of ["38%", "62%", "52%"]) {
+          const ligne = el("span");
+          ligne.style.width = largeur;
+          suite.append(ligne);
+        }
+        const corps = !b || !b.image
+          ? el("div", "bv-scene-vide", "Choisissez une image pour voir le bandeau.")
+          : b.miseEnPage === "cote-a-cote"
+            ? coteACote(b)
+            : banniere(b);
+        scene.replaceChildren(entete, corps, suite);
+        // Un lien de l'aperçu ne doit mener nulle part : il quitterait le
+        // formulaire en cours.
+        scene.querySelectorAll("a").forEach((a) => {
+          a.setAttribute("href", "#");
+          a.setAttribute("tabindex", "-1");
+        });
+        mettreALEchelle();
+      }
+
+      scene.addEventListener("click", (e) => {
+        if ((e.target as Element).closest("a")) e.preventDefault();
+      });
+
+      /** L'écran simulé, réduit pour tenir dans la colonne. */
+      function mettreALEchelle() {
+        const largeur = LARGEURS[ecran];
+        const place = apercu!.clientWidth || largeur;
+        const echelle = Math.min(1, place / largeur);
+        scene.style.width = `${largeur}px`;
+        scene.style.transform = echelle < 1 ? `scale(${echelle})` : "";
+        // Une boîte réduite par `transform` garde sa hauteur d'origine dans
+        // la page : on la ramène à ce qu'on voit.
+        apercu!.style.height = `${Math.ceil(scene.offsetHeight * echelle)}px`;
+        const legende = document.querySelector(".js-legende-apercu");
+        if (legende)
+          legende.textContent =
+            `Écran de ${largeur} px${echelle < 1 ? `, montré à ${Math.round(echelle * 100)} %` : ""}. ` +
+            "L'aperçu suit le formulaire : rien n'est publié avant « Enregistrer ».";
+      }
+
+      apercu.replaceChildren(scene);
+      apercu.style.position = "relative";
+
+      document.querySelectorAll<HTMLButtonElement>(".js-ecran").forEach((bouton) => {
+        bouton.addEventListener("click", () => {
+          ecran = (bouton.dataset.ecran as Ecran) ?? "ordinateur";
+          document.querySelectorAll(".js-ecran").forEach((autre) => {
+            autre.setAttribute("aria-pressed", autre === bouton ? "true" : "false");
+          });
+          rendre();
+        });
+      });
+
+      formulaire.addEventListener("input", rendre);
+      formulaire.addEventListener("change", (e) => {
+        if ((e.target as HTMLInputElement | null)?.name === "miseEnPage") {
+          selonMiseEnPage();
+          releves.forEach((relever) => relever());
+        }
+        rendre();
+      });
+      // Les images de l'aperçu arrivent après lui : leur hauteur compte
+      // pour l'échelle (mise en page côte à côte, hauteur « de l'image »).
+      scene.addEventListener("load", mettreALEchelle, true);
+      // La colonne change de largeur avec la fenêtre. On ne réagit qu'à la
+      // LARGEUR : la hauteur, c'est mettreALEchelle qui la pose, et y
+      // réagir le relancerait sur lui-même.
+      let derniereLargeur = 0;
+      new ResizeObserver(() => {
+        if (apercu.clientWidth === derniereLargeur) return;
+        derniereLargeur = apercu.clientWidth;
+        mettreALEchelle();
+      }).observe(apercu);
+
+      selonMiseEnPage();
+      rendre();
+    }
+  </script>
+</Admin>

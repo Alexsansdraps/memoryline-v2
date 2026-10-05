@@ -161,7 +161,10 @@ function separateurDu(texte: string): "," | ";" {
   return pointsVirgules > virgules ? ";" : ",";
 }
 
-function lireCsv(texte: string): string[][] {
+// Exportée : l'import des clientes (import-clients.ts) lit ses fichiers avec
+// le même lecteur — les exports Shopify des clientes ont les mêmes guillemets,
+// et un second lecteur finirait par ne pas lire pareil.
+export function lireCsv(texte: string): string[][] {
   const sansMarque = texte.charCodeAt(0) === 0xfeff ? texte.slice(1) : texte;
   const separateur = separateurDu(sansMarque);
   const lignes: string[][] = [];
@@ -236,7 +239,7 @@ function lireCsv(texte: string): string[][] {
 }
 
 /** Un nom de colonne comparable : espaces resserrés, casse ignorée. */
-function normaliserEntete(v: string): string {
+export function normaliserEntete(v: string): string {
   return v.trim().toLowerCase().replace(/\s+/g, " ");
 }
 

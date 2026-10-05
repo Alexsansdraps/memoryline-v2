@@ -41,6 +41,29 @@ export function prixDuCadreCents(
 export const REGLAGE_CADRES_SITE = "cadres.site";
 
 /**
+ * La clé du réglage « Afficher le supplément des cadres » (table `setting`).
+ *
+ * Il ne cache QUE le « + 15 € » écrit sous chaque cadre, au moment de le
+ * choisir. Le prix du cadre, lui, reste compté partout : dans le total du
+ * module de personnalisation, au panier, à la caisse. Cacher un montant qu'on
+ * facture ensuite serait une tromperie ; on cache seulement le détail.
+ *
+ * Au stand, la question ne se pose pas : aucun prix n'y est jamais affiché
+ * (option `sansPrix`).
+ */
+export const REGLAGE_PRIX_CADRES_SITE = "cadres.prix-site";
+
+/**
+ * Le supplément de chaque cadre s'affiche-t-il sous sa vignette ?
+ *
+ * Absent, OUI : c'est ce que faisait la boutique avant que le réglage existe.
+ * Même lecture que `cadresProposesSurLeSite`.
+ */
+export function prixDesCadresAffiches(valeur: unknown): boolean {
+  return cadresProposesSurLeSite(valeur);
+}
+
+/**
  * Le réglage lu en base dit-il que le site propose les cadres ?
  *
  * Absent, il vaut OUI : c'est ce que faisait la boutique avant que le réglage

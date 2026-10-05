@@ -1,9 +1,11 @@
 ---
 import Base from "../../layouts/Base.astro";
+import BandeauxVisuels from "../../components/BandeauxVisuels.astro";
 import VignetteAffiche from "../../components/VignetteAffiche.astro";
 import { grilleProduits, sizesGrille, styleGrille } from "../../lib/grille.ts";
-/** Colonnes réglées au back-office (Accueil et pied de page › Affichage des produits). */
-const grille = await grilleProduits();
+/** Colonnes réglées au back-office (Contenu du site › Affichage des produits) :
+ *  celles de l'accueil s'il en a, le réglage général sinon. */
+const grille = await grilleProduits("accueil");
 import Newsletter from "../../islands/Newsletter.tsx";
 import {
   api,
@@ -12,6 +14,7 @@ import {
   assetSrcset,
   type Product,
 } from "../../lib/api.ts";
+import { PAGE_ACCUEIL } from "@memoryline/types";
 import {
   estLangue,
   langueDepuisParam,
@@ -168,28 +171,12 @@ const iaLien = await setting(
   "/affiches/affiche-ia-a-partir-de-votre-photo",
 );
 
-/**
- * L'ENCART D'ACCUEIL — le premier bloc de la page.
- *
- * Une image, un titre, un texte, un bouton. Il sert à annoncer ce qui compte
- * en ce moment : une nouveauté, une collection, un salon, une promesse.
- *
- * Il ne s'affiche QUE si une image lui a été donnée. Un encart sans visuel
- * est un trou en haut de la page, et c'est l'image qui fait son intérêt —
- * pour du texte seul, le bandeau d'annonce existe déjà.
- *
- * L'image est COMMUNE aux cinq langues, les textes se traduisent. C'est la
- * règle du reste du site : la forme et les adresses ne se traduisent pas,
- * sinon chaque langue devient une page indépendante que personne ne tient
- * plus à jour.
+/*
+ * L'ancien ENCART D'ACCUEIL (image, titre, texte, bouton) est devenu le
+ * premier des bandeaux visuels, réglés dans l'écran « Bandeaux visuels » du
+ * back-office : BandeauxVisuels.astro le montre comme avant tant que la
+ * boutique n'a rien enregistré dans cet écran (bandeauDepuisEncart).
  */
-const encartVisible = await visible("home.encart.visible");
-const encartImage = (await setting("home.encart.image", "")).trim();
-const encartAlt = await texte("home.encart.alt", "");
-const encartTitre = await texte("home.encart.title", "");
-const encartTexte = await texte("home.encart.text", "");
-const encartBouton = await texte("home.encart.cta", "");
-const encartLien = (await setting("home.encart.link", "")).trim();
 
 const lettreTitre = await texte(
   "home.newsletter.title",
@@ -198,47 +185,12 @@ const lettreTitre = await texte(
 ---
 
 <Base langue={langue}>
-  {/* ---------------- Encart d'accueil ----------------
-      Tout en haut, AVANT les affiches — et surtout HORS de la condition de
-      la vitrine : à l'intérieur, il disparaîtrait le jour où la cliente
-      masque la vitrine, ou simplement quand l'API ne renvoie rien. */}
-  {
-    encartVisible && encartImage && (
-      <section class="w-full px-6 pt-10 lg:px-12">
-        <div class="mx-auto grid max-w-[1200px] items-center gap-8 sm:grid-cols-2">
-          <img
-            src={assetUrl(encartImage) ?? encartImage}
-            srcset={assetSrcset(encartImage, [400, 600, 900, 1400])}
-            sizes="(min-width: 640px) 50vw, 100vw"
-            alt={encartAlt || encartTitre}
-            class="w-full rounded-lg object-cover"
-          />
-          <div>
-            {encartTitre && (
-              <h2 class="text-3xl leading-tight">{encartTitre}</h2>
-            )}
-            {encartTexte && (
-              <p class="mt-4 text-lg leading-relaxed text-ink-soft">
-                {encartTexte}
-              </p>
-            )}
-            {encartBouton && encartLien && (
-              <a
-                href={
-                  encartLien.startsWith("http")
-                    ? encartLien
-                    : lien(langue, encartLien)
-                }
-                class="mt-8 inline-block bg-ink px-8 py-3 font-medium text-paper transition-colors hover:bg-ink/85"
-              >
-                {encartBouton}
-              </a>
-            )}
-          </div>
-        </div>
-      </section>
-    )
-  }
+  {/* ---------------- Bandeaux visuels ----------------
+      Tout en haut, sous l'en-tête et AVANT les affiches — et surtout HORS de
+      la condition de la vitrine : à l'intérieur, ils disparaîtraient le jour
+      où la cliente masque la vitrine, ou simplement quand l'API ne renvoie
+      rien. L'ancien encart d'accueil y est repris (voir plus haut). */}
+  <BandeauxVisuels pages={[PAGE_ACCUEIL]} langue={langue} />
 
   {/* ---------------- Les affiches ---------------- */}
   {

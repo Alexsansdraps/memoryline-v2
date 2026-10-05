@@ -356,6 +356,88 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
     </details>
 
     {/* ------------------------------------------------------------ */}
+    <details id="bandeaux-visuels" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Bandeaux visuels : une grande image en haut d'une page (Noël, salon…)
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          Une image sur toute la largeur de l'écran, juste sous le menu, avec
+          un texte posé dessus — comme la bannière de Noël de l'ancienne
+          boutique. Tout se règle dans
+          <a href={url("/bandeaux-visuels")} class="text-bo-accent underline">Bandeaux visuels</a>
+          (groupe « Boutique en ligne »). À ne pas confondre avec le
+          <a href={url("/bandeau")} class="text-bo-accent underline">Bandeau et offre</a>,
+          la fine bande de texte tout en haut du site, qui peut porter une
+          remise.
+        </p>
+        <ol class="list-decimal space-y-2 pl-5">
+          <li>Cliquez « + Nouveau bandeau ».</li>
+          <li>
+            <strong>L'image</strong> : choisissez un fichier JPEG ou WebP, en
+            longueur, de 1920 px de large au moins (2560 idéalement, par
+            exemple 2560 × 800). Cliquez ensuite sur l'image pour marquer ce
+            qui doit rester visible quand elle est recadrée. Pour le
+            téléphone, vous pouvez donner une seconde image, en hauteur
+            (1080 × 1200 par exemple) ; sans elle, c'est la première,
+            recadrée. Remplissez la « Description de l'image ».
+          </li>
+          <li>
+            <strong>Le texte</strong>, tout facultatif : un titre, un texte ou
+            une étiquette seule (« POUR NOËL, OFFREZ UN CADEAU UNIQUE ! »), un
+            bouton et son lien. Le lien peut aussi être porté par toute
+            l'image (case « Toute l'image mène au lien »).
+          </li>
+          <li>
+            <strong>La mise en forme</strong> : où se pose le texte (neuf
+            cases, en bas au centre par défaut), son style (étiquette noire,
+            encadré blanc, ou texte blanc ombré) et la hauteur (petite,
+            moyenne, grande, ou celle de l'image, qui ne coupe rien).
+          </li>
+          <li>
+            <strong>Où et quand</strong> : cochez les pages — l'accueil,
+            « Toutes les affiches », les deux gammes, tous les rayons ou un
+            rayon précis, une page du site. Les dates sont facultatives et à
+            l'heure de Paris : un bandeau du 1er décembre au 26 décembre à 0 h
+            s'allume et s'éteint tout seul.
+          </li>
+          <li>
+            Vérifiez l'<strong>aperçu</strong>, à droite (ordinateur,
+            tablette, téléphone), puis cliquez « Créer le bandeau ».
+          </li>
+        </ol>
+        <ul class="list-disc space-y-1 pl-5">
+          <li>
+            <strong>Plusieurs bandeaux sur une même page</strong> s'affichent
+            l'un sous l'autre, dans l'ordre de la liste : les flèches ▲ ▼ le
+            changent.
+          </li>
+          <li>
+            <strong>Les autres langues</strong> : le bloc « Traductions du
+            bandeau », sous le formulaire, avec « Proposer les traductions
+            manquantes ». L'image, le lien et la mise en forme valent pour
+            toutes les langues.
+          </li>
+          <li>
+            <strong>L'état</strong> se lit dans la liste : En ligne,
+            Programmé, Terminé, Éteint… Pour l'an prochain, « Dupliquer » en
+            fait une copie éteinte, dont il suffit de changer les dates.
+            « Archiver » le retire du site sans rien supprimer.
+          </li>
+          <li>
+            Sur un rayon, le bandeau ne s'affiche qu'en première page. Il ne
+            s'affiche pas sur les fiches des affiches.
+          </li>
+          <li>
+            L'ancien encart de l'accueil (« Accueil et pied de page ») est
+            devenu un bandeau de cette liste, en mise en page « image et texte
+            côte à côte », toujours possible pour un vrai paragraphe.
+          </li>
+        </ul>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
     <details id="traductions" class="group rounded-lg border border-bo-border bg-bo-surface">
       <summary class="cursor-pointer px-4 py-3 font-medium">
         Traduire ce que voient les clients étrangers
@@ -407,6 +489,11 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
             le message, le texte du lien et le nom de l'offre.
           </li>
           <li>
+            <a href={url("/bandeaux-visuels")} class="text-bo-accent underline">Bandeaux visuels</a>,
+            sur la fiche de chaque bandeau : titre, texte, bouton et
+            description de l'image.
+          </li>
+          <li>
             <a href={url("/livraison")} class="text-bo-accent underline">Livraison</a>,
             sous chaque mode : nom, précision et lieu de retrait — repris dans
             le courriel de confirmation et sur la facture.
@@ -423,6 +510,289 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
           Ce que vous voyez ici — commandes, bordereaux, fichiers
           d'impression — reste en français, quelle que soit la langue du
           client.
+        </p>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
+    <details id="styles-ia" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Affiche IA : faire choisir au client ce que montre sa photo
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          Dans <strong>Affiches IA › Styles proposés</strong>, chaque style a un
+          <strong>titre</strong> (« Personnes / Animaux », « Paysage »,
+          « Maison / Bâtiment »…), une <strong>consigne</strong> et jusqu'à cinq
+          <strong>images</strong>. Sur le site, le client choisit d'abord un
+          titre, puis envoie sa photo : c'est la seule chose qu'il voit, avec
+          les images, qui lui servent d'exemples.
+        </p>
+        <p>
+          La consigne du style s'ajoute <strong>à la fin</strong> de la consigne
+          générale de la boutique : elle dit au modèle sur quoi porter
+          l'attention pour ce genre de photo (garder chaque visage, compter les
+          fenêtres, ne rien ajouter au paysage…). Elle s'écrit en anglais, que
+          le modèle suit plus fidèlement, et ne sort jamais du back-office.
+          Les images du style remplacent les images de référence générales ;
+          sans image, ce sont les générales qui servent.
+        </p>
+        <p>
+          Les titres se traduisent sous la liste (« Traductions des titres »,
+          avec « Proposer les traductions manquantes »). Un style
+          <strong>éteint</strong> ou <strong>archivé</strong> disparaît du
+          site ; s'il n'en reste aucun, le client envoie sa photo sans choisir.
+        </p>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
+    <details id="pages-et-menu" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Où sont « Tout voir » et « Thèmes &amp; paysages » ? Comment changer le menu ?
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          <a href={url("/pages")} class="text-bo-accent underline">Pages du site</a>
+          liste toutes les pages : <strong>vos pages</strong> (celles que vous
+          écrivez), <strong>les pages de la boutique</strong> (l'accueil, toutes
+          les affiches, les personnalisables, les prêtes à imprimer, le contact)
+          et <strong>la page de chaque collection</strong> (« Villes »,
+          « Thèmes &amp; paysages »…). « Tout voir » n'est pas une page : c'est
+          une entrée du menu qui mène à « Affiches personnalisables ». La colonne
+          « Dans le menu » dit, pour chaque page, quelle entrée y mène.
+        </p>
+        <p>
+          Le menu se compose dans
+          <a href={url("/menu")} class="text-bo-accent underline">Menu du site</a> :
+          « + Ajouter une entrée » ou « + Ajouter un sous-lien », puis choisissez
+          la page dans la liste « ou choisir une page » (l'adresse se remplit
+          seule). Changez le nom pour renommer, les flèches ↑ ↓ pour déplacer,
+          décochez « Visible » pour cacher un temps, ✕ pour retirer (le lien
+          part dans « Liens retirés du menu », d'où il se restaure). Rien ne
+          change sur le site avant « Enregistrer le menu ». Depuis Pages du
+          site, le lien « Ajouter au menu » d'une ligne prépare l'entrée pour
+          vous.
+        </p>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
+    <details id="ordre-pages-collections" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Changer l'ordre des collections et des pages
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          <strong>Collections</strong> : dans
+          <a href={url("/collections")} class="text-bo-accent underline">Collections</a>,
+          attrapez la poignée ⠿ d'une ligne et faites-la glisser, ou cliquez ses
+          flèches ↑ ↓, puis « Enregistrer l'ordre ». C'est l'ordre dans lequel
+          les collections se proposent partout : fiche d'une affiche,
+          modification en masse, blocs d'une page, choix d'une page dans le
+          menu, recherche, Pages du site.
+        </p>
+        <p>
+          <strong>Pages</strong> : même geste dans
+          <a href={url("/pages")} class="text-bo-accent underline">Pages du site</a>,
+          section « Vos pages ». C'est l'ordre de la liste, de la tablette du
+          stand et du choix d'une page dans le menu.
+        </p>
+        <p>
+          <strong>Le menu du site</strong> garde son propre ordre, puisqu'il
+          mêle collections, pages et rayons. La case « Ranger aussi, dans le
+          menu du site, les liens… », cochée d'office, fait suivre le nouvel
+          ordre aux liens du menu qui mènent à ces collections (ou ces pages) :
+          ils échangent leur place entre eux, les autres entrées ne bougent pas.
+          Pour tout le reste du menu : les flèches de Menu du site.
+        </p>
+        <p>
+          Une collection ou une page créée plus tard arrive après celles déjà
+          rangées. L'ordre des <em>affiches</em> dans une collection se règle
+          sur la fiche de la collection ; celui des pages « Affiches
+          personnalisables » et « prêtes à imprimer », dans Produits › Ordre
+          d'affichage.
+        </p>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
+    <details id="cadres" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Cadres : les montrer ou non, avec ou sans leur prix
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          En haut de <a href={url("/cadres")} class="text-bo-accent underline">Cadres</a>,
+          deux cases, enregistrées ensemble :
+        </p>
+        <ul class="list-disc space-y-1 pl-5">
+          <li>
+            <strong>Proposer les cadres sur le site</strong> : décochée, le site
+            n'en montre plus aucun ; le stand continue de les proposer.
+          </li>
+          <li>
+            <strong>Afficher le supplément de chaque cadre sur le site</strong> :
+            décochée, le « + 15 € » sous chaque cadre disparaît du module de
+            personnalisation. Le prix du cadre reste compté dans le total en bas
+            du module, au panier et à la caisse.
+          </li>
+        </ul>
+        <p>
+          Pour un seul cadre : décochez « Affiché » sur sa ligne (il disparaît
+          du site et du stand), ou « Archiver ». Au stand, aucun prix n'est
+          jamais affiché.
+        </p>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
+    <details id="affiches-par-ligne" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Nombre d'affiches par ligne, page par page
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          Dans <a href={url("/contenu")} class="text-bo-accent underline">Contenu du site</a>,
+          tout en bas, « Affichage des produits » règle le nombre d'affiches par
+          ligne <strong>sur ordinateur</strong> (2 à 6) et <strong>sur
+          téléphone</strong> (1 ou 2). Il vaut pour toutes les grilles du site :
+          l'accueil, la boutique et ses rayons, chaque collection, la recherche
+          et les blocs d'affiches des pages. Sur tablette, c'est une affiche de
+          moins que sur ordinateur, trois au plus.
+        </p>
+        <p>
+          Pour qu'une page fasse autrement — l'accueil à 4 quand la boutique
+          reste à 3, par exemple —, dépliez « Un nombre différent selon la
+          page » juste dessous et choisissez son nombre. « Comme partout »
+          la remet au réglage général. Enregistrez : le site suit aussitôt.
+        </p>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
+    <details id="couleurs" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Choisir les couleurs que le client peut changer (personnages, pièces)
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          <strong>Un personnage</strong> : dans
+          <a href={url("/personnages")} class="text-bo-accent underline">Personnages</a>,
+          bouton « 🎨 Couleurs » de sa carte. Chaque couleur du dessin y a sa
+          vignette (la couleur en rouge), un nom, un nuancier (peau, cheveux /
+          pelage, vêtements, pantalon) et une case « Proposée au client ». Par
+          défaut, seule la peau est proposée ; pour une image en pixels (photo,
+          illustration), aucune tant que vous n'en cochez pas. Cliquez ensuite
+          « Enregistrer le dessin » : la page prévient si vous la quittez sans
+          l'avoir fait.
+        </p>
+        <p>
+          <strong>Une pièce</strong> (vêtement, pantalon, coupe, accessoire) :
+          même liste, partie « Éléments / Pièces », sur la carte de la pièce.
+          Les teintes offertes au client sont celles de sa
+          <strong>catégorie</strong>
+          (<a href={url("/categories-pieces")} class="text-bo-accent underline">Catégories de pièces</a>),
+          choisie à la création de la pièce ou sur sa carte ; sans catégorie, il
+          a une palette générique et le choix libre.
+        </p>
+        <p>
+          <strong>Ne pas proposer les détails</strong> (le ruban d'un chapeau) :
+          un seul réglage par catégorie, « Le client peut recolorer », dans
+          <a href={url("/categories-pieces")} class="text-bo-accent underline">Catégories de pièces</a>.
+          « Seulement la couleur principale » ne laisse au client que la
+          couleur la plus étendue de chaque pièce (marquée ★ sur sa carte) ; le
+          reste garde la couleur du dessin. « Toutes les couleurs », le réglage
+          de départ, les propose toutes.
+        </p>
+        <p>
+          Une pièce à part (un vêtement à deux couleurs principales) : cochez
+          ou décochez ses cases « Proposée au client » sur sa carte. Elle garde
+          alors son propre réglage, qui passe avant celui de la catégorie, et
+          « Revenir au réglage de la catégorie » le lui retire. Chaque réglage
+          s'enregistre aussitôt.
+        </p>
+        <p>
+          Avant de passer une catégorie à « principale », regardez ses pièces :
+          dans certains dessins, l'ombre d'un chapeau est une couleur à part, et
+          elle ne suivrait plus la couleur choisie par le client. La carte le
+          signale (« Une ombre de la couleur principale ? ») : rattachez-la à
+          sa couleur avec « Rattacher à… ». Les commandes déjà passées
+          s'impriment toujours comme le client les a composées.
+        </p>
+        <p>
+          Un dessin venu de Canva ou d'une IA n'a pas de couleur séparée ?
+          « Détecter les couleurs » les lit sur le dessin ; le fichier d'origine
+          est conservé.
+        </p>
+        <p>
+          Les <strong>décors</strong> (fonds des affiches) et les
+          <strong>décors de premier plan</strong> s'affichent tels quels : le
+          client ne peut pas en changer les couleurs aujourd'hui.
+        </p>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
+    <details id="clients" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Clients : abonnement aux e-mails, import et export
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          La liste de <a href={url("/clients")} class="text-bo-accent underline">Clients</a>
+          montre, comme Shopify, le nom (ou l'adresse e-mail quand il n'y en a
+          pas), l'<strong>abonnement aux e-mails</strong> — « Abonné » si la
+          case est cochée sur sa fiche ou si elle s'est inscrite à la lettre
+          d'information —, l'<strong>emplacement</strong> (la ville de son
+          carnet d'adresses, sinon de sa dernière livraison), ses commandes et
+          le montant dépensé. Cinquante par page ; un clic sur un titre de
+          colonne trie toute la liste, un second l'inverse.
+        </p>
+        <p>
+          Cochez des lignes pour <strong>exporter la sélection</strong> ou
+          leur <strong>ajouter / retirer une étiquette</strong>. « Exporter »,
+          en haut, sort toute la liste affichée (toutes les pages, mêmes
+          filtres).
+        </p>
+        <p>
+          « <strong>Importer</strong> » lit un fichier CSV — l'export de
+          Shopify, celui de cet écran ou un tableur à vous. Vous voyez d'abord
+          ce qui serait créé ou complété, ligne par ligne, puis « Importer pour
+          de bon ». Une adresse e-mail déjà connue complète la fiche sans rien
+          écraser ; une ligne sans adresse e-mail, ou en double, est écartée
+          avec sa raison. L'abonnement aux e-mails n'est repris que pour une
+          nouvelle fiche (à la date de l'import) : une fiche existante garde le
+          sien.
+        </p>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
+    <details id="statistiques" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Statistiques : choisir une période, séparer le site, les stands et chaque salon
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          Dans <a href={url("/statistiques")} class="text-bo-accent underline">Statistiques</a>,
+          la <strong>période</strong> se choisit d'un clic (Aujourd'hui, 7 jours,
+          30 jours, 90 jours, Ce mois-ci, Mois dernier, Cette année, 12 mois) ou
+          avec deux dates, « Du … au … », puis « Afficher ». Chaque chiffre est
+          comparé à la période d'avant de même durée, dont les dates sont
+          écrites sous les réglages.
+        </p>
+        <p>
+          « <strong>Ventes</strong> » sépare le <strong>site</strong> et les
+          <strong>stands</strong> ; sous « Stands », la ligne « Stand » isole un
+          salon, et le tableau « Stand par stand » les compare. Sous « Tout »,
+          le bloc « Site et stands, séparés » donne la part de chacun. Les
+          ventes se lisent aussi par sorte d'affiche (personnalisable, prête à
+          imprimer, tirée d'une photo) et par format.
+        </p>
+        <p>
+          Au-delà de deux mois, la courbe passe à un point par semaine, et
+          au-delà d'un an environ, à un point par mois.
         </p>
       </div>
     </details>

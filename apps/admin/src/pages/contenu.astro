@@ -22,8 +22,15 @@
  */
 import Admin from "../layouts/Admin.astro";
 import { adminApi, type CollectionBo } from "../lib/api.ts";
-import { apiUrl } from "../lib/url.ts";
-import { sourceVideo } from "@memoryline/types";
+import { apiUrl, url } from "../lib/url.ts";
+import {
+  COLONNES_ORDINATEUR,
+  COLONNES_TELEPHONE,
+  PAGES_GRILLE,
+  cleColonnes,
+  cleColonnesTelephone,
+  sourceVideo,
+} from "@memoryline/types";
 
 const api = adminApi(Astro.request);
 
@@ -44,7 +51,7 @@ if (Astro.request.method === "POST") {
   try {
     /*
      * Le nom d'un champ porte sa clé et, pour un texte traduisible, sa langue
-     * après une arobase : « home.encart.title@de ».
+     * après une arobase : « home.vitrine.title@de ».
      *
      * Les cases à cocher envoient deux valeurs — un « off » caché, puis « on »
      * si elles sont cochées. On ne garde que la dernière, qui reflète l'état
@@ -267,35 +274,12 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
       },
     ],
   },
-  {
-    titre: "Accueil — encart en tête de page",
-    aide:
-      "Le premier bloc de la page d'accueil, au-dessus des affiches. Il ne " +
-      "s'affiche QUE si une image lui est donnée : c'est elle qui fait son " +
-      "intérêt, et un encart sans visuel ferait un trou en haut de la page. " +
-      "Pour une annonce en texte seul, utilisez plutôt le bandeau.",
-    champs: [
-      { key: "home.encart.visible", label: "Afficher cet encart", type: "switch" },
-      { key: "home.encart.image", label: "Image", type: "image" },
-      {
-        key: "home.encart.alt",
-        label: "Description de l'image",
-        type: "texte",
-        aide:
-          "Lue à voix haute par les lecteurs d'écran et affichée si l'image " +
-          "ne charge pas. Décrivez ce qu'on y voit.",
-      },
-      { key: "home.encart.title", label: "Titre", type: "texte" },
-      { key: "home.encart.text", label: "Texte", type: "long" },
-      {
-        key: "home.encart.cta",
-        label: "Libellé du bouton",
-        type: "texte",
-        aide: "Laissez vide pour ne pas afficher de bouton.",
-      },
-      { key: "home.encart.link", label: "Lien du bouton", type: "lien" },
-    ],
-  },
+  /*
+   * L'encart en tête de l'accueil (home.encart.*) n'est plus réglé ici : il
+   * est devenu le premier des « Bandeaux visuels », qui le reprennent tel
+   * quel tant que rien n'y a été enregistré (bandeauDepuisEncart). Garder ses
+   * champs ici ferait régler deux fois la même chose, dont une sans effet.
+   */
   {
     titre: "Accueil — les affiches",
     aide: "La grille d'affiches mise en avant sur l'accueil.",
@@ -345,6 +329,48 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
     aide: "",
     champs: [{ key: "footer.baseline", label: "Baseline", type: "texte" }],
   },
+  {
+    titre: "Signature des créations",
+    aide:
+      "Le logo posé en bas à droite de CHAQUE création — affiches " +
+      "personnalisées comme affiches tirées d'une photo : sur l'aperçu que " +
+      "voit le client, et sur le fichier d'impression. Changer l'image ou sa " +
+      "taille refait les fichiers d'impression des commandes concernées.",
+    champs: [
+      {
+        key: "signature.visible",
+        label: "Signer chaque création (en bas à droite)",
+        type: "switch",
+      },
+      {
+        key: "signature.image",
+        label: "Logo signature",
+        type: "image",
+        aide:
+          "Un PNG à fond transparent, de préférence : un fond blanc se " +
+          "verrait comme un rectangle sur l'affiche. Laissez vide : c'est le " +
+          "logo de la boutique qui signe.",
+      },
+      {
+        key: "signature.largeur",
+        label: "Largeur, en % du petit côté de l'affiche (4 à 25)",
+        type: "nombre",
+        aide: "12 si vide.",
+      },
+      {
+        key: "signature.marge",
+        label: "Marge depuis les bords, en % (0 à 10)",
+        type: "nombre",
+        aide: "3 si vide.",
+      },
+      {
+        key: "signature.opacite",
+        label: "Opacité, en % (20 à 100)",
+        type: "nombre",
+        aide: "100 si vide : la signature est pleine.",
+      },
+    ],
+  },
 ];
 
 /**
@@ -357,6 +383,29 @@ const champsTraduisibles = SECTIONS.flatMap((s) =>
   s.champs.filter((c) => traduisible(c.type)).map((c) => c.key),
 );
 const global = avancement(champsTraduisibles);
+
+/**
+ * « Affichage des produits » : le nombre d'affiches par ligne, général, puis
+ * — facultatif — par genre de page (les clés : @memoryline/types, grille.ts).
+ *
+ * Une page laissée sur « Comme partout » (valeur vide) suit le réglage
+ * général. La partie « selon la page » reste repliée tant qu'aucune page n'a
+ * le sien : pour qui ne veut qu'un chiffre, l'écran garde ses deux menus.
+ */
+const colonnesGenerales =
+  valeur(cleColonnes()) || String(COLONNES_ORDINATEUR.defaut);
+const colonnesTelephoneGenerales =
+  valeur(cleColonnesTelephone()) || String(COLONNES_TELEPHONE.defaut);
+const colonnesParPage = PAGES_GRILLE.map(({ page, libelle }) => ({
+  page,
+  libelle,
+  ordinateur: valeur(cleColonnes(page)).trim(),
+  telephone: valeur(cleColonnesTelephone(page)).trim(),
+}));
+const reglagesParPage = colonnesParPage.some((p) => p.ordinateur || p.telephone);
+/** Les nombres permis, du plus petit au plus grand. */
+const entre = (b: { min: number; max: number }) =>
+  Array.from({ length: b.max - b.min + 1 }, (_, i) => b.min + i);
 ---
 
 <Admin title="Contenu du site">
@@ -382,6 +431,11 @@ const global = avancement(champsTraduisibles);
     <p class="text-sm text-bo-muted mb-4">
       Modifiez les textes du site et choisissez les sections affichées, sans
       toucher au code. Les changements sont visibles immédiatement.
+    </p>
+    <p class="mb-4 rounded border border-bo-border bg-bo-bg px-3 py-2 text-sm">
+      L'encart en tête de l'accueil et les grandes images en haut des pages se
+      règlent dans
+      <a href={url("/bandeaux-visuels")} class="text-bo-accent hover:underline">Bandeaux visuels</a>.
     </p>
 
     {/* Les onglets de langue. Ils ne rechargent RIEN : les cinq versions sont
@@ -624,8 +678,9 @@ const global = avancement(champsTraduisibles);
         </fieldset>
       ))}
       {/* Le nombre d'affiches par ligne, pour TOUTES les grilles du site :
-          catalogue, rayons et collections, accueil, recherche, pages. Deux
-          réglages seulement ; la tablette en découle (lib/grille.ts du site). */}
+          catalogue, rayons et collections, accueil, recherche, pages. Un
+          réglage général, puis, replié, un réglage par genre de page ; la
+          tablette en découle (lib/grille.ts du site). */}
       <fieldset class="rounded border border-bo-border p-4">
         <legend class="px-2 font-semibold">Affichage des produits</legend>
         <p class="mb-3 text-xs text-bo-muted">
@@ -636,13 +691,13 @@ const global = avancement(champsTraduisibles);
           <label class="block">
             <span class="mb-1 block font-medium">Sur ordinateur</span>
             <select
-              name="affichage.colonnes"
+              name={cleColonnes()}
               class="rounded border border-bo-border px-3 py-2"
             >
-              {[2, 3, 4, 5, 6].map((n) => (
+              {entre(COLONNES_ORDINATEUR).map((n) => (
                 <option
                   value={String(n)}
-                  selected={(valeur("affichage.colonnes") || "3") === String(n)}
+                  selected={colonnesGenerales === String(n)}
                 >
                   {n} par ligne
                 </option>
@@ -652,13 +707,13 @@ const global = avancement(champsTraduisibles);
           <label class="block">
             <span class="mb-1 block font-medium">Sur téléphone</span>
             <select
-              name="affichage.colonnesMobile"
+              name={cleColonnesTelephone()}
               class="rounded border border-bo-border px-3 py-2"
             >
-              {[1, 2].map((n) => (
+              {entre(COLONNES_TELEPHONE).map((n) => (
                 <option
                   value={String(n)}
-                  selected={(valeur("affichage.colonnesMobile") || "2") === String(n)}
+                  selected={colonnesTelephoneGenerales === String(n)}
                 >
                   {n} par ligne
                 </option>
@@ -666,6 +721,59 @@ const global = avancement(champsTraduisibles);
             </select>
           </label>
         </div>
+
+        {/* Un nombre différent selon la page — l'accueil à 4, la boutique à
+            3… Replié tant qu'aucune page n'a le sien. Chaque menu commence
+            par « Comme partout » (valeur vide) : la page suit alors le
+            réglage général ci-dessus, et le suivra s'il change. */}
+        <details class="mt-4 rounded border border-bo-border" open={reglagesParPage}>
+          <summary class="cursor-pointer px-3 py-2 font-medium">
+            Un nombre différent selon la page (facultatif)
+          </summary>
+          <div class="space-y-3 border-t border-bo-border px-3 py-3">
+            <p class="text-xs text-bo-muted">
+              Laissez « Comme partout » pour qu'une page suive le réglage
+              ci-dessus. Choisissez un nombre pour qu'elle s'en écarte.
+            </p>
+            {colonnesParPage.map((p) => (
+              <div class="flex flex-wrap items-end gap-x-4 gap-y-2 border-t border-bo-border pt-3 first-of-type:border-t-0 first-of-type:pt-0">
+                <span class="w-full font-medium">{p.libelle}</span>
+                <label class="block">
+                  <span class="mb-1 block text-xs text-bo-muted">Sur ordinateur</span>
+                  <select
+                    name={cleColonnes(p.page)}
+                    class="rounded border border-bo-border px-3 py-2"
+                  >
+                    <option value="" selected={!p.ordinateur}>
+                      Comme partout ({colonnesGenerales} par ligne)
+                    </option>
+                    {entre(COLONNES_ORDINATEUR).map((n) => (
+                      <option value={String(n)} selected={p.ordinateur === String(n)}>
+                        {n} par ligne
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label class="block">
+                  <span class="mb-1 block text-xs text-bo-muted">Sur téléphone</span>
+                  <select
+                    name={cleColonnesTelephone(p.page)}
+                    class="rounded border border-bo-border px-3 py-2"
+                  >
+                    <option value="" selected={!p.telephone}>
+                      Comme partout ({colonnesTelephoneGenerales} par ligne)
+                    </option>
+                    {entre(COLONNES_TELEPHONE).map((n) => (
+                      <option value={String(n)} selected={p.telephone === String(n)}>
+                        {n} par ligne
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            ))}
+          </div>
+        </details>
       </fieldset>
 
       <button class="rounded bg-bo-accent text-white px-4 py-2 hover:opacity-90">

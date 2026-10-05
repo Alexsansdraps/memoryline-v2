@@ -19,11 +19,19 @@ import {
   promotion,
   varianteLaMoinsChere,
   type Product,
+  type ProductVariant,
 } from "../lib/api.ts";
 import { LOCALE_COMPLETE, lien, t, type Langue } from "../i18n/utils.ts";
 
 interface Props {
-  affiche: Product;
+  /**
+   * L'affiche — seulement ce que la vignette dessine. Une affiche du
+   * catalogue convient telle quelle ; celle d'un bloc « produits » d'une page
+   * du site aussi, qui n'a ni genre ni prix barré.
+   */
+  affiche: Pick<Product, "slug" | "name" | "image" | "basePriceCents"> & {
+    variants: Pick<ProductVariant, "priceCents" | "compareAtCents">[];
+  };
   langue: Langue;
   /**
    * Charger l'image tout de suite plutôt qu'à l'approche de l'écran.
@@ -167,22 +175,30 @@ const imageJeu = assetSrcset(affiche.image, [400, 600, 900, 1400]);
         Le texte est rentré de 8 px : les gouttières ne font plus que 4 à
         8 px, et sans ce retrait le nom d'une colonne venait toucher celui de
         la voisine. Le prix garde une taille de lecture, un cran au-dessus du
-        nom : c'est la ligne qu'on vient chercher. */}
+        nom : c'est la ligne qu'on vient chercher.
+
+        Le prix est en demi-gras, un peu espacé, comme sur memoryline.fr
+        (relevé d'octobre 2026 : 16 px, graisse 600). En maigre et en gris,
+        il s'effaçait sous le nom ; retour de la boutique : « police des
+        produits un peu plus grasse, plus petite ». Sa taille, elle, ne
+        bouge pas : elle est déjà sous celle du site actuel. */}
     <div class="px-2 pt-2.5 sm:pt-3">
       <h2 class="ml-vignette-nom text-[13px] leading-snug group-hover:underline underline-offset-4 lg:text-[14px]">
         {nom}
       </h2>
       {
         sansPrix ? null : promo ? (
-          <p class="mt-1 flex flex-wrap items-baseline gap-2 text-[14px] sm:text-[15px]">
-            <span class="text-terracotta-deep">{prix}</span>
+          <p class="mt-1 flex flex-wrap items-baseline gap-2 text-[14px] tracking-[0.6px] sm:text-[15px]">
+            <span class="font-semibold text-terracotta-deep">{prix}</span>
             <s class="text-ink/45">
               <span class="sr-only">{tr("promo.ancien_prix")} </span>
               {formatPrice(promo.avantCents, locale)}
             </s>
           </p>
         ) : (
-          <p class="mt-1 text-[14px] text-ink-soft sm:text-[15px]">{prix}</p>
+          <p class="mt-1 text-[14px] font-semibold tracking-[0.6px] text-ink-soft sm:text-[15px]">
+            {prix}
+          </p>
         )
       }
     </div>

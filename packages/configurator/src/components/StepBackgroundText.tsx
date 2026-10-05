@@ -13,6 +13,7 @@ import {
 } from "@memoryline/types";
 import type { ConfiguratorState } from "../store";
 import { Field, PastilleCouleur } from "./ui";
+import { ZoneDefilante } from "./Defilement";
 import type { MessagesConfigurateur } from "../messages";
 
 /** Étape 1 : fond + les trois lignes de texte (symboles & chiffres autorisés). */
@@ -43,10 +44,17 @@ export function StepBackgroundText(props: {
     m().libellesPolices[police.id] ?? police.libelle;
   /**
    * Choix rapide de la police, montrée DANS la police : le client juge le
-   * rendu, pas un nom. Une rangée par ligne, car chacune a la sienne.
+   * rendu, pas un nom. Une rangée par ligne, car chacune a la sienne. Quand
+   * elle ne tient pas en largeur, elle défile avec flèches et barre bien
+   * visibles (ZoneDefilante).
    */
   const ChoixPolice = (p: { ligne: number }) => (
-    <div class="ml-cfg-polices">
+    <ZoneDefilante
+      sens="horizontal"
+      versDebut={m().precedent}
+      versFin={m().suivant}
+      class="ml-cfg-polices"
+    >
       <For each={policesDeLaLigne(p.ligne)}>
         {(police) => {
           const actif = () =>
@@ -56,6 +64,9 @@ export function StepBackgroundText(props: {
               type="button"
               onClick={() => props.onTextFont(p.ligne, police.id)}
               aria-pressed={actif()}
+              // Marques du choix fait posées par le site (`ml-choix`) ; le
+              // style en ligne reste le repli du module seul.
+              class="ml-choix"
               title={nomPolice(police)}
               style={{
                 flex: "0 0 auto",
@@ -76,7 +87,7 @@ export function StepBackgroundText(props: {
           );
         }}
       </For>
-    </div>
+    </ZoneDefilante>
   );
   const resolve = (url: string) =>
     url.startsWith("http") ? url : props.assetBaseUrl.replace(/\/$/, "") + url;
@@ -146,6 +157,11 @@ export function StepBackgroundText(props: {
                     type="button"
                     onClick={() => props.onSelectBackground(bg)}
                     title={bg.name ?? ""}
+                    // L'état, lisible par un lecteur d'écran, et les marques
+                    // du choix fait posées par le site (`ml-choix`). La case
+                    // rogne son image : la coche se loge dans son coin.
+                    aria-pressed={selected()}
+                    class="ml-choix ml-choix-dedans"
                     style={{
                       border: selected()
                         ? "2px solid #4f46e5"

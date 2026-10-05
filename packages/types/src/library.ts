@@ -16,8 +16,14 @@ export interface AssetDTO {
   view: PosterView | string | null;
   /** Zones de couleur par défaut : { st0: "#BA6821", … } (§18.1 D). */
   colorZones: Record<string, string> | null;
-  /** Zones que le client ne peut pas recolorer (petits détails) : ["st3"]. */
-  zonesMasquees?: string[];
+  /**
+   * Zones que le client ne peut pas recolorer (petits détails) : ["st3"].
+   * `null` : la pièce n'a pas de réglage propre, elle suit sa catégorie
+   * (cf. groupesProposesDeLaPiece).
+   */
+  zonesMasquees?: string[] | null;
+  /** Part du dessin peinte par chaque zone : elle désigne la couleur principale. */
+  partsDesZones?: Record<string, number> | null;
   /** Nuances réunies sous une seule couleur, et leurs noms (cf. couleurs-groupes). */
   groupesCouleurs?: GroupeCouleur[] | null;
   position: number;

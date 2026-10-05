@@ -15,8 +15,9 @@ import Base from "../../layouts/Base.astro";
 import VignetteAffiche from "../../components/VignetteAffiche.astro";
 import { api, type Product } from "../../lib/api.ts";
 import { grilleProduits, sizesGrille, styleGrille } from "../../lib/grille.ts";
-/** Colonnes réglées au back-office (Accueil et pied de page › Affichage des produits). */
-const grille = await grilleProduits();
+/** Colonnes réglées au back-office (Contenu du site › Affichage des produits) :
+ *  celles de la recherche s'il y en a, le réglage général sinon. */
+const grille = await grilleProduits("recherche");
 import {
   estLangue,
   langueDepuisParam,

@@ -622,7 +622,17 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
           {/* ---------------------------------------------------------- */}
           {/* Traitement logistique                                       */}
           {/* ---------------------------------------------------------- */}
-          <section class="rounded-lg border border-bo-border bg-bo-surface">
+          {/* `data-impression` : les liens « PDF d'impression » de cette
+              section disent où en est leur fichier — prêt, en préparation,
+              impossible et pourquoi (lib/impression-bo.ts). Ouvrir une
+              commande payée, c'est s'apprêter à l'imprimer : ses fichiers se
+              préparent dès l'ouverture (`data-preparer`). */}
+          <section
+            class="rounded-lg border border-bo-border bg-bo-surface"
+            data-impression
+            data-url-etat={apiUrl("/admin/print-files/etat")}
+            data-preparer={encaisse ? "1" : undefined}
+          >
             <header class="flex flex-wrap items-center justify-between gap-2 border-b border-bo-border px-4 py-3">
               <h3 class="font-medium">
                 <span
@@ -646,7 +656,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
 
             <table class="w-full text-sm">
               <tbody>
-                {items.map((it) => (
+                {items.map((it, rang) => (
                   <tr class="border-b border-bo-border last:border-0">
                     {/* L'aperçu, à gauche, comme dans le panier de la boutique.
                         Il est rendu par le moteur du fichier d'impression :
@@ -718,14 +728,29 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                             {it.rembourse} remboursé(s)
                           </span>
                         )}
+                        {/* Plus d'onglet ouvert à l'aveugle : le lien
+                            télécharge sur place (`download`), et seulement
+                            quand le fichier est prêt — en attendant, il dit
+                            où il en est. Sans script, il télécharge comme
+                            avant. */}
                         {encaisse && (
                           <a
                             href={apiUrl(`/admin/print-files/${it.id}`)}
-                            target="_blank"
-                            class="text-bo-accent hover:underline"
+                            download
+                            data-pdf-ligne={it.id}
+                            data-pdf-libelle="long"
+                            data-pdf-nom={`Affiche ${rang + 1} (${it.title ?? "affiche personnalisée"})`}
+                            class="bo-pdf text-bo-accent hover:underline"
                           >
                             Télécharger le PDF d'impression
                           </a>
+                        )}
+                        {encaisse && (
+                          <span
+                            data-pdf-message={it.id}
+                            class="bo-pdf-message basis-full"
+                            aria-live="polite"
+                          />
                         )}
                       </div>
                     </td>
@@ -739,6 +764,31 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                 ))}
               </tbody>
             </table>
+
+            {/* Toutes les affiches d'un coup, chacune sous son nom, dans une
+                archive : sur une commande de cinq affiches, cinq clics de
+                moins — et aucune d'oubliée. */}
+            {encaisse && items.length > 1 && (
+              <div
+                class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-bo-border px-4 py-3 text-sm"
+                data-pdf-groupe
+              >
+                <a
+                  href={apiUrl(`/admin/orders/${order.id}/impression.zip`)}
+                  download
+                  data-pdf-tout
+                  data-pdf-lignes={items.map((it) => it.id).join(",")}
+                  class="bo-pdf rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+                >
+                  Tout télécharger (.zip)
+                </a>
+                <span class="text-xs text-bo-muted">
+                  Les {items.length} PDF d'impression, chacun sous son nom, dans une
+                  seule archive.
+                </span>
+                <span data-pdf-messages class="bo-pdf-messages basis-full" aria-live="polite" />
+              </div>
+            )}
 
             {expeditions.length > 0 && (
               <div class="border-t border-bo-border px-4 py-3">
@@ -2042,5 +2092,9 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
         });
       });
     })();
+  </script>
+  {/* Les PDF d'impression : prêt, en préparation, ou impossible et pourquoi. */}
+  <script>
+    import "../../lib/impression-bo.ts";
   </script>
 </Admin>

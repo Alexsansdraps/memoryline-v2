@@ -31,6 +31,7 @@ import {
 } from "@memoryline/types";
 import {
   PosterPreview,
+  ZoneDefilante,
   createSvgCache,
   stateFromConfig,
   SLOTS,
@@ -1561,7 +1562,17 @@ export default function CheckoutIsland(props: {
                         onChoisir={choisirRelais}
                       />
                     </Show>
-                    <ul class="max-h-72 space-y-2 overflow-y-auto">
+                    {/* La liste défile dans sa case : ˄ ˅ en grand à sa droite
+                        et une barre bien visible, comme les listes du module
+                        de personnalisation (retour cliente : le défilement
+                        était trop discret). */}
+                    <ZoneDefilante
+                      sens="vertical"
+                      versDebut={tr("defiler.haut")}
+                      versFin={tr("defiler.bas")}
+                      class="max-h-72 overflow-y-auto"
+                    >
+                    <ul class="space-y-2">
                       <For each={relais()}>
                         {(r, i) => (
                           <li id={`relais-${r.id}`}>
@@ -1618,6 +1629,7 @@ export default function CheckoutIsland(props: {
                         )}
                       </For>
                     </ul>
+                    </ZoneDefilante>
                   </Show>
 
                   <Show when={pointRelais().id}>
@@ -1693,14 +1705,22 @@ export default function CheckoutIsland(props: {
                     type="button"
                     onClick={goToPay}
                     disabled={!formValid() || !method() || submitting()}
+                    aria-busy={submitting()}
                     class="w-full rounded-full bg-terracotta px-8 py-4 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {submitting()
-                      ? tr("commande.preparation")
-                      : tr("commande.continuer_paiement").replace(
-                          "{total}",
-                          formatPrice(total(), locale),
-                        )}
+                    {/* Occupé : un rond qui tourne avec le libellé, et le
+                        bouton garde sa couleur (global.css lit `aria-busy`). */}
+                    {submitting() ? (
+                      <>
+                        <span class="ml-spinner ml-spinner-clair mr-2" aria-hidden="true" />
+                        {tr("commande.preparation")}
+                      </>
+                    ) : (
+                      tr("commande.continuer_paiement").replace(
+                        "{total}",
+                        formatPrice(total(), locale),
+                      )
+                    )}
                   </button>
                 </Show>
 
@@ -1718,9 +1738,20 @@ export default function CheckoutIsland(props: {
                       type="button"
                       onClick={payStripe}
                       disabled={submitting()}
+                      aria-busy={submitting()}
                       class="w-full bg-ink px-8 py-4 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-50"
                     >
-                      {submitting() ? "…" : `${tr("commande.payer")} ${formatPrice(total(), locale)}`}
+                      {/* « Paiement en cours… » et un rond qui tourne, plutôt
+                          qu'un « … » grisé qu'on prenait pour une panne — le
+                          pire moment pour faire douter quelqu'un. */}
+                      {submitting() ? (
+                        <>
+                          <span class="ml-spinner ml-spinner-clair mr-2" aria-hidden="true" />
+                          {tr("commande.paiement_en_cours")}
+                        </>
+                      ) : (
+                        `${tr("commande.payer")} ${formatPrice(total(), locale)}`
+                      )}
                     </button>
                   </Show>
 

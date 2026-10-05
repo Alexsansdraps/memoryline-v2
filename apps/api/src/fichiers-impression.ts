@@ -25,13 +25,34 @@
  * page blanche. Son fichier d'impression est son visuel, pris dans les images
  * de sa fiche (voir visuelDImpression) — et son empreinte porte le contenu de
  * cette image : un visuel remplacé refait le fichier.
+ *
+ * LE BACK-OFFICE NE DOIT JAMAIS ATTENDRE À L'AVEUGLE. « La plupart du temps
+ * on ne peut pas télécharger le PDF », disait la boutique : le lien ouvrait un
+ * onglet blanc, et le fichier se fabriquait PENDANT ce temps, dans la requête.
+ * Sur le serveur de test (deux cœurs, quatre Go), le premier rendu d'un fond
+ * prend 45 s en A4 et deux minutes en A3 ; et il se faisait en même temps que
+ * les vignettes de la liste des commandes, rendues elles aussi à 300 points
+ * par pouce, toutes à la fois. Mesuré sur deux cœurs : six vignettes et un
+ * PDF lancés ensemble, et le PDF arrivait au bout de 159 s, l'API montée à
+ * 2,4 Go — de quoi la faire tuer par le système, et l'onglet finissait sur
+ * une erreur ou sur rien. Désormais :
+ *
+ *   - tout rendu lourd passe par UNE file (plus bas), avec une place gardée
+ *     pour ce que le back-office attend : une vignette ne passe plus jamais
+ *     devant un fichier d'impression ;
+ *   - le back-office demande d'abord où en est le fichier
+ *     (etatDuFichierDImpression) et le dit — « en préparation », « prêt »,
+ *     « échec : la raison » —, au lieu d'ouvrir un onglet qui attend ;
+ *   - au démarrage de l'API, les fichiers des commandes à expédier sont
+ *     refaits d'avance quand une mise à jour du rendu les a rendus caducs
+ *     (demarrerPreparationDesImpressions).
  */
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
-import { resolve, sep } from "node:path";
+import { basename, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import sharp from "sharp";
 import {
   lignesRemplies,
@@ -78,6 +99,10 @@ const JOURS_DE_GARDE = 60;
  * change l'un d'eux, donc l'empreinte, donc les fichiers sont refaits ; une
  * mise en ligne qui ne touche pas au rendu les garde. Si un fichier ne se lit
  * pas, on retombe sur l'ancienne règle, prudente.
+ *
+ * Les fichiers ainsi devenus caducs ne sont plus refaits au premier clic :
+ * ceux des commandes à expédier se refont d'avance au démarrage (voir
+ * demarrerPreparationDesImpressions, en bas).
  */
 const LANCEMENT = (() => {
   try {
@@ -146,7 +171,69 @@ export async function donneesDImpression(): Promise<ResolveData> {
   const bgMap = new Map<string, any>();
   for (const b of backgrounds)
     bgMap.set(String(b.id), { id: b.id, url: b.url });
-  return { assets: assetMap, characters: charMap, backgrounds: bgMap };
+  return {
+    assets: assetMap,
+    characters: charMap,
+    backgrounds: bgMap,
+    signature: await signatureDesCreations(),
+  };
+}
+
+/** Le logo de la boutique : la signature tant qu'aucune autre n'est envoyée. */
+const LOGO_PAR_DEFAUT = resolve(fileURLToPath(import.meta.url), "../../marque/logo-memory-line.png");
+
+/**
+ * La signature posée en bas à droite de chaque création, d'après « Contenu
+ * du site › Signature des créations ». Allumée par défaut, avec le logo de la
+ * boutique : c'est ce que demande la boutique (« sur chaque création »), et
+ * une signature oubliée ne se voit qu'une fois l'affiche livrée.
+ *
+ * Les nombres sont bornés : une largeur de 80 % recouvrirait l'affiche, une
+ * opacité de 0 la rendrait inutile sans que personne ne comprenne pourquoi.
+ */
+async function signatureDesCreations(): Promise<ResolveData["signature"]> {
+  const cles = [
+    "signature.visible",
+    "signature.image",
+    "signature.largeur",
+    "signature.marge",
+    "signature.opacite",
+  ];
+  const lignes = await db
+    .select({ key: schema.settings.key, value: schema.settings.value })
+    .from(schema.settings)
+    .where(inArray(schema.settings.key, cles));
+  const lire = (cle: string) => {
+    const v = lignes.find((l) => l.key === cle)?.value;
+    return v === undefined || v === null ? "" : String(v).trim();
+  };
+  if (["off", "non", "no", "false", "0"].includes(lire("signature.visible").toLowerCase()))
+    return null;
+  const nombre = (cle: string, defaut: number, min: number, max: number) => {
+    const n = Number(lire(cle).replace(",", "."));
+    return Number.isFinite(n) && lire(cle) !== "" ? Math.min(max, Math.max(min, n)) : defaut;
+  };
+  const choisie = lire("signature.image");
+  const chemin = (choisie && cheminDansLesAssets(choisie)) || LOGO_PAR_DEFAUT;
+  let image: Buffer;
+  try {
+    image = await readFile(chemin);
+  } catch {
+    console.warn("[impression] signature introuvable :", chemin);
+    return null;
+  }
+  const largeur = nombre("signature.largeur", 12, 4, 25) / 100;
+  const marge = nombre("signature.marge", 3, 0, 10) / 100;
+  const opacite = nombre("signature.opacite", 100, 20, 100) / 100;
+  return {
+    image,
+    largeur,
+    marge,
+    opacite,
+    // L'image par son contenu, pas son nom : un logo remplacé sous le même
+    // nom refait quand même les fichiers.
+    empreinte: `${createHash("sha1").update(image).digest("hex").slice(0, 12)}-${largeur}-${marge}-${opacite}`,
+  };
 }
 
 /**
@@ -186,6 +273,9 @@ function empreinte(config: PosterConfig, data: ResolveData): string {
   }
   if (config.backgroundId != null)
     h.update(JSON.stringify(data.backgrounds?.get(String(config.backgroundId)) ?? null));
+  // La signature est imprimée sur l'affiche : la changer (image, taille,
+  // marge) ou l'éteindre refait le fichier.
+  h.update(data.signature?.empreinte ?? "sans-signature");
   return h.digest("hex").slice(0, 20);
 }
 
@@ -236,7 +326,7 @@ const ECART_PROPORTIONS_MAX = 0.1;
 
 interface Visuel {
   url: string;
-  image: Buffer;
+  chemin: string;
 }
 
 /** Le chemin d'une image de fiche dans data/assets, ou null s'il n'y est pas. */
@@ -332,47 +422,218 @@ async function visuelDImpression(
         `le fichier d'impression le prendra de lui-même.`,
     );
 
-  return { url: meilleur!.url, image: await readFile(meilleur!.chemin) };
+  return { url: meilleur!.url, chemin: meilleur!.chemin };
+}
+
+/**
+ * L'empreinte du CONTENU des visuels déjà lus, par fichier, taille et date.
+ *
+ * Le back-office demande l'état des fichiers de toute la liste des commandes
+ * à chaque visite : relire chaque fois en entier le visuel d'origine de
+ * chaque affiche prête à imprimer — souvent plus de dix Mo — ferait attendre
+ * la liste pour rien. Un visuel remplacé change de taille ou de date, donc
+ * de clé : il est relu, et le fichier d'impression refait.
+ */
+const contenusLus = new Map<string, string>();
+
+async function empreinteDuContenu(chemin: string): Promise<string> {
+  const s = await stat(chemin);
+  const cle = `${chemin}|${s.size}|${s.mtimeMs}`;
+  let empreinte = contenusLus.get(cle);
+  if (!empreinte) {
+    empreinte = createHash("sha1").update(await readFile(chemin)).digest("hex");
+    if (contenusLus.size > 500) contenusLus.clear();
+    contenusLus.set(cle, empreinte);
+  }
+  return empreinte;
 }
 
 /** L'empreinte d'un visuel prêt à imprimer : son contenu, pas seulement son nom. */
-function empreinteVisuel(visuel: Visuel, format: PosterFormat): string {
+async function empreinteVisuel(visuel: Visuel, format: PosterFormat): Promise<string> {
   return createHash("sha1")
     .update(LANCEMENT)
     .update("prete_a_imprimer")
     .update(format)
     .update(visuel.url)
-    .update(visuel.image)
+    .update(await empreinteDuContenu(visuel.chemin))
     .digest("hex")
     .slice(0, 20);
 }
 
+/* -------------------------------------------------------------------------- */
+/*  La file des rendus                                                        */
+/* -------------------------------------------------------------------------- */
+
 /**
- * Une affiche à la fois.
+ * Qui attend un rendu, du plus pressé au moins pressé :
  *
- * Un rendu A3 tient plusieurs centaines de Mo de pixels en mémoire, et le
- * serveur n'en a que quatre Go pour tout faire tourner. Une commande de cinq
- * affiches, lancées ensemble, pourrait le mettre à genoux ; les unes après
- * les autres, elles passent.
+ *   - « demande » : la boutique, devant le back-office, attend CE fichier ;
+ *   - « preparation » : un fichier fait d'avance — au paiement, à la vente
+ *     du stand, au démarrage de l'API — que personne n'attend encore ;
+ *   - « apercu » : une vignette (liste des commandes, courriers, compte
+ *     client). Voir apercus.ts.
  */
-let fileDAttente: Promise<unknown> = Promise.resolve();
-function aLaSuite<T>(travail: () => Promise<T>): Promise<T> {
-  const suite = fileDAttente.then(travail, travail);
-  fileDAttente = suite.catch(() => undefined);
-  return suite;
+export type Priorite = "demande" | "preparation" | "apercu";
+const RANG: Record<Priorite, number> = { demande: 0, preparation: 1, apercu: 2 };
+
+interface Tache {
+  priorite: Priorite;
+  /** L'ordre d'arrivée : à priorité égale, premier venu, premier servi. */
+  numero: number;
+  creee: number;
+  /** Le départ du rendu ; null tant qu'il attend son tour. */
+  lancee: number | null;
+  executer: () => Promise<void>;
 }
 
-/** Les fichiers en cours de fabrication : un téléchargement attend celui du paiement. */
-const enCours = new Map<string, Promise<Buffer>>();
+/**
+ * Deux rendus au plus en même temps, dont UN SEUL pour ce qui peut attendre.
+ *
+ * Un rendu tient plusieurs centaines de Mo (900 Mo mesurés pour le premier A3
+ * d'un fond), et le serveur n'en a que quatre Go pour tout faire tourner. Il
+ * occupe aussi, tant qu'il dure, l'un des quatre fils que Node partage entre
+ * TOUTES ses lectures de fichiers : quatre rendus lancés ensemble, et même un
+ * PDF déjà prêt ne pouvait plus être lu (une lecture de 2 Ko attendait 5 s).
+ *
+ * Une seule file aurait suffi à la mémoire, mais un fichier demandé au
+ * back-office y aurait attendu la fin d'un rendu de fond — deux minutes pour
+ * le premier A3 d'un fond. La seconde place lui est donc gardée : ce que la
+ * boutique attend démarre tout de suite, le reste passe un par un.
+ */
+const PLACES = 2;
+const attente: Tache[] = [];
+let enCours = 0;
+let enCoursPourPlusTard = 0;
+let numeroSuivant = 0;
+
+function avant(a: Tache, b: Tache): boolean {
+  return RANG[a.priorite] < RANG[b.priorite] || (a.priorite === b.priorite && a.numero < b.numero);
+}
+
+function pomper(): void {
+  while (enCours < PLACES && attente.length) {
+    const seulementLesDemandes = enCoursPourPlusTard >= 1;
+    let choisie = -1;
+    attente.forEach((t, i) => {
+      if (seulementLesDemandes && t.priorite !== "demande") return;
+      if (choisie < 0 || avant(t, attente[choisie]!)) choisie = i;
+    });
+    if (choisie < 0) return;
+    const [tache] = attente.splice(choisie, 1);
+    // La priorité au DÉPART décide de la place prise : une tâche remontée en
+    // « demande » pendant qu'elle tourne ne libère rien de plus.
+    const pourPlusTard = tache!.priorite !== "demande";
+    enCours++;
+    if (pourPlusTard) enCoursPourPlusTard++;
+    tache!.lancee = Date.now();
+    void tache!.executer().finally(() => {
+      enCours--;
+      if (pourPlusTard) enCoursPourPlusTard--;
+      pomper();
+    });
+  }
+}
+
+/** Range un travail dans la file ; il partira à son tour (voir pomper). */
+function mettreEnFile<T>(
+  priorite: Priorite,
+  travail: () => Promise<T>,
+): { tache: Tache; promesse: Promise<T> } {
+  let resoudre!: (v: T) => void;
+  let rejeter!: (e: unknown) => void;
+  const promesse = new Promise<T>((ok, ko) => {
+    resoudre = ok;
+    rejeter = ko;
+  });
+  const tache: Tache = {
+    priorite,
+    numero: numeroSuivant++,
+    creee: Date.now(),
+    lancee: null,
+    // Jamais d'exception qui s'échappe : la file doit toujours repartir.
+    executer: () =>
+      Promise.resolve()
+        .then(travail)
+        .then(resoudre, rejeter),
+  };
+  attente.push(tache);
+  return { tache, promesse };
+}
 
 /**
- * Le PDF d'impression d'une ligne : le fichier rangé s'il existe, sinon
- * fabriqué, rangé et rendu.
+ * Un rendu lourd, à son tour. Pour les vignettes (apercus.ts) : elles passent
+ * par la même file que les fichiers d'impression, mais toujours après eux.
  */
-export async function fichierDImpression(
+export function enFile<T>(priorite: Priorite, travail: () => Promise<T>): Promise<T> {
+  const { promesse } = mettreEnFile(priorite, travail);
+  pomper();
+  return promesse;
+}
+
+/** Une tâche qui attend encore passe devant quand quelqu'un l'attend. */
+function remonter(tache: Tache, priorite: Priorite): void {
+  if (tache.lancee !== null || RANG[priorite] >= RANG[tache.priorite]) return;
+  tache.priorite = priorite;
+  pomper();
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Fichiers d'impression                                                     */
+/* -------------------------------------------------------------------------- */
+
+/** Où se range le fichier d'une ligne, et comment le fabriquer. */
+interface Plan {
+  chemin: string;
+  fabriquer: () => Promise<Buffer>;
+}
+
+/** Les fabrications en cours ou en attente : une seule par fichier. */
+const fabrications = new Map<string, { tache: Tache; promesse: Promise<Buffer> }>();
+
+/**
+ * Le dernier échec de chaque fichier, gardé jusqu'au prochain essai.
+ *
+ * C'est lui que le back-office affiche, raison comprise, avec un bouton
+ * « Réessayer ». Sans lui, un rendu qui échoue à chaque fois serait relancé à
+ * chaque coup d'œil sur la commande — deux minutes de calcul pour rien.
+ */
+const echecs = new Map<string, { erreur: string; quand: number }>();
+
+/**
+ * Le message d'une erreur, dit pour la boutique.
+ *
+ * Les refus écrits dans ce module (image trop petite, ligne vide…) disent
+ * déjà quoi faire. Ceux du moteur parlent de chemins de fichiers : on les
+ * traduit, sans perdre le nom de ce qui manque.
+ */
+export function raisonLisible(e: unknown): string {
+  const brut = e instanceof Error ? e.message : String(e);
+  const manque = /^Source introuvable: (\S+)/.exec(brut);
+  if (manque)
+    return (
+      `un fichier de l'affiche manque sur le serveur (« ${basename(manque[1]!)} » : ` +
+      `un fond, un personnage ou une pièce). Remettez-le au back-office, puis réessayez.`
+    );
+  if (/ENOSPC/.test(brut))
+    return "le disque du serveur est plein : le fichier ne peut pas y être rangé.";
+  if (/ENOMEM|out of memory/i.test(brut))
+    return "le serveur a manqué de mémoire pendant le calcul. Réessayez dans quelques minutes.";
+  return brut;
+}
+
+/**
+ * Le plan d'impression d'une ligne : où son fichier se range — l'empreinte de
+ * ce qui la dessine — et comment le fabriquer.
+ *
+ * Lève une erreur, dite pour la boutique, quand la ligne ne peut pas
+ * s'imprimer (visuel trop petit, image générée disparue, ligne vide…) : ces
+ * refus-là ne dépendent pas du calcul, et se savent sans le lancer.
+ */
+async function planDImpression(
   orderItemId: number,
   config: PosterConfig,
-): Promise<Buffer> {
+  donnees?: ResolveData,
+): Promise<Plan> {
   const format: PosterFormat = config.format ?? "A4";
 
   // Le genre se lit sur le PRODUIT de la ligne, pas dans la configuration :
@@ -401,11 +662,13 @@ export async function fichierDImpression(
   let fabriquer: () => Promise<Buffer>;
   if (produit?.genre === "prete_a_imprimer" && !composee) {
     const visuel = await visuelDImpression(produit, format);
-    cle = empreinteVisuel(visuel, format);
-    fabriquer = () => renderImagePdf(visuel.image, format);
+    cle = await empreinteVisuel(visuel, format);
+    // Lu au moment de fabriquer, pas avant : un plan qui attend son tour
+    // dans la file ne garde pas dix Mo d'image en mémoire.
+    fabriquer = async () => renderImagePdf(await readFile(visuel.chemin), format);
   } else {
     const [data, aImprimer] = await Promise.all([
-      donneesDImpression(),
+      donnees ?? donneesDImpression(),
       configAImprimer(config),
     ]);
     if (!dessineQuelqueChose(aImprimer))
@@ -416,41 +679,224 @@ export async function fichierDImpression(
     cle = empreinte(aImprimer, data);
     fabriquer = () => renderPosterPdf(aImprimer, { data, format });
   }
-  const chemin = resolve(DOSSIER_IMPRESSIONS, `${orderItemId}-${cle}.pdf`);
+  return { chemin: resolve(DOSSIER_IMPRESSIONS, `${orderItemId}-${cle}.pdf`), fabriquer };
+}
 
+/**
+ * Lance (ou rejoint) la fabrication d'un fichier. Une fabrication déjà en
+ * file pour ce fichier est rejointe — et remonte si l'on est plus pressé
+ * qu'elle — au lieu d'en lancer une seconde à côté.
+ */
+function fabriquerEnFile(
+  orderItemId: number,
+  plan: Plan,
+  priorite: Priorite,
+): Promise<Buffer> {
+  const deja = fabrications.get(plan.chemin);
+  if (deja) {
+    remonter(deja.tache, priorite);
+    return deja.promesse;
+  }
+  const { tache, promesse } = mettreEnFile(priorite, async () => {
+    try {
+      const pdf = await plan.fabriquer();
+      if (await ranger(orderItemId, plan.chemin, pdf)) echecs.delete(plan.chemin);
+      else
+        // Le PDF part quand même à qui l'attend ; mais sans fichier rangé, le
+        // back-office ne le verrait jamais « prêt » — il le dit.
+        echecs.set(plan.chemin, {
+          erreur:
+            "le fichier a été calculé mais n'a pas pu être rangé sur le disque du serveur (plein ?). " +
+            "Il faudra le recalculer à chaque téléchargement.",
+          quand: Date.now(),
+        });
+      return pdf;
+    } catch (e) {
+      echecs.set(plan.chemin, { erreur: raisonLisible(e), quand: Date.now() });
+      throw e;
+    }
+  });
+  const suivie = promesse.finally(() => fabrications.delete(plan.chemin));
+  // Une préparation que personne n'attend ne doit pas faire tomber l'API en
+  // échouant : l'échec est gardé ci-dessus, et le back-office le dira.
+  suivie.catch(() => {});
+  fabrications.set(plan.chemin, { tache, promesse: suivie });
+  pomper();
+  return suivie;
+}
+
+/**
+ * Le PDF d'impression d'une ligne : le fichier rangé s'il existe, sinon
+ * fabriqué — en tête de file : quelqu'un l'attend —, rangé et rendu.
+ */
+export async function fichierDImpression(
+  orderItemId: number,
+  config: PosterConfig,
+): Promise<Buffer> {
+  const plan = await planDImpression(orderItemId, config);
   try {
-    const pdf = await readFile(chemin);
+    const pdf = await readFile(plan.chemin);
     const maintenant = new Date();
-    await utimes(chemin, maintenant, maintenant).catch(() => {});
+    await utimes(plan.chemin, maintenant, maintenant).catch(() => {});
     return pdf;
   } catch {
     // Pas encore fabriqué.
   }
-
-  let travail = enCours.get(chemin);
-  if (!travail) {
-    travail = aLaSuite(async () => {
-      const pdf = await fabriquer();
-      await ranger(orderItemId, chemin, pdf);
-      return pdf;
-    }).finally(() => enCours.delete(chemin));
-    enCours.set(chemin, travail);
-  }
-  return travail;
+  return fabriquerEnFile(orderItemId, plan, "demande");
 }
 
 /**
  * Lance la fabrication sans l'attendre — au paiement, pour que le fichier soit
  * prêt quand on viendra le chercher. Une erreur est journalisée, pas levée :
- * le téléchargement retentera, et dira ce qui ne va pas.
+ * le back-office la dira, et le téléchargement retentera.
  */
 export function preparerFichierDImpression(orderItemId: number, config: PosterConfig): void {
-  fichierDImpression(orderItemId, config).catch((e) =>
-    console.error(`[impression] ligne ${orderItemId} non préparée :`, e),
-  );
+  void (async () => {
+    const plan = await planDImpression(orderItemId, config);
+    if (await existe(plan.chemin)) return;
+    await fabriquerEnFile(orderItemId, plan, "preparation");
+  })().catch((e) => console.error(`[impression] ligne ${orderItemId} non préparée :`, e));
 }
 
-async function ranger(orderItemId: number, chemin: string, pdf: Buffer): Promise<void> {
+/** Ce que le back-office affiche d'un fichier d'impression. */
+export type EtatImpression =
+  | { etat: "pret"; taille: number }
+  | {
+      etat: "en_preparation";
+      /** Vrai quand le calcul tourne ; faux quand il attend son tour. */
+      lancee: boolean;
+      /** Combien de rendus passeront avant lui. */
+      devant: number;
+      /** Depuis combien de millisecondes il tourne (ou attend). */
+      depuis: number;
+    }
+  | { etat: "echec"; erreur: string }
+  | { etat: "a_preparer" };
+
+function enPreparation(tache: Tache): EtatImpression {
+  return {
+    etat: "en_preparation",
+    lancee: tache.lancee !== null,
+    devant: tache.lancee !== null ? 0 : attente.filter((t) => avant(t, tache)).length,
+    depuis: Date.now() - (tache.lancee ?? tache.creee),
+  };
+}
+
+/**
+ * Où en est le fichier d'impression d'une ligne — sans jamais attendre le
+ * calcul : le back-office pose la question, affiche la réponse, et repose la
+ * question tant que le fichier se prépare.
+ *
+ * `preparer` lance la fabrication d'un fichier absent (la boutique regarde la
+ * commande : elle va l'imprimer) ; `reessayer` relance même après un échec.
+ * Sans l'un ni l'autre, rien ne se calcule : la liste des commandes montre
+ * des dizaines de lignes, et les recalculer toutes à chaque visite occuperait
+ * le serveur pour des affiches parties depuis longtemps.
+ */
+export async function etatDuFichierDImpression(
+  orderItemId: number,
+  config: PosterConfig,
+  options: { preparer?: boolean; reessayer?: boolean; donnees?: ResolveData } = {},
+): Promise<EtatImpression> {
+  let plan: Plan;
+  try {
+    plan = await planDImpression(orderItemId, config, options.donnees);
+  } catch (e) {
+    return { etat: "echec", erreur: raisonLisible(e) };
+  }
+  const enFabrication = fabrications.get(plan.chemin);
+  if (enFabrication) {
+    if (options.preparer || options.reessayer) remonter(enFabrication.tache, "demande");
+    return enPreparation(enFabrication.tache);
+  }
+  try {
+    const s = await stat(plan.chemin);
+    if (s.isFile()) return { etat: "pret", taille: s.size };
+  } catch {
+    // Pas encore fabriqué.
+  }
+  if (options.reessayer) echecs.delete(plan.chemin);
+  const echec = echecs.get(plan.chemin);
+  if (echec) return { etat: "echec", erreur: echec.erreur };
+  if (!options.preparer && !options.reessayer) return { etat: "a_preparer" };
+  void fabriquerEnFile(orderItemId, plan, "demande");
+  const lancee = fabrications.get(plan.chemin);
+  return lancee ? enPreparation(lancee.tache) : { etat: "a_preparer" };
+}
+
+/**
+ * Au démarrage de l'API, refait d'avance les fichiers des commandes à
+ * expédier qui ne sont plus à jour.
+ *
+ * Une mise en ligne qui touche au rendu change l'empreinte de TOUS les
+ * fichiers (voir LANCEMENT) : sans cette préparation, chacun se refaisait au
+ * premier clic de la boutique — c'est-à-dire, sur le serveur de test, pendant
+ * qu'elle attendait. Seules les commandes payées, ni expédiées, ni annulées,
+ * ni archivées, des soixante derniers jours : les autres ne s'impriment plus,
+ * et se recalculeront le jour d'une réimpression.
+ *
+ * Une minute après le démarrage, pour laisser l'API répondre d'abord ; un
+ * fichier à la fois, après tout ce que la boutique demande.
+ */
+export function demarrerPreparationDesImpressions(): void {
+  const minuterie = setTimeout(() => void preparerLesCommandesAExpedier(), 60_000);
+  minuterie.unref?.();
+}
+
+async function preparerLesCommandesAExpedier(): Promise<void> {
+  try {
+    const depuis = new Date(Date.now() - JOURS_DE_GARDE * 24 * 3600 * 1000);
+    const lignes = await db
+      .select({ id: schema.orderItems.id, config: schema.orderItems.config })
+      .from(schema.orderItems)
+      .innerJoin(schema.orders, eq(schema.orderItems.orderId, schema.orders.id))
+      .where(
+        and(
+          eq(schema.orders.status, "paid"),
+          isNull(schema.orders.fulfilledAt),
+          isNull(schema.orders.archivedAt),
+          gte(schema.orders.createdAt, depuis),
+        ),
+      )
+      .orderBy(desc(schema.orders.createdAt), asc(schema.orderItems.id))
+      .limit(300);
+    if (!lignes.length) return;
+    const donnees = await donneesDImpression();
+    let lancees = 0;
+    for (const ligne of lignes) {
+      if (!ligne.config) continue;
+      try {
+        const plan = await planDImpression(ligne.id, ligne.config as PosterConfig, donnees);
+        if (fabrications.has(plan.chemin) || (await existe(plan.chemin))) continue;
+        void fabriquerEnFile(ligne.id, plan, "preparation");
+        lancees++;
+      } catch (e) {
+        // Un refus (visuel trop petit, fichier manquant…) : le back-office le
+        // dira quand on ouvrira la commande.
+        console.warn(`[impression] ligne ${ligne.id} : ${raisonLisible(e)}`);
+      }
+    }
+    if (lancees)
+      console.log(
+        `[impression] ${lancees} fichier(s) d'impression de commandes à expédier préparé(s) d'avance`,
+      );
+  } catch (e) {
+    console.error("[impression] préparation d'avance interrompue :", e);
+  }
+}
+
+/** Un fichier existe-t-il déjà ? */
+async function existe(chemin: string): Promise<boolean> {
+  try {
+    return (await stat(chemin)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** Range le PDF ; faux s'il n'a pas pu l'être. */
+async function ranger(orderItemId: number, chemin: string, pdf: Buffer): Promise<boolean> {
+  let range = true;
   try {
     await mkdir(DOSSIER_IMPRESSIONS, { recursive: true });
     // Écrit à côté puis renommé : un téléchargement qui lirait le fichier
@@ -467,8 +913,10 @@ async function ranger(orderItemId: number, chemin: string, pdf: Buffer): Promise
     // Un disque plein ne doit pas empêcher d'imprimer : le PDF est là, en
     // mémoire, simplement pas rangé pour la prochaine fois.
     console.warn("[impression] PDF non rangé :", String(e));
+    range = await existe(chemin);
   }
   void menageDuCache();
+  return range;
 }
 
 /**

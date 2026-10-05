@@ -37,6 +37,8 @@ import {
 import {
   CODES_NATURE,
   NATURES_LIVRAISON,
+  REGLAGE_BANDEAUX_VISUELS,
+  bandeauxPublics,
   formaterPoids,
   normaliserCode,
 } from "@memoryline/types";
@@ -75,7 +77,7 @@ import { mountProduitsMasse } from "./produits-masse.js";
 import { mountVentesProduit } from "./ventes-produit.js";
 import { mountFicheProduit } from "./fiche-produit.js";
 import { mountCms } from "./cms.js";
-import { mountCollections } from "./collections.js";
+import { mountCollections, ordreDesCollections } from "./collections.js";
 import { mountImportProduits } from "./import-produits.js";
 import { mountCartesCadeaux } from "./cartes-cadeaux.js";
 import { mountLettre } from "./lettre.js";
@@ -99,6 +101,8 @@ import {
 } from "./ordre-affichage.js";
 import { demarrerPurgeIa, mountIaRoutes } from "./ia.js";
 import { demarrerMenageRelais, mountRelaisPhotoRoutes } from "./ia-relais.js";
+import { demarrerPreparationDesImpressions } from "./fichiers-impression.js";
+import { demarrerMesureDesPieces } from "./couleur-principale.js";
 import { mountContact } from "./contact.js";
 
 const app = new Hono();
@@ -227,9 +231,12 @@ const MIME: Record<string, string> = {
  *
  * Une liste fermee, parce qu'une largeur libre est un disque qu'on remplit :
  * il suffirait de demander mille largeurs d'une meme image pour ecrire mille
- * fichiers. Ces cinq-la couvrent la grille, la fiche et le grand ecran.
+ * fichiers. Les cinq premieres couvrent la grille, la fiche et le grand
+ * ecran ; 1920 et 2560 servent les bandeaux visuels, bord a bord sur un ecran
+ * de 1920 px ou de 1440 px en haute definition (LARGEURS_BANDEAU) — en 1400,
+ * ils y paraissaient flous, et l'original pese souvent dix fois plus.
  */
-const LARGEURS_SERVIES = [200, 400, 600, 900, 1400] as const;
+const LARGEURS_SERVIES = [200, 400, 600, 900, 1400, 1920, 2560] as const;
 
 /** Le dossier ou l'on range les tailles calculees. Jamais les originaux. */
 const TAILLES_DIR = resolve(ASSETS_DIR, "tailles");
@@ -884,7 +891,8 @@ app.get("/collections", async (c) => {
       schema.collections.translations,
       schema.collections.position,
     )
-    .orderBy(asc(schema.collections.position), asc(schema.collections.name));
+    // L'ordre réglé au back-office (écran « Collections »), comme partout.
+    .orderBy(...ordreDesCollections());
   // Le dictionnaire ne sort pas : le site reçoit le texte de SA langue.
   return c.json(
     rows.map(({ position: _p, translations, ...r }) => ({
@@ -1063,9 +1071,19 @@ app.get("/settings", async (c) => {
   const filtered = (group ? rows.filter((r) => r.group === group) : rows).filter(
     (r) => !PREFIXES_PRIVES.some((p) => r.key.startsWith(p)),
   );
+  // Les bandeaux visuels : un tableau, traductions comprises, que le site lit
+  // dans sa langue — mais seulement ceux qui sont en ligne À CET INSTANT. Un
+  // bandeau éteint ou programmé (l'offre de Noël préparée en novembre) n'a
+  // pas à être lisible par tout le monde avant l'heure.
+  const maintenant = new Date();
   return c.json(
     Object.fromEntries(
-      filtered.map((r) => [r.key, valeurDansLaLangue(r.value, langue)]),
+      filtered.map((r) => [
+        r.key,
+        r.key === REGLAGE_BANDEAUX_VISUELS
+          ? bandeauxPublics(r.value, maintenant)
+          : valeurDansLaLangue(r.value, langue),
+      ]),
     ),
   );
 });
@@ -3362,6 +3380,14 @@ serve({ fetch: app.fetch, port }, (info) => {
   // puis toutes les heures. Sans elle, une photo envoyée pour un aperçu
   // restait sur le disque tant que personne ne cliquait au back-office.
   demarrerPurgeIa();
+  // Les fichiers d'impression des commandes à expédier, refaits d'avance
+  // quand une mise en ligne a changé le rendu (apps/api/src/fichiers-impression.ts) :
+  // sans cela, chacun se refaisait au premier clic de la boutique.
+  demarrerPreparationDesImpressions();
+  // La couleur principale des pièces (apps/api/src/couleur-principale.ts) :
+  // celles jamais mesurées, ou dont le dessin a changé, le sont en
+  // arrière-plan — quelques secondes pour toute la bibliothèque.
+  demarrerMesureDesPieces();
 });
 
 export type AppType = typeof app;

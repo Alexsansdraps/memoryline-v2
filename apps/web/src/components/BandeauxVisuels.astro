@@ -1,0 +1,164 @@
+---
+/**
+ * Les bandeaux visuels d'une page — la « bannière avec image » de l'ancienne
+ * boutique Shopify : une image bord à bord sous l'en-tête, un texte posé
+ * dessus, un bouton ou l'image entière vers un lien.
+ *
+ * Tout se règle au back-office (« Bandeaux visuels ») : l'image, le texte, sa
+ * position et son style, la hauteur, les pages, les dates. Plusieurs
+ * bandeaux sur une même page s'empilent dans l'ordre de la liste.
+ *
+ * Le PREMIER bandeau de la page est ce que le visiteur voit en arrivant : son
+ * image part en priorité (fetchpriority), les suivants attendent qu'on s'en
+ * approche. La hauteur est réservée avant l'arrivée de l'image
+ * (bandeaux-visuels.css) : la page ne saute pas quand elle se charge.
+ *
+ * Deux mises en page. La bannière, d'abord. Puis « côte à côte » : l'ancien
+ * encart de l'accueil, rendu ici avec exactement les classes qu'il avait,
+ * pour qu'un encart repris tel quel s'affiche comme avant, au pixel près.
+ */
+import "@memoryline/types/bandeaux-visuels.css";
+import {
+  LARGEURS_BANDEAU,
+  classesBanniere,
+  lienBandeau,
+  styleBanniere,
+  texteBandeau,
+} from "@memoryline/types";
+import { assetSrcset, assetUrl, bandeauxVisuels } from "../lib/api.ts";
+import { lien, type Langue } from "../i18n/utils.ts";
+
+interface Props {
+  /** Les clés de la page : « accueil », « rayon:villes », « page:cookies »… */
+  pages: string[];
+  langue: Langue;
+}
+const { pages, langue } = Astro.props;
+
+const bandeaux = await bandeauxVisuels(pages, langue);
+
+/**
+ * L'adresse du lien, prête à être cliquée. Une adresse du site reçoit le
+ * préfixe de la langue, comme celles du menu et du bandeau d'annonce : sans
+ * lui, la visiteuse anglaise repartirait sur la page française. Une adresse
+ * https part telle quelle.
+ */
+function adresse(href: string): string {
+  if (!href.startsWith("/")) return href;
+  const [chemin, requete] = href.split("?");
+  return lien(langue, chemin || "/") + (requete ? `?${requete}` : "");
+}
+---
+
+{
+  bandeaux.map((b, rang) => {
+    const premier = rang === 0;
+    const titre = texteBandeau(b, "titre", langue);
+    const texte = texteBandeau(b, "texte", langue);
+    const bouton = texteBandeau(b, "bouton", langue);
+    const alt = texteBandeau(b, "alt", langue);
+    const cible = lienBandeau(b.lien);
+    const href = cible ? adresse(cible) : "";
+
+    if (b.miseEnPage === "cote-a-cote")
+      // L'ancien encart d'accueil, classe pour classe. Seuls ajouts, sans
+      // effet sur le dessin : les dimensions de l'image quand on les connaît
+      // (la place est réservée), et le chargement différé des suivants.
+      return (
+        <section class="w-full px-6 pt-10 lg:px-12">
+          <div class="mx-auto grid max-w-[1200px] items-center gap-8 sm:grid-cols-2">
+            <img
+              src={assetUrl(b.image) ?? b.image}
+              srcset={assetSrcset(b.image, [400, 600, 900, 1400])}
+              sizes="(min-width: 640px) 50vw, 100vw"
+              alt={alt || titre}
+              width={b.imageLargeur ?? undefined}
+              height={b.imageHauteur ?? undefined}
+              loading={premier ? "eager" : "lazy"}
+              fetchpriority={premier ? "high" : "auto"}
+              class="w-full rounded-lg object-cover"
+            />
+            <div>
+              {titre && <h2 class="text-3xl leading-tight">{titre}</h2>}
+              {texte && (
+                <p class="mt-4 text-lg leading-relaxed text-ink-soft">{texte}</p>
+              )}
+              {bouton && href && (
+                <a
+                  href={href}
+                  class="mt-8 inline-block bg-ink px-8 py-3 font-medium text-paper transition-colors hover:bg-ink/85"
+                >
+                  {bouton}
+                </a>
+              )}
+            </div>
+          </div>
+        </section>
+      );
+
+    /*
+     * Toute l'image mène au lien quand la boutique l'a demandé — ou quand
+     * il n'y a pas de bouton pour le porter. Un SEUL lien alors, la bannière
+     * entière : un arrêt de tabulation, et un nom de lien fait de la
+     * description de l'image et des textes. Le « bouton » n'en est plus que
+     * l'habit (un <span>) : deux liens vers la même adresse, l'un dans
+     * l'autre, seraient invalides et annoncés deux fois.
+     */
+    const entiere = !!href && (b.imageCliquable || !bouton);
+    const Racine = entiere ? "a" : "div";
+    const avecTexte = !!(titre || texte || (bouton && href));
+    return (
+      <div class="ml-bv-cadre">
+        <Racine
+          href={entiere ? href : undefined}
+          class={classesBanniere(b)}
+          style={styleBanniere(b)}
+        >
+          <picture class="ml-bv-media">
+            {b.imageMobile && (
+              <source
+                media="(max-width: 639.98px)"
+                srcset={
+                  assetSrcset(b.imageMobile, LARGEURS_BANDEAU) ??
+                  assetUrl(b.imageMobile) ??
+                  b.imageMobile
+                }
+                sizes="100vw"
+                width={b.imageMobileLargeur ?? undefined}
+                height={b.imageMobileHauteur ?? undefined}
+              />
+            )}
+            <img
+              src={assetUrl(b.image, 1400) ?? b.image}
+              srcset={assetSrcset(b.image, LARGEURS_BANDEAU)}
+              sizes="100vw"
+              alt={alt}
+              width={b.imageLargeur ?? undefined}
+              height={b.imageHauteur ?? undefined}
+              loading={premier ? "eager" : "lazy"}
+              fetchpriority={premier ? "high" : "auto"}
+              decoding={premier ? "auto" : "async"}
+            />
+          </picture>
+          {avecTexte && (
+            <div class="ml-bv-contenu">
+              <div class="ml-bv-boite">
+                {titre && <h2 class="ml-bv-titre">{titre}</h2>}
+                {texte && <p class="ml-bv-texte">{texte}</p>}
+                {bouton &&
+                  href &&
+                  (entiere ? (
+                    <span class="ml-bv-bouton">{bouton}</span>
+                  ) : (
+                    <a class="ml-bv-bouton" href={href}>
+                      {bouton}
+                    </a>
+                  ))}
+              </div>
+            </div>
+          )}
+        </Racine>
+      </div>
+    );
+  })
+}

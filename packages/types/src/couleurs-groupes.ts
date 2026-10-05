@@ -410,17 +410,132 @@ export function groupesProposesDeLaBase(base: DessinDeBase): GroupeCouleur[] {
 /** Ce qu'il faut savoir d'une pièce pour ses couleurs. */
 export interface DessinDePiece {
   colorZones?: Record<string, string> | null;
-  /** Zones de référence des groupes que le client ne peut pas changer. */
+  /**
+   * Le réglage PROPRE à la pièce : les zones de référence des groupes que le
+   * client ne peut pas changer (cases « Proposée au client » du back-office).
+   * Une liste, même vide, a le dernier mot sur la catégorie ; `null` (ou
+   * absent) : la pièce suit le réglage de sa catégorie.
+   */
   zonesMasquees?: readonly string[] | null;
   groupesCouleurs?: unknown;
+  /**
+   * La part du dessin que peint chaque zone (0 à 1), mesurée par l'API sur un
+   * rendu de la pièce : c'est elle qui désigne la couleur principale. Absente
+   * (pas encore mesurée), la principale est le premier groupe.
+   */
+  partsDesZones?: Readonly<Record<string, number>> | null;
 }
 
-/** Les groupes d'une pièce que le client peut recolorer, dans l'ordre. */
-export function groupesProposesDeLaPiece(piece: DessinDePiece): GroupeCouleur[] {
-  const masquees = Array.isArray(piece.zonesMasquees) ? piece.zonesMasquees : [];
-  return groupesDuDessin(piece.colorZones, piece.groupesCouleurs).filter(
-    (g) => !masquees.includes(g.zone),
-  );
+/* -------------------------------------------------------------------------- */
+/*  Couleurs proposées : la règle de la catégorie                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Ce qu'une catégorie de pièces propose au client, pour chacune de ses
+ * pièces qui n'a pas son propre réglage :
+ *   - « toutes » : une rangée de pastilles par couleur de la pièce — la seule
+ *     règle avant ce réglage, et toujours celle par défaut ;
+ *   - « principale » : la couleur principale seulement (cf. groupePrincipal),
+ *     nuances comprises. Les détails — ruban d'un chapeau, verres d'une paire
+ *     de lunettes — gardent la couleur du dessin.
+ *
+ * La cliente masquait le ruban pièce par pièce ; un seul réglage par
+ * catégorie suffit désormais. Une pièce qui a ses propres cases garde le
+ * dernier mot : un vêtement à deux couleurs principales reste à deux.
+ */
+export const COULEURS_PROPOSEES = ["toutes", "principale"] as const;
+export type CouleursProposees = (typeof COULEURS_PROPOSEES)[number];
+
+/** Une valeur venue de la base ou d'un formulaire, ramenée à une règle connue. */
+export function couleursProposees(brut: unknown): CouleursProposees {
+  return brut === "principale" ? "principale" : "toutes";
+}
+
+/**
+ * La couleur PRINCIPALE d'un dessin : le groupe qui en couvre la plus grande
+ * part, nuances comprises — la calotte d'un chapeau plutôt que son ruban.
+ *
+ * La surface plutôt que le rang : dans les dessins d'Illustrator, la zone
+ * « st0 » est souvent un petit détail (les chaussures d'un pantalon, le
+ * contour d'une casquette). À part égale, ou faute de mesure, le premier
+ * groupe : celui que le back-office montre en premier.
+ */
+export function groupePrincipal(
+  groupes: readonly GroupeCouleur[],
+  parts?: Readonly<Record<string, number>> | null,
+): GroupeCouleur | undefined {
+  let principal = groupes[0];
+  if (!parts) return principal;
+  let meilleure = -1;
+  for (const g of groupes) {
+    const part = zonesDuGroupe(g).reduce((s, z) => {
+      const p = parts[z];
+      return s + (typeof p === "number" && Number.isFinite(p) ? p : 0);
+    }, 0);
+    // Strictement plus grand : à égalité, le premier reste principal.
+    if (part > meilleure) {
+      meilleure = part;
+      principal = g;
+    }
+  }
+  return principal;
+}
+
+/**
+ * Les groupes d'une pièce que le client peut recolorer, dans l'ordre.
+ *
+ * - Réglage propre à la pièce (`zonesMasquees` est une liste) : tous les
+ *   groupes sauf ceux qu'il masque. Il a toujours le dernier mot.
+ * - Sinon, la règle de sa catégorie : la couleur principale seule, ou toutes.
+ *   Sans catégorie (ou catégorie archivée, décochée), toutes.
+ */
+export function groupesProposesDeLaPiece(
+  piece: DessinDePiece,
+  regle?: CouleursProposees | null,
+): GroupeCouleur[] {
+  const groupes = groupesDuDessin(piece.colorZones, piece.groupesCouleurs);
+  if (Array.isArray(piece.zonesMasquees)) {
+    const masquees = piece.zonesMasquees;
+    return groupes.filter((g) => !masquees.includes(g.zone));
+  }
+  if (regle === "principale") {
+    const principal = groupePrincipal(groupes, piece.partsDesZones);
+    return principal ? [principal] : [];
+  }
+  return groupes;
+}
+
+/**
+ * Les couleurs à ÉCRIRE pour les groupes qu'une pièce ne propose pas : leurs
+ * couleurs par défaut, nuances comprises, sous les clés de l'emplacement
+ * (« accessory:st1 »).
+ *
+ * Le configurateur les écrit dans la configuration quand le client choisit la
+ * pièce. Sans cela, la couleur d'une autre pièce du même emplacement (choisie
+ * avant, sous la même zone) resterait accrochée à un détail que le client ne
+ * peut plus changer.
+ *
+ * C'est aussi ce qui laisse l'impression intacte : un groupe que la
+ * CATÉGORIE ne propose pas n'est pas forcé à son défaut au rendu (à la
+ * différence des cases de la pièce, cf. couleursDeLaPiece). L'écran et le
+ * papier dessinent la configuration telle qu'elle est enregistrée, et une
+ * commande passée avant le réglage garde exactement les couleurs choisies.
+ */
+export function couleursDesGroupesNonProposes(
+  scope: string,
+  piece: DessinDePiece,
+  regle?: CouleursProposees | null,
+): Record<string, string> {
+  const proposes = new Set(groupesProposesDeLaPiece(piece, regle).map((g) => g.zone));
+  const out: Record<string, string> = {};
+  for (const g of groupesDuDessin(piece.colorZones, piece.groupesCouleurs)) {
+    if (proposes.has(g.zone)) continue;
+    for (const z of zonesDuGroupe(g)) {
+      const defaut = piece.colorZones?.[z];
+      if (defaut) out[colorKey(scope, z)] = defaut;
+    }
+  }
+  return out;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -443,6 +558,12 @@ export function groupesProposesDeLaPiece(piece: DessinDePiece): GroupeCouleur[] 
  * référence et nuances —, même si la configuration en porte d'autres : un
  * panier rempli avant que le groupe soit décoché garde sa couleur en mémoire,
  * et le client n'aurait plus aucun moyen de la changer.
+ *
+ * SEULES LES CASES DE LA PIÈCE forcent ainsi le défaut. Un groupe que sa
+ * CATÉGORIE ne propose pas (« seulement la couleur principale ») se dessine
+ * avec la couleur enregistrée : le configurateur y écrit le défaut quand on
+ * choisit la pièce (couleursDesGroupesNonProposes), et une commande passée
+ * avant ce réglage s'imprime exactement comme avant.
  *
  * Sans couleur par défaut connue pour une zone, on retire simplement la
  * surcharge : le dessin garde la couleur écrite dans son fichier.

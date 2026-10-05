@@ -8,6 +8,7 @@ import {
 } from "@memoryline/types";
 import type { CadreDTO, ConfiguratorState } from "../store";
 import type { MessagesConfigurateur } from "../messages";
+import { ZoneDefilante } from "./Defilement";
 
 /**
  * Étape 3 : choix du format (A4 / A3).
@@ -77,20 +78,17 @@ export function StepFormat(props: {
     "scroll-snap-align": "start",
   });
 
-  // Le rail des cadres défile horizontalement. On surveille s'il déborde
-  // pour n'afficher le dégradé de bord que dans ce cas : un dégradé permanent
-  // ferait croire à un contenu caché alors que tout est visible.
+  // Le rail des cadres défile horizontalement : ses flèches et sa barre sont
+  // celles de toutes les listes (ZoneDefilante). Elles remplacent le dégradé
+  // de bord d'avant, qui recouvrait justement la moitié de vignette servant
+  // d'indice, et ne se voyait guère sur le fond blanc.
   const [rail, setRail] = createSignal<HTMLDivElement>();
-  const [deborde, setDeborde] = createSignal(false);
   const mesurer = () => {
     const el = rail();
     if (!el) return;
     setLargeur(
       largeurPourApercu(el.clientWidth, (props.cadres?.length ?? 0) + 1),
     );
-    // Reste-t-il quelque chose à droite ? Arrivé au bout, le dégradé
-    // disparaît : sinon il laisserait croire qu'il y a encore des cadres.
-    setDeborde(el.scrollWidth - el.clientWidth - el.scrollLeft > 4);
   };
   const brancherRail = (el: HTMLDivElement) => {
     setRail(el);
@@ -133,6 +131,11 @@ export function StepFormat(props: {
             <button
               type="button"
               onClick={() => props.onSelect(fmt)}
+              // L'état, lisible par un lecteur d'écran, et les marques du
+              // choix fait posées par le site (`ml-choix`) ; le style en
+              // ligne reste le repli du module seul.
+              aria-pressed={props.state.format === fmt}
+              class="ml-choix"
               style={tile(props.state.format === fmt)}
             >
               <div>{fmt}</div>
@@ -159,25 +162,27 @@ export function StepFormat(props: {
           <h3 style={{ "font-weight": "700", "margin-bottom": "10px" }}>
             {m().cadre}
           </h3>
-          <div style={{ position: "relative" }}>
-            <div
-              ref={brancherRail}
-              onScroll={mesurer}
-              class="ml-cfg-rail"
-              style={{
-                display: "flex",
-                gap: "10px",
-                "flex-wrap": "nowrap",
-                "overflow-x": "auto",
-                "scroll-snap-type": "x proximity",
-                // Un peu d'air à droite pour que la dernière vignette ne colle
-                // pas au dégradé.
-                "padding-bottom": "4px",
-              }}
-            >
+          <ZoneDefilante
+            sens="horizontal"
+            versDebut={m().precedent}
+            versFin={m().suivant}
+            ref={brancherRail}
+            onScroll={mesurer}
+            class="ml-cfg-rail"
+            style={{
+              display: "flex",
+              gap: "10px",
+              "flex-wrap": "nowrap",
+              "overflow-x": "auto",
+              "scroll-snap-type": "x proximity",
+              "padding-bottom": "4px",
+            }}
+          >
             <button
               type="button"
               onClick={() => props.onSelectCadre(null)}
+              aria-pressed={props.state.frameId == null}
+              class="ml-choix"
               style={{
                 ...tile(props.state.frameId == null),
                 ...largeurVignette(),
@@ -191,6 +196,8 @@ export function StepFormat(props: {
                 <button
                   type="button"
                   onClick={() => props.onSelectCadre(cadre.id)}
+                  aria-pressed={String(props.state.frameId) === String(cadre.id)}
+                  class="ml-choix"
                   style={{
                     ...tile(String(props.state.frameId) === String(cadre.id)),
                     ...largeurVignette(),
@@ -227,24 +234,7 @@ export function StepFormat(props: {
                 </button>
               )}
             </For>
-            </div>
-            {/* Voile de bord : signale qu'il reste des cadres à droite. */}
-            <Show when={deborde()}>
-              <span
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  top: "0",
-                  right: "0",
-                  bottom: "4px",
-                  width: "28px",
-                  "pointer-events": "none",
-                  background:
-                    "linear-gradient(to right, rgba(255,255,255,0), #fff)",
-                }}
-              />
-            </Show>
-          </div>
+          </ZoneDefilante>
         </>
       )}
     </div>

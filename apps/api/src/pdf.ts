@@ -176,6 +176,71 @@ export interface ResolveData {
   characters?: Map<string, ResolvedCharacter>;
   /** backgroundId (string) -> ResolvedBackground. */
   backgrounds?: Map<string, ResolvedBackground>;
+  /** La signature à poser en bas à droite, ou rien (réglage éteint). */
+  signature?: SignatureAffiche | null;
+}
+
+/**
+ * La signature de la boutique, posée en bas à droite de CHAQUE création —
+ * affiches personnalisées comme affiches tirées d'une photo.
+ *
+ * Réglée au back-office (Contenu du site › Signature des créations) : son
+ * image, sa taille et sa marge. Les tailles sont des fractions du PETIT côté
+ * de l'affiche, comme le texte : la signature d'une affiche en paysage n'est
+ * pas plus grosse que celle d'un portrait, ni celle d'un A3 que celle d'un A4
+ * sur la feuille, à l'échelle près.
+ */
+export interface SignatureAffiche {
+  /** L'image (PNG transparent conseillé, ou SVG), déjà lue. */
+  image: Buffer;
+  /** Largeur, en fraction du petit côté (0,12 = 12 %). */
+  largeur: number;
+  /** Marge depuis les bords droit et bas, même unité. */
+  marge: number;
+  /** Opacité, de 0 à 1. */
+  opacite: number;
+  /** Ce qui l'identifie dans l'empreinte des fichiers d'impression. */
+  empreinte: string;
+}
+
+/** La signature prête à poser sur une affiche de W × H, ou null. */
+async function signaturePosee(
+  s: SignatureAffiche | null | undefined,
+  W: number,
+  H: number,
+): Promise<OverlayOptions | null> {
+  if (!s) return null;
+  const petitCote = Math.min(W, H);
+  const largeur = Math.max(1, Math.round(petitCote * s.largeur));
+  const marge = Math.round(petitCote * s.marge);
+  try {
+    // density haute : un logo vectoriel reste net une fois agrandi à 300 dpi.
+    let image = sharp(s.image, { density: 300 })
+      .resize({ width: largeur })
+      .ensureAlpha();
+    if (s.opacite < 1)
+      // L'opacité multiplie la couche de transparence de l'image : le blanc
+      // d'un PNG opaque, lui, reste visible — d'où le PNG transparent conseillé.
+      image = sharp(await image.png().toBuffer()).composite([
+        {
+          input: Buffer.from([255, 255, 255, Math.round(255 * s.opacite)]),
+          raw: { width: 1, height: 1, channels: 4 },
+          tile: true,
+          blend: "dest-in",
+        },
+      ]);
+    const { data, info } = await image.png().toBuffer({ resolveWithObject: true });
+    return {
+      input: data,
+      left: Math.max(0, W - marge - info.width),
+      top: Math.max(0, H - marge - info.height),
+    };
+  } catch (e) {
+    // Une image illisible ne doit pas empêcher d'imprimer : l'affiche part
+    // sans signature, et la raison reste dans le journal.
+    console.warn("[impression] signature illisible :", String(e));
+    return null;
+  }
 }
 
 /** Options de rendu. */
@@ -731,6 +796,10 @@ export async function renderPosterPng(
     });
   }
 
+  // 4) La signature de la boutique, en bas à droite, par-dessus tout le reste.
+  const signature = await signaturePosee(opts.data.signature, W, H);
+  if (signature) composites.push(signature);
+
   const { data: affiche, info } = await base
     .composite(composites)
     .raw()
@@ -874,8 +943,45 @@ const DOSSIER_FONDS = resolve(ASSETS_DIR, "cache", "fonds");
 /** Les rasterisations en cours : deux rendus du même fond n'en lancent qu'une. */
 const fondsEnCours = new Map<string, Promise<Buffer>>();
 
+/**
+ * Les images WebP collées DANS un fond SVG (« data:image/webp;base64,… »),
+ * converties en PNG.
+ *
+ * Le moteur qui dessine les SVG (librsvg, dans sharp) ne sait pas lire le
+ * WebP : il laisse l'image de côté, SANS erreur. Le navigateur, lui, l'affiche.
+ * Le client validait donc à l'écran une affiche complète, et l'atelier
+ * recevait une feuille presque blanche, avec un titre blanc invisible —
+ * douze fonds étaient dans ce cas (Ault, Berck, Soissons, Vieux-Moulin…).
+ * sharp, en revanche, sait décoder le WebP : on convertit chaque image avant
+ * de confier le SVG au moteur de dessin.
+ */
+async function sansWebp(svg: Buffer): Promise<Buffer> {
+  if (!svg.includes("data:image/webp")) return svg;
+  const texte = svg.toString("utf8");
+  const morceaux: string[] = [];
+  let reprise = 0;
+  for (const m of texte.matchAll(/data:image\/webp;base64,([A-Za-z0-9+/=\s]+)/g)) {
+    const png = await sharp(Buffer.from(m[1]!.replace(/\s+/g, ""), "base64"), {
+      unlimited: true,
+    })
+      .png()
+      .toBuffer();
+    morceaux.push(texte.slice(reprise, m.index), `data:image/png;base64,${png.toString("base64")}`);
+    reprise = m.index! + m[0].length;
+  }
+  morceaux.push(texte.slice(reprise));
+  return Buffer.from(morceaux.join(""), "utf8");
+}
+
 async function fondSvgRasterise(svg: Buffer, W: number, H: number): Promise<Buffer> {
-  const cle = `${createHash("sha1").update(svg).digest("hex")}-${W}x${H}`;
+  // Un fond qui contenait du WebP a pu être rangé BLANC dans le cache avant
+  // la conversion : sa clé change, pour qu'il soit redessiné une fois. Les
+  // autres fonds gardent la leur, et leur image déjà calculée.
+  const contientWebp = svg.includes("data:image/webp");
+  const cle = `${createHash("sha1")
+    .update(svg)
+    .update(contientWebp ? "webp→png" : "")
+    .digest("hex")}-${W}x${H}`;
   const chemin = resolve(DOSSIER_FONDS, `${cle}.png`);
   try {
     const deja = await readFile(chemin);
@@ -899,7 +1005,7 @@ async function fondSvgRasterise(svg: Buffer, W: number, H: number): Promise<Buff
       // unlimited:true → autorise les gros SVG de villes (sinon sharp lève
       // "Buffer size limit exceeded"). density réduite à 150 (suffisant en cover).
       const pixels = await sharp(
-        plusGrand ?? svg,
+        plusGrand ?? (await sansWebp(svg)),
         plusGrand ? undefined : { density: 150, unlimited: true },
       )
         .resize({ width: W, height: H, fit: "cover", position: "centre" })

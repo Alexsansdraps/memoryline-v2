@@ -511,7 +511,7 @@ export default function CartIsland(props: {
           la vente est enregistrée, et « Ajouter une autre affiche » ne reste
           pas affiché au-dessus d'une commande close. */}
       <Show when={props.stand}>
-        <div class="mt-4 mb-8 flex flex-wrap items-baseline justify-between gap-4">
+        <div class="mt-4 mb-6 flex flex-wrap items-baseline justify-between gap-4">
           <h1 class="text-3xl sm:text-4xl">{tr("stand.titre")}</h1>
           <a
             href={lien(langue, "/affiches")}
@@ -568,6 +568,19 @@ export default function CartIsland(props: {
             {tr("panier.cadres_retires")}
           </p>
         </Show>
+        {/* Au stand, sur la tablette : les affiches à gauche, la validation
+            à droite. Empilées, elles faisaient défiler la page, et « Valider
+            mon affiche » tombait sous le bord de l'écran — devant un client
+            qui attend, il faut tout voir d'un coup. Sur le site, rien ne
+            change : les totaux et le paiement suivent la liste. */}
+        <div
+          class={
+            props.stand
+              ? "md:grid md:grid-cols-[minmax(0,1fr)_20rem] md:items-start md:gap-10"
+              : ""
+          }
+        >
+        <div>
         {/* Trois colonnes comme sur une facture : ce qu'on achète, combien,
             pour quel montant. Sur mobile, la quantité et le total passent
             sous la description plutôt que de serrer trois colonnes. */}
@@ -745,10 +758,11 @@ export default function CartIsland(props: {
             }}
           </For>
         </ul>
+        </div>
 
         {/* Au stand : la validation, à la place des totaux et du paiement. */}
         <Show when={props.stand}>
-          <div class="mt-10">
+          <div class="mt-10 md:sticky md:top-6 md:mt-0">
             <CommandeStand
               langue={langue}
               nombre={exemplaires()}
@@ -757,6 +771,7 @@ export default function CartIsland(props: {
             />
           </div>
         </Show>
+        </div>
 
         {/* Totaux, alignés à droite comme sur une facture. */}
         <Show when={!props.stand}>

@@ -15,6 +15,7 @@ import { unwrap } from "solid-js/store";
 import {
   BASE_COLOR_SCOPE,
   colorKey,
+  couleursDesGroupesNonProposes,
   couleursDuGroupePourScope,
   groupesDuDessin,
   ligneEnMajuscules,
@@ -36,6 +37,7 @@ import {
   createSvgCache,
   defaultCharacter,
   findVariant,
+  regleDeLaPiece,
   slotsForCharacter,
   variantesDeVue,
   NONE_ASSET,
@@ -52,7 +54,7 @@ import {
   type MessagesConfigurateur,
 } from "./messages";
 import { Button } from "./components/ui";
-import { BarreActions } from "./components/Defilement";
+import { BarreActions, brancherBarreDeLaFenetre } from "./components/Defilement";
 
 /** Produit minimal injecté par l'hôte (pas d'appel réseau interne). */
 export interface ConfiguratorProduct {
@@ -426,6 +428,21 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
           couleursDuGroupePourScope(slot, g, v?.colorZones, choisie),
         );
       }
+      // Les détails que la pièce ne propose pas (le ruban d'un chapeau quand
+      // la catégorie s'en tient à la couleur principale) reprennent la couleur
+      // du dessin. Sans cela, la couleur choisie pour un AUTRE chapeau, sous
+      // la même zone, resterait sur ce ruban sans que le client puisse plus
+      // la changer. Écrite ici, dans la configuration, elle est celle que
+      // l'aperçu montre et que le fichier d'impression relit.
+      if (v)
+        Object.assign(
+          c.colors,
+          couleursDesGroupesNonProposes(
+            slot,
+            v,
+            regleDeLaPiece(props.pieceCategories, v),
+          ),
+        );
     });
   }
   /**
@@ -616,6 +633,13 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   return (
     <div
       class="ml-cfg-root"
+      // Sur une tablette, la barre de la fenêtre de personnalisation ne se
+      // montre qu'au premier geste : on en dessine une (cf. Defilement).
+      ref={(el) => brancherBarreDeLaFenetre(el)}
+      // L'étape en cours, pour la feuille de style de l'hôte : l'étape du
+      // format se met en page autrement sur une tablette en portrait, pour
+      // tenir à l'écran sans défiler (cf. global.css du site).
+      data-etape={editingActive() ? "personnage" : state.step}
       style={{
         display: "grid",
         // Pendant l'édition d'un personnage, l'aperçu de l'affiche disparaît
@@ -667,13 +691,24 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
           background: "#fafafa",
         }}
       >
-        {/* Fil d'étapes */}
+        {/* Fil d'étapes.
+            Plus grand qu'à l'origine (retour cliente : « augmenter un peu la
+            taille des étapes ») : 15 px en gras au lieu de 12, 40 px de haut
+            — 44 sous le doigt, cf. global.css —, et un gris plus foncé sur
+            les étapes inactives, qui se lisaient mal. Chaque libellé tient
+            sur une ligne ; quand les trois ne tiennent pas côte à côte (une
+            langue aux mots longs), ils passent à la ligne entiers et
+            s'élargissent pour remplir la rangée, plutôt que de se couper au
+            milieu d'un mot ou de déborder du panneau. Sur un téléphone, la
+            feuille de style de l'hôte les resserre pour garder une seule
+            rangée (cf. global.css). */}
         <div
+          class="ml-cfg-etapes"
           style={{
             display: "flex",
-            gap: "6px",
-            "margin-bottom": "14px",
-            "font-size": "12px",
+            "flex-wrap": "wrap",
+            gap: "8px",
+            "margin-bottom": "16px",
           }}
         >
           {/* Chaque étape est cliquable à tout moment (retour cliente) : on
@@ -683,17 +718,26 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
           {STEPS.map((s, i) => (
             <button
               type="button"
+              class="ml-cfg-etape"
               onClick={() => goToStep(s)}
               aria-current={state.step === s ? "step" : undefined}
               style={{
-                padding: "4px 8px",
+                flex: "1 1 auto",
+                display: "inline-flex",
+                "align-items": "center",
+                "justify-content": "center",
+                "min-height": "40px",
+                "box-sizing": "border-box",
+                padding: "9px 14px",
                 border: "none",
                 "border-radius": "9999px",
                 background: state.step === s ? "#4f46e5" : "#e5e7eb",
-                color: state.step === s ? "#fff" : "#6b7280",
-                "font-weight": "600",
-                "font-size": "inherit",
+                color: state.step === s ? "#fff" : "#374151",
+                "font-weight": "700",
+                "font-size": "15px",
+                "line-height": "1.2",
                 "font-family": "inherit",
+                "white-space": "nowrap",
                 cursor: state.step === s ? "default" : "pointer",
               }}
             >
@@ -799,6 +843,12 @@ export default Configurator;
  * C'est le même composant, donc les deux rendus ne peuvent pas diverger.
  */
 export { PosterPreview } from "./components/PosterPreview";
+/**
+ * La liste qui défile avec ses boutons et sa barre bien visibles : le site
+ * s'en sert aussi (la liste des points relais), pour que toutes les listes se
+ * fassent défiler du même geste.
+ */
+export { ZoneDefilante } from "./components/Defilement";
 export {
   createSvgCache,
   stateFromConfig,

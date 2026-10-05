@@ -2,16 +2,25 @@
 /**
  * Liste des clients.
  *
- * Même grammaire que la liste des commandes : des ONGLETS pour les questions
- * courantes (« qui achète encore ? »), une RECHERCHE plein texte, et tout dans
- * l'URL pour qu'un segment se mette en favori et se partage.
+ * Calquée sur Shopify › Clients, d'où vient la boutique : « Exporter » et
+ * « Importer » en haut, une recherche, puis un tableau qu'on coche ligne par
+ * ligne — le nom (ou l'adresse quand il n'y a pas de nom), l'abonnement aux
+ * e-mails, l'emplacement, les commandes et le montant dépensé —, cinquante
+ * par page.
+ *
+ * Ce que l'écran savait déjà faire reste : les ONGLETS pour les questions
+ * courantes (« qui achète encore ? »), les étiquettes, la fiche au clic, et
+ * tout dans l'URL pour qu'un segment se mette en favori et se partage.
  *
  * Le tri par défaut est le total dépensé : la première ligne est la cliente
- * qu'on a le plus intérêt à soigner.
+ * qu'on a le plus intérêt à soigner. Il se fait côté API, sur TOUTE la liste,
+ * et non sur la page affichée — d'où `data-sans-tri` sur le tableau : le tri
+ * maison des tableaux (lib/tri-tableaux.ts) ne rangerait que les cinquante
+ * lignes visibles, et ferait croire que la plus grosse cliente est en tête.
  */
 import Admin from "../layouts/Admin.astro";
-import { url } from "../lib/url.ts";
-import { adminApi, formatPrice, type Client } from "../lib/api.ts";
+import { apiUrl, url } from "../lib/url.ts";
+import { adminApi, formatPrice, type PageClients } from "../lib/api.ts";
 
 const api = adminApi(Astro.request);
 const params = Astro.url.searchParams;
@@ -22,7 +31,9 @@ const ONGLETS: { cle: string; label: string; segment?: string }[] = [
   { cle: "compte", label: "Avec compte", segment: "compte" },
   { cle: "fideles", label: "Fidèles", segment: "fideles" },
   { cle: "inactifs", label: "Inactifs > 90 jours", segment: "inactifs" },
-  { cle: "optin", label: "Accepte le marketing", segment: "optin" },
+  // La case de la fiche OU l'inscription au formulaire de la lettre : ce sont
+  // les deux listes à qui la lettre d'information part.
+  { cle: "optin", label: "Abonnés aux e-mails", segment: "optin" },
   { cle: "sans-commande", label: "Sans commande", segment: "sans-commande" },
 ];
 const ongletActif = params.get("segment") ?? "tous";
@@ -30,35 +41,73 @@ const onglet = ONGLETS.find((o) => o.cle === ongletActif) ?? ONGLETS[0]!;
 
 const recherche = params.get("q") ?? "";
 
-let clients: Client[] = [];
+/**
+ * Les colonnes qui se trient, et dans quel sens d'abord : le plus gros, le
+ * plus fidèle, le plus récent en tête ; les noms et les villes de A à Z. Un
+ * second clic sur le titre retourne le tri.
+ */
+const TRIS: Record<string, { label: string; croissant: boolean }> = {
+  ca: { label: "montant dépensé", croissant: false },
+  commandes: { label: "nombre de commandes", croissant: false },
+  recente: { label: "dernière commande", croissant: false },
+  nom: { label: "nom", croissant: true },
+  emplacement: { label: "emplacement", croissant: true },
+};
+const triDemande = params.get("tri") ?? "ca";
+const tri = TRIS[triDemande] ? triDemande : "ca";
+const inverse = params.get("sens") === "inverse";
+const page = Math.max(1, Math.trunc(Number(params.get("page"))) || 1);
+
+let flash: string | null = null;
+let flashErreur = false;
+
+/*
+ * Les actions sur les lignes cochées. L'export, lui, part directement vers
+ * l'API (un téléchargement) ; l'étiquette passe par ici pour revenir sur la
+ * même liste, avec un mot qui dit ce qui a été fait.
+ */
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  try {
+    const ids = f
+      .getAll("ids")
+      .map((v) => Number(v))
+      .filter((n) => Number.isInteger(n) && n > 0);
+    const mot = String(f.get("etiquette") ?? "").trim();
+    const retirer = f.get("_action") === "retirer";
+    if (!ids.length) throw new Error("Cochez au moins une cliente dans la liste.");
+    if (!mot) throw new Error("Écrivez l'étiquette à ajouter ou à retirer.");
+    const r = await api.etiqueterClients(ids, retirer ? { retirer: mot } : { ajouter: mot });
+    const n = r.modifiees;
+    flash = retirer
+      ? n === 0
+        ? `Aucune des ${r.cochees} fiches cochées ne portait l'étiquette « ${mot} ».`
+        : `Étiquette « ${mot} » retirée de ${n} fiche${n > 1 ? "s" : ""}.`
+      : n === 0
+        ? `Les ${r.cochees} fiches cochées portaient déjà l'étiquette « ${mot} ».`
+        : `Étiquette « ${mot} » ajoutée à ${n} fiche${n > 1 ? "s" : ""}.`;
+  } catch (e) {
+    flash = String(e).replace(/^Error:\s*/, "");
+    flashErreur = true;
+  }
+}
+
+let liste: PageClients | null = null;
 let error: string | null = null;
 try {
-  clients = await api.customers({ q: recherche, segment: onglet.segment });
+  liste = await api.clientsListe({
+    q: recherche,
+    segment: onglet.segment,
+    tri,
+    sens: inverse ? "inverse" : undefined,
+    page,
+  });
 } catch (e) {
   error = String(e);
 }
+const lignes = liste?.clients ?? [];
 
-/**
- * Tri fait ici et pas côté API : la liste tient dans une page, et le contrat
- * de /admin/customers ne porte pas de tri.
- */
-const TRIS: Record<string, { label: string; ordre: (a: Client, b: Client) => number }> = {
-  ca: { label: "Total dépensé", ordre: (a, b) => b.caCents - a.caCents },
-  commandes: { label: "Commandes", ordre: (a, b) => b.commandes - a.commandes },
-  recente: {
-    label: "Dernière commande",
-    ordre: (a, b) => (b.derniereCommande ?? "").localeCompare(a.derniereCommande ?? ""),
-  },
-  nom: {
-    label: "Nom",
-    ordre: (a, b) => (a.name ?? "").localeCompare(b.name ?? "", "fr"),
-  },
-};
-const triActif = params.get("tri") ?? "ca";
-const tri = TRIS[triActif] ?? TRIS.ca!;
-const lignes = [...clients].sort(tri.ordre);
-
-/** Reconstruit l'URL courante en changeant une seule clé. */
+/** Reconstruit l'URL courante en changeant quelques clés. */
 function lienAvec(modif: Record<string, string | null>): string {
   const p = new URLSearchParams(params);
   for (const [k, v] of Object.entries(modif)) {
@@ -69,9 +118,25 @@ function lienAvec(modif: Record<string, string | null>): string {
   return url(`/clients${qs ? `?${qs}` : ""}`);
 }
 
-/** En-tête de colonne cliquable : un clic trie sur cette colonne. */
+/**
+ * En-tête de colonne cliquable. Un clic trie sur cette colonne, dans son sens
+ * naturel ; un second clic sur la même colonne le retourne. Changer de tri
+ * repart de la première page : la page 3 d'un autre ordre ne veut rien dire.
+ */
 function lienTri(cle: string): string {
-  return lienAvec({ tri: cle === "ca" ? null : cle });
+  const memeColonne = cle === tri;
+  return lienAvec({
+    tri: cle === "ca" ? null : cle,
+    sens: memeColonne && !inverse ? "inverse" : null,
+    page: null,
+  });
+}
+
+/** La flèche de la colonne triée : ▲ du plus petit au plus grand, ▼ l'inverse. */
+function fleche(cle: string): string {
+  if (cle !== tri) return "";
+  const croissant = TRIS[cle]!.croissant !== inverse;
+  return croissant ? " ▲" : " ▼";
 }
 
 /** « le 27 août », l'année seulement si ce n'est pas l'année en cours. */
@@ -90,20 +155,60 @@ function quand(iso: string | null | undefined): string {
   }
 }
 
-const caTotal = lignes.reduce((s, c) => s + c.caCents, 0);
+/** L'export de la liste affichée : les mêmes filtres, le même tri. */
+const lienExport = `${apiUrl("/admin/customers/export.csv")}?${new URLSearchParams({
+  ...(recherche ? { q: recherche } : {}),
+  ...(onglet.segment ? { segment: onglet.segment } : {}),
+  ...(tri !== "ca" ? { tri } : {}),
+}).toString()}`;
+
+const debut = liste && liste.total ? (liste.page - 1) * liste.parPage + 1 : 0;
+const fin = liste ? Math.min(liste.total, liste.page * liste.parPage) : 0;
+
+const bouton =
+  "rounded border border-bo-border bg-bo-surface px-3 py-1.5 text-sm hover:bg-bo-bg";
 ---
 
 <Admin title="Clients">
   {error && (
     <p class="mb-4 text-sm text-red-600">API injoignable : {error}</p>
   )}
+  {flash && (
+    <p
+      class={`mb-4 rounded border px-3 py-2 text-sm ${
+        flashErreur ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+
+  {/* Comme dans Shopify : Exporter et Importer en haut, à droite. */}
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <p class="text-sm text-bo-muted">
+      {liste ? `${liste.total} client${liste.total > 1 ? "s" : ""}` : ""}
+      {recherche && ` pour « ${recherche} »`}
+    </p>
+    <div class="flex flex-wrap gap-2">
+      {/* L'export suit les filtres de l'écran : ce qu'on voit est ce qu'on
+          sort, sans quoi on croit exporter un segment et on exporte tout. */}
+      <a
+        href={lienExport}
+        class={bouton}
+        title="La liste affichée (toutes les pages), en fichier, avec l'abonnement aux e-mails de chacune."
+      >
+        Exporter
+      </a>
+      <a href={url("/clients/import")} class={bouton}>Importer</a>
+    </div>
+  </div>
 
   <section class="rounded-lg border border-bo-border bg-bo-surface">
     {/* Onglets : un clic = un segment. */}
     <div class="flex flex-wrap items-center gap-1 border-b border-bo-border px-3 pt-3">
       {ONGLETS.map((o) => (
         <a
-          href={lienAvec({ segment: o.segment ?? null })}
+          href={lienAvec({ segment: o.segment ?? null, page: null })}
           class={`rounded-t px-3 py-2 text-sm ${
             o.cle === onglet.cle
               ? "bg-bo-bg font-medium text-bo-ink"
@@ -119,16 +224,15 @@ const caTotal = lignes.reduce((s, c) => s + c.caCents, 0);
       {onglet.segment && (
         <input type="hidden" name="segment" value={onglet.segment} />
       )}
-      {triActif !== "ca" && <input type="hidden" name="tri" value={triActif} />}
+      {tri !== "ca" && <input type="hidden" name="tri" value={tri} />}
+      {inverse && <input type="hidden" name="sens" value="inverse" />}
       <label class="min-w-[240px] flex-1">
-        <span class="mb-1 block text-xs text-bo-muted">
-          Rechercher (nom, e-mail, téléphone)
-        </span>
+        <span class="sr-only">Rechercher des clients</span>
         <input
           type="search"
           name="q"
           value={recherche}
-          placeholder="Dupont, dupont@…, 06…"
+          placeholder="Rechercher des clients (nom, e-mail, téléphone, étiquette)"
           class="w-full rounded border border-bo-border px-3 py-2 text-sm"
         />
       </label>
@@ -137,128 +241,305 @@ const caTotal = lignes.reduce((s, c) => s + c.caCents, 0);
       </button>
       {recherche && (
         <a
-          href={lienAvec({ q: null })}
+          href={lienAvec({ q: null, page: null })}
           class="px-2 py-2 text-sm text-bo-accent hover:underline"
         >
           Effacer
         </a>
       )}
-      {/* L'export suit les filtres de l'écran : ce qu'on voit est ce qu'on
-          sort, sans quoi on croit exporter un segment et on exporte tout. */}
-      <a
-        href={`/api/admin/customers/export.csv?${new URLSearchParams({
-          ...(recherche ? { q: recherche } : {}),
-          ...(onglet.segment ? { segment: onglet.segment } : {}),
-        }).toString()}`}
-        class="ml-auto rounded border border-bo-border px-4 py-2 text-sm hover:bg-bo-bg"
-        title="La liste affichée, en fichier, avec le consentement marketing de chacune."
-      >
-        Exporter cette liste
-      </a>
     </form>
 
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="bg-bo-bg text-left text-bo-muted">
-          <tr>
-            <th class="px-4 py-2 font-medium">
-              <a href={lienTri("nom")} class={triActif === "nom" ? "text-bo-ink" : "hover:text-bo-ink"}>
-                Nom
-              </a>
-            </th>
-            <th class="px-4 py-2 font-medium">E-mail</th>
-            <th class="px-4 py-2 font-medium">Téléphone</th>
-            <th class="px-4 py-2 font-medium">Compte</th>
-            <th class="px-4 py-2 font-medium">
-              <a
-                href={lienTri("commandes")}
-                class={triActif === "commandes" ? "text-bo-ink" : "hover:text-bo-ink"}
-              >
-                Commandes
-              </a>
-            </th>
-            <th class="px-4 py-2 text-right font-medium">
-              <a href={lienTri("ca")} class={triActif === "ca" ? "text-bo-ink" : "hover:text-bo-ink"}>
-                Total dépensé
-              </a>
-            </th>
-            <th class="px-4 py-2 font-medium">
-              <a
-                href={lienTri("recente")}
-                class={triActif === "recente" ? "text-bo-ink" : "hover:text-bo-ink"}
-              >
-                Dernière commande
-              </a>
-            </th>
-            <th class="px-4 py-2 font-medium">Étiquettes</th>
-          </tr>
-        </thead>
-        <tbody>
-          {lignes.map((c) => (
-            <tr class="border-t border-bo-border hover:bg-bo-bg/50">
-              <td class="px-4 py-2 align-top">
-                <a
-                  href={url(`/clients/${c.id}`)}
-                  class="font-medium text-bo-accent hover:underline"
-                >
-                  {c.name?.trim() || "Sans nom"}
-                </a>
-              </td>
-              <td class="px-4 py-2 align-top">
-                {c.email ? (
-                  <span class="text-bo-muted">{c.email}</span>
-                ) : (
-                  <span class="text-bo-muted">—</span>
-                )}
-              </td>
-              <td class="px-4 py-2 align-top whitespace-nowrap text-bo-muted">
-                {c.phone || "—"}
-              </td>
-              <td class="px-4 py-2 align-top">
-                {c.compte ? (
-                  <span class="rounded-full bg-bo-bg px-2 py-0.5 text-xs text-bo-ink">
-                    Oui
-                  </span>
-                ) : (
-                  <span class="text-bo-muted">Non</span>
-                )}
-              </td>
-              <td class="px-4 py-2 align-top text-bo-muted">{c.commandes}</td>
-              <td class="px-4 py-2 text-right align-top whitespace-nowrap">
-                {formatPrice(c.caCents)}
-              </td>
-              <td class="px-4 py-2 align-top whitespace-nowrap text-bo-muted">
-                {quand(c.derniereCommande)}
-              </td>
-              <td class="px-4 py-2 align-top">
-                {(c.tags ?? []).length ? (
-                  <span class="flex flex-wrap gap-1">
-                    {(c.tags ?? []).map((tag) => (
-                      <span class="rounded bg-bo-bg px-1.5 py-0.5 text-xs text-bo-muted">
-                        {tag}
-                      </span>
-                    ))}
-                  </span>
-                ) : (
-                  <span class="text-bo-muted">—</span>
-                )}
-              </td>
-            </tr>
-          ))}
-          {lignes.length === 0 && !error && (
+    {/* Les cases cochées partent avec ce formulaire : l'étiquette revient ici,
+        l'export de la sélection part vers l'API (formaction). Sans
+        JavaScript, la barre reste visible et tout fonctionne quand même. */}
+    <form method="POST" id="form-selection">
+      <div
+        id="barre-selection"
+        class="flex flex-wrap items-center gap-2 border-y border-bo-border bg-bo-bg px-4 py-2 text-sm"
+      >
+        <span id="compte-selection" class="mr-2 text-bo-muted">
+          Cochez des lignes pour agir sur plusieurs clientes.
+        </span>
+        <button
+          type="submit"
+          formaction={apiUrl("/admin/customers/export.csv")}
+          formmethod="get"
+          data-selection
+          class={bouton}
+          title="Les lignes cochées seulement, en fichier."
+        >
+          Exporter la sélection
+        </button>
+        <span class="mx-1 text-bo-border" aria-hidden="true">|</span>
+        <label class="flex items-center gap-1">
+          <span class="sr-only">Étiquette</span>
+          <input
+            name="etiquette"
+            maxlength="40"
+            placeholder="Étiquette (ex. VIP)"
+            class="w-40 rounded border border-bo-border px-2 py-1.5 text-sm"
+          />
+        </label>
+        <button
+          type="submit"
+          name="_action"
+          value="ajouter"
+          data-selection
+          class={bouton}
+        >
+          Ajouter l'étiquette
+        </button>
+        <button
+          type="submit"
+          name="_action"
+          value="retirer"
+          data-selection
+          class={bouton}
+        >
+          Retirer l'étiquette
+        </button>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm" data-sans-tri>
+          <thead class="bg-bo-bg text-left text-bo-muted">
             <tr>
-              <td colspan="8" class="px-4 py-6 text-center text-bo-muted">
-                Aucun client pour ce segment.
-              </td>
+              <th class="w-10 px-4 py-2">
+                <input
+                  type="checkbox"
+                  id="tout-cocher"
+                  aria-label="Cocher toutes les lignes de la page"
+                  title="Toutes les lignes de cette page"
+                />
+              </th>
+              <th class="px-4 py-2 font-medium">
+                <a href={lienTri("nom")} class={tri === "nom" ? "text-bo-ink" : "hover:text-bo-ink"}>
+                  Nom du client{fleche("nom")}
+                </a>
+              </th>
+              <th class="px-4 py-2 font-medium">Abonnement aux e-mails</th>
+              <th class="px-4 py-2 font-medium">
+                <a
+                  href={lienTri("emplacement")}
+                  class={tri === "emplacement" ? "text-bo-ink" : "hover:text-bo-ink"}
+                >
+                  Emplacement{fleche("emplacement")}
+                </a>
+              </th>
+              <th class="px-4 py-2 font-medium">
+                <a
+                  href={lienTri("commandes")}
+                  class={tri === "commandes" ? "text-bo-ink" : "hover:text-bo-ink"}
+                >
+                  Commandes{fleche("commandes")}
+                </a>
+              </th>
+              <th class="px-4 py-2 text-right font-medium">
+                <a href={lienTri("ca")} class={tri === "ca" ? "text-bo-ink" : "hover:text-bo-ink"}>
+                  Montant dépensé{fleche("ca")}
+                </a>
+              </th>
+              <th class="px-4 py-2 font-medium">
+                <a
+                  href={lienTri("recente")}
+                  class={tri === "recente" ? "text-bo-ink" : "hover:text-bo-ink"}
+                >
+                  Dernière commande{fleche("recente")}
+                </a>
+              </th>
+              <th class="px-4 py-2 font-medium">Étiquettes</th>
             </tr>
+          </thead>
+          <tbody>
+            {lignes.map((c) => {
+              // Le nom, ou l'adresse quand il n'y en a pas — comme Shopify.
+              const nom = c.name?.trim() || c.email?.trim() || "Sans nom";
+              const details = [c.name?.trim() ? c.email : null, c.phone].filter(Boolean);
+              const emplacement = [c.ville, c.paysNom].filter(Boolean).join(", ");
+              return (
+                <tr class="border-t border-bo-border hover:bg-bo-bg/50">
+                  <td class="px-4 py-2 align-top">
+                    <input
+                      type="checkbox"
+                      name="ids"
+                      value={c.id}
+                      data-ligne
+                      aria-label={`Cocher ${nom}`}
+                    />
+                  </td>
+                  <td class="px-4 py-2 align-top">
+                    <a
+                      href={url(`/clients/${c.id}`)}
+                      class="font-medium text-bo-accent hover:underline"
+                    >
+                      {nom}
+                    </a>
+                    {c.compte && (
+                      <span
+                        class="ml-1 rounded-full bg-bo-bg px-1.5 py-0.5 text-[11px] text-bo-muted"
+                        title="Elle a un compte client : elle retrouve ses commandes en se connectant."
+                      >
+                        compte
+                      </span>
+                    )}
+                    {details.length > 0 && (
+                      <span class="block text-xs text-bo-muted">{details.join(" · ")}</span>
+                    )}
+                  </td>
+                  <td class="px-4 py-2 align-top whitespace-nowrap">
+                    {c.abonne ? (
+                      <span
+                        class="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800"
+                        title={
+                          c.acceptsMarketing && c.inscritLettre
+                            ? "Case cochée sur sa fiche, et inscrite au formulaire de la lettre."
+                            : c.acceptsMarketing
+                              ? "Case « accepte d'être contactée » cochée sur sa fiche."
+                              : "Inscrite au formulaire de la lettre d'information."
+                        }
+                      >
+                        Abonné
+                      </span>
+                    ) : (
+                      <span class="rounded-full bg-bo-bg px-2 py-0.5 text-xs text-bo-muted">
+                        Non abonné
+                      </span>
+                    )}
+                  </td>
+                  <td class="px-4 py-2 align-top text-bo-muted">
+                    {emplacement || "—"}
+                  </td>
+                  <td class="px-4 py-2 align-top whitespace-nowrap text-bo-muted">
+                    {c.commandes} commande{c.commandes > 1 ? "s" : ""}
+                  </td>
+                  <td class="px-4 py-2 text-right align-top whitespace-nowrap">
+                    {formatPrice(c.caCents)}
+                  </td>
+                  <td class="px-4 py-2 align-top whitespace-nowrap text-bo-muted">
+                    {quand(c.derniereCommande)}
+                  </td>
+                  <td class="px-4 py-2 align-top">
+                    {(c.tags ?? []).length ? (
+                      <span class="flex flex-wrap gap-1">
+                        {(c.tags ?? []).map((tag) => (
+                          <span class="rounded bg-bo-bg px-1.5 py-0.5 text-xs text-bo-muted">
+                            {tag}
+                          </span>
+                        ))}
+                      </span>
+                    ) : (
+                      <span class="text-bo-muted">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {lignes.length === 0 && !error && (
+              <tr>
+                <td colspan="8" class="px-4 py-6 text-center text-bo-muted">
+                  {recherche
+                    ? `Aucun client ne correspond à « ${recherche} ».`
+                    : "Aucun client pour ce segment."}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </form>
+
+    {/* La pagination, comme dans Shopify : « 1-50 », et deux flèches. De
+        vrais liens : on peut les ouvrir dans un onglet. */}
+    {liste && liste.total > 0 && (
+      <nav
+        class="flex items-center justify-between gap-3 border-t border-bo-border px-4 py-3 text-sm"
+        aria-label="Pages de la liste"
+      >
+        <span class="text-bo-muted">
+          {debut}-{fin} sur {liste.total}
+        </span>
+        <span class="flex items-center gap-1">
+          {liste.page > 1 ? (
+            <a
+              href={lienAvec({ page: liste.page - 1 > 1 ? String(liste.page - 1) : null })}
+              class={bouton}
+              aria-label="Page précédente"
+            >
+              ‹
+            </a>
+          ) : (
+            <span class={`${bouton} cursor-not-allowed opacity-40`} aria-hidden="true">‹</span>
           )}
-        </tbody>
-      </table>
-    </div>
+          <span class="px-2 text-bo-muted">
+            page {liste.page} / {liste.pages}
+          </span>
+          {liste.page < liste.pages ? (
+            <a
+              href={lienAvec({ page: String(liste.page + 1) })}
+              class={bouton}
+              aria-label="Page suivante"
+            >
+              ›
+            </a>
+          ) : (
+            <span class={`${bouton} cursor-not-allowed opacity-40`} aria-hidden="true">›</span>
+          )}
+        </span>
+      </nav>
+    )}
   </section>
 
-  <p class="mt-2 text-sm text-bo-muted">
-    {lignes.length} client(s) affiché(s) · {formatPrice(caTotal)} dépensés au
-    total · triés par {tri.label.toLowerCase()}.
-  </p>
+  {liste && (
+    <p class="mt-2 text-sm text-bo-muted">
+      {liste.total} client(s) · {formatPrice(liste.caTotalCents)} dépensés au
+      total · triés par {`${TRIS[tri]!.label}${inverse ? " (ordre inversé)" : ""}.`}
+    </p>
+  )}
+
+  <script is:inline>
+    // Les cases à cocher : « tout cocher » coche la PAGE, et la barre dit
+    // combien de lignes sont prises. Les boutons de la barre restent éteints
+    // tant que rien n'est coché : un export « de la sélection » vide, ou une
+    // étiquette posée sur personne, ne serait qu'un clic pour rien.
+    (function () {
+      var form = document.getElementById("form-selection");
+      var tout = document.getElementById("tout-cocher");
+      var compte = document.getElementById("compte-selection");
+      if (!form || !tout || !compte) return;
+      var cases = Array.prototype.slice.call(form.querySelectorAll("input[data-ligne]"));
+      var boutons = Array.prototype.slice.call(form.querySelectorAll("[data-selection]"));
+      var phraseVide = compte.textContent;
+
+      function mettreAJour() {
+        var n = cases.filter(function (c) { return c.checked; }).length;
+        compte.textContent =
+          n === 0 ? phraseVide : n + " sélectionnée" + (n > 1 ? "s" : "");
+        compte.classList.toggle("font-medium", n > 0);
+        compte.classList.toggle("text-bo-muted", n === 0);
+        boutons.forEach(function (b) { b.disabled = n === 0; b.classList.toggle("opacity-40", n === 0); });
+        tout.checked = n > 0 && n === cases.length;
+        tout.indeterminate = n > 0 && n < cases.length;
+      }
+
+      tout.addEventListener("change", function () {
+        cases.forEach(function (c) { c.checked = tout.checked; });
+        mettreAJour();
+      });
+      cases.forEach(function (c) { c.addEventListener("change", mettreAJour); });
+
+      // Retirer une étiquette de plusieurs fiches d'un coup se confirme : le
+      // geste est rapide, et ne se défait qu'une fiche à la fois.
+      form.addEventListener("submit", function (e) {
+        var b = e.submitter;
+        if (!b || b.value !== "retirer") return;
+        var champ = form.querySelector("input[name=etiquette]");
+        var mot = champ ? champ.value.trim() : "";
+        var n = cases.filter(function (c) { return c.checked; }).length;
+        if (mot && !confirm("Retirer l'étiquette « " + mot + " » des " + n + " fiche(s) cochée(s) ?"))
+          e.preventDefault();
+      });
+
+      mettreAJour();
+    })();
+  </script>
 </Admin>

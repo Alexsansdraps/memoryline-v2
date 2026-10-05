@@ -57,6 +57,13 @@ if (Astro.request.method === "POST") {
         colors: couleursDepuis(f.get("colors")),
         active: f.get("active") === "on",
         position: Number(f.get("position") || 0),
+        // Absent du formulaire (page ouverte avant ce réglage) : inchangé.
+        ...(f.get("couleursProposees") !== null
+          ? {
+              couleursProposees:
+                f.get("couleursProposees") === "principale" ? "principale" : "toutes",
+            }
+          : {}),
       });
       flash = `Catégorie « ${cat.name} » enregistrée.`;
     }
@@ -116,10 +123,20 @@ function messageArchivage(c: CategoriePiece): string {
     les pièces qu'elle contient. Une catégorie sans couleur laisse le nuancier
     de l'emplacement et la saisie libre.
   </p>
-  <p class="mb-6 text-sm text-bo-muted max-w-3xl">
+  <p class="mb-4 text-sm text-bo-muted max-w-3xl">
     Le rangement des pièces dans leurs catégories se fait sur
     <a class="underline" href={url("/personnages")}> Personnages</a>, dans la
     bibliothèque de pièces.
+  </p>
+  <p class="mb-6 text-sm text-bo-muted max-w-3xl">
+    « <strong>Le client peut recolorer</strong> » : toutes les couleurs de
+    chaque pièce, ou <strong>seulement la couleur principale</strong> (la plus
+    étendue : la calotte d'un chapeau, pas son ruban). Les détails gardent
+    alors la couleur du dessin. Une pièce dont vous avez coché ou décoché les
+    cases « Proposée au client » garde son propre réglage. Avant de passer une
+    catégorie à « principale », regardez ses pièces : une ombre restée à part
+    (signalée sur la carte) ne suivrait plus la couleur choisie — rattachez-la
+    à sa couleur. Les commandes déjà passées ne changent pas.
   </p>
 
   <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
@@ -171,6 +188,23 @@ function messageArchivage(c: CategoriePiece): string {
                   <input type="checkbox" name="active" checked={c.active} />
                   <span>Proposée</span>
                 </label>
+                {/* Ce que le client peut recolorer sur chaque pièce : un seul
+                    réglage pour toute la catégorie, au lieu de décocher le
+                    ruban de chaque chapeau un par un. */}
+                <label class="block">
+                  <span class="text-bo-muted text-xs">Le client peut recolorer</span>
+                  <select
+                    name="couleursProposees"
+                    class="mt-1 block border border-bo-border rounded px-2 py-1"
+                  >
+                    <option value="toutes" selected={c.couleursProposees !== "principale"}>
+                      Toutes les couleurs de chaque pièce
+                    </option>
+                    <option value="principale" selected={c.couleursProposees === "principale"}>
+                      Seulement la couleur principale
+                    </option>
+                  </select>
+                </label>
                 <button class="rounded bg-bo-accent text-white px-3 py-1.5">
                   Enregistrer
                 </button>
@@ -211,6 +245,13 @@ function messageArchivage(c: CategoriePiece): string {
                 <p class="basis-full text-xs text-bo-muted">
                   {c.pieces ?? 0} pièce{(c.pieces ?? 0) > 1 ? "s" : ""} —
                   identifiant <code>{c.slug}</code>.
+                  {c.couleursProposees === "principale" && (
+                    <span>
+                      {" "}Le client ne change que la couleur principale (★ sur
+                      la carte de chaque pièce) ; les détails gardent la
+                      couleur du dessin.
+                    </span>
+                  )}
                 </p>
               </form>
             </td>
@@ -328,6 +369,16 @@ function messageArchivage(c: CategoriePiece): string {
       <label class="flex items-center gap-2 pb-2">
         <input type="checkbox" name="active" checked />
         <span>Proposée</span>
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Le client peut recolorer</span>
+        <select
+          name="couleursProposees"
+          class="mt-1 block border border-bo-border rounded px-3 py-2"
+        >
+          <option value="toutes" selected>Toutes les couleurs de chaque pièce</option>
+          <option value="principale">Seulement la couleur principale</option>
+        </select>
       </label>
       <div class="basis-full">
         <span class="text-bo-muted">Couleurs proposées</span>

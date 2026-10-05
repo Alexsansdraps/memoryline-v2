@@ -3,7 +3,7 @@ import { url } from "../../lib/url.ts";
 import Admin from "../../layouts/Admin.astro";
 import ApercusZones from "../../components/ApercusZones.astro";
 import GroupesCouleurs from "../../components/GroupesCouleurs.astro";
-import { adminApi, type TypeAffiche } from "../../lib/api.ts";
+import { adminApi, type CategoriePiece, type TypeAffiche } from "../../lib/api.ts";
 
 const PUBLIC_API_URL =
   import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
@@ -24,7 +24,8 @@ if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   try {
     const zones = JSON.parse(String(f.get("colorZones") || "{}"));
-    const masquees = JSON.parse(String(f.get("zonesMasquees") || "[]"));
+    // « null » : aucune case touchée, la pièce suivra sa catégorie.
+    const masquees = JSON.parse(String(f.get("zonesMasquees") || "null"));
     const groupes = JSON.parse(String(f.get("groupesCouleurs") || "[]"));
     // Familles de teintes, quand le dessin téléversé est une image en pixels.
     const brutFamilles = String(f.get("couleursImage") || "");
@@ -35,11 +36,17 @@ if (Astro.request.method === "POST") {
       svgUrl: String(f.get("svgUrl") || ""),
       view: String(f.get("view") || "front"),
       colorZones: Object.keys(zones).length ? zones : undefined,
-      // L'API ne garde que les zones qui existent dans `colorZones`.
-      zonesMasquees: Array.isArray(masquees) ? masquees.map(String) : [],
+      // L'API ne garde que les zones qui existent dans `colorZones`. Sans
+      // liste, la pièce suit le réglage de sa catégorie (toutes ses couleurs,
+      // ou la principale seule).
+      zonesMasquees: Array.isArray(masquees) ? masquees.map(String) : null,
       groupesCouleurs: Array.isArray(groupes) ? groupes : null,
       couleursImage: familles,
       position: Number(f.get("position") || 0),
+      // La catégorie décide des couleurs proposées au client : choisie dès la
+      // création, la pièce arrive dans le configurateur avec le bon nuancier,
+      // au lieu de celui, générique, de son emplacement.
+      pieceCategoryId: f.get("pieceCategoryId") ? Number(f.get("pieceCategoryId")) : null,
     });
     return Astro.redirect(url("/personnages?piece=1"), 303);
   } catch (e) {
@@ -48,11 +55,19 @@ if (Astro.request.method === "POST") {
 }
 
 let vues: TypeAffiche[] = [];
+let categories: CategoriePiece[] = [];
 try {
-  vues = await api.views();
+  [vues, categories] = await Promise.all([
+    api.views(),
+    // Sans les catégories, la pièce se crée quand même — sans nuancier, comme
+    // avant que le choix existe ici.
+    api.pieceCategories().catch(() => [] as CategoriePiece[]),
+  ]);
 } catch (e) {
   if (!erreur) erreur = String(e);
 }
+/** Les catégories qu'on peut encore choisir : pas les archivées. */
+const categoriesChoisissables = categories.filter((c) => !c.archivedAt);
 ---
 
 <Admin title="Nouvelle pièce">
@@ -112,6 +127,44 @@ try {
             class="mt-1 w-full border border-bo-border rounded px-3 py-2"
           />
         </label>
+        {/* Seules les catégories de l'emplacement choisi sont proposées (le
+            script plus bas cache les autres) : une catégorie « Pantalons »
+            n'a pas de sens pour une coupe de cheveux. */}
+        <label class="block sm:col-span-2">
+          <span class="text-bo-muted">Catégorie (ses couleurs proposées au client)</span>
+          <select
+            id="piece-categorie"
+            name="pieceCategoryId"
+            class="mt-1 w-full border border-bo-border rounded px-3 py-2"
+          >
+            <option value="">Sans catégorie — le client choisit librement</option>
+            {categoriesChoisissables.map((c) => (
+              <option
+                value={String(c.id)}
+                data-slot={c.slot}
+                data-nom={c.name}
+                data-regle={
+                  // Une catégorie décochée n'arrive pas au configurateur :
+                  // ses pièces y proposent toutes leurs couleurs.
+                  c.active === false
+                    ? ""
+                    : c.couleursProposees === "principale"
+                      ? "principale"
+                      : "toutes"
+                }
+              >
+                {c.name} ({c.colors.length} couleur{c.colors.length > 1 ? "s" : ""})
+              </option>
+            ))}
+          </select>
+          <span class="mt-1 block text-xs text-bo-muted">
+            La palette de la catégorie est celle que le client verra pour
+            chaque couleur proposée de la pièce. Les palettes se règlent dans
+            <a href={url("/categories-pieces")} class="underline">Catégories de pièces</a>.
+            Se change ensuite sur la carte de la pièce, dans la liste des
+            personnages.
+          </span>
+        </label>
       </div>
     </section>
 
@@ -156,8 +209,10 @@ try {
         <p class="text-xs text-bo-muted mb-2">
           Chaque couleur est surlignée en rouge sur sa vignette ; ses nuances
           (ombres, reflets) suivent la couleur que le client choisit. Donnez-lui
-          un nom, et décochez « Proposée au client » sur les petits détails
-          (ruban, élastique…) : ils garderont la couleur réglée ici. Si le
+          un nom. Les cases « Proposée au client » suivent d'abord la
+          catégorie choisie plus haut (toutes les couleurs, ou la principale
+          seule) ; décochez un petit détail (ruban, élastique…) pour régler la
+          pièce autrement : il gardera la couleur réglée ici. Si le
           dessin est une image en pixels (une photo, une illustration), ce sont
           ses couleurs principales qui apparaissent ici : rien n'est proposé au
           client tant que vous n'en avez coché aucune.
@@ -266,6 +321,37 @@ try {
     });
 
     champ.addEventListener("change", relire);
+
+    // La catégorie suit l'emplacement : seules les siennes restent visibles,
+    // et un choix devenu incohérent retombe sur « Sans catégorie ».
+    const emplacement = document.querySelector('select[name="slot"]');
+    const categorie = document.getElementById("piece-categorie");
+    function filtrerCategories() {
+      if (!emplacement || !categorie) return;
+      const slot = emplacement.value;
+      for (const option of categorie.options) {
+        const sienne = !option.dataset.slot || option.dataset.slot === slot;
+        option.hidden = !sienne;
+        option.disabled = !sienne;
+        if (!sienne && option.selected) categorie.value = "";
+      }
+    }
+    emplacement?.addEventListener("change", filtrerCategories);
+    filtrerCategories();
+
+    // Les cases « Proposée au client » montrent ce que la catégorie choisie
+    // propose (toutes les couleurs, ou la principale seule), tant qu'aucune
+    // n'a été touchée.
+    function annoncerRegle() {
+      const choix = categorie && categorie.selectedOptions[0];
+      const regle =
+        choix && choix.dataset.regle
+          ? { categorie: choix.dataset.nom || "", couleurs: choix.dataset.regle }
+          : null;
+      couleurs?.dispatchEvent(new CustomEvent("groupes:regle", { detail: regle }));
+    }
+    categorie?.addEventListener("change", annoncerRegle);
+    emplacement?.addEventListener("change", annoncerRegle);
   </script>
 
   {/* Après le formulaire : les vignettes des couleurs passent par lui. */}

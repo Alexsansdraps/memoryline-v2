@@ -7,7 +7,9 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./couleurs": "./src/couleurs.ts"
+    "./couleurs": "./src/couleurs.ts",
+    "./bandeaux-visuels": "./src/bandeaux-visuels.ts",
+    "./bandeaux-visuels.css": "./src/bandeaux-visuels.css"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

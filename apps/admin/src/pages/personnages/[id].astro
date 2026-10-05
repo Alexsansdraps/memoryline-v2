@@ -42,7 +42,7 @@ let erreur: string | null = null;
 const sortDeCreation = Astro.url.searchParams.get("cree") === "1";
 if (sortDeCreation)
   flash =
-    "Personnage créé. Toutes les pièces de son type lui sont proposées : calez-les à la souris ci-dessous, ou retirez d'abord celles qu'il ne portera pas.";
+    "Personnage créé. Toutes les pièces de son type lui sont proposées : calez-les à la souris ci-dessous, ou retirez d'abord celles qu'il ne portera pas. Côté couleurs, le client ne peut changer que la première (la peau) — et aucune si le dessin est une image en pixels : pour en proposer d'autres (pelage, robe…), cochez-les plus bas, sous « Dessin › Couleurs que le client peut changer », puis « Enregistrer le dessin ».";
 
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
@@ -593,8 +593,12 @@ const piecesACaler = SLOTS.flatMap((s) => {
                 Remplacer…
               </button>
             </div>
-            <div class="js-base-couleurs mt-4">
-              <span class="text-bo-muted block mb-1">Couleurs</span>
+            {/* L'ancre « #couleurs » : le bouton « 🎨 Couleurs » de la liste
+                des personnages mène droit ici. */}
+            <div class="js-base-couleurs mt-4 scroll-mt-20" id="couleurs">
+              <span class="text-bo-muted block mb-1">
+                Couleurs que le client peut changer
+              </span>
               <GroupesCouleurs
                 mode="personnage"
                 apiUrl={PUBLIC_API_URL}
@@ -618,6 +622,17 @@ const piecesACaler = SLOTS.flatMap((s) => {
             </div>
           </div>
         </div>
+        {/* Arrivée par « 🎨 Couleurs » (#couleurs) : le navigateur saute à
+            l'ancre dès qu'il la lit, avant que les images et les vignettes
+            des couleurs ne soient dessinées — et elles peuvent encore
+            déplacer la page. On y revient une fois tout chargé. */}
+        <script is:inline>
+          if (location.hash === "#couleurs")
+            window.addEventListener("load", function () {
+              var cible = document.getElementById("couleurs");
+              if (cible) cible.scrollIntoView({ block: "start" });
+            });
+        </script>
       </section>
 
       {/* ---------------------------------------------------------------- */}
@@ -881,7 +896,38 @@ const piecesACaler = SLOTS.flatMap((s) => {
       // l'enregistrement du dessin.
       let reglages = null;
 
+      // Ce qui est ENREGISTRÉ, pour savoir s'il reste quelque chose à
+      // enregistrer. Les couleurs ne partent qu'avec « Enregistrer le
+      // dessin » — pas avec le bouton du haut de la fiche —, et la boutique
+      // perdait ses réglages en quittant la page sans s'en douter. Le premier
+      // « groupes:change » est l'éditeur qui démarre : c'est l'état enregistré.
+      let couleursEnregistrees = null;
+      let dessinEnregistre = champ.value.trim();
+      const empreinte = (r) =>
+        r
+          ? JSON.stringify([
+              r.colorZones,
+              r.groupesCouleurs,
+              r.zonesProposees,
+              r.couleursImage,
+            ])
+          : null;
+      const resteAEnregistrer = () =>
+        champ.value.trim() !== dessinEnregistre ||
+        (reglages !== null && empreinte(reglages) !== couleursEnregistrees);
+      window.addEventListener("beforeunload", (e) => {
+        if (!resteAEnregistrer()) return;
+        e.preventDefault();
+        // Les navigateurs plus anciens (Safari d'une tablette) ne demandent
+        // confirmation que si `returnValue` est posé.
+        e.returnValue = "";
+      });
+
       couleurs?.addEventListener("groupes:change", (e) => {
+        if (couleursEnregistrees === null) couleursEnregistrees = empreinte(e.detail);
+        else if (empreinte(e.detail) !== couleursEnregistrees)
+          statut.textContent =
+            "Couleurs modifiées — cliquez « Enregistrer le dessin » pour les garder.";
         reglages = e.detail;
         // « Détecter les couleurs » a pu préparer une version du dessin à
         // part (couleurs écrites forme par forme) : c'est elle qui s'enregistre.
@@ -969,6 +1015,10 @@ const piecesACaler = SLOTS.flatMap((s) => {
           );
           if (!res.ok) throw new Error(res.status);
           statut.textContent = "Enregistré.";
+          // Ce qui vient de partir devient l'état enregistré : quitter la
+          // page ne doit plus rien demander.
+          dessinEnregistre = champ.value.trim();
+          if (reglages) couleursEnregistrees = empreinte(reglages);
         } catch (e) {
           statut.textContent = "Échec : " + e;
         }

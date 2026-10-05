@@ -141,3 +141,116 @@ th[aria-sort="ascending"] .ml-tri-indicateur::after {
 th[aria-sort="descending"] .ml-tri-indicateur::after {
   content: "▼";
 }
+
+/* ─── PDF d'impression (lib/impression-bo.ts) ────────────────────────────
+   Un lien de PDF dit son état d'un coup d'œil : prêt, en préparation (une
+   roue qui tourne), impossible (en rouge), pas encore préparé (en
+   pointillés : un clic le prépare). L'état exact est dans l'info-bulle et,
+   sur la fiche, écrit en toutes lettres sous le lien. */
+.bo-pdf-bouton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  min-width: 2rem;
+  min-height: 1.75rem;
+  padding: 0.125rem 0.4rem;
+  border: 1px solid var(--color-bo-border);
+  border-radius: 0.25rem;
+  background: var(--color-bo-surface);
+  color: var(--color-bo-ink);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  white-space: nowrap;
+}
+.bo-pdf-bouton:hover {
+  background: var(--color-bo-bg);
+}
+.bo-pdf-bouton[data-etat="pret"] {
+  border-color: var(--color-green-600, #16a34a);
+}
+.bo-pdf-bouton[data-etat="a_preparer"] {
+  border-style: dashed;
+}
+.bo-pdf[data-etat="en_preparation"] {
+  cursor: progress;
+}
+.bo-pdf[data-etat="en_preparation"]::before {
+  content: "";
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: 0.3em;
+  vertical-align: -0.1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: bo-pdf-tourne 0.8s linear infinite;
+}
+/* Dans un bouton, la roue prend la place de la flèche. */
+.bo-pdf-bouton[data-etat="en_preparation"]::before {
+  margin-right: 0;
+}
+.bo-pdf-bouton[data-etat="en_preparation"] svg {
+  display: none;
+}
+.bo-pdf[data-etat="echec"] {
+  border-color: var(--color-red-600, #dc2626);
+  color: var(--color-red-700, #b91c1c);
+}
+.bo-pdf-bouton[data-etat="echec"]::after {
+  content: "!";
+  font-weight: 700;
+}
+@keyframes bo-pdf-tourne {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bo-pdf[data-etat="en_preparation"]::before {
+    animation: none;
+    border-right-color: currentColor;
+    opacity: 0.5;
+  }
+}
+.bo-pdf-message {
+  font-size: 0.75rem;
+  color: var(--color-bo-muted);
+}
+.bo-pdf-message:empty,
+.bo-pdf-messages:empty {
+  display: none;
+}
+.bo-pdf-messages {
+  display: grid;
+  gap: 0.125rem;
+  margin-top: 0.25rem;
+  max-width: 18rem;
+  font-size: 0.75rem;
+  line-height: 1.1rem;
+  color: var(--color-bo-muted);
+  white-space: normal;
+}
+/* Dans la liste, une raison longue tient en deux lignes ; un clic la déplie
+   (un téléphone n'a pas d'info-bulle), et la fiche la donne en entier. */
+.bo-pdf-messages > * {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.bo-pdf-raison {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bo-pdf-raison[aria-expanded="true"] {
+  display: block;
+}
+.bo-pdf-erreur {
+  color: var(--color-red-700, #b91c1c);
+}

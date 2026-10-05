@@ -54,6 +54,7 @@ import {
   type Langue,
 } from "./courriels/index.js";
 import { langueDuVisiteur, livraisonDansLaLangue, nomTraduit } from "./traductions.js";
+import { mountImportClients } from "./import-clients.js";
 
 export const COOKIE_CLIENT = "ml_client";
 
@@ -306,7 +307,7 @@ function publique(cl: FicheClient) {
 }
 
 /** Normalise une étiquette : casse et espaces ne doivent pas faire doublon. */
-function etiquette(v: unknown): string {
+export function etiquette(v: unknown): string {
   return String(v ?? "")
     .trim()
     .replace(/\s+/g, " ")
@@ -438,6 +439,283 @@ const AGREGAT_VIDE: AgregatClient = {
   caCents: 0,
   derniereCommande: null,
 };
+
+/**
+ * Les adresses inscrites au formulaire de la lettre, en minuscules.
+ *
+ * Une cliente est « abonnée aux e-mails » si elle a coché la case sur sa fiche
+ * OU si elle s'est inscrite au formulaire : ce sont exactement les deux
+ * gisements de la lettre d'information (lettre.ts, `listeDestinataires`). Le
+ * dire autrement à l'écran, ce serait annoncer « non abonnée » quelqu'un qui
+ * recevra la prochaine lettre.
+ */
+async function inscritsALaLettre(): Promise<Set<string>> {
+  const lignes = await db
+    .select({ email: schema.newsletterSubscribers.email })
+    .from(schema.newsletterSubscribers);
+  return new Set(
+    lignes.map((l) => l.email.trim().toLowerCase()).filter(Boolean),
+  );
+}
+
+interface Emplacement {
+  ville: string | null;
+  /** Tel qu'il est enregistré : un code (« FR ») le plus souvent. */
+  pays: string | null;
+}
+
+/**
+ * Où vit chaque client : la ville et le pays.
+ *
+ * Le carnet d'adresses d'abord — l'adresse de livraison par défaut, sinon la
+ * plus récente —, parce que c'est le client qui l'a écrite. À défaut, la
+ * dernière commande livrée : une cliente du site sans compte n'a pas de
+ * carnet, mais elle a bien donné une adresse. Une vente de stand, remise en
+ * main propre, n'en a pas : elle ne dit rien.
+ */
+async function emplacementsClients(
+  ids?: number[],
+): Promise<Map<number, Emplacement>> {
+  const out = new Map<number, Emplacement>();
+  if (ids && !ids.length) return out;
+
+  const adresses = await db
+    .select({
+      customerId: schema.customerAddresses.customerId,
+      ville: schema.customerAddresses.city,
+      pays: schema.customerAddresses.country,
+    })
+    .from(schema.customerAddresses)
+    .where(ids ? inArray(schema.customerAddresses.customerId, ids) : undefined)
+    .orderBy(
+      desc(schema.customerAddresses.isDefaultShipping),
+      desc(schema.customerAddresses.id),
+    );
+  for (const a of adresses) {
+    if (out.has(a.customerId)) continue;
+    const ville = (a.ville ?? "").trim();
+    if (!ville && !(a.pays ?? "").trim()) continue;
+    out.set(a.customerId, { ville: ville || null, pays: (a.pays ?? "").trim() || null });
+  }
+
+  const conditions = [
+    isNotNull(schema.orders.customerId),
+    notInArray(schema.orders.status, HORS_VENTES),
+    raw`coalesce(trim(${schema.orders.shippingCity}), '') <> ''`,
+  ];
+  if (ids) conditions.push(inArray(schema.orders.customerId, ids));
+  const commandes = await db
+    .select({
+      customerId: schema.orders.customerId,
+      ville: schema.orders.shippingCity,
+      pays: schema.orders.shippingCountry,
+    })
+    .from(schema.orders)
+    .where(and(...conditions))
+    .orderBy(desc(schema.orders.createdAt));
+  for (const o of commandes) {
+    if (o.customerId == null || out.has(o.customerId)) continue;
+    out.set(o.customerId, {
+      ville: (o.ville ?? "").trim() || null,
+      pays: (o.pays ?? "").trim() || null,
+    });
+  }
+  return out;
+}
+
+/** Les noms de pays en français, pour les codes que le site enregistre. */
+const NOMS_DE_PAYS = new Intl.DisplayNames(["fr"], { type: "region" });
+
+/**
+ * Un pays lisible : « FR » devient « France ». Ce qui n'est pas un code à deux
+ * lettres — une adresse reprise d'un ancien fichier, « Belgique » — reste tel
+ * quel, plutôt que d'être deviné.
+ */
+export function nomDuPays(brut: string | null | undefined): string | null {
+  const v = (brut ?? "").trim();
+  if (!v) return null;
+  if (!/^[A-Za-z]{2}$/.test(v)) return v;
+  try {
+    return NOMS_DE_PAYS.of(v.toUpperCase()) ?? v;
+  } catch {
+    return v;
+  }
+}
+
+/** Ce qu'on peut demander à la liste des clientes du back-office. */
+interface FiltresClientsBo {
+  q?: string;
+  segment?: string;
+  /** Une sélection précise (l'export des lignes cochées) : le reste est ignoré. */
+  ids?: number[];
+}
+
+/**
+ * La liste des clientes, avec tout ce que l'écran en montre.
+ *
+ * Une seule lecture pour l'écran paginé, l'ancienne route et l'export : trois
+ * lectures différentes finiraient par ne plus dire la même chose, et le
+ * fichier ne correspondrait plus à la liste qu'on a sous les yeux.
+ *
+ * Les segments qui dépendent des commandes (inactifs, fidèles, sans commande)
+ * ou de la lettre (abonnées) se filtrent en mémoire, comme les statuts de la
+ * liste des commandes : les exprimer en SQL rendrait la requête illisible
+ * pour un gain nul à cette échelle.
+ */
+async function lireClientsBo(f: FiltresClientsBo) {
+  const conditions = [];
+  const segment = (f.segment ?? "").trim();
+  if (f.ids) {
+    if (!f.ids.length) return [];
+    conditions.push(inArray(schema.customers.id, f.ids));
+  } else {
+    const cherche = (f.q ?? "").trim().toLowerCase();
+    if (cherche) {
+      const motif = `%${cherche}%`;
+      conditions.push(
+        or(
+          raw`lower(coalesce(${schema.customers.name}, '')) like ${motif}`,
+          raw`lower(coalesce(${schema.customers.email}, '')) like ${motif}`,
+          raw`lower(coalesce(${schema.customers.phone}, '')) like ${motif}`,
+          // Les étiquettes aussi : « VIP » doit retrouver les clientes
+          // étiquetées ainsi, c'est à ça qu'elles servent.
+          raw`lower(coalesce(${schema.customers.tags}::text, '')) like ${motif}`,
+        )!,
+      );
+    }
+    if (segment === "compte")
+      conditions.push(isNotNull(schema.customers.passwordHash));
+  }
+
+  const rows = await db
+    .select({
+      id: schema.customers.id,
+      name: schema.customers.name,
+      email: schema.customers.email,
+      phone: schema.customers.phone,
+      createdAt: schema.customers.createdAt,
+      acceptsMarketing: schema.customers.acceptsMarketing,
+      tags: schema.customers.tags,
+      compte: raw<boolean>`(${schema.customers.passwordHash} is not null)`,
+    })
+    .from(schema.customers)
+    .where(conditions.length ? and(...conditions) : undefined);
+
+  const [agregats, origines, lettre, emplacements] = await Promise.all([
+    agregatsClients(),
+    originesClients(),
+    inscritsALaLettre(),
+    emplacementsClients(f.ids),
+  ]);
+  let liste = rows.map((r) => {
+    const a = agregats.get(r.id) ?? AGREGAT_VIDE;
+    const o = origines.get(r.id);
+    const e = emplacements.get(r.id);
+    const inscritLettre = !!r.email && lettre.has(r.email.trim().toLowerCase());
+    return {
+      ...r,
+      tags: r.tags ?? [],
+      /**
+       * Reçoit la lettre d'information : case cochée sur sa fiche, ou
+       * inscription au formulaire (voir `inscritsALaLettre`).
+       */
+      abonne: r.acceptsMarketing || inscritLettre,
+      /** Inscrite au formulaire de la lettre, indépendamment de sa fiche. */
+      inscritLettre,
+      ville: e?.ville ?? null,
+      /** Le pays tel qu'enregistré (souvent un code), et son nom en français. */
+      pays: e?.pays ?? null,
+      paysNom: nomDuPays(e?.pays),
+      /** « web », « salon », ou null pour qui n'a jamais rien commandé. */
+      origine: o?.canal ?? null,
+      /** Le nom du stand, quand la première commande y a été prise. */
+      origineStand: o?.stand ?? null,
+      commandes: a.commandes,
+      caCents: a.caCents,
+      derniereCommande: a.derniereCommande
+        ? a.derniereCommande.toISOString()
+        : null,
+    };
+  });
+
+  if (f.ids) return liste;
+  const ilY90Jours = Date.now() - 90 * 24 * 60 * 60 * 1000;
+  if (segment === "inactifs")
+    liste = liste.filter(
+      (l) =>
+        l.commandes > 0 &&
+        l.derniereCommande !== null &&
+        new Date(l.derniereCommande).getTime() < ilY90Jours,
+    );
+  if (segment === "fideles") liste = liste.filter((l) => l.commandes >= 2);
+  if (segment === "sans-commande")
+    liste = liste.filter((l) => l.commandes === 0);
+  // « Abonnées aux e-mails » : la case de la fiche OU le formulaire de la
+  // lettre. Ce segment ne lisait que la case, et laissait de côté toutes
+  // celles qui s'étaient inscrites en bas du site.
+  if (segment === "optin") liste = liste.filter((l) => l.abonne);
+  return liste;
+}
+
+type ClientBo = Awaited<ReturnType<typeof lireClientsBo>>[number];
+
+/** Le nom qu'on lit dans la liste : le nom, ou l'adresse quand il n'y en a pas. */
+function nomAffiche(c: ClientBo): string {
+  return (c.name ?? "").trim() || (c.email ?? "").trim();
+}
+
+/**
+ * Les tris de la liste, chacun dans son sens naturel : le plus gros client,
+ * le plus fidèle, le plus récent d'abord ; les noms et les villes de A à Z.
+ * Une valeur absente (pas de ville, jamais commandé) va toujours en bas.
+ */
+const TRIS_CLIENTS: Record<string, (a: ClientBo, b: ClientBo) => number> = {
+  ca: (a, b) => b.caCents - a.caCents,
+  commandes: (a, b) => b.commandes - a.commandes,
+  recente: (a, b) =>
+    (b.derniereCommande ?? "").localeCompare(a.derniereCommande ?? ""),
+  nom: (a, b) =>
+    nomAffiche(a).localeCompare(nomAffiche(b), "fr", { sensitivity: "base" }),
+  emplacement: (a, b) =>
+    emplacementTri(a).localeCompare(emplacementTri(b), "fr", { sensitivity: "base" }),
+  inscription: (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+};
+
+/** La ville et le pays, comparables. */
+function emplacementTri(c: ClientBo): string {
+  return [c.ville ?? "", c.paysNom ?? ""].join(" ").trim();
+}
+
+/**
+ * Ce qui manque pour un tri : jamais commandé, pas de nom ni d'adresse, pas
+ * de ville. Ces lignes restent EN BAS dans les deux sens — retourner le tri
+ * ne doit pas faire remonter en tête cinquante lignes vides.
+ */
+const ABSENT_POUR_LE_TRI: Record<string, (c: ClientBo) => boolean> = {
+  recente: (c) => !c.derniereCommande,
+  nom: (c) => !nomAffiche(c),
+  emplacement: (c) => !emplacementTri(c),
+};
+
+/** Le comparateur d'une colonne, dans un sens ou dans l'autre. */
+function comparateurClients(tri: string, inverse = false) {
+  const comparer = TRIS_CLIENTS[tri] ?? TRIS_CLIENTS.ca!;
+  const absent = ABSENT_POUR_LE_TRI[tri];
+  return (a: ClientBo, b: ClientBo): number => {
+    if (absent && absent(a) !== absent(b)) return absent(a) ? 1 : -1;
+    return inverse ? -comparer(a, b) : comparer(a, b);
+  };
+}
+
+/** Une liste d'identifiants lue dans l'adresse : « 1,2,3 » ou « ids=1&ids=2 ». */
+function identifiantsDemandes(brut: string[] | undefined): number[] | undefined {
+  if (!brut || !brut.length) return undefined;
+  const ids = brut
+    .flatMap((v) => v.split(","))
+    .map((v) => Number(v.trim()))
+    .filter((n) => Number.isInteger(n) && n > 0);
+  return [...new Set(ids)].slice(0, 5000);
+}
 
 /* -------------------------------------------------------------------------- */
 
@@ -1258,47 +1536,37 @@ export function mountCompteRoutes(app: Hono): void {
       );
 
     const q = c.req.query();
-    const url = new URL(c.req.url);
-    const interne = new URL(url.origin + "/admin/customers");
-    if (q.q) interne.searchParams.set("q", q.q);
-    if (q.segment) interne.searchParams.set("segment", q.segment);
-    interne.searchParams.set("limit", "5000");
-    // On repasse par la meme lecture que l'ecran : deux requetes differentes
-    // finiraient par ne plus dire la meme chose, et le fichier ne
-    // correspondrait plus a la liste qu'on a sous les yeux.
-    const reponse = await app.fetch(
-      new Request(interne, { headers: c.req.raw.headers }),
-    );
-    if (!reponse.ok)
-      return c.json({ error: "La liste n'a pas pu être lue." }, 500);
-    const lignesBrutes = (await reponse.json()) as {
-      name: string | null;
-      email: string | null;
-      phone: string | null;
-      createdAt: string;
-      acceptsMarketing: boolean;
-      tags: string[];
-      compte: boolean;
-      origine: string | null;
-      origineStand: string | null;
-      commandes: number;
-      caCents: number;
-      derniereCommande: string | null;
-    }[];
+    // Les lignes cochées à l'écran (`ids`), ou toute la liste filtrée. On
+    // repasse par la même lecture que l'écran (`lireClientsBo`) : deux
+    // requêtes différentes finiraient par ne plus dire la même chose, et le
+    // fichier ne correspondrait plus à la liste qu'on a sous les yeux.
+    const ids = identifiantsDemandes(c.req.queries("ids"));
+    const lignesBrutes = (
+      await lireClientsBo(ids ? { ids } : { q: q.q, segment: q.segment })
+    ).sort(comparateurClients(q.tri ?? "ca"));
 
     const cellule = (v: unknown): string => {
       const t = v === null || v === undefined ? "" : String(v);
-      return /[";\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+      // Une cellule qui commence par =, +, - ou @ serait lue par Excel comme
+      // une formule : un nom saisi sur le site ne doit rien pouvoir exécuter
+      // chez la personne qui ouvre le fichier.
+      const sure = /^[=+\-@]/.test(t) ? `'${t}` : t;
+      return /[";\r\n]/.test(sure) ? `"${sure.replace(/"/g, '""')}"` : sure;
     };
-    const jour = (iso: string | null) =>
+    const jour = (iso: string | Date | null) =>
       iso ? new Date(iso).toLocaleDateString("fr-FR") : "";
 
+    // Les colonnes de l'import (import-clients.ts) se lisent toutes ici : un
+    // fichier exporté se réimporte tel quel, sans rien renommer.
     const entetes = [
       "Nom",
       "Adresse e-mail",
       "Téléphone",
+      "Abonnement aux e-mails",
       "Accepte le marketing",
       "Compte client",
+      "Ville",
+      "Pays",
       "Vient de",
       "Stand",
       "Commandes",
@@ -1312,8 +1580,11 @@ export function mountCompteRoutes(app: Hono): void {
         r.name ?? "",
         r.email ?? "",
         r.phone ?? "",
+        r.abonne ? "abonné" : "non abonné",
         r.acceptsMarketing ? "oui" : "non",
         r.compte ? "oui" : "non",
+        r.ville ?? "",
+        r.paysNom ?? "",
         r.origine === "salon" ? "stand" : r.origine === "web" ? "site" : "",
         r.origineStand ?? "",
         r.commandes,
@@ -1337,72 +1608,96 @@ export function mountCompteRoutes(app: Hono): void {
     });
   });
 
+  /**
+   * La liste de l'écran « Clients », par pages de cinquante.
+   *
+   * Triée ICI, sur toute la liste, et non dans la page : trier les cinquante
+   * lignes affichées ferait croire que la plus grosse cliente est en tête
+   * alors qu'elle attend page 3. Le chiffre d'affaires total couvre lui aussi
+   * toute la liste filtrée, pas seulement la page.
+   *
+   * `sens=asc` retourne le tri, quel qu'il soit : chaque colonne a son sens
+   * naturel (voir TRIS_CLIENTS), et un second clic sur son titre l'inverse.
+   */
+  app.get("/admin/customers/liste", async (c) => {
+    const q = c.req.query();
+    const parPage = Math.min(200, Math.max(10, Math.trunc(Number(q.parPage)) || 50));
+    const tri = TRIS_CLIENTS[q.tri ?? ""] ? q.tri! : "ca";
+    const inverse = q.sens === "inverse";
+    const comparer = comparateurClients(tri, inverse);
+    const liste = (await lireClientsBo({ q: q.q, segment: q.segment })).sort(
+      // L'identifiant départage les égalités : sans lui, deux clientes à 0 €
+      // pourraient changer de page d'un affichage à l'autre.
+      (a, b) => comparer(a, b) || b.id - a.id,
+    );
+    const pages = Math.max(1, Math.ceil(liste.length / parPage));
+    const page = Math.min(pages, Math.max(1, Math.trunc(Number(q.page)) || 1));
+    return c.json({
+      total: liste.length,
+      page,
+      pages,
+      parPage,
+      tri,
+      inverse,
+      caTotalCents: liste.reduce((s, l) => s + l.caCents, 0),
+      clients: liste.slice((page - 1) * parPage, page * parPage),
+    });
+  });
+
+  /**
+   * Pose ou retire une étiquette sur plusieurs clientes d'un coup — les
+   * lignes cochées de la liste.
+   *
+   * Même règle que sur une fiche : la casse et les espaces ne font pas de
+   * doublon (« VIP » et « vip » sont la même étiquette), et la première
+   * graphie reste.
+   */
+  app.post("/admin/customers/etiquettes", async (c) => {
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const ids = identifiantsDemandes(
+      Array.isArray(b.ids) ? b.ids.map((v) => String(v)) : undefined,
+    );
+    if (!ids?.length)
+      return c.json({ error: "Cochez au moins une cliente dans la liste." }, 400);
+    const ajouter = etiquette(b.ajouter);
+    const retirer = etiquette(b.retirer);
+    if (!ajouter && !retirer)
+      return c.json({ error: "Écrivez l'étiquette à ajouter ou à retirer." }, 400);
+
+    const fiches = await db
+      .select({ id: schema.customers.id, tags: schema.customers.tags })
+      .from(schema.customers)
+      .where(inArray(schema.customers.id, ids));
+    let modifiees = 0;
+    await db.transaction(async (tx) => {
+      for (const f of fiches) {
+        const avant = f.tags ?? [];
+        let apres = avant.filter(
+          (t) => !retirer || t.toLowerCase() !== retirer.toLowerCase(),
+        );
+        if (ajouter && !apres.some((t) => t.toLowerCase() === ajouter.toLowerCase()))
+          apres = [...apres, ajouter];
+        if (apres.length === avant.length && apres.every((t, i) => t === avant[i]))
+          continue;
+        await tx
+          .update(schema.customers)
+          .set({ tags: apres })
+          .where(eq(schema.customers.id, f.id));
+        modifiees += 1;
+      }
+    });
+    return c.json({ ok: true, modifiees, cochees: fiches.length });
+  });
+
+  // L'import d'un fichier de clientes, ses routes rangées à part
+  // (import-clients.ts). Montées ICI, avant « /admin/customers/:id » : posée
+  // après, « /admin/customers/import » serait lue comme la fiche « import ».
+  mountImportClients(app);
+
   app.get("/admin/customers", async (c) => {
     const q = c.req.query();
     const limit = Math.min(Number(q.limit ?? 200), 1000);
-    const conditions = [];
-    const cherche = (q.q ?? "").trim().toLowerCase();
-    if (cherche) {
-      const motif = `%${cherche}%`;
-      conditions.push(
-        or(
-          raw`lower(coalesce(${schema.customers.name}, '')) like ${motif}`,
-          raw`lower(coalesce(${schema.customers.email}, '')) like ${motif}`,
-          raw`lower(coalesce(${schema.customers.phone}, '')) like ${motif}`,
-        )!,
-      );
-    }
-    const segment = (q.segment ?? "").trim();
-    if (segment === "compte")
-      conditions.push(isNotNull(schema.customers.passwordHash));
-    if (segment === "optin")
-      conditions.push(eq(schema.customers.acceptsMarketing, true));
-
-    const rows = await db
-      .select({
-        id: schema.customers.id,
-        name: schema.customers.name,
-        email: schema.customers.email,
-        phone: schema.customers.phone,
-        createdAt: schema.customers.createdAt,
-        acceptsMarketing: schema.customers.acceptsMarketing,
-        tags: schema.customers.tags,
-        compte: raw<boolean>`(${schema.customers.passwordHash} is not null)`,
-      })
-      .from(schema.customers)
-      .where(conditions.length ? and(...conditions) : undefined);
-
-    const agregats = await agregatsClients();
-    const origines = await originesClients();
-    let liste = rows.map((r) => {
-      const a = agregats.get(r.id) ?? AGREGAT_VIDE;
-      const o = origines.get(r.id);
-      return {
-        ...r,
-        tags: r.tags ?? [],
-        /** « web », « salon », ou null pour qui n'a jamais rien commandé. */
-        origine: o?.canal ?? null,
-        /** Le nom du stand, quand la première commande y a été prise. */
-        origineStand: o?.stand ?? null,
-        commandes: a.commandes,
-        caCents: a.caCents,
-        derniereCommande: a.derniereCommande
-          ? a.derniereCommande.toISOString()
-          : null,
-      };
-    });
-
-    const ilY90Jours = Date.now() - 90 * 24 * 60 * 60 * 1000;
-    if (segment === "inactifs")
-      liste = liste.filter(
-        (l) =>
-          l.commandes > 0 &&
-          l.derniereCommande !== null &&
-          new Date(l.derniereCommande).getTime() < ilY90Jours,
-      );
-    if (segment === "fideles") liste = liste.filter((l) => l.commandes >= 2);
-    if (segment === "sans-commande")
-      liste = liste.filter((l) => l.commandes === 0);
+    const liste = await lireClientsBo({ q: q.q, segment: q.segment });
 
     // Les plus récemment actifs d'abord : c'est ce qu'on cherche en ouvrant la
     // page. Les clients sans commande passent après, du plus récent inscrit.

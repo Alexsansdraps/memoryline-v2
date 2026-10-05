@@ -31,6 +31,15 @@
  * Chaque chiffre suit ce choix ; ceux qui n'ont pas de sens au stand (paniers
  * abandonnés, transformation) n'y sont pas calculés du tout.
  *
+ * Et, parmi les stands, UN salon en particulier (`?stand=3`). Le retour d'un
+ * marché de Noël pose une question précise — « celui-là, combien a-t-il
+ * fait, et qu'est-ce qui s'y est vendu ? » —, et le total de tous les stands
+ * y répondait en mélangeant Mulhouse et Colmar.
+ *
+ * La période est libre (`depuis`, `jusqu`, jours de Paris compris) : un salon
+ * dure trois jours, un bilan se fait au mois, et les quatre fenêtres fixes
+ * d'autrefois ne tombaient sur aucun des deux.
+ *
  * Tout passe par le client SQL brut plutôt que par le constructeur de
  * requêtes : ce sont des agrégats, et les écrire en SQL les rend lisibles par
  * quelqu'un qui connaît SQL — ce qui est le cas de la personne qui devra les
@@ -66,9 +75,64 @@ function duCanal(canal: Canal, colonne = sql`channel`) {
   return sql`true`;
 }
 
+/** Le stand demandé (?stand=3), ou null pour tous. Rien d'autre qu'un entier. */
+function standDemande(v: string | undefined): number | null {
+  const n = Number(v);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/**
+ * Les ventes regardées : le canal, et à l'intérieur des stands, un seul stand.
+ *
+ * Un stand choisi IMPOSE le canal des stands : une vente du site n'a pas de
+ * stand, et « le site, au marché de Mulhouse » ne désigne rien. `o` dit que
+ * la requête lit la commande sous l'alias « o ».
+ */
+function perimetre(canal: Canal, stand: number | null, o = false) {
+  const colonneCanal = o ? sql`o.channel` : sql`channel`;
+  if (stand === null) return duCanal(canal, colonneCanal);
+  const colonneStand = o ? sql`o.stand_id` : sql`stand_id`;
+  return sql`${colonneCanal} = 'salon' and ${colonneStand} = ${stand}`;
+}
+
 interface Periode {
   debut: Date;
   fin: Date;
+}
+
+/**
+ * La date de Paris d'un instant, « 2026-10-05 ».
+ *
+ * `toISOString` donnerait la date en temps universel : un début de période à
+ * minuit à Paris s'écrirait la veille, et l'écran annoncerait un jour de trop.
+ * « sv-SE » n'est là que parce que cette langue écrit les dates à l'ISO.
+ */
+function jourDeParis(d: Date): string {
+  return d.toLocaleDateString("sv-SE", { timeZone: FUSEAU });
+}
+
+/** Une date « AAAA-MM-JJ » qui existe vraiment, ou rien. */
+function dateSaisie(v: string | undefined): string | undefined {
+  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return undefined;
+  const d = new Date(`${v}T12:00:00`);
+  // « 2026-02-31 » passerait la forme et deviendrait le 3 mars : on refuse ce
+  // que le calendrier ne connaît pas plutôt que de répondre à côté.
+  return Number.isNaN(d.getTime()) || jourDeParis(d) !== v ? undefined : v;
+}
+
+/**
+ * Le pas de la courbe, selon la longueur de la période.
+ *
+ * Jour par jour jusqu'à deux mois ; au-delà, trois cents points serrés sur
+ * neuf cents pixels ne dessinent plus une forme mais un peigne, et le samedi
+ * d'un salon écrase tout le reste. La semaine, puis le mois, rendent la
+ * tendance lisible sur une année.
+ */
+type Pas = "day" | "week" | "month";
+function pasDeLaCourbe(jours: number): Pas {
+  if (jours <= 62) return "day";
+  if (jours <= 400) return "week";
+  return "month";
 }
 
 /**
@@ -92,7 +156,18 @@ function enTexte(d: Date): string {
  * une tendance et le détail d'une semaine. Une période plus courte ferait du
  * bruit, une plus longue cacherait ce qui vient de changer.
  */
-function periodes(depuis: string | undefined, jusqu: string | undefined) {
+function periodes(brutDepuis: string | undefined, brutJusqu: string | undefined) {
+  // Une date illisible est ignorée, et non transmise : « new Date » en ferait
+  // une date invalide, et la première requête tomberait sur une erreur au
+  // lieu de répondre avec la période par défaut.
+  let depuis = dateSaisie(brutDepuis);
+  let jusqu = dateSaisie(brutJusqu);
+  // Les deux bornes saisies à l'envers disent la même période : on la lit
+  // dans le bon sens plutôt que de répondre « aucune vente ».
+  if (depuis && jusqu && depuis > jusqu) [depuis, jusqu] = [jusqu, depuis];
+  // Les heures sont celles du serveur, réglé sur Paris (TZ, docker-compose) :
+  // « le 5 octobre » commence à minuit à Paris, pas à minuit en temps
+  // universel, ce qui ferait glisser deux heures de ventes sur la veille.
   const fin = jusqu ? new Date(`${jusqu}T23:59:59.999`) : new Date();
   const debut = depuis
     ? new Date(`${depuis}T00:00:00.000`)
@@ -105,15 +180,15 @@ function periodes(depuis: string | undefined, jusqu: string | undefined) {
   return { courante: { debut, fin } as Periode, avant };
 }
 
-/** Le total et le nombre de ventes d'une période, pour un canal. */
-async function totaux(p: Periode, canal: Canal) {
+/** Le total et le nombre de ventes d'une période, pour un canal (et un stand). */
+async function totaux(p: Periode, canal: Canal, stand: number | null) {
   const [r] = await sql`
     select
       coalesce(sum(total_cents), 0)::int as ca_cents,
       count(*)::int                      as commandes,
       count(distinct customer_id)::int   as clients
     from "public"."order"
-    where ${VENDUE} and ${duCanal(canal)}
+    where ${VENDUE} and ${perimetre(canal, stand)}
       and created_at between ${enTexte(p.debut)}::timestamptz
                          and ${enTexte(p.fin)}::timestamptz`;
   const ca = Number(r?.ca_cents ?? 0);
@@ -145,11 +220,30 @@ export function mountAnalytiqueRoutes(app: Hono): void {
     /** Les bornes de la période, prêtes pour les requêtes (voir `enTexte`). */
     const du = enTexte(courante.debut);
     const au = enTexte(courante.fin);
-    const canal = canalDemande(c.req.query("canal"));
-    /** Le canal appliqué aux requêtes qui lisent la commande sous l'alias « o ». */
-    const canalO = duCanal(canal, sql`o.channel`);
+    const stand = standDemande(c.req.query("stand"));
+    // Un stand choisi tire le canal avec lui (voir `perimetre`) : l'écran
+    // reçoit « stands », et cache ce qui n'a pas de sens au stand.
+    const canal: Canal = stand !== null ? "stands" : canalDemande(c.req.query("canal"));
+    /** Le périmètre des requêtes qui lisent la commande sans alias. */
+    const ventes = perimetre(canal, stand);
+    /** Le même, pour celles qui la lisent sous l'alias « o ». */
+    const canalO = perimetre(canal, stand, true);
     /** Ce qu'une requête sans objet renvoie : rien, sans aller-retour. */
     const aucuneLigne = Promise.resolve([] as Record<string, unknown>[]);
+    /**
+     * Combien de jours de Paris la période couvre, bornes comprises : du 1er
+     * au 5 octobre, cinq. Compté sur les dates et non sur les heures, qu'un
+     * changement d'heure ou une fin de période « maintenant » faisaient
+     * tomber un jour à côté.
+     */
+    const jours = Math.max(
+      1,
+      Math.round(
+        (Date.parse(jourDeParis(courante.fin)) - Date.parse(jourDeParis(courante.debut))) /
+          86400000,
+      ) + 1,
+    );
+    const pas = pasDeLaCourbe(jours);
 
     /*
      * Tout part ENSEMBLE. Ce sont une dizaine d'agrégats indépendants ; les
@@ -167,27 +261,30 @@ export function mountAnalytiqueRoutes(app: Hono): void {
       paniers,
       lieux,
       parStand,
+      parGenre,
+      standsVendeurs,
     ] = await Promise.all([
-      totaux(courante, canal),
-      totaux(avant, canal),
+      totaux(courante, canal, stand),
+      totaux(avant, canal, stand),
 
       // La courbe. `generate_series` remplit les jours SANS vente : sans lui,
       // une semaine creuse se lirait comme une semaine absente, et la courbe
-      // rapprocherait deux jours éloignés.
+      // rapprocherait deux jours éloignés. Chaque point porte le PREMIER jour
+      // de sa case — le lundi d'une semaine, le 1er d'un mois (`pas`).
       sql`
         with jours as (
           select generate_series(
-            date_trunc('day', ${du}::timestamptz at time zone ${FUSEAU}),
-            date_trunc('day', ${au}::timestamptz at time zone ${FUSEAU}),
-            interval '1 day'
+            date_trunc(${pas}, ${du}::timestamptz at time zone ${FUSEAU}),
+            date_trunc(${pas}, ${au}::timestamptz at time zone ${FUSEAU}),
+            ${`1 ${pas}`}::interval
           )::date as jour
         ),
         ventes as (
-          select (created_at at time zone ${FUSEAU})::date as jour,
+          select date_trunc(${pas}, created_at at time zone ${FUSEAU})::date as jour,
                  sum(total_cents)::int as ca_cents,
                  count(*)::int         as commandes
           from "public"."order"
-          where ${VENDUE} and ${duCanal(canal)}
+          where ${VENDUE} and ${ventes}
             and created_at between ${du}::timestamptz and ${au}::timestamptz
           group by 1
         )
@@ -219,7 +316,7 @@ export function mountAnalytiqueRoutes(app: Hono): void {
                count(*)::int as commandes,
                sum(total_cents)::int as "caCents"
         from "public"."order"
-        where ${VENDUE} and ${duCanal(canal)}
+        where ${VENDUE} and ${ventes}
           and created_at between ${du}::timestamptz and ${au}::timestamptz
         group by 1
         order by "caCents" desc`,
@@ -323,7 +420,7 @@ export function mountAnalytiqueRoutes(app: Hono): void {
             select upper(trim(shipping_city)) as ville,
                    count(*)::int as commandes
             from "public"."order"
-            where ${VENDUE} and ${duCanal(canal)}
+            where ${VENDUE} and ${ventes}
               and created_at between ${du}::timestamptz and ${au}::timestamptz
               and shipping_city is not null and trim(shipping_city) <> ''
             group by 1
@@ -333,30 +430,76 @@ export function mountAnalytiqueRoutes(app: Hono): void {
       // Stand par stand : lequel a bien marché. Une vente d'avant les stands
       // multiples n'a pas de stand rattaché ; elle reste comptée, sous un nom
       // qui le dit, plutôt que de disparaître du total.
+      //
+      // TOUS les stands, même quand un seul est choisi : c'est en le voyant à
+      // côté des autres qu'on sait si le salon de Mulhouse a bien marché.
       canal === "stands"
         ? sql`
-            select coalesce(s.nom, 'Stand non précisé') as stand,
+            select s.id                                  as id,
+                   coalesce(s.nom, 'Stand non précisé') as stand,
                    count(*)::int                         as commandes,
                    sum(o.total_cents)::int               as "caCents"
             from "public"."order" o
             left join "public"."stand" s on s.id = o.stand_id
-            where o.status = 'paid' and o.cancelled_at is null and ${canalO}
+            where o.status = 'paid' and o.cancelled_at is null
+              and o.channel = 'salon'
               and o.created_at between ${du}::timestamptz and ${au}::timestamptz
             group by s.id, s.nom
             order by "caCents" desc`
         : aucuneLigne,
+
+      /*
+       * Par sorte d'affiche : composée par la cliente, prête à imprimer, ou
+       * tirée d'une photo par l'IA.
+       *
+       * L'affiche IA se reconnaît à sa CONFIGURATION (`aiPublicId`), figée à
+       * la vente, et non au réglage du produit, qui peut changer depuis : une
+       * vente doit rester rangée là où elle a été faite.
+       */
+      sql`
+        select case
+                 when i.config ? 'aiPublicId' then 'ia'
+                 when p.kind is not null then p.kind::text
+                 else 'autre'
+               end                                       as genre,
+               sum(i.quantity)::int                      as quantite,
+               sum(i.quantity * i.unit_price_cents)::int as "caCents"
+        from "public"."order_item" i
+        join "public"."order" o on o.id = i.order_id
+        left join "public"."product" p on p.id = i.product_id
+        where o.status = 'paid' and o.cancelled_at is null and ${canalO}
+          and o.created_at between ${du}::timestamptz and ${au}::timestamptz
+        group by 1
+        order by "caCents" desc`,
+
+      // Les stands qu'on peut choisir : ceux qui ont déjà vendu, du plus
+      // récemment actif au plus ancien. Un stand jamais ouvert n'a rien à
+      // montrer, et l'écran ne le proposerait que pour afficher des zéros.
+      sql`
+        select s.id as id, s.nom as nom
+        from "public"."stand" s
+        join "public"."order" o on o.stand_id = s.id
+        where o.status = 'paid' and o.cancelled_at is null
+        group by s.id, s.nom
+        order by max(o.created_at) desc`,
     ]);
 
     return c.json({
       canal,
+      /** Le stand regardé, ou null pour tous. */
+      stand,
       periode: {
-        debut: courante.debut.toISOString().slice(0, 10),
-        fin: courante.fin.toISOString().slice(0, 10),
-        jours: Math.max(
-          1,
-          Math.round((courante.fin.getTime() - courante.debut.getTime()) / 86400000),
-        ),
+        debut: jourDeParis(courante.debut),
+        fin: jourDeParis(courante.fin),
+        jours,
       },
+      /** La période à laquelle chaque écart compare : même durée, juste avant. */
+      precedente: {
+        debut: jourDeParis(avant.debut),
+        fin: jourDeParis(avant.fin),
+      },
+      /** Le pas de la courbe : « day », « week » ou « month ». */
+      pas,
       resume: {
         caCents: maintenant.caCents,
         commandes: maintenant.commandes,
@@ -389,6 +532,8 @@ export function mountAnalytiqueRoutes(app: Hono): void {
       paniers: canal === "stands" ? null : paniersDuSite(paniers[0]),
       lieux,
       parStand,
+      parGenre,
+      stands: standsVendeurs,
     });
   });
 }

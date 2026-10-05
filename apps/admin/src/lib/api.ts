@@ -229,9 +229,23 @@ export interface ResumePage {
   slug: string;
   title: string;
   status: string;
+  /** « site », « stand » ou « les-deux » : où la page se montre. */
+  affichage?: string;
+  /** Son rang dans « Pages du site » ; 0 = pas encore rangée. */
+  position?: number;
+  /** Le titre dans les autres langues, quand il est traduit. */
+  titres?: Record<string, string>;
   /** Non nul = archivée : hors du site, rangée dans « Pages archivées ». */
   archivedAt?: string | null;
   updatedAt: string;
+}
+
+/** Une collection telle que la boutique la sert : active, et avec des affiches en ligne. */
+export interface CollectionEnLigne {
+  id: number;
+  slug: string;
+  name: string;
+  produits: number;
 }
 
 /** Tout ce qu'il faut pour éditer une page, et de quoi remplir ses listes. */
@@ -708,6 +722,11 @@ export interface OrderRow {
   apercus?: string[];
   /** Nombre d'affiches différentes (lignes de commande). */
   lignes?: number;
+  /**
+   * Les affiches à imprimer, dans l'ordre des vignettes : la liste propose
+   * leurs PDF d'impression sans ouvrir la commande.
+   */
+  affiches?: { id: number; titre: string | null; format: string | null }[];
   /** Quantités déjà parties. */
   expedies?: number;
   rembourseCents?: number;
@@ -1036,6 +1055,62 @@ export interface FiltresClients {
   limit?: number;
 }
 
+/**
+ * Une ligne de l'écran « Clients » : la fiche et ses achats, plus ce que
+ * Shopify y montrait — l'abonnement aux e-mails et l'emplacement.
+ */
+export interface ClientListe extends Client {
+  /** Reçoit la lettre : case cochée sur sa fiche, OU inscrite au formulaire. */
+  abonne: boolean;
+  /** Inscrite au formulaire de la lettre, indépendamment de sa fiche. */
+  inscritLettre: boolean;
+  ville: string | null;
+  /** Tel qu'enregistré (souvent « FR ») ; `paysNom` est lisible. */
+  pays: string | null;
+  paysNom: string | null;
+  origine: string | null;
+  origineStand: string | null;
+}
+
+/** Une page de la liste des clients, triée sur TOUTE la liste filtrée. */
+export interface PageClients {
+  total: number;
+  page: number;
+  pages: number;
+  parPage: number;
+  tri: string;
+  inverse: boolean;
+  /** Le total dépensé de toute la liste filtrée, pas seulement de la page. */
+  caTotalCents: number;
+  clients: ClientListe[];
+}
+
+/** Ce qu'un import ferait, ou vient de faire, d'une ligne de fichier de clientes. */
+export interface LigneImportClient {
+  /** La ligne du tableur : l'en-tête est la ligne 1. */
+  ligne: number;
+  email: string;
+  nom: string;
+  action: "creation" | "mise-a-jour" | "inchange" | "refus";
+  raison?: string;
+  changements: string[];
+  /** L'abonnement aux e-mails que la fiche portera. */
+  abonne: boolean | null;
+  /** « Lille, France » : l'adresse qui entre au carnet, s'il y en a une. */
+  emplacement: string | null;
+  clientId?: number;
+}
+
+/** Le résultat d'un import de clientes, appliqué ou seulement simulé. */
+export interface ResultatImportClients {
+  applique: boolean;
+  lignes: number;
+  compte: Record<LigneImportClient["action"], number>;
+  colonnesReconnues: string[];
+  colonnesIgnorees: string[];
+  apercu: LigneImportClient[];
+}
+
 /** Adresse du carnet d'un client — il la gère depuis son espace, pas le BO. */
 export interface AdresseClient {
   id: number;
@@ -1149,9 +1224,15 @@ export interface Asset {
   colorZones: Record<string, string> | null;
   /**
    * Zones de couleur que le client ne peut pas changer (petits détails :
-   * ruban, élastique…). Vide = toutes les zones sont proposées.
+   * ruban, élastique…) : le réglage PROPRE à la pièce. Vide = toutes les
+   * zones sont proposées ; null = la pièce suit le réglage de sa catégorie.
    */
-  zonesMasquees?: string[];
+  zonesMasquees?: string[] | null;
+  /**
+   * La part du dessin peinte par chaque zone (0 à 1), mesurée par l'API :
+   * elle désigne la couleur principale. Null tant qu'elle n'est pas mesurée.
+   */
+  partsDesZones?: Record<string, number> | null;
   /** Nuances réunies sous une seule couleur, et leurs noms (« ruban »). */
   groupesCouleurs?: GroupeCouleur[] | null;
   /** Familles de couleurs, quand le dessin de la pièce est une image en pixels. */
@@ -1173,6 +1254,12 @@ export interface CategoriePiece {
   name: string;
   slot: string;
   colors: string[];
+  /**
+   * Les couleurs proposées au client pour chaque pièce sans réglage propre :
+   * « toutes », ou « principale » (la plus étendue, les détails gardent la
+   * couleur du dessin).
+   */
+  couleursProposees?: "toutes" | "principale";
   active: boolean;
   position: number;
   /**
@@ -1394,7 +1481,14 @@ export type CanalAnalytique = "site" | "stands" | "tout";
 export interface Analytique {
   /** Le canal effectivement lu : « tout » quand la demande n'en nommait aucun. */
   canal: CanalAnalytique;
+  /** Le stand regardé ; null pour tous. Un stand choisi impose « stands ». */
+  stand: number | null;
+  /** Dates de Paris, « 2026-10-05 », bornes comprises. */
   periode: { debut: string; fin: string; jours: number };
+  /** La période d'avant, de même durée, à laquelle chaque écart compare. */
+  precedente: { debut: string; fin: string };
+  /** Le pas de la courbe : un point par jour, par semaine ou par mois. */
+  pas: "day" | "week" | "month";
   resume: {
     caCents: number;
     commandes: number;
@@ -1431,8 +1525,15 @@ export interface Analytique {
   } | null;
   /** Les villes de livraison. Vide sous « Stands » : une vente de stand est remise sur place. */
   lieux: { ville: string; commandes: number }[];
-  /** Stand par stand. Rempli sous « Stands » seulement. */
-  parStand: { stand: string; commandes: number; caCents: number }[];
+  /**
+   * Stand par stand. Rempli sous « Stands » seulement — tous les stands, même
+   * quand un seul est choisi, pour qu'on le voie à côté des autres.
+   */
+  parStand: { id: number | null; stand: string; commandes: number; caCents: number }[];
+  /** Par sorte d'affiche : « personnalisable », « prete_a_imprimer », « ia », « autre ». */
+  parGenre: { genre: string; quantite: number; caCents: number }[];
+  /** Les stands qui ont déjà vendu, à proposer au choix. */
+  stands: { id: number; nom: string }[];
 }
 
 /**
@@ -2164,6 +2265,45 @@ export function adminApi(request?: Request) {
         acceptsMarketing?: boolean;
       },
     ) => req<Client>("POST", `/admin/customers/${id}`, data, cookie),
+    /**
+     * L'écran « Clients » : une page de cinquante, triée sur toute la liste.
+     * `sens: "inverse"` retourne le tri de la colonne.
+     */
+    clientsListe: (filtres: {
+      q?: string;
+      segment?: string;
+      tri?: string;
+      sens?: string;
+      page?: number;
+      parPage?: number;
+    }) => {
+      const p = new URLSearchParams();
+      for (const [k, v] of Object.entries(filtres))
+        if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
+      const qs = p.toString();
+      return req<PageClients>(
+        "GET",
+        `/admin/customers/liste${qs ? `?${qs}` : ""}`,
+        undefined,
+        cookie,
+      );
+    },
+    /** Pose ou retire une étiquette sur les clientes cochées. */
+    etiqueterClients: (ids: number[], corps: { ajouter?: string; retirer?: string }) =>
+      req<{ ok: true; modifiees: number; cochees: number }>(
+        "POST",
+        "/admin/customers/etiquettes",
+        { ids, ...corps },
+        cookie,
+      ),
+    /** Lit un fichier de clientes ; ne l'écrit qu'avec `appliquer`. */
+    importerClients: (csv: string, appliquer: boolean) =>
+      req<ResultatImportClients>(
+        "POST",
+        "/admin/customers/import",
+        { csv, appliquer },
+        cookie,
+      ),
     users: () => req<CompteAdmin[]>("GET", "/admin/users", undefined, cookie),
     upsertUser: (data: {
       id?: number;
@@ -2222,6 +2362,7 @@ export function adminApi(request?: Request) {
       colors: string[];
       active?: boolean;
       position?: number;
+      couleursProposees?: "toutes" | "principale";
     }) => req<CategoriePiece>("POST", "/admin/piece-categories", data, cookie),
     /**
      * Archive une catégorie de pièces, ou la restaure. Il n'y a plus de
@@ -2406,6 +2547,24 @@ export function adminApi(request?: Request) {
       ),
     creerCollection: (corps: { name: string }) =>
       req<{ id: number }>("POST", "/admin/collections", corps, cookie),
+    /**
+     * Range les collections : le tableau fait foi, la première prend le rang
+     * 1. C'est l'ordre de toutes les listes de collections, site compris.
+     */
+    ordonnerCollections: (collections: number[], menu = false) =>
+      req<{ ok: true; ranges: number; liensMenu: number }>(
+        "POST",
+        "/admin/collections/ordre",
+        // `menu` : les liens du menu vers ces collections suivent l'ordre.
+        { collections, menu },
+        cookie,
+      ),
+    /**
+     * Les collections dont la page existe sur le site : actives, et avec au
+     * moins une affiche en ligne. Les autres répondent « page introuvable ».
+     */
+    collectionsEnLigne: () =>
+      req<CollectionEnLigne[]>("GET", "/collections", undefined, cookie),
     /** Renomme, décrit, active, ou fixe le poids par défaut. */
     majCollection: (
       id: number,
@@ -2479,6 +2638,15 @@ export function adminApi(request?: Request) {
       req<PageCms>("GET", `/admin/pages/${id}`, undefined, cookie),
     creerPage: (corps: { slug: string; title: string }) =>
       req<{ id: number }>("POST", "/admin/pages", corps, cookie),
+    /** Range les pages : le tableau fait foi, la première prend le rang 1. */
+    ordonnerPages: (pages: number[], menu = false) =>
+      req<{ ok: true; ranges: number; liensMenu: number }>(
+        "POST",
+        "/admin/pages/ordre",
+        // `menu` : les liens du menu vers ces pages suivent l'ordre.
+        { pages, menu },
+        cookie,
+      ),
     /** Enregistre une page. Les clés absentes ne sont pas touchées. */
     enregistrerPage: (id: number, corps: Record<string, unknown>) =>
       req<{ ok: true }>("POST", `/admin/pages/${id}`, corps, cookie),
@@ -2525,9 +2693,17 @@ export function adminApi(request?: Request) {
 
     /* --- Statistiques de vente ----------------------------------------- */
     /** Tout l'écran en un appel : résumé, courbe, meilleures ventes, clientes. */
-    analytique: (filtres: { depuis?: string; jusqu?: string; canal?: CanalAnalytique } = {}) => {
+    analytique: (
+      filtres: {
+        depuis?: string;
+        jusqu?: string;
+        canal?: CanalAnalytique;
+        /** Un seul stand ; il impose le canal des stands. */
+        stand?: number | null;
+      } = {},
+    ) => {
       const p = new URLSearchParams();
-      for (const [k, v] of Object.entries(filtres)) if (v) p.set(k, v);
+      for (const [k, v] of Object.entries(filtres)) if (v) p.set(k, String(v));
       const qs = p.toString();
       return req<Analytique>(
         "GET",
@@ -2545,6 +2721,14 @@ export function adminApi(request?: Request) {
       req<StyleIa>("POST", "/admin/ia/prompts", corps, cookie),
     majStyleIa: (id: number, corps: Record<string, unknown>) =>
       req<StyleIa>("PUT", `/admin/ia/prompts/${id}`, corps, cookie),
+    /** Le titre d'un style dans une autre langue ; vide, le français s'affiche. */
+    traduireStyleIa: (id: number, lang: string, title: string) =>
+      req<{ translations: StyleIa["translations"] }>(
+        "POST",
+        `/admin/ia/prompts/${id}/translations`,
+        { lang, title },
+        cookie,
+      ),
     /**
      * Archive un style, ou le restaure. Il n'y a plus de suppression : la
      * consigne et les images d'un style ne vivent nulle part ailleurs.

@@ -15,23 +15,96 @@
  * trente points ne vaut pas quatre-vingts kilo-octets de code à charger, et
  * une dépendance de plus est une dépendance à suivre.
  *
- * Tout se lit pour le SITE, les STANDS, ou les deux. Le choix vit dans
- * l'adresse, comme la période : une page rechargée, mise en favori ou
- * envoyée par message montre la même chose à qui l'ouvre.
+ * Tout se lit pour le SITE, les STANDS, ou les deux — et parmi les stands,
+ * pour UN salon. La période est un raccourci (« Ce mois-ci ») ou deux dates
+ * choisies à la main. Tout vit dans l'adresse : une page rechargée, mise en
+ * favori ou envoyée par message montre la même chose à qui l'ouvre. Un
+ * raccourci reste RELATIF — « Ce mois-ci » mis en favori montrera le mois en
+ * cours dans trois mois —, deux dates restent ces deux dates.
  */
 import Admin from "../layouts/Admin.astro";
 import { adminApi, type Analytique, type CanalAnalytique } from "../lib/api.ts";
 import { url } from "../lib/url.ts";
 
 const api = adminApi(Astro.request);
+const params = Astro.url.searchParams;
 
-/** Les fenêtres proposées. Trente jours par défaut : voir la tendance ET la semaine. */
-const FENETRES = [
-  { jours: 7, nom: "7 jours" },
-  { jours: 30, nom: "30 jours" },
-  { jours: 90, nom: "90 jours" },
-  { jours: 365, nom: "12 mois" },
-] as const;
+/** Le fuseau de la boutique : « aujourd'hui » se juge à Paris. */
+const FUSEAU = "Europe/Paris";
+
+/** Une date « AAAA-MM-JJ » décalée de quelques jours, sans piège d'heure d'été. */
+function decaler(jour: string, nbJours: number): string {
+  const d = new Date(`${jour}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + nbJours);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Aujourd'hui à Paris, « 2026-10-05 » (« sv-SE » écrit les dates à l'ISO). */
+const aujourdhui = new Date().toLocaleDateString("sv-SE", { timeZone: FUSEAU });
+const [anneeEnCours, moisEnCours] = aujourdhui.split("-").map(Number) as [number, number];
+
+/** Le premier jour d'un mois, « 2026-09-01 ». */
+const premierDuMois = (annee: number, mois: number) =>
+  `${annee}-${String(mois).padStart(2, "0")}-01`;
+
+/**
+ * Les raccourcis de période, calculés à partir d'aujourd'hui.
+ *
+ * Les quatre fenêtres d'avant (7, 30, 90 jours, 12 mois) restent, avec leurs
+ * anciennes adresses (`?jours=30`) : un favori ne doit pas cesser de marcher.
+ * Les mois se lisent au calendrier — « Mois dernier », c'est du 1er au 30
+ * septembre, pas les trente jours d'avant hier.
+ */
+const RACCOURCIS: { cle: string; nom: string; jours?: number; du: string; au: string }[] = [
+  { cle: "aujourdhui", nom: "Aujourd'hui", du: aujourdhui, au: aujourdhui },
+  { cle: "7j", nom: "7 jours", jours: 7, du: decaler(aujourdhui, -6), au: aujourdhui },
+  { cle: "30j", nom: "30 jours", jours: 30, du: decaler(aujourdhui, -29), au: aujourdhui },
+  { cle: "90j", nom: "90 jours", jours: 90, du: decaler(aujourdhui, -89), au: aujourdhui },
+  {
+    cle: "mois",
+    nom: "Ce mois-ci",
+    du: premierDuMois(anneeEnCours, moisEnCours),
+    au: aujourdhui,
+  },
+  {
+    cle: "mois-dernier",
+    nom: "Mois dernier",
+    du:
+      moisEnCours === 1
+        ? premierDuMois(anneeEnCours - 1, 12)
+        : premierDuMois(anneeEnCours, moisEnCours - 1),
+    au: decaler(premierDuMois(anneeEnCours, moisEnCours), -1),
+  },
+  { cle: "annee", nom: "Cette année", du: `${anneeEnCours}-01-01`, au: aujourdhui },
+  { cle: "12m", nom: "12 mois", jours: 365, du: decaler(aujourdhui, -364), au: aujourdhui },
+];
+
+/** Une date saisie à la main : la forme, et un vrai jour du calendrier. */
+function dateValide(v: string | null): string | null {
+  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v ? v : null;
+}
+
+/*
+ * La période demandée. Deux dates l'emportent sur tout ; sinon un raccourci
+ * (`?periode=mois`, ou l'ancien `?jours=30`) ; sinon trente jours, comme avant.
+ */
+const duSaisi = dateValide(params.get("du"));
+const auSaisi = dateValide(params.get("au"));
+const libre = !!duSaisi || !!auSaisi;
+const raccourci = libre
+  ? null
+  : (RACCOURCIS.find((r) => r.cle === params.get("periode")) ??
+    RACCOURCIS.find((r) => r.jours !== undefined && r.jours === Number(params.get("jours"))) ??
+    RACCOURCIS.find((r) => r.cle === "30j")!);
+
+// Une seule date saisie vaut une période d'un jour, ou « depuis… jusqu'à
+// aujourd'hui » : deux champs à remplir ne doivent pas en faire exiger deux.
+let du = raccourci?.du ?? duSaisi ?? auSaisi!;
+let au = raccourci?.au ?? auSaisi ?? (duSaisi && duSaisi <= aujourdhui ? aujourdhui : duSaisi!);
+// À l'envers, ce sont les mêmes dates : on les remet dans l'ordre.
+if (du > au) [du, au] = [au, du];
 
 /**
  * Les ventes regardées. « Tout » par défaut : c'est ce que l'écran montrait
@@ -44,31 +117,56 @@ const CANAUX: { cle: CanalAnalytique; nom: string; ou: string }[] = [
   { cle: "tout", nom: "Tout", ou: "sur le site et aux stands" },
 ];
 
-const demande = Number(Astro.url.searchParams.get("jours") ?? 30);
-const jours = FENETRES.some((f) => f.jours === demande) ? demande : 30;
+/** Un stand précis (`?stand=3`) : il impose le canal des stands. */
+const standDemande = Number(params.get("stand"));
+const stand = Number.isInteger(standDemande) && standDemande > 0 ? standDemande : null;
 
-const canalDemande = Astro.url.searchParams.get("canal");
+const canalDemande = stand !== null ? "stands" : params.get("canal");
 const canal = CANAUX.find((c) => c.cle === canalDemande) ?? CANAUX[2]!;
 
 /**
- * L'adresse de l'écran pour une période et un canal. Changer l'un garde
- * l'autre : passer à « Stands » ne doit pas ramener la période à trente jours.
+ * L'adresse de l'écran avec un réglage changé. Changer l'un garde les autres :
+ * passer à « Stands » ne doit pas ramener la période à trente jours, ni
+ * changer de période faire perdre le salon regardé.
  */
-function lien(j: number, c: CanalAnalytique): string {
-  return `${url("/statistiques")}?jours=${j}${c === "tout" ? "" : `&canal=${c}`}`;
+function lien(changer: {
+  periode?: string;
+  dates?: { du: string; au: string };
+  canal?: CanalAnalytique;
+  stand?: number | null;
+}): string {
+  const p = new URLSearchParams();
+  const dates =
+    changer.dates ?? (changer.periode ? null : libre ? { du, au } : null);
+  const cle = changer.periode ?? (dates ? null : raccourci?.cle ?? "30j");
+  if (dates) {
+    p.set("du", dates.du);
+    p.set("au", dates.au);
+  } else if (cle && cle !== "30j") p.set("periode", cle);
+  const standVoulu = changer.stand !== undefined ? changer.stand : stand;
+  const canalVoulu = changer.canal ?? canal.cle;
+  // Le stand n'a de sens qu'avec le canal des stands : passer au site l'oublie.
+  if (standVoulu !== null && canalVoulu === "stands") p.set("stand", String(standVoulu));
+  else if (canalVoulu !== "tout") p.set("canal", canalVoulu);
+  const qs = p.toString();
+  return `${url("/statistiques")}${qs ? `?${qs}` : ""}`;
 }
-
-const depuis = new Date(Date.now() - (jours - 1) * 86400000)
-  .toISOString()
-  .slice(0, 10);
 
 let a: Analytique | null = null;
 let erreur: string | null = null;
 try {
-  a = await api.analytique({ depuis, canal: canal.cle });
+  a = await api.analytique({ depuis: du, jusqu: au, canal: canal.cle, stand });
 } catch (e) {
   erreur = String(e).replace(/^Error:\s*/, "");
 }
+
+/** Le stand regardé, nommé : il titre l'écran. */
+const nomStand =
+  stand === null
+    ? null
+    : (a?.stands.find((s) => s.id === stand)?.nom ??
+      a?.parStand.find((s) => s.id === stand)?.stand ??
+      "ce stand");
 
 const euros = (cents: number) =>
   (cents / 100).toLocaleString("fr-FR", {
@@ -76,6 +174,26 @@ const euros = (cents: number) =>
     currency: "EUR",
     maximumFractionDigits: cents % 100 === 0 ? 0 : 2,
   });
+
+/** « 5 octobre 2026 » ; l'année seulement quand elle aide. */
+function dateLongue(jour: string, avecAnnee = true): string {
+  return new Date(`${jour}T00:00:00Z`)
+    .toLocaleDateString("fr-FR", {
+      timeZone: "UTC",
+      day: "numeric",
+      month: "long",
+      ...(avecAnnee ? { year: "numeric" } : {}),
+    })
+    // « le 1er septembre », et non « le 1 septembre ».
+    .replace(/^1 /, "1er ");
+}
+
+/** « du 1er au 30 septembre 2026 », « le 5 octobre 2026 ». */
+function periodeEnClair(debut: string, fin: string): string {
+  if (debut === fin) return `le ${dateLongue(debut)}`;
+  const memeAnnee = debut.slice(0, 4) === fin.slice(0, 4);
+  return `du ${dateLongue(debut, !memeAnnee)} au ${dateLongue(fin)}`;
+}
 
 /**
  * L'écart avec la période précédente, tel qu'on le lit.
@@ -101,6 +219,41 @@ const hautMax = Math.max(1, ...points.map((p) => p.caCents));
 const L = 900;
 const H = 200;
 
+/**
+ * Ce que porte un point de la courbe. Au-delà de deux mois, l'API regroupe par
+ * semaine, puis par mois au-delà d'un an (`pas`) : l'écran le dit, sinon on
+ * lirait « 1 200 € » comme une journée.
+ */
+const pas = a?.pas ?? "day";
+const TITRE_COURBE = {
+  day: "Jour par jour",
+  week: "Semaine par semaine",
+  month: "Mois par mois",
+} as const;
+const MEILLEUR = {
+  day: "Meilleure journée",
+  week: "Meilleure semaine",
+  month: "Meilleur mois",
+} as const;
+
+/** Le nom d'un point : « 6 sept. », « semaine du 6 sept. », « sept. 2026 ». */
+function nomDuPoint(jour: string, court: boolean): string {
+  const d = new Date(`${jour}T00:00:00Z`);
+  if (pas === "month")
+    return d.toLocaleDateString("fr-FR", {
+      timeZone: "UTC",
+      month: court ? "short" : "long",
+      year: "numeric",
+    });
+  const texte = d.toLocaleDateString("fr-FR", {
+    timeZone: "UTC",
+    ...(court ? {} : { weekday: "long" }),
+    day: "numeric",
+    month: court ? "short" : "long",
+  });
+  return pas === "week" ? `semaine du ${texte}` : texte;
+}
+
 /** Le chemin de la courbe, en coordonnées du dessin. */
 const chemin = points
   .map((p, i) => {
@@ -119,10 +272,7 @@ const reperes = points.length
       .filter((v, i, t) => t.indexOf(v) === i)
       .map((i) => ({
         x: points.length > 1 ? (i / (points.length - 1)) * L : L / 2,
-        texte: new Date(points[i]!.jour).toLocaleDateString("fr-FR", {
-          day: "numeric",
-          month: "short",
-        }),
+        texte: nomDuPoint(points[i]!.jour, true).replace(/^semaine du /, ""),
       }))
   : [];
 
@@ -130,6 +280,18 @@ const meilleurJour = points.reduce(
   (m, p) => (p.caCents > (m?.caCents ?? -1) ? p : m),
   null as (typeof points)[number] | null,
 );
+
+/** Les sortes d'affiches, nommées comme dans le catalogue. */
+const GENRES: Record<string, string> = {
+  personnalisable: "Personnalisables",
+  prete_a_imprimer: "Prêtes à imprimer",
+  ia: "À partir d'une photo (IA)",
+  autre: "Autres (fiche supprimée)",
+};
+
+/** La part d'un canal dans le chiffre d'affaires, en pourcentage entier. */
+const part = (cents: number) =>
+  a && a.resume.caCents > 0 ? Math.round((cents / a.resume.caCents) * 100) : 0;
 
 const cadre = "rounded-lg border border-bo-border bg-bo-surface";
 
@@ -143,42 +305,119 @@ const choix = (actif: boolean) =>
 ---
 
 <Admin title="Statistiques">
-  <div class="mb-6 flex flex-wrap items-start justify-between gap-3">
-    <div>
-      <h2 class="text-lg font-semibold">Ce qui se vend {canal.ou}</h2>
-      <p class="text-sm text-bo-muted">
-        Seules les commandes <strong>payées et non annulées</strong> comptent.
-        Un panier abandonné n'est pas une vente.
+  <div class="mb-4">
+    <h2 class="text-lg font-semibold">
+      Ce qui se vend {nomStand ? `au stand « ${nomStand} »` : canal.ou}
+    </h2>
+    <p class="text-sm text-bo-muted">
+      Seules les commandes <strong>payées et non annulées</strong> comptent.
+      Un panier abandonné n'est pas une vente.
+    </p>
+  </div>
+
+  {/* Les réglages de l'écran, sur trois lignes : quoi (le canal, et le
+      stand), quand (un raccourci), ou quand exactement (deux dates). */}
+  <div class={`${cadre} mb-6 space-y-3 p-4`}>
+    {/* Le canal d'abord : il change la nature de ce qu'on lit, la période
+        n'en change que l'étendue. */}
+    <nav class="flex flex-wrap items-center gap-1" aria-label="Ventes regardées">
+      <span class="mr-1 w-16 text-xs tracking-wide text-bo-muted uppercase">Ventes</span>
+      {CANAUX.map((c) => (
+        <a
+          href={lien({ canal: c.cle, stand: null })}
+          aria-current={c.cle === canal.cle ? "true" : undefined}
+          class={choix(c.cle === canal.cle)}
+        >
+          {c.nom}
+        </a>
+      ))}
+    </nav>
+
+    {/* Un salon en particulier : chaque stand qui a déjà vendu. Proposé
+        seulement sous « Stands » — sous « Site », un stand ne veut rien dire. */}
+    {canal.cle === "stands" && a && a.stands.length > 0 && (
+      <nav class="flex flex-wrap items-center gap-1" aria-label="Stand regardé">
+        <span class="mr-1 w-16 text-xs tracking-wide text-bo-muted uppercase">Stand</span>
+        <a
+          href={lien({ canal: "stands", stand: null })}
+          aria-current={stand === null ? "true" : undefined}
+          class={choix(stand === null)}
+        >
+          Tous les stands
+        </a>
+        {a.stands.map((s) => (
+          <a
+            href={lien({ canal: "stands", stand: s.id })}
+            aria-current={s.id === stand ? "true" : undefined}
+            class={choix(s.id === stand)}
+          >
+            {s.nom}
+          </a>
+        ))}
+      </nav>
+    )}
+
+    <nav class="flex flex-wrap items-center gap-1" aria-label="Période">
+      <span class="mr-1 w-16 text-xs tracking-wide text-bo-muted uppercase">Période</span>
+      {RACCOURCIS.map((r) => (
+        <a
+          href={lien({ periode: r.cle })}
+          aria-current={raccourci?.cle === r.cle ? "true" : undefined}
+          class={choix(raccourci?.cle === r.cle)}
+        >
+          {r.nom}
+        </a>
+      ))}
+    </nav>
+
+    {/* Une période libre : deux dates. Un formulaire en GET, pour que le
+        résultat ait son adresse, comme les raccourcis — et qu'il marche sans
+        JavaScript. Le canal et le stand suivent en champs cachés. */}
+    <form
+      method="GET"
+      action={url("/statistiques")}
+      class="flex flex-wrap items-end gap-2"
+      aria-label="Choisir une période"
+    >
+      <span class="mr-1 w-16 pb-2 text-xs tracking-wide text-bo-muted uppercase">Dates</span>
+      {canal.cle !== "tout" && stand === null && (
+        <input type="hidden" name="canal" value={canal.cle} />
+      )}
+      {stand !== null && <input type="hidden" name="stand" value={stand} />}
+      <label class="text-sm">
+        <span class="mb-1 block text-xs text-bo-muted">Du</span>
+        <input
+          type="date"
+          name="du"
+          value={du}
+          required
+          class={`rounded border px-2 py-1.5 text-sm ${libre ? "border-bo-accent" : "border-bo-border"}`}
+        />
+      </label>
+      <label class="text-sm">
+        <span class="mb-1 block text-xs text-bo-muted">au</span>
+        <input
+          type="date"
+          name="au"
+          value={au}
+          required
+          class={`rounded border px-2 py-1.5 text-sm ${libre ? "border-bo-accent" : "border-bo-border"}`}
+        />
+      </label>
+      <button class="rounded bg-bo-nav px-3 py-1.5 text-sm text-white">Afficher</button>
+    </form>
+
+    {/* Ce qu'on regarde, en toutes lettres, et à quoi chaque écart compare :
+        « +12 % » ne dit rien si l'on ne sait pas par rapport à quand. */}
+    {a && (
+      <p class="border-t border-bo-border pt-3 text-sm text-bo-muted">
+        <strong class="text-bo-ink">
+          {periodeEnClair(a.periode.debut, a.periode.fin).replace(/^./, (l) => l.toUpperCase())}
+        </strong>{" "}
+        ({a.periode.jours} jour{a.periode.jours > 1 ? "s" : ""}) · comparé à la
+        période d'avant, de même durée : {periodeEnClair(a.precedente.debut, a.precedente.fin)}.
       </p>
-    </div>
-    <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
-      {/* Le canal d'abord : il change la nature de ce qu'on lit, la période
-          n'en change que l'étendue. */}
-      <nav class="flex flex-wrap items-center gap-1" aria-label="Ventes regardées">
-        <span class="mr-1 text-xs tracking-wide text-bo-muted uppercase">Ventes</span>
-        {CANAUX.map((c) => (
-          <a
-            href={lien(jours, c.cle)}
-            aria-current={c.cle === canal.cle ? "true" : undefined}
-            class={choix(c.cle === canal.cle)}
-          >
-            {c.nom}
-          </a>
-        ))}
-      </nav>
-      <nav class="flex flex-wrap items-center gap-1" aria-label="Période">
-        <span class="mr-1 text-xs tracking-wide text-bo-muted uppercase">Période</span>
-        {FENETRES.map((f) => (
-          <a
-            href={lien(f.jours, canal.cle)}
-            aria-current={f.jours === jours ? "true" : undefined}
-            class={choix(f.jours === jours)}
-          >
-            {f.nom}
-          </a>
-        ))}
-      </nav>
-    </div>
+    )}
   </div>
 
   {erreur && (
@@ -241,17 +480,11 @@ const choix = (actif: boolean) =>
       {/* =============================================================== */}
       <section class={`${cadre} mb-6 p-5`}>
         <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <h3 class="font-semibold">Jour par jour</h3>
+          <h3 class="font-semibold">{TITRE_COURBE[pas]}</h3>
           {meilleurJour && meilleurJour.caCents > 0 && (
             <p class="text-sm text-bo-muted">
-              Meilleure journée :{" "}
-              <strong>
-                {new Date(meilleurJour.jour).toLocaleDateString("fr-FR", {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "long",
-                })}
-              </strong>{" "}
+              {MEILLEUR[pas]} :{" "}
+              <strong>{nomDuPoint(meilleurJour.jour, false)}</strong>{" "}
               — {euros(meilleurJour.caCents)}
             </p>
           )}
@@ -267,7 +500,7 @@ const choix = (actif: boolean) =>
               viewBox={`0 0 ${L} ${H + 24}`}
               class="h-56 w-full min-w-[420px]"
               role="img"
-              aria-label={`Chiffre d'affaires ${canal.ou}, jour par jour sur ${jours} jours`}
+              aria-label={`Chiffre d'affaires ${nomStand ? `au stand ${nomStand}` : canal.ou}, ${TITRE_COURBE[pas].toLowerCase()}, ${periodeEnClair(a.periode.debut, a.periode.fin)}`}
             >
               {/* Trois lignes de repère : le haut, le milieu, le bas. Sans
                   elles, on lit une forme mais aucune hauteur. */}
@@ -305,6 +538,10 @@ const choix = (actif: boolean) =>
             </svg>
             <p class="mt-1 text-xs text-bo-muted">
               Sommet de l'échelle : {euros(hautMax)}
+              {pas !== "day" &&
+                (pas === "week"
+                  ? " · un point par semaine, du lundi au dimanche."
+                  : " · un point par mois.")}
             </p>
           </div>
         )}
@@ -343,7 +580,7 @@ const choix = (actif: boolean) =>
         </section>
 
         {/* ============================================================= */}
-        {/* Clientes, canaux, formats                                     */}
+        {/* Clientes, canaux, sortes d'affiches, formats                  */}
         {/* ============================================================= */}
         <div class="space-y-6">
           <section class={`${cadre} p-5`}>
@@ -365,31 +602,64 @@ const choix = (actif: boolean) =>
             </div>
           </section>
 
-          <section class={`${cadre} p-5`}>
-            {/* La colonne des canaux n'a de sens que sous « Tout » : sous
-                « Site », elle répéterait le chiffre d'affaires sur une ligne. */}
-            <h3 class="mb-3 font-semibold">
-              {canal.cle === "tout" ? "Par canal et par format" : "Par format"}
-            </h3>
-            <div
-              class={`grid gap-4 text-sm ${canal.cle === "tout" ? "grid-cols-2" : "grid-cols-1"}`}
-            >
-              {canal.cle === "tout" && (
-                <div>
-                  <p class="mb-1 text-xs tracking-wide text-bo-muted uppercase">
-                    Canal
-                  </p>
-                  {a.parCanal.length === 0 && (
-                    <p class="text-bo-muted">—</p>
-                  )}
+          {/* Le site d'un côté, les stands de l'autre — seulement sous
+              « Tout » : sous « Site », la ligne répéterait le chiffre
+              d'affaires. Chaque canal avec sa part, et ses commandes. */}
+          {canal.cle === "tout" && (
+            <section class={`${cadre} p-5`}>
+              <h3 class="mb-1 font-semibold">Site et stands, séparés</h3>
+              <p class="mb-3 text-sm text-bo-muted">
+                Pour lire l'un sans l'autre, choisissez « Site » ou « Stands »
+                en haut de l'écran — et, sous « Stands », un salon en
+                particulier.
+              </p>
+              {a.parCanal.length === 0 && <p class="text-sm text-bo-muted">—</p>}
+              <table class="w-full text-sm">
+                <tbody>
                   {a.parCanal.map((c) => (
-                    <p class="flex justify-between gap-3">
-                      <span>{c.canal === "salon" ? "Stands" : "Site"}</span>
-                      <span class="font-medium">{euros(c.caCents)}</span>
-                    </p>
+                    <tr class="border-t border-bo-border first:border-0">
+                      <td class="py-1.5">
+                        <a
+                          href={lien({ canal: c.canal === "salon" ? "stands" : "site", stand: null })}
+                          class="text-bo-accent hover:underline"
+                        >
+                          {c.canal === "salon" ? "Stands" : "Site"}
+                        </a>
+                      </td>
+                      <td class="py-1.5 text-right whitespace-nowrap text-bo-muted">
+                        {c.commandes} commande{c.commandes > 1 ? "s" : ""}
+                      </td>
+                      <td class="py-1.5 pl-4 text-right whitespace-nowrap text-bo-muted">
+                        {part(c.caCents)} %
+                      </td>
+                      <td class="py-1.5 pl-4 text-right font-medium whitespace-nowrap">
+                        {euros(c.caCents)}
+                      </td>
+                    </tr>
                   ))}
-                </div>
-              )}
+                </tbody>
+              </table>
+            </section>
+          )}
+
+          <section class={`${cadre} p-5`}>
+            <h3 class="mb-3 font-semibold">Par sorte d'affiche et par format</h3>
+            <div class="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+              <div>
+                <p class="mb-1 text-xs tracking-wide text-bo-muted uppercase">
+                  Sorte d'affiche
+                </p>
+                {a.parGenre.length === 0 && <p class="text-bo-muted">—</p>}
+                {a.parGenre.map((g) => (
+                  <p class="flex justify-between gap-3">
+                    <span>
+                      {GENRES[g.genre] ?? g.genre}{" "}
+                      <span class="text-bo-muted">× {g.quantite}</span>
+                    </span>
+                    <span class="font-medium whitespace-nowrap">{euros(g.caCents)}</span>
+                  </p>
+                ))}
+              </div>
               <div>
                 <p class="mb-1 text-xs tracking-wide text-bo-muted uppercase">
                   Format
@@ -450,7 +720,7 @@ const choix = (actif: boolean) =>
               comptent pas non plus parmi ceux du site.
             </p>
             <p class="mt-3 text-sm">
-              <a href={lien(jours, "site")} class="text-bo-accent hover:underline">
+              <a href={lien({ canal: "site", stand: null })} class="text-bo-accent hover:underline">
                 Voir ceux du site →
               </a>
             </p>
@@ -461,7 +731,9 @@ const choix = (actif: boolean) =>
           <section class={`${cadre} p-5`}>
             <h3 class="mb-1 font-semibold">Stand par stand</h3>
             <p class="mb-3 text-sm text-bo-muted">
-              Ce que chaque stand a vendu sur la période. Une vente de stand est
+              Ce que chaque stand a vendu sur la période — tous les stands,
+              même quand vous en regardez un seul, pour le comparer aux autres.
+              Cliquez sur un nom pour ne lire que lui. Une vente de stand est
               remise sur place : elle n'a pas de ville de livraison.
             </p>
             {a.parStand.length === 0 ? (
@@ -472,8 +744,23 @@ const choix = (actif: boolean) =>
               <table class="w-full text-sm">
                 <tbody>
                   {a.parStand.map((s) => (
-                    <tr class="border-t border-bo-border first:border-0">
-                      <td class="py-1.5">{s.stand}</td>
+                    <tr
+                      class={`border-t border-bo-border first:border-0 ${
+                        s.id !== null && s.id === stand ? "bg-bo-bg font-medium" : ""
+                      }`}
+                    >
+                      <td class="py-1.5">
+                        {s.id !== null ? (
+                          <a
+                            href={lien({ canal: "stands", stand: s.id })}
+                            class="text-bo-accent hover:underline"
+                          >
+                            {s.stand}
+                          </a>
+                        ) : (
+                          s.stand
+                        )}
+                      </td>
                       <td class="py-1.5 text-right whitespace-nowrap text-bo-muted">
                         {s.commandes} commande{s.commandes > 1 ? "s" : ""}
                       </td>

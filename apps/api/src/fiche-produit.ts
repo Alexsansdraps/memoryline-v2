@@ -32,7 +32,7 @@ import {
   sql as raw,
 } from "drizzle-orm";
 import { poidsArticle, POSTER_FORMATS } from "@memoryline/types";
-import { poidsDesCollections } from "./collections.js";
+import { ordreDesCollections, poidsDesCollections } from "./collections.js";
 import { db, schema } from "./db/client.js";
 import { FORMAT_PAR_DEFAUT, HORS_VENTES } from "./statuts-vente.js";
 
@@ -453,7 +453,7 @@ export function mountFicheProduit(app: Hono): void {
       .select({ id: schema.collections.id, name: schema.collections.name })
       .from(schema.collections)
       .where(isNull(schema.collections.archivedAt))
-      .orderBy(asc(schema.collections.position), asc(schema.collections.name));
+      .orderBy(...ordreDesCollections());
     // Le poids par défaut vient avec les liens : c'est la collection qui le
     // porte, et la fiche doit pouvoir montrer ce qui sera réellement pesé.
     const liens = await db

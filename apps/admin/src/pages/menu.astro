@@ -20,10 +20,29 @@
  * le site affiche le français à sa place. Les quatre langues sont rendues dès
  * le départ et simplement masquées — c'est ce qui permet à un ajout de ligne,
  * fait par recopie du patron, d'emporter ses champs de traduction avec lui.
+ *
+ * L'ADRESSE SE CHOISIT dans une liste — les pages de la boutique, chaque
+ * collection, chaque page écrite — au lieu de se deviner : la boutique
+ * cherchait comment faire mener une entrée à « Thèmes & paysages ». Choisir
+ * remplit l'adresse, et le nom quand il est vide, traductions comprises
+ * quand on les connaît. Sous chaque ligne, une phrase dit où mène l'adresse
+ * écrite, et prévient quand la page visée est introuvable sur le site.
+ *
+ * « Ajouter au menu », sur l'écran Pages du site, arrive ici avec la page à
+ * ajouter (`?ajouter=…&nom=…`) : l'écran demande où la placer, prépare la
+ * ligne, et rien n'est enregistré avant « Enregistrer le menu ».
  */
 import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
-import { adminApi, type LienArchive, type MenuCms } from "../lib/api.ts";
+import {
+  adminApi,
+  type CollectionBo,
+  type CollectionEnLigne,
+  type LienArchive,
+  type MenuCms,
+  type ResumePage,
+} from "../lib/api.ts";
+import { cleDAdresse, destinations, type Destination } from "../lib/destinations.ts";
 
 const api = adminApi(Astro.request);
 
@@ -195,7 +214,78 @@ try {
   erreur = String(e).replace(/^Error:\s*/, "");
 }
 
+/*
+ * Les pages qu'une entrée peut viser, pour la liste de choix. Chaque morceau a
+ * son repli : sans les collections ou les pages, la liste est plus courte,
+ * et l'adresse se tape encore à la main comme avant.
+ */
+const [listeCollections, collectionsServies, listePages] = await Promise.all([
+  api
+    .collections()
+    .then((r) => r.collections)
+    .catch(() => [] as CollectionBo[]),
+  api.collectionsEnLigne().catch(() => null as CollectionEnLigne[] | null),
+  api
+    .pages()
+    .then((r) => r.pages)
+    .catch(() => [] as ResumePage[]),
+]);
+const cibles: Destination[] = destinations(listeCollections, collectionsServies, listePages);
+const GROUPES_DE_CIBLES = [
+  { groupe: "boutique", titre: "Pages de la boutique" },
+  { groupe: "collection", titre: "Collections" },
+  { groupe: "page", titre: "Vos pages" },
+] as const;
+/** Ce que le script de la page reçoit : de quoi remplir une ligne et la commenter. */
+const ciblesJson = JSON.stringify(
+  cibles.map((d) => ({
+    nom: d.nom,
+    href: d.href,
+    cle: cleDAdresse(d.href),
+    traductions: d.traductions ?? {},
+    enLigne: d.enLigne,
+    remarque: d.remarque ?? null,
+  })),
+  // « < » échappé : un nom de collection contenant « </script> » fermerait
+  // sinon la balise qui porte ces données, et le reste deviendrait du code.
+).replace(/</g, "\\u003c");
+
 const entrees: EntreeSouple[] = saisie ?? entreesSouples(menu?.entrees);
+
+/*
+ * Une page à ajouter, arrivée de l'écran « Pages du site ». Tant que la place
+ * n'est pas choisie (`sous` absent), l'écran la demande ; une fois choisie, la
+ * ligne est préparée à cet endroit — elle ne sera enregistrée qu'avec le menu.
+ */
+const params = Astro.url.searchParams;
+const hrefAAjouter =
+  Astro.request.method === "GET" ? (params.get("ajouter") ?? "").trim() : "";
+const nomAAjouter = (params.get("nom") ?? "").trim().slice(0, 120);
+const ajoutValide = !!hrefAAjouter && LIEN_VALIDE.test(hrefAAjouter);
+const placeChoisie = params.get("sous");
+let ajoutPrepare: string | null = null;
+if (ajoutValide && placeChoisie !== null) {
+  const cible = cibles.find((d) => cleDAdresse(d.href) === cleDAdresse(hrefAAjouter));
+  const nouvelle: EntreeSouple = {
+    ...entreeVide(),
+    label: nomAAjouter || cible?.nom || "",
+    href: hrefAAjouter,
+    traductions: cible?.traductions
+      ? Object.fromEntries(
+          Object.entries(cible.traductions).map(([l, nom]) => [l, { label: nom }]),
+        )
+      : null,
+  };
+  const parent = placeChoisie === "0" ? undefined : entrees.find((e) => e.id === placeChoisie);
+  if (parent) parent.enfants.push(nouvelle);
+  else entrees.push(nouvelle);
+  ajoutPrepare = parent
+    ? `« ${nouvelle.label} » est préparé comme sous-lien de « ${parent.label} », à la fin.`
+    : `« ${nouvelle.label} » est préparé en bas du menu.`;
+}
+/** Le lien qui choisit la place de la page à ajouter. */
+const lienPlace = (sous: string) =>
+  `${url("/menu")}?${new URLSearchParams({ ajouter: hrefAAjouter, nom: nomAAjouter, sous }).toString()}`;
 
 /** Les liens retirés du menu, gardés pour pouvoir les remettre. */
 const archives: LienArchive[] = menu?.archives ?? [];
@@ -255,6 +345,36 @@ const boutonOutil =
     <p class="mb-4 text-sm text-red-600">Le menu n'a pas pu être lu : {erreur}</p>
   )}
 
+  {/* Une page à ajouter, venue de « Pages du site » : d'abord sa place. */}
+  {ajoutValide && placeChoisie === null && (
+    <div class="mb-6 max-w-3xl rounded-lg border border-bo-accent/50 bg-bo-surface p-4 text-sm">
+      <p class="mb-2 font-medium">
+        Où placer « {nomAAjouter || hrefAAjouter} » dans le menu ?
+      </p>
+      <div class="flex flex-wrap gap-2">
+        <a href={lienPlace("0")} class={boutonDiscret}>Au premier niveau</a>
+        {entrees
+          .filter((e) => e.id)
+          .map((e) => (
+            <a href={lienPlace(e.id)} class={boutonDiscret}>
+              Sous « {e.label} »
+            </a>
+          ))}
+        <a href={url("/menu")} class="px-2 py-1.5 text-bo-muted hover:underline">Annuler</a>
+      </div>
+      <p class="mt-2 text-xs text-bo-muted">
+        Rien n'est enregistré à ce stade : la ligne est préparée, vous la
+        placez avec les flèches, puis « Enregistrer le menu ».
+      </p>
+    </div>
+  )}
+  {ajoutPrepare && (
+    <p class="mb-4 max-w-3xl rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+      {ajoutPrepare} Placez-le avec les flèches ↑ ↓, puis cliquez
+      « Enregistrer le menu » : rien n'est enregistré avant.
+    </p>
+  )}
+
   <p class="mb-2 max-w-3xl text-sm text-bo-muted">
     Le menu est la barre de liens en haut du site. Chaque entrée porte un nom,
     celui que vos clients lisent, et une adresse, l'endroit où le lien les
@@ -262,21 +382,33 @@ const boutonOutil =
     quand la souris passe dessus.
   </p>
   <div class="mb-6 max-w-3xl rounded-lg border border-bo-border bg-bo-surface p-4 text-sm">
-    <p class="mb-2 font-medium">Que mettre dans « Adresse » ?</p>
+    <p class="mb-2 font-medium">Où mène une entrée ?</p>
     <ul class="space-y-1 text-bo-muted">
       <li>
-        Une page que vous avez créée dans
-        <a class="underline" href={url("/pages")}>Pages du site</a> :
-        <code class="rounded bg-bo-bg px-1">/pages/magnets</code>
+        <strong class="text-bo-ink">Choisissez la page dans la liste</strong>
+        « ou choisir une page » de la ligne : l'accueil, les rayons d'affiches,
+        chaque collection, chaque page de
+        <a class="underline" href={url("/pages")}>Pages du site</a>. L'adresse
+        se remplit seule, le nom aussi s'il est vide.
       </li>
       <li>
-        Un rayon d'affiches :
-        <code class="rounded bg-bo-bg px-1">/affiches</code> pour toutes, ou
+        L'adresse peut aussi s'écrire à la main :
+        <code class="rounded bg-bo-bg px-1">/pages/magnets</code> pour une page,
         <code class="rounded bg-bo-bg px-1">/affiches?collection=noel</code>
-        pour une seule collection.
+        pour une collection, ou <code class="rounded bg-bo-bg px-1">https://…</code>
+        pour un autre site. Sous chaque ligne, une phrase dit où elle mène.
+      </li>
+      <li>
+        Pour <strong class="text-bo-ink">renommer</strong> une entrée, changez
+        son nom ; pour la <strong class="text-bo-ink">déplacer</strong>, les
+        flèches ↑ ↓ ; pour la <strong class="text-bo-ink">cacher</strong> un
+        temps, décochez « Visible » ; pour la
+        <strong class="text-bo-ink">retirer</strong>, la croix ✕. Puis
+        « Enregistrer le menu ».
       </li>
     </ul>
   </div>
+  <script type="application/json" id="cibles-menu" set:html={ciblesJson} />
 
   {/* Le choix de la langue affichée. Des boutons et non des liens : changer de
       langue ne doit pas recharger l'écran, ce qui perdrait tout ce qui vient
@@ -357,6 +489,24 @@ const boutonOutil =
                 class={champ}
               />
             </label>
+            <label class="block min-w-[12rem] flex-1">
+              <span class="text-xs text-bo-muted">ou choisir une page</span>
+              <select data-choisir class={champ}>
+                <option value="">— Choisir —</option>
+                {GROUPES_DE_CIBLES.map((g) => (
+                  <optgroup label={g.titre}>
+                    {cibles.map((d, i) =>
+                      d.groupe === g.groupe ? (
+                        <option value={String(i)}>
+                          {d.nom}
+                          {d.enLigne ? "" : " (introuvable)"}
+                        </option>
+                      ) : null,
+                    )}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
             <label class="flex items-center gap-2 pb-2.5 text-sm">
               <input
                 type="checkbox"
@@ -394,6 +544,8 @@ const boutonOutil =
                 ✕
               </button>
             </span>
+            {/* Où mène l'adresse écrite, en clair (rempli par le script). */}
+            <p data-cible class="-mt-1 w-full text-xs text-bo-muted"></p>
           </div>
 
           <div class="border-t border-bo-border bg-bo-bg px-4 py-3">
@@ -442,6 +594,24 @@ const boutonOutil =
                       class={champ}
                     />
                   </label>
+                  <label class="block min-w-[11rem] flex-1">
+                    <span class="text-xs text-bo-muted">ou choisir une page</span>
+                    <select data-choisir class={champ}>
+                      <option value="">— Choisir —</option>
+                      {GROUPES_DE_CIBLES.map((g) => (
+                        <optgroup label={g.titre}>
+                          {cibles.map((d, i) =>
+                            d.groupe === g.groupe ? (
+                              <option value={String(i)}>
+                                {d.nom}
+                                {d.enLigne ? "" : " (introuvable)"}
+                              </option>
+                            ) : null,
+                          )}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </label>
                   <label class="flex items-center gap-2 pb-2.5 text-sm">
                     <input
                       type="checkbox"
@@ -479,6 +649,7 @@ const boutonOutil =
                       ✕
                     </button>
                   </span>
+                  <p data-cible class="-mt-1 w-full pl-5 text-xs text-bo-muted"></p>
                 </div>
               ))}
             </div>
@@ -761,6 +932,119 @@ const boutonOutil =
 
       formulaire.addEventListener("submit", serialiser);
       rafraichir();
+    }
+  </script>
+
+  <script>
+    /*
+     * Le choix d'une page dans la liste, et la phrase qui dit où mène chaque
+     * ligne.
+     *
+     * Tout passe par délégation sur l'arbre : les lignes ajoutées par
+     * « + Ajouter » sont des copies du patron, nées après ce script, et elles
+     * doivent marcher pareil. La comparaison des adresses est celle de
+     * l'écran « Pages du site » (lib/destinations.ts) : les deux écrans
+     * disent la même chose de la même adresse.
+     */
+    import { cleDAdresse } from "../lib/destinations.ts";
+
+    interface Cible {
+      nom: string;
+      href: string;
+      cle: string;
+      traductions: Record<string, string>;
+      enLigne: boolean;
+      remarque: string | null;
+    }
+
+    const donnees = document.getElementById("cibles-menu");
+    const arbre = document.getElementById("arbre");
+    if (donnees && arbre) {
+      const cibles = JSON.parse(donnees.textContent || "[]") as Cible[];
+      const parCle = new Map(cibles.map((c) => [c.cle, c]));
+
+      /** La ligne d'un élément : le sous-lien s'il en est un, sinon l'entrée. */
+      const ligneDe = (el: Element) =>
+        el.closest<HTMLElement>("[data-enfant], [data-entree]");
+
+      /** Un élément de la ligne elle-même, jamais d'un de ses sous-liens. */
+      function dansLaLigne<T extends HTMLElement>(ligne: HTMLElement, selecteur: string): T | null {
+        for (const n of Array.from(ligne.querySelectorAll<T>(selecteur)))
+          if (ligneDe(n) === ligne) return n;
+        return null;
+      }
+
+      /** La phrase sous la ligne : où mène l'adresse, et si la page répond. */
+      function commenter(ligne: HTMLElement): void {
+        const phrase = dansLaLigne<HTMLElement>(ligne, "[data-cible]");
+        const champ = dansLaLigne<HTMLInputElement>(ligne, '[data-valeur="href"]');
+        if (!phrase || !champ) return;
+        const href = champ.value.trim();
+        let texte = "";
+        let alerte = false;
+        if (!href) texte = "";
+        else if (/^https?:\/\//i.test(href)) texte = "→ un autre site";
+        else if (/^mailto:/i.test(href)) texte = "→ un courriel";
+        else {
+          const cible = parCle.get(cleDAdresse(href));
+          if (!cible) {
+            texte =
+              "⚠ Cette adresse ne correspond à aucune page connue du site : vérifiez-la, ou choisissez la page dans la liste.";
+            alerte = true;
+          } else {
+            texte = `→ ${cible.nom}${cible.enLigne ? "" : ` — ${cible.remarque ?? "introuvable sur le site"}`}`;
+            alerte = !cible.enLigne;
+          }
+        }
+        phrase.textContent = texte;
+        phrase.classList.toggle("text-amber-800", alerte);
+        phrase.classList.toggle("text-bo-muted", !alerte);
+      }
+
+      function toutCommenter(): void {
+        arbre!
+          .querySelectorAll<HTMLElement>("[data-entree], [data-enfant]")
+          .forEach(commenter);
+      }
+
+      arbre.addEventListener("change", (e) => {
+        const liste = (e.target as HTMLElement).closest<HTMLSelectElement>("select[data-choisir]");
+        if (!liste) return;
+        const cible = cibles[Number(liste.value)];
+        // La liste revient sur « Choisir » : c'est un geste, pas un réglage.
+        liste.value = "";
+        const ligne = ligneDe(liste);
+        if (!cible || !ligne) return;
+        const adresse = dansLaLigne<HTMLInputElement>(ligne, '[data-valeur="href"]');
+        if (adresse) adresse.value = cible.href;
+        // Le nom n'est rempli que s'il est vide : un nom choisi (« Tout
+        // voir ») ne doit pas être remplacé par celui de la page.
+        const nom = dansLaLigne<HTMLInputElement>(ligne, '[data-valeur="label"]');
+        if (nom && !nom.value.trim()) {
+          nom.value = cible.nom;
+          nom.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        for (const [langue, traduit] of Object.entries(cible.traductions)) {
+          const champ = dansLaLigne<HTMLInputElement>(ligne, `[data-trad="${langue}"]`);
+          if (champ && !champ.value.trim()) champ.value = traduit;
+        }
+        commenter(ligne);
+      });
+
+      arbre.addEventListener("input", (e) => {
+        const champ = (e.target as HTMLElement).closest('[data-valeur="href"]');
+        const ligne = champ ? ligneDe(champ) : null;
+        if (ligne) commenter(ligne);
+      });
+
+      // « + Ajouter » recopie le patron dans un autre script : on recommente
+      // tout après chaque clic, une fois la nouvelle ligne posée.
+      arbre.addEventListener("click", () => requestAnimationFrame(toutCommenter));
+      document.getElementById("ajouter-entree")?.addEventListener("click", () =>
+        requestAnimationFrame(toutCommenter),
+      );
+
+      toutCommenter();
     }
   </script>
 </Admin>

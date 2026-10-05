@@ -49,9 +49,15 @@ export interface MessagesConfigurateur {
   aideRetourLigne: string;
   /** Libellé d'une ligne de texte au-delà de `champsLignes` ; `{n}` = son rang. */
   ligneN: string;
-  /** Flèches des galeries de l'éditeur, pour le lecteur d'écran. */
+  /**
+   * Flèches des listes qui défilent de côté (galeries, catégories, cadres,
+   * polices) : infobulle et lecteur d'écran.
+   */
   precedent: string;
   suivant: string;
+  /** Flèches ˄ ˅ des listes qui défilent de haut en bas (grille des personnages). */
+  defilerHaut: string;
+  defilerBas: string;
   /** La pastille arc-en-ciel qui ouvre le sélecteur de couleur libre. */
   couleurPerso: string;
   /** Catégorie des personnages qui n'en ont pas au back-office. */
@@ -81,11 +87,30 @@ export interface MessagesConfigurateur {
    */
   locale: string;
   /**
-   * L'invitation flottante qui mène aux réglages d'un personnage (couleurs,
-   * vêtements, accessoires), et le titre de ces réglages : les mêmes mots,
-   * pour qu'on reconnaisse en arrivant l'endroit promis.
+   * Le titre des réglages d'un personnage (couleurs, vêtements,
+   * accessoires), sous la grille des personnages.
    */
   personnaliserPerso: string;
+  /**
+   * Le titre court du sommaire des réglages, posé à côté de l'aperçu du
+   * personnage, avant ses pastilles (« Personnaliser : »).
+   */
+  sommaireTitre: string;
+  /**
+   * La pastille du sommaire qui mène à la couleur de la peau — la rangée que
+   * tout personnage reçoit d'office, sans nom au back-office.
+   */
+  sommairePeau: string;
+  /**
+   * La pastille d'une autre rangée de couleur sans nom au back-office, ou de
+   * celle d'un personnage sans vêtements (un animal : ce n'est pas une peau).
+   */
+  sommaireCouleur: string;
+  /**
+   * La pastille des coupes de cheveux : le nom de la partie, plus court que
+   * le titre de sa galerie (`coupes`), pour tenir à côté de l'aperçu.
+   */
+  sommaireCheveux: string;
 }
 
 export const MESSAGES_DEFAUT: MessagesConfigurateur = {
@@ -126,6 +151,8 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   ligneN: "Ligne {n}",
   precedent: "Précédent",
   suivant: "Suivant",
+  defilerHaut: "Faire défiler vers le haut",
+  defilerBas: "Faire défiler vers le bas",
   couleurPerso: "Couleur personnalisée",
   autres: "Autres",
   personnageN: "Personnage {id}",
@@ -144,6 +171,12 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   ),
   locale: "fr-FR",
   personnaliserPerso: "Personnaliser ce personnage",
+  // Espace insécable avant les deux-points : le titre ne doit pas passer à
+  // la ligne entre le mot et sa ponctuation, dans un sommaire étroit.
+  sommaireTitre: "Personnaliser :",
+  sommairePeau: "Peau",
+  sommaireCouleur: "Couleur",
+  sommaireCheveux: "Cheveux",
 };
 
 /** Complète un dictionnaire partiel par les valeurs françaises. */

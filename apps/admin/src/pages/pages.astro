@@ -1,6 +1,6 @@
 ---
 /**
- * La liste des pages du site, et leur création.
+ * Toutes les pages du site, leur ordre, et leur création.
  *
  * Jusqu'ici, ajouter une page au site demandait de nous appeler : la page
  * d'accueil et les fiches produits vivaient dans le code, et rien d'autre
@@ -8,8 +8,17 @@
  * page « Magnets » le jour où elle décide d'en vendre, l'écrire, puis la
  * mettre en ligne.
  *
- * Cet écran ne fait que deux choses : ouvrir une page existante et en créer
- * une nouvelle. Tout le reste se règle dans l'éditeur, sur pages/[id].astro.
+ * L'écran ne listait que ces pages écrites à la main, et la boutique cherchait
+ * en vain « Tout voir » ou « Thèmes et paysages » : ce sont des RAYONS — la
+ * page d'un genre d'affiches, ou celle d'une collection —, qui existent sans
+ * qu'on les écrive. Ils sont désormais listés ici aussi, avec l'écran qui les
+ * règle, et chaque page dit si le menu y mène : c'est le menu qui les fait
+ * trouver, et il se compose dans « Menu du site », vers n'importe laquelle de
+ * ces pages.
+ *
+ * Les pages écrites se RANGENT ici (poignée ⠿ ou flèches) : c'est l'ordre de
+ * cette liste, de la tablette du stand et du choix d'une page dans le menu.
+ * Les rayons des collections suivent l'ordre réglé sur l'écran Collections.
  *
  * La création demande le nom ET l'adresse, parce que l'adresse est ce qui
  * restera dans les liens partagés : la deviner à partir du nom sans la montrer
@@ -20,7 +29,14 @@
  */
 import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
-import { adminApi, type ResumePage } from "../lib/api.ts";
+import {
+  adminApi,
+  type CollectionBo,
+  type CollectionEnLigne,
+  type MenuCms,
+  type ResumePage,
+} from "../lib/api.ts";
+import { PAGES_DE_LA_BOUTIQUE, destinations, liensVers } from "../lib/destinations.ts";
 
 const api = adminApi(Astro.request);
 
@@ -43,6 +59,9 @@ function originePublique(): string {
     entetes.get("x-forwarded-proto") ?? Astro.url.protocol.replace(":", "");
   return hote ? `${protocole}://${hote}` : Astro.url.origin;
 }
+const ORIGINE = originePublique();
+/** Le domaine, sans le protocole : « memoryline.fr ». */
+const DOMAINE = ORIGINE.replace(/^https?:\/\//, "");
 /**
  * Le début de l'adresse d'une page, sans le protocole : « memoryline.fr/pages/ ».
  *
@@ -50,7 +69,7 @@ function originePublique(): string {
  * apps/web/src/pages/[...lang]/pages/[slug].astro). Annoncer
  * « memoryline.fr/magnets » faisait partager une adresse introuvable.
  */
-const RACINE_DES_PAGES = `${originePublique().replace(/^https?:\/\//, "")}/pages/`;
+const RACINE_DES_PAGES = `${DOMAINE}/pages/`;
 
 /** Une date de la base, rendue lisible. Vide si elle n'est pas exploitable. */
 function dateCourte(brut: unknown): string {
@@ -87,6 +106,18 @@ if (Astro.request.method === "POST") {
       flash = restaurer
         ? "Page restaurée. Elle est de nouveau dans la liste, avec son texte."
         : "Page archivée. Vous pouvez la restaurer à tout moment, plus bas.";
+    } else if (action === "ordre") {
+      const ordre = String(f.get("ordre") ?? "")
+        .split(",")
+        .map(Number)
+        .filter((n) => Number.isInteger(n) && n > 0);
+      if (!ordre.length) throw new Error("L'ordre envoyé était vide.");
+      const r = await api.ordonnerPages(ordre, f.get("menu") === "on");
+      flash =
+        `Ordre enregistré : ${r.ranges} page${r.ranges > 1 ? "s" : ""} rangée${r.ranges > 1 ? "s" : ""}.` +
+        (r.liensMenu > 0
+          ? ` Dans le menu du site, ${r.liensMenu} lien${r.liensMenu > 1 ? "s" : ""} vers ces pages ${r.liensMenu > 1 ? "ont" : "a"} suivi le nouvel ordre.`
+          : "");
     } else {
       saisieNom = String(f.get("title") ?? "").trim();
       saisieAdresse = String(f.get("slug") ?? "").trim();
@@ -123,15 +154,55 @@ try {
   erreur = String(e).replace(/^Error:\s*/, "");
 }
 
+/*
+ * Ce qui complète la liste : les collections (leurs rayons), celles que la
+ * boutique sert vraiment, et le menu. Chacun a son repli : un morceau qui ne
+ * répond pas laisse sa section vide ou muette, il n'empêche pas d'écrire une
+ * page.
+ */
+const [collections, enLigne, menu] = await Promise.all([
+  api
+    .collections()
+    .then((r) => r.collections)
+    .catch(() => [] as CollectionBo[]),
+  api.collectionsEnLigne().catch(() => null as CollectionEnLigne[] | null),
+  api.menu().catch(() => null as MenuCms | null),
+]);
+
 // Les pages archivées quittent la liste ordinaire et se retrouvent dans leur
 // propre section, plus bas : c'est là qu'on les restaure.
 const enCours = pages.filter((p) => !p.archivedAt);
 const archivees = pages.filter((p) => p.archivedAt);
+const aucuneRangee = enCours.every((p) => !p.position);
+
+/** Les rayons des collections, dans l'ordre réglé sur l'écran Collections. */
+const rayons = destinations(collections, enLigne, []).filter(
+  (d) => d.groupe === "collection",
+);
+const idDeCollection = (href: string) =>
+  collections.find((c) => `/affiches?collection=${c.slug}` === href);
+
+/** « « Tout voir » sous Affiches personnalisables, « Villes » (masqué) ». */
+function dansLeMenu(href: string): string {
+  return liensVers(menu, href)
+    .map(
+      (l) =>
+        `« ${l.label} »${l.parent ? ` sous ${l.parent}` : ""}${l.visible ? "" : " (masqué)"}`,
+    )
+    .join(", ");
+}
+
+/** Le lien qui prépare une entrée de menu vers cette page, sans rien enregistrer. */
+const lienAjouterAuMenu = (href: string, nom: string) =>
+  `${url("/menu")}?${new URLSearchParams({ ajouter: href, nom }).toString()}`;
 
 const champ =
   "mt-1 w-full rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm";
 const boutonPrincipal =
   "rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90";
+const boutonOutil =
+  "flex h-6 w-6 items-center justify-center rounded border border-bo-border text-xs text-bo-muted hover:bg-bo-bg disabled:cursor-default disabled:opacity-30";
+const cadre = "mb-8 overflow-hidden rounded-lg border border-bo-border bg-bo-surface";
 ---
 
 <Admin title="Pages du site">
@@ -150,77 +221,354 @@ const boutonPrincipal =
     </p>
   )}
 
-  <p class="mb-6 max-w-3xl text-sm text-bo-muted">
-    Les pages du site que vous écrivez vous-même : « Magnets », « Qui sommes
-    nous », « Livraison et retours ». Chacune s'écrit d'un seul tenant, comme
-    dans un traitement de texte : les titres de section, le gras, les listes et
-    les liens se font dans l'éditeur, et les traductions se saisissent en
-    dessous. Une fois la page en ligne, ajoutez-la au
-    <a class="underline" href={url("/menu")}>menu du site</a> pour que vos
-    clients la trouvent.
+  <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+    Toutes les pages du site : celles que vous écrivez vous-même (« Qui sommes
+    nous », « Livraison et retours »…), celles de la boutique (l'accueil, les
+    rayons d'affiches) et la page de chaque collection (« Villes », « Thèmes &
+    paysages »…). Pour chacune : son adresse, l'écran qui la règle, et si le
+    menu du site y mène.
   </p>
 
-  <section class="mb-6 overflow-hidden rounded-lg border border-bo-border bg-bo-surface">
-    <table class="w-full text-sm">
+  {/* Le menu se compose ailleurs, mais c'est ici qu'on le cherche : on pense
+      « je veux que cette page apparaisse en haut du site ». */}
+  <div class="mb-8 flex max-w-4xl flex-wrap items-center justify-between gap-3 rounded-lg border border-bo-accent/40 bg-bo-surface p-4">
+    <div class="max-w-2xl text-sm">
+      <p class="font-medium">Le menu en haut du site</p>
+      <p class="mt-0.5 text-bo-muted">
+        Il se compose dans <strong>Menu du site</strong> : ajouter une entrée,
+        la renommer, la monter ou la descendre, la masquer ou la retirer — vers
+        n'importe quelle page de cet écran, choisie dans une liste. Le lien
+        « Ajouter au menu » d'une ligne y prépare l'entrée pour vous.
+      </p>
+    </div>
+    <a href={url("/menu")} class={boutonPrincipal}>Ouvrir le menu du site →</a>
+  </div>
+
+  {/* ================================================================== */}
+  {/* Les pages écrites à la main                                         */}
+  {/* ================================================================== */}
+  <h2 class="mb-1 text-base font-semibold">Vos pages</h2>
+  <p class="mb-3 max-w-3xl text-sm text-bo-muted">
+    Chacune s'écrit d'un seul tenant, comme dans un traitement de texte : les
+    titres de section, le gras, les listes et les liens se font dans
+    l'éditeur, et les traductions se saisissent en dessous.
+  </p>
+  <section class={cadre}>
+    <form
+      method="POST"
+      id="form-ordre-pages"
+      class="flex flex-wrap items-center justify-between gap-3 border-b border-bo-border px-4 py-3"
+    >
+      <input type="hidden" name="_action" value="ordre" />
+      <input type="hidden" name="ordre" data-rangement-champ />
+      <div class="max-w-3xl space-y-1.5 text-xs text-bo-muted">
+        <p>
+          <strong class="text-bo-ink">Leur ordre</strong> : attrapez la poignée
+          ⠿ ou utilisez les flèches, puis enregistrez. C'est l'ordre de cette
+          liste, de la tablette du stand et du choix d'une page dans le menu.
+          {aucuneRangee && " Rien n'est encore rangé : elles sont pour l'instant par nom."}
+        </p>
+        <label class="flex items-start gap-2">
+          <input type="checkbox" name="menu" checked class="mt-0.5" />
+          <span>
+            Ranger aussi, dans le menu du site, les liens qui mènent à ces
+            pages : ils échangent leur place entre eux, les autres entrées ne
+            bougent pas.
+          </span>
+        </label>
+      </div>
+      <button
+        data-rangement-bouton
+        disabled
+        class="rounded bg-bo-nav px-3 py-1.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        Enregistrer l'ordre
+      </button>
+    </form>
+    <table class="w-full text-sm" data-sans-tri>
       <thead class="bg-bo-bg text-left text-bo-muted">
         <tr>
+          <th class="w-28 px-4 py-2 font-medium">Ordre</th>
           <th class="px-4 py-2 font-medium">Nom de la page</th>
           <th class="px-4 py-2 font-medium">Adresse</th>
           <th class="px-4 py-2 font-medium">Statut</th>
+          <th class="px-4 py-2 font-medium">Dans le menu</th>
           <th class="px-4 py-2 font-medium">Modifiée le</th>
           <th class="px-2 py-2 w-10"></th>
         </tr>
       </thead>
-      <tbody>
-        {enCours.map((p) => (
-          <tr class="border-t border-bo-border">
-            <td class="px-4 py-3">
-              <a
-                class="font-medium text-bo-accent hover:underline"
-                href={url(`/pages/${p.id}`)}
-              >
-                {p.title}
-              </a>
-            </td>
-            <td class="px-4 py-3 text-bo-muted">
-              {RACINE_DES_PAGES}{p.slug}
-            </td>
-            <td class="px-4 py-3">
-              {p.status === "active" ? (
-                <span class="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800">
-                  En ligne
+      <tbody data-rangement="form-ordre-pages">
+        {enCours.map((p, i) => {
+          const menuPage = dansLeMenu(`/pages/${p.slug}`);
+          return (
+            <tr class="border-t border-bo-border" data-rang-id={p.id}>
+              <td class="px-4 py-3 whitespace-nowrap">
+                <span class="flex items-center gap-1.5">
+                  <span
+                    class="ml-poignee cursor-grab select-none text-bo-muted"
+                    title="Glissez pour changer la place"
+                    aria-hidden="true"
+                  >
+                    ⠿
+                  </span>
+                  <span data-rang class="w-5 text-right text-xs tabular-nums text-bo-muted">
+                    {i + 1}
+                  </span>
+                  <button
+                    type="button"
+                    data-monter
+                    class={boutonOutil}
+                    title={`Monter « ${p.title} »`}
+                    aria-label={`Monter ${p.title}`}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    data-descendre
+                    class={boutonOutil}
+                    title={`Descendre « ${p.title} »`}
+                    aria-label={`Descendre ${p.title}`}
+                  >
+                    ↓
+                  </button>
                 </span>
-              ) : (
-                <span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900">
-                  Brouillon
-                </span>
-              )}
-            </td>
-            <td class="px-4 py-3 text-bo-muted">{dateCourte(p.updatedAt)}</td>
-            <td class="px-2 py-3 text-right">
-              <form method="POST" class="js-archiver inline" data-nom={p.title}>
-                <input type="hidden" name="_action" value="archiver" />
-                <input type="hidden" name="id" value={p.id} />
-                <input type="hidden" name="archived" value="true" />
-                <button
-                  class="rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-bo-accent hover:text-bo-accent"
-                  title={`Archiver « ${p.title} »`}
+              </td>
+              <td class="px-4 py-3">
+                <a
+                  class="font-medium text-bo-accent hover:underline"
+                  href={url(`/pages/${p.id}`)}
                 >
-                  Archiver
-                </button>
-              </form>
-            </td>
-          </tr>
-        ))}
-        {enCours.length === 0 && !erreur && (
-          <tr>
-            <td class="px-4 py-6 text-bo-muted" colspan="5">
-              Aucune page pour l'instant. Créez la première ci-dessous.
-            </td>
-          </tr>
-        )}
+                  {p.title}
+                </a>
+                {p.affichage === "stand" && (
+                  <span class="block text-xs text-bo-muted">tablette du stand seulement</span>
+                )}
+                {p.affichage === "les-deux" && (
+                  <span class="block text-xs text-bo-muted">site et tablette du stand</span>
+                )}
+              </td>
+              <td class="px-4 py-3 text-bo-muted">
+                {RACINE_DES_PAGES}{p.slug}
+              </td>
+              <td class="px-4 py-3">
+                {p.status === "active" ? (
+                  <span class="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800">
+                    En ligne
+                  </span>
+                ) : (
+                  <span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900">
+                    Brouillon
+                  </span>
+                )}
+              </td>
+              <td class="px-4 py-3 text-xs">
+                {menuPage ? (
+                  <a href={url("/menu")} class="text-bo-accent hover:underline">{menuPage}</a>
+                ) : (
+                  <a
+                    href={lienAjouterAuMenu(`/pages/${p.slug}`, p.title)}
+                    class="text-bo-muted hover:text-bo-accent hover:underline"
+                  >
+                    Ajouter au menu
+                  </a>
+                )}
+              </td>
+              <td class="px-4 py-3 text-bo-muted">{dateCourte(p.updatedAt)}</td>
+              <td class="px-2 py-3 text-right">
+                <form method="POST" class="js-archiver inline" data-nom={p.title}>
+                  <input type="hidden" name="_action" value="archiver" />
+                  <input type="hidden" name="id" value={p.id} />
+                  <input type="hidden" name="archived" value="true" />
+                  <button
+                    class="rounded border border-bo-border px-2 py-1 text-xs text-bo-muted hover:border-bo-accent hover:text-bo-accent"
+                    title={`Archiver « ${p.title} »`}
+                  >
+                    Archiver
+                  </button>
+                </form>
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
+    {enCours.length === 0 && !erreur && (
+      <p class="px-4 py-6 text-sm text-bo-muted">
+        Aucune page pour l'instant. Créez la première ci-dessous.
+      </p>
+    )}
+  </section>
+
+  {/* ================================================================== */}
+  {/* Les pages de la boutique                                            */}
+  {/* ================================================================== */}
+  <h2 class="mb-1 text-base font-semibold">Les pages de la boutique</h2>
+  <p class="mb-3 max-w-3xl text-sm text-bo-muted">
+    Elles existent d'office : on ne les écrit pas, on règle ce qu'elles
+    montrent sur l'écran indiqué. « Tout voir », dans le menu, mène à l'une
+    d'elles.
+  </p>
+  <section class={cadre}>
+    <table class="w-full text-sm" data-sans-tri>
+      <thead class="bg-bo-bg text-left text-bo-muted">
+        <tr>
+          <th class="px-4 py-2 font-medium">Page</th>
+          <th class="px-4 py-2 font-medium">Adresse</th>
+          <th class="px-4 py-2 font-medium">Se règle dans</th>
+          <th class="px-4 py-2 font-medium">Dans le menu</th>
+          <th class="px-4 py-2"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {PAGES_DE_LA_BOUTIQUE.map((d) => {
+          const menuPage = dansLeMenu(d.href);
+          return (
+            <tr class="border-t border-bo-border">
+              <td class="px-4 py-3">
+                <span class="font-medium">{d.nom}</span>
+                {d.remarque && <span class="block text-xs text-bo-muted">{d.remarque}</span>}
+              </td>
+              <td class="px-4 py-3 text-bo-muted">{DOMAINE}{d.href === "/" ? "" : d.href}</td>
+              <td class="px-4 py-3">
+                {d.reglage ? (
+                  <a href={url(d.reglage.href)} class="text-bo-accent hover:underline">
+                    {d.reglage.libelle}
+                  </a>
+                ) : (
+                  <span class="text-bo-muted">rien à régler</span>
+                )}
+              </td>
+              <td class="px-4 py-3 text-xs">
+                {menuPage ? (
+                  <a href={url("/menu")} class="text-bo-accent hover:underline">{menuPage}</a>
+                ) : (
+                  <a
+                    href={lienAjouterAuMenu(d.href, d.nom)}
+                    class="text-bo-muted hover:text-bo-accent hover:underline"
+                  >
+                    Ajouter au menu
+                  </a>
+                )}
+              </td>
+              <td class="px-4 py-3 text-right whitespace-nowrap">
+                <a
+                  href={`${ORIGINE}${d.href}`}
+                  target="_blank"
+                  rel="noopener"
+                  class="text-xs text-bo-accent hover:underline"
+                >
+                  Voir ↗
+                </a>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </section>
+
+  {/* ================================================================== */}
+  {/* Les rayons des collections                                          */}
+  {/* ================================================================== */}
+  <div class="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+    <h2 class="text-base font-semibold">La page de chaque collection</h2>
+    <a href={url("/collections")} class="text-sm text-bo-accent hover:underline">
+      Changer leur ordre →
+    </a>
+  </div>
+  <p class="mb-3 max-w-3xl text-sm text-bo-muted">
+    Chaque collection a son rayon sur le site, à l'adresse
+    <code class="rounded bg-bo-bg px-1">/affiches?collection=…</code>, dans
+    l'ordre réglé sur l'écran Collections. Une collection masquée, ou sans
+    affiche en ligne, n'a pas de page : son adresse répond « page
+    introuvable ».
+  </p>
+  <section class={cadre}>
+    <table class="w-full text-sm" data-sans-tri>
+      <thead class="bg-bo-bg text-left text-bo-muted">
+        <tr>
+          <th class="px-4 py-2 font-medium">Rayon</th>
+          <th class="px-4 py-2 font-medium">Adresse</th>
+          <th class="px-4 py-2 font-medium">Sur le site</th>
+          <th class="px-4 py-2 font-medium">Dans le menu</th>
+          <th class="px-4 py-2"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {rayons.map((d) => {
+          const collection = idDeCollection(d.href);
+          const menuPage = dansLeMenu(d.href);
+          return (
+            <tr class="border-t border-bo-border">
+              <td class="px-4 py-3">
+                <a
+                  href={url(d.reglage?.href ?? "/collections")}
+                  class="font-medium text-bo-accent hover:underline"
+                >
+                  {d.nom}
+                </a>
+                {collection && (
+                  <span class="block text-xs text-bo-muted">
+                    {collection.produits === 0
+                      ? "vide"
+                      : `${collection.produits} affiche${collection.produits > 1 ? "s" : ""}`}
+                  </span>
+                )}
+              </td>
+              <td class="px-4 py-3 text-bo-muted">{DOMAINE}{d.href}</td>
+              <td class="px-4 py-3">
+                {d.enLigne ? (
+                  <span class="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800">
+                    En ligne
+                  </span>
+                ) : (
+                  <span
+                    class="rounded-full bg-bo-bg px-2 py-0.5 text-xs text-bo-muted"
+                    title={d.remarque}
+                  >
+                    Introuvable
+                  </span>
+                )}
+                {!d.enLigne && d.remarque && (
+                  <span class="mt-1 block text-xs text-bo-muted">{d.remarque}</span>
+                )}
+              </td>
+              <td class="px-4 py-3 text-xs">
+                {menuPage ? (
+                  <a href={url("/menu")} class="text-bo-accent hover:underline">{menuPage}</a>
+                ) : (
+                  <a
+                    href={lienAjouterAuMenu(d.href, d.nom)}
+                    class="text-bo-muted hover:text-bo-accent hover:underline"
+                  >
+                    Ajouter au menu
+                  </a>
+                )}
+              </td>
+              <td class="px-4 py-3 text-right whitespace-nowrap">
+                {d.enLigne && (
+                  <a
+                    href={`${ORIGINE}${d.href}`}
+                    target="_blank"
+                    rel="noopener"
+                    class="text-xs text-bo-accent hover:underline"
+                  >
+                    Voir ↗
+                  </a>
+                )}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+    {rayons.length === 0 && (
+      <p class="px-4 py-6 text-sm text-bo-muted">
+        Aucune collection pour le moment. Elles se créent dans
+        <a href={url("/collections")} class="underline">Collections</a>.
+      </p>
+    )}
   </section>
 
   {/* ====== Pages archivées ====== */}
@@ -309,10 +657,18 @@ const boutonPrincipal =
       <button class={boutonPrincipal}>Créer la page</button>
       <p class="text-xs text-bo-muted">
         La page est créée en brouillon : elle n'apparaît sur le site qu'une fois
-        que vous l'aurez mise en ligne, depuis l'éditeur.
+        que vous l'aurez mise en ligne, depuis l'éditeur — puis ajoutée au menu.
       </p>
     </form>
   </details>
+
+  <style is:global>
+    /* La ligne qu'on fait glisser se voit : elle pâlit et se soulève. */
+    tr.ml-tenue { opacity: 0.55; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); }
+  </style>
+  <script>
+    import "../lib/rangement.ts";
+  </script>
 
   <script is:inline>
     // Archiver retire la page du site sans rien perdre. On le confirme quand
@@ -344,7 +700,7 @@ const boutonPrincipal =
       if (!adresseLibre || !adresse) return;
       adresse.value = nom.value
         .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[̀-ͯ]/g, "")
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "");

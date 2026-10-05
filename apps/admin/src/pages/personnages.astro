@@ -279,6 +279,21 @@ try {
 } catch (e) {
   if (!error) error = String(e);
 }
+/**
+ * Ce que la catégorie d'une pièce propose au client — toutes ses couleurs,
+ * ou la principale seule —, telle que le configurateur la verra : une
+ * catégorie archivée ou décochée ne lui parvient pas, et ses pièces
+ * proposent alors toutes leurs couleurs.
+ */
+function regleDeLaCategorie(
+  c: CategoriePiece | undefined,
+): { categorie: string; couleurs: "toutes" | "principale" } | null {
+  if (!c || c.archivedAt || !c.active) return null;
+  return {
+    categorie: c.name,
+    couleurs: c.couleursProposees === "principale" ? "principale" : "toutes",
+  };
+}
 /** Type d'affiche d'un dessin, avec repli sur le premier de la liste. */
 const vueParDefaut = vues[0]?.slug ?? "front";
 const nomVue = (slug: string | null | undefined) =>
@@ -770,12 +785,24 @@ for (const a of pieces) {
               {/* Réglages fins : sur la fiche du personnage. Les garder ici
                   noyait la liste — et on ne trouvait plus rien. */}
               <div class="flex items-center justify-between gap-2 px-4 py-3 text-sm">
-                <a
-                  href={url(`/personnages/${t.id}`)}
-                  class="rounded bg-bo-accent px-3 py-1.5 text-white"
-                >
-                  Modifier / caler
-                </a>
+                <span class="flex flex-wrap items-center gap-2">
+                  <a
+                    href={url(`/personnages/${t.id}`)}
+                    class="rounded bg-bo-accent px-3 py-1.5 text-white"
+                  >
+                    Modifier / caler
+                  </a>
+                  {/* Les couleurs que le client peut changer se règlent sur la
+                      fiche, sous « Dessin » : « Modifier / caler » ne le
+                      disait pas, et la boutique les cherchait. */}
+                  <a
+                    href={url(`/personnages/${t.id}#couleurs`)}
+                    class="rounded border border-bo-border px-2 py-1.5 text-xs hover:bg-bo-bg"
+                    title="Les couleurs que le client peut changer : peau, pelage, robe…"
+                  >
+                    🎨 Couleurs
+                  </a>
+                </span>
                 <span class="text-xs text-bo-muted">
                   {Object.keys(t.slotVariants ?? {}).length > 0
                     ? "pièces choisies"
@@ -926,6 +953,8 @@ for (const a of pieces) {
                             <option
                               value={String(c.id)}
                               selected={a.pieceCategoryId === c.id}
+                              data-nom={c.name}
+                              data-regle={regleDeLaCategorie(c)?.couleurs ?? ""}
                             >
                               {c.name}
                               {c.archivedAt ? " (archivée)" : ""} (
@@ -953,7 +982,11 @@ for (const a of pieces) {
                     svgUrl={a.svgUrl}
                     zones={a.colorZones}
                     groupes={a.groupesCouleurs}
-                    masquees={a.zonesMasquees ?? []}
+                    masquees={a.zonesMasquees ?? null}
+                    regle={regleDeLaCategorie(
+                      categoriesPieces.find((c) => c.id === a.pieceCategoryId),
+                    )}
+                    parts={a.partsDesZones ?? null}
                     couleursImage={a.couleursImage ?? null}
                     enregistrer={`/admin/assets/${a.id}/groupes`}
                     cadrage={SLOT_THUMB_VIEWBOX[a.slot as keyof typeof SLOT_THUMB_VIEWBOX] ?? "0 0 500 1000"}
@@ -1331,6 +1364,20 @@ for (const a of pieces) {
           credentials: "include",
         });
         if (!res.ok) throw new Error(res.status);
+        // Les couleurs proposées dépendent de la catégorie : celles de la
+        // pièce se redessinent selon la nouvelle (si elle n'a pas son propre
+        // réglage).
+        const choix = sel.selectedOptions?.[0];
+        const regle =
+          choix && choix.dataset.regle
+            ? { categorie: choix.dataset.nom || "", couleurs: choix.dataset.regle }
+            : null;
+        // Le sélecteur porte lui aussi `data-asset-id` : on part de son
+        // parent pour trouver la carte de la pièce.
+        sel.parentElement
+          ?.closest("[data-asset-id]")
+          ?.querySelector(".js-groupes")
+          ?.dispatchEvent(new CustomEvent("groupes:regle", { detail: regle }));
       } catch (err) {
         alert("Changement de catégorie impossible : " + err);
       } finally {
