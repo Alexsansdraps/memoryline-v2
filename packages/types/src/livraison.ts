@@ -150,6 +150,56 @@ export function normaliserPays(pays: unknown): string {
 }
 
 /**
+ * Pays proposés à la livraison. Volontairement court : ceux où la boutique
+ * expédie vraiment, plus « autre pays » (ZZ), qui tombe dans la zone de repli.
+ * Leurs noms, le navigateur les connaît dans toutes les langues
+ * (Intl.DisplayNames).
+ *
+ * Partagée par la caisse et le carnet d'adresses du compte : un carnet qui
+ * laissait écrire « France » en toutes lettres donnait une adresse que la
+ * caisse ne savait pas lire — pays vide, zone de repli, 19,90 € de port.
+ */
+export const PAYS_PROPOSES: readonly string[] = [
+  "FR",
+  "BE",
+  "CH",
+  "LU",
+  "DE",
+  "ES",
+  "IT",
+  "NL",
+  "PT",
+  "GB",
+  "CA",
+  "US",
+  "ZZ",
+];
+
+/**
+ * Le code d'un pays tel qu'une adresse l'a gardé : déjà un code (« FR »), ou
+ * écrit en toutes lettres dans l'une des cinq langues du site (« France »,
+ * « Belgique », « Germany »…). Ce second cas, ce sont les adresses saisies au
+ * carnet avant qu'il ne propose une liste. Chaîne vide si rien ne correspond.
+ */
+export function codePaysSaisi(saisi: unknown): string {
+  const brut = String(saisi ?? "").trim();
+  const code = normaliserPays(brut);
+  if (code) return code;
+  const simple = (s: string) =>
+    s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const cherche = simple(brut);
+  if (!cherche) return "";
+  for (const langue of ["fr", "en", "de", "it", "es"]) {
+    const noms = new Intl.DisplayNames([langue], { type: "region" });
+    const trouve = PAYS_PROPOSES.find(
+      (c) => c !== "ZZ" && simple(noms.of(c) ?? "") === cherche,
+    );
+    if (trouve) return trouve;
+  }
+  return "";
+}
+
+/**
  * Zone d'un pays.
  *
  * Une zone qui cite le pays gagne ; à défaut, la zone « par défaut » (liste

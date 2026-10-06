@@ -103,6 +103,35 @@ Légende : ✅ bon · 🔧 n'allait pas, corrigé · ⚠️ n'allait pas, reste 
 | Couleurs de cheveux « brun clair » et « châtain clair » | Le nuancier des coupes a 9 couleurs, sans nom : #E8E8E8, #F1CB9E, #E7B033, #B8551D, #D6B695, #BF8158, #6B3E1E, #541507, #24222C. Impossible de dire lesquelles sont « brun clair » et « châtain clair ». | ❓ Codes couleur à demander à Margaux (elle peut aussi les ajouter dans BO › Catégories de pièces › Coupes). |
 | Nom du PDF d'impression = client + format + cadre | `Recette-Site_A4_bois-facon-chene.pdf`, `Recette-Stand-Tablette_A3_noir.pdf` (en-tête `Content-Disposition` des téléchargements). | ✅ |
 
+## Deuxième passe (trous de la recette)
+
+Même pile locale, même Chrome sans fenêtre. Une commande d'essai payée par la carte d'essai Stripe (WEB-0015, compte d'essai) a servi à plusieurs lignes ci-dessous.
+
+| Où | Ce que j'ai testé | Statut |
+|---|---|---|
+| BO, toutes les pages du menu (J) | Les 32 pages : réponse 200, aucune « API injoignable », aucune image cassée. Console : **BO › Personnages** levait une erreur au chargement — le script des catégories prenait aussi les groupes du menu de gauche (même marque `data-groupe`) et s'arrêtait net : ni pages de 6, ni catégories rouvertes, ni recherche. | ✅ + 🔧 (`personnages.astro`). Vérifié : « Page 1 / 3 », recherche « berger » → Animaux (2), console propre. |
+| Site, 5 langues (J) | Accueil, /affiches, rayon Villes, prêtes à imprimer, 5 fiches au hasard par langue (dont l'affiche IA), recherche, 4 pages légales, contact, panier, compte, inscription, mot de passe oublié, page 404 : aucune clé brute, aucune erreur de console, aucune image cassée, rien qui déborde. | ✅ + ❓ données : les 4 pages légales et les noms des collections (« Villes ») n'ont pas de traduction : la page anglaise s'appelle « Villes ». À saisir au BO, comme le reste. |
+| Fiches produit (trouvé en testant) | L'API rendait les formats dans le désordre : pour 48 affiches sur 177, l'**A3 venait en tête**, cochée d'office sur la fiche, ouverte dans le configurateur, et ajoutée au panier à 19 € au lieu de 15 € (Provence Lavande). | 🔧 Le moins cher d'abord (`apps/api/src/index.ts`). Vérifié : A4 coché, ajouté en A4. |
+| Téléphone 390 × 844 (A) | Accueil, menu ☰ et sous-menu, pied de page ; fiche Honfleur ; module : étape 1 (bas de page atteignable, Retour/Continuer collés au bas), étape 2 et éditeur de personnage (sommaire : « Cheveux » descend à la section, onglets de catégories et grille), validation ; étape 3 (formats, rail des cadres, flèches de 44 px, barre) ; panier ; caisse (connectée) ; compte (commandes, adresses, informations, détail d'une commande). Aucune page ne défile en largeur, aucun bouton coupé. | ✅ |
+| Téléphone 320 × 640, tablette portrait 768 × 1024 hors stand (A) | — | ⚠️ pas testé, faute de temps |
+| Compte client (G) | Connexion, déconnexion ; mot de passe oublié → courriel dans Mailpit, dans la langue du compte (« Ihr Passwort zurücksetzen »), lien non suivi ; langue du compte passée en allemand puis remise en français ; historique (WEB-0015 et son détail, vignettes comprises). Carnet d'adresses : ajout, modification, suppression. Mais le pays s'y **tapait en toutes lettres** : une adresse « France » arrivait à la caisse avec un pays vide, et un seul mode proposé, « À domicile 19,90 € » (la zone « Reste du monde »). | ✅ + 🔧 Une liste de pays, la même que la caisse ; la caisse lit aussi les adresses déjà gardées en toutes lettres (`compte/adresses.astro`, `CheckoutIsland.tsx`, `packages/types/src/livraison.ts`). Vérifié : France reconnue, 4 modes proposés ; modifiée en Belgique, elle s'affiche « Belgique ». |
+| Offre « 3 affiches achetées = 1 A4 offerte » (H) | 3 affiches A4 au panier (37 + 15 + 15 €) : **aucune remise**. 4 affiches A4 : « ✨ 3 achetées = 1 A4 offerte − 15 € », total 67 € (82 − 15), la moins chère offerte. C'est le calcul voulu dans le code (« 3 achetées, la 4e offerte », comme Shopify), et seules les A4 comptent. | ✅ (calcul) + ❓ Le bandeau dit « 3 affiches achetées = 1 affiche A4 offerte » : la cliente doit-elle en mettre 4 au panier (3 payées + 1 offerte), ou 3 suffisent-elles ? Les A3 comptent-elles parmi les « achetées » ? Et quand toutes portent un cadre, le cadre de l'affiche offerte est offert aussi. |
+| Livraison offerte au-delà d'un seuil (H) | Panier à 67 € après remise : point relais, Colissimo et domicile « Offerte » (tarifs gratuits dès 60 €), port 0 € sur la commande. La règle « Livraison offerte dès 60 € » de BO › Promotions est, elle, désactivée. | ✅ |
+| Code promo (H) | Aucun code n'existe dans BO › Promotions. | — rien à tester |
+| Caisse, récapitulatif (trouvé en testant) | Les affiches prêtes à imprimer y avaient une **vignette blanche** (l'aperçu en calques n'avait rien à empiler), juste avant de payer. | 🔧 Leur visuel, comme au panier (`lib/catalogue-panier.ts`, `CartIsland.tsx`, `CheckoutIsland.tsx`). |
+| Paiement par carte d'essai | WEB-0015 : 67 €, payée, port 0 €, encaissement Stripe au grand livre. | ✅ |
+| PayPal (C) | `/api/payments/config` donne un identifiant PayPal (mode essai) ; à la caisse, « PayPal » ouvre les boutons PayPal (jaune) et « Carte bancaire ». Rien cliqué, rien connecté. | ✅ |
+| Courriels en allemand, italien, espagnol (B) | BO › Courriers : aperçu des 10 courriers clients dans les 3 langues, relus à la recherche de mots français. Envois d'essai vers Mailpit : confirmation et expédition en italien, facture et bienvenue en espagnol. En vrai sur WEB-0015 (compte en allemand) : confirmation, mot de passe oublié et facture (PDF « Rechnung ») en allemand. Restent en français : les données non traduites (nom du cadre, « À domicile »), la mention de TVA française (suivie de sa traduction, voulu), et l'avis de nouvelle commande, qui va à la boutique. | ✅ |
+| Bordereau SendCloud (D) | L'écran dit « Mode essai : rien n'est facturé ». Bordereau d'essai fabriqué pour une commande à domicile (WEB-0015, Colissimo Home, 200 g) et pour une commande en point relais (WEB-0013, Mondial Relay, le point choisi repris) : étiquettes 10 × 15 et A4 en PDF, puis annulés tous les deux. Vente de stand sans adresse : « Saisir l'adresse du destinataire ». | ✅ |
+| BO › Commande, mouvements (trouvé en testant) | Une vente de stand rouverte puis revalidée affichait ses encaissements annulés comme des vrais : SAL-0006 montrait 23 + 43 + 43 € pour une vente de 43 €. | 🔧 Barrés, « annulé, ne compte pas » (`commandes/[id].astro`). |
+| BO › Finances (trouvé en testant) | Chaque vente qui profite de l'offre « 3 + 1 » passait en « commandes à vérifier » : « Les articles totalisent 82 € et le port 0 €, ce qui ne retombe pas sur les 67 € » — seule une remise par code était reconnue. | 🔧 Une promotion automatique en vigueur ce jour-là explique l'écart (`finances.ts`). Vérifié : plus aucune commande à vérifier. |
+| Factures (trouvé en testant) | La facture n'a ni l'adresse ni le SIRET de la boutique, pourtant obligatoires. Le code les lit dans deux réglages (`facture.adresse`, `facture.siret`) qu'**aucun écran du BO ne permet de remplir**. | ⚠️ À ajouter au BO, et à vérifier sur le serveur de test. ❓ L'adresse et le SIRET de Margaux. |
+| Paniers abandonnés (E) | Délais passés à 6 h, 2e relance à 1 jour, plage 9 h – 20 h : la phrase le redit. Texte de la 1re relance réécrit (accroche + un paragraphe en gras) : enregistré, l'aperçu le montre, envoi d'essai dans Mailpit en français ; l'italien, lui, part toujours avec son texte d'origine (essai dans Mailpit). « Revenir au texte d'origine » : texte identique à l'origine. | ✅ Tout remis (voir plus bas). |
+| Signature des créations (F) | Largeur 20 %, marge 6 %, opacité 60 %, puis une image d'essai (PNG transparent fait avec sharp, envoyée par le champ « Logo signature ») : au bon endroit et aux bonnes proportions dans le module, au panier, au récapitulatif de la caisse, et sur le fichier d'impression d'une vraie ligne. Interrupteur éteint : plus de signature nulle part, impression comprise. Enregistré avec le formulaire de l'écran, mais pour ces 5 champs seulement : l'écran réécrit sinon tous ses champs. | ✅ Tout remis à l'identique. |
+| Stand + photo envoyée du téléphone (I) | Stand d'essai ouvert, tablette 1024 × 768 en mode stand (code retiré de l'adresse), affiche IA, style choisi, « Envoyer la photo depuis votre téléphone » : QR code et adresse. Dans un 2e onglet en taille téléphone, la page d'envoi : photo envoyée, « C'est envoyé ! ». Sur la tablette : « Photo reçue du téléphone. », photo affichée, sens passé en paysage. Rien de créé (aucune génération en base). | ✅ |
+| Lettre d'information, formulaire de contact, cartes cadeaux (H) | — | ⚠️ pas testé, faute de temps |
+| Petits défauts relevés | Les courriels disent « Nous préparons votre affiche » même pour 4 affiches ; le pays s'écrit « FR » dans l'adresse (compte, courriel, facture) ; la caisse écrit « Remise » là où le panier nommait l'offre. | ⚠️ |
+
 ## Remise en état
 
 - Berger australien : réglage des couleurs remis à vide (`base_couleurs_image = NULL`) — il ne propose donc plus « Pelage » (voir colonne BO, ❓).
@@ -113,6 +142,12 @@ Légende : ✅ bon · 🔧 n'allait pas, corrigé · ⚠️ n'allait pas, reste 
 - 2e stand d'essai (« Essai recette 2 ») fermé et archivé, sa vente SAL-0007 archivée.
 - Restent en base locale, sans écran pour les archiver : les fiches clientes recette.stand@example.com, recette.site@example.com, recette.retour@example.com et le compte d'essai recette.caisse@example.com (créé par le formulaire d'inscription du site, déconnecté).
 - Script `apps/api/scripts/recette-rendu.tmp.ts` supprimé.
+- Deuxième passe :
+  - Stand « Essai recette 3 (à fermer) » fermé puis archivé ; son relais photo supprimé ; Chrome de test sorti du mode stand (`?stand=0`) et code du stand oublié ; onglet « téléphone » fermé.
+  - Réglages comparés clé par clé à leur copie d'avant : identiques. Les trois clés que l'écran des paniers avait créées en enregistrant (2e et 3e relance, plage horaire, valant « aucune ») ont été retirées ; texte de la relance revenu à l'origine ; signature remise (logo de la boutique, 12 %, 3 %, 100 %, allumée).
+  - Image d'essai de la signature et sa copie retirées de `data/assets` ; script `apps/api/scripts/recette-rendu2.tmp.ts` supprimé.
+  - Commande d'essai WEB-0015 archivée (sa facture F2026-0001 est émise : la numérotation locale a avancé d'un cran) ; bordereaux d'essai annulés (WEB-0015, WEB-0013) ; panier d'essai vidé.
+  - Compte d'essai : langue remise en français, carnet d'adresses vide, déconnecté.
 
 ## Vérifications finales
 
@@ -120,3 +155,13 @@ Légende : ✅ bon · 🔧 n'allait pas, corrigé · ⚠️ n'allait pas, reste 
 - `packages/configurator` : `tsc --noEmit` sans erreur.
 - `apps/web` : `tsc --noEmit` → les 3 erreurs anciennes de `src/islands/StandSalon.tsx`, aucune autre.
 - `apps/admin` : `astro check` → 0 erreur, 0 avertissement (27 indications).
+- Refaites après la deuxième passe : mêmes résultats (api et configurator sans erreur, site : les 3 erreurs de `StandSalon.tsx` seulement, admin 0 erreur, 0 avertissement, 27 indications).
+
+## Derniers retours (6/10, après la deuxième passe)
+
+| Quoi | Ce qui a été fait | Statut |
+|---|---|---|
+| Prix du cadre selon le format A4 / A3 | Cadre bois passé un instant à 22 € en A3 (base locale) : « + 14 € » en A4, « + 22 € » en A3 ; A3 + cadre bois = 51 € dans le module, repris à 51 € au panier. Prix remis à 14 €. | ✅ |
+| « Double encadré » sur ce qu'on sélectionne (retour d'Alexandra) | Le choix fait avait un cadre noir, un trait blanc et un liseré rouge. | 🔧 Un seul cadre rouge de 2 px + la coche (`global.css`). Vérifié : fiche produit, module (fond, police, format, cadres), affiche IA (style, sens). |
+| Affiche IA : cases grises vides (retour d'Alexandra) | Styles sans image d'exemple et aperçu vide avant la première création. | 🔧 Dessin d'attente par style, deviné d'après son nom dans les 5 langues (personnes, paysage, maison, sinon image) ; affiche esquissée dans l'aperçu, en portrait ou en paysage (`AfficheIA.tsx`). Vérifié sur ordinateur et téléphone, en français et en anglais. |
+| Génération d'affiche IA (« Créer mon affiche ») | Parcours testé jusqu'au clic (style, photo, sens déduit). La génération elle-même n'a pas été lancée : le système d'autorisations la refuse (dépense de crédits OpenAI). | ⚠️ À essayer à la main : deux créations, puis vérifier les vignettes et l'ajout de plusieurs au panier. |

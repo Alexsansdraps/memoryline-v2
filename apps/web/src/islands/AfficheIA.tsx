@@ -119,6 +119,133 @@ function Numero(props: { n: number }): JSX.Element {
   );
 }
 
+/* --------------------------------------------------------------------------
+ * Les dessins d'attente
+ *
+ * Une case grise vide se lit comme une image qui n'a pas chargé (retour du
+ * 6/10) : celle d'un style sans image d'exemple, comme le grand aperçu avant
+ * la première création. On y pose un dessin simple, au trait, dans la couleur
+ * du texte adoucie : il dit ce qui viendra là, sans faire croire à une image.
+ * ------------------------------------------------------------------------ */
+
+/** Ce que montre le dessin d'attente d'un style. */
+type SujetStyle = "personnes" | "paysage" | "maison" | "image";
+
+/**
+ * Le sujet d'un style, deviné d'après son nom — dans la langue de la page :
+ * le nom arrive traduit. Un nom qu'on ne reconnaît pas reçoit une image en
+ * général : la boutique peut créer d'autres styles, ils auront leur dessin.
+ */
+function sujetDuStyle(titre: string): SujetStyle {
+  const nom = titre.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (/person|people|mensch|gens|famil|anima|tier|pet|mascota|portrait|couple/.test(nom)) return "personnes";
+  if (/maison|house|haus|casa|batiment|building|gebaude|edific|ville|city|stadt|citta|ciudad/.test(nom))
+    return "maison";
+  if (/paysage|landscape|landschaft|paesagg|paisaj|nature|natur/.test(nom)) return "paysage";
+  return "image";
+}
+
+/**
+ * Le trait des dessins d'attente, sur une grille de 48 × 48.
+ *
+ * Des FONCTIONS, pas des éléments : un élément Solid est un nœud du document,
+ * et deux styles au même sujet se seraient disputé le même dessin — le
+ * second l'aurait arraché au premier.
+ */
+const TRAITS_STYLE: Record<SujetStyle, () => JSX.Element> = {
+  personnes: () => (
+    <>
+      <circle cx="18" cy="17" r="5" />
+      <path d="M8 36c0-6 4.5-10 10-10s10 4 10 10" />
+      <circle cx="32.5" cy="20" r="4" />
+      <path d="M28.5 29.5c1.2-1 2.6-1.5 4-1.5 4.4 0 7.5 3.4 7.5 8" />
+    </>
+  ),
+  paysage: () => (
+    <>
+      <circle cx="33" cy="15" r="4" />
+      <path d="M6 36l11-13 8 9 5-5 12 9" />
+      <path d="M6 36h36" />
+    </>
+  ),
+  maison: () => (
+    <>
+      <path d="M8 23L24 10l16 13" />
+      <path d="M12.5 20v16h23V20" />
+      <path d="M21 36v-9h6v9" />
+    </>
+  ),
+  image: () => (
+    <>
+      <rect x="8" y="10" width="32" height="28" rx="2" />
+      <circle cx="18" cy="19" r="3" />
+      <path d="M8 32l10-9 7 6 5-4 10 8" />
+    </>
+  ),
+};
+
+/** La case d'un style qui n'a pas encore d'image d'exemple. */
+function AttenteStyle(props: { titre: string }): JSX.Element {
+  return (
+    <span class="flex aspect-[4/5] w-full items-center justify-center bg-paper-deep text-ink/40">
+      <svg
+        viewBox="0 0 48 48"
+        class="h-16 w-16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.6"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        {TRAITS_STYLE[sujetDuStyle(props.titre)]()}
+      </svg>
+    </span>
+  );
+}
+
+/**
+ * Le grand aperçu, tant qu'il n'y a ni photo ni création : une affiche
+ * esquissée — dans le sens choisi — au-dessus de la phrase qui dit ce qui
+ * viendra là.
+ */
+function AttenteAffiche(props: { paysage: boolean; texte: string }): JSX.Element {
+  return (
+    <div class="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6 text-center text-sm text-ink-soft">
+      <svg
+        viewBox="0 0 64 64"
+        class="h-24 w-24 text-ink/30"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <Show
+          when={props.paysage}
+          fallback={
+            <>
+              <rect x="13" y="5" width="38" height="54" rx="1.5" />
+              <path d="M24 12h16" />
+              <rect x="18" y="17" width="28" height="34" rx="1" />
+              <circle cx="37.5" cy="25" r="3.5" />
+              <path d="M18 45l8-9 6 6 4-4 10 8" />
+            </>
+          }
+        >
+          <rect x="5" y="13" width="54" height="38" rx="1.5" />
+          <path d="M24 19h16" />
+          <rect x="11" y="24" width="42" height="22" rx="1" />
+          <circle cx="44" cy="30" r="3" />
+          <path d="M11 42l10-8 7 5 6-4 19 9" />
+        </Show>
+      </svg>
+      <span>{props.texte}</span>
+    </div>
+  );
+}
+
 export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   const tr = t(props.langue ?? LANGUE_DEFAUT);
   const locale = LOCALE_COMPLETE[props.langue ?? LANGUE_DEFAUT];
@@ -767,9 +894,10 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                 <Show
                   when={photoLocale()}
                   fallback={
-                    <div class="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-ink-soft">
-                      {tr("ia.apercu_vide")}
-                    </div>
+                    <AttenteAffiche
+                      paysage={sensAffiche() === "paysage"}
+                      texte={tr("ia.apercu_vide")}
+                    />
                   }
                 >
                   {/* La photo du client, en attendant l'affiche : il voit tout
@@ -1009,17 +1137,12 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                         // la tablette ne doit pas éteindre la suite.
                         onClick={() => setStyleChoisi(st.id)}
                         // Le choix fait se dessine par `ml-choix` (global.css),
-                        // comme tous les choix du site : cadre noir, liseré et
-                        // coche rouges. Rien n'est rogné : la coche déborde du
-                        // coin de la carte.
+                        // comme tous les choix du site : cadre et coche
+                        // rouges. Rien n'est rogné : la coche déborde du coin
+                        // de la carte.
                         class="ml-choix flex flex-col border border-ink/15 text-left hover:border-ink/45 disabled:opacity-60"
                       >
-                        <Show
-                          when={image}
-                          fallback={
-                            <span class="block aspect-[4/5] w-full bg-paper-deep" />
-                          }
-                        >
+                        <Show when={image} fallback={<AttenteStyle titre={st.titre} />}>
                           <img
                             src={image!}
                             alt=""

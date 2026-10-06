@@ -43,6 +43,8 @@ import {
   type OrderItem,
 } from "../lib/api.ts";
 import { apercuAbsolu, urlApercu } from "../lib/ia.ts";
+// Le genre et le visuel de chaque produit : partagés avec la caisse.
+import { catalogue, estPretAImprimer, visuelBoutique } from "../lib/catalogue-panier.ts";
 import CommandeStand, { ConfirmationStand, type VenteStand } from "./CommandeStand.tsx";
 
 /**
@@ -84,49 +86,6 @@ export function codePromoRetenu(): string {
   }
 }
 
-/** Ce que le panier a besoin de savoir d'un produit, au-delà de sa ligne. */
-interface FicheLigne {
-  slug: string | null;
-  /** Le visuel de la boutique, seul aperçu possible d'une affiche non composée. */
-  image: string | null;
-  /** « personnalisable » ou « prete_a_imprimer ». */
-  kind: string | null;
-}
-
-/**
- * Le catalogue, lu UNE fois par chargement de page.
- *
- * Chaque ligne du panier avait sa propre requête : cinq articles, cinq fois
- * cinq cents produits téléchargés. La promesse est mémorisée, pas son
- * résultat : deux lignes demandées en même temps partagent le même appel.
- */
-let catalogueEnCours: Promise<Map<number, FicheLigne>> | null = null;
-function catalogue(): Promise<Map<number, FicheLigne>> {
-  if (!catalogueEnCours)
-    catalogueEnCours = (async () => {
-      const par = new Map<number, FicheLigne>();
-      try {
-        const res = await fetch(`${PUBLIC_API_URL}/products?limit=1000`);
-        if (!res.ok) return par;
-        const list = (await res.json()) as {
-          id: number;
-          slug: string;
-          image: string | null;
-          kind: string | null;
-        }[];
-        for (const p of list)
-          par.set(p.id, {
-            slug: p.slug,
-            image: p.image ?? null,
-            kind: p.kind ?? null,
-          });
-      } catch {
-        /* catalogue injoignable : on retombe sur l'aperçu en calques */
-      }
-      return par;
-    })();
-  return catalogueEnCours;
-}
 
 export default function CartIsland(props: {
   langue?: Langue;
@@ -445,36 +404,13 @@ export default function CartIsland(props: {
     return slug ? `${lien(langue, `/affiches/${slug}`)}?edit=${it.id}` : null;
   }
 
-  /**
-   * Vrai pour une affiche vendue telle quelle.
-   *
-   * Le genre du produit fait foi. À défaut — catalogue injoignable, produit
-   * disparu — on retombe sur ce que la ligne montre d'elle-même : ni fond ni
-   * personnage, donc rien à composer.
-   */
-  function pretAImprimer(it: OrderItem): boolean {
-    const genre =
-      it.productId != null ? cart()?.fiches.get(it.productId)?.kind : null;
-    if (genre) return genre === "prete_a_imprimer";
-    return (
-      !it.config.backgroundUrl && (it.config.characters?.length ?? 0) === 0
-    );
-  }
+  /** Vrai pour une affiche vendue telle quelle (cf. lib/catalogue-panier). */
+  const pretAImprimer = (it: OrderItem): boolean =>
+    estPretAImprimer(cart()?.fiches, it);
 
-  /**
-   * L'image à montrer quand la ligne n'a rien de composé.
-   *
-   * Une affiche prête à imprimer arrive au panier sans fond ni personnage :
-   * l'aperçu en calques n'aurait rien à empiler. On lui rend son visuel de
-   * boutique. Une affiche composée, elle, garde sa pile, même si le catalogue
-   * n'est pas joignable.
-   */
-  function imageSeule(it: OrderItem): string | undefined {
-    if (!pretAImprimer(it) || it.productId == null) return undefined;
-    const image = cart()?.fiches.get(it.productId)?.image;
-    // Le chemin stocké est relatif à l'API : c'est elle qui sert les visuels.
-    return image ? urlAsset(PUBLIC_API_URL, image) : undefined;
-  }
+  /** Le visuel de la boutique d'une ligne non composée (cf. lib/catalogue-panier). */
+  const imageSeule = (it: OrderItem): string | undefined =>
+    visuelBoutique(cart()?.fiches, it);
 
   /**
    * Change la quantité d'une ligne. On repasse la configuration telle quelle :

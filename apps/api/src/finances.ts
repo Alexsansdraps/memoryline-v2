@@ -41,6 +41,7 @@ import {
   or,
   sql as raw,
 } from "drizzle-orm";
+import { reglesActives, TYPES_REGLE_APPLIQUES } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { HORS_VENTES } from "./statuts-vente.js";
 
@@ -627,6 +628,15 @@ async function rapprocher(periode: Periode): Promise<Finances> {
 
   /* --- Les anomalies ----------------------------------------------------- */
 
+  // Une promotion automatique (« 3 achetées = 1 A4 offerte ») n'a pas de
+  // code : sans ce relevé, chaque vente qui en profitait passait pour une
+  // commande à vérifier. Seuls comptent ses dates et son interrupteur, comme
+  // au panier.
+  const regles = await db.select().from(schema.promoRules);
+  const typesQuiRemisent: readonly string[] = TYPES_REGLE_APPLIQUES;
+  const promotionEnVigueur = (le: Date) =>
+    reglesActives(regles, le).some((r) => typesQuiRemisent.includes(r.type));
+
   // L'écart accompagne chaque anomalie sans figurer dans ce qui est renvoyé :
   // il ne sert qu'à mettre en tête ce qui coûte le plus cher à comprendre.
   const trouvailles: { anomalie: Anomalie; ecart: number }[] = [];
@@ -679,7 +689,13 @@ async function rapprocher(periode: Periode): Promise<Finances> {
     // qu'aucune remise ne justifie.
     if (!cmd.codePromo) {
       const attenduDesLignes = cmd.totalCents - cmd.portCents;
-      if (lignes !== attenduDesLignes) {
+      // Des articles AU-DESSUS du total, un jour où une promotion automatique
+      // était en vigueur : c'est la remise, déduite comme partout ailleurs
+      // (compte client, courriels). Un total plus élevé que les articles, lui,
+      // reste signalé : aucune remise ne l'explique.
+      const remiseAutomatique =
+        lignes > attenduDesLignes && promotionEnVigueur(cmd.creeLe);
+      if (lignes !== attenduDesLignes && !remiseAutomatique) {
         raisons.push(
           `Les articles totalisent ${montant(lignes)} et le port ${montant(cmd.portCents)}, ce qui ne retombe pas sur les ${montant(cmd.totalCents)} de la commande.`,
         );

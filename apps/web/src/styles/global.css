@@ -928,19 +928,19 @@ html {
  * Retour de la boutique : « boutons plein noir, pas assez visible quand on a
  * cliqué ». Une case choisie se remplissait de noir — l'allure exacte des
  * boutons d'action, « Ajouter au panier » en tête : on ne savait plus si l'on
- * regardait un choix fait ou un bouton à presser. Le choix fait garde
- * maintenant un cadre noir de 2 px (le second pixel en ombre intérieure :
- * rien ne bouge) sur un fond à peine gris, et reçoit deux marques à la
- * couleur de la boutique : un liseré rouge tout autour, décollé d'un trait
- * blanc, et une COCHE rouge à cheval sur son coin. Le survol ne fait que
- * foncer le contour en gris (`hover:border-ink/45`) : il ne peut plus passer
- * pour un choix.
+ * regardait un choix fait ou un bouton à presser. Le choix fait porte
+ * maintenant UN cadre rouge de 2 px (le second pixel en ombre intérieure :
+ * rien ne bouge) sur un fond à peine gris, et une COCHE rouge à cheval sur
+ * son coin. Il y avait d'abord un cadre noir, un trait blanc et un liseré
+ * rouge autour : un double encadré, jugé laid (retour du 6/10). Le survol ne
+ * fait que foncer le contour en gris (`hover:border-ink/45`) : il ne peut
+ * plus passer pour un choix.
  *
  * La coche déborde du coin plutôt que de s'y loger : sur une pastille de
  * police haute de 38 px, elle mordait sur la dernière lettre. Elle passe
  * devant les cases voisines (z-index). Contrastes (WCAG 2.1 AA, 3:1 pour un
- * élément d'interface) : cadre noir sur blanc 18,9:1, rouge sur blanc 8,3:1,
- * coche blanche sur rouge 8,3:1.
+ * élément d'interface) : cadre rouge sur blanc 8,3:1, coche blanche sur rouge
+ * 8,3:1.
  * ------------------------------------------------------------------------ */
 .ml-choix {
   position: relative;
@@ -950,13 +950,10 @@ html {
   transition-timing-function: ease-out;
 }
 .ml-choix:is([aria-checked="true"], [aria-pressed="true"]) {
-  border-color: var(--color-ink);
+  border-color: var(--color-terracotta);
   background-color: var(--color-paper-deep);
   color: var(--color-ink);
-  box-shadow:
-    inset 0 0 0 1px var(--color-ink),
-    0 0 0 2px var(--color-paper),
-    0 0 0 4px var(--color-terracotta);
+  box-shadow: inset 0 0 0 1px var(--color-terracotta);
 }
 .ml-choix:is([aria-checked="true"], [aria-pressed="true"])::after {
   content: "";
@@ -981,18 +978,12 @@ html {
   border-width: 1px !important;
 }
 .ml-cfg-root .ml-choix:is([aria-checked="true"], [aria-pressed="true"]) {
-  border-color: var(--color-ink) !important;
+  border-color: var(--color-terracotta) !important;
   background-color: var(--color-paper-deep) !important;
 }
 /* Le rail des cadres défile de côté, et un défilement rogne tout ce qui
-   dépasse : là, liseré et coche se logent À L'INTÉRIEUR de la case, dans sa
-   marge de 16 px. */
-.ml-cfg-rail .ml-choix:is([aria-checked="true"], [aria-pressed="true"]) {
-  box-shadow:
-    inset 0 0 0 1px var(--color-ink),
-    inset 0 0 0 3px var(--color-paper),
-    inset 0 0 0 5px var(--color-terracotta);
-}
+   dépasse : là, la coche se loge À L'INTÉRIEUR de la case, dans sa marge de
+   16 px. Le cadre, lui, est déjà dedans. */
 .ml-cfg-rail .ml-choix:is([aria-checked="true"], [aria-pressed="true"])::after {
   top: 7px;
   right: 7px;

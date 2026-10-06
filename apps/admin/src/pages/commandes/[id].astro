@@ -1425,8 +1425,14 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                   Mouvements
                 </h4>
                 <ul class="space-y-1 text-sm">
+                  {/* Un encaissement annulé (vente rouverte au stand, cf.
+                      salon.ts) reste au journal, mais barré : affiché comme
+                      les autres, une vente corrigée deux fois se lisait
+                      comme trois encaissements. */}
                   {mouvements.map((m) => (
-                    <li class="flex flex-wrap items-baseline justify-between gap-2">
+                    <li
+                      class={`flex flex-wrap items-baseline justify-between gap-2 ${m.status === "annule" ? "text-bo-muted" : ""}`}
+                    >
                       <span>
                         {LIBELLE_MOUVEMENT[m.kind] ?? m.kind}
                         {m.gateway && (
@@ -1435,8 +1441,19 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                         {m.externalRef && (
                           <span class="ml-1 text-xs text-bo-muted">{m.externalRef}</span>
                         )}
+                        {m.status === "annule" && (
+                          <span class="ml-1 text-xs"> · annulé, ne compte pas</span>
+                        )}
                       </span>
-                      <span class={m.kind === "refund" ? "text-violet-700" : ""}>
+                      <span
+                        class={
+                          m.status === "annule"
+                            ? "line-through"
+                            : m.kind === "refund"
+                              ? "text-violet-700"
+                              : ""
+                        }
+                      >
                         {m.kind === "refund" ? "− " : ""}
                         {formatPrice(m.amountCents)}
                         <span class="ml-2 text-xs text-bo-muted">

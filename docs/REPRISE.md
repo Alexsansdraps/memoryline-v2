@@ -13,7 +13,7 @@ Les demandes arrivent sous forme de cartes Trello (tableau « ✅ Tâches Memory
 
 ## Où on en est
 
-Le 6 octobre, **toutes les cartes non cochées du Trello ont été testées à l'écran**, plus les parcours complets (site en français et en anglais jusqu'au paiement d'essai et au fichier d'impression, mode stand sur tablette, affiche IA sans génération). Le détail carte par carte, ce qui a été corrigé et ce qui reste : **`docs/RECETTE.md`**.
+Le 6 octobre, **toutes les cartes non cochées du Trello ont été testées à l'écran** (deux passes, plus les derniers retours d'Alexandra : cadre de sélection simple, dessins d'attente de l'affiche IA), plus les parcours complets (site en français et en anglais jusqu'au paiement d'essai et au fichier d'impression, mode stand sur tablette, affiche IA sans génération). Le détail carte par carte, ce qui a été corrigé et ce qui reste : **`docs/RECETTE.md`**.
 
 Corrigé pendant la recette, entre autres :
 - couleur des détails (ruban du chapeau) : migration **0066**, toutes les catégories de pièces sur « couleur principale », les ombres de même teinte suivant la couleur choisie ;
@@ -37,6 +37,8 @@ Avant cela, les 5 et 6 octobre : styles d'affiche IA (0063), ordre des pages et 
 - **Codes couleur « brun clair » et « châtain clair »** : le nuancier des coupes a 9 couleurs sans nom.
 - **Prix des cadres en A3** : les trois cadres valent 14 € en A4 comme en A3. Voulu ?
 - **Accès par stand** : chaque stand a son code, mais un compte Vendeur voit toutes les ventes. Faut-il un accès limité à son stand ?
+- **Factures** : il manque l'adresse et le SIRET de la boutique (mentions obligatoires), et aucun écran du BO ne permet de les saisir. Les demander à Margaux.
+- **Offre « 3 achetées = 1 A4 offerte »** : il faut 4 affiches au panier (3 achetées + 1 offerte), les A3 ne comptent pas, et le cadre de l'affiche offerte est offert aussi. Voulu ?
 - **Retrait sur place** : le texte demande d'indiquer son créneau « en commentaire », et la caisse n'a pas de champ commentaire.
 - **Traductions à saisir au BO** : bandeau, onglets de personnages, cadres, modes de livraison, produits (1 sur 177), titres et images d'exemple des 3 styles IA. Chaque écran a « Proposer les traductions manquantes ».
 - L'import des clients : la date de consentement est celle de l'import ; le statut Shopify « pending » compte comme non abonné. Correct ?

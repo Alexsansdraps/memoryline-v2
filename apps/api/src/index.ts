@@ -934,7 +934,12 @@ app.get("/products/:slug", async (c) => {
     db
       .select()
       .from(schema.variants)
-      .where(eq(schema.variants.productId, product.id)),
+      .where(eq(schema.variants.productId, product.id))
+      // Le moins cher d'abord : la fiche coche le premier format et ouvre le
+      // configurateur dessus. Sans ordre, la base rendait l'A3 en tête pour
+      // une affiche sur quatre (48 sur 177), cochée et ajoutée au panier à
+      // la place de l'A4.
+      .orderBy(asc(schema.variants.priceCents), asc(schema.variants.id)),
     db
       .select()
       .from(schema.productImages)

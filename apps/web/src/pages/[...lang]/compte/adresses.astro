@@ -16,6 +16,7 @@ import {
   type CleUi,
   type Langue,
 } from "../../../i18n/utils.ts";
+import { codePaysSaisi, PAYS_PROPOSES } from "@memoryline/types";
 
 export const prerender = false;
 
@@ -79,6 +80,25 @@ const edite = aModifier
 
 const champ =
   "mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none";
+
+/*
+ * Le pays se choisit dans la liste de la caisse, et part en code (« FR »).
+ * Écrit en toutes lettres, « France » n'était pas reconnu par la caisse : pays
+ * vide, et seul le port de la zone de repli (19,90 €) était proposé.
+ */
+const nomsPays = new Intl.DisplayNames([langue], { type: "region" });
+const nomPays = (code: string): string =>
+  code === "ZZ" ? tr("livraison.autre_pays") : (nomsPays.of(code) ?? code);
+/** Le pays d'une adresse, lisible ; tel quel s'il n'est pas reconnu. */
+const paysLisible = (v: string | null | undefined): string => {
+  const code = codePaysSaisi(v);
+  return code ? nomPays(code) : (v ?? "");
+};
+// Une adresse ancienne au pays inconnu reste « autre pays » plutôt que de
+// devenir la France sans qu'on le voie.
+const paysEdite = edite
+  ? codePaysSaisi(edite.country) || (edite.country ? "ZZ" : "FR")
+  : "FR";
 ---
 
 <CompteCadre
@@ -112,7 +132,7 @@ const champ =
               a.line1,
               a.line2,
               [a.postalCode, a.city].filter(Boolean).join(" "),
-              a.country,
+              paysLisible(a.country),
               a.phone,
             ]
               .filter(Boolean)
@@ -228,14 +248,13 @@ const champ =
           </div>
           <label class="block">
             <span class="text-sm font-medium">{tr("livraison.pays")}</span>
-            <input
-              type="text"
-              name="country"
-              value={edite?.country ?? ""}
-              required
-              autocomplete="country-name"
-              class={champ}
-            />
+            <select name="country" required autocomplete="country" class={champ}>
+              {PAYS_PROPOSES.map((code) => (
+                <option value={code} selected={code === paysEdite}>
+                  {nomPays(code)}
+                </option>
+              ))}
+            </select>
           </label>
           <label class="block">
             <span class="text-sm font-medium">{tr("livraison.telephone")}</span>

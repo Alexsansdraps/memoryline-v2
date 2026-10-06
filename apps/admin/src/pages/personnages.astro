@@ -1099,7 +1099,10 @@ for (const a of pieces) {
       const PAR_PAGE = 6;
       const CLE = "ml-bo-categories-ouvertes";
       const champ = document.getElementById("recherche-perso");
-      const groupes = Array.from(document.querySelectorAll("[data-groupe]"));
+      // « details » : le menu de gauche marque aussi ses groupes d'un
+      // data-groupe. Pris ici, le premier (sans pagination) arrêtait le script
+      // net : ni pages de 6, ni catégories rouvertes, ni recherche.
+      const groupes = Array.from(document.querySelectorAll("details[data-groupe]"));
       if (!groupes.length) return;
 
       // Les actions rechargent la page : sans mémoire, tout se replierait à
@@ -1206,7 +1209,8 @@ for (const a of pieces) {
     // de cibles, ce qui rend le déplacement direct maintenant que les huit
     // catégories tiennent sur un écran.
     (() => {
-      const groupes = Array.from(document.querySelectorAll("[data-groupe]"));
+      // Seules les catégories de personnages : voir plus haut (menu de gauche).
+      const groupes = Array.from(document.querySelectorAll("details[data-groupe]"));
       if (!groupes.length) return;
 
       for (const poignee of document.querySelectorAll(".js-grip")) {
@@ -1260,7 +1264,7 @@ for (const a of pieces) {
           const retour = ids
             .map((id) => {
               const carte = document.querySelector(`[data-char-id="${id}"]`);
-              const source = carte?.closest("[data-groupe]")?.dataset.cat ?? "sans";
+              const source = carte?.closest("details[data-groupe]")?.dataset.cat ?? "sans";
               return `${id}:${source}`;
             })
             .join(",");

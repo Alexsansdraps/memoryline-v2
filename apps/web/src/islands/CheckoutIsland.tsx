@@ -19,10 +19,12 @@ import {
 } from "solid-js";
 import {
   afficheComposee,
+  codePaysSaisi,
   demandeUnPointRelais,
   demandeUneAdresse,
   formaterPoids,
   optionsLivraison,
+  PAYS_PROPOSES,
   seuilPortOffertCents,
   remisesPanier,
   totalPanierCents,
@@ -43,25 +45,11 @@ import {
 } from "@memoryline/configurator";
 
 /**
- * Pays proposés à la livraison. Volontairement court : ceux où la boutique
- * expédie vraiment, plus « autre pays » (ZZ), qui tombe dans la zone de repli.
- * Leurs noms, le navigateur les connaît dans toutes les langues (nomPays).
+ * Pays proposés à la livraison : la liste partagée avec le carnet d'adresses
+ * du compte (cf. PAYS_PROPOSES). Leurs noms, le navigateur les connaît dans
+ * toutes les langues (nomPays).
  */
-const PAYS = [
-  "FR",
-  "BE",
-  "CH",
-  "LU",
-  "DE",
-  "ES",
-  "IT",
-  "NL",
-  "PT",
-  "GB",
-  "CA",
-  "US",
-  "ZZ",
-];
+const PAYS = PAYS_PROPOSES;
 
 /**
  * Les refus de l'API que la caisse sait dire elle-même, par leur code. Leur
@@ -101,6 +89,11 @@ import {
 } from "../lib/api.ts";
 import CarteRelais from "./CarteRelais.tsx";
 import { apercuAbsolu, urlApercu } from "../lib/ia.ts";
+// « catalogue » est déjà, ici, celui de la livraison.
+import {
+  catalogue as catalogueProduits,
+  visuelBoutique,
+} from "../lib/catalogue-panier.ts";
 import { codePromoRetenu } from "./CartIsland.tsx";
 import { clientFictif } from "./jeu-essai.ts";
 // Le même découpage que la fiche client : deux versions finiraient par
@@ -350,6 +343,12 @@ export default function CheckoutIsland(props: {
   const { cache, fetchSvg } = createSvgCache(PUBLIC_API_URL);
   const personnageParId = (id: string | number) =>
     biblio()?.characters.find((c) => String(c.id) === String(id));
+  /**
+   * Le genre et le visuel des produits, comme au panier : sans eux, une
+   * affiche prête à imprimer passait par l'aperçu en calques, qui n'a rien à
+   * empiler, et le récapitulatif montrait une vignette blanche.
+   */
+  const [fiches] = createResource(catalogueProduits);
 
   // Sans ce préchargement, les personnages resteraient absents de l'aperçu.
   createEffect(() => {
@@ -426,10 +425,14 @@ export default function CheckoutIsland(props: {
       return null;
     }
   });
+  // Lu par codePaysSaisi : une adresse gardée avec « France » en toutes
+  // lettres laissait la liste des pays vide et ne proposait que le port de
+  // la zone de repli.
   const [pays, setPays] = createSignal(
-    (props.carnet ?? []).find((a) => a.parDefaut)?.country ??
-      (props.carnet ?? [])[0]?.country ??
-      "FR",
+    codePaysSaisi(
+      (props.carnet ?? []).find((a) => a.parDefaut)?.country ??
+        (props.carnet ?? [])[0]?.country,
+    ) || "FR",
   );
   const [modeChoisi, setModeChoisi] = createSignal<string | null>(null);
   /** L'adresse à proposer d'emblée : celle par défaut, sinon la première. */
@@ -465,7 +468,8 @@ export default function CheckoutIsland(props: {
       city: a.city ?? "",
       phone: a.phone ?? "",
     });
-    if (a.country) setPays(a.country);
+    const code = codePaysSaisi(a.country);
+    if (code) setPays(code);
     if (a.name) setName(a.name);
   }
   /**
@@ -1848,6 +1852,12 @@ export default function CheckoutIsland(props: {
                         <Show
                           when={it.config.aiPublicId}
                           fallback={
+                            /* Une affiche prête à imprimer : son visuel de
+                               boutique, comme au panier, et sans signature —
+                               son fichier d'impression n'en porte pas. */
+                            <Show
+                              when={visuelBoutique(fiches(), it)}
+                              fallback={
                             <Show
                               when={biblio()}
                               fallback={
@@ -1862,10 +1872,7 @@ export default function CheckoutIsland(props: {
                                 assetBaseUrl={PUBLIC_API_URL}
                                 /* La signature suit la règle du fichier
                                    d'impression : seules les lignes composées
-                                   sont signées. Ce récapitulatif-ci n'a pas de
-                                   branche « affiche prête à imprimer » — elles
-                                   passent donc par cet aperçu, et leur fichier
-                                   n'est pas signé. */
+                                   sont signées. */
                                 signature={
                                   afficheComposee(it.config)
                                     ? props.signature
@@ -1884,6 +1891,17 @@ export default function CheckoutIsland(props: {
                                   ) || undefined
                                 }
                               />
+                            </Show>
+                              }
+                            >
+                              {(image) => (
+                                <img
+                                  src={image()}
+                                  alt=""
+                                  class="w-full rounded object-cover"
+                                  style={{ "aspect-ratio": "1 / 1.4142" }}
+                                />
+                              )}
                             </Show>
                           }
                         >
