@@ -56,7 +56,9 @@ if (isOwner) {
   try {
     const base =
       apiInterne();
-    const res = await fetch(`${base}/admin/stats/orders?jours=${jours}`, {
+    // « days », le nom que lit l'API : sous « jours », elle ne le voyait pas
+    // et rendait toujours ses 30 jours par défaut, quel que soit le bouton.
+    const res = await fetch(`${base}/admin/stats/orders?days=${jours}`, {
       headers: { cookie: Astro.request.headers.get("cookie") ?? "" },
     });
     if (res.ok) ventes = (await res.json()) as Ventes;
@@ -118,7 +120,13 @@ if (isOwner) {
   }
 }
 
-/** La courbe des ventes, en un tracé simple. */
+/**
+ * La courbe des commandes, en un tracé simple.
+ *
+ * La série compte des COMMANDES par jour (c'est celle des écrans de
+ * commandes), pas des euros : lue comme un montant, la meilleure journée
+ * s'affichait « 0,04 € » pour quatre commandes.
+ */
 function courbe(serie: number[]): string {
   if (serie.length < 2) return "";
   const max = Math.max(...serie, 1);
@@ -179,8 +187,7 @@ const teinte = (sens: string) =>
                 {ecart(p.commandes, avant.commandes).texte}
               </p>
               <p class="mt-1 text-xs text-bo-muted">
-                {p.articles} affiche{p.articles > 1 ? "s" : ""} vendue
-                {p.articles > 1 ? "s" : ""}
+                {`${p.articles} affiche${p.articles > 1 ? "s" : ""} vendue${p.articles > 1 ? "s" : ""}`}
               </p>
             </div>
             <div class="rounded-lg border border-bo-border bg-bo-surface p-4">
@@ -222,15 +229,14 @@ const teinte = (sens: string) =>
         {ventes && meilleurJour > 0 && (
           <div class="mt-4 rounded-lg border border-bo-border bg-bo-surface p-4">
             <p class="mb-2 text-sm text-bo-muted">
-              Jour par jour, sur les {jours} derniers jours. Meilleure journée :{" "}
-              {formatPrice(meilleurJour)}.
+              {`Commandes payées jour par jour, sur les ${jours} derniers jours. Meilleure journée : ${meilleurJour} commande${meilleurJour > 1 ? "s" : ""}.`}
             </p>
             <svg
               viewBox="0 0 100 30"
               preserveAspectRatio="none"
               class="h-20 w-full"
               role="img"
-              aria-label={`Courbe des ventes des ${jours} derniers jours`}
+              aria-label={`Courbe des commandes des ${jours} derniers jours`}
             >
               <polyline
                 points={trace}

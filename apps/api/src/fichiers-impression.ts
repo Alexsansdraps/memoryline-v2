@@ -49,7 +49,7 @@
  */
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { and, asc, desc, eq, gte, inArray, isNull } from "drizzle-orm";
@@ -339,6 +339,19 @@ function cheminDansLesAssets(url: string): string | null {
   const chemin = resolve(ASSETS_DIR, relatif);
   // Un « ../ » glissé dans l'adresse ne doit mener nulle part ailleurs.
   return chemin.startsWith(ASSETS_DIR + sep) ? chemin : null;
+}
+
+/**
+ * Vrai quand l'adresse désigne un fichier de data/assets qui n'y est PAS.
+ *
+ * Deux fonds importés de Shopify pointaient vers une image jamais rapatriée :
+ * leur vignette s'affichait cassée dans le module, et le client qui la
+ * choisissait composait sur du vide. Une adresse d'un autre site n'est pas
+ * vérifiable d'ici : elle n'est pas déclarée manquante.
+ */
+export function fichierDAssetManquant(url: string): boolean {
+  const chemin = cheminDansLesAssets(url);
+  return chemin !== null && !existsSync(chemin);
 }
 
 /**

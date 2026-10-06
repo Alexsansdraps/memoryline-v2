@@ -1,4 +1,4 @@
-# Reprise du chantier — 5 octobre 2026
+# Reprise du chantier — 6 octobre 2026
 
 À lire en premier par la session qui reprend. Ce fichier se supprime une fois tout terminé et mis en ligne.
 
@@ -6,93 +6,47 @@
 
 Memory Line est une boutique d'affiches illustrées personnalisables. Alexandra la développe pour sa cliente, Margaux (boutique « Donuts Corner »). Les messages destinés à Margaux s'écrivent en **tutoiement**.
 
-Les demandes arrivent sous forme de cartes Trello, que l'utilisatrice colle en captures. ❌ veut dire « pas bon / à faire ».
+Les demandes arrivent sous forme de cartes Trello (tableau « ✅ Tâches Memory Line »). ❌ veut dire « pas bon / à faire ».
 
 - `main` fait foi. Tout le travail ci-dessous y est poussé.
-- Le serveur de test (OVH) se met à jour avec une archive : voir « Mise en ligne » plus bas.
+- Le serveur de test (OVH) se met à jour avec une archive : voir « Mise en ligne » plus bas. Il n'a encore reçu ni 0063, ni 0064, ni 0065, ni 0066 : la prochaine mise en ligne les passe.
 
-## Fait, vérifié et poussé
+## Où on en est
 
-- **Styles d'affiche IA** : « Personnes / Animaux », « Paysage » et « Maison / Bâtiment » (migration 0063). Le client en choisit un avant sa photo. Les titres se traduisent dans Affiches IA › Styles proposés — **mais la saisie n'est pas faite** : « Portrait », « Couple » et « Paysage » sortent encore en français dans les quatre autres langues (mesuré sur /api/ia/prompts?lang=). Le mécanisme marche, les mots manquent.
-- **Affiche IA**
-  - Choisir une photo ne lance plus jamais la création toute seule : c'est toujours le bouton « Créer mon affiche ».
-  - Le sens (portrait ou paysage) se déduit de la photo tant que le client ne l'a pas choisi lui-même.
-  - Toutes les créations de la séance restent en vignettes : on peut en revoir une et en ajouter plusieurs au panier, pour le stand. Elles sont gardées par panier dans le sessionStorage.
-- **Mode stand, page panier sur tablette**
-  - Liste et formulaire côte à côte à partir de 768 px.
-  - Retirés : « Stand : … — Changer de code », « Nous vous écrivons… » et « Aucun paiement en ligne ».
-- **Sommaire des réglages du personnage** (étape 2) : pastilles Peau, Vêtements…, qui mènent chacune à sa section.
-- **Bandeaux visuels personnalisables** : écran /bo/bandeaux-visuels, réglage `bandeaux.visuels`. Ils remplacent l'encart d'accueil, qui est repris automatiquement.
-- **PDF d'impression fiables**
-  - Une file d'attente pour les rendus.
-  - Les fichiers des commandes à expédier sont préparés à l'avance.
-  - Les états s'affichent au BO.
-  - La liste des commandes a des boutons PDF, plus « Tout » en .zip.
-- **Fonds SVG contenant des images WebP** : 12 fonds s'imprimaient presque BLANCS. C'est corrigé dans `pdf.ts` (`sansWebp`, plus une nouvelle clé de cache pour ces fonds).
-  - ⚠️ Commandes déjà imprimées avec ces fonds (Ault, Baie de Somme, Berck, Côte d'Opale, Fort-Mahon, Le Crotoy, Le Tréport, Soissons, Thourotte, Vieux-Moulin, Villers-Cotterêts) : à vérifier avec la cliente.
-- **Cartes BO**
-  - Cadres : case « afficher le supplément ».
-  - Ordre des pages et des collections : migration 0064, le menu suit.
-  - Écran Pages : liste des pages de la boutique et des rayons, menu.
-  - Clients façon Shopify : abonnement, emplacement, cases à cocher, pagination par 50, **import CSV**.
-  - Statistiques : période libre, séparation site / stands / salon, par sorte d'affiche.
-  - FAQ du BO à jour.
-- **Script de mise en ligne en une commande** : `apps/api/scripts/mettre-en-ligne.sh`.
+Le 6 octobre, **toutes les cartes non cochées du Trello ont été testées à l'écran**, plus les parcours complets (site en français et en anglais jusqu'au paiement d'essai et au fichier d'impression, mode stand sur tablette, affiche IA sans génération). Le détail carte par carte, ce qui a été corrigé et ce qui reste : **`docs/RECETTE.md`**.
 
-## Commencé mais INTERROMPU : à vérifier et à finir
+Corrigé pendant la recette, entre autres :
+- couleur des détails (ruban du chapeau) : migration **0066**, toutes les catégories de pièces sur « couleur principale », les ombres de même teinte suivant la couleur choisie ;
+- BO : accueil (chiffres faux, périodes sans effet), tableau des cadres, décors sans image, colonne « Vient de » des clients, paniers mêlés aux commandes, pluriels détachés ;
+- stand : nom du fichier d'impression après correction d'une vente, boutons « Revenir » / « Client suivant », nom et e-mail gardés au retour, panier en portrait ;
+- caisse : ce qui manque est dit sous le bouton grisé ; pastille du panier après paiement ;
+- types d'affiche tout neufs (« Mariés ») : « Ajouter un personnage » ne faisait rien.
 
-Les agents ont été arrêtés avant leur dernière vérification. Tout compile (voir « Vérifications »), mais rien n'a été contrôlé à l'écran.
-
-### 1. Cartes « MODULE »
-
-Fichiers : `packages/configurator/**`, `apps/web/src/styles/global.css`, `apps/admin/src/pages/categories-pieces.astro`, `personnages/piece.astro`, `apps/api/src/couleur-principale.ts`, migration 0065.
-
-- **« Ne pas proposer de modifier la couleur de détails (ex : ruban du chapeau) »** : un réglage par catégorie de pièces (« Couleurs proposées : toutes / seulement la principale »), avec une exception possible par pièce.
-  - Vérifier le BO, le module, et que l'impression garde la couleur d'origine des zones non proposées.
-- **« SCROLLE horizontal et vertical, boutons et barres trop discrets, penser aux vieux »**, sur le site et dans le module (`Defilement.tsx`, `global.css`).
-  - Vérifier à 320, 375, 768 et 1280 px, et sur tablette.
-- **« Augmenter un peu la taille des étapes »** : les onglets « 1. Fond & texte / 2. Personnages / 3. Format » (`index.tsx`).
-- **Mode stand** : l'étape « 3. Format » doit tenir sur la tablette sans défiler, en 768×1024 et 1024×768 (`StepFormat.tsx`).
-- **Coupé en plein travail** : l'agent ajoutait des libellés dans `MessagesConfigurateur`. Il faut les faire passer par `tr("cfg.…")` dans `apps/web/src/islands/ConfiguratorIsland.tsx`, avec leurs 5 langues dans `apps/web/src/i18n/ui.ts`. Sinon, ces textes restent en français partout.
-
-### 2. Cartes « SITE »
-
-- **Police des produits « un peu plus gras, plus petit, comme le site actuel »**. Mesures prises sur memoryline.fr :
-  - description de la fiche produit : Inter 16 px, graisse 600, espacement 0,6 px, interligne 1,8 ;
-  - les titres des vignettes étaient déjà en 14 px, graisse 600.
-- **Boutons pleins noirs « pas assez visible quand on a cliqué »** :
-  - état `:active` bien visible ;
-  - état sélectionné (`aria-pressed`, `aria-checked`) distinct du survol, avec une coche ou un anneau terracotta.
-- **« Nombre de produits par ligne sur TOUTES LES PAGES »** : `packages/types/src/grille.ts`, `apps/web/src/lib/grille.ts`, `VignetteAffiche.astro`.
-  - Vérifier toutes les listes : boutique, rayons, accueil, recherche, pages libres, produits liés.
-  - Vérifier aussi le réglage du BO.
-
-### 3. Signature des créations (« logo signature en bas à droite sur chaque création »)
-
-- **Fait, impression** : `pdf.ts` → `signaturePosee` (dernière couche) ; `fichiers-impression.ts` → `signatureDesCreations` (lu dans les réglages et inclus dans l'empreinte des fichiers).
-  - Réglage : BO › Contenu du site › « Signature des créations » (image, largeur, marge, opacité, interrupteur).
-  - Par défaut : allumée, avec le logo `logo-memory-line.png`, 12 % du petit côté, marge de 3 %.
-- **À faire, aperçus à l'écran** : `apps/web/src/lib/signature.ts` (`signatureDesCreations()`) est prêt.
-  - Il faut le lire dans les pages (`affiches/[slug].astro`, panier, commande) et passer une prop `signature` à `ConfiguratorIsland` → `Configurator` → `PosterPreview`, ainsi qu'à `AfficheIA`, `CartIsland` et `CheckoutIsland`.
-  - L'afficher en bas à droite, à la même taille que le PDF : un calque `position:absolute; inset:0; container-type:size`, avec une image de largeur `calc(largeur × 100cqmin)` et des marges `marge × 100cqmin`.
-- **À demander à Margaux** : son vrai fichier de signature (PNG transparent).
-
-### 4. Facultatif
-
-Le prix des cadres est aujourd'hui masqué par une règle CSS (`.ml-sans-prix-cadres`). On pourrait la remplacer par une prop `sansPrixCadres` dans `StepFormat.tsx`, transmise par `ConfiguratorIsland`.
+Avant cela, les 5 et 6 octobre : styles d'affiche IA (0063), ordre des pages et collections (0064), couleurs proposées par catégorie (0065), bandeaux visuels, PDF d'impression fiables (file d'attente, préparation à l'avance, fonds WebP qui sortaient blancs), signature des créations à l'écran et à l'impression, défilement visible, format au stand.
 
 ## Questions en attente de la cliente
 
-- Le fichier de son logo signature.
-- La fin de la phrase de la carte « Stats : … séparer les différents… ». On a supposé : site / stands / salons, plus par sorte d'affiche.
-- L'import des clients : la date de consentement est celle de l'import ; le statut Shopify « pending » est compté comme non abonné. Est-ce correct ?
-- Les 15 affiches « prêtes à imprimer » n'ont que des photos de mise en scène en 1020×1400. Leur PDF est refusé comme trop flou : il faut les visuels d'origine en haute définition.
-- Les couleurs de cheveux « brun clair » et « châtain clair » (codes couleur), et les « espaces chelou entre personnages » (capture).
-- Traduire ou non les textes pré-remplis imprimés sur les affiches (« et ses plages »).
+- **Son fichier de signature** (PNG transparent) : le logo Memory Line sert en attendant.
+- **Couleurs des animaux téléversés** : chacun doit être réglé une fois (BO › Personnages › le personnage › « Détecter les couleurs », cocher « Proposée au client », « Enregistrer le dessin »). Aujourd'hui Berger allemand, Berger australien, Chien york et Chat gris ne proposent aucune couleur.
+- **Catalogue à revoir** (rien n'a été touché) :
+  - « Forêt Animaux » propose des fonds de Paris et de Compiègne, et les 3 affiches Compiègne n'ont aucun fond à elles ; même cas pour Côte d'Opale Plage #2, Montagne Neige et Paris Tour Eiffel sunset #1 ;
+  - Vieux Moulin propose aussi un fond « VERACRUZ » ;
+  - 2 fonds sans image (signalés en rouge dans BO › Décors des affiches) ;
+  - personnages d'essai visibles : 3 « Femme test », « emond » et « ddd » (Fauteuil roulant).
+- **Coupes de cheveux pour ados et enfants** : presque tous n'en ont qu'une ; des coupes à téléverser puis à cocher sur chaque personnage.
+- **Codes couleur « brun clair » et « châtain clair »** : le nuancier des coupes a 9 couleurs sans nom.
+- **Prix des cadres en A3** : les trois cadres valent 14 € en A4 comme en A3. Voulu ?
+- **Accès par stand** : chaque stand a son code, mais un compte Vendeur voit toutes les ventes. Faut-il un accès limité à son stand ?
+- **Retrait sur place** : le texte demande d'indiquer son créneau « en commentaire », et la caisse n'a pas de champ commentaire.
+- **Traductions à saisir au BO** : bandeau, onglets de personnages, cadres, modes de livraison, produits (1 sur 177), titres et images d'exemple des 3 styles IA. Chaque écran a « Proposer les traductions manquantes ».
+- L'import des clients : la date de consentement est celle de l'import ; le statut Shopify « pending » compte comme non abonné. Correct ?
+- Les 15 affiches « prêtes à imprimer » n'ont que des photos de mise en scène en 1020 × 1400 : il faut les visuels d'origine en haute définition.
+- Les « espaces chelou entre personnages » (capture) et traduire ou non les textes pré-remplis imprimés sur les affiches (« et ses plages »).
+- Commandes déjà imprimées avec un fond WebP (Ault, Baie de Somme, Berck, Côte d'Opale, Fort-Mahon, Le Crotoy, Le Tréport, Soissons, Thourotte, Vieux-Moulin, Villers-Cotterêts) : à vérifier, elles ont pu sortir presque blanches.
 
-## Vérifications (pile Docker locale, mais base DISTANTE)
+## Vérifications (pile Docker locale)
 
-> ⚠️ Le conteneur `memoryline-api` parle à une base PostgreSQL **hébergée chez Neon**, pas au conteneur `memoryline-db` — qui ne sert à rien. Donc : `db:migrate` écrit chez un tiers, les jeux d'essai des agents y restent, et `docker compose down -v` ne remet rien à zéro. À trancher par Alexandra : monter une vraie base locale pour le développement.
+> ⚠️ Sur la machine **de la maison**, le `.env` fait parler le conteneur `memoryline-api` à la base hébergée chez Neon (l'ancienne), pas au conteneur `memoryline-db` : `db:migrate` y écrit chez un tiers. Au bureau, l'API parle bien à `memoryline-db`.
 
 `docker compose up -d`, puis sous Git Bash (mettre `MSYS_NO_PATHCONV=1` devant chaque `docker exec -w`) :
 
@@ -105,10 +59,10 @@ MSYS_NO_PATHCONV=1 docker exec -w /app/apps/web memoryline-web npx tsc --noEmit 
 ```
 
 - Le site doit afficher seulement 3 erreurs, anciennes, dans `src/islands/StandSalon.tsx`. Toutes les autres vérifications doivent sortir sans erreur.
-- ⚠️ **La dernière ligne n'est pas `astro check`, et ce n'est pas un oubli.** `@astrojs/check` n'est une dépendance que d'`apps/admin`, les conteneurs ne partagent pas leurs `node_modules`, et `memoryline-web` tourne avec `CI=true` : `npx` refuse donc de l'installer et la commande s'arrête net. Trois sessions l'ont constaté. `tsc --noEmit -p .` couvre tous les `.ts` / `.tsx` du site — îlots compris — mais **pas les fichiers `.astro`** : une page `.astro` se prouve autrement (elle répond, et ses propriétés sortent bien sérialisées dans le HTML servi).
-  - À trancher par Alexandra : ajouter `@astrojs/check` à `apps/web/package.json` — ce serait une dépendance nouvelle — et rétablir alors `astro check` ici.
+- La dernière ligne n'est pas `astro check`, et ce n'est pas un oubli : `@astrojs/check` n'est une dépendance que d'`apps/admin`, et `memoryline-web` tourne avec `CI=true`, donc `npx` refuse de l'installer. `tsc` couvre tous les `.ts` / `.tsx` du site, pas les fichiers `.astro`.
 - Si Vite répond 504 « Outdated Optimize Dep » : `docker restart memoryline-web`.
-- Site : http://localhost:8080. BO : http://localhost:4322/bo. Mailpit : http://localhost:8025.
+- Site : http://localhost:8080. BO : http://localhost:4322/bo (en développement, ses scripts ne marchent que sur ce port). Mailpit : http://localhost:8025.
+- Pour tester à l'écran sans gêner l'utilisatrice : un Chrome sans fenêtre piloté par script (voir `docs/RECETTE.md`, ligne « Tests »), jamais en prenant la main sur son écran.
 
 ## Mise en ligne (serveur de test)
 
@@ -122,7 +76,7 @@ gzip -9 memoryline-deploiement.tar
 
 Les deux polices AnotherShabby ne sont **pas** dans git : leur licence est non commerciale. Si elles manquent sur la machine, on saute la ligne `tar --append`, car le serveur les a déjà.
 
-2. Puis une seule ligne, depuis PowerShell. Elle fait la sauvegarde, sort le code, construit, passe les migrations jusqu'à 0065 et redémarre :
+2. Puis une seule ligne, depuis PowerShell. Elle fait la sauvegarde, sort le code, construit, passe les migrations jusqu'à 0066 et redémarre :
 
 ```bash
 scp memoryline-deploiement.tar.gz debian@51.255.34.187:~/ ; ssh debian@51.255.34.187 "tar -xzf ~/memoryline-deploiement.tar.gz -C ~/memoryline apps/api/scripts/mettre-en-ligne.sh && bash ~/memoryline/apps/api/scripts/mettre-en-ligne.sh"
@@ -130,9 +84,10 @@ scp memoryline-deploiement.tar.gz debian@51.255.34.187:~/ ; ssh debian@51.255.34
 
 - Rien à ajouter au `.env` du serveur. La clé OpenAI y est déjà.
 - `SENDCLOUD_ACHATS_REELS` n'y est pas posé : les bordereaux restent en mode essai, et il ne faut pas l'activer sans l'accord explicite d'Alexandra.
+- Après la mise en ligne, ne pas laisser de stand d'essai ouvert : un stand ouvert est proposé au retrait sur place dans la caisse du site.
 
 ## Règles du dépôt
 
-- Ne jamais commiter `.env`, `data/`, `sauvegardes/` ni les polices AnotherShabby. Le dépôt est **privé** (vérifié auprès de GitHub le 05/10/2026 : `Alexsansdraps/memoryline-v2`, visibilité PRIVATE). La consigne ne change pas pour autant — un secret commité reste un secret à régénérer.
+- Ne jamais commiter `.env`, `data/`, `sauvegardes/` ni les polices AnotherShabby. Le dépôt est **privé** (`Alexsansdraps/memoryline-v2`). La consigne ne change pas pour autant — un secret commité reste un secret à régénérer.
 - Ne jamais se connecter aux comptes de la cliente (La Poste, SendCloud…) ni saisir de mot de passe. Demander des clés d'API.
 - Commentaires en français qui expliquent le pourquoi, dans le ton des fichiers voisins. Pas de dépendance nouvelle. Le site est en 5 langues : tout nouveau texte va dans `ui.ts`, en fr, en (britannique), de (« Sie »), it et es (tutoiement).

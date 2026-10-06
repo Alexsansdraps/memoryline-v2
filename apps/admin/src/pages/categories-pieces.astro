@@ -129,14 +129,14 @@ function messageArchivage(c: CategoriePiece): string {
     bibliothèque de pièces.
   </p>
   <p class="mb-6 text-sm text-bo-muted max-w-3xl">
-    « <strong>Le client peut recolorer</strong> » : toutes les couleurs de
-    chaque pièce, ou <strong>seulement la couleur principale</strong> (la plus
-    étendue : la calotte d'un chapeau, pas son ruban). Les détails gardent
-    alors la couleur du dessin. Une pièce dont vous avez coché ou décoché les
-    cases « Proposée au client » garde son propre réglage. Avant de passer une
-    catégorie à « principale », regardez ses pièces : une ombre restée à part
-    (signalée sur la carte) ne suivrait plus la couleur choisie — rattachez-la
-    à sa couleur. Les commandes déjà passées ne changent pas.
+    « <strong>Le client peut recolorer</strong> » : <strong>seulement la
+    couleur principale</strong> (la plus étendue : la calotte d'un chapeau, pas
+    son ruban), c'est le réglage par défaut, ou toutes les couleurs de chaque
+    pièce. Avec la couleur principale, les détails d'une autre teinte gardent
+    la couleur du dessin, et les ombres de la même teinte la suivent toutes
+    seules. Une pièce dont vous avez coché ou décoché les cases « Proposée au
+    client » garde son propre réglage. Les commandes déjà passées ne changent
+    pas.
   </p>
 
   <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
@@ -248,8 +248,8 @@ function messageArchivage(c: CategoriePiece): string {
                   {c.couleursProposees === "principale" && (
                     <span>
                       {" "}Le client ne change que la couleur principale (★ sur
-                      la carte de chaque pièce) ; les détails gardent la
-                      couleur du dessin.
+                      la carte de chaque pièce), ombres comprises ; les détails
+                      gardent la couleur du dessin.
                     </span>
                   )}
                 </p>
@@ -301,8 +301,7 @@ function messageArchivage(c: CategoriePiece): string {
               <tr class="border-t border-bo-border first:border-t-0">
                 <td class="px-4 py-2 font-medium">{c.name}</td>
                 <td class="px-4 py-2 text-bo-muted">
-                  {nomSlot(c.slot)} · {c.pieces ?? 0} pièce
-                  {(c.pieces ?? 0) > 1 ? "s" : ""} ·{" "}
+                  {nomSlot(c.slot)} · {c.pieces ?? 0} pièce{(c.pieces ?? 0) > 1 ? "s" : ""} ·{" "}
                   {c.colors.length} couleur{c.colors.length > 1 ? "s" : ""}
                 </td>
                 <td class="px-4 py-2">
@@ -376,8 +375,8 @@ function messageArchivage(c: CategoriePiece): string {
           name="couleursProposees"
           class="mt-1 block border border-bo-border rounded px-3 py-2"
         >
-          <option value="toutes" selected>Toutes les couleurs de chaque pièce</option>
-          <option value="principale">Seulement la couleur principale</option>
+          <option value="principale" selected>Seulement la couleur principale</option>
+          <option value="toutes">Toutes les couleurs de chaque pièce</option>
         </select>
       </label>
       <div class="basis-full">

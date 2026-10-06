@@ -513,6 +513,12 @@ export function mountOrderRoutes(app: Hono): void {
     );
     if (q.channel === "web" || q.channel === "salon")
       conditions.push(eq(schema.orders.channel, q.channel));
+    // Les paniers en cours ne sont pas des commandes : ils ont leur écran,
+    // « Paniers abandonnés ». Dans « Toutes » et « Non traitées », ils
+    // noyaient les vraies commandes sous des lignes « Panier, 0 €, aucun
+    // client ». Ils ne viennent que si on les demande (statut « Panier »).
+    if (!(q.financial ?? "").split(",").includes("draft"))
+      conditions.push(raw`${schema.orders.status} <> 'draft'`);
     // Un stand précis : c'est la question qu'on se pose au retour d'un salon,
     // « combien celui-là a-t-il fait ».
     const stand = Number(q.stand);
@@ -663,6 +669,9 @@ export function mountOrderRoutes(app: Hono): void {
     const conditions = [];
     if (q.channel === "web" || q.channel === "salon")
       conditions.push(eq(schema.orders.channel, q.channel));
+    // Comme la liste : pas de paniers en cours dans le fichier, sauf demandés.
+    if (!(q.financial ?? "").split(",").includes("draft"))
+      conditions.push(raw`${schema.orders.status} <> 'draft'`);
     // Un stand précis : c'est la question qu'on se pose au retour d'un salon,
     // « combien celui-là a-t-il fait ».
     const stand = Number(q.stand);

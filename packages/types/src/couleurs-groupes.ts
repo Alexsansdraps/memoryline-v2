@@ -434,10 +434,12 @@ export interface DessinDePiece {
  * Ce qu'une catégorie de pièces propose au client, pour chacune de ses
  * pièces qui n'a pas son propre réglage :
  *   - « toutes » : une rangée de pastilles par couleur de la pièce — la seule
- *     règle avant ce réglage, et toujours celle par défaut ;
- *   - « principale » : la couleur principale seulement (cf. groupePrincipal),
- *     nuances comprises. Les détails — ruban d'un chapeau, verres d'une paire
- *     de lunettes — gardent la couleur du dessin.
+ *     règle avant ce réglage ;
+ *   - « principale » : la couleur principale seulement, ombres comprises
+ *     (cf. principaleDeLaPiece). Les détails — ruban d'un chapeau, verres
+ *     d'une paire de lunettes — gardent la couleur du dessin. C'est la règle
+ *     par défaut depuis la migration 0066 : la cliente l'a demandée pour
+ *     toutes les pièces des personnages.
  *
  * La cliente masquait le ruban pièce par pièce ; un seul réglage par
  * catégorie suffit désormais. Une pièce qui a ses propres cases garde le
@@ -482,12 +484,132 @@ export function groupePrincipal(
 }
 
 /**
+ * Deux couleurs de la même FAMILLE — une ombre et sa couleur, un reflet ?
+ *
+ * Même teinte à 12° près pour deux couleurs franches ; pour deux gris (ou
+ * blancs, ou noirs), une clarté voisine. Mesuré sur les chapeaux de la
+ * boutique : une ombre s'écarte de sa couleur de 2 à 7°, un ruban orange d'un
+ * chapeau brun de 15 à 16°.
+ */
+export function memeFamilleDeTeinte(a: string, b: string): boolean {
+  const x = hexVersRgb(a);
+  const y = hexVersRgb(b);
+  if (!x || !y) return false;
+  const vx = couleurVive(x[0], x[1], x[2]);
+  const vy = couleurVive(y[0], y[1], y[2]);
+  if (vx !== vy) return false;
+  const tx: [number, number, number] = [0, 0, 0];
+  const ty: [number, number, number] = [0, 0, 0];
+  versTsl(x[0], x[1], x[2], tx);
+  versTsl(y[0], y[1], y[2], ty);
+  if (!vx) return Math.abs(tx[2] - ty[2]) <= 0.35;
+  const ecart = Math.abs(tx[0] - ty[0]) % 360;
+  return Math.min(ecart, 360 - ecart) <= 12;
+}
+
+/**
+ * La boutique a-t-elle RÉUNI elle-même des couleurs de la pièce (« Rattacher
+ * à… » au back-office) ? Des groupes d'une seule zone ne réunissent rien : le
+ * back-office en enregistre dès qu'on touche une case, sans rien vouloir dire
+ * sur les ombres.
+ */
+function regroupeeParLaBoutique(piece: DessinDePiece): boolean {
+  return (
+    Array.isArray(piece.groupesCouleurs) &&
+    piece.groupesCouleurs.some(
+      (g) =>
+        !!g &&
+        typeof g === "object" &&
+        Array.isArray((g as { nuances?: unknown }).nuances) &&
+        ((g as { nuances: unknown[] }).nuances.length ?? 0) > 0,
+    )
+  );
+}
+
+/**
+ * La couleur principale d'une pièce, AVEC SES OMBRES : ce que le client
+ * recolore quand la catégorie ne propose que la principale.
+ *
+ * Les dessins d'Illustrator rangent l'ombre de la calotte d'un chapeau dans
+ * une zone à part, que personne n'a réunie à la calotte. Proposer la calotte
+ * seule laissait l'ombre à sa couleur d'origine : un chapeau passé au bleu
+ * gardait une ombre paille. Les zones de la même famille de teinte que la
+ * principale deviennent donc ses nuances, et la suivent ; un détail d'une
+ * autre teinte (le ruban) garde la sienne.
+ *
+ * La principale est celle de la FAMILLE la plus étendue, et non de la zone la
+ * plus étendue : une calotte peinte en deux tons l'emporte sur un ruban qui
+ * serait, seul, plus grand que chacun d'eux.
+ *
+ * Quand la boutique a réuni elle-même les couleurs, son regroupement fait foi
+ * et rien n'est deviné (cf. groupePrincipal).
+ */
+export function principaleDeLaPiece(piece: DessinDePiece): GroupeCouleur | undefined {
+  const groupes = groupesDuDessin(piece.colorZones, piece.groupesCouleurs);
+  const parts = piece.partsDesZones;
+  if (!parts || regroupeeParLaBoutique(piece)) return groupePrincipal(groupes, parts);
+  const couleur = (g: GroupeCouleur) => piece.colorZones?.[g.zone] ?? "";
+  const partDe = (g: GroupeCouleur) =>
+    zonesDuGroupe(g).reduce((s, z) => {
+      const p = parts[z];
+      return s + (typeof p === "number" && Number.isFinite(p) ? p : 0);
+    }, 0);
+  const familleDe = (g: GroupeCouleur) =>
+    groupes.filter((h) => h === g || memeFamilleDeTeinte(couleur(h), couleur(g)));
+
+  let principal: GroupeCouleur | undefined;
+  let meilleure = -1;
+  let meilleurePropre = -1;
+  for (const g of groupes) {
+    const famille = familleDe(g).reduce((s, h) => s + partDe(h), 0);
+    const propre = partDe(g);
+    // La famille la plus étendue ; dans la famille, la zone la plus étendue
+    // devient la référence. À égalité stricte, le premier groupe.
+    if (famille > meilleure || (famille === meilleure && propre > meilleurePropre)) {
+      meilleure = famille;
+      meilleurePropre = propre;
+      principal = g;
+    }
+  }
+  if (!principal) return undefined;
+  const ref = principal;
+  const suivantes = familleDe(ref)
+    .filter((h) => h !== ref)
+    .flatMap(zonesDuGroupe);
+  return suivantes.length
+    ? { ...ref, nuances: [...(ref.nuances ?? []), ...suivantes] }
+    : ref;
+}
+
+/**
+ * Les groupes d'une pièce tels que la règle de sa catégorie les voit : sous
+ * « principale », les ombres de la principale ne forment plus des groupes à
+ * part, elles sont ses nuances (cf. principaleDeLaPiece). Sous « toutes », ou
+ * quand la pièce a son propre réglage, les groupes du dessin, tels quels.
+ */
+export function groupesSelonLaRegle(
+  piece: DessinDePiece,
+  regle?: CouleursProposees | null,
+): GroupeCouleur[] {
+  const groupes = groupesDuDessin(piece.colorZones, piece.groupesCouleurs);
+  if (Array.isArray(piece.zonesMasquees) || regle !== "principale") return groupes;
+  const principal = principaleDeLaPiece(piece);
+  if (!principal) return groupes;
+  const reunies = new Set(zonesDuGroupe(principal));
+  return [
+    principal,
+    ...groupes.filter((g) => g.zone !== principal.zone && !reunies.has(g.zone)),
+  ];
+}
+
+/**
  * Les groupes d'une pièce que le client peut recolorer, dans l'ordre.
  *
  * - Réglage propre à la pièce (`zonesMasquees` est une liste) : tous les
  *   groupes sauf ceux qu'il masque. Il a toujours le dernier mot.
- * - Sinon, la règle de sa catégorie : la couleur principale seule, ou toutes.
- *   Sans catégorie (ou catégorie archivée, décochée), toutes.
+ * - Sinon, la règle de sa catégorie : la couleur principale seule (ombres
+ *   comprises, cf. principaleDeLaPiece), ou toutes. Sans catégorie (ou
+ *   catégorie archivée, décochée), toutes.
  */
 export function groupesProposesDeLaPiece(
   piece: DessinDePiece,
@@ -499,7 +621,7 @@ export function groupesProposesDeLaPiece(
     return groupes.filter((g) => !masquees.includes(g.zone));
   }
   if (regle === "principale") {
-    const principal = groupePrincipal(groupes, piece.partsDesZones);
+    const principal = principaleDeLaPiece(piece);
     return principal ? [principal] : [];
   }
   return groupes;
@@ -526,11 +648,13 @@ export function couleursDesGroupesNonProposes(
   piece: DessinDePiece,
   regle?: CouleursProposees | null,
 ): Record<string, string> {
-  const proposes = new Set(groupesProposesDeLaPiece(piece, regle).map((g) => g.zone));
+  // Zone par zone : une ombre qui suit la principale (cf. principaleDeLaPiece)
+  // est proposée avec elle, et ne reprend donc pas sa couleur d'origine.
+  const suivies = new Set(groupesProposesDeLaPiece(piece, regle).flatMap(zonesDuGroupe));
   const out: Record<string, string> = {};
   for (const g of groupesDuDessin(piece.colorZones, piece.groupesCouleurs)) {
-    if (proposes.has(g.zone)) continue;
     for (const z of zonesDuGroupe(g)) {
+      if (suivies.has(z)) continue;
       const defaut = piece.colorZones?.[z];
       if (defaut) out[colorKey(scope, z)] = defaut;
     }

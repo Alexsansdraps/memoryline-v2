@@ -198,6 +198,7 @@ function messageArchivage(c: Cadre): string {
           <th class="px-4 py-2 w-32">Supplément A4</th>
           <th class="px-4 py-2 w-32">Supplément A3</th>
           <th class="px-4 py-2 w-28">Poids (g)</th>
+          <th class="px-4 py-2 w-20">Couleur</th>
           <th class="px-4 py-2 w-24">Ordre</th>
           <th class="px-4 py-2 w-24">Affiché</th>
           <th class="px-4 py-2 w-28"></th>
@@ -205,78 +206,110 @@ function messageArchivage(c: Cadre): string {
         </tr>
       </thead>
       <tbody>
+        {/* Un champ par colonne, rattaché au formulaire de sa ligne par
+            l'attribut « form » : un <form> ne peut pas enjamber des cellules.
+            Tous les champs tenaient avant dans une seule cellule, sous
+            « Nom », et les en-têtes « Supplément A4 », « Poids »… restaient
+            alignés sur du vide. Les data-tri donnent au tri par colonne les
+            vraies valeurs, qu'un champ de saisie n'a pas en texte. */}
         {cadres.map((c) => (
           <tr class="border-t border-bo-border">
             <td class="px-4 py-2">
+              {/* Le liseré clair rend visible le cadre noir sur le fond
+                  sombre du back-office. */}
               <span
-                class="block h-7 w-7 rounded"
+                class="block h-7 w-7 rounded outline outline-1 outline-bo-border"
                 style={`border: 4px solid ${c.previewColor ?? "#b07d42"}; background:#fff`}
                 aria-hidden="true"
               />
             </td>
-            <td class="px-4 py-2" colspan="7">
-              <form method="POST" class="flex flex-wrap items-center gap-2">
-                <input type="hidden" name="id" value={c.id} />
+            <td class="px-4 py-2" data-tri={c.name}>
+              <input
+                form={`cadre-${c.id}`}
+                name="name"
+                value={c.name}
+                required
+                aria-label="Nom du cadre"
+                class="w-full min-w-40 border border-bo-border rounded px-2 py-1"
+              />
+            </td>
+            <td class="px-4 py-2" data-tri={c.priceA4Cents}>
+              <label class="flex items-center gap-1" title="Supplément pour une affiche A4">
                 <input
-                  name="name"
-                  value={c.name}
-                  required
-                  class="w-40 border border-bo-border rounded px-2 py-1"
-                />
-                <label class="flex items-center gap-1" title="Supplément pour une affiche A4">
-                  <span class="text-bo-muted">A4</span>
-                  <input
-                    name="priceA4"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={(c.priceA4Cents / 100).toFixed(2)}
-                    class="w-24 border border-bo-border rounded px-2 py-1"
-                  />
-                  <span class="text-bo-muted">€</span>
-                </label>
-                <label class="flex items-center gap-1" title="Supplément pour une affiche A3">
-                  <span class="text-bo-muted">A3</span>
-                  <input
-                    name="priceA3"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={(c.priceA3Cents / 100).toFixed(2)}
-                    class="w-24 border border-bo-border rounded px-2 py-1"
-                  />
-                  <span class="text-bo-muted">€</span>
-                </label>
-                <label class="flex items-center gap-1">
-                  <input
-                    name="weightGrams"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={c.weightGrams}
-                    title="Poids du cadre, ajouté à celui de l'affiche"
-                    class="w-20 border border-bo-border rounded px-2 py-1"
-                  />
-                  <span class="text-bo-muted">g</span>
-                </label>
-                <input
-                  name="previewColor"
-                  type="color"
-                  value={c.previewColor ?? "#b07d42"}
-                  title="Couleur du cadre dans l'aperçu"
-                  class="h-8 w-10 border border-bo-border rounded"
-                />
-                <input
-                  name="position"
+                  form={`cadre-${c.id}`}
+                  name="priceA4"
                   type="number"
-                  value={c.position}
-                  title="Ordre d'affichage"
-                  class="w-16 border border-bo-border rounded px-2 py-1"
+                  step="0.01"
+                  min="0"
+                  value={(c.priceA4Cents / 100).toFixed(2)}
+                  aria-label="Supplément A4, en euros"
+                  class="w-24 border border-bo-border rounded px-2 py-1"
                 />
-                <label class="flex items-center gap-1">
-                  <input type="checkbox" name="active" checked={c.active} />
-                  <span>Affiché</span>
-                </label>
+                <span class="text-bo-muted">€</span>
+              </label>
+            </td>
+            <td class="px-4 py-2" data-tri={c.priceA3Cents}>
+              <label class="flex items-center gap-1" title="Supplément pour une affiche A3">
+                <input
+                  form={`cadre-${c.id}`}
+                  name="priceA3"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={(c.priceA3Cents / 100).toFixed(2)}
+                  aria-label="Supplément A3, en euros"
+                  class="w-24 border border-bo-border rounded px-2 py-1"
+                />
+                <span class="text-bo-muted">€</span>
+              </label>
+            </td>
+            <td class="px-4 py-2" data-tri={c.weightGrams}>
+              <label class="flex items-center gap-1">
+                <input
+                  form={`cadre-${c.id}`}
+                  name="weightGrams"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={c.weightGrams}
+                  title="Poids du cadre, ajouté à celui de l'affiche"
+                  aria-label="Poids du cadre, en grammes"
+                  class="w-20 border border-bo-border rounded px-2 py-1"
+                />
+                <span class="text-bo-muted">g</span>
+              </label>
+            </td>
+            <td class="px-4 py-2" data-tri={c.previewColor ?? ""}>
+              <input
+                form={`cadre-${c.id}`}
+                name="previewColor"
+                type="color"
+                value={c.previewColor ?? "#b07d42"}
+                title="Couleur du cadre dans l'aperçu"
+                aria-label="Couleur du cadre dans l'aperçu"
+                class="h-8 w-10 border border-bo-border rounded"
+              />
+            </td>
+            <td class="px-4 py-2" data-tri={c.position}>
+              <input
+                form={`cadre-${c.id}`}
+                name="position"
+                type="number"
+                value={c.position}
+                title="Ordre d'affichage"
+                aria-label="Ordre d'affichage"
+                class="w-16 border border-bo-border rounded px-2 py-1"
+              />
+            </td>
+            <td class="px-4 py-2" data-tri={c.active ? "oui" : "non"}>
+              <label class="flex items-center gap-1">
+                <input form={`cadre-${c.id}`} type="checkbox" name="active" checked={c.active} />
+                <span>Affiché</span>
+              </label>
+            </td>
+            <td class="px-4 py-2">
+              <form id={`cadre-${c.id}`} method="POST">
+                <input type="hidden" name="id" value={c.id} />
                 <button class="rounded bg-bo-accent text-white px-3 py-1.5">
                   Enregistrer
                 </button>
@@ -307,7 +340,7 @@ function messageArchivage(c: Cadre): string {
         ))}
         {cadres.length === 0 && (
           <tr>
-            <td class="px-4 py-6 text-bo-muted" colspan="9">
+            <td class="px-4 py-6 text-bo-muted" colspan="10">
               Aucun cadre pour le moment.
             </td>
           </tr>

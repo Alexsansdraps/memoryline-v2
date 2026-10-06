@@ -40,12 +40,25 @@ const COURRIEL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** Ce que l'écran de confirmation a besoin de savoir de la vente. */
 export interface VenteStand {
   numero: string;
+  /** Le nom tapé par le client : « Revenir à ma commande » le lui rend. */
+  nom: string;
   email: string;
   /** Le panier de la vente, pour pouvoir la ROUVRIR (« Revenir à ma commande »). */
   cartId: string;
   /** Le code du stand qui l'a validée. */
   code: string | null;
 }
+
+/**
+ * Le nom et l'adresse d'une vente qu'on rouvre, le temps du rechargement.
+ *
+ * « Revenir à ma commande » recharge la page sur le panier rouvert : le
+ * client devait retaper son nom et son adresse pour corriger une affiche
+ * (recette du 6/10). Ils passent par la session de l'onglet, liés au panier
+ * qu'ils accompagnent, et sont effacés dès qu'ils sont relus : le client
+ * suivant ne les trouvera pas.
+ */
+const CLE_CLIENT_ROUVERT = "ml_stand_client_rouvert";
 
 /** Des champs larges et hauts : on les touche du doigt, sur une tablette. */
 const CHAMP_NU =
@@ -127,6 +140,22 @@ export default function CommandeStand(props: {
     // hier se découvrirait sinon au pire moment.
     if (retenu) void verifierCode(retenu, true);
     else setEtatCode("saisie");
+
+    // Une vente rouverte : on rend au client le nom et l'adresse qu'il avait
+    // tapés, s'ils accompagnent bien le panier qui revient.
+    try {
+      const brut = sessionStorage.getItem(CLE_CLIENT_ROUVERT);
+      sessionStorage.removeItem(CLE_CLIENT_ROUVERT);
+      const client = brut
+        ? (JSON.parse(brut) as { cartId?: string; nom?: string; email?: string })
+        : null;
+      if (client && client.cartId === getCartId()) {
+        setNom(client.nom ?? "");
+        setCourriel(client.email ?? "");
+      }
+    } catch {
+      // Session refusée ou illisible : les champs restent vides, comme avant.
+    }
   });
 
   function soumettreCode(e: Event) {
@@ -183,6 +212,7 @@ export default function CommandeStand(props: {
       nouveauCartId();
       props.onEnregistree({
         numero: commande.number,
+        nom: n,
         email: m,
         cartId: panierServi,
         code: valable,
@@ -370,6 +400,18 @@ export function ConfirmationStand(props: {
         numero: props.vente.numero,
       });
       reprendreCartId(props.vente.cartId);
+      try {
+        sessionStorage.setItem(
+          CLE_CLIENT_ROUVERT,
+          JSON.stringify({
+            cartId: props.vente.cartId,
+            nom: props.vente.nom,
+            email: props.vente.email,
+          }),
+        );
+      } catch {
+        // Sans session, le client retapera son nom : la vente est rouverte.
+      }
       window.dispatchEvent(new Event("ml:panier"));
       window.location.reload();
     } catch (e) {
@@ -404,26 +446,33 @@ export function ConfirmationStand(props: {
       <Show when={retour() === "erreur"}>
         <p class="mt-6 text-terracotta-deep">{raison() || tr("stand.revenir_erreur")}</p>
       </Show>
-      <button
-        type="button"
-        onClick={() => void revenir()}
-        disabled={retour() === "encours"}
-        class="mt-10 inline-flex items-center justify-center border-2 border-ink px-10 py-4 text-lg font-medium transition-colors hover:bg-ink hover:text-paper disabled:opacity-50"
-      >
-        ← {tr("stand.revenir")}
-      </button>
-      <a
-        href={`${lien(langue, "/affiches")}?stand=1`}
-        class={`${PRINCIPAL} mt-4 flex px-10 sm:mx-auto sm:max-w-xs`}
-        onClick={() => {
-          // Le panier a déjà été remis à neuf à l'enregistrement. On le refait
-          // ici au cas où une affiche y serait entrée depuis — un retour
-          // arrière, un second onglet : le client suivant n'hérite de rien.
-          nouveauCartId();
-        }}
-      >
-        {tr("stand.suivant")}
-      </a>
+      {/* Les deux boutons dans une rangée à eux, séparés : collés l'un à
+          l'autre (le `inline-flex` de PRINCIPAL l'emportait sur le `flex` qui
+          devait les empiler), ils se lisaient comme un seul bouton bicolore,
+          décalé de deux pixels. Côte à côte et de même hauteur dès la
+          tablette, l'un sous l'autre sur un téléphone. */}
+      <div class="mt-10 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:justify-center">
+        <button
+          type="button"
+          onClick={() => void revenir()}
+          disabled={retour() === "encours"}
+          class="inline-flex items-center justify-center border-2 border-ink px-8 py-4 text-lg font-medium transition-colors hover:bg-ink hover:text-paper disabled:opacity-50"
+        >
+          ← {tr("stand.revenir")}
+        </button>
+        <a
+          href={`${lien(langue, "/affiches")}?stand=1`}
+          class={`${PRINCIPAL} px-10`}
+          onClick={() => {
+            // Le panier a déjà été remis à neuf à l'enregistrement. On le refait
+            // ici au cas où une affiche y serait entrée depuis — un retour
+            // arrière, un second onglet : le client suivant n'hérite de rien.
+            nouveauCartId();
+          }}
+        >
+          {tr("stand.suivant")}
+        </a>
+      </div>
     </div>
   );
 }

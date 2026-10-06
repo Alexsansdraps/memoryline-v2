@@ -37,7 +37,8 @@ export default function CartBadge(props: {
     const auRetour = () => void rafraichir();
     window.addEventListener("pageshow", auRetour);
     // « ml:panier » : un îlot de la page vient de changer de panier sans
-    // recharger — la vente du stand, qui repart d'un panier neuf.
+    // recharger — la vente du stand, qui repart d'un panier neuf, ou le
+    // paiement, qui vide le panier sous l'écran « Merci ».
     window.addEventListener("ml:panier", auRetour);
     onCleanup(() => {
       window.removeEventListener("pageshow", auRetour);

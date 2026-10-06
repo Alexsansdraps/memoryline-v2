@@ -221,8 +221,7 @@ const boutonDiscret =
         <div class="min-w-40 flex-1">
           <p class="font-medium">{s.title}</p>
           <p class="text-xs text-bo-muted">
-            {(s.images ?? []).length} image
-            {(s.images ?? []).length > 1 ? "s" : ""} ·{" "}
+            {(s.images ?? []).length} image{(s.images ?? []).length > 1 ? "s" : ""} ·{" "}
             {s.prompt.trim() ? `${s.prompt.trim().length} caractères de consigne` : "aucune consigne"}
           </p>
         </div>
@@ -293,8 +292,7 @@ const boutonDiscret =
             <div class="min-w-40 flex-1">
               <p class="font-medium">{s.title}</p>
               <p class="text-xs text-bo-muted">
-                {(s.images ?? []).length} image
-                {(s.images ?? []).length > 1 ? "s" : ""} ·{" "}
+                {(s.images ?? []).length} image{(s.images ?? []).length > 1 ? "s" : ""} ·{" "}
                 {s.prompt.trim()
                   ? `${s.prompt.trim().length} caractères de consigne`
                   : "aucune consigne"}

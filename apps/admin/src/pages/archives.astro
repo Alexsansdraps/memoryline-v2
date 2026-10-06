@@ -239,8 +239,7 @@ const leJour = (iso: string | null): string =>
     <section class="mb-8">
       <h2 class="mb-1 font-semibold">Commandes</h2>
       <p class="max-w-3xl text-sm text-bo-muted">
-        {commandesArchivees} commande{commandesArchivees > 1 ? "s" : ""} archivée
-        {commandesArchivees > 1 ? "s" : ""}. Elles gardent leur propre vue, qui
+        {commandesArchivees} commande{commandesArchivees > 1 ? "s" : ""} archivée{commandesArchivees > 1 ? "s" : ""}. Elles gardent leur propre vue, qui
         sait les chercher et les filtrer :
         <a class="underline" href={url("/commandes?onglet=archivees")}>
           Commandes → Archivées</a
@@ -253,8 +252,7 @@ const leJour = (iso: string | null): string =>
     <section class="mb-8">
       <h2 class="mb-1 font-semibold">Liens du menu</h2>
       <p class="max-w-3xl text-sm text-bo-muted">
-        {liensMenuArchives} lien{liensMenuArchives > 1 ? "s" : ""} retiré
-        {liensMenuArchives > 1 ? "s" : ""} du menu. Ils se restaurent depuis
+        {liensMenuArchives} lien{liensMenuArchives > 1 ? "s" : ""} retiré{liensMenuArchives > 1 ? "s" : ""} du menu. Ils se restaurent depuis
         l'écran du menu, et pas d'ici : remettre un sous-lien ramène l'entrée
         qui le portait, et remettre une entrée ramène les sous-liens partis avec
         elle — un bouton isolé ici en ferait revenir plus qu'annoncé :

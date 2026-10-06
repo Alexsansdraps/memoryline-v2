@@ -28,6 +28,8 @@ interface Decor {
   produitStatut: string | null;
   ville: string;
   orphelin: boolean;
+  /** Image absente du serveur : le site ne propose plus ce décor. */
+  fichierManquant: boolean;
 }
 interface SansDecor {
   id: number;
@@ -97,8 +99,10 @@ function correspond(d: Decor): boolean {
   if (filtre === "multiples")
     return d.produitId !== null && (parAffiche.get(d.produitId) ?? 0) > 1;
   if (filtre === "orphelins") return d.orphelin;
+  if (filtre === "manquants") return d.fichierManquant;
   return true;
 }
+const manquants = decors.filter((d) => d.fichierManquant);
 const sansAccent = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 const motif = sansAccent(recherche);
@@ -141,6 +145,11 @@ const FILTRES = [
     nom: "Rattachés à aucune affiche",
     n: decors.filter((d) => d.orphelin).length,
   },
+  // L'onglet n'apparaît que s'il y a quelque chose dedans : un « 0 »
+  // permanent apprendrait à ne plus le regarder.
+  ...(manquants.length
+    ? [{ cle: "manquants", nom: "Image introuvable", n: manquants.length }]
+    : []),
 ];
 ---
 
@@ -164,16 +173,40 @@ const FILTRES = [
     en a plusieurs les propose toutes.
   </p>
 
+  {manquants.length > 0 && (
+    <div class="mb-4 max-w-3xl rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900">
+      <p>
+        <b>{manquants.length}</b> décor{manquants.length > 1 ? "s ont perdu leur" : " a perdu son"}{" "}
+        image : le fichier n'est plus sur le serveur. Le site ne
+        {manquants.length > 1 ? " les" : " le"} propose donc plus aux clients.
+        Ouvrez la fiche de l'affiche pour remplacer l'image, ou archivez le décor.
+      </p>
+      <ul class="mt-1 list-inside list-disc">
+        {manquants.map((d) => (
+          <li>
+            {d.produitId ? (
+              <a href={url(`/produits/${d.produitId}`)} class="underline hover:no-underline">
+                {d.produitNom}
+              </a>
+            ) : (
+              "Décor rattaché à aucune affiche"
+            )}{" "}
+            — {d.nom || d.url.split("/").pop()}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )}
+
   {plusieurs.length > 0 && (
     <div class="mb-4 max-w-3xl rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm">
       <b>{plusieurs.length}</b> affiche{plusieurs.length > 1 ? "s ont" : " a"}{" "}
       plusieurs décors. C'est voulu quand on propose deux versions d'une même
       ville, et c'est une surprise quand l'import en a rattaché deux sans qu'on
       le sache.{" "}
-      <a href={lienAvec({ filtre: "multiples" })} class="text-bo-accent hover:underline">
-        Les voir
-      </a>
-      .
+      <a href={lienAvec({ filtre: "multiples" })} class="text-bo-accent hover:underline"
+        >Les voir</a
+      >.
     </div>
   )}
 
@@ -195,8 +228,8 @@ const FILTRES = [
               {p.nom}
             </a>{" "}
             {p.devines > 0
-              ? `: ${p.devines} décor${p.devines > 1 ? "s" : ""} proposé${p.devines > 1 ? "s" : ""} au nom de « ${p.ville} ».`
-              : `: rien ne correspond à « ${p.ville} », la cliente n'aura aucun décor à choisir.`}
+              ? `: ${p.devines} décor${p.devines > 1 ? "s" : ""} proposé${p.devines > 1 ? "s" : ""} par son nom, sans qu'on les ait choisis.`
+              : ": rien ne correspond à son nom, la cliente verra toute la bibliothèque des décors."}
           </li>
         ))}
       </ul>
@@ -253,9 +286,7 @@ const FILTRES = [
   </nav>
 
   <p class="mb-3 text-sm text-bo-muted">
-    {visibles.length} décor{visibles.length > 1 ? "s" : ""} affiché
-    {visibles.length > 1 ? "s" : ""}
-    {recherche && ` pour « ${recherche} »`}.
+    {`${visibles.length} décor${visibles.length > 1 ? "s" : ""} affiché${visibles.length > 1 ? "s" : ""}${recherche ? ` pour « ${recherche} »` : ""}.`}
   </p>
 
   {vue === "icones" ? (
@@ -296,6 +327,11 @@ const FILTRES = [
           {d.produitId && (parAffiche.get(d.produitId) ?? 0) > 1 && (
             <p class="mt-0.5 text-[11px] text-amber-700">
               Cette affiche en propose {parAffiche.get(d.produitId)}
+            </p>
+          )}
+          {d.fichierManquant && (
+            <p class="mt-0.5 text-[11px] font-medium text-red-700">
+              Image introuvable : plus proposé sur le site
             </p>
           )}
         </li>
@@ -348,6 +384,11 @@ const FILTRES = [
                   </a>
                 ) : (
                   <span class="text-amber-700">aucune</span>
+                )}
+                {d.fichierManquant && (
+                  <span class="mt-0.5 block text-xs font-medium text-red-700">
+                    Image introuvable : plus proposé sur le site
+                  </span>
                 )}
               </td>
               <td class="px-4 py-2">

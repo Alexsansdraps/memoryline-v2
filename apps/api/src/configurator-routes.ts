@@ -30,12 +30,14 @@ import { poidsDesCollections } from "./collections.js";
 import {
   donneesDImpression,
   etatDuFichierDImpression,
+  fichierDAssetManquant,
   fichierDImpression,
   preparerFichierDImpression,
   raisonLisible,
   type EtatImpression,
 } from "./fichiers-impression.js";
 import { archiveZip } from "./archive-zip.js";
+import { decorsParLeNom } from "./decors.js";
 import {
   resumeCommandes,
   statutExpedition,
@@ -1655,14 +1657,24 @@ export function mountConfiguratorRoutes(app: Hono) {
     const vues = await db
       .select({ slug: schema.posterViews.slug })
       .from(schema.posterViews);
+    // Et un tiroir COMPLET : les quatre emplacements, même vides. Un type
+    // tout juste créé n'a encore aucune pièce ; son tiroir `{}` faisait lire
+    // `clothes` sur rien au configurateur, et « + Ajouter un personnage » ne
+    // faisait plus rien, sans un mot (essayé le 6/10 avec un type « Mariés »).
+    const tiroirVide = (): Record<string, unknown[]> => ({
+      clothes: [],
+      pants: [],
+      hair: [],
+      accessory: [],
+    });
     const slots: Record<string, Record<string, unknown[]>> = {};
-    for (const v of vues) slots[v.slug] = {};
-    slots["front"] ??= {};
+    for (const v of vues) slots[v.slug] = tiroirVide();
+    slots["front"] ??= tiroirVide();
     for (const a of variants) {
       // Une pièce sans type explicite reste rattachée au premier type,
       // « de face » — c'est ce que faisait le code d'avant.
       const view = a.view ?? "front";
-      slots[view] ??= {};
+      slots[view] ??= tiroirVide();
       (slots[view]![a.slot] ??= []).push({
         id: a.id,
         slot: a.slot,
@@ -1878,16 +1890,23 @@ export function mountConfiguratorRoutes(app: Hono) {
     // quitté le catalogue des choix, tout en restant imprimable pour les
     // commandes déjà passées dessus.
     const vivant = isNull(schema.backgrounds.archivedAt);
+    // Un fond dont l'image manque sur le disque ne se propose pas non plus :
+    // sa vignette sortait cassée et l'affiche se composait sur du vide. Le
+    // back-office le signale (Décors des affiches) pour qu'on le remplace.
+    const presents = <T extends { url: string }>(fonds: T[]) =>
+      fonds.filter((b) => !fichierDAssetManquant(b.url));
 
     if (productId) {
       // 1. rattachement explicite
-      const linked = await db
-        .select()
-        .from(schema.backgrounds)
-        .where(
-          and(eq(schema.backgrounds.productId, Number(productId)), vivant),
-        )
-        .orderBy(asc(schema.backgrounds.position));
+      const linked = presents(
+        await db
+          .select()
+          .from(schema.backgrounds)
+          .where(
+            and(eq(schema.backgrounds.productId, Number(productId)), vivant),
+          )
+          .orderBy(asc(schema.backgrounds.position)),
+      );
       if (linked.length > 0) return c.json(linked.map(project));
 
       // 2. correspondance par ville (nom du produit)
@@ -1896,43 +1915,32 @@ export function mountConfiguratorRoutes(app: Hono) {
         .from(schema.products)
         .where(eq(schema.products.id, Number(productId)));
       if (product) {
-        const norm = (s: string | null) =>
-          (s ?? "").toUpperCase().normalize("NFD").replace(/[^A-Z0-9]/g, "");
-        // On dérive des mots-clés candidats du nom produit (avant le tiret),
-        // en sautant les articles ("LE Tréport" -> "TREPORT"). On essaie chaque
-        // candidat et on garde le PREMIER qui correspond à des fonds : ça gère
-        // "AMIENS Cathédrale" (-> AMIENS), "LE TRÉPORT Phare" (-> TREPORT) et
-        // "ITALIE Venise" (fond nommé ITALIE) sans liste de villes en dur.
-        const STOP = new Set(["LE", "LA", "LES", "DU", "DE", "DES", "AFFICHE"]);
-        const candidates = product.name
-          .split(/[-–]/)[0]!
-          .trim()
-          .split(/\s+/)
-          .map(norm)
-          .filter((w) => w.length >= 3 && !STOP.has(w));
-        if (candidates.length > 0) {
-          const all = await db
+        // La règle est écrite une fois, dans decors.ts : l'écran « Décors des
+        // affiches » du back-office l'applique aussi, pour dire ce que le
+        // module proposera. Elle gère « AMIENS Cathédrale » (→ AMIENS), « LE
+        // TRÉPORT Phare » (→ TREPORT) et « ITALIE Venise » sans liste de
+        // villes en dur.
+        const all = presents(
+          await db
             .select()
             .from(schema.backgrounds)
             .where(vivant)
-            .orderBy(asc(schema.backgrounds.position));
-          // `includes` plutôt que `startsWith` : le nom du fond peut être
-          // préfixé par l'article ("LE_TOUQUET_..." pour le candidat "TOUQUET").
-          for (const cand of candidates) {
-            const cityMatch = all.filter((b) => norm(b.name).includes(cand));
-            if (cityMatch.length > 0) return c.json(cityMatch.map(project));
-          }
-        }
+            .orderBy(asc(schema.backgrounds.position)),
+        );
+        const cityMatch = decorsParLeNom(product.name, all);
+        if (cityMatch.length > 0) return c.json(cityMatch.map(project));
       }
     }
 
     // 3. repli : bibliothèque complète (jamais vide)
-    const rows = await db
-      .select()
-      .from(schema.backgrounds)
-      .where(vivant)
-      .orderBy(asc(schema.backgrounds.position))
-      .limit(500);
+    const rows = presents(
+      await db
+        .select()
+        .from(schema.backgrounds)
+        .where(vivant)
+        .orderBy(asc(schema.backgrounds.position))
+        .limit(500),
+    );
     return c.json(rows.map(project));
   });
 

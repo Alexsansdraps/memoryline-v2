@@ -35,6 +35,10 @@ const ONGLETS: { cle: string; label: string; segment?: string }[] = [
   // les deux listes à qui la lettre d'information part.
   { cle: "optin", label: "Abonnés aux e-mails", segment: "optin" },
   { cle: "sans-commande", label: "Sans commande", segment: "sans-commande" },
+  // D'où vient la cliente : sa PREMIÈRE commande, sur le site ou à un stand
+  // (comptes.ts, originesClients). « Si web ou stand », disait la demande.
+  { cle: "site", label: "Venues du site", segment: "site" },
+  { cle: "stand", label: "Venues d'un stand", segment: "stand" },
 ];
 const ongletActif = params.get("segment") ?? "tous";
 const onglet = ONGLETS.find((o) => o.cle === ongletActif) ?? ONGLETS[0]!;
@@ -326,6 +330,12 @@ const bouton =
                   Emplacement{fleche("emplacement")}
                 </a>
               </th>
+              <th
+                class="px-4 py-2 font-medium"
+                title="Où elle a passé sa première commande : sur le site, ou à un stand (et lequel)."
+              >
+                Vient de
+              </th>
               <th class="px-4 py-2 font-medium">
                 <a
                   href={lienTri("commandes")}
@@ -410,6 +420,13 @@ const bouton =
                     {emplacement || "—"}
                   </td>
                   <td class="px-4 py-2 align-top whitespace-nowrap text-bo-muted">
+                    {c.origine === "salon"
+                      ? `Stand${c.origineStand ? ` · ${c.origineStand}` : ""}`
+                      : c.origine === "web"
+                        ? "Site"
+                        : "—"}
+                  </td>
+                  <td class="px-4 py-2 align-top whitespace-nowrap text-bo-muted">
                     {c.commandes} commande{c.commandes > 1 ? "s" : ""}
                   </td>
                   <td class="px-4 py-2 text-right align-top whitespace-nowrap">
@@ -436,7 +453,7 @@ const bouton =
             })}
             {lignes.length === 0 && !error && (
               <tr>
-                <td colspan="8" class="px-4 py-6 text-center text-bo-muted">
+                <td colspan="9" class="px-4 py-6 text-center text-bo-muted">
                   {recherche
                     ? `Aucun client ne correspond à « ${recherche} ».`
                     : "Aucun client pour ce segment."}

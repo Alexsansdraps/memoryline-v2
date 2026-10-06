@@ -238,9 +238,7 @@ try {
               <tr class="border-t border-bo-border first:border-t-0">
                 <td class="px-4 py-2 font-medium">{c.name}</td>
                 <td class="px-4 py-2 text-bo-muted">
-                  <code>{c.slug}</code> — {c.produits ?? 0} produit
-                  {(c.produits ?? 0) > 1 ? "s" : ""} rangé
-                  {(c.produits ?? 0) > 1 ? "s" : ""} dedans
+                  <code>{c.slug}</code> — {c.produits ?? 0} produit{(c.produits ?? 0) > 1 ? "s" : ""} rangé{(c.produits ?? 0) > 1 ? "s" : ""} dedans
                   {c.defaultWeightGrams > 0 && (
                     <> · {formaterPoids(c.defaultWeightGrams)} par défaut</>
                   )}

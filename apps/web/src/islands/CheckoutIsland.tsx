@@ -850,6 +850,31 @@ export default function CheckoutIsland(props: {
     livraisonValide() &&
     !standManquant();
 
+  /**
+   * Ce qui manque encore pour passer au paiement, en toutes lettres, sous le
+   * bouton grisé. Il restait grisé sans un mot, et l'on cherchait ce qui
+   * clochait (recette du 6/10). La liste suit pas à pas `formValid()` et le
+   * moyen de paiement : rien n'y manque, rien n'y est en trop.
+   */
+  const manques = (): string[] => {
+    const liste: string[] = [];
+    if (!name().trim()) liste.push(tr("commande.manque.nom"));
+    if (!emailValid()) liste.push(tr("commande.manque.email"));
+    const o = optionChoisie();
+    if (!o) liste.push(tr("commande.manque.mode"));
+    else if (!livraisonValide())
+      liste.push(
+        tr(
+          demandeUnPointRelais(o.mode.kind)
+            ? "commande.manque.relais"
+            : "commande.manque.adresse",
+        ),
+      );
+    if (standManquant()) liste.push(tr("commande.manque.stand"));
+    if (!method()) liste.push(tr("commande.manque.moyen"));
+    return liste;
+  };
+
   /* --- Stripe --------------------------------------------------------- */
   let stripe: Stripe | null = null;
   let elements: StripeElements | null = null;
@@ -955,6 +980,10 @@ export default function CheckoutIsland(props: {
 
   function finishSuccess() {
     localStorage.removeItem("ml_cart_id");
+    // La pastille de l'en-tête comptait encore l'affiche payée sur l'écran
+    // « Merci » (« Panier 1 » au-dessus d'un panier vidé) : on lui dit de
+    // relire, comme après une vente du stand.
+    window.dispatchEvent(new Event("ml:panier"));
     setPhase("details");
     // orderNumber déjà en mémoire -> l'écran « Merci » s'affiche via <Show>.
     setSubmitting(false);
@@ -1733,6 +1762,11 @@ export default function CheckoutIsland(props: {
                       )
                     )}
                   </button>
+                  <Show when={!submitting() && manques().length > 0}>
+                    <p class="mt-2 text-center text-sm text-ink-soft" role="status">
+                      {tr("commande.il_manque").replace("{liste}", manques().join(", "))}
+                    </p>
+                  </Show>
                 </Show>
 
                 {/* Phase 2 : widget du moyen choisi */}

@@ -463,6 +463,13 @@
       "when": 1791188408365,
       "tag": "0065_couleurs_proposees_par_categorie",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1791272605147,
+      "tag": "0066_couleur_principale_par_defaut",
+      "breakpoints": true
     }
   ]
 }

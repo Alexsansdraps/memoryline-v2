@@ -21,7 +21,7 @@
  */
 import type { Hono } from "hono";
 import type { Context } from "hono";
-import { and, asc, count, eq, isNull, ne, sql as raw } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, ne, sql as raw } from "drizzle-orm";
 import { randomInt } from "node:crypto";
 import { db, schema } from "./db/client.js";
 import { fr } from "./courriels/fr.js";
@@ -200,6 +200,20 @@ export function mountSalonRoutes(app: Hono): void {
         .update(schema.orders)
         .set({ status: "draft", lastActivityAt: new Date() })
         .where(eq(schema.orders.id, commande.id));
+      // Les noms des fichiers d'impression tombent avec la vente : le client
+      // revient justement pour corriger, et un nom déjà retenu ne change plus
+      // (enregistrerFichiersDImpression). Passée en A3 avec un cadre noir, la
+      // vente revalidée s'imprimait encore sous « martin_A4_pas-cadre.pdf » :
+      // mauvais papier, cadre oublié. La revalidation les renomme.
+      await tx.delete(schema.printFiles).where(
+        inArray(
+          schema.printFiles.orderItemId,
+          tx
+            .select({ id: schema.orderItems.id })
+            .from(schema.orderItems)
+            .where(eq(schema.orderItems.orderId, commande.id)),
+        ),
+      );
       await tx.insert(schema.orderEvents).values({
         orderId: commande.id,
         kind: "event",

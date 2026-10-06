@@ -162,18 +162,17 @@ const src = (u: string | null) =>
 <script>
   import {
     NUANCIERS_BASE,
-    couleurVive,
     couleursDuGroupe,
     couleursProposees,
     famillesDuDessin,
-    groupePrincipal,
     groupesDuDessin,
     hexVersRgb,
     memeCouleur,
+    memeFamilleDeTeinte,
     partEnPourcent,
+    principaleDeLaPiece,
     rgbVersHex,
     teintesDeLaFamille,
-    versTsl,
     zonesDuGroupe,
     type CouleursImage,
     type CouleursProposees,
@@ -226,43 +225,37 @@ const src = (u: string | null) =>
     return { categorie: r.categorie, couleurs: couleursProposees(r.couleurs) };
   }
 
-  /** Le groupe principal d'une pièce, quand sa catégorie ne propose que lui. */
+  /**
+   * La couleur principale d'une pièce, ombres comprises, quand sa catégorie
+   * ne propose qu'elle : la même que celle du site (principaleDeLaPiece), pour
+   * que l'écran du back-office dise exactement ce que le client verra.
+   */
   function principalDe(etat: Etat): GroupeCouleur | undefined {
     if (etat.regle?.couleurs !== "principale") return undefined;
-    return groupePrincipal(etat.groupes, etat.parts);
-  }
-
-  /** Les groupes que la catégorie d'une pièce ne propose pas. */
-  function cacheesDeLaRegle(etat: Etat): string[] {
-    const principal = principalDe(etat);
-    if (!principal) return [];
-    return etat.groupes.filter((g) => g !== principal).map((g) => g.zone);
+    return principaleDeLaPiece({
+      colorZones: etat.zones,
+      groupesCouleurs: etat.groupes,
+      partsDesZones: etat.parts,
+    });
   }
 
   /**
-   * Deux couleurs de la même famille — une ombre et sa couleur ? Même teinte
-   * à 12° près pour deux couleurs franches ; pour deux gris, une clarté
-   * voisine. Ce n'est qu'un conseil : un dessin d'Illustrator range souvent
-   * l'ombre d'un chapeau dans une zone à part, et seule la principale suivrait
-   * alors le choix du client. Mesuré sur les chapeaux de la boutique : une
-   * ombre s'écarte de sa couleur de 2 à 7°, un ruban orange d'un chapeau
-   * brun de 16°.
+   * Les groupes que la catégorie d'une pièce ne propose pas : tous sauf la
+   * principale. Ses ombres (ses nuances) y sont, mais elles la SUIVENT : la
+   * carte le dit (cf. dessiner).
    */
-  function memeFamille(a: string, b: string): boolean {
-    const x = hexVersRgb(a);
-    const y = hexVersRgb(b);
-    if (!x || !y) return false;
-    const vx = couleurVive(x[0], x[1], x[2]);
-    const vy = couleurVive(y[0], y[1], y[2]);
-    if (vx !== vy) return false;
-    const tx: [number, number, number] = [0, 0, 0];
-    const ty: [number, number, number] = [0, 0, 0];
-    versTsl(x[0], x[1], x[2], tx);
-    versTsl(y[0], y[1], y[2], ty);
-    if (!vx) return Math.abs(tx[2] - ty[2]) <= 0.35;
-    const ecart = Math.abs(tx[0] - ty[0]) % 360;
-    return Math.min(ecart, 360 - ecart) <= 12;
+  function cacheesDeLaRegle(etat: Etat): string[] {
+    const principal = principalDe(etat);
+    if (!principal) return [];
+    return etat.groupes.filter((g) => g.zone !== principal.zone).map((g) => g.zone);
   }
+
+  /**
+   * Deux couleurs de la même famille — une ombre et sa couleur ? La règle de
+   * la boutique (memeFamilleDeTeinte), qui décide aussi quelles ombres suivent
+   * la couleur principale sur le site.
+   */
+  const memeFamille = memeFamilleDeTeinte;
 
   /** Réponse de l'API après lecture d'un dessin. */
   interface Lecture {
@@ -963,8 +956,9 @@ const src = (u: string | null) =>
         });
 
         // La couleur principale, quand la catégorie ne propose qu'elle : la
-        // boutique voit laquelle le client pourra changer.
-        if (principal && g === principal)
+        // boutique voit laquelle le client pourra changer. Comparée par sa
+        // zone : principalDe rend une copie, qui porte ses ombres en nuances.
+        if (principal && g.zone === principal.zone)
           carte.append(
             el(
               "span",
@@ -1012,12 +1006,29 @@ const src = (u: string | null) =>
         libelleCase.append(caseProposee, el("span", "", "Proposée au client"));
         carte.append(libelleCase);
 
-        // Une ombre de la principale, restée à part dans le dessin : seule la
+        // Une ombre de la principale, de la même teinte : sur le site, elle la
+        // suit toute seule (principaleDeLaPiece). On le dit, pour qu'on ne
+        // la croie pas figée.
+        const suitLaPrincipale =
+          !!principal &&
+          !etat.propre &&
+          g.zone !== principal.zone &&
+          zonesDuGroupe(principal).includes(g.zone);
+        if (suitLaPrincipale)
+          carte.append(
+            el(
+              "p",
+              "leading-tight text-green-700",
+              "Même teinte que la couleur principale ★ : elle la suit (ombre, reflet).",
+            ),
+          );
+        // Une ombre de la principale restée à part — la boutique a réuni
+        // d'autres couleurs elle-même, et son regroupement fait foi : seule la
         // principale suivrait le choix du client, et le chapeau passé au bleu
         // garderait son ombre rouge. On le signale, avec le geste qui règle.
-        if (
+        else if (
           principal &&
-          g !== principal &&
+          g.zone !== principal.zone &&
           cache &&
           memeFamille(etat.zones[g.zone] ?? "", etat.zones[principal.zone] ?? "")
         )

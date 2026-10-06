@@ -511,9 +511,15 @@ export default function CartIsland(props: {
    * Les colonnes d'une ligne : ce qu'on achète, combien, pour quel montant.
    * Au stand, la colonne du montant n'existe pas — une colonne vide laissait
    * un trou à droite de chaque affiche.
+   *
+   * Et sur la tablette tenue en portrait (768 à 1023 px), la liste n'a que la
+   * moitié gauche, le formulaire tient l'autre : la quantité passe sous la
+   * description, comme sur un téléphone. Restée à droite, elle laissait 75 px
+   * au texte — le titre coupé en deux, « Format : A4 (21 × 29,7 cm) » sur
+   * trois lignes.
    */
   const COLONNES = props.stand
-    ? "sm:grid-cols-[1fr_auto]"
+    ? "sm:grid-cols-[1fr_auto] md:max-lg:grid-cols-1"
     : "sm:grid-cols-[1fr_auto_7rem]";
 
   return (
@@ -601,7 +607,7 @@ export default function CartIsland(props: {
             pour quel montant. Sur mobile, la quantité et le total passent
             sous la description plutôt que de serrer trois colonnes. */}
         <div
-          class={`hidden sm:grid ${COLONNES} gap-4 border-b border-ink/15 pb-3 text-xs uppercase tracking-[0.08em] text-ink-soft`}
+          class={`hidden sm:grid ${COLONNES} ${props.stand ? "md:max-lg:hidden" : ""} gap-4 border-b border-ink/15 pb-3 text-xs uppercase tracking-[0.08em] text-ink-soft`}
         >
           <span>{tr("panier.produit")}</span>
           <span class="text-center">{tr("panier.quantite")}</span>
@@ -742,7 +748,9 @@ export default function CartIsland(props: {
                     </div>
                   </div>
 
-                  <div class="flex items-center gap-3 sm:justify-center">
+                  <div
+                    class={`flex items-center gap-3 sm:justify-center ${props.stand ? "md:max-lg:justify-start" : ""}`}
+                  >
                     <div class="inline-flex items-center rounded-md border border-ink/20">
                       <button
                         type="button"

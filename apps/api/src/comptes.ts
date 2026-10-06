@@ -654,6 +654,10 @@ async function lireClientsBo(f: FiltresClientsBo) {
   // lettre. Ce segment ne lisait que la case, et laissait de côté toutes
   // celles qui s'étaient inscrites en bas du site.
   if (segment === "optin") liste = liste.filter((l) => l.abonne);
+  // Venues du site ou d'un stand : c'est leur première commande qui le dit
+  // (originesClients), la colonne « Vient de » de l'écran.
+  if (segment === "site") liste = liste.filter((l) => l.origine === "web");
+  if (segment === "stand") liste = liste.filter((l) => l.origine === "salon");
   return liste;
 }
 

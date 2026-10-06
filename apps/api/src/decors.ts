@@ -21,6 +21,7 @@
 import type { Hono } from "hono";
 import { asc, eq, isNull, sql as raw } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
+import { fichierDAssetManquant } from "./fichiers-impression.js";
 
 /** Longueur maximale d'un nom de décor. Au-delà, plus rien ne se lit. */
 const NOM_MAX = 160;
@@ -45,6 +46,39 @@ function villeDe(nom: string | null): string {
     )
     .filter((m) => m.length >= 3 && !["LES", "DES", "AFFICHE"].includes(m));
   return morceaux[0] ?? "";
+}
+
+/**
+ * Les décors qu'une affiche SANS décor à elle se voit proposer, pêchés par le
+ * nom de sa ville.
+ *
+ * Une seule écriture de la règle, pour le configurateur (/backgrounds) et pour
+ * cet écran : l'écran recalculait sa propre version, plus stricte, et annonçait
+ * « aucun décor à choisir » pour Compiègne quand le module en proposait neuf.
+ *
+ * On tire des mots-clés du nom de l'affiche (avant le tiret), en sautant les
+ * articles (« LE Tréport » → « TREPORT »), et on garde le PREMIER mot-clé qui
+ * trouve des décors dont le nom le CONTIENT (le nom d'un décor peut être
+ * préfixé : « LE_TOUQUET_… » pour « TOUQUET »).
+ */
+export function decorsParLeNom<T extends { name: string | null }>(
+  nomAffiche: string,
+  fonds: T[],
+): T[] {
+  const norm = (s: string | null) =>
+    (s ?? "").toUpperCase().normalize("NFD").replace(/[^A-Z0-9]/g, "");
+  const STOP = new Set(["LE", "LA", "LES", "DU", "DE", "DES", "AFFICHE"]);
+  const candidats = nomAffiche
+    .split(/[-–]/)[0]!
+    .trim()
+    .split(/\s+/)
+    .map(norm)
+    .filter((w) => w.length >= 3 && !STOP.has(w));
+  for (const cand of candidats) {
+    const trouves = fonds.filter((b) => norm(b.name).includes(cand));
+    if (trouves.length > 0) return trouves;
+  }
+  return [];
 }
 
 export function mountDecors(app: Hono): void {
@@ -99,30 +133,34 @@ export function mountDecors(app: Hono): void {
         // « Aucun décor » veut dire aucun décor PROPOSABLE : une affiche dont
         // tous les décors sont archivés retombe sur la pêche au nom de ville,
         // exactement comme une affiche qui n'en a jamais eu.
-        raw`${schema.products.kind} = 'personnalisable' and not exists (select 1 from ${schema.backgrounds} b where b.product_id = ${schema.products.id} and b.archived_at is null)`,
+        // L'affiche IA n'a pas de décor : c'est la photo du client qui en
+        // tient lieu. La lister ici ferait chercher un manque qui n'en est pas un.
+        raw`${schema.products.kind} = 'personnalisable' and not ${schema.products.aiEnabled} and not exists (select 1 from ${schema.backgrounds} b where b.product_id = ${schema.products.id} and b.archived_at is null)`,
       )
       .orderBy(asc(schema.products.name));
 
-    // Ce que la pêche trouverait pour chacune : on regroupe les décors par
-    // ville pour pouvoir le dire sans interroger la base affiche par affiche.
-    const parVille = new Map<string, number>();
-    for (const d of decors) {
-      const ville = villeDe(d.nom ?? d.produitNom);
-      if (ville) parVille.set(ville, (parVille.get(ville) ?? 0) + 1);
-    }
+    // Ce que la pêche trouverait pour chacune, avec la règle même du
+    // configurateur, sur les décors qu'il peut réellement proposer.
+    const proposables = decors
+      .filter((d) => !fichierDAssetManquant(d.url))
+      .map((d) => ({ name: d.nom }));
 
     return c.json({
       decors: decors.map((d) => ({
         ...d,
         ville: villeDe(d.nom ?? d.produitNom),
         orphelin: d.produitId === null,
+        // Image absente du disque : le configurateur ne propose plus ce décor
+        // (cf. /backgrounds). On le dit ici, sinon il disparaîtrait du
+        // module sans que personne ne sache pourquoi.
+        fichierManquant: fichierDAssetManquant(d.url),
       })),
       sansDecor: sansDecor.map((p) => ({
         ...p,
         ville: villeDe(p.nom),
         // Combien de décors la pêche au nom lui proposerait. Zéro veut dire
-        // que le configurateur n'aura rien à montrer.
-        devines: parVille.get(villeDe(p.nom)) ?? 0,
+        // que le configurateur se rabattra sur toute la bibliothèque.
+        devines: decorsParLeNom(p.nom, proposables).length,
       })),
     });
   });

@@ -17,7 +17,7 @@ import {
   colorKey,
   couleursDesGroupesNonProposes,
   couleursDuGroupePourScope,
-  groupesDuDessin,
+  groupesSelonLaRegle,
   ligneEnMajuscules,
   prixDuCadreCents,
 } from "@memoryline/types";
@@ -431,8 +431,11 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       }
       // Les nuances de la nouvelle pièce suivent la couleur que porte déjà sa
       // référence : un pull passé au vert garde des ombres vertes, pas celles
-      // du pull d'avant ni celles du dessin.
-      for (const g of groupesDuDessin(v?.colorZones, v?.groupesCouleurs)) {
+      // du pull d'avant ni celles du dessin. Les groupes sont ceux que voit la
+      // règle de la catégorie : sous « couleur principale », les ombres de la
+      // principale en sont les nuances (cf. principaleDeLaPiece).
+      const regle = v ? regleDeLaPiece(props.pieceCategories, v) : null;
+      for (const g of v ? groupesSelonLaRegle(v, regle) : []) {
         const choisie = c.colors[colorKey(slot, g.zone)];
         if (!choisie || !g.nuances?.length) continue;
         Object.assign(
@@ -446,15 +449,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       // la même zone, resterait sur ce ruban sans que le client puisse plus
       // la changer. Écrite ici, dans la configuration, elle est celle que
       // l'aperçu montre et que le fichier d'impression relit.
-      if (v)
-        Object.assign(
-          c.colors,
-          couleursDesGroupesNonProposes(
-            slot,
-            v,
-            regleDeLaPiece(props.pieceCategories, v),
-          ),
-        );
+      if (v) Object.assign(c.colors, couleursDesGroupesNonProposes(slot, v, regle));
     });
   }
   /**

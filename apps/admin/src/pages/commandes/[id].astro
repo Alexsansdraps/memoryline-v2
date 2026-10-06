@@ -1700,8 +1700,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                   <div class="text-bo-muted">{order.shippingPhone}</div>
                 )}
                 <p class="text-bo-muted">
-                  {detail?.commandesDuClient ?? 0} commande
-                  {(detail?.commandesDuClient ?? 0) > 1 ? "s" : ""} au total
+                  {detail?.commandesDuClient ?? 0} commande{(detail?.commandesDuClient ?? 0) > 1 ? "s" : ""} au total
                 </p>
               </div>
             ) : (
