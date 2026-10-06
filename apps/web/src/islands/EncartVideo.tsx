@@ -2,27 +2,19 @@
 import { onMount, Show, type JSX } from "solid-js";
 import type { SourceVideo } from "@memoryline/types";
 import { t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
-import { assetUrl, type EncartVideoDTO } from "../lib/api.ts";
+import { assetUrl } from "../lib/api.ts";
 
 /**
- * L'encart vidéo explicative du configurateur — DEUX SURFACES, jamais une.
+ * La vidéo explicative du configurateur — la couche qui la lit.
  *
- * 1. `EncartVideo` : la fente posée en tête de l'étape 1. Une façade, un
- *    titre, une ligne, un bouton. Elle ne lit JAMAIS la vidéo elle-même.
- * 2. `LecteurVideo` : la couche par-dessus la fenêtre, ouverte seulement par
- *    un clic délibéré. C'est la seule chose qui fabrique un <iframe> ou un
- *    <video>.
+ * La boutique n'a plus d'encart dans l'étape 1 : une petite bulle « Vidéo
+ * tuto » dans l'en-tête de la fenêtre (ProductConfigurator.tsx) ouvre
+ * `LecteurVideo`, une pop-up par-dessus la fenêtre. C'est la seule chose qui
+ * fabrique un <iframe> ou un <video>, et seulement après un clic délibéré.
  *
- * Cette séparation n'est pas une élégance : c'est elle qui garantit que
- * l'encart NE CHANGE JAMAIS DE HAUTEUR. Un lecteur qui se déplierait dans le
- * flux déplacerait la cale du bord calculée par Defilement.tsx pendant qu'une
- * cliente fait défiler, et le contenu sauterait sous son doigt — ce que le
- * commentaire Defilement.tsx:410-414 interdit explicitement.
- *
- * Et l'encart ne porte AUCUN `data-item` : cet attribut désigne les CHOIX
- * qu'on coupe de moitié au bord de l'écran pour montrer qu'on peut faire
- * défiler. Un encart marqué deviendrait « l'item coupé » et l'indice ne
- * voudrait plus rien dire.
+ * Un lecteur dans le flux de l'étape déplacerait la cale du bord calculée par
+ * Defilement.tsx pendant qu'une cliente fait défiler, et le contenu sauterait
+ * sous son doigt : la pop-up n'a pas ce défaut.
  */
 
 /**
@@ -47,63 +39,6 @@ const VISUEL_ATTENTE = "/video-placeholder.svg";
 function facadeDeLaBoutique(poster: string): string {
   if (!poster.startsWith("/assets/")) return VISUEL_ATTENTE;
   return assetUrl(poster, 400) ?? VISUEL_ATTENTE;
-}
-
-export function EncartVideo(props: {
-  video: EncartVideoDTO;
-  /** Le tri déjà fait par la fiche produit / l'île. `null` = placeholder. */
-  source: SourceVideo;
-  langue?: Langue;
-  /** Ouvre la couche du lecteur. L'élément sert à rendre le focus ensuite. */
-  onLancer: (declencheur: HTMLElement) => void;
-}): JSX.Element {
-  const tr = t(props.langue ?? LANGUE_DEFAUT);
-  const dispo = () => props.source !== null;
-
-  const titre = () => props.video.titre || tr("cfg.video.titre");
-  const texte = () =>
-    props.video.texte ||
-    (dispo() ? tr("cfg.video.intro") : tr("cfg.video.bientot"));
-  const action = () =>
-    dispo() ? tr("cfg.video.lancer") : tr("cfg.video.indisponible");
-
-  return (
-    <div class="ml-cfg-video-encart">
-      {/* UN SEUL contrôle réel : la carte entière EST le bouton. Le « bouton »
-          sous le texte est un <span> habillé, pour ne pas doubler la
-          tabulation avec deux commandes qui font la même chose. */}
-      <button
-        type="button"
-        class="ml-cfg-video-jouer"
-        disabled={!dispo()}
-        aria-disabled={dispo() ? undefined : "true"}
-        aria-label={`${titre()} — ${action()}`}
-        onClick={(e) => props.onLancer(e.currentTarget)}
-      >
-        <span class="ml-cfg-video-facade-boite">
-          <img
-            class="ml-cfg-video-facade"
-            src={facadeDeLaBoutique(props.video.poster)}
-            alt=""
-            /* Pas de `loading="lazy"` : la façade EST l'encart. Différée, elle
-               laisse un rectangle vide en tête de l'étape 1 — au mieux le
-               temps d'un aller-retour, au pire tant que la fenêtre n'a pas
-               été touchée. C'est notre SVG de 1,5 ko, ou une vignette de 400
-               pixels : il n'y a rien à économiser. */
-            decoding="async"
-          />
-          <span class="ml-cfg-video-pastille" aria-hidden="true">
-            ▶
-          </span>
-        </span>
-        <span class="ml-cfg-video-texte">
-          <span class="ml-cfg-video-titre">{titre()}</span>
-          <span class="ml-cfg-video-ligne">{texte()}</span>
-          <span class="ml-cfg-video-action">{action()}</span>
-        </span>
-      </button>
-    </div>
-  );
 }
 
 /**

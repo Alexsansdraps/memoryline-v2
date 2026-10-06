@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /**
  * Snapshot sérialisable de la personnalisation d'une affiche.
- * = `order_item.config` (§14.3 / §16 du PLAN_DE_DEV).
+ * = `order_item.config`.
  *
  * Ce schéma est la cible "propre". L'historique Shopify (Line: Properties)
  * utilise une forme proche mais différente (clés `character_1`, `typeId`,

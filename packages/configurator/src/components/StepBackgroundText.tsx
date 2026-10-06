@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { For, Show, type JSX } from "solid-js";
+import { For, Show } from "solid-js";
 import {
   COULEURS_TEXTE_AFFICHE,
   couleurTexteParValeur,
@@ -29,13 +29,6 @@ export function StepBackgroundText(props: {
   ) => void;
   /** Police d'UNE ligne : chacune choisit la sienne. */
   onTextFont: (ligne: number, font: string) => void;
-  /**
-   * L'encart vidéo, fourni tout fait par la boutique (cf. ConfiguratorProps).
-   *
-   * Le paquet ne sait rien de son contenu : il lui réserve la place en tête
-   * de l'étape, un point c'est tout.
-   */
-  encartVideo?: () => JSX.Element;
   messages: MessagesConfigurateur;
 }) {
   const m = () => props.messages;
@@ -117,21 +110,6 @@ export function StepBackgroundText(props: {
 
   return (
     <div class="ml-cfg-step">
-      {/* La vidéo d'explication, tout en haut : c'est la première chose qu'on
-          voit en ouvrant la fenêtre, et c'est exactement ce qu'une vidéo qui
-          explique la personnalisation doit être.
-
-          Aucun `data-item` ici, et jamais : l'attribut désigne les CHOIX
-          qu'on coupe de moitié au bord de l'écran pour montrer qu'on peut
-          faire défiler (Defilement.tsx). Un encart marqué deviendrait
-          « l'item coupé » et l'indice ne voudrait plus rien dire.
-
-          Hauteur FIXE, garantie par l'hôte : le lecteur s'ouvre par-dessus la
-          fenêtre, jamais dans le flux. Un encart qui se déplierait déplacerait
-          la cale du bord pendant qu'on fait défiler, et le contenu sauterait
-          sous le doigt. */}
-      <Show when={props.encartVideo}>{props.encartVideo!()}</Show>
-
       <h3 style={{ "font-weight": "700", "margin-bottom": "10px" }}>
         {m().etapeFond}
       </h3>

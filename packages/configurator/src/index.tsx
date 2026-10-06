@@ -137,15 +137,6 @@ export interface ConfiguratorProps {
    */
   onSubmit: (config: PosterConfig) => void;
   onBack?: () => void;
-  /**
-   * L'encart vidéo de l'étape 1, fourni tout fait par la boutique.
-   *
-   * Une FONCTION et non un nœud : `<Show>` démonte l'étape 1 à chaque
-   * changement d'étape, et un nœud unique ne se remonte pas deux fois. Le
-   * paquet ne connaît ni la langue ni les réglages — il réserve la place,
-   * rien de plus, et c'est ce qui lui évite trois écritures par libellé.
-   */
-  encartVideo?: () => JSX.Element;
 }
 
 /** Formate un prix en centimes -> "23 €" (FR), « €23 » (EN)… selon la locale. */
@@ -763,7 +754,6 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             onTextValue={setTextValue}
             onTextStyle={setTextStyle}
             onTextFont={setTextFont}
-            encartVideo={props.encartVideo}
             messages={msg()}
           />
         </Show>

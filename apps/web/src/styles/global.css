@@ -562,135 +562,60 @@ html {
 }
 
 /* --------------------------------------------------------------------------
- * L'encart vidéo explicative, et la couche qui lit la vidéo.
+ * La vidéo explicative : une bulle « Vidéo tuto », et la couche qui la lit.
  *
- * DEUX SURFACES, JAMAIS UNE SEULE, et c'est ce bloc qui le tient :
+ * Il y avait en tête de l'étape 1 un encart avec une façade 16/9, un titre et
+ * un texte : « ça prend trop de place » (retour de la cliente). Il reste une
+ * petite BULLE dans le coin de la fenêtre, à côté de la croix, et la vidéo
+ * sort en pop-up par-dessus.
  *
- * - `.ml-cfg-video-encart` vit DANS le flux de l'étape 1. Sa hauteur ne
- *   change jamais : elle est posée par la façade (rapport 16/9, largeur
- *   fixée) et par un texte borné à quelques lignes. Un encart qui grandirait
- *   après coup déplacerait la cale du bord calculée par Defilement.tsx
- *   pendant qu'une cliente fait défiler, et le contenu sauterait sous son
- *   doigt. Rien ici ne se déplie, rien ne se replie.
+ * - `.ml-modal-video` vit dans l'en-tête de la fenêtre, qui est
+ *   `flex: 0 0 auto` et hors du conteneur qui défile : la bulle ne coûte pas
+ *   un pixel de hauteur, et elle est là aux trois étapes. Elle n'existe que
+ *   s'il y a une vidéo : une bulle qui n'ouvre rien est un piège.
  * - `.ml-video-overlay` vit AU-DESSUS de tout (z-index 110 > 100 de
  *   `.ml-modal-overlay`). C'est la seule surface qui porte un lecteur.
- *
- * On garde la RANGÉE même sur téléphone : à 375 px la hauteur est la denrée
- * rare, et une façade pleine largeur mangerait un tiers du premier écran.
  * ------------------------------------------------------------------------ */
-.ml-cfg-video-encart {
-  margin-bottom: 14px;
-}
-
-.ml-cfg-video-jouer {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 12px;
-  border: 1px solid rgba(32, 33, 31, 0.14);
-  border-radius: 10px;
-  background: var(--color-paper-deep);
-  color: var(--color-ink);
-  text-align: left;
-  cursor: pointer;
-  font: inherit;
-}
-.ml-cfg-video-jouer:hover:not(:disabled) {
-  border-color: rgba(32, 33, 31, 0.3);
-}
-/* Pas d'extinction quand il n'y a pas encore de vidéo : on ne cache pas la
-   fente, on la MONTRE. Le curseur reste normal, la carte reste lisible —
-   c'est une promesse affichée, pas un bouton en panne. */
-.ml-cfg-video-jouer:disabled {
-  opacity: 1;
-  cursor: default;
-}
-
-.ml-cfg-video-facade-boite {
-  position: relative;
-  flex: 0 0 auto;
-  width: 136px;
-  aspect-ratio: 16 / 9;
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--color-paper);
-}
-.ml-cfg-video-facade {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.ml-cfg-video-pastille {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  color: var(--color-paper);
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
-}
-
-.ml-cfg-video-texte {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-.ml-cfg-video-titre {
-  font-weight: 700;
-  font-size: 14px;
-  line-height: 1.3;
-}
-/* Le texte est borné : la marchande peut écrire le sien, et une tirade ne
-   doit pas pouvoir doubler la hauteur de l'encart. */
-.ml-cfg-video-ligne {
-  font-size: 12.5px;
-  line-height: 1.4;
-  color: var(--color-ink-soft);
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
-  line-clamp: 4;
-  overflow: hidden;
-}
-.ml-cfg-video-action {
-  align-self: flex-start;
-  margin-top: 2px;
-  padding: 3px 10px;
-  border-radius: 9999px;
-  background: var(--color-ink);
-  color: var(--color-paper);
-  font-size: 12px;
-  line-height: 1.5;
-}
-.ml-cfg-video-jouer:disabled .ml-cfg-video-action {
-  background: rgba(18, 18, 18, 0.18);
-  color: var(--color-ink);
-}
-
-/* Le rond de réouverture, dans l'en-tête de la fenêtre : jumeau exact de
-   `.ml-modal-close`, et posé à sa gauche. L'en-tête est `flex: 0 0 auto` et
-   vit hors du conteneur qui défile — ce bouton ne coûte donc pas un pixel de
-   hauteur, et il est déjà là aux trois étapes. */
 .ml-modal-video {
   appearance: none;
   border: none;
-  background: var(--color-paper-deep);
-  color: var(--color-ink);
-  width: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   height: 38px;
+  padding: 0 15px 0 12px;
   border-radius: 9999px;
+  background: var(--color-terracotta);
+  color: var(--color-paper);
+  font: inherit;
   font-size: 14px;
+  font-weight: 600;
   line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
   flex: 0 0 auto;
   margin-left: auto;
+  box-shadow: 0 1px 4px rgba(17, 24, 39, 0.18);
 }
 .ml-modal-video:hover {
-  background: #e2d9c8;
+  background: var(--color-terracotta-deep);
+}
+.ml-modal-video:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 3px;
+}
+/* Le triangle dans un rond clair : il se lit « lecture » d'un coup d'œil. */
+.ml-modal-video-icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background: var(--color-paper);
+  color: var(--color-terracotta);
+  font-size: 9px;
+  padding-left: 1px;
 }
 
 .ml-video-overlay {
@@ -773,18 +698,14 @@ html {
   }
 }
 
-/* Écrans étroits : la façade rétrécit, la rangée reste une rangée. */
+/* Écrans étroits : la bulle se fait plus fine, le lecteur prend toute la
+   largeur. */
 @media (max-width: 480px) {
-  .ml-cfg-video-facade-boite {
-    width: 104px;
+  .ml-modal-video {
+    height: 34px;
+    padding: 0 12px 0 9px;
+    font-size: 13px;
   }
-  .ml-cfg-video-pastille {
-    font-size: 18px;
-  }
-  /* Pas de clamp plus serré ici : mesuré à 375 px, le texte d'usine tient
-     tout juste en quatre lignes, et le couper priverait la cliente des trois
-     étapes récitées — c'est-à-dire de tout ce que le visuel d'attente a à
-     dire tant que la vidéo n'existe pas. */
   .ml-video-overlay {
     padding: 12px;
   }

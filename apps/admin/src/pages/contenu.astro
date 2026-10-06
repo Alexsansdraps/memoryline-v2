@@ -185,12 +185,12 @@ function verdictVideo(cle: string): { texte: string; alerte: boolean } {
     return brut
       ? {
           texte:
-            "Adresse non reconnue : l'encart affichera son visuel d'attente. " +
+            "Adresse non reconnue : la bulle « Vidéo tuto » ne s'affichera pas. " +
             "Attendu : un lien YouTube, un lien Vimeo, ou un fichier .mp4 / .webm.",
           alerte: true,
         }
       : {
-          texte: "Aucune vidéo : l'encart affiche son visuel d'attente.",
+          texte: "Aucune vidéo : la bulle « Vidéo tuto » ne s'affiche pas.",
           alerte: false,
         };
   if (s.genre === "youtube")
@@ -243,17 +243,16 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
   {
     titre: "Personnalisation — vidéo explicative",
     aide:
-      "L'encart montré à la première étape de la personnalisation, et " +
-      "rejouable aux étapes suivantes par le petit bouton rond en haut de la " +
-      "fenêtre. Tant qu'aucune adresse n'est donnée, l'encart reste en place " +
-      "avec un visuel d'attente : la cliente voit qu'une vidéo est prévue. " +
+      "Une petite bulle « Vidéo tuto » en haut de la fenêtre de " +
+      "personnalisation, aux trois étapes : un clic, et la vidéo s'ouvre en " +
+      "pop-up. Tant qu'aucune vidéo n'est donnée, la bulle ne s'affiche pas. " +
       "Rien de YouTube ni de Vimeo n'est chargé tant que la cliente n'a pas " +
       "cliqué — c'est ce qui permet de ne pas toucher au bandeau cookies. " +
-      "Au stand, l'encart ne s'affiche pas.",
+      "Au stand, la bulle ne s'affiche pas.",
     champs: [
       {
         key: "configurateur.video.visible",
-        label: "Afficher l'encart vidéo",
+        label: "Afficher la bulle « Vidéo tuto »",
         type: "switch",
       },
       {
@@ -263,8 +262,8 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
         aide:
           "Collez un lien YouTube ou Vimeo, ou envoyez un fichier .mp4 / " +
           ".webm (120 Mo maximum, une à deux minutes). Pour retirer la " +
-          "vidéo, videz cette case et enregistrez : l'encart revient à son " +
-          "visuel d'attente. Le fichier déjà envoyé, lui, reste rangé sur le " +
+          "vidéo, videz cette case et enregistrez : la bulle disparaît du " +
+          "site. Le fichier déjà envoyé, lui, reste rangé sur le " +
           "serveur — rien ne se supprime.",
       },
       {
@@ -272,22 +271,15 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
         label: "Image d'attente (facultative)",
         type: "image",
         aide:
-          "L'image figée montrée avant le clic. Laissez vide : la boutique " +
-          "affiche son propre visuel. Elle n'utilise jamais la vignette de " +
+          "L'image figée montrée dans la pop-up avant la lecture d'un fichier " +
+          ".mp4 / .webm. Laissez vide : la boutique affiche son propre visuel. " +
+          "Elle n'utilise jamais la vignette de " +
           "YouTube, qui préviendrait YouTube de la visite avant même le clic.",
       },
       {
         key: "configurateur.video.titre",
-        label: "Titre de l'encart",
+        label: "Titre de la pop-up vidéo",
         type: "texte",
-        aide:
-          "Laissez vide pour le texte par défaut, déjà traduit dans les cinq " +
-          "langues.",
-      },
-      {
-        key: "configurateur.video.texte",
-        label: "Texte de l'encart",
-        type: "long",
         aide:
           "Laissez vide pour le texte par défaut, déjà traduit dans les cinq " +
           "langues.",

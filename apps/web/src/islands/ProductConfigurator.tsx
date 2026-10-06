@@ -12,7 +12,7 @@ import { sourceVideo } from "@memoryline/types";
 import type { SignatureApercu } from "@memoryline/configurator";
 import { browserApi, getCartId, type EncartVideoDTO } from "../lib/api.ts";
 import ConfiguratorIsland from "./ConfiguratorIsland.tsx";
-import { EncartVideo, LecteurVideo, facadeEncart } from "./EncartVideo.tsx";
+import { LecteurVideo, facadeEncart } from "./EncartVideo.tsx";
 
 /**
  * Bouton UNIQUE « Personnaliser » de la fiche produit + configurateur en
@@ -277,27 +277,33 @@ export default function ProductConfigurator(
               <h2 class="text-xl sm:text-2xl">
                 {tr("cfg.titre")}
               </h2>
-              {/* Revoir la vidéo, aux TROIS étapes.
+              {/* La bulle « Vidéo tuto », aux TROIS étapes.
+
+                  Elle remplace l'encart qui ouvrait l'étape 1 : « ça prend
+                  trop de place », a dit la boutique, qui voulait une petite
+                  bulle dans un coin et la vidéo en pop-up.
 
                   Ici et pas dans le fil d'étapes : cette rangée-là est pleine
                   (neuf pixels libres mesurés à 375 px, sans `flex-wrap`), et
                   un quatrième bouton la casserait sur téléphone. L'en-tête,
                   lui, est `flex: 0 0 auto` et vit hors du conteneur qui
-                  défile : ce rond ne coûte aucun pixel de hauteur.
+                  défile : la bulle ne coûte aucun pixel de hauteur.
 
-                  Il n'existe QUE s'il y a une vidéo : un rond qui n'ouvre
-                  rien est un piège. Le visuel d'attente, lui, reste visible
-                  dans l'encart de l'étape 1 — c'est là qu'est la fente. */}
+                  Elle n'existe QUE s'il y a une vidéo : une bulle qui n'ouvre
+                  rien est un piège. */}
               <Show when={source()}>
                 <button
                   type="button"
                   class="ml-modal-video"
                   ref={boutonRouvrir}
-                  aria-label={tr("cfg.video.rouvrir")}
-                  title={tr("cfg.video.rouvrir")}
+                  aria-label={`${props.video?.titre || tr("cfg.video.titre")} — ${tr("cfg.video.lancer")}`}
+                  title={tr("cfg.video.lancer")}
                   onClick={() => ouvrirVideo(boutonRouvrir)}
                 >
-                  ▶
+                  <span class="ml-modal-video-icone" aria-hidden="true">
+                    ▶
+                  </span>
+                  {tr("cfg.video.bulle")}
                 </button>
               </Show>
               <button
@@ -339,22 +345,6 @@ export default function ProductConfigurator(
                 initialConfig={initialConfig()}
                 itemId={editItemId() ?? undefined}
                 onCancel={closeModal}
-                /* Une FONCTION, pas un nœud : `<Show>` démonte l'étape 1 à
-                   chaque changement d'étape, et un nœud unique ne se remonte
-                   pas proprement. Bénéfice second : quitter l'étape 1
-                   démonte l'encart, donc rien ne peut y survivre. */
-                encartVideo={
-                  props.video
-                    ? () => (
-                        <EncartVideo
-                          video={props.video!}
-                          source={source()}
-                          langue={props.langue}
-                          onLancer={ouvrirVideo}
-                        />
-                      )
-                    : undefined
-                }
               />
             </div>
           </div>

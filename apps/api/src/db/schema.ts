@@ -1,6 +1,6 @@
 /**
  * Schéma de données Memory Line (PostgreSQL / Drizzle).
- * Implémente le §16 du PLAN_DE_DEV, ajusté à l'export Shopify réel.
+ * Le schéma de la base, ajusté à l'export Shopify réel.
  *
  * Principes structurants :
  *  - order.channel ('web' | 'salon') NON NULL et immuable (§11).

@@ -72,14 +72,6 @@ export interface ConfiguratorIslandProps {
    */
   quantite?: number;
   /**
-   * L'encart vidéo de l'étape 1, fabriqué par la fiche produit.
-   *
-   * Pur transit : aucune ligne à ajouter au bloc `messages={{…}}` ci-dessous,
-   * c'est tout l'intérêt d'une fente. Le paquet réserve la place, la boutique
-   * fournit le contenu déjà traduit.
-   */
-  encartVideo?: () => JSX.Element;
-  /**
    * La signature de la boutique, en bas à droite de l'aperçu.
    *
    * Lue dans les réglages par la PAGE (`signatureDesCreations()`), côté
@@ -357,7 +349,6 @@ export default function ConfiguratorIsland(
               initialConfig={props.initialConfig}
               assetBaseUrl={PUBLIC_API_URL}
               signature={props.signature}
-              encartVideo={props.encartVideo}
               onSubmit={handleSubmit}
               onBack={handleBack}
             />

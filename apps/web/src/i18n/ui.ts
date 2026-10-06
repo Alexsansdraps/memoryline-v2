@@ -410,17 +410,12 @@ export const ui = {
     "cfg.erreur":
       "Le configurateur n'a pas pu se charger. Rechargez la page, ou réessayez dans quelques instants.",
 
-    /* L'encart vidéo de l'étape 1 (apps/web/src/islands/EncartVideo.tsx).
+    /* La bulle « Vidéo tuto » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
        back-office, ils passent devant. */
     "cfg.video.titre": "Comment ça marche ?",
-    "cfg.video.intro":
-      "Une courte vidéo vous montre les trois étapes.",
     "cfg.video.lancer": "Lancer la vidéo",
-    "cfg.video.bientot":
-      "La vidéo explicative arrive très bientôt. En attendant, laissez-vous guider : 1. Fond & texte, 2. Personnages, 3. Format.",
-    "cfg.video.indisponible": "Vidéo bientôt disponible",
-    "cfg.video.rouvrir": "Revoir la vidéo explicative",
+    "cfg.video.bulle": "Vidéo tuto",
 
     "nav.compte": "Compte",
 
@@ -1038,17 +1033,12 @@ export const ui = {
     "cfg.erreur":
       "The designer couldn't load. Please reload the page, or try again in a moment.",
 
-    /* L'encart vidéo de l'étape 1 (apps/web/src/islands/EncartVideo.tsx).
+    /* La bulle « Vidéo tuto » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
        back-office, ils passent devant. */
     "cfg.video.titre": "How does it work?",
-    "cfg.video.intro":
-      "A short video walks you through the three steps.",
     "cfg.video.lancer": "Play the video",
-    "cfg.video.bientot":
-      "The explainer video is coming very soon. In the meantime, just follow the three steps: 1. Background & text, 2. Characters, 3. Size.",
-    "cfg.video.indisponible": "Video coming soon",
-    "cfg.video.rouvrir": "Watch the explainer video again",
+    "cfg.video.bulle": "Video guide",
 
     "nav.compte": "Account",
 
@@ -1658,17 +1648,12 @@ export const ui = {
     "cfg.erreur":
       "Der Konfigurator konnte nicht geladen werden. Bitte laden Sie die Seite neu oder versuchen Sie es gleich noch einmal.",
 
-    /* L'encart vidéo de l'étape 1 (apps/web/src/islands/EncartVideo.tsx).
+    /* La bulle « Vidéo tuto » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
        back-office, ils passent devant. */
     "cfg.video.titre": "Wie funktioniert das?",
-    "cfg.video.intro":
-      "Ein kurzes Video zeigt Ihnen die drei Schritte.",
     "cfg.video.lancer": "Video abspielen",
-    "cfg.video.bientot":
-      "Das Erklärvideo kommt in Kürze. Folgen Sie so lange einfach den drei Schritten: 1. Hintergrund & Text, 2. Figuren, 3. Format.",
-    "cfg.video.indisponible": "Video folgt in Kürze",
-    "cfg.video.rouvrir": "Erklärvideo erneut ansehen",
+    "cfg.video.bulle": "Video-Anleitung",
 
     "nav.compte": "Konto",
 
@@ -2280,17 +2265,12 @@ export const ui = {
     "cfg.erreur":
       "Il configuratore non si è caricato. Ricarica la pagina, oppure riprova tra qualche istante.",
 
-    /* L'encart vidéo de l'étape 1 (apps/web/src/islands/EncartVideo.tsx).
+    /* La bulle « Vidéo tuto » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
        back-office, ils passent devant. */
     "cfg.video.titre": "Come funziona?",
-    "cfg.video.intro":
-      "Un breve video ti mostra i tre passaggi.",
     "cfg.video.lancer": "Guarda il video",
-    "cfg.video.bientot":
-      "Il video esplicativo arriverà molto presto. Nel frattempo segui i tre passaggi: 1. Sfondo e testo, 2. Personaggi, 3. Formato.",
-    "cfg.video.indisponible": "Video presto disponibile",
-    "cfg.video.rouvrir": "Rivedi il video esplicativo",
+    "cfg.video.bulle": "Video tutorial",
 
     "nav.compte": "Account",
 
@@ -2899,17 +2879,12 @@ export const ui = {
     "cfg.erreur":
       "El configurador no se ha podido cargar. Recarga la página o vuelve a intentarlo en unos instantes.",
 
-    /* L'encart vidéo de l'étape 1 (apps/web/src/islands/EncartVideo.tsx).
+    /* La bulle « Vidéo tuto » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
        back-office, ils passent devant. */
     "cfg.video.titre": "¿Cómo funciona?",
-    "cfg.video.intro":
-      "Un vídeo corto te muestra los tres pasos.",
     "cfg.video.lancer": "Ver el vídeo",
-    "cfg.video.bientot":
-      "El vídeo explicativo llegará muy pronto. Mientras tanto, sigue los tres pasos: 1. Fondo y texto, 2. Personajes, 3. Formato.",
-    "cfg.video.indisponible": "Vídeo disponible muy pronto",
-    "cfg.video.rouvrir": "Volver a ver el vídeo",
+    "cfg.video.bulle": "Vídeo tutorial",
 
     "nav.compte": "Cuenta",
 
