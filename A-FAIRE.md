@@ -40,6 +40,37 @@ Bulle « Vidéo tuto », check-list `MISE-EN-PROD.md`, script `apps/api/scripts/
    Reste pour Margaux : 61 fiches sans texte, les traductions des fiches. Reste pour le jour de la bascule : `PUBLIC_NOINDEX=false` et faire servir www.memoryline.fr (voir `MISE-EN-PROD.md`).
 3. Corrections de code de la section 7 de `MISE-EN-PROD.md` : écran adresse/SIRET des factures, aide du BO « mode essai », message « .env » visible à la caisse.
 
+## Trello relu le 7/10 (matin)
+
+**Module : en cours sur la branche `chantier-recherche-seo`**
+- Pastilles d'étapes : une seule ligne, en plus petit.
+- Étape 1 : plus de police bâton en ligne 1. La ligne 1 est en majuscules, en DM Serif Display ou Abril Fatface. La ligne 2 est en Another Shabby. La ligne 3 est en DM Serif Display, Abril Fatface ou Another Shabby. Plus de « (symboles et chiffres autorisés) » ni de « Touche Entrée… ».
+- Signature : seulement sur le PDF, en noir, au ras du coin en bas à droite (capture de Margaux dans la carte « Questions »).
+- Filigrane : cercle plus discret, logo plus grand.
+- Ordre des calques : base → jean → t-shirt → cheveux → accessoires.
+- Placement :
+  - de dos, pas de 2e rangée tant que la 1re n'est pas pleine ;
+  - de face, enfants et chiens devant par défaut.
+
+**BO : à faire après la recherche, qui touche les mêmes écrans**
+- Couleurs : pouvoir changer l'ordre des couleurs (aujourd'hui on ne peut que supprimer).
+- Pages/Collections : trier l'ordre des affiches page par page, pas seulement sur l'accueil.
+- Panier abandonné : pouvoir modifier le courriel (et le programmer).
+- Modification groupée des produits : un « appliquer à tout ». Champs voulus : nom, identifiant, prix, collections, poids, catégories, descriptions, statut, type d'affiche.
+- Fiche commande : aperçu des affiches, dans le style du panier.
+
+**Réponses de Margaux (carte « Questions »)**
+- Comptes vendeur limités à leur stand : **oui**. Lié à la carte « Plusieurs comptes si je fais plusieurs marchés de Noël ».
+- Retrait sur place :
+  - pas de créneau, mais une description libre où l'on peut passer à la ligne ;
+  - le « chalet » proposé dessous (un stand ouvert) ne peut être ni modifié, ni supprimé, ni complété par d'autres chalets : il faut pouvoir les gérer.
+- SIRET pour les factures : 877 919 852 00047. L'adresse manque toujours.
+- Offre 3+1 : 3 affiches achetées, **quelle que soit la taille**, donnent 1 A4 offerte **sans cadre** (aujourd'hui les A3 ne comptent pas et le cadre est offert). Elle veut moduler ses promos librement, « comme Shopify ».
+- Bandeau : il ne doit plus être lié aux promos. C'est juste un texte et un bouton, et il faut pouvoir en mettre **plusieurs qui défilent**.
+- Animaux : pour le berger allemand, elle voulait le nuancier « peau », mais il n'existe pas dans Personnages › Catégories de pièces. À revoir avec le nouvel écran des couleurs.
+- À lui réexpliquer, sans code : l'import des clients (« rien compris ») et les « commandes déjà imprimées » (« c'est-à-dire ? »).
+- Carte « On voit pas assez bien qu'on peut descendre » (❌) : le sommaire qui servait à ça vient d'être retiré à sa demande. Il faudra un autre indice, plus discret.
+
 ## Bon à savoir
 - Compte d'essai du BO **local** : `essai-module@example.test`. Il n'existait plus dans la base Neon ; il a été recréé le 6/10 au soir depuis le PC de la maison, et son mot de passe est en commentaire à la fin du `.env` de ce PC-là. Sur un autre PC, le remettre avec `pnpm --filter @memoryline/api run create-admin <email> <mdp> owner`.
 - Archive et mise en ligne : voir `MISE-EN-PROD.md`, étape 1.
