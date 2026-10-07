@@ -886,13 +886,11 @@ for (const a of pieces) {
     composer les personnages.
   </p>
   <p class="mb-4 text-sm text-bo-muted max-w-3xl">
-    Chaque couleur est surlignée en rouge sur sa vignette, avec ses nuances
-    (ombres, reflets) qui suivent la couleur choisie par le client. Donnez-lui
-    un nom : c'est lui que le client lit. Décochez « Proposée au client » sur
-    les petits détails (ruban d'un chapeau, élastique des cheveux) : ils
-    gardent la couleur réglée ici, à l'écran comme à l'impression. Une pièce
-    dessinée dans Canva ou par une IA n'a pas de couleur ? « Détecter les
-    couleurs » les lit sur le dessin — le fichier d'origine est conservé.
+    Sous chaque pièce, une ligne par couleur du dessin : la vignette montre
+    où elle se trouve. Donnez-lui le nom que le client lira (« Rayures »), et
+    décochez « Le client peut la changer » sur les petits détails (ruban d'un
+    chapeau, élastique des cheveux) : ils gardent la couleur du dessin. Tout
+    s'enregistre aussitôt.
   </p>
 
   {
@@ -957,8 +955,7 @@ for (const a of pieces) {
                               data-regle={regleDeLaCategorie(c)?.couleurs ?? ""}
                             >
                               {c.name}
-                              {c.archivedAt ? " (archivée)" : ""} (
-                              {c.colors.length} couleurs)
+                              {c.archivedAt ? " (archivée)" : ""}
                             </option>
                           ))}
                       </select>
@@ -971,11 +968,9 @@ for (const a of pieces) {
                       Archiver
                     </button>
                   </div>
-                  {/* Un bloc par groupe de couleurs, surligné sur sa vignette :
-                      « st3 » ne dit rien, un ruban en rouge vif, si. Chaque
-                      réglage s'enregistre aussitôt. « Détecter les couleurs »
-                      range les dessins venus de Canva ou d'une IA, dont les
-                      couleurs étaient écrites forme par forme. */}
+                  {/* Une ligne par couleur du dessin, montrée sur sa
+                      vignette : « st3 » ne dit rien, un ruban cerné de noir,
+                      si. Chaque réglage s'enregistre aussitôt. */}
                   <GroupesCouleurs
                     mode="piece"
                     apiUrl={PUBLIC_API_URL}
@@ -1398,5 +1393,3 @@ for (const a of pieces) {
 
   </script>
 </Admin>
-</content>
-</invoke>

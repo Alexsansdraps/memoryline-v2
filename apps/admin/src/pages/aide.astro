@@ -679,13 +679,14 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
         <p>
           <strong>Un personnage</strong> : dans
           <a href={url("/personnages")} class="text-bo-accent underline">Personnages</a>,
-          bouton « 🎨 Couleurs » de sa carte. Chaque couleur du dessin y a sa
-          vignette (la couleur en rouge), un nom, un nuancier (peau, cheveux /
-          pelage, vêtements, pantalon) et une case « Proposée au client ». Par
-          défaut, seule la peau est proposée ; pour une image en pixels (photo,
-          illustration), aucune tant que vous n'en cochez pas. Cliquez ensuite
-          « Enregistrer le dessin » : la page prévient si vous la quittez sans
-          l'avoir fait.
+          bouton « 🎨 Couleurs » de sa carte. Une phrase dit d'abord ce que le
+          client pourra changer, puis chaque couleur du dessin a sa ligne : une
+          vignette qui montre où elle se trouve, le nom que le client lira, ses
+          « Pastilles » (peau, cheveux / pelage, vêtements, pantalon) et une case
+          « Le client peut la changer ». Au départ, seule la peau est proposée ;
+          pour une image en pixels (photo, illustration), aucune tant que vous
+          n'en cochez pas. Cliquez ensuite « Enregistrer le dessin » : la page
+          prévient si vous la quittez sans l'avoir fait.
         </p>
         <p>
           <strong>Une pièce</strong> (vêtement, pantalon, coupe, accessoire) :
@@ -700,30 +701,31 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
           <strong>Ne pas proposer les détails</strong> (le ruban d'un chapeau) :
           un seul réglage par catégorie, « Le client peut recolorer », dans
           <a href={url("/categories-pieces")} class="text-bo-accent underline">Catégories de pièces</a>.
-          « Seulement la couleur principale » ne laisse au client que la
-          couleur la plus étendue de chaque pièce (marquée ★ sur sa carte) ; le
-          reste garde la couleur du dessin. « Toutes les couleurs », le réglage
-          de départ, les propose toutes.
+          « Seulement la couleur principale », le réglage de départ, ne laisse
+          au client que la couleur la plus étendue de chaque pièce (« couleur
+          principale » sous sa ligne), ombres comprises ; le reste garde la
+          couleur du dessin. « Toutes les couleurs » les propose toutes.
         </p>
         <p>
           Une pièce à part (un vêtement à deux couleurs principales) : cochez
-          ou décochez ses cases « Proposée au client » sur sa carte. Elle garde
-          alors son propre réglage, qui passe avant celui de la catégorie, et
-          « Revenir au réglage de la catégorie » le lui retire. Chaque réglage
-          s'enregistre aussitôt.
+          ou décochez ses cases « Le client peut la changer ». Elle est alors
+          « réglée à la main », et ce réglage passe avant celui de la
+          catégorie ; « Refaire comme la catégorie » le lui retire. Chaque
+          réglage s'enregistre aussitôt.
         </p>
         <p>
-          Avant de passer une catégorie à « principale », regardez ses pièces :
-          dans certains dessins, l'ombre d'un chapeau est une couleur à part, et
-          elle ne suivrait plus la couleur choisie par le client. La carte le
-          signale (« Une ombre de la couleur principale ? ») : rattachez-la à
-          sa couleur avec « Rattacher à… ». Les commandes déjà passées
-          s'impriment toujours comme le client les a composées.
+          <strong>Réglages avancés</strong> (repliés sous chaque pièce) : à
+          n'ouvrir que si les couleurs du dessin ont été mal lues. On y règle la
+          couleur de départ d'une couleur, on sépare une teinte réunie à tort,
+          et « Suit la couleur de… » fait suivre une ombre à sa couleur.
+          « Remettre les couleurs du dessin » annule les couleurs de départ
+          changées par erreur. Les commandes déjà passées s'impriment toujours
+          comme le client les a composées.
         </p>
         <p>
           Un dessin venu de Canva ou d'une IA n'a pas de couleur séparée ?
-          « Détecter les couleurs » les lit sur le dessin ; le fichier d'origine
-          est conservé.
+          « Relire le dessin », dans les réglages avancés, les lit sur le
+          dessin ; le fichier d'origine est conservé.
         </p>
         <p>
           Les <strong>décors</strong> (fonds des affiches) et les

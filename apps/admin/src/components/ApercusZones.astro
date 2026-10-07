@@ -5,11 +5,19 @@
  * Les zones d'une pièce portent les noms que l'export du dessin leur donne :
  * st0, st1, st3… Pour décider lesquelles proposer au client, la boutique doit
  * savoir laquelle est le ruban du chapeau et laquelle est le chapeau. Chaque
- * vignette montre donc la pièce, CETTE zone en rouge vif, le reste en gris.
+ * vignette montre donc la pièce, CETTE zone dans sa couleur et cernée d'un
+ * trait, le reste en gris.
+ *
+ * Pas de rouge vif pour la désigner : une marinière bleu nuit dont les
+ * rayures étaient surlignées en rouge passait pour un t-shirt rouge, et la
+ * boutique croyait ses couleurs tirées au hasard. Le trait, lui, fait voir
+ * une zone blanche sur le fond blanc de la vignette.
  *
  * Mode d'emploi : un bloc porte `data-apercu-svg` (l'adresse du dessin) et,
  * en option, `data-apercu-cadrage` (un viewBox de repli) ; il contient des
- * `<img class="js-zone-apercu" data-zone="st3">`. Les blocs présents au
+ * `<img class="js-zone-apercu" data-zone="st3">`, et en option
+ * `data-couleurs='{"st3":"#123546"}'` : les couleurs à leur donner, quand
+ * elles ne sont plus celles du fichier. Sans elles, celles du fichier. Les blocs présents au
  * chargement se remplissent quand ils approchent de l'écran — la page des
  * personnages en compte plus de cent cinquante. Un bloc construit plus tard
  * (formulaire de nouvelle pièce) appelle `window.mlApercusZones(bloc)`.
@@ -24,9 +32,9 @@
 
 <script is:inline>
   (function () {
-    var SURLIGNE = "#E11D48";
     var ESTOMPE = "#E5E7EB";
     var CONTOUR = "#9CA3AF";
+    var TRAIT = "#1F2937";
 
     /** Un seul téléchargement par dessin, même s'il revient plusieurs fois. */
     var textes = new Map();
@@ -109,28 +117,45 @@
     }
 
     /**
-     * Le dessin, la zone voulue en rouge et les autres en gris clair.
-     * Même lecture des zones que recolorSvg (@memoryline/types) : leurs
-     * couleurs vivent dans les règles « .stN{fill:…} » du bloc <style>.
+     * Le dessin, la zone voulue dans sa couleur et cernée d'un trait, les
+     * autres en gris clair. Même lecture des zones que recolorSvg
+     * (@memoryline/types) : leurs couleurs vivent dans les règles
+     * « .stN{fill:…} » du bloc <style>.
      *
      * `zone` peut en citer plusieurs, séparées d'espaces : un groupe de
-     * couleurs (une teinte et ses ombres) se surligne d'un bloc.
+     * couleurs (une teinte et ses ombres) se montre d'un bloc, chacune dans
+     * sa couleur. `couleurs` (zone -> « #hex ») remplace celles du fichier.
      */
-    function apercuDeZone(svg, zone, cadrage) {
-      var voulues = String(zone).split(/\s+/);
+    function apercuDeZone(svg, zone, cadrage, couleurs) {
+      var voulues = String(zone).split(/\s+/).filter(Boolean);
       var sortie = svg.replace(
-        /(\.(st\d+)\s*\{[^}]*?fill\s*:\s*)#[0-9a-fA-F]{3,8}/g,
-        function (_m, debut, z) {
-          return debut + (voulues.indexOf(z) >= 0 ? SURLIGNE : ESTOMPE);
+        /(\.(st\d+)\s*\{[^}]*?fill\s*:\s*)(#[0-9a-fA-F]{3,8})/g,
+        function (_m, debut, z, origine) {
+          if (voulues.indexOf(z) < 0) return debut + ESTOMPE;
+          var c = couleurs && couleurs[z];
+          return debut + (typeof c === "string" && /^#[0-9a-fA-F]{3,8}$/.test(c) ? c : origine);
         },
       );
       // Les formes sans zone (contours, ombres) passent en gris moyen : elles
-      // situent la pièce sans voler la vedette à la zone.
+      // situent la pièce sans voler la vedette à la zone. Le trait autour de
+      // la zone garde la même épaisseur quel que soit le cadrage.
+      var trait = voulues.length
+        ? voulues
+            .map(function (z) {
+              return "." + z;
+            })
+            .join(",") +
+          "{stroke:" +
+          TRAIT +
+          ";stroke-width:1.2px;vector-effect:non-scaling-stroke}"
+        : "";
       sortie = sortie.replace(
         /<\/style>/,
         "path:not([class]),polygon:not([class]),rect:not([class]),circle:not([class]),ellipse:not([class]){fill:" +
           CONTOUR +
-          "}</style>",
+          "}" +
+          trait +
+          "</style>",
       );
       return sortie.replace(/<svg\b([^>]*)>/, function (_m, attrs) {
         var a = attrs.replace(/\s(viewBox|width|height)\s*=\s*"[^"]*"/g, "");
@@ -160,7 +185,13 @@
       var repli = bloc.getAttribute("data-apercu-cadrage") || "0 0 500 1000";
       var cadrage = await cadrageDuDessin(svg, repli);
       images.forEach(function (img) {
-        img.src = enImage(apercuDeZone(svg, img.getAttribute("data-zone"), cadrage));
+        var couleurs = null;
+        try {
+          couleurs = JSON.parse(img.getAttribute("data-couleurs") || "null");
+        } catch (e) {
+          couleurs = null; // illisible : les couleurs du fichier
+        }
+        img.src = enImage(apercuDeZone(svg, img.getAttribute("data-zone"), cadrage, couleurs));
         img.style.visibility = "visible";
       });
     }

@@ -582,27 +582,6 @@ export function principaleDeLaPiece(piece: DessinDePiece): GroupeCouleur | undef
 }
 
 /**
- * Les groupes d'une pièce tels que la règle de sa catégorie les voit : sous
- * « principale », les ombres de la principale ne forment plus des groupes à
- * part, elles sont ses nuances (cf. principaleDeLaPiece). Sous « toutes », ou
- * quand la pièce a son propre réglage, les groupes du dessin, tels quels.
- */
-export function groupesSelonLaRegle(
-  piece: DessinDePiece,
-  regle?: CouleursProposees | null,
-): GroupeCouleur[] {
-  const groupes = groupesDuDessin(piece.colorZones, piece.groupesCouleurs);
-  if (Array.isArray(piece.zonesMasquees) || regle !== "principale") return groupes;
-  const principal = principaleDeLaPiece(piece);
-  if (!principal) return groupes;
-  const reunies = new Set(zonesDuGroupe(principal));
-  return [
-    principal,
-    ...groupes.filter((g) => g.zone !== principal.zone && !reunies.has(g.zone)),
-  ];
-}
-
-/**
  * Les groupes d'une pièce que le client peut recolorer, dans l'ordre.
  *
  * - Réglage propre à la pièce (`zonesMasquees` est une liste) : tous les
@@ -625,41 +604,6 @@ export function groupesProposesDeLaPiece(
     return principal ? [principal] : [];
   }
   return groupes;
-}
-
-/**
- * Les couleurs à ÉCRIRE pour les groupes qu'une pièce ne propose pas : leurs
- * couleurs par défaut, nuances comprises, sous les clés de l'emplacement
- * (« accessory:st1 »).
- *
- * Le configurateur les écrit dans la configuration quand le client choisit la
- * pièce. Sans cela, la couleur d'une autre pièce du même emplacement (choisie
- * avant, sous la même zone) resterait accrochée à un détail que le client ne
- * peut plus changer.
- *
- * C'est aussi ce qui laisse l'impression intacte : un groupe que la
- * CATÉGORIE ne propose pas n'est pas forcé à son défaut au rendu (à la
- * différence des cases de la pièce, cf. couleursDeLaPiece). L'écran et le
- * papier dessinent la configuration telle qu'elle est enregistrée, et une
- * commande passée avant le réglage garde exactement les couleurs choisies.
- */
-export function couleursDesGroupesNonProposes(
-  scope: string,
-  piece: DessinDePiece,
-  regle?: CouleursProposees | null,
-): Record<string, string> {
-  // Zone par zone : une ombre qui suit la principale (cf. principaleDeLaPiece)
-  // est proposée avec elle, et ne reprend donc pas sa couleur d'origine.
-  const suivies = new Set(groupesProposesDeLaPiece(piece, regle).flatMap(zonesDuGroupe));
-  const out: Record<string, string> = {};
-  for (const g of groupesDuDessin(piece.colorZones, piece.groupesCouleurs)) {
-    for (const z of zonesDuGroupe(g)) {
-      if (suivies.has(z)) continue;
-      const defaut = piece.colorZones?.[z];
-      if (defaut) out[colorKey(scope, z)] = defaut;
-    }
-  }
-  return out;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -685,9 +629,9 @@ export function couleursDesGroupesNonProposes(
  *
  * SEULES LES CASES DE LA PIÈCE forcent ainsi le défaut. Un groupe que sa
  * CATÉGORIE ne propose pas (« seulement la couleur principale ») se dessine
- * avec la couleur enregistrée : le configurateur y écrit le défaut quand on
- * choisit la pièce (couleursDesGroupesNonProposes), et une commande passée
- * avant ce réglage s'imprime exactement comme avant.
+ * avec la couleur enregistrée : le configurateur écrit toutes les couleurs du
+ * dessin quand on choisit la pièce (couleursAuChangementDePiece), et une
+ * commande passée avant ce réglage s'imprime exactement comme avant.
  *
  * Sans couleur par défaut connue pour une zone, on retire simplement la
  * surcharge : le dessin garde la couleur écrite dans son fichier.

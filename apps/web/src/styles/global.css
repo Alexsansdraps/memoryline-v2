@@ -1002,14 +1002,15 @@ html {
     z-index: 2;
     display: flex;
     align-items: center;
-    gap: 12px;
+    /* L'aperçu seul, au milieu du bandeau. */
+    justify-content: center;
     background: var(--color-paper);
     padding-bottom: 8px;
     border-bottom: 1px solid rgba(32, 33, 31, 0.08);
     /* Sur les côtés, deux ombres de la couleur du panneau (#fafafa, posée par
        le configurateur) : l'anneau de la couleur choisie déborde de 4 px de
-       sa colonne, et passait au bord de l'aperçu pendant qu'on descendait
-       vers une partie du sommaire. Invisibles, elles le recouvrent. */
+       sa colonne, et passait au bord de l'aperçu pendant qu'on descendait.
+       Invisibles, elles le recouvrent. */
     box-shadow:
       -6px 0 0 #fafafa,
       6px 0 0 #fafafa;
@@ -1029,73 +1030,9 @@ html {
   .ml-cfg-perso-apercu {
     height: 22vh;
     margin-inline: 0;
-    /* Le sommaire à côté ne doit pas le rétrécir : sa largeur vient de sa
-       hauteur, par le rapport 1:2 du dessin. */
+    /* Sa largeur vient de sa hauteur, par le rapport 1:2 du dessin : le
+       flex ne doit pas la rogner. */
     flex: 0 0 auto;
-  }
-  /* Le sommaire des réglages prend le blanc à DROITE de l'aperçu : collé
-     avec lui, il reste à l'écran pendant qu'on descend dans les réglages.
-     Le configurateur le pose sous l'aperçu, centré, pour l'écran large. */
-  .ml-cfg-sommaire {
-    flex: 1 1 auto;
-    margin-top: 0 !important;
-    text-align: left !important;
-  }
-  .ml-cfg-sommaire-liste {
-    justify-content: flex-start !important;
-    /* 12 px entre deux rangées : de quoi loger la zone de toucher qui
-       déborde de chaque pastille (ci-dessous). */
-    row-gap: 12px !important;
-  }
-  /* 44 px de haut sous le doigt, sans grandir le bandeau : la pastille garde
-     sa taille à l'œil (32 px), et sa zone de toucher déborde de 6 px dessus
-     et dessous, dans l'écart entre les rangées — de 3 sur les côtés, la
-     moitié de l'écart entre voisines : deux zones ne se chevauchent jamais.
-     Un pixel de plus partout : le pseudo-élément se place depuis l'intérieur
-     de la bordure. Il fait partie du bouton : le toucher qui l'atteint
-     actionne la pastille. Des pastilles de 44 px pour de bon auraient
-     grandi le bandeau collé sur les téléphones courts (375 × 667), aux dépens
-     de la grille des personnages. */
-  .ml-cfg-sommaire-pastille {
-    position: relative;
-  }
-  .ml-cfg-sommaire-pastille::before {
-    content: "";
-    position: absolute;
-    inset: -7px -4px;
-  }
-}
-
-/* Sur les plus petits téléphones (320 px), il reste 176 px à côté d'un aperçu
-   haut de 141 : les pastilles se resserrent pour tenir sur trois rangées. À
-   leur taille normale, elles en prenaient cinq, débordaient de l'aperçu et
-   grandissaient le bandeau collé — au détriment de ce qui défile dessous.
-   28 px à l'œil, mais toujours 44 sous le doigt : la zone de toucher déborde
-   de 8 px dans un écart de 16 entre les rangées. Trois rangées tiennent
-   encore à côté de l'aperçu (139 px pour 141). */
-@media (max-width: 359px) {
-  .ml-cfg-sommaire-liste {
-    gap: 16px 5px !important;
-  }
-  .ml-cfg-sommaire-pastille {
-    min-height: 28px !important;
-    padding: 4px 9px !important;
-    gap: 5px !important;
-    font-size: 12px !important;
-  }
-  .ml-cfg-sommaire-pastille::before {
-    inset: -9px -3px;
-  }
-}
-
-/* Sur une tablette tactile — le stand se tient sur une tablette —, la place
-   ne manque pas à côté de l'aperçu : les pastilles du sommaire prennent pour
-   de bon la taille d'une cible au doigt, 44 px. */
-@media (min-width: 600px) and (pointer: coarse) {
-  .ml-cfg-sommaire-pastille {
-    min-height: 44px !important;
-    padding: 10px 16px !important;
-    font-size: 14px !important;
   }
 }
 

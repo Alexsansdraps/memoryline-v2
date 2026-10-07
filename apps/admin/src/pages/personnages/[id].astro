@@ -608,7 +608,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
                 proposees={perso.baseZonesProposees ?? null}
                 couleursImage={perso.baseCouleursImage ?? null}
                 rappel="Pensez à enregistrer le dessin."
-                aide="Seule la première couleur (la peau) est proposée au client, sauf si vous en cochez d'autres : le pelage d'un animal, une robe dessinée sur le personnage… Le nom et le nuancier sont ceux que le client verra. Si le dessin est une image en pixels (une photo, une illustration : les chiens et les chats), ce sont ses couleurs principales qui apparaissent, et RIEN n'est proposé au client tant que vous n'en avez coché aucune."
+                aide="Au départ, seule la peau est proposée. Cochez « Le client peut la changer » pour en ajouter : le pelage d'un animal, une robe dessinée sur le personnage… « Pastilles » choisit les couleurs qu'il aura pour celle-ci. Pour une image en pixels (les chiens et les chats), rien n'est proposé tant que vous n'avez rien coché."
               />
             </div>
             <div class="mt-3 flex items-center gap-2">
@@ -929,7 +929,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
           statut.textContent =
             "Couleurs modifiées — cliquez « Enregistrer le dessin » pour les garder.";
         reglages = e.detail;
-        // « Détecter les couleurs » a pu préparer une version du dessin à
+        // La lecture du dessin a pu préparer une version du dessin à
         // part (couleurs écrites forme par forme) : c'est elle qui s'enregistre.
         if (reglages.svgUrl && reglages.svgUrl !== champ.value.trim()) {
           champ.value = reglages.svgUrl;

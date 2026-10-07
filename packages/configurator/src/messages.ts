@@ -100,26 +100,6 @@ export interface MessagesConfigurateur {
    * accessoires), sous la grille des personnages.
    */
   personnaliserPerso: string;
-  /**
-   * Le titre court du sommaire des réglages, posé à côté de l'aperçu du
-   * personnage, avant ses pastilles (« Personnaliser : »).
-   */
-  sommaireTitre: string;
-  /**
-   * La pastille du sommaire qui mène à la couleur de la peau — la rangée que
-   * tout personnage reçoit d'office, sans nom au back-office.
-   */
-  sommairePeau: string;
-  /**
-   * La pastille d'une autre rangée de couleur sans nom au back-office, ou de
-   * celle d'un personnage sans vêtements (un animal : ce n'est pas une peau).
-   */
-  sommaireCouleur: string;
-  /**
-   * La pastille des coupes de cheveux : le nom de la partie, plus court que
-   * le titre de sa galerie (`coupes`), pour tenir à côté de l'aperçu.
-   */
-  sommaireCheveux: string;
 }
 
 export const MESSAGES_DEFAUT: MessagesConfigurateur = {
@@ -180,12 +160,6 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   ),
   locale: "fr-FR",
   personnaliserPerso: "Personnaliser ce personnage",
-  // Espace insécable avant les deux-points : le titre ne doit pas passer à
-  // la ligne entre le mot et sa ponctuation, dans un sommaire étroit.
-  sommaireTitre: "Personnaliser :",
-  sommairePeau: "Peau",
-  sommaireCouleur: "Couleur",
-  sommaireCheveux: "Cheveux",
 };
 
 /** Complète un dictionnaire partiel par les valeurs françaises. */

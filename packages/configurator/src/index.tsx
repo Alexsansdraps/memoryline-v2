@@ -15,9 +15,6 @@ import { unwrap } from "solid-js/store";
 import {
   BASE_COLOR_SCOPE,
   colorKey,
-  couleursDesGroupesNonProposes,
-  couleursDuGroupePourScope,
-  groupesSelonLaRegle,
   ligneEnMajuscules,
   prixDuCadreCents,
 } from "@memoryline/types";
@@ -36,8 +33,8 @@ import {
   createConfiguratorStore,
   createSvgCache,
   defaultCharacter,
+  couleursAuChangementDePiece,
   findVariant,
-  regleDeLaPiece,
   slotsForCharacter,
   variantesDeVue,
   NONE_ASSET,
@@ -412,35 +409,31 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     mutate((s) => {
       const c = s.characters[index];
       if (!c) return;
+      // La pièce déjà portée, touchée à nouveau : rien ne change, ses couleurs
+      // non plus.
+      if (String(c.assets[slot]) === String(variantId)) return;
+      const variantes = slotVariants()[slot];
+      const ancienne = findVariant(variantes, c.assets[slot]);
       c.assets[slot] = variantId;
-      // Ajoute les couleurs par défaut des nouvelles zones de cette variante,
-      // namespacées par slot (une couleur déjà choisie pour ce slot persiste).
-      const v = findVariant(slotVariants()[slot], variantId);
-      for (const [zone, hex] of Object.entries(v?.colorZones ?? {})) {
-        const key = colorKey(slot, zone);
-        if (c.colors[key] === undefined) c.colors[key] = hex;
-      }
-      // Les nuances de la nouvelle pièce suivent la couleur que porte déjà sa
-      // référence : un pull passé au vert garde des ombres vertes, pas celles
-      // du pull d'avant ni celles du dessin. Les groupes sont ceux que voit la
-      // règle de la catégorie : sous « couleur principale », les ombres de la
-      // principale en sont les nuances (cf. principaleDeLaPiece).
-      const regle = v ? regleDeLaPiece(props.pieceCategories, v) : null;
-      for (const g of v ? groupesSelonLaRegle(v, regle) : []) {
-        const choisie = c.colors[colorKey(slot, g.zone)];
-        if (!choisie || !g.nuances?.length) continue;
-        Object.assign(
-          c.colors,
-          couleursDuGroupePourScope(slot, g, v?.colorZones, choisie),
-        );
-      }
-      // Les détails que la pièce ne propose pas (le ruban d'un chapeau quand
-      // la catégorie s'en tient à la couleur principale) reprennent la couleur
-      // du dessin. Sans cela, la couleur choisie pour un AUTRE chapeau, sous
-      // la même zone, resterait sur ce ruban sans que le client puisse plus
-      // la changer. Écrite ici, dans la configuration, elle est celle que
-      // l'aperçu montre et que le fichier d'impression relit.
-      if (v) Object.assign(c.colors, couleursDesGroupesNonProposes(slot, v, regle));
+      const v = findVariant(variantes, variantId);
+      if (!v) return;
+      // La nouvelle pièce arrive avec les couleurs de son dessin, et seulement
+      // elles : celles de la pièce d'avant, rangées sous les mêmes numéros de
+      // zone, tombaient sur d'autres parties du dessin (cf.
+      // couleursAuChangementDePiece). Écrites ici, dans la configuration,
+      // elles sont celles que l'aperçu montre et que le fichier d'impression
+      // relit.
+      const couleurs = couleursAuChangementDePiece(
+        slot,
+        c.colors,
+        ancienne,
+        v,
+        props.pieceCategories,
+      );
+      const prefixe = colorKey(slot, "");
+      for (const cle of Object.keys(c.colors))
+        if (cle.startsWith(prefixe)) delete c.colors[cle];
+      Object.assign(c.colors, couleurs);
     });
   }
   /**

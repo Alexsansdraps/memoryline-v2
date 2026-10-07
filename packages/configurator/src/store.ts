@@ -15,7 +15,12 @@ import type {
 import {
   ORDRE_CALQUES,
   colorKey,
+  couleursDuGroupePourScope,
   dessinAvecImage,
+  groupePrincipal,
+  groupesProposesDeLaPiece,
+  memeCouleur,
+  principaleDeLaPiece,
   parametreDesFamilles,
   recolorSvg,
   POLICE_TITRE_DEFAUT,
@@ -848,6 +853,70 @@ export function regleDeLaPiece(
     ? categories?.find((c) => c.id === variant.pieceCategoryId)
     : undefined;
   return cat?.couleursProposees === "principale" ? "principale" : "toutes";
+}
+
+/**
+ * La couleur principale d'une pièce, celle qui passe d'une pièce à l'autre :
+ * la plus étendue, avec les ombres de la même teinte (cf.
+ * principaleDeLaPiece) — un t-shirt passé au rose ne garde pas des ombres
+ * vert foncé. Quand la boutique a coché elle-même les couleurs de la pièce,
+ * on s'en tient aux siennes : la plus étendue de celles qu'elle propose.
+ */
+function rangeePrincipale(
+  piece: VariantDTO,
+  categories: readonly PieceCategoryDTO[] | undefined,
+): GroupeCouleur | undefined {
+  if (!Array.isArray(piece.zonesMasquees)) return principaleDeLaPiece(piece);
+  return groupePrincipal(
+    groupesProposesDeLaPiece(piece, regleDeLaPiece(categories, piece)),
+    piece.partsDesZones,
+  );
+}
+
+/**
+ * Les couleurs d'un emplacement quand le client y choisit une AUTRE pièce :
+ * toutes les clés de l'emplacement (« clothes:st0 »), celles de la nouvelle
+ * pièce et aucune autre.
+ *
+ * Chaque pièce arrive avec les couleurs de SON dessin. Les couleurs sont
+ * rangées par zone, et une zone ne désigne pas la même partie d'un dessin à
+ * l'autre — le corps d'un t-shirt ici, son col là. Quand elles passaient
+ * d'une pièce à l'autre, un t-shirt vert s'affichait rose parce qu'on avait
+ * regardé un rose avant lui, sans que le client ait rien choisi (retour
+ * cliente : « les couleurs sont grave random »).
+ *
+ * Une seule couleur suit : celle que le client a VRAIMENT choisie pour la
+ * couleur principale de la pièce qu'il quitte. Elle va sur la couleur
+ * principale de la nouvelle, ombres comprises (cf. rangeePrincipale) — on
+ * garde sa couleur de cheveux en changeant de coupe. Laissée à la couleur du
+ * dessin, elle ne suit pas : rien n'a été choisi.
+ *
+ * Les vignettes de la galerie passent par ici elles aussi : chacune montre
+ * la pièce telle qu'elle arrivera si on la touche.
+ */
+export function couleursAuChangementDePiece(
+  slot: Slot,
+  colors: Record<string, string>,
+  ancienne: VariantDTO | undefined,
+  nouvelle: VariantDTO,
+  categories: readonly PieceCategoryDTO[] | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [zone, hex] of Object.entries(nouvelle.colorZones ?? {}))
+    out[colorKey(slot, zone)] = hex;
+
+  const quittee = ancienne ? rangeePrincipale(ancienne, categories) : undefined;
+  const choisie = quittee ? colors[colorKey(slot, quittee.zone)] : undefined;
+  const dessinee = quittee ? ancienne?.colorZones?.[quittee.zone] : undefined;
+  if (!choisie || !dessinee || memeCouleur(choisie, dessinee)) return out;
+
+  const cible = rangeePrincipale(nouvelle, categories);
+  if (cible)
+    Object.assign(
+      out,
+      couleursDuGroupePourScope(slot, cible, nouvelle.colorZones, choisie),
+    );
+  return out;
 }
 
 /**
