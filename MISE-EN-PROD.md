@@ -70,7 +70,8 @@ Sans argument, le script **montre seulement** : ce qui partira, ce qui restera, 
 | Variable | Production |
 |---|---|
 | `DOMAINE` | `memoryline.fr` |
-| `PUBLIC_ORIGIN` | `https://memoryline.fr` (sans `/` final) |
+| `DOMAINE_WWW` | `www.memoryline.fr`, **seulement une fois** l'enregistrement DNS `www` pointé vers le serveur (voir § 4). Absente, Caddy ne sert que le domaine nu |
+| `PUBLIC_ORIGIN` | `https://memoryline.fr` (sans `/` final, sans `www`) : c'est l'adresse canonique de toutes les pages, des hreflang et du plan du site |
 | `COURRIEL_TLS` | une adresse lue par quelqu'un (alertes du certificat) |
 | `PUBLIC_NOINDEX` | `false`. **Sinon Google n'indexe rien** : le défaut du serveur est `true` |
 | `PUBLIC_JEU_ESSAI` | **à supprimer** (formulaires pré-remplis, compte fictif, bandeau « Site de test ») |
@@ -98,7 +99,7 @@ Ensuite, supprimer du serveur les anciennes copies `.env.avant-*`, qui contienne
 ## 4. Nom de domaine
 
 - [ ] Chez le registrar de memoryline.fr : enregistrement **A** `memoryline.fr` → `51.255.34.187` (et AAAA si le serveur a une IPv6). **Supprimer les anciens enregistrements Shopify**, sinon le certificat ne s'obtient pas.
-- [ ] `www.memoryline.fr` : Caddy ne sert aujourd'hui que le domaine nu. Si le www est utilisé, ajouter une redirection www → memoryline.fr dans `Caddyfile.prod`, et faire pointer le www vers le serveur.
+- [ ] `www.memoryline.fr` (Shopify le redirige aujourd'hui vers le domaine nu, des liens le portent) : faire pointer l'enregistrement `www` vers le serveur (A, ou CNAME vers `memoryline.fr`), **puis** ajouter `DOMAINE_WWW=www.memoryline.fr` au `.env` et relancer le proxy (`docker compose -f docker-compose.prod.yml up -d proxy`). `Caddyfile.prod` est prêt : il obtient le certificat du www et redirige en 301, en un saut, vers la même adresse sur `memoryline.fr`.
 - [ ] Une fois le DNS propagé : `https://memoryline.fr` s'ouvre avec le cadenas (Caddy obtient le certificat tout seul).
 
 ## 5. Les comptes des prestataires (onglet *Live*)
@@ -133,12 +134,17 @@ Ensuite, supprimer du serveur les anciennes copies `.env.avant-*`, qui contienne
 - [ ] **Aide du BO** : les rubriques « Comment passer une commande test ? » et « Où arrivent les courriers pendant les tests ? », ainsi que la section de BO › Courriers sur le `.env`, ne doivent s'afficher qu'en mode essai.
 - [ ] Caisse : le message « Ajoutez vos clés Stripe et/ou PayPal dans le fichier .env » peut s'afficher à une cliente. Le remplacer par un message neutre.
 - [ ] Image de partage par défaut `/og-default.png` : elle est absente, ce qui casse l'aperçu sur les réseaux sociaux.
-- [ ] **Plan du site** : vérifier après la construction de prod que `https://memoryline.fr/sitemap-0.xml` contient bien les `/affiches/…`. L'API n'est peut-être pas joignable pendant la construction.
-- [ ] **Redirections des anciennes adresses Shopify** (`/products/…`, `/collections/…`) vers les nouvelles : indispensables pour garder le référencement Google.
+- [x] **Plan du site** : rendu à la demande à `/sitemap.xml` (l'adresse de celui de Shopify), à partir du catalogue du moment. Il ne dépend plus de la construction.
+- [x] **Redirections des anciennes adresses Shopify** : fiches, collections, pages, `/policies/…`, blog, recherche, en 301 et en un seul saut, suivi `utm_*` conservé. Les correspondances sont toutes dans `apps/web/src/lib/anciennes-adresses.ts`.
+- [ ] **Faire valider par Margaux** les destinations choisies à la main dans `anciennes-adresses.ts` : les 18 fiches Shopify absentes du nouveau catalogue, les collections vides ou techniques, `/pages/affiches-personnalisables`.
+- [ ] **Redirections posées dans Shopify** (Admin Shopify › Contenu › Menus › Redirections d'URL, ex. strasbourg → colmar) : les exporter avant la fermeture de la boutique et les saisir dans BO › Redirections. Une cible écrite à la mode Shopify (`/products/…`) est suivie jusqu'au bout : un seul saut.
 
 ## 8. Vérifications le jour J
 
-- [ ] `https://memoryline.fr/robots.txt` affiche `Allow: /` et la ligne `Sitemap:` du vrai domaine.
+- [ ] `https://memoryline.fr/robots.txt` affiche `Allow: /` et la ligne `Sitemap: https://memoryline.fr/sitemap.xml`.
+- [ ] Une fiche (`curl -s https://memoryline.fr/affiches/vieux-moulin-affiche-personnalisee | grep -E 'robots|canonical'`) porte `index, follow` et une canonique en `https://memoryline.fr/…`.
+- [ ] `https://memoryline.fr/sitemap.xml` liste les `/affiches/…` en `https://memoryline.fr`.
+- [ ] `curl -sI https://memoryline.fr/products/vieux-moulin-affiche-personnalisee` répond `301` vers `/affiches/…`, et `curl -sI https://www.memoryline.fr/` répond `301` vers `https://memoryline.fr/` (si `DOMAINE_WWW` est posé).
 - [ ] `https://memoryline.fr/api/payments/config` répond `"essai": false`.
 - [ ] Une **vraie petite commande** par carte, puis remboursée depuis le BO. Une autre par PayPal si PayPal est branché.
 - [ ] Le courriel de confirmation arrive dans une vraie boîte, et n'est pas classé en spam.
@@ -146,7 +152,7 @@ Ensuite, supprimer du serveur les anciennes copies `.env.avant-*`, qui contienne
 - [ ] La facture sort en **F2026-0001**, avec l'adresse et le SIRET.
 - [ ] Le BO › Accueil montre Stripe (et PayPal) branchés, sans badge « essai ».
 - [ ] La caisse arrive **vide** (pas de client fictif), et l'inscription n'affiche plus « Site de test ».
-- [ ] **Google Search Console** : déclarer le domaine, soumettre `https://memoryline.fr/sitemap-index.xml`.
+- [ ] **Google Search Console** : déclarer le domaine, soumettre `https://memoryline.fr/sitemap.xml` (même adresse que le plan Shopify : le resoumettre suffit).
 
 ## 9. Sauvegardes
 

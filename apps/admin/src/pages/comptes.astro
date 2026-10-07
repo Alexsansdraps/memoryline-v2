@@ -129,7 +129,7 @@ const archivable = (c: CompteAdmin) =>
       </thead>
       <tbody>
         {actifs.map((c) => (
-          <tr class="border-t border-bo-border align-top">
+          <tr id={`compte-${c.id}`} class="border-t border-bo-border align-top">
             <td class="px-4 py-3">
               <form method="POST" class="flex flex-wrap items-end gap-3">
                 <input type="hidden" name="id" value={c.id} />
@@ -242,7 +242,7 @@ const archivable = (c: CompteAdmin) =>
       </p>
       <div class="space-y-2 opacity-70">
         {archives.map((c) => (
-          <div class="flex flex-wrap items-center gap-4 rounded-lg border border-bo-border bg-bo-surface p-3">
+          <div id={`compte-${c.id}`} class="flex flex-wrap items-center gap-4 rounded-lg border border-bo-border bg-bo-surface p-3">
             <div class="min-w-56 flex-1">
               <p class="font-medium">{c.email}</p>
               <p class="text-xs text-bo-muted">

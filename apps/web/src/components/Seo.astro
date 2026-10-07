@@ -42,9 +42,33 @@ const {
 const siteUrl = Astro.site?.toString().replace(/\/$/, "") ?? "https://memoryline.fr";
 const canonical = new URL(path, siteUrl + "/").toString();
 const ogImage = image.startsWith("http") ? image : new URL(image, siteUrl + "/").toString();
-// L'environnement de test ne doit pas être indexé, page par page — le
-// robots.txt seul n'empêche pas une URL de finir dans l'index.
-const blockIndex = noindex || import.meta.env.PUBLIC_NOINDEX === "true";
+/*
+ * L'image par défaut (accueil, rayons, pages) : le logo sur fond blanc, en
+ * 1 200 × 630, le format des aperçus de Facebook, WhatsApp ou LinkedIn. Elle
+ * manquait — /og-default.png répondait 404, et un lien partagé n'avait pas
+ * d'image. Ses dimensions, connues, sont annoncées : le réseau dessine
+ * l'aperçu dès le premier partage, sans attendre de l'avoir téléchargée.
+ */
+const imageParDefaut = image === "/og-default.png";
+/*
+ * Ce que la page dit aux robots.
+ *
+ * L'environnement de test ne doit pas être indexé, page par page — le
+ * robots.txt seul n'empêche pas une URL de finir dans l'index : tout y est
+ * « noindex, nofollow ». C'est le SEUL réglage qui ferme l'indexation du site
+ * entier (PUBLIC_NOINDEX, lu au build), avec le « Disallow: / » de robots.txt.
+ *
+ * En ligne, une page qu'on ne veut pas dans Google (panier, compte, une fiche
+ * non traduite sous /en…) est « noindex, follow » : elle n'entre pas dans
+ * l'index, mais ses liens — le menu, le pied de page, les affiches — restent
+ * suivis, et c'est par eux que le robot trouve le reste de la boutique.
+ */
+const enTest = import.meta.env.PUBLIC_NOINDEX === "true";
+const robots = enTest
+  ? "noindex, nofollow"
+  : noindex
+    ? "noindex, follow"
+    : "index, follow, max-image-preview:large";
 const jsonLdList = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 /**
  * La locale à la mode d'Open Graph : « fr_FR », avec un tiret bas.
@@ -60,8 +84,7 @@ const localeOg = (l: Langue) => LOCALE_COMPLETE[l].replace("-", "_");
 <title>{title}</title>
 <meta name="description" content={description} />
 <link rel="canonical" href={canonical} />
-{blockIndex && <meta name="robots" content="noindex, nofollow" />}
-{!blockIndex && <meta name="robots" content="index, follow, max-image-preview:large" />}
+<meta name="robots" content={robots} />
 
 <!-- Open Graph (Facebook, LinkedIn, etc.) -->
 <meta property="og:site_name" content="Memory Line" />
@@ -76,6 +99,15 @@ const localeOg = (l: Langue) => LOCALE_COMPLETE[l].replace("-", "_");
 <meta property="og:description" content={description} />
 <meta property="og:url" content={canonical} />
 <meta property="og:image" content={ogImage} />
+{
+  imageParDefaut && (
+    <Fragment>
+      <meta property="og:image:width" content="1200" />
+      <meta property="og:image:height" content="630" />
+      <meta property="og:image:alt" content="Memory Line" />
+    </Fragment>
+  )
+}
 
 <!-- Twitter Card -->
 <meta name="twitter:card" content="summary_large_image" />

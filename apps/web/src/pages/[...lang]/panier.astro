@@ -1,5 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
+import { titreDePage } from "../../lib/textes-seo.ts";
 import CartIsland from "../../islands/CartIsland.tsx";
 import { signatureDesCreations } from "../../lib/signature.ts";
 import {
@@ -41,7 +42,7 @@ const signature = await signatureDesCreations();
 
 <Base
   langue={langue}
-  title={`${auStand ? tr("stand.titre") : tr("panier.titre")} — Memory Line`}
+  title={titreDePage(auStand ? tr("stand.titre") : tr("panier.titre"))}
   path={lien(langue, "/panier")}
   noindex={true}
 >

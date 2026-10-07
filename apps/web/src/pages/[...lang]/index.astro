@@ -182,9 +182,52 @@ const lettreTitre = await texte(
   "home.newsletter.title",
   tr("accueil.lettre_titre"),
 );
+
+/*
+ * Qui est la boutique, dit aux moteurs (données structurées Schema.org).
+ *
+ * memoryline.fr les publie aujourd'hui sur chaque page ; le nouveau site n'en
+ * avait aucune. Google en tire le nom du site affiché au-dessus du résultat
+ * et le logo de la marque. L'accueil seulement : c'est là qu'il les cherche.
+ *
+ * Rien n'y est inventé : ni réseaux sociaux (la boutique n'en a déclaré
+ * aucun, memoryline.fr publiait une liste vide), ni téléphone. Le champ de
+ * recherche mène à la page de recherche du site, dans la langue de la page.
+ */
+const siteUrl = Astro.site?.toString().replace(/\/$/, "") ?? "https://memoryline.fr";
+const organisationLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "@id": `${siteUrl}/#organisation`,
+  name: "Memory Line",
+  url: `${siteUrl}/`,
+  logo: {
+    "@type": "ImageObject",
+    url: `${siteUrl}/logo-memory-line.png`,
+    width: 500,
+    height: 222,
+  },
+};
+const siteLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "@id": `${siteUrl}/#site`,
+  name: "Memory Line",
+  url: siteUrl + lien(langue, "/"),
+  inLanguage: langue,
+  publisher: { "@id": `${siteUrl}/#organisation` },
+  potentialAction: {
+    "@type": "SearchAction",
+    target: {
+      "@type": "EntryPoint",
+      urlTemplate: `${siteUrl}${lien(langue, "/recherche")}?q={search_term_string}`,
+    },
+    "query-input": "required name=search_term_string",
+  },
+};
 ---
 
-<Base langue={langue}>
+<Base langue={langue} path={lien(langue, "/")} jsonLd={[organisationLd, siteLd]}>
   {/* ---------------- Bandeaux visuels ----------------
       Tout en haut, sous l'en-tête et AVANT les affiches — et surtout HORS de
       la condition de la vitrine : à l'intérieur, ils disparaîtraient le jour
@@ -192,16 +235,23 @@ const lettreTitre = await texte(
       rien. L'ancien encart d'accueil y est repris (voir plus haut). */}
   <BandeauxVisuels pages={[PAGE_ACCUEIL]} langue={langue} />
 
-  {/* ---------------- Les affiches ---------------- */}
+  {/* ---------------- Les affiches ----------------
+
+      LE TITRE DE LA PAGE dit ce qu'est la boutique : « Affiches
+      personnalisées de villes et de paysages ». C'était « Nos best-sellers
+      ❤️ », le titre de la vitrine réglé au back-office — un titre de
+      section, qui ne disait rien de la boutique à Google ni à un lecteur
+      d'écran. Il passe juste au-dessus, en petite ligne rouge (l'allure de
+      la nature de l'affiche sur une fiche), et la vitrine garde son titre
+      en second rang. Vitrine masquée ou vide, il reste seul, à la même
+      place : la page ne perd jamais son titre. */}
   {
-    vitrineVisible && vitrine.length > 0 && (
+    vitrineVisible && vitrine.length > 0 ? (
       <section class="w-full px-4 pt-12 pb-4 sm:px-6 lg:px-12">
         <div class="mb-8 flex flex-wrap items-end justify-between gap-3">
           <div>
-            {/* Devenu le titre de la page depuis que le bandeau d'accroche
-                a été retiré : une page sans h1 se présente mal aux moteurs
-                de recherche. */}
-            <h1 class="text-2xl sm:text-3xl">{vitrineTitre}</h1>
+            <h1 class="text-xs uppercase tracking-wide text-terracotta">{tr("accueil.h1")}</h1>
+            <h2 class="mt-1 text-2xl sm:text-3xl">{vitrineTitre}</h2>
             <div class="mt-2 space-y-0.5 text-ink-soft">
               {vitrineLignes.map((l) =>
                 l.puce ? (
@@ -253,6 +303,10 @@ const lettreTitre = await texte(
             {tr("accueil.tout_afficher")}
           </a>
         </div>
+      </section>
+    ) : (
+      <section class="w-full px-4 pt-12 pb-4 sm:px-6 lg:px-12">
+        <h1 class="text-xs uppercase tracking-wide text-terracotta">{tr("accueil.h1")}</h1>
       </section>
     )
   }

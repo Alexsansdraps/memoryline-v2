@@ -7,6 +7,7 @@
  * navigateur ne doit pas pouvoir la déclencher tout seul.
  */
 import Base from "../layouts/Base.astro";
+import { titreDePage } from "../lib/textes-seo.ts";
 import { lien, t, type Langue } from "../i18n/utils.ts";
 
 interface Props {
@@ -30,7 +31,7 @@ const onglets = [
 
 <Base
   langue={langue}
-  title={`${titre} — Memory Line`}
+  title={titreDePage(titre)}
   path={lien(langue, chemin)}
   noindex={true}
 >

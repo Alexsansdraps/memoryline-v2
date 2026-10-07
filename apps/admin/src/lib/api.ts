@@ -1,4 +1,9 @@
 import type { CouleursImage, GroupeCouleur } from "@memoryline/types";
+import {
+  RECHERCHE_LIMITE_PANNEAU,
+  type GroupeId,
+  type ReponseRecherche,
+} from "@memoryline/types/recherche";
 import { apiInterne } from "./api-interne.ts";
 /**
  * Client API du back-office. Lecture ET écriture (le BO modifie la config).
@@ -1588,6 +1593,23 @@ export interface GroupeArchives {
 export function adminApi(request?: Request) {
   const cookie = request?.headers.get("cookie") ?? undefined;
   return {
+    /**
+     * La recherche du haut, côté DONNÉES (GET /admin/recherche) : affiches,
+     * commandes, clientes, textes du site… Les écrans et l'aide viennent du
+     * back-office lui-même ; c'est lib/recherche-bo.ts qui réunit les deux.
+     * Sans `groupes`, l'API cherche partout.
+     */
+    recherche: (p: { q: string; groupes?: readonly GroupeId[]; limite?: number }) =>
+      req<ReponseRecherche>(
+        "GET",
+        "/admin/recherche?q=" +
+          encodeURIComponent(p.q) +
+          (p.groupes ? "&groupes=" + p.groupes.join(",") : "") +
+          "&limite=" +
+          (p.limite ?? RECHERCHE_LIMITE_PANNEAU),
+        undefined,
+        cookie,
+      ),
     /**
      * Tout ce qui est archivé, d'un coup. Lecture seule : la restauration
      * passe par la route d'archivage de chaque nature, la seule qui en

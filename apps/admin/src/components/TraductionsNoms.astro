@@ -29,6 +29,8 @@ interface Props {
   /** Ouvert d'office (après une proposition, pour qu'on la voie). */
   ouvert?: boolean;
   classe?: string;
+  /** L'id du bloc, où la recherche emmène (voir Traductions.astro). */
+  ancre?: string;
 }
 
 const { elements, ...reste } = Astro.props;

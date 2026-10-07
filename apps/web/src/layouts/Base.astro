@@ -7,7 +7,6 @@ import CookieBanner from "../components/CookieBanner.astro";
 import CartBadge from "../islands/CartBadge.tsx";
 import {
   LANGUE_DEFAUT,
-  LOCALE_COMPLETE,
   autresVersions,
   cheminSansLangue,
   lien,
@@ -15,23 +14,42 @@ import {
   type Langue,
 } from "../i18n/utils.ts";
 import { api, type EntreeMenuPublique } from "../lib/api.ts";
+import { languesDuContenu } from "../lib/referencement.ts";
 interface Props {
   /** Langue de la page — pilote les libellés, les liens et le hreflang. */
   langue?: Langue;
   title?: string;
   description?: string;
+  /**
+   * L'adresse canonique de la page, préfixe de langue et requête compris
+   * (« /en/affiches?genre=personnalisable&collection=villes »). Les versions
+   * dans les autres langues (hreflang, sélecteur de langue) en sont tirées.
+   * Absente : le chemin demandé, sans sa requête.
+   */
   path?: string;
   image?: string;
   type?: "website" | "product" | "article";
+  /** Page à garder hors de Google (« noindex, follow ») : panier, compte… */
   noindex?: boolean;
+  /**
+   * Les langues où le CONTENU de la page est vraiment écrit — celles que
+   * l'API donne pour une fiche, un rayon, une page libre. Absent : toutes,
+   * c'est le cas des pages dont le texte n'est que de l'interface.
+   *
+   * Hors de ces langues, la page reste visitable (en français) mais se met
+   * en « noindex, follow » et ne se déclare plus comme une traduction : sans
+   * cela, chaque fiche existait aux yeux de Google en cinq exemplaires dont
+   * quatre en français étiquetés anglais, allemand…
+   */
+  languesTraduites?: readonly string[];
   jsonLd?: Record<string, unknown> | Record<string, unknown>[];
   /**
    * Page précédente et page suivante d'une liste paginée.
    *
-   * Elles disent à un moteur que ces adresses sont les morceaux d'une SEULE
-   * suite : sans elles, la page 4 d'un rayon passe pour une page isolée,
-   * pauvre en texte et sans lien entrant, et sort de l'index avec les
-   * quarante-huit affiches qu'elle porte.
+   * Google ne lit plus ces balises depuis 2019 (Bing, si) : ce qui garde la
+   * page 4 d'un rayon dans l'index, c'est son adresse canonique à elle —
+   * numéro de page compris — et les liens « Page suivante » qui y mènent.
+   * Elles restent, inoffensives, pour les autres moteurs.
    */
   precedente?: string | null;
   suivante?: string | null;
@@ -44,6 +62,7 @@ const {
   image,
   type,
   noindex,
+  languesTraduites,
   jsonLd,
   precedente,
   suivante,
@@ -133,7 +152,43 @@ function adresseMenu(href: string): string {
 }
 
 const chemin = cheminSansLangue(Astro.url.pathname);
-const versions = autresVersions(langue, chemin);
+
+/**
+ * La même page dans chaque langue, tirée de son adresse CANONIQUE.
+ *
+ * Elle était tirée du seul chemin demandé, sans sa requête : le rayon
+ * « Villes » (/affiches?genre=personnalisable&collection=villes) se
+ * déclarait l'équivalent anglais de /en/affiches, le catalogue entier — des
+ * hreflang qui contredisaient la canonique, que Google ignore, et un
+ * sélecteur de langue qui faisait sortir du rayon. La requête canonique
+ * (genre, collection, lieu, page) suit donc dans chaque langue ; le tri, qui
+ * n'est pas dans la canonique, non.
+ */
+const [cheminCanonique, requeteCanonique] = (path ?? Astro.url.pathname).split("?");
+const suiteCanonique = requeteCanonique ? `?${requeteCanonique}` : "";
+const versions = autresVersions(langue, cheminSansLangue(cheminCanonique || "/")).map(
+  (v) => ({ ...v, href: v.href + suiteCanonique }),
+);
+
+/*
+ * Les versions qu'on déclare à Google (hreflang), et si la page s'indexe.
+ *
+ * Seulement les langues où le contenu est vraiment écrit. La version non
+ * traduite d'une fiche (/en/… servie en français) reste visitable — le
+ * sélecteur y mène toujours, l'interface y est traduite — mais elle se met
+ * en « noindex, follow » et n'est déclarée nulle part. Une page qu'on garde
+ * hors de l'index ne déclare pas de versions non plus : Google les
+ * ignorerait. Et une seule langue n'a pas de « versions » à déclarer.
+ */
+const traduites = languesDuContenu(languesTraduites);
+const horsIndex = !!noindex || !traduites.includes(langue);
+const versionsDeclarees =
+  !horsIndex && traduites.length > 1
+    ? versions.filter((v) => traduites.includes(v.langue))
+    : [];
+const versionParDefaut = versionsDeclarees.find((v) => v.langue === LANGUE_DEFAUT);
+const absolue = (href: string) =>
+  new URL(href, Astro.site ?? "https://memoryline.fr").toString();
 
 /**
  * Ce que le champ de l'en-tête affiche déjà.
@@ -259,35 +314,31 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="generator" content={Astro.generator} />
-    <link rel="sitemap" href="/sitemap-index.xml" />
+    <link rel="sitemap" href="/sitemap.xml" />
+    {/* Les icônes du site : l'onglet, l'écran d'accueil d'un téléphone, et
+        le petit logo que Google montre à côté de chaque résultat. Il n'y en
+        avait aucune — /favicon.ico répondait 404. Ce sont l'initiale « M »
+        du logo, en bleu sur blanc (public/, tirées de logo-memory-line.png) :
+        le logo entier, très large, serait illisible à 16 px. Google demande
+        un carré multiple de 48 px : c'est l'icône de 192. */}
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     {/* Versions traduites : chaque page se declare aux moteurs comme
         l'equivalent des autres, pour eviter d'etre vue comme du contenu
-        duplique. */}
-    {versions.map((v) => (
-      <link
-        rel="alternate"
-        hreflang={LOCALE_COMPLETE[v.langue]}
-        href={new URL(v.href, Astro.site ?? "https://memoryline.fr").toString()}
-      />
+        duplique. Le code de langue seul (« en », pas « en-GB ») : le texte
+        n'a rien de regional, et la version anglaise vaut aussi bien pour
+        l'Irlande ou les Etats-Unis, la francaise pour la Belgique ou la
+        Suisse. */}
+    {versionsDeclarees.map((v) => (
+      <link rel="alternate" hreflang={v.langue} href={absolue(v.href)} />
     ))}
-    <link
-      rel="alternate"
-      hreflang="x-default"
-      href={new URL(chemin, Astro.site ?? "https://memoryline.fr").toString()}
-    />
+    {versionParDefaut && (
+      <link rel="alternate" hreflang="x-default" href={absolue(versionParDefaut.href)} />
+    )}
     {/* Les morceaux d'une liste paginée se tiennent par la main. */}
-    {precedente && (
-      <link
-        rel="prev"
-        href={new URL(precedente, Astro.site ?? "https://memoryline.fr").toString()}
-      />
-    )}
-    {suivante && (
-      <link
-        rel="next"
-        href={new URL(suivante, Astro.site ?? "https://memoryline.fr").toString()}
-      />
-    )}
+    {precedente && <link rel="prev" href={absolue(precedente)} />}
+    {suivante && <link rel="next" href={absolue(suivante)} />}
     {/* Marque la page comme animée avant qu'elle ne s'affiche : la règle
         d'apparition ne s'applique que sous cette classe, donc sans
         JavaScript rien n'est masqué. */}
@@ -337,7 +388,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
       path={path}
       image={image}
       type={type}
-      noindex={noindex}
+      noindex={horsIndex}
       jsonLd={jsonLd}
     />
   </head>

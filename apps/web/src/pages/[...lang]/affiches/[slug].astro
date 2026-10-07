@@ -7,6 +7,7 @@ import {
   api,
   assetSrcset,
   assetUrl,
+  codeErreurApi,
   cadresSurLeSite,
   prixDesCadresSurLeSite,
   encartVideoDuSite,
@@ -20,7 +21,18 @@ import AddToCartButton from "../../../islands/AddToCartButton.tsx";
 import AfficheIA from "../../../islands/AfficheIA.tsx";
 import { signatureDesCreations } from "../../../lib/signature.ts";
 import { htmlSur } from "../../../lib/html-sur.ts";
+import { languesDuContenu } from "../../../lib/referencement.ts";
 import {
+  descriptionMeta,
+  nommeDejaUneAffiche,
+  phraseSeo,
+  sansPhraseSeo,
+  separateurDuSite,
+  texteBrut,
+  titreDePage,
+} from "../../../lib/textes-seo.ts";
+import {
+  LANGUE_DEFAUT,
   LOCALE_COMPLETE,
   estLangue,
   langueDepuisParam,
@@ -96,13 +108,33 @@ const encartVideo = Astro.locals.stand ? null : await encartVideoDuSite(langue);
  */
 const signature = await signatureDesCreations();
 
+/*
+ * Une affiche introuvable n'est PLUS une redirection vers le catalogue.
+ *
+ * C'était un 302 vers /affiches dans tous les cas — affiche inconnue,
+ * archivée, ou API en panne. Google lit cette redirection comme une page
+ * vide (« soft 404 ») : l'ancienne fiche perdait son référencement sans que
+ * rien ne le dise, et une panne de quelques secondes suffisait à lui montrer
+ * des fiches bien vivantes comme disparues. Chaque cas a maintenant sa
+ * réponse : 404 pour une adresse inconnue, 410 pour une affiche archivée
+ * (partie pour de bon), 503 pour une API qui ne répond pas — Google retente
+ * plus tard sans rien retirer. Les trois affichent la page d'erreur du site,
+ * avec le menu et de quoi rebondir.
+ *
+ * Une affiche RETIRÉE qui a une remplaçante n'arrive jamais ici : le
+ * middleware la redirige avant (lib/anciennes-adresses.ts, ou la table
+ * « Redirections » du back-office).
+ */
 let product: ProductDetail | null = null;
 try {
   product = await api.product(slug!, langue);
-} catch {
-  return Astro.redirect(lien(langue, "/affiches"));
+} catch (e) {
+  const code = codeErreurApi(e);
+  if (code === 404) return new Response(null, { status: 404 });
+  Astro.locals.statutErreur = code === 410 ? 410 : 503;
+  return Astro.rewrite("/404");
 }
-if (!product) return Astro.redirect(lien(langue, "/affiches"));
+if (!product) return new Response(null, { status: 404 });
 
 const cleanName = product.name.replace(/\s*[-–]\s*Affiche.*$/i, "");
 // La fiche montre l'affiche en grand, mais pas en taille d'impression :
@@ -130,47 +162,155 @@ const kindLabel =
     ? tr("genre.personnalisable")
     : tr("genre.prete_a_imprimer");
 
+/**
+ * La nature de l'affiche en toutes lettres : « Affiche personnalisée »,
+ * « Affiche prête à imprimer », dans la langue de la page.
+ *
+ * C'est ce que les clientes tapent (« affiche personnalisée Vieux Moulin »),
+ * et memoryline.fr la porte dans le titre de chaque fiche : le nom importé
+ * finit par « - Affiche personnalisée ». Le site l'avait retirée partout avec
+ * ce suffixe — titre Google, titre de la page, texte de l'image —, et les 177
+ * fiches perdaient leur mot-clé le jour de la bascule. Le nom court reste ce
+ * qu'on lit en grand ; la nature revient dans ce que Google lit. Un nom qui
+ * dit déjà « affiche » (« Affiche à partir de votre photo ») ne la répète pas.
+ */
+const natureAuNom = nommeDejaUneAffiche(cleanName)
+  ? null
+  : product.kind === "personnalisable"
+    ? tr("seo.nature.personnalisable")
+    : tr("seo.nature.prete_a_imprimer");
+/** « VIEUX MOULIN – Affiche personnalisée » : le titre et le nom du produit pour Google. */
+const nomComplet = natureAuNom ? `${cleanName} – ${natureAuNom}` : cleanName;
+/** « Affiche personnalisée VIEUX MOULIN » : le texte de l'image principale. */
+const texteImage = natureAuNom ? `${natureAuNom} ${cleanName}` : cleanName;
+
+/*
+ * La fiche est-elle vraiment écrite dans la langue de la page ? Hors des
+ * langues où elle est traduite (referencement.ts), l'API rend le texte
+ * français : on l'affiche, faute de mieux, mais on ne le présente pas à
+ * Google comme une description anglaise ou allemande.
+ */
+const ficheTraduite = languesDuContenu(product.languesTraduites).includes(langue);
+
+/*
+ * La description affichée, sans la ligne « Phrase SEO : … » que 44 fiches
+ * importées de Shopify portaient en dernière ligne — une note de travail
+ * bourrée de mots-clés, lue par les clientes (lib/textes-seo.ts). Une
+ * description qui ne contient rien à lire — cinquante-huit valent
+ * « <p><img></p> » — ne s'affiche pas, intertitre compris.
+ */
+const descriptionAffichee = htmlSur(sansPhraseSeo(product.description));
+const texteDescription = texteBrut(descriptionAffichee);
+const descriptionVisible =
+  texteDescription !== "" || /<img\s[^>]*src=/i.test(descriptionAffichee);
+
 /*
  * Le titre et la description SEO arrivent DANS LA LANGUE DE LA PAGE : la
  * boutique les traduit au back-office, et l'API les rend tels quels. Hors du
  * français, non traduits, ils valent null — jamais le français, qui mettrait
- * du français dans les résultats Google de /en ou /de. La page n'a donc pas à
- * savoir dans quelle langue elle est : un null la fait retomber sur le nom et
- * la description, eux traduits (ou français, faute de mieux).
+ * du français dans les résultats Google de /en ou /de.
+ *
+ * La description sous le lien Google, dans l'ordre :
+ * 1. celle que la boutique a écrite (champ SEO de la fiche) ;
+ * 2. en français, la « Phrase SEO » retirée de l'affichage : c'est, à
+ *    quelques mots près, la description que memoryline.fr donne aujourd'hui
+ *    à Google pour ces 44 fiches ;
+ * 3. le début du texte de la fiche, s'il est dans la langue de la page,
+ *    coupé à la fin d'une phrase ou d'un mot — plus jamais en plein mot ni
+ *    avec ses retours à la ligne ;
+ * 4. une phrase de repli, dans la langue de la page.
  */
-
-// Le texte du référencement, dans l'ordre : ce que la boutique a écrit
-// elle-même, puis le début de la description, puis une phrase de repli. Le
-// découpage à cent soixante caractères coupe au milieu d'un mot ; il ne sert
-// donc que faute de mieux.
 const description =
-  product.seoDescription?.trim() ||
-  product.description?.replace(/<[^>]+>/g, "").slice(0, 160) ||
-  tr("produit.meta_repli")
-    .replace("{nom}", cleanName)
-    .replace("{genre}", kindLabel.toLowerCase());
-/** Le titre de l'onglet et du résultat Google, quand il doit différer du nom. */
-const titreSeo = product.seoTitle?.trim() || null;
+  texteBrut(product.seoDescription) ||
+  (langue === LANGUE_DEFAUT ? descriptionMeta(phraseSeo(product.description)) : "") ||
+  (ficheTraduite ? descriptionMeta(texteDescription) : "") ||
+  descriptionMeta(
+    // L'affiche tirée d'une photo n'a ni personnages ni texte à ajouter :
+    // sa phrase est celle qui la présente déjà sur la fiche.
+    product.aiEnabled
+      ? tr("ia.intro")
+      : tr(
+          product.kind === "personnalisable"
+            ? "produit.meta_repli.personnalisable"
+            : "produit.meta_repli.prete_a_imprimer",
+        ).replace("{nom}", cleanName),
+  );
+/** Le titre de l'onglet et du résultat Google, quand la boutique en a écrit un. */
+const titreSeo = product.seoTitle?.trim() ? separateurDuSite(product.seoTitle.trim()) : null;
 
 // --- Données structurées Schema.org (SEO riche) ------------------------
 const siteUrl = Astro.site?.toString().replace(/\/$/, "") ?? "https://memoryline.fr";
+/** Une adresse du site, complète : les données structurées n'en lisent pas d'autres. */
+const absolue = (chemin: string) => new URL(chemin, siteUrl + "/").toString();
+const urlFiche = absolue(lien(langue, `/affiches/${product.slug}`));
+
+/**
+ * Une offre par format, telle que Google Shopping la lit.
+ *
+ * C'était une fourchette (« AggregateOffer », de 23 à 29 €), qui ne rend pas
+ * la fiche éligible aux fiches marchandes de Google : il lui faut chaque
+ * format avec SON prix, sa disponibilité et son adresse. Rien n'y est
+ * inventé : le prix, le prix barré et la référence sont ceux du back-office.
+ * L'affiche est imprimée à la commande, donc toujours disponible, et neuve.
+ *
+ * La référence (sku) est celle que la boutique a saisie pour ce format ; il
+ * n'y en a encore aucune (l'import Shopify ne les a pas reprises). À défaut,
+ * l'identifiant que le site donne lui-même à ce format — le numéro de
+ * l'affiche et son format, ceux qui désignent la ligne du panier —, stable
+ * tant que l'affiche existe.
+ */
+function offre(v: {
+  format: string;
+  priceCents: number;
+  compareAtCents?: number | null;
+  sku?: string | null;
+}) {
+  const remise = promotion(v.priceCents, v.compareAtCents);
+  return {
+    "@type": "Offer",
+    sku: v.sku?.trim() || `ML-${product!.id}${v.format ? `-${v.format}` : ""}`,
+    price: (v.priceCents / 100).toFixed(2),
+    priceCurrency: "EUR",
+    availability: "https://schema.org/InStock",
+    itemCondition: "https://schema.org/NewCondition",
+    url: urlFiche,
+    seller: { "@type": "Organization", name: "Memory Line" },
+    // Le prix barré, quand la boutique en a réglé un : Google l'affiche
+    // barré à côté du prix, comme la fiche.
+    ...(remise
+      ? {
+          priceSpecification: {
+            "@type": "UnitPriceSpecification",
+            priceType: "https://schema.org/StrikethroughPrice",
+            price: (remise.avantCents / 100).toFixed(2),
+            priceCurrency: "EUR",
+          },
+        }
+      : {}),
+  };
+}
+const formatsTarifes = product.variants.filter((v) => v.priceCents > 0);
+const offres = formatsTarifes.length
+  ? formatsTarifes.map(offre)
+  : [offre({ format: "", priceCents: product.basePriceCents })];
+
 const productLd = {
   "@context": "https://schema.org",
   "@type": "Product",
-  name: cleanName,
-  description,
-  image: image ? [image] : [],
+  "@id": `${urlFiche}#affiche`,
+  name: nomComplet,
+  // Le texte entier, sans troncature, quand il est dans la langue de la
+  // page ; sinon la description de la page, elle dans la bonne langue.
+  description: (ficheTraduite && texteDescription) || description,
+  url: urlFiche,
+  // Toutes les vues de l'affiche, en grand et en adresse complète : Google
+  // ne lit pas une image relative (« /api/assets/… »).
+  image: product.images
+    .map((i) => assetUrl(i, 1400))
+    .filter((u): u is string => !!u)
+    .map(absolue),
   brand: { "@type": "Brand", name: "Memory Line" },
-  offers: {
-    "@type": "AggregateOffer",
-    priceCurrency: "EUR",
-    lowPrice: (minPrice / 100).toFixed(2),
-    highPrice: (
-      Math.max(...(prices.length ? prices : [product.basePriceCents])) / 100
-    ).toFixed(2),
-    offerCount: product.variants.length,
-    availability: "https://schema.org/InStock",
-  },
+  offers: offres,
 };
 // Le fil d'Ariane que Google affiche sous le résultat : dans la langue de la
 // page, et vers les adresses de cette langue.
@@ -202,9 +342,10 @@ const breadcrumbLd = {
 
 <Base
   langue={langue}
-  title={titreSeo ?? `${cleanName} | Memory Line`}
+  title={titreSeo ?? titreDePage(nomComplet)}
   description={description}
   path={lien(langue, `/affiches/${product.slug}`)}
+  languesTraduites={product.languesTraduites}
   type="product"
   image={image ?? undefined}
   jsonLd={[productLd, breadcrumbLd]}
@@ -236,7 +377,7 @@ const breadcrumbLd = {
             src={image}
             srcset={imageJeu}
             sizes="(min-width: 1280px) 900px, (min-width: 768px) 62vw, 100vw"
-            alt={cleanName}
+            alt={texteImage}
             width="1020"
             height="1400"
             class="h-auto w-full md:mx-auto md:max-h-[calc(100svh-9rem)] md:w-auto md:max-w-full"
@@ -256,9 +397,6 @@ const breadcrumbLd = {
           >{tr("nav.affiches")}</a
         >
       </nav>
-      <p class="mt-4 text-xs uppercase tracking-wide text-terracotta">
-        {kindLabel}
-      </p>
       {/* La typographie de la fiche reprend celle de memoryline.fr (retour
           de la boutique : « police des produits un peu plus grasse, plus
           petite, comme sur le site actuel »). Relevé sur le site actuel : un
@@ -266,8 +404,33 @@ const breadcrumbLd = {
           de texte y est étroite) ; un prix de 16 à 18 px en demi-gras, un peu
           espacé, là où celui-ci faisait 24 px en maigre ; « Format » en
           13 px demi-gras ; la description, enfin, en demi-gras (global.css,
-          `.ml-description-produit`). */}
-      <h1 class="font-serif mt-1 text-[30px] leading-tight md:text-4xl">{cleanName}</h1>
+          `.ml-description-produit`).
+
+          La petite ligne rouge au-dessus du nom dit la nature de l'affiche
+          (« Affiche personnalisée ») et fait PARTIE du titre : le titre de la
+          page se lit « Affiche personnalisée VIEUX MOULIN », comme on le
+          cherche, et non plus « VIEUX MOULIN » seul. À l'écran, rien ne
+          bouge — deux lignes, la petite puis la grande. Un nom qui dit déjà
+          « affiche » garde l'ancienne ligne, hors du titre. */}
+      {
+        natureAuNom ? (
+          <h1 class="mt-4">
+            <span class="block text-xs uppercase tracking-wide text-terracotta">
+              {natureAuNom}
+            </span>
+            <span class="font-serif mt-1 block text-[30px] leading-tight md:text-4xl">
+              {cleanName}
+            </span>
+          </h1>
+        ) : (
+          <Fragment>
+            <p class="mt-4 text-xs uppercase tracking-wide text-terracotta">
+              {kindLabel}
+            </p>
+            <h1 class="font-serif mt-1 text-[30px] leading-tight md:text-4xl">{cleanName}</h1>
+          </Fragment>
+        )
+      }
       {
         /* Le prix barré : saisi au back-office et jamais servi jusqu'ici, la
            fiche taisait une remise pourtant décidée. Rien ne s'affiche quand
@@ -457,11 +620,19 @@ const breadcrumbLd = {
            global.css). Les classes « prose » qu'elle portait ne faisaient
            rien — le greffon de typographie n'est pas installé — et le texte
            sortait en 16 px maigre. */
-        product.description && (
-          <div
-            class="ml-description-produit mt-8"
-            set:html={htmlSur(product.description)}
-          />
+        /* Un intertitre la précède : sans lui, la fiche passait du titre de
+           la page aux titres du pied de page, sans rien entre les deux pour
+           dire ce qu'est ce texte. Même allure que « Format ». */
+        descriptionVisible && (
+          <section class="mt-8" aria-labelledby="titre-description">
+            <h2
+              id="titre-description"
+              class="ml-intertitre-fiche text-[13px]"
+            >
+              {tr("produit.description_titre")}
+            </h2>
+            <div class="ml-description-produit mt-2" set:html={descriptionAffichee} />
+          </section>
         )
       }
     </div>

@@ -24,7 +24,11 @@ export const NOM_LANGUE: Record<Langue, string> = {
   es: "Español",
 };
 
-/** Code complet pour l'attribut lang et les balises hreflang. */
+/**
+ * Code complet de chaque langue : la mise en forme des prix et des dates, et
+ * og:locale pour les réseaux. Les hreflang, eux, portent le code de langue
+ * seul (« en ») : le texte n'a rien de régional (voir Base.astro).
+ */
 export const LOCALE_COMPLETE: Record<Langue, string> = {
   fr: "fr-FR",
   en: "en-GB",
@@ -50,7 +54,7 @@ export const ui = {
     "pied.droits": "Memory Line — Affiches personnalisées",
     "pied.baseline": "Votre affiche prête en 2 minutes.",
 
-    "meta.titre": "Memory Line — Affiches personnalisées de villes & paysages",
+    "meta.titre": "Memory Line | Affiches personnalisées de villes & paysages",
     "meta.description":
       "Affiches personnalisées de villes, paysages et thèmes. Composez la vôtre en quelques minutes, imprimée en A4 ou A3.",
 
@@ -118,6 +122,10 @@ export const ui = {
     "404.affiches": "Voir toutes les affiches",
     "404.recherche": "Chercher une affiche",
     "404.accueil": "Retour à l'accueil",
+    /* Page momentanément indisponible (le catalogue ne répond pas) */
+    "503.titre": "Page momentanément indisponible",
+    "503.texte":
+      "Le site n'arrive pas à charger cette page pour l'instant. Réessayez dans une minute.",
 
     "genre.personnalisable": "Personnalisable",
     "genre.prete_a_imprimer": "Prête à imprimer",
@@ -215,7 +223,7 @@ export const ui = {
 
     /* La page du téléphone (/photo/CODE) : le client la lit lui-même, debout
        devant le stand. */
-    "photo.meta_titre": "Envoyer votre photo — Memory Line",
+    "photo.meta_titre": "Envoyer votre photo | Memory Line",
     "photo.titre": "Envoyez votre photo",
     "photo.intro":
       "Elle s'affichera aussitôt sur la tablette du stand, pour créer votre affiche.",
@@ -647,8 +655,39 @@ export const ui = {
       "Envoyez une photo — une maison, une plage, une rue, un souvenir — et retrouvez-la illustrée dans le style Memory Line. Vous voyez le résultat avant de commander.",
     "accueil.ia_bouton": "Essayer avec ma photo",
     "accueil.lettre_titre": "Abonnez-vous à notre lettre d'information",
-    "produit.meta_repli": "Affiche {nom} — {genre}, imprimée en A4 ou A3. Memory Line.",
+    // La description Google d'une fiche sans texte ni description SEO
+    // (61 fiches) : une vraie phrase, selon la nature de l'affiche.
+    "produit.meta_repli.personnalisable":
+      "{nom} : affiche personnalisée à composer en ligne. Ajoutez vos personnages et votre texte en quelques minutes. Impression en A4 ou A3.",
+    "produit.meta_repli.prete_a_imprimer":
+      "{nom} : affiche décorative prête à imprimer, à accrocher chez soi ou à offrir. Impression en A4 ou A3.",
     "seo.fil_accueil": "Accueil",
+    // Ce que Google lit dans les titres : la nature de l'affiche (fiche,
+    // texte de l'image), puis au pluriel pour les rayons. C'est le mot-clé
+    // que memoryline.fr porte dans chaque titre de fiche.
+    "seo.nature.personnalisable": "Affiche personnalisée",
+    "seo.nature.prete_a_imprimer": "Affiche prête à imprimer",
+    "seo.natures.personnalisable": "Affiches personnalisées",
+    "seo.natures.prete_a_imprimer": "Affiches prêtes à imprimer",
+    "seo.natures.mixte": "Affiches",
+    "seo.page_n": "page {n}",
+    "seo.titre.catalogue": "Toutes les affiches : villes, paysages, thèmes",
+    "seo.titre.personnalisable": "Affiches personnalisées à composer en ligne",
+    "seo.titre.prete_a_imprimer": "Affiches décoratives prêtes à imprimer",
+    "seo.description.catalogue":
+      "Toutes les affiches Memory Line : affiches personnalisées de villes et de paysages, et affiches décoratives prêtes à imprimer. Impression en A4 ou A3.",
+    "seo.description.personnalisable":
+      "Composez votre affiche personnalisée : choisissez une ville ou un paysage, ajoutez vos personnages et votre texte. Impression en A4 ou A3.",
+    "seo.description.prete_a_imprimer":
+      "Affiches décoratives prêtes à imprimer : villes, régions et messages à accrocher chez soi ou à offrir. Impression en A4 ou A3.",
+    "seo.description.rayon.personnalisable":
+      "{rayon} : affiches personnalisées à composer en ligne. Ajoutez vos personnages et votre texte. Impression en A4 ou A3.",
+    "seo.description.rayon.prete_a_imprimer":
+      "{rayon} : affiches décoratives prêtes à imprimer, à accrocher chez soi ou à offrir. Impression en A4 ou A3.",
+    "seo.description.rayon.mixte":
+      "{rayon} : affiches Memory Line, personnalisées ou prêtes à imprimer, à accrocher chez soi ou à offrir. Impression en A4 ou A3.",
+    "accueil.h1": "Affiches personnalisées de villes et de paysages",
+    "produit.description_titre": "À propos de cette affiche",
     "compte.essai.titre": "Site de test.",
     "compte.essai.avant":
       "Ce compte est pré-rempli au hasard pour vous éviter la saisie. Mot de passe :",
@@ -704,7 +743,7 @@ export const ui = {
     "pied.droits": "Memory Line — Personalised posters",
     "pied.baseline": "Your poster ready in 2 minutes.",
 
-    "meta.titre": "Memory Line — Personalised city & landscape posters",
+    "meta.titre": "Memory Line | Personalised city & landscape posters",
     "meta.description":
       "Personalised posters of cities, landscapes and themes. Design yours in minutes, printed in A4 or A3.",
 
@@ -762,6 +801,9 @@ export const ui = {
     "404.affiches": "See all posters",
     "404.recherche": "Search for a poster",
     "404.accueil": "Back to the home page",
+    "503.titre": "Page temporarily unavailable",
+    "503.texte":
+      "We can't load this page at the moment. Please try again in a minute.",
 
     "genre.personnalisable": "Customisable",
     "genre.prete_a_imprimer": "Ready to print",
@@ -853,7 +895,7 @@ export const ui = {
     "ia.relais.qr": "QR code for the photo upload page",
     "ia.relais.nom_photo": "Photo from the phone",
 
-    "photo.meta_titre": "Send your photo — Memory Line",
+    "photo.meta_titre": "Send your photo | Memory Line",
     "photo.titre": "Send your photo",
     "photo.intro":
       "It will appear straight away on the stand's tablet, to create your poster.",
@@ -1259,8 +1301,34 @@ export const ui = {
       "Send us a photo — a house, a beach, a street, a memory — and get it back illustrated in the Memory Line style. You'll see the result before you order.",
     "accueil.ia_bouton": "Try it with my photo",
     "accueil.lettre_titre": "Subscribe to our emails",
-    "produit.meta_repli": "{nom} poster — {genre}, printed in A4 or A3. Memory Line.",
+    "produit.meta_repli.personnalisable":
+      "{nom}: a personalised poster to design online. Add your characters and your text in a few minutes. Printed in A4 or A3.",
+    "produit.meta_repli.prete_a_imprimer":
+      "{nom}: a ready-to-print decorative poster to hang at home or give as a gift. Printed in A4 or A3.",
     "seo.fil_accueil": "Home",
+    "seo.nature.personnalisable": "Personalised poster",
+    "seo.nature.prete_a_imprimer": "Ready-to-print poster",
+    "seo.natures.personnalisable": "Personalised posters",
+    "seo.natures.prete_a_imprimer": "Ready-to-print posters",
+    "seo.natures.mixte": "Posters",
+    "seo.page_n": "page {n}",
+    "seo.titre.catalogue": "All posters: cities, landscapes, themes",
+    "seo.titre.personnalisable": "Personalised posters to design online",
+    "seo.titre.prete_a_imprimer": "Ready-to-print decorative posters",
+    "seo.description.catalogue":
+      "Every Memory Line poster: personalised city and landscape posters, and ready-to-print decorative posters. Printed in A4 or A3.",
+    "seo.description.personnalisable":
+      "Design your personalised poster: choose a city or a landscape, add your characters and your text. Printed in A4 or A3.",
+    "seo.description.prete_a_imprimer":
+      "Ready-to-print decorative posters: cities, regions and messages to hang at home or give as a gift. Printed in A4 or A3.",
+    "seo.description.rayon.personnalisable":
+      "{rayon}: personalised posters to design online. Add your characters and your text. Printed in A4 or A3.",
+    "seo.description.rayon.prete_a_imprimer":
+      "{rayon}: ready-to-print decorative posters to hang at home or give as a gift. Printed in A4 or A3.",
+    "seo.description.rayon.mixte":
+      "{rayon}: Memory Line posters, personalised or ready to print, to hang at home or give as a gift. Printed in A4 or A3.",
+    "accueil.h1": "Personalised city and landscape posters",
+    "produit.description_titre": "About this poster",
     "compte.essai.titre": "Test site.",
     "compte.essai.avant": "This account is pre-filled at random to save you typing. Password:",
     "compte.essai.apres":
@@ -1315,7 +1383,7 @@ export const ui = {
     "pied.droits": "Memory Line — Personalisierte Poster",
     "pied.baseline": "Ihr Poster in 2 Minuten fertig.",
 
-    "meta.titre": "Memory Line — Personalisierte Städte- & Landschaftsposter",
+    "meta.titre": "Memory Line | Personalisierte Städte- & Landschaftsposter",
     "meta.description":
       "Personalisierte Poster von Städten, Landschaften und Themen. In wenigen Minuten gestaltet, gedruckt in A4 oder A3.",
 
@@ -1374,6 +1442,9 @@ export const ui = {
     "404.affiches": "Alle Poster ansehen",
     "404.recherche": "Ein Poster suchen",
     "404.accueil": "Zurück zur Startseite",
+    "503.titre": "Seite vorübergehend nicht verfügbar",
+    "503.texte":
+      "Diese Seite lässt sich gerade nicht laden. Bitte versuchen Sie es in einer Minute erneut.",
 
     "genre.personnalisable": "Personalisierbar",
     "genre.prete_a_imprimer": "Druckfertig",
@@ -1467,7 +1538,7 @@ export const ui = {
     "ia.relais.qr": "QR-Code der Seite zum Senden des Fotos",
     "ia.relais.nom_photo": "Foto vom Handy",
 
-    "photo.meta_titre": "Ihr Foto senden — Memory Line",
+    "photo.meta_titre": "Ihr Foto senden | Memory Line",
     "photo.titre": "Senden Sie Ihr Foto",
     "photo.intro":
       "Es erscheint sofort auf dem Tablet am Stand, um Ihr Poster zu gestalten.",
@@ -1878,8 +1949,34 @@ export const ui = {
       "Senden Sie uns ein Foto — ein Haus, einen Strand, eine Straße, eine Erinnerung — und erhalten Sie es im Memory-Line-Stil illustriert zurück. Sie sehen das Ergebnis, bevor Sie bestellen.",
     "accueil.ia_bouton": "Mit meinem Foto ausprobieren",
     "accueil.lettre_titre": "Abonnieren Sie unseren Newsletter",
-    "produit.meta_repli": "Poster {nom} — {genre}, gedruckt in A4 oder A3. Memory Line.",
+    "produit.meta_repli.personnalisable":
+      "{nom}: personalisiertes Poster zum Online-Gestalten. Fügen Sie in wenigen Minuten Ihre Figuren und Ihren Text hinzu. Druck in A4 oder A3.",
+    "produit.meta_repli.prete_a_imprimer":
+      "{nom}: druckfertiges Dekoposter für Ihr Zuhause oder als Geschenk. Druck in A4 oder A3.",
     "seo.fil_accueil": "Startseite",
+    "seo.nature.personnalisable": "Personalisiertes Poster",
+    "seo.nature.prete_a_imprimer": "Druckfertiges Poster",
+    "seo.natures.personnalisable": "Personalisierte Poster",
+    "seo.natures.prete_a_imprimer": "Druckfertige Poster",
+    "seo.natures.mixte": "Poster",
+    "seo.page_n": "Seite {n}",
+    "seo.titre.catalogue": "Alle Poster: Städte, Landschaften, Themen",
+    "seo.titre.personnalisable": "Personalisierte Poster online gestalten",
+    "seo.titre.prete_a_imprimer": "Druckfertige Dekoposter",
+    "seo.description.catalogue":
+      "Alle Poster von Memory Line: personalisierte Städte- und Landschaftsposter und druckfertige Dekoposter. Druck in A4 oder A3.",
+    "seo.description.personnalisable":
+      "Gestalten Sie Ihr personalisiertes Poster: Wählen Sie eine Stadt oder Landschaft, fügen Sie Ihre Figuren und Ihren Text hinzu. Druck in A4 oder A3.",
+    "seo.description.prete_a_imprimer":
+      "Druckfertige Dekoposter: Städte, Regionen und Sprüche für Ihr Zuhause oder als Geschenk. Druck in A4 oder A3.",
+    "seo.description.rayon.personnalisable":
+      "{rayon}: personalisierte Poster zum Online-Gestalten. Fügen Sie Ihre Figuren und Ihren Text hinzu. Druck in A4 oder A3.",
+    "seo.description.rayon.prete_a_imprimer":
+      "{rayon}: druckfertige Dekoposter für Ihr Zuhause oder als Geschenk. Druck in A4 oder A3.",
+    "seo.description.rayon.mixte":
+      "{rayon}: Poster von Memory Line, personalisiert oder druckfertig, für Ihr Zuhause oder als Geschenk. Druck in A4 oder A3.",
+    "accueil.h1": "Personalisierte Poster von Städten und Landschaften",
+    "produit.description_titre": "Über dieses Poster",
     "compte.essai.titre": "Testseite.",
     "compte.essai.avant":
       "Dieses Konto ist zufällig vorausgefüllt, damit Sie nichts eintippen müssen. Passwort:",
@@ -1935,7 +2032,7 @@ export const ui = {
     "pied.droits": "Memory Line — Poster personalizzati",
     "pied.baseline": "Il tuo poster pronto in 2 minuti.",
 
-    "meta.titre": "Memory Line — Poster personalizzati di città e paesaggi",
+    "meta.titre": "Memory Line | Poster personalizzati di città e paesaggi",
     "meta.description":
       "Poster personalizzati di città, paesaggi e temi. Crea il tuo in pochi minuti, stampato in A4 o A3.",
 
@@ -1994,6 +2091,9 @@ export const ui = {
     "404.affiches": "Vedi tutti i poster",
     "404.recherche": "Cerca un poster",
     "404.accueil": "Torna alla home",
+    "503.titre": "Pagina momentaneamente non disponibile",
+    "503.texte":
+      "Il sito non riesce a caricare questa pagina al momento. Riprova tra un minuto.",
 
     "genre.personnalisable": "Personalizzabile",
     "genre.prete_a_imprimer": "Pronto da stampare",
@@ -2085,7 +2185,7 @@ export const ui = {
     "ia.relais.qr": "Codice QR della pagina di invio della foto",
     "ia.relais.nom_photo": "Foto dal telefono",
 
-    "photo.meta_titre": "Invia la tua foto — Memory Line",
+    "photo.meta_titre": "Invia la tua foto | Memory Line",
     "photo.titre": "Invia la tua foto",
     "photo.intro":
       "Apparirà subito sul tablet dello stand, per creare il tuo poster.",
@@ -2492,8 +2592,34 @@ export const ui = {
       "Inviaci una foto — una casa, una spiaggia, una via, un ricordo — e ritrovala illustrata nello stile Memory Line. Vedrai il risultato prima di ordinare.",
     "accueil.ia_bouton": "Prova con la mia foto",
     "accueil.lettre_titre": "Iscriviti alla nostra newsletter",
-    "produit.meta_repli": "Poster {nom} — {genre}, stampato in A4 o A3. Memory Line.",
+    "produit.meta_repli.personnalisable":
+      "{nom}: poster personalizzato da creare online. Aggiungi i tuoi personaggi e il tuo testo in pochi minuti. Stampa in A4 o A3.",
+    "produit.meta_repli.prete_a_imprimer":
+      "{nom}: poster decorativo pronto da stampare, da appendere a casa o da regalare. Stampa in A4 o A3.",
     "seo.fil_accueil": "Home",
+    "seo.nature.personnalisable": "Poster personalizzato",
+    "seo.nature.prete_a_imprimer": "Poster pronto da stampare",
+    "seo.natures.personnalisable": "Poster personalizzati",
+    "seo.natures.prete_a_imprimer": "Poster pronti da stampare",
+    "seo.natures.mixte": "Poster",
+    "seo.page_n": "pagina {n}",
+    "seo.titre.catalogue": "Tutti i poster: città, paesaggi, temi",
+    "seo.titre.personnalisable": "Poster personalizzati da creare online",
+    "seo.titre.prete_a_imprimer": "Poster decorativi pronti da stampare",
+    "seo.description.catalogue":
+      "Tutti i poster Memory Line: poster personalizzati di città e paesaggi e poster decorativi pronti da stampare. Stampa in A4 o A3.",
+    "seo.description.personnalisable":
+      "Crea il tuo poster personalizzato: scegli una città o un paesaggio, aggiungi i tuoi personaggi e il tuo testo. Stampa in A4 o A3.",
+    "seo.description.prete_a_imprimer":
+      "Poster decorativi pronti da stampare: città, regioni e frasi da appendere a casa o da regalare. Stampa in A4 o A3.",
+    "seo.description.rayon.personnalisable":
+      "{rayon}: poster personalizzati da creare online. Aggiungi i tuoi personaggi e il tuo testo. Stampa in A4 o A3.",
+    "seo.description.rayon.prete_a_imprimer":
+      "{rayon}: poster decorativi pronti da stampare, da appendere a casa o da regalare. Stampa in A4 o A3.",
+    "seo.description.rayon.mixte":
+      "{rayon}: poster Memory Line, personalizzati o pronti da stampare, da appendere a casa o da regalare. Stampa in A4 o A3.",
+    "accueil.h1": "Poster personalizzati di città e paesaggi",
+    "produit.description_titre": "Informazioni su questo poster",
     "compte.essai.titre": "Sito di prova.",
     "compte.essai.avant":
       "Questo account è precompilato a caso per evitarti di digitare. Password:",
@@ -2549,7 +2675,7 @@ export const ui = {
     "pied.droits": "Memory Line — Láminas personalizadas",
     "pied.baseline": "Tu lámina lista en 2 minutos.",
 
-    "meta.titre": "Memory Line — Láminas personalizadas de ciudades y paisajes",
+    "meta.titre": "Memory Line | Láminas personalizadas de ciudades y paisajes",
     "meta.description":
       "Láminas personalizadas de ciudades, paisajes y temas. Diseña la tuya en unos minutos, impresa en A4 o A3.",
 
@@ -2608,6 +2734,9 @@ export const ui = {
     "404.affiches": "Ver todas las láminas",
     "404.recherche": "Buscar una lámina",
     "404.accueil": "Volver al inicio",
+    "503.titre": "Página no disponible por el momento",
+    "503.texte":
+      "El sitio no consigue cargar esta página ahora mismo. Vuelve a intentarlo en un minuto.",
 
     "genre.personnalisable": "Personalizable",
     "genre.prete_a_imprimer": "Lista para imprimir",
@@ -2699,7 +2828,7 @@ export const ui = {
     "ia.relais.qr": "Código QR de la página para enviar la foto",
     "ia.relais.nom_photo": "Foto del móvil",
 
-    "photo.meta_titre": "Envía tu foto — Memory Line",
+    "photo.meta_titre": "Envía tu foto | Memory Line",
     "photo.titre": "Envía tu foto",
     "photo.intro":
       "Aparecerá enseguida en la tableta del puesto, para crear tu lámina.",
@@ -3107,8 +3236,34 @@ export const ui = {
       "Envíanos una foto — una casa, una playa, una calle, un recuerdo — y recíbela ilustrada con el estilo Memory Line. Verás el resultado antes de hacer el pedido.",
     "accueil.ia_bouton": "Probar con mi foto",
     "accueil.lettre_titre": "Suscríbete a nuestro boletín",
-    "produit.meta_repli": "Lámina {nom} — {genre}, impresa en A4 o A3. Memory Line.",
+    "produit.meta_repli.personnalisable":
+      "{nom}: lámina personalizada para crear online. Añade tus personajes y tu texto en pocos minutos. Impresión en A4 o A3.",
+    "produit.meta_repli.prete_a_imprimer":
+      "{nom}: lámina decorativa lista para imprimir, para colgar en casa o regalar. Impresión en A4 o A3.",
     "seo.fil_accueil": "Inicio",
+    "seo.nature.personnalisable": "Lámina personalizada",
+    "seo.nature.prete_a_imprimer": "Lámina lista para imprimir",
+    "seo.natures.personnalisable": "Láminas personalizadas",
+    "seo.natures.prete_a_imprimer": "Láminas listas para imprimir",
+    "seo.natures.mixte": "Láminas",
+    "seo.page_n": "página {n}",
+    "seo.titre.catalogue": "Todas las láminas: ciudades, paisajes, temas",
+    "seo.titre.personnalisable": "Láminas personalizadas para crear online",
+    "seo.titre.prete_a_imprimer": "Láminas decorativas listas para imprimir",
+    "seo.description.catalogue":
+      "Todas las láminas Memory Line: láminas personalizadas de ciudades y paisajes y láminas decorativas listas para imprimir. Impresión en A4 o A3.",
+    "seo.description.personnalisable":
+      "Crea tu lámina personalizada: elige una ciudad o un paisaje, añade tus personajes y tu texto. Impresión en A4 o A3.",
+    "seo.description.prete_a_imprimer":
+      "Láminas decorativas listas para imprimir: ciudades, regiones y frases para colgar en casa o regalar. Impresión en A4 o A3.",
+    "seo.description.rayon.personnalisable":
+      "{rayon}: láminas personalizadas para crear online. Añade tus personajes y tu texto. Impresión en A4 o A3.",
+    "seo.description.rayon.prete_a_imprimer":
+      "{rayon}: láminas decorativas listas para imprimir, para colgar en casa o regalar. Impresión en A4 o A3.",
+    "seo.description.rayon.mixte":
+      "{rayon}: láminas Memory Line, personalizadas o listas para imprimir, para colgar en casa o regalar. Impresión en A4 o A3.",
+    "accueil.h1": "Láminas personalizadas de ciudades y paisajes",
+    "produit.description_titre": "Sobre esta lámina",
     "compte.essai.titre": "Sitio de prueba.",
     "compte.essai.avant":
       "Esta cuenta se ha rellenado al azar para ahorrarte escribir. Contraseña:",

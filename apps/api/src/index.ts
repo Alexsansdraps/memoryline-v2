@@ -82,7 +82,7 @@ import { mountImportProduits } from "./import-produits.js";
 import { mountCartesCadeaux } from "./cartes-cadeaux.js";
 import { mountLettre } from "./lettre.js";
 import { mountFinances } from "./finances.js";
-import { mountRecherche } from "./recherche.js";
+import { invaliderCorpusRecherche, mountRecherche } from "./recherche.js";
 import { mountDecors } from "./decors.js";
 import { mountApercus } from "./apercus.js";
 import { mountCouleursDessins } from "./couleurs-dessins.js";
@@ -104,6 +104,12 @@ import { demarrerMenageRelais, mountRelaisPhotoRoutes } from "./ia-relais.js";
 import { demarrerPreparationDesImpressions } from "./fichiers-impression.js";
 import { demarrerMesureDesPieces } from "./couleur-principale.js";
 import { mountContact } from "./contact.js";
+import { mountPlanDuSite } from "./plan-du-site.js";
+import {
+  genreDuRayon,
+  languesDeLaCollection,
+  languesDuProduit,
+} from "./referencement.js";
 
 const app = new Hono();
 const isProd = process.env.NODE_ENV === "production";
@@ -196,6 +202,18 @@ app.use("/admin/*", async (c, next) => {
       );
   }
   await next();
+});
+
+// La recherche du back-office garde en mémoire le catalogue et les textes du
+// site (recherche-corpus.ts). Toute ÉCRITURE réussie de l'admin l'oublie, pour
+// qu'un nom corrigé ou un texte réécrit se retrouve dès la recherche suivante,
+// sans attendre ses cinq minutes de vie. Posé ici, juste après la garde, il
+// couvre par construction toutes les routes /admin/* déclarées ensuite — y
+// compris celles qu'on ajoutera — au lieu d'une liste à tenir à jour.
+app.use("/admin/*", async (c, next) => {
+  await next();
+  if (c.req.method !== "GET" && c.req.method !== "HEAD" && c.res.status < 400)
+    invaliderCorpusRecherche();
 });
 
 // Images/SVG rapatriés depuis Shopify (cf. scripts/fetch-assets.ts).
@@ -864,6 +882,10 @@ app.get("/collections", async (c) => {
       translations: schema.collections.translations,
       position: schema.collections.position,
       produits: count(schema.productCollections.productId),
+      // De quel genre sont ses affiches : le site en tire la seule adresse du
+      // rayon (referencement.ts, genreDuRayon).
+      personnalisables: sqlOp<number>`count(*) filter (where ${schema.products.kind} = 'personnalisable')`.mapWith(Number),
+      pretes: sqlOp<number>`count(*) filter (where ${schema.products.kind} = 'prete_a_imprimer')`.mapWith(Number),
     })
     .from(schema.collections)
     .innerJoin(
@@ -895,10 +917,19 @@ app.get("/collections", async (c) => {
     .orderBy(...ordreDesCollections());
   // Le dictionnaire ne sort pas : le site reçoit le texte de SA langue.
   return c.json(
-    rows.map(({ position: _p, translations, ...r }) => ({
+    rows.map(({ position: _p, translations, personnalisables, pretes, ...r }) => ({
       ...r,
       name: texteDansLaLangue(translations, langue, "name", r.name),
       description: texteDansLaLangue(translations, langue, "description", r.description),
+      /**
+       * Deux champs AJOUTÉS pour le référencement, sans rien changer aux
+       * autres : le genre de toutes ses affiches (null quand il en mêle deux),
+       * et les langues où le rayon est vraiment écrit — le français toujours,
+       * une autre langue seulement si son nom (et son texte, s'il en a un)
+       * sont traduits.
+       */
+      genre: genreDuRayon(personnalisables, pretes),
+      languesTraduites: languesDeLaCollection({ description: r.description, translations }),
     })),
   );
 });
@@ -908,11 +939,16 @@ app.get("/products/:slug", async (c) => {
   const rows = await db
     .select()
     .from(schema.products)
-    // Même règle que pour la liste : une adresse devinée ne doit pas donner
-    // accès à une affiche que la boutique a retirée de la vente.
-    .where(and(eq(schema.products.slug, slug), eq(schema.products.status, "active")));
+    .where(eq(schema.products.slug, slug));
   const brut = rows[0];
-  if (!brut) return c.notFound();
+  // Même règle que pour la liste : une adresse devinée ne doit pas donner
+  // accès à une affiche que la boutique a retirée de la vente. Mais on dit
+  // POURQUOI : une affiche ARCHIVÉE a existé et ne reviendra pas — 410, que
+  // le site transmet tel quel pour que Google la retire vite de son index —,
+  // alors qu'un brouillon ou une adresse inconnue n'ont jamais été en vente
+  // (404). Le corps ne dit rien de plus : ni nom, ni contenu.
+  if (!brut || brut.status !== "active")
+    return brut?.status === "archived" ? c.json({ error: "archivee" }, 410) : c.notFound();
   const langue = langueDemandee(c);
   const product = traduire(brut, langue);
   /*
@@ -978,6 +1014,14 @@ app.get("/products/:slug", async (c) => {
     aiEnabled: product.aiEnabled,
     basePriceCents: product.basePriceCents,
     images: images.map((i) => i.url),
+    /**
+     * Les langues où la fiche est vraiment écrite (referencement.ts) : le
+     * français toujours, une autre langue quand son nom ET sa description y
+     * sont traduits. Le nom et la description ci-dessus retombent sur le
+     * français ; ce champ-ci permet au site de ne pas présenter cette page
+     * française à Google comme une traduction.
+     */
+    languesTraduites: languesDuProduit(brut),
     // Réglages configurateur par défaut (repris de l'ancien site, éditables BO).
     defaultTitle: product.defaultTitle,
     defaultSubtitle: product.defaultSubtitle,
@@ -1000,6 +1044,13 @@ app.get("/products/:slug", async (c) => {
       compareAtCents: v.compareAtCents,
       widthMm: v.widthMm,
       heightMm: v.heightMm,
+      /**
+       * La référence du format (« AULT-FALAISES-A4 » sur Shopify), saisie au
+       * back-office ou reprise par l'import. Champ AJOUTÉ pour les données
+       * structurées de la fiche, que Google Shopping lit ; vide, le site
+       * retombe sur son propre identifiant du format.
+       */
+      sku: v.sku,
     })),
   });
 });
@@ -2261,6 +2312,11 @@ mountOrdreAffichageRoutes(app);
 // d'envoyer deux courriers. Montée en dernier : elle ne réclame aucune
 // priorité et n'a donc pas à se glisser devant quoi que ce soit.
 mountContact(app);
+
+// Ce que le plan du site doit lister (apps/api/src/plan-du-site.ts) : une
+// seule route publique, en lecture, « GET /plan-du-site ». Aucune route
+// paramétrée ne la recouvre.
+mountPlanDuSite(app);
 
 /**
  * Marque une commande traitée, ou revient en arrière.

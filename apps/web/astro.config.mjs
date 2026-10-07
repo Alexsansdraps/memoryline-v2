@@ -1,10 +1,11 @@
 import { defineConfig } from "astro/config";
 import tailwindcss from "@tailwindcss/vite";
-import sitemap from "@astrojs/sitemap";
 import solid from "@astrojs/solid-js";
 import node from "@astrojs/node";
 
-// Domaine de prod (memoryline.fr) — surchargeable par SITE_URL au build.
+// Domaine de prod (memoryline.fr) — surchargeable par SITE_URL au build. Il
+// fait l'adresse canonique, les hreflang, og:url et le plan du site : sur le
+// serveur de test, il vaut le domaine de test (cf. PUBLIC_ORIGIN).
 const site = process.env.SITE_URL ?? "https://memoryline.fr";
 
 // Les domaines que l'application accepte de servir et de se reconnaître.
@@ -16,33 +17,6 @@ const allowedHosts = (process.env.ALLOWED_HOSTS ?? "")
   .split(",")
   .map((h) => h.trim())
   .filter(Boolean);
-
-/**
- * Adresses des pages rendues à la demande (boutique + fiches affiches).
- *
- * Le plan de site ne liste que les pages générées au build : depuis que ces
- * pages se rendent à la demande, elles en disparaîtraient. On les rajoute
- * explicitement, en relisant le catalogue au moment du build. API injoignable
- * = liste vide, le build passe quand même.
- */
-async function pagesCatalogue() {
-  const api =
-    process.env.API_URL_INTERNAL ?? process.env.PUBLIC_API_URL ?? "";
-  if (!api.startsWith("http")) return [];
-  const langues = ["fr", "en", "de", "it", "es"];
-  const prefixe = (l) => (l === "fr" ? "" : `/${l}`);
-  const racine = site.replace(/\/$/, "");
-  try {
-    const res = await fetch(`${api}/products?limit=1000`);
-    const produits = await res.json();
-    return langues.flatMap((l) => [
-      `${racine}${prefixe(l)}/affiches`,
-      ...produits.map((p) => `${racine}${prefixe(l)}/affiches/${p.slug}`),
-    ]);
-  } catch {
-    return [];
-  }
-}
 
 export default defineConfig({
   site,
@@ -82,22 +56,14 @@ export default defineConfig({
   security: {
     allowedDomains: allowedHosts.map((hostname) => ({ hostname })),
   },
-  integrations: [
-    solid(),
-    sitemap({
-      customPages: await pagesCatalogue(),
-      i18n: {
-        defaultLocale: "fr",
-        locales: {
-          fr: "fr-FR",
-          en: "en-GB",
-          de: "de-DE",
-          it: "it-IT",
-          es: "es-ES",
-        },
-      },
-    }),
-  ],
+  /*
+   * Plus d'intégration « sitemap » : elle ne voyait que les pages générées au
+   * build — trois, toutes à ne pas indexer — et interrogeait l'API pendant
+   * `docker compose build`, où l'API n'est pas joignable. Le plan du site est
+   * désormais rendu à la demande par src/pages/sitemap.xml.ts, à partir du
+   * catalogue du moment.
+   */
+  integrations: [solid()],
   vite: {
     // Le .env est à la racine du monorepo, pas dans apps/web.
     envDir: "../../",

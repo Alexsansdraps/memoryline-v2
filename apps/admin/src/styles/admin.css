@@ -291,3 +291,85 @@ input[type="file"]:disabled::file-selector-button {
   cursor: not-allowed;
   opacity: 0.6;
 }
+
+/* ─── Recherche (lib/panneau-recherche.ts, pages/recherche.astro) ─────────
+   Les passages trouvés, dans le panneau du haut et la page de résultats.
+   Des <mark> créés par le script ou par le gabarit, jamais du HTML lu. */
+mark.ml-marque {
+  background-color: #fde68a;
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+html[data-theme="dark"] mark.ml-marque {
+  background-color: #6b5310;
+  color: #fff7e0;
+}
+
+/* ─── Arrivée depuis un résultat (lib/arrivee-recherche.ts) ──────────────
+   Le passage est peint par l'API « CSS Custom Highlight » : rien n'est
+   ajouté dans la page, et surtout pas dans un éditeur de texte, où une
+   balise partirait dans le texte enregistré. ::highlight n'accepte que la
+   couleur, le fond et le soulignement. Un champ trouvé reçoit un contour. */
+::highlight(ml-trouve) {
+  background-color: #fde68a;
+}
+::highlight(ml-trouve-actuel) {
+  background-color: #f59e0b;
+  color: #000;
+}
+html[data-theme="dark"] ::highlight(ml-trouve) {
+  background-color: #6b5310;
+  color: #fff7e0;
+}
+html[data-theme="dark"] ::highlight(ml-trouve-actuel) {
+  background-color: #f59e0b;
+  color: #000;
+}
+.ml-champ-trouve {
+  outline: 3px solid #f59e0b;
+  outline-offset: 2px;
+}
+
+/* La barre « « Biarritz » 2 / 5 ‹ › × », en bas à droite : au-dessus du
+   contenu, sous les fenêtres modales. */
+#ml-trouver-barre {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  max-width: min(32rem, calc(100vw - 2rem));
+  padding: 0.375rem 0.5rem 0.375rem 0.75rem;
+  border: 1px solid var(--color-bo-border);
+  border-radius: 0.5rem;
+  background: var(--color-bo-surface);
+  color: var(--color-bo-ink);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.15);
+}
+#ml-trouver-barre .ml-trouver-texte {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+#ml-trouver-barre button {
+  min-width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid var(--color-bo-border);
+  border-radius: 0.375rem;
+  background: var(--color-bo-bg);
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+#ml-trouver-barre button:hover {
+  border-color: var(--color-bo-accent);
+  color: var(--color-bo-accent);
+}
+html[data-theme="dark"] #ml-trouver-barre {
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.5);
+}

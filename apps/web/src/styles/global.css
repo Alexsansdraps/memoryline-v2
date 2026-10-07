@@ -34,8 +34,11 @@ h4 {
 /* Exception : le nom d'une affiche sous sa vignette, en semi-gras et en
    petit, comme sur memoryline.fr (VignetteAffiche.astro). Il faut une règle
    ici : celle des titres juste au-dessus passe devant les classes Tailwind,
-   et un `font-semibold` posé sur le titre n'y changerait rien. */
-.ml-vignette-nom {
+   et un `font-semibold` posé sur le titre n'y changerait rien.
+   Même chose pour l'intertitre qui précède la description d'une fiche
+   (« À propos de cette affiche »), à l'allure du libellé « Format ». */
+.ml-vignette-nom,
+.ml-intertitre-fiche {
   font-weight: 600;
 }
 

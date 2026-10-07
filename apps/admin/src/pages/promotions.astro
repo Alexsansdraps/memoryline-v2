@@ -140,7 +140,7 @@ const describe = libelleRegle;
       <tbody>
         {
           promos.map((p) => (
-            <tr class="border-t border-bo-border">
+            <tr id={`promo-${p.id}`} class="border-t border-bo-border">
               <td class="px-4 py-2 font-medium">{p.name}</td>
               <td class="px-4 py-2">{describe(p)}</td>
               <td class="px-4 py-2">{p.code ?? <span class="text-bo-muted">auto</span>}</td>
@@ -175,6 +175,7 @@ const describe = libelleRegle;
       jamais — c'est ce que le client tape. */}
   {promos.length > 0 && (
     <TraductionsNoms
+      ancre="traductions-promotions"
       titre="Traductions des noms de promotions"
       aide="Le nom de chaque promotion, tel que le client le lit sur la ligne de remise de son panier. Une case vide affiche le nom français. Le code à saisir, lui, reste le même dans toutes les langues."
       elements={promos}

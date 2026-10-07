@@ -19,7 +19,24 @@
 	email {$COURRIEL_TLS}
 }
 
-{$DOMAINE} {
+# {$DOMAINE_WWW} : le nom en « www. », FACULTATIF.
+#
+# memoryline.fr est aujourd'hui joignable aussi en www.memoryline.fr (Shopify
+# le redirige vers le domaine nu) : des liens et des favoris portent cette
+# forme. Le jour de la bascule, DOMAINE_WWW=www.memoryline.fr dans le .env
+# fait demander à Caddy un certificat pour ce nom aussi, et la règle « @www »
+# ci-dessous le renvoie, en 301 et en un seul saut, vers la même adresse sur
+# le domaine nu — chemin et requête compris.
+#
+# Absente ou vide (le serveur de test), la variable disparaît de la ligne :
+# Caddy ne sert et ne certifie que {$DOMAINE}, exactement comme avant, et la
+# règle « @www » ne peut rien attraper. Vérifié avec `caddy adapt` dans les
+# deux cas. Ne la remplir qu'une fois l'enregistrement DNS « www » pointé vers
+# ce serveur : sinon Caddy redemanderait le certificat en boucle.
+{$DOMAINE} {$DOMAINE_WWW} {
+	@www not host {$DOMAINE}
+	redir @www https://{$DOMAINE}{uri} permanent
+
 	# Compression : la liste des affiches passe de 316 Ko à 25 Ko de HTML.
 	encode zstd gzip
 

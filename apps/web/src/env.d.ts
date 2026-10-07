@@ -26,5 +26,13 @@ declare namespace App {
      * `?stand=0` le retire.
      */
     stand: boolean;
+    /**
+     * Le code que la page d'erreur (404.astro) doit répondre quand une page
+     * s'y réécrit elle-même, faute de pouvoir se servir : 410 pour une
+     * affiche archivée (partie pour de bon : Google la retire plus vite),
+     * 503 quand l'API ne répond pas (« reviens plus tard » : Google retente
+     * sans rien désindexer). Absent : 404.
+     */
+    statutErreur?: 410 | 503;
   }
 }

@@ -628,6 +628,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
               commande payée, c'est s'apprêter à l'imprimer : ses fichiers se
               préparent dès l'ouverture (`data-preparer`). */}
           <section
+            id="articles"
             class="rounded-lg border border-bo-border bg-bo-surface"
             data-impression
             data-url-etat={apiUrl("/admin/print-files/etat")}
@@ -1365,7 +1366,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
           {/* ---------------------------------------------------------- */}
           {/* Paiement & mouvements                                       */}
           {/* ---------------------------------------------------------- */}
-          <section class="rounded-lg border border-bo-border bg-bo-surface">
+          <section id="mouvements" class="rounded-lg border border-bo-border bg-bo-surface">
             <header class="border-b border-bo-border px-4 py-3">
               <h3 class="font-medium">
                 <span
@@ -1640,7 +1641,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
           {/* ---------------------------------------------------------- */}
           {/* Chronologie                                                 */}
           {/* ---------------------------------------------------------- */}
-          <section class="rounded-lg border border-bo-border bg-bo-surface">
+          <section id="journal" class="rounded-lg border border-bo-border bg-bo-surface">
             <header class="border-b border-bo-border px-4 py-3">
               <h3 class="font-medium">Chronologie</h3>
             </header>
@@ -1691,7 +1692,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
         {/* Colonne de droite : ce qu'on consulte                        */}
         {/* ============================================================ */}
         <div class="space-y-6">
-          <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+          <section id="client" class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
             <h3 class="mb-2 font-medium">Client</h3>
             {client ? (
               <div class="space-y-1 text-sm">
@@ -1727,7 +1728,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
             )}
           </section>
 
-          <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+          <section id="adresse-livraison" class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
             <h3 class="mb-2 font-medium">Adresse de livraison</h3>
             {/* Un retrait sur stand se range dans les mêmes colonnes qu'un
                 point relais — elles disent « où va la commande ». Le préfixe
@@ -1827,7 +1828,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
             </details>
           </section>
 
-          <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+          <section id="etiquettes" class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
             <h3 class="mb-2 font-medium">Étiquettes</h3>
             <form method="POST" class="space-y-2 text-sm">
               <input type="hidden" name="_action" value="etiquettes" />
@@ -2004,7 +2005,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
             )}
           </section>
 
-          <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+          <section id="note-interne" class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
             <h3 class="mb-2 font-medium">Note interne</h3>
             <form method="POST" class="space-y-2 text-sm">
               <input type="hidden" name="_action" value="note" />
@@ -2022,7 +2023,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
           </section>
 
           {remboursements.length > 0 && (
-            <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+            <section id="remboursements" class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
               <h3 class="mb-2 font-medium">Remboursements</h3>
               <ul class="space-y-2 text-sm">
                 {remboursements.map((r) => (

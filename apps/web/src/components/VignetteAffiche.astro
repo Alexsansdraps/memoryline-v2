@@ -22,6 +22,7 @@ import {
   type ProductVariant,
 } from "../lib/api.ts";
 import { LOCALE_COMPLETE, lien, t, type Langue } from "../i18n/utils.ts";
+import { nommeDejaUneAffiche } from "../lib/textes-seo.ts";
 
 interface Props {
   /**
@@ -31,8 +32,19 @@ interface Props {
    */
   affiche: Pick<Product, "slug" | "name" | "image" | "basePriceCents"> & {
     variants: Pick<ProductVariant, "priceCents" | "compareAtCents">[];
+    /** Le genre, quand on le connaît : il nomme l'image (« Affiche personnalisée LYON »). */
+    kind?: Product["kind"];
   };
   langue: Langue;
+  /**
+   * Le niveau du nom de l'affiche dans le plan de la page.
+   *
+   * Un cran sous l'intertitre de la grille : « Nos best-sellers » sur
+   * l'accueil, le nombre d'affiches d'un rayon, l'intertitre d'une page libre
+   * — d'où `h3` par défaut. Une grille qui n'a pas d'intertitre au-dessus
+   * d'elle (les résultats de recherche) passe `h2`.
+   */
+  titre?: "h2" | "h3";
   /**
    * Charger l'image tout de suite plutôt qu'à l'approche de l'écran.
    *
@@ -66,7 +78,13 @@ interface Props {
 const GRILLE_RAYON =
   "(min-width: 1600px) 502px, (min-width: 1024px) calc((100vw - 96px) / 3), (min-width: 640px) calc((100vw - 56px) / 2), calc((100vw - 20px) / 2)";
 
-const { affiche, langue, prioritaire = false, sizes = GRILLE_RAYON } = Astro.props;
+const {
+  affiche,
+  langue,
+  prioritaire = false,
+  sizes = GRILLE_RAYON,
+  titre: Titre = "h3",
+} = Astro.props;
 const tr = t(langue);
 const locale = LOCALE_COMPLETE[langue];
 
@@ -88,6 +106,17 @@ const sansPrix = Astro.locals.stand;
  * rien et mange deux lignes de chaque cartouche.
  */
 const nom = affiche.name.replace(/\s*[-–]\s*Affiche.*$/i, "");
+
+/**
+ * Le texte de l'image : la nature de l'affiche avec son nom, « Affiche
+ * personnalisée LYON ». C'est ce que lit la recherche d'images, et ce que le
+ * suffixe retiré ci-dessus disait. Sans genre connu (bloc d'une page libre),
+ * ou quand le nom dit déjà « affiche », le nom seul.
+ */
+const texteImage =
+  affiche.kind && !nommeDejaUneAffiche(nom)
+    ? `${tr(affiche.kind === "personnalisable" ? "seo.nature.personnalisable" : "seo.nature.prete_a_imprimer")} ${nom}`
+    : nom;
 
 /**
  * La promotion, s'il y en a une — celle de la variante la MOINS CHÈRE.
@@ -147,7 +176,7 @@ const imageJeu = assetSrcset(affiche.image, [400, 600, 900, 1400]);
             src={image}
             srcset={imageJeu}
             sizes={sizes}
-            alt={nom}
+            alt={texteImage}
             width="1020"
             height="1400"
             loading={prioritaire ? "eager" : "lazy"}
@@ -183,9 +212,9 @@ const imageJeu = assetSrcset(affiche.image, [400, 600, 900, 1400]);
         produits un peu plus grasse, plus petite ». Sa taille, elle, ne
         bouge pas : elle est déjà sous celle du site actuel. */}
     <div class="px-2 pt-2.5 sm:pt-3">
-      <h2 class="ml-vignette-nom text-[13px] leading-snug group-hover:underline underline-offset-4 lg:text-[14px]">
+      <Titre class="ml-vignette-nom text-[13px] leading-snug group-hover:underline underline-offset-4 lg:text-[14px]">
         {nom}
-      </h2>
+      </Titre>
       {
         sansPrix ? null : promo ? (
           <p class="mt-1 flex flex-wrap items-baseline gap-2 text-[14px] tracking-[0.6px] sm:text-[15px]">

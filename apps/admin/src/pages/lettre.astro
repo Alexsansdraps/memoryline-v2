@@ -453,7 +453,7 @@ const TON_CLASSE: Record<Ton, string> = {
 
   {/* --- Écrire une lettre ----------------------------------------------- */}
   {(ouverte || enCreation) && (
-    <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-5">
+    <section id="lettre-ouverte" class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-5">
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 class="text-sm font-semibold">
           {enCreation ? "Nouvelle lettre" : ouverte?.modifiable ? "Modifier la lettre" : "Lettre envoyée"}
@@ -680,7 +680,7 @@ const TON_CLASSE: Record<Ton, string> = {
   )}
 
   {/* --- Les inscrits ---------------------------------------------------- */}
-  <section>
+  <section id="inscrits">
     <h2 class="mb-2 text-sm font-semibold">Les inscrits au formulaire du site</h2>
     <p class="mb-3 max-w-3xl text-sm text-bo-muted">
       Les adresses laissées dans le formulaire en bas de l'accueil, la plus récente

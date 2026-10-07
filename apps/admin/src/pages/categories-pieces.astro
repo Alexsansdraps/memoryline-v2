@@ -149,7 +149,7 @@ function messageArchivage(c: CategoriePiece): string {
       </thead>
       <tbody>
         {categories.map((c) => (
-          <tr class="border-t border-bo-border align-top">
+          <tr id={`ligne-categorie-${c.id}`} class="border-t border-bo-border align-top">
             <td class="px-4 py-3">
               <form method="POST" class="js-cat flex flex-wrap items-end gap-3">
                 <input type="hidden" name="id" value={c.id} />
@@ -298,7 +298,7 @@ function messageArchivage(c: CategoriePiece): string {
         <table class="w-full text-sm">
           <tbody>
             {archivees.map((c) => (
-              <tr class="border-t border-bo-border first:border-t-0">
+              <tr id={`ligne-categorie-${c.id}`} class="border-t border-bo-border first:border-t-0">
                 <td class="px-4 py-2 font-medium">{c.name}</td>
                 <td class="px-4 py-2 text-bo-muted">
                   {nomSlot(c.slot)} · {c.pieces ?? 0} pièce{(c.pieces ?? 0) > 1 ? "s" : ""} ·{" "}

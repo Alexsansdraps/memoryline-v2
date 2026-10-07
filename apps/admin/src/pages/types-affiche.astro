@@ -139,7 +139,7 @@ const archives = vues.filter((v) => v.archivedAt);
       </thead>
       <tbody>
         {actifs.map((v) => (
-          <tr class="border-t border-bo-border align-top">
+          <tr id={`ligne-type-${v.id}`} class="border-t border-bo-border align-top">
             <td class="px-4 py-3">
               {v.foregroundUrl ? (
                 <img
@@ -252,7 +252,7 @@ const archives = vues.filter((v) => v.archivedAt);
         <table class="w-full text-sm">
           <tbody>
             {archives.map((v) => (
-              <tr class="border-t border-bo-border first:border-t-0">
+              <tr id={`ligne-type-${v.id}`} class="border-t border-bo-border first:border-t-0">
                 <td class="px-4 py-2 font-medium">{v.name}</td>
                 <td class="px-4 py-2 text-bo-muted">
                   <code>{v.slug}</code> — rattaché à : {rattache(v)}

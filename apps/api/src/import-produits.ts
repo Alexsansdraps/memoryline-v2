@@ -39,6 +39,16 @@
  * lues puis laissées de côté : la catégorie Google, l'obligation d'expédier et
  * la TVA n'ont pas de case ici, et inventer une colonne pour les loger serait
  * du rangement pour rien.
+ *
+ * Le même écran reçoit aussi deux fichiers plus courts, qui ne font que
+ * COMPLÉTER ce qui existe déjà (voir « Les fichiers de complément ») : le
+ * référencement des affiches (« Handle », « SEO Title », « SEO Description »)
+ * et le texte de présentation des collections (« Collection »,
+ * « Description »). Ils servent à la bascule depuis Shopify : ce que Google
+ * lisait sur l'ancienne boutique doit se retrouver sur la nouvelle, et la base
+ * du serveur ne se remplit pas par une migration écrite d'ici. Ces fichiers
+ * ne créent rien et n'écrasent rien : une case déjà remplie au back-office
+ * reste telle quelle.
  */
 import type { Hono } from "hono";
 import { asc, eq, inArray } from "drizzle-orm";
@@ -92,6 +102,76 @@ const COLONNES_INDISPENSABLES: [string, string][] = [
   ["option1 value", "Option1 Value"],
   ["variant price", "Variant Price"],
 ];
+
+/**
+ * Les autres noms qu'une colonne porte, selon qui a écrit le fichier.
+ *
+ * L'export Shopify écrit « SEO Title » ; un tableau tapé à la main par la
+ * propriétaire dira plus volontiers « Titre SEO » ou « Titre dans Google »
+ * (c'est le mot des écrans du back-office). Refuser ce fichier pour une
+ * question d'anglais serait la pire des réponses. Le nom de Shopify reste
+ * prioritaire : un autre nom ne sert que si la colonne d'origine est absente.
+ */
+const AUTRES_NOMS: [string, string[]][] = [
+  ["handle", ["adresse", "adresse de la page", "slug"]],
+  [
+    "seo title",
+    [
+      "titre seo",
+      "titre dans google",
+      "titre pour google",
+      "titre google",
+      "meta title",
+      "balise title",
+    ],
+  ],
+  [
+    "seo description",
+    [
+      "description seo",
+      "description dans google",
+      "description pour google",
+      "description google",
+      "meta description",
+    ],
+  ],
+];
+
+/**
+ * Les colonnes d'un fichier de collections : celle qui dit DE QUELLE
+ * collection on parle, et celle qui porte son texte.
+ *
+ * La première accepte l'adresse (« villes ») comme le nom (« Villes ») : la
+ * propriétaire connaît ses collections par leur nom, l'export Shopify par leur
+ * adresse. « Description » et « Body HTML » ne sont lus comme le texte d'une
+ * collection QUE dans ce fichier-là — dans un fichier d'affiches, ils restent
+ * la description de l'affiche.
+ */
+const NOMS_COLONNE_COLLECTION = [
+  "collection",
+  "adresse de la collection",
+  "handle de la collection",
+  "collection handle",
+];
+const NOMS_COLONNE_TEXTE_COLLECTION = [
+  "description de la collection",
+  "texte de la collection",
+  "texte de présentation",
+  "texte de presentation",
+  "collection description",
+  "description",
+  "body (html)",
+];
+
+/**
+ * La longueur que l'écran Collections garde d'un texte de présentation.
+ *
+ * Même borne que le formulaire du back-office (collections.ts), et pour une
+ * raison précise : un texte plus long entrerait par l'import, puis serait
+ * coupé net — au milieu d'une balise — la première fois qu'on enregistrerait
+ * la collection à la main. Mieux vaut l'écarter tout de suite, avec la raison.
+ */
+const TEXTE_COLLECTION_MAX = 2_000;
 
 /**
  * Borne haute des montants, en centimes : un million d'euros.
@@ -670,7 +750,9 @@ function rassemblerProduits(
  */
 function lireImagesDeposees(
   brut: unknown,
-  produitsLus: ProduitLu[],
+  // Seuls de quoi reconnaître et nommer l'affiche : le fichier de
+  // référencement, qui ne connaît ni nom ni format, passe par ici lui aussi.
+  produitsLus: Pick<ProduitLu, "adresse" | "nom" | "handle" | "ligne">[],
 ): Map<string, string[]> {
   const parAdresse = new Map<string, string[]>();
   if (brut === undefined || brut === null) return parAdresse;
@@ -747,6 +829,479 @@ interface LigneImport {
   sansImage?: boolean;
 }
 
+/** La réponse entière d'un import, aperçu ou écriture. */
+interface ResultatImport {
+  applique: boolean;
+  lignes: number;
+  produits: number;
+  collectionsCreees: string[];
+  apercu: LigneImport[];
+  erreurs: { ligne: number; message: string }[];
+}
+
+/* ------------------------------------------------------------------------ */
+/*  Les fichiers de complément                                              */
+/* ------------------------------------------------------------------------ */
+
+/** La transaction en cours, telle que Drizzle la passe. */
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Ce que devient une case qu'un fichier de complément propose.
+ *
+ * Toute la règle de ces fichiers tient ici : une case vide sur la fiche se
+ * remplit, une case déjà remplie ne bouge pas. Ce qui est en base a pu être
+ * retouché au back-office depuis l'export ; un fichier venu de l'ancienne
+ * boutique n'a pas autorité pour le défaire.
+ */
+type SortDuChamp = "absent" | "ajoute" | "identique" | "garde";
+
+function completer(propose: string | null, enBase: string | null): SortDuChamp {
+  if (propose === null) return "absent";
+  const actuel = enBase?.trim() ?? "";
+  if (!actuel) return "ajoute";
+  return actuel === propose ? "identique" : "garde";
+}
+
+/** Le début d'un texte, pour l'aperçu : la phrase entière n'y tiendrait pas. */
+function extrait(texte: string, longueur = 90): string {
+  const plat = texte.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (plat.length <= longueur) return plat;
+  const coupe = plat.slice(0, longueur);
+  const espace = coupe.lastIndexOf(" ");
+  return `${(espace > longueur / 2 ? coupe.slice(0, espace) : coupe).trimEnd()}…`;
+}
+
+/** Retrouve, sous l'un de ses noms possibles, la colonne d'un fichier. */
+function premiereColonne(
+  colonnes: Map<string, number>,
+  noms: string[],
+): number | undefined {
+  for (const nom of noms) {
+    const rang = colonnes.get(nom);
+    if (rang !== undefined) return rang;
+  }
+  return undefined;
+}
+
+/**
+ * Le genre d'un fichier qui n'a pas les colonnes d'un import d'affiches.
+ *
+ * Un « Handle » avec une colonne de référencement : c'est le complément des
+ * fiches. Une colonne de collection avec un texte, sans « Handle » : c'est le
+ * complément des collections. Le « Handle » tranche, parce qu'il désigne
+ * toujours une affiche — un fichier qui en a un ne parle pas de collections.
+ * Rien de tout cela : null, et le refus habituel des colonnes manquantes.
+ */
+function genreDeComplement(
+  colonnes: Map<string, number>,
+): "referencement" | "collections" | null {
+  if (colonnes.has("handle"))
+    return colonnes.has("seo title") || colonnes.has("seo description")
+      ? "referencement"
+      : null;
+  if (
+    premiereColonne(colonnes, NOMS_COLONNE_COLLECTION) !== undefined &&
+    premiereColonne(colonnes, NOMS_COLONNE_TEXTE_COLLECTION) !== undefined
+  )
+    return "collections";
+  return null;
+}
+
+/**
+ * Ajoute des visuels à la suite de ceux d'une affiche.
+ *
+ * Partagé par l'import complet et par le complément de référencement : les
+ * deux écrans laissent déposer des images sur l'aperçu, et elles doivent se
+ * ranger de la même façon, À LA SUITE, la première image restant la première.
+ */
+async function ajouterVisuels(
+  tx: Transaction,
+  produitId: number,
+  images: string[],
+  alt: string,
+  depuisRang: number,
+): Promise<number> {
+  let rang = depuisRang;
+  for (const image of images) {
+    await tx.insert(schema.productImages).values({
+      productId: produitId,
+      url: image.slice(0, 500),
+      alt: alt.slice(0, 200) || null,
+      position: rang,
+    });
+    rang += 1;
+  }
+  return rang - 1;
+}
+
+/** Le titre et la description pour Google qu'un fichier propose pour une affiche. */
+interface ReferencementLu {
+  handle: string;
+  adresse: string;
+  ligne: number;
+  /** Le « Handle », faute de mieux : le fichier ne donne pas le nom. */
+  nom: string;
+  titreGoogle: string | null;
+  descriptionGoogle: string | null;
+}
+
+/**
+ * Complète le titre et la description pour Google d'affiches déjà en boutique.
+ *
+ * C'est l'export produits de Shopify réduit à trois colonnes, ou le relevé de
+ * l'ancienne boutique : ce que Google affichait pour chaque fiche. Une adresse
+ * inconnue est écartée, jamais créée — une affiche sans nom ni prix ne se met
+ * pas en vente. Le reste suit la grammaire de l'import : l'aperçu d'abord,
+ * puis l'écriture, dans une seule transaction, les images déposées comprises.
+ */
+async function completerReferencement(
+  lignes: LigneNommee[],
+  numeros: number[],
+  imagesBrutes: unknown,
+  appliquer: boolean,
+): Promise<ResultatImport> {
+  // Même règle que l'import complet : sur plusieurs lignes d'une même
+  // affiche, la première valeur ÉCRITE l'emporte. L'export Shopify ne remplit
+  // ces colonnes que sur la première ligne de chaque affiche.
+  const parAdresse = new Map<string, ReferencementLu>();
+  for (const [rang, lire] of lignes.entries()) {
+    const handle = lire("handle").trim();
+    const adresse = adresseProduit(handle);
+    if (!adresse) continue;
+    let lu = parAdresse.get(adresse);
+    if (!lu) {
+      lu = {
+        handle: handle.slice(0, 200),
+        adresse,
+        ligne: numeros[rang] ?? rang + 2,
+        nom: handle.slice(0, 200),
+        titreGoogle: null,
+        descriptionGoogle: null,
+      };
+      parAdresse.set(adresse, lu);
+    }
+    if (lu.titreGoogle === null)
+      lu.titreGoogle = texteOuNull(lire("seo title"), 200);
+    if (lu.descriptionGoogle === null)
+      lu.descriptionGoogle = texteOuNull(lire("seo description"), 400);
+  }
+
+  const lus = [...parAdresse.values()];
+  if (!lus.length)
+    throw new FichierRefuse(
+      "Aucune ligne de ce fichier n'indique d'adresse d'affiche : la colonne « Handle » est vide partout.",
+    );
+  if (lus.length > PRODUITS_MAX)
+    throw new FichierRefuse(
+      `Ce fichier décrit ${lus.length} affiches, c'est trop pour un seul import. Coupez-le en plusieurs fichiers.`,
+    );
+  const imagesDeposees = lireImagesDeposees(imagesBrutes, lus);
+
+  return db.transaction(async (tx) => {
+    const fiches = await tx
+      .select({
+        id: schema.products.id,
+        slug: schema.products.slug,
+        name: schema.products.name,
+        seoTitle: schema.products.seoTitle,
+        seoDescription: schema.products.seoDescription,
+      })
+      .from(schema.products)
+      .where(inArray(schema.products.slug, [...parAdresse.keys()]));
+    const ficheParAdresse = new Map(fiches.map((f) => [f.slug, f]));
+    const identifiants = fiches.map((f) => f.id);
+
+    const imagesExistantes = identifiants.length
+      ? await tx
+          .select({
+            productId: schema.productImages.productId,
+            url: schema.productImages.url,
+            position: schema.productImages.position,
+          })
+          .from(schema.productImages)
+          .where(inArray(schema.productImages.productId, identifiants))
+      : [];
+    const imagesParProduit = new Map<number, string[]>();
+    const dernierRangImage = new Map<number, number>();
+    for (const i of imagesExistantes) {
+      const liste = imagesParProduit.get(i.productId);
+      if (liste) liste.push(i.url);
+      else imagesParProduit.set(i.productId, [i.url]);
+      dernierRangImage.set(
+        i.productId,
+        Math.max(dernierRangImage.get(i.productId) ?? -1, i.position),
+      );
+    }
+
+    const apercu: LigneImport[] = [];
+    const erreurs: ResultatImport["erreurs"] = [];
+
+    for (const lu of lus) {
+      const fiche = ficheParAdresse.get(lu.adresse);
+      if (!fiche) {
+        const raison = `Aucune affiche n'a l'adresse « ${lu.handle} » dans la boutique. Ce fichier complète le référencement des affiches existantes : il n'en crée aucune.`;
+        apercu.push({
+          handle: lu.handle,
+          nom: lu.nom,
+          action: "refus",
+          raison,
+          changements: [],
+          collections: [],
+          formats: [],
+        });
+        erreurs.push({ ligne: lu.ligne, message: raison });
+        continue;
+      }
+
+      const titre = completer(lu.titreGoogle, fiche.seoTitle);
+      const description = completer(lu.descriptionGoogle, fiche.seoDescription);
+      const imagesEnBase = imagesParProduit.get(fiche.id) ?? [];
+      const imagesAAjouter = (imagesDeposees.get(lu.adresse) ?? []).filter(
+        (image) => !imagesEnBase.includes(image),
+      );
+
+      // D'abord ce qui s'écrit, puis ce qui est laissé : la pastille
+      // « à corriger » ne doit compter que les premiers.
+      const changements: string[] = [];
+      if (titre === "ajoute" && lu.titreGoogle)
+        changements.push(`titre pour Google ajouté : « ${lu.titreGoogle} »`);
+      if (description === "ajoute" && lu.descriptionGoogle)
+        changements.push(
+          `description pour Google ajoutée : « ${extrait(lu.descriptionGoogle)} »`,
+        );
+      if (imagesAAjouter.length)
+        changements.push(
+          `${imagesAAjouter.length} image${marque(imagesAAjouter.length)} ajoutée${marque(imagesAAjouter.length)}`,
+        );
+      const action: LigneImport["action"] = changements.length
+        ? "mise-a-jour"
+        : "inchange";
+      if (titre === "garde")
+        changements.push(
+          "titre pour Google déjà rempli sur la fiche : gardé tel quel",
+        );
+      if (description === "garde")
+        changements.push(
+          "description pour Google déjà remplie sur la fiche : gardée telle quelle",
+        );
+
+      const ligne: LigneImport = {
+        handle: lu.handle,
+        nom: fiche.name,
+        action,
+        changements,
+        collections: [],
+        formats: [],
+        sansImage: imagesEnBase.length + imagesAAjouter.length === 0,
+      };
+
+      if (appliquer) {
+        ligne.produitId = fiche.id;
+        const champs: { seoTitle?: string; seoDescription?: string } = {};
+        if (titre === "ajoute" && lu.titreGoogle) champs.seoTitle = lu.titreGoogle;
+        if (description === "ajoute" && lu.descriptionGoogle)
+          champs.seoDescription = lu.descriptionGoogle;
+        // Une fiche que le fichier ne change pas n'est pas touchée, pas même
+        // sa date de dernière modification.
+        if (champs.seoTitle !== undefined || champs.seoDescription !== undefined)
+          await tx
+            .update(schema.products)
+            .set({ ...champs, updatedAt: new Date() })
+            .where(eq(schema.products.id, fiche.id));
+        if (imagesAAjouter.length)
+          dernierRangImage.set(
+            fiche.id,
+            await ajouterVisuels(
+              tx,
+              fiche.id,
+              imagesAAjouter,
+              fiche.name,
+              (dernierRangImage.get(fiche.id) ?? -1) + 1,
+            ),
+          );
+      }
+
+      apercu.push(ligne);
+    }
+
+    return {
+      applique: appliquer,
+      lignes: lignes.length,
+      produits: lus.length,
+      collectionsCreees: [],
+      apercu,
+      erreurs,
+    };
+  });
+}
+
+/** Le texte de présentation qu'un fichier propose pour une collection. */
+interface TexteCollectionLu {
+  /** La collection telle que le fichier l'écrit : adresse ou nom. */
+  cite: string;
+  ligne: number;
+  texte: string | null;
+  refus: string | null;
+}
+
+/**
+ * Complète le texte de présentation de collections déjà en boutique.
+ *
+ * Le texte que Shopify montrait en tête de chaque collection, et que Google
+ * avait indexé. Mêmes règles que pour le référencement des affiches : une
+ * collection inconnue est écartée, un texte déjà écrit au back-office reste
+ * en place. Un fichier de collections n'a pas d'affiche à illustrer : des
+ * images déposées sur son aperçu sont refusées plutôt qu'oubliées en silence.
+ */
+async function completerCollections(
+  lignes: LigneNommee[],
+  numeros: number[],
+  imagesBrutes: unknown,
+  appliquer: boolean,
+): Promise<ResultatImport> {
+  if (
+    imagesBrutes &&
+    typeof imagesBrutes === "object" &&
+    Object.values(imagesBrutes as Record<string, unknown>).some(
+      (v) =>
+        Array.isArray(v) &&
+        v.some((x) => typeof x === "string" && x.trim() !== ""),
+    )
+  )
+    throw new FichierRefuse(
+      "Ce fichier complète le texte des collections : il n'y a pas d'affiche à illustrer. Retirez les images déposées sur l'aperçu, puis relancez : rien n'a été enregistré.",
+    );
+
+  // Une ligne par collection, sans regroupement : contrairement aux affiches,
+  // une collection n'a qu'une ligne, et une seconde est un doublon que
+  // l'aperçu doit montrer (voir `dejaDecrites`), pas absorber en silence.
+  const lus: TexteCollectionLu[] = [];
+  for (const [rang, lire] of lignes.entries()) {
+    const cite = lire("collection").trim().slice(0, 200);
+    if (!cite) continue;
+    const brut = lire("texte de la collection").trim();
+    lus.push({
+      cite,
+      ligne: numeros[rang] ?? rang + 2,
+      texte: brut && brut.length <= TEXTE_COLLECTION_MAX ? brut : null,
+      refus:
+        brut.length > TEXTE_COLLECTION_MAX
+          ? `Ce texte fait ${brut.length} caractères ; l'écran Collections en garde ${TEXTE_COLLECTION_MAX} au plus, et le couperait au premier enregistrement. Raccourcissez-le, puis relancez.`
+          : null,
+    });
+  }
+
+  if (!lus.length)
+    throw new FichierRefuse(
+      "Aucune ligne de ce fichier ne nomme de collection : la colonne « Collection » est vide partout.",
+    );
+
+  return db.transaction(async (tx) => {
+    const collections = await tx
+      .select({
+        id: schema.collections.id,
+        slug: schema.collections.slug,
+        name: schema.collections.name,
+        description: schema.collections.description,
+      })
+      .from(schema.collections);
+    // Trois façons de la reconnaître, dans cet ordre : son adresse, son nom,
+    // puis son nom passé à la moulinette des adresses (« Thèmes & paysages »
+    // écrit sans accent). C'est la même tolérance que pour les étiquettes de
+    // l'import complet.
+    const parAdresse = new Map(collections.map((c) => [c.slug, c]));
+    const parNom = new Map(
+      collections.map((c) => [c.name.trim().toLowerCase(), c]),
+    );
+    const trouver = (cite: string) =>
+      parAdresse.get(cite.toLowerCase()) ??
+      parNom.get(cite.toLowerCase()) ??
+      parAdresse.get(adresseCollection(cite));
+
+    const apercu: LigneImport[] = [];
+    const erreurs: ResultatImport["erreurs"] = [];
+    // Deux lignes peuvent désigner la même collection, l'une par son adresse,
+    // l'autre par son nom : la première écrite l'emporte, comme partout.
+    const dejaDecrites = new Map<number, number>();
+
+    const ecarter = (lu: TexteCollectionLu, raison: string) => {
+      apercu.push({
+        handle: lu.cite,
+        nom: `Collection « ${lu.cite} »`,
+        action: "refus",
+        raison,
+        changements: [],
+        collections: [],
+        formats: [],
+      });
+      erreurs.push({ ligne: lu.ligne, message: raison });
+    };
+
+    for (const lu of lus) {
+      const collection = trouver(lu.cite);
+      if (!collection) {
+        ecarter(
+          lu,
+          `Aucune collection « ${lu.cite} » dans la boutique. Ce fichier complète le texte des collections existantes, il n'en crée aucune : écrivez son adresse (par exemple « villes ») ou son nom tel que l'écran Collections le montre.`,
+        );
+        continue;
+      }
+      const premiere = dejaDecrites.get(collection.id);
+      if (premiere !== undefined) {
+        ecarter(
+          lu,
+          `La collection « ${collection.name} » est déjà décrite ligne ${premiere} du fichier. Gardez une seule ligne par collection.`,
+        );
+        continue;
+      }
+      dejaDecrites.set(collection.id, lu.ligne);
+      if (lu.refus) {
+        ecarter(lu, lu.refus);
+        continue;
+      }
+
+      const sort = completer(lu.texte, collection.description);
+      const changements: string[] = [];
+      if (sort === "ajoute" && lu.texte)
+        changements.push(
+          `texte de présentation ajouté : « ${extrait(lu.texte)} »`,
+        );
+      const action: LigneImport["action"] = changements.length
+        ? "mise-a-jour"
+        : "inchange";
+      if (sort === "garde")
+        changements.push(
+          "texte de présentation déjà rempli au back-office : gardé tel quel",
+        );
+
+      if (appliquer && sort === "ajoute" && lu.texte)
+        await tx
+          .update(schema.collections)
+          .set({ description: lu.texte })
+          .where(eq(schema.collections.id, collection.id));
+
+      apercu.push({
+        handle: collection.slug,
+        nom: `Collection « ${collection.name} »`,
+        action,
+        changements,
+        collections: [],
+        formats: [],
+      });
+    }
+
+    return {
+      applique: appliquer,
+      lignes: lignes.length,
+      produits: lus.length,
+      collectionsCreees: [],
+      apercu,
+      erreurs,
+    };
+  });
+}
+
 export function mountImportProduits(app: Hono): void {
   /* ---------------------------------------------------------------------- */
   /*  L'import lui-même                                                     */
@@ -804,14 +1359,32 @@ export function mountImportProduits(app: Hono): void {
       // retapés à la main ; c'est la même colonne.
       const rangBody = colonnes.get("body (html)") ?? colonnes.get("body html");
       if (rangBody !== undefined) colonnes.set("body (html)", rangBody);
+      for (const [cle, autres] of AUTRES_NOMS) {
+        if (colonnes.has(cle)) continue;
+        const rang = premiereColonne(colonnes, autres);
+        if (rang !== undefined) colonnes.set(cle, rang);
+      }
 
       const manquantes = COLONNES_INDISPENSABLES.filter(
         ([cle]) => !colonnes.has(cle),
       ).map(([, affiche]) => affiche);
-      if (manquantes.length)
+      // Un fichier sans les colonnes d'un import d'affiches peut encore être
+      // un fichier de complément ; c'est seulement s'il n'en est pas un que
+      // les colonnes manquantes deviennent un refus.
+      const complement = manquantes.length ? genreDeComplement(colonnes) : null;
+      if (manquantes.length && !complement)
         throw new FichierRefuse(
-          `Il manque ${manquantes.length > 1 ? "les colonnes" : "la colonne"} ${manquantes.map((n) => `« ${n} »`).join(", ")} dans ce fichier. Sans ${manquantes.length > 1 ? "elles" : "elle"}, les affiches ne peuvent pas être reconnues.`,
+          `Il manque ${manquantes.length > 1 ? "les colonnes" : "la colonne"} ${manquantes.map((n) => `« ${n} »`).join(", ")} dans ce fichier. Sans ${manquantes.length > 1 ? "elles" : "elle"}, les affiches ne peuvent pas être reconnues. Pour compléter seulement le référencement d'affiches déjà en boutique, les colonnes « Handle », « SEO Title » et « SEO Description » suffisent ; pour le texte des collections, les colonnes « Collection » et « Description ».`,
         );
+      if (complement === "collections") {
+        const rangCollection = premiereColonne(colonnes, NOMS_COLONNE_COLLECTION);
+        const rangTexte = premiereColonne(
+          colonnes,
+          NOMS_COLONNE_TEXTE_COLLECTION,
+        );
+        if (rangCollection !== undefined) colonnes.set("collection", rangCollection);
+        if (rangTexte !== undefined) colonnes.set("texte de la collection", rangTexte);
+      }
 
       /* -- Les lignes de données ----------------------------------------- */
 
@@ -838,6 +1411,27 @@ export function mountImportProduits(app: Hono): void {
       if (lignesNommees.length > LIGNES_MAX)
         throw new FichierRefuse(
           `Ce fichier contient ${lignesNommees.length} lignes, c'est trop pour un seul import. Coupez-le en fichiers d'environ ${LIGNES_MAX} lignes.`,
+        );
+
+      // Les fichiers de complément suivent leur propre chemin, plus court :
+      // ils ne créent rien, et n'ont ni format, ni prix, ni rangement à lire.
+      if (complement === "referencement")
+        return c.json(
+          await completerReferencement(
+            lignesNommees,
+            numeros,
+            corps.images,
+            appliquer,
+          ),
+        );
+      if (complement === "collections")
+        return c.json(
+          await completerCollections(
+            lignesNommees,
+            numeros,
+            corps.images,
+            appliquer,
+          ),
         );
 
       const produitsLus = rassemblerProduits(lignesNommees, numeros);
@@ -1243,17 +1837,16 @@ export function mountImportProduits(app: Hono): void {
             // changer parce qu'on a ajouté une vue de dos serait la dernière
             // des surprises. C'est aussi la règle du fichier entier : un
             // import ajoute, il n'enlève ni ne remplace.
-            let rangImage = (dernierRangImage.get(produitId) ?? -1) + 1;
-            for (const image of imagesAAjouter) {
-              await tx.insert(schema.productImages).values({
-                productId: produitId,
-                url: image.slice(0, 500),
-                alt: lu.nom.slice(0, 200) || null,
-                position: rangImage,
-              });
-              rangImage += 1;
-            }
-            dernierRangImage.set(produitId, rangImage - 1);
+            dernierRangImage.set(
+              produitId,
+              await ajouterVisuels(
+                tx,
+                produitId,
+                imagesAAjouter,
+                lu.nom,
+                (dernierRangImage.get(produitId) ?? -1) + 1,
+              ),
+            );
           }
 
           apercu.push(ligne);
@@ -1402,7 +1995,7 @@ export function mountImportProduits(app: Hono): void {
  * champs renseignés.
  */
 async function creerProduit(
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  tx: Transaction,
   lu: ProduitLu,
 ): Promise<number> {
   const [cree] = await tx

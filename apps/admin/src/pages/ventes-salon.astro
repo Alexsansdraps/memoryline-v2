@@ -290,6 +290,7 @@ const classeBouton =
     {
       actifs.map((stand) => (
         <article
+          id={`stand-${stand.id}`}
           class={`rounded-lg border bg-bo-surface p-5 ${
             nouveaute?.id === stand.id
               ? "border-green-300 ring-1 ring-green-300"
@@ -464,7 +465,7 @@ const classeBouton =
       </p>
       <div class="grid gap-2 opacity-70">
         {archives.map((stand) => (
-          <article class="flex flex-wrap items-center gap-4 rounded-lg border border-bo-border bg-bo-surface p-4">
+          <article id={`stand-${stand.id}`} class="flex flex-wrap items-center gap-4 rounded-lg border border-bo-border bg-bo-surface p-4">
             <div class="min-w-48 flex-1">
               <p class="font-medium">{stand.nom}</p>
               <p class="text-xs text-bo-muted">

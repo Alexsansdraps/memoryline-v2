@@ -523,7 +523,7 @@ for (const a of pieces) {
     <h3 class="font-semibold mb-3">Catégories</h3>
     <div class="flex flex-wrap gap-2 items-center">
       {catalogue.map((c, i) => (
-        <div class="flex items-center gap-1 rounded border border-bo-border px-2 py-1">
+        <div id={`categorie-${c.id}`} class="flex items-center gap-1 rounded border border-bo-border px-2 py-1">
           <form method="POST" class="flex items-center gap-1">
             <input type="hidden" name="_action" value="cat-rename" />
             <input type="hidden" name="id" value={c.id} />
@@ -591,6 +591,7 @@ for (const a of pieces) {
     {/* Les noms des catégories dans les autres langues : ce sont les onglets
         du module de personnalisation (« Femmes » → « Women »). */}
     <TraductionsNoms
+      ancre="traductions-categories"
       titre="Traductions des catégories"
       aide="Le nom de chaque catégorie, tel que le client le lit en onglet dans le module de personnalisation. Une case vide affiche le nom français."
       elements={catalogue}
@@ -605,6 +606,7 @@ for (const a of pieces) {
         archivés n'y apparaissent plus, ils n'ont rien à traduire. */}
     {personnagesATraduire.length > 0 && (
       <TraductionsNoms
+        ancre="traductions-personnages"
         titre="Traductions des noms de personnages"
         aide="Le nom de chaque personnage, tel que le client le lit dans le module de personnalisation (« Femme 1 », « Chat roux »…). Une case vide affiche le nom français. Les commandes et les fichiers d'impression gardent le nom français."
         elements={personnagesATraduire}
@@ -625,7 +627,7 @@ for (const a of pieces) {
         </p>
         <div class="flex flex-wrap items-center gap-2">
           {categoriesArchivees.map((c) => (
-            <div class="flex items-center gap-2 rounded border border-bo-border px-2 py-1 opacity-70">
+            <div id={`categorie-${c.id}`} class="flex items-center gap-2 rounded border border-bo-border px-2 py-1 opacity-70">
               <span class="text-sm">{c.name}</span>
               <span class="text-xs text-bo-muted">{c.count ?? 0}</span>
               <form method="POST" class="inline">
@@ -907,6 +909,7 @@ for (const a of pieces) {
             <div class="grid sm:grid-cols-2 gap-3">
               {list.map((a) => (
                 <div
+                  id={`piece-${a.id}`}
                   class="border border-bo-border rounded p-3 bg-bo-surface"
                   data-asset-id={a.id}
                 >
@@ -1011,6 +1014,7 @@ for (const a of pieces) {
       <div class="grid sm:grid-cols-3 gap-3 opacity-60">
         {piecesArchivees.map((a) => (
           <div
+            id={`piece-${a.id}`}
             class="border border-bo-border rounded p-3 bg-bo-surface flex items-center gap-2"
             data-asset-id={a.id}
           >

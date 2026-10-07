@@ -292,7 +292,7 @@ const FILTRES = [
   {vue === "icones" ? (
     <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
       {visibles.map((d) => (
-        <li class="rounded-lg border border-bo-border bg-bo-surface p-2">
+        <li id={`decor-${d.id}`} class="rounded-lg border border-bo-border bg-bo-surface p-2">
           <div class="flex aspect-[1020/1400] items-center justify-center overflow-hidden rounded bg-bo-bg">
             <img
               src={vignette(d.url, 400)}
@@ -350,7 +350,7 @@ const FILTRES = [
         </thead>
         <tbody>
           {visibles.map((d) => (
-            <tr class="border-t border-bo-border align-middle">
+            <tr id={`decor-${d.id}`} class="border-t border-bo-border align-middle">
               <td class="px-4 py-2">
                 <img
                   src={vignette(d.url, 200)}

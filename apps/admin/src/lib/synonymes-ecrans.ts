@@ -1,0 +1,70 @@
+/**
+ * Les mots qu'on tape pour atteindre un écran, quand ce ne sont pas ceux de
+ * l'écran.
+ *
+ * C'est la seule chose de la recherche des écrans qui s'écrive à la main, et
+ * c'est voulu : le nom, les sections, les libellés et les aides sont lus dans
+ * le source de chaque page (lib/index-ecrans.ts), mais personne n'écrit
+ * « frais de port » sur l'écran Livraison, alors que c'est ce qu'on tape pour
+ * le trouver. Ces mots-là ne se devinent pas, ils se notent.
+ *
+ * Rattachés à la ROUTE (le fichier de la page), jamais au titre : un écran
+ * renommé dans le menu garde ses mots-clés. Une route qui disparaît laisse
+ * ici une clé orpheline ; le test tests/recherche.test.mjs la signale.
+ */
+export const SYNONYMES: Readonly<Record<string, readonly string[]>> = {
+  "/": ["tableau de bord", "chiffres du jour"],
+  "/commandes": ["ventes du site", "boutique", "expéditions"],
+  "/paniers": ["relances"],
+  "/clients": ["clientes", "fiches"],
+  "/ventes-salon": ["salon", "foire", "marché", "stands"],
+  "/produits": ["affiches", "catalogue"],
+  "/produits/nouveau": ["créer un produit", "ajouter une affiche"],
+  "/produits/import": ["import", "fichier", "tableur"],
+  "/produits/modifier-en-masse": ["prix en masse", "modification groupée"],
+  "/cadres": ["encadrement"],
+  "/personnages": ["silhouettes"],
+  "/personnages/piece": ["pièces"],
+  "/personnages/correspondances": ["équivalences des pièces"],
+  "/types-affiche": ["modèles"],
+  "/ia": ["intelligence artificielle", "générées"],
+  "/collections": ["rayons"],
+  "/cartes-cadeaux": ["bons cadeaux"],
+  "/promotions": ["codes promo", "code promo", "coupon", "remises", "soldes", "réductions"],
+  "/livraison": [
+    "frais de port", "transport", "colissimo", "point relais", "tarifs",
+    "expédition", "transporteur", "mondial relay", "chronopost", "zones",
+    "poids", "envoi",
+  ],
+  "/bandeau": ["annonce", "message en haut", "bandeau du haut", "offre", "remise automatique"],
+  "/contenu": [
+    "textes", "accueil du site", "page d'accueil", "pied de page", "footer",
+    "vidéo tuto", "signature", "affiches par ligne",
+  ],
+  "/pages": ["mentions", "mentions légales", "conditions", "conditions de vente", "cgv", "à propos"],
+  "/menu": ["navigation"],
+  "/lettre": ["abonnés", "envoi aux clients", "newsletter", "e-mailing"],
+  "/courriers": [
+    "mails", "e-mails", "messages automatiques", "confirmation de commande",
+    "avis d'expédition", "facture par mail",
+  ],
+  "/finances": [
+    "chiffre d'affaires", "comptabilité", "marges", "taxes", "paypal", "stripe",
+    "virement", "remboursements", "export comptable",
+  ],
+  "/comptes": ["vendeuses", "accès", "mot de passe", "utilisateurs", "identifiants"],
+
+  // Les écrans que l'ancienne liste avait oubliés : c'est leur absence qui
+  // faisait répondre « bandeau » par le seul « Bandeau et offre ».
+  "/bandeaux-visuels": ["bannière", "grande image", "image en haut", "encart", "visuel de Noël"],
+  "/decors": ["fonds", "arrière-plans", "paysages"],
+  "/statistiques": ["ventes", "meilleures ventes", "ce qui se vend", "graphiques"],
+  "/archives": ["corbeille", "supprimés", "restaurer"],
+  "/aide": ["faq", "mode d'emploi", "comment faire", "tutoriel"],
+  "/ia/styles": ["styles IA", "consignes IA", "prompt"],
+  "/categories-produits": ["catégories d'affiches", "logistique"],
+  "/produits/ordre": ["ordre", "classement"],
+  "/clients/import": ["importer des clients"],
+  "/paniers/courriel": ["mail de relance"],
+  "/produits/[id]": ["seo", "référencement", "titre google"],
+};

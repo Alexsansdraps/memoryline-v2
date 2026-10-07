@@ -287,7 +287,7 @@ const ETIQUETTE_STATUT: Record<string, { texte: string; classe: string }> = {
   {
     collection && (
       <>
-        <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-5">
+        <section id="infos" class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-5">
           <form method="POST" class="flex flex-wrap items-end gap-4">
             <input type="hidden" name="_action" value="reglages" />
             <label class="text-sm">
@@ -368,6 +368,7 @@ const ETIQUETTE_STATUT: Record<string, { texte: string; classe: string }> = {
               const etat = etatLangue(l.code);
               return (
                 <details
+                  id={`langue-${l.code}`}
                   class="rounded border border-bo-border"
                   open={!!proposition || !!saisie}
                 >

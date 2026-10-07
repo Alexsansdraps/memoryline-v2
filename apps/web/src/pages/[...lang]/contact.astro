@@ -30,6 +30,7 @@ import { apiInterne } from "../../lib/api-interne.ts";
  * site partage.
  */
 import Base from "../../layouts/Base.astro";
+import { descriptionMeta, titreDePage } from "../../lib/textes-seo.ts";
 import {
   LANGUE_DEFAUT,
   estLangue,
@@ -315,8 +316,8 @@ const champ =
 
 <Base
   langue={langue}
-  title={`${tr("titre")} — Memory Line`}
-  description={tr("intro")}
+  title={titreDePage(tr("titre"))}
+  description={descriptionMeta(tr("intro"))}
   path={lien(langue, "/contact")}
 >
   <section class="mx-auto max-w-[680px] px-6 pt-12 pb-16 lg:px-12">

@@ -116,8 +116,10 @@ services:
         # chaque formulaire : « Cross-site POST form submissions are forbidden ».
         ALLOWED_HOSTS: ${DOMAINE}
         PUBLIC_API_URL: /api
-        # Le plan de site se construit en interrogeant l'API depuis le réseau
-        # interne de Docker, où elle s'appelle « api ».
+        # L'adresse de l'API sur le réseau interne de Docker, où elle
+        # s'appelle « api » : le site s'en sert à chaque page qu'il rend.
+        # (Le plan du site ne se construit plus au build : il est rendu à la
+        # demande, /sitemap.xml, et n'a plus besoin de joindre l'API ici.)
         API_URL_INTERNAL: http://api:3000
         # Un site de TEST sert le même contenu que memoryline.fr : indexé, il
         # ferait doublon et se ferait concurrence à lui-même dans Google.
@@ -185,9 +187,13 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      # Caddy lit ces deux valeurs dans le Caddyfile.
+      # Caddy lit ces valeurs dans le Caddyfile.
       DOMAINE: ${DOMAINE}
       COURRIEL_TLS: ${COURRIEL_TLS}
+      # Facultative : le nom en « www. » à rediriger vers le domaine nu
+      # (www.memoryline.fr le jour de la bascule, une fois son DNS pointé ici).
+      # Vide, Caddy ne sert que DOMAINE, comme avant (voir Caddyfile.prod).
+      DOMAINE_WWW: ${DOMAINE_WWW:-}
     volumes:
       - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
       # Les certificats, pour ne pas en redemander à chaque redémarrage :

@@ -373,6 +373,7 @@ const ordreModes = modesActifs.map((m) => m.id);
     {modesActifs.map((m) => (
       <Fragment>
       <form
+        id={`mode-${m.id}`}
         method="POST"
         class="bg-bo-surface border border-bo-border rounded-lg p-4 text-sm"
       >
@@ -596,6 +597,7 @@ const ordreModes = modesActifs.map((m) => m.id);
           et sur sa facture. Son propre formulaire, comme l'ordre : rien ne
           s'imbrique dans la fiche du mode. */}
       <Traductions
+        ancre={`traductions-mode-${m.id}`}
         titre={m.kind === "pickup"
           ? "Traductions du nom, de la précision et du lieu de retrait"
           : "Traductions du nom et de la précision"}
@@ -628,6 +630,7 @@ const ordreModes = modesActifs.map((m) => m.id);
         <div class="space-y-2 opacity-70">
           {modesArchives.map((m) => (
             <form
+              id={`mode-${m.id}`}
               method="POST"
               class="flex flex-wrap items-center gap-4 rounded-lg border border-bo-border bg-bo-surface p-3 text-sm"
             >
@@ -983,6 +986,7 @@ const ordreModes = modesActifs.map((m) => m.id);
   <section class="space-y-3">
     {cat.zones.map((z) => (
       <form
+        id={`zone-${z.id}`}
         method="POST"
         class="bg-bo-surface border border-bo-border rounded-lg p-4 text-sm"
       >

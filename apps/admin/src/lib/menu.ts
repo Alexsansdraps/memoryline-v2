@@ -1,0 +1,170 @@
+/**
+ * Le menu du back-office, sorti de la mise en page (layouts/Admin.astro).
+ *
+ * Il vit ici, dans un module sans Astro, parce que deux lecteurs s'en
+ * servent : la mise en page, qui le dessine, et l'index de la recherche
+ * (lib/index-ecrans.ts), qui y lit le nom de chaque écran, son groupe et sa
+ * place. L'index le lit comme une DONNÉE : le jour où une entrée change de
+ * nom ou de groupe, la recherche suit sans qu'on y pense — c'est exactement
+ * ce qui manquait à l'ancienne liste d'écrans écrite à la main dans l'API.
+ */
+
+// Navigation type admin Shopify (vocabulaire familier à la cliente).
+// `owner: true` = écran de configuration, masqué aux comptes « seller », qui
+// vendent et impriment mais ne modifient ni le catalogue ni les réglages.
+export interface NavItem {
+  href: string;
+  label: string;
+  icon: string;
+  owner?: boolean;
+  /** Sous-entrées, affichées en retrait sous le parent. */
+  children?: NavItem[];
+}
+
+/** Un thème du menu. `titre` à null pour le bloc du haut, qui n'en a pas. */
+export interface GroupeNav {
+  titre: string | null;
+  entrees: NavItem[];
+}
+
+/*
+ * Sept groupes, rangés par NATURE de la chose qu'on manipule — comme Shopify,
+ * d'où vient la cliente et dont le vocabulaire lui est déjà familier. Une
+ * hésitation s'y tranche en ouvrant l'écran, alors qu'un rangement par
+ * fréquence d'usage se périme dès que les habitudes changent.
+ *
+ * `owner: true` = écran de configuration, masqué aux comptes « seller », qui
+ * vendent et impriment mais ne modifient ni le catalogue ni les réglages.
+ */
+export const MENU: GroupeNav[] = [
+  // Sans titre, tout en haut : les deux écrans qu'on ouvre en arrivant, avant
+  // même de savoir ce qu'on vient faire.
+  {
+    titre: null,
+    entrees: [
+      { href: "/", label: "Accueil", icon: "🏠", owner: true },
+      // Deux écrans, deux questions. « Finances » répond à « où est
+      // l'argent » ; « Statistiques » à « qu'est-ce qui se vend ». Les
+      // réunir donnerait un écran qu'on ouvre pour deux raisons opposées.
+      { href: "/statistiques", label: "Statistiques", icon: "📈", owner: true },
+      { href: "/finances", label: "Finances", icon: "📊", owner: true },
+    ],
+  },
+  {
+    titre: "Commandes",
+    entrees: [
+      { href: "/commandes", label: "Commandes en ligne", icon: "🛒", owner: true },
+      // La seule entrée qu'un vendeur voit : son stand, et rien d'autre.
+      { href: "/ventes-salon", label: "Ventes stand", icon: "🎪" },
+      { href: "/paniers", label: "Paniers abandonnés", icon: "🛍️", owner: true },
+      // Ici et pas dans le catalogue : une carte cadeau n'est pas un article à
+      // vendre, c'est de l'argent que quelqu'un a déjà payé.
+      { href: "/cartes-cadeaux", label: "Cartes cadeaux", icon: "🎁", owner: true },
+    ],
+  },
+  {
+    titre: "Produits",
+    entrees: [
+      {
+        href: "/produits",
+        label: "Produits",
+        icon: "🖼️",
+        owner: true,
+        // Aucun autre écran ne pointe vers l'import : sans cette entrée, il
+        // redevient introuvable, ce qu'il a déjà été une fois.
+        children: [
+          // Où ranger les pages « Affiches personnalisables » et « prêtes à
+          // imprimer ». Les collections, elles, se rangent dans leur propre
+          // écran.
+          { href: "/produits/ordre", label: "Ordre d'affichage", icon: "↕️", owner: true },
+          { href: "/produits/import", label: "Importer un fichier", icon: "📥", owner: true },
+        ],
+      },
+      { href: "/collections", label: "Collections", icon: "📚", owner: true },
+      // 🪵 et non 🖼 : Produits, Cadres et Décors portaient trois cadres photo
+      // presque identiques, et sur un petit écran on vise la forme avant de
+      // lire le mot.
+      { href: "/cadres", label: "Cadres", icon: "🪵", owner: true },
+    ],
+  },
+  {
+    // « Atelier » et surtout pas « Personnalisation » : l'écran de
+    // personnalisation des courriers arrive, et l'œil serait allé sur le
+    // groupe qui porte le mot — celui des vêtements de personnages.
+    titre: "Atelier",
+    entrees: [
+      {
+        href: "/personnages",
+        label: "Personnages",
+        icon: "🧸",
+        owner: true,
+        children: [
+          // Sa seule porte était un bouton discret en haut de la liste des
+          // personnages. C'est pourtant lui qui rend utilisable une pièce
+          // fraîchement créée, décochée partout par défaut.
+          { href: "/personnages/correspondances", label: "Pièces par personnage", icon: "🧩", owner: true },
+          { href: "/categories-pieces", label: "Catégories de pièces", icon: "🎨", owner: true },
+        ],
+      },
+      { href: "/types-affiche", label: "Types d'affiche", icon: "🎭", owner: true },
+      // Le libellé garde « des affiches » : c'est le seul mot qui rattache cet
+      // écran au catalogue, et on y NOMME un décor, on n'en ajoute pas.
+      { href: "/decors", label: "Décors des affiches", icon: "🏞️", owner: true },
+      {
+        href: "/ia",
+        label: "Affiches IA",
+        icon: "✨",
+        owner: true,
+        // Les styles proposés à la cliente — « Couple », « Paysage » — vivent
+        // sous les affiches IA dont ils sont le réglage, et non à côté :
+        // on n'y va qu'après avoir ouvert celles-ci.
+        children: [
+          { href: "/ia/styles", label: "Styles proposés", icon: "🎨", owner: true },
+        ],
+      },
+    ],
+  },
+  {
+    titre: "Clients et marketing",
+    entrees: [
+      { href: "/clients", label: "Clients", icon: "👥", owner: true },
+      { href: "/promotions", label: "Promotions", icon: "🎟️", owner: true },
+      { href: "/lettre", label: "Lettre d'information", icon: "✉️", owner: true },
+    ],
+  },
+  {
+    titre: "Boutique en ligne",
+    entrees: [
+      // « et offre » : enregistrer cet écran enregistre le message ET la
+      // remise qu'il annonce. Le nom doit prévenir qu'on touche à de l'argent.
+      { href: "/bandeau", label: "Bandeau et offre", icon: "📢", owner: true },
+      // Les grandes images en haut des pages (la bannière de Noël de
+      // l'ancienne boutique). Juste sous le bandeau de texte, avec lequel on
+      // les confondrait autrement : le nom de chacun dit ce qu'il porte.
+      { href: "/bandeaux-visuels", label: "Bandeaux visuels", icon: "🌄", owner: true },
+      // « Contenu » ne disait rien et se confondait avec « Pages du site »,
+      // juste en dessous. Cet écran ne touche que quelques blocs de
+      // l'accueil, la vidéo de la personnalisation et le pied de page.
+      { href: "/contenu", label: "Accueil et pied de page", icon: "✏️", owner: true },
+      { href: "/pages", label: "Pages du site", icon: "📄", owner: true },
+      { href: "/menu", label: "Menu du site", icon: "🧭", owner: true },
+    ],
+  },
+  {
+    titre: "Réglages",
+    entrees: [
+      { href: "/livraison", label: "Livraison", icon: "📦", owner: true },
+      // Ni « d'essai » — le mot ne décrivait qu'un bouton et faisait passer
+      // l'écran pour un bac à sable — ni « automatiques », qui serait faux :
+      // la facture et l'avis d'expédition ne partent que sur son geste.
+      { href: "/courriers", label: "Courriers", icon: "📬", owner: true },
+      { href: "/comptes", label: "Comptes", icon: "🔑", owner: true },
+      // Dans « Réglages » et pas dans un groupe à soi : on n'y va pas pour
+      // travailler, on y va quand on cherche quelque chose qu'on a rangé.
+      // Chaque écran garde par ailleurs sa propre section « Archivés ».
+      { href: "/archives", label: "Archives", icon: "🗄️", owner: true },
+      // Les questions qui reviennent (commandes test, bordereau, import CSV…).
+      { href: "/aide", label: "Aide", icon: "❓", owner: true },
+    ],
+  },
+];

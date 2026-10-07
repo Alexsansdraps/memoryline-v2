@@ -213,7 +213,7 @@ function messageArchivage(c: Cadre): string {
             alignés sur du vide. Les data-tri donnent au tri par colonne les
             vraies valeurs, qu'un champ de saisie n'a pas en texte. */}
         {cadres.map((c) => (
-          <tr class="border-t border-bo-border">
+          <tr id={`ligne-cadre-${c.id}`} class="border-t border-bo-border">
             <td class="px-4 py-2">
               {/* Le liseré clair rend visible le cadre noir sur le fond
                   sombre du back-office. */}
@@ -354,6 +354,7 @@ function messageArchivage(c: Cadre): string {
   {cadres.length > 0 && (
     <section class="mb-8">
       <TraductionsNoms
+        ancre="traductions-cadres"
         titre="Traductions des cadres"
         aide="Le nom de chaque cadre (sa couleur, « Bois naturel », « Noir »…) tel que le client le lit en le choisissant. Une case vide affiche le nom français. Les commandes et les fichiers d'impression gardent le nom français."
         elements={cadres}
@@ -380,7 +381,7 @@ function messageArchivage(c: Cadre): string {
       </p>
       <div class="space-y-2 opacity-70">
         {archives.map((c) => (
-          <div class="flex flex-wrap items-center gap-4 rounded-lg border border-bo-border bg-bo-surface p-3">
+          <div id={`ligne-cadre-${c.id}`} class="flex flex-wrap items-center gap-4 rounded-lg border border-bo-border bg-bo-surface p-3">
             <span
               class="block h-7 w-7 shrink-0 rounded"
               style={`border: 4px solid ${c.previewColor ?? "#b07d42"}; background:#fff`}

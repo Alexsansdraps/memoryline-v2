@@ -14,6 +14,7 @@
 import Base from "../../layouts/Base.astro";
 import VignetteAffiche from "../../components/VignetteAffiche.astro";
 import { api, type Product } from "../../lib/api.ts";
+import { titreDePage } from "../../lib/textes-seo.ts";
 import { grilleProduits, sizesGrille, styleGrille } from "../../lib/grille.ts";
 /** Colonnes réglées au back-office (Contenu du site › Affichage des produits) :
  *  celles de la recherche s'il y en a, le réglage général sinon. */
@@ -90,8 +91,8 @@ const suivante = pageDemandee < pages ? adressePage(pageDemandee + 1) : null;
  * c'est par elles qu'on doit arriver.
  */
 const titre = assezLong
-  ? `${tr("recherche.titre")}${tr("ponct.deux_points")}${saisie} — Memory Line`
-  : `${tr("recherche.titre")} — Memory Line`;
+  ? titreDePage(`${tr("recherche.titre")}${tr("ponct.deux_points")}${saisie}`)
+  : titreDePage(tr("recherche.titre"));
 ---
 
 <Base
@@ -209,6 +210,7 @@ const titre = assezLong
             langue={langue}
             prioritaire={rang < 4}
             sizes={sizesGrille(grille)}
+            titre="h2"
           />
         ))
       }

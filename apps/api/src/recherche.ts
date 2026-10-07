@@ -1,666 +1,234 @@
 /**
  * La recherche unique du back-office.
  *
- * Le back-office compte une trentaine d'écrans et chacun a sa propre barre de
- * filtres. Retrouver la commande d'une cliente qui appelle demandait donc de
- * savoir D'ABORD dans quel écran chercher : les commandes du site, les ventes
- * de stand, les cartes cadeaux. Cette route répond à la question posée dans
- * l'autre sens — « je tape ce que je sais, montre-moi ce que ça touche » — et
- * elle mélange volontairement les natures : une affiche, une commande, une
- * cliente et un écran du menu se répondent dans la même liste.
+ * Le back-office compte une cinquantaine d'écrans et chacun a sa propre barre
+ * de filtres. Retrouver la commande d'une cliente qui appelle demandait donc de
+ * savoir D'ABORD dans quel écran chercher. Cette route répond à la question
+ * posée dans l'autre sens — « je tape ce que je sais, montre-moi ce que ça
+ * touche » — et elle mélange volontairement les natures : une affiche, une
+ * commande, une cliente et un texte du site se répondent dans la même liste.
  *
- * Ce qu'elle ne fait pas, et c'est délibéré :
+ * Elle cherche désormais PARTOUT, corps des textes compris, à la demande
+ * d'Alexandra : un bout de description, une note de commande, une ligne de
+ * journal, un texte d'affiche, une traduction allemande. Chaque résultat dit
+ * OÙ il a trouvé (« Description (anglais) ») et son lien mène à cet endroit
+ * précis de l'écran, le passage surligné.
  *
- *   - Elle ne classe pas les catégories entre elles par pertinence. Chaque
- *     catégorie garde son bloc, dans un ordre fixe. Un classement global qui
- *     change à chaque frappe se lit mal : on cherche des yeux au même endroit.
- *   - Elle ne cherche pas dans le corps des textes (descriptions, notes). On
- *     cherche ici quelque chose dont on connaît le NOM ou le NUMÉRO ; ratisser
- *     les descriptions ramènerait des dizaines d'affiches pour deux lettres.
- *   - Elle ne sort aucun code d'accès de stand, aucune empreinte de mot de
- *     passe. Voir la garde en tête de la route.
+ * Ce qui garde le panneau lisible malgré cela, c'est le CLASSEMENT, groupe par
+ * groupe : exact, puis début de mot, puis contient, puis approché (une faute
+ * de frappe corrigée), et à rang égal le poids du champ — un nom passe devant
+ * une description. Taper « biarritz » met l'affiche BIARRITZ devant les
+ * affiches qui parlent de Biarritz dans leur texte. Les groupes, eux, gardent
+ * un ordre fixe : on cherche des yeux au même endroit.
+ *
+ * Les écrans du back-office et les rubriques de l'aide ne sont plus ici : le
+ * back-office les indexe lui-même, depuis son propre code (une liste écrite à
+ * la main finissait toujours en retard d'un écran).
+ *
+ * Ce qu'elle ne lit JAMAIS — ni pour l'afficher, ni pour comparer, car un
+ * « trouvé » sur une colonne secrète suffirait à la deviner lettre à lettre :
+ * le code d'accès d'un stand et les réglages « salon.* », les empreintes de
+ * mot de passe, les sessions et les jetons (récupération de panier,
+ * désabonnement, relais photo), la clé de demande d'un bordereau, l'adresse
+ * IP et la consigne envoyée au modèle d'une génération IA. La table des
+ * réglages n'est lue que par des clés énumérées.
+ *
+ * Le code se répartit ainsi :
+ *   - @memoryline/types/recherche : aplatir, comparer, classer, extraire —
+ *     partagé avec le back-office et le script d'arrivée ;
+ *   - recherche-sql.ts : les briques SQL du préfiltre ;
+ *   - recherche-extraction.ts : ce qu'on lit dans chaque objet et où cela mène ;
+ *   - recherche-corpus.ts : le catalogue et les textes, en mémoire ;
+ *   - recherche-direct.ts : commandes, paniers, clientes, cartes, en base.
  */
 import type { Hono } from "hono";
-import type { Column, SQL } from "drizzle-orm";
 import {
-  and,
-  asc,
-  count,
-  desc,
-  eq,
-  inArray,
-  isNotNull,
-  notInArray,
-  or,
-  sql as raw,
-} from "drizzle-orm";
-import { db, schema } from "./db/client.js";
-import { ordreDesCollections } from "./collections.js";
-import { HORS_VENTES } from "./statuts-vente.js";
+  GROUPES_API,
+  ORDRE_GROUPES,
+  RECHERCHE_LIMITE_MAX,
+  RECHERCHE_LIMITE_PANNEAU,
+  RECHERCHE_LONGUEUR_MAX,
+  RECHERCHE_MINIMUM,
+  TITRES_GROUPES,
+  comparer,
+  preparerRequete,
+  type GroupeId,
+  type GroupeRecherche,
+  type ReponseRecherche,
+  type Requete,
+} from "@memoryline/types/recherche";
+import { corpusRecherche, invaliderCorpusRecherche, sansTomber } from "./recherche-corpus.js";
+import {
+  chercherCartes,
+  chercherClients,
+  chercherCommandes,
+  chercherPaniers,
+  vocabulaireDirect,
+  type ResultatSource,
+} from "./recherche-direct.js";
+import { versResultat, type Trouvaille } from "./recherche-extraction.js";
+
+/** Le middleware d'écriture (index.ts) l'appelle : un nom corrigé se retrouve aussitôt. */
+export { invaliderCorpusRecherche };
 
 /* -------------------------------------------------------------------------- */
-/*  Ce que la route renvoie                                                   */
-/* -------------------------------------------------------------------------- */
-
-/** La nature d'un résultat. Le panneau s'en sert pour son icône et son titre. */
-export type GenreResultat =
-  | "produit"
-  | "commande"
-  | "client"
-  | "collection"
-  | "stand"
-  | "carte"
-  | "ecran";
-
-export interface ResultatRecherche {
-  /** Identifiant technique, pour la clé de liste. Jamais affiché. */
-  id: string;
-  /** Ce qu'on lit en premier : le nom, le numéro, le code. */
-  titre: string;
-  /** Seconde ligne : statut, montant, date. Absente quand il n'y a rien à dire. */
-  detail?: string;
-  /** Adresse INTERNE, sans le préfixe de déploiement : le panneau l'ajoute. */
-  href: string;
-  /** Vignette, pour une affiche. Chemin servi par l'API (« /assets/… »). */
-  image?: string | null;
-}
-
-export interface GroupeRecherche {
-  genre: GenreResultat;
-  titre: string;
-  resultats: ResultatRecherche[];
-}
-
-/**
- * Deux caractères avant de chercher.
- *
- * En dessous, tout correspond : une seule lettre ramènerait le catalogue
- * entier et ferait travailler la base à chaque frappe pour un résultat que
- * personne ne peut lire.
- */
-const MINIMUM_CARACTERES = 2;
-
-/**
- * Cinq résultats par catégorie.
- *
- * Un panneau de recherche n'est pas une liste : il sert à reconnaître ce qu'on
- * cherchait déjà. Passé cinq lignes, on ne reconnaît plus, on parcourt — et
- * c'est le rôle des écrans, qui ont leurs filtres et leur pagination.
- */
-const PAR_CATEGORIE = 5;
-
-/* -------------------------------------------------------------------------- */
-/*  Comparer sans se soucier des accents ni de la casse                       */
+/*  Les paramètres                                                            */
 /* -------------------------------------------------------------------------- */
 
 /**
- * La table de correspondance des lettres accentuées, pour `translate()`.
- *
- * L'extension `unaccent` de PostgreSQL ferait ce travail plus proprement, mais
- * elle demande un `CREATE EXTENSION` — donc les droits d'administration de la
- * base, et une migration de plus à ne pas oublier le jour d'une réinstallation.
- * `translate()` est présent partout, sans rien installer.
- *
- * Les majuscules accentuées figurent aussi dans la table alors que `lower()`
- * est appliqué avant : sur une base créée avec la locale « C », `lower('É')`
- * ne rend pas « é », et « Éléonore » cesserait de se trouver en tapant
- * « eleonore ». Les deux lignes coûtent moins que ce piège.
+ * Les groupes demandés. `undefined` (paramètre absent) : tous. Présent : les
+ * ids connus seulement — un id inconnu est ignoré, et un paramètre sans aucun
+ * id valide ne demande rien du tout (la réponse est vide, pas « tout »).
  */
-const LETTRES_ACCENTUEES =
-  "àáâãäåçèéêëìíîïñòóôõöùúûüýÿÀÁÂÃÄÅÇÈÉÊËÌÍÎÏÑÒÓÔÕÖÙÚÛÜÝŸ";
-const LETTRES_PLATES =
-  "aaaaaaceeeeiiiinooooouuuuyyaaaaaaceeeeiiiinooooouuuuyy";
+export function lireGroupes(brut: string | undefined): GroupeId[] | null {
+  if (brut === undefined) return null;
+  const demandes = brut
+    .split(",")
+    .map((g) => g.trim())
+    .filter((g): g is GroupeId => (GROUPES_API as readonly string[]).includes(g));
+  return [...new Set(demandes)];
+}
 
-/** Le même aplatissement, côté JavaScript, pour la liste des écrans. */
-function aplatir(texte: string): string {
-  return texte
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/gu, "")
-    .toLowerCase();
+/** Cinq par défaut (le panneau), deux cents au plus (la page complète d'un groupe). */
+export function lireLimite(brut: string | number | undefined): number {
+  const n = typeof brut === "number" ? brut : Number.parseInt(brut ?? "", 10);
+  if (!Number.isFinite(n)) return RECHERCHE_LIMITE_PANNEAU;
+  return Math.min(RECHERCHE_LIMITE_MAX, Math.max(1, Math.trunc(n)));
 }
 
 /**
- * Le motif `like` correspondant à une saisie.
+ * La saisie ramenée par trim et coupée à 200, sans couper un émoji en deux.
  *
- * `%` et `_` ont un sens pour la base : cherchés tels quels, taper « 50% »
- * ramènerait le catalogue entier. Une affiche a parfaitement le droit de
- * s'appeler « Promo 50% », et la barre oblique inversée d'être tapée par
- * erreur — les trois sont donc échappées.
+ * Les caractères de contrôle deviennent des espaces : PostgreSQL refuse le
+ * caractère nul dans un paramètre (« invalid byte sequence »), et une seule
+ * frappe de ce genre, collée depuis un tableur, faisait tomber toute une
+ * source au lieu de ne rien trouver.
  */
-function motifDe(saisie: string): string {
-  const plat = aplatir(saisie).replace(/[\\%_]/g, (signe) => `\\${signe}`);
-  return `%${plat}%`;
+function saisieBornee(saisie: string): string {
+  const t = saisie.replace(/[\u0000-\u001f\u007f]/g, " ").trim();
+  if (t.length <= RECHERCHE_LONGUEUR_MAX) return t;
+  const code = t.charCodeAt(RECHERCHE_LONGUEUR_MAX - 1);
+  return t.slice(0, code >= 0xd800 && code <= 0xdbff ? RECHERCHE_LONGUEUR_MAX - 1 : RECHERCHE_LONGUEUR_MAX);
 }
 
-/** « cette colonne, accents et casse mis de côté, contient le motif ». */
-function contient(colonne: Column, motif: string): SQL {
-  return raw`translate(lower(coalesce(${colonne}, '')), ${LETTRES_ACCENTUEES}, ${LETTRES_PLATES}) like ${motif}`;
-}
+/* -------------------------------------------------------------------------- */
+/*  Le vocabulaire                                                            */
+/* -------------------------------------------------------------------------- */
 
 /**
- * « cette colonne, tirets et casse mis de côté, contient le motif ».
- *
- * Les numéros de commande et les codes de carte cadeau s'écrivent avec des
- * tirets (« WEB-0042 », « ACEF-HJKL-RUWX ») et se relisent au téléphone sans.
- * Les deux doivent trouver la même chose.
+ * Les mots connus du corpus ET des commandes, réunis une fois : on ne
+ * corrige une faute que si le mot tapé n'existe nulle part. Réunis à
+ * nouveau seulement quand l'un des deux a été relu.
  */
-function contientSansTiret(colonne: Column, motif: string): SQL {
-  return raw`replace(lower(coalesce(${colonne}, '')), '-', '') like ${motif}`;
+let reunion: { corpus: Set<string> | null; direct: Set<string>; mots: Set<string> } | null = null;
+
+function vocabulaireUni(corpus: Set<string> | null, direct: Set<string>): Set<string> {
+  if (reunion && reunion.corpus === corpus && reunion.direct === direct) return reunion.mots;
+  const mots = new Set(corpus ?? []);
+  for (const m of direct) mots.add(m);
+  reunion = { corpus, direct, mots };
+  return mots;
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Mise en forme des détails                                                 */
+/*  La recherche                                                              */
 /* -------------------------------------------------------------------------- */
 
-/** « 49,90 € », « 30 € ». */
-function euros(cents: number): string {
-  const montant = cents / 100;
-  const texte =
-    cents % 100 === 0 ? String(montant) : montant.toFixed(2).replace(".", ",");
-  return `${texte} €`;
-}
-
-/** « 12/03/2026 » : compact, c'est une seconde ligne, pas une fiche. */
-function jour(quand: Date): string {
-  return quand.toLocaleDateString("fr-FR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-}
-
-/** Assemble les morceaux d'une seconde ligne, en sautant ceux qui manquent. */
-function ligneDetail(...morceaux: (string | null | undefined)[]): string {
-  return morceaux.filter((m): m is string => !!m).join(" · ");
-}
-
-/** Ce que la propriétaire lit dans la liste des affiches. */
-const ETAT_AFFICHE: Record<string, string> = {
-  active: "Actif",
-  draft: "Désactivé",
-  archived: "Archivé",
-};
-
-/* -------------------------------------------------------------------------- */
-/*  Les écrans du back-office                                                 */
-/* -------------------------------------------------------------------------- */
-
-interface Ecran {
-  titre: string;
-  href: string;
-  /**
-   * Les autres mots qui doivent y mener.
-   *
-   * C'est la moitié de l'utilité de cette liste : personne ne tape
-   * « Livraison » pour régler les frais de port, on tape « port ». Le titre
-   * seul ne suffirait donc pas.
-   */
-  aussi?: string[];
-}
-
-/**
- * Les écrans, écrits à la main.
- *
- * Ils ne sont pas lus du menu : le menu est en Astro, dans une autre
- * application, et il ne porte ni les sous-pages sans lien (« Modifier
- * plusieurs produits ») ni les mots qu'on tape pour les atteindre. Une page
- * ajoutée demain devra être ajoutée ici ; c'est une ligne, et l'oubli ne casse
- * rien — l'écran reste accessible par le menu.
- */
-const ECRANS: Ecran[] = [
-  { titre: "Accueil", href: "/", aussi: ["tableau de bord", "chiffres du jour"] },
-  {
-    titre: "Commandes en ligne",
-    href: "/commandes",
-    aussi: ["ventes du site", "boutique", "expeditions"],
-  },
-  { titre: "Paniers abandonnés", href: "/paniers", aussi: ["relances"] },
-  { titre: "Clients", href: "/clients", aussi: ["clientes", "fiches"] },
-  {
-    titre: "Ventes stand",
-    href: "/ventes-salon",
-    aussi: ["salon", "foire", "marché", "stands"],
-  },
-  { titre: "Produits", href: "/produits", aussi: ["affiches", "catalogue"] },
-  {
-    titre: "Nouvelle affiche",
-    href: "/produits/nouveau",
-    aussi: ["créer un produit", "ajouter une affiche"],
-  },
-  {
-    titre: "Importer des affiches",
-    href: "/produits/import",
-    aussi: ["import", "fichier", "tableur"],
-  },
-  {
-    titre: "Modifier plusieurs produits",
-    href: "/produits/modifier-en-masse",
-    aussi: ["prix en masse", "modification groupée"],
-  },
-  { titre: "Cadres", href: "/cadres", aussi: ["encadrement"] },
-  { titre: "Personnages", href: "/personnages", aussi: ["silhouettes"] },
-  { titre: "Nouveau personnage", href: "/personnages/nouveau" },
-  { titre: "Nouvelle pièce", href: "/personnages/piece", aussi: ["pièces"] },
-  {
-    titre: "Correspondances",
-    href: "/personnages/correspondances",
-    aussi: ["équivalences des pièces"],
-  },
-  { titre: "Types d'affiche", href: "/types-affiche", aussi: ["modèles"] },
-  {
-    titre: "Affiches IA",
-    href: "/ia",
-    aussi: ["intelligence artificielle", "générées"],
-  },
-  { titre: "Collections", href: "/collections", aussi: ["rayons"] },
-  { titre: "Cartes cadeaux", href: "/cartes-cadeaux", aussi: ["bons cadeaux"] },
-  { titre: "Catégories de pièces", href: "/categories-pieces" },
-  {
-    titre: "Promotions",
-    href: "/promotions",
-    aussi: ["codes promo", "remises", "soldes", "réductions"],
-  },
-  {
-    titre: "Livraison",
-    href: "/livraison",
-    aussi: ["frais de port", "transport", "colissimo", "point relais", "tarifs"],
-  },
-  { titre: "Bandeau du site", href: "/bandeau", aussi: ["annonce", "message en haut"] },
-  { titre: "Contenu du site", href: "/contenu", aussi: ["textes", "accueil du site"] },
-  { titre: "Pages du site", href: "/pages", aussi: ["mentions", "conditions"] },
-  { titre: "Menu du site", href: "/menu", aussi: ["navigation"] },
-  {
-    titre: "Lettre d'information",
-    href: "/lettre",
-    aussi: ["abonnés", "envoi aux clients"],
-  },
-  {
-    titre: "Courriers d'essai",
-    href: "/courriers",
-    aussi: ["mails", "messages automatiques", "confirmation de commande"],
-  },
-  {
-    titre: "Finances",
-    href: "/finances",
-    aussi: ["chiffre d'affaires", "comptabilité", "marges", "taxes"],
-  },
-  { titre: "Comptes", href: "/comptes", aussi: ["vendeuses", "accès", "mot de passe"] },
+const SOURCES_DIRECTES: [GroupeId, string, (requete: Requete) => Promise<ResultatSource>][] = [
+  ["commandes", "commandes", chercherCommandes],
+  ["paniers", "paniers", chercherPaniers],
+  ["clients", "clients", chercherClients],
+  ["cartes", "cartes cadeaux", chercherCartes],
 ];
 
-/**
- * Les écrans qui correspondent, les mieux placés d'abord.
- *
- * Un titre qui COMMENCE par ce qui est tapé passe devant : « co » doit donner
- * « Commandes en ligne » avant « Cartes cadeaux », qui ne contient le mot
- * qu'au milieu.
- */
-function ecransTrouves(saisie: string): ResultatRecherche[] {
-  const cherche = aplatir(saisie);
-  const trouves: { rang: number; ecran: Ecran }[] = [];
-  for (const ecran of ECRANS) {
-    const titre = aplatir(ecran.titre);
-    const position = titre.indexOf(cherche);
-    if (position === 0) trouves.push({ rang: 0, ecran });
-    else if (position > 0) trouves.push({ rang: 1, ecran });
-    else if ((ecran.aussi ?? []).some((mot) => aplatir(mot).includes(cherche)))
-      trouves.push({ rang: 2, ecran });
-  }
-  return trouves
-    .sort((a, b) => a.rang - b.rang || a.ecran.titre.localeCompare(b.ecran.titre, "fr"))
-    .slice(0, PAR_CATEGORIE)
-    .map(({ ecran }) => ({
-      id: `ecran:${ecran.href}`,
-      titre: ecran.titre,
-      href: ecran.href,
-    }));
+export interface OptionsRecherche {
+  /** null ou absent : tous les groupes de l'API. */
+  groupes?: readonly GroupeId[] | null;
+  /** Résultats gardés par groupe ; le total, lui, compte tout. */
+  limite?: number;
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Une catégorie = une fonction                                              */
-/* -------------------------------------------------------------------------- */
+/**
+ * Chercher dans les données de la boutique, hors de toute route : c'est ce
+ * que la route appelle, et ce que les essais appellent directement.
+ *
+ * Toutes les sources partent EN MÊME TEMPS : la recherche se tape lettre par
+ * lettre, et des requêtes à la suite additionneraient leurs latences.
+ */
+export async function rechercherDansLesDonnees(
+  saisie: string,
+  options: OptionsRecherche = {},
+): Promise<ReponseRecherche> {
+  const q = saisieBornee(saisie);
+  const vide: ReponseRecherche = { q, groupes: [], corrections: [], partiel: false };
+  // Rien ne part avant deux caractères : la réponse a la même forme, elle est
+  // simplement vide, et le panneau n'a pas de cas particulier à traiter.
+  if (q.length < RECHERCHE_MINIMUM) return vide;
+  const demandes = options.groupes ?? GROUPES_API;
+  if (!demandes.length) return vide;
+  const limite = lireLimite(options.limite);
+  const veut = (g: GroupeId) => demandes.includes(g);
 
-/** Les affiches dont le nom ou l'adresse contient ce qui est tapé. */
-async function chercherAffiches(motif: string): Promise<ResultatRecherche[]> {
-  const lignes = await db
-    .select({
-      id: schema.products.id,
-      nom: schema.products.name,
-      statut: schema.products.status,
-      prixBase: schema.products.basePriceCents,
-    })
-    .from(schema.products)
-    .where(
-      or(
-        contient(schema.products.name, motif),
-        contient(schema.products.slug, motif),
-      ),
-    )
-    // Par ordre alphabétique : on cherche une affiche dont on connaît le nom,
-    // pas la dernière créée.
-    .orderBy(asc(schema.products.name), asc(schema.products.id))
-    .limit(PAR_CATEGORIE);
-  if (!lignes.length) return [];
-
-  const ids = lignes.map((l) => l.id);
-  // Les prix et les vignettes en deux requêtes pour tout le lot : une par
-  // affiche serait cinq allers-retours de plus à chaque frappe.
-  const [variantes, images] = await Promise.all([
-    db
-      .select({
-        produit: schema.variants.productId,
-        prix: schema.variants.priceCents,
-      })
-      .from(schema.variants)
-      .where(inArray(schema.variants.productId, ids)),
-    db
-      .select({
-        produit: schema.productImages.productId,
-        url: schema.productImages.url,
-      })
-      .from(schema.productImages)
-      .where(inArray(schema.productImages.productId, ids))
-      .orderBy(asc(schema.productImages.position), asc(schema.productImages.id)),
+  const echecs: string[] = [];
+  const [corpus, motsDirects] = await Promise.all([
+    sansTomber("corpus", corpusRecherche, null, echecs),
+    sansTomber("vocabulaire", vocabulaireDirect, new Set<string>(), echecs),
   ]);
+  if (corpus) echecs.push(...corpus.echecs);
+  const requete = preparerRequete(q, vocabulaireUni(corpus?.vocabulaire ?? null, motsDirects));
 
-  const fourchette = new Map<number, { min: number; max: number }>();
-  for (const v of variantes) {
-    const bornes = fourchette.get(v.produit);
-    fourchette.set(
-      v.produit,
-      bornes
-        ? { min: Math.min(bornes.min, v.prix), max: Math.max(bornes.max, v.prix) }
-        : { min: v.prix, max: v.prix },
-    );
-  }
-  // La première rencontrée est celle de position la plus basse : c'est l'image
-  // principale, celle qui illustre déjà l'affiche en boutique.
-  const vignette = new Map<number, string>();
-  for (const img of images)
-    if (!vignette.has(img.produit)) vignette.set(img.produit, img.url);
-
-  return lignes.map((l) => {
-    const bornes = fourchette.get(l.id);
-    const prix = bornes
-      ? bornes.min === bornes.max
-        ? euros(bornes.min)
-        : `de ${euros(bornes.min)} à ${euros(bornes.max)}`
-      : l.prixBase > 0
-        ? euros(l.prixBase)
-        : null;
-    return {
-      id: `produit:${l.id}`,
-      titre: l.nom,
-      detail: ligneDetail(ETAT_AFFICHE[l.statut] ?? l.statut, prix),
-      href: `/produits/${l.id}`,
-      image: vignette.get(l.id) ?? null,
-    };
-  });
-}
-
-/**
- * Les commandes, par numéro d'abord.
- *
- * Le numéro passe devant le nom parce que c'est ce qu'on a sous les yeux quand
- * on cherche : il est dans le courriel de la cliente, sur le bon de livraison,
- * dans le relevé bancaire. Le nom, lui, est ce qu'on tape faute de mieux.
- *
- * Les paniers abandonnés sont écartés : ce sont des commandes au sens de la
- * base (statut « draft », numéro « DRAFT-… »), mais personne ne les cherche
- * ici, et ils noieraient les vraies commandes sous des lignes sans nom.
- */
-async function chercherCommandes(
-  motif: string,
-  motifSansTiret: string,
-): Promise<ResultatRecherche[]> {
-  const surLeNumero = contientSansTiret(schema.orders.number, motifSansTiret);
-  const lignes = await db
-    .select({
-      id: schema.orders.id,
-      numero: schema.orders.number,
-      canal: schema.orders.channel,
-      total: schema.orders.totalCents,
-      quand: schema.orders.createdAt,
-      destinataire: schema.orders.shippingName,
-      client: schema.customers.name,
-      archivedAt: schema.orders.archivedAt,
-    })
-    .from(schema.orders)
-    .leftJoin(schema.customers, eq(schema.orders.customerId, schema.customers.id))
-    .where(
-      and(
-        notInArray(schema.orders.status, HORS_VENTES),
-        or(
-          surLeNumero,
-          contient(schema.orders.shippingName, motif),
-          contient(schema.customers.name, motif),
-        ),
-      ),
-    )
-    // Les cinq places du bloc vont d'abord à ce qui correspond au NUMÉRO :
-    // sans ce tri, cinq homonymes récents suffiraient à cacher la commande
-    // dont on vient de taper le numéro en toutes lettres.
-    .orderBy(raw`(${surLeNumero}) desc`, desc(schema.orders.createdAt))
-    .limit(PAR_CATEGORIE);
-
-  return lignes.map((l) => ({
-    id: `commande:${l.id}`,
-    titre: l.numero,
-    detail: ligneDetail(
-      l.destinataire ?? l.client ?? null,
-      jour(l.quand),
-      l.canal === "salon" ? "Stand" : "En ligne",
-      euros(l.total),
-      // Une commande archivée reste trouvable par son numéro : c'est
-      // justement ainsi qu'on la retrouve pour la relire ou la restaurer,
-      // puisqu'elle a quitté la liste. Elle se dit, plutôt que de se cacher.
-      l.archivedAt ? "Archivée" : null,
-    ),
-    href: `/commandes/${l.id}`,
-  }));
-}
-
-/** Les clientes, par nom, adresse e-mail ou téléphone. */
-async function chercherClients(motif: string): Promise<ResultatRecherche[]> {
-  const lignes = await db
-    .select({
-      id: schema.customers.id,
-      nom: schema.customers.name,
-      email: schema.customers.email,
-      telephone: schema.customers.phone,
-    })
-    .from(schema.customers)
-    .where(
-      or(
-        contient(schema.customers.name, motif),
-        contient(schema.customers.email, motif),
-        contient(schema.customers.phone, motif),
-      ),
-    )
-    .orderBy(asc(schema.customers.name), desc(schema.customers.id))
-    .limit(PAR_CATEGORIE);
-  if (!lignes.length) return [];
-
-  const ids = lignes.map((l) => l.id);
-  // Ce qui compte comme une vente est défini une seule fois, dans
-  // statuts-vente.ts : un panier abandonné n'est pas une commande.
-  const totaux = await db
-    .select({
-      client: schema.orders.customerId,
-      commandes: raw<number>`count(*)::int`,
-      cents: raw<number>`coalesce(sum(${schema.orders.totalCents}), 0)::int`,
-    })
-    .from(schema.orders)
-    .where(
-      and(
-        isNotNull(schema.orders.customerId),
-        inArray(schema.orders.customerId, ids),
-        notInArray(schema.orders.status, HORS_VENTES),
-      ),
-    )
-    .groupBy(schema.orders.customerId);
-  const parClient = new Map(
-    totaux.map((t) => [t.client, { commandes: t.commandes, cents: t.cents }]),
+  // Les sources en base partent d'abord ; le corpus, en mémoire, s'évalue
+  // pendant qu'elles répondent.
+  const directes = Promise.all(
+    SOURCES_DIRECTES.filter(([g]) => veut(g)).map(async ([g, nom, chercher]) => ({
+      groupe: g,
+      resultat: await sansTomber(nom, () => chercher(requete), null, echecs),
+    })),
   );
 
-  return lignes.map((l) => {
-    const compte = parClient.get(l.id);
-    return {
-      id: `client:${l.id}`,
-      // Une fiche sans nom existe : la commande de stand n'exige que le
-      // courriel. Mieux vaut l'adresse qu'une ligne vide.
-      titre: l.nom?.trim() || l.email || "Client sans nom",
-      detail: ligneDetail(
-        l.nom?.trim() ? l.email : null,
-        compte
-          ? `${compte.commandes} commande${compte.commandes > 1 ? "s" : ""} · ${euros(compte.cents)}`
-          : "Aucune commande",
-      ),
-      href: `/clients/${l.id}`,
-    };
-  });
-}
-
-/** Les collections, par nom. */
-async function chercherCollections(motif: string): Promise<ResultatRecherche[]> {
-  const lignes = await db
-    .select({
-      id: schema.collections.id,
-      nom: schema.collections.name,
-      active: schema.collections.active,
-      archivedAt: schema.collections.archivedAt,
-    })
-    .from(schema.collections)
-    .where(
-      or(
-        contient(schema.collections.name, motif),
-        contient(schema.collections.slug, motif),
-      ),
-    )
-    .orderBy(...ordreDesCollections())
-    .limit(PAR_CATEGORIE);
-  if (!lignes.length) return [];
-
-  const ids = lignes.map((l) => l.id);
-  const comptes = await db
-    .select({ collection: schema.productCollections.collectionId, n: count() })
-    .from(schema.productCollections)
-    .where(inArray(schema.productCollections.collectionId, ids))
-    .groupBy(schema.productCollections.collectionId);
-  const parCollection = new Map(comptes.map((r) => [r.collection, Number(r.n)]));
-
-  return lignes.map((l) => {
-    const combien = parCollection.get(l.id) ?? 0;
-    return {
-      id: `collection:${l.id}`,
-      titre: l.nom,
-      detail: ligneDetail(
-        combien === 0
-          ? "Aucune affiche"
-          : `${combien} affiche${combien > 1 ? "s" : ""}`,
-        // Une collection archivée reste trouvable, comme une affiche archivée :
-        // on la cherche justement pour la restaurer. Elle se dit, plutôt que
-        // de se cacher — sans quoi on la croirait perdue.
-        l.archivedAt ? "Archivée" : l.active ? null : "Désactivée",
-      ),
-      href: `/collections/${l.id}`,
-    };
-  });
-}
-
-/**
- * Les stands, par nom.
- *
- * Le code d'accès n'est même pas LU : il n'est pas dans la projection, donc il
- * ne peut pas partir par distraction dans une réponse. Ce code permet
- * d'enregistrer des commandes déclarées payées ; il se donne de la main à la
- * main, il ne se promène pas dans un panneau de recherche.
- */
-async function chercherStands(motif: string): Promise<ResultatRecherche[]> {
-  const lignes = await db
-    .select({
-      id: schema.stands.id,
-      nom: schema.stands.nom,
-      ouvert: schema.stands.ouvert,
-      archivedAt: schema.stands.archivedAt,
-    })
-    .from(schema.stands)
-    .where(contient(schema.stands.nom, motif))
-    // Les stands ouverts d'abord : ce sont eux dont on s'occupe.
-    .orderBy(desc(schema.stands.ouvert), asc(schema.stands.nom))
-    .limit(PAR_CATEGORIE);
-
-  return lignes.map((l) => ({
-    id: `stand:${l.id}`,
-    titre: l.nom,
-    // Un stand archivé reste trouvable : on le cherche justement pour relire
-    // ce qu'il a vendu, ou pour le restaurer avant le salon de l'an prochain.
-    // Il se dit, plutôt que de se cacher.
-    detail: l.archivedAt ? "Archivé" : l.ouvert ? "Ouvert" : "Fermé",
-    href: `/ventes-salon?stand=${l.id}`,
-  }));
-}
-
-/**
- * Les cartes cadeaux, par code.
- *
- * Le code s'affiche en clair, comme dans la liste des cartes : sans lui, un
- * résultat ne dirait pas de quelle carte il parle, et la recherche ne servirait
- * plus à rien au moment précis où elle sert — un client au téléphone qui lit
- * son code. La route est réservée à la propriétaire, voir la garde en tête.
- */
-async function chercherCartes(motifSansTiret: string): Promise<ResultatRecherche[]> {
-  const lignes = await db
-    .select({
-      id: schema.giftCards.id,
-      code: schema.giftCards.code,
-      solde: schema.giftCards.balanceCents,
-      statut: schema.giftCards.status,
-      expire: schema.giftCards.expiresAt,
-    })
-    .from(schema.giftCards)
-    .where(contientSansTiret(schema.giftCards.code, motifSansTiret))
-    .orderBy(desc(schema.giftCards.createdAt), desc(schema.giftCards.id))
-    .limit(PAR_CATEGORIE);
-
-  const maintenant = new Date();
-  return lignes.map((l) => ({
-    id: `carte:${l.id}`,
-    titre: l.code,
-    detail: ligneDetail(
-      `Solde ${euros(l.solde)}`,
-      l.statut === "disabled"
-        ? "Désactivée"
-        : l.expire && l.expire < maintenant
-          ? "Périmée"
-          : null,
-    ),
-    href: `/cartes-cadeaux?carte=${l.id}`,
-  }));
-}
-
-/**
- * Une catégorie qui échoue ne fait pas tomber les six autres.
- *
- * La recherche est le seul écran qui interroge SEPT parties du back-office à la
- * fois : elle a donc sept fois plus d'occasions de rencontrer une table en
- * retard de migration ou une donnée abîmée. Sans ce filet, la moindre de ces
- * pannes rendrait la barre de recherche entièrement muette, alors que six
- * catégories sur sept répondaient très bien.
- *
- * L'erreur n'est pas avalée pour autant : elle part dans le journal du serveur,
- * là où on la cherchera. C'est l'écran qui reste utilisable, pas le problème
- * qui disparaît.
- */
-async function sansTomber(
-  categorie: string,
-  chercher: () => Promise<ResultatRecherche[]>,
-): Promise<ResultatRecherche[]> {
-  try {
-    return await chercher();
-  } catch (erreur) {
-    console.error(`[recherche] ${categorie} : recherche impossible`, erreur);
-    return [];
+  const parGroupe = new Map<GroupeId, { trouvailles: Trouvaille[]; plafonne: boolean }>();
+  const ajouter = (g: GroupeId, trouvailles: Trouvaille[], plafonne: boolean) => {
+    const groupe = parGroupe.get(g) ?? { trouvailles: [], plafonne: false };
+    groupe.trouvailles.push(...trouvailles);
+    groupe.plafonne ||= plafonne;
+    parGroupe.set(g, groupe);
+  };
+  for (const fiche of corpus?.fiches ?? []) {
+    if (!veut(fiche.groupe)) continue;
+    const t = versResultat(fiche, requete);
+    if (t) ajouter(fiche.groupe, [t], false);
   }
+  for (const { groupe, resultat } of await directes)
+    if (resultat) ajouter(groupe, resultat.trouvailles, resultat.plafonne);
+
+  const groupes: GroupeRecherche[] = [];
+  for (const id of ORDRE_GROUPES) {
+    const g = parGroupe.get(id);
+    // Un groupe vide ne figure pas dans la réponse : un panneau plein de
+    // titres sans rien dessous ne se lit pas.
+    if (!g?.trouvailles.length) continue;
+    g.trouvailles.sort((a, b) => comparer(a.classement, b.classement));
+    groupes.push({
+      id,
+      titre: TITRES_GROUPES[id],
+      total: g.trouvailles.length,
+      plafonne: g.plafonne,
+      resultats: g.trouvailles.slice(0, limite).map((t) => t.resultat),
+    });
+  }
+
+  // « Résultats approchés pour … » ne s'écrit que si une correction a
+  // réellement servi : un mot inconnu du vocabulaire mais présent dans une
+  // note se trouve tel quel, et le panneau n'a pas à prétendre le corriger.
+  const approche = [...parGroupe.values()].some((g) =>
+    g.trouvailles.some((t) => t.resultat.rang === 3),
+  );
+  return {
+    q,
+    groupes,
+    corrections: approche ? requete.corrections : [],
+    partiel: echecs.length > 0,
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -668,14 +236,21 @@ async function sansTomber(
 /* -------------------------------------------------------------------------- */
 
 export function mountRecherche(app: Hono): void {
+  // Le corpus est lu quelques secondes après le démarrage, sans attendre la
+  // première recherche : c'est elle, sinon, qui paierait la lecture complète
+  // du catalogue sur des connexions encore froides. Lecture seule, et un
+  // échec ici ne coûte rien — la première recherche réessaiera.
+  setTimeout(() => {
+    void corpusRecherche().catch(() => undefined);
+  }, 3000).unref();
+
   /**
-   * GET /admin/recherche?q=…
-   *
-   * Toutes les catégories sont interrogées EN MÊME TEMPS. La recherche se tape
-   * lettre par lettre : sept requêtes à la suite additionneraient sept fois la
-   * latence de la base et le panneau traînerait derrière la frappe.
+   * GET /admin/recherche?q=…[&groupes=affiches,commandes][&limite=20]
    */
   app.get("/admin/recherche", async (c) => {
+    // La réponse contient des noms de clientes : aucun cache, ni du
+    // navigateur ni d'un intermédiaire.
+    c.header("Cache-Control", "no-store");
     // La garde de « /admin/* » (index.ts) n'ouvre au propriétaire que ce qui
     // n'est pas une lecture, et n'autorise un vendeur que sur une liste
     // d'écrans nommés — celui-ci n'en fait pas partie. On le redit ici quand
@@ -683,47 +258,12 @@ export function mountRecherche(app: Hono): void {
     // et des numéros de commande du site. Le jour où quelqu'un ajoute
     // « /admin/recherche » à cette liste sans y penser, le refus tient encore.
     if (c.get("utilisateur")?.role !== "owner")
-      return c.json(
-        { error: "Cette recherche est réservée au propriétaire." },
-        403,
-      );
+      return c.json({ error: "Cette recherche est réservée au propriétaire." }, 403);
 
-    const saisie = (c.req.query("q") ?? "").trim();
-    // Rien ne part avant deux caractères : la réponse a la même forme, elle est
-    // simplement vide, et le panneau n'a pas de cas particulier à traiter.
-    if (saisie.length < MINIMUM_CARACTERES)
-      return c.json({ q: saisie, groupes: [] });
-
-    const motif = motifDe(saisie);
-    const motifSansTiret = motifDe(saisie.replace(/-/g, ""));
-
-    const [affiches, commandes, clients, collections, stands, cartes] =
-      await Promise.all([
-        sansTomber("affiches", () => chercherAffiches(motif)),
-        sansTomber("commandes", () => chercherCommandes(motif, motifSansTiret)),
-        sansTomber("clients", () => chercherClients(motif)),
-        sansTomber("collections", () => chercherCollections(motif)),
-        sansTomber("stands", () => chercherStands(motif)),
-        sansTomber("cartes cadeaux", () => chercherCartes(motifSansTiret)),
-      ]);
-
-    // Les données d'abord, les écrans à la fin : quand on tape un nom ou un
-    // numéro, c'est l'élément qu'on veut, et il doit être le premier que la
-    // touche Entrée ouvre. Quand on tape « livr », rien d'autre ne répond et
-    // l'écran se retrouve premier de lui-même.
-    const tous: GroupeRecherche[] = [
-      { genre: "produit", titre: "Affiches", resultats: affiches },
-      { genre: "commande", titre: "Commandes", resultats: commandes },
-      { genre: "client", titre: "Clients", resultats: clients },
-      { genre: "collection", titre: "Collections", resultats: collections },
-      { genre: "stand", titre: "Stands", resultats: stands },
-      { genre: "carte", titre: "Cartes cadeaux", resultats: cartes },
-      { genre: "ecran", titre: "Écrans", resultats: ecransTrouves(saisie) },
-    ];
-    // Un groupe vide ne figure pas dans la réponse : un panneau plein de
-    // titres sans rien dessous ne se lit pas.
-    const groupes = tous.filter((g) => g.resultats.length > 0);
-
-    return c.json({ q: saisie, groupes });
+    const reponse = await rechercherDansLesDonnees(c.req.query("q") ?? "", {
+      groupes: lireGroupes(c.req.query("groupes")),
+      limite: lireLimite(c.req.query("limite")),
+    });
+    return c.json(reponse);
   });
 }

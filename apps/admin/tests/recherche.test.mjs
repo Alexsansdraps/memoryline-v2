@@ -1,0 +1,370 @@
+/**
+ * Les essais de la recherche des écrans (lib/extraire-textes.ts et
+ * lib/index-ecrans.ts), sans navigateur ni base, sans dépendance.
+ *
+ * Lancés par : docker exec -w /app/apps/admin memoryline-admin node --test tests/
+ * (Node retire seul les types des fichiers .ts importés.)
+ *
+ * Ils lisent les VRAIES pages du back-office, en lecture seule, avec la même
+ * liste que le glob de lib/sources-ecrans.ts : c'est ce qui garantit que
+ * « bandeau » trouve bien les deux écrans de bandeaux le jour où l'on
+ * renomme une section, et qu'un mot-clé ne reste pas accroché à une page
+ * disparue. Rien n'est écrit sur le disque : la page « ajoutée » est factice,
+ * en mémoire.
+ */
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import {
+  composantsImportes,
+  extraireTextes,
+  rubriquesAide,
+  titreAdmin,
+} from "../src/lib/extraire-textes.ts";
+import { chercherDansIndex, construireIndex } from "../src/lib/index-ecrans.ts";
+import { MENU } from "../src/lib/menu.ts";
+import { SYNONYMES } from "../src/lib/synonymes-ecrans.ts";
+
+const ADMIN = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/* -------------------------------------------------------------------------- */
+/*  Les sources, comme le glob les donne                                      */
+/* -------------------------------------------------------------------------- */
+
+const MOTIFS_ATTENDUS = [
+  "/src/pages/**/*.astro",
+  "/src/components/*.astro",
+  "!/src/pages/login.astro",
+  "!/src/pages/recherche.astro",
+  "!/src/pages/commandes/bons.astro",
+];
+
+function fichiers(dossier, recursif) {
+  const sortie = [];
+  for (const nom of readdirSync(dossier)) {
+    const chemin = join(dossier, nom);
+    if (statSync(chemin).isDirectory()) {
+      if (recursif) sortie.push(...fichiers(chemin, true));
+    } else if (nom.endsWith(".astro")) sortie.push(chemin);
+  }
+  return sortie;
+}
+
+/** Les sources indexées, clé « /src/pages/… » comme celles d'import.meta.glob. */
+function lireSources() {
+  const exclues = new Set(MOTIFS_ATTENDUS.filter((m) => m.startsWith("!")).map((m) => m.slice(1)));
+  const sources = {};
+  for (const f of [...fichiers(join(ADMIN, "src/pages"), true), ...fichiers(join(ADMIN, "src/components"), false)]) {
+    const cle = f.slice(ADMIN.length).replace(/\\/g, "/");
+    if (!exclues.has(cle)) sources[cle] = readFileSync(f, "utf8");
+  }
+  return sources;
+}
+
+const SOURCES = lireSources();
+const INDEX = construireIndex(SOURCES, MENU, SYNONYMES);
+
+const chercher = (saisie, limite = 20) => chercherDansIndex(INDEX, saisie, limite);
+const ids = (groupe) => (groupe?.resultats ?? []).map((r) => r.id);
+const premier = (saisie) => chercher(saisie).ecrans?.resultats[0];
+
+/* -------------------------------------------------------------------------- */
+/*  Le glob et les mots-clés                                                  */
+/* -------------------------------------------------------------------------- */
+
+test("les essais lisent les mêmes fichiers que le glob de sources-ecrans.ts", () => {
+  const glob = readFileSync(join(ADMIN, "src/lib/sources-ecrans.ts"), "utf8");
+  const motifs = [...glob.matchAll(/"(!?\/src\/[^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(motifs, MOTIFS_ATTENDUS);
+});
+
+test("chaque route des mots-clés existe (un mot-clé orphelin se voit)", () => {
+  const routes = new Set(INDEX.ecrans.map((e) => e.route));
+  for (const route of Object.keys(SYNONYMES)) assert.ok(routes.has(route), `mot-clé sans écran : ${route}`);
+});
+
+test("chaque entrée du menu est un écran de l'index, sous son libellé", () => {
+  for (const groupe of MENU)
+    for (const entree of groupe.entrees)
+      for (const e of [entree, ...(entree.children ?? [])]) {
+        const ecran = INDEX.ecrans.find((x) => x.route === e.href);
+        assert.ok(ecran, `écran absent : ${e.href}`);
+        assert.equal(ecran.titre, e.label);
+        assert.equal(ecran.dansLeMenu, true);
+      }
+});
+
+test("l'aide garde une seule ligne d'écran ; ses rubriques sont lues dans le source", () => {
+  const aide = INDEX.ecrans.find((e) => e.route === "/aide");
+  assert.ok(aide);
+  assert.equal(aide.sections.length, 0);
+  const idsRubriques = INDEX.aide.map((r) => r.id);
+  for (const id of ["commande-test", "bordereau", "bandeaux-visuels", "traductions", "statistiques"])
+    assert.ok(idsRubriques.includes(id), `rubrique absente : ${id}`);
+});
+
+/* -------------------------------------------------------------------------- */
+/*  Ce que la recherche des écrans doit trouver                               */
+/* -------------------------------------------------------------------------- */
+
+test("« bandeau » : Bandeau et offre puis Bandeaux visuels, et la rubrique d'aide des bandeaux", () => {
+  const r = chercher("bandeau");
+  assert.deepEqual(ids(r.ecrans).slice(0, 2), ["ecran:/bandeau", "ecran:/bandeaux-visuels"]);
+  assert.ok(r.ecrans.resultats[0].rang <= 1);
+  assert.ok(ids(r.aide).includes("aide:bandeaux-visuels"));
+  // Le titre trouvé mène à la rubrique par son ancre ordinaire.
+  assert.equal(r.aide.resultats.find((x) => x.id === "aide:bandeaux-visuels").href, "/aide#bandeaux-visuels");
+});
+
+test("« bandeaux » : Bandeaux visuels d'abord, Bandeau et offre aussi (le singulier)", () => {
+  const r = chercher("bandeaux");
+  assert.equal(ids(r.ecrans)[0], "ecran:/bandeaux-visuels");
+  assert.ok(ids(r.ecrans).includes("ecran:/bandeau"));
+});
+
+test("« bandeau visuel » et « Bandeaux visuels » : Bandeaux visuels en tête", () => {
+  for (const q of ["bandeau visuel", "Bandeaux visuels"]) assert.equal(premier(q)?.id, "ecran:/bandeaux-visuels", q);
+});
+
+test("les écrans qui ne répondaient pas avant", () => {
+  const attendus = {
+    statistiques: "/statistiques",
+    decors: "/decors",
+    archives: "/archives",
+    aide: "/aide",
+    styles: "/ia/styles",
+    "accueil et pied de page": "/contenu",
+    "pieces par personnage": "/personnages/correspondances",
+    "categories de produits": "/categories-produits",
+  };
+  for (const [q, route] of Object.entries(attendus)) {
+    const p = premier(q);
+    assert.equal(p?.id, `ecran:${route}`, q);
+    assert.equal(p.href, route, q);
+    assert.ok(p.rang <= 1, q);
+  }
+});
+
+test("« frais de port » met Livraison en tête, par son mot-clé, au rang exact", () => {
+  const p = premier("frais de port");
+  assert.equal(p.id, "ecran:/livraison");
+  assert.equal(p.rang, 0);
+  assert.equal(p.ou, "mot-clé « frais de port »");
+});
+
+test("« paypal » et « stripe » mettent Finances en tête", () => {
+  for (const q of ["paypal", "stripe"]) assert.equal(premier(q)?.id, "ecran:/finances", q);
+});
+
+test("« titre google » et « seo » : la fiche produit, ouverte depuis la liste", () => {
+  for (const q of ["titre google", "seo"]) {
+    const r = chercher(q).ecrans.resultats.find((x) => x.id.startsWith("ecran:/produits/[id]"));
+    assert.ok(r, q);
+    assert.equal(r.href, "/produits", q);
+    assert.equal(r.detail, "Fiche : s'ouvre depuis la liste", q);
+    assert.match(r.titre, /\(fiche\)$/);
+  }
+});
+
+test("une faute de frappe sur un nom d'écran est corrigée, et annoncée", () => {
+  const r = chercher("statistques");
+  assert.equal(r.ecrans.resultats[0].id, "ecran:/statistiques");
+  assert.equal(r.ecrans.resultats[0].rang, 3);
+  assert.deepEqual(r.corrections, [{ tape: "statistques", propose: "statistiques" }]);
+  // Un mot trouvé tel quel n'annonce aucune correction.
+  assert.deepEqual(chercher("bandeau").corrections, []);
+});
+
+test("une section mène à l'écran, avec le passage dans le fragment (jamais dans la query)", () => {
+  const r = chercher("bandeau couleur").ecrans.resultats[0];
+  assert.equal(r.id.startsWith("ecran:/bandeau§"), true);
+  assert.match(r.href, /^\/bandeau#trouver=Couleur/);
+  assert.equal(r.href.includes("?"), false);
+});
+
+test("au plus trois lignes par écran, et le total compte les lignes retenues", () => {
+  const r = chercher("archives", 200);
+  const parEcran = new Map();
+  for (const x of r.ecrans.resultats) {
+    const route = x.id.replace(/^ecran:/, "").replace(/§.*$/, "");
+    parEcran.set(route, (parEcran.get(route) ?? 0) + 1);
+  }
+  for (const [route, n] of parEcran) assert.ok(n <= 3, route);
+  assert.equal(r.ecrans.total, r.ecrans.resultats.length);
+  assert.equal(chercher("archives", 2).ecrans.resultats.length, 2);
+});
+
+test("une saisie sans mot utile ne répond rien, sans erreur", () => {
+  for (const q of ["", " ", "…", "%%"]) {
+    const r = chercher(q);
+    assert.equal(r.ecrans, null, JSON.stringify(q));
+    assert.equal(r.aide, null, JSON.stringify(q));
+  }
+  assert.doesNotThrow(() => chercher("co"));
+  assert.doesNotThrow(() => chercher("a_b \\ 50%"));
+});
+
+test("une page ajoutée demain est trouvable sans rien écrire (page factice, en mémoire)", () => {
+  const sources = {
+    ...SOURCES,
+    "/src/pages/zz-essai.astro": [
+      "---",
+      'import Admin from "../layouts/Admin.astro";',
+      "---",
+      '<Admin title="Écran d\'essai">',
+      '  <section id="reglages-zephyr">',
+      '    <h2 class="font-semibold">Réglages du zéphyr</h2>',
+      "    <p>Un vent doux venu de l'ouest.</p>",
+      "  </section>",
+      "</Admin>",
+    ].join("\r\n"),
+  };
+  const index = construireIndex(sources, MENU, SYNONYMES);
+  const ecran = index.ecrans.find((e) => e.route === "/zz-essai");
+  assert.ok(ecran);
+  assert.equal(ecran.titre, "Écran d'essai");
+  assert.equal(ecran.dansLeMenu, false);
+
+  const section = chercherDansIndex(index, "zephyr", 5).ecrans.resultats[0];
+  assert.equal(section.titre, "Écran d'essai");
+  assert.equal(section.ou, "Réglages du zéphyr");
+  assert.equal(section.detail, "Hors du menu");
+  assert.equal(section.href, "/zz-essai#trouver=z%C3%A9phyr&ancre=reglages-zephyr");
+
+  const nom = chercherDansIndex(index, "ecran d essai", 5).ecrans.resultats[0];
+  assert.equal(nom.id, "ecran:/zz-essai");
+  assert.equal(nom.rang, 0);
+});
+
+/* -------------------------------------------------------------------------- */
+/*  L'extracteur                                                              */
+/* -------------------------------------------------------------------------- */
+
+const textes = (source) => extraireTextes(source).map((m) => `${m.genre}:${m.texte}`);
+
+test("extracteur : fichier en CRLF, commentaires et scripts ignorés", () => {
+  const source = [
+    "---",
+    "const x = 1;",
+    "---",
+    "<Admin title=\"Essai\">",
+    "  {/* Un commentaire qui parle de zéphyr */}",
+    "  <!-- un autre commentaire -->",
+    "  <h2>Le titre</h2>",
+    "  <p>Une phrase",
+    "     sur deux lignes.</p>",
+    "  <script>const secret = 'ne pas lire';</script>",
+    "  <style>.x { color: red }</style>",
+    "</Admin>",
+  ].join("\r\n");
+  const t = textes(source);
+  assert.deepEqual(t, ["section:Le titre", "aide:Une phrase sur deux lignes."]);
+  assert.ok(extraireTextes(source).every((m) => !m.texte.includes("\r")));
+});
+
+test("extracteur : balisage imbriqué dans du code, chaînes de prose, pas de code", () => {
+  const source = `<div>
+    {ok && (
+      <p class="mt-3 text-sm">Texte imbriqué dans une condition.</p>
+    )}
+    {etat ? "Enregistré." : "Rien n'a changé"}
+    <p class={erreur ? "mt-3 rounded border-bo-border sm:grid-cols-2" : "hidden"}>{muettes.length} pièces muettes</p>
+    {liste.map((x) => <li>{x.nom}</li>)}
+  </div>`;
+  const t = textes(source);
+  assert.ok(t.includes("aide:Texte imbriqué dans une condition."), t.join(" | "));
+  assert.ok(t.includes("aide:Enregistré."), t.join(" | "));
+  assert.ok(t.includes("aide:Rien n'a changé"), t.join(" | "));
+  assert.ok(t.includes("aide:pièces muettes"), t.join(" | "));
+  for (const x of t) {
+    assert.ok(!x.includes("muettes.length"), x);
+    assert.ok(!/mt-3|rounded|grid-cols/.test(x), x);
+    assert.ok(!/=>|\.map\(/.test(x), x);
+  }
+});
+
+test("extracteur : les balises en ligne ne coupent pas la phrase", () => {
+  const t = textes(`<p>Pour un message en texte seul, c'est l'écran <a href="/bandeau">Bandeau et offre</a>, <strong>pas</strong> celui-ci.</p>`);
+  assert.deepEqual(t, ["aide:Pour un message en texte seul, c'est l'écran Bandeau et offre, pas celui-ci."]);
+});
+
+test("extracteur : genres, libellés d'attributs, ancres statiques seulement", () => {
+  const source = `<section id="reglages">
+    <h3>Réglages</h3>
+    <label><span>Nom du style</span><input name="title" placeholder="Par exemple : Paysage" /></label>
+    <button type="button" title="Monter d'un cran">↑</button>
+    <div id={\`ligne-\${x.id}\`}><p>Dans une ligne dynamique.</p></div>
+    <textarea name="note" placeholder="Une note interne">valeur à ne pas lire</textarea>
+    <EditeurTexte nom="corps" etiquette="Corps du texte" invite="Écrivez ici." />
+  </section>`;
+  const morceaux = extraireTextes(source);
+  const par = Object.fromEntries(morceaux.map((m) => [m.texte, m]));
+  assert.equal(par["Réglages"].genre, "section");
+  assert.equal(par["Réglages"].ancre, "reglages");
+  assert.equal(par["Nom du style"].genre, "libelle");
+  assert.equal(par["Nom du style"].section, "Réglages");
+  assert.equal(par["Par exemple : Paysage"].genre, "libelle");
+  assert.equal(par["Monter d'un cran"].genre, "libelle");
+  assert.equal(par["Dans une ligne dynamique."].ancre, "reglages");
+  assert.equal(par["Une note interne"].genre, "libelle");
+  assert.equal(par["Corps du texte"].genre, "libelle");
+  assert.equal(par["Écrivez ici."].genre, "aide");
+  assert.equal(par["valeur à ne pas lire"], undefined);
+});
+
+test("extracteur : textes de l'entête (SECTIONS), concaténations et ${}", () => {
+  const source = `---
+const SECTIONS = [
+  {
+    titre: "Pied de page",
+    champs: [
+      { key: "footer.baseline", label: "Baseline", aide: "La phrase sous le logo, " + "en bas de chaque page." },
+      { key: "x", label: \`Libellé \${nom} calculé\` },
+    ],
+  },
+];
+---
+<Admin title={creation ? "Nouveau bandeau visuel" : \`Bandeau visuel : \${nom}\`}>
+</Admin>`;
+  const t = textes(source);
+  assert.ok(t.includes("section:Pied de page"), t.join(" | "));
+  assert.ok(t.includes("libelle:Baseline"), t.join(" | "));
+  assert.ok(t.includes("aide:La phrase sous le logo, en bas de chaque page."), t.join(" | "));
+  assert.ok(t.includes("libelle:Libellé … calculé"), t.join(" | "));
+  assert.equal(extraireTextes(source).find((m) => m.texte === "Baseline").section, "Pied de page");
+  assert.equal(titreAdmin(source), "Bandeau visuel");
+  assert.equal(titreAdmin(`<Admin title="Livraison">x</Admin>`), "Livraison");
+  assert.equal(titreAdmin(`<Admin title={nom}>x</Admin>`), null);
+});
+
+test("extracteur : composants importés et rubriques d'aide", () => {
+  const page = `---
+import Admin from "../layouts/Admin.astro";
+import OrderTable from "../components/OrderTable.astro";
+import EditeurTexte from "../../components/EditeurTexte.astro";
+---
+<Admin title="x"></Admin>`;
+  assert.deepEqual(composantsImportes(page), ["OrderTable", "EditeurTexte"]);
+
+  const aide = `<Admin title="Aide">
+  <details id="premiere" class="group">
+    <summary class="px-4">Comment faire la première chose ?</summary>
+    <div><p>On clique <a href="/x">ici</a>.</p><details><summary>Détail</summary><p>Imbriqué.</p></details></div>
+  </details>
+  <details><summary>Sans id</summary><p>Pas une rubrique.</p></details>
+</Admin>`;
+  const rubriques = rubriquesAide(aide);
+  assert.equal(rubriques.length, 1);
+  assert.equal(rubriques[0].id, "premiere");
+  assert.equal(rubriques[0].titre, "Comment faire la première chose ?");
+  assert.deepEqual(rubriques[0].morceaux.map((m) => m.texte), ["On clique ici.", "Détail", "Imbriqué."]);
+});
+
+test("extracteur : aucun morceau de code dans les vraies pages", () => {
+  const code = /\.length|\.map\(|=>|\bconst\b|\breturn\b|\w+\.\w+\(|\w\?\.|\bundefined\b|className|===|!==|&&|\|\|/;
+  for (const [cle, source] of Object.entries(SOURCES))
+    for (const m of extraireTextes(source)) assert.ok(!code.test(m.texte), `${cle} : ${m.texte}`);
+});

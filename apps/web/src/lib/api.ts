@@ -112,9 +112,38 @@ export interface Stats {
   collections: number;
 }
 
+/**
+ * Une réponse de l'API qui n'est pas un succès, avec son code.
+ *
+ * Toutes les erreurs se ressemblaient (« API … -> 404 ») : la fiche ne pouvait
+ * pas distinguer une affiche qui n'existe pas d'une API en panne, et répondait
+ * aux deux par une redirection vers le catalogue — ce que Google lit comme
+ * une page vide (soft 404), et ce qui, pendant une panne, lui montrait toutes
+ * les fiches comme disparues. Le code permet de répondre juste : 404 ou 410
+ * pour l'absente, 503 pour la panne. Une API injoignable lève l'erreur réseau
+ * de fetch, qui n'a pas de code : c'est aussi une panne.
+ *
+ * Elle reste une `Error` au même message : les appelants qui attrapaient
+ * n'importe quelle erreur continuent de le faire sans changement.
+ */
+export class ErreurApi extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ErreurApi";
+  }
+}
+
+/** Le code d'une erreur levée par un appel à l'API, ou 0 pour une panne réseau. */
+export function codeErreurApi(e: unknown): number {
+  return e instanceof ErreurApi ? e.status : 0;
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${API_URL}${path}`);
-  if (!res.ok) throw new Error(`API ${path} -> ${res.status}`);
+  if (!res.ok) throw new ErreurApi(`API ${path} -> ${res.status}`, res.status);
   return res.json() as Promise<T>;
 }
 
@@ -129,7 +158,7 @@ async function get<T>(path: string): Promise<T> {
  */
 async function getPagine<T>(path: string): Promise<{ items: T[]; total: number }> {
   const res = await fetch(`${API_URL}${path}`);
-  if (!res.ok) throw new Error(`API ${path} -> ${res.status}`);
+  if (!res.ok) throw new ErreurApi(`API ${path} -> ${res.status}`, res.status);
   const items = (await res.json()) as T[];
   const annonce = Number(res.headers.get("X-Total-Count"));
   return {
@@ -177,6 +206,13 @@ export interface ProductDetail {
    * un parcours différent (envoi de photo) au lieu du configurateur.
    */
   aiEnabled?: boolean;
+  /**
+   * Les langues où la fiche est vraiment écrite — le français toujours, une
+   * autre quand son nom et sa description y sont traduits. Ailleurs, la fiche
+   * s'affiche en français : visitable, mais pas présentée comme traduite.
+   * Absent d'une API plus ancienne : toutes les langues, comme avant.
+   */
+  languesTraduites?: string[];
   variants: {
     format: string;
     priceCents: number;
@@ -184,6 +220,8 @@ export interface ProductDetail {
     compareAtCents?: number | null;
     widthMm: number | null;
     heightMm: number | null;
+    /** La référence de ce format, quand la boutique en a une (données structurées). */
+    sku?: string | null;
   }[];
 }
 
@@ -208,6 +246,8 @@ export interface PageCms {
   seoTitle: string | null;
   seoDescription: string | null;
   blocks: BlocPagePublic[];
+  /** Les langues où la page est vraiment écrite (titre et blocs traduits). */
+  languesTraduites?: string[];
 }
 
 export interface EntreeMenuPublique {
@@ -255,6 +295,31 @@ export interface Collection {
    */
   description?: string | null;
   produits: number;
+  /**
+   * Le genre de toutes ses affiches, ou null quand il en mêle deux. C'est lui
+   * que porte la seule adresse du rayon : celle du menu,
+   * /affiches?genre=personnalisable&collection=villes.
+   */
+  genre?: "personnalisable" | "prete_a_imprimer" | null;
+  /** Les langues où le rayon est vraiment écrit (nom, et texte s'il en a un). */
+  languesTraduites?: string[];
+}
+
+/**
+ * Ce que le plan du site liste, tel que GET /plan-du-site le rend : fiches en
+ * vente, rayons ouverts et non vides, pages publiées — chacun avec les langues
+ * où il est vraiment écrit.
+ */
+export interface PlanDuSite {
+  produits: { slug: string; genre: ProductKind; maj: string; langues: string[] }[];
+  genres: { personnalisable: number; prete_a_imprimer: number };
+  rayons: {
+    slug: string;
+    genre: "personnalisable" | "prete_a_imprimer" | null;
+    produits: number;
+    langues: string[];
+  }[];
+  pages: { slug: string; maj: string; langues: string[] }[];
 }
 
 /** Ce qu'on demande au catalogue. Tout est facultatif. */
@@ -368,6 +433,12 @@ export const api = {
    */
   redirects: () =>
     get<{ fromPath: string; toPath: string; code: number }[]>("/redirects"),
+  /**
+   * Tout ce que le plan du site doit lister, en un seul appel. Ne pas
+   * l'appeler directement : passer par `planDuSite()` (lib/plan-du-site.ts),
+   * qui le garde quelques minutes.
+   */
+  planDuSite: () => get<PlanDuSite>("/plan-du-site"),
   settings: (group?: string, langue?: string) =>
     get<Record<string, unknown>>(
       `/settings?${new URLSearchParams({

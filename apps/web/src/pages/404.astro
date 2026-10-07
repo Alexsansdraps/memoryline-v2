@@ -14,6 +14,7 @@
  * demandée, et non reçue en paramètre.
  */
 import Base from "../layouts/Base.astro";
+import { titreDePage } from "../lib/textes-seo.ts";
 import {
   LANGUE_DEFAUT,
   estLangue,
@@ -32,7 +33,10 @@ export const prerender = false;
  * en allemand n'a pas à recevoir du français au moment précis où il est déjà
  * perdu. Un préfixe inconnu vaut le français, comme partout ailleurs.
  */
-const premierSegment = Astro.url.pathname.split("/")[1] ?? "";
+// L'adresse d'ORIGINE : une fiche qui se réécrit ici (voir plus bas) laisse
+// « /404 » dans Astro.url, et la langue se lit dans ce que le visiteur a
+// demandé, pas dans ce détour.
+const premierSegment = Astro.originPathname.split("/")[1] ?? "";
 const langue: Langue = estLangue(premierSegment) ? premierSegment : LANGUE_DEFAUT;
 const tr = t(langue);
 
@@ -44,17 +48,31 @@ const tr = t(langue);
  * cette ligne, certaines de ces réponses partiraient en 200 : le visiteur
  * verrait la bonne page, et un moteur indexerait « Cette page n'existe pas »
  * comme un contenu ordinaire.
+ *
+ * Deux autres codes passent par cette page, posés par la fiche qui s'y
+ * réécrit (Astro.locals.statutErreur) : 410 pour une affiche archivée — même
+ * texte, elle n'existe plus — et 503 quand l'API ne répond pas, avec un texte
+ * qui dit de réessayer et un délai que les robots respectent. Astro force 404
+ * sur cette route quoi qu'on écrive ici : c'est le middleware qui rétablit
+ * le 410 ou le 503, une fois la page rendue.
  */
-Astro.response.status = 404;
+const statut = Astro.locals.statutErreur ?? 404;
+Astro.response.status = statut;
+const indisponible = statut === 503;
+if (indisponible) Astro.response.headers.set("Retry-After", "120");
+const titre = indisponible ? tr("503.titre") : tr("404.titre");
+// Le chemin demandé, sans la barre finale qu'Astro ajoute en se réécrivant :
+// c'est lui que le sélecteur de langue propose dans les autres langues.
+const cheminDemande = Astro.originPathname.replace(/(.)\/+$/, "$1");
 ---
 
-<Base langue={langue} title={`${tr("404.titre")} — Memory Line`} noindex>
+<Base langue={langue} title={titreDePage(titre)} path={cheminDemande} noindex>
   <section
     class="mx-auto flex max-w-[720px] flex-col items-start px-6 pt-20 pb-24 lg:px-12"
   >
-    <p class="text-sm uppercase tracking-wide text-terracotta">404</p>
-    <h1 class="mt-2 text-3xl sm:text-4xl">{tr("404.titre")}</h1>
-    <p class="mt-4 text-ink-soft">{tr("404.texte")}</p>
+    <p class="text-sm uppercase tracking-wide text-terracotta">{statut}</p>
+    <h1 class="mt-2 text-3xl sm:text-4xl">{titre}</h1>
+    <p class="mt-4 text-ink-soft">{indisponible ? tr("503.texte") : tr("404.texte")}</p>
 
     {/* Deux portes de sortie, pas une liste : le catalogue pour qui flâne,
         la recherche pour qui cherchait quelque chose de précis — et c'est

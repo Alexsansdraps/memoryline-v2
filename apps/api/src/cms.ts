@@ -44,6 +44,7 @@ import { db, schema } from "./db/client.js";
 import type { BlocPage } from "./db/schema.js";
 import { ordreDesCollections } from "./collections.js";
 import { menuSuitLOrdre } from "./menu-ordre.js";
+import { languesDeLaPage } from "./referencement.js";
 
 /**
  * L'ordre des pages, partout où elles se listent : celles que la boutique a
@@ -74,8 +75,11 @@ type Affichage = (typeof AFFICHAGES)[number];
  * Écrites en toutes lettres plutôt que déduites de « tout sauf l'autre » : le
  * jour où un troisième écran s'ajoute, une page destinée à lui seul ne doit pas
  * se retrouver en ligne parce que personne n'avait pensé à l'exclure.
+ *
+ * Exportée pour le plan du site (plan-du-site.ts), qui doit lister exactement
+ * les pages que GET /pages/:slug accepte de servir — pas une de plus.
  */
-const AFFICHAGES_SITE: string[] = ["site", "les-deux"];
+export const AFFICHAGES_SITE: string[] = ["site", "les-deux"];
 const AFFICHAGES_STAND: string[] = ["stand", "les-deux"];
 
 /**
@@ -926,6 +930,10 @@ async function pagePubliee(page: PageEnregistree, langue: string) {
     seoDescription:
       langue === "fr" ? page.seoDescription : (utile(traduction?.seoDescription) ?? null),
     blocks: await resoudreBlocs(blocs, langue),
+    // Les langues où la page est vraiment écrite (referencement.ts). Le repli
+    // champ par champ sert une page à moitié française sous /en : le site s'en
+    // sert pour ne pas la présenter à Google comme une traduction.
+    languesTraduites: languesDeLaPage(page),
   };
 }
 

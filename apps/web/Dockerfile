@@ -24,8 +24,9 @@ COPY packages/types packages/types
 COPY packages/configurator packages/configurator
 COPY apps/web apps/web
 
-# Le plan de site et les pages statiques se construisent en interrogeant
-# l'API : sans elle, le build passe quand même, mais le sitemap sera vide.
+# Aucune page n'interroge l'API au build : le catalogue, les fiches et le plan
+# du site (/sitemap.xml) sont rendus à la demande. SITE_URL, lui, est figé
+# ici : il fait les adresses canoniques, les hreflang et le plan du site.
 ARG SITE_URL
 ARG PUBLIC_API_URL=/api
 ARG API_URL_INTERNAL

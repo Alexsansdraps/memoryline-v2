@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./couleurs": "./src/couleurs.ts",
     "./bandeaux-visuels": "./src/bandeaux-visuels.ts",
-    "./bandeaux-visuels.css": "./src/bandeaux-visuels.css"
+    "./bandeaux-visuels.css": "./src/bandeaux-visuels.css",
+    "./recherche": "./src/recherche.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

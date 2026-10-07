@@ -129,7 +129,7 @@ try {
       </thead>
       <tbody>
         {categories.map((c) => (
-          <tr class="border-t border-bo-border align-top">
+          <tr id={`ligne-categorie-${c.id}`} class="border-t border-bo-border align-top">
             <td class="px-4 py-3">
               <form method="POST" class="flex flex-wrap items-end gap-3">
                 <input type="hidden" name="id" value={c.id} />
@@ -235,7 +235,7 @@ try {
         <table class="w-full text-sm">
           <tbody>
             {archivees.map((c) => (
-              <tr class="border-t border-bo-border first:border-t-0">
+              <tr id={`ligne-categorie-${c.id}`} class="border-t border-bo-border first:border-t-0">
                 <td class="px-4 py-2 font-medium">{c.name}</td>
                 <td class="px-4 py-2 text-bo-muted">
                   <code>{c.slug}</code> — {c.produits ?? 0} produit{(c.produits ?? 0) > 1 ? "s" : ""} rangé{(c.produits ?? 0) > 1 ? "s" : ""} dedans

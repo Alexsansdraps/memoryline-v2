@@ -418,6 +418,7 @@ const boutonOutil =
     <button
       type="button"
       data-choix-langue="fr"
+      data-ml-langue-bouton="fr"
       aria-pressed="true"
       class={`${boutonDiscret} border-bo-accent font-medium`}
     >
@@ -427,6 +428,7 @@ const boutonOutil =
       <button
         type="button"
         data-choix-langue={l.code}
+        data-ml-langue-bouton={l.code}
         aria-pressed="false"
         class={boutonDiscret}
       >
@@ -450,6 +452,7 @@ const boutonOutil =
     <div id="arbre" class="space-y-4">
       {aRendre.map(({ entree, modele }) => (
         <article
+          id={modele || !entree.id ? undefined : `entree-${entree.id}`}
           data-entree
           data-reserve={modele ? "1" : undefined}
           hidden={modele}
@@ -555,6 +558,7 @@ const boutonOutil =
                 { enfant: entreeVide(), modele: true },
               ].map(({ enfant, modele: enfantModele }) => (
                 <div
+                  id={enfantModele || !enfant.id ? undefined : `entree-${enfant.id}`}
                   data-enfant
                   data-reserve={enfantModele ? "1" : undefined}
                   hidden={enfantModele}
@@ -694,7 +698,7 @@ const boutonOutil =
         <table class="w-full text-sm">
           <tbody>
             {archives.map((lien) => (
-              <tr class="border-t border-bo-border first:border-t-0">
+              <tr id={`entree-${lien.id}`} class="border-t border-bo-border first:border-t-0">
                 <td class="px-4 py-2">
                   <span class="font-medium">{lien.label}</span>
                   {lien.parent && (

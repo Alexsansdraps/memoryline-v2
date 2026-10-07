@@ -1,0 +1,202 @@
+---
+/**
+ * Tous les résultats d'une recherche (« Voir tous les résultats » du panneau,
+ * ou Ctrl+Entrée dans le champ du haut).
+ *
+ * Le panneau montre cinq lignes par groupe : de quoi reconnaître ce qu'on
+ * cherchait. Quand on ne le reconnaît pas — un mot qui revient dans quarante
+ * descriptions —, il faut pouvoir tout parcourir : c'est cette page. Vingt
+ * résultats par groupe, puis un groupe entier (deux cents au plus) sur
+ * demande.
+ *
+ * Elle passe par la même fusion que le panneau (lib/recherche-bo.ts), côté
+ * serveur, sans détour par HTTP. Tout ce qui vient de la base s'affiche par
+ * les gabarits d'Astro, qui l'échappent : aucun set:html ici.
+ */
+import Admin from "../layouts/Admin.astro";
+import { apiUrl, url } from "../lib/url.ts";
+import { normaliserSaisie, rechercher } from "../lib/recherche-bo.ts";
+import {
+  ORDRE_GROUPES,
+  RECHERCHE_LIMITE_MAX,
+  RECHERCHE_LIMITE_PAGE,
+  RECHERCHE_MINIMUM,
+  TITRES_GROUPES,
+  decouper,
+  emplacementComplet,
+  type GroupeId,
+  type ReponseRecherche,
+} from "@memoryline/types/recherche";
+
+// Le middleware renvoie déjà un vendeur vers son stand ; on le redit ici,
+// comme la route qui sert le panneau : cette page montre des clientes.
+if (Astro.locals.user?.role !== "owner") return Astro.redirect(url("/ventes-salon"));
+
+const q = normaliserSaisie(Astro.url.searchParams.get("q") ?? "");
+const demande = Astro.url.searchParams.get("groupe");
+const groupe: GroupeId | null =
+  demande && (ORDRE_GROUPES as readonly string[]).includes(demande) ? (demande as GroupeId) : null;
+
+let reponse: ReponseRecherche = { q, groupes: [], corrections: [], partiel: false };
+let enPanne = false;
+if (q.length >= RECHERCHE_MINIMUM) {
+  try {
+    reponse = await rechercher(Astro.request, q, {
+      groupes: groupe ? [groupe] : undefined,
+      limite: groupe ? RECHERCHE_LIMITE_MAX : RECHERCHE_LIMITE_PAGE,
+    });
+  } catch {
+    enPanne = true;
+  }
+}
+
+/** Le lien d'une autre vue de cette page (un groupe, ou tous). */
+const vers = (parametres: Record<string, string>) =>
+  `${url("/recherche")}?${new URLSearchParams(parametres).toString()}`;
+
+/** La vignette d'une affiche, telle que le navigateur doit la demander. */
+const vignette = (chemin: string) => (/^https?:\/\//.test(chemin) ? chemin : apiUrl(chemin));
+
+const compte = (total: number, plafonne: boolean) => (plafonne ? `${total}+` : String(total));
+
+const champ =
+  "w-full rounded-lg border border-bo-border bg-bo-surface px-3 py-2 text-sm outline-none focus:border-bo-accent";
+---
+
+<Admin title="Recherche">
+  <form method="get" action={url("/recherche")} role="search" class="mb-6 flex max-w-2xl gap-2">
+    <input
+      type="search"
+      name="q"
+      value={q}
+      autocomplete="off"
+      spellcheck={false}
+      aria-label="Rechercher dans le back-office"
+      placeholder="Rechercher partout : affiche, commande, client, texte, écran…"
+      class={champ}
+    />
+    {groupe && <input type="hidden" name="groupe" value={groupe} />}
+    <button class="shrink-0 rounded-lg bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90">
+      Rechercher
+    </button>
+  </form>
+
+  {
+    groupe && (
+      <p class="mb-4 text-sm">
+        <a href={vers({ q })} class="text-bo-accent hover:underline">
+          ← Retour à tous les résultats
+        </a>
+        <span class="ml-2 text-bo-muted">Seulement : {TITRES_GROUPES[groupe]}</span>
+      </p>
+    )
+  }
+
+  {
+    q.length < RECHERCHE_MINIMUM ? (
+      <p class="text-sm text-bo-muted">
+        Tapez au moins deux caractères : un nom, un numéro de commande, un bout
+        de texte, le nom d'un écran…
+      </p>
+    ) : enPanne ? (
+      <p class="text-sm text-red-700">La recherche n'a pas répondu. Réessayez.</p>
+    ) : (
+      <>
+        {reponse.corrections.length > 0 && (
+          <p class="mb-3 text-sm text-bo-muted">
+            Résultats approchés pour{" "}
+            {reponse.corrections.map((c, i) => (
+              <>
+                {i > 0 && ", "}« <strong class="text-bo-ink">{c.propose}</strong> »
+              </>
+            ))}
+          </p>
+        )}
+        {reponse.partiel && (
+          <p class="mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Une partie de la recherche n'a pas répondu : les résultats ci-dessous
+            peuvent être incomplets.
+          </p>
+        )}
+
+        {reponse.groupes.length === 0 ? (
+          <div class="max-w-2xl rounded-lg border border-bo-border bg-bo-surface p-5 text-sm">
+            <p class="mb-3">Rien ne correspond à « {q} ».</p>
+            <ul class="space-y-1.5">
+              <li>
+                <a href={`${url("/commandes")}?q=${encodeURIComponent(q)}`} class="text-bo-accent hover:underline">
+                  Chercher « {q} » dans les commandes
+                </a>
+              </li>
+              <li>
+                <a href={`${url("/clients")}?q=${encodeURIComponent(q)}`} class="text-bo-accent hover:underline">
+                  Chercher « {q} » dans les clients
+                </a>
+              </li>
+              <li>
+                <a href={`${url("/produits")}?q=${encodeURIComponent(q)}`} class="text-bo-accent hover:underline">
+                  Chercher « {q} » dans les affiches
+                </a>
+              </li>
+              <li>
+                <a href={url("/aide")} class="text-bo-accent hover:underline">Ouvrir l'aide</a>
+              </li>
+            </ul>
+          </div>
+        ) : (
+          reponse.groupes.map((g) => (
+            <section class="mb-8 max-w-4xl">
+              <h2 class="mb-2 text-sm font-semibold tracking-wide text-bo-muted uppercase">
+                {g.titre} <span class="font-normal">· {compte(g.total, g.plafonne)}</span>
+              </h2>
+              <ul class="divide-y divide-bo-border overflow-hidden rounded-lg border border-bo-border bg-bo-surface">
+                {g.resultats.map((r) => (
+                  <li>
+                    <a
+                      href={url(r.href)}
+                      title={emplacementComplet(r)}
+                      class="flex items-start gap-3 px-4 py-3 text-sm no-underline hover:bg-bo-bg"
+                    >
+                      {r.image && (
+                        <img
+                          src={vignette(r.image)}
+                          alt=""
+                          loading="lazy"
+                          class="h-12 w-9 shrink-0 rounded border border-bo-border object-cover"
+                        />
+                      )}
+                      <span class="min-w-0 flex-1">
+                        <span class="block font-medium">
+                          {decouper(r.titre, r.titrePassages).map((s) =>
+                            s.marque ? <mark class="ml-marque">{s.texte}</mark> : s.texte,
+                          )}
+                        </span>
+                        <span class="block text-xs text-bo-muted">
+                          {[r.nature + (r.ou ? ` › ${r.ou}` : ""), r.detail].filter(Boolean).join(" · ")}
+                        </span>
+                        {r.extrait && (
+                          <span class="mt-1 block text-xs text-bo-ink/80">
+                            {decouper(r.extrait.texte, r.extrait.passages).map((s) =>
+                              s.marque ? <mark class="ml-marque">{s.texte}</mark> : s.texte,
+                            )}
+                          </span>
+                        )}
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+              {!groupe && (g.total > g.resultats.length || g.plafonne) && (
+                <p class="mt-2 text-sm">
+                  <a href={vers({ q, groupe: g.id })} class="text-bo-accent hover:underline">
+                    Voir les {compte(g.total, g.plafonne)} résultats de ce groupe
+                  </a>
+                </p>
+              )}
+            </section>
+          ))
+        )}
+      </>
+    )
+  }
+</Admin>

@@ -293,7 +293,7 @@ const nom = client?.name?.trim() || "Client sans nom";
         {/* Colonne de droite : ce qu'on sait de lui                     */}
         {/* ============================================================ */}
         <div class="space-y-6">
-          <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+          <section id="coordonnees" class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
             <h3 class="mb-2 font-medium">Coordonnées</h3>
             <form method="POST" class="space-y-2 text-sm">
               <input type="hidden" name="_action" value="coordonnees" />
@@ -338,7 +338,7 @@ const nom = client?.name?.trim() || "Client sans nom";
             )}
           </section>
 
-          <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+          <section id="carnet-adresses" class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
             <h3 class="mb-2 font-medium">Carnet d'adresses</h3>
             {adresses.length ? (
               <ul class="space-y-3 text-sm">
@@ -435,7 +435,7 @@ const nom = client?.name?.trim() || "Client sans nom";
             </form>
           </section>
 
-          <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+          <section id="etiquettes" class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
             <h3 class="mb-2 font-medium">Étiquettes</h3>
             <form method="POST" class="space-y-2 text-sm">
               <input type="hidden" name="_action" value="etiquettes" />
@@ -452,7 +452,7 @@ const nom = client?.name?.trim() || "Client sans nom";
             </form>
           </section>
 
-          <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
+          <section id="note-interne" class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
             <h3 class="mb-2 font-medium">Note interne</h3>
             <form method="POST" class="space-y-2 text-sm">
               <input type="hidden" name="_action" value="note" />

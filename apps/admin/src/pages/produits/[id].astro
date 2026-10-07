@@ -985,7 +985,7 @@ try {
       {/* 1 — Nom et description                                        */}
       {/* ------------------------------------------------------------- */}
       {produit && (
-        <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+        <section id="infos" class="rounded-lg border border-bo-border bg-bo-surface p-5">
           <form method="POST" class="space-y-4">
             <input type="hidden" name="_action" value="infos" />
             <label class="block">
@@ -1023,7 +1023,7 @@ try {
       {/* 2 — Images de la boutique                                     */}
       {/* ------------------------------------------------------------- */}
       {produit && (
-        <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+        <section id="images" class="rounded-lg border border-bo-border bg-bo-surface p-5">
           <h3 class="mb-1 font-semibold">Images</h3>
           <p class="mb-4 max-w-3xl text-sm text-bo-muted">
             Les photos de la fiche du site. La première est l'image principale :
@@ -1152,7 +1152,7 @@ try {
       {/* 3 — Tarification et formats                                   */}
       {/* ------------------------------------------------------------- */}
       {produit && (
-        <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+        <section id="formats" class="rounded-lg border border-bo-border bg-bo-surface p-5">
           <h3 class="mb-1 font-semibold">Tarification et formats</h3>
           <p class="mb-4 max-w-3xl text-sm text-bo-muted">
             Une ligne par format vendu. Le prix barré est l'ancien prix montré
@@ -1413,7 +1413,7 @@ try {
       {/* ============================================================== */}
 
       {config && (
-        <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+        <section id="visuels" class="bg-bo-surface border border-bo-border rounded-lg p-5">
           <h3 class="font-semibold mb-1">Visuels disponibles</h3>
           <p class="text-sm text-bo-muted mb-4">
             Les arrière-plans proposés au client pour ce produit.
@@ -1580,7 +1580,7 @@ try {
               };
               const etat = etatLangue(l.code);
               return (
-                <details class="rounded border border-bo-border" open={!!proposition}>
+                <details id={`langue-${l.code}`} class="rounded border border-bo-border" open={!!proposition}>
                   <summary class="cursor-pointer select-none px-4 py-2.5 text-sm font-medium flex items-center gap-2">
                     <span>{l.nom}</span>
                     <span class={`rounded-full px-2 py-0.5 text-xs font-normal ${etat.classe}`}>
@@ -1835,7 +1835,7 @@ try {
         )}
       </section>
 
-      <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+      <section id="generation-ia" class="rounded-lg border border-bo-border bg-bo-surface p-5">
         <h3 class="mb-1 font-semibold">Génération par IA</h3>
         <p class="mb-4 max-w-3xl text-sm text-bo-muted">
           Le client envoie une photo et voit aussitôt son affiche, dessinée par
@@ -1951,7 +1951,7 @@ try {
           {/* Les champs gardent les noms des colonnes (defaultTitle,
               defaultSubtitle) : ce sont les lignes 1 et 2, remplies par 161
               affiches. */}
-          <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+          <section id="textes-preremplis" class="bg-bo-surface border border-bo-border rounded-lg p-5">
             <h3 class="font-semibold mb-3">Textes pré-remplis</h3>
             <div class="grid sm:grid-cols-3 gap-4">
               <label class="block">
@@ -2001,7 +2001,7 @@ try {
       {/* 5 — Référencement                                             */}
       {/* ------------------------------------------------------------- */}
       {produit && (
-        <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+        <section id="referencement" class="rounded-lg border border-bo-border bg-bo-surface p-5">
           <h3 class="mb-1 font-semibold">Référencement</h3>
           <p class="mb-4 max-w-3xl text-sm text-bo-muted">
             Ce qu'un moteur de recherche montre quand quelqu'un tombe sur cette
@@ -2181,7 +2181,7 @@ try {
 
       {/* Organisation */}
       {produit && fiche && (
-        <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+        <section id="organisation" class="rounded-lg border border-bo-border bg-bo-surface p-5">
           <h3 class="mb-3 font-semibold">Organisation</h3>
           <form method="POST" class="space-y-4">
             <input type="hidden" name="_action" value="organisation" />

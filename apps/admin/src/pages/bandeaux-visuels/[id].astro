@@ -905,6 +905,7 @@ const HAUTEURS: Record<HauteurBandeau, { libelle: string; aide: string }> = {
   {
     enregistre ? (
       <Traductions
+        ancre="traductions-bandeau-visuel"
         titre="Traductions du bandeau"
         aide="Ce que lit un client qui visite le site en anglais, en allemand, en italien ou en espagnol. Une case vide affiche le français. Modifiez d'abord le texte français et enregistrez-le ci-dessus : les traductions se relisent ensuite en regard. L'image, le lien et la mise en forme valent pour toutes les langues."
         champs={CHAMPS_TRADUITS}

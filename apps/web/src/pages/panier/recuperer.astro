@@ -22,6 +22,7 @@
  * faire ensuite.
  */
 import Base from "../../layouts/Base.astro";
+import { titreDePage } from "../../lib/textes-seo.ts";
 import { api, formatPrice, type PanierRecupere } from "../../lib/api.ts";
 import { jsonPourScript } from "../../lib/html-sur.ts";
 import {
@@ -122,7 +123,7 @@ const consigne = jsonPourScript(
 
 <Base
   langue={langue}
-  title={`${tr("panier.titre")} — Memory Line`}
+  title={titreDePage(tr("panier.titre"))}
   path="/panier/recuperer"
   noindex={true}
 >

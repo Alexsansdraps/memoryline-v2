@@ -60,6 +60,13 @@ interface Props {
   unite?: [singulier: string, pluriel: string];
   /** Les classes du bloc, pour le poser dans la page. */
   classe?: string;
+  /**
+   * L'id du bloc. La recherche du back-office y emmène (« …#ancre=
+   * traductions-cadres ») : une même page peut porter deux blocs de
+   * traductions dont les cases ont les mêmes noms (tr-3-name-en pour la
+   * catégorie 3 ET pour le personnage 3), l'id dit lequel ouvrir.
+   */
+  ancre?: string;
 }
 
 const {
@@ -75,6 +82,7 @@ const {
   disposition = "elements",
   unite = ["texte", "textes"],
   classe = "mt-4",
+  ancre,
 } = Astro.props;
 
 const champsDe = (e: ElementTraduit) => e.champs ?? champs;
@@ -101,7 +109,7 @@ const etiquette = (e: ElementTraduit, c: ChampTraduit, nomLangue: string) =>
   `${e.libelle}${champsDe(e).length > 1 ? ` — ${c.libelle.toLowerCase()}` : ""} en ${nomLangue.toLowerCase()}`;
 ---
 
-<details class={`rounded border border-bo-border ${classe}`} open={ouvert || nbPropositions > 0}>
+<details id={ancre} class={`rounded border border-bo-border ${classe}`} open={ouvert || nbPropositions > 0}>
   <summary class="cursor-pointer select-none px-4 py-2.5 text-sm font-medium">
     {titre}
     <span class="ml-2 text-xs font-normal text-bo-muted">

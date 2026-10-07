@@ -362,7 +362,7 @@ const classeBouton =
             const affichee = ouverte === carte.id;
             return (
               <>
-                <tr class="border-t border-bo-border align-top">
+                <tr id={`carte-${carte.id}`} class="border-t border-bo-border align-top">
                   <td class="px-4 py-3">
                     <span class="font-mono font-semibold tracking-wider">
                       {carte.code}
@@ -440,7 +440,7 @@ const classeBouton =
                   </td>
                 </tr>
                 {affichee && (
-                  <tr class="border-t border-bo-border bg-bo-bg">
+                  <tr id="historique-carte" class="border-t border-bo-border bg-bo-bg">
                     <td colspan="7" class="px-4 py-4">
                       <h3 class="mb-2 text-sm font-semibold">
                         Historique de la carte {carte.code}

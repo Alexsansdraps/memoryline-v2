@@ -16,6 +16,7 @@
  * son adresse déjà remplis.
  */
 import Base from "../../layouts/Base.astro";
+import { titreDePage } from "../../lib/textes-seo.ts";
 import CheckoutIsland from "../../islands/CheckoutIsland.tsx";
 import { lien, t, type Langue } from "../../i18n/utils.ts";
 import { signatureDesCreations } from "../../lib/signature.ts";
@@ -79,7 +80,7 @@ try {
 
 <Base
   langue={langue}
-  title={`${tr("commande.titre")} — Memory Line`}
+  title={titreDePage(tr("commande.titre"))}
   path={ici}
   noindex={true}
 >

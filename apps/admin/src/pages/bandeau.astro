@@ -388,7 +388,7 @@ const nombreOu = (v: unknown, defaut: number) =>
       </div>
     </section>
 
-    <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
+    <section id="offre" class="rounded-lg border border-bo-border bg-bo-surface p-5">
       <h2 class="mb-1 font-semibold">L'offre appliquée</h2>
       <p class="mb-4 text-xs text-bo-muted">
         Elle est déduite automatiquement au panier, sans code, pour tout le
@@ -622,6 +622,7 @@ const nombreOu = (v: unknown, defaut: number) =>
       réenregistrer le bandeau ni son offre. */}
   {banner ? (
     <Traductions
+      ancre="traductions-bandeau"
       titre="Traductions du bandeau et de son offre"
       aide="Ce que lit un client qui visite le site en anglais, en allemand, en italien ou en espagnol. Une case vide affiche le français. Modifiez d'abord le texte français et enregistrez-le ci-dessus : les traductions se relisent ensuite en regard."
       champs={CHAMPS_BANDEAU}

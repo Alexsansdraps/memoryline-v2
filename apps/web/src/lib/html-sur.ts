@@ -77,6 +77,11 @@ const REGLES: sanitizeHtml.IOptions = {
       };
     },
   },
+  // Une image sans adresse ne montre rien : cinquante-huit descriptions
+  // importées de Shopify valent « <p><img></p> », et la fiche servait ce
+  // <img /> vide — sans source ni texte de remplacement, signalé comme une
+  // image cassée par les outils d'accessibilité et de référencement.
+  exclusiveFilter: (f) => f.tag === "img" && !f.attribs.src,
   // Le contenu d'une balise refusée reste (le texte d'un <span> collé depuis
   // Word se lit toujours) ; celui d'une balise dangereuse part avec elle.
   disallowedTagsMode: "discard",

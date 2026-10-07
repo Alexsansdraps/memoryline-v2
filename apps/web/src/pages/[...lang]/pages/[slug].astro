@@ -18,7 +18,7 @@
 import Base from "../../../layouts/Base.astro";
 import BandeauxVisuels from "../../../components/BandeauxVisuels.astro";
 import VignetteAffiche from "../../../components/VignetteAffiche.astro";
-import { api, assetUrl, type PageCms } from "../../../lib/api.ts";
+import { api, assetUrl, codeErreurApi, type PageCms } from "../../../lib/api.ts";
 import { pageLibre } from "@memoryline/types";
 import {
   grilleProduits,
@@ -29,6 +29,13 @@ import {
  *  celles des pages du site s'il y en a, le réglage général sinon. */
 const grille = await grilleProduits("pages");
 import { htmlSur } from "../../../lib/html-sur.ts";
+import { languesDuContenu } from "../../../lib/referencement.ts";
+import {
+  descriptionMeta,
+  separateurDuSite,
+  texteBrut,
+  titreDePage,
+} from "../../../lib/textes-seo.ts";
 import {
   estLangue,
   langueDepuisParam,
@@ -52,10 +59,16 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
 let page: PageCms | null = null;
 try {
   page = await api.page(slug, langue);
-} catch {
-  // Page absente, brouillon, ou API muette : dans les trois cas la page
-  // n'existe pas pour le visiteur, et le dire est plus honnête qu'un cadre
-  // vide qui laisserait croire à une panne d'affichage.
+} catch (e) {
+  // Page absente ou brouillon : elle n'existe pas pour le visiteur, et le
+  // dire est plus honnête qu'un cadre vide qui laisserait croire à une panne
+  // d'affichage. API muette, en revanche, ce n'est pas « introuvable » : un
+  // 404 ferait sortir de Google, en quelques passages de robot, une page
+  // légale bien vivante. 503 — « reviens plus tard ».
+  if (codeErreurApi(e) !== 404) {
+    Astro.locals.statutErreur = 503;
+    return Astro.rewrite("/404");
+  }
   page = null;
 }
 if (!page) return new Response(null, { status: 404 });
@@ -96,14 +109,34 @@ function enVignette(p: Record<string, unknown>) {
  * français, non traduits, l'API les rend null — jamais le français. Le titre
  * traduit fait alors l'onglet, et la description du site (dans la langue de
  * la page) remplace celle qui serait restée en français.
+ *
+ * Sans description SEO, la page n'a plus la phrase générique du site — la
+ * même que l'accueil et les rayons — mais le début de son propre texte, coupé
+ * à la fin d'une phrase ou d'un mot. Seulement quand ce texte est dans la
+ * langue de la page : une page légale non traduite sous /en garde la phrase
+ * anglaise du site plutôt que du français.
  */
-const titreOnglet = page.seoTitle?.trim() || `${page.title} — Memory Line`;
+const titreOnglet = page.seoTitle?.trim()
+  ? separateurDuSite(page.seoTitle.trim())
+  : titreDePage(page.title);
+const premierTexte = languesDuContenu(page.languesTraduites).includes(langue)
+  ? texteBrut(
+      page.blocks
+        .filter((b) => b.type === "texte")
+        .map((b) => String(b.html ?? ""))
+        .join(" "),
+    )
+  : "";
+const descriptionPage =
+  texteBrut(page.seoDescription) || descriptionMeta(premierTexte) || undefined;
 ---
 
 <Base
   langue={langue}
   title={titreOnglet}
-  description={page.seoDescription ?? undefined}
+  description={descriptionPage}
+  path={lien(langue, `/pages/${page.slug}`)}
+  languesTraduites={page.languesTraduites}
 >
   {/* Les bandeaux visuels choisis pour cette page, bord à bord sous
       l'en-tête, hors de la colonne de lecture. */}

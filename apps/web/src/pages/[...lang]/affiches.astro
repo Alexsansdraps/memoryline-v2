@@ -3,6 +3,15 @@ import Base from "../../layouts/Base.astro";
 import BandeauxVisuels from "../../components/BandeauxVisuels.astro";
 import VignetteAffiche from "../../components/VignetteAffiche.astro";
 import { api, type Collection, type Product } from "../../lib/api.ts";
+import { RAYONS_FUSIONNES } from "../../lib/anciennes-adresses.ts";
+import { estGenre, languesDuContenu } from "../../lib/referencement.ts";
+import {
+  DESCRIPTION_MAX,
+  descriptionMeta,
+  nommeDejaUneAffiche,
+  texteBrut,
+  titreDePage,
+} from "../../lib/textes-seo.ts";
 import { clesPageAffiches } from "@memoryline/types";
 import { grilleProduits, sizesGrille, styleGrille } from "../../lib/grille.ts";
 /** Colonnes réglées au back-office (Contenu du site › Affichage des produits) :
@@ -37,9 +46,24 @@ const tr = t(langue);
  * « genre » sépare les affiches à composer des affiches prêtes à imprimer,
  * « collection » découpe les premières en villes et en paysages. Les deux sont
  * facultatifs : sans eux, la page montre tout, comme avant.
+ *
+ * Un genre inconnu (« ?genre=foo ») ne filtre rien : il est ignoré ici, et
+ * l'adresse est redressée plus bas vers la forme qui ne le porte pas — sans
+ * quoi elle se déclarait canonique, doublon exact du catalogue.
  */
-const genre = Astro.url.searchParams.get("genre") ?? "";
+const genreDemande = Astro.url.searchParams.get("genre") ?? "";
+const genre = estGenre(genreDemande) ? genreDemande : "";
 const collectionDemandee = Astro.url.searchParams.get("collection") ?? "";
+
+/*
+ * Les rayons techniques de Shopify (« Page d'accueil / En vedette », « Tout
+ * voir », « Personnages de dos »…) et celui qui double la page d'un genre :
+ * leur page ferait doublon avec une page qui existe déjà, elle y mène donc
+ * pour de bon. La liste, et ce que chacun devient, est dans
+ * lib/anciennes-adresses.ts.
+ */
+const fusion = collectionDemandee ? RAYONS_FUSIONNES[collectionDemandee] : undefined;
+if (fusion) return Astro.redirect(lien(langue, fusion), 301);
 
 /**
  * Combien d'affiches par page.
@@ -93,6 +117,13 @@ const triParDefaut = pageRangeable ? "manuel" : "nouveautes";
  * peut avoir recopiée de travers.
  */
 const villeDemandee = Astro.url.searchParams.get("ville") ?? "";
+/**
+ * Le lieu qui filtre vraiment : aucun sur les prêtes à imprimer, qui ne sont
+ * pas des affiches de lieu — le filtre n'y existe pas, une adresse recopiée
+ * à la main ne doit pas le faire réapparaître, ni dans la grille ni dans
+ * l'adresse canonique.
+ */
+const villeEffective = genre === "prete_a_imprimer" ? "" : villeDemandee;
 
 const triDemande = Astro.url.searchParams.get("tri") ?? "";
 const tri = trisOfferts.includes(triDemande)
@@ -119,10 +150,7 @@ try {
       langue,
       genre: genre || undefined,
       collection: collectionDemandee || undefined,
-      // Même règle que pour la liste : le filtre n'existe pas sur ce rayon,
-      // une adresse recopiée à la main ne doit pas le faire réapparaître.
-      ville:
-        genre === "prete_a_imprimer" ? undefined : villeDemandee || undefined,
+      ville: villeEffective || undefined,
       tri,
       limite: PAR_PAGE,
       offset: (pageDemandee - 1) * PAR_PAGE,
@@ -165,12 +193,59 @@ try {
  * quand l'API n'a pas répondu, on ne sait rien, et on ne prononce pas
  * l'inexistence d'un rayon sur un silence.
  */
-if (
-  !error &&
-  collectionDemandee &&
-  !collections.some((c) => c.slug === collectionDemandee)
-)
+const collection = collections.find((c) => c.slug === collectionDemandee);
+if (!error && collectionDemandee && !collection)
   return new Response(null, { status: 404 });
+
+/*
+ * UNE adresse par rayon : celle du menu.
+ *
+ * « Villes » répondait sous /affiches?collection=villes (où menait l'ancienne
+ * adresse Shopify) ET sous /affiches?genre=personnalisable&collection=villes
+ * (le lien du menu) : la même grille, deux adresses qui se déclaraient
+ * chacune canonique. Un rayon dont toutes les affiches sont du même genre
+ * n'a plus que la forme qui porte ce genre ; l'autre y mène en 301, réglages
+ * (tri, lieu, page) et suivi de campagne compris. Un rayon qui mêle les deux
+ * genres (« Accessoires ») garde l'adresse sans genre, et son filtre par
+ * genre reste une page à part, puisqu'il n'y montre pas la même chose.
+ *
+ * Un genre VALIDE qui contredit celui du rayon (des prêtes à imprimer dans
+ * « Villes ») ne trouve rien : c'est le cas du rayon vide, juste en dessous.
+ * Et quand l'API n'a pas répondu, on ne connaît pas le genre du rayon : on
+ * ne redresse rien sur un silence.
+ */
+const genreDuRayon = collection?.genre ?? null;
+const genreAttendu = genreDuRayon ?? genre;
+const contradiction = !!genreDuRayon && !!genre && genre !== genreDuRayon;
+if (!contradiction && genreDemande !== genreAttendu && !(collectionDemandee && error)) {
+  const p = new URLSearchParams();
+  if (genreAttendu) p.set("genre", genreAttendu);
+  if (collectionDemandee) p.set("collection", collectionDemandee);
+  for (const [cle, valeur] of Astro.url.searchParams)
+    if (cle !== "genre" && cle !== "collection") p.append(cle, valeur);
+  const requete = p.toString();
+  return Astro.redirect(lien(langue, "/affiches") + (requete ? `?${requete}` : ""), 301);
+}
+
+/*
+ * Un rayon vide n'existe pas : un filtre qui ne trouve rien (un lieu
+ * inconnu, un genre que le rayon n'a pas, une page de genre sans affiche)
+ * répond 404, comme un rayon inconnu. Une grille vide en 200 est ce que
+ * Google appelle une « soft 404 » : une page sans contenu qui se déclare
+ * canonique. Le catalogue entier, lui, reste une page même vide.
+ */
+if (!error && total === 0 && (genre || collectionDemandee || villeEffective))
+  return new Response(null, { status: 404 });
+
+/*
+ * L'API n'a pas répondu : la page s'affiche avec son message d'erreur, mais
+ * répond 503 — « reviens plus tard » — et non 200 : un robot qui passe à ce
+ * moment ne doit pas prendre une grille vide pour le contenu du rayon.
+ */
+if (error) {
+  Astro.response.status = 503;
+  Astro.response.headers.set("Retry-After", "120");
+}
 
 const pages = Math.max(Math.ceil(total / PAR_PAGE), 1);
 /**
@@ -196,6 +271,51 @@ const titrePage = (() => {
   return tr("catalogue.titre");
 })();
 
+/*
+ * Le titre et la description que Google montre pour cette liste.
+ *
+ * Tous les rayons portaient le même titre maigre (« Villes — Memory Line »)
+ * et la description générique du site, celle de l'accueil, du panier et de
+ * la recherche : six pages au moins disaient la même chose à Google. Chaque
+ * liste a maintenant les siens, dans la langue de la page.
+ *
+ * - Un rayon : son nom et la nature de ses affiches (« Villes – Affiches
+ *   personnalisées ») ; en description, le texte de présentation de la
+ *   collection quand elle en a un dans cette langue (c'est celui que
+ *   memoryline.fr donne à Google), sinon une phrase faite de son nom.
+ * - Une page de genre ou le catalogue entier : un titre et une phrase à eux.
+ * - Un filtre par lieu (hors index) commence par le lieu, une page 2 et
+ *   suivantes finissent par leur numéro : deux pages, deux titres.
+ */
+const natureDuRayon =
+  collection?.genre === "personnalisable" || collection?.genre === "prete_a_imprimer"
+    ? collection.genre
+    : "mixte";
+const titreListe = collection
+  ? [
+      collection.name,
+      nommeDejaUneAffiche(collection.name) ? null : tr(`seo.natures.${natureDuRayon}`),
+    ]
+  : genre
+    ? [tr(`seo.titre.${genre}`)]
+    : [tr("seo.titre.catalogue")];
+const numeroDePage = pageDemandee > 1 ? tr("seo.page_n").replace("{n}", String(pageDemandee)) : null;
+const titreOnglet = titreDePage(villeEffective || null, ...titreListe, numeroDePage);
+
+const descriptionListe = (() => {
+  if (collection) {
+    const texteCollection = languesDuContenu(collection.languesTraduites).includes(langue)
+      ? texteBrut(collection.description)
+      : "";
+    return texteCollection || tr(`seo.description.rayon.${natureDuRayon}`).replace("{rayon}", collection.name);
+  }
+  if (genre) return tr(`seo.description.${genre}`);
+  return tr("seo.description.catalogue");
+})();
+const suiteDescription = numeroDePage ? ` (${numeroDePage})` : "";
+const descriptionPage =
+  descriptionMeta(descriptionListe, DESCRIPTION_MAX - suiteDescription.length) + suiteDescription;
+
 /**
  * Une adresse de ce même rayon, avec un réglage changé.
  *
@@ -209,7 +329,7 @@ function adresseRayon(changements: { tri?: string; page?: number }): string {
   const p = new URLSearchParams();
   if (genre) p.set("genre", genre);
   if (collectionDemandee) p.set("collection", collectionDemandee);
-  if (villeDemandee) p.set("ville", villeDemandee);
+  if (villeEffective) p.set("ville", villeEffective);
   const triVoulu = changements.tri ?? tri;
   if (triVoulu !== triParDefaut) p.set("tri", triVoulu);
   const pageVoulue = changements.page ?? pageDemandee;
@@ -225,16 +345,37 @@ function adresseRayon(changements: { tri?: string; page?: number }): string {
  * déclareraient toutes comme étant la première, et trois quarts des affiches
  * sortiraient de l'index. Le tri, lui, n'y figure pas — c'est le même rayon
  * regardé autrement, pas un autre contenu.
+ *
+ * Les versions dans les autres langues (hreflang, sélecteur de langue) en
+ * sont tirées par Base.astro : la page 2 de « Villes » en anglais est la page
+ * 2 de « Villes », et non plus le catalogue entier.
  */
 const canonique = (() => {
   const p = new URLSearchParams();
   if (genre) p.set("genre", genre);
   if (collectionDemandee) p.set("collection", collectionDemandee);
-  if (villeDemandee) p.set("ville", villeDemandee);
+  if (villeEffective) p.set("ville", villeEffective);
   if (pageDemandee > 1) p.set("page", String(pageDemandee));
   const requete = p.toString();
   return lien(langue, "/affiches") + (requete ? `?${requete}` : "");
 })();
+
+/*
+ * Ce qui s'indexe.
+ *
+ * Un rayon de collection n'est présenté comme traduit que si son nom (et son
+ * texte) l'est : « Villes » sous /en, titré en français, reste visitable
+ * mais se met en « noindex, follow ». Le catalogue et les pages de genre
+ * n'ont que des libellés d'interface, traduits partout.
+ *
+ * Un filtre par LIEU (?ville=AMIENS) n'est pas indexé : ce sont une centaine
+ * de pages par rayon et par langue, au titre et au texte identiques à ceux
+ * du rayon — des doublons. Le jour où ces pages auront leur propre titre et
+ * leur propre texte (« Affiches personnalisées d'Amiens »), il suffira de
+ * retirer cette condition pour en faire de vraies pages d'entrée.
+ */
+const languesDuRayon = collection?.languesTraduites;
+const filtreParLieu = !!villeEffective;
 
 const precedente = pageDemandee > 1 ? adresseRayon({ page: pageDemandee - 1 }) : null;
 const suivante = pageDemandee < pages ? adresseRayon({ page: pageDemandee + 1 }) : null;
@@ -251,8 +392,11 @@ const libelleTri: Record<string, string> = {
 
 <Base
   langue={langue}
-  title={`${titrePage} — Memory Line`}
+  title={titreOnglet}
+  description={descriptionPage}
   path={canonique}
+  languesTraduites={languesDuRayon}
+  noindex={filtreParLieu}
   precedente={precedente}
   suivante={suivante}
 >
@@ -271,12 +415,17 @@ const libelleTri: Record<string, string> = {
   <section class="mx-auto max-w-[1600px] px-4 pt-12 pb-8 sm:px-6 lg:px-10">
     <h1 class="text-3xl sm:text-4xl">{titrePage}</h1>
     <div class="mt-3 space-y-3">
-      <p class="text-ink-soft">
+      {/* Le nombre d'affiches est l'intertitre de la grille qui suit. Le nom
+          de chaque vignette en était un, de même niveau : 48 titres de
+          second rang par page, et rien pour dire où commence la liste. Les
+          vignettes passent un cran en dessous (VignetteAffiche.astro) ; à
+          l'écran, rien ne change. */}
+      <h2 class="text-base text-ink-soft">
         {total}{" "}
         {genre || collectionDemandee
           ? tr("catalogue.compte_simple")
           : tr("catalogue.compte")}
-      </p>
+      </h2>
 
       {/* Le tri est un FORMULAIRE en GET : sans JavaScript, le bouton
           « Appliquer » suffit ; avec, le menu déroulant envoie tout seul.
