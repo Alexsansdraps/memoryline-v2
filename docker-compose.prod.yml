@@ -186,6 +186,14 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      # HTTP/3, qui passe par UDP. Caddy l'active et l'annonce déjà à chaque
+      # réponse (« alt-svc: h3=":443" », relevé sur le serveur de test), mais
+      # seul le TCP était publié : les navigateurs essayaient, n'obtenaient
+      # rien et restaient en HTTP/2. Ouvert, il gagne un aller-retour à la
+      # connexion, ce qui se sent sur un téléphone en 4G. Si le pare-feu du
+      # serveur filtre l'UDP 443, rien ne casse : le navigateur reste en
+      # HTTP/2, comme aujourd'hui.
+      - "443:443/udp"
     environment:
       # Caddy lit ces valeurs dans le Caddyfile.
       DOMAINE: ${DOMAINE}

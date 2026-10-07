@@ -18,7 +18,6 @@ import {
   type JSX,
 } from "solid-js";
 import {
-  afficheComposee,
   codePaysSaisi,
   demandeUnPointRelais,
   demandeUneAdresse,
@@ -34,14 +33,12 @@ import {
 } from "@memoryline/types";
 import {
   PosterPreview,
-  SignatureCreation,
   ZoneDefilante,
   createSvgCache,
   stateFromConfig,
   SLOTS,
   findVariant,
   variantesDeVue,
-  type SignatureApercu,
 } from "@memoryline/configurator";
 
 /**
@@ -188,14 +185,6 @@ export default function CheckoutIsland(props: {
   };
   /** Ses adresses déjà enregistrées, la première étant celle par défaut. */
   carnet?: AdresseCarnet[];
-  /**
-   * La signature de la boutique, sur les vignettes du récapitulatif — le même
-   * réglage que celui du fichier d'impression, lu par la page côté serveur.
-   *
-   * La dernière vue de l'affiche avant le paiement : c'est ici, plus qu'
-   * ailleurs, que l'écran doit dire la vérité sur ce qui sera imprimé.
-   */
-  signature?: SignatureApercu | null;
 }): JSX.Element {
   const langue = props.langue ?? LANGUE_DEFAUT;
   const tr = t(langue);
@@ -1853,8 +1842,7 @@ export default function CheckoutIsland(props: {
                           when={it.config.aiPublicId}
                           fallback={
                             /* Une affiche prête à imprimer : son visuel de
-                               boutique, comme au panier, et sans signature —
-                               son fichier d'impression n'en porte pas. */
+                               boutique, comme au panier. */
                             <Show
                               when={visuelBoutique(fiches(), it)}
                               fallback={
@@ -1870,14 +1858,6 @@ export default function CheckoutIsland(props: {
                                 slots={biblio()!.slots}
                                 cache={cache}
                                 assetBaseUrl={PUBLIC_API_URL}
-                                /* La signature suit la règle du fichier
-                                   d'impression : seules les lignes composées
-                                   sont signées. */
-                                signature={
-                                  afficheComposee(it.config)
-                                    ? props.signature
-                                    : null
-                                }
                                 messages={{
                                   exempleAffiche: tr("cfg.exemple_affiche"),
                                 }}
@@ -1908,12 +1888,8 @@ export default function CheckoutIsland(props: {
                           <div
                             class="relative w-full overflow-hidden bg-paper-deep"
                             /* La feuille dans son vrai sens, comme au panier :
-                               le calque de signature se cale sur cette boîte,
-                               et l'impression pose la sienne à 12 % du petit
-                               côté de la feuille tournée. Un portrait figé
-                               rejetait la signature d'une création en paysage
-                               hors de l'affiche — et c'est le dernier écran
-                               avant le paiement. */
+                               une création en paysage n'est pas réduite au
+                               milieu d'une vignette en portrait. */
                             style={{
                               "aspect-ratio":
                                 it.config.orientation === "paysage"
@@ -1932,9 +1908,6 @@ export default function CheckoutIsland(props: {
                                 e.currentTarget.hidden = true;
                               }}
                             />
-                            {/* Signée comme au panier : une affiche tirée
-                                d'une photo s'imprime par le même moteur. */}
-                            <SignatureCreation signature={props.signature} />
                           </div>
                         </Show>
                       </div>

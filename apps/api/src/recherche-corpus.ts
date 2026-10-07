@@ -1,6 +1,7 @@
 /**
  * Le corpus de la recherche : tout ce que la boutique ÉCRIT (catalogue,
- * textes du site, réglages), chargé en mémoire et déjà aplati.
+ * textes du site, réglages) et les phrases fixes de ses courriers (écrites
+ * dans le code, mais lues par ses clientes), chargé en mémoire et déjà aplati.
  *
  * Pourquoi en mémoire plutôt qu'une requête par frappe : ces textes tiennent
  * en moins d'un mégaoctet — un millier d'objets —, et les comparer en
@@ -28,9 +29,11 @@ import {
   REGLAGE_BANDEAUX_VISUELS,
   type EtatBandeau,
 } from "@memoryline/types/bandeaux-visuels";
-import { motsDe } from "@memoryline/types/recherche";
+import { LANGUES_ETRANGERES_RECHERCHE, motsDe, type LangueRecherche } from "@memoryline/types/recherche";
 import { db, schema } from "./db/client.js";
 import { ordreDesCollections } from "./collections.js";
+import { textesDesCourriers } from "./courriers.js";
+import { textesRelanceParDefaut } from "./mail.js";
 import {
   CLES_COURRIELS_RELANCE,
   CLES_TEXTES_DU_SITE,
@@ -44,6 +47,7 @@ import {
   fichesCategoriesProduits,
   fichesCollections,
   fichesComptes,
+  fichesCourriers,
   fichesCourrielsRelance,
   fichesDecors,
   fichesLettres,
@@ -58,6 +62,7 @@ import {
   fichesTextesDuSite,
   fichesTypesAffiche,
   fichesZonesLivraison,
+  motsDesNatures,
   type Fiche,
   type LigneReglage,
 } from "./recherche-extraction.js";
@@ -104,8 +109,12 @@ export async function sansTomber<T>(
 
 export interface Corpus {
   fiches: Fiche[];
-  /** Les mots connus du corpus : ce qui permet de corriger une faute de frappe. */
-  vocabulaire: Set<string>;
+  /**
+   * Les mots connus du corpus, et le nombre de fiches où chacun figure : ce
+   * qui permet de corriger une faute de frappe, et de préférer la correction
+   * la plus courante.
+   */
+  vocabulaire: Map<string, number>;
   /** Faux si une source a échoué : le corpus sert, mais n'est pas gardé. */
   complet: boolean;
   /** Les sources qui ont échoué, pour le drapeau « partiel ». */
@@ -196,6 +205,7 @@ async function chargerAffiches(): Promise<Fiche[]> {
         status: p.status,
         basePriceCents: p.basePriceCents,
         translations: p.translations,
+        legacySlug: p.legacySlug,
       })
       .from(p),
     db
@@ -281,6 +291,7 @@ async function chargerAtelier(): Promise<Fiche[]> {
           translations: schema.characterTypes.translations,
           categoryId: schema.characterTypes.categoryId,
           archivedAt: schema.characterTypes.archivedAt,
+          groupesCouleurs: schema.characterTypes.baseGroupesCouleurs,
         })
         .from(schema.characterTypes)
         .orderBy(asc(schema.characterTypes.position), asc(schema.characterTypes.id)),
@@ -300,6 +311,7 @@ async function chargerAtelier(): Promise<Fiche[]> {
           slot: schema.assets.slot,
           pieceCategoryId: schema.assets.pieceCategoryId,
           archivedAt: schema.assets.archivedAt,
+          groupesCouleurs: schema.assets.groupesCouleurs,
         })
         .from(schema.assets)
         .orderBy(asc(schema.assets.slot), asc(schema.assets.position), asc(schema.assets.id)),
@@ -467,9 +479,28 @@ async function chargerReglages(): Promise<Fiche[]> {
       })),
     ),
     ...fichesTextesDuSite(lignes),
-    ...fichesCourrielsRelance(lignes),
+    ...fichesCourrielsRelance(lignes, relancesDOrigine()),
     ...ficheConsigneIa(valeur("ia.stylePrompt")),
   ];
+}
+
+/**
+ * Les textes d'origine des trois relances, dans les cinq langues : ceux que
+ * l'écran du courriel de relance montre tant que la boutique n'y a pas
+ * touché (relance-panier.ts, textesDOrigine).
+ */
+function relancesDOrigine(): Partial<Record<LangueRecherche, Record<1 | 2 | 3, Record<string, string>>>> {
+  const parLangue: Partial<Record<LangueRecherche, Record<1 | 2 | 3, Record<string, string>>>> = {};
+  for (const langue of ["fr", ...LANGUES_ETRANGERES_RECHERCHE] as LangueRecherche[]) {
+    const t = textesRelanceParDefaut(langue);
+    parLangue[langue] = { 1: { ...t[1] }, 2: { ...t[2] }, 3: { ...t[3] } };
+  }
+  return parLangue;
+}
+
+/** Les courriers automatiques : écrits dans le code, sans requête (voir fichesCourriers). */
+async function chargerCourriers(): Promise<Fiche[]> {
+  return fichesCourriers(textesDesCourriers());
 }
 
 async function chargerReglagesBoutique(): Promise<Fiche[]> {
@@ -490,7 +521,11 @@ async function chargerReglagesBoutique(): Promise<Fiche[]> {
       .from(schema.shippingMethods)
       .orderBy(asc(schema.shippingMethods.position), asc(schema.shippingMethods.id)),
     db
-      .select({ id: schema.shippingZones.id, name: schema.shippingZones.name })
+      .select({
+        id: schema.shippingZones.id,
+        name: schema.shippingZones.name,
+        countries: schema.shippingZones.countries,
+      })
       .from(schema.shippingZones)
       .orderBy(asc(schema.shippingZones.position), asc(schema.shippingZones.id)),
     db
@@ -532,6 +567,7 @@ const SOURCES: [string, () => Promise<Fiche[]>][] = [
   ["boutique", chargerBoutique],
   ["réglages du site", chargerReglages],
   ["réglages de la boutique", chargerReglagesBoutique],
+  ["courriers", chargerCourriers],
 ];
 
 async function charger(): Promise<Corpus> {
@@ -540,10 +576,15 @@ async function charger(): Promise<Corpus> {
     SOURCES.map(([nom, lire]) => sansTomber(nom, lire, [] as Fiche[], echecs)),
   );
   const fiches = parSource.flat();
-  const vocabulaire = new Set<string>();
+  // Chaque mot compte UNE fois par fiche : « affiche » écrit trois fois dans
+  // une description ne la rend pas plus courante que les autres mots.
+  const vocabulaire = new Map<string, number>();
   for (const f of fiches) {
-    for (const m of motsDe(f.titre)) vocabulaire.add(m);
-    for (const c of f.champs) for (const m of motsDe(c.texte)) vocabulaire.add(m);
+    const mots = new Set(motsDe(f.titre));
+    for (const c of f.champs) for (const m of motsDe(c.texte)) mots.add(m);
+    for (const m of mots) vocabulaire.set(m, (vocabulaire.get(m) ?? 0) + 1);
   }
+  for (const texte of motsDesNatures())
+    for (const m of motsDe(texte)) vocabulaire.set(m, (vocabulaire.get(m) ?? 0) + 1);
   return { fiches, vocabulaire, complet: echecs.length === 0, echecs, chargeLe: Date.now() };
 }

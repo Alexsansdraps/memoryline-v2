@@ -19,7 +19,6 @@ import Base from "../../layouts/Base.astro";
 import { titreDePage } from "../../lib/textes-seo.ts";
 import CheckoutIsland from "../../islands/CheckoutIsland.tsx";
 import { lien, t, type Langue } from "../../i18n/utils.ts";
-import { signatureDesCreations } from "../../lib/signature.ts";
 import {
   adresses as lireAdresses,
   moi,
@@ -62,11 +61,6 @@ if (!session.ok)
   );
 
 const client = session.donnees!;
-/*
- * La signature de la boutique, pour les vignettes du récapitulatif : le même
- * réglage que celui du fichier d'impression, lu ici côté serveur.
- */
-const signature = await signatureDesCreations();
 // Le carnet est un confort : s'il ne répond pas, le tunnel s'ouvre quand même
 // avec des champs vides plutôt que de refuser la commande.
 let carnet: Adresse[] = [];
@@ -98,7 +92,6 @@ try {
     <CheckoutIsland
       client:only="solid-js"
       langue={langue}
-      signature={signature}
       compte={{
         nom: client.name ?? "",
         prenom: client.firstName ?? undefined,

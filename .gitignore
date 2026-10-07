@@ -39,3 +39,8 @@ apps/web/public/fonts/AnotherShabby-Regular.ttf
 # effacés). Ils sont nommés ainsi par convention, mais rien ne les ignorait :
 # un « git add -A » en embarquait un, et le dépôt est public.
 .tmp-*
+# Les mêmes, rangés dans un dossier scripts/ SANS le point initial
+# (apps/api/scripts/tmp-sonde-recherche.ts, tmp-compo-*.ts…) : la règle
+# ci-dessus ne les voyait pas, et un « git add -A » les aurait mis sur main,
+# où la vérification des types de l'API échouait sur l'un d'eux.
+**/scripts/tmp-*

@@ -15,6 +15,21 @@ import {
 } from "../i18n/utils.ts";
 import { api, type EntreeMenuPublique } from "../lib/api.ts";
 import { languesDuContenu } from "../lib/referencement.ts";
+/*
+ * Le logo de l'en-tête et du pied, à la taille où il s'affiche.
+ *
+ * C'était l'original, 500 × 222 et 48 Ko, pour 108 × 48 px à l'écran : la
+ * plus grosse image de l'en-tête, sur chaque page. Celui-ci fait 324 × 144
+ * (trois fois la hauteur de l'en-tête, pour les écrans de densité 3), en
+ * PNG à palette : 3,7 Ko, sans différence visible (écart moyen de 0,4 sur
+ * 255 au bord des lettres). Importé plutôt que posé dans public/, il sort de
+ * la construction sous un nom à empreinte (/_astro/…) : le proxy le laisse
+ * garder un an, et un nouveau logo changera de nom tout seul.
+ *
+ * L'original reste dans public/ : les courriers, le logo de Google
+ * (index.astro) et la signature des affiches le demandent à cette adresse.
+ */
+import logoEnTete from "../assets/logo-memory-line-en-tete.png";
 interface Props {
   /** Langue de la page — pilote les libellés, les liens et le hreflang. */
   langue?: Langue;
@@ -389,6 +404,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
       image={image}
       type={type}
       noindex={horsIndex}
+      alternatives={versionsDeclarees.map((v) => v.langue)}
       jsonLd={jsonLd}
     />
   </head>
@@ -539,10 +555,10 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
             aria-label={tr("nav.accueil")}
           >
             <img
-              src="/logo-memory-line.png"
+              src={logoEnTete.src}
               alt="Memory Line"
-              width="500"
-              height="222"
+              width={logoEnTete.width}
+              height={logoEnTete.height}
               class="h-12 w-auto max-[359px]:h-10"
             />
           </a>
@@ -761,7 +777,9 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
               <path d="M9 8V6a3 3 0 0 1 6 0v2" />
             </svg>
             <span class="sr-only">{tr("nav.panier")}</span>
-            <CartBadge client:load langue={langue} />
+            {/* Le libellé part tout traduit : la pastille n'embarque plus le
+                dictionnaire des cinq langues (CartBadge.tsx). */}
+            <CartBadge client:load libelle={tr("panier.pastille")} />
           </a>
           {/* Sélecteur de langue, en haut à droite. Ce sont de vrais liens :
               chaque langue a son URL, indexable et partageable. */}
@@ -906,10 +924,10 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
         <div class="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <img
-              src="/logo-memory-line.png"
+              src={logoEnTete.src}
               alt="Memory Line"
-              width="500"
-              height="222"
+              width={logoEnTete.width}
+              height={logoEnTete.height}
               class="h-10 w-auto"
             />
             <p class="mt-4 text-sm text-ink-soft">{baseline}</p>

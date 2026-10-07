@@ -2,6 +2,9 @@
 import "../../../styles/global.css";
 import Seo from "../../../components/Seo.astro";
 import EnvoiPhotoTelephone from "../../../islands/EnvoiPhotoTelephone.tsx";
+// Le logo à la taille de l'en-tête, celui du site (voir Base.astro) : sur un
+// réseau de marché, 3,7 Ko plutôt que 48.
+import logoEnTete from "../../../assets/logo-memory-line-en-tete.png";
 import {
   estLangue,
   langueDepuisParam,
@@ -57,10 +60,10 @@ const code = String(Astro.params.code ?? "")
   <body class="min-h-screen bg-paper text-ink">
     <main class="mx-auto flex min-h-screen w-full max-w-md flex-col px-5 pt-8 pb-10">
       <img
-        src="/logo-memory-line.png"
+        src={logoEnTete.src}
         alt="Memory Line"
-        width="500"
-        height="222"
+        width={logoEnTete.width}
+        height={logoEnTete.height}
         class="mx-auto h-12 w-auto"
       />
       <EnvoiPhotoTelephone client:only="solid-js" langue={langue} code={code}>

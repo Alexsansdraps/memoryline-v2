@@ -1,7 +1,15 @@
 /// <reference lib="dom" />
 import { createSignal, Show, type JSX } from "solid-js";
-import { t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
-import { PUBLIC_API_URL } from "../lib/api.ts";
+import type { Langue } from "../i18n/utils.ts";
+import { PUBLIC_API_URL } from "../lib/api-navigateur.ts";
+
+/** Les quatre textes du formulaire, déjà traduits (clés « lettre.* »). */
+export interface TextesLettre {
+  email: string;
+  envoyer: string;
+  merci: string;
+  erreur: string;
+}
 
 /**
  * Inscription à la lettre d'information.
@@ -10,9 +18,19 @@ import { PUBLIC_API_URL } from "../lib/api.ts";
  * (POST /newsletter) et la liste se relit au back-office. Une adresse déjà
  * inscrite obtient la même réponse qu'une nouvelle — dire « vous êtes déjà
  * inscrit » révélerait qui figure dans la liste.
+ *
+ * Ses textes arrivent tout traduits (index.astro), et l'adresse de l'API
+ * vient de api-navigateur.ts : quatre phrases ne justifient pas d'embarquer
+ * le dictionnaire des cinq langues et la validation des affiches, 209 Ko de
+ * JavaScript que l'accueil n'utilise nulle part ailleurs (CartBadge.tsx).
+ * Aucun import de valeur depuis i18n ici — le type `Langue` s'efface à la
+ * construction.
  */
-export default function Newsletter(props: { langue?: Langue }): JSX.Element {
-  const tr = t(props.langue ?? LANGUE_DEFAUT);
+export default function Newsletter(props: {
+  langue?: Langue;
+  textes: TextesLettre;
+}): JSX.Element {
+  const tr = (cle: keyof TextesLettre) => props.textes[cle];
   const [email, setEmail] = createSignal("");
   const [etat, setEtat] = createSignal<"repos" | "envoi" | "ok" | "erreur">(
     "repos",
@@ -28,7 +46,9 @@ export default function Newsletter(props: { langue?: Langue }): JSX.Element {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: email().trim(),
-          langue: props.langue ?? LANGUE_DEFAUT,
+          // Le français à défaut, comme LANGUE_DEFAUT — écrit en clair pour
+          // ne rien importer de i18n (voir plus haut).
+          langue: props.langue ?? "fr",
         }),
       });
       if (!res.ok) throw new Error(String(res.status));
@@ -43,7 +63,7 @@ export default function Newsletter(props: { langue?: Langue }): JSX.Element {
     <form onSubmit={envoyer} class="mx-auto mt-6 max-w-md">
       <div class="flex items-stretch border border-ink/30 focus-within:border-ink transition-colors">
         <label class="sr-only" for="ml-newsletter">
-          {tr("lettre.email")}
+          {tr("email")}
         </label>
         <input
           id="ml-newsletter"
@@ -54,14 +74,14 @@ export default function Newsletter(props: { langue?: Langue }): JSX.Element {
             setEmail(e.currentTarget.value);
             if (etat() !== "repos") setEtat("repos");
           }}
-          placeholder={tr("lettre.email")}
+          placeholder={tr("email")}
           autocomplete="email"
           class="min-w-0 flex-1 bg-transparent px-4 py-3 outline-none"
         />
         <button
           type="submit"
           disabled={etat() === "envoi"}
-          aria-label={tr("lettre.envoyer")}
+          aria-label={tr("envoyer")}
           class="px-5 text-ink-soft hover:text-ink disabled:opacity-50 transition-colors"
         >
           {/* Une flèche, comme sur la boutique : le champ dit déjà de quoi
@@ -82,10 +102,10 @@ export default function Newsletter(props: { langue?: Langue }): JSX.Element {
         </button>
       </div>
       <Show when={etat() === "ok"}>
-        <p class="mt-3 text-sm text-sage">{tr("lettre.merci")}</p>
+        <p class="mt-3 text-sm text-sage">{tr("merci")}</p>
       </Show>
       <Show when={etat() === "erreur"}>
-        <p class="mt-3 text-sm text-terracotta-deep">{tr("lettre.erreur")}</p>
+        <p class="mt-3 text-sm text-terracotta-deep">{tr("erreur")}</p>
       </Show>
     </form>
   );

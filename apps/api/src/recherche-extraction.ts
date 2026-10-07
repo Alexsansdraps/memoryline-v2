@@ -24,10 +24,12 @@ import {
   couperExtrait,
   evaluer,
   lienRecherche,
-  passageACibler,
+  passagesUtiles,
+  texteACibler,
   texteDeHtml,
   type ChampEvalue,
   type Classement,
+  type Correction,
   type GroupeId,
   type LangueRecherche,
   type Passage,
@@ -81,6 +83,8 @@ export interface Fiche {
    * surligne quand même ce qui s'y trouve, puisque le nom y figure.
    */
   surlignerTitre?: boolean;
+  /** Des mots de plus pour dire ce qu'est l'objet (« facture » pour une commande facturée). */
+  motsNature?: string;
 }
 
 /**
@@ -105,10 +109,134 @@ export interface Impose {
 export interface Trouvaille {
   resultat: ResultatRecherche;
   classement: Classement;
+  /** Les corrections qui ont servi à la trouver : ce que le panneau annoncera. */
+  approches: Correction[];
+}
+
+/**
+ * Les mots qu'on tape pour dire CE QU'ON CHERCHE, nature par nature : « stand
+ * mulhouse », « page cgv », « promo livraison », « cliente nantes ». Ils
+ * forment le champ neutre de chaque fiche (voir ChampEvalue.neutre) : ils
+ * aident à trouver, sans jamais faire répondre une fiche à eux seuls.
+ */
+const MOTS_DES_NATURES: Readonly<Record<string, string>> = {
+  Affiche: "affiches produit produits",
+  Commande: "commandes",
+  "Vente de stand": "ventes stand stands salon commande commandes",
+  Panier: "paniers abandonne abandonnes",
+  Client: "clients cliente clientes",
+  "Inscrit à la lettre": "inscrits inscrite abonne abonnee abonnes lettre newsletter",
+  "Carte cadeau": "cartes cadeaux bon",
+  Stand: "stands salon",
+  Collection: "collections",
+  Cadre: "cadres",
+  "Type d'affiche": "types modele",
+  Décor: "decors fond fonds",
+  Personnage: "personnages",
+  "Catégorie de personnages": "categories",
+  Pièce: "pieces",
+  "Catégorie de pièces": "categories",
+  "Catégorie de produits": "categories",
+  "Bandeau d'annonce": "bandeaux",
+  Promotion: "promotions promo promos code remise reduction",
+  "Bandeau visuel": "bandeaux visuels banniere",
+  "Texte du site": "textes",
+  "Courriel de relance": "courriels mail",
+  Courrier: "courriers courriel mail",
+  Page: "pages",
+  "Entrée du menu": "menu",
+  Lettre: "lettres newsletter",
+  "Mode de livraison": "modes",
+  "Zone de livraison": "zones",
+  "Style IA": "styles",
+  "Consigne IA": "consignes",
+  Compte: "comptes",
+};
+
+/** Le texte du champ neutre : la nature, ses synonymes, et ce que la fiche y ajoute. */
+export function texteNature(nature: string, ajout?: string): string {
+  return [nature, MOTS_DES_NATURES[nature], ajout].filter(Boolean).join(" ");
+}
+
+/**
+ * Tous les mots des natures, pour le vocabulaire : « cliente » ou « promo »
+ * tapés ne sont pas des fautes de frappe, même si aucun texte ne les écrit.
+ */
+export function motsDesNatures(): string[] {
+  return Object.keys(MOTS_DES_NATURES).map((n) => texteNature(n, "facture"));
+}
+
+/**
+ * Les mots des natures d'une source cherchée en base, pour le préfiltre SQL
+ * (recherche-direct.ts) : un mot qui peut tomber dans le champ neutre n'y est
+ * pas exigé. Écrits ici, à côté des fiches, pour qu'ils ne divergent pas.
+ */
+export const NATURES_DES_SOURCES = {
+  commandes: texteNature("Commande", texteNature("Vente de stand", "facture")),
+  paniers: texteNature("Panier"),
+  clients: texteNature("Client"),
+  inscrits: texteNature("Inscrit à la lettre"),
+  cartes: texteNature("Carte cadeau"),
+} as const;
+
+/** Les sources cherchées en base : leur préfiltre SQL ne sait pas lire un sigle. */
+const SOURCES_EN_BASE: ReadonlySet<GroupeId> = new Set(["commandes", "paniers", "clients", "cartes"]);
+
+/**
+ * Les champs tels qu'`evaluer` les reçoit, une fois par fiche (le corpus
+ * garde les mêmes fiches cinq minutes) : ceux de la fiche, dans le même ordre
+ * — les indices ne bougent pas —, le titre autorisé aux sigles (« cgv ») hors
+ * des sources en base, puis le champ neutre de la nature, en dernier.
+ */
+const EVALUES = new WeakMap<Fiche, ChampFiche[]>();
+
+function champsEvalues(fiche: Fiche): ChampFiche[] {
+  let champs = EVALUES.get(fiche);
+  if (!champs) {
+    const sigles = !SOURCES_EN_BASE.has(fiche.groupe);
+    const texte = texteNature(fiche.nature, fiche.motsNature);
+    champs = [
+      ...fiche.champs.map((c) => (sigles && c.titre ? { ...c, sigles: true } : c)),
+      { texte, plat: aplatir(texte), poids: 0, neutre: true, libelle: "", cible: { chemin: "/" } },
+    ];
+    EVALUES.set(fiche, champs);
+  }
+  return champs;
 }
 
 /** Ordre des natures à l'intérieur d'un groupe partagé, à rang et poids égaux. */
 export const ORDRE_SOURCE = 1_000_000;
+
+/**
+ * L'avance d'une fiche où les mots tapés se suivent TELS QUELS. Plus grande
+ * que tout ordre de source (le plus grand vaut 8 × ORDRE_SOURCE), elle ne
+ * départage que des fiches déjà à égalité de rang, de poids et de mots
+ * entiers : elle ne fait jamais passer un « contient » devant un « début de
+ * mot ».
+ */
+const AVANCE_EXPRESSION = 1_000_000_000;
+
+/**
+ * Les mots tapés se suivent-ils, dans cet ordre, au début d'un mot d'un des
+ * champs ?
+ *
+ * Sans cela, « idée cadeau pour un anniversaire » rangeait à égalité les
+ * quinze affiches qui disent exactement cela et les soixante-dix qui ont ces
+ * cinq mots éparpillés dans leur description — par ordre alphabétique, donc
+ * au hasard pour qui lit. Une phrase recopiée d'un texte, c'est ce texte-là
+ * qu'on cherche. Un seul mot n'est pas une expression : rien ne change pour
+ * lui.
+ */
+function expressionEntiere(fiche: Fiche, requete: Requete): boolean {
+  if (requete.jetons.length < 2 || !requete.plat) return false;
+  return fiche.champs.some((c) => {
+    const plat = c.plat ?? aplatir(c.texte);
+    if (c.minimum !== undefined && requete.plat.length < c.minimum) return false;
+    let p = plat.indexOf(requete.plat);
+    while (p > 0 && plat.charCodeAt(p - 1) !== 32) p = plat.indexOf(requete.plat, p + 1);
+    return p !== -1;
+  });
+}
 
 /* -------------------------------------------------------------------------- */
 /*  Petits outils                                                             */
@@ -127,6 +255,18 @@ function champ(
   if (options.titre) c.titre = true;
   if (options.minimum !== undefined) c.minimum = options.minimum;
   return c;
+}
+
+/**
+ * La cible du TITRE d'une fiche — un écran qui ne montre qu'un objet :
+ * l'écran s'ouvre simplement en haut, sans rien chercher (contrat D, « sans
+ * fragment : titre, numéro, nom d'écran »). On y voit déjà le nom en tête ;
+ * le sélectionner dans son champ prenait le focus, et la barre oblique ne
+ * menait plus à la recherche. Les écrans-LISTES (cadres, décors, stands…)
+ * gardent, eux, leur ancre : il faut y retrouver la bonne ligne.
+ */
+function enHaut(chemin: string, parametres?: Record<string, string | number>): CibleChamp {
+  return parametres ? { chemin, parametres, trouver: false } : { chemin, trouver: false };
 }
 
 function garder(...champs: (ChampFiche | null | (ChampFiche | null)[])[]): ChampFiche[] {
@@ -166,13 +306,32 @@ export function euros(cents: number): string {
   return `${texte} €`;
 }
 
+/**
+ * Le fuseau de la boutique, écrit en toutes lettres : la date d'une commande
+ * passée à 1 h du matin est celle du jour à Paris, quel que soit le fuseau de
+ * la machine — et la base la calcule de la même façon (recherche-direct.ts).
+ */
+const FUSEAU = "Europe/Paris";
+
 /** « 12/03/2026 » : compact, c'est une seconde ligne, pas une fiche. */
 export function jour(quand: Date): string {
   return quand.toLocaleDateString("fr-FR", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    timeZone: FUSEAU,
   });
+}
+
+/** « 12/03/2026 12 mars 2026 » : les deux façons de taper une date. */
+export function dateCherchable(quand: Date): string {
+  const lettres = quand.toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: FUSEAU,
+  });
+  return `${jour(quand)} ${lettres}`;
 }
 
 /** Assemble les morceaux d'une seconde ligne, en sautant ceux qui manquent. */
@@ -219,7 +378,8 @@ export function versResultat(
   requete: Requete,
   impose?: Impose | null,
 ): Trouvaille | null {
-  const ev = evaluer(fiche.champs, requete);
+  // Le champ neutre en dernier : les indices des vrais champs ne bougent pas.
+  const ev = evaluer(champsEvalues(fiche), requete);
   const iTitre = fiche.champs.findIndex((c) => c.titre);
   let titrePassages: Passage[] = ev && iTitre >= 0 ? (ev.passages[iTitre] ?? []) : [];
   if (!titrePassages.length && fiche.surlignerTitre)
@@ -248,6 +408,7 @@ export function versResultat(
         motsEntiers: ev?.motsEntiers ?? requete.jetons.length,
         ordre: fiche.ordre,
       },
+      approches: [],
     };
   }
   if (!ev) return null;
@@ -255,6 +416,9 @@ export function versResultat(
   const meilleur = fiche.champs[ev.meilleur]!;
   const passages = ev.passages[ev.meilleur] ?? [];
   const dansLeTitre = !!meilleur.titre;
+  // Le dernier critère de `comparer` est l'ordre de la source : c'est là, et
+  // seulement là, que l'expression entière prend l'avance (voir plus haut).
+  const ordre = fiche.ordre - (expressionEntiere(fiche, requete) ? AVANCE_EXPRESSION : 0);
   return {
     resultat: {
       id: fiche.id,
@@ -263,8 +427,10 @@ export function versResultat(
       titrePassages,
       ou: dansLeTitre ? null : meilleur.libelle || null,
       detail: fiche.detail,
-      extrait: dansLeTitre ? null : couperExtrait(meilleur.texte, passages),
-      href: lienDuChamp(meilleur.cible, passageACibler(meilleur.texte, passages) || undefined),
+      // L'extrait se centre sur un passage qui dit quelque chose, et le lien
+      // n'emmène jamais chercher un « de » (voir texteACibler).
+      extrait: dansLeTitre ? null : couperExtrait(meilleur.texte, passagesUtiles(passages)),
+      href: lienDuChamp(meilleur.cible, texteACibler(meilleur.texte, passages) || undefined),
       image: fiche.image,
       rang: ev.rang,
     },
@@ -272,8 +438,9 @@ export function versResultat(
       rang: ev.rang,
       poids: ev.poids,
       motsEntiers: ev.motsEntiers,
-      ordre: fiche.ordre,
+      ordre,
     },
+    approches: ev.approches ?? [],
   };
 }
 
@@ -298,6 +465,8 @@ export interface LigneAffiche {
   status: string;
   basePriceCents: number;
   translations: unknown;
+  /** L'adresse de la page sur l'ancienne boutique Shopify (redirigée en 301). */
+  legacySlug?: string | null;
 }
 
 /** Les images d'une affiche, déjà triées par position puis par id. */
@@ -388,8 +557,11 @@ export function fichesAffiches(
       image: imgs[0]?.url ?? null,
       ordre,
       champs: garder(
-        champ(p.name, 3, "Nom", ici("infos", "name"), { titre: true }),
+        champ(p.name, 3, "Nom", enHaut(chemin), { titre: true }),
         champ(p.slug, 1, "Adresse de la page", ici("referencement", "slug")),
+        // L'ancienne adresse ne s'affiche nulle part : un lien reçu d'une
+        // cliente (une page de l'ancien site) mène quand même à la fiche.
+        champ(p.legacySlug, 1, "Ancienne adresse (Shopify)", enHaut(chemin)),
         champ(texteDeHtml(p.description ?? ""), 1, "Description", ici("infos", "description")),
         champ(p.seoTitle, 1, "Titre Google", ici("referencement", "seoTitle")),
         champ(p.seoDescription, 1, "Description Google", ici("referencement", "seoDescription")),
@@ -458,7 +630,7 @@ export function fichesCollections(collections: readonly LigneCollection[]): Fich
       image: null,
       ordre,
       champs: garder(
-        champ(c.name, 3, "Nom", ici("infos", "name"), { titre: true }),
+        champ(c.name, 3, "Nom", enHaut(chemin), { titre: true }),
         champ(c.slug, 1, "Adresse", ici("infos")),
         // La description française se lit au back-office sans s'y modifier :
         // elle est repliée sous chaque langue, dans « Voir la description
@@ -616,6 +788,14 @@ export interface LignePersonnage {
   translations: unknown;
   categoryName: string | null;
   archivedAt: Date | null;
+  /** base_groupes_couleurs : les couleurs que le client peut changer, et leur nom (« Robe », « Pelage »). */
+  groupesCouleurs?: unknown;
+}
+
+/** Les noms des groupes de couleurs (`[{ nom: "Robe", … }]`), sans doublon. */
+function nomsDesGroupes(groupes: unknown): string[] {
+  if (!Array.isArray(groupes)) return [];
+  return distincts(groupes.map((g) => chaine(objet(g)?.nom)));
 }
 
 export function fichesPersonnages(personnages: readonly LignePersonnage[]): Fiche[] {
@@ -628,12 +808,15 @@ export function fichesPersonnages(personnages: readonly LignePersonnage[]): Fich
     image: null,
     ordre: RANG_ATELIER.personnage * ORDRE_SOURCE + i,
     champs: garder(
-      champ(
-        p.name,
-        3,
-        "Nom",
-        { chemin: `/personnages/${p.id}`, ancre: "fiche-personnage", champ: "name" },
-        { titre: true },
+      champ(p.name, 3, "Nom", enHaut(`/personnages/${p.id}`), { titre: true }),
+      // Le nom que le client lit au-dessus des pastilles. Les cases de ce bloc
+      // sont fabriquées par un script : on mène au bloc, sans rien y chercher.
+      nomsDesGroupes(p.groupesCouleurs).map((g) =>
+        champ(g, 1, "Couleurs que le client peut changer", {
+          chemin: `/personnages/${p.id}`,
+          ancre: "couleurs",
+          trouver: false,
+        }),
       ),
       // Les traductions vivent sur la LISTE, qui porte aussi celles des
       // catégories avec des numéros communs (tr-3-name-en existe pour les
@@ -688,6 +871,8 @@ export interface LignePiece {
   slot: string;
   categoryName: string | null;
   archivedAt: Date | null;
+  /** groupes_couleurs : les couleurs que le client peut changer sur la pièce, et leur nom. */
+  groupesCouleurs?: unknown;
 }
 
 export function fichesPieces(pieces: readonly LignePiece[]): Fiche[] {
@@ -719,6 +904,15 @@ export function fichesPieces(pieces: readonly LignePiece[]): Fiche[] {
           "Nom de la pièce",
           { chemin: "/personnages", ancre: `piece-${p.id}`, trouver: p.name },
           { titre: true },
+        ),
+        // Les noms de ses couleurs (« Robe », « Rayures ») : leurs cases sont
+        // fabriquées par un script, on mène à la ligne de la pièce.
+        nomsDesGroupes(p.groupesCouleurs).map((g) =>
+          champ(g, 1, "Couleurs que le client peut changer", {
+            chemin: "/personnages",
+            ancre: `piece-${p.id}`,
+            trouver: false,
+          }),
         ),
       ),
     });
@@ -841,6 +1035,7 @@ const RANG_BOUTIQUE = {
   texte: 5,
   relance: 6,
   lettre: 7,
+  courrier: 8,
 } as const;
 
 export interface LigneBandeauAnnonce {
@@ -933,7 +1128,13 @@ export interface LigneBandeauVisuel {
   etat: string | null;
 }
 
-const CHAMPS_BANDEAU_VISUEL = [
+/**
+ * Les textes d'un bandeau visuel, et ceux qui se traduisent. Ce sont les
+ * mêmes que CHAMPS_TRADUITS_BANDEAU (@memoryline/types/bandeaux-visuels),
+ * recopiés pour que ce fichier reste pur ; un essai vérifie qu'ils ne
+ * divergent pas le jour où un champ traduit s'ajoute.
+ */
+export const CHAMPS_BANDEAU_VISUEL = [
   { cle: "titre", libelle: "Titre", poids: 2 },
   { cle: "texte", libelle: "Texte", poids: 1 },
   { cle: "bouton", libelle: "Bouton", poids: 1 },
@@ -952,7 +1153,7 @@ export function fichesBandeauxVisuels(bandeaux: readonly LigneBandeauVisuel[]): 
       image: null,
       ordre: RANG_BOUTIQUE.bandeauVisuel * ORDRE_SOURCE + i,
       champs: garder(
-        champ(b.nom, 3, "Nom", { chemin, ancre: "bv-formulaire", champ: "nom" }, { titre: true }),
+        champ(b.nom, 3, "Nom", enHaut(chemin), { titre: true }),
         CHAMPS_BANDEAU_VISUEL.map((c) =>
           champ(b[c.cle], c.poids, c.libelle, { chemin, ancre: "bv-formulaire", champ: c.cle }),
         ),
@@ -1060,21 +1261,39 @@ const CHAMPS_RELANCE = [
 ] as const;
 
 /**
+ * Les textes d'ORIGINE d'une relance, langue par langue, tels que mail.ts les
+ * écrit (`textesRelanceParDefaut`) : ce sont eux que l'écran montre dans ses
+ * champs tant que la boutique n'y a pas touché. Passés en paramètre pour que
+ * ce fichier reste pur.
+ */
+export type TextesRelanceParLangue = Partial<
+  Record<LangueRecherche, Partial<Record<1 | 2 | 3, Partial<Record<string, string>>>>>
+>;
+
+/**
  * Les courriels de relance des paniers, une fiche par relance.
  *
- * Seuls les textes RÉÉCRITS par la boutique sont en base : tant qu'elle n'y a
- * pas touché, la clé n'existe pas et c'est le texte d'origine, écrit dans le
- * code (apps/api/src/courriels), qui part. Celui-là n'est pas cherché ici :
- * il n'appartient pas à la boutique, et l'écran le montre de toute façon.
+ * Les textes RÉÉCRITS par la boutique sont en base ; tant qu'elle n'y a pas
+ * touché, la clé n'existe pas, et c'est le texte d'origine qui part — et que
+ * l'écran affiche dans ses champs. On cherche donc dans le réécrit quand il
+ * existe, sinon dans l'origine : « Votre panier vous attend », lu dans un
+ * courriel reçu, mène à l'écran qui l'écrit.
  */
-export function fichesCourrielsRelance(reglages: readonly LigneReglage[]): Fiche[] {
+export function fichesCourrielsRelance(
+  reglages: readonly LigneReglage[],
+  parDefaut: TextesRelanceParLangue = {},
+): Fiche[] {
   const fiches: Fiche[] = [];
-  for (const n of [1, 2, 3]) {
+  for (const n of [1, 2, 3] as const) {
     const champs: ChampFiche[] = [];
     for (const langue of ["fr", ...LANGUES_ETRANGERES_RECHERCHE] as LangueRecherche[]) {
       const cle = langue === "fr" ? `relance.courrier_${n}` : `relance.courrier_${n}.${langue}`;
-      const textes = objet(reglages.find((r) => r.key === cle)?.value);
-      if (!textes) continue;
+      const reecrits = objet(reglages.find((r) => r.key === cle)?.value);
+      const origine = parDefaut[langue]?.[n] ?? null;
+      if (!reecrits && !origine) continue;
+      // Comme l'écran (relance-panier.ts) : le réécrit en entier s'il existe,
+      // sinon l'origine en entier.
+      const textes: Record<string, unknown> = reecrits ?? origine ?? {};
       for (const c of CHAMPS_RELANCE)
         champs.push(
           ...garder(
@@ -1104,6 +1323,50 @@ export function fichesCourrielsRelance(reglages: readonly LigneReglage[]): Fiche
     });
   }
   return fiches;
+}
+
+/** Un courrier automatique, rendu par mail.ts avec une commande vide (courriers.ts). */
+export interface LigneCourrierAutomatique {
+  /** « confirmation », « expediee »… : l'id de sa carte sur l'écran Courriers. */
+  id: string;
+  nom: string;
+  /** « Part dès que… » : la phrase de sa carte. */
+  quand: string;
+  sujet: string;
+  /** Le message, en texte, sans balise. */
+  texte: string;
+}
+
+/**
+ * Les courriers que la boutique envoie toute seule : confirmation,
+ * expédition, facture, remboursement… Ils ne sont pas en base, ils sont écrits
+ * dans le code ; mais c'est une phrase lue dans un courriel reçu (« Merci pour
+ * votre commande ») qu'on tape pour retrouver l'écran qui le montre.
+ *
+ * Le message ne s'affiche sur l'écran qu'en aperçu, à la demande : trouvé
+ * dans l'objet ou le message, le lien mène à la carte du courrier, sans rien
+ * y chercher. Le nom et la phrase « quand », eux, sont écrits sur la carte.
+ */
+export function fichesCourriers(courriers: readonly LigneCourrierAutomatique[]): Fiche[] {
+  return courriers.map((c, i) => {
+    const carte: CibleChamp = { chemin: "/courriers", ancre: `courrier-${c.id}` };
+    const apercu: CibleChamp = { ...carte, trouver: false };
+    return {
+      groupe: "boutique",
+      id: `courrier:${c.id}`,
+      nature: "Courrier",
+      titre: c.nom,
+      detail: "Courrier automatique",
+      image: null,
+      ordre: RANG_BOUTIQUE.courrier * ORDRE_SOURCE + i,
+      champs: garder(
+        champ(c.nom, 3, "Nom", carte, { titre: true }),
+        champ(c.quand, 1, "Quand il part", carte),
+        champ(c.sujet, 2, "Objet", apercu),
+        champ(c.texte, 1, "Message", apercu),
+      ),
+    };
+  });
 }
 
 export interface LignePage {
@@ -1158,7 +1421,7 @@ export function fichesPages(pages: readonly LignePage[]): Fiche[] {
       image: null,
       ordre: RANG_BOUTIQUE.page * ORDRE_SOURCE + i,
       champs: garder(
-        champ(p.title, 3, "Titre", ici("infos", "title"), { titre: true }),
+        champ(p.title, 3, "Titre", enHaut(chemin), { titre: true }),
         champ(p.slug, 1, "Adresse", ici("infos", "slug")),
         champ(texteDesBlocs(p.blocks), 1, "Contenu de la page", ici("contenu", "corps")),
         champ(p.seoTitle, 1, "Titre Google", ici("referencement", "seoTitle")),
@@ -1264,7 +1527,7 @@ export function fichesLettres(lettres: readonly LigneLettre[]): Fiche[] {
       image: null,
       ordre: RANG_BOUTIQUE.lettre * ORDRE_SOURCE + i,
       champs: garder(
-        champ(l.titre, 3, "Titre", ici("titre"), { titre: true }),
+        champ(l.titre, 3, "Titre", enHaut("/lettre", { lettre: l.id }), { titre: true }),
         champ(l.objet, 2, "Objet", ici("objet")),
         champ(texteDeHtml(l.contenuHtml), 1, "Contenu", ici("contenu")),
       ),
@@ -1348,21 +1611,46 @@ export function fichesModesLivraison(modes: readonly LigneModeLivraison[]): Fich
 export interface LigneZoneLivraison {
   id: number;
   name: string;
+  /** Codes ISO (« FR », « BE ») ; une liste vide fait de la zone celle de repli. */
+  countries?: unknown;
+}
+
+/** « BE » → « Belgique ». Le nom n'est que cherché : l'écran, lui, montre les codes. */
+function nomDuPays(code: string): string | null {
+  try {
+    const nom = new Intl.DisplayNames(["fr"], { type: "region" }).of(code);
+    return nom && nom !== code ? nom : null;
+  } catch {
+    return null;
+  }
 }
 
 export function fichesZonesLivraison(zones: readonly LigneZoneLivraison[]): Fiche[] {
-  return zones.map((z, i) => ({
-    groupe: "reglages",
-    id: `zone-livraison:${z.id}`,
-    nature: "Zone de livraison",
-    titre: z.name,
-    detail: null,
-    image: null,
-    ordre: RANG_REGLAGES.zone * ORDRE_SOURCE + i,
-    champs: garder(
-      champ(z.name, 3, "Nom", { chemin: "/livraison", ancre: `zone-${z.id}`, champ: "name" }, { titre: true }),
-    ),
-  }));
+  return zones.map((z, i) => {
+    const pays = chaines(z.countries).map((c) => c.trim().toUpperCase()).filter((c) => /^[A-Z]{2}$/.test(c));
+    return {
+      groupe: "reglages",
+      id: `zone-livraison:${z.id}`,
+      nature: "Zone de livraison",
+      titre: z.name,
+      detail: pays.length ? pays.join(", ") : "Zone de repli",
+      image: null,
+      ordre: RANG_REGLAGES.zone * ORDRE_SOURCE + i,
+      champs: garder(
+        champ(z.name, 3, "Nom", { chemin: "/livraison", ancre: `zone-${z.id}`, champ: "name" }, { titre: true }),
+        // « Belgique » trouve la zone qui livre la Belgique ; à l'écran, c'est
+        // le code « BE » qu'on retrouve dans la case des pays.
+        pays.map((code) =>
+          champ(
+            [nomDuPays(code), code].filter(Boolean).join(" "),
+            1,
+            "Pays",
+            { chemin: "/livraison", ancre: `zone-${z.id}`, champ: "countries", trouver: code },
+          ),
+        ),
+      ),
+    };
+  });
 }
 
 export interface LigneStyleIa {
@@ -1391,7 +1679,7 @@ export function fichesStylesIa(styles: readonly LigneStyleIa[]): Fiche[] {
       image: null,
       ordre: RANG_REGLAGES.style * ORDRE_SOURCE + i,
       champs: garder(
-        champ(s.title, 3, "Titre", ici("title"), { titre: true }),
+        champ(s.title, 3, "Titre", enHaut("/ia/styles", { style: s.id }), { titre: true }),
         champ(texteDeHtml(s.prompt), 1, "Consigne", ici("prompt")),
         nomsTraduits(s.translations, "/ia/styles", "traductions-styles", s.id, "title", "Titre"),
       ),
@@ -1413,6 +1701,9 @@ export function ficheConsigneIa(valeur: unknown): Fiche[] {
       image: null,
       ordre: RANG_REGLAGES.consigne * ORDRE_SOURCE,
       champs: garder(
+        // Son nom se cherche aussi : sans lui, « consigne commune » ne
+        // trouvait rien, et le repli « corrigeait » le mot juste.
+        champ("Consigne commune des affiches IA", 3, "Nom", { chemin: "/ia", ancre: "reglages", trouver: false }, { titre: true }),
         champ(texteDeHtml(texte), 1, "Réglages", {
           chemin: "/ia",
           ancre: "reglages",
@@ -1480,6 +1771,14 @@ export interface LigneCommande {
   clientNom: string | null;
   clientEmail: string | null;
   standNom: string | null;
+  /** Le mode de livraison tel qu'il s'appelait le jour de la commande (« Retrait sur place »). */
+  shippingLabel?: string | null;
+  /** Sa description du même jour (« livré le lendemain avant 13 h »). */
+  shippingDescription?: string | null;
+  /** Le transporteur de ce mode (« colissimo ») : le nom du mode ne le dit pas toujours (« À domicile »). */
+  transporteurDuMode?: string | null;
+  /** Le statut tel que la liste l'écrit (« Payée », « Annulée », « En attente »). */
+  statutLibelle?: string | null;
 }
 
 /** Une ligne de commande : son titre figé et les textes écrits sur l'affiche. */
@@ -1503,6 +1802,8 @@ export interface EnfantsCommande {
   transporteurs: string[];
   /** refund.reason et refund.note. */
   remboursements: string[];
+  /** order_event.author : qui a écrit un commentaire, comme la chronologie l'affiche. */
+  auteurs?: string[];
 }
 
 /** Les textes écrits sur une affiche, avec leur numéro de ligne. */
@@ -1537,6 +1838,7 @@ export function ficheCommande(o: LigneCommande, enfants: EnfantsCommande, ordre:
     groupe: "commandes",
     id: `commande:${o.id}`,
     nature: o.channel === "salon" ? "Vente de stand" : "Commande",
+    motsNature: o.invoiceNumber ? "facture" : undefined,
     titre: o.number,
     detail: ligneDetail(
       o.shippingName ?? o.clientNom,
@@ -1570,8 +1872,30 @@ export function ficheCommande(o: LigneCommande, enfants: EnfantsCommande, ordre:
       champ(o.clientEmail, 1, "Client", ici("client"), { minimum: 3 }),
       // La fiche ne montre pas le nom du stand : elle s'ouvre simplement.
       champ(o.standNom, 1, "Stand", enTete),
+      // Le mode s'écrit dans l'en-tête des articles ; sa description, dans le
+      // bloc du bordereau (« retrait sur place », « point relais »).
+      champ(o.shippingLabel, 1, "Mode de livraison", ici("articles")),
+      champ(o.shippingDescription, 1, "Mode de livraison (description)", ici("bordereau")),
+      // Le transporteur ne s'écrit pas sur la fiche tant que le colis n'est
+      // pas parti : on mène aux articles, sans rien y chercher.
+      champ(o.transporteurDuMode, 1, "Mode de livraison (transporteur)", {
+        chemin,
+        ancre: "articles",
+        trouver: false,
+      }),
+      // Ce qu'une cliente dit au téléphone : « ma commande du 6 octobre »,
+      // « celle de 49,90 € », « elle est toujours en attente ». L'en-tête de
+      // la fiche les montre déjà, autrement écrits : elle s'ouvre en haut.
+      champ(o.statutLibelle, 1, "Statut", enTete),
+      champ(dateCherchable(o.createdAt), 1, "Date", enTete),
+      champ(euros(o.totalCents), 1, "Montant", { chemin, ancre: "mouvements", trouver: false }),
       champsArticles(enfants.articles, chemin),
       distincts(enfants.journal).map((m) => champ(m, 1, "Journal", ici("journal"))),
+      // L'auteur est l'adresse d'un compte du back-office : même minimum que
+      // les e-mails, « co » ne doit pas trouver toutes les adresses en .com.
+      distincts(enfants.auteurs ?? []).map((a) =>
+        champ(a, 1, "Journal (auteur)", ici("journal"), { minimum: 3 }),
+      ),
       distincts(enfants.transporteurs).map((t) => champ(t, 1, "Transporteur", ici("bordereau"))),
       distincts(enfants.remboursements).map((r) =>
         champ(r, 1, "Remboursement", ici("remboursements")),
@@ -1580,9 +1904,16 @@ export function ficheCommande(o: LigneCommande, enfants: EnfantsCommande, ordre:
   };
 }
 
+/** Un numéro provisoire de panier : « DRAFT- » suivi d'un uuid plein de chiffres. */
+export function numeroProvisoire(numero: string): boolean {
+  return /^DRAFT-/i.test(numero);
+}
+
 /**
- * Un panier abandonné. Jamais par son numéro : « DRAFT- » suivi d'un uuid
- * plein de chiffres, il répondrait à n'importe quel nombre tapé.
+ * Un panier abandonné. Son numéro n'est cherché comme texte que s'il est un
+ * VRAI numéro (« WEB-0010 », que l'écran Paniers affiche) : un numéro
+ * provisoire, « DRAFT- » et son uuid, répondrait à n'importe quel nombre
+ * tapé — il ne se retrouve que collé en entier (recherche-direct.ts).
  */
 export function fichePanier(o: LigneCommande, articles: readonly ArticleCommande[], ordre: number): Fiche {
   const chemin = `/commandes/${o.id}`;
@@ -1603,6 +1934,7 @@ export function fichePanier(o: LigneCommande, articles: readonly ArticleCommande
     ordre,
     surlignerTitre: true,
     champs: garder(
+      champ(numeroProvisoire(o.number) ? null : o.number, 2, "Numéro", { chemin, trouver: false }),
       champ(o.clientNom, 2, "Client", ici("client")),
       champ(o.clientEmail, 1, "Client", ici("client"), { minimum: 3 }),
       champ(o.shippingName, 2, "Adresse", ici("adresse-livraison")),
@@ -1693,12 +2025,12 @@ export function ficheClient(
     image: null,
     ordre,
     champs: garder(
-      champ(c.name, 3, "Nom", ici("coordonnees", "name"), { titre: true }),
+      champ(c.name, 3, "Nom", enHaut(chemin), { titre: true }),
       // Prénom et nom de famille n'ont pas de champ à l'écran : on mène au
       // bloc des coordonnées, où le nom complet les montre.
       champ(c.firstName, 2, "Prénom", ici("coordonnees")),
       champ(c.lastName, 2, "Nom de famille", ici("coordonnees")),
-      champ(c.email, nom ? 2 : 3, "E-mail", ici("coordonnees", "email"), {
+      champ(c.email, nom ? 2 : 3, "E-mail", nom ? ici("coordonnees", "email") : enHaut(chemin), {
         titre: !nom,
         minimum: 3,
       }),

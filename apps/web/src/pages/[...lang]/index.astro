@@ -12,6 +12,7 @@ import {
   setting,
   assetUrl,
   assetSrcset,
+  bandeauxVisuels,
   type Product,
 } from "../../lib/api.ts";
 import { PAGE_ACCUEIL } from "@memoryline/types";
@@ -152,6 +153,16 @@ async function affichesDeLaVitrine(): Promise<Product[]> {
  */
 const vitrine = vitrineVisible ? await affichesDeLaVitrine() : [];
 
+/*
+ * Un bandeau visuel en tête de page ? C'est alors lui, l'image la plus
+ * grande et la première vue, et il part déjà en priorité : la première
+ * vignette n'a pas à lui disputer la bande passante. Sans bandeau, c'est
+ * elle (VignetteAffiche.astro, `premiere`). Les réglages lus ici sont ceux
+ * que BandeauxVisuels.astro relit juste après, gardés deux secondes
+ * (api.ts) : la question ne coûte pas d'appel de plus.
+ */
+const bandeauEnTete = (await bandeauxVisuels([PAGE_ACCUEIL], langue)).length > 0;
+
 /** Intitulé de la lettre d'information, réglable au back-office. */
 /**
  * Mise en avant de l'affiche tirée d'une photo.
@@ -277,8 +288,9 @@ const siteLd = {
             vitrine avait sa propre copie, avec 24 px entre les affiches, un
             nom en grand et une image chargée en pleine taille, sans choix de
             résolution. Les colonnes, elles, restent celles de l'accueil — la
-            page est pleine largeur —, d'où un `sizes` écrit ici, calculé sur
-            ces colonnes et ces marges. */}
+            page est pleine largeur, sans le cadre de 1600 px du rayon —, d'où
+            le `sizes` « pleine largeur », calculé sur ces colonnes et ces
+            marges. */}
         <ul
           class="ml-grille-produits -mx-2 gap-x-1 gap-y-5 sm:mx-0 sm:gap-x-2 sm:gap-y-8"
           style={styleGrille(grille)}
@@ -288,7 +300,8 @@ const siteLd = {
               affiche={p}
               langue={langue}
               prioritaire={rang < 4}
-              sizes={sizesGrille(grille)}
+              premiere={rang === 0 && !bandeauEnTete}
+              sizes={sizesGrille(grille, { pleineLargeur: true })}
             />
           ))}
         </ul>
@@ -350,7 +363,18 @@ const siteLd = {
   <section class="mt-16 border-t border-ink/10">
     <div class="mx-auto max-w-[1200px] px-6 py-14 text-center lg:px-12">
       <h2 class="text-2xl">{lettreTitre}</h2>
-      <Newsletter client:visible langue={langue} />
+      {/* Les textes partent traduits : l'îlot n'embarque plus le
+          dictionnaire des cinq langues (Newsletter.tsx). */}
+      <Newsletter
+        client:visible
+        langue={langue}
+        textes={{
+          email: tr("lettre.email"),
+          envoyer: tr("lettre.envoyer"),
+          merci: tr("lettre.merci"),
+          erreur: tr("lettre.erreur"),
+        }}
+      />
     </div>
   </section>
 </Base>

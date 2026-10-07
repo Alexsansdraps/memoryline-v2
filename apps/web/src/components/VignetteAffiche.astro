@@ -55,6 +55,19 @@ interface Props {
    */
   prioritaire?: boolean;
   /**
+   * La toute première vignette de la page, dont l'image part AVANT les
+   * autres (`fetchpriority="high"`).
+   *
+   * Les vignettes ont toutes la même taille : la première arrivée est le plus
+   * grand élément de la page pour Google (LCP), et Chrome met sinon toutes
+   * les images en file au même rang jusqu'à la mise en forme de la page.
+   * Une seule par page, pas la rangée entière : des images toutes
+   * prioritaires ne le sont plus. Et aucune quand un bandeau visuel la
+   * précède : c'est alors lui, le plus grand, et il a déjà la priorité
+   * (BandeauxVisuels.astro).
+   */
+  premiere?: boolean;
+  /**
    * La largeur que la vignette occupe VRAIMENT à l'écran, pour `sizes`.
    *
    * Seule la grille la connaît : ses colonnes, ses marges et ses gouttières.
@@ -82,6 +95,7 @@ const {
   affiche,
   langue,
   prioritaire = false,
+  premiere = false,
   sizes = GRILLE_RAYON,
   titre: Titre = "h3",
 } = Astro.props;
@@ -159,6 +173,13 @@ const prix =
  *
  * 900 et 1400 existent déjà côté API (`/assets/:fichier?l=`) : il n'y avait
  * qu'à les proposer.
+ *
+ * Pour la plupart des visuels, « 1400 » rend 1020 px : l'API n'agrandit
+ * jamais. Sans conséquence ici — la case a son propre rapport et l'image la
+ * remplit (`object-cover`), quelle que soit la largeur annoncée, et le
+ * navigateur prend le même fichier. Sur la fiche, où l'image prend sa taille
+ * naturelle, l'écart comptait : elle annonce la vraie largeur (api.ts,
+ * assetSrcset).
  */
 const image = assetUrl(affiche.image, 600);
 const imageJeu = assetSrcset(affiche.image, [400, 600, 900, 1400]);
@@ -179,7 +200,8 @@ const imageJeu = assetSrcset(affiche.image, [400, 600, 900, 1400]);
             alt={texteImage}
             width="1020"
             height="1400"
-            loading={prioritaire ? "eager" : "lazy"}
+            loading={prioritaire || premiere ? "eager" : "lazy"}
+            fetchpriority={premiere ? "high" : undefined}
             class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
           />
         ) : (

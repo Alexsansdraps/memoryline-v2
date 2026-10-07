@@ -101,6 +101,7 @@ Ensuite, supprimer du serveur les anciennes copies `.env.avant-*`, qui contienne
 - [ ] Chez le registrar de memoryline.fr : enregistrement **A** `memoryline.fr` → `51.255.34.187` (et AAAA si le serveur a une IPv6). **Supprimer les anciens enregistrements Shopify**, sinon le certificat ne s'obtient pas.
 - [ ] `www.memoryline.fr` (Shopify le redirige aujourd'hui vers le domaine nu, des liens le portent) : faire pointer l'enregistrement `www` vers le serveur (A, ou CNAME vers `memoryline.fr`), **puis** ajouter `DOMAINE_WWW=www.memoryline.fr` au `.env` et relancer le proxy (`docker compose -f docker-compose.prod.yml up -d proxy`). `Caddyfile.prod` est prêt : il obtient le certificat du www et redirige en 301, en un saut, vers la même adresse sur `memoryline.fr`.
 - [ ] Une fois le DNS propagé : `https://memoryline.fr` s'ouvre avec le cadenas (Caddy obtient le certificat tout seul).
+- [ ] Si le serveur a un pare-feu (celui de l'IP chez OVH, ou `ufw`) : ouvrir **l'UDP 443** en plus du TCP 80 et 443. C'est le port de HTTP/3, que `docker-compose.prod.yml` publie désormais. Fermé, rien ne casse : les navigateurs restent en HTTP/2.
 
 ## 5. Les comptes des prestataires (onglet *Live*)
 
@@ -146,6 +147,7 @@ Ensuite, supprimer du serveur les anciennes copies `.env.avant-*`, qui contienne
 - [ ] `https://memoryline.fr/sitemap.xml` liste les `/affiches/…` en `https://memoryline.fr`.
 - [ ] `curl -sI https://memoryline.fr/products/vieux-moulin-affiche-personnalisee` répond `301` vers `/affiches/…`, et `curl -sI https://www.memoryline.fr/` répond `301` vers `https://memoryline.fr/` (si `DOMAINE_WWW` est posé).
 - [ ] `https://memoryline.fr/api/payments/config` répond `"essai": false`.
+- [ ] `curl -sI https://memoryline.fr/fonts/LeagueSpartan-Regular.ttf` porte `cache-control: public, max-age=604800` (une seule ligne `cache-control`), et la page d'accueil `cache-control: no-cache`.
 - [ ] Une **vraie petite commande** par carte, puis remboursée depuis le BO. Une autre par PayPal si PayPal est branché.
 - [ ] Le courriel de confirmation arrive dans une vraie boîte, et n'est pas classé en spam.
 - [ ] L'avis « nouvelle commande » arrive chez Margaux.

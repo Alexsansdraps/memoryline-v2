@@ -87,15 +87,26 @@ const DE = LETTRES_ACCENTUEES + SEPARATEURS;
 const VERS = LETTRES_PLATES + " ".repeat(SEPARATEURS.length);
 
 /**
+ * Ce que `aplatir` change en espace et qu'aucune table ne peut énumérer : les
+ * symboles collés à un mot (« ✓livré », « ♥Dupont », « Café©Paris »,
+ * « A→B »). `aplatir` ne garde que les lettres, les chiffres et @ % € ; tout
+ * le reste devient une espace. La base fait de même avec cette classe, que
+ * PostgreSQL lit selon la locale de la base (UTF-8 : toutes les lettres
+ * Unicode sont « alnum »). Le « + » regroupe au passage les blancs, comme
+ * `aplatir` : un texte aplati n'a jamais deux espaces de suite.
+ */
+const HORS_MOTS = "[^[:alnum:]@%€]+";
+
+/**
  * L'expression aplatie, côté base : minuscules, ligatures dédoublées,
- * accents retirés, ponctuation changée en espaces.
+ * accents retirés, ponctuation et symboles changés en espaces.
  *
  * `translate()` EFFACE les caractères de la première liste qui n'ont pas de
  * correspondant dans la seconde : les deux chaînes ont donc exactement la
  * même longueur, et ce n'est pas un détail.
  */
 export function plat(expression: SQL): SQL {
-  return raw`translate(replace(replace(replace(replace(replace(replace(lower(coalesce(${expression}, '')), 'œ', 'oe'), 'Œ', 'oe'), 'æ', 'ae'), 'Æ', 'ae'), 'ß', 'ss'), 'ẞ', 'ss'), ${DE}, ${VERS})`;
+  return raw`regexp_replace(translate(replace(replace(replace(replace(replace(replace(replace(replace(lower(coalesce(${expression}, '')), 'œ', 'oe'), 'Œ', 'oe'), 'æ', 'ae'), 'Æ', 'ae'), 'ß', 'ss'), 'ẞ', 'ss'), 'ﬁ', 'fi'), 'ﬂ', 'fl'), ${DE}, ${VERS}), ${HORS_MOTS}, ' ', 'g')`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -156,13 +167,51 @@ export function conditionJeton(textes: SQL[], jeton: JetonRequete): SQL {
   return raw`(${raw.join(morceaux, raw` or `)})`;
 }
 
-/** Tous les mots de la saisie, chacun présent quelque part (ET entre mots). */
-export function conditionRequete(textes: SQL[], tous: readonly JetonRequete[]): SQL {
+/**
+ * Tous les mots de la saisie, chacun présent quelque part (ET entre mots).
+ *
+ * `facultatifs` : les mots qui peuvent aussi se trouver dans ce que l'objet
+ * EST — son champ neutre, que la base ne voit pas (« stand » dans « stand
+ * mulhouse », « cliente » dans « cliente nantes »). La base ne les exige
+ * donc pas. Mais le JavaScript refuse un objet trouvé par ses seuls champs
+ * neutres : quand TOUS les mots sont facultatifs, l'un d'eux au moins doit se
+ * trouver dans le texte. C'est le plus étroit que la base puisse demander
+ * sans écarter ce que le JavaScript garderait.
+ */
+export function conditionRequete(
+  textes: SQL[],
+  tous: readonly JetonRequete[],
+  facultatifs: ReadonlySet<JetonRequete> = new Set(),
+): SQL {
   if (!tous.length) return raw`false`;
+  const exiges = tous.filter((j) => !facultatifs.has(j));
+  if (!exiges.length)
+    return raw`(${raw.join(
+      tous.map((j) => conditionJeton(textes, j)),
+      raw` or `,
+    )})`;
   return raw`(${raw.join(
-    tous.map((j) => conditionJeton(textes, j)),
+    exiges.map((j) => conditionJeton(textes, j)),
     raw` and `,
   )})`;
+}
+
+/**
+ * Un ordre de PERTINENCE grossier pour le préfiltre, avant sa limite de 200 :
+ * d'abord les textes qui contiennent la saisie entière comme un champ à elle
+ * seule (entourée d'espaces — c'est le « exact » du JavaScript), puis ceux où
+ * elle commence un mot, puis le reste. Sans lui, la limite coupait par date ou
+ * par nom, et une correspondance exacte pouvait rester derrière deux cents
+ * autres qui ne faisaient que contenir un mot.
+ *
+ * `saisiePlate` : requete.plat, déjà aplatie par le JavaScript ; le texte
+ * aplati de la base a ses blancs regroupés comme elle.
+ */
+export function pertinence(texte: SQL, saisiePlate: string): SQL {
+  if (!saisiePlate) return raw`2`;
+  const m = motif(saisiePlate);
+  return raw`(case when (' ' || ${texte} || ' ') like ${`% ${m} %`} escape '\\' then 0
+    when (' ' || ${texte}) like ${`% ${m}%`} escape '\\' then 1 else 2 end)`;
 }
 
 /* -------------------------------------------------------------------------- */

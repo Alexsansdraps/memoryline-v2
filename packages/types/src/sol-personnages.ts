@@ -12,5 +12,11 @@
  *
  * 0,816 est le calage visuel fait par la boutique le 7 juillet 2026, ajusté
  * le 11 juillet quand la descente des pieds a été corrigée.
+ *
+ * Au sens strict, c'est le CENTRE du cadre d'un personnage SEUL (échelle 0,7)
+ * — ses pieds tombent une demi-hauteur de cadre plus bas, là où le calage du
+ * back-office les a réglés. Quand la composition rapetisse un personnage pour
+ * en loger d'autres, elle descend son cadre d'autant, pour que ses pieds ne
+ * quittent pas cette ligne (voir composition-personnages.ts).
  */
 export const Y_SOL_PERSONNAGES = 0.816;

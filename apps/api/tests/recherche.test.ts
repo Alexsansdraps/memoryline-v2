@@ -17,6 +17,7 @@ import {
   chiffresTelephone,
   comparer,
   compacter,
+  correctionsServies,
   couperExtrait,
   decouper,
   distance,
@@ -29,6 +30,7 @@ import {
   motsDe,
   passageACibler,
   preparerRequete,
+  texteACibler,
   texteDeHtml,
   type ChampEvalue,
 } from "@memoryline/types/recherche";
@@ -41,9 +43,19 @@ import {
   motifNumeroCommande,
   motifsFacture,
 } from "../src/recherche-sql.ts";
+import { CHAMPS_TRADUITS_BANDEAU } from "@memoryline/types/bandeaux-visuels";
 import {
+  CHAMPS_BANDEAU_VISUEL,
   ficheCarte,
+  ficheClient,
   ficheCommande,
+  fichePanier,
+  fichesAffiches,
+  fichesComptes,
+  fichesCourriers,
+  fichesPersonnages,
+  fichesPromotions,
+  fichesZonesLivraison,
   fichesBandeauxVisuels,
   fichesCollections,
   fichesCourrielsRelance,
@@ -469,6 +481,33 @@ test("carte cadeau : par son code (rang imposé), par sa note", () => {
   assert.equal(versResultat(fiche, preparerRequete("WEB-0042"))?.resultat.ou, "Historique");
 });
 
+test("une expression recopiée telle quelle passe devant les mêmes mots éparpillés", () => {
+  const fiche = (id: number, nom: string, description: string): Parameters<typeof versResultat>[0] => ({
+    groupe: "affiches",
+    id: `produit:${id}`,
+    nature: "Affiche",
+    titre: nom,
+    detail: null,
+    image: null,
+    ordre: id,
+    champs: [
+      { texte: nom, poids: 3, libelle: "Nom", cible: { chemin: `/produits/${id}` }, titre: true },
+      { texte: description, poids: 1, libelle: "Description", cible: { chemin: `/produits/${id}`, ancre: "infos", champ: "description" } },
+    ],
+  });
+  const requete = preparerRequete("idée cadeau pour un anniversaire");
+  // AMIENS vient avant dans l'ordre de la source, et ses mots y sont tous.
+  const eparpilles = versResultat(fiche(1, "AMIENS", "Une idée de décoration, pour un cadeau original d'anniversaire."), requete);
+  const expression = versResultat(fiche(2, "BIARRITZ", "La plage : une idée cadeau pour un anniversaire réussi."), requete);
+  assert.ok(eparpilles && expression);
+  assert.equal(eparpilles.classement.rang, expression.classement.rang);
+  assert.ok(comparer(expression.classement, eparpilles.classement) < 0);
+  assert.equal(expression.resultat.href, "/produits/2#trouver=id%C3%A9e%20cadeau%20pour%20un%20anniversaire&ancre=infos&champ=description");
+  // Un seul mot : l'ordre de la source décide, comme avant.
+  const seul = preparerRequete("cadeau");
+  assert.ok(comparer(versResultat(fiche(1, "AMIENS", "un cadeau"), seul)!.classement, versResultat(fiche(2, "BIARRITZ", "un cadeau"), seul)!.classement) < 0);
+});
+
 test("lettre : le contenu HTML se cherche en texte", () => {
   const [fiche] = fichesLettres([
     {
@@ -583,11 +622,19 @@ test("textes du site : chaîne française ou dictionnaire de langues", () => {
   assert.match(en!.resultat.href, /champ=footer\.baseline%40en$/);
 });
 
+test("bandeau visuel : les champs cherchés sont les champs traduits de l'écran", () => {
+  assert.deepEqual(
+    CHAMPS_BANDEAU_VISUEL.map((c) => c.cle),
+    [...CHAMPS_TRADUITS_BANDEAU],
+  );
+});
+
 test("bandeau visuel : nom, et traductions vers leur case", () => {
   const [fiche] = fichesBandeauxVisuels([
     { id: "bv-1", nom: "Noël", titre: "Pour Noël", texte: "", bouton: "Je découvre", alt: "", translations: { es: { titre: "Para Navidad" } }, etat: "Archivé" },
   ]);
-  assert.equal(versResultat(fiche!, preparerRequete("noel"))?.resultat.href, "/bandeaux-visuels/bv-1#trouver=No%C3%ABl&ancre=bv-formulaire&champ=nom");
+  // Trouvé par son nom, sur sa fiche : l'écran s'ouvre en haut, sans fragment (contrat D).
+  assert.equal(versResultat(fiche!, preparerRequete("noel"))?.resultat.href, "/bandeaux-visuels/bv-1");
   const es = versResultat(fiche!, preparerRequete("navidad"));
   assert.equal(es?.resultat.ou, "Titre (espagnol)");
   assert.equal(es?.resultat.href, "/bandeaux-visuels/bv-1#trouver=Navidad&ancre=traductions-bandeau-visuel&champ=tr-bv-1-titre-es");
@@ -598,4 +645,200 @@ test("stand : trouvé par son nom seulement, le code n'existe pas dans la fiche"
   const [fiche] = fichesStands([{ id: 1, nom: "Marché de Noël Mulhouse", ouvert: true, archivedAt: null }]);
   assert.ok(!JSON.stringify(fiche).includes("code"));
   assert.equal(versResultat(fiche!, preparerRequete("mulhouse"))?.resultat.href, "/ventes-salon?stand=1#trouver=Mulhouse&ancre=stand-1");
+});
+
+/* -------------------------------------------------------------------------- */
+/*  Corrections de la relecture du 7 octobre                                  */
+/* -------------------------------------------------------------------------- */
+
+const cliente = (email: string, name: string | null = "Marie Factice") =>
+  ficheClient(
+    { id: 7, name, firstName: null, lastName: null, email, note: null, tags: [], commandes: 0, totalCents: 0 },
+    [],
+    [{ customerId: 7, orderId: 40, number: "WEB-0013", shippingCity: "Nantes", shippingPostalCode: "44000" }],
+    0,
+  );
+
+test("e-mail : l'adresse entière en .fr trouve la cliente, le compte et la commande", () => {
+  const email = "prenom.nom@orange.fr";
+  for (const q of [email, email.toUpperCase(), "@orange.fr", "orange.fr", "nom@orange"]) {
+    const t = versResultat(cliente(email), preparerRequete(q));
+    assert.equal(t?.resultat.ou, "E-mail", q);
+  }
+  assert.equal(versResultat(cliente(email), preparerRequete(email))?.resultat.rang, 0);
+  // Tapés SEULS, « fr » et « co » ne ramènent toujours pas les adresses.
+  assert.equal(versResultat(cliente(email), preparerRequete("fr")), null);
+  assert.equal(versResultat(cliente("marie@exemple.com"), preparerRequete("co")), null);
+  const [compte] = fichesComptes([{ id: 5, email: "gerante@boutique.fr", role: "owner", archivedAt: null }]);
+  assert.equal(versResultat(compte!, preparerRequete("gerante@boutique.fr"))?.resultat.rang, 0);
+  const cmd = ficheCommande(commande({ clientEmail: email, shippingCountry: null }), sansEnfants, 0);
+  assert.equal(versResultat(cmd, preparerRequete(email))?.resultat.ou, "Client");
+});
+
+test("evaluer : un champ neutre aide à trouver, sans jamais répondre seul ni être exact", () => {
+  const champs: ChampEvalue[] = [
+    { texte: "Marché de Noël", poids: 3 },
+    { texte: "marché", poids: 0, neutre: true },
+  ];
+  assert.equal(evaluer(champs, preparerRequete("marché"))?.rang, 1);
+  assert.equal(evaluer(champs, preparerRequete("marché"))?.meilleur, 0);
+  assert.equal(
+    evaluer([{ texte: "Mulhouse", poids: 3 }, { texte: "stand", poids: 0, neutre: true }], preparerRequete("stand")),
+    null,
+  );
+});
+
+test("nature : « stand mulhouse », « page cgv », « promo livraison », « cliente nantes », « facture F… »", () => {
+  const [stand] = fichesStands([{ id: 1, nom: "Mulhouse", ouvert: true, archivedAt: null }]);
+  assert.equal(versResultat(stand!, preparerRequete("stand mulhouse"))?.resultat.href, "/ventes-salon?stand=1#trouver=Mulhouse&ancre=stand-1");
+  assert.equal(versResultat(stand!, preparerRequete("stand")), null);
+  const [page] = fichesPages([
+    { id: 5, title: "Conditions générales de vente", slug: "cgv", status: "active", seoTitle: null, seoDescription: null, blocks: [], translations: {}, archivedAt: null },
+  ]);
+  assert.equal(versResultat(page!, preparerRequete("page cgv"))?.resultat.ou, "Adresse");
+  const [promo] = fichesPromotions([{ id: 4, name: "Livraison offerte dès 60 €", code: null, translations: {}, active: true }]);
+  assert.ok(versResultat(promo!, preparerRequete("promo livraison")));
+  assert.match(versResultat(cliente("x@exemple.test"), preparerRequete("cliente nantes"))!.resultat.ou!, /^Ville de livraison/);
+  const cmd = ficheCommande(commande(), sansEnfants, 0);
+  assert.equal(versResultat(cmd, preparerRequete("facture F2026-0001"))?.resultat.ou, "Facture");
+});
+
+test("sigles : « cgv » trouve les Conditions générales de vente, seulement dans les noms en mémoire", () => {
+  const [page] = fichesPages([
+    { id: 5, title: "Conditions générales de vente", slug: "conditions-de-vente", status: "active", seoTitle: null, seoDescription: null, blocks: [], translations: {}, archivedAt: null },
+  ]);
+  const cgv = versResultat(page!, preparerRequete("cgv"));
+  assert.equal(cgv?.resultat.rang, 2);
+  assert.equal(cgv?.resultat.href, "/pages/5");
+  assert.deepEqual(cgv?.resultat.titrePassages, [{ debut: 0, fin: 29 }]);
+  assert.ok(versResultat(page!, preparerRequete("page cgv")));
+  // Une cliente se cherche en base : pas de sigle (le préfiltre ne saurait pas le lire).
+  assert.equal(versResultat(cliente("x@exemple.test", "Anne Bernard Carré"), preparerRequete("abc")), null);
+});
+
+test("commande : mode de livraison, statut, date, montant et auteur d'un commentaire", () => {
+  const cmd = ficheCommande(
+    commande({ shippingLabel: "Retrait sur place", statutLibelle: "Annulée", totalCents: 4990, createdAt: new Date("2026-10-06T10:00:00Z") }),
+    { ...sansEnfants, auteurs: ["gerante@boutique.test"] },
+    0,
+  );
+  const mode = versResultat(cmd, preparerRequete("retrait sur place"));
+  assert.equal(mode?.resultat.ou, "Mode de livraison");
+  assert.equal(mode?.resultat.href, "/commandes/40#trouver=Retrait%20sur%20place&ancre=articles");
+  assert.equal(versResultat(cmd, preparerRequete("annulée"))?.resultat.ou, "Statut");
+  assert.equal(versResultat(cmd, preparerRequete("06/10/2026"))?.resultat.ou, "Date");
+  assert.equal(versResultat(cmd, preparerRequete("6 octobre"))?.resultat.ou, "Date");
+  assert.equal(versResultat(cmd, preparerRequete("49,90"))?.resultat.ou, "Montant");
+  assert.equal(versResultat(cmd, preparerRequete("gerante"))?.resultat.ou, "Journal (auteur)");
+});
+
+test("panier : par son vrai numéro, jamais par un numéro provisoire", () => {
+  const panier = fichePanier(commande({ number: "WEB-0010", status: "draft" }), [], 0);
+  assert.equal(versResultat(panier, preparerRequete("WEB-0010"))?.resultat.ou, "Numéro");
+  const brouillon = fichePanier(commande({ number: "DRAFT-1a2b3c4d-0013-4000-8000-000000000013", status: "draft" }), [], 0);
+  assert.equal(versResultat(brouillon, preparerRequete("13")), null);
+});
+
+function pageMentions() {
+  return fichesPages([
+    { id: 9, title: "Mentions légales", slug: "mentions-legales", status: "active", seoTitle: null, seoDescription: null, blocks: [], translations: {}, archivedAt: null },
+  ])[0]!;
+}
+
+test("titre d'une fiche : l'écran s'ouvre en haut, sans fragment (contrat D) ; une liste garde son ancre", () => {
+  const [affiche] = fichesAffiches(
+    [
+      {
+        id: 44, name: "AULT Falaises – Affiche personnalisée", slug: "ault-falaises-affiche-personnalisee", description: null, seoTitle: null,
+        seoDescription: null, defaultTitle: null, defaultSubtitle: null, defaultLine3: null, vendor: null, productType: null,
+        tags: [], aiStylePrompt: null, status: "active", basePriceCents: 0, translations: {}, legacySlug: "poster-ault-ancien",
+      },
+    ],
+    [],
+    [],
+  );
+  assert.equal(versResultat(affiche!, preparerRequete("ault falaises"))?.resultat.href, "/produits/44");
+  const ancienne = versResultat(affiche!, preparerRequete("poster-ault-ancien"));
+  assert.equal(ancienne?.resultat.ou, "Ancienne adresse (Shopify)");
+  assert.equal(ancienne?.resultat.href, "/produits/44");
+  assert.equal(versResultat(pageMentions(), preparerRequete("mentions"))?.resultat.href, "/pages/9");
+  assert.equal(versResultat(cliente("x@exemple.test"), preparerRequete("marie factice"))?.resultat.href, "/clients/7");
+  // Sans nom, l'adresse est le titre : même règle.
+  assert.equal(versResultat(cliente("solo@exemple.test", null), preparerRequete("solo@exemple.test"))?.resultat.href, "/clients/7");
+  const [chien] = fichesPersonnages([
+    { id: 3, name: "Chien", translations: {}, categoryName: null, archivedAt: null, groupesCouleurs: [{ nom: "Pelage" }] },
+  ]);
+  assert.equal(versResultat(chien!, preparerRequete("chien"))?.resultat.href, "/personnages/3");
+  const pelage = versResultat(chien!, preparerRequete("pelage"));
+  assert.equal(pelage?.resultat.ou, "Couleurs que le client peut changer");
+  assert.equal(pelage?.resultat.href, "/personnages/3#ancre=couleurs");
+});
+
+test("le lien ne transporte jamais un mot vide : « mot de passe » ne cherche pas « de »", () => {
+  // Aucun couple de mots tapés ne tient dans soixante caractères : c'est le
+  // mot le plus LONG qui ouvre la fenêtre, plus le plus court (« de »).
+  const loin = " Une longue phrase sans rapport, qui parle seulement du vent et du soleil.";
+  const texte = `Un mot doux.${loin} Il était une fois de belles vacances.${loin} Un passe-temps.`;
+  const ev = evaluer([{ texte, poids: 1 }], preparerRequete("mot de passe"));
+  const premier = ev!.passages[0]![0]!;
+  assert.equal(texte.slice(premier.debut, premier.fin), "passe");
+  assert.equal(texteACibler(texte, ev!.passages[0]!), "passe");
+  assert.equal(texteACibler("Le code d'accès du stand", [{ debut: 16, fin: 18 }]), "");
+  assert.equal(texteACibler("Ouvrir dans un onglet", [{ debut: 7, fin: 11 }]), "");
+  assert.equal(
+    texteACibler("Le code d'accès du stand", [{ debut: 3, fin: 7 }, { debut: 16, fin: 18 }, { debut: 19, fin: 24 }]),
+    "code d'accès du stand",
+  );
+});
+
+test("preparerRequete : début de mot mal tapé, inversion sur trois lettres, mots connus, repli", () => {
+  const v = new Map([["biarritz", 3], ["mers", 2], ["pour", 50], ["cour", 2], ["jour", 10]]);
+  assert.deepEqual(preparerRequete("biari", v).jetons[0]?.corrections, ["biarritz"]);
+  assert.deepEqual(preparerRequete("biarit", v).jetons[0]?.corrections, ["biarritz"]);
+  assert.deepEqual(preparerRequete("mre", v).jetons[0]?.corrections, ["mer"]);
+  // Quatre lettres : une seule proposition, la plus courante.
+  assert.deepEqual(preparerRequete("your", v).jetons[0]?.corrections, ["pour"]);
+  // Un mot que l'autre moitié connaît n'est jamais corrigé.
+  const connu = preparerRequete("biari", v, { connus: new Set(["biari"]) }).jetons[0];
+  assert.deepEqual(connu?.corrections, []);
+  assert.equal(connu?.connu, true);
+  // Le repli corrige même un mot connu — une faute recopiée quelque part.
+  const v2 = new Set(["personalisee", "personnalisee"]);
+  assert.deepEqual(preparerRequete("personalisée", v2).jetons[0]?.corrections, []);
+  assert.deepEqual(preparerRequete("personalisée", v2, { forcer: true }).jetons[0]?.corrections, ["personnalisee"]);
+});
+
+test("evaluer : la correction annoncée est celle qui a trouvé, la plus utile par mot", () => {
+  const r = preparerRequete("viles", new Map([["vibes", 9], ["villes", 1], ["vides", 1]]));
+  assert.equal(r.corrections[0]?.propose, "vibes");
+  assert.deepEqual(evaluer([{ texte: "Villes", poids: 3 }], r)?.approches, [{ tape: "viles", propose: "villes" }]);
+  const servies = ["Villes", "Villes du Nord", "GOOD VIBES ONLY", "Les villes"].map(
+    (texte) => evaluer([{ texte, poids: 1 }], r)?.approches ?? [],
+  );
+  assert.deepEqual(correctionsServies(servies), [{ tape: "viles", propose: "villes" }]);
+});
+
+test("zone de livraison : par le nom d'un pays, vers son code à l'écran", () => {
+  const [zone] = fichesZonesLivraison([{ id: 2, name: "Europe proche", countries: ["BE", "LU"] }]);
+  const t = versResultat(zone!, preparerRequete("belgique"));
+  assert.equal(t?.resultat.ou, "Pays");
+  assert.equal(t?.resultat.href, "/livraison#trouver=BE&ancre=zone-2&champ=countries");
+});
+
+test("courriers : le message d'un courrier automatique mène à sa carte, sans rien y chercher", () => {
+  const [c] = fichesCourriers([
+    { id: "confirmation", nom: "Confirmation de commande", quand: "Part vers le client dès que son paiement est encaissé.", sujet: "Votre commande", texte: "Merci pour votre commande !" },
+  ]);
+  const t = versResultat(c!, preparerRequete("merci pour votre commande"));
+  assert.equal(t?.resultat.ou, "Message");
+  assert.equal(t?.resultat.href, "/courriers#ancre=courrier-confirmation");
+});
+
+test("courriel de relance : le texte d'origine est cherché tant qu'il n'est pas réécrit", () => {
+  const [fiche] = fichesCourrielsRelance([], {
+    fr: { 1: { objet: "Votre panier vous attend", accroche: "Bonjour {prenom},", message: "", bouton: "Reprendre", conclusion: "" } },
+  });
+  const t = versResultat(fiche!, preparerRequete("votre panier vous attend"));
+  assert.equal(t?.resultat.ou, "Objet");
+  assert.equal(t?.resultat.href, "/paniers/courriel?relance=1&langue=fr#trouver=Votre%20panier%20vous%20attend&champ=objet");
 });

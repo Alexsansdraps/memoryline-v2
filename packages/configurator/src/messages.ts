@@ -54,8 +54,6 @@ export interface MessagesConfigurateur {
   reordonnerAide: string;
   /** Sur l'icône de copie d'un personnage. */
   dupliquer: string;
-  /** Sous les lignes de texte : la touche Entrée coupe une ligne. */
-  aideRetourLigne: string;
   /** Libellé d'une ligne de texte au-delà de `champsLignes` ; `{n}` = son rang. */
   ligneN: string;
   /**
@@ -136,7 +134,6 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   sansCadre: "Sans cadre",
   reordonnerAide: "Glissez pour changer l'ordre des personnages",
   dupliquer: "Dupliquer ce personnage",
-  aideRetourLigne: "Touche Entrée pour passer à la ligne.",
   ligneN: "Ligne {n}",
   precedent: "Précédent",
   suivant: "Suivant",

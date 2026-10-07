@@ -105,6 +105,8 @@ import { demarrerPreparationDesImpressions } from "./fichiers-impression.js";
 import { demarrerMesureDesPieces } from "./couleur-principale.js";
 import { mountContact } from "./contact.js";
 import { mountPlanDuSite } from "./plan-du-site.js";
+import { dimensionsDuVisuel } from "./dimensions-visuels.js";
+import { maillageDeLaFiche } from "./maillage.js";
 import {
   genreDuRayon,
   languesDeLaCollection,
@@ -485,7 +487,7 @@ app.get("/stats", async (c) => {
 /**
  * La table de correspondance des lettres accentuées, pour `translate()`.
  *
- * Recopiée de la recherche du back-office (recherche.ts), volontairement : ce
+ * Recopiée de la recherche du back-office (recherche-sql.ts), volontairement : ce
  * fichier-là est réservé au back-office — il lit des noms de clientes, des
  * montants et des numéros de commande — et une route publique n'a rien à
  * importer de lui. La méthode, elle, est la bonne : `unaccent` demanderait un
@@ -966,6 +968,22 @@ app.get("/products/:slug", async (c) => {
       ? brut.seoDescription
       : (champTraduit(brut.translations, langue, "seoDescription") ?? null);
 
+  /*
+   * Le rayon du fil d'Ariane et les affiches voisines (maillage.ts), lancés
+   * tout de suite pour courir en même temps que le reste. Ce n'est qu'un
+   * ornement de la fiche : s'il échoue, la fiche part sans, elle ne tombe pas.
+   * Le nom FRANÇAIS sert à lire le lieu (« AMIENS Cathédrale ») : c'est lui
+   * que la règle du filtre par lieu connaît.
+   */
+  const maillage = maillageDeLaFiche(
+    { id: brut.id, kind: brut.kind, name: brut.name },
+    langue,
+    villeDuNom,
+  ).catch((e) => {
+    console.warn(`[fiche ${brut.slug}] maillage indisponible :`, e);
+    return { rayonPrincipal: null, voisines: [], voisinesDe: "genre" as const };
+  });
+
   const [variants, images] = await Promise.all([
     db
       .select()
@@ -983,13 +1001,19 @@ app.get("/products/:slug", async (c) => {
       .orderBy(schema.productImages.position),
   ]);
 
-  // Type d'affiche du produit : il porte le décor par défaut.
-  const [vue] = product.defaultView
-    ? await db
-        .select({ foregroundUrl: schema.posterViews.foregroundUrl })
-        .from(schema.posterViews)
-        .where(eq(schema.posterViews.slug, product.defaultView))
-    : [];
+  // Type d'affiche du produit : il porte le décor par défaut. Les visuels
+  // sont mesurés en même temps (dimensions-visuels.ts) : la première fois,
+  // une lecture d'en-tête par fichier ; ensuite, de mémoire.
+  const [[vue], dimensionsImages, { rayonPrincipal, voisines, voisinesDe }] = await Promise.all([
+    product.defaultView
+      ? db
+          .select({ foregroundUrl: schema.posterViews.foregroundUrl })
+          .from(schema.posterViews)
+          .where(eq(schema.posterViews.slug, product.defaultView))
+      : Promise.resolve([]),
+    Promise.all(images.map((i) => dimensionsDuVisuel(i.url))),
+    maillage,
+  ]);
 
   return c.json({
     id: product.id,
@@ -1014,6 +1038,13 @@ app.get("/products/:slug", async (c) => {
     aiEnabled: product.aiEnabled,
     basePriceCents: product.basePriceCents,
     images: images.map((i) => i.url),
+    /**
+     * La largeur et la hauteur réelles de chaque visuel, dans l'ordre de
+     * `images` (null quand on n'a pas pu le lire). Champ AJOUTÉ sans rien
+     * changer aux autres : la fiche s'en sert pour réserver la bonne place à
+     * l'image et ne proposer au navigateur que des tailles qui existent.
+     */
+    dimensionsImages,
     /**
      * Les langues où la fiche est vraiment écrite (referencement.ts) : le
      * français toujours, une autre langue quand son nom ET sa description y
@@ -1052,6 +1083,15 @@ app.get("/products/:slug", async (c) => {
        */
       sku: v.sku,
     })),
+    /**
+     * Trois champs AJOUTÉS pour le maillage interne (maillage.ts), sans rien
+     * changer aux autres : le rayon du menu sous lequel la fiche se range
+     * (null : sous la page de son genre), des affiches voisines dans la forme
+     * d'une ligne de GET /products, et d'où elles viennent.
+     */
+    rayonPrincipal,
+    voisines,
+    voisinesDe,
   });
 });
 

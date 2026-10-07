@@ -34,6 +34,13 @@ export interface Morceau {
   section: string | null;
   /** L'id STATIQUE (id="…") de l'élément englobant le plus proche. */
   ancre: string | null;
+  /**
+   * « attribut » : un texte qui ne s'AFFICHE pas (title, aria-label, alt).
+   * Il aide à trouver l'écran, mais le script d'arrivée, qui ne lit que le
+   * texte affiché et la valeur des champs, ne saurait pas l'y retrouver : le
+   * résultat mène à l'ancre, sans passage à chercher.
+   */
+  origine?: "attribut";
 }
 
 /* -------------------------------------------------------------------------- */
@@ -64,18 +71,46 @@ const AIDES = new Set(["p", "li", "td", "dd", "figcaption", "blockquote"]);
 /** Ce qu'on ne lit pas du tout : du code, ou une valeur de champ. */
 const SAUTEES = new Set(["script", "style", "textarea", "pre"]);
 
-/** Les attributs (et props de composants) qui portent du texte lisible. */
-const ATTRIBUTS_LIBELLES = new Set([
-  "placeholder", "title", "aria-label", "alt", "titre", "label", "etiquette",
-]);
-const ATTRIBUTS_AIDES = new Set(["aide", "invite", "legende"]);
+/**
+ * Les props de composants qui portent du texte AFFICHÉ (« titre » d'un bloc
+ * de traductions, « etiquette » d'un éditeur, « aide » sous un champ).
+ *
+ * Ni « placeholder » ni « invite » (le filigrane d'un éditeur) : ce sont des
+ * EXEMPLES — « Dupont », « Salon du livre de Nantes 2026 », « offerte au salon
+ * de Vannes » —, pas le contenu de l'écran. Indexés, ils faisaient répondre
+ * l'écran des commandes au nom d'une vraie cliente, et menaient à un texte
+ * que le script d'arrivée ne trouve pas, puisqu'il ne s'affiche pas.
+ */
+const ATTRIBUTS_LIBELLES = new Set(["titre", "label", "etiquette"]);
+const ATTRIBUTS_AIDES = new Set(["aide", "legende"]);
+/**
+ * Les attributs HTML lisibles mais NON affichés : l'infobulle, le texte des
+ * lecteurs d'écran, celui d'une image. Gardés pour trouver l'écran (« retirer
+ * de la liste » est l'infobulle d'un bouton), marqués pour que le lien ne
+ * cherche pas à les surligner.
+ */
+const ATTRIBUTS_CACHES = new Set(["title", "aria-label", "alt"]);
 
 /** Les ids qui ne désignent pas un endroit où l'on peut emmener quelqu'un. */
 const SANS_ANCRE = new Set(["template", "datalist", "svg", "dialog", "admin"]);
 
-/** Les clés de l'entête dont la valeur est un texte de l'écran. */
+/**
+ * Les éléments qui délimitent une section : quand celui qui contient un
+ * titre se ferme, les textes suivants ne sont plus « sous » ce titre. Ni
+ * <header> ni <div> : un titre y est souvent emballé seul, et la section
+ * continue après eux.
+ */
+const CONTENEURS = new Set(["section", "article", "details", "fieldset", "form", "aside", "li", "dialog", "main", "nav"]);
+
+/**
+ * Les clés de l'entête dont la valeur est un texte de l'écran. Les trois
+ * dernières (note, nom, detail) servent aussi à des noms techniques
+ * (« nom: "description" ») : leur valeur n'est gardée que si c'est de la
+ * prose (estDeLaProse).
+ */
 const CLES_ENTETE =
-  /\b(titre|label|libelle|aide|texte|message|explication|description|question|invite|placeholder|legende)\s*:\s*(?=["'`])/g;
+  /\b(titre|label|libelle|aide|texte|message|explication|description|question|legende|note|nom|detail)\s*:\s*(?=["'`])/g;
+const CLES_A_PROSE = new Set(["note", "nom", "detail"]);
 
 /* -------------------------------------------------------------------------- */
 /*  Petits outils                                                             */
@@ -344,6 +379,8 @@ interface Contexte {
   genre: Morceau["genre"];
   ancre: string | null;
   details: string | null;
+  /** Code : les chaînes de prose lues dans un titre, en attente (voir lireGabarit). */
+  titres?: string[];
 }
 
 function nouveauBalisage(racine: string | null, hauteur: number): Contexte {
@@ -361,7 +398,19 @@ function lireGabarit(gabarit: string): MorceauLu[] {
   const pile: Contexte[] = [nouveauBalisage(null, 0)];
   const elements: Element[] = [];
   let section: string | null = null;
+  /**
+   * La hauteur, dans la pile des éléments, du CONTENEUR du titre courant :
+   * quand il se ferme, la section aussi. Sans cela, le formulaire sans titre
+   * qui suit « Styles archivés » se disait « Styles archivés ».
+   */
+  let sectionNiveau: number | null = null;
   let titresLus = 0;
+
+  const conteneurCourant = (): number | null => {
+    for (let k = elements.length - 1; k >= 0; k--)
+      if (CONTENEURS.has(elements[k]!.nom.toLowerCase())) return k;
+    return null;
+  };
 
   const ancreCourante = (): string | null => {
     for (let k = elements.length - 1; k >= 0; k--) {
@@ -390,21 +439,29 @@ function lireGabarit(gabarit: string): MorceauLu[] {
     return { genre: "aide", element: null };
   };
 
-  const ajouter = (texteBrut: string, genre: Morceau["genre"], porteur: string | null, ancre: string | null, details: string | null) => {
+  const ajouter = (
+    texteBrut: string,
+    genre: Morceau["genre"],
+    porteur: string | null,
+    ancre: string | null,
+    details: string | null,
+    origine?: Morceau["origine"],
+  ) => {
     const texte = propre(texteBrut);
     if (!texte || aJeter(texte)) return false;
     if (genre === "section") {
       section = texte;
+      sectionNiveau = conteneurCourant();
       titresLus++;
     }
-    morceaux.push({ texte, genre, section, ancre, details, porteur });
+    morceaux.push({ texte, genre, section, ancre, details, porteur, ...(origine ? { origine } : {}) });
     return true;
   };
 
   /** Le texte venu d'une chaîne de code ou d'un attribut : il a son propre genre. */
-  const ajouterChaine = (v: string, genre?: Morceau["genre"]) => {
+  const ajouterChaine = (v: string, genre?: Morceau["genre"], origine?: Morceau["origine"]) => {
     const p = porteurCourant();
-    ajouter(v, genre ?? p.genre, p.element?.nom ?? null, ancreCourante(), detailsCourant());
+    ajouter(v, genre ?? p.genre, p.element?.nom ?? null, ancreCourante(), detailsCourant(), origine);
   };
 
   /** La phrase en cours est finie : elle devient un morceau. */
@@ -419,7 +476,10 @@ function lireGabarit(gabarit: string): MorceauLu[] {
     // Un titre entièrement calculé (<h3>{s.label}</h3>) ouvre quand même une
     // nouvelle section, dont on ne connaît pas le nom : les textes qui suivent
     // ne doivent pas rester rattachés au titre d'avant.
-    if (!ok && ctx.genre === "section" && ctx.porteur && ctx.porteur.titresAvant === titresLus) section = null;
+    if (!ok && ctx.genre === "section" && ctx.porteur && ctx.porteur.titresAvant === titresLus) {
+      section = null;
+      sectionNiveau = null;
+    }
   };
 
   /** Du texte entre dans la phrase en cours. */
@@ -439,10 +499,11 @@ function lireGabarit(gabarit: string): MorceauLu[] {
   const lireTextesDesAttributs = (b: Balise) => {
     if (b.nom === "Admin") return; // son titre est lu à part (titreAdmin)
     for (const a of lireAttributs(b.brut)) {
-      const genre = ATTRIBUTS_LIBELLES.has(a.nom) ? "libelle" : ATTRIBUTS_AIDES.has(a.nom) ? "aide" : null;
+      const cache = ATTRIBUTS_CACHES.has(a.nom);
+      const genre = ATTRIBUTS_LIBELLES.has(a.nom) || cache ? "libelle" : ATTRIBUTS_AIDES.has(a.nom) ? "aide" : null;
       if (!genre) continue;
       const valeurs = a.valeur !== undefined ? [a.valeur] : chainesDeProse(a.expression ?? "");
-      for (const v of valeurs) ajouterChaine(v, genre);
+      for (const v of valeurs) ajouterChaine(v, genre, cache ? "attribut" : undefined);
     }
   };
 
@@ -462,6 +523,11 @@ function lireGabarit(gabarit: string): MorceauLu[] {
     for (let k = elements.length - 1; k >= 0; k--) {
       if (elements[k]!.nom.toLowerCase() === nom) {
         elements.length = k;
+        // Le conteneur du titre courant vient de se fermer : la section aussi.
+        if (sectionNiveau !== null && k <= sectionNiveau) {
+          section = null;
+          sectionNiveau = null;
+        }
         return;
       }
     }
@@ -511,7 +577,7 @@ function lireGabarit(gabarit: string): MorceauLu[] {
         if (SAUTEES.has(nom) && !b.auto) {
           // Un script, un style, la valeur d'un champ, un bloc de code :
           // rien à lire, on saute jusqu'à la balise fermante. Les attributs
-          // d'un <textarea> (placeholder, aria-label) sont lus quand même.
+          // d'un <textarea> (aria-label, title) sont lus quand même.
           if (nom === "textarea") lireTextesDesAttributs(b);
           const fin = new RegExp(`</${nom}\\s*>`, "gi");
           fin.lastIndex = i;
@@ -544,7 +610,12 @@ function lireGabarit(gabarit: string): MorceauLu[] {
     // ---- Mode code ----
     if (c === '"' || c === "'" || c === "`") {
       const [v, f] = lireChaine(gabarit, i);
-      if (estDeLaProse(v)) ajouterChaine(v);
+      if (estDeLaProse(v)) {
+        // Dans un titre, on attend la fin de l'expression : une seule chaîne
+        // le nomme, plusieurs sont des variantes (voir plus bas).
+        if (porteurCourant().genre === "section") (ctx.titres ??= []).push(v);
+        else ajouterChaine(v);
+      }
       i = f;
       continue;
     }
@@ -569,6 +640,18 @@ function lireGabarit(gabarit: string): MorceauLu[] {
       if (ctx.prof === 0) {
         const expression = gabarit.slice(ctx.debut, i - 1).trim();
         pile.pop();
+        // Un titre CALCULÉ entre plusieurs chaînes (« Nouvelle lettre »,
+        // « Modifier la lettre » ou « Lettre envoyée », selon l'état) : aucune
+        // ne nomme à coup sûr ce qui suit — la dernière le faisait, à tort.
+        // Elles restent cherchables, comme libellés, et la section n'a pas de
+        // nom. Une chaîne seule, elle, est bien le titre.
+        const titres = ctx.titres ?? [];
+        if (titres.length === 1) ajouterChaine(titres[0]!);
+        else if (titres.length > 1) {
+          section = null;
+          sectionNiveau = null;
+          for (const t of titres) ajouterChaine(t, "libelle");
+        }
         const parent = pile[pile.length - 1]!;
         // Ce que l'expression laisse dans la phrase : une chaîne seule
         // ({" "}, {"{prenom}"}) s'écrit telle quelle ; un calcul devient
@@ -622,8 +705,9 @@ function lireEntete(entete: string): MorceauLu[] {
     const texte = propre(v);
     if (!texte || aJeter(texte)) continue;
     const cle = m[1]!;
+    if (CLES_A_PROSE.has(cle) && !estDeLaProse(v)) continue;
     const genre: Morceau["genre"] =
-      cle === "titre" ? "section" : cle === "label" || cle === "libelle" || cle === "placeholder" ? "libelle" : "aide";
+      cle === "titre" ? "section" : cle === "label" || cle === "libelle" || cle === "nom" ? "libelle" : "aide";
     if (genre === "section") section = texte;
     out.push({ texte, genre, section, ancre: null, details: null, porteur: null });
   }
@@ -642,7 +726,9 @@ function sansDoublons<T extends Morceau>(morceaux: T[]): T[] {
 }
 
 function versMorceau(m: MorceauLu): Morceau {
-  return { texte: m.texte, genre: m.genre, section: m.section, ancre: m.ancre };
+  const morceau: Morceau = { texte: m.texte, genre: m.genre, section: m.section, ancre: m.ancre };
+  if (m.origine) morceau.origine = m.origine;
+  return morceau;
 }
 
 /* -------------------------------------------------------------------------- */

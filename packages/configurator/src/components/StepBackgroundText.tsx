@@ -16,7 +16,7 @@ import { Field, PastilleCouleur } from "./ui";
 import { ZoneDefilante } from "./Defilement";
 import type { MessagesConfigurateur } from "../messages";
 
-/** Étape 1 : fond + les trois lignes de texte (symboles & chiffres autorisés). */
+/** Étape 1 : fond + les trois lignes de texte. */
 export function StepBackgroundText(props: {
   state: ConfiguratorState;
   backgrounds: BackgroundDTO[];
@@ -180,12 +180,13 @@ export function StepBackgroundText(props: {
           >
             {/* Une zone de texte, pour que la touche Entrée coupe la ligne
                 (« SAINT-VALERY- » / « SUR-SOMME ») ; elle grandit avec le
-                nombre de morceaux, trois au plus. */}
+                nombre de morceaux, trois au plus. La phrase qui l'expliquait
+                sous les champs est partie à la demande de la boutiquière :
+                le geste reste, sans mode d'emploi. */}
             <textarea
               rows={Math.min(MORCEAUX_PAR_LIGNE, ligne.value.split("\n").length)}
               value={ligne.value}
               placeholder={m().exemplesLignes[i()] ?? ""}
-              aria-describedby="ml-aide-retour-ligne"
               onInput={(e) => {
                 const champ = e.currentTarget;
                 const value = limiterRetours(champ.value);
@@ -198,12 +199,6 @@ export function StepBackgroundText(props: {
           </Field>
         )}
       </For>
-      <p
-        id="ml-aide-retour-ligne"
-        style={{ margin: "-4px 0 0", "font-size": "12px", color: "#6b7280" }}
-      >
-        {m().aideRetourLigne}
-      </p>
 
       {/* Couleur PARTAGÉE par les trois lignes. Deux teintes seulement : un
           nuancier libre laissait choisir un texte illisible sur le fond, et

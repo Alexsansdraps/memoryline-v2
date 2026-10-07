@@ -55,6 +55,7 @@ import { fileURLToPath } from "node:url";
 import { and, asc, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import sharp from "sharp";
 import {
+  afficheComposee,
   lignesRemplies,
   type PosterConfig,
   type PosterFormat,
@@ -179,14 +180,27 @@ export async function donneesDImpression(): Promise<ResolveData> {
   };
 }
 
-/** Le logo de la boutique : la signature tant qu'aucune autre n'est envoyée. */
-const LOGO_PAR_DEFAUT = resolve(fileURLToPath(import.meta.url), "../../marque/logo-memory-line.png");
+/**
+ * Le logo de la boutique, EN NOIR : la signature tant qu'aucune autre n'est
+ * envoyée.
+ *
+ * Noir et non bleu, à la demande de la boutique (7 octobre 2026). C'est le
+ * logo bleu de la boutique (logo-memory-line.png, à côté), repeint en noir
+ * avec la même transparence : mêmes lettres, mêmes bords adoucis. Le bleu
+ * reste celui des courriers, des factures et des cartes cadeaux. Une image
+ * envoyée au back-office, elle, s'imprime telle quelle, dans ses couleurs.
+ */
+const LOGO_PAR_DEFAUT = resolve(fileURLToPath(import.meta.url), "../../marque/logo-memory-line-noir.png");
 
 /**
  * La signature posée en bas à droite de chaque création, d'après « Contenu
  * du site › Signature des créations ». Allumée par défaut, avec le logo de la
  * boutique : c'est ce que demande la boutique (« sur chaque création »), et
  * une signature oubliée ne se voit qu'une fois l'affiche livrée.
+ *
+ * SUR LE FICHIER D'IMPRESSION SEULEMENT : la boutique ne la veut pas sur
+ * l'aperçu du module, ni sur aucun aperçu montré au client (panier, caisse,
+ * courriers, historique — voir apercus.ts). Elle se découvre sur le papier.
  *
  * Les nombres sont bornés : une largeur de 80 % recouvrirait l'affiche, une
  * opacité de 0 la rendrait inutile sans que personne ne comprenne pourquoi.
@@ -666,10 +680,7 @@ async function planDImpression(
   // Une ligne qui porte sa propre composition (fond, personnages, image
   // générée) s'imprime comme telle, quel que soit le genre du produit : une
   // affiche du catalogue peut aussi s'ouvrir à l'IA.
-  const composee =
-    Boolean(config.aiPublicId || config.backgroundUrl) ||
-    (config.backgroundId != null && config.backgroundId !== "") ||
-    (config.characters?.length ?? 0) > 0;
+  const composee = afficheComposee(config);
 
   let cle: string;
   let fabriquer: () => Promise<Buffer>;

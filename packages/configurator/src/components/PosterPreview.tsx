@@ -22,7 +22,6 @@ import {
 } from "@memoryline/types";
 import { CharacterStack } from "./CharacterLayer";
 import { Filigrane } from "./Filigrane";
-import { SignatureCreation, type SignatureApercu } from "./SignatureCreation";
 import {
   messagesAvecDefauts,
   type MessagesConfigurateur,
@@ -77,10 +76,11 @@ function aspectFor(format: string): string {
  * Aperçu de l'affiche, espace de coordonnées normalisé 0..1.
  * Couches : fond -> personnages -> titre/sous-titre.
  *
- * Les personnages se rangent AUTOMATIQUEMENT : centrés, côte à côte, le long
- * du bas-milieu de l'affiche. Le client peut les déplacer à la souris ou au
- * doigt, mais seulement là où on le lui propose (`deplacable`) : le panier et
- * la commande montrent la même affiche, on n'y compose plus rien.
+ * Dans le configurateur (`recomposer`), les personnages se placent
+ * AUTOMATIQUEMENT : en rangée le long du muret sur une affiche de dos, en
+ * groupe — les petits devant — sur une affiche de face. Le panier et la
+ * commande montrent la même affiche aux places enregistrées : on n'y compose
+ * plus rien.
  */
 export function PosterPreview(props: {
   state: ConfiguratorState;
@@ -109,6 +109,22 @@ export function PosterPreview(props: {
    */
   cadre?: { name?: string; previewColor?: string | null } | null;
   /**
+   * Compose la place des personnages (rangée de dos, groupe de face) à
+   * chaque changement. VRAI dans le configurateur seulement.
+   *
+   * Partout ailleurs — panier, commande —, l'affiche se dessine aux places
+   * ENREGISTRÉES dans la configuration (x, y, échelle, `position`), celles
+   * que le fichier d'impression relit. Recomposer ici montrerait, pour une
+   * affiche mise au panier avant un changement des règles de composition,
+   * une autre affiche que celle qui sortira de l'imprimante.
+   */
+  recomposer?: boolean;
+  /**
+   * L'étalon de la composition (etalonDeLaVue) : la hauteur du plus grand
+   * personnage proposé pour ce type d'affiche. Sert avec `recomposer`.
+   */
+  etalon?: number | null;
+  /**
    * Autorise le client à déplacer les personnages du doigt ou à la souris.
    *
    * FAUX par défaut : partout ailleurs que dans le configurateur — panier,
@@ -127,16 +143,6 @@ export function PosterPreview(props: {
    * garde le français.
    */
   messages?: Partial<MessagesConfigurateur>;
-  /**
-   * La signature de la boutique, en bas à droite — celle du fichier
-   * d'impression (cf. SignatureCreation).
-   *
-   * Lue dans les réglages par la page, et non ici : ce paquet ne parle pas à
-   * l'API. Absente, l'affiche n'est pas signée à l'écran — ce qui est le bon
-   * repli, puisqu'un appelant qui ne lit pas les réglages ne sait pas si
-   * l'impression signera.
-   */
-  signature?: SignatureApercu | null;
 }) {
   const m = () => messagesAvecDefauts(props.messages);
 
@@ -194,21 +200,21 @@ export function PosterPreview(props: {
     props.characterById(id)?.bottomPct ?? 1;
 
   /**
-   * Où se pose chaque personnage : la rangée automatique, ou la place que le
-   * client lui a donnée. Une seule fois pour toute l'affiche — le calcul de la
-   * rangée dépend de tous les personnages, le refaire par personnage le
-   * répéterait autant de fois qu'il y en a.
+   * Où se pose chaque personnage. Dans le configurateur : la composition
+   * automatique, ou la place que le client lui a donnée — une seule fois
+   * pour toute l'affiche, puisqu'elle dépend de tous les personnages.
+   * Ailleurs : la place enregistrée, telle que le PDF la relit (voir
+   * `recomposer`), avec son ordre de dessin.
    */
   const placements = createMemo<PlacementPersonnage[]>(() =>
-    placementsAffiche(
-      props.state.characters,
-      (c) => basDuDessin(c.characterId),
-      // La taille propre au personnage : un chat n'occupe pas la place d'un
-      // adulte, et la rangée doit le savoir pour répartir correctement.
-      (c) => props.characterById(c.characterId)?.facteurTaille ?? 1,
-      // Sa place de côté, réglée au back-office.
-      (c) => props.characterById(c.characterId)?.decalageX ?? 0,
-    ),
+    props.recomposer
+      ? placementsAffiche(props.state, props.characterById, props.etalon)
+      : props.state.characters.map((c) => ({
+          x: c.x,
+          y: c.y,
+          scale: c.scale,
+          plan: c.position,
+        })),
   );
 
   /** Index du personnage en cours de glissement, sinon rien. */
@@ -408,11 +414,11 @@ export function PosterPreview(props: {
         )}
       </Show>
 
-      {/* Couche personnages — rangée automatique, déplaçable sur demande */}
+      {/* Couche personnages — composition automatique, ou places enregistrées */}
       <For each={props.state.characters}>
         {(c, i) => {
           const place = (): PlacementPersonnage =>
-            placements()[i()] ?? { x: 0.5, y: 0.74, scale: 0.6 };
+            placements()[i()] ?? { x: 0.5, y: 0.74, scale: 0.6, plan: c.position };
           // Largeur effective = largeur de base × échelle (rangée centrée).
           const widthPct = () => CHAR_BASE_WIDTH * place().scale * 100;
           // Alignement des pieds : un perso dont le contenu s'arrête à bottomPct
@@ -444,8 +450,10 @@ export function PosterPreview(props: {
                 width: `${widthPct()}%`,
                 transform: "translate(-50%, -50%)",
                 "aspect-ratio": "1 / 2",
-                // ≥10 : les personnages passent DEVANT le muret (z=5).
-                "z-index": String(10 + c.position),
+                // ≥10 : les personnages passent DEVANT le muret (z=5). Le
+                // plan est celui que le PDF suit pour empiler : de face, les
+                // petits devant les grands.
+                "z-index": String(10 + place().plan),
                 "pointer-events": props.deplacable ? "auto" : "none",
                 // Le doigt doit déplacer le personnage, pas faire défiler la
                 // page : sans ça le navigateur s'approprie le geste.
@@ -579,9 +587,11 @@ export function PosterPreview(props: {
         })()}
       </div>
 
-      {/* Signature de la boutique — bas à droite, par-dessus les textes,
-          exactement comme la dernière couche du fichier d'impression. */}
-      <SignatureCreation signature={props.signature} />
+      {/* Pas de signature de la boutique ici : elle n'est posée que sur le
+          fichier d'impression (apps/api/src/pdf.ts, signaturePosee). La
+          boutique la veut sur le papier, pas sur l'écran où l'on compose.
+          Avec le filigrane, qui fait l'inverse, ce sont les deux seules
+          différences voulues entre cet aperçu et le PDF. */}
 
       {/* Filigrane — dernière couche, au-dessus de tout le reste. */}
       <Show when={props.filigrane !== false}>

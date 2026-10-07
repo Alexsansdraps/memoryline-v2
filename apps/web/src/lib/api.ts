@@ -39,14 +39,25 @@ import type {
 const API_URL =
   apiInterne();
 
-/**
- * URL de l'API joignable depuis le NAVIGATEUR (pour les <img>, etc.).
- * Côté serveur SSR on parle à http://api:3000 (réseau Docker), mais le
- * navigateur du visiteur doit utiliser une URL publique (localhost:3000 en
- * dev). PUBLIC_API_URL la surcharge en prod (ex. https://api.memoryline.fr).
+/*
+ * L'adresse de l'API vue du NAVIGATEUR et l'identifiant du panier vivent
+ * dans api-navigateur.ts, un module sans aucune dépendance : la pastille du
+ * panier, présente sur toutes les pages, les importe de là sans traîner le
+ * reste de ce fichier (voir l'en-tête de api-navigateur.ts). Ils sont
+ * réexportés ici : les autres îlots les trouvent toujours au même endroit.
  */
-export const PUBLIC_API_URL =
-  import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
+import {
+  PUBLIC_API_URL,
+  getCartId,
+  lirePanier,
+  oublierCartId,
+} from "./api-navigateur.ts";
+export {
+  PUBLIC_API_URL,
+  getCartId,
+  nouveauCartId,
+  reprendreCartId,
+} from "./api-navigateur.ts";
 
 /** Transforme un chemin /assets/... en URL absolue chargeable par le navigateur. */
 /**
@@ -75,13 +86,34 @@ export function assetUrl(
  * Sans cela, un téléphone télécharge l'image calibrée pour un grand écran.
  * Une adresse extérieure n'est pas redimensionnable : on ne propose alors
  * aucun choix plutôt qu'un choix qui n'existe pas.
+ *
+ * `largeurReelle`, quand on la connaît (l'API la donne pour les visuels des
+ * fiches et les images des pages), rend le jeu honnête. L'API n'agrandit
+ * jamais : demander « ?l=1400 » d'un visuel de 1020 px rend 1020 px. Annoncé
+ * « 1400w », il trompait le navigateur, qui en déduisait une image plus
+ * petite que prévu — et sur la fiche, où l'image prend sa largeur naturelle,
+ * l'affichait plus petite que sa colonne. On garde donc les largeurs
+ * inférieures à la vraie, puis la première qui l'atteint, annoncée à sa
+ * vraie valeur (« 1020w ») ; les suivantes rendraient le même fichier.
  */
 export function assetSrcset(
   path: string | null | undefined,
   largeurs: readonly number[],
+  largeurReelle?: number | null,
 ): string | undefined {
   if (!path || /^https?:\/\//.test(path)) return undefined;
-  return largeurs.map((l) => `${assetUrl(path, l)} ${l}w`).join(", ");
+  if (!largeurReelle || largeurReelle <= 0)
+    return largeurs.map((l) => `${assetUrl(path, l)} ${l}w`).join(", ");
+  const jeu: string[] = [];
+  for (const l of largeurs) {
+    if (l < largeurReelle) {
+      jeu.push(`${assetUrl(path, l)} ${l}w`);
+      continue;
+    }
+    jeu.push(`${assetUrl(path, l)} ${largeurReelle}w`);
+    break;
+  }
+  return jeu.join(", ");
 }
 
 export interface ProductVariant {
@@ -191,6 +223,12 @@ export interface ProductDetail {
   basePriceCents: number;
   images: string[];
   /**
+   * La largeur et la hauteur réelles de chaque visuel, dans l'ordre de
+   * `images` ; null pour un visuel que l'API n'a pas pu mesurer. Absent
+   * d'une API plus ancienne : la fiche garde alors ses valeurs par défaut.
+   */
+  dimensionsImages?: ({ largeur: number; hauteur: number } | null)[];
+  /**
    * Textes pré-remplis des trois lignes de l'affiche. Les colonnes gardent
    * leurs anciens noms : `defaultTitle` et `defaultSubtitle` sont les lignes 1
    * et 2, remplies pour 161 affiches — les renommer n'aurait rien apporté.
@@ -223,6 +261,26 @@ export interface ProductDetail {
     /** La référence de ce format, quand la boutique en a une (données structurées). */
     sku?: string | null;
   }[];
+  /**
+   * Le rayon du menu sous lequel la fiche se range (« Villes »), nommé dans
+   * la langue de la page ; null quand aucun rayon du menu ne la contient —
+   * elle se range alors sous la page de son genre. Absent d'une API plus
+   * ancienne : même chose.
+   */
+  rayonPrincipal?: {
+    slug: string;
+    name: string;
+    genre: ProductKind | null;
+  } | null;
+  /**
+   * Des affiches voisines (huit au plus), à montrer sous la fiche : le même
+   * lieu d'abord, puis celles qui l'entourent dans son rayon. Même forme
+   * qu'une affiche du catalogue, sans le numéro d'affiche répété dans chaque
+   * format.
+   */
+  voisines?: (Omit<Product, "variants"> & { variants: Omit<ProductVariant, "productId">[] })[];
+  /** D'où viennent les voisines : du rayon principal, ou de la page du genre. */
+  voisinesDe?: "rayon" | "genre";
 }
 
 /**
@@ -311,7 +369,17 @@ export interface Collection {
  * où il est vraiment écrit.
  */
 export interface PlanDuSite {
-  produits: { slug: string; genre: ProductKind; maj: string; langues: string[] }[];
+  produits: {
+    slug: string;
+    genre: ProductKind;
+    maj: string;
+    langues: string[];
+    /**
+     * Les adresses de ses visuels (« /assets/… »), dans l'ordre. Absent d'une
+     * API plus ancienne : les anciennes images de Shopify ne redirigent pas.
+     */
+    images?: string[];
+  }[];
   genres: { personnalisable: number; prete_a_imprimer: number };
   rayons: {
     slug: string;
@@ -839,12 +907,8 @@ export const browserApi = {
    * commande encaissée. Toute action dessus échouait alors en « commande déjà
    * payée ». On l'oublie ici, une fois pour toutes les pages.
    */
-  cart: async (cartId: string): Promise<Cart> => {
-    const panier = await browserGet<Cart>(`/cart/${cartId}`);
-    if (panier.status !== "paid") return panier;
-    localStorage.removeItem(CART_ID_KEY);
-    return { cartId: getCartId(), items: [], poidsGrammes: 0 };
-  },
+  cart: async (cartId: string): Promise<Cart> =>
+    (await lirePanier<Cart>(cartId)) ?? { cartId: getCartId(), items: [], poidsGrammes: 0 },
 
   /**
    * `langue` : celle de la page. Le panier la garde, pour écrire à la cliente
@@ -867,7 +931,7 @@ export const browserApi = {
         // Panier clos (déjà payé) : on repart d'un panier neuf et on
         // réessaie une fois, sans rien demander au client.
         if (!String(e).includes("panier_clos")) throw e;
-        localStorage.removeItem(CART_ID_KEY);
+        oublierCartId();
         return browserSend<OrderItem>("POST", `/cart/${getCartId()}/items`, body);
       },
     ),
@@ -968,35 +1032,10 @@ export const browserApi = {
     }),
 };
 
-/** Clé localStorage du panier (UUID par navigateur). */
-const CART_ID_KEY = "ml_cart_id";
-
-/** Lit (ou crée) l'identifiant de panier persistant du navigateur. */
-export function getCartId(): string {
-  let id = localStorage.getItem(CART_ID_KEY);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(CART_ID_KEY, id);
-  }
-  return id;
-}
-
-/**
- * Repart d'un panier VIDE, sans toucher au panier précédent.
- *
- * Au stand, chaque client a sa commande : la vendeuse enchaîne, et le panier
- * du client servi ne doit rien laisser au suivant (CommandeStand.tsx).
+/*
+ * L'identifiant du panier (getCartId, nouveauCartId, reprendreCartId) est
+ * dans api-navigateur.ts, réexporté en tête de ce fichier.
  */
-/** Rend à la tablette le panier d'une vente rouverte (voir ConfirmationStand). */
-export function reprendreCartId(id: string): void {
-  localStorage.setItem(CART_ID_KEY, id);
-}
-
-export function nouveauCartId(): string {
-  const id = crypto.randomUUID();
-  localStorage.setItem(CART_ID_KEY, id);
-  return id;
-}
 
 /* ---------------------------------------------------------------------------
  * Stand de salon.

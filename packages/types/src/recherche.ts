@@ -529,13 +529,128 @@ export interface JetonRequete {
   variantes: string[];
   /** Les mots connus les plus proches d'un mot inconnu (fautes de frappe). */
   corrections: string[];
+  /**
+   * Le mot figure tel quel dans le vocabulaire (ou dans les `connus` reçus).
+   * Le back-office s'en sert pour dire à l'API quels mots ses écrans
+   * connaissent, et qu'elle n'a donc pas à corriger.
+   */
+  connu?: boolean;
 }
 
 export interface Requete {
   saisie: string;
   plat: string;
   jetons: JetonRequete[];
+  /** La première proposition de chaque mot corrigé (voir Evaluation.approches pour celles qui ont servi). */
   corrections: Correction[];
+}
+
+/**
+ * Les mots connus, et, quand on les a, le nombre de textes où chacun figure :
+ * entre deux corrections aussi proches, la plus courante l'emporte (« your »
+ * devient « pour », que mille textes écrivent, plutôt que « cour »).
+ */
+export type Vocabulaire = ReadonlySet<string> | ReadonlyMap<string, number>;
+
+export interface OptionsRequete {
+  /**
+   * Des mots à ne JAMAIS corriger. La recherche a deux moitiés, chacune avec
+   * son vocabulaire : l'API (les données) et le back-office (ses écrans).
+   * Sans cela, chacune « corrigeait » les mots que seule l'autre connaissait
+   * — « vidéo » devenait « vider » côté données alors que l'écran Accueil et
+   * pied de page en parle, « montagne » devenait « montant » côté écrans alors
+   * que huit affiches s'appellent ainsi.
+   */
+  connus?: ReadonlySet<string>;
+  /**
+   * Le REPLI, quand une première passe n'a rien trouvé du tout : corriger
+   * aussi les mots de cinq lettres ou plus que le vocabulaire connaît déjà.
+   * Une faute peut exister quelque part dans la boutique — le décor
+   * « MADRID_Affiche_personalisee_1 » rend « personalisee » connu — et elle
+   * ne doit pas empêcher de trouver les cent affiches « personnalisées ».
+   */
+  forcer?: boolean;
+}
+
+const LETTRES_SEULES = /^\p{L}+$/u;
+
+function frequence(vocabulaire: Vocabulaire, mot: string): number {
+  return vocabulaire instanceof Map ? ((vocabulaire as ReadonlyMap<string, number>).get(mot) ?? 0) : 0;
+}
+
+/** Un mot du vocabulaire contient-il l'une de ces formes ? (« amien » est dans « amiens ».) */
+function estConnu(vocabulaire: Vocabulaire, formes: readonly string[]): boolean {
+  for (const w of vocabulaire.keys()) if (formes.some((f) => w.includes(f))) return true;
+  return false;
+}
+
+/**
+ * Les mots du vocabulaire les plus proches de `mot` : le mot entier à une
+ * faute près (deux au-delà de sept lettres), ou, à défaut — et à partir de
+ * cinq lettres —, un mot plus long qui COMMENCE presque comme lui : c'est ce
+ * qui trouve « biarritz » pendant qu'on tape encore « biari ». Un début de
+ * mot ne sert qu'en dernier recours : « coeur » a son voisin entier
+ * (« soeur »), il n'a pas à devenir « courriers » parce que « cour… »
+ * commence presque pareil. Entre candidats aussi proches, le plus courant.
+ *
+ * Un mot de quatre lettres n'a droit qu'à une proposition : à une lettre
+ * près, il en a des dizaines (« your » : jour, pour, four, tour…), et trois à
+ * la fois ramenaient la moitié du catalogue.
+ */
+function proches(mot: string, vocabulaire: Vocabulaire, dejaConnu: boolean): string[] {
+  const tolerance = mot.length <= 7 ? 1 : 2;
+  const combien = mot.length <= 4 ? 1 : 3;
+  const entiers: { w: string; d: number; f: number }[] = [];
+  const debuts: { w: string; d: number; f: number }[] = [];
+  for (const w of vocabulaire.keys()) {
+    // Au repli, un mot qui CONTIENT la saisie la trouve déjà tel quel.
+    if (dejaConnu && w.includes(mot)) continue;
+    if (Math.abs(w.length - mot.length) <= tolerance) {
+      const d = distance(mot, w, tolerance);
+      if (d > 0 && d <= tolerance) {
+        entiers.push({ w, d, f: frequence(vocabulaire, w) });
+        continue;
+      }
+    }
+    // Le début d'un mot plus long, de la longueur tapée ou d'une lettre de
+    // plus (une lettre oubliée : « biarit » est presque « biarrit… »).
+    if (mot.length >= 5 && w.length > mot.length) {
+      const d = Math.min(
+        distance(mot, w.slice(0, mot.length), tolerance),
+        distance(mot, w.slice(0, mot.length + 1), tolerance),
+      );
+      if (d > 0 && d <= tolerance) debuts.push({ w, d, f: frequence(vocabulaire, w) });
+    }
+  }
+  const candidats = entiers.length ? entiers : debuts;
+  candidats.sort(
+    (x, y) =>
+      x.d - y.d ||
+      y.f - x.f ||
+      Math.abs(x.w.length - mot.length) - Math.abs(y.w.length - mot.length) ||
+      (x.w < y.w ? -1 : x.w > y.w ? 1 : 0),
+  );
+  return candidats.slice(0, combien).map((c) => c.w);
+}
+
+/**
+ * Un mot de trois lettres : seulement deux lettres voisines inversées
+ * (« mre » → « mer »), et seulement si un mot connu commence ainsi. À une
+ * lettre près, un mot si court ressemble à tout ; l'inversion, elle, est la
+ * faute de frappe la plus courante et la moins ambiguë.
+ */
+function transpositions(mot: string, vocabulaire: Vocabulaire): string[] {
+  const sortie: string[] = [];
+  for (let i = 0; i + 1 < mot.length; i++) {
+    const t = mot.slice(0, i) + mot[i + 1] + mot[i] + mot.slice(i + 2);
+    if (t === mot || sortie.includes(t)) continue;
+    for (const w of vocabulaire.keys())
+      if (w.startsWith(t)) {
+        sortie.push(t);
+        break;
+      }
+  }
+  return sortie;
 }
 
 /**
@@ -545,47 +660,35 @@ export interface Requete {
  * existe, il ne sera donc jamais « approché » vers « porte » ou « fort ».
  * « amien » n'est pas corrigé non plus : il commence « amiens », il trouve
  * déjà tout seul. C'est ce qui garde les approximations pour les vraies
- * fautes — « biaritz », « berjer ».
+ * fautes — « biaritz », « berjer », « biari » en pleine frappe, « mre ».
+ * Deux exceptions, voir OptionsRequete : les mots que l'autre moitié de la
+ * recherche connaît, et le repli quand rien n'a été trouvé.
  */
 export function preparerRequete(
   saisie: string,
-  vocabulaire?: ReadonlySet<string>,
+  vocabulaire?: Vocabulaire,
+  options: OptionsRequete = {},
 ): Requete {
   const s = couperTexte(saisie.trim(), RECHERCHE_LONGUEUR_MAX);
   const plat = aplatir(s);
   const liste: JetonRequete[] = [];
   const corrections: Correction[] = [];
+  const avecVocabulaire = !!vocabulaire && vocabulaire.size > 0;
   for (const mot of jetons(s)) {
     const variantes =
       mot.length >= 4 && /[sx]$/.test(mot) && !/\d/.test(mot) ? [mot.slice(0, -1)] : [];
     let proposes: string[] = [];
-    if (vocabulaire && vocabulaire.size > 0 && mot.length >= 4 && /^\p{L}+$/u.test(mot)) {
-      const formes = [mot, ...variantes];
-      let connu = false;
-      for (const w of vocabulaire)
-        if (formes.some((f) => w.includes(f))) {
-          connu = true;
-          break;
-        }
-      if (!connu) {
-        const tolerance = mot.length <= 7 ? 1 : 2;
-        const candidats: { w: string; d: number }[] = [];
-        for (const w of vocabulaire) {
-          if (Math.abs(w.length - mot.length) > tolerance) continue;
-          const d = distance(mot, w, tolerance);
-          if (d <= tolerance) candidats.push({ w, d });
-        }
-        candidats.sort(
-          (x, y) =>
-            x.d - y.d ||
-            Math.abs(x.w.length - mot.length) - Math.abs(y.w.length - mot.length) ||
-            (x.w < y.w ? -1 : x.w > y.w ? 1 : 0),
-        );
-        proposes = candidats.slice(0, 3).map((c) => c.w);
-        if (proposes[0]) corrections.push({ tape: mot, propose: proposes[0] });
-      }
+    let connu = false;
+    if (options.connus?.has(mot)) connu = true;
+    else if (vocabulaire && avecVocabulaire && mot.length >= 3 && LETTRES_SEULES.test(mot)) {
+      connu = estConnu(vocabulaire, [mot, ...variantes]);
+      if (mot.length === 3) {
+        if (!connu) proposes = transpositions(mot, vocabulaire);
+      } else if (!connu) proposes = proches(mot, vocabulaire, false);
+      else if (options.forcer && mot.length >= 5) proposes = proches(mot, vocabulaire, true);
+      if (proposes[0]) corrections.push({ tape: mot, propose: proposes[0] });
     }
-    liste.push({ mot, variantes, corrections: proposes });
+    liste.push({ mot, variantes, corrections: proposes, connu });
   }
   return { saisie: s, plat, jetons: liste, corrections };
 }
@@ -599,19 +702,47 @@ export interface ChampEvalue {
   /** aplatir(texte), quand il est déjà calculé. DOIT lui être égal. */
   plat?: string;
   poids: number;
-  /** Longueur minimale d'un mot pour qu'il soit cherché dans ce champ (e-mail : 3). */
+  /**
+   * Longueur minimale d'un mot pour qu'il soit cherché dans ce champ (e-mail :
+   * 3), sauf quand la saisie entière — deux mots au moins — y est recopiée
+   * telle quelle (voir evaluer).
+   */
   minimum?: number;
+  /**
+   * Un champ NEUTRE : ce que l'objet EST (« stand », « page », « cliente »),
+   * ou le nom de l'écran d'une section. Un mot peut s'y trouver — « stand
+   * mulhouse » trouve le stand de Mulhouse —, mais il ne fait jamais répondre
+   * l'objet à lui seul, il n'est jamais « exact », et il ne porte jamais
+   * l'extrait ni le lien.
+   */
+  neutre?: boolean;
+  /**
+   * Un NOM qu'on abrège : un mot de trois à cinq lettres peut y désigner les
+   * initiales de mots qui se suivent, mots vides sautés — « cgv » trouve
+   * « Conditions générales de vente » (rang « contient »). Réservé aux noms
+   * des fiches gardées en mémoire et des écrans : un préfiltre en base ne
+   * saurait pas lire des initiales, et écarterait ce que le JavaScript
+   * trouverait.
+   */
+  sigles?: boolean;
 }
 
 export interface Evaluation {
   rang: Rang;
   motsEntiers: number;
-  /** L'indice du champ qui porte le mieux la correspondance. */
+  /** L'indice du champ qui porte le mieux la correspondance (jamais un champ neutre). */
   meilleur: number;
   /** Le poids de ce champ. */
   poids: number;
   /** passages[i] : les occurrences retenues dans le champ i, ramenées au texte d'origine. */
   passages: Passage[][];
+  /**
+   * Les corrections qui ont RÉELLEMENT servi : un mot trouvé seulement
+   * approximativement, et le mot qui l'a remplacé. C'est ce que le panneau
+   * annonce (« Résultats approchés pour … ») — et non la première proposition
+   * de la liste, qui n'est pas forcément celle qui a trouvé.
+   */
+  approches?: Correction[];
 }
 
 /** Pas plus d'occurrences par mot et par champ : au-delà on ne lit plus. */
@@ -623,6 +754,8 @@ interface Trouve {
   rang: 1 | 2 | 3;
   entier: boolean;
   occurrences: [number, number][];
+  /** Rang 3 : la correction qui a trouvé. */
+  correction?: string;
 }
 
 const ESPACE = 32;
@@ -643,6 +776,28 @@ function finDeMot(texte: string, fin: number): boolean {
 }
 
 /**
+ * Le sigle `mot` (trois à cinq lettres) dans un texte aplati : les initiales
+ * de mots qui se suivent, mots vides sautés (« cgv » : Conditions Générales
+ * de Vente). Rend [début du premier mot, fin du dernier], ou null.
+ */
+function initiales(texte: string, mot: string): [number, number] | null {
+  if (mot.length < 3 || mot.length > 5 || !LETTRES_SEULES.test(mot)) return null;
+  const mots: { d: number; f: number }[] = [];
+  let d = 0;
+  for (let i = 0; i <= texte.length; i++) {
+    if (i < texte.length && texte.charCodeAt(i) !== ESPACE) continue;
+    if (i > d && !MOTS_VIDES.has(texte.slice(d, i))) mots.push({ d, f: i });
+    d = i + 1;
+  }
+  for (let k = 0; k + mot.length <= mots.length; k++) {
+    let ok = true;
+    for (let j = 0; j < mot.length && ok; j++) ok = texte[mots[k + j]!.d] === mot[j];
+    if (ok) return [mots[k]!.d, mots[k + mot.length - 1]!.f];
+  }
+  return null;
+}
+
+/**
  * Ce qu'un mot de la saisie trouve dans un texte aplati, au meilleur rang.
  *
  * « Contient » n'est permis qu'à partir de trois caractères, ou pour un
@@ -653,7 +808,7 @@ function finDeMot(texte: string, fin: number): boolean {
  * sinon « bois » donnerait « boi », et « boîte aux lettres » répondrait à
  * « cadre bois ». Le mot tapé, lui, reste cherché en début de mot.
  */
-function chercherJeton(texte: string, jeton: JetonRequete): Trouve | null {
+function chercherJeton(texte: string, jeton: JetonRequete, sigles = false): Trouve | null {
   const debut: [number, number][] = [];
   let entier = false;
   for (const p of toutes(texte, jeton.mot, true)) {
@@ -675,11 +830,20 @@ function chercherJeton(texte: string, jeton: JetonRequete): Trouve | null {
     if (dedans.length) return { rang: 2, entier: false, occurrences: dedans };
   }
 
+  if (sigles) {
+    const s = initiales(texte, jeton.mot);
+    if (s) return { rang: 2, entier: false, occurrences: [s] };
+  }
+
   const approche: [number, number][] = [];
+  let laquelle: string | undefined;
   for (const correction of jeton.corrections)
     for (const p of toutes(texte, correction, true))
-      if (finDeMot(texte, p + correction.length)) approche.push([p, p + correction.length]);
-  if (approche.length) return { rang: 3, entier: false, occurrences: approche };
+      if (finDeMot(texte, p + correction.length)) {
+        approche.push([p, p + correction.length]);
+        laquelle ??= correction;
+      }
+  if (approche.length) return { rang: 3, entier: false, occurrences: approche, correction: laquelle };
   return null;
 }
 
@@ -725,11 +889,14 @@ const FENETRE = 60;
  * texte : un mot aussi courant remplissait à lui seul les vingt passages, et
  * l'extrait comme le lien partaient du mauvais endroit. On cherche donc, parmi
  * les fenêtres de soixante caractères qui commencent sur une occurrence,
- * celle qui contient le plus de mots DIFFÉRENTS ; à égalité, la plus
- * RAMASSÉE — celle où il faut le moins de texte pour les couvrir tous (« frais
- * de port » plutôt que « de tout le reste… les frais de port ») ; puis la
- * première. On garde ce qui commence à partir d'elle : la fenêtre vient en
- * premier, l'extrait se centre sur elle, et le lien la retrouve.
+ * celle qui contient le plus de mots DIFFÉRENTS ; à égalité, celle dont ces
+ * mots sont les plus LONGS — quand aucun couple ne tient dans la fenêtre,
+ * « mot de passe » partait du premier « de » du texte, le plus court, et le
+ * lien emmenait chercher « de » ; puis la plus RAMASSÉE — celle où il faut le
+ * moins de texte pour les couvrir tous (« frais de port » plutôt que « de
+ * tout le reste… les frais de port ») ; puis la première. On garde ce qui
+ * commence à partir d'elle : la fenêtre vient en premier, l'extrait se centre
+ * sur elle, et le lien la retrouve.
  */
 function retenues(parJeton: readonly [number, number][][]): [number, number][] {
   const toutes: { d: number; f: number; k: number }[] = [];
@@ -740,14 +907,15 @@ function retenues(parJeton: readonly [number, number][][]): [number, number][] {
   if (parJeton.length < 2 || toutes.length < 2) return toutes.map((o) => [o.d, o.f]);
 
   const vus = new Array<boolean>(parJeton.length);
-  let meilleur = { debut: toutes[0]!.d, differents: -1, etendue: Infinity };
+  let meilleur = { debut: toutes[0]!.d, differents: -1, couvert: -1, etendue: Infinity };
   for (let gauche = 0; gauche < toutes.length; gauche++) {
     const debut = toutes[gauche]!.d;
-    // Les mots différents de la fenêtre, et ce qu'il faut de texte pour en
-    // couvrir chacun une fois (la fin la plus lointaine au moment où le
-    // dernier mot nouveau apparaît).
+    // Les mots différents de la fenêtre, leur longueur, et ce qu'il faut de
+    // texte pour en couvrir chacun une fois (la fin la plus lointaine au
+    // moment où le dernier mot nouveau apparaît).
     vus.fill(false);
     let differents = 0;
+    let couvert = 0;
     let etendue = 0;
     let finMax = debut;
     for (let i = gauche; i < toutes.length; i++) {
@@ -757,14 +925,17 @@ function retenues(parJeton: readonly [number, number][][]): [number, number][] {
       if (!vus[o.k]) {
         vus[o.k] = true;
         differents++;
+        couvert += o.f - o.d;
         etendue = finMax - debut;
       }
     }
     if (
       differents > meilleur.differents ||
-      (differents === meilleur.differents && etendue < meilleur.etendue)
+      (differents === meilleur.differents &&
+        (couvert > meilleur.couvert ||
+          (couvert === meilleur.couvert && etendue < meilleur.etendue)))
     )
-      meilleur = { debut, differents, etendue };
+      meilleur = { debut, differents, couvert, etendue };
   }
   return toutes.filter((o) => o.d >= meilleur.debut).map((o) => [o.d, o.f]);
 }
@@ -779,12 +950,21 @@ function retenues(parJeton: readonly [number, number][][]): [number, number][] {
  * Le rang de l'objet est celui de son mot le MOINS bien trouvé : un objet où
  * un mot n'est trouvé qu'approximativement n'est pas une correspondance
  * exacte, même si les autres mots le sont.
+ *
+ * Le minimum d'un champ (l'e-mail : trois caractères) tombe quand la saisie
+ * entière, de deux mots au moins, y figure telle quelle. Sans cela,
+ * « prenom.nom@orange.fr » ne trouvait pas la cliente : le « fr » final, deux
+ * lettres, n'était cherché nulle part — et l'adresse collée depuis un
+ * courriel est la façon la plus courante de chercher une cliente. Un « co »
+ * tapé seul reste, lui, sans effet sur les adresses en « .com ».
  */
 export function evaluer(champs: readonly ChampEvalue[], requete: Requete): Evaluation | null {
   const n = champs.length;
   const nbJetons = requete.jetons.length;
   if (!n || !nbJetons) return null;
   const plats = champs.map((c) => c.plat ?? aplatir(c.texte));
+  const recopiee =
+    nbJetons >= 2 && requete.plat ? plats.map((p) => p.includes(requete.plat)) : null;
 
   // trouves[k][i] : ce que le mot k trouve dans le champ i.
   const trouves: (Trouve | null)[][] = [];
@@ -798,9 +978,14 @@ export function evaluer(champs: readonly ChampEvalue[], requete: Requete): Evalu
       const champ = champs[i]!;
       const plat = plats[i]!;
       if (!plat) continue;
-      if (champ.minimum !== undefined && jeton.mot.length < champ.minimum) continue;
-      const t = chercherJeton(plat, jeton);
+      if (champ.minimum !== undefined && jeton.mot.length < champ.minimum && !recopiee?.[i])
+        continue;
+      const t = chercherJeton(plat, jeton, champ.sigles);
       if (!t) continue;
+      // Dans un champ neutre, seulement un mot entier ou un vrai début de mot
+      // (quatre lettres) : « promo » y trouve « promotion », mais le « sal »
+      // de « SAL-1 » ne doit pas faire de chaque vente de stand un « salon ».
+      if (champ.neutre && (t.rang !== 1 || (!t.entier && jeton.mot.length < 4))) continue;
       ligne[i] = t;
       if (t.rang < rang) rang = t.rang;
       if (t.entier) entier = true;
@@ -811,42 +996,71 @@ export function evaluer(champs: readonly ChampEvalue[], requete: Requete): Evalu
     if (entier) motsEntiers++;
   }
 
+  // Un objet ne répond pas par ses seuls champs neutres : « stand » tapé
+  // seul ne ramène pas tous les stands, ni « page » toutes les pages.
+  let parUnVraiChamp = false;
+  for (let i = 0; i < n && !parUnVraiChamp; i++)
+    if (!champs[i]!.neutre) for (const ligne of trouves) if (ligne[i]) parUnVraiChamp = true;
+  if (!parUnVraiChamp) return null;
+
   // Exact : la saisie entière EST le texte d'un champ entier (« Paysage »,
   // « Bandeau et offre »). Parmi plusieurs, le plus lourd.
   const exacts = new Set<number>();
   if (requete.plat)
     for (let i = 0; i < n; i++) {
-      const minimum = champs[i]!.minimum;
+      const { minimum, neutre } = champs[i]!;
+      if (neutre) continue;
       if (plats[i] === requete.plat && (minimum === undefined || requete.plat.length >= minimum))
         exacts.add(i);
     }
   const rang = (exacts.size ? 0 : Math.max(...meilleurRang)) as Rang;
 
+  // Les corrections qui ont servi : celle du premier champ où le mot n'a été
+  // trouvé qu'approximativement.
+  const approches: Correction[] = [];
+  requete.jetons.forEach((jeton, k) => {
+    if (meilleurRang[k] !== 3) return;
+    const t = trouves[k]!.find((x) => x?.rang === 3 && x.correction);
+    if (t?.correction) approches.push({ tape: jeton.mot, propose: t.correction });
+  });
+
   // Le champ qui porte le mieux la correspondance : celui qui contient le
   // plus de mots, puis le mieux classé, puis le plus lourd, puis le premier.
+  // Les mots qu'un champ neutre explique (« page » dans « page cgv ») passent
+  // après les autres : ils disent ce qu'on cherche, pas où le trouver — le
+  // « page » d'une phrase du contenu ne doit pas l'emporter sur le titre que
+  // « cgv » désigne.
+  const parLaNature = trouves.map((ligne) => ligne.some((t, i) => !!t && !!champs[i]!.neutre));
   let meilleur = -1;
+  let meilleurPropres = -1;
   let meilleurNombre = -1;
   let meilleurRangChamp = 5;
   let meilleurPoids = -Infinity;
   for (let i = 0; i < n; i++) {
+    if (champs[i]!.neutre) continue;
     let nombre = 0;
+    let propres = 0;
     let rangChamp = 0;
     for (let k = 0; k < nbJetons; k++) {
       const t = trouves[k]![i];
       if (!t) continue;
       nombre++;
+      if (!parLaNature[k]) propres++;
       if (t.rang > rangChamp) rangChamp = t.rang;
     }
     if (!nombre) continue;
     if (exacts.has(i)) rangChamp = 0;
     const poids = champs[i]!.poids;
     if (
-      nombre > meilleurNombre ||
-      (nombre === meilleurNombre &&
-        (rangChamp < meilleurRangChamp ||
-          (rangChamp === meilleurRangChamp && poids > meilleurPoids)))
+      propres > meilleurPropres ||
+      (propres === meilleurPropres &&
+        (nombre > meilleurNombre ||
+          (nombre === meilleurNombre &&
+            (rangChamp < meilleurRangChamp ||
+              (rangChamp === meilleurRangChamp && poids > meilleurPoids)))))
     ) {
       meilleur = i;
+      meilleurPropres = propres;
       meilleurNombre = nombre;
       meilleurRangChamp = rangChamp;
       meilleurPoids = poids;
@@ -873,7 +1087,37 @@ export function evaluer(champs: readonly ChampEvalue[], requete: Requete): Evalu
     ).slice(0, PASSAGES_MAX);
   });
 
-  return { rang, motsEntiers, meilleur, poids: champs[meilleur]!.poids, passages };
+  return { rang, motsEntiers, meilleur, poids: champs[meilleur]!.poids, passages, approches };
+}
+
+/**
+ * Ce que « Résultats approchés pour … » annonce, à partir des corrections qui
+ * ont servi à chaque résultat (Evaluation.approches) : une par mot tapé — le
+ * contrat —, et quand plusieurs ont servi, celle qui a trouvé le plus.
+ * « viles » trouve la collection, le menu et quatre décors « Villes », et une
+ * seule affiche « GOOD VIBES » : c'est « villes » qu'on annonce, pas
+ * « vibes », première de la liste des propositions.
+ */
+export function correctionsServies(parResultat: readonly (readonly Correction[])[]): Correction[] {
+  const comptes = new Map<string, Map<string, number>>();
+  for (const approches of parResultat)
+    for (const c of approches) {
+      const parMot = comptes.get(c.tape) ?? new Map<string, number>();
+      parMot.set(c.propose, (parMot.get(c.propose) ?? 0) + 1);
+      comptes.set(c.tape, parMot);
+    }
+  const sortie: Correction[] = [];
+  for (const [tape, parMot] of comptes) {
+    let propose = "";
+    let n = 0;
+    for (const [mot, k] of parMot)
+      if (k > n) {
+        propose = mot;
+        n = k;
+      }
+    sortie.push({ tape, propose });
+  }
+  return sortie;
 }
 
 export interface Classement {
@@ -1005,6 +1249,39 @@ export function passageACibler(texte: string, passages: readonly Passage[]): str
     fin = Math.max(fin, p.fin);
   }
   return couperTexte(texte.slice(premier.debut, fin).trim(), RECHERCHE_LONGUEUR_MAX).trim();
+}
+
+/**
+ * Les passages qui disent quelque chose : ceux de trois caractères au moins,
+ * s'il y en a. « frais de port » trouve aussi le « de » de chaque phrase ;
+ * centrer l'extrait sur lui, le surligner partout, ou l'emmener chercher sur
+ * l'écran ne montrerait rien d'utile. Sans rien de plus long, on garde tout.
+ */
+export function passagesUtiles(passages: readonly Passage[]): Passage[] {
+  const longs = passages.filter((p) => p.fin - p.debut >= 3);
+  return longs.length ? longs : [...passages];
+}
+
+/** Les mots qui ne désignent aucun endroit : les chercher sur un écran surlignerait toute la page. */
+const MOTS_VIDES = new Set([
+  "a", "au", "aux", "avec", "ce", "ces", "cet", "cette", "dans", "de", "des", "du", "elle", "en",
+  "est", "et", "il", "ils", "la", "le", "les", "leur", "leurs", "lui", "ma", "mais", "me", "mes",
+  "mon", "ne", "ni", "nos", "notre", "nous", "on", "ou", "par", "pas", "pour", "qu", "que", "qui",
+  "sa", "se", "ses", "si", "son", "sont", "sur", "ta", "te", "tes", "ton", "tu", "un", "une", "vos",
+  "votre", "vous", "y", "the", "and", "of", "to", "for", "in", "with", "der", "die", "das", "und",
+  "el", "los", "las", "di", "del", "della", "e",
+]);
+
+/**
+ * Le texte à transporter vers l'écran (passageACibler sur les passages
+ * utiles), ou "" quand il ne désignerait rien : un mot vide (« du »,
+ * « dans ») ou une syllabe. Mieux vaut alors ouvrir l'écran sur son ancre,
+ * sans rien chercher, que de surligner les cinquante « de » de la page.
+ */
+export function texteACibler(texte: string, passages: readonly Passage[]): string {
+  const p = passageACibler(texte, passagesUtiles(passages));
+  const mots = aplatir(p).split(" ").filter(Boolean);
+  return mots.some((m) => !MOTS_VIDES.has(m) && (m.length >= 3 || /\d/.test(m))) ? p : "";
 }
 
 /**

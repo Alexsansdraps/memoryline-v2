@@ -24,6 +24,11 @@ interface Props {
   /** "website" (défaut) ou "product" pour les fiches produit. */
   type?: "website" | "product" | "article";
   noindex?: boolean;
+  /**
+   * Les langues où cette page existe vraiment — celles que le gabarit
+   * déclare en hreflang. Absent : les cinq langues du site.
+   */
+  alternatives?: readonly Langue[];
   /** Objet(s) JSON-LD (Schema.org) à injecter. */
   jsonLd?: Record<string, unknown> | Record<string, unknown>[];
 }
@@ -36,6 +41,7 @@ const {
   image = "/og-default.png",
   type = "website",
   noindex = false,
+  alternatives = LANGUES,
   jsonLd,
 } = Astro.props;
 
@@ -75,7 +81,9 @@ const jsonLdList = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
  *
  * Elle était écrite en dur en français : la page anglaise partagée sur
  * Facebook ou WhatsApp se déclarait française. Les autres langues suivent en
- * « alternate », comme les hreflang du gabarit.
+ * « alternate », comme les hreflang du gabarit — et seulement celles-là :
+ * une fiche écrite en français seul ne s'annonce plus en anglais ou en
+ * allemand aux réseaux, alors que Google, lui, ne l'y voit plus.
  */
 const localeOg = (l: Langue) => LOCALE_COMPLETE[l].replace("-", "_");
 ---
@@ -90,7 +98,7 @@ const localeOg = (l: Langue) => LOCALE_COMPLETE[l].replace("-", "_");
 <meta property="og:site_name" content="Memory Line" />
 <meta property="og:locale" content={localeOg(langue)} />
 {
-  LANGUES.filter((l) => l !== langue).map((l) => (
+  alternatives.filter((l) => l !== langue).map((l) => (
     <meta property="og:locale:alternate" content={localeOg(l)} />
   ))
 }

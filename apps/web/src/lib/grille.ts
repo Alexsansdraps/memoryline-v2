@@ -77,10 +77,22 @@ export function styleGrille(g: Grille): string {
  * l'image d'après elle. Fausse, l'affiche serait floue (trop petite) ou lente
  * (trop grande). Mêmes marges que la grille : cadre de 1600 px, 8 px de marge
  * sur téléphone, 24 puis 40 au-delà.
+ *
+ * `pleineLargeur` : une grille SANS cadre ne plafonne pas à 1600 px. C'est
+ * la vitrine de l'accueil, posée bord à bord : mesuré sur un écran de
+ * 1920 px, ses vignettes font 598 px de large quand l'ancienne valeur en
+ * annonçait 507, et sur un écran de 2560 px, 810 — servies en 600, donc
+ * floues. Au-delà de 1600 px, la largeur se calcule donc sur l'écran : 96 px
+ * de marges, 8 px par gouttière, et 16 px pour la barre de défilement, que
+ * « 100vw » compte et la page non. Ces 16 px ne sont pas un détail : sans
+ * eux, l'écran de 1920 px — le plus courant — annonçait 603 px et recevait
+ * la version de 900 au lieu de celle de 600, 28 Ko de plus par vignette.
  */
-export function sizesGrille(g: Grille): string {
+export function sizesGrille(g: Grille, { pleineLargeur = false } = {}): string {
   return [
-    `(min-width: 1600px) ${Math.round(1520 / g.ordinateur)}px`,
+    pleineLargeur
+      ? `(min-width: 1600px) calc((100vw - ${112 + 8 * (g.ordinateur - 1)}px) / ${g.ordinateur})`
+      : `(min-width: 1600px) ${Math.round(1520 / g.ordinateur)}px`,
     `(min-width: 1024px) calc((100vw - 96px) / ${g.ordinateur})`,
     `(min-width: 768px) calc((100vw - 56px) / ${g.tablette})`,
     `calc((100vw - 20px) / ${g.mobile})`,

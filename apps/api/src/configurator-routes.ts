@@ -38,6 +38,7 @@ import {
 } from "./fichiers-impression.js";
 import { archiveZip } from "./archive-zip.js";
 import { decorsParLeNom } from "./decors.js";
+import { empriseDuPersonnage, preparerLesEmprises } from "./emprise-personnages.js";
 import {
   resumeCommandes,
   statutExpedition,
@@ -1597,6 +1598,20 @@ function commandeVisiblePar(c: Context, canal: string | undefined): boolean {
 export function mountConfiguratorRoutes(app: Hono) {
   // === Données configurateur (public) ====================================
 
+  // L'emprise des dessins des personnages se mesure d'avance, quelques
+  // secondes après le démarrage pour ne pas le ralentir : la première visite
+  // après une mise en ligne trouve ainsi la composition complète (voir
+  // emprise-personnages.ts). Les mesures déjà rangées ne se refont pas.
+  setTimeout(() => {
+    db.select({ url: schema.characterTypes.baseSvgUrl })
+      .from(schema.characterTypes)
+      .where(isNull(schema.characterTypes.archivedAt))
+      .then((lignes) => preparerLesEmprises(lignes.map((l) => l.url)))
+      .catch(() => {
+        // Sans base au démarrage, les mesures se feront à la première visite.
+      });
+  }, 5000).unref?.();
+
   /**
    * Bibliothèque du configurateur (architecture fidèle à memoryline.fr) :
    *  - `characters` : les personnages à AJOUTER (Homme/Femme/Bébé/Animal…),
@@ -1637,6 +1652,13 @@ export function mountConfiguratorRoutes(app: Hono) {
         asc(schema.characterCategories.position),
         asc(schema.characterTypes.position),
       );
+    // Où chaque dessin se trouve vraiment dans son cadre : la composition de
+    // l'affiche s'en sert pour serrer la rangée et reconnaître les petits.
+    // Déjà mesurée, elle se lit en mémoire ; sinon `null`, et elle se mesure
+    // en arrière-plan pour la visite suivante (emprise-personnages.ts).
+    const emprises = await Promise.all(
+      types.map(({ t }) => empriseDuPersonnage(t.baseSvgUrl)),
+    );
 
     // Variantes génériques (character_type_id IS NULL), partagées par tous.
     const variants = await db
@@ -1727,7 +1749,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         // le réglage des pièces qui n'ont pas le leur.
         couleursProposees: couleursProposees(p.couleursProposees),
       })),
-      characters: types.map(({ t, categoryName, categoryTranslations }) => ({
+      characters: types.map(({ t, categoryName, categoryTranslations }, i) => ({
         id: t.id,
         slug: t.slug,
         // Le nom du personnage dans la langue du visiteur, le français à
@@ -1767,6 +1789,8 @@ export function mountConfiguratorRoutes(app: Hono) {
         slotAdjust: t.slotAdjust ?? null,
         // Tenue portée d'emblée quand le client ajoute ce personnage.
         defaultAssets: t.defaultAssets ?? null,
+        // L'emprise réelle de son dessin, en fractions du cadre (voir plus haut).
+        emprise: emprises[i] ?? null,
       })),
       slots,
     });

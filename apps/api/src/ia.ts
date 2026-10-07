@@ -39,6 +39,7 @@ import { fileURLToPath } from "node:url";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
+import { FILIGRANE } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { clientDeLaRequete } from "./comptes.js";
 import { HORS_VENTES } from "./statuts-vente.js";
@@ -330,11 +331,8 @@ const MIME_SORTIE: Record<string, string> = {
  * logo de la boutique à l'intérieur, en blanc presque transparent.
  *
  * Un calque CSS se retire depuis l'inspecteur du navigateur en trois clics ;
- * une image marquée, non. Le logo est posé deux fois — une ombre sombre
- * décalée d'un rien, puis la silhouette blanche par-dessus — parce qu'un
- * filigrane blanc disparaît sur un ciel de neige et un filigrane noir sur une
- * nuit. Densité réglée pour gêner la réutilisation sans empêcher de juger
- * l'affiche.
+ * une image marquée, non. Densité réglée pour gêner la réutilisation sans
+ * empêcher de juger l'affiche.
  *
  * C'est le MÊME fichier que celui du navigateur (apps/web/public), pour que
  * l'aperçu IA et l'aperçu du configurateur portent la même marque.
@@ -358,16 +356,25 @@ async function logoAttenue(largeur: number, opacite: number, sombre: boolean): P
 /**
  * Calques à composer sur l'aperçu : un cercle fin au centre, et le logo à
  * l'intérieur, en blanc presque transparent — le MÊME dessin que le filigrane
- * du configurateur (packages/configurator/src/components/Filigrane.tsx), aux
- * mêmes proportions : cercle de 60 % de la largeur, logo de 42 %.
+ * du configurateur (packages/configurator/src/components/Filigrane.tsx), lu
+ * dans les MÊMES nombres (`FILIGRANE`, packages/types) : un panier qui mêle
+ * une affiche composée et une affiche tirée d'une photo porte deux fois la
+ * même marque.
  *
  * Il remplace une grille de logos en diagonale, doublée d'une ombre sombre,
  * qui couvrait toute l'image. La boutique la voulait plus discrète. Le cercle
  * reste AU CENTRE, là où un recadrage ne peut pas l'ôter sans emporter le
  * sujet de l'affiche.
  *
+ * Tout se mesure sur le PETIT côté de l'image, comme dans le module (dont
+ * l'aperçu, toujours en portrait, a sa largeur pour petit côté). Mesuré sur
+ * la largeur, le cercle d'un aperçu en paysage débordait en haut et en bas.
+ *
  * Le cercle est un SVG rendu par sharp, à la taille exacte de l'image : un
  * trait vectoriel reste net, là où un anneau dessiné en pixels se crénelle.
+ *
+ * Seuls les aperçus fabriqués APRÈS un réglage le portent : ceux qui dorment
+ * déjà sur le disque ont leur filigrane cuit dedans.
  */
 async function calquesFiligrane(
   largeur: number,
@@ -375,20 +382,21 @@ async function calquesFiligrane(
 ): Promise<{ input: Buffer; left: number; top: number }[]> {
   const cx = largeur / 2;
   const cy = hauteur / 2;
-  const rayon = Math.round(largeur * 0.3);
-  // Le trait suit la taille de l'image : 1,5 px vu sur un aperçu d'environ
-  // 600 px de large, comme dans le configurateur.
-  const epaisseur = Math.max(2, largeur / 300);
+  const petitCote = Math.min(largeur, hauteur);
+  const rayon = Math.round(petitCote * FILIGRANE.rayonCercle);
+  // Le trait suit la taille de l'image : `traitCercle` est l'épaisseur VUE
+  // sur un aperçu d'environ 600 px de large, celle que garde le module.
+  const epaisseur = Math.max(1, (petitCote * FILIGRANE.traitCercle) / 600);
 
   const cercle = Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${largeur}" height="${hauteur}">` +
       `<circle cx="${cx}" cy="${cy}" r="${rayon}" fill="none" ` +
-      `stroke="#ffffff" stroke-opacity="0.5" stroke-width="${epaisseur}"/>` +
+      `stroke="#ffffff" stroke-opacity="${FILIGRANE.opaciteCercle}" stroke-width="${epaisseur}"/>` +
       `</svg>`,
   );
 
-  const logoLargeur = Math.max(80, Math.round(largeur * 0.42));
-  const logo = await logoAttenue(logoLargeur, 0.4, false);
+  const logoLargeur = Math.max(80, Math.round(petitCote * FILIGRANE.largeurLogo));
+  const logo = await logoAttenue(logoLargeur, FILIGRANE.opaciteLogo, false);
   const { width: lw = logoLargeur, height: lh = Math.round(logoLargeur * 0.444) } =
     await sharp(logo).metadata();
 

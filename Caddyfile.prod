@@ -63,14 +63,40 @@
 	# « no-cache » ne veut pas dire « ne garde rien » : le navigateur garde la
 	# page mais demande au serveur si elle a changé avant de la réafficher.
 	# Une page inchangée coûte alors un aller-retour de quelques octets.
-	@pages not path /api/* /_astro/*
+	@pages not path /api/* /_astro/* /fonts/* /*.png /*.ico /*.svg
 	header @pages Cache-Control "no-cache"
 
 	# Les fichiers construits par Astro portent une empreinte dans leur nom :
 	# un contenu qui change change aussi d'adresse. Ceux-là peuvent être
-	# gardés un an sans risque, et c'est autant de moins à retélécharger.
+	# gardés un an sans risque, et c'est autant de moins à retélécharger. Le
+	# logo de l'en-tête en fait partie (src/assets, voir Base.astro).
 	@construits path /_astro/*
 	header @construits Cache-Control "public, max-age=31536000, immutable"
+
+	# Les fichiers fixes du site (apps/web/public) : les polices des
+	# affiches, les icônes, l'image de partage, le logo d'origine. Ils
+	# tombaient sous la règle des pages : à chaque page, le navigateur
+	# redemandait au serveur si les 1,6 Mo de polices avaient changé.
+	#
+	# Une semaine, et pas un an : leur nom NE change PAS quand on les
+	# remplace — la police « Another Shabby » sous licence gardera le sien
+	# (MISE-EN-PROD.md, § 0). Un fichier remplacé met donc au plus huit jours
+	# à atteindre tout le monde ; c'est sans conséquence pour une police ou
+	# une icône, et c'est la seule raison de ne pas les garder plus longtemps.
+	# (Une de ces adresses qui manquerait au serveur répond 404 pour la même
+	# semaine : déposer le fichier AVANT de mettre en ligne la page qui le
+	# demande, comme on le fait déjà.)
+	#
+	# « /*.png » ne désigne que les fichiers posés à la racine du site : les
+	# visuels de l'API (/api/assets/…), qui ont leurs propres règles, et le
+	# back-office (/bo/…) n'en sont pas. `defer` : le site envoie lui-même
+	# « public, max-age=0 » pour ces fichiers ; sans `defer`, les deux
+	# en-têtes partaient ensemble et se contredisaient.
+	@statiques path /fonts/* /*.png /*.ico /*.svg
+	header @statiques {
+		Cache-Control "public, max-age=604800"
+		defer
+	}
 
 	handle_path /api/* {
 		reverse_proxy api:3000

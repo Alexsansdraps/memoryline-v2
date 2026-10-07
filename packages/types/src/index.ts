@@ -12,10 +12,12 @@ export * from "./fonts.js";
 export * from "./textes-affiche.js";
 export * from "./couleurs-texte.js";
 export * from "./sol-personnages.js";
+export * from "./composition-personnages.js";
 export * from "./cadres.js";
 export * from "./video.js";
 export * from "./bandeaux-visuels.js";
 export * from "./grille.js";
+export * from "./filigrane.js";
 
 /** Canal d'une commande — dimension structurante, immuable (§11). */
 export const ORDER_CHANNELS = ["web", "salon"] as const;

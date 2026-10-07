@@ -37,6 +37,7 @@ import {
 import type { PDFFont, PDFPage } from "pdf-lib";
 
 import {
+  LARGEUR_CADRE_PERSONNAGE,
   ORDRE_CALQUES,
   appliquerCalage,
   calagePour,
@@ -189,13 +190,23 @@ export interface ResolveData {
  * de l'affiche, comme le texte : la signature d'une affiche en paysage n'est
  * pas plus grosse que celle d'un portrait, ni celle d'un A3 que celle d'un A4
  * sur la feuille, à l'échelle près.
+ *
+ * Elle n'existe QUE sur le fichier d'impression : aucun aperçu montré au
+ * client ne la porte (voir fichiers-impression.ts, signatureDesCreations).
  */
 export interface SignatureAffiche {
   /** L'image (PNG transparent conseillé, ou SVG), déjà lue. */
   image: Buffer;
-  /** Largeur, en fraction du petit côté (0,12 = 12 %). */
+  /**
+   * Largeur de l'IMAGE, marges transparentes comprises, en fraction du petit
+   * côté (0,12 = 12 %) : une image envoyée au back-office garde la taille
+   * qu'elle avait sur le papier.
+   */
   largeur: number;
-  /** Marge depuis les bords droit et bas, même unité. */
+  /**
+   * Marge entre le DESSIN et les bords droit et bas, même unité. Les marges
+   * transparentes de l'image n'en font pas partie (voir signaturePosee).
+   */
   marge: number;
   /** Opacité, de 0 à 1. */
   opacite: number;
@@ -203,7 +214,50 @@ export interface SignatureAffiche {
   empreinte: string;
 }
 
-/** La signature prête à poser sur une affiche de W × H, ou null. */
+/**
+ * L'image privée de ses marges TRANSPARENTES, et d'elles seules.
+ *
+ * Le logo de la boutique porte, autour de l'écriture, des marges vides : 13 %
+ * de sa largeur à droite, 10 % de sa hauteur en bas. Posée à « 3 % du bord »,
+ * l'écriture se retrouvait à 4,6 % du bord droit et 3,5 % du bas — la
+ * signature flottait au-dessus du coin au lieu de s'y loger, et la boutique
+ * l'a redemandée « au ras du coin ». La marge du back-office se mesure donc
+ * désormais depuis le dessin, ce que l'on voit, quelle que soit la façon dont
+ * l'image a été détourée.
+ *
+ * On ne rogne que la transparence (la couche alpha), jamais une couleur : le
+ * fond blanc d'un PNG opaque fait partie de ce qui s'imprime, il reste.
+ */
+async function sansMargesTransparentes(png: Buffer): Promise<Buffer> {
+  try {
+    // En DEUX passes : sharp range lui-même les opérations d'une chaîne, et
+    // le rognage y passe AVANT l'extraction de la couche, quel que soit
+    // l'ordre d'écriture. Écrit en une seule chaîne, il ne rognait rien.
+    const alpha = await sharp(png).extractChannel(3).png().toBuffer();
+    const { info } = await sharp(alpha)
+      .trim({ background: "#000000", threshold: 8 })
+      .toBuffer({ resolveWithObject: true });
+    return await sharp(png)
+      .extract({
+        left: -(info.trimOffsetLeft ?? 0),
+        top: -(info.trimOffsetTop ?? 0),
+        width: info.width,
+        height: info.height,
+      })
+      .png()
+      .toBuffer();
+  } catch {
+    // Rien à rogner, ou rien de visible : l'image reste telle qu'elle est.
+    return png;
+  }
+}
+
+/**
+ * La signature prête à poser sur une affiche de W × H, ou null.
+ *
+ * L'image est d'abord mise à sa LARGEUR, marges comprises, puis rognée : la
+ * taille de la signature sur le papier ne change pas, seule sa place change.
+ */
 async function signaturePosee(
   s: SignatureAffiche | null | undefined,
   W: number,
@@ -215,9 +269,12 @@ async function signaturePosee(
   const marge = Math.round(petitCote * s.marge);
   try {
     // density haute : un logo vectoriel reste net une fois agrandi à 300 dpi.
-    let image = sharp(s.image, { density: 300 })
+    const miseALaTaille = await sharp(s.image, { density: 300 })
       .resize({ width: largeur })
-      .ensureAlpha();
+      .ensureAlpha()
+      .png()
+      .toBuffer();
+    let image = sharp(await sansMargesTransparentes(miseALaTaille));
     if (s.opacite < 1)
       // L'opacité multiplie la couche de transparence de l'image : le blanc
       // d'un PNG opaque, lui, reste visible — d'où le PNG transparent conseillé.
@@ -352,10 +409,10 @@ export async function resolveConfig(
     // contenu, pour que le bas du contenu tombe à y + h/2 quel que soit
     // bottomPct (même formule que PosterPreview côté front).
     const bp = base?.bottomPct ?? 1;
-    const PDF_CHAR_BASE_WIDTH = 0.22;
     // hauteur du cadre (aspect 1:2 -> 2 × largeur, en fraction de W), puis en
-    // fraction de H : ÷ √2 (page portrait W:H = 1:√2).
-    const frameHfrac = (PDF_CHAR_BASE_WIDTH * scale * 2) / Math.SQRT2;
+    // fraction de H : ÷ √2 (page portrait W:H = 1:√2). La largeur du cadre
+    // est celle du paquet partagé, que l'aperçu lit aussi.
+    const frameHfrac = (LARGEUR_CADRE_PERSONNAGE * scale * 2) / Math.SQRT2;
     const dropFrac = (1 - bp) * frameHfrac;
     const y = (character.y ?? 0.5) + dropFrac;
 
@@ -749,9 +806,10 @@ export async function renderPosterPng(
   }
 
   // 2) Personnages (couches ordonnées) — composités APRÈS le muret (devant lui).
-  // Largeur d'un perso = CHAR_BASE_WIDTH × scale × W (identique au rendu écran
-  // du configurateur, pour que le PDF corresponde exactement à l'aperçu).
-  const CHAR_BASE_WIDTH = 0.22; // synchronisé avec le configurateur (store.ts)
+  // Largeur d'un perso = LARGEUR_CADRE_PERSONNAGE × scale × W : la même
+  // valeur partagée que l'aperçu du configurateur, pour que le PDF
+  // corresponde exactement à l'écran.
+  const CHAR_BASE_WIDTH = LARGEUR_CADRE_PERSONNAGE;
   const layers = await resolveConfig(config, opts.data);
   for (const layer of layers) {
     // Largeur cible bornée au canevas. density:300 = qualité de rasterisation ;

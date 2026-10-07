@@ -9,7 +9,6 @@ import {
 } from "solid-js";
 import type { PosterConfig, PosterFormat } from "@memoryline/types";
 import { sourceVideo } from "@memoryline/types";
-import type { SignatureApercu } from "@memoryline/configurator";
 import { browserApi, getCartId, type EncartVideoDTO } from "../lib/api.ts";
 import ConfiguratorIsland from "./ConfiguratorIsland.tsx";
 import { LecteurVideo, facadeEncart } from "./EncartVideo.tsx";
@@ -62,15 +61,6 @@ export interface ProductConfiguratorProps {
    * la fonction attendue par le paquet du configurateur.
    */
   video?: EncartVideoDTO | null;
-  /**
-   * La signature de la boutique, en bas à droite de l'aperçu — celle que le
-   * fichier d'impression posera (cf. SignatureCreation).
-   *
-   * De la DONNÉE, lue par la fiche côté serveur : cette modale est montée
-   * `client:only`, Astro sérialise ses props, et un objet de quatre champs
-   * simples la traverse sans rien perdre.
-   */
-  signature?: SignatureApercu | null;
 }
 
 export default function ProductConfigurator(
@@ -330,7 +320,6 @@ export default function ProductConfigurator(
                 sansPrixCadres={props.prixCadres === false}
                 cadresProposes={props.cadresProposes}
                 quantite={quantite()}
-                signature={props.signature}
                 foregroundUrl={props.foregroundUrl}
                 defaults={{
                   ...props.defaults,

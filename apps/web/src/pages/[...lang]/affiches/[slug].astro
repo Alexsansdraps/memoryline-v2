@@ -19,9 +19,11 @@ import {
 import ProductConfigurator from "../../../islands/ProductConfigurator.tsx";
 import AddToCartButton from "../../../islands/AddToCartButton.tsx";
 import AfficheIA from "../../../islands/AfficheIA.tsx";
-import { signatureDesCreations } from "../../../lib/signature.ts";
+import VignetteAffiche from "../../../components/VignetteAffiche.astro";
+import { RAYONS_FUSIONNES } from "../../../lib/anciennes-adresses.ts";
+import { grilleProduits, sizesGrille, styleGrille } from "../../../lib/grille.ts";
 import { htmlSur } from "../../../lib/html-sur.ts";
-import { languesDuContenu } from "../../../lib/referencement.ts";
+import { adresseDuRayon, languesDuContenu } from "../../../lib/referencement.ts";
 import {
   descriptionMeta,
   nommeDejaUneAffiche,
@@ -97,18 +99,6 @@ const prixCadres = Astro.locals.stand || (await prixDesCadresSurLeSite());
 const encartVideo = Astro.locals.stand ? null : await encartVideoDuSite(langue);
 
 /*
- * La signature de la boutique, posée en bas à droite de l'affiche.
- *
- * Lue ICI, sur le serveur, et passée aux îlots : c'est le même réglage que
- * celui du fichier d'impression, et l'aperçu doit en porter la marque dès son
- * premier dessin. Au stand comme sur le site — l'affiche vendue sur le salon
- * s'imprime avec sa signature elle aussi.
- *
- * Aucune requête de plus : les réglages de la page sont déjà lus une fois.
- */
-const signature = await signatureDesCreations();
-
-/*
  * Une affiche introuvable n'est PLUS une redirection vers le catalogue.
  *
  * C'était un 302 vers /affiches dans tous les cas — affiche inconnue,
@@ -141,7 +131,51 @@ const cleanName = product.name.replace(/\s*[-–]\s*Affiche.*$/i, "");
 // neuf cents pixels suffisent à l'écran, et le navigateur prend plus petit
 // s'il est sur un téléphone.
 const image = assetUrl(product.images[0] ?? null, 900);
-const imageJeu = assetSrcset(product.images[0] ?? null, [400, 600, 900, 1400]);
+
+/*
+ * Les vraies dimensions du visuel (l'API les mesure, dimensions-visuels.ts),
+ * 1020 × 1400 à défaut — celles de presque toutes les affiches. Elles
+ * servent trois fois :
+ *
+ *  - `width` et `height` : la place de l'image est réservée avant son
+ *    arrivée, au bon rapport (l'affiche tirée d'une photo n'a pas celui des
+ *    autres) ;
+ *  - le jeu de tailles ne propose que des largeurs qui existent (api.ts,
+ *    assetSrcset) : plus de « 1400w » qui rendait 1020 px ;
+ *  - `sizes` calcule la largeur à laquelle l'image sera VRAIMENT affichée.
+ *
+ * Ce dernier point compte plus qu'ailleurs. Sur tablette et ordinateur,
+ * l'image prend sa largeur naturelle (`md:w-auto`), bornée par sa colonne
+ * et par la hauteur de l'écran (`md:max-h-[calc(100svh-9rem)]`) — et sa
+ * largeur naturelle, pour le navigateur, c'est celle que `sizes` annonce.
+ * L'ancien `sizes` annonçait 900 px dès 1280 px d'écran : mesuré à 1440 ×
+ * 900, l'image s'affichait en 551 px (bornée par la hauteur) et le
+ * navigateur téléchargeait la version de 900. Le nouveau prend la plus
+ * petite des trois bornes — 62 % de l'écran (un peu plus que la colonne),
+ * 900 px (la colonne n'en dépasse jamais 894) et la hauteur utile multipliée
+ * par le rapport de l'image —, si bien que la taille affichée ne change pas
+ * et que le fichier suit. Sous 768 px, l'image prend toute la largeur de la
+ * carte (marges de 16 puis 24 px). Un navigateur qui ne lirait pas `min()`
+ * passe à la valeur suivante : il télécharge plus gros, sans rien déranger.
+ *
+ * L'image part enfin en priorité (`fetchpriority="high"`) : c'est elle que
+ * Google mesure comme le plus grand élément de la page (LCP), et sans
+ * l'indication, Chrome la met en file avec les autres images jusqu'à ce que
+ * la page soit mise en forme.
+ */
+const dimensionsImage = product.dimensionsImages?.[0] ?? null;
+const largeurImage = dimensionsImage?.largeur ?? 1020;
+const hauteurImage = dimensionsImage?.hauteur ?? 1400;
+const imageJeu = assetSrcset(
+  product.images[0] ?? null,
+  [400, 600, 900, 1400],
+  dimensionsImage?.largeur,
+);
+const tailleAffichee = [
+  `(min-width: 768px) min(62vw, 900px, calc((100vh - 9rem) * ${(largeurImage / hauteurImage).toFixed(4)}))`,
+  "(min-width: 640px) calc(100vw - 3rem)",
+  "calc(100vw - 2rem)",
+].join(", ");
 const prices = product.variants.map((v) => v.priceCents).filter((c) => c > 0);
 const minPrice = prices.length ? Math.min(...prices) : product.basePriceCents;
 
@@ -211,7 +245,13 @@ const descriptionVisible =
  * du français dans les résultats Google de /en ou /de.
  *
  * La description sous le lien Google, dans l'ordre :
- * 1. celle que la boutique a écrite (champ SEO de la fiche) ;
+ * 1. celle que la boutique a écrite (champ SEO de la fiche), elle aussi
+ *    ramenée à 155 caractères au plus. Celles de memoryline.fr, reprises
+ *    telles quelles par l'import (« Titre SEO ; Description SEO »), sont
+ *    coupées en plein mot pour une centaine (« …et de bons momen ») :
+ *    servies brutes, elles auraient ramené le défaut que la coupe au mot
+ *    venait de corriger. Une description qui tient dans la limite passe
+ *    intacte ; plus longue, Google l'aurait coupée lui-même, n'importe où ;
  * 2. en français, la « Phrase SEO » retirée de l'affichage : c'est, à
  *    quelques mots près, la description que memoryline.fr donne aujourd'hui
  *    à Google pour ces 44 fiches ;
@@ -221,7 +261,7 @@ const descriptionVisible =
  * 4. une phrase de repli, dans la langue de la page.
  */
 const description =
-  texteBrut(product.seoDescription) ||
+  descriptionMeta(product.seoDescription) ||
   (langue === LANGUE_DEFAUT ? descriptionMeta(phraseSeo(product.description)) : "") ||
   (ficheTraduite ? descriptionMeta(texteDescription) : "") ||
   descriptionMeta(
@@ -303,6 +343,10 @@ const productLd = {
   // page ; sinon la description de la page, elle dans la bonne langue.
   description: (ficheTraduite && texteDescription) || description,
   url: urlFiche,
+  // La référence de l'affiche elle-même, de la même famille que celles de
+  // ses formats (ML-176, puis ML-176-A4, ML-176-A3) : le numéro que le site
+  // lui donne, rien d'inventé.
+  sku: `ML-${product.id}`,
   // Toutes les vues de l'affiche, en grand et en adresse complète : Google
   // ne lit pas une image relative (« /api/assets/… »).
   image: product.images
@@ -312,32 +356,75 @@ const productLd = {
   brand: { "@type": "Brand", name: "Memory Line" },
   offers: offres,
 };
-// Le fil d'Ariane que Google affiche sous le résultat : dans la langue de la
-// page, et vers les adresses de cette langue.
+/*
+ * Le fil d'Ariane : Accueil › Affiches personnalisables › Villes › VIEUX
+ * MOULIN.
+ *
+ * Il menait toujours au catalogue entier (« Accueil › Affiches »), sans le
+ * genre ni le rayon : Google ne voyait aucun lien de la fiche vers sa page
+ * de genre ni vers « Villes », et la fiche ne disait pas où elle se range.
+ * Le rayon est celui du menu qui la contient (l'API le choisit, maillage.ts)
+ * et s'écrit sous la forme du menu — la seule adresse du rayon. Sans rayon
+ * du menu (les prêtes à imprimer, l'affiche tirée d'une photo), le fil
+ * s'arrête au genre. Un rayon fondu dans une autre page (anciennes-adresses.ts)
+ * n'y figure jamais : son adresse mène ailleurs en 301.
+ *
+ * Le même fil sert deux fois : en clair au-dessus du titre, et en données
+ * structurées, que Google affiche sous le résultat — dans la langue de la
+ * page, vers les adresses de cette langue.
+ */
+const rayon =
+  product.rayonPrincipal && !RAYONS_FUSIONNES[product.rayonPrincipal.slug]
+    ? product.rayonPrincipal
+    : null;
+const pageDuGenre = {
+  nom: product.kind === "personnalisable" ? tr("nav.personnalisables") : tr("nav.pretes"),
+  href: lien(langue, adresseDuRayon(product.kind)),
+};
+const pageDuRayon = rayon
+  ? { nom: rayon.name, href: lien(langue, adresseDuRayon(rayon.genre, rayon.slug)) }
+  : null;
+const fil = [pageDuGenre, ...(pageDuRayon ? [pageDuRayon] : [])];
 const breadcrumbLd = {
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   itemListElement: [
-    {
-      "@type": "ListItem",
-      position: 1,
-      name: tr("seo.fil_accueil"),
-      item: siteUrl + lien(langue, "/"),
-    },
-    {
-      "@type": "ListItem",
-      position: 2,
-      name: tr("nav.affiches"),
-      item: siteUrl + lien(langue, "/affiches"),
-    },
-    {
-      "@type": "ListItem",
-      position: 3,
-      name: cleanName,
-      item: siteUrl + lien(langue, `/affiches/${product.slug}`),
-    },
-  ],
+    { nom: tr("seo.fil_accueil"), href: lien(langue, "/") },
+    ...fil,
+    { nom: cleanName, href: lien(langue, `/affiches/${product.slug}`) },
+  ].map((etape, i) => ({
+    "@type": "ListItem",
+    position: i + 1,
+    name: etape.nom,
+    item: absolue(etape.href),
+  })),
 };
+
+/*
+ * Les affiches voisines, sous la fiche.
+ *
+ * memoryline.fr en montre quatre sous chaque fiche, et c'est par elles —
+ * autant que par les rayons — que Google passe d'une affiche à l'autre. Sans
+ * elles, une fiche ne menait qu'au menu et au pied de page : les 146 villes
+ * n'étaient plus reliées entre elles que par les quatre pages de leur rayon.
+ * L'API les choisit (maillage.ts) : le même lieu d'abord, puis celles qui
+ * entourent l'affiche dans son rayon, si bien que chaque fiche est citée par
+ * ses voisines et qu'aucune ne reste sans lien.
+ *
+ * Deux rangées pleines sur ordinateur, selon les colonnes réglées au
+ * back-office pour la boutique : six sur trois colonnes, huit sur quatre ;
+ * au-delà de quatre colonnes, une seule rangée. Rendues par le serveur, en
+ * vrais liens : un robot les suit sans exécuter de JavaScript. Leur nom est un
+ * titre de troisième rang, sous l'intertitre du bloc (VignetteAffiche).
+ */
+const grille = await grilleProduits("boutique");
+const nombreDeVoisines = Math.min(
+  Math.max(grille.ordinateur <= 4 ? grille.ordinateur * 2 : grille.ordinateur, 4),
+  8,
+);
+const voisines = (product.voisines ?? []).slice(0, nombreDeVoisines);
+const voisinesDuRayon = product.voisinesDe === "rayon" && !!pageDuRayon;
+const pageDesVoisines = voisinesDuRayon ? pageDuRayon! : pageDuGenre;
 ---
 
 <Base
@@ -376,10 +463,11 @@ const breadcrumbLd = {
           <img
             src={image}
             srcset={imageJeu}
-            sizes="(min-width: 1280px) 900px, (min-width: 768px) 62vw, 100vw"
+            sizes={tailleAffichee}
             alt={texteImage}
-            width="1020"
-            height="1400"
+            width={largeurImage}
+            height={hauteurImage}
+            fetchpriority="high"
             class="h-auto w-full md:mx-auto md:max-h-[calc(100svh-9rem)] md:w-auto md:max-w-full"
           />
         ) : (
@@ -391,11 +479,19 @@ const breadcrumbLd = {
     </div>
 
     <div>
-      <nav class="text-sm text-ink-soft">
-        <a href={lien(langue, "/")} class="hover:text-terracotta">Memory Line</a> ·
-        <a href={lien(langue, "/affiches")} class="hover:text-terracotta"
-          >{tr("nav.affiches")}</a
-        >
+      {/* Le fil d'Ariane (voir plus haut) : le genre, puis le rayon. */}
+      <nav class="text-sm text-ink-soft" aria-label={tr("produit.fil_ariane")}>
+        <a href={lien(langue, "/")} class="hover:text-terracotta">Memory Line</a>
+        {
+          fil.map((etape) => (
+            <Fragment>
+              {" · "}
+              <a href={etape.href} class="hover:text-terracotta">
+                {etape.nom}
+              </a>
+            </Fragment>
+          ))
+        }
       </nav>
       {/* La typographie de la fiche reprend celle de memoryline.fr (retour
           de la boutique : « police des produits un peu plus grasse, plus
@@ -544,7 +640,6 @@ const breadcrumbLd = {
             client:only="solid-js"
             sansPrix={sansPrix}
             stand={Astro.locals.stand}
-            signature={signature}
             product={{
               id: product.id,
               name: cleanName,
@@ -568,7 +663,6 @@ const breadcrumbLd = {
             sansPrix={sansPrix}
             cadresProposes={cadresProposes}
             prixCadres={prixCadres}
-            signature={signature}
             video={encartVideo}
             product={{
               id: product.id,
@@ -637,4 +731,41 @@ const breadcrumbLd = {
       }
     </div>
   </article>
+
+  {/* Les affiches voisines (voir plus haut), dans le cadre de la fiche et
+      avec la grille des rayons : mêmes vignettes, mêmes gouttières. `sizes`
+      est celui de la grille du rayon, dont le cadre n'a que 50 px de plus :
+      l'écart ne change pas le fichier que le navigateur choisit. Le lien
+      vers le rayon entier vient après : un vrai lien de plus vers « Villes »,
+      avec son nom pour texte. */}
+  {
+    voisines.length > 0 && (
+      <section
+        class="mx-auto max-w-[1500px] px-4 pb-16 pt-4 sm:px-6"
+        aria-labelledby="titre-voisines"
+      >
+        <h2 id="titre-voisines" class="text-2xl sm:text-3xl">
+          {voisinesDuRayon
+            ? tr("produit.voisines.titre_rayon")
+            : tr("produit.voisines.titre_genre")}
+        </h2>
+        <ul
+          class="ml-grille-produits -mx-2 mt-6 gap-x-1 gap-y-5 sm:mx-0 sm:gap-x-2 sm:gap-y-8"
+          style={styleGrille(grille)}
+        >
+          {voisines.map((v) => (
+            <VignetteAffiche affiche={v} langue={langue} sizes={sizesGrille(grille)} />
+          ))}
+        </ul>
+        <p class="mt-8 text-center">
+          <a
+            href={pageDesVoisines.href}
+            class="inline-block border border-ink/20 px-4 py-2 text-sm hover:border-ink transition-colors"
+          >
+            {tr("produit.voisines.voir_tout").replace("{rayon}", pageDesVoisines.nom)} →
+          </a>
+        </p>
+      </section>
+    )
+  }
 </Base>

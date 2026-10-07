@@ -1,7 +1,6 @@
 /// <reference lib="dom" />
-import { t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
-import { getCartId, browserApi } from "../lib/api.ts";
+import { getCartId, lirePanier } from "../lib/api-navigateur.ts";
 
 /**
  * Pastille du panier : le nombre d'articles, à côté du lien « Panier ».
@@ -9,19 +8,33 @@ import { getCartId, browserApi } from "../lib/api.ts";
  * Le compte est relu à l'affichage de la page — y compris au retour arrière
  * depuis le cache du navigateur (`pageshow`), sinon la pastille resterait
  * périmée après un ajout suivi d'un retour.
+ *
+ * Elle est sur TOUTES les pages : elle doit peser le moins possible. Son
+ * libellé arrive donc tout traduit, en propriété (Base.astro), au lieu
+ * d'être cherché dans le dictionnaire des cinq langues ; et elle lit le
+ * panier par api-navigateur.ts plutôt que par api.ts. Les deux tiraient
+ * avec eux 209 Ko de JavaScript (53 Ko compressés) que la page entière
+ * n'utilisait pas.
  */
 export default function CartBadge(props: {
-  /** Langue de la page — pilote l'intitulé lu par les lecteurs d'écran. */
-  langue?: Langue;
+  /**
+   * Ce que lisent les lecteurs d'écran, dans la langue de la page, avec
+   * « {nombre} » à la place du nombre d'articles (clé « panier.pastille »).
+   */
+  libelle: string;
 }) {
-  const tr = t(props.langue ?? LANGUE_DEFAUT);
   const [nombre, setNombre] = createSignal(0);
 
   async function rafraichir() {
     try {
-      const panier = await browserApi.cart(getCartId());
+      // Un panier tout juste payé revient vide (null) : il est oublié, et le
+      // suivant repart de zéro (api-navigateur.ts, lirePanier).
+      const panier = await lirePanier<{
+        status?: string | null;
+        items?: { quantity?: number | string | null }[];
+      }>(getCartId());
       setNombre(
-        (panier.items ?? []).reduce(
+        (panier?.items ?? []).reduce(
           (total, ligne) => total + (Number(ligne.quantity) || 0),
           0,
         ),
@@ -50,7 +63,7 @@ export default function CartBadge(props: {
     <Show when={nombre() > 0}>
       <span
         class="ml-panier-pastille"
-        aria-label={tr("panier.pastille").replace("{nombre}", String(nombre()))}
+        aria-label={props.libelle.replace("{nombre}", String(nombre()))}
       >
         {nombre()}
       </span>

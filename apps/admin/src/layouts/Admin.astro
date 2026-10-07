@@ -286,9 +286,11 @@ const isActive = (href: string) =>
           class="h-14 bg-bo-surface border-b border-bo-border flex items-center gap-4 px-6"
         >
           {/* Le titre garde la priorité sur la largeur : le champ de recherche
-              se contente de la place restante (flex-1 part de zéro), et le
-              titre ne se coupe qu'à la toute fin, sur une fenêtre étroite, au
-              lieu de pousser la déconnexion hors de l'écran. */}
+              prend TOUTE la place restante (flex-1 part de zéro, sans largeur
+              maximale : demande de la boutique, la recherche est l'outil
+              qu'on utilise le plus), et le titre ne se coupe qu'à la toute
+              fin, sur une fenêtre étroite, au lieu de pousser la déconnexion
+              hors de l'écran. */}
           <h1 class="min-w-0 truncate text-base font-semibold">{title}</h1>
           {/* La recherche est réservée à la propriétaire, comme la route qui
               la sert : un vendeur n'a pas à fouiller les commandes du site ni
@@ -298,7 +300,7 @@ const isActive = (href: string) =>
             isOwner && (
               <div
                 id="ml-recherche"
-                class="relative min-w-0 max-w-md flex-1"
+                class="relative min-w-0 flex-1"
                 data-api={apiUrl("")}
                 data-base={url("")}
               >

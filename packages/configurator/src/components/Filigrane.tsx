@@ -17,28 +17,34 @@
  * Plus d'ombre non plus : elle rendait le filigrane lisible sur un ciel de
  * neige, mais le faisait peser partout ailleurs. La discrétion est voulue.
  *
+ * LES PROPORTIONS SONT CELLES DE `FILIGRANE` (packages/types) : le serveur
+ * cuit le même dessin dans les aperçus des affiches tirées d'une photo, et un
+ * panier qui mêle les deux doit porter deux fois la même marque. C'est là
+ * qu'elles se règlent, et nulle part ici.
+ *
  * Le repère du SVG suit l'affiche (viewBox au ratio A4 portrait) : le cercle
  * garde la même place et la même proportion sur la vignette de 80 px du panier
  * comme sur l'aperçu plein écran du configurateur.
  */
+import { FILIGRANE } from "@memoryline/types";
 
 /** Chemin public du logo, servi par le site depuis apps/web/public. */
 const LOGO_FILIGRANE = "/logo-filigrane.png";
 
-/** Le repère de l'affiche : 1000 de large, 1414 de haut (1:√2). */
+/**
+ * Le repère de l'affiche : 1000 de large, 1414 de haut (1:√2). L'aperçu est
+ * toujours en portrait : sa largeur est son petit côté, celui sur lequel se
+ * mesurent les proportions du filigrane.
+ */
 const LARGEUR = 1000;
 const HAUTEUR = 1414;
 
-/** Le cercle : 60 % de la largeur de l'affiche, centré. */
 const CENTRE_X = LARGEUR / 2;
 const CENTRE_Y = HAUTEUR / 2;
-const RAYON = 300;
+const RAYON = LARGEUR * FILIGRANE.rayonCercle;
 
-/**
- * Le logo fait 500×222 : on garde son rapport, à 70 % du diamètre — assez
- * grand pour se lire d'un coup d'œil, ses coins restant dans le cercle.
- */
-const LOGO_LARGEUR = 420;
+/** Le logo fait 500×222 : on garde son rapport. */
+const LOGO_LARGEUR = Math.round(LARGEUR * FILIGRANE.largeurLogo);
 const LOGO_HAUTEUR = Math.round((LOGO_LARGEUR * 222) / 500);
 
 export function Filigrane() {
@@ -64,8 +70,8 @@ export function Filigrane() {
         r={RAYON}
         fill="none"
         stroke="#ffffff"
-        stroke-width="2"
-        stroke-opacity="0.5"
+        stroke-width={String(FILIGRANE.traitCercle)}
+        stroke-opacity={String(FILIGRANE.opaciteCercle)}
         // Le trait garde son épaisseur quand l'aperçu rétrécit : sans cela,
         // le cercle disparaîtrait à la taille d'une vignette de panier.
         vector-effect="non-scaling-stroke"
@@ -76,7 +82,7 @@ export function Filigrane() {
         y={CENTRE_Y - LOGO_HAUTEUR / 2}
         width={LOGO_LARGEUR}
         height={LOGO_HAUTEUR}
-        opacity="0.4"
+        opacity={String(FILIGRANE.opaciteLogo)}
       />
     </svg>
   );

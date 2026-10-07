@@ -40,8 +40,14 @@ export const POLICES_AFFICHE: readonly PoliceAffiche[] = [
     repli: "Georgia, serif",
   },
   {
-    // La seconde police de la charte : sans empattement, geometrique, faite
-    // pour les capitales de la premiere ligne.
+    /*
+     * La police bâton, sans empattement, qui était proposée pour les
+     * capitales de la première ligne. Elle n'est plus proposée nulle part
+     * (retour de la boutiquière : la première ligne s'écrit avec empattement,
+     * en DM Serif Display), et reste déclarée exprès, comme Caveat plus bas :
+     * des paniers et des commandes l'ont enregistrée, et leur aperçu comme
+     * leur fichier d'impression doivent continuer de sortir en League Spartan.
+     */
     id: "spartan",
     libelle: "Bâton",
     famille: "League Spartan",
@@ -114,9 +120,14 @@ export const POLICES_AFFICHE: readonly PoliceAffiche[] = [
  *
  * Les identifiants absents d'une ligne restent parfaitement rendables : ils
  * ne sont simplement plus proposés. Voir l'en-tête de ce fichier.
+ *
+ * La charte demande aussi Abril Fatface en lignes 1 et 3. Elle n'entrera ici
+ * qu'avec ses fichiers des deux côtés (navigateur ET serveur d'impression,
+ * cf. l'en-tête) : proposée sans eux, la cliente la verrait dans le module
+ * et l'imprimeur recevrait une police de repli.
  */
 const POLICES_PAR_LIGNE: readonly (readonly string[])[] = [
-  ["serif", "spartan"],
+  ["serif"],
   ["shabby"],
   ["serif", "shabby"],
 ];

@@ -385,43 +385,37 @@ html {
   max-width: 100%;
 }
 
-/* Le fil d'étapes (« 1. Fond & texte · 2. Personnages · 3. Format ») : 44 px
-   de haut sous le doigt, la taille d'une cible tactile — le stand se tient
-   sur une tablette. Sur un téléphone, un cran plus petit, pour que les trois
-   tiennent sur une rangée jusqu'à 375 px de large : une deuxième rangée
-   repousserait d'autant la grille des personnages sous la barre du bas. À
-   320 px, ou dans une langue aux mots longs, ils passent sur deux rangées. */
+/* Le fil d'étapes (« 1. Fond & texte · 2. Personnages · 3. Format ») tient
+   sur UNE rangée, chaque libellé sur une ligne, à toutes les largeurs et dans
+   les cinq langues (retour cliente : « ça doit être que sur une ligne »).
+   Sous le doigt, 36 px de haut plutôt que 44 : la pastille, large, reste
+   facile à toucher sur la tablette du stand sans redevenir « trop grosse ».
+   Sur un téléphone, un cran plus petit à chaque palier : les tailles sont
+   réglées sur l'allemand, le plus long (« 1. Hintergrund & Text »), avec de
+   quoi absorber les polices système plus larges d'un iPhone. */
 @media (pointer: coarse) {
   .ml-cfg-etape {
-    min-height: 44px !important;
+    min-height: 36px !important;
   }
 }
 @media (max-width: 480px) {
   .ml-cfg-etapes {
-    gap: 6px !important;
+    gap: 5px !important;
   }
   .ml-cfg-etape {
-    font-size: 14px !important;
-    padding: 9px 10px !important;
+    font-size: 12px !important;
+    padding: 6px 8px !important;
   }
 }
-@media (max-width: 400px) {
-  .ml-cfg-etape {
-    font-size: 13px !important;
-    padding: 9px 8px !important;
-  }
-}
-/* À 320 px, une rangée quand même : chaque libellé passe sur deux lignes
-   dans son bouton (« 1. Fond & / texte »), comme avant, plutôt que de
-   repousser d'une rangée entière la grille des personnages. */
+/* À 320 px, 258 px de rangée pour trois libellés : 11 px, et les pastilles
+   serrent leurs bords. */
 @media (max-width: 359px) {
   .ml-cfg-etapes {
-    flex-wrap: nowrap !important;
+    gap: 4px !important;
   }
   .ml-cfg-etape {
-    white-space: normal !important;
-    padding: 5px 8px !important;
-    line-height: 1.15 !important;
+    font-size: 11px !important;
+    padding: 6px 5px !important;
   }
 }
 

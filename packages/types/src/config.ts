@@ -106,7 +106,13 @@ export type TextBlock = z.infer<typeof textBlockSchema>;
 export const characterSchema = z.object({
   /** Type de personnage (couple/enfant/animal…) — référence ouverte. */
   typeId: z.union([z.string(), z.number()]),
-  /** Ordre d'empilement / position dans la scène. */
+  /**
+   * Ordre de DESSIN : 0 est dessiné en premier, donc derrière les autres. Ce
+   * n'est pas toujours le rang dans la liste (l'ordre du tableau) : sur une
+   * affiche de face, les petits passent devant les grands quel que soit leur
+   * rang (voir composition-personnages.ts). Le fichier d'impression et le
+   * panier empilent dans cet ordre.
+   */
   position: z.number().int().nonnegative().default(0),
   /** Positions normalisées 0..1 (indépendantes du format), optionnelles. */
   x: z.number().optional(),
@@ -190,11 +196,12 @@ export const CURRENT_CONFIG_VERSION = 1 as const;
  * la SIGNE en dernière couche ; une affiche vendue telle quelle s'imprime
  * depuis le visuel de sa fiche, sans rien poser dessus.
  *
- * La même condition, mot pour mot, qu'`apps/api/src/fichiers-impression.ts`
- * (`composee`). Elle vit ici parce que les aperçus de la boutique doivent
- * poser la signature exactement là où le fichier d'impression la pose : une
- * vignette signée pour une affiche prête à imprimer mentirait sur ce qui part
- * à l'atelier.
+ * C'est elle que lit le fichier d'impression (apps/api/src/
+ * fichiers-impression.ts, planDImpression). Elle a vécu en deux exemplaires,
+ * l'un ici pour les aperçus de la boutique — qui posaient la signature là où
+ * l'impression la posait —, l'autre recopié dans l'API. Les aperçus ne
+ * signent plus (la signature est réservée au papier), mais la règle reste
+ * ici, en un seul exemplaire.
  */
 export function afficheComposee(config: PosterConfig | null | undefined): boolean {
   if (!config) return false;

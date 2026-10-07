@@ -45,6 +45,7 @@ import type { BlocPage } from "./db/schema.js";
 import { ordreDesCollections } from "./collections.js";
 import { menuSuitLOrdre } from "./menu-ordre.js";
 import { languesDeLaPage } from "./referencement.js";
+import { dimensionsDuVisuel } from "./dimensions-visuels.js";
 
 /**
  * L'ordre des pages, partout où elles se listent : celles que la boutique a
@@ -817,17 +818,33 @@ async function produitsDuBloc(
  * Les rangées d'une même page ne se doivent rien : les attendre l'une après
  * l'autre mettrait bout à bout les allers-retours de chacune, sur une route que
  * traverse chaque visiteuse.
+ *
+ * Une image reçoit sa largeur et sa hauteur réelles quand on sait les lire
+ * (dimensions-visuels.ts) : le site réserve sa place avant qu'elle n'arrive —
+ * sans elles, le texte qui suit sautait au moment où l'image se chargeait —
+ * et ne propose au navigateur que des tailles qui existent. Une image venue
+ * d'un autre site n'en reçoit pas : elle s'affiche comme avant.
  */
 async function resoudreBlocs(
   blocs: BlocPage[],
   langue: string,
-): Promise<(BlocPage | (BlocPage & { produits: ProduitDeBloc[] }))[]> {
+): Promise<
+  (
+    | BlocPage
+    | (BlocPage & { produits: ProduitDeBloc[] })
+    | (BlocPage & { largeur: number; hauteur: number })
+  )[]
+> {
   return Promise.all(
-    blocs.map(async (bloc) =>
-      bloc.type === "produits"
-        ? { ...bloc, produits: await produitsDuBloc(bloc, langue) }
-        : bloc,
-    ),
+    blocs.map(async (bloc) => {
+      if (bloc.type === "produits")
+        return { ...bloc, produits: await produitsDuBloc(bloc, langue) };
+      if (bloc.type === "image") {
+        const dimensions = await dimensionsDuVisuel(bloc.url);
+        return dimensions ? { ...bloc, ...dimensions } : bloc;
+      }
+      return bloc;
+    }),
   );
 }
 

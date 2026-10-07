@@ -39,7 +39,11 @@
 import { defineMiddleware } from "astro:middleware";
 import { api } from "./lib/api.ts";
 import { apiInterne } from "./lib/api-interne.ts";
-import { destinationAncienne, type Destination } from "./lib/anciennes-adresses.ts";
+import {
+  destinationAncienne,
+  imageAncienne,
+  type Destination,
+} from "./lib/anciennes-adresses.ts";
 import { planDuSite } from "./lib/referencement.ts";
 
 /**
@@ -211,6 +215,22 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // qui le lit ensuite n'aurait aucun moyen de savoir que la question n'a
   // simplement pas été posée.
   context.locals.stand = false;
+
+  // Les images de memoryline.fr (/cdn/shop/files/…) mènent au même visuel
+  // du nouveau site (anciennes-adresses.ts, imageAncienne). Traitées à part :
+  // ce sont des fichiers, que la règle suivante laisse passer, et elles n'ont
+  // ni préfixe de langue ni paramètre de campagne à garder.
+  const ancienneImage = /^\/cdn\/shop\/files\/([^/]+)$/.exec(brut);
+  if (ancienneImage && (context.request.method === "GET" || context.request.method === "HEAD")) {
+    let nom: string | null = null;
+    try {
+      nom = decodeURIComponent(ancienneImage[1]!);
+    } catch {
+      // Un %XX mal formé : aucune image ne porte ce nom.
+    }
+    const vers = nom ? await imageAncienne(nom, () => planDuSite().catch(() => null)) : null;
+    if (vers) return context.redirect(vers, 301);
+  }
 
   // Les fichiers et les routes internes ne se redirigent pas — sauf les
   // anciens plans du site (sitemap-index.xml, sitemap_products_1.xml…), que

@@ -46,10 +46,6 @@ import {
   TYPES_PHOTO,
   type EchecIA,
 } from "../lib/ia.ts";
-import {
-  SignatureCreation,
-  type SignatureApercu,
-} from "@memoryline/configurator";
 import RelaisPhoto from "./RelaisPhoto.tsx";
 
 /**
@@ -84,18 +80,6 @@ export interface AfficheIAProps {
    * sous la main, dans l'appareil qui affiche la page.
    */
   stand?: boolean;
-  /**
-   * La signature de la boutique, posée en bas à droite de la création.
-   *
-   * Une affiche tirée d'une photo est une création comme une autre : son
-   * fichier d'impression est signé (apps/api/src/pdf.ts, `signaturePosee`,
-   * atteint par `configAImprimer` qui remplace la photo par l'image pleine
-   * définition). L'aperçu la montre donc aussi — et au même endroit.
-   *
-   * Le filigrane de /ia/apercu, lui, est CUIT dans les pixels de l'image :
-   * c'est la seule marque qui n'est pas posée ici.
-   */
-  signature?: SignatureApercu | null;
 }
 
 /** Étapes du parcours, dans l'ordre où le client les traverse. */
@@ -437,7 +421,6 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    */
   const CLES_POLICES: Record<string, CleUi> = {
     serif: "cfg.police.serif",
-    spartan: "cfg.police.spartan",
     shabby: "cfg.police.shabby",
   };
   const CLES_COULEURS: Record<string, CleUi> = {
@@ -1024,16 +1007,9 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               </div>
             </Show>
 
-            {/* La signature de la boutique, en bas à droite — la même que
-                celle du fichier d'impression, au même endroit.
-
-                Seulement quand une affiche est là : une photo en attente ou
-                un cadre vide ne s'imprimeront jamais. Et pas pendant la
-                création, où le voile ci-dessous couvre l'affiche — la
-                signature y flotterait au-dessus de « Création en cours ». */}
-            <Show when={apercu() && !occupe()}>
-              <SignatureCreation signature={props.signature} />
-            </Show>
+            {/* Pas de signature de la boutique sur l'aperçu : comme pour
+                toutes les créations, elle n'est posée que sur le fichier
+                d'impression (apps/api/src/pdf.ts, signaturePosee). */}
 
             <Show when={occupe()}>
               <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-paper/70 p-6 text-center">
@@ -1081,12 +1057,6 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                           style={{ "aspect-ratio": c.sens === "paysage" ? "1.4142 / 1" : "1 / 1.4142" }}
                         >
                           <img src={c.apercu} alt="" loading="lazy" class="h-full w-full object-contain" />
-                          {/* Signée elle aussi : ces vignettes sont les
-                              créations de la séance, et l'on en met
-                              plusieurs au panier d'un même geste au stand.
-                              Une seule d'entre elles qui ne serait pas
-                              signée ferait croire à une différence. */}
-                          <SignatureCreation signature={props.signature} />
                         </button>
                         <label class="mt-1 flex cursor-pointer items-center gap-1.5 text-xs">
                           <input
@@ -1364,13 +1334,13 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                 <label class="block text-sm">
                   <span class="font-medium">{tr(CLES_LIGNES[rang]!.champ)}</span>
                   {/* Une zone de texte : la touche Entrée coupe la ligne,
-                      trois morceaux au plus, comme au configurateur. */}
+                      trois morceaux au plus, comme au configurateur — qui
+                      ne l'écrit plus sous les champs, ici non plus. */}
                   <textarea
                     rows={Math.min(MORCEAUX_PAR_LIGNE, ligne().value.split("\n").length)}
                     value={ligne().value}
                     maxLength={60}
                     placeholder={tr(CLES_LIGNES[rang]!.exemple)}
-                    aria-describedby="ml-ia-aide-retour-ligne"
                     onInput={(e) => saisirLigne(rang, e.currentTarget)}
                     class="mt-1 w-full resize-none border border-ink/20 bg-paper px-3 py-2 text-sm leading-snug focus:border-ink focus:outline-none"
                   />
@@ -1396,9 +1366,6 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                 </label>
               )}
             </Index>
-            <p id="ml-ia-aide-retour-ligne" class="-mt-1 text-xs text-ink/60">
-              {tr("cfg.aide_retour_ligne")}
-            </p>
 
             <div>
               <p class="text-sm font-medium">{tr("cfg.couleur_texte")}</p>

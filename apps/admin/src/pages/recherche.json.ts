@@ -7,10 +7,10 @@
  * back-office ajoute à la réponse de l'API ses écrans et son aide
  * (lib/recherche-bo.ts).
  *
- * Sans session, le middleware renvoie vers /login avant d'arriver ici ; un
- * vendeur, lui, est renvoyé vers son stand. Le refus ci-dessous redit la règle
- * au cas où l'une de ces gardes changerait : cette réponse contient des noms
- * de clientes et des montants.
+ * Sans session, le middleware renvoie vers /login avant d'arriver ici. Un
+ * vendeur, lui, arrive bien ici (le middleware laisse passer ce point
+ * d'accès) et reçoit le refus ci-dessous, en JSON, comme le contrat le
+ * prévoit : cette réponse contient des noms de clientes et des montants.
  */
 import type { APIRoute } from "astro";
 import { lireGroupes, lireLimite, rechercher } from "../lib/recherche-bo.ts";

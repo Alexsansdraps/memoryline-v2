@@ -6,5 +6,9 @@
     "moduleResolution": "Bundler",
     "allowImportingTsExtensions": true
   },
-  "include": ["src", "scripts", "drizzle.config.ts"]
+  "include": ["src", "scripts", "drizzle.config.ts"],
+  // Les scripts jetables des agents (scripts/tmp-*.ts, ignorés par Git) ne
+  // font pas partie du code : l'un d'eux, qui lisait un fichier du
+  // back-office, faisait échouer toute la vérification des types de l'API.
+  "exclude": ["scripts/tmp-*"]
 }

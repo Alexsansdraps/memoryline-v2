@@ -21,9 +21,17 @@
  */
 import { asc, eq, inArray, sql as raw } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
-import { chiffresTelephone, compacter, motsDe, type Requete } from "@memoryline/types/recherche";
+import {
+  chiffresTelephone,
+  compacter,
+  evaluer,
+  motsDe,
+  type JetonRequete,
+  type Requete,
+} from "@memoryline/types/recherche";
 import { db, schema } from "./db/client.js";
 import { HORS_VENTES } from "./statuts-vente.js";
+import { LIBELLE_FINANCIER, statutFinancier } from "./commandes.js";
 import {
   ancienNumero,
   chiffres,
@@ -31,9 +39,11 @@ import {
   motif,
   motifNumeroCommande,
   motifsFacture,
+  pertinence,
   plat,
 } from "./recherche-sql.js";
 import {
+  NATURES_DES_SOURCES,
   cibleCodeCarte,
   ficheCarte,
   ficheClient,
@@ -87,6 +97,38 @@ function telephoneSaisi(saisie: string): string | null {
   return c.length >= 4 ? c : null;
 }
 
+/**
+ * Les mots de la saisie qui peuvent tomber dans le champ NEUTRE des fiches
+ * d'une source — ce qu'elles SONT (« cliente » dans « cliente mulhouse ») :
+ * la base, qui ne voit pas ce champ, ne doit pas les exiger (voir
+ * conditionRequete). Jugé par `evaluer` lui-même, sur le texte des natures :
+ * exactement la règle du JavaScript, préfixes, singulier et fautes compris.
+ */
+function facultatifs(requete: Requete, natures: string): Set<JetonRequete> {
+  const champ = [{ texte: natures, poids: 1 }];
+  const sortie = new Set<JetonRequete>();
+  for (const j of requete.jetons)
+    if (evaluer(champ, { ...requete, plat: "", jetons: [j] })) sortie.add(j);
+  return sortie;
+}
+
+/**
+ * La saisie sans le mot qui dit ce qu'on cherche, pour les chemins des
+ * numéros : « commande WEB-0013 », « facture F2026-0001 », « panier
+ * WEB-0010 » se lisent comme le numéro seul.
+ */
+function sansMotDeNature(saisie: string): string {
+  return saisie
+    .trim()
+    // Le mot doit être SUIVI d'une espace ou de deux-points : « Noël » ne
+    // perd pas son « no ».
+    .replace(
+      /^(?:(?:la|le|ma|une?)\s+)?(?:(?:commandes?|ventes?(?:\s+de\s+stand)?|factures?|paniers?|cartes?(?:\s+cadeaux?)?|num[ée]ro|no\.?)(?:\s*:\s*|\s+)|n°\s*)/i,
+      "",
+    )
+    .trim();
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Les documents du préfiltre                                                */
 /* -------------------------------------------------------------------------- */
@@ -116,23 +158,70 @@ function etiquettes(colonne: SQL): SQL {
   return raw`(select string_agg(t, ' ') from jsonb_array_elements_text(case when jsonb_typeof(${colonne}) = 'array' then ${colonne} else '[]'::jsonb end) t)`;
 }
 
+/*
+ * Ce que la fiche d'une commande cherche sans que ce soit une colonne : le
+ * statut, la date et le montant, écrits comme la liste les écrit. La base
+ * doit en garder AU MOINS autant que le JavaScript (ficheCommande) : le
+ * statut d'une commande payée porte donc aussi ceux d'un remboursement, que
+ * seuls les mouvements départagent, et le montant ses deux écritures.
+ */
+
+/** Le statut, en mots (LIBELLE_FINANCIER, commandes.ts). */
+const STATUT_COMMANDE = raw`(case o.status
+  when 'cancelled' then 'annulée' when 'voided' then 'annulée' when 'draft' then 'panier'
+  when 'paid' then 'payée remboursée en partie' when 'authorized' then 'autorisée'
+  else 'en attente' end)`;
+
+const MOIS = [
+  "janvier", "février", "mars", "avril", "mai", "juin",
+  "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+];
+
+/** « 06/10/2026 6 octobre 2026 », à l'heure de Paris, comme dateCherchable. */
+const DATE_COMMANDE = raw`(to_char(o.created_at at time zone 'Europe/Paris', 'DD/MM/YYYY')
+  || ' ' || extract(day from o.created_at at time zone 'Europe/Paris')::int
+  || ' ' || (${`{${MOIS.join(",")}}`}::text[])[extract(month from o.created_at at time zone 'Europe/Paris')::int]
+  || ' ' || extract(year from o.created_at at time zone 'Europe/Paris')::int)`;
+
+/** « 49 90 » pour 49,90 € : les euros, puis les centimes. */
+const MONTANT_COMMANDE = raw`((o.total_cents / 100)::text || ' ' || lpad((abs(o.total_cents) % 100)::text, 2, '0'))`;
+
+/** Le transporteur du mode choisi (« colissimo »), lu par le slug que la commande a figé. */
+const TRANSPORTEUR_DU_MODE = raw`(select sm.carrier from shipping_method sm where sm.slug = o.shipping_method limit 1)`;
+
 const DOC_COMMANDE = raw`concat_ws(' ',
   o.number, o.invoice_number, o.legacy_name,
   o.shipping_name, o.shipping_line1, o.shipping_line2, o.shipping_postal_code,
   o.shipping_city, o.shipping_country, o.relay_point_label,
+  o.shipping_label, o.shipping_description, ${TRANSPORTEUR_DU_MODE},
   o.internal_note, o.promo_code, o.cancel_reason,
+  ${STATUT_COMMANDE}, ${DATE_COMMANDE}, ${MONTANT_COMMANDE},
   ${etiquettes(raw`o.tags`)},
   c.name, c.email, s.nom,
   ${TEXTES_DES_AFFICHES},
-  (select string_agg(e.message, ' ') from order_event e where e.order_id = o.id),
+  (select string_agg(concat_ws(' ', e.message, e.author), ' ') from order_event e where e.order_id = o.id),
   (select string_agg(f.carrier, ' ') from fulfillment f where f.order_id = o.id),
   (select string_agg(b.methode_nom, ' ') from bordereau b where b.order_id = o.id),
   (select string_agg(concat_ws(' ', r.reason, r.note), ' ') from refund r where r.order_id = o.id))`;
 
-/** Un panier : jamais son numéro (« DRAFT- » et un uuid plein de chiffres). */
+/**
+ * Un panier : son numéro seulement s'il en a un vrai (« WEB-0010 ») — un
+ * « DRAFT- » et son uuid plein de chiffres répondrait à n'importe quel nombre.
+ */
 const DOC_PANIER = raw`concat_ws(' ',
+  case when o.number not like 'DRAFT-%' then o.number end,
   c.name, c.email, o.shipping_name, o.shipping_city, o.shipping_postal_code,
   o.internal_note, ${TEXTES_DES_AFFICHES})`;
+
+/**
+ * Les paniers qu'on cherche : ceux qui disent À QUI ils sont — une cliente,
+ * un nom de livraison ou une note. Un brouillon naît à chaque visite du
+ * configurateur et n'est jamais purgé : sans cette borne, chaque frappe
+ * aplatirait des milliers de paniers anonymes, que l'écran des paniers
+ * abandonnés ne montre de toute façon pas (il exige une cliente joignable).
+ */
+const PANIERS_CHERCHES = raw`o.status = 'draft' and (o.customer_id is not null
+  or o.shipping_name is not null or o.internal_note is not null)`;
 
 /**
  * Les candidats d'après le texte, commandes ou paniers. `materialized` :
@@ -144,17 +233,18 @@ async function candidatsCommandes(
   paniers: boolean,
 ): Promise<{ ids: number[]; plafonne: boolean }> {
   if (!requete.jetons.length) return { ids: [], plafonne: false };
+  const natures = facultatifs(requete, paniers ? NATURES_DES_SOURCES.paniers : NATURES_DES_SOURCES.commandes);
   const trouves = await lignes<{ id: number }>(raw`
     with docs as materialized (
       select o.id, o.created_at, ${plat(paniers ? DOC_PANIER : DOC_COMMANDE)} as doc
       from "order" o
       left join customer c on c.id = o.customer_id
       left join stand s on s.id = o.stand_id
-      where ${paniers ? raw`o.status = 'draft'` : raw`o.status <> 'draft'`}
+      where ${paniers ? PANIERS_CHERCHES : raw`o.status <> 'draft'`}
     )
     select id from docs
-    where ${conditionRequete([raw`doc`], requete.jetons)}
-    order by created_at desc, id desc
+    where ${conditionRequete([raw`doc`], requete.jetons, natures)}
+    order by ${pertinence(raw`doc`, requete.plat)}, created_at desc, id desc
     limit ${PLAFOND_CANDIDATS + 1}`);
   const { liste, plafonne } = plafonner(trouves);
   return { ids: liste.map((l) => l.id), plafonne };
@@ -197,6 +287,26 @@ async function parNumeros(compacte: string): Promise<
       case when ${surAncien} then o.legacy_name end as ancien
     from "order" o
     where o.status <> 'draft' and (${raw.join(conditions, raw` or `)})
+    order by o.created_at desc limit ${PLAFOND_CANDIDATS}`);
+}
+
+/**
+ * Les numéros d'un PANIER : un vrai numéro (« WEB-0010 », que l'écran des
+ * paniers affiche, lu comme celui d'une commande), ou un numéro provisoire
+ * collé depuis cet écran (« DRAFT-1a2b3c4d-… », quatre signes au moins après
+ * le tiret). Sans la borne des paniers cherchés : un numéro collé désigne un
+ * panier précis, quel qu'il soit.
+ */
+async function parNumerosPanier(
+  compacte: string,
+  saisie: string,
+): Promise<{ id: number; number: string }[]> {
+  const numero = motifNumeroCommande(compacte);
+  const provisoire = /^draft-[0-9a-f-]{4,}$/i.test(saisie) ? saisie.toLowerCase() : null;
+  if (!numero && !provisoire) return [];
+  return lignes(raw`select o.id, o.number from "order" o
+    where o.status = 'draft' and (${numero ? raw`o.number ~ ${numero}` : raw`false`}
+      or ${provisoire ? raw`lower(o.number) like ${`${motif(provisoire)}%`} escape '\\'` : raw`false`})
     order by o.created_at desc limit ${PLAFOND_CANDIDATS}`);
 }
 
@@ -295,10 +405,19 @@ async function detailsCommandes(
       tags: o.tags,
       promoCode: o.promoCode,
       cancelReason: o.cancelReason,
+      shippingLabel: o.shippingLabel,
+      shippingDescription: o.shippingDescription,
+      transporteurDuMode: raw<string | null>`(select sm.carrier from shipping_method sm
+        where sm.slug = "order"."shipping_method" limit 1)`,
       clientNom: schema.customers.name,
       clientEmail: schema.customers.email,
       // Le NOM du stand ; son code n'est pas dans la projection.
       standNom: schema.stands.nom,
+      // Ce qui a été remboursé, pour écrire le statut comme la liste.
+      rembourseCents: raw<number>`${paniers ? raw`0` : raw`(select coalesce(sum(r.amount_cents), 0)::int
+        from refund r where r.order_id = "order"."id")`}`,
+      auteurs: raw<unknown>`${filles(raw`coalesce((select json_agg(distinct e.author)
+        from order_event e where e.order_id = "order"."id" and e.author is not null), '[]'::json)`)}`,
       // Les textes d'une affiche, par leurs seuls chemins connus.
       articles: raw<unknown>`coalesce((select json_agg(json_build_object(
           'title', oi.title,
@@ -324,18 +443,24 @@ async function detailsCommandes(
     .where(inArray(o.id, ids));
 
   const commandes: LigneCommande[] = [];
-  for (const { articles, journal, transporteurs, remboursements, ...commande } of lignesLues) {
-    commandes.push(commande);
+  const textes = (v: unknown): string[] =>
+    tableau<unknown>(v).filter((m): m is string => typeof m === "string");
+  for (const { articles, journal, transporteurs, remboursements, auteurs, rembourseCents, ...commande } of lignesLues) {
+    commandes.push({
+      ...commande,
+      // Le statut comme la liste l'écrit (« Payée », « Remboursée en
+      // partie »…) : déduit, jamais stocké (commandes.ts).
+      statutLibelle: LIBELLE_FINANCIER[statutFinancier(commande, Number(rembourseCents) || 0)],
+    });
     enfants.set(commande.id, {
       articles: tableau<Omit<ArticleCommande, "orderId">>(articles).map((a) => ({
         ...a,
         orderId: commande.id,
       })),
-      journal: tableau<unknown>(journal).filter((m): m is string => typeof m === "string"),
-      transporteurs: tableau<unknown>(transporteurs).filter((m): m is string => typeof m === "string"),
-      remboursements: tableau<unknown>(remboursements).filter(
-        (m): m is string => typeof m === "string",
-      ),
+      journal: textes(journal),
+      transporteurs: textes(transporteurs),
+      remboursements: textes(remboursements),
+      auteurs: textes(auteurs),
     });
   }
   // Les plus récentes d'abord, comme la liste des commandes.
@@ -352,7 +477,7 @@ async function detailsCommandes(
  * cherche aussi pour comprendre une annulation). Les paniers sont à part.
  */
 export async function chercherCommandes(requete: Requete): Promise<ResultatSource> {
-  const compacte = compacter(requete.saisie);
+  const compacte = compacter(sansMotDeNature(requete.saisie));
   const tel = telephoneSaisi(requete.saisie);
   const [texte, numeros, telephones, references] = await Promise.all([
     candidatsCommandes(requete, false),
@@ -416,13 +541,29 @@ export async function chercherCommandes(requete: Requete): Promise<ResultatSourc
   return { trouvailles, plafonne: texte.plafonne };
 }
 
-/** Les paniers abandonnés : par le texte seulement, jamais par numéro. */
+/**
+ * Les paniers abandonnés : par le texte, et par leur numéro quand l'écran
+ * des paniers en affiche un (« WEB-0010 », ou le « DRAFT-… » collé en entier).
+ */
 export async function chercherPaniers(requete: Requete): Promise<ResultatSource> {
-  const texte = await candidatsCommandes(requete, true);
-  const { commandes, enfants } = await detailsCommandes(texte.ids, true);
+  const saisie = sansMotDeNature(requete.saisie);
+  const [texte, numeros] = await Promise.all([
+    candidatsCommandes(requete, true),
+    parNumerosPanier(compacter(saisie), saisie),
+  ]);
+  const imposes = new Map<number, Impose>();
+  for (const n of numeros)
+    retenir(imposes, n.id, {
+      rang: 0,
+      libelle: "Numéro",
+      texte: n.number,
+      cible: { chemin: `/commandes/${n.id}`, trouver: false },
+    });
+  const ids = [...new Set([...texte.ids, ...imposes.keys()])];
+  const { commandes, enfants } = await detailsCommandes(ids, true);
   const trouvailles: Trouvaille[] = [];
   commandes.forEach((c, ordre) => {
-    const t = versResultat(fichePanier(c, enfants.get(c.id)?.articles ?? [], ordre), requete);
+    const t = versResultat(fichePanier(c, enfants.get(c.id)?.articles ?? [], ordre), requete, imposes.get(c.id));
     if (t) trouvailles.push(t);
   });
   return { trouvailles, plafonne: texte.plafonne };
@@ -449,8 +590,8 @@ export async function chercherClients(requete: Requete): Promise<ResultatSource>
             select c.id, c.name, ${plat(DOC_CLIENT)} as doc from customer c
           )
           select id from docs
-          where ${conditionRequete([raw`doc`], requete.jetons)}
-          order by name asc nulls last, id desc
+          where ${conditionRequete([raw`doc`], requete.jetons, facultatifs(requete, NATURES_DES_SOURCES.clients))}
+          order by ${pertinence(raw`doc`, requete.plat)}, name asc nulls last, id desc
           limit ${PLAFOND_CANDIDATS + 1}`)
       : Promise.resolve([] as { id: number }[]),
     tel
@@ -467,9 +608,16 @@ export async function chercherClients(requete: Requete): Promise<ResultatSource>
           .select({ id: schema.newsletterSubscribers.id, email: schema.newsletterSubscribers.email })
           .from(schema.newsletterSubscribers)
           .where(
-            conditionRequete([plat(raw`${schema.newsletterSubscribers.email}`)], requete.jetons),
+            conditionRequete(
+              [plat(raw`${schema.newsletterSubscribers.email}`)],
+              requete.jetons,
+              facultatifs(requete, NATURES_DES_SOURCES.inscrits),
+            ),
           )
-          .orderBy(asc(schema.newsletterSubscribers.email))
+          .orderBy(
+            pertinence(plat(raw`${schema.newsletterSubscribers.email}`), requete.plat),
+            asc(schema.newsletterSubscribers.email),
+          )
           .limit(PLAFOND_CANDIDATS + 1)
       : Promise.resolve([] as { id: number; email: string }[]),
   ]);
@@ -565,7 +713,7 @@ const DOC_CARTE = raw`concat_ws(' ', g.code, g.note, c.name,
  * note, l'historique, le nom de la cliente.
  */
 export async function chercherCartes(requete: Requete): Promise<ResultatSource> {
-  const compacte = compacter(requete.saisie);
+  const compacte = compacter(sansMotDeNature(requete.saisie));
   // Deux caractères : seulement en début de code. Au milieu, il en faut
   // trois — deux lettres se trouvent dans presque n'importe quel code.
   const motifCode =
@@ -582,8 +730,8 @@ export async function chercherCartes(requete: Requete): Promise<ResultatSource> 
             from gift_card g left join customer c on c.id = g.customer_id
           )
           select id from docs
-          where ${conditionRequete([raw`doc`], requete.jetons)}
-          order by created_at desc, id desc
+          where ${conditionRequete([raw`doc`], requete.jetons, facultatifs(requete, NATURES_DES_SOURCES.cartes))}
+          order by ${pertinence(raw`doc`, requete.plat)}, created_at desc, id desc
           limit ${PLAFOND_CANDIDATS + 1}`)
       : Promise.resolve([] as { id: number }[]),
     motifCode
@@ -648,16 +796,17 @@ export async function chercherCartes(requete: Requete): Promise<ResultatSource> 
 
 /** Cinq minutes, comme le corpus : une nouvelle cliente se corrige vite. */
 const DUREE_VOCABULAIRE = 5 * 60 * 1000;
-let vocabulaire: { mots: Set<string>; le: number } | null = null;
-let lectureVocabulaire: Promise<Set<string>> | null = null;
+let vocabulaire: { mots: Map<string, number>; le: number } | null = null;
+let lectureVocabulaire: Promise<Map<string, number>> | null = null;
 
 /**
  * Les mots connus des commandes et des clientes : noms, villes, titres
- * d'articles, notes et journaux. Sans eux, un nom de famille tapé juste —
- * mais absent du catalogue — passerait pour une faute de frappe, et la
- * recherche proposerait « Dupond » à qui cherche « Dupont ».
+ * d'articles, notes et journaux, avec le nombre de textes où chacun figure.
+ * Sans eux, un nom de famille tapé juste — mais absent du catalogue —
+ * passerait pour une faute de frappe, et la recherche proposerait « Dupond »
+ * à qui cherche « Dupont ».
  */
-export function vocabulaireDirect(): Promise<Set<string>> {
+export function vocabulaireDirect(): Promise<Map<string, number>> {
   if (vocabulaire && Date.now() - vocabulaire.le < DUREE_VOCABULAIRE)
     return Promise.resolve(vocabulaire.mots);
   if (lectureVocabulaire) return lectureVocabulaire;
@@ -673,6 +822,7 @@ export function vocabulaireDirect(): Promise<Set<string>> {
         union all select shipping_line1 from "order"
         union all select relay_point_label from "order"
         union all select internal_note from "order"
+        union all select shipping_label from "order"
         union all select city from customer_address
         union all select title from order_item
         union all select message from order_event
@@ -680,8 +830,12 @@ export function vocabulaireDirect(): Promise<Set<string>> {
       ) x
       where v is not null`)
     .then((valeurs) => {
-      const mots = new Set<string>();
-      for (const { v } of valeurs) for (const m of motsDe(v)) mots.add(m);
+      const mots = new Map<string, number>();
+      // Les statuts et les mois que les fiches des commandes cherchent
+      // (ficheCommande) : « annulée » ou « octobre » ne sont pas des fautes.
+      const fixes = [...Object.values(LIBELLE_FINANCIER), ...MOIS].map((v) => ({ v }));
+      for (const { v } of [...valeurs, ...fixes])
+        for (const m of motsDe(v)) mots.set(m, (mots.get(m) ?? 0) + 1);
       vocabulaire = { mots, le: Date.now() };
       return mots;
     })

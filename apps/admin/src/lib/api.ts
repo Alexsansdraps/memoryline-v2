@@ -1597,16 +1597,23 @@ export function adminApi(request?: Request) {
      * La recherche du haut, côté DONNÉES (GET /admin/recherche) : affiches,
      * commandes, clientes, textes du site… Les écrans et l'aide viennent du
      * back-office lui-même ; c'est lib/recherche-bo.ts qui réunit les deux.
-     * Sans `groupes`, l'API cherche partout.
+     * Sans `groupes`, l'API cherche partout. `connus` : les mots tapés que les
+     * écrans connaissent, que l'API ne doit donc pas corriger.
      */
-    recherche: (p: { q: string; groupes?: readonly GroupeId[]; limite?: number }) =>
+    recherche: (p: {
+      q: string;
+      groupes?: readonly GroupeId[];
+      limite?: number;
+      connus?: readonly string[];
+    }) =>
       req<ReponseRecherche>(
         "GET",
         "/admin/recherche?q=" +
           encodeURIComponent(p.q) +
           (p.groupes ? "&groupes=" + p.groupes.join(",") : "") +
           "&limite=" +
-          (p.limite ?? RECHERCHE_LIMITE_PANNEAU),
+          (p.limite ?? RECHERCHE_LIMITE_PANNEAU) +
+          (p.connus?.length ? "&connus=" + encodeURIComponent(p.connus.join(",")) : ""),
         undefined,
         cookie,
       ),

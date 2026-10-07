@@ -2,7 +2,6 @@
 import Base from "../../layouts/Base.astro";
 import { titreDePage } from "../../lib/textes-seo.ts";
 import CartIsland from "../../islands/CartIsland.tsx";
-import { signatureDesCreations } from "../../lib/signature.ts";
 import {
   estLangue,
   langueDepuisParam,
@@ -29,15 +28,6 @@ if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
 const langue: Langue = langueDepuisParam(Astro.params.lang);
 const tr = t(langue);
 const auStand = Astro.locals.stand;
-
-/*
- * La signature de la boutique, pour les vignettes du panier.
- *
- * Lue ici, sur le serveur, et passée à l'îlot : c'est le réglage qui pilote
- * aussi le fichier d'impression, et le panier doit montrer l'affiche telle
- * qu'elle s'imprimera.
- */
-const signature = await signatureDesCreations();
 ---
 
 <Base
@@ -75,7 +65,6 @@ const signature = await signatureDesCreations();
       client:only="solid-js"
       langue={langue}
       stand={auStand}
-      signature={signature}
     />
   </section>
 </Base>

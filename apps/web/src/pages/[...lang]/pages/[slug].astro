@@ -18,7 +18,7 @@
 import Base from "../../../layouts/Base.astro";
 import BandeauxVisuels from "../../../components/BandeauxVisuels.astro";
 import VignetteAffiche from "../../../components/VignetteAffiche.astro";
-import { api, assetUrl, codeErreurApi, type PageCms } from "../../../lib/api.ts";
+import { api, assetSrcset, assetUrl, codeErreurApi, type PageCms } from "../../../lib/api.ts";
 import { pageLibre } from "@memoryline/types";
 import {
   grilleProduits,
@@ -127,8 +127,12 @@ const premierTexte = languesDuContenu(page.languesTraduites).includes(langue)
         .join(" "),
     )
   : "";
+// La description SEO saisie passe elle aussi par la coupe à 155 caractères :
+// celle que Shopify générait pour ses pages (reprise telle quelle pour
+// « Affiches personnalisables ») fait 321 caractères, coupée en plein mot.
+// Une description qui tient dans la limite passe intacte.
 const descriptionPage =
-  texteBrut(page.seoDescription) || descriptionMeta(premierTexte) || undefined;
+  descriptionMeta(page.seoDescription) || descriptionMeta(premierTexte) || undefined;
 ---
 
 <Base
@@ -175,7 +179,7 @@ const descriptionPage =
     </div>
 
     {
-      page.blocks.map((bloc) => {
+      page.blocks.map((bloc, rang) => {
         if (bloc.type === "titre") {
           const texte = String(bloc.texte ?? "");
           return bloc.niveau === 3 ? (
@@ -195,16 +199,43 @@ const descriptionPage =
         }
 
         if (bloc.type === "image") {
-          const src = assetUrl(String(bloc.url ?? ""));
+          /*
+           * L'image servie à la taille de la colonne, comme partout ailleurs
+           * sur le site : c'était l'original, jusqu'à un mégaoctet et demi,
+           * même sur un téléphone. La colonne fait 1000 px au plus, moins
+           * ses marges (24 px de chaque côté, 48 dès 1024 px d'écran).
+           *
+           * Ses dimensions réelles viennent de l'API (dimensions-visuels.ts) :
+           * la place est réservée avant que l'image arrive. Sans elles, une
+           * image chargée au fil du défilement faisait sauter le texte qui la
+           * suit — un décalage que Google compte (CLS). Une image venue
+           * d'un autre site n'en a pas : elle s'affiche en entier, comme
+           * avant.
+           */
+          const url = String(bloc.url ?? "");
+          const src = assetUrl(url, 1400);
           if (!src) return null;
+          const mesuree = typeof bloc.largeur === "number" && typeof bloc.hauteur === "number";
+          const largeur = mesuree ? Number(bloc.largeur) : undefined;
+          const hauteur = mesuree ? Number(bloc.hauteur) : undefined;
+          const jeu = assetSrcset(url, [600, 900, 1400], largeur);
           const legende = String(bloc.legende ?? "");
           return (
             <figure class="mt-10">
               <img
                 src={src}
+                srcset={jeu}
+                sizes={
+                  jeu
+                    ? "(min-width: 1024px) 904px, (min-width: 1000px) 952px, calc(100vw - 48px)"
+                    : undefined
+                }
+                width={largeur}
+                height={hauteur}
                 alt={String(bloc.alt ?? "")}
                 loading="lazy"
-                class="w-full rounded-lg"
+                decoding="async"
+                class="h-auto w-full rounded-lg"
               />
               {legende && (
                 <figcaption class="mt-2 text-sm text-ink-soft">
@@ -231,6 +262,16 @@ const descriptionPage =
         if (bloc.type === "produits") {
           const produits = Array.isArray(bloc.produits) ? bloc.produits : [];
           if (!produits.length) return null;
+          // Le nom de chaque affiche se range sous l'intertitre qui précède
+          // la rangée (h3) ; sans intertitre au-dessus, directement sous le
+          // titre de la page (h2) — un h3 sans h2 ferait sauter un niveau.
+          const intertitreAuDessus = page!.blocks
+            .slice(0, rang)
+            .some(
+              (b) =>
+                b.type === "titre" ||
+                (b.type === "texte" && /<h2[\s>]/i.test(String(b.html ?? ""))),
+            );
           // Les gouttières des autres grilles du site (affiches.astro), et
           // leur nombre de colonnes : celui des pages du site, réglé au
           // back-office.
@@ -244,6 +285,7 @@ const descriptionPage =
                   affiche={enVignette(p)}
                   langue={langue}
                   sizes={sizesGrilleColonne(grille)}
+                  titre={intertitreAuDessus ? "h3" : "h2"}
                 />
               ))}
             </ul>

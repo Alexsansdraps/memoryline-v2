@@ -147,10 +147,22 @@ export function descriptionMeta(texte: string | null | undefined, max = DESCRIPT
  * idée cadeau… » —, restée dans le texte de la fiche et affichée telle quelle
  * aux clientes, ici comme sur memoryline.fr. Elle est toujours en fin de
  * texte, après un saut de ligne (`<br>`), et ne contient aucune balise.
+ *
+ * Son intitulé est aussi reconnu traduit (« SEO phrase », « SEO-Satz »,
+ * « Frase SEO ») : le bouton de traduction du back-office traduit la
+ * description entière, ligne de travail comprise, et la remettrait sinon
+ * sous les yeux des clientes de /en ou /de.
  */
-const PHRASE_SEO = /(?:<br\s*\/?>\s*)?Phrase SEO\s*:\s*([^<]*)/gi;
+const PHRASE_SEO =
+  /(?:<br\s*\/?>\s*)?(?:Phrase SEO|SEO[\s-]?(?:phrase|sentence|Satz)|Frase SEO)\s*:\s*([^<]*)/gi;
 
-/** La description sans sa ligne « Phrase SEO : … ». */
+/**
+ * La description sans sa ligne « Phrase SEO : … ».
+ *
+ * Le texte de la base n'est pas touché : c'est l'affichage qui l'omet. La
+ * boutique peut la retirer elle-même (modification en masse des produits),
+ * de préférence après l'avoir recopiée dans le champ « Description SEO ».
+ */
 export function sansPhraseSeo(html: string | null | undefined): string {
   return (html ?? "").replace(PHRASE_SEO, "");
 }

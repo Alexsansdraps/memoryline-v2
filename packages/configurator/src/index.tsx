@@ -30,6 +30,7 @@ import {
   emptyState,
   stateFromConfig,
   configFromState,
+  etalonDeLaVue,
   createConfiguratorStore,
   createSvgCache,
   defaultCharacter,
@@ -43,7 +44,6 @@ import {
   type WorkingCharacter,
 } from "./store";
 import { PosterPreview } from "./components/PosterPreview";
-import type { SignatureApercu } from "./components/SignatureCreation";
 import { StepBackgroundText } from "./components/StepBackgroundText";
 import { StepCharacters } from "./components/StepCharacters";
 import { StepFormat } from "./components/StepFormat";
@@ -90,12 +90,6 @@ export interface ConfiguratorProps {
    * fournit un dictionnaire déjà traduit, complété par le français.
    */
   messages?: Partial<MessagesConfigurateur>;
-  /**
-   * La signature de la boutique, posée sur l'aperçu comme sur le fichier
-   * d'impression (cf. SignatureCreation). Lue dans les réglages par la
-   * boutique : le paquet ne parle pas à l'API.
-   */
-  signature?: SignatureApercu | null;
   /** Cadres proposés en option. */
   cadres?: CadreDTO[];
   /**
@@ -274,26 +268,21 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     const target = STEPS[i - 1];
     if (target) goToStep(target);
   }
-  /** Bas réel du dessin d'un personnage, pour aligner ses pieds au sol. */
-  const basDuDessin = (c: WorkingCharacter): number =>
-    characterById(c.characterId)?.bottomPct ?? 1;
+  /**
+   * L'étalon de la composition : le plus grand personnage proposé pour ce
+   * type d'affiche. C'est à lui qu'elle mesure qui est petit (cf.
+   * etalonDeLaVue) ; l'aperçu et l'enregistrement lisent le même.
+   */
+  const etalon = createMemo(() => etalonDeLaVue(props.characters, state.view));
 
   function submit() {
-    // Le même calage qu'à l'écran part dans la commande : c'est ce x/y-là que
-    // le PDF d'impression relit, l'affiche imprimée ne peut donc pas différer
-    // de celle que le client a composée.
+    // La même composition qu'à l'écran part dans la commande — places, échelles
+    // (taille propre de chacun comprise), décalages du back-office et ordre de
+    // dessin : c'est ce que le PDF d'impression relit, sans rien recalculer.
+    // L'affiche imprimée ne peut donc pas différer de celle que le client a
+    // composée.
     props.onSubmit(
-      configFromState(
-        state,
-        props.product.id,
-        basDuDessin,
-        // La taille propre au personnage entre dans l'échelle enregistrée :
-        // le PDF relit ce chiffre-là et ne recalcule rien.
-        (c) => characterById(c.characterId)?.facteurTaille ?? 1,
-        // Le décalage réglé au back-office entre dans la position enregistrée :
-        // l'impression relit ce chiffre, elle ne recalcule rien.
-        (c) => characterById(c.characterId)?.decalageX ?? 0,
-      ),
+      configFromState(state, props.product.id, characterById, etalon()),
     );
   }
 
@@ -665,10 +654,11 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
           assetBaseUrl={props.assetBaseUrl}
           cadre={cadreChoisi() ?? null}
           messages={msg()}
-          signature={props.signature}
-          // On ne compose qu'ici, et seulement à l'étape des personnages :
-          // ailleurs, un glissement n'aurait aucun sens et l'affiche doit
-          // rester une image.
+          // Le seul aperçu qui compose : chaque ajout, retrait ou changement
+          // d'ordre replace tout le monde. Le panier et la commande dessinent
+          // ensuite les places que ce module aura enregistrées.
+          recomposer
+          etalon={etalon()}
         />
       </div>
       </Show>
@@ -684,23 +674,23 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
         }}
       >
         {/* Fil d'étapes.
-            Plus grand qu'à l'origine (retour cliente : « augmenter un peu la
-            taille des étapes ») : 15 px en gras au lieu de 12, 40 px de haut
-            — 44 sous le doigt, cf. global.css —, et un gris plus foncé sur
-            les étapes inactives, qui se lisaient mal. Chaque libellé tient
-            sur une ligne ; quand les trois ne tiennent pas côte à côte (une
-            langue aux mots longs), ils passent à la ligne entiers et
-            s'élargissent pour remplir la rangée, plutôt que de se couper au
-            milieu d'un mot ou de déborder du panneau. Sur un téléphone, la
-            feuille de style de l'hôte les resserre pour garder une seule
-            rangée (cf. global.css). */}
+            Toujours sur UNE rangée (retour cliente : « ça doit être que sur
+            une ligne, là trop gros »). Il avait été grossi à 15 px en gras
+            et 40 px de haut pour se lire mieux ; à cette taille, l'anglais,
+            l'allemand et l'italien passaient sur deux rangées dans la
+            colonne de 386 px d'un ordinateur. Juste milieu : 13 px en
+            demi-gras (12 px à l'origine), 32 px de haut, et le gris foncé
+            des étapes inactives, qui reste lisible. L'allemand, le plus
+            long, tient alors avec une marge que gardent aussi les polices
+            système plus larges (Mac, iPhone). Sur un téléphone, la feuille
+            de style de l'hôte resserre encore (cf. global.css). */}
         <div
           class="ml-cfg-etapes"
           style={{
             display: "flex",
-            "flex-wrap": "wrap",
-            gap: "8px",
-            "margin-bottom": "16px",
+            "flex-wrap": "nowrap",
+            gap: "6px",
+            "margin-bottom": "14px",
           }}
         >
           {/* Chaque étape est cliquable à tout moment (retour cliente) : on
@@ -714,26 +704,42 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
               onClick={() => goToStep(s)}
               aria-current={state.step === s ? "step" : undefined}
               style={{
+                // Chaque pastille prend sa part de la rangée ; `min-width: 0`
+                // la laisse céder plutôt que de pousser la rangée hors du
+                // panneau.
                 flex: "1 1 auto",
+                "min-width": "0",
                 display: "inline-flex",
                 "align-items": "center",
                 "justify-content": "center",
-                "min-height": "40px",
+                "min-height": "32px",
                 "box-sizing": "border-box",
-                padding: "9px 14px",
+                padding: "6px 12px",
                 border: "none",
                 "border-radius": "9999px",
                 background: state.step === s ? "#4f46e5" : "#e5e7eb",
                 color: state.step === s ? "#fff" : "#374151",
-                "font-weight": "700",
-                "font-size": "15px",
+                "font-weight": "600",
+                "font-size": "13px",
                 "line-height": "1.2",
                 "font-family": "inherit",
                 "white-space": "nowrap",
                 cursor: state.step === s ? "default" : "pointer",
               }}
             >
-              {i + 1}. {STEP_LABELS()[s]}
+              {/* Filet de sécurité : si une police plus large que prévu ne
+                  laissait pas la place, le libellé finirait par « … » dans
+                  sa pastille, sans jamais passer à la ligne ni déborder. Les
+                  tailles sont choisies pour que cela n'arrive pas. */}
+              <span
+                style={{
+                  "min-width": "0",
+                  overflow: "hidden",
+                  "text-overflow": "ellipsis",
+                }}
+              >
+                {i + 1}. {STEP_LABELS()[s]}
+              </span>
             </button>
           ))}
         </div>
@@ -835,15 +841,6 @@ export default Configurator;
  * C'est le même composant, donc les deux rendus ne peuvent pas diverger.
  */
 export { PosterPreview } from "./components/PosterPreview";
-/**
- * La signature de la boutique en bas à droite d'une affiche. Le site s'en
- * sert pour les aperçus qui ne passent pas par `PosterPreview` — l'affiche
- * tirée d'une photo, dont le visuel est une image et non une pile de calques.
- * Un seul calque pour tous : c'est ce qui garantit que l'écran et le papier
- * signent au même endroit.
- */
-export { SignatureCreation } from "./components/SignatureCreation";
-export type { SignatureApercu } from "./components/SignatureCreation";
 /**
  * La liste qui défile avec ses boutons et sa barre bien visibles : le site
  * s'en sert aussi (la liste des points relais), pour que toutes les listes se

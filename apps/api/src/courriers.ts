@@ -60,6 +60,7 @@ import { livraisonDansLaLangue, nomTraduit } from "./traductions.js";
 // finiraient par diverger, et l'aperçu montrerait une image que le vrai
 // courrier n'a pas.
 import { cheminApercu } from "./apercus.js";
+import { texteDeHtml } from "@memoryline/types/recherche";
 
 /**
  * L'adresse publique du site, pour les images des courriers.
@@ -439,6 +440,80 @@ async function donneesDeCommande(
 }
 
 /**
+ * Les valeurs d'exemple que `rendre` glisse lui-même dans certains courriers,
+ * quelles que soient les données : sans elles, l'aperçu cacherait justement
+ * la ligne qu'on vient relire. Nommées pour que la recherche du back-office
+ * (textesDesCourriers) puisse les retirer : elles ne sont pas le texte du
+ * courrier, et chercher « Nantes » ne doit pas faire répondre « Affiche
+ * prête ».
+ */
+const EXEMPLES_DU_RENDU = {
+  transporteur: "Colissimo",
+  suivi: "6A12345678901",
+  evenement: "Salon du livre de Nantes 2026",
+  motif: "Annulée à la demande de la cliente, avant impression.",
+  facture: "F2026-0001",
+} as const;
+
+/**
+ * Les phrases FIXES de chaque courrier automatique, en français, pour la
+ * recherche du back-office (recherche-corpus.ts) : chaque modèle rendu avec
+ * une commande VIDE, valeurs d'exemple retirées. C'est la phrase lue dans un
+ * courriel reçu (« Votre commande est bien enregistrée ») qui mène à cet
+ * écran. Le texte est celui du HTML, ce que la cliente lit vraiment ; la
+ * version texte brut, plus courte, ne sert qu'à défaut.
+ *
+ * Lecture pure : rien n'est envoyé, rien n'est lu en base. Un modèle qui ne
+ * sait pas se rendre à vide manque simplement à l'appel.
+ */
+export function textesDesCourriers(): {
+  id: string;
+  nom: string;
+  quand: string;
+  sujet: string;
+  texte: string;
+}[] {
+  const vide: DonneesCourrier = {
+    langue: "fr",
+    numero: "",
+    canal: "web",
+    numeroFacture: "",
+    dejaPayee: true,
+    prenomClient: "",
+    nomClient: "",
+    lignes: [],
+    sousTotalCents: 0,
+    remiseCents: 0,
+    codePromo: null,
+    portCents: 0,
+    totalCents: 0,
+    modeLivraison: null,
+    adresse: [],
+  };
+  const sansExemples = (texte: string): string => {
+    let t = texte;
+    for (const v of Object.values(EXEMPLES_DU_RENDU)) t = t.split(v).join(" ");
+    return t.replace(/\s+/g, " ").trim();
+  };
+  const sortie: { id: string; nom: string; quand: string; sujet: string; texte: string }[] = [];
+  for (const m of MODELES) {
+    try {
+      const c = rendre(m.id, vide);
+      sortie.push({
+        id: m.id,
+        nom: m.nom,
+        quand: m.quand,
+        sujet: sansExemples(c.subject),
+        texte: sansExemples(texteDeHtml(c.html) || c.text?.trim() || ""),
+      });
+    } catch {
+      /* ce modèle manquera à la recherche, sans faire tomber les autres */
+    }
+  }
+  return sortie;
+}
+
+/**
  * Fabrique le courrier demandé à partir de ces données.
  *
  * Les formules de repli sur le prénom reprennent celles des envois réels, une
@@ -480,10 +555,9 @@ function rendre(
         langue,
         prenomClient: prenom,
         numero: d.numero,
-        transporteur: "Colissimo",
-        numeroSuivi: "6A12345678901",
-        lienSuivi:
-          "https://www.laposte.fr/outils/suivre-vos-envois?code=6A12345678901",
+        transporteur: EXEMPLES_DU_RENDU.transporteur,
+        numeroSuivi: EXEMPLES_DU_RENDU.suivi,
+        lienSuivi: `https://www.laposte.fr/outils/suivre-vos-envois?code=${EXEMPLES_DU_RENDU.suivi}`,
         lignes: d.lignes,
       });
     case "prete-au-stand":
@@ -491,7 +565,7 @@ function rendre(
         langue,
         prenomClient: prenom,
         numero: d.numero,
-        evenement: "Salon du livre de Nantes 2026",
+        evenement: EXEMPLES_DU_RENDU.evenement,
         lignes: d.lignes,
       });
     case "remboursee": {
@@ -531,10 +605,7 @@ function rendre(
         // liste du back-office, tel que la cliente le lirait dans sa langue :
         // une phrase française au milieu d'un aperçu allemand ferait croire à
         // un oubli de traduction.
-        motif:
-          langue === "fr"
-            ? "Annulée à la demande de la cliente, avant impression."
-            : t("annulee.motifCliente"),
+        motif: langue === "fr" ? EXEMPLES_DU_RENDU.motif : t("annulee.motifCliente"),
         articles: d.lignes,
         dejaPayee: true,
       });
@@ -543,7 +614,7 @@ function rendre(
         langue,
         prenomClient: prenom,
         numero: d.numero,
-        numeroFacture: d.numeroFacture ?? "F2026-0001",
+        numeroFacture: d.numeroFacture ?? EXEMPLES_DU_RENDU.facture,
         totalCents: d.totalCents,
         dejaPayee: d.dejaPayee,
       });

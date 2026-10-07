@@ -16,7 +16,8 @@
  *
  * C'est le MÊME moteur que le fichier d'impression (`renderPosterPng`) : ce
  * que le client revoit est ce qui part à l'atelier, et non une deuxième
- * composition qui finirait par diverger.
+ * composition qui finirait par diverger. Une seule chose manque, exprès : la
+ * signature de la boutique, réservée au papier (voir plus bas).
  *
  * L'ADRESSE PORTE UN JETON, parce qu'un courrier n'a pas de session : le
  * client de messagerie va chercher l'image sans cookie. Le jeton est un
@@ -253,7 +254,14 @@ async function fabriquerApercu(orderItemId: number): Promise<Buffer | null> {
      */
     const vignette = await enFile("apercu", async () => {
       const pleine = await renderPosterPng(config!, {
-        data: await donneesDImpression(),
+        // Tout du fichier d'impression, SAUF la signature : la boutique la
+        // veut sur le papier seulement, et le client ne l'a vue sur aucun
+        // aperçu avant de payer. La lui montrer ici, dans un courrier ou son
+        // historique, ferait apparaître après coup un logo qu'il n'a jamais
+        // validé. Les vignettes déjà rangées sur le disque, celles des
+        // commandes d'avant ce choix, gardent la leur (bleue) : on ne refait
+        // pas un rendu complet par commande pour un logo de quelques pixels.
+        data: { ...(await donneesDImpression()), signature: null },
         // Toujours l'A4 : la vignette ne sert qu'à reconnaître l'affiche, et le
         // rapport des deux formats est le même.
         format: "A4",

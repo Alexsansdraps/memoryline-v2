@@ -2,9 +2,10 @@
 import Base from "../../layouts/Base.astro";
 import BandeauxVisuels from "../../components/BandeauxVisuels.astro";
 import VignetteAffiche from "../../components/VignetteAffiche.astro";
-import { api, type Collection, type Product } from "../../lib/api.ts";
+import { api, bandeauxVisuels, type Collection, type Product } from "../../lib/api.ts";
 import { RAYONS_FUSIONNES } from "../../lib/anciennes-adresses.ts";
-import { estGenre, languesDuContenu } from "../../lib/referencement.ts";
+import { htmlSur } from "../../lib/html-sur.ts";
+import { adresseDuRayon, estGenre, languesDuContenu } from "../../lib/referencement.ts";
 import {
   DESCRIPTION_MAX,
   descriptionMeta,
@@ -19,6 +20,7 @@ import { grilleProduits, sizesGrille, styleGrille } from "../../lib/grille.ts";
  *  réglage général sinon. */
 const grille = await grilleProduits("boutique");
 import {
+  LOCALE_COMPLETE,
   estLangue,
   langueDepuisParam,
   lien,
@@ -155,10 +157,19 @@ try {
       limite: PAR_PAGE,
       offset: (pageDemandee - 1) * PAR_PAGE,
     }),
-    // Sert seulement à nommer le rayon en titre : le nom vient de la boutique,
-    // pas d'une table de correspondance écrite en dur ici — et dans la langue
-    // de la page, quand elle l'a traduit (le français sinon).
-    collectionDemandee ? api.collections(langue) : Promise.resolve([]),
+    // Sert à nommer le rayon en titre : le nom vient de la boutique, pas
+    // d'une table de correspondance écrite en dur ici — et dans la langue de
+    // la page, quand elle l'a traduit (le français sinon).
+    //
+    // Sur la page d'un genre, elle donne le texte de présentation de
+    // l'ancienne collection Shopify fondue dans cette page (plus bas). Ce
+    // n'est qu'un ornement : muette, l'API laisse la page sans texte, elle
+    // ne la fait pas tomber.
+    collectionDemandee
+      ? api.collections(langue)
+      : genre
+        ? api.collections(langue).catch(() => [])
+        : Promise.resolve([]),
     /*
      * Les lieux partent avec le reste plutôt qu'après.
      *
@@ -205,9 +216,15 @@ if (!error && collectionDemandee && !collection)
  * (le lien du menu) : la même grille, deux adresses qui se déclaraient
  * chacune canonique. Un rayon dont toutes les affiches sont du même genre
  * n'a plus que la forme qui porte ce genre ; l'autre y mène en 301, réglages
- * (tri, lieu, page) et suivi de campagne compris. Un rayon qui mêle les deux
- * genres (« Accessoires ») garde l'adresse sans genre, et son filtre par
- * genre reste une page à part, puisqu'il n'y montre pas la même chose.
+ * (tri, lieu, page) et suivi de campagne compris.
+ *
+ * Un rayon qui mêle les deux genres (« Accessoires ») n'a, lui, que l'adresse
+ * SANS genre — la seule du plan du site. Son filtre par genre
+ * (?collection=accessoires&genre=personnalisable) restait une page à part,
+ * indexable et canonique, avec le titre et la description du rayon : un
+ * doublon que rien sur le site ne propose (aucun lien, aucun menu), mais
+ * qu'une adresse recopiée suffisait à créer. Il mène maintenant au rayon
+ * entier, en 301, comme un genre inconnu.
  *
  * Un genre VALIDE qui contredit celui du rayon (des prêtes à imprimer dans
  * « Villes ») ne trouve rien : c'est le cas du rayon vide, juste en dessous.
@@ -215,7 +232,7 @@ if (!error && collectionDemandee && !collection)
  * ne redresse rien sur un silence.
  */
 const genreDuRayon = collection?.genre ?? null;
-const genreAttendu = genreDuRayon ?? genre;
+const genreAttendu = collection ? (genreDuRayon ?? "") : genre;
 const contradiction = !!genreDuRayon && !!genre && genre !== genreDuRayon;
 if (!contradiction && genreDemande !== genreAttendu && !(collectionDemandee && error)) {
   const p = new URLSearchParams();
@@ -302,13 +319,52 @@ const titreListe = collection
 const numeroDePage = pageDemandee > 1 ? tr("seo.page_n").replace("{n}", String(pageDemandee)) : null;
 const titreOnglet = titreDePage(villeEffective || null, ...titreListe, numeroDePage);
 
+/*
+ * Un bandeau visuel en tête du rayon (première page seulement, voir plus
+ * bas) ? C'est alors lui l'image la plus grande, et il part déjà en
+ * priorité ; sinon, c'est la première vignette (VignetteAffiche.astro,
+ * `premiere`). Mêmes réglages que ceux que BandeauxVisuels.astro relit,
+ * gardés deux secondes (api.ts) : pas d'appel de plus.
+ */
+const bandeauEnTete =
+  pageDemandee === 1 &&
+  (await bandeauxVisuels(clesPageAffiches(genre, collectionDemandee), langue)).length > 0;
+
+/*
+ * Le texte de présentation du rayon, sous son titre.
+ *
+ * memoryline.fr l'affiche en tête de chaque collection, et c'est souvent le
+ * seul texte de la page : le site le recevait de l'API et ne s'en servait
+ * pas — sous le titre, il n'y avait que le nombre d'affiches et la grille.
+ *
+ * Une page de genre n'est pas une collection, mais une ancienne collection
+ * Shopify peut s'y être fondue (lib/anciennes-adresses.ts) : « Affiches
+ * prêtes à imprimer » (affiches-diverses) y mène en 301, avec ses quinze
+ * affiches. Son texte la suit — c'est celui que Google a indexé sous
+ * l'ancienne adresse.
+ *
+ * Seulement dans une langue où il est écrit : la page anglaise d'un genre
+ * est traduite de bout en bout, un paragraphe français au milieu la
+ * démentirait. Et sur la première page seulement : la suite d'un rayon, on
+ * y arrive en le parcourant.
+ */
+const collectionDuTexte =
+  collection ??
+  (genre && !collectionDemandee
+    ? collections.find((c) => RAYONS_FUSIONNES[c.slug] === adresseDuRayon(genre))
+    : undefined);
+const htmlDuRayon =
+  collectionDuTexte && languesDuContenu(collectionDuTexte.languesTraduites).includes(langue)
+    ? htmlSur(collectionDuTexte.description)
+    : "";
+const texteDuRayon = texteBrut(htmlDuRayon);
+
 const descriptionListe = (() => {
-  if (collection) {
-    const texteCollection = languesDuContenu(collection.languesTraduites).includes(langue)
-      ? texteBrut(collection.description)
-      : "";
-    return texteCollection || tr(`seo.description.rayon.${natureDuRayon}`).replace("{rayon}", collection.name);
-  }
+  // Le texte de présentation passe devant la phrase type : c'est celui que
+  // memoryline.fr donne aujourd'hui à Google pour ce rayon.
+  if (texteDuRayon) return texteDuRayon;
+  if (collection)
+    return tr(`seo.description.rayon.${natureDuRayon}`).replace("{rayon}", collection.name);
   if (genre) return tr(`seo.description.${genre}`);
   return tr("seo.description.catalogue");
 })();
@@ -380,6 +436,14 @@ const filtreParLieu = !!villeEffective;
 const precedente = pageDemandee > 1 ? adresseRayon({ page: pageDemandee - 1 }) : null;
 const suivante = pageDemandee < pages ? adresseRayon({ page: pageDemandee + 1 }) : null;
 
+/**
+ * Le nombre d'affiches s'accorde : « 1 affiche », et non « 1 affiches »
+ * (le rayon « À partir de photos » n'en a qu'une). Chaque langue a sa règle
+ * — en français, zéro et un sont au singulier ; en anglais, un seul —, et
+ * Intl.PluralRules la connaît : rien à écrire langue par langue.
+ */
+const unSeul = new Intl.PluralRules(LOCALE_COMPLETE[langue]).select(total) === "one";
+
 /** Le libellé de chaque tri, écrit une fois plutôt que composé à la volée. */
 const libelleTri: Record<string, string> = {
   manuel: tr("catalogue.tri.manuel"),
@@ -414,6 +478,14 @@ const libelleTri: Record<string, string> = {
   }
   <section class="mx-auto max-w-[1600px] px-4 pt-12 pb-8 sm:px-6 lg:px-10">
     <h1 class="text-3xl sm:text-4xl">{titrePage}</h1>
+    {
+      pageDemandee === 1 && texteDuRayon && (
+        <div
+          class="mt-4 max-w-3xl leading-relaxed text-ink-soft [&_a]:underline [&_p+p]:mt-3"
+          set:html={htmlDuRayon}
+        />
+      )
+    }
     <div class="mt-3 space-y-3">
       {/* Le nombre d'affiches est l'intertitre de la grille qui suit. Le nom
           de chaque vignette en était un, de même niveau : 48 titres de
@@ -422,9 +494,11 @@ const libelleTri: Record<string, string> = {
           l'écran, rien ne change. */}
       <h2 class="text-base text-ink-soft">
         {total}{" "}
-        {genre || collectionDemandee
-          ? tr("catalogue.compte_simple")
-          : tr("catalogue.compte")}
+        {unSeul
+          ? tr("catalogue.compte_un")
+          : genre || collectionDemandee
+            ? tr("catalogue.compte_simple")
+            : tr("catalogue.compte")}
       </h2>
 
       {/* Le tri est un FORMULAIRE en GET : sans JavaScript, le bouton
@@ -538,6 +612,7 @@ const libelleTri: Record<string, string> = {
             affiche={p}
             langue={langue}
             prioritaire={rang < 4}
+            premiere={rang === 0 && !bandeauEnTete}
             sizes={sizesGrille(grille)}
           />
         ))

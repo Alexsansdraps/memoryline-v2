@@ -28,16 +28,19 @@ import {
   TITRES_GROUPES,
   aplatir,
   comparer,
+  correctionsServies,
   couperExtrait,
   evaluer,
   lienRecherche,
   motsDe,
-  passageACibler,
+  passagesUtiles,
   preparerRequete,
+  texteACibler,
   type ChampEvalue,
   type Correction,
   type Evaluation,
   type GroupeRecherche,
+  type OptionsRequete,
   type Passage,
   type Rang,
   type Requete,
@@ -75,8 +78,11 @@ export interface RubriqueAide {
 export interface IndexEcrans {
   ecrans: EcranIndexe[];
   aide: RubriqueAide[];
-  /** Les mots connus des écrans : de quoi corriger une faute de frappe. */
-  vocabulaire: Set<string>;
+  /**
+   * Les mots connus des écrans, et le nombre de textes où chacun figure : de
+   * quoi corriger une faute de frappe, vers le mot le plus courant.
+   */
+  vocabulaire: Map<string, number>;
 }
 
 /**
@@ -237,9 +243,9 @@ export function construireIndex(
   fiches.forEach((e, k) => (e.ordre = 200 + k));
   ecrans.sort((a, b) => a.ordre - b.ordre);
 
-  const vocabulaire = new Set<string>();
+  const vocabulaire = new Map<string, number>();
   const noter = (texte: string | null | undefined) => {
-    if (texte) for (const mot of motsDe(texte)) vocabulaire.add(mot);
+    if (texte) for (const mot of motsDe(texte)) vocabulaire.set(mot, (vocabulaire.get(mot) ?? 0) + 1);
   };
   for (const e of ecrans) {
     noter(e.titre);
@@ -310,18 +316,20 @@ function lignesDe(index: IndexEcrans): Lignes {
   const lignes: Lignes = { noms: [], sections: [], aide: [] };
   for (const e of index.ecrans) {
     const poidsTitre = e.dansLeMenu ? POIDS.menu : e.fiche ? POIDS.fiche : POIDS.horsMenu;
-    const nom: Champ[] = [champ(e.titre, poidsTitre, { role: "titre" })];
-    for (const t of e.titresAussi) nom.push(champ(t, poidsTitre - 1, { role: "aussi", texte: t }));
+    // Un nom d'écran peut se taper en sigle (voir ChampEvalue.sigles) ; pas
+    // une rubrique d'aide, dont le titre est une phrase.
+    const nom: Champ[] = [{ ...champ(e.titre, poidsTitre, { role: "titre" }), sigles: true }];
+    for (const t of e.titresAussi) nom.push({ ...champ(t, poidsTitre - 1, { role: "aussi", texte: t }), sigles: true });
     for (const s of e.synonymes) nom.push(champ(s, POIDS.synonyme, { role: "synonyme", texte: s }));
     if (e.groupe) nom.push(champ(e.groupe, POIDS.groupe, { role: "groupe" }));
     lignes.noms.push({ id: `ecran:${e.route}`, ecran: e, rubrique: null, section: null, champs: nom });
 
     e.sections.forEach((s, k) => {
-      // Le nom de l'écran est là pour le CONTEXTE (poids 0) : « bandeau
-      // couleur » trouve la section « Couleur » de l'écran Bandeau… mais une
-      // section ne répond jamais par le seul nom de son écran, la ligne du
-      // nom s'en charge.
-      const champs: Champ[] = [champ(e.titre, POIDS.contexte, { role: "contexte" })];
+      // Le nom de l'écran est là pour le CONTEXTE (poids 0, champ neutre) :
+      // « bandeau couleur » trouve la section « Couleur » de l'écran Bandeau…
+      // mais une section ne répond jamais par le seul nom de son écran, la
+      // ligne du nom s'en charge (voir ChampEvalue.neutre).
+      const champs: Champ[] = [{ ...champ(e.titre, POIDS.contexte, { role: "contexte" }), neutre: true }];
       if (s.titre) champs.push(champ(s.titre, POIDS.section, { role: "section" }));
       for (const m of s.morceaux)
         champs.push(champ(m.texte, m.genre === "libelle" ? POIDS.libelle : POIDS.aide, { role: "morceau", morceau: m }));
@@ -364,10 +372,13 @@ function commenceUnMot(plat: string, mot: string): boolean {
  *     « Bandeau » ne doit pas passer devant l'écran « Bandeau et offre ».
  *   - Le poids est celui du champ le plus lourd qui a répondu (un écran
  *     trouvé par son titre ET par son groupe compte comme trouvé par son
- *     titre), multiplié par dix pour laisser la place à un départage : un
- *     point par mot retrouvé TEL QU'IL EST TAPÉ. « bandeaux » met ainsi
- *     « Bandeaux visuels » devant « Bandeau et offre », que le singulier
- *     trouve aussi.
+ *     titre), multiplié par cent pour laisser la place à deux départages :
+ *     d'abord la saisie de plusieurs mots retrouvée TELLE QUELLE dans un
+ *     champ (« mot de passe » : « Nouveau mot de passe » passe devant une
+ *     section où « mot », « de » et « passe » sont éparpillés, comme l'API le
+ *     fait de son côté) ; puis un point par mot retrouvé TEL QU'IL EST TAPÉ.
+ *     « bandeaux » met ainsi « Bandeaux visuels » devant « Bandeau et
+ *     offre », que le singulier trouve aussi.
  */
 function classer(ligne: Ligne, ev: Evaluation, requete: Requete, exactPermis: (i: number) => boolean): { rang: Rang; poids: number } {
   let rang = ev.rang;
@@ -383,26 +394,24 @@ function classer(ligne: Ligne, ev: Evaluation, requete: Requete, exactPermis: (i
   for (const j of requete.jetons)
     if (ligne.champs.some((c, i) => c.poids > 0 && (ev.passages[i]?.length ?? 0) > 0 && commenceUnMot(c.plat, j.mot)))
       telsQuels++;
-  return { rang, poids: poids * 10 + telsQuels };
+  const expression =
+    requete.jetons.length >= 2 &&
+    !!requete.plat &&
+    ligne.champs.some((c) => c.poids > 0 && commenceUnMot(c.plat, requete.plat));
+  return { rang, poids: poids * 100 + (expression ? 50 : 0) + telsQuels };
 }
 
 /**
- * Les passages qui disent quelque chose. « frais de port » trouve aussi le
- * « de » de chaque phrase : centrer l'extrait sur lui, ou l'emmener chercher
- * sur l'écran, ne montrerait rien d'utile. Les mots de deux lettres ne
- * comptent que s'il n'y a rien d'autre.
+ * Le passage à transporter vers l'écran (texteACibler : jamais un « de »
+ * seul, ni un mot vide), et jamais à cheval sur un « … » — une valeur
+ * calculée, que l'écran remplace par autre chose.
  */
-function utiles(passages: readonly Passage[]): Passage[] {
-  const longs = passages.filter((p) => p.fin - p.debut >= 3);
-  return longs.length ? longs : [...passages];
-}
-
-/** Le passage à transporter vers l'écran : jamais à cheval sur un « … » (une valeur calculée). */
 function cibleDe(texte: string, passages: readonly Passage[]): string {
-  const p = passageACibler(texte, passages);
+  const p = texteACibler(texte, passages);
   if (!p.includes("…")) return p;
-  const premier = [...passages].sort((a, b) => a.debut - b.debut)[0];
-  return premier ? texte.slice(premier.debut, premier.fin).trim() : "";
+  const premier = passagesUtiles(passages).sort((a, b) => a.debut - b.debut)[0];
+  const seul = premier ? texte.slice(premier.debut, premier.fin).trim() : "";
+  return seul ? texteACibler(seul, [{ debut: 0, fin: seul.length }]) : "";
 }
 
 /** Une ligne plus longue que ça se lit mal dans « où » : on la coupe. */
@@ -437,20 +446,24 @@ function resultatNom(t: Trouvee): ResultatRecherche {
 }
 
 /**
- * Le champ d'une section qui porte le passage. Le nom de l'écran (champ 0,
- * le contexte) contient souvent TOUS les mots — c'est lui qu'on a tapé —,
- * mais il n'est pas écrit dans la section : on prend le meilleur des autres.
+ * Le champ d'une section qui porte le passage : celui qu'`evaluer` a choisi
+ * (jamais le nom de l'écran, champ neutre), sauf s'il n'a trouvé que des
+ * mots courts (« du », « de ») alors qu'un autre champ de la ligne porte un
+ * passage qui dit quelque chose — c'est lui qu'on montre et qu'on cherche.
  */
 function champDeLaSection(t: Trouvee): number {
-  if (t.ev.meilleur !== 0) return t.ev.meilleur;
-  let choix = -1;
+  const utilesDans = (i: number) => (t.ev.passages[i] ?? []).filter((p) => p.fin - p.debut >= 3).length;
+  if (utilesDans(t.ev.meilleur) > 0) return t.ev.meilleur;
+  let choix = t.ev.meilleur;
+  let meilleurs = 0;
   for (let i = 1; i < t.ligne.champs.length; i++) {
-    const n = t.ev.passages[i]?.length ?? 0;
-    if (!n) continue;
-    const c = choix < 0 ? null : { n: t.ev.passages[choix]!.length, poids: t.ligne.champs[choix]!.poids };
-    if (!c || n > c.n || (n === c.n && t.ligne.champs[i]!.poids > c.poids)) choix = i;
+    const n = utilesDans(i);
+    if (n > meilleurs || (n === meilleurs && n > 0 && t.ligne.champs[i]!.poids > t.ligne.champs[choix]!.poids)) {
+      choix = i;
+      meilleurs = n;
+    }
   }
-  return choix < 0 ? t.ev.meilleur : choix;
+  return choix;
 }
 
 function resultatSection(t: Trouvee): ResultatRecherche {
@@ -458,21 +471,29 @@ function resultatSection(t: Trouvee): ResultatRecherche {
   const s = t.ligne.section!;
   const indice = champDeLaSection(t);
   const meilleur = t.ligne.champs[indice]!;
-  const passages = utiles(t.ev.passages[indice] ?? []);
+  const passages = t.ev.passages[indice] ?? [];
   let ou: string | null = s.titre;
   let extrait: ResultatRecherche["extrait"] = null;
   let ancre = s.ancre;
+  // Un texte qui ne s'affiche pas (une infobulle, un texte pour lecteur
+  // d'écran) : l'écran s'ouvre sur son ancre, sans rien chercher — le script
+  // d'arrivée ne lit que le texte affiché et la valeur des champs.
+  let cache = false;
   if (meilleur.sens.role === "morceau") {
     const m = meilleur.sens.morceau;
     if (m.genre === "libelle") ou = [s.titre, court(m.texte)].filter(Boolean).join(" › ") || null;
-    extrait = couperExtrait(m.texte, passages);
+    extrait = couperExtrait(m.texte, passagesUtiles(passages));
     ancre = m.ancre ?? s.ancre;
+    cache = m.origine === "attribut";
   }
   // Une fiche (« /produits/[id] ») ne s'ouvre pas sans son numéro : le
   // résultat mène à la liste qui l'ouvre, sans passage à chercher.
   const href = e.fiche
     ? lienRecherche(e.lien)
-    : lienRecherche(e.route, { trouver: cibleDe(meilleur.texte, passages), ancre: ancre ?? undefined });
+    : lienRecherche(e.route, {
+        trouver: cache ? undefined : cibleDe(meilleur.texte, passages),
+        ancre: ancre ?? undefined,
+      });
   return {
     id: t.ligne.id,
     nature: "Écran",
@@ -490,8 +511,9 @@ function resultatSection(t: Trouvee): ResultatRecherche {
 function resultatAide(t: Trouvee): ResultatRecherche {
   const r = t.ligne.rubrique!;
   const meilleur = t.ligne.champs[t.ev.meilleur]!;
-  const passages = utiles(t.ev.passages[t.ev.meilleur] ?? []);
+  const passages = t.ev.passages[t.ev.meilleur] ?? [];
   const dansLeTitre = meilleur.sens.role === "titre";
+  const cache = meilleur.sens.role === "morceau" && meilleur.sens.morceau.origine === "attribut";
   return {
     id: t.ligne.id,
     nature: "Aide",
@@ -499,16 +521,46 @@ function resultatAide(t: Trouvee): ResultatRecherche {
     titrePassages: t.ev.passages[0] ?? [],
     ou: null,
     detail: null,
-    extrait: dansLeTitre ? null : couperExtrait(meilleur.texte, passages),
+    extrait: dansLeTitre ? null : couperExtrait(meilleur.texte, passagesUtiles(passages)),
     // Le titre trouvé : l'ancre ordinaire suffit, aide.astro ouvre déjà la
-    // rubrique désignée par « #id ». Un passage du corps : le script
-    // d'arrivée le cherche dans la rubrique.
+    // rubrique désignée par « #id » (et le script d'arrivée, si l'on est
+    // déjà sur l'aide). Un passage du corps : le script d'arrivée le cherche
+    // dans la rubrique.
     href: dansLeTitre
       ? `${lienRecherche(ROUTE_AIDE)}#${encodeURIComponent(r.id)}`
-      : lienRecherche(ROUTE_AIDE, { trouver: cibleDe(meilleur.texte, passages), ancre: r.id }),
+      : lienRecherche(ROUTE_AIDE, {
+          trouver: cache ? undefined : cibleDe(meilleur.texte, passages),
+          ancre: r.id,
+        }),
     image: null,
     rang: t.rang,
   };
+}
+
+/**
+ * Les mots tapés que les écrans connaissent tels quels. Le back-office les
+ * passe à l'API (paramètre « connus ») : elle ne les corrige pas. Sans cela,
+ * « vidéo » devenait « vider » côté données, alors que l'écran Accueil et
+ * pied de page parle de la vidéo.
+ */
+export function motsConnusDesEcrans(index: IndexEcrans, saisie: string): string[] {
+  return preparerRequete(saisie, index.vocabulaire)
+    .jetons.filter((j) => j.connu && /^\p{L}{3,}$/u.test(j.mot))
+    .map((j) => j.mot);
+}
+
+export interface ReponseIndex {
+  ecrans: GroupeRecherche | null;
+  aide: GroupeRecherche | null;
+  /** Les corrections qui ont RÉELLEMENT servi (Evaluation.approches). */
+  corrections: Correction[];
+  /**
+   * Le premier écran répond par son PROPRE nom (le libellé du menu ou le
+   * titre de la page), pas par un mot-clé ni par une section : c'est ce qui
+   * l'autorise, à égalité de rang avec les données, à passer en tête
+   * (recherche-bo.ts).
+   */
+  premierParSonNom: boolean;
 }
 
 /**
@@ -517,35 +569,41 @@ function resultatAide(t: Trouvee): ResultatRecherche {
  * Une ligne par écran pour son NOM, puis une par section ; trois au plus par
  * écran, pour qu'un écran bavard (la fiche commande) ne remplisse pas le
  * panneau à lui seul.
+ *
+ * `options` (voir OptionsRequete) : `connus`, les mots que les DONNÉES ont
+ * trouvés tels quels et qu'il ne faut donc pas corriger ici (« montagne »
+ * n'est pas « montant » : huit affiches s'appellent ainsi) ; `forcer`, le
+ * repli quand ni les données ni les écrans n'ont rien trouvé.
  */
 export function chercherDansIndex(
   index: IndexEcrans,
   saisie: string,
   limite: number,
-): { ecrans: GroupeRecherche | null; aide: GroupeRecherche | null; corrections: Correction[] } {
-  const requete = preparerRequete(saisie, index.vocabulaire);
-  if (!requete.jetons.length) return { ecrans: null, aide: null, corrections: [] };
+  options: Pick<OptionsRequete, "connus" | "forcer"> = {},
+): ReponseIndex {
+  const requete = preparerRequete(saisie, index.vocabulaire, options);
+  if (!requete.jetons.length) return { ecrans: null, aide: null, corrections: [], premierParSonNom: false };
   const lignes = lignesDe(index);
-  let approche = false;
+  const servies: Correction[][] = [];
 
-  const evaluerLigne = (ligne: Ligne, ordre: number, exactPermis: (i: number) => boolean, horsContexte: boolean): Trouvee | null => {
+  const evaluerLigne = (ligne: Ligne, ordre: number, exactPermis: (i: number) => boolean): Trouvee | null => {
+    // Une section ne répond pas par le seul nom de son écran : c'est un champ
+    // neutre, `evaluer` l'écarte.
     const ev = evaluer(ligne.champs, requete);
     if (!ev) return null;
-    // Une section ne répond pas par le seul nom de son écran (champ 0).
-    if (horsContexte && !ev.passages.some((p, i) => i > 0 && p.length > 0)) return null;
     const { rang, poids } = classer(ligne, ev, requete, exactPermis);
-    if (rang === 3) approche = true;
     return { ligne, ev, rang, poids, motsEntiers: ev.motsEntiers, ordre };
   };
+  const noterCorrections = (t: Trouvee) => servies.push(t.ev.approches ?? []);
 
   // Les écrans : le nom, puis les sections, trois lignes au plus par écran.
   const parEcran = new Map<string, Trouvee[]>();
   for (const ligne of lignes.noms) {
-    const t = evaluerLigne(ligne, ligne.ecran!.ordre, (i) => ligne.champs[i]!.sens.role !== "groupe", false);
+    const t = evaluerLigne(ligne, ligne.ecran!.ordre, (i) => ligne.champs[i]!.sens.role !== "groupe");
     if (t) parEcran.set(ligne.ecran!.route, [t]);
   }
   lignes.sections.forEach((ligne, k) => {
-    const t = evaluerLigne(ligne, ligne.ecran!.ordre + k / 100000, () => false, true);
+    const t = evaluerLigne(ligne, ligne.ecran!.ordre + k / 100000, () => false);
     if (!t) return;
     const liste = parEcran.get(ligne.ecran!.route) ?? [];
     liste.push(t);
@@ -554,13 +612,19 @@ export function chercherDansIndex(
   const retenues: Trouvee[] = [];
   for (const liste of parEcran.values()) retenues.push(...liste.sort(comparer).slice(0, 3));
   retenues.sort(comparer);
+  retenues.forEach(noterCorrections);
 
   const aide: Trouvee[] = [];
   lignes.aide.forEach((ligne, k) => {
-    const t = evaluerLigne(ligne, k, (i) => i === 0, false);
+    const t = evaluerLigne(ligne, k, (i) => i === 0);
     if (t) aide.push(t);
   });
   aide.sort(comparer);
+  aide.forEach(noterCorrections);
+
+  const premier = retenues[0];
+  const sensPremier = premier && !premier.ligne.section ? premier.ligne.champs[premier.ev.meilleur]?.sens.role : null;
+  const premierParSonNom = sensPremier === "titre" || sensPremier === "aussi";
 
   const ecrans: GroupeRecherche | null = retenues.length
     ? {
@@ -583,8 +647,8 @@ export function chercherDansIndex(
       }
     : null;
 
-  // Une correction ne s'annonce que si elle a servi : « Résultats approchés
-  // pour … » au-dessus de résultats trouvés tels quels serait une fausse
-  // alerte.
-  return { ecrans, aide: groupeAide, corrections: approche ? requete.corrections : [] };
+  // Une correction ne s'annonce que si elle a servi, et c'est celle-là qu'on
+  // annonce : « Résultats approchés pour … » au-dessus de résultats trouvés
+  // tels quels serait une fausse alerte.
+  return { ecrans, aide: groupeAide, corrections: correctionsServies(servies), premierParSonNom };
 }

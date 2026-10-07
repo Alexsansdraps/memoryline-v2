@@ -396,12 +396,47 @@ function garderLePassage(el: HTMLInputElement | HTMLTextAreaElement, debut: numb
   cible.addEventListener("blur", retirer);
 }
 
-/** Le défilement INTERNE d'un textarea jusqu'à la ligne trouvée. */
+/** Ce qu'il faut recopier d'un textarea pour que sa copie replie le texte au même endroit. */
+const STYLES_DU_TEXTE = [
+  "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "fontFamily", "fontSize",
+  "fontWeight", "fontStyle", "letterSpacing", "lineHeight", "textTransform", "wordSpacing",
+  "tabSize", "textIndent",
+] as const;
+
+/**
+ * Le défilement INTERNE d'un textarea jusqu'au passage, au milieu de la case.
+ *
+ * Compter les lignes ne suffit pas : une note longue se replie, et une seule
+ * ligne du texte en occupe trois à l'écran ; la hauteur d'une ligne vaut
+ * parfois « normal », qui ne se lit pas en pixels. On mesure donc pour de
+ * bon : une copie invisible de la case, à la même largeur et dans la même
+ * police, reçoit le texte qui précède le passage, et la position d'un repère
+ * posé juste après dit où le passage tombe.
+ */
 function defilerDansLeChamp(el: HTMLTextAreaElement, debut: number): void {
   const style = getComputedStyle(el);
-  const ligne = Number.parseFloat(style.lineHeight) || (Number.parseFloat(style.fontSize) || 14) * 1.25;
-  const avant = el.value.slice(0, debut).split("\n").length - 1;
-  el.scrollTop = Math.max(0, avant * ligne - el.clientHeight / 2);
+  const copie = document.createElement("div");
+  for (const p of STYLES_DU_TEXTE) copie.style[p] = style[p];
+  Object.assign(copie.style, {
+    position: "absolute",
+    top: "0",
+    left: "-9999px",
+    visibility: "hidden",
+    boxSizing: "border-box",
+    // clientWidth : la largeur utile, sans la barre de défilement.
+    width: `${el.clientWidth}px`,
+    border: "0",
+    whiteSpace: "pre-wrap",
+    overflowWrap: "break-word",
+  });
+  copie.textContent = el.value.slice(0, debut);
+  const repere = document.createElement("span");
+  repere.textContent = el.value.slice(debut, debut + 1) || ".";
+  copie.appendChild(repere);
+  document.body.appendChild(copie);
+  const haut = repere.offsetTop + repere.offsetHeight / 2;
+  copie.remove();
+  el.scrollTop = Math.max(0, haut - el.clientHeight / 2);
 }
 
 function centrer(el: Element): void {
@@ -426,22 +461,33 @@ function montrerCourante(): void {
 /** Va à l'occurrence k : ses gestes d'abord, puis le défilement et le surlignage. */
 function aller(k: number): void {
   if (!etat) return;
-  for (let essais = 0; etat.liste.length && essais <= etat.liste.length; essais++) {
+  // Chaque essai montre l'occurrence k, ou la retire si elle ne se laisse pas
+  // montrer — la suivante prend alors sa place, au même rang. La boucle est
+  // bornée par le nombre d'occurrences du DÉPART (la liste raccourcit à
+  // chaque retrait), et ne s'arrête que sur une occurrence VUE visible.
+  const essaisMax = etat.liste.length;
+  let vue: Occurrence | null = null;
+  for (let essai = 0; essai < essaisMax && etat.liste.length; essai++) {
     etat.i = ((k % etat.liste.length) + etat.liste.length) % etat.liste.length;
     const o = etat.liste[etat.i]!;
     const ob = obstacles(o.el);
     if (ob.ouvrable) for (const g of ob.gestes) g();
     // Un geste n'a pas suffi (un volet qui dépend d'un autre réglage) :
     // l'occurrence est retirée, on passe à la suivante.
-    if (ob.ouvrable && visible(o.el)) break;
+    if (ob.ouvrable && visible(o.el)) {
+      vue = o;
+      break;
+    }
     etat.liste.splice(etat.i, 1);
     etat.ecartees++;
   }
-  if (!etat.liste.length) {
+  if (!vue) {
+    // Plus rien à montrer : l'indice revient dans les bornes, et la barre le dit.
+    etat.i = etat.liste.length ? Math.min(Math.max(etat.i, 0), etat.liste.length - 1) : -1;
     barre();
     return;
   }
-  const o = etat.liste[etat.i]!;
+  const o = vue;
   montrerCourante();
   peindre();
   if (o.genre === "champ") {
@@ -585,9 +631,32 @@ function chercher(cible: CibleRecherche & { trouver: string }): boolean {
   return false;
 }
 
+/**
+ * Un « #id » ordinaire qui désigne un <details> fermé : on l'ouvre. Les pages
+ * qui en ont (l'aide) le font à leur chargement, mais un résultat qui mène à
+ * la page DÉJÀ ouverte ne change que le fragment — la rubrique restait fermée,
+ * le navigateur ne faisant défiler que jusqu'à son titre.
+ */
+function ouvrirLeDetailsDuFragment(): void {
+  let id: string;
+  try {
+    id = decodeURIComponent(location.hash.slice(1));
+  } catch {
+    return;
+  }
+  const el = id ? document.getElementById(id) : null;
+  if (el instanceof HTMLDetailsElement && !el.open) {
+    el.open = true;
+    el.scrollIntoView({ block: "start" });
+  }
+}
+
 function arriver(): void {
   const cible = lireCible(location.hash);
-  if (!cible) return;
+  if (!cible) {
+    ouvrirLeDetailsDuFragment();
+    return;
+  }
   fermer();
 
   // L'adresse redevient propre : un rechargement, un formulaire envoyé ou un

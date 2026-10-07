@@ -20,7 +20,7 @@
  * « Redirections » du back-office passe avant tout ce fichier : c'est là qu'on
  * ajoute un cas sans toucher au code.
  */
-import type { PlanDuSite } from "./api.ts";
+import { assetUrl, type PlanDuSite } from "./api.ts";
 import { adresseDuRayon } from "./referencement.ts";
 
 /** Le rayon « Villes », tel que le menu y mène. */
@@ -254,7 +254,66 @@ export async function destinationAncienne(
   if (chemin === "/cart") return { vers: "/panier" };
   if (chemin === "/account/login") return { vers: "/compte/connexion" };
   if (chemin === "/account/register") return { vers: "/compte/inscription" };
-  if (chemin === "/account") return { vers: "/compte" };
+  // Droit à la connexion, et non à /compte, qui y renvoie à son tour (302) :
+  // un saut au lieu de deux. Une cliente déjà connectée est renvoyée par la
+  // page de connexion vers son compte.
+  if (chemin === "/account") return { vers: "/compte/connexion" };
 
   return null;
+}
+
+/**
+ * LES IMAGES DE MEMORYLINE.FR (/cdn/shop/files/…).
+ *
+ * Shopify sert les visuels de la boutique sous le domaine lui-même
+ * (memoryline.fr/cdn/shop/files/vieuxmoulinaffichepersonnalisee.jpg) : ce
+ * sont ces adresses que Google Images a pu indexer, et que des sites ou des
+ * épingles Pinterest ont recopiées. Après la bascule, elles répondraient 404.
+ *
+ * Or l'import a gardé le nom de chaque fichier : apps/api/scripts/fetch-assets.ts
+ * a rangé chaque visuel sous « <empreinte>-<nom d'origine> », le nom coupé à
+ * soixante caractères (avant l'extension) et ses caractères spéciaux changés
+ * en tirets. On refait ici exactement ce calcul, et on cherche le visuel qui
+ * porte ce nom parmi ceux des fiches en vente (plan du site, gardé cinq
+ * minutes) : l'ancienne image mène à la même, en grand, par un 301 — le code
+ * qui transmet aussi le référencement d'une image. Relevé le 7 octobre sur le
+ * plan du site Shopify : 172 visuels sur 191 retrouvent le leur, chacun celui
+ * de la même fiche. Les 19 autres restent en 404 : ceux des 18 fiches
+ * retirées (FICHES_RETIREES), et l'ancien visuel de Cayeux-sur-Mer, que la
+ * fiche n'a plus.
+ *
+ * Les anciennes tailles de Shopify (« _600x », « _grande », « @2x »…) sont
+ * reconnues si le nom exact ne donne rien. Le logo de la boutique mène au logo.
+ *
+ * `nom` arrive décodé. null : pas d'équivalent, la page introuvable répond.
+ */
+export async function imageAncienne(
+  nom: string,
+  lirePlan: () => Promise<PlanDuSite | null>,
+): Promise<string | null> {
+  if (/^memoryline_logo/i.test(nom)) return "/logo-memory-line.png";
+  const plan = await lirePlan();
+  if (!plan) return null;
+  const visuels = plan.produits.flatMap((p) => p.images ?? []);
+  const trouver = (n: string) => {
+    const voulu = nomImporte(n).toLowerCase();
+    return visuels.find((v) => v.replace(/^\/assets\/[0-9a-f]{8}-/, "").toLowerCase() === voulu);
+  };
+  const visuel =
+    trouver(nom) ??
+    trouver(
+      nom.replace(
+        /_(\d+x\d*|x\d+|pico|icon|thumb|small|compact|medium|large|grande|original|master)(_crop_[a-z]+)?(@\dx)?(\.[^.]+)$/i,
+        "$4",
+      ),
+    );
+  return visuel ? assetUrl(visuel, 1400) : null;
+}
+
+/** Le nom qu'un fichier de Shopify a reçu à l'import (fetch-assets.ts, localName), sans l'empreinte. */
+function nomImporte(nom: string): string {
+  const point = nom.lastIndexOf(".");
+  const extension = point > 0 ? nom.slice(point) : "";
+  const racine = nom.slice(0, nom.length - extension.length).slice(0, 60);
+  return racine.normalize("NFD").replace(/[^a-zA-Z0-9._-]+/g, "-") + extension;
 }

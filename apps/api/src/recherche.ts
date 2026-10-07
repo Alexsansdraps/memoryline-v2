@@ -45,19 +45,22 @@ import type { Hono } from "hono";
 import {
   GROUPES_API,
   ORDRE_GROUPES,
+  RECHERCHE_JETONS_MAX,
   RECHERCHE_LIMITE_MAX,
   RECHERCHE_LIMITE_PANNEAU,
   RECHERCHE_LONGUEUR_MAX,
   RECHERCHE_MINIMUM,
   TITRES_GROUPES,
+  aplatir,
   comparer,
+  correctionsServies,
   preparerRequete,
   type GroupeId,
   type GroupeRecherche,
   type ReponseRecherche,
   type Requete,
 } from "@memoryline/types/recherche";
-import { corpusRecherche, invaliderCorpusRecherche, sansTomber } from "./recherche-corpus.js";
+import { corpusRecherche, invaliderCorpusRecherche, sansTomber, type Corpus } from "./recherche-corpus.js";
 import {
   chercherCartes,
   chercherClients,
@@ -97,6 +100,23 @@ export function lireLimite(brut: string | number | undefined): number {
 }
 
 /**
+ * Le paramètre « connus » : les mots tapés que les ÉCRANS du back-office
+ * connaissent (voir OptionsRequete.connus), séparés par des virgules. Ils ne
+ * servent qu'à NE PAS corriger : jamais lus en base, jamais renvoyés. On n'en
+ * garde que des mots — des lettres, aplaties —, et pas plus que la saisie
+ * n'en compte.
+ */
+export function lireConnus(brut: string | undefined): Set<string> {
+  const mots = new Set<string>();
+  for (const morceau of (brut ?? "").split(",")) {
+    const m = aplatir(morceau.slice(0, 64));
+    if (/^\p{L}{3,}$/u.test(m)) mots.add(m);
+    if (mots.size >= RECHERCHE_JETONS_MAX) break;
+  }
+  return mots;
+}
+
+/**
  * La saisie ramenée par trim et coupée à 200, sans couper un émoji en deux.
  *
  * Les caractères de contrôle deviennent des espaces : PostgreSQL refuse le
@@ -116,16 +136,18 @@ function saisieBornee(saisie: string): string {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Les mots connus du corpus ET des commandes, réunis une fois : on ne
- * corrige une faute que si le mot tapé n'existe nulle part. Réunis à
- * nouveau seulement quand l'un des deux a été relu.
+ * Les mots connus du corpus ET des commandes, réunis une fois, avec leur
+ * nombre de textes : on ne corrige une faute que si le mot tapé n'existe
+ * nulle part, et vers le mot le plus courant. Réunis à nouveau seulement
+ * quand l'un des deux a été relu.
  */
-let reunion: { corpus: Set<string> | null; direct: Set<string>; mots: Set<string> } | null = null;
+type Mots = Map<string, number>;
+let reunion: { corpus: Mots | null; direct: Mots; mots: Mots } | null = null;
 
-function vocabulaireUni(corpus: Set<string> | null, direct: Set<string>): Set<string> {
+function vocabulaireUni(corpus: Mots | null, direct: Mots): Mots {
   if (reunion && reunion.corpus === corpus && reunion.direct === direct) return reunion.mots;
-  const mots = new Set(corpus ?? []);
-  for (const m of direct) mots.add(m);
+  const mots = new Map(corpus ?? []);
+  for (const [m, n] of direct) mots.set(m, (mots.get(m) ?? 0) + n);
   reunion = { corpus, direct, mots };
   return mots;
 }
@@ -146,14 +168,53 @@ export interface OptionsRecherche {
   groupes?: readonly GroupeId[] | null;
   /** Résultats gardés par groupe ; le total, lui, compte tout. */
   limite?: number;
+  /** Les mots que les écrans du back-office connaissent : jamais corrigés ici. */
+  connus?: ReadonlySet<string>;
+}
+
+type ParGroupe = Map<GroupeId, { trouvailles: Trouvaille[]; plafonne: boolean }>;
+
+/**
+ * Une passe de recherche avec une saisie préparée : le corpus en mémoire et
+ * les sources en base. Toutes les sources partent EN MÊME TEMPS : la
+ * recherche se tape lettre par lettre, et des requêtes à la suite
+ * additionneraient leurs latences.
+ */
+async function passe(
+  requete: Requete,
+  corpus: Corpus | null,
+  veut: (g: GroupeId) => boolean,
+  echecs: string[],
+): Promise<ParGroupe> {
+  // Les sources en base partent d'abord ; le corpus, en mémoire, s'évalue
+  // pendant qu'elles répondent.
+  const directes = Promise.all(
+    SOURCES_DIRECTES.filter(([g]) => veut(g)).map(async ([g, nom, chercher]) => ({
+      groupe: g,
+      resultat: await sansTomber(nom, () => chercher(requete), null, echecs),
+    })),
+  );
+
+  const parGroupe: ParGroupe = new Map();
+  const ajouter = (g: GroupeId, trouvailles: Trouvaille[], plafonne: boolean) => {
+    const groupe = parGroupe.get(g) ?? { trouvailles: [], plafonne: false };
+    groupe.trouvailles.push(...trouvailles);
+    groupe.plafonne ||= plafonne;
+    parGroupe.set(g, groupe);
+  };
+  for (const fiche of corpus?.fiches ?? []) {
+    if (!veut(fiche.groupe)) continue;
+    const t = versResultat(fiche, requete);
+    if (t) ajouter(fiche.groupe, [t], false);
+  }
+  for (const { groupe, resultat } of await directes)
+    if (resultat) ajouter(groupe, resultat.trouvailles, resultat.plafonne);
+  return parGroupe;
 }
 
 /**
  * Chercher dans les données de la boutique, hors de toute route : c'est ce
  * que la route appelle, et ce que les essais appellent directement.
- *
- * Toutes les sources partent EN MÊME TEMPS : la recherche se tape lettre par
- * lettre, et des requêtes à la suite additionneraient leurs latences.
  */
 export async function rechercherDansLesDonnees(
   saisie: string,
@@ -172,34 +233,24 @@ export async function rechercherDansLesDonnees(
   const echecs: string[] = [];
   const [corpus, motsDirects] = await Promise.all([
     sansTomber("corpus", corpusRecherche, null, echecs),
-    sansTomber("vocabulaire", vocabulaireDirect, new Set<string>(), echecs),
+    sansTomber("vocabulaire", vocabulaireDirect, new Map<string, number>(), echecs),
   ]);
   if (corpus) echecs.push(...corpus.echecs);
-  const requete = preparerRequete(q, vocabulaireUni(corpus?.vocabulaire ?? null, motsDirects));
+  const vocabulaire = vocabulaireUni(corpus?.vocabulaire ?? null, motsDirects);
+  const connus = options.connus ?? new Set<string>();
+  let parGroupe = await passe(preparerRequete(q, vocabulaire, { connus }), corpus, veut, echecs);
 
-  // Les sources en base partent d'abord ; le corpus, en mémoire, s'évalue
-  // pendant qu'elles répondent.
-  const directes = Promise.all(
-    SOURCES_DIRECTES.filter(([g]) => veut(g)).map(async ([g, nom, chercher]) => ({
-      groupe: g,
-      resultat: await sansTomber(nom, () => chercher(requete), null, echecs),
-    })),
-  );
-
-  const parGroupe = new Map<GroupeId, { trouvailles: Trouvaille[]; plafonne: boolean }>();
-  const ajouter = (g: GroupeId, trouvailles: Trouvaille[], plafonne: boolean) => {
-    const groupe = parGroupe.get(g) ?? { trouvailles: [], plafonne: false };
-    groupe.trouvailles.push(...trouvailles);
-    groupe.plafonne ||= plafonne;
-    parGroupe.set(g, groupe);
-  };
-  for (const fiche of corpus?.fiches ?? []) {
-    if (!veut(fiche.groupe)) continue;
-    const t = versResultat(fiche, requete);
-    if (t) ajouter(fiche.groupe, [t], false);
+  // Le REPLI : rien du tout, alors qu'un mot de cinq lettres ou plus aurait
+  // pu être corrigé s'il n'existait pas déjà, tel quel, quelque part — une
+  // faute recopiée dans le nom d'un décor suffit à rendre « personalisée »
+  // connu. On recommence en le corrigeant quand même. Seulement quand la
+  // première passe n'a RIEN trouvé : sinon, chaque mot juste se verrait
+  // flanqué de ses voisins (« plage » de « place »).
+  if (![...parGroupe.values()].some((g) => g.trouvailles.length)) {
+    const forcee = preparerRequete(q, vocabulaire, { connus, forcer: true });
+    if (forcee.jetons.some((j) => j.connu && j.corrections.length))
+      parGroupe = await passe(forcee, corpus, veut, echecs);
   }
-  for (const { groupe, resultat } of await directes)
-    if (resultat) ajouter(groupe, resultat.trouvailles, resultat.plafonne);
 
   const groupes: GroupeRecherche[] = [];
   for (const id of ORDRE_GROUPES) {
@@ -217,16 +268,12 @@ export async function rechercherDansLesDonnees(
     });
   }
 
-  // « Résultats approchés pour … » ne s'écrit que si une correction a
-  // réellement servi : un mot inconnu du vocabulaire mais présent dans une
-  // note se trouve tel quel, et le panneau n'a pas à prétendre le corriger.
-  const approche = [...parGroupe.values()].some((g) =>
-    g.trouvailles.some((t) => t.resultat.rang === 3),
-  );
+  // « Résultats approchés pour … » : les corrections qui ont réellement
+  // servi, la plus utile pour chaque mot (voir correctionsServies).
   return {
     q,
     groupes,
-    corrections: approche ? requete.corrections : [],
+    corrections: correctionsServies([...parGroupe.values()].flatMap((g) => g.trouvailles.map((t) => t.approches))),
     partiel: echecs.length > 0,
   };
 }
@@ -236,16 +283,18 @@ export async function rechercherDansLesDonnees(
 /* -------------------------------------------------------------------------- */
 
 export function mountRecherche(app: Hono): void {
-  // Le corpus est lu quelques secondes après le démarrage, sans attendre la
-  // première recherche : c'est elle, sinon, qui paierait la lecture complète
-  // du catalogue sur des connexions encore froides. Lecture seule, et un
-  // échec ici ne coûte rien — la première recherche réessaiera.
+  // Le corpus et le vocabulaire des commandes sont lus quelques secondes après
+  // le démarrage, sans attendre la première recherche : c'est elle, sinon, qui
+  // paierait la lecture complète du catalogue sur des connexions encore
+  // froides. Lecture seule, et un échec ici ne coûte rien — la première
+  // recherche réessaiera.
   setTimeout(() => {
     void corpusRecherche().catch(() => undefined);
+    void vocabulaireDirect().catch(() => undefined);
   }, 3000).unref();
 
   /**
-   * GET /admin/recherche?q=…[&groupes=affiches,commandes][&limite=20]
+   * GET /admin/recherche?q=…[&groupes=affiches,commandes][&limite=20][&connus=mot,mot]
    */
   app.get("/admin/recherche", async (c) => {
     // La réponse contient des noms de clientes : aucun cache, ni du
@@ -263,6 +312,7 @@ export function mountRecherche(app: Hono): void {
     const reponse = await rechercherDansLesDonnees(c.req.query("q") ?? "", {
       groupes: lireGroupes(c.req.query("groupes")),
       limite: lireLimite(c.req.query("limite")),
+      connus: lireConnus(c.req.query("connus")),
     });
     return c.json(reponse);
   });

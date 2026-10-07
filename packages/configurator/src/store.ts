@@ -5,6 +5,8 @@ import type {
   PosterConfig,
   Character,
   CouleursImage,
+  EmpriseDessin,
+  PersonnageAComposer,
   CouleursProposees,
   GroupeCouleur,
   PosterFormat,
@@ -30,7 +32,10 @@ import {
   lignesDuTexte,
   styleDesLignes,
   textesDepuisLignes,
-  Y_SOL_PERSONNAGES,
+  LARGEUR_CADRE_PERSONNAGE,
+  composerPersonnages,
+  compositionDeLaVue,
+  hauteurDuDessin,
 } from "@memoryline/types";
 
 /** Étapes du flow configurateur (§18.2 F). */
@@ -178,6 +183,13 @@ export interface CharacterDTO {
    * pas besoin ; un personnage nu, si.
    */
   defaultAssets?: Partial<Record<Slot, number>> | null;
+  /**
+   * Où son dessin se trouve vraiment dans le cadre, mesuré par l'API. La
+   * composition s'en sert pour serrer la rangée sur la largeur réelle des
+   * dessins et pour reconnaître les petits. Absente (pas encore mesurée), la
+   * composition fait sans, comme l'ancienne rangée.
+   */
+  emprise?: EmpriseDessin | null;
 }
 
 /**
@@ -401,111 +413,53 @@ export function stateFromConfig(cfg: PosterConfig): ConfiguratorState {
 
 /**
  * Largeur de référence d'un personnage (à scale=1) en fraction de la largeur
- * de l'affiche. Utilisée par autoPlace ET par le rendu (PosterPreview/PDF).
+ * de l'affiche. La valeur vit dans le paquet partagé, avec la composition :
+ * l'aperçu et le fichier d'impression dessinent tous deux avec elle.
  */
-export const CHAR_BASE_WIDTH = 0.22;
-
-/**
- * Placement automatique des personnages : une seule RANGÉE, alignée vers le
- * BAS de l'affiche, centrée en groupe et recentrée à chaque ajout.
- * Les persos rétrécissent quand ils sont nombreux pour tenir côte à côte sans
- * déborder, et sont espacés régulièrement autour du centre (x=0.5).
- *
- * C'est le comportement par DÉFAUT : un personnage auquel le client n'a pas
- * touché se range ici, et la rangée se recompose à chaque ajout. Voir
- * `placementsAffiche` pour ceux qu'il a déplacés lui-même.
- */
-export function autoPlace(
-  characters: WorkingCharacter[],
-  /**
-   * La taille propre à chaque personnage, en facteur de la largeur de
-   * référence. Absente, tout le monde fait la même largeur — c'est ce que
-   * faisait la rangée avant qu'un chat puisse être plus petit qu'un homme.
-   */
-  facteurDe?: (c: WorkingCharacter) => number,
-  /**
-   * Le décalage de côté de chaque personnage, réglé au back-office. Absent,
-   * tout le monde reste au centre de sa case, comme avant ce réglage.
-   */
-  decalageDe?: (c: WorkingCharacter) => number,
-): { x: number; y: number; scale: number }[] {
-  const n = characters.length;
-  if (n === 0) return [];
-  // Bornés comme en base : un facteur aberrant ne doit pas faire disparaître
-  // la rangée entière.
-  const facteurs = characters.map((c) =>
-    Math.min(2, Math.max(0.3, facteurDe?.(c) ?? 1)),
-  );
-
-  // NB : ce calage suppose bottom_pct MESURÉ en base (pnpm run measure-anchors) —
-  // sans ça les persos flottent (vide sous les pieds non compensé).
-  // 0.825 = calage visuel Alexandra 2026-07-07 ; -0.009 le 2026-07-11 pour
-  // compenser la correction du drop (facteur √2 oublié) sans bouger les
-  // humains (bp≈0.86) déjà calés — seuls les persos à fort vide (animaux)
-  // descendent maintenant jusqu'au muret.
-  // La même ligne que l'écran de calage du back-office — la valeur est
-  // partagée, voir Y_SOL_PERSONNAGES. C'est là-bas qu'on règle comment chaque
-  // personnage se pose ; ici, on ne fait que les ranger dessus.
-  const Y = Y_SOL_PERSONNAGES;
-  // Échelle : persos plus petits ; rétrécit avec le nombre pour tenir côte à
-  // côte sans déborder (rangée dans ~90% de la largeur).
-  const usable = 0.9;
-  // On compte la place réellement demandée, pas le nombre de personnages :
-  // deux chats à 0,6 tiennent dans ce qu'un adulte occupe.
-  const demande = facteurs.reduce((s, f) => s + f, 0);
-  const scale = Math.min(0.7, usable / (demande * CHAR_BASE_WIDTH));
-  // Largeur effective de CHAQUE perso, la sienne.
-  const largeurs = facteurs.map((f) => CHAR_BASE_WIDTH * scale * f);
-  // Resserrement : distance entre centres < largeur d'un perso (les cadres se
-  // chevauchent légèrement, les dessins ont de la marge). 1 = côte à côte.
-  const GAP = 0.8;
-  // Le pas entre deux voisins tient compte des DEUX largeurs : un chat collé à
-  // un adulte ne s'écarte pas comme deux adultes.
-  const pas = largeurs.map((w, i) =>
-    i === 0 ? 0 : ((largeurs[i - 1]! + w) / 2) * GAP,
-  );
-  const rowW =
-    largeurs[0]! / 2 +
-    pas.reduce((s, v) => s + v, 0) +
-    largeurs[n - 1]! / 2; // largeur totale de la rangée
-  const start = 0.5 - rowW / 2; // bord gauche pour centrer le groupe
-
-  /*
-   * PLUS DE PENTE. Une pente de 9 % faisait descendre chaque personnage un
-   * peu plus bas que son voisin de gauche. Elle avait été réglée pour UN
-   * fond — un muret incliné — et s'appliquait depuis à toutes les affiches du
-   * catalogue : sur un fond à sol plat, les personnages apparaissaient en
-   * escalier.
-   *
-   * Et l'écran de calage du back-office, lui, pose les pieds sur une ligne
-   * PLATE. Un personnage calé parfaitement là-bas ressortait donc décalé ici.
-   * Tout le monde sur la même ligne : c'est le calage du back-office, et lui
-   * seul, qui décide comment chacun se pose.
-   */
-
-  let curseur = start + largeurs[0]! / 2; // centre du premier
-  return characters.map((c, i) => {
-    if (i > 0) curseur += pas[i]!;
-    // Sa case dans la rangée, plus l'écart réglé pour CE personnage au
-    // back-office. Ramené dans l'affiche : un décalage vers la droite sur le
-    // dernier de la rangée ne doit pas le faire sortir du cadre.
-    const ecart = Math.min(0.4, Math.max(-0.4, decalageDe?.(c) ?? 0));
-    const demiLargeur = largeurs[i]! / 2;
-    const x = Math.min(1 - demiLargeur, Math.max(demiLargeur, curseur + ecart));
-    // L'échelle rendue est celle du personnage : la rangée décide de la place,
-    // le facteur décide de la taille dans cette place.
-    return { x, y: Y, scale: scale * facteurs[i]! };
-  });
-}
+export const CHAR_BASE_WIDTH = LARGEUR_CADRE_PERSONNAGE;
 
 /**
  * Placement d'un personnage sur l'affiche : le centre de son cadre et son
- * échelle, en fractions de la zone d'affiche.
+ * échelle, en fractions de la zone d'affiche, et son plan.
  */
 export interface PlacementPersonnage {
   x: number;
   y: number;
   scale: number;
+  /**
+   * Rang dans l'ordre de dessin : 0 est dessiné en premier, donc derrière.
+   * C'est lui qui part dans `position` — l'ordre que suit le fichier
+   * d'impression pour empiler les personnages.
+   */
+  plan: number;
+}
+
+/** Ce que la composition lit d'un personnage de la bibliothèque. */
+function aComposer(base: CharacterDTO | undefined): PersonnageAComposer {
+  return {
+    facteur: base?.facteurTaille,
+    decalage: base?.decalageX,
+    emprise: base?.emprise,
+  };
+}
+
+/**
+ * L'étalon de la composition : la hauteur du plus grand personnage proposé
+ * pour ce type d'affiche. C'est à lui qu'on mesure qui est « petit » — un
+ * enfant reste un enfant à côté de ses grands-parents, dessinés un peu moins
+ * grands que les autres adultes. `null` si aucun dessin n'est encore mesuré.
+ */
+export function etalonDeLaVue(
+  personnages: readonly CharacterDTO[],
+  vue: string,
+): number | null {
+  let plusGrand: number | null = null;
+  for (const p of personnages) {
+    if (p.archived || (p.orientation ?? "front") !== vue) continue;
+    const h = hauteurDuDessin(aComposer(p));
+    if (h !== null && (plusGrand === null || h > plusGrand)) plusGrand = h;
+  }
+  return plusGrand;
 }
 
 /**
@@ -546,29 +500,41 @@ export function bornerPlacement(
 }
 
 /**
- * Placement final des personnages : la rangée automatique, sauf pour ceux que
- * le client a posés lui-même, qui gardent leur position.
+ * Placement final des personnages : la composition automatique (rangée de dos,
+ * groupe de face — voir composition-personnages.ts, paquet types), sauf pour
+ * ceux que le client a posés lui-même, qui gardent leur position.
  *
- * L'ÉCHELLE reste toujours celle de la rangée, même après un déplacement :
- * glisser un personnage ne le redimensionne pas, et ajouter un personnage
- * continue de resserrer tout le monde — sinon le nouveau venu rapetisserait
- * seul, à côté de géants.
+ * L'ÉCHELLE reste toujours celle de la composition, même après un
+ * déplacement : glisser un personnage ne le redimensionne pas, et ajouter un
+ * personnage continue de resserrer tout le monde — sinon le nouveau venu
+ * rapetisserait seul, à côté de géants.
  *
- * `basDuDessin` donne le bottomPct de chaque personnage ; sans lui on suppose
- * un dessin qui remplit son cadre, ce qui borne un peu plus court.
+ * Le module SEUL appelle cette fonction. Le panier, la commande et le fichier
+ * d'impression relisent les places enregistrées par configFromState, sans
+ * rien recomposer.
  */
 export function placementsAffiche(
-  characters: WorkingCharacter[],
-  basDuDessin?: (c: WorkingCharacter) => number,
-  facteurDe?: (c: WorkingCharacter) => number,
-  decalageDe?: (c: WorkingCharacter) => number,
+  state: Pick<ConfiguratorState, "characters" | "view">,
+  personnage: (id: string | number) => CharacterDTO | undefined,
+  /** Voir etalonDeLaVue ; absent, le plus grand de l'affiche en tient lieu. */
+  etalon?: number | null,
 ): PlacementPersonnage[] {
-  const rangee = autoPlace(characters, facteurDe, decalageDe);
-  return characters.map((c, i) => {
-    const auto = rangee[i] ?? { x: 0.5, y: 0.816, scale: 0.6 };
+  const places = composerPersonnages(
+    state.characters.map((c) => aComposer(personnage(c.characterId))),
+    compositionDeLaVue(state.view),
+    etalon,
+  );
+  return state.characters.map((c, i) => {
+    const auto = places[i]!;
     if (!c.placementManuel) return auto;
-    const pose = bornerPlacement(c, auto.scale, basDuDessin?.(c) ?? 1);
-    return { x: pose.x, y: pose.y, scale: auto.scale };
+    // `bas` = bottomPct : sans lui on suppose un dessin qui remplit son cadre,
+    // ce qui borne un peu plus court.
+    const pose = bornerPlacement(
+      c,
+      auto.scale,
+      personnage(c.characterId)?.bottomPct ?? 1,
+    );
+    return { ...auto, x: pose.x, y: pose.y };
   });
 }
 
@@ -576,18 +542,12 @@ export function placementsAffiche(
 export function configFromState(
   state: ConfiguratorState,
   productId: string | number | undefined,
-  basDuDessin?: (c: WorkingCharacter) => number,
-  facteurDe?: (c: WorkingCharacter) => number,
-  decalageDe?: (c: WorkingCharacter) => number,
+  personnage: (id: string | number) => CharacterDTO | undefined,
+  etalon?: number | null,
 ): PosterConfig {
-  const placement = placementsAffiche(
-    state.characters,
-    basDuDessin,
-    facteurDe,
-    decalageDe,
-  );
+  const placement = placementsAffiche(state, personnage, etalon);
   const characters: Character[] = state.characters.map((c, i) => {
-    const p = placement[i] ?? { x: c.x, y: c.y, scale: c.scale };
+    const p = placement[i] ?? { x: c.x, y: c.y, scale: c.scale, plan: c.position };
     // assets : slot -> variantId, sans les slots vides.
     const assets: Record<string, string | number> = {};
     for (const slot of SLOTS) {
@@ -596,7 +556,10 @@ export function configFromState(
     }
     const perso: Character = {
       typeId: c.characterId,
-      position: c.position,
+      // L'ordre de DESSIN, et non le rang dans la liste : de face, les petits
+      // passent devant les grands quel que soit leur rang. Le fichier
+      // d'impression empile dans cet ordre ; le panier aussi.
+      position: p.plan,
       x: p.x,
       y: p.y,
       scale: p.scale,

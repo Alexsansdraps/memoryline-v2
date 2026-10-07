@@ -16,7 +16,7 @@
  * n'en sort : ce sont les adresses que n'importe qui peut déjà ouvrir.
  */
 import type { Hono } from "hono";
-import { and, count, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import { AFFICHAGES_SITE } from "./cms.js";
 import {
@@ -28,9 +28,10 @@ import {
 
 export function mountPlanDuSite(app: Hono): void {
   app.get("/plan-du-site", async (c) => {
-    const [produits, rayons, pages] = await Promise.all([
+    const [produits, rayons, pages, visuels] = await Promise.all([
       db
         .select({
+          id: schema.products.id,
           slug: schema.products.slug,
           kind: schema.products.kind,
           description: schema.products.description,
@@ -93,6 +94,20 @@ export function mountPlanDuSite(app: Hono): void {
             inArray(schema.pages.affichage, AFFICHAGES_SITE),
           ),
         ),
+      // Les visuels des fiches en vente, dans leur ordre : les anciennes
+      // adresses d'images de memoryline.fr (/cdn/shop/files/…) y retrouvent
+      // le leur (apps/web/src/lib/anciennes-adresses.ts).
+      db
+        .select({ productId: schema.productImages.productId, url: schema.productImages.url })
+        .from(schema.productImages)
+        .innerJoin(
+          schema.products,
+          and(
+            eq(schema.products.id, schema.productImages.productId),
+            eq(schema.products.status, "active"),
+          ),
+        )
+        .orderBy(asc(schema.productImages.position), asc(schema.productImages.id)),
     ]);
 
     return c.json({
@@ -101,6 +116,8 @@ export function mountPlanDuSite(app: Hono): void {
         genre: p.kind,
         maj: p.updatedAt.toISOString(),
         langues: languesDuProduit(p),
+        /** Champ AJOUTÉ : les adresses de ses visuels (« /assets/… »), dans l'ordre. */
+        images: visuels.filter((v) => v.productId === p.id).map((v) => v.url),
       })),
       // Combien d'affiches de chaque genre : une page de genre vide répond
       // 404, elle n'a pas sa place dans le plan non plus.

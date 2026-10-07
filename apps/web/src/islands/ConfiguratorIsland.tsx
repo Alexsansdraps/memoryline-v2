@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { t, lien, LANGUE_DEFAUT, LOCALE_COMPLETE, type Langue } from "../i18n/utils.ts";
 import { createResource, createSignal, Show, type JSX } from "solid-js";
-import { Configurator, type SignatureApercu } from "@memoryline/configurator";
+import { Configurator } from "@memoryline/configurator";
 import type {
   BackgroundDTO,
   CharacterTypeDTO,
@@ -71,17 +71,6 @@ export interface ConfiguratorIslandProps {
    * ligne de panier porte ce nombre ; les exemplaires sont identiques.
    */
   quantite?: number;
-  /**
-   * La signature de la boutique, en bas à droite de l'aperçu.
-   *
-   * Lue dans les réglages par la PAGE (`signatureDesCreations()`), côté
-   * serveur : un îlot monté dans le navigateur ne doit pas aller rechercher
-   * un réglage que la page a déjà sous la main, et l'aperçu doit être signé
-   * dès le premier dessin — pas une seconde plus tard.
-   *
-   * Absente : l'affiche n'est pas signée à l'écran (cf. PosterPreview).
-   */
-  signature?: SignatureApercu | null;
 }
 
 /** Prix selon le format choisi, depuis les prix réels des variantes. */
@@ -298,7 +287,6 @@ export default function ConfiguratorIsland(
                 sansCadre: tr("cfg.sans_cadre"),
                 reordonnerAide: tr("cfg.reordonner_aide"),
                 dupliquer: tr("cfg.dupliquer"),
-                aideRetourLigne: tr("cfg.aide_retour_ligne"),
                 ligneN: tr("cfg.ligne_n"),
                 precedent: tr("cfg.precedent"),
                 suivant: tr("cfg.suivant"),
@@ -316,7 +304,6 @@ export default function ConfiguratorIsland(
                 // police absente d'ici garde son nom français.
                 libellesPolices: {
                   serif: tr("cfg.police.serif"),
-                  spartan: tr("cfg.police.spartan"),
                   shabby: tr("cfg.police.shabby"),
                 },
                 libellesCouleursTexte: {
@@ -344,7 +331,6 @@ export default function ConfiguratorIsland(
               defaults={props.defaults}
               initialConfig={props.initialConfig}
               assetBaseUrl={PUBLIC_API_URL}
-              signature={props.signature}
               onSubmit={handleSubmit}
               onBack={handleBack}
             />
