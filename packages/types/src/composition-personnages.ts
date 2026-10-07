@@ -21,6 +21,8 @@
  *    Une deuxième rangée ne s'ouvre plus que lorsque la première, serrée sur
  *    la largeur réelle des dessins, ne tient plus qu'en descendant sous
  *    l'échelle 0,5 (0,7 pour un personnage seul) : vers onze adultes de dos.
+ *    Et la première reste alors pleine : ne passent derrière que ceux qui
+ *    n'y tiennent plus (voir enDeuxRangees).
  *
  *  - « groupe », pour les affiches DE FACE (et les types créés au
  *    back-office) : « c'est beaucoup plus sympa si, par défaut, pour plusieurs
@@ -382,11 +384,26 @@ function enGroupe(
 }
 
 /**
- * Deux rangées quand une seule ne tient plus : celle de devant garde un
- * personnage de plus que celle de derrière, et chacun de derrière se montre
- * dans un intervalle de devant, en quinconce, au lieu d'être caché derrière
- * un dos. Ne vont derrière que des grands, pris régulièrement dans la liste :
- * l'ordre de gauche à droite reste à peu près celui de la cliente.
+ * Deux rangées quand une seule ne tient plus.
+ *
+ * La rangée de devant reste PLEINE : on ne passe derrière que le nombre de
+ * personnages qu'il faut pour qu'elle retienne sur toute la largeur à
+ * l'échelle mini (ECHELLE_MINI_RANGEE), un, puis deux, puis trois… Elle en
+ * garde au moins un de plus que celle de derrière ; au-delà, les deux
+ * rangées rapetissent ensemble.
+ *
+ * Elle se partageait jusqu'ici en deux moitiés : onze adultes de dos
+ * donnaient six devant, cinq derrière, et la rangée de devant, revenue à la
+ * taille d'un personnage seul, laissait de la place de chaque côté — ce que
+ * la boutique reprochait à l'ancienne rangée, à onze personnages au lieu de
+ * six. La taille faisait en plus un bond d'un tiers entre dix personnages
+ * (une rangée) et onze (deux). Désormais, onze adultes : dix devant, à la
+ * taille qu'avaient les dix, et un derrière.
+ *
+ * Chacun de derrière se montre dans un intervalle de devant, en quinconce,
+ * au lieu d'être caché derrière un dos. Ne vont derrière que des grands,
+ * pris au milieu de parts égales de la liste — un seul : celui du milieu —
+ * pour que l'ordre de gauche à droite reste à peu près celui de la cliente.
  */
 function enDeuxRangees(
   tous: readonly number[],
@@ -394,28 +411,28 @@ function enDeuxRangees(
   petit: (i: number) => boolean,
 ): Pose[] | null {
   const grands = tous.filter((i) => !petit(i));
-  const nombreDerriere = Math.min(grands.length, Math.floor((tous.length - 1) / 2));
-  if (nombreDerriere < 1) return null;
-  const derriere = new Set<number>();
-  grands.forEach((i, k) => {
-    if (
-      Math.floor(((k + 1) * nombreDerriere) / grands.length) >
-      Math.floor((k * nombreDerriere) / grands.length)
-    )
-      derriere.add(i);
-  });
-  const avant = aLaSuite(
-    tous.filter((i) => !derriere.has(i)).map((i) => ({ i, recul: 0 })),
-    m,
-  );
-  const fond = etalee(
-    tous.filter((i) => derriere.has(i)),
-    RECUL_RANG,
-    m,
-    avant[0]!.centre,
-    avant[avant.length - 1]!.centre,
-  );
-  return [...fond, ...avant];
+  const auPlus = Math.min(grands.length, Math.floor((tous.length - 1) / 2));
+  if (auPlus < 1) return null;
+  let poses: Pose[] = [];
+  for (let nombreDerriere = 1; nombreDerriere <= auPlus; nombreDerriere++) {
+    const derriere = new Set<number>();
+    for (let j = 0; j < nombreDerriere; j++)
+      derriere.add(grands[Math.floor(((j + 0.5) * grands.length) / nombreDerriere)]!);
+    const avant = aLaSuite(
+      tous.filter((i) => !derriere.has(i)).map((i) => ({ i, recul: 0 })),
+      m,
+    );
+    const fond = etalee(
+      tous.filter((i) => derriere.has(i)),
+      RECUL_RANG,
+      m,
+      avant[0]!.centre,
+      avant[avant.length - 1]!.centre,
+    );
+    poses = [...fond, ...avant];
+    if (echelleDe(avant, m) >= ECHELLE_MINI_RANGEE) break;
+  }
+  return poses;
 }
 
 /**

@@ -248,6 +248,9 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
 
   /* --------------------------- navigation --------------------------------- */
   function goToStep(step: Step) {
+    // Quitter l'étape par le fil des étapes ou « Continuer » garde le
+    // personnage en cours, même tout juste ajouté (cf. quitterEditeur).
+    ajoutNonValide = null;
     mutate((s) => {
       s.step = step;
       s.editingIndex = null;
@@ -331,10 +334,18 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   }
 
   /* --------------------------- étape 2 ------------------------------------ */
+  /**
+   * Le rang du personnage que « + Ajouter un personnage » vient de poser,
+   * tant que la cliente ne l'a pas validé ; `null` sinon. C'est lui que
+   * « ‹ Retour » retire (quitterEditeur).
+   */
+  let ajoutNonValide: number | null = null;
+
   function addCharacter() {
     // Le perso ajouté par défaut respecte l'orientation de l'affiche.
     const base = visibleCharacters()[0] ?? props.characters[0];
     if (!base) return;
+    ajoutNonValide = state.characters.length;
     mutate((s) => {
       const position = s.characters.length;
       // Les variantes que CE personnage peut porter : c'est là-dedans que se
@@ -369,6 +380,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
    * qui sur l'affiche.
    */
   function duplicateCharacter(index: number) {
+    ajoutNonValide = null;
     mutate((s) => {
       const source = s.characters[index];
       if (!source) return;
@@ -390,9 +402,29 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     });
   }
   function selectCharacter(index: number | null) {
+    ajoutNonValide = null;
     mutate((s) => {
       s.editingIndex = index;
     });
+  }
+  /**
+   * Ferme l'éditeur de personnage et revient à la liste.
+   *
+   * « ‹ Retour » sur un personnage qu'on vient d'ajouter ANNULE l'ajout : on
+   * a ouvert le catalogue pour voir, on n'y a rien voulu, et l'affiche ne
+   * doit pas garder un « Femme 1 » posé d'office. Seul « Valider mon
+   * personnage » le garde. Pour un personnage déjà dans la liste, les deux
+   * boutons reviennent à la liste : il est modifié au fil des choix, et
+   * Retour n'a rien à défaire.
+   */
+  function quitterEditeur(garder: boolean) {
+    const i = state.editingIndex;
+    if (!garder && i !== null && i === ajoutNonValide) {
+      ajoutNonValide = null;
+      removeCharacter(i);
+      return;
+    }
+    selectCharacter(null);
   }
   function setAsset(index: number, slot: Slot, variantId: string | number) {
     mutate((s) => {
@@ -770,6 +802,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             onDuplicate={duplicateCharacter}
             onRemove={removeCharacter}
             onSelect={selectCharacter}
+            onQuitterEditeur={quitterEditeur}
             onReorder={reordonner}
             onSetAsset={setAsset}
             onClearSlot={clearSlot}
@@ -841,6 +874,12 @@ export default Configurator;
  * C'est le même composant, donc les deux rendus ne peuvent pas diverger.
  */
 export { PosterPreview } from "./components/PosterPreview";
+/**
+ * La réduction des lignes trop longues : l'affiche tirée d'une photo
+ * (apps/web, AfficheIA) pose ses textes comme l'aperçu, et doit les réduire
+ * de la même façon que lui et que le fichier d'impression.
+ */
+export { createReductionDesLignes } from "./components/ReductionTexte";
 /**
  * La liste qui défile avec ses boutons et sa barre bien visibles : le site
  * s'en sert aussi (la liste des points relais), pour que toutes les listes se

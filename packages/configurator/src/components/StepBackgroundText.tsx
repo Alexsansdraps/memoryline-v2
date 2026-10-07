@@ -4,6 +4,7 @@ import {
   COULEURS_TEXTE_AFFICHE,
   couleurTexteParValeur,
   policesDeLaLigne,
+  POLICES_AFFICHE,
   familleCss,
   limiterRetours,
   MORCEAUX_PAR_LIGNE,
@@ -35,6 +36,30 @@ export function StepBackgroundText(props: {
   /** Nom traduit d'une police ; l'identifiant enregistré ne change pas. */
   const nomPolice = (police: PoliceAffiche) =>
     m().libellesPolices[police.id] ?? police.libelle;
+
+  /**
+   * Les polices montrées pour une ligne : celles qu'elle propose, plus — le
+   * cas échéant — celle qu'elle porte déjà, comme pour la couleur plus bas.
+   * Une affiche composée avant que la boutique retire une police (League
+   * Spartan en ligne 1, notamment), rouverte depuis le panier, s'écrit
+   * toujours dans SA police : sans cette pastille, aucune ne paraissait
+   * choisie alors que l'aperçu en montrait une. Elle n'est plus proposée :
+   * choisir une autre police la fait disparaître.
+   *
+   * Elle se nomme par sa famille (« League Spartan ») et non par son ancien
+   * libellé : un nom propre se lit dans toutes les langues, et ses
+   * traductions ont quitté le site avec elle.
+   */
+  const policesMontrees = (ligne: number): { police: PoliceAffiche; nom: string }[] => {
+    const proposees = policesDeLaLigne(ligne).map((police) => ({
+      police,
+      nom: nomPolice(police),
+    }));
+    const actuelle = props.state.lignes[ligne]?.font;
+    if (!actuelle || proposees.some((p) => p.police.id === actuelle)) return proposees;
+    const ancienne = POLICES_AFFICHE.find((p) => p.id === actuelle);
+    return ancienne ? [...proposees, { police: ancienne, nom: ancienne.famille }] : proposees;
+  };
   /**
    * Choix rapide de la police, montrée DANS la police : le client juge le
    * rendu, pas un nom. Une rangée par ligne, car chacune a la sienne. Quand
@@ -48,8 +73,8 @@ export function StepBackgroundText(props: {
       versFin={m().suivant}
       class="ml-cfg-polices"
     >
-      <For each={policesDeLaLigne(p.ligne)}>
-        {(police) => {
+      <For each={policesMontrees(p.ligne)}>
+        {({ police, nom }) => {
           const actif = () =>
             props.state.lignes[p.ligne]?.font === police.id;
           return (
@@ -60,7 +85,7 @@ export function StepBackgroundText(props: {
               // Marques du choix fait posées par le site (`ml-choix`) ; le
               // style en ligne reste le repli du module seul.
               class="ml-choix"
-              title={nomPolice(police)}
+              title={nom}
               style={{
                 flex: "0 0 auto",
                 border: actif() ? "2px solid #4f46e5" : "1px solid #d1d5db",
@@ -75,7 +100,7 @@ export function StepBackgroundText(props: {
                 "white-space": "nowrap",
               }}
             >
-              {nomPolice(police)}
+              {nom}
             </button>
           );
         }}

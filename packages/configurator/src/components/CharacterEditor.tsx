@@ -1059,7 +1059,8 @@ export function CharacterEditor(props: {
       {/* Retour à gauche, Valider à droite §18.2 F — côte à côte et toujours
           à portée, comme Retour / Continuer entre les étapes (retour
           cliente). Les deux ramènent à la liste : le personnage est modifié
-          au fil des choix, il n'y a rien à annuler. */}
+          au fil des choix. Seule exception, un personnage qu'on vient
+          d'ajouter : Retour annule son ajout (Configurator, quitterEditeur). */}
       {/* Sans fondu : il recouvrirait la demi-rangée de la grille, qui sert
           d'indice. */}
       <BarreActions indice={false}>

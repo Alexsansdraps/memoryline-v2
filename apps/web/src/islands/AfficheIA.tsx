@@ -23,16 +23,26 @@ import {
   NB_LIGNES_AFFICHE,
   POLICE_SOUSTITRE_DEFAUT,
   POLICE_TITRE_DEFAUT,
+  espaceAvantLigne,
+  espacementDeLigne,
   familleCss,
+  HAUT_DU_TEXTE,
+  interligneDeLigne,
+  INTERLIGNE_LIGNE_POSEE,
   ligneEnMajuscules,
+  MARGE_DU_TEXTE,
+  morceauxDeTexte,
   policeParId,
   limiterRetours,
   MORCEAUX_PAR_LIGNE,
   policesDeLaLigne,
   sousLignes,
+  tailleDeLigneCqw,
+  type PoliceAffiche,
   type PosterConfig,
   type TextBlock,
 } from "@memoryline/types";
+import { createReductionDesLignes } from "@memoryline/configurator";
 import { assetUrl, browserApi, formatPrice, getCartId } from "../lib/api.ts";
 import {
   apercuAbsolu,
@@ -230,6 +240,30 @@ function AttenteAffiche(props: { paysage: boolean; texte: string }): JSX.Element
   );
 }
 
+/**
+ * Le texte d'une ligne de l'affiche, tel que l'écrit le fichier d'impression :
+ * un bloc par morceau coupé à la main (touche Entrée), sans trou pour les
+ * morceaux vides, et chaque bout dans la police qui sait l'écrire — la
+ * manuscrite ne connaît pas les chiffres, ils s'écrivent en Caveat.
+ * `data-sous-ligne` : c'est ce que mesure la réduction des lignes trop
+ * longues (createReductionDesLignes).
+ */
+function MorceauxDeLigne(props: { valeur: string; police: PoliceAffiche }): JSX.Element {
+  return (
+    <For each={sousLignes(props.valeur)}>
+      {(sousLigne) => (
+        <div data-sous-ligne>
+          <For each={morceauxDeTexte(sousLigne, props.police)}>
+            {(morceau) => (
+              <span style={{ "font-family": familleCss(morceau.police) }}>{morceau.texte}</span>
+            )}
+          </For>
+        </div>
+      )}
+    </For>
+  );
+}
+
 export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   const tr = t(props.langue ?? LANGUE_DEFAUT);
   const locale = LOCALE_COMPLETE[props.langue ?? LANGUE_DEFAUT];
@@ -398,11 +432,23 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       .filter((l) => l.value.trim() !== "");
 
   /**
-   * Taille des lignes en cqw, par rang parmi les lignes REMPLIES : la même
-   * échelle que l'aperçu des affiches classiques (PosterPreview), pour que
-   * les deux se ressemblent trait pour trait.
+   * Les deux calques de texte de l'aperçu (lignes empilées, lignes posées),
+   * et la réduction des lignes trop longues pour la largeur du bloc : la
+   * même règle que l'aperçu des affiches classiques et que le fichier
+   * d'impression — réduite, jamais repliée.
    */
-  const TAILLES_LIGNES = [8, 5.5, 4.6];
+  let calqueEmpile: HTMLDivElement | undefined;
+  let calquePose: HTMLDivElement | undefined;
+  const reductionDeLigne = createReductionDesLignes(
+    () => [calqueEmpile, calquePose],
+    () =>
+      lignesRemplies()
+        .map((l) => `${l.font}\u0000${l.value}\u0000${typeof l.x === "number"}`)
+        .join("\n") + sensAffiche(),
+  );
+  /** La police d'une ligne, par son rang parmi les lignes remplies. */
+  const policeDeLigne = (font: string | undefined, rang: number) =>
+    policeParId(font, rang === 0 ? POLICE_TITRE_DEFAUT : POLICE_SOUSTITRE_DEFAUT);
 
   // Les clés de traduction sont un type fermé : on les énumère au lieu de les
   // fabriquer par interpolation, sinon le compilateur ne peut plus garantir
@@ -912,15 +958,22 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                   les lignes non touchées s'empilent en haut (calque 1), les
                   lignes déplacées sont posées à leur point (calque 2). Une
                   ligne passe de l'un à l'autre au premier geste. */}
+              {/* Toute la mise en page — haut du bloc, marges, tailles,
+                  interlignes, espaces, espacement des lettres — vient de
+                  packages/types (mise-en-page-texte.ts), comme pour l'aperçu
+                  des affiches classiques et pour le fichier d'impression. Une
+                  ligne n'est jamais repliée : trop longue, elle est réduite
+                  (reductionDeLigne), comme à l'impression. */}
               <div
+                ref={calqueEmpile}
                 style={{
                   position: "absolute",
                   left: "0",
                   right: "0",
-                  top: "5%",
+                  top: `${HAUT_DU_TEXTE * 100}%`,
                   "text-align": "center",
                   "pointer-events": "none",
-                  padding: "0 6%",
+                  padding: `0 ${MARGE_DU_TEXTE * 100}%`,
                   "container-type": "inline-size",
                   "z-index": "200",
                 }}
@@ -929,6 +982,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                   {(ligne, rang) => (
                     <Show when={typeof ligne().x !== "number"}>
                       <div
+                        data-rang-texte={rang}
                         title={tr("ia.deplacer_ligne")}
                         onPointerDown={(e) => attraperLigne(e, ligne().rang)}
                         style={{
@@ -936,35 +990,31 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                           cursor: "move",
                           "touch-action": "none",
                           "user-select": "none",
-                          "font-family": familleCss(
-                            policeParId(
-                              ligne().font,
-                              rang === 0 ? POLICE_TITRE_DEFAUT : POLICE_SOUSTITRE_DEFAUT,
-                            ),
-                          ),
+                          "font-family": familleCss(policeDeLigne(ligne().font, rang)),
                           color: couleur(),
-                          "font-size": `${(TAILLES_LIGNES[rang] ?? TAILLES_LIGNES.at(-1)!) * echelleTexte()}cqw`,
-                          "line-height": rang === 0 ? "1.05" : "1.15",
-                          "letter-spacing": rang === 0 ? "0.04em" : "normal",
-                          "margin-top": rang === 0 ? "0" : "0.1em",
-                          "word-break": "break-word",
-                          // Un retour à la ligne tapé coupe la ligne ici comme
-                          // à l'impression.
-                          "white-space": "pre-line",
+                          "font-size": `${tailleDeLigneCqw(rang) * echelleTexte() * reductionDeLigne(rang)}cqw`,
+                          "line-height": String(interligneDeLigne(rang)),
+                          "letter-spacing": `${espacementDeLigne(rang)}em`,
+                          "margin-top": `${espaceAvantLigne(rang)}em`,
+                          "white-space": "nowrap",
                         }}
                       >
-                        {sousLignes(ligne().value).join("\n")}
+                        <MorceauxDeLigne
+                          valeur={ligne().value}
+                          police={policeDeLigne(ligne().font, rang)}
+                        />
                       </div>
                     </Show>
                   )}
                 </Index>
               </div>
               <div
+                ref={calquePose}
                 style={{
                   position: "absolute",
                   inset: "0",
                   "pointer-events": "none",
-                  padding: "0 6%",
+                  padding: `0 ${MARGE_DU_TEXTE * 100}%`,
                   "container-type": "inline-size",
                   "z-index": "201",
                 }}
@@ -973,6 +1023,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                   {(ligne, rang) => (
                     <Show when={typeof ligne().x === "number"}>
                       <div
+                        data-rang-texte={rang}
                         title={tr("ia.deplacer_ligne")}
                         onPointerDown={(e) => attraperLigne(e, ligne().rang)}
                         style={{
@@ -980,26 +1031,26 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                           left: `${(ligne().x ?? 0.5) * 100}%`,
                           top: `${(ligne().y ?? 0.1) * 100}%`,
                           transform: "translate(-50%, -50%)",
-                          // « pre » et non « nowrap » : une ligne coupée à la main
-                          // garde ses retours, sans jamais se replier seule.
-                          "white-space": "pre",
+                          // Les morceaux d'une ligne coupée à la main, centrés
+                          // l'un sous l'autre, comme le fichier d'impression
+                          // les pose.
+                          "text-align": "center",
+                          "white-space": "nowrap",
                           "pointer-events": "auto",
                           cursor: "move",
                           "touch-action": "none",
                           "user-select": "none",
-                          "font-family": familleCss(
-                            policeParId(
-                              ligne().font,
-                              rang === 0 ? POLICE_TITRE_DEFAUT : POLICE_SOUSTITRE_DEFAUT,
-                            ),
-                          ),
+                          "font-family": familleCss(policeDeLigne(ligne().font, rang)),
                           color: couleur(),
-                          "font-size": `${(TAILLES_LIGNES[rang] ?? TAILLES_LIGNES.at(-1)!) * echelleTexte()}cqw`,
-                          "line-height": "1.1",
-                          "letter-spacing": rang === 0 ? "0.04em" : "normal",
+                          "font-size": `${tailleDeLigneCqw(rang) * echelleTexte() * reductionDeLigne(rang)}cqw`,
+                          "line-height": String(INTERLIGNE_LIGNE_POSEE),
+                          "letter-spacing": `${espacementDeLigne(rang)}em`,
                         }}
                       >
-                        {sousLignes(ligne().value).join("\n")}
+                        <MorceauxDeLigne
+                          valeur={ligne().value}
+                          police={policeDeLigne(ligne().font, rang)}
+                        />
                       </div>
                     </Show>
                   )}

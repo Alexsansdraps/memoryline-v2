@@ -14,29 +14,25 @@ import {
   variantesDeVue,
 } from "../store";
 import {
+  espaceAvantLigne,
+  espacementDeLigne,
   familleCss,
+  HAUT_DU_TEXTE,
+  interligneDeLigne,
+  MARGE_DU_TEXTE,
   morceauxDeTexte,
   policeParId,
   sousLignes,
+  tailleDeLigneCqw,
   urlAsset,
 } from "@memoryline/types";
 import { CharacterStack } from "./CharacterLayer";
 import { Filigrane } from "./Filigrane";
+import { createReductionDesLignes } from "./ReductionTexte";
 import {
   messagesAvecDefauts,
   type MessagesConfigurateur,
 } from "../messages";
-
-/**
- * Taille des lignes, en cqw (largeur du bloc de texte), par rang parmi les
- * lignes REMPLIES — et non par numéro de ligne : une ligne 1 laissée vide ne
- * doit pas condamner le reste du texte à la petite taille.
- *
- * La première domine, les suivantes se font discrètes ; les trois réunies
- * occupent moins de 15 % de la hauteur de l'affiche, loin au-dessus des
- * personnages.
- */
-const TAILLES_LIGNES = [8, 5.5, 4.6];
 
 /**
  * Couleur de repli d'un cadre dont le back-office n'a pas fixé la teinte :
@@ -155,6 +151,19 @@ export function PosterPreview(props: {
     { value: "Memory Line", font: policeDefautLigne(0) },
     { value: m().exempleAffiche, font: policeDefautLigne(1) },
   ]);
+
+  /** Les lignes remplies, dans l'ordre ; à défaut, le texte d'exemple. */
+  const remplies = () => props.state.lignes.filter((l) => l.value.trim() !== "");
+  const texteVide = () => remplies().length === 0;
+  const lignesADessiner = () => (texteVide() ? lignesExemple() : remplies());
+
+  /** Le calque des lignes de texte, que mesure la réduction ci-dessous. */
+  let coucheTexte: HTMLDivElement | undefined;
+  /** Une ligne trop longue pour le bloc est réduite, comme à l'impression. */
+  const reductionDeLigne = createReductionDesLignes(
+    () => [coucheTexte],
+    () => lignesADessiner().map((l) => `${l.font}\u0000${l.value}`).join("\n"),
+  );
 
   /** La couleur du cadre, ou rien du tout s'il n'y en a pas. */
   const couleurCadre = () =>
@@ -518,73 +527,72 @@ export function PosterPreview(props: {
 
       {/* Couche texte — EN HAUT de l'affiche (charte Memory Line). Les lignes
           remplies se suivent, chacune dans sa police, toutes dans la couleur
-          commune. Si aucune n'est saisie : placeholder de marque. */}
+          commune. Si aucune n'est saisie : placeholder de marque.
+          Toute la mise en page — haut du bloc, marges, tailles, interlignes,
+          espace avant chaque ligne, espacement des lettres — vient de
+          packages/types (mise-en-page-texte.ts) : le fichier d'impression
+          lit les mêmes nombres et refait le calcul du navigateur. */}
       <div
+        ref={coucheTexte}
         style={{
           position: "absolute",
           left: "0",
           right: "0",
-          top: "5%",
+          top: `${HAUT_DU_TEXTE * 100}%`,
           "text-align": "center",
           "pointer-events": "none",
-          padding: "0 6%",
+          padding: `0 ${MARGE_DU_TEXTE * 100}%`,
           "container-type": "inline-size",
           "z-index": "200",
         }}
       >
-        {(() => {
-          const remplies = () =>
-            props.state.lignes.filter((l) => l.value.trim() !== "");
-          const vide = () => remplies().length === 0;
-          const aDessiner = () => (vide() ? lignesExemple() : remplies());
-          return (
-            <For each={aDessiner()}>
-              {(ligne, rang) => (
-                <div
-                  style={{
-                    "font-family": familleCss(
-                      policeParId(ligne.font, policeDefautLigne(rang())),
-                    ),
-                    color: props.state.textStyle.color,
-                    // Ce qui distingue la ligne de tête, c'est sa TAILLE. Elle
-                    // n'est plus mise en capitales ni en gras : les lignes sont
-                    // libres, elles s'écrivent comme le client les tape, et
-                    // aucune des polices d'affiche n'a de graisse — le gras
-                    // n'était qu'une imitation du navigateur, que le PDF
-                    // d'impression ne sait pas reproduire.
-                    "font-size": `${TAILLES_LIGNES[rang()] ?? TAILLES_LIGNES.at(-1)}cqw`,
-                    "line-height": rang() === 0 ? "1.05" : "1.15",
-                    "letter-spacing": rang() === 0 ? "0.04em" : "normal",
-                    "margin-top": rang() === 0 ? "0" : "0.1em",
-                    "word-break": "break-word",
-                    // Un retour à la ligne tapé par le client (touche Entrée)
-                    // coupe la ligne ici comme à l'impression.
-                    "white-space": "pre-line",
-                    opacity: vide() ? "0.5" : "1",
-                  }}
-                >
-                  {/* Chaque morceau dans la police qui sait l'écrire : la
-                      manuscrite ne connaît pas les chiffres, ils s'écrivent
-                      alors en Caveat — ici comme à l'impression. Les
-                      morceaux vides d'une ligne coupée ne laissent pas de
-                      trou (sousLignes), comme dans le PDF. */}
-                  <For
-                    each={morceauxDeTexte(
-                      sousLignes(ligne.value).join("\n"),
-                      policeParId(ligne.font, policeDefautLigne(rang())),
-                    )}
-                  >
-                    {(morceau) => (
-                      <span style={{ "font-family": familleCss(morceau.police) }}>
-                        {morceau.texte}
-                      </span>
-                    )}
-                  </For>
-                </div>
-              )}
-            </For>
-          );
-        })()}
+        <For each={lignesADessiner()}>
+          {(ligne, rang) => {
+            const police = () => policeParId(ligne.font, policeDefautLigne(rang()));
+            return (
+              <div
+                data-rang-texte={rang()}
+                style={{
+                  "font-family": familleCss(police()),
+                  color: props.state.textStyle.color,
+                  // Ce qui distingue la ligne de tête, c'est sa TAILLE, et
+                  // l'air entre ses capitales. Pas de gras : aucune des
+                  // polices d'affiche n'a de graisse, et le gras qu'imitait
+                  // le navigateur n'avait pas l'épaisseur de celui
+                  // qu'imitait le PDF.
+                  "font-size": `${tailleDeLigneCqw(rang()) * reductionDeLigne(rang())}cqw`,
+                  "line-height": String(interligneDeLigne(rang())),
+                  "letter-spacing": `${espacementDeLigne(rang())}em`,
+                  "margin-top": `${espaceAvantLigne(rang())}em`,
+                  // Jamais repliée : trop longue, la ligne est réduite
+                  // (reductionDeLigne), comme à l'impression.
+                  "white-space": "nowrap",
+                  opacity: texteVide() ? "0.5" : "1",
+                }}
+              >
+                {/* Un retour à la ligne tapé par le client (touche Entrée)
+                    coupe la ligne ici comme à l'impression ; les morceaux
+                    vides ne laissent pas de trou (sousLignes). Chaque bout
+                    s'écrit dans la police qui sait l'écrire : la manuscrite
+                    ne connaît pas les chiffres, ils s'écrivent alors en
+                    Caveat — ici comme à l'impression. */}
+                <For each={sousLignes(ligne.value)}>
+                  {(sousLigne) => (
+                    <div data-sous-ligne>
+                      <For each={morceauxDeTexte(sousLigne, police())}>
+                        {(morceau) => (
+                          <span style={{ "font-family": familleCss(morceau.police) }}>
+                            {morceau.texte}
+                          </span>
+                        )}
+                      </For>
+                    </div>
+                  )}
+                </For>
+              </div>
+            );
+          }}
+        </For>
       </div>
 
       {/* Pas de signature de la boutique ici : elle n'est posée que sur le

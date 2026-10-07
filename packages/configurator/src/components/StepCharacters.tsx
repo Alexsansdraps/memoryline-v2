@@ -32,6 +32,11 @@ export function StepCharacters(props: {
   onDuplicate: (index: number) => void;
   onRemove: (index: number) => void;
   onSelect: (index: number | null) => void;
+  /**
+   * Ferme l'éditeur : `garder` faux pour « ‹ Retour », vrai pour « Valider ».
+   * Retour sur un personnage tout juste ajouté annule son ajout.
+   */
+  onQuitterEditeur: (garder: boolean) => void;
   /** Déplace un personnage d'un rang à un autre dans la liste. */
   onReorder: (depuis: number, vers: number) => void;
   onSetAsset: (index: number, slot: Slot, variantId: string | number) => void;
@@ -239,8 +244,8 @@ export function StepCharacters(props: {
             onChangeCharacter={(base) =>
               props.onChangeCharacter(editing()!, base)
             }
-            onBack={() => props.onSelect(null)}
-            onValidate={() => props.onSelect(null)}
+            onBack={() => props.onQuitterEditeur(false)}
+            onValidate={() => props.onQuitterEditeur(true)}
           />
         )}
       </Show>

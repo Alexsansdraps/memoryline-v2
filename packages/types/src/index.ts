@@ -10,6 +10,7 @@ export * from "./livraison.js";
 export * from "./poids.js";
 export * from "./fonts.js";
 export * from "./textes-affiche.js";
+export * from "./mise-en-page-texte.js";
 export * from "./couleurs-texte.js";
 export * from "./sol-personnages.js";
 export * from "./composition-personnages.js";

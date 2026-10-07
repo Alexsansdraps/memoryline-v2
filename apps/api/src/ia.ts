@@ -342,15 +342,33 @@ const LOGO_FILIGRANE = resolve(
   "../../marque/logo-filigrane.png",
 );
 
-/** Le logo blanc ramené à une opacité donnée : on atténue son canal alpha. */
+/**
+ * Le logo blanc ramené à une opacité donnée : on multiplie son canal alpha.
+ *
+ * En DEUX passes, comme la signature de pdf.ts : le logo mis à sa taille,
+ * puis un pixel d'opacité posé en « dest-in » sur toute l'image, qui
+ * multiplie la transparence de chaque pixel sans toucher à sa couleur.
+ * L'ancienne chaîne (extractChannel puis linear) n'atténuait rien — sharp
+ * range lui-même l'ordre des opérations d'une chaîne, et la couche sortait
+ * intacte : le logo des aperçus était blanc OPAQUE, quand celui du module
+ * est à 40 %. Agrandi à la demande de la boutique, il couvrait l'affiche.
+ */
 async function logoAttenue(largeur: number, opacite: number, sombre: boolean): Promise<Buffer> {
   const base = sharp(LOGO_FILIGRANE).resize({ width: largeur });
   // negate() sans toucher à l'alpha : la silhouette blanche devient noire,
   // ses bords transparents restent transparents.
-  const couleur = sombre ? base.clone().negate({ alpha: false }) : base.clone();
-  const rgb = await couleur.removeAlpha().toBuffer();
-  const alpha = await base.clone().extractChannel("alpha").linear(opacite, 0).toBuffer();
-  return sharp(rgb).joinChannel(alpha).png().toBuffer();
+  const logo = await (sombre ? base.negate({ alpha: false }) : base).png().toBuffer();
+  return sharp(logo)
+    .composite([
+      {
+        input: Buffer.from([255, 255, 255, Math.round(255 * Math.min(1, Math.max(0, opacite)))]),
+        raw: { width: 1, height: 1, channels: 4 },
+        tile: true,
+        blend: "dest-in",
+      },
+    ])
+    .png()
+    .toBuffer();
 }
 
 /**

@@ -53,6 +53,7 @@ import {
   familleCss,
   morceauxDeTexte,
   type MorceauDeTexte,
+  type PoliceAffiche,
   policeParId,
   POLICE_TITRE_DEFAUT,
   POLICE_SOUSTITRE_DEFAUT,
@@ -62,6 +63,16 @@ import {
   lignesRemplies,
   sousLignes,
   styleDesLignes,
+} from "@memoryline/types";
+import {
+  boiteDeLigne,
+  espaceAvantLigne,
+  espacementDeLigne,
+  HAUT_DU_TEXTE,
+  interligneDeLigne,
+  INTERLIGNE_LIGNE_POSEE,
+  LARGEUR_DU_TEXTE,
+  tailleDeLigne,
 } from "@memoryline/types";
 import type { PosterConfig, PosterFormat } from "@memoryline/types";
 import {
@@ -533,15 +544,6 @@ function escapeXml(s: string): string {
 }
 
 /**
- * Taille de chaque ligne, en fraction de la LARGEUR de l'affiche : la première
- * porte le lieu et se lit de loin, les suivantes restent discrètes.
- *
- * Fractions de la largeur, et non de la hauteur, pour qu'un A3 rende
- * exactement le même dessin qu'un A4 — les deux formats ont le même rapport.
- */
-const TAILLE_LIGNE = [0.07, 0.05, 0.05] as const;
-
-/**
  * Police retenue quand la ligne n'en porte pas.
  *
  * Une commande passée avant les trois lignes n'a de police que sur son titre :
@@ -553,16 +555,6 @@ const POLICE_LIGNE_DEFAUT = [
   POLICE_SOUSTITRE_DEFAUT,
   POLICE_SOUSTITRE_DEFAUT,
 ] as const;
-
-/** Ligne de base de la première ligne, en fraction de la hauteur. */
-const HAUTEUR_PREMIERE_LIGNE = 0.1;
-
-/**
- * Écart minimal entre deux lignes de base, en multiples de la taille de la
- * ligne du DESSOUS. Deux lignes de même taille se chevaucheraient sinon : les
- * polices anglaises descendent bien plus bas que leur corps.
- */
-const INTERLIGNE_MINIMAL = 1.25;
 
 /**
  * Facteur de taille du bloc de texte, ramené à une plage sûre.
@@ -576,9 +568,6 @@ function facteurTaille(valeur: number | undefined): number {
   return Math.min(1.6, Math.max(0.6, f));
 }
 
-/** Part de la largeur de l'affiche offerte au texte (marges de l'aperçu). */
-const LARGEUR_UTILE = 0.88;
-
 /** Corps auquel on mesure une ligne avant de la ramener à sa vraie taille. */
 const CORPS_MESURE = 96;
 
@@ -589,52 +578,101 @@ const CORPS_MESURE = 96;
  * nu, sans balise en plus. Le découpage ne sert qu'aux caractères qu'une
  * police ne sait pas écrire (cf. morceauxDeTexte), et chaque morceau porte
  * alors sa propre famille.
+ *
+ * Les espaces se resserrent ici, une seule entre deux mots, comme le
+ * navigateur le fait à l'écran : le texte part ensuite avec
+ * `xml:space="preserve"` (ATTRIBUT_ESPACES). Sans lui, le moteur du SVG
+ * avalait l'espace qui touche une balise — « été 2019 à la mer » s'imprimait
+ * « été2019à la mer », les chiffres de la manuscrite étant dans la leur.
  */
 function contenuDeLigne(morceaux: MorceauDeTexte[]): string {
-  if (morceaux.length <= 1) return escapeXml(morceaux[0]?.texte ?? "");
+  const texte = (m: MorceauDeTexte | undefined) =>
+    escapeXml((m?.texte ?? "").replace(/\s+/g, " "));
+  if (morceaux.length <= 1) return texte(morceaux[0]);
   return morceaux
     .map(
       (m) =>
         `<tspan font-family="${escapeXml(familleCss(m.police))}">` +
-        `${escapeXml(m.texte)}</tspan>`,
+        `${texte(m)}</tspan>`,
     )
     .join("");
 }
 
+/** Garde les espaces que contenuDeLigne a laissées, à côté des balises comprises. */
+const ATTRIBUT_ESPACES = 'xml:space="preserve"';
+
 /**
- * Largeur d'une ligne, en multiples de son corps.
+ * Largeur de l'encre d'un contenu de ligne écrit au corps de mesure, en
+ * pixels. Le contenu est encadré de deux barres « | » : voir largeurParCorps.
+ */
+async function encreEntreBarres(
+  contenu: string,
+  nbCaracteres: number,
+  famille: string,
+  espacement: number,
+): Promise<number> {
+  const w = Math.ceil(CORPS_MESURE * (nbCaracteres + 6) * 1.6);
+  const h = CORPS_MESURE * 3;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
+    `<text ${ATTRIBUT_ESPACES} x="${CORPS_MESURE}" y="${CORPS_MESURE * 2}" font-family="${escapeXml(famille)}" ` +
+    `font-size="${CORPS_MESURE}" letter-spacing="${espacement * CORPS_MESURE}" fill="#000000">` +
+    `|${contenu}|</text></svg>`;
+  const { info } = await sharp(Buffer.from(svg))
+    .trim({ threshold: 0 })
+    .png()
+    .toBuffer({ resolveWithObject: true });
+  return info.width;
+}
+
+/** Les deux barres seules, par police et espacement : elles ne changent jamais. */
+const barresSeules = new Map<string, Promise<number>>();
+
+/**
+ * Largeur d'une ligne, en multiples de son corps : son AVANCE, espacement des
+ * lettres compris — la largeur que le navigateur lui donne à l'écran, et
+ * celle qu'il compare à la place du bloc pour décider de la réduire
+ * (LARGEUR_DU_TEXTE).
  *
  * Le texte est centré : une ligne trop longue ne déborde pas, elle est ROGNÉE
- * des deux côtés, et « SAINT-VALERY-SUR-SOMME » occupe déjà 84 % de la
- * largeur — un nom à peine plus long partait à l'impression amputé de sa
- * première et de sa dernière syllabe. On ne peut pas connaître l'avance des
- * glyphes autrement qu'en les dessinant : on rasterise donc la ligne à petit
- * corps (la largeur est proportionnelle au corps, à 0,2 % près) et on en
- * déduit ce qu'elle occupera en vrai.
+ * des deux côtés — un nom à peine plus long que « SAINT-VALERY-SUR-SOMME »
+ * partait à l'impression amputé de sa première et de sa dernière syllabe. On
+ * ne peut pas connaître l'avance des glyphes autrement qu'en les dessinant :
+ * on rasterise donc la ligne à petit corps (la largeur est proportionnelle au
+ * corps, à 0,2 % près), ENTRE DEUX BARRES « | », puis les deux barres
+ * seules ; l'écart des deux encres est l'avance du texte, approches de la
+ * première et de la dernière lettre comprises. L'encre seule, qu'on mesurait
+ * jusqu'ici, les oubliait — et mesurait dans la police par défaut du serveur,
+ * faute de nommer celle de la ligne.
  *
  * `null` si la mesure échoue : mieux vaut le rendu d'avant que pas de texte.
  */
 async function largeurParCorps(
   morceaux: MorceauDeTexte[],
-  gras: boolean,
+  police: PoliceAffiche,
+  espacement: number,
 ): Promise<number | null> {
-  const texte = morceaux.map((m) => m.texte).join("");
-  const w = Math.ceil(CORPS_MESURE * (texte.length + 4) * 1.6);
-  const h = CORPS_MESURE * 3;
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
-    `<text x="${CORPS_MESURE}" y="${CORPS_MESURE * 2}"` +
-    `${gras ? ' font-weight="700"' : ""} font-size="${CORPS_MESURE}" fill="#000000">` +
-    `${contenuDeLigne(morceaux)}</text></svg>`;
+  const famille = familleCss(police);
+  const nb = [...morceaux.map((m) => m.texte).join("")].length;
   try {
-    const { info } = await sharp(Buffer.from(svg))
-      .trim({ threshold: 0 })
-      .png()
-      .toBuffer({ resolveWithObject: true });
-    return info.width / CORPS_MESURE;
+    const cle = `${famille}|${espacement}`;
+    let barres = barresSeules.get(cle);
+    if (!barres) {
+      barres = encreEntreBarres("", 0, famille, espacement);
+      barresSeules.set(cle, barres);
+      // Une mesure ratée ne doit pas rester en mémoire pour toujours.
+      barres.catch(() => barresSeules.delete(cle));
+    }
+    const avec = await encreEntreBarres(contenuDeLigne(morceaux), nb, famille, espacement);
+    return (avec - (await barres)) / CORPS_MESURE;
   } catch {
     return null;
   }
+}
+
+/** Un nombre de pixels écrit dans le SVG : au centième, sans zéros inutiles. */
+function px(valeur: number): string {
+  return String(Math.round(valeur * 100) / 100);
 }
 
 /**
@@ -647,6 +685,15 @@ async function largeurParCorps(
  * est remplie l'imprime en haut, pas au milieu d'un vide. C'est
  * `lignesRemplies()` qui le garantit, et c'est aussi elle qui sait relire le
  * titre et le sous-titre des commandes déjà passées.
+ *
+ * LA MISE EN PAGE EST CELLE DE L'APERÇU, ligne de base par ligne de base :
+ * mêmes tailles, même place en largeur, même interligne, même espace avant
+ * chaque ligne, même espacement des lettres sur la ligne de tête — tous lus
+ * dans packages/types (mise-en-page-texte.ts) — et, faute de boîtes CSS dans
+ * un SVG, le même calcul que le navigateur pour placer la ligne de base dans
+ * sa boîte (boiteDeLigne). Aucune ligne n'est en gras : aucune police
+ * d'affiche n'en a, et le serveur fabriquait sur la première ligne un faux
+ * gras (moitié d'encre en plus) que l'écran ne montrait pas.
  */
 async function buildTextSvg(
   config: PosterConfig,
@@ -664,6 +711,7 @@ async function buildTextSvg(
   const style = styleDesLignes(config.texts);
   const couleur = style?.color ?? COULEUR_TEXTE_DEFAUT;
   const facteur = facteurTaille(style?.size);
+  const utile = width * LARGEUR_DU_TEXTE;
 
   const rendus = await Promise.all(
     lignes.map(async (ligne, i) => {
@@ -671,79 +719,79 @@ async function buildTextSvg(
         ligne.font,
         POLICE_LIGNE_DEFAUT[i] ?? POLICE_SOUSTITRE_DEFAUT,
       );
-      const famille = familleCss(police);
       // Une ligne coupée à la main par le client (touche Entrée) s'imprime en
       // autant de lignes, coupées au même endroit que dans l'aperçu.
       // Les caractères que la police ne sait pas écrire passent dans une
       // autre — les chiffres de la manuscrite, notamment (cf. morceauxDeTexte).
       const decoupe = sousLignes(ligne.value).map((s) => morceauxDeTexte(s, police));
-      // Gras sur la première ligne seulement : c'est ainsi que le titre était
-      // imprimé, et une réimpression doit ressembler à l'affiche d'origine.
-      const gras = i === 0;
-      // Rapportée au PETIT côté : c'est la largeur en portrait (rien ne
-      // change pour les affiches d'avant), la hauteur en paysage — sinon le
-      // titre d'une affiche couchée grossirait de 41 %.
-      const taille = Math.round(
-        Math.min(width, height) *
-          (TAILLE_LIGNE[i] ?? TAILLE_LIGNE[TAILLE_LIGNE.length - 1]!) *
-          facteur,
+      const espacement = espacementDeLigne(i);
+      // Rapportée au PETIT côté : c'est la largeur en portrait, la hauteur en
+      // paysage — sinon le titre d'une affiche couchée grossirait de 41 %.
+      const voulue = Math.min(width, height) * tailleDeLigne(i) * facteur;
+      // On ne réduit QUE ce qui dépasserait la place du bloc, et d'autant
+      // qu'il dépasse : l'aperçu fait la même chose (reductionDesLignes).
+      // Les morceaux d'une ligne coupée gardent la même taille entre eux :
+      // c'est le plus long qui décide.
+      const largeurs = await Promise.all(
+        decoupe.map((m) => largeurParCorps(m, police, espacement)),
       );
-      // On ne rétrécit QUE ce qui dépasserait : une ligne qui tenait déjà
-      // s'imprime exactement comme avant. Les morceaux d'une ligne coupée
-      // gardent la même taille entre eux : c'est le plus long qui décide.
-      const largeurs = await Promise.all(decoupe.map((m) => largeurParCorps(m, gras)));
-      const occupee = Math.max(0, ...largeurs.map((l) => (l === null ? 0 : l * taille)));
-      const utile = width * LARGEUR_UTILE;
+      const occupee = Math.max(0, ...largeurs.map((l) => (l === null ? 0 : l * voulue)));
       return {
+        police,
         decoupe,
-        famille,
-        gras,
-        // L'interligne entre les morceaux d'une même ligne : celui de
-        // l'aperçu (line-height 1,05 en tête, 1,15 ensuite).
-        interligne: i === 0 ? 1.05 : 1.15,
-        taille:
-          occupee > utile ? Math.max(1, Math.floor((taille * utile) / occupee)) : taille,
+        espacement,
+        taille: occupee > utile ? (voulue * utile) / occupee : voulue,
       };
     }),
   );
 
+  /** Les boîtes des morceaux d'une ligne, en multiples de sa taille. */
+  const boites = (r: (typeof rendus)[number], interligne: number) =>
+    r.decoupe.map((morceaux) =>
+      // La police de la ligne compte toujours (l'« étai » de la boîte CSS),
+      // celles de ses morceaux s'y ajoutent.
+      boiteDeLigne([r.police, ...morceaux.map((m) => m.police)], interligne),
+    );
+
   const parts: string[] = [];
-  let y = Math.round(height * HAUTEUR_PREMIERE_LIGNE);
-  let precedente: (typeof rendus)[number] | null = null;
+  // Le haut du bloc, puis le bas de la dernière ligne empilée, en pixels.
+  let haut = height * HAUT_DU_TEXTE;
   for (const [i, r] of rendus.entries()) {
     const ligne = lignes[i]!;
-    const pas = Math.round(r.taille * r.interligne);
     const attributs =
-      `font-family="${escapeXml(r.famille)}"${r.gras ? ' font-weight="700"' : ""} ` +
-      `font-size="${r.taille}" fill="${escapeXml(couleur)}"`;
+      `font-family="${escapeXml(familleCss(r.police))}" font-size="${px(r.taille)}"` +
+      (r.espacement ? ` letter-spacing="${px(r.espacement * r.taille)}"` : "") +
+      ` fill="${escapeXml(couleur)}" ${ATTRIBUT_ESPACES}`;
+    // Le navigateur ajoute l'espacement des lettres APRÈS chaque lettre, la
+    // dernière comprise, et centre le tout : l'encre y glisse d'un
+    // demi-espacement vers la gauche (0,3 mm sur un A4). Le moteur du SVG
+    // ne compte pas ce dernier espace : on le décale d'autant.
+    const decalage = (r.espacement * r.taille) / 2;
     // Une ligne déplacée à la main s'imprime là où le client l'a posée : le
     // centre de la ligne vaut (x·largeur, y·hauteur), exactement comme dans
     // l'aperçu. Elle sort de l'empilement, qui continue sans elle. Coupée en
     // plusieurs morceaux, c'est le centre du bloc qui tombe sur ce point.
     if (typeof ligne.x === "number" && typeof ligne.y === "number") {
-      const centre = ligne.y * height;
-      // L'aperçu de l'affiche IA pose ces lignes en line-height 1,1.
-      const pasPose = Math.round(r.taille * 1.1);
+      const b = boites(r, INTERLIGNE_LIGNE_POSEE);
+      let y = ligne.y * height - (b.reduce((s, x) => s + x.hauteur, 0) * r.taille) / 2;
       for (const [j, morceaux] of r.decoupe.entries()) {
-        const yj = Math.round(centre + (j - (r.decoupe.length - 1) / 2) * pasPose);
         parts.push(
-          `<text x="${Math.round(ligne.x * width)}" y="${yj}" ` +
-            `text-anchor="middle" dominant-baseline="central" ${attributs}>` +
-            `${contenuDeLigne(morceaux)}</text>`,
+          `<text x="${px(ligne.x * width - decalage)}" y="${px(y + b[j]!.base * r.taille)}" ` +
+            `text-anchor="middle" ${attributs}>${contenuDeLigne(morceaux)}</text>`,
         );
+        y += b[j]!.hauteur * r.taille;
       }
       continue;
     }
+    const b = boites(r, interligneDeLigne(i));
+    haut += espaceAvantLigne(i) * r.taille;
     for (const [j, morceaux] of r.decoupe.entries()) {
-      if (j > 0) y += pas;
-      else if (precedente)
-        y += Math.round(Math.max(precedente.taille, r.taille * INTERLIGNE_MINIMAL));
       parts.push(
-        `<text x="${width / 2}" y="${y}" text-anchor="middle" ${attributs}>` +
-          `${contenuDeLigne(morceaux)}</text>`,
+        `<text x="${px(width / 2 - decalage)}" y="${px(haut + b[j]!.base * r.taille)}" ` +
+          `text-anchor="middle" ${attributs}>${contenuDeLigne(morceaux)}</text>`,
       );
+      haut += b[j]!.hauteur * r.taille;
     }
-    precedente = r;
   }
 
   return (

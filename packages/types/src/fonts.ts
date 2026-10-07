@@ -22,6 +22,19 @@ export interface PoliceAffiche {
   famille: string;
   /** Repli si la police n'est pas disponible. */
   repli: string;
+  /**
+   * Hauteur au-dessus et profondeur sous la ligne de base, en multiples du
+   * corps : l'« ascender » et le « descender » de la table hhea du fichier,
+   * divisés par ses unités par em. Ce sont eux qui placent le texte dans sa
+   * boîte de ligne à l'écran ; le fichier d'impression, qui ne pose que des
+   * lignes de base, en a besoin pour tomber au même endroit (boiteDeLigne,
+   * mise-en-page-texte.ts). Pour une police ajoutée, ils se relisent dans
+   * son fichier ; les polices de Google gardent les mêmes valeurs dans les
+   * tables hhea, OS/2 et Windows, d'où un placement identique sous Windows,
+   * macOS et Linux.
+   */
+  ascendante: number;
+  descendante: number;
 }
 
 /**
@@ -38,6 +51,8 @@ export const POLICES_AFFICHE: readonly PoliceAffiche[] = [
     libelle: "Classique",
     famille: "DM Serif Display",
     repli: "Georgia, serif",
+    ascendante: 1036 / 1000,
+    descendante: 335 / 1000,
   },
   {
     /*
@@ -52,6 +67,8 @@ export const POLICES_AFFICHE: readonly PoliceAffiche[] = [
     libelle: "Bâton",
     famille: "League Spartan",
     repli: "Helvetica, Arial, sans-serif",
+    ascendante: 1400 / 2000,
+    descendante: 440 / 2000,
   },
   {
     /*
@@ -71,6 +88,8 @@ export const POLICES_AFFICHE: readonly PoliceAffiche[] = [
     libelle: "Manuscrite",
     famille: "another shabby",
     repli: REPLI_SUR,
+    ascendante: 2090 / 2000,
+    descendante: 1093 / 2000,
   },
   {
     /*
@@ -82,36 +101,48 @@ export const POLICES_AFFICHE: readonly PoliceAffiche[] = [
     libelle: "Manuscrite (ancienne)",
     famille: "Caveat",
     repli: REPLI_SUR,
+    ascendante: 960 / 1000,
+    descendante: 300 / 1000,
   },
   {
     id: "dancing",
     libelle: "Anglaise",
     famille: "Dancing Script",
     repli: REPLI_SUR,
+    ascendante: 920 / 1000,
+    descendante: 280 / 1000,
   },
   {
     id: "greatvibes",
     libelle: "Calligraphie",
     famille: "Great Vibes",
     repli: REPLI_SUR,
+    ascendante: 851 / 1000,
+    descendante: 401 / 1000,
   },
   {
     id: "parisienne",
     libelle: "Parisienne",
     famille: "Parisienne",
     repli: REPLI_SUR,
+    ascendante: 1875 / 2048,
+    descendante: 915 / 2048,
   },
   {
     id: "sacramento",
     libelle: "Fine",
     famille: "Sacramento",
     repli: REPLI_SUR,
+    ascendante: 1905 / 2048,
+    descendante: 1084 / 2048,
   },
   {
     id: "pinyon",
     libelle: "Gravée",
     famille: "Pinyon Script",
     repli: REPLI_SUR,
+    ascendante: 1768 / 2048,
+    descendante: 787 / 2048,
   },
 ] as const;
 
@@ -124,7 +155,9 @@ export const POLICES_AFFICHE: readonly PoliceAffiche[] = [
  * La charte demande aussi Abril Fatface en lignes 1 et 3. Elle n'entrera ici
  * qu'avec ses fichiers des deux côtés (navigateur ET serveur d'impression,
  * cf. l'en-tête) : proposée sans eux, la cliente la verrait dans le module
- * et l'imprimeur recevrait une police de repli.
+ * et l'imprimeur recevrait une police de repli. Sa déclaration dans
+ * POLICES_AFFICHE portera aussi son ascendante et sa descendante, relues
+ * dans son fichier.
  */
 const POLICES_PAR_LIGNE: readonly (readonly string[])[] = [
   ["serif"],

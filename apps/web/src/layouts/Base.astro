@@ -27,7 +27,9 @@ import { languesDuContenu } from "../lib/referencement.ts";
  * garder un an, et un nouveau logo changera de nom tout seul.
  *
  * L'original reste dans public/ : les courriers, le logo de Google
- * (index.astro) et la signature des affiches le demandent à cette adresse.
+ * (index.astro) et les anciennes adresses du site (lib/anciennes-adresses.ts)
+ * le demandent à cette adresse. La signature des affiches, elle, ne passe
+ * plus par le site : le fichier d'impression la prend dans apps/api/marque/.
  */
 import logoEnTete from "../assets/logo-memory-line-en-tete.png";
 interface Props {

@@ -146,8 +146,9 @@ function avancement(cles: string[]): { faites: number; total: number } {
  * chaque fichier d'impression, sans un mot. Dans l'autre sens, « max 24 »
  * interdisait de saisir une opacité de 100 et « min 1 » une marge de 0.
  *
- * Les bornes et les replis sont ceux des DEUX lecteurs du réglage
- * (apps/api/src/fichiers-impression.ts, apps/web/src/lib/signature.ts) : un
+ * Les bornes et les replis sont ceux du lecteur du réglage
+ * (apps/api/src/fichiers-impression.ts — le module n'affiche plus la
+ * signature, elle ne vit que sur le fichier d'impression) : un
  * champ pré-rempli à sa valeur d'usine écrit exactement ce que l'absence de
  * réglage donnait déjà, donc enregistrer ne change plus rien à l'écran ni sur
  * le papier.
@@ -353,9 +354,11 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
     titre: "Signature des créations",
     aide:
       "Le logo posé en bas à droite de CHAQUE création — affiches " +
-      "personnalisées comme affiches tirées d'une photo : sur l'aperçu que " +
-      "voit le client, et sur le fichier d'impression. Changer l'image ou sa " +
-      "taille refait les fichiers d'impression des commandes concernées.",
+      "personnalisées comme affiches tirées d'une photo —, SEULEMENT sur le " +
+      "fichier d'impression : le client ne le voit pas dans le module. Sans " +
+      "image ci-dessous, c'est le logo de la boutique qui s'imprime, en noir. " +
+      "Changer l'image ou sa taille refait les fichiers d'impression des " +
+      "commandes concernées.",
     champs: [
       {
         key: "signature.visible",
