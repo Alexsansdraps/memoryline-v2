@@ -153,7 +153,7 @@ const categoriesChoisissables = categories.filter((c) => !c.archivedAt);
                       : "toutes"
                 }
               >
-                {c.name} ({c.colors.length} couleur{c.colors.length > 1 ? "s" : ""})
+                {c.name}
               </option>
             ))}
           </select>
@@ -204,18 +204,15 @@ const categoriesChoisissables = categories.filter((c) => !c.archivedAt);
 
       <div class="mt-4 text-sm" id="piece-couleurs">
         <span class="text-bo-muted block mb-1">
-          Couleurs (relues dans le dessin)
+          Couleurs du dessin
         </span>
         <p class="text-xs text-bo-muted mb-2">
-          Chaque couleur est surlignée en rouge sur sa vignette ; ses nuances
-          (ombres, reflets) suivent la couleur que le client choisit. Donnez-lui
-          un nom. Les cases « Proposée au client » suivent d'abord la
-          catégorie choisie plus haut (toutes les couleurs, ou la principale
-          seule) ; décochez un petit détail (ruban, élastique…) pour régler la
-          pièce autrement : il gardera la couleur réglée ici. Si le
-          dessin est une image en pixels (une photo, une illustration), ce sont
-          ses couleurs principales qui apparaissent ici : rien n'est proposé au
-          client tant que vous n'en avez coché aucune.
+          Une ligne par couleur : la vignette montre où elle se trouve. Donnez
+          le nom que le client lira, et décochez « Le client peut la changer »
+          sur les petits détails (ruban, élastique…). Au départ, les cases
+          suivent la catégorie choisie plus haut. Pour une image en pixels
+          (une photo, une illustration), rien n'est proposé au client tant
+          que vous n'avez rien coché.
         </p>
         <GroupesCouleurs
           mode="piece"
@@ -339,9 +336,9 @@ const categoriesChoisissables = categories.filter((c) => !c.archivedAt);
     emplacement?.addEventListener("change", filtrerCategories);
     filtrerCategories();
 
-    // Les cases « Proposée au client » montrent ce que la catégorie choisie
-    // propose (toutes les couleurs, ou la principale seule), tant qu'aucune
-    // n'a été touchée.
+    // Les cases « Le client peut la changer » montrent ce que la catégorie
+    // choisie propose (toutes les couleurs, ou la principale seule), tant
+    // qu'aucune n'a été touchée.
     function annoncerRegle() {
       const choix = categorie && categorie.selectedOptions[0];
       const regle =

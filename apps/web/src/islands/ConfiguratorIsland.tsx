@@ -326,10 +326,6 @@ export default function ConfiguratorIsland(
                 // Montants et dimensions à la manière de la langue de la page.
                 locale,
                 personnaliserPerso: tr("cfg.personnaliser_perso"),
-                sommaireTitre: tr("cfg.sommaire.titre"),
-                sommairePeau: tr("cfg.sommaire.peau"),
-                sommaireCouleur: tr("cfg.sommaire.couleur"),
-                sommaireCheveux: tr("cfg.sommaire.cheveux"),
               }}
               product={{
                 id: props.product.id,

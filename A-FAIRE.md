@@ -1,18 +1,34 @@
-# À faire — reprise du 6 octobre au soir
+# À faire — reprise du 7 octobre
 
 Fichier de reprise : à supprimer quand tout est fait.
 
 ## En ligne (archive du commit 75dcade)
 Bulle « Vidéo tuto », check-list `MISE-EN-PROD.md`, script `apps/api/scripts/vider-donnees-test.sh`.
 
+## Fait le 6 au soir, poussé sur `main` — PAS encore en ligne
+
+- **Sommaire « Personnaliser : Peau · Vêtements… » retiré** de l'éditeur de personnage : composant, outils de défilement qui ne servaient qu'à lui (`Defilement.tsx`), textes des 5 langues, CSS. Vérifié à 375 px : l'aperçu est centré dans son bandeau, rien ne déborde.
+- **Module : les couleurs « au hasard »** (retour d'Alexandra). Elles passaient d'une pièce à l'autre par numéro de zone, alors que `st0` est le corps d'un t-shirt ici et son col là : un t-shirt vert s'affichait rose parce qu'on avait regardé un rose avant lui, galerie comprise.
+  - Désormais, chaque pièce arrive avec les couleurs de son dessin.
+  - Seule une couleur vraiment choisie par le client passe sur la couleur principale de la pièce suivante, ombres de même teinte comprises. On garde ainsi sa couleur de cheveux en changeant de coupe.
+  - Les vignettes de la galerie montrent ce qu'on obtient en les touchant.
+  - Code : `couleursAuChangementDePiece`, dans `packages/configurator/src/store.ts`. Vérifié dans le module.
+- **BO : l'écran des couleurs est refait** (`GroupesCouleurs.astro`, `ApercusZones.astro`).
+  - Une phrase d'abord : « Le client pourra changer : … ».
+  - Puis une ligne par couleur : la pastille, une vignette dans la VRAIE couleur cernée d'un trait (plus de rouge, qui faisait passer une marinière bleu nuit pour un t-shirt rouge), le nom lu par le client, la case « Le client peut la changer ». Pour un personnage, s'y ajoutent ses « Pastilles ».
+  - Le reste est replié sous « Réglages avancés » : couleur de départ, teintes réunies, « Suit la couleur de… » (l'ancien « Rattacher à… »), « Relire le dessin » (l'ancien « Détecter les couleurs ») et un nouveau bouton « Remettre les couleurs du dessin ».
+  - L'aide du BO et les textes des pages sont à jour. « (9 couleurs) » a disparu des menus de catégorie : ce 9 était la taille du nuancier, pas le nombre de couleurs du dessin.
+- Deux lignes parasites `</content>` `</invoke>` retirées à la fin de `apps/admin/src/pages/personnages.astro`.
+
+## À regarder après ça
+- **Pièce n° 329** (« Clothes 1 », la marinière) : dans la base de dev, ses rayures sont noires au lieu du bleu nuit du dessin (#123546). C'est la suite d'essais dans l'ancien écran. Pour réparer : bouton « Remettre les couleurs du dessin », dans ses réglages avancés.
+- **Base de dev** : les 4 catégories de pièces sont sur « toutes les couleurs », alors que la migration 0066 les avait passées sur « seulement la principale ». Quelqu'un les a remises depuis le BO. Sous « toutes », chaque ombre est une rangée à part et ne suit pas la couleur choisie : on obtient un t-shirt jaune à ombres vert foncé. À trancher dans BO › Catégories de pièces.
+- Montrer le nouvel écran des couleurs à Margaux.
+
 ## Pas encore fait
 
-1. **Retirer les boutons « Personnaliser : Peau · Vêtements · Pantalon · Cheveux · Accessoires »** sous l'aperçu du personnage (demande d'Alexandra, photo du 6/10). C'est le « sommaire des réglages » : `SommaireReglages` dans `packages/configurator/src/components/CharacterEditor.tsx` (vers les l. 620-775 et 1251).
-   Retirer aussi ce qui ne sert qu'à lui : `parties`, `ancres`, `suivi`/`createPartieALEcran`, `toutTient`, `allerA` ; les clés `sommaire*` de `packages/configurator/src/messages.ts` et de `ui.ts` ; les règles `.ml-cfg-sommaire*` de `apps/web/src/styles/global.css`.
-   Vérifier ensuite la mise en page de l'aperçu sur téléphone : c'est un bandeau collé, et le sommaire occupait sa droite.
-2. **BO › Personnages : l'écran des couleurs est incompréhensible** (retour de Margaux). Il faut le repenser : `apps/admin/src/components/GroupesCouleurs.astro` (1 200 lignes), la section « Couleurs que le client peut changer » de `apps/admin/src/pages/personnages/[id].astro`, et le réglage par catégorie dans `categories-pieces.astro`. Garder toutes les possibilités actuelles, mais avec des mots et des étapes qu'une non-technicienne comprend.
-3. **Recherche du BO « méga puissante »** : elle doit tout trouver (noms, numéros, un bout de texte n'importe où, écrans et libellés du BO) et emmener à l'endroit exact, surligné. « bandeau » ne trouvait pas « Bandeaux visuels », parce que la liste `ECRANS` de `apps/api/src/recherche.ts` est écrite à la main et en retard. Un chantier tourne sur le PC du bureau : il sera poussé sur la branche **`chantier-recherche-seo`**, à relire puis fusionner.
-4. **SEO** : l'audit complet est fait, le site n'est pas prêt à remplacer Shopify. Les corrections tournent sur le PC du bureau et iront sur la même branche `chantier-recherche-seo`. Elles couvrent :
+1. **Recherche du BO « méga puissante »** : elle doit tout trouver (noms, numéros, un bout de texte n'importe où, écrans et libellés du BO) et emmener à l'endroit exact, surligné. « bandeau » ne trouvait pas « Bandeaux visuels », parce que la liste `ECRANS` de `apps/api/src/recherche.ts` est écrite à la main et en retard. Un chantier tourne sur le PC du bureau : il sera poussé sur la branche **`chantier-recherche-seo`**, à relire puis fusionner. Au 7/10, cette branche n'est pas encore sur GitHub.
+2. **SEO** : l'audit complet est fait, le site n'est pas prêt à remplacer Shopify. Les corrections tournent sur le PC du bureau et iront sur la même branche `chantier-recherche-seo`. Elles couvrent :
    - le plan du site vide en prod ;
    - 708 pages en/de/it/es en français annoncées comme traduites ;
    - les anciennes adresses Shopify en 404 ;
@@ -22,8 +38,8 @@ Bulle « Vidéo tuto », check-list `MISE-EN-PROD.md`, script `apps/api/scripts/
    - l'image de partage et le favicon absents, le titre principal de l'accueil, les vrais 404.
 
    Reste pour Margaux : 61 fiches sans texte, les traductions des fiches. Reste pour le jour de la bascule : `PUBLIC_NOINDEX=false` et faire servir www.memoryline.fr (voir `MISE-EN-PROD.md`).
-5. Corrections de code de la section 7 de `MISE-EN-PROD.md` : écran adresse/SIRET des factures, aide du BO « mode essai », message « .env » visible à la caisse.
+3. Corrections de code de la section 7 de `MISE-EN-PROD.md` : écran adresse/SIRET des factures, aide du BO « mode essai », message « .env » visible à la caisse.
 
 ## Bon à savoir
-- Compte d'essai du BO **local** : `essai-module@example.test`. Son mot de passe a été changé le 6/10 sur le PC du bureau ; le remettre avec `pnpm --filter @memoryline/api run create-admin <email> <mdp> owner`.
+- Compte d'essai du BO **local** : `essai-module@example.test`. Il n'existait plus dans la base Neon ; il a été recréé le 6/10 au soir depuis le PC de la maison, et son mot de passe est en commentaire à la fin du `.env` de ce PC-là. Sur un autre PC, le remettre avec `pnpm --filter @memoryline/api run create-admin <email> <mdp> owner`.
 - Archive et mise en ligne : voir `MISE-EN-PROD.md`, étape 1.
