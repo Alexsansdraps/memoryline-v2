@@ -452,9 +452,6 @@ export function ConfirmationStand(props: {
     }
   }
 
-  /** « Client suivant » a été touché : cette vente n'est plus à rouvrir d'ici. */
-  let servie = false;
-
   onMount(() => {
     // Une entrée d'historique à nous : la flèche retour de la tablette
     // revient à la commande au lieu de quitter la page sur un panier vide.
@@ -462,13 +459,17 @@ export function ConfirmationStand(props: {
     const surRetour = () => void revenir();
     window.addEventListener("popstate", surRetour);
     // Le navigateur peut garder cette page en mémoire et la RESSERVIR telle
-    // quelle par la flèche retour, confirmation comprise. Après « Client
-    // suivant », c'est le client suivant qui tiendrait la tablette : il
-    // trouverait « Revenir à ma commande », qui lui rendrait le nom et
-    // l'adresse e-mail du précédent. Resservie après « Client suivant », la
-    // page se recharge donc, sur le panier neuf.
+    // quelle par la flèche retour, confirmation comprise. Qui tient alors la
+    // tablette, on n'en sait rien : peut-être déjà le client suivant, et
+    // « Revenir à ma commande » lui rendrait le nom et l'adresse e-mail du
+    // précédent. Une page resservie se recharge donc TOUJOURS, sur le panier
+    // neuf (il l'est depuis l'enregistrement). Ne la recharger qu'après
+    // « Client suivant » laissait le trou ouvert : la tablette pouvait
+    // quitter la confirmation par l'en-tête (logo, menu, panier), qui reste
+    // affiché au stand. La flèche retour depuis la confirmation elle-même
+    // n'est pas concernée : elle reste dans la page (`popstate` ci-dessus).
     const surPageResservie = (e: PageTransitionEvent) => {
-      if (e.persisted && servie) window.location.reload();
+      if (e.persisted) window.location.reload();
     };
     window.addEventListener("pageshow", surPageResservie);
     onCleanup(() => {
@@ -509,7 +510,6 @@ export function ConfirmationStand(props: {
           href={`${lien(langue, "/affiches")}?stand=1`}
           class={`${PRINCIPAL} px-10`}
           onClick={() => {
-            servie = true;
             // Le panier a déjà été remis à neuf à l'enregistrement. On le refait
             // ici au cas où une affiche y serait entrée depuis — un retour
             // arrière, un second onglet : le client suivant n'hérite de rien.
