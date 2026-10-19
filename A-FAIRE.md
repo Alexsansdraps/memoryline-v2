@@ -2,9 +2,9 @@
 
 Fichier de reprise : à lire en premier, à supprimer quand tout est fait. `main` fait foi ; la prod (VPS) est toujours une mise en ligne de `main`.
 
-## 1. Ce qui est en prod (VPS, 19/10 à 16 h 53, commit `4080cde` de `main`)
+## 1. Ce qui est en prod (VPS, 19/10 à 17 h 23, commit `d427a11` de `main`)
 
-Tout ce qui était fini est en ligne. Migration **0067** passée, base sauvegardée avant (`sauvegardes/base/2026-10-19.sql.gz` sur le serveur).
+Tout ce qui était fini est en ligne. Migration **0067** passée, base sauvegardée avant (`sauvegardes/base/2026-10-19.sql.gz` sur le serveur). Le chantier « cartes restantes » (stand sur tablette, écran photo IA, indice pour descendre, langues) est entièrement terminé, vérifié et en ligne, y compris sa dernière correction (confirmation du stand rechargée sur un panier neuf).
 
 - **Cartes BO du Trello** : ordre des couleurs d'un nuancier (poignée, flèches), tri des affiches page par page (Produits › Ordre d'affichage), courriel du panier abandonné modifiable et programmable, modification groupée avec « appliquer à tout », aperçu des affiches sur la fiche commande, nuancier « peau » possible pour un animal.
 - **Réponses de Margaux** : vendeurs limités à leurs stands (BO › Comptes, « Stands confiés »), lieux de retrait gérés dans BO › Livraison › Lieux de retrait, adresse et SIRET sur les factures (BO › Contenu), offre 3+1 toutes tailles, A4 offerte sans cadre, réglable dans Promotions, bandeau détaché des promos avec plusieurs messages qui défilent.
@@ -23,7 +23,7 @@ a) **Refonte de BO › Personnages** — demande d'Alexandra : « il faut que ç
 
 b) **Toutes les couleurs pour les clients du site + remise à zéro** — demande d'Alexandra : « le client peut changer toutes les couleurs en fait, il peut mettre à zéro s'il veut » (le client = la personne qui compose son affiche dans le module). Aujourd'hui : la règle par défaut est « seulement la couleur principale » (migration 0066, `piece_category.couleurs_proposees`), et sous « toutes », chaque ombre est une ligne à part qui ne suit pas la couleur choisie (`groupesProposesDeLaPiece` dans `packages/types/src/couleurs-groupes.ts`). Cible : (1) défaut « toutes » + migration **0068** qui repasse les catégories sur « toutes » ; (2) sous « toutes », une ligne par famille de teinte (`memeFamilleDeTeinte`), les ombres suivent (comme `principaleDeLaPiece` le fait pour la principale) ; (3) dans l'éditeur de personnage (`packages/configurator/src/components/CharacterEditor.tsx`, `store.ts`), un bouton « Remettre les couleurs d'origine » par pièce et pour le personnage, visible après un changement, traduit en 5 langues (`messages.ts` + `apps/web/src/i18n/ui.ts`) ; (4) le PDF (`apps/api/src/pdf.ts`, `couleursDeLaPiece`) reste identique au module, et les anciennes commandes ne changent pas ; (5) textes du BO cohérents (`categories-pieces.astro`, `GroupesCouleurs.astro`, `aide.astro`).
 
-c) **Corrections de fin** des deux chantiers Trello (essais et relecture) : s'il en sort, elles touchent surtout `apps/web/src/islands/CommandeStand.tsx` et les écrans du BO du lot (categories-pieces, comptes, livraison, promotions, paniers).
+c) **Corrections de fin du lot BO** (essais et relecture du chantier Trello BO) : s'il en sort, elles touchent les écrans du BO du lot (categories-pieces, comptes, livraison, promotions, paniers). Le chantier « cartes restantes », lui, est fini et en prod.
 
 **Pour reprendre depuis un autre contexte** : `git fetch`, regarder `origin/wip-bureau-19oct` (diff avec `main`), reprendre a) et b) depuis `main` ou depuis l'instantané selon son état ; vérifier avant toute fusion : `astro check` (BO), `tsc` (API, web, configurator), tests `apps/api/tests/recherche.test.ts` et `apps/admin/tests/recherche.test.mjs`, et le BO connecté. Ne jamais mettre en prod du travail non vérifié : **la migration 0068 n'existe pas encore en prod**.
 
