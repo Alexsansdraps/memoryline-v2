@@ -253,6 +253,8 @@ const boutonLien = "text-bo-accent hover:underline";
     >
       <input type="hidden" name="_action" value="ordre" />
       <input type="hidden" name="ordre" data-rangement-champ />
+      {/* Où le message déplacé est arrivé, dit au lecteur d'écran. */}
+      <p class="sr-only" aria-live="polite" data-rangement-annonce></p>
       <div class="max-w-3xl text-xs text-bo-muted">
         <h2 class="mb-1 text-sm font-semibold text-bo-ink">Les messages</h2>
         <p>
@@ -289,13 +291,15 @@ const boutonLien = "text-bo-accent hover:underline";
           {messages.map((m, i) => {
             const e = etat(m);
             return (
-              <tr id={`message-${m.id}`} data-rang-id={m.id} class="border-t border-bo-border align-top">
+              <tr id={`message-${m.id}`} data-rang-id={m.id} data-rang-nom={`« ${m.message} »`} class="border-t border-bo-border align-top">
                 <td class="px-4 py-3 whitespace-nowrap">
                   <span class="flex items-center gap-1.5">
                     <span class="ml-poignee cursor-grab select-none text-bo-muted" title="Glissez pour changer la place" aria-hidden="true">⠿</span>
                     <span data-rang class="w-5 text-right text-xs tabular-nums text-bo-muted">{i + 1}</span>
-                    <button type="button" data-monter class={boutonOutil} title="Monter d'un cran" aria-label={`Monter le message ${i + 1}`}>↑</button>
-                    <button type="button" data-descendre class={boutonOutil} title="Descendre d'un cran" aria-label={`Descendre le message ${i + 1}`}>↓</button>
+                    {/* Nommés par le message, pas par leur numéro : le numéro
+                        change à chaque déplacement, le libellé resterait faux. */}
+                    <button type="button" data-monter class={boutonOutil} title="Monter d'un cran" aria-label={`Monter « ${m.message} »`}>↑</button>
+                    <button type="button" data-descendre class={boutonOutil} title="Descendre d'un cran" aria-label={`Descendre « ${m.message} »`}>↓</button>
                   </span>
                 </td>
                 <td class="px-4 py-3">

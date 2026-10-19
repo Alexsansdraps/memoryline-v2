@@ -334,6 +334,10 @@ export const ui = {
     "bandeau.pause": "Mettre les annonces en pause",
     "bandeau.lecture": "Reprendre le défilement des annonces",
     "bandeau.position": "{n} sur {total}",
+    /* La nature de la zone et de chaque message, telle que le lecteur
+       d'écran l'annonce (aria-roledescription) : « carrousel », « message ». */
+    "bandeau.carrousel": "carrousel",
+    "bandeau.message": "message",
 
     /* Le stand : la dernière étape, quand le site est ouvert sur la tablette
        d'un marché. Le client lit ces textes lui-même, d'où le « vous ». */
@@ -1011,6 +1015,8 @@ export const ui = {
     "bandeau.pause": "Pause the announcements",
     "bandeau.lecture": "Resume the announcements",
     "bandeau.position": "{n} of {total}",
+    "bandeau.carrousel": "carousel",
+    "bandeau.message": "message",
 
     "stand.titre": "Your posters",
     "stand.ajouter": "Add another poster",
@@ -1661,6 +1667,8 @@ export const ui = {
     "bandeau.pause": "Ankündigungen anhalten",
     "bandeau.lecture": "Ankündigungen fortsetzen",
     "bandeau.position": "{n} von {total}",
+    "bandeau.carrousel": "Karussell",
+    "bandeau.message": "Nachricht",
 
     "stand.titre": "Ihre Poster",
     "stand.ajouter": "Weiteres Poster hinzufügen",
@@ -2315,6 +2323,8 @@ export const ui = {
     "bandeau.pause": "Metti in pausa gli annunci",
     "bandeau.lecture": "Riprendi lo scorrimento degli annunci",
     "bandeau.position": "{n} di {total}",
+    "bandeau.carrousel": "carosello",
+    "bandeau.message": "messaggio",
 
     "stand.titre": "I tuoi poster",
     "stand.ajouter": "Aggiungi un altro poster",
@@ -2965,6 +2975,8 @@ export const ui = {
     "bandeau.pause": "Pausar los anuncios",
     "bandeau.lecture": "Reanudar los anuncios",
     "bandeau.position": "{n} de {total}",
+    "bandeau.carrousel": "carrusel",
+    "bandeau.message": "mensaje",
 
     "stand.titre": "Tus láminas",
     "stand.ajouter": "Añadir otra lámina",

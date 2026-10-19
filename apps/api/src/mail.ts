@@ -495,6 +495,12 @@ export function courrierNouvelleCommande(d: {
   client: string;
   totalCents: number;
   lignes: LigneCourrier[];
+  /**
+   * Pour un retrait sur place : le lieu choisi, en français. La boutique
+   * sait ainsi d'un coup d'œil qu'il n'y a pas de colis à faire, et à quel
+   * chalet préparer l'affiche.
+   */
+  retrait?: LieuDuCourriel | null;
 }): Courrier {
   return {
     to: "",
@@ -502,7 +508,8 @@ export function courrierNouvelleCommande(d: {
     html: gabarit(
       `Commande ${d.numero}`,
       `<p style="margin:0">De ${h(d.client)}, pour ${prix(d.totalCents)}.</p>
-       ${tableauLignes(d.lignes)}`,
+       ${tableauLignes(d.lignes)}
+       ${d.retrait ? blocLieuHtml("fr", "confirmation.retrait", d.retrait) : ""}`,
     ),
   };
 }

@@ -16,6 +16,11 @@
  *
  * Tous les messages sont rendus ici, côté serveur : sans script, le premier
  * s'affiche, et c'est déjà le bandeau d'avant.
+ *
+ * Ils sont empilés dans la même case, les autres seulement rendus invisibles :
+ * le bandeau prend la hauteur du plus long. Sur un téléphone, un message de
+ * trois lignes suivi d'un message d'une ligne faisait sinon sauter toute la
+ * page toutes les six secondes, sous le doigt de la visiteuse.
  */
 import { api, type Bandeau } from "../lib/api.ts";
 import { LANGUE_DEFAUT, lien, t, type Langue } from "../i18n/utils.ts";
@@ -70,17 +75,18 @@ const bouton =
       class={`ml-annonce relative py-2.5 text-center text-[13px] font-semibold tracking-[0.04em] ${plusieurs ? "px-[4.75rem]" : "px-4"}`}
       style={`background:${fond};color:${texte}`}
       aria-label={tr("bandeau.region")}
+      aria-roledescription={plusieurs ? tr("bandeau.carrousel") : undefined}
       data-annonce={plusieurs ? "" : undefined}
       data-duree={dureeMs}
     >
-      <div data-messages aria-live={plusieurs ? "off" : undefined}>
+      <div class="ml-annonce-pile" data-messages aria-live={plusieurs ? "off" : undefined}>
         {messages.map((m, i) => (
           <div
-            class="ml-annonce-message"
+            class={`ml-annonce-message${i > 0 ? " ml-annonce-cache" : ""}`}
             role={plusieurs ? "group" : undefined}
+            aria-roledescription={plusieurs ? tr("bandeau.message") : undefined}
             aria-label={plusieurs ? position(i + 1) : undefined}
             data-message
-            hidden={i > 0}
           >
             <span>{m.message}</span>
             {m.linkUrl && m.linkLabel && (
@@ -120,8 +126,21 @@ const bouton =
 }
 
 <style>
+  /* Tous les messages dans la même case : le bandeau garde la hauteur du
+     plus long, quel que soit celui qui s'affiche (voir l'en-tête). */
+  .ml-annonce-pile {
+    display: grid;
+  }
   .ml-annonce-message {
+    grid-area: 1 / 1;
+    /* Un message court se tient au milieu de la hauteur du plus long. */
+    align-self: center;
     transition: opacity 350ms ease;
+  }
+  /* Invisible mais en place. `visibility` le retire aussi du clavier et des
+     lecteurs d'écran : son lien ne se tabule pas tant qu'il ne se voit pas. */
+  .ml-annonce-message.ml-annonce-cache {
+    visibility: hidden;
   }
   .ml-annonce-message.ml-annonce-sort {
     opacity: 0;
@@ -158,6 +177,8 @@ const bouton =
     const sobre = window.matchMedia("(prefers-reduced-motion: reduce)");
 
     const SORT = "ml-annonce-sort";
+    /** Invisible mais en place (voir le style) : la hauteur ne bouge pas. */
+    const CACHE = "ml-annonce-cache";
     let courant = 0;
     let minuterie: number | undefined;
     let fondu: number | undefined;
@@ -177,22 +198,22 @@ const bouton =
       window.clearTimeout(fondu);
       for (const m of messages)
         if (m !== avant) {
-          m.hidden = true;
+          m.classList.add(CACHE);
           m.classList.remove(SORT);
         }
       if (sobre.matches) {
-        avant.hidden = true;
+        avant.classList.add(CACHE);
         avant.classList.remove(SORT);
-        apres.hidden = false;
+        apres.classList.remove(CACHE);
         return;
       }
       // Un fondu court : le message sortant s'efface, puis l'entrant paraît.
       avant.classList.add(SORT);
       fondu = window.setTimeout(() => {
-        avant.hidden = true;
+        avant.classList.add(CACHE);
         avant.classList.remove(SORT);
         apres.classList.add(SORT);
-        apres.hidden = false;
+        apres.classList.remove(CACHE);
         // Une image plus tard, pour que le navigateur voie le départ du fondu.
         requestAnimationFrame(() => requestAnimationFrame(() => apres.classList.remove(SORT)));
       }, 350);

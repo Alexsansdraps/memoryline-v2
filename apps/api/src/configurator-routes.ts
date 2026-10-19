@@ -1711,6 +1711,8 @@ async function previenirDuPaiement(orderId: number): Promise<void> {
         client: client?.name ?? "client inconnu",
         totalCents: order.totalCents,
         lignes: langue === "fr" ? lignes : lignesDans("fr"),
+        // Un retrait : le lieu choisi, pour savoir où préparer l'affiche.
+        retrait: lignesDuLieu(lieuDeRetrait(order, "fr")),
       });
       await envoyerMail({ ...avis, to: destinataire });
     }

@@ -70,7 +70,9 @@ const choisie =
   // adresse doit encore s'ouvrir : on la range quand même.
   (/^collection:\d+$/.test(demandee)
     ? { cle: demandee, nom: "Collection", lien: "", enLigne: 0, usages: [] }
-    : pages[1] ?? PAGES_DE_BASE[1]!);
+    : // Sans choix, « Affiches personnalisables » : c'est la page où
+      // l'écran s'ouvrait déjà, et celle où arrivent les clientes.
+      pages.find((p) => p.cle === "personnalisable") ?? PAGES_DE_BASE[1]!);
 const idCollection = Number(/^collection:(\d+)$/.exec(choisie.cle)?.[1] ?? 0);
 
 let flash: string | null = null;
@@ -121,7 +123,7 @@ function prix(p: ProduitDeCollection): string {
 
 /** L'adresse publique de la page rangée, pour aller voir le résultat. */
 const lienPage = choisie.lien
-  ? `${import.meta.env.PUBLIC_SITE_URL ?? ""}${choisie.lien}`
+  ? `${import.meta.env.PUBLIC_SITE_URL ?? import.meta.env.PUBLIC_ORIGIN ?? ""}${choisie.lien}`
   : null;
 
 /** Ce qu'on lit sous le titre : d'où vient l'ordre affiché. */

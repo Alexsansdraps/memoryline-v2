@@ -13,8 +13,9 @@
  *     trouve (dans SA couleur, cerné d'un trait, le reste en gris), le nom
  *     que le client lira, et la case « Le client peut la changer » ;
  *   - ce qui corrige la lecture du dessin (couleur de départ, teintes
- *     réunies, « Suit la couleur de… », relire le dessin, remettre ses
- *     couleurs) attend, replié, sous « Réglages avancés ».
+ *     réunies, relire le dessin, remettre ses couleurs) attend, replié, sous
+ *     « Réglages avancés ». « Suit la couleur de… » y figurait aussi : la
+ *     boutique l'a fait retirer (octobre 2026).
  *
  * DEUX SORTES DE DESSINS, UN SEUL ÉCRAN. Un dessin VECTORIEL se range en
  * zones réunies en groupes ; une image EN PIXELS (une photo, une illustration
@@ -906,32 +907,6 @@ const bouton =
       return puces;
     }
 
-    /** « Suit la couleur de [à part ▾] » : réunit cette couleur à une autre. */
-    function suitLaCouleurDe(
-      cle: string,
-      autres: { valeur: string; nom: string }[],
-      onChoix: (valeur: string) => void,
-    ) {
-      const choix = el("label", "flex items-center gap-1");
-      choix.title =
-        "Une ombre ou un reflet d'une autre couleur ? Elle suivra la couleur que le client choisit pour celle-là.";
-      const select = el("select", "rounded border border-bo-border bg-bo-surface px-1 py-0.5");
-      select.dataset.cle = `suit:${cle}`;
-      const aPart = el("option", "", "aucune, elle est à part");
-      aPart.value = "";
-      select.append(aPart);
-      for (const a of autres) {
-        const o = el("option", "", a.nom);
-        o.value = a.valeur;
-        select.append(o);
-      }
-      select.addEventListener("change", () => {
-        if (select.value) onChoix(select.value);
-      });
-      choix.append(el("span", "text-bo-muted", "Suit la couleur de"), select);
-      return choix;
-    }
-
     /**
      * Les lignes d'un dessin EN PIXELS : une par famille de teintes. Mêmes
      * réglages que pour un dessin vectoriel ; la part du dessin s'ajoute,
@@ -1026,27 +1001,11 @@ const bouton =
               })),
             ),
           );
-        // Réunir toute la famille à une autre : ses teintes suivront la
-        // couleur de celle-là. C'est ainsi qu'on réunit le fauve clair et le
-        // fauve sombre d'un même pelage.
-        if (familles.length > 1)
-          rangee.append(
-            suitLaCouleurDe(
-              f.cle,
-              familles
-                .map((autre, j) => ({ valeur: autre.cle, nom: nomDeFamille(autre, j), autre }))
-                .filter((x) => x.autre !== f),
-              (cle) => {
-                const cible = familles.find((x) => x.cle === cle);
-                if (!cible) return;
-                cible.teintes = [...(cible.teintes ?? []), ...teintesDeLaFamille(f)];
-                cible.part = Math.min(1, cible.part + f.part);
-                couleursImage.familles = familles.filter((x) => x !== f);
-                dessiner();
-                void enregistrerTout("Couleurs réunies.");
-              },
-            ),
-          );
+        // Plus de « Suit la couleur de… » ici : la boutique l'a fait retirer
+        // (octobre 2026), il compliquait l'écran pour un réglage rare. Les
+        // teintes déjà réunies restent, et se séparent par leur « × »
+        // ci-dessus ; la lecture du dessin réunit d'elle-même les teintes
+        // d'une même famille.
         avance.append(rangee);
       });
       publier();
@@ -1263,26 +1222,10 @@ const bouton =
               })),
             ),
           );
-        // Réunir tout le groupe à un autre : ses teintes deviennent des
-        // nuances de celui-là, et suivent la couleur que le client y choisit.
-        if (etat.groupes.length > 1)
-          rangee.append(
-            suitLaCouleurDe(
-              g.zone,
-              etat.groupes
-                .map((autre, j) => ({ valeur: autre.zone, nom: nomAffiche(autre, j), autre }))
-                .filter((x) => x.autre !== g),
-              (zone) => {
-                const cible = etat.groupes.find((x) => x.zone === zone);
-                if (!cible) return;
-                cible.nuances = [...(cible.nuances ?? []), ...zonesDuGroupe(g)];
-                etat.groupes = etat.groupes.filter((x) => x !== g);
-                etat.cachees = etat.cachees.filter((z) => z !== g.zone);
-                dessiner();
-                void enregistrerTout("Couleurs réunies.");
-              },
-            ),
-          );
+        // Plus de « Suit la couleur de… » (retiré à la demande de la
+        // boutique, octobre 2026) : les nuances déjà réunies restent et se
+        // séparent par leur « × » ci-dessus ; les ombres de même teinte
+        // suivent toujours d'elles-mêmes la couleur principale.
         avance.append(rangee);
       });
       publier();
