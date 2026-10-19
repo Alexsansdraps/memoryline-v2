@@ -75,29 +75,49 @@ export interface PromoRule {
   endsAt: string | null;
   /** Le nom — celui de la ligne de remise du panier — dans les autres langues. */
   translations?: TraductionsDe<"name">;
+  /** Non nul = archivée : rangée dans « Promotions archivées », ne s'applique plus. */
+  archivedAt?: string | null;
 }
 
+/**
+ * Un message du bandeau d'annonce : un texte, un bouton facultatif (texte et
+ * adresse), actif ou non, sa période et sa place dans le défilement. Il
+ * n'annonce plus de promotion : celles-ci se règlent dans Promotions.
+ */
 export interface Banner {
   id: number;
   message: string;
   linkUrl: string | null;
   linkLabel: string | null;
+  /** Historique : les couleurs se règlent désormais pour tout le bandeau. */
   bgColor: string | null;
   textColor: string | null;
   active: boolean;
   startsAt?: string | null;
   endsAt?: string | null;
-  promoRuleId?: number | null;
+  /** Sa place dans le défilement (puis l'ordre de création). */
+  position?: number;
+  /** Non nul = archivé : rangé dans « Messages archivés ». */
+  archivedAt?: string | null;
   /** Le message et le texte du lien dans les autres langues. */
   translations?: TraductionsDe<"message" | "linkLabel">;
 }
 
+/** Ce qui vaut pour tout le bandeau : ses couleurs, et la durée de chaque message. */
+export interface ReglagesBandeau {
+  fond: string;
+  texte: string;
+  dureeSecondes: number;
+}
+
 /**
- * Le bandeau tel que le back-office le lit : meme eteint, et avec la regle
- * qu'il annonce. La route publique, elle, ne rend que les bandeaux visibles.
+ * Le bandeau tel que le back-office le lit : les réglages (et s'ils ont déjà
+ * été enregistrés), puis tous les messages, éteints et archivés compris.
  */
-export interface BannerBo extends Banner {
-  promo: PromoRule | null;
+export interface BannerBo {
+  reglages: ReglagesBandeau;
+  reglagesEnregistres: boolean;
+  messages: Banner[];
 }
 
 export interface Stats {
@@ -184,6 +204,11 @@ export interface CompteAdmin {
    * commandes garde son nom.
    */
   archivedAt?: string | null;
+  /**
+   * Les stands confiés à un vendeur : il ne voit que leurs ventes, et
+   * aucune si la liste est vide. Sans effet pour un propriétaire.
+   */
+  standIds?: number[];
 }
 
 /** Adresse laissée dans le formulaire de la lettre d'information. */
@@ -373,6 +398,19 @@ export interface ProduitDeCollection {
   formats: string[];
 }
 
+/** Une page de liste du site dont la boutique règle l'ordre des affiches. */
+export interface PageARanger {
+  /** « tout », « personnalisable », « prete_a_imprimer » ou « collection:<id> ». */
+  cle: string;
+  nom: string;
+  /** Son adresse sur le site, sans le domaine. */
+  lien: string;
+  /** Affiches en ligne sur cette page. */
+  enLigne: number;
+  /** Où elle se montre en plus : « vitrine de l'accueil », « rangée de la page … ». */
+  usages: string[];
+}
+
 /**
  * Un stand : un endroit et un moment où l'on vend en personne.
  *
@@ -381,7 +419,11 @@ export interface ProduitDeCollection {
  */
 export interface StandBo {
   id: number;
-  code: string;
+  /**
+   * Le code d'accès de la tablette. Null pour un vendeur : seule la
+   * propriétaire le voit et le donne (il permet d'enregistrer des ventes).
+   */
+  code: string | null;
   nom: string;
   ouvert: boolean;
   createdAt: string;
@@ -396,6 +438,39 @@ export interface StandBo {
   commandes: number;
   /** Ce qu'elles totalisent, en centimes. */
   cents: number;
+}
+
+/**
+ * Un lieu où retirer sa commande (apps/api/src/lieux-retrait.ts) : le chalet
+ * du marché de Noël, l'atelier. Proposé à la caisse s'il est actif et pas
+ * archivé, dans l'ordre réglé.
+ */
+export interface LieuRetraitBo {
+  id: number;
+  nom: string;
+  /** Sur plusieurs lignes ; ne se traduit pas. */
+  adresse: string | null;
+  /** Horaires, accès… sur plusieurs lignes. */
+  description: string | null;
+  active: boolean;
+  position: number;
+  translations?: TraductionsDe<"nom" | "description"> | null;
+  /** Non nul = archivé : hors de la caisse, rangé dans « Lieux archivés ». */
+  archivedAt?: string | null;
+}
+
+/**
+ * L'identité de la boutique sur ses factures (BO › Factures) : mentions
+ * obligatoires, figées sur chaque facture au moment de son numéro.
+ */
+export interface ReglagesFacture {
+  /** Une ligne par ligne d'adresse, 4 au plus. */
+  adresse: string;
+  /** 14 chiffres, ou null. */
+  siret: string | null;
+  /** « 123 456 789 00012 », tel qu'imprimé. */
+  siretGroupe: string | null;
+  mention: string | null;
 }
 
 /** Où partent les courriers de la boutique en ce moment. */
@@ -453,7 +528,21 @@ export interface ProduitAdmin {
   aiEnabled: boolean;
   imageUrl: string | null;
   variantes: number;
-  collections: { id: number; name: string }[];
+  /** Ses collections, archivées comprises (marquées). */
+  collections: { id: number; name: string; archivee?: boolean }[];
+  /** Le type d'affiche (slug d'un type) ; null = celui de la boutique par défaut. */
+  defaultView?: string | null;
+  /** Seulement quand la liste est demandée `avecDescription`. */
+  description?: string | null;
+}
+
+/** Une ligne de l'aperçu de la modification groupée : ce qui change, champ par champ. */
+export interface ApercuMasse {
+  id: number;
+  nom: string;
+  changements: { champ: string; avant: string; apres: string }[];
+  /** La 301 que posera le changement d'adresse, s'il y en a un. */
+  redirection: { de: string; vers: string } | null;
 }
 
 /** La liste des produits, et de quoi remplir les filtres et les onglets. */
@@ -669,8 +758,11 @@ export interface CatalogueLivraisonBO {
     demande: string;
     aide: string;
   }[];
-  /** Nombre de stands ouverts en ce moment. */
-  standsOuverts?: number;
+  /**
+   * Nombre de lieux de retrait actifs (Livraison › Lieux de retrait). Sans
+   * aucun, un mode « retrait sur place » ne sort pas à la caisse.
+   */
+  lieuxRetraitActifs?: number;
 }
 
 /** Chiffres d'une période de commandes, et de la précédente pour comparer. */
@@ -974,11 +1066,27 @@ export interface OrderDetail {
     invoiceNumber?: string | null;
     invoicedAt?: string | null;
   };
+  /**
+   * Où la cliente vient chercher sa commande, pour un retrait sur place : le
+   * lieu figé à la caisse (nom, adresse, texte), ou, pour une commande
+   * d'avant les lieux de retrait, le nom du stand (`ancien`). Null sinon.
+   */
+  lieuRetrait?: {
+    nom: string;
+    adresse: string | null;
+    description: string | null;
+    ancien: boolean;
+  } | null;
   items: (OrderItem & {
     format?: string | null;
     /** « paysage » pour une affiche couchée ; null = portrait. */
     orientation?: "paysage" | null;
     cadre?: string | null;
+    /**
+     * La couleur d'aperçu du cadre (« #2b2b2b »), pour border la grande
+     * vignette de la fiche comme dans le panier. Null sans cadre.
+     */
+    cadreCouleur?: string | null;
     /** Les lignes du texte de l'affiche, dans l'ordre où elles s'impriment. */
     lignesAffiche?: (string | null)[] | null;
     /** Forme d'avant les trois lignes — les commandes déjà passées la portent. */
@@ -1644,9 +1752,22 @@ export function adminApi(request?: Request) {
         cookie,
       ),
     stats: () => req<Stats>("GET", "/admin/stats", undefined, cookie),
+    /** Toutes les promotions, archivées comprises (marquées par `archivedAt`). */
     promos: () => req<PromoRule[]>("GET", "/admin/promos", undefined, cookie),
+    /** Crée (sans id) ou modifie une promotion ; l'API refuse en clair un réglage incohérent. */
     upsertPromo: (data: Partial<PromoRule>) =>
       req<PromoRule>("POST", "/admin/promos", data, cookie),
+    /** Allume ou éteint une promotion. */
+    basculerPromo: (id: number) =>
+      req<PromoRule>("POST", `/admin/promos/${id}/toggle`, {}, cookie),
+    /** Archive une promotion, ou la restaure (elle revient éteinte). */
+    archiverPromo: (id: number, archive = true) =>
+      req<{ ok: boolean; archived: boolean }>(
+        "POST",
+        `/admin/promos/${id}/archive`,
+        { archive },
+        cookie,
+      ),
     /** Le nom d'une promotion dans UNE langue (vide = le français s'affiche). */
     setPromoTranslation: (id: number, data: { lang: string; name: string }) =>
       req<TraductionsEnregistrees<"name">>(
@@ -1669,19 +1790,36 @@ export function adminApi(request?: Request) {
         data,
         cookie,
       ),
-    banner: () => req<Banner | null>("GET", "/banner", undefined, cookie),
-    /** Le bandeau du back-office : meme eteint, et avec sa regle. */
-    bannerBo: () => req<BannerBo | null>("GET", "/admin/banner", undefined, cookie),
+    /** Le bandeau du back-office : réglages et messages, éteints et archivés compris. */
+    bannerBo: () => req<BannerBo>("GET", "/admin/banners", undefined, cookie),
     /**
-     * Enregistre le bandeau ET l'offre qu'il annonce.
-     *
-     * `promo` absent ne touche pas au lien ; `null` le retire (la regle liee
-     * s'eteint) ; un objet ecrit la regle, qui prend l'etat et les dates du
-     * bandeau.
+     * Crée un message (sans id, en fin de défilement) ou le modifie. N'écrit
+     * ni sa place, ni ses traductions, ni aucune promotion.
      */
     upsertBanner: (
-      data: Partial<Banner> & { promo?: Record<string, unknown> | null },
-    ) => req<Banner>("POST", "/admin/banner", data, cookie),
+      data: Pick<Banner, "message" | "linkUrl" | "linkLabel" | "active"> & {
+        id?: number;
+        startsAt?: string | null;
+        endsAt?: string | null;
+      },
+    ) => req<Banner>("POST", "/admin/banners", data, cookie),
+    /** Allume ou éteint un message. */
+    basculerMessageBandeau: (id: number) =>
+      req<Banner>("POST", `/admin/banners/${id}/toggle`, {}, cookie),
+    /** Archive un message, ou le restaure (il revient éteint, en fin de défilement). */
+    archiverMessageBandeau: (id: number, archive = true) =>
+      req<{ ok: boolean; archived: boolean }>(
+        "POST",
+        `/admin/banners/${id}/archive`,
+        { archive },
+        cookie,
+      ),
+    /** L'ordre du défilement : tous les messages non archivés, dans l'ordre voulu. */
+    ordreBandeau: (ids: number[]) =>
+      req<{ ok: boolean }>("POST", "/admin/banners/ordre", { ids }, cookie),
+    /** Les couleurs du bandeau et la durée de chaque message. */
+    reglagesBandeau: (r: ReglagesBandeau) =>
+      req<{ reglages: ReglagesBandeau }>("POST", "/admin/banners/reglages", r, cookie),
     /**
      * Les réglages tels que le back-office doit les voir.
      *
@@ -2173,6 +2311,55 @@ export function adminApi(request?: Request) {
         data,
         cookie,
       ),
+    /** Les lieux de retrait, archivés compris (marqués), dans l'ordre de la caisse. */
+    lieuxRetrait: () =>
+      req<LieuRetraitBo[]>("GET", "/admin/pickup-points", undefined, cookie),
+    /** Crée un lieu de retrait, ou le modifie (avec `id`). */
+    enregistrerLieuRetrait: (data: {
+      id?: number;
+      nom: string;
+      adresse: string;
+      description: string;
+      active: boolean;
+    }) => req<LieuRetraitBo>("POST", "/admin/pickup-points", data, cookie),
+    /** Archive un lieu (il quitte la caisse), ou le restaure. */
+    archiverLieuRetrait: (id: number, archive = true) =>
+      req<{ ok: true; archive: boolean }>(
+        "POST",
+        `/admin/pickup-points/${id}/archive`,
+        { archive },
+        cookie,
+      ),
+    /** L'ordre de la caisse : les identifiants, dans l'ordre voulu. */
+    rangerLieuxRetrait: (ids: number[]) =>
+      req<{ ok: true }>("POST", "/admin/pickup-points/ordre", { ids }, cookie),
+    /** Le nom et le texte d'un lieu dans UNE langue (l'adresse ne se traduit pas). */
+    setLieuRetraitTranslation: (
+      id: number,
+      data: { lang: string; nom?: string; description?: string },
+    ) =>
+      req<TraductionsEnregistrees<"nom" | "description">>(
+        "POST",
+        `/admin/pickup-points/${id}/translations`,
+        data,
+        cookie,
+      ),
+    /** L'adresse, le SIRET et la mention imprimés sur les factures (facturation.ts). */
+    facturation: () =>
+      req<ReglagesFacture>("GET", "/admin/facturation", undefined, cookie),
+    /**
+     * Enregistre les trois réglages. Refusé (400, en français) si l'adresse
+     * dépasse 4 lignes de 50 caractères, ou si le SIRET n'a pas 14 chiffres.
+     * `avertissement` : le SIRET ne passe pas sa clé de contrôle (enregistré
+     * quand même).
+     */
+    enregistrerFacturation: (data: { adresse: string; siret: string; mention: string }) =>
+      req<ReglagesFacture & { ok: true; avertissement: string | null }>(
+        "POST",
+        "/admin/facturation",
+        data,
+        cookie,
+      ),
     /** Une ligne de grille : un prix pour un mode, une zone, une tranche. */
     upsertShippingRate: (data: {
       id?: number;
@@ -2339,6 +2526,8 @@ export function adminApi(request?: Request) {
       email: string;
       role: string;
       password?: string;
+      /** Absent = on n'y touche pas ; [] = plus aucun stand confié. */
+      standIds?: number[];
     }) => req<{ id: number; email: string }>("POST", "/admin/users", data, cookie),
     /**
      * Archive un compte, ou le restaure. Il n'y a plus de suppression : les
@@ -2403,6 +2592,26 @@ export function adminApi(request?: Request) {
         "POST",
         `/admin/piece-categories/${id}/archive`,
         { archived },
+        cookie,
+      ),
+    /**
+     * Les nuanciers des personnages (peau, cheveux / pelage, vêtements,
+     * pantalon) et, pour chacun, s'il a été réglé par la boutique.
+     */
+    nuanciersBase: () =>
+      req<{
+        nuanciers: Record<"peau" | "cheveux" | "vetements" | "pantalon", string[]>;
+        modifies: Record<string, boolean>;
+      }>("GET", "/admin/nuanciers-base", undefined, cookie),
+    /**
+     * Enregistre UN nuancier des personnages, dans l'ordre donné ;
+     * `couleurs: null` le remet à ses couleurs d'origine.
+     */
+    enregistrerNuancierBase: (nuancier: string, couleurs: string[] | null) =>
+      req<{ ok: true }>(
+        "POST",
+        "/admin/nuanciers-base",
+        { nuancier, couleurs },
         cookie,
       ),
     /** Range un lot de pièces dans une catégorie (null = les en sort). */
@@ -2528,6 +2737,8 @@ export function adminApi(request?: Request) {
       /** Demander précisément ces produits-là, sans charger tout le reste. */
       ids?: number[];
       limit?: number;
+      /** Joindre la description de chaque affiche (grille de masse seulement). */
+      avecDescription?: boolean;
     }) => {
       const p = new URLSearchParams();
       if (params?.ids?.length) p.set("ids", params.ids.join(","));
@@ -2536,6 +2747,7 @@ export function adminApi(request?: Request) {
       if (params?.categorie) p.set("categorie", String(params.categorie));
       if (params?.collection) p.set("collection", String(params.collection));
       if (params?.limit) p.set("limit", String(params.limit));
+      if (params?.avecDescription) p.set("avecDescription", "1");
       const suite = p.toString();
       return req<ListeProduitsAdmin>(
         "GET",
@@ -2702,7 +2914,7 @@ export function adminApi(request?: Request) {
     restaurerLienMenu: (id: number) =>
       req<{ ok: true }>("POST", `/admin/menu/${id}/restaurer`, {}, cookie),
 
-    /* --- Ordre d'affichage des pages de genre ------------------------- */
+    /* --- Ordre d'affichage de chaque page de liste --------------------- */
     /** Les affiches actives d'un genre, dans l'ordre où la boutique les montre. */
     ordreGenre: (genre: string) =>
       req<{ genre: string; rangees: number; produits: ProduitDeCollection[] }>(
@@ -2719,6 +2931,40 @@ export function adminApi(request?: Request) {
         { genre, produits },
         cookie,
       ),
+    /**
+     * Les pages de liste du site que l'on peut ranger : « Toutes les
+     * affiches », les deux genres, puis chaque collection en ligne — avec ce
+     * qu'elle range en plus (vitrine de l'accueil, rangée d'une page).
+     */
+    pagesARanger: () =>
+      req<{ pages: PageARanger[] }>(
+        "GET",
+        "/admin/products/ordre/pages",
+        undefined,
+        cookie,
+      ),
+    /**
+     * Les affiches en ligne d'une page, dans l'ordre du site. `page` vaut
+     * « tout », un genre, ou « collection:<id> ».
+     */
+    ordrePage: (page: string) => {
+      const collection = /^collection:(\d+)$/.exec(page)?.[1];
+      return req<{
+        page: string;
+        /** Null pour une collection : son ordre est toujours un choix. */
+        rangees: number | null;
+        /** Brouillons et archives de la page, qui ne se rangent pas ici. */
+        horsLigne: number;
+        produits: ProduitDeCollection[];
+      }>(
+        "GET",
+        collection
+          ? `/admin/products/ordre?collection=${collection}`
+          : `/admin/products/ordre?genre=${encodeURIComponent(page)}`,
+        undefined,
+        cookie,
+      );
+    },
 
     /* --- Statistiques de vente ----------------------------------------- */
     /** Tout l'écran en un appel : résumé, courbe, meilleures ventes, clientes. */
@@ -2823,9 +3069,17 @@ export function adminApi(request?: Request) {
     /** La fiche complète d'un produit, en un seul appel. */
     ficheProduit: (id: number) =>
       req<FicheProduit>("GET", `/admin/products/${id}/fiche`, undefined, cookie),
-    /** Enregistre la fiche. Les clés absentes ne sont pas touchées. */
+    /**
+     * Enregistre la fiche. Les clés absentes ne sont pas touchées.
+     * `redirection` : la 301 posée quand l'adresse de l'affiche a changé.
+     */
     enregistrerFicheProduit: (id: number, corps: Record<string, unknown>) =>
-      req<{ ok: true }>("POST", `/admin/products/${id}/fiche`, corps, cookie),
+      req<{ ok: true; redirection?: { de: string; vers: string } | null }>(
+        "POST",
+        `/admin/products/${id}/fiche`,
+        corps,
+        cookie,
+      ),
     /** Ce que cette affiche a rapporté sur les derniers jours. */
     ventesProduit: (id: number, jours = 90) =>
       req<VentesProduit>(
@@ -2846,12 +3100,24 @@ export function adminApi(request?: Request) {
         refuses?: { id: number; name: string; raison: string }[];
       }>("POST", "/admin/products/bulk", { ids, action, ...params }, cookie),
     /** L'éditeur en grille : chaque ligne porte ses propres changements. */
-    enregistrerProduitsEnMasse: (modifications: Record<string, unknown>[]) =>
+    enregistrerProduitsEnMasse: (
+      modifications: Record<string, unknown>[],
+      /** Vrai : rien n'est écrit, la réponse montre ce qui changerait. */
+      apercu = false,
+    ) =>
       req<{
         ok: true;
         count: number;
+        /** Adresses changées, donc redirections 301 posées (ou prévues). */
+        redirections?: number;
+        apercu?: ApercuMasse[];
         erreurs?: { id: number; message: string }[];
-      }>("POST", "/admin/products/masse", { modifications }, cookie),
+      }>(
+        "POST",
+        "/admin/products/masse",
+        apercu ? { modifications, apercu: true } : { modifications },
+        cookie,
+      ),
     productCategories: () =>
       req<CategorieProduit[]>(
         "GET",

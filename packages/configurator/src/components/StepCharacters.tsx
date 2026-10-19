@@ -7,6 +7,7 @@ import type { MessagesConfigurateur } from "../messages";
 import type {
   CharacterDTO,
   ConfiguratorState,
+  NuanciersPersonnages,
   PieceCategoryDTO,
   Slot,
   SlotVariants,
@@ -24,6 +25,8 @@ export function StepCharacters(props: {
   characters: CharacterDTO[];
   slots: SlotVariants;
   pieceCategories?: PieceCategoryDTO[];
+  /** Les nuanciers des personnages réglés par la boutique (sinon ceux d'origine). */
+  nuanciersBase?: NuanciersPersonnages;
   cache: SvgCache;
   /** Racine de l'API : elle sert les images recolorées des dessins en pixels. */
   assetBaseUrl?: string;
@@ -234,6 +237,7 @@ export function StepCharacters(props: {
             characters={props.characters}
             slots={props.slots}
             pieceCategories={props.pieceCategories}
+            nuanciersBase={props.nuanciersBase}
             cache={props.cache}
             assetBaseUrl={props.assetBaseUrl}
             onSetAsset={(slot, variantId) =>

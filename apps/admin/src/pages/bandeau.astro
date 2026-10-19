@@ -1,267 +1,55 @@
 ---
-import { apiInterne } from "../lib/api-interne.ts";
 /**
- * Le bandeau du site, et l'offre qu'il annonce.
+ * Le bandeau d'annonce : les messages qui défilent tout en haut du site.
  *
- * Les deux se réglaient à deux endroits différents : le message ici, la
- * remise dans Promotions. Un bandeau qui annonce « la 2e à moitié prix » sans
- * que le panier la déduise n'est pas une annonce, c'est une promesse que la
- * boutique ne tient pas — et personne ne s'en aperçoit avant qu'une cliente
- * le fasse remarquer. L'oubli inverse coûte plus cher encore : une remise
- * active que plus aucun bandeau n'annonce continue de rogner chaque commande.
+ * « Le bandeau ne doit pas du tout être lié aux promos… Le bandeau c'est
+ * juste un texte et un bouton. Et il faut pouvoir en mettre plusieurs qui
+ * défilent. » (Margaux). L'écran enregistrait le message ET la remise qu'il
+ * annonçait, allumait et éteignait les deux ensemble : il ne touche plus à
+ * aucune promotion. Les offres se règlent dans Promotions, et un message qui
+ * en parle se réécrit ici, à la main, comme n'importe quel texte.
  *
- * Ils s'enregistrent donc ensemble. La règle prend l'état et les dates du
- * bandeau : allumés ensemble, éteints ensemble.
+ * Un message : un texte, un bouton facultatif (texte et adresse), allumé ou
+ * non, des dates facultatives, une place dans le défilement — rangée à la
+ * poignée ou aux flèches (lib/rangement.ts). Les couleurs et la durée de
+ * chaque message valent pour tout le bandeau. Rien ne se supprime : un
+ * message s'archive, et revient par « Restaurer ».
  */
 import Admin from "../layouts/Admin.astro";
 import Traductions from "../components/Traductions.astro";
 import { url } from "../lib/url.ts";
-import { adminApi, formatPrice, type BannerBo, type PromoRule } from "../lib/api.ts";
+import { adminApi, type Banner, type BannerBo, type ReglagesBandeau } from "../lib/api.ts";
 import {
   traiterTraductions,
   type ChampTraduit,
   type ElementTraduit,
   type EtatTraductions,
 } from "../lib/traductions.ts";
-import { libelleRegle, remisesPanier, seuilDeclenchement } from "@memoryline/types";
 
 const api = adminApi(Astro.request);
 
 let flash: string | null = null;
 let flashErreur = false;
 
-/** Un champ date-heure de formulaire vers ce que l'API attend, ou rien. */
+/** Ce qui se traduit d'un message : son texte et celui de son bouton. */
+const CHAMPS_BANDEAU: ChampTraduit[] = [
+  { cle: "message", libelle: "Message", max: 500 },
+  { cle: "linkLabel", libelle: "Texte du bouton", max: 120 },
+];
+const elementTraduit = (m: Banner): ElementTraduit => ({
+  id: m.id,
+  libelle: m.message,
+  francais: { message: m.message, linkLabel: m.linkLabel },
+  translations: m.translations,
+});
+
+/** Un champ date-heure (heure de Paris, celle du serveur) vers ISO, ou rien. */
 function quandOuRien(v: FormDataEntryValue | null): string | null {
   const s = String(v ?? "").trim();
-  return s ? new Date(s).toISOString() : null;
+  if (!s) return null;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
-
-/**
- * Ce qui se traduit ici : le message du bandeau et le texte de son lien —
- * l'adresse du lien, elle, vaut pour toutes les langues (le site y ajoute
- * celle de la page) — et le nom de l'offre annoncée, que le client relit sur
- * la ligne de remise de son panier.
- *
- * Le bandeau et sa règle vivent dans deux tables qui ont chacune leur id 1 :
- * leurs lignes se distinguent donc par un nom, pas par un numéro.
- */
-const CHAMPS_BANDEAU: ChampTraduit[] = [
-  { cle: "message", libelle: "Texte affiché", max: 500 },
-  { cle: "linkLabel", libelle: "Libellé du lien", max: 120 },
-];
-const CHAMPS_OFFRE: ChampTraduit[] = [
-  { cle: "name", libelle: "Nom de l'offre (ligne de remise du panier)", max: 120 },
-];
-function elementsBandeau(b: BannerBo): ElementTraduit[] {
-  const elements: ElementTraduit[] = [
-    {
-      id: "bandeau",
-      libelle: "Le bandeau",
-      francais: { message: b.message, linkLabel: b.linkLabel },
-      translations: b.translations,
-      champs: CHAMPS_BANDEAU,
-    },
-  ];
-  if (b.promo)
-    elements.push({
-      id: "offre",
-      libelle: `L'offre annoncée : ${b.promo.name}`,
-      francais: { name: b.promo.name },
-      translations: b.promo.translations,
-      champs: CHAMPS_OFFRE,
-    });
-  return elements;
-}
-
-/**
- * Le formulaire envoyé. Le bloc des traductions a le sien, distingué par
- * `_action` : celui du bandeau n'en porte pas, et tout ce qui n'est pas une
- * traduction l'enregistre comme avant.
- */
-const formulaire = Astro.request.method === "POST" ? await Astro.request.formData() : null;
-const actionTraductions = String(formulaire?.get("_action") ?? "");
-const estTraduction =
-  actionTraductions === "bandeau-traductions" || actionTraductions === "bandeau-traduire";
-/** Propositions à relire, saisie à réafficher, et bloc ouvert. */
-let tradBandeau: EtatTraductions | null = null;
-
-if (formulaire && estTraduction) {
-  try {
-    const b = await api.bannerBo();
-    if (!b) throw new Error("Enregistrez d'abord le bandeau en français : ses traductions s'y rattachent.");
-    tradBandeau = await traiterTraductions(
-      actionTraductions === "bandeau-traductions" ? "enregistrer" : "proposer",
-      formulaire,
-      elementsBandeau(b),
-      [...CHAMPS_BANDEAU, ...CHAMPS_OFFRE],
-      (id, lang, modifies) =>
-        id === "offre" && b.promo
-          ? api.setPromoTranslation(b.promo.id, { lang, name: modifies.name ?? "" })
-          : api.setBannerTranslation(b.id, { lang, ...modifies }),
-      (lang, champs) => api.proposerTraduction(lang, champs),
-    );
-    flash = tradBandeau.message;
-    flashErreur = tradBandeau.erreur;
-  } catch (e) {
-    flash = e instanceof Error ? e.message : String(e);
-    flashErreur = true;
-  }
-}
-
-if (formulaire && !estTraduction) {
-  const f = formulaire;
-  try {
-    // L'offre annoncée. Trois choix à l'écran, trois formes envoyées :
-    // rien du tout, l'identifiant d'une règle déjà écrite, ou la règle
-    // entière quand on l'écrit ici.
-    const choix = String(f.get("regle") ?? "aucune");
-    let promo: Record<string, unknown> | null = null;
-    if (choix === "existante") {
-      const id = Number(f.get("regleId"));
-      if (!id) throw new Error("Choisissez l'offre que le bandeau annonce.");
-      promo = { id };
-    } else if (choix === "nouvelle") {
-      const type = String(f.get("type") ?? "percent");
-      let config: Record<string, unknown> = {};
-      if (type === "buy_x_get_y") {
-        const buyQty = Number(f.get("buyQty") || 1);
-        const getQty = Number(f.get("getQty") || 1);
-        const remise = Number(f.get("remiseOffertes") ?? 100);
-        if (!Number.isInteger(buyQty) || buyQty < 1)
-          throw new Error("Le nombre d'affiches achetées doit être au moins 1.");
-        if (!Number.isInteger(getQty) || getQty < 1)
-          throw new Error("Le nombre d'affiches remisées doit être au moins 1.");
-        if (!(remise >= 0 && remise <= 100))
-          throw new Error("La remise doit être comprise entre 0 et 100 %.");
-        config = {
-          buyQty,
-          getQty,
-          percent: remise,
-          // Vide = tous les formats. Un format imposé ne compte QUE les
-          // affiches de ce format, à l'achat comme à la remise.
-          format: String(f.get("format") ?? "") || undefined,
-        };
-      } else if (type === "percent") {
-        const percent = Number(f.get("percent") || 0);
-        if (!(percent > 0 && percent <= 100))
-          throw new Error("La remise doit être comprise entre 1 et 100 %.");
-        config = { percent };
-      } else if (type === "fixed") {
-        const euros = Number(String(f.get("amount") ?? "").replace(",", "."));
-        if (!(euros > 0)) throw new Error("Indiquez le montant de la remise, en euros.");
-        config = { amountCents: Math.round(euros * 100) };
-      }
-      promo = {
-        id: f.get("regleActuelleId") ? Number(f.get("regleActuelleId")) : undefined,
-        name: String(f.get("nomRegle") || "Offre du bandeau").trim(),
-        type,
-        config,
-        code: String(f.get("code") ?? "").trim().toUpperCase() || null,
-        priority: 10,
-      };
-    }
-
-    await api.upsertBanner({
-      id: f.get("id") ? Number(f.get("id")) : undefined,
-      message: String(f.get("message") || ""),
-      linkUrl: (f.get("linkUrl") as string) || null,
-      linkLabel: (f.get("linkLabel") as string) || null,
-      bgColor: (f.get("bgColor") as string) || "#20211f",
-      textColor: (f.get("textColor") as string) || "#f7f3ec",
-      active: f.get("active") === "on",
-      startsAt: quandOuRien(f.get("startsAt")),
-      endsAt: quandOuRien(f.get("endsAt")),
-      promo,
-    });
-    flash =
-      choix === "aucune"
-        ? "Bandeau enregistré. Il n'applique aucune remise : c'est un simple message."
-        : "Bandeau enregistré, et l'offre qu'il annonce est déduite au panier.";
-  } catch (e) {
-    flash = e instanceof Error ? e.message : String(e);
-    flashErreur = true;
-  }
-}
-
-let banner: BannerBo | null = null;
-let erreur: string | null = null;
-try {
-  banner = await api.bannerBo();
-} catch (e) {
-  erreur = e instanceof Error ? e.message : String(e);
-}
-
-let promos: PromoRule[] = [];
-try {
-  promos = await api.promos();
-} catch {}
-
-const regle = banner?.promo ?? null;
-const choixInitial = regle ? "nouvelle" : "aucune";
-
-/**
- * Les remises qui tournent SANS que le bandeau les annonce.
- *
- * C'est l'oubli le plus cher : elle est déduite de chaque commande, et rien
- * à l'écran ne le rappelle. On la met sous les yeux.
- */
-const muettes = promos.filter(
-  (p) => p.active && p.id !== regle?.id && !p.code,
-);
-
-/**
- * Le prix d'affiche le plus courant, pour que l'exemple parle de vraies
- * affiches et pas d'un montant inventé. À défaut, 23 € : le prix d'un A4.
- */
-let prixExemple = 2300;
-try {
-  const base =
-    apiInterne();
-  const res = await fetch(`${base}/products?limit=60`);
-  if (res.ok) {
-    const liste = (await res.json()) as {
-      variants?: { format: string; priceCents: number }[];
-    }[];
-    const compte = new Map<number, number>();
-    for (const p of liste)
-      for (const v of p.variants ?? [])
-        if (v.format === "A4" && v.priceCents > 0)
-          compte.set(v.priceCents, (compte.get(v.priceCents) ?? 0) + 1);
-    const gagnant = [...compte.entries()].sort((a, b) => b[1] - a[1])[0];
-    if (gagnant) prixExemple = gagnant[0];
-  }
-} catch {}
-
-/**
- * Ce que l'offre fait, sur un panier concret.
- *
- * L'exemple n'est pas écrit à la main : il passe par le moteur qui facture
- * réellement le client. Une phrase qui décrirait autre chose que le calcul
- * serait pire que pas de phrase du tout.
- */
-function exemple(r: PromoRule): {
-  quantite: number;
-  avant: number;
-  apres: number;
-} | null {
-  const cfg = (r.config ?? {}) as Record<string, unknown>;
-  const format = typeof cfg.format === "string" && cfg.format ? cfg.format : "A4";
-  const quantite = Math.max(2, seuilDeclenchement(r));
-  const lignes = [{ unitPriceCents: prixExemple, quantity: quantite, format }];
-  // La règle est évaluée hors dates et forcée active : l'exemple montre ce
-  // qui se passera PENDANT l'offre, même si elle commence demain.
-  const { remiseCents } = remisesPanier(
-    lignes,
-    [{ ...r, active: true, startsAt: null, endsAt: null }],
-    new Date(),
-    r.code ? [r.code] : [],
-  );
-  const avant = prixExemple * quantite;
-  if (remiseCents <= 0) return null;
-  return { quantite, avant, apres: avant - remiseCents };
-}
-
-const exempleRegle = regle ? exemple(regle) : null;
 
 /** Une date pour un champ `datetime-local` (qui n'accepte pas le fuseau). */
 function pourChamp(iso: string | null | undefined): string {
@@ -272,14 +60,170 @@ function pourChamp(iso: string | null | undefined): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-const cfg = (regle?.config ?? {}) as Record<string, unknown>;
-const nombreOu = (v: unknown, defaut: number) =>
-  Number.isFinite(Number(v)) ? Number(v) : defaut;
+/** Le message en cours de saisie, tel que le formulaire le montre. */
+interface SaisieMessage {
+  id: number | null;
+  message: string;
+  linkLabel: string;
+  linkUrl: string;
+  active: boolean;
+  startsAt: string;
+  endsAt: string;
+}
+const NOUVEAU: SaisieMessage = {
+  id: null,
+  message: "",
+  linkLabel: "",
+  linkUrl: "",
+  active: true,
+  startsAt: "",
+  endsAt: "",
+};
+/** Le formulaire refusé, à remontrer tel qu'il a été saisi. */
+let saisieRefusee: SaisieMessage | null = null;
+/** Propositions de traduction à relire, saisie à réafficher, et bloc ouvert. */
+let tradBandeau: EtatTraductions | null = null;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const action = String(f.get("_action") ?? "");
+  const id = Number(f.get("id"));
+  try {
+    if (action === "bandeau-traductions" || action === "bandeau-traduire") {
+      const ecranActuel = await api.bannerBo();
+      tradBandeau = await traiterTraductions(
+        action === "bandeau-traductions" ? "enregistrer" : "proposer",
+        f,
+        ecranActuel.messages.filter((m) => !m.archivedAt).map(elementTraduit),
+        CHAMPS_BANDEAU,
+        (idMessage, lang, modifies) => api.setBannerTranslation(Number(idMessage), { lang, ...modifies }),
+        (lang, champs) => api.proposerTraduction(lang, champs),
+      );
+      flash = tradBandeau.message;
+      flashErreur = tradBandeau.erreur;
+    } else if (action === "message") {
+      const texte = (n: string) => String(f.get(n) ?? "").trim();
+      saisieRefusee = {
+        id: texte("id") ? Number(texte("id")) : null,
+        message: texte("message"),
+        linkLabel: texte("linkLabel"),
+        linkUrl: texte("linkUrl"),
+        active: f.get("active") === "on",
+        startsAt: texte("startsAt"),
+        endsAt: texte("endsAt"),
+      };
+      const m = await api.upsertBanner({
+        ...(saisieRefusee.id ? { id: saisieRefusee.id } : {}),
+        message: saisieRefusee.message,
+        linkLabel: saisieRefusee.linkLabel || null,
+        linkUrl: saisieRefusee.linkUrl || null,
+        active: saisieRefusee.active,
+        startsAt: quandOuRien(saisieRefusee.startsAt),
+        endsAt: quandOuRien(saisieRefusee.endsAt),
+      });
+      saisieRefusee = null;
+      flash = m.active
+        ? "Message enregistré. Il défile en haut du site pendant ses dates."
+        : "Message enregistré, éteint : il ne s'affiche pas tant qu'il n'est pas allumé.";
+    } else if (action === "toggle") {
+      const m = await api.basculerMessageBandeau(id);
+      flash = m.active ? "Message allumé." : "Message éteint : il ne s'affiche plus sur le site.";
+    } else if (action === "archiver" || action === "restaurer") {
+      await api.archiverMessageBandeau(id, action === "archiver");
+      flash =
+        action === "archiver"
+          ? "Message archivé : il a quitté le site. Il se retrouve plus bas, dans « Messages archivés »."
+          : "Message restauré, éteint, en fin de défilement : rallumez-le quand il doit reparaître.";
+    } else if (action === "ordre") {
+      const ids = String(f.get("ordre") ?? "")
+        .split(",")
+        .map((x) => Number(x))
+        .filter((x) => Number.isInteger(x) && x > 0);
+      await api.ordreBandeau(ids);
+      flash = "Ordre enregistré : les messages défilent dans cet ordre.";
+    } else if (action === "reglages") {
+      const r: ReglagesBandeau = {
+        fond: String(f.get("fond") ?? ""),
+        texte: String(f.get("texte") ?? ""),
+        dureeSecondes: Number(f.get("dureeSecondes")),
+      };
+      await api.reglagesBandeau(r);
+      flash = "Couleurs et défilement enregistrés.";
+    } else {
+      throw new Error("Action inconnue. Rechargez la page.");
+    }
+  } catch (e) {
+    flash = (e instanceof Error ? e.message : String(e)).replace(/^Error:\s*/, "");
+    flashErreur = true;
+  }
+}
+
+let ecran: BannerBo | null = null;
+let erreur: string | null = null;
+try {
+  ecran = await api.bannerBo();
+} catch (e) {
+  erreur = e instanceof Error ? e.message : String(e);
+}
+const messages = (ecran?.messages ?? []).filter((m) => !m.archivedAt);
+const archives = (ecran?.messages ?? []).filter((m) => m.archivedAt);
+const reglages: ReglagesBandeau = ecran?.reglages ?? {
+  fond: "#20211f",
+  texte: "#f7f3ec",
+  dureeSecondes: 6,
+};
+
+/** Le message ouvert dans le formulaire (?modifier=12), s'il y en a un. */
+const idModifie = Number(Astro.url.searchParams.get("modifier"));
+const modifie = messages.find((m) => m.id === idModifie) ?? null;
+const saisie: SaisieMessage =
+  saisieRefusee ??
+  (modifie
+    ? {
+        id: modifie.id,
+        message: modifie.message,
+        linkLabel: modifie.linkLabel ?? "",
+        linkUrl: modifie.linkUrl ?? "",
+        active: modifie.active,
+        startsAt: pourChamp(modifie.startsAt),
+        endsAt: pourChamp(modifie.endsAt),
+      }
+    : NOUVEAU);
+
+/** Où en est un message, en un mot, et sa couleur. */
+function etat(m: Banner): { mot: string; ton: string } {
+  const maintenant = Date.now();
+  if (!m.active) return { mot: "Éteint", ton: "bg-bo-bg text-bo-muted" };
+  if (m.endsAt && new Date(m.endsAt).getTime() < maintenant)
+    return { mot: "Terminé", ton: "bg-amber-100 text-amber-900" };
+  if (m.startsAt && new Date(m.startsAt).getTime() > maintenant)
+    return { mot: "Programmé", ton: "bg-blue-100 text-blue-800" };
+  return { mot: "En ligne", ton: "bg-green-100 text-green-800" };
+}
+
+/** La période d'un message, en une ligne. */
+function periode(m: Banner): string {
+  const jour = (iso: string) =>
+    new Date(iso).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  if (m.startsAt && m.endsAt) return `du ${jour(m.startsAt)} au ${jour(m.endsAt)}`;
+  if (m.startsAt) return `à partir du ${jour(m.startsAt)}`;
+  if (m.endsAt) return `jusqu'au ${jour(m.endsAt)}`;
+  return "sans limite de dates";
+}
+
+const enLigne = messages.filter((m) => etat(m).mot === "En ligne").length;
+const DUREES = Array.from({ length: 12 }, (_, i) => i + 4);
+
+const champ = "mt-1 w-full rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm";
+const boutonOutil =
+  "flex h-6 w-6 items-center justify-center rounded border border-bo-border text-xs text-bo-muted hover:bg-bo-bg disabled:cursor-default disabled:opacity-30";
+const boutonLien = "text-bo-accent hover:underline";
 ---
 
-<Admin title="Bandeau du site">
+<Admin title="Bandeau d'annonce">
   {flash && (
     <p
+      role="status"
       class={`mb-4 rounded border px-3 py-2 text-sm ${
         flashErreur
           ? "border-red-300 bg-red-50 text-red-800"
@@ -292,478 +236,286 @@ const nombreOu = (v: unknown, defaut: number) =>
   {erreur && <p class="mb-4 text-sm text-red-600">API injoignable : {erreur}</p>}
 
   <p class="mb-4 max-w-3xl text-sm text-bo-muted">
-    Le bandeau s'affiche tout en haut du site. S'il annonce une offre, la
-    remise se règle ici même : elle est déduite du panier tant que le bandeau
-    est allumé, et cesse de l'être dès qu'il s'éteint.
+    Les messages qui défilent tout en haut du site, l'un après l'autre. Un
+    message, c'est un texte et, si vous le voulez, un bouton qui mène à une
+    page. Le bandeau n'applique aucune remise : les offres se règlent dans
+    <a href={url("/promotions")} class="underline">Promotions</a>. Quand une
+    offre change ou s'arrête, pensez à réécrire ou à éteindre le message qui
+    l'annonce.
   </p>
 
-  {muettes.length > 0 && (
-    <div class="mb-4 max-w-3xl rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-      <p class="font-medium">
-        {muettes.length === 1
-          ? "Une remise s'applique aux commandes sans que le bandeau l'annonce."
-          : `${muettes.length} remises s'appliquent aux commandes sans que le bandeau les annonce.`}
-      </p>
-      <ul class="mt-1 list-inside list-disc">
-        {muettes.map((p) => (
-          <li>
-            {p.name} — {libelleRegle(p)}
-          </li>
-        ))}
-      </ul>
-      <p class="mt-1">
-        Elles sont déduites de chaque panier.{" "}
-        <a href={url("/promotions")} class="underline">
-          Les voir dans Promotions
-        </a>
-        .
-      </p>
+  {/* --- Les messages ---------------------------------------------------- */}
+  <section id="messages" class="mb-6 overflow-hidden rounded-lg border border-bo-border bg-bo-surface">
+    <form
+      method="POST"
+      id="form-ordre"
+      class="flex flex-wrap items-center justify-between gap-3 border-b border-bo-border px-4 py-3"
+    >
+      <input type="hidden" name="_action" value="ordre" />
+      <input type="hidden" name="ordre" data-rangement-champ />
+      <div class="max-w-3xl text-xs text-bo-muted">
+        <h2 class="mb-1 text-sm font-semibold text-bo-ink">Les messages</h2>
+        <p>
+          Ils défilent dans cet ordre. Pour le changer, attrapez la poignée ⠿
+          ou utilisez les flèches, puis enregistrez.
+          {messages.length > 0 &&
+            (enLigne === 0
+              ? " Aucun n'est en ligne en ce moment : le bandeau n'apparaît pas sur le site."
+              : enLigne === 1
+                ? " Un seul est en ligne : il reste affiché, sans défiler."
+                : ` ${enLigne} sont en ligne : ils défilent.`)}
+        </p>
+      </div>
+      <button
+        data-rangement-bouton
+        disabled
+        class="rounded bg-bo-nav px-3 py-1.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        Enregistrer l'ordre
+      </button>
+    </form>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm" data-sans-tri>
+        <thead class="bg-bo-bg text-left text-bo-muted">
+          <tr>
+            <th class="w-28 px-4 py-2 font-medium">Ordre</th>
+            <th class="px-4 py-2 font-medium">Message</th>
+            <th class="px-4 py-2 font-medium">Bouton</th>
+            <th class="px-4 py-2 font-medium">Affichage</th>
+            <th class="px-4 py-2"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody data-rangement="form-ordre">
+          {messages.map((m, i) => {
+            const e = etat(m);
+            return (
+              <tr id={`message-${m.id}`} data-rang-id={m.id} class="border-t border-bo-border align-top">
+                <td class="px-4 py-3 whitespace-nowrap">
+                  <span class="flex items-center gap-1.5">
+                    <span class="ml-poignee cursor-grab select-none text-bo-muted" title="Glissez pour changer la place" aria-hidden="true">⠿</span>
+                    <span data-rang class="w-5 text-right text-xs tabular-nums text-bo-muted">{i + 1}</span>
+                    <button type="button" data-monter class={boutonOutil} title="Monter d'un cran" aria-label={`Monter le message ${i + 1}`}>↑</button>
+                    <button type="button" data-descendre class={boutonOutil} title="Descendre d'un cran" aria-label={`Descendre le message ${i + 1}`}>↓</button>
+                  </span>
+                </td>
+                <td class="px-4 py-3">
+                  <span
+                    class="inline-block rounded px-2 py-1 text-[13px] font-semibold tracking-[0.02em]"
+                    style={`background:${reglages.fond};color:${reglages.texte}`}
+                  >
+                    {m.message}
+                  </span>
+                </td>
+                <td class="px-4 py-3">
+                  {m.linkLabel && m.linkUrl ? (
+                    <span>
+                      <span class="font-medium">{m.linkLabel}</span>
+                      <span class="block text-xs text-bo-muted">{m.linkUrl}</span>
+                    </span>
+                  ) : (
+                    <span class="text-bo-muted">Sans bouton</span>
+                  )}
+                </td>
+                <td class="px-4 py-3">
+                  <span class={`inline-block rounded px-2 py-0.5 text-xs ${e.ton}`}>{e.mot}</span>
+                  <span class="mt-1 block text-xs text-bo-muted">{periode(m)}</span>
+                </td>
+                <td class="px-4 py-3">
+                  <div class="flex flex-wrap justify-end gap-3 whitespace-nowrap">
+                    <a href={`${url("/bandeau")}?modifier=${m.id}#formulaire`} class={boutonLien}>Modifier</a>
+                    <form method="POST" class="inline">
+                      <input type="hidden" name="_action" value="toggle" />
+                      <input type="hidden" name="id" value={m.id} />
+                      <button class={boutonLien}>{m.active ? "Éteindre" : "Allumer"}</button>
+                    </form>
+                    <form method="POST" class="inline">
+                      <input type="hidden" name="_action" value="archiver" />
+                      <input type="hidden" name="id" value={m.id} />
+                      <button class="text-bo-muted hover:underline">Archiver</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+          {messages.length === 0 && !erreur && (
+            <tr>
+              <td colspan="5" class="px-4 py-6 text-center text-bo-muted">
+                Aucun message : le bandeau n'apparaît pas sur le site.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
     </div>
-  )}
+  </section>
 
-  <form method="POST" class="grid max-w-3xl gap-6 text-sm">
-    {banner && <input type="hidden" name="id" value={banner.id} />}
-    {regle && <input type="hidden" name="regleActuelleId" value={regle.id} />}
-
-    <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
-      <h2 class="mb-4 font-semibold">Le message</h2>
-      <label class="block">
-        <span class="text-bo-muted">Texte affiché</span>
-        <input
-          name="message"
-          id="message"
-          required
-          value={banner?.message ?? ""}
-          class="mt-1 w-full rounded border border-bo-border px-3 py-2"
-        />
+  {/* --- Ajouter ou modifier un message ---------------------------------- */}
+  <section id="formulaire" class="mb-6 max-w-3xl rounded-lg border border-bo-border bg-bo-surface p-5">
+    <div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+      <h2 class="font-semibold">{saisie.id ? "Modifier le message" : "Ajouter un message"}</h2>
+      {saisie.id && (
+        <a href={`${url("/bandeau")}#formulaire`} class="text-sm text-bo-accent hover:underline">Ajouter un autre message</a>
+      )}
+    </div>
+    <form method="POST" id="form-message" class="grid gap-4 text-sm sm:grid-cols-2">
+      <input type="hidden" name="_action" value="message" />
+      {saisie.id && <input type="hidden" name="id" value={saisie.id} />}
+      <label class="block sm:col-span-2">
+        <span class="text-bo-muted">Texte du message</span>
+        <input name="message" id="message" required maxlength="200" value={saisie.message} class={champ} />
+        <span class="mt-1 block text-xs text-bo-muted">200 caractères au plus : il doit tenir sur un téléphone.</span>
       </label>
-      <p class="mt-1 text-xs text-bo-muted">
-        <button
-          type="button"
-          id="reprendre"
-          class="underline"
-          data-vide={banner?.message ? "0" : "1"}
-        >
-          Écrire le message à partir de l'offre choisie
-        </button>
-      </p>
+      <label class="block">
+        <span class="text-bo-muted">Texte du bouton (facultatif)</span>
+        <input name="linkLabel" id="linkLabel" maxlength="60" value={saisie.linkLabel} placeholder="J'en profite" class={champ} />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Page où mène le bouton</span>
+        <input name="linkUrl" maxlength="500" value={saisie.linkUrl} placeholder="/affiches" class={champ} />
+        <span class="mt-1 block text-xs text-bo-muted">Une page du site (« /affiches ») ou une adresse complète. Les deux, ou aucun.</span>
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Début (facultatif)</span>
+        <input name="startsAt" type="datetime-local" value={saisie.startsAt} class={champ} />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Fin (facultatif)</span>
+        <input name="endsAt" type="datetime-local" value={saisie.endsAt} class={champ} />
+      </label>
+      <label class="flex items-center gap-2 sm:col-span-2">
+        <input name="active" type="checkbox" checked={saisie.active} />
+        <span>Allumé : il s'affiche pendant ses dates</span>
+      </label>
 
-      <div class="mt-4 grid gap-4 sm:grid-cols-2">
-        <label class="block">
-          <span class="text-bo-muted">Lien (adresse)</span>
-          <input
-            name="linkUrl"
-            value={banner?.linkUrl ?? ""}
-            placeholder="/affiches"
-            class="mt-1 w-full rounded border border-bo-border px-3 py-2"
-          />
-        </label>
-        <label class="block">
-          <span class="text-bo-muted">Libellé du lien</span>
-          <input
-            name="linkLabel"
-            value={banner?.linkLabel ?? ""}
-            placeholder="J'en profite"
-            class="mt-1 w-full rounded border border-bo-border px-3 py-2"
-          />
-        </label>
+      <div class="sm:col-span-2">
+        <p class="mb-1 text-xs text-bo-muted">Aperçu</p>
+        <div
+          id="apercu-message"
+          class="rounded px-4 py-2.5 text-center text-[13px] font-semibold tracking-[0.04em]"
+          style={`background:${reglages.fond};color:${reglages.texte}`}
+        >
+          <span data-texte>{saisie.message || "Votre message apparaîtra ici."}</span>
+          <span data-bouton class="ml-2 underline underline-offset-2" hidden={!saisie.linkLabel}>{saisie.linkLabel}</span>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3 sm:col-span-2">
+        <button class="rounded bg-bo-accent px-4 py-2 text-white hover:opacity-90">Enregistrer le message</button>
+        {saisie.id && <a href={`${url("/bandeau")}#formulaire`} class="text-sm text-bo-muted hover:underline">Annuler</a>}
+      </div>
+    </form>
+  </section>
+
+  {/* --- Couleurs et défilement, pour tout le bandeau -------------------- */}
+  <form method="POST" class="mb-6 grid max-w-3xl gap-6 text-sm">
+    <input type="hidden" name="_action" value="reglages" />
+    <section id="couleurs" class="rounded-lg border border-bo-border bg-bo-surface p-5">
+      <h2 class="mb-1 font-semibold">Couleurs</h2>
+      <p class="mb-4 text-xs text-bo-muted">Pour tous les messages.</p>
+      <div class="grid gap-4 sm:grid-cols-2">
         <label class="block">
           <span class="text-bo-muted">Couleur de fond</span>
-          <input
-            name="bgColor"
-            type="color"
-            value={banner?.bgColor ?? "#20211f"}
-            class="mt-1 h-10 w-full rounded border border-bo-border"
-          />
+          <input name="fond" type="color" value={reglages.fond} class="mt-1 h-10 w-full rounded border border-bo-border" />
         </label>
         <label class="block">
           <span class="text-bo-muted">Couleur du texte</span>
-          <input
-            name="textColor"
-            type="color"
-            value={banner?.textColor ?? "#f7f3ec"}
-            class="mt-1 h-10 w-full rounded border border-bo-border"
-          />
+          <input name="texte" type="color" value={reglages.texte} class="mt-1 h-10 w-full rounded border border-bo-border" />
         </label>
       </div>
     </section>
-
-    <section id="offre" class="rounded-lg border border-bo-border bg-bo-surface p-5">
-      <h2 class="mb-1 font-semibold">L'offre appliquée</h2>
+    <section id="defilement" class="rounded-lg border border-bo-border bg-bo-surface p-5">
+      <h2 class="mb-1 font-semibold">Défilement</h2>
       <p class="mb-4 text-xs text-bo-muted">
-        Elle est déduite automatiquement au panier, sans code, pour tout le
-        monde. Elle suit le bandeau : allumés ensemble, éteints ensemble.
+        Quand plusieurs messages sont en ligne, chacun reste affiché ce temps,
+        puis laisse doucement la place au suivant. Le défilement s'arrête quand
+        la souris passe dessus, et la visiteuse peut le mettre en pause. Celles
+        qui ont demandé à leur appareil de limiter les animations voient les
+        messages un par un, avec des flèches, sans défilement automatique.
       </p>
-
-      <label class="flex items-start gap-2">
-        <input
-          type="radio"
-          name="regle"
-          value="aucune"
-          class="mt-1"
-          checked={choixInitial === "aucune"}
-        />
-        <span>
-          <span class="font-medium">Aucune remise</span>
-          <span class="block text-xs text-bo-muted">
-            Le bandeau annonce seulement (une nouveauté, un délai, un salon).
-            {regle && " L'offre actuellement liée sera éteinte."}
-          </span>
-        </span>
+      <label class="block max-w-xs">
+        <span class="text-bo-muted">Durée de chaque message</span>
+        <select name="dureeSecondes" class={champ}>
+          {DUREES.map((s) => (
+            <option value={s} selected={s === reglages.dureeSecondes}>{s} secondes</option>
+          ))}
+        </select>
       </label>
-
-      <label class="mt-3 flex items-start gap-2">
-        <input
-          type="radio"
-          name="regle"
-          value="nouvelle"
-          class="mt-1"
-          checked={choixInitial === "nouvelle"}
-        />
-        <span class="font-medium">
-          {regle ? "Cette offre" : "Une offre, écrite ici"}
-        </span>
-      </label>
-
-      <div class="mt-3 ml-6 grid gap-4 sm:grid-cols-2">
-        <label class="block">
-          {/* Pas « interne » : le panier l'écrit sur sa ligne de remise, et
-              ses traductions se saisissent plus bas. */}
-          <span class="text-bo-muted">Nom (lu sur la ligne de remise du panier)</span>
-          <input
-            name="nomRegle"
-            value={regle?.name ?? "Offre du bandeau"}
-            class="mt-1 w-full rounded border border-bo-border px-3 py-2"
-          />
-        </label>
-        <label class="block">
-          <span class="text-bo-muted">Type d'offre</span>
-          <select
-            name="type"
-            id="type-offre"
-            class="mt-1 w-full rounded border border-bo-border px-3 py-2"
-          >
-            <option value="buy_x_get_y" selected={regle?.type === "buy_x_get_y"}>
-              X achetées, la suivante remisée
-            </option>
-            <option value="percent" selected={regle?.type === "percent"}>
-              Pourcentage sur tout le panier
-            </option>
-            <option value="fixed" selected={regle?.type === "fixed"}>
-              Montant fixe déduit du panier
-            </option>
-          </select>
-        </label>
-
-        <fieldset data-type="buy_x_get_y" class="grid grid-cols-2 gap-3 sm:col-span-2">
-          <label class="block">
-            <span class="text-bo-muted">Affiches à payer</span>
-            <input
-              name="buyQty"
-              type="number"
-              min="1"
-              value={nombreOu(cfg.buyQty, 1)}
-              class="mt-1 w-full rounded border border-bo-border px-3 py-2"
-            />
-          </label>
-          <label class="block">
-            <span class="text-bo-muted">Affiches remisées ensuite</span>
-            <input
-              name="getQty"
-              type="number"
-              min="1"
-              value={nombreOu(cfg.getQty, 1)}
-              class="mt-1 w-full rounded border border-bo-border px-3 py-2"
-            />
-          </label>
-          <label class="block">
-            <span class="text-bo-muted">Remise sur celles-ci (%)</span>
-            <input
-              name="remiseOffertes"
-              type="number"
-              min="0"
-              max="100"
-              value={nombreOu(cfg.percent, 100)}
-              class="mt-1 w-full rounded border border-bo-border px-3 py-2"
-            />
-            <span class="mt-1 block text-xs text-bo-muted">
-              100 = offerte. 50 = à moitié prix.
-            </span>
-          </label>
-          <label class="block">
-            <span class="text-bo-muted">Format concerné</span>
-            <select
-              name="format"
-              class="mt-1 w-full rounded border border-bo-border px-3 py-2"
-            >
-              <option value="" selected={!cfg.format}>Tous les formats</option>
-              <option value="A4" selected={cfg.format === "A4"}>A4 seulement</option>
-              <option value="A3" selected={cfg.format === "A3"}>A3 seulement</option>
-            </select>
-            <span class="mt-1 block text-xs text-bo-muted">
-              Un format imposé ne compte que ces affiches, à l'achat comme à la
-              remise.
-            </span>
-          </label>
-          <p
-            id="resume-offre"
-            class="rounded bg-bo-bg px-3 py-2 text-xs text-bo-muted sm:col-span-2"
-          >
-          </p>
-        </fieldset>
-
-        <fieldset data-type="percent" hidden class="sm:col-span-2">
-          <label class="block">
-            <span class="text-bo-muted">Remise (%)</span>
-            <input
-              name="percent"
-              type="number"
-              min="1"
-              max="100"
-              value={regle?.type === "percent" ? nombreOu(cfg.percent, 10) : 10}
-              class="mt-1 w-full rounded border border-bo-border px-3 py-2"
-            />
-          </label>
-        </fieldset>
-
-        <fieldset data-type="fixed" hidden class="sm:col-span-2">
-          <label class="block">
-            <span class="text-bo-muted">Montant déduit (€)</span>
-            <input
-              name="amount"
-              type="number"
-              step="0.01"
-              min="0"
-              value={
-                regle?.type === "fixed"
-                  ? nombreOu(cfg.amountCents, 500) / 100
-                  : 5
-              }
-              class="mt-1 w-full rounded border border-bo-border px-3 py-2"
-            />
-          </label>
-        </fieldset>
-
-        <label class="block sm:col-span-2">
-          <span class="text-bo-muted">Code à saisir (facultatif)</span>
-          <input
-            name="code"
-            value={regle?.code ?? ""}
-            placeholder="vide = pour tout le monde, sans code"
-            class="mt-1 w-full rounded border border-bo-border px-3 py-2 uppercase"
-          />
-        </label>
-      </div>
-
-      {promos.filter((p) => p.id !== regle?.id).length > 0 && (
-        <>
-          <label class="mt-4 flex items-start gap-2">
-            <input type="radio" name="regle" value="existante" class="mt-1" />
-            <span class="font-medium">Une promotion déjà enregistrée</span>
-          </label>
-          <select
-            name="regleId"
-            class="mt-2 ml-6 w-full max-w-md rounded border border-bo-border px-3 py-2"
-          >
-            {promos
-              .filter((p) => p.id !== regle?.id)
-              .map((p) => (
-                <option value={p.id}>
-                  {p.name} — {libelleRegle(p)}
-                  {p.code ? ` (code ${p.code})` : ""}
-                </option>
-              ))}
-          </select>
-        </>
-      )}
     </section>
-
-    <section class="rounded-lg border border-bo-border bg-bo-surface p-5">
-      <h2 class="mb-4 font-semibold">Quand</h2>
-      <label class="flex items-center gap-2">
-        <input name="active" type="checkbox" checked={banner?.active ?? true} />
-        <span>Afficher le bandeau, et appliquer son offre</span>
-      </label>
-      <div class="mt-4 grid gap-4 sm:grid-cols-2">
-        <label class="block">
-          <span class="text-bo-muted">Début (facultatif)</span>
-          <input
-            name="startsAt"
-            type="datetime-local"
-            value={pourChamp(banner?.startsAt)}
-            class="mt-1 w-full rounded border border-bo-border px-3 py-2"
-          />
-        </label>
-        <label class="block">
-          <span class="text-bo-muted">Fin (facultatif)</span>
-          <input
-            name="endsAt"
-            type="datetime-local"
-            value={pourChamp(banner?.endsAt)}
-            class="mt-1 w-full rounded border border-bo-border px-3 py-2"
-          />
-        </label>
-      </div>
-      <p class="mt-2 text-xs text-bo-muted">
-        Ces dates valent aussi pour la remise : hors période, le bandeau
-        disparaît et le panier revient au plein tarif.
-      </p>
-    </section>
-
     <div>
-      <button class="rounded bg-bo-accent px-4 py-2 text-white hover:opacity-90">
-        Enregistrer
-      </button>
+      <button class="rounded bg-bo-nav px-4 py-2 text-white hover:opacity-90">Enregistrer les couleurs et le défilement</button>
     </div>
   </form>
 
-  {/* Le bandeau dans les autres langues du site. À part du formulaire
-      ci-dessus, qui ne s'imbrique pas : une traduction s'enregistre sans
-      réenregistrer le bandeau ni son offre. */}
-  {banner ? (
+  {/* Les messages dans les autres langues du site. À part des formulaires
+      ci-dessus : une traduction s'enregistre sans réenregistrer le message. */}
+  {messages.length > 0 && (
     <Traductions
       ancre="traductions-bandeau"
-      titre="Traductions du bandeau et de son offre"
-      aide="Ce que lit un client qui visite le site en anglais, en allemand, en italien ou en espagnol. Une case vide affiche le français. Modifiez d'abord le texte français et enregistrez-le ci-dessus : les traductions se relisent ensuite en regard."
+      titre="Traductions des messages"
+      aide="Ce que lit une cliente qui visite le site en anglais, en allemand, en italien ou en espagnol. Une case vide affiche le français. Modifiez d'abord le texte français et enregistrez-le ci-dessus : les traductions se relisent ensuite en regard."
       champs={CHAMPS_BANDEAU}
-      elements={elementsBandeau(banner)}
+      elements={messages.map(elementTraduit)}
       disposition="langues"
       propositions={tradBandeau?.propositions}
       saisies={tradBandeau?.saisies}
       actionEnregistrer="bandeau-traductions"
       actionProposer="bandeau-traduire"
       ouvert={!!tradBandeau}
-      classe="mt-6 max-w-3xl bg-bo-surface"
+      classe="mb-6 max-w-3xl bg-bo-surface"
     />
-  ) : (
-    <p class="mt-6 max-w-3xl text-sm text-bo-muted">
-      Les traductions du bandeau se saisiront ici une fois le bandeau
-      enregistré en français.
-    </p>
   )}
 
-  <section class="mt-6 max-w-3xl">
-    <h2 class="mb-2 text-sm font-semibold">Aperçu</h2>
-    <div
-      class="rounded px-4 py-2.5 text-center text-[13px] font-semibold tracking-[0.04em]"
-      style={`background:${banner?.bgColor ?? "#20211f"};color:${banner?.textColor ?? "#f7f3ec"}`}
-    >
-      {banner?.message ?? "Votre message apparaîtra ici."}
-      {banner?.linkLabel && (
-        <span class="ml-2 underline underline-offset-2">{banner.linkLabel}</span>
-      )}
-    </div>
-
-    {regle && (
-      <div class="mt-3 rounded-lg border border-bo-border bg-bo-surface p-4 text-sm">
-        <p>
-          Ce que le panier déduit : <b>{libelleRegle(regle)}</b>.
-        </p>
-        {exempleRegle ? (
-          <p class="mt-1 text-bo-muted">
-            Panier de {exempleRegle.quantite} affiches à{" "}
-            {formatPrice(prixExemple)} : {formatPrice(exempleRegle.apres)} au
-            lieu de {formatPrice(exempleRegle.avant)}.
-          </p>
-        ) : (
-          <p class="mt-1 text-amber-800">
-            Sur un panier ordinaire, cette offre ne déduit rien. Vérifiez les
-            quantités.
-          </p>
-        )}
-        {!banner?.active && (
-          <p class="mt-1 text-bo-muted">
-            Le bandeau est éteint : l'offre ne s'applique pas non plus.
-          </p>
-        )}
+  {/* --- Les archivés ---------------------------------------------------- */}
+  {archives.length > 0 && (
+    <section id="archives" class="mb-6 max-w-3xl">
+      <h2 class="mb-1 font-semibold">Messages archivés</h2>
+      <p class="mb-3 text-sm text-bo-muted">
+        Ils ont quitté le site, sans rien perdre. « Restaurer » ramène un
+        message éteint, en fin de défilement.
+      </p>
+      <div class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface">
+        <table class="w-full text-sm">
+          <tbody>
+            {archives.map((m) => (
+              <tr id={`message-${m.id}`} class="border-t border-bo-border first:border-t-0">
+                <td class="px-4 py-2">{m.message}</td>
+                <td class="px-4 py-2 text-right">
+                  <form method="POST" class="inline">
+                    <input type="hidden" name="_action" value="restaurer" />
+                    <input type="hidden" name="id" value={m.id} />
+                    <button class={boutonLien}>Restaurer</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-    )}
-  </section>
+    </section>
+  )}
+
+  <script>
+    import "../lib/rangement.ts";
+  </script>
 
   <script is:inline>
-    // Les champs propres au type d'offre choisi, et rien d'autre.
-    const type = document.getElementById("type-offre");
-    function sync() {
-      document.querySelectorAll("fieldset[data-type]").forEach((fs) => {
-        fs.hidden = fs.getAttribute("data-type") !== type.value;
-      });
-    }
-    type?.addEventListener("change", sync);
-    sync();
-
-    // Choisir un champ de l'offre, c'est choisir l'offre : sans cela on règle
-    // une remise que la case restée sur « aucune » jette à l'enregistrement.
-    document.querySelectorAll("fieldset[data-type], #type-offre").forEach((el) => {
-      el.addEventListener("input", () => {
-        const r = document.querySelector('input[name="regle"][value="nouvelle"]');
-        if (r) r.checked = true;
-      });
-    });
-    const listeExistante = document.querySelector('select[name="regleId"]');
-    listeExistante?.addEventListener("change", () => {
-      const r = document.querySelector('input[name="regle"][value="existante"]');
-      if (r) r.checked = true;
-    });
-
-    // La phrase de l'offre, telle que le panier la fera. Elle se recalcule à
-    // chaque frappe : une explication qui ne parle pas des valeurs qu'on a
-    // sous les yeux n'explique rien.
-    function phraseOffre() {
-      const t = type?.value;
-      const n = (nom) => Number(document.querySelector(`[name="${nom}"]`)?.value || 0);
-      if (t === "buy_x_get_y") {
-        const achat = n("buyQty");
-        const remisees = n("getQty");
-        const pct = n("remiseOffertes");
-        const rang = (k) => (k <= 1 ? "1re" : k + "e");
-        const cibles =
-          remisees === 1
-            ? "la " + rang(achat + 1)
-            : "les " + rang(achat + 1) + " à " + rang(achat + remisees);
-        const effet =
-          pct >= 100 ? (remisees === 1 ? "offerte" : "offertes") : "à -" + pct + " %";
-        return (
-          (achat === 1 ? "1 affiche achetée" : achat + " affiches achetées") +
-          ", " + cibles + " " + effet
-        );
+    // L'aperçu suit la saisie : on voit le message tel qu'il défilera avant
+    // de l'enregistrer.
+    (function () {
+      var form = document.getElementById("form-message");
+      var apercu = document.getElementById("apercu-message");
+      if (!form || !apercu) return;
+      var texte = apercu.querySelector("[data-texte]");
+      var bouton = apercu.querySelector("[data-bouton]");
+      function suivre() {
+        var m = form.querySelector('[name="message"]').value.trim();
+        var b = form.querySelector('[name="linkLabel"]').value.trim();
+        texte.textContent = m || "Votre message apparaîtra ici.";
+        bouton.textContent = b;
+        bouton.hidden = !b;
       }
-      if (t === "percent") return "-" + n("percent") + " % sur toutes les affiches";
-      if (t === "fixed") {
-        const v = document.querySelector('[name="amount"]')?.value || "0";
-        return "-" + String(v).replace(".", ",") + " € sur votre commande";
-      }
-      return "";
-    }
-
-    function resume() {
-      const cible = document.getElementById("resume-offre");
-      if (!cible) return;
-      if (type?.value !== "buy_x_get_y") {
-        cible.textContent = phraseOffre() + ".";
-        return;
-      }
-      const n = (nom) => Number(document.querySelector(`[name="${nom}"]`)?.value || 0);
-      const achat = n("buyQty");
-      const remisees = n("getQty");
-      const total = achat + remisees;
-      cible.textContent =
-        phraseOffre() +
-        ". Il faut les deux dans le panier : " +
-        achat + (achat > 1 ? " payées et " : " payée et ") +
-        remisees + (remisees > 1 ? " remisées, " : " remisée, ") +
-        "c'est un panier de " + total + " affiches.";
-    }
-    document
-      .querySelectorAll('fieldset[data-type] input, fieldset[data-type] select, #type-offre')
-      .forEach((el) => el.addEventListener("input", resume));
-    resume();
-
-    // Le message, écrit à partir de l'offre. Proposé, jamais imposé : le
-    // bandeau se lit sur un site, pas dans un back-office.
-    document.getElementById("reprendre")?.addEventListener("click", () => {
-      const champ = document.getElementById("message");
-      const phrase = phraseOffre();
-      if (champ && phrase) champ.value = phrase;
-    });
+      form.addEventListener("input", suivre);
+    })();
   </script>
 </Admin>

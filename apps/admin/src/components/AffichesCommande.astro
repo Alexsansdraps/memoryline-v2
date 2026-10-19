@@ -1,0 +1,210 @@
+---
+/**
+ * « Les affiches » : chaque affiche d'une commande en grande vignette, avec
+ * son format, son cadre et ses textes — comme dans le panier du site.
+ *
+ * Demandée par la boutique : la petite image de 96 px du tableau des
+ * articles ne suffisait pas pour vérifier un prénom ou la couleur d'un pull
+ * avant d'imprimer, et l'ouvrir dans un nouvel onglet faisait perdre la
+ * fiche. Ici, l'aperçu est assez grand pour se lire, et un clic l'ouvre en
+ * taille réelle par-dessus la fiche.
+ *
+ * L'aperçu est rendu par le même moteur que le fichier d'impression
+ * (apercus.ts) : ce qu'on regarde est ce qui part à l'atelier, pas une
+ * recomposition. Il est bordé de la couleur d'aperçu du cadre, comme au
+ * panier ; sans cadre, d'un liseré gris fin.
+ *
+ * Aucune action ici : le bloc se lit de la même façon pour la propriétaire
+ * et pour un vendeur.
+ */
+import { libelleFormat } from "@memoryline/types";
+import { apiUrl } from "../lib/url.ts";
+import { lignesDeLAffiche, type OrderDetail } from "../lib/api.ts";
+
+interface Props {
+  items: OrderDetail["items"];
+}
+const { items } = Astro.props;
+
+/**
+ * Une couleur de cadre qu'on peut poser telle quelle dans un style : un code
+ * hexadécimal, et rien d'autre. La valeur vient du réglage d'un cadre, saisi
+ * au back-office ; une chaîne inattendue ne doit pas pouvoir écrire dans
+ * l'attribut `style`.
+ */
+function couleurSure(v: string | null | undefined): string | null {
+  const c = String(v ?? "").trim();
+  return /^#[0-9a-f]{3,8}$/i.test(c) ? c : null;
+}
+
+const affiches = items.map((it, rang) => {
+  const titre = it.title ?? "Affiche personnalisée";
+  const format = it.format ? libelleFormat(it.format) : null;
+  const paysage = it.orientation === "paysage";
+  return {
+    id: it.id,
+    rang: rang + 1,
+    titre,
+    format,
+    paysage,
+    quantite: it.quantity,
+    cadre: it.cadre ?? null,
+    couleur: it.cadre ? couleurSure(it.cadreCouleur) : null,
+    lignes: lignesDeLAffiche(it),
+    personnages: it.personnages ?? 0,
+    apercu: it.apercu ? apiUrl(it.apercu) : null,
+    // Ce que lit un lecteur d'écran à la place de l'image : de quelle
+    // affiche il s'agit, et dans quel format.
+    alt: `Aperçu de l'affiche « ${titre} »${format ? `, format ${format}` : ""}${paysage ? ", en paysage" : ""}`,
+  };
+});
+---
+
+{affiches.length > 0 && (
+  <section
+    id="affiches"
+    aria-labelledby="titre-affiches"
+    class="mb-6 rounded-lg border border-bo-border bg-bo-surface"
+  >
+    <header class="flex flex-wrap items-baseline justify-between gap-2 border-b border-bo-border px-4 py-3">
+      <h3 id="titre-affiches" class="font-medium">Les affiches</h3>
+      <span class="text-sm text-bo-muted">
+        {affiches.length} affiche{affiches.length > 1 ? "s" : ""} différente{affiches.length > 1 ? "s" : ""}
+        · cliquez sur un aperçu pour le voir en grand
+      </span>
+    </header>
+    <ul class="flex flex-wrap gap-5 p-4">
+      {affiches.map((a) => (
+        <li class="w-[220px] text-sm">
+          {a.apercu ? (
+            <button
+              type="button"
+              class="bo-affiche-vignette block w-full overflow-hidden rounded bg-bo-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bo-accent"
+              style={`aspect-ratio: ${a.paysage ? "1.4142 / 1" : "1 / 1.4142"}; ${
+                a.couleur
+                  ? `border: 4px solid ${a.couleur};`
+                  : "border: 1px solid var(--color-bo-border);"
+              }`}
+              data-affiche-grand={a.apercu}
+              data-affiche-alt={a.alt}
+              aria-haspopup="dialog"
+              aria-label={`Voir en grand : ${a.alt}`}
+            >
+              <img
+                src={a.apercu}
+                alt={a.alt}
+                loading="lazy"
+                class="h-full w-full object-cover"
+                onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'flex h-full w-full items-center justify-center p-2 text-center text-xs text-bo-muted',textContent:'Aperçu indisponible'}))"
+              />
+            </button>
+          ) : (
+            <div
+              class="flex w-full items-center justify-center rounded border border-dashed border-bo-border bg-bo-bg p-2 text-center text-xs text-bo-muted"
+              style="aspect-ratio: 1 / 1.4142"
+            >
+              Aperçu indisponible
+            </div>
+          )}
+          <div class="mt-2 flex flex-wrap items-center gap-1.5">
+            <span class="text-xs text-bo-muted">Affiche {a.rang}</span>
+            {a.format && (
+              <span class="rounded bg-bo-bg px-1.5 py-0.5 text-xs font-medium">
+                {a.format}
+              </span>
+            )}
+            {a.paysage && (
+              <span class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900">
+                Paysage
+              </span>
+            )}
+            <span class="ml-auto text-xs font-medium" aria-label={`Quantité : ${a.quantite}`}>
+              × {a.quantite}
+            </span>
+          </div>
+          <p class="mt-1 font-medium">{a.titre}</p>
+          <p class="mt-0.5 flex items-center gap-1.5 text-bo-muted">
+            {a.couleur && (
+              <span
+                class="inline-block h-3 w-3 shrink-0 rounded-sm border border-bo-border"
+                style={`background: ${a.couleur}`}
+                aria-hidden="true"
+              />
+            )}
+            {a.cadre ?? "Sans cadre"}
+          </p>
+          {a.lignes.length > 0 && (
+            <ul class="mt-1 space-y-0.5" aria-label="Texte de l'affiche">
+              {a.lignes.map((ligne) => (
+                <li class="break-words">« {ligne} »</li>
+              ))}
+            </ul>
+          )}
+          {a.personnages > 0 && (
+            <p class="mt-1 text-xs text-bo-muted">
+              {a.personnages} personnage{a.personnages > 1 ? "s" : ""}
+            </p>
+          )}
+        </li>
+      ))}
+    </ul>
+
+    {/* La grande vue. `showModal` : le reste de la fiche devient inerte,
+        Échap ferme, et le focus revient à la vignette qui l'a ouverte. */}
+    <dialog
+      id="bo-affiche-dialog"
+      aria-label="Aperçu de l'affiche en grand"
+      class="m-auto max-h-[95vh] max-w-[95vw] rounded-lg border border-bo-border bg-bo-surface p-0 text-bo-ink shadow-xl backdrop:bg-black/60"
+    >
+      <div class="flex flex-col items-center gap-3 p-4">
+        <img
+          data-affiche-image
+          alt=""
+          class="max-h-[80vh] max-w-[88vw] object-contain"
+        />
+        <p data-affiche-legende class="max-w-prose text-center text-sm text-bo-muted" />
+        <button
+          type="button"
+          data-affiche-fermer
+          class="rounded border border-bo-border px-4 py-1.5 text-sm hover:bg-bo-bg"
+        >
+          Fermer
+        </button>
+      </div>
+    </dialog>
+  </section>
+)}
+
+<script>
+  const dialogue = document.getElementById("bo-affiche-dialog") as HTMLDialogElement | null;
+  if (dialogue) {
+    const image = dialogue.querySelector<HTMLImageElement>("[data-affiche-image]")!;
+    const legende = dialogue.querySelector<HTMLElement>("[data-affiche-legende]")!;
+    const fermer = dialogue.querySelector<HTMLButtonElement>("[data-affiche-fermer]")!;
+    let origine: HTMLElement | null = null;
+
+    document.querySelectorAll<HTMLButtonElement>("[data-affiche-grand]").forEach((b) => {
+      b.addEventListener("click", () => {
+        origine = b;
+        image.src = b.dataset.afficheGrand ?? "";
+        image.alt = b.dataset.afficheAlt ?? "";
+        legende.textContent = b.dataset.afficheAlt ?? "";
+        dialogue.showModal();
+        // Le bouton Fermer d'abord : c'est le seul geste possible ici, et un
+        // lecteur d'écran annonce ainsi tout de suite comment en sortir.
+        fermer.focus();
+      });
+    });
+    fermer.addEventListener("click", () => dialogue.close());
+    // Un clic sur le fond (hors du cadre blanc) ferme aussi : c'est le geste
+    // qu'on fait d'instinct devant une image agrandie.
+    dialogue.addEventListener("click", (e) => {
+      if (e.target === dialogue) dialogue.close();
+    });
+    dialogue.addEventListener("close", () => {
+      image.removeAttribute("src");
+      origine?.focus();
+      origine = null;
+    });
+  }
+</script>

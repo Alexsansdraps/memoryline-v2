@@ -452,6 +452,34 @@ export function mountArchives(app: Hono): void {
       })),
     });
 
+    // Les lieux de retrait (le chalet, l'atelier) : l'adresse, sur une ligne,
+    // les distingue quand deux lieux portent le même nom d'une année à l'autre.
+    const lieuxRetrait = await db
+      .select({
+        id: schema.pickupPoints.id,
+        nom: schema.pickupPoints.nom,
+        adresse: schema.pickupPoints.adresse,
+        archivedAt: schema.pickupPoints.archivedAt,
+      })
+      .from(schema.pickupPoints)
+      .where(isNotNull(schema.pickupPoints.archivedAt))
+      .orderBy(desc(schema.pickupPoints.archivedAt));
+    groupes.push({
+      cle: "lieux-retrait",
+      titre: "Lieux de retrait",
+      ecran: "/livraison/lieux",
+      ecranNom: "Lieux de retrait",
+      dateSource: "archivage",
+      elements: lieuxRetrait.map((l) => ({
+        id: l.id,
+        libelle: l.nom,
+        detail:
+          (l.adresse ?? "").split("\n").map((x) => x.trim()).filter(Boolean).join(", ") ||
+          null,
+        date: iso(l.archivedAt),
+      })),
+    });
+
     // Une tranche n'a pas de nom : elle se reconnaît au mode, à la zone et au
     // poids qu'elle couvre. Les trois sont donc dans le libellé.
     const tarifsLivraison = await db
@@ -512,6 +540,57 @@ export function mountArchives(app: Hono): void {
         libelle: l.titre,
         detail: l.etat,
         date: iso(l.archivedAt),
+      })),
+    });
+
+    // Une promotion archivée ne s'applique plus ; les commandes passées
+    // gardent la remise qu'elles ont eue. Elle revient éteinte.
+    const promotions = await db
+      .select({
+        id: schema.promoRules.id,
+        name: schema.promoRules.name,
+        code: schema.promoRules.code,
+        archivedAt: schema.promoRules.archivedAt,
+      })
+      .from(schema.promoRules)
+      .where(isNotNull(schema.promoRules.archivedAt))
+      .orderBy(desc(schema.promoRules.archivedAt));
+    groupes.push({
+      cle: "promotions",
+      titre: "Promotions",
+      ecran: "/promotions",
+      ecranNom: "Promotions",
+      dateSource: "archivage",
+      elements: promotions.map((p) => ({
+        id: p.id,
+        libelle: p.name,
+        detail: p.code ? `code ${p.code}` : "automatique",
+        date: iso(p.archivedAt),
+      })),
+    });
+
+    // Les messages du bandeau d'annonce : ils reviennent éteints, en fin de
+    // défilement.
+    const messagesBandeau = await db
+      .select({
+        id: schema.announcementBanners.id,
+        message: schema.announcementBanners.message,
+        archivedAt: schema.announcementBanners.archivedAt,
+      })
+      .from(schema.announcementBanners)
+      .where(isNotNull(schema.announcementBanners.archivedAt))
+      .orderBy(desc(schema.announcementBanners.archivedAt));
+    groupes.push({
+      cle: "messages-bandeau",
+      titre: "Messages du bandeau d'annonce",
+      ecran: "/bandeau",
+      ecranNom: "Bandeau d'annonce",
+      dateSource: "archivage",
+      elements: messagesBandeau.map((m) => ({
+        id: m.id,
+        libelle: m.message,
+        detail: null,
+        date: iso(m.archivedAt),
       })),
     });
 

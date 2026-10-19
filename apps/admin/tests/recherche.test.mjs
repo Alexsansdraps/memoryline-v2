@@ -521,3 +521,93 @@ test("extracteur : aucun morceau de code dans les vraies pages", () => {
   for (const [cle, source] of Object.entries(SOURCES))
     for (const m of extraireTextes(source)) assert.ok(!code.test(m.texte), `${cle} : ${m.texte}`);
 });
+
+/* -------------------------------------------------------------------------- */
+/*  Cartes Trello du 8 octobre (lot C : relance, bandeau, promotions, essai)  */
+/* -------------------------------------------------------------------------- */
+
+test("D3 : « mail » et « modifier le mail » mènent au Courriel de relance (3 premiers)", () => {
+  for (const q of ["mail", "modifier le mail"]) {
+    const trois = ids(chercher(q).ecrans).slice(0, 3);
+    assert.ok(trois.includes("ecran:/paniers/courriel"), `${q} : ${trois.join(" ")}`);
+  }
+  // L'écran a son entrée de menu, sous les paniers abandonnés.
+  assert.equal(INDEX.ecrans.find((e) => e.route === "/paniers/courriel")?.dansLeMenu, true);
+});
+
+test("D10 : « annonces » et « messages qui défilent » mènent au Bandeau d'annonce ; « offre » aux Promotions", () => {
+  for (const q of ["annonces", "messages qui defilent"]) assert.equal(premier(q)?.id, "ecran:/bandeau", q);
+  assert.equal(premier("affiche offerte")?.id.replace(/§.*$/, ""), "ecran:/promotions");
+});
+
+test("D12 : hors essai, l'aide des tests et la sortie de la boîte d'essai ne sont pas proposées", async () => {
+  const { retirerCeQuiNeVautQuEnEssai, HORS_ESSAI } = await import("../src/lib/mode-essai.ts");
+  const r = (id, ou = null) => ({ id, nature: "X", titre: id, titrePassages: [], ou, detail: null, extrait: null, href: "/x", image: null, rang: 1 });
+  const reponse = {
+    q: "essai",
+    corrections: [],
+    partiel: false,
+    groupes: [
+      { id: "ecrans", titre: "Écrans", total: 3, plafonne: false, resultats: [
+        r("ecran:/courriers§3", "Le jour où les courriers devront vraiment partir"),
+        r("ecran:/courriers§1", "Les courriers"),
+        r("ecran:/paniers"),
+      ] },
+      { id: "aide", titre: "Aide", total: 2, plafonne: false, resultats: [r("aide:commande-test"), r("aide:courriers-essai")] },
+    ],
+  };
+  const hors = retirerCeQuiNeVautQuEnEssai(reponse, HORS_ESSAI);
+  assert.deepEqual(hors.groupes.map((g) => g.id), ["ecrans"]);
+  assert.deepEqual(ids(hors.groupes[0]), ["ecran:/courriers§1", "ecran:/paniers"]);
+  assert.equal(hors.groupes[0].total, 2);
+  // En essai (paiements et courriers), tout reste.
+  const enEssai = retirerCeQuiNeVautQuEnEssai(reponse, { paiement: true, courriers: true, colis: true, essai: true });
+  assert.deepEqual(enEssai, reponse);
+  // Le source garde les deux rubriques : la recherche les connaît, et les écarte hors essai.
+  for (const id of ["commande-test", "courriers-essai"]) assert.ok(INDEX.aide.some((x) => x.id === id), id);
+});
+
+/* -------------------------------------------------------------------------- */
+/*  Cartes Trello du 8 octobre (lot B : vendeurs, retrait, factures)          */
+/* -------------------------------------------------------------------------- */
+
+const ecranDe = (q) => premier(q)?.id.replace(/§.*$/, "");
+
+test("D8 : « siret » et « adresse de la boutique » mènent à l'écran Factures", () => {
+  for (const q of ["siret", "adresse de la boutique"]) assert.equal(ecranDe(q), "ecran:/facturation", q);
+  assert.equal(INDEX.ecrans.find((e) => e.route === "/facturation")?.dansLeMenu, true);
+});
+
+test("D7 : « chalet » et « lieu de retrait » mènent aux Lieux de retrait", () => {
+  for (const q of ["chalet", "lieu de retrait"]) assert.equal(ecranDe(q), "ecran:/livraison/lieux", q);
+  assert.equal(INDEX.ecrans.find((e) => e.route === "/livraison/lieux")?.dansLeMenu, true);
+});
+
+test("D6 : « rattacher un stand » mène à Comptes ; les rubriques d'aide du lot existent", () => {
+  assert.equal(ecranDe("rattacher un stand"), "ecran:/comptes");
+  for (const id of ["vendeurs-stands", "lieux-retrait", "factures-mentions"])
+    assert.ok(INDEX.aide.some((x) => x.id === id), id);
+});
+
+/* -------------------------------------------------------------------------- */
+/*  Cartes Trello du 8 octobre (lot A : catalogue et couleurs)                */
+/* -------------------------------------------------------------------------- */
+
+/** Les trois premiers écrans trouvés, sans leur section. */
+const troisPremiers = (q) =>
+  (chercher(q).ecrans?.resultats ?? []).slice(0, 3).map((r) => r.id.replace(/§.*$/, ""));
+
+test("D1 : « nuancier » et « ordre des couleurs » mènent à Catégories de pièces", () => {
+  for (const q of ["nuancier", "ordre des couleurs"])
+    assert.ok(troisPremiers(q).includes("ecran:/categories-pieces"), q);
+});
+
+test("D2 : « ordre des affiches » et « trier les affiches » mènent à Ordre d'affichage", () => {
+  for (const q of ["ordre des affiches", "trier les affiches", "ordre d'apparition"])
+    assert.ok(troisPremiers(q).includes("ecran:/produits/ordre"), q);
+});
+
+test("D4 : « appliquer à tout » et « modifier en masse » mènent à la modification groupée", () => {
+  for (const q of ["appliquer à tout", "modifier en masse"])
+    assert.ok(troisPremiers(q).includes("ecran:/produits/modifier-en-masse"), q);
+});

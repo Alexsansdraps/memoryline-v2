@@ -79,11 +79,23 @@ async function restaurer(cle: string, id: number): Promise<void> {
     case "modes-livraison":
       await api.archiverModeLivraison(id, false);
       return;
+    case "lieux-retrait":
+      // Il revient avec son réglage « Proposé à la caisse » d'avant.
+      await api.archiverLieuRetrait(id, false);
+      return;
     case "tarifs-livraison":
       await api.archiverTarifLivraison(id, false);
       return;
     case "lettres":
       await api.archiverLettre(id, false);
+      return;
+    case "promotions":
+      // Elle revient éteinte : à rallumer depuis Promotions.
+      await api.archiverPromo(id, false);
+      return;
+    case "messages-bandeau":
+      // Il revient éteint, en fin de défilement.
+      await api.archiverMessageBandeau(id, false);
       return;
     case "comptes":
       await api.archiverCompte(id, false);

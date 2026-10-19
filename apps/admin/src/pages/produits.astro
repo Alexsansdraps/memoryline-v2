@@ -205,6 +205,22 @@ function imageProduit(u: string | null): string {
 }
 
 const PAGE_SIZE = 25;
+
+/**
+ * La grille de modification groupée sur TOUTES les affiches du filtre, pas
+ * seulement les vingt-cinq lignes cochables de la page en cours : elle
+ * reprend les mêmes filtres (statut, recherche, catégorie, collection) plutôt
+ * qu'une liste d'identifiants, qui ne tiendrait pas dans une adresse.
+ */
+const lienGrilleDuFiltre = (() => {
+  const p = new URLSearchParams();
+  if (statut !== "tous") p.set("statut", statut);
+  if (q) p.set("q", q);
+  if (categorieFiltre) p.set("categorie", String(categorieFiltre));
+  if (collectionFiltre) p.set("collection", String(collectionFiltre));
+  const suite = p.toString();
+  return url(`/produits/modifier-en-masse${suite ? `?${suite}` : ""}`);
+})();
 ---
 
 <Admin title="Produits">
@@ -303,6 +319,19 @@ const PAGE_SIZE = 25;
       ))
     }
   </nav>
+
+  {produits.length > 0 && (
+    <p class="mb-3 text-sm">
+      <a href={lienGrilleDuFiltre} class="font-medium text-bo-accent hover:underline">
+        Modifier les {produits.length} affiche{produits.length > 1 ? "s" : ""} de ce filtre
+      </a>
+      <span class="text-bo-muted">
+        {" "}— nom, identifiant, prix, collections, poids, catégorie,
+        description, statut, type d'affiche : « Appliquer à tout », puis
+        vérification avant d'enregistrer.
+      </span>
+    </p>
+  )}
 
   <section
     class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface"

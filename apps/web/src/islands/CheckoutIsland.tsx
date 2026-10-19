@@ -64,6 +64,7 @@ const ERREURS_PAR_CODE: Record<string, CleUi> = {
   adresse_incomplete: "commande.err.adresse_incomplete",
   panier_vide: "panier.vide",
   panier_modifie: "commande.err.panier_modifie",
+  lieu_retrait_requis: "commande.err.lieu_retrait_requis",
 };
 
 /**
@@ -368,12 +369,15 @@ export default function CheckoutIsland(props: {
       return [];
     }
   });
+  // La part du cadre vient du serveur : une affiche offerte « cadre non
+  // compris » se déduit sans son cadre, ici comme à l'encaissement.
   const lignes = () =>
     (cart()?.items ?? []).map((it) => ({
       unitPriceCents: it.unitPriceCents,
       quantity: it.quantity,
       format:
         (it.config as { format?: string } | null | undefined)?.format ?? null,
+      cadreCents: it.cadreCents ?? 0,
     }));
   /**
    * Code promo saisi au panier. Il est revérifié ici, puis renvoyé au serveur
@@ -473,25 +477,25 @@ export default function CheckoutIsland(props: {
   });
 
   /*
-   * Retrait sur place : quel stand.
+   * Retrait sur place : quel lieu.
    *
-   * Les stands ouverts arrivent avec le catalogue de livraison. Un seul
-   * ouvert, il est choisi d'office — faire cliquer sur l'unique possibilité
-   * n'apporte rien. Plusieurs, le client choisit ; tant qu'il n'a pas choisi,
-   * la commande ne part pas, sinon personne ne saurait où la remettre.
+   * Les lieux de retrait (le chalet du marché de Noël, l'atelier…) arrivent
+   * avec le catalogue de livraison, réglés au back-office. Un seul, il est
+   * choisi d'office — faire cliquer sur l'unique possibilité n'apporte rien.
+   * Plusieurs, la cliente choisit ; tant qu'elle n'a pas choisi, la commande
+   * ne part pas : personne ne saurait où la lui remettre. Le serveur relit
+   * de toute façon le lieu (actif, pas archivé) avant d'écrire la commande.
    */
-  const standsOuverts = (): { id: number; nom: string }[] =>
-    catalogue()?.stands ?? [];
-  const [standChoisi, setStandChoisi] = createSignal<number | null>(null);
-  const standRetenu = (): { id: number; nom: string } | null => {
-    const l = standsOuverts();
-    return l.find((x) => x.id === standChoisi()) ?? l[0] ?? null;
+  type LieuRetrait = { id: number; nom: string; adresse: string | null; description: string | null };
+  const lieuxRetrait = (): LieuRetrait[] => catalogue()?.lieuxRetrait ?? [];
+  const [lieuChoisi, setLieuChoisi] = createSignal<number | null>(null);
+  const lieuRetenu = (): LieuRetrait | null => {
+    const l = lieuxRetrait();
+    return l.find((x) => x.id === lieuChoisi()) ?? (l.length === 1 ? l[0]! : null);
   };
   /** Vrai quand le mode choisi est un retrait et qu'il reste à dire où. */
-  const standManquant = (): boolean =>
-    optionChoisie()?.mode.kind === "pickup" &&
-    standsOuverts().length > 0 &&
-    standRetenu() === null;
+  const lieuManquant = (): boolean =>
+    optionChoisie()?.mode.kind === "pickup" && lieuRetenu() === null;
 
 
   /* Recherche de points relais : on interroge le transporteur avec un code
@@ -841,7 +845,7 @@ export default function CheckoutIsland(props: {
     name().trim().length > 0 &&
     emailValid() &&
     livraisonValide() &&
-    !standManquant();
+    !lieuManquant();
 
   /**
    * Ce qui manque encore pour passer au paiement, en toutes lettres, sous le
@@ -863,7 +867,7 @@ export default function CheckoutIsland(props: {
             : "commande.manque.adresse",
         ),
       );
-    if (standManquant()) liste.push(tr("commande.manque.stand"));
+    if (lieuManquant()) liste.push(tr("commande.manque.lieu"));
     if (!method()) liste.push(tr("commande.manque.moyen"));
     return liste;
   };
@@ -993,14 +997,11 @@ export default function CheckoutIsland(props: {
     setError(null);
     try {
       const a = adresse();
-      // Un retrait sur stand se range là où se range un point relais : ces
-      // deux champs disent « où va la commande », et le mode de livraison dit
-      // de quelle sorte d'endroit il s'agit. Le préfixe « stand: » évite de
-      // confondre un identifiant de stand avec un identifiant de transporteur.
-      const st = optionChoisie()?.mode.kind === "pickup" ? standRetenu() : null;
-      const relais = st
-        ? { id: `stand:${st.id}`, label: st.nom }
-        : pointRelais();
+      // Un retrait sur place envoie le lieu choisi, par son identifiant : le
+      // serveur relit le lieu et en garde une copie sur la commande. Il ne
+      // passe plus par les champs du point relais (l'ancien « stand:… »).
+      const lieu = optionChoisie()?.mode.kind === "pickup" ? lieuRetenu() : null;
+      const relais = lieu ? { id: "", label: "" } : pointRelais();
       const order = await browserApi.createOrder(
         getCartId(),
         { name: name().trim(), email: email().trim() },
@@ -1016,6 +1017,7 @@ export default function CheckoutIsland(props: {
           phone: a.phone.trim(),
           relayPointId: relais.id.trim(),
           relayPointLabel: relais.label.trim(),
+          ...(lieu ? { pickupPointId: lieu.id } : {}),
         },
         langue,
       );
@@ -1277,55 +1279,67 @@ export default function CheckoutIsland(props: {
                                 : formatPrice(o.fraisCents, locale)}
                             </span>
                           </span>
+                          {/* Le texte du mode, sur autant de lignes que la
+                              boutique en a écrit (un retrait sur place y
+                              met ses horaires, ce qu'il faut apporter). */}
                           <Show when={o.mode.description}>
-                            <span class="mt-0.5 block text-sm text-ink-soft">
+                            <span class="mt-0.5 block whitespace-pre-line text-sm text-ink-soft">
                               {o.mode.description}
-                            </span>
-                          </Show>
-                          {/* Retrait sur place : le lieu fixe du back-office,
-                              quand il y en a un. */}
-                          <Show
-                            when={
-                              o.mode.kind === "pickup" && o.mode.pickupLocation
-                            }
-                          >
-                            <span class="mt-1 block text-sm">
-                              {o.mode.pickupLocation}
-                            </span>
-                          </Show>
-                          {/* Et les stands ouverts en ce moment. Un seul, on
-                              l'annonce ; plusieurs, on fait choisir — sans
-                              quoi personne ne saurait où remettre la
-                              commande. */}
-                          <Show
-                            when={
-                              o.mode.kind === "pickup" &&
-                              standsOuverts().length > 0
-                            }
-                          >
-                            <span class="mt-2 block space-y-1">
-                              <span class="block text-sm text-ink-soft">
-                                {tr("livraison.ou_retirer")}
-                              </span>
-                              <For each={standsOuverts()}>
-                                {(st) => (
-                                  <label class="flex items-center gap-2 text-sm">
-                                    <input
-                                      type="radio"
-                                      name="stand-retrait"
-                                      checked={standRetenu()?.id === st.id}
-                                      onChange={() => setStandChoisi(st.id)}
-                                    />
-                                    <span>{st.nom}</span>
-                                  </label>
-                                )}
-                              </For>
                             </span>
                           </Show>
                         </span>
                       </label>
                     )}
                   </For>
+                  {/* Retrait sur place : les lieux réglés au back-office,
+                      HORS du libellé du mode — des boutons radio dans un
+                      libellé ne se lisent pas (ni au clavier, ni par un
+                      lecteur d'écran). Nom, adresse et texte de chaque lieu,
+                      ligne à ligne. Un seul : il est déjà choisi. */}
+                  <Show
+                    when={
+                      optionChoisie()?.mode.kind === "pickup" &&
+                      lieuxRetrait().length > 0
+                    }
+                  >
+                    <fieldset class="space-y-2 border border-ink/20 p-4">
+                      <legend class="px-1 text-sm font-medium">
+                        {tr("livraison.ou_retirer")}
+                      </legend>
+                      <For each={lieuxRetrait()}>
+                        {(lieu) => (
+                          <label
+                            class={`flex cursor-pointer items-start gap-3 border p-3 text-sm transition-colors ${
+                              lieuRetenu()?.id === lieu.id
+                                ? "border-ink"
+                                : "border-ink/20 hover:border-ink/50"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="lieu-retrait"
+                              class="mt-1"
+                              checked={lieuRetenu()?.id === lieu.id}
+                              onChange={() => setLieuChoisi(lieu.id)}
+                            />
+                            <span class="flex-1">
+                              <span class="block font-medium">{lieu.nom}</span>
+                              <Show when={lieu.adresse}>
+                                <span class="mt-0.5 block whitespace-pre-line">
+                                  {lieu.adresse}
+                                </span>
+                              </Show>
+                              <Show when={lieu.description}>
+                                <span class="mt-1 block whitespace-pre-line text-ink-soft">
+                                  {lieu.description}
+                                </span>
+                              </Show>
+                            </span>
+                          </label>
+                        )}
+                      </For>
+                    </fieldset>
+                  </Show>
                 </div>
               </Show>
 
@@ -1680,11 +1694,18 @@ export default function CheckoutIsland(props: {
                 {tr("compte.commande.paiement")}
               </legend>
 
-              {/* Aucun moyen configuré */}
+              {/* Aucun moyen configuré. La cliente lit ce message : il ne
+                  parle ni de fichier ni de clé, seulement de ce qu'elle peut
+                  faire — revenir plus tard, ou nous écrire. */}
               <Show when={config() && methods().length === 0}>
-                <div class="rounded-lg border border-dashed border-terracotta/40 bg-terracotta/5 p-4 text-sm text-ink-soft">
+                <div
+                  role="status"
+                  class="rounded-lg border border-dashed border-terracotta/40 bg-terracotta/5 p-4 text-sm text-ink-soft"
+                >
                   {tr("commande.paiement_indisponible")}{" "}
-                  {avecCode("commande.paiement_indisponible_env", "{fichier}", ".env")}
+                  <a href={lien(langue, "/contact")} class="underline underline-offset-2">
+                    {tr("pied.contact")}
+                  </a>
                 </div>
               </Show>
 

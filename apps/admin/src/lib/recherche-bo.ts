@@ -24,6 +24,7 @@ import { SYNONYMES } from "./synonymes-ecrans.ts";
 import { SOURCES_ECRANS } from "./sources-ecrans.ts";
 import { construireIndex, type IndexEcrans } from "./index-ecrans.ts";
 import { fusionnerRecherche } from "./fusion-recherche.ts";
+import { HORS_ESSAI, retirerCeQuiNeVautQuEnEssai, type EtatEssai } from "./mode-essai.ts";
 import {
   ORDRE_GROUPES,
   RECHERCHE_LIMITE_MAX,
@@ -85,13 +86,19 @@ export function lireGroupes(valeur: string | null | undefined): GroupeId[] | und
   return [...new Set(valeur.split(",").map((v) => v.trim()).filter(estGroupe))];
 }
 
+/**
+ * `essai` : l'état du mode essai (lib/mode-essai.ts). Hors essai, l'aide des
+ * commandes test et la marche à suivre pour sortir de la boîte d'essai ne
+ * s'affichent pas : la recherche ne doit pas y mener non plus. Absent, on fait
+ * comme hors essai — c'est le parti le plus sûr.
+ */
 export async function rechercher(
   request: Request,
   saisie: string,
-  options: { groupes?: GroupeId[]; limite?: number } = {},
+  options: { groupes?: GroupeId[]; limite?: number; essai?: EtatEssai } = {},
 ): Promise<ReponseRecherche> {
   const api = adminApi(request);
-  return fusionnerRecherche(
+  const reponse = await fusionnerRecherche(
     {
       appelerApi: (p) => api.recherche(p),
       index: () => indexEcrans(),
@@ -102,4 +109,5 @@ export async function rechercher(
       limite: lireLimite(options.limite ?? null),
     },
   );
+  return retirerCeQuiNeVautQuEnEssai(reponse, options.essai ?? HORS_ESSAI);
 }

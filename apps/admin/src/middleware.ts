@@ -22,6 +22,17 @@ const PUBLIC_PATHS = new Set(["/login"]);
 const ECRANS_DU_VENDEUR = ["/ventes-salon", "/logout"];
 
 /**
+ * La fiche d'UNE commande (/commandes/123) et ses bons de livraison : le
+ * vendeur y lit ses ventes et télécharge leurs fichiers d'impression. Pas la
+ * liste « /commandes » elle-même — c'est celle du site.
+ *
+ * Ouvrir la fiche ne lui donne rien de plus que sa liste : l'API répond
+ * « introuvable » pour toute commande qui n'est pas d'un de ses stands
+ * (apps/api/src/vendeurs.ts), et la fiche ne lui montre que la lecture.
+ */
+const FICHES_DU_VENDEUR = /^\/commandes\/(\d+|bons)$/;
+
+/**
  * Les points d'accès qui refusent EUX-MÊMES, en JSON, ce qui n'est pas pour
  * le vendeur : la recherche du haut attend une réponse 403 lisible (contrat de
  * la recherche), pas la page de son stand derrière une redirection. Rien n'y
@@ -72,6 +83,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     user &&
     user.role !== "owner" &&
     !REFUSENT_EUX_MEMES.has(pathname) &&
+    !FICHES_DU_VENDEUR.test(pathname) &&
     !ECRANS_DU_VENDEUR.some(
       (p) => pathname === p || pathname.startsWith(p + "/"),
     )

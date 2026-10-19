@@ -1,0 +1,470 @@
+---
+/**
+ * Les lieux de retrait : où la cliente vient chercher sa commande quand elle
+ * choisit « Retrait sur place » — le chalet du marché de Noël, l'atelier,
+ * un salon.
+ *
+ * Demande de la boutique : la caisse proposait d'office un « chalet » (en
+ * fait le stand ouvert), qu'elle ne pouvait ni renommer, ni enlever, ni
+ * doubler d'un second. Ici, chaque lieu a un nom, une adresse et un texte
+ * libre sur plusieurs lignes (horaires, accès, quoi apporter) ; on l'éteint
+ * le temps d'une saison, on le range, on le traduit, on l'archive.
+ *
+ * Ce que la caisse montre vient de cet écran, et de rien d'autre : sans
+ * aucun lieu actif, le mode « Retrait sur place » ne s'affiche pas. Une
+ * commande garde une copie du lieu tel que la cliente l'a lu : le renommer
+ * ou l'archiver ensuite ne change pas une commande déjà passée.
+ */
+import { url } from "../../lib/url.ts";
+import Admin from "../../layouts/Admin.astro";
+import Traductions from "../../components/Traductions.astro";
+import { adminApi, type LieuRetraitBo } from "../../lib/api.ts";
+import {
+  traiterTraductions,
+  type ChampTraduit,
+  type ElementTraduit,
+  type EtatTraductions,
+} from "../../lib/traductions.ts";
+
+const api = adminApi(Astro.request);
+
+/** Le nom et le texte se traduisent ; l'adresse s'écrit telle quelle. */
+const CHAMPS_LIEU: ChampTraduit[] = [
+  { cle: "nom", libelle: "Nom", max: 120 },
+  { cle: "description", libelle: "Texte du lieu", lignes: 4, max: 1000 },
+];
+const elementLieu = (l: LieuRetraitBo): ElementTraduit => ({
+  id: l.id,
+  libelle: l.nom,
+  francais: { nom: l.nom, description: l.description },
+  translations: l.translations ?? undefined,
+});
+
+/** L'API refuse en français et dit pourquoi ; on retire seulement l'emballage. */
+function lisible(e: unknown): string {
+  const t = String(e).replace(/^Error:\s*/, "");
+  const m = /\{"error":"(.*?)"/.exec(t);
+  return m ? m[1]!.replace(/\\"/g, '"') : t;
+}
+
+let flash: string | null = null;
+let flashErreur = false;
+let tradLieux: EtatTraductions | null = null;
+/** Le lieu qu'on vient d'enregistrer : sa fiche reste ouverte, on le retrouve. */
+let ouvert: number | null = null;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const action = String(f.get("_action") ?? "");
+  const texte = (nom: string) => String(f.get(nom) ?? "");
+  try {
+    if (action === "lieu") {
+      const id = Number(texte("id")) || undefined;
+      const lieu = await api.enregistrerLieuRetrait({
+        id,
+        nom: texte("nom"),
+        adresse: texte("adresse"),
+        description: texte("description"),
+        active: f.get("active") === "on",
+      });
+      ouvert = lieu.id;
+      flash = id
+        ? `Lieu « ${lieu.nom} » enregistré. Les commandes déjà passées gardent le texte qu'elles ont lu.`
+        : `Lieu « ${lieu.nom} » ajouté${lieu.active ? " : il est proposé à la caisse dès maintenant" : ", éteint : cochez « Proposé à la caisse » quand il ouvre"}.`;
+    } else if (action === "actif") {
+      const id = Number(texte("id"));
+      const lieu = await api.enregistrerLieuRetrait({
+        id,
+        nom: texte("nom"),
+        adresse: texte("adresse"),
+        description: texte("description"),
+        active: texte("active") === "1",
+      });
+      flash = lieu.active
+        ? `« ${lieu.nom} » est de nouveau proposé à la caisse.`
+        : `« ${lieu.nom} » n'est plus proposé à la caisse. Il reste ici, prêt à rouvrir.`;
+    } else if (action === "archiver") {
+      const restaurer = texte("archive") === "false";
+      await api.archiverLieuRetrait(Number(texte("id")), !restaurer);
+      const nom = texte("libelle") || "Ce lieu";
+      flash = restaurer
+        ? `« ${nom} » restauré : il revient dans la liste, avec son réglage « Proposé à la caisse ».`
+        : `« ${nom} » archivé : il quitte la caisse et cette liste. Les commandes qui l'ont choisi gardent son nom et son adresse. Vous pouvez le restaurer plus bas.`;
+    } else if (action === "ordre") {
+      const ids = texte("ordre")
+        .split(",")
+        .map(Number)
+        .filter((n) => Number.isInteger(n) && n > 0);
+      await api.rangerLieuxRetrait(ids);
+      flash = "Ordre enregistré : la caisse propose les lieux dans cet ordre.";
+    } else if (action === "lieux-traductions" || action === "lieux-traduire") {
+      const vivants = (await api.lieuxRetrait()).filter((l) => !l.archivedAt);
+      tradLieux = await traiterTraductions(
+        action === "lieux-traductions" ? "enregistrer" : "proposer",
+        f,
+        vivants.map(elementLieu),
+        CHAMPS_LIEU,
+        (id, lang, modifies) => api.setLieuRetraitTranslation(Number(id), { lang, ...modifies }),
+        (lang, champs) => api.proposerTraduction(lang, champs),
+      );
+      flash = tradLieux.message;
+      flashErreur = tradLieux.erreur;
+    }
+  } catch (e) {
+    flash = lisible(e);
+    flashErreur = true;
+  }
+}
+
+let lieux: LieuRetraitBo[] = [];
+let erreur: string | null = null;
+try {
+  lieux = await api.lieuxRetrait();
+} catch (e) {
+  erreur = lisible(e);
+}
+const vivants = lieux.filter((l) => !l.archivedAt);
+const archives = lieux.filter((l) => l.archivedAt);
+const proposes = vivants.filter((l) => l.active);
+
+const boutonOutil =
+  "flex h-6 w-6 items-center justify-center rounded border border-bo-border text-xs text-bo-muted hover:bg-bo-bg disabled:cursor-default disabled:opacity-30";
+const champ = "mt-1 block w-full rounded border border-bo-border px-2 py-1";
+---
+
+<Admin title="Lieux de retrait">
+  <p class="mb-4">
+    <a href={url("/livraison")} class="text-sm text-bo-accent hover:underline">
+      ← Retour à la livraison
+    </a>
+  </p>
+
+  {flash && (
+    <p
+      role="status"
+      class={`mb-4 rounded border px-3 py-2 text-sm ${
+        flashErreur ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+  {erreur && <p class="mb-4 text-sm text-red-600">Liste indisponible : {erreur}</p>}
+
+  <p class="mb-6 max-w-3xl text-sm text-bo-muted">
+    Où la cliente vient chercher sa commande quand elle choisit « Retrait sur
+    place » : le chalet du marché de Noël, l'atelier, un salon. Elle choisit
+    l'un des lieux <strong>proposés</strong> au moment de payer, et voit son
+    nom, son adresse et votre texte, ligne à ligne. Sans aucun lieu proposé,
+    le retrait sur place n'apparaît pas à la caisse.
+    {proposes.length === 0 && !erreur && (
+      <strong class="text-amber-800">
+        {" "}Aucun lieu proposé en ce moment : le retrait sur place est masqué.
+      </strong>
+    )}
+  </p>
+
+  {/* ================================================================== */}
+  {/* Les lieux, dans l'ordre de la caisse                               */}
+  {/* ================================================================== */}
+  <section class="mb-6 overflow-hidden rounded-lg border border-bo-border bg-bo-surface">
+    <form
+      method="POST"
+      id="form-ordre-lieux"
+      class="flex flex-wrap items-center justify-between gap-3 border-b border-bo-border px-4 py-3"
+    >
+      <input type="hidden" name="_action" value="ordre" />
+      <input type="hidden" name="ordre" data-rangement-champ />
+      <p class="max-w-3xl text-xs text-bo-muted">
+        <strong class="text-bo-ink">L'ordre de la caisse</strong> : attrapez la
+        poignée ⠿ ou utilisez les flèches, puis enregistrez.
+      </p>
+      <span data-rangement-annonce class="sr-only" aria-live="polite"></span>
+      <button
+        data-rangement-bouton
+        disabled
+        class="rounded bg-bo-nav px-3 py-1.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        Enregistrer l'ordre
+      </button>
+    </form>
+
+    {vivants.length === 0 && !erreur ? (
+      <p class="px-4 py-6 text-sm text-bo-muted">
+        Aucun lieu pour l'instant. Ajoutez le premier ci-dessous — par exemple
+        le chalet de votre prochain marché.
+      </p>
+    ) : (
+      <ol data-rangement="form-ordre-lieux" class="divide-y divide-bo-border">
+        {vivants.map((l, i) => (
+          <li id={`lieu-${l.id}`} data-rang-id={l.id} data-rang-nom={l.nom} class="px-4 py-3 text-sm">
+            <div class="flex flex-wrap items-start gap-3">
+              <span class="flex items-center gap-1.5 pt-0.5">
+                <span
+                  class="ml-poignee cursor-grab select-none text-bo-muted"
+                  title="Glissez pour changer la place"
+                  aria-hidden="true"
+                >
+                  ⠿
+                </span>
+                <span data-rang class="w-5 text-right text-xs tabular-nums text-bo-muted">
+                  {i + 1}
+                </span>
+                <button
+                  type="button"
+                  data-monter
+                  class={boutonOutil}
+                  title={`Monter « ${l.nom} »`}
+                  aria-label={`Monter ${l.nom}`}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  data-descendre
+                  class={boutonOutil}
+                  title={`Descendre « ${l.nom} »`}
+                  aria-label={`Descendre ${l.nom}`}
+                >
+                  ↓
+                </button>
+              </span>
+
+              <div class="min-w-56 flex-1">
+                <p class="flex flex-wrap items-center gap-2">
+                  <strong class="font-medium">{l.nom}</strong>
+                  <span
+                    class={`rounded-full px-2 py-0.5 text-xs ${
+                      l.active ? "bg-green-100 text-green-900" : "bg-bo-bg text-bo-muted"
+                    }`}
+                  >
+                    {l.active ? "Proposé à la caisse" : "Éteint"}
+                  </span>
+                </p>
+                {l.adresse && <p class="whitespace-pre-line text-bo-muted">{l.adresse}</p>}
+                {l.description && (
+                  <p class="mt-1 whitespace-pre-line text-xs text-bo-muted">{l.description}</p>
+                )}
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2">
+                {/* Allumer ou éteindre d'un clic : un chalet qui ne rouvre
+                    qu'en décembre n'a pas à être recréé chaque année. */}
+                <form method="POST">
+                  <input type="hidden" name="_action" value="actif" />
+                  <input type="hidden" name="id" value={l.id} />
+                  <input type="hidden" name="nom" value={l.nom} />
+                  <input type="hidden" name="adresse" value={l.adresse ?? ""} />
+                  <input type="hidden" name="description" value={l.description ?? ""} />
+                  <input type="hidden" name="active" value={l.active ? "0" : "1"} />
+                  <button class="rounded border border-bo-border px-3 py-1 text-xs hover:bg-bo-bg">
+                    {l.active ? "Ne plus proposer" : "Proposer à la caisse"}
+                  </button>
+                </form>
+                <form method="POST" class="js-archiver" data-nom={l.nom}>
+                  <input type="hidden" name="_action" value="archiver" />
+                  <input type="hidden" name="id" value={l.id} />
+                  <input type="hidden" name="libelle" value={l.nom} />
+                  <input type="hidden" name="archive" value="true" />
+                  <button
+                    class="rounded border border-bo-border px-3 py-1 text-xs text-bo-muted hover:border-bo-accent hover:text-bo-accent"
+                    aria-label={`Archiver ${l.nom}`}
+                  >
+                    Archiver
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            <details class="mt-2 sm:ml-28" open={ouvert === l.id}>
+              <summary class="cursor-pointer text-xs text-bo-accent">Modifier</summary>
+              <form method="POST" class="mt-2 grid max-w-2xl gap-3">
+                <input type="hidden" name="_action" value="lieu" />
+                <input type="hidden" name="id" value={l.id} />
+                <label class="block">
+                  <span class="text-xs text-bo-muted">Nom</span>
+                  <input name="nom" value={l.nom} required maxlength="120" class={champ} />
+                </label>
+                <label class="block">
+                  <span class="text-xs text-bo-muted">Adresse (une ligne par ligne d'adresse)</span>
+                  <textarea name="adresse" rows="3" maxlength="300" class={champ}>{l.adresse ?? ""}</textarea>
+                </label>
+                <label class="block">
+                  <span class="text-xs text-bo-muted">
+                    Texte du lieu : horaires, accès, ce qu'il faut apporter
+                  </span>
+                  <textarea name="description" rows="4" maxlength="1000" class={champ}>{l.description ?? ""}</textarea>
+                </label>
+                <label class="flex items-center gap-2">
+                  <input type="checkbox" name="active" checked={l.active} />
+                  Proposé à la caisse
+                </label>
+                <p>
+                  <button class="rounded bg-bo-accent px-3 py-1.5 text-white">Enregistrer</button>
+                </p>
+              </form>
+            </details>
+          </li>
+        ))}
+      </ol>
+    )}
+  </section>
+
+  <style is:global>
+    /* La ligne qu'on fait glisser se voit : elle pâlit et se soulève. */
+    li.ml-tenue { opacity: 0.55; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); }
+  </style>
+  <script>
+    import "../../lib/rangement.ts";
+  </script>
+
+  {/* ================================================================== */}
+  {/* Ajouter un lieu                                                     */}
+  {/* ================================================================== */}
+  <details class="mb-6 rounded-lg border border-bo-border bg-bo-surface" open={vivants.length === 0}>
+    <summary class="cursor-pointer select-none px-5 py-3 font-semibold">
+      <span class="mr-1 text-bo-accent">+</span> Ajouter un lieu
+    </summary>
+    <form method="POST" class="grid max-w-2xl gap-3 px-5 pb-5 text-sm">
+      <input type="hidden" name="_action" value="lieu" />
+      <label class="block">
+        <span class="text-xs text-bo-muted">Nom, tel que la cliente le lira</span>
+        <input
+          name="nom"
+          required
+          maxlength="120"
+          placeholder="Chalet du marché de Noël de Mulhouse"
+          class={champ}
+        />
+      </label>
+      <label class="block">
+        <span class="text-xs text-bo-muted">Adresse (une ligne par ligne d'adresse)</span>
+        <textarea
+          name="adresse"
+          rows="3"
+          maxlength="300"
+          placeholder={"Place de la Réunion\n68100 Mulhouse"}
+          class={champ}
+        ></textarea>
+      </label>
+      <label class="block">
+        <span class="text-xs text-bo-muted">
+          Texte du lieu : horaires, accès, ce qu'il faut apporter (facultatif)
+        </span>
+        <textarea
+          name="description"
+          rows="4"
+          maxlength="1000"
+          placeholder={"Du lundi au samedi, de 10 h à 20 h.\nDonnez votre numéro de commande au chalet."}
+          class={champ}
+        ></textarea>
+      </label>
+      <label class="flex items-center gap-2">
+        <input type="checkbox" name="active" checked />
+        Proposé à la caisse dès maintenant
+      </label>
+      <p>
+        <button class="rounded bg-bo-accent px-4 py-2 text-white">Ajouter le lieu</button>
+      </p>
+    </form>
+  </details>
+
+  {/* ================================================================== */}
+  {/* Aperçu : ce que la caisse montre                                    */}
+  {/* ================================================================== */}
+  {proposes.length > 0 && (
+    <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-5">
+      <h2 class="mb-1 font-semibold">Comme à la caisse</h2>
+      <p class="mb-3 text-xs text-bo-muted">
+        Ce que la cliente voit quand elle choisit « Retrait sur place », en
+        français. {proposes.length === 1
+          ? "Un seul lieu : il est choisi d'office."
+          : "Plusieurs lieux : elle doit en choisir un pour continuer."}
+      </p>
+      <fieldset class="max-w-xl space-y-2 border border-bo-border p-4 text-sm" disabled>
+        <legend class="px-1 font-medium">Où souhaitez-vous retirer ?</legend>
+        {proposes.map((l, i) => (
+          <label class="flex items-start gap-3 border border-bo-border p-3">
+            <input type="radio" name="apercu-lieu" class="mt-1" checked={proposes.length === 1 && i === 0} />
+            <span>
+              <span class="block font-medium">{l.nom}</span>
+              {l.adresse && <span class="block whitespace-pre-line">{l.adresse}</span>}
+              {l.description && (
+                <span class="mt-1 block whitespace-pre-line text-bo-muted">{l.description}</span>
+              )}
+            </span>
+          </label>
+        ))}
+      </fieldset>
+    </section>
+  )}
+
+  {/* Ce que lit une cliente étrangère : le nom et le texte de chaque lieu. */}
+  {vivants.length > 0 && (
+    <Traductions
+      ancre="traductions-lieux"
+      titre="Traductions des lieux"
+      aide="Le nom et le texte de chaque lieu, dans la langue de la cliente — à la caisse, dans son courriel de confirmation et dans celui qui lui dit que sa commande l'attend. Une case vide affiche le français. L'adresse ne se traduit pas."
+      champs={CHAMPS_LIEU}
+      elements={vivants.map(elementLieu)}
+      disposition="langues"
+      propositions={tradLieux?.propositions}
+      saisies={tradLieux?.saisies}
+      actionEnregistrer="lieux-traductions"
+      actionProposer="lieux-traduire"
+      ouvert={tradLieux !== null}
+      classe="mb-6 bg-bo-surface"
+    />
+  )}
+
+  {/* ================================================================== */}
+  {/* Les lieux archivés                                                  */}
+  {/* ================================================================== */}
+  {archives.length > 0 && (
+    <section class="mb-6">
+      <h2 class="mb-1 font-semibold">Lieux archivés</h2>
+      <p class="mb-3 max-w-3xl text-xs text-bo-muted">
+        Retirés de la caisse et de la liste. Les commandes qui les avaient
+        choisis gardent leur nom et leur adresse. « Restaurer » les remet dans
+        la liste, avec leur réglage « Proposé à la caisse ».
+      </p>
+      <div class="space-y-2 opacity-70">
+        {archives.map((l) => (
+          <div id={`lieu-${l.id}`} class="flex flex-wrap items-center gap-4 rounded-lg border border-bo-border bg-bo-surface p-3 text-sm">
+            <div class="min-w-56 flex-1">
+              <p class="font-medium">{l.nom}</p>
+              {l.adresse && <p class="whitespace-pre-line text-xs text-bo-muted">{l.adresse}</p>}
+            </div>
+            <form method="POST">
+              <input type="hidden" name="_action" value="archiver" />
+              <input type="hidden" name="id" value={l.id} />
+              <input type="hidden" name="libelle" value={l.nom} />
+              <input type="hidden" name="archive" value="false" />
+              <button class="text-sm text-bo-accent hover:underline">Restaurer</button>
+            </form>
+          </div>
+        ))}
+      </div>
+    </section>
+  )}
+
+  <p class="max-w-3xl text-xs text-bo-muted">
+    Un lieu ne se supprime pas : il s'archive. Le texte qui s'affiche sous
+    « Retrait sur place » lui-même (délai, rappel) se règle dans
+    <a href={url("/livraison")} class="underline">Livraison</a>, sur le mode.
+  </p>
+
+  <script is:inline>
+    document.querySelectorAll("form.js-archiver").forEach((f) => {
+      f.addEventListener("submit", (e) => {
+        const nom = f.getAttribute("data-nom") || "ce lieu";
+        if (
+          !confirm(
+            `Archiver « ${nom} » ?\n\nIl quitte la caisse et cette liste. Les commandes qui l'ont choisi gardent son nom et son adresse.\n\nVous pourrez le restaurer dans « Lieux archivés ».`,
+          )
+        )
+          e.preventDefault();
+      });
+    });
+  </script>
+</Admin>

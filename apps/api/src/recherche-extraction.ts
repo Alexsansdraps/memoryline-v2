@@ -1046,43 +1046,39 @@ export interface LigneBandeauAnnonce {
   active: boolean;
 }
 
-/** La seule bannière que l'écran modifie : la plus prioritaire, puis la plus récente. */
-export function ficheBandeauAnnonce(b: LigneBandeauAnnonce | null): Fiche[] {
-  if (!b) return [];
-  const ici = (ancre: string | undefined, champNom: string): CibleChamp => ({
-    chemin: "/bandeau",
-    ancre,
-    champ: champNom,
-  });
-  return [
-    {
+/**
+ * Les messages du bandeau d'annonce, tous ceux qui ne sont pas archivés, dans
+ * l'ordre du défilement : l'écran les montre tous, en ligne ou éteints.
+ * Chacun mène à sa ligne (#message-<id>), et ses traductions à leur case du
+ * bloc « Traductions des messages ».
+ */
+export function fichesBandeauAnnonce(messages: readonly LigneBandeauAnnonce[]): Fiche[] {
+  return messages.map((b, i) => {
+    const ligne: CibleChamp = { chemin: "/bandeau", ancre: `message-${b.id}` };
+    const traduction_ = (l: string, champNom: string): CibleChamp => ({
+      chemin: "/bandeau",
+      ancre: "traductions-bandeau",
+      champ: `tr-${b.id}-${champNom}-${l}`,
+    });
+    return {
       groupe: "boutique",
       id: `bandeau:${b.id}`,
       nature: "Bandeau d'annonce",
-      titre: "Bandeau du haut du site",
+      titre: b.message,
       detail: b.active ? null : "Éteint",
       image: null,
-      ordre: RANG_BOUTIQUE.bandeau * ORDRE_SOURCE,
+      ordre: RANG_BOUTIQUE.bandeau * ORDRE_SOURCE + i,
       champs: garder(
-        champ(b.message, 2, "Message", ici(undefined, "message")),
-        champ(b.linkLabel, 1, "Libellé du lien", ici(undefined, "linkLabel")),
+        // Le message et le bouton s'affichent en TEXTE dans la liste.
+        champ(b.message, 2, "Message", ligne, { titre: true }),
+        champ(b.linkLabel, 1, "Texte du bouton", ligne),
         LANGUES_ETRANGERES_RECHERCHE.flatMap((l) => [
-          champ(
-            traduction(b.translations, l, "message"),
-            2,
-            enLangue("Message", l),
-            ici("traductions-bandeau", `tr-bandeau-message-${l}`),
-          ),
-          champ(
-            traduction(b.translations, l, "linkLabel"),
-            1,
-            enLangue("Libellé du lien", l),
-            ici("traductions-bandeau", `tr-bandeau-linkLabel-${l}`),
-          ),
+          champ(traduction(b.translations, l, "message"), 2, enLangue("Message", l), traduction_(l, "message")),
+          champ(traduction(b.translations, l, "linkLabel"), 1, enLangue("Texte du bouton", l), traduction_(l, "linkLabel")),
         ]),
       ),
-    },
-  ];
+    };
+  });
 }
 
 export interface LignePromotion {
@@ -1091,18 +1087,25 @@ export interface LignePromotion {
   code: string | null;
   translations: unknown;
   active: boolean;
+  /** Non nul = archivée : elle reste trouvable, rangée dans « Promotions archivées ». */
+  archivedAt?: Date | null;
 }
 
 export function fichesPromotions(promos: readonly LignePromotion[]): Fiche[] {
   return promos.map((p, i) => {
     // Le nom et le code s'affichent en TEXTE dans le tableau : pas de champ.
+    // Une promotion archivée a sa ligne, sous la même ancre, dans la section
+    // des archivées : on la cherche pour la relire ou la restaurer.
     const ligne: CibleChamp = { chemin: "/promotions", ancre: `promo-${p.id}` };
     return {
       groupe: "boutique",
       id: `promotion:${p.id}`,
       nature: "Promotion",
       titre: p.name,
-      detail: ligneDetail(p.code ? `Code ${p.code}` : "Sans code", p.active ? "Active" : "Inactive"),
+      detail: ligneDetail(
+        p.code ? `Code ${p.code}` : "Sans code",
+        p.archivedAt ? "Archivée" : p.active ? "Active" : "Inactive",
+      ),
       image: null,
       ordre: RANG_BOUTIQUE.promotion * ORDRE_SOURCE + i,
       champs: garder(

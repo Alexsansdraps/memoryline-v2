@@ -98,6 +98,20 @@ export interface MessagesConfigurateur {
    * accessoires), sous la grille des personnages.
    */
   personnaliserPerso: string;
+  /**
+   * L'invitation à descendre de l'éditeur de personnage, au-dessus de la
+   * barre du bas ; `{parties}` = ce qui reste caché dessous, déjà mis en
+   * liste à la manière de la langue (« couleurs, vêtements et cheveux »).
+   */
+  plusBas: string;
+  /**
+   * Les mots de cette liste, un par partie des réglages, tels qu'ils se
+   * lisent au milieu d'une phrase (en minuscules, sauf en allemand).
+   */
+  partieCouleurs: string;
+  partieVetements: string;
+  partieCheveux: string;
+  partieAccessoires: string;
 }
 
 export const MESSAGES_DEFAUT: MessagesConfigurateur = {
@@ -157,6 +171,11 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   ),
   locale: "fr-FR",
   personnaliserPerso: "Personnaliser ce personnage",
+  plusBas: "Plus bas : {parties}",
+  partieCouleurs: "couleurs",
+  partieVetements: "vêtements",
+  partieCheveux: "cheveux",
+  partieAccessoires: "accessoires",
 };
 
 /** Complète un dictionnaire partiel par les valeurs françaises. */

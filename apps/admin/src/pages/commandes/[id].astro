@@ -13,6 +13,7 @@
 import { apiUrl, url } from "../../lib/url.ts";
 import { libelleFormat } from "@memoryline/types";
 import Admin from "../../layouts/Admin.astro";
+import AffichesCommande from "../../components/AffichesCommande.astro";
 import ChampsAdresse from "../../components/ChampsAdresse.astro";
 import {
   adminApi,
@@ -25,10 +26,20 @@ import {
 const id = Number(Astro.params.id);
 const api = adminApi(Astro.request);
 
+/**
+ * Un vendeur ouvre aussi cette fiche, pour les ventes de ses stands : il y
+ * lit les affiches, les lignes, le client, et télécharge les fichiers
+ * d'impression. Rien d'autre — aucun formulaire, aucun bordereau, aucune
+ * facture. L'API ne lui rend de toute façon que les commandes de ses stands
+ * (vendeurs.ts) et refuse toute écriture ; la fiche lui épargne seulement
+ * des boutons qui répondraient « interdit ».
+ */
+const estProprietaire = Astro.locals.user?.role === "owner";
+
 let flash: string | null = null;
 let flashErreur = false;
 
-if (Astro.request.method === "POST") {
+if (Astro.request.method === "POST" && estProprietaire) {
   const f = await Astro.request.formData();
   const action = f.get("_action");
   try {
@@ -214,6 +225,8 @@ try {
 }
 
 const order = detail?.order;
+/** Où la cliente vient chercher sa commande, pour un retrait (voir l'API). */
+const lieuRetrait = detail?.lieuRetrait ?? null;
 const items = detail?.items ?? [];
 const client = detail?.customer ?? null;
 const expeditions = detail?.expeditions ?? [];
@@ -237,7 +250,7 @@ const auStand = order?.channel === "salon";
 const voirTous = Astro.url.searchParams.get("tous") === "1";
 let etatBordereau: EtatBordereau | null = null;
 let erreurBordereau: string | null = null;
-if (order && order.status !== "draft") {
+if (order && order.status !== "draft" && estProprietaire) {
   try {
     const poids = Number(Astro.url.searchParams.get("poids"));
     etatBordereau = await api.bordereau(
@@ -478,8 +491,13 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
 
 <Admin title={order ? `Commande ${order.number}` : `Commande #${id}`}>
   <p class="mb-4">
-    <a href={url("/commandes")} class="text-sm text-bo-accent hover:underline">
-      ← Retour aux commandes
+    {/* Le vendeur revient à SES ventes : la liste « /commandes » est celle
+        du site, qui ne lui est pas ouverte. */}
+    <a
+      href={url(estProprietaire ? "/commandes" : "/ventes-salon")}
+      class="text-sm text-bo-accent hover:underline"
+    >
+      ← {estProprietaire ? "Retour aux commandes" : "Retour à vos ventes"}
     </a>
   </p>
 
@@ -492,9 +510,144 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
       {flash}
     </p>
   )}
-  {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
+  {error && (
+    <p class="mb-4 text-red-600 text-sm">
+      {estProprietaire
+        ? `API injoignable : ${error}`
+        : "Cette commande n'est pas une vente de vos stands, ou n'existe plus."}
+    </p>
+  )}
 
-  {order && (
+  {/* ================================================================ */}
+  {/* La fiche d'un VENDEUR : la lecture seule                          */}
+  {/* ================================================================ */}
+  {order && !estProprietaire && (
+    <>
+      <div class="mb-6">
+        <div class="flex flex-wrap items-center gap-2">
+          <h2 class="text-xl font-semibold">{order.number}</h2>
+          <span class={`rounded-full px-2 py-0.5 text-xs ${badgePaiement.classe}`}>
+            {badgePaiement.texte}
+          </span>
+          <span class={`rounded-full px-2 py-0.5 text-xs ${badgeTraitement.classe}`}>
+            {badgeTraitement.texte}
+          </span>
+        </div>
+        <p class="mt-1 text-sm text-bo-muted">
+          {quand(order.createdAt)} · {NOM_CANAL[order.channel] ?? order.channel}
+        </p>
+      </div>
+
+      {annulee && (
+        <p class="mb-6 rounded-lg border border-bo-border bg-bo-bg px-4 py-3 font-medium">
+          Commande annulée{order.cancelledAt ? ` le ${quand(order.cancelledAt)}` : ""} :
+          rien à imprimer ni à remettre.
+        </p>
+      )}
+
+      <AffichesCommande items={items} />
+
+      <div class="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+        {/* Les fichiers d'impression, une ligne par affiche. Ils ne se
+            préparent qu'une fois la vente encaissée, comme pour la
+            propriétaire. */}
+        <section
+          class="rounded-lg border border-bo-border bg-bo-surface lg:col-span-2"
+          data-impression
+          data-url-etat={apiUrl("/admin/print-files/etat")}
+          data-preparer={encaisse ? "1" : undefined}
+        >
+          <header class="border-b border-bo-border px-4 py-3">
+            <h3 class="font-medium">
+              À imprimer
+              <span class="ml-2 text-sm font-normal text-bo-muted">
+                {nbArticles} article{nbArticles > 1 ? "s" : ""}
+              </span>
+            </h3>
+          </header>
+          <ul class="divide-y divide-bo-border text-sm">
+            {items.map((it, rang) => (
+              <li class="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
+                <span class="font-medium">
+                  Affiche {rang + 1} · {it.title ?? "Affiche personnalisée"}
+                </span>
+                <span class="text-bo-muted">
+                  {[it.format ? libelleFormat(it.format) : null, `× ${it.quantity}`]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+                {encaisse ? (
+                  <>
+                    <a
+                      href={apiUrl(`/admin/print-files/${it.id}`)}
+                      download
+                      data-pdf-ligne={it.id}
+                      data-pdf-libelle="long"
+                      data-pdf-nom={`Affiche ${rang + 1} (${it.title ?? "affiche personnalisée"})`}
+                      class="bo-pdf ml-auto text-bo-accent hover:underline"
+                    >
+                      Télécharger le PDF d'impression
+                    </a>
+                    <span
+                      data-pdf-message={it.id}
+                      class="bo-pdf-message basis-full"
+                      aria-live="polite"
+                    />
+                  </>
+                ) : (
+                  <span class="ml-auto text-xs text-bo-muted">
+                    Pas encore réglée : rien à imprimer.
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+          {encaisse && items.length > 1 && (
+            <div
+              class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-bo-border px-4 py-3 text-sm"
+              data-pdf-groupe
+            >
+              <a
+                href={apiUrl(`/admin/orders/${order.id}/impression.zip`)}
+                download
+                data-pdf-tout
+                data-pdf-lignes={items.map((it) => it.id).join(",")}
+                class="bo-pdf rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+              >
+                Tout télécharger (.zip)
+              </a>
+              <span data-pdf-messages class="bo-pdf-messages basis-full" aria-live="polite" />
+            </div>
+          )}
+        </section>
+
+        <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3 text-sm">
+          <h3 class="mb-2 font-medium">Client</h3>
+          {client ? (
+            <div class="space-y-1">
+              <div>{client.name || "—"}</div>
+              {client.email && <div class="text-bo-muted">{client.email}</div>}
+            </div>
+          ) : (
+            <p class="text-bo-muted">Aucun client rattaché.</p>
+          )}
+          {order.shippingLabel && (
+            <p class="mt-3 text-bo-muted">Livraison : {order.shippingLabel}</p>
+          )}
+          {lieuRetrait && (
+            <p class="mt-1 text-bo-muted">
+              Retrait : {lieuRetrait.nom}
+              {lieuRetrait.adresse && (
+                <span class="block whitespace-pre-line">{lieuRetrait.adresse}</span>
+              )}
+            </p>
+          )}
+        </section>
+      </div>
+    </>
+  )}
+
+  {order && estProprietaire && (
     <>
       {/* ============================================================== */}
       {/* En-tête                                                        */}
@@ -614,6 +767,10 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
         </div>
       )}
 
+      {/* Les affiches en grand, avant tout le reste : c'est ce qu'on
+          vérifie en ouvrant une commande, avant de l'imprimer. */}
+      <AffichesCommande items={items} />
+
       {/* ============================================================== */}
       {/* Deux colonnes : agir à gauche, consulter à droite               */}
       {/* ============================================================== */}
@@ -651,7 +808,11 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
               </h3>
               <span class="text-sm text-bo-muted">
                 {order.shippingLabel}
-                {order.relayPointLabel ? ` · ${order.relayPointLabel}` : ""}
+                {lieuRetrait
+                  ? ` · ${lieuRetrait.nom}`
+                  : order.relayPointLabel
+                    ? ` · ${order.relayPointLabel}`
+                    : ""}
               </span>
             </header>
 
@@ -1730,18 +1891,31 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
 
           <section id="adresse-livraison" class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
             <h3 class="mb-2 font-medium">Adresse de livraison</h3>
-            {/* Un retrait sur stand se range dans les mêmes colonnes qu'un
-                point relais — elles disent « où va la commande ». Le préfixe
-                de l'identifiant dit de quelle sorte d'endroit il s'agit :
-                sans lui, un stand s'annoncerait comme un point relais et
-                personne n'irait le chercher au bon endroit. */}
-            {order.relayPointLabel && (
-              <p class="mb-2 rounded bg-bo-bg px-2 py-1 text-sm">
-                {String(order.relayPointId ?? "").startsWith("stand:")
-                  ? "Retrait sur place"
-                  : "Point relais"}{" "}
-                : {order.relayPointLabel}
-              </p>
+            {/* Où va la commande : le lieu de retrait choisi à la caisse
+                (nom, adresse, texte, tels que la cliente les a lus), ou le
+                point relais. L'API dit lequel (`lieuRetrait`) : les
+                commandes d'avant les lieux de retrait, prises sur un stand
+                (« stand:… »), y sont déjà reconnues. */}
+            {lieuRetrait ? (
+              <div class="mb-2 rounded bg-bo-bg px-2 py-1.5 text-sm">
+                <p>
+                  Retrait sur place : <strong class="font-medium">{lieuRetrait.nom}</strong>
+                </p>
+                {lieuRetrait.adresse && (
+                  <p class="whitespace-pre-line text-bo-muted">{lieuRetrait.adresse}</p>
+                )}
+                {lieuRetrait.description && (
+                  <p class="mt-1 whitespace-pre-line text-xs text-bo-muted">
+                    {lieuRetrait.description}
+                  </p>
+                )}
+              </div>
+            ) : (
+              order.relayPointLabel && (
+                <p class="mb-2 rounded bg-bo-bg px-2 py-1 text-sm">
+                  Point relais : {order.relayPointLabel}
+                </p>
+              )
             )}
             {order.shippingLine1 || order.shippingName ? (
               <div class="space-y-0.5 text-sm">
@@ -1757,7 +1931,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
               </div>
             ) : (
               <p class="text-sm text-bo-muted">
-                {order.shippingLabel === "Retrait sur place"
+                {lieuRetrait || order.shippingLabel === "Retrait sur place"
                   ? "Retrait sur place — pas d'adresse. S'il faut l'expédier quand même, saisissez-la ci-dessous ou dans le bloc du bordereau."
                   : "Aucune adresse enregistrée."}
               </p>

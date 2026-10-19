@@ -56,7 +56,17 @@ export const MENU: GroupeNav[] = [
       { href: "/commandes", label: "Commandes en ligne", icon: "🛒", owner: true },
       // La seule entrée qu'un vendeur voit : son stand, et rien d'autre.
       { href: "/ventes-salon", label: "Ventes stand", icon: "🎪" },
-      { href: "/paniers", label: "Paniers abandonnés", icon: "🛍️", owner: true },
+      {
+        href: "/paniers",
+        label: "Paniers abandonnés",
+        icon: "🛍️",
+        owner: true,
+        // Le courriel de relance n'avait qu'un petit lien, calé à droite des
+        // réglages : Margaux ne le trouvait pas. Il a son entrée.
+        children: [
+          { href: "/paniers/courriel", label: "Courriel de relance", icon: "✉️", owner: true },
+        ],
+      },
       // Ici et pas dans le catalogue : une carte cadeau n'est pas un article à
       // vendre, c'est de l'argent que quelqu'un a déjà payé.
       { href: "/cartes-cadeaux", label: "Cartes cadeaux", icon: "🎁", owner: true },
@@ -73,9 +83,9 @@ export const MENU: GroupeNav[] = [
         // Aucun autre écran ne pointe vers l'import : sans cette entrée, il
         // redevient introuvable, ce qu'il a déjà été une fois.
         children: [
-          // Où ranger les pages « Affiches personnalisables » et « prêtes à
-          // imprimer ». Les collections, elles, se rangent dans leur propre
-          // écran.
+          // Où ranger les affiches de CHAQUE page de liste du site : Toutes
+          // les affiches, les deux pages de genre et chaque collection. La
+          // fiche d'une collection renvoie ici.
           { href: "/produits/ordre", label: "Ordre d'affichage", icon: "↕️", owner: true },
           { href: "/produits/import", label: "Importer un fichier", icon: "📥", owner: true },
         ],
@@ -135,9 +145,9 @@ export const MENU: GroupeNav[] = [
   {
     titre: "Boutique en ligne",
     entrees: [
-      // « et offre » : enregistrer cet écran enregistre le message ET la
-      // remise qu'il annonce. Le nom doit prévenir qu'on touche à de l'argent.
-      { href: "/bandeau", label: "Bandeau et offre", icon: "📢", owner: true },
+      // Les messages qui défilent en haut du site. Plus aucune remise ici :
+      // les offres se règlent dans Promotions, le bandeau ne fait que parler.
+      { href: "/bandeau", label: "Bandeau d'annonce", icon: "📢", owner: true },
       // Les grandes images en haut des pages (la bannière de Noël de
       // l'ancienne boutique). Juste sous le bandeau de texte, avec lequel on
       // les confondrait autrement : le nom de chacun dit ce qu'il porte.
@@ -153,11 +163,26 @@ export const MENU: GroupeNav[] = [
   {
     titre: "Réglages",
     entrees: [
-      { href: "/livraison", label: "Livraison", icon: "📦", owner: true },
+      {
+        href: "/livraison",
+        label: "Livraison",
+        icon: "📦",
+        owner: true,
+        // Les endroits où la cliente vient chercher sa commande (le chalet du
+        // marché de Noël) : sous Livraison, parce que c'est le mode « Retrait
+        // sur place » qui les propose à la caisse.
+        children: [
+          { href: "/livraison/lieux", label: "Lieux de retrait", icon: "📍", owner: true },
+        ],
+      },
       // Ni « d'essai » — le mot ne décrivait qu'un bouton et faisait passer
       // l'écran pour un bac à sable — ni « automatiques », qui serait faux :
       // la facture et l'avis d'expédition ne partent que sur son geste.
       { href: "/courriers", label: "Courriers", icon: "📬", owner: true },
+      // L'adresse et le SIRET imprimés sur chaque facture : des mentions
+      // obligatoires, qu'on règle une fois et qu'on ne cherche qu'au moment
+      // de déménager — d'où « Réglages ».
+      { href: "/facturation", label: "Factures", icon: "🧾", owner: true },
       { href: "/comptes", label: "Comptes", icon: "🔑", owner: true },
       // Dans « Réglages » et pas dans un groupe à soi : on n'y va pas pour
       // travailler, on y va quand on cherche quelque chose qu'on a rangé.

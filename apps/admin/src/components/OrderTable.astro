@@ -25,9 +25,17 @@ const { channel, stand } = Astro.props;
 
 const api = adminApi(Astro.request);
 
+/**
+ * Un vendeur lit la liste de ses stands et télécharge les fichiers
+ * d'impression ; il ne marque rien, n'étiquette rien, n'archive rien — l'API
+ * le lui refuserait. On ne lui montre donc pas ces boutons, ni les
+ * étiquettes, qui sont des notes de la boutique.
+ */
+const estProprietaire = Astro.locals.user?.role === "owner";
+
 let flash: string | null = null;
 let erreurAction: string | null = null;
-if (Astro.request.method === "POST") {
+if (Astro.request.method === "POST" && estProprietaire) {
   const f = await Astro.request.formData();
   const action = f.get("_action");
   try {
@@ -130,7 +138,10 @@ let orders: OrderRow[] = [];
 let etiquettes: { name: string; n: number }[] = [];
 let error: string | null = null;
 try {
-  [orders, etiquettes] = await Promise.all([api.orders(filtres), api.orderTags()]);
+  [orders, etiquettes] = await Promise.all([
+    api.orders(filtres),
+    estProprietaire ? api.orderTags() : Promise.resolve([]),
+  ]);
 } catch (e) {
   error = String(e);
 }
@@ -285,20 +296,22 @@ const filtreActif =
         class="rounded border border-bo-border px-3 py-2 text-sm"
       />
     </label>
-    <label>
-      <span class="mb-1 block text-xs text-bo-muted">Étiquette</span>
-      <select
-        name="tag"
-        class="rounded border border-bo-border px-3 py-2 text-sm"
-      >
-        <option value="">Toutes</option>
-        {etiquettes.map((t) => (
-          <option value={t.name} selected={filtres.tag === t.name}>
-            {t.name} ({t.n})
-          </option>
-        ))}
-      </select>
-    </label>
+    {estProprietaire && (
+      <label>
+        <span class="mb-1 block text-xs text-bo-muted">Étiquette</span>
+        <select
+          name="tag"
+          class="rounded border border-bo-border px-3 py-2 text-sm"
+        >
+          <option value="">Toutes</option>
+          {etiquettes.map((t) => (
+            <option value={t.name} selected={filtres.tag === t.name}>
+              {t.name} ({t.n})
+            </option>
+          ))}
+        </select>
+      </label>
+    )}
 
     <details class="bo-menu relative">
       <summary class="rounded border border-bo-border px-3 py-2 text-sm">
@@ -373,25 +386,29 @@ const filtreActif =
     <input type="hidden" name="tags" id="bo-tags" />
     <div class="flex flex-wrap items-center gap-2 text-sm">
       <span id="bo-compte" class="font-medium"></span>
-      <button type="button" data-bulk="fulfil" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
-        Marquer comme traitées
-      </button>
-      <button type="button" data-bulk="unfulfil" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
-        Remettre à traiter
-      </button>
-      <button type="button" data-bulk="tag" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
-        Ajouter une étiquette
-      </button>
-      <button type="button" data-bulk="untag" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
-        Retirer une étiquette
-      </button>
+      {estProprietaire && (
+        <>
+          <button type="button" data-bulk="fulfil" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
+            Marquer comme traitées
+          </button>
+          <button type="button" data-bulk="unfulfil" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
+            Remettre à traiter
+          </button>
+          <button type="button" data-bulk="tag" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
+            Ajouter une étiquette
+          </button>
+          <button type="button" data-bulk="untag" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
+            Retirer une étiquette
+          </button>
+        </>
+      )}
       <button type="button" id="bo-bons" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
         Bons de livraison
       </button>
       <button type="button" id="bo-export" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
         Exporter la sélection
       </button>
-      {vueArchivees ? (
+      {!estProprietaire ? null : vueArchivees ? (
         <button
           type="button"
           data-bulk="restaurer"
@@ -441,7 +458,7 @@ const filtreActif =
           {/* Des boutons, pas une valeur : rien à trier dans cette colonne. */}
           <th class="px-2 py-2 font-medium" data-sans-tri>Impression</th>
           <th class="px-4 py-2 font-medium">Livraison</th>
-          <th class="px-4 py-2 font-medium">Étiquettes</th>
+          {estProprietaire && <th class="px-4 py-2 font-medium">Étiquettes</th>}
           <th class="px-4 py-2 font-medium text-right">Total</th>
         </tr>
       </thead>
@@ -493,7 +510,15 @@ const filtreActif =
               </td>
               <td class="px-4 py-2 align-top">
                 {/* Un clic bascule : c'est l'action du matin quand on prépare
-                    les colis. */}
+                    les colis. Le vendeur lit le statut sans le changer. */}
+                {!estProprietaire ? (
+                  <span
+                    class={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${t.classe}`}
+                  >
+                    <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+                    {t.texte}
+                  </span>
+                ) : (
                 <form method="POST" class="inline">
                   <input type="hidden" name="_action" value="traiter" />
                   <input type="hidden" name="id" value={o.id} />
@@ -514,18 +539,27 @@ const filtreActif =
                     {t.texte}
                   </button>
                 </form>
+                )}
               </td>
               <td class="px-4 py-2 whitespace-nowrap align-top text-bo-muted">
                 {/* Les affiches elles-mêmes, en vignettes, comme dans le
                     panier (demande de la boutique). Rendues par le moteur du
-                    fichier d'impression ; chargées au fil du défilement. Une
-                    ligne sans aperçu possible (commande importée) disparaît
-                    au lieu de laisser une image cassée. */}
+                    fichier d'impression ; chargées au fil du défilement.
+
+                    Au survol d'une vignette, ou au clavier quand le lien a
+                    le focus, elle grandit sur place (`bo-vignette`, plus
+                    bas) : on reconnaît l'affiche sans ouvrir la commande.
+
+                    Une ligne sans aperçu possible (commande importée) montre
+                    « Aperçu indisponible » à sa place. Avant, l'image
+                    disparaissait : la commande semblait avoir une affiche de
+                    moins, et le « +N » ne tombait plus juste. */}
                 {(o.apercus?.length ?? 0) > 0 && (
                   <a
                     href={url(`/commandes/${o.id}`)}
-                    class="mb-1 flex items-center gap-1"
+                    class="bo-vignettes mb-1 flex items-center gap-1"
                     title="Ouvrir la commande"
+                    aria-label={`Ouvrir la commande ${o.number}`}
                   >
                     {o.apercus!.map((a) => (
                       <img
@@ -534,8 +568,8 @@ const filtreActif =
                         loading="lazy"
                         width="34"
                         height="48"
-                        class="h-12 w-[34px] rounded-sm border border-bo-border bg-bo-bg object-cover"
-                        onerror="this.remove()"
+                        class="bo-vignette h-12 w-[34px] rounded-sm border border-bo-border bg-bo-bg object-cover"
+                        onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'inline-flex h-12 w-[34px] items-center justify-center rounded-sm border border-dashed border-bo-border bg-bo-bg px-0.5 text-center text-[8px] leading-tight text-bo-muted',textContent:'Aperçu indisponible'}))"
                       />
                     ))}
                     {(o.lignes ?? 0) > o.apercus!.length && (
@@ -609,6 +643,7 @@ const filtreActif =
               <td class="px-4 py-2 align-top text-bo-muted">
                 {o.shippingLabel ?? "—"}
               </td>
+              {estProprietaire && (
               <td class="px-4 py-2 align-top">
                 {(o.tags ?? []).length ? (
                   <span class="flex flex-wrap gap-1">
@@ -625,6 +660,7 @@ const filtreActif =
                   <span class="text-bo-muted">—</span>
                 )}
               </td>
+              )}
               <td class="px-4 py-2 text-right whitespace-nowrap align-top">
                 {formatPrice(o.totalCents)}
                 {(o.rembourseCents ?? 0) > 0 && (
@@ -638,7 +674,7 @@ const filtreActif =
         })}
         {orders.length === 0 && !error && (
           <tr>
-            <td colspan="11" class="px-4 py-6 text-center text-bo-muted">
+            <td colspan={estProprietaire ? 11 : 10} class="px-4 py-6 text-center text-bo-muted">
               Aucune commande pour ces filtres.
             </td>
           </tr>
@@ -653,6 +689,101 @@ const filtreActif =
 <script>
   import "../lib/impression-bo.ts";
 </script>
+
+{/* La vignette en grand, au survol ou au clavier.
+
+    Une copie agrandie (environ 160 px de large) flotte à côté de la vignette,
+    au-dessus de tout. Agrandir la vignette elle-même ne marchait pas : le
+    tableau défile en largeur, et un conteneur qui défile ROGNE ce qui
+    dépasse — la grande image des dernières lignes sortait coupée, avec une
+    barre de défilement en prime. La copie, elle, est posée par rapport à la
+    fenêtre.
+
+    Au clavier, c'est le lien des vignettes qui reçoit le focus : sa première
+    affiche s'agrandit. `focus-visible` seulement, pour qu'un clic de souris
+    ne laisse pas une image ouverte derrière lui. Décorative (alt vide) : le
+    lien dit déjà ce qu'il ouvre. */}
+<script>
+  const flottant = document.createElement("img");
+  flottant.className = "bo-apercu-flottant";
+  flottant.alt = "";
+  flottant.setAttribute("aria-hidden", "true");
+  flottant.hidden = true;
+  document.body.append(flottant);
+
+  const LARGEUR = 160;
+  const MARGE = 8;
+
+  function montrer(vignette: HTMLImageElement): void {
+    if (!vignette.complete || !vignette.naturalWidth) return;
+    const rapport = vignette.naturalHeight / vignette.naturalWidth || Math.SQRT2;
+    const hauteur = Math.round(LARGEUR * rapport);
+    const r = vignette.getBoundingClientRect();
+    let x = r.right + MARGE;
+    if (x + LARGEUR > window.innerWidth - MARGE) x = r.left - MARGE - LARGEUR;
+    let y = r.top + r.height / 2 - hauteur / 2;
+    y = Math.max(MARGE, Math.min(y, window.innerHeight - hauteur - MARGE));
+    flottant.src = vignette.currentSrc || vignette.src;
+    flottant.style.left = `${Math.max(MARGE, x)}px`;
+    flottant.style.top = `${y}px`;
+    flottant.style.width = `${LARGEUR}px`;
+    flottant.style.height = `${hauteur}px`;
+    flottant.hidden = false;
+  }
+  const cacher = () => {
+    flottant.hidden = true;
+  };
+  const vignetteSous = (cible: EventTarget | null) =>
+    cible instanceof Element ? cible.closest<HTMLImageElement>("img.bo-vignette") : null;
+
+  document.addEventListener("mouseover", (e) => {
+    const v = vignetteSous(e.target);
+    if (v) montrer(v);
+  });
+  document.addEventListener("mouseout", (e) => {
+    if (vignetteSous(e.target)) cacher();
+  });
+  document.addEventListener("focusin", (e) => {
+    const lien = e.target instanceof Element ? e.target.closest(".bo-vignettes") : null;
+    if (!lien || !lien.matches(":focus-visible")) return;
+    const v = lien.querySelector<HTMLImageElement>("img.bo-vignette");
+    if (v) montrer(v);
+  });
+  document.addEventListener("focusout", (e) => {
+    if (e.target instanceof Element && e.target.closest(".bo-vignettes")) cacher();
+  });
+  // La copie est posée par rapport à la fenêtre : au moindre défilement,
+  // elle ne serait plus à côté de sa vignette.
+  window.addEventListener("scroll", cacher, { passive: true, capture: true });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") cacher();
+  });
+</script>
+
+<style is:global>
+  .bo-apercu-flottant {
+    position: fixed;
+    z-index: 60;
+    pointer-events: none;
+    object-fit: cover;
+    border-radius: 3px;
+    border: 1px solid var(--color-bo-border, #e5e5e5);
+    background: var(--color-bo-bg, #f6f6f6);
+    box-shadow: 0 8px 28px rgb(0 0 0 / 0.25);
+    animation: bo-apercu-entree 0.12s ease-out;
+  }
+  @keyframes bo-apercu-entree {
+    from {
+      opacity: 0;
+    }
+  }
+  /* Qui a demandé moins de mouvement voit la grande vignette d'un coup. */
+  @media (prefers-reduced-motion: reduce) {
+    .bo-apercu-flottant {
+      animation: none;
+    }
+  }
+</style>
 
 <script is:inline define:vars={{ exportBase: lienExport, bonsBase: url("/commandes/bons") }}>
   // Sélection multiple : la barre d'actions n'existe que quand elle sert.

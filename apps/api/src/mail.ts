@@ -403,10 +403,47 @@ export interface ConfirmationCommande {
   modeLivraison?: string | null;
   adresse?: string[] | null;
   /**
+   * Pour un retrait sur place : le lieu où venir, tel que la cliente l'a lu
+   * en commandant (lieux-retrait.ts). Il prend la place de l'adresse.
+   */
+  retrait?: LieuDuCourriel | null;
+  /**
    * La langue du destinataire (voir `langueDuDestinataire`). Absente : le
    * français. Vaut pour tous les courriers destinés aux clients ci-dessous.
    */
   langue?: Langue;
+}
+
+/** Un lieu de retrait, découpé pour un courriel (voir `lignesDuLieu`). */
+export interface LieuDuCourriel {
+  nom: string;
+  adresse: string[];
+  description: string[];
+}
+
+/**
+ * Le bloc « où retirer » d'un courriel : le nom en gras, l'adresse dessous,
+ * puis le texte du lieu (horaires, accès) dans son propre paragraphe —
+ * ligne à ligne, comme la boutique l'a écrit.
+ */
+function blocLieuHtml(langue: Langue, cle: CleCourriel, lieu: LieuDuCourriel): string {
+  return `<p style="margin:20px 0 0;font-size:14px">${texteHtml(langue, cle)}<br /><strong style="font-weight:500">${h(lieu.nom)}</strong>${lieu.adresse
+    .map((l) => `<br />${h(l)}`)
+    .join("")}</p>${
+    lieu.description.length
+      ? `<p style="margin:8px 0 0;color:#5b5b54;font-size:14px">${lieu.description.map(h).join("<br />")}</p>`
+      : ""
+  }`;
+}
+
+/** Le même bloc, en texte brut. */
+function blocLieuTexte(langue: Langue, cle: CleCourriel, lieu: LieuDuCourriel): string {
+  return [
+    tc(langue)(cle),
+    lieu.nom,
+    ...lieu.adresse,
+    ...(lieu.description.length ? ["", ...lieu.description] : []),
+  ].join("\n");
 }
 
 /** Confirmation envoyée au client dès que le paiement est encaissé. */
@@ -431,6 +468,7 @@ export function courrierConfirmation(d: ConfirmationCommande): Courrier {
           .map(h)
           .join("<br />")}</p>`
       : "";
+  const retrait = d.retrait ? blocLieuHtml(langue, "confirmation.retrait", d.retrait) : "";
 
   return {
     to: "",
@@ -441,10 +479,13 @@ export function courrierConfirmation(d: ConfirmationCommande): Courrier {
        ${tableauLignes(d.lignes, langue)}
        ${totaux}
        ${adresse}
+       ${retrait}
        <p style="margin:24px 0 0;color:#5b5b54;font-size:14px">${texteHtml(langue, "confirmation.question")}</p>`,
       langue,
     ),
-    text: `${t("confirmation.titre", { prenom: d.prenomClient })}\n\n${t("confirmation.texte", { numero: d.numero, total: prix(d.totalCents, langue) })}\n\nMemory Line`,
+    text: `${t("confirmation.titre", { prenom: d.prenomClient })}\n\n${t("confirmation.texte", { numero: d.numero, total: prix(d.totalCents, langue) })}${
+      d.retrait ? `\n\n${blocLieuTexte(langue, "confirmation.retrait", d.retrait)}` : ""
+    }\n\nMemory Line`,
   };
 }
 
@@ -1023,6 +1064,43 @@ export function courrierPreteAuStand(d: {
     text: `${t("commun.bonjour", { prenom: d.prenomClient })}\n\n${
       d.evenement ? t("stand.texteSur", { evenement: d.evenement }) : t("stand.texte")
     }\n${t("stand.texteCommande", { numero: d.numero })}\n\nMemory Line`,
+  };
+}
+
+/**
+ * Une commande « retrait sur place » est prête : elle attend la cliente au
+ * lieu qu'elle a choisi.
+ *
+ * Avant, la commande traitée recevait « Votre commande est en route » — de
+ * quoi guetter le facteur pour une affiche qui attendait au chalet. Ici, le
+ * lieu en toutes lettres (nom, adresse, texte de la boutique) et la liste
+ * des affiches. AUCUN PRIX : elle a déjà sa confirmation, ce courrier-ci ne
+ * dit que où et quoi.
+ */
+export function courrierPreteAuRetrait(d: {
+  prenomClient: string;
+  numero: string;
+  lieu: LieuDuCourriel;
+  lignes: LigneCourrier[];
+  langue?: Langue;
+}): Courrier {
+  const langue = d.langue ?? "fr";
+  const t = tc(langue);
+  return {
+    to: "",
+    subject: t("retrait.objet", { numero: d.numero }),
+    html: gabarit(
+      t("commun.bonjour", { prenom: h(d.prenomClient) }),
+      `<p style="margin:0">${texteHtml(langue, "retrait.intro")}</p>
+       ${blocLieuHtml(langue, "retrait.ou", d.lieu)}
+       ${tableauLignesSansPrix(d.lignes)}
+       <p style="margin:20px 0 0;color:#5b5b54;font-size:14px">${texteHtml(langue, "retrait.merci", { numero: h(d.numero) })}</p>`,
+      langue,
+    ),
+    text:
+      `${t("commun.bonjour", { prenom: d.prenomClient })}\n\n` +
+      `${t("retrait.texte", { numero: d.numero })}\n\n` +
+      `${blocLieuTexte(langue, "retrait.ou", d.lieu)}\n\nMemory Line`,
   };
 }
 

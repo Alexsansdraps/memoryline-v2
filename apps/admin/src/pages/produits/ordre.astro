@@ -1,33 +1,77 @@
 ---
 /**
- * L'ordre d'affichage des pages « Affiches personnalisables » et « Affiches
- * prêtes à imprimer ».
+ * L'ordre des affiches sur CHAQUE page de liste du site.
  *
- * Ces deux pages sont celles où les clientes arrivent, et elles se rangeaient
- * par nouveautés sans que la boutique puisse rien y changer : l'ordre manuel
- * n'existait que dans les collections. Cet écran reprend exactement la grille
- * des collections — mêmes deux vues, même geste, même bouton — pour qu'il n'y
- * ait qu'une seule façon de ranger des affiches dans tout le back-office.
+ * « Pouvoir trier l'ordre d'apparition moi-même… il faut que je puisse le
+ * faire par pages aussi, pas seulement sur la page d'accueil » (Margaux,
+ * carte Trello). L'ordre ne se réglait que pour les deux pages de genre, ici,
+ * et pour chaque collection, sur sa fiche, à la souris seulement. Il n'y a
+ * plus qu'UN endroit : on choisit la page — « Toutes les affiches », « Affiches
+ * personnalisables », « prêtes à imprimer », ou une collection —, on range,
+ * on enregistre. La fiche d'une collection, et celle d'une page du site qui
+ * montre une collection, mènent ici.
  *
- * Une affiche ajoutée plus tard arrive APRÈS l'ordre établi, par nouveauté :
- * elle ne bouscule pas le rangement, et il suffit de revenir ici pour lui
- * donner sa place.
+ * Le geste est celui de tout le back-office (lib/rangement.ts) : poignée ⠿ à
+ * glisser, flèches ↑ ↓, « En tête », « À la fin », au clavier comme à la
+ * souris. Rien ne part avant « Enregistrer l'ordre ».
+ *
+ * Une affiche ajoutée plus tard arrive APRÈS l'ordre établi : elle ne
+ * bouscule pas le rangement, et il suffit de revenir ici pour lui donner sa
+ * place. Seules les affiches en ligne se rangent : ce sont celles que les
+ * clientes voient.
  */
 import Admin from "../../layouts/Admin.astro";
 import { apiUrl, url } from "../../lib/url.ts";
-import { adminApi, formatPrice, type ProduitDeCollection } from "../../lib/api.ts";
+import {
+  adminApi,
+  formatPrice,
+  type PageARanger,
+  type ProduitDeCollection,
+} from "../../lib/api.ts";
 
 const api = adminApi(Astro.request);
 
-const GENRES = [
-  { code: "personnalisable", nom: "Affiches personnalisables" },
-  { code: "prete_a_imprimer", nom: "Affiches prêtes à imprimer" },
-] as const;
+/** Les trois pages qui ne sont pas des collections, si la liste ne vient pas. */
+const PAGES_DE_BASE: PageARanger[] = [
+  { cle: "tout", nom: "Toutes les affiches", lien: "/affiches", enLigne: 0, usages: [] },
+  {
+    cle: "personnalisable",
+    nom: "Affiches personnalisables",
+    lien: "/affiches?genre=personnalisable",
+    enLigne: 0,
+    usages: [],
+  },
+  {
+    cle: "prete_a_imprimer",
+    nom: "Affiches prêtes à imprimer",
+    lien: "/affiches?genre=prete_a_imprimer",
+    enLigne: 0,
+    usages: [],
+  },
+];
 
-const demande = Astro.url.searchParams.get("genre") ?? "";
-const genre =
-  GENRES.find((g) => g.code === demande)?.code ?? "personnalisable";
-const nomGenre = GENRES.find((g) => g.code === genre)!.nom;
+let pages: PageARanger[] = PAGES_DE_BASE;
+let erreurPages: string | null = null;
+try {
+  pages = (await api.pagesARanger()).pages;
+} catch (e) {
+  erreurPages = String(e).replace(/^Error:\s*/, "");
+}
+
+/**
+ * La page demandée. « ?genre= » reste compris : c'est l'adresse qu'avait
+ * l'écran tant qu'il ne rangeait que les deux genres, et des liens la citent.
+ */
+const demandee =
+  Astro.url.searchParams.get("page") ?? Astro.url.searchParams.get("genre") ?? "";
+const choisie =
+  pages.find((p) => p.cle === demandee) ??
+  // Une collection désactivée depuis n'est plus dans la liste, mais son
+  // adresse doit encore s'ouvrir : on la range quand même.
+  (/^collection:\d+$/.test(demandee)
+    ? { cle: demandee, nom: "Collection", lien: "", enLigne: 0, usages: [] }
+    : pages[1] ?? PAGES_DE_BASE[1]!);
+const idCollection = Number(/^collection:(\d+)$/.exec(choisie.cle)?.[1] ?? 0);
 
 let flash: string | null = null;
 let flashErreur = false;
@@ -40,8 +84,10 @@ if (Astro.request.method === "POST") {
       .map(Number)
       .filter((n) => Number.isInteger(n) && n > 0);
     if (!ordre.length) throw new Error("L'ordre envoyé était vide.");
-    const r = await api.enregistrerOrdreGenre(String(f.get("genre") ?? genre), ordre);
-    flash = `Ordre enregistré : ${r.ranges} affiche(s) rangée(s). La page « ${nomGenre} » les montre maintenant dans cet ordre.`;
+    const r = idCollection
+      ? await api.ordreCollection(idCollection, ordre)
+      : await api.enregistrerOrdreGenre(choisie.cle, ordre);
+    flash = `Ordre enregistré : ${r.ranges} affiche(s) rangée(s). La page « ${choisie.nom} » les montre maintenant dans cet ordre.`;
   } catch (e) {
     flash = String(e).replace(/^Error:\s*/, "");
     flashErreur = true;
@@ -49,12 +95,14 @@ if (Astro.request.method === "POST") {
 }
 
 let produits: ProduitDeCollection[] = [];
-let rangees = 0;
+let rangees: number | null = null;
+let horsLigne = 0;
 let erreur: string | null = null;
 try {
-  const r = await api.ordreGenre(genre);
+  const r = await api.ordrePage(choisie.cle);
   produits = r.produits;
   rangees = r.rangees;
+  horsLigne = r.horsLigne;
 } catch (e) {
   erreur = String(e).replace(/^Error:\s*/, "");
 }
@@ -72,7 +120,20 @@ function prix(p: ProduitDeCollection): string {
 }
 
 /** L'adresse publique de la page rangée, pour aller voir le résultat. */
-const lienPage = `${import.meta.env.PUBLIC_SITE_URL ?? ""}/affiches?genre=${genre}`;
+const lienPage = choisie.lien
+  ? `${import.meta.env.PUBLIC_SITE_URL ?? ""}${choisie.lien}`
+  : null;
+
+/** Ce qu'on lit sous le titre : d'où vient l'ordre affiché. */
+const origine =
+  rangees === null
+    ? "L'ordre affiché est celui de la collection."
+    : rangees === 0
+      ? "Rien n'est encore rangé : la page est pour l'instant triée par nouveautés."
+      : `${rangees} affiche(s) rangée(s) ; les autres suivent, par nouveauté.`;
+
+const boutonOutil =
+  "flex h-7 min-w-7 items-center justify-center rounded border border-bo-border px-1 text-xs text-bo-muted hover:bg-bo-bg disabled:cursor-default disabled:opacity-30";
 ---
 
 <Admin title="Ordre d'affichage">
@@ -91,41 +152,73 @@ const lienPage = `${import.meta.env.PUBLIC_SITE_URL ?? ""}/affiches?genre=${genr
       {flash}
     </p>
   )}
+  {erreurPages && (
+    <p class="mb-4 text-sm text-red-600">
+      La liste des pages n'a pas pu être lue : {erreurPages}
+    </p>
+  )}
   {erreur && <p class="mb-4 text-sm text-red-600">{erreur}</p>}
 
-  {/* Un onglet par page du site. Changer d'onglet recharge l'écran : un
-      ordre en cours de réglage sur l'autre genre n'a pas à se mélanger. */}
-  <div class="mb-4 flex flex-wrap gap-2">
-    {GENRES.map((g) => (
-      <a
-        href={`${url("/produits/ordre")}?genre=${g.code}`}
-        aria-current={g.code === genre ? "page" : undefined}
-        class={`rounded border px-3 py-1.5 text-sm ${
-          g.code === genre
-            ? "border-bo-accent bg-bo-bg font-medium"
-            : "border-bo-border bg-bo-surface hover:bg-bo-bg"
-        }`}
+  {/* Choisir la page recharge l'écran : un ordre en cours de réglage sur une
+      autre page n'a pas à s'y mélanger (et la page prévient s'il n'est pas
+      enregistré). Le bouton sert sans JavaScript. */}
+  <form method="GET" class="mb-4 flex flex-wrap items-end gap-3" id="choix-page">
+    <label class="text-sm">
+      <span class="mb-1 block text-xs text-bo-muted">Quelle page ranger ?</span>
+      <select
+        name="page"
+        class="max-w-full rounded border border-bo-border px-3 py-2 text-sm"
+        data-choix-page
       >
-        {g.nom}
-      </a>
-    ))}
-  </div>
+        <optgroup label="Pages du catalogue">
+          {pages
+            .filter((p) => !p.cle.startsWith("collection:"))
+            .map((p) => (
+              <option value={p.cle} selected={p.cle === choisie.cle}>
+                {p.nom} ({p.enLigne})
+              </option>
+            ))}
+        </optgroup>
+        <optgroup label="Collections">
+          {pages
+            .filter((p) => p.cle.startsWith("collection:"))
+            .map((p) => (
+              <option value={p.cle} selected={p.cle === choisie.cle}>
+                {p.nom} ({p.enLigne}){p.usages.length ? ` — ${p.usages.join(", ")}` : ""}
+              </option>
+            ))}
+        </optgroup>
+      </select>
+    </label>
+    <button class="rounded border border-bo-border px-3 py-2 text-sm hover:bg-bo-bg">
+      Afficher
+    </button>
+  </form>
 
   <section class="rounded-lg border border-bo-border bg-bo-surface">
     <header class="flex flex-wrap items-center justify-between gap-3 border-b border-bo-border px-4 py-3">
-      <div>
+      <div class="min-w-0">
         <h2 class="font-semibold">
-          {produits.length} affiche{produits.length > 1 ? "s" : ""} en ligne
+          {choisie.nom} : {produits.length} affiche{produits.length > 1 ? "s" : ""} en ligne
         </h2>
         <p class="text-xs text-bo-muted">
-          Attrapez une affiche pour changer sa place, puis enregistrez. La page
-          « {nomGenre} » suivra cet ordre.
-          {rangees === 0
-            ? " Rien n'est encore rangé : la page est pour l'instant triée par nouveautés."
-            : ` ${rangees} affiche(s) rangée(s) ; les autres suivent, par nouveauté.`}
+          Glissez une affiche par sa poignée ⠿, ou utilisez ses flèches (au
+          clavier aussi), puis enregistrez. {origine}
         </p>
+        {choisie.usages.length > 0 && (
+          <p class="mt-1 text-xs text-amber-800">
+            Cet ordre vaut aussi pour : {choisie.usages.join(", ")}.
+          </p>
+        )}
+        {horsLigne > 0 && (
+          <p class="mt-1 text-xs text-bo-muted">
+            {horsLigne} brouillon{horsLigne > 1 ? "s" : ""} ou archive{horsLigne > 1 ? "s" : ""}
+            {" "}ne {horsLigne > 1 ? "sont" : "est"} pas montré{horsLigne > 1 ? "s" : ""} ici :
+            remis en ligne, {horsLigne > 1 ? "ils arrivent" : "il arrive"} après les affiches rangées.
+          </p>
+        )}
       </div>
-      <div class="flex items-center gap-2 text-sm">
+      <div class="flex flex-wrap items-center gap-2 text-sm">
         <div class="inline-flex overflow-hidden rounded border border-bo-border">
           <button type="button" data-vue="liste" class="px-3 py-1.5 text-bo-muted hover:bg-bo-bg">
             Liste
@@ -138,41 +231,45 @@ const lienPage = `${import.meta.env.PUBLIC_SITE_URL ?? ""}/affiches?genre=${genr
             Icônes
           </button>
         </div>
-        <a
-          href={lienPage}
-          target="_blank"
-          rel="noopener"
-          class="rounded border border-bo-border px-3 py-1.5 hover:bg-bo-bg"
-        >
-          Voir la page ↗
-        </a>
+        {lienPage && (
+          <a
+            href={lienPage}
+            target="_blank"
+            rel="noopener"
+            class="rounded border border-bo-border px-3 py-1.5 hover:bg-bo-bg"
+          >
+            Voir cette page sur le site ↗
+          </a>
+        )}
         <form method="POST" id="form-ordre">
-          <input type="hidden" name="genre" value={genre} />
-          <input type="hidden" name="ordre" id="champ-ordre" />
+          <input type="hidden" name="ordre" data-rangement-champ />
           <button
-            id="bouton-ordre"
+            data-rangement-bouton
             disabled
             class="rounded bg-bo-nav px-3 py-1.5 text-white disabled:cursor-not-allowed disabled:opacity-40"
           >
             Enregistrer l'ordre
           </button>
+          <span class="sr-only" aria-live="polite" data-rangement-annonce></span>
         </form>
       </div>
     </header>
 
-    <ul id="grille" class="p-4" data-vue="liste">
+    <ul id="grille" class="p-4" data-vue="liste" data-rangement="form-ordre">
       {produits.map((p, i) => (
-        <li class="ml-carte rounded border border-bo-border bg-bo-surface" data-produit={p.id}>
+        <li
+          class="ml-carte rounded border border-bo-border bg-bo-surface"
+          data-rang-id={p.id}
+          data-rang-nom={p.name}
+        >
           <span
             class="ml-poignee cursor-grab text-bo-muted select-none"
             title="Glissez pour changer la place"
-            aria-label="Glissez pour changer la place"
-            role="button"
-            tabindex="0"
+            aria-hidden="true"
           >
             ⠿
           </span>
-          <span class="ml-rang text-xs text-bo-muted tabular-nums">{i + 1}</span>
+          <span data-rang class="ml-rang text-xs text-bo-muted tabular-nums">{i + 1}</span>
           <span class="ml-vignette">
             {p.image ? (
               <img src={imageProduit(p.image)} alt="" loading="lazy" class="h-full w-full rounded object-cover" />
@@ -186,17 +283,31 @@ const lienPage = `${import.meta.env.PUBLIC_SITE_URL ?? ""}/affiches?genre=${genr
             </a>
             <span class="ml-details text-xs text-bo-muted">{prix(p)}</span>
           </span>
+          <span class="ml-outils flex items-center gap-1">
+            <button type="button" data-en-tete class={boutonOutil} title={`Mettre « ${p.name} » en tête`} aria-label={`Mettre ${p.name} en tête`}>
+              ⤒
+            </button>
+            <button type="button" data-monter class={boutonOutil} title={`Monter « ${p.name} »`} aria-label={`Monter ${p.name}`}>
+              ↑
+            </button>
+            <button type="button" data-descendre class={boutonOutil} title={`Descendre « ${p.name} »`} aria-label={`Descendre ${p.name}`}>
+              ↓
+            </button>
+            <button type="button" data-a-la-fin class={boutonOutil} title={`Mettre « ${p.name} » à la fin`} aria-label={`Mettre ${p.name} à la fin`}>
+              ⤓
+            </button>
+          </span>
         </li>
       ))}
     </ul>
     {produits.length === 0 && !erreur && (
-      <p class="px-4 pb-6 text-sm text-bo-muted">Aucune affiche en ligne dans ce genre.</p>
+      <p class="px-4 pb-6 text-sm text-bo-muted">Aucune affiche en ligne sur cette page.</p>
     )}
   </section>
 
   <style is:global>
-    /* Les mêmes deux vues que la grille des collections : une seule façon de
-       ranger des affiches dans tout le back-office. */
+    /* Les mêmes deux vues que la fiche d'une collection : une seule façon de
+       regarder des affiches dans tout le back-office. */
     #grille[data-vue="liste"] { display: flex; flex-direction: column; gap: 0.5rem; }
     #grille[data-vue="liste"] .ml-carte { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; }
     #grille[data-vue="liste"] .ml-vignette { display: block; width: 2.5rem; height: 3.4rem; flex: none; }
@@ -212,13 +323,23 @@ const lienPage = `${import.meta.env.PUBLIC_SITE_URL ?? ""}/affiches?genre=${genr
     #grille .ml-carte.ml-tenue { opacity: 0.55; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); }
   </style>
 
+  <script>
+    import "../../lib/rangement.ts";
+  </script>
+
   <script is:inline>
     (function () {
       var grille = document.getElementById("grille");
-      if (!grille) return;
-      var champ = document.getElementById("champ-ordre");
-      var bouton = document.getElementById("bouton-ordre");
 
+      // Changer de page dans la liste suffit : le bouton « Afficher » reste
+      // pour qui navigue sans souris, et sans JavaScript.
+      var choix = document.querySelector("[data-choix-page]");
+      if (choix)
+        choix.addEventListener("change", function () {
+          document.getElementById("choix-page").submit();
+        });
+
+      if (!grille) return;
       // La même préférence de vue que les collections : c'est la même grille.
       var CLE_VUE = "ml_vue_collection";
       function poserVue(vue) {
@@ -228,6 +349,7 @@ const lienPage = `${import.meta.env.PUBLIC_SITE_URL ?? ""}/affiches?genre=${genr
           b.classList.toggle("bg-bo-nav", actif);
           b.classList.toggle("text-white", actif);
           b.classList.toggle("text-bo-muted", !actif);
+          b.setAttribute("aria-pressed", actif ? "true" : "false");
         });
         try { localStorage.setItem(CLE_VUE, vue); } catch (e) {}
       }
@@ -237,64 +359,6 @@ const lienPage = `${import.meta.env.PUBLIC_SITE_URL ?? ""}/affiches?genre=${genr
       var retenue = "liste";
       try { retenue = localStorage.getItem(CLE_VUE) || "liste"; } catch (e) {}
       poserVue(retenue === "icones" ? "icones" : "liste");
-
-      function cartes() {
-        return Array.prototype.slice.call(grille.querySelectorAll("[data-produit]"));
-      }
-      var ordreDepart = cartes().map(function (c) { return c.dataset.produit; }).join(",");
-
-      // Le numéro de chaque carte suit sa place : on voit tout de suite qu'une
-      // affiche est passée troisième.
-      function renumeroter() {
-        cartes().forEach(function (c, i) {
-          var r = c.querySelector(".ml-rang");
-          if (r) r.textContent = String(i + 1);
-        });
-      }
-
-      function verifierOrdre() {
-        var actuel = cartes().map(function (c) { return c.dataset.produit; }).join(",");
-        champ.value = actuel;
-        bouton.disabled = actuel === ordreDepart;
-        renumeroter();
-      }
-
-      // Le geste s'écoute sur la FENÊTRE : la carte change de place pendant le
-      // glissement, et une carte déplacée perdrait le suivi du pointeur.
-      var tenue = null;
-      grille.addEventListener("pointerdown", function (e) {
-        var poignee = e.target.closest(".ml-poignee");
-        if (!poignee) return;
-        e.preventDefault();
-        tenue = poignee.closest("[data-produit]");
-        if (!tenue) return;
-        tenue.classList.add("ml-tenue");
-        document.body.style.userSelect = "none";
-
-        function bouger(ev) {
-          if (!tenue) return;
-          var sous = document.elementFromPoint(ev.clientX, ev.clientY);
-          var cible = sous && sous.closest ? sous.closest("[data-produit]") : null;
-          if (!cible || cible === tenue || cible.parentElement !== grille) return;
-          var apres = cible.compareDocumentPosition(tenue) & Node.DOCUMENT_POSITION_PRECEDING;
-          grille.insertBefore(tenue, apres ? cible.nextSibling : cible);
-          verifierOrdre();
-        }
-        function lacher() {
-          if (tenue) tenue.classList.remove("ml-tenue");
-          tenue = null;
-          document.body.style.userSelect = "";
-          window.removeEventListener("pointermove", bouger);
-          window.removeEventListener("pointerup", lacher);
-          window.removeEventListener("pointercancel", lacher);
-          verifierOrdre();
-        }
-        window.addEventListener("pointermove", bouger);
-        window.addEventListener("pointerup", lacher);
-        window.addEventListener("pointercancel", lacher);
-      });
-
-      verifierOrdre();
     })();
   </script>
 </Admin>

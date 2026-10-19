@@ -17,6 +17,12 @@ import {
 
 export const prerender = false;
 
+/**
+ * Un vendeur imprime aussi les bons de ses ventes de stand. La note interne
+ * est un mot de la boutique pour elle-même : elle ne sort pas sur le sien.
+ */
+const estProprietaire = Astro.locals.user?.role === "owner";
+
 const api = adminApi(Astro.request);
 const ids = (Astro.url.searchParams.get("ids") ?? "")
   .split(",")
@@ -26,11 +32,28 @@ const ids = (Astro.url.searchParams.get("ids") ?? "")
 
 const bons: OrderDetail[] = [];
 let erreur: string | null = null;
-try {
-  for (const id of ids) bons.push(await api.orderDetail(id));
-} catch (e) {
-  erreur = String(e);
+/**
+ * Les commandes qu'on n'a pas pu lire. Un vendeur ne lit que les ventes de
+ * ses stands : une commande d'ailleurs glissée dans l'adresse revient
+ * « introuvable ». On imprime les autres et on dit combien manquent, plutôt
+ * que de refuser tout le lot pour une seule.
+ */
+let illisibles = 0;
+for (const id of ids) {
+  try {
+    bons.push(await api.orderDetail(id));
+  } catch (e) {
+    illisibles += 1;
+    erreur ??= String(e);
+  }
 }
+// Rien de lu du tout : l'erreur elle-même est l'information. Sinon, un mot
+// sur ce qui manque suffit.
+const avertissement =
+  bons.length > 0 && illisibles > 0
+    ? `${illisibles} commande${illisibles > 1 ? "s" : ""} n'${illisibles > 1 ? "ont" : "a"} pas pu être lue${illisibles > 1 ? "s" : ""} et ne figure${illisibles > 1 ? "nt" : ""} pas ici.`
+    : null;
+if (bons.length > 0) erreur = null;
 
 function dateCourte(iso: string | null | undefined): string {
   if (!iso) return "";
@@ -175,12 +198,13 @@ function dateCourte(iso: string | null | undefined): string {
     </div>
 
     {erreur && <p class="bon">Erreur : {erreur}</p>}
+    {avertissement && <p class="bon barre">{avertissement}</p>}
     {!erreur && bons.length === 0 && (
       <p class="bon">Aucune commande sélectionnée.</p>
     )}
 
     {
-      bons.map(({ order, items, customer }) => (
+      bons.map(({ order, items, customer, lieuRetrait }) => (
         <article class="bon">
           <div class="colonnes">
             <div>
@@ -195,9 +219,24 @@ function dateCourte(iso: string | null | undefined): string {
 
           <div class="colonnes" style="margin-top:24px">
             <div>
-              <h2>Livrer à</h2>
+              {/* Un retrait sur place : à qui remettre, et où. */}
+              <h2>{lieuRetrait ? "À remettre à" : "Livrer à"}</h2>
               <div>{order.shippingName ?? customer?.name ?? "—"}</div>
-              {order.relayPointLabel && <div>{order.relayPointLabel}</div>}
+              {lieuRetrait ? (
+                <div style="margin-top:6px">
+                  <div>Retrait : <strong>{lieuRetrait.nom}</strong></div>
+                  {lieuRetrait.adresse && (
+                    <div style="white-space:pre-line">{lieuRetrait.adresse}</div>
+                  )}
+                  {lieuRetrait.description && (
+                    <div class="discret" style="white-space:pre-line">
+                      {lieuRetrait.description}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                order.relayPointLabel && <div>{order.relayPointLabel}</div>
+              )}
               {order.shippingLine1 && <div>{order.shippingLine1}</div>}
               {order.shippingLine2 && <div>{order.shippingLine2}</div>}
               <div>
@@ -262,7 +301,7 @@ function dateCourte(iso: string | null | undefined): string {
             </div>
           </div>
 
-          {order.internalNote && (
+          {estProprietaire && order.internalNote && (
             <div class="note">
               <strong>Note interne :</strong> {order.internalNote}
             </div>

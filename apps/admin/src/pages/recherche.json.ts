@@ -14,6 +14,7 @@
  */
 import type { APIRoute } from "astro";
 import { lireGroupes, lireLimite, rechercher } from "../lib/recherche-bo.ts";
+import { modeEssai } from "../lib/mode-essai.ts";
 
 // La réponse dépend de la session et de ce qui vient d'être tapé : aucun
 // cache, ni du navigateur ni d'un proxy, ne doit la garder.
@@ -32,6 +33,9 @@ export const GET: APIRoute = async ({ request, locals, url }) => {
   const reponse = await rechercher(request, url.searchParams.get("q") ?? "", {
     groupes: lireGroupes(url.searchParams.get("groupes")),
     limite: lireLimite(url.searchParams.get("limite")),
+    // Hors essai, l'aide des commandes test ne s'affiche pas : la recherche
+    // n'y mène pas non plus.
+    essai: await modeEssai(request),
   });
   return new Response(JSON.stringify(reponse), { status: 200, headers: ENTETES });
 };

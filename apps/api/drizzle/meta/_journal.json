@@ -470,6 +470,13 @@
       "when": 1791272605147,
       "tag": "0066_couleur_principale_par_defaut",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1791467762226,
+      "tag": "0067_cartes_trello_8_octobre",
+      "breakpoints": true
     }
   ]
 }

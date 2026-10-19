@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import {
+  createMemo,
   createSignal,
   createUniqueId,
   onCleanup,
@@ -60,35 +61,50 @@ export function IndiceDefilement(props: {
         ...props.style,
       }}
     >
-      <span
-        class="ml-cfg-indice-fleche"
-        style={{
-          display: "inline-flex",
-          "align-items": "center",
-          "justify-content": "center",
-          width: "26px",
-          height: "26px",
-          "border-radius": "9999px",
-          background: "#ffffff",
-          border: "1px solid #d1d5db",
-          "box-shadow": "0 1px 4px rgba(17, 24, 39, 0.18)",
-          color: "#374151",
-        }}
-      >
-        <svg
-          viewBox="0 0 16 16"
-          width="14"
-          height="14"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <polyline points="3.5 6 8 10.5 12.5 6" />
-        </svg>
-      </span>
+      <RondFleche />
     </div>
+  );
+}
+
+/**
+ * Le rond blanc et sa flèche ⌄ : le signe « la suite est plus bas » de tout
+ * le module — seul au-dessus de « Retour / Continuer » entre les étapes,
+ * suivi de mots dans l'éditeur de personnage ({@link InviteADescendre}). Sa
+ * classe porte le petit mouvement vers le bas (`.ml-cfg-indice-fleche`,
+ * feuille de l'hôte).
+ */
+function RondFleche() {
+  return (
+    <span
+      class="ml-cfg-indice-fleche"
+      aria-hidden="true"
+      style={{
+        flex: "0 0 auto",
+        display: "inline-flex",
+        "align-items": "center",
+        "justify-content": "center",
+        width: "26px",
+        height: "26px",
+        "border-radius": "9999px",
+        background: "#ffffff",
+        border: "1px solid #d1d5db",
+        "box-shadow": "0 1px 4px rgba(17, 24, 39, 0.18)",
+        color: "#374151",
+      }}
+    >
+      <svg
+        viewBox="0 0 16 16"
+        width="14"
+        height="14"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <polyline points="3.5 6 8 10.5 12.5 6" />
+      </svg>
+    </span>
   );
 }
 
@@ -119,6 +135,10 @@ function transparente(hex: string): string {
  * `indice: false` là où le bord bas tombe déjà au milieu d'un item : le fondu
  * effacerait la demi-vignette qui sert d'indice.
  *
+ * `invite` : ce qui flotte au même endroit à sa place, dans l'éditeur de
+ * personnage ({@link InviteADescendre}). La barre est collée en bas : c'est
+ * le seul endroit dont on soit sûr qu'il est à l'écran.
+ *
  * `bottom: 0` est un minimum : un conteneur qui défile avec une marge
  * intérieure arrête la barre au bord de cette marge, et c'est l'hôte qui sait
  * de combien la repousser (`.ml-cfg-pied`, cf. global.css du site).
@@ -127,6 +147,8 @@ export function BarreActions(props: {
   children: JSX.Element;
   /** Fondu + flèche au-dessus de la barre. Vrai par défaut. */
   indice?: boolean;
+  /** Posé juste au-dessus de la barre, avant ses boutons dans l'ordre du clavier. */
+  invite?: JSX.Element;
 }) {
   const [resteDessous, setResteDessous] = createSignal(false);
   let repere: HTMLDivElement | undefined;
@@ -175,6 +197,7 @@ export function BarreActions(props: {
             style={{ bottom: "calc(100% + 1px)" }}
           />
         </Show>
+        {props.invite}
         {props.children}
       </div>
       <div
@@ -1000,4 +1023,269 @@ export function brancherBarreDeLaFenetre(racine: HTMLElement): void {
       piste.remove();
     });
   });
+}
+
+/* -------------------------------------------------------------------------- */
+/*  L'invitation à descendre jusqu'aux réglages                                */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * « On ne voit pas assez bien qu'on peut descendre pour personnaliser son
+ * personnage » (retour cliente, carte toujours ouverte).
+ *
+ * Ce qui a été essayé avant, et pourquoi on n'y revient pas :
+ *   - le fondu et la flèche des autres étapes : ils recouvraient la
+ *     demi-rangée de la grille, et ne disaient pas CE QU'il y avait dessous ;
+ *   - la demi-vignette au ras du bord : elle dit qu'il reste des
+ *     personnages, pas qu'il y a des réglages ;
+ *   - une bulle « Personnaliser ce personnage ↓ », en encre noire : des mots
+ *     vagues, et elle s'effaçait dès que le TITRE des réglages se lisait. Sur
+ *     une tablette ou un ordinateur, où ce titre tient à l'écran dès
+ *     l'arrivée, on ne la voyait donc jamais, alors que les cheveux et les
+ *     accessoires restaient cachés dessous ;
+ *   - un sommaire « Personnaliser : Peau · Vêtements… » à côté de l'aperçu :
+ *     il disait tout, mais il prenait de la place, et on ne comprenait pas ce
+ *     que c'était (« qu'est-ce que c'est que ça ? supprimer ça »).
+ *
+ * Reste le signe des autres étapes — le rond ⌄, juste au-dessus de la barre
+ * du bas —, suivi de ce qui attend plus bas, en mots de tous les jours :
+ * « Plus bas : couleurs, vêtements, cheveux et accessoires ».
+ *   - Seulement les parties qu'on ne voit pas encore : sur un ordinateur, où
+ *     la couleur de peau se voit déjà, il ne parle que du reste.
+ *   - Il ne prend aucune place : il flotte, sans fondu, et le doigt passe à
+ *     côté de lui — seule la pastille capte le toucher.
+ *   - Il s'en va dès qu'on a fait défiler la fenêtre, et pour de bon : on a
+ *     trouvé. Quand tout tient à l'écran, il ne paraît pas.
+ *   - Un toucher descend jusqu'à la première partie cachée, le focus avec.
+ */
+
+/**
+ * Ce qu'il faut avoir fait défiler la fenêtre pour que l'invitation s'en
+ * aille : un vrai geste — un cran de molette, une flèche du clavier, un
+ * glissement du doigt —, pas un pixel de position fractionnaire.
+ */
+const SEUIL_DEFILE = 32;
+
+/** Écart laissé au-dessus du titre visé, une fois descendu. */
+const MARGE_ARRIVEE = 12;
+
+/**
+ * Fait défiler jusqu'à un titre et y pose le focus.
+ *
+ * Le titre s'arrête SOUS ce qui colle en haut de la zone qui défile
+ * (`masqueHaut` : l'aperçu du personnage, sur téléphone), pas derrière : on
+ * doit le lire en arrivant. Le focus suit, pour que le clavier et le lecteur
+ * d'écran repartent de là, et non de l'invitation, qui s'efface.
+ *
+ * Défilement doux, sauf si l'appareil demande moins d'animations : alors on
+ * saute d'un coup.
+ */
+export function defilerJusqua(cible: HTMLElement, masqueHaut = 0): void {
+  const comportement: ScrollBehavior = moinsDAnimations() ? "auto" : "smooth";
+  const haut = cible.getBoundingClientRect().top;
+  const trouvee = ancetreDefilant(cible);
+  // Une page qui pose `overflow` sur <html> ou <body> défile quand même par
+  // la fenêtre : leur cadre, lui, part avec le défilement, et le calcul
+  // ci-dessous compterait celui-ci deux fois.
+  const defilante =
+    trouvee === document.documentElement || trouvee === document.body
+      ? null
+      : trouvee;
+  if (defilante) {
+    // Ce qui colle en haut s'arrête au bord INTÉRIEUR de la marge de la
+    // zone qui défile : le titre doit s'arrêter sous la marge ET sous lui.
+    const cadre = defilante.getBoundingClientRect();
+    const marge = Number.parseFloat(getComputedStyle(defilante).paddingTop) || 0;
+    defilante.scrollTo({
+      top: defilante.scrollTop + haut - (cadre.top + marge + masqueHaut + MARGE_ARRIVEE),
+      behavior: comportement,
+    });
+  } else {
+    window.scrollTo({
+      top: window.scrollY + haut - (masqueHaut + MARGE_ARRIVEE),
+      behavior: comportement,
+    });
+  }
+  // Sans faire défiler une seconde fois : le défilement doux est en route.
+  cible.focus({ preventScroll: true });
+}
+
+/**
+ * Les parties d'un écran (`data-partie`) dont un morceau au moins reste sous
+ * le bord bas — le haut de la barre d'actions, collée en bas —, dans l'ordre
+ * de l'écran et sans doublon : le haut et le pantalon ne font qu'une partie,
+ * « vêtements ». Quelques pixels qui dépassent ne comptent pas : ce sont des
+ * marges, pas des choix cachés (RESTE_MINI).
+ */
+function partiesSousLeBord(racine: HTMLElement): string[] {
+  const conteneur = conteneurDefilant(racine);
+  const barre = racine.querySelector<HTMLElement>(".ml-cfg-pied");
+  const bord = barre
+    ? barre.getBoundingClientRect().top
+    : conteneur
+      ? conteneur.getBoundingClientRect().bottom
+      : window.innerHeight;
+  const parties: string[] = [];
+  for (const el of Array.from(racine.querySelectorAll<HTMLElement>("[data-partie]"))) {
+    const cle = el.dataset.partie;
+    const r = el.getBoundingClientRect();
+    // Une partie vide (un personnage sans couleur à régler) n'a pas de hauteur.
+    if (!cle || r.height < 1 || parties.includes(cle)) continue;
+    if (r.bottom - bord > RESTE_MINI) parties.push(cle);
+  }
+  return parties;
+}
+
+/**
+ * Ce que l'invitation doit savoir : les parties encore sous le bord, et si
+ * l'on a déjà fait défiler la fenêtre. À brancher en `ref` sur la racine de
+ * l'écran, qui contient ses parties ET sa barre d'actions.
+ *
+ * On remesure quand la racine change de taille (un autre personnage, ses
+ * vignettes qui arrivent), quand la fenêtre en change (l'écran qui tourne
+ * déplace la barre, donc le bord) et quand les polices finissent de charger.
+ * Une fois le geste fait, on cesse tout : l'invitation ne reviendra pas.
+ */
+export function createPartiesDessous(): {
+  brancher: (racine: HTMLElement) => void;
+  /** Les parties encore sous le bord, dans l'ordre de l'écran. */
+  dessous: () => string[];
+  /** On a fait défiler la fenêtre depuis l'arrivée : l'invitation a servi. */
+  aDefile: () => boolean;
+} {
+  const [dessous, setDessous] = createSignal<string[]>([], {
+    // Une mesure identique ne réécrit rien : on remesure souvent.
+    equals: (a, b) => a.length === b.length && a.every((x, i) => x === b[i]),
+  });
+  const [aDefile, setADefile] = createSignal(false);
+
+  const brancher = (racine: HTMLElement) => {
+    // Mesurer et écouter ne se peut qu'une fois la racine dans la page :
+    // avant, elle n'a ni taille ni ancêtre qui défile.
+    onMount(() => {
+      const conteneur = conteneurDefilant(racine);
+      const position = () => (conteneur ? conteneur.scrollTop : window.scrollY);
+      // La fenêtre peut s'ouvrir déjà descendue : c'est le geste qui compte,
+      // pas la position.
+      const depart = position();
+      let image = 0;
+      const mesurer = () => {
+        cancelAnimationFrame(image);
+        // Une mesure par image au plus : les observateurs en envoient davantage.
+        image = requestAnimationFrame(() => setDessous(partiesSousLeBord(racine)));
+      };
+      const taille =
+        typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(mesurer);
+      const arreter = () => {
+        cancelAnimationFrame(image);
+        taille?.disconnect();
+        (conteneur ?? window).removeEventListener("scroll", surDefilement);
+        window.removeEventListener("resize", mesurer);
+      };
+      // Vers le bas seulement : remonter n'apprend rien de ce qui est dessous.
+      function surDefilement() {
+        if (position() - depart > SEUIL_DEFILE) {
+          setADefile(true);
+          arreter();
+        } else mesurer();
+      }
+      (conteneur ?? window).addEventListener("scroll", surDefilement, { passive: true });
+      taille?.observe(racine);
+      window.addEventListener("resize", mesurer);
+      void document.fonts?.ready.then(mesurer);
+      mesurer();
+      onCleanup(arreter);
+    });
+  };
+
+  return { brancher, dessous, aDefile };
+}
+
+/**
+ * L'invitation elle-même : le rond ⌄ des autres étapes et, à côté, ce qui
+ * attend plus bas.
+ *
+ * Une pastille blanche comme le rond, au texte presque noir : on doit la lire
+ * sans lunettes, sur la tablette posée sur le comptoir du stand.
+ * Un vrai bouton : le clavier l'atteint (juste avant « Retour »), le lecteur
+ * d'écran le lit par ses mots. Masquée, elle quitte l'ordre du clavier et ce
+ * que lit le lecteur d'écran (`visibility`).
+ *
+ * Le fondu et le petit mouvement du rond sont ceux de l'indice des autres
+ * étapes, confiés à la feuille de l'hôte (`.ml-cfg-indice`, `.ml-cfg-invite`)
+ * qui les coupe quand l'appareil demande moins d'animations : sans elle,
+ * l'invitation apparaît et disparaît d'un coup.
+ */
+export function InviteADescendre(props: {
+  /** « Plus bas : couleurs et vêtements », traduit ; vide = rien à annoncer. */
+  libelle: string;
+  visible: boolean;
+  onClick: () => void;
+}) {
+  // Le dernier texte reste en place pendant que la pastille s'efface : sans
+  // lui, elle se viderait sous les yeux avant de disparaître.
+  const texte = createMemo<string>((dernier) => props.libelle || dernier, "");
+  const visible = () => props.visible && props.libelle !== "";
+  return (
+    <div
+      class="ml-cfg-indice ml-cfg-invite"
+      classList={{ "est-visible": visible() }}
+      style={{
+        position: "absolute",
+        left: "0",
+        right: "0",
+        // Assez haut pour que l'ombre ne touche pas le trait de la barre.
+        bottom: "calc(100% + 8px)",
+        display: "flex",
+        // Calée à gauche, là où l'œil commence à lire, et jamais dans la
+        // colonne de droite : c'est celle des boutons ˄ ˅ des listes qui
+        // défilent (44 px, et 6 px d'écart). Sur téléphone, la grille des
+        // personnages a son ˅ juste là, au ras de la barre, et la pastille le
+        // recouvrait.
+        "justify-content": "flex-start",
+        "padding-right": "50px",
+        "box-sizing": "border-box",
+        // Le conteneur, pleine largeur, laisse passer le doigt à côté de la
+        // pastille : la demi-vignette dessous reste cliquable.
+        "pointer-events": "none",
+        opacity: visible() ? "1" : "0",
+        visibility: visible() ? "visible" : "hidden",
+      }}
+    >
+      <button
+        type="button"
+        class="ml-cfg-invite-bouton"
+        onClick={() => props.onClick()}
+        style={{
+          "pointer-events": visible() ? "auto" : "none",
+          display: "inline-flex",
+          "align-items": "center",
+          gap: "7px",
+          // Sur un téléphone, la phrase passe à la ligne plutôt que de
+          // déborder du panneau : deux lignes à 375 px, dans les cinq langues.
+          "max-width": "100%",
+          "box-sizing": "border-box",
+          "min-height": "38px",
+          padding: "5px 12px 5px 5px",
+          border: "1px solid #d1d5db",
+          "border-radius": "20px",
+          background: "#ffffff",
+          color: "#111827",
+          "box-shadow": "0 2px 10px rgba(17, 24, 39, 0.18)",
+          "font-family": "inherit",
+          // La taille des titres du module, en demi-gras et presque noir : elle
+          // se lit de loin, sans peser plus que les titres eux-mêmes.
+          "font-size": "14px",
+          "font-weight": "600",
+          "line-height": "1.25",
+          "text-align": "left",
+          cursor: "pointer",
+          "-webkit-tap-highlight-color": "transparent",
+        }}
+      >
+        <RondFleche />
+        <span>{texte()}</span>
+      </button>
+    </div>
+  );
 }

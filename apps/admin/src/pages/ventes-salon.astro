@@ -8,6 +8,16 @@ import { url } from "../lib/url.ts";
 const api = adminApi(Astro.request);
 
 /**
+ * Deux écrans en un. La propriétaire ouvre, ferme, renomme et archive les
+ * stands, et voit leurs codes. Un vendeur ne voit que les stands qui lui
+ * sont confiés (BO › Comptes), leurs ventes et leurs fichiers d'impression :
+ * rien à régler, et surtout aucun code, qui permet d'enregistrer des ventes.
+ * L'API borne de toute façon ce qu'elle lui renvoie (vendeurs.ts) ; ici, on
+ * lui épargne seulement des boutons qui lui répondraient « interdit ».
+ */
+const estProprietaire = Astro.locals.user?.role === "owner";
+
+/**
  * L'API refuse en français et dit pourquoi (« ce stand a des commandes »).
  * Quand elle ne renvoie qu'un code technique, il n'apprend rien à personne
  * ici : on ne le montre pas, l'appelant met sa propre phrase à la place.
@@ -32,7 +42,7 @@ let flashAlerte = false;
  */
 let nouveaute: { id: number; nom: string; code: string } | null = null;
 
-if (Astro.request.method === "POST") {
+if (Astro.request.method === "POST" && estProprietaire) {
   // La liste des commandes, plus bas, relit le corps de la requête pour ses
   // propres boutons. Un corps ne se lit qu'une fois : on travaille sur une
   // copie et on lui laisse l'original.
@@ -50,7 +60,7 @@ if (Astro.request.method === "POST") {
         nom: texte("nom"),
         ouvert: texte("ouvrir") === "1",
       });
-      nouveaute = { id: stand.id, nom: stand.nom, code: stand.code };
+      nouveaute = { id: stand.id, nom: stand.nom, code: stand.code ?? "" };
       flash = stand.ouvert
         ? `Stand « ${stand.nom} » ouvert : la tablette peut prendre des commandes.`
         : `Stand « ${stand.nom} » créé. Il est encore fermé, ouvrez-le quand le salon commence.`;
@@ -72,7 +82,7 @@ if (Astro.request.method === "POST") {
         }
         case "code": {
           const { stand } = await api.majStand(cible, { nouveauCode: true });
-          nouveaute = { id: stand.id, nom: stand.nom, code: stand.code };
+          nouveaute = { id: stand.id, nom: stand.nom, code: stand.code ?? "" };
           flash = `Nouveau code pour « ${stand.nom} ». L'adresse précédente ne fonctionne plus : ouvrez la nouvelle sur la tablette.`;
           break;
         }
@@ -157,8 +167,8 @@ const origine = originePublique();
  * lieu du paiement. La tablette range le code et l'ôte de la barre d'adresse
  * dès la première page. L'ancienne adresse « /stand?code=… » y mène encore.
  */
-const adresseDe = (code: string) =>
-  `${origine}/?stand=1&code=${encodeURIComponent(code)}`;
+const adresseDe = (code: string | null) =>
+  `${origine}/?stand=1&code=${encodeURIComponent(code ?? "")}`;
 
 /**
  * Le stand qu'on regarde de près, porté par l'adresse : le filtre survit à un
@@ -264,6 +274,10 @@ const classeBouton =
     )
   }
 
+  {/* La gestion des stands est à la propriétaire. Le vendeur, lui, voit
+      seulement lesquels lui sont confiés — voir le bloc après celui-ci. */}
+  {estProprietaire ? (
+  <>
   <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
     <h2 class="text-base font-semibold">Vos stands</h2>
     <p class="text-sm text-bo-muted">
@@ -552,7 +566,64 @@ const classeBouton =
       </p>
     )
   }
+  </>
+  ) : (
+    <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-5">
+      {/* Le vendeur : ses stands, par leur nom, et ce qu'ils ont vendu. Ni
+          code, ni bouton. Chaque nom filtre la liste sur ce stand-là — utile
+          à qui tient deux marchés le même week-end. Sans stand confié, il ne
+          voit aucune vente : on lui dit à qui s'adresser, plutôt qu'une liste
+          vide qui passerait pour une panne. */}
+      <h2 class="text-base font-semibold">Vos stands</h2>
+      {stands.length === 0 && !erreur ? (
+        <p class="mt-2 max-w-3xl text-sm">
+          Aucun stand ne vous est confié : demandez à la propriétaire de vous
+          en rattacher un dans Comptes. Vous verrez alors ici les ventes de ce
+          stand et leurs fichiers d'impression.
+        </p>
+      ) : (
+        <>
+          <ul class="mt-3 grid gap-2">
+            {stands.map((stand) => (
+              <li class="flex flex-wrap items-center gap-x-4 gap-y-1 rounded border border-bo-border px-3 py-2 text-sm">
+                <a
+                  href={lienStand(stand.id)}
+                  aria-current={standChoisi === stand.id ? "page" : undefined}
+                  class={`font-medium hover:text-bo-accent hover:underline ${
+                    standChoisi === stand.id ? "text-bo-accent" : ""
+                  }`}
+                >
+                  {stand.nom}
+                </a>
+                <span
+                  class={`rounded-full px-2 py-0.5 text-xs ${
+                    stand.ouvert ? "bg-green-100 text-green-900" : "bg-bo-bg text-bo-muted"
+                  }`}
+                >
+                  {stand.archivedAt ? "Archivé" : stand.ouvert ? "Ouvert" : "Fermé"}
+                </span>
+                <span class="text-bo-muted">
+                  {stand.commandes > 0
+                    ? `${pluriel(stand.commandes, "vente")} · ${formatPrice(stand.cents)}`
+                    : "Aucune vente pour l'instant."}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {stands.length > 1 && (
+            <p class="mt-2 text-xs text-bo-muted">
+              Cliquez sur un stand pour ne voir que ses ventes.
+            </p>
+          )}
+        </>
+      )}
+    </section>
+  )}
 
+  {/* Un vendeur sans stand n'a aucune vente à voir : pas de chiffres à zéro
+      ni de liste vide sous le message qui lui dit quoi faire. */}
+  {(estProprietaire || stands.length > 0) && (
+  <>
   <h2 class="mt-8 mb-1 text-base font-semibold">Commandes prises au stand</h2>
   <p class="mb-4 text-sm text-bo-muted">
     Réglées sur place, à imprimer et à préparer.
@@ -567,7 +638,7 @@ const classeBouton =
             : "Vous ne voyez que les commandes d'un stand qui n'est plus dans la liste."}
         </span>
         <a href={lienStand(null)} class="text-bo-accent hover:underline">
-          Voir toutes les ventes de stand
+          {estProprietaire ? "Voir toutes les ventes de stand" : "Voir toutes vos ventes"}
         </a>
       </p>
     )
@@ -581,9 +652,19 @@ const classeBouton =
   <OrderStats
     channel="salon"
     stand={standChoisi}
-    portee={standFiltre ? standFiltre.nom : "tous les stands"}
+    portee={
+      standFiltre
+        ? standFiltre.nom
+        : estProprietaire
+          ? "tous les stands"
+          : stands.length > 1
+            ? "tous vos stands"
+            : (stands[0]?.nom ?? "votre stand")
+    }
   />
   <OrderTable channel="salon" stand={standChoisi} />
+  </>
+  )}
 
   <script is:inline>
     // Il y a un bouton par stand, et la liste change à chaque salon : on écoute

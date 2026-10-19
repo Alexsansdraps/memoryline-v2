@@ -169,7 +169,7 @@ export interface ModeAExaminer {
  */
 export function raisonsMasquage(
   m: ModeAExaminer,
-  standsOuverts: number,
+  lieuxRetraitActifs: number,
   couverture: CouvertureTarifaire,
 ): string[] {
   // L'archivage passe AVANT tout le reste, et SEUL : un mode rangé ne sort
@@ -215,9 +215,13 @@ export function raisonsMasquage(
         `Il manque le ${t.contrat} — à demander à ${t.aupres}. Sans lui, la carte des points relais reste éteinte.`,
       );
   }
-  if (m.kind === "pickup" && standsOuverts === 0 && !m.pickupLocation?.trim())
+  // Un retrait suppose un endroit où retirer : un lieu ACTIF de BO ›
+  // Livraison › Lieux de retrait. Les stands ouverts ne comptent plus (un
+  // stand est une tablette qui vend, pas un lieu de remise), ni l'ancien
+  // champ « Où retirer », que la caisse n'affiche plus.
+  if (m.kind === "pickup" && lieuxRetraitActifs === 0)
     raisons.push(
-      "Aucun stand ouvert et aucun lieu de retrait renseigné : personne ne pourrait remettre la commande.",
+      "Aucun lieu de retrait actif : ajoutez-en un dans Livraison › Lieux de retrait.",
     );
   return raisons;
 }
@@ -277,7 +281,8 @@ export interface ContexteOuverture {
   /** Les zones de livraison, pour nommer celles qui attendent un prix. */
   zones: readonly { id: number; name: string }[];
   couverture: CouvertureTarifaire;
-  standsOuverts: number;
+  /** Les lieux de retrait actifs (pickup_point), pour un mode « pickup ». */
+  lieuxRetraitActifs: number;
   /**
    * Les transporteurs avec lesquels la boutique expédie DÉJÀ — un de leurs
    * modes est proposé, et tarifé.
@@ -408,15 +413,13 @@ export function checklistOuverture(
 
   /* --- Le lieu de retrait ----------------------------------------------- */
   if (m.kind === "pickup") {
-    const ou = ctx.standsOuverts > 0 || Boolean(m.pickupLocation?.trim());
+    const ou = ctx.lieuxRetraitActifs > 0;
     etapes.push({
       fait: ou,
       titre: ou ? "Il y a un endroit où retirer" : "Dire où retirer",
       detail: ou
-        ? ctx.standsOuverts > 0
-          ? `${ctx.standsOuverts} stand(s) ouvert(s) : le client les voit par leur nom au moment de payer.`
-          : "Le lieu de retrait est renseigné au-dessus."
-        : "Aucun stand ouvert et aucun lieu renseigné : personne ne pourrait remettre la commande. Ouvrez un stand dans « Ventes stand », ou écrivez le lieu au-dessus.",
+        ? `${ctx.lieuxRetraitActifs} lieu${ctx.lieuxRetraitActifs > 1 ? "x" : ""} de retrait actif${ctx.lieuxRetraitActifs > 1 ? "s" : ""} : la cliente choisit le sien au moment de payer, avec son adresse et son texte.`
+        : "Aucun lieu de retrait actif : personne ne saurait où venir chercher la commande. Ajoutez le chalet, l'atelier ou le salon dans Livraison › Lieux de retrait.",
     });
   }
 

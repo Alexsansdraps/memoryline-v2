@@ -342,6 +342,10 @@ async function rapprocher(periode: Periode): Promise<Finances> {
         portCents: schema.orders.shippingCents,
         carteCadeauCents: schema.orders.giftCardCents,
         codePromo: schema.orders.promoCode,
+        // Les promotions figées au passage en caisse : leur remise explique
+        // l'écart entre les articles et le total, sans relire les règles
+        // d'aujourd'hui. Null pour les commandes d'avant.
+        promotions: schema.orders.promotions,
         clientNom: schema.customers.name,
         clientEmail: schema.customers.email,
       })
@@ -632,7 +636,15 @@ async function rapprocher(periode: Periode): Promise<Finances> {
   // code : sans ce relevé, chaque vente qui en profitait passait pour une
   // commande à vérifier. Seuls comptent ses dates et son interrupteur, comme
   // au panier.
-  const regles = await db.select().from(schema.promoRules);
+  //
+  // C'est le repli des commandes d'avant : une commande passée depuis garde
+  // ses promotions figées (`promotions`), et c'est leur remise qui se lit.
+  // L'archivage est ignoré ici : archiver la « 3 + 1 » ne doit pas changer en
+  // anomalies les ventes qu'elle a remisées quand elle tournait.
+  const regles = (await db.select().from(schema.promoRules)).map((r) => ({
+    ...r,
+    archivedAt: null,
+  }));
   const typesQuiRemisent: readonly string[] = TYPES_REGLE_APPLIQUES;
   const promotionEnVigueur = (le: Date) =>
     reglesActives(regles, le).some((r) => typesQuiRemisent.includes(r.type));
@@ -689,12 +701,17 @@ async function rapprocher(periode: Periode): Promise<Finances> {
     // qu'aucune remise ne justifie.
     if (!cmd.codePromo) {
       const attenduDesLignes = cmd.totalCents - cmd.portCents;
-      // Des articles AU-DESSUS du total, un jour où une promotion automatique
-      // était en vigueur : c'est la remise, déduite comme partout ailleurs
-      // (compte client, courriels). Un total plus élevé que les articles, lui,
-      // reste signalé : aucune remise ne l'explique.
-      const remiseAutomatique =
-        lignes > attenduDesLignes && promotionEnVigueur(cmd.creeLe);
+      // La remise figée au passage en caisse, quand la commande en a une :
+      // elle doit expliquer l'écart au centime près.
+      const figee = cmd.promotions?.detail;
+      // Sinon (commandes d'avant) : des articles AU-DESSUS du total, un jour
+      // où une promotion automatique était en vigueur, c'est la remise,
+      // déduite comme partout ailleurs (compte client, courriels). Un total
+      // plus élevé que les articles, lui, reste signalé : aucune remise ne
+      // l'explique.
+      const remiseAutomatique = figee
+        ? lignes - figee.reduce((s, d) => s + d.montantCents, 0) === attenduDesLignes
+        : lignes > attenduDesLignes && promotionEnVigueur(cmd.creeLe);
       if (lignes !== attenduDesLignes && !remiseAutomatique) {
         raisons.push(
           `Les articles totalisent ${montant(lignes)} et le port ${montant(cmd.portCents)}, ce qui ne retombe pas sur les ${montant(cmd.totalCents)} de la commande.`,

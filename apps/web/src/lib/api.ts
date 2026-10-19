@@ -208,6 +208,15 @@ export interface Banner {
   textColor: string | null;
 }
 
+/**
+ * Le bandeau d'annonce : ses réglages (couleurs, secondes par message) et les
+ * messages en ligne à cet instant, dans l'ordre du défilement, déjà traduits.
+ */
+export interface Bandeau {
+  reglages: { fond: string; texte: string; dureeSecondes: number };
+  messages: { id: number; message: string; linkUrl: string | null; linkLabel: string | null }[];
+}
+
 export interface ProductDetail {
   id: number;
   slug: string;
@@ -494,6 +503,12 @@ export const api = {
       `/banner${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,
     ),
   /**
+   * Tous les messages du bandeau d'annonce qui défilent, dans la langue de la
+   * page (repli français, champ par champ), et ses réglages.
+   */
+  banners: (langue?: string) =>
+    get<Bandeau>(`/banners${langue && langue !== "fr" ? `?lang=${langue}` : ""}`),
+  /**
    * Les redirections d'anciennes adresses, posées au back-office.
    *
    * Lues par le middleware, qui redirige : c'est le site qui voit passer
@@ -753,6 +768,12 @@ export interface OrderItem {
   unitPriceCents: number;
   quantity: number;
   /**
+   * La part du prix unitaire due au cadre, en centimes, dite par le SERVEUR.
+   * Le moteur de remises en a besoin pour une affiche offerte « cadre non
+   * compris ». Absente d'une vieille réponse : 0, le calcul d'avant.
+   */
+  cadreCents?: number;
+  /**
    * Vrai quand l'API a écrit la ligne SANS le cadre demandé : le site ne
    * propose plus les cadres (page ouverte avant que la boutique ne les
    * retire). Seules les réponses d'ajout et de modification le portent.
@@ -823,6 +844,12 @@ export interface CharacterLibrary {
   slots: SlotsDTO;
   /** Catégories de pièces et leurs nuanciers, définis au back-office. */
   pieceCategories?: PieceCategoryDTO[];
+  /**
+   * Les nuanciers des personnages (peau, cheveux / pelage, vêtements,
+   * pantalon), réglés au back-office ; absents d'une API plus ancienne, le
+   * configurateur reprend leurs couleurs d'origine.
+   */
+  nuanciersBase?: Partial<Record<"peau" | "cheveux" | "vetements" | "pantalon", string[]>>;
 }
 
 /** Client API navigateur (configurateur, panier, commande). */
@@ -974,6 +1001,11 @@ export const browserApi = {
       phone?: string;
       relayPointId?: string;
       relayPointLabel?: string;
+      /**
+       * Pour un retrait sur place : le lieu choisi (catalogue.lieuxRetrait).
+       * Le serveur le relit et en garde une copie sur la commande.
+       */
+      pickupPointId?: number;
     },
     /**
      * La langue de la page de caisse : la commande la garde. Elle ne change

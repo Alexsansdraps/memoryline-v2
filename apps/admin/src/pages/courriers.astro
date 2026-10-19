@@ -457,18 +457,23 @@ const TONS: Record<Ton, string> = {
   {/* =============================================================== */}
   {/* 3 : sortir du mode d'essai                                      */}
   {/* =============================================================== */}
-  <section class="mt-8 rounded-lg border border-bo-border bg-bo-surface p-5">
-    <h3 class="mb-1 font-semibold">Le jour où les courriers devront vraiment partir</h3>
-    <p class="max-w-3xl text-sm text-bo-muted">
-      Tant que la boîte d'essai est en place, elle attrape tout : c'est elle qui
-      reçoit, jamais vos clients. Pour lui rendre la main, ouvrez le fichier de
-      réglages de la boutique (le fichier « .env », à la racine du dossier),
-      effacez ce qui suit <strong>MAIL_TEST_URL</strong> en laissant la ligne
-      vide, puis relancez la boutique. Les courriers repartiront alors vers les
-      adresses des clients, et le bandeau du haut passera de vert à ambre pour
-      vous le rappeler.
-    </p>
-  </section>
+  {/* Seulement tant que la boîte d'essai est en place : sur la vraie
+      boutique, cette marche à suivre ne décrit plus rien, et parler d'un
+      fichier de réglages à la patronne ne lui sert à rien. */}
+  {etat?.enEssai && (
+    <section class="mt-8 rounded-lg border border-bo-border bg-bo-surface p-5">
+      <h3 class="mb-1 font-semibold">Le jour où les courriers devront vraiment partir</h3>
+      <p class="max-w-3xl text-sm text-bo-muted">
+        Tant que la boîte d'essai est en place, elle attrape tout : c'est elle qui
+        reçoit, jamais vos clients. Pour lui rendre la main, ouvrez le fichier de
+        réglages de la boutique (le fichier « .env », à la racine du dossier),
+        effacez ce qui suit <strong>MAIL_TEST_URL</strong> en laissant la ligne
+        vide, puis relancez la boutique. Les courriers repartiront alors vers les
+        adresses des clients, et le bandeau du haut passera de vert à ambre pour
+        vous le rappeler.
+      </p>
+    </section>
+  )}
 
   <script is:inline>
     // Voir un courrier ou s'en envoyer un ne change rien à l'écran : le

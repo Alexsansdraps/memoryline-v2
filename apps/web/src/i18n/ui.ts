@@ -65,8 +65,6 @@ export const ui = {
     "accueil.cta": "Découvrir les affiches",
     "accueil.stat.affiches": "Affiches",
     "accueil.stat.collections": "Collections",
-    "accueil.api_absente":
-      "(API non joignable — lancez le backend, cf. PUBLIC_API_URL / .env.)",
 
     "catalogue.titre": "Toutes les affiches",
     "catalogue.compte": "affiches · villes, paysages & thèmes",
@@ -324,8 +322,18 @@ export const ui = {
     "commande.email": "E-mail",
     "commande.payer": "Payer",
     "commande.paiement_en_cours": "Paiement en cours…",
+    /* Lu par la cliente : ni fichier ni clé, seulement ce qu'elle peut
+       faire. Suivi d'un lien « Nous contacter » (pied.contact). */
     "commande.paiement_indisponible":
-      "Le paiement en ligne n'est pas encore activé.",
+      "Le paiement en ligne est momentanément indisponible. Votre panier est gardé : réessayez dans un instant.",
+    /* Le bandeau d'annonce du haut du site, quand plusieurs messages
+       défilent : ce que disent ses boutons aux lecteurs d'écran. */
+    "bandeau.region": "Annonces",
+    "bandeau.precedent": "Message précédent",
+    "bandeau.suivant": "Message suivant",
+    "bandeau.pause": "Mettre les annonces en pause",
+    "bandeau.lecture": "Reprendre le défilement des annonces",
+    "bandeau.position": "{n} sur {total}",
 
     /* Le stand : la dernière étape, quand le site est ouvert sur la tablette
        d'un marché. Le client lit ces textes lui-même, d'où le « vous ». */
@@ -356,8 +364,6 @@ export const ui = {
     "stand.revenir": "Revenir à ma commande",
     "stand.revenir_erreur": "La commande n'a pas pu être rouverte. Adressez-vous au vendeur.",
     "stand.numero": "Numéro de commande",
-    "stand.prevenu":
-      "Nous vous écrirons à {email} dès que votre commande sera prête.",
     "stand.suivant": "Client suivant",
 
     "cookies.texte":
@@ -594,8 +600,6 @@ export const ui = {
     "livraison.carte": "Carte des points relais",
     "livraison.relais_plus_disponible":
       "Ce point relais n'est plus disponible. Choisissez-en un autre dans la liste.",
-    "commande.paiement_indisponible_env":
-      "Ajoutez vos clés Stripe et/ou PayPal dans le fichier {fichier} pour l'activer.",
     "commande.essai.titre": "Boutique en mode essai : aucun paiement réel.",
     "commande.essai.carte_libelle": "Carte bancaire :",
     "commande.essai.carte":
@@ -613,7 +617,12 @@ export const ui = {
     "commande.manque.mode": "un mode de livraison",
     "commande.manque.adresse": "l'adresse de livraison (rue, code postal et ville)",
     "commande.manque.relais": "un point relais",
-    "commande.manque.stand": "le stand où retirer votre commande",
+    "commande.manque.lieu": "le lieu où retirer votre commande",
+    /* Le lieu de retrait choisi a été éteint ou archivé pendant la caisse. */
+    "commande.err.lieu_retrait_requis":
+      "Choisissez le lieu où retirer votre commande. S'il vient de disparaître de la liste, choisissez-en un autre, ou un autre mode de livraison.",
+    /* Compte › une commande à retirer : le titre du bloc qui remplace l'adresse. */
+    "retrait.titre": "Lieu de retrait",
     "commande.manque.moyen": "un moyen de paiement",
     "commande.modifier_coordonnees": "← Modifier mes coordonnées",
     "commande.recapitulatif": "Récapitulatif",
@@ -723,6 +732,11 @@ export const ui = {
       "Votre adresse de livraison est incomplète : vérifiez la rue, le code postal et la ville.",
     "commande.err.avant_paiement":
       "Nous n'avons pas pu vérifier votre panier avant le paiement. Rien n'a été débité : réessayez dans quelques instants.",
+    "cfg.plus_bas": "Plus bas : {parties}",
+    "cfg.partie.couleurs": "couleurs",
+    "cfg.partie.vetements": "vêtements",
+    "cfg.partie.cheveux": "cheveux",
+    "cfg.partie.accessoires": "accessoires",
   },
 
   en: {
@@ -752,8 +766,6 @@ export const ui = {
     "accueil.cta": "Browse the posters",
     "accueil.stat.affiches": "Posters",
     "accueil.stat.collections": "Collections",
-    "accueil.api_absente":
-      "(API unreachable — start the backend, see PUBLIC_API_URL / .env.)",
 
     "catalogue.titre": "All posters",
     "catalogue.compte": "posters · cities, landscapes & themes",
@@ -992,7 +1004,13 @@ export const ui = {
     "commande.payer": "Pay",
     "commande.paiement_en_cours": "Processing payment…",
     "commande.paiement_indisponible":
-      "Online payment is not enabled yet.",
+      "Online payment is temporarily unavailable. Your basket has been saved: please try again in a moment.",
+    "bandeau.region": "Announcements",
+    "bandeau.precedent": "Previous message",
+    "bandeau.suivant": "Next message",
+    "bandeau.pause": "Pause the announcements",
+    "bandeau.lecture": "Resume the announcements",
+    "bandeau.position": "{n} of {total}",
 
     "stand.titre": "Your posters",
     "stand.ajouter": "Add another poster",
@@ -1020,8 +1038,6 @@ export const ui = {
     "stand.revenir": "Back to my order",
     "stand.revenir_erreur": "The order could not be reopened. Please ask the seller.",
     "stand.numero": "Order number",
-    "stand.prevenu":
-      "We will write to {email} as soon as your order is ready.",
     "stand.suivant": "Next customer",
 
     "cookies.texte":
@@ -1239,8 +1255,6 @@ export const ui = {
     "livraison.carte": "Map of pickup points",
     "livraison.relais_plus_disponible":
       "This pickup point is no longer available. Please choose another one from the list.",
-    "commande.paiement_indisponible_env":
-      "Add your Stripe and/or PayPal keys to the {fichier} file to enable it.",
     "commande.essai.titre": "Shop in test mode: no real payment is taken.",
     "commande.essai.carte_libelle": "Card:",
     "commande.essai.carte":
@@ -1257,7 +1271,10 @@ export const ui = {
     "commande.manque.mode": "a delivery method",
     "commande.manque.adresse": "your delivery address (street, postcode and town)",
     "commande.manque.relais": "a pickup point",
-    "commande.manque.stand": "the stand where you will collect your order",
+    "commande.manque.lieu": "the place where you will collect your order",
+    "commande.err.lieu_retrait_requis":
+      "Please choose where to collect your order. If it has just disappeared from the list, choose another one, or another delivery method.",
+    "retrait.titre": "Collection point",
     "commande.manque.moyen": "a payment method",
     "commande.modifier_coordonnees": "← Edit my details",
     "commande.recapitulatif": "Order summary",
@@ -1362,6 +1379,11 @@ export const ui = {
       "Your delivery address is incomplete: please check the street, postcode and town.",
     "commande.err.avant_paiement":
       "We couldn't check your basket before payment. Nothing has been charged: please try again in a moment.",
+    "cfg.plus_bas": "Further down: {parties}",
+    "cfg.partie.couleurs": "colours",
+    "cfg.partie.vetements": "clothes",
+    "cfg.partie.cheveux": "hair",
+    "cfg.partie.accessoires": "accessories",
   },
 
   de: {
@@ -1391,8 +1413,6 @@ export const ui = {
     "accueil.cta": "Poster entdecken",
     "accueil.stat.affiches": "Poster",
     "accueil.stat.collections": "Kollektionen",
-    "accueil.api_absente":
-      "(API nicht erreichbar — Backend starten, siehe PUBLIC_API_URL / .env.)",
 
     "catalogue.titre": "Alle Poster",
     "catalogue.compte": "Poster · Städte, Landschaften & Themen",
@@ -1634,7 +1654,13 @@ export const ui = {
     "commande.payer": "Bezahlen",
     "commande.paiement_en_cours": "Zahlung wird verarbeitet…",
     "commande.paiement_indisponible":
-      "Die Online-Zahlung ist noch nicht aktiviert.",
+      "Die Online-Zahlung ist vorübergehend nicht verfügbar. Ihr Warenkorb bleibt gespeichert: Bitte versuchen Sie es gleich noch einmal.",
+    "bandeau.region": "Ankündigungen",
+    "bandeau.precedent": "Vorherige Nachricht",
+    "bandeau.suivant": "Nächste Nachricht",
+    "bandeau.pause": "Ankündigungen anhalten",
+    "bandeau.lecture": "Ankündigungen fortsetzen",
+    "bandeau.position": "{n} von {total}",
 
     "stand.titre": "Ihre Poster",
     "stand.ajouter": "Weiteres Poster hinzufügen",
@@ -1663,8 +1689,6 @@ export const ui = {
     "stand.revenir": "Zurück zu meiner Bestellung",
     "stand.revenir_erreur": "Die Bestellung konnte nicht wieder geöffnet werden. Bitte wenden Sie sich an den Verkäufer.",
     "stand.numero": "Bestellnummer",
-    "stand.prevenu":
-      "Wir schreiben Ihnen an {email}, sobald Ihre Bestellung fertig ist.",
     "stand.suivant": "Nächster Kunde",
 
     "cookies.texte":
@@ -1886,8 +1910,6 @@ export const ui = {
     "livraison.carte": "Karte der Paketshops",
     "livraison.relais_plus_disponible":
       "Dieser Paketshop ist nicht mehr verfügbar. Bitte wählen Sie einen anderen aus der Liste.",
-    "commande.paiement_indisponible_env":
-      "Fügen Sie Ihre Stripe- und/oder PayPal-Schlüssel in die Datei {fichier} ein, um sie zu aktivieren.",
     "commande.essai.titre": "Shop im Testmodus: Es wird keine echte Zahlung ausgeführt.",
     "commande.essai.carte_libelle": "Kreditkarte:",
     "commande.essai.carte":
@@ -1904,7 +1926,10 @@ export const ui = {
     "commande.manque.mode": "eine Versandart",
     "commande.manque.adresse": "Ihre Lieferadresse (Straße, Postleitzahl und Ort)",
     "commande.manque.relais": "ein Paketshop",
-    "commande.manque.stand": "der Stand, an dem Sie Ihre Bestellung abholen",
+    "commande.manque.lieu": "der Ort, an dem Sie Ihre Bestellung abholen",
+    "commande.err.lieu_retrait_requis":
+      "Bitte wählen Sie, wo Sie Ihre Bestellung abholen möchten. Ist der Ort gerade aus der Liste verschwunden, wählen Sie einen anderen oder eine andere Versandart.",
+    "retrait.titre": "Abholort",
     "commande.manque.moyen": "eine Zahlungsart",
     "commande.modifier_coordonnees": "← Meine Kontaktdaten ändern",
     "commande.recapitulatif": "Zusammenfassung",
@@ -2010,6 +2035,11 @@ export const ui = {
       "Ihre Lieferadresse ist unvollständig: Bitte prüfen Sie Straße, Postleitzahl und Ort.",
     "commande.err.avant_paiement":
       "Wir konnten Ihren Warenkorb vor der Zahlung nicht prüfen. Es wurde nichts abgebucht: Bitte versuchen Sie es gleich noch einmal.",
+    "cfg.plus_bas": "Weiter unten: {parties}",
+    "cfg.partie.couleurs": "Farben",
+    "cfg.partie.vetements": "Kleidung",
+    "cfg.partie.cheveux": "Haare",
+    "cfg.partie.accessoires": "Accessoires",
   },
 
   it: {
@@ -2039,8 +2069,6 @@ export const ui = {
     "accueil.cta": "Scopri i poster",
     "accueil.stat.affiches": "Poster",
     "accueil.stat.collections": "Collezioni",
-    "accueil.api_absente":
-      "(API non raggiungibile — avvia il backend, vedi PUBLIC_API_URL / .env.)",
 
     "catalogue.titre": "Tutti i poster",
     "catalogue.compte": "poster · città, paesaggi e temi",
@@ -2280,7 +2308,13 @@ export const ui = {
     "commande.payer": "Paga",
     "commande.paiement_en_cours": "Pagamento in corso…",
     "commande.paiement_indisponible":
-      "Il pagamento online non è ancora attivo.",
+      "Il pagamento online è momentaneamente non disponibile. Il tuo carrello è salvato: riprova tra un attimo.",
+    "bandeau.region": "Annunci",
+    "bandeau.precedent": "Messaggio precedente",
+    "bandeau.suivant": "Messaggio successivo",
+    "bandeau.pause": "Metti in pausa gli annunci",
+    "bandeau.lecture": "Riprendi lo scorrimento degli annunci",
+    "bandeau.position": "{n} di {total}",
 
     "stand.titre": "I tuoi poster",
     "stand.ajouter": "Aggiungi un altro poster",
@@ -2308,8 +2342,6 @@ export const ui = {
     "stand.revenir": "Torna al mio ordine",
     "stand.revenir_erreur": "Non è stato possibile riaprire l'ordine. Rivolgiti al venditore.",
     "stand.numero": "Numero d'ordine",
-    "stand.prevenu":
-      "Ti scriveremo a {email} non appena il tuo ordine sarà pronto.",
     "stand.suivant": "Cliente successivo",
 
     "cookies.texte":
@@ -2528,8 +2560,6 @@ export const ui = {
     "livraison.carte": "Mappa dei punti di ritiro",
     "livraison.relais_plus_disponible":
       "Questo punto di ritiro non è più disponibile. Scegline un altro dall'elenco.",
-    "commande.paiement_indisponible_env":
-      "Aggiungi le tue chiavi Stripe e/o PayPal nel file {fichier} per attivarlo.",
     "commande.essai.titre": "Negozio in modalità di prova: nessun pagamento reale.",
     "commande.essai.carte_libelle": "Carta di credito:",
     "commande.essai.carte":
@@ -2546,7 +2576,10 @@ export const ui = {
     "commande.manque.mode": "un metodo di consegna",
     "commande.manque.adresse": "l'indirizzo di consegna (via, CAP e città)",
     "commande.manque.relais": "un punto di ritiro",
-    "commande.manque.stand": "lo stand dove ritirerai l'ordine",
+    "commande.manque.lieu": "il luogo dove ritirerai l'ordine",
+    "commande.err.lieu_retrait_requis":
+      "Scegli dove ritirare il tuo ordine. Se il luogo è appena sparito dall'elenco, scegline un altro, oppure un altro metodo di consegna.",
+    "retrait.titre": "Luogo di ritiro",
     "commande.manque.moyen": "un metodo di pagamento",
     "commande.modifier_coordonnees": "← Modifica i miei dati",
     "commande.recapitulatif": "Riepilogo",
@@ -2652,6 +2685,11 @@ export const ui = {
       "L'indirizzo di consegna è incompleto: controlla via, CAP e città.",
     "commande.err.avant_paiement":
       "Non siamo riusciti a verificare il carrello prima del pagamento. Non è stato addebitato nulla: riprova tra qualche istante.",
+    "cfg.plus_bas": "Più in basso: {parties}",
+    "cfg.partie.couleurs": "colori",
+    "cfg.partie.vetements": "vestiti",
+    "cfg.partie.cheveux": "capelli",
+    "cfg.partie.accessoires": "accessori",
   },
 
   es: {
@@ -2681,8 +2719,6 @@ export const ui = {
     "accueil.cta": "Descubrir las láminas",
     "accueil.stat.affiches": "Láminas",
     "accueil.stat.collections": "Colecciones",
-    "accueil.api_absente":
-      "(API no disponible — inicia el backend, ver PUBLIC_API_URL / .env.)",
 
     "catalogue.titre": "Todas las láminas",
     "catalogue.compte": "láminas · ciudades, paisajes y temas",
@@ -2922,7 +2958,13 @@ export const ui = {
     "commande.payer": "Pagar",
     "commande.paiement_en_cours": "Procesando el pago…",
     "commande.paiement_indisponible":
-      "El pago en línea aún no está activado.",
+      "El pago en línea no está disponible en este momento. Tu cesta está guardada: vuelve a intentarlo en un momento.",
+    "bandeau.region": "Anuncios",
+    "bandeau.precedent": "Mensaje anterior",
+    "bandeau.suivant": "Mensaje siguiente",
+    "bandeau.pause": "Pausar los anuncios",
+    "bandeau.lecture": "Reanudar los anuncios",
+    "bandeau.position": "{n} de {total}",
 
     "stand.titre": "Tus láminas",
     "stand.ajouter": "Añadir otra lámina",
@@ -2950,8 +2992,6 @@ export const ui = {
     "stand.revenir": "Volver a mi pedido",
     "stand.revenir_erreur": "No se ha podido reabrir el pedido. Dirígete al vendedor.",
     "stand.numero": "Número de pedido",
-    "stand.prevenu":
-      "Te escribiremos a {email} en cuanto tu pedido esté listo.",
     "stand.suivant": "Siguiente cliente",
 
     "cookies.texte":
@@ -3171,8 +3211,6 @@ export const ui = {
     "livraison.carte": "Mapa de puntos de recogida",
     "livraison.relais_plus_disponible":
       "Este punto de recogida ya no está disponible. Elige otro de la lista.",
-    "commande.paiement_indisponible_env":
-      "Añade tus claves de Stripe y/o PayPal en el archivo {fichier} para activarlo.",
     "commande.essai.titre": "Tienda en modo de prueba: no se realiza ningún pago real.",
     "commande.essai.carte_libelle": "Tarjeta bancaria:",
     "commande.essai.carte":
@@ -3189,7 +3227,10 @@ export const ui = {
     "commande.manque.mode": "un método de envío",
     "commande.manque.adresse": "la dirección de entrega (calle, código postal y ciudad)",
     "commande.manque.relais": "un punto de recogida",
-    "commande.manque.stand": "el stand donde recogerás tu pedido",
+    "commande.manque.lieu": "el lugar donde recogerás tu pedido",
+    "commande.err.lieu_retrait_requis":
+      "Elige dónde recoger tu pedido. Si el lugar acaba de desaparecer de la lista, elige otro, o bien otro método de envío.",
+    "retrait.titre": "Lugar de recogida",
     "commande.manque.moyen": "un método de pago",
     "commande.modifier_coordonnees": "← Modificar mis datos",
     "commande.recapitulatif": "Resumen",
@@ -3294,6 +3335,11 @@ export const ui = {
       "Tu dirección de entrega está incompleta: revisa la calle, el código postal y la ciudad.",
     "commande.err.avant_paiement":
       "No hemos podido comprobar tu cesta antes del pago. No se ha cobrado nada: vuelve a intentarlo en unos instantes.",
+    "cfg.plus_bas": "Más abajo: {parties}",
+    "cfg.partie.couleurs": "colores",
+    "cfg.partie.vetements": "ropa",
+    "cfg.partie.cheveux": "pelo",
+    "cfg.partie.accessoires": "accesorios",
   },
 } as const;
 

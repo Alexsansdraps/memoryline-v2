@@ -370,11 +370,19 @@ export function mountTraduction(app: Hono): void {
   });
   // Les modes de livraison : ce que la caisse montre, et ce que redisent les
   // courriels et la facture. La note de préparation n'en est pas : elle est
-  // écrite pour la boutique.
+  // écrite pour la boutique. La description va jusqu'à 1000 caractères : pour
+  // un retrait sur place, c'est le texte de plusieurs lignes que la caisse
+  // affiche (horaires, ce qu'il faut apporter).
   routeTraductions(app, "/admin/shipping/methods/:id/translations", schema.shippingMethods, {
     name: 120,
-    description: 500,
+    description: 1000,
     pickupLocation: 500,
+  });
+  // Les lieux de retrait (lieux-retrait.ts) : leur nom et leur texte se
+  // lisent à la caisse et dans les courriels. L'adresse ne se traduit pas.
+  routeTraductions(app, "/admin/pickup-points/:id/translations", schema.pickupPoints, {
+    nom: 120,
+    description: 1000,
   });
   // Le bandeau d'annonce : son message et le texte de son lien.
   routeTraductions(app, "/admin/banner/:id/translations", schema.announcementBanners, {

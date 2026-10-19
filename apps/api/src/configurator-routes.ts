@@ -94,8 +94,15 @@ import {
   type GroupeCouleur,
   type PosterConfig,
   type TextesAffiche,
+  reglesActives,
+  type RegleParier,
 } from "@memoryline/types";
 import { imageRecoloree } from "./couleurs-image-fichier.js";
+import {
+  enregistrerNuancierBase,
+  lireNuanciersBase,
+  nuanciersModifies,
+} from "./nuanciers.js";
 import { mesurerLaPiece, partsPourLaBoutique } from "./couleur-principale.js";
 import { rattacherGenerationsAuPanier } from "./ia.js";
 import {
@@ -108,6 +115,9 @@ import {
   stripeConfigured,
   verifyStripeEvent,
 } from "./payments.js";
+import { etatEssai } from "./mode-essai.js";
+import { commandeVisible, type CommandeABorner } from "./vendeurs.js";
+import { lieuDeRetrait, lieuPourLaCommande, lignesDuLieu } from "./lieux-retrait.js";
 
 // --- Helpers -----------------------------------------------------------------
 
@@ -362,6 +372,11 @@ type PricedItem = {
   /** Servent au poids, absents des paniers reconstitués à la volée. */
   productId?: number | null;
   variantId?: number | null;
+  /**
+   * La part du prix unitaire due au cadre (order_item.frame_cents). Null pour
+   * les lignes d'avant : lignesDuMoteur la retrouve au catalogue.
+   */
+  frameCents?: number | null;
 };
 
 /**
@@ -683,12 +698,29 @@ async function resolveUnitPriceCents(
   frameId?: string | number | null,
   ex: Executeur = db,
 ): Promise<number> {
-  if (productId == null || !Number.isFinite(productId)) return 0;
+  return (await resolvePrixLigne(productId, format, frameId, ex)).unitPriceCents;
+}
+
+/**
+ * Le prix unitaire d'une ligne ET la part qu'y tient le cadre.
+ *
+ * La part du cadre est gardée sur la ligne (order_item.frame_cents) : une
+ * promotion peut offrir une affiche « cadre non compris », et il faut alors
+ * savoir ce que vaut l'affiche seule. Le prix unitaire, lui, mêle les deux.
+ */
+async function resolvePrixLigne(
+  productId: number | null | undefined,
+  format: string | null | undefined,
+  frameId?: string | number | null,
+  ex: Executeur = db,
+): Promise<{ unitPriceCents: number; frameCents: number }> {
+  if (productId == null || !Number.isFinite(productId))
+    return { unitPriceCents: 0, frameCents: 0 };
   const [product] = await ex
     .select({ basePriceCents: schema.products.basePriceCents })
     .from(schema.products)
     .where(eq(schema.products.id, productId));
-  if (!product) return 0;
+  if (!product) return { unitPriceCents: 0, frameCents: 0 };
   const [variant] = await ex
     .select({ priceCents: schema.variants.priceCents })
     .from(schema.variants)
@@ -724,7 +756,55 @@ async function resolveUnitPriceCents(
       );
     cadre = f ? prixDuCadreCents(f, format ?? "A4") : 0;
   }
-  return affiche + cadre;
+  return { unitPriceCents: affiche + cadre, frameCents: cadre };
+}
+
+/**
+ * Ce que le moteur de remises lit d'une ligne : son prix, sa quantité, son
+ * format, et la part de son cadre.
+ *
+ * Une ligne écrite avant que la part du cadre soit gardée (frame_cents nul)
+ * la retrouve au catalogue d'aujourd'hui, BORNÉE à son prix unitaire : une
+ * remise ne peut pas déduire plus de cadre que la ligne n'en a payé. Une
+ * commande déjà passée n'en change pas pour autant — ses montants sont figés.
+ */
+async function lignesDuMoteur(
+  items: PricedItem[],
+  ex: Executeur = db,
+): Promise<{ unitPriceCents: number; quantity: number; format: string | null; cadreCents: number }[]> {
+  const cadreDe = (it: PricedItem) => Number((it.config as { frameId?: unknown } | null)?.frameId);
+  const aRetrouver = [
+    ...new Set(
+      items
+        .filter((it) => it.frameCents == null)
+        .map(cadreDe)
+        .filter((id) => Number.isFinite(id) && id > 0),
+    ),
+  ];
+  const cadres = aRetrouver.length
+    ? await ex
+        .select({
+          id: schema.frames.id,
+          priceA4Cents: schema.frames.priceA4Cents,
+          priceA3Cents: schema.frames.priceA3Cents,
+        })
+        .from(schema.frames)
+        .where(inArray(schema.frames.id, aRetrouver))
+    : [];
+  return items.map((it) => {
+    const format = (it.config as { format?: string } | null)?.format ?? null;
+    let cadreCents = it.frameCents ?? 0;
+    if (it.frameCents == null) {
+      const f = cadres.find((x) => x.id === cadreDe(it));
+      cadreCents = f ? prixDuCadreCents(f, format ?? "A4") : 0;
+    }
+    return {
+      unitPriceCents: it.unitPriceCents,
+      quantity: it.quantity,
+      format,
+      cadreCents: Math.min(Math.max(0, cadreCents), Math.max(0, it.unitPriceCents)),
+    };
+  });
 }
 
 /** La configuration sans son cadre — le reste de l'affiche ne bouge pas. */
@@ -769,6 +849,8 @@ async function retirerLesCadres(tx: Transaction, orderId: number): Promise<numbe
           null,
           tx,
         ),
+        // Plus de cadre, plus de part de cadre dans le prix.
+        frameCents: 0,
       })
       .where(eq(schema.orderItems.id, ligne.id));
     retires++;
@@ -893,9 +975,15 @@ async function panierModifie(
   // protège. Le total sera de toute façon recalculé au prochain passage en
   // caisse, et une panne de calcul ne doit pas empêcher quelqu'un de modifier
   // son panier.
+  //
+  // Les promotions figées au passage en caisse ne valent plus : le panier a
+  // changé, il se compte avec les règles du moment, et le prochain passage en
+  // caisse figera les siennes.
   let valeur: Awaited<ReturnType<typeof valeurDesLignes>> | null = null;
   try {
-    valeur = await tx.transaction((sp) => valeurDesLignes(order, maintenant, sp));
+    valeur = await tx.transaction((sp) =>
+      valeurDesLignes({ ...order, promotions: null }, maintenant, sp),
+    );
   } catch (e) {
     console.error("[panier] total non recalculé après modification", e);
   }
@@ -905,6 +993,7 @@ async function panierModifie(
       status: "draft",
       lastActivityAt: maintenant,
       panierDuStand: auStand,
+      promotions: null,
       ...saLangue,
       ...(valeur
         ? {
@@ -939,18 +1028,55 @@ async function computeOrderTotalCents(
   code?: string | null,
   maintenant: Date = new Date(),
   ex: Executeur = db,
+  regles: RegleParier[] | null = null,
 ): Promise<number> {
-  const rules = await ex.select().from(schema.promoRules);
-  const lignes = items.map((it) => ({
-    unitPriceCents: it.unitPriceCents,
-    quantity: it.quantity,
-    format:
-      (it.config as { format?: string } | null)?.format ?? null,
-  }));
+  return (await calculerArticles(items, code, maintenant, ex, regles)).totalCents;
+}
+
+/** Les promotions d'une commande, telles qu'elles étaient au passage en caisse. */
+type PromotionsFigees = NonNullable<(typeof schema.orders.$inferSelect)["promotions"]>;
+
+/**
+ * Le total des articles, remises comprises, et de quoi figer les promotions
+ * sur la commande : les règles en jeu à cet instant (code compris) et la
+ * remise accordée par chacune.
+ *
+ * `regles` : les règles à appliquer à la place de celles de la table — celles
+ * figées au passage en caisse, pour vérifier un paiement. La boutique peut
+ * modifier ou archiver une promotion entre la caisse et le paiement ; la
+ * commande garde ce qu'on lui a annoncé. Absentes, la table fait foi.
+ */
+async function calculerArticles(
+  items: PricedItem[],
+  code: string | null | undefined,
+  maintenant: Date,
+  ex: Executeur = db,
+  regles: RegleParier[] | null = null,
+): Promise<{ totalCents: number; figees: PromotionsFigees }> {
+  const rules: RegleParier[] = regles ?? (await ex.select().from(schema.promoRules));
+  const lignes = await lignesDuMoteur(items, ex);
+  const codes = code ? [code] : [];
   // Le code passe par le moteur, qui décide seul s'il ouvre droit à une
   // remise : le navigateur peut envoyer ce qu'il veut, un code inconnu ou
   // expiré ne change rien au montant.
-  return totalPanierCents(lignes, rules, maintenant, code ? [code] : []);
+  const { detail } = remisesPanier(lignes, rules, maintenant, codes);
+  // Les règles en jeu : de quoi refaire le même calcul plus tard, quoi que
+  // devienne la table. Sans leurs traductions, qui ne servent qu'à l'écran.
+  const enJeu = reglesActives(rules, maintenant, codes).map((r) => ({
+    id: r.id,
+    name: r.name,
+    code: r.code ?? null,
+    type: r.type,
+    config: r.config,
+    active: true,
+    priority: r.priority ?? 0,
+    startsAt: r.startsAt ?? null,
+    endsAt: r.endsAt ?? null,
+  }));
+  return {
+    totalCents: totalPanierCents(lignes, rules, maintenant, codes),
+    figees: { regles: enJeu, detail, codes },
+  };
 }
 
 /**
@@ -967,6 +1093,8 @@ async function computeShippingCents(
   code?: string | null,
   maintenant: Date = new Date(),
   ex: Executeur = db,
+  /** Les règles figées au passage en caisse, à la place de la table. */
+  reglesFigees: RegleParier[] | null = null,
 ): Promise<{
   cents: number;
   label: string;
@@ -976,7 +1104,7 @@ async function computeShippingCents(
   carrier: string | null;
   poidsGrammes: number;
 } | null> {
-  const [zones, modes, tarifs, regles] = await Promise.all([
+  const [zones, modes, tarifs, reglesDeLaTable] = await Promise.all([
     ex.select().from(schema.shippingZones),
     // Archivés écartés, mode comme tranches : ce calcul décide de ce qu'on
     // FACTURE. Un mode rangé ne doit pas pouvoir être choisi au passage en
@@ -994,13 +1122,10 @@ async function computeShippingCents(
       .select()
       .from(schema.shippingRates)
       .where(isNull(schema.shippingRates.archivedAt)),
-    ex.select().from(schema.promoRules),
+    reglesFigees ? Promise.resolve(null) : ex.select().from(schema.promoRules),
   ]);
-  const lignes = items.map((it) => ({
-    unitPriceCents: it.unitPriceCents,
-    quantity: it.quantity,
-    format: (it.config as { format?: string } | null)?.format ?? null,
-  }));
+  const regles: RegleParier[] = reglesFigees ?? reglesDeLaTable ?? [];
+  const lignes = await lignesDuMoteur(items, ex);
   // Le seuil de gratuité se compare au panier APRÈS remises : c'est ce que
   // le client voit à l'écran, et c'est le montant qu'il paie vraiment.
   const apresRemise =
@@ -1047,6 +1172,12 @@ async function computeShippingCents(
  *
  * `livrable` est faux quand le mode de livraison choisi ne sait plus porter
  * ce colis : le total rendu n'a alors pas de port, et ne peut rien valider.
+ *
+ * Les promotions sont celles FIGÉES sur la commande au passage en caisse
+ * (order.promotions), quand elle en a : modifier ou archiver une promotion
+ * entre la caisse et le paiement ne fait plus refuser une commande honnête.
+ * Une commande d'avant, sans promotions figées, se compte avec la table.
+ * Un panier modifié depuis la caisse perd les siennes (panierModifie).
  */
 async function valeurDesLignes(
   order: typeof schema.orders.$inferSelect,
@@ -1062,7 +1193,8 @@ async function valeurDesLignes(
     .select()
     .from(schema.orderItems)
     .where(eq(schema.orderItems.orderId, order.id));
-  const articles = await computeOrderTotalCents(items, order.promoCode, maintenant, ex);
+  const figees = order.promotions?.regles ?? null;
+  const articles = await computeOrderTotalCents(items, order.promoCode, maintenant, ex, figees);
   // Une commande sans mode de livraison (reprise de l'ancienne boutique) garde
   // le port qu'elle porte : il n'y a rien pour le recalculer.
   if (!order.shippingMethod)
@@ -1079,6 +1211,7 @@ async function valeurDesLignes(
     order.promoCode,
     maintenant,
     ex,
+    figees,
   );
   if (!port)
     return {
@@ -1543,14 +1676,20 @@ async function previenirDuPaiement(orderId: number): Promise<void> {
         // La commande garde le nom français du mode ; la cliente lit celui de
         // sa langue, quand la boutique l'a traduit.
         modeLivraison: (await livraisonDansLaLangue(order, langue)).nom,
-        adresse: [
-          order.shippingName,
-          order.relayPointLabel,
-          order.shippingLine1,
-          order.shippingLine2,
-          [order.shippingPostalCode, order.shippingCity].filter(Boolean).join(" "),
-          order.shippingCountry,
-        ].filter((v): v is string => Boolean(v)),
+        // Un retrait sur place n'a pas d'adresse de livraison : le courrier
+        // dit à la place OÙ venir — le nom du lieu, son adresse et son texte,
+        // tels que la cliente les a lus en commandant (lieux-retrait.ts).
+        adresse: lieuDeRetrait(order, langue)
+          ? null
+          : [
+              order.shippingName,
+              order.relayPointLabel,
+              order.shippingLine1,
+              order.shippingLine2,
+              [order.shippingPostalCode, order.shippingCity].filter(Boolean).join(" "),
+              order.shippingCountry,
+            ].filter((v): v is string => Boolean(v)),
+        retrait: lignesDuLieu(lieuDeRetrait(order, langue)),
       });
       const parti = await envoyerMail({ ...courrier, to: client.email });
       await db.insert(schema.orderEvents).values({
@@ -1585,14 +1724,17 @@ async function previenirDuPaiement(orderId: number): Promise<void> {
 /**
  * Cette commande est-elle visible par la personne connectée ?
  *
- * Le propriétaire voit tout. Un vendeur ne voit que le stand : la liste des
+ * Le propriétaire voit tout. Un vendeur ne voit que les ventes des stands qui
+ * lui sont confiés, et rien s'il n'en a aucun (vendeurs.ts) : la liste des
  * commandes le bornait déjà, mais la fiche et le fichier d'impression ne le
  * faisaient pas, et les identifiants se suivent. Compter de un en un suffisait.
  */
-function commandeVisiblePar(c: Context, canal: string | undefined): boolean {
-  const user = c.get("utilisateur");
-  if (!user || user.role === "owner") return true;
-  return canal === "salon";
+function commandeVisiblePar(
+  c: Context,
+  commande: CommandeABorner | undefined,
+): boolean {
+  if (!commande) return false;
+  return commandeVisible(c.get("utilisateur"), commande);
 }
 
 export function mountConfiguratorRoutes(app: Hono) {
@@ -1738,6 +1880,11 @@ export function mountConfiguratorRoutes(app: Hono) {
       )
       .orderBy(asc(schema.pieceCategories.position));
 
+    // Les quatre nuanciers des personnages (peau, cheveux, vêtements,
+    // pantalon), tels que la boutique les a réglés — leurs couleurs d'origine
+    // tant qu'elle n'y a pas touché (cf. nuanciers.ts).
+    const nuanciersBase = await lireNuanciersBase();
+
     return c.json({
       pieceCategories: categoriesPieces.map((p) => ({
         id: p.id,
@@ -1749,6 +1896,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         // le réglage des pièces qui n'ont pas le leur.
         couleursProposees: couleursProposees(p.couleursProposees),
       })),
+      nuanciersBase,
       characters: types.map(({ t, categoryName, categoryTranslations }, i) => ({
         id: t.id,
         slug: t.slug,
@@ -1995,6 +2143,11 @@ export function mountConfiguratorRoutes(app: Hono) {
       : 0;
     const cadresHorsSite =
       avecCadre > 0 && !(await cadresProposesA(c)) ? avecCadre : 0;
+    // Chaque ligne dit la part de son prix due au cadre (`cadreCents`) : le
+    // panier et la caisse calculent les remises avec le même moteur que le
+    // serveur, et une affiche offerte « cadre non compris » ne se déduit pas
+    // sans elle. Une seule source, lignesDuMoteur, pour les lignes d'avant.
+    const pourLeMoteur = await lignesDuMoteur(items);
     // Le panier expose son poids : la boutique en a besoin pour n'afficher
     // que les modes de livraison qui savent porter le colis, AVANT que le
     // client ait saisi la moindre adresse.
@@ -2002,7 +2155,7 @@ export function mountConfiguratorRoutes(app: Hono) {
       cartId,
       orderId: order.id,
       status: order.status,
-      items,
+      items: items.map((it, i) => ({ ...it, cadreCents: pourLeMoteur[i]?.cadreCents ?? 0 })),
       poidsGrammes: await poidsDuPanier(items),
       cadresHorsSite,
     });
@@ -2076,7 +2229,7 @@ export function mountConfiguratorRoutes(app: Hono) {
     const cadreRetire =
       porteUnCadre(parsed.data) && !(await cadresProposesA(c));
     const config = cadreRetire ? sansCadre(parsed.data) : parsed.data;
-    const unitPriceCents = await resolveUnitPriceCents(
+    const { unitPriceCents, frameCents } = await resolvePrixLigne(
       productId,
       config.format,
       config.frameId,
@@ -2099,6 +2252,7 @@ export function mountConfiguratorRoutes(app: Hono) {
           config,
           title: body.title ?? null,
           unitPriceCents,
+          frameCents,
           quantity: Math.max(1, Number(body.quantity ?? 1)),
         })
         .returning();
@@ -2106,7 +2260,8 @@ export function mountConfiguratorRoutes(app: Hono) {
       return ligne;
     });
     if (!item) return c.json({ error: "panier_clos" }, 409);
-    return c.json(cadreRetire ? { ...item, cadreRetire } : item);
+    const avecCadre = { ...item, cadreCents: item.frameCents ?? 0 };
+    return c.json(cadreRetire ? { ...avecCadre, cadreRetire } : avecCadre);
   });
 
   /** MODIFIE une ligne existante (réouverture configurateur — §18.3 I). */
@@ -2129,7 +2284,7 @@ export function mountConfiguratorRoutes(app: Hono) {
     const item = await db.transaction(async (tx) => {
       const trouve = await loadCartItem(tx, c.req.param("cartId"), itemId);
       if (!trouve) return null;
-      const unitPriceCents = await resolveUnitPriceCents(
+      const { unitPriceCents, frameCents } = await resolvePrixLigne(
         trouve.item.productId,
         config.format,
         config.frameId,
@@ -2141,6 +2296,7 @@ export function mountConfiguratorRoutes(app: Hono) {
           config,
           variantId: body.variantId ?? undefined,
           unitPriceCents,
+          frameCents,
           quantity:
             body.quantity != null
               ? Math.max(1, Number(body.quantity))
@@ -2157,7 +2313,8 @@ export function mountConfiguratorRoutes(app: Hono) {
       return ligne ?? null;
     });
     if (!item) return c.notFound();
-    return c.json(cadreRetire ? { ...item, cadreRetire } : item);
+    const avecCadre = { ...item, cadreCents: item.frameCents ?? 0 };
+    return c.json(cadreRetire ? { ...avecCadre, cadreRetire } : avecCadre);
   });
 
   /** Supprime une ligne du panier. */
@@ -2286,6 +2443,9 @@ export function mountConfiguratorRoutes(app: Hono) {
     const ligne1 = String(liv.line1 ?? "").trim();
     const ville = String(liv.city ?? "").trim();
     const cp = String(liv.postalCode ?? "").trim();
+    // Le lieu de retrait choisi, pour un mode « retrait sur place » : relu
+    // plus bas, dans la transaction (actif, pas archivé).
+    const idLieu = Number(liv.pickupPointId);
     // Lu avant la transaction, qui ne doit pas prendre une seconde connexion
     // pendant qu'elle tient le verrou (voir Executeur). Le cookie du stand
     // n'y change rien : c'est la caisse du SITE, le stand a la sienne.
@@ -2367,7 +2527,11 @@ export function mountConfiguratorRoutes(app: Hono) {
       // comme dernière activité : le paiement sera vérifié avec les
       // promotions de CE moment-là (verifierEncaissement).
       const maintenant = new Date();
-      const articles = await computeOrderTotalCents(lignes, code, maintenant, tx);
+      // Les promotions en jeu sont FIGÉES avec la commande (`promotions`) :
+      // c'est avec elles que le paiement sera vérifié, quoi que la boutique
+      // modifie entre-temps, et c'est leur remise que lira la page Finances.
+      const calcul = await calculerArticles(lignes, code, maintenant, tx);
+      const articles = calcul.totalCents;
       const port = await computeShippingCents(lignes, modeSlug, pays, code, maintenant, tx);
       if (!port)
         return { erreur: "mode de livraison indisponible", statut: 400 as const, code: "mode_indisponible" };
@@ -2396,6 +2560,20 @@ export function mountConfiguratorRoutes(app: Hono) {
           code: "point_relais_requis",
         };
 
+      // Un retrait sur place se fait QUELQUE PART : le lieu choisi est relu
+      // ici, actif et non archivé. La cliente a pu garder la caisse ouverte
+      // pendant qu'on fermait le chalet ; on refuse alors, avec un message,
+      // plutôt que de l'attendre à un endroit qui n'existe plus. Ce que la
+      // commande garde, c'est une COPIE du lieu tel qu'elle l'a lu.
+      const lieu =
+        port.kind === "pickup" ? await lieuPourLaCommande(tx, idLieu) : null;
+      if (port.kind === "pickup" && !lieu)
+        return {
+          erreur: "Choisissez le lieu où retirer votre commande.",
+          statut: 400 as const,
+          code: "lieu_retrait_requis",
+        };
+
       const total = articles + port.cents;
       const [order] = await tx
         .update(schema.orders)
@@ -2407,6 +2585,7 @@ export function mountConfiguratorRoutes(app: Hono) {
           customerId: customer!.id,
           totalCents: total,
           promoCode: code || null,
+          promotions: calcul.figees,
           shippingMethod: modeSlug,
           shippingLabel: port.label,
           shippingDescription: port.description,
@@ -2420,8 +2599,13 @@ export function mountConfiguratorRoutes(app: Hono) {
           shippingCity: ville || null,
           shippingCountry: pays,
           shippingPhone: String(liv.phone ?? "").trim() || null,
-          relayPointId: String(liv.relayPointId ?? "").trim() || null,
-          relayPointLabel: String(liv.relayPointLabel ?? "").trim() || null,
+          // Un point relais pour un mode « relais ». Pour un retrait, plus
+          // rien ici : le repère « stand:<id> » d'avant est remplacé par le
+          // lieu choisi, juste dessous.
+          relayPointId: lieu ? null : String(liv.relayPointId ?? "").trim() || null,
+          relayPointLabel: lieu ? null : String(liv.relayPointLabel ?? "").trim() || null,
+          pickupPointId: lieu?.id ?? null,
+          pickupPoint: lieu?.instantane ?? null,
           // Le passage au tunnel est LA dernière activité du panier : c'est à
           // partir d'ici que se compte l'inactivité qui en fera un abandon.
           lastActivityAt: maintenant,
@@ -2518,14 +2702,14 @@ export function mountConfiguratorRoutes(app: Hono) {
     const stripePublicKey = process.env.PUBLIC_STRIPE_KEY ?? "";
     const paypalClientId =
       process.env.PUBLIC_PAYPAL_CLIENT_ID ?? process.env.PAYPAL_CLIENT_ID ?? "";
-    // La boutique tourne-t-elle en mode ESSAI ? Une clé Stripe de test se
-    // reconnaît à son préfixe, et PayPal le dit dans son réglage. Le tunnel
-    // s'en sert pour rappeler quoi saisir : sans ce rappel, on cherche un
-    // numéro de carte d'essai à chaque fois, et on finit par se demander si
-    // c'est la boutique qui est cassée.
-    const essai =
-      stripePublicKey.startsWith("pk_test") ||
-      (process.env.PAYPAL_ENV ?? "").trim().toLowerCase() !== "live";
+    // La boutique tourne-t-elle en mode ESSAI ? Le tunnel s'en sert pour
+    // rappeler quoi saisir : sans ce rappel, on cherche un numéro de carte
+    // d'essai à chaque fois, et on finit par se demander si c'est la boutique
+    // qui est cassée. La décision vit dans mode-essai.ts : seul un moyen
+    // BRANCHÉ compte. L'ancienne règle prenait PayPal absent pour du test, et
+    // la vraie boutique, Stripe réel sans PayPal, aurait montré les cartes
+    // d'essai à ses clientes.
+    const essai = etatEssai().paiement;
     return c.json({
       stripe:
         stripeConfigured && stripePublicKey
@@ -2805,7 +2989,7 @@ export function mountConfiguratorRoutes(app: Hono) {
     // fiche rend tout, y compris l'adresse postale de la cliente.
     // « Introuvable » plutôt que « interdit » : répondre 403 confirmerait que
     // la commande existe.
-    if (!commandeVisiblePar(c, order.channel)) return c.notFound();
+    if (!commandeVisiblePar(c, order)) return c.notFound();
     const items = await db
       .select({
         id: schema.orderItems.id,
@@ -2854,6 +3038,10 @@ export function mountConfiguratorRoutes(app: Hono) {
         // Le sens de la feuille, pour qui imprime : absent = portrait.
         orientation: cfg.orientation === "paysage" ? "paysage" : null,
         cadre: cadre?.name ?? null,
+        // La couleur d'aperçu du cadre : la fiche en borde la grande vignette
+        // de l'affiche, comme le panier du site. Lue en direct, comme le nom —
+        // un cadre s'archive, il ne disparaît pas.
+        cadreCouleur: cadre?.previewColor ?? null,
         lignesAffiche: lignes,
         // Les deux anciens champs restent servis tant que le back-office ne
         // les a pas lâchés — ils ne sont plus qu'une vue des deux premières
@@ -2961,6 +3149,10 @@ export function mountConfiguratorRoutes(app: Hono) {
 
     return c.json({
       order,
+      // Où la cliente vient chercher sa commande, en clair : le lieu figé à
+      // la caisse, ou l'ancien repère « stand:… » des commandes d'avant. La
+      // fiche et le bon n'ont pas à connaître ces deux formes.
+      lieuRetrait: lieuDeRetrait(order),
       customer: customer ?? null,
       items: avecRestes,
       paiements,
@@ -3083,17 +3275,21 @@ export function mountConfiguratorRoutes(app: Hono) {
       : [];
     if (items.length) {
       const commandes = await db
-        .select({ id: schema.orders.id, channel: schema.orders.channel })
+        .select({
+          id: schema.orders.id,
+          channel: schema.orders.channel,
+          standId: schema.orders.standId,
+        })
         .from(schema.orders)
         .where(inArray(schema.orders.id, [...new Set(items.map((i) => i.orderId))]));
-      const canal = new Map(commandes.map((o) => [o.id, o.channel]));
+      const commandeDe = new Map(commandes.map((o) => [o.id, o]));
       // Une fois pour toutes les lignes : ce sont les mêmes personnages et
       // les mêmes fonds pour toute la liste.
       const donnees = await donneesDImpression();
       for (const it of items) {
         // Même règle que le téléchargement : une ligne qu'on ne peut pas
         // télécharger n'a pas d'état à montrer.
-        if (!it.config || !commandeVisiblePar(c, canal.get(it.orderId))) continue;
+        if (!it.config || !commandeVisiblePar(c, commandeDe.get(it.orderId))) continue;
         lignes[it.id] = await etatDuFichierDImpression(it.id, it.config as PosterConfig, {
           preparer,
           reessayer,
@@ -3131,7 +3327,7 @@ export function mountConfiguratorRoutes(app: Hono) {
       .where(eq(schema.orders.id, item.orderId));
     // Même règle que pour la fiche : l'affiche d'une cliente du site, avec son
     // nom dans le nom de fichier, n'est pas à portée d'un compte de stand.
-    if (!order || !commandeVisiblePar(c, order.channel)) return c.notFound();
+    if (!order || !commandeVisiblePar(c, order)) return c.notFound();
     const cfg = item.config as PosterConfig;
     // Rangé au paiement, le fichier part aussitôt ; sinon il se fabrique ici.
     let pdf: Buffer;
@@ -3166,7 +3362,7 @@ export function mountConfiguratorRoutes(app: Hono) {
     const id = Number(c.req.param("id"));
     if (!Number.isInteger(id) || id <= 0) return c.notFound();
     const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, id));
-    if (!order || !commandeVisiblePar(c, order.channel)) return c.notFound();
+    if (!order || !commandeVisiblePar(c, order)) return c.notFound();
     const lignes = (
       await db
         .select({
@@ -3852,6 +4048,34 @@ export function mountConfiguratorRoutes(app: Hono) {
       archived: row.archivedAt != null,
       dedans: Number(compte?.n ?? 0),
     });
+  });
+
+  /**
+   * Les nuanciers des personnages : peau, cheveux / pelage, vêtements,
+   * pantalon — et, pour chacun, s'il a été réglé par la boutique ou s'il
+   * garde ses couleurs d'origine.
+   */
+  app.get("/admin/nuanciers-base", async (c) => {
+    const [nuanciers, modifies] = await Promise.all([
+      lireNuanciersBase(),
+      nuanciersModifies(),
+    ]);
+    return c.json({ nuanciers, modifies });
+  });
+
+  /**
+   * Enregistre UN nuancier des personnages, dans l'ordre reçu : c'est
+   * l'ordre que la cliente verra. `couleurs: null` le remet à ses couleurs
+   * d'origine. De 1 à 24 couleurs « #RRGGBB », sans doublon (cf. nuanciers.ts).
+   */
+  app.post("/admin/nuanciers-base", async (c) => {
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const r = await enregistrerNuancierBase(
+      b.nuancier,
+      b.couleurs === null ? null : b.couleurs,
+    );
+    if (!r.ok) return c.json({ error: r.raison }, 400);
+    return c.json({ ok: true, nuanciers: r.nuanciers });
   });
 
   /** Range un lot de pièces dans une catégorie (ou les en sort). */

@@ -508,7 +508,7 @@ if (Astro.request.method === "POST") {
         flash = `Rien n'a été enregistré. ${adresse.raison}`;
         flashErreur = true;
       } else {
-        await api.enregistrerFicheProduit(idProduit, {
+        const r = await api.enregistrerFicheProduit(idProduit, {
           produit: {
             slug: adresse.valeur,
             seoTitle: String(form.get("seoTitle") ?? "").trim() || null,
@@ -516,7 +516,11 @@ if (Astro.request.method === "POST") {
               String(form.get("seoDescription") ?? "").trim() || null,
           },
         });
-        flash = "Référencement enregistré.";
+        // L'adresse a changé : le dire, et dire que les anciens liens (Google,
+        // favoris, QR codes) mènent toujours à l'affiche.
+        flash = r.redirection
+          ? `Référencement enregistré. L'ancienne adresse ${r.redirection.de} redirige désormais vers la nouvelle, ${r.redirection.vers} : les liens déjà partagés continuent de mener à cette affiche.`
+          : "Référencement enregistré.";
       }
     } else if (action === "statut") {
       const choisi = String(form.get("status") ?? "");
@@ -2068,8 +2072,10 @@ try {
                 />
               </div>
               <span class="mt-1 block text-xs text-bo-muted">
-                Changer l'adresse casse les liens déjà partagés vers cette
-                affiche. Ne le faites que si le nom a vraiment changé.
+                Si vous la changez, l'ancienne adresse redirige vers la
+                nouvelle (redirection 301) : les liens déjà partagés et
+                Google mènent toujours à cette affiche. Ne la changez que si
+                le nom a vraiment changé.
               </span>
             </label>
 

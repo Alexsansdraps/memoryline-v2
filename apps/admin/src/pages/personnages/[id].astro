@@ -119,6 +119,28 @@ const categories = toutesCategories.filter(
   (c) => !c.archivedAt || perso?.categoryId === c.id,
 );
 
+/**
+ * Les nuanciers qu'une couleur du dessin peut proposer : les quatre des
+ * personnages (tels que réglés dans Catégories de pièces), et ceux des
+ * catégories de pièces proposées au client — les mêmes que le module reçoit.
+ * Muets, le menu ne propose que les quatre, avec leurs couleurs d'origine.
+ */
+let nuanciers: {
+  base: Record<string, string[]>;
+  categories: { slug: string; name: string; colors: string[] }[];
+} | null = null;
+try {
+  const [base, piecesCats] = await Promise.all([api.nuanciersBase(), api.pieceCategories()]);
+  nuanciers = {
+    base: base.nuanciers,
+    categories: piecesCats
+      .filter((c) => c.active && !c.archivedAt && c.colors.length > 0)
+      .map((c) => ({ slug: c.slug, name: c.name, colors: c.colors })),
+  };
+} catch {
+  nuanciers = null;
+}
+
 const vueDuPerso = perso?.orientation ?? vues[0]?.slug ?? "front";
 
 /**
@@ -608,7 +630,8 @@ const piecesACaler = SLOTS.flatMap((s) => {
                 proposees={perso.baseZonesProposees ?? null}
                 couleursImage={perso.baseCouleursImage ?? null}
                 rappel="Pensez à enregistrer le dessin."
-                aide="Au départ, seule la peau est proposée. Cochez « Le client peut la changer » pour en ajouter : le pelage d'un animal, une robe dessinée sur le personnage… « Pastilles » choisit les couleurs qu'il aura pour celle-ci. Pour une image en pixels (les chiens et les chats), rien n'est proposé tant que vous n'avez rien coché."
+                aide="Au départ, seule la peau est proposée. Cochez « Le client peut la changer » pour en ajouter : le pelage d'un animal, une robe dessinée sur le personnage… « Nuancier » choisit les couleurs qu'il aura pour celle-ci : Peau, Cheveux / pelage, Vêtements, Pantalon (réglés dans Catégories de pièces), ou celles d'une catégorie de pièces. Pour une image en pixels (les chiens et les chats), rien n'est proposé tant que vous n'avez rien coché."
+                nuanciers={nuanciers}
               />
             </div>
             <div class="mt-3 flex items-center gap-2">

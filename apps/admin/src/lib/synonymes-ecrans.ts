@@ -15,13 +15,16 @@
 export const SYNONYMES: Readonly<Record<string, readonly string[]>> = {
   "/": ["tableau de bord", "chiffres du jour"],
   "/commandes": ["ventes du site", "boutique", "expéditions"],
-  "/paniers": ["relances"],
+  "/paniers": ["relances", "programmer la relance", "relance automatique"],
   "/clients": ["clientes", "fiches"],
   "/ventes-salon": ["salon", "foire", "marché", "stands"],
   "/produits": ["affiches", "catalogue"],
   "/produits/nouveau": ["créer un produit", "ajouter une affiche"],
   "/produits/import": ["import", "fichier", "tableur"],
-  "/produits/modifier-en-masse": ["prix en masse", "modification groupée"],
+  "/produits/modifier-en-masse": [
+    "prix en masse", "modification groupée", "appliquer à tout",
+    "modifier en masse", "changer les collections",
+  ],
   "/cadres": ["encadrement"],
   "/personnages": ["silhouettes"],
   "/personnages/piece": ["pièces"],
@@ -30,13 +33,16 @@ export const SYNONYMES: Readonly<Record<string, readonly string[]>> = {
   "/ia": ["intelligence artificielle", "générées"],
   "/collections": ["rayons"],
   "/cartes-cadeaux": ["bons cadeaux"],
-  "/promotions": ["codes promo", "code promo", "coupon", "remises", "soldes", "réductions"],
+  "/promotions": [
+    "codes promo", "code promo", "coupon", "remises", "soldes", "réductions",
+    "offre", "remise automatique", "affiche offerte", "3 achetées",
+  ],
   "/livraison": [
     "frais de port", "transport", "colissimo", "point relais", "tarifs",
     "expédition", "transporteur", "mondial relay", "chronopost", "zones",
     "poids", "envoi",
   ],
-  "/bandeau": ["annonce", "message en haut", "bandeau du haut", "offre", "remise automatique"],
+  "/bandeau": ["annonce", "annonces", "message en haut", "bandeau du haut", "messages qui défilent"],
   "/contenu": [
     "textes", "accueil du site", "page d'accueil", "pied de page", "footer",
     "vidéo tuto", "signature", "affiches par ligne",
@@ -52,7 +58,18 @@ export const SYNONYMES: Readonly<Record<string, readonly string[]>> = {
     "chiffre d'affaires", "comptabilité", "marges", "taxes", "paypal", "stripe",
     "virement", "remboursements", "export comptable",
   ],
-  "/comptes": ["vendeuses", "accès", "mot de passe", "utilisateurs", "identifiants"],
+  "/comptes": [
+    "vendeuses", "accès", "mot de passe", "utilisateurs", "identifiants",
+    "vendeur", "stands du vendeur", "rattacher un stand", "plusieurs marchés",
+  ],
+  "/facturation": [
+    "siret", "adresse de la boutique", "mentions de la facture",
+    "mentions obligatoires", "en-tête de facture",
+  ],
+  "/livraison/lieux": [
+    "chalet", "lieu de retrait", "lieux de retrait", "point de retrait",
+    "click and collect", "retrait au chalet", "marché de Noël",
+  ],
 
   // Les écrans que l'ancienne liste avait oubliés : c'est leur absence qui
   // faisait répondre « bandeau » par le seul « Bandeau et offre ».
@@ -63,8 +80,18 @@ export const SYNONYMES: Readonly<Record<string, readonly string[]>> = {
   "/aide": ["faq", "mode d'emploi", "comment faire", "tutoriel"],
   "/ia/styles": ["styles IA", "consignes IA", "prompt"],
   "/categories-produits": ["catégories d'affiches", "logistique"],
-  "/produits/ordre": ["ordre", "classement"],
+  "/produits/ordre": [
+    "ordre", "classement", "ordre des affiches", "trier les affiches",
+    "ordre d'apparition", "ranger les affiches",
+  ],
+  "/categories-pieces": [
+    "nuancier", "nuanciers", "ordre des couleurs", "pastilles",
+    "couleurs de peau", "peau",
+  ],
   "/clients/import": ["importer des clients"],
-  "/paniers/courriel": ["mail de relance"],
+  "/paniers/courriel": [
+    "mail de relance", "mail", "modifier le mail", "e-mail panier", "texte de la relance",
+    "courriel panier abandonné",
+  ],
   "/produits/[id]": ["seo", "référencement", "titre google"],
 };

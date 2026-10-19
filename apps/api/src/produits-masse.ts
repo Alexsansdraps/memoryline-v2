@@ -27,8 +27,14 @@ import {
   sql as raw,
 } from "drizzle-orm";
 import { poidsArticle } from "@memoryline/types";
-import { ordreDesCollections, poidsDesCollections } from "./collections.js";
+import {
+  derniersRangs,
+  ordreDesCollections,
+  poidsDesCollections,
+  rangerEnFinDeCollection,
+} from "./collections.js";
 import { db, schema } from "./db/client.js";
+import { cheminAffiche, poserRedirection } from "./redirections.js";
 
 /** Les seuls états qu'un produit peut prendre. */
 const STATUTS = ["active", "draft", "archived"] as const;
@@ -220,6 +226,15 @@ interface ChampsProduit {
   categoryId?: number | null;
   weightGrams?: number | null;
   aiEnabled?: boolean;
+  description?: string | null;
+  /** Le type d'affiche (« de face », « de dos »…) : un slug de poster_view. */
+  defaultView?: string | null;
+}
+
+/** Les collections qu'une ligne fait gagner ou perdre à son affiche. */
+interface ChangementCollections {
+  ajouter: number[];
+  retirer: number[];
 }
 
 type Verdict =
@@ -228,8 +243,41 @@ type Verdict =
       donnees: ChampsProduit;
       /** Nouveau prix par format, en centimes. Vide quand rien ne change. */
       prix: Map<string, number>;
+      /** Null quand la ligne ne touche pas aux collections. */
+      collections: ChangementCollections | null;
     }
   | { ok: false; message: string };
+
+/** Une description ne dépasse pas ce que la fiche accepte (fiche-produit.ts). */
+const DESCRIPTION_MAX = 20_000;
+
+/** Les trois façons de toucher aux collections d'un lot, comme dans Shopify. */
+const MODES_COLLECTIONS = ["ajouter", "retirer", "remplacer"] as const;
+
+/**
+ * Une adresse tirée du nom, rendue unique.
+ *
+ * « Refaire depuis le nom » sur cinquante affiches d'une même ville donnerait
+ * cinquante fois « colmar » : la première l'aurait, les quarante-neuf autres
+ * seraient refusées. On suffixe donc (-2, -3…), face au catalogue entier ET
+ * aux autres lignes du lot, que `proprietaireDuSlug` suit au fil de l'envoi.
+ * Rend une chaîne vide quand le nom ne donne rien d'utilisable.
+ */
+function slugDisponible(
+  nom: string,
+  produitId: number,
+  proprietaireDuSlug: Map<string, number>,
+): string {
+  const base = slugifier(nom);
+  if (!base) return "";
+  let candidat = base;
+  for (let i = 2; ; i++) {
+    const proprietaire = proprietaireDuSlug.get(candidat);
+    if (proprietaire === undefined || proprietaire === produitId) return candidat;
+    const suffixe = `-${i}`;
+    candidat = `${base.slice(0, 80 - suffixe.length).replace(/-+$/, "")}${suffixe}`;
+  }
+}
 
 /**
  * Relit une ligne du tableau AVANT d'écrire quoi que ce soit.
@@ -240,14 +288,21 @@ type Verdict =
  */
 function verifierLigne(
   m: Record<string, unknown>,
-  produit: { id: number; slug: string },
+  produit: { id: number; slug: string; name: string; defaultView: string | null },
   connu: {
     proprietaireDuSlug: Map<string, number>;
     categories: Set<number>;
+    /** Les types d'affiche qu'on peut choisir : les non archivés. */
+    vues: Set<string>;
+    /** Toutes les collections, archivées comprises, avec leur nom. */
+    collections: Map<number, { name: string; archivee: boolean }>;
+    /** Les collections où l'affiche est rangée aujourd'hui. */
+    liens: Set<number>;
   },
 ): Verdict {
   const donnees: ChampsProduit = {};
   const prix = new Map<string, number>();
+  let collections: ChangementCollections | null = null;
 
   if ("prix" in m && m.prix && typeof m.prix === "object") {
     // Reçu sous la forme { "A4": 2300, "A3": 3500 } : le format est la clé,
@@ -286,6 +341,85 @@ function verifierLigne(
         message: `L'adresse « ${slug} » est déjà utilisée par un autre produit. Choisissez-en une autre.`,
       };
     if (slug !== produit.slug) donnees.slug = slug;
+  } else if (m.slugDepuisNom === true) {
+    // « Refaire depuis le nom » : l'adresse suit le nom de la ligne — le
+    // nouveau s'il change dans le même envoi —, rendue unique ici plutôt que
+    // refusée (cf. slugDisponible). Une adresse tapée à la main, elle, passe
+    // au-dessus : c'est le `if` juste avant.
+    const nom = donnees.name ?? produit.name;
+    const slug = slugDisponible(nom, produit.id, connu.proprietaireDuSlug);
+    if (!slug)
+      return {
+        ok: false,
+        message:
+          "Ce nom ne donne aucune adresse utilisable. Tapez l'adresse à la main, avec des lettres et des chiffres.",
+      };
+    if (slug !== produit.slug) donnees.slug = slug;
+  }
+
+  if ("description" in m) {
+    // Le même nettoyage que la fiche : le texte part tel quel dans la page
+    // publique, et une description vidée vaut « pas de description ».
+    const texte = String(m.description ?? "").trim();
+    if (texte.length > DESCRIPTION_MAX)
+      return {
+        ok: false,
+        message: `La description dépasse ${DESCRIPTION_MAX.toLocaleString("fr-FR")} caractères. Raccourcissez-la.`,
+      };
+    donnees.description = texte || null;
+  }
+
+  if ("defaultView" in m) {
+    const vue = String(m.defaultView ?? "").trim();
+    // Vide : le type par défaut de la boutique, comme une fiche jamais
+    // réglée. Un type archivé ne se choisit plus, sauf celui que l'affiche a
+    // DÉJÀ : la grille le renvoie tel quel, et le refuser rendrait la ligne
+    // immodifiable le jour où l'on range ce type.
+    if (vue && !connu.vues.has(vue) && vue !== produit.defaultView)
+      return {
+        ok: false,
+        message: "Ce type d'affiche n'existe plus, ou il est archivé. Rechargez la page.",
+      };
+    donnees.defaultView = vue || null;
+  }
+
+  if ("collections" in m) {
+    const brut = m.collections;
+    const lues =
+      brut && typeof brut === "object" && !Array.isArray(brut)
+        ? (brut as Record<string, unknown>)
+        : null;
+    const mode = String(lues?.mode ?? "");
+    if (!lues || !(MODES_COLLECTIONS as readonly string[]).includes(mode))
+      return {
+        ok: false,
+        message:
+          "Les collections n'ont pas pu être lues. Rechargez la page et reprenez la modification.",
+      };
+    const ids = identifiants(lues.ids);
+    if (ids.some((id) => !connu.collections.has(id)))
+      return {
+        ok: false,
+        message: "Une des collections choisies n'existe plus. Rechargez la page.",
+      };
+    const ajouter =
+      mode === "retirer" ? [] : ids.filter((id) => !connu.liens.has(id));
+    const retirer =
+      mode === "ajouter"
+        ? []
+        : mode === "retirer"
+          ? ids.filter((id) => connu.liens.has(id))
+          : [...connu.liens].filter((id) => !ids.includes(id));
+    // On peut toujours SORTIR d'une collection archivée — c'est du ménage.
+    // Y ranger une affiche, non : le rayon étant rangé, elle n'y serait vue
+    // de personne, et le seul effet serait le poids qu'il donne aux colis.
+    const archivee = ajouter.find((id) => connu.collections.get(id)?.archivee);
+    if (archivee !== undefined)
+      return {
+        ok: false,
+        message: `La collection « ${connu.collections.get(archivee)?.name} » est archivée. Restaurez-la avant d'y ranger des affiches.`,
+      };
+    if (ajouter.length || retirer.length) collections = { ajouter, retirer };
   }
 
   if ("basePriceCents" in m) {
@@ -341,8 +475,64 @@ function verifierLigne(
     donnees.aiEnabled = actif;
   }
 
-  return { ok: true, donnees, prix };
+  return { ok: true, donnees, prix, collections };
 }
+
+/** Une transaction en cours, ou la base pour une écriture isolée. */
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type Executeur = typeof db | Transaction;
+
+/**
+ * Sort des affiches de collections : le SEUL `delete` de ce fichier.
+ *
+ * L'affiche reste au catalogue et la collection reste entière : seule la
+ * liaison est réécrite, et l'y remettre est un clic. C'est ce que
+ * scripts/verifier-archivage.mjs autorise ici, une fois. Le paramètre
+ * s'appelle `tx` exprès : c'est sous ce nom (ou `db`) que le garde-fou voit
+ * une suppression — rebaptisé, il la rendrait invisible.
+ */
+async function sortirDesCollections(
+  tx: Executeur,
+  produitIds: readonly number[],
+  collectionIds: readonly number[],
+): Promise<number> {
+  if (!produitIds.length || !collectionIds.length) return 0;
+  const retires = await tx
+    .delete(schema.productCollections)
+    .where(
+      and(
+        inArray(schema.productCollections.productId, [...produitIds]),
+        inArray(schema.productCollections.collectionId, [...collectionIds]),
+      ),
+    )
+    .returning({ productId: schema.productCollections.productId });
+  return retires.length;
+}
+
+/** Une ligne de l'aperçu : ce qu'un champ était, ce qu'il deviendra. */
+interface Changement {
+  champ: string;
+  avant: string;
+  apres: string;
+}
+
+/** Le texte d'une description, pour un aperçu d'une ligne : sans balises, court. */
+function extrait(html: string | null | undefined): string {
+  const texte = String(html ?? "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!texte) return "aucune";
+  return texte.length > 80 ? `${texte.slice(0, 79)}… (${texte.length} caractères)` : texte;
+}
+
+/** Le nom d'un statut, tel que la grille le montre. */
+const LIBELLES_STATUT: Record<string, string> = {
+  active: "Actif",
+  draft: "Brouillon",
+  archived: "Archivé",
+};
 
 export function mountProduitsMasse(app: Hono): void {
 /* -------------------------------------------------------------------------- */
@@ -466,7 +656,6 @@ app.get("/admin/products/export.csv", async (c) => {
         productId: schema.productCollections.productId,
         nom: schema.collections.name,
         poids: schema.collections.defaultWeightGrams,
-        position: schema.productCollections.position,
       })
       .from(schema.productCollections)
       .innerJoin(
@@ -474,7 +663,9 @@ app.get("/admin/products/export.csv", async (c) => {
         eq(schema.collections.id, schema.productCollections.collectionId),
       )
       .where(inArray(schema.productCollections.productId, idsProduits))
-      .orderBy(asc(schema.productCollections.position)),
+      // L'ordre des collections elles-mêmes : `position` dit la place de
+      // l'affiche dans chaque rayon, il ne range pas les rayons entre eux.
+      .orderBy(...ordreDesCollections()),
     db
       .select({
         productId: schema.productImages.productId,
@@ -647,6 +838,11 @@ app.get("/admin/products/export.csv", async (c) => {
     if (statutValide(q.statut))
       conditionsLignes.push(eq(schema.products.status, q.statut));
 
+    // La description ne vient que si on la demande : seule la grille de
+    // modification groupée en a l'usage, et deux cents textes n'ont pas à
+    // traverser la liste des produits à chaque visite.
+    const avecDescription = q.avecDescription === "1";
+
     /*
      * PREMIÈRE VAGUE — quatre requêtes qui ne dépendent de rien.
      *
@@ -671,6 +867,10 @@ app.get("/admin/products/export.csv", async (c) => {
           categoryId: schema.products.categoryId,
           weightGrams: schema.products.weightGrams,
           aiEnabled: schema.products.aiEnabled,
+          defaultView: schema.products.defaultView,
+          description: avecDescription
+            ? schema.products.description
+            : raw<string | null>`null`,
         })
         .from(schema.products)
         .where(conditionsLignes.length ? and(...conditionsLignes) : undefined)
@@ -748,6 +948,7 @@ app.get("/admin/products/export.csv", async (c) => {
             id: schema.collections.id,
             name: schema.collections.name,
             defaultWeightGrams: schema.collections.defaultWeightGrams,
+            archivedAt: schema.collections.archivedAt,
           })
           .from(schema.productCollections)
           .innerJoin(
@@ -755,10 +956,7 @@ app.get("/admin/products/export.csv", async (c) => {
             eq(schema.productCollections.collectionId, schema.collections.id),
           )
           .where(inArray(schema.productCollections.productId, ids))
-          .orderBy(
-            asc(schema.productCollections.position),
-            asc(schema.collections.name),
-          )
+          .orderBy(...ordreDesCollections())
         : [],
     ]);
 
@@ -791,14 +989,20 @@ app.get("/admin/products/export.csv", async (c) => {
       if (!imageParProduit.has(img.productId))
         imageParProduit.set(img.productId, img.url);
 
-    const collectionsParProduit = new Map<number, { id: number; name: string }[]>();
+    const collectionsParProduit = new Map<
+      number,
+      { id: number; name: string; archivee?: true }[]
+    >();
     // La plus lourde des collections qui se prononcent : un colis surestimé se
     // paie quelques centimes, un colis sous-affranchi revient en surtaxe sans
     // que rien ne l'ait signalé.
     const poidsCollectionsParProduit = new Map<number, number | null>();
     for (const l of liens) {
       const liste = collectionsParProduit.get(l.productId) ?? [];
-      liste.push({ id: l.id, name: l.name });
+      // Archivée, elle reste nommée et marquée : la grille de modification
+      // groupée doit pouvoir la montrer, et ne pas l'en faire sortir sans
+      // qu'on l'ait demandé.
+      liste.push({ id: l.id, name: l.name, ...(l.archivedAt ? { archivee: true as const } : {}) });
       collectionsParProduit.set(l.productId, liste);
       poidsCollectionsParProduit.set(
         l.productId,
@@ -838,6 +1042,8 @@ app.get("/admin/products/export.csv", async (c) => {
           imageUrl: imageParProduit.get(p.id) ?? null,
           variantes: nombreDeVariantes.get(p.id) ?? 0,
           collections: collectionsParProduit.get(p.id) ?? [],
+          defaultView: p.defaultView,
+          ...(avecDescription ? { description: p.description } : {}),
         };
       }),
       categories: categories.map((cat) => ({ id: cat.id, name: cat.name })),
@@ -1176,16 +1382,8 @@ app.get("/admin/products/export.csv", async (c) => {
         );
 
       if (action === "collection-retirer") {
-        const retires = await db
-          .delete(schema.productCollections)
-          .where(
-            and(
-              eq(schema.productCollections.collectionId, collectionId),
-              inArray(schema.productCollections.productId, ids),
-            ),
-          )
-          .returning({ productId: schema.productCollections.productId });
-        return c.json({ ok: true, count: retires.length });
+        const retires = await sortirDesCollections(db, ids, [collectionId]);
+        return c.json({ ok: true, count: retires });
       }
 
       const existants = await db
@@ -1194,13 +1392,17 @@ app.get("/admin/products/export.csv", async (c) => {
         .where(inArray(schema.products.id, ids));
       if (!existants.length) return c.json({ ok: true, count: 0 });
       // Un produit déjà rangé dans la collection est un cas normal, pas une
-      // erreur : on le laisse tranquille et les autres passent.
-      await db
-        .insert(schema.productCollections)
-        .values(
-          existants.map((p) => ({ productId: p.id, collectionId })),
-        )
-        .onConflictDoNothing();
+      // erreur : il garde sa place, et les autres se rangent À LA FIN, dans
+      // l'ordre de la sélection. Les poser tous au rang 0, comme avant, les
+      // faisait passer devant tout ce que la boutique avait rangé à la main.
+      const exist = new Set(existants.map((p) => p.id));
+      await db.transaction((tx) =>
+        rangerEnFinDeCollection(
+          tx,
+          collectionId,
+          ids.filter((i) => exist.has(i)),
+        ),
+      );
       return c.json({ ok: true, count: existants.length });
     }
 
@@ -1246,66 +1448,143 @@ app.get("/admin/products/export.csv", async (c) => {
     return c.json({ error: "Action inconnue." }, 400);
   });
 
+
   /* ---------------------------------------------------------------------- */
   /*  Édition ligne à ligne                                                 */
   /* ---------------------------------------------------------------------- */
 
   /**
-   * Enregistre les cases modifiées à même le tableau.
+   * Enregistre les cases modifiées à même le tableau — ou montre d'abord ce
+   * qu'elles changeraient.
    *
    * Le tableau s'édite comme un tableur : on corrige dix noms et trois prix,
    * puis on enregistre une seule fois. Chaque ligne est jugée seule, et une
    * ligne refusée revient dans `erreurs` avec sa raison au lieu d'annuler le
    * travail des neuf autres.
+   *
+   * Avec `apercu: true`, RIEN n'est écrit : chaque ligne passe exactement par
+   * la même vérification, et la réponse dit, champ par champ, ce qui était et
+   * ce qui sera — avec les redirections 301 que poseront les adresses
+   * changées. C'est le « Vérifier les changements » de la grille : appliquer
+   * un nouveau nom à cent affiches se regarde avant de s'enregistrer. Le même
+   * lot renvoyé sans `apercu` s'enregistre alors tel qu'il a été montré.
    */
   app.post("/admin/products/masse", async (c) => {
     const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const apercu = b.apercu === true;
     const modifications = (
       Array.isArray(b.modifications) ? (b.modifications as unknown[]) : []
     ).filter(
       (m): m is Record<string, unknown> => typeof m === "object" && m !== null,
     );
-    if (!modifications.length) return c.json({ ok: true, count: 0 });
+    if (!modifications.length)
+      return c.json({ ok: true, count: 0, ...(apercu ? { apercu: [] } : {}) });
 
     const ids = identifiants(modifications.map((m) => m.id));
-    const produits = ids.length
-      ? await db
-          .select({ id: schema.products.id, slug: schema.products.slug })
-          .from(schema.products)
-          .where(inArray(schema.products.id, ids))
-      : [];
-    const parId = new Map(produits.map((p) => [p.id, p]));
 
-    // Tous les slugs du catalogue, pas seulement ceux du lot : l'adresse d'un
-    // produit doit rester unique face à ceux que la page n'affiche même pas.
-    const tousLesSlugs = await db
-      .select({ id: schema.products.id, slug: schema.products.slug })
-      .from(schema.products);
+    /*
+     * Tout ce que la vérification lit, chargé une fois et ensemble : la base
+     * peut être à 300 ms d'aller-retour, et deux cents lignes à une requête
+     * chacune ne se supporteraient pas.
+     */
+    const [
+      produits,
+      tousLesSlugs,
+      categories,
+      vues,
+      collectionsBase,
+      liensDuLot,
+      variantesDuLot,
+    ] = await Promise.all([
+      ids.length
+        ? db
+            .select({
+              id: schema.products.id,
+              slug: schema.products.slug,
+              name: schema.products.name,
+              status: schema.products.status,
+              basePriceCents: schema.products.basePriceCents,
+              categoryId: schema.products.categoryId,
+              weightGrams: schema.products.weightGrams,
+              aiEnabled: schema.products.aiEnabled,
+              description: schema.products.description,
+              defaultView: schema.products.defaultView,
+            })
+            .from(schema.products)
+            .where(inArray(schema.products.id, ids))
+        : Promise.resolve([]),
+      // Tous les slugs du catalogue, pas seulement ceux du lot : l'adresse
+      // d'un produit doit rester unique face à ceux que la page n'affiche
+      // même pas.
+      db
+        .select({ id: schema.products.id, slug: schema.products.slug })
+        .from(schema.products),
+      // Les archivées comptent ici, exprès : la grille renvoie pour chaque
+      // ligne la catégorie qu'elle a déjà, et la refuser rendrait
+      // immodifiable toute affiche dont on vient de ranger la catégorie.
+      // C'est la liste déroulante, elle, qui ne propose plus les archivées.
+      db
+        .select({ id: schema.productCategories.id, name: schema.productCategories.name })
+        .from(schema.productCategories),
+      db
+        .select({
+          slug: schema.posterViews.slug,
+          name: schema.posterViews.name,
+          archivedAt: schema.posterViews.archivedAt,
+        })
+        .from(schema.posterViews),
+      db
+        .select({
+          id: schema.collections.id,
+          name: schema.collections.name,
+          archivedAt: schema.collections.archivedAt,
+        })
+        .from(schema.collections),
+      ids.length
+        ? db
+            .select({
+              productId: schema.productCollections.productId,
+              collectionId: schema.productCollections.collectionId,
+            })
+            .from(schema.productCollections)
+            .where(inArray(schema.productCollections.productId, ids))
+        : Promise.resolve([]),
+      // Les formats du lot : la grille en modifie plusieurs par ligne.
+      ids.length
+        ? db
+            .select({
+              id: schema.variants.id,
+              productId: schema.variants.productId,
+              format: schema.variants.format,
+              priceCents: schema.variants.priceCents,
+            })
+            .from(schema.variants)
+            .where(inArray(schema.variants.productId, ids))
+        : Promise.resolve([]),
+    ]);
+
+    const parId = new Map(produits.map((p) => [p.id, p]));
     const proprietaireDuSlug = new Map(
       tousLesSlugs.map((p) => [p.slug, p.id] as const),
     );
-    // Les archivées comptent ici, exprès : la grille renvoie pour chaque
-    // ligne la catégorie qu'elle a déjà, et la refuser rendrait immodifiable
-    // toute affiche dont on vient de ranger la catégorie. C'est la liste
-    // déroulante, elle, qui ne propose plus les archivées.
-    const categories = await db
-      .select({ id: schema.productCategories.id })
-      .from(schema.productCategories);
+    const nomCategorie = new Map(categories.map((cat) => [cat.id, cat.name]));
     const categoriesConnues = new Set(categories.map((cat) => cat.id));
-
-    // Les formats du lot, chargés une fois : la grille en modifie plusieurs
-    // par ligne, et une requête par cellule serait une requête de trop.
-    const variantesDuLot = ids.length
-      ? await db
-          .select({
-            id: schema.variants.id,
-            productId: schema.variants.productId,
-            format: schema.variants.format,
-            priceCents: schema.variants.priceCents,
-          })
-          .from(schema.variants)
-          .where(inArray(schema.variants.productId, ids))
-      : [];
+    const nomVue = new Map(vues.map((v) => [v.slug, v.name]));
+    const vuesOuvertes = new Set(
+      vues.filter((v) => !v.archivedAt).map((v) => v.slug),
+    );
+    const collections = new Map(
+      collectionsBase.map((col) => [
+        col.id,
+        { name: col.name, archivee: col.archivedAt !== null },
+      ]),
+    );
+    const liensParProduit = new Map<number, Set<number>>();
+    for (const l of liensDuLot) {
+      const s = liensParProduit.get(l.productId) ?? new Set<number>();
+      s.add(l.collectionId);
+      liensParProduit.set(l.productId, s);
+    }
     const variantesParProduit = new Map<
       number,
       { id: number; format: string; priceCents: number }[]
@@ -1316,8 +1595,28 @@ app.get("/admin/products/export.csv", async (c) => {
       variantesParProduit.set(v.productId, liste);
     }
 
+    // Le dernier rang de chaque collection : une affiche qu'on y range
+    // arrive À LA FIN, sans bousculer l'ordre réglé à la main (collections.ts).
+    // Lu seulement s'il faut écrire : un aperçu n'en a pas besoin.
+    const rangs = apercu ? new Map<number, number>() : await derniersRangs(db, [...collections.keys()]);
+    const nomsCollections = (liste: number[]) =>
+      liste.map((id) => collections.get(id)?.name ?? `n° ${id}`).join(", ");
+    const prixLisible = (cents: number) =>
+      `${(cents / 100).toFixed(2).replace(".", ",")} €`;
+    const grammesLisibles = (g: number | null) =>
+      g === null ? "vide (celui de la catégorie)" : `${g} g`;
+    const nomDeVue = (slug: string | null) =>
+      slug === null ? "par défaut" : (nomVue.get(slug) ?? slug);
+
     const erreurs: { id: number; message: string }[] = [];
+    const lignesApercu: {
+      id: number;
+      nom: string;
+      changements: Changement[];
+      redirection: { de: string; vers: string } | null;
+    }[] = [];
     let count = 0;
+    let redirectionsPosees = 0;
 
     for (const m of modifications) {
       const id = identifiant(m.id);
@@ -1330,9 +1629,13 @@ app.get("/admin/products/export.csv", async (c) => {
         continue;
       }
 
+      const liens = liensParProduit.get(produit.id) ?? new Set<number>();
       const verdict = verifierLigne(m, produit, {
         proprietaireDuSlug,
         categories: categoriesConnues,
+        vues: vuesOuvertes,
+        collections,
+        liens,
       });
       if (!verdict.ok) {
         erreurs.push({ id: produit.id, message: verdict.message });
@@ -1355,23 +1658,32 @@ app.get("/admin/products/export.csv", async (c) => {
         continue;
       }
 
-      // Ne garder que les prix qui changent VRAIMENT : réécrire une valeur
-      // identique ferait compter la ligne comme modifiée, et la page
-      // annoncerait un travail qu'elle n'a pas fait.
+      // Ne garder que ce qui change VRAIMENT : réécrire une valeur identique
+      // ferait compter la ligne comme modifiée, et la page annoncerait un
+      // travail qu'elle n'a pas fait.
+      const donnees: ChampsProduit = {};
+      for (const [cle, valeur] of Object.entries(verdict.donnees) as [
+        keyof ChampsProduit,
+        unknown,
+      ][])
+        if (valeur !== produit[cle])
+          (donnees as Record<string, unknown>)[cle] = valeur;
       const prixAEcrire = new Map<number, number>();
       for (const v of formatsDuProduit) {
         const voulu = verdict.prix.get(v.format);
         if (voulu !== undefined && voulu !== v.priceCents)
           prixAEcrire.set(v.id, voulu);
       }
-      if (!Object.keys(verdict.donnees).length && !prixAEcrire.size) continue;
+      const changeCollections = verdict.collections;
+      if (!Object.keys(donnees).length && !prixAEcrire.size && !changeCollections)
+        continue;
 
       // Le prix de base suit le plus bas des formats, sauf quand la ligne le
       // fixe elle-même : la valeur tapée à la main a le dernier mot, sinon
       // elle serait écrasée dans la seconde par un calcul que personne n'a
       // demandé.
       const baseARecaler =
-        prixAEcrire.size && verdict.donnees.basePriceCents === undefined
+        prixAEcrire.size && donnees.basePriceCents === undefined
           ? Math.min(
               ...formatsDuProduit.map(
                 (v) => prixAEcrire.get(v.id) ?? v.priceCents,
@@ -1379,15 +1691,106 @@ app.get("/admin/products/export.csv", async (c) => {
             )
           : null;
 
+      const redirection =
+        donnees.slug !== undefined
+          ? {
+              de: cheminAffiche(produit.slug),
+              vers: cheminAffiche(donnees.slug),
+            }
+          : null;
+
+      if (apercu) {
+        // Champ par champ, avec les mots de la grille : c'est ce que la
+        // propriétaire relit avant d'enregistrer.
+        const changements: Changement[] = [];
+        if (donnees.name !== undefined)
+          changements.push({ champ: "Nom", avant: produit.name, apres: donnees.name });
+        if (donnees.slug !== undefined)
+          changements.push({ champ: "Identifiant", avant: produit.slug, apres: donnees.slug });
+        if (donnees.status !== undefined)
+          changements.push({
+            champ: "Statut",
+            avant: LIBELLES_STATUT[produit.status] ?? produit.status,
+            apres: LIBELLES_STATUT[donnees.status] ?? donnees.status,
+          });
+        for (const v of formatsDuProduit) {
+          const voulu = prixAEcrire.get(v.id);
+          if (voulu !== undefined)
+            changements.push({
+              champ: `Prix ${v.format}`,
+              avant: prixLisible(v.priceCents),
+              apres: prixLisible(voulu),
+            });
+        }
+        if (donnees.basePriceCents !== undefined)
+          changements.push({
+            champ: "Prix de repli",
+            avant: prixLisible(produit.basePriceCents),
+            apres: prixLisible(donnees.basePriceCents),
+          });
+        if (donnees.categoryId !== undefined)
+          changements.push({
+            champ: "Catégorie",
+            avant: produit.categoryId === null ? "aucune" : (nomCategorie.get(produit.categoryId) ?? `n° ${produit.categoryId}`),
+            apres: donnees.categoryId === null ? "aucune" : (nomCategorie.get(donnees.categoryId) ?? `n° ${donnees.categoryId}`),
+          });
+        if (donnees.weightGrams !== undefined)
+          changements.push({
+            champ: "Poids",
+            avant: grammesLisibles(produit.weightGrams),
+            apres: grammesLisibles(donnees.weightGrams),
+          });
+        if (donnees.aiEnabled !== undefined)
+          changements.push({
+            champ: "Affiche IA",
+            avant: produit.aiEnabled ? "oui" : "non",
+            apres: donnees.aiEnabled ? "oui" : "non",
+          });
+        if (donnees.description !== undefined)
+          changements.push({
+            champ: "Description",
+            avant: extrait(produit.description),
+            apres: extrait(donnees.description),
+          });
+        if (donnees.defaultView !== undefined)
+          changements.push({
+            champ: "Type d'affiche",
+            avant: nomDeVue(produit.defaultView),
+            apres: nomDeVue(donnees.defaultView),
+          });
+        if (changeCollections) {
+          const avant = [...liens];
+          const apres = [
+            ...avant.filter((cid) => !changeCollections.retirer.includes(cid)),
+            ...changeCollections.ajouter,
+          ];
+          changements.push({
+            champ: "Collections",
+            avant: nomsCollections(avant) || "aucune",
+            apres: nomsCollections(apres) || "aucune",
+          });
+        }
+        lignesApercu.push({ id: produit.id, nom: produit.name, changements, redirection });
+        // Le lot se juge comme il s'enregistrera : une adresse prise par une
+        // ligne plus haut n'est plus libre pour les suivantes.
+        if (donnees.slug) {
+          proprietaireDuSlug.delete(produit.slug);
+          proprietaireDuSlug.set(donnees.slug, produit.id);
+        }
+        count++;
+        if (redirection) redirectionsPosees++;
+        continue;
+      }
+
       try {
         // La ligne passe en entier ou pas du tout : un produit dont le statut
         // serait écrit et le prix non serait dans un état que personne n'a
         // demandé, et que rien à l'écran ne trahirait.
         await db.transaction(async (tx) => {
-          if (Object.keys(verdict.donnees).length)
+          if (Object.keys(donnees).length)
             await tx
               .update(schema.products)
-              .set({ ...verdict.donnees, updatedAt: new Date() })
+              .set({ ...donnees, updatedAt: new Date() })
               .where(eq(schema.products.id, produit.id));
           for (const [cents, varianteIds] of parValeur(prixAEcrire))
             await tx
@@ -1399,6 +1802,22 @@ app.get("/admin/products/export.csv", async (c) => {
               .update(schema.products)
               .set({ basePriceCents: baseARecaler, updatedAt: new Date() })
               .where(eq(schema.products.id, produit.id));
+          if (changeCollections) {
+            await sortirDesCollections(tx, [produit.id], changeCollections.retirer);
+            // Ajoutée à la fin de chaque collection, dans l'ordre du lot.
+            for (const collectionId of changeCollections.ajouter) {
+              const rang = (rangs.get(collectionId) ?? -1) + 1;
+              await tx
+                .insert(schema.productCollections)
+                .values({ productId: produit.id, collectionId, position: rang })
+                .onConflictDoNothing();
+              rangs.set(collectionId, rang);
+            }
+          }
+          // L'ancienne adresse mène à la nouvelle, dans la même transaction
+          // que le changement : jamais l'un sans l'autre.
+          if (donnees.slug !== undefined)
+            await poserRedirection(tx, produit.slug, donnees.slug);
         });
       } catch {
         // Le lot entier ne tombe pas pour une ligne : la base peut refuser une
@@ -1414,13 +1833,21 @@ app.get("/admin/products/export.csv", async (c) => {
 
       // La mémoire du lot ne se met à jour qu'une fois la ligne écrite : le
       // même produit peut revenir plus bas dans le même envoi.
-      if (verdict.donnees.slug) {
+      if (donnees.slug) {
         proprietaireDuSlug.delete(produit.slug);
-        proprietaireDuSlug.set(verdict.donnees.slug, produit.id);
+        proprietaireDuSlug.set(donnees.slug, produit.id);
+        produit.slug = donnees.slug;
+        redirectionsPosees++;
       }
+      Object.assign(produit, donnees);
       for (const v of formatsDuProduit) {
         const ecrit = prixAEcrire.get(v.id);
         if (ecrit !== undefined) v.priceCents = ecrit;
+      }
+      if (changeCollections) {
+        for (const cid of changeCollections.retirer) liens.delete(cid);
+        for (const cid of changeCollections.ajouter) liens.add(cid);
+        liensParProduit.set(produit.id, liens);
       }
 
       count++;
@@ -1429,6 +1856,8 @@ app.get("/admin/products/export.csv", async (c) => {
     return c.json({
       ok: true,
       count,
+      redirections: redirectionsPosees,
+      ...(apercu ? { apercu: lignesApercu } : {}),
       ...(erreurs.length ? { erreurs } : {}),
     });
   });

@@ -1,23 +1,52 @@
 ---
-import { api, type Banner } from "../lib/api.ts";
-import { LANGUE_DEFAUT, lien, type Langue } from "../i18n/utils.ts";
+/**
+ * Le bandeau d'annonce, tout en haut du site : un ou plusieurs messages
+ * (un texte, un bouton facultatif), réglés au back-office (« Bandeau
+ * d'annonce », voir apps/api/src/bandeau.ts).
+ *
+ * Plusieurs messages défilent l'un après l'autre, en fondu, chacun le temps
+ * réglé. Les règles d'un défilement qu'on ne subit pas (WCAG 2.2.2) :
+ *   - il s'arrête tant que la souris est dessus ou que le clavier y est ;
+ *   - un bouton le met en pause, et le relance ;
+ *   - des flèches passent au précédent et au suivant ;
+ *   - quelqu'un qui a demandé à son appareil de limiter les animations
+ *     (prefers-reduced-motion) n'a ni fondu ni avance automatique : les
+ *     messages se lisent un par un, aux flèches.
+ * Un seul message : il reste affiché, sans boutons. Aucun : rien du tout.
+ *
+ * Tous les messages sont rendus ici, côté serveur : sans script, le premier
+ * s'affiche, et c'est déjà le bandeau d'avant.
+ */
+import { api, type Bandeau } from "../lib/api.ts";
+import { LANGUE_DEFAUT, lien, t, type Langue } from "../i18n/utils.ts";
 
 interface Props {
   /**
-   * Langue de la page : le message s'y lit, et un lien interne du bandeau y
-   * garde la visiteuse.
+   * Langue de la page : les messages s'y lisent, et un lien interne y garde
+   * la visiteuse.
    */
   langue?: Langue;
 }
 const { langue = LANGUE_DEFAUT } = Astro.props;
+const tr = t(langue);
 
-let banner: Banner | null = null;
+let bandeau: Bandeau | null = null;
 try {
-  // Message et texte du lien dans la langue de la page, le français à défaut.
-  banner = await api.banner(langue);
+  // Messages et textes des boutons dans la langue de la page, le français à
+  // défaut, champ par champ.
+  bandeau = await api.banners(langue);
 } catch {
   // API non joignable -> pas de bandeau
 }
+const messages = bandeau?.messages ?? [];
+const fond = bandeau?.reglages.fond ?? "#20211f";
+const texte = bandeau?.reglages.texte ?? "#f7f3ec";
+const dureeMs = (bandeau?.reglages.dureeSecondes ?? 6) * 1000;
+const plusieurs = messages.length > 1;
+
+/** « 2 sur 3 », dans la langue de la page. */
+const position = (n: number) =>
+  tr("bandeau.position").replace("{n}", String(n)).replace("{total}", String(messages.length));
 
 /**
  * L'adresse du lien, prête à être cliquée. Une adresse interne reçoit le
@@ -30,20 +59,199 @@ function adresse(href: string): string {
   const [chemin, requete] = href.split("?");
   return lien(langue, chemin || "/") + (requete ? `?${requete}` : "");
 }
+
+const bouton =
+  "ml-annonce-bouton flex h-7 w-7 items-center justify-center rounded-full opacity-80 hover:opacity-100 focus-visible:opacity-100";
 ---
 
 {
-  banner && (
-    <div
-      class="px-4 py-2.5 text-center text-[13px] font-semibold tracking-[0.04em]"
-      style={`background:${banner.bgColor ?? "#9c1616"};color:${banner.textColor ?? "#ffffff"}`}
+  messages.length > 0 && (
+    <section
+      class={`ml-annonce relative py-2.5 text-center text-[13px] font-semibold tracking-[0.04em] ${plusieurs ? "px-[4.75rem]" : "px-4"}`}
+      style={`background:${fond};color:${texte}`}
+      aria-label={tr("bandeau.region")}
+      data-annonce={plusieurs ? "" : undefined}
+      data-duree={dureeMs}
     >
-      <span>{banner.message}</span>
-      {banner.linkUrl && banner.linkLabel && (
-        <a href={adresse(banner.linkUrl)} class="underline underline-offset-2 ml-2">
-          {banner.linkLabel}
-        </a>
+      <div data-messages aria-live={plusieurs ? "off" : undefined}>
+        {messages.map((m, i) => (
+          <div
+            class="ml-annonce-message"
+            role={plusieurs ? "group" : undefined}
+            aria-label={plusieurs ? position(i + 1) : undefined}
+            data-message
+            hidden={i > 0}
+          >
+            <span>{m.message}</span>
+            {m.linkUrl && m.linkLabel && (
+              <a href={adresse(m.linkUrl)} class="ml-2 underline underline-offset-2">
+                {m.linkLabel}
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
+      {plusieurs && (
+        <>
+          <div class="absolute inset-y-0 left-2 flex items-center gap-0.5">
+            <button type="button" class={bouton} data-precedent aria-label={tr("bandeau.precedent")}>
+              <span aria-hidden="true">‹</span>
+            </button>
+            <button
+              type="button"
+              class={bouton}
+              data-pause
+              aria-label={tr("bandeau.pause")}
+              data-libelle-pause={tr("bandeau.pause")}
+              data-libelle-lecture={tr("bandeau.lecture")}
+            >
+              <span aria-hidden="true" data-icone>❚❚</span>
+            </button>
+          </div>
+          <div class="absolute inset-y-0 right-2 flex items-center">
+            <button type="button" class={bouton} data-suivant aria-label={tr("bandeau.suivant")}>
+              <span aria-hidden="true">›</span>
+            </button>
+          </div>
+        </>
       )}
-    </div>
+    </section>
   )
 }
+
+<style>
+  .ml-annonce-message {
+    transition: opacity 350ms ease;
+  }
+  .ml-annonce-message.ml-annonce-sort {
+    opacity: 0;
+  }
+  .ml-annonce-bouton {
+    font-size: 20px;
+    line-height: 1;
+  }
+  .ml-annonce-bouton [data-icone] {
+    font-size: 12px;
+  }
+  .ml-annonce-bouton:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 1px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ml-annonce-message {
+      transition: none;
+    }
+  }
+</style>
+
+<script>
+  /*
+   * Le défilement des messages. Rien à faire quand il n'y en a qu'un : la
+   * section ne porte alors pas `data-annonce`.
+   */
+  function brancher(section: HTMLElement): void {
+    const messages = Array.from(section.querySelectorAll<HTMLElement>("[data-message]"));
+    const zone = section.querySelector<HTMLElement>("[data-messages]");
+    const pause = section.querySelector<HTMLButtonElement>("[data-pause]");
+    if (messages.length < 2 || !zone) return;
+    const duree = Math.max(4000, Number(section.dataset.duree) || 6000);
+    const sobre = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+    const SORT = "ml-annonce-sort";
+    let courant = 0;
+    let minuterie: number | undefined;
+    let fondu: number | undefined;
+    /** La visiteuse a demandé la pause : rien ne repart tout seul. */
+    let enPause = false;
+    /** Souris dessus, ou clavier dedans : on attend qu'elle parte. */
+    let retenu = false;
+
+    function montrer(suivant: number): void {
+      const cible = (suivant + messages.length) % messages.length;
+      if (cible === courant) return;
+      const avant = messages[courant]!;
+      const apres = messages[cible]!;
+      courant = cible;
+      // Deux clics rapprochés : le fondu en cours s'abandonne, et un seul
+      // message reste à l'écran.
+      window.clearTimeout(fondu);
+      for (const m of messages)
+        if (m !== avant) {
+          m.hidden = true;
+          m.classList.remove(SORT);
+        }
+      if (sobre.matches) {
+        avant.hidden = true;
+        avant.classList.remove(SORT);
+        apres.hidden = false;
+        return;
+      }
+      // Un fondu court : le message sortant s'efface, puis l'entrant paraît.
+      avant.classList.add(SORT);
+      fondu = window.setTimeout(() => {
+        avant.hidden = true;
+        avant.classList.remove(SORT);
+        apres.classList.add(SORT);
+        apres.hidden = false;
+        // Une image plus tard, pour que le navigateur voie le départ du fondu.
+        requestAnimationFrame(() => requestAnimationFrame(() => apres.classList.remove(SORT)));
+      }, 350);
+    }
+
+    /** Le défilement tourne-t-il ? Et la zone annonce-t-elle les changements ? */
+    function regler(): void {
+      window.clearInterval(minuterie);
+      minuterie = undefined;
+      const tourne = !sobre.matches && !enPause && !retenu && !document.hidden;
+      if (tourne) minuterie = window.setInterval(() => montrer(courant + 1), duree);
+      // Ce qui change tout seul ne s'annonce pas (il interromprait la
+      // lecture) ; ce que la visiteuse provoque, si.
+      zone!.setAttribute("aria-live", tourne ? "off" : "polite");
+      if (pause) {
+        // Sans avance automatique, le bouton n'a rien à arrêter.
+        pause.hidden = sobre.matches;
+        pause.setAttribute(
+          "aria-label",
+          (enPause ? pause.dataset.libelleLecture : pause.dataset.libellePause) ?? "",
+        );
+        const icone = pause.querySelector("[data-icone]");
+        if (icone) icone.textContent = enPause ? "▶" : "❚❚";
+      }
+    }
+
+    section.querySelector("[data-precedent]")?.addEventListener("click", () => {
+      montrer(courant - 1);
+      regler();
+    });
+    section.querySelector("[data-suivant]")?.addEventListener("click", () => {
+      montrer(courant + 1);
+      regler();
+    });
+    pause?.addEventListener("click", () => {
+      enPause = !enPause;
+      regler();
+    });
+    section.addEventListener("mouseenter", () => {
+      retenu = true;
+      regler();
+    });
+    section.addEventListener("mouseleave", () => {
+      retenu = section.contains(document.activeElement);
+      regler();
+    });
+    section.addEventListener("focusin", () => {
+      retenu = true;
+      regler();
+    });
+    section.addEventListener("focusout", (e) => {
+      if (section.contains(e.relatedTarget as Node | null)) return;
+      retenu = section.matches(":hover");
+      regler();
+    });
+    document.addEventListener("visibilitychange", regler);
+    sobre.addEventListener("change", regler);
+    regler();
+  }
+
+  document.querySelectorAll<HTMLElement>("[data-annonce]").forEach(brancher);
+</script>

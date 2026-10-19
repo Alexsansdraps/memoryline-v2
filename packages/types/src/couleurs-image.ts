@@ -37,8 +37,8 @@ import {
   relationDeNuance,
   rgbVersHex,
   NOM_GROUPE_MAX,
-  NUANCIERS_BASE,
-  type NuancierBase,
+  estNuancier,
+  type Nuancier,
   type RelationNuance,
 } from "./couleurs-groupes.js";
 
@@ -73,8 +73,11 @@ export interface FamilleCouleur {
    * dans cette couleur-là. Absente = la teinte du fichier, telle quelle.
    */
   defaut?: string;
-  /** Nuancier proposé au client, comme pour un groupe du dessin de base. */
-  nuancier?: NuancierBase;
+  /**
+   * Nuancier proposé au client, comme pour un groupe du dessin de base : un
+   * des quatre nuanciers des personnages, ou celui d'une catégorie de pièces.
+   */
+  nuancier?: Nuancier;
 }
 
 /**
@@ -176,9 +179,7 @@ export function famillesDuDessin(brut: unknown): FamilleCouleur[] {
     const part = Number(f.part);
     const nom = typeof f.nom === "string" ? f.nom.trim().slice(0, NOM_GROUPE_MAX) : "";
     const defaut = couleurPropre(f.defaut);
-    const nuancier = (NUANCIERS_BASE as readonly unknown[]).includes(f.nuancier)
-      ? (f.nuancier as NuancierBase)
-      : undefined;
+    const nuancier = estNuancier(f.nuancier) ? f.nuancier : undefined;
     out.push({
       cle,
       reference,

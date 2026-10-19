@@ -89,7 +89,12 @@ export interface ModeLivraison {
   /** Une des natures de `NATURES_LIVRAISON` : ce qu'on demande au client. */
   kind: string;
   carrier?: string | null;
-  /** Où retirer, pour un mode « pickup » — la boutique est itinérante. */
+  /**
+   * L'ancien « Où retirer » d'un mode « pickup ». La caisse ne l'affiche
+   * plus — les lieux de retrait l'ont remplacé (`lieuxRetrait`) — et l'API
+   * publique ne l'envoie plus ; le champ reste pour le back-office, qui le
+   * montre en lecture seule tant qu'il porte un texte.
+   */
   pickupLocation?: string | null;
   active?: boolean;
   position?: number;
@@ -128,19 +133,26 @@ export interface CatalogueLivraison {
   modes: ModeLivraison[];
   tarifs: TarifLivraison[];
   /**
-   * Les stands OUVERTS, pour un mode « retrait sur place ».
+   * Les lieux où retirer sa commande, pour un mode « retrait sur place » :
+   * actifs, dans l'ordre réglé au back-office (Livraison › Lieux de
+   * retrait), dans la langue de la caisse.
    *
-   * Sans eux, « retrait à convenir » ne disait rien de concret : le client
-   * validait sans savoir où ni quand, et il fallait lui écrire ensuite. Le
-   * code du stand n'y figure jamais — c'est lui qui ouvre la caisse.
+   * Avant, c'étaient les stands ouverts. Mais la boutique ne pouvait ni
+   * renommer ce « chalet » proposé d'office, ni en ajouter un, ni l'enlever :
+   * les lieux vivent maintenant à part, avec une adresse et un texte libre.
    */
-  stands?: StandOuvert[];
+  lieuxRetrait?: LieuRetraitPublic[];
 }
 
-/** Un stand ouvert, tel que le tunnel de commande le montre. */
-export interface StandOuvert {
+/** Un lieu de retrait, tel que la caisse le montre. */
+export interface LieuRetraitPublic {
   id: number;
+  /** « Chalet du marché de Noël de Mulhouse ». */
   nom: string;
+  /** Sur plusieurs lignes ; ne se traduit pas. */
+  adresse: string | null;
+  /** Horaires, accès… sur plusieurs lignes, dans la langue de la caisse. */
+  description: string | null;
 }
 
 /** Code pays normalisé : deux lettres majuscules, ou chaîne vide. */

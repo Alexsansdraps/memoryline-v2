@@ -1,18 +1,256 @@
 ---
+/**
+ * Promotions : les offres que le panier déduit, réglées comme dans Shopify.
+ *
+ * « Les promos et les offres, il faut vraiment que je puisse les moduler
+ * comme je veux » (Margaux). L'écran ne savait que créer et allumer : pas de
+ * modification, pas de dates, et la seule offre réglable en détail l'était
+ * depuis le bandeau, qui l'allumait et l'éteignait avec son message. Tout se
+ * règle désormais ici, et seulement ici :
+ *   - ce que la cliente achète (combien d'affiches, de quels formats) ;
+ *   - ce qu'elle reçoit (combien, de quels formats, offertes ou remisées, le
+ *     cadre compris ou non, combien de fois au plus) ;
+ *   - un minimum d'achat, des dates, un code, le cumul avec les autres.
+ * L'exemple sous le formulaire est calculé par le moteur qui facture
+ * (@memoryline/types), pendant qu'on règle : il ne peut pas dire autre chose
+ * que ce que fera le panier.
+ *
+ * Une règle enregistrée avant cette forme (la « 3 achetées = 1 A4 offerte »)
+ * garde EXACTEMENT son sens : seules ses A4 comptent, cadre compris. L'écran
+ * le dit, et « Passer au réglage demandé » pré-remplit le formulaire — rien
+ * n'est enregistré avant qu'on clique « Enregistrer ».
+ *
+ * Rien ne se supprime : une promotion s'archive, et les commandes passées
+ * gardent la remise qu'elles ont eue (figée sur la commande).
+ */
 import { apiInterne } from "../lib/api-interne.ts";
 import Admin from "../layouts/Admin.astro";
 import { adminApi, type PromoRule } from "../lib/api.ts";
 import { url } from "../lib/url.ts";
-import { libelleRegle } from "@memoryline/types";
+import { POSTER_FORMATS, estConfigV2, libelleRegle, lireConditions, lireOffre } from "@memoryline/types";
 import TraductionsNoms from "../components/TraductionsNoms.astro";
 import { traiterTraductionsNoms } from "../lib/traductions-noms.ts";
 import type { EtatTraductions } from "../lib/traductions.ts";
 
 const api = adminApi(Astro.request);
+const FORMATS: readonly string[] = POSTER_FORMATS;
+
+/** Ce que le formulaire montre : une promotion en cours de réglage. */
+interface Saisie {
+  id: number | null;
+  name: string;
+  type: string;
+  achatQuantite: number;
+  achatFormats: string[];
+  offertQuantite: number;
+  offertFormats: string[];
+  pourcentage: number;
+  cadreCompris: boolean;
+  maxLots: string;
+  percent: number;
+  amount: string;
+  seuil: string;
+  minEuros: string;
+  minQuantite: string;
+  code: string;
+  priority: number;
+  cumulable: boolean;
+  active: boolean;
+  startsAt: string;
+  endsAt: string;
+}
+
+/** Des centimes vers un champ en euros : « 23 », « 12,5 » ; vide pour rien. */
+function enEuros(cents: number | null | undefined): string {
+  if (cents == null) return "";
+  return String(cents / 100).replace(".", ",");
+}
+
+/** Un champ en euros vers des centimes, ou null s'il est vide. */
+function enCentimes(v: FormDataEntryValue | null): number | null {
+  const s = String(v ?? "").trim().replace(",", ".");
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? Math.round(n * 100) : Number.NaN;
+}
+
+/**
+ * Une date pour un champ `datetime-local` (sans fuseau), à l'heure de la
+ * boutique : le serveur tourne à l'heure de Paris (TZ), comme l'écran des
+ * bandeaux visuels.
+ */
+function pourChamp(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** Un champ `datetime-local` vers une date ISO, ou null. */
+function quandOuRien(v: string): string | null {
+  if (!v.trim()) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+const NOUVELLE: Saisie = {
+  id: null,
+  name: "",
+  type: "buy_x_get_y",
+  achatQuantite: 3,
+  achatFormats: [],
+  offertQuantite: 1,
+  offertFormats: ["A4"],
+  pourcentage: 100,
+  cadreCompris: false,
+  maxLots: "",
+  percent: 10,
+  amount: "5",
+  seuil: "60",
+  minEuros: "",
+  minQuantite: "",
+  code: "",
+  priority: 0,
+  cumulable: true,
+  active: true,
+  startsAt: "",
+  endsAt: "",
+};
+
+/** Une promotion enregistrée, telle que le formulaire la montre. */
+function depuisRegle(p: PromoRule): Saisie {
+  const cfg = (p.config ?? {}) as Record<string, unknown>;
+  const offre = lireOffre(cfg);
+  const conditions = lireConditions(cfg);
+  return {
+    ...NOUVELLE,
+    id: p.id,
+    name: p.name,
+    type: p.type,
+    achatQuantite: offre.achat.quantite,
+    achatFormats: offre.achat.formats,
+    offertQuantite: offre.offert.quantite,
+    offertFormats: offre.offert.formats,
+    pourcentage: offre.offert.pourcentage,
+    cadreCompris: offre.offert.cadreCompris,
+    maxLots: offre.offert.maxLots == null ? "" : String(offre.offert.maxLots),
+    percent: p.type === "percent" ? Number(cfg.percent ?? 10) : NOUVELLE.percent,
+    amount: p.type === "fixed" ? enEuros(Number(cfg.amountCents ?? 0)) : NOUVELLE.amount,
+    seuil: p.type === "free_shipping_over" ? enEuros(Number(cfg.thresholdCents ?? 0)) : NOUVELLE.seuil,
+    minEuros: enEuros(conditions.minCents),
+    minQuantite: conditions.minQuantite ? String(conditions.minQuantite) : "",
+    code: p.code ?? "",
+    priority: p.priority ?? 0,
+    cumulable: cfg.cumulable !== false,
+    active: p.active,
+    startsAt: pourChamp(p.startsAt),
+    endsAt: pourChamp(p.endsAt),
+  };
+}
+
+/** Le formulaire envoyé, tel qu'il faudra le remontrer s'il est refusé. */
+function depuisFormulaire(f: FormData): Saisie {
+  const texte = (n: string) => String(f.get(n) ?? "").trim();
+  const nombre = (n: string, defaut: number) => {
+    const v = Number(texte(n).replace(",", "."));
+    return texte(n) && Number.isFinite(v) ? v : defaut;
+  };
+  const cases = (n: string) => f.getAll(n).map(String).filter((x) => FORMATS.includes(x));
+  return {
+    id: texte("id") ? Number(texte("id")) : null,
+    name: texte("name"),
+    type: texte("type") || "buy_x_get_y",
+    achatQuantite: nombre("achatQuantite", 3),
+    achatFormats: cases("achatFormats"),
+    offertQuantite: nombre("offertQuantite", 1),
+    offertFormats: cases("offertFormats"),
+    pourcentage: nombre("pourcentage", 100),
+    cadreCompris: f.get("cadreCompris") === "on",
+    maxLots: texte("maxLots"),
+    percent: nombre("percent", 10),
+    amount: texte("amount"),
+    seuil: texte("seuil"),
+    minEuros: texte("minEuros"),
+    minQuantite: texte("minQuantite"),
+    code: texte("code").toUpperCase(),
+    priority: nombre("priority", 0),
+    cumulable: f.get("cumulable") === "on",
+    active: f.get("active") === "on",
+    startsAt: texte("startsAt"),
+    endsAt: texte("endsAt"),
+  };
+}
+
+/**
+ * Tous les formats cochés, ou aucun, c'est « tous les formats » : la règle
+ * restera juste le jour où la boutique en ajoutera un.
+ */
+const tousOuListe = (liste: string[]) => (liste.length === FORMATS.length ? [] : liste);
+
+/** Ce que l'API reçoit. Les montants en euros deviennent des centimes. */
+function versApi(s: Saisie): Partial<PromoRule> & { config: Record<string, unknown> } {
+  const minCents = enCentimes(s.minEuros);
+  if (Number.isNaN(minCents)) throw new Error("Le montant minimum d'achat est illisible.");
+  const conditions = {
+    minCents: minCents || null,
+    minQuantite: s.minQuantite ? Number(s.minQuantite) : null,
+  };
+  let config: Record<string, unknown>;
+  if (s.type === "buy_x_get_y")
+    config = {
+      version: 2,
+      achat: { quantite: s.achatQuantite, formats: tousOuListe(s.achatFormats) },
+      offert: {
+        quantite: s.offertQuantite,
+        formats: tousOuListe(s.offertFormats),
+        pourcentage: s.pourcentage,
+        cadreCompris: s.cadreCompris,
+        maxLots: s.maxLots ? Number(s.maxLots) : null,
+      },
+      conditions,
+      cumulable: s.cumulable,
+    };
+  else if (s.type === "percent") config = { percent: s.percent, conditions, cumulable: s.cumulable };
+  else if (s.type === "fixed") {
+    const amountCents = enCentimes(s.amount);
+    if (!amountCents || Number.isNaN(amountCents)) throw new Error("Indiquez le montant de la remise, en euros.");
+    config = { amountCents, conditions, cumulable: s.cumulable };
+  } else {
+    // Le seuil se compare au panier APRÈS remises : c'est le montant que la
+    // cliente paie vraiment pour ses affiches.
+    const thresholdCents = enCentimes(s.seuil);
+    if (thresholdCents == null || Number.isNaN(thresholdCents))
+      throw new Error("Indiquez à partir de quel montant la livraison est offerte.");
+    config = { thresholdCents };
+  }
+  return {
+    ...(s.id ? { id: s.id } : {}),
+    name: s.name,
+    type: s.type,
+    config,
+    code: s.code || null,
+    priority: s.priority,
+    active: s.active,
+    startsAt: quandOuRien(s.startsAt),
+    endsAt: quandOuRien(s.endsAt),
+  };
+}
+
+/** La config du formulaire pour la phrase de départ ; vide s'il est illisible. */
+function configDuFormulaire(s: Saisie): Record<string, unknown> {
+  try {
+    return versApi(s).config;
+  } catch {
+    return {};
+  }
+}
 
 // --- Traitement des formulaires (SSR) ----------------------------------
 let flash: string | null = null;
 let flashErreur = false;
+/** Le formulaire refusé, à remontrer tel qu'il a été saisi. */
+let saisieRefusee: Saisie | null = null;
 /**
  * Traductions des noms : propositions automatiques à relire, saisie à
  * réafficher (après une proposition ou un refus), et bloc ouvert.
@@ -20,165 +258,460 @@ let flashErreur = false;
 let tradPromos: EtatTraductions | null = null;
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
-  const action = form.get("_action");
+  const action = String(form.get("_action") ?? "");
   try {
-    // Avant tout le reste : le dernier cas de cette chaîne enregistre une
-    // promotion, et un formulaire de traductions qui y tomberait en
-    // créerait une nouvelle.
     if (action === "promos-traductions" || action === "promos-traduire") {
       tradPromos = await traiterTraductionsNoms(
         action === "promos-traductions" ? "enregistrer" : "proposer",
         form,
-        await api.promos(),
+        (await api.promos()).filter((p) => !p.archivedAt),
         (id, l, nom) => api.setPromoTranslation(id, { lang: l, name: nom }),
         (l, champs) => api.proposerTraduction(l, champs),
       );
       flash = tradPromos.message;
       flashErreur = tradPromos.erreur;
     } else if (action === "toggle") {
-      const id = Number(form.get("id"));
-      await fetch(
-        `${apiInterne()}/admin/promos/${id}/toggle`,
-        {
-          method: "POST",
-          headers: { cookie: Astro.request.headers.get("cookie") ?? "" },
-        },
-      );
-      flash = "Promotion mise à jour.";
+      const p = await api.basculerPromo(Number(form.get("id")));
+      flash = p.active
+        ? `« ${p.name} » est allumée : le panier la déduit pendant ses dates.`
+        : `« ${p.name} » est éteinte : le panier ne la déduit plus.`;
+    } else if (action === "archiver" || action === "restaurer") {
+      const nom = String(form.get("nom") ?? "");
+      await api.archiverPromo(Number(form.get("id")), action === "archiver");
+      flash =
+        action === "archiver"
+          ? `« ${nom} » est archivée : elle ne s'applique plus. Les commandes passées gardent leur remise.`
+          : `« ${nom} » est revenue, éteinte : rallumez-la quand elle doit reprendre.`;
+    } else if (action === "enregistrer") {
+      const saisie = depuisFormulaire(form);
+      saisieRefusee = saisie;
+      const p = await api.upsertPromo(versApi(saisie));
+      saisieRefusee = null;
+      flash = `« ${p.name} » est enregistrée : ${libelleRegle(p)}.`;
     } else {
-      const type = String(form.get("type"));
-      // Construit `config` selon le type choisi.
-      let config: Record<string, unknown> = {};
-      if (type === "buy_x_get_y")
-        config = {
-          buyQty: Number(form.get("buyQty") || 3),
-          getQty: Number(form.get("getQty") || 1),
-          // 100 = offerte, c'est le cas courant ; en dessous, la suivante est
-          // simplement remisee (« la 2e a moitie prix »).
-          percent: Number(form.get("remiseOffertes") ?? 100),
-          // Vide = tous les formats.
-          format: String(form.get("format") || "") || undefined,
-        };
-      else if (type === "percent")
-        config = { percent: Number(form.get("percent") || 10) };
-      else if (type === "fixed")
-        config = { amountCents: Math.round(Number(form.get("amount") || 5) * 100) };
-      else if (type === "free_shipping_over")
-        // Le seuil se compare au panier APRÈS remises : c'est le montant que
-        // la cliente paie vraiment pour ses affiches.
-        config = {
-          thresholdCents: Math.round(Number(form.get("seuil") || 60) * 100),
-        };
-
-      await api.upsertPromo({
-        id: form.get("id") ? Number(form.get("id")) : undefined,
-        name: String(form.get("name") || "Promotion"),
-        type,
-        config,
-        code: (form.get("code") as string) || null,
-        priority: Number(form.get("priority") || 0),
-        active: form.get("active") === "on",
-        startsAt: (form.get("startsAt") as string) || null,
-        endsAt: (form.get("endsAt") as string) || null,
-      });
-      flash = "Promotion enregistrée.";
+      throw new Error("Action inconnue. Rechargez la page.");
     }
   } catch (e) {
-    flash = "Erreur : " + String(e);
+    flash = (e instanceof Error ? e.message : String(e)).replace(/^Error:\s*/, "");
     flashErreur = true;
   }
 }
 
 let promos: PromoRule[] = [];
+let erreur: string | null = null;
 try {
   promos = await api.promos();
+} catch (e) {
+  erreur = e instanceof Error ? e.message : String(e);
+}
+const vivantes = promos.filter((p) => !p.archivedAt);
+const archivees = promos.filter((p) => p.archivedAt);
+
+/** La promotion ouverte dans le formulaire (?modifier=12), s'il y en a une. */
+const idModifiee = Number(Astro.url.searchParams.get("modifier"));
+const modifiee = vivantes.find((p) => p.id === idModifiee) ?? null;
+/**
+ * « Passer au réglage demandé » : la règle d'ancienne forme, pré-remplie sous
+ * la nouvelle — tous les formats comptent à l'achat, le cadre de l'affiche
+ * offerte n'est pas offert. RIEN n'est enregistré : on relit, puis on
+ * enregistre soi-même.
+ */
+const reglageDemande = Astro.url.searchParams.get("reglage") === "demande";
+
+let saisie: Saisie = NOUVELLE;
+if (saisieRefusee) saisie = saisieRefusee;
+else if (modifiee) {
+  saisie = depuisRegle(modifiee);
+  if (reglageDemande && modifiee.type === "buy_x_get_y" && !estConfigV2(modifiee.config))
+    saisie = { ...saisie, achatFormats: [], cadreCompris: false };
+}
+const enModification = saisie.id != null;
+/** Les champs d'un type ne se montrent (et ne partent) que pour lui. */
+const pourLeType = (types: string[]) => types.includes(saisie.type);
+
+/** Une règle d'ancienne forme : seuls ses formats comptent, cadre compris. */
+function ancienReglage(p: PromoRule): string | null {
+  if (p.type !== "buy_x_get_y" || estConfigV2(p.config)) return null;
+  const o = lireOffre(p.config);
+  const formats = o.achat.formats.length
+    ? `seules les ${o.achat.formats.join(" et ")} comptent`
+    : "tous les formats comptent";
+  return `Ancien réglage : ${formats}, cadre compris.`;
+}
+
+/** Où en est une promotion, en un mot, et sa couleur. */
+function statut(p: PromoRule): { mot: string; ton: string } {
+  const maintenant = Date.now();
+  if (p.archivedAt) return { mot: "Archivée", ton: "bg-gray-100 text-gray-700" };
+  if (!p.active) return { mot: "Désactivée", ton: "bg-bo-bg text-bo-muted" };
+  if (p.endsAt && new Date(p.endsAt).getTime() < maintenant)
+    return { mot: "Expirée", ton: "bg-amber-100 text-amber-900" };
+  if (p.startsAt && new Date(p.startsAt).getTime() > maintenant)
+    return { mot: "Programmée", ton: "bg-blue-100 text-blue-800" };
+  return { mot: "Active", ton: "bg-green-100 text-green-800" };
+}
+
+/** La période, en une ligne : « du 1 déc. au 26 déc. », « toujours ». */
+function periode(p: PromoRule): string {
+  const jour = (iso: string) =>
+    new Date(iso).toLocaleString("fr-FR", {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  if (p.startsAt && p.endsAt) return `du ${jour(p.startsAt)} au ${jour(p.endsAt)}`;
+  if (p.startsAt) return `à partir du ${jour(p.startsAt)}`;
+  if (p.endsAt) return `jusqu'au ${jour(p.endsAt)}`;
+  return "toujours";
+}
+
+/**
+ * Les prix de l'exemple : ceux d'une vraie affiche et d'un vrai cadre, pour
+ * que l'exemple parle de vrais montants. À défaut, 23 € l'A4, 29 € l'A3, et
+ * 15 € de cadre.
+ */
+const prixExemple: Record<string, number> = { A4: 2300, A3: 2900 };
+const cadreExemple: Record<string, number> = { A4: 1500, A3: 2000 };
+try {
+  const res = await fetch(`${apiInterne()}/products?limit=60`);
+  if (res.ok) {
+    const liste = (await res.json()) as { variants?: { format: string; priceCents: number }[] }[];
+    for (const format of FORMATS) {
+      const compte = new Map<number, number>();
+      for (const p of liste)
+        for (const v of p.variants ?? [])
+          if (v.format === format && v.priceCents > 0)
+            compte.set(v.priceCents, (compte.get(v.priceCents) ?? 0) + 1);
+      const gagnant = [...compte.entries()].sort((a, b) => b[1] - a[1])[0];
+      if (gagnant) prixExemple[format] = gagnant[0];
+    }
+  }
+} catch {}
+try {
+  const cadres = await api.frames();
+  const premier = cadres.find((c) => c.active && !c.archivedAt) ?? cadres[0];
+  if (premier) {
+    cadreExemple.A4 = premier.priceA4Cents ?? cadreExemple.A4!;
+    cadreExemple.A3 = premier.priceA3Cents ?? cadreExemple.A3!;
+  }
 } catch {}
 
 const TYPES = [
-  { value: "buy_x_get_y", label: "X achetées, la suivante remisée" },
-  { value: "percent", label: "Pourcentage de remise" },
-  { value: "fixed", label: "Montant fixe de remise" },
+  { value: "buy_x_get_y", label: "Affiches achetées = affiches offertes" },
+  { value: "percent", label: "Pourcentage de remise sur le panier" },
+  { value: "fixed", label: "Montant fixe déduit du panier" },
   { value: "free_shipping_over", label: "Livraison offerte à partir d'un montant" },
 ];
 
-// La phrase vient du moteur qui facture, pas d'une copie tenue a la main :
-// deux textes finissent toujours par ne plus dire la meme chose.
-const describe = libelleRegle;
+const champ = "mt-1 w-full rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm";
+const boutonLien = "text-bo-accent hover:underline";
 ---
 
 <Admin title="Promotions">
   {flash && (
     <p
+      role="status"
       class={`mb-4 text-sm rounded border px-3 py-2 ${
-        flashErreur ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"
+        flashErreur ? "bg-red-50 border-red-200 text-red-800" : "bg-green-50 border-green-200 text-green-800"
       }`}
     >
       {flash}
     </p>
   )}
+  {erreur && <p class="mb-4 text-sm text-red-600">API injoignable : {erreur}</p>}
 
   <p class="mb-4 max-w-3xl text-sm text-bo-muted">
-    Une promotion sans code s'applique à tout le monde, silencieusement. Pour
-    qu'elle soit annoncée en haut du site en même temps qu'elle s'applique,
-    elle se règle depuis <a href={url("/bandeau")} class="underline">le bandeau</a>.
-    La livraison offerte au-delà d'un montant, elle, ne se règle pas ici mais
-    dans <a href={url("/livraison")} class="underline">Livraison</a>, par mode
-    d'envoi : c'est le transporteur qu'on cesse de facturer.
+    Les offres que le panier déduit tout seul. Une promotion sans code
+    s'applique à tout le monde pendant ses dates ; avec un code, seulement à
+    qui le tape au panier. Le bandeau du haut du site, lui, n'applique rien :
+    c'est un message, qui se règle dans
+    <a href={url("/bandeau")} class="underline">Bandeau d'annonce</a>. La
+    livraison offerte sur un seul transporteur se règle plutôt dans
+    <a href={url("/livraison")} class="underline">Livraison</a>, par la
+    franchise de sa grille.
   </p>
 
-  <section class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
+  <section class="bg-bo-surface border border-bo-border rounded-lg overflow-x-auto">
     <table class="w-full text-sm">
       <thead class="bg-bo-bg text-bo-muted text-left">
         <tr>
           <th class="px-4 py-2 font-medium">Nom</th>
-          <th class="px-4 py-2 font-medium">Effet</th>
+          <th class="px-4 py-2 font-medium">Ce qu'elle fait</th>
           <th class="px-4 py-2 font-medium">Code</th>
+          <th class="px-4 py-2 font-medium">Période</th>
           <th class="px-4 py-2 font-medium">Statut</th>
-          <th class="px-4 py-2"></th>
+          <th class="px-4 py-2"><span class="sr-only">Actions</span></th>
         </tr>
       </thead>
       <tbody>
-        {
-          promos.map((p) => (
-            <tr id={`promo-${p.id}`} class="border-t border-bo-border">
-              <td class="px-4 py-2 font-medium">{p.name}</td>
-              <td class="px-4 py-2">{describe(p)}</td>
-              <td class="px-4 py-2">{p.code ?? <span class="text-bo-muted">auto</span>}</td>
-              <td class="px-4 py-2">
-                {p.active ? (
-                  <span class="text-green-700">● Active</span>
-                ) : (
-                  <span class="text-bo-muted">○ Inactive</span>
+        {vivantes.map((p) => {
+          const s = statut(p);
+          const ancien = ancienReglage(p);
+          return (
+            <tr id={`promo-${p.id}`} class="border-t border-bo-border align-top">
+              <td class="px-4 py-3 font-medium">{p.name}</td>
+              <td class="px-4 py-3">
+                {libelleRegle(p)}
+                {ancien && (
+                  <span class="mt-1 block rounded bg-amber-50 px-2 py-1 text-xs text-amber-900">
+                    {ancien}{" "}
+                    <a
+                      href={`${url("/promotions")}?modifier=${p.id}&reglage=demande#formulaire`}
+                      class="font-medium underline"
+                    >
+                      Passer au réglage demandé
+                    </a>
+                  </span>
                 )}
               </td>
-              <td class="px-4 py-2 text-right">
-                <form method="POST" class="inline">
-                  <input type="hidden" name="_action" value="toggle" />
-                  <input type="hidden" name="id" value={p.id} />
-                  <button class="text-bo-accent hover:underline">
-                    {p.active ? "Désactiver" : "Activer"}
-                  </button>
-                </form>
+              <td class="px-4 py-3">{p.code ?? <span class="text-bo-muted">automatique</span>}</td>
+              <td class="px-4 py-3 text-bo-muted">{periode(p)}</td>
+              <td class="px-4 py-3">
+                <span class={`inline-block rounded px-2 py-0.5 text-xs ${s.ton}`}>{s.mot}</span>
+              </td>
+              <td class="px-4 py-3">
+                <div class="flex flex-wrap justify-end gap-3 whitespace-nowrap">
+                  <a href={`${url("/promotions")}?modifier=${p.id}#formulaire`} class={boutonLien}>
+                    Modifier
+                  </a>
+                  <form method="POST" class="inline">
+                    <input type="hidden" name="_action" value="toggle" />
+                    <input type="hidden" name="id" value={p.id} />
+                    <button class={boutonLien}>{p.active ? "Désactiver" : "Activer"}</button>
+                  </form>
+                  <form method="POST" class="inline js-archiver" data-nom={p.name}>
+                    <input type="hidden" name="_action" value="archiver" />
+                    <input type="hidden" name="id" value={p.id} />
+                    <input type="hidden" name="nom" value={p.name} />
+                    <button class="text-bo-muted hover:underline">Archiver</button>
+                  </form>
+                </div>
               </td>
             </tr>
-          ))
-        }
-        {promos.length === 0 && (
-          <tr><td colspan="5" class="px-4 py-6 text-center text-bo-muted">Aucune promotion.</td></tr>
+          );
+        })}
+        {vivantes.length === 0 && (
+          <tr><td colspan="6" class="px-4 py-6 text-center text-bo-muted">Aucune promotion.</td></tr>
         )}
       </tbody>
     </table>
   </section>
 
+  {/* --- Le formulaire --------------------------------------------------- */}
+  <section id="formulaire" class="mt-6 rounded-lg border border-bo-border bg-bo-surface p-5">
+    <div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+      <h2 class="font-semibold">{enModification ? `Modifier « ${saisie.name} »` : "Nouvelle promotion"}</h2>
+      {enModification && (
+        <a href={`${url("/promotions")}#formulaire`} class="text-sm text-bo-accent hover:underline">
+          Créer une autre promotion
+        </a>
+      )}
+    </div>
+    {reglageDemande && modifiee && !saisieRefusee && (
+      <p class="mb-4 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        Le formulaire est pré-rempli avec le réglage demandé : tous les formats
+        comptent à l'achat, le cadre de l'affiche offerte n'est pas offert.
+        Relisez l'exemple en bas, puis cliquez « Enregistrer ». Rien n'est
+        enregistré pour l'instant.
+      </p>
+    )}
+
+    <form method="POST" id="form-promo" class="grid gap-5 text-sm sm:grid-cols-2">
+      <input type="hidden" name="_action" value="enregistrer" />
+      {enModification && <input type="hidden" name="id" value={saisie.id} />}
+
+      <label class="block">
+        <span class="text-bo-muted">Nom (lu sur la ligne de remise du panier)</span>
+        <input name="name" required maxlength="120" value={saisie.name} class={champ} />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Type de promotion</span>
+        <select name="type" id="promo-type" class={champ}>
+          {TYPES.map((t) => (
+            <option value={t.value} selected={t.value === saisie.type}>{t.label}</option>
+          ))}
+        </select>
+      </label>
+
+      {/* « X achetées = Y offertes » */}
+      <fieldset data-type="buy_x_get_y" hidden={!pourLeType(["buy_x_get_y"])} disabled={!pourLeType(["buy_x_get_y"])} class="grid gap-4 rounded border border-bo-border p-4 sm:col-span-2 sm:grid-cols-2">
+        <legend class="px-1 font-medium">L'offre</legend>
+        <div>
+          <p class="font-medium">Ce que la cliente achète</p>
+          <label class="mt-2 block">
+            <span class="text-bo-muted">Nombre d'affiches</span>
+            <input name="achatQuantite" type="number" min="1" max="99" required value={saisie.achatQuantite} class={champ} />
+          </label>
+          <fieldset class="mt-3">
+            <legend class="text-bo-muted">Formats qui comptent</legend>
+            <div class="mt-1 flex flex-wrap gap-4">
+              {FORMATS.map((f) => (
+                <label class="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    name="achatFormats"
+                    value={f}
+                    checked={saisie.achatFormats.length === 0 || saisie.achatFormats.includes(f)}
+                  />
+                  {f}
+                </label>
+              ))}
+            </div>
+            <span class="mt-1 block text-xs text-bo-muted">Tout coché (ou rien) : toutes les tailles comptent.</span>
+          </fieldset>
+        </div>
+        <div>
+          <p class="font-medium">Ce qu'elle reçoit</p>
+          <label class="mt-2 block">
+            <span class="text-bo-muted">Nombre d'affiches</span>
+            <input name="offertQuantite" type="number" min="1" max="99" required value={saisie.offertQuantite} class={champ} />
+          </label>
+          <fieldset class="mt-3">
+            <legend class="text-bo-muted">Formats offerts</legend>
+            <div class="mt-1 flex flex-wrap gap-4">
+              {FORMATS.map((f) => (
+                <label class="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    name="offertFormats"
+                    value={f}
+                    checked={saisie.offertFormats.length === 0 || saisie.offertFormats.includes(f)}
+                  />
+                  {f}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <label class="mt-3 block">
+            <span class="text-bo-muted">Remise sur ces affiches (%)</span>
+            <input name="pourcentage" type="number" min="1" max="100" required value={saisie.pourcentage} class={champ} />
+            <span class="mt-1 block text-xs text-bo-muted">100 = offertes. 50 = à moitié prix.</span>
+          </label>
+          <label class="mt-3 flex items-start gap-2">
+            <input type="checkbox" name="cadreCompris" checked={saisie.cadreCompris} class="mt-0.5" />
+            <span>
+              Le cadre est offert aussi
+              <span class="block text-xs text-bo-muted">
+                Décoché : seule l'affiche est offerte, la cliente paie son cadre.
+              </span>
+            </span>
+          </label>
+          <label class="mt-3 block">
+            <span class="text-bo-muted">Combien de fois par commande, au plus</span>
+            <input name="maxLots" type="number" min="1" max="99" value={saisie.maxLots} class={champ} placeholder="sans limite" />
+            <span class="mt-1 block text-xs text-bo-muted">Vide : à chaque fois que le panier le permet (8 affiches, 2 offertes).</span>
+          </label>
+        </div>
+        <p class="text-xs text-bo-muted sm:col-span-2">
+          Il faut les deux dans le panier : les affiches achetées ET celles
+          offertes. Les moins chères des affiches offertes sont celles qui sont
+          remisées.
+        </p>
+      </fieldset>
+
+      <fieldset data-type="percent" hidden={!pourLeType(["percent"])} disabled={!pourLeType(["percent"])} class="sm:col-span-2">
+        <label class="block">
+          <span class="text-bo-muted">Remise sur tout le panier (%)</span>
+          <input name="percent" type="number" min="1" max="100" value={saisie.percent} class={champ} />
+        </label>
+      </fieldset>
+      <fieldset data-type="fixed" hidden={!pourLeType(["fixed"])} disabled={!pourLeType(["fixed"])} class="sm:col-span-2">
+        <label class="block">
+          <span class="text-bo-muted">Montant déduit du panier (€)</span>
+          <input name="amount" inputmode="decimal" value={saisie.amount} class={champ} />
+        </label>
+      </fieldset>
+      <fieldset data-type="free_shipping_over" hidden={!pourLeType(["free_shipping_over"])} disabled={!pourLeType(["free_shipping_over"])} class="sm:col-span-2">
+        <label class="block">
+          <span class="text-bo-muted">Livraison offerte à partir de (€)</span>
+          <input name="seuil" inputmode="decimal" value={saisie.seuil} class={champ} />
+          <span class="mt-1 block text-xs text-bo-muted">
+            Le montant est celui du panier APRÈS remises — ce que la cliente
+            paie vraiment pour ses affiches. L'offre vaut pour tous les modes
+            de livraison et toutes les zones ; elle se cumule avec la franchise
+            d'un transporteur (écran Livraison) : le port est offert dès que
+            l'un des deux seuils est atteint.
+          </span>
+        </label>
+      </fieldset>
+
+      {/* Les conditions communes aux remises. */}
+      <fieldset data-type="buy_x_get_y percent fixed" hidden={!pourLeType(["buy_x_get_y", "percent", "fixed"])} disabled={!pourLeType(["buy_x_get_y", "percent", "fixed"])} class="grid gap-4 rounded border border-bo-border p-4 sm:col-span-2 sm:grid-cols-2">
+        <legend class="px-1 font-medium">Conditions</legend>
+        <label class="block">
+          <span class="text-bo-muted">Montant minimum du panier (€)</span>
+          <input name="minEuros" inputmode="decimal" value={saisie.minEuros} class={champ} placeholder="aucun" />
+          <span class="mt-1 block text-xs text-bo-muted">Avant toute remise.</span>
+        </label>
+        <label class="block">
+          <span class="text-bo-muted">Nombre minimum d'affiches</span>
+          <input name="minQuantite" type="number" min="0" max="999" value={saisie.minQuantite} class={champ} placeholder="aucun" />
+        </label>
+        <label class="flex items-start gap-2 sm:col-span-2">
+          <input type="checkbox" name="cumulable" checked={saisie.cumulable} class="mt-0.5" />
+          <span>
+            Se cumule avec les autres promotions
+            <span class="block text-xs text-bo-muted">
+              Décoché : elle ne joue que si aucune autre n'a déjà remisé le
+              panier, et aucune ne joue après elle. L'ordre se règle par la
+              priorité.
+            </span>
+          </span>
+        </label>
+      </fieldset>
+
+      <label class="block">
+        <span class="text-bo-muted">Début (facultatif, heure de Paris)</span>
+        <input name="startsAt" type="datetime-local" value={saisie.startsAt} class={champ} />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Fin (facultatif, heure de Paris)</span>
+        <input name="endsAt" type="datetime-local" value={saisie.endsAt} class={champ} />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Code à taper au panier (vide = automatique)</span>
+        <input name="code" maxlength="60" value={saisie.code} class={`${champ} uppercase`} placeholder="automatique" />
+      </label>
+      <label class="block">
+        <span class="text-bo-muted">Priorité</span>
+        <input name="priority" type="number" min="-999" max="999" value={saisie.priority} class={champ} />
+        <span class="mt-1 block text-xs text-bo-muted">La plus haute passe d'abord.</span>
+      </label>
+      <label class="flex items-center gap-2 sm:col-span-2">
+        <input name="active" type="checkbox" checked={saisie.active} /> <span>Active</span>
+      </label>
+
+      {/* L'exemple, calculé par le moteur du panier pendant qu'on règle. */}
+      <div
+        id="promo-exemple"
+        class="rounded bg-bo-bg px-4 py-3 sm:col-span-2"
+        aria-live="polite"
+        data-prix={JSON.stringify(prixExemple)}
+        data-cadres={JSON.stringify(cadreExemple)}
+      >
+        <p class="font-medium" data-phrase>{libelleRegle({ type: saisie.type, config: configDuFormulaire(saisie) })}</p>
+        <p class="mt-1 text-bo-muted" data-calcul></p>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3 sm:col-span-2">
+        <button class="rounded bg-bo-accent px-4 py-2 text-white hover:opacity-90">Enregistrer</button>
+        {enModification && (
+          <a href={`${url("/promotions")}#formulaire`} class="text-sm text-bo-muted hover:underline">Annuler</a>
+        )}
+      </div>
+    </form>
+  </section>
+
   {/* Le nom d'une promotion s'écrit sur la ligne de remise du panier : un
       client anglais doit l'y lire en anglais. Le code, lui, ne se traduit
       jamais — c'est ce que le client tape. */}
-  {promos.length > 0 && (
+  {vivantes.length > 0 && (
     <TraductionsNoms
       ancre="traductions-promotions"
       titre="Traductions des noms de promotions"
       aide="Le nom de chaque promotion, tel que le client le lit sur la ligne de remise de son panier. Une case vide affiche le nom français. Le code à saisir, lui, reste le même dans toutes les langues."
-      elements={promos}
+      elements={vivantes}
       propositions={tradPromos?.propositions}
       saisies={tradPromos?.saisies}
       actionEnregistrer="promos-traductions"
@@ -188,81 +721,158 @@ const describe = libelleRegle;
     />
   )}
 
-  <section class="mt-6 bg-bo-surface border border-bo-border rounded-lg p-5">
-    <h2 class="font-semibold mb-4">Nouvelle promotion</h2>
-    <form method="POST" class="grid sm:grid-cols-2 gap-4 text-sm">
-      <label class="block">
-        <span class="text-bo-muted">Nom</span>
-        <input name="name" required class="mt-1 w-full border border-bo-border rounded px-3 py-2" placeholder="Offre du moment" />
-      </label>
-      <label class="block">
-        <span class="text-bo-muted">Type de règle</span>
-        <select name="type" id="promo-type" class="mt-1 w-full border border-bo-border rounded px-3 py-2">
-          {TYPES.map((t) => <option value={t.value}>{t.label}</option>)}
-        </select>
-      </label>
-
-      <fieldset data-type="buy_x_get_y" class="grid grid-cols-2 gap-2 sm:col-span-2">
-        <label class="block"><span class="text-bo-muted">Affiches à payer</span><input name="buyQty" type="number" min="1" value="3" class="mt-1 w-full border border-bo-border rounded px-3 py-2" /></label>
-        <label class="block"><span class="text-bo-muted">Affiches remisées ensuite</span><input name="getQty" type="number" min="1" value="1" class="mt-1 w-full border border-bo-border rounded px-3 py-2" /></label>
-        <label class="block"><span class="text-bo-muted">Remise sur celles-ci (%)</span><input name="remiseOffertes" type="number" min="0" max="100" value="100" class="mt-1 w-full border border-bo-border rounded px-3 py-2" /><span class="mt-1 block text-xs text-bo-muted">100 = offerte. 50 = à moitié prix.</span></label>
-        <label class="block"><span class="text-bo-muted">Format concerné</span><select name="format" class="mt-1 w-full border border-bo-border rounded px-3 py-2"><option value="">Tous les formats</option><option value="A4">A4 seulement</option><option value="A3">A3 seulement</option></select></label>
-        <p class="text-xs text-bo-muted sm:col-span-2">Il faut les deux dans le panier : 3 payées et 1 remisée, c'est un panier de 4 affiches.</p>
-      </fieldset>
-      <fieldset data-type="percent" hidden class="sm:col-span-2">
-        <label class="block"><span class="text-bo-muted">Pourcentage (%)</span><input name="percent" type="number" value="10" class="mt-1 w-full border border-bo-border rounded px-3 py-2" /></label>
-      </fieldset>
-      <fieldset data-type="fixed" hidden class="sm:col-span-2">
-        <label class="block"><span class="text-bo-muted">Montant remisé (€)</span><input name="amount" type="number" step="0.01" value="5" class="mt-1 w-full border border-bo-border rounded px-3 py-2" /></label>
-      </fieldset>
-      <fieldset data-type="free_shipping_over" hidden class="sm:col-span-2">
-        <label class="block">
-          <span class="text-bo-muted">Livraison offerte à partir de (€)</span>
-          <input
-            name="seuil"
-            type="number"
-            step="0.01"
-            min="0"
-            value="60"
-            class="mt-1 w-full border border-bo-border rounded px-3 py-2"
-          />
-          <span class="mt-1 block text-xs text-bo-muted">
-            Le montant est celui du panier APRÈS remises — ce que la cliente
-            paie vraiment pour ses affiches. L'offre vaut pour tous les modes
-            de livraison et toutes les zones. Pour n'offrir le port que sur un
-            transporteur précis, utilisez plutôt la franchise de sa grille
-            tarifaire, dans l'écran Livraison : les deux se cumulent, le port
-            est offert dès que l'un des deux seuils est atteint.
-          </span>
-        </label>
-      </fieldset>
-
-      <label class="block">
-        <span class="text-bo-muted">Code (vide = automatique)</span>
-        <input name="code" class="mt-1 w-full border border-bo-border rounded px-3 py-2" placeholder="auto" />
-      </label>
-      <label class="block">
-        <span class="text-bo-muted">Priorité</span>
-        <input name="priority" type="number" value="0" class="mt-1 w-full border border-bo-border rounded px-3 py-2" />
-      </label>
-      <label class="flex items-center gap-2 sm:col-span-2">
-        <input name="active" type="checkbox" checked /> <span>Active</span>
-      </label>
-      <div class="sm:col-span-2">
-        <button class="rounded bg-bo-accent text-white px-4 py-2 hover:opacity-90">Enregistrer</button>
+  {/* --- Les archivées --------------------------------------------------- */}
+  {archivees.length > 0 && (
+    <section class="mt-8">
+      <h2 class="mb-1 font-semibold">Promotions archivées</h2>
+      <p class="mb-3 max-w-3xl text-sm text-bo-muted">
+        Elles ne s'appliquent plus nulle part. Les commandes passées gardent la
+        remise qu'elles ont eue. « Restaurer » la ramène dans la liste,
+        éteinte.
+      </p>
+      <div class="overflow-x-auto rounded-lg border border-bo-border bg-bo-surface">
+        <table class="w-full text-sm">
+          <tbody>
+            {archivees.map((p) => (
+              <tr id={`promo-${p.id}`} class="border-t border-bo-border first:border-t-0">
+                <td class="px-4 py-2 font-medium">{p.name}</td>
+                <td class="px-4 py-2 text-bo-muted">{libelleRegle(p)}</td>
+                <td class="px-4 py-2 text-bo-muted">{p.code ?? "automatique"}</td>
+                <td class="px-4 py-2 text-right">
+                  <form method="POST" class="inline">
+                    <input type="hidden" name="_action" value="restaurer" />
+                    <input type="hidden" name="id" value={p.id} />
+                    <input type="hidden" name="nom" value={p.name} />
+                    <button class={boutonLien}>Restaurer</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-    </form>
-  </section>
+    </section>
+  )}
 
-  <script is:inline>
-    // Affiche les champs propres au type de règle sélectionné.
-    const sel = document.getElementById("promo-type");
-    function sync() {
-      document.querySelectorAll("fieldset[data-type]").forEach((fs) => {
-        fs.hidden = fs.getAttribute("data-type") !== sel.value;
-      });
+  <script>
+    /*
+     * Le formulaire vivant : les champs du type choisi, et l'exemple.
+     *
+     * Un script Astro (et non « inline ») pour importer le moteur du panier :
+     * la phrase et le montant de l'exemple sont ceux que le panier calculera,
+     * pas une copie écrite à la main.
+     */
+    import { libelleRegle, remisesPanier, type LignePanier } from "@memoryline/types";
+
+    const form = document.getElementById("form-promo") as HTMLFormElement | null;
+    const exemple = document.getElementById("promo-exemple");
+    if (form && exemple) {
+      const prix = JSON.parse(exemple.dataset.prix ?? "{}") as Record<string, number>;
+      const cadres = JSON.parse(exemple.dataset.cadres ?? "{}") as Record<string, number>;
+      const formats = Object.keys(prix);
+      const euros = (c: number) =>
+        (c / 100).toLocaleString("fr-FR", { minimumFractionDigits: c % 100 ? 2 : 0 }) + " €";
+      const valeur = (n: string) => (form.elements.namedItem(n) as HTMLInputElement | null)?.value ?? "";
+      const coche = (n: string) => (form.elements.namedItem(n) as HTMLInputElement | null)?.checked ?? false;
+      const cases = (n: string) =>
+        Array.from(form.querySelectorAll<HTMLInputElement>(`input[name="${n}"]:checked`)).map((i) => i.value);
+      const tous = (l: string[]) => (l.length === formats.length ? [] : l);
+      const euroEnCentimes = (v: string) => Math.round(Number(v.replace(",", ".")) * 100) || 0;
+
+      /** La règle telle que le formulaire la décrit en ce moment. */
+      function regle() {
+        const type = valeur("type");
+        const conditions = {
+          minCents: euroEnCentimes(valeur("minEuros")) || null,
+          minQuantite: Number(valeur("minQuantite")) || null,
+        };
+        const cumulable = coche("cumulable");
+        let config: Record<string, unknown> = {};
+        if (type === "buy_x_get_y")
+          config = {
+            version: 2,
+            achat: { quantite: Number(valeur("achatQuantite")) || 1, formats: tous(cases("achatFormats")) },
+            offert: {
+              quantite: Number(valeur("offertQuantite")) || 1,
+              formats: tous(cases("offertFormats")),
+              pourcentage: Number(valeur("pourcentage")) || 0,
+              cadreCompris: coche("cadreCompris"),
+              maxLots: Number(valeur("maxLots")) || null,
+            },
+            conditions,
+            cumulable,
+          };
+        else if (type === "percent") config = { percent: Number(valeur("percent")) || 0, conditions, cumulable };
+        else if (type === "fixed") config = { amountCents: euroEnCentimes(valeur("amount")), conditions, cumulable };
+        else config = { thresholdCents: euroEnCentimes(valeur("seuil")) };
+        return { type, config, active: true, name: valeur("name") || "Promotion" };
+      }
+
+      /** Le panier d'exemple : ce qu'il faut acheter, et l'affiche offerte encadrée. */
+      function panierExemple(r: ReturnType<typeof regle>): { lignes: LignePanier[]; phrase: string } {
+        const cfg = r.config as {
+          achat?: { quantite: number; formats: string[] };
+          offert?: { quantite: number; formats: string[] };
+          conditions?: { minQuantite: number | null };
+        };
+        if (r.type === "buy_x_get_y" && cfg.achat && cfg.offert) {
+          const fAchat = cfg.achat.formats.includes("A3") || !cfg.achat.formats.length ? "A3" : cfg.achat.formats[0]!;
+          const fOffert = cfg.offert.formats[0] ?? "A4";
+          const cadre = cadres[fOffert] ?? 0;
+          return {
+            lignes: [
+              { unitPriceCents: prix[fAchat] ?? 0, quantity: cfg.achat.quantite, format: fAchat, cadreCents: 0 },
+              { unitPriceCents: (prix[fOffert] ?? 0) + cadre, quantity: cfg.offert.quantite, format: fOffert, cadreCents: cadre },
+            ],
+            phrase: `${cfg.achat.quantite} ${fAchat} à ${euros(prix[fAchat] ?? 0)} et ${cfg.offert.quantite} ${fOffert} encadrée${cfg.offert.quantite > 1 ? "s" : ""} à ${euros((prix[fOffert] ?? 0) + cadre)} (dont ${euros(cadre)} de cadre)`,
+          };
+        }
+        const n = Math.max(2, cfg.conditions?.minQuantite ?? 0);
+        return {
+          lignes: [{ unitPriceCents: prix.A4 ?? 0, quantity: n, format: "A4", cadreCents: 0 }],
+          phrase: `${n} A4 à ${euros(prix.A4 ?? 0)}`,
+        };
+      }
+
+      function suivre() {
+        const type = valeur("type");
+        form!.querySelectorAll<HTMLFieldSetElement>("fieldset[data-type]").forEach((fs) => {
+          const voit = (fs.dataset.type ?? "").split(" ").includes(type);
+          fs.hidden = !voit;
+          // Un champ caché ne part pas : son « requis » ne bloque pas l'envoi.
+          fs.disabled = !voit;
+        });
+        const r = regle();
+        const phrase = exemple!.querySelector("[data-phrase]");
+        const calcul = exemple!.querySelector("[data-calcul]");
+        if (phrase) phrase.textContent = libelleRegle(r) + ".";
+        if (!calcul) return;
+        if (type === "free_shipping_over") {
+          calcul.textContent = "Le port est offert quand le panier, remises déduites, atteint ce montant.";
+          return;
+        }
+        const { lignes, phrase: quoi } = panierExemple(r);
+        const avant = lignes.reduce((s, l) => s + l.unitPriceCents * l.quantity, 0);
+        // Forcée active et hors dates : l'exemple montre ce qui se passera
+        // PENDANT l'offre, même si elle commence demain.
+        const { remiseCents } = remisesPanier(lignes, [r], new Date(), []);
+        calcul.textContent =
+          remiseCents > 0
+            ? `Exemple : ${quoi}, soit ${euros(avant)}. Le panier déduit ${euros(remiseCents)} : la cliente paie ${euros(avant - remiseCents)}.`
+            : `Exemple : ${quoi}. Sur ce panier, l'offre ne déduit rien : vérifiez les quantités, les formats et les conditions.`;
+      }
+      form.addEventListener("input", suivre);
+      form.addEventListener("change", suivre);
+      suivre();
     }
-    sel?.addEventListener("change", sync);
-    sync();
+
+    // Archiver retire la promotion du panier tout de suite : on le confirme.
+    document.querySelectorAll<HTMLFormElement>("form.js-archiver").forEach((f) => {
+      f.addEventListener("submit", (e) => {
+        const nom = f.dataset.nom ?? "cette promotion";
+        if (!confirm(`Archiver « ${nom} » ? Elle ne s'appliquera plus aux paniers. Les commandes passées gardent leur remise.`))
+          e.preventDefault();
+      });
+    });
   </script>
 </Admin>

@@ -55,6 +55,7 @@ export const en: Partial<Record<CleCourriel, string>> = {
   "confirmation.livraison": "Delivery",
   "confirmation.total": "Total",
   "confirmation.adresseLivraison": "Delivery address:",
+  "confirmation.retrait": "To collect from:",
   "confirmation.question": "Any questions? Just reply to this email.",
   "confirmation.texte": "Your order {numero} is confirmed. Total: {total}.",
 
@@ -136,6 +137,14 @@ export const en: Partial<Record<CleCourriel, string>> = {
   "stand.texte": "The poster you ordered is ready.",
   "stand.texteSur": "The poster you ordered at {evenement} is ready.",
   "stand.texteCommande": "Order {numero}.",
+
+  /* --- Order ready for collection ----------------------------------------- */
+
+  "retrait.objet": "Your order {numero} is ready for collection",
+  "retrait.intro": "Your order is ready: you can come and collect it.",
+  "retrait.ou": "Where to collect it:",
+  "retrait.merci": "Order {numero}. See you soon!",
+  "retrait.texte": "Your order {numero} is ready: you can come and collect it.",
 
   /* --- Bienvenue ---------------------------------------------------------- */
 
@@ -273,6 +282,7 @@ export const en: Partial<Record<CleCourriel, string>> = {
   "facturePdf.pied":
     "Memory Line, personalised posters. Any questions about this invoice? Just reply to the email it came with.",
   "facturePdf.filigrane": "Cancelled",
+  "facturePdf.retrait": "Collection: {lieu}",
 
   "livraison.remiseStand": "Collected at our stand",
 

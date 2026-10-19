@@ -15,6 +15,12 @@ export const SESSION_COOKIE = "ml_admin_session";
 export interface AdminUser {
   email: string;
   role: string;
+  /**
+   * Pour un vendeur seulement : les stands qui lui sont confiés (BO ›
+   * Comptes), par leur nom. Il ne voit que leurs ventes ; vide, il n'en voit
+   * aucune. Absent pour la propriétaire, qui voit tout.
+   */
+  stands?: { id: number; nom: string; archive: boolean }[];
 }
 
 /** Valide la session courante en relayant le cookie entrant vers l'API. */

@@ -30,17 +30,24 @@ const CHAMPS_MODE: ChampTraduit[] = [
   { cle: "name", libelle: "Nom vu par le client", max: 120 },
   { cle: "description", libelle: "Précision (délai…)", max: 500 },
 ];
-const CHAMP_RETRAIT: ChampTraduit = {
-  cle: "pickupLocation",
-  libelle: "Où retirer",
-  max: 500,
+/**
+ * Pour un retrait sur place, la « précision » devient le texte de plusieurs
+ * lignes que la caisse affiche sous le mode (horaires, ce qu'il faut
+ * apporter) — demande de la boutique. L'ancien « Où retirer » ne se traduit
+ * plus : la caisse ne l'affiche plus, les lieux de retrait l'ont remplacé.
+ */
+const CHAMP_TEXTE_RETRAIT: ChampTraduit = {
+  cle: "description",
+  libelle: "Texte affiché à la caisse",
+  lignes: 4,
+  max: 1000,
 };
 const elementMode = (m: ModeBO): ElementTraduit => ({
   id: m.id,
   libelle: m.name,
-  francais: { name: m.name, description: m.description, pickupLocation: m.pickupLocation },
+  francais: { name: m.name, description: m.description },
   translations: m.translations,
-  champs: m.kind === "pickup" ? [...CHAMPS_MODE, CHAMP_RETRAIT] : CHAMPS_MODE,
+  champs: m.kind === "pickup" ? [CHAMPS_MODE[0]!, CHAMP_TEXTE_RETRAIT] : CHAMPS_MODE,
 });
 
 /**
@@ -90,7 +97,7 @@ if (Astro.request.method === "POST") {
       // sien, et seules celles-là sont enregistrées ou complétées.
       const modes = (await api.shipping()).modes.filter((m) => !m.archivedAt);
       const vise = modes.find((m) =>
-        [...CHAMPS_MODE, CHAMP_RETRAIT].some((c) => f.has(nomCase(m.id, c.cle, "en"))),
+        CHAMPS_MODE.some((c) => f.has(nomCase(m.id, c.cle, "en"))),
       );
       if (!vise) throw new Error("Ce mode de livraison n'a pas été retrouvé. Rechargez l'écran.");
       const etat = await traiterTraductions(
@@ -388,14 +395,16 @@ const ordreModes = modesActifs.map((m) => m.id);
               class="mt-1 block w-52 border border-bo-border rounded px-2 py-1"
             />
           </label>
-          <label class="block flex-1 min-w-[260px]">
-            <span class="text-bo-muted text-xs">Précision (délai…)</span>
-            <input
-              name="description"
-              value={m.description ?? ""}
-              class="mt-1 block w-full border border-bo-border rounded px-2 py-1"
-            />
-          </label>
+          {m.kind !== "pickup" && (
+            <label class="block flex-1 min-w-[260px]">
+              <span class="text-bo-muted text-xs">Précision (délai…)</span>
+              <input
+                name="description"
+                value={m.description ?? ""}
+                class="mt-1 block w-full border border-bo-border rounded px-2 py-1"
+              />
+            </label>
+          )}
           <label class="flex items-center gap-2 pb-1.5">
             <input type="checkbox" name="active" checked={m.active} />
             <span>Proposé</span>
@@ -405,26 +414,44 @@ const ordreModes = modesActifs.map((m) => m.id);
           </button>
         </div>
 
-        {/* Retrait sur place : l'emplacement change de salon en salon. */}
+        {/* Retrait sur place : un texte libre sur plusieurs lignes, montré
+            sous le mode à la caisse (demande de la boutique : « me laisser
+            mettre une description, pouvoir passer à la ligne »). Les
+            endroits eux-mêmes — le chalet, l'atelier — sont des lieux de
+            retrait, réglés sur leur propre écran. */}
         {m.kind === "pickup" && (
-          <label class="mt-3 block">
-            <span class="text-bo-muted text-xs">
-              Où retirer — affiché au client quand il choisit ce mode
-            </span>
-            <input
-              name="pickupLocation"
-              value={m.pickupLocation ?? ""}
-              placeholder="Marché de Mers-les-Bains, samedi 9 h – 13 h"
-              class="mt-1 block w-full border border-bo-border rounded px-2 py-1"
-            />
-            <span class="mt-1 block text-xs text-bo-muted">
-              Décochez « Proposé » les semaines où vous n'êtes nulle part.
-            </span>
-          </label>
+          <>
+            <label class="mt-3 block">
+              <span class="text-bo-muted text-xs">
+                Texte affiché à la caisse, sous « {m.name} »
+              </span>
+              <textarea
+                name="description"
+                rows="4"
+                maxlength="1000"
+                placeholder={"Votre commande vous attend sous 48 h.\nPensez à votre numéro de commande."}
+                class="mt-1 block w-full border border-bo-border rounded px-2 py-1"
+              >{m.description ?? ""}</textarea>
+              <span class="mt-1 block text-xs text-bo-muted">
+                Passez à la ligne autant que vous voulez : la caisse garde vos
+                retours à la ligne. Où venir chercher la commande se règle
+                dans <a class="underline" href={url("/livraison/lieux")}>Lieux
+                de retrait</a> — la cliente choisit l'un d'eux en payant.
+              </span>
+            </label>
+            {/* L'ancien « Où retirer » : la caisse ne l'affiche plus. Gardé
+                tel quel (champ caché) pour ne rien effacer, et montré tant
+                qu'il porte un texte, pour qu'on le recopie là où il sert. */}
+            {m.pickupLocation?.trim() && (
+              <p class="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                Ancien texte, plus affiché à la caisse : « {m.pickupLocation} ».
+                Recopiez ce qui doit rester dans le texte ci-dessus ou dans un
+                lieu de retrait.
+              </p>
+            )}
+          </>
         )}
-        {m.kind !== "pickup" && (
-          <input type="hidden" name="pickupLocation" value={m.pickupLocation ?? ""} />
-        )}
+        <input type="hidden" name="pickupLocation" value={m.pickupLocation ?? ""} />
 
         {/* Le transporteur se change ici : un mode préparé pour Relais Colis
             peut finir chez Chronopost si c'est ce contrat-là qui se signe.
@@ -599,7 +626,7 @@ const ordreModes = modesActifs.map((m) => m.id);
       <Traductions
         ancre={`traductions-mode-${m.id}`}
         titre={m.kind === "pickup"
-          ? "Traductions du nom, de la précision et du lieu de retrait"
+          ? "Traductions du nom et du texte affiché à la caisse"
           : "Traductions du nom et de la précision"}
         aide="Ce que le client lit en choisissant ce mode, dans sa langue — et ce que redisent son courriel de confirmation et sa facture. Une case vide affiche le français. Les bordereaux et vos écrans gardent le nom français."
         champs={CHAMPS_MODE}
@@ -748,10 +775,11 @@ const ordreModes = modesActifs.map((m) => m.id);
       </p>
       <p class="mt-2 text-xs text-bo-muted">
         Pour un <strong>marché de Noël</strong>, pas besoin d'un mode à part :
-        « Retrait sur place » propose déjà les stands ouverts, chacun par son
-        nom. Ouvrez le stand dans
-        <a class="underline" href={url("/ventes-salon")}>Ventes stand</a> et il
-        apparaît tout seul au moment de payer.
+        ajoutez le chalet dans
+        <a class="underline" href={url("/livraison/lieux")}>Lieux de retrait</a>,
+        avec son adresse et ses horaires. « Retrait sur place » le propose
+        alors au moment de payer, à côté des autres lieux actifs. Sans aucun
+        lieu actif, le retrait ne s'affiche pas à la caisse.
       </p>
     </form>
   </section>

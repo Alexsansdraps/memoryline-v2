@@ -40,8 +40,14 @@ import {
   type OrderItem,
 } from "../lib/api.ts";
 import { apercuAbsolu, urlApercu } from "../lib/ia.ts";
-// Le genre et le visuel de chaque produit : partagés avec la caisse.
-import { catalogue, estPretAImprimer, visuelBoutique } from "../lib/catalogue-panier.ts";
+// Le genre et le visuel de chaque produit (partagés avec la caisse), et son
+// nom dans la langue de la page.
+import {
+  catalogue,
+  estPretAImprimer,
+  nomDeLaLigne,
+  visuelBoutique,
+} from "../lib/catalogue-panier.ts";
 import CommandeStand, { ConfirmationStand, type VenteStand } from "./CommandeStand.tsx";
 
 /**
@@ -196,9 +202,10 @@ export default function CartIsland(props: {
         data = await browserApi.cart(cartId);
       }
     }
-    // Le catalogue sert à deux choses : le lien « Modifier » et l'image des
-    // affiches prêtes à imprimer.
-    const fiches = await catalogue();
+    // Le catalogue sert à trois choses : le lien « Modifier », l'image des
+    // affiches prêtes à imprimer, et le nom de chaque affiche dans la langue
+    // de la page (nomDeLaLigne).
+    const fiches = await catalogue(langue);
     return { items: data.items, fiches, poidsGrammes: data.poidsGrammes ?? 0 };
   });
 
@@ -330,12 +337,17 @@ export default function CartIsland(props: {
       0,
     );
 
-  /** Lignes réduites à ce dont le moteur de remises a besoin. */
+  /**
+   * Lignes réduites à ce dont le moteur de remises a besoin — la part du
+   * cadre comprise, dite par le serveur : une affiche offerte « cadre non
+   * compris » se déduit sans son cadre, ici comme à l'encaissement.
+   */
   const lignes = () =>
     (cart()?.items ?? []).map((it) => ({
       unitPriceCents: it.unitPriceCents,
       quantity: it.quantity,
       format: it.config.format ?? null,
+      cadreCents: it.cadreCents ?? 0,
     }));
 
   /**
@@ -630,7 +642,8 @@ export default function CartIsland(props: {
 
                     <div class="min-w-0">
                       <h2 class="text-lg leading-tight">
-                        {it.title ?? tr("panier.affiche_sans_titre")}
+                        {nomDeLaLigne(cart()?.fiches, it) ??
+                          tr("panier.affiche_sans_titre")}
                       </h2>
                       <Show when={!props.stand}>
                         <p class="mt-1 text-sm">
@@ -715,9 +728,12 @@ export default function CartIsland(props: {
         </ul>
         </div>
 
-        {/* Au stand : la validation, à la place des totaux et du paiement. */}
+        {/* Au stand : la validation, à la place des totaux et du paiement.
+            Elle reste à l'écran quand plusieurs affiches font défiler la
+            liste — SOUS l'en-tête, collant lui aussi et haut de 80 px : à
+            `top-6`, le nom passait derrière lui dès le premier défilement. */}
         <Show when={props.stand}>
-          <div class="mt-10 md:sticky md:top-6 md:mt-0">
+          <div class="mt-10 md:sticky md:top-24 md:mt-0">
             <CommandeStand
               langue={langue}
               nombre={exemplaires()}

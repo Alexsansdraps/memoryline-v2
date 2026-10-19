@@ -1399,7 +1399,16 @@ export interface DonneesFacture {
   mentionReglement: string;
   /** L'identité légale de la boutique, quand elle a été renseignée. */
   adresseBoutique?: string[] | null;
+  /** Déjà mis en forme par l'appelant (« 123 456 789 00012 », voir facturation.ts). */
   siret?: string | null;
+  /** Une ligne libre sous le SIRET : « EI », « RCS Mulhouse … ». */
+  mention?: string | null;
+  /**
+   * Le lieu de retrait, pour une commande retirée sur place : imprimé sous
+   * la commande, à côté du mode, et plus dans « Facturé à » — un chalet de
+   * marché de Noël n'est pas l'adresse de la cliente.
+   */
+  retrait?: string | null;
   /** Portée en travers quand la commande a été annulée après sa facturation. */
   filigrane?: string | null;
   /**
@@ -1504,13 +1513,36 @@ export async function renderInvoicePdf(d: DonneesFacture): Promise<Buffer> {
   const colonneClient = FACTURE_LARGEUR / 2 + 10;
   const hautDesParties = y;
 
+  // La colonne de l'émetteur s'arrête avant celle du client. L'écran des
+  // factures limite déjà l'adresse à 50 caractères par ligne ; on coupe
+  // quand même ici, par sécurité : une adresse posée avant cet écran, ou une
+  // mention longue, ne doit pas déborder sur « Facturé à ».
+  const largeurEmetteur = colonneClient - gauche - 12;
+  const coupee = (texte: string, taille = 9.5): string[] => {
+    const mots = pourPolicePdf(texte).split(/\s+/).filter(Boolean);
+    const lignes: string[] = [];
+    let courante = "";
+    for (const mot of mots) {
+      const essai = courante ? `${courante} ${mot}` : mot;
+      if (courante && normale.widthOfTextAtSize(essai, taille) > largeurEmetteur) {
+        lignes.push(courante);
+        courante = mot;
+      } else courante = essai;
+    }
+    if (courante) lignes.push(courante);
+    return lignes;
+  };
+
   y = ecrire(t("facturePdf.emetteur"), gauche, y, { taille: 8, gras: true, pale: true });
   y = ecrire("Memory Line", gauche, y - 2, { gras: true });
   y = ecrire(t("facturePdf.activite"), gauche, y, { pale: true });
   for (const ligne of d.adresseBoutique ?? [])
-    if (ligne) y = ecrire(ligne, gauche, y, { pale: true });
+    for (const morceau of ligne ? coupee(ligne) : [])
+      y = ecrire(morceau, gauche, y, { pale: true });
   // Le SIRET est un identifiant français, qui ne se traduit pas.
   if (d.siret) y = ecrire(`SIRET ${d.siret}`, gauche, y, { pale: true });
+  for (const morceau of d.mention ? coupee(d.mention) : [])
+    y = ecrire(morceau, gauche, y, { pale: true });
 
   let yClient = ecrire(t("facturePdf.factureA"), colonneClient, hautDesParties, {
     taille: 8,
@@ -1539,6 +1571,8 @@ export async function renderInvoicePdf(d: DonneesFacture): Promise<Buffer> {
     { taille: 10, gras: true },
   );
   y = ecrire(d.mentionReglement, gauche, y, { pale: true });
+  // Le lieu de retrait, en toutes lettres : c'est là qu'elle a été remise.
+  if (d.retrait) y = ecrire(d.retrait, gauche, y, { pale: true });
   y -= 12;
 
   /* --- Le détail ---------------------------------------------------------- */

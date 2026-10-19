@@ -54,6 +54,7 @@ import {
   type Langue,
 } from "./courriels/index.js";
 import { langueDuVisiteur, livraisonDansLaLangue, nomTraduit } from "./traductions.js";
+import { lieuDeRetrait } from "./lieux-retrait.js";
 import { mountImportClients } from "./import-clients.js";
 
 export const COOKIE_CLIENT = "ml_client";
@@ -1396,6 +1397,12 @@ export function mountCompteRoutes(app: Hono): void {
        * ses courriels et sa facture.
        */
       livraison: await livraisonDansLaLangue(order, langue),
+      /**
+       * Pour un retrait sur place : le lieu où venir, tel qu'elle l'a choisi
+       * (nom et texte dans sa langue quand la boutique les a traduits). Null
+       * sinon. La page l'affiche à la place de l'adresse de livraison.
+       */
+      lieuRetrait: lieuDeRetrait(order, langue),
       expeditions: expeditions.map((f) => ({
         ...f,
         trackingUrl: f.trackingUrl ?? lienDeSuivi(f.carrier, f.trackingNumber),

@@ -36,6 +36,8 @@ import {
   composerPersonnages,
   compositionDeLaVue,
   hauteurDuDessin,
+  NUANCIERS_PAR_DEFAUT,
+  type NuancierBase,
 } from "@memoryline/types";
 
 /** Étapes du flow configurateur (§18.2 F). */
@@ -721,65 +723,44 @@ export function createSvgCache(assetBaseUrl: string): {
 /*  Palettes de couleurs prédéfinies (miroir des nuanciers memoryline.fr)      */
 /* -------------------------------------------------------------------------- */
 
-function rgb(r: number, g: number, b: number): string {
-  const h = (n: number) => n.toString(16).padStart(2, "0").toUpperCase();
-  return `#${h(r)}${h(g)}${h(b)}`;
-}
+/*
+ * Les nuanciers des personnages vivent désormais dans @memoryline/types
+ * (nuanciers.ts) : la boutique les règle au back-office, l'API les sert avec
+ * la bibliothèque (`nuanciersBase`), et leurs couleurs d'origine sont celles
+ * qui étaient écrites ici. Les mêmes noms restent exportés, pour ne rien
+ * casser chez ceux qui les lisent.
+ */
 
-/** Teintes de peau (base / personnage). */
-export const SKIN_TONES = [
-  rgb(255, 238, 224),
-  rgb(255, 226, 192),
-  rgb(246, 210, 169),
-  rgb(225, 180, 128),
-  rgb(184, 138, 108),
-  rgb(139, 91, 56),
-] as const;
+/** Les quatre nuanciers des personnages : ceux de la boutique, sinon ceux d'origine. */
+export type NuanciersPersonnages = Partial<Record<NuancierBase, readonly string[]>>;
 
-/** Nuancier vêtements. */
-export const CLOTHES_TONES = [
-  rgb(250, 250, 250),
-  rgb(255, 150, 191),
-  rgb(158, 223, 191),
-  rgb(200, 228, 214),
-  rgb(189, 18, 18),
-  rgb(0, 86, 175),
-  rgb(184, 85, 29),
-  rgb(0, 0, 0),
-] as const;
+/** Teintes de peau (base / personnage), d'origine. */
+export const SKIN_TONES = NUANCIERS_PAR_DEFAUT.peau;
 
-/** Nuancier pantalon. */
-export const PANTS_TONES = [
-  rgb(237, 215, 198),
-  rgb(184, 85, 29),
-  rgb(94, 154, 191),
-  rgb(22, 81, 118),
-  rgb(84, 84, 84),
-  rgb(0, 0, 0),
-] as const;
+/** Nuancier vêtements, d'origine. */
+export const CLOTHES_TONES = NUANCIERS_PAR_DEFAUT.vetements;
 
-/** Nuancier cheveux. */
-export const HAIR_TONES = [
-  rgb(232, 232, 232),
-  rgb(241, 203, 158),
-  rgb(231, 176, 51),
-  rgb(184, 85, 29),
-  rgb(214, 182, 149),
-  rgb(191, 129, 88),
-  rgb(107, 62, 30),
-  rgb(84, 21, 7),
-  rgb(36, 34, 44),
-] as const;
+/** Nuancier pantalon, d'origine. */
+export const PANTS_TONES = NUANCIERS_PAR_DEFAUT.pantalon;
+
+/** Nuancier cheveux, d'origine. */
+export const HAIR_TONES = NUANCIERS_PAR_DEFAUT.cheveux;
 
 /**
  * Nuancier de repli d'un emplacement — celui qui vivait en dur dans le code
  * avant que les catégories de pièces portent leurs propres couleurs. Ne sert
  * plus qu'aux pièces sans catégorie, ou dont la catégorie n'a aucune couleur.
+ * Il suit le nuancier des personnages réglé par la boutique, quand on le
+ * donne ; ses couleurs d'origine sinon.
  */
-export function presetPaletteForSlot(slot: Slot | string): readonly string[] {
-  if (slot === "hair") return HAIR_TONES;
-  if (slot === "pants") return PANTS_TONES;
-  return CLOTHES_TONES;
+export function presetPaletteForSlot(
+  slot: Slot | string,
+  nuanciers?: NuanciersPersonnages | null,
+): readonly string[] {
+  const n: NuancierBase =
+    slot === "hair" ? "cheveux" : slot === "pants" ? "pantalon" : "vetements";
+  const regles = nuanciers?.[n];
+  return regles && regles.length ? regles : NUANCIERS_PAR_DEFAUT[n];
 }
 
 /**
@@ -793,13 +774,14 @@ export function paletteForVariant(
   categories: readonly PieceCategoryDTO[] | undefined,
   variant: VariantDTO | undefined,
   slot: Slot | string,
+  nuanciers?: NuanciersPersonnages | null,
 ): { couleurs: readonly string[]; libre: boolean } {
   const cat = variant?.pieceCategoryId
     ? categories?.find((c) => c.id === variant.pieceCategoryId)
     : undefined;
   if (cat && cat.colors.length > 0)
     return { couleurs: cat.colors, libre: false };
-  return { couleurs: presetPaletteForSlot(slot), libre: true };
+  return { couleurs: presetPaletteForSlot(slot, nuanciers), libre: true };
 }
 
 /**

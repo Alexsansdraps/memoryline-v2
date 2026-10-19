@@ -65,6 +65,11 @@ export const fr = {
   "confirmation.livraison": "Livraison",
   "confirmation.total": "Total",
   "confirmation.adresseLivraison": "Livraison :",
+  /**
+   * Au-dessus du lieu de retrait choisi (nom, adresse, texte du lieu), à la
+   * place de l'adresse de livraison : la cliente vient chercher sa commande.
+   */
+  "confirmation.retrait": "À retirer :",
   "confirmation.question": "Une question ? Répondez simplement à cet e-mail.",
   "confirmation.texte": "Votre commande {numero} est confirmée. Total : {total}.",
 
@@ -139,6 +144,20 @@ export const fr = {
   "stand.texte": "Votre affiche commandée est prête.",
   "stand.texteSur": "Votre affiche commandée sur {evenement} est prête.",
   "stand.texteCommande": "Commande {numero}.",
+
+  /* --- Commande prête à retirer ------------------------------------------- */
+
+  /*
+   * Une commande « Retrait sur place » traitée : elle attend la cliente au
+   * lieu qu'elle a choisi. Avant, elle recevait « Votre commande est en
+   * route », ce qui l'aurait fait guetter le facteur. Aucun prix : elle a
+   * déjà sa confirmation, ce courrier-ci ne dit que où et quoi.
+   */
+  "retrait.objet": "Votre commande {numero} vous attend",
+  "retrait.intro": "Votre commande est prête : vous pouvez venir la chercher.",
+  "retrait.ou": "Où la retirer :",
+  "retrait.merci": "Commande {numero}. À très bientôt !",
+  "retrait.texte": "Votre commande {numero} est prête : vous pouvez venir la chercher.",
 
   /* --- Bienvenue ---------------------------------------------------------- */
 
@@ -280,6 +299,8 @@ export const fr = {
     "Memory Line, affiches personnalisées. Une question sur cette facture ? Répondez au courrier qui vous l'a apportée.",
   /** Écrit en grand, en travers de la facture d'une commande annulée. */
   "facturePdf.filigrane": "Annulée",
+  /** Sous la commande, pour un retrait sur place : « Retrait : Chalet — 1 place… ». */
+  "facturePdf.retrait": "Retrait : {lieu}",
 
   /**
    * Le « mode de livraison » d'une vente du stand, qui n'en a pas : la

@@ -1,6 +1,6 @@
 ---
 import Admin from "../layouts/Admin.astro";
-import { adminApi, type CompteAdmin } from "../lib/api.ts";
+import { adminApi, type CompteAdmin, type StandBo } from "../lib/api.ts";
 
 const api = adminApi(Astro.request);
 
@@ -13,9 +13,27 @@ const ROLES = [
   {
     value: "seller",
     label: "Vendeur",
-    aide: "Consultation seule : commandes, catalogue, PDF d'impression. Ne modifie rien.",
+    aide: "Ne voit que les ventes et les fichiers d'impression des stands qui lui sont confiés. Ne modifie rien.",
   },
 ];
+
+/**
+ * Les stands cochés dans un formulaire de compte, ou `undefined` si le
+ * formulaire ne les porte pas.
+ *
+ * Une case décochée n'envoie rien : sans le champ témoin `standsPresents`,
+ * « aucune case cochée » et « pas de cases du tout » se confondraient, et
+ * enregistrer le mot de passe d'un vendeur lui retirerait ses stands. Pour
+ * un propriétaire, on n'y touche pas : il voit tout de toute façon.
+ */
+function standsCoches(f: FormData): number[] | undefined {
+  if (String(f.get("role") ?? "") !== "seller") return undefined;
+  if (!f.has("standsPresents")) return undefined;
+  return f
+    .getAll("stands")
+    .map((v) => Number(v))
+    .filter((n) => Number.isInteger(n) && n > 0);
+}
 const nomRole = (v: string) => ROLES.find((r) => r.value === v)?.label ?? v;
 
 /** Date lisible, sans dépendance : « 8 septembre 2026 ». */
@@ -50,11 +68,13 @@ if (Astro.request.method === "POST") {
       flash = "Sessions fermées : ce compte devra se reconnecter.";
     } else {
       const motDePasse = String(f.get("password") || "");
+      const standIds = standsCoches(f);
       const compte = await api.upsertUser({
         id: f.get("id") ? Number(f.get("id")) : undefined,
         email: String(f.get("email") || ""),
         role: String(f.get("role") || "seller"),
         ...(motDePasse ? { password: motDePasse } : {}),
+        ...(standIds ? { standIds } : {}),
       });
       flash = f.get("id")
         ? `Compte « ${compte.email} » mis à jour${motDePasse ? " — nouveau mot de passe actif, ses sessions ont été fermées." : "."}`
@@ -77,6 +97,32 @@ try {
   comptes = await api.users();
 } catch (e) {
   error = String(e);
+}
+
+/**
+ * Tous les stands, pour les cases « Stands confiés » d'un vendeur. Les
+ * archivés viennent en dernier, marqués : on peut en confier un, pour que
+ * le vendeur d'un marché passé relise ses ventes.
+ */
+let stands: StandBo[] = [];
+try {
+  stands = (await api.stands()).stands
+    .slice()
+    .sort(
+      (a, b) =>
+        Number(Boolean(a.archivedAt)) - Number(Boolean(b.archivedAt)) ||
+        a.nom.localeCompare(b.nom, "fr"),
+    );
+} catch {
+  // Sans la liste, les cases ne s'affichent pas : le reste de l'écran sert.
+}
+const nomDuStand = new Map(stands.map((s) => [s.id, s.nom]));
+
+/** « Marché de Mulhouse, Salon de Colmar », ou rien. */
+function standsDe(c: CompteAdmin): string {
+  return (c.standIds ?? [])
+    .map((id) => nomDuStand.get(id) ?? `stand n° ${id}`)
+    .join(", ");
 }
 
 // Les archivés quittent le tableau ordinaire pour leur propre section.
@@ -115,8 +161,10 @@ const archivable = (c: CompteAdmin) =>
   <p class="mb-6 text-sm text-bo-muted max-w-3xl">
     Qui peut entrer dans le back-office, et jusqu'où. Un
     <strong> propriétaire</strong> peut tout modifier, y compris cette page ; un
-    <strong> vendeur</strong> ne fait que consulter — commandes, catalogue et
-    PDF d'impression — sans rien pouvoir changer.
+    <strong> vendeur</strong> ne voit que les ventes des stands que vous lui
+    confiez ici, et leurs fichiers d'impression, sans rien pouvoir changer.
+    Un vendeur sans stand confié ne voit aucune vente : cochez ses stands —
+    un par marché, autant qu'il en tient.
   </p>
 
   <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
@@ -172,6 +220,37 @@ const archivable = (c: CompteAdmin) =>
                     class="mt-1 block w-56 border border-bo-border rounded px-2 py-1"
                   />
                 </label>
+                <fieldset
+                  class="js-stands basis-full"
+                  hidden={c.role !== "seller"}
+                  disabled={c.role !== "seller"}
+                >
+                  <legend class="text-bo-muted text-xs">Stands confiés</legend>
+                  <input type="hidden" name="standsPresents" value="1" />
+                  {stands.length === 0 ? (
+                    <p class="mt-1 text-xs text-bo-muted">
+                      Aucun stand pour l'instant : ouvrez-en un dans « Ventes
+                      stand », puis revenez le confier.
+                    </p>
+                  ) : (
+                    <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                      {stands.map((s) => (
+                        <label class="flex items-center gap-1.5">
+                          <input
+                            type="checkbox"
+                            name="stands"
+                            value={s.id}
+                            checked={(c.standIds ?? []).includes(s.id)}
+                          />
+                          {s.nom}
+                          {s.archivedAt && (
+                            <span class="text-xs text-bo-muted">(archivé)</span>
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </fieldset>
                 <button class="rounded bg-bo-accent text-white px-3 py-1.5">
                   Enregistrer
                 </button>
@@ -179,7 +258,15 @@ const archivable = (c: CompteAdmin) =>
                   {nomRole(c.role)} · créé le {leJour(c.createdAt)}
                   {c.moi && " · c'est vous"}
                   {c.connecte ? " · connecté en ce moment" : ""}
+                  {c.role === "seller" && standsDe(c) && ` · Stands : ${standsDe(c)}`}
                 </p>
+                {c.role === "seller" && !standsDe(c) && (
+                  <p class="basis-full">
+                    <span class="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-900">
+                      Aucun stand : ne voit aucune vente
+                    </span>
+                  </p>
+                )}
               </form>
             </td>
             <td class="px-2 py-3 text-right whitespace-nowrap">
@@ -299,6 +386,29 @@ const archivable = (c: CompteAdmin) =>
           class="mt-1 block w-56 border border-bo-border rounded px-3 py-2"
         />
       </label>
+      <fieldset class="js-stands basis-full" hidden disabled>
+        <legend class="text-bo-muted">Stands confiés</legend>
+        <input type="hidden" name="standsPresents" value="1" />
+        {stands.length === 0 ? (
+          <p class="mt-1 text-xs text-bo-muted">
+            Aucun stand pour l'instant : ouvrez-en un dans « Ventes stand »,
+            puis revenez le confier.
+          </p>
+        ) : (
+          <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+            {stands.map((s) => (
+              <label class="flex items-center gap-1.5">
+                <input type="checkbox" name="stands" value={s.id} />
+                {s.nom}
+                {s.archivedAt && <span class="text-xs text-bo-muted">(archivé)</span>}
+              </label>
+            ))}
+          </div>
+        )}
+        <p class="mt-1 text-xs text-bo-muted">
+          Sans stand coché, le compte ne verra aucune vente.
+        </p>
+      </fieldset>
       <button class="rounded bg-bo-accent text-white px-4 py-2">Créer</button>
       <p class="basis-full text-xs text-bo-muted">
         Dix caractères minimum. Transmettez-le à la personne par un autre canal
@@ -315,6 +425,21 @@ const archivable = (c: CompteAdmin) =>
   </p>
 
   <script is:inline>
+    // Les cases « Stands confiés » ne concernent qu'un vendeur : elles
+    // apparaissent quand on choisit ce rôle, et disparaissent — désactivées,
+    // donc non envoyées — pour un propriétaire, qui voit tout.
+    document.querySelectorAll("form select[name='role']").forEach((choix) => {
+      const cases = choix.form && choix.form.querySelector("fieldset.js-stands");
+      if (!cases) return;
+      const suivre = () => {
+        const vendeur = choix.value === "seller";
+        cases.hidden = !vendeur;
+        cases.disabled = !vendeur;
+      };
+      choix.addEventListener("change", suivre);
+      suivre();
+    });
+
     document.querySelectorAll("form.js-archiver").forEach((f) => {
       f.addEventListener("submit", (e) => {
         const nom = f.getAttribute("data-nom") || "ce compte";

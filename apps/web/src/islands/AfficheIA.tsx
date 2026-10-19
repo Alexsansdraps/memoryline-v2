@@ -883,7 +883,10 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       >
         {tr("produit.personnaliser")}
       </button>
-      <p class="mt-3 text-sm text-ink-soft">{tr("ia.intro")}</p>
+      {/* Plus de phrase sous le bouton : « Envoyez une photo : nous en tirons
+          une affiche… » est l'un des textes que la boutique a barrés comme
+          inutiles (carte Trello « IA photo »), et la description de la fiche,
+          juste en dessous, dit déjà la même chose. */}
 
       <Show when={ouverte()}>
     <div

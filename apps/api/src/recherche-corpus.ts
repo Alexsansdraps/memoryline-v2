@@ -22,7 +22,7 @@
  * « salon.* », les empreintes de mot de passe. La table des réglages n'est
  * lue que par des clés énumérées une à une.
  */
-import { asc, count, desc, inArray } from "drizzle-orm";
+import { asc, count, desc, inArray, isNull } from "drizzle-orm";
 import {
   etatBandeau,
   lireBandeauxVisuels,
@@ -37,7 +37,7 @@ import { textesRelanceParDefaut } from "./mail.js";
 import {
   CLES_COURRIELS_RELANCE,
   CLES_TEXTES_DU_SITE,
-  ficheBandeauAnnonce,
+  fichesBandeauAnnonce,
   ficheConsigneIa,
   fichesAffiches,
   fichesBandeauxVisuels,
@@ -383,8 +383,8 @@ async function chargerStands(): Promise<Fiche[]> {
 
 async function chargerBoutique(): Promise<Fiche[]> {
   const [bandeaux, promos, pages, menu, lettres] = await Promise.all([
-    // La même bannière que l'écran « Bandeau et offre » modifie
-    // (GET /admin/banner) : les autres lignes, aucun écran ne les montre.
+    // Tous les messages du bandeau d'annonce que l'écran montre : les non
+    // archivés, dans l'ordre du défilement (bandeau.ts).
     db
       .select({
         id: schema.announcementBanners.id,
@@ -394,8 +394,8 @@ async function chargerBoutique(): Promise<Fiche[]> {
         active: schema.announcementBanners.active,
       })
       .from(schema.announcementBanners)
-      .orderBy(desc(schema.announcementBanners.priority), desc(schema.announcementBanners.id))
-      .limit(1),
+      .where(isNull(schema.announcementBanners.archivedAt))
+      .orderBy(asc(schema.announcementBanners.position), asc(schema.announcementBanners.id)),
     db
       .select({
         id: schema.promoRules.id,
@@ -403,6 +403,7 @@ async function chargerBoutique(): Promise<Fiche[]> {
         code: schema.promoRules.code,
         translations: schema.promoRules.translations,
         active: schema.promoRules.active,
+        archivedAt: schema.promoRules.archivedAt,
       })
       .from(schema.promoRules)
       .orderBy(desc(schema.promoRules.priority), asc(schema.promoRules.id)),
@@ -445,7 +446,7 @@ async function chargerBoutique(): Promise<Fiche[]> {
       .orderBy(desc(schema.lettres.createdAt), desc(schema.lettres.id)),
   ]);
   return [
-    ...ficheBandeauAnnonce(bandeaux[0] ?? null),
+    ...fichesBandeauAnnonce(bandeaux),
     ...fichesPromotions(promos),
     ...fichesPages(pages),
     ...fichesMenu(menu),

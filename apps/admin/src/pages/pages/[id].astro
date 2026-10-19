@@ -428,6 +428,27 @@ const corps = saisie?.corps ?? corpsDepuisBlocs(page?.blocks);
 /** Une ancienne grille de produits ne se replie pas : il faut le dire. */
 const grillePerdue = !saisie && contientUneGrille(page?.blocks);
 
+/**
+ * Les collections que montrent les rangées « Affiches » de la page.
+ *
+ * Tant que la page n'est pas réenregistrée, ces rangées restent en ligne, et
+ * elles suivent l'ordre de leur collection : un lien par collection mène là
+ * où cet ordre se règle (Produits › Ordre d'affichage).
+ */
+const collectionsDesRangees = (() => {
+  const vues: { id: number; name: string }[] = [];
+  for (const b of page?.blocks ?? []) {
+    if (b.type !== "produits" || b.source !== "collection") continue;
+    const refs =
+      Array.isArray(b.references) && b.references.length ? b.references : [b.reference];
+    for (const r of refs) {
+      const col = donnees?.collections.find((c) => c.slug === String(r ?? "").trim());
+      if (col && !vues.some((v) => v.id === col.id)) vues.push({ id: col.id, name: col.name });
+    }
+  }
+  return vues;
+})();
+
 const traductions = page?.translations ?? null;
 
 /**
@@ -635,6 +656,24 @@ const boutonDiscret =
             Cette page contenait une grille d'affiches, qui ne peut pas devenir
             du texte : elle n'apparaît pas ci-dessous et sera perdue si vous
             enregistrez. Prévenez-moi avant d'enregistrer si vous y teniez.
+            {collectionsDesRangees.length > 0 && (
+              <span class="mt-1 block">
+                D'ici là, elle montre les affiches dans l'ordre de leur
+                collection :
+                {collectionsDesRangees.map((col, i) => (
+                  <>
+                    {i > 0 ? "," : ""}{" "}
+                    <a
+                      href={url(`/produits/ordre?page=collection:${col.id}`)}
+                      class="underline"
+                    >
+                      Ranger ces affiches ({col.name})
+                    </a>
+                  </>
+                ))}
+                .
+              </span>
+            )}
           </p>
         )}
 

@@ -42,6 +42,7 @@ import {
   type CadreDTO,
   type PieceCategoryDTO,
   type WorkingCharacter,
+  type NuanciersPersonnages,
 } from "./store";
 import { PosterPreview } from "./components/PosterPreview";
 import { StepBackgroundText } from "./components/StepBackgroundText";
@@ -97,6 +98,12 @@ export interface ConfiguratorProps {
    * retombe sur ses nuanciers historiques et laisse la saisie libre.
    */
   pieceCategories?: PieceCategoryDTO[];
+  /**
+   * Les nuanciers des personnages (peau, cheveux / pelage, vêtements,
+   * pantalon) tels que la boutique les a réglés. Absents : leurs couleurs
+   * d'origine (@memoryline/types, nuanciers.ts).
+   */
+  nuanciersBase?: NuanciersPersonnages;
   /** Décor d'avant-plan optionnel du produit (muret/banc…), rendu par-dessus
    *  les personnages (effet « assis dessus »). URL /assets/… ou absolue. */
   foregroundUrl?: string | null;
@@ -795,6 +802,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             characters={visibleCharacters()}
             slots={slotVariants()}
             pieceCategories={props.pieceCategories}
+            nuanciersBase={props.nuanciersBase}
             cache={cache}
             assetBaseUrl={props.assetBaseUrl}
             characterById={characterById}
@@ -897,6 +905,7 @@ export type { PosterConfig } from "@memoryline/types";
 export type {
   CadreDTO,
   PieceCategoryDTO,
+  NuanciersPersonnages,
   CharacterDTO,
   VariantDTO,
   SlotsDTO,

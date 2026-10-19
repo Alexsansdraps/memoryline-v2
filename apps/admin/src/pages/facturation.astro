@@ -1,0 +1,216 @@
+---
+/**
+ * Factures : l'identité de la boutique imprimée sur chaque facture.
+ *
+ * L'adresse et le SIRET sont des mentions OBLIGATOIRES d'une facture. La
+ * facture savait les imprimer, mais rien ne permettait de les saisir : il
+ * fallait écrire dans la base, et les factures sortaient sans. Cet écran les
+ * règle, avec une mention complémentaire facultative (« EI », « RCS … ») —
+ * on n'en invente aucune : la mention de TVA est déjà imprimée en pied de
+ * page.
+ *
+ * Ce qui est enregistré ici vaut pour les factures numérotées ENSUITE :
+ * chacune garde l'émetteur du jour de son numéro (apps/api/src/
+ * facturation.ts). « Voir une facture d'exemple » montre le résultat avant
+ * d'enregistrer, sans rien numéroter.
+ */
+import { apiUrl } from "../lib/url.ts";
+import Admin from "../layouts/Admin.astro";
+import { adminApi, type ReglagesFacture } from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+/** L'API refuse en français et dit pourquoi ; on retire seulement l'emballage. */
+function lisible(e: unknown): string {
+  const t = String(e).replace(/^Error:\s*/, "");
+  const m = /\{"error":"(.*?)"/.exec(t);
+  return m ? m[1]!.replace(/\\"/g, '"') : t;
+}
+
+let flash: string | null = null;
+let flashErreur = false;
+let avertissement: string | null = null;
+/** Ce qui vient d'être saisi, réaffiché tel quel quand l'API le refuse. */
+let saisie: { adresse: string; siret: string; mention: string } | null = null;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  saisie = {
+    adresse: String(f.get("adresse") ?? ""),
+    siret: String(f.get("siret") ?? ""),
+    mention: String(f.get("mention") ?? ""),
+  };
+  try {
+    const r = await api.enregistrerFacturation(saisie);
+    avertissement = r.avertissement;
+    flash =
+      "Enregistré. Les factures numérotées à partir de maintenant porteront ces mentions ; celles déjà émises gardent les leurs.";
+    saisie = null;
+  } catch (e) {
+    flash = lisible(e);
+    flashErreur = true;
+  }
+}
+
+let reglages: ReglagesFacture | null = null;
+let erreur: string | null = null;
+try {
+  reglages = await api.facturation();
+} catch (e) {
+  erreur = lisible(e);
+}
+
+const adresse = saisie?.adresse ?? reglages?.adresse ?? "";
+const siret = saisie?.siret ?? reglages?.siretGroupe ?? "";
+const mention = saisie?.mention ?? reglages?.mention ?? "";
+const champ = "mt-1 block w-full rounded border border-bo-border px-3 py-2";
+---
+
+<Admin title="Factures">
+  {flash && (
+    <p
+      role="status"
+      class={`mb-4 rounded border px-3 py-2 text-sm ${
+        flashErreur ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+  {avertissement && (
+    <p class="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      {avertissement}
+    </p>
+  )}
+  {erreur && <p class="mb-4 text-sm text-red-600">Réglages indisponibles : {erreur}</p>}
+
+  <p class="mb-6 max-w-3xl text-sm text-bo-muted">
+    Ce qui s'imprime en haut à gauche de chaque facture, sous « Émetteur ».
+    L'<strong>adresse</strong> et le <strong>SIRET</strong> de la boutique y
+    sont obligatoires. Chaque facture garde les mentions du jour où elle a
+    reçu son numéro : les changer ici ne réécrit pas les factures déjà
+    émises.
+  </p>
+
+  <div class="grid items-start gap-6 lg:grid-cols-2">
+    <form method="POST" class="space-y-4 rounded-lg border border-bo-border bg-bo-surface p-5 text-sm" id="form-facture">
+      <label class="block">
+        <span class="font-medium">Adresse de la boutique</span>
+        <span class="block text-xs text-bo-muted">
+          De 2 à 4 lignes, 50 caractères au plus chacune : c'est la place du
+          bloc sur la facture.
+        </span>
+        <textarea
+          name="adresse"
+          rows="4"
+          class={champ}
+          placeholder={"12 rue de l'Exemple\n68100 Mulhouse"}
+          data-apercu="adresse"
+        >{adresse}</textarea>
+      </label>
+      {!adresse.trim() && (
+        <p class="text-xs font-medium text-red-700" data-vide="adresse">
+          Vide : la facture sortira sans adresse.
+        </p>
+      )}
+
+      <label class="block">
+        <span class="font-medium">SIRET</span>
+        <span class="block text-xs text-bo-muted">
+          14 chiffres, tels qu'ils figurent sur votre Kbis ou l'avis de situation
+          INSEE. Les espaces sont acceptés.
+        </span>
+        <input
+          name="siret"
+          value={siret}
+          inputmode="numeric"
+          autocomplete="off"
+          maxlength="20"
+          class={`${champ} font-mono`}
+          data-apercu="siret"
+        />
+      </label>
+      {!siret.trim() && (
+        <p class="text-xs font-medium text-red-700" data-vide="siret">
+          Vide : la facture sortira sans SIRET.
+        </p>
+      )}
+
+      <label class="block">
+        <span class="font-medium">Mention complémentaire (facultatif)</span>
+        <span class="block text-xs text-bo-muted">
+          Une ligne sous le SIRET, 80 caractères au plus — par exemple la forme
+          de l'entreprise ou son immatriculation, si votre comptable vous la
+          demande. Rien n'est ajouté d'office.
+        </span>
+        <input name="mention" value={mention} maxlength="80" class={champ} data-apercu="mention" />
+      </label>
+
+      <div class="flex flex-wrap gap-2 pt-1">
+        <button class="rounded bg-bo-accent px-4 py-2 text-white">Enregistrer</button>
+        {/* Le même formulaire, envoyé à l'API dans un nouvel onglet : la
+            facture d'exemple suit ce qui est tapé, sans rien enregistrer. */}
+        <button
+          type="submit"
+          formaction={apiUrl("/admin/facturation/apercu.pdf")}
+          formmethod="post"
+          formtarget="_blank"
+          class="rounded border border-bo-border px-4 py-2 hover:bg-bo-bg"
+        >
+          Voir une facture d'exemple (PDF)
+        </button>
+      </div>
+      <p class="text-xs text-bo-muted">
+        La facture d'exemple porte « Aperçu » en travers et des données
+        fictives : elle ne prend aucun numéro dans la suite de vos factures.
+      </p>
+    </form>
+
+    {/* Le bloc tel qu'il s'imprimera, mis à jour pendant la saisie. */}
+    <section class="rounded-lg border border-bo-border bg-bo-surface p-5 text-sm" aria-labelledby="titre-apercu">
+      <h2 id="titre-apercu" class="mb-3 font-semibold">Sur la facture</h2>
+      <div class="rounded border border-bo-border bg-white p-4 font-[Helvetica,Arial,sans-serif] text-[13px] leading-snug text-neutral-800">
+        <p class="text-[11px] font-bold tracking-wide text-neutral-500">ÉMETTEUR</p>
+        <p class="font-bold">Memory Line</p>
+        <p class="text-neutral-500">Affiches personnalisées</p>
+        <p class="whitespace-pre-line text-neutral-500" data-sortie="adresse">{adresse.trim()}</p>
+        <p class="text-neutral-500" data-sortie="siret">{siret.trim() ? `SIRET ${siret.trim()}` : ""}</p>
+        <p class="text-neutral-500" data-sortie="mention">{mention.trim()}</p>
+      </div>
+      <p class="mt-3 text-xs text-bo-muted">
+        Le SIRET s'imprime groupé (« 123 456 789 00012 »), comme sur un Kbis.
+      </p>
+    </section>
+  </div>
+
+  <script is:inline>
+    // L'aperçu suit la saisie. Le SIRET y est groupé comme sur la facture
+    // dès qu'il compte 14 chiffres ; sinon il s'affiche tel quel.
+    (function () {
+      var form = document.getElementById("form-facture");
+      if (!form) return;
+      function grouper(v) {
+        var c = v.replace(/[\s.\-]/g, "");
+        return /^\d{14}$/.test(c)
+          ? c.slice(0, 3) + " " + c.slice(3, 6) + " " + c.slice(6, 9) + " " + c.slice(9)
+          : v.trim();
+      }
+      function suivre() {
+        var adresse = form.querySelector("[data-apercu='adresse']").value;
+        var siret = form.querySelector("[data-apercu='siret']").value;
+        var mention = form.querySelector("[data-apercu='mention']").value;
+        var lignes = adresse
+          .split("\n")
+          .map(function (l) { return l.replace(/\s+/g, " ").trim(); })
+          .filter(Boolean)
+          .join("\n");
+        document.querySelector("[data-sortie='adresse']").textContent = lignes;
+        document.querySelector("[data-sortie='siret']").textContent = siret.trim()
+          ? "SIRET " + grouper(siret)
+          : "";
+        document.querySelector("[data-sortie='mention']").textContent = mention.replace(/\s+/g, " ").trim();
+      }
+      form.addEventListener("input", suivre);
+    })();
+  </script>
+</Admin>

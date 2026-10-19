@@ -62,13 +62,14 @@ export interface SessionUser {
   email: string;
   role: string;
   /**
-   * Le stand confié à ce vendeur, quand il y en a un.
+   * Les stands confiés à ce vendeur (BO › Comptes). Il ne voit que leurs
+   * ventes ; vide, il n'en voit aucune. Ignoré pour la propriétaire, qui
+   * voit tout. La règle elle-même vit dans vendeurs.ts.
    *
-   * Un propriétaire n'en a pas : il voit tout. Un vendeur sans stand attribué
-   * voit les ventes de stand mais aucune du site — le refus par défaut vaut
-   * mieux qu'un accès complet en attendant qu'on lui en confie un.
+   * Relu à CHAQUE requête avec la session : retirer un stand à quelqu'un
+   * prend effet au clic suivant, sans attendre qu'il se reconnecte.
    */
-  standId?: number | null;
+  standIds: number[];
 }
 
 /**
@@ -97,6 +98,7 @@ export async function validateSession(
       email: schema.adminUsers.email,
       role: schema.adminUsers.role,
       archivedAt: schema.adminUsers.archivedAt,
+      standIds: schema.adminUsers.standIds,
     })
     .from(schema.sessions)
     .innerJoin(
@@ -123,6 +125,7 @@ export async function validateSession(
     adminUserId: row.adminUserId,
     email: row.email,
     role: row.role,
+    standIds: Array.isArray(row.standIds) ? row.standIds : [],
   };
 }
 

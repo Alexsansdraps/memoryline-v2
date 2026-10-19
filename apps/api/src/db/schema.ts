@@ -14,6 +14,8 @@ import type {
   CouleursImage,
   CouleursProposees,
   GroupeCouleur,
+  RegleParier,
+  RemiseAppliquee,
 } from "@memoryline/types";
 import {
   type AnyPgColumn,
@@ -183,6 +185,16 @@ export const products = pgTable(
      * nouveauté. Voir ordre-affichage.ts.
      */
     ordreAffichage: integer("ordre_affichage").default(0).notNull(),
+    /**
+     * La place de l'affiche sur « Toutes les affiches », la page sans filtre.
+     *
+     * Une colonne à part et non `ordreAffichage` : cette page mêle les deux
+     * genres, et les rangs de chacun, réglés séparément, s'y marchaient
+     * dessus. Même convention : 0 = pas encore rangée, l'affiche passe après
+     * les rangées, par nouveauté. Tant que la boutique n'a rien rangé, la page
+     * garde donc exactement l'ordre des nouveautés. Voir ordre-affichage.ts.
+     */
+    ordreCatalogue: integer("ordre_catalogue").default(0).notNull(),
     /**
      * Poids du produit en grammes. Null = celui de ses collections.
      *
@@ -982,6 +994,68 @@ export const shippingRates = pgTable(
   ],
 );
 
+/**
+ * Un lieu où retirer sa commande, pour les modes « pickup » : le chalet du
+ * marché de Noël de Mulhouse, l'atelier, un salon.
+ *
+ * Avant, les lieux proposés à la caisse étaient les STANDS ouverts. Mais un
+ * stand est une tablette qui vend, pas forcément un endroit où l'on vient
+ * chercher une affiche : la boutique veut gérer ses lieux de retrait à part,
+ * avec une adresse et un texte libre (horaires, accès), sans ouvrir de
+ * tablette pour autant. Voir lieux-retrait.ts.
+ *
+ * Il s'archive, ne se supprime pas : les commandes qui l'ont choisi gardent
+ * de toute façon une copie de ce qu'elles ont lu (`order.pickup_point`).
+ */
+export const pickupPoints = pgTable(
+  "pickup_point",
+  {
+    id: serial("id").primaryKey(),
+    /** « Chalet du marché de Noël de Mulhouse » : ce que la cliente choisit. */
+    nom: text("nom").notNull(),
+    /** Adresse, sur plusieurs lignes. Ne se traduit pas : on l'écrit telle quelle. */
+    adresse: text("adresse"),
+    /** Texte libre sur plusieurs lignes : horaires, accès, quoi apporter. */
+    description: text("description"),
+    /**
+     * Proposé à la caisse. Éteint, le lieu reste dans la liste du back-office
+     * — un chalet qui ne rouvre qu'en décembre n'a pas à être recréé.
+     */
+    active: boolean("active").notNull().default(true),
+    /** Rang à la caisse, réglé à la main au back-office. */
+    position: integer("position").notNull().default(0),
+    /**
+     * Le nom et la description dans les autres langues :
+     * { en: { nom, description }, … }. Absents ou vides, le français
+     * s'affiche.
+     */
+    translations: jsonb("translations").$type<
+      Partial<Record<string, { nom?: string; description?: string }>>
+    >(),
+    /**
+     * Non nul = archivé : le lieu quitte la caisse et la liste ordinaire, et
+     * se range dans « Lieux archivés », d'où il se restaure.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("pickup_point_active_idx").on(t.active)],
+);
+
+/**
+ * Le lieu de retrait tel que la cliente l'a lu en commandant, figé sur la
+ * commande (`order.pickup_point`). Le lieu peut être renommé, déplacé ou
+ * archivé depuis : la fiche, le bon et la facture disent toujours où elle
+ * a été attendue.
+ */
+export type InstantaneLieuRetrait = {
+  nom: string;
+  adresse: string | null;
+  description: string | null;
+  translations?: Partial<Record<string, { nom?: string; description?: string }>>;
+};
+
 // --- Clients & commandes --------------------------------------------------
 
 /**
@@ -1256,6 +1330,25 @@ export const orders = pgTable(
      * le montant encaissé, des mois plus tard.
      */
     promoCode: text("promo_code"),
+    /**
+     * Les promotions telles qu'elles étaient au passage en caisse : les règles
+     * en jeu (code compris), la remise accordée par chacune, et les codes
+     * saisis.
+     *
+     * Le paiement arrive APRÈS la caisse, parfois des minutes plus tard, et
+     * la boutique peut modifier ou archiver une promotion entre-temps. Sans
+     * cette copie, le contrôle de l'encaissement recalculait avec les règles
+     * du moment et refusait une commande honnête ; la page Finances, elle,
+     * jugeait les ventes passées avec les règles d'aujourd'hui.
+     *
+     * Null pour les commandes d'avant : on retombe sur les règles en vigueur,
+     * comme avant.
+     */
+    promotions: jsonb("promotions").$type<{
+      regles: RegleParier[];
+      detail: RemiseAppliquee[];
+      codes: string[];
+    }>(),
     /* --- Livraison ------------------------------------------------------- */
     /** Mode choisi (slug), figé sur la commande : le catalogue peut changer. */
     shippingMethod: text("shipping_method"),
@@ -1286,6 +1379,26 @@ export const orders = pgTable(
     /** Point relais choisi (identifiant Mondial Relay et libellé lisible). */
     relayPointId: text("relay_point_id"),
     relayPointLabel: text("relay_point_label"), // idempotence envoi salon (§17.2)
+    /**
+     * Le lieu de retrait choisi, pour un mode « pickup ».
+     *
+     * « set null » : le lieu s'archive et ne se supprime pas, mais si une
+     * ligne disparaissait un jour, la commande ne doit pas partir avec elle —
+     * l'instantané ci-dessous suffit à dire où elle était attendue.
+     *
+     * Null pour les commandes d'avant les lieux : leur retrait se lit dans
+     * `relayPointLabel` (« stand:<id> »), qu'on ne réécrit pas.
+     */
+    pickupPointId: integer("pickup_point_id").references(() => pickupPoints.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * Le lieu tel que la cliente l'a lu en commandant (nom, adresse, texte,
+     * traductions). C'est lui qu'affichent la fiche, le bon, les courriels et
+     * la facture : renommer ou déplacer le lieu ensuite ne change pas une
+     * commande déjà passée.
+     */
+    pickupPoint: jsonb("pickup_point").$type<InstantaneLieuRetrait>(),
     status: text("status").notNull().default("pending"),
     totalCents: integer("total_cents").notNull().default(0),
     customerId: integer("customer_id").references(() => customers.id, {
@@ -1378,6 +1491,23 @@ export const orders = pgTable(
     invoiceNumber: text("invoice_number"),
     /** Date d'émission de la facture, figée avec son numéro. */
     invoicedAt: timestamp("invoiced_at", { withTimezone: true }),
+    /**
+     * L'émetteur imprimé sur la facture — adresse de la boutique, SIRET,
+     * mention complémentaire —, figé dans la même transaction que le numéro.
+     *
+     * La facture se refabrique à chaque téléchargement. Sans cette copie, elle
+     * prenait les réglages DU MOMENT : un déménagement aurait changé
+     * l'adresse de toutes les factures déjà émises, ce qu'une facture ne doit
+     * jamais faire.
+     *
+     * Null pour les factures d'avant : elles retombent sur les réglages du
+     * moment, comme avant (voir facturation.ts).
+     */
+    invoiceIssuer: jsonb("invoice_issuer").$type<{
+      adresse: string[];
+      siret: string | null;
+      mention: string | null;
+    }>(),
     /**
      * Note interne : « à envoyer avec la commande #2141 », « client rappelé »…
      * Elle n'est jamais montrée au client, elle sert à se souvenir.
@@ -1501,6 +1631,18 @@ export const orderItems = pgTable("order_item", {
   config: jsonb("config"),
   title: text("title"), // libellé figé (au cas où le produit change/disparaît)
   unitPriceCents: integer("unit_price_cents").notNull().default(0),
+  /**
+   * La part de `unitPriceCents` due au cadre, en centimes.
+   *
+   * Une promotion peut offrir une affiche « cadre non compris » : il faut
+   * alors savoir ce que vaut l'affiche seule, et le prix unitaire mêle les
+   * deux. Écrite à l'ajout et à la modification de la ligne.
+   *
+   * Null pour les lignes d'avant : le serveur prend le prix actuel du cadre,
+   * borné au prix unitaire. Une commande déjà passée ne change pas pour
+   * autant : ses montants sont figés.
+   */
+  frameCents: integer("frame_cents"),
   quantity: integer("quantity").notNull().default(1),
 });
 
@@ -1805,6 +1947,23 @@ export const adminUsers = pgTable(
      * seule suppression que cette table s'autorise.
      */
     archivedAt: timestamp("archived_at", { withTimezone: true }),
+    /**
+     * Les stands confiés à un compte vendeur : il ne voit que leurs ventes
+     * (liste, fiche, fichiers d'impression, statistiques). Voir vendeurs.ts.
+     *
+     * Vide = il ne voit AUCUNE vente. C'est le refus par défaut : un vendeur
+     * qu'on a oublié de rattacher ne doit pas lire les commandes de tous les
+     * marchés de Noël, adresses comprises. Ignoré pour la propriétaire, qui
+     * voit tout.
+     *
+     * Un tableau d'identifiants plutôt qu'une table de liaison : retirer un
+     * stand à un vendeur réécrit la liste au lieu d'effacer des lignes, et les
+     * stands eux-mêmes ne se suppriment jamais (ils s'archivent).
+     */
+    standIds: jsonb("stand_ids")
+      .$type<number[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
   },
   (t) => [uniqueIndex("admin_user_email_uniq").on(t.email)],
 );
@@ -1845,8 +2004,27 @@ export const redirects = pgTable(
     fromPath: text("from_path").notNull(),
     toPath: text("to_path").notNull(),
     code: integer("code").notNull().default(301),
+    /**
+     * Non nul = archivée : la redirection ne s'applique plus, sans être
+     * détruite.
+     *
+     * Changer l'adresse d'une affiche pose une 301 de l'ancienne vers la
+     * nouvelle ; la changer encore remplace des redirections existantes (pour
+     * garder un seul saut, ou pour qu'une vieille redirection ne détourne pas
+     * une fiche revenue à son ancienne adresse). Celles qu'on remplace
+     * s'archivent : on sait toujours d'où venait un lien, et quand il a cessé
+     * de servir.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
-  (t) => [uniqueIndex("redirect_from_uniq").on(t.fromPath)],
+  (t) => [
+    // L'unicité ne porte QUE sur les redirections vivantes : une adresse dont
+    // la redirection a été archivée doit pouvoir en recevoir une nouvelle,
+    // sinon le premier remplacement bloquerait l'adresse pour toujours.
+    uniqueIndex("redirect_from_uniq")
+      .on(t.fromPath)
+      .where(sql`${t.archivedAt} is null`),
+  ],
 );
 
 export const newsletterSubs = pgTable(
@@ -2030,13 +2208,27 @@ export const promoRules = pgTable(
     >(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    /**
+     * Non nul = archivée : la promotion ne s'applique plus nulle part et se
+     * range dans « Promotions archivées », d'où elle se restaure.
+     *
+     * Plus fort que « désactivée » : une promotion désactivée reste dans la
+     * liste, prête à resservir ; une archivée en sort. La ligne RESTE dans
+     * les deux cas, car les commandes passées citent son nom et sa remise.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => [index("promo_active_idx").on(t.active)],
 );
 
 /**
- * Bandeau d'annonce en haut du site (l'offre du moment), piloté depuis le BO.
- * Lié optionnellement à une promo. Période d'affichage + style.
+ * Un message du bandeau d'annonce, en haut du site, piloté depuis le BO.
+ *
+ * Le bandeau est une LISTE de messages qui défilent (texte, bouton
+ * facultatif), rangés à la main, chacun actif ou non, avec sa période
+ * d'affichage. Il n'est plus lié aux promotions : la boutique règle ses
+ * offres dans « Promotions » et écrit ses messages ici, sans que modifier
+ * l'un touche à l'autre (voir bandeau.ts).
  */
 export const announcementBanners = pgTable(
   "announcement_banner",
@@ -2049,9 +2241,25 @@ export const announcementBanners = pgTable(
     textColor: text("text_color").default("#f7f3ec"),
     active: boolean("active").notNull().default(true),
     priority: integer("priority").notNull().default(0),
+    /**
+     * Historique, plus lu : le bandeau n'est plus lié aux promotions. La
+     * colonne reste, avec ce qu'elle contient, pour ne rien effacer de ce qui
+     * a été réglé avant.
+     */
     promoRuleId: integer("promo_rule_id").references(() => promoRules.id, {
       onDelete: "set null",
     }),
+    /**
+     * Rang du message dans le défilement, réglé à la main. À égalité (0 pour
+     * les messages d'avant), l'ordre de création départage : le bandeau
+     * existant reste premier.
+     */
+    position: integer("position").notNull().default(0),
+    /**
+     * Non nul = archivé : le message quitte le site et la liste ordinaire, et
+     * se range dans « Messages archivés », d'où il se restaure.
+     */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     startsAt: timestamp("starts_at", { withTimezone: true }),
     endsAt: timestamp("ends_at", { withTimezone: true }),
     /**

@@ -26,6 +26,7 @@ import {
   courrierFacture,
   courrierMotDePasseModifie,
   courrierPreteAuStand,
+  courrierPreteAuRetrait,
   courrierConfirmation,
   courrierNouvelleCommande,
   courrierPanierAbandonne,
@@ -128,6 +129,7 @@ type IdModele =
   | "confirmation"
   | "expediee"
   | "prete-au-stand"
+  | "prete-au-retrait"
   | "remboursee"
   | "annulee"
   | "facture"
@@ -162,6 +164,13 @@ const MODELES: Modele[] = [
     id: "prete-au-stand",
     nom: "Affiche prête (stand)",
     quand: "Prévient un client du stand que son affiche est prête. Aucun prix.",
+    besoinCommande: true,
+  },
+  {
+    id: "prete-au-retrait",
+    nom: "Commande prête à retirer",
+    quand:
+      "Part vers la cliente qui a choisi « Retrait sur place » quand vous marquez sa commande traitée : elle dit où venir la chercher. Aucun prix.",
     besoinCommande: true,
   },
   {
@@ -566,6 +575,21 @@ function rendre(
         prenomClient: prenom,
         numero: d.numero,
         evenement: EXEMPLES_DU_RENDU.evenement,
+        lignes: d.lignes,
+      });
+    case "prete-au-retrait":
+      // Un lieu d'exemple : l'aperçu doit montrer le bloc « où la retirer »,
+      // avec une adresse et un texte sur plusieurs lignes, comme la boutique
+      // les écrit dans Livraison › Lieux de retrait.
+      return courrierPreteAuRetrait({
+        langue,
+        prenomClient: prenom,
+        numero: d.numero,
+        lieu: {
+          nom: "Chalet du marché de Noël",
+          adresse: ["Place de la Réunion", "68100 Mulhouse"],
+          description: ["Du lundi au samedi, de 10 h à 20 h.", "Donnez votre numéro de commande."],
+        },
         lignes: d.lignes,
       });
     case "remboursee": {

@@ -178,6 +178,24 @@ const expeditions = (detail?.expeditions ?? []).filter(
         </section>
 
         <section class="grid gap-10 sm:grid-cols-2">
+          {/* Une commande à retirer n'a pas d'adresse de livraison : on dit
+              à la place OÙ venir la chercher, tel qu'elle l'a choisi. */}
+          {detail.lieuRetrait ? (
+            <div>
+              <h2 class="mb-3 text-2xl">{tr("retrait.titre")}</h2>
+              <address class="text-ink-soft not-italic">
+                <span class="block font-medium text-ink">{detail.lieuRetrait.nom}</span>
+                {detail.lieuRetrait.adresse && (
+                  <span class="block whitespace-pre-line">{detail.lieuRetrait.adresse}</span>
+                )}
+              </address>
+              {detail.lieuRetrait.description && (
+                <p class="mt-2 whitespace-pre-line text-ink-soft">
+                  {detail.lieuRetrait.description}
+                </p>
+              )}
+            </div>
+          ) : (
           <div>
             <h2 class="mb-3 text-2xl">{tr("compte.commande.adresse")}</h2>
             {lignesAdresse.length ? (
@@ -190,6 +208,7 @@ const expeditions = (detail?.expeditions ?? []).filter(
               <p class="text-ink-soft">—</p>
             )}
           </div>
+          )}
 
           <dl class="space-y-2">
             <div class="flex justify-between gap-4">

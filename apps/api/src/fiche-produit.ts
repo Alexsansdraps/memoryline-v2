@@ -32,8 +32,13 @@ import {
   sql as raw,
 } from "drizzle-orm";
 import { poidsArticle, POSTER_FORMATS } from "@memoryline/types";
-import { ordreDesCollections, poidsDesCollections } from "./collections.js";
+import {
+  ordreDesCollections,
+  poidsDesCollections,
+  rangerEnFinDeCollection,
+} from "./collections.js";
 import { db, schema } from "./db/client.js";
+import { poserRedirection } from "./redirections.js";
 import { FORMAT_PAR_DEFAUT, HORS_VENTES } from "./statuts-vente.js";
 
 /** Les seuls états qu'un produit peut prendre. */
@@ -374,6 +379,9 @@ export function mountFicheProduit(app: Hono): void {
           })),
         );
 
+      // La copie prend la place de l'original dans chaque collection : à rang
+      // égal, l'identifiant départage, et elle se range donc juste derrière
+      // lui — là où l'on cherchera la variante d'une affiche.
       const rangements = await tx
         .select()
         .from(schema.productCollections)
@@ -467,7 +475,10 @@ export function mountFicheProduit(app: Hono): void {
         eq(schema.productCollections.collectionId, schema.collections.id),
       )
       .where(eq(schema.productCollections.productId, id))
-      .orderBy(asc(schema.productCollections.position));
+      // Dans l'ordre des collections, pas dans celui de `position` : cette
+      // colonne dit la place de l'affiche DANS chaque rayon, elle ne range pas
+      // les rayons entre eux.
+      .orderBy(...ordreDesCollections());
     const images = await db
       .select({
         id: schema.productImages.id,
@@ -582,6 +593,9 @@ export function mountFicheProduit(app: Hono): void {
       unknown
     >;
 
+    /** La 301 posée si l'adresse a changé, pour que la page le dise. */
+    let redirection: { de: string; vers: string } | null = null;
+
     try {
       if (!Number.isFinite(id))
         throw new SaisieRefusee("Ce produit n'existe plus. Rechargez la page.");
@@ -620,8 +634,8 @@ export function mountFicheProduit(app: Hono): void {
                 "L'adresse du produit ne peut pas rester vide. Utilisez des lettres et des chiffres.",
               );
             // Unique dans tout le catalogue, y compris face aux produits que
-            // la page n'affiche pas. L'ancienne adresse se libère d'elle-même :
-            // elle n'appartient plus à personne une fois la ligne réécrite.
+            // la page n'affiche pas. L'ancienne adresse ne mène plus à une
+            // fiche, mais à la nouvelle : une 301 est posée à l'écriture.
             const [pris] = await tx
               .select({ id: schema.products.id })
               .from(schema.products)
@@ -1035,17 +1049,28 @@ export function mountFicheProduit(app: Hono): void {
         }
 
         if (collectionsVoulues !== null) {
+          // Seules les collections QUITTÉES perdent leur lien. Tout effacer
+          // puis tout recréer, comme avant, écrivait dans `position` le rang
+          // de la collection dans la liste de CETTE fiche (0, 1, 2…) : un
+          // nombre sans rapport avec la place de l'affiche dans le rayon, qui
+          // la faisait sauter en tête de « Villes » à chaque enregistrement.
+          // Une collection gardée garde donc sa place ; une nouvelle range
+          // l'affiche à la fin (cf. rangerEnFinDeCollection).
           await tx
             .delete(schema.productCollections)
-            .where(eq(schema.productCollections.productId, produit.id));
-          if (collectionsVoulues.length)
-            await tx.insert(schema.productCollections).values(
-              collectionsVoulues.map((collectionId, i) => ({
-                productId: produit.id,
-                collectionId,
-                position: i,
-              })),
+            .where(
+              collectionsVoulues.length
+                ? and(
+                    eq(schema.productCollections.productId, produit.id),
+                    notInArray(
+                      schema.productCollections.collectionId,
+                      collectionsVoulues,
+                    ),
+                  )
+                : eq(schema.productCollections.productId, produit.id),
             );
+          for (const collectionId of collectionsVoulues)
+            await rangerEnFinDeCollection(tx, collectionId, [produit.id]);
         }
 
         if (imagesVoulues !== null) {
@@ -1109,6 +1134,15 @@ export function mountFicheProduit(app: Hono): void {
           .update(schema.products)
           .set(misAJour)
           .where(eq(schema.products.id, produit.id));
+
+        // L'ancienne adresse mène à la nouvelle, dans la même transaction :
+        // le lien imprimé sur un QR code ou gardé en favori ne tombe pas sur
+        // une page introuvable (cf. redirections.ts).
+        if (champs.slug && champs.slug !== produit.slug) {
+          const plan = await poserRedirection(tx, produit.slug, champs.slug);
+          if (plan.poser)
+            redirection = { de: plan.poser.fromPath, vers: plan.poser.toPath };
+        }
       });
     } catch (erreur) {
       if (erreur instanceof SaisieRefusee)
@@ -1127,6 +1161,6 @@ export function mountFicheProduit(app: Hono): void {
       );
     }
 
-    return c.json({ ok: true });
+    return c.json({ ok: true, redirection });
   });
 }

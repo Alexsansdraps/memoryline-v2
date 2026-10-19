@@ -34,6 +34,7 @@ import type { Context, Hono } from "hono";
 import {
   and,
   asc,
+  desc,
   eq,
   inArray,
   isNull,
@@ -705,6 +706,26 @@ async function produitsDuneReference(
         : null;
   if (filtre === null) return [];
 
+  // L'ordre AVANT le plafond : trier par identifiant puis couper à huit
+  // donnait les huit plus anciennes affiches du rayon, quel que soit l'ordre
+  // que la boutique lui avait donné. Une collection suit donc son rangement
+  // (Produits › Ordre d'affichage), comme sa propre page ; une catégorie suit
+  // celui de « Toutes les affiches », puis les nouveautés. L'identifiant
+  // départage en dernier : sans lui, la rangée se réorganiserait d'une visite
+  // à l'autre.
+  const ordre =
+    source === "collection"
+      ? [
+          raw`(select min(pc.position) from ${schema.productCollections} pc join ${schema.collections} col on col.id = pc.collection_id where pc.product_id = ${schema.products.id} and col.slug = ${reference}) asc nulls last`,
+          asc(schema.products.id),
+        ]
+      : [
+          raw`(${schema.products.ordreCatalogue} = 0) asc`,
+          asc(schema.products.ordreCatalogue),
+          desc(schema.products.createdAt),
+          desc(schema.products.id),
+        ];
+
   return db
     .select({
       id: schema.products.id,
@@ -715,10 +736,7 @@ async function produitsDuneReference(
     })
     .from(schema.products)
     .where(and(eq(schema.products.status, "active"), filtre))
-    // Ordre stable : sans tri explicite, Postgres est libre de renvoyer les
-    // lignes dans n'importe quel ordre, et la rangée se réorganiserait toute
-    // seule d'une visite à l'autre.
-    .orderBy(asc(schema.products.id))
+    .orderBy(...ordre)
     .limit(limite);
 }
 

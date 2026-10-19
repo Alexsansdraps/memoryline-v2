@@ -54,6 +54,7 @@ import type { Hono } from "hono";
 import { asc, eq, inArray } from "drizzle-orm";
 import { POSTER_FORMATS } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
+import { derniersRangs } from "./collections.js";
 
 /** Les seuls états qu'un produit peut prendre. */
 const STATUTS = ["active", "draft", "archived"] as const;
@@ -1528,21 +1529,15 @@ export function mountImportProduits(app: Hono): void {
               .select({
                 productId: schema.productCollections.productId,
                 collectionId: schema.productCollections.collectionId,
-                position: schema.productCollections.position,
               })
               .from(schema.productCollections)
               .where(inArray(schema.productCollections.productId, identifiants))
           : [];
         const liensParProduit = new Map<number, Set<number>>();
-        const dernierRangParProduit = new Map<number, number>();
         for (const l of liensExistants) {
           const dejaLiees = liensParProduit.get(l.productId);
           if (dejaLiees) dejaLiees.add(l.collectionId);
           else liensParProduit.set(l.productId, new Set([l.collectionId]));
-          dernierRangParProduit.set(
-            l.productId,
-            Math.max(dernierRangParProduit.get(l.productId) ?? -1, l.position),
-          );
         }
 
         /* -- Les collections nommées par les étiquettes ------------------- */
@@ -1568,6 +1563,14 @@ export function mountImportProduits(app: Hono): void {
         const trouverCollection = (nom: string): number | undefined =>
           collectionParNom.get(nom.trim().toLowerCase()) ??
           collectionParAdresse.get(adresseCollection(nom));
+        // Le dernier rang occupé dans chaque collection : une affiche importée
+        // s'y range À LA FIN, sans bousculer l'ordre réglé à la main (cf.
+        // collections.ts, derniersRangs). Lu une fois pour tout le fichier ;
+        // une collection créée par l'import part de rien.
+        const rangParCollection = await derniersRangs(
+          tx,
+          collectionsBase.map((col) => col.id),
+        );
 
         // Les noms cités par le fichier, dans l'ordre où ils apparaissent :
         // l'aperçu doit pouvoir les annoncer avant que rien n'existe.
@@ -1816,21 +1819,20 @@ export function mountImportProduits(app: Hono): void {
             // posée à la main sur cette affiche n'a pas à sauter parce qu'un
             // fichier ne la citait pas.
             const dejaLiees = liensParProduit.get(produitId) ?? new Set<number>();
-            let rang = (dernierRangParProduit.get(produitId) ?? -1) + 1;
             for (const nom of lu.collections) {
               const collectionId = trouverCollection(nom);
               if (collectionId === undefined || dejaLiees.has(collectionId))
                 continue;
+              const rang = (rangParCollection.get(collectionId) ?? -1) + 1;
               await tx.insert(schema.productCollections).values({
                 productId: produitId,
                 collectionId,
                 position: rang,
               });
+              rangParCollection.set(collectionId, rang);
               dejaLiees.add(collectionId);
-              rang += 1;
             }
             liensParProduit.set(produitId, dejaLiees);
-            dernierRangParProduit.set(produitId, rang - 1);
 
             // Les visuels déposés viennent APRÈS ceux qui étaient là : la
             // première image est celle que la boutique montre, et la voir

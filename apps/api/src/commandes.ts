@@ -38,6 +38,7 @@ import {
   courrierExpediee,
   courrierFacture,
   courrierPreteAuStand,
+  courrierPreteAuRetrait,
   courrierRemboursee,
   envoyer as envoyerCourrier,
   estConfigure as mailConfigure,
@@ -51,6 +52,9 @@ import {
 import { markOrderPaid } from "./configurator-routes.js";
 import { renderInvoicePdf, type LigneFacture } from "./pdf.js";
 import { cheminApercu } from "./apercus.js";
+import { bornesDuVendeur } from "./vendeurs.js";
+import { emetteurDuMoment, siretGroupe, type Emetteur } from "./facturation.js";
+import { libelleDuLieu, lieuDeRetrait, lignesDuLieu } from "./lieux-retrait.js";
 import {
   dateCourte,
   langueDuDestinataire,
@@ -469,26 +473,18 @@ async function annulerExpeditions(ids: number[]): Promise<void> {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Le vendeur ne voit que les ventes du stand.
+ * Le vendeur ne voit que les ventes des stands qui lui sont confiés.
  *
  * Rend les conditions à AJOUTER aux siennes, quoi qu'il demande. Le
- * propriétaire, lui, ne reçoit rien de plus : il voit tout.
+ * propriétaire, lui, ne reçoit rien de plus : il voit tout. Un vendeur sans
+ * stand ne voit rien (la règle entière est dans vendeurs.ts).
  *
  * Le filtre vit dans la requête et non dans l'écran : un écran qui masque un
  * bouton est une politesse, pas une garde. Une adresse tapée à la main doit
  * buter sur la même règle.
  */
 function limiterAuStand(c: Context): SQL[] {
-  const user = c.get("utilisateur");
-  if (!user || user.role === "owner") return [];
-  const bornes: SQL[] = [eq(schema.orders.channel, "salon")];
-  // Le stand du vendeur, quand il lui en a été attribué un. Sans attribution,
-  // il voit les ventes de stand mais aucune du site : c'est déjà la moitié de
-  // la règle, et le refus par défaut vaut mieux qu'un accès complet.
-  const stand = user.standId;
-  if (typeof stand === "number" && stand > 0)
-    bornes.push(eq(schema.orders.standId, stand));
-  return bornes;
+  return bornesDuVendeur(c.get("utilisateur"));
 }
 
 export function mountOrderRoutes(app: Hono): void {
@@ -644,9 +640,19 @@ export function mountOrderRoutes(app: Hono): void {
     return c.json(enrichies);
   });
 
-  /** Toutes les étiquettes déjà employées, pour l'autocomplétion. */
+  /**
+   * Toutes les étiquettes déjà employées, pour l'autocomplétion.
+   *
+   * Bornées comme la liste : une étiquette dit quelque chose d'une commande
+   * (« cliente mécontente », « à rappeler »), et celles des ventes du site
+   * n'ont pas à remonter chez un vendeur de stand.
+   */
   app.get("/admin/orders/tags", async (c) => {
-    const rows = await db.select({ tags: schema.orders.tags }).from(schema.orders);
+    const bornes = limiterAuStand(c);
+    const rows = await db
+      .select({ tags: schema.orders.tags })
+      .from(schema.orders)
+      .where(bornes.length ? and(...bornes) : undefined);
     const compte = new Map<string, number>();
     for (const r of rows)
       for (const t of r.tags ?? []) compte.set(t, (compte.get(t) ?? 0) + 1);
@@ -714,7 +720,9 @@ export function mountOrderRoutes(app: Hono): void {
         shippingPostalCode: schema.orders.shippingPostalCode,
         shippingCity: schema.orders.shippingCity,
         shippingCountry: schema.orders.shippingCountry,
+        relayPointId: schema.orders.relayPointId,
         relayPointLabel: schema.orders.relayPointLabel,
+        pickupPoint: schema.orders.pickupPoint,
         tags: schema.orders.tags,
         channel: schema.orders.channel,
         customerName: schema.customers.name,
@@ -754,9 +762,13 @@ export function mountOrderRoutes(app: Hono): void {
       "Pays",
       "Point relais",
       "Étiquettes",
+      // En dernier : une colonne ajoutée au milieu décalerait les tableaux
+      // que la boutique ou son comptable ont déjà montés sur cet export.
+      "Lieu de retrait",
     ];
     const lignes = rows.map((r) => {
       const s = resume.get(r.id)!;
+      const lieu = lieuDeRetrait(r);
       return [
         r.number,
         r.createdAt ? new Date(r.createdAt).toLocaleString("fr-FR") : "",
@@ -778,8 +790,11 @@ export function mountOrderRoutes(app: Hono): void {
         r.shippingPostalCode ?? "",
         r.shippingCity ?? "",
         r.shippingCountry ?? "",
-        r.relayPointLabel ?? "",
+        // Un point relais, pas un lieu de retrait : l'ancien repère des
+        // retraits au stand (« stand:… ») part dans la dernière colonne.
+        lieu ? "" : (r.relayPointLabel ?? ""),
         (r.tags ?? []).join(", "),
+        lieu ? libelleDuLieu(lieu) : "",
       ]
         .map(cellule)
         .join(";");
@@ -1118,6 +1133,9 @@ export function mountOrderRoutes(app: Hono): void {
           customerId: schema.orders.customerId,
           note: schema.orders.internalNote,
           langue: schema.orders.langue,
+          pickupPoint: schema.orders.pickupPoint,
+          relayPointId: schema.orders.relayPointId,
+          relayPointLabel: schema.orders.relayPointLabel,
         })
         .from(schema.orders)
         .where(eq(schema.orders.id, orderId));
@@ -1158,9 +1176,20 @@ export function mountOrderRoutes(app: Hono): void {
       });
       const prenom =
         (client.name ?? "").split(" ")[0] || tc(langue)("commun.prenomParDefaut");
+      // Une commande du site à retirer sur place n'est pas « en route » :
+      // elle attend au lieu choisi, et c'est ce que dit son courrier.
+      const lieu =
+        commande.channel === "salon" ? null : lignesDuLieu(lieuDeRetrait(commande, langue));
 
-      const courrier =
-        commande.channel === "salon"
+      const courrier = lieu
+        ? courrierPreteAuRetrait({
+            langue,
+            prenomClient: prenom,
+            numero: commande.number,
+            lieu,
+            lignes,
+          })
+        : commande.channel === "salon"
           ? courrierPreteAuStand({
               langue,
               prenomClient: prenom,
@@ -2026,12 +2055,11 @@ export function mountOrderRoutes(app: Hono): void {
         );
       maj.shippingCountry = pays;
     }
-    // Un retrait sur stand se range lui aussi dans `relayPointId` (« stand:3 ») :
-    // ce n'est pas un point relais à quitter, le colis va déjà à l'adresse.
+    // Un ancien retrait sur stand se rangeait lui aussi dans `relayPointId`
+    // (« stand:3 ») : ce n'est pas un point relais à quitter, le colis va
+    // déjà à l'adresse. `lieuDeRetrait` sait reconnaître les deux formes.
     const pointQuitte =
-      b.livrerALAdresse === true &&
-      !!order.relayPointId &&
-      !order.relayPointId.startsWith("stand:")
+      b.livrerALAdresse === true && !!order.relayPointId && !lieuDeRetrait(order)
         ? (order.relayPointLabel ?? order.relayPointId)
         : null;
 
@@ -2390,20 +2418,31 @@ export function mountOrderRoutes(app: Hono): void {
    * l'autre au lieu de tirer le même numéro. Si quoi que ce soit échoue, les
    * deux écritures reviennent en arrière ensemble et le numéro reste libre —
    * c'est ainsi, et pas autrement, qu'une suite reste sans trou.
+   *
+   * L'émetteur (adresse de la boutique, SIRET, mention) est figé dans la
+   * même transaction : la facture se refabrique à chaque téléchargement, et
+   * un déménagement de la boutique ne doit pas réécrire celles déjà émises.
+   * Une facture numérotée avant ce figeage n'en a pas (`emetteur: null`) :
+   * elle prend les réglages du moment, comme elle l'a toujours fait.
    */
   async function numeroterLaFacture(
     orderId: number,
-  ): Promise<{ numero: string; emiseLe: Date }> {
+  ): Promise<{ numero: string; emiseLe: Date; emetteur: Emetteur | null }> {
     return db.transaction(async (tx) => {
       const [commande] = await tx
         .select({
           numero: schema.orders.invoiceNumber,
           emiseLe: schema.orders.invoicedAt,
+          emetteur: schema.orders.invoiceIssuer,
         })
         .from(schema.orders)
         .where(eq(schema.orders.id, orderId));
       if (commande?.numero)
-        return { numero: commande.numero, emiseLe: commande.emiseLe ?? new Date() };
+        return {
+          numero: commande.numero,
+          emiseLe: commande.emiseLe ?? new Date(),
+          emetteur: commande.emetteur ?? null,
+        };
 
       const maintenant = new Date();
       const annee = maintenant.getFullYear();
@@ -2423,11 +2462,12 @@ export function mountOrderRoutes(app: Hono): void {
         .returning({ n: schema.factureCompteur.dernierNumero });
 
       const numero = `F${annee}-${String(compteur!.n).padStart(4, "0")}`;
+      const emetteur = await emetteurDuMoment(tx);
       await tx
         .update(schema.orders)
-        .set({ invoiceNumber: numero, invoicedAt: maintenant })
+        .set({ invoiceNumber: numero, invoicedAt: maintenant, invoiceIssuer: emetteur })
         .where(eq(schema.orders.id, orderId));
-      return { numero, emiseLe: maintenant };
+      return { numero, emiseLe: maintenant, emetteur };
     });
   }
 
@@ -2476,7 +2516,11 @@ export function mountOrderRoutes(app: Hono): void {
         code: 400,
       };
 
-    const { numero: numeroFacture, emiseLe } = await numeroterLaFacture(orderId);
+    const {
+      numero: numeroFacture,
+      emiseLe,
+      emetteur: emetteurFige,
+    } = await numeroterLaFacture(orderId);
 
     const [client] = order.customerId
       ? await db
@@ -2524,16 +2568,15 @@ export function mountOrderRoutes(app: Hono): void {
     const resume = (await resumeCommandes([orderId])).get(orderId)!;
 
     // L'identité légale de la boutique : adresse postale et SIRET sont
-    // OBLIGATOIRES sur une facture. Elles ne vivent nulle part dans ce projet ;
-    // on les lit dans les réglages pour qu'il y ait un endroit où les poser, et
-    // on ne les invente pas quand elles manquent — une facture incomplète se
+    // OBLIGATOIRES sur une facture. Elles se règlent dans BO › Factures
+    // (facturation.ts) et sont figées sur la commande avec le numéro ; on ne
+    // les invente pas quand elles manquent — une facture incomplète se
     // corrige, une facture qui ment se paie.
-    const reglages = await db
-      .select()
-      .from(schema.settings)
-      .where(inArray(schema.settings.key, ["facture.adresse", "facture.siret"]));
-    const valeur = (cle: string): string =>
-      String(reglages.find((r) => r.key === cle)?.value ?? "").trim();
+    const emetteur = emetteurFige ?? (await emetteurDuMoment());
+    // Le lieu de retrait, quand la cliente vient chercher sa commande : il
+    // se dit sous la commande, pas dans « Facturé à » — un chalet n'est pas
+    // son adresse.
+    const lieu = lieuDeRetrait(order, langue);
 
     const pdf = await renderInvoicePdf({
       langue,
@@ -2544,7 +2587,9 @@ export function mountOrderRoutes(app: Hono): void {
       clientNom: order.shippingName ?? client?.name ?? t("facturePdf.clientParDefaut"),
       clientEmail: client?.email ?? null,
       clientAdresse: [
-        order.relayPointLabel,
+        // Un point relais reste ici, comme avant ; un lieu de retrait (ou un
+        // ancien retrait au stand, « stand:… ») part sous la commande.
+        lieu ? null : order.relayPointLabel,
         order.shippingLine1,
         order.shippingLine2,
         [order.shippingPostalCode, order.shippingCity].filter(Boolean).join(" "),
@@ -2562,10 +2607,12 @@ export function mountOrderRoutes(app: Hono): void {
       totalCents: order.totalCents,
       rembourseCents: resume.rembourseCents,
       mentionReglement: mentionDeReglement(order, langue),
-      adresseBoutique: valeur("facture.adresse")
-        ? valeur("facture.adresse").split("\n")
+      adresseBoutique: emetteur.adresse.length ? emetteur.adresse : null,
+      siret: siretGroupe(emetteur.siret),
+      mention: emetteur.mention,
+      retrait: lieu
+        ? t("facturePdf.retrait", { lieu: libelleDuLieu(lieu) })
         : null,
-      siret: valeur("facture.siret") || null,
       // Une commande annulée après avoir été facturée garde sa facture et son
       // numéro — le trou serait pire —, mais le papier doit dire lui-même
       // qu'elle ne vaut plus.

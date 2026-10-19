@@ -536,6 +536,12 @@ html {
  * Defilement.tsx du configurateur), et ce fondu recouvrirait précisément la
  * moitié de dessin qui sert d'indice.
  *
+ * Dans l'éditeur de personnage, le même rond revient sans fondu, suivi de ce
+ * qui attend plus bas : « Plus bas : couleurs, vêtements… » (`.ml-cfg-invite`,
+ * InviteADescendre). Il s'efface au premier geste vers le bas. Masqué, il
+ * passe en `visibility: hidden` — hors du clavier et du lecteur d'écran — une
+ * fois le fondu joué, pas avant.
+ *
  * Rien de tout cela quand l'appareil demande moins d'animations : l'indice
  * apparaît et disparaît d'un coup, la flèche ne bouge pas.
  */
@@ -546,6 +552,32 @@ html {
   .ml-cfg-indice.est-visible .ml-cfg-indice-fleche {
     animation: ml-indice-descend 1.2s ease-in-out 0.3s 3;
   }
+  .ml-cfg-indice.ml-cfg-invite {
+    transition:
+      opacity 0.25s ease-out,
+      visibility 0s linear 0.25s;
+  }
+  .ml-cfg-indice.ml-cfg-invite.est-visible {
+    transition:
+      opacity 0.25s ease-out,
+      visibility 0s;
+  }
+  .ml-cfg-invite-bouton {
+    transition: background-color 0.15s ease-out;
+  }
+}
+
+/* La pastille de l'invitation est un bouton : l'appui doit se voir au doigt,
+   le focus au clavier — comme les boutons des listes qui défilent. */
+.ml-cfg-invite-bouton:hover {
+  background: #f3f4f6 !important;
+}
+.ml-cfg-invite-bouton:active {
+  background: #e5e7eb !important;
+}
+.ml-cfg-invite-bouton:focus-visible {
+  outline: 3px solid #4f46e5;
+  outline-offset: 2px;
 }
 
 @keyframes ml-indice-descend {
@@ -972,6 +1004,27 @@ html {
    du bas s'approche un peu des cadres pour lui laisser de la marge. */
 .ml-cfg-root[data-etape="format"] .ml-cfg-pied {
   margin-top: 10px !important;
+}
+
+/* --------------------------------------------------------------------------
+ * La dernière étape du stand, et l'écran « validée » : un seul écran.
+ *
+ * Même carte « mode stand ». Le pied de page suivait la validation : en
+ * portrait, il remplissait le bas de la tablette de liens (compte, contact,
+ * conditions de vente) qui emmènent le client loin de sa commande, et la
+ * page défilait pour rien. Il s'efface sur cette page-là seulement — la
+ * section porte `.ml-stand-fin` au stand (panier.astro) ; le reste du site,
+ * au stand comme ailleurs, garde le sien.
+ *
+ * `100dvh` et non `100vh` : sur une tablette, `100vh` mesure l'écran barre
+ * d'adresse repliée, et la page dépassait de la hauteur de cette barre —
+ * de quoi défiler encore, à vide.
+ * ------------------------------------------------------------------------ */
+body:has(.ml-stand-fin) {
+  min-height: 100dvh;
+}
+body:has(.ml-stand-fin) > footer {
+  display: none;
 }
 
 /* --------------------------------------------------------------------------

@@ -7,9 +7,11 @@
  * affiche à son visuel. C'est la distinction que fait l'explorateur de
  * fichiers, et elle vaut ici pour la même raison.
  *
- * L'ORDRE se change en attrapant une affiche. Il décide de la façon dont la
- * collection s'affiche sur le site, dans les grilles de produits d'une page :
- * ce qu'on met devant est ce qui se vend.
+ * L'ORDRE des affiches décide de la façon dont la collection s'affiche sur le
+ * site — ce qu'on met devant est ce qui se vend. Il ne se range plus ici mais
+ * dans Produits › Ordre d'affichage, le même écran pour toutes les pages de
+ * liste ; l'encart « Ordre des affiches » y mène directement. La grille
+ * ci-dessous le montre tel quel.
  */
 import Admin from "../../layouts/Admin.astro";
 import EditeurTexte from "../../components/EditeurTexte.astro";
@@ -130,6 +132,9 @@ if (Astro.request.method === "POST") {
         ? `Traductions proposées pour ${n} langue${n > 1 ? "s" : ""} (seulement ce qui manquait) : relisez chaque langue, puis enregistrez-la. Rien n'est enregistré pour l'instant.`
         : "Rien à proposer : tout ce qui a un texte français est déjà traduit.";
     } else if (action === "ordre") {
+      // L'ordre se range maintenant dans Produits › Ordre d'affichage ; un
+      // onglet ouvert avant ce déménagement peut encore l'envoyer ici, et son
+      // rangement ne doit pas se perdre.
       const ordre = String(f.get("ordre") ?? "")
         .split(",")
         .map(Number)
@@ -459,6 +464,31 @@ const ETIQUETTE_STATUT: Record<string, { texte: string; classe: string }> = {
           </div>
         </section>
 
+        {/* L'ordre des affiches ne se range plus ici : il se règle au même
+            endroit pour TOUTES les pages de liste du site (Produits › Ordre
+            d'affichage), avec poignée, flèches et clavier. Deux écrans pour
+            un même geste finissaient par se contredire. */}
+        <section
+          id="ordre-des-affiches"
+          class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-bo-border bg-bo-surface px-4 py-3"
+        >
+          <div class="min-w-0">
+            <h2 class="font-semibold">Ordre des affiches</h2>
+            <p class="text-xs text-bo-muted">
+              L'ordre dans lequel le site montre les affiches de cette
+              collection — sur sa page, et partout où elle est reprise
+              (vitrine de l'accueil, rangée d'une page). Une affiche ajoutée
+              arrive à la fin.
+            </p>
+          </div>
+          <a
+            href={url(`/produits/ordre?page=collection:${collection.id}`)}
+            class="rounded bg-bo-nav px-3 py-1.5 text-sm text-white hover:opacity-90"
+          >
+            Ranger les affiches de cette collection
+          </a>
+        </section>
+
         <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface">
           <header class="flex flex-wrap items-center justify-between gap-3 border-b border-bo-border px-4 py-3">
             <div>
@@ -467,8 +497,8 @@ const ETIQUETTE_STATUT: Record<string, { texte: string; classe: string }> = {
                 cette collection
               </h2>
               <p class="text-xs text-bo-muted">
-                Attrapez une affiche pour changer sa place. L'ordre décide de
-                l'affichage sur le site.
+                Dans l'ordre du site. « Retirer » sort l'affiche de la
+                collection sans la supprimer du catalogue.
               </p>
             </div>
             <div class="flex items-center gap-2 text-sm">
@@ -489,17 +519,6 @@ const ETIQUETTE_STATUT: Record<string, { texte: string; classe: string }> = {
                   Icônes
                 </button>
               </div>
-              <form method="POST" id="form-ordre">
-                <input type="hidden" name="_action" value="ordre" />
-                <input type="hidden" name="ordre" id="champ-ordre" />
-                <button
-                  id="bouton-ordre"
-                  disabled
-                  class="rounded bg-bo-nav px-3 py-1.5 text-white disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Enregistrer l'ordre
-                </button>
-              </form>
             </div>
           </header>
 
@@ -514,15 +533,6 @@ const ETIQUETTE_STATUT: Record<string, { texte: string; classe: string }> = {
                   class="ml-carte rounded border border-bo-border bg-bo-surface"
                   data-produit={p.id}
                 >
-                  <span
-                    class="ml-poignee cursor-grab text-bo-muted select-none"
-                    title="Glissez pour changer la place"
-                    aria-label="Glissez pour changer la place"
-                    role="button"
-                    tabindex="0"
-                  >
-                    ⠿
-                  </span>
                   <span class="ml-vignette">
                     {p.image ? (
                       <img
@@ -678,19 +688,10 @@ const ETIQUETTE_STATUT: Record<string, { texte: string; classe: string }> = {
       font-size: 0.8rem;
       line-height: 1.15rem;
     }
-    #grille[data-vue="icones"] .ml-poignee {
-      position: absolute;
-      top: 0.35rem;
-      left: 0.4rem;
-    }
     #grille[data-vue="icones"] .ml-retirer {
       position: absolute;
       top: 0.35rem;
       right: 0.4rem;
-    }
-    #grille .ml-carte.ml-tenue {
-      opacity: 0.55;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
     }
   </style>
 
@@ -698,8 +699,6 @@ const ETIQUETTE_STATUT: Record<string, { texte: string; classe: string }> = {
     (function () {
       var grille = document.getElementById("grille");
       if (!grille) return;
-      var champ = document.getElementById("champ-ordre");
-      var bouton = document.getElementById("bouton-ordre");
 
       // La vue choisie suit la personne d'une collection à l'autre : c'est une
       // préférence de travail, pas un réglage de la boutique.
@@ -732,64 +731,6 @@ const ETIQUETTE_STATUT: Record<string, { texte: string; classe: string }> = {
       }
       poserVue(retenue === "icones" ? "icones" : "liste");
 
-      function cartes() {
-        return Array.prototype.slice.call(
-          grille.querySelectorAll("[data-produit]"),
-        );
-      }
-      var ordreDepart = cartes()
-        .map(function (c) {
-          return c.dataset.produit;
-        })
-        .join(",");
-
-      function verifierOrdre() {
-        var actuel = cartes()
-          .map(function (c) {
-            return c.dataset.produit;
-          })
-          .join(",");
-        champ.value = actuel;
-        bouton.disabled = actuel === ordreDepart;
-      }
-
-      // Le geste s'écoute sur la FENÊTRE : la carte change de place pendant le
-      // glissement, et une carte déplacée perdrait le suivi du pointeur.
-      var tenue = null;
-      grille.addEventListener("pointerdown", function (e) {
-        var poignee = e.target.closest(".ml-poignee");
-        if (!poignee) return;
-        e.preventDefault();
-        tenue = poignee.closest("[data-produit]");
-        if (!tenue) return;
-        tenue.classList.add("ml-tenue");
-        document.body.style.userSelect = "none";
-
-        function bouger(ev) {
-          if (!tenue) return;
-          var sous = document.elementFromPoint(ev.clientX, ev.clientY);
-          var cible = sous && sous.closest ? sous.closest("[data-produit]") : null;
-          if (!cible || cible === tenue || cible.parentElement !== grille) return;
-          var apres =
-            cible.compareDocumentPosition(tenue) &
-            Node.DOCUMENT_POSITION_PRECEDING;
-          grille.insertBefore(tenue, apres ? cible.nextSibling : cible);
-          verifierOrdre();
-        }
-        function lacher() {
-          if (tenue) tenue.classList.remove("ml-tenue");
-          tenue = null;
-          document.body.style.userSelect = "";
-          window.removeEventListener("pointermove", bouger);
-          window.removeEventListener("pointerup", lacher);
-          window.removeEventListener("pointercancel", lacher);
-          verifierOrdre();
-        }
-        window.addEventListener("pointermove", bouger);
-        window.addEventListener("pointerup", lacher);
-        window.addEventListener("pointercancel", lacher);
-      });
-
       // Le filtre de la liste d'ajout : cent soixante affiches ne se
       // parcourent pas à l'œil.
       var recherche = document.getElementById("recherche-ajout");
@@ -802,8 +743,6 @@ const ETIQUETTE_STATUT: Record<string, { texte: string; classe: string }> = {
           });
         });
       }
-
-      verifierOrdre();
     })();
   </script>
 </Admin>

@@ -162,6 +162,89 @@ export function ordreDesCollections() {
   ];
 }
 
+/** Une transaction en cours, ou la base elle-même pour une écriture isolée. */
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type Executeur = typeof db | Transaction;
+
+/**
+ * Le dernier rang occupé dans chacune de ces collections (-1 si elle est vide).
+ *
+ * `product_collection.position` n'a qu'UN sens : la place de l'affiche DANS la
+ * collection, celle que la boutique règle dans Produits › Ordre d'affichage et
+ * que le site suit. Elle en a longtemps eu deux — la fiche d'une affiche y
+ * écrivait le rang de la collection dans SA liste à elle (0, 1, 2…), l'action
+ * groupée y laissait 0 —, si bien que « Villes » comptait 146 affiches pour
+ * quatre places distinctes, et qu'enregistrer une fiche bousculait le rayon.
+ *
+ * Lu en une requête pour toutes les collections du lot : un import ou une
+ * grille de deux cents lignes ne doit pas payer un aller-retour par lien.
+ */
+export async function derniersRangs(
+  ex: Executeur,
+  collectionIds: readonly number[],
+): Promise<Map<number, number>> {
+  const rangs = new Map<number, number>();
+  const ids = [...new Set(collectionIds)];
+  for (const id of ids) rangs.set(id, -1);
+  if (!ids.length) return rangs;
+  const lignes = await ex
+    .select({
+      collectionId: schema.productCollections.collectionId,
+      rang: raw<number | null>`max(${schema.productCollections.position})`,
+    })
+    .from(schema.productCollections)
+    .where(inArray(schema.productCollections.collectionId, ids))
+    .groupBy(schema.productCollections.collectionId);
+  for (const l of lignes) rangs.set(l.collectionId, Number(l.rang ?? -1));
+  return rangs;
+}
+
+/**
+ * Range des affiches À LA FIN d'une collection, dans l'ordre reçu.
+ *
+ * C'est la règle de Shopify pour une collection manuelle, et celle de toute la
+ * boutique : ajouter une affiche ne bouscule pas un rangement fait à la main,
+ * elle se place derrière, et l'écran d'ordre permet ensuite de la remonter.
+ * Une affiche déjà rangée là garde sa place : la réécrire la renverrait en fin
+ * de liste à chaque enregistrement d'une fiche.
+ *
+ * Rend le nombre d'affiches réellement ajoutées.
+ */
+export async function rangerEnFinDeCollection(
+  ex: Executeur,
+  collectionId: number,
+  produitIds: readonly number[],
+): Promise<number> {
+  const voulus = [...new Set(produitIds)];
+  if (!voulus.length) return 0;
+  const deja = await ex
+    .select({ productId: schema.productCollections.productId })
+    .from(schema.productCollections)
+    .where(
+      and(
+        eq(schema.productCollections.collectionId, collectionId),
+        inArray(schema.productCollections.productId, voulus),
+      ),
+    );
+  const dejaLa = new Set(deja.map((d) => d.productId));
+  const nouveaux = voulus.filter((p) => !dejaLa.has(p));
+  if (!nouveaux.length) return 0;
+  let rang = (await derniersRangs(ex, [collectionId])).get(collectionId) ?? -1;
+  await ex
+    .insert(schema.productCollections)
+    .values(
+      nouveaux.map((productId) => ({
+        productId,
+        collectionId,
+        position: ++rang,
+      })),
+    )
+    // Deux enregistrements simultanés du même lien : le second n'a rien à
+    // faire, l'affiche est déjà rangée.
+    .onConflictDoNothing();
+  return nouveaux.length;
+}
+
 export function mountCollections(app: Hono): void {
   /* ---------------------------------------------------------------------- */
   /*  La liste des collections                                              */
@@ -218,10 +301,10 @@ export function mountCollections(app: Hono): void {
   /**
    * Une collection et les affiches qui y sont rangées.
    *
-   * Dans l'ordre voulu pour la boutique, puis par nom : deux produits laissés au
-   * même rang doivent se suivre toujours pareil, sans quoi la liste se
-   * réorganiserait d'une visite à l'autre et l'on ne saurait plus ce qu'on a
-   * déjà déplacé.
+   * Dans l'ordre voulu pour la boutique, puis par identifiant : deux produits
+   * laissés au même rang doivent se suivre toujours pareil, et EXACTEMENT comme
+   * sur le site (index.ts, positionDansCollection). Départagés par leur nom,
+   * ils se présentaient ici dans un ordre que la boutique démentait.
    */
   app.get("/admin/collections/:id", async (c) => {
     const id = identifiant(c.req.param("id"));
@@ -247,8 +330,8 @@ export function mountCollections(app: Hono): void {
       )
       .where(eq(schema.productCollections.collectionId, id))
       .orderBy(
-        asc(schema.productCollections.position),
-        asc(schema.products.name),
+        raw`${schema.productCollections.position} asc nulls last`,
+        asc(schema.products.id),
       );
 
     const ids = lignes.map((p) => p.id);
@@ -678,43 +761,10 @@ export function mountCollections(app: Hono): void {
               ),
             );
 
-        if (ajouter.length) {
-          // Un produit déjà rangé là n'est pas une erreur : la page peut
-          // renvoyer toute sa sélection. On ne réécrit que ce qui manque, sans
-          // quoi l'affiche remonterait en fin de liste à chaque enregistrement.
-          const deja = await tx
-            .select({ productId: schema.productCollections.productId })
-            .from(schema.productCollections)
-            .where(
-              and(
-                eq(schema.productCollections.collectionId, id),
-                inArray(schema.productCollections.productId, ajouter),
-              ),
-            );
-          const dejaLa = new Set(deja.map((r) => r.productId));
-          const nouveaux = ajouter.filter((pid) => !dejaLa.has(pid));
-
-          if (nouveaux.length) {
-            // Les nouveaux venus se rangent DERRIÈRE : ajouter une affiche ne
-            // doit pas bousculer l'ordre réglé à la main.
-            const [borne] = await tx
-              .select({
-                rang: raw<
-                  number | null
-                >`max(${schema.productCollections.position})`,
-              })
-              .from(schema.productCollections)
-              .where(eq(schema.productCollections.collectionId, id));
-            let position = Number(borne?.rang ?? -1);
-            await tx.insert(schema.productCollections).values(
-              nouveaux.map((productId) => ({
-                productId,
-                collectionId: id,
-                position: ++position,
-              })),
-            );
-          }
-        }
+        // Un produit déjà rangé là n'est pas une erreur : la page peut renvoyer
+        // toute sa sélection. Les nouveaux venus se rangent DERRIÈRE, sans
+        // bousculer l'ordre réglé à la main (cf. rangerEnFinDeCollection).
+        if (ajouter.length) await rangerEnFinDeCollection(tx, id, ajouter);
 
         const [apres] = await tx
           .select({ n: count() })

@@ -87,17 +87,28 @@ import { mountDecors } from "./decors.js";
 import { mountApercus } from "./apercus.js";
 import { mountCouleursDessins } from "./couleurs-dessins.js";
 import { mountCourriers } from "./courriers.js";
+import { mountModeEssai } from "./mode-essai.js";
+import { mountPromotions } from "./promotions.js";
+import { mountBandeau } from "./bandeau.js";
 import { mountArchives } from "./archives.js";
 import {
   demarrerRelancePanier,
   mountRelancePanier,
 } from "./relance-panier.js";
 import { mountSalonRoutes } from "./salon.js";
+import { bornesDuVendeur, standsDuVendeur } from "./vendeurs.js";
+import {
+  lieuxRetraitPublics,
+  mountLieuxRetrait,
+  nombreDeLieuxActifs,
+} from "./lieux-retrait.js";
+import { mountFacturation } from "./facturation.js";
 import { mountCompteRoutes } from "./comptes.js";
 import { mountAnalytiqueRoutes } from "./analytique.js";
 import {
   mountOrdreAffichageRoutes,
   ordreManuelDuGenre,
+  ordreManuelDuCatalogue,
 } from "./ordre-affichage.js";
 import { demarrerPurgeIa, mountIaRoutes } from "./ia.js";
 import { demarrerMenageRelais, mountRelaisPhotoRoutes } from "./ia-relais.js";
@@ -172,13 +183,15 @@ const OWNER_ROLE = "owner";
  * aperçoit avant la fuite. Énumérer ce qui est PERMIS refuse par défaut :
  * l'oubli se voit tout de suite, parce que l'écran cesse de marcher.
  *
- * Sur ces routes-là, les données sont en plus bornées au stand : voir
- * `limiterAuStand` dans apps/api/src/commandes.ts.
+ * Sur ces routes-là, les données sont en plus bornées aux stands confiés au
+ * vendeur (BO › Comptes), et à rien s'il n'en a aucun : voir vendeurs.ts.
+ * Les factures et les bordereaux, quoique sous « /admin/orders », refusent
+ * eux-mêmes ce qui n'est pas pour lui.
  */
 const LECTURES_DU_VENDEUR = [
-  "/admin/orders", // bornées au stand, cf. commandes.ts
+  "/admin/orders", // bornées à ses stands, cf. vendeurs.ts
   "/admin/stats/orders", // idem
-  "/admin/stands", // son stand seulement
+  "/admin/stands", // ses stands seulement
   "/admin/print-files", // le fichier d'impression d'une affiche vendue
   "/admin/me",
 ];
@@ -582,7 +595,7 @@ function positionDansCollection(collection: string): SQL {
  * même nom ou à la même position doivent se présenter dans le même ordre
  * d'une page à l'autre, sinon la pagination perd et répète des affiches.
  */
-function ordreDeTri(tri: Tri, collection: string): SQL[] {
+function ordreDeTri(tri: Tri, collection: string, genre: string): SQL[] {
   switch (tri) {
     case "nouveautes":
       return [desc(schema.products.createdAt), desc(schema.products.id)];
@@ -593,16 +606,20 @@ function ordreDeTri(tri: Tri, collection: string): SQL[] {
     case "alpha":
       return [sqlOp`${NOM_RANGE} asc`, asc(schema.products.id)];
     case "manuel":
-      // Dans une collection, l'ordre de la collection. Ailleurs — les pages
-      // « Affiches personnalisables » et « prêtes à imprimer » — l'ordre
-      // réglé pour le genre, et à défaut les nouveautés : tant que rien n'est
-      // rangé, rien ne change pour les clientes.
-      return collection
-        ? [
-            sqlOp`${positionDansCollection(collection)} asc nulls last`,
-            asc(schema.products.id),
-          ]
-        : ordreManuelDuGenre();
+      // Dans une collection, l'ordre de la collection. Sur une page de genre
+      // (« Affiches personnalisables », « prêtes à imprimer »), l'ordre réglé
+      // pour le genre. Sans l'un ni l'autre (« Toutes les affiches »), celui
+      // du catalogue : les rangs des deux genres, réglés chacun de leur côté,
+      // s'y seraient mélangés. Partout, à défaut, les nouveautés : tant que
+      // rien n'est rangé, rien ne change pour les clientes.
+      if (collection)
+        return [
+          sqlOp`${positionDansCollection(collection)} asc nulls last`,
+          asc(schema.products.id),
+        ];
+      return genre === "personnalisable" || genre === "prete_a_imprimer"
+        ? ordreManuelDuGenre()
+        : ordreManuelDuCatalogue();
   }
 }
 
@@ -770,8 +787,9 @@ app.get("/products", async (c) => {
   const tri: Tri =
     (TRIS as readonly string[]).indexOf(c.req.query("sort") ?? "") >= 0
       ? (c.req.query("sort") as Tri)
-      : // Par défaut, l'ordre réglé à la main quand un rayon est demandé, et
-        // l'ordre de création sinon — celui que la boutique servait déjà.
+      : // Par défaut, l'ordre réglé à la main pour la page demandée (rayon,
+        // genre ou catalogue entier) ; tant que rien n'y est rangé, c'est
+        // l'ordre de création, celui que la boutique servait déjà.
         "manuel";
 
   // Seuls les produits actifs sont en vente. Un brouillon est un produit
@@ -795,7 +813,7 @@ app.get("/products", async (c) => {
       })
       .from(schema.products)
       .where(conditions)
-      .orderBy(...ordreDeTri(tri, collection))
+      .orderBy(...ordreDeTri(tri, collection, genre))
       .limit(limit)
       .offset(offset),
     db.select({ n: count() }).from(schema.products).where(conditions),
@@ -1095,33 +1113,8 @@ app.get("/products/:slug", async (c) => {
   });
 });
 
-/**
- * Bandeau d'annonce actif (le plus prioritaire, dans sa période).
- *
- * Le message et le texte du lien dans la langue du visiteur (?lang=), le
- * français à défaut, champ par champ. Le dictionnaire des traductions ne sort
- * pas : le site reçoit la ligne telle qu'avant, textes déjà choisis.
- */
-app.get("/banner", async (c) => {
-  const langue = langueDuVisiteur(c);
-  const now = new Date();
-  const banners = await db
-    .select()
-    .from(schema.announcementBanners)
-    .where(eq(schema.announcementBanners.active, true))
-    .orderBy(desc(schema.announcementBanners.priority));
-  const current = banners.find(
-    (b) =>
-      (!b.startsAt || b.startsAt <= now) && (!b.endsAt || b.endsAt >= now),
-  );
-  if (!current) return c.json(null);
-  const { translations, ...bandeau } = current;
-  return c.json({
-    ...bandeau,
-    message: texteDansLaLangue(translations, langue, "message", bandeau.message),
-    linkLabel: texteDansLaLangue(translations, langue, "linkLabel", bandeau.linkLabel),
-  });
-});
+// Le bandeau d'annonce (GET /banners, et GET /banner pour l'ancienne forme)
+// vit dans bandeau.ts (mountBandeau).
 
 /** Réglages éditables (clé -> valeur), optionnellement filtrés par groupe. */
 /**
@@ -1224,11 +1217,15 @@ app.get("/redirects", async (c) => {
       toPath: schema.redirects.toPath,
       code: schema.redirects.code,
     })
-    .from(schema.redirects);
+    .from(schema.redirects)
+    // Les archivées ne s'appliquent plus : remplacées par une plus récente,
+    // ou retirées parce qu'elles auraient détourné une fiche revenue à son
+    // ancienne adresse (cf. redirections.ts). Elles restent en base, pour
+    // l'histoire.
+    .where(isNull(schema.redirects.archivedAt));
   return c.json(rows);
 });
 
-/** Promos actives (pour info front / calcul panier ultérieur). */
 /** Cadres proposés au client (actifs uniquement), dans l'ordre du BO. */
 app.get("/frames", async (c) => {
   const langue = langueDuVisiteur(c);
@@ -1403,7 +1400,7 @@ app.get("/shipping", async (c) => {
   // La langue de la caisse (?lang=) : le nom, la description et le lieu de
   // retrait de chaque mode s'y lisent, le français à défaut, champ par champ.
   const langue = langueDuVisiteur(c);
-  const [zones, tousModes, tarifs, standsOuverts] = await Promise.all([
+  const [zones, tousModes, tarifs, lieuxRetrait] = await Promise.all([
     db.select().from(schema.shippingZones).orderBy(asc(schema.shippingZones.position)),
     db
       .select()
@@ -1423,12 +1420,11 @@ app.get("/shipping", async (c) => {
       .select()
       .from(schema.shippingRates)
       .where(isNull(schema.shippingRates.archivedAt)),
-    // Le CODE ne sort pas : c'est lui qui ouvre la tablette de vente.
-    db
-      .select({ id: schema.stands.id, nom: schema.stands.nom })
-      .from(schema.stands)
-      .where(eq(schema.stands.ouvert, true))
-      .orderBy(asc(schema.stands.nom)),
+    // Les lieux où retirer sa commande (BO › Livraison › Lieux de retrait),
+    // actifs, dans l'ordre réglé et dans la langue de la caisse. Ils ont
+    // remplacé les stands ouverts : un stand est une tablette qui vend, pas
+    // un endroit qu'on choisit pour venir chercher son affiche.
+    lieuxRetraitPublics(langue),
   ]);
   // Un mode « point relais » suppose de pouvoir CHOISIR son point. Tant que
   // le compte du transporteur n'est pas branché, on ne le propose pas : une
@@ -1440,7 +1436,7 @@ app.get("/shipping", async (c) => {
   const couvertures = couverturesParMode(tarifs);
   const modes = tousModes.filter(
     (m) =>
-      raisonsMasquage(m, standsOuverts.length, couvertures.get(m.id) ?? SANS_TARIF)
+      raisonsMasquage(m, lieuxRetrait.length, couvertures.get(m.id) ?? SANS_TARIF)
         .length === 0,
   );
   return c.json({
@@ -1461,12 +1457,14 @@ app.get("/shipping", async (c) => {
       description: texteDansLaLangue(m.translations, langue, "description", m.description),
       kind: m.kind,
       carrier: m.carrier,
-      pickupLocation:
-        texteDansLaLangue(m.translations, langue, "pickupLocation", m.pickupLocation),
+      // Plus de `pickupLocation` : l'ancien « Où retirer » d'un mode valait
+      // « À convenir — indiquez votre créneau en commentaire », alors que la
+      // caisse n'a pas de champ commentaire. Les lieux de retrait, plus bas,
+      // disent où venir ; la description du mode dit le reste.
       active: m.active,
       position: m.position,
     })),
-    stands: standsOuverts,
+    lieuxRetrait,
     tarifs: tarifs.map((t) => ({
       methodId: t.methodId,
       zoneId: t.zoneId,
@@ -1481,14 +1479,11 @@ app.get("/shipping", async (c) => {
 
 /** Idem, tout compris (modes désactivés inclus) — gestion au back-office. */
 app.get("/admin/shipping", async (c) => {
-  const [zones, modes, tarifs, ouverts] = await Promise.all([
+  const [zones, modes, tarifs, lieuxActifs] = await Promise.all([
     db.select().from(schema.shippingZones).orderBy(asc(schema.shippingZones.position)),
     db.select().from(schema.shippingMethods).orderBy(asc(schema.shippingMethods.position)),
     db.select().from(schema.shippingRates),
-    db
-      .select({ id: schema.stands.id })
-      .from(schema.stands)
-      .where(eq(schema.stands.ouvert, true)),
+    nombreDeLieuxActifs(),
   ]);
   // Chaque mode porte TOUT ce qui l'empêche de sortir sur le site. Sans ces
   // raisons, l'écran affiche « proposé » sur un mode que personne ne voit, et
@@ -1506,20 +1501,20 @@ app.get("/admin/shipping", async (c) => {
       ...m,
       masqueRaisons: raisonsMasquage(
         m,
-        ouverts.length,
+        lieuxActifs,
         couvertures.get(m.id) ?? SANS_TARIF,
       ),
       ouverture: checklistOuverture(m, {
         zones,
         couverture: couvertures.get(m.id) ?? SANS_TARIF,
-        standsOuverts: ouverts.length,
+        lieuxRetraitActifs: lieuxActifs,
         transporteursEnService: enService,
       }),
     })),
     tarifs,
     transporteurs: TRANSPORTEURS,
     natures: NATURES_LIVRAISON,
-    standsOuverts: ouverts.length,
+    lieuxRetraitActifs: lieuxActifs,
   });
 });
 
@@ -2049,74 +2044,8 @@ app.post("/admin/shipping/zones/:id", async (c) => {
   return c.json(row);
 });
 
-/**
- * Les promotions automatiques en cours, pour le panier et la caisse.
- *
- * Le nom — celui qui s'écrit sur la ligne de remise — dans la langue du
- * visiteur (?lang=), le français à défaut. Le dictionnaire ne sort pas.
- */
-app.get("/promos", async (c) => {
-  const langue = langueDuVisiteur(c);
-  const now = new Date();
-  const rows = await db
-    .select()
-    .from(schema.promoRules)
-    .where(eq(schema.promoRules.active, true))
-    .orderBy(desc(schema.promoRules.priority));
-  const active = rows.filter(
-    (r) =>
-      !r.code &&
-      (!r.startsAt || r.startsAt <= now) &&
-      (!r.endsAt || r.endsAt >= now),
-  );
-  return c.json(
-    active.map(({ translations, ...r }) => ({
-      ...r,
-      name: texteDansLaLangue(translations, langue, "name", r.name),
-    })),
-  );
-});
-
-/**
- * Vérifie un code promo saisi au panier.
- *
- * Réponse volontairement avare : la règle qui s'applique, rien de plus. On ne
- * dit jamais qu'un code existe mais est expiré ou désactivé — ce serait aider
- * à deviner les autres.
- *
- * Le nom de la règle dans la langue du visiteur (?lang= dans l'adresse, comme
- * pour les lectures), le français à défaut.
- */
-app.post("/promos/verifier", async (c) => {
-  const langue = langueDuVisiteur(c);
-  const b = await c.req.json().catch(() => ({}));
-  const code = normaliserCode(b.code);
-  if (!code || code.length > 60)
-    return c.json({ error: "code inconnu" }, 404);
-  const now = new Date();
-  const [regle] = await db
-    .select()
-    .from(schema.promoRules)
-    .where(
-      and(
-        eq(schema.promoRules.active, true),
-        sqlOp`upper(${schema.promoRules.code}) = ${code}`,
-      ),
-    );
-  if (
-    !regle ||
-    (regle.startsAt && regle.startsAt > now) ||
-    (regle.endsAt && regle.endsAt < now)
-  )
-    return c.json({ error: "code inconnu" }, 404);
-  return c.json({
-    code,
-    name: texteDansLaLangue(regle.translations, langue, "name", regle.name),
-    type: regle.type,
-    config: regle.config,
-    priority: regle.priority,
-  });
-});
+// GET /promos et POST /promos/verifier vivent dans promotions.ts, avec
+// l'écran qui règle les promotions (mountPromotions).
 
 // === Authentification back-office ========================================
 
@@ -2240,7 +2169,35 @@ app.post("/auth/logout", async (c) => {
 app.get("/auth/me", async (c) => {
   const user = await validateSession(getCookie(c, SESSION_COOKIE));
   if (!user) return c.json({ user: null }, 401);
-  return c.json({ user: { email: user.email, role: user.role } });
+  if (user.role === OWNER_ROLE)
+    return c.json({ user: { email: user.email, role: user.role } });
+  // Un vendeur reçoit en plus les stands qui lui sont confiés, par leur nom :
+  // le back-office les lui dit en tête de son écran (« Vos stands : … »), ou
+  // lui dit à qui s'adresser s'il n'en a aucun. Ni code ni chiffre ici —
+  // juste de quoi se repérer.
+  const ids = standsDuVendeur(user);
+  const stands = ids.length
+    ? await db
+        .select({
+          id: schema.stands.id,
+          nom: schema.stands.nom,
+          archivedAt: schema.stands.archivedAt,
+        })
+        .from(schema.stands)
+        .where(inArray(schema.stands.id, ids))
+        .orderBy(asc(schema.stands.nom))
+    : [];
+  return c.json({
+    user: {
+      email: user.email,
+      role: user.role,
+      stands: stands.map((s) => ({
+        id: s.id,
+        nom: s.nom,
+        archive: s.archivedAt != null,
+      })),
+    },
+  });
 });
 
 
@@ -2316,6 +2273,15 @@ mountCms(app);
 // Banc d'essai des courriers : les voir et s'en envoyer un, sans attendre
 // qu'une commande passe.
 mountCourriers(app);
+// Le mode essai, tel que le back-office le lit pour n'afficher qu'en essai
+// l'aide des commandes test et la marche à suivre pour en sortir.
+mountModeEssai(app);
+// Les promotions : celles du panier et de la caisse (/promos,
+// /promos/verifier), et l'écran qui les règle (/admin/promos…).
+mountPromotions(app);
+// Le bandeau d'annonce : ses messages qui défilent (/banners, /banner) et
+// l'écran qui les règle (/admin/banners…). Plus aucun lien aux promotions.
+mountBandeau(app);
 
 // Tout ce qui est archivé, relu d'un coup. Lecture seule : on restaure par la
 // route d'archivage de chaque nature, la seule qui en connaisse les règles.
@@ -2329,6 +2295,12 @@ mountRelancePanier(app);
 
 // Commandes prises au stand : pas de prix a l'ecran, pas de paiement en ligne.
 mountSalonRoutes(app);
+
+// Les lieux où retirer sa commande (chalets, atelier), réglés au back-office.
+mountLieuxRetrait(app);
+
+// L'adresse et le SIRET de la boutique sur ses factures (BO › Factures).
+mountFacturation(app);
 
 // Comptes clients : /compte/* pour la boutique, /admin/customers/* pour le BO.
 // Aucune route paramétrée déjà déclarée ne les avale (les /admin/* posées
@@ -2719,15 +2691,11 @@ app.get("/admin/stats/orders", async (c) => {
   if (Number.isInteger(standDemande) && standDemande > 0)
     conditions.push(eq(schema.orders.standId, standDemande));
 
-  // Un vendeur ne voit que le stand, quoi qu'il demande. Le filtre est posé
-  // ici et non dans l'écran : une adresse tapée à la main doit buter sur la
-  // même règle qu'un bouton.
-  const utilisateur = c.get("utilisateur");
-  if (utilisateur && utilisateur.role !== OWNER_ROLE) {
-    conditions.push(eq(schema.orders.channel, "salon"));
-    if (typeof utilisateur.standId === "number" && utilisateur.standId > 0)
-      conditions.push(eq(schema.orders.standId, utilisateur.standId));
-  }
+  // Un vendeur ne voit que les stands qui lui sont confiés, quoi qu'il
+  // demande — et rien s'il n'en a aucun (vendeurs.ts). Le filtre est posé ici
+  // et non dans l'écran : une adresse tapée à la main doit buter sur la même
+  // règle qu'un bouton.
+  conditions.push(...bornesDuVendeur(c.get("utilisateur")));
 
   const lignes = await db
     .select({
@@ -2802,6 +2770,9 @@ app.get("/admin/users", async (c) => {
       // Les archivés viennent AVEC, marqués : l'écran les range dans sa
       // section « Comptes archivés », d'où ils se restaurent.
       archivedAt: schema.adminUsers.archivedAt,
+      // Les stands confiés : l'écran coche ceux d'un vendeur, et signale
+      // celui qui n'en a aucun (il ne voit alors aucune vente).
+      standIds: schema.adminUsers.standIds,
     })
     .from(schema.adminUsers)
     .orderBy(asc(schema.adminUsers.id));
@@ -2846,6 +2817,30 @@ app.post("/admin/users", async (c) => {
   if (motDePasse && motDePasse.length < 10)
     return c.json({ error: "mot de passe : 10 caractères minimum" }, 400);
 
+  // Les stands confiés, quand le formulaire les envoie (absent = on n'y
+  // touche pas). Chacun doit exister ; un stand archivé reste permis : le
+  // vendeur d'un marché de l'an dernier doit pouvoir relire ses ventes.
+  let standIds: number[] | undefined;
+  if (b.standIds !== undefined) {
+    if (!Array.isArray(b.standIds))
+      return c.json({ error: "stands confiés : liste attendue" }, 400);
+    standIds = [
+      ...new Set(
+        (b.standIds as unknown[])
+          .map((v) => Number(v))
+          .filter((n) => Number.isInteger(n) && n > 0),
+      ),
+    ];
+    if (standIds.length) {
+      const connus = await db
+        .select({ id: schema.stands.id })
+        .from(schema.stands)
+        .where(inArray(schema.stands.id, standIds));
+      if (connus.length !== standIds.length)
+        return c.json({ error: "un des stands cochés n'existe plus" }, 400);
+    }
+  }
+
   const id = b.id ? Number(b.id) : null;
   if (id) {
     const [avant] = await db
@@ -2867,6 +2862,7 @@ app.post("/admin/users", async (c) => {
         email,
         role,
         ...(motDePasse ? { passwordHash: await hashPassword(motDePasse) } : {}),
+        ...(standIds ? { standIds } : {}),
       })
       .where(eq(schema.adminUsers.id, id))
       .returning({ id: schema.adminUsers.id, email: schema.adminUsers.email });
@@ -2900,7 +2896,12 @@ app.post("/admin/users", async (c) => {
   if (existe) return c.json({ error: "cette adresse a déjà un compte" }, 409);
   const [row] = await db
     .insert(schema.adminUsers)
-    .values({ email, role, passwordHash: await hashPassword(motDePasse) })
+    .values({
+      email,
+      role,
+      passwordHash: await hashPassword(motDePasse),
+      standIds: standIds ?? [],
+    })
     .returning({ id: schema.adminUsers.id, email: schema.adminUsers.email });
   return c.json(row);
 });
@@ -3220,186 +3221,11 @@ app.post("/admin/views/:id/archive", async (c) => {
   });
 });
 
-app.get("/admin/promos", async (c) => {
-  const rows = await db
-    .select()
-    .from(schema.promoRules)
-    .orderBy(desc(schema.promoRules.priority));
-  return c.json(rows);
-});
+// /admin/promos et ses sous-routes vivent dans promotions.ts.
 
-app.post("/admin/promos", async (c) => {
-  const body = await c.req.json();
-  const values = {
-    name: String(body.name ?? "Promo"),
-    type: String(body.type ?? "percent"),
-    config: body.config ?? {},
-    code: body.code || null,
-    active: body.active ?? true,
-    priority: Number(body.priority ?? 0),
-    stackable: body.stackable ?? false,
-    startsAt: body.startsAt ? new Date(body.startsAt) : null,
-    endsAt: body.endsAt ? new Date(body.endsAt) : null,
-    updatedAt: new Date(),
-  };
-  if (body.id) {
-    const [row] = await db
-      .update(schema.promoRules)
-      .set(values)
-      .where(eq(schema.promoRules.id, Number(body.id)))
-      .returning();
-    return c.json(row);
-  }
-  const [row] = await db.insert(schema.promoRules).values(values).returning();
-  return c.json(row);
-});
-
-app.post("/admin/promos/:id/toggle", async (c) => {
-  const id = Number(c.req.param("id"));
-  const [cur] = await db
-    .select({ active: schema.promoRules.active })
-    .from(schema.promoRules)
-    .where(eq(schema.promoRules.id, id));
-  if (!cur) return c.notFound();
-  const [row] = await db
-    .update(schema.promoRules)
-    .set({ active: !cur.active })
-    .where(eq(schema.promoRules.id, id))
-    .returning();
-  return c.json(row);
-});
-
-/**
- * Le bandeau tel que le BACK-OFFICE doit le voir, avec la regle qu'il annonce.
- *
- * L'ecran lisait jusqu'ici la route publique, qui ne rend que les bandeaux
- * actifs et dans leur periode. Bandeau eteint = ecran vide = champ « id »
- * absent = l'enregistrement suivant creait une DEUXIEME ligne au lieu de
- * modifier la premiere, et le site se mettait a afficher l'ancienne.
- */
-app.get("/admin/banner", async (c) => {
-  const [banner] = await db
-    .select()
-    .from(schema.announcementBanners)
-    .orderBy(desc(schema.announcementBanners.priority), desc(schema.announcementBanners.id))
-    .limit(1);
-  if (!banner) return c.json(null);
-  let promo = null;
-  if (banner.promoRuleId) {
-    [promo] = await db
-      .select()
-      .from(schema.promoRules)
-      .where(eq(schema.promoRules.id, banner.promoRuleId));
-  }
-  return c.json({ ...banner, promo: promo ?? null });
-});
-
-app.post("/admin/banner", async (c) => {
-  const body = await c.req.json();
-  const actif = body.active ?? true;
-  const debut = body.startsAt ? new Date(body.startsAt) : null;
-  const fin = body.endsAt ? new Date(body.endsAt) : null;
-
-  // La regle annoncee, s'il y en a une. Trois cas, et un seul silencieux :
-  //   `promo` absent  -> on ne touche pas au lien (compatibilite).
-  //   `promo` null    -> le bandeau n'annonce plus rien.
-  //   `promo` objet   -> on l'ecrit et on la lie.
-  const [avant] = body.id
-    ? await db
-        .select({ promoRuleId: schema.announcementBanners.promoRuleId })
-        .from(schema.announcementBanners)
-        .where(eq(schema.announcementBanners.id, Number(body.id)))
-    : [];
-  const ancienneRegle = avant?.promoRuleId ?? null;
-  let promoRuleId: number | null | undefined =
-    body.promoRuleId === undefined ? undefined : body.promoRuleId ? Number(body.promoRuleId) : null;
-
-  if (body.promo !== undefined) {
-    if (body.promo === null) {
-      promoRuleId = null;
-    } else {
-      const p = body.promo as Record<string, unknown>;
-      if (p.id && !p.type) {
-        // Une regle deja enregistree, choisie dans la liste : on la lie sans
-        // rien reecrire de ce qu'elle dit. Seuls son etat et ses dates suivent
-        // le bandeau.
-        const [lie] = await db
-          .update(schema.promoRules)
-          .set({ active: actif, startsAt: debut, endsAt: fin, updatedAt: new Date() })
-          .where(eq(schema.promoRules.id, Number(p.id)))
-          .returning();
-        promoRuleId = lie?.id ?? null;
-      } else {
-      // La regle suit le bandeau : meme etat, memes dates. C'est tout le sens
-      // du lien — on ne peut pas annoncer une offre eteinte, ni faire tourner
-      // une offre que plus rien n'annonce.
-      const valeurs = {
-        name: String(p.name ?? "Offre du bandeau"),
-        type: String(p.type ?? "percent"),
-        config: p.config ?? {},
-        code: p.code ? String(p.code) : null,
-        active: actif,
-        priority: Number(p.priority ?? 10),
-        startsAt: debut,
-        endsAt: fin,
-        updatedAt: new Date(),
-      };
-      const cible = p.id ? Number(p.id) : ancienneRegle;
-      if (cible) {
-        const [maj] = await db
-          .update(schema.promoRules)
-          .set(valeurs)
-          .where(eq(schema.promoRules.id, cible))
-          .returning();
-        promoRuleId = maj?.id ?? null;
-      } else {
-        const [cree] = await db.insert(schema.promoRules).values(valeurs).returning();
-        promoRuleId = cree?.id ?? null;
-      }
-      }
-    }
-  }
-
-  // Une regle qu'on vient de delier ne doit pas continuer a remiser dans le
-  // dos de la boutique : elle s'eteint avec le bandeau qui l'annoncait. Elle
-  // reste dans l'ecran Promotions, ou elle peut etre rallumee a la main.
-  if (
-    ancienneRegle &&
-    promoRuleId !== undefined &&
-    promoRuleId !== ancienneRegle
-  ) {
-    await db
-      .update(schema.promoRules)
-      .set({ active: false, updatedAt: new Date() })
-      .where(eq(schema.promoRules.id, ancienneRegle));
-  }
-
-  const values = {
-    message: String(body.message ?? ""),
-    linkUrl: body.linkUrl || null,
-    linkLabel: body.linkLabel || null,
-    bgColor: body.bgColor || "#20211f",
-    textColor: body.textColor || "#f7f3ec",
-    active: actif,
-    priority: Number(body.priority ?? 0),
-    ...(promoRuleId === undefined ? {} : { promoRuleId }),
-    startsAt: debut,
-    endsAt: fin,
-  };
-  if (body.id) {
-    const [row] = await db
-      .update(schema.announcementBanners)
-      .set(values)
-      .where(eq(schema.announcementBanners.id, Number(body.id)))
-      .returning();
-    return c.json(row);
-  }
-  const [row] = await db
-    .insert(schema.announcementBanners)
-    .values(values)
-    .returning();
-  return c.json(row);
-});
+// Le bandeau du back-office (/admin/banners…) vit dans bandeau.ts. Il
+// n'écrit plus jamais dans les promotions : elles se règlent dans
+// promotions.ts.
 
 /**
  * Enregistre un réglage, éventuellement dans UNE langue.

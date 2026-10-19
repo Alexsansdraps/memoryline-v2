@@ -266,7 +266,9 @@ const description =
   (ficheTraduite ? descriptionMeta(texteDescription) : "") ||
   descriptionMeta(
     // L'affiche tirée d'une photo n'a ni personnages ni texte à ajouter :
-    // sa phrase est celle qui la présente déjà sur la fiche.
+    // elle a sa propre phrase. La boutique l'a retirée de la page (texte
+    // jugé inutile sous le bouton), mais pour Google elle reste le meilleur
+    // résumé de ce que fait la fiche.
     product.aiEnabled
       ? tr("ia.intro")
       : tr(
@@ -650,11 +652,7 @@ const pageDesVoisines = voisinesDuRayon ? pageDuRayon! : pageDuGenre;
               priceCents: v.priceCents,
             }))}
           >
-            <ActionEnAttente
-              slot="fallback"
-              libelle={tr("produit.personnaliser")}
-              note={tr("ia.intro")}
-            />
+            <ActionEnAttente slot="fallback" libelle={tr("produit.personnaliser")} />
           </AfficheIA>
         ) : product.kind === "personnalisable" ? (
           <ProductConfigurator

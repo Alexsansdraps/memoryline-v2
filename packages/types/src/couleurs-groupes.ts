@@ -33,9 +33,43 @@
  */
 import { BASE_COLOR_SCOPE, colorKey, colorsForScope } from "./svg-color.js";
 
-/** Nuanciers qu'un groupe du dessin de BASE d'un personnage peut proposer. */
+/** Les quatre nuanciers des personnages (réglés au back-office, cf. nuanciers.ts). */
 export const NUANCIERS_BASE = ["peau", "cheveux", "vetements", "pantalon"] as const;
 export type NuancierBase = (typeof NUANCIERS_BASE)[number];
+
+/**
+ * Le nuancier proposé pour une couleur du dessin de BASE d'un personnage :
+ * l'un des quatre nuanciers des personnages, ou celui d'une CATÉGORIE DE
+ * PIÈCES, désignée par son identifiant (« categorie:robes »).
+ *
+ * Le second cas est venu d'un animal : « je voulais mettre le nuancier de
+ * peau au berger allemand » ; et pourquoi pas, demain, celui des « Pelages »
+ * créé comme une catégorie. Une catégorie archivée, décochée ou vidée depuis
+ * ne casse rien : le configurateur retombe sur le nuancier du groupe.
+ */
+export type Nuancier = NuancierBase | `categorie:${string}`;
+
+/** Le préfixe d'un nuancier de catégorie de pièces. */
+export const PREFIXE_NUANCIER_CATEGORIE = "categorie:";
+
+/** Vrai pour l'un des quatre nuanciers des personnages. */
+export function estNuancierBase(v: unknown): v is NuancierBase {
+  return (NUANCIERS_BASE as readonly unknown[]).includes(v);
+}
+
+/**
+ * Vrai pour un nuancier qu'on sait lire. Toute autre valeur est écartée au
+ * nettoyage, sans bruit : une donnée abîmée ne doit jamais empêcher de
+ * dessiner, elle fait simplement retomber sur le nuancier par défaut.
+ */
+export function estNuancier(v: unknown): v is Nuancier {
+  return (
+    estNuancierBase(v) ||
+    (typeof v === "string" &&
+      /^categorie:[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v) &&
+      v.length <= 80)
+  );
+}
 
 /** Un groupe de couleurs, tel qu'il est rangé en base. */
 export interface GroupeCouleur {
@@ -49,7 +83,7 @@ export interface GroupeCouleur {
    * Nuancier proposé, pour les groupes du dessin de BASE d'un personnage. Les
    * pièces, elles, prennent celui de leur catégorie.
    */
-  nuancier?: NuancierBase;
+  nuancier?: Nuancier;
 }
 
 /** Longueur maximale d'un nom de groupe : il tient sur une ligne de l'éditeur. */
@@ -97,9 +131,7 @@ export function groupesDuDessin(
       const [zone, ...nuances] = membres as [string, ...string[]];
       const nom =
         typeof g.nom === "string" ? g.nom.trim().slice(0, NOM_GROUPE_MAX) : "";
-      const nuancier = (NUANCIERS_BASE as readonly unknown[]).includes(g.nuancier)
-        ? (g.nuancier as NuancierBase)
-        : undefined;
+      const nuancier = estNuancier(g.nuancier) ? g.nuancier : undefined;
       out.push({
         zone,
         ...(nuances.length ? { nuances } : {}),

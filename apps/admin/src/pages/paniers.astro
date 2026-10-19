@@ -18,6 +18,7 @@ import { url } from "../lib/url.ts";
 import {
   adminApi,
   formatPrice,
+  type EcranCourrielsRelance,
   type EcranPaniers,
   type PanierAbandonne,
   type ReglagesRelance,
@@ -88,6 +89,13 @@ if (Astro.request.method === "POST") {
       flash = r.active
         ? `Réglages enregistrés. Les relances partent toutes seules : ${enumeration(quand)}${plage}.`
         : "Réglages enregistrés. La relance automatique est éteinte : seul le bouton « Relancer » envoie un courrier.";
+    } else if (action === "essai") {
+      // Le courriel tel qu'il partira, envoyé à l'adresse du compte connecté
+      // (dans la boîte d'essai sur le site de test) : on le lit comme une
+      // cliente avant de laisser partir les relances.
+      const r = await api.essaiCourrielRelance(Number(f.get("etape")) || 1);
+      flash = r.resume;
+      flashErreur = !r.parti;
     } else if (action === "passage") {
       const { bilan } = await api.passageRelance();
       // Un passage qui ne fait rien doit dire pourquoi : « 0 panier examiné »
@@ -115,13 +123,23 @@ const plancherDemande = Astro.url.searchParams.get("plancher");
 
 let ecran: EcranPaniers | null = null;
 let erreur: string | null = null;
-try {
-  ecran = await api.abandonedCarts(
-    plancherDemande ? Number(plancherDemande) : undefined,
-  );
-} catch (e) {
-  erreur = e instanceof Error ? e.message : String(e);
-}
+/**
+ * Les courriels des trois relances, en français : leur objet s'affiche dans
+ * la carte « Le courriel envoyé », pour qu'on sache ce qui part sans ouvrir
+ * l'écran de réécriture. Une panne ici n'empêche pas la liste de s'afficher.
+ */
+let courrielsFr: EcranCourrielsRelance | null = null;
+const [lecturePaniers, lectureCourriels] = await Promise.allSettled([
+  api.abandonedCarts(plancherDemande ? Number(plancherDemande) : undefined),
+  api.courrielsRelance("fr"),
+]);
+if (lecturePaniers.status === "fulfilled") ecran = lecturePaniers.value;
+else
+  erreur =
+    lecturePaniers.reason instanceof Error
+      ? lecturePaniers.reason.message
+      : String(lecturePaniers.reason);
+if (lectureCourriels.status === "fulfilled") courrielsFr = lectureCourriels.value;
 
 const reglages: ReglagesRelance = reglagesSaisis ??
   ecran?.reglages ?? {
@@ -205,6 +223,29 @@ const courriels = [1, 2, 3].map((etape) => {
   return { etape, personnalise: langues.length > 0, phrase: phraseCourriel(langues) };
 });
 
+/**
+ * La carte « Le courriel envoyé » : pour chaque relance, si elle part, quand,
+ * et l'objet que lira une cliente française — votre texte ou celui d'origine.
+ * Les réglages sont ceux enregistrés, pas une saisie refusée.
+ */
+const reglagesEnregistres = ecran?.reglages ?? reglages;
+const cartesCourriel = [1, 2, 3].map((etape) => {
+  const c = courrielsFr?.etapes.find((x) => x.etape === etape);
+  const heures =
+    etape === 1
+      ? reglagesEnregistres.palierHeures
+      : etape === 2
+        ? reglagesEnregistres.relance2Heures
+        : reglagesEnregistres.relance3Heures;
+  return {
+    etape,
+    nom: c?.nom ?? (etape === 1 ? "1re relance" : `${etape}e relance`),
+    quand: heures === null ? null : `${duree(heures)} après le dernier geste de la cliente`,
+    objet: c?.textes.objet ?? null,
+    personnalise: c?.personnalise ?? false,
+  };
+});
+
 /** Couleur de la pastille d'état — le lisible avant le décoratif. */
 function tonEtat(etat: PanierAbandonne["etat"]): string {
   if (etat === "recupere") return "bg-green-100 text-green-800";
@@ -243,6 +284,65 @@ function tonEtat(etat: PanierAbandonne["etat"]): string {
     relance, eux, ne partent qu'aux délais du programme — et jamais au-delà de
     quatorze jours, où le panier est définitivement laissé tranquille.
   </p>
+
+  {/* --- Le courriel qui part -------------------------------------------- */}
+  {/* En tête : c'est ce que la cliente reçoit, et ce qu'on vient modifier.
+      L'écran de réécriture n'avait qu'un petit lien dans les réglages. */}
+  <section id="courriel-envoye" class="mb-6 rounded-lg border border-bo-border bg-bo-surface">
+    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-bo-border px-4 py-3">
+      <h2 class="text-sm font-medium">Le courriel envoyé</h2>
+      <span
+        class={`rounded px-2 py-0.5 text-xs ${
+          reglagesEnregistres.active ? "bg-green-100 text-green-800" : "bg-bo-bg text-bo-muted"
+        }`}
+      >
+        {reglagesEnregistres.active ? "Relance automatique allumée" : "Relance automatique éteinte"}
+      </span>
+    </div>
+    <ul class="divide-y divide-bo-border">
+      {cartesCourriel.map((c) => (
+        <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+          <div class="min-w-0 flex-1 text-sm">
+            <p>
+              <span class="font-medium">{c.nom}</span>
+              <span class="text-bo-muted"> — {c.quand ?? "pas programmée"}</span>
+            </p>
+            {c.objet && (
+              <p class="mt-0.5">
+                Objet : « {c.objet} »
+                <span
+                  class={`ml-1 rounded px-1.5 py-0.5 text-xs ${
+                    c.personnalise ? "bg-blue-100 text-blue-800" : "bg-bo-bg text-bo-muted"
+                  }`}
+                >
+                  {c.personnalise ? "votre texte" : "texte d'origine"}
+                </span>
+              </p>
+            )}
+          </div>
+          <a
+            href={url(`/paniers/courriel?relance=${c.etape}`)}
+            class="rounded border border-bo-border px-3 py-1.5 text-sm whitespace-nowrap hover:bg-bo-bg"
+          >
+            Modifier le courriel
+          </a>
+          <form method="POST">
+            <input type="hidden" name="action" value="essai" />
+            <input type="hidden" name="etape" value={c.etape} />
+            <button class="rounded border border-bo-border px-3 py-1.5 text-sm whitespace-nowrap hover:bg-bo-bg">
+              M'envoyer un essai
+            </button>
+          </form>
+        </li>
+      ))}
+    </ul>
+    <p class="px-4 pb-3 pt-1 text-xs text-bo-muted">
+      L'objet affiché est celui que lisent les clientes en français : chaque
+      langue a son courriel, à modifier dans le même écran (Paniers abandonnés
+      › Courriel de relance). L'essai part à l'adresse de votre compte. Quand
+      et à qui les relances partent se règle juste en dessous.
+    </p>
+  </section>
 
   {/* --- Les chiffres qui comptent -------------------------------------- */}
   <div class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">

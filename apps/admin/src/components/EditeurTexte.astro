@@ -70,6 +70,7 @@ const bouton =
 <div
   class="mt-1 overflow-hidden rounded border border-bo-border"
   data-titres={titres ? "1" : undefined}
+  data-editeur
 >
   <div
     data-barre
@@ -676,14 +677,34 @@ const bouton =
       if (invite)
         invite.classList.toggle("hidden", !!(zone.textContent || "").trim());
 
-      var manquantes = balisesPerdues(enregistre);
-      if (perte && manquantes.length) {
-        perte.textContent =
-          "Ce texte contient une mise en forme que cet éditeur ne sait pas garder (" +
-          manquantes.join(", ").toLowerCase() +
-          "). Elle reste en ligne telle quelle, mais si vous modifiez le texte ici, elle sera perdue.";
-        perte.classList.remove("hidden");
+      /** Dit, sous le cadre, la mise en forme que cet éditeur ne gardera pas. */
+      function signalerPerte(html) {
+        if (!perte) return;
+        var manquantes = balisesPerdues(html);
+        perte.textContent = manquantes.length
+          ? "Ce texte contient une mise en forme que cet éditeur ne sait pas garder (" +
+            manquantes.join(", ").toLowerCase() +
+            "). Elle reste en ligne telle quelle, mais si vous modifiez le texte ici, elle sera perdue."
+          : "";
+        perte.classList.toggle("hidden", !manquantes.length);
       }
+      signalerPerte(enregistre);
+
+      // Un même éditeur peut servir à plusieurs textes : la grille de
+      // modification groupée en ouvre un seul, dans une fenêtre, pour la
+      // description de la ligne choisie. La page lui confie alors le texte par
+      // l'événement « editeur:charger » ({ html }) posé sur [data-editeur].
+      // Même règle qu'au chargement : le champ caché garde le texte reçu tel
+      // quel tant que personne n'a rien tapé.
+      racine.addEventListener("editeur:charger", function (ev) {
+        var html = String((ev.detail && ev.detail.html) || "");
+        champ.value = html;
+        var propre = nettoyer(html);
+        zone.innerHTML = propre.trim() ? propre : "<p><br></p>";
+        if (invite)
+          invite.classList.toggle("hidden", !!(zone.textContent || "").trim());
+        signalerPerte(html);
+      });
     })();
   </script>
 </div>

@@ -57,6 +57,7 @@ export const it: Partial<Record<CleCourriel, string>> = {
   "confirmation.total": "Totale",
   /** « Consegna » plutôt que « Indirizzo » : l'adresse peut être un point relais. */
   "confirmation.adresseLivraison": "Consegna:",
+  "confirmation.retrait": "Da ritirare presso:",
   "confirmation.question": "Una domanda? Rispondi semplicemente a questa e-mail.",
   "confirmation.texte": "Il tuo ordine {numero} è confermato. Totale: {total}.",
 
@@ -136,6 +137,14 @@ export const it: Partial<Record<CleCourriel, string>> = {
   "stand.texte": "Il poster che hai ordinato è pronto.",
   "stand.texteSur": "Il poster che hai ordinato in occasione di {evenement} è pronto.",
   "stand.texteCommande": "Ordine {numero}.",
+
+  /* --- Ordine pronto per il ritiro ---------------------------------------- */
+
+  "retrait.objet": "Il tuo ordine {numero} ti aspetta",
+  "retrait.intro": "Il tuo ordine è pronto: puoi venire a ritirarlo.",
+  "retrait.ou": "Dove ritirarlo:",
+  "retrait.merci": "Ordine {numero}. A presto!",
+  "retrait.texte": "Il tuo ordine {numero} è pronto: puoi venire a ritirarlo.",
 
   /* --- Bienvenue ---------------------------------------------------------- */
 
@@ -285,6 +294,7 @@ export const it: Partial<Record<CleCourriel, string>> = {
     "Memory Line, poster personalizzati. Una domanda su questa fattura? Rispondi all'e-mail con cui ti è arrivata.",
   /** « Fattura » est féminin : c'est elle qui est annulée. */
   "facturePdf.filigrane": "Annullata",
+  "facturePdf.retrait": "Ritiro: {lieu}",
 
   "livraison.remiseStand": "Ritiro al nostro stand",
 

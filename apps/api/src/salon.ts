@@ -28,6 +28,7 @@ import { fr } from "./courriels/fr.js";
 import { enregistrerFichiersDImpression } from "./configurator-routes.js";
 import { rattacherGenerationsAuPanier } from "./ia.js";
 import { HORS_VENTES } from "./statuts-vente.js";
+import { estProprietaire, standsDuVendeur } from "./vendeurs.js";
 
 /**
  * Un code d'accès : six caractères, sans ceux qui se confondent.
@@ -394,11 +395,20 @@ export function mountSalonRoutes(app: Hono): void {
    * Il ne sort d'ici que sous la garde du back-office.
    */
   app.get("/admin/stands", async (c) => {
-    const proprietaire = c.get("utilisateur")?.role === "owner";
-    const stands = await db
-      .select()
-      .from(schema.stands)
-      .orderBy(asc(schema.stands.ouvert), asc(schema.stands.nom));
+    const utilisateur = c.get("utilisateur");
+    const proprietaire = estProprietaire(utilisateur);
+    // Un vendeur ne reçoit que les stands qui lui sont confiés (vendeurs.ts) :
+    // ni le nom des autres marchés, ni ce qu'ils ont rapporté. Sans stand
+    // confié, la liste revient vide, et l'écran lui dit à qui s'adresser.
+    const confies = proprietaire ? null : standsDuVendeur(utilisateur);
+    const stands =
+      confies && confies.length === 0
+        ? []
+        : await db
+            .select()
+            .from(schema.stands)
+            .where(confies ? inArray(schema.stands.id, confies) : undefined)
+            .orderBy(asc(schema.stands.ouvert), asc(schema.stands.nom));
 
     // Les ventes, comptées d'un coup : une requête par stand serait une
     // requête de trop dès la troisième année de salons.
@@ -424,8 +434,12 @@ export function mountSalonRoutes(app: Hono): void {
     );
 
     // Les ventes d'avant les stands multiples, si la migration n'a rien eu à
-    // rattacher : les taire ferait un trou dans les chiffres.
-    const orphelines = parStand.get(null) ?? { commandes: 0, cents: 0 };
+    // rattacher : les taire ferait un trou dans les chiffres. Celui de la
+    // propriétaire seulement : elles ne sont à aucun stand, donc à aucun
+    // vendeur.
+    const orphelines = proprietaire
+      ? (parStand.get(null) ?? { commandes: 0, cents: 0 })
+      : { commandes: 0, cents: 0 };
 
     return c.json({
       stands: stands

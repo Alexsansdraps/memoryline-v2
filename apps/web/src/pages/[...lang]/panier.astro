@@ -36,13 +36,30 @@ const auStand = Astro.locals.stand;
   path={lien(langue, "/panier")}
   noindex={true}
 >
-  <section class="mx-auto max-w-[1200px] px-4 sm:px-6 pt-12 pb-16">
-    <nav class="text-sm text-ink-soft">
-      <a href={lien(langue, "/")} class="hover:text-terracotta">Memory Line</a> ·
-      <a href={lien(langue, "/affiches")} class="hover:text-terracotta"
-        >{tr("nav.affiches")}</a
-      >
-    </nav>
+  {/* Au stand, cette page est un écran de tablette plus qu'une page de site.
+      Carte « mode stand » : « ne pas oublier que c'est sur tablette ! il
+      faudrait qu'on n'ait pas à scroller ». Le fil d'Ariane et le pied de
+      page (masqué par global.css, sous « .ml-stand-fin ») ne servent à rien
+      au client qui valide son affiche devant la vendeuse : sans eux, et avec
+      moins de marge en haut, le récapitulatif, le nom, l'adresse et
+      « Valider mon affiche » — puis l'écran « validée » — tiennent d'un coup
+      sur une tablette, en portrait comme en paysage, même sous la barre
+      d'adresse du navigateur. */}
+  <section
+    class={auStand
+      ? "ml-stand-fin mx-auto max-w-[1200px] px-4 sm:px-6 pt-4 pb-8"
+      : "mx-auto max-w-[1200px] px-4 sm:px-6 pt-12 pb-16"}
+  >
+    {
+      !auStand && (
+        <nav class="text-sm text-ink-soft">
+          <a href={lien(langue, "/")} class="hover:text-terracotta">Memory Line</a> ·
+          <a href={lien(langue, "/affiches")} class="hover:text-terracotta"
+            >{tr("nav.affiches")}</a
+          >
+        </nav>
+      )
+    }
     {/* Titre et retour à la boutique sur la même ligne : le client garde
         sous les yeux la sortie qui ne vide pas son panier. Au stand, c'est
         l'îlot qui les porte : ils doivent s'effacer quand la vente est

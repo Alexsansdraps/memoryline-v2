@@ -37,11 +37,13 @@
  * commande non payée restent fermés, parce qu'on n'expédie pas ce qui n'est
  * pas vendu.
  */
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import { and, eq, inArray } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import { CODES_SENDCLOUD, PREFIXE_SENDCLOUD } from "./sendcloud-points.js";
 import { TRANSPORTEURS } from "./livraison-regles.js";
+import { commandeVisible } from "./vendeurs.js";
+import { lieuDeRetrait } from "./lieux-retrait.js";
 
 const CLE_PUBLIQUE = (process.env.SENDCLOUD_PUBLIC_KEY ?? "").trim();
 const CLE_SECRETE = (process.env.SENDCLOUD_SECRET_KEY ?? "").trim();
@@ -264,7 +266,7 @@ async function contexteDe(order: Commande): Promise<Contexte> {
   const envoiPaye: Situation["envoiPaye"] =
     order.channel === "salon" || order.standId
       ? "stand"
-      : mode?.kind === "pickup" || (order.relayPointId ?? "").startsWith("stand:")
+      : mode?.kind === "pickup" || lieuDeRetrait(order)
         ? "retrait"
         : code
           ? "transporteur"
@@ -566,7 +568,7 @@ export async function manquesDe(order: Commande, situation: Situation): Promise<
           ? "Commande prise au stand : elle n'a pas d'adresse de livraison. Si elle doit voyager, saisissez celle du destinataire."
           : situation.envoiPaye === "retrait"
             ? "La cliente avait choisi le retrait sur place : saisissez l'adresse où lui envoyer le colis."
-            : point && !point.startsWith("stand:")
+            : point && !lieuDeRetrait(order)
               ? `Le point relais choisi (${order.relayPointLabel ?? point}) ne vient pas de SendCloud : une étiquette SendCloud ne sait pas le viser. Saisissez l'adresse où envoyer le colis, ou créez l'envoi chez le transporteur.`
               : "La commande n'a pas d'adresse de livraison : saisissez celle du destinataire.",
       );
@@ -1020,6 +1022,27 @@ function erreurHttp(e: unknown): { message: string; statut: 400 | 404 | 409 | 50
   return { message: "SendCloud ne répond pas. Réessayez dans un instant.", statut: 502 };
 }
 
+/**
+ * La commande est-elle à portée de la personne connectée ?
+ *
+ * La garde du serveur laisse passer les LECTURES d'un vendeur sous
+ * « /admin/orders », pour ses ventes de stand. Le bordereau en est une, mais
+ * il porte le nom, l'adresse et le téléphone de la destinataire : sans ce
+ * contrôle, un compte de stand lisait l'étiquette de n'importe quelle
+ * commande du site en comptant les identifiants de un en un.
+ *
+ * « Introuvable » plutôt que « interdit », comme la fiche : un 403 dirait que
+ * la commande existe.
+ */
+async function aPortee(c: Context, orderId: number): Promise<boolean> {
+  if (!Number.isInteger(orderId) || orderId <= 0) return false;
+  const [order] = await db
+    .select({ channel: schema.orders.channel, standId: schema.orders.standId })
+    .from(schema.orders)
+    .where(eq(schema.orders.id, orderId));
+  return !!order && commandeVisible(c.get("utilisateur"), order);
+}
+
 export function mountBordereaux(app: Hono): void {
   /**
    * Tout ce que le bloc « Bordereau transporteur » de la fiche doit afficher.
@@ -1029,6 +1052,8 @@ export function mountBordereaux(app: Hono): void {
    * les donne tous —, la liste courte n'est qu'un tri de la longue.
    */
   app.get("/admin/orders/:id/bordereau", async (c) => {
+    if (!(await aPortee(c, Number(c.req.param("id")))))
+      return c.json({ error: "Commande introuvable." }, 404);
     try {
       const order = await chargerCommande(Number(c.req.param("id")));
       const bordereau = await bordereauDe(order.id);
@@ -1115,6 +1140,8 @@ export function mountBordereaux(app: Hono): void {
   });
 
   app.get("/admin/orders/:id/bordereau/etiquette.pdf", async (c) => {
+    if (!(await aPortee(c, Number(c.req.param("id")))))
+      return c.json({ error: "Commande introuvable." }, 404);
     try {
       const b = await bordereauDe(Number(c.req.param("id")));
       if (!b) return c.json({ error: "Aucun bordereau." }, 404);

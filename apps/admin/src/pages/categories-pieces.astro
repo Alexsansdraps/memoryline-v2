@@ -1,7 +1,25 @@
 ---
+/**
+ * Les catégories de pièces et leurs nuanciers — et les nuanciers des
+ * personnages eux-mêmes.
+ *
+ * Chaque nuancier se compose ET se range (Nuancier.astro, lib/pastilles.ts) :
+ * l'ordre des pastilles est celui que la cliente voit dans le module. Avant,
+ * une pastille se retirait d'un clic et une couleur ajoutée arrivait toujours
+ * en dernier ; pour en placer une au milieu, il fallait tout défaire.
+ *
+ * Les quatre nuanciers des PERSONNAGES (peau, cheveux / pelage, vêtements,
+ * pantalon) étaient écrits dans le code du module, et nulle part ici : « il
+ * n'existe pas dans Catégories de pièces alors qu'il est bien côté client ».
+ * Ils ont leur section en bas de page, et se choisissent, couleur par
+ * couleur, sur la fiche d'un personnage (« Nuancier »), au même titre que le
+ * nuancier d'une catégorie.
+ */
 import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
+import Nuancier from "../components/Nuancier.astro";
 import { adminApi, type CategoriePiece } from "../lib/api.ts";
+import { LIBELLES_NUANCIERS_BASE, NUANCIERS_BASE } from "@memoryline/types/couleurs";
 
 const api = adminApi(Astro.request);
 
@@ -36,7 +54,20 @@ if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   const action = f.get("_action");
   try {
-    if (action === "archiver") {
+    if (action === "nuancier" || action === "nuancier-origine") {
+      // Un des quatre nuanciers des personnages : enregistré dans l'ordre
+      // des pastilles, ou remis à ses couleurs d'origine.
+      const nuancier = String(f.get("nuancier") ?? "");
+      const libelle =
+        LIBELLES_NUANCIERS_BASE[nuancier as keyof typeof LIBELLES_NUANCIERS_BASE] ?? nuancier;
+      if (action === "nuancier-origine") {
+        await api.enregistrerNuancierBase(nuancier, null);
+        flash = `Nuancier « ${libelle} » remis à ses couleurs d'origine.`;
+      } else {
+        await api.enregistrerNuancierBase(nuancier, couleursDepuis(f.get("colors")));
+        flash = `Nuancier « ${libelle} » enregistré. Le module montre ses couleurs dans cet ordre.`;
+      }
+    } else if (action === "archiver") {
       const restaurer = f.get("archived") === "false";
       const r = await api.archiverCategoriePiece(
         Number(f.get("id")),
@@ -80,6 +111,22 @@ try {
 } catch (e) {
   error = String(e);
 }
+
+/** Les nuanciers des personnages ; muets, leur section le dit au lieu de mentir. */
+let nuanciersBase: Awaited<ReturnType<typeof api.nuanciersBase>> | null = null;
+try {
+  nuanciersBase = await api.nuanciersBase();
+} catch {
+  nuanciersBase = null;
+}
+
+/** À quoi sert chaque nuancier des personnages, en une ligne. */
+const USAGE_NUANCIER: Record<string, string> = {
+  peau: "La peau des personnages : la première couleur de chaque personnage, sauf choix contraire sur sa fiche.",
+  cheveux: "Les cheveux dessinés sur le personnage, les coupes sans catégorie, et le pelage des animaux dessinés en photo.",
+  vetements: "Les vêtements dessinés sur le personnage, et les pièces sans catégorie de l'emplacement Vêtements ou Accessoires.",
+  pantalon: "Les pièces sans catégorie de l'emplacement Pantalon.",
+};
 
 // Les archivées quittent la liste ordinaire pour leur propre section.
 const categories = toutes.filter((c) => !c.archivedAt);
@@ -209,38 +256,11 @@ function messageArchivage(c: CategoriePiece): string {
                   Enregistrer
                 </button>
 
-                {/* Nuancier : pastilles cliquables + ajout par sélecteur.
-                    La liste part dans un champ texte caché, une couleur par
-                    ligne. */}
+                {/* Nuancier : à composer ET à ranger (poignée, ← →, ×). La
+                    liste part dans un champ texte, une couleur par ligne,
+                    avec « Enregistrer ». */}
                 <div class="basis-full">
-                  <span class="text-bo-muted text-xs">
-                    Couleurs proposées ({c.colors.length}) — cliquez une
-                    pastille pour la retirer
-                  </span>
-                  <div class="js-pastilles mt-1 flex flex-wrap items-center gap-2">
-                    {c.colors.map((hex) => (
-                      <button
-                        type="button"
-                        class="js-pastille h-7 w-7 rounded-full border border-bo-border"
-                        style={`background:${hex}`}
-                        title={`${hex} — retirer`}
-                        data-hex={hex}
-                      />
-                    ))}
-                    <input
-                      type="color"
-                      class="js-ajout h-7 w-9 border border-bo-border rounded cursor-pointer"
-                      title="Ajouter une couleur"
-                      value="#B8551D"
-                    />
-                    <button
-                      type="button"
-                      class="js-ajouter rounded border border-bo-border px-2 py-1 text-xs"
-                    >
-                      + Ajouter
-                    </button>
-                  </div>
-                  <textarea name="colors" class="js-liste hidden">{c.colors.join("\n")}</textarea>
+                  <Nuancier nom="colors" couleurs={c.colors} libelle={`le nuancier « ${c.name} »`} />
                 </div>
                 <p class="basis-full text-xs text-bo-muted">
                   {c.pieces ?? 0} pièce{(c.pieces ?? 0) > 1 ? "s" : ""} —
@@ -380,71 +400,68 @@ function messageArchivage(c: CategoriePiece): string {
         </select>
       </label>
       <div class="basis-full">
-        <span class="text-bo-muted">Couleurs proposées</span>
-        <div class="js-pastilles mt-1 flex flex-wrap items-center gap-2">
-          <input
-            type="color"
-            class="js-ajout h-8 w-10 border border-bo-border rounded cursor-pointer"
-            value="#B8551D"
-          />
-          <button
-            type="button"
-            class="js-ajouter rounded border border-bo-border px-2 py-1 text-xs"
-          >
-            + Ajouter
-          </button>
-        </div>
-        <textarea name="colors" class="js-liste hidden"></textarea>
+        <Nuancier nom="colors" couleurs={[]} libelle="le nuancier de la nouvelle catégorie" />
       </div>
       <button class="rounded bg-bo-accent text-white px-4 py-2">Créer</button>
     </form>
   </details>
 
-  <script is:inline>
-    // Un nuancier se compose à la souris : une pastille par couleur, un
-    // sélecteur pour en ajouter, un clic sur une pastille pour la retirer.
-    // Le formulaire n'envoie qu'une liste texte — c'est lisible et ça passe
-    // sans JavaScript si besoin.
-    for (const form of document.querySelectorAll("form.js-cat")) {
-      const boite = form.querySelector(".js-pastilles");
-      const liste = form.querySelector(".js-liste");
-      const ajout = form.querySelector(".js-ajout");
-      const bouton = form.querySelector(".js-ajouter");
-      if (!boite || !liste) continue;
+  {/* ====== Nuanciers des personnages ====== */}
+  <section id="nuanciers-personnages" class="mt-8">
+    <h2 class="mb-1 font-semibold">Nuanciers des personnages</h2>
+    <p class="mb-3 max-w-3xl text-sm text-bo-muted">
+      Les couleurs proposées pour le dessin d'un personnage lui-même : sa peau,
+      ses cheveux ou son pelage, ce qui est dessiné sur lui. Sur la fiche d'un
+      personnage (bouton « 🎨 Couleurs »), chaque couleur du dessin choisit son
+      « Nuancier » : l'un de ces quatre, ou celui d'une catégorie ci-dessus. Le
+      chien qui doit proposer les teintes de peau prend « Peau ».
+    </p>
+    {!nuanciersBase && (
+      <p class="mb-3 text-sm text-red-600">
+        Les nuanciers des personnages n'ont pas pu être lus. Rechargez la page.
+      </p>
+    )}
+    {nuanciersBase && (
+      <div class="grid gap-3 md:grid-cols-2">
+        {NUANCIERS_BASE.map((n) => (
+          <form method="POST" class="rounded-lg border border-bo-border bg-bo-surface p-4 text-sm">
+            {/* L'action vient du bouton cliqué : un champ caché « _action »
+                passerait devant celle du bouton dans le formulaire envoyé. */}
+            <input type="hidden" name="nuancier" value={n} />
+            <h3 class="font-medium">
+              {LIBELLES_NUANCIERS_BASE[n]}
+              <span class="ml-1 text-xs font-normal text-bo-muted">
+                {nuanciersBase!.modifies[n] ? "— vos couleurs" : "— couleurs d'origine"}
+              </span>
+            </h3>
+            <p class="mb-2 text-xs text-bo-muted">{USAGE_NUANCIER[n]}</p>
+            <Nuancier
+              nom="colors"
+              couleurs={nuanciersBase!.nuanciers[n]}
+              libelle={`le nuancier « ${LIBELLES_NUANCIERS_BASE[n]} »`}
+            />
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              <button name="_action" value="nuancier" class="rounded bg-bo-accent px-3 py-1.5 text-white">
+                Enregistrer « {LIBELLES_NUANCIERS_BASE[n]} »
+              </button>
+              {nuanciersBase!.modifies[n] && (
+                <button
+                  name="_action"
+                  value="nuancier-origine"
+                  class="rounded border border-bo-border px-3 py-1.5 text-xs hover:bg-bo-bg"
+                  onclick={`return confirm(${JSON.stringify(`Remettre le nuancier « ${LIBELLES_NUANCIERS_BASE[n]} » à ses couleurs d'origine ? Vos couleurs seront remplacées ; les commandes déjà passées ne changent pas.`)})`}
+                >
+                  Revenir aux couleurs d'origine
+                </button>
+              )}
+            </div>
+          </form>
+        ))}
+      </div>
+    )}
+  </section>
 
-      function synchroniser() {
-        liste.value = [...boite.querySelectorAll(".js-pastille")]
-          .map((p) => p.getAttribute("data-hex"))
-          .join("\n");
-      }
-
-      function pastille(hex) {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "js-pastille h-7 w-7 rounded-full border border-bo-border";
-        b.style.background = hex;
-        b.title = hex + " — retirer";
-        b.setAttribute("data-hex", hex);
-        boite.insertBefore(b, ajout);
-      }
-
-      boite.addEventListener("click", (e) => {
-        const p = e.target.closest(".js-pastille");
-        if (!p) return;
-        p.remove();
-        synchroniser();
-      });
-
-      bouton?.addEventListener("click", () => {
-        const hex = (ajout.value || "").toUpperCase();
-        if (!/^#[0-9A-F]{6}$/.test(hex)) return;
-        if (boite.querySelector(`.js-pastille[data-hex="${hex}"]`)) return;
-        pastille(hex);
-        synchroniser();
-      });
-
-      synchroniser();
-    }
-
+  <script>
+    import "../lib/pastilles.ts";
   </script>
 </Admin>

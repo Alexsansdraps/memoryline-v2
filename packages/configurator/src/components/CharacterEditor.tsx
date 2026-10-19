@@ -23,6 +23,8 @@ import {
   type CouleursImage,
   type GroupeCouleur,
   type NuancierBase,
+  couleursDuNuancier,
+  type Nuancier,
 } from "@memoryline/types";
 import {
   NONE_ASSET,
@@ -34,10 +36,7 @@ import {
   paletteForVariant,
   regleDeLaPiece,
   type PieceCategoryDTO,
-  CLOTHES_TONES,
-  HAIR_TONES,
-  PANTS_TONES,
-  SKIN_TONES,
+  type NuanciersPersonnages,
   SLOTS,
   SLOT_THUMB_VIEWBOX,
   type CharacterDTO,
@@ -51,6 +50,9 @@ import { CharacterStack } from "./CharacterLayer";
 import {
   BarreActions,
   brancherDemiRangee,
+  createPartiesDessous,
+  defilerJusqua,
+  InviteADescendre,
   largeurDemiVignette,
   ZoneDefilante,
 } from "./Defilement";
@@ -66,17 +68,14 @@ import type { MessagesConfigurateur } from "../messages";
 /*  Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Nuancier d'un groupe du dessin de BASE, tel que choisi au back-office : la
+/*
+ * Le nuancier d'un groupe du dessin de BASE se choisit au back-office : la
  * peau d'un humain, le pelage d'un chat (celui des cheveux lui va), une robe
- * dessinée sur le personnage…
+ * dessinée sur le personnage, ou le nuancier d'une catégorie de pièces. Ses
+ * couleurs viennent de la boutique (`nuanciersBase`, `pieceCategories`) et
+ * se lisent dans l'éditeur (cf. presetsDuNuancier) — elles ne sont plus
+ * écrites ici.
  */
-const NUANCIERS: Record<NuancierBase, readonly string[]> = {
-  peau: SKIN_TONES,
-  cheveux: HAIR_TONES,
-  vetements: CLOTHES_TONES,
-  pantalon: PANTS_TONES,
-};
 
 /**
  * SVG inline (string) prêt à être injecté : recolorié + cadré (viewBox zoomé)
@@ -562,9 +561,17 @@ function SectionTitle(props: {
    * choix du personnage) : un trait au-dessus l'en sépare.
    */
   partie?: boolean;
+  /**
+   * Titre où l'invitation à descendre peut mener : il reçoit alors le focus
+   * (cf. defilerJusqua).
+   */
+  arrivee?: boolean;
+  ref?: (el: HTMLHeadingElement) => void;
 }) {
   return (
     <h4
+      ref={props.ref}
+      tabindex={props.arrivee ? -1 : undefined}
       style={{
         "font-size": "14px",
         "font-weight": "700",
@@ -576,11 +583,37 @@ function SectionTitle(props: {
               "border-top": "1px solid #e5e7eb",
             }
           : {}),
+        // Le focus n'y arrive que par l'invitation, jamais par tabulation : un
+        // contour autour d'un titre ressemblerait à un bouton qu'on ne peut
+        // pas actionner.
+        ...(props.arrivee ? { outline: "none" } : {}),
       }}
     >
       {props.children}
     </h4>
   );
+}
+
+/**
+ * La partie des réglages que chaque emplacement annonce dans l'invitation à
+ * descendre : le haut et le pantalon ne font qu'un, « vêtements ».
+ */
+const PARTIE_DU_SLOT: Record<Slot, string> = {
+  clothes: "vetements",
+  pants: "vetements",
+  hair: "cheveux",
+  accessory: "accessoires",
+};
+
+/** « couleurs, vêtements et cheveux », à la manière de la langue de la page. */
+function enumeration(mots: string[], locale: string): string {
+  try {
+    return new Intl.ListFormat(locale, { style: "long", type: "conjunction" }).format(mots);
+  } catch {
+    // Navigateur trop ancien pour `Intl.ListFormat`, ou locale inconnue : de
+    // simples virgules se lisent aussi.
+    return mots.join(", ");
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -604,6 +637,8 @@ export function CharacterEditor(props: {
   assetBaseUrl?: string;
   /** Catégories de pièces et leurs nuanciers (vide = nuanciers de repli). */
   pieceCategories?: PieceCategoryDTO[];
+  /** Les nuanciers des personnages réglés par la boutique (sinon ceux d'origine). */
+  nuanciersBase?: NuanciersPersonnages;
   onSetAsset: (slot: Slot, variantId: string | number) => void;
   onClearSlot: (slot: Slot) => void;
   /** Couleurs choisies : clé namespacée -> couleur (un groupe entier d'un coup). */
@@ -614,6 +649,14 @@ export function CharacterEditor(props: {
   messages: MessagesConfigurateur;
 }) {
   const m = () => props.messages;
+  /**
+   * Les pastilles d'un groupe du dessin de base : le nuancier choisi au
+   * back-office (l'un des quatre des personnages, ou celui d'une catégorie
+   * de pièces), sinon `repli` — la peau pour la première couleur d'un humain,
+   * les vêtements pour les autres, le pelage pour un dessin en pixels.
+   */
+  const presetsDuNuancier = (nuancier: Nuancier | undefined, repli: NuancierBase) =>
+    couleursDuNuancier(nuancier, repli, props.nuanciersBase, props.pieceCategories);
   /** Intitulé de chaque emplacement, traduit. */
   const titreSlot = (): Record<Slot, string> => ({
     clothes: m().vetements,
@@ -744,14 +787,13 @@ export function CharacterEditor(props: {
         const premier = groupesDuDessin(base.baseColorZones, base.baseGroupesCouleurs)[0];
         tous.forEach((ligne, i) => {
           const g = groupes[i]!;
-          const nuancier = g.nuancier ?? (g.zone === premier?.zone ? "peau" : "vetements");
-          rangees.push({ ligne, presets: NUANCIERS[nuancier] });
+          const repli: NuancierBase = g.zone === premier?.zone ? "peau" : "vetements";
+          rangees.push({ ligne, presets: presetsDuNuancier(g.nuancier, repli) });
         });
       }
 
       for (const f of famillesProposees(base.baseCouleursImage)) {
         const cle = colorKey(BASE_COLOR_SCOPE, f.cle);
-        const nuancier = f.nuancier ?? "cheveux";
         rangees.push({
           ligne: {
             zone: cle,
@@ -765,9 +807,9 @@ export function CharacterEditor(props: {
             // moment du rendu (cf. couleurs-image.ts).
             couleurs: (hex) => ({ [cle]: hex }),
           },
-          // Le nuancier des cheveux va au pelage d'un animal : c'est celui que
-          // la boutique choisit au back-office, faute d'autre indication.
-          presets: NUANCIERS[nuancier],
+          // Le nuancier choisi au back-office ; faute d'indication, celui des
+          // cheveux, qui va au pelage d'un animal.
+          presets: presetsDuNuancier(f.nuancier, "cheveux"),
         });
       }
       return rangees;
@@ -785,6 +827,71 @@ export function CharacterEditor(props: {
   const aDesReglages = () =>
     baseZones().length > 0 || SLOTS.some((slot) => props.slots[slot].length > 0);
 
+  /* ---- L'invitation à descendre jusqu'aux réglages ----------------------- */
+  // Le titre des réglages, la colonne de l'aperçu : où mène l'invitation, et
+  // ce qui peut cacher le haut de l'écran en y arrivant.
+  let titreReglages: HTMLHeadingElement | undefined;
+  let colonnePerso: HTMLDivElement | undefined;
+  let racine: HTMLDivElement | undefined;
+  const { brancher: brancherParties, dessous, aDefile } = createPartiesDessous();
+
+  /** Le mot de chaque partie, traduit, tel qu'il se lit dans une phrase. */
+  const motDeLaPartie = (partie: string): string | undefined =>
+    ({
+      couleurs: m().partieCouleurs,
+      vetements: m().partieVetements,
+      cheveux: m().partieCheveux,
+      accessoires: m().partieAccessoires,
+    })[partie];
+
+  /** « Plus bas : couleurs, vêtements, cheveux et accessoires », ou rien. */
+  const libelleInvite = (): string => {
+    const mots = dessous()
+      .map(motDeLaPartie)
+      .filter((mot): mot is string => !!mot);
+    return mots.length === 0
+      ? ""
+      : m().plusBas.replace("{parties}", enumeration(mots, m().locale));
+  };
+
+  /**
+   * Ce que l'aperçu du personnage cache en haut de la zone qui défile.
+   *
+   * Sur téléphone, il devient un bandeau collé AU-DESSUS des réglages : le
+   * titre visé doit s'arrêter sous lui. Sur un écran large, il est collé À
+   * CÔTÉ, dans sa colonne, et ne cache rien. On le lit sur la page plutôt
+   * que sur la largeur de l'écran : c'est la feuille de style de l'hôte qui
+   * décide du point de bascule.
+   */
+  const masqueHaut = (cible: HTMLElement): number => {
+    if (!colonnePerso) return 0;
+    const apercu = colonnePerso.getBoundingClientRect();
+    const titre = cible.getBoundingClientRect();
+    const auDessus = apercu.left < titre.right && apercu.right > titre.left;
+    return auDessus ? apercu.height : 0;
+  };
+
+  /**
+   * Un toucher de l'invitation : on descend jusqu'à la première partie
+   * cachée. Si c'est la première des réglages, on vise leur titre, juste
+   * au-dessus d'elle — on arrive au début, pas au milieu ; sinon, le titre de
+   * la partie (« Coupes de cheveux »).
+   */
+  const allerAuxReglages = () => {
+    const premiere = dessous()[0];
+    if (!racine || !premiere) return;
+    const parties = Array.from(
+      racine.querySelectorAll<HTMLElement>("[data-partie]"),
+    ).filter((el) => el.getBoundingClientRect().height >= 1);
+    const partie = parties.find((el) => el.dataset.partie === premiere);
+    if (!partie) return;
+    const cible =
+      (partie === parties[0] ? titreReglages : undefined) ??
+      partie.querySelector<HTMLElement>("h4") ??
+      partie;
+    defilerJusqua(cible, masqueHaut(cible));
+  };
+
   /** Section galerie pour un slot (vêtements/pantalon/cheveux/accessoire). */
   function SlotSection(opts: { slot: Slot; allowNone: boolean }) {
     const list = (): VariantDTO[] => props.slots[opts.slot];
@@ -795,88 +902,99 @@ export function CharacterEditor(props: {
     const viewBox = SLOT_THUMB_VIEWBOX[opts.slot];
     return (
       <Show when={list().length > 0}>
-        <SectionTitle>{titreSlot()[opts.slot]}</SectionTitle>
-        <Gallery precedent={m().precedent} suivant={m().suivant}>
-          <Show when={opts.allowNone}>
-            <Thumb
-              selected={hasNone()}
-              onClick={() => props.onClearSlot(opts.slot)}
-              title={m().aucun}
-            >
-              <CrossedCircle />
-            </Thumb>
-          </Show>
-          <For each={list()}>
-            {(variant) => (
+        {/* Une partie des réglages : l'invitation à descendre la nomme tant
+            qu'elle reste sous le bord. */}
+        <div data-partie={PARTIE_DU_SLOT[opts.slot]}>
+          <SectionTitle arrivee>{titreSlot()[opts.slot]}</SectionTitle>
+          <Gallery precedent={m().precedent} suivant={m().suivant}>
+            <Show when={opts.allowNone}>
               <Thumb
-                selected={String(selectedId()) === String(variant.id)}
-                onClick={() => props.onSetAsset(opts.slot, variant.id)}
-                title={variant.name ?? `#${variant.id}`}
+                selected={hasNone()}
+                onClick={() => props.onClearSlot(opts.slot)}
+                title={m().aucun}
               >
-                <SvgThumb
-                  svg={thumbSvg(
-                    props.cache,
-                    variant.svgUrl,
-                    // La pièce portée, dans les couleurs du client ; les
-                    // autres, telles qu'elles arriveront si on les touche —
-                    // dans les couleurs de leur dessin, la couleur principale
-                    // choisie en plus (cf. couleursAuChangementDePiece). Les
-                    // zones non proposées restent à leur défaut, comme sur le
-                    // personnage.
-                    couleursDeLaPiece(
-                      String(selectedId()) === String(variant.id)
-                        ? props.character.colors
-                        : couleursAuChangementDePiece(
-                            opts.slot,
-                            props.character.colors,
-                            findVariant(list(), selectedId()),
-                            variant,
-                            props.pieceCategories,
-                          ),
-                      opts.slot,
-                      variant,
-                    ),
-                    viewBox,
-                    `${uid}-${opts.slot}-${variant.id}`,
-                    {
-                      couleursImage: variant.couleursImage,
-                      chemin: `/pieces/${variant.id}`,
-                      assetBaseUrl: props.assetBaseUrl,
-                    },
-                  )}
-                  label={variant.name ?? `#${variant.id}`}
-                />
+                <CrossedCircle />
               </Thumb>
-            )}
-          </For>
-        </Gallery>
-        <Show when={zonesForSlot(opts.slot).length > 0}>
-          {(() => {
-            // Nuancier de LA pièce portée : celui de sa catégorie, sinon
-            // celui de l'emplacement (et alors la saisie libre reste ouverte).
-            const palette = paletteForVariant(
-              props.pieceCategories,
-              findVariant(props.slots[opts.slot], props.character.assets[opts.slot]),
-              opts.slot,
-            );
-            return (
-              <ColorRow
-                libelle={m().choixCouleur}
-                couleurPerso={m().couleurPerso}
-                zones={zonesForSlot(opts.slot)}
-                presets={palette.couleurs}
-                libre={palette.libre}
-                onSetColor={choisirCouleur}
-              />
-            );
-          })()}
-        </Show>
+            </Show>
+            <For each={list()}>
+              {(variant) => (
+                <Thumb
+                  selected={String(selectedId()) === String(variant.id)}
+                  onClick={() => props.onSetAsset(opts.slot, variant.id)}
+                  title={variant.name ?? `#${variant.id}`}
+                >
+                  <SvgThumb
+                    svg={thumbSvg(
+                      props.cache,
+                      variant.svgUrl,
+                      // La pièce portée, dans les couleurs du client ; les
+                      // autres, telles qu'elles arriveront si on les touche —
+                      // dans les couleurs de leur dessin, la couleur principale
+                      // choisie en plus (cf. couleursAuChangementDePiece). Les
+                      // zones non proposées restent à leur défaut, comme sur le
+                      // personnage.
+                      couleursDeLaPiece(
+                        String(selectedId()) === String(variant.id)
+                          ? props.character.colors
+                          : couleursAuChangementDePiece(
+                              opts.slot,
+                              props.character.colors,
+                              findVariant(list(), selectedId()),
+                              variant,
+                              props.pieceCategories,
+                            ),
+                        opts.slot,
+                        variant,
+                      ),
+                      viewBox,
+                      `${uid}-${opts.slot}-${variant.id}`,
+                      {
+                        couleursImage: variant.couleursImage,
+                        chemin: `/pieces/${variant.id}`,
+                        assetBaseUrl: props.assetBaseUrl,
+                      },
+                    )}
+                    label={variant.name ?? `#${variant.id}`}
+                  />
+                </Thumb>
+              )}
+            </For>
+          </Gallery>
+          <Show when={zonesForSlot(opts.slot).length > 0}>
+            {(() => {
+              // Nuancier de LA pièce portée : celui de sa catégorie, sinon
+              // celui de l'emplacement (et alors la saisie libre reste ouverte).
+              const palette = paletteForVariant(
+                props.pieceCategories,
+                findVariant(props.slots[opts.slot], props.character.assets[opts.slot]),
+                opts.slot,
+                props.nuanciersBase,
+              );
+              return (
+                <ColorRow
+                  libelle={m().choixCouleur}
+                  couleurPerso={m().couleurPerso}
+                  zones={zonesForSlot(opts.slot)}
+                  presets={palette.couleurs}
+                  libre={palette.libre}
+                  onSetColor={choisirCouleur}
+                />
+              );
+            })()}
+          </Show>
+        </div>
       </Show>
     );
   }
 
   return (
-    <div class="ml-cfg-editor">
+    <div
+      class="ml-cfg-editor"
+      ref={(el) => {
+        racine = el;
+        brancherParties(el);
+      }}
+    >
       {/* Titre seul : « Retour » a rejoint « Valider » dans la barre du bas.
           Collé en haut, il finissait sous l'aperçu du personnage, collé lui
           aussi, sur téléphone et tablette en portrait. */}
@@ -904,6 +1022,7 @@ export function CharacterEditor(props: {
       >
         {/* Colonne gauche : prévisualisation du perso composé */}
         <div
+          ref={colonnePerso}
           class="ml-cfg-perso-col"
           style={{ position: "sticky", top: "0" }}
         >
@@ -1029,25 +1148,35 @@ export function CharacterEditor(props: {
           {/* La seconde partie de l'éditeur : tout ce qui se règle sur le
               personnage choisi. */}
           <Show when={aDesReglages()}>
-            <SectionTitle partie>
+            <SectionTitle
+              partie
+              arrivee
+              ref={(el) => {
+                titreReglages = el;
+              }}
+            >
               {m().personnaliserPerso}
             </SectionTitle>
           </Show>
           {/* Couleurs du dessin de base : la peau, et les groupes que le
               back-office propose en plus (pelage, robe dessinée…). Une
-              rangée chacun, avec son propre nuancier. */}
-          <For each={baseZones()}>
-            {(b) => (
-              <ColorRow
-                libelle={m().choixCouleur}
-                couleurPerso={m().couleurPerso}
-                zones={[b.ligne]}
-                presets={b.presets}
-                libre={true}
-                onSetColor={choisirCouleur}
-              />
-            )}
-          </For>
+              rangée chacun, avec son propre nuancier. Ensemble, la partie
+              « couleurs » de l'invitation à descendre — vide, et donc
+              ignorée, sur un personnage qui n'a pas de couleur à régler. */}
+          <div data-partie="couleurs">
+            <For each={baseZones()}>
+              {(b) => (
+                <ColorRow
+                  libelle={m().choixCouleur}
+                  couleurPerso={m().couleurPerso}
+                  zones={[b.ligne]}
+                  presets={b.presets}
+                  libre={true}
+                  onSetColor={choisirCouleur}
+                />
+              )}
+            </For>
+          </div>
 
           <SlotSection slot="clothes" allowNone={false} />
           <SlotSection slot="pants" allowNone={false} />
@@ -1061,9 +1190,19 @@ export function CharacterEditor(props: {
           cliente). Les deux ramènent à la liste : le personnage est modifié
           au fil des choix. Seule exception, un personnage qu'on vient
           d'ajouter : Retour annule son ajout (Configurator, quitterEditeur). */}
-      {/* Sans fondu : il recouvrirait la demi-rangée de la grille, qui sert
-          d'indice. */}
-      <BarreActions indice={false}>
+      {/* Pas de fondu : il recouvrirait la demi-rangée de la grille, qui sert
+          d'indice. À sa place, le rond ⌄ seul, suivi de ce qui attend plus
+          bas (InviteADescendre). */}
+      <BarreActions
+        indice={false}
+        invite={
+          <InviteADescendre
+            libelle={libelleInvite()}
+            visible={!aDefile()}
+            onClick={allerAuxReglages}
+          />
+        }
+      >
         <Button variant="secondary" onClick={() => props.onBack()}>
           ‹ {m().retour}
         </Button>

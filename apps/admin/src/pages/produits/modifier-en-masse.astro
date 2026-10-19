@@ -5,9 +5,18 @@
  * Corriger vingt prix ou ranger trente affiches dans une catégorie, fiche par
  * fiche, prend une matinée. Cet écran présente les mêmes réglages sous forme
  * de grille : une ligne par produit, une colonne par champ, et un seul
- * enregistrement à la fin. Le bouton « recopier vers le bas » de chaque
- * colonne reprend la valeur de la première ligne et la pose sur toutes les
- * autres, ce qui est le geste qui fait gagner la matinée.
+ * enregistrement à la fin. Sous les en-têtes, la ligne « Appliquer à tout »
+ * pose une valeur sur toute une colonne, comme dans l'éditeur en masse de
+ * Shopify — le geste qui fait gagner la matinée (« il faut qu'on puisse
+ * modifier en masse : le nom, l'identifiant, le prix, les collections, le
+ * poids, les catégories, les descriptions, les statuts, le type d'affiche »,
+ * carte Trello de Margaux).
+ *
+ * RIEN NE PART SANS AVOIR ÉTÉ VU. « Vérifier les changements » montre, ligne
+ * par ligne, ce que chaque champ était et ce qu'il deviendra, les lignes
+ * refusées et pourquoi, et les redirections 301 que poseront les adresses
+ * changées. C'est seulement de là qu'on enregistre : renommer cent affiches
+ * d'un clic se relit avant.
  *
  * La page ne renvoie que les lignes réellement touchées. Le navigateur garde
  * la valeur d'origine de chaque champ et compare avant d'envoyer : réécrire
@@ -27,24 +36,30 @@
  *
  * Les produits à éditer arrivent soit par leurs identifiants (« ?ids=12,45 »,
  * ce que passe la liste des produits quand on coche des lignes), soit par le
- * filtre courant, repris tel quel de la liste.
+ * filtre courant, repris tel quel de la liste (« Modifier les N affiches de
+ * ce filtre »).
  */
 import { url } from "../../lib/url.ts";
 import Admin from "../../layouts/Admin.astro";
+import EditeurTexte from "../../components/EditeurTexte.astro";
 import {
   adminApi,
   formatPrice,
+  type ApercuMasse,
   type ListeProduitsAdmin,
   type ProduitAdmin,
+  type TypeAffiche,
 } from "../../lib/api.ts";
 
 const api = adminApi(Astro.request);
 
 /**
- * Au-delà, la grille devient illisible et le navigateur rame sur des milliers
- * de champs. Mieux vaut deux passages qu'une page qui ne répond plus.
+ * Au-delà, la grille devient lourde et le navigateur rame sur des milliers
+ * de champs. Deux cent cinquante couvrent le catalogue entier d'aujourd'hui
+ * (cent soixante-dix-huit affiches) : « toutes les affiches d'un filtre » tient
+ * en une fois. Au-delà, mieux vaut deux passages qu'une page qui ne répond plus.
  */
-const PLAFOND = 100;
+const PLAFOND = 250;
 
 const STATUTS = [
   { valeur: "active", libelle: "Actif" },
@@ -56,6 +71,10 @@ function libelleStatut(valeur: string): string {
   return STATUTS.find((s) => s.valeur === valeur)?.libelle ?? valeur;
 }
 
+/** Les trois façons de toucher aux collections d'un lot. */
+const MODES_COLLECTIONS = ["ajouter", "retirer", "remplacer"] as const;
+type ModeCollections = (typeof MODES_COLLECTIONS)[number];
+
 /** Les images de l'API sont servies en chemin relatif : le navigateur, lui, a besoin de l'adresse complète. */
 const API_PUBLIQUE = import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
 function imgSrc(chemin: string | null): string {
@@ -66,6 +85,31 @@ function imgSrc(chemin: string | null): string {
 /** Centimes vers la saisie à l'écran, en français : 2390 devient « 23,90 ». */
 function euros(cents: number): string {
   return (cents / 100).toFixed(2).replace(".", ",");
+}
+
+/**
+ * L'adresse tirée d'un nom — la même règle que l'API (produits-masse.ts) et
+ * que le script de la page : sans accent, en minuscules, des tirets.
+ */
+function slugifier(valeur: string): string {
+  return valeur
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+/** Le texte d'une description, pour la montrer en une ligne dans la grille. */
+function extrait(html: string | null | undefined): string {
+  const texte = String(html ?? "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+  return texte.length > 60 ? `${texte.slice(0, 59)}…` : texte;
 }
 
 const parametres = Astro.url.searchParams;
@@ -93,11 +137,16 @@ type LigneModifiee = {
   id: number;
   name?: string;
   slug?: string;
+  /** L'adresse suit le nom, rendue unique par l'API (-2, -3…). */
+  slugDepuisNom?: true;
   status?: string;
   basePriceCents?: number;
   categoryId?: number | null;
   weightGrams?: number | null;
   aiEnabled?: boolean;
+  description?: string | null;
+  defaultView?: string | null;
+  collections?: { mode: ModeCollections; ids: number[] };
   /** Centimes, uniquement les formats dont le prix change. */
   prix?: Record<string, number>;
 };
@@ -147,6 +196,10 @@ function relireLigne(
     const slug = typeof ligne.slug === "string" ? ligne.slug.trim() : "";
     if (!slug) return "L'identifiant ne peut pas rester vide.";
     sortie.slug = slug;
+  } else if ("slugDepuisNom" in ligne) {
+    if (ligne.slugDepuisNom !== true)
+      return "L'identifiant n'a pas été compris. Cliquez de nouveau « Refaire depuis le nom ».";
+    sortie.slugDepuisNom = true;
   }
 
   if ("status" in ligne) {
@@ -206,6 +259,38 @@ function relireLigne(
     sortie.aiEnabled = ligne.aiEnabled;
   }
 
+  if ("description" in ligne) {
+    const d = ligne.description;
+    if (d !== null && typeof d !== "string")
+      return "La description n'a pas été comprise. Rouvrez-la et validez-la de nouveau.";
+    sortie.description = d;
+  }
+
+  if ("defaultView" in ligne) {
+    const v = ligne.defaultView;
+    if (v !== null && typeof v !== "string")
+      return "Ce type d'affiche n'a pas été compris. Choisissez-le de nouveau.";
+    sortie.defaultView = v === "" ? null : v;
+  }
+
+  if ("collections" in ligne) {
+    const c = ligne.collections;
+    const lue =
+      c && typeof c === "object" && !Array.isArray(c)
+        ? (c as Record<string, unknown>)
+        : null;
+    const mode = String(lue?.mode ?? "");
+    const ids = lue?.ids;
+    if (
+      !lue ||
+      !(MODES_COLLECTIONS as readonly string[]).includes(mode) ||
+      !Array.isArray(ids) ||
+      ids.some((n) => !Number.isInteger(n) || (n as number) <= 0)
+    )
+      return "Les collections n'ont pas été comprises. Choisissez-les de nouveau.";
+    sortie.collections = { mode: mode as ModeCollections, ids: ids as number[] };
+  }
+
   return null;
 }
 
@@ -253,11 +338,17 @@ let flashTon: "succes" | "avertissement" | "erreur" = "succes";
 const messagesErreur = new Map<number, string>();
 
 /**
- * Ce que la propriétaire avait tapé pour les lignes que l'API n'a pas gardées.
- * Sans ça, la page se recharge sur les anciennes valeurs et son travail est
- * perdu au moment précis où il faudrait le corriger.
+ * Ce que la propriétaire avait tapé : pour les lignes que l'API n'a pas
+ * gardées, et pour TOUTES les lignes vérifiées. Sans ça, la page se recharge
+ * sur les anciennes valeurs et son travail est perdu au moment précis où il
+ * faudrait le relire ou le corriger.
  */
 const valeursSaisies = new Map<number, Record<string, unknown>>();
+
+/** Après « Vérifier les changements » : ce qui changerait, et le lot à enregistrer. */
+let apercu: ApercuMasse[] | null = null;
+let chargeVerifiee = "";
+let redirectionsPrevues = 0;
 
 function accord(n: number, singulier: string, pluriel: string): string {
   return n > 1 ? pluriel : singulier;
@@ -265,6 +356,7 @@ function accord(n: number, singulier: string, pluriel: string): string {
 
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
+  const action = String(f.get("_action") ?? "enregistrer");
   const { lignes: modifications, refus } = lireModifications(
     String(f.get("modifications") ?? ""),
   );
@@ -274,11 +366,42 @@ if (Astro.request.method === "POST") {
   }
 
   if (modifications.length === 0 && refus.length === 0) {
-    flash = "Rien à enregistrer : aucune valeur n'avait changé.";
+    flash = "Rien à vérifier : aucune valeur n'avait changé.";
     flashTon = "avertissement";
   } else if (modifications.length === 0) {
     flash = `Rien n'a été envoyé à la boutique : ${refus.length} ${accord(refus.length, "ligne n'a", "lignes n'ont")} pas pu être ${accord(refus.length, "relue", "relues")}. La raison est indiquée en rouge, et vos valeurs sont toujours à l'écran.`;
     flashTon = "erreur";
+  } else if (action === "verifier") {
+    // Toutes les lignes reviennent à l'écran telles qu'elles ont été tapées :
+    // la grille reste modifiable, et l'aperçu s'enregistre d'un clic.
+    for (const m of modifications) valeursSaisies.set(m.id, m);
+    try {
+      const r = await api.enregistrerProduitsEnMasse(modifications, true);
+      const refusesApi = r.erreurs ?? [];
+      for (const e of refusesApi) messagesErreur.set(e.id, e.message);
+      const refusees = new Set(refusesApi.map((e) => e.id));
+      apercu = r.apercu ?? [];
+      redirectionsPrevues = r.redirections ?? 0;
+      // Le lot enregistré sera EXACTEMENT celui qui vient d'être montré,
+      // sans les lignes refusées : elles restent à corriger dans la grille.
+      chargeVerifiee = JSON.stringify(
+        modifications.filter((m) => !refusees.has(m.id)),
+      );
+      const bloquees = refusesApi.length + refus.length;
+      flash =
+        `Vérification faite, rien n'est encore enregistré : ${apercu.length} ${accord(apercu.length, "affiche changerait", "affiches changeraient")}` +
+        (bloquees
+          ? `, ${bloquees} ${accord(bloquees, "ligne est refusée", "lignes sont refusées")} (raison en rouge).`
+          : ".") +
+        " Relisez le tableau ci-dessous, puis cliquez « Enregistrer ces changements ».";
+      flashTon = bloquees ? "avertissement" : "succes";
+    } catch (e) {
+      flash =
+        "La vérification n'a pas pu se faire, la boutique n'a pas répondu : " +
+        String(e).replace(/^Error:\s*/, "") +
+        ". Vos valeurs sont toujours à l'écran, réessayez dans un instant.";
+      flashTon = "erreur";
+    }
   } else {
     try {
       const r = await api.enregistrerProduitsEnMasse(modifications);
@@ -296,12 +419,17 @@ if (Astro.request.method === "POST") {
         modifications.length - r.count - refusesApi.length,
       );
       const bloquees = refusesApi.length + refus.length;
+      const redirections = r.redirections ?? 0;
 
       const morceaux: string[] = [
         r.count === 0
           ? "Aucun produit enregistré."
           : `${r.count} ${accord(r.count, "produit enregistré", "produits enregistrés")}.`,
       ];
+      if (redirections > 0)
+        morceaux.push(
+          `${redirections} ${accord(redirections, "adresse a changé : son ancienne adresse redirige", "adresses ont changé : leurs anciennes adresses redirigent")} vers la nouvelle (301), les liens déjà partagés continuent de fonctionner.`,
+        );
       if (bloquees > 0)
         morceaux.push(
           `${bloquees} ${accord(bloquees, "ligne n'a", "lignes n'ont")} pas pu être ${accord(bloquees, "enregistrée", "enregistrées")} : la raison est indiquée en rouge, sur la ligne quand le produit est encore dans le tableau, en haut de cette page sinon. Vos valeurs y sont toujours.`,
@@ -329,14 +457,7 @@ if (Astro.request.method === "POST") {
   }
 }
 
-/**
- * Ce que la page demande à `api.produitsAdmin`.
- *
- * Le champ `ids` est en cours d'ajout au client API : le déclarer ici permet
- * d'écrire l'appel juste tout de suite, au lieu de ramener cinq cents produits
- * avec leurs variantes pour en modifier trois, et de rater ceux qui tombent
- * après le cinq centième dans l'ordre alphabétique.
- */
+/** Ce que la page demande à `api.produitsAdmin`. */
 interface FiltresProduits {
   statut?: string;
   q?: string;
@@ -344,12 +465,18 @@ interface FiltresProduits {
   collection?: number;
   limit?: number;
   ids?: number[];
+  avecDescription?: boolean;
 }
 
 const filtres: FiltresProduits =
   idsDemandes.length > 0
     ? // Une sélection se respecte quel que soit le statut des produits cochés.
-      { ids: idsDemandes, statut: "tous", limit: idsDemandes.length }
+      {
+        ids: idsDemandes,
+        statut: "tous",
+        limit: idsDemandes.length,
+        avecDescription: true,
+      }
     : {
         statut: statutFiltre,
         ...(recherche ? { q: recherche } : {}),
@@ -360,8 +487,10 @@ const filtres: FiltresProduits =
           ? { collection: collectionFiltre }
           : {}),
         // Un de plus que le plafond : c'est ce qui distingue « il y en a
-        // exactement cent » de « il y en a davantage et on en cache ».
+        // exactement deux cent cinquante » de « il y en a davantage et on en
+        // cache ».
         limit: PLAFOND + 1,
+        avecDescription: true,
       };
 
 let liste: ListeProduitsAdmin | null = null;
@@ -371,6 +500,16 @@ try {
 } catch (e) {
   error = String(e).replace(/^Error:\s*/, "");
 }
+
+/** Les types d'affiche (« de face », « de dos »…). Muets : la colonne se tait. */
+let vues: TypeAffiche[] = [];
+try {
+  vues = await api.views();
+} catch {
+  vues = [];
+}
+const vuesOuvertes = vues.filter((v) => !v.archivedAt);
+const nomVue = new Map(vues.map((v) => [v.slug, v.name]));
 
 /**
  * Toutes les catégories, ARCHIVÉES COMPRISES, avec leur nom et leur poids.
@@ -444,6 +583,23 @@ const introuvables =
     : 0;
 
 /**
+ * Les collections que la grille sait nommer : celles où l'on peut ranger
+ * (l'API en retire les archivées), plus les archivées où une affiche du lot
+ * se trouve déjà — on doit pouvoir l'en sortir, pas l'y ranger.
+ */
+const nomsCollections: Record<string, { nom: string; archivee: boolean }> = {};
+for (const c of liste?.collections ?? [])
+  nomsCollections[String(c.id)] = { nom: c.name, archivee: false };
+for (const p of produits)
+  for (const c of p.collections)
+    if (!nomsCollections[String(c.id)])
+      nomsCollections[String(c.id)] = { nom: c.name, archivee: !!c.archivee };
+const collectionsOuvertes = liste?.collections ?? [];
+const collectionsArchiveesDuLot = Object.entries(nomsCollections)
+  .filter(([, c]) => c.archivee)
+  .map(([id, c]) => ({ id: Number(id), name: c.nom }));
+
+/**
  * Une colonne de prix par format présent dans la sélection, dans l'ordre du
  * catalogue. Un produit qui n'a pas le format laisse la case vide : il n'y a
  * rien à y écrire.
@@ -458,9 +614,8 @@ const formatsPresents = [
 ];
 /** Le prix de repli ne concerne que les produits sans aucun format. */
 const afficherRepli = produits.some((p) => p.formats.length === 0);
-const nbColonnes =
-  7 + formatsPresents.length + (afficherRepli ? 1 : 0);
-const largeurTable = 80 + 7 * (formatsPresents.length + (afficherRepli ? 1 : 0));
+const nbColonnes = 10 + formatsPresents.length + (afficherRepli ? 1 : 0);
+const largeurTable = 122 + 7 * (formatsPresents.length + (afficherRepli ? 1 : 0));
 
 /**
  * Le prix exact de chaque format n'est pas dans la réponse de l'API : on ne
@@ -513,6 +668,30 @@ function prixSaisi(
   const v = (brut as Record<string, unknown>)[format];
   return typeof v === "number" && Number.isFinite(v) ? v : defaut;
 }
+/** Le texte ou l'absence de texte saisis, sinon la valeur de départ. */
+function texteOuNulSaisi(
+  saisie: Record<string, unknown> | undefined,
+  cle: string,
+  defaut: string | null,
+): string | null {
+  if (!saisie || !(cle in saisie)) return defaut;
+  const v = saisie[cle];
+  return typeof v === "string" ? v : v === null ? null : defaut;
+}
+/** Les collections telles que la ligne les montrera, saisie comprise. */
+function collectionsSaisies(
+  p: ProduitAdmin,
+  saisie: Record<string, unknown> | undefined,
+): number[] {
+  const depart = p.collections.map((c) => c.id);
+  const c = saisie?.collections as { mode?: string; ids?: number[] } | undefined;
+  if (!c || !Array.isArray(c.ids)) return depart;
+  if (c.mode === "remplacer") return c.ids;
+  if (c.mode === "ajouter") return [...new Set([...depart, ...c.ids])];
+  return depart.filter((id) => !c.ids!.includes(id));
+}
+/** La forme comparable d'une liste de collections : triée, séparée par des virgules. */
+const listeTriee = (ids: number[]) => [...ids].sort((a, b) => a - b).join(",");
 
 /** Ce qu'elle avait tapé, en toutes lettres, pour une ligne qui a disparu du tableau. */
 function resumeSaisie(saisie: Record<string, unknown> | undefined): string {
@@ -521,6 +700,7 @@ function resumeSaisie(saisie: Record<string, unknown> | undefined): string {
   if (typeof saisie.name === "string") bouts.push(`nom : « ${saisie.name} »`);
   if (typeof saisie.slug === "string")
     bouts.push(`identifiant : ${saisie.slug}`);
+  if (saisie.slugDepuisNom === true) bouts.push("identifiant refait depuis le nom");
   if (typeof saisie.status === "string")
     bouts.push(`statut : ${libelleStatut(saisie.status)}`);
   const prix = saisie.prix;
@@ -543,6 +723,17 @@ function resumeSaisie(saisie: Record<string, unknown> | undefined): string {
   }
   if (typeof saisie.aiEnabled === "boolean")
     bouts.push(`affiche IA : ${saisie.aiEnabled ? "oui" : "non"}`);
+  if ("description" in saisie)
+    bouts.push(`description : « ${extrait(String(saisie.description ?? "")) || "vide"} »`);
+  if ("defaultView" in saisie) {
+    const v = saisie.defaultView;
+    bouts.push(`type d'affiche : ${typeof v === "string" ? (nomVue.get(v) ?? v) : "par défaut"}`);
+  }
+  const c = saisie.collections as { mode?: string; ids?: number[] } | undefined;
+  if (c && Array.isArray(c.ids))
+    bouts.push(
+      `collections : ${c.ids.map((id) => nomsCollections[String(id)]?.nom ?? `n° ${id}`).join(", ") || "aucune"}`,
+    );
   return bouts.join(" ; ");
 }
 
@@ -560,16 +751,30 @@ const refusHorsTableau = [...messagesErreur.entries()]
     resume: resumeSaisie(valeursSaisies.get(id)),
   }));
 
+/** Les refus de la vérification, nommés, pour les relire dans l'aperçu. */
+const nomDuProduit = new Map(produits.map((p) => [p.id, p.name]));
+const refusDeLApercu = apercu
+  ? [...messagesErreur.entries()].map(([id, message]) => ({
+      nom: nomDuProduit.get(id) ?? `Produit n° ${id}`,
+      message,
+    }))
+  : [];
+
 /** Bordures posées cellule par cellule : la grille est en `border-separate` pour que l'en-tête collant garde les siennes. */
 const cellule = "border-t border-bo-border px-2 py-2 align-top";
 const enTete =
   "sticky top-0 z-20 border-b border-bo-border bg-bo-bg px-2 py-2 text-left font-medium";
+/** La ligne « Appliquer à tout », sous les en-têtes : pas collante, elle. */
+const caseAppliquer = "border-b border-bo-border bg-bo-bg px-2 py-2 text-left align-top font-normal";
 const champ =
   "w-full rounded border border-bo-border px-2 py-1 text-sm bg-transparent";
 const bouton =
   "rounded border border-bo-border px-1 text-xs leading-4 text-bo-muted hover:bg-bo-surface";
+const boutonAppliquer =
+  "mt-1 rounded border border-bo-border px-2 py-0.5 text-xs text-bo-ink hover:border-bo-accent hover:text-bo-accent";
 const soucisChamp = "mt-0.5 block text-xs text-red-600";
 const inerte = "block text-xs text-bo-muted";
+const puce = "inline-block rounded-full bg-bo-bg px-2 py-0.5 text-xs";
 ---
 
 <Admin title="Modifier plusieurs produits">
@@ -594,6 +799,129 @@ const inerte = "block text-xs text-bo-muted";
   )}
   {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
 
+  {/* ====== Vérifier les changements : avant / après ====== */}
+  {apercu && (
+    <section
+      id="apercu"
+      class="mb-6 rounded-lg border-2 border-bo-accent bg-bo-surface"
+      aria-labelledby="titre-apercu"
+    >
+      <header class="border-b border-bo-border px-4 py-3">
+        <h2 id="titre-apercu" class="font-semibold" tabindex="-1">
+          Ce qui va changer — rien n'est encore enregistré
+        </h2>
+        <p class="text-xs text-bo-muted">
+          Une ligne par champ modifié : sa valeur actuelle, puis celle qui sera
+          enregistrée. La grille, plus bas, garde vos valeurs : vous pouvez
+          encore y corriger quelque chose, puis vérifier de nouveau.
+        </p>
+      </header>
+
+      {apercu.length === 0 ? (
+        <p class="px-4 py-4 text-sm text-bo-muted">
+          Aucune affiche ne changerait : ce qui a été tapé revient à ce que la
+          boutique enregistre déjà, ou toutes les lignes sont refusées.
+        </p>
+      ) : (
+        <div class="max-h-[50vh] overflow-auto">
+          <table class="w-full text-sm">
+            <caption class="sr-only">Changements prévus, affiche par affiche</caption>
+            <thead class="bg-bo-bg text-left text-bo-muted">
+              <tr>
+                <th scope="col" class="px-3 py-2 font-medium">Affiche</th>
+                <th scope="col" class="px-3 py-2 font-medium">Champ</th>
+                <th scope="col" class="px-3 py-2 font-medium">Avant</th>
+                <th scope="col" class="px-3 py-2 font-medium">Après</th>
+              </tr>
+            </thead>
+            <tbody>
+              {apercu.map((l) =>
+                l.changements.map((ch, i) => (
+                  <tr class={i === 0 ? "border-t-2 border-bo-border" : "border-t border-bo-border"}>
+                    {i === 0 && (
+                      <th
+                        scope="rowgroup"
+                        rowspan={l.changements.length}
+                        class="px-3 py-1.5 text-left align-top font-medium"
+                      >
+                        {l.nom}
+                      </th>
+                    )}
+                    <td class="px-3 py-1.5 text-bo-muted">{ch.champ}</td>
+                    <td class="px-3 py-1.5 text-bo-muted line-through decoration-bo-muted/60">
+                      {ch.avant}
+                    </td>
+                    <td class="px-3 py-1.5 font-medium">{ch.apres}</td>
+                  </tr>
+                )),
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {redirectionsPrevues > 0 && (
+        <div class="border-t border-bo-border px-4 py-3 text-sm">
+          <p class="font-medium">
+            {redirectionsPrevues} redirection{redirectionsPrevues > 1 ? "s" : ""} 301
+            {" "}prévue{redirectionsPrevues > 1 ? "s" : ""}
+          </p>
+          <p class="mb-1 text-xs text-bo-muted">
+            L'ancienne adresse de chaque affiche renommée mènera à la nouvelle :
+            les liens déjà partagés, les favoris et Google continueront de
+            fonctionner.
+          </p>
+          <ul class="list-disc pl-5 font-mono text-xs">
+            {apercu
+              .filter((l) => l.redirection)
+              .map((l) => (
+                <li>{l.redirection!.de} → {l.redirection!.vers}</li>
+              ))}
+          </ul>
+        </div>
+      )}
+
+      {refusDeLApercu.length > 0 && (
+        <div class="border-t border-bo-border bg-red-50 px-4 py-3 text-sm">
+          <p class="font-medium">
+            {refusDeLApercu.length > 1
+              ? `${refusDeLApercu.length} lignes refusées : elles ne seront pas enregistrées.`
+              : "Une ligne refusée : elle ne sera pas enregistrée."}
+          </p>
+          <ul class="list-disc pl-5">
+            {refusDeLApercu.map((r) => (
+              <li>{r.nom} : {r.message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <form
+        method="POST"
+        id="form-apercu"
+        class="flex flex-wrap items-center gap-3 border-t border-bo-border px-4 py-3"
+      >
+        <input type="hidden" name="_action" value="enregistrer" />
+        <input type="hidden" name="modifications" value={chargeVerifiee} />
+        <button
+          id="enregistrer-apercu"
+          class="rounded bg-bo-accent px-4 py-2 text-sm text-white disabled:opacity-40"
+          disabled={apercu.length === 0}
+        >
+          Enregistrer ces changements
+          {apercu.length > 0 && ` (${apercu.length} affiche${apercu.length > 1 ? "s" : ""})`}
+        </button>
+        <a href="#grille" class="text-sm text-bo-accent hover:underline">
+          Corriger encore dans la grille
+        </a>
+        <p id="apercu-perime" class="basis-full text-sm text-amber-800" role="status" hidden>
+          La grille a changé depuis cette vérification : cliquez de nouveau
+          « Vérifier les changements », en bas de la page, avant d'enregistrer.
+        </p>
+      </form>
+    </section>
+  )}
+
   {refusHorsTableau.length > 0 && (
     <div class="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm">
       <p class="font-medium">
@@ -617,10 +945,12 @@ const inerte = "block text-xs text-bo-muted";
   )}
 
   <p class="mb-4 max-w-3xl text-sm text-bo-muted">
-    Une ligne par produit, une colonne par réglage, comme dans un tableur. Rien
-    ne part tant que vous n'avez pas cliqué sur <strong>Enregistrer</strong>, et
-    seules les lignes que vous avez touchées sont envoyées : les autres ne
-    bougent pas, même si elles restent affichées.
+    Une ligne par produit, une colonne par réglage, comme dans un tableur. La
+    ligne <strong>Appliquer à tout</strong>, sous les titres, pose une valeur
+    sur toute une colonne. Rien ne part avant <strong>Vérifier les
+    changements</strong>, qui montre l'avant et l'après de chaque affiche ;
+    c'est de là qu'on enregistre. Seules les lignes que vous avez touchées sont
+    envoyées.
     {formatsPresents.length > 0 && (
       <>
         {" "}Le prix se règle format par format : la colonne{" "}
@@ -664,6 +994,14 @@ const inerte = "block text-xs text-bo-muted";
     </p>
   )}
 
+  {/* Les noms des collections, pour les puces que le script redessine. */}
+  <script
+    is:inline
+    type="application/json"
+    id="noms-collections"
+    set:html={JSON.stringify(nomsCollections).replace(/</g, "\\u003c")}
+  />
+
   {produits.length > 0 && (
     <form
       method="POST"
@@ -675,11 +1013,12 @@ const inerte = "block text-xs text-bo-muted";
       {/* `novalidate` : la vérification du navigateur bloquait l'envoi sans
           que la page le sache, avec une bulle sur un champ souvent hors du
           cadre défilant. Une seule voix décide de ce qui part, celle d'ici. */}
+      <input type="hidden" name="_action" value="verifier" />
       <input type="hidden" name="modifications" id="charge-modifications" />
 
       {/* La grille défile dans son propre cadre : c'est ce qui permet à la
-          ligne d'en-tête de rester visible, avec ses boutons de recopie, et à
-          la colonne du produit de ne pas disparaître vers la gauche. */}
+          ligne d'en-tête de rester visible, avec ses boutons, et à la colonne
+          du produit de ne pas disparaître vers la gauche. */}
       <div class="max-h-[70vh] overflow-auto rounded-lg border border-bo-border bg-bo-surface">
         <table
           class="w-full border-separate border-spacing-0 text-sm"
@@ -688,9 +1027,6 @@ const inerte = "block text-xs text-bo-muted";
           <thead class="text-bo-muted">
             <tr>
               <th class={`${enTete} sticky left-0 z-30 w-64`}>Produit</th>
-              {/* Ni le nom ni l'identifiant n'ont de bouton de recopie : cent
-                  produits homonymes, ou quatre-vingt-dix-neuf refus d'adresse
-                  déjà prise, sont tout ce qu'ils pourraient produire. */}
               <th class={`${enTete} w-56`}>Nom</th>
               <th class={`${enTete} w-48`}>
                 <span
@@ -698,27 +1034,25 @@ const inerte = "block text-xs text-bo-muted";
                   title="L'identifiant est ce qui apparaît dans l'adresse de la page du produit sur la boutique."
                 >
                   Identifiant
+                  <button
+                    type="button"
+                    data-annuler="slug"
+                    data-libelle="Identifiant"
+                    class={bouton}
+                    title="Remettre la colonne Identifiant comme elle était"
+                    aria-label="Remettre la colonne Identifiant comme elle était"
+                  >↺</button>
                 </span>
               </th>
               <th class={`${enTete} w-36`}>
                 <span class="flex items-center gap-1">
                   Statut
-                  <button
-                    type="button"
-                    data-recopier="statut"
-                    data-libelle="Statut"
-                    class={bouton}
+                  <button type="button" data-recopier="statut" data-libelle="Statut" class={bouton}
                     title="Recopier le statut de la première ligne sur toutes les autres"
-                    aria-label="Recopier le statut de la première ligne sur toutes les autres"
-                  >↓</button>
-                  <button
-                    type="button"
-                    data-annuler="statut"
-                    data-libelle="Statut"
-                    class={bouton}
+                    aria-label="Recopier le statut de la première ligne sur toutes les autres">↓</button>
+                  <button type="button" data-annuler="statut" data-libelle="Statut" class={bouton}
                     title="Remettre la colonne Statut comme elle était"
-                    aria-label="Remettre la colonne Statut comme elle était"
-                  >↺</button>
+                    aria-label="Remettre la colonne Statut comme elle était">↺</button>
                 </span>
               </th>
 
@@ -729,22 +1063,12 @@ const inerte = "block text-xs text-bo-muted";
                     title={`Prix payé au panier pour un ${format}. Une case vide ne change rien.`}
                   >
                     Prix {format} (€)
-                    <button
-                      type="button"
-                      data-recopier={`prix:${format}`}
-                      data-libelle={`Prix ${format}`}
-                      class={bouton}
+                    <button type="button" data-recopier={`prix:${format}`} data-libelle={`Prix ${format}`} class={bouton}
                       title={`Recopier le prix ${format} de la première ligne sur toutes les autres`}
-                      aria-label={`Recopier le prix ${format} de la première ligne sur toutes les autres`}
-                    >↓</button>
-                    <button
-                      type="button"
-                      data-annuler={`prix:${format}`}
-                      data-libelle={`Prix ${format}`}
-                      class={bouton}
+                      aria-label={`Recopier le prix ${format} de la première ligne sur toutes les autres`}>↓</button>
+                    <button type="button" data-annuler={`prix:${format}`} data-libelle={`Prix ${format}`} class={bouton}
                       title={`Remettre la colonne Prix ${format} comme elle était`}
-                      aria-label={`Remettre la colonne Prix ${format} comme elle était`}
-                    >↺</button>
+                      aria-label={`Remettre la colonne Prix ${format} comme elle était`}>↺</button>
                   </span>
                 </th>
               ))}
@@ -756,22 +1080,12 @@ const inerte = "block text-xs text-bo-muted";
                     title="Ce prix ne sert qu'aux produits qui n'ont aucun format. Dès qu'un produit a des formats, c'est le prix du format qui est payé au panier."
                   >
                     Prix de repli (€)
-                    <button
-                      type="button"
-                      data-recopier="repli"
-                      data-libelle="Prix de repli"
-                      class={bouton}
+                    <button type="button" data-recopier="repli" data-libelle="Prix de repli" class={bouton}
                       title="Recopier le prix de repli de la première ligne sur toutes les autres"
-                      aria-label="Recopier le prix de repli de la première ligne sur toutes les autres"
-                    >↓</button>
-                    <button
-                      type="button"
-                      data-annuler="repli"
-                      data-libelle="Prix de repli"
-                      class={bouton}
+                      aria-label="Recopier le prix de repli de la première ligne sur toutes les autres">↓</button>
+                    <button type="button" data-annuler="repli" data-libelle="Prix de repli" class={bouton}
                       title="Remettre la colonne Prix de repli comme elle était"
-                      aria-label="Remettre la colonne Prix de repli comme elle était"
-                    >↺</button>
+                      aria-label="Remettre la colonne Prix de repli comme elle était">↺</button>
                   </span>
                 </th>
               )}
@@ -779,22 +1093,12 @@ const inerte = "block text-xs text-bo-muted";
               <th class={`${enTete} w-48`}>
                 <span class="flex items-center gap-1">
                   Catégorie
-                  <button
-                    type="button"
-                    data-recopier="categorie"
-                    data-libelle="Catégorie"
-                    class={bouton}
+                  <button type="button" data-recopier="categorie" data-libelle="Catégorie" class={bouton}
                     title="Recopier la catégorie de la première ligne sur toutes les autres"
-                    aria-label="Recopier la catégorie de la première ligne sur toutes les autres"
-                  >↓</button>
-                  <button
-                    type="button"
-                    data-annuler="categorie"
-                    data-libelle="Catégorie"
-                    class={bouton}
+                    aria-label="Recopier la catégorie de la première ligne sur toutes les autres">↓</button>
+                  <button type="button" data-annuler="categorie" data-libelle="Catégorie" class={bouton}
                     title="Remettre la colonne Catégorie comme elle était"
-                    aria-label="Remettre la colonne Catégorie comme elle était"
-                  >↺</button>
+                    aria-label="Remettre la colonne Catégorie comme elle était">↺</button>
                 </span>
               </th>
               <th class={`${enTete} w-40`}>
@@ -803,22 +1107,12 @@ const inerte = "block text-xs text-bo-muted";
                   title="Laissez la case vide pour que le produit prenne le poids de la catégorie choisie sur sa ligne. Ce poids est rappelé sous la case."
                 >
                   Poids (g)
-                  <button
-                    type="button"
-                    data-recopier="poids"
-                    data-libelle="Poids"
-                    class={bouton}
+                  <button type="button" data-recopier="poids" data-libelle="Poids" class={bouton}
                     title="Recopier le poids de la première ligne sur toutes les autres"
-                    aria-label="Recopier le poids de la première ligne sur toutes les autres"
-                  >↓</button>
-                  <button
-                    type="button"
-                    data-annuler="poids"
-                    data-libelle="Poids"
-                    class={bouton}
+                    aria-label="Recopier le poids de la première ligne sur toutes les autres">↓</button>
+                  <button type="button" data-annuler="poids" data-libelle="Poids" class={bouton}
                     title="Remettre la colonne Poids comme elle était"
-                    aria-label="Remettre la colonne Poids comme elle était"
-                  >↺</button>
+                    aria-label="Remettre la colonne Poids comme elle était">↺</button>
                 </span>
               </th>
               <th class={`${enTete} w-28 text-center`}>
@@ -827,24 +1121,146 @@ const inerte = "block text-xs text-bo-muted";
                   title="Le client peut faire dessiner cette affiche par l'ordinateur."
                 >
                   Affiche IA
-                  <button
-                    type="button"
-                    data-recopier="ia"
-                    data-libelle="Affiche IA"
-                    class={bouton}
+                  <button type="button" data-recopier="ia" data-libelle="Affiche IA" class={bouton}
                     title="Recopier le réglage de la première ligne sur toutes les autres"
-                    aria-label="Recopier le réglage de la première ligne sur toutes les autres"
-                  >↓</button>
-                  <button
-                    type="button"
-                    data-annuler="ia"
-                    data-libelle="Affiche IA"
-                    class={bouton}
+                    aria-label="Recopier le réglage de la première ligne sur toutes les autres">↓</button>
+                  <button type="button" data-annuler="ia" data-libelle="Affiche IA" class={bouton}
                     title="Remettre la colonne Affiche IA comme elle était"
-                    aria-label="Remettre la colonne Affiche IA comme elle était"
-                  >↺</button>
+                    aria-label="Remettre la colonne Affiche IA comme elle était">↺</button>
                 </span>
               </th>
+              <th class={`${enTete} w-40`}>
+                <span
+                  class="flex items-center gap-1"
+                  title="Décide des personnages proposés au client et du décor posé au premier plan."
+                >
+                  Type d'affiche
+                  <button type="button" data-recopier="vue" data-libelle="Type d'affiche" class={bouton}
+                    title="Recopier le type d'affiche de la première ligne sur toutes les autres"
+                    aria-label="Recopier le type d'affiche de la première ligne sur toutes les autres">↓</button>
+                  <button type="button" data-annuler="vue" data-libelle="Type d'affiche" class={bouton}
+                    title="Remettre la colonne Type d'affiche comme elle était"
+                    aria-label="Remettre la colonne Type d'affiche comme elle était">↺</button>
+                </span>
+              </th>
+              <th class={`${enTete} w-64`}>
+                <span class="flex items-center gap-1">
+                  Collections
+                  <button type="button" data-recopier="collections" data-libelle="Collections" class={bouton}
+                    title="Recopier les collections de la première ligne sur toutes les autres"
+                    aria-label="Recopier les collections de la première ligne sur toutes les autres">↓</button>
+                  <button type="button" data-annuler="collections" data-libelle="Collections" class={bouton}
+                    title="Remettre la colonne Collections comme elle était"
+                    aria-label="Remettre la colonne Collections comme elle était">↺</button>
+                </span>
+              </th>
+              <th class={`${enTete} w-56`}>
+                <span class="flex items-center gap-1">
+                  Description
+                  <button type="button" data-recopier="description" data-libelle="Description" class={bouton}
+                    title="Recopier la description de la première ligne sur toutes les autres"
+                    aria-label="Recopier la description de la première ligne sur toutes les autres">↓</button>
+                  <button type="button" data-annuler="description" data-libelle="Description" class={bouton}
+                    title="Remettre la colonne Description comme elle était"
+                    aria-label="Remettre la colonne Description comme elle était">↺</button>
+                </span>
+              </th>
+            </tr>
+
+            {/* « Appliquer à tout », comme dans l'éditeur en masse de Shopify :
+                une valeur, un bouton, et toute la colonne la prend — y compris
+                les lignes hors de l'écran. Rien n'est enregistré avant la
+                vérification, et ↺ annule toujours. */}
+            <tr class="ml-appliquer-tout">
+              <th class={`${caseAppliquer} sticky left-0 z-10`} scope="row">
+                <span class="text-xs font-medium text-bo-muted">Appliquer à tout ↓</span>
+              </th>
+              <td class={caseAppliquer} data-appliquer="nom">
+                <select class={`${champ} text-xs`} data-nom-mode aria-label="Comment changer le nom de toutes les lignes">
+                  <option value="remplacer">Remplacer par</option>
+                  <option value="debut">Ajouter au début</option>
+                  <option value="fin">Ajouter à la fin</option>
+                  <option value="rechercher">Rechercher et remplacer</option>
+                </select>
+                <input class={`${champ} mt-1`} data-nom-texte aria-label="Texte pour le nom de toutes les lignes" placeholder="Texte" />
+                <input class={`${champ} mt-1`} data-nom-par aria-label="Remplacer par" placeholder="Remplacer par" hidden />
+                <button type="button" class={boutonAppliquer} data-appliquer-bouton="nom">Appliquer</button>
+              </td>
+              <td class={caseAppliquer} data-appliquer="slug">
+                <button type="button" class={boutonAppliquer} data-appliquer-bouton="slug">
+                  Refaire depuis le nom
+                </button>
+                <span class="mt-1 block text-[11px] leading-tight text-bo-muted">
+                  Une redirection 301 sera posée pour chaque adresse changée.
+                </span>
+              </td>
+              <td class={caseAppliquer} data-appliquer="statut">
+                <select class={champ} data-modele aria-label="Statut à appliquer à toutes les lignes">
+                  {STATUTS.map((s) => <option value={s.valeur}>{s.libelle}</option>)}
+                </select>
+                <button type="button" class={boutonAppliquer} data-appliquer-bouton="statut" data-libelle="Statut">Appliquer</button>
+              </td>
+              {formatsPresents.map((format) => (
+                <td class={caseAppliquer} data-appliquer={`prix:${format}`}>
+                  <input type="text" inputmode="decimal" class={`${champ} text-right`} data-modele
+                    aria-label={`Prix ${format} à appliquer à toutes les lignes, en euros`} />
+                  <button type="button" class={boutonAppliquer} data-appliquer-bouton={`prix:${format}`} data-libelle={`Prix ${format}`}>Appliquer</button>
+                </td>
+              ))}
+              {afficherRepli && (
+                <td class={caseAppliquer} data-appliquer="repli">
+                  <input type="text" inputmode="decimal" class={`${champ} text-right`} data-modele
+                    aria-label="Prix de repli à appliquer à toutes les lignes, en euros" />
+                  <button type="button" class={boutonAppliquer} data-appliquer-bouton="repli" data-libelle="Prix de repli">Appliquer</button>
+                </td>
+              )}
+              <td class={caseAppliquer} data-appliquer="categorie">
+                {categories.length === 0 ? (
+                  <span class="block text-[11px] leading-tight text-bo-muted">
+                    Aucune catégorie créée pour l'instant. Elles se créent dans
+                    <a class="text-bo-accent underline" href={url("/categories-produits")}>Catégories de produits</a>.
+                  </span>
+                ) : (
+                  <>
+                    <select class={champ} data-modele aria-label="Catégorie à appliquer à toutes les lignes">
+                      <option value="">Aucune</option>
+                      {categories.map((c) => <option value={c.id}>{c.name}</option>)}
+                    </select>
+                    <button type="button" class={boutonAppliquer} data-appliquer-bouton="categorie" data-libelle="Catégorie">Appliquer</button>
+                  </>
+                )}
+              </td>
+              <td class={caseAppliquer} data-appliquer="poids">
+                <input type="text" inputmode="numeric" class={`${champ} text-right`} data-modele
+                  aria-label="Poids à appliquer à toutes les lignes, en grammes (vide : celui de la catégorie)" />
+                <button type="button" class={boutonAppliquer} data-appliquer-bouton="poids" data-libelle="Poids">Appliquer</button>
+              </td>
+              <td class={`${caseAppliquer} text-center`} data-appliquer="ia">
+                <input type="checkbox" class="mt-1" data-modele aria-label="Affiche IA pour toutes les lignes" />
+                <button type="button" class={`${boutonAppliquer} block w-full`} data-appliquer-bouton="ia" data-libelle="Affiche IA">Appliquer</button>
+              </td>
+              <td class={caseAppliquer} data-appliquer="vue">
+                <select class={champ} data-modele aria-label="Type d'affiche à appliquer à toutes les lignes">
+                  <option value="">Par défaut</option>
+                  {vuesOuvertes.map((v) => <option value={v.slug}>{v.name}</option>)}
+                </select>
+                <button type="button" class={boutonAppliquer} data-appliquer-bouton="vue" data-libelle="Type d'affiche">Appliquer</button>
+              </td>
+              <td class={caseAppliquer} data-appliquer="collections">
+                <select class={`${champ} text-xs`} data-collections-mode aria-label="Comment changer les collections de toutes les lignes">
+                  <option value="ajouter">Ajouter à…</option>
+                  <option value="retirer">Retirer de…</option>
+                  <option value="remplacer">Remplacer par…</option>
+                </select>
+                <button type="button" class={boutonAppliquer} data-appliquer-bouton="collections">
+                  Choisir les collections…
+                </button>
+              </td>
+              <td class={caseAppliquer} data-appliquer="description">
+                <button type="button" class={boutonAppliquer} data-appliquer-bouton="description">
+                  Remplacer par…
+                </button>
+              </td>
             </tr>
           </thead>
           <tbody>
@@ -852,7 +1268,8 @@ const inerte = "block text-xs text-bo-muted";
               const saisie = valeursSaisies.get(p.id);
               const erreur = messagesErreur.get(p.id);
               const nom = texteSaisi(saisie, "name", p.name);
-              const slug = texteSaisi(saisie, "slug", p.slug);
+              const depuisNom = saisie?.slugDepuisNom === true && !("slug" in (saisie ?? {}));
+              const slug = depuisNom ? slugifier(nom) : texteSaisi(saisie, "slug", p.slug);
               const statut = texteSaisi(saisie, "status", p.status);
               const repliCents =
                 nombreSaisi(saisie, "basePriceCents", p.basePriceCents) ??
@@ -868,9 +1285,21 @@ const inerte = "block text-xs text-bo-muted";
               const ia = boolSaisi(saisie, "aiEnabled", p.aiEnabled);
               const statutInconnu = !STATUTS.some((s) => s.valeur === p.status);
               const prixConnu = prixDuFormat(p);
+              const vueDepart = p.defaultView ?? null;
+              const vue = texteOuNulSaisi(saisie, "defaultView", vueDepart);
+              // Même règle que la catégorie : un type archivé reste sur SA
+              // ligne, sans quoi la ligne se dirait modifiée d'elle-même.
+              const vueArchivee =
+                vueDepart && !vuesOuvertes.some((v) => v.slug === vueDepart)
+                  ? vueDepart
+                  : null;
+              const descriptionDepart = (p.description ?? "").trim();
+              const description = texteOuNulSaisi(saisie, "description", descriptionDepart) ?? "";
+              const collectionsDepart = listeTriee(p.collections.map((c) => c.id));
+              const collectionsLigne = listeTriee(collectionsSaisies(p, saisie));
               return (
                 <>
-                  <tr data-ligne data-id={p.id}>
+                  <tr data-ligne data-id={p.id} data-nom={p.name}>
                     <td class={`${cellule} sticky left-0 z-10 bg-bo-surface`}>
                       <span class="flex items-start gap-2">
                         {p.imageUrl ? (
@@ -931,10 +1360,14 @@ const inerte = "block text-xs text-bo-muted";
                     </td>
 
                     <td class={cellule}>
+                      {/* `data-depuis-nom` : l'adresse suit le nom de la ligne,
+                          et l'API la rend unique (-2, -3…) au lieu de la
+                          refuser. Tapée à la main, elle redevient libre. */}
                       <input
                         data-champ="slug"
                         data-colonne="slug"
                         data-initial={p.slug.trim()}
+                        data-depuis-nom={depuisNom ? "1" : undefined}
                         value={slug}
                         class={`${champ} font-mono text-xs`}
                         aria-label={`Identifiant de ${p.name}`}
@@ -1088,6 +1521,81 @@ const inerte = "block text-xs text-bo-muted";
                         aria-label={`Affiche IA pour ${p.name}`}
                       />
                     </td>
+
+                    <td class={cellule}>
+                      <select
+                        data-champ="vue"
+                        data-colonne="vue"
+                        data-initial={vueDepart ?? ""}
+                        class={champ}
+                        aria-label={`Type d'affiche de ${p.name}`}
+                      >
+                        <option value="" selected={vue === null}>Par défaut</option>
+                        {vuesOuvertes.map((v) => (
+                          <option value={v.slug} selected={v.slug === vue}>{v.name}</option>
+                        ))}
+                        {vueArchivee && (
+                          <option value={vueArchivee} selected={vueArchivee === vue}>
+                            {nomVue.get(vueArchivee) ?? vueArchivee} (archivé)
+                          </option>
+                        )}
+                      </select>
+                      <span data-souci class={soucisChamp} hidden></span>
+                    </td>
+
+                    <td class={cellule}>
+                      {/* La liste vit dans un champ caché, triée : c'est elle
+                          qu'on compare à celle de départ. Les puces se
+                          redessinent à chaque changement. */}
+                      <input
+                        type="hidden"
+                        data-champ="collections"
+                        data-colonne="collections"
+                        data-initial={collectionsDepart}
+                        value={collectionsLigne}
+                      />
+                      <span data-puces class="flex flex-wrap gap-1">
+                        {collectionsLigne
+                          ? collectionsLigne.split(",").map((id) => {
+                              const c = nomsCollections[id];
+                              return (
+                                <span class={puce}>
+                                  {c?.nom ?? `n° ${id}`}{c?.archivee ? " (archivée)" : ""}
+                                </span>
+                              );
+                            })
+                          : <span class="text-xs text-bo-muted">aucune</span>}
+                      </span>
+                      <button
+                        type="button"
+                        data-ouvrir-collections
+                        class="mt-1 text-xs text-bo-accent hover:underline"
+                        aria-label={`Modifier les collections de ${p.name}`}
+                      >
+                        Modifier
+                      </button>
+                    </td>
+
+                    <td class={cellule}>
+                      <input
+                        type="hidden"
+                        data-champ="description"
+                        data-colonne="description"
+                        data-initial={descriptionDepart}
+                        value={description}
+                      />
+                      <span data-extrait class="block text-xs text-bo-muted">
+                        {extrait(description) || "aucune"}
+                      </span>
+                      <button
+                        type="button"
+                        data-ouvrir-description
+                        class="mt-1 text-xs text-bo-accent hover:underline"
+                        aria-label={`Modifier la description de ${p.name}`}
+                      >
+                        Modifier
+                      </button>
+                    </td>
                   </tr>
                   {erreur && (
                     <tr>
@@ -1120,11 +1628,11 @@ const inerte = "block text-xs text-bo-muted";
             Tout remettre comme avant
           </button>
           <button
-            id="enregistrer"
+            id="verifier"
             disabled
             class="rounded bg-bo-accent px-4 py-2 text-sm text-white disabled:opacity-40"
           >
-            Enregistrer
+            Vérifier les changements
           </button>
         </div>
         <p id="annonce" class="mt-2 text-sm text-bo-muted" aria-live="polite" hidden></p>
@@ -1133,26 +1641,112 @@ const inerte = "block text-xs text-bo-muted";
     </form>
   )}
 
+  {/* ====== Fenêtre : les collections d'une ligne, ou de toutes ====== */}
+  <dialog
+    id="dlg-collections"
+    class="w-[min(32rem,calc(100vw-2rem))] rounded-lg border border-bo-border bg-bo-surface p-0 text-bo-ink shadow-xl backdrop:bg-black/40"
+    aria-labelledby="dlg-collections-titre"
+  >
+    <form method="dialog" class="flex max-h-[80vh] flex-col">
+      <h2 id="dlg-collections-titre" class="border-b border-bo-border px-4 py-3 font-semibold">
+        Collections
+      </h2>
+      <p data-dlg-aide class="px-4 pt-3 text-xs text-bo-muted"></p>
+      <fieldset class="overflow-y-auto px-4 py-3">
+        <legend class="sr-only">Collections</legend>
+        {collectionsOuvertes.map((c) => (
+          <label class="flex items-center gap-2 py-1 text-sm">
+            <input type="checkbox" value={c.id} data-collection-case />
+            <span>{c.name}</span>
+          </label>
+        ))}
+        {collectionsArchiveesDuLot.map((c) => (
+          <label class="flex items-center gap-2 py-1 text-sm text-bo-muted" data-archivee>
+            <input type="checkbox" value={c.id} data-collection-case data-archivee />
+            <span>{c.name} (archivée — on peut en sortir, pas y entrer)</span>
+          </label>
+        ))}
+        {collectionsOuvertes.length === 0 && collectionsArchiveesDuLot.length === 0 && (
+          <p class="text-sm text-bo-muted">Aucune collection pour l'instant.</p>
+        )}
+      </fieldset>
+      <div class="flex justify-end gap-2 border-t border-bo-border px-4 py-3">
+        <button value="annuler" class="rounded border border-bo-border px-3 py-1.5 text-sm hover:bg-bo-bg">
+          Annuler
+        </button>
+        <button value="valider" class="rounded bg-bo-accent px-4 py-1.5 text-sm text-white" data-dlg-valider>
+          Valider
+        </button>
+      </div>
+    </form>
+  </dialog>
+
+  {/* ====== Fenêtre : la description d'une ligne, ou de toutes ====== */}
+  <dialog
+    id="dlg-description"
+    class="w-[min(44rem,calc(100vw-2rem))] rounded-lg border border-bo-border bg-bo-surface p-0 text-bo-ink shadow-xl backdrop:bg-black/40"
+    aria-labelledby="dlg-description-titre"
+  >
+    <form method="dialog" class="flex max-h-[85vh] flex-col">
+      <h2 id="dlg-description-titre" class="border-b border-bo-border px-4 py-3 font-semibold">
+        Description
+      </h2>
+      <div class="overflow-y-auto px-4 py-3">
+        <p data-dlg-aide class="mb-2 text-xs text-bo-muted"></p>
+        <EditeurTexte
+          nom="description-de-la-fenetre"
+          etiquette="Description de l'affiche"
+          invite="La description que la cliente lit sur la page de l'affiche."
+        />
+      </div>
+      <div class="flex justify-end gap-2 border-t border-bo-border px-4 py-3">
+        <button value="annuler" class="rounded border border-bo-border px-3 py-1.5 text-sm hover:bg-bo-bg">
+          Annuler
+        </button>
+        <button value="valider" class="rounded bg-bo-accent px-4 py-1.5 text-sm text-white">
+          Valider
+        </button>
+      </div>
+    </form>
+  </dialog>
+
   <script is:inline>
     (function () {
       var formulaire = document.getElementById("grille");
+      var apercu = document.getElementById("apercu");
+      // Arrivée sur l'aperçu après « Vérifier » : il est en haut de page, et
+      // le lecteur d'écran doit y être conduit, pas seulement l'œil.
+      if (apercu) {
+        var titreApercu = document.getElementById("titre-apercu");
+        if (titreApercu) titreApercu.focus();
+      }
       if (!formulaire) return;
 
       var lignes = Array.prototype.slice.call(
-        document.querySelectorAll("[data-ligne]"),
+        formulaire.querySelectorAll("tbody [data-ligne]"),
       );
+      // Les champs des LIGNES seulement : l'éditeur de la fenêtre porte lui
+      // aussi un `data-champ`, qui n'a rien à faire dans la comparaison.
       var champs = Array.prototype.slice.call(
-        document.querySelectorAll("[data-champ]"),
+        formulaire.querySelectorAll("tbody [data-champ]"),
       );
       var compteur = document.getElementById("compteur");
       var problemesEl = document.getElementById("problemes");
       var annonceEl = document.getElementById("annonce");
-      var enregistrer = document.getElementById("enregistrer");
+      var verifier = document.getElementById("verifier");
       var remettre = document.getElementById("remettre");
       var charge = document.getElementById("charge-modifications");
+      var formApercu = document.getElementById("form-apercu");
+      var nomsCollections = {};
+      try {
+        nomsCollections = JSON.parse(
+          document.getElementById("noms-collections").textContent || "{}",
+        );
+      } catch (e) {}
       var modifiees = 0;
       var envoyables = 0;
       var envoiEnCours = false;
+      var chargementFini = false;
 
       // Ce que le navigateur accepte de lire. `parseFloat` rend 12 pour
       // « 12 g » et 5 pour « 5e » : sans ces motifs, une faute de frappe
@@ -1160,14 +1754,38 @@ const inerte = "block text-xs text-bo-muted";
       var MOTIF_PRIX = /^\d+(\.\d{1,2})?$/;
       var MOTIF_POIDS = /^\d+$/;
 
+      /** L'adresse tirée d'un nom : la même règle que l'API. */
+      function slugifier(v) {
+        return String(v || "")
+          .normalize("NFD")
+          .replace(/[̀-ͯ]/g, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 80);
+      }
+
+      /** Une liste d'identifiants, triée : la forme qu'on compare. */
+      function trier(ids) {
+        return ids
+          .map(Number)
+          .filter(function (n) { return n > 0; })
+          .sort(function (a, b) { return a - b; })
+          .filter(function (n, i, t) { return i === 0 || t[i - 1] !== n; })
+          .join(",");
+      }
+      function idsDe(texte) {
+        return String(texte || "").split(",").filter(Boolean).map(Number);
+      }
+
       // Toute comparaison passe par cette forme : le prix est comparé en
       // centimes, pas en « 24,9 » contre « 24,90 », sinon la moitié des lignes
-      // partirait à l'enregistrement sans avoir été touchée. « ? » veut dire
-      // « pas compris », et ce n'est jamais confondu avec « vide ».
+      // partirait sans avoir été touchée. « ? » veut dire « pas compris », et
+      // ce n'est jamais confondu avec « vide ».
       function valeur(c) {
         if (c.type === "checkbox") return c.checked ? "1" : "0";
-        var brut = String(c.value).replace(",", ".").trim();
         var genre = c.dataset.champ;
+        var brut = String(c.value).replace(",", ".").trim();
         if (genre === "prix") {
           if (brut === "") return "";
           if (!MOTIF_PRIX.test(brut)) return "?";
@@ -1178,6 +1796,7 @@ const inerte = "block text-xs text-bo-muted";
           if (!MOTIF_POIDS.test(brut)) return "?";
           return String(parseInt(brut, 10));
         }
+        if (genre === "collections") return trier(idsDe(c.value));
         return String(c.value).trim();
       }
 
@@ -1203,6 +1822,64 @@ const inerte = "block text-xs text-bo-muted";
         return null;
       }
 
+      /** Le texte d'une description, en une ligne, pour la grille. */
+      function extrait(html) {
+        var doc = new DOMParser().parseFromString(
+          "<!doctype html><body>" + String(html || ""),
+          "text/html",
+        );
+        var texte = (doc.body.textContent || "").replace(/\s+/g, " ").trim();
+        return texte.length > 60 ? texte.slice(0, 59) + "…" : texte;
+      }
+
+      /** Redessine ce qui montre la valeur d'un champ caché : puces, extrait. */
+      function montrer(c) {
+        var cellule = c.parentElement;
+        if (!cellule) return;
+        if (c.dataset.champ === "collections") {
+          var puces = cellule.querySelector("[data-puces]");
+          if (!puces) return;
+          puces.textContent = "";
+          var ids = idsDe(c.value);
+          if (!ids.length) {
+            var rien = document.createElement("span");
+            rien.className = "text-xs text-bo-muted";
+            rien.textContent = "aucune";
+            puces.append(rien);
+          }
+          ids.forEach(function (id) {
+            var info = nomsCollections[String(id)];
+            var s = document.createElement("span");
+            s.className = "inline-block rounded-full bg-bo-bg px-2 py-0.5 text-xs";
+            s.textContent =
+              (info ? info.nom : "n° " + id) + (info && info.archivee ? " (archivée)" : "");
+            puces.append(s);
+          });
+        } else if (c.dataset.champ === "description") {
+          var e = cellule.querySelector("[data-extrait]");
+          if (e) e.textContent = extrait(c.value) || "aucune";
+        }
+      }
+
+      function optionExiste(select, valeurCherchee) {
+        return Array.prototype.some.call(select.options, function (o) {
+          return o.value === valeurCherchee;
+        });
+      }
+
+      /**
+       * Pose une valeur dans un champ, comme si on l'avait tapée. Rend faux
+       * quand la liste de la ligne ne propose pas cette valeur : la poser la
+       * viderait, la ligne serait comptée modifiée et ne partirait jamais.
+       */
+      function poser(c, v) {
+        if (c.type === "checkbox") c.checked = v === true || v === "1";
+        else if (c.tagName === "SELECT" && !optionExiste(c, String(v))) return false;
+        else c.value = v;
+        montrer(c);
+        return true;
+      }
+
       /** « 340 g » ou « 1,25 kg » — pour l'affichage seulement. */
       function texteGrammes(g) {
         if (g < 1000) return g + " g";
@@ -1216,8 +1893,6 @@ const inerte = "block text-xs text-bo-muted";
         var champPoids = ligne.querySelector('[data-champ="poids"]');
         var note = ligne.querySelector("[data-heritage]");
         if (!champPoids || !note) return;
-        // Les poids des catégories n'ont pas pu être lus : annoncer « aucun
-        // poids » serait aussi faux qu'annoncer un chiffre au hasard.
         if (formulaire.dataset.poidsConnus !== "1") {
           note.hidden = true;
           return;
@@ -1262,11 +1937,13 @@ const inerte = "block text-xs text-bo-muted";
               if (change) bouge = true;
               var probleme = change ? souci(c) : null;
               if (probleme) fautive = true;
-              if (c.type !== "checkbox") {
+              if (c.type !== "checkbox" && c.type !== "hidden") {
                 c.classList.toggle("border-red-600", !!probleme);
                 c.classList.toggle("border-bo-accent", change && !probleme);
                 c.classList.toggle("border-bo-border", !change);
               }
+              if (c.type === "hidden" && c.parentElement)
+                c.parentElement.classList.toggle("bg-amber-50", change);
               // Le motif du refus se lit sous la case fautive : une liste au
               // bas de l'écran ne dit pas quelle ligne corriger.
               var boite = c.parentElement
@@ -1299,8 +1976,8 @@ const inerte = "block text-xs text-bo-muted";
               bouts.push(
                 envoyables +
                   (envoyables > 1
-                    ? " produits modifiés, prêts à partir"
-                    : " produit modifié, prêt à partir"),
+                    ? " produits modifiés, à vérifier"
+                    : " produit modifié, à vérifier"),
               );
             if (bloquees > 0)
               bouts.push(
@@ -1321,26 +1998,56 @@ const inerte = "block text-xs text-bo-muted";
               ? ""
               : bloquees > 1
                 ? bloquees +
-                  " lignes comportent une erreur, signalée en rouge sous la case concernée. Elles ne partiront pas ; les autres seront enregistrées normalement."
-                : "Une ligne comporte une erreur, signalée en rouge sous la case concernée. Elle ne partira pas ; les autres seront enregistrées normalement.";
+                  " lignes comportent une erreur, signalée en rouge sous la case concernée. Elles ne partiront pas ; les autres seront vérifiées normalement."
+                : "Une ligne comporte une erreur, signalée en rouge sous la case concernée. Elle ne partira pas ; les autres seront vérifiées normalement.";
         }
 
         // Une cellule fautive n'empêche plus tout le lot : seules ses propres
         // lignes restent à quai.
-        if (enregistrer) enregistrer.disabled = envoyables === 0;
+        if (verifier) verifier.disabled = envoyables === 0;
         if (remettre) remettre.disabled = modifiees === 0;
       }
 
-      champs.forEach(function (c) {
-        c.addEventListener("input", recalculer);
-        c.addEventListener("change", recalculer);
-      });
+      /**
+       * La grille a bougé après une vérification : l'aperçu ne dit plus ce
+       * qui partirait. Son bouton s'éteint, et une phrase dit pourquoi.
+       */
+      function apercuPerime() {
+        if (!formApercu || !chargementFini) return;
+        var b = document.getElementById("enregistrer-apercu");
+        if (b) b.disabled = true;
+        var mot = document.getElementById("apercu-perime");
+        if (mot) mot.hidden = false;
+      }
+
+      function apresChangement() {
+        recalculer();
+        apercuPerime();
+      }
 
       function colonneDe(nom) {
         return champs.filter(function (c) {
           return c.dataset.colonne === nom;
         });
       }
+      function champDeLigne(ligne, genre) {
+        return ligne.querySelector('[data-champ="' + genre + '"]');
+      }
+
+      // L'identifiant qui suit le nom suit chaque frappe dans le nom ; un
+      // identifiant tapé à la main redevient libre.
+      champs.forEach(function (c) {
+        c.addEventListener("input", function () {
+          if (c.dataset.champ === "slug") delete c.dataset.depuisNom;
+          if (c.dataset.champ === "nom") {
+            var ligne = c.closest("[data-ligne]");
+            var s = ligne && champDeLigne(ligne, "slug");
+            if (s && s.dataset.depuisNom === "1") s.value = slugifier(c.value);
+          }
+          apresChangement();
+        });
+        c.addEventListener("change", apresChangement);
+      });
 
       function remettreChamp(c) {
         var depart = initial(c);
@@ -1351,17 +2058,25 @@ const inerte = "block text-xs text-bo-muted";
               ? ""
               : (Number(depart) / 100).toFixed(2).replace(".", ",");
         else c.value = depart;
+        if (c.dataset.champ === "slug") delete c.dataset.depuisNom;
+        montrer(c);
       }
 
-      function optionExiste(select, valeurCherchee) {
-        return Array.prototype.some.call(select.options, function (o) {
-          return o.value === valeurCherchee;
-        });
+      /** Ce qu'une case de saisie veut dire, ramené à la forme du champ. */
+      function annoncerPose(libelle, poses, ignores, verbe) {
+        var texte =
+          poses === 0
+            ? "Aucune ligne n'a pu recevoir « " + libelle + " »."
+            : "« " + libelle + " » " + verbe + " " + poses +
+              (poses > 1 ? " lignes" : " ligne") +
+              ", y compris celles qui ne sont pas à l'écran. Le bouton ↺ de la colonne annule.";
+        if (ignores > 0 && poses > 0)
+          texte += " " + ignores + (ignores > 1 ? " lignes n'ont" : " ligne n'a") +
+            " pas pu recevoir cette valeur.";
+        annoncer(texte);
       }
 
       // Recopier vers le bas : la première ligne sert de modèle à la colonne.
-      // La recopie touche aussi les lignes hors du cadre défilant, d'où
-      // l'annonce du nombre de lignes changées et le bouton qui l'annule.
       Array.prototype.forEach.call(
         document.querySelectorAll("[data-recopier]"),
         function (b) {
@@ -1369,129 +2084,287 @@ const inerte = "block text-xs text-bo-muted";
             var colonne = colonneDe(b.dataset.recopier);
             if (colonne.length < 2) return;
             var source = colonne[0];
+            var modele = source.type === "checkbox" ? source.checked : source.value;
             var poses = 0;
             var ignores = 0;
-            for (var i = 1; i < colonne.length; i++) {
-              var c = colonne[i];
-              if (source.type === "checkbox") {
-                c.checked = source.checked;
-                poses++;
-              } else if (
-                c.tagName === "SELECT" &&
-                !optionExiste(c, source.value)
-              ) {
-                // Poser une valeur qu'une liste ne propose pas la viderait :
-                // la ligne serait comptée modifiée et ne partirait jamais.
-                ignores++;
-              } else {
-                c.value = source.value;
-                poses++;
-              }
-            }
-            recalculer();
-            var texte =
-              poses === 0
-                ? "Aucune ligne n'a pu recevoir « " +
-                  b.dataset.libelle +
-                  " » de la première ligne."
-                : "« " +
-                  b.dataset.libelle +
-                  " » recopié sur " +
-                  poses +
-                  (poses > 1 ? " lignes" : " ligne") +
-                  ", y compris celles qui ne sont pas à l'écran. Le bouton ↺ de la colonne annule cette recopie.";
-            if (ignores > 0 && poses > 0)
-              texte +=
-                " " +
-                ignores +
-                (ignores > 1 ? " lignes n'ont" : " ligne n'a") +
-                " pas pu recevoir cette valeur.";
-            annoncer(texte);
+            for (var i = 1; i < colonne.length; i++)
+              if (poser(colonne[i], modele)) poses++;
+              else ignores++;
+            apresChangement();
+            annoncerPose(b.dataset.libelle, poses, ignores, "recopié sur");
           });
         },
       );
 
-      // « Appliquer à tout », comme dans l'éditeur en masse de Shopify (retour
-      // de la boutique) : une ligne sous les en-têtes, avec pour chaque
-      // colonne recopiable une case du même genre que la colonne — liste,
-      // nombre, case à cocher — et un bouton. On choisit une valeur, on
-      // applique, et toutes les lignes la prennent. Construite ici, d'après
-      // les colonnes elles-mêmes : une colonne ajoutée demain l'aura aussi.
-      // Rien n'est enregistré avant « Enregistrer », et ↺ annule toujours.
-      (function () {
-        var entete = document.querySelector("table thead tr");
-        if (!entete) return;
-        var ligne = document.createElement("tr");
-        ligne.className = "ml-appliquer-tout";
-        Array.prototype.forEach.call(entete.children, function (th, rang) {
-          var cellule = document.createElement("th");
-          cellule.className = th.className.replace(/\bw-\S+/g, "");
-          cellule.style.top = "auto";
-          var cle = th.querySelector("[data-recopier]");
-          if (rang === 0) {
-            cellule.innerHTML =
-              '<span class="text-xs font-medium text-bo-muted">Appliquer à tout ↓</span>';
-          } else if (cle) {
-            var colonne = colonneDe(cle.dataset.recopier);
-            if (colonne.length) {
-              var modele = colonne[0].cloneNode(true);
-              // Hors du formulaire : ni nom, ni place dans la comparaison.
-              modele.removeAttribute("name");
-              modele.removeAttribute("data-champ");
-              modele.removeAttribute("data-colonne");
-              modele.removeAttribute("data-initial");
-              modele.removeAttribute("required");
-              modele.removeAttribute("id");
-              modele.setAttribute("aria-label", "Valeur à appliquer à toute la colonne " + cle.dataset.libelle);
-              if (modele.type === "checkbox") modele.checked = false;
-              else if (modele.tagName === "SELECT") modele.selectedIndex = 0;
-              else modele.value = "";
-              var appliquer = document.createElement("button");
-              appliquer.type = "button";
-              appliquer.textContent = "Appliquer";
-              appliquer.className =
-                "ml-1 rounded border border-bo-border px-2 py-0.5 text-xs text-bo-text hover:border-bo-accent hover:text-bo-accent";
-              appliquer.addEventListener("click", function () {
-                var poses = 0;
-                var ignores = 0;
-                colonneDe(cle.dataset.recopier).forEach(function (c) {
-                  if (modele.type === "checkbox") {
-                    c.checked = modele.checked;
-                    poses++;
-                  } else if (c.tagName === "SELECT" && !optionExiste(c, modele.value)) {
-                    ignores++;
-                  } else {
-                    c.value = modele.value;
-                    poses++;
-                  }
-                });
-                recalculer();
-                var texte =
-                  "« " + cle.dataset.libelle + " » appliqué à " + poses +
-                  (poses > 1 ? " lignes" : " ligne") +
-                  ", y compris celles qui ne sont pas à l'écran. Le bouton ↺ de la colonne annule.";
-                if (ignores > 0)
-                  texte += " " + ignores + (ignores > 1 ? " lignes n'ont" : " ligne n'a") +
-                    " pas pu recevoir cette valeur.";
-                annoncer(texte);
-              });
-              var groupe = document.createElement("span");
-              groupe.className = "flex items-center";
-              groupe.append(modele, appliquer);
-              cellule.append(groupe);
-            }
-          }
-          ligne.append(cellule);
+      /* --- « Appliquer à tout » ------------------------------------------ */
+
+      /** Le nom d'une ligne, changé selon le mode choisi. */
+      function nouveauNom(actuel, mode, texte, par) {
+        if (mode === "remplacer") return texte;
+        // Un espace entre les deux, sauf si l'on en a tapé un : « Affiche »
+        // ajouté au début de « COLMAR » donne « Affiche COLMAR ».
+        if (mode === "debut")
+          return /\s$/.test(texte) || /^\s/.test(actuel) ? texte + actuel : texte + " " + actuel;
+        if (mode === "fin")
+          return /^\s/.test(texte) || /\s$/.test(actuel) ? actuel + texte : actuel + " " + texte;
+        return texte ? actuel.split(texte).join(par) : actuel;
+      }
+
+      var celluleNom = formulaire.querySelector('[data-appliquer="nom"]');
+      if (celluleNom) {
+        var modeNom = celluleNom.querySelector("[data-nom-mode]");
+        var parNom = celluleNom.querySelector("[data-nom-par]");
+        var texteNom = celluleNom.querySelector("[data-nom-texte]");
+        modeNom.addEventListener("change", function () {
+          parNom.hidden = modeNom.value !== "rechercher";
+          texteNom.placeholder = modeNom.value === "rechercher" ? "Rechercher" : "Texte";
         });
-        entete.parentNode.append(ligne);
-      })();
+      }
+
+      function appliquerNom() {
+        var mode = modeNom.value;
+        var texte = texteNom.value;
+        if (mode === "remplacer" ? !texte.trim() : !texte) {
+          annoncer(
+            mode === "rechercher"
+              ? "Tapez d'abord le texte à rechercher dans les noms."
+              : "Tapez d'abord le texte à poser dans les noms.",
+          );
+          texteNom.focus();
+          return;
+        }
+        var poses = 0;
+        lignes.forEach(function (ligne) {
+          var c = champDeLigne(ligne, "nom");
+          if (!c) return;
+          var suivant = nouveauNom(c.value, mode, texte, parNom.value);
+          if (suivant === c.value) return;
+          c.value = suivant;
+          poses++;
+          var s = champDeLigne(ligne, "slug");
+          if (s && s.dataset.depuisNom === "1") s.value = slugifier(suivant);
+        });
+        apresChangement();
+        annoncer(
+          poses === 0
+            ? "Aucun nom n'a changé."
+            : "Nom changé sur " + poses + (poses > 1 ? " lignes" : " ligne") +
+              ". Le bouton ↺ de la colonne Identifiant, ou « Tout remettre comme avant », annule.",
+        );
+      }
+
+      function appliquerSlug() {
+        var poses = 0;
+        lignes.forEach(function (ligne) {
+          var n = champDeLigne(ligne, "nom");
+          var s = champDeLigne(ligne, "slug");
+          if (!n || !s) return;
+          s.value = slugifier(n.value);
+          s.dataset.depuisNom = "1";
+          if (valeur(s) !== initial(s)) poses++;
+        });
+        apresChangement();
+        annoncer(
+          poses === 0
+            ? "Les identifiants suivent déjà les noms : rien ne change."
+            : poses + (poses > 1 ? " identifiants refaits" : " identifiant refait") +
+              " depuis le nom. Une adresse déjà prise recevra -2, -3… : la vérification le montrera, avec la redirection 301 posée pour chaque adresse changée.",
+        );
+      }
+
+      /** Statut, prix, poids, catégorie, IA, type : une valeur pour toute la colonne. */
+      function appliquerSimple(cellule, colonne, libelle) {
+        var modele = cellule.querySelector("[data-modele]");
+        if (!modele) return;
+        var v = modele.type === "checkbox" ? modele.checked : modele.value;
+        var poses = 0;
+        var ignores = 0;
+        colonneDe(colonne).forEach(function (c) {
+          if (poser(c, v)) poses++;
+          else ignores++;
+        });
+        apresChangement();
+        annoncerPose(libelle, poses, ignores, "appliqué à");
+      }
+
+      Array.prototype.forEach.call(
+        formulaire.querySelectorAll("[data-appliquer-bouton]"),
+        function (b) {
+          b.addEventListener("click", function () {
+            var quoi = b.dataset.appliquerBouton;
+            var cellule = b.closest("[data-appliquer]");
+            if (quoi === "nom") appliquerNom();
+            else if (quoi === "slug") appliquerSlug();
+            else if (quoi === "collections")
+              ouvrirCollections(null, cellule.querySelector("[data-collections-mode]").value, b);
+            else if (quoi === "description") ouvrirDescription(null, b);
+            else appliquerSimple(cellule, quoi, b.dataset.libelle || quoi);
+          });
+        },
+      );
+
+      // Entrée dans une case « Appliquer à tout » applique la colonne, au lieu
+      // d'envoyer toute la grille à la vérification par surprise.
+      formulaire.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter" || !e.target.closest) return;
+        var cellule = e.target.closest("[data-appliquer]");
+        if (!cellule || e.target.tagName === "BUTTON") return;
+        e.preventDefault();
+        var b = cellule.querySelector("[data-appliquer-bouton]");
+        if (b) b.click();
+      });
+
+      /* --- Les deux fenêtres --------------------------------------------- */
+
+      var dlgCollections = document.getElementById("dlg-collections");
+      var dlgDescription = document.getElementById("dlg-description");
+      /** Pour qui la fenêtre est ouverte : un champ, ou toute la colonne. */
+      var cible = null;
+      var modeTout = "";
+      var retourFocus = null;
+
+      var LIBELLES_MODE = {
+        ajouter: "Ajouter toutes les lignes à ces collections",
+        retirer: "Retirer toutes les lignes de ces collections",
+        remplacer: "Remplacer les collections de toutes les lignes par celles-ci",
+      };
+
+      function ouvrirCollections(champ, mode, depuis) {
+        cible = champ;
+        modeTout = mode || "";
+        retourFocus = depuis;
+        var choisies = champ ? idsDe(champ.value) : [];
+        var titre = dlgCollections.querySelector("#dlg-collections-titre");
+        var aide = dlgCollections.querySelector("[data-dlg-aide]");
+        if (champ) {
+          var ligne = champ.closest("[data-ligne]");
+          titre.textContent = "Collections de « " + (ligne ? ligne.dataset.nom : "") + " »";
+          aide.textContent = "Cochez les collections où ranger cette affiche. Une collection ajoutée la range à la fin.";
+        } else {
+          titre.textContent = LIBELLES_MODE[modeTout] || "Collections";
+          aide.textContent =
+            modeTout === "retirer"
+              ? "Les lignes sortiront des collections cochées. Rien n'est supprimé : l'affiche reste au catalogue."
+              : "Les affiches ajoutées se rangent à la fin de chaque collection.";
+        }
+        Array.prototype.forEach.call(
+          dlgCollections.querySelectorAll("[data-collection-case]"),
+          function (cas) {
+            cas.checked = choisies.indexOf(Number(cas.value)) !== -1;
+            // Une collection archivée ne se propose que pour EN SORTIR : sur
+            // la ligne qui y est, ou pour « Retirer de… ».
+            var archivee = cas.hasAttribute("data-archivee");
+            var visible = !archivee || (champ ? cas.checked : modeTout === "retirer");
+            cas.closest("label").hidden = !visible;
+            cas.disabled = archivee && !visible;
+          },
+        );
+        dlgCollections.showModal();
+        var premiere = dlgCollections.querySelector("[data-collection-case]:not([disabled])");
+        if (premiere) premiere.focus();
+      }
+
+      dlgCollections.addEventListener("close", function () {
+        var valide = dlgCollections.returnValue === "valider";
+        dlgCollections.returnValue = "";
+        if (valide) {
+          var cochees = Array.prototype.slice
+            .call(dlgCollections.querySelectorAll("[data-collection-case]"))
+            .filter(function (cas) { return cas.checked && !cas.closest("label").hidden; })
+            .map(function (cas) { return Number(cas.value); });
+          if (cible) {
+            poser(cible, trier(cochees));
+            apresChangement();
+            annoncer("Collections de la ligne changées. ↺ de la colonne annule.");
+          } else {
+            var poses = 0;
+            colonneDe("collections").forEach(function (c) {
+              var actuelles = idsDe(c.value);
+              var suivantes =
+                modeTout === "ajouter"
+                  ? actuelles.concat(cochees)
+                  : modeTout === "retirer"
+                    ? actuelles.filter(function (id) { return cochees.indexOf(id) === -1; })
+                    : cochees;
+              var t = trier(suivantes);
+              if (t !== trier(actuelles)) poses++;
+              poser(c, t);
+            });
+            apresChangement();
+            annoncer(
+              poses === 0
+                ? "Aucune ligne ne change de collections."
+                : "Collections changées sur " + poses + (poses > 1 ? " lignes" : " ligne") +
+                  ", y compris celles qui ne sont pas à l'écran. Le bouton ↺ de la colonne annule.",
+            );
+          }
+        }
+        if (retourFocus) retourFocus.focus();
+        cible = null;
+      });
+
+      var editeur = dlgDescription.querySelector("[data-editeur]");
+      function ouvrirDescription(champ, depuis) {
+        cible = champ;
+        retourFocus = depuis;
+        var titre = dlgDescription.querySelector("#dlg-description-titre");
+        var aide = dlgDescription.querySelector("[data-dlg-aide]");
+        if (champ) {
+          var ligne = champ.closest("[data-ligne]");
+          titre.textContent = "Description de « " + (ligne ? ligne.dataset.nom : "") + " »";
+          aide.textContent = "Le texte que la cliente lit sur la page de l'affiche.";
+        } else {
+          titre.textContent = "Remplacer la description de toutes les lignes";
+          aide.textContent =
+            "Ce texte remplacera la description de chaque ligne du tableau, y compris celles hors de l'écran. Rien n'est enregistré avant la vérification.";
+        }
+        if (editeur)
+          editeur.dispatchEvent(
+            new CustomEvent("editeur:charger", { detail: { html: champ ? champ.value : "" } }),
+          );
+        dlgDescription.showModal();
+        var zone = dlgDescription.querySelector("[data-zone]");
+        if (zone) zone.focus();
+      }
+
+      dlgDescription.addEventListener("close", function () {
+        var valide = dlgDescription.returnValue === "valider";
+        dlgDescription.returnValue = "";
+        if (valide && editeur) {
+          var html = (editeur.querySelector("[data-champ]") || {}).value || "";
+          if (cible) {
+            poser(cible, html.trim());
+            apresChangement();
+            annoncer("Description de la ligne changée. ↺ de la colonne annule.");
+          } else {
+            var poses = 0;
+            colonneDe("description").forEach(function (c) {
+              poser(c, html.trim());
+              poses++;
+            });
+            apresChangement();
+            annoncerPose("Description", poses, 0, "posée sur");
+          }
+        }
+        if (retourFocus) retourFocus.focus();
+        cible = null;
+      });
+
+      formulaire.addEventListener("click", function (e) {
+        var b = e.target.closest("[data-ouvrir-collections], [data-ouvrir-description]");
+        if (!b) return;
+        var cellule = b.closest("td");
+        if (b.hasAttribute("data-ouvrir-collections"))
+          ouvrirCollections(cellule.querySelector('[data-champ="collections"]'), "", b);
+        else ouvrirDescription(cellule.querySelector('[data-champ="description"]'), b);
+      });
 
       Array.prototype.forEach.call(
         document.querySelectorAll("[data-annuler]"),
         function (b) {
           b.addEventListener("click", function () {
             colonneDe(b.dataset.annuler).forEach(remettreChamp);
-            recalculer();
+            apresChangement();
             annoncer("« " + b.dataset.libelle + " » remis comme avant.");
           });
         },
@@ -1500,7 +2373,7 @@ const inerte = "block text-xs text-bo-muted";
       if (remettre)
         remettre.addEventListener("click", function () {
           champs.forEach(remettreChamp);
-          recalculer();
+          apresChangement();
           annoncer("Toutes les colonnes ont été remises comme avant.");
         });
 
@@ -1510,6 +2383,7 @@ const inerte = "block text-xs text-bo-muted";
           var diff = { id: Number(ligne.dataset.id) };
           var bouge = false;
           var fautive = false;
+          var nomLigne = champDeLigne(ligne, "nom");
           Array.prototype.forEach.call(
             ligne.querySelectorAll("[data-champ]"),
             function (c) {
@@ -1521,8 +2395,17 @@ const inerte = "block text-xs text-bo-muted";
               bouge = true;
               var genre = c.dataset.champ;
               if (genre === "nom") diff.name = String(c.value).trim();
-              else if (genre === "slug") diff.slug = String(c.value).trim();
-              else if (genre === "statut") diff.status = c.value;
+              else if (genre === "slug") {
+                // L'adresse qui suit le nom part comme telle : c'est l'API
+                // qui la rend unique, face au catalogue et au reste du lot.
+                if (
+                  c.dataset.depuisNom === "1" &&
+                  nomLigne &&
+                  valeur(c) === slugifier(nomLigne.value)
+                )
+                  diff.slugDepuisNom = true;
+                else diff.slug = String(c.value).trim();
+              } else if (genre === "statut") diff.status = c.value;
               else if (genre === "prix") {
                 if (c.dataset.format) {
                   if (!diff.prix) diff.prix = {};
@@ -1533,6 +2416,10 @@ const inerte = "block text-xs text-bo-muted";
               else if (genre === "poids")
                 diff.weightGrams = valeur(c) === "" ? null : Number(valeur(c));
               else if (genre === "ia") diff.aiEnabled = c.checked;
+              else if (genre === "vue") diff.defaultView = c.value === "" ? null : c.value;
+              else if (genre === "description") diff.description = valeur(c);
+              else if (genre === "collections")
+                diff.collections = { mode: "remplacer", ids: idsDe(valeur(c)) };
             },
           );
           // Une ligne à moitié envoyée laisserait le produit dans un état que
@@ -1551,6 +2438,11 @@ const inerte = "block text-xs text-bo-muted";
         envoiEnCours = true;
       });
 
+      if (formApercu)
+        formApercu.addEventListener("submit", function () {
+          envoiEnCours = true;
+        });
+
       window.addEventListener("beforeunload", function (e) {
         if (envoiEnCours || modifiees === 0) return;
         e.preventDefault();
@@ -1558,6 +2450,7 @@ const inerte = "block text-xs text-bo-muted";
       });
 
       recalculer();
+      chargementFini = true;
     })();
   </script>
 </Admin>

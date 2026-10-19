@@ -158,6 +158,17 @@ export interface CommandeDetail {
    * français. Absent sur une API d'une version antérieure.
    */
   livraison?: { nom: string | null; description: string | null };
+  /**
+   * Pour un retrait sur place : le lieu où venir chercher la commande, tel
+   * que la cliente l'a choisi à la caisse (nom et texte dans sa langue quand
+   * la boutique les a traduits). Null sinon ; absent sur une API d'une
+   * version antérieure. La page l'affiche à la place de l'adresse.
+   */
+  lieuRetrait?: {
+    nom: string;
+    adresse: string | null;
+    description: string | null;
+  } | null;
   expeditions: Expedition[];
   montants: Montants;
   statutFinancier: string;

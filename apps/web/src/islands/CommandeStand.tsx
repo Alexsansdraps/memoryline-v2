@@ -95,6 +95,29 @@ export default function CommandeStand(props: {
   /** La dernière saisie déjà soumise au stand : quitter le champ ne la renvoie pas. */
   let dejaVerifie = "";
 
+  /*
+   * Le bloc du code ne se montre que s'il a quelque chose à dire.
+   *
+   * Le code retenu par la tablette est revérifié à CHAQUE client, au
+   * chargement de cette étape. Affiché d'office, « Vérification du code… »
+   * clignotait sous les yeux du client — un message de vendeuse —, puis le
+   * bloc s'effaçait et le formulaire remontait d'un cran. Une réponse rapide
+   * ne montre donc rien (le bouton, grisé, fait patienter) ; une réponse
+   * lente s'annonce au bout de 0,6 s. Et dès que la vendeuse a eu à saisir
+   * le code, le bloc reste en place, vérification comprise, jusqu'à ce qu'il
+   * soit bon.
+   */
+  const [verificationLente, setVerificationLente] = createSignal(false);
+  const [codeDemande, setCodeDemande] = createSignal(false);
+  const blocCodeVisible = () =>
+    !!erreurCode() ||
+    (etatCode() !== "valide" &&
+      (etatCode() === "saisie" || codeDemande() || verificationLente()));
+  function demanderCode() {
+    setCodeDemande(true);
+    setEtatCode("saisie");
+  }
+
   const [nom, setNom] = createSignal("");
   const [courriel, setCourriel] = createSignal("");
   const [envoi, setEnvoi] = createSignal(false);
@@ -111,6 +134,7 @@ export default function CommandeStand(props: {
   async function verifierCode(saisi: string, retenu: boolean): Promise<boolean> {
     setEtatCode("verification");
     setErreurCode(null);
+    const lente = setTimeout(() => setVerificationLente(true), 600);
     try {
       const etat = await salonApi.etat(saisi);
       if (etat.autorise) {
@@ -129,8 +153,11 @@ export default function CommandeStand(props: {
       // Le stand n'a pas répondu : une coupure de réseau n'est pas un code
       // faux, on garde donc celui que la tablette a retenu pour réessayer.
       setErreurCode(tr("stand.code_injoignable"));
+    } finally {
+      clearTimeout(lente);
+      setVerificationLente(false);
     }
-    setEtatCode("saisie");
+    demanderCode();
     return false;
   }
 
@@ -139,7 +166,7 @@ export default function CommandeStand(props: {
     // On vérifie le code retenu AVANT de s'en servir : un stand fermé depuis
     // hier se découvrirait sinon au pire moment.
     if (retenu) void verifierCode(retenu, true);
-    else setEtatCode("saisie");
+    else demanderCode();
 
     // Une vente rouverte : on rend au client le nom et l'adresse qu'il avait
     // tapés, s'ils accompagnent bien le panier qui revient.
@@ -223,7 +250,7 @@ export default function CommandeStand(props: {
         // l'adresse restent en l'état, on redemande le code seulement.
         oublierCode();
         setCode(null);
-        setEtatCode("saisie");
+        demanderCode();
         setErreurCode(tr("stand.code_refuse"));
       } else {
         setErreur(
@@ -243,8 +270,10 @@ export default function CommandeStand(props: {
           tient la tablette, et « Stand : … — Changer de code » ne le
           concernait pas. La vendeuse change de code par l'adresse que donne
           le back-office (« /?stand=1&code=… »), et la saisie revient d'elle-
-          même si le code n'est plus celui d'un stand ouvert. */}
-      <Show when={etatCode() !== "valide" || erreurCode()}>
+          même si le code n'est plus celui d'un stand ouvert. Pendant la
+          vérification du code retenu, rien non plus, tant qu'elle est rapide
+          (voir `blocCodeVisible`). */}
+      <Show when={blocCodeVisible()}>
       <div class="border-b border-ink/10 pb-5">
         <Show when={etatCode() === "verification"}>
           <p class="flex items-center text-ink-soft" aria-live="polite">
@@ -423,13 +452,29 @@ export function ConfirmationStand(props: {
     }
   }
 
+  /** « Client suivant » a été touché : cette vente n'est plus à rouvrir d'ici. */
+  let servie = false;
+
   onMount(() => {
     // Une entrée d'historique à nous : la flèche retour de la tablette
     // revient à la commande au lieu de quitter la page sur un panier vide.
     history.pushState({ mlVenteStand: true }, "");
     const surRetour = () => void revenir();
     window.addEventListener("popstate", surRetour);
-    onCleanup(() => window.removeEventListener("popstate", surRetour));
+    // Le navigateur peut garder cette page en mémoire et la RESSERVIR telle
+    // quelle par la flèche retour, confirmation comprise. Après « Client
+    // suivant », c'est le client suivant qui tiendrait la tablette : il
+    // trouverait « Revenir à ma commande », qui lui rendrait le nom et
+    // l'adresse e-mail du précédent. Resservie après « Client suivant », la
+    // page se recharge donc, sur le panier neuf.
+    const surPageResservie = (e: PageTransitionEvent) => {
+      if (e.persisted && servie) window.location.reload();
+    };
+    window.addEventListener("pageshow", surPageResservie);
+    onCleanup(() => {
+      window.removeEventListener("popstate", surRetour);
+      window.removeEventListener("pageshow", surPageResservie);
+    });
   });
 
   return (
@@ -464,6 +509,7 @@ export function ConfirmationStand(props: {
           href={`${lien(langue, "/affiches")}?stand=1`}
           class={`${PRINCIPAL} px-10`}
           onClick={() => {
+            servie = true;
             // Le panier a déjà été remis à neuf à l'enregistrement. On le refait
             // ici au cas où une affiche y serait entrée depuis — un retour
             // arrière, un second onglet : le client suivant n'hérite de rien.

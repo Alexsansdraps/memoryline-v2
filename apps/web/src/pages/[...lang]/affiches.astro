@@ -80,22 +80,21 @@ const PAR_PAGE = 48;
 /**
  * Les tris proposés, dans l'ordre où ils s'offrent.
  *
- * « manuel » n'apparaît QUE dans une collection : c'est l'ordre que la
- * propriétaire a réglé au glisser-déposer, et hors collection il ne désigne
- * rien. Il y est alors le tri par défaut — elle range ses affiches pour que ce
- * rangement se voie.
+ * « manuel » est l'ordre que la propriétaire a réglé au back-office (Produits
+ * › Ordre d'affichage). Il est le tri par défaut — elle range ses affiches
+ * pour que ce rangement se voie.
  */
 const TRIS = ["nouveautes", "prix_asc", "prix_desc", "alpha"] as const;
 /*
- * « Ordre de la boutique » est proposé — et choisi par défaut — dans une
- * collection ET sur les pages d'un genre (« Affiches personnalisables »,
- * « prêtes à imprimer »). Ces deux pages-là sont celles où les clientes
- * arrivent, et elles se rangeaient jusqu'ici par nouveautés sans que la
- * boutique puisse rien y changer. Elles suivent maintenant l'ordre réglé au
- * back-office ; tant que rien n'est rangé, cet ordre EST celui des nouveautés.
+ * « Ordre de la boutique » est proposé — et choisi par défaut — sur TOUTES les
+ * pages de liste : une collection, les pages d'un genre (« Affiches
+ * personnalisables », « prêtes à imprimer ») et « Toutes les affiches », lieu
+ * filtré compris. Chacune a son ordre, réglé au back-office ; tant que rien
+ * n'y est rangé, cet ordre EST celui des nouveautés, et rien ne change pour
+ * les clientes. (Cette page n'a pas de recherche par mots : une recherche,
+ * elle, se trierait par pertinence, pas par un rangement fait pour une page.)
  */
-const pageRangeable =
-  !!collectionDemandee || genre === "personnalisable" || genre === "prete_a_imprimer";
+const pageRangeable = true;
 /*
  * Au stand, pas de tri par prix : les vignettes n'en montrent aucun, et un
  * rayon rangé « du moins cher au plus cher » sans un chiffre à l'écran ne se

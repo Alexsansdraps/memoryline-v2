@@ -16,6 +16,7 @@
 import Admin from "../layouts/Admin.astro";
 import { apiUrl, url } from "../lib/url.ts";
 import { normaliserSaisie, rechercher } from "../lib/recherche-bo.ts";
+import { modeEssai } from "../lib/mode-essai.ts";
 import {
   ORDRE_GROUPES,
   RECHERCHE_LIMITE_MAX,
@@ -44,6 +45,8 @@ if (q.length >= RECHERCHE_MINIMUM) {
     reponse = await rechercher(Astro.request, q, {
       groupes: groupe ? [groupe] : undefined,
       limite: groupe ? RECHERCHE_LIMITE_MAX : RECHERCHE_LIMITE_PAGE,
+      // Comme le panneau : hors essai, rien ne mène à l'aide des tests.
+      essai: await modeEssai(Astro.request),
     });
   } catch {
     enPanne = true;

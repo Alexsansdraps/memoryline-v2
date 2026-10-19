@@ -97,6 +97,16 @@ interface Props {
    * changement (« Pensez à enregistrer le dessin. »).
    */
   rappel?: string;
+  /**
+   * Personnage : les nuanciers qu'une couleur du dessin peut proposer — les
+   * quatre des personnages, tels que la boutique les a réglés, et ceux des
+   * catégories de pièces. Sans eux, le menu « Nuancier » ne propose que les
+   * quatre, avec leurs couleurs d'origine.
+   */
+  nuanciers?: {
+    base: Record<string, string[]>;
+    categories: { slug: string; name: string; colors: string[] }[];
+  } | null;
 }
 
 const {
@@ -115,6 +125,7 @@ const {
   cadrage,
   aide,
   rappel,
+  nuanciers,
 } = Astro.props;
 
 const etat = {
@@ -129,6 +140,7 @@ const etat = {
   parts: parts ?? null,
   proposees: proposees ?? null,
   couleursImage: couleursImage ?? null,
+  nuanciers: nuanciers ?? null,
 };
 // « < » échappé : un nom de groupe ne doit pas pouvoir fermer la balise.
 const json = JSON.stringify(etat).replace(/</g, "\\u003c");
@@ -208,6 +220,10 @@ const bouton =
     type GroupeCouleur,
     type MotifSansCouleur,
     type NuancierBase,
+    LIBELLES_NUANCIERS_BASE,
+    couleursDuNuancier,
+    estNuancier,
+    type Nuancier,
   } from "@memoryline/types/couleurs";
 
   declare global {
@@ -438,13 +454,25 @@ const bouton =
     }
   }
 
-  /** Les nuanciers d'un personnage, tels que la boutique les nomme. */
-  const LIBELLES_NUANCIERS: Record<NuancierBase, string> = {
-    peau: "Peau",
-    cheveux: "Cheveux / pelage",
-    vetements: "Vêtements",
-    pantalon: "Pantalon",
-  };
+  /** Ce que la page fournit pour le menu « Nuancier » d'un personnage. */
+  interface NuanciersProposes {
+    base: Partial<Record<NuancierBase, string[]>>;
+    categories: { slug: string; name: string; colors: string[] }[];
+  }
+
+  /** Les nuanciers reçus de la page, nettoyés ; null s'il n'y en a pas. */
+  function nuanciersLus(brut: unknown): NuanciersProposes | null {
+    if (!brut || typeof brut !== "object") return null;
+    const r = brut as Record<string, unknown>;
+    const base =
+      r.base && typeof r.base === "object" ? (r.base as Partial<Record<NuancierBase, string[]>>) : {};
+    const categories = Array.isArray(r.categories)
+      ? (r.categories as { slug: string; name: string; colors: string[] }[]).filter(
+          (c) => c && typeof c.slug === "string" && Array.isArray(c.colors),
+        )
+      : [];
+    return { base, categories };
+  }
 
   /** Les zones de référence cachées, quel que soit le mode d'enregistrement. */
   function cacheesDepuis(
@@ -557,8 +585,16 @@ const bouton =
     onProposee: (oui: boolean) => void;
     /** Ce qu'il faut savoir de plus, en petit (« couleur principale »). */
     notes: string[];
-    /** Personnage : les pastilles que le client aura pour cette couleur. */
-    nuancier?: { valeur: NuancierBase; onChange: (n: NuancierBase) => void };
+    /**
+     * Personnage : le nuancier que le client aura pour cette couleur, et celui
+     * qu'il aurait sans réglage (`repli` : la peau pour la première, les
+     * vêtements pour les autres, le pelage pour une image en pixels).
+     */
+    nuancier?: {
+      valeur: Nuancier | undefined;
+      repli: NuancierBase;
+      onChange: (n: Nuancier) => void;
+    };
   }
 
   function monter(bloc: HTMLElement) {
@@ -572,6 +608,9 @@ const bouton =
     const source = bloc.querySelector<HTMLScriptElement>(".js-groupes-etat")!;
     const brut = JSON.parse(source.textContent || "{}");
     const groupesInitiaux = groupesDuDessin(brut.zones, brut.groupes);
+    // Les nuanciers proposés au menu « Nuancier » (personnage seulement) :
+    // ils ne changent pas pendant la visite, on les garde tels quels.
+    const nuanciers = nuanciersLus(brut.nuanciers);
     let etat: Etat = {
       mode: brut.mode === "personnage" ? "personnage" : "piece",
       svgUrl: brut.svgUrl ?? "",
@@ -636,6 +675,7 @@ const bouton =
         masquees: e.zonesMasquees,
         regle: etat.regle,
         parts: etat.parts,
+        nuanciers,
       });
       const champ = (c: string) => bloc.querySelector<HTMLInputElement>(c);
       const cz = champ(".js-champ-zones");
@@ -749,19 +789,69 @@ const bouton =
       rangee.append(pastille, l.vignette, milieu);
 
       if (l.nuancier) {
+        // « Nuancier : » — l'un des quatre des personnages, ou celui d'une
+        // catégorie de pièces —, suivi des pastilles qu'il proposera : la
+        // boutique voit ce qu'elle choisit, au lieu d'un nom à deviner.
         const n = l.nuancier;
-        const choixNuancier = el("label", "flex items-center gap-1 text-xs text-bo-muted");
+        const choixNuancier = el("div", "flex flex-wrap items-center gap-1.5 text-xs text-bo-muted");
+        const etiquette = el("label", "flex items-center gap-1");
         const select = el("select", "rounded border border-bo-border bg-bo-surface px-1 py-0.5 text-bo-ink");
         select.dataset.cle = `pastilles:${l.cle}`;
+        const actuel: Nuancier = n.valeur ?? n.repli;
+        const groupeBase = el("optgroup");
+        groupeBase.label = "Nuanciers des personnages";
         for (const x of NUANCIERS_BASE) {
-          const o = el("option", "", LIBELLES_NUANCIERS[x]);
+          const o = el("option", "", LIBELLES_NUANCIERS_BASE[x]);
           o.value = x;
-          o.selected = n.valeur === x;
-          select.append(o);
+          o.selected = actuel === x;
+          groupeBase.append(o);
         }
-        select.addEventListener("change", () => n.onChange(select.value as NuancierBase));
-        choixNuancier.append("Pastilles :", select);
-        choixNuancier.title = "Les couleurs proposées au client pour celle-ci";
+        select.append(groupeBase);
+        const categories = nuanciers?.categories ?? [];
+        const groupeCategories = el("optgroup");
+        groupeCategories.label = "Catégories de pièces";
+        for (const c of categories) {
+          const o = el("option", "", c.name);
+          o.value = `categorie:${c.slug}`;
+          o.selected = actuel === o.value;
+          groupeCategories.append(o);
+        }
+        // Une catégorie choisie puis archivée ou décochée n'est plus dans la
+        // liste : son option reste, sans quoi le menu montrerait « Peau » et
+        // le premier enregistrement effacerait le choix sans qu'on l'ait vu.
+        if (
+          actuel.startsWith("categorie:") &&
+          !categories.some((c) => `categorie:${c.slug}` === actuel)
+        ) {
+          const o = el("option", "", `${actuel.slice("categorie:".length)} (catégorie indisponible : le client a « ${LIBELLES_NUANCIERS_BASE[n.repli]} »)`);
+          o.value = actuel;
+          o.selected = true;
+          groupeCategories.append(o);
+        }
+        if (groupeCategories.children.length) select.append(groupeCategories);
+
+        // Les pastilles du nuancier choisi, dans l'ordre où le client les
+        // verra ; elles suivent le menu.
+        const apercu = el("span", "flex flex-wrap items-center gap-0.5");
+        apercu.setAttribute("aria-hidden", "true");
+        const montrerPastilles = (choisi: Nuancier) => {
+          apercu.textContent = "";
+          for (const hex of couleursDuNuancier(choisi, n.repli, nuanciers?.base, categories)) {
+            const p = el("span", "inline-block h-3.5 w-3.5 rounded-full border border-bo-border");
+            p.style.background = hex;
+            p.title = hex;
+            apercu.append(p);
+          }
+        };
+        montrerPastilles(actuel);
+        select.addEventListener("change", () => {
+          if (!estNuancier(select.value)) return;
+          montrerPastilles(select.value);
+          n.onChange(select.value);
+        });
+        etiquette.append("Nuancier :", select);
+        etiquette.title = "Les couleurs proposées au client pour celle-ci";
+        choixNuancier.append(etiquette, apercu);
         rangee.append(choixNuancier);
       }
 
@@ -895,11 +985,12 @@ const bouton =
             nuancier:
               etat.mode === "personnage"
                 ? {
-                    valeur: f.nuancier ?? "cheveux",
+                    valeur: f.nuancier,
+                    repli: "cheveux",
                     onChange: (n) => {
                       f.nuancier = n;
                       publier();
-                      void enregistrerTout("Pastilles changées.");
+                      void enregistrerTout("Nuancier changé.");
                     },
                   }
                 : undefined,
@@ -1032,6 +1123,31 @@ const bouton =
       if (etat.groupes.length === 0) {
         resume.className = "js-groupes-resume text-sm text-bo-muted";
         resume.textContent = "Pas de couleur à changer dans ce dessin.";
+        // Un dessin dont les couleurs n'ont JAMAIS été lues (un animal
+        // téléversé depuis Canva, le berger allemand) arrivait ici sans rien
+        // à cocher ni à choisir, et la lecture était cachée sous « Réglages
+        // avancés ». Le bouton est maintenant là où l'on bute.
+        if (etat.svgUrl) {
+          resume.textContent = "Les couleurs de ce dessin n'ont pas encore été lues.";
+          const lire = el(
+            "button",
+            "rounded bg-bo-accent px-3 py-1.5 text-sm text-white hover:opacity-90",
+            "Lire les couleurs du dessin",
+          );
+          lire.type = "button";
+          lire.dataset.cle = "lire-le-dessin";
+          lire.addEventListener("click", () => void detecter(etat.svgUrl, false));
+          const suite = el(
+            "p",
+            "text-xs text-bo-muted",
+            etat.mode === "personnage"
+              ? "Puis cochez « Le client peut la changer » sur le pelage (ou la peau), choisissez son nuancier, et cliquez « Enregistrer le dessin »."
+              : "Puis cochez les couleurs que le client pourra changer : chaque réglage s'enregistre aussitôt.",
+          );
+          const bloc = el("div", "flex flex-col items-start gap-1.5");
+          bloc.append(lire, suite);
+          liste.append(bloc);
+        }
         publier();
         return;
       }
@@ -1109,11 +1225,12 @@ const bouton =
             nuancier:
               etat.mode === "personnage"
                 ? {
-                    valeur: g.nuancier ?? (g.zone === premier ? "peau" : "vetements"),
+                    valeur: g.nuancier,
+                    repli: g.zone === premier ? "peau" : "vetements",
                     onChange: (n) => {
                       g.nuancier = n;
                       publier();
-                      void enregistrerTout("Pastilles changées.");
+                      void enregistrerTout("Nuancier changé.");
                     },
                   }
                 : undefined,

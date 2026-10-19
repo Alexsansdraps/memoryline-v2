@@ -14,6 +14,7 @@ import {
   getCartId,
   type OrderItem,
 } from "../lib/api.ts";
+import { messageAjoutRefuse } from "../lib/ajout-panier.ts";
 
 /**
  * Île SolidJS qui pilote le configurateur d'affiche.
@@ -106,6 +107,8 @@ export default function ConfiguratorIsland(
       characters: library.characters,
       slots: library.slots,
       pieceCategories: library.pieceCategories ?? [],
+      // Les nuanciers des personnages réglés au back-office (peau, cheveux…).
+      nuanciersBase: library.nuanciersBase,
       backgrounds,
       cadres,
     };
@@ -173,7 +176,10 @@ export default function ConfiguratorIsland(
       const panier = lien(langue, "/panier");
       window.location.href = ligne.cadreRetire ? `${panier}?cadres=retires` : panier;
     } catch (e) {
-      setError(String(e));
+      // Une phrase dans la langue de la fiche : l'erreur brute (« Error: API
+      // POST /cart/… -> 400 … ») s'affichait telle quelle, en jargon et en
+      // français, sur les fiches de toutes les langues.
+      setError(messageAjoutRefuse(e, tr));
       setSaving(false);
     }
   }
@@ -313,6 +319,11 @@ export default function ConfiguratorIsland(
                 // Montants et dimensions à la manière de la langue de la page.
                 locale,
                 personnaliserPerso: tr("cfg.personnaliser_perso"),
+                plusBas: tr("cfg.plus_bas"),
+                partieCouleurs: tr("cfg.partie.couleurs"),
+                partieVetements: tr("cfg.partie.vetements"),
+                partieCheveux: tr("cfg.partie.cheveux"),
+                partieAccessoires: tr("cfg.partie.accessoires"),
               }}
               product={{
                 id: props.product.id,
@@ -322,6 +333,7 @@ export default function ConfiguratorIsland(
               backgrounds={d().backgrounds}
               cadres={d().cadres}
               pieceCategories={d().pieceCategories}
+              nuanciersBase={d().nuanciersBase}
               characters={d().characters as never}
               slots={d().slots as never}
               prices={props.prices}

@@ -13,3 +13,6 @@
  */
 export * from "./couleurs-groupes.js";
 export * from "./couleurs-image.js";
+// Les nuanciers des personnages : leurs couleurs d'origine et la façon de
+// choisir celui d'une couleur du dessin (le back-office les montre).
+export * from "./nuanciers.js";

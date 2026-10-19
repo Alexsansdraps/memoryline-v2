@@ -1,0 +1,80 @@
+---
+/**
+ * Un nuancier à composer et à ranger : une pastille par couleur, dans l'ordre
+ * où la cliente les verra dans le module.
+ *
+ * Le geste vit dans lib/pastilles.ts (poignée ⠿ à glisser, ← → au clavier,
+ * × pour retirer, ajout à la fin). Ce composant n'en pose que le balisage, le
+ * même partout : catégories de pièces, nuanciers des personnages. La liste
+ * part dans un champ texte, une couleur par ligne, avec le formulaire qui
+ * contient le nuancier — c'est son bouton « Enregistrer » qui l'envoie.
+ */
+interface Props {
+  /** `name` du champ envoyé au serveur. */
+  nom: string;
+  /** Les couleurs, dans l'ordre, en « #RRGGBB ». */
+  couleurs: readonly string[];
+  /**
+   * Ce que lit un lecteur d'écran, après « dans » : « le nuancier
+   * « Vêtements » », « le nuancier « Peau » »…
+   */
+  libelle: string;
+  /** Le texte au-dessus des pastilles. */
+  etiquette?: string;
+}
+
+const { nom, couleurs, libelle, etiquette } = Astro.props;
+const idEtiquette = `nuancier-${Math.random().toString(36).slice(2, 10)}`;
+const bouton =
+  "flex h-6 w-6 items-center justify-center rounded text-xs text-bo-muted hover:bg-bo-bg disabled:cursor-default disabled:opacity-30";
+---
+
+<div data-pastilles data-libelle={libelle}>
+  <span id={idEtiquette} class="text-bo-muted text-xs">
+    {etiquette ?? (
+      <>Couleurs proposées (<span data-pastilles-compte>{couleurs.length}</span>), dans l'ordre où la cliente les voit.</>
+    )}
+    {" "}Glissez ⠿ ou utilisez les flèches ← → ; × retire la couleur.
+  </span>
+  {/* Rendue ici pour s'afficher tout de suite ; lib/pastilles.ts la redessine
+      à l'identique en se branchant. */}
+  <ul data-pastilles-liste class="mt-1 flex flex-wrap items-center gap-1.5" aria-labelledby={idEtiquette}>
+    {couleurs.map((hex, i) => (
+      <li
+        data-hex={hex}
+        class="flex items-center gap-0.5 rounded border border-bo-border bg-bo-surface px-1 py-0.5"
+      >
+        <span class="ml-poignee cursor-grab select-none px-0.5 text-bo-muted" aria-hidden="true" title="Glissez pour changer la place">⠿</span>
+        <span
+          class="h-6 w-6 shrink-0 rounded-full border border-bo-border"
+          style={`background:${hex}`}
+          title={hex}
+          role="img"
+          aria-label={`${hex}, couleur ${i + 1} sur ${couleurs.length}`}
+        ></span>
+        <button type="button" data-avancer class={bouton} title="Avancer d'une place" aria-label={`Avancer ${hex}`} disabled={i === 0}>←</button>
+        <button type="button" data-reculer class={bouton} title="Reculer d'une place" aria-label={`Reculer ${hex}`} disabled={i === couleurs.length - 1}>→</button>
+        <button type="button" data-retirer class={bouton} title="Retirer du nuancier" aria-label={`Retirer ${hex}`}>×</button>
+      </li>
+    ))}
+  </ul>
+  <div class="mt-1.5 flex items-center gap-2">
+    <input
+      type="color"
+      data-pastilles-choix
+      class="h-7 w-9 cursor-pointer rounded border border-bo-border"
+      value="#B8551D"
+      aria-label={`Couleur à ajouter dans ${libelle}`}
+      title="Choisir une couleur à ajouter"
+    />
+    <button
+      type="button"
+      data-pastilles-ajouter
+      class="rounded border border-bo-border px-2 py-1 text-xs hover:bg-bo-bg"
+    >
+      + Ajouter
+    </button>
+  </div>
+  <textarea name={nom} data-pastilles-champ class="hidden" aria-hidden="true" tabindex="-1">{couleurs.join("\n")}</textarea>
+  <p class="sr-only" aria-live="polite" data-pastilles-annonce></p>
+</div>
