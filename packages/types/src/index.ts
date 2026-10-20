@@ -33,3 +33,4 @@ export const PAYMENT_PROVIDERS = ["stripe", "paypal"] as const;
 export type PaymentProvider = (typeof PAYMENT_PROVIDERS)[number];
 export * from "./formats.js";
 export * from "./nuanciers.js";
+export * from "./rayons-sans-page.js";

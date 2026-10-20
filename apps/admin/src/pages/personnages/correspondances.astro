@@ -23,7 +23,7 @@ function svgSrc(u: string | null | undefined): string {
 
 const SLOTS = [
   { value: "clothes", label: "Vêtements" },
-  { value: "pants", label: "Pantalon" },
+  { value: "pants", label: "Pantalons" },
   { value: "hair", label: "Coupes" },
   { value: "accessory", label: "Accessoires" },
 ];
@@ -126,7 +126,9 @@ const viewBox =
   "0 0 500 1000";
 ---
 
-<Admin title="Correspondances">
+{/* Le même nom que dans le menu (« Pièces par personnage ») : la barre du
+    haut et l'entrée cliquée doivent dire la même chose. */}
+<Admin title="Pièces par personnage">
   <p class="mb-4">
     <a href={url("/personnages")} class="text-bo-accent hover:underline text-sm">
       ← Retour aux personnages
@@ -297,7 +299,10 @@ const viewBox =
           </tbody>
         </table>
       </div>
-      <div class="sticky bottom-0 mt-3 flex items-center gap-3 bg-bo-bg/90 py-3">
+      {/* Au-dessus de la colonne collante des noms (z-10), et sur un fond
+          plein : elle passait par-dessus le bouton, dont on ne voyait plus
+          que « …ndances », et seul son bout restait cliquable. */}
+      <div class="sticky bottom-0 z-20 mt-3 flex items-center gap-3 bg-bo-bg py-3">
         <button class="rounded bg-bo-accent text-white px-5 py-2 text-sm">
           Enregistrer les correspondances
         </button>

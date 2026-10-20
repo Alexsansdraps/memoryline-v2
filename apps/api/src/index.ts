@@ -103,6 +103,8 @@ import {
   nombreDeLieuxActifs,
 } from "./lieux-retrait.js";
 import { mountFacturation } from "./facturation.js";
+import { mountRedirections } from "./redirections-ecran.js";
+import { redirectionsPeutEtreChangees, versionDesRedirections } from "./redirections.js";
 import { mountCompteRoutes } from "./comptes.js";
 import { mountAnalytiqueRoutes } from "./analytique.js";
 import {
@@ -225,10 +227,17 @@ app.use("/admin/*", async (c, next) => {
 // sans attendre ses cinq minutes de vie. Posé ici, juste après la garde, il
 // couvre par construction toutes les routes /admin/* déclarées ensuite — y
 // compris celles qu'on ajoutera — au lieu d'une liste à tenir à jour.
+//
+// Même raisonnement pour les redirections : le site les garde en mémoire et
+// ne les relit que si leur version a changé (redirections.ts,
+// versionDesRedirections). Une écriture réussie la change, quelle que soit la
+// route — plusieurs en posent ou en archivent, pas seulement BO › Redirections.
 app.use("/admin/*", async (c, next) => {
   await next();
-  if (c.req.method !== "GET" && c.req.method !== "HEAD" && c.res.status < 400)
+  if (c.req.method !== "GET" && c.req.method !== "HEAD" && c.res.status < 400) {
     invaliderCorpusRecherche();
+    redirectionsPeutEtreChangees();
+  }
 });
 
 // Images/SVG rapatriés depuis Shopify (cf. scripts/fetch-assets.ts).
@@ -1211,6 +1220,10 @@ app.get("/admin/settings", async (c) => {
  * demandée — l'API, elle, ne reçoit jamais « /products/… ».
  */
 app.get("/redirects", async (c) => {
+  // La version lue AVANT la table : une écriture qui tomberait entre les deux
+  // laisserait au site une version plus ancienne que ce qu'il a lu, donc une
+  // relecture de trop — jamais une table périmée sous une version à jour.
+  const version = versionDesRedirections();
   const rows = await db
     .select({
       fromPath: schema.redirects.fromPath,
@@ -1223,8 +1236,15 @@ app.get("/redirects", async (c) => {
     // ancienne adresse (cf. redirections.ts). Elles restent en base, pour
     // l'histoire.
     .where(isNull(schema.redirects.archivedAt));
+  c.header("X-Redirections-Version", version);
   return c.json(rows);
 });
+
+/**
+ * La version de la table seule, sans la lire : ce que le site demande toutes
+ * les deux secondes au plus pour savoir s'il doit la relire (redirections.ts).
+ */
+app.get("/redirects/version", (c) => c.json({ version: versionDesRedirections() }));
 
 /** Cadres proposés au client (actifs uniquement), dans l'ordre du BO. */
 app.get("/frames", async (c) => {
@@ -2298,6 +2318,10 @@ mountSalonRoutes(app);
 
 // Les lieux où retirer sa commande (chalets, atelier), réglés au back-office.
 mountLieuxRetrait(app);
+
+// Les redirections saisies au back-office et l'import de celles de Shopify
+// (/admin/redirections…). Le site les lit par « GET /redirects », plus haut.
+mountRedirections(app);
 
 // L'adresse et le SIRET de la boutique sur ses factures (BO › Factures).
 mountFacturation(app);

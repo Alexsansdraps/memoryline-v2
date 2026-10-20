@@ -121,10 +121,27 @@ function prix(p: ProduitDeCollection): string {
     : `${formatPrice(p.prixMin)} à ${formatPrice(p.prixMax ?? p.prixMin)}`;
 }
 
-/** L'adresse publique de la page rangée, pour aller voir le résultat. */
-const lienPage = choisie.lien
-  ? `${import.meta.env.PUBLIC_SITE_URL ?? import.meta.env.PUBLIC_ORIGIN ?? ""}${choisie.lien}`
-  : null;
+/**
+ * Une collection sans page à elle sur le site (fusionnée dans un autre rayon,
+ * ou vide) : la ranger ne change que ses autres usages, s'il y en a. Elle
+ * n'est plus proposée dans le choix, sauf quand son ordre sert ailleurs ;
+ * ouverte par son adresse (depuis sa fiche), l'écran le dit.
+ */
+const sansPage = choisie.sansPage ?? null;
+const pagesProposees = pages.filter(
+  (p) => !p.sansPage || p.usages.length > 0 || p.cle === choisie.cle,
+);
+const nbNonProposees = pages.length - pagesProposees.length;
+
+/**
+ * L'adresse publique de la page rangée, pour aller voir le résultat. Pas
+ * pour une collection sans page : le lien mènerait sur une autre page, ou
+ * sur « introuvable », et ferait croire que l'ordre n'a pas été pris.
+ */
+const lienPage =
+  choisie.lien && !sansPage
+    ? `${import.meta.env.PUBLIC_SITE_URL ?? import.meta.env.PUBLIC_ORIGIN ?? ""}${choisie.lien}`
+    : null;
 
 /** Ce qu'on lit sous le titre : d'où vient l'ordre affiché. */
 const origine =
@@ -182,11 +199,12 @@ const boutonOutil =
             ))}
         </optgroup>
         <optgroup label="Collections">
-          {pages
+          {pagesProposees
             .filter((p) => p.cle.startsWith("collection:"))
             .map((p) => (
               <option value={p.cle} selected={p.cle === choisie.cle}>
-                {p.nom} ({p.enLigne}){p.usages.length ? ` — ${p.usages.join(", ")}` : ""}
+                {p.nom} ({p.enLigne}){p.sansPage ? " — pas de page à elle sur le site" : ""}
+                {p.usages.length ? ` — ${p.usages.join(", ")}` : ""}
               </option>
             ))}
         </optgroup>
@@ -195,7 +213,44 @@ const boutonOutil =
     <button class="rounded border border-bo-border px-3 py-2 text-sm hover:bg-bo-bg">
       Afficher
     </button>
+    {nbNonProposees > 0 && (
+      <p class="basis-full text-xs text-bo-muted">
+        {nbNonProposees === 1
+          ? "1 collection n'est pas proposée : elle n'a pas de page à elle sur le site"
+          : `${nbNonProposees} collections ne sont pas proposées : elles n'ont pas de page à elles sur le site`}
+        {" "}(vides, ou dont l'adresse mène à un autre rayon). Une collection vide
+        revient ici dès qu'une affiche y est en ligne.
+      </p>
+    )}
   </form>
+
+  {/* Une collection sans page, ouverte par son adresse : ranger ici ne
+      change pas ce que voient les clientes sur « sa » page, et il faut le
+      savoir avant de passer du temps à ranger. */}
+  {sansPage && (
+    <div class="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+      <p>
+        « {choisie.nom} » n'a pas de page à elle sur le site
+        {sansPage.raison === "fusionnee" && sansPage.versNom
+          ? ` : son adresse mène à « ${sansPage.versNom} ».`
+          : sansPage.vers && sansPage.versNom
+            ? ` tant qu'elle est vide : son adresse mène à « ${sansPage.versNom} ».`
+            : " tant qu'aucune affiche n'y est en ligne."}
+        {choisie.usages.length > 0
+          ? ` Son ordre ne sert qu'à : ${choisie.usages.join(", ")}.`
+          : " La ranger ici ne change rien sur le site."}
+      </p>
+      {sansPage.versCle && sansPage.versNom && (
+        <p class="mt-1">
+          <a
+            href={`${url("/produits/ordre")}?page=${encodeURIComponent(sansPage.versCle)}`}
+            class="font-medium underline"
+          >
+            Ranger plutôt « {sansPage.versNom} »</a>, la page que les clientes voient.
+        </p>
+      )}
+    </div>
+  )}
 
   <section class="rounded-lg border border-bo-border bg-bo-surface">
     <header class="flex flex-wrap items-center justify-between gap-3 border-b border-bo-border px-4 py-3">
@@ -215,7 +270,7 @@ const boutonOutil =
         {horsLigne > 0 && (
           <p class="mt-1 text-xs text-bo-muted">
             {horsLigne} brouillon{horsLigne > 1 ? "s" : ""} ou archive{horsLigne > 1 ? "s" : ""}
-            {" "}ne {horsLigne > 1 ? "sont" : "est"} pas montré{horsLigne > 1 ? "s" : ""} ici :
+            {horsLigne > 1 ? " ne sont" : " n'est"} pas montré{horsLigne > 1 ? "s" : ""} ici :
             remis en ligne, {horsLigne > 1 ? "ils arrivent" : "il arrive"} après les affiches rangées.
           </p>
         )}

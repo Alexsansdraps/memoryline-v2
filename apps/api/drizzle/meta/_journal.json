@@ -477,6 +477,20 @@
       "when": 1791467762226,
       "tag": "0067_cartes_trello_8_octobre",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1792422834286,
+      "tag": "0068_toutes_les_couleurs_par_defaut",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1792489657984,
+      "tag": "0069_offre_3_plus_1_toutes_tailles",
+      "breakpoints": true
     }
   ]
 }

@@ -226,6 +226,10 @@ export function mountPromotions(app: Hono): void {
     )
       return c.json({ error: "code inconnu" }, 404);
     return c.json({
+      // L'identifiant départage deux règles de même priorité (reglesActives) :
+      // sans lui, le navigateur ne rangerait pas le code comme le serveur, et
+      // le panier n'afficherait pas le montant encaissé.
+      id: regle.id,
       code,
       name: texteDansLaLangue(regle.translations, langue, "name", regle.name),
       type: regle.type,

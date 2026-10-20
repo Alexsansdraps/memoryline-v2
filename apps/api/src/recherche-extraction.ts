@@ -857,13 +857,65 @@ export function fichesCategoriesPersonnages(
   }));
 }
 
-/** Les emplacements, comme l'écran des personnages les nomme. */
+/**
+ * Les emplacements, comme l'écran Pièces les nomme. « Pantalons » au pluriel,
+ * comme la catégorie qui les range : « Pantalon · Pantalons » ne disait rien
+ * de plus que l'un des deux.
+ */
 const EMPLACEMENTS: Record<string, string> = {
   clothes: "Vêtements",
-  pants: "Pantalon",
+  pants: "Pantalons",
   hair: "Coupes",
   accessory: "Accessoires",
 };
+
+/** Un personnage, tel que la règle des pièces portées le lit. */
+export interface PersonnagePorteur {
+  id: number;
+  name: string;
+  orientation: string | null;
+  /** slot_variants : les positions des pièces cochées, par emplacement ; null = tout. */
+  slotVariants: unknown;
+  archivedAt: Date | null;
+}
+
+/**
+ * Les personnages qui portent une pièce, selon la règle du site
+ * (slotsForCharacter, dans le configurateur) et de l'écran Pièces : un
+ * personnage en ligne, du même type d'affiche, dont la liste de pièces cochées
+ * contient la sienne (par sa position) — ou qui n'a pas de liste du tout, et
+ * porte alors toute la bibliothèque.
+ *
+ * Ceux qui l'ont COCHÉE viennent en tête : « Fille 1 » dit ce qu'est un
+ * « Clothes 1 » parmi dix-neuf ; ceux qui portent tout ne distinguent rien.
+ */
+export function porteursDeLaPiece(
+  piece: { slot: string; view: string | null; position: number; characterTypeId: number | null },
+  personnages: readonly PersonnagePorteur[],
+  vueParDefaut: string,
+): string[] {
+  const vue = piece.view ?? vueParDefaut;
+  const coches: string[] = [];
+  const tout: string[] = [];
+  for (const t of personnages) {
+    if (t.archivedAt || (t.orientation ?? vueParDefaut) !== vue) continue;
+    // Une pièce dessinée pour UN personnage n'est qu'à lui.
+    if (piece.characterTypeId != null && piece.characterTypeId !== t.id) continue;
+    const sv = t.slotVariants;
+    if (!sv || typeof sv !== "object") tout.push(t.name);
+    else {
+      const liste = (sv as Record<string, unknown>)[piece.slot];
+      if (Array.isArray(liste) && liste.includes(piece.position)) coches.push(t.name);
+    }
+  }
+  return [...coches, ...tout];
+}
+
+/** « Portée par Fille 1, Homme 2, Femme 3 (+2) » : trois noms, comme sur la ligne de la pièce. */
+function textePorteurs(noms: readonly string[]): string | null {
+  if (!noms.length) return null;
+  return `Portée par ${noms.slice(0, 3).join(", ")}${noms.length > 3 ? ` (+${noms.length - 3})` : ""}`;
+}
 
 export interface LignePiece {
   id: number;
@@ -873,6 +925,10 @@ export interface LignePiece {
   archivedAt: Date | null;
   /** groupes_couleurs : les couleurs que le client peut changer sur la pièce, et leur nom. */
   groupesCouleurs?: unknown;
+  /** Le nom de son type d'affiche (« De dos »). */
+  vueName?: string | null;
+  /** Ses porteurs, ceux qui l'ont cochée d'abord (cf. porteursDeLaPiece). */
+  porteurs?: readonly string[];
 }
 
 export function fichesPieces(pieces: readonly LignePiece[]): Fiche[] {
@@ -890,26 +946,35 @@ export function fichesPieces(pieces: readonly LignePiece[]): Fiche[] {
         // « Coupes · Coupes » ne dirait rien de plus : la catégorie ne
         // s'écrit que si elle précise l'emplacement.
         p.categoryName && aplatir(p.categoryName) !== aplatir(emplacement) ? p.categoryName : null,
+        // Dix-neuf « Clothes 1 » donnaient dix-neuf résultats identiques :
+        // l'angle et les personnages qui la portent les départagent.
+        p.vueName,
+        textePorteurs(p.porteurs ?? []),
         p.archivedAt ? "Archivée" : null,
       ),
       image: null,
       ordre: RANG_ATELIER.piece * ORDRE_SOURCE + i,
       champs: garder(
-        // La pièce s'affiche en TEXTE dans sa section : pas de champ, et le
-        // nom entier à retrouver, pour tomber sur la bonne « Hair 3 » parmi
-        // ses homonymes grâce à l'ancre.
+        // Le nom est un champ sur la ligne de la pièce (écran Pièces, depuis
+        // octobre 2026) : l'ancre tombe sur la bonne « Hair 3 » parmi ses
+        // homonymes, et le nom entier s'y retrouve, sans fouiller le texte.
         champ(
           p.name,
           3,
           "Nom de la pièce",
-          { chemin: "/personnages", ancre: `piece-${p.id}`, trouver: p.name },
+          { chemin: "/pieces", ancre: `piece-${p.id}`, champ: "name", trouver: p.name },
           { titre: true },
         ),
         // Les noms de ses couleurs (« Robe », « Rayures ») : leurs cases sont
-        // fabriquées par un script, on mène à la ligne de la pièce.
+        // fabriquées par un script. L'écran ne fabrique le panneau des
+        // couleurs que pour la pièce que l'adresse demande (?couleurs=12) ;
+        // l'ancre est la LIGNE, pour qu'on lise de quelle pièce il s'agit
+        // au-dessus de ses couleurs. Une pièce archivée n'a plus de panneau,
+        // seulement sa ligne, en bas de l'écran.
         nomsDesGroupes(p.groupesCouleurs).map((g) =>
           champ(g, 1, "Couleurs que le client peut changer", {
-            chemin: "/personnages",
+            chemin: "/pieces",
+            parametres: p.archivedAt ? undefined : { couleurs: p.id },
             ancre: `piece-${p.id}`,
             trouver: false,
           }),

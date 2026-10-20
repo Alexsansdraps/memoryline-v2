@@ -389,7 +389,9 @@ export default function CheckoutIsland(props: {
     if (!code) return null;
     try {
       const regle = await browserApi.verifierCode(code, langue);
-      return { ...regle, id: 0 } as unknown as RegleParier;
+      // Son vrai identifiant, gardé : à priorité égale, il range le code
+      // parmi les autres règles comme le fait le serveur (reglesActives).
+      return { id: 0, ...regle } as unknown as RegleParier;
     } catch {
       return null;
     }
@@ -404,8 +406,18 @@ export default function CheckoutIsland(props: {
     return c?.code ? [c.code] : [];
   };
 
-  const discount = () =>
-    remisesPanier(lignes(), reglesEnJeu(), new Date(), codes()).remiseCents;
+  const remises = () =>
+    remisesPanier(lignes(), reglesEnJeu(), new Date(), codes());
+  const discount = () => remises().remiseCents;
+  /**
+   * Le nom des promotions, dans la langue de la page, comme au panier
+   * (CartIsland) : la cliente doit reconnaître à la caisse l'offre qu'elle a
+   * vue au panier. « Remise » ne sert plus que faute de règle nommée.
+   */
+  const libelleRemise = () => {
+    const noms = remises().detail.map((d) => d.regle).filter(Boolean);
+    return noms.length ? noms.join(" · ") : tr("compte.commande.remise");
+  };
 
   /* --- Livraison ------------------------------------------------------- */
   // Le nom, la description et le lieu de retrait des modes dans la langue de
@@ -1955,7 +1967,7 @@ export default function CheckoutIsland(props: {
                 <span>{formatPrice(subtotal(), locale)}</span>
               </div>
               <div class="mt-1 flex justify-between text-sm text-sage">
-                <span>✨ {tr("compte.commande.remise")}</span>
+                <span>✨ {libelleRemise()}</span>
                 <span>− {formatPrice(discount(), locale)}</span>
               </div>
             </Show>

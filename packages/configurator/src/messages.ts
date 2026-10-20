@@ -67,6 +67,22 @@ export interface MessagesConfigurateur {
   defilerBas: string;
   /** La pastille arc-en-ciel qui ouvre le sélecteur de couleur libre. */
   couleurPerso: string;
+  /**
+   * Le bouton qui remet les couleurs du dessin, sous les pastilles d'une
+   * pièce ou du personnage ; il ne paraît que lorsqu'une couleur a changé.
+   */
+  remettreCouleurs: string;
+  /**
+   * Le même, pour le lecteur d'écran : `{partie}` nomme l'emplacement
+   * (« Vêtements », « Personnage »), pour qu'un bouton se distingue de l'autre.
+   */
+  remettreCouleursDe: string;
+  /**
+   * La pastille de tête d'une rangée, quand la couleur portée n'est pas dans
+   * le nuancier (la couleur du dessin, le plus souvent) : infobulle et
+   * lecteur d'écran. `{couleur}` = la couleur, en « #RRGGBB ».
+   */
+  couleurActuelle: string;
   /** Catégorie des personnages qui n'en ont pas au back-office. */
   autres: string;
   /** Personnage absent du catalogue (archivé…) ; `{id}` = son identifiant. */
@@ -154,6 +170,9 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   defilerHaut: "Faire défiler vers le haut",
   defilerBas: "Faire défiler vers le bas",
   couleurPerso: "Couleur personnalisée",
+  remettreCouleurs: "Remettre les couleurs d'origine",
+  remettreCouleursDe: "Remettre les couleurs d'origine : {partie}",
+  couleurActuelle: "Couleur actuelle : {couleur}",
   autres: "Autres",
   personnageN: "Personnage {id}",
   personnage: "Personnage",

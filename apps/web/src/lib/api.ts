@@ -509,13 +509,23 @@ export const api = {
   banners: (langue?: string) =>
     get<Bandeau>(`/banners${langue && langue !== "fr" ? `?lang=${langue}` : ""}`),
   /**
-   * Les redirections d'anciennes adresses, posées au back-office.
+   * Les redirections d'anciennes adresses, posées au back-office, et la
+   * version de la table qu'elles forment (en-tête X-Redirections-Version,
+   * null pour une API d'avant ce repère).
    *
    * Lues par le middleware, qui redirige : c'est le site qui voit passer
    * « /products/… », pas l'API.
    */
-  redirects: () =>
-    get<{ fromPath: string; toPath: string; code: number }[]>("/redirects"),
+  redirects: async () => {
+    const res = await fetch(`${API_URL}/redirects`);
+    if (!res.ok) throw new ErreurApi(`API /redirects -> ${res.status}`, res.status);
+    return {
+      lignes: (await res.json()) as { fromPath: string; toPath: string; code: number }[],
+      version: res.headers.get("X-Redirections-Version"),
+    };
+  },
+  /** La version seule : le middleware ne relit la table que si elle a changé. */
+  versionDesRedirections: () => get<{ version: string }>("/redirects/version"),
   /**
    * Tout ce que le plan du site doit lister, en un seul appel. Ne pas
    * l'appeler directement : passer par `planDuSite()` (lib/plan-du-site.ts),
@@ -906,6 +916,11 @@ export const browserApi = {
    */
   verifierCode: (code: string, langue?: string) =>
     browserSend<{
+      /**
+       * Départage deux règles de même priorité, comme le fait le serveur.
+       * Facultatif : une API d'avant ce champ ne le rend pas (repli à 0).
+       */
+      id?: number;
       code: string;
       name: string;
       type: string;

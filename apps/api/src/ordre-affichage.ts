@@ -46,8 +46,44 @@ import {
   ne,
   sql as sqlOp,
 } from "drizzle-orm";
+import { pageDuSiteManquante, RAYONS_FUSIONNES } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { ordreDesCollections } from "./collections.js";
+
+/**
+ * Pourquoi une collection n'a pas de page à elle sur le site, et où mène
+ * l'adresse qu'elle aurait. `versCle` est la page de cet écran qui range ce
+ * que les clientes y voient (null : l'accueil, ou un rayon introuvable).
+ */
+export interface SansPageSurLeSite {
+  raison: "fusionnee" | "vide";
+  vers: string | null;
+  versNom: string | null;
+  versCle: string | null;
+}
+
+/**
+ * Le nom et la clé, dans cet écran, de la page où mène un chemin du site
+ * (« /affiches?genre=personnalisable&collection=villes » → « Villes »).
+ */
+function pageDuChemin(
+  vers: string,
+  collections: readonly { id: number; slug: string; name: string }[],
+): { nom: string; cle: string | null } {
+  if (vers === "/") return { nom: "la page d'accueil", cle: null };
+  const [chemin, requete = ""] = vers.split("?");
+  if (chemin !== "/affiches") return { nom: vers, cle: null };
+  const p = new URLSearchParams(requete);
+  const slug = p.get("collection");
+  if (slug) {
+    const col = collections.find((x) => x.slug === slug);
+    return col ? { nom: col.name, cle: `collection:${col.id}` } : { nom: slug, cle: null };
+  }
+  const genre = p.get("genre");
+  if (genre === "personnalisable") return { nom: "Affiches personnalisables", cle: genre };
+  if (genre === "prete_a_imprimer") return { nom: "Affiches prêtes à imprimer", cle: genre };
+  return { nom: "Toutes les affiches", cle: "tout" };
+}
 
 const GENRES = ["personnalisable", "prete_a_imprimer"] as const;
 type Genre = (typeof GENRES)[number];
@@ -185,6 +221,12 @@ export function mountOrdreAffichageRoutes(app: Hono): void {
    * vitrine de l'accueil, la rangée d'une page du site — : ranger « Coups de
    * cœur » range aussi l'accueil, et l'écran doit le dire avant qu'on le
    * découvre sur le site.
+   *
+   * Et chaque collection dit si elle a seulement une page sur le site
+   * (`sansPage`) : une collection fusionnée (« Personnages de dos »…) ou vide
+   * n'en a pas — son adresse mène ailleurs, ou à rien. L'écran ne la propose
+   * plus, sauf quand son ordre sert ailleurs (vitrine, rangée de page) ;
+   * ouverte par son adresse, il le dit au lieu de laisser ranger pour rien.
    */
   app.get("/admin/products/ordre/pages", async (c) => {
     const [collections, comptes, vitrine, pages] = await Promise.all([
@@ -274,18 +316,36 @@ export function mountOrdreAffichageRoutes(app: Hono): void {
           enLigne: duGenre("prete_a_imprimer"),
           usages: [],
         },
-        ...collections.map((col) => ({
-          cle: `collection:${col.id}`,
-          nom: col.name,
-          lien: `/affiches?collection=${encodeURIComponent(col.slug)}`,
-          enLigne: enLigne.get(col.id) ?? 0,
-          usages: [
-            ...(col.slug === slugVitrine ? ["vitrine de l'accueil"] : []),
-            ...(pagesParCollection.get(col.slug) ?? []).map(
-              (t) => `rangée de la page « ${t} »`,
-            ),
-          ],
-        })),
+        ...collections.map((col) => {
+          const n = enLigne.get(col.id) ?? 0;
+          // La même table que le site (anciennes-adresses.ts) ; et un rayon
+          // sans affiche en ligne répond 404 sur le site (plan-du-site.ts).
+          const vers = pageDuSiteManquante(col.slug, n);
+          const cible = vers ? pageDuChemin(vers, collections) : null;
+          const sansPage: SansPageSurLeSite | null = vers
+            ? {
+                raison: RAYONS_FUSIONNES[col.slug] ? "fusionnee" : "vide",
+                vers,
+                versNom: cible!.nom,
+                versCle: cible!.cle,
+              }
+            : n === 0
+              ? { raison: "vide", vers: null, versNom: null, versCle: null }
+              : null;
+          return {
+            cle: `collection:${col.id}`,
+            nom: col.name,
+            lien: `/affiches?collection=${encodeURIComponent(col.slug)}`,
+            enLigne: n,
+            usages: [
+              ...(col.slug === slugVitrine ? ["vitrine de l'accueil"] : []),
+              ...(pagesParCollection.get(col.slug) ?? []).map(
+                (t) => `rangée de la page « ${t} »`,
+              ),
+            ],
+            sansPage,
+          };
+        }),
       ],
     });
   });

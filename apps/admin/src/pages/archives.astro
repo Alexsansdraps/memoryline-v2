@@ -100,6 +100,17 @@ async function restaurer(cle: string, id: number): Promise<void> {
     case "comptes":
       await api.archiverCompte(id, false);
       return;
+    case "redirections": {
+      // Restaurer repasse par les contrôles d'un ajout. Une redirection qui
+      // rendrait une page inaccessible attend une confirmation : c'est
+      // l'écran Redirections qui sait la demander.
+      const r = await api.archiverRedirection(id, false);
+      if (!r.ok)
+        throw new Error(
+          `${r.aConfirmer} Pour la restaurer quand même, passez par Boutique en ligne › Redirections, qui demande confirmation.`,
+        );
+      return;
+    }
     default:
       throw new Error(
         "Cette nature d'archive n'est pas reconnue. Rechargez la page.",

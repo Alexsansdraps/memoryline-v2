@@ -63,6 +63,7 @@ import {
   fichesTypesAffiche,
   fichesZonesLivraison,
   motsDesNatures,
+  porteursDeLaPiece,
   type Fiche,
   type LigneReglage,
 } from "./recherche-extraction.js";
@@ -269,6 +270,7 @@ async function chargerAtelier(): Promise<Fiche[]> {
       db
         .select({
           id: schema.posterViews.id,
+          slug: schema.posterViews.slug,
           name: schema.posterViews.name,
           archivedAt: schema.posterViews.archivedAt,
         })
@@ -292,6 +294,9 @@ async function chargerAtelier(): Promise<Fiche[]> {
           categoryId: schema.characterTypes.categoryId,
           archivedAt: schema.characterTypes.archivedAt,
           groupesCouleurs: schema.characterTypes.baseGroupesCouleurs,
+          // Qui porte quelle pièce : le sous-titre d'une pièce le dit.
+          orientation: schema.characterTypes.orientation,
+          slotVariants: schema.characterTypes.slotVariants,
         })
         .from(schema.characterTypes)
         .orderBy(asc(schema.characterTypes.position), asc(schema.characterTypes.id)),
@@ -312,6 +317,9 @@ async function chargerAtelier(): Promise<Fiche[]> {
           pieceCategoryId: schema.assets.pieceCategoryId,
           archivedAt: schema.assets.archivedAt,
           groupesCouleurs: schema.assets.groupesCouleurs,
+          view: schema.assets.view,
+          position: schema.assets.position,
+          characterTypeId: schema.assets.characterTypeId,
         })
         .from(schema.assets)
         .orderBy(asc(schema.assets.slot), asc(schema.assets.position), asc(schema.assets.id)),
@@ -336,6 +344,10 @@ async function chargerAtelier(): Promise<Fiche[]> {
   const nomProduit = new Map(produits.map((p) => [p.id, p.name]));
   const nomCategorie = new Map(categories.map((c) => [c.id, c.name]));
   const nomCategoriePiece = new Map(categoriesPieces.map((c) => [c.id, c.name]));
+  // Le premier type d'affiche (par position) vaut pour une pièce ou un
+  // personnage sans angle, comme dans le back-office.
+  const vueParDefaut = types[0]?.slug ?? "front";
+  const nomVue = new Map(types.map((t) => [t.slug, t.name]));
   return [
     ...fichesCadres(cadres),
     ...fichesTypesAffiche(types),
@@ -357,6 +369,8 @@ async function chargerAtelier(): Promise<Fiche[]> {
         ...p,
         categoryName:
           p.pieceCategoryId !== null ? (nomCategoriePiece.get(p.pieceCategoryId) ?? null) : null,
+        vueName: nomVue.get(p.view ?? vueParDefaut) ?? null,
+        porteurs: porteursDeLaPiece(p, personnages, vueParDefaut),
       })),
     ),
     ...fichesCategoriesPieces(categoriesPieces),

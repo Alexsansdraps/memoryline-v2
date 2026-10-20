@@ -44,6 +44,19 @@ export interface Emetteur {
   mention: string | null;
 }
 
+/**
+ * L'émetteur porte-t-il les deux mentions obligatoires, adresse ET SIRET ?
+ *
+ * C'est ce qui décide s'il peut être FIGÉ sur une facture (commandes.ts,
+ * numeroterLaFacture). Figer un émetteur vide, c'était graver pour toujours
+ * une facture sans adresse ni SIRET, émise avant que la boutique ne les
+ * saisisse : elle ne les aurait jamais rattrapés. Incomplet, il ne se fige
+ * pas, et la facture relit les réglages du moment à chaque téléchargement.
+ */
+export function emetteurComplet(e: Emetteur | null | undefined): e is Emetteur {
+  return !!e && Array.isArray(e.adresse) && e.adresse.length > 0 && !!e.siret;
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Les règles, sans base : elles s'essaient seules (tests/facture.test.ts)   */
 /* -------------------------------------------------------------------------- */

@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import {
   For,
+  Index,
   Show,
   createMemo,
   createSignal,
@@ -11,6 +12,7 @@ import {
 import {
   BASE_COLOR_SCOPE,
   colorKey,
+  couleursChangees,
   couleursDeLaBase,
   couleursDeLaPiece,
   couleursDuGroupePourScope,
@@ -298,6 +300,67 @@ function SvgThumb(props: { svg: string | undefined; label: string }) {
   );
 }
 
+/**
+ * « Remettre les couleurs d'origine », sous les pastilles d'une pièce ou du
+ * personnage. Un lien discret plutôt qu'un bouton plein : c'est un retour en
+ * arrière, pas un choix — et il n'existe que lorsqu'une couleur a changé
+ * (cf. couleursChangees), si bien qu'un clic sur une pastille suffit à
+ * refaire le geste : pas de confirmation.
+ *
+ * Un vrai <button> : il se prend au clavier (Tab, puis Entrée ou Espace) et
+ * garde le contour de focus du navigateur. Le soulignement au survol et au
+ * focus dit qu'il se clique ; 6 px au-dessus et au-dessous font une cible
+ * d'au moins 32 px de haut sous le doigt.
+ *
+ * Le bouton disparaît sous le doigt dès qu'il a servi. Au clavier, le focus
+ * retomberait sur la page entière, derrière la fenêtre du module : on le rend
+ * à la première pastille de la même partie, celle qu'on vient de remettre.
+ */
+function BoutonRemise(props: {
+  libelle: string;
+  /** Le même libellé, l'emplacement en plus : un lecteur d'écran distingue les boutons. */
+  aria: string;
+  onClick: () => void;
+}) {
+  const [souligne, setSouligne] = createSignal(false);
+  return (
+    <button
+      type="button"
+      aria-label={props.aria}
+      title={props.aria}
+      onClick={(e) => {
+        const partie = e.currentTarget.closest("[data-partie]");
+        props.onClick();
+        // Après le rendu : les rangées se redessinent avec les couleurs du
+        // dessin. Les pastilles sont les seuls boutons « aria-pressed » d'une
+        // partie (les vignettes des pièces n'en portent pas).
+        requestAnimationFrame(() =>
+          partie?.querySelector<HTMLElement>("button[aria-pressed]")?.focus(),
+        );
+      }}
+      onMouseEnter={() => setSouligne(true)}
+      onMouseLeave={() => setSouligne(false)}
+      onFocus={() => setSouligne(true)}
+      onBlur={() => setSouligne(false)}
+      style={{
+        display: "inline-block",
+        "margin-top": "2px",
+        padding: "6px 0",
+        border: "none",
+        background: "transparent",
+        color: "#4f46e5",
+        "font-family": "inherit",
+        "font-size": "13px",
+        "line-height": "20px",
+        cursor: "pointer",
+        "text-decoration": souligne() ? "underline" : "none",
+      }}
+    >
+      {props.libelle}
+    </button>
+  );
+}
+
 /** Une rangée de pastilles : un groupe de couleurs d'une couche. */
 interface LigneCouleur {
   /** Clé namespacée de la zone de référence (« clothes:st0 »). */
@@ -308,6 +371,12 @@ interface LigneCouleur {
   nom?: string;
   /** Les couleurs à écrire quand le client choisit `hex` : référence et nuances. */
   couleurs: (hex: string) => Record<string, string>;
+  /**
+   * Les pastilles de CETTE rangée, quand elles ne sont pas celles de toute la
+   * couche : chaque partie d'un accessoire a sa liste, réglée au back-office
+   * (cf. paletteForVariant). Absentes : celles que ColorRow reçoit.
+   */
+  presets?: readonly string[];
 }
 
 /** Intitulé au-dessus d'une rangée (ou d'un ensemble de rangées). */
@@ -421,17 +490,29 @@ function couleurEspacee(
  * Sans aucun nom de groupe, un seul intitulé coiffe les rangées, comme avant
  * les groupes. Dès qu'un groupe est nommé au back-office, chaque rangée porte
  * le sien : « Robe », « Ceinture » disent au client ce qu'il colore.
+ *
+ * <Index> et non <For> : les lignes sont recalculées à chaque couleur choisie
+ * (de nouveaux objets, cf. lignes()), et <For>, qui suit les objets, refaisait
+ * alors toutes les rangées à neuf — la pastille qu'on venait de choisir au
+ * clavier disparaissait sous le focus, qui retombait sur la page, derrière
+ * la fenêtre du module. <Index> garde chaque rangée à sa place et n'en change
+ * que les couleurs : la pastille choisie garde le focus.
  */
 function ColorRow(props: {
   zones: LigneCouleur[];
   presets: readonly string[];
-  /** Saisie hors nuancier autorisée ? Non dès qu'une catégorie a ses couleurs. */
+  /**
+   * Saisie hors nuancier autorisée ? Non dès qu'une catégorie a ses couleurs,
+   * et jamais sur un accessoire (cf. pastillesDeLaRangee).
+   */
   libre: boolean;
   onSetColor: (ligne: LigneCouleur, hex: string) => void;
   /** Intitulé traduit, fourni par l'éditeur. */
   libelle: string;
   /** Nom traduit de la pastille de saisie libre. */
   couleurPerso: string;
+  /** « Couleur actuelle : {couleur} », traduit (pastille de tête). */
+  couleurActuelle: string;
 }) {
   const memeCouleur = (a: string, b: string) =>
     a.toUpperCase() === b.toUpperCase();
@@ -441,16 +522,30 @@ function ColorRow(props: {
       <Show when={!nommees()}>
         <Intitule>{props.libelle}</Intitule>
       </Show>
-      <For each={props.zones}>
-        {(z) => {
+      <Index each={props.zones}>
+        {(z, rang) => {
+          // Les pastilles de la rangée : les siennes (une partie d'accessoire
+          // réglée au back-office), sinon celles de la couche.
+          const presets = () => z().presets ?? props.presets;
           // Couleur saisie hors nuancier : c'est la pastille arc-en-ciel qui
           // porte la coche, sinon aucune couleur ne paraîtrait choisie.
           const horsNuancier = () =>
-            !props.presets.some((hex) => memeCouleur(hex, z.current));
+            !presets().some((hex) => memeCouleur(hex, z().current));
+          // Plusieurs rangées sans nom (une par teinte de la pièce, depuis que
+          // toutes les couleurs sont proposées) : un filet les sépare. Sur un
+          // téléphone, neuf pastilles tiennent sur deux lignes, et deux
+          // rangées en faisaient quatre où rien ne disait où commencent les
+          // manches.
+          const filet = () => !nommees() && rang > 0;
           return (
-            <div>
+            <div
+              style={{
+                "border-top": filet() ? "1px solid #e5e7eb" : "none",
+                "padding-top": filet() ? "10px" : "0",
+              }}
+            >
               <Show when={nommees()}>
-                <Intitule>{z.nom ?? props.libelle}</Intitule>
+                <Intitule>{z().nom ?? props.libelle}</Intitule>
               </Show>
               <div
                 style={{
@@ -464,13 +559,60 @@ function ColorRow(props: {
                   "margin-bottom": "10px",
                 }}
               >
-                <For each={props.presets}>
+                {/* Nuancier FERMÉ de la catégorie : la couleur que porte la
+                    partie — celle du dessin, le plus souvent — n'y est pas
+                    forcément. Aucune pastille ne portait alors la coche, et
+                    deux rangées sans nom se ressemblaient trait pour trait
+                    (« laquelle colore les manches ? »). Chaque rangée commence
+                    donc par une pastille de tête, séparée des autres par un
+                    filet : la couleur que porte cette partie, maintenant.
+                    Cochée quand elle n'est pas du nuancier ; sinon c'est la
+                    pastille du nuancier qui l'est. Toujours là, pour que les
+                    rangées restent alignées d'une couleur à l'autre. Elle ne
+                    se clique pas — il n'y a rien à choisir, elle l'est déjà.
+                    Avec la saisie libre, c'est la pastille arc-en-ciel qui
+                    montre une couleur hors nuancier. */}
+                <Show when={!props.libre}>
+                  <span
+                    role="img"
+                    aria-label={props.couleurActuelle.replace("{couleur}", z().current)}
+                    title={props.couleurActuelle.replace("{couleur}", z().current)}
+                    data-item
+                    style={{
+                      flex: "0 0 auto",
+                      width: "40px",
+                      height: "40px",
+                      "border-radius": "9999px",
+                      background: z().current,
+                      border: "1px solid rgba(17, 24, 39, 0.32)",
+                      "box-sizing": "border-box",
+                      "box-shadow": horsNuancier() ? ANNEAU_COULEUR_CHOISIE : "none",
+                      display: "inline-flex",
+                      "align-items": "center",
+                      "justify-content": "center",
+                    }}
+                  >
+                    <Show when={horsNuancier()}>
+                      <CocheCouleur fond={z().current} />
+                    </Show>
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      flex: "0 0 auto",
+                      width: "1px",
+                      height: "28px",
+                      background: "#d1d5db",
+                    }}
+                  />
+                </Show>
+                <For each={presets()}>
                   {(hex) => (
                     <PastilleCouleur
                       couleur={hex}
                       libelle={hex}
-                      actif={memeCouleur(z.current, hex)}
-                      onClick={() => props.onSetColor(z, hex)}
+                      actif={memeCouleur(z().current, hex)}
+                      onClick={() => props.onSetColor(z(), hex)}
                     />
                   )}
                 </For>
@@ -504,7 +646,7 @@ function ColorRow(props: {
                         "border-radius": "9999px",
                         border: "2px solid #ffffff",
                         "box-sizing": "border-box",
-                        background: horsNuancier() ? z.current : "#ffffff",
+                        background: horsNuancier() ? z().current : "#ffffff",
                         color: "#374151",
                         "font-size": "18px",
                         "line-height": "1",
@@ -514,20 +656,20 @@ function ColorRow(props: {
                       }}
                     >
                       <Show when={horsNuancier()} fallback="+">
-                        <CocheCouleur fond={z.current} />
+                        <CocheCouleur fond={z().current} />
                       </Show>
                     </span>
                     <input
                       type="color"
-                      value={z.current}
+                      value={z().current}
                       onInput={(e) => {
                         const hex = e.currentTarget.value;
                         // Un dessin en pixels se recolore sur le serveur : on
                         // espace les couleurs d'un glissement (cf.
                         // couleurEspacee). Tout le reste passe sans délai.
-                        if (rangeeEnPixels(z.zone))
-                          couleurEspacee(z.zone, hex, (c) => props.onSetColor(z, c));
-                        else props.onSetColor(z, hex);
+                        if (rangeeEnPixels(z().zone))
+                          couleurEspacee(z().zone, hex, (c) => props.onSetColor(z(), c));
+                        else props.onSetColor(z(), hex);
                       }}
                       aria-label={props.couleurPerso}
                       style={{
@@ -549,7 +691,7 @@ function ColorRow(props: {
             </div>
           );
         }}
-      </For>
+      </Index>
     </div>
   );
 }
@@ -643,6 +785,8 @@ export function CharacterEditor(props: {
   onClearSlot: (slot: Slot) => void;
   /** Couleurs choisies : clé namespacée -> couleur (un groupe entier d'un coup). */
   onSetColors: (couleurs: Record<string, string>) => void;
+  /** Remet les couleurs du dessin sur une couche : un emplacement, ou la base. */
+  onRemettreCouleurs: (scope: Slot | typeof BASE_COLOR_SCOPE) => void;
   onChangeCharacter: (base: CharacterDTO) => void;
   onBack: () => void;
   onValidate: () => void;
@@ -730,24 +874,34 @@ export function CharacterEditor(props: {
     }));
 
   /**
-   * Groupes de la pièce portée dans un emplacement. Seuls ceux PROPOSÉS au
-   * client : les petits détails (ruban du chapeau…) n'ont pas de rangée de
-   * pastilles. Les cases de la pièce décident, sinon la règle de sa
-   * catégorie — « seulement la couleur principale » ne garde que la plus
-   * étendue (cf. groupesProposesDeLaPiece). Un détail ainsi retiré garde la
-   * couleur que le configurateur a écrite en choisissant la pièce : son
-   * défaut (cf. setAsset).
+   * Groupes de la pièce portée dans un emplacement, ceux PROPOSÉS au client
+   * (cf. groupesProposesDeLaPiece). Les cases de la pièce décident, sinon la
+   * règle de sa catégorie : « toutes » — le défaut — fait une rangée par
+   * famille de teinte, la plus étendue d'abord, et les ombres d'une famille
+   * suivent la couleur choisie ; « seulement la couleur principale » ne garde
+   * que la première. Un détail ainsi retiré (ruban du chapeau…) n'a pas de
+   * rangée de pastilles et garde la couleur que le configurateur a écrite en
+   * choisissant la pièce : son défaut (cf. setAsset).
+   *
+   * Chaque rangée porte ses pastilles : sur un accessoire, celles que la
+   * boutique a choisies pour CETTE partie, sinon le nuancier de la catégorie
+   * (cf. paletteForVariant). Ailleurs, toutes les rangées ont celui de la
+   * pièce, comme avant.
    */
   const zonesForSlot = (slot: Slot): LigneCouleur[] => {
     const variant = findVariant(props.slots[slot], props.character.assets[slot]);
     if (!variant) return [];
+    const pastilles = (rangee: { couleurs?: readonly string[] }) =>
+      paletteForVariant(props.pieceCategories, variant, slot, props.nuanciersBase, rangee)
+        .couleurs;
+    const groupes = variant.colorZones
+      ? groupesProposesDeLaPiece(variant, regleDeLaPiece(props.pieceCategories, variant))
+      : [];
     const rangees = variant.colorZones
-      ? lignes(
-          slot,
-          groupesProposesDeLaPiece(variant, regleDeLaPiece(props.pieceCategories, variant)),
-          variant.colorZones,
-          "#000000",
-        )
+      ? lignes(slot, groupes, variant.colorZones, "#000000").map((ligne, i) => ({
+          ...ligne,
+          presets: pastilles(groupes[i]!),
+        }))
       : [];
     // Pièce dessinée en pixels : ses familles de couleurs, comme pour un
     // personnage (cf. baseZones).
@@ -758,6 +912,7 @@ export function CharacterEditor(props: {
         current: props.character.colors[cle] ?? f.defaut ?? f.reference,
         nom: f.nom,
         couleurs: (hex) => ({ [cle]: hex }),
+        presets: pastilles(f),
       });
     }
     return rangees;
@@ -819,6 +974,40 @@ export function CharacterEditor(props: {
   /** Le client choisit une couleur : sa référence et les nuances qui la suivent. */
   const choisirCouleur = (ligne: LigneCouleur, hex: string) =>
     props.onSetColors(ligne.couleurs(hex));
+
+  /**
+   * Les couleurs d'ORIGINE d'une couche, zone par zone : celles du dessin de
+   * la pièce portée (ou du dessin de base) et, pour un dessin en pixels, la
+   * couleur réglée par la boutique pour chaque famille proposée, sinon la
+   * teinte du fichier. C'est à elles que couleursChangees compare la
+   * configuration pour savoir si le bouton de remise doit paraître.
+   */
+  const defautsDesFamilles = (couleursImage: CouleursImage | null | undefined) =>
+    Object.fromEntries(
+      famillesProposees(couleursImage).map((f) => [f.cle, f.defaut ?? f.reference]),
+    );
+  const defautsDuSlot = (slot: Slot): Record<string, string> => {
+    const variant = findVariant(props.slots[slot], props.character.assets[slot]);
+    if (!variant) return {};
+    return { ...(variant.colorZones ?? {}), ...defautsDesFamilles(variant.couleursImage) };
+  };
+  const defautsDeLaBase = (): Record<string, string> => {
+    const base = props.base;
+    if (!base) return {};
+    return { ...(base.baseColorZones ?? {}), ...defautsDesFamilles(base.baseCouleursImage) };
+  };
+  /**
+   * Une couleur de cette couche a-t-elle changé ? Lue directement par le JSX,
+   * sans memo figé : `props.character.colors` est un store, l'itération de
+   * ses clés est réactive — le bouton paraît au premier clic sur une pastille
+   * et disparaît à la remise.
+   */
+  const couleursChangeesDe = (scope: Slot | typeof BASE_COLOR_SCOPE): boolean =>
+    couleursChangees(
+      props.character.colors,
+      scope,
+      scope === BASE_COLOR_SCOPE ? defautsDeLaBase() : defautsDuSlot(scope),
+    );
 
   /**
    * Y a-t-il quelque chose à régler sur ce personnage : une couleur, une
@@ -942,6 +1131,7 @@ export function CharacterEditor(props: {
                               findVariant(list(), selectedId()),
                               variant,
                               props.pieceCategories,
+                              props.nuanciersBase,
                             ),
                         opts.slot,
                         variant,
@@ -963,7 +1153,10 @@ export function CharacterEditor(props: {
           <Show when={zonesForSlot(opts.slot).length > 0}>
             {(() => {
               // Nuancier de LA pièce portée : celui de sa catégorie, sinon
-              // celui de l'emplacement (et alors la saisie libre reste ouverte).
+              // celui de l'emplacement (et alors la saisie libre reste ouverte,
+              // sauf sur un accessoire : jamais de sélecteur). Les rangées
+              // d'un accessoire apportent en plus leurs propres pastilles
+              // (cf. zonesForSlot).
               const palette = paletteForVariant(
                 props.pieceCategories,
                 findVariant(props.slots[opts.slot], props.character.assets[opts.slot]),
@@ -971,14 +1164,31 @@ export function CharacterEditor(props: {
                 props.nuanciersBase,
               );
               return (
-                <ColorRow
-                  libelle={m().choixCouleur}
-                  couleurPerso={m().couleurPerso}
-                  zones={zonesForSlot(opts.slot)}
-                  presets={palette.couleurs}
-                  libre={palette.libre}
-                  onSetColor={choisirCouleur}
-                />
+                <>
+                  <ColorRow
+                    libelle={m().choixCouleur}
+                    couleurPerso={m().couleurPerso}
+                    couleurActuelle={m().couleurActuelle}
+                    zones={zonesForSlot(opts.slot)}
+                    presets={palette.couleurs}
+                    libre={palette.libre}
+                    onSetColor={choisirCouleur}
+                  />
+                  {/* Sous les pastilles, dès qu'une couleur de la pièce n'est
+                      plus celle de son dessin — y compris la couleur
+                      principale reportée de la pièce d'avant, qui est un vrai
+                      choix du client. */}
+                  <Show when={couleursChangeesDe(opts.slot)}>
+                    <BoutonRemise
+                      libelle={m().remettreCouleurs}
+                      aria={m().remettreCouleursDe.replace(
+                        "{partie}",
+                        titreSlot()[opts.slot],
+                      )}
+                      onClick={() => props.onRemettreCouleurs(opts.slot)}
+                    />
+                  </Show>
+                </>
               );
             })()}
           </Show>
@@ -1164,18 +1374,33 @@ export function CharacterEditor(props: {
               « couleurs » de l'invitation à descendre — vide, et donc
               ignorée, sur un personnage qui n'a pas de couleur à régler. */}
           <div data-partie="couleurs">
-            <For each={baseZones()}>
+            {/* <Index>, comme dans ColorRow : baseZones() refait ses objets à
+                chaque couleur choisie, et <For> aurait refait la rangée — et
+                perdu le focus de la pastille choisie au clavier. */}
+            <Index each={baseZones()}>
               {(b) => (
                 <ColorRow
                   libelle={m().choixCouleur}
                   couleurPerso={m().couleurPerso}
-                  zones={[b.ligne]}
-                  presets={b.presets}
+                  couleurActuelle={m().couleurActuelle}
+                  zones={[b().ligne]}
+                  presets={b().presets}
                   libre={true}
                   onSetColor={choisirCouleur}
                 />
               )}
-            </For>
+            </Index>
+            {/* Remet la peau (et les autres groupes de la base) aux couleurs
+                du back-office, réécrites zone par zone comme au choix du
+                personnage (cf. remettreCouleurs dans Configurator) : la
+                commande s'imprimera comme le client l'a vue. */}
+            <Show when={baseZones().length > 0 && couleursChangeesDe(BASE_COLOR_SCOPE)}>
+              <BoutonRemise
+                libelle={m().remettreCouleurs}
+                aria={m().remettreCouleursDe.replace("{partie}", m().personnage)}
+                onClick={() => props.onRemettreCouleurs(BASE_COLOR_SCOPE)}
+              />
+            </Show>
           </div>
 
           <SlotSection slot="clothes" allowNone={false} />

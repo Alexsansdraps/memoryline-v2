@@ -963,6 +963,7 @@ app.get("/admin/products/export.csv", async (c) => {
     const nombreDeVariantes = new Map<number, number>();
     const prixParProduit = new Map<number, { min: number; max: number }>();
     const formatsParProduit = new Map<number, string[]>();
+    const prixParFormat = new Map<number, Record<string, number | null>>();
     const tousLesFormats = new Set<string>();
     for (const v of variantes) {
       nombreDeVariantes.set(v.productId, (nombreDeVariantes.get(v.productId) ?? 0) + 1);
@@ -980,6 +981,17 @@ app.get("/admin/products/export.csv", async (c) => {
       if (!liste.includes(v.format)) liste.push(v.format);
       formatsParProduit.set(v.productId, liste);
       tousLesFormats.add(v.format);
+      // Le prix de CHAQUE format, pour que la grille de modification groupée
+      // le montre dans sa case (comme Shopify montre celui de chaque
+      // variante) au lieu d'une case vide dès que l'A3 et l'A4 diffèrent.
+      // Deux variantes d'un même format à des prix différents : null, la
+      // case reste vide plutôt que d'afficher l'un des deux pour le prix.
+      const parFormat = prixParFormat.get(v.productId) ?? {};
+      parFormat[v.format] =
+        parFormat[v.format] === undefined || parFormat[v.format] === v.priceCents
+          ? v.priceCents
+          : null;
+      prixParFormat.set(v.productId, parFormat);
     }
 
     // La première rencontrée est celle de position la plus basse : c'est
@@ -1037,6 +1049,7 @@ app.get("/admin/products/export.csv", async (c) => {
           }),
           prixMin: prixParProduit.get(p.id)?.min ?? null,
           prixMax: prixParProduit.get(p.id)?.max ?? null,
+          prixParFormat: prixParFormat.get(p.id) ?? {},
           formats: formatsParProduit.get(p.id) ?? [],
           aiEnabled: p.aiEnabled,
           imageUrl: imageParProduit.get(p.id) ?? null,

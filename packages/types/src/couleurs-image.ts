@@ -37,6 +37,7 @@ import {
   relationDeNuance,
   rgbVersHex,
   NOM_GROUPE_MAX,
+  couleursDeLaPartie,
   estNuancier,
   type Nuancier,
   type RelationNuance,
@@ -78,6 +79,12 @@ export interface FamilleCouleur {
    * des quatre nuanciers des personnages, ou celui d'une catégorie de pièces.
    */
   nuancier?: Nuancier;
+  /**
+   * Accessoire dessiné en pixels : les couleurs proposées pour cette famille,
+   * comme pour une partie d'un dessin vectoriel (cf. GroupeCouleur.couleurs).
+   * Absente : le nuancier de la catégorie.
+   */
+  couleurs?: string[];
 }
 
 /**
@@ -180,6 +187,7 @@ export function famillesDuDessin(brut: unknown): FamilleCouleur[] {
     const nom = typeof f.nom === "string" ? f.nom.trim().slice(0, NOM_GROUPE_MAX) : "";
     const defaut = couleurPropre(f.defaut);
     const nuancier = estNuancier(f.nuancier) ? f.nuancier : undefined;
+    const couleurs = couleursDeLaPartie(f.couleurs);
     out.push({
       cle,
       reference,
@@ -189,6 +197,7 @@ export function famillesDuDessin(brut: unknown): FamilleCouleur[] {
       ...(f.proposee === true ? { proposee: true } : {}),
       ...(defaut ? { defaut } : {}),
       ...(nuancier ? { nuancier } : {}),
+      ...(couleurs.length ? { couleurs } : {}),
     });
   }
   return out;

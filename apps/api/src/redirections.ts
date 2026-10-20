@@ -153,3 +153,89 @@ export async function poserRedirection(
   if (plan.poser) await tx.insert(schema.redirects).values(plan.poser);
   return plan;
 }
+
+/**
+ * Les redirections à retirer quand une affiche NAÎT à une adresse : celles
+ * qui en partent. Fonction pure, comme le plan.
+ *
+ * C'est la règle 3 du plan, pour une création : renommer « colmar » en
+ * « colmar-cathedrale » pose colmar → colmar-cathedrale, et l'adresse
+ * « colmar » redevient libre dans la table des affiches. Une affiche créée,
+ * dupliquée ou importée sous ce nom la reprend… mais le site applique la
+ * redirection AVANT d'afficher la page (apps/web/src/middleware.ts) : la
+ * nouvelle affiche serait introuvable, renvoyée en silence vers l'autre. La
+ * fiche vivante l'emporte toujours sur un lien ancien.
+ */
+export function redirectionsALiberer(
+  slug: string,
+  existantes: readonly RedirectionActive[],
+): number[] {
+  const ici = normaliserChemin(cheminAffiche(slug));
+  return existantes
+    .filter((r) => normaliserChemin(r.fromPath) === ici)
+    .map((r) => r.id);
+}
+
+/** Ce qui sait lire et modifier la table : la base, ou une transaction. */
+type Ecrivain = Pick<typeof db, "select" | "update">;
+
+/**
+ * Archive (sans rien effacer) les redirections vivantes qui partent de
+ * l'adresse d'une affiche qui vient de naître. À appeler juste après
+ * l'insertion, dans sa transaction quand il y en a une : création au BO,
+ * duplication, import.
+ */
+export async function libererAdresse(
+  ecrivain: Ecrivain,
+  slug: string,
+): Promise<number[]> {
+  const ici = normaliserChemin(cheminAffiche(slug));
+  const candidates = await ecrivain
+    .select({
+      id: schema.redirects.id,
+      fromPath: schema.redirects.fromPath,
+      toPath: schema.redirects.toPath,
+    })
+    .from(schema.redirects)
+    .where(
+      raw`${schema.redirects.archivedAt} is null and lower(${schema.redirects.fromPath}) like ${`${ici}%`}`,
+    );
+  const ids = redirectionsALiberer(slug, candidates);
+  if (ids.length)
+    await ecrivain
+      .update(schema.redirects)
+      .set({ archivedAt: new Date() })
+      .where(inArray(schema.redirects.id, ids));
+  return ids;
+}
+
+/**
+ * La version de la table, pour que le site voie tout de suite ce qui change.
+ *
+ * Le site garde les redirections en mémoire (apps/web/src/middleware.ts) :
+ * sans cela, chaque page paierait une lecture de la table. Mais une
+ * redirection saisie au back-office doit s'appliquer dès qu'on l'essaie, et
+ * pas cinq minutes plus tard, quand on a déjà conclu qu'elle ne marchait pas.
+ * Le site demande donc cette version — un compteur en mémoire, sans base —
+ * deux secondes au plus après la précédente, et ne relit la table que
+ * lorsqu'elle a changé.
+ *
+ * Elle change à chaque écriture réussie du back-office (index.ts, juste après
+ * la garde), et pas seulement depuis BO › Redirections : la fiche d'une
+ * affiche, la modification groupée, la duplication et l'import posent ou
+ * archivent aussi des redirections. Énumérer ces routes laisserait passer la
+ * prochaine ; relire quelques centaines de lignes après un enregistrement ne
+ * coûte rien. L'heure du démarrage en fait partie : une API relancée repart
+ * d'une version que le site n'a jamais vue.
+ */
+const DEMARRAGE = Date.now().toString(36);
+let ecritures = 0;
+
+export function versionDesRedirections(): string {
+  return `${DEMARRAGE}.${ecritures}`;
+}
+
+/** Une écriture du back-office a peut-être touché la table : le site la relira. */
+export function redirectionsPeutEtreChangees(): void {
+  ecritures += 1;
+}

@@ -22,7 +22,9 @@
  * navigateur.
  *
  * La connexion, la page de résultats et les bons de livraison ne sont pas des
- * écrans qu'on cherche : ils sont écartés dès le glob.
+ * écrans qu'on cherche : ils sont écartés dès le glob. L'ancienne adresse de
+ * la création d'une pièce aussi : ce n'est plus qu'une redirection vers
+ * /pieces/nouvelle, sans titre, que l'index nommerait « Piece » hors menu.
  */
 export const SOURCES_ECRANS = import.meta.glob<string>(
   [
@@ -31,6 +33,7 @@ export const SOURCES_ECRANS = import.meta.glob<string>(
     "!/src/pages/login.astro",
     "!/src/pages/recherche.astro",
     "!/src/pages/commandes/bons.astro",
+    "!/src/pages/personnages/piece.astro",
   ],
   { query: "?raw", import: "default", eager: true },
 ) as Record<string, string>;

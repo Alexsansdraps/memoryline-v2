@@ -168,22 +168,35 @@ function messageArchivage(c: CategoriePiece): string {
     catégories — « Casquettes », « Robes », « Lunettes »… — et chaque catégorie
     porte <strong>ses couleurs</strong> : celles que le client peut choisir pour
     les pièces qu'elle contient. Une catégorie sans couleur laisse le nuancier
-    de l'emplacement et la saisie libre.
+    de l'emplacement et la saisie libre — sauf pour les accessoires, où le
+    client n'a jamais de saisie libre.
   </p>
   <p class="mb-4 text-sm text-bo-muted max-w-3xl">
-    Le rangement des pièces dans leurs catégories se fait sur
-    <a class="underline" href={url("/personnages")}> Personnages</a>, dans la
-    bibliothèque de pièces.
+    <strong>Accessoires</strong> : chaque partie d'un accessoire (la monture
+    et les verres d'une paire de lunettes) peut proposer sa propre liste de
+    couleurs, à composer et ranger sur
+    <a class="underline" href={url("/pieces")}>Pièces</a>, sous « Couleurs »
+    de la pièce. Elle passe avant le nuancier de la catégorie ; une partie
+    sans liste propose celui-ci.
+  </p>
+  <p class="mb-4 text-sm text-bo-muted max-w-3xl">
+    Chaque pièce se range dans sa catégorie sur
+    <a class="underline" href={url("/pieces")}>Pièces</a> (menu Atelier) : à
+    sa création, ou en tête de ses « Couleurs ».
   </p>
   <p class="mb-6 text-sm text-bo-muted max-w-3xl">
-    « <strong>Le client peut recolorer</strong> » : <strong>seulement la
-    couleur principale</strong> (la plus étendue : la calotte d'un chapeau, pas
-    son ruban), c'est le réglage par défaut, ou toutes les couleurs de chaque
-    pièce. Avec la couleur principale, les détails d'une autre teinte gardent
-    la couleur du dessin, et les ombres de la même teinte la suivent toutes
-    seules. Une pièce dont vous avez coché ou décoché les cases « Proposée au
-    client » garde son propre réglage. Les commandes déjà passées ne changent
-    pas.
+    « <strong>Le client peut recolorer</strong> » : <strong>toutes les
+    couleurs de chaque pièce</strong>, c'est le réglage par défaut — chaque
+    partie de la pièce a sa rangée de pastilles, et ses ombres la suivent
+    toutes seules (une couleur prise à tort pour une ombre se sépare sur la
+    pièce, d'un clic sur « Séparer »). « Seulement la couleur principale » ne laisse que la plus
+    étendue (la calotte d'un chapeau, pas son ruban), ombres comprises ; les
+    détails gardent la couleur du dessin. Une pièce dont vous avez coché ou
+    décoché les cases « Le client peut la changer » garde son propre réglage.
+    Dans le module, le client peut à tout moment remettre les couleurs
+    d'origine d'une pièce ou du personnage (un bouton sous les pastilles,
+    visible dès qu'une couleur a changé). Les commandes déjà passées ne
+    changent pas.
   </p>
 
   <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
@@ -265,11 +278,17 @@ function messageArchivage(c: CategoriePiece): string {
                 <p class="basis-full text-xs text-bo-muted">
                   {c.pieces ?? 0} pièce{(c.pieces ?? 0) > 1 ? "s" : ""} —
                   identifiant <code>{c.slug}</code>.
-                  {c.couleursProposees === "principale" && (
+                  {c.couleursProposees === "principale" ? (
                     <span>
-                      {" "}Le client ne change que la couleur principale (★ sur
-                      la carte de chaque pièce), ombres comprises ; les détails
-                      gardent la couleur du dessin.
+                      {" "}Le client ne change que la couleur principale
+                      (« couleur principale » sur la carte de chaque pièce),
+                      ombres comprises ; les détails gardent la couleur du
+                      dessin.
+                    </span>
+                  ) : (
+                    <span>
+                      {" "}Le client change chaque partie de la pièce, ses
+                      ombres la suivent.
                     </span>
                   )}
                 </p>
@@ -395,8 +414,8 @@ function messageArchivage(c: CategoriePiece): string {
           name="couleursProposees"
           class="mt-1 block border border-bo-border rounded px-3 py-2"
         >
-          <option value="principale" selected>Seulement la couleur principale</option>
-          <option value="toutes">Toutes les couleurs de chaque pièce</option>
+          <option value="toutes" selected>Toutes les couleurs de chaque pièce</option>
+          <option value="principale">Seulement la couleur principale</option>
         </select>
       </label>
       <div class="basis-full">

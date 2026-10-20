@@ -1,8 +1,16 @@
 ---
+/**
+ * Les PERSONNAGES, et rien d'autre : ce que le client ajoute sur son affiche,
+ * rangé par catégorie.
+ *
+ * Jusqu'en octobre 2026, cet écran portait aussi toute la bibliothèque des
+ * pièces (vêtements, pantalons, coupes, accessoires), chacune avec son
+ * panneau de couleurs déplié : 35 000 px de défilement pour 67 personnages.
+ * Les pièces ont leur écran, /pieces, et les anciennes adresses qui menaient
+ * ici pour une pièce y sont renvoyées (voir plus bas, « adresses »).
+ */
 import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
-import ApercusZones from "../components/ApercusZones.astro";
-import GroupesCouleurs from "../components/GroupesCouleurs.astro";
 import TraductionsNoms from "../components/TraductionsNoms.astro";
 import { traiterTraductionsNoms } from "../lib/traductions-noms.ts";
 import { texteErreur, type EtatTraductions } from "../lib/traductions.ts";
@@ -10,24 +18,20 @@ import {
   adminApi,
   type CharacterType,
   type CharacterCategory,
-  type Asset,
-  type CategoriePiece,
   type TypeAffiche,
 } from "../lib/api.ts";
-import { SLOT_THUMB_VIEWBOX } from "@memoryline/types";
+
+// --- Adresses d'avant le partage de l'écran --------------------------------
+// « ?piece=1 » était le retour de la création d'une pièce : le message se lit
+// désormais sur l'écran des pièces. Les fragments (#piece-12, #ancre=piece-12…)
+// ne parviennent pas au serveur : un script en tête de page s'en charge.
+if (Astro.url.searchParams.get("piece"))
+  return Astro.redirect(url("/pieces?piece=1"), 301);
 
 const api = adminApi(Astro.request);
 
-/** Emplacements de pièces, dans l'ordre d'affichage. */
-const SLOTS = [
-  { value: "clothes", label: "Vêtements" },
-  { value: "pants", label: "Pantalon" },
-  { value: "hair", label: "Coupes" },
-  { value: "accessory", label: "Accessoires" },
-];
-
 // URL publique de l'API, joignable depuis le navigateur (fetch client).
-// Sert aux actions dynamiques (couleurs, suppressions) en credentials:include.
+// Sert au glisser-déposer d'un personnage vers une catégorie.
 const PUBLIC_API_URL =
   import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
 
@@ -38,15 +42,12 @@ function svgSrc(url: string | null | undefined): string {
 }
 
 // --- Traitement des formulaires (SSR) ----------------------------------
-// Les créations / éditions simples passent en POST classique (robuste, même
-// pattern que promotions.astro). Les actions dynamiques par élément (couleurs,
-// suppressions, base) se font côté client (voir le script en bas de page).
+// Tout passe en POST classique (robuste, même pattern que promotions.astro),
+// sauf le glisser-déposer, qui parle à l'API en fetch puis recharge la page.
 let flash: string | null = null;
-// Retour des pages de création : le message se lit ici, pas là-bas — c'est
-// sur cette page que le résultat se voit.
-if (Astro.url.searchParams.get("piece"))
-  flash = "Pièce ajoutée à la bibliothèque.";
-else if (Astro.url.searchParams.get("archive"))
+// Retour de la fiche après un archivage : le message se lit ici, pas là-bas —
+// c'est sur cette page que le résultat se voit.
+if (Astro.url.searchParams.get("archive"))
   flash = "Personnage archivé. Les commandes passées restent imprimables.";
 /**
  * Traductions des catégories et des noms de personnages : propositions
@@ -58,27 +59,12 @@ let tradPersonnages: EtatTraductions | null = null;
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const action = form.get("_action");
+  // Le nom, le type d'affiche, le calage et les pièces autorisées d'un
+  // personnage se règlent sur sa fiche (personnages/[id].astro) et à sa
+  // création (personnages/nouveau.astro) : aucun formulaire d'ici ne les
+  // envoie, cet écran ne range, n'ordonne, n'archive et ne traduit.
   try {
-    if (action === "upsert") {
-      const rawCat = form.get("categoryId");
-      await api.upsertCharacter({
-        id: form.get("id") ? Number(form.get("id")) : undefined,
-        name: String(form.get("name") || "Personnage"),
-        // Absent = édition depuis une carte (la catégorie s'y change avec le
-        // sélecteur dédié) ; présent = création, "" valant « sans catégorie ».
-        ...(rawCat === null
-          ? {}
-          : { categoryId: rawCat === "" ? null : Number(rawCat) }),
-        position: Number(form.get("position") || 0),
-        // Slug du type d'affiche, tel qu'il vient du sélecteur : la liste
-        // des types se gère au back-office, elle n'est plus figée ici.
-        orientation: String(form.get("orientation") || "front"),
-        ...(form.get("bottomPct") !== null && form.get("bottomPct") !== ""
-          ? { bottomPct: Number(String(form.get("bottomPct")).replace(",", ".")) }
-          : {}),
-      });
-      flash = "Personnage enregistré.";
-    } else if (action === "archive") {
+    if (action === "archive") {
       await api.archiveCharacter(
         Number(form.get("id")),
         form.get("archived") === "true",
@@ -108,28 +94,32 @@ if (Astro.request.method === "POST") {
         total += r.moved;
       }
       flash = `Déplacement annulé : ${total} personnage(s) remis à leur place.`;
-    } else if (action === "pieces-autorisees") {
-      // Les cases cochées arrivent par emplacement : « clothes[] », etc.
-      const parSlot: Record<string, number[]> = {};
-      for (const slot of ["clothes", "pants", "hair", "accessory"]) {
-        // Un champ caché accompagne chaque emplacement : sans lui, tout
-        // décocher n'enverrait rien et l'emplacement resterait inchangé.
-        if (form.get(`present-${slot}`) === null) continue;
-        parSlot[slot] = form
-          .getAll(`${slot}[]`)
-          .map(Number)
-          .filter(Number.isFinite);
-      }
-      const id = Number(form.get("id"));
-      await api.setSlotVariants(id, parSlot);
-      const total = Object.values(parSlot).reduce((n, l) => n + l.length, 0);
-      flash = `Pièces autorisées enregistrées (${total} au total).`;
     } else if (action === "move-chars") {
-      // Déplacement d'un ou plusieurs personnages : "" = sans catégorie.
+      // Déplacement d'un ou plusieurs personnages (sélecteur d'une carte, ou
+      // barre de la sélection) : "" = sans catégorie. Le retour est celui du
+      // glisser-déposer — « déplacé vers « Femmes » », « Annuler ce
+      // déplacement », et la carte à l'écran dans sa nouvelle catégorie — :
+      // avant, on lisait « 1 personnage(s) déplacé(s). » tout en haut, sans
+      // savoir vers où, ni pouvoir revenir en arrière.
       const raw = String(form.get("categoryId") ?? "");
       const ids = form.getAll("ids").map(Number).filter(Number.isFinite);
-      const r = await api.moveCharacters(ids, raw === "" ? null : Number(raw));
-      flash = `${r.moved} personnage(s) déplacé(s).`;
+      const cible = raw === "" ? null : Number(raw);
+      // D'où vient chacun, lu AVANT le déplacement : c'est ce qui permet de
+      // l'annuler, même pour une sélection venue de plusieurs catégories.
+      const avant = (await api.characters()).types ?? [];
+      const retour = ids
+        .map((id) => `${id}:${avant.find((t) => t.id === id)?.categoryId ?? "sans"}`)
+        .join(",");
+      const r = await api.moveCharacters(ids, cible);
+      const vers =
+        cible == null
+          ? "(sans catégorie)"
+          : ((await api.categories()).find((c) => c.id === cible)?.name ?? "");
+      const params = new URLSearchParams({ deplaces: String(r.moved), vers, retour });
+      return Astro.redirect(
+        url(`/personnages?${params.toString()}${ids[0] ? `#personnage-${ids[0]}` : ""}`),
+        303,
+      );
     } else if (action === "cat-create") {
       const cat = await api.upsertCategory({ name: String(form.get("name") || "") });
       flash = `Catégorie « ${cat.name} » créée.`;
@@ -210,19 +200,12 @@ if (dndNombre > 0 && !flash) {
 
 let vues: TypeAffiche[] = [];
 let types: CharacterType[] = [];
-let assets: Asset[] = [];
 let error: string | null = null;
 try {
   const data = await api.characters();
   types = data.types ?? [];
 } catch (e) {
   error = String(e);
-}
-try {
-  assets = await api.assets();
-} catch (e) {
-  // L'endpoint /admin/assets renvoie les pièces génériques partagées.
-  if (!error) error = String(e);
 }
 
 let toutesCategories: CharacterCategory[] = [];
@@ -263,36 +246,13 @@ function messageArchivagePersonnage(t: { name: string }): string {
   ].join("\n\n");
 }
 
-// Types d'affiche : ils alimentent les sélecteurs « Type d'affiche » des
-// personnages et des pièces. La liste se gère dans son propre écran.
+// Types d'affiche : chaque carte dit celui du personnage (« De face », « De
+// dos »), parce que c'est lui qui décide des pièces qu'il peut porter. La
+// liste se gère dans son propre écran.
 try {
   vues = await api.views();
 } catch (e) {
   if (!error) error = String(e);
-}
-
-// Catégories de pièces : chaque pièce se range dans l'une d'elles, et c'est
-// la catégorie qui décide des couleurs proposées au client.
-let categoriesPieces: CategoriePiece[] = [];
-try {
-  categoriesPieces = await api.pieceCategories();
-} catch (e) {
-  if (!error) error = String(e);
-}
-/**
- * Ce que la catégorie d'une pièce propose au client — toutes ses couleurs,
- * ou la principale seule —, telle que le configurateur la verra : une
- * catégorie archivée ou décochée ne lui parvient pas, et ses pièces
- * proposent alors toutes leurs couleurs.
- */
-function regleDeLaCategorie(
-  c: CategoriePiece | undefined,
-): { categorie: string; couleurs: "toutes" | "principale" } | null {
-  if (!c || c.archivedAt || !c.active) return null;
-  return {
-    categorie: c.name,
-    couleurs: c.couleursProposees === "principale" ? "principale" : "toutes",
-  };
 }
 /** Type d'affiche d'un dessin, avec repli sur le premier de la liste. */
 const vueParDefaut = vues[0]?.slug ?? "front";
@@ -303,6 +263,18 @@ const nomVue = (slug: string | null | undefined) =>
 
 const active = types.filter((t) => !t.archivedAt);
 const archived = types.filter((t) => t.archivedAt);
+
+/**
+ * Vrai quand le personnage a un réglage de pièces mais n'en coche AUCUNE :
+ * le site ne lui proposera rien à porter. Sans réglage du tout (null), il
+ * porte toute la bibliothèque — rien à signaler (règle `slotsForCharacter`
+ * du configurateur, la même que sur la fiche et dans Pièces par personnage).
+ */
+function sansAucunePiece(t: CharacterType): boolean {
+  const sv = t.slotVariants;
+  if (!sv || typeof sv !== "object") return false;
+  return !Object.values(sv).some((l) => Array.isArray(l) && l.length > 0);
+}
 
 // --- Regroupement par catégorie (table character_category) ---------------
 // Les groupes suivent l'ordre des catégories, et « sans catégorie » ferme la
@@ -361,61 +333,6 @@ function optionsPour(t: CharacterType) {
     : optionsCategorie;
 }
 
-// Liste des baseSvgUrl déjà utilisées : sert de "bibliothèque" de SVG plein
-// personnage pour le sélecteur de base.
-const knownBaseSvgs = [
-  ...new Set(
-    types.map((t) => t.baseSvgUrl).filter(Boolean) as string[],
-  ),
-].sort((a, b) => a.localeCompare(b));
-
-/**
- * Pièces GÉNÉRIQUES cochables, par TYPE d'affiche puis par emplacement.
- *
- * Deux points à connaître :
- *  - `slotVariants` référence la POSITION d'une pièce, pas son id : c'est ce
- *    qui reste stable quand la bibliothèque est réimportée, et c'est aussi ce
- *    que le configurateur cherche (`slotsForCharacter`) ;
- *  - ces positions ne valent QUE dans le type d'affiche du personnage. La
- *    position 16 existe en « de dos » et pas en « de face » : mélanger les
- *    types ferait cocher des pièces qui n'existent pas pour ce personnage.
- */
-const piecesParVue = new Map<string, Map<string, Asset[]>>();
-for (const a of assets) {
-  if (a.characterTypeId != null || a.archivedAt) continue;
-  const vue = a.view ?? vueParDefaut;
-  let parSlot = piecesParVue.get(vue);
-  if (!parSlot) {
-    parSlot = new Map(SLOTS.map((s) => [s.value, [] as Asset[]]));
-    piecesParVue.set(vue, parSlot);
-  }
-  const liste = parSlot.get(a.slot);
-  if (liste) liste.push(a);
-}
-for (const parSlot of piecesParVue.values())
-  for (const liste of parSlot.values())
-    liste.sort((a, b) => a.position - b.position);
-
-/** Pièces cochables d'un personnage pour un emplacement, selon son type. */
-function piecesCochables(t: CharacterType, slot: string): Asset[] {
-  return piecesParVue.get(t.orientation ?? vueParDefaut)?.get(slot) ?? [];
-}
-
-/**
- * Positions autorisées d'un personnage pour un emplacement.
- *
- * `null` ne veut dire « tout est autorisé » QUE si le personnage n'a aucun
- * réglage du tout : dès qu'il en a un, un emplacement absent est traité comme
- * vide par le configurateur (`slotsForCharacter`). L'écran doit montrer la
- * même chose, sinon on croirait autorisé ce que le site refuse.
- */
-function autorisees(t: CharacterType, slot: string): number[] | null {
-  const sv = t.slotVariants;
-  if (!sv || typeof sv !== "object") return null;
-  const v = sv[slot as "clothes"];
-  return Array.isArray(v) ? v : [];
-}
-
 // Payload de réordonnancement : échange les positions de deux personnages.
 // La catégorie n'y figure plus — elle se change avec le sélecteur dédié.
 function swapPayload(a: CharacterType, b: CharacterType) {
@@ -425,97 +342,110 @@ function swapPayload(a: CharacterType, b: CharacterType) {
   ]);
 }
 
-// --- SECTION B : pièces génériques, groupées par slot puis vue. ---
+/**
+ * Minuscules sans accent : ce que la recherche compare (même règle dans le
+ * script). Sur le NOM seul : le texte entier de la carte comprenait le menu
+ * des catégories et les boutons, et « femmes », « animaux », « archiver » ou
+ * « dos » (dans « Ados ») y répondaient pour les 67 personnages.
+ */
+const aplati = (s: string | null | undefined) =>
+  (s ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
 
-// Pièces génériques = celles non rattachées à un personnage précis.
-// Les pièces archivées quittent la bibliothèque active : elles restent en
-// base pour réimprimer les commandes qui les utilisaient.
-const piecesArchivees = assets.filter((a) => a.archivedAt);
-const pieces = assets
-  .filter((a) => !a.archivedAt)
-  .sort((a, b) => a.position - b.position || a.id - b.id);
-const piecesBySlot = new Map<string, Asset[]>();
-for (const s of SLOTS) piecesBySlot.set(s.value, []);
-for (const a of pieces) {
-  if (!piecesBySlot.has(a.slot)) piecesBySlot.set(a.slot, []);
-  piecesBySlot.get(a.slot)!.push(a);
-}
+/** « 67 personnages dans 8 catégories · 2 archivés » : la barre d'entête. */
+const compteur = [
+  `${active.length} personnage${active.length > 1 ? "s" : ""}`,
+  `dans ${catalogue.length} catégorie${catalogue.length > 1 ? "s" : ""}`,
+].join(" ");
 ---
 
 <Admin title="Personnages">
+  {/* Les anciens résultats de recherche et favoris qui visaient une pièce
+      (#piece-12, #ancre=piece-12&trouver=…, #ancre=couleurs-piece-12) : le
+      fragment ne va pas au serveur, seul le navigateur peut les renvoyer vers
+      l'écran des pièces, où les mêmes ancres existent. */}
+  <script is:inline define:vars={{ versPieces: url("/pieces") }}>
+    (() => {
+      // Les couleurs d'une pièce ne sont fabriquées, là-bas, que pour la
+      // pièce que l'adresse demande (?couleurs=12) : on la demande d'emblée.
+      const couleurs = /(?:^#|ancre=)couleurs-piece-(\d+)/.exec(location.hash);
+      if (couleurs)
+        location.replace(versPieces + "?couleurs=" + couleurs[1] + "#piece-" + couleurs[1]);
+      else if (/^#piece-\d+/.test(location.hash) || /(^#|&)ancre=piece-\d+/.test(location.hash))
+        location.replace(versPieces + location.hash);
+    })();
+  </script>
+
+  {/* Après un déplacement, la page descend jusqu'à la carte déplacée : le
+      message reste collé en haut de l'écran, pour qu'« Annuler » soit à
+      portée de main là où l'on regarde. Un <div> et non un <p> : un <form>
+      ne peut pas vivre dans un paragraphe, le navigateur l'en sortait — et
+      le bouton restait en haut de la page, loin du message collé. */}
   {flash && (
-    <p class="mb-4 flex flex-wrap items-center gap-3 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">
+    <div
+      role="status"
+      class={`mb-4 flex flex-wrap items-center gap-3 text-sm rounded bg-green-50 border border-green-200 px-3 py-2 ${
+        dndRetour && Astro.request.method !== "POST" ? "sticky top-2 z-20 shadow" : ""
+      }`}
+    >
       <span>{flash}</span>
       {dndRetour && Astro.request.method !== "POST" && (
         <form method="POST" class="inline">
           <input type="hidden" name="_action" value="annuler-deplacement" />
           <input type="hidden" name="retour" value={dndRetour} />
-          <button class="rounded border border-green-300 bg-white px-2 py-0.5 text-xs hover:bg-green-100">
+          {/* Fond de la page et non blanc : en thème sombre, le texte clair
+              sur blanc ne se lisait pas. */}
+          <button class="rounded border border-green-300 bg-bo-surface px-2 py-0.5 text-xs hover:bg-green-100">
             Annuler ce déplacement
           </button>
         </form>
       )}
-    </p>
+    </div>
   )}
   {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
 
-  <p class="mb-6 text-sm text-bo-muted max-w-3xl">
-    Cette page sert à <strong>composer le configurateur</strong> proposé aux
-    clients. En haut, gérez les <strong>personnages prédéfinis</strong> (que le
-    client pourra choisir et personnaliser). En bas, gérez la bibliothèque de
-    <strong> pièces</strong> (vêtements, pantalons, coupes, accessoires) qui
-    servent de briques de base. Archiver un personnage le retire du site sans
-    toucher aux commandes déjà passées.
-  </p>
-
-  <!-- ===================================================================== -->
-  <!-- SECTION A — Personnages prédéfinis                                     -->
-  <!-- ===================================================================== -->
+  {/* La barre du haut dit déjà « Personnages » : ici le compte, et UN bouton
+      (plus le lien des nuanciers, qui n'a pas d'autre porte d'ici).
+      Les pièces se créent sur leur écran, et « Pièces par personnage » est
+      dans le menu sous Personnages — plus de menu « Nouveau ▾ » ni de bouton
+      « Correspondances » à deviner. */}
   <div class="mb-1 flex flex-wrap items-center justify-between gap-3">
-    <h2 class="text-lg font-semibold">Personnages</h2>
-    <div class="flex items-center gap-2">
-    <a
-      href={url("/personnages/correspondances")}
-      class="rounded border border-bo-border px-4 py-2 text-sm"
-      title="Qui porte quoi : une grille personnages × pièces"
-    >
-      Correspondances
-    </a>
-    {/* Un seul bouton « Nouveau », le choix se fait dans le menu. */}
-    <details class="bo-menu relative">
-      <summary class="rounded bg-bo-accent px-4 py-2 text-sm text-white">
-        <span class="mr-1">+</span> Nouveau <span class="ml-1">▾</span>
-      </summary>
-      <div
-        class="absolute right-0 z-20 mt-1 w-64 overflow-hidden rounded border border-bo-border bg-bo-surface shadow-lg"
+    <p class="text-sm">
+      <strong>{compteur}</strong>
+      {archived.length > 0 && (
+        <span class="text-bo-muted">
+          {" · "}
+          <a href="#personnages-archives" class="hover:underline">
+            {archived.length} archivé{archived.length > 1 ? "s" : ""}
+          </a>
+        </span>
+      )}
+    </p>
+    <div class="flex flex-wrap items-center gap-3">
+      {/* Les teintes de peau et de pelage proposées au client vivent en bas
+          de Catégories de pièces (menu Pièces) : sans ce lien, rien n'y
+          menait depuis les personnages, qu'elles concernent pourtant. */}
+      <a
+        href={url("/categories-pieces#nuanciers-personnages")}
+        class="text-sm text-bo-accent hover:underline"
+        title="Les teintes proposées au client pour la peau, le pelage, les vêtements et le pantalon dessinés sur les personnages"
       >
-        <a
-          href={url("/personnages/nouveau")}
-          class="block px-3 py-2 text-sm hover:bg-bo-bg"
-        >
-          Personnage
-          <span class="block text-xs text-bo-muted">
-            Un nouveau modèle à poser sur les affiches
-          </span>
-        </a>
-        <a
-          href={url("/personnages/piece")}
-          class="block border-t border-bo-border px-3 py-2 text-sm hover:bg-bo-bg"
-        >
-          Pièce
-          <span class="block text-xs text-bo-muted">
-            Vêtement, pantalon, coupe ou accessoire
-          </span>
-        </a>
-      </div>
-    </details>
+        Nuanciers des personnages
+      </a>
+      <a
+        href={url("/personnages/nouveau")}
+        class="rounded bg-bo-accent px-4 py-2 text-sm text-white"
+      >
+        + Nouveau personnage
+      </a>
     </div>
   </div>
   <p class="mb-4 text-sm text-bo-muted">
-    Les personnages que le client peut ajouter depuis le site, regroupés par
-    catégorie. Faites glisser la vignette d'un personnage sur le bandeau d'une
-    autre catégorie pour l'y déplacer — ou servez-vous du sélecteur de sa carte.
-    Pour en déplacer plusieurs d'un coup, cochez-les d'abord.
+    Les personnages que le client peut ajouter sur son affiche, rangés par
+    catégorie. Glissez une vignette sur le bandeau d'une catégorie pour l'y
+    déplacer, ou cochez-en plusieurs.
   </p>
 
   {/* ---- Gestion des catégories ---- */}
@@ -651,12 +581,16 @@ for (const a of pieces) {
   </section>
 
   {/* ---- Recherche ---- */}
-  <input
-    id="recherche-perso"
-    type="search"
-    placeholder="Rechercher un personnage…"
-    class="mb-4 w-full max-w-sm rounded border border-bo-border px-3 py-2 text-sm"
-  />
+  <div class="mb-4 flex flex-wrap items-center gap-3" role="search">
+    <input
+      id="recherche-perso"
+      type="search"
+      placeholder="Rechercher un personnage par son nom…"
+      aria-label="Rechercher un personnage par son nom"
+      class="w-full max-w-sm rounded border border-bo-border px-3 py-2 text-sm"
+    />
+    <span id="recherche-perso-resultat" class="text-xs text-bo-muted" aria-live="polite"></span>
+  </div>
 
   {/* ---- Déplacement groupé (barre collante, affichée à la sélection) ---- */}
   <form method="POST" id="form-lot">
@@ -688,7 +622,10 @@ for (const a of pieces) {
       >
         <summary class="cursor-pointer select-none px-4 py-3 font-semibold">
           {label}
-          <span class="ml-2 text-sm font-normal text-bo-muted">{list.length}</span>
+          {/* « 2 sur 21 » pendant une recherche, comme sur l'écran Pièces. */}
+          <span class="js-groupe-compte ml-2 text-sm font-normal text-bo-muted" data-total={list.length}>
+            {list.length}
+          </span>
         </summary>
         <div class="px-4 pb-4">
         {list.length === 0 && (
@@ -699,8 +636,10 @@ for (const a of pieces) {
         <div class="grid sm:grid-cols-2 gap-3 js-cards">
           {list.map((t, i) => (
             <article
-              class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden"
+              id={`personnage-${t.id}`}
+              class="scroll-mt-16 bg-bo-surface border border-bo-border rounded-lg overflow-hidden"
               data-char-id={t.id}
+              data-nom={aplati(t.name)}
             >
               <header class="flex items-start justify-between gap-3 px-4 py-3 bg-bo-bg">
                 <div class="flex items-center gap-3 min-w-0">
@@ -721,8 +660,11 @@ for (const a of pieces) {
                   />
                   <div class="min-w-0">
                     <div class="font-medium truncate">{t.name}</div>
+                    {/* Le type d'affiche, et non « /slug · pos N » : c'est
+                        lui qui décide des pièces que le personnage peut
+                        porter ; le slug et la position sont de la cuisine. */}
                     <div class="text-xs text-bo-muted truncate">
-                      /{t.slug} · pos {t.position}
+                      {nomVue(t.orientation)}
                     </div>
                   </div>
                 </div>
@@ -786,7 +728,7 @@ for (const a of pieces) {
 
               {/* Réglages fins : sur la fiche du personnage. Les garder ici
                   noyait la liste — et on ne trouvait plus rien. */}
-              <div class="flex items-center justify-between gap-2 px-4 py-3 text-sm">
+              <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
                 <span class="flex flex-wrap items-center gap-2">
                   <a
                     href={url(`/personnages/${t.id}`)}
@@ -805,27 +747,37 @@ for (const a of pieces) {
                     🎨 Couleurs
                   </a>
                 </span>
-                <span class="text-xs text-bo-muted">
-                  {Object.keys(t.slotVariants ?? {}).length > 0
-                    ? "pièces choisies"
-                    : "pièces à choisir"}
-                  {Object.keys(t.slotAdjust ?? {}).length > 0 ? " · calé" : ""}
+                {/* Un seul renseignement, et seulement quand il sert : un
+                    personnage qui ne coche aucune pièce n'a rien à porter sur
+                    le site. C'est voulu pour les 21 animaux, d'où un gris
+                    discret et pas une alerte ; pour un humain, le lien mène
+                    là où l'on coche. « pièces choisies · calé » n'apprenait
+                    rien. « Archiver » est sur la même rangée : seul sur une
+                    quatrième, il allongeait chaque carte pour un bouton qu'on
+                    ne touche presque jamais. */}
+                <span class="ml-auto flex items-center gap-3 whitespace-nowrap">
+                  {sansAucunePiece(t) && (
+                    <a
+                      href={url(`/personnages/correspondances?vue=${t.orientation ?? vueParDefaut}&slot=clothes`)}
+                      class="text-xs text-bo-muted hover:underline"
+                      title="Ce personnage ne porte aucune pièce (normal pour un animal). Pour lui en donner, cochez-les dans Pièces par personnage."
+                    >
+                      Aucune pièce
+                    </a>
+                  )}
+                  <form
+                    method="POST"
+                    class="inline"
+                    onsubmit={`return confirm(${JSON.stringify(messageArchivagePersonnage(t))})`}
+                  >
+                    <input type="hidden" name="_action" value="archive" />
+                    <input type="hidden" name="id" value={t.id} />
+                    <input type="hidden" name="archived" value="true" />
+                    <button class="text-xs text-bo-muted hover:text-bo-accent">
+                      Archiver
+                    </button>
+                  </form>
                 </span>
-              </div>
-
-              <div class="px-4 py-3">
-                <form
-                  method="POST"
-                  class="inline"
-                  onsubmit={`return confirm(${JSON.stringify(messageArchivagePersonnage(t))})`}
-                >
-                  <input type="hidden" name="_action" value="archive" />
-                  <input type="hidden" name="id" value={t.id} />
-                  <input type="hidden" name="archived" value="true" />
-                  <button class="text-xs text-bo-muted hover:text-bo-accent">
-                    Archiver
-                  </button>
-                </form>
               </div>
             </article>
           ))}
@@ -840,12 +792,14 @@ for (const a of pieces) {
     <p class="text-bo-muted text-sm mb-8">Aucun personnage actif.</p>
   )}
 
-  <!-- ====== Créer un personnage ====== -->
   <!-- ====== Personnages archivés ====== -->
+  {/* Le titre reprend les mots de la confirmation d'archivage (« dans
+      « Personnages archivés », plus bas dans cet écran ») : on retrouve ce
+      qu'on a lu. */}
   {
     archived.length > 0 && (
-      <section class="mb-12">
-        <h3 class="font-semibold mb-1">Archivés</h3>
+      <section id="personnages-archives" class="mb-12">
+        <h3 class="font-semibold mb-1">Personnages archivés</h3>
         <p class="text-xs text-bo-muted mb-3">
           Retirés du site. Les commandes passées restent intactes et imprimables.
           Vous pouvez les restaurer à tout moment.
@@ -875,175 +829,6 @@ for (const a of pieces) {
       </section>
     )
   }
-
-  <!-- ===================================================================== -->
-  <!-- SECTION B — Éléments / Pièces                                          -->
-  <!-- ===================================================================== -->
-  <h2 class="text-lg font-semibold mb-1 border-t border-bo-border pt-8">
-    Éléments / Pièces
-  </h2>
-  <p class="mb-4 text-sm text-bo-muted max-w-3xl">
-    Les briques de base (vêtements, pantalons, coupes, accessoires), déclinées
-    en vue avant / arrière, avec leurs zones de couleur. Elles servent à
-    composer les personnages.
-  </p>
-  <p class="mb-4 text-sm text-bo-muted max-w-3xl">
-    Sous chaque pièce, une ligne par couleur du dessin : la vignette montre
-    où elle se trouve. Donnez-lui le nom que le client lira (« Rayures »), et
-    décochez « Le client peut la changer » sur les petits détails (ruban d'un
-    chapeau, élastique des cheveux) : ils gardent la couleur du dessin. Tout
-    s'enregistre aussitôt.
-  </p>
-
-  {
-    SLOTS.map((s) => {
-      const list = piecesBySlot.get(s.value) ?? [];
-      return (
-        <section class="mb-8">
-          <h3 class="font-semibold mb-3">{s.label}</h3>
-          {list.length === 0 ? (
-            <p class="text-xs text-bo-muted mb-2">Aucune pièce.</p>
-          ) : (
-            <div class="grid sm:grid-cols-2 gap-3">
-              {list.map((a) => (
-                <div
-                  id={`piece-${a.id}`}
-                  class="border border-bo-border rounded p-3 bg-bo-surface"
-                  data-asset-id={a.id}
-                >
-                  <div class="flex items-center gap-2 mb-2">
-                    {/* Cadré sur la zone de la pièce : dans le repère du
-                        personnage (500×1000), une coupe ou un accessoire
-                        n'occupe qu'un coin et serait illisible en entier. */}
-                    <svg
-                      viewBox={SLOT_THUMB_VIEWBOX[a.slot as keyof typeof SLOT_THUMB_VIEWBOX] ?? "0 0 500 1000"}
-                      class="h-10 w-10 shrink-0 border border-bo-border rounded bg-white"
-                      style={a.svgUrl ? "" : "visibility:hidden"}
-                      role="img"
-                      aria-label={a.name}
-                    >
-                      <image href={svgSrc(a.svgUrl)} x="0" y="0" width="500" height="1000" />
-                    </svg>
-                    <div class="min-w-0">
-                      <div class="text-sm font-medium truncate">{a.name}</div>
-                      <div class="text-xs text-bo-muted">
-                        {nomVue(a.view)}
-                      </div>
-                      {/* Catégorie de la pièce : décide de son nuancier.
-                          Un choix, un enregistrement — pas de bouton. */}
-                      <select
-                        class="js-cat-piece mt-1 max-w-full rounded border border-bo-border px-1 py-0.5 text-xs"
-                        data-asset-id={a.id}
-                        title="Catégorie de la pièce (et donc ses couleurs)"
-                      >
-                        <option value="" selected={a.pieceCategoryId == null}>
-                          Sans catégorie
-                        </option>
-                        {categoriesPieces
-                          .filter(
-                            (c) =>
-                              c.slot === a.slot &&
-                              // Une catégorie archivée ne se choisit plus,
-                              // sauf pour la pièce qui s'y trouve déjà :
-                              // sinon le sélecteur retomberait sur « Sans
-                              // catégorie » et laisserait croire que son
-                              // rangement est perdu.
-                              (!c.archivedAt || a.pieceCategoryId === c.id),
-                          )
-                          .map((c) => (
-                            <option
-                              value={String(c.id)}
-                              selected={a.pieceCategoryId === c.id}
-                              data-nom={c.name}
-                              data-regle={regleDeLaCategorie(c)?.couleurs ?? ""}
-                            >
-                              {c.name}
-                              {c.archivedAt ? " (archivée)" : ""}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-                    <button
-                      type="button"
-                      class="js-archive-asset ml-auto text-xs text-bo-muted hover:text-bo-accent"
-                      data-nom={a.name}
-                    >
-                      Archiver
-                    </button>
-                  </div>
-                  {/* Une ligne par couleur du dessin, montrée sur sa
-                      vignette : « st3 » ne dit rien, un ruban cerné de noir,
-                      si. Chaque réglage s'enregistre aussitôt. */}
-                  <GroupesCouleurs
-                    mode="piece"
-                    apiUrl={PUBLIC_API_URL}
-                    svgUrl={a.svgUrl}
-                    zones={a.colorZones}
-                    groupes={a.groupesCouleurs}
-                    masquees={a.zonesMasquees ?? null}
-                    regle={regleDeLaCategorie(
-                      categoriesPieces.find((c) => c.id === a.pieceCategoryId),
-                    )}
-                    parts={a.partsDesZones ?? null}
-                    couleursImage={a.couleursImage ?? null}
-                    enregistrer={`/admin/assets/${a.id}/groupes`}
-                    cadrage={SLOT_THUMB_VIEWBOX[a.slot as keyof typeof SLOT_THUMB_VIEWBOX] ?? "0 0 500 1000"}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      );
-    })
-  }
-
-  {/* ====== Pièces archivées ====== */}
-  {piecesArchivees.length > 0 && (
-    <section class="mb-12">
-      <h3 class="font-semibold mb-1">Pièces archivées</h3>
-      <p class="text-xs text-bo-muted mb-3">
-        Retirées du configurateur. Elles restent en base pour réimprimer les
-        commandes qui les utilisaient, et peuvent être restaurées.
-      </p>
-      <div class="grid sm:grid-cols-3 gap-3 opacity-60">
-        {piecesArchivees.map((a) => (
-          <div
-            id={`piece-${a.id}`}
-            class="border border-bo-border rounded p-3 bg-bo-surface flex items-center gap-2"
-            data-asset-id={a.id}
-          >
-            <img
-              src={svgSrc(a.svgUrl)}
-              alt=""
-              class="h-10 w-10 object-contain border border-bo-border rounded bg-white"
-              style={a.svgUrl ? "" : "visibility:hidden"}
-              loading="lazy"
-            />
-            <div class="min-w-0 flex-1">
-              <div class="text-sm font-medium truncate">{a.name}</div>
-              <div class="text-xs text-bo-muted">{a.slot}</div>
-            </div>
-            <button
-              type="button"
-              class="js-archive-asset text-xs text-bo-muted hover:text-bo-accent"
-              data-restaurer="1"
-            >
-              Restaurer
-            </button>
-          </div>
-        ))}
-      </div>
-    </section>
-  )}
-
-  {/* Listes d'autocomplétion partagées */}
-  <datalist id="base-svg-list">
-    {knownBaseSvgs.map((u) => <option value={u} />)}
-  </datalist>
-
-  {/* Vignettes des zones de couleur : après les cartes, qu'il va chercher. */}
-  <ApercusZones />
 
   <script is:inline>
     // --- Catégories : déplacement immédiat au changement du sélecteur ---
@@ -1126,16 +911,26 @@ for (const a of pieces) {
 
       const cartesDe = (g) => Array.from(g.querySelectorAll("[data-char-id]"));
 
-      /** Cartes correspondant à la recherche (toutes si le champ est vide). */
+      // Même règle que data-nom, côté serveur : minuscules, sans accent.
+      const aplati = (s) =>
+        (s || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[̀-ͯ]/g, "");
+
+      /** Cartes correspondant à la recherche, sur le nom (toutes si le champ est vide). */
       const filtrees = (g, q) =>
-        cartesDe(g).filter(
-          (c) => q === "" || (c.textContent || "").toLowerCase().includes(q),
-        );
+        cartesDe(g).filter((c) => q === "" || (c.dataset.nom || "").includes(q));
 
       function rendre(g) {
-        const q = champ ? champ.value.trim().toLowerCase() : "";
+        const q = aplati(champ ? champ.value.trim() : "");
         const visibles = filtrees(g, q);
         const pager = g.querySelector(".js-pager");
+        const compte = g.querySelector(".js-groupe-compte");
+        if (compte) {
+          const total = compte.dataset.total || "0";
+          compte.textContent = q === "" ? total : `${visibles.length} sur ${total}`;
+        }
 
         // Pendant une recherche, la pagination est court-circuitée : on montre
         // tous les résultats, sinon ils se cacheraient derrière une page 2.
@@ -1180,7 +975,15 @@ for (const a of pieces) {
 
       for (const g of groupes) {
         g.open = ouvertes.has(g.dataset.cat);
+        // Seule une ouverture À LA MAIN se mémorise : un groupe qu'une
+        // recherche ou une arrivée avait ouvert restait ouvert à jamais.
+        g.querySelector(":scope > summary")?.addEventListener(
+          "click",
+          () => (g.dataset.parLaMain = "1"),
+        );
         g.addEventListener("toggle", () => {
+          if (g.dataset.parLaMain !== "1") return;
+          delete g.dataset.parLaMain;
           const set = lire();
           if (g.open) set.add(g.dataset.cat);
           else set.delete(g.dataset.cat);
@@ -1189,20 +992,49 @@ for (const a of pieces) {
         rendre(g);
       }
 
+      // Le compte, sous le champ : sans lui, une recherche sans réponse
+      // (« femmes » : c'est une catégorie, pas un nom) laissait une page vide.
+      const resultat = document.getElementById("recherche-perso-resultat");
       if (champ) {
         champ.addEventListener("input", () => {
+          let n = 0;
           for (const g of groupes) {
             etat.set(g, 1);
             rendre(g);
+            n += filtrees(g, aplati(champ.value.trim())).length;
           }
+          if (!resultat) return;
+          const q = champ.value.trim();
+          resultat.textContent =
+            q === ""
+              ? ""
+              : n === 0
+                ? `Aucun personnage dont le nom contient « ${q} ». Les catégories sont les bandeaux ci-dessous.`
+                : `${n} personnage${n > 1 ? "s" : ""} trouvé${n > 1 ? "s" : ""}`;
         });
+      }
+
+      // Arrivée sur une carte (#personnage-12, après un déplacement) : son
+      // groupe s'ouvre à la bonne page, et elle vient au milieu de l'écran,
+      // entourée un instant — on voit où elle est arrivée.
+      const m = /^#personnage-(\d+)$/.exec(location.hash);
+      const carte = m && document.getElementById(`personnage-${m[1]}`);
+      const groupe = carte && carte.closest("details[data-groupe]");
+      if (carte && groupe) {
+        groupe.open = true;
+        const rang = cartesDe(groupe).indexOf(carte);
+        etat.set(groupe, Math.floor(rang / PAR_PAGE) + 1);
+        rendre(groupe);
+        // Après le défilement du navigateur vers le fragment (le groupe était
+        // fermé quand il l'a tenté).
+        requestAnimationFrame(() => carte.scrollIntoView({ block: "center" }));
+        carte.classList.add("ml-champ-trouve");
+        setTimeout(() => carte.classList.remove("ml-champ-trouve"), 2500);
       }
     })();
   </script>
 
   <script is:inline define:vars={{ PUBLIC_API_URL }}>
-    const abs = (u) => (u && u.startsWith("http") ? u : `${PUBLIC_API_URL}${u}`);
-
     // ===== Glisser-déposer : prendre un personnage, le lâcher sur une catégorie
     // On saisit la vignette ; les bandeaux de catégorie (repliés ou non) servent
     // de cibles, ce qui rend le déplacement direct maintenant que les huit
@@ -1289,111 +1121,14 @@ for (const a of pieces) {
               vers: nomCible,
               retour,
             });
-            location.href = location.pathname + "?" + params.toString();
+            // Et la page descend jusqu'à la carte, dans sa nouvelle catégorie.
+            location.href =
+              location.pathname + "?" + params.toString() + "#personnage-" + ids[0];
           } catch (err) {
             alert("Déplacement impossible : " + err);
           }
         });
       }
     })();
-
-    // --- Aperçu live d'une image à partir d'un champ URL ---
-    function bindPreview(input, img) {
-      if (!input || !img) return;
-      const update = () => {
-        const v = input.value.trim();
-        if (v) {
-          img.src = abs(v);
-          img.style.visibility = "visible";
-        } else {
-          img.removeAttribute("src");
-          img.style.visibility = "hidden";
-        }
-      };
-      input.addEventListener("input", update);
-    }
-
-    // ===== SECTION B : archivage d'une pièce =====
-    // Il n'y a plus de suppression définitive : une pièce effacée empêchait de
-    // régénérer le PDF des commandes qui l'utilisaient.
-    document.querySelectorAll(".js-archive-asset").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const card = btn.closest("[data-asset-id]");
-        if (!card) return;
-        const restaurer = btn.dataset.restaurer === "1";
-        // Archiver une pièce la retire du configurateur : on le dit avant,
-        // comme partout ailleurs. Restaurer, lui, ne demande rien — remettre
-        // en place n'a jamais fait de dégât.
-        if (
-          !restaurer &&
-          !confirm(
-            `Archiver la pièce « ${btn.dataset.nom || "sans nom"} » ?\n\n` +
-              "Elle ne sera plus proposée dans le configurateur. Rien n'est " +
-              "supprimé : les commandes déjà passées dessus restent " +
-              "imprimables, et vous pourrez la restaurer quand vous voudrez, " +
-              "dans « Pièces archivées », en bas de cet écran.",
-          )
-        )
-          return;
-        const id = card.getAttribute("data-asset-id");
-        try {
-          const res = await fetch(`${PUBLIC_API_URL}/admin/assets/${id}/archive`, {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ archived: !restaurer }),
-          });
-          if (!res.ok) throw new Error("HTTP " + res.status);
-          location.reload();
-        } catch (e) {
-          alert((restaurer ? "Restauration" : "Archivage") + " impossible : " + e);
-        }
-      });
-    });
-
-
-    // --- Catégorie d'une pièce : enregistrée dès le changement ------------
-    document.addEventListener("change", async (e) => {
-      const sel = e.target.closest?.(".js-cat-piece");
-      if (!sel) return;
-      const id = Number(sel.getAttribute("data-asset-id"));
-      const valeur = sel.value === "" ? null : Number(sel.value);
-      sel.disabled = true;
-      try {
-        const res = await fetch(`${PUBLIC_API_URL}/admin/assets/category`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ids: [id], pieceCategoryId: valeur }),
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error(res.status);
-        // Les couleurs proposées dépendent de la catégorie : celles de la
-        // pièce se redessinent selon la nouvelle (si elle n'a pas son propre
-        // réglage).
-        const choix = sel.selectedOptions?.[0];
-        const regle =
-          choix && choix.dataset.regle
-            ? { categorie: choix.dataset.nom || "", couleurs: choix.dataset.regle }
-            : null;
-        // Le sélecteur porte lui aussi `data-asset-id` : on part de son
-        // parent pour trouver la carte de la pièce.
-        sel.parentElement
-          ?.closest("[data-asset-id]")
-          ?.querySelector(".js-groupes")
-          ?.dispatchEvent(new CustomEvent("groupes:regle", { detail: regle }));
-      } catch (err) {
-        alert("Changement de catégorie impossible : " + err);
-      } finally {
-        sel.disabled = false;
-      }
-    });
-
-    // Menu « Nouveau » : un clic ailleurs le referme, comme tout menu.
-    document.addEventListener("click", (e) => {
-      for (const menu of document.querySelectorAll("details.bo-menu[open]")) {
-        if (!menu.contains(e.target)) menu.open = false;
-      }
-    });
-
   </script>
 </Admin>

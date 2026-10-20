@@ -54,6 +54,7 @@ import {
   fichesComptes,
   fichesCourriers,
   fichesPersonnages,
+  fichesPieces,
   fichesPromotions,
   fichesZonesLivraison,
   fichesBandeauxVisuels,
@@ -65,6 +66,7 @@ import {
   fichesStands,
   fichesTextesDuSite,
   cibleCodeCarte,
+  porteursDeLaPiece,
   versResultat,
   type EnfantsCommande,
   type LigneCommande,
@@ -772,6 +774,54 @@ test("titre d'une fiche : l'écran s'ouvre en haut, sans fragment (contrat D) ; 
   const pelage = versResultat(chien!, preparerRequete("pelage"));
   assert.equal(pelage?.resultat.ou, "Couleurs que le client peut changer");
   assert.equal(pelage?.resultat.href, "/personnages/3#ancre=couleurs");
+  // Une pièce : son nom est un champ de sa ligne sur l'écran Pièces (l'ancre
+  // départage les homonymes « Clothes 1 », et le sous-titre les distingue à
+  // l'œil : l'angle, puis qui la porte) ; une couleur fait fabriquer son
+  // panneau (?couleurs=12) et mène à sa ligne.
+  const [piece] = fichesPieces([
+    {
+      id: 12, name: "Clothes 1", slot: "clothes", categoryName: "Vêtements", archivedAt: null,
+      groupesCouleurs: [{ nom: "Rayures" }], vueName: "De dos",
+      porteurs: ["Fille 1", "Fille 2", "Homme 1", "Femme test"],
+    },
+  ]);
+  assert.equal(piece!.detail, "Vêtements · De dos · Portée par Fille 1, Fille 2, Homme 1 (+1)");
+  assert.equal(
+    versResultat(piece!, preparerRequete("clothes"))?.resultat.href,
+    "/pieces#trouver=Clothes%201&ancre=piece-12&champ=name",
+  );
+  const rayures = versResultat(piece!, preparerRequete("rayures"));
+  assert.equal(rayures?.resultat.ou, "Couleurs que le client peut changer");
+  assert.equal(rayures?.resultat.href, "/pieces?couleurs=12#ancre=piece-12");
+  // Archivée : plus de panneau des couleurs, seulement sa ligne, en bas de
+  // l'écran — le lien y mène, au lieu d'une ancre qui n'existe pas.
+  const [archivee] = fichesPieces([
+    { id: 13, name: "Clothes 1", slot: "pants", categoryName: "Pantalons", archivedAt: new Date(), groupesCouleurs: [{ nom: "Rayures" }] },
+  ]);
+  assert.equal(archivee!.detail, "Pantalons · Archivée");
+  assert.equal(versResultat(archivee!, preparerRequete("rayures"))?.resultat.href, "/pieces#ancre=piece-13");
+});
+
+test("les porteurs d'une pièce : même angle, cochée par sa position, ou personnage sans réglage", () => {
+  const perso = (id: number, name: string, orientation: string | null, slotVariants: unknown, archive = false) => ({
+    id, name, orientation, slotVariants, archivedAt: archive ? new Date() : null,
+  });
+  const personnages = [
+    perso(1, "Tout", "back", null),
+    perso(2, "Fille 1", "back", { clothes: [3, 5] }),
+    perso(3, "Chien", "back", { clothes: [], pants: [], hair: [], accessory: [] }),
+    perso(4, "De face", "front", { clothes: [3] }),
+    perso(5, "Archivée", "back", { clothes: [3] }, true),
+    perso(6, "Sans angle", null, { clothes: [3] }),
+  ];
+  const piece = { slot: "clothes", view: "back", position: 3, characterTypeId: null };
+  // Ceux qui l'ont cochée d'abord, puis ceux qui portent tout.
+  assert.deepEqual(porteursDeLaPiece(piece, personnages, "front"), ["Fille 1", "Tout"]);
+  // Le premier type d'affiche vaut pour un personnage sans angle.
+  assert.deepEqual(porteursDeLaPiece(piece, personnages, "back"), ["Fille 1", "Sans angle", "Tout"]);
+  // Une pièce dessinée pour un personnage n'est qu'à lui.
+  assert.deepEqual(porteursDeLaPiece({ ...piece, characterTypeId: 2 }, personnages, "front"), ["Fille 1"]);
+  assert.deepEqual(porteursDeLaPiece({ ...piece, position: 4 }, personnages, "front"), ["Tout"]);
 });
 
 test("le lien ne transporte jamais un mot vide : « mot de passe » ne cherche pas « de »", () => {

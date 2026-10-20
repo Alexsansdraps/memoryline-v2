@@ -22,6 +22,7 @@ import {
   groupePrincipal,
   groupesProposesDeLaPiece,
   memeCouleur,
+  pastillesDeLaRangee,
   principaleDeLaPiece,
   parametreDesFamilles,
   recolorSvg,
@@ -115,9 +116,10 @@ export interface PieceCategoryDTO {
   slot: string;
   colors: string[];
   /**
-   * Couleurs proposées pour chaque pièce sans réglage propre : toutes, ou la
-   * principale seule (le ruban d'un chapeau garde alors sa couleur). Absent :
-   * toutes, la règle d'avant ce réglage.
+   * Couleurs proposées pour chaque pièce sans réglage propre : toutes (une
+   * rangée par famille de teinte, ses ombres la suivent — le défaut depuis la
+   * migration 0068), ou la principale seule (le ruban d'un chapeau garde alors
+   * sa couleur). Absent : toutes.
    */
   couleursProposees?: CouleursProposees;
 }
@@ -765,30 +767,40 @@ export function presetPaletteForSlot(
 
 /**
  * Nuancier d'une pièce : celui de sa catégorie, sinon celui de l'emplacement.
+ * Pour une rangée d'ACCESSOIRE (`rangee` donnée), la liste propre de cette
+ * partie passe devant, quand la boutique en a composé une.
  *
  * `libre` dit si le client peut aussi saisir une couleur hors nuancier : oui
- * seulement en repli. Une catégorie paramétrée au back-office ferme la liste —
- * c'est tout l'intérêt de la paramétrer.
+ * seulement en repli, et jamais sur un accessoire. Une catégorie paramétrée
+ * au back-office ferme la liste — c'est tout l'intérêt de la paramétrer. La
+ * règle elle-même vit dans @memoryline/types (pastillesDeLaRangee), où elle
+ * s'essaie sans navigateur.
  */
 export function paletteForVariant(
   categories: readonly PieceCategoryDTO[] | undefined,
   variant: VariantDTO | undefined,
   slot: Slot | string,
   nuanciers?: NuanciersPersonnages | null,
+  /** La rangée (groupe de tête, ou famille d'un dessin en pixels) : sa liste propre. */
+  rangee?: { couleurs?: readonly string[] } | null,
 ): { couleurs: readonly string[]; libre: boolean } {
   const cat = variant?.pieceCategoryId
     ? categories?.find((c) => c.id === variant.pieceCategoryId)
     : undefined;
-  if (cat && cat.colors.length > 0)
-    return { couleurs: cat.colors, libre: false };
-  return { couleurs: presetPaletteForSlot(slot, nuanciers), libre: true };
+  return pastillesDeLaRangee(
+    slot,
+    rangee?.couleurs,
+    cat?.colors,
+    presetPaletteForSlot(slot, nuanciers),
+  );
 }
 
 /**
- * Les couleurs que la catégorie d'une pièce propose au client : toutes, ou
- * la principale seule. Sans catégorie connue — aucune, archivée, décochée :
- * l'API ne l'envoie pas —, toutes, comme avant ce réglage. La pièce qui a
- * ses propres cases n'écoute pas cette règle (cf. groupesProposesDeLaPiece).
+ * Les couleurs que la catégorie d'une pièce propose au client : toutes (le
+ * défaut : chaque famille de teinte a sa rangée, ses ombres la suivent), ou
+ * la principale seule, au choix de la catégorie. Sans catégorie connue —
+ * aucune, archivée, décochée : l'API ne l'envoie pas —, toutes. La pièce qui
+ * a ses propres cases n'écoute pas cette règle (cf. groupesProposesDeLaPiece).
  */
 export function regleDeLaPiece(
   categories: readonly PieceCategoryDTO[] | undefined,
@@ -802,10 +814,12 @@ export function regleDeLaPiece(
 
 /**
  * La couleur principale d'une pièce, celle qui passe d'une pièce à l'autre :
- * la plus étendue, avec les ombres de la même teinte (cf.
- * principaleDeLaPiece) — un t-shirt passé au rose ne garde pas des ombres
- * vert foncé. Quand la boutique a coché elle-même les couleurs de la pièce,
- * on s'en tient aux siennes : la plus étendue de celles qu'elle propose.
+ * la première famille de teinte de la pièce — la plus étendue, avec ses
+ * ombres (cf. principaleDeLaPiece) —, que la catégorie propose toutes les
+ * familles ou la principale seule : un t-shirt passé au rose ne garde pas
+ * des ombres vert foncé. Quand la boutique a coché elle-même les couleurs de
+ * la pièce, on s'en tient aux siennes : la plus étendue de celles qu'elle
+ * propose.
  */
 function rangeePrincipale(
   piece: VariantDTO,
@@ -836,6 +850,14 @@ function rangeePrincipale(
  * garde sa couleur de cheveux en changeant de coupe. Laissée à la couleur du
  * dessin, elle ne suit pas : rien n'a été choisi.
  *
+ * Sur un ACCESSOIRE, elle ne suit que si la boutique la propose aussi pour la
+ * couleur principale de la nouvelle pièce (sa liste propre, ou le nuancier de
+ * sa catégorie) : chaque partie d'un accessoire a ses couleurs à elle, et un
+ * doré choisi pour une monture de lunettes n'a pas à habiller un bonnet que
+ * la boutique ne propose qu'en laine. La nouvelle pièce arrive alors dans les
+ * couleurs de son dessin. Tant que les accessoires partagent le nuancier de
+ * leur catégorie, rien ne change.
+ *
  * Les vignettes de la galerie passent par ici elles aussi : chacune montre
  * la pièce telle qu'elle arrivera si on la touche.
  */
@@ -845,6 +867,8 @@ export function couleursAuChangementDePiece(
   ancienne: VariantDTO | undefined,
   nouvelle: VariantDTO,
   categories: readonly PieceCategoryDTO[] | undefined,
+  /** Les nuanciers des personnages (repli d'un accessoire sans catégorie). */
+  nuanciers?: NuanciersPersonnages | null,
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [zone, hex] of Object.entries(nouvelle.colorZones ?? {}))
@@ -856,7 +880,13 @@ export function couleursAuChangementDePiece(
   if (!choisie || !dessinee || memeCouleur(choisie, dessinee)) return out;
 
   const cible = rangeePrincipale(nouvelle, categories);
-  if (cible)
+  const proposee =
+    slot !== "accessory" ||
+    (cible !== undefined &&
+      paletteForVariant(categories, nouvelle, slot, nuanciers, cible).couleurs.some((hex) =>
+        memeCouleur(hex, choisie),
+      ));
+  if (cible && proposee)
     Object.assign(
       out,
       couleursDuGroupePourScope(slot, cible, nouvelle.colorZones, choisie),

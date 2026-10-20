@@ -8,6 +8,11 @@
  * trop souvent un détail (les chaussures sous un pantalon, le contour d'une
  * casquette), et la désigner proposerait au client de colorer ce détail-là.
  *
+ * Les parts servent aussi, depuis que toutes les couleurs sont proposées, à
+ * ranger les familles de teinte (famillesDeLaPiece) : la plus étendue
+ * d'abord, et une ombre se reconnaît, entre autres, à ce qu'elle couvre
+ * moins que sa couleur.
+ *
  * La mesure se fait sur un petit rendu du dessin (couleurs-dessins.ts), une
  * fois par dessin, et se range avec la pièce (`asset.parts_des_zones`) : le
  * configurateur et le back-office la lisent sans rien recalculer, et disent
@@ -16,7 +21,9 @@
  * UNE MESURE PORTE SA SIGNATURE — l'adresse du dessin et les noms de ses
  * zones. Un dessin remplacé (« Détecter les couleurs », nouveau fichier)
  * rend l'ancienne mesure caduque : elle est ignorée tout de suite, et refaite
- * en arrière-plan. Faute de mesure, la principale est le premier groupe.
+ * en arrière-plan. Faute de mesure, la principale est le premier groupe, avec
+ * les zones de sa teinte et de clarté voisine, qui la suivent comme ses
+ * ombres.
  *
  * L'impression n'en dépend pas : la règle ne décide que des pastilles
  * proposées, jamais des couleurs dessinées.

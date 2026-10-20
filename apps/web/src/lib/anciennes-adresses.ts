@@ -7,7 +7,9 @@
  * et en 301 (« déplacé pour de bon »), le seul code qui transmet le
  * référencement de l'ancienne adresse à la nouvelle. Le middleware
  * (src/middleware.ts) applique ce fichier ; c'est ici, et nulle part
- * ailleurs, qu'on lit et qu'on corrige les correspondances.
+ * ailleurs, qu'on lit et qu'on corrige les correspondances — sauf celles des
+ * collections, partagées avec le back-office dans
+ * packages/types/src/rayons-sans-page.ts.
  *
  * Relevé fait le 6 octobre 2026 sur le plan du site Shopify (191 fiches,
  * 19 collections, 3 pages, 1 blog) et sur les liens de son pied de page.
@@ -20,15 +22,13 @@
  * « Redirections » du back-office passe avant tout ce fichier : c'est là qu'on
  * ajoute un cas sans toucher au code.
  */
+import { COLLECTIONS_DISPARUES, RAYONS_FUSIONNES } from "@memoryline/types";
 import { assetUrl, type PlanDuSite } from "./api.ts";
 import { adresseDuRayon } from "./referencement.ts";
 
 /** Le rayon « Villes », tel que le menu y mène. */
 const VILLES = adresseDuRayon("personnalisable", "villes");
-/** Le rayon « Thèmes & paysages », tel que le menu y mène. */
-const PAYSAGES = adresseDuRayon("personnalisable", "balades-paysages");
 const PERSONNALISABLES = adresseDuRayon("personnalisable");
-const PRETES = adresseDuRayon("prete_a_imprimer");
 
 /**
  * Les fiches encore en ligne sur Shopify (et dans son plan du site) qui
@@ -83,50 +83,16 @@ export const FICHES_RETIREES: Record<string, string> = {
 };
 
 /**
- * Les rayons techniques de Shopify, et celui qui double un genre.
+ * Les rayons techniques de Shopify fusionnés dans une autre page
+ * (RAYONS_FUSIONNES), et les collections Shopify vides qui mènent au rayon
+ * le plus proche tant qu'elles le restent (COLLECTIONS_DISPARUES).
  *
- * Ils existent encore comme collections — on ne les supprime pas, d'autres
- * écrans peuvent s'en servir —, mais leur page ferait doublon avec une page
- * qui existe déjà. Leur ancienne adresse (/collections/…) ET leur page rayon
- * (/affiches?collection=…) mènent donc à cette page-là.
+ * Les deux tables vivent dans @memoryline/types (rayons-sans-page.ts) : le
+ * back-office les lit aussi, pour ne plus proposer de ranger une page que le
+ * site n'a pas (BO › Produits › Ordre d'affichage). C'est là qu'on les lit et
+ * qu'on les corrige ; elles restent exportées d'ici pour le site.
  */
-export const RAYONS_FUSIONNES: Record<string, string> = {
-  // « Page d'accueil / En vedette » : la vitrine de l'accueil de Shopify.
-  frontpage: "/",
-  // « Collection TOUT VOIR » : l'entrée « Tout voir » des personnalisables.
-  "collection-tout-voir": PERSONNALISABLES,
-  // « Personnages de dos » : ses 145 affiches sont toutes dans « Villes ».
-  "personnages-de-dos": VILLES,
-  // « Personnages de FACE » : ses 16 affiches sont toutes dans « Thèmes & paysages ».
-  "personnages-de-face": PAYSAGES,
-  // « Affiches prêtes à imprimer » : exactement les affiches de la page de ce
-  // genre, celle du menu.
-  "affiches-diverses": PRETES,
-};
-
-/**
- * Les collections Shopify vides, absentes du nouveau site : le rayon le plus
- * proche par le thème. Elles ne servent que tant que la collection n'a pas
- * d'affiche en vente — remplie au back-office, elle redevient son propre rayon.
- */
-export const COLLECTIONS_DISPARUES: Record<string, string> = {
-  // Thèmes, nature, saisons, activités : montagne, forêt, ferme, Noël, golf,
-  // station de ski… sont dans « Thèmes & paysages ».
-  themes: PAYSAGES,
-  "nature-animaux": PAYSAGES,
-  saisons: PAYSAGES,
-  activites: PAYSAGES,
-  "activites-passions": PAYSAGES,
-  // Mots, cuisine, vintage : « Good vibes only », « Vivre pour l'apéro »,
-  // « Team matcha », les affiches de voyage rétro… sont les prêtes à imprimer.
-  "mots-citations": PRETES,
-  cuisine: PRETES,
-  vintage: PRETES,
-  // Enfance : les affiches de famille sont les personnalisables.
-  enfance: PERSONNALISABLES,
-  // « Affiches » : le catalogue entier.
-  affiches: "/affiches",
-};
+export { RAYONS_FUSIONNES, COLLECTIONS_DISPARUES };
 
 /**
  * Les pages libres de Shopify dont l'adresse change. Une page publiée au

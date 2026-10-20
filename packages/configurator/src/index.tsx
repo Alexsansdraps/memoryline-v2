@@ -457,6 +457,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
         ancienne,
         v,
         props.pieceCategories,
+        props.nuanciersBase,
       );
       const prefixe = colorKey(slot, "");
       for (const cle of Object.keys(c.colors))
@@ -486,6 +487,46 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     mutate((s) => {
       const c = s.characters[index];
       if (c) Object.assign(c.colors, couleurs);
+    });
+  }
+  /**
+   * Remet les couleurs d'origine d'une couche : la pièce portée dans un
+   * emplacement, ou le dessin de base (peau, pelage…).
+   *
+   * Une action à part, et non un setColors : setColors ne sait qu'écrire, et
+   * remettre à l'origine demande d'abord de RETIRER les clés de la couche —
+   * une famille en pixels choisie, une zone d'un vieux panier — avant de
+   * réécrire celles d'origine.
+   *
+   * Ce qui est réécrit, c'est exactement ce qu'écrit l'arrivée de la couche :
+   *   - pour une pièce, ce que setAsset écrit — les couleurs de son dessin,
+   *     sans rien reporter de la pièce d'avant ;
+   *   - pour la base, ce que changeCharacter écrit — les couleurs par défaut
+   *     du back-office, zone par zone. Les retirer seulement laissait
+   *     couleursDeLaBase retomber sur les défauts DU JOUR DE L'IMPRESSION : une
+   *     couleur de personnage changée au back-office entre la commande et
+   *     l'impression partait à l'imprimante sans que le client l'ait vue.
+   *     Figées ici, l'affiche s'imprime comme il l'a vue.
+   */
+  function remettreCouleurs(index: number, scope: Slot | typeof BASE_COLOR_SCOPE) {
+    mutate((s) => {
+      const c = s.characters[index];
+      if (!c) return;
+      const prefixe = colorKey(scope, "");
+      for (const cle of Object.keys(c.colors))
+        if (cle.startsWith(prefixe)) delete c.colors[cle];
+      if (scope === BASE_COLOR_SCOPE) {
+        const base = characterById(c.characterId);
+        for (const [zone, hex] of Object.entries(base?.baseColorZones ?? {}))
+          c.colors[colorKey(BASE_COLOR_SCOPE, zone)] = hex;
+        return;
+      }
+      const v = findVariant(slotVariants()[scope], c.assets[scope]);
+      if (!v) return;
+      Object.assign(
+        c.colors,
+        couleursAuChangementDePiece(scope, {}, undefined, v, props.pieceCategories),
+      );
     });
   }
   /** Change la base (type) d'un personnage : conserve les variantes choisies
@@ -815,6 +856,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             onSetAsset={setAsset}
             onClearSlot={clearSlot}
             onSetColors={setColors}
+            onRemettreCouleurs={remettreCouleurs}
             onChangeCharacter={changeCharacter}
             messages={msg()}
           />

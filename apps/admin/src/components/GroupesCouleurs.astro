@@ -43,11 +43,31 @@
  * passent par lui.
  *
  * UNE PIÈCE SUIT SA CATÉGORIE tant qu'on ne touche pas à ses cases : la
- * catégorie propose toutes ses couleurs, ou seulement la principale (la plus
- * étendue), et les cases montrent ce que cela donne. Cocher ou décocher une
+ * catégorie propose toutes ses couleurs (le réglage de départ depuis 0068 :
+ * une rangée par famille de teinte, les ombres suivant la couleur choisie,
+ * cf. famillesDeLaPiece) ou seulement la principale (la plus étendue, ombres
+ * comprises), et les cases montrent ce que cela donne. Cocher ou décocher une
  * case règle la pièce à la main, et ce réglage passe avant celui de la
  * catégorie ; « Refaire comme la catégorie » le retire (cf.
  * couleurs-groupes.ts, groupesProposesDeLaPiece).
+ *
+ * LES OMBRES N'ONT PAS DE CASE. Une ombre suit sa couleur sur le site : sa
+ * ligne le dit (« ombre de « Couleur 2 », elle la suit »), et c'est la case
+ * de sa couleur qui la propose ou la retire avec elle. Une case à elle
+ * laissait croire qu'on pouvait la proposer seule, et la décocher figeait un
+ * liseré vert foncé sous des manches rouges. Une couleur prise à tort pour
+ * une ombre — la visière d'une casquette — se sépare d'un clic (« Séparer »,
+ * cf. GroupeCouleur.separee) et retrouve sa rangée.
+ *
+ * UN ACCESSOIRE A SES COULEURS PARTIE PAR PARTIE. « C'est moi qui dois les
+ * changer, en ajouter et en supprimer si je veux. Pas de sélecteur pour les
+ * gens » (Margaux, 20 octobre 2026). Chaque couleur en tête d'une rangée du
+ * client reçoit, sous sa ligne, la liste des pastilles qu'il aura pour elle :
+ * le nuancier rangeable des catégories (lib/pastilles.ts, creerNuancier),
+ * enregistré aussitôt comme le reste (cf. GroupeCouleur.couleurs). Sans
+ * liste, la partie propose le nuancier de sa catégorie ; « Reprendre les
+ * couleurs de la catégorie » efface la liste. Le client n'a jamais de
+ * saisie libre sur un accessoire (cf. pastillesDeLaRangee).
  */
 import type {
   CouleursImage,
@@ -73,9 +93,19 @@ interface Props {
   /**
    * Pièce : sa catégorie, et ce qu'elle propose au client. Null : aucune
    * catégorie qui compte (aucune, archivée, décochée) — toutes les couleurs,
-   * comme avant ce réglage.
+   * comme le réglage de départ. `nuancier` : ses couleurs, que propose une
+   * partie d'accessoire sans liste à elle.
    */
-  regle?: { categorie: string; couleurs: CouleursProposees } | null;
+  regle?: { categorie: string; couleurs: CouleursProposees; nuancier?: string[] } | null;
+  /**
+   * Pièce : de quoi régler les couleurs de chaque partie d'un ACCESSOIRE
+   * (cf. GroupeCouleur.couleurs). `oui` : la pièce est de cet emplacement —
+   * la page de création le change par l'événement « groupes:emplacement »
+   * ({ accessoire }) ; `repli` : ce que propose une partie sans liste quand
+   * sa catégorie n'a pas de couleurs — le nuancier des vêtements des
+   * personnages, comme dans le module (presetPaletteForSlot).
+   */
+  accessoire?: { oui: boolean; repli: string[] } | null;
   /** Pièce : la part du dessin peinte par chaque zone (couleur principale). */
   parts?: Record<string, number> | null;
   /** Personnage : zones de référence des groupes proposés (null = la peau). */
@@ -127,6 +157,7 @@ const {
   aide,
   rappel,
   nuanciers,
+  accessoire,
 } = Astro.props;
 
 const etat = {
@@ -142,6 +173,7 @@ const etat = {
   proposees: proposees ?? null,
   couleursImage: couleursImage ?? null,
   nuanciers: nuanciers ?? null,
+  accessoire: accessoire ?? null,
 };
 // « < » échappé : un nom de groupe ne doit pas pouvoir fermer la balise.
 const json = JSON.stringify(etat).replace(/</g, "\\u003c");
@@ -206,12 +238,13 @@ const bouton =
     NUANCIERS_BASE,
     couleursDuGroupe,
     couleursProposees,
+    famillesDeLaPiece,
     famillesDuDessin,
     groupesDuDessin,
+    groupesProposesDeLaPiece,
     hexVersRgb,
     memeCouleur,
     partEnPourcent,
-    principaleDeLaPiece,
     rgbVersHex,
     teintesDeLaFamille,
     zonesDuGroupe,
@@ -225,7 +258,11 @@ const bouton =
     couleursDuNuancier,
     estNuancier,
     type Nuancier,
+    COULEURS_PARTIE_MAX,
+    NUANCIERS_PAR_DEFAUT,
+    couleurHexPropre,
   } from "@memoryline/types/couleurs";
+  import { creerNuancier } from "../lib/pastilles.ts";
 
   declare global {
     interface Window {
@@ -238,6 +275,8 @@ const bouton =
   interface RegleCategorie {
     categorie: string;
     couleurs: CouleursProposees;
+    /** Son nuancier : les pastilles d'une partie d'accessoire sans liste à elle. */
+    nuancier: string[];
   }
 
   /** L'état d'un bloc : le dessin, ses zones, ses groupes, ce qui est caché. */
@@ -260,6 +299,24 @@ const bouton =
     regle: RegleCategorie | null;
     /** Pièce : la part du dessin peinte par chaque zone (couleur principale). */
     parts: Record<string, number> | null;
+    /**
+     * Pièce de l'emplacement « Accessoires » : chaque partie proposée a sa
+     * liste de couleurs à régler (cf. GroupeCouleur.couleurs).
+     */
+    accessoire: boolean;
+    /** Les pastilles d'une partie d'accessoire sans liste ni catégorie à couleurs. */
+    repli: string[];
+  }
+
+  /** Une liste de couleurs reçue de la page : « #RRGGBB », sans doublon. */
+  function couleursLues(brut: unknown): string[] {
+    if (!Array.isArray(brut)) return [];
+    const out: string[] = [];
+    for (const v of brut) {
+      const c = couleurHexPropre(v);
+      if (c && !out.includes(c)) out.push(c);
+    }
+    return out;
   }
 
   /** La règle reçue de la page, nettoyée. */
@@ -267,32 +324,51 @@ const bouton =
     if (!brut || typeof brut !== "object") return null;
     const r = brut as Record<string, unknown>;
     if (typeof r.categorie !== "string") return null;
-    return { categorie: r.categorie, couleurs: couleursProposees(r.couleurs) };
+    return {
+      categorie: r.categorie,
+      couleurs: couleursProposees(r.couleurs),
+      nuancier: couleursLues(r.nuancier),
+    };
   }
 
-  /**
-   * La couleur principale d'une pièce, ombres comprises, quand sa catégorie
-   * ne propose qu'elle : la même que celle du site (principaleDeLaPiece), pour
-   * que l'écran du back-office dise exactement ce que le client verra.
-   */
-  function principalDe(etat: Etat): GroupeCouleur | undefined {
-    if (etat.regle?.couleurs !== "principale") return undefined;
-    return principaleDeLaPiece({
+  /** « 1 couleur proposée », « 4 couleurs proposées ». */
+  const couleursProposeesEnMots = (n: number) =>
+    `${n} couleur${n > 1 ? "s" : ""} proposée${n > 1 ? "s" : ""}`;
+
+  /** La pièce telle que le site la lit (couleurs-groupes.ts). */
+  function pieceDe(etat: Etat, propre = etat.propre) {
+    return {
       colorZones: etat.zones,
       groupesCouleurs: etat.groupes,
       partsDesZones: etat.parts,
-    });
+      // Une pièce qui suit sa catégorie n'a pas de liste : c'est ce qui la
+      // distingue d'une pièce réglée à la main qui ne masquerait rien.
+      zonesMasquees: propre ? etat.cachees : null,
+    };
   }
 
   /**
-   * Les groupes que la catégorie d'une pièce ne propose pas : tous sauf la
-   * principale. Ses ombres (ses nuances) y sont, mais elles la SUIVENT : leur
-   * ligne le dit (cf. dessiner).
+   * Les rangées de pastilles qu'aura le client, dans son ordre : les mêmes
+   * que sur le site (groupesProposesDeLaPiece), pour que l'écran du
+   * back-office dise exactement ce que le client verra. Chaque rangée a sa
+   * couleur en tête et ses ombres en nuances : toutes les familles de teinte
+   * sous « toutes », la principale seule sous « principale », celles des
+   * couleurs cochées pour une pièce réglée à la main.
+   */
+  function rangeesDuClient(etat: Etat, propre = etat.propre): GroupeCouleur[] {
+    return groupesProposesDeLaPiece(pieceDe(etat, propre), etat.regle?.couleurs ?? null);
+  }
+
+  /**
+   * Ce que la règle de la catégorie ne propose pas : les groupes qu'aucune
+   * rangée du client ne recolore, ni en tête ni en ombre. Rien sous
+   * « toutes » ; sous « principale », tout sauf la principale et ses ombres.
+   * C'est de là que part le réglage à la main quand on touche une case : il
+   * propose d'abord exactement la même chose.
    */
   function cacheesDeLaRegle(etat: Etat): string[] {
-    const principal = principalDe(etat);
-    if (!principal) return [];
-    return etat.groupes.filter((g) => g.zone !== principal.zone).map((g) => g.zone);
+    const couvertes = new Set(rangeesDuClient(etat, false).flatMap(zonesDuGroupe));
+    return etat.groupes.filter((g) => !couvertes.has(g.zone)).map((g) => g.zone);
   }
 
   /** Réponse de l'API après lecture d'un dessin. */
@@ -356,6 +432,9 @@ const bouton =
         ...(ancienne.proposee ? { proposee: true } : {}),
         ...(ancienne.defaut ? { defaut: ancienne.defaut } : {}),
         ...(ancienne.nuancier ? { nuancier: ancienne.nuancier } : {}),
+        // Les couleurs proposées pour cette partie d'un accessoire : la
+        // boutique les a choisies une à une, une relecture ne les perd pas.
+        ...(ancienne.couleurs?.length ? { couleurs: ancienne.couleurs } : {}),
       };
     });
   }
@@ -549,10 +628,20 @@ const bouton =
       if (cache) cachees.push(g.zone);
       const nomme = anciens.find((a) => a.nom);
       const nuancier = anciens.find((a) => a.nuancier)?.nuancier;
+      // Une couleur que la boutique a séparée de sa teinte reste à part : la
+      // relecture ne dit rien de plus sur le dessin que ce qu'elle a vu.
+      const separee = anciens.some((a) => a.separee);
+      // Les couleurs proposées pour une partie d'accessoire suivent le
+      // groupe, comme son nom : celles de la tête d'abord, qui sont celles
+      // que le client voyait.
+      const avecListe = anciens.filter((a) => a.couleurs?.length);
+      const couleurs = (avecListe.find((a) => a.zone === g.zone) ?? avecListe[0])?.couleurs;
       return {
         ...g,
         ...(nomme?.nom ? { nom: nomme.nom } : {}),
         ...(nuancier ? { nuancier } : {}),
+        ...(separee ? { separee: true as const } : {}),
+        ...(couleurs?.length ? { couleurs } : {}),
       };
     });
     return {
@@ -584,6 +673,17 @@ const bouton =
     onNom: (nom: string | undefined) => void;
     proposee: boolean;
     onProposee: (oui: boolean) => void;
+    /**
+     * Pièce : la couleur est l'OMBRE d'une autre, qu'elle suit sur le site.
+     * Pas de case à elle — celle de sa couleur décide pour les deux —, mais
+     * de quoi la séparer si elle a été prise à tort pour une ombre.
+     */
+    ombre?: { separer: () => void };
+    /**
+     * Pièce : couleur séparée par la boutique, qui suivrait sans cela la
+     * couleur `de` comme une ombre : de quoi l'y réunir de nouveau.
+     */
+    separee?: { de: string; reunir: () => void };
     /** Ce qu'il faut savoir de plus, en petit (« couleur principale »). */
     notes: string[];
     /**
@@ -595,6 +695,17 @@ const bouton =
       valeur: Nuancier | undefined;
       repli: NuancierBase;
       onChange: (n: Nuancier) => void;
+    };
+    /**
+     * Accessoire, en tête d'une rangée du client : les couleurs qu'il aura
+     * pour cette partie — sa liste propre (`propres`, vide : aucune), sinon
+     * celles dont elle hérite (`heritees` : le nuancier de la catégorie, ou
+     * celui de repli).
+     */
+    pastilles?: {
+      propres: string[];
+      heritees: { source: string; couleurs: string[] };
+      onChange: (couleurs: string[]) => void;
     };
   }
 
@@ -637,6 +748,12 @@ const bouton =
         brut.parts && typeof brut.parts === "object"
           ? (brut.parts as Record<string, number>)
           : null,
+      accessoire: brut.mode !== "personnage" && brut.accessoire?.oui === true,
+      // Sans nuancier reçu, celui d'origine des vêtements : c'est aussi ce
+      // que le module montre quand l'API ne dit rien.
+      repli: couleursLues(brut.accessoire?.repli).length
+        ? couleursLues(brut.accessoire?.repli)
+        : [...NUANCIERS_PAR_DEFAUT.vetements],
     };
     let visible = false;
 
@@ -677,6 +794,7 @@ const bouton =
         regle: etat.regle,
         parts: etat.parts,
         nuanciers,
+        accessoire: { oui: etat.accessoire, repli: etat.repli },
       });
       const champ = (c: string) => bloc.querySelector<HTMLInputElement>(c);
       const cz = champ(".js-champ-zones");
@@ -715,10 +833,21 @@ const bouton =
             couleursImage: e.couleursImage,
           }),
         });
-        if (!res.ok) throw new Error("HTTP " + res.status);
+        if (!res.ok) {
+          // L'API dit pourquoi elle refuse (une couleur mal écrite) : on le
+          // répète tel quel, plutôt qu'un numéro d'erreur.
+          const raison = await res
+            .json()
+            .then((r: { error?: unknown }) => (typeof r?.error === "string" ? r.error : ""))
+            .catch(() => "");
+          throw new Error(raison || "HTTP " + res.status);
+        }
         dire(`${message} Enregistré ✓`, "ok");
       } catch (err) {
-        dire("Erreur, rien n'est enregistré : " + String(err), "erreur");
+        dire(
+          "Erreur, rien n'est enregistré : " + (err instanceof Error ? err.message : String(err)),
+          "erreur",
+        );
       }
     }
 
@@ -741,6 +870,43 @@ const bouton =
     const titreAvance = (nom: string | undefined, i: number) =>
       nom ? `${nom} (couleur ${i + 1})` : `Couleur ${i + 1}`;
     const objet = () => (etat.mode === "personnage" ? "de ce personnage" : "de cette pièce");
+
+    /**
+     * Ce que propose une partie d'accessoire sans liste à elle, comme le
+     * module (pastillesDeLaRangee) : le nuancier de sa catégorie, sinon celui
+     * des vêtements des personnages. `source` se lit après « celles ».
+     */
+    const heriteesDeLaPartie = (): { source: string; couleurs: string[] } => {
+      const regle = etat.regle;
+      if (regle && regle.nuancier.length)
+        return { source: `de la catégorie « ${regle.categorie} »`, couleurs: regle.nuancier };
+      return {
+        source: regle
+          ? `du nuancier « Vêtements » des personnages (la catégorie « ${regle.categorie} » n'a pas de couleurs)`
+          : // Aucune catégorie, ou une archivée, décochée : le site n'en reçoit pas.
+            "du nuancier « Vêtements » des personnages (la pièce n'a pas de catégorie active)",
+        couleurs: etat.repli,
+      };
+    };
+
+    /**
+     * Les couleurs de la partie `cible` (un groupe, une famille en pixels) :
+     * leur liste propre change, et s'enregistre. Vide : la partie reprend
+     * celles de sa catégorie.
+     */
+    const reglerCouleursDeLaPartie = (
+      cible: { couleurs?: string[] },
+      nom: string,
+      couleurs: string[],
+    ) => {
+      if (couleurs.length) cible.couleurs = [...couleurs];
+      else delete cible.couleurs;
+      void enregistrerTout(
+        couleurs.length
+          ? `« ${nom} » : ${couleursProposeesEnMots(couleurs.length)}.`
+          : `« ${nom} » reprend les couleurs de la catégorie.`,
+      );
+    };
 
     /** La phrase du haut : ce que le client pourra changer, en clair. */
     function resumer(noms: string[]) {
@@ -856,6 +1022,23 @@ const bouton =
         rangee.append(choixNuancier);
       }
 
+      const petitBouton =
+        "rounded border border-bo-border bg-bo-surface px-2 py-0.5 text-xs text-bo-accent hover:bg-bo-bg";
+      if (l.ombre) {
+        // Une ombre n'a pas de case : elle suit sa couleur, proposée ou non
+        // avec elle (la note de la ligne le dit). Seul geste utile ici :
+        // la séparer, si c'est en fait une partie à part.
+        const separer = el("button", petitBouton, "Séparer");
+        separer.type = "button";
+        separer.dataset.cle = `separer:${l.cle}`;
+        separer.title =
+          "Ce n'est pas une ombre : le client la changera à part, sur sa propre rangée de pastilles";
+        separer.setAttribute("aria-label", `${l.libelle} : séparer de sa teinte`);
+        separer.addEventListener("click", l.ombre.separer);
+        rangee.append(separer);
+        return rangee;
+      }
+
       const choix = el("label", "flex cursor-pointer items-center gap-1.5 text-sm");
       const caseProposee = el("input", "h-4 w-4 cursor-pointer");
       caseProposee.type = "checkbox";
@@ -863,8 +1046,123 @@ const bouton =
       caseProposee.checked = l.proposee;
       caseProposee.addEventListener("change", () => l.onProposee(caseProposee.checked));
       choix.append(caseProposee, el("span", "", "Le client peut la changer"));
+      if (l.separee) {
+        const reunir = el("button", petitBouton, `Suivre « ${l.separee.de} »`);
+        reunir.type = "button";
+        reunir.dataset.cle = `reunir:${l.cle}`;
+        reunir.title = `Elle redevient une ombre de « ${l.separee.de} » : elle en suivra la couleur, sans rangée à elle`;
+        reunir.addEventListener("click", l.separee.reunir);
+        rangee.append(reunir);
+      }
       rangee.append(choix);
+      if (l.pastilles) rangee.append(listeDeLaPartie(l, l.pastilles));
       return rangee;
+    }
+
+    /**
+     * Sous la ligne d'une partie d'accessoire : les couleurs que le client
+     * aura pour elle, à composer et à ranger avec le nuancier des catégories
+     * (lib/pastilles.ts) — mêmes gestes, mêmes poignées. Chaque changement
+     * s'enregistre aussitôt, comme les autres réglages de la pièce.
+     *
+     * TANT QUE LA PARTIE N'A PAS DE LISTE À ELLE, le nuancier montre les
+     * couleurs dont elle hérite (celles de la catégorie), et le premier geste
+     * — ajouter, retirer, ranger — part d'elles : « + Ajouter » en met une
+     * septième après les six de la catégorie. Avant, un nuancier VIDE
+     * s'affichait sous les six, et le premier « + Ajouter » les remplaçait
+     * par une seule : le client passait de six pastilles à une, enregistré
+     * aussitôt, alors que la boutique voulait « en ajouter ». Retirer la
+     * dernière couleur d'une liste rend la partie à sa catégorie.
+     *
+     * Ajouter, retirer ou déplacer une couleur ne redessine PAS l'écran : le
+     * nuancier garde le focus sur la flèche qu'on vient d'utiliser, et l'on
+     * enchaîne les clics. Seuls « Reprendre les couleurs de la catégorie » et
+     * le retrait de la dernière couleur, qui changent la ligne entière, la
+     * refont.
+     */
+    function listeDeLaPartie(l: Ligne, p: NonNullable<Ligne["pastilles"]>): HTMLElement {
+      const bloc = el(
+        "div",
+        "basis-full rounded border border-dashed border-bo-border bg-bo-bg/40 px-2 py-1.5 text-xs",
+      );
+      bloc.dataset.listePartie = l.cle;
+      const nom = l.nom || l.libelle;
+      const phrase = el("p", "mb-1 flex flex-wrap items-center gap-x-2 gap-y-1");
+      const petit =
+        "rounded border border-bo-border bg-bo-surface px-2 py-0.5 text-xs text-bo-accent hover:bg-bo-bg";
+
+      // « Reprendre » et le champ du code (plus bas) portent la même clé :
+      // quand « Reprendre » refait la ligne et disparaît, le focus passe au
+      // champ du code de la même partie.
+      const reprendre = el("button", petit, "Reprendre les couleurs de la catégorie");
+      reprendre.type = "button";
+      reprendre.dataset.cle = `liste-partie:${l.cle}`;
+      reprendre.title = `Efface la liste de « ${nom} » : le client aura de nouveau les couleurs ${p.heritees.source}`;
+
+      let couleurs = [...p.propres];
+      /** Ce que montre le nuancier : la liste de la partie, sinon celles dont elle hérite. */
+      const montrees = () => (couleurs.length ? couleurs : p.heritees.couleurs);
+      /** La phrase de la partie : combien de couleurs, et d'où elles viennent. */
+      const ecrire = () => {
+        phrase.textContent = "";
+        // La phrase dans UN élément : la ligne est en flex, et chaque bout de
+        // texte y deviendrait une case à part, le point détaché du chiffre.
+        const texte = el("span", "", "Pastilles du client : ");
+        if (couleurs.length) {
+          texte.append(
+            el("strong", "", couleursProposeesEnMots(couleurs.length)),
+            couleurs.length > 1 ? ", propres à cette partie." : ", propre à cette partie.",
+          );
+          phrase.append(texte, reprendre);
+          return;
+        }
+        texte.append(
+          `celles ${p.heritees.source} — `,
+          el("strong", "", couleursProposeesEnMots(p.heritees.couleurs.length)),
+          ". Ajouter, retirer ou ranger une couleur ci-dessous en fait une liste propre à cette partie, à partir de celles-ci ; rien ne change ailleurs.",
+        );
+        phrase.append(texte);
+      };
+
+      const nuancier = creerNuancier({
+        couleurs: montrees(),
+        libelle: `les couleurs de « ${nom} »`,
+        max: COULEURS_PARTIE_MAX,
+        aussitot: true,
+        etiquette: "Dans l'ordre où le client les voit.",
+      });
+      const code = nuancier.querySelector<HTMLInputElement>("[data-pastilles-code]");
+      if (code) code.dataset.cle = `liste-partie:${l.cle}`;
+      nuancier.addEventListener("pastilles:change", (e) => {
+        const nouvelles = (e as CustomEvent<{ couleurs: string[] }>).detail.couleurs;
+        // Une poignée saisie puis relâchée sans bouger : rien n'a changé.
+        if (nouvelles.join() === montrees().join()) return;
+        couleurs = nouvelles;
+        p.onChange(couleurs);
+        if (couleurs.length) {
+          ecrire();
+          return;
+        }
+        // La dernière couleur retirée : la partie reprend celles de sa
+        // catégorie, et la ligne refaite les montre de nouveau. Le focus,
+        // posé sur le champ du code, y revient (même clé).
+        code?.focus();
+        dessiner();
+      });
+      reprendre.addEventListener("click", () => {
+        if (
+          !confirm(
+            `Reprendre les couleurs de la catégorie pour « ${nom} » ? Sa liste (${couleursProposeesEnMots(couleurs.length)}) sera effacée ; le client aura les couleurs ${p.heritees.source}. Les paniers et les commandes déjà passés gardent leurs couleurs.`,
+          )
+        )
+          return;
+        p.onChange([]);
+        dessiner();
+      });
+
+      ecrire();
+      bloc.append(phrase, nuancier);
+      return bloc;
     }
 
     /** La pastille et le titre d'une ligne des réglages avancés. */
@@ -969,6 +1267,17 @@ const bouton =
                     },
                   }
                 : undefined,
+            // Accessoire dessiné en pixels : chaque famille proposée a ses
+            // couleurs, comme une partie d'un dessin vectoriel.
+            pastilles:
+              etat.mode === "piece" && etat.accessoire && f.proposee === true
+                ? {
+                    propres: f.couleurs ?? [],
+                    heritees: heriteesDeLaPartie(),
+                    onChange: (couleurs) =>
+                      reglerCouleursDeLaPartie(f, nomDeFamille(f, i), couleurs),
+                  }
+                : undefined,
           }),
         );
 
@@ -1023,7 +1332,13 @@ const bouton =
       );
       const regle = etat.regle;
       if (etat.propre) {
-        ligneRegle.append(el("span", "", "Réglé à la main pour cette pièce."));
+        ligneRegle.append(
+          el(
+            "span",
+            "",
+            "Réglé à la main pour cette pièce : chaque couleur cochée a sa rangée de pastilles, ses ombres la suivent.",
+          ),
+        );
         if (regle) {
           const revenir = el(
             "button",
@@ -1045,10 +1360,10 @@ const bouton =
           "span",
           "",
           !regle
-            ? "Pièce sans catégorie : toutes ses couleurs sont proposées."
+            ? "Pièce sans catégorie : toutes ses couleurs sont proposées, chaque partie avec ses ombres."
             : regle.couleurs === "principale"
               ? `Comme toute la catégorie « ${regle.categorie} » : seule la couleur principale est proposée.`
-              : `Comme toute la catégorie « ${regle.categorie} » : toutes les couleurs sont proposées.`,
+              : `Comme toute la catégorie « ${regle.categorie} » : toutes les couleurs sont proposées, chaque partie avec ses ombres.`,
         ),
       );
       return ligneRegle;
@@ -1111,21 +1426,51 @@ const bouton =
         return;
       }
       // Une pièce qui suit sa catégorie : ses cases se recalculent à chaque
-      // fois — des groupes réunis ou séparés peuvent changer la principale.
-      if (etat.mode === "piece" && !etat.propre) etat.cachees = cacheesDeLaRegle(etat);
-      if (etat.mode === "piece") zoneRegle.append(ligneDeLaRegle());
-      const principal = etat.mode === "piece" ? principalDe(etat) : undefined;
+      // fois — des groupes réunis ou séparés peuvent changer la principale et
+      // les familles de teinte.
+      const piece = etat.mode === "piece";
+      if (piece && !etat.propre) etat.cachees = cacheesDeLaRegle(etat);
+      if (piece) zoneRegle.append(ligneDeLaRegle());
+      // Les rangées du client, telles que le site les propose : chacune a sa
+      // couleur en tête et ses ombres en nuances. Un personnage n'en a pas ici
+      // (null) : chaque ligne cochée y est une rangée.
+      const rangees = piece ? rangeesDuClient(etat) : null;
+      /** La rangée qui recolore ce groupe, en tête ou en ombre. */
+      const rangeeDe = (g: GroupeCouleur) =>
+        rangees?.find((r) => zonesDuGroupe(r).includes(g.zone));
+      /** Le nom de la ligne qui porte la tête d'une rangée. */
+      const nomDeTete = (r: GroupeCouleur) => {
+        const j = etat.groupes.findIndex((h) => zonesDuGroupe(h).includes(r.zone));
+        return j >= 0 ? nomAffiche(etat.groupes[j]!, j) : r.nom ?? r.zone;
+      };
       const premier = etat.groupes[0]?.zone;
+      // Le résumé suit l'ordre des rangées du client, la famille la plus
+      // étendue d'abord ; pour un personnage, l'ordre du back-office.
       resumer(
-        etat.groupes
-          .map((g, i) => ({ g, i }))
-          .filter(({ g }) => !etat.cachees.includes(g.zone))
-          .map(({ g, i }) => nomAffiche(g, i)),
+        rangees
+          ? rangees.map(nomDeTete)
+          : etat.groupes
+              .map((g, i) => ({ g, i }))
+              .filter(({ g }) => !etat.cachees.includes(g.zone))
+              .map(({ g, i }) => nomAffiche(g, i)),
       );
 
       etat.groupes.forEach((g, i) => {
         const cache = etat.cachees.includes(g.zone);
-        const membres = zonesDuGroupe(g);
+        const rangee = rangeeDe(g);
+        // En tête de sa rangée : la couleur que le client choisit. Sinon,
+        // c'est une ombre : elle suit la tête, et n'a pas de case à elle.
+        const tete = !!rangee && zonesDuGroupe(g).includes(rangee.zone);
+        const ombre = !!rangee && !tete;
+        // Ce que la rangée du client recolore depuis cette ligne : la tête
+        // emmène ses ombres, ancrées sur SA zone — une couleur de départ
+        // réglée ici tombe telle quelle sur elle, et ses ombres suivent,
+        // comme sur le site quand le client choisit.
+        const vue: GroupeCouleur =
+          rangee && tete
+            ? { ...g, nuances: zonesDuGroupe(rangee).filter((z) => z !== g.zone) }
+            : g;
+        const membres = zonesDuGroupe(vue);
 
         // La vignette : la pièce entière, CETTE couleur dans la sienne — ses
         // ombres dans les leurs —, le reste en gris (cf. ApercusZones).
@@ -1141,17 +1486,36 @@ const bouton =
         vignette.style.visibility = "hidden";
 
         const notes: string[] = [];
-        if (principal && g.zone === principal.zone) notes.push("couleur principale");
-        // Une ombre de la principale, de la même teinte : sur le site, elle
-        // la suit toute seule (principaleDeLaPiece). On le dit, pour qu'on ne
-        // la croie pas figée.
-        if (
-          principal &&
-          !etat.propre &&
-          g.zone !== principal.zone &&
-          zonesDuGroupe(principal).includes(g.zone)
-        )
-          notes.push("ombre de la couleur principale, elle la suit");
+        // La tête de la première rangée est la couleur principale : celle qui
+        // passe d'une pièce à l'autre dans le module (cf. principaleDeLaPiece).
+        if (tete && rangee === rangees?.[0]) notes.push("couleur principale");
+        // Une ombre suit la tête de sa rangée (famillesDeLaPiece). On le dit,
+        // pour qu'on ne la croie ni figée ni proposée seule.
+        if (ombre) notes.push(`ombre de « ${nomDeTete(rangee!)} », elle la suit`);
+        // Séparée par la boutique : la ligne le dit et, si le site la prenait
+        // sans cela pour l'ombre d'une autre couleur, propose de l'y réunir.
+        let separee: Ligne["separee"];
+        if (piece && g.separee) {
+          notes.push("séparée de sa teinte");
+          const sans = etat.groupes.map((h) => {
+            if (h !== g) return h;
+            const reste = { ...h };
+            delete reste.separee;
+            return reste;
+          });
+          const suivie = famillesDeLaPiece({ ...pieceDe(etat), groupesCouleurs: sans }).find(
+            (f) => zonesDuGroupe(f).includes(g.zone) && !zonesDuGroupe(g).includes(f.zone),
+          );
+          if (suivie)
+            separee = {
+              de: nomDeTete(suivie),
+              reunir: () => {
+                delete g.separee;
+                dessiner();
+                void enregistrerTout("Couleur réunie à sa teinte : elle en suit la couleur.");
+              },
+            };
+        }
 
         liste.append(
           ligne({
@@ -1168,18 +1532,44 @@ const bouton =
               dessiner();
               void enregistrerTout("Nom changé.");
             },
-            proposee: !cache,
+            proposee: piece ? !!rangee : !cache,
             onProposee: (oui) => {
               // Une case touchée : la pièce a désormais SON réglage, qui part
               // de ce qu'elle proposait jusque-là (celui de sa catégorie).
               etat.propre = true;
-              etat.cachees = etat.cachees.filter((z) => z !== g.zone);
-              if (!oui) etat.cachees.push(g.zone);
+              // Pièce : la case vaut pour la couleur ET ses ombres. Décochée,
+              // sa rangée entière s'en va ; cochée, sa famille de teinte
+              // revient avec elle — sans quoi une ombre restée décochée
+              // resterait figée sous la couleur choisie (le liseré vert foncé
+              // sous des manches rouges).
+              const famille = !piece
+                ? undefined
+                : oui
+                  ? famillesDeLaPiece(pieceDe(etat)).find((f) =>
+                      zonesDuGroupe(f).includes(g.zone),
+                    )
+                  : rangee;
+              const zonesF = new Set(famille ? zonesDuGroupe(famille) : []);
+              const touchees = etat.groupes
+                .filter((h) => h === g || zonesF.has(h.zone))
+                .map((h) => h.zone);
+              etat.cachees = etat.cachees.filter((z) => !touchees.includes(z));
+              if (!oui) etat.cachees.push(...touchees);
               dessiner();
               void enregistrerTout(
                 oui ? "Le client peut la changer." : "Le client ne peut plus la changer.",
               );
             },
+            ombre: ombre
+              ? {
+                  separer: () => {
+                    g.separee = true;
+                    dessiner();
+                    void enregistrerTout("Couleur séparée : le client la changera à part.");
+                  },
+                }
+              : undefined,
+            separee,
             notes,
             nuancier:
               etat.mode === "personnage"
@@ -1193,28 +1583,48 @@ const bouton =
                     },
                   }
                 : undefined,
+            // Accessoire : la tête de chaque rangée du client a ses couleurs
+            // à elle. Une ombre suit sa couleur, une couleur que le client ne
+            // peut pas changer n'a pas de pastilles : ni l'une ni l'autre n'a
+            // de liste à régler (celle qu'elles auraient reste gardée).
+            pastilles:
+              piece && etat.accessoire && tete
+                ? {
+                    propres: g.couleurs ?? [],
+                    heritees: heriteesDeLaPartie(),
+                    onChange: (couleurs) =>
+                      reglerCouleursDeLaPartie(g, nomAffiche(g, i), couleurs),
+                  }
+                : undefined,
           }),
         );
 
-        const rangee = el("div", "flex flex-wrap items-center gap-x-4 gap-y-1");
-        rangee.append(
+        const rangeeAvancee = el("div", "flex flex-wrap items-center gap-x-4 gap-y-1");
+        rangeeAvancee.append(
           enTeteAvance(g.zone, titreAvance(g.nom, i), etat.zones[g.zone] ?? "", (hex) => {
-            // Les teintes réunies suivent, comme sur le site quand le client
-            // choisit. « Remettre les couleurs du dessin » défait tout cela.
-            Object.assign(etat.zones, couleursDuGroupe(g, etat.zones, hex));
+            // Les ombres suivent, comme sur le site quand le client choisit :
+            // celles que le site rattache à cette couleur (`vue`), et pas
+            // seulement les teintes enregistrées avec elle. Avec le groupe
+            // seul, un rouge mis ici laissait le liseré vert foncé, qui
+            // sortait alors de la famille et devenait une rangée à part.
+            // « Remettre les couleurs du dessin » défait tout cela.
+            Object.assign(etat.zones, couleursDuGroupe(vue, etat.zones, hex));
             dessiner();
             void enregistrerTout("Couleur de départ changée.");
           }),
         );
         if (g.nuances?.length)
-          rangee.append(
+          rangeeAvancee.append(
             teintesReunies(
               g.nuances.map((z) => ({
                 couleur: etat.zones[z] ?? "#000",
                 separer: () => {
                   g.nuances = (g.nuances ?? []).filter((n) => n !== z);
                   if (g.nuances.length === 0) delete g.nuances;
-                  etat.groupes.splice(i + 1, 0, { zone: z });
+                  // Pièce : la teinte détachée est marquée séparée, sans quoi
+                  // le site la reprendrait aussitôt pour une ombre de la même
+                  // couleur, et le « × » semblerait ne rien faire.
+                  etat.groupes.splice(i + 1, 0, piece ? { zone: z, separee: true } : { zone: z });
                   if (cache) etat.cachees.push(z);
                   dessiner();
                   void enregistrerTout("Teinte séparée.");
@@ -1223,10 +1633,11 @@ const bouton =
             ),
           );
         // Plus de « Suit la couleur de… » (retiré à la demande de la
-        // boutique, octobre 2026) : les nuances déjà réunies restent et se
-        // séparent par leur « × » ci-dessus ; les ombres de même teinte
-        // suivent toujours d'elles-mêmes la couleur principale.
-        avance.append(rangee);
+        // boutique, octobre 2026) : les nuances enregistrées se séparent par
+        // leur « × » ci-dessus, une ombre devinée par « Séparer » sur sa
+        // ligne ; les ombres de même teinte suivent d'elles-mêmes la tête de
+        // leur rangée, sur une pièce réglée à la main comme ailleurs.
+        avance.append(rangeeAvancee);
       });
       publier();
       if (visible) window.mlApercusZones?.(bloc);
@@ -1350,7 +1761,7 @@ const bouton =
       if (
         adresseEnregistrement &&
         !confirm(
-          "Relire le dessin ? Ses teintes proches seront réunies à nouveau. Les noms et les cases sont gardés, mais les teintes réunies ou séparées à la main seront refaites.",
+          "Relire le dessin ? Ses teintes proches seront réunies à nouveau. Les noms, les cases et les couleurs séparées sont gardés.",
         )
       )
         return;
@@ -1376,6 +1787,15 @@ const bouton =
     // catégorie ».
     bloc.addEventListener("groupes:regle", (e) => {
       etat.regle = regleLue((e as CustomEvent<unknown>).detail);
+      dessiner();
+    });
+    // L'emplacement change (page de création) : un accessoire montre la liste
+    // de couleurs de chaque partie, les autres pièces non. Les listes déjà
+    // composées restent dans l'état : revenir à « Accessoires » les retrouve.
+    bloc.addEventListener("groupes:emplacement", (e) => {
+      const oui = (e as CustomEvent<{ accessoire?: unknown }>).detail?.accessoire === true;
+      if (etat.mode !== "piece" || oui === etat.accessoire) return;
+      etat.accessoire = oui;
       dessiner();
     });
 

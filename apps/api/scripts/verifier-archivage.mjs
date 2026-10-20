@@ -81,6 +81,14 @@ const AUTORISEES = [
     raison:
       "Sessions de connexion des clients : déconnexion, mot de passe changé, sessions périmées.",
   },
+  {
+    fichier: "src/salon.ts",
+    table: "schema.printFiles",
+    combien: 1,
+    motif: "client-et-technique",
+    raison:
+      "Rouvrir une vente au stand efface les NOMS de ses fichiers d'impression : une ligne print_file ne garde qu'un nom et une adresse, le PDF se refait à la demande depuis la commande, qui reste entière. Le nom doit changer quand le client corrige son format ou son cadre, sinon l'imprimeur reçoit « martin_A4_pas-cadre.pdf » pour une A3 encadrée. Autorisé par Alexandra le 20/10/2026 (rien à archiver : ce n'est pas un souvenir).",
+  },
 
   {
     fichier: "src/relance-panier.ts",

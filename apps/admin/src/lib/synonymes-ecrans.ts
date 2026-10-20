@@ -27,7 +27,17 @@ export const SYNONYMES: Readonly<Record<string, readonly string[]>> = {
   ],
   "/cadres": ["encadrement"],
   "/personnages": ["silhouettes"],
-  "/personnages/piece": ["pièces"],
+  // La bibliothèque des pièces a son écran depuis octobre 2026 (elle vivait
+  // en bas de Personnages) ; « clothes » : les noms de l'import, tels que la
+  // boutique les lit encore sur ses pièces. Et ce qu'on cherche vraiment :
+  // un chapeau, une robe — les pièces s'appellent encore « Accessories 1 »,
+  // c'est donc l'écran qui doit répondre.
+  "/pieces": [
+    "bibliothèque", "vêtements", "pantalons", "coupes", "accessoires", "pièce",
+    "renommer une pièce", "clothes",
+    "chapeau", "casquette", "lunettes", "t-shirt", "robe",
+  ],
+  "/pieces/nouvelle": ["nouvelle pièce", "ajouter une pièce", "téléverser une pièce"],
   "/personnages/correspondances": ["équivalences des pièces"],
   "/types-affiche": ["modèles"],
   "/ia": ["intelligence artificielle", "générées"],
@@ -49,6 +59,12 @@ export const SYNONYMES: Readonly<Record<string, readonly string[]>> = {
   ],
   "/pages": ["mentions", "mentions légales", "conditions", "conditions de vente", "cgv", "à propos"],
   "/menu": ["navigation"],
+  // Ce qu'on tape en pensant à Shopify (« redirections d'URL », « redirects »)
+  // ou au problème lui-même : un lien cassé, une ancienne adresse.
+  "/redirections": [
+    "redirection", "301", "redirection 301", "ancienne adresse", "anciennes adresses",
+    "redirections d'url", "redirects", "liens cassés", "lien cassé", "url",
+  ],
   "/lettre": ["abonnés", "envoi aux clients", "newsletter", "e-mailing"],
   "/courriers": [
     "mails", "e-mails", "messages automatiques", "confirmation de commande",

@@ -81,6 +81,7 @@ import {
   fraisDePort,
   groupesDuDessin,
   lignesRemplies,
+  refusDesCouleursDesParties,
   poidsPanier,
   normaliserCode,
   normaliserPays,
@@ -118,6 +119,7 @@ import {
 import { etatEssai } from "./mode-essai.js";
 import { commandeVisible, type CommandeABorner } from "./vendeurs.js";
 import { lieuDeRetrait, lieuPourLaCommande, lignesDuLieu } from "./lieux-retrait.js";
+import { libererAdresse } from "./redirections.js";
 
 // --- Helpers -----------------------------------------------------------------
 
@@ -553,6 +555,29 @@ function groupesPropres(
 ): GroupeCouleur[] | null {
   if (!Array.isArray(brut)) return null;
   return groupesDuDessin(zonesDuDessin ?? {}, brut);
+}
+
+/**
+ * Les couleurs proposées pour chaque partie d'un accessoire, vérifiées avant
+ * d'être enregistrées : codes « #RRGGBB », 40 au plus par partie (cf.
+ * refusDesCouleursDesParties ; les doublons se retirent au nettoyage). Rend
+ * la raison du refus, ou null. Les groupes d'un dessin vectoriel et les
+ * familles d'un dessin en pixels portent ces listes de la même façon.
+ *
+ * Un refus plutôt qu'un nettoyage silencieux : une couleur mal écrite qui
+ * disparaîtrait ferait croire à la boutique qu'elle est proposée.
+ */
+function refusDesCouleursPropres(b: {
+  groupesCouleurs?: unknown;
+  couleursImage?: unknown;
+}): string | null {
+  const familles =
+    b.couleursImage && typeof b.couleursImage === "object"
+      ? (b.couleursImage as { familles?: unknown }).familles
+      : undefined;
+  return (
+    refusDesCouleursDesParties(b.groupesCouleurs) ?? refusDesCouleursDesParties(familles)
+  );
 }
 
 /**
@@ -4180,6 +4205,10 @@ export function mountConfiguratorRoutes(app: Hono) {
   app.post("/admin/assets/:id/groupes", async (c) => {
     const id = Number(c.req.param("id"));
     const b = await c.req.json().catch(() => ({}));
+    // Les couleurs proposées pour chaque partie d'un accessoire : refusées
+    // en bloc si l'une est mal écrite, plutôt qu'enregistrées en partie.
+    const refus = refusDesCouleursPropres(b);
+    if (refus) return c.json({ error: refus }, 400);
     const [piece] = await db
       .select({ colorZones: schema.assets.colorZones })
       .from(schema.assets)
@@ -4282,6 +4311,10 @@ export function mountConfiguratorRoutes(app: Hono) {
   /** Crée ou met à jour une pièce (vêtement, coupe, accessoire…). */
   app.post("/admin/assets", async (c) => {
     const b = await c.req.json();
+    // Même vérification que l'enregistrement des groupes, plus haut : une
+    // pièce créée avec ses couleurs déjà réglées passe par ici.
+    const refus = refusDesCouleursPropres(b);
+    if (refus) return c.json({ error: refus }, 400);
     const cleanZones: Record<string, string> = {};
     for (const [k, v] of Object.entries(b.colorZones ?? {})) {
       if (/^st\d+$/.test(k) && /^#[0-9a-fA-F]{3,8}$/.test(String(v)))
@@ -4489,6 +4522,10 @@ export function mountConfiguratorRoutes(app: Hono) {
       })
       .returning();
     if (!product) return c.json({ error: "création impossible" }, 500);
+    // L'adresse était libre parmi les affiches, mais une redirection posée
+    // quand une autre affiche l'a quittée peut encore en partir : la
+    // nouvelle fiche serait introuvable (redirections.ts, libererAdresse).
+    await libererAdresse(db, slug);
 
     await db.insert(schema.variants).values(
       lignes.map((v: { format: string; priceCents: number }) => ({

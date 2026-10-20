@@ -38,7 +38,7 @@ import {
   rangerEnFinDeCollection,
 } from "./collections.js";
 import { db, schema } from "./db/client.js";
-import { poserRedirection } from "./redirections.js";
+import { libererAdresse, poserRedirection } from "./redirections.js";
 import { FORMAT_PAR_DEFAUT, HORS_VENTES } from "./statuts-vente.js";
 
 /** Les seuls états qu'un produit peut prendre. */
@@ -326,6 +326,9 @@ export function mountFicheProduit(app: Hono): void {
           seoDescription: null,
         })
         .returning();
+      // Une redirection qui part encore de cette adresse (posée quand une
+      // autre affiche l'a quittée) rendrait la copie introuvable sur le site.
+      await libererAdresse(tx, adresse);
 
       const formats = await tx
         .select()

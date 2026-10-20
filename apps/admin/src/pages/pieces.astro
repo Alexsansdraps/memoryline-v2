@@ -1,0 +1,1216 @@
+---
+/**
+ * La bibliothèque des pièces : les vêtements, pantalons, coupes et accessoires
+ * que les personnages peuvent porter.
+ *
+ * Jusqu'en octobre 2026, cette bibliothèque vivait EN BAS de l'écran
+ * Personnages, avec les cent soixante-quatre pièces dépliées d'un coup, leurs
+ * couleurs comprises : trente-cinq mille pixels à faire défiler, aucun
+ * filtre, et des noms d'import (« Clothes 1 », dix-neuf fois) impossibles à
+ * corriger. Une page = une chose : ici les pièces, là-bas les personnages.
+ *
+ * Ce qui change de lecture, pas de fond :
+ *   - une LIGNE par pièce : sa vignette cadrée sur le dessin, son nom (qui se
+ *     corrige sur place), son type d'affiche et les personnages qui la
+ *     portent — c'est ce qui distingue dix-neuf « Clothes 1 » ;
+ *   - ses COULEURS sur demande : le panneau (le composant GroupesCouleurs, le
+ *     même qu'avant, avec les mêmes réglages) n'est fabriqué que pour la
+ *     pièce demandée dans l'adresse (?couleurs=12). Monté cent soixante-quatre
+ *     fois, même replié, il pesait plus d'un mégaoctet et retardait l'arrivée
+ *     depuis la recherche de plusieurs secondes ; et le composant ne sait se
+ *     monter qu'au chargement de la page ;
+ *   - la règle de chaque catégorie (« toutes les couleurs ») est dite UNE
+ *     fois, en tête de l'emplacement ; sous une pièce, seulement ce qui s'en
+ *     écarte (« réglé à la main », « Sans catégorie ») ;
+ *   - une recherche et des filtres, côté navigateur, sans rechargement.
+ * Les enregistrements, eux, passent par les mêmes routes de l'API qu'avant.
+ */
+import { url } from "../lib/url.ts";
+import Admin from "../layouts/Admin.astro";
+import ApercusZones from "../components/ApercusZones.astro";
+import GroupesCouleurs from "../components/GroupesCouleurs.astro";
+import { texteErreur } from "../lib/traductions.ts";
+import {
+  adminApi,
+  type Asset,
+  type CategoriePiece,
+  type CharacterType,
+  type TypeAffiche,
+} from "../lib/api.ts";
+import { SLOT_THUMB_VIEWBOX } from "@memoryline/types";
+import {
+  EMPLACEMENT_ACCESSOIRE,
+  NUANCIERS_PAR_DEFAUT,
+  famillesDuDessin,
+  groupesDuDessin,
+  groupesProposesDeLaPiece,
+} from "@memoryline/types/couleurs";
+
+const api = adminApi(Astro.request);
+
+/**
+ * Emplacements de pièces, dans l'ordre d'affichage (mêmes valeurs qu'en
+ * base). « Pantalons » au pluriel, comme la catégorie qui les range : deux
+ * mots presque pareils pour la même chose se lisaient comme deux choses.
+ */
+const SLOTS = [
+  { value: "clothes", label: "Vêtements" },
+  { value: "pants", label: "Pantalons" },
+  { value: "hair", label: "Coupes" },
+  { value: "accessory", label: "Accessoires" },
+];
+
+// URL publique de l'API, joignable depuis le navigateur (fetch client) : les
+// couleurs, la catégorie et l'archivage d'une pièce s'enregistrent sans
+// recharger la page, en credentials:include.
+const PUBLIC_API_URL =
+  import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
+
+/** URL absolue d'un SVG stocké sous "/assets/...". */
+function svgSrc(u: string | null | undefined): string {
+  if (!u) return "";
+  return u.startsWith("http") ? u : `${PUBLIC_API_URL}${u}`;
+}
+
+/** Cadrage des vignettes des couleurs : la zone de la pièce sur le personnage (500×1000). */
+const cadrageDe = (slot: string) =>
+  SLOT_THUMB_VIEWBOX[slot as keyof typeof SLOT_THUMB_VIEWBOX] ?? "0 0 500 1000";
+
+/** La pièce dont le panneau des couleurs est demandé (?couleurs=12), ou 0. */
+const couleursOuvertes = Number(Astro.url.searchParams.get("couleurs") || 0);
+
+// --- Renommage (SSR) -------------------------------------------------------
+// Le seul formulaire de la page. POST /admin/assets avec un id REMPLACE la
+// ligne entière (un champ absent est remis à null) : on relit donc la pièce
+// au moment de l'envoi et on la renvoie complète, avec son nouveau nom — ses
+// couleurs, sa catégorie et sa position sont celles de l'instant, jamais
+// celles d'une page restée ouverte. Puis redirection (PRG) : un rechargement
+// ne renomme pas deux fois. Le panneau des couleurs de la pièce, s'il était
+// ouvert, le reste.
+let erreur: string | null = null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  if (form.get("_action") === "renommer") {
+    const id = Number(form.get("id"));
+    const nom = String(form.get("name") || "").trim().slice(0, 80);
+    try {
+      if (!nom) throw new Error("Le nom est vide : rien n'a changé.");
+      const piece = (await api.assets()).find((a) => a.id === id);
+      if (!piece) throw new Error("Pièce introuvable.");
+      await api.upsertAsset({ ...piece, name: nom });
+      const garder = Number(form.get("couleurs") || 0) === id ? `&couleurs=${id}` : "";
+      return Astro.redirect(url(`/pieces?renommee=${id}${garder}#piece-${id}`), 303);
+    } catch (e) {
+      erreur = "Erreur : " + texteErreur(e);
+    }
+  }
+}
+
+// Les quatre lectures sont indépendantes : en parallèle, la page arrive plus
+// vite (c'est elle qu'on ouvre depuis la recherche).
+let vues: TypeAffiche[] = [];
+let assets: Asset[] = [];
+let categoriesPieces: CategoriePiece[] = [];
+let personnages: CharacterType[] = [];
+let error: string | null = null;
+const [lAssets, lCategories, lVues, lPersonnages, lNuanciers] = await Promise.allSettled([
+  api.assets(),
+  // Chaque pièce se range dans une catégorie, et c'est la catégorie qui
+  // décide des couleurs proposées au client.
+  api.pieceCategories(),
+  // Une pièce est dessinée sous un angle (« De face », « De dos »), et ne se
+  // porte que par les personnages du même angle.
+  api.views(),
+  // Qui porte quoi : c'est ce qui distingue dix-neuf « Clothes 1 ».
+  api.characters(),
+  // Le nuancier des vêtements des personnages : ce que propose une partie
+  // d'accessoire quand ni elle ni sa catégorie n'ont de couleurs.
+  api.nuanciersBase(),
+]);
+if (lAssets.status === "fulfilled") assets = lAssets.value;
+else error = String(lAssets.reason);
+if (lCategories.status === "fulfilled") categoriesPieces = lCategories.value;
+else if (!error) error = String(lCategories.reason);
+if (lVues.status === "fulfilled") vues = lVues.value;
+else if (!error) error = String(lVues.reason);
+if (lPersonnages.status === "fulfilled")
+  personnages = (lPersonnages.value.types ?? []).filter((t) => !t.archivedAt);
+else if (!error) error = String(lPersonnages.reason);
+/**
+ * Les pastilles d'une partie d'accessoire sans liste, dans une catégorie sans
+ * couleurs : le nuancier des vêtements des personnages, comme le module
+ * (presetPaletteForSlot). Illisible, celui d'origine — le module fait pareil.
+ */
+const repliAccessoire: string[] =
+  lNuanciers.status === "fulfilled" && lNuanciers.value.nuanciers.vetements?.length
+    ? lNuanciers.value.nuanciers.vetements
+    : [...NUANCIERS_PAR_DEFAUT.vetements];
+
+/** Type d'affiche d'un dessin, avec repli sur le premier de la liste. */
+const vueParDefaut = vues[0]?.slug ?? "front";
+const nomVue = (slug: string | null | undefined) =>
+  vues.find((v) => v.slug === (slug ?? vueParDefaut))?.name ??
+  slug ??
+  vueParDefaut;
+
+// --- Messages de retour ----------------------------------------------------
+// Les pages de création et le renommage reviennent ici : c'est sur cette
+// page que le résultat se voit.
+let flash: string | null = null;
+/** Lien proposé sous le message (après une création : où rendre la pièce portable). */
+let flashLien: { href: string; texte: string } | null = null;
+const creee = Number(Astro.url.searchParams.get("creee") || 0);
+const renommee = Number(Astro.url.searchParams.get("renommee") || 0);
+if (creee) {
+  const p = assets.find((a) => a.id === creee);
+  // Une pièce neuve n'est cochée sur aucun personnage : sans ce lien, elle
+  // restait invisible sur le site et la boutique ne savait pas pourquoi.
+  flash =
+    "Pièce ajoutée. Elle n'est encore portée par aucun personnage : cochez-la dans Pièces par personnage.";
+  flashLien = {
+    href: url(
+      `/personnages/correspondances?vue=${encodeURIComponent(p?.view ?? vueParDefaut)}&slot=${encodeURIComponent(p?.slot ?? "clothes")}`,
+    ),
+    texte: "Ouvrir Pièces par personnage",
+  };
+} else if (Astro.url.searchParams.get("piece")) {
+  // L'ancienne adresse (/personnages?piece=1), que Personnages redirige ici.
+  flash = "Pièce ajoutée à la bibliothèque.";
+} else if (renommee) {
+  const p = assets.find((a) => a.id === renommee);
+  flash = p ? `Pièce renommée en « ${p.name} ».` : "Pièce renommée.";
+}
+
+/**
+ * Ce que la catégorie d'une pièce propose au client — toutes ses couleurs,
+ * ou la principale seule —, telle que le configurateur la verra : une
+ * catégorie archivée ou décochée ne lui parvient pas, et ses pièces
+ * proposent alors toutes leurs couleurs.
+ */
+function regleDeLaCategorie(
+  c: CategoriePiece | undefined,
+): { categorie: string; couleurs: "toutes" | "principale"; nuancier: string[] } | null {
+  if (!c || c.archivedAt || !c.active) return null;
+  return {
+    categorie: c.name,
+    couleurs: c.couleursProposees === "principale" ? "principale" : "toutes",
+    // Ses couleurs : celles d'une partie d'accessoire qui n'a pas sa liste.
+    nuancier: c.colors ?? [],
+  };
+}
+const categorieDe = (a: Asset) =>
+  categoriesPieces.find((c) => c.id === a.pieceCategoryId);
+/** Les catégories ouvertes d'un emplacement. */
+const categoriesDuSlot = (slot: string) =>
+  categoriesPieces.filter((c) => c.slot === slot && !c.archivedAt);
+
+/**
+ * Le résumé des couleurs d'une pièce, calculé ici pour que le bandeau replié
+ * dise l'essentiel sans qu'on l'ouvre : combien de couleurs, combien le
+ * client peut changer, et si la pièce a son propre réglage. Les mêmes
+ * fonctions que le site (groupesProposesDeLaPiece) : le chiffre est celui que
+ * le client verra, ombres non comprises (elles suivent leur couleur, le
+ * client ne les choisit pas) — et celui que le panneau ouvert annonce.
+ */
+function resumeCouleurs(a: Asset): { total: number; proposees: number; propre: boolean } {
+  const familles = famillesDuDessin(a.couleursImage ?? null);
+  if (familles.length)
+    return {
+      total: familles.length,
+      proposees: familles.filter((f) => f.proposee === true).length,
+      propre: false,
+    };
+  return {
+    total: groupesDuDessin(a.colorZones, a.groupesCouleurs).length,
+    proposees: groupesProposesDeLaPiece(
+      {
+        colorZones: a.colorZones,
+        groupesCouleurs: a.groupesCouleurs,
+        zonesMasquees: a.zonesMasquees,
+        partsDesZones: a.partsDesZones,
+      },
+      regleDeLaCategorie(categorieDe(a))?.couleurs,
+    ).length,
+    propre: Array.isArray(a.zonesMasquees),
+  };
+}
+function texteResume(r: { total: number; proposees: number }): string {
+  if (r.total === 0) return "Couleurs · pas encore lues";
+  const proposees =
+    r.proposees === 0
+      ? "aucune proposée au client"
+      : `${r.proposees} proposée${r.proposees > 1 ? "s" : ""} au client`;
+  return `Couleurs · ${r.total} dont ${proposees}`;
+}
+
+/** Minuscules sans accent, pour la recherche du navigateur (même règle dans le script). */
+const aplati = (s: string | null | undefined) =>
+  (s ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+
+/**
+ * Les personnages qui portent une pièce, selon la règle du site
+ * (slotsForCharacter, dans le configurateur) et de la grille « Pièces par
+ * personnage » : un personnage du même type d'affiche, dont la liste de
+ * pièces cochées contient la sienne (par sa position) — ou qui n'a pas de
+ * liste du tout, et porte alors toute la bibliothèque.
+ *
+ * Ceux qui l'ont COCHÉE viennent en tête : « Fille 1 » dit ce qu'est un
+ * « Clothes 1 » ; ceux qui portent tout ne distinguent aucune pièce.
+ */
+function porteursDe(a: Asset): { coches: string[]; tout: string[] } {
+  const vue = a.view ?? vueParDefaut;
+  const coches: string[] = [];
+  const tout: string[] = [];
+  for (const t of personnages) {
+    if ((t.orientation ?? vueParDefaut) !== vue) continue;
+    // Une pièce dessinée pour UN personnage n'est qu'à lui.
+    if (a.characterTypeId != null && a.characterTypeId !== t.id) continue;
+    const sv = t.slotVariants;
+    if (!sv || typeof sv !== "object") tout.push(t.name);
+    else if (sv[a.slot as keyof typeof sv]?.includes(a.position)) coches.push(t.name);
+  }
+  return { coches, tout };
+}
+/** « Portée par Fille 1, Homme 2, Femme 3 (+2) » : trois noms, pas une liste. */
+function textePorteurs(noms: string[]): string {
+  const vus = noms.slice(0, 3).join(", ");
+  return `Portée par ${vus}${noms.length > 3 ? ` (+${noms.length - 3})` : ""}`;
+}
+/** La liste entière, au survol. */
+function detailPorteurs(p: { coches: string[]; tout: string[] }): string {
+  const l: string[] = [];
+  if (p.coches.length) l.push(`Cochée pour : ${p.coches.join(", ")}.`);
+  if (p.tout.length)
+    l.push(
+      `Sans réglage de pièces, ${p.tout.length > 1 ? "ils portent" : "il porte"} toute la bibliothèque : ${p.tout.join(", ")}.`,
+    );
+  return l.join(" ");
+}
+
+/**
+ * La catégorie d'une pièce ne s'écrit sur sa ligne que si elle apprend
+ * quelque chose : chaque emplacement n'a qu'une catégorie (« Vêtements »
+ * range les vêtements), que l'en-tête du groupe dit déjà. Restent les
+ * écarts — une pièce sans catégorie, ou dans une catégorie archivée — et le
+ * jour où un emplacement en aura plusieurs.
+ */
+function categorieAMontrer(a: Asset): { texte: string; ecart: boolean } | null {
+  const c = categorieDe(a);
+  if (!c) return { texte: "Sans catégorie", ecart: true };
+  if (c.archivedAt) return { texte: `${c.name} (archivée)`, ecart: true };
+  if (categoriesDuSlot(a.slot).length > 1) return { texte: c.name, ecart: false };
+  return null;
+}
+
+// --- Les pièces, par emplacement --------------------------------------------
+// Les archivées quittent la bibliothèque active : elles restent en base pour
+// réimprimer les commandes qui les utilisaient. L'ordre est celui du
+// configurateur : position, puis id.
+const piecesArchivees = assets.filter((a) => a.archivedAt);
+const pieces = assets
+  .filter((a) => !a.archivedAt)
+  .sort((a, b) => a.position - b.position || a.id - b.id);
+const piecesBySlot = new Map<string, Asset[]>();
+for (const s of SLOTS) piecesBySlot.set(s.value, []);
+for (const a of pieces) {
+  if (!piecesBySlot.has(a.slot)) piecesBySlot.set(a.slot, []);
+  piecesBySlot.get(a.slot)!.push(a);
+}
+/**
+ * La pièce que l'adresse désigne (couleurs ouvertes, renommée, créée) : son
+ * groupe arrive ouvert, sans attendre de script, pour que le navigateur
+ * puisse aller jusqu'à elle (#piece-12).
+ */
+const cible = couleursOuvertes || renommee || creee;
+/** Les groupes à afficher : les quatre emplacements, plus un inconnu s'il en vient un. */
+const groupes = [...piecesBySlot.keys()].map((slot) => {
+  const list = piecesBySlot.get(slot) ?? [];
+  return {
+    slot,
+    label: SLOTS.find((s) => s.value === slot)?.label ?? slot,
+    list,
+    ouvert: list.some((a) => a.id === cible),
+  };
+});
+
+/**
+ * La règle de chaque catégorie, dite UNE fois en tête de son emplacement :
+ * « Catégorie « Vêtements » (41 pièces) : le client peut changer toutes les
+ * couleurs. » Sous une pièce, on ne redit rien — seulement ce qui s'en
+ * écarte (« réglé à la main »).
+ */
+function reglesDe(slot: string, list: Asset[]): { texte: string; id: number | null }[] {
+  const lignes: { texte: string; id: number | null }[] = [];
+  for (const c of categoriesDuSlot(slot)) {
+    const n = list.filter((a) => a.pieceCategoryId === c.id).length;
+    const regle = regleDeLaCategorie(c);
+    const quoi = !regle
+      ? "décochée, elle n'arrive pas au site : toutes les couleurs."
+      : regle.couleurs === "principale"
+        ? "le client ne change que la couleur principale."
+        : "le client peut changer toutes les couleurs.";
+    lignes.push({
+      id: c.id,
+      texte: `Catégorie « ${c.name} » (${n} pièce${n > 1 ? "s" : ""}) : ${quoi}`,
+    });
+  }
+  // Sans catégorie — ou dans une catégorie archivée, ce qui revient au même
+  // pour le site : toutes les couleurs sont proposées.
+  const sans = list.filter((a) => {
+    const c = categorieDe(a);
+    return !c || c.archivedAt;
+  }).length;
+  if (sans > 0)
+    lignes.push({
+      id: null,
+      texte: `Sans catégorie (${sans}) : toutes les couleurs.`,
+    });
+  return lignes;
+}
+
+/**
+ * Le filtre « Catégorie » ne sert que s'il trie autre chose que
+ * l'emplacement : tant que chaque emplacement a UNE catégorie et que toutes
+ * les pièces y sont rangées, il redisait le filtre « Emplacement ».
+ */
+const filtreCategorieUtile =
+  SLOTS.some((s) => categoriesDuSlot(s.value).length > 1) ||
+  pieces.some((a) => categorieAMontrer(a)?.ecart);
+const categoriesFiltre = categoriesPieces
+  .filter((c) => !c.archivedAt)
+  .map((c) => ({ id: c.id, label: c.name }));
+const vuesFiltre = vues.filter((v) => !v.archivedAt);
+---
+
+<Admin title="Pièces">
+  {/* Un lien vers les couleurs d'une pièce (#couleurs-piece-12, ou
+      #ancre=couleurs-piece-12 venu de la recherche ou de l'ancien écran) : le
+      panneau n'est fabriqué que pour la pièce que l'adresse demande
+      (?couleurs=12). Le fragment ne va pas au serveur : on la redemande. */}
+  <script is:inline>
+    (() => {
+      const m = /(?:^#|ancre=)couleurs-piece-(\d+)/.exec(location.hash);
+      if (!m || new URLSearchParams(location.search).get("couleurs") === m[1]) return;
+      location.replace(location.pathname + "?couleurs=" + m[1] + "#piece-" + m[1]);
+    })();
+  </script>
+
+  {flash && (
+    <p class="mb-4 flex flex-wrap items-center gap-3 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">
+      <span>{flash}</span>
+      {flashLien && (
+        <a href={flashLien.href} class="text-bo-accent underline">
+          {flashLien.texte}
+        </a>
+      )}
+    </p>
+  )}
+  {erreur && (
+    <p class="mb-4 text-sm rounded bg-red-50 border border-red-200 px-3 py-2">
+      {erreur}
+    </p>
+  )}
+  {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
+
+  {/* ---- Entête : où l'on est, combien, et la seule porte vers la création ---- */}
+  <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
+    <p class="text-sm">
+      <strong>{pieces.length} pièce{pieces.length > 1 ? "s" : ""}</strong>
+      {piecesArchivees.length > 0 && (
+        <span class="text-bo-muted">
+          {" · "}
+          <a href="#pieces-archivees" class="hover:underline">
+            {piecesArchivees.length} archivée{piecesArchivees.length > 1 ? "s" : ""}
+          </a>
+        </span>
+      )}
+    </p>
+    <div class="flex flex-wrap items-center gap-3">
+      <a
+        href={url("/categories-pieces")}
+        class="text-sm text-bo-accent hover:underline"
+        title="Les catégories des pièces et leurs couleurs"
+      >
+        Catégories de pièces
+      </a>
+      <a
+        href={url("/personnages/correspondances")}
+        class="text-sm text-bo-accent hover:underline"
+        title="Qui porte quoi : une grille personnages × pièces"
+      >
+        Pièces par personnage
+      </a>
+      <a
+        href={url("/pieces/nouvelle")}
+        class="rounded bg-bo-accent px-4 py-2 text-sm text-white"
+      >
+        + Nouvelle pièce
+      </a>
+    </div>
+  </div>
+  <p class="mb-4 text-sm text-bo-muted">
+    Les vêtements, pantalons, coupes et accessoires que les personnages peuvent
+    porter. Cliquez un nom pour le corriger ; ouvrez « Couleurs » sous une pièce
+    pour choisir ce que le client peut changer.
+  </p>
+
+  {/* ---- Filtres : tout se fait dans le navigateur, sans rechargement ---- */}
+  <div class="mb-4 flex flex-wrap items-center gap-2 text-sm" role="search">
+    <input
+      id="recherche-piece"
+      type="search"
+      placeholder="Pièce, ou personnage qui la porte…"
+      aria-label="Rechercher une pièce, par son nom ou par un personnage qui la porte"
+      class="w-full max-w-xs rounded border border-bo-border px-3 py-2 text-sm"
+    />
+    <select
+      id="filtre-slot"
+      aria-label="Emplacement"
+      class="rounded border border-bo-border px-2 py-2 text-sm"
+    >
+      <option value="">Tous les emplacements</option>
+      {SLOTS.map((s) => (
+        <option value={s.value}>{s.label}</option>
+      ))}
+    </select>
+    <select
+      id="filtre-vue"
+      aria-label="Type d'affiche"
+      class="rounded border border-bo-border px-2 py-2 text-sm"
+    >
+      <option value="">Tous les types d'affiche</option>
+      {vuesFiltre.map((v) => (
+        <option value={v.slug}>{v.name}</option>
+      ))}
+    </select>
+    {filtreCategorieUtile && (
+      <select
+        id="filtre-cat"
+        aria-label="Catégorie"
+        class="rounded border border-bo-border px-2 py-2 text-sm"
+      >
+        <option value="">Toutes les catégories</option>
+        <option value="sans">Sans catégorie</option>
+        {categoriesFiltre.map((c) => (
+          <option value={String(c.id)}>{c.label}</option>
+        ))}
+      </select>
+    )}
+    <span id="pieces-affichees" class="text-xs text-bo-muted" aria-live="polite"></span>
+  </div>
+
+  {/* ---- Un groupe repliable par emplacement ---- */}
+  {
+    groupes.map(({ slot, label, list, ouvert }) => (
+      <details
+        class="mb-3 rounded-lg border border-bo-border bg-bo-bg/40"
+        data-groupe
+        data-slot={slot}
+        data-cible={ouvert ? "" : undefined}
+        open={ouvert}
+      >
+        <summary class="cursor-pointer select-none px-4 py-3 font-semibold">
+          {label}
+          <span class="js-groupe-compte ml-2 text-sm font-normal text-bo-muted" data-total={list.length}>
+            {list.length}
+          </span>
+        </summary>
+        <div class="px-4 pb-4">
+          {/* La règle de chaque catégorie, une fois pour tout l'emplacement. */}
+          <div class="mb-3 rounded border border-dashed border-bo-border bg-bo-surface px-3 py-2 text-xs text-bo-muted">
+            {reglesDe(slot, list).length === 0 ? (
+              <p>Aucune catégorie pour cet emplacement : toutes les couleurs sont proposées.</p>
+            ) : (
+              <ul class="space-y-0.5">
+                {reglesDe(slot, list).map((l) => (
+                  <li>{l.texte}</li>
+                ))}
+              </ul>
+            )}
+            {/* Ce qui distingue les accessoires : dit une fois, ici, plutôt
+                que sous chacune des trente pièces. */}
+            {slot === EMPLACEMENT_ACCESSOIRE && (
+              <p class="mt-1">
+                Pas de choix libre pour le client : chaque partie d'un
+                accessoire propose sa propre liste de couleurs, réglée sous
+                « Couleurs » de la pièce, ou à défaut le nuancier de sa
+                catégorie.
+              </p>
+            )}
+            <a
+              href={url("/categories-pieces")}
+              class="mt-1 inline-block text-bo-accent hover:underline"
+            >
+              Régler dans Catégories de pièces
+            </a>
+          </div>
+
+          {list.length === 0 && (
+            <p class="mb-3 text-sm text-bo-muted">Aucune pièce.</p>
+          )}
+
+          <div class="flex flex-col gap-2">
+            {list.map((a) => {
+              const resume = resumeCouleurs(a);
+              const categorie = categorieDe(a);
+              const porteurs = porteursDe(a);
+              const tous = [...porteurs.coches, ...porteurs.tout];
+              const montree = categorieAMontrer(a);
+              const ouverte = couleursOuvertes === a.id;
+              return (
+                <article
+                  id={`piece-${a.id}`}
+                  class="js-piece scroll-mt-4 rounded border border-bo-border bg-bo-surface"
+                  data-asset-id={a.id}
+                  data-texte={aplati([a.name, ...porteurs.coches].join(" "))}
+                  data-slot={a.slot}
+                  data-vue={a.view ?? vueParDefaut}
+                  data-cat={
+                    // Une catégorie archivée ne range plus rien pour le site.
+                    categorie && !categorie.archivedAt ? String(categorie.id) : ""
+                  }
+                >
+                  <div class="flex items-start gap-3 px-3 py-2">
+                    {/* Cadrée sur le dessin lui-même par le script plus bas
+                        (sa place dans le cadre 500×1000 du personnage varie :
+                        le t-shirt d'un bébé est plus bas que celui d'un
+                        adulte). Rien n'est téléchargé tant que la ligne n'est
+                        pas à l'écran. */}
+                    <img
+                      class="js-vignette h-16 w-16 shrink-0 rounded border border-bo-border bg-white object-contain"
+                      data-svg={svgSrc(a.svgUrl) || undefined}
+                      width="64"
+                      height="64"
+                      alt=""
+                    />
+                    <div class="min-w-0 flex-1">
+                      {/* Le nom se corrige sur place : les noms de l'import
+                          (« Clothes 1 ») ne pouvaient se changer nulle part. */}
+                      <form method="POST" class="js-renommer flex items-center gap-1">
+                        <input type="hidden" name="_action" value="renommer" />
+                        <input type="hidden" name="id" value={a.id} />
+                        {ouverte && <input type="hidden" name="couleurs" value={a.id} />}
+                        <input
+                          name="name"
+                          value={a.name}
+                          maxlength="80"
+                          required
+                          aria-label="Nom de la pièce"
+                          title="Modifier le nom puis Entrée"
+                          class="w-full max-w-sm rounded border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium hover:border-bo-border focus:border-bo-border focus:outline-none"
+                        />
+                        <button class="js-renommer-ok rounded border border-bo-border px-2 py-0.5 text-xs">
+                          OK
+                        </button>
+                        {/* Le message du haut est hors de l'écran quand on
+                            revient sur la ligne : la confirmation se lit ici. */}
+                        {renommee === a.id && (
+                          <span role="status" class="whitespace-nowrap text-xs text-green-700">
+                            Enregistré ✓
+                          </span>
+                        )}
+                      </form>
+                      <p class="js-piece-infos mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-xs text-bo-muted">
+                        <span>{nomVue(a.view)}</span>
+                        <span aria-hidden="true">·</span>
+                        {tous.length > 0 ? (
+                          <span title={detailPorteurs(porteurs)}>{textePorteurs(tous)}</span>
+                        ) : (
+                          <a
+                            href={url(
+                              `/personnages/correspondances?vue=${encodeURIComponent(a.view ?? vueParDefaut)}&slot=${encodeURIComponent(a.slot)}`,
+                            )}
+                            class="hover:underline"
+                            title="Aucun personnage ne la porte : cochez-la dans Pièces par personnage."
+                          >
+                            Portée par personne
+                          </a>
+                        )}
+                        {montree && (
+                          <span
+                            class={`js-piece-categorie rounded px-1.5 py-0.5 ${montree.ecart ? "bg-amber-50 text-amber-800" : "bg-bo-bg"}`}
+                            title="Sa catégorie décide des couleurs proposées au client : elle se change sous « Couleurs »."
+                          >
+                            {montree.texte}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      class="js-archive-asset shrink-0 py-0.5 text-xs text-bo-muted hover:text-bo-accent"
+                      data-nom={a.name}
+                    >
+                      Archiver
+                    </button>
+                  </div>
+                  {ouverte ? (
+                    /* Les couleurs de LA pièce demandée : le bandeau résume,
+                       le panneau règle. Chaque réglage s'enregistre aussitôt. */
+                    <details
+                      id={`couleurs-piece-${a.id}`}
+                      class="js-piece-couleurs group border-t border-bo-border"
+                      open
+                    >
+                      {/* Un bandeau en flex perd le triangle du navigateur :
+                          on dessine le même que sur les autres lignes. */}
+                      <summary class="flex cursor-pointer select-none flex-wrap items-center gap-2 px-3 py-1.5 text-xs">
+                        <span aria-hidden="true" class="inline-block text-bo-muted transition-transform group-open:rotate-90">▸</span>
+                        <span class="js-couleurs-resume">{texteResume(resume)}</span>
+                        <span
+                          class="js-piece-propre rounded bg-amber-50 px-1.5 py-0.5 text-amber-800"
+                          hidden={!resume.propre}
+                          title="Cette pièce a ses propres cases : elles passent avant la règle de sa catégorie"
+                        >
+                          réglé à la main
+                        </span>
+                      </summary>
+                      <div class="px-3 pb-3 pt-1">
+                        {/* Sa catégorie décide de ses couleurs : elle se
+                            choisit ici, à côté de ce qu'elle change. Un
+                            choix, un enregistrement — pas de bouton. */}
+                        <label class="mb-3 flex flex-wrap items-center gap-2 text-xs">
+                          <span class="text-bo-muted">Catégorie</span>
+                          <select
+                            class="js-cat-piece max-w-[14rem] rounded border border-bo-border px-1 py-0.5 text-xs"
+                            data-asset-id={a.id}
+                          >
+                            <option value="" selected={a.pieceCategoryId == null}>
+                              Sans catégorie
+                            </option>
+                            {categoriesPieces
+                              .filter(
+                                (c) =>
+                                  c.slot === a.slot &&
+                                  // Une catégorie archivée ne se choisit plus,
+                                  // sauf pour la pièce qui s'y trouve déjà :
+                                  // sinon le sélecteur retomberait sur « Sans
+                                  // catégorie » et laisserait croire que son
+                                  // rangement est perdu.
+                                  (!c.archivedAt || a.pieceCategoryId === c.id),
+                              )
+                              .map((c) => (
+                                <option
+                                  value={String(c.id)}
+                                  selected={a.pieceCategoryId === c.id}
+                                  data-nom={c.name}
+                                  data-regle={regleDeLaCategorie(c)?.couleurs ?? ""}
+                                  data-nuancier={JSON.stringify(c.colors ?? [])}
+                                >
+                                  {c.name}
+                                  {c.archivedAt ? " (archivée)" : ""}
+                                </option>
+                              ))}
+                          </select>
+                          <span class="text-bo-muted">
+                            Elle décide des couleurs proposées au client et de leurs teintes.
+                          </span>
+                        </label>
+                        <GroupesCouleurs
+                          mode="piece"
+                          apiUrl={PUBLIC_API_URL}
+                          svgUrl={a.svgUrl}
+                          zones={a.colorZones}
+                          groupes={a.groupesCouleurs}
+                          masquees={a.zonesMasquees ?? null}
+                          regle={regleDeLaCategorie(categorie)}
+                          parts={a.partsDesZones ?? null}
+                          couleursImage={a.couleursImage ?? null}
+                          enregistrer={`/admin/assets/${a.id}/groupes`}
+                          cadrage={cadrageDe(a.slot)}
+                          accessoire={
+                            a.slot === EMPLACEMENT_ACCESSOIRE
+                              ? { oui: true, repli: repliAccessoire }
+                              : null
+                          }
+                        />
+                      </div>
+                    </details>
+                  ) : (
+                    /* Les autres : un lien qui redemande la page avec CE
+                       panneau. Le bandeau dit déjà l'essentiel. */
+                    <a
+                      id={`couleurs-piece-${a.id}`}
+                      href={url(`/pieces?couleurs=${a.id}#piece-${a.id}`)}
+                      class="js-ouvrir-couleurs flex flex-wrap items-center gap-2 border-t border-bo-border px-3 py-1.5 text-xs hover:bg-bo-bg"
+                      title="Ouvrir les couleurs de cette pièce"
+                    >
+                      <span aria-hidden="true" class="text-bo-muted">▸</span>
+                      <span>{texteResume(resume)}</span>
+                      {resume.propre && (
+                        <span
+                          class="rounded bg-amber-50 px-1.5 py-0.5 text-amber-800"
+                          title="Cette pièce a ses propres cases : elles passent avant la règle de sa catégorie"
+                        >
+                          réglé à la main
+                        </span>
+                      )}
+                    </a>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      </details>
+    ))
+  }
+
+  {pieces.length === 0 && !error && (
+    <p class="text-bo-muted text-sm mb-8">Aucune pièce dans la bibliothèque.</p>
+  )}
+
+  {/* ====== Pièces archivées ====== */}
+  {piecesArchivees.length > 0 && (
+    <section id="pieces-archivees" class="mb-12 mt-8">
+      <h3 class="font-semibold mb-1">Pièces archivées</h3>
+      <p class="text-xs text-bo-muted mb-3">
+        Retirées du configurateur. Elles restent en base pour réimprimer les
+        commandes qui les utilisaient, et peuvent être restaurées.
+      </p>
+      <div class="grid sm:grid-cols-3 gap-3 opacity-60">
+        {piecesArchivees.map((a) => (
+          <div
+            id={`piece-${a.id}`}
+            class="border border-bo-border rounded p-3 bg-bo-surface flex items-center gap-2"
+            data-asset-id={a.id}
+          >
+            <img
+              src={svgSrc(a.svgUrl)}
+              alt=""
+              class="h-10 w-10 object-contain border border-bo-border rounded bg-white"
+              style={a.svgUrl ? "" : "visibility:hidden"}
+              loading="lazy"
+            />
+            <div class="min-w-0 flex-1">
+              <div class="text-sm font-medium truncate">{a.name}</div>
+              <div class="text-xs text-bo-muted">
+                {SLOTS.find((s) => s.value === a.slot)?.label ?? a.slot} · {nomVue(a.view)}
+              </div>
+            </div>
+            <button
+              type="button"
+              class="js-archive-asset text-xs text-bo-muted hover:text-bo-accent"
+              data-restaurer="1"
+            >
+              Restaurer
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  )}
+
+  {/* Vignettes des zones de couleur (et la mesure du dessin pour les
+      vignettes des lignes) : après les lignes, qu'il va chercher. */}
+  <ApercusZones />
+
+  <script is:inline>
+    // --- Ce qu'on retrouve après un rechargement qu'on a soi-même demandé
+    // (ouvrir des couleurs, renommer, archiver) : les filtres en cours. Une
+    // seule fois, et seulement dans la minute : revenir plus tard par le menu
+    // rend la liste entière, pas un filtre oublié. ---
+    window.mlPiecesReprise = (() => {
+      const CLE = "ml-bo-pieces-reprise";
+      return {
+        noter(etat) {
+          try {
+            sessionStorage.setItem(CLE, JSON.stringify({ ...etat, t: Date.now() }));
+          } catch {
+            /* navigation privée : on repart d'une liste entière */
+          }
+        },
+        lire() {
+          try {
+            const brut = JSON.parse(sessionStorage.getItem(CLE) || "null");
+            sessionStorage.removeItem(CLE);
+            return brut && Date.now() - brut.t < 60000 ? brut : null;
+          } catch {
+            return null;
+          }
+        },
+      };
+    })();
+
+    // --- Groupes repliables + filtres (recherche, emplacement, type d'affiche,
+    // catégorie), tout dans le navigateur ---
+    (() => {
+      const CLE = "ml-bo-pieces-ouvertes";
+      const champ = document.getElementById("recherche-piece");
+      const filtreSlot = document.getElementById("filtre-slot");
+      const filtreVue = document.getElementById("filtre-vue");
+      const filtreCat = document.getElementById("filtre-cat");
+      const compteur = document.getElementById("pieces-affichees");
+      // Seuls les groupes d'emplacement : le menu de gauche marque aussi ses
+      // groupes d'un data-groupe.
+      const groupes = Array.from(document.querySelectorAll("details[data-groupe][data-slot]"));
+      if (!groupes.length) return;
+      const lignes = Array.from(document.querySelectorAll(".js-piece"));
+      const filtres = [champ, filtreSlot, filtreVue, filtreCat].filter(Boolean);
+
+      // Les actions rechargent la page : sans mémoire, tout se replierait à
+      // chaque renommage ou archivage.
+      const lire = () => {
+        try {
+          return new Set(JSON.parse(localStorage.getItem(CLE) || "[]"));
+        } catch {
+          return new Set();
+        }
+      };
+      const ecrire = (set) => {
+        try {
+          localStorage.setItem(CLE, JSON.stringify([...set]));
+        } catch {
+          /* navigation privée : on se passe de la mémoire */
+        }
+      };
+
+      // Même règle que data-texte, côté serveur : minuscules, sans accent.
+      const aplati = (s) =>
+        (s || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[̀-ͯ]/g, "");
+
+      function rendre() {
+        const q = aplati(champ ? champ.value.trim() : "");
+        const slot = filtreSlot ? filtreSlot.value : "";
+        const vue = filtreVue ? filtreVue.value : "";
+        const cat = filtreCat ? filtreCat.value : "";
+        const actif = q !== "" || slot !== "" || vue !== "" || cat !== "";
+        const ouvertes = lire();
+        let visibles = 0;
+
+        for (const g of groupes) {
+          let dansLeGroupe = 0;
+          for (const l of g.querySelectorAll(".js-piece")) {
+            const ok =
+              (q === "" || (l.dataset.texte || "").includes(q)) &&
+              (slot === "" || l.dataset.slot === slot) &&
+              (vue === "" || l.dataset.vue === vue) &&
+              (cat === "" ||
+                (cat === "sans" ? (l.dataset.cat || "") === "" : l.dataset.cat === cat));
+            l.hidden = !ok;
+            if (ok) dansLeGroupe++;
+          }
+          visibles += dansLeGroupe;
+          const compte = g.querySelector(".js-groupe-compte");
+          if (compte) {
+            const total = compte.dataset.total || "0";
+            compte.textContent = actif ? `${dansLeGroupe} sur ${total}` : total;
+          }
+          // Un filtre actif ouvre les groupes qui répondent et cache les
+          // autres ; sans filtre, chacun reprend l'état mémorisé — et celui de
+          // la pièce que l'adresse désigne reste ouvert.
+          if (actif) {
+            g.hidden = dansLeGroupe === 0;
+            if (dansLeGroupe > 0) g.open = true;
+          } else {
+            g.hidden = false;
+            g.open = ouvertes.has(g.dataset.slot) || g.hasAttribute("data-cible");
+          }
+        }
+
+        if (compteur) {
+          compteur.textContent = actif
+            ? `${visibles} pièce${visibles > 1 ? "s" : ""} affichée${visibles > 1 ? "s" : ""} sur ${lignes.length}`
+            : "";
+        }
+      }
+
+      // Seule une ouverture À LA MAIN se mémorise : celles d'un filtre, d'une
+      // arrivée depuis la recherche ou d'une pièce désignée par l'adresse
+      // laissaient un groupe ouvert à jamais.
+      for (const g of groupes) {
+        const bandeau = g.querySelector(":scope > summary");
+        bandeau?.addEventListener("click", () => (g.dataset.parLaMain = "1"));
+        g.addEventListener("toggle", () => {
+          if (g.dataset.parLaMain !== "1") return;
+          delete g.dataset.parLaMain;
+          const set = lire();
+          if (g.open) set.add(g.dataset.slot);
+          else set.delete(g.dataset.slot);
+          ecrire(set);
+        });
+      }
+
+      // Après un rechargement qu'on a demandé, les filtres reviennent — sauf
+      // s'ils cachaient la pièce visée (renommée hors du filtre, par exemple).
+      const reprise = window.mlPiecesReprise.lire();
+      if (reprise) {
+        if (champ) champ.value = reprise.q || "";
+        if (filtreSlot) filtreSlot.value = reprise.slot || "";
+        if (filtreVue) filtreVue.value = reprise.vue || "";
+        if (filtreCat) filtreCat.value = reprise.cat || "";
+      }
+      rendre();
+      // La pièce visée : #piece-12 (nos rechargements) ou #…ancre=piece-12…
+      // (un résultat de la recherche, que le script d'arrivée lira ensuite).
+      const m = /(?:^#|ancre=)piece-(\d+)(?:&|$)/.exec(location.hash);
+      const visee = m && document.getElementById(`piece-${m[1]}`);
+      if (visee && visee.hidden) {
+        for (const f of filtres) f.value = "";
+        rendre();
+      }
+
+      for (const el of filtres) {
+        el.addEventListener("input", rendre);
+        el.addEventListener("change", rendre);
+      }
+
+      // Avant chaque rechargement que la page provoque, on note les filtres.
+      window.mlPiecesNoterFiltres = () =>
+        window.mlPiecesReprise.noter({
+          q: champ ? champ.value : "",
+          slot: filtreSlot ? filtreSlot.value : "",
+          vue: filtreVue ? filtreVue.value : "",
+          cat: filtreCat ? filtreCat.value : "",
+        });
+      for (const lien of document.querySelectorAll("a.js-ouvrir-couleurs"))
+        lien.addEventListener("click", () => window.mlPiecesNoterFiltres());
+    })();
+
+    // --- Renommage : le bouton « OK » n'apparaît que si le nom a changé ;
+    // Échap remet le nom d'avant. Entrée envoie, comme pour une catégorie. ---
+    for (const form of document.querySelectorAll("form.js-renommer")) {
+      const champ = form.elements.namedItem("name");
+      const ok = form.querySelector(".js-renommer-ok");
+      if (!champ || !ok) continue;
+      const maj = () => {
+        ok.hidden = champ.value.trim() === champ.defaultValue.trim();
+      };
+      champ.addEventListener("input", maj);
+      champ.addEventListener("keydown", (e) => {
+        if (e.key !== "Escape") return;
+        e.stopPropagation();
+        champ.value = champ.defaultValue;
+        maj();
+      });
+      form.addEventListener("submit", () => window.mlPiecesNoterFiltres?.());
+      maj();
+    }
+
+    // --- Le panneau des couleurs ouvert : Échap le referme, et son bandeau
+    // se met à jour à chaque réglage. ---
+    (() => {
+      const p = document.querySelector("details.js-piece-couleurs");
+      if (!p) return;
+      // Le composant publie « groupes:change » à chaque réglage, après avoir
+      // écrit sa phrase « Le client pourra changer : Couleur 1. » : le bandeau
+      // compte les mêmes couleurs que cette phrase (ses noms en gras), donc
+      // sans les ombres, qui suivent leur couleur. Compter les zones non
+      // cachées (zonesProposees) y ajoutait les ombres : « 2 dont 2
+      // proposées » au-dessus d'un panneau qui n'en proposait qu'une.
+      const bloc = p.querySelector(".js-groupes");
+      const resume = p.querySelector(".js-couleurs-resume");
+      const propre = p.querySelector(".js-piece-propre");
+      if (bloc && resume) {
+        bloc.addEventListener("groupes:change", (e) => {
+          const d = e.detail || {};
+          const familles = d.couleursImage && Array.isArray(d.couleursImage.familles)
+            ? d.couleursImage.familles
+            : [];
+          const total = familles.length
+            ? familles.length
+            : Array.isArray(d.groupesCouleurs) ? d.groupesCouleurs.length : 0;
+          const proposees = familles.length
+            ? familles.filter((f) => f && f.proposee === true).length
+            : p.querySelectorAll(".js-groupes-resume strong").length;
+          resume.textContent =
+            total === 0
+              ? "Couleurs · pas encore lues"
+              : `Couleurs · ${total} dont ${
+                  proposees === 0
+                    ? "aucune proposée au client"
+                    : `${proposees} proposée${proposees > 1 ? "s" : ""} au client`
+                }`;
+          if (propre) propre.hidden = !Array.isArray(d.zonesMasquees);
+        });
+      }
+      document.addEventListener("keydown", (e) => {
+        if (e.key !== "Escape" || !p.open) return;
+        p.open = false;
+        // Le clavier ne doit pas se retrouver dans le vide : on revient sur
+        // le bandeau qu'on vient de fermer.
+        if (p.contains(document.activeElement)) p.querySelector("summary")?.focus();
+      });
+    })();
+
+    // --- Arrivée sur une pièce (#piece-ID : couleurs ouvertes, création,
+    // renommage) : le navigateur y va de lui-même, son groupe étant ouvert
+    // d'avance ; on l'entoure un instant pour que l'œil la trouve. Un lien de
+    // la recherche (#ancre=…) est pris en charge par le script d'arrivée
+    // commun. ---
+    (() => {
+      const m = /^#piece-(\d+)$/.exec(location.hash);
+      const ligne = m && document.getElementById(`piece-${m[1]}`);
+      if (!ligne) return;
+      const groupe = ligne.closest("details[data-groupe]");
+      if (groupe) groupe.open = true;
+      ligne.classList.add("ml-champ-trouve");
+      setTimeout(() => ligne.classList.remove("ml-champ-trouve"), 2500);
+    })();
+
+    // --- Vignettes des lignes : le dessin, cadré sur ce qu'il occupe
+    // vraiment (la même mesure que les vignettes des couleurs, cf.
+    // ApercusZones), téléchargé quand la ligne approche de l'écran. Une
+    // image (data:), jamais du SVG inséré : un dessin inséré tel quel
+    // pourrait y exécuter ce qu'il contient. ---
+    (() => {
+      const vignettes = Array.from(document.querySelectorAll("img.js-vignette[data-svg]"));
+      if (!vignettes.length) return;
+      // Repli, si la mesure n'est pas possible : le cadre entier du
+      // personnage, où la pièce se voit à sa place, petite mais entière.
+      const REPLI = "0 0 500 1000";
+      const textes = new Map();
+      const lire = (u) => {
+        if (!textes.has(u))
+          textes.set(
+            u,
+            fetch(u).then((r) => {
+              if (!r.ok) throw new Error(String(r.status));
+              return r.text();
+            }),
+          );
+        return textes.get(u);
+      };
+      async function remplir(img) {
+        const u = img.dataset.svg;
+        let svg;
+        try {
+          svg = await lire(u);
+        } catch {
+          img.src = u; // le fichier tel quel : mieux qu'une case vide
+          return;
+        }
+        const cadrage = window.mlCadrageDuDessin
+          ? await window.mlCadrageDuDessin(svg, REPLI)
+          : REPLI;
+        const recadre = svg.replace(/<svg\b([^>]*)>/, (_m, attrs) => {
+          const a = attrs.replace(/\s(viewBox|width|height)\s*=\s*"[^"]*"/g, "");
+          return "<svg" + a + ' viewBox="' + cadrage + '">';
+        });
+        img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(recadre);
+      }
+      if (!("IntersectionObserver" in window)) {
+        vignettes.forEach(remplir);
+        return;
+      }
+      const guet = new IntersectionObserver(
+        (entrees) => {
+          for (const e of entrees) {
+            if (!e.isIntersecting) continue;
+            guet.unobserve(e.target);
+            void remplir(e.target);
+          }
+        },
+        { rootMargin: "300px" },
+      );
+      vignettes.forEach((v) => guet.observe(v));
+    })();
+  </script>
+
+  <script is:inline define:vars={{ PUBLIC_API_URL }}>
+    // ===== Archivage d'une pièce =====
+    // Il n'y a plus de suppression définitive : une pièce effacée empêchait de
+    // régénérer le PDF des commandes qui l'utilisaient.
+    document.querySelectorAll(".js-archive-asset").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const card = btn.closest("[data-asset-id]");
+        if (!card) return;
+        const restaurer = btn.dataset.restaurer === "1";
+        // Archiver une pièce la retire du configurateur : on le dit avant,
+        // comme partout ailleurs. Restaurer, lui, ne demande rien — remettre
+        // en place n'a jamais fait de dégât.
+        if (
+          !restaurer &&
+          !confirm(
+            `Archiver la pièce « ${btn.dataset.nom || "sans nom"} » ?\n\n` +
+              "Elle ne sera plus proposée dans le configurateur. Rien n'est " +
+              "supprimé : les commandes déjà passées dessus restent " +
+              "imprimables, et vous pourrez la restaurer quand vous voudrez, " +
+              "dans « Pièces archivées », en bas de cet écran.",
+          )
+        )
+          return;
+        const id = card.getAttribute("data-asset-id");
+        try {
+          const res = await fetch(`${PUBLIC_API_URL}/admin/assets/${id}/archive`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archived: !restaurer }),
+          });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          // Rechargement sur place (le navigateur garde la position), sans
+          // les messages d'une action précédente (« Pièce renommée… »).
+          window.mlPiecesNoterFiltres?.();
+          history.replaceState(history.state, "", location.pathname);
+          location.reload();
+        } catch (e) {
+          alert((restaurer ? "Restauration" : "Archivage") + " impossible : " + e);
+        }
+      });
+    });
+
+    // --- Catégorie d'une pièce : enregistrée dès le changement ------------
+    document.addEventListener("change", async (e) => {
+      const sel = e.target.closest?.(".js-cat-piece");
+      if (!sel) return;
+      const id = Number(sel.getAttribute("data-asset-id"));
+      const valeur = sel.value === "" ? null : Number(sel.value);
+      sel.disabled = true;
+      try {
+        const res = await fetch(`${PUBLIC_API_URL}/admin/assets/category`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: [id], pieceCategoryId: valeur }),
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error(res.status);
+        // Les couleurs proposées dépendent de la catégorie : celles de la
+        // pièce se redessinent selon la nouvelle (si elle n'a pas son propre
+        // réglage).
+        const choix = sel.selectedOptions?.[0];
+        let nuancier = [];
+        try {
+          nuancier = JSON.parse(choix?.dataset.nuancier || "[]");
+        } catch {
+          /* illisible : la partie d'accessoire retombe sur le nuancier de repli */
+        }
+        const regle =
+          choix && choix.dataset.regle
+            ? { categorie: choix.dataset.nom || "", couleurs: choix.dataset.regle, nuancier }
+            : null;
+        // Le sélecteur porte lui aussi `data-asset-id` : on part de son
+        // parent pour trouver la ligne de la pièce.
+        const ligne = sel.parentElement?.closest("[data-asset-id]");
+        ligne?.querySelector(".js-groupes")
+          ?.dispatchEvent(new CustomEvent("groupes:regle", { detail: regle }));
+        if (ligne) {
+          // Le filtre par catégorie suit le nouveau rangement, et la ligne
+          // dit l'écart (« Sans catégorie ») ou cesse de le dire.
+          ligne.dataset.cat = sel.value;
+          let marque = ligne.querySelector(".js-piece-categorie");
+          if (sel.value === "") {
+            if (!marque) {
+              marque = document.createElement("span");
+              marque.className = "js-piece-categorie rounded bg-amber-50 px-1.5 py-0.5 text-amber-800";
+              ligne.querySelector(".js-piece-infos")?.append(marque);
+            }
+            marque.textContent = "Sans catégorie";
+          } else if (marque && marque.textContent.trim() === "Sans catégorie") {
+            marque.remove();
+          }
+        }
+      } catch (err) {
+        alert("Changement de catégorie impossible : " + err);
+      } finally {
+        sel.disabled = false;
+      }
+    });
+  </script>
+</Admin>

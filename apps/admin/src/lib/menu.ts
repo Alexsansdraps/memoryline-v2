@@ -103,6 +103,10 @@ export const MENU: GroupeNav[] = [
     // groupe qui porte le mot — celui des vêtements de personnages.
     titre: "Atelier",
     entrees: [
+      // Une entrée par chose. Les personnages (ce que le client pose sur son
+      // affiche) et les pièces (ce qu'ils portent) ont chacun leur écran
+      // depuis octobre 2026 : réunis sur une seule page, 164 pièces
+      // dépliées noyaient 67 personnages sous 35 000 px de défilement.
       {
         href: "/personnages",
         label: "Personnages",
@@ -113,6 +117,19 @@ export const MENU: GroupeNav[] = [
           // personnages. C'est pourtant lui qui rend utilisable une pièce
           // fraîchement créée, décochée partout par défaut.
           { href: "/personnages/correspondances", label: "Pièces par personnage", icon: "🧩", owner: true },
+        ],
+      },
+      {
+        href: "/pieces",
+        label: "Pièces",
+        icon: "👕",
+        owner: true,
+        // Les catégories de pièces rangent les pièces et portent le nuancier
+        // de chacune : c'est sous Pièces qu'on les cherche. L'écran garde
+        // aussi, en bas, les nuanciers des PERSONNAGES (peau, pelage) : ils
+        // ont leur lien en tête de l'écran Personnages, et la recherche les
+        // trouve (« peau », « nuancier »).
+        children: [
           { href: "/categories-pieces", label: "Catégories de pièces", icon: "🎨", owner: true },
         ],
       },
@@ -158,6 +175,10 @@ export const MENU: GroupeNav[] = [
       { href: "/contenu", label: "Accueil et pied de page", icon: "✏️", owner: true },
       { href: "/pages", label: "Pages du site", icon: "📄", owner: true },
       { href: "/menu", label: "Menu du site", icon: "🧭", owner: true },
+      // Les adresses du site, comme les pages et le menu : où mène une
+      // ancienne adresse (celles de Shopify, surtout). Shopify les range
+      // aussi à côté de ses menus, d'où vient la cliente.
+      { href: "/redirections", label: "Redirections", icon: "↪️", owner: true },
     ],
   },
   {

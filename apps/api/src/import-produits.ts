@@ -55,6 +55,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { POSTER_FORMATS } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { derniersRangs } from "./collections.js";
+import { libererAdresse } from "./redirections.js";
 
 /** Les seuls états qu'un produit peut prendre. */
 const STATUTS = ["active", "draft", "archived"] as const;
@@ -2019,6 +2020,10 @@ async function creerProduit(
     throw new FichierRefuse(
       `L'affiche « ${lu.nom} » n'a pas pu être créée. Rien n'a été importé, réessayez.`,
     );
+  // Une redirection posée quand une autre affiche a quitté cette adresse
+  // rendrait la nouvelle introuvable : elle s'archive avec l'import, dans la
+  // même transaction (redirections.ts, libererAdresse).
+  await libererAdresse(tx, lu.adresse);
 
   for (const format of lu.formats)
     await tx.insert(schema.variants).values({

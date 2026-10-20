@@ -30,7 +30,8 @@
  * Toutes les redirections sont des 301, « déplacé définitivement » : c'est
  * ce code qui transfère le référencement de l'ancienne adresse à la
  * nouvelle. Un 302 le garderait sur l'ancienne, qui n'existe plus. Seule une
- * ligne du back-office réglée en 302 garde son 302.
+ * ligne du back-office réglée en 302 garde son 302 — y compris pour les
+ * redirections qui passent par elle : le détour est temporaire pour tous.
  *
  * (Le fichier `public/_redirects`, convention Netlify que personne ne lisait
  * ici, et la page products/[...slug].astro qui doublait ces règles ont été
@@ -47,13 +48,23 @@ import {
 import { planDuSite } from "./lib/referencement.ts";
 
 /**
- * Les redirections du back-office, relues toutes les cinq minutes.
+ * Les redirections du back-office, gardées en mémoire, relues dès qu'elles
+ * changent.
  *
  * Sans ce cache, chaque page du site paierait un aller-retour à la base —
- * pour une table qui ne change qu'à la main, quelques fois par an. Cinq
- * minutes suffisent à voir arriver une redirection qu'on vient de créer.
+ * pour une table qui ne change qu'à la main. Mais une redirection saisie dans
+ * BO › Redirections doit répondre dès qu'on l'essaie : relue toutes les cinq
+ * minutes seulement, elle semblait ne pas marcher, et une redirection
+ * archivée continuait de s'appliquer.
+ *
+ * Le site demande donc à l'API la VERSION de la table, deux secondes au plus
+ * après la précédente — un compteur qu'elle tient en mémoire, sans lire la
+ * base (apps/api/src/redirections.ts) —, et ne relit la table que si elle a
+ * changé. Les cinq minutes restent un filet : une écriture faite hors de
+ * l'API (un script) finit par arriver, elle aussi.
  */
 const CACHE_MS = 5 * 60 * 1000;
+const VERIFICATION_MS = 2 * 1000;
 /**
  * Une lecture RATÉE sans rien en réserve (l'API qui démarre après le site)
  * n'est gardée que quinze secondes : gardée cinq minutes, elle effaçait
@@ -61,17 +72,61 @@ const CACHE_MS = 5 * 60 * 1000;
  * redémarrage.
  */
 const CACHE_ECHEC_MS = 15 * 1000;
-let cache: { a: number; duree: number; table: Map<string, { vers: string; code: number }> } | null =
-  null;
+type TableRedirections = Map<string, { vers: string; code: number }>;
+let cache: {
+  /** Quand la table a été lue. */
+  a: number;
+  duree: number;
+  /** Quand sa version a été vérifiée pour la dernière fois. */
+  verifiee: number;
+  /** null : une API qui ne donne pas de version — on s'en tient aux cinq minutes. */
+  version: string | null;
+  table: TableRedirections;
+} | null = null;
+/**
+ * La vérification en cours : vingt pages demandées dans la même seconde
+ * attendent la même réponse au lieu d'interroger l'API vingt fois.
+ */
+let enCours: Promise<TableRedirections> | null = null;
 
-async function tableDesRedirections(): Promise<
-  Map<string, { vers: string; code: number }>
-> {
+async function tableDesRedirections(): Promise<TableRedirections> {
   const maintenant = Date.now();
-  if (cache && maintenant - cache.a < cache.duree) return cache.table;
-  const table = new Map<string, { vers: string; code: number }>();
+  if (
+    cache &&
+    maintenant - cache.a < cache.duree &&
+    (cache.version === null || maintenant - cache.verifiee < VERIFICATION_MS)
+  )
+    return cache.table;
+  enCours ??= rafraichir().finally(() => {
+    enCours = null;
+  });
+  return enCours;
+}
+
+async function rafraichir(): Promise<TableRedirections> {
+  const maintenant = Date.now();
+  // Encore fraîche : on ne demande que sa version.
+  if (cache && cache.version !== null && maintenant - cache.a < cache.duree) {
+    const gardee = cache;
+    try {
+      const { version } = await api.versionDesRedirections();
+      if (version === gardee.version) {
+        gardee.verifiee = maintenant;
+        return gardee.table;
+      }
+    } catch {
+      // API muette : la table qu'on a, et pas de nouvelle question avant la
+      // prochaine vérification.
+      gardee.verifiee = maintenant;
+      return gardee.table;
+    }
+  }
+  const table: TableRedirections = new Map();
+  let version: string | null = null;
   try {
-    for (const r of await api.redirects())
+    const lu = await api.redirects();
+    version = lu.version;
+    for (const r of lu.lignes)
       table.set(normaliser(r.fromPath), {
         vers: r.toPath,
         code: r.code === 302 ? 302 : 301,
@@ -80,11 +135,14 @@ async function tableDesRedirections(): Promise<
     // API muette : on garde ce qu'on avait plutôt que de perdre les
     // redirections. Mieux vaut une table un peu ancienne qu'une page
     // introuvable.
-    if (cache?.table.size) return cache.table;
-    cache = { a: maintenant, duree: CACHE_ECHEC_MS, table };
+    if (cache?.table.size) {
+      cache.verifiee = maintenant;
+      return cache.table;
+    }
+    cache = { a: maintenant, duree: CACHE_ECHEC_MS, verifiee: maintenant, version: null, table };
     return table;
   }
-  cache = { a: maintenant, duree: CACHE_MS, table };
+  cache = { a: maintenant, duree: CACHE_MS, verifiee: maintenant, version, table };
   return table;
 }
 
@@ -133,13 +191,77 @@ function avecSuivi(vers: string, requete: URLSearchParams, garder: string[] = []
     if (SUIVI.test(cle) || garder.includes(cle)) suite.append(cle, valeur);
   const texte = suite.toString();
   if (!texte) return vers;
-  return vers + (vers.includes("?") ? "&" : "?") + texte;
+  // Avant l'ancre : « /pages/faq#livraison?utm… » perdrait le suivi dans
+  // l'ancre, que le navigateur n'envoie jamais.
+  const diese = vers.indexOf("#");
+  const avant = diese >= 0 ? vers.slice(0, diese) : vers;
+  const ancre = diese >= 0 ? vers.slice(diese) : "";
+  return avant + (avant.includes("?") ? "&" : "?") + texte + ancre;
+}
+
+/**
+ * Le nombre de redirections suivies au plus pour une adresse. La boucle, elle,
+ * est arrêtée par les adresses déjà vues ; cette borne ne garde que d'une
+ * chaîne déraisonnable. Une chaîne ne s'allonge que d'un cran à chaque
+ * redirection posée DEPUIS la cible d'une autre (BO › Redirections ne
+ * réécrit pas celles qui y menaient : apps/api/src/redirections-ecran.ts).
+ */
+const SAUTS_MAX = 10;
+
+/**
+ * Une cible enregistrée qu'on peut envoyer telle quelle dans l'en-tête
+ * Location : l'adresse http(s) d'un autre site, ou un chemin qui commence par
+ * UNE seule barre. « //autre-site.fr » ou « /\autre-site.fr », eux, mènent
+ * le navigateur hors de la boutique : le back-office les refuse, et le site
+ * ne les suit pas s'il en restait une dans la table.
+ */
+function cibleSure(vers: string): boolean {
+  return /^https?:\/\//i.test(vers) || /^\/(?![/\\])/.test(vers);
+}
+
+/** Une cible en trois morceaux : avant la requête, la requête (sans « ? »), l'ancre (avec « # »). */
+function decouper(vers: string): { base: string; requete: string; ancre: string } {
+  const diese = vers.indexOf("#");
+  const ancre = diese >= 0 ? vers.slice(diese) : "";
+  const avant = diese >= 0 ? vers.slice(0, diese) : vers;
+  const q = avant.indexOf("?");
+  return q >= 0
+    ? { base: avant.slice(0, q), requete: avant.slice(q + 1), ancre }
+    : { base: avant, requete: "", ancre };
+}
+
+/**
+ * La redirection du back-office qui prend une adresse. Une fiche Shopify
+ * rangée dans une collection (/collections/villes/products/x) est, pour
+ * Shopify, la même fiche que /products/x : une redirection posée sur l'une
+ * vaut pour l'autre, comme la correspondance automatique (anciennes-adresses.ts).
+ * Rend aussi la clé trouvée, pour reconnaître une boucle.
+ */
+function redirectionDe(
+  table: TableRedirections,
+  ici: string,
+): { cle: string; vers: string; code: number } | null {
+  const fiche = /^\/collections\/[^/]+\/products\/([^/]+)$/.exec(ici)?.[1];
+  for (const cle of fiche ? [ici, `/products/${fiche}`] : [ici]) {
+    const r = table.get(cle);
+    if (r && cibleSure(r.vers)) return { cle, ...r };
+  }
+  return null;
 }
 
 /**
  * Où mène une adresse : la table du back-office, puis les anciennes adresses,
- * suivies jusqu'au bout (quatre sauts au plus, contre une boucle mal réglée
- * au back-office). null : l'adresse est bonne telle quelle.
+ * suivies jusqu'au bout. null : l'adresse est bonne telle quelle.
+ *
+ * Une cible qui porte une requête (« /colmar?utm_source=lettre ») ne
+ * s'arrête plus là : le site compare les adresses SANS leur requête, et la
+ * requête suivante aurait redirigé de nouveau — un second saut, ou une boucle
+ * sans fin quand /colmar menait à l'adresse de départ. La requête écrite dans
+ * une cible suit donc jusqu'à la destination finale, après la requête propre
+ * de celle-ci (un rayon, « /affiches?collection=villes »).
+ *
+ * Une boucle (une adresse déjà vue) ne redirige pas : l'adresse demandée
+ * s'affiche telle quelle, plutôt que de faire tourner le navigateur.
  */
 async function destination(
   chemin: string,
@@ -149,29 +271,40 @@ async function destination(
   // (« as » : sans lui, TypeScript croit `trouvee` nul pour toujours et
   // refuse de lire le saut précédent dans la boucle.)
   let trouvee = null as (Destination & { code: number }) | null;
+  const vues = new Set([chemin]);
   let ici = chemin;
-  for (let saut = 0; saut < 4; saut++) {
-    const precise = table.get(ici);
+  /** La requête et l'ancre écrites dans les cibles déjà franchies. */
+  let requete = "";
+  let ancre = "";
+  for (let saut = 0; saut < SAUTS_MAX; saut++) {
+    const precise = redirectionDe(table, ici);
+    if (precise) vues.add(precise.cle);
     const etape: (Destination & { code: number }) | null = precise
       ? { vers: precise.vers, code: precise.code }
       : await destinationAncienne(ici, lirePlan).then((d) => (d ? { ...d, code: 301 } : null));
     if (!etape) break;
+    const morceaux = decouper(etape.vers);
+    requete = [morceaux.requete, requete].filter(Boolean).join("&");
+    ancre = morceaux.ancre || ancre;
     trouvee = {
-      vers: etape.vers,
-      // Le code du PREMIER saut : un 302 voulu au back-office reste un 302.
-      code: trouvee?.code ?? etape.code,
+      vers: morceaux.base,
+      // Temporaire dès qu'un saut l'est : une redirection posée en 302 au
+      // back-office reste un 302, même quand d'autres passent par elle. Une
+      // 301 vers sa destination du moment transférerait le référencement
+      // vers une page qu'on compte quitter.
+      code: trouvee?.code === 302 || etape.code === 302 ? 302 : 301,
       garder: [...(trouvee?.garder ?? []), ...(etape.garder ?? [])],
     };
-    // Une adresse d'un autre site, ou qui porte déjà sa requête (un rayon),
-    // est une destination finale.
-    if (/^https?:\/\//i.test(etape.vers) || etape.vers.includes("?")) break;
-    const suivant = normaliser(etape.vers);
-    if (suivant === ici) break;
+    // Une adresse d'un autre site est une destination finale.
+    if (/^https?:\/\//i.test(morceaux.base)) break;
+    const suivant = normaliser(morceaux.base);
+    // Retour sur une adresse déjà traversée : une boucle.
+    if (vues.has(suivant)) return null;
+    vues.add(suivant);
     ici = suivant;
   }
-  // Une redirection qui reviendrait sur l'adresse demandée tournerait en rond.
-  if (trouvee && !trouvee.vers.includes("?") && normaliser(trouvee.vers) === chemin) return null;
-  return trouvee;
+  if (!trouvee) return null;
+  return { ...trouvee, vers: trouvee.vers + (requete ? `?${requete}` : "") + ancre };
 }
 
 /**

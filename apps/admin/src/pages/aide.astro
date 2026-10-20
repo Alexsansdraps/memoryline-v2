@@ -744,47 +744,88 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
           « Enregistrer le dessin ».
         </p>
         <p>
-          <strong>L'ordre des pastilles</strong> est celui que voit la cliente.
+          <strong>L'ordre des pastilles</strong> est celui que voit le client.
           Dans
           <a href={url("/categories-pieces")} class="text-bo-accent underline">Catégories de pièces</a>,
           chaque nuancier — celui d'une catégorie, comme les quatre nuanciers
           des personnages en bas de page — se range : glissez la poignée ⠿
           d'une pastille, ou utilisez ses flèches ← → (au clavier aussi) ; ×
-          la retire, « + Ajouter » en met une à la fin. Puis le bouton
+          la retire, « + Ajouter » en met une à la fin — choisie au
+          sélecteur, ou par son code (#B8551D). Puis le bouton
           « Enregistrer » du nuancier. « Revenir aux couleurs d'origine »
           remet un nuancier des personnages comme il était au départ.
         </p>
         <p>
           <strong>Une pièce</strong> (vêtement, pantalon, coupe, accessoire) :
-          même liste, partie « Éléments / Pièces », sur la carte de la pièce.
-          Les teintes offertes au client sont celles de sa
-          <strong>catégorie</strong>
+          dans <a href={url("/pieces")} class="text-bo-accent underline">Pièces</a>
+          (menu Atelier), bandeau « Couleurs » sous la pièce — il s'ouvre d'un
+          clic, une pièce à la fois. Les teintes offertes au client sont celles
+          de sa <strong>catégorie</strong>
           (<a href={url("/categories-pieces")} class="text-bo-accent underline">Catégories de pièces</a>),
-          choisie à la création de la pièce ou sur sa carte ; sans catégorie, il
-          a une palette générique et le choix libre.
+          choisie à la création de la pièce ou en tête de ses « Couleurs » ; sans catégorie, il
+          a une palette générique et le choix libre (sauf sur un accessoire).
         </p>
         <p>
-          <strong>Ne pas proposer les détails</strong> (le ruban d'un chapeau) :
-          un seul réglage par catégorie, « Le client peut recolorer », dans
+          <strong>Les couleurs d'un accessoire, partie par partie</strong> :
+          le client n'a jamais de choix libre sur un accessoire, seulement les
+          pastilles que vous choisissez. Dans
+          <a href={url("/pieces")} class="text-bo-accent underline">Pièces</a>,
+          ouvrez « Couleurs » sous l'accessoire : chaque partie que le client
+          peut changer (la monture, les verres…) a, sous sa ligne, ses
+          « Pastilles du client ». Sans liste à elle, la partie propose le
+          nuancier de sa catégorie, et c'est lui que vous voyez : votre
+          premier changement part de ces couleurs-là et en fait la liste de la
+          partie (le nuancier de la catégorie ne change pas). Ajoutez une
+          couleur au sélecteur ou par son code (#B8551D, puis Entrée ou
+          « + Ajouter »), autant que vous voulez (40 au plus) ; rangez-les
+          avec la poignée ⠿ ou les flèches ← → ; × en retire une. La phrase
+          dit combien sont proposées (« 4 couleurs proposées »). Chaque
+          changement s'enregistre aussitôt. « Reprendre les couleurs de la
+          catégorie » efface la liste de la partie, comme le retrait de sa
+          dernière couleur. Le client arrive sur la couleur du dessin ; s'il
+          passe d'un accessoire à un autre, la couleur principale qu'il avait
+          choisie le suit, quand le nouveau la propose aussi pour sa partie
+          principale. Un panier ou une commande dont la couleur
+          n'est plus dans la liste s'affiche et s'imprime quand même avec
+          elle.
+        </p>
+        <p>
+          <strong>Ce que le client peut recolorer</strong> : un seul réglage
+          par catégorie, « Le client peut recolorer », dans
           <a href={url("/categories-pieces")} class="text-bo-accent underline">Catégories de pièces</a>.
-          « Seulement la couleur principale », le réglage de départ, ne laisse
-          au client que la couleur la plus étendue de chaque pièce (« couleur
-          principale » sous sa ligne), ombres comprises ; le reste garde la
-          couleur du dessin. « Toutes les couleurs » les propose toutes.
+          « Toutes les couleurs », le réglage de départ, propose chaque partie
+          de la pièce avec ses ombres : une rangée de pastilles par partie, et
+          l'ombre d'une partie suit la couleur choisie (« ombre de « Couleur
+          2 », elle la suit » sous sa ligne ; une ombre n'a pas de case à
+          elle, celle de sa couleur vaut pour les deux). Le site reconnaît une
+          ombre à sa teinte, à sa clarté proche et à sa surface plus petite ;
+          s'il en prend une à tort pour une ombre (la visière d'une casquette,
+          le revers d'un bonnet), « Séparer » sur sa ligne lui rend sa propre
+          rangée, et « Suivre « Couleur 2 » » défait ce choix. « Seulement la couleur
+          principale » est pour une catégorie dont les détails (le ruban d'un
+          chapeau) ne doivent pas bouger : le client n'a que la couleur la plus
+          étendue de chaque pièce (« couleur principale » sous sa ligne),
+          ombres comprises ; le reste garde la couleur du dessin. Dans le
+          module, un bouton « Remettre les couleurs d'origine », sous les
+          pastilles, rend à une pièce ou au personnage les couleurs du dessin
+          dès que le client en a changé une.
         </p>
         <p>
-          Une pièce à part (un vêtement à deux couleurs principales) : cochez
-          ou décochez ses cases « Le client peut la changer ». Elle est alors
+          Une pièce à part (un vêtement dont un détail ne doit pas bouger,
+          dans une catégorie qui propose toutes les couleurs) : cochez ou
+          décochez ses cases « Le client peut la changer ». Elle est alors
           « réglée à la main », et ce réglage passe avant celui de la
-          catégorie ; « Refaire comme la catégorie » le lui retire. Chaque
-          réglage s'enregistre aussitôt.
+          catégorie : chaque couleur cochée a sa rangée de pastilles, et ses
+          ombres la suivent comme ailleurs ; une couleur décochée garde celle
+          du dessin, ses ombres aussi. « Refaire comme la catégorie » retire
+          le réglage à la main. Chaque réglage s'enregistre aussitôt.
         </p>
         <p>
           <strong>Réglages avancés</strong> (repliés sous chaque pièce) : à
           n'ouvrir que si les couleurs du dessin ont été mal lues. On y règle la
-          couleur de départ d'une couleur et on sépare une teinte réunie à
-          tort ; les ombres de même teinte suivent d'elles-mêmes la couleur
-          principale. « Remettre les couleurs du dessin » annule les couleurs de départ
+          couleur de départ d'une couleur — ses ombres suivent — et on sépare
+          (« × ») une teinte que la lecture du dessin a réunie à tort.
+          « Remettre les couleurs du dessin » annule les couleurs de départ
           changées par erreur. Les commandes déjà passées s'impriment toujours
           comme le client les a composées.
         </p>
@@ -954,6 +995,62 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
           sans prendre de numéro. Chaque facture garde les mentions du jour où
           elle a reçu son numéro : un changement d'adresse ne réécrit pas les
           factures déjà émises.
+        </p>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
+    <details id="redirections-shopify" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Comment reprendre les redirections de Shopify (et en ajouter une) ?
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          Les anciennes adresses de Shopify (/products/…, /collections/…, /pages/…)
+          mènent déjà d'elles-mêmes à la page qui les remplace. Il reste celles que
+          vous aviez posées vous-même dans Shopify, par exemple Strasbourg vers
+          Colmar. Avant de fermer la boutique Shopify, ouvrez son admin :
+          <strong>Contenu › Menus › Redirections d'URL</strong>, puis « Exporter ».
+          Vous obtenez un fichier Redirects.csv.
+        </p>
+        <p>
+          Dans <a href={url("/redirections#import")} class="text-bo-accent underline">Boutique en ligne › Redirections</a>,
+          ouvrez « Importer les redirections de Shopify » et déposez le fichier.
+          L'aperçu dit, ligne par ligne, ce qui serait créé, ce qui est déjà là
+          et ce qui est refusé, avec la raison. Une ligne qui mènerait à une
+          page introuvable porte un ⚠. Rien n'est enregistré avant
+          « Appliquer ». Une cible elle-même redirigée, dans la liste ou dans le
+          fichier, est remplacée par sa destination finale : un seul saut. Les
+          cibles en /products/… sont suivies ainsi, puis réécrites en /affiches/….
+        </p>
+        <p>
+          Une ligne est refusée si son ancienne adresse est celle d'une affiche
+          en vente ou d'une page publiée, y compris l'ancienne adresse Shopify
+          d'une affiche toujours en vente : le site y mène déjà de lui-même.
+          Shopify ignore une redirection tant que la fiche existe, son fichier
+          peut donc en contenir de périmées.
+        </p>
+        <p>
+          Pour une seule adresse, « Ajouter une redirection » : l'ancienne adresse
+          (/products/vieux-moulin, ou l'adresse complète copiée du navigateur) et
+          la nouvelle (/affiches/…, ou l'adresse complète d'un autre site). Si
+          l'ancienne adresse est celle d'une affiche en vente ou d'une page
+          publiée, l'écran vous prévient et vous montre où elle mènerait : la
+          redirection détournerait tous ceux qui y arrivent.
+        </p>
+        <p>
+          Les redirections qui menaient déjà à l'adresse que vous redirigez ne
+          sont pas modifiées : le site les conduit jusqu'à la nouvelle
+          destination, en un seul saut. Si vous archivez la nouvelle, elles
+          mènent de nouveau à leur cible d'origine. La liste dit lesquelles
+          passent par une redirection.
+        </p>
+        <p>
+          Le site applique la redirection tout de suite : « Essayer » ouvre
+          l'ancienne adresse, qui doit mener à la nouvelle. Une redirection ne se
+          supprime pas, elle s'archive. Votre navigateur peut se souvenir d'une
+          redirection déjà suivie : pour vérifier qu'une redirection archivée ne
+          s'applique plus, essayez dans une fenêtre de navigation privée.
         </p>
       </div>
     </details>

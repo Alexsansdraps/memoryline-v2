@@ -732,15 +732,18 @@ export const pieceCategories = pgTable(
      * ruban d'un chapeau, gardent la couleur du dessin).
      *
      * Une pièce qui a son propre réglage (`asset.zones_masquees` non nul)
-     * garde le dernier mot. « principale » par défaut depuis 0066 : c'est ce
-     * que la cliente a demandé pour toutes les pièces des personnages (« ne
-     * pas proposer de modifier la couleur des détails ») ; « toutes » reste
-     * au choix, catégorie par catégorie (cf. couleurs-groupes.ts).
+     * garde le dernier mot. « toutes » par défaut depuis 0068 : la cliente a
+     * changé d'avis le 19 octobre (« le client peut changer toutes les
+     * couleurs ») après avoir demandé, en 0066, de ne proposer que la
+     * principale. Sous « toutes », chaque famille de teinte de la pièce a sa
+     * rangée de pastilles et ses ombres la suivent (famillesDeLaPiece, cf.
+     * couleurs-groupes.ts) ; « principale » reste au choix, catégorie par
+     * catégorie.
      */
     couleursProposees: text("couleurs_proposees")
       .$type<CouleursProposees>()
       .notNull()
-      .default("principale"),
+      .default("toutes"),
     active: boolean("active").notNull().default(true),
     position: integer("position").notNull().default(0),
     /**

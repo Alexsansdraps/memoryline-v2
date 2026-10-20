@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import {
   normaliserChemin,
   planDesRedirections,
+  redirectionsALiberer,
   type RedirectionActive,
 } from "../src/redirections.js";
 
@@ -115,4 +116,20 @@ test("une redirection posée à la main sur l'ancienne adresse suit, requête co
   // Partant de l'ancienne adresse (casse et barre finale mises de côté) :
   // remplacée par celle que l'on pose.
   assert.deepEqual(plan.archiver, [8]);
+});
+
+test("une affiche créée à une adresse quittée la reprend : la redirection qui en part s'archive", () => {
+  const table: (RedirectionActive & { archivee?: boolean })[] = [];
+  // « colmar » est renommée : colmar → colmar-cathedrale.
+  appliquer(table, "colmar", "colmar-cathedrale");
+  table.push({ id: 2, fromPath: "/Affiches/Colmar/", toPath: "/affiches/autre" });
+  table.push({ id: 3, fromPath: "/affiches/colmar-2", toPath: "/affiches/colmar" });
+  // Puis une nouvelle affiche « COLMAR » naît (création, copie ou import).
+  const ids = redirectionsALiberer("colmar", table.filter((r) => !r.archivee));
+  for (const id of ids) table.find((r) => r.id === id)!.archivee = true;
+  // Seules celles qui PARTENT de /affiches/colmar (casse et barre finale
+  // mises de côté) ; colmar-2 n'est pas la même adresse.
+  assert.deepEqual(ids.sort(), [1, 2]);
+  assert.deepEqual(suivre(table, "/affiches/colmar"), ["/affiches/colmar"]);
+  assert.deepEqual(suivre(table, "/affiches/colmar-2"), ["/affiches/colmar-2", "/affiches/colmar"]);
 });

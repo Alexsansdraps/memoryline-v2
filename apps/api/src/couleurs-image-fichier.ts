@@ -48,6 +48,7 @@ import {
   planDeRecoloration,
   recolorerPixels,
   rgbVersHex,
+  sansPastillesProposees,
   teintesDeLaFamille,
   versTsl,
   FAMILLES_MAX,
@@ -525,7 +526,9 @@ export function cheminDuDessin(url: string): string | null {
  * L'empreinte d'une image recolorée : le dessin (son nom, sa taille et sa date),
  * ses familles et les couleurs voulues. Un dessin remplacé sur le disque, une
  * famille rattachée à une autre, une couleur changée : l'empreinte change, et
- * l'image est refaite au lieu d'être resservie.
+ * l'image est refaite au lieu d'être resservie. Les pastilles proposées au
+ * client pour une famille d'accessoire n'y entrent pas : elles ne changent
+ * pas un pixel de l'image (cf. sansPastillesProposees).
  */
 async function empreinte(
   chemin: string,
@@ -537,7 +540,7 @@ async function empreinte(
     .update(basename(chemin))
     .update(String(s.size))
     .update(String(s.mtimeMs))
-    .update(JSON.stringify(famillesDuDessin(couleursImage)))
+    .update(JSON.stringify(sansPastillesProposees(famillesDuDessin(couleursImage))))
     .update(JSON.stringify(voulues))
     .digest("hex")
     .slice(0, 24);

@@ -1,0 +1,785 @@
+---
+/**
+ * Les redirections : où mène une ancienne adresse du site.
+ *
+ * Le jour où memoryline.fr bascule de Shopify vers ce site, chaque adresse que
+ * Google connaît doit mener quelque part, sans quoi le référencement acquis
+ * part avec et la cliente qui revient par un favori croit la boutique
+ * fermée. Le site s'en charge déjà pour les formes connues de Shopify
+ * (/products/…, /collections/…, /pages/…). Restent les redirections que la
+ * boutique avait posées elle-même dans l'admin Shopify — strasbourg → colmar,
+ * par exemple — et les cas particuliers : c'est ici qu'on les saisit, une à
+ * une ou d'un coup avec le fichier Redirects.csv exporté de Shopify.
+ *
+ * Les notes de mise en ligne demandaient de « saisir dans BO › Redirections »
+ * ces redirections avant la fermeture de la boutique Shopify : l'écran
+ * n'existait pas. Les règles — pas de boucle, un seul saut, une seule
+ * redirection par ancienne adresse, confirmation avant de rendre une page
+ * inaccessible — vivent dans l'API (apps/api/src/redirections-ecran.ts) ;
+ * l'écran les annonce, et montre ce qu'il a corrigé.
+ *
+ * Le site applique ce qui est enregistré ici dans les deux secondes
+ * (apps/web/src/middleware.ts). Rien ne se supprime : une redirection
+ * s'archive, et se restaure.
+ *
+ * Une redirection qui menait déjà à une adresse qu'on redirige n'est pas
+ * réécrite : le site suit la chaîne en un seul saut, et archiver la nouvelle
+ * la rend à sa cible. La liste montre donc où chacune mène AU BOUT, et
+ * lesquelles passent par elle.
+ *
+ * Les adresses s'enregistrent encodées (« /caf%c3%a9 », comme le navigateur
+ * les demande) et se montrent en clair (« /café ») : voir `clair`.
+ */
+import Admin from "../layouts/Admin.astro";
+import { url } from "../lib/url.ts";
+import {
+  adminApi,
+  type RedirectionBo,
+  type ResultatImportRedirections,
+} from "../lib/api.ts";
+
+const api = adminApi(Astro.request);
+
+/** L'API refuse en français et dit pourquoi ; on retire seulement l'emballage. */
+function lisible(e: unknown): string {
+  return String(e).replace(/^Error:\s*/, "");
+}
+
+/** L'adresse publique du site, pour essayer une redirection d'un clic. */
+function originePublique(): string {
+  const annoncee: unknown = import.meta.env.PUBLIC_SITE_URL ?? import.meta.env.PUBLIC_ORIGIN;
+  if (typeof annoncee === "string" && annoncee.trim()) return annoncee.trim().replace(/\/+$/, "");
+  const entetes = Astro.request.headers;
+  const hote = entetes.get("x-forwarded-host") ?? entetes.get("host");
+  const protocole = entetes.get("x-forwarded-proto") ?? Astro.url.protocol.replace(":", "");
+  return hote ? `${protocole}://${hote}` : Astro.url.origin;
+}
+const ORIGINE = originePublique();
+
+const marque = (n: number) => (n > 1 ? "s" : "");
+
+/**
+ * Une adresse telle qu'on la lit : « /café » plutôt que « /caf%c3%a9 ».
+ * decodeURI laisse encodés « / », « ? » et « # » écrits en %2F, %3F, %23,
+ * qui changeraient de sens à la lecture ; un « % » mal formé reste tel quel.
+ */
+const clair = (adresse: string): string => {
+  try {
+    return decodeURI(adresse);
+  } catch {
+    return adresse;
+  }
+};
+
+let flash: string | null = null;
+let flashErreur = false;
+/** Ce que l'API a corrigé ou ajouté en passant : affiché sous le message. */
+let notes: string[] = [];
+/** Ce qu'une confirmation montre : la page détournée, et vers où elle mènerait. */
+interface AConfirmer {
+  message: string;
+  fromPath: string | null;
+  toPath: string | null;
+}
+/** L'ajout qui détournerait une page qui existe : rien n'est écrit, on repose la question. */
+let ajoutAConfirmer: AConfirmer | null = null;
+/** La restauration qui détournerait une page qui existe. */
+let restaurationAConfirmer: (AConfirmer & { id: number; libelle: string }) | null = null;
+/** Ce qu'on avait saisi, rendu au formulaire quand l'ajout n'a pas abouti. */
+let saisie = { fromPath: "", toPath: "", code: "301" };
+let ajoutOuvert = false;
+/** La redirection qu'on vient de modifier : sa ligne reste dépliée, on la retrouve. */
+let ouverte: number | null = null;
+
+let importResultat: ResultatImportRedirections | null = null;
+let importTexte = "";
+let importErreur: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const action = String(f.get("_action") ?? "");
+  const texte = (nom: string) => String(f.get(nom) ?? "");
+  try {
+    if (action === "ajouter") {
+      saisie = { fromPath: texte("fromPath"), toPath: texte("toPath"), code: texte("code") || "301" };
+      ajoutOuvert = true;
+      const r = await api.ajouterRedirection({
+        fromPath: saisie.fromPath,
+        toPath: saisie.toPath,
+        code: Number(saisie.code),
+        confirmer: texte("confirmer") === "1",
+      });
+      if (!r.ok) {
+        ajoutAConfirmer = { message: r.aConfirmer, fromPath: r.fromPath ?? null, toPath: r.toPath ?? null };
+        notes = r.notes;
+      } else {
+        flash = `Redirection ajoutée : « ${clair(r.redirection.fromPath)} » mène à « ${clair(r.redirection.toPath)} ». Le site l'applique dès maintenant.`;
+        notes = [...r.notes];
+        if (r.redirection.cible?.alerte) notes.push(`Attention : ${r.redirection.cible.alerte}`);
+        saisie = { fromPath: "", toPath: "", code: "301" };
+        ajoutOuvert = false;
+      }
+    } else if (action === "modifier") {
+      const id = Number(texte("id"));
+      ouverte = id;
+      const r = await api.modifierRedirection(id, { toPath: texte("toPath"), code: Number(texte("code") || "301") });
+      if (r.ok) {
+        flash = `« ${clair(r.redirection.fromPath)} » mène maintenant à « ${clair(r.redirection.toPath)} ».`;
+        notes = [...r.notes];
+        if (r.redirection.cible?.alerte) notes.push(`Attention : ${r.redirection.cible.alerte}`);
+      }
+    } else if (action === "archiver") {
+      const r = await api.archiverRedirection(Number(texte("id")), true);
+      flash = `« ${clair(texte("libelle"))} » archivée : elle ne s'applique plus. Vous pouvez la restaurer en bas de la page.`;
+      notes = [...r.notes];
+    } else if (action === "restaurer") {
+      const id = Number(texte("id"));
+      const r = await api.archiverRedirection(id, false, texte("confirmer") === "1");
+      if (!r.ok) {
+        restaurationAConfirmer = {
+          id,
+          libelle: texte("libelle"),
+          message: r.aConfirmer,
+          fromPath: r.fromPath ?? null,
+          toPath: r.toPath ?? null,
+        };
+        notes = r.notes;
+      } else {
+        flash = `« ${clair(r.redirection.fromPath)} » restaurée : elle mène de nouveau à « ${clair(r.redirection.toPath)} ».`;
+        notes = [...r.notes];
+      }
+    } else if (action === "import-apercu" || action === "import-appliquer") {
+      importTexte = texte("texte");
+      const appliquer = action === "import-appliquer";
+      try {
+        if (!importTexte.trim())
+          throw new Error("Aucun fichier n'a été choisi. Sélectionnez le fichier, ou collez son contenu.");
+        importResultat = await api.importerRedirections(importTexte, appliquer);
+      } catch (e) {
+        importErreur = lisible(e);
+        // Un import refusé ne fait pas perdre l'aperçu : on le redemande, pour
+        // qu'il n'y ait plus qu'à corriger puis relancer.
+        if (appliquer && importTexte.trim())
+          try {
+            importResultat = await api.importerRedirections(importTexte, false);
+          } catch {
+            /* la première phrase dit déjà ce qui bloque */
+          }
+      }
+    }
+  } catch (e) {
+    flash = lisible(e);
+    flashErreur = true;
+  }
+}
+
+let vivantes: RedirectionBo[] = [];
+let archivees: RedirectionBo[] = [];
+let erreur: string | null = null;
+try {
+  ({ vivantes, archivees } = await api.redirections());
+} catch (e) {
+  erreur = lisible(e);
+}
+
+/**
+ * La recherche : sur les adresses (en clair : « café » trouve « /caf%c3%a9 »),
+ * où mène la chaîne, et le nom de l'affiche ou de la page visée, sans les
+ * accents.
+ */
+const recherche = (Astro.url.searchParams.get("q") ?? "").trim();
+const plat = (s: string) =>
+  s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const correspond = (r: RedirectionBo) => {
+  if (!recherche) return true;
+  const voulu = plat(recherche);
+  return [r.fromPath, r.toPath, r.finale ?? "", r.cible?.libelle ?? ""].some(
+    (x) => plat(x).includes(voulu) || plat(clair(x)).includes(voulu),
+  );
+};
+const vivantesVues = vivantes.filter(correspond);
+const archiveesVues = archivees.filter(correspond);
+/** « 12 redirections en vigueur, dont 2 pour « colmar ». », écrit d'un seul tenant. */
+const compteur =
+  `${vivantes.length} redirection${marque(vivantes.length)} en vigueur` +
+  (recherche ? `, dont ${vivantesVues.length} pour « ${recherche} »` : "") +
+  ". Les plus récentes d'abord.";
+
+const leJour = (iso: string | null): string =>
+  iso
+    ? new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
+    : "—";
+
+/** L'adresse de la nouvelle page, cliquable : sur le site pour un chemin, telle quelle pour un autre site. */
+const lienCible = (r: RedirectionBo) => (r.externe ? r.toPath : ORIGINE + r.toPath);
+
+/* L'import : la phrase de résumé, au conditionnel avant d'appliquer, au passé après. */
+const importApplique = importResultat?.applique === true;
+const resumeImport: string[] = [];
+if (importResultat) {
+  const c = importResultat.compte;
+  resumeImport.push(`${importResultat.lignes} ligne${marque(importResultat.lignes)} lue${marque(importResultat.lignes)}.`);
+  if (c.creation)
+    resumeImport.push(
+      importApplique
+        ? `${c.creation} redirection${marque(c.creation)} créée${marque(c.creation)} : le site les applique dès maintenant.`
+        : `${c.creation} redirection${marque(c.creation)} à créer.`,
+    );
+  if (c["deja-la"]) resumeImport.push(`${c["deja-la"]} déjà dans la liste, rien à y changer.`);
+  if (c.refus) resumeImport.push(`${c.refus} refusée${marque(c.refus)} (le détail dit pourquoi).`);
+}
+const pastilles: Record<string, { avant: string; apres: string; classe: string }> = {
+  creation: { avant: "à créer", apres: "créée", classe: "bg-green-100 text-green-800" },
+  "deja-la": { avant: "déjà là", apres: "déjà là", classe: "bg-bo-bg text-bo-muted" },
+  refus: { avant: "refusée", apres: "refusée", classe: "border border-red-300 bg-red-50 text-red-700" },
+};
+
+/** L'exemple montré sous le champ de collage : la forme de l'export Shopify. */
+const EXEMPLE = `Redirect from,Redirect to
+/products/strasbourg-affiche-personnalisee,/products/colmar-affiche-personnalisee
+/pages/notre-histoire,/pages/a-propos`;
+
+const champ = "mt-1 block w-full rounded border border-bo-border px-2 py-1 font-mono text-sm";
+const bouton = "rounded border border-bo-border px-3 py-1 text-xs hover:bg-bo-bg";
+---
+
+<Admin title="Redirections">
+  {flash && (
+    <div
+      role="status"
+      class={`mb-4 max-w-4xl rounded border px-3 py-2 text-sm ${
+        flashErreur ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"
+      }`}
+    >
+      <p>{flash}</p>
+      {notes.length > 0 && (
+        <ul class="mt-1 list-inside list-disc text-xs">
+          {notes.map((n) => <li>{n}</li>)}
+        </ul>
+      )}
+    </div>
+  )}
+  {erreur && <p class="mb-4 text-sm text-red-600">Liste indisponible : {erreur}</p>}
+
+  <div class="mb-6 max-w-3xl space-y-2 text-sm text-bo-muted">
+    <p>
+      Une redirection envoie une <strong class="text-bo-ink">ancienne adresse</strong> du site vers
+      une nouvelle, en 301 (« déplacée pour de bon ») : les liens déjà partagés continuent de mener
+      quelque part, et Google transmet à la nouvelle page ce que l'ancienne avait acquis. Le site
+      applique ce qui est enregistré ici tout de suite.
+    </p>
+    <p>
+      Les anciennes adresses de Shopify (/products/…, /collections/…, /pages/…) mènent déjà
+      d'elles-mêmes à la page qui les remplace. Ajoutez ici les redirections que vous aviez posées
+      dans Shopify, et les cas particuliers : elles passent avant ces correspondances automatiques.
+    </p>
+  </div>
+
+  {/* ================================================================== */}
+  {/* Confirmations : une page qui deviendrait inaccessible              */}
+  {/* ================================================================== */}
+  {ajoutAConfirmer && (
+    <section class="mb-6 max-w-3xl rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
+      <h2 class="mb-1 font-semibold text-amber-900">Cette page existe</h2>
+      {ajoutAConfirmer.fromPath && ajoutAConfirmer.toPath && (
+        <p class="mb-2 font-mono text-xs text-amber-900">
+          « {clair(ajoutAConfirmer.fromPath)} » mènerait à « {clair(ajoutAConfirmer.toPath)} »
+        </p>
+      )}
+      <p class="mb-2 text-amber-900">{ajoutAConfirmer.message}</p>
+      {notes.length > 0 && (
+        <ul class="mb-2 list-inside list-disc text-xs text-amber-900">
+          {notes.map((n) => <li>{n}</li>)}
+        </ul>
+      )}
+      <form method="POST" class="flex flex-wrap items-center gap-3">
+        <input type="hidden" name="_action" value="ajouter" />
+        <input type="hidden" name="fromPath" value={saisie.fromPath} />
+        <input type="hidden" name="toPath" value={saisie.toPath} />
+        <input type="hidden" name="code" value={saisie.code} />
+        <input type="hidden" name="confirmer" value="1" />
+        <button class="rounded bg-bo-accent px-3 py-1.5 text-white">Rediriger quand même</button>
+        <a href={url("/redirections")} class="text-bo-accent hover:underline">Ne rien faire</a>
+      </form>
+    </section>
+  )}
+  {restaurationAConfirmer && (
+    <section class="mb-6 max-w-3xl rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
+      <h2 class="mb-1 font-semibold text-amber-900">Cette page existe</h2>
+      {restaurationAConfirmer.fromPath && restaurationAConfirmer.toPath && (
+        <p class="mb-2 font-mono text-xs text-amber-900">
+          « {clair(restaurationAConfirmer.fromPath)} » mènerait à « {clair(restaurationAConfirmer.toPath)} »
+        </p>
+      )}
+      <p class="mb-2 text-amber-900">{restaurationAConfirmer.message}</p>
+      {notes.length > 0 && (
+        <ul class="mb-2 list-inside list-disc text-xs text-amber-900">
+          {notes.map((n) => <li>{n}</li>)}
+        </ul>
+      )}
+      <form method="POST" class="flex flex-wrap items-center gap-3">
+        <input type="hidden" name="_action" value="restaurer" />
+        <input type="hidden" name="id" value={restaurationAConfirmer.id} />
+        <input type="hidden" name="libelle" value={restaurationAConfirmer.libelle} />
+        <input type="hidden" name="confirmer" value="1" />
+        <button class="rounded bg-bo-accent px-3 py-1.5 text-white">Restaurer quand même</button>
+        <a href={url("/redirections")} class="text-bo-accent hover:underline">Ne rien faire</a>
+      </form>
+    </section>
+  )}
+
+  {/* ================================================================== */}
+  {/* Ajouter une redirection                                            */}
+  {/* ================================================================== */}
+  <details
+    id="ajouter"
+    class="mb-4 rounded-lg border border-bo-border bg-bo-surface"
+    open={(ajoutOuvert && !ajoutAConfirmer) || (vivantes.length === 0 && !importResultat)}
+  >
+    <summary class="cursor-pointer select-none px-5 py-3 font-semibold">
+      <span class="mr-1 text-bo-accent">+</span> Ajouter une redirection
+    </summary>
+    <form method="POST" class="grid gap-3 px-5 pb-5 text-sm">
+      <input type="hidden" name="_action" value="ajouter" />
+      <div class="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+        <label class="block">
+          <span class="text-xs text-bo-muted">Ancienne adresse (une page de memoryline.fr)</span>
+          <input
+            name="fromPath"
+            required
+            maxlength="1000"
+            value={saisie.fromPath}
+            placeholder="/products/vieux-moulin"
+            class={champ}
+          />
+        </label>
+        <label class="block">
+          <span class="text-xs text-bo-muted">Nouvelle adresse (où elle mène désormais)</span>
+          <input
+            name="toPath"
+            required
+            maxlength="1000"
+            value={saisie.toPath}
+            placeholder="/affiches/vieux-moulin-affiche-personnalisee"
+            class={champ}
+          />
+        </label>
+        <label class="block">
+          <span class="text-xs text-bo-muted">Code</span>
+          <select name="code" class="mt-1 block rounded border border-bo-border px-2 py-1 text-sm">
+            <option value="301" selected={saisie.code !== "302"}>301 — définitive</option>
+            <option value="302" selected={saisie.code === "302"}>302 — temporaire</option>
+          </select>
+        </label>
+      </div>
+      <p class="text-xs text-bo-muted">
+        Une adresse complète (https://memoryline.fr/products/…) est ramenée à son chemin, et une
+        adresse Shopify en /products/… mène où le site la mène : la redirection posée sur elle s'il
+        y en a une, sinon la fiche en /affiches/…. Pour envoyer vers un autre site, écrivez son
+        adresse complète, avec https:// devant. Gardez 301 sauf pour un détour de quelques jours :
+        seule une 301 transmet le référencement.
+      </p>
+      <p>
+        <button class="rounded bg-bo-accent px-4 py-2 text-white">Ajouter la redirection</button>
+      </p>
+    </form>
+  </details>
+
+  {/* ================================================================== */}
+  {/* Importer le fichier de Shopify                                     */}
+  {/* ================================================================== */}
+  <details
+    id="import"
+    class="mb-6 rounded-lg border border-bo-border bg-bo-surface"
+    open={!!importResultat || !!importErreur}
+  >
+    <summary class="cursor-pointer select-none px-5 py-3 font-semibold">
+      <span class="mr-1 text-bo-accent">⇪</span> Importer les redirections de Shopify
+    </summary>
+    <div class="space-y-4 px-5 pb-5 text-sm">
+      <p class="max-w-3xl text-bo-muted">
+        Dans l'admin Shopify : <strong class="text-bo-ink">Contenu › Menus › Redirections d'URL</strong>,
+        puis « Exporter ». Déposez ici le fichier Redirects.csv obtenu. Vous verrez d'abord, ligne
+        par ligne, ce qui serait créé, ce qui est déjà là et ce qui est refusé, avec la raison. Rien
+        n'est enregistré avant « Appliquer ». Un tableau de deux colonnes « ancienne » et
+        « nouvelle », ou un collage d'une redirection par ligne
+        (<code>/products/vieux-moulin /affiches/vieux-moulin</code>), conviennent aussi.
+      </p>
+
+      {importErreur && (
+        <p class="max-w-3xl rounded border border-red-300 bg-red-50 px-3 py-2 text-red-700">{importErreur}</p>
+      )}
+
+      {!importApplique && (
+        <form method="POST" id="formulaire-import" class="max-w-3xl space-y-3">
+          <input type="hidden" name="_action" value="import-apercu" />
+          <div id="zone-fichier" class="rounded-lg border-2 border-dashed border-bo-border px-4 py-6 text-center">
+            <p class="mb-2">
+              Faites glisser le fichier ici, ou
+              <label for="fichier-import" class="cursor-pointer text-bo-accent hover:underline">
+                choisissez-le sur votre ordinateur
+              </label>.
+            </p>
+            <input type="file" id="fichier-import" accept=".csv,text/csv,text/plain" class="sr-only" />
+            <p id="etat-fichier" class="text-xs text-bo-muted">Le fichier Redirects.csv, ou un tableur enregistré en CSV.</p>
+          </div>
+          <details open={!!importTexte && !importResultat}>
+            <summary class="cursor-pointer text-bo-muted">Ou coller le contenu directement</summary>
+            <textarea
+              name="texte"
+              id="texte-import"
+              rows="6"
+              class="mt-2 w-full rounded border border-bo-border px-3 py-2 font-mono text-xs"
+              placeholder={EXEMPLE}
+              set:text={importTexte}
+            />
+          </details>
+          <div class="flex items-center gap-3">
+            <button class="rounded bg-bo-accent px-4 py-2 text-white">Voir ce que ça donnerait</button>
+            <span class="text-xs text-bo-muted">Cette étape n'enregistre rien.</span>
+          </div>
+        </form>
+      )}
+
+      {importResultat && (
+        <section id="resultat-import" class="scroll-mt-4">
+          <h2 class="mb-1 text-base font-semibold">
+            {importApplique ? "Import terminé" : "Ce qui se passerait"}
+          </h2>
+          <p class="mb-2 text-bo-muted">{resumeImport.join(" ")}</p>
+          {!importApplique && (
+            <p class="mb-3 text-xs text-bo-muted">
+              {importResultat.entete
+                ? `Colonnes lues : « ${importResultat.entete.ancienne} » pour l'ancienne adresse, « ${importResultat.entete.nouvelle} » pour la nouvelle.`
+                : "Sans en-tête : la première adresse de chaque ligne est l'ancienne, la seconde la nouvelle."}
+            </p>
+          )}
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-bo-bg text-left text-bo-muted">
+                <tr>
+                  <th class="px-3 py-2 font-medium">Ligne</th>
+                  <th class="px-3 py-2 font-medium">Ancienne adresse</th>
+                  <th class="px-3 py-2 font-medium">Nouvelle adresse</th>
+                  <th class="px-3 py-2 font-medium">Ce qui se passe</th>
+                  <th class="px-3 py-2 font-medium">Le détail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {importResultat.apercu.map((l) => (
+                  <tr class="border-t border-bo-border align-top">
+                    <td class="px-3 py-2 text-bo-muted">{l.ligne}</td>
+                    <td class="px-3 py-2 font-mono text-xs break-all">{clair(l.fromPath ?? l.ancienne)}</td>
+                    <td class="px-3 py-2 font-mono text-xs break-all">
+                      {clair(l.toPath ?? l.nouvelle)}
+                      {l.cible?.libelle && <span class="mt-0.5 block font-sans text-bo-muted">{l.cible.libelle}</span>}
+                    </td>
+                    <td class="whitespace-nowrap px-3 py-2">
+                      <span class={`inline-block rounded-full px-2 py-0.5 text-xs ${pastilles[l.action]?.classe ?? ""}`}>
+                        {importApplique ? pastilles[l.action]?.apres : pastilles[l.action]?.avant}
+                      </span>
+                    </td>
+                    <td class="px-3 py-2 text-xs">
+                      {l.raison && <p class={l.action === "refus" ? "text-red-700" : "text-bo-muted"}>{l.raison}</p>}
+                      {/* Une ligne qui mènerait à une page introuvable se voit AVANT « Appliquer ». */}
+                      {l.cible?.alerte && <p class="text-amber-800">⚠ {l.cible.alerte}</p>}
+                      {l.notes.length > 0 && (
+                        <ul class="list-inside list-disc text-bo-muted">
+                          {l.notes.map((n) => <li>{n}</li>)}
+                        </ul>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {!importApplique ? (
+            <form method="POST" class="mt-4 flex flex-wrap items-center gap-3">
+              <input type="hidden" name="_action" value="import-appliquer" />
+              <input type="hidden" name="texte" value={importTexte} />
+              <button
+                class="rounded bg-bo-accent px-4 py-2 text-white disabled:opacity-40"
+                disabled={importResultat.compte.creation === 0}
+              >
+                Appliquer
+              </button>
+              <span class="text-xs text-bo-muted">
+                {importResultat.compte.creation === 0
+                  ? "Ce fichier n'ajouterait rien."
+                  : "Seules les lignes « à créer » sont enregistrées. Rien n'est supprimé ni remplacé."}
+              </span>
+              <a href={url("/redirections#import")} class="text-bo-accent hover:underline">Choisir un autre fichier</a>
+            </form>
+          ) : (
+            <p class="mt-4">
+              <a href={url("/redirections#import")} class="text-bo-accent hover:underline">Importer un autre fichier</a>
+            </p>
+          )}
+        </section>
+      )}
+    </div>
+  </details>
+
+  {/* ================================================================== */}
+  {/* La liste                                                            */}
+  {/* ================================================================== */}
+  <section class="mb-6 overflow-hidden rounded-lg border border-bo-border bg-bo-surface">
+    <div class="flex flex-wrap items-end justify-between gap-3 border-b border-bo-border px-4 py-3">
+      <div>
+        <h2 class="font-semibold">Redirections en vigueur</h2>
+        <p class="text-xs text-bo-muted">
+          {compteur}
+        </p>
+      </div>
+      <form method="GET" class="flex flex-wrap items-end gap-2">
+        <label>
+          <span class="mb-1 block text-xs text-bo-muted">Rechercher une adresse</span>
+          <input
+            type="search"
+            name="q"
+            value={recherche}
+            placeholder="strasbourg, /pages/…"
+            class="w-64 max-w-full rounded border border-bo-border px-3 py-1.5 text-sm"
+          />
+        </label>
+        <button class="rounded bg-bo-nav px-3 py-1.5 text-sm text-white">Chercher</button>
+        {recherche && <a href={url("/redirections")} class="text-sm text-bo-accent hover:underline">Tout voir</a>}
+      </form>
+    </div>
+
+    {vivantesVues.length === 0 && !erreur ? (
+      <p class="px-4 py-6 text-sm text-bo-muted">
+        {recherche
+          ? `Aucune redirection en vigueur ne contient « ${recherche} ».`
+          : "Aucune redirection pour l'instant. Ajoutez-en une, ou importez le fichier de Shopify ci-dessus."}
+      </p>
+    ) : (
+      <ul class="divide-y divide-bo-border">
+        {vivantesVues.map((r) => (
+          <li id={`redirection-${r.id}`} class="px-4 py-3 text-sm">
+            <div class="flex flex-wrap items-start gap-3">
+              <div class="min-w-64 flex-1">
+                <p class="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs">
+                  <span class="break-all font-medium text-bo-ink">{clair(r.fromPath)}</span>
+                  <span aria-hidden="true" class="text-bo-muted">→</span>
+                  <span class="sr-only">mène à</span>
+                  <a href={lienCible(r)} target="_blank" rel="noopener" class="break-all text-bo-accent hover:underline">
+                    {clair(r.toPath)}
+                  </a>
+                </p>
+                {/* Sa nouvelle adresse est elle-même redirigée : le site va au bout, en un seul saut. */}
+                {r.finale && (
+                  <p class="mt-1 font-mono text-xs text-bo-muted">
+                    <span class="font-sans">↳ le site la conduit directement à</span>{" "}
+                    <span class="break-all">{clair(r.finale)}</span>
+                  </p>
+                )}
+                <p class="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                  <span
+                    class={`rounded-full px-2 py-0.5 ${r.code === 302 ? "bg-amber-100 text-amber-900" : "bg-bo-bg text-bo-muted"}`}
+                    title={r.code === 302 ? "Temporaire : le référencement reste sur l'ancienne adresse" : "Définitive : le référencement suit"}
+                  >
+                    {r.code}
+                  </span>
+                  {r.affiche && (
+                    <span
+                      class="rounded-full bg-sky-100 px-2 py-0.5 text-sky-900"
+                      title="De /affiches/… vers /affiches/… : la forme que pose un changement d'adresse d'affiche"
+                    >
+                      Adresse d'affiche changée
+                    </span>
+                  )}
+                  {r.cible?.libelle && <span class="text-bo-muted">{r.cible.libelle}</span>}
+                  {r.cible?.alerte && <span class="text-amber-800">⚠ {r.cible.alerte}</span>}
+                  {r.relais.length > 0 && (
+                    <span
+                      class="text-bo-muted"
+                      title={`Passent par elle : ${r.relais.map(clair).join(", ")}`}
+                    >
+                      {r.relais.length} autre{marque(r.relais.length)} redirection{marque(r.relais.length)} passe{r.relais.length > 1 ? "nt" : ""} par elle
+                    </span>
+                  )}
+                </p>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <a
+                  href={ORIGINE + r.fromPath}
+                  target="_blank"
+                  rel="noopener"
+                  class={bouton}
+                  title="Ouvre l'ancienne adresse sur le site : elle doit mener à la nouvelle"
+                >
+                  Essayer
+                </a>
+                <form
+                  method="POST"
+                  class="js-archiver"
+                  data-nom={clair(r.fromPath)}
+                  data-relais={r.relais.map(clair).join("\n")}
+                >
+                  <input type="hidden" name="_action" value="archiver" />
+                  <input type="hidden" name="id" value={r.id} />
+                  <input type="hidden" name="libelle" value={r.fromPath} />
+                  <button
+                    class="rounded border border-bo-border px-3 py-1 text-xs text-bo-muted hover:border-bo-accent hover:text-bo-accent"
+                    aria-label={`Archiver la redirection de ${clair(r.fromPath)}`}
+                  >
+                    Archiver
+                  </button>
+                </form>
+              </div>
+            </div>
+            <details class="mt-2" open={ouverte === r.id}>
+              <summary class="cursor-pointer text-xs text-bo-accent">Modifier la nouvelle adresse</summary>
+              <form method="POST" class="mt-2 grid max-w-3xl gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
+                <input type="hidden" name="_action" value="modifier" />
+                <input type="hidden" name="id" value={r.id} />
+                <label class="block">
+                  <span class="text-xs text-bo-muted">Nouvelle adresse</span>
+                  <input name="toPath" required maxlength="1000" value={r.toPath} class={champ} />
+                </label>
+                <label class="block">
+                  <span class="text-xs text-bo-muted">Code</span>
+                  <select name="code" class="mt-1 block rounded border border-bo-border px-2 py-1 text-sm">
+                    <option value="301" selected={r.code !== 302}>301 — définitive</option>
+                    <option value="302" selected={r.code === 302}>302 — temporaire</option>
+                  </select>
+                </label>
+                <button class="rounded bg-bo-accent px-3 py-1.5 text-white">Enregistrer</button>
+              </form>
+              <p class="mt-1 text-xs text-bo-muted">
+                L'ancienne adresse ne change pas. Pour en rediriger une autre, archivez celle-ci et
+                ajoutez-en une.
+              </p>
+            </details>
+          </li>
+        ))}
+      </ul>
+    )}
+  </section>
+
+  {/* ================================================================== */}
+  {/* Les archivées, repliées                                             */}
+  {/* ================================================================== */}
+  {archivees.length > 0 && (
+    <details id="archivees" class="mb-6 rounded-lg border border-bo-border bg-bo-surface" open={!!recherche && archiveesVues.length > 0}>
+      <summary class="cursor-pointer select-none px-5 py-3 font-semibold">
+        Redirections archivées ({recherche ? `${archiveesVues.length} sur ${archivees.length}` : archivees.length})
+      </summary>
+      <div class="px-5 pb-5">
+        <p class="mb-3 max-w-3xl text-xs text-bo-muted">
+          Elles ne s'appliquent plus : archivées ici, ou remplacées quand une affiche a changé
+          d'adresse ou en a repris une. « Restaurer » repasse par les mêmes contrôles qu'un ajout.
+        </p>
+        <ul class="divide-y divide-bo-border text-sm opacity-80">
+          {archiveesVues.map((r) => (
+            <li class="flex flex-wrap items-center gap-3 py-2">
+              <p class="min-w-64 flex-1 font-mono text-xs">
+                <span class="break-all">{clair(r.fromPath)}</span>
+                <span class="text-bo-muted"> → </span>
+                <span class="break-all">{clair(r.toPath)}</span>
+                <span class="ml-2 font-sans text-bo-muted">({r.code}, archivée le {leJour(r.archivedAt)})</span>
+              </p>
+              <form method="POST">
+                <input type="hidden" name="_action" value="restaurer" />
+                <input type="hidden" name="id" value={r.id} />
+                <input type="hidden" name="libelle" value={r.fromPath} />
+                <button class="text-sm text-bo-accent hover:underline">Restaurer</button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </details>
+  )}
+
+  <p class="max-w-3xl text-xs text-bo-muted">
+    Une redirection ne se supprime pas : elle s'archive. Un navigateur qui a déjà suivi une
+    redirection 301 peut s'en souvenir : pour vérifier qu'une redirection archivée ne s'applique
+    plus, essayez l'adresse dans une fenêtre de navigation privée. Le pas à pas est dans
+    <a href={url("/aide#redirections-shopify")} class="underline">l'aide</a>.
+  </p>
+
+  <script is:inline>
+    document.querySelectorAll("form.js-archiver").forEach((f) => {
+      f.addEventListener("submit", (e) => {
+        const nom = f.getAttribute("data-nom") || "cette adresse";
+        // Celles qui passent par elle n'ont pas été réécrites : archivée,
+        // elles mènent de nouveau à son ancienne adresse. Autant le savoir.
+        const relais = (f.getAttribute("data-relais") || "").split("\n").filter(Boolean);
+        const passent = relais.length
+          ? `\n\n${relais.length > 1 ? `Les ${relais.length} redirections qui passent par elle` : "La redirection qui passe par elle"} (${relais.map((r) => `« ${r} »`).join(", ")}) ${relais.length > 1 ? "mèneront" : "mènera"} de nouveau à « ${nom} ».`
+          : "";
+        if (
+          !confirm(
+            `Archiver la redirection de « ${nom} » ?\n\nElle ne s'appliquera plus : l'ancienne adresse mènera de nouveau à ce que le site y trouve, ou à une page introuvable.${passent}\n\nVous pourrez la restaurer dans « Redirections archivées ».`,
+          )
+        )
+          e.preventDefault();
+      });
+    });
+    // L'aperçu de l'import arrive plus bas : on y descend, sinon on croirait
+    // que le dépôt du fichier n'a rien fait.
+    document.getElementById("resultat-import")?.scrollIntoView({ block: "start" });
+  </script>
+
+  {/* Lecture du fichier dans le navigateur : c'est son CONTENU qui part au
+     serveur, comme sur l'import des clients. */}
+  <script is:inline>
+    (function () {
+      var champFichier = document.getElementById("fichier-import");
+      var zone = document.getElementById("zone-fichier");
+      var etat = document.getElementById("etat-fichier");
+      var texte = document.getElementById("texte-import");
+      var formulaire = document.getElementById("formulaire-import");
+      if (!champFichier || !zone || !etat || !texte || !formulaire) return;
+
+      function lire(fichier) {
+        if (!fichier) return;
+        etat.textContent = "Lecture de " + fichier.name + "…";
+        fichier
+          .arrayBuffer()
+          .then(function (octets) {
+            // Un CSV réenregistré par Excel arrive souvent en « Windows » et
+            // non en UTF-8 : un caractère illisible le fait relire ainsi.
+            var lu = new TextDecoder("utf-8").decode(octets);
+            if (lu.indexOf("�") !== -1) {
+              try {
+                lu = new TextDecoder("windows-1252").decode(octets);
+              } catch (e) {
+                /* navigateur sans ce décodeur : on garde la première lecture */
+              }
+            }
+            texte.value = lu;
+            etat.textContent = fichier.name + " est prêt. Envoi de l'aperçu en cours…";
+            formulaire.submit();
+          })
+          .catch(function () {
+            etat.textContent = "Ce fichier n'a pas pu être lu. Réenregistrez-le au format CSV, puis réessayez.";
+          });
+      }
+
+      champFichier.addEventListener("change", function () {
+        lire(champFichier.files && champFichier.files[0]);
+      });
+      ["dragenter", "dragover"].forEach(function (nom) {
+        zone.addEventListener(nom, function (e) {
+          e.preventDefault();
+          zone.classList.remove("border-bo-border");
+          zone.classList.add("border-bo-accent");
+        });
+      });
+      ["dragleave", "drop"].forEach(function (nom) {
+        zone.addEventListener(nom, function () {
+          zone.classList.remove("border-bo-accent");
+          zone.classList.add("border-bo-border");
+        });
+      });
+      zone.addEventListener("drop", function (e) {
+        e.preventDefault();
+        lire(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
+      });
+    })();
+  </script>
+</Admin>

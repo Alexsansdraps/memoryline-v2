@@ -409,6 +409,18 @@ export interface PageARanger {
   enLigne: number;
   /** Où elle se montre en plus : « vitrine de l'accueil », « rangée de la page … ». */
   usages: string[];
+  /**
+   * Une collection sans page à elle sur le site : fusionnée dans un autre
+   * rayon (« Personnages de dos » → « Villes »), ou vide (son adresse répond
+   * « introuvable », ou mène au rayon le plus proche). Absent ou null : elle
+   * a sa page. `versCle` : la page de l'écran qui range ce qu'on y voit.
+   */
+  sansPage?: {
+    raison: "fusionnee" | "vide";
+    vers: string | null;
+    versNom: string | null;
+    versCle: string | null;
+  } | null;
 }
 
 /**
@@ -457,6 +469,70 @@ export interface LieuRetraitBo {
   translations?: TraductionsDe<"nom" | "description"> | null;
   /** Non nul = archivé : hors de la caisse, rangé dans « Lieux archivés ». */
   archivedAt?: string | null;
+}
+
+/**
+ * Une redirection d'ancienne adresse (apps/api/src/redirections-ecran.ts),
+ * telle que BO › Redirections la montre.
+ */
+export interface RedirectionBo {
+  id: number;
+  /** Chemin du site, sans langue, en minuscules : « /products/vieux-moulin ». */
+  fromPath: string;
+  /** Chemin du site, ou adresse complète d'un autre site. */
+  toPath: string;
+  /** 301 (définitive) ou 302 (temporaire). */
+  code: number;
+  /** Non nul = archivée : elle ne s'applique plus. */
+  archivedAt: string | null;
+  /** Forme /affiches/… → /affiches/… : celle que pose un changement d'adresse d'affiche. */
+  affiche: boolean;
+  externe: boolean;
+  /** Où elle mène au bout du compte (« Affiche « Colmar » ») et ce qui cloche ; null pour une archivée. */
+  cible: { libelle: string | null; alerte: string | null } | null;
+  /** Où le site la conduit, quand sa nouvelle adresse est elle-même redirigée ; null sinon. */
+  finale: string | null;
+  /** Les anciennes adresses dont la redirection passe par celle-ci. */
+  relais: string[];
+}
+
+/**
+ * Ce que rend un ajout, une modification ou une restauration : la
+ * redirection écrite, ou la page qu'elle détournerait (`aConfirmer`, avec
+ * l'adresse et ce vers quoi elle mènerait), auquel cas rien n'est écrit tant
+ * qu'on ne renvoie pas `confirmer`.
+ */
+export type ReponseRedirection =
+  | {
+      ok: true;
+      redirection: RedirectionBo;
+      /**
+       * Ce que l'API a corrigé ou constaté : chemin ramené, cible remplacée
+       * par sa destination finale, redirections qui passent par elle…
+       */
+      notes: string[];
+    }
+  | { ok: false; aConfirmer: string; fromPath?: string; toPath?: string; notes: string[] };
+
+/** L'aperçu (ou le compte rendu) d'un import de redirections. */
+export interface ResultatImportRedirections {
+  applique: boolean;
+  lignes: number;
+  /** Les colonnes reconnues dans l'en-tête, ou null sans en-tête. */
+  entete: { ancienne: string; nouvelle: string } | null;
+  apercu: {
+    ligne: number;
+    ancienne: string;
+    nouvelle: string;
+    fromPath: string | null;
+    toPath: string | null;
+    action: "creation" | "deja-la" | "refus";
+    raison: string | null;
+    notes: string[];
+    /** Pour une ligne à créer : où elle mène, et ce qui cloche (une affiche introuvable…). */
+    cible: { libelle: string | null; alerte: string | null } | null;
+  }[];
+  compte: { creation: number; "deja-la": number; refus: number };
 }
 
 /**
@@ -517,6 +593,12 @@ export interface ProduitAdmin {
   /** Fourchette des prix des formats. Null quand le produit n'en a aucun. */
   prixMin: number | null;
   prixMax: number | null;
+  /**
+   * Le prix de chaque format, en centimes (GET /admin/products). Null pour
+   * un format dont deux variantes n'ont pas le même prix. Absent d'une API
+   * d'avant ce champ : la grille retombe alors sur la fourchette.
+   */
+  prixParFormat?: Record<string, number | null>;
   /** Les formats existants pour ce produit, par exemple ["A4", "A3"]. */
   formats: string[];
   categoryId: number | null;
@@ -2333,6 +2415,40 @@ export function adminApi(request?: Request) {
     /** L'ordre de la caisse : les identifiants, dans l'ordre voulu. */
     rangerLieuxRetrait: (ids: number[]) =>
       req<{ ok: true }>("POST", "/admin/pickup-points/ordre", { ids }, cookie),
+    /** Les redirections, vivantes et archivées, les plus récentes d'abord. */
+    redirections: () =>
+      req<{ vivantes: RedirectionBo[]; archivees: RedirectionBo[] }>(
+        "GET",
+        "/admin/redirections",
+        undefined,
+        cookie,
+      ),
+    /** Ajoute une redirection. Sur une page qui existe, rien n'est écrit sans `confirmer`. */
+    ajouterRedirection: (data: {
+      fromPath: string;
+      toPath: string;
+      code: number;
+      confirmer?: boolean;
+    }) => req<ReponseRedirection>("POST", "/admin/redirections", data, cookie),
+    /** Change la cible et le code d'une redirection vivante (l'ancienne adresse reste). */
+    modifierRedirection: (id: number, data: { toPath: string; code: number }) =>
+      req<ReponseRedirection>("POST", `/admin/redirections/${id}`, data, cookie),
+    /** Archive une redirection (elle ne s'applique plus), ou la restaure. */
+    archiverRedirection: (id: number, archive = true, confirmer = false) =>
+      req<ReponseRedirection>(
+        "POST",
+        `/admin/redirections/${id}/archive`,
+        { archive, confirmer },
+        cookie,
+      ),
+    /** Un fichier de redirections : l'aperçu, ou l'import pour de bon (`appliquer`). */
+    importerRedirections: (texte: string, appliquer: boolean) =>
+      req<ResultatImportRedirections>(
+        "POST",
+        "/admin/redirections/import",
+        { texte, appliquer },
+        cookie,
+      ),
     /** Le nom et le texte d'un lieu dans UNE langue (l'adresse ne se traduit pas). */
     setLieuRetraitTranslation: (
       id: number,

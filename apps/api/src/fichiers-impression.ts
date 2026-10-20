@@ -57,6 +57,7 @@ import sharp from "sharp";
 import {
   afficheComposee,
   lignesRemplies,
+  sansPastillesProposees,
   type PosterConfig,
   type PosterFormat,
   type TextesAffiche,
@@ -126,6 +127,18 @@ const LANCEMENT = (() => {
   }
 })();
 
+/**
+ * Les couleurs d'un dessin en pixels sans les pastilles proposées de ses
+ * familles (cf. sansPastillesProposees). Sans liste nulle part, la valeur
+ * est rendue telle quelle : l'empreinte des fichiers déjà rangés ne bouge pas.
+ */
+function couleursImageSansPastilles<T>(couleursImage: T): T {
+  if (!couleursImage || typeof couleursImage !== "object") return couleursImage;
+  const familles = (couleursImage as { familles?: unknown }).familles;
+  const sans = sansPastillesProposees(familles);
+  return sans === familles ? couleursImage : { ...couleursImage, familles: sans };
+}
+
 /** Charge les données nécessaires au rendu PDF d'un snapshot. */
 export async function donneesDImpression(): Promise<ResolveData> {
   const [assets, backgrounds, types] = await Promise.all([
@@ -145,12 +158,17 @@ export async function donneesDImpression(): Promise<ResolveData> {
       // une zone décochée refait le fichier.
       zonesMasquees: a.zonesMasquees,
       // Un groupe masqué garde le défaut de toutes ses nuances ; regrouper
-      // refait donc le fichier, lui aussi.
-      groupesCouleurs: a.groupesCouleurs,
+      // refait donc le fichier, lui aussi. Les pastilles qu'un accessoire
+      // propose au client, partie par partie, n'y entrent pas : elles ne
+      // changent rien au papier, et chaque retouche d'une liste au
+      // back-office aurait refait le PDF de toutes les commandes qui portent
+      // la pièce (cf. sansPastillesProposees).
+      groupesCouleurs: sansPastillesProposees(a.groupesCouleurs),
       // Familles de couleurs d'une pièce dessinée en pixels : une famille
       // renommée, rattachée ou décochée change ce qui s'imprime, donc
-      // l'empreinte — et le fichier est refait plutôt que resservi.
-      couleursImage: a.couleursImage,
+      // l'empreinte — et le fichier est refait plutôt que resservi. Leurs
+      // pastilles proposées, non, comme ci-dessus.
+      couleursImage: couleursImageSansPastilles(a.couleursImage),
       position: a.position,
     });
   // Personnages (SVG de base pré-composé) pour le rendu PDF du nouveau modèle.

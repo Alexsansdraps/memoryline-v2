@@ -265,8 +265,10 @@ export function mountArchives(app: Hono): void {
     groupes.push({
       cle: "pieces",
       titre: "Pièces de personnage",
-      ecran: "/personnages",
-      ecranNom: "Personnages",
+      // La bibliothèque des pièces a son écran depuis octobre 2026 : c'est
+      // là, en bas, que « Pièces archivées » propose de restaurer.
+      ecran: "/pieces",
+      ecranNom: "Pièces",
       dateSource: "archivage",
       elements: pieces.map((a) => ({
         id: a.id,
@@ -615,6 +617,34 @@ export function mountArchives(app: Hono): void {
         libelle: u.email,
         detail: u.role === "owner" ? "propriétaire" : "vendeur",
         date: iso(u.archivedAt),
+      })),
+    });
+
+    // Les redirections d'anciennes adresses : archivées à la main dans
+    // BO › Redirections, ou remplacées d'elles-mêmes quand une affiche a
+    // changé d'adresse (redirections.ts). L'ancienne adresse est leur nom,
+    // la nouvelle le détail qui distingue deux archives de la même adresse.
+    const redirections = await db
+      .select({
+        id: schema.redirects.id,
+        fromPath: schema.redirects.fromPath,
+        toPath: schema.redirects.toPath,
+        archivedAt: schema.redirects.archivedAt,
+      })
+      .from(schema.redirects)
+      .where(isNotNull(schema.redirects.archivedAt))
+      .orderBy(desc(schema.redirects.archivedAt));
+    groupes.push({
+      cle: "redirections",
+      titre: "Redirections d'anciennes adresses",
+      ecran: "/redirections",
+      ecranNom: "Redirections",
+      dateSource: "archivage",
+      elements: redirections.map((r) => ({
+        id: r.id,
+        libelle: r.fromPath,
+        detail: `vers ${r.toPath}`,
+        date: iso(r.archivedAt),
       })),
     });
 

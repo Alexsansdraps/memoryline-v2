@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { createSignal, For, Show } from "solid-js";
+import type { BASE_COLOR_SCOPE } from "@memoryline/types";
 import { Button } from "./ui";
 import { createCaleDuBord } from "./Defilement";
 import { CharacterEditor } from "./CharacterEditor";
@@ -46,6 +47,8 @@ export function StepCharacters(props: {
   onClearSlot: (index: number, slot: Slot) => void;
   /** Couleurs choisies : clé namespacée -> couleur (un groupe entier d'un coup). */
   onSetColors: (index: number, couleurs: Record<string, string>) => void;
+  /** Remet les couleurs du dessin sur une couche : un emplacement, ou la base. */
+  onRemettreCouleurs: (index: number, scope: Slot | typeof BASE_COLOR_SCOPE) => void;
   onChangeCharacter: (index: number, base: CharacterDTO) => void;
   messages: MessagesConfigurateur;
 }) {
@@ -245,6 +248,9 @@ export function StepCharacters(props: {
             }
             onClearSlot={(slot) => props.onClearSlot(editing()!, slot)}
             onSetColors={(couleurs) => props.onSetColors(editing()!, couleurs)}
+            onRemettreCouleurs={(scope) =>
+              props.onRemettreCouleurs(editing()!, scope)
+            }
             onChangeCharacter={(base) =>
               props.onChangeCharacter(editing()!, base)
             }

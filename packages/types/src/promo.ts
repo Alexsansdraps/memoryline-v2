@@ -189,6 +189,13 @@ export function estCumulable(config: unknown): boolean {
  * saisi : sans ce filtre, une promotion à code s'appliquerait à tout le monde
  * et le code ne servirait à rien. Une règle ARCHIVÉE est écartée toujours :
  * l'API lit la table entière, archives comprises.
+ *
+ * À priorité égale, la plus ANCIENNE (le plus petit identifiant) passe
+ * d'abord. Sans ce départage, l'ordre était celui où les lignes arrivaient :
+ * la table sans tri côté serveur, le code saisi ajouté en dernier côté
+ * navigateur. Or l'ordre change le résultat (un pourcentage se calcule sur ce
+ * que les remises précédentes ont laissé, une règle non cumulable arrête les
+ * suivantes) : le panier pouvait afficher 85,50 € et la caisse encaisser 85 €.
  */
 export function reglesActives<T extends RegleParier>(
   regles: readonly T[],
@@ -208,7 +215,11 @@ export function reglesActives<T extends RegleParier>(
       const fin = date(r.endsAt);
       return (!debut || debut <= maintenant) && (!fin || fin >= maintenant);
     })
-    .sort((a, b) => nombre(b.priority, 0) - nombre(a.priority, 0));
+    .sort(
+      (a, b) =>
+        nombre(b.priority, 0) - nombre(a.priority, 0) ||
+        nombre(a.id, 0) - nombre(b.id, 0),
+    );
 }
 
 /** Sous-total avant toute remise. */

@@ -96,6 +96,15 @@ html[data-theme="dark"] {
   --color-orange-900: #f2c092;
 }
 
+/* Les boutons pleins (« + Nouveau personnage », « Créer », « Modifier /
+   caler »…) écrivent en blanc sur l'accent. En sombre, l'accent s'éclaircit
+   pour rester lisible en lien sur fond foncé, et le blanc dessus tombait à
+   2,2:1 (il faut 4,5:1) : leur texte passe à l'encre du menu, à 8,5:1. Les
+   liens, eux, gardent l'accent clair. */
+html[data-theme="dark"] .bg-bo-accent.text-white {
+  color: var(--color-bo-nav);
+}
+
 /* Les champs de saisie n'héritent pas des couleurs du texte : sans ça, ils
    restent des rectangles blancs au milieu d'une page sombre. */
 html[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]),

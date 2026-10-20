@@ -53,7 +53,12 @@ import { markOrderPaid } from "./configurator-routes.js";
 import { renderInvoicePdf, type LigneFacture } from "./pdf.js";
 import { cheminApercu } from "./apercus.js";
 import { bornesDuVendeur } from "./vendeurs.js";
-import { emetteurDuMoment, siretGroupe, type Emetteur } from "./facturation.js";
+import {
+  emetteurComplet,
+  emetteurDuMoment,
+  siretGroupe,
+  type Emetteur,
+} from "./facturation.js";
 import { libelleDuLieu, lieuDeRetrait, lignesDuLieu } from "./lieux-retrait.js";
 import {
   dateCourte,
@@ -2424,6 +2429,10 @@ export function mountOrderRoutes(app: Hono): void {
    * un déménagement de la boutique ne doit pas réécrire celles déjà émises.
    * Une facture numérotée avant ce figeage n'en a pas (`emetteur: null`) :
    * elle prend les réglages du moment, comme elle l'a toujours fait.
+   * Un émetteur INCOMPLET (adresse ou SIRET pas encore saisis dans BO ›
+   * Factures) ne se fige pas non plus : figé vide, il aurait privé cette
+   * facture de ses mentions obligatoires pour toujours. Elle les prendra
+   * dès qu'elles seront saisies (emetteurComplet, facturation.ts).
    */
   async function numeroterLaFacture(
     orderId: number,
@@ -2462,7 +2471,8 @@ export function mountOrderRoutes(app: Hono): void {
         .returning({ n: schema.factureCompteur.dernierNumero });
 
       const numero = `F${annee}-${String(compteur!.n).padStart(4, "0")}`;
-      const emetteur = await emetteurDuMoment(tx);
+      const duMoment = await emetteurDuMoment(tx);
+      const emetteur = emetteurComplet(duMoment) ? duMoment : null;
       await tx
         .update(schema.orders)
         .set({ invoiceNumber: numero, invoicedAt: maintenant, invoiceIssuer: emetteur })
@@ -2572,7 +2582,12 @@ export function mountOrderRoutes(app: Hono): void {
     // (facturation.ts) et sont figées sur la commande avec le numéro ; on ne
     // les invente pas quand elles manquent — une facture incomplète se
     // corrige, une facture qui ment se paie.
-    const emetteur = emetteurFige ?? (await emetteurDuMoment());
+    // Un émetteur figé incomplet — une facture émise en prod entre le 19/10
+    // et la saisie de l'adresse et du SIRET, avant que l'on cesse de figer
+    // le vide — se lit comme absent : il reprend les réglages du moment.
+    const emetteur = emetteurComplet(emetteurFige)
+      ? emetteurFige
+      : await emetteurDuMoment();
     // Le lieu de retrait, quand la cliente vient chercher sa commande : il
     // se dit sous la commande, pas dans « Facturé à » — un chalet n'est pas
     // son adresse.

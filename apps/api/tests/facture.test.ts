@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import {
   ADRESSE_LIGNES_MAX,
   cleSiretValide,
+  emetteurComplet,
   emetteurDepuisReglages,
   lignesDAdresse,
   mentionNettoyee,
@@ -105,4 +106,24 @@ test("réglages d'avant l'écran : dictionnaire de langues, tableau, SIRET group
 
   // Rien de réglé : rien d'inventé.
   assert.deepEqual(emetteurDepuisReglages([]), { adresse: [], siret: null, mention: null });
+});
+
+test("un émetteur ne se fige que complet : adresse ET SIRET", () => {
+  // Rien de saisi : figer ce vide priverait la facture de ses mentions pour
+  // toujours. Il ne se fige pas, et un vide déjà figé se relit comme absent.
+  assert.equal(emetteurComplet(emetteurDepuisReglages([])), false);
+  assert.equal(emetteurComplet(null), false);
+  assert.equal(emetteurComplet({ adresse: [], siret: null, mention: null }), false);
+  assert.equal(
+    emetteurComplet({ adresse: ["1 rue de l'Essai"], siret: null, mention: null }),
+    false,
+  );
+  assert.equal(
+    emetteurComplet({ adresse: [], siret: "00000000000000", mention: null }),
+    false,
+  );
+  assert.equal(
+    emetteurComplet({ adresse: ["1 rue de l'Essai", "00000 Essai"], siret: "00000000000000", mention: null }),
+    true,
+  );
 });

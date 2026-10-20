@@ -225,6 +225,23 @@ try {
 }
 
 const order = detail?.order;
+/**
+ * Les mentions obligatoires de la facture qui manquent encore (BO ›
+ * Réglages › Factures). Une facture éditée sans elles les reprendra dès
+ * qu'elles seront saisies (l'API ne fige pas un émetteur incomplet), mais
+ * celle qui part par courriel aujourd'hui partirait sans : on le dit avant
+ * le clic. Réservé à la propriétaire, seule à éditer les factures.
+ */
+let mentionsFactureManquantes: string[] = [];
+if (order && estProprietaire && order.status !== "draft") {
+  try {
+    const r = await api.facturation();
+    if (!r.adresse.trim()) mentionsFactureManquantes.push("l'adresse");
+    if (!r.siret) mentionsFactureManquantes.push("le SIRET");
+  } catch {
+    // Sans réponse, on ne prétend rien : la fiche s'affiche comme avant.
+  }
+}
 /** Où la cliente vient chercher sa commande, pour un retrait (voir l'API). */
 const lieuRetrait = detail?.lieuRetrait ?? null;
 const items = detail?.items ?? [];
@@ -763,6 +780,22 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                 partie chez la cliente, il faut lui établir un avoir.
               </>
             )}
+          </p>
+        </div>
+      )}
+
+      {/* Avant « Éditer / Envoyer la facture » : une facture sans adresse ni
+          SIRET de la boutique manque de mentions obligatoires. */}
+      {!estPanier && mentionsFactureManquantes.length > 0 && (
+        <div class="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+          <p>
+            Vos factures sortent encore sans {mentionsFactureManquantes.join(" ni ")} de
+            la boutique, des mentions obligatoires.{" "}
+            <a href={url("/facturation")} class="font-medium underline">
+              Renseignez-les dans Réglages › Factures
+            </a>{" "}
+            avant d'envoyer celle-ci. Une facture déjà éditée les prendra dès
+            qu'elles seront saisies.
           </p>
         </div>
       )}

@@ -4,8 +4,10 @@
  * où la cliente les verra dans le module.
  *
  * Le geste vit dans lib/pastilles.ts (poignée ⠿ à glisser, ← → au clavier,
- * × pour retirer, ajout à la fin). Ce composant n'en pose que le balisage, le
- * même partout : catégories de pièces, nuanciers des personnages. La liste
+ * × pour retirer, ajout à la fin, au sélecteur ou par le code #RRGGBB). Ce
+ * composant n'en pose que le balisage, le même partout : catégories de
+ * pièces, nuanciers des personnages — et, fabriqué par creerNuancier, les
+ * couleurs de chaque partie d'un accessoire (GroupesCouleurs). La liste
  * part dans un champ texte, une couleur par ligne, avec le formulaire qui
  * contient le nuancier — c'est son bouton « Enregistrer » qui l'envoie.
  */
@@ -66,6 +68,19 @@ const bouton =
       value="#B8551D"
       aria-label={`Couleur à ajouter dans ${libelle}`}
       title="Choisir une couleur à ajouter"
+    />
+    {/* Ou son code, pour reprendre exactement celle d'une charte : il suit
+        le sélecteur, et Entrée l'ajoute sans envoyer le formulaire. */}
+    <input
+      type="text"
+      data-pastilles-code
+      class="w-24 rounded border border-bo-border bg-bo-surface px-1.5 py-1 font-mono text-xs"
+      placeholder="#RRGGBB"
+      maxlength="7"
+      spellcheck="false"
+      autocomplete="off"
+      aria-label={`Code de la couleur à ajouter dans ${libelle} (#RRGGBB)`}
+      title="Ou le code de la couleur, par exemple #B8551D"
     />
     <button
       type="button"

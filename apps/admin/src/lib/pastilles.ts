@@ -29,20 +29,23 @@
  *
  * Le sélecteur et « + Ajouter » sont HORS de la liste, à côté : le glisser ne
  * peut pas les déplacer, et une couleur ajoutée va toujours à la fin.
+ *
+ * Facultatifs, sur la racine ou à côté du sélecteur :
+ *   - <input data-pastilles-code> : le code d'une couleur (« #B8551D »), pour
+ *     reprendre exactement celle d'une charte ; il suit le sélecteur, et
+ *     Entrée ajoute la couleur sans envoyer le formulaire ;
+ *   - data-pastilles-max="40" : au-delà, « + Ajouter » s'éteint ;
+ *   - data-pastilles-aussitot : la page enregistre elle-même chaque
+ *     changement (« pastilles:change ») — rien à rappeler en quittant.
+ *
+ * Les écrans qui dessinent leurs lignes dans le navigateur (les couleurs
+ * d'une pièce, GroupesCouleurs) fabriquent le même nuancier par
+ * {@link creerNuancier} : même balisage, mêmes gestes.
  */
+import { couleurHexPropre } from "@memoryline/types/couleurs";
 
 /** « #b8551d » ou « b8551d » → « #B8551D » ; null si ce n'est pas une couleur. */
-function hexPropre(brut: string): string | null {
-  let h = brut.trim().toUpperCase();
-  if (!h.startsWith("#")) h = `#${h}`;
-  if (/^#[0-9A-F]{3}$/.test(h))
-    h = `#${h
-      .slice(1)
-      .split("")
-      .map((x) => x + x)
-      .join("")}`;
-  return /^#[0-9A-F]{6}$/.test(h) ? h : null;
-}
+const hexPropre = (brut: string): string | null => couleurHexPropre(brut);
 
 /** « 1re », « 2e »… pour annoncer une place. */
 function rang(n: number): string {
@@ -52,14 +55,21 @@ function rang(n: number): string {
 const CLASSE_BOUTON =
   "flex h-6 w-6 items-center justify-center rounded text-xs text-bo-muted hover:bg-bo-bg disabled:cursor-default disabled:opacity-30";
 
-function brancherNuancier(racine: HTMLElement): void {
+export function brancherNuancier(racine: HTMLElement): void {
+  // Un nuancier ne se branche qu'une fois : la page peut en fabriquer après
+  // le chargement de ce module (creerNuancier), qui les branche lui-même.
+  if (racine.dataset.pastillesBranche) return;
+  racine.dataset.pastillesBranche = "1";
   const liste = racine.querySelector<HTMLElement>("[data-pastilles-liste]");
   const champ = racine.querySelector<HTMLTextAreaElement>("[data-pastilles-champ]");
   const choix = racine.querySelector<HTMLInputElement>("[data-pastilles-choix]");
+  const code = racine.querySelector<HTMLInputElement>("[data-pastilles-code]");
   const ajouter = racine.querySelector<HTMLButtonElement>("[data-pastilles-ajouter]");
   const annonce = racine.querySelector<HTMLElement>("[data-pastilles-annonce]");
   if (!liste || !champ) return;
   const libelle = racine.dataset.libelle ?? "ce nuancier";
+  const max = Number(racine.dataset.pastillesMax) || Infinity;
+  const aussitot = racine.hasAttribute("data-pastilles-aussitot");
 
   const lues = champ.value
     .split(/[\s,;]+/)
@@ -121,6 +131,13 @@ function brancherNuancier(racine: HTMLElement): void {
     champ!.value = couleurs.join("\n");
     const compte = racine.querySelector("[data-pastilles-compte]");
     if (compte) compte.textContent = String(couleurs.length);
+    if (ajouter) {
+      const plein = couleurs.length >= max;
+      ajouter.disabled = plein;
+      ajouter.title = plein
+        ? `${max} couleurs au plus : retirez-en une pour en ajouter une autre`
+        : "";
+    }
     racine.dispatchEvent(
       new CustomEvent("pastilles:change", { detail: { couleurs: [...couleurs] } }),
     );
@@ -201,34 +218,170 @@ function brancherNuancier(racine: HTMLElement): void {
     window.addEventListener("pointercancel", lacher);
   });
 
-  ajouter?.addEventListener("click", () => {
-    const hex = hexPropre(choix?.value ?? "");
-    if (!hex) return;
+  /**
+   * Dit, sur le champ même (la bulle du navigateur), pourquoi la couleur
+   * n'est pas ajoutée : code mal écrit, couleur déjà là, nuancier plein. Une
+   * annonce réservée aux lecteurs d'écran laissait croire, à l'œil, que le
+   * clic n'avait rien fait — le code restait dans son champ, sans un mot.
+   * Le champ du code s'il y en a un, sinon le sélecteur.
+   */
+  function refuser(message: string) {
+    dire(message);
+    const ou = code ?? choix;
+    if (!ou) return;
+    ou.setCustomValidity(message);
+    ou.reportValidity();
+    ou.focus();
+  }
+
+  /** Ajoute la couleur du code s'il est rempli, sinon celle du sélecteur. */
+  function ajouterCouleur() {
+    const saisi = code?.value.trim() ?? "";
+    const hex = hexPropre(saisi || (choix?.value ?? ""));
+    if (!hex) {
+      refuser(`« ${saisi} » n'est pas un code couleur : écrivez-le comme #B8551D.`);
+      return;
+    }
     if (couleurs.includes(hex)) {
-      dire(`${hex} est déjà dans ${libelle}, en ${rang(couleurs.indexOf(hex) + 1)} position.`);
+      refuser(`${hex} est déjà dans ${libelle}, en ${rang(couleurs.indexOf(hex) + 1)} position.`);
+      return;
+    }
+    if (couleurs.length >= max) {
+      refuser(`${max} couleurs au plus dans ${libelle} : retirez-en une pour en ajouter une autre.`);
       return;
     }
     couleurs.push(hex);
     rendre(null);
+    if (code) code.value = "";
     dire(`${hex} ajoutée en dernière position (${couleurs.length}e).`);
+  }
+  ajouter?.addEventListener("click", ajouterCouleur);
+
+  // Le code et le sélecteur disent la même couleur : choisir dans l'un
+  // remplit l'autre.
+  choix?.addEventListener("input", () => {
+    choix.setCustomValidity("");
+    if (!code) return;
+    code.value = choix.value.toUpperCase();
+    code.setCustomValidity("");
+  });
+  code?.addEventListener("input", () => {
+    code.setCustomValidity("");
+    const hex = hexPropre(code.value);
+    if (hex && choix) choix.value = hex.toLowerCase();
+  });
+  // Couleur déjà là, nuancier plein : le dire suffisait, et le formulaire
+  // autour doit pouvoir partir — un refus resté sur le champ bloquerait son
+  // « Enregistrer ». Un code mal écrit, lui, le retient tant qu'il n'est ni
+  // corrigé ni effacé : la couleur voulue n'a pas été ajoutée.
+  for (const ou of [code, choix]) {
+    if (!ou) continue;
+    ou.addEventListener("blur", () => {
+      if (ou === code && ou.value.trim() && !hexPropre(ou.value)) return;
+      ou.setCustomValidity("");
+    });
+  }
+  code?.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    // Entrée ajoute la couleur : elle n'envoie pas le formulaire autour.
+    e.preventDefault();
+    ajouterCouleur();
   });
 
-  racine.closest("form")?.addEventListener("submit", () => {
-    envoye = true;
-  });
-  window.addEventListener("beforeunload", (e) => {
-    if (envoye || couleurs.join("\n") === depart) return;
-    e.preventDefault();
-    // Les navigateurs plus anciens ne demandent confirmation que si
-    // `returnValue` est posé.
-    e.returnValue = "";
-  });
+  // La page enregistre elle-même chaque changement : rien à rappeler.
+  if (!aussitot) {
+    racine.closest("form")?.addEventListener("submit", () => {
+      envoye = true;
+    });
+    window.addEventListener("beforeunload", (e) => {
+      if (envoye || couleurs.join("\n") === depart) return;
+      e.preventDefault();
+      // Les navigateurs plus anciens ne demandent confirmation que si
+      // `returnValue` est posé.
+      e.returnValue = "";
+    });
+  }
 
   rendre(null);
 }
 
-document.querySelectorAll<HTMLElement>("[data-pastilles]").forEach(brancherNuancier);
+/**
+ * Un nuancier fabriqué dans le navigateur, au balisage de Nuancier.astro, déjà
+ * branché : pour les écrans qui dessinent leurs lignes eux-mêmes. La page
+ * écoute « pastilles:change » pour enregistrer.
+ */
+export function creerNuancier(opts: {
+  couleurs: readonly string[];
+  /** Ce que lit un lecteur d'écran, après « dans » (« les couleurs de la monture »). */
+  libelle: string;
+  /** Le texte au-dessus des pastilles, avant le mode d'emploi. */
+  etiquette?: string;
+  /** Au plus tant de couleurs (« + Ajouter » s'éteint au-delà). */
+  max?: number;
+  /** La page enregistre chaque changement aussitôt. */
+  aussitot?: boolean;
+}): HTMLElement {
+  const racine = document.createElement("div");
+  racine.dataset.pastilles = "";
+  racine.dataset.libelle = opts.libelle;
+  if (opts.max) racine.dataset.pastillesMax = String(opts.max);
+  if (opts.aussitot) racine.dataset.pastillesAussitot = "";
 
-// Un module, pas un script global : ses fonctions ne croisent pas celles
-// de lib/rangement.ts, chargé sur les mêmes pages.
-export {};
+  const id = `nuancier-${Math.random().toString(36).slice(2, 10)}`;
+  const etiquette = document.createElement("span");
+  etiquette.id = id;
+  etiquette.className = "text-bo-muted text-xs";
+  etiquette.textContent = `${opts.etiquette ? `${opts.etiquette} ` : ""}Glissez ⠿ ou utilisez les flèches ← → ; × retire la couleur.`;
+
+  const liste = document.createElement("ul");
+  liste.dataset.pastillesListe = "";
+  liste.className = "mt-1 flex flex-wrap items-center gap-1.5";
+  liste.setAttribute("aria-labelledby", id);
+
+  const ajout = document.createElement("div");
+  ajout.className = "mt-1.5 flex flex-wrap items-center gap-2";
+  const choix = document.createElement("input");
+  choix.type = "color";
+  choix.dataset.pastillesChoix = "";
+  choix.className = "h-7 w-9 cursor-pointer rounded border border-bo-border";
+  choix.value = "#b8551d";
+  choix.setAttribute("aria-label", `Couleur à ajouter dans ${opts.libelle}`);
+  choix.title = "Choisir une couleur à ajouter";
+  const code = document.createElement("input");
+  code.type = "text";
+  code.dataset.pastillesCode = "";
+  code.className = "w-24 rounded border border-bo-border bg-bo-surface px-1.5 py-1 font-mono text-xs";
+  code.placeholder = "#RRGGBB";
+  code.maxLength = 7;
+  code.spellcheck = false;
+  code.autocomplete = "off";
+  code.setAttribute("aria-label", `Code de la couleur à ajouter dans ${opts.libelle} (#RRGGBB)`);
+  code.title = "Ou le code de la couleur, par exemple #B8551D";
+  const ajouter = document.createElement("button");
+  ajouter.type = "button";
+  ajouter.dataset.pastillesAjouter = "";
+  ajouter.className =
+    "rounded border border-bo-border px-2 py-1 text-xs hover:bg-bo-bg disabled:cursor-default disabled:opacity-40";
+  ajouter.textContent = "+ Ajouter";
+  ajout.append(choix, code, ajouter);
+
+  const champ = document.createElement("textarea");
+  champ.dataset.pastillesChamp = "";
+  champ.className = "hidden";
+  champ.setAttribute("aria-hidden", "true");
+  champ.tabIndex = -1;
+  champ.value = opts.couleurs.join("\n");
+
+  const annonce = document.createElement("p");
+  annonce.className = "sr-only";
+  annonce.setAttribute("aria-live", "polite");
+  annonce.dataset.pastillesAnnonce = "";
+
+  racine.append(etiquette, liste, ajout, champ, annonce);
+  brancherNuancier(racine);
+  return racine;
+}
+
+// Un module (ses exports le font tel), pas un script global : ses fonctions
+// ne croisent pas celles de lib/rangement.ts, chargé sur les mêmes pages.
+document.querySelectorAll<HTMLElement>("[data-pastilles]").forEach(brancherNuancier);

@@ -42,6 +42,7 @@ const MOTIFS_ATTENDUS = [
   "!/src/pages/login.astro",
   "!/src/pages/recherche.astro",
   "!/src/pages/commandes/bons.astro",
+  "!/src/pages/personnages/piece.astro",
 ];
 
 function fichiers(dossier, recursif) {
@@ -141,12 +142,23 @@ test("les écrans qui ne répondaient pas avant", () => {
     "accueil et pied de page": "/contenu",
     "pieces par personnage": "/personnages/correspondances",
     "categories de produits": "/categories-produits",
+    // La bibliothèque des pièces et sa création, sorties de Personnages.
+    pieces: "/pieces",
+    "nouvelle piece": "/pieces/nouvelle",
   };
   for (const [q, route] of Object.entries(attendus)) {
     const p = premier(q);
     assert.equal(p?.id, `ecran:${route}`, q);
     assert.equal(p.href, route, q);
     assert.ok(p.rang <= 1, q);
+  }
+});
+
+test("« chapeau », « robe »… mènent aux Pièces, tant qu'elles s'appellent « Accessories 1 »", () => {
+  for (const q of ["chapeau", "casquette", "lunettes", "t-shirt", "robe"]) {
+    const p = premier(q);
+    assert.equal(p?.id, "ecran:/pieces", q);
+    assert.equal(p.href, "/pieces", q);
   }
 });
 
@@ -610,4 +622,16 @@ test("D2 : « ordre des affiches » et « trier les affiches » mènent à Ordre
 test("D4 : « appliquer à tout » et « modifier en masse » mènent à la modification groupée", () => {
   for (const q of ["appliquer à tout", "modifier en masse"])
     assert.ok(troisPremiers(q).includes("ecran:/produits/modifier-en-masse"), q);
+});
+
+/* -------------------------------------------------------------------------- */
+/*  BO › Redirections (les notes de mise en ligne y envoient)                 */
+/* -------------------------------------------------------------------------- */
+
+test("« redirection », « 301 », « ancienne adresse » mènent à l'écran Redirections, et à sa rubrique d'aide", () => {
+  for (const q of ["redirection", "redirections", "301", "ancienne adresse", "redirections d'url", "lien cassé"])
+    assert.equal(ecranDe(q), "ecran:/redirections", q);
+  assert.equal(INDEX.ecrans.find((e) => e.route === "/redirections")?.dansLeMenu, true);
+  assert.ok(INDEX.aide.some((x) => x.id === "redirections-shopify"));
+  assert.ok(ids(chercher("redirection").aide).includes("aide:redirections-shopify"));
 });

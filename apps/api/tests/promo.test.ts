@@ -214,3 +214,23 @@ test("bandeau : un message seul, ou avec un bouton complet ; jamais une moitié 
   assert.ok("erreur" in messageRecu({ message: "" }));
   assert.ok("erreur" in messageRecu({ message: "x".repeat(201) }));
 });
+
+test("deux règles de même priorité s'appliquent dans le même ordre, quel que soit l'ordre reçu", () => {
+  // « -5 € » automatique (n° 7) et un code « -10 % » (n° 9), tous deux en
+  // priorité 0 : le serveur lit la table sans tri, le navigateur ajoute le
+  // code en dernier. L'ordre change le montant (le % se calcule sur ce qui
+  // reste) : il doit être le même partout — la plus ancienne d'abord.
+  const cinqEuros = regle({ amountCents: 500 }, { id: 7, name: "-5 €", type: "fixed", priority: 0 });
+  const dixPourcent = regle({ percent: 10 }, { id: 9, name: "-10 %", type: "percent", priority: 0 });
+  const panier = [A4(1, 10000)];
+  const a = remisesPanier(panier, [cinqEuros, dixPourcent], new Date("2026-10-08T12:00:00Z"));
+  const b = remisesPanier(panier, [dixPourcent, cinqEuros], new Date("2026-10-08T12:00:00Z"));
+  assert.deepEqual(a, b);
+  // 100 € − 5 € = 95 €, puis 10 % de 95 € = 9,50 € : 14,50 € en tout.
+  assert.equal(a.remiseCents, 1450);
+  assert.deepEqual(a.detail.map((d) => d.regle), ["-5 €", "-10 %"]);
+  // La priorité passe toujours avant l'ancienneté.
+  const prioritaire = { ...dixPourcent, priority: 5 };
+  const c = remisesPanier(panier, [cinqEuros, prioritaire], new Date("2026-10-08T12:00:00Z"));
+  assert.deepEqual(c.detail.map((d) => d.regle), ["-10 %", "-5 €"]);
+});

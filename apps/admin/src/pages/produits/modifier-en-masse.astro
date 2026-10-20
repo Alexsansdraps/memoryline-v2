@@ -618,18 +618,28 @@ const nbColonnes = 10 + formatsPresents.length + (afficherRepli ? 1 : 0);
 const largeurTable = 122 + 7 * (formatsPresents.length + (afficherRepli ? 1 : 0));
 
 /**
- * Le prix exact de chaque format n'est pas dans la réponse de l'API : on ne
- * peut le déduire que lorsque tous les formats du produit sont au même prix.
- * Ailleurs la case reste vide, parce qu'écrire une fourchette dans une case de
- * saisie ferait passer un repère pour un prix.
+ * Le prix actuel d'un format, pour le montrer dans sa case — comme Shopify
+ * montre celui de chaque variante. L'API le donne format par format
+ * (`prixParFormat`) ; il n'y manque que quand deux variantes d'un même format
+ * n'ont pas le même prix, et la case reste alors vide, parce qu'y écrire l'un
+ * des deux ferait passer un repère pour LE prix. Une API d'avant ce champ :
+ * on ne le déduit que lorsque tous les formats sont au même prix.
+ *
+ * C'est aussi la valeur de départ (`data-initial`) : une case laissée à son
+ * prix n'envoie rien.
  */
-function prixDuFormat(p: ProduitAdmin): number | null {
+function prixDuFormat(p: ProduitAdmin, format: string): number | null {
+  const connu = p.prixParFormat?.[format];
+  if (typeof connu === "number") return connu;
+  if (p.prixParFormat && format in p.prixParFormat) return null;
   if (p.prixMin === null || p.prixMax === null) return null;
   return p.prixMin === p.prixMax ? p.prixMin : null;
 }
-const prixParFormatIncertain = produits.some(
-  (p) => p.formats.length > 0 && prixDuFormat(p) === null,
-);
+/** Un produit dont au moins un format n'a pas de prix à montrer. */
+function prixIncertain(p: ProduitAdmin): boolean {
+  return p.formats.some((f) => prixDuFormat(p, f) === null);
+}
+const prixParFormatIncertain = produits.some(prixIncertain);
 
 /** Ce que l'API a refusé reste affiché tel quel : ces lectures s'en chargent. */
 function texteSaisi(
@@ -963,11 +973,11 @@ const puce = "inline-block rounded-full bg-bo-bg px-2 py-0.5 text-xs";
 
   {prixParFormatIncertain && (
     <p class="mb-4 max-w-3xl rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
-      Quand les formats d'un produit n'ont pas tous le même prix, la case de
-      prix reste vide : la boutique ne dit pas ici le prix de chaque format, et
-      afficher une valeur approchante reviendrait à vous la faire enregistrer.
-      Tapez un prix pour changer ce format, laissez la case vide pour ne pas y
-      toucher. La fourchette actuelle du produit est rappelée sous son nom.
+      Quand plusieurs variantes d'un même format n'ont pas le même prix, sa
+      case reste vide : afficher l'un des deux reviendrait à vous le faire
+      enregistrer pour tous. Tapez un prix pour changer ce format, laissez la
+      case vide pour ne pas y toucher. La fourchette actuelle du produit est
+      rappelée sous son nom.
     </p>
   )}
 
@@ -1020,9 +1030,14 @@ const puce = "inline-block rounded-full bg-bo-bg px-2 py-0.5 text-xs";
           ligne d'en-tête de rester visible, avec ses boutons, et à la colonne
           du produit de ne pas disparaître vers la gauche. */}
       <div class="max-h-[70vh] overflow-auto rounded-lg border border-bo-border bg-bo-surface">
+        {/* `data-sans-tri` : la grille a ses propres outils de colonne. Sans
+            lui, le tri commun (lib/tri-tableaux.ts) prenait la DERNIÈRE ligne
+            de l'en-tête — celle des « Appliquer à tout » — pour les titres, et
+            annonçait triables douze colonnes qui ne trient rien. */}
         <table
           class="w-full border-separate border-spacing-0 text-sm"
           style={`min-width:${largeurTable}rem`}
+          data-sans-tri
         >
           <thead class="text-bo-muted">
             <tr>
@@ -1284,7 +1299,9 @@ const puce = "inline-block rounded-full bg-bo-bg px-2 py-0.5 text-xs";
               const poids = nombreSaisi(saisie, "weightGrams", p.weightGrams);
               const ia = boolSaisi(saisie, "aiEnabled", p.aiEnabled);
               const statutInconnu = !STATUTS.some((s) => s.valeur === p.status);
-              const prixConnu = prixDuFormat(p);
+              // Une case de prix vide sur cette ligne : la fourchette se
+              // rappelle alors sous le nom.
+              const prixManquant = prixIncertain(p);
               const vueDepart = p.defaultView ?? null;
               const vue = texteOuNulSaisi(saisie, "defaultView", vueDepart);
               // Même règle que la catégorie : un type archivé reste sur SA
@@ -1325,7 +1342,7 @@ const puce = "inline-block rounded-full bg-bo-bg px-2 py-0.5 text-xs";
                               ? p.formats.join(", ")
                               : "aucun format"}
                             {p.formats.length > 0 &&
-                              prixConnu === null &&
+                              prixManquant &&
                               p.prixMin !== null &&
                               p.prixMax !== null && (
                                 <span class="block">
@@ -1400,6 +1417,7 @@ const puce = "inline-block rounded-full bg-bo-bg px-2 py-0.5 text-xs";
                     </td>
 
                     {formatsPresents.map((format) => {
+                      const prixConnu = prixDuFormat(p, format);
                       const affiche = prixSaisi(saisie, format, prixConnu);
                       return (
                         <td class={cellule}>

@@ -197,6 +197,9 @@
     }
 
     window.mlApercusZones = remplir;
+    // La même mesure sert aux vignettes des lignes de l'écran Pièces : une
+    // seule façon de cadrer un dessin, pas deux qui divergent.
+    window.mlCadrageDuDessin = cadrageDuDessin;
 
     var blocs = document.querySelectorAll("[data-apercu-svg]");
     if (!("IntersectionObserver" in window)) {
