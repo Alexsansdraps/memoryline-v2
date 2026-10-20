@@ -1,4 +1,4 @@
-# À faire — état au 19 octobre, 17 h 15 (écrit pour une reprise dans un autre contexte)
+# À faire — état au 20 octobre, 11 h 55 (écrit pour une reprise dans un autre contexte)
 
 Fichier de reprise : à lire en premier, à supprimer quand tout est fait. `main` fait foi ; la prod (VPS) est toujours une mise en ligne de `main`.
 
@@ -17,7 +17,11 @@ Tout ce qui était fini est en ligne. Migration **0067** passée, base sauvegard
 
 ## 2. En cours sur le PC du BUREAU, PAS commité sur `main`
 
-Trois chantiers (workflows de Claude) tournaient à 17 h sur le PC du bureau. **Ils s'arrêtent si le PC se met en veille (réglé sur 1 h) ou si l'appli est fermée**, et ils ne peuvent pas être repris depuis un autre PC. Un instantané des fichiers tels qu'ils étaient à 17 h 15 (donc peut-être à moitié écrits) est poussé sur la branche **`wip-bureau-19oct`** : à regarder, pas à fusionner tel quel.
+**État au 20/10, 11 h 55** : a) et b) ci-dessous sont TERMINÉS et vérifiés par leurs chantiers (types, tests, BO connecté, module, PDF), mais pas encore commités sur `main` ni en prod. Deux chantiers tournent encore : d) les accessoires et c) la fin du lot BO. Consigne d'Alexandra : **mettre tout sur le VPS quand tout est fini**, d'un coup (avec la migration 0068, et 0069 si le lot BO en crée une). L'instantané le plus récent est sur la branche **`wip-bureau-19oct`** (commit fcc7bab) : à regarder, pas à fusionner tel quel.
+
+Les chantiers (workflows de Claude) **s'arrêtent si le PC se met en veille (réglé sur 1 h) ou si l'appli est fermée**, et ils ne peuvent pas être repris depuis un autre PC.
+
+d) **Couleurs des accessoires** — échange du 20/10 avec Margaux : « c'est moi qui dois les changer, en ajouter et en supprimer si je veux. Pas de sélecteur pour les gens ». Cible : dans le BO, pour chaque partie personnalisable d'un accessoire, une liste de couleurs propre (autant que voulu, ajouter / retirer / ranger avec la poignée et les flèches ; sans liste propre, le nuancier de la catégorie) ; côté site, jamais de saisie libre (pastille arc-en-ciel) sur un accessoire, même sans catégorie ; PDF identique ; validation dans l'API ; aide du BO à jour. Aujourd'hui, la catégorie « Accessoires » a un nuancier de 6 couleurs partagé par toutes les parties.
 
 a) **Refonte de BO › Personnages** — demande d'Alexandra : « il faut que ça soit logique ». Constat : la page (`apps/admin/src/pages/personnages.astro`) mélange les personnages et les 164 pièces avec leurs panneaux de couleurs dépliés ; 35 000 px de haut ; pièces nommées « Clothes 1 » en double. Cible : une page Personnages (catégories, recherche, personnages par catégorie, déplacement, archivage, traductions, « + Nouveau personnage ») ; une page **Pièces** à part dans le menu Atelier (filtres catégorie / face-dos, nom renommable sur place, couleurs ouvertes à la demande, une pièce à la fois) ; un seul accès par chose dans le menu (Atelier › Personnages / Pièces / Catégories de pièces / Pièces par personnage) ; les anciens liens et ancres gardés (recherche du BO : liens vers les pièces fabriqués dans `apps/api/src/recherche-corpus.ts`). Composant des couleurs `GroupesCouleurs.astro` réutilisé tel quel.
 
