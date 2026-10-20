@@ -7,7 +7,7 @@ Fichier de reprise : à lire en premier, à supprimer quand tout est fait. `main
 Tout ce qui était fini est en ligne. Migration **0067** passée, base sauvegardée avant (`sauvegardes/base/2026-10-19.sql.gz` sur le serveur). Le chantier « cartes restantes » (stand sur tablette, écran photo IA, indice pour descendre, langues) est entièrement terminé, vérifié et en ligne, y compris sa dernière correction (confirmation du stand rechargée sur un panier neuf).
 
 - **Cartes BO du Trello** : ordre des couleurs d'un nuancier (poignée, flèches), tri des affiches page par page (Produits › Ordre d'affichage), courriel du panier abandonné modifiable et programmable, modification groupée avec « appliquer à tout », aperçu des affiches sur la fiche commande, nuancier « peau » possible pour un animal.
-- **Réponses de Margaux** : vendeurs limités à leurs stands (BO › Comptes, « Stands confiés »), lieux de retrait gérés dans BO › Livraison › Lieux de retrait, adresse et SIRET sur les factures (BO › Contenu), offre 3+1 toutes tailles, A4 offerte sans cadre, réglable dans Promotions, bandeau détaché des promos avec plusieurs messages qui défilent.
+- **Réponses de Margaux** : vendeurs limités à leurs stands (BO › Comptes, « Stands confiés »), lieux de retrait gérés dans BO › Livraison › Lieux de retrait, adresse et SIRET sur les factures (BO › Réglages › Factures), offre 3+1 toutes tailles, A4 offerte sans cadre, réglable dans Promotions, bandeau détaché des promos avec plusieurs messages qui défilent.
 - **Autres cartes** : stand sur tablette sans défilement, écran photo de l'IA allégé, indice discret pour descendre dans l'éditeur de personnage, textes du module traduits, « Suit la couleur de… » retiré des réglages avancés, textes « mode essai » visibles seulement en essai.
 - Avant : recherche du BO, SEO, bulle vidéo, refonte des couleurs du BO, cartes du module (7/10).
 
@@ -33,7 +33,7 @@ c) **Corrections de fin du lot BO** (essais et relecture du chantier Trello BO) 
 
 ## 3. À faire par Alexandra (données, sur le BO du serveur)
 
-- Confier son stand au compte vendeur (BO › Comptes) ; créer les lieux de retrait (BO › Livraison › Lieux de retrait) ; saisir l'adresse et le SIRET des factures (BO › Contenu) ; relire la promotion 3+1 (BO › Promotions) et les messages du bandeau.
+- Confier son stand au compte vendeur (BO › Comptes) ; créer les lieux de retrait (BO › Livraison › Lieux de retrait) ; saisir l'adresse et le SIRET des factures (BO › Réglages › Factures ; SIRET donné par Margaux : 877 919 852 00047) ; relire la promotion 3+1 (BO › Promotions) et les messages du bandeau.
 - Importer `Documents\perso\memoryline-seo-shopify.csv` et `memoryline-seo-shopify-collections.csv` dans BO › Produits › Importer ; coller `memoryline-page-affiches-personnalisables.html` dans une page `affiches-personnalisables` (ces fichiers sont sur le PC du bureau).
 - Exporter les redirections de l'admin Shopify avant sa fermeture, puis les saisir dans BO › Redirections.
 - Renommer la promotion « Livraison offerte dès 60 € » (caractères abîmés).
