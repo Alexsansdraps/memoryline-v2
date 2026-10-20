@@ -15,8 +15,17 @@ import { apiInterne } from "../lib/api-interne.ts";
 import { url } from "../lib/url.ts";
 import Admin from "../layouts/Admin.astro";
 import { adminApi, formatPrice, type Stats } from "../lib/api.ts";
+import { modeEssai } from "../lib/mode-essai.ts";
 
 const isOwner = Astro.locals.user?.role === "owner";
+
+/**
+ * L'état des paiements en une phrase (« Mode essai : Stripe test, PayPal
+ * sandbox, étiquettes non payées. »), la même qu'en tête de Réglages ›
+ * Paiements. Elle suit l'interrupteur de cet écran sans attendre : il vide le
+ * petit cache du mode essai à chaque modification.
+ */
+const etatEssai = isOwner ? await modeEssai(Astro.request) : null;
 
 /** Les périodes proposées. Trente jours par défaut : c'est le mois écoulé. */
 const PERIODES = [
@@ -273,6 +282,21 @@ const teinte = (sens: string) =>
   <p class="mt-2 text-xs text-bo-muted">Ces quatre-là comptent depuis l'ouverture.</p>
 
   {
+    etatEssai?.resume && (
+      <p
+        class={`mt-6 rounded-lg border px-4 py-3 text-sm ${
+          etatEssai.paiement
+            ? "border-amber-300 bg-amber-50 text-amber-900"
+            : "border-bo-border bg-bo-surface"
+        }`}
+      >
+        <span class="font-medium">{etatEssai.resume}</span>{" "}
+        <a class="text-bo-accent hover:underline" href={url("/paiements")}>Réglages › Paiements</a>
+      </p>
+    )
+  }
+
+  {
     paiements && !(paiements.stripe && paiements.paypal) && (
       <div class="mt-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
         <p class="font-medium">
@@ -284,7 +308,9 @@ const teinte = (sens: string) =>
         </p>
         <p class="mt-1">
           Un moyen de paiement n'apparaît que si ses identifiants sont
-          renseignés sur le serveur. Rien ne le signale au client : le bouton
+          renseignés : saisissez-les dans{" "}
+          <a class="underline" href={url("/paiements")}>Réglages › Paiements</a>{" "}
+          (ou le .env du serveur). Rien ne le signale au client : le bouton
           est simplement absent.
         </p>
       </div>

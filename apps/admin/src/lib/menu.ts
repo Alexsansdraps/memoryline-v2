@@ -196,6 +196,10 @@ export const MENU: GroupeNav[] = [
           { href: "/livraison/lieux", label: "Lieux de retrait", icon: "📍", owner: true },
         ],
       },
+      // Les clés Stripe et PayPal, le passage de l'essai au réel et l'achat
+      // des vraies étiquettes : juste après Livraison, dont il règle les
+      // bordereaux payants.
+      { href: "/paiements", label: "Paiements", icon: "💳", owner: true },
       // Ni « d'essai » — le mot ne décrivait qu'un bouton et faisait passer
       // l'écran pour un bac à sable — ni « automatiques », qui serait faux :
       // la facture et l'avis d'expédition ne partent que sur son geste.

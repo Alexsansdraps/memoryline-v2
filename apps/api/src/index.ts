@@ -103,6 +103,7 @@ import {
   nombreDeLieuxActifs,
 } from "./lieux-retrait.js";
 import { mountFacturation } from "./facturation.js";
+import { mountPaiementsReglages } from "./paiements-reglages.js";
 import { mountRedirections } from "./redirections-ecran.js";
 import { redirectionsPeutEtreChangees, versionDesRedirections } from "./redirections.js";
 import { mountCompteRoutes } from "./comptes.js";
@@ -2325,6 +2326,11 @@ mountRedirections(app);
 
 // L'adresse et le SIRET de la boutique sur ses factures (BO › Factures).
 mountFacturation(app);
+
+// Les clés Stripe et PayPal saisies au back-office, l'interrupteur essai ou
+// réel et celui des vraies étiquettes (BO › Réglages › Paiements). Aucune
+// route publique ici : la caisse ne lit que GET /payments/config.
+mountPaiementsReglages(app);
 
 // Comptes clients : /compte/* pour la boutique, /admin/customers/* pour le BO.
 // Aucune route paramétrée déjà déclarée ne les avale (les /admin/* posées

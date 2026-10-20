@@ -19,11 +19,14 @@
  *      base refuse un second bordereau vivant par commande ; et SendCloud
  *      reçoit une référence externe unique — une seconde annonce avec la même
  *      référence lui fait rendre l'envoi existant (409), pas en acheter un autre.
- *   3. MODE ESSAI PAR DÉFAUT. Tant que le `.env` ne dit pas
- *      SENDCLOUD_ACHATS_REELS=oui, l'envoi part en « sendcloud:letter » (lettre
- *      non affranchie), que SendCloud fabrique sans la facturer. Tout le
- *      parcours s'éprouve pour de vrai — étiquette, PDF, annulation — sans
- *      dépenser un centime.
+ *   3. MODE ESSAI PAR DÉFAUT. Tant que l'interrupteur « Acheter les vraies
+ *      étiquettes SendCloud » de BO › Réglages › Paiements n'est pas allumé
+ *      (ou, s'il n'a jamais été touché, tant que le `.env` ne dit pas
+ *      SENDCLOUD_ACHATS_REELS=oui), l'envoi part en « sendcloud:letter »
+ *      (lettre non affranchie), que SendCloud fabrique sans la facturer. Tout
+ *      le parcours s'éprouve pour de vrai — étiquette, PDF, annulation — sans
+ *      dépenser un centime. L'interrupteur demande une confirmation, et se
+ *      relit à chaque achat : pas besoin de redémarrer.
  *
  * L'étiquette n'est jamais stockée ici : elle porte l'adresse d'une cliente,
  * et SendCloud la redonne à la demande.
@@ -44,6 +47,9 @@ import { CODES_SENDCLOUD, PREFIXE_SENDCLOUD } from "./sendcloud-points.js";
 import { TRANSPORTEURS } from "./livraison-regles.js";
 import { commandeVisible } from "./vendeurs.js";
 import { lieuDeRetrait } from "./lieux-retrait.js";
+// Import croisé avec paiements-reglages.ts (qui lit colisConfigure ici) : l'un
+// et l'autre ne s'en servent qu'à l'intérieur d'une fonction.
+import { etiquettesReelles } from "./paiements-reglages.js";
 
 const CLE_PUBLIQUE = (process.env.SENDCLOUD_PUBLIC_KEY ?? "").trim();
 const CLE_SECRETE = (process.env.SENDCLOUD_SECRET_KEY ?? "").trim();
@@ -59,9 +65,13 @@ export function colisConfigure(): boolean {
   return CLE_PUBLIQUE.length > 0 && CLE_SECRETE.length > 0;
 }
 
-/** Vrai tant que les achats réels n'ont pas été allumés, délibérément. */
-export function modeEssai(): boolean {
-  return (process.env.SENDCLOUD_ACHATS_REELS ?? "").trim().toLowerCase() !== "oui";
+/**
+ * Vrai tant que les achats réels n'ont pas été allumés, délibérément : par
+ * l'écran Paiements d'abord, sinon par SENDCLOUD_ACHATS_REELS=oui dans le
+ * .env (paiements-reglages.ts, etiquettesReelles).
+ */
+export async function modeEssai(): Promise<boolean> {
+  return !(await etiquettesReelles());
 }
 
 export class RefusBordereau extends Error {
@@ -863,7 +873,7 @@ export async function acheterBordereau(opts: {
   const poids = Math.round(opts.poidsGrammes);
   if (!(poids >= 1 && poids <= 70_000)) throw new RefusBordereau("Poids du colis invalide.");
 
-  const essai = modeEssai();
+  const essai = await modeEssai();
   // Contre la liste COMPLÈTE : un service d'un autre transporteur, choisi
   // derrière « Voir tous les services », s'achète comme les autres.
   const methode = (await methodesPour(order, poids, contexte)).find(
@@ -1091,7 +1101,7 @@ export function mountBordereaux(app: Hono): void {
       }
       return c.json({
         configure: colisConfigure(),
-        essai: modeEssai(),
+        essai: await modeEssai(),
         empechement: bloque,
         manques,
         situation: contexte.situation,

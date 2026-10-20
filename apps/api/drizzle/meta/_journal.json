@@ -491,6 +491,13 @@
       "when": 1792489657984,
       "tag": "0069_offre_3_plus_1_toutes_tailles",
       "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1792499883811,
+      "tag": "0070_cles_paiement",
+      "breakpoints": true
     }
   ]
 }

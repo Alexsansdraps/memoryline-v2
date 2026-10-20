@@ -64,6 +64,8 @@ interface Finances {
   parMoyen: { moyen: string; cents: number; nombre: number }[];
   remboursements: SourceChiffree;
   cartesCadeaux: { emisesCents: number; utiliseesCents: number; soldeCents: number };
+  /** Ventes payées avec les clés d'ESSAI alors que la boutique encaisse pour de vrai. */
+  essai?: { cents: number; nombre: number; commandes: { id: number; numero: string }[] };
 }
 
 /**
@@ -407,6 +409,26 @@ const cadre = "rounded-lg border border-bo-border bg-bo-surface";
   {
     finances && (
       <>
+        {/* Payées en essai alors que la boutique encaisse pour de vrai : elles
+            sont comptées partout comme des ventes, sans un euro reçu. Après
+            la bascule, c'est la seule chose qui les distingue. */}
+        {finances.essai && finances.essai.nombre > 0 && (
+          <p class="mb-6 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {finances.essai.nombre === 1
+              ? "1 vente de la période a été payée en ESSAI"
+              : `${finances.essai.nombre} ventes de la période ont été payées en ESSAI`}{" "}
+            (Stripe test ou PayPal sandbox) : {formatPrice(finances.essai.cents)} comptés
+            ci-dessous comme des ventes, qui ne sont jamais arrivés. Commandes :{" "}
+            {finances.essai.commandes.slice(0, 20).map((cmd, i) => (
+              <>
+                {i > 0 && ", "}
+                <a href={url(`/commandes/${cmd.id}`)} class="underline">{cmd.numero}</a>
+              </>
+            ))}
+            {finances.essai.commandes.length > 20 ? "…" : ""}.
+          </p>
+        )}
+
         {/* --- Les quatre sources, côte à côte --- */}
         <h2 class="mb-1 text-base font-semibold">Le même argent, vu par chaque source</h2>
         <p class="mb-3 text-sm text-bo-muted">

@@ -82,6 +82,13 @@ export const SYNONYMES: Readonly<Record<string, readonly string[]>> = {
     "siret", "adresse de la boutique", "mentions de la facture",
     "mentions obligatoires", "en-tête de facture",
   ],
+  // Pas « stripe » ni « paypal » seuls : ils mènent aux Finances, où l'on
+  // cherche l'argent. Ici, ce sont les clés et le passage en réel.
+  "/paiements": [
+    "clés stripe", "clés paypal", "clé api", "mode réel", "passer en réel",
+    "mode essai", "mise en production", "webhook", "étiquettes payantes",
+    "vraies étiquettes", "carte bancaire",
+  ],
   "/livraison/lieux": [
     "chalet", "lieu de retrait", "lieux de retrait", "point de retrait",
     "click and collect", "retrait au chalet", "marché de Noël",

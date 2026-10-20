@@ -28,10 +28,13 @@ import {
 import { db, schema } from "./db/client.js";
 import {
   capturePaypalDeLaCommande,
-  paypalConfigured,
   refundPaypal,
   refundStripe,
 } from "./payments.js";
+// Un remboursement part avec les clés du mode où le paiement est né (essai
+// ou réel), pas avec celles du moment : voir paiements-reglages.ts.
+import { configPaiement, modeDuPaiement, payeeEnEssai } from "./paiements-reglages.js";
+import { nomDuMode } from "./paiements-cles.js";
 import { lignesRemplies, type TextesAffiche } from "@memoryline/types";
 import {
   courrierAnnulee,
@@ -611,10 +614,33 @@ export function mountOrderRoutes(app: Hono): void {
           { id: l.id, titre: l.title, format: l.format },
         ]);
     }
+    // Les ventes payées avec les clés d'ESSAI alors que la boutique encaisse
+    // pour de vrai : la liste les signale, sans quoi elles passent pour de
+    // vraies ventes. Rien à lire tant que la boutique est en essai.
+    const config = await configPaiement();
+    const enEssai = new Set<number>();
+    if (rows.length && (config.modeVoulu.stripe === "live" || config.modeVoulu.paypal === "live")) {
+      const lignesPaiement = await db
+        .select({
+          orderId: schema.payments.orderId,
+          provider: schema.payments.provider,
+          status: schema.payments.status,
+          mode: schema.payments.mode,
+        })
+        .from(schema.payments)
+        .where(
+          and(
+            inArray(schema.payments.orderId, rows.map((r) => r.id)),
+            eq(schema.payments.status, "succeeded"),
+          ),
+        );
+      for (const l of lignesPaiement) if (payeeEnEssai([l], config)) enEssai.add(l.orderId);
+    }
     let enrichies = rows.map((r) => {
       const s = resume.get(r.id)!;
       return {
         ...r,
+        payeeEnEssai: enEssai.has(r.id),
         apercus: apercusParCommande.get(r.id) ?? [],
         /** Nombre d'affiches DIFFÉRENTES (lignes), pour le « +N » des vignettes. */
         lignes: lignesParCommande.get(r.id) ?? 0,
@@ -1380,9 +1406,20 @@ export function mountOrderRoutes(app: Hono): void {
         )
         .orderBy(desc(schema.payments.createdAt));
 
-      if (paiement?.provider === "stripe" && paiement.externalRef) {
+      // Les clés du mode où le paiement a été fait. Une commande payée en
+      // essai, avant le passage en réel, se rembourse avec les clés d'essai
+      // tant qu'elles existent ; sinon, la phrase dit quoi faire.
+      const config = paiement ? await configPaiement() : null;
+      if (paiement?.provider === "stripe" && paiement.externalRef && config) {
+        const mode = modeDuPaiement(paiement, "stripe", config);
+        const jeu = config.jeux.stripe[mode];
+        if (!jeu)
+          return {
+            erreur: `Cette commande a été réglée par carte avec les clés Stripe ${nomDuMode("stripe", mode)}, qui ne sont plus sur ce serveur. Remboursez depuis votre tableau de bord Stripe, puis enregistrez le remboursement ici en décochant « rendre l'argent ».`,
+            code: 400,
+          };
         try {
-          const r = await refundStripe(paiement.externalRef, montant);
+          const r = await refundStripe(jeu, paiement.externalRef, montant);
           gateway = "stripe";
           externalRef = r.id;
         } catch (e) {
@@ -1391,11 +1428,12 @@ export function mountOrderRoutes(app: Hono): void {
             code: 502,
           };
         }
-      } else if (paiement?.provider === "paypal") {
-        if (!paypalConfigured)
+      } else if (paiement?.provider === "paypal" && config) {
+        const mode = modeDuPaiement(paiement, "paypal", config);
+        const jeu = config.jeux.paypal[mode];
+        if (!jeu)
           return {
-            erreur:
-              "Cette commande a été réglée par PayPal, et PayPal n'est pas configuré sur ce serveur. Remboursez depuis votre compte PayPal, puis enregistrez le remboursement ici en décochant « rendre l'argent ».",
+            erreur: `Cette commande a été réglée par PayPal (${nomDuMode("paypal", mode)}), et les identifiants PayPal de ce mode ne sont pas sur ce serveur. Remboursez depuis votre compte PayPal, puis enregistrez le remboursement ici en décochant « rendre l'argent ».`,
             code: 400,
           };
         // PayPal ne rembourse pas une commande mais une CAPTURE. Les ventes
@@ -1404,7 +1442,7 @@ export function mountOrderRoutes(app: Hono): void {
         let capture = paiement.captureRef;
         if (!capture && paiement.externalRef) {
           try {
-            capture = await capturePaypalDeLaCommande(paiement.externalRef);
+            capture = await capturePaypalDeLaCommande(jeu, paiement.externalRef);
             if (capture)
               await db
                 .update(schema.payments)
@@ -1421,7 +1459,7 @@ export function mountOrderRoutes(app: Hono): void {
             code: 502,
           };
         try {
-          const r = await refundPaypal(capture, montant);
+          const r = await refundPaypal(jeu, capture, montant);
           gateway = "paypal";
           externalRef = r.id;
         } catch (e) {

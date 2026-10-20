@@ -978,6 +978,94 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
     </details>
 
     {/* ------------------------------------------------------------ */}
+    {/* Toujours visible : c'est sur le site d'essai qu'on la prépare, et
+        sur la vraie boutique qu'on la relit pour revenir en arrière. */}
+    <details id="passer-en-vrai" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Passer la boutique en vrai (et revenir en essai)
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          Tout se fait dans
+          <a href={url("/paiements")} class="text-bo-accent underline">Réglages › Paiements</a>,
+          sans toucher au serveur. Les clés viennent des comptes Stripe et PayPal
+          de la boutique, onglet <strong>Live</strong>.
+        </p>
+        <ol class="list-decimal space-y-2 pl-5">
+          <li>
+            <strong>D'abord APP_SECRET.</strong> Les clés sont chiffrées avec ce
+            réglage du serveur. Tant qu'il manque (ou qu'il est trop court),
+            l'écran le dit en orange et la colonne « Pour de vrai » reste
+            fermée : faites-le poser, puis redémarrer l'API.
+          </li>
+          <li>
+            <strong>Les clés live</strong>, dans la colonne « Pour de vrai » :
+            pour Stripe, la clé publique (pk_live_…) et la clé secrète
+            (sk_live_…) ; pour PayPal, le client-id et le secret de
+            l'application Live. Une clé d'essai dans la colonne live est
+            refusée, avec la raison. Une clé enregistrée ne se relit plus : seuls
+            sa date et ses 4 derniers caractères s'affichent.
+          </li>
+          <li>
+            <strong>Le webhook Stripe live</strong> : dans Stripe, en mode live,
+            Développeurs › Webhooks › « Ajouter une destination ». Collez
+            l'adresse donnée par l'écran (bouton « Copier »), cochez
+            payment_intent.succeeded, enregistrez, puis collez son secret
+            (whsec_…) dans la case « Secret du webhook » de la colonne « Pour de
+            vrai ». Sans lui, on ne peut pas passer en réel.
+          </li>
+          <li>
+            <strong>« Vérifier »</strong>, dans chaque colonne live. Le serveur
+            essaie les clés chez Stripe et PayPal, sans rien payer, et dit en
+            clair « clé valide, compte … » ou pourquoi elle est refusée. Une clé
+            changée après la vérification oblige à vérifier de nouveau. Une
+            colonne live jamais vérifiée ne sert jamais, même si les réglages du
+            serveur sont en live.
+          </li>
+          <li>
+            <strong>L'interrupteur « Pour de vrai »</strong> : cochez « Je
+            confirme : les clientes paieront pour de vrai », cliquez, et
+            relisez la confirmation. Le changement vaut tout de suite, sans
+            redémarrage : l'encadré « Boutique en mode essai » disparaît de la
+            caisse. Ensuite, une clé live remplacée est vérifiée avant d'être
+            gardée : refusée, elle n'est pas enregistrée et l'ancienne sert
+            toujours.
+          </li>
+          <li>
+            <strong>Une vraie petite commande</strong> par carte (et par PayPal
+            s'il est branché), avec votre propre carte, puis remboursez-la
+            depuis sa fiche dans
+            <a href={url("/commandes")} class="text-bo-accent underline">Commandes en ligne</a>.
+            L'écran Paiements doit alors afficher « dernier avis reçu et vérifié :
+            live le … ».
+          </li>
+        </ol>
+        <p>
+          <strong>Les étiquettes SendCloud</strong> ont leur propre
+          interrupteur, en bas de l'écran : « Acheter les vraies étiquettes
+          SendCloud ». Allumé, chaque bordereau acheté depuis une fiche commande
+          est facturé par SendCloud. Il ne change pas avec l'interrupteur des
+          paiements.
+        </p>
+        <p>
+          <strong>Revenir en essai</strong> : « Revenir en essai » sur le même
+          écran. Les clientes ne peuvent plus payer pour de vrai ; un paiement
+          réel déjà ouvert aboutit quand même. « Laisser les réglages du serveur
+          décider » leur rend la main (le fichier .env de l'hébergement), comme
+          avant l'écran ; les étiquettes ont le même lien.
+        </p>
+        <p>
+          <strong>Les commandes passées en essai</strong> restent dans le
+          back-office : elles n'ont rapporté aucun argent. Une fois la boutique
+          en réel, elles portent le badge « Payée en ESSAI » sur leur fiche et
+          « En ESSAI » dans la liste, et les Finances les signalent : ne les
+          expédiez pas sans vérifier. Archivez les commandes d'essai, ou faites vider la base de
+          test avant l'ouverture (MISE-EN-PROD.md, « Jour J »).
+        </p>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
     <details id="factures-mentions" class="group rounded-lg border border-bo-border bg-bo-surface">
       <summary class="cursor-pointer px-4 py-3 font-medium">
         Où régler l'adresse et le SIRET des factures ?

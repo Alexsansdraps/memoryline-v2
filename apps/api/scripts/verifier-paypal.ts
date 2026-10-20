@@ -14,6 +14,10 @@
  * Il ne crée aucun paiement, ne déplace pas un centime, et n'affiche jamais
  * vos identifiants.
  *
+ * IL NE LIT QUE LE .env. Les identifiants saisis dans BO › Réglages ›
+ * Paiements passent devant ceux du .env : pour ceux-là, c'est le bouton
+ * « Vérifier » de l'écran qui pose la même question à PayPal.
+ *
  * Usage :
  *   pnpm --filter @memoryline/api run verifier:paypal
  */
@@ -57,6 +61,10 @@ async function reconnu(base: string): Promise<boolean> {
 }
 
 async function main() {
+  console.log(
+    "Ce script ne lit que le .env. Les identifiants saisis dans BO › Réglages › Paiements\n" +
+      "passent devant : pour eux, utilisez le bouton « Vérifier » de l'écran.\n",
+  );
   if (!ID && !SECRET) manque("Aucun identifiant PayPal n'est renseigné.");
   if (!ID) manque("Le secret est renseigné, mais pas l'identifiant (PAYPAL_CLIENT_ID).");
   if (!SECRET) manque("L'identifiant est renseigné, mais pas le secret (PAYPAL_SECRET).");
@@ -118,7 +126,9 @@ async function main() {
       "  l'accueil du back-office disparaîtra." +
       (viseLive
         ? "\n\n  ⚠ Vous êtes en compte réel : les paiements d'essai débiteront vraiment."
-        : ""),
+        : "") +
+      "\n\n  Rappel : des identifiants saisis dans BO › Réglages › Paiements passent\n" +
+      "  devant ceux-ci (ce script ne les voit pas).",
   );
   process.exit(0);
 }

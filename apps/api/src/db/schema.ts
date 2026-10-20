@@ -31,6 +31,7 @@ import {
   bigint,
   boolean,
   doublePrecision,
+  check,
 } from "drizzle-orm/pg-core";
 
 export const orderChannelEnum = pgEnum("order_channel", ["web", "salon"]);
@@ -1889,6 +1890,18 @@ export const payments = pgTable("payment", {
   captureRef: text("capture_ref"),
   status: text("status"),
   amountCents: integer("amount_cents").notNull().default(0),
+  /**
+   * « test » ou « live » : les clés avec lesquelles ce paiement a été ouvert.
+   *
+   * Depuis que la boutique passe de l'essai au réel d'un clic (BO › Réglages
+   * › Paiements), un paiement ouvert la veille peut survivre aux clés qui
+   * l'ont créé. Le confirmer, le capturer ou le rembourser avec les clés de
+   * l'AUTRE mode échouerait : Stripe et PayPal ne connaissent un paiement que
+   * dans le mode où il est né. Vide pour les lignes d'avant : elles ont toutes
+   * été faites avec les clés du .env, dont le mode se déduit encore
+   * (paiements-reglages.ts, modeDuPaiement).
+   */
+  mode: text("mode"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -2566,5 +2579,102 @@ export const aiPhotoRelays = pgTable(
     uniqueIndex("ia_relais_photo_jeton_uniq").on(t.jetonHash),
     index("ia_relais_photo_expire_idx").on(t.expiresAt),
     index("ia_relais_photo_stand_idx").on(t.standId),
+  ],
+);
+
+/**
+ * Les clés de paiement saisies au back-office (BO › Réglages › Paiements).
+ *
+ * Une ligne par valeur SAISIE, et non par case : remplacer une clé archive la
+ * précédente (archive_le) et en ajoute une nouvelle. On sait ainsi, des mois
+ * après, qui a changé quelle clé et quand — sans jamais pouvoir la relire.
+ *
+ * La valeur est CHIFFRÉE (AES-256-GCM, clé dérivée d'APP_SECRET, voir
+ * paiements-cles.ts) : une sauvegarde de la base, seule, ne donne aucune clé.
+ * Même les valeurs publiques (pk_…, client-id) le sont, pour n'avoir qu'une
+ * seule façon de faire. `fin` (les 4 derniers caractères) et `empreinte`
+ * (HMAC tronqué, avec une clé dérivée à part) servent à l'affichage et aux
+ * comparaisons, jamais à retrouver la valeur.
+ *
+ * Table À PART, et non dans « setting » : la route publique des réglages lit
+ * toute la table « setting » sauf quelques préfixes, et celle du back-office
+ * la relit en entier. Ranger des secrets là, c'était dépendre d'une liste de
+ * préfixes facile à oublier. Aucune route générique ne lit celle-ci.
+ */
+export const clesPaiement = pgTable(
+  "cle_paiement",
+  {
+    id: serial("id").primaryKey(),
+    /** « stripe » ou « paypal ». */
+    prestataire: text("prestataire").notNull(),
+    /** « test » (essai, bac à sable) ou « live » (pour de vrai). */
+    mode: text("mode").notNull(),
+    /** cle_publique | cle_secrete | secret_webhook (Stripe), client_id | secret (PayPal). */
+    champ: text("champ").notNull(),
+    /** « v1.<marque>.<iv>.<tag>.<texte chiffré> », jamais la valeur en clair. */
+    valeurChiffree: text("valeur_chiffree").notNull(),
+    /** Les 4 derniers caractères, pour « se termine par … ». */
+    fin: text("fin").notNull(),
+    /** HMAC-SHA256 tronqué : reconnaît une valeur déjà vue, sans la révéler. */
+    empreinte: text("empreinte").notNull(),
+    creeLe: timestamp("cree_le", { withTimezone: true }).defaultNow().notNull(),
+    /** L'adresse du compte du back-office qui l'a saisie. */
+    creePar: text("cree_par"),
+    /** Remplacée ou effacée : la ligne reste, elle ne sert plus. */
+    archiveLe: timestamp("archive_le", { withTimezone: true }),
+    archivePar: text("archive_par"),
+  },
+  (t) => [
+    // UNE seule valeur vivante par case : la base elle-même refuse la
+    // seconde, même si deux onglets enregistrent au même instant.
+    uniqueIndex("cle_paiement_vivante_uniq")
+      .on(t.prestataire, t.mode, t.champ)
+      .where(sql`${t.archiveLe} is null`),
+    check("cle_paiement_prestataire_check", sql`${t.prestataire} in ('stripe', 'paypal')`),
+    check("cle_paiement_mode_check", sql`${t.mode} in ('test', 'live')`),
+    check(
+      "cle_paiement_champ_check",
+      sql`(${t.prestataire} = 'stripe' and ${t.champ} in ('cle_publique', 'cle_secrete', 'secret_webhook')) or (${t.prestataire} = 'paypal' and ${t.champ} in ('client_id', 'secret'))`,
+    ),
+  ],
+);
+
+/**
+ * Le journal des réglages de paiement : on n'y fait qu'AJOUTER des lignes.
+ *
+ * Il porte qui a fait quoi et quand — une clé enregistrée ou effacée, une
+ * vérification, une bascule entre l'essai et le réel, l'achat des vraies
+ * étiquettes —, et JAMAIS une valeur, ni même sa fin.
+ *
+ * L'ÉTAT EST LA DERNIÈRE LIGNE de chaque sujet (action, prestataire, mode) :
+ * le mode choisi, les étiquettes, la dernière vérification. Il n'existe donc
+ * aucun moyen de changer l'un d'eux sans laisser de trace.
+ */
+export const journalPaiement = pgTable(
+  "journal_paiement",
+  {
+    id: serial("id").primaryKey(),
+    le: timestamp("le", { withTimezone: true }).defaultNow().notNull(),
+    /** L'adresse du compte du back-office. */
+    par: text("par"),
+    /** cle_enregistree | cle_archivee | verification | mode | etiquettes */
+    action: text("action").notNull(),
+    prestataire: text("prestataire"),
+    mode: text("mode"),
+    champ: text("champ"),
+    /**
+     * essai | reel | env pour le mode, oui | non pour les étiquettes,
+     * ok | refus pour une vérification. Jamais une clé.
+     */
+    valeur: text("valeur"),
+    /** Le verdict en clair, le compte, les empreintes vérifiées, la source. */
+    detail: jsonb("detail"),
+  },
+  (t) => [
+    index("journal_paiement_sujet_idx").on(t.action, t.prestataire, t.mode, t.id),
+    check(
+      "journal_paiement_action_check",
+      sql`${t.action} in ('cle_enregistree', 'cle_archivee', 'verification', 'mode', 'etiquettes')`,
+    ),
   ],
 );

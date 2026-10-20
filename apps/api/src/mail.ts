@@ -515,6 +515,64 @@ export function courrierNouvelleCommande(d: {
 }
 
 /**
+ * Avis interne : quelqu'un vient de changer le mode des paiements
+ * (BO › Réglages › Paiements).
+ *
+ * Passer en réel, ou en revenir, change ce que les clientes paient : la
+ * boutique doit le savoir même si elle n'a pas fait le geste elle-même.
+ */
+export function courrierModePaiement(d: {
+  /** « reel », « essai » ou « env » (les réglages du serveur décident). */
+  mode: string;
+  /** Le mode d'avant, dans les mêmes mots. */
+  avant: string;
+  /** L'adresse du compte qui a fait le changement, si on la connaît. */
+  par: string | null;
+  /** Le moment du changement. */
+  le: Date;
+}): Courrier {
+  const nom = (m: string) =>
+    m === "reel"
+      ? "paiements réels"
+      : m === "essai"
+        ? "mode essai"
+        : "réglages du serveur";
+  const titre =
+    d.mode === "reel"
+      ? "La boutique encaisse maintenant pour de vrai"
+      : d.mode === "essai"
+        ? "La boutique est passée en mode essai"
+        : "Les réglages du serveur décident du mode des paiements";
+  const effet =
+    d.mode === "reel"
+      ? "Les cartes et PayPal sont réellement débités. L'encadré « Boutique en mode essai » a disparu de la caisse."
+      : d.mode === "essai"
+        ? "Aucun paiement réel n'est possible : les clientes paient avec les clés d'essai. Les paiements réels déjà ouverts aboutiront quand même."
+        : "Chaque prestataire suit de nouveau les réglages du serveur, comme avant l'écran Paiements.";
+  const quand = d.le.toLocaleString("fr-FR", {
+    timeZone: "Europe/Paris",
+    dateStyle: "full",
+    timeStyle: "short",
+  });
+  const qui = d.par ?? "un compte du back-office";
+  const origine = adressePublique();
+  const lien = origine ? `${origine}/bo/paiements` : null;
+  const pasMoi =
+    "Si ce changement ne vient pas de vous, ouvrez le back-office, Réglages › Paiements, et remettez le bon mode.";
+  return {
+    to: "",
+    subject: `Paiements : ${nom(d.mode)} (avant : ${nom(d.avant)})`,
+    html: gabarit(
+      titre,
+      `<p style="margin:0 0 12px">${h(effet)}</p>
+       <p style="margin:0 0 12px">Changé par ${h(qui)}, le ${h(quand)}.<br />Avant : ${h(nom(d.avant))}. Maintenant : ${h(nom(d.mode))}.</p>
+       <p style="margin:0">${h(pasMoi)}${lien ? `<br /><a href="${h(lien)}" style="color:#121212">${h(lien)}</a>` : ""}</p>`,
+    ),
+    text: `${titre}\n\n${effet}\n\nChangé par ${qui}, le ${quand}.\nAvant : ${nom(d.avant)}. Maintenant : ${nom(d.mode)}.\n\n${pasMoi}${lien ? `\n${lien}` : ""}\n\nMemory Line`,
+  };
+}
+
+/**
  * Les articles du panier, avec leur vignette quand on en a une.
  *
  * Une image par ligne plutôt qu'une seule en tête du courrier : le panier

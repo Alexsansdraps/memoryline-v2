@@ -1053,9 +1053,14 @@ export const browserApi = {
       essai?: boolean;
     }>("/payments/config"),
 
-  /** Crée un PaymentIntent Stripe pour la commande, renvoie le clientSecret. */
+  /**
+   * Crée un PaymentIntent Stripe pour la commande, renvoie le clientSecret ET
+   * la clé publique avec laquelle charger Stripe.js : celle des clés qui ont
+   * créé l'intention, même si la boutique a basculé entre l'essai et le réel
+   * depuis l'ouverture de la caisse.
+   */
   stripeIntent: (orderId: number) =>
-    browserSend<{ clientSecret: string }>("POST", "/payments/stripe/intent", {
+    browserSend<{ clientSecret: string; publicKey?: string }>("POST", "/payments/stripe/intent", {
       orderId,
     }),
 
@@ -1065,10 +1070,16 @@ export const browserApi = {
       orderId,
     }),
 
-  /** Crée une commande PayPal (montant serveur), renvoie l'id PayPal. */
-  paypalOrder: (orderId: number) =>
+  /**
+   * Crée une commande PayPal (montant serveur), renvoie l'id PayPal.
+   * `clientId` : celui avec lequel les boutons ont été chargés. S'il n'est
+   * plus celui de la boutique (bascule entre l'essai et le réel), l'API
+   * répond 409 « paiement_reconfigure » et la caisse relit sa configuration.
+   */
+  paypalOrder: (orderId: number, clientId?: string) =>
     browserSend<{ paypalOrderId: string }>("POST", "/payments/paypal/order", {
       orderId,
+      ...(clientId ? { clientId } : {}),
     }),
 
   /** Capture une commande PayPal approuvée (marque payé si COMPLETED). */

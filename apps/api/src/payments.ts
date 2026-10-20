@@ -5,27 +5,37 @@
  * `fetch`, et la signature du webhook Stripe est vérifiée avec `node:crypto`.
  * Aucune dépendance npm supplémentaire, et le même style pour les deux.
  *
- * Les clés sont lues dans l'environnement (voir .env.example). Si un
- * prestataire n'est pas configuré, `*Configured` vaut false et les routes le
- * signalent proprement (503) au lieu de planter.
+ * LES CLÉS ARRIVENT EN PARAMÈTRE. Elles étaient lues une fois pour toutes
+ * dans le .env au chargement du module : en changer demandait de redémarrer
+ * l'API, et un paiement ouvert avec les clés d'essai ne pouvait plus se
+ * capturer une fois la boutique passée en réel. Elles viennent désormais de
+ * la configuration effective (paiements-reglages.ts : le back-office d'abord,
+ * le .env en repli), et chaque opération sur un paiement EXISTANT reçoit les
+ * clés du mode où il est né (payment.mode).
  *
  * IMPORTANT : ce module ne connaît RIEN de la base ni des commandes — il ne
  * fait que parler aux prestataires. La logique « marquer la commande payée +
  * générer les PDF » vit dans configurator-routes.ts (markOrderPaid).
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { masquer, type Mode, type Secret } from "./paiements-cles.js";
+
+/** Ce qu'il faut pour parler à Stripe : la clé secrète, et son mode. */
+export interface ClesStripe {
+  mode: Mode;
+  cleSecrete: Secret;
+}
+
+/** Ce qu'il faut pour parler à PayPal : l'application, son secret, son côté. */
+export interface ClesPaypal {
+  mode: Mode;
+  clientId: string;
+  secret: Secret;
+}
 
 /* -------------------------------------------------------------------------- */
 /*  Stripe (REST)                                                             */
 /* -------------------------------------------------------------------------- */
-
-const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
-
-/** true si la clé secrète Stripe est fournie. */
-export const stripeConfigured = Boolean(STRIPE_SECRET);
-/** true si le secret de webhook Stripe est fourni (sinon on ne peut pas vérifier). */
-export const stripeWebhookConfigured = Boolean(STRIPE_WEBHOOK_SECRET);
 
 /**
  * Crée un PaymentIntent Stripe pour `amountCents` (EUR). `orderId` est mis en
@@ -33,11 +43,11 @@ export const stripeWebhookConfigured = Boolean(STRIPE_WEBHOOK_SECRET);
  * client_secret (à confirmer côté navigateur avec Stripe.js).
  */
 export async function createStripeIntent(
+  cles: ClesStripe,
   amountCents: number,
   orderId: number,
   orderNumber: string,
 ): Promise<{ id: string; clientSecret: string }> {
-  if (!STRIPE_SECRET) throw new Error("Stripe non configuré");
   const body = new URLSearchParams();
   body.set("amount", String(amountCents));
   body.set("currency", "eur");
@@ -47,7 +57,7 @@ export async function createStripeIntent(
   const res = await fetch("https://api.stripe.com/v1/payment_intents", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${STRIPE_SECRET}`,
+      Authorization: `Bearer ${cles.cleSecrete.devoiler()}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body,
@@ -67,14 +77,16 @@ export async function createStripeIntent(
  * l'argent est arrivé, pas combien. C'est ce montant-là que la commande doit
  * valoir pour être marquée payée (markOrderPaid).
  */
-export async function getStripeIntent(id: string): Promise<{
+export async function getStripeIntent(
+  cles: ClesStripe,
+  id: string,
+): Promise<{
   status: string;
   montantCents: number;
   devise: string;
 }> {
-  if (!STRIPE_SECRET) throw new Error("Stripe non configuré");
   const res = await fetch(`https://api.stripe.com/v1/payment_intents/${id}`, {
-    headers: { Authorization: `Bearer ${STRIPE_SECRET}` },
+    headers: { Authorization: `Bearer ${cles.cleSecrete.devoiler()}` },
   });
   if (!res.ok)
     throw new Error(`Stripe get intent HTTP ${res.status} ${await res.text()}`);
@@ -98,17 +110,17 @@ export async function getStripeIntent(id: string): Promise<{
  * d'une commande pose problème.
  */
 export async function refundStripe(
+  cles: ClesStripe,
   paymentIntentId: string,
   amountCents: number,
 ): Promise<{ id: string; status: string }> {
-  if (!STRIPE_SECRET) throw new Error("Stripe non configuré");
   const body = new URLSearchParams();
   body.set("payment_intent", paymentIntentId);
   body.set("amount", String(amountCents));
   const res = await fetch("https://api.stripe.com/v1/refunds", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${STRIPE_SECRET}`,
+      Authorization: `Bearer ${cles.cleSecrete.devoiler()}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body,
@@ -121,6 +133,7 @@ export async function refundStripe(
 
 export interface StripeEvent {
   type: string;
+  livemode?: boolean;
   data: { object: Record<string, unknown> };
 }
 
@@ -129,55 +142,108 @@ export interface StripeEvent {
  * corps BRUT, et renvoie l'événement parsé — ou null si invalide.
  * Reproduit l'algo officiel : HMAC-SHA256 de `${t}.${rawBody}` avec le secret
  * `whsec_…`, comparaison à v1 en temps constant, tolérance 5 min sur t.
+ *
+ * PLUSIEURS SECRETS : celui du mode actif, et l'autre, pour qu'un paiement
+ * ouvert juste avant une bascule ne se perde pas. Chaque secret arrive avec
+ * son mode, et `modeSecret` dit lequel a reconnu la signature : C'EST LUI qui
+ * dit de quel côté de Stripe vient l'avis. Le `livemode` du corps n'est
+ * qu'une affirmation de l'avis sur lui-même : quiconque détient le secret de
+ * TEST — et ils circulent bien plus que les vrais — peut signer un corps qui
+ * se dit « live ». configurator-routes.ts refuse un avis dont l'affirmation
+ * contredit son secret (avisIncoherent).
+ *
+ * Deux secrets de modes différents qui reconnaissent la même signature (la
+ * même valeur dans les deux colonnes, ce que l'écran refuse pourtant) : le
+ * mode retenu est « test », le moins sûr des deux.
+ *
+ * PLUSIEURS SIGNATURES : quand on renouvelle le secret dans Stripe, l'en-tête
+ * porte deux « v1 » pendant 24 heures. L'ancienne lecture n'en gardait que le
+ * dernier, et refusait l'avis si c'était celui de l'autre secret.
  */
 export function verifyStripeEvent(
   rawBody: string,
   sigHeader: string | undefined,
-): StripeEvent | null {
-  if (!STRIPE_WEBHOOK_SECRET || !sigHeader) return null;
-  const parts: Record<string, string> = {};
+  secrets: readonly { mode: Mode; secret: Secret }[],
+  maintenant: number = Date.now(),
+): { event: StripeEvent; livemode: boolean; modeSecret: Mode } | null {
+  if (!secrets.length || !sigHeader) return null;
+  let t = "";
+  const signatures: string[] = [];
   for (const kv of sigHeader.split(",")) {
     const i = kv.indexOf("=");
-    if (i > 0) parts[kv.slice(0, i).trim()] = kv.slice(i + 1).trim();
+    if (i <= 0) continue;
+    const cle = kv.slice(0, i).trim();
+    const valeur = kv.slice(i + 1).trim();
+    if (cle === "t") t = valeur;
+    else if (cle === "v1" && valeur) signatures.push(valeur);
   }
-  const t = parts["t"];
-  const v1 = parts["v1"];
-  if (!t || !v1) return null;
-  const expected = createHmac("sha256", STRIPE_WEBHOOK_SECRET)
-    .update(`${t}.${rawBody}`)
-    .digest("hex");
-  const a = Buffer.from(expected);
-  const b = Buffer.from(v1);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  const now = Math.floor(Date.now() / 1000);
-  if (Math.abs(now - Number(t)) > 60 * 5) return null;
+  if (!t || !signatures.length) return null;
+  if (Math.abs(Math.floor(maintenant / 1000) - Number(t)) > 60 * 5) return null;
+  const modes = new Set<Mode>();
+  for (const { mode, secret } of secrets) {
+    const attendue = Buffer.from(
+      createHmac("sha256", secret.devoiler()).update(`${t}.${rawBody}`).digest("hex"),
+    );
+    for (const v1 of signatures) {
+      const recue = Buffer.from(v1);
+      // Toutes les comparaisons se font, même après une réussite : le temps de
+      // réponse ne dit pas quel secret a signé.
+      if (recue.length === attendue.length && timingSafeEqual(recue, attendue)) modes.add(mode);
+    }
+  }
+  if (!modes.size) return null;
   try {
-    return JSON.parse(rawBody) as StripeEvent;
+    const event = JSON.parse(rawBody) as StripeEvent;
+    return {
+      event,
+      livemode: event.livemode === true,
+      modeSecret: modes.has("test") ? "test" : "live",
+    };
   } catch {
     return null;
   }
+}
+
+/**
+ * L'avis contredit-il le secret qui l'a signé ? Un avis signé avec le secret
+ * de test qui se dit « live » (ou l'inverse) n'est pas traité : c'est un
+ * faux, ou le secret du webhook collé dans la mauvaise colonne.
+ */
+export function avisIncoherent(v: { modeSecret: Mode; livemode: boolean }): boolean {
+  return (v.modeSecret === "live") !== v.livemode;
+}
+
+/**
+ * Un avis de paiement abouti, venu de l'AUTRE mode que celui où la boutique
+ * encaisse, n'est traité que s'il porte sur un paiement que NOUS avons ouvert
+ * dans ce mode-là, pour cette commande-là : même référence, même mode, et la
+ * commande de la ligne payment est bien celle que l'avis désigne. Sans ce
+ * dernier point, la référence d'un vieux paiement d'essai, recopiée dans un
+ * avis avec le numéro d'une autre commande, ferait passer celle-ci « payée ».
+ */
+export function avisAutreModeRecevable(
+  mode: Mode,
+  ligne: { mode: Mode; orderId: number } | null | undefined,
+  orderId: number,
+): boolean {
+  return Boolean(ligne && ligne.mode === mode && ligne.orderId === orderId);
 }
 
 /* -------------------------------------------------------------------------- */
 /*  PayPal (REST)                                                             */
 /* -------------------------------------------------------------------------- */
 
-const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
-const PAYPAL_SECRET = process.env.PAYPAL_SECRET;
-const PAYPAL_LIVE = process.env.PAYPAL_ENV === "live";
-const PAYPAL_BASE = PAYPAL_LIVE
-  ? "https://api-m.paypal.com"
-  : "https://api-m.sandbox.paypal.com";
-
-/** true si l'app PayPal (client id + secret) est configurée. */
-export const paypalConfigured = Boolean(PAYPAL_CLIENT_ID && PAYPAL_SECRET);
+/** L'adresse de l'API PayPal du côté demandé : bac à sable ou compte réel. */
+export function basePaypal(mode: Mode): string {
+  return mode === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
+}
 
 /** Jeton OAuth2 client_credentials PayPal (courte durée, pas mis en cache). */
-async function paypalToken(): Promise<string> {
-  const auth = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_SECRET}`).toString(
+async function paypalToken(cles: ClesPaypal): Promise<string> {
+  const auth = Buffer.from(`${cles.clientId}:${cles.secret.devoiler()}`).toString(
     "base64",
   );
-  const res = await fetch(`${PAYPAL_BASE}/v1/oauth2/token`, {
+  const res = await fetch(`${basePaypal(cles.mode)}/v1/oauth2/token`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${auth}`,
@@ -197,12 +263,12 @@ async function paypalToken(): Promise<string> {
  * (le navigateur l'approuve via les boutons PayPal, puis on capture).
  */
 export async function createPaypalOrder(
+  cles: ClesPaypal,
   amountCents: number,
   reference: string,
 ): Promise<string> {
-  if (!paypalConfigured) throw new Error("PayPal non configuré");
-  const token = await paypalToken();
-  const res = await fetch(`${PAYPAL_BASE}/v2/checkout/orders`, {
+  const token = await paypalToken(cles);
+  const res = await fetch(`${basePaypal(cles.mode)}/v2/checkout/orders`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -289,6 +355,7 @@ async function refusPaypal(res: Response): Promise<RefusPaypal> {
  * lui que la commande doit valoir pour être marquée payée (markOrderPaid).
  */
 export async function capturePaypalOrder(
+  cles: ClesPaypal,
   paypalOrderId: string,
 ): Promise<{
   ok: boolean;
@@ -297,10 +364,9 @@ export async function capturePaypalOrder(
   montantCents: number;
   devise: string;
 }> {
-  if (!paypalConfigured) throw new Error("PayPal non configuré");
-  const token = await paypalToken();
+  const token = await paypalToken(cles);
   const res = await fetch(
-    `${PAYPAL_BASE}/v2/checkout/orders/${paypalOrderId}/capture`,
+    `${basePaypal(cles.mode)}/v2/checkout/orders/${paypalOrderId}/capture`,
     {
       method: "POST",
       headers: {
@@ -370,11 +436,11 @@ function captureDe(j: ReponsePaypalCommande): string | null {
  * premier remboursement échouerait sans qu'on comprenne pourquoi.
  */
 export async function capturePaypalDeLaCommande(
+  cles: ClesPaypal,
   paypalOrderId: string,
 ): Promise<string | null> {
-  if (!paypalConfigured) throw new Error("PayPal non configuré");
-  const token = await paypalToken();
-  const res = await fetch(`${PAYPAL_BASE}/v2/checkout/orders/${paypalOrderId}`, {
+  const token = await paypalToken(cles);
+  const res = await fetch(`${basePaypal(cles.mode)}/v2/checkout/orders/${paypalOrderId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return null;
@@ -390,13 +456,13 @@ export async function capturePaypalDeLaCommande(
  * boutique.
  */
 export async function refundPaypal(
+  cles: ClesPaypal,
   captureId: string,
   amountCents: number,
 ): Promise<{ id: string; status: string }> {
-  if (!paypalConfigured) throw new Error("PayPal non configuré");
-  const token = await paypalToken();
+  const token = await paypalToken(cles);
   const res = await fetch(
-    `${PAYPAL_BASE}/v2/payments/captures/${captureId}/refund`,
+    `${basePaypal(cles.mode)}/v2/payments/captures/${captureId}/refund`,
     {
       method: "POST",
       headers: {
@@ -414,4 +480,274 @@ export async function refundPaypal(
   if (!res.ok) throw await refusPaypal(res);
   const j = (await res.json()) as { id: string; status: string };
   return { id: j.id, status: j.status };
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Le bouton « Vérifier » de BO › Réglages › Paiements                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Ce que la vérification conclut, en clair. Jamais une clé : tout ce qui
+ * vient d'un prestataire passe par `masquer`, et le jeton PayPal obtenu au
+ * passage n'est ni gardé ni renvoyé.
+ */
+export interface VerdictCles {
+  ok: boolean;
+  message: string;
+  /** Le compte reconnu (« Memory Line, acct_1H… »), quand il se lit. */
+  compte: string | null;
+}
+
+interface OptionsVerification {
+  /** Remplaçable dans les essais : aucun appel réseau n'y part. */
+  fetch?: typeof fetch;
+  delaiMs?: number;
+}
+
+/** Un appel au prestataire, borné dans le temps, qui ne lève pas. */
+async function appeler(
+  f: typeof fetch,
+  url: string,
+  init: RequestInit,
+  delaiMs: number,
+): Promise<{ statut: number; corps: unknown } | { statut: 0; corps: null; panne: string }> {
+  try {
+    const res = await f(url, { ...init, signal: AbortSignal.timeout(delaiMs) });
+    const texte = await res.text();
+    let corps: unknown = null;
+    try {
+      corps = JSON.parse(texte);
+    } catch {
+      corps = null;
+    }
+    return { statut: res.status, corps };
+  } catch (e) {
+    return { statut: 0, corps: null, panne: masquer(e instanceof Error ? e.message : e) };
+  }
+}
+
+/** Le message d'erreur de Stripe, masqué. */
+function messageStripe(corps: unknown): string {
+  const m = (corps as { error?: { message?: unknown } } | null)?.error?.message;
+  return m ? masquer(m) : "";
+}
+
+/** Une adresse comparable : sans « www. », sans barre finale, en minuscules. */
+function adresseNormalisee(u: string): string {
+  try {
+    const x = new URL(u);
+    return `${x.protocol}//${x.host.replace(/^www\./i, "").toLowerCase()}${x.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    return u.trim().replace(/\/+$/, "").toLowerCase();
+  }
+}
+
+/**
+ * Les clés Stripe d'une colonne sont-elles bonnes ? UNIQUEMENT des lectures :
+ * rien n'est créé chez Stripe, rien n'est payé.
+ *
+ *  1. GET /v1/balance : la clé est-elle acceptée, et de quel mode est le
+ *     compte (`livemode`) ? Une clé refusée s'arrête là — un seul appel.
+ *  2. GET /v1/account : à qui appartient le compte, et peut-il encaisser ?
+ *  3. La clé publique : son préfixe, et si possible le même compte.
+ *  4. GET /v1/webhook_endpoints : un webhook actif vise-t-il notre adresse,
+ *     avec payment_intent.succeeded ? Exigé pour le réel, indicatif en essai.
+ *
+ * Une clé restreinte (rk_…) sans certains droits répond 403 : l'étape est
+ * signalée « non lisible », jamais déclarée bonne.
+ */
+export async function verifierStripe(
+  jeu: { mode: Mode; clePublique: string; cleSecrete: Secret; secretWebhook: Secret | null },
+  opts: OptionsVerification & { adresseWebhook: string; local: boolean },
+): Promise<VerdictCles> {
+  const f = opts.fetch ?? fetch;
+  const delai = opts.delaiMs ?? 10_000;
+  const entete = { Authorization: `Bearer ${jeu.cleSecrete.devoiler()}` };
+  const live = jeu.mode === "live";
+  const remarques: string[] = [];
+  const refus = (message: string, compte: string | null = null): VerdictCles => ({
+    ok: false,
+    message: [message, ...remarques].join(" "),
+    compte,
+  });
+
+  const solde = await appeler(f, "https://api.stripe.com/v1/balance", { headers: entete }, delai);
+  if (solde.statut === 0)
+    return refus(`Stripe ne répond pas (${"panne" in solde ? solde.panne : "délai dépassé"}) : réessayez dans un instant.`);
+  if (solde.statut === 401)
+    return refus("Clé secrète refusée par Stripe (401 : clé inconnue ou révoquée). Recopiez-la depuis Stripe › Développeurs › Clés API.");
+  if (solde.statut === 403) {
+    remarques.push("Solde non lisible avec cette clé restreinte : le mode est déduit de son préfixe.");
+  } else if (solde.statut !== 200) {
+    return refus(`Stripe a répondu ${solde.statut}${messageStripe(solde.corps) ? ` : ${messageStripe(solde.corps)}` : ""}.`);
+  } else {
+    const livemode = (solde.corps as { livemode?: unknown } | null)?.livemode === true;
+    if (livemode !== live)
+      return refus(
+        livemode
+          ? "Cette clé est une clé LIVE : elle va dans la colonne « Pour de vrai »."
+          : "Cette clé est une clé de TEST : elle va dans la colonne « Essai ».",
+      );
+  }
+
+  // Le compte : son nom, et s'il peut déjà encaisser.
+  let compte: string | null = null;
+  let idCompte = "";
+  const acct = await appeler(f, "https://api.stripe.com/v1/account", { headers: entete }, delai);
+  if (acct.statut === 200) {
+    const a = acct.corps as {
+      id?: string;
+      email?: string;
+      charges_enabled?: boolean;
+      business_profile?: { name?: string };
+      settings?: { dashboard?: { display_name?: string } };
+    } | null;
+    idCompte = String(a?.id ?? "");
+    const nom = a?.business_profile?.name || a?.settings?.dashboard?.display_name || a?.email || "";
+    compte = masquer([nom, idCompte].filter(Boolean).join(", ")) || null;
+    if (live && a?.charges_enabled === false)
+      return refus(
+        "Stripe n'autorise pas encore les paiements sur ce compte : terminez son activation dans le tableau de bord Stripe (identité, compte bancaire).",
+        compte,
+      );
+  } else if (acct.statut === 403) {
+    remarques.push("Clé acceptée, mais le compte n'est pas lisible avec une clé restreinte.");
+  }
+
+  // La clé publique : la bonne colonne, et si possible le même compte.
+  if (!jeu.clePublique) {
+    if (live) return refus("La clé publique (pk_live_…) manque : la carte ne pourrait pas s'afficher à la caisse.", compte);
+    remarques.push("La clé publique manque : la carte ne s'affichera pas à la caisse.");
+  } else if (!jeu.clePublique.startsWith(live ? "pk_live_" : "pk_test_")) {
+    return refus(
+      live
+        ? "La clé publique n'est pas une clé live (pk_live_…) : elle ne va pas avec cette clé secrète."
+        : "La clé publique n'est pas une clé de test (pk_test_…) : elle ne va pas avec cette clé secrète.",
+      compte,
+    );
+  } else if (idCompte) {
+    const court = idCompte.replace(/^acct_1?/, "");
+    if (court.length >= 8 && jeu.clePublique.includes(court)) remarques.push("Clé publique du même compte ✓.");
+    else
+      remarques.push(
+        "La clé publique n'a pas pu être rapprochée du compte : vérifiez qu'elle vient de la même page (Développeurs › Clés API).",
+      );
+  }
+
+  // Le webhook : sans lui, une commande payée dont l'onglet s'est fermé
+  // pendant la validation de la banque resterait « en attente ».
+  if (live && !jeu.secretWebhook)
+    return refus("Il manque le secret du webhook (whsec_…) de la colonne « Pour de vrai ».", compte);
+  const hooks = await appeler(
+    f,
+    "https://api.stripe.com/v1/webhook_endpoints?limit=100",
+    { headers: entete },
+    delai,
+  );
+  if (hooks.statut === 200) {
+    const cible = adresseNormalisee(opts.adresseWebhook);
+    const liste = ((hooks.corps as { data?: unknown[] } | null)?.data ?? []) as {
+      url?: string;
+      status?: string;
+      enabled_events?: string[];
+    }[];
+    const trouve = liste.some(
+      (h) =>
+        h.status !== "disabled" &&
+        adresseNormalisee(String(h.url ?? "")) === cible &&
+        (h.enabled_events ?? []).some((e) => e === "payment_intent.succeeded" || e === "*"),
+    );
+    if (trouve) remarques.push("Webhook trouvé ✓.");
+    else if (live)
+      return refus(
+        `Aucun webhook actif de ce compte ne vise ${opts.adresseWebhook} avec l'événement payment_intent.succeeded : créez-le dans Stripe › Développeurs › Webhooks.`,
+        compte,
+      );
+    else
+      remarques.push(
+        opts.local
+          ? "En local, Stripe ne joint pas localhost : utilisez « stripe listen » (voir plus bas)."
+          : `Aucun webhook de test ne vise ${opts.adresseWebhook} : sans lui, la commande se valide quand même au retour de la cliente.`,
+      );
+  } else if (hooks.statut === 403) {
+    remarques.push("Liste des webhooks non lisible avec cette clé restreinte : vérifiez à la main dans Stripe que le webhook existe.");
+  } else if (live) {
+    return refus(`La liste des webhooks n'a pas pu être lue (réponse ${hooks.statut || "absente"}) : réessayez.`, compte);
+  }
+
+  return {
+    ok: true,
+    message: [
+      `Clé valide${compte ? `, compte ${compte}` : ""} (${live ? "compte réel" : "mode test"}).`,
+      ...remarques,
+    ].join(" "),
+    compte,
+  };
+}
+
+/**
+ * Les identifiants PayPal d'une colonne sont-ils bons ? Un jeton OAuth
+ * demandé du côté de la colonne (bac à sable ou réel), rien d'autre : aucun
+ * paiement n'est créé, et le jeton obtenu est jeté aussitôt.
+ *
+ * Refusés, on essaie l'autre côté, comme scripts/verifier-paypal.ts : la
+ * confusion la plus fréquente est d'avoir les bons identifiants dans la
+ * mauvaise colonne.
+ */
+export async function verifierPaypal(
+  jeu: { mode: Mode; clientId: string; clientIdNavigateur: string; secret: Secret },
+  opts: OptionsVerification = {},
+): Promise<VerdictCles> {
+  const f = opts.fetch ?? fetch;
+  const delai = opts.delaiMs ?? 10_000;
+  const auth = Buffer.from(`${jeu.clientId}:${jeu.secret.devoiler()}`).toString("base64");
+  const demander = (mode: Mode) =>
+    appeler(
+      f,
+      `${basePaypal(mode)}/v1/oauth2/token`,
+      {
+        method: "POST",
+        headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
+        body: "grant_type=client_credentials",
+      },
+      delai,
+    );
+  const live = jeu.mode === "live";
+  const cote = live ? "compte réel" : "bac à sable";
+
+  const r = await demander(jeu.mode);
+  if (r.statut === 0)
+    return { ok: false, message: `PayPal ne répond pas (${"panne" in r ? r.panne : "délai dépassé"}) : réessayez dans un instant.`, compte: null };
+  if (r.statut === 200) {
+    const appId = masquer((r.corps as { app_id?: unknown } | null)?.app_id ?? "");
+    if (jeu.clientIdNavigateur !== jeu.clientId)
+      return {
+        ok: false,
+        message: `Identifiants reconnus par PayPal (${cote}), mais PUBLIC_PAYPAL_CLIENT_ID diffère de PAYPAL_CLIENT_ID dans le .env : le navigateur chargerait PayPal avec une autre application. Mettez la même valeur, ou saisissez les identifiants ici.`,
+        compte: appId || null,
+      };
+    return {
+      ok: true,
+      message: `Identifiants reconnus par PayPal (${cote})${appId ? `, application ${appId}` : ""}.`,
+      compte: appId || null,
+    };
+  }
+  if (r.statut === 401 || r.statut === 400) {
+    const autre: Mode = live ? "test" : "live";
+    const r2 = await demander(autre);
+    if (r2.statut === 200)
+      return {
+        ok: false,
+        message: live
+          ? "Ces identifiants sont ceux du bac à sable : ils vont dans la colonne « Essai »."
+          : "Ces identifiants sont ceux du compte réel : ils vont dans la colonne « Pour de vrai ».",
+        compte: null,
+      };
+    return {
+      ok: false,
+      message: `PayPal ne reconnaît pas ces identifiants (${r.statut}), ni d'un côté ni de l'autre : une valeur tronquée à la copie, ou un secret régénéré depuis. Reprenez-les sur developer.paypal.com › Apps & Credentials.`,
+      compte: null,
+    };
+  }
+  return { ok: false, message: `PayPal a répondu ${r.statut} : réessayez dans un instant.`, compte: null };
 }

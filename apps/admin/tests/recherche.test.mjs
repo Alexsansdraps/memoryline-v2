@@ -635,3 +635,18 @@ test("« redirection », « 301 », « ancienne adresse » mènent à l'écran R
   assert.ok(INDEX.aide.some((x) => x.id === "redirections-shopify"));
   assert.ok(ids(chercher("redirection").aide).includes("aide:redirections-shopify"));
 });
+
+/* -------------------------------------------------------------------------- */
+/*  BO › Réglages › Paiements (clés Stripe et PayPal, passage en réel)        */
+/* -------------------------------------------------------------------------- */
+
+test("« paiements », « clés stripe », « passer en réel » mènent à l'écran Paiements", () => {
+  // Le serveur de dev ne relit pas le glob pour une page AJOUTÉE après son
+  // démarrage : ces essais, eux, lisent le disque, et disent que l'index
+  // d'un build neuf (la prod) la trouve.
+  for (const q of ["paiements", "clés stripe", "passer en réel"])
+    assert.equal(premier(q)?.id, "ecran:/paiements", q);
+  assert.equal(INDEX.ecrans.find((e) => e.route === "/paiements")?.dansLeMenu, true);
+  // Seuls, « stripe » et « paypal » mènent toujours à l'argent (les Finances).
+  for (const q of ["paypal", "stripe"]) assert.equal(premier(q)?.id, "ecran:/finances", q);
+});

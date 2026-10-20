@@ -549,6 +549,123 @@ export interface ReglagesFacture {
   mention: string | null;
 }
 
+/**
+ * Une case de l'écran Paiements, telle que l'API la décrit : JAMAIS sa
+ * valeur. « bo » : saisie ici (avec sa fin) ; « env » : renseignée dans le
+ * .env du serveur (sans rien d'elle) ; « a_ressaisir » : la clé de
+ * chiffrement du serveur a changé depuis l'enregistrement.
+ */
+export interface CasePaiement {
+  champ: string;
+  libelle: string;
+  etat: "vide" | "bo" | "env" | "a_ressaisir";
+  le: string | null;
+  par: string | null;
+  fin: string | null;
+  /** L'effacer retirerait le prestataire de la caisse : confirmation exigée. */
+  effacementRetire: boolean;
+  /**
+   * Ce que l'effacer changerait à la caisse : « retire » (le prestataire
+   * n'y est plus proposé), « serveur » (elle reprend les clés des réglages du
+   * serveur), null (rien : la case ne sert pas au jeu en service).
+   */
+  apresEffacement: "retire" | "serveur" | null;
+}
+
+/** Une colonne (essai ou pour de vrai) d'un prestataire. */
+export interface ColonnePaiement {
+  champs: CasePaiement[];
+  /** Ce qui sert vraiment dans ce mode. */
+  source: "bo" | "env" | "incomplet_env" | "incomplet" | "aucune";
+  /** Ce jeu sert-il en ce moment aux nouveaux paiements ? */
+  actif: boolean;
+  /** Colonne live complète, en attente d'une vérification réussie pour servir. */
+  enAttente: boolean;
+  verifiable: boolean;
+  /** Ce que « Vérifier » essaierait : les clés saisies ici, celles du serveur, ou rien. */
+  verifieQuoi: "bo" | "env" | null;
+  /** Colonne entamée ici : ce qui manque pour la vérifier (« la clé publique »). */
+  manque: string[];
+  verification: {
+    ok: boolean;
+    message: string;
+    compte: string | null;
+    /** D'où venaient les clés vérifiées. */
+    source: "bo" | "env" | null;
+    le: string;
+    par: string | null;
+    /** Faux si une valeur a changé depuis : à refaire. */
+    aJour: boolean;
+  } | null;
+}
+
+/** L'écran BO › Réglages › Paiements (apps/api/src/paiements-reglages.ts). */
+export interface EtatPaiements {
+  resume: string;
+  ton: "essai" | "reel" | "mixte" | "aucun";
+  /** Ce que dit l'interrupteur ; « env » : jamais touché, le .env décide. */
+  choisi: "essai" | "reel" | "env";
+  actif: {
+    stripe: { mode: "test" | "live"; source: "bo" | "env" } | null;
+    paypal: { mode: "test" | "live"; source: "bo" | "env" } | null;
+  };
+  chiffrement: {
+    possible: boolean;
+    source: "APP_SECRET" | "DATABASE_URL" | null;
+    /** La colonne « Pour de vrai » est-elle ouverte (APP_SECRET longue) ? */
+    live: boolean;
+    /** Sinon, pourquoi, et quoi faire. */
+    raisonLive: string | null;
+  };
+  bascule: { possible: boolean; raisons: string[] };
+  stripe: { test: ColonnePaiement; live: ColonnePaiement };
+  paypal: { test: ColonnePaiement; live: ColonnePaiement };
+  /** Le compte Stripe live reconnu à la dernière vérification réussie. */
+  compteStripeLive: string | null;
+  webhook: {
+    adresse: string;
+    local: boolean;
+    evenement: string;
+    derniersAvis: { test: string | null; live: string | null };
+    /** Le dernier avis refusé : signé avec le secret d'un mode, il se disait de l'autre. */
+    avisRefuse: { le: string; secret: "test" | "live"; avis: "test" | "live" } | null;
+  };
+  etiquettes: {
+    reelles: boolean;
+    source: "bo" | "env";
+    configure: boolean;
+    /** Ce que diraient les réglages du serveur (SENDCLOUD_ACHATS_REELS). */
+    serveur: boolean;
+  };
+  journal: {
+    id: number;
+    le: string;
+    par: string | null;
+    action: string;
+    prestataire: string | null;
+    mode: string | null;
+    champ: string | null;
+    valeur: string | null;
+    /** Une clé enregistrée à la place d'une autre. */
+    remplace: boolean;
+    message: string | null;
+  }[];
+}
+
+/** Ce qu'une écriture de l'écran Paiements répond : une phrase, jamais une valeur. */
+export interface ReponsePaiements {
+  ok: boolean;
+  code?: string;
+  message: string;
+  verification?: {
+    ok: boolean;
+    message: string;
+    compte: string | null;
+    le: string;
+    source?: "bo" | "env";
+  } | null;
+}
+
 /** Où partent les courriers de la boutique en ce moment. */
 export interface EtatCourriers {
   configure: boolean;
@@ -911,6 +1028,8 @@ export interface OrderRow {
   rembourseCents?: number;
   statutFinancier?: StatutFinancier;
   statutExpedition?: StatutExpedition;
+  /** Payée avec les clés d'ESSAI alors que la boutique encaisse pour de vrai. */
+  payeeEnEssai?: boolean;
   tags?: string[] | null;
   shippingLabel?: string | null;
   /** La description du mode le jour de la commande (« livré avant 13 h »). */
@@ -1200,7 +1319,14 @@ export interface OrderDetail {
     status: string | null;
     externalRef: string | null;
     amountCents: number;
+    /** « test » ou « live » : les clés avec lesquelles ce paiement a été ouvert. */
+    mode?: string | null;
   }[];
+  /**
+   * Payée avec les clés d'ESSAI de ce prestataire alors que la boutique
+   * encaisse pour de vrai : aucun argent n'est arrivé.
+   */
+  payeeEnEssai?: "stripe" | "paypal" | null;
   /** Journal de la commande, du plus récent au plus ancien. */
   journal?: {
     id: number;
@@ -2476,6 +2602,28 @@ export function adminApi(request?: Request) {
         data,
         cookie,
       ),
+    /**
+     * L'écran Paiements (paiements-reglages.ts) : l'état, sans aucune valeur.
+     * Les écritures répondent une phrase ; un refus lève une erreur dont le
+     * message vient de l'API, en français, et ne contient jamais la valeur.
+     */
+    paiements: () => req<EtatPaiements>("GET", "/admin/paiements", undefined, cookie),
+    enregistrerClePaiement: (data: { prestataire: string; mode: string; champ: string; valeur: string }) =>
+      req<ReponsePaiements>("POST", "/admin/paiements/cle", data, cookie),
+    archiverClePaiement: (data: { prestataire: string; mode: string; champ: string; confirme?: boolean }) =>
+      req<ReponsePaiements>("POST", "/admin/paiements/archiver", data, cookie),
+    verifierPaiement: (data: { prestataire: string; mode: string }) =>
+      req<ReponsePaiements & { compte: string | null; le: string }>(
+        "POST",
+        "/admin/paiements/verifier",
+        data,
+        cookie,
+      ),
+    modePaiement: (data: { mode: "essai" | "reel" | "env"; confirme?: boolean }) =>
+      req<ReponsePaiements>("POST", "/admin/paiements/mode", data, cookie),
+    /** `reelles: "env"` rend la main aux réglages du serveur (SENDCLOUD_ACHATS_REELS). */
+    etiquettesReelles: (data: { reelles: boolean | "env"; confirme?: boolean }) =>
+      req<ReponsePaiements>("POST", "/admin/paiements/etiquettes", data, cookie),
     /** Une ligne de grille : un prix pour un mode, une zone, une tranche. */
     upsertShippingRate: (data: {
       id?: number;

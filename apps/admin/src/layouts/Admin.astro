@@ -2,6 +2,7 @@
 import "../styles/admin.css";
 import { url, relPath, apiUrl } from "../lib/url.ts";
 import { MENU, type NavItem } from "../lib/menu.ts";
+import { modeEssai, HORS_ESSAI } from "../lib/mode-essai.ts";
 interface Props {
   title: string;
 }
@@ -46,6 +47,24 @@ const avecGroupes = nombreEntrees > 1;
 /** Une entrée est active sur sa page — l'accueil seulement à l'identique. */
 const isActive = (href: string) =>
   href === "/" ? path === "/" : path === href || path.startsWith(href + "/");
+
+/*
+ * Le mode de la caisse, sur CHAQUE page de la propriétaire : « Mode essai »
+ * ou « Paiements réels ». L'interrupteur vit dans Réglages › Paiements et se
+ * bascule à tout moment ; sans ce badge, rien ne dirait, en préparant une
+ * commande, que la boutique encaisse pour de faux — ou pour de vrai.
+ *
+ * Gardé une minute par lib/mode-essai.ts (et oublié aussitôt après une
+ * bascule par l'écran Paiements) : il ne coûte pas un appel par page. Si
+ * l'API ne répond pas, on ne sait pas : pas de badge plutôt qu'un faux.
+ */
+const etatCaisse = isOwner ? await modeEssai(Astro.request) : HORS_ESSAI;
+const badgeCaisse =
+  !isOwner || etatCaisse === HORS_ESSAI
+    ? null
+    : etatCaisse.paiement
+      ? { texte: "🧪 Mode essai", titre: etatCaisse.resume ?? "La boutique encaisse pour de faux.", classe: "border-amber-300 bg-amber-50 text-amber-900" }
+      : { texte: "✅ Paiements réels", titre: etatCaisse.resume ?? "La boutique encaisse pour de vrai.", classe: "border-green-300 bg-green-50 text-green-700" };
 ---
 
 <!doctype html>
@@ -355,6 +374,17 @@ const isActive = (href: string) =>
             )
           }
           <div class="ml-auto flex shrink-0 items-center gap-3 text-sm text-bo-muted">
+            {
+              badgeCaisse && (
+                <a
+                  href={url("/paiements")}
+                  title={`${badgeCaisse.titre} Cliquez pour changer de mode.`}
+                  class={`whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold no-underline ${badgeCaisse.classe}`}
+                >
+                  {badgeCaisse.texte}
+                </a>
+              )
+            }
             {/* Clair / sombre / système. Le choix vit dans le navigateur :
                 l'écran de la boutique et celui du salon n'ont pas la même
                 lumière, il n'y a pas de bon réglage partagé. */}
@@ -387,7 +417,7 @@ const isActive = (href: string) =>
                   data-theme-choix="systeme"
                   class="block w-full px-3 py-1.5 text-left hover:bg-bo-bg"
                 >
-                  ◐ Comme le système
+                  ◐ Système
                 </button>
               </div>
             </details>

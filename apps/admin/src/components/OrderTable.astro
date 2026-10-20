@@ -507,6 +507,16 @@ const filtreActif =
                   <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
                   {p.texte}
                 </span>
+                {/* Payée avec les clés d'essai alors que la boutique encaisse
+                    pour de vrai : sans ce mot, elle passe pour une vente. */}
+                {o.payeeEnEssai && (
+                  <span
+                    class="mt-1 block w-fit rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900"
+                    title="Payée avec les clés d'essai (Stripe test ou PayPal sandbox) : aucun argent reçu."
+                  >
+                    En ESSAI
+                  </span>
+                )}
               </td>
               <td class="px-4 py-2 align-top">
                 {/* Un clic bascule : c'est l'action du matin quand on prépare

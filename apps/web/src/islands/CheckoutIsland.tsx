@@ -65,6 +65,9 @@ const ERREURS_PAR_CODE: Record<string, CleUi> = {
   panier_vide: "panier.vide",
   panier_modifie: "commande.err.panier_modifie",
   lieu_retrait_requis: "commande.err.lieu_retrait_requis",
+  // La boutique a basculé entre l'essai et le réel pendant la commande : la
+  // caisse relit ses moyens de paiement, la cliente choisit de nouveau.
+  paiement_reconfigure: "commande.err.paiement_reconfigure",
 };
 
 /**
@@ -110,8 +113,15 @@ import { decouperNom as decouper } from "../lib/compte.ts";
  * encaissement, côté serveur (webhook / confirm Stripe, capture PayPal).
  *
  * Les moyens réellement actifs + leurs clés PUBLIQUES viennent de
- * GET /payments/config (l'API lit le .env). Si aucun n'est configuré, on le
- * signale clairement au lieu de laisser un bouton mort.
+ * GET /payments/config (l'API lit les clés de BO › Réglages › Paiements,
+ * sinon le .env). Si aucun n'est configuré, on le signale clairement au lieu
+ * de laisser un bouton mort.
+ *
+ * La boutique peut basculer entre l'essai et le réel pendant qu'une cliente
+ * est ici. Stripe.js se charge donc avec la clé publique que renvoie
+ * l'intention de paiement (et non avec celle lue à l'ouverture), et PayPal
+ * envoie le client-id de ses boutons : si ce n'est plus le bon, l'API le dit
+ * (paiement_reconfigure) et la caisse relit ses moyens de paiement.
  */
 
 type Method = "stripe" | "paypal";
@@ -158,6 +168,19 @@ function loadPaypalSdk(
     document.head.appendChild(s);
   });
   return paypalSdk;
+}
+
+/**
+ * Oublie le SDK PayPal chargé : il porte le client-id d'un côté de PayPal
+ * (bac à sable ou réel), et la boutique vient d'en changer. Le prochain
+ * affichage des boutons le recharge avec le bon.
+ */
+function oublierSdkPaypal(): void {
+  paypalSdk = null;
+  document
+    .querySelectorAll('script[src^="https://www.paypal.com/sdk/js"]')
+    .forEach((s) => s.remove());
+  window.paypal = undefined;
 }
 
 /** Une adresse du carnet, telle que la page la transmet. */
@@ -283,8 +306,11 @@ export default function CheckoutIsland(props: {
   const [orderNumber, setOrderNumber] = createSignal<string | null>(null);
   const [orderId, setOrderId] = createSignal<number | null>(null);
 
-  // Config paiement (moyens actifs + clés publiques).
-  const [config] = createResource(async () => browserApi.paymentsConfig());
+  // Config paiement (moyens actifs + clés publiques). Relue quand la
+  // boutique a changé de clés pendant la commande (paiement_reconfigure).
+  const [config, { refetch: relireConfig }] = createResource(async () =>
+    browserApi.paymentsConfig(),
+  );
   /**
    * Des cadres que le site ne propose plus ont quitté le panier à l'ouverture
    * de la caisse. On y arrive aussi sans passer par le panier — le lien d'un
@@ -957,8 +983,15 @@ export default function CheckoutIsland(props: {
               createOrder: async () => {
                 const oid = orderId();
                 if (oid == null) throw new Error("Commande manquante");
-                const { paypalOrderId } = await browserApi.paypalOrder(oid);
-                return paypalOrderId;
+                try {
+                  // Le client-id de CES boutons : l'API vérifie que c'est
+                  // toujours celui de la boutique.
+                  const { paypalOrderId } = await browserApi.paypalOrder(oid, cfg.clientId);
+                  return paypalOrderId;
+                } catch (e) {
+                  if (String(e).includes("paiement_reconfigure")) moyensReconfigures();
+                  throw e;
+                }
               },
               onApprove: async (data) => {
                 const oid = orderId();
@@ -1038,14 +1071,22 @@ export default function CheckoutIsland(props: {
 
       if (method() === "stripe") {
         const cfg = config()?.stripe;
+        // L'intention D'ABORD : elle rend la clé publique des clés qui l'ont
+        // créée. Charger Stripe.js avec celle lue à l'ouverture de la caisse
+        // mariait, après une bascule entre l'essai et le réel, une clé d'un
+        // mode à une intention de l'autre — et la carte était refusée.
+        const { clientSecret, publicKey } = await browserApi.stripeIntent(order.orderId);
+        const cle = publicKey || cfg?.publicKey || "";
+        // La boutique a changé de clés depuis l'ouverture : l'encadré « mode
+        // essai » et les moyens proposés se relisent.
+        if (cfg && publicKey && publicKey !== cfg.publicKey) void relireConfig();
         // Stripe.js qui ne se charge pas (réseau, bloqueur) : la carte est
         // indisponible pour l'instant, la commande attend d'être payée.
-        stripe = cfg ? await loadStripe(cfg.publicKey).catch(() => null) : null;
+        stripe = cle ? await loadStripe(cle).catch(() => null) : null;
         if (!stripe) {
           setError(tr("commande.err.carte_indisponible"));
           return;
         }
-        const { clientSecret } = await browserApi.stripeIntent(order.orderId);
         setStripeClientSecret(clientSecret);
       }
       // PayPal : les boutons se rendent via l'effet une fois en phase "pay".
@@ -1084,6 +1125,22 @@ export default function CheckoutIsland(props: {
     if (paypalMountRef) paypalMountRef.innerHTML = "";
     setPhase("details");
     setError(null);
+  }
+
+  /**
+   * La boutique a changé de clés de paiement pendant la commande (bascule
+   * entre l'essai et le réel). On repart de la saisie, sans moyen choisi,
+   * avec la configuration relue et le SDK PayPal oublié. Après la main : le
+   * SDK PayPal termine d'abord son propre refus.
+   */
+  function moyensReconfigures() {
+    setTimeout(() => {
+      oublierSdkPaypal();
+      backToDetails();
+      setMethod(null);
+      setError(tr("commande.err.paiement_reconfigure"));
+      void relireConfig();
+    }, 0);
   }
 
   /** Confirmation Stripe (carte). */

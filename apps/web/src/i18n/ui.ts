@@ -644,6 +644,8 @@ export const ui = {
       "Le paiement par carte est indisponible pour le moment. Réessayez dans quelques instants.",
     "commande.err.paypal_indisponible":
       "PayPal n'a pas pu se charger. Réessayez, ou payez par carte.",
+    "commande.err.paiement_reconfigure":
+      "Les moyens de paiement de la boutique viennent de changer. Choisissez de nouveau votre moyen de paiement : rien n'a été débité.",
     "commande.err.paypal_ouverture":
       "Le paiement par PayPal n'a pas pu être ouvert. Essayez la carte bancaire, ou revenez dans quelques minutes.",
     "commande.err.compte_requis":
@@ -1247,11 +1249,11 @@ export const ui = {
     "cfg.ligne_n": "Line {n}",
     "cfg.personnaliser_perso": "Customise this character",
     "cfg.police.serif": "Classic",
-    "cfg.police.shabby": "Handwritten",
-    "cfg.couleur.blanc": "White",
     // Pas « Bold » : en typographie anglaise, c'est une graisse, et la
     // pastille se lirait « Classic en gras » au lieu d'une autre police.
     "cfg.police.abril": "Striking",
+    "cfg.police.shabby": "Handwritten",
+    "cfg.couleur.blanc": "White",
     "cfg.couleur.anthracite": "Charcoal grey",
     "commande.modifier_panier": "Edit basket",
     "commande.merci_titre": "Thank you!",
@@ -1304,6 +1306,8 @@ export const ui = {
       "Card payment is unavailable right now. Please try again in a moment.",
     "commande.err.paypal_indisponible":
       "PayPal could not be loaded. Please try again, or pay by card.",
+    "commande.err.paiement_reconfigure":
+      "The shop's payment methods have just changed. Please choose your payment method again: nothing has been charged.",
     "commande.err.paypal_ouverture":
       "The PayPal payment could not be opened. Try paying by card, or come back in a few minutes.",
     "commande.err.compte_requis":
@@ -1910,13 +1914,13 @@ export const ui = {
     "cfg.ligne_n": "Zeile {n}",
     "cfg.personnaliser_perso": "Diese Figur gestalten",
     "cfg.police.serif": "Klassisch",
+    // Pas « Kräftig » : c'est aussi un nom de graisse allemand (Futura
+    // Kräftig), la pastille se lirait « Klassisch, en plus gras ».
+    "cfg.police.abril": "Markant",
     "cfg.police.shabby": "Handschrift",
     "cfg.couleur.blanc": "Weiß",
     "cfg.couleur.anthracite": "Anthrazitgrau",
     "commande.modifier_panier": "Warenkorb bearbeiten",
-    // Pas « Kräftig » : c'est aussi un nom de graisse allemand (Futura
-    // Kräftig), la pastille se lirait « Klassisch, en plus gras ».
-    "cfg.police.abril": "Markant",
     "commande.merci_titre": "Vielen Dank!",
     "commande.merci_texte": "Ihre Zahlung ist eingegangen und Ihre Bestellung ist bestätigt.",
     "commande.numero": "Bestellnummer:",
@@ -1967,6 +1971,8 @@ export const ui = {
       "Die Kartenzahlung ist im Moment nicht verfügbar. Bitte versuchen Sie es gleich noch einmal.",
     "commande.err.paypal_indisponible":
       "PayPal konnte nicht geladen werden. Bitte versuchen Sie es erneut oder zahlen Sie mit Karte.",
+    "commande.err.paiement_reconfigure":
+      "Die Zahlungsarten des Shops haben sich gerade geändert. Bitte wählen Sie Ihre Zahlungsart erneut: Es wurde nichts abgebucht.",
     "commande.err.paypal_ouverture":
       "Die PayPal-Zahlung konnte nicht gestartet werden. Versuchen Sie es mit Karte oder kommen Sie in ein paar Minuten wieder.",
     "commande.err.compte_requis":
@@ -2568,13 +2574,13 @@ export const ui = {
     "cfg.ligne_n": "Riga {n}",
     "cfg.personnaliser_perso": "Personalizza questo personaggio",
     "cfg.police.serif": "Classico",
+    "cfg.police.abril": "Deciso",
     "cfg.police.shabby": "Scritto a mano",
     "cfg.couleur.blanc": "Bianco",
     "cfg.couleur.anthracite": "Grigio antracite",
     "commande.modifier_panier": "Modifica il carrello",
     "commande.merci_titre": "Grazie!",
     "commande.merci_texte": "Abbiamo ricevuto il tuo pagamento e il tuo ordine è confermato.",
-    "cfg.police.abril": "Deciso",
     "commande.numero": "Numero d'ordine:",
     "commande.coordonnees": "I tuoi dati",
     "commande.email_compte":
@@ -2623,6 +2629,8 @@ export const ui = {
       "Il pagamento con carta non è disponibile al momento. Riprova tra qualche istante.",
     "commande.err.paypal_indisponible":
       "Non è stato possibile caricare PayPal. Riprova, oppure paga con carta.",
+    "commande.err.paiement_reconfigure":
+      "I metodi di pagamento del negozio sono appena cambiati. Scegli di nuovo il metodo di pagamento: non è stato addebitato nulla.",
     "commande.err.paypal_ouverture":
       "Non è stato possibile avviare il pagamento con PayPal. Prova con la carta di credito, oppure torna tra qualche minuto.",
     "commande.err.compte_requis":
@@ -3225,6 +3233,7 @@ export const ui = {
     "cfg.ligne_n": "Línea {n}",
     "cfg.personnaliser_perso": "Personaliza este personaje",
     "cfg.police.serif": "Clásica",
+    "cfg.police.abril": "Marcada",
     "cfg.police.shabby": "Manuscrita",
     "cfg.couleur.blanc": "Blanco",
     "cfg.couleur.anthracite": "Gris antracita",
@@ -3233,7 +3242,6 @@ export const ui = {
     "commande.merci_texte": "Hemos recibido tu pago y tu pedido está confirmado.",
     "commande.numero": "Número de pedido:",
     "commande.coordonnees": "Tus datos",
-    "cfg.police.abril": "Marcada",
     "commande.email_compte":
       "Es la dirección de correo de tu cuenta. Para cambiarla, ve a «Mis datos».",
     "commande.email_invalide": "Dirección de correo no válida.",
@@ -3280,6 +3288,8 @@ export const ui = {
       "El pago con tarjeta no está disponible en este momento. Inténtalo de nuevo en unos instantes.",
     "commande.err.paypal_indisponible":
       "No se ha podido cargar PayPal. Inténtalo de nuevo o paga con tarjeta.",
+    "commande.err.paiement_reconfigure":
+      "Los métodos de pago de la tienda acaban de cambiar. Vuelve a elegir tu método de pago: no se ha cobrado nada.",
     "commande.err.paypal_ouverture":
       "No se ha podido abrir el pago con PayPal. Prueba con la tarjeta bancaria o vuelve dentro de unos minutos.",
     "commande.err.compte_requis":

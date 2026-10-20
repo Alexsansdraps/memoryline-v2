@@ -10,21 +10,28 @@
  * savait rien : son aide expliquait comment passer une commande test sur la
  * vraie boutique.
  *
- * Une seule réponse, ici, lue dans la configuration du serveur (jamais dans
- * un fichier) :
+ * Une seule réponse, ici, lue dans la configuration EFFECTIVE du serveur —
+ * les clés saisies dans BO › Réglages › Paiements, sinon le .env (voir
+ * paiements-reglages.ts) :
  *   - paiement : un moyen BRANCHÉ en mode test. Stripe avec une clé publique
  *     « pk_test… », ou PayPal configuré hors « live ». Un moyen absent ne
  *     compte pas : il n'encaisse rien, ni pour de faux ni pour de vrai ;
  *   - courriers : la boîte d'essai (Mailpit) attrape tout (mail.ts) ;
- *   - colis : SendCloud branché, achats réels non allumés (sendcloud-colis.ts).
+ *   - colis : SendCloud branché, achats réels non allumés (l'interrupteur des
+ *     étiquettes de l'écran Paiements, sinon SENDCLOUD_ACHATS_REELS).
  * `essai` résume : paiements ou courriers pour de faux, c'est un site de test.
  * Les colis n'y entrent pas : SendCloud reste en essai tant qu'on n'a pas
  * décidé d'acheter de vraies étiquettes, même sur la vraie boutique.
+ *
+ * L'état suit l'interrupteur SANS redémarrage : il se relit à chaque appel
+ * (la configuration de paiement a son propre petit cache, vidé à chaque
+ * modification de l'écran).
  */
 import type { Hono } from "hono";
 import { estEnEssai } from "./mail.js";
-import { paypalConfigured, stripeConfigured } from "./payments.js";
-import { colisConfigure, modeEssai } from "./sendcloud-colis.js";
+import { configPaiement } from "./paiements-reglages.js";
+import { phraseEtat, type ConfigEffective } from "./paiements-cles.js";
+import { colisConfigure } from "./sendcloud-colis.js";
 
 export interface EtatEssai {
   /** Un moyen de paiement branché encaisse pour de faux. */
@@ -75,34 +82,43 @@ export function etatEssaiDepuis(
   };
 }
 
-/** L'état de CE serveur, relu à chaque appel (rien n'est mis en cache ici). */
-export function etatEssai(): EtatEssai {
-  const paypalClientId =
-    process.env.PUBLIC_PAYPAL_CLIENT_ID ?? process.env.PAYPAL_CLIENT_ID ?? "";
-  return etatEssaiDepuis(
+/**
+ * L'état de CE serveur, sur la configuration de paiement effective (lue si
+ * elle n'est pas fournie). `resume` est la phrase de tête de l'écran
+ * Paiements, que l'accueil du back-office reprend.
+ */
+export async function etatEssai(
+  fournie?: ConfigEffective,
+): Promise<EtatEssai & { resume: string }> {
+  const config = fournie ?? (await configPaiement());
+  const colis = colisConfigure();
+  const etat = etatEssaiDepuis(
     {
-      stripePublicKey: process.env.PUBLIC_STRIPE_KEY ?? "",
-      paypalEnv: process.env.PAYPAL_ENV ?? "",
+      // Les clés du jeu ACTIF, celui que la caisse utilise : sans rien au
+      // back-office, ce sont exactement celles du .env, comme avant.
+      stripePublicKey: config.stripe?.clePublique ?? "",
+      paypalEnv: config.paypal?.mode === "live" ? "live" : "sandbox",
     },
     {
       // « Branché » au sens de la caisse (/payments/config) : les clés du
       // serveur ET celle du navigateur. Un moyen à moitié réglé n'est pas
       // proposé à la cliente, il ne peut donc pas la tromper.
-      stripe: stripeConfigured,
-      paypal: paypalConfigured && paypalClientId.length > 0,
+      stripe: Boolean(config.stripe),
+      paypal: Boolean(config.paypal && config.paypal.clientIdNavigateur.length > 0),
       courriersEnEssai: estEnEssai(),
-      colisEnEssai: colisConfigure() && modeEssai(),
+      colisEnEssai: colis && !config.etiquettesReelles,
     },
   );
+  return { ...etat, resume: phraseEtat(config, colis).texte };
 }
 
 /**
- * GET /admin/mode-essai → EtatEssai.
+ * GET /admin/mode-essai → EtatEssai, avec la phrase d'état (`resume`).
  *
  * Sous /admin/* : réservée à la propriétaire par la garde du back-office. Le
  * back-office s'en sert pour n'afficher l'aide des essais, et la marche à
  * suivre pour en sortir, que sur un site d'essai.
  */
 export function mountModeEssai(app: Hono): void {
-  app.get("/admin/mode-essai", (c) => c.json(etatEssai()));
+  app.get("/admin/mode-essai", async (c) => c.json(await etatEssai()));
 }

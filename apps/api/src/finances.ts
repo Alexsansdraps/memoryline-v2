@@ -44,6 +44,8 @@ import {
 import { reglesActives, TYPES_REGLE_APPLIQUES } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { HORS_VENTES } from "./statuts-vente.js";
+// Le mode où la boutique encaisse, pour signaler les ventes payées en essai.
+import { configPaiement, payeeEnEssai } from "./paiements-reglages.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Bornes de la période                                                      */
@@ -255,6 +257,13 @@ export interface Finances {
     utiliseesCents: number;
     soldeCents: number;
   };
+  /**
+   * Les ventes de la période payées avec les clés d'ESSAI (Stripe test,
+   * PayPal sandbox) alors que la boutique encaisse désormais pour de vrai.
+   * Elles restent comptées partout ailleurs, comme des ventes : la page les
+   * signale, parce qu'aucun argent n'en est jamais arrivé.
+   */
+  essai: { cents: number; nombre: number; commandes: { id: number; numero: string }[] };
 }
 
 /**
@@ -300,7 +309,8 @@ function libelleCanal(canal: string): string {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Tout ce que la page affiche, en neuf requêtes groupées.
+ * Tout ce que la page affiche, en neuf requêtes groupées (une dixième quand
+ * la boutique encaisse pour de vrai : les ventes payées en essai).
  *
  * Aucune n'est faite commande par commande : chacune part de sa table et
  * rejoint les commandes de la période, si bien que le nombre de requêtes ne
@@ -779,6 +789,32 @@ async function rapprocher(periode: Periode): Promise<Finances> {
 
   const utiliseesCents = Math.abs(cartesDepensees[0]?.cents ?? 0);
 
+  // 10. Les ventes payées en ESSAI. Lu seulement quand un prestataire encaisse
+  //     pour de vrai : en essai, toutes le sont, et le dire n'apprend rien.
+  const config = await configPaiement();
+  const essai: Finances["essai"] = { cents: 0, nombre: 0, commandes: [] };
+  if (config.modeVoulu.stripe === "live" || config.modeVoulu.paypal === "live") {
+    const lignesPaiement = await db
+      .select({
+        orderId: schema.payments.orderId,
+        provider: schema.payments.provider,
+        status: schema.payments.status,
+        mode: schema.payments.mode,
+        cents: schema.payments.amountCents,
+      })
+      .from(schema.payments)
+      .innerJoin(schema.orders, eq(schema.payments.orderId, schema.orders.id))
+      .where(and(ventesDeLaPeriode(), eq(schema.payments.status, "succeeded")));
+    for (const l of lignesPaiement) {
+      if (!payeeEnEssai([l], config)) continue;
+      essai.cents += l.cents ?? 0;
+      if (essai.commandes.some((x) => x.id === l.orderId)) continue;
+      const cmd = commandeParId.get(l.orderId);
+      if (cmd) essai.commandes.push({ id: cmd.id, numero: cmd.numero });
+    }
+    essai.nombre = essai.commandes.length;
+  }
+
   return {
     periode: { du: periode.du, au: periode.au },
     sources: {
@@ -800,6 +836,7 @@ async function rapprocher(periode: Periode): Promise<Finances> {
       utiliseesCents,
       soldeCents: cartesEnCirculation[0]?.cents ?? 0,
     },
+    essai,
   };
 }
 

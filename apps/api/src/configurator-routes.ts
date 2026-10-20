@@ -112,11 +112,27 @@ import {
   RefusPaypal,
   createStripeIntent,
   getStripeIntent,
-  paypalConfigured,
-  stripeConfigured,
   verifyStripeEvent,
+  avisIncoherent,
+  avisAutreModeRecevable,
 } from "./payments.js";
 import { etatEssai } from "./mode-essai.js";
+// Les clés qui servent : celles du back-office (BO › Réglages › Paiements),
+// sinon celles du .env. Relues à chaque requête, avec un petit cache que
+// chaque modification vide : changer de clé ne demande plus de redémarrer.
+import {
+  configPaiement,
+  modeDuPaiement,
+  noterAvisIncoherent,
+  noterAvisStripe,
+  payeeEnEssai,
+} from "./paiements-reglages.js";
+import {
+  configPublique,
+  nomDuMode,
+  type ConfigEffective,
+  type Mode,
+} from "./paiements-cles.js";
 import { commandeVisible, type CommandeABorner } from "./vendeurs.js";
 import { lieuDeRetrait, lieuPourLaCommande, lignesDuLieu } from "./lieux-retrait.js";
 import { libererAdresse } from "./redirections.js";
@@ -1746,6 +1762,35 @@ async function previenirDuPaiement(orderId: number): Promise<void> {
   }
 }
 
+/**
+ * Un paiement ouvert avec les clés d'ESSAI vient d'aboutir, alors que la
+ * boutique encaisse désormais pour de vrai.
+ *
+ * C'est la suite d'une bascule (BO › Réglages › Paiements) pendant qu'une
+ * cliente était à la caisse : la commande passe « payée », comme tout
+ * paiement abouti, mais aucun argent n'est arrivé. Sans ce mot au journal de
+ * la commande, elle partirait à l'atelier puis chez la cliente comme une
+ * vente. Rien n'est bloqué : c'est peut-être une commande d'essai voulue.
+ */
+async function signalerPayeeEnEssai(
+  orderId: number,
+  prestataire: "stripe" | "paypal",
+  modePaiement: Mode,
+  config: ConfigEffective,
+): Promise<void> {
+  if (modePaiement !== "test" || config.modeVoulu[prestataire] !== "live") return;
+  const nom = prestataire === "stripe" ? "Stripe" : "PayPal";
+  console.warn(`[paiement] commande ${orderId} payée en ESSAI (${nom} ${nomDuMode(prestataire, "test")}) alors que la boutique est en réel`);
+  await db.insert(schema.orderEvents).values({
+    orderId,
+    kind: "event",
+    message:
+      `Payée en ESSAI (${nom} ${nomDuMode(prestataire, "test")}) : aucun argent reçu. ` +
+      `Ce paiement a été ouvert avec les clés d'essai, juste avant le passage de la boutique en réel. ` +
+      `Ne pas expédier sans vérifier.`,
+  });
+}
+
 // --- Montage des routes -------------------------------------------------------
 
 /**
@@ -2722,13 +2767,16 @@ export function mountConfiguratorRoutes(app: Hono) {
    * Config paiement exposée au NAVIGATEUR : quels moyens sont réellement
    * activés + les clés PUBLIQUES nécessaires côté client (clé publiable Stripe,
    * client-id PayPal). Évite d'avoir à câbler des PUBLIC_* dans le conteneur
-   * web : l'API (qui lit le .env racine) est la source de vérité.
+   * web : l'API est la source de vérité — les clés saisies dans BO ›
+   * Réglages › Paiements, sinon celles du .env.
    * Un moyen n'est "prêt" que si SES clés serveur ET publique sont présentes.
+   *
+   * RIEN D'AUTRE que ces clés publiques ne part d'ici (configPublique), et la
+   * réponse n'est gardée par aucun cache : après une bascule, la caisse
+   * suivante doit lire la nouvelle clé.
    */
-  app.get("/payments/config", (c) => {
-    const stripePublicKey = process.env.PUBLIC_STRIPE_KEY ?? "";
-    const paypalClientId =
-      process.env.PUBLIC_PAYPAL_CLIENT_ID ?? process.env.PAYPAL_CLIENT_ID ?? "";
+  app.get("/payments/config", async (c) => {
+    const config = await configPaiement();
     // La boutique tourne-t-elle en mode ESSAI ? Le tunnel s'en sert pour
     // rappeler quoi saisir : sans ce rappel, on cherche un numéro de carte
     // d'essai à chaque fois, et on finit par se demander si c'est la boutique
@@ -2736,16 +2784,10 @@ export function mountConfiguratorRoutes(app: Hono) {
     // BRANCHÉ compte. L'ancienne règle prenait PayPal absent pour du test, et
     // la vraie boutique, Stripe réel sans PayPal, aurait montré les cartes
     // d'essai à ses clientes.
-    const essai = etatEssai().paiement;
-    return c.json({
-      stripe:
-        stripeConfigured && stripePublicKey
-          ? { publicKey: stripePublicKey }
-          : null,
-      paypal:
-        paypalConfigured && paypalClientId ? { clientId: paypalClientId } : null,
-      essai,
-    });
+    const essai = (await etatEssai(config)).paiement;
+    const { stripe, paypal } = configPublique(config);
+    c.header("Cache-Control", "no-store");
+    return c.json({ stripe, paypal, essai });
   });
 
   /** Charge une commande à payer (existe, non déjà payée). */
@@ -2773,9 +2815,17 @@ export function mountConfiguratorRoutes(app: Hono) {
    * Crée un PaymentIntent Stripe pour la commande et renvoie son clientSecret
    * (le navigateur confirme le paiement avec Stripe.js). Le montant vient du
    * SERVEUR (order.totalCents), jamais du client.
+   *
+   * La clé PUBLIQUE repart avec : c'est avec elle, et non avec celle lue au
+   * chargement de la caisse, que le navigateur charge Stripe.js. Une bascule
+   * entre l'essai et le réel pendant que la cliente remplissait ses
+   * coordonnées ne peut donc plus marier une clé publique d'un mode à une
+   * intention de l'autre — le paiement échouait sans explication.
    */
   app.post("/payments/stripe/intent", async (c) => {
-    if (!stripeConfigured)
+    const config = await configPaiement();
+    const jeu = config.stripe;
+    if (!jeu)
       return c.json({ error: "Stripe non configuré" }, 503);
     const body = await c.req.json().catch(() => ({}));
     const order = await loadPayableOrder(Number(body.orderId));
@@ -2786,6 +2836,7 @@ export function mountConfiguratorRoutes(app: Hono) {
       return c.json({ error: PANIER_A_REVALIDER, code: "panier_modifie" }, 409);
     try {
       const intent = await createStripeIntent(
+        jeu,
         order.totalCents,
         order.id,
         order.number,
@@ -2796,8 +2847,11 @@ export function mountConfiguratorRoutes(app: Hono) {
         externalRef: intent.id,
         status: "pending",
         amountCents: order.totalCents,
+        // Le mode de CES clés : c'est avec elles que ce paiement se
+        // confirmera et se remboursera, même après une bascule.
+        mode: jeu.mode,
       });
-      return c.json({ clientSecret: intent.clientSecret });
+      return c.json({ clientSecret: intent.clientSecret, publicKey: jeu.clePublique });
     } catch (e) {
       console.error("Stripe intent:", e);
       return c.json({ error: "création du paiement impossible" }, 502);
@@ -2808,11 +2862,45 @@ export function mountConfiguratorRoutes(app: Hono) {
    * Webhook Stripe : source de vérité de l'encaissement. Vérifie la signature
    * sur le corps BRUT, et sur `payment_intent.succeeded` passe la commande en
    * payée + génère les PDF (idempotent).
+   *
+   * DEUX MODES, UNE RÈGLE. La signature est vérifiée avec tous les secrets
+   * connus (celui du mode actif, et l'autre) : un paiement ouvert juste avant
+   * une bascule ne se perd pas. Le MODE DE L'AVIS est celui du secret qui l'a
+   * signé, jamais ce que l'avis dit de lui-même : le `livemode` du corps est
+   * écrit par qui signe, et le secret de test suffisait à signer un avis
+   * « live ». Un avis qui se contredit est refusé (400, voir plus bas).
+   *
+   * Un avis de l'AUTRE mode que le mode actif n'est traité que s'il porte sur
+   * un paiement que NOUS avons ouvert dans ce mode-là, pour cette commande-là
+   * (ligne payment de même référence, de même mode et de même commande). Sans
+   * cette règle, une intention de test créée à la main avec un numéro de
+   * commande en metadata ferait passer une vraie commande « payée » — et les
+   * clés de test circulent bien plus facilement que les vraies.
    */
   app.post("/payments/stripe/webhook", async (c) => {
     const raw = await c.req.text();
-    const event = verifyStripeEvent(raw, c.req.header("stripe-signature"));
-    if (!event) return c.json({ error: "signature invalide" }, 400);
+    const config = await configPaiement();
+    const verifie = verifyStripeEvent(
+      raw,
+      c.req.header("stripe-signature"),
+      config.secretsWebhook,
+    );
+    if (!verifie) return c.json({ error: "signature invalide" }, 400);
+    const { event, modeSecret } = verifie;
+    if (avisIncoherent(verifie)) {
+      // Un faux, ou le secret du webhook live collé dans la colonne Essai
+      // (ou l'inverse). 400 plutôt que 200 : Stripe rejoue l'avis pendant
+      // trois jours et signale l'échec dans son tableau de bord. Une fois le
+      // secret remis dans la bonne colonne, l'avis rejoué passe ; un faux,
+      // lui, ne passera jamais. L'écran Paiements affiche le dernier refus.
+      noterAvisIncoherent(modeSecret, verifie.livemode ? "live" : "test");
+      console.warn(
+        `[webhook] avis Stripe refusé : signé avec un secret ${modeSecret}, il se dit ${verifie.livemode ? "live" : "test"} (type ${String(event.type).slice(0, 60)})`,
+      );
+      return c.json({ error: "avis incohérent avec son secret" }, 400);
+    }
+    const modeAvis: Mode = modeSecret;
+    noterAvisStripe(modeAvis);
     if (event.type === "payment_intent.succeeded") {
       const pi = event.data.object as {
         id: string;
@@ -2821,14 +2909,33 @@ export function mountConfiguratorRoutes(app: Hono) {
         metadata?: { orderId?: string };
       };
       const orderId = Number(pi.metadata?.orderId);
+      if (modeAvis !== config.modeVoulu.stripe) {
+        const [ligne] = await db
+          .select({ mode: schema.payments.mode, orderId: schema.payments.orderId })
+          .from(schema.payments)
+          .where(
+            and(
+              eq(schema.payments.provider, "stripe"),
+              eq(schema.payments.externalRef, String(pi.id ?? "")),
+            ),
+          );
+        const lue = ligne ? { mode: modeDuPaiement(ligne, "stripe", config), orderId: ligne.orderId } : null;
+        if (!avisAutreModeRecevable(modeAvis, lue, orderId)) {
+          console.warn(
+            `[webhook] avis Stripe ${modeAvis} ignoré : la boutique encaisse en ${config.modeVoulu.stripe}, et aucun paiement de ce mode ne porte la référence ${String(pi.id ?? "?").slice(0, 40)} pour la commande ${String(pi.metadata?.orderId ?? "?").slice(0, 20)}`,
+          );
+          return c.json({ received: true });
+        }
+      }
       if (Number.isFinite(orderId)) {
         try {
           // Le montant vient de l'événement signé : c'est ce que Stripe a
           // réellement pris, pas ce que la commande croyait demander.
-          await markOrderPaid(orderId, "stripe", pi.id, {
+          const payee = await markOrderPaid(orderId, "stripe", pi.id, {
             montantCents: Number(pi.amount_received ?? 0),
             devise: String(pi.currency ?? ""),
           });
+          if (payee) await signalerPayeeEnEssai(orderId, "stripe", modeAvis, config);
         } catch (e) {
           // Un écart est déjà écrit au journal de la commande. Répondre en
           // erreur ferait rejouer l'avis par Stripe pendant trois jours, pour
@@ -2847,7 +2954,8 @@ export function mountConfiguratorRoutes(app: Hono) {
    * SANS webhook (dev) et sert de filet si le webhook n'arrive pas.
    */
   app.post("/payments/stripe/confirm", async (c) => {
-    if (!stripeConfigured)
+    const config = await configPaiement();
+    if (!config.jeux.stripe.test && !config.jeux.stripe.live)
       return c.json({ error: "Stripe non configuré" }, 503);
     const body = await c.req.json().catch(() => ({}));
     const orderId = Number(body.orderId);
@@ -2863,13 +2971,19 @@ export function mountConfiguratorRoutes(app: Hono) {
       .orderBy(desc(schema.payments.id));
     if (!payment?.externalRef)
       return c.json({ error: "paiement introuvable" }, 404);
+    // Les clés du mode où CE paiement est né, pas celles du moment : Stripe
+    // ne connaît une intention que dans son mode.
+    const mode = modeDuPaiement(payment, "stripe", config);
+    const jeu = config.jeux.stripe[mode];
+    if (!jeu) return c.json({ error: "Stripe non configuré" }, 503);
     try {
-      const intent = await getStripeIntent(payment.externalRef);
+      const intent = await getStripeIntent(jeu, payment.externalRef);
       if (intent.status === "succeeded") {
-        await markOrderPaid(orderId, "stripe", payment.externalRef, {
+        const payee = await markOrderPaid(orderId, "stripe", payment.externalRef, {
           montantCents: intent.montantCents,
           devise: intent.devise,
         });
+        if (payee) await signalerPayeeEnEssai(orderId, "stripe", mode, config);
         return c.json({ status: "paid" });
       }
       return c.json({ status: intent.status }, 202);
@@ -2887,9 +3001,27 @@ export function mountConfiguratorRoutes(app: Hono) {
    * /payments/paypal/capture.
    */
   app.post("/payments/paypal/order", async (c) => {
-    if (!paypalConfigured)
+    const config = await configPaiement();
+    const jeu = config.paypal;
+    if (!jeu)
       return c.json({ error: "PayPal non configuré" }, 503);
     const body = await c.req.json().catch(() => ({}));
+    // Le client-id avec lequel le navigateur a chargé les boutons PayPal. Si
+    // la boutique a basculé entre l'essai et le réel depuis, la fenêtre
+    // PayPal parlerait à un autre côté que le serveur, et le paiement
+    // échouerait sur un refus incompréhensible : on le dit tout de suite, et
+    // la caisse relit sa configuration. Absent (une caisse d'avant ce
+    // contrôle, encore en cache), on ne refuse pas.
+    const charge = typeof body.clientId === "string" ? body.clientId : null;
+    if (charge !== null && charge !== jeu.clientIdNavigateur)
+      return c.json(
+        {
+          error:
+            "Les moyens de paiement de la boutique viennent de changer. Choisissez de nouveau votre moyen de paiement.",
+          code: "paiement_reconfigure",
+        },
+        409,
+      );
     const order = await loadPayableOrder(Number(body.orderId));
     if (!order) return c.json({ error: "commande introuvable" }, 404);
     if (order.status === "paid")
@@ -2898,6 +3030,7 @@ export function mountConfiguratorRoutes(app: Hono) {
       return c.json({ error: PANIER_A_REVALIDER, code: "panier_modifie" }, 409);
     try {
       const paypalOrderId = await createPaypalOrder(
+        jeu,
         order.totalCents,
         order.number,
       );
@@ -2907,6 +3040,8 @@ export function mountConfiguratorRoutes(app: Hono) {
         externalRef: paypalOrderId,
         status: "pending",
         amountCents: order.totalCents,
+        // La capture se fera avec les clés de ce mode-là (voir plus bas).
+        mode: jeu.mode,
       });
       return c.json({ paypalOrderId });
     } catch (e) {
@@ -2932,7 +3067,8 @@ export function mountConfiguratorRoutes(app: Hono) {
    * COMPLETED, la commande passe en payée + PDF (markOrderPaid).
    */
   app.post("/payments/paypal/capture", async (c) => {
-    if (!paypalConfigured)
+    const config = await configPaiement();
+    if (!config.jeux.paypal.test && !config.jeux.paypal.live)
       return c.json({ error: "PayPal non configuré" }, 503);
     const body = await c.req.json().catch(() => ({}));
     const orderId = Number(body.orderId);
@@ -2977,8 +3113,14 @@ export function mountConfiguratorRoutes(app: Hono) {
         return c.json({ error: PANIER_A_REVALIDER, code: "panier_modifie" }, 409);
     }
 
+    // Les clés du mode où CE paiement a été ouvert : une commande PayPal du
+    // bac à sable ne se capture pas avec les identifiants du compte réel.
+    const mode = modeDuPaiement(payment, "paypal", config);
+    const jeu = config.jeux.paypal[mode];
+    if (!jeu) return c.json({ error: "PayPal non configuré" }, 503);
+
     try {
-      const cap = await capturePaypalOrder(paypalOrderId);
+      const cap = await capturePaypalOrder(jeu, paypalOrderId);
       if (!cap.ok)
         return c.json({ error: "paiement non complété", status: cap.status }, 402);
       // L'identifiant de la CAPTURE, gardé tout de suite : c'est le seul que
@@ -2990,10 +3132,11 @@ export function mountConfiguratorRoutes(app: Hono) {
           .set({ captureRef: cap.captureId })
           .where(eq(schema.payments.id, payment.id));
       // Et APRÈS : c'est le montant réellement capturé qui décide.
-      await markOrderPaid(orderId, "paypal", paypalOrderId, {
+      const payee = await markOrderPaid(orderId, "paypal", paypalOrderId, {
         montantCents: cap.montantCents,
         devise: cap.devise,
       });
+      if (payee) await signalerPayeeEnEssai(orderId, "paypal", mode, config);
       return c.json({ status: "paid" });
     } catch (e) {
       if (e instanceof MontantEncaisseDifferent)
@@ -3089,6 +3232,10 @@ export function mountConfiguratorRoutes(app: Hono) {
       .select()
       .from(schema.payments)
       .where(eq(schema.payments.orderId, id));
+    // Payée avec les clés d'ESSAI alors que la boutique encaisse pour de
+    // vrai : aucun argent n'est arrivé, et rien d'autre sur la fiche ne le
+    // distinguerait d'une vraie vente (payment.mode n'était lu nulle part).
+    const essai = payeeEnEssai(paiements, await configPaiement());
 
     // Combien de commandes ce client a-t-il passées ? Une fiche client
     // minimale, mais c'est la question qu'on se pose en le lisant.
@@ -3183,6 +3330,7 @@ export function mountConfiguratorRoutes(app: Hono) {
       customer: customer ?? null,
       items: avecRestes,
       paiements,
+      payeeEnEssai: essai,
       journal,
       expeditions: expeditions.map((f) => ({
         ...f,

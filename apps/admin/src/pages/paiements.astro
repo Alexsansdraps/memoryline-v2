@@ -1,0 +1,774 @@
+---
+/**
+ * Paiements : les clés Stripe et PayPal, le passage de l'essai au réel, et
+ * l'achat des vraies étiquettes SendCloud.
+ *
+ * Passer la boutique en réel demandait d'éditer le .env du serveur — six
+ * variables, dont une qui l'emporte en silence sur une autre — puis de
+ * redémarrer. Ici, on saisit les clés, on les fait vérifier par le
+ * prestataire sans rien payer, et un interrupteur bascule Stripe ET PayPal
+ * d'un coup, après une confirmation qui dit ce que ça change. Le .env reste
+ * un repli : tant que rien n'est saisi ici, il décide, comme avant.
+ *
+ * L'écran dit « réglages du serveur » et non « .env » : c'est Margaux qui le
+ * lit, et le nom d'un fichier qu'elle n'ouvrira jamais ne lui apprend rien.
+ * Une ligne, en tête, fait le lien pour qui gère le serveur.
+ *
+ * LES CLÉS SONT EN ÉCRITURE SEULE. Une fois enregistrée, une clé ne se relit
+ * plus : la page n'en montre que la date et les 4 derniers caractères, et
+ * rien du tout de celles du .env. Les champs arrivent toujours vides ; ceux
+ * des secrets sont masqués pendant la saisie (un partage d'écran ne les
+ * montre pas) ; une saisie refusée n'est pas réaffichée ; chaque envoi est
+ * suivi d'une redirection (actualiser ne renvoie rien), et le message passe
+ * par un cookie de courte durée, jamais par l'adresse. Le déchiffrement se
+ * fait dans l'API (apps/api/src/paiements-reglages.ts), jamais ici.
+ *
+ * LE MESSAGE S'AFFICHE LÀ OÙ L'ON A CLIQUÉ. La redirection ramène à la
+ * colonne (ou à la section) de l'envoi, et le message est écrit juste sous
+ * son titre : affiché tout en haut, il restait hors de l'écran, et une clé
+ * refusée ne laissait voir qu'une case vidée.
+ *
+ * Réservé à la propriétaire : le middleware renvoie un vendeur à son stand,
+ * et l'API refuse de toute façon (403).
+ */
+import Admin from "../layouts/Admin.astro";
+import { url } from "../lib/url.ts";
+import {
+  adminApi,
+  type CasePaiement,
+  type ColonnePaiement,
+  type EtatPaiements,
+} from "../lib/api.ts";
+import { oublierModeEssai } from "../lib/mode-essai.ts";
+
+const api = adminApi(Astro.request);
+const CHEMIN = url("/paiements");
+const COOKIE = "ml_paiements_message";
+
+/** L'API refuse en français et dit pourquoi ; on retire seulement l'emballage. */
+function lisible(e: unknown): string {
+  return String(e instanceof Error ? e.message : e).replace(/^Error:\s*/, "");
+}
+
+/**
+ * Les ancres où un message peut s'afficher. Toute autre valeur, venue d'un
+ * formulaire bricolé, retombe sur la tête de page : rien de ce qui est saisi
+ * ne part tel quel dans l'en-tête Location.
+ */
+const ANCRES = new Set([
+  "tete",
+  "interrupteur",
+  "etiquettes",
+  "stripe-test",
+  "stripe-live",
+  "paypal-test",
+  "paypal-live",
+]);
+
+/*
+ * Enregistrer, puis rediriger. La valeur saisie ne sert qu'à l'appel à l'API
+ * et ne réapparaît nulle part : ni dans la page, ni dans l'adresse, ni dans
+ * le message (l'API ne la répète jamais).
+ */
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const action = String(f.get("action") ?? "");
+  const prestataire = String(f.get("prestataire") ?? "");
+  const mode = String(f.get("mode") ?? "");
+  const champ = String(f.get("champ") ?? "");
+  const confirme = f.get("confirme") === "oui";
+  let message = { texte: "", erreur: false };
+  // La colonne où l'on a cliqué : c'est là que le message s'affiche.
+  let ancre = `${prestataire}-${mode}`;
+  try {
+    if (action === "cle") {
+      const r = await api.enregistrerClePaiement({
+        prestataire,
+        mode,
+        champ,
+        valeur: String(f.get("valeur") ?? ""),
+      });
+      message = {
+        texte: r.verification ? `${r.message}\nVérification : ${r.verification.message}` : r.message,
+        erreur: Boolean(r.verification && !r.verification.ok),
+      };
+    } else if (action === "archiver") {
+      const r = await api.archiverClePaiement({ prestataire, mode, champ, confirme });
+      message = { texte: r.message, erreur: false };
+    } else if (action === "verifier") {
+      const r = await api.verifierPaiement({ prestataire, mode });
+      message = { texte: r.message, erreur: !r.ok };
+    } else if (action === "mode") {
+      const valeur = String(f.get("valeur") ?? "");
+      ancre = "interrupteur";
+      if (valeur !== "essai" && valeur !== "reel" && valeur !== "env") throw new Error("Mode inconnu.");
+      const r = await api.modePaiement({ mode: valeur, confirme });
+      message = { texte: r.message, erreur: false };
+    } else if (action === "etiquettes") {
+      ancre = "etiquettes";
+      const v = String(f.get("reelles") ?? "");
+      const r = await api.etiquettesReelles({ reelles: v === "env" ? "env" : v === "oui", confirme });
+      message = { texte: r.message, erreur: false };
+    } else {
+      throw new Error("Action inconnue.");
+    }
+    // L'accueil et l'aide gardent le mode essai une minute : ils doivent
+    // suivre ce qui vient de changer.
+    oublierModeEssai();
+  } catch (e) {
+    message = { texte: lisible(e), erreur: true };
+  }
+  if (!ANCRES.has(ancre)) ancre = "tete";
+  const valeurCookie = encodeURIComponent(
+    JSON.stringify({ ...message, texte: message.texte.slice(0, 900), ancre }),
+  );
+  const headers = new Headers({ Location: `${CHEMIN}?fait=${encodeURIComponent(action)}#${ancre}` });
+  headers.append(
+    "set-cookie",
+    `${COOKIE}=${valeurCookie}; Path=${CHEMIN}; HttpOnly; SameSite=Lax; Max-Age=120`,
+  );
+  return new Response(null, { status: 303, headers });
+}
+
+/** Le message laissé par l'envoi précédent, lu une fois puis effacé. */
+let flash: { texte: string; erreur: boolean; ancre: string } | null = null;
+const brut = Astro.cookies.get(COOKIE)?.value;
+if (brut) {
+  for (const essai of [brut, (() => { try { return decodeURIComponent(brut); } catch { return ""; } })()]) {
+    try {
+      const m = JSON.parse(essai) as { texte?: unknown; erreur?: unknown; ancre?: unknown };
+      if (typeof m.texte === "string" && m.texte)
+        flash = {
+          texte: m.texte,
+          erreur: m.erreur === true,
+          ancre: typeof m.ancre === "string" && ANCRES.has(m.ancre) ? m.ancre : "tete",
+        };
+      break;
+    } catch {
+      /* forme suivante */
+    }
+  }
+  Astro.cookies.delete(COOKIE, { path: CHEMIN });
+}
+
+let erreur: string | null = null;
+const etat: EtatPaiements | null = await api.paiements().catch((e: unknown) => {
+  erreur = lisible(e);
+  return null;
+});
+
+/** Le message à écrire ici, s'il y en a un pour cette ancre. */
+const flashIci = (ancre: string) => (flash && flash.ancre === ancre ? flash : null);
+const classeFlash = (f: { erreur: boolean }) =>
+  `mt-3 whitespace-pre-line rounded border px-3 py-2 text-sm ${
+    f.erreur ? "border-red-200 bg-red-50 text-red-700" : "border-green-200 bg-green-50 text-green-900"
+  }`;
+
+/** « 20/10 à 14 h 05 », à l'heure de la boutique. */
+function quand(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const jour = d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Paris" });
+  const heure = d
+    .toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })
+    .replace(":", " h ");
+  return `${jour} à ${heure}`;
+}
+
+const NOMS = { stripe: "Stripe", paypal: "PayPal" } as const;
+const TITRES = {
+  stripe: { test: "Essai (test)", live: "Pour de vrai (live)" },
+  paypal: { test: "Bac à sable (sandbox)", live: "Pour de vrai (live)" },
+} as const;
+
+/** Les cases dont la valeur est un secret : masquées pendant la saisie. */
+const SECRETES = new Set(["cle_secrete", "secret_webhook", "secret"]);
+
+/** Ce qui est écrit en face d'une case, jamais sa valeur. */
+function ligneDeCase(c: CasePaiement): string {
+  if (c.etat === "bo")
+    return `Enregistrée le ${quand(c.le)}${c.par ? ` par ${c.par}` : ""}, se termine par …${c.fin ?? ""}`;
+  if (c.etat === "env") return "Dans les réglages du serveur";
+  if (c.etat === "a_ressaisir")
+    return "À ressaisir : la clé de chiffrement du serveur a changé depuis l'enregistrement";
+  return "Vide";
+}
+
+function exemple(m: "test" | "live", champ: string): string {
+  if (champ === "cle_publique") return `pk_${m}_…`;
+  if (champ === "cle_secrete") return `sk_${m}_… (ou rk_${m}_…)`;
+  if (champ === "secret_webhook") return "whsec_…";
+  if (champ === "client_id") return `Client-id de l'application ${m === "live" ? "Live" : "Sandbox"}`;
+  return `Secret de l'application ${m === "live" ? "Live" : "Sandbox"}`;
+}
+
+const BADGES: Record<ColonnePaiement["source"], { texte: string; classe: string }> = {
+  bo: { texte: "Saisies ici", classe: "bg-green-100 text-green-900" },
+  env: { texte: "Réglages du serveur", classe: "border border-bo-border text-bo-muted" },
+  incomplet_env: { texte: "Incomplet : les réglages du serveur servent encore", classe: "bg-amber-100 text-amber-900" },
+  incomplet: { texte: "Incomplet : rien ne sert dans ce mode", classe: "bg-amber-100 text-amber-900" },
+  aucune: { texte: "Vide", classe: "border border-bo-border text-bo-muted" },
+};
+
+const TONS = {
+  essai: "border-amber-300 bg-amber-50 text-amber-900",
+  reel: "border-green-300 bg-green-50 text-green-900",
+  mixte: "border-bo-border bg-bo-surface",
+  aucun: "border-red-200 bg-red-50 text-red-700",
+} as const;
+
+/** La confirmation du passage en réel : ce qui change, en clair. */
+function texteBascule(e: EtatPaiements): string {
+  const lignes = [
+    "Passer la boutique « pour de vrai » ?",
+    "",
+    e.stripe.live.verifiable
+      ? `• Les cartes seront réellement débitées, sur le compte Stripe ${e.compteStripeLive ? `« ${e.compteStripeLive} »` : "de la colonne « Pour de vrai »"}.`
+      : "• La carte bancaire ne sera plus proposée : aucune clé Stripe live.",
+    e.paypal.live.verifiable
+      ? "• PayPal encaissera sur le compte réel."
+      : "• PayPal ne sera plus proposé : aucune clé live.",
+    "• L'encadré « Boutique en mode essai » disparaît de la caisse.",
+    "• Les commandes payées en essai restent dans le back-office, marquées « Payée en ESSAI » : elles n'ont rapporté aucun argent.",
+    "• Une clé live remplacée ensuite sera vérifiée avant de servir.",
+    "• Les étiquettes SendCloud ont leur propre interrupteur, plus bas : il ne change pas.",
+  ];
+  return lignes.join("\n");
+}
+
+const TEXTE_ESSAI =
+  "Revenir en essai ?\n\nLes clientes ne pourront plus payer pour de vrai. Les paiements réels déjà ouverts aboutiront quand même.";
+// La boutique est déjà en essai par les réglages du serveur : on ne « revient »
+// de rien, on fixe l'essai ici pour qu'un changement du serveur ne le défasse pas.
+const TEXTE_GARDER_ESSAI =
+  "Garder la boutique en essai, quoi que disent les réglages du serveur ?\n\nSeules les clés d'essai serviront aux paiements, même si les réglages du serveur passent en réel un jour.";
+const TEXTE_ENV =
+  "Laisser les réglages du serveur décider du mode de chaque prestataire ?\n\nC'est l'état d'avant cet écran. Une colonne « Pour de vrai » saisie ici ne servira qu'une fois vérifiée.";
+const TEXTE_ETIQUETTES =
+  "Acheter les vraies étiquettes SendCloud ?\n\nChaque bordereau acheté depuis une fiche commande sera facturé par SendCloud, au prix écrit sur le bouton. Rien n'est acheté sans votre clic.";
+
+/** Une case avec son article : « la clé publique », « le secret du webhook ». */
+const AVEC_ARTICLE: Record<string, string> = {
+  cle_publique: "la clé publique",
+  cle_secrete: "la clé secrète",
+  secret_webhook: "le secret du webhook",
+  client_id: "le client-id",
+  secret: "le secret",
+};
+
+/** La confirmation de « Effacer » : ce qui se passe à la caisse, en clair. */
+function texteEffacer(c: CasePaiement, p: "stripe" | "paypal", m: "test" | "live"): string {
+  const tete = `Effacer ${AVEC_ARTICLE[c.champ] ?? c.libelle.toLowerCase()} ${NOMS[p]} (${TITRES[p][m]}) ?\n\n`;
+  if (c.apresEffacement === "retire") return `${tete}${NOMS[p]} ne sera plus proposé à la caisse.`;
+  const archive =
+    c.champ === "cle_publique" || c.champ === "cle_secrete"
+      ? "Elle est archivée : on ne pourra plus s'en servir, et il faudra la ressaisir pour la remettre."
+      : "Il est archivé : on ne pourra plus s'en servir, et il faudra le ressaisir pour le remettre.";
+  if (c.apresEffacement === "serveur") return `${tete}${archive}\n\nLa caisse reprendra aussitôt les clés des réglages du serveur.`;
+  return `${tete}${archive}`;
+}
+
+const ACTIONS: Record<string, string> = {
+  cle_enregistree: "Clé enregistrée",
+  cle_archivee: "Clé effacée (archivée)",
+  cle_refusee: "Clé refusée à la vérification (non enregistrée)",
+  verification: "Vérification",
+  mode: "Interrupteur",
+  etiquettes: "Étiquettes SendCloud",
+};
+const VALEURS: Record<string, string> = {
+  essai: "en essai",
+  reel: "pour de vrai",
+  env: "les réglages du serveur décident",
+  oui: "payantes",
+  non: "d'essai",
+  ok: "réussie",
+  refus: "refusée",
+};
+const CHAMPS_LISIBLES: Record<string, string> = {
+  cle_publique: "clé publique",
+  cle_secrete: "clé secrète",
+  secret_webhook: "secret du webhook",
+  client_id: "client-id",
+  secret: "secret",
+};
+
+const essaiCoche = etat ? etat.ton === "essai" || (etat.ton === "aucun" && etat.choisi === "essai") : false;
+const reelCoche = etat ? etat.ton === "reel" || (etat.ton === "aucun" && etat.choisi === "reel") : false;
+// Déjà en essai par les réglages du serveur : le bouton FIXE l'essai, il n'y revient pas.
+const garderEssai = Boolean(etat && etat.choisi === "env" && essaiCoche);
+const champ = "block w-full min-w-0 rounded border border-bo-border bg-bo-bg px-2 py-1.5 font-mono text-xs";
+const bouton = "shrink-0 rounded border border-bo-border px-3 py-1.5 text-xs hover:bg-bo-bg disabled:cursor-not-allowed disabled:opacity-50";
+// Un libellé long (« Vérifier les clés des réglages du serveur ») passe à la ligne
+// au lieu de déborder de sa colonne sur un écran étroit.
+const boutonLong = "max-w-full rounded border border-bo-border px-3 py-1.5 text-left text-xs hover:bg-bo-bg disabled:cursor-not-allowed disabled:opacity-50";
+---
+
+<Admin title="Paiements">
+  {erreur && <p class="mb-4 text-sm text-red-600">Réglages indisponibles : {erreur}</p>}
+  {/* Sans état lisible, le message de l'envoi s'affiche quand même. */}
+  {!etat && flash && (
+    <p role="status" aria-live="polite" class={classeFlash(flash)}>{flash.texte}</p>
+  )}
+
+  {etat && (
+    <div class="max-w-5xl space-y-6">
+      {/* ------------------------------------------------------------ */}
+      <section id="tete" class={`rounded-lg border px-4 py-3 ${TONS[etat.ton]}`}>
+        <p class="font-semibold">{etat.resume}</p>
+        <p class="mt-1 text-sm">
+          {etat.choisi === "env"
+            ? "L'interrupteur n'a pas été réglé ici : chaque prestataire suit les réglages du serveur, sauf colonne complète saisie ici (une colonne « Pour de vrai », seulement une fois vérifiée)."
+            : etat.choisi === "reel"
+              ? "Réglé ici sur « pour de vrai » : seules les clés live servent aux nouveaux paiements."
+              : "Réglé ici sur « en essai » : seules les clés d'essai servent aux nouveaux paiements."}
+        </p>
+        <p class="mt-1 text-xs opacity-80">
+          {"Sert en ce moment : " +
+            (["stripe", "paypal"] as const)
+              .map((p) => {
+                const a = etat.actif[p];
+                return a
+                  ? `${NOMS[p]} ${a.mode === "live" ? "live" : p === "stripe" ? "test" : "sandbox"} (clés ${a.source === "bo" ? "saisies ici" : "des réglages du serveur"})`
+                  : `${NOMS[p]} : rien`;
+              })
+              .join(" ; ") +
+            "."}
+        </p>
+        <p class="mt-1 text-xs opacity-80">
+          « Réglages du serveur » : le fichier .env de l'hébergement, que modifie la
+          personne qui gère le serveur. Ce qui est saisi ici passe devant.
+        </p>
+        {flashIci("tete") && (
+          <p role="status" aria-live="polite" class={classeFlash(flash!)}>{flash!.texte}</p>
+        )}
+      </section>
+
+      {/* Le chiffrement : sur quoi repose-t-il ? */}
+      {!etat.chiffrement.possible ? (
+        <p class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Impossible d'enregistrer une clé : le serveur n'a ni APP_SECRET ni adresse de base
+          pour les chiffrer. Faites poser APP_SECRET dans les réglages du serveur. Les clés
+          des réglages du serveur restent utilisables.
+        </p>
+      ) : !etat.chiffrement.live ? (
+        <p class="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {etat.chiffrement.raisonLive} La colonne d'essai, elle, reste ouverte.
+        </p>
+      ) : (
+        <p class="text-xs text-bo-muted">
+          Les clés sont chiffrées avec APP_SECRET : une sauvegarde de la base, seule, n'en donne
+          aucune.
+        </p>
+      )}
+
+      {/* ------------------------------------------------------------ */}
+      <section id="interrupteur" class="rounded-lg border border-bo-border bg-bo-surface p-5">
+        <h2 class="font-semibold">La boutique encaisse</h2>
+        {flashIci("interrupteur") && (
+          <p role="status" aria-live="polite" class={classeFlash(flash!)}>{flash!.texte}</p>
+        )}
+        <p class="mt-1 text-sm text-bo-muted">
+          Bascule Stripe ET PayPal d'un coup, entre leurs clés d'essai et leurs clés live.
+          Les étiquettes SendCloud ont leur propre interrupteur, plus bas.
+        </p>
+        <div class="mt-4 grid gap-3 sm:grid-cols-2">
+          <div class={`rounded-lg border p-4 ${essaiCoche ? "border-amber-500 bg-amber-50 text-amber-900" : "border-bo-border"}`}>
+            <p class="font-medium">
+              <span aria-hidden="true">{essaiCoche ? "●" : "○"}</span> En essai{" "}
+              <span class="font-normal">(aucun paiement réel)</span>
+            </p>
+            {essaiCoche && <p class="mt-1 text-xs">C'est l'état actuel.</p>}
+            {etat.choisi !== "essai" && (
+              <form
+                method="POST"
+                class="mt-3"
+                onsubmit={`return confirm(${JSON.stringify(garderEssai ? TEXTE_GARDER_ESSAI : TEXTE_ESSAI)})`}
+              >
+                <input type="hidden" name="action" value="mode" />
+                <input type="hidden" name="valeur" value="essai" />
+                <button class={bouton}>
+                  {garderEssai ? "Garder en essai, quoi que disent les réglages du serveur" : "Revenir en essai"}
+                </button>
+              </form>
+            )}
+          </div>
+
+          <div class={`rounded-lg border p-4 ${reelCoche ? "border-green-600 bg-green-50 text-green-900" : "border-bo-border"}`}>
+            <p class="font-medium">
+              <span aria-hidden="true">{reelCoche ? "●" : "○"}</span> Pour de vrai
+            </p>
+            {reelCoche && <p class="mt-1 text-xs">C'est l'état actuel : les cartes sont réellement débitées.</p>}
+            {etat.choisi !== "reel" && (
+              <form method="POST" class="mt-3 space-y-2" onsubmit={`return confirm(${JSON.stringify(texteBascule(etat))})`}>
+                <input type="hidden" name="action" value="mode" />
+                <input type="hidden" name="valeur" value="reel" />
+                <label class="flex items-start gap-2 text-sm">
+                  <input type="checkbox" name="confirme" value="oui" required disabled={!etat.bascule.possible} class="mt-0.5" />
+                  <span>Je confirme : les clientes paieront pour de vrai.</span>
+                </label>
+                <button class="rounded bg-bo-accent px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40" disabled={!etat.bascule.possible}>
+                  Passer « pour de vrai »
+                </button>
+              </form>
+            )}
+            {!etat.bascule.possible && etat.choisi !== "reel" && (
+              <ul class="mt-3 list-disc space-y-1 pl-5 text-xs text-bo-muted">
+                {etat.bascule.raisons.map((r) => <li>{r}</li>)}
+              </ul>
+            )}
+          </div>
+        </div>
+        {etat.ton === "mixte" && (
+          <p class="mt-3 text-sm text-bo-muted">
+            Mode mixte : les réglages du serveur donnent un prestataire en essai et l'autre
+            en réel. Aucun des deux n'est donc coché. Choisissez l'un ou l'autre pour que les
+            deux suivent.
+          </p>
+        )}
+        {etat.choisi !== "env" && (
+          <form method="POST" class="mt-3" onsubmit={`return confirm(${JSON.stringify(TEXTE_ENV)})`}>
+            <input type="hidden" name="action" value="mode" />
+            <input type="hidden" name="valeur" value="env" />
+            <button class="text-xs text-bo-accent underline">Laisser les réglages du serveur décider</button>
+          </form>
+        )}
+      </section>
+
+      {/* ------------------------------------------------------------ */}
+      {(["stripe", "paypal"] as const).map((p) => (
+        <section id={p} class="rounded-lg border border-bo-border bg-bo-surface p-5">
+          <h2 class="font-semibold">{p === "stripe" ? "Carte bancaire (Stripe)" : "PayPal"}</h2>
+          <p class="mt-1 text-sm text-bo-muted">
+            {p === "stripe"
+              ? "Les clés se trouvent dans Stripe › Développeurs › Clés API, l'interrupteur « Mode test » en haut de la page choisissant le jeu affiché."
+              : "Les identifiants se trouvent sur developer.paypal.com › Apps & Credentials, onglet Sandbox ou Live selon la colonne."}{" "}
+            Une clé enregistrée ne se relit plus : on peut la remplacer ou l'effacer.
+          </p>
+          <div class="mt-4 grid gap-4 lg:grid-cols-2">
+            {(["test", "live"] as const).map((m) => {
+              const col = etat[p][m];
+              const badge = BADGES[col.source];
+              const ici = flashIci(`${p}-${m}`);
+              // La colonne live reste fermée tant qu'APP_SECRET manque.
+              const ouverte = etat.chiffrement.possible && (m === "test" || etat.chiffrement.live);
+              return (
+                <div id={`${p}-${m}`} class="scroll-mt-4 rounded-lg border border-bo-border p-4">
+                  <header class="flex flex-wrap items-center justify-between gap-2">
+                    <h3 class="font-medium">{TITRES[p][m]}</h3>
+                    <span class="flex flex-wrap gap-1">
+                      {col.actif && <span class="rounded bg-bo-nav px-2 py-0.5 text-xs text-white">Sert en ce moment</span>}
+                      <span class={`rounded px-2 py-0.5 text-xs ${badge.classe}`}>{badge.texte}</span>
+                    </span>
+                  </header>
+                  {ici && (
+                    <p role="status" aria-live="polite" class={classeFlash(ici)}>{ici.texte}</p>
+                  )}
+                  {col.enAttente && (
+                    <p class="mt-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                      Ces clés live ne servent pas encore : elles serviront dès qu'une vérification
+                      aura réussi (bouton « Vérifier », plus bas).
+                    </p>
+                  )}
+                  {m === "live" && etat.chiffrement.possible && !etat.chiffrement.live && (
+                    <p class="mt-3 text-xs text-amber-900">
+                      Colonne fermée : faites d'abord poser APP_SECRET dans les réglages du serveur
+                      (voir l'encadré orange, plus haut).
+                    </p>
+                  )}
+                  {col.champs.map((c) => (
+                    <div class="mt-4">
+                      <p class="text-sm font-medium">{c.libelle}</p>
+                      <p class={`text-xs ${c.etat === "a_ressaisir" ? "font-medium text-red-700" : "text-bo-muted"}`}>
+                        {ligneDeCase(c)}
+                      </p>
+                      {c.champ === "secret_webhook" && (
+                        <p class="text-xs text-bo-muted">
+                          Il ne dit pas s'il est d'essai ou réel : prenez celui du webhook créé dans
+                          ce mode-ci.{m === "live" ? " Exigé pour passer en réel." : ""}
+                        </p>
+                      )}
+                      <form method="POST" class="mt-1 flex gap-2" autocomplete="off">
+                        <input type="hidden" name="action" value="cle" />
+                        <input type="hidden" name="prestataire" value={p} />
+                        <input type="hidden" name="mode" value={m} />
+                        <input type="hidden" name="champ" value={c.champ} />
+                        {/* Les secrets en points : le jour de la mise en ligne, la
+                            saisie se fera sans doute en partage d'écran.
+                            « new-password » : le navigateur ne propose ni ne
+                            retient rien ; les gestionnaires de mots de passe sont
+                            écartés par data-1p-ignore et data-lpignore. */}
+                        <input
+                          type={SECRETES.has(c.champ) ? "password" : "text"}
+                          name="valeur"
+                          required
+                          autocomplete={SECRETES.has(c.champ) ? "new-password" : "off"}
+                          spellcheck="false"
+                          autocapitalize="off"
+                          autocorrect="off"
+                          data-1p-ignore
+                          data-lpignore="true"
+                          aria-label={`${c.libelle} ${NOMS[p]}, ${TITRES[p][m]}`}
+                          placeholder={exemple(m, c.champ)}
+                          class={champ}
+                          disabled={!ouverte}
+                        />
+                        <button class={bouton} disabled={!ouverte}>
+                          {c.etat === "bo" ? "Remplacer" : "Enregistrer"}
+                        </button>
+                      </form>
+                      {(c.etat === "bo" || c.etat === "a_ressaisir") && (
+                        <form
+                          method="POST"
+                          class="mt-1"
+                          onsubmit={`return confirm(${JSON.stringify(texteEffacer(c, p, m))})`}
+                        >
+                          <input type="hidden" name="action" value="archiver" />
+                          <input type="hidden" name="prestataire" value={p} />
+                          <input type="hidden" name="mode" value={m} />
+                          <input type="hidden" name="champ" value={c.champ} />
+                          {c.effacementRetire && <input type="hidden" name="confirme" value="oui" />}
+                          <button class="text-xs text-red-700 underline">Effacer</button>
+                        </form>
+                      )}
+                    </div>
+                  ))}
+
+                  <div class="mt-5 border-t border-bo-border pt-3">
+                    <form method="POST" class="flex flex-wrap items-center gap-2">
+                      <input type="hidden" name="action" value="verifier" />
+                      <input type="hidden" name="prestataire" value={p} />
+                      <input type="hidden" name="mode" value={m} />
+                      {/* Le bouton dit QUELLES clés il essaie : une colonne entamée
+                          ne fait plus vérifier en silence celles du serveur. */}
+                      <button class={boutonLong} disabled={!col.verifiable}>
+                        {col.verifieQuoi === "env" ? "Vérifier les clés des réglages du serveur" : "Vérifier les clés saisies ici"}
+                      </button>
+                      <span class="text-xs text-bo-muted">
+                        {col.verifiable
+                          ? "Les essaie chez le prestataire, sans rien payer."
+                          : col.manque.length
+                            ? `Complétez la colonne pour la vérifier : il manque ${col.manque.join(" et ")}.`
+                            : "Rien à vérifier : la colonne est vide."}
+                      </span>
+                    </form>
+                    {col.verification && (
+                      <p class={`mt-2 text-xs ${col.verification.ok && col.verification.aJour ? "text-green-800" : "text-red-700"}`}>
+                        {col.verification.ok ? "✓" : "✗"}{" "}
+                        {col.verification.source === "env"
+                          ? "Clés des réglages du serveur : "
+                          : col.verification.source === "bo"
+                            ? "Clés saisies ici : "
+                            : ""}
+                        {col.verification.message}
+                        <span class="text-bo-muted"> — le {quand(col.verification.le)}</span>
+                        {!col.verification.aJour && (
+                          <strong> À refaire : les clés ont changé depuis.</strong>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {p === "stripe" && (
+            <div class="mt-5 rounded-lg border border-bo-border p-4 text-sm">
+              <h3 class="font-medium">Le webhook</h3>
+              <p class="mt-1 text-bo-muted">
+                Stripe prévient la boutique de chaque paiement abouti, même si la cliente ferme
+                l'onglet pendant la validation de sa banque. Adresse à recopier dans Stripe :
+              </p>
+              <div class="mt-2 flex flex-wrap items-center gap-2">
+                <code id="adresse-webhook" class="select-all break-all rounded bg-bo-bg px-2 py-1 text-xs">{etat.webhook.adresse}</code>
+                <button type="button" class={bouton} data-copier="adresse-webhook">Copier</button>
+              </div>
+              <p class="mt-2">
+                Événement à cocher : <code class="rounded bg-bo-bg px-1 text-xs">{etat.webhook.evenement}</code>
+              </p>
+              <ol class="mt-2 list-decimal space-y-1 pl-5 text-bo-muted">
+                <li>Dans Stripe, dans le bon mode (test, puis live) : Développeurs › Webhooks › « Ajouter une destination ».</li>
+                <li>Collez l'adresse, cochez l'événement, enregistrez.</li>
+                <li>Copiez son « Secret de signature » (whsec_…) dans la case « Secret du webhook » de la même colonne, ici.</li>
+              </ol>
+              <p class="mt-2 text-xs text-bo-muted">
+                Dernier avis reçu et vérifié : test{" "}
+                {etat.webhook.derniersAvis.test ? `le ${quand(etat.webhook.derniersAvis.test)}` : "aucun"}, live{" "}
+                {etat.webhook.derniersAvis.live ? `le ${quand(etat.webhook.derniersAvis.live)}` : "aucun"}
+                {" "}(depuis le dernier démarrage de l'API). Le bouton « Envoyer un événement test » de
+                Stripe permet de l'essayer.
+              </p>
+              {etat.webhook.avisRefuse && (
+                <p class="mt-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  Le {quand(etat.webhook.avisRefuse.le)}, un avis du compte{" "}
+                  {etat.webhook.avisRefuse.avis === "live" ? "live" : "de test"} a été signé avec le
+                  secret de la colonne {etat.webhook.avisRefuse.secret === "live" ? "« Pour de vrai »" : "Essai"} :
+                  il a été refusé. Le secret du webhook est sans doute dans la mauvaise colonne
+                  (ou l'avis était un faux). Une fois le secret à sa place, Stripe renvoie l'avis
+                  de lui-même.
+                </p>
+              )}
+              {etat.webhook.local && (
+                <p class="mt-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  En local, Stripe ne joint pas localhost : lancez{" "}
+                  <code>stripe listen --forward-to localhost:8080/api/payments/stripe/webhook</code>,
+                  et collez le whsec_ qu'il affiche dans la case « Secret du webhook » de la colonne Essai.
+                </p>
+              )}
+            </div>
+          )}
+        </section>
+      ))}
+
+      {/* ------------------------------------------------------------ */}
+      <section id="etiquettes" class="rounded-lg border border-bo-border bg-bo-surface p-5">
+        <h2 class="font-semibold">Livraison : les étiquettes SendCloud</h2>
+        {flashIci("etiquettes") && (
+          <p role="status" aria-live="polite" class={classeFlash(flash!)}>{flash!.texte}</p>
+        )}
+        <p class="mt-1 text-sm">
+          {etat.etiquettes.reelles
+            ? "Les bordereaux achetés depuis une fiche commande sont de vraies étiquettes, facturées par SendCloud."
+            : "Étiquettes d'essai : SendCloud fabrique une lettre non affranchie, gratuite, qui n'est pas une vraie étiquette."}{" "}
+          <span class="text-xs text-bo-muted">
+            ({etat.etiquettes.source === "bo" ? "réglé ici" : "choisi par les réglages du serveur"})
+          </span>
+        </p>
+        {!etat.etiquettes.configure && (
+          <p class="mt-2 text-sm text-bo-muted">SendCloud n'est pas branché sur ce serveur : il n'y a pas d'étiquettes à acheter.</p>
+        )}
+        {etat.etiquettes.reelles ? (
+          <form
+            method="POST"
+            class="mt-3"
+            onsubmit={`return confirm(${JSON.stringify("Revenir aux étiquettes d'essai, gratuites ? Les bordereaux déjà achetés ne changent pas.")})`}
+          >
+            <input type="hidden" name="action" value="etiquettes" />
+            <input type="hidden" name="reelles" value="non" />
+            <button class={bouton}>Revenir aux étiquettes d'essai</button>
+          </form>
+        ) : (
+          <form method="POST" class="mt-3 space-y-2" onsubmit={`return confirm(${JSON.stringify(TEXTE_ETIQUETTES)})`}>
+            <input type="hidden" name="action" value="etiquettes" />
+            <input type="hidden" name="reelles" value="oui" />
+            <label class="flex items-start gap-2 text-sm">
+              <input type="checkbox" name="confirme" value="oui" required disabled={!etat.etiquettes.configure} class="mt-0.5" />
+              <span>
+                Chaque bordereau acheté depuis une fiche commande sera facturé par SendCloud, au
+                prix écrit sur le bouton. Rien n'est acheté sans votre clic.
+              </span>
+            </label>
+            <button class={bouton} disabled={!etat.etiquettes.configure}>Acheter les vraies étiquettes SendCloud</button>
+          </form>
+        )}
+        {/* Rendre la main au serveur, comme pour l'interrupteur des paiements.
+            S'il demande les étiquettes payantes alors qu'elles sont éteintes
+            ici, c'est un allumage : même case à cocher. */}
+        {etat.etiquettes.source === "bo" && (
+          etat.etiquettes.serveur && !etat.etiquettes.reelles ? (
+            <form method="POST" class="mt-3 space-y-1" onsubmit={`return confirm(${JSON.stringify(TEXTE_ETIQUETTES)})`}>
+              <input type="hidden" name="action" value="etiquettes" />
+              <input type="hidden" name="reelles" value="env" />
+              <label class="flex items-start gap-2 text-xs">
+                <input type="checkbox" name="confirme" value="oui" required disabled={!etat.etiquettes.configure} class="mt-0.5" />
+                <span>Les réglages du serveur demandent les vraies étiquettes, facturées par SendCloud.</span>
+              </label>
+              <button class="text-xs text-bo-accent underline" disabled={!etat.etiquettes.configure}>
+                Laisser les réglages du serveur décider
+              </button>
+            </form>
+          ) : (
+            <form
+              method="POST"
+              class="mt-3"
+              onsubmit={`return confirm(${JSON.stringify(
+                `Laisser les réglages du serveur décider des étiquettes ?\n\nIls demandent ${etat.etiquettes.serveur ? "les vraies étiquettes, facturées par SendCloud" : "des étiquettes d'essai, gratuites"}.`,
+              )})`}
+            >
+              <input type="hidden" name="action" value="etiquettes" />
+              <input type="hidden" name="reelles" value="env" />
+              <button class="text-xs text-bo-accent underline">Laisser les réglages du serveur décider</button>
+            </form>
+          )
+        )}
+      </section>
+
+      {/* ------------------------------------------------------------ */}
+      <section id="journal" class="rounded-lg border border-bo-border bg-bo-surface p-5">
+        <h2 class="font-semibold">Journal</h2>
+        <p class="mt-1 text-xs text-bo-muted">
+          Les 20 dernières modifications : qui, quand, quelle case. Jamais une valeur.
+        </p>
+        {etat.journal.length === 0 ? (
+          <p class="mt-3 text-sm text-bo-muted">Rien n'a encore été modifié ici.</p>
+        ) : (
+          <div class="mt-3 overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="text-bo-muted">
+                <tr>
+                  <th class="py-1 pr-3 font-normal">Quand</th>
+                  <th class="py-1 pr-3 font-normal">Qui</th>
+                  <th class="py-1 pr-3 font-normal">Quoi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {etat.journal.map((l) => (
+                  <tr class="border-t border-bo-border align-top">
+                    <td class="whitespace-nowrap py-1 pr-3">{quand(l.le)}</td>
+                    <td class="py-1 pr-3">{l.par ?? "—"}</td>
+                    <td class="py-1 pr-3">
+                      {l.remplace ? "Clé remplacée" : (ACTIONS[l.action] ?? l.action)}
+                      {l.prestataire ? ` · ${NOMS[l.prestataire as "stripe" | "paypal"] ?? l.prestataire}` : ""}
+                      {l.mode ? ` ${TITRES[(l.prestataire ?? "stripe") as "stripe" | "paypal"]?.[l.mode as "test" | "live"] ?? l.mode}` : ""}
+                      {l.champ ? ` · ${CHAMPS_LISIBLES[l.champ] ?? l.champ}` : ""}
+                      {l.valeur ? ` : ${VALEURS[l.valeur] ?? l.valeur}` : ""}
+                      {l.message && <span class="block text-bo-muted">{l.message}</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  )}
+
+  <script is:inline>
+    // « Copier » : l'adresse du webhook dans le presse-papier. Sans
+    // presse-papier (page non sécurisée, navigateur ancien, permission
+    // refusée), le texte est sélectionné : il ne reste qu'à faire Ctrl+C. Le
+    // bouton reprend son nom au bout de 3 secondes, dans les deux cas : il
+    // restait sinon « Sélectionné : Ctrl+C » pour toujours.
+    document.querySelectorAll("[data-copier]").forEach(function (b) {
+      var nom = b.textContent;
+      var minuteur = null;
+      function annoncer(texte) {
+        b.textContent = texte;
+        clearTimeout(minuteur);
+        minuteur = setTimeout(function () { b.textContent = nom; }, 3000);
+      }
+      b.addEventListener("click", function () {
+        var cible = document.getElementById(b.getAttribute("data-copier"));
+        if (!cible) return;
+        var texte = cible.textContent || "";
+        function selectionner() {
+          var r = document.createRange();
+          r.selectNodeContents(cible);
+          var s = window.getSelection();
+          s.removeAllRanges();
+          s.addRange(r);
+          annoncer("Sélectionné : Ctrl+C");
+        }
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(texte).then(function () {
+            annoncer("Copié ✓");
+          }, selectionner);
+        } else {
+          selectionner();
+        }
+      });
+    });
+  </script>
+</Admin>

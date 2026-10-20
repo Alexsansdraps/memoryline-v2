@@ -419,6 +419,16 @@ const badgePaiement = BADGE_PAIEMENT[detail?.statutFinancier ?? "pending"]!;
 const badgeTraitement =
   BADGE_TRAITEMENT[detail?.statutExpedition ?? "unfulfilled"]!;
 
+/**
+ * Payée avec les clés d'ESSAI alors que la boutique encaisse pour de vrai
+ * (apps/api/src/paiements-reglages.ts, payeeEnEssai) : aucun argent n'est
+ * arrivé. Après la bascule, rien d'autre sur la fiche ne la distinguerait
+ * d'une vraie vente.
+ */
+const payeeEnEssai = detail?.payeeEnEssai
+  ? `Payée en ESSAI (${detail.payeeEnEssai === "stripe" ? "Stripe test" : "PayPal sandbox"})`
+  : null;
+
 /** Ce qui reste à envoyer, et ce qui reste remboursable. */
 const resteAExpedier = items.reduce((s, it) => s + (it.aExpedier ?? 0), 0);
 const resteARembourser = items.reduce((s, it) => s + (it.aRembourser ?? 0), 0);
@@ -679,6 +689,14 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
             <span class={`rounded-full px-2 py-0.5 text-xs ${badgeTraitement.classe}`}>
               {badgeTraitement.texte}
             </span>
+            {payeeEnEssai && (
+              <span
+                class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900"
+                title="Ce paiement a été fait avec les clés d'essai : aucun argent n'est arrivé. Ne pas expédier sans vérifier."
+              >
+                {payeeEnEssai} : aucun argent reçu
+              </span>
+            )}
             {/* Dit dès le titre que cette fiche vient du rangement : sans
                 cela, on la croit dans la liste et on la cherche en vain. */}
             {order.archivedAt && (
@@ -1152,7 +1170,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                 {etatBordereau?.essai && (
                   <span
                     class="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-900"
-                    title="SENDCLOUD_ACHATS_REELS=oui dans le .env pour acheter de vraies étiquettes"
+                    title="Réglages › Paiements › « Acheter les vraies étiquettes SendCloud » pour acheter de vraies étiquettes"
                   >
                     Mode essai : rien n'est facturé
                   </span>

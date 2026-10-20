@@ -9,6 +9,22 @@ Le serveur de test (OVH, 51.255.34.187) **devient** la vraie boutique. Rien ne d
 
 ---
 
+## Jour J, dans l'ordre
+
+Le résumé des étapes détaillées plus bas. L'ordre compte.
+
+0. **`APP_SECRET`** dans le `.env` du serveur (§ 3), **avant** la première clé saisie au BO : les clés de BO › Réglages › Paiements sont chiffrées avec elle, et sans elle (ou plus courte que 32 caractères) la colonne « Pour de vrai » de l'écran reste fermée. Puis redémarrer (`docker compose -f docker-compose.prod.yml up -d --force-recreate`). Ne plus jamais la changer.
+1. **Domaine** : DNS (§ 4), puis `DOMAINE` et `PUBLIC_ORIGIN` dans le `.env` (§ 3).
+2. **Vider la base de test** (§ 2) : `apps/api/scripts/vider-donnees-test.sh` sans argument (il montre seulement), puis `--vider`. **Avant** les vrais courriels : dès qu'ils partent, la relance de panier écrirait aux adresses de test. Les clés saisies au BO et leur journal survivent au vidage (tables à part).
+3. **`PUBLIC_NOINDEX=false` et courriels Resend** dans le `.env` (§ 3, `MAIL_TEST_*` retirées), puis **reconstruction** (§ 3, « Appliquer » : ces valeurs sont figées à la construction).
+4. **Clés live** dans **BO › Réglages › Paiements**, colonnes « Pour de vrai » de Stripe et de PayPal. Créer le webhook Stripe live (§ 5) et coller son `whsec_`. Cliquer **« Vérifier »** dans chaque colonne live, puis l'interrupteur **« Pour de vrai »** (case « Je confirme… » et confirmation). Aucun redémarrage.
+5. **Une vraie commande de quelques euros** par carte, et par PayPal s'il est branché, puis **remboursement** depuis sa fiche dans le BO (§ 8).
+6. **Google Search Console** (§ 8).
+
+Les vraies étiquettes SendCloud ont leur propre interrupteur dans le même écran : seulement sur décision explicite d'Alexandra.
+
+---
+
 ## 0. Avant le jour J (à obtenir de Margaux)
 
 - [ ] **Licence commerciale de la police « Another Shabby »** : la version actuelle est sous licence d'essai, *non commerciale*. Il faut l'acheter (ou que Margaux l'ait déjà), puis remplacer `apps/api/fonts/AnotherShabby-Regular.ttf` et `apps/web/public/fonts/AnotherShabby-Regular.ttf`.
@@ -25,7 +41,7 @@ Depuis PowerShell, dans `Documents\perso`, après avoir construit l'archive :
 scp memoryline-deploiement.tar.gz debian@51.255.34.187:~/ ; ssh debian@51.255.34.187 "tar -xzf ~/memoryline-deploiement.tar.gz -C ~/memoryline apps/api/scripts/mettre-en-ligne.sh && bash ~/memoryline/apps/api/scripts/mettre-en-ligne.sh"
 ```
 
-Le script fait la sauvegarde, construit, passe les migrations (jusqu'à 0066) et redémarre.
+Le script fait la sauvegarde, construit, passe les migrations (jusqu'à 0070) et redémarre.
 
 ## 2. Vider la base des essais
 
@@ -47,6 +63,10 @@ Sans argument, le script **montre seulement** : ce qui partira, ce qui restera, 
 Éditer `~/memoryline/.env` sur le serveur (`nano ~/memoryline/.env`).
 
 ### Paiement
+Les clés se saisissent maintenant dans **BO › Réglages › Paiements** : colonne « Pour de vrai » de Stripe (clé publique, clé secrète, secret du webhook) et de PayPal (client-id, secret), bouton « Vérifier », puis l'interrupteur « La boutique encaisse : pour de vrai », qui bascule Stripe et PayPal d'un coup. Ce qui est saisi là **passe devant le `.env`** et vaut sans redémarrage. Les clés y sont chiffrées avec `APP_SECRET` (à poser avant, voir plus bas), et ne se relisent jamais en entier.
+
+Le `.env` reste possible : c'est le **repli**, utilisé tant que rien n'est saisi à l'écran. Tant que l'interrupteur n'a jamais été touché, `PAYPAL_ENV` et le préfixe de `STRIPE_SECRET_KEY` décident du mode, comme avant. **Une fois l'interrupteur touché, ils n'ont plus d'effet** sur le mode (le lien « Laisser les réglages du serveur décider » de l'écran leur rend la main). Une clé live saisie à l'écran ne sert jamais sans vérification réussie : tant que le `.env` décide, une colonne « Pour de vrai » complète attend son « Vérifier » (le jeu live du `.env`, s'il existe, sert d'ici là) ; en réel, une clé live remplacée est vérifiée **avant** d'être gardée, et refusée, l'ancienne continue de servir. Par le `.env`, cela donne :
+
 | Variable | Test → Production |
 |---|---|
 | `STRIPE_SECRET_KEY` | `sk_test_…` → `sk_live_…` |
@@ -75,12 +95,12 @@ Sans argument, le script **montre seulement** : ce qui partira, ce qui restera, 
 | `COURRIEL_TLS` | une adresse lue par quelqu'un (alertes du certificat) |
 | `PUBLIC_NOINDEX` | `false`. **Sinon Google n'indexe rien** : le défaut du serveur est `true` |
 | `PUBLIC_JEU_ESSAI` | **à supprimer** (formulaires pré-remplis, compte fictif, bandeau « Site de test ») |
-| `APP_SECRET` | une longue chaîne aléatoire (`openssl rand -hex 32`). À poser **avant** le premier vrai courriel, puis **ne plus jamais la changer** : la changer casse les vignettes des courriels déjà envoyés |
+| `APP_SECRET` | une longue chaîne aléatoire (`openssl rand -hex 32`). À poser **avant** le premier vrai courriel **et avant la première clé saisie dans BO › Réglages › Paiements**, puis **ne plus jamais la changer** : la changer casse les vignettes des courriels déjà envoyés, et rend illisibles les clés de paiement saisies au BO (l'écran les marque « à ressaisir »). Sans elle, ou si elle compte moins de 32 caractères, la colonne « Pour de vrai » de l'écran reste **fermée** (l'écran le dit en orange) : l'adresse de la base, qui sert alors de repli pour les clés d'essai, ne protège pas des clés live |
 
 ### Livraison et IA
 | Variable | Production |
 |---|---|
-| `SENDCLOUD_ACHATS_REELS` | `oui` : chaque bordereau devient **payant**. Seulement sur décision explicite d'Alexandra |
+| `SENDCLOUD_ACHATS_REELS` | `oui` : chaque bordereau devient **payant**. Seulement sur décision explicite d'Alexandra. Se règle maintenant aussi dans BO › Réglages › Paiements, « Acheter les vraies étiquettes SendCloud » (avec confirmation), qui passe devant : une fois l'interrupteur touché, la variable n'a plus d'effet (le lien « Laisser les réglages du serveur décider » lui rend la main) |
 | `SENDCLOUD_PUBLIC_KEY` / `SECRET_KEY` | inchangées (vérifier que c'est le compte de Margaux, pas `essai`) |
 | `OPENAI_API_KEY` | inchangée. Conseillé : une clé de projet avec un budget mensuel côté OpenAI |
 
@@ -105,8 +125,8 @@ Ensuite, supprimer du serveur les anciennes copies `.env.avant-*`, qui contienne
 
 ## 5. Les comptes des prestataires (onglet *Live*)
 
-- [ ] **Stripe** : créer le webhook `https://memoryline.fr/api/payments/stripe/webhook` avec l'événement `payment_intent.succeeded`, et reporter son `whsec_`. Activer les moyens de paiement. Déclarer `memoryline.fr` dans *Payment method domains* pour Apple Pay et Google Pay.
-- [ ] **PayPal** : créer l'application dans l'onglet Live, sur le compte Business vérifié de Margaux. Pour vérifier, sans rien payer :
+- [ ] **Stripe** : créer le webhook `https://memoryline.fr/api/payments/stripe/webhook` avec l'événement `payment_intent.succeeded` (l'adresse exacte, avec un bouton « Copier », est dans BO › Réglages › Paiements). Coller son `whsec_` dans l'écran, case « Secret du webhook » de la colonne « Pour de vrai » (ou dans `STRIPE_WEBHOOK_SECRET`). Le bouton « Vérifier » de la colonne dit si la clé est valide, de quel compte, et si ce webhook est trouvé. Activer les moyens de paiement. Déclarer `memoryline.fr` dans *Payment method domains* pour Apple Pay et Google Pay.
+- [ ] **PayPal** : créer l'application dans l'onglet Live, sur le compte Business vérifié de Margaux, et coller son client-id et son secret dans la colonne « Pour de vrai » de l'écran. Son bouton « Vérifier » demande un jeton à PayPal, sans rien payer, et dit si les identifiants sont ceux du compte réel ou du bac à sable. Il remplace le script, qui ne lit que le `.env` :
   `cd ~/memoryline && docker compose -f docker-compose.prod.yml run --rm api pnpm --filter @memoryline/api run verifier:paypal`
 - [ ] **Resend** : vérifier le domaine `memoryline.fr` (SPF, DKIM et DMARC dans le DNS) avant d'utiliser une adresse @memoryline.fr.
 - [ ] **SendCloud** : vérifier l'adresse d'expédition (Paramètres › Adresses d'expédition, c'est la première qui sert) et le forfait. Vérifier aussi qu'aucun colis d'essai n'est resté ouvert.
@@ -154,8 +174,9 @@ Ensuite, supprimer du serveur les anciennes copies `.env.avant-*`, qui contienne
 - [ ] Le courriel de confirmation arrive dans une vraie boîte, et n'est pas classé en spam.
 - [ ] L'avis « nouvelle commande » arrive chez Margaux.
 - [ ] La facture sort en **F2026-0001**, avec l'adresse et le SIRET.
-- [ ] Le BO › Accueil montre Stripe (et PayPal) branchés, sans badge « essai ».
+- [ ] Le BO › Accueil et l'en-tête de BO › Réglages › Paiements disent « Pour de vrai : Stripe live, PayPal live, … », sans avertissement « non branché ». Le journal de l'écran montre la bascule (qui, quand), et, après la vraie commande, « dernier avis reçu et vérifié : live le … ».
 - [ ] La caisse arrive **vide** (pas de client fictif), et l'inscription n'affiche plus « Site de test ».
+- [ ] Une commande payée en essai restée en base (par exemple pour essayer les vrais courriels à l'étape 3) porte, une fois la boutique en réel, le badge « Payée en ESSAI » sur sa fiche et « En ESSAI » dans la liste, et les Finances la signalent : ne pas l'expédier, l'archiver.
 - [ ] **Google Search Console** : déclarer le domaine, soumettre `https://memoryline.fr/sitemap.xml` (même adresse que le plan Shopify : le resoumettre suffit).
 
 ## 9. Sauvegardes

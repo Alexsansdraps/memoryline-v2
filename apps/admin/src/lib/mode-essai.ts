@@ -8,8 +8,11 @@
  * l'API dit que la boutique est en essai (GET /admin/mode-essai, voir
  * apps/api/src/mode-essai.ts), et la recherche ne les propose pas non plus.
  *
- * Gardé une minute : l'état ne change qu'au redémarrage de l'API, et l'aide
- * ne doit pas l'interroger à chaque ouverture. Une API muette répond « pas en
+ * Gardé une minute, pour que l'aide ne l'interroge pas à chaque ouverture.
+ * L'état ne change plus seulement au redémarrage de l'API : l'interrupteur de
+ * BO › Réglages › Paiements le bascule à tout moment. Cet écran appelle donc
+ * `oublierModeEssai()` après chaque modification réussie (même processus) :
+ * l'accueil et l'aide suivent aussitôt. Une API muette répond « pas en
  * essai » : mieux vaut cacher une aide de test sur un site d'essai que la
  * montrer sur la vraie boutique. Les échecs ne sont pas gardés, pour que la
  * réponse revienne dès que l'API répond.
@@ -26,6 +29,11 @@ export interface EtatEssai {
   colis: boolean;
   /** Paiements ou courriers pour de faux : c'est un site de test. */
   essai: boolean;
+  /**
+   * L'état des paiements en une phrase (« Mode essai : Stripe test, PayPal
+   * sandbox, étiquettes non payées. »), ou null quand l'API ne l'a pas dit.
+   */
+  resume?: string | null;
 }
 
 /** La réponse quand on ne sait pas : rien d'essai ne s'affiche. */
@@ -34,10 +42,16 @@ export const HORS_ESSAI: EtatEssai = {
   courriers: false,
   colis: false,
   essai: false,
+  resume: null,
 };
 
 const DUREE_MS = 60_000;
 let garde: { etat: EtatEssai; jusqua: number } | null = null;
+
+/** À appeler après une modification de l'écran Paiements : on relit l'API. */
+export function oublierModeEssai(): void {
+  garde = null;
+}
 
 /** L'état du mode essai, pour la session de cette requête. */
 export async function modeEssai(request: Request): Promise<EtatEssai> {
@@ -54,6 +68,7 @@ export async function modeEssai(request: Request): Promise<EtatEssai> {
       courriers: brut.courriers === true,
       colis: brut.colis === true,
       essai: brut.essai === true,
+      resume: typeof brut.resume === "string" ? brut.resume : null,
     };
     garde = { etat, jusqua: Date.now() + DUREE_MS };
     return etat;
