@@ -350,12 +350,14 @@ export function creerNuancier(opts: {
   const code = document.createElement("input");
   code.type = "text";
   code.dataset.pastillesCode = "";
-  code.className = "w-24 rounded border border-bo-border bg-bo-surface px-1.5 py-1 font-mono text-xs";
-  code.placeholder = "#RRGGBB";
+  // Un exemple plutôt que « #RRGGBB », qui ne parle qu'aux informaticiens :
+  // la boutique recopie le code d'une charte, elle voit à quoi il ressemble.
+  code.className = "w-36 rounded border border-bo-border bg-bo-surface px-1.5 py-1 font-mono text-xs";
+  code.placeholder = "Code, ex. #B8551D";
   code.maxLength = 7;
   code.spellcheck = false;
   code.autocomplete = "off";
-  code.setAttribute("aria-label", `Code de la couleur à ajouter dans ${opts.libelle} (#RRGGBB)`);
+  code.setAttribute("aria-label", `Code de la couleur à ajouter dans ${opts.libelle}, par exemple #B8551D`);
   code.title = "Ou le code de la couleur, par exemple #B8551D";
   const ajouter = document.createElement("button");
   ajouter.type = "button";

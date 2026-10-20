@@ -76,11 +76,13 @@ import {
   couleursProposees,
   demandeUnPointRelais,
   demandeUneAdresse,
+  avecToutesLesFamillesProposees,
   famillesDuDessin,
   famillesDuParametre,
   fraisDePort,
   groupesDuDessin,
   lignesRemplies,
+  listesDesParties,
   refusDesCouleursDesParties,
   poidsPanier,
   normaliserCode,
@@ -105,6 +107,7 @@ import {
   nuanciersModifies,
 } from "./nuanciers.js";
 import { mesurerLaPiece, partsPourLaBoutique } from "./couleur-principale.js";
+import { partsDesZones } from "./couleurs-dessins.js";
 import { rattacherGenerationsAuPanier } from "./ia.js";
 import {
   createPaypalOrder,
@@ -574,25 +577,32 @@ function groupesPropres(
 }
 
 /**
- * Les couleurs proposées pour chaque partie d'un accessoire, vérifiées avant
- * d'être enregistrées : codes « #RRGGBB », 40 au plus par partie (cf.
+ * Les couleurs proposées pour chaque partie d'une pièce, vérifiées avant
+ * d'être enregistrées : codes « #RRGGBB », 10 au plus par partie (cf.
  * refusDesCouleursDesParties ; les doublons se retirent au nettoyage). Rend
  * la raison du refus, ou null. Les groupes d'un dessin vectoriel et les
  * familles d'un dessin en pixels portent ces listes de la même façon.
  *
  * Un refus plutôt qu'un nettoyage silencieux : une couleur mal écrite qui
  * disparaîtrait ferait croire à la boutique qu'elle est proposée.
+ *
+ * `rangee` : la pièce telle qu'elle est en base (null pour une pièce neuve).
+ * Une liste rangée quand la borne était de 40 passe tant qu'on n'y ajoute
+ * rien : sans quoi la boutique ne pourrait plus rien régler sur la pièce
+ * — le back-office renvoie toutes ses parties à chaque geste.
  */
-function refusDesCouleursPropres(b: {
-  groupesCouleurs?: unknown;
-  couleursImage?: unknown;
-}): string | null {
-  const familles =
-    b.couleursImage && typeof b.couleursImage === "object"
-      ? (b.couleursImage as { familles?: unknown }).familles
-      : undefined;
+function refusDesCouleursPropres(
+  b: { groupesCouleurs?: unknown; couleursImage?: unknown },
+  rangee: { groupesCouleurs?: unknown; couleursImage?: unknown } | null = null,
+): string | null {
+  const familles = (x: unknown) =>
+    x && typeof x === "object" ? (x as { familles?: unknown }).familles : undefined;
+  const anciennes = rangee
+    ? listesDesParties(rangee.groupesCouleurs, familles(rangee.couleursImage))
+    : [];
   return (
-    refusDesCouleursDesParties(b.groupesCouleurs) ?? refusDesCouleursDesParties(familles)
+    refusDesCouleursDesParties(b.groupesCouleurs, anciennes) ??
+    refusDesCouleursDesParties(familles(b.couleursImage), anciennes)
   );
 }
 
@@ -1918,19 +1928,21 @@ export function mountConfiguratorRoutes(app: Hono) {
         svgUrl: a.svgUrl,
         view,
         colorZones: a.colorZones,
-        // Zones que le client ne recolore pas (ruban, élastique…) : pas de
-        // pastilles pour elles, et leur couleur par défaut à l'écran. Null :
-        // la pièce suit le réglage de sa catégorie (`couleursProposees`).
+        // Les anciennes cases « Le client peut la changer » : envoyées telles
+        // qu'en base, le module ne les lit plus (le client change toutes les
+        // couleurs, cf. groupesProposesDeLaPiece).
         zonesMasquees: a.zonesMasquees,
         // La part du dessin peinte par chaque zone : elle désigne la couleur
-        // principale, quand la catégorie ne propose que celle-là.
+        // principale et range les familles de teinte (les ombres).
         partsDesZones: partsPourLaBoutique(a),
         // Nuances réunies sous une seule rangée de pastilles, et leurs noms.
         groupesCouleurs: a.groupesCouleurs ?? null,
         // Familles de couleurs d'un dessin en PIXELS. La carte des teintes
         // n'en fait pas partie : elle ne sert qu'au back-office, et pèse plus
         // que tout le reste de la bibliothèque réuni.
-        couleursImage: famillesPourLaBoutique(a.couleursImage),
+        // Une pièce les propose toutes au client (cf.
+        // avecToutesLesFamillesProposees).
+        couleursImage: avecToutesLesFamillesProposees(famillesPourLaBoutique(a.couleursImage)),
         position: a.position,
         // Catégorie de la pièce : c'est elle qui porte le nuancier proposé.
         pieceCategoryId: a.pieceCategoryId,
@@ -1964,8 +1976,9 @@ export function mountConfiguratorRoutes(app: Hono) {
         name: p.name,
         slot: p.slot,
         colors: p.colors ?? [],
-        // Toutes les couleurs de chaque pièce, ou seulement la principale :
-        // le réglage des pièces qui n'ont pas le leur.
+        // L'ancienne règle « toutes / principale » : envoyée telle qu'en
+        // base, le module ne la lit plus — chaque pièce propose toutes ses
+        // couleurs (cf. groupesProposesDeLaPiece).
         couleursProposees: couleursProposees(p.couleursProposees),
       })),
       nuanciersBase,
@@ -2103,7 +2116,13 @@ export function mountConfiguratorRoutes(app: Hono) {
       })
       .from(schema.assets)
       .where(eq(schema.assets.id, id));
-    return servirImageRecoloree(c, a);
+    // Une pièce propose toutes ses familles au client, cochées ou non au
+    // back-office (cf. avecToutesLesFamillesProposees) : la même règle que
+    // le module et l'impression, pour que l'image suive son choix.
+    return servirImageRecoloree(
+      c,
+      a && { ...a, couleursImage: avecToutesLesFamillesProposees(a.couleursImage) },
+    );
   });
 
   /**
@@ -4353,14 +4372,20 @@ export function mountConfiguratorRoutes(app: Hono) {
   app.post("/admin/assets/:id/groupes", async (c) => {
     const id = Number(c.req.param("id"));
     const b = await c.req.json().catch(() => ({}));
-    // Les couleurs proposées pour chaque partie d'un accessoire : refusées
-    // en bloc si l'une est mal écrite, plutôt qu'enregistrées en partie.
-    const refus = refusDesCouleursPropres(b);
-    if (refus) return c.json({ error: refus }, 400);
     const [piece] = await db
-      .select({ colorZones: schema.assets.colorZones })
+      .select({
+        colorZones: schema.assets.colorZones,
+        groupesCouleurs: schema.assets.groupesCouleurs,
+        couleursImage: schema.assets.couleursImage,
+      })
       .from(schema.assets)
       .where(eq(schema.assets.id, id));
+    // Les couleurs proposées pour chaque partie de la pièce : refusées en
+    // bloc si l'une est mal écrite ou si l'on en ajoute au-delà de 10,
+    // plutôt qu'enregistrées en partie. Les listes déjà rangées servent de
+    // point de comparaison (cf. refusDesCouleursPropres).
+    const refus = refusDesCouleursPropres(b, piece ?? null);
+    if (refus) return c.json({ error: refus }, 400);
     if (!piece) return c.notFound();
     const zones =
       b.colorZones !== undefined ? zonesPropres(b.colorZones) : (piece.colorZones ?? {});
@@ -4368,9 +4393,9 @@ export function mountConfiguratorRoutes(app: Hono) {
       colorZones: Object.keys(zones).length ? zones : null,
       groupesCouleurs: groupesPropres(b.groupesCouleurs, zones),
     };
-    // Le réglage propre de la pièce : une liste (même vide) a le dernier mot
-    // sur la catégorie, `null` lui rend la main. Absent : on n'y touche pas —
-    // renommer un groupe ne doit pas figer d'un coup les couleurs proposées.
+    // Les anciennes cases « Le client peut la changer » (plus lues, cf.
+    // groupesProposesDeLaPiece). Le back-office ne les envoie plus : absentes,
+    // on n'y touche pas, et une liste déjà en base reste telle quelle.
     if (b.zonesMasquees === null) set.zonesMasquees = null;
     else if (b.zonesMasquees !== undefined)
       set.zonesMasquees = zonesMasqueesPropres(b.zonesMasquees, zones);
@@ -4456,12 +4481,51 @@ export function mountConfiguratorRoutes(app: Hono) {
     return c.json(rows.map((r) => ({ ...r, partsDesZones: partsPourLaBoutique(r) })));
   });
 
+  /**
+   * La part du dessin que peint chaque zone, pour un dessin qui n'est pas
+   * encore une pièce (Nouvelle pièce) ou dont la mesure n'est pas encore
+   * rangée : ?url=/assets/x.svg&zones=st0,st1,st2. Lecture seule — rien
+   * n'est écrit, ni en base ni sur le disque.
+   *
+   * Sans elle, « Nouvelle pièce » rangeait les parties et les ombres à la
+   * seule clarté, puis la page Pièces autrement une fois la pièce créée et
+   * mesurée (casquette 401 : la « couleur principale (la plus grande
+   * surface) » ne peignait que 9 % du dessin), et un nom donné à la création
+   * tombait sur une couleur devenue l'ombre d'une autre. C'est la MÊME mesure
+   * que celle de l'enregistrement (couleur-principale.ts, partsDesZones) :
+   * l'écran de création dit donc ce que la page Pièces dira.
+   *
+   * `parts: null` si le dessin ne se lit pas ; le back-office le dit alors.
+   */
+  app.get("/admin/assets/parts", async (c) => {
+    const url = String(c.req.query("url") ?? "").trim();
+    const zones: Record<string, string> = {};
+    for (const z of String(c.req.query("zones") ?? "").split(","))
+      if (/^st\d+$/.test(z.trim())) zones[z.trim()] = "#000000";
+    // Une seule couleur (ou aucune) : rien à départager.
+    if (!url || Object.keys(zones).length < 2) return c.json({ parts: null });
+    // Seuls les noms des zones comptent pour la mesure : chacune est repeinte
+    // d'un témoin, sa couleur du dessin n'y sert pas (cf. pixelsParZone).
+    const parts = await partsDesZones(url, zones).catch(() => null);
+    return c.json({ parts });
+  });
+
   /** Crée ou met à jour une pièce (vêtement, coupe, accessoire…). */
   app.post("/admin/assets", async (c) => {
     const b = await c.req.json();
     // Même vérification que l'enregistrement des groupes, plus haut : une
-    // pièce créée avec ses couleurs déjà réglées passe par ici.
-    const refus = refusDesCouleursPropres(b);
+    // pièce créée avec ses couleurs déjà réglées passe par ici. Modifiée
+    // (`b.id`), ses listes déjà rangées comptent comme là-haut.
+    const [rangee] = b.id
+      ? await db
+          .select({
+            groupesCouleurs: schema.assets.groupesCouleurs,
+            couleursImage: schema.assets.couleursImage,
+          })
+          .from(schema.assets)
+          .where(eq(schema.assets.id, Number(b.id)))
+      : [];
+    const refus = refusDesCouleursPropres(b, rangee ?? null);
     if (refus) return c.json({ error: refus }, 400);
     const cleanZones: Record<string, string> = {};
     for (const [k, v] of Object.entries(b.colorZones ?? {})) {

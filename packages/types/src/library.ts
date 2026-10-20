@@ -17,9 +17,9 @@ export interface AssetDTO {
   /** Zones de couleur par défaut : { st0: "#BA6821", … } (§18.1 D). */
   colorZones: Record<string, string> | null;
   /**
-   * Zones que le client ne peut pas recolorer (petits détails) : ["st3"].
-   * `null` : la pièce n'a pas de réglage propre, elle suit sa catégorie
-   * (cf. groupesProposesDeLaPiece).
+   * Les anciennes cases « Le client peut la changer » d'une pièce : ["st3"].
+   * Gardées en base, plus lues depuis le 20 octobre 2026 — le client peut
+   * changer toutes les couleurs (cf. groupesProposesDeLaPiece).
    */
   zonesMasquees?: string[] | null;
   /** Part du dessin peinte par chaque zone : elle désigne la couleur principale. */

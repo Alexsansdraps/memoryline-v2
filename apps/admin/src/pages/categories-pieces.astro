@@ -88,7 +88,9 @@ if (Astro.request.method === "POST") {
         colors: couleursDepuis(f.get("colors")),
         active: f.get("active") === "on",
         position: Number(f.get("position") || 0),
-        // Absent du formulaire (page ouverte avant ce réglage) : inchangé.
+        // Le menu « Le client peut recolorer » a quitté la page (le client
+        // change toutes les couleurs) : absent, la valeur en base reste
+        // telle quelle. Seule une page restée ouverte d'avant l'envoie encore.
         ...(f.get("couleursProposees") !== null
           ? {
               couleursProposees:
@@ -168,35 +170,28 @@ function messageArchivage(c: CategoriePiece): string {
     catégories — « Casquettes », « Robes », « Lunettes »… — et chaque catégorie
     porte <strong>ses couleurs</strong> : celles que le client peut choisir pour
     les pièces qu'elle contient. Une catégorie sans couleur laisse le nuancier
-    de l'emplacement et la saisie libre — sauf pour les accessoires, où le
-    client n'a jamais de saisie libre.
+    de l'emplacement et une couleur libre — sauf pour les accessoires, où le
+    client n'a jamais de couleur libre.
   </p>
   <p class="mb-4 text-sm text-bo-muted max-w-3xl">
-    <strong>Accessoires</strong> : chaque partie d'un accessoire (la monture
-    et les verres d'une paire de lunettes) peut proposer sa propre liste de
-    couleurs, à composer et ranger sur
+    <strong>Le client choisit la couleur de chaque partie de chaque pièce</strong>
+    (les manches, le col, la visière…) : chaque partie a sa rangée de
+    pastilles, et ses ombres la suivent toutes seules. Dans le module, un bouton sous les pastilles lui rend à tout
+    moment les couleurs d'origine. Les commandes déjà passées ne changent pas.
+  </p>
+  <p class="mb-4 text-sm text-bo-muted max-w-3xl">
+    <strong>Une partie peut avoir sa propre liste</strong>, jusqu'à 10
+    couleurs (la monture et les verres d'une paire de lunettes, les manches
+    d'un pull) : sur
     <a class="underline" href={url("/pieces")}>Pièces</a>, sous « Couleurs »
-    de la pièce. Elle passe avant le nuancier de la catégorie ; une partie
-    sans liste propose celui-ci.
-  </p>
-  <p class="mb-4 text-sm text-bo-muted max-w-3xl">
-    Chaque pièce se range dans sa catégorie sur
-    <a class="underline" href={url("/pieces")}>Pièces</a> (menu Atelier) : à
-    sa création, ou en tête de ses « Couleurs ».
+    de la pièce, « Couleurs proposées au client ». Le client n'a alors que
+    celles-ci ; une partie sans liste propose le nuancier de sa catégorie.
   </p>
   <p class="mb-6 text-sm text-bo-muted max-w-3xl">
-    « <strong>Le client peut recolorer</strong> » : <strong>toutes les
-    couleurs de chaque pièce</strong>, c'est le réglage par défaut — chaque
-    partie de la pièce a sa rangée de pastilles, et ses ombres la suivent
-    toutes seules (une couleur prise à tort pour une ombre se sépare sur la
-    pièce, d'un clic sur « Séparer »). « Seulement la couleur principale » ne laisse que la plus
-    étendue (la calotte d'un chapeau, pas son ruban), ombres comprises ; les
-    détails gardent la couleur du dessin. Une pièce dont vous avez coché ou
-    décoché les cases « Le client peut la changer » garde son propre réglage.
-    Dans le module, le client peut à tout moment remettre les couleurs
-    d'origine d'une pièce ou du personnage (un bouton sous les pastilles,
-    visible dès qu'une couleur a changé). Les commandes déjà passées ne
-    changent pas.
+    Chaque pièce se range dans sa catégorie sur
+    <a class="underline" href={url("/pieces")}>Pièces</a> (menu Atelier) : à
+    sa création, ou en tête de ses « Couleurs ». C'est là aussi qu'une
+    couleur se coche « C'est une ombre ».
   </p>
 
   <section class="mb-6 bg-bo-surface border border-bo-border rounded-lg overflow-hidden">
@@ -248,23 +243,12 @@ function messageArchivage(c: CategoriePiece): string {
                   <input type="checkbox" name="active" checked={c.active} />
                   <span>Proposée</span>
                 </label>
-                {/* Ce que le client peut recolorer sur chaque pièce : un seul
-                    réglage pour toute la catégorie, au lieu de décocher le
-                    ruban de chaque chapeau un par un. */}
-                <label class="block">
-                  <span class="text-bo-muted text-xs">Le client peut recolorer</span>
-                  <select
-                    name="couleursProposees"
-                    class="mt-1 block border border-bo-border rounded px-2 py-1"
-                  >
-                    <option value="toutes" selected={c.couleursProposees !== "principale"}>
-                      Toutes les couleurs de chaque pièce
-                    </option>
-                    <option value="principale" selected={c.couleursProposees === "principale"}>
-                      Seulement la couleur principale
-                    </option>
-                  </select>
-                </label>
+                {/* Plus de menu « Le client peut recolorer » (toutes les
+                    couleurs / seulement la principale) : le client change
+                    toutes les couleurs de chaque pièce depuis le 20 octobre
+                    2026, le menu ne voulait plus rien dire. Sa valeur reste
+                    en base, intacte : le formulaire ne l'envoie plus, l'API
+                    n'y touche donc pas, et plus rien ne la lit. */}
                 <button class="rounded bg-bo-accent text-white px-3 py-1.5">
                   Enregistrer
                 </button>
@@ -277,20 +261,9 @@ function messageArchivage(c: CategoriePiece): string {
                 </div>
                 <p class="basis-full text-xs text-bo-muted">
                   {c.pieces ?? 0} pièce{(c.pieces ?? 0) > 1 ? "s" : ""} —
-                  identifiant <code>{c.slug}</code>.
-                  {c.couleursProposees === "principale" ? (
-                    <span>
-                      {" "}Le client ne change que la couleur principale
-                      (« couleur principale » sur la carte de chaque pièce),
-                      ombres comprises ; les détails gardent la couleur du
-                      dessin.
-                    </span>
-                  ) : (
-                    <span>
-                      {" "}Le client change chaque partie de la pièce, ses
-                      ombres la suivent.
-                    </span>
-                  )}
+                  identifiant <code>{c.slug}</code>. Ces couleurs sont
+                  proposées pour chaque partie de ses pièces, sauf celles
+                  qui ont leur propre liste.
                 </p>
               </form>
             </td>
@@ -407,16 +380,6 @@ function messageArchivage(c: CategoriePiece): string {
       <label class="flex items-center gap-2 pb-2">
         <input type="checkbox" name="active" checked />
         <span>Proposée</span>
-      </label>
-      <label class="block">
-        <span class="text-bo-muted">Le client peut recolorer</span>
-        <select
-          name="couleursProposees"
-          class="mt-1 block border border-bo-border rounded px-3 py-2"
-        >
-          <option value="toutes" selected>Toutes les couleurs de chaque pièce</option>
-          <option value="principale">Seulement la couleur principale</option>
-        </select>
       </label>
       <div class="basis-full">
         <Nuancier nom="colors" couleurs={[]} libelle="le nuancier de la nouvelle catégorie" />

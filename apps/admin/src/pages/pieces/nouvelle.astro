@@ -9,7 +9,7 @@ import Admin from "../../layouts/Admin.astro";
 import ApercusZones from "../../components/ApercusZones.astro";
 import GroupesCouleurs from "../../components/GroupesCouleurs.astro";
 import { adminApi, type CategoriePiece, type TypeAffiche } from "../../lib/api.ts";
-import { NUANCIERS_PAR_DEFAUT } from "@memoryline/types/couleurs";
+import type { NuancierBase } from "@memoryline/types";
 
 const PUBLIC_API_URL =
   import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
@@ -30,8 +30,6 @@ if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   try {
     const zones = JSON.parse(String(f.get("colorZones") || "{}"));
-    // « null » : aucune case touchée, la pièce suivra sa catégorie.
-    const masquees = JSON.parse(String(f.get("zonesMasquees") || "null"));
     const groupes = JSON.parse(String(f.get("groupesCouleurs") || "[]"));
     // Familles de teintes, quand le dessin téléversé est une image en pixels.
     const brutFamilles = String(f.get("couleursImage") || "");
@@ -42,10 +40,10 @@ if (Astro.request.method === "POST") {
       svgUrl: String(f.get("svgUrl") || ""),
       view: String(f.get("view") || "front"),
       colorZones: Object.keys(zones).length ? zones : undefined,
-      // L'API ne garde que les zones qui existent dans `colorZones`. Sans
-      // liste, la pièce suit le réglage de sa catégorie (toutes ses couleurs,
-      // ou la principale seule).
-      zonesMasquees: Array.isArray(masquees) ? masquees.map(String) : null,
+      // Plus de cases « Le client peut la changer » : le client change
+      // toutes les couleurs d'une pièce. Une pièce neuve n'a donc aucun
+      // réglage de ce genre.
+      zonesMasquees: null,
       groupesCouleurs: Array.isArray(groupes) ? groupes : null,
       couleursImage: familles,
       position: Number(f.get("position") || 0),
@@ -77,15 +75,14 @@ try {
 /** Les catégories qu'on peut encore choisir : pas les archivées. */
 const categoriesChoisissables = categories.filter((c) => !c.archivedAt);
 /**
- * Les pastilles d'une partie d'accessoire sans liste, dans une catégorie sans
- * couleurs : le nuancier des vêtements des personnages, comme le module.
- * Illisible, celui d'origine.
+ * Les pastilles d'une partie sans liste, dans une catégorie sans couleurs :
+ * le nuancier des personnages de son emplacement, comme le module.
+ * Illisibles, le panneau prend ceux d'origine.
  */
-const repliAccessoire: string[] = await api
+const replisPersonnages: Partial<Record<NuancierBase, string[]>> = await api
   .nuanciersBase()
-  .then((n) => (n.nuanciers.vetements?.length ? n.nuanciers.vetements : null))
-  .catch(() => null)
-  .then((n) => n ?? [...NUANCIERS_PAR_DEFAUT.vetements]);
+  .then((n) => n.nuanciers)
+  .catch(() => ({}));
 /**
  * Les types d'affiche ouverts : un type archivé (« Mariés (essai) ») n'est
  * plus proposé au client, une pièce dessinée pour lui ne servirait à
@@ -168,14 +165,10 @@ const vuesChoisissables = vues.filter((v) => !v.archivedAt);
                 data-slot={c.slot}
                 data-nom={c.name}
                 data-nuancier={JSON.stringify(c.colors ?? [])}
-                data-regle={
+                data-active={
                   // Une catégorie décochée n'arrive pas au configurateur :
-                  // ses pièces y proposent toutes leurs couleurs.
-                  c.active === false
-                    ? ""
-                    : c.couleursProposees === "principale"
-                      ? "principale"
-                      : "toutes"
+                  // ses pièces y proposent le nuancier de leur emplacement.
+                  c.active === false ? "" : "1"
                 }
               >
                 {c.name}
@@ -184,11 +177,11 @@ const vuesChoisissables = vues.filter((v) => !v.archivedAt);
           </select>
           <span class="mt-1 block text-xs text-bo-muted">
             La palette de la catégorie est celle que le client verra pour
-            chaque couleur proposée de la pièce. Un accessoire peut avoir, pour
-            chacune de ses parties, sa propre liste de couleurs (sous
-            « Couleurs du dessin », plus bas). Les palettes se règlent dans
+            chaque partie de la pièce. Chaque partie peut aussi avoir sa
+            propre liste, jusqu'à 10 couleurs (sous « Couleurs du dessin »,
+            plus bas). Les palettes se règlent dans
             <a href={url("/categories-pieces")} class="underline">Catégories de pièces</a>.
-            Se change ensuite dans Pièces, sous « Couleurs » de la pièce.
+            La catégorie se change ensuite dans Pièces, sous « Couleurs » de la pièce.
           </span>
         </label>
       </div>
@@ -233,12 +226,12 @@ const vuesChoisissables = vues.filter((v) => !v.archivedAt);
           Couleurs du dessin
         </span>
         <p class="text-xs text-bo-muted mb-2">
-          Une ligne par couleur : la vignette montre où elle se trouve. Donnez
-          le nom que le client lira, et décochez « Le client peut la changer »
-          sur les petits détails (ruban, élastique…). Au départ, les cases
-          suivent la catégorie choisie plus haut. Pour une image en pixels
-          (une photo, une illustration), rien n'est proposé au client tant
-          que vous n'avez rien coché.
+          Une ligne par partie de la pièce (les manches, le col, la
+          visière…), ses ombres en retrait dessous ; la vignette montre où
+          elle se trouve. Le client choisira la couleur de chaque partie :
+          donnez-lui le nom qu'il lira. Cochez « C'est une ombre » sur une
+          couleur qui n'est que l'ombre ou le reflet d'une partie : elle
+          suivra sa couleur.
         </p>
         <GroupesCouleurs
           mode="piece"
@@ -252,7 +245,8 @@ const vuesChoisissables = vues.filter((v) => !v.archivedAt);
             masquees: "zonesMasquees",
             familles: "couleursImage",
           }}
-          accessoire={{ oui: false, repli: repliAccessoire }}
+          emplacement={{ slot: "clothes", replis: replisPersonnages }}
+          rappel="La pièce s'enregistrera avec « Créer la pièce », en bas de page."
         />
       </div>
     </section>
@@ -375,27 +369,26 @@ const vuesChoisissables = vues.filter((v) => !v.archivedAt);
     emplacement?.addEventListener("change", filtrerCategories);
     filtrerCategories();
 
-    // Les cases « Le client peut la changer » montrent ce que la catégorie
-    // choisie propose (toutes les couleurs, ou la principale seule), tant
-    // qu'aucune n'a été touchée.
+    // Les « Couleurs proposées au client » de chaque partie montrent celles
+    // de la catégorie choisie, tant que la partie n'a pas sa propre liste.
     function annoncerRegle() {
       const choix = categorie && categorie.selectedOptions[0];
       let nuancier = [];
       try {
         nuancier = JSON.parse((choix && choix.dataset.nuancier) || "[]");
       } catch {
-        /* illisible : la partie d'accessoire retombe sur le nuancier de repli */
+        /* illisible : la partie retombe sur le nuancier de repli */
       }
       const regle =
-        choix && choix.dataset.regle
-          ? { categorie: choix.dataset.nom || "", couleurs: choix.dataset.regle, nuancier }
+        choix && choix.dataset.active
+          ? { categorie: choix.dataset.nom || "", nuancier }
           : null;
-      // Un accessoire règle les couleurs de chaque partie (liste propre, sans
-      // choix libre pour le client) : le bloc des couleurs doit le savoir
-      // avant de dire ce que la catégorie propose.
+      // L'emplacement d'abord : un accessoire n'a jamais de couleur libre, et
+      // une partie sans catégorie à couleurs propose le nuancier des
+      // personnages de son emplacement.
       couleurs?.dispatchEvent(
         new CustomEvent("groupes:emplacement", {
-          detail: { accessoire: !!emplacement && emplacement.value === "accessory" },
+          detail: { slot: emplacement ? emplacement.value : "clothes" },
         }),
       );
       couleurs?.dispatchEvent(new CustomEvent("groupes:regle", { detail: regle }));
@@ -404,7 +397,7 @@ const vuesChoisissables = vues.filter((v) => !v.archivedAt);
     emplacement?.addEventListener("change", annoncerRegle);
     // Et une fois au chargement, comme le filtre ci-dessus : un retour en
     // arrière du navigateur rend la catégorie choisie sans redéclencher
-    // « change », et les cases annonceraient alors la règle d'une autre.
+    // « change », et les couleurs proposées seraient celles d'une autre.
     // Au DOMContentLoaded : le bloc des couleurs se monte par un script de
     // module, qui passe après celui-ci — annoncé plus tôt, personne
     // n'écoutait encore.

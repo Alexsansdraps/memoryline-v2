@@ -208,6 +208,35 @@ export function famillesProposees(brut: unknown): FamilleCouleur[] {
   return famillesDuDessin(brut).filter((f) => f.proposee === true);
 }
 
+/**
+ * Les couleurs d'une PIÈCE dessinée en pixels, telles que le module et
+ * l'impression les reçoivent : toutes ses familles proposées au client.
+ *
+ * « Le client peut changer toutes les couleurs » (20 octobre 2026) vaut pour
+ * toutes les pièces, et la case « Le client peut la changer » a quitté leur
+ * écran au back-office : une famille restée décochée n'aurait plus jamais pu
+ * l'être. Le dessin de BASE d'un personnage, lui, garde ses cases : on ne
+ * passe pas par ici pour lui.
+ *
+ * Une commande passée avant s'imprime comme avant : le module n'écrivait de
+ * couleur que pour les familles proposées, une famille décochée n'a donc pas
+ * de clé dans sa configuration, et prend son défaut — ce qu'elle faisait.
+ * Rendue telle quelle quand tout est déjà proposé (ou qu'il n'y a rien) :
+ * l'empreinte des fichiers d'impression déjà rangés ne bouge pas.
+ */
+export function avecToutesLesFamillesProposees<T>(couleursImage: T): T {
+  if (!couleursImage || typeof couleursImage !== "object") return couleursImage;
+  const familles = (couleursImage as { familles?: unknown }).familles;
+  if (!Array.isArray(familles)) return couleursImage;
+  const aProposer = (f: unknown) =>
+    !!f && typeof f === "object" && (f as { proposee?: unknown }).proposee !== true;
+  if (!familles.some(aProposer)) return couleursImage;
+  return {
+    ...couleursImage,
+    familles: familles.map((f: unknown) => (aProposer(f) ? { ...(f as object), proposee: true } : f)),
+  } as T;
+}
+
 /** Toutes les teintes d'une famille, la référence d'abord. */
 export function teintesDeLaFamille(f: FamilleCouleur): string[] {
   return [f.reference, ...(f.teintes ?? [])];

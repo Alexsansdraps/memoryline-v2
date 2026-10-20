@@ -759,80 +759,87 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
           <strong>Une pièce</strong> (vêtement, pantalon, coupe, accessoire) :
           dans <a href={url("/pieces")} class="text-bo-accent underline">Pièces</a>
           (menu Atelier), bandeau « Couleurs » sous la pièce — il s'ouvre d'un
-          clic, une pièce à la fois. Les teintes offertes au client sont celles
-          de sa <strong>catégorie</strong>
-          (<a href={url("/categories-pieces")} class="text-bo-accent underline">Catégories de pièces</a>),
-          choisie à la création de la pièce ou en tête de ses « Couleurs » ; sans catégorie, il
-          a une palette générique et le choix libre (sauf sur un accessoire).
+          clic, une pièce à la fois. <strong>Le client choisit la couleur de
+          chaque partie de chaque pièce</strong> (les manches, le col, la
+          visière…) : chaque partie a sa rangée de pastilles dans le module ;
+          ses ombres suivent sa couleur. Le bandeau le résume (« le client
+          choisit la couleur de 2 parties (+ 1 ombre) »). Une ligne par partie,
+          « Partie 1 » en tête (la couleur principale) : sa pastille, une
+          vignette qui montre où elle se trouve, et le nom que le client lira
+          au-dessus de ses pastilles (« Manches »). Donnez un nom à chaque
+          partie dès qu'il y en a deux : sans nom, le client lit « Choix de la
+          couleur » sur chaque rangée, sans savoir laquelle colore quoi. Chaque
+          réglage s'enregistre aussitôt, et un message en bas de l'écran le
+          confirme (« Enregistré ✓ »). Si l'enregistrement échoue (serveur
+          injoignable, session expirée), ce message le dit en rouge et l'écran
+          reprend son dernier état enregistré : refaites le changement un peu
+          plus tard.
         </p>
         <p>
-          <strong>Les couleurs d'un accessoire, partie par partie</strong> :
-          le client n'a jamais de choix libre sur un accessoire, seulement les
-          pastilles que vous choisissez. Dans
-          <a href={url("/pieces")} class="text-bo-accent underline">Pièces</a>,
-          ouvrez « Couleurs » sous l'accessoire : chaque partie que le client
-          peut changer (la monture, les verres…) a, sous sa ligne, ses
-          « Pastilles du client ». Sans liste à elle, la partie propose le
-          nuancier de sa catégorie, et c'est lui que vous voyez : votre
-          premier changement part de ces couleurs-là et en fait la liste de la
-          partie (le nuancier de la catégorie ne change pas). Ajoutez une
-          couleur au sélecteur ou par son code (#B8551D, puis Entrée ou
-          « + Ajouter »), autant que vous voulez (40 au plus) ; rangez-les
-          avec la poignée ⠿ ou les flèches ← → ; × en retire une. La phrase
-          dit combien sont proposées (« 4 couleurs proposées »). Chaque
-          changement s'enregistre aussitôt. « Reprendre les couleurs de la
-          catégorie » efface la liste de la partie, comme le retrait de sa
-          dernière couleur. Le client arrive sur la couleur du dessin ; s'il
-          passe d'un accessoire à un autre, la couleur principale qu'il avait
-          choisie le suit, quand le nouveau la propose aussi pour sa partie
-          principale. Un panier ou une commande dont la couleur
+          <strong>« C'est une ombre »</strong> : la case de chaque couleur du
+          dessin. Cochée, la couleur est une ombre (ou un reflet) : sa ligne se
+          range en retrait sous la partie qu'elle suit (« Ombre de ■ Partie
+          1 »), et le client ne la choisit pas à part — passé au bleu, le pull
+          garde ses ombres, en bleu plus sombre. Décochée, c'est une partie à
+          part entière, avec sa rangée chez le client. Au départ, la case dit
+          ce que le site a reconnu en lisant le dessin ; cochez-la sur une
+          ombre qu'il a prise pour une partie, décochez-la sur une partie qu'il
+          a prise pour une ombre (la visière d'une casquette, le revers d'un
+          bonnet). Remettre la case comme elle était efface votre réglage. Une
+          ombre suit la partie de sa teinte ; s'il n'y en a pas, la plus
+          proche, et sa ligne le dit. Une ligne signale aussi, en orange, une
+          ombre d'une autre teinte que sa partie, réunie à elle par un
+          regroupement enregistré plus tôt : décochez-la si c'est une partie à
+          part. Une case peut en déplacer d'autres — décocher une ombre libère
+          celle qui ne suivait la partie qu'à travers elle, cocher une partie
+          emmène ses propres ombres : le message les nomme, et leurs lignes
+          clignotent. La couleur principale (la plus grande surface) n'est
+          jamais une ombre : elle n'a pas de case.
+        </p>
+        <p>
+          <strong>Les couleurs proposées, partie par partie</strong> (toutes
+          les pièces) : sous chaque partie, « Couleurs proposées au client »
+          dit ce qu'il aura — au départ, celles de la
+          <strong>catégorie</strong> de la pièce
+          (<a href={url("/categories-pieces")} class="text-bo-accent underline">Catégories de pièces</a>,
+          choisie à la création de la pièce ou en tête de ses « Couleurs ») ;
+          sans catégorie, un nuancier des personnages et une couleur libre.
+          Pour en définir d'autres, cliquez « Choisir les couleurs proposées
+          pour la partie 2 » : le nuancier part de celles de la catégorie.
+          Ajoutez une couleur au sélecteur ou par son code (#B8551D, puis
+          Entrée ou « + Ajouter »), jusqu'à <strong>10 couleurs</strong> ;
+          rangez-les avec la poignée ⠿ ou les flèches ← → ; × en retire une.
+          Dès le premier changement, la partie a sa propre liste (« 4 couleurs
+          sur 10 au plus ») : le client ne voit qu'elle, sans couleur libre. À
+          10, « + Ajouter » se grise : retirez-en une pour en ajouter une
+          autre. Si la couleur de départ de la partie n'est pas dans sa liste,
+          l'écran le signale : le client arrive avec elle mais ne pourrait plus
+          la reprendre — « L'ajouter à la liste » la met à la fin. Une liste
+          faite avant la limite de 10 garde toutes ses couleurs, mais le client
+          n'en voit que les 10 premières : l'écran dit combien en retirer.
+          « Reprendre les couleurs de la catégorie » efface la liste, comme le
+          retrait de sa dernière couleur. Sur un accessoire, le client n'a
+          jamais de couleur libre. Un panier ou une commande dont la couleur
           n'est plus dans la liste s'affiche et s'imprime quand même avec
           elle.
         </p>
         <p>
-          <strong>Ce que le client peut recolorer</strong> : un seul réglage
-          par catégorie, « Le client peut recolorer », dans
-          <a href={url("/categories-pieces")} class="text-bo-accent underline">Catégories de pièces</a>.
-          « Toutes les couleurs », le réglage de départ, propose chaque partie
-          de la pièce avec ses ombres : une rangée de pastilles par partie, et
-          l'ombre d'une partie suit la couleur choisie (« ombre de « Couleur
-          2 », elle la suit » sous sa ligne ; une ombre n'a pas de case à
-          elle, celle de sa couleur vaut pour les deux). Le site reconnaît une
-          ombre à sa teinte, à sa clarté proche et à sa surface plus petite ;
-          s'il en prend une à tort pour une ombre (la visière d'une casquette,
-          le revers d'un bonnet), « Séparer » sur sa ligne lui rend sa propre
-          rangée, et « Suivre « Couleur 2 » » défait ce choix. « Seulement la couleur
-          principale » est pour une catégorie dont les détails (le ruban d'un
-          chapeau) ne doivent pas bouger : le client n'a que la couleur la plus
-          étendue de chaque pièce (« couleur principale » sous sa ligne),
-          ombres comprises ; le reste garde la couleur du dessin. Dans le
-          module, un bouton « Remettre les couleurs d'origine », sous les
-          pastilles, rend à une pièce ou au personnage les couleurs du dessin
-          dès que le client en a changé une.
+          Dans le module, un bouton « Remettre les couleurs d'origine », sous
+          les pastilles, rend à une pièce ou au personnage les couleurs du
+          dessin dès que le client en a changé une.
         </p>
         <p>
-          Une pièce à part (un vêtement dont un détail ne doit pas bouger,
-          dans une catégorie qui propose toutes les couleurs) : cochez ou
-          décochez ses cases « Le client peut la changer ». Elle est alors
-          « réglée à la main », et ce réglage passe avant celui de la
-          catégorie : chaque couleur cochée a sa rangée de pastilles, et ses
-          ombres la suivent comme ailleurs ; une couleur décochée garde celle
-          du dessin, ses ombres aussi. « Refaire comme la catégorie » retire
-          le réglage à la main. Chaque réglage s'enregistre aussitôt.
-        </p>
-        <p>
-          <strong>Réglages avancés</strong> (repliés sous chaque pièce) : à
-          n'ouvrir que si les couleurs du dessin ont été mal lues. On y règle la
-          couleur de départ d'une couleur — ses ombres suivent — et on sépare
-          (« × ») une teinte que la lecture du dessin a réunie à tort.
-          « Remettre les couleurs du dessin » annule les couleurs de départ
-          changées par erreur. Les commandes déjà passées s'impriment toujours
-          comme le client les a composées.
-        </p>
-        <p>
-          Un dessin venu de Canva ou d'une IA n'a pas de couleur séparée ?
-          « Relire le dessin », dans les réglages avancés, les lit sur le
-          dessin ; le fichier d'origine est conservé.
+          <strong>Réglages avancés</strong> (repliés sous chaque pièce), à
+          n'ouvrir que si la pièce ne s'affiche pas comme il faut :
+          « Couleur de départ », si la pièce doit arriver chez le client dans
+          une autre couleur que son dessin — ses ombres suivent ; « Remettre
+          les couleurs du dessin », si une couleur de départ a été changée par
+          erreur ; « Relire le dessin », si son fichier a été remplacé ou s'il
+          manque une couleur — un dessin venu de Canva ou d'une IA, par
+          exemple : le site regarde de nouveau les couleurs du fichier. Les
+          noms, les ombres et les couleurs proposées sont gardés,
+          le fichier d'origine aussi. Les commandes déjà passées s'impriment
+          toujours comme le client les a composées.
         </p>
         <p>
           Les <strong>décors</strong> (fonds des affiches) et les

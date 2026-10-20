@@ -56,6 +56,7 @@ import { and, asc, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import sharp from "sharp";
 import {
   afficheComposee,
+  avecToutesLesFamillesProposees,
   lignesRemplies,
   sansPastillesProposees,
   type PosterConfig,
@@ -153,22 +154,21 @@ export async function donneesDImpression(): Promise<ResolveData> {
       slot: a.slot,
       svgUrl: a.svgUrl,
       colorZones: a.colorZones,
-      // Zones non proposées au client : imprimées dans leur couleur par défaut,
-      // comme la boutique les montre. Elles entrent aussi dans l'empreinte :
-      // une zone décochée refait le fichier.
-      zonesMasquees: a.zonesMasquees,
-      // Un groupe masqué garde le défaut de toutes ses nuances ; regrouper
-      // refait donc le fichier, lui aussi. Les pastilles qu'un accessoire
-      // propose au client, partie par partie, n'y entrent pas : elles ne
-      // changent rien au papier, et chaque retouche d'une liste au
-      // back-office aurait refait le PDF de toutes les commandes qui portent
-      // la pièce (cf. sansPastillesProposees).
-      groupesCouleurs: sansPastillesProposees(a.groupesCouleurs),
+      // Ni les anciennes cases « Le client peut la changer »
+      // (`zones_masquees`), ni les groupes de couleurs, ni la case « C'est une
+      // ombre » : depuis le 20 octobre 2026, une pièce s'imprime zone par
+      // zone, avec les couleurs que porte la configuration, sans rien forcer
+      // (cf. couleursDeLaPiece). Ils n'entrent donc plus dans l'empreinte :
+      // cocher une ombre au back-office ne refait pas le PDF de toutes les
+      // commandes qui portent la pièce, pour une affiche identique. Les
+      // pastilles proposées au client n'y entraient déjà pas.
       // Familles de couleurs d'une pièce dessinée en pixels : une famille
-      // renommée, rattachée ou décochée change ce qui s'imprime, donc
-      // l'empreinte — et le fichier est refait plutôt que resservi. Leurs
-      // pastilles proposées, non, comme ci-dessus.
-      couleursImage: couleursImageSansPastilles(a.couleursImage),
+      // renommée, rattachée ou recolorée change ce qui s'imprime, donc
+      // l'empreinte — et le fichier est refait plutôt que resservi. Toutes
+      // sont proposées au client, comme dans le module (cf.
+      // avecToutesLesFamillesProposees) ; leurs pastilles proposées, elles,
+      // ne changent rien au papier (cf. sansPastillesProposees).
+      couleursImage: avecToutesLesFamillesProposees(couleursImageSansPastilles(a.couleursImage)),
       position: a.position,
     });
   // Personnages (SVG de base pré-composé) pour le rendu PDF du nouveau modèle.

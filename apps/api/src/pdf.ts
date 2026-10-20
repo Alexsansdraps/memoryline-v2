@@ -140,9 +140,12 @@ export interface ResolvedAsset {
   svgUrl: string;
   /** Couleurs par défaut du SVG : { st0: "#BA6821", … }. */
   colorZones?: Record<string, string> | null;
-  /** Zones non proposées au client : elles s'impriment dans leur couleur par défaut. */
+  /**
+   * Les anciennes cases « Le client peut la changer » : plus lues depuis le
+   * 20 octobre 2026, une pièce s'imprime zone par zone (cf. couleursDeLaPiece).
+   */
   zonesMasquees?: string[] | null;
-  /** Groupes de couleurs : un groupe masqué garde le défaut de TOUTES ses nuances. */
+  /** Groupes de couleurs : ils ne changent rien à l'impression, qui va zone par zone. */
   groupesCouleurs?: GroupeCouleur[] | null;
   /** Familles de couleurs, quand le dessin de la pièce est une image en pixels. */
   couleursImage?: CouleursImage | null;
@@ -497,9 +500,8 @@ export async function resolveConfig(
 
       // Couleurs : zones par défaut de l'asset surchargées par celles du perso
       // POUR CE SLOT uniquement (clés "slot:zone" — le slot vient de la config,
-      // même clé que celle écrite par le configurateur). Les groupes que le
-      // client ne peut pas changer gardent leur défaut : même règle que
-      // l'aperçu de la boutique (couleursDeLaPiece).
+      // même clé que celle écrite par le configurateur). Même règle que
+      // l'aperçu de la boutique (couleursDeLaPiece) : rien n'est forcé.
       const overrides = couleursDeLaPiece(character.colors, slot, asset);
       // Une pièce dessinée en pixels se recolore comme un personnage : c'est
       // le même cache, donc la même image qu'à l'écran.

@@ -19,9 +19,10 @@
  *     fois, même replié, il pesait plus d'un mégaoctet et retardait l'arrivée
  *     depuis la recherche de plusieurs secondes ; et le composant ne sait se
  *     monter qu'au chargement de la page ;
- *   - la règle de chaque catégorie (« toutes les couleurs ») est dite UNE
- *     fois, en tête de l'emplacement ; sous une pièce, seulement ce qui s'en
- *     écarte (« réglé à la main », « Sans catégorie ») ;
+ *   - ce que propose chaque catégorie (son nuancier) est dit UNE fois, en
+ *     tête de l'emplacement ; sous une pièce, seulement ce qui s'en écarte
+ *     (« Sans catégorie »). Le client change toutes les couleurs de chaque
+ *     pièce : plus de « réglé à la main » ni de règle « principale » ;
  *   - une recherche et des filtres, côté navigateur, sans rechargement.
  * Les enregistrements, eux, passent par les mêmes routes de l'API qu'avant.
  */
@@ -37,13 +38,13 @@ import {
   type CharacterType,
   type TypeAffiche,
 } from "../lib/api.ts";
-import { SLOT_THUMB_VIEWBOX } from "@memoryline/types";
+import { SLOT_THUMB_VIEWBOX, type NuancierBase } from "@memoryline/types";
 import {
   EMPLACEMENT_ACCESSOIRE,
-  NUANCIERS_PAR_DEFAUT,
   famillesDuDessin,
   groupesDuDessin,
   groupesProposesDeLaPiece,
+  zonesDuGroupe,
 } from "@memoryline/types/couleurs";
 
 const api = adminApi(Astro.request);
@@ -123,8 +124,8 @@ const [lAssets, lCategories, lVues, lPersonnages, lNuanciers] = await Promise.al
   api.views(),
   // Qui porte quoi : c'est ce qui distingue dix-neuf « Clothes 1 ».
   api.characters(),
-  // Le nuancier des vêtements des personnages : ce que propose une partie
-  // d'accessoire quand ni elle ni sa catégorie n'ont de couleurs.
+  // Les nuanciers des personnages : ce que propose une partie quand ni elle
+  // ni sa catégorie n'ont de couleurs.
   api.nuanciersBase(),
 ]);
 if (lAssets.status === "fulfilled") assets = lAssets.value;
@@ -137,14 +138,14 @@ if (lPersonnages.status === "fulfilled")
   personnages = (lPersonnages.value.types ?? []).filter((t) => !t.archivedAt);
 else if (!error) error = String(lPersonnages.reason);
 /**
- * Les pastilles d'une partie d'accessoire sans liste, dans une catégorie sans
- * couleurs : le nuancier des vêtements des personnages, comme le module
- * (presetPaletteForSlot). Illisible, celui d'origine — le module fait pareil.
+ * Les pastilles d'une partie sans liste, dans une catégorie sans couleurs :
+ * le nuancier des personnages de son emplacement (vêtements, cheveux ou
+ * pantalon), tel que la boutique l'a réglé, comme le module
+ * (presetPaletteForSlot). Illisibles, le panneau prend ceux d'origine — le
+ * module fait pareil.
  */
-const repliAccessoire: string[] =
-  lNuanciers.status === "fulfilled" && lNuanciers.value.nuanciers.vetements?.length
-    ? lNuanciers.value.nuanciers.vetements
-    : [...NUANCIERS_PAR_DEFAUT.vetements];
+const replisPersonnages: Partial<Record<NuancierBase, string[]>> =
+  lNuanciers.status === "fulfilled" ? lNuanciers.value.nuanciers : {};
 
 /** Type d'affiche d'un dessin, avec repli sur le premier de la liste. */
 const vueParDefaut = vues[0]?.slug ?? "front";
@@ -182,21 +183,16 @@ if (creee) {
 }
 
 /**
- * Ce que la catégorie d'une pièce propose au client — toutes ses couleurs,
- * ou la principale seule —, telle que le configurateur la verra : une
- * catégorie archivée ou décochée ne lui parvient pas, et ses pièces
- * proposent alors toutes leurs couleurs.
+ * La catégorie d'une pièce telle que le configurateur la verra, et son
+ * nuancier : les pastilles d'une partie qui n'a pas sa propre liste. Une
+ * catégorie archivée ou décochée ne lui parvient pas : ses pièces proposent
+ * alors le nuancier des personnages de leur emplacement.
  */
 function regleDeLaCategorie(
   c: CategoriePiece | undefined,
-): { categorie: string; couleurs: "toutes" | "principale"; nuancier: string[] } | null {
+): { categorie: string; nuancier: string[] } | null {
   if (!c || c.archivedAt || !c.active) return null;
-  return {
-    categorie: c.name,
-    couleurs: c.couleursProposees === "principale" ? "principale" : "toutes",
-    // Ses couleurs : celles d'une partie d'accessoire qui n'a pas sa liste.
-    nuancier: c.colors ?? [],
-  };
+  return { categorie: c.name, nuancier: c.colors ?? [] };
 }
 const categorieDe = (a: Asset) =>
   categoriesPieces.find((c) => c.id === a.pieceCategoryId);
@@ -206,41 +202,43 @@ const categoriesDuSlot = (slot: string) =>
 
 /**
  * Le résumé des couleurs d'une pièce, calculé ici pour que le bandeau replié
- * dise l'essentiel sans qu'on l'ouvre : combien de couleurs, combien le
- * client peut changer, et si la pièce a son propre réglage. Les mêmes
- * fonctions que le site (groupesProposesDeLaPiece) : le chiffre est celui que
- * le client verra, ombres non comprises (elles suivent leur couleur, le
- * client ne les choisit pas) — et celui que le panneau ouvert annonce.
+ * dise l'essentiel sans qu'on l'ouvre : de combien de parties le client
+ * choisit la couleur, combien d'ombres les suivent, et combien de parties
+ * n'ont pas de nom. Les mêmes fonctions que le site
+ * (groupesProposesDeLaPiece) : le chiffre est celui que le client verra — et
+ * celui que le panneau ouvert annonce. « 5 dont 3 proposées au client » ne
+ * disait pas que les deux autres étaient des ombres, qui changent avec elles.
  */
-function resumeCouleurs(a: Asset): { total: number; proposees: number; propre: boolean } {
+function resumeCouleurs(a: Asset): { choix: number; ombres: number; sansNom: number } {
+  // Une pièce en pixels propose toutes ses familles (cf.
+  // avecToutesLesFamillesProposees) ; leurs ombres sont dans l'image.
   const familles = famillesDuDessin(a.couleursImage ?? null);
   if (familles.length)
-    return {
-      total: familles.length,
-      proposees: familles.filter((f) => f.proposee === true).length,
-      propre: false,
-    };
+    return { choix: familles.length, ombres: 0, sansNom: familles.filter((f) => !f.nom).length };
+  const zones = groupesDuDessin(a.colorZones, a.groupesCouleurs).flatMap(zonesDuGroupe);
+  const rangees = groupesProposesDeLaPiece({
+    colorZones: a.colorZones,
+    groupesCouleurs: a.groupesCouleurs,
+    partsDesZones: a.partsDesZones,
+  });
   return {
-    total: groupesDuDessin(a.colorZones, a.groupesCouleurs).length,
-    proposees: groupesProposesDeLaPiece(
-      {
-        colorZones: a.colorZones,
-        groupesCouleurs: a.groupesCouleurs,
-        zonesMasquees: a.zonesMasquees,
-        partsDesZones: a.partsDesZones,
-      },
-      regleDeLaCategorie(categorieDe(a))?.couleurs,
-    ).length,
-    propre: Array.isArray(a.zonesMasquees),
+    choix: rangees.length,
+    ombres: zones.length - rangees.length,
+    sansNom: rangees.filter((r) => !r.nom).length,
   };
 }
-function texteResume(r: { total: number; proposees: number }): string {
-  if (r.total === 0) return "Couleurs · pas encore lues";
-  const proposees =
-    r.proposees === 0
-      ? "aucune proposée au client"
-      : `${r.proposees} proposée${r.proposees > 1 ? "s" : ""} au client`;
-  return `Couleurs · ${r.total} dont ${proposees}`;
+/**
+ * « Couleurs · le client choisit la couleur de 3 parties (+ 1 ombre) · 2 sans
+ * nom » — « partie » pour ce que le client colore, comme dans le panneau.
+ * Les parties sans nom ne sont comptées qu'à partir de deux : une seule
+ * rangée sans nom ne se confond avec rien. Même texte dans le script plus bas.
+ */
+function texteResume(r: { choix: number; ombres: number; sansNom: number }): string {
+  if (r.choix === 0) return "Couleurs · pas encore lues";
+  const s = (n: number, mot: string) => `${n} ${mot}${n > 1 ? "s" : ""}`;
+  const ombres = r.ombres > 0 ? ` (+ ${s(r.ombres, "ombre")})` : "";
+  if (r.choix === 1) return `Couleurs · le client choisit la couleur de la pièce${ombres}`;
+  return `Couleurs · le client choisit la couleur de ${r.choix} parties${ombres}${r.sansNom >= 2 ? ` · ${r.sansNom} sans nom` : ""}`;
 }
 
 /** Minuscules sans accent, pour la recherche du navigateur (même règle dans le script). */
@@ -337,28 +335,35 @@ const groupes = [...piecesBySlot.keys()].map((slot) => {
 });
 
 /**
- * La règle de chaque catégorie, dite UNE fois en tête de son emplacement :
- * « Catégorie « Vêtements » (41 pièces) : le client peut changer toutes les
- * couleurs. » Sous une pièce, on ne redit rien — seulement ce qui s'en
- * écarte (« réglé à la main »).
+ * Ce que propose chaque catégorie, dit UNE fois en tête de son
+ * emplacement : « Catégorie « Vêtements » (41 pièces) : 9 couleurs
+ * proposées pour chaque partie, sauf celles qui ont leur propre liste. » Le
+ * client change toutes les couleurs de chaque pièce : seules les pastilles
+ * varient d'une catégorie à l'autre.
  */
 function reglesDe(slot: string, list: Asset[]): { texte: string; id: number | null }[] {
   const lignes: { texte: string; id: number | null }[] = [];
+  const nuancier = (n: number) =>
+    `${n} couleur${n > 1 ? "s" : ""} proposée${n > 1 ? "s" : ""} pour chaque partie, sauf celles qui ont leur propre liste.`;
+  const sansNuancier =
+    slot === EMPLACEMENT_ACCESSOIRE
+      ? "le nuancier « Vêtements » des personnages, sauf pour une partie qui a sa propre liste."
+      : "le nuancier des personnages et une couleur libre, sauf pour une partie qui a sa propre liste.";
   for (const c of categoriesDuSlot(slot)) {
     const n = list.filter((a) => a.pieceCategoryId === c.id).length;
     const regle = regleDeLaCategorie(c);
     const quoi = !regle
-      ? "décochée, elle n'arrive pas au site : toutes les couleurs."
-      : regle.couleurs === "principale"
-        ? "le client ne change que la couleur principale."
-        : "le client peut changer toutes les couleurs.";
+      ? `décochée, elle n'arrive pas au site : ${sansNuancier}`
+      : regle.nuancier.length
+        ? nuancier(regle.nuancier.length)
+        : `pas de couleurs à elle : ${sansNuancier}`;
     lignes.push({
       id: c.id,
       texte: `Catégorie « ${c.name} » (${n} pièce${n > 1 ? "s" : ""}) : ${quoi}`,
     });
   }
   // Sans catégorie — ou dans une catégorie archivée, ce qui revient au même
-  // pour le site : toutes les couleurs sont proposées.
+  // pour le site.
   const sans = list.filter((a) => {
     const c = categorieDe(a);
     return !c || c.archivedAt;
@@ -366,7 +371,7 @@ function reglesDe(slot: string, list: Asset[]): { texte: string; id: number | nu
   if (sans > 0)
     lignes.push({
       id: null,
-      texte: `Sans catégorie (${sans}) : toutes les couleurs.`,
+      texte: `Sans catégorie (${sans}) : ${sansNuancier}`,
     });
   return lignes;
 }
@@ -454,7 +459,9 @@ const vuesFiltre = vues.filter((v) => !v.archivedAt);
   <p class="mb-4 text-sm text-bo-muted">
     Les vêtements, pantalons, coupes et accessoires que les personnages peuvent
     porter. Cliquez un nom pour le corriger ; ouvrez « Couleurs » sous une pièce
-    pour choisir ce que le client peut changer.
+    pour nommer ses parties (manches, col, visière…), dire quelles couleurs
+    sont des ombres et choisir les couleurs proposées au client. Le client
+    choisit la couleur de chaque partie de chaque pièce.
   </p>
 
   {/* ---- Filtres : tout se fait dans le navigateur, sans rechargement ---- */}
@@ -519,10 +526,10 @@ const vuesFiltre = vues.filter((v) => !v.archivedAt);
           </span>
         </summary>
         <div class="px-4 pb-4">
-          {/* La règle de chaque catégorie, une fois pour tout l'emplacement. */}
+          {/* Ce que propose chaque catégorie, une fois pour tout l'emplacement. */}
           <div class="mb-3 rounded border border-dashed border-bo-border bg-bo-surface px-3 py-2 text-xs text-bo-muted">
             {reglesDe(slot, list).length === 0 ? (
-              <p>Aucune catégorie pour cet emplacement : toutes les couleurs sont proposées.</p>
+              <p>Aucune catégorie pour cet emplacement : chaque partie propose le nuancier des personnages, sauf celles qui ont leur propre liste.</p>
             ) : (
               <ul class="space-y-0.5">
                 {reglesDe(slot, list).map((l) => (
@@ -534,12 +541,15 @@ const vuesFiltre = vues.filter((v) => !v.archivedAt);
                 que sous chacune des trente pièces. */}
             {slot === EMPLACEMENT_ACCESSOIRE && (
               <p class="mt-1">
-                Pas de choix libre pour le client : chaque partie d'un
-                accessoire propose sa propre liste de couleurs, réglée sous
-                « Couleurs » de la pièce, ou à défaut le nuancier de sa
-                catégorie.
+                Jamais de couleur libre pour le client sur un accessoire :
+                seulement les couleurs que vous proposez.
               </p>
             )}
+            <p class="mt-1">
+              Chaque partie d'une pièce peut avoir sa propre liste, jusqu'à 10
+              couleurs : sous « Couleurs » de la pièce, « Couleurs proposées
+              au client ».
+            </p>
             <a
               href={url("/categories-pieces")}
               class="mt-1 inline-block text-bo-accent hover:underline"
@@ -632,7 +642,7 @@ const vuesFiltre = vues.filter((v) => !v.archivedAt);
                         {montree && (
                           <span
                             class={`js-piece-categorie rounded px-1.5 py-0.5 ${montree.ecart ? "bg-amber-50 text-amber-800" : "bg-bo-bg"}`}
-                            title="Sa catégorie décide des couleurs proposées au client : elle se change sous « Couleurs »."
+                            title="Sa catégorie donne les couleurs proposées au client pour chaque partie qui n'a pas sa propre liste. Elle se change sous « Couleurs »."
                           >
                             {montree.texte}
                           </span>
@@ -660,18 +670,11 @@ const vuesFiltre = vues.filter((v) => !v.archivedAt);
                       <summary class="flex cursor-pointer select-none flex-wrap items-center gap-2 px-3 py-1.5 text-xs">
                         <span aria-hidden="true" class="inline-block text-bo-muted transition-transform group-open:rotate-90">▸</span>
                         <span class="js-couleurs-resume">{texteResume(resume)}</span>
-                        <span
-                          class="js-piece-propre rounded bg-amber-50 px-1.5 py-0.5 text-amber-800"
-                          hidden={!resume.propre}
-                          title="Cette pièce a ses propres cases : elles passent avant la règle de sa catégorie"
-                        >
-                          réglé à la main
-                        </span>
                       </summary>
                       <div class="px-3 pb-3 pt-1">
-                        {/* Sa catégorie décide de ses couleurs : elle se
-                            choisit ici, à côté de ce qu'elle change. Un
-                            choix, un enregistrement — pas de bouton. */}
+                        {/* Sa catégorie donne ses pastilles : elle se choisit
+                            ici, à côté de ce qu'elle change. Un choix, un
+                            enregistrement — pas de bouton. */}
                         <label class="mb-3 flex flex-wrap items-center gap-2 text-xs">
                           <span class="text-bo-muted">Catégorie</span>
                           <select
@@ -697,7 +700,7 @@ const vuesFiltre = vues.filter((v) => !v.archivedAt);
                                   value={String(c.id)}
                                   selected={a.pieceCategoryId === c.id}
                                   data-nom={c.name}
-                                  data-regle={regleDeLaCategorie(c)?.couleurs ?? ""}
+                                  data-active={regleDeLaCategorie(c) ? "1" : ""}
                                   data-nuancier={JSON.stringify(c.colors ?? [])}
                                 >
                                   {c.name}
@@ -706,7 +709,8 @@ const vuesFiltre = vues.filter((v) => !v.archivedAt);
                               ))}
                           </select>
                           <span class="text-bo-muted">
-                            Elle décide des couleurs proposées au client et de leurs teintes.
+                            Ses couleurs sont proposées au client pour chaque
+                            partie qui n'a pas sa propre liste.
                           </span>
                         </label>
                         <GroupesCouleurs
@@ -715,17 +719,12 @@ const vuesFiltre = vues.filter((v) => !v.archivedAt);
                           svgUrl={a.svgUrl}
                           zones={a.colorZones}
                           groupes={a.groupesCouleurs}
-                          masquees={a.zonesMasquees ?? null}
                           regle={regleDeLaCategorie(categorie)}
                           parts={a.partsDesZones ?? null}
                           couleursImage={a.couleursImage ?? null}
                           enregistrer={`/admin/assets/${a.id}/groupes`}
                           cadrage={cadrageDe(a.slot)}
-                          accessoire={
-                            a.slot === EMPLACEMENT_ACCESSOIRE
-                              ? { oui: true, repli: repliAccessoire }
-                              : null
-                          }
+                          emplacement={{ slot: a.slot, replis: replisPersonnages }}
                         />
                       </div>
                     </details>
@@ -740,14 +739,6 @@ const vuesFiltre = vues.filter((v) => !v.archivedAt);
                     >
                       <span aria-hidden="true" class="text-bo-muted">▸</span>
                       <span>{texteResume(resume)}</span>
-                      {resume.propre && (
-                        <span
-                          class="rounded bg-amber-50 px-1.5 py-0.5 text-amber-800"
-                          title="Cette pièce a ses propres cases : elles passent avant la règle de sa catégorie"
-                        >
-                          réglé à la main
-                        </span>
-                      )}
                     </a>
                   )}
                 </article>
@@ -998,36 +989,25 @@ const vuesFiltre = vues.filter((v) => !v.archivedAt);
     (() => {
       const p = document.querySelector("details.js-piece-couleurs");
       if (!p) return;
-      // Le composant publie « groupes:change » à chaque réglage, après avoir
-      // écrit sa phrase « Le client pourra changer : Couleur 1. » : le bandeau
-      // compte les mêmes couleurs que cette phrase (ses noms en gras), donc
-      // sans les ombres, qui suivent leur couleur. Compter les zones non
-      // cachées (zonesProposees) y ajoutait les ombres : « 2 dont 2
-      // proposées » au-dessus d'un panneau qui n'en proposait qu'une.
+      // Le composant publie « groupes:change » à chaque réglage, avec ce que
+      // le client aura (`compte` : ses parties, les ombres qui les suivent,
+      // les parties sans nom) — les mêmes chiffres que la phrase du panneau.
+      // Même texte que texteResume, côté serveur.
       const bloc = p.querySelector(".js-groupes");
       const resume = p.querySelector(".js-couleurs-resume");
-      const propre = p.querySelector(".js-piece-propre");
       if (bloc && resume) {
+        const s = (n, mot) => `${n} ${mot}${n > 1 ? "s" : ""}`;
         bloc.addEventListener("groupes:change", (e) => {
-          const d = e.detail || {};
-          const familles = d.couleursImage && Array.isArray(d.couleursImage.familles)
-            ? d.couleursImage.familles
-            : [];
-          const total = familles.length
-            ? familles.length
-            : Array.isArray(d.groupesCouleurs) ? d.groupesCouleurs.length : 0;
-          const proposees = familles.length
-            ? familles.filter((f) => f && f.proposee === true).length
-            : p.querySelectorAll(".js-groupes-resume strong").length;
+          const c = (e.detail && e.detail.compte) || { choix: 0, ombres: 0, sansNom: 0 };
+          const ombres = c.ombres > 0 ? ` (+ ${s(c.ombres, "ombre")})` : "";
           resume.textContent =
-            total === 0
+            c.choix === 0
               ? "Couleurs · pas encore lues"
-              : `Couleurs · ${total} dont ${
-                  proposees === 0
-                    ? "aucune proposée au client"
-                    : `${proposees} proposée${proposees > 1 ? "s" : ""} au client`
-                }`;
-          if (propre) propre.hidden = !Array.isArray(d.zonesMasquees);
+              : c.choix === 1
+                ? `Couleurs · le client choisit la couleur de la pièce${ombres}`
+                : `Couleurs · le client choisit la couleur de ${c.choix} parties${ombres}${
+                    c.sansNom >= 2 ? ` · ${c.sansNom} sans nom` : ""
+                  }`;
         });
       }
       document.addEventListener("keydown", (e) => {
@@ -1171,19 +1151,19 @@ const vuesFiltre = vues.filter((v) => !v.archivedAt);
           credentials: "include",
         });
         if (!res.ok) throw new Error(res.status);
-        // Les couleurs proposées dépendent de la catégorie : celles de la
-        // pièce se redessinent selon la nouvelle (si elle n'a pas son propre
-        // réglage).
+        // Les pastilles d'une partie sans liste viennent de la catégorie :
+        // celles de la pièce se redessinent selon la nouvelle. Une catégorie
+        // décochée ou archivée n'arrive pas au site (data-active vide).
         const choix = sel.selectedOptions?.[0];
         let nuancier = [];
         try {
           nuancier = JSON.parse(choix?.dataset.nuancier || "[]");
         } catch {
-          /* illisible : la partie d'accessoire retombe sur le nuancier de repli */
+          /* illisible : la partie retombe sur le nuancier de repli */
         }
         const regle =
-          choix && choix.dataset.regle
-            ? { categorie: choix.dataset.nom || "", couleurs: choix.dataset.regle, nuancier }
+          choix && choix.dataset.active
+            ? { categorie: choix.dataset.nom || "", nuancier }
             : null;
         // Le sélecteur porte lui aussi `data-asset-id` : on part de son
         // parent pour trouver la ligne de la pièce.

@@ -36,7 +36,6 @@ import {
   recolorForCharacter,
   withViewBox,
   paletteForVariant,
-  regleDeLaPiece,
   type PieceCategoryDTO,
   type NuanciersPersonnages,
   SLOTS,
@@ -373,10 +372,17 @@ interface LigneCouleur {
   couleurs: (hex: string) => Record<string, string>;
   /**
    * Les pastilles de CETTE rangée, quand elles ne sont pas celles de toute la
-   * couche : chaque partie d'un accessoire a sa liste, réglée au back-office
-   * (cf. paletteForVariant). Absentes : celles que ColorRow reçoit.
+   * couche : chaque partie d'une pièce peut avoir sa liste, réglée au
+   * back-office (cf. paletteForVariant). Absentes : celles que ColorRow reçoit.
    */
   presets?: readonly string[];
+  /**
+   * La saisie libre de CETTE rangée, quand elle n'est pas celle de toute la
+   * couche : une partie qui a sa liste n'en a jamais — le client n'a que les
+   * pastilles de la boutique —, même sur un vêtement sans nuancier de
+   * catégorie. Absente : celle que ColorRow reçoit.
+   */
+  libre?: boolean;
 }
 
 /** Intitulé au-dessus d'une rangée (ou d'un ensemble de rangées). */
@@ -524,9 +530,11 @@ function ColorRow(props: {
       </Show>
       <Index each={props.zones}>
         {(z, rang) => {
-          // Les pastilles de la rangée : les siennes (une partie d'accessoire
-          // réglée au back-office), sinon celles de la couche.
+          // Les pastilles de la rangée : les siennes (une partie réglée au
+          // back-office), sinon celles de la couche. La saisie libre de même :
+          // une partie qui a sa liste n'en a pas.
           const presets = () => z().presets ?? props.presets;
+          const libre = () => z().libre ?? props.libre;
           // Couleur saisie hors nuancier : c'est la pastille arc-en-ciel qui
           // porte la coche, sinon aucune couleur ne paraîtrait choisie.
           const horsNuancier = () =>
@@ -572,7 +580,7 @@ function ColorRow(props: {
                     se clique pas — il n'y a rien à choisir, elle l'est déjà.
                     Avec la saisie libre, c'est la pastille arc-en-ciel qui
                     montre une couleur hors nuancier. */}
-                <Show when={!props.libre}>
+                <Show when={!libre()}>
                   <span
                     role="img"
                     aria-label={props.couleurActuelle.replace("{couleur}", z().current)}
@@ -616,7 +624,7 @@ function ColorRow(props: {
                     />
                   )}
                 </For>
-                <Show when={props.libre}>
+                <Show when={libre()}>
                   {/* Le sélecteur du navigateur, invisible, recouvre toute la
                       pastille : un toucher n'importe où l'ouvre, et c'est lui
                       qui renvoie la couleur. Sa propre case, minuscule et
@@ -874,45 +882,42 @@ export function CharacterEditor(props: {
     }));
 
   /**
-   * Groupes de la pièce portée dans un emplacement, ceux PROPOSÉS au client
-   * (cf. groupesProposesDeLaPiece). Les cases de la pièce décident, sinon la
-   * règle de sa catégorie : « toutes » — le défaut — fait une rangée par
-   * famille de teinte, la plus étendue d'abord, et les ombres d'une famille
-   * suivent la couleur choisie ; « seulement la couleur principale » ne garde
-   * que la première. Un détail ainsi retiré (ruban du chapeau…) n'a pas de
-   * rangée de pastilles et garde la couleur que le configurateur a écrite en
-   * choisissant la pièce : son défaut (cf. setAsset).
+   * Les rangées de la pièce portée dans un emplacement : TOUTES ses familles
+   * de teinte (cf. groupesProposesDeLaPiece), la plus étendue d'abord, et les
+   * ombres d'une famille — reconnues à la lecture du dessin, ou cochées
+   * « C'est une ombre » au back-office — suivent la couleur choisie. Le client
+   * change toutes les couleurs depuis le 20 octobre 2026 : plus de règle de
+   * catégorie ni de cases de la pièce pour en retirer.
    *
-   * Chaque rangée porte ses pastilles : sur un accessoire, celles que la
-   * boutique a choisies pour CETTE partie, sinon le nuancier de la catégorie
-   * (cf. paletteForVariant). Ailleurs, toutes les rangées ont celui de la
-   * pièce, comme avant.
+   * Chaque rangée porte ses pastilles : celles que la boutique a choisies pour
+   * CETTE partie, sans saisie libre, sinon le nuancier de la pièce, comme
+   * avant (cf. paletteForVariant).
    */
   const zonesForSlot = (slot: Slot): LigneCouleur[] => {
     const variant = findVariant(props.slots[slot], props.character.assets[slot]);
     if (!variant) return [];
     const pastilles = (rangee: { couleurs?: readonly string[] }) =>
-      paletteForVariant(props.pieceCategories, variant, slot, props.nuanciersBase, rangee)
-        .couleurs;
-    const groupes = variant.colorZones
-      ? groupesProposesDeLaPiece(variant, regleDeLaPiece(props.pieceCategories, variant))
-      : [];
+      paletteForVariant(props.pieceCategories, variant, slot, props.nuanciersBase, rangee);
+    const groupes = variant.colorZones ? groupesProposesDeLaPiece(variant) : [];
     const rangees = variant.colorZones
-      ? lignes(slot, groupes, variant.colorZones, "#000000").map((ligne, i) => ({
-          ...ligne,
-          presets: pastilles(groupes[i]!),
-        }))
+      ? lignes(slot, groupes, variant.colorZones, "#000000").map((ligne, i) => {
+          const p = pastilles(groupes[i]!);
+          return { ...ligne, presets: p.couleurs, libre: p.libre };
+        })
       : [];
     // Pièce dessinée en pixels : ses familles de couleurs, comme pour un
-    // personnage (cf. baseZones).
+    // personnage (cf. baseZones). L'API les envoie toutes proposées (cf.
+    // avecToutesLesFamillesProposees).
     for (const f of famillesProposees(variant.couleursImage)) {
       const cle = colorKey(slot, f.cle);
+      const p = pastilles(f);
       rangees.push({
         zone: cle,
         current: props.character.colors[cle] ?? f.defaut ?? f.reference,
         nom: f.nom,
         couleurs: (hex) => ({ [cle]: hex }),
-        presets: pastilles(f),
+        presets: p.couleurs,
+        libre: p.libre,
       });
     }
     return rangees;
@@ -1119,9 +1124,8 @@ export function CharacterEditor(props: {
                       // La pièce portée, dans les couleurs du client ; les
                       // autres, telles qu'elles arriveront si on les touche —
                       // dans les couleurs de leur dessin, la couleur principale
-                      // choisie en plus (cf. couleursAuChangementDePiece). Les
-                      // zones non proposées restent à leur défaut, comme sur le
-                      // personnage.
+                      // choisie en plus (cf. couleursAuChangementDePiece), comme
+                      // sur le personnage.
                       couleursDeLaPiece(
                         String(selectedId()) === String(variant.id)
                           ? props.character.colors
@@ -1154,8 +1158,8 @@ export function CharacterEditor(props: {
             {(() => {
               // Nuancier de LA pièce portée : celui de sa catégorie, sinon
               // celui de l'emplacement (et alors la saisie libre reste ouverte,
-              // sauf sur un accessoire : jamais de sélecteur). Les rangées
-              // d'un accessoire apportent en plus leurs propres pastilles
+              // sauf sur un accessoire : jamais de sélecteur). Une partie qui a
+              // sa liste apporte ses propres pastilles, sans saisie libre
               // (cf. zonesForSlot).
               const palette = paletteForVariant(
                 props.pieceCategories,

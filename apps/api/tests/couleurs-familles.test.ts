@@ -7,10 +7,13 @@
  * pièce (demande de la cliente), et les ombres d'une teinte suivent la couleur
  * choisie : plus de t-shirt jaune à manches vert foncé. Ces essais vérifient
  * ce qui ne se voit pas à l'écran : comment les zones se réunissent en
- * familles, l'ordre des rangées, ce que « principale » et un réglage propre
- * en gardent, ce qu'un clic écrit, et quand le bouton « Remettre les couleurs
- * d'origine » doit paraître — puis, depuis le 20 octobre, les couleurs propres
- * de chaque partie d'un accessoire. Les données sont factices, copiées des pièces
+ * familles, l'ordre des rangées, ce que la case « C'est une ombre » du
+ * back-office y change, ce qu'un clic écrit, et quand le bouton « Remettre
+ * les couleurs d'origine » doit paraître — puis, depuis le 20 octobre, les
+ * couleurs propres de chaque partie d'une pièce (10 au plus), la fin des
+ * anciennes cases « Le client peut la changer », et ce que le message d'un
+ * clic sur « C'est une ombre » doit dire (numéros d'après le geste, autres
+ * couleurs déplacées, ombre d'une autre teinte). Les données sont factices, copiées des pièces
  * réelles (le t-shirt 419 de « Garçon 2 », la pièce 341, et celles du
  * catalogue qui ont réglé les seuils des ombres le 20 octobre : bonnets 393
  * et 400, casquette 401, casque 477, fauteuil 406).
@@ -18,24 +21,34 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  COULEURS_PARTIE_LUES_MAX,
   COULEURS_PARTIE_MAX,
+  avecToutesLesFamillesProposees,
+  bilanDeLOmbre,
   couleurHexPropre,
   couleursChangees,
   couleursDeLaPartie,
   couleursDeLaPiece,
+  couleursDesFamilles,
   couleursDuGroupePourScope,
   famillesDeLaPiece,
   famillesDuDessin,
+  famillesProposees,
   groupePrincipal,
   groupesDuDessin,
   groupesProposesDeLaPiece,
   hexVersRgb,
+  listesDesParties,
   nuanceSuivante,
+  ombreDAutreTeinte,
   pastillesDeLaRangee,
   principaleDeLaPiece,
   refusDesCouleursDesParties,
+  reglerOmbre,
   sansPastillesProposees,
+  teteDuGroupe,
   versTsl,
+  zoneLaPlusEtendue,
 } from "@memoryline/types";
 
 /** Le t-shirt 419 : jaune, manches vert sombre, liseré encore plus sombre. */
@@ -68,13 +81,8 @@ test("le t-shirt 419 : deux familles, le liseré suit les manches", () => {
     { zone: "st0" },
     { zone: "st1", nuances: ["st2"] },
   ]);
-  assert.deepEqual(groupesProposesDeLaPiece(tshirt, "toutes"), [
-    { zone: "st0" },
-    { zone: "st1", nuances: ["st2"] },
-  ]);
-  // Sans règle (pièce sans catégorie) : la même chose que « toutes ».
+  // Le client a toutes les familles, quelle que soit la catégorie.
   assert.deepEqual(groupesProposesDeLaPiece(tshirt), famillesDeLaPiece(tshirt));
-  assert.deepEqual(groupesProposesDeLaPiece(tshirt, "principale"), [{ zone: "st0" }]);
   assert.deepEqual(principaleDeLaPiece(tshirt), { zone: "st0" });
 });
 
@@ -227,26 +235,293 @@ test("une couleur séparée par la boutique garde sa rangée, et ses ombres peuv
   ]);
 });
 
-test("une pièce réglée à la main : les cases décident, les ombres suivent toujours", () => {
-  assert.deepEqual(groupesProposesDeLaPiece({ ...tshirt, zonesMasquees: [] }, "toutes"), [
+test("les anciennes cases « Le client peut la changer » ne cachent plus rien", () => {
+  // Une pièce réglée jadis à la main (asset.zones_masquees) : la liste reste
+  // en base, mais le client a toutes les familles, ombres comprises.
+  const reglee = { ...tshirt, zonesMasquees: ["st0"] };
+  assert.deepEqual(groupesProposesDeLaPiece(reglee), [
     { zone: "st0" },
     { zone: "st1", nuances: ["st2"] },
   ]);
-  // Le corps décoché : les manches gardent leur liseré.
-  assert.deepEqual(groupesProposesDeLaPiece({ ...tshirt, zonesMasquees: ["st0"] }, "toutes"), [
-    { zone: "st1", nuances: ["st2"] },
+  // Et sa couleur se dessine — à l'écran comme à l'impression — avec celle
+  // que la configuration porte : plus de défaut forcé sur le corps.
+  assert.deepEqual(couleursDeLaPiece({ "clothes:st0": "#BD1212" }, "clothes", reglee), {
+    st0: "#BD1212",
+    st1: "#004946",
+    st2: "#01332F",
+  });
+  // Une commande passée quand le corps était masqué : le configurateur y
+  // avait écrit la couleur du dessin, elle s'imprime à l'identique.
+  const commande = { "clothes:st0": "#F2D08D", "clothes:st1": "#D82A2A", "clothes:st2": "#7A1010" };
+  assert.deepEqual(couleursDeLaPiece(commande, "clothes", reglee), {
+    st0: "#F2D08D",
+    st1: "#D82A2A",
+    st2: "#7A1010",
+  });
+});
+
+test("« C'est une ombre » cochée : la couleur et ses ombres suivent une couleur principale", () => {
+  // Les manches cochées « ombre » : aucune autre couleur verte, elles suivent
+  // la plus proche en teinte — le corps, seul autre choix —, avec le liseré.
+  const manches = { ...tshirt, groupesCouleurs: [{ zone: "st1", ombre: true }] };
+  assert.deepEqual(famillesDeLaPiece(manches), [{ zone: "st0", nuances: ["st1", "st2"] }]);
+  // 401, casquette trucker : la visière bleue (et son contour) cochée
+  // « ombre » suit le filet bleu ciel, de sa teinte ; le dessous, plus
+  // sombre, garde sa rangée. Les groupes tels que le back-office les
+  // enregistre : un par zone, dans son ordre.
+  const trucker = {
+    colorZones: { st0: "#1C6AC6", st1: "#ABCAEF", st2: "#2F7BEA", st3: "#14457F" },
+    partsDesZones: { st0: 0.088, st1: 0.629, st2: 0.187, st3: 0.096 },
+  };
+  const cochees = (...ombres: string[]) =>
+    Object.keys(trucker.colorZones).map((zone) =>
+      ombres.includes(zone) ? { zone, ombre: true as const } : { zone },
+    );
+  assert.deepEqual(famillesDeLaPiece({ ...trucker, groupesCouleurs: cochees("st2") }), [
+    { zone: "st1", nuances: ["st0", "st2"] },
+    { zone: "st3" },
   ]);
-  // Une zone masquée ne rejoint aucune famille : les manches décochées, le
-  // liseré coché reste une rangée à lui (ce que les cases disent).
-  assert.deepEqual(groupesProposesDeLaPiece({ ...tshirt, zonesMasquees: ["st1"] }, "toutes"), [
-    { zone: "st0" },
-    { zone: "st2" },
+  // Une ombre suit une couleur PRINCIPALE, jamais une autre ombre : le
+  // dessous coché aussi rejoint le filet.
+  assert.deepEqual(famillesDeLaPiece({ ...trucker, groupesCouleurs: cochees("st2", "st3") }), [
+    { zone: "st1", nuances: ["st0", "st2", "st3"] },
   ]);
-  // Les cases ont le dernier mot sur la règle de la catégorie.
+  // La couleur la plus étendue ne peut pas être une ombre : la case cochée
+  // (une donnée abîmée, le back-office la grise) ne change rien.
+  assert.equal(zoneLaPlusEtendue(tshirt), "st0");
   assert.deepEqual(
-    groupesProposesDeLaPiece({ ...tshirt, zonesMasquees: [] }, "principale"),
-    [{ zone: "st0" }, { zone: "st1", nuances: ["st2"] }],
+    famillesDeLaPiece({ ...tshirt, groupesCouleurs: [{ zone: "st0", ombre: true }] }),
+    famillesDeLaPiece(tshirt),
   );
+  // Sans mesure des parts, la plus étendue est la première du back-office.
+  assert.equal(zoneLaPlusEtendue({ colorZones: tshirt.colorZones }), "st0");
+  // La plus étendue n'est pas toujours la principale : 477, l'arceau (st2)
+  // est la plus grande zone.
+  assert.equal(
+    zoneLaPlusEtendue({
+      colorZones: { st0: "#107CDD", st1: "#162633", st2: "#0F171C" },
+      partsDesZones: { st0: 0.191, st1: 0.286, st2: 0.523 },
+    }),
+    "st2",
+  );
+});
+
+test("la case « C'est une ombre » est une seule case : cochée ou décochée, jamais les deux", () => {
+  const zones = { st0: "#F2D08D", st1: "#004946" };
+  assert.deepEqual(groupesDuDessin(zones, [{ zone: "st1", ombre: true }]), [
+    { zone: "st1", ombre: true },
+    { zone: "st0" },
+  ]);
+  // Les deux à la fois (donnée abîmée) : « à part » l'emporte, il ne retire
+  // de rangée à personne.
+  assert.deepEqual(groupesDuDessin(zones, [{ zone: "st1", ombre: true, separee: true }]), [
+    { zone: "st1", separee: true },
+    { zone: "st0" },
+  ]);
+  // Une valeur autre que `true` ne coche rien.
+  assert.deepEqual(groupesDuDessin(zones, [{ zone: "st1", ombre: "oui" }]), [
+    { zone: "st1" },
+    { zone: "st0" },
+  ]);
+});
+
+test("reglerOmbre : la case n'écrit que ce qui contredit la lecture du dessin", () => {
+  const sansReglage = groupesDuDessin(tshirt.colorZones, undefined);
+  // Le t-shirt 419 (relecture du 20 octobre) : le liseré décoché devient une
+  // partie, puis recoché redevient l'ombre des manches — et la pièce revient
+  // SANS réglage, comme avant le premier clic. Avant, il lui restait
+  // `ombre: true` pour toujours.
+  const decoche = reglerOmbre(tshirt, "st2", false);
+  assert.deepEqual(decoche, [{ zone: "st0" }, { zone: "st1" }, { zone: "st2", separee: true }]);
+  assert.deepEqual(famillesDeLaPiece({ ...tshirt, groupesCouleurs: decoche }), [
+    { zone: "st0" },
+    { zone: "st1" },
+    { zone: "st2", separee: true },
+  ]);
+  const recoche = reglerOmbre({ ...tshirt, groupesCouleurs: decoche }, "st2", true);
+  assert.deepEqual(recoche, sansReglage);
+  assert.deepEqual(famillesDeLaPiece({ ...tshirt, groupesCouleurs: recoche }), famillesDeLaPiece(tshirt));
+
+  // 401, casquette trucker : la visière, une partie pour la lecture, cochée
+  // « ombre » ; décochée ensuite, plus aucun drapeau.
+  const trucker = {
+    colorZones: { st0: "#1C6AC6", st1: "#ABCAEF", st2: "#2F7BEA", st3: "#14457F" },
+    partsDesZones: { st0: 0.088, st1: 0.629, st2: 0.187, st3: 0.096 },
+  };
+  const visiere = reglerOmbre(trucker, "st2", true);
+  assert.deepEqual(visiere, [{ zone: "st0" }, { zone: "st1" }, { zone: "st2", ombre: true }, { zone: "st3" }]);
+  assert.deepEqual(famillesDeLaPiece({ ...trucker, groupesCouleurs: visiere }), [
+    { zone: "st1", nuances: ["st0", "st2"] },
+    { zone: "st3" },
+  ]);
+  assert.deepEqual(
+    reglerOmbre({ ...trucker, groupesCouleurs: visiere }, "st2", false),
+    groupesDuDessin(trucker.colorZones, undefined),
+  );
+
+  // La couleur la plus étendue cochée (le back-office n'en montre pas la
+  // case) : rien ne s'écrit.
+  assert.deepEqual(reglerOmbre(tshirt, "st0", true), sansReglage);
+
+  // Une zone qu'une relecture a réunie à d'autres (341 : st4 avec st5) :
+  // décochée, elle sort du groupe, couleur à part ; recochée, elle redevient
+  // une ombre du corps, sans drapeau.
+  const relue = {
+    ...piece341,
+    groupesCouleurs: [{ zone: "st2" }, { zone: "st0" }, { zone: "st4", nuances: ["st5"] }, { zone: "st1" }],
+  };
+  const sortie = reglerOmbre(relue, "st4", false);
+  assert.deepEqual(sortie, [
+    { zone: "st2" },
+    { zone: "st0" },
+    { zone: "st5" },
+    { zone: "st4", separee: true },
+    { zone: "st1" },
+  ]);
+  assert.deepEqual(famillesDeLaPiece({ ...relue, groupesCouleurs: sortie }), [
+    { zone: "st2", nuances: ["st5"] },
+    { zone: "st0", nuances: ["st1"] },
+    { zone: "st4", separee: true },
+  ]);
+  const rentree = reglerOmbre({ ...relue, groupesCouleurs: sortie }, "st4", true);
+  assert.ok(rentree.every((g) => !g.ombre && !g.separee), "aucun drapeau");
+  assert.deepEqual(famillesDeLaPiece({ ...relue, groupesCouleurs: rentree })[0], {
+    zone: "st2",
+    nuances: ["st5", "st4"],
+  });
+
+  // Les noms et les listes de couleurs suivent leur groupe, intacts ; les
+  // groupes reçus ne sont pas modifiés.
+  const nommee = { ...tshirt, groupesCouleurs: [{ zone: "st1", nom: "Manches", couleurs: ["#000000"] }] };
+  const avant = JSON.stringify(nommee);
+  assert.deepEqual(reglerOmbre(nommee, "st1", true)[0], {
+    zone: "st1",
+    nom: "Manches",
+    couleurs: ["#000000"],
+    ombre: true,
+  });
+  assert.equal(JSON.stringify(nommee), avant);
+});
+
+/** Un clic de la boutique sur la case d'une zone : la pièce d'après, et le bilan qu'en dit le message. */
+function cliquer(piece: Parameters<typeof reglerOmbre>[0], zone: string, oui: boolean) {
+  const avant = famillesDeLaPiece(piece);
+  const suite = { ...piece, groupesCouleurs: reglerOmbre(piece, zone, oui) };
+  const apres = famillesDeLaPiece(suite);
+  return { suite, apres, bilan: bilanDeLOmbre(avant, apres, zone) };
+}
+
+/** Le t-shirt 421 tel qu'il est réglé en prod : les manches vertes réunies jadis au corps beige. */
+const piece421Prod = {
+  colorZones: { st0: "#F2D08D", st1: "#004946", st2: "#01332F" },
+  partsDesZones: { st0: 0.765, st1: 0.228, st2: 0.007 },
+  groupesCouleurs: [{ zone: "st0", nuances: ["st1"] }, { zone: "st2" }],
+};
+
+test("bilanDeLOmbre : le message ne cite que les numéros d'après le geste (casquette 401)", () => {
+  const trucker = {
+    colorZones: { st0: "#1C6AC6", st1: "#ABCAEF", st2: "#2F7BEA", st3: "#14457F" },
+    partsDesZones: { st0: 0.088, st1: 0.629, st2: 0.187, st3: 0.096 },
+  };
+  // La visière (st3, Partie 3) cochée : elle suit la partie 2.
+  const un = cliquer(trucker, "st3", true);
+  assert.deepEqual(un.bilan, { ombre: true, rangee: 2, suit: "st2", parties: [], ombres: [] });
+  // L'ombre st0 décochée : une partie à part, la partie 3 — et la visière,
+  // qui la suivait de plus près que la partie 2, part avec elle. Le message
+  // doit le dire : la boutique n'a touché qu'une case.
+  const deux = cliquer(un.suite, "st0", false);
+  assert.deepEqual(famillesDeLaPiece(deux.suite).map((r) => r.zone), ["st1", "st2", "st0"]);
+  assert.deepEqual(deux.bilan, {
+    ombre: false,
+    rangee: 3,
+    parties: [],
+    ombres: [{ zone: "st3", suit: "st0", rangee: 3, avant: "ombre" }],
+  });
+  // La partie 2 (st2) cochée : elle suit st0, qui était la partie 3 et
+  // devient la partie 2. Le bilan donne le numéro d'APRÈS — avant, le
+  // message disait « Partie 2 est maintenant une ombre : elle suit la
+  // partie 2 ».
+  const trois = cliquer(deux.suite, "st2", true);
+  assert.deepEqual(trois.bilan, { ombre: true, rangee: 2, suit: "st0", parties: [], ombres: [] });
+  assert.equal(trois.apres.findIndex((r) => r.zone === trois.bilan.suit) + 1, trois.bilan.rangee);
+});
+
+test("bilanDeLOmbre : un clic qui en déplace d'autres les nomme (486, 421)", () => {
+  // Casquette 486 : décocher le bleu st5 libère aussi le bleu nuit st6, qui
+  // ne suivait la calotte qu'à travers lui, et emmène st0 avec st5.
+  const p486 = {
+    colorZones: {
+      st0: "#0E3B9E",
+      st1: "#1F51DD",
+      st2: "#6E91E0",
+      st3: "#EFDE0C",
+      st4: "#E01E1E",
+      st5: "#0032A0",
+      st6: "#00276B",
+    },
+    partsDesZones: { st0: 0.01, st1: 0.036, st2: 0.007, st3: 0.451, st4: 0.451, st5: 0.022, st6: 0.022 },
+  };
+  const decoche = cliquer(p486, "st5", false);
+  assert.deepEqual(decoche.bilan, {
+    ombre: false,
+    rangee: 4,
+    parties: [{ zone: "st6", rangee: 5 }],
+    ombres: [{ zone: "st0", suit: "st5", rangee: 4, avant: "ombre" }],
+  });
+
+  // T-shirt 421 réglé comme en prod : décocher les manches fait du liseré
+  // (une partie jusque-là) leur ombre ; les recocher l'emmène avec elles
+  // sous le corps. Ni l'un ni l'autre ne se voyait dans le message.
+  const libres = cliquer(piece421Prod, "st1", false);
+  assert.deepEqual(libres.apres, [{ zone: "st0" }, { zone: "st1", nuances: ["st2"] }]);
+  assert.deepEqual(libres.bilan, {
+    ombre: false,
+    rangee: 2,
+    parties: [],
+    ombres: [{ zone: "st2", suit: "st1", rangee: 2, avant: "partie" }],
+  });
+  const recochees = cliquer(libres.suite, "st1", true);
+  assert.deepEqual(recochees.bilan, {
+    ombre: true,
+    rangee: 1,
+    suit: "st0",
+    parties: [],
+    ombres: [{ zone: "st2", suit: "st0", rangee: 1, avant: "ombre" }],
+  });
+  // Un clic qui ne déplace que la couleur cliquée n'a rien de plus à dire.
+  assert.deepEqual(cliquer(tshirt, "st2", false).bilan, {
+    ombre: false,
+    rangee: 3,
+    parties: [],
+    ombres: [],
+  });
+});
+
+test("ombreDAutreTeinte : la ligne d'une ombre ne dit plus « aucune partie n'a sa teinte » à tort", () => {
+  // 421 en prod : les manches vertes suivent le corps beige parce qu'un
+  // ancien groupe les y réunit — alors que le liseré, juste dessous, est vert.
+  assert.equal(ombreDAutreTeinte(piece421Prod, "st1"), "reglage");
+  // Décochées, elles sont une partie ; le liseré les suit, de leur teinte.
+  const libres = { ...piece421Prod, groupesCouleurs: reglerOmbre(piece421Prod, "st1", false) };
+  assert.equal(ombreDAutreTeinte(libres, "st1"), null);
+  assert.equal(ombreDAutreTeinte(libres, "st2"), null);
+  // Recochées : aucune partie verte ne reste, elles suivent la plus proche —
+  // et leur liseré avec elles. Là, la phrase est vraie.
+  const recochees = { ...libres, groupesCouleurs: reglerOmbre(libres, "st1", true) };
+  assert.equal(ombreDAutreTeinte(recochees, "st1"), "plus-proche");
+  assert.equal(ombreDAutreTeinte(recochees, "st2"), "plus-proche");
+  // Le cas ordinaire : une ombre de la teinte de sa partie, ou une partie.
+  assert.equal(ombreDAutreTeinte(tshirt, "st2"), null);
+  assert.equal(ombreDAutreTeinte(tshirt, "st0"), null);
+  assert.equal(ombreDAutreTeinte(tshirt, "st9"), null);
+});
+
+test("teteDuGroupe : la zone la plus étendue d'un groupe enregistré est sa tête", () => {
+  const parts = { st0: 0.153, st1: 0.008, st2: 0.043, st3: 0.713, st4: 0.084 };
+  assert.equal(teteDuGroupe({ zone: "st0", nuances: ["st2", "st3", "st4"] }, parts), "st3");
+  // Sans mesure, ou seule : la référence enregistrée.
+  assert.equal(teteDuGroupe({ zone: "st0", nuances: ["st2", "st3"] }, null), "st0");
+  assert.equal(teteDuGroupe({ zone: "st1" }, parts), "st1");
 });
 
 test("sans mesure des parts, les teintes se réunissent quand même, le premier en référence", () => {
@@ -295,12 +570,14 @@ test("couleursChangees : le bouton paraît dès qu'une couleur n'est plus celle 
 });
 
 /* -------------------------------------------------------------------------- */
-/*  Les couleurs propres d'une partie d'accessoire (20 octobre)                */
+/*  Les couleurs propres d'une partie de pièce (20 octobre)                    */
 /* -------------------------------------------------------------------------- */
 /*
  * « Pas de sélecteur pour les gens » (Margaux) : sur un accessoire, le client
  * n'a que les pastilles de la boutique — la liste de la partie, sinon le
- * nuancier de la catégorie —, jamais la saisie libre.
+ * nuancier de la catégorie —, jamais la saisie libre. Puis « jusqu'à 10 pour
+ * chaque partie d'une pièce » : toute pièce peut avoir, partie par partie, sa
+ * liste ; le client n'a alors que ces pastilles.
  */
 
 /** Le nuancier « Accessoires » de la boutique, et celui des vêtements (repli). */
@@ -320,12 +597,24 @@ test("couleursDeLaPartie : relues en #RRGGBB, doublons et illisibles écartés, 
   ]);
   assert.deepEqual(couleursDeLaPartie(undefined), []);
   assert.deepEqual(couleursDeLaPartie("#000000"), []);
-  // 40 au plus : une liste abîmée ne range pas mille pastilles.
+  // 10 au plus pour la boutique et le client ; une liste rangée quand la
+  // borne était de 40 se LIT entière, jusqu'à 40 : la relire puis la
+  // renvoyer (un nom changé ailleurs sur la pièce) ne la coupe pas en base.
+  assert.equal(COULEURS_PARTIE_MAX, 10);
+  assert.equal(COULEURS_PARTIE_LUES_MAX, 40);
   const mille = Array.from({ length: 1000 }, (_, i) => `#${i.toString(16).padStart(6, "0")}`);
-  assert.equal(couleursDeLaPartie(mille).length, COULEURS_PARTIE_MAX);
+  assert.deepEqual(couleursDeLaPartie(mille), mille.slice(0, 40).map((c) => c.toUpperCase()));
+  const quinze = mille.slice(0, 15).map((c) => c.toUpperCase());
+  assert.deepEqual(groupesDuDessin({ st0: "#000000" }, [{ zone: "st0", couleurs: quinze }])[0]?.couleurs, quinze);
+  // Le client, lui, n'en voit que les 10 premières.
+  assert.deepEqual(pastillesDeLaRangee("accessory", quinze, NUANCIER_ACCESSOIRES, REPLI), {
+    couleurs: quinze.slice(0, 10),
+    libre: false,
+  });
+  assert.deepEqual(pastillesDeLaRangee("clothes", quinze, [], REPLI).couleurs.length, 10);
 });
 
-test("refusDesCouleursDesParties : l'API refuse une couleur mal écrite ou plus de 40 couleurs", () => {
+test("refusDesCouleursDesParties : l'API refuse une couleur mal écrite ou plus de 10 couleurs", () => {
   assert.equal(refusDesCouleursDesParties(undefined), null);
   assert.equal(refusDesCouleursDesParties([{ zone: "st0" }, { zone: "st1", couleurs: null }]), null);
   assert.equal(
@@ -334,26 +623,59 @@ test("refusDesCouleursDesParties : l'API refuse une couleur mal écrite ou plus 
     "minuscules acceptées : elles sont remises en majuscules au nettoyage",
   );
   // Les doublons ne sont pas une erreur : ils comptent pour une seule couleur.
-  const quaranteEtDoublons = [
-    ...Array.from({ length: 40 }, (_, i) => `#0000${i.toString(16).padStart(2, "0")}`),
+  const dixEtDoublons = [
+    ...Array.from({ length: 10 }, (_, i) => `#0000${i.toString(16).padStart(2, "0")}`),
     "#000000",
     "#000001",
   ];
-  assert.equal(refusDesCouleursDesParties([{ zone: "st0", couleurs: quaranteEtDoublons }]), null);
+  assert.equal(refusDesCouleursDesParties([{ zone: "st0", couleurs: dixEtDoublons }]), null);
   assert.match(
     refusDesCouleursDesParties([{ zone: "st0", couleurs: ["#E7B033", "#abc"] }]) ?? "",
-    /« #abc » n'est pas une couleur/,
+    /« #abc » n'est pas un code couleur : écrivez-le comme #B8551D/,
   );
   assert.match(
     refusDesCouleursDesParties([{ zone: "st0", couleurs: [12] }]) ?? "",
-    /n'est pas une couleur/,
+    /n'est pas un code couleur/,
   );
   assert.match(refusDesCouleursDesParties([{ zone: "st0", couleurs: "#E7B033" }]) ?? "", /pas pu être lues/);
-  const quaranteEtUne = Array.from({ length: 41 }, (_, i) => `#0000${i.toString(16).padStart(2, "0")}`);
+  const onze = Array.from({ length: 11 }, (_, i) => `#0000${i.toString(16).padStart(2, "0")}`);
   assert.match(
-    refusDesCouleursDesParties([{ zone: "st0", couleurs: quaranteEtUne }]) ?? "",
-    /40 couleurs au plus/,
+    refusDesCouleursDesParties([{ zone: "st0", couleurs: onze }]) ?? "",
+    /10 couleurs au plus/,
   );
+  // Une famille d'un dessin en pixels, de même.
+  assert.match(
+    refusDesCouleursDesParties([{ cle: "fam0", reference: "#000000", couleurs: onze }]) ?? "",
+    /10 couleurs au plus/,
+  );
+
+  // UNE LISTE D'AVANT LA BORNE (15 couleurs, rangée quand c'était 40) : elle
+  // repart telle quelle, rangée autrement ou raccourcie, sans refus — sinon
+  // plus rien ne s'enregistrerait sur la pièce. Ce qui est refusé, c'est d'y
+  // AJOUTER une couleur.
+  const quinze = Array.from({ length: 15 }, (_, i) => `#00${i.toString(16).padStart(2, "0")}00`.toUpperCase());
+  const rangees = listesDesParties(
+    [{ zone: "st0", couleurs: quinze }, { zone: "st1" }],
+    [{ cle: "fam0", reference: "#000000", couleurs: ["#FFFFFF"] }],
+  );
+  assert.deepEqual(rangees, [quinze, ["#FFFFFF"]]);
+  assert.equal(refusDesCouleursDesParties([{ zone: "st0", couleurs: quinze }], rangees), null);
+  assert.equal(refusDesCouleursDesParties([{ zone: "st0", couleurs: [...quinze].reverse() }], rangees), null);
+  assert.equal(refusDesCouleursDesParties([{ zone: "st0", couleurs: quinze.slice(0, 12) }], rangees), null);
+  // La liste a suivi sa partie ailleurs (une relecture du dessin) : passe aussi.
+  assert.equal(refusDesCouleursDesParties([{ zone: "st4", couleurs: quinze }], rangees), null);
+  assert.match(
+    refusDesCouleursDesParties([{ zone: "st0", couleurs: [...quinze, "#ABCDEF"] }], rangees) ?? "",
+    /10 couleurs au plus/,
+  );
+  assert.match(
+    refusDesCouleursDesParties([{ zone: "st0", couleurs: [...quinze.slice(1), "#ABCDEF"] }], rangees) ?? "",
+    /10 couleurs au plus/,
+    "une couleur remplacée par une nouvelle, c'est un ajout",
+  );
+  // Une famille en pixels, de même ; et sans liste rangée, 11 restent refusées.
+  assert.equal(refusDesCouleursDesParties([{ cle: "fam0", reference: "#000000", couleurs: quinze }], rangees), null);
+  assert.match(refusDesCouleursDesParties([{ zone: "st0", couleurs: onze }], [["#FFFFFF"]]) ?? "", /10 couleurs au plus/);
 });
 
 test("une partie garde sa liste au nettoyage, et la rangée du client la porte", () => {
@@ -406,7 +728,7 @@ test("une partie garde sa liste au nettoyage, et la rangée du client la porte",
   );
 });
 
-test("pastillesDeLaRangee : jamais de saisie libre sur un accessoire, les autres inchangés", () => {
+test("pastillesDeLaRangee : la liste d'une partie, sans saisie libre, sur toutes les pièces", () => {
   const propres = ["#E7B033", "#000000"];
   // Accessoire : la liste de la partie, sinon la catégorie, sinon le repli — fermés.
   assert.deepEqual(pastillesDeLaRangee("accessory", propres, NUANCIER_ACCESSOIRES, REPLI), {
@@ -425,15 +747,53 @@ test("pastillesDeLaRangee : jamais de saisie libre sur un accessoire, les autres
     couleurs: REPLI,
     libre: false,
   });
-  // Les autres emplacements ne lisent pas de liste de partie, et gardent la
-  // saisie libre sans nuancier de catégorie, comme avant.
+  // Les autres emplacements : la liste de la partie, fermée, quand elle
+  // existe — même sans nuancier de catégorie, où le client avait la saisie
+  // libre. Sans liste, comme avant : la catégorie fermée, sinon le repli avec
+  // la saisie libre.
   for (const slot of ["clothes", "pants", "hair"]) {
     assert.deepEqual(pastillesDeLaRangee(slot, propres, NUANCIER_ACCESSOIRES, REPLI), {
+      couleurs: propres,
+      libre: false,
+    });
+    assert.deepEqual(pastillesDeLaRangee(slot, propres, [], REPLI), { couleurs: propres, libre: false });
+    assert.deepEqual(pastillesDeLaRangee(slot, [], NUANCIER_ACCESSOIRES, REPLI), {
       couleurs: NUANCIER_ACCESSOIRES,
       libre: false,
     });
-    assert.deepEqual(pastillesDeLaRangee(slot, propres, [], REPLI), { couleurs: REPLI, libre: true });
+    assert.deepEqual(pastillesDeLaRangee(slot, undefined, [], REPLI), { couleurs: REPLI, libre: true });
   }
+});
+
+test("une pièce en pixels propose toutes ses familles ; une commande d'avant s'imprime pareil", () => {
+  const couleursImage = {
+    familles: [
+      { cle: "fam0", reference: "#8B5B38", part: 0.7, proposee: true },
+      { cle: "fam1", reference: "#FFFFFF", part: 0.3, defaut: "#EEEEEE" },
+    ],
+  };
+  const toutes = avecToutesLesFamillesProposees(couleursImage);
+  assert.deepEqual(
+    famillesProposees(toutes).map((f) => f.cle),
+    ["fam0", "fam1"],
+  );
+  // L'original n'est pas touché, et une pièce déjà toute proposée revient
+  // telle quelle : l'empreinte de ses fichiers d'impression ne bouge pas.
+  assert.equal(couleursImage.familles[1]!.proposee, undefined);
+  assert.equal(avecToutesLesFamillesProposees(toutes), toutes);
+  assert.equal(avecToutesLesFamillesProposees(null), null);
+  // Une commande passée quand fam1 était décochée n'a pas de clé pour elle :
+  // elle garde son défaut, comme avant.
+  assert.deepEqual(couleursDesFamilles({ fam0: "#2060C0" }, toutes), {
+    fam0: "#2060C0",
+    fam1: "#EEEEEE",
+  });
+  assert.deepEqual(
+    couleursDesFamilles({ fam0: "#2060C0" }, toutes),
+    couleursDesFamilles({ fam0: "#2060C0" }, couleursImage),
+  );
+  // Une nouvelle, où le client a choisi fam1, s'imprime avec son choix.
+  assert.deepEqual(couleursDesFamilles({ fam1: "#101010" }, toutes), { fam1: "#101010" });
 });
 
 test("sansPastillesProposees : les listes n'entrent pas dans l'empreinte d'impression", () => {

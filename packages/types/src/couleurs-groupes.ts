@@ -85,25 +85,43 @@ export interface GroupeCouleur {
    */
   nuancier?: Nuancier;
   /**
-   * Pièce : la boutique a SÉPARÉ cette couleur de sa famille de teinte
-   * (« Séparer », au back-office). Le site la prenait pour l'ombre d'une
-   * autre couleur, c'était une partie à elle — la visière d'une casquette,
-   * le revers d'un bonnet : elle garde sa propre rangée de pastilles, et ne
-   * suit plus rien (cf. famillesDeLaPiece).
+   * Pièce : la boutique a DÉCOCHÉ « C'est une ombre » sur cette couleur. Le
+   * site la prenait pour l'ombre d'une autre, c'était une partie à elle — la
+   * visière d'une casquette, le revers d'un bonnet : elle garde sa propre
+   * rangée de pastilles, et ne suit plus rien (cf. famillesDeLaPiece).
+   * Écrite jadis par le bouton « Séparer », qui faisait la même chose.
    */
   separee?: true;
   /**
-   * Accessoire : les couleurs que la boutique propose pour CETTE partie, dans
+   * Pièce : la boutique a COCHÉ « C'est une ombre » sur cette couleur. La
+   * lecture du dessin y voyait une partie à elle ; c'est l'ombre (ou le
+   * reflet) d'une autre couleur : elle n'a pas de rangée à elle, elle suit la
+   * couleur principale de sa teinte — à défaut, la plus proche en teinte —,
+   * avec ses propres ombres (cf. famillesDeLaPiece). Jamais en même temps que
+   * `separee` : c'est la même case, cochée ou décochée.
+   *
+   * Sans l'une ni l'autre, c'est la lecture du dessin qui décide. Dès que la
+   * boutique touche la case, son choix passe devant — écrit seulement s'il
+   * contredit la lecture : remettre la case comme elle était l'efface (cf.
+   * reglerOmbre).
+   */
+  ombre?: true;
+  /**
+   * Les couleurs que la boutique propose pour CETTE partie d'une pièce, dans
    * l'ordre où le client les voit. « C'est moi qui dois les changer, en
    * ajouter et en supprimer si je veux. Pas de sélecteur pour les gens »
-   * (Margaux, 20 octobre 2026) : le nuancier de la catégorie, partagé par
-   * toutes les parties de tous les accessoires, ne laissait pas proposer du
-   * doré pour une monture de lunettes sans le proposer aussi pour un bonnet.
+   * (Margaux, 20 octobre 2026), d'abord pour les accessoires : le nuancier de
+   * la catégorie, partagé par toutes les parties de toutes les pièces, ne
+   * laissait pas proposer du doré pour une monture de lunettes sans le
+   * proposer aussi pour un bonnet. Puis, le même jour, pour TOUTES les pièces
+   * (« elle veut définir x couleurs, jusqu'à 10 pour chaque partie d'une
+   * pièce ») : vêtements, pantalons, coupes et accessoires.
    *
    * Absente : la partie propose le nuancier de sa catégorie, comme avant
-   * (cf. pastillesDeLaRangee). Portée par la TÊTE d'une rangée du client —
-   * sa couleur de référence — : une ombre suit sa couleur et n'a pas de
-   * pastilles à elle, sa liste éventuelle ne sert pas.
+   * (cf. pastillesDeLaRangee). Présente : le client n'a QUE ces pastilles,
+   * sans saisie libre. Portée par la TÊTE d'une rangée du client — sa couleur
+   * de référence — : une ombre suit sa couleur et n'a pas de pastilles à
+   * elle, sa liste éventuelle ne sert pas.
    *
    * Seules les pastilles en dépendent : les couleurs choisies s'écrivent zone
    * par zone dans la configuration, comme avant, et un panier ou une commande
@@ -116,18 +134,31 @@ export interface GroupeCouleur {
 export const NOM_GROUPE_MAX = 40;
 
 /* -------------------------------------------------------------------------- */
-/*  Les couleurs propres d'une partie d'accessoire                             */
+/*  Les couleurs propres d'une partie de pièce                                 */
 /* -------------------------------------------------------------------------- */
 
 /** L'emplacement des accessoires, tel qu'il est rangé en base. */
 export const EMPLACEMENT_ACCESSOIRE = "accessory";
 
 /**
- * Au plus 40 couleurs par partie. Bien plus que ce qu'une boutique propose
- * (le nuancier des accessoires en a six) : la borne n'est là que pour qu'un
- * envoi abîmé ne range pas des milliers de pastilles en base.
+ * Au plus 10 couleurs par partie, pour toutes les pièces : « possibilité
+ * d'en ajouter jusqu'à 10 pour chaque partie d'une pièce » (20 octobre 2026).
+ * Dix pastilles tiennent sur deux lignes d'un téléphone. C'est ce que la
+ * boutique peut AJOUTER (back-office, API) et ce que le client VOIT (cf.
+ * pastillesDeLaRangee).
  */
-export const COULEURS_PARTIE_MAX = 40;
+export const COULEURS_PARTIE_MAX = 10;
+
+/**
+ * La borne d'avant, 40 : une liste rangée quand elle valait (les « Pastilles
+ * du client » des accessoires, en ligne le 20 octobre 2026) peut dépasser 10.
+ * Elle se LIT entière, jusqu'à 40 (cf. couleursDeLaPartie) : le back-office,
+ * qui renvoie toutes les parties à chaque réglage — un nom, une case —, la
+ * couperait sinon à 10 en base sans un mot, au premier geste sur la pièce.
+ * Le client n'en voit que les 10 premières ; le back-office dit combien en
+ * retirer, et l'API n'en refuse que l'AJOUT (cf. refusDesCouleursDesParties).
+ */
+export const COULEURS_PARTIE_LUES_MAX = 40;
 
 /** « #b8551d », « b8551d » ou « #abc » -> « #B8551D » ; null si ce n'est pas une couleur. */
 export function couleurHexPropre(brut: unknown): string | null {
@@ -144,11 +175,13 @@ export function couleurHexPropre(brut: unknown): string | null {
 }
 
 /**
- * La liste propre d'une partie telle qu'elle se LIT (rendu, back-office) :
- * couleurs relues en « #RRGGBB », illisibles et doublons écartés, l'ordre
- * gardé, 40 au plus. Jamais d'erreur : une donnée abîmée retombe sur moins de
- * pastilles, au pire sur le nuancier de la catégorie — jamais sur un module
- * qui ne s'affiche plus.
+ * La liste propre d'une partie telle qu'elle se LIT et se RANGE (rendu,
+ * back-office, nettoyage de l'API) : couleurs relues en « #RRGGBB »,
+ * illisibles et doublons écartés, l'ordre gardé, 40 au plus
+ * (COULEURS_PARTIE_LUES_MAX : une liste d'avant la borne de 10 ne perd rien).
+ * Le client, lui, n'en voit que 10 (cf. pastillesDeLaRangee). Jamais
+ * d'erreur : une donnée abîmée retombe sur moins de pastilles, au pire sur le
+ * nuancier de la catégorie — jamais sur un module qui ne s'affiche plus.
  */
 export function couleursDeLaPartie(brut: unknown): string[] {
   if (!Array.isArray(brut)) return [];
@@ -156,14 +189,34 @@ export function couleursDeLaPartie(brut: unknown): string[] {
   for (const v of brut) {
     const c = couleurHexPropre(v);
     if (c && !out.includes(c)) out.push(c);
-    if (out.length >= COULEURS_PARTIE_MAX) break;
+    if (out.length >= COULEURS_PARTIE_LUES_MAX) break;
+  }
+  return out;
+}
+
+/**
+ * Les listes propres déjà rangées d'une pièce, toutes parties confondues :
+ * `sources`, les groupes d'un dessin vectoriel et les familles d'un dessin en
+ * pixels, tels qu'ils sont en base. Ce que l'API compare à un envoi pour
+ * savoir si une liste de plus de 10 couleurs est ANCIENNE (cf.
+ * refusDesCouleursDesParties).
+ */
+export function listesDesParties(...sources: unknown[]): string[][] {
+  const out: string[][] = [];
+  for (const source of sources) {
+    if (!Array.isArray(source)) continue;
+    for (const el of source) {
+      if (!el || typeof el !== "object") continue;
+      const couleurs = couleursDeLaPartie((el as Record<string, unknown>).couleurs);
+      if (couleurs.length) out.push(couleurs);
+    }
   }
   return out;
 }
 
 /**
  * Les listes propres des parties, vérifiées avant d'être ENREGISTRÉES (API) :
- * chaque couleur au format « #RRGGBB », 40 au plus par partie. Les doublons,
+ * chaque couleur au format « #RRGGBB », 10 au plus par partie. Les doublons,
  * eux, se retirent sans bruit au nettoyage (couleursDeLaPartie) : la même
  * couleur deux fois ne fait qu'une pastille.
  *
@@ -172,8 +225,19 @@ export function couleursDeLaPartie(brut: unknown): string[] {
  * Rend la raison du refus, en mots de la boutique, ou null si tout va bien.
  * `elements` : les groupes d'un dessin vectoriel, ou les familles d'un dessin
  * en pixels — les deux portent `couleurs` de la même façon.
+ *
+ * UNE LISTE D'AVANT LA BORNE DE 10 PASSE, tant qu'on n'y AJOUTE rien.
+ * `anciennes` : les listes déjà rangées de la pièce (cf. listesDesParties).
+ * Une liste de plus de 10 couleurs qui n'en contient aucune de nouvelle — la
+ * même, rangée autrement, ou raccourcie — est acceptée : le back-office
+ * renvoie toutes les parties à chaque réglage, et refuser la pièce entière
+ * pour une liste qu'on n'a pas touchée empêcherait de renommer quoi que ce
+ * soit. C'est l'ajout, au-delà de 10, qui est refusé.
  */
-export function refusDesCouleursDesParties(elements: unknown): string | null {
+export function refusDesCouleursDesParties(
+  elements: unknown,
+  anciennes: readonly (readonly string[])[] = [],
+): string | null {
   if (!Array.isArray(elements)) return null;
   for (const el of elements) {
     if (!el || typeof el !== "object") continue;
@@ -185,11 +249,14 @@ export function refusDesCouleursDesParties(elements: unknown): string | null {
     for (const v of brut) {
       const c = typeof v === "string" ? v.trim().toUpperCase() : "";
       if (!/^#[0-9A-F]{6}$/.test(c))
-        return `« ${String(v)} » n'est pas une couleur (format #RRGGBB).`;
+        return `« ${String(v)} » n'est pas un code couleur : écrivez-le comme #B8551D.`;
       vues.add(c);
     }
-    if (vues.size > COULEURS_PARTIE_MAX)
-      return `Une partie propose ${COULEURS_PARTIE_MAX} couleurs au plus.`;
+    const ancienne =
+      vues.size <= COULEURS_PARTIE_LUES_MAX &&
+      anciennes.some((a) => [...vues].every((c) => a.includes(c)));
+    if (vues.size > COULEURS_PARTIE_MAX && !ancienne)
+      return `Une partie propose ${COULEURS_PARTIE_MAX} couleurs au plus : retirez-en avant d'en ajouter une autre.`;
   }
   return null;
 }
@@ -201,8 +268,8 @@ export function refusDesCouleursDesParties(elements: unknown): string | null {
  * Pour les empreintes des fichiers rangés (fichier d'impression, image
  * recolorée) : les pastilles proposées au client ne changent rien à ce qui
  * s'imprime, et les y laisser faisait refaire, à chaque retouche d'une liste
- * au back-office, le PDF de toutes les commandes qui portent l'accessoire —
- * un rendu à 300 points par pouce par commande, pour une affiche identique.
+ * au back-office, le PDF de toutes les commandes qui portent la pièce — un
+ * rendu à 300 points par pouce par commande, pour une affiche identique.
  *
  * Un élément sans liste est rendu TEL QUEL (même objet, mêmes clés dans le
  * même ordre) : les empreintes des fichiers déjà rangés ne bougent pas. Sans
@@ -227,16 +294,20 @@ export function sansPastillesProposees<T>(elements: T): T {
  * Les pastilles d'une rangée de pièce dans le module, et si le client peut
  * aussi y saisir une couleur hors liste (la pastille arc-en-ciel).
  *
- *   - ACCESSOIRE : jamais de saisie libre — « pas de sélecteur pour les
- *     gens ». Les pastilles : la liste propre de la partie (cf.
- *     GroupeCouleur.couleurs), sinon le nuancier de sa catégorie, sinon le
- *     nuancier de repli de l'emplacement. Même un accessoire sans catégorie
- *     n'ouvre plus la saisie libre.
- *   - Autres emplacements, comme avant : le nuancier de la catégorie, fermé ;
- *     sans lui, le nuancier de repli, avec la saisie libre.
+ *   - La partie a SA liste (cf. GroupeCouleur.couleurs), quelle que soit la
+ *     pièce : le client n'a que ces pastilles, sans saisie libre. C'est la
+ *     boutique qui a choisi, une à une, ce qu'elle propose.
+ *   - Sinon, le nuancier de la catégorie, fermé ; sans lui, le nuancier de
+ *     repli de l'emplacement, avec la saisie libre — sauf sur un ACCESSOIRE,
+ *     qui n'en a jamais : « pas de sélecteur pour les gens ». Même un
+ *     accessoire sans catégorie n'ouvre pas la saisie libre.
  *
  * `repli` : le nuancier de l'emplacement (celui des vêtements des personnages
  * pour un accessoire, tel que la boutique l'a réglé).
+ *
+ * Une liste propre rangée avant la borne de 10 (cf. COULEURS_PARTIE_LUES_MAX)
+ * ne montre que ses 10 premières pastilles : le back-office dit à la boutique
+ * combien en retirer.
  */
 export function pastillesDeLaRangee(
   slot: string,
@@ -245,7 +316,11 @@ export function pastillesDeLaRangee(
   repli: readonly string[],
 ): { couleurs: readonly string[]; libre: boolean } {
   const accessoire = slot === EMPLACEMENT_ACCESSOIRE;
-  if (accessoire && propres && propres.length > 0) return { couleurs: propres, libre: false };
+  if (propres && propres.length > 0)
+    return {
+      couleurs: propres.length > COULEURS_PARTIE_MAX ? propres.slice(0, COULEURS_PARTIE_MAX) : propres,
+      libre: false,
+    };
   if (categorie && categorie.length > 0) return { couleurs: categorie, libre: false };
   return { couleurs: repli, libre: !accessoire };
 }
@@ -299,7 +374,14 @@ export function groupesDuDessin(
         ...(nuances.length ? { nuances } : {}),
         ...(nom ? { nom } : {}),
         ...(nuancier ? { nuancier } : {}),
-        ...(g.separee === true ? { separee: true as const } : {}),
+        // La case « C'est une ombre », décochée ou cochée : jamais les deux.
+        // Une donnée qui porterait les deux garde « à part », le réglage le
+        // plus ancien — celui qui ne retire de rangée à personne.
+        ...(g.separee === true
+          ? { separee: true as const }
+          : g.ombre === true
+            ? { ombre: true as const }
+            : {}),
         ...(couleurs.length ? { couleurs } : {}),
       });
     }
@@ -603,16 +685,17 @@ export function groupesProposesDeLaBase(base: DessinDeBase): GroupeCouleur[] {
   return groupes.filter((g) => proposees.includes(g.zone));
 }
 
-/** Ce qu'il faut savoir d'une pièce pour ses couleurs. */
+/**
+ * Ce qu'il faut savoir d'une pièce pour ses couleurs.
+ *
+ * PLUS DE ZONES MASQUÉES. La colonne `asset.zones_masquees` (les anciennes
+ * cases « Le client peut la changer ») reste en base, intacte, mais plus rien
+ * ne la lit : « le client peut changer toutes les couleurs en fait »
+ * (20 octobre 2026), et la case a quitté le back-office — il n'y aurait plus
+ * eu d'écran pour défaire un ancien réglage qui cacherait une couleur.
+ */
 export interface DessinDePiece {
   colorZones?: Record<string, string> | null;
-  /**
-   * Le réglage PROPRE à la pièce : les zones de référence des groupes que le
-   * client ne peut pas changer (cases « Proposée au client » du back-office).
-   * Une liste, même vide, a le dernier mot sur la catégorie ; `null` (ou
-   * absent) : la pièce suit le réglage de sa catégorie.
-   */
-  zonesMasquees?: readonly string[] | null;
   groupesCouleurs?: unknown;
   /**
    * La part du dessin que peint chaque zone (0 à 1), mesurée par l'API sur un
@@ -624,27 +707,21 @@ export interface DessinDePiece {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Couleurs proposées : la règle de la catégorie                              */
+/*  Couleurs proposées : l'ancienne règle de la catégorie                      */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Ce qu'une catégorie de pièces propose au client, pour chacune de ses
- * pièces qui n'a pas son propre réglage :
- *   - « toutes » : une rangée de pastilles par FAMILLE DE TEINTE de la pièce
- *     (cf. famillesDeLaPiece), chaque famille entraînant ses ombres. C'est la
- *     règle par défaut depuis la migration 0068 : la cliente a changé d'avis
- *     le 19 octobre — « le client peut changer toutes les couleurs ». Avant,
- *     « toutes » voulait dire une rangée par ZONE, où rien ne suivait rien :
- *     on obtenait un t-shirt jaune à ombres vert foncé ;
- *   - « principale » : la couleur principale seulement, ombres comprises
- *     (cf. principaleDeLaPiece). Les détails — ruban d'un chapeau, verres
- *     d'une paire de lunettes — gardent la couleur du dessin. La migration
- *     0066 en avait fait le défaut ; elle reste au choix, catégorie par
- *     catégorie.
+ * Ce qu'une catégorie de pièces proposait au client : « toutes » ses
+ * couleurs, ou la « principale » seule (les détails — le ruban d'un chapeau —
+ * gardaient alors la couleur du dessin).
  *
- * La cliente masquait le ruban pièce par pièce ; un seul réglage par
- * catégorie suffit désormais. Une pièce qui a ses propres cases garde le
- * dernier mot : un vêtement à deux couleurs principales reste à deux.
+ * PLUS LUE DEPUIS LE 20 OCTOBRE 2026. « Le client peut changer toutes les
+ * couleurs en fait » : chaque pièce propose toutes ses familles de teinte
+ * (cf. groupesProposesDeLaPiece), quelle que soit sa catégorie, et le menu a
+ * quitté Catégories de pièces. La colonne `piece_category.couleurs_proposees`
+ * reste en base, telle quelle (toutes les catégories y sont sur « toutes »
+ * depuis la migration 0068) ; l'API la lit et la renvoie encore, rien ne
+ * s'en sert pour dessiner.
  */
 export const COULEURS_PROPOSEES = ["toutes", "principale"] as const;
 export type CouleursProposees = (typeof COULEURS_PROPOSEES)[number];
@@ -733,8 +810,10 @@ export function memeFamilleDeTeinte(a: string, b: string): boolean {
  * à peine encombrerait le module, et laissé à sa couleur, il trancherait.
  *
  * Aucun seuil ne lit un dessin comme un œil : la boutique corrige au
- * back-office une couleur prise à tort pour une ombre (« Séparer », cf.
- * GroupeCouleur.separee).
+ * back-office, d'une case « C'est une ombre » sur chaque couleur, ce que la
+ * lecture a mal vu — une partie prise pour une ombre (case décochée, cf.
+ * GroupeCouleur.separee), une ombre prise pour une partie (case cochée, cf.
+ * GroupeCouleur.ombre).
  */
 export const ECART_CLARTE_OMBRE = 0.22;
 export const PART_MAX_OMBRE = 2 / 3;
@@ -747,6 +826,80 @@ function clarteDe(hex: string): number {
   const t: [number, number, number] = [0, 0, 0];
   versTsl(rgb[0], rgb[1], rgb[2], t);
   return t[2];
+}
+
+/**
+ * L'écart de TEINTE entre deux couleurs, pour une couleur que la boutique a
+ * cochée « C'est une ombre » sans qu'aucune couleur de sa teinte ne soit là
+ * pour qu'elle la suive : elle suit alors la plus proche en teinte.
+ *
+ * Deux couleurs franches : l'angle entre leurs teintes (0 à 180°). Deux gris
+ * (ou blancs, ou noirs), dont la teinte ne veut rien dire : leur écart de
+ * clarté, sur la même échelle. Un gris et une couleur franche : en dernier
+ * recours, après toutes les autres.
+ */
+function ecartDeTeinte(a: string, b: string): number {
+  const x = hexVersRgb(a);
+  const y = hexVersRgb(b);
+  if (!x || !y) return Infinity;
+  const tx: [number, number, number] = [0, 0, 0];
+  const ty: [number, number, number] = [0, 0, 0];
+  versTsl(x[0], x[1], x[2], tx);
+  versTsl(y[0], y[1], y[2], ty);
+  const clarte = Math.abs(tx[2] - ty[2]) * 180;
+  const vx = couleurVive(x[0], x[1], x[2]);
+  const vy = couleurVive(y[0], y[1], y[2]);
+  if (vx && vy) {
+    const angle = Math.abs(tx[0] - ty[0]) % 360;
+    return Math.min(angle, 360 - angle);
+  }
+  return vx === vy ? clarte : 180 + clarte;
+}
+
+/**
+ * La zone de TÊTE d'un groupe : celle dont le client choisit la couleur, les
+ * autres la suivent.
+ *
+ * Un groupe enregistré a pour référence sa zone de plus petit numéro (cf.
+ * grouperNuances) : sur un dessin d'Illustrator relu, ce peut être un chignon
+ * plutôt que la chevelure. Sa zone la plus étendue la remplace : la couleur
+ * choisie tombe telle quelle sur la plus grande partie, les autres en sont
+ * les nuances. Les couleurs s'écrivent zone par zone : aucune clé enregistrée
+ * n'en dépend. Sans mesure des parts, la référence enregistrée.
+ *
+ * Exportée pour le back-office : la case « C'est une ombre » d'une zone de
+ * tête vaut pour tout son groupe.
+ */
+export function teteDuGroupe(
+  groupe: GroupeCouleur,
+  parts?: Readonly<Record<string, number>> | null,
+): string {
+  if (!parts || !groupe.nuances?.length) return groupe.zone;
+  const partZone = (z: string) => {
+    const p = parts[z];
+    return typeof p === "number" && Number.isFinite(p) ? p : 0;
+  };
+  return zonesDuGroupe(groupe).reduce(
+    (m, z) => (partZone(z) > partZone(m) ? z : m),
+    groupe.zone,
+  );
+}
+
+/**
+ * La couleur la plus ÉTENDUE d'une pièce (la tête de son plus grand groupe) :
+ * elle commence toujours une rangée du client, même cochée « C'est une
+ * ombre » — il faut bien une couleur à suivre. Le back-office grise sa case.
+ *
+ * Ce n'est pas toujours la couleur PRINCIPALE (la tête de la première
+ * rangée) : une famille de deux tons peut l'emporter, à eux deux, sur une
+ * couleur seule plus grande que chacun d'eux.
+ */
+export function zoneLaPlusEtendue(piece: DessinDePiece): string | undefined {
+  const groupe = groupePrincipal(
+    groupesDuDessin(piece.colorZones, piece.groupesCouleurs),
+    piece.partsDesZones,
+  );
+  return groupe ? teteDuGroupe(groupe, piece.partsDesZones) : undefined;
 }
 
 /**
@@ -788,19 +941,24 @@ function clarteDe(hex: string): number {
  * rejoint une famille (ou en commence une) comme une seule couleur — la
  * sienne est celle de sa référence. Avant, un seul groupe enregistré avec
  * des nuances arrêtait toute réunion sur la pièce : relire un dessin, que
- * l'aide conseillait justement, coupait le suivi des ombres. Une couleur que
- * la boutique a séparée (`separee`) ne rejoint aucune famille ; d'autres
- * peuvent la rejoindre.
+ * l'aide conseillait justement, coupait le suivi des ombres.
+ *
+ * LA CASE « C'EST UNE OMBRE » DU BACK-OFFICE PASSE DEVANT LA LECTURE :
+ *   - décochée (`separee`) : la couleur ne rejoint aucune famille, elle a sa
+ *     rangée ; d'autres peuvent la rejoindre, comme ses propres ombres ;
+ *   - cochée (`ombre`) : la famille qu'elle aurait commencée — elle et ses
+ *     propres ombres — rejoint la famille de sa teinte la plus proche en
+ *     clarté, à défaut celle de la teinte la plus proche (cf. ecartDeTeinte).
+ *     La visière cochée d'une casquette emmène le dessous de la visière.
+ *     Cela se décide une fois toutes les familles formées : une ombre suit
+ *     une couleur PRINCIPALE, jamais une autre ombre. La couleur la plus
+ *     étendue (cf. zoneLaPlusEtendue) n'est jamais une ombre.
  */
 export function famillesDeLaPiece(piece: DessinDePiece): GroupeCouleur[] {
   return famillesParmi(groupesDuDessin(piece.colorZones, piece.groupesCouleurs), piece);
 }
 
-/**
- * Les familles de teinte formées avec ces groupes-là seulement : tous ceux du
- * dessin (famillesDeLaPiece), ou ceux qu'une pièce réglée à la main propose
- * (cf. groupesProposesDeLaPiece).
- */
+/** Les familles de teinte formées avec les groupes d'un dessin (cf. famillesDeLaPiece). */
 function famillesParmi(groupes: GroupeCouleur[], piece: DessinDePiece): GroupeCouleur[] {
   const parts = piece.partsDesZones;
   const partDe = (g: GroupeCouleur) =>
@@ -811,21 +969,13 @@ function famillesParmi(groupes: GroupeCouleur[], piece: DessinDePiece): GroupeCo
         }, 0)
       : 0;
   const couleur = (z: string) => piece.colorZones?.[z] ?? "";
-  const partZone = (z: string) => {
-    const p = parts?.[z];
-    return typeof p === "number" && Number.isFinite(p) ? p : 0;
-  };
-  // Un groupe enregistré a pour référence sa zone de plus petit numéro (cf.
-  // grouperNuances) : sur un dessin d'Illustrator relu, ce peut être un
-  // chignon plutôt que la chevelure. Ici, sa zone la plus étendue la
-  // remplace : la couleur choisie tombe telle quelle sur la plus grande
-  // partie, les autres en sont les nuances. Les couleurs s'écrivent zone par
-  // zone : aucune clé enregistrée n'en dépend.
+  // Chaque groupe enregistré prend pour référence sa zone de tête, la plus
+  // étendue (cf. teteDuGroupe).
   const referencee = (g: GroupeCouleur): GroupeCouleur => {
-    if (!parts || !g.nuances?.length) return g;
-    const zones = zonesDuGroupe(g);
-    const plus = zones.reduce((m, z) => (partZone(z) > partZone(m) ? z : m), g.zone);
-    return plus === g.zone ? g : { ...g, zone: plus, nuances: zones.filter((z) => z !== plus) };
+    const tete = teteDuGroupe(g, parts);
+    return tete === g.zone
+      ? g
+      : { ...g, zone: tete, nuances: zonesDuGroupe(g).filter((z) => z !== tete) };
   };
 
   // Du plus étendu au plus petit ; tri stable : à part égale, l'ordre du
@@ -872,27 +1022,69 @@ function famillesParmi(groupes: GroupeCouleur[], piece: DessinDePiece): GroupeCo
       familles.push({ ref: x, part: x.part, clartes, suivantes: [] });
     }
   }
-  return familles
+
+  // Les couleurs cochées « C'est une ombre » par la boutique, qui avaient
+  // commencé une famille : elles la versent, avec leurs propres ombres, dans
+  // celle qu'elles suivront. Jamais la plus étendue (ordre[0]) : il faut une
+  // couleur à suivre, et c'est elle.
+  const premiere = ordre[0];
+  const voulues = familles.filter((f) => f.ref.g.ombre && f.ref !== premiere);
+  const cibles = familles.filter((f) => !voulues.includes(f));
+  for (const f of voulues) {
+    const teinte = couleur(f.ref.g.zone);
+    // La famille de sa teinte la plus proche en clarté, comme une ombre que
+    // la lecture aurait reconnue ; sans couleur de sa teinte, la plus proche
+    // en teinte (la boutique le lit sous sa ligne).
+    let cible: Famille | undefined;
+    let meilleur = Infinity;
+    for (const t of cibles) {
+      if (!memeFamilleDeTeinte(teinte, couleur(t.ref.g.zone))) continue;
+      const ecart = Math.min(...t.clartes.map((c) => Math.abs(f.ref.clarte - c)));
+      if (ecart < meilleur) {
+        cible = t;
+        meilleur = ecart;
+      }
+    }
+    if (!cible)
+      for (const t of cibles) {
+        const ecart = ecartDeTeinte(teinte, couleur(t.ref.g.zone));
+        if (ecart < meilleur) {
+          cible = t;
+          meilleur = ecart;
+        }
+      }
+    // `cibles` n'est jamais vide (la plus étendue y est) : ce repli ne sert
+    // qu'à une couleur illisible.
+    cible ??= cibles[0]!;
+    cible.part += f.part;
+    cible.clartes.push(...f.clartes);
+    cible.suivantes.push(f.ref, ...f.suivantes);
+  }
+
+  return cibles
     .sort((a, b) => b.part - a.part || a.ref.rang - b.ref.rang)
     .map(({ ref, suivantes }) => {
       // La rangée reprend le groupe de tête tel quel — son nom, sa liste
-      // propre de couleurs (accessoire) — : c'est la ligne du back-office que
-      // la boutique règle. Celles des ombres ne servent pas.
+      // propre de couleurs — : c'est la ligne du back-office que la boutique
+      // règle. Celles des ombres ne servent pas. Une case « ombre » restée
+      // sur la plus étendue ne dit rien de la rangée : elle n'y paraît pas.
+      let tete = ref.g;
+      if (tete.ombre) {
+        tete = { ...tete };
+        delete tete.ombre;
+      }
       // Les nuances dans l'ordre du back-office, comme ses lignes.
       const zones = suivantes
         .sort((a, b) => a.rang - b.rang)
         .flatMap((s) => zonesDuGroupe(s.g));
-      return zones.length
-        ? { ...ref.g, nuances: [...(ref.g.nuances ?? []), ...zones] }
-        : ref.g;
+      return zones.length ? { ...tete, nuances: [...(tete.nuances ?? []), ...zones] } : tete;
     });
 }
 
 /**
- * La couleur principale d'une pièce, AVEC SES OMBRES : ce que le client
- * recolore quand la catégorie ne propose que la principale, et la couleur
- * qui passe d'une pièce à l'autre (cf. couleursAuChangementDePiece, dans le
- * configurateur).
+ * La couleur principale d'une pièce, AVEC SES OMBRES : sa première rangée de
+ * pastilles, et la couleur qui passe d'une pièce à l'autre (cf.
+ * couleursAuChangementDePiece, dans le configurateur).
  *
  * C'est la première des familles de la pièce (cf. famillesDeLaPiece) : la
  * famille la plus étendue, sa zone la plus étendue en référence, ses ombres
@@ -903,36 +1095,196 @@ export function principaleDeLaPiece(piece: DessinDePiece): GroupeCouleur | undef
 }
 
 /**
- * Les groupes d'une pièce que le client peut recolorer, dans l'ordre.
+ * Les rangées de pastilles d'une pièce dans le module, dans l'ordre : TOUTES
+ * ses familles de teinte, chacune avec ses ombres (cf. famillesDeLaPiece).
  *
- * - Réglage propre à la pièce (`zonesMasquees` est une liste, cases cochées
- *   au back-office) : les familles de teinte formées avec les groupes qu'il
- *   ne masque pas. Les cases ont toujours le dernier mot — un groupe masqué
- *   ne rejoint aucune famille et garde la couleur du dessin
- *   (cf. couleursDeLaPiece) —, mais les ombres suivent comme ailleurs. Avant,
- *   chaque case cochée faisait une rangée : toucher une seule case, même
- *   celle du ruban, rendait au t-shirt ses ombres vert foncé.
- * - Sinon, la règle de sa catégorie : la couleur principale seule (ombres
- *   comprises, cf. principaleDeLaPiece), ou toutes les familles de teinte,
- *   chacune avec ses ombres (cf. famillesDeLaPiece). Sans catégorie (ou
- *   catégorie archivée, décochée), toutes les familles.
+ * « Le client peut changer toutes les couleurs en fait » (19 et 20 octobre
+ * 2026). Il n'y a plus d'exception : ni la règle de la catégorie (« seulement
+ * la couleur principale », cf. COULEURS_PROPOSEES), ni les anciennes cases
+ * « Le client peut la changer » d'une pièce (`asset.zones_masquees`, gardée
+ * en base mais plus lue) ne retirent de rangée. Ce que la boutique règle
+ * encore, c'est QUELLE couleur est une ombre (« C'est une ombre ») et, pour
+ * chaque rangée, les pastilles proposées (GroupeCouleur.couleurs).
  */
-export function groupesProposesDeLaPiece(
+export function groupesProposesDeLaPiece(piece: DessinDePiece): GroupeCouleur[] {
+  return famillesDeLaPiece(piece);
+}
+
+/**
+ * La case « C'est une ombre » d'une couleur de pièce, cochée (`ombre`) ou
+ * décochée, au back-office : les groupes de la pièce après ce geste.
+ *
+ * LE CHOIX DE LA BOUTIQUE N'EST ÉCRIT QUE S'IL CONTREDIT LA LECTURE DU
+ * DESSIN. La case revient-elle à ce que la lecture donnerait sans réglage sur
+ * ce groupe ? Le drapeau s'efface, au lieu d'en écrire l'inverse. Avant,
+ * décocher puis recocher laissait pour toujours `ombre: true` sur une couleur
+ * que la lecture voyait déjà comme une ombre : l'écran et le site étaient les
+ * mêmes, mais la pièce gardait un réglage « à la main » que rien ne
+ * permettait d'effacer, et qu'une relecture du dessin reprenait.
+ *
+ *   - Une couleur en tête de son groupe (la plupart : une zone seule) : la
+ *     case vaut pour tout son groupe — `ombre` cochée, `separee` décochée —,
+ *     seulement si la lecture dit le contraire.
+ *   - Décochée sur une zone qu'une relecture a réunie à d'autres dans un même
+ *     groupe enregistré : elle en sort, groupe à elle, juste après — avec
+ *     `separee` seulement si la lecture la remettrait sinon dans une famille.
+ *   - La couleur la plus étendue n'est jamais une ombre (cf.
+ *     famillesDeLaPiece) : la cocher ne change rien, et rien ne s'écrit.
+ *
+ * Pure, sans navigateur : le back-office l'appelle, les essais la vérifient.
+ */
+export function reglerOmbre(
   piece: DessinDePiece,
-  regle?: CouleursProposees | null,
+  zone: string,
+  ombre: boolean,
 ): GroupeCouleur[] {
-  if (Array.isArray(piece.zonesMasquees)) {
-    const masquees = piece.zonesMasquees;
-    return famillesParmi(
-      groupesDuDessin(piece.colorZones, piece.groupesCouleurs).filter(
-        (g) => !masquees.includes(g.zone),
-      ),
-      piece,
+  // Des copies : l'appelant garde ses groupes tels quels.
+  const groupes = groupesDuDessin(piece.colorZones, piece.groupesCouleurs).map((g) => ({
+    ...g,
+    ...(g.nuances ? { nuances: [...g.nuances] } : {}),
+  }));
+  const i = groupes.findIndex((g) => zonesDuGroupe(g).includes(zone));
+  const g = groupes[i];
+  if (!g) return groupes;
+  /** Cette zone suit-elle une autre couleur, avec ces groupes-là ? */
+  const suit = () => {
+    const rangee = famillesDeLaPiece({ ...piece, groupesCouleurs: groupes }).find((r) =>
+      zonesDuGroupe(r).includes(zone),
     );
+    return !!rangee && rangee.zone !== zone;
+  };
+
+  if (ombre || teteDuGroupe(g, piece.partsDesZones) === zone) {
+    delete g.ombre;
+    delete g.separee;
+    if (suit() === ombre) return groupes;
+    if (ombre) g.ombre = true;
+    else g.separee = true;
+    // Sans effet (la plus étendue cochée) : rien à écrire.
+    if (suit() !== ombre) {
+      delete g.ombre;
+      delete g.separee;
+    }
+    return groupes;
   }
-  const familles = famillesDeLaPiece(piece);
-  if (regle === "principale") return familles.slice(0, 1);
-  return familles;
+
+  const reste = zonesDuGroupe(g).filter((m) => m !== zone);
+  g.zone = reste[0]!;
+  if (reste.length > 1) g.nuances = reste.slice(1);
+  else delete g.nuances;
+  const seule: GroupeCouleur = { zone };
+  groupes.splice(i + 1, 0, seule);
+  if (suit()) seule.separee = true;
+  return groupes;
+}
+
+/** Ce qu'un clic sur « C'est une ombre » a changé, rangées du client à l'appui (cf. bilanDeLOmbre). */
+export interface BilanDeLOmbre {
+  /** Après le geste, la couleur cliquée est-elle une ombre (elle suit une partie) ? */
+  ombre: boolean;
+  /** Le numéro, APRÈS le geste, de la rangée où elle se trouve (1 : la principale). */
+  rangee: number;
+  /** Si c'est une ombre : la tête de la rangée qu'elle suit. */
+  suit?: string;
+  /** Les AUTRES couleurs devenues des parties à part, avec leur numéro d'après. */
+  parties: { zone: string; rangee: number }[];
+  /**
+   * Les AUTRES couleurs qui suivent maintenant une autre partie qu'avant :
+   * parties devenues ombres (`avant: "partie"`), ou ombres passées d'une
+   * partie à l'autre (`avant: "ombre"`).
+   */
+  ombres: { zone: string; suit: string; rangee: number; avant: "partie" | "ombre" }[];
+}
+
+/**
+ * Le bilan d'un clic sur la case « C'est une ombre », d'après les rangées du
+ * client avant et après (famillesDeLaPiece) : ce que le message du
+ * back-office doit dire.
+ *
+ * TOUS LES NUMÉROS SONT CEUX D'APRÈS LE GESTE, ceux que la boutique lit à
+ * l'écran quand le message paraît. Les rangées venant d'être refaites, le
+ * message mêlait les deux : « Partie 2 est maintenant une ombre : elle suit
+ * la partie 2 » — la ligne cliquée sous son numéro d'avant, la partie suivie
+ * sous son numéro d'après (casquette 401).
+ *
+ * UN CLIC PEUT EN DÉPLACER D'AUTRES. Une ombre se juge sur la couleur la plus
+ * proche de sa famille (une ombre d'ombre, cf. famillesDeLaPiece) : décocher
+ * une ombre peut libérer celle qui ne suivait la partie qu'à travers elle
+ * (casquette 486 : décocher le bleu st5 fait aussi du bleu nuit st6 une
+ * partie), et cocher une partie emmène ses propres ombres (t-shirt 421 : le
+ * liseré suit les manches cochées). L'écran se redessine, mais la boutique
+ * n'a touché qu'une case : le message doit nommer les autres.
+ */
+export function bilanDeLOmbre(
+  avant: readonly GroupeCouleur[],
+  apres: readonly GroupeCouleur[],
+  zone: string,
+): BilanDeLOmbre {
+  const ou = (rangees: readonly GroupeCouleur[], z: string) => {
+    const i = rangees.findIndex((r) => zonesDuGroupe(r).includes(z));
+    return i < 0 ? null : { i, tete: rangees[i]!.zone };
+  };
+  const sienne = ou(apres, zone);
+  const bilan: BilanDeLOmbre = {
+    ombre: !!sienne && sienne.tete !== zone,
+    rangee: sienne ? sienne.i + 1 : 0,
+    ...(sienne && sienne.tete !== zone ? { suit: sienne.tete } : {}),
+    parties: [],
+    ombres: [],
+  };
+  // Les autres couleurs dans l'ordre des rangées d'après, comme l'écran.
+  for (const z of apres.flatMap(zonesDuGroupe)) {
+    if (z === zone) continue;
+    const a = ou(avant, z);
+    const b = ou(apres, z);
+    if (!a || !b) continue;
+    const etaitPartie = a.tete === z;
+    const estPartie = b.tete === z;
+    if (estPartie && !etaitPartie) bilan.parties.push({ zone: z, rangee: b.i + 1 });
+    else if (!estPartie && (etaitPartie || a.tete !== b.tete))
+      bilan.ombres.push({
+        zone: z,
+        suit: b.tete,
+        rangee: b.i + 1,
+        avant: etaitPartie ? "partie" : "ombre",
+      });
+  }
+  return bilan;
+}
+
+/**
+ * Pourquoi une ombre suit une partie d'une AUTRE teinte que la sienne — ce
+ * que sa ligne en dit au back-office. `null` : elle a la teinte de sa partie
+ * (le cas ordinaire), ce n'est pas une ombre, ou rien de sûr à dire.
+ *
+ *   - « reglage » : un groupe enregistré la réunit à d'autres couleurs, dont
+ *     elle n'est pas la tête ; c'est lui qui l'emmène, quelle que soit sa
+ *     teinte. Le t-shirt 421 en prod : ses manches vertes, réunies jadis au
+ *     corps beige, alors qu'une partie verte (le liseré) existe juste dessous.
+ *   - « plus-proche » : cochée « C'est une ombre » sans qu'aucune partie ait
+ *     sa teinte, elle suit la plus proche (cf. famillesDeLaPiece).
+ *
+ * Avant, l'écran disait « Aucune partie n'a sa teinte » dès que l'ombre
+ * n'avait pas celle de SA partie, sans regarder les autres : c'était faux sur
+ * la 421, et la boutique ne pouvait pas savoir qu'il suffisait de décocher.
+ */
+export function ombreDAutreTeinte(
+  piece: DessinDePiece,
+  zone: string,
+): "reglage" | "plus-proche" | null {
+  const couleur = (z: string) => piece.colorZones?.[z] ?? "";
+  const rangees = famillesDeLaPiece(piece);
+  const rangee = rangees.find((r) => zonesDuGroupe(r).includes(zone));
+  if (!rangee || rangee.zone === zone) return null;
+  if (memeFamilleDeTeinte(couleur(zone), couleur(rangee.zone))) return null;
+  const sien = groupesDuDessin(piece.colorZones, piece.groupesCouleurs).find((g) =>
+    zonesDuGroupe(g).includes(zone),
+  );
+  if (sien && zonesDuGroupe(sien).length > 1 && teteDuGroupe(sien, piece.partsDesZones) !== zone)
+    return "reglage";
+  return rangees.some((r) => memeFamilleDeTeinte(couleur(zone), couleur(r.zone)))
+    ? null
+    : "plus-proche";
 }
 
 /* -------------------------------------------------------------------------- */
@@ -948,41 +1300,26 @@ export function groupesProposesDeLaPiece(
 /**
  * Les couleurs à appliquer à UNE pièce portée : ses couleurs par défaut,
  * surchargées par celles du personnage pour son emplacement (cf.
- * {@link colorsForScope}), sauf sur les groupes que la boutique ne propose
- * pas au client (`zonesMasquees`, réglées au back-office).
+ * {@link colorsForScope}). Zone par zone, telles que la configuration les
+ * porte.
  *
- * Un groupe masqué reprend TOUJOURS les couleurs par défaut de la pièce —
- * référence et nuances —, même si la configuration en porte d'autres : un
- * panier rempli avant que le groupe soit décoché garde sa couleur en mémoire,
- * et le client n'aurait plus aucun moyen de la changer.
- *
- * SEULES LES CASES DE LA PIÈCE forcent ainsi le défaut. Un groupe que sa
- * CATÉGORIE ne propose pas (« seulement la couleur principale ») se dessine
- * avec la couleur enregistrée : le configurateur écrit toutes les couleurs du
- * dessin quand on choisit la pièce (couleursAuChangementDePiece), et une
- * commande passée avant ce réglage s'imprime exactement comme avant.
- *
- * Sans couleur par défaut connue pour une zone, on retire simplement la
- * surcharge : le dessin garde la couleur écrite dans son fichier.
+ * Plus aucune zone n'est forcée à sa couleur par défaut. Jusqu'au 20 octobre
+ * 2026, les groupes décochés au back-office (`asset.zones_masquees`, « Le
+ * client peut la changer ») la reprenaient d'office ; le client peut
+ * désormais changer toutes les couleurs, il fallait que l'aperçu et le papier
+ * montrent son choix. Une commande passée avant ne bouge pas : le
+ * configurateur écrit toutes les couleurs du dessin en choisissant la pièce
+ * (couleursAuChangementDePiece), et une zone que le client ne pouvait pas
+ * changer y porte donc la couleur du dessin du jour de la commande — celle
+ * que le défaut forcé redonnait, tant que la boutique n'a pas changé ce
+ * défaut depuis (et s'il a changé, c'est l'ancienne, que le client a vue).
  */
 export function couleursDeLaPiece(
   colors: Record<string, string> | undefined | null,
   slot: string,
   piece: DessinDePiece,
 ): Record<string, string> {
-  const out = { ...(piece.colorZones ?? {}), ...colorsForScope(colors, slot) };
-  // Garde-fou : une donnée mal formée ne doit jamais empêcher de dessiner.
-  const masquees = new Set(
-    Array.isArray(piece.zonesMasquees) ? piece.zonesMasquees : [],
-  );
-  for (const g of groupesDuDessin(piece.colorZones, piece.groupesCouleurs))
-    if (masquees.has(g.zone)) for (const z of zonesDuGroupe(g)) masquees.add(z);
-  for (const zone of masquees) {
-    const defaut = piece.colorZones?.[zone];
-    if (defaut) out[zone] = defaut;
-    else delete out[zone];
-  }
-  return out;
+  return { ...(piece.colorZones ?? {}), ...colorsForScope(colors, slot) };
 }
 
 /**
@@ -1029,9 +1366,9 @@ export function couleursDeLaBase(
  *
  * Les conséquences voulues : une pièce qu'on vient de choisir porte les
  * couleurs de son dessin, pas de bouton ; une couleur principale reportée de
- * la pièce d'avant est un vrai choix du client, bouton ; un détail que la
- * catégorie ne propose pas, laissé à son défaut, pas de bouton. Les clés
- * plates d'avant le namespacing (sans « : ») sont ignorées, comme partout.
+ * la pièce d'avant est un vrai choix du client, bouton ; une ombre qui a
+ * suivi une couleur choisie a changé avec elle, bouton. Les clés plates
+ * d'avant le namespacing (sans « : ») sont ignorées, comme partout.
  *
  * Vit ici, et non dans le configurateur : pure, sans Solid, elle s'essaie
  * telle quelle (tests/couleurs-familles.test.ts).
