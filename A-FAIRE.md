@@ -2,7 +2,7 @@
 
 Fichier de reprise : à lire en premier, à supprimer quand tout est fait. `main` fait foi ; la prod (VPS) est toujours une mise en ligne de `main`.
 
-## 1. Ce qui est en prod (VPS, 20/10 à 13 h 40, commit `094f0b9` de `main`)
+## 1. Ce qui est en prod (VPS, 20/10 à 15 h, commit `c59502e` de `main`)
 
 Tout est en ligne, rien n'est en cours. Migrations **0067, 0068, 0069** passées (base sauvegardée avant : `sauvegardes/base/2026-10-20.sql.gz` sur le serveur). Vérifié avant : types des quatre parties, 89 tests API + 44 tests BO, règle d'archivage, BO connecté et module en local ; après : site, fiches, plan du site, redirections, BO, API et module sur le VPS.
 
@@ -11,6 +11,7 @@ Tout est en ligne, rien n'est en cours. Migrations **0067, 0068, 0069** passées
 - **Accessoires** : chaque partie peut avoir ses propres couleurs (BO › Pièces › Couleurs › « Pastilles du client », 40 au plus, rangeables) ; sans liste propre, les couleurs de la catégorie ; **jamais de saisie libre** sur un accessoire côté site.
 - **BO › Boutique en ligne › Redirections** : ajout, import du fichier Redirects.csv de Shopify avec aperçu, archivage, restauration ; le site applique une saisie en 2 secondes.
 - **Lot BO du Trello** : offre 3+1 passée au nouveau réglage en base (0069 : toutes tailles, A4 offerte sans cadre), nom de la promo « dès 60 € » réparé, factures relues tant que l'émetteur est incomplet, ordre d'affichage sans pages fantômes, prix A3/A4 dans la modification groupée, nom de l'offre à la caisse.
+- **Police Abril Fatface** (carte POLICE) : proposée en ligne 1 (« Affirmée », toujours en majuscules) et en ligne 3, en plus de « Classique » ; police officielle Google Fonts, licence OFL jointe dans `apps/api/fonts/` ; écran et PDF identiques. Les pastilles de police passent à la ligne au lieu de défiler.
 - « Suit la couleur de… » retiré des réglages avancés ; une suppression technique autorisée par écrit (noms des fichiers d'impression d'une vente rouverte au stand).
 - Avant (19/10) : cartes BO du Trello, réponses de Margaux, stand sur tablette, écran photo IA, indice pour descendre, langues ; (7/10) recherche du BO, SEO, module.
 
@@ -21,7 +22,8 @@ Tout est en ligne, rien n'est en cours. Migrations **0067, 0068, 0069** passées
 
 ## 2. En cours
 
-Rien. La branche `wip-bureau-19oct` (instantanés) et `lot-bo-trello-en-cours` ne servent plus : tout est dans `main`.
+- **BO › Réglages › Paiements** (20/10, en local sur `main`, ni commité ni en ligne) : clés Stripe et PayPal saisies au BO (écriture seule, chiffrées, migration **0070**), bouton « Vérifier », interrupteur « en essai / pour de vrai », interrupteur des vraies étiquettes SendCloud, journal ; le `.env` reste le repli. Aide « Passer la boutique en vrai », `MISE-EN-PROD.md` § « Jour J, dans l'ordre ». Essayé en local avec des valeurs factices seulement, toutes effacées (archivées) ensuite. Reste à Alexandra : « Vérifier » sur ses vraies clés de test du `.env`, la caisse jusqu'au formulaire de carte, allumer puis éteindre l'interrupteur des étiquettes.
+- La branche `wip-bureau-19oct` (instantanés) et `lot-bo-trello-en-cours` ne servent plus : tout est dans `main`.
 
 ## 3. À faire par Alexandra (données, sur le BO du serveur)
 
@@ -32,7 +34,6 @@ Rien. La branche `wip-bureau-19oct` (instantanés) et `lot-bo-trello-en-cours` n
 
 ## 4. En attente d'une décision
 
-- **Abril Fatface** (carte POLICE) : accord pour télécharger `AbrilFatface-Regular.ttf` (licence OFL, dépôt officiel `github.com/google/fonts`, dossier `ofl/abrilfatface`). Étapes en commentaire dans `packages/types/src/fonts.ts`.
 - Les traductions des fiches, des catégories et des cadres : données à saisir au BO (bouton « Proposer les traductions manquantes »).
 - Carte Trello « Bordereau La Poste » : en attente côté Alexandra.
 
