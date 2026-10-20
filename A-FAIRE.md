@@ -1,14 +1,14 @@
-# À faire — état au 20 octobre, 16 h 50 (écrit pour une reprise dans un autre contexte)
+# À faire — état au 20 octobre, 19 h 15 (écrit pour une reprise dans un autre contexte)
 
 Fichier de reprise : à lire en premier, à supprimer quand tout est fait. `main` fait foi ; la prod (VPS) est toujours une mise en ligne de `main`.
 
-## 1. Ce qui est en prod (VPS, 20/10 vers 16 h 50, commit `1b45d1a` de `main`)
+## 1. Ce qui est en prod (VPS, 20/10 vers 19 h 15, commit `65d7656` de `main`)
 
 Migrations **0067 à 0070** passées (0067-0069 à 13 h 40, 0070 vers 16 h 50 ; base sauvegardée avant chaque fois : `sauvegardes/base/2026-10-20.sql.gz` sur le serveur). Vérifié avant : types des quatre parties, 89 tests API + 44 tests BO, règle d'archivage, BO connecté et module en local ; après : site, fiches, plan du site, redirections, BO, API et module sur le VPS.
 
 - **BO › Personnages et BO › Pièces** séparés (Atelier › Personnages / Pièces par personnage / Pièces / Catégories de pièces) : filtres, compteurs, noms de pièces renommables sur place, couleurs ouvertes à la demande. La page Personnages est passée de 35 000 px à 2 400 px.
 - **Toutes les couleurs pour les clients du site** : chaque famille de teinte d'une pièce a sa rangée, les ombres suivent ; bouton « Remettre les couleurs d'origine » ; catégories de pièces sur « toutes » par défaut (0068).
-- **Accessoires** : chaque partie peut avoir ses propres couleurs (BO › Pièces › Couleurs › « Pastilles du client », 40 au plus, rangeables) ; sans liste propre, les couleurs de la catégorie ; **jamais de saisie libre** sur un accessoire côté site.
+- **BO › Pièces lisible** (commit `65d7656`, 20/10 vers 19 h 15) : plus de case « Le client peut la changer » (le client change toujours toutes les couleurs ; les anciennes `zones_masquees` restent en base mais ne sont plus lues : en prod, 330, 339 et 421 deviennent recolorables) ; une ligne par **partie** (« Partie 1 » = la principale, ou le nom donné), ses ombres en retrait dessous, avec une case **« C'est une ombre »** enregistrée aussitôt (plus de « Séparer » ni de « Teintes réunies ») ; le message dit aussi les autres couleurs qui ont bougé, et un envoi qui échoue remet l'écran en état avec un message rouge en bas à droite ; bandeau quand 2 parties ou plus n'ont pas de nom. **« Couleurs proposées au client »** pour chaque partie de **toutes** les pièces, **10 au plus** à l'ajout (les listes plus anciennes se lisent sans rien perdre ; aucune en prod n'en a plus de 10) ; sans liste, les couleurs de la catégorie ; jamais de saisie libre sur un accessoire. Le menu « Le client peut recolorer » de Catégories de pièces est retiré (rien supprimé en base). Nouvelle pièce : surfaces mesurées comme à l'enregistrement (route `GET /admin/assets/parts`, lecture seule). Vérifié : types, 188 tests API + 45 BO, 3 relectures indépendantes (code et données avec les réglages de prod, écran de Margaux en clair et sombre, site et impression : 0 différence sur les anciennes commandes) ; en prod, 0 commande en attente touchée.
 - **BO › Boutique en ligne › Redirections** : ajout, import du fichier Redirects.csv de Shopify avec aperçu, archivage, restauration ; le site applique une saisie en 2 secondes.
 - **Lot BO du Trello** : offre 3+1 passée au nouveau réglage en base (0069 : toutes tailles, A4 offerte sans cadre), nom de la promo « dès 60 € » réparé, factures relues tant que l'émetteur est incomplet, ordre d'affichage sans pages fantômes, prix A3/A4 dans la modification groupée, nom de l'offre à la caisse.
 - **Police Abril Fatface** (carte POLICE) : proposée en ligne 1 (« Affirmée », toujours en majuscules) et en ligne 3, en plus de « Classique » ; police officielle Google Fonts, licence OFL jointe dans `apps/api/fonts/` ; écran et PDF identiques. Les pastilles de police passent à la ligne au lieu de défiler.
@@ -24,7 +24,7 @@ Migrations **0067 à 0070** passées (0067-0069 à 13 h 40, 0070 vers 16 h 50 ; 
 
 ## 2. En cours
 
-- **BO › Pièces lisible** (20/10, en local, non commité ; fichiers : `fichiers-impression.ts`, `pdf.ts`, `configurator-routes.ts` en partie, `packages/types`, `packages/configurator`, écran `pieces.astro`) : case « Le client peut la changer » retirée (le client peut toujours tout changer), « Séparer » expliqué ou remplacé, case « C'est une ombre », jusqu'à **10 couleurs par partie de chaque pièce** saisies par Margaux au BO, seules pastilles proposées côté client. Workflow en cours ; à vérifier puis mettre en ligne.
+- Rien en cours : tout est en prod au 20/10 vers 19 h 15.
 - La branche `wip-bureau-19oct` (instantanés) et `lot-bo-trello-en-cours` ne servent plus : tout est dans `main`.
 
 ## 3. À faire par Alexandra (données, sur le BO du serveur)
@@ -32,7 +32,7 @@ Migrations **0067 à 0070** passées (0067-0069 à 13 h 40, 0070 vers 16 h 50 ; 
 - Confier son stand au compte vendeur (BO › Comptes) ; créer les lieux de retrait (BO › Livraison › Lieux de retrait) ; saisir l'adresse et le SIRET des factures (BO › Réglages › Factures ; SIRET donné par Margaux : 877 919 852 00047) ; relire la promotion 3+1 (BO › Promotions) et les messages du bandeau.
 - Importer `Documents\perso\memoryline-seo-shopify.csv` et `memoryline-seo-shopify-collections.csv` dans BO › Produits › Importer ; coller `memoryline-page-affiches-personnalisables.html` dans une page `affiches-personnalisables` (ces fichiers sont sur le PC du bureau).
 - Exporter les redirections de l'admin Shopify avant sa fermeture (Contenu › Menus › Redirections d'URL › Exporter), puis importer le fichier dans BO › Boutique en ligne › Redirections (aperçu, puis « Appliquer »).
-- Faire valider par Margaux : les 18 redirections des fiches disparues (`apps/web/src/lib/anciennes-adresses.ts`), les seuils de composition des personnages (`packages/types/src/composition-personnages.ts`), les pièces à renommer (noms anglais de l'import, « Clothes 1 »… : se renomment sur place dans BO › Pièces, Entrée pour enregistrer) ; les couleurs propres des parties d'accessoires (BO › Pièces › un accessoire › Couleurs › « Pastilles du client »).
+- Faire valider par Margaux : les 18 redirections des fiches disparues (`apps/web/src/lib/anciennes-adresses.ts`), les seuils de composition des personnages (`packages/types/src/composition-personnages.ts`), les pièces à renommer (noms anglais de l'import, « Clothes 1 »… : se renomment sur place dans BO › Pièces, Entrée pour enregistrer) ; les couleurs proposées partie par partie (BO › Pièces › une pièce › Couleurs › « Couleurs proposées au client », 10 au plus) et le nom de chaque partie (bandeau ambre tant que 2 parties ou plus n'en ont pas). Pièce 421 en prod : ses manches vertes sont réunies au corps par un ancien réglage (note orange au BO) ; décocher « C'est une ombre » sur les manches pour leur rendre leur rangée.
 
 ## 4. En attente d'une décision
 
