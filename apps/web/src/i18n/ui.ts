@@ -586,6 +586,7 @@ export const ui = {
     "cfg.ligne_n": "Ligne {n}",
     "cfg.personnaliser_perso": "Personnaliser ce personnage",
     "cfg.police.serif": "Classique",
+    "cfg.police.abril": "Affirmée",
     "cfg.police.shabby": "Manuscrite",
     "cfg.couleur.blanc": "Blanc",
     "cfg.couleur.anthracite": "Gris anthracite",
@@ -1248,6 +1249,9 @@ export const ui = {
     "cfg.police.serif": "Classic",
     "cfg.police.shabby": "Handwritten",
     "cfg.couleur.blanc": "White",
+    // Pas « Bold » : en typographie anglaise, c'est une graisse, et la
+    // pastille se lirait « Classic en gras » au lieu d'une autre police.
+    "cfg.police.abril": "Striking",
     "cfg.couleur.anthracite": "Charcoal grey",
     "commande.modifier_panier": "Edit basket",
     "commande.merci_titre": "Thank you!",
@@ -1910,6 +1914,9 @@ export const ui = {
     "cfg.couleur.blanc": "Weiß",
     "cfg.couleur.anthracite": "Anthrazitgrau",
     "commande.modifier_panier": "Warenkorb bearbeiten",
+    // Pas « Kräftig » : c'est aussi un nom de graisse allemand (Futura
+    // Kräftig), la pastille se lirait « Klassisch, en plus gras ».
+    "cfg.police.abril": "Markant",
     "commande.merci_titre": "Vielen Dank!",
     "commande.merci_texte": "Ihre Zahlung ist eingegangen und Ihre Bestellung ist bestätigt.",
     "commande.numero": "Bestellnummer:",
@@ -2567,6 +2574,7 @@ export const ui = {
     "commande.modifier_panier": "Modifica il carrello",
     "commande.merci_titre": "Grazie!",
     "commande.merci_texte": "Abbiamo ricevuto il tuo pagamento e il tuo ordine è confermato.",
+    "cfg.police.abril": "Deciso",
     "commande.numero": "Numero d'ordine:",
     "commande.coordonnees": "I tuoi dati",
     "commande.email_compte":
@@ -3225,6 +3233,7 @@ export const ui = {
     "commande.merci_texte": "Hemos recibido tu pago y tu pedido está confirmado.",
     "commande.numero": "Número de pedido:",
     "commande.coordonnees": "Tus datos",
+    "cfg.police.abril": "Marcada",
     "commande.email_compte":
       "Es la dirección de correo de tu cuenta. Para cambiarla, ve a «Mis datos».",
     "commande.email_invalide": "Dirección de correo no válida.",

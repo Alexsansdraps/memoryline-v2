@@ -135,6 +135,14 @@ h4 {
   src: url("/fonts/DMSerifDisplay-Regular.ttf") format("truetype");
   font-display: swap;
 }
+/* L'autre serif des lignes 1 et 3. Même nom de famille que le fichier
+   installé sur le serveur d'impression (« Abril Fatface ») : c'est par ce nom
+   que le PDF la retrouve. */
+@font-face {
+  font-family: "Abril Fatface";
+  src: url("/fonts/AbrilFatface-Regular.ttf") format("truetype");
+  font-display: swap;
+}
 @font-face {
   font-family: "League Spartan";
   src: url("/fonts/LeagueSpartan-Regular.ttf") format("truetype");
@@ -1261,12 +1269,17 @@ body:has(.ml-stand-fin) > footer {
   color: var(--color-terracotta);
 }
 
-/* Rangée de polices proposées : défile horizontalement au doigt. Le rangement
-   laisse la place des marques du choix fait (`ml-choix`) : un défilement
-   rogne tout ce qui dépasse, et la coche dépasse de 10 px au-dessus et à
-   droite, le liseré rouge de 4 px tout autour. */
+/* Rangée de polices proposées. Elle passe à la ligne plutôt que de défiler :
+   avec trois polices en ligne 3, un téléphone de 375 px n'en montrait que
+   deux, et la troisième — la manuscrite, choisie d'office — restait cachée
+   derrière la flèche, sans pastille cochée en vue. Le défilement ne sert
+   plus qu'à une pastille plus large que l'écran. Le rangement laisse la
+   place des marques du choix fait (`ml-choix`) : un défilement rogne tout
+   ce qui dépasse, et la coche dépasse de 10 px au-dessus et à droite — d'où
+   les 10 px entre deux rangées —, le liseré rouge de 4 px tout autour. */
 .ml-cfg-polices {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   overflow-x: auto;
   padding: 10px 12px 6px 4px;

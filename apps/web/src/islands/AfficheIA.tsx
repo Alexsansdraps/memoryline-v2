@@ -467,6 +467,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    */
   const CLES_POLICES: Record<string, CleUi> = {
     serif: "cfg.police.serif",
+    abril: "cfg.police.abril",
     shabby: "cfg.police.shabby",
   };
   const CLES_COULEURS: Record<string, CleUi> = {

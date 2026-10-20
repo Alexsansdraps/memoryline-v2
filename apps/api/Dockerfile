@@ -15,12 +15,15 @@ RUN corepack enable
 # à l'impression sortait dans une police de repli (voire sans texte) — l'image
 # de base alpine n'embarque aucune police.
 #   - DM Serif Display : titre (charte Memory Line)
+#   - Abril Fatface    : l'autre serif des lignes 1 et 3 (charte)
 #   - Caveat           : sous-titre, en remplacement de « Another Shabby »
 #                        (propriétaire, non fournie) — c'est déjà le repli
 #                        utilisé côté web, les deux rendus concordent donc.
+# Le grep fait échouer la construction si une police proposée au client
+# manque : mieux vaut une image refusée qu'un PDF en police de repli.
 RUN apk add --no-cache fontconfig
 COPY apps/api/fonts/ /usr/share/fonts/memoryline/
-RUN fc-cache -f && fc-list | grep -Ei "dm serif" && fc-list | grep -Ei "league spartan" && fc-list | grep -Ei "another shabby"
+RUN fc-cache -f && fc-list | grep -Ei "dm serif" && fc-list | grep -Ei "abril fatface" && fc-list | grep -Ei "league spartan" && fc-list | grep -Ei "another shabby"
 
 WORKDIR /app
 

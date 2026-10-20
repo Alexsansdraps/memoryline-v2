@@ -63,8 +63,12 @@ export function StepBackgroundText(props: {
   /**
    * Choix rapide de la police, montrée DANS la police : le client juge le
    * rendu, pas un nom. Une rangée par ligne, car chacune a la sienne. Quand
-   * elle ne tient pas en largeur, elle défile avec flèches et barre bien
-   * visibles (ZoneDefilante).
+   * elle ne tient pas en largeur, le site la fait passer à la ligne
+   * (`.ml-cfg-polices`, global.css) : trois polices proposées au plus, une
+   * de plus quand l'affiche rouverte garde une ancienne police
+   * (policesMontrees), toutes en vue.
+   * La zone qui défile, avec flèches et barre bien visibles (ZoneDefilante),
+   * reste là pour une pastille plus large que l'écran.
    */
   const ChoixPolice = (p: { ligne: number }) => (
     <ZoneDefilante

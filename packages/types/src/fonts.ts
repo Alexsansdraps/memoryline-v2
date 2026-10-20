@@ -56,6 +56,28 @@ export const POLICES_AFFICHE: readonly PoliceAffiche[] = [
   },
   {
     /*
+     * L'autre serif de la charte, pour les lignes 1 et 3 : un « fat face »,
+     * aux pleins très épais et aux déliés très fins. Placée juste après
+     * DM Serif Display parce que c'est l'ordre de cette liste qui fait
+     * l'ordre des pastilles (policesDeLaLigne) : Classique d'abord, qui
+     * reste la police par défaut, puis celle-ci.
+     *
+     * Une seule graisse, comme les autres : sa force est dans son dessin,
+     * jamais dans un gras fabriqué (cf. mise-en-page-texte.ts). Le nom de
+     * famille est celui que le fichier se donne (« Abril Fatface », relu par
+     * fc-scan) ; ascendante et descendante viennent de sa table hhea, la
+     * même que ses tables OS/2 et Windows. Faute de son fichier, c'est
+     * l'autre serif de la charte qui la remplace, ici comme au serveur.
+     */
+    id: "abril",
+    libelle: "Affirmée",
+    famille: "Abril Fatface",
+    repli: REPLI_SUR,
+    ascendante: 1058 / 1000,
+    descendante: 291 / 1000,
+  },
+  {
+    /*
      * La police bâton, sans empattement, qui était proposée pour les
      * capitales de la première ligne. Elle n'est plus proposée nulle part
      * (retour de la boutiquière : la première ligne s'écrit avec empattement,
@@ -152,17 +174,15 @@ export const POLICES_AFFICHE: readonly PoliceAffiche[] = [
  * Les identifiants absents d'une ligne restent parfaitement rendables : ils
  * ne sont simplement plus proposés. Voir l'en-tête de ce fichier.
  *
- * La charte demande aussi Abril Fatface en lignes 1 et 3. Elle n'entrera ici
- * qu'avec ses fichiers des deux côtés (navigateur ET serveur d'impression,
- * cf. l'en-tête) : proposée sans eux, la cliente la verrait dans le module
- * et l'imprimeur recevrait une police de repli. Sa déclaration dans
- * POLICES_AFFICHE portera aussi son ascendante et sa descendante, relues
- * dans son fichier.
+ * La charte : en ligne 1, toujours en capitales, DM Serif Display ou
+ * Abril Fatface ; en ligne 2, la manuscrite ; en ligne 3, l'une des deux
+ * serifs ou la manuscrite. L'ordre des pastilles est celui de
+ * POLICES_AFFICHE, pas celui de ces listes.
  */
 const POLICES_PAR_LIGNE: readonly (readonly string[])[] = [
-  ["serif"],
+  ["serif", "abril"],
   ["shabby"],
-  ["serif", "shabby"],
+  ["serif", "abril", "shabby"],
 ];
 
 /**

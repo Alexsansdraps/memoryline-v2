@@ -313,6 +313,7 @@ export default function ConfiguratorIsland(
                 // police absente d'ici garde son nom français.
                 libellesPolices: {
                   serif: tr("cfg.police.serif"),
+                  abril: tr("cfg.police.abril"),
                   shabby: tr("cfg.police.shabby"),
                 },
                 libellesCouleursTexte: {
