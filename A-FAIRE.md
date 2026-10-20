@@ -1,10 +1,10 @@
-# À faire — état au 20 octobre, 13 h 45 (écrit pour une reprise dans un autre contexte)
+# À faire — état au 20 octobre, 16 h 50 (écrit pour une reprise dans un autre contexte)
 
 Fichier de reprise : à lire en premier, à supprimer quand tout est fait. `main` fait foi ; la prod (VPS) est toujours une mise en ligne de `main`.
 
-## 1. Ce qui est en prod (VPS, 20/10 à 15 h, commit `c59502e` de `main`)
+## 1. Ce qui est en prod (VPS, 20/10 vers 16 h 50, commit `1b45d1a` de `main`)
 
-Tout est en ligne, rien n'est en cours. Migrations **0067, 0068, 0069** passées (base sauvegardée avant : `sauvegardes/base/2026-10-20.sql.gz` sur le serveur). Vérifié avant : types des quatre parties, 89 tests API + 44 tests BO, règle d'archivage, BO connecté et module en local ; après : site, fiches, plan du site, redirections, BO, API et module sur le VPS.
+Migrations **0067 à 0070** passées (0067-0069 à 13 h 40, 0070 vers 16 h 50 ; base sauvegardée avant chaque fois : `sauvegardes/base/2026-10-20.sql.gz` sur le serveur). Vérifié avant : types des quatre parties, 89 tests API + 44 tests BO, règle d'archivage, BO connecté et module en local ; après : site, fiches, plan du site, redirections, BO, API et module sur le VPS.
 
 - **BO › Personnages et BO › Pièces** séparés (Atelier › Personnages / Pièces par personnage / Pièces / Catégories de pièces) : filtres, compteurs, noms de pièces renommables sur place, couleurs ouvertes à la demande. La page Personnages est passée de 35 000 px à 2 400 px.
 - **Toutes les couleurs pour les clients du site** : chaque famille de teinte d'une pièce a sa rangée, les ombres suivent ; bouton « Remettre les couleurs d'origine » ; catégories de pièces sur « toutes » par défaut (0068).
@@ -12,6 +12,8 @@ Tout est en ligne, rien n'est en cours. Migrations **0067, 0068, 0069** passées
 - **BO › Boutique en ligne › Redirections** : ajout, import du fichier Redirects.csv de Shopify avec aperçu, archivage, restauration ; le site applique une saisie en 2 secondes.
 - **Lot BO du Trello** : offre 3+1 passée au nouveau réglage en base (0069 : toutes tailles, A4 offerte sans cadre), nom de la promo « dès 60 € » réparé, factures relues tant que l'émetteur est incomplet, ordre d'affichage sans pages fantômes, prix A3/A4 dans la modification groupée, nom de l'offre à la caisse.
 - **Police Abril Fatface** (carte POLICE) : proposée en ligne 1 (« Affirmée », toujours en majuscules) et en ligne 3, en plus de « Classique » ; police officielle Google Fonts, licence OFL jointe dans `apps/api/fonts/` ; écran et PDF identiques. Les pastilles de police passent à la ligne au lieu de défiler.
+- **BO › Réglages › Paiements** (commit `1b45d1a`) : clés Stripe et PayPal saisies au BO (écriture seule, chiffrées, migration **0070**), bouton « Vérifier », interrupteur « en essai / pour de vrai » (le réel est refusé tant que les clés live ne sont pas vérifiées, plus une case de confirmation), interrupteur des vraies étiquettes SendCloud, journal ; le `.env` reste le repli. À chaque bascule : un message juste sous l'interrupteur, un **courriel à la boutique** (MAIL_BOUTIQUE, sinon CONTACT_TO, MAIL_BCC, MAIL_FROM), et un **badge permanent** en haut de chaque page du BO (« 🧪 Mode essai » ou « ✅ Paiements réels », cliquable). Commandes payées en essai marquées « Payée en ESSAI » et écartées des finances. Aide « Passer la boutique en vrai », `MISE-EN-PROD.md` § « Jour J, dans l'ordre ». Essayé en local avec des valeurs factices seulement. Reste à Alexandra : « Vérifier » sur les clés de test du `.env`, et le bouton « Copier » de l'adresse du webhook dans un vrai Chrome.
+- Menu d'apparence du BO : « Clair », « Sombre », « Système ».
 - « Suit la couleur de… » retiré des réglages avancés ; une suppression technique autorisée par écrit (noms des fichiers d'impression d'une vente rouverte au stand).
 - Avant (19/10) : cartes BO du Trello, réponses de Margaux, stand sur tablette, écran photo IA, indice pour descendre, langues ; (7/10) recherche du BO, SEO, module.
 
@@ -22,7 +24,7 @@ Tout est en ligne, rien n'est en cours. Migrations **0067, 0068, 0069** passées
 
 ## 2. En cours
 
-- **BO › Réglages › Paiements** (20/10, en local sur `main`, ni commité ni en ligne) : clés Stripe et PayPal saisies au BO (écriture seule, chiffrées, migration **0070**), bouton « Vérifier », interrupteur « en essai / pour de vrai », interrupteur des vraies étiquettes SendCloud, journal ; le `.env` reste le repli. Aide « Passer la boutique en vrai », `MISE-EN-PROD.md` § « Jour J, dans l'ordre ». Essayé en local avec des valeurs factices seulement, toutes effacées (archivées) ensuite. Reste à Alexandra : « Vérifier » sur ses vraies clés de test du `.env`, la caisse jusqu'au formulaire de carte, allumer puis éteindre l'interrupteur des étiquettes. Relecture corrigée le 20/10 (webhook : le mode d'un avis vient du secret qui l'a signé ; colonne live fermée sans `APP_SECRET` ; clé live jamais en service sans vérification ; badge « Payée en ESSAI ») ; redémarrer `memoryline-admin` en local pour que la recherche du BO trouve l'écran.
+- **BO › Pièces lisible** (20/10, en local, non commité ; fichiers : `fichiers-impression.ts`, `pdf.ts`, `configurator-routes.ts` en partie, `packages/types`, `packages/configurator`, écran `pieces.astro`) : case « Le client peut la changer » retirée (le client peut toujours tout changer), « Séparer » expliqué ou remplacé, case « C'est une ombre », jusqu'à **10 couleurs par partie de chaque pièce** saisies par Margaux au BO, seules pastilles proposées côté client. Workflow en cours ; à vérifier puis mettre en ligne.
 - La branche `wip-bureau-19oct` (instantanés) et `lot-bo-trello-en-cours` ne servent plus : tout est dans `main`.
 
 ## 3. À faire par Alexandra (données, sur le BO du serveur)
