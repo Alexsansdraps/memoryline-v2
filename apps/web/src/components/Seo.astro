@@ -21,6 +21,11 @@ interface Props {
   path?: string;
   /** Image absolue ou relative pour Open Graph (partage réseaux). */
   image?: string;
+  /**
+   * Les dimensions de `image`, telle qu'elle est servie, et son texte : sans
+   * elles, Facebook ne garantit pas l'aperçu au premier partage.
+   */
+  imageInfos?: { largeur: number; hauteur: number; alt: string };
   /** "website" (défaut) ou "product" pour les fiches produit. */
   type?: "website" | "product" | "article";
   noindex?: boolean;
@@ -39,6 +44,7 @@ const {
   description,
   path = Astro.url.pathname,
   image = "/og-default.png",
+  imageInfos,
   type = "website",
   noindex = false,
   alternatives = LANGUES,
@@ -56,6 +62,14 @@ const ogImage = image.startsWith("http") ? image : new URL(image, siteUrl + "/")
  * l'aperçu dès le premier partage, sans attendre de l'avoir téléchargée.
  */
 const imageParDefaut = image === "/og-default.png";
+/*
+ * Les autres images (le visuel d'une fiche) annoncent les leurs quand la page
+ * les connaît : Shopify les déclarait, et sans elles le réseau attend d'avoir
+ * téléchargé l'image pour dessiner l'aperçu (AUDIT-SEO.md, OG-1).
+ */
+const infosImage = imageParDefaut
+  ? { largeur: 1200, hauteur: 630, alt: "Memory Line" }
+  : imageInfos;
 /*
  * Ce que la page dit aux robots.
  *
@@ -108,11 +122,11 @@ const localeOg = (l: Langue) => LOCALE_COMPLETE[l].replace("-", "_");
 <meta property="og:url" content={canonical} />
 <meta property="og:image" content={ogImage} />
 {
-  imageParDefaut && (
+  infosImage && (
     <Fragment>
-      <meta property="og:image:width" content="1200" />
-      <meta property="og:image:height" content="630" />
-      <meta property="og:image:alt" content="Memory Line" />
+      <meta property="og:image:width" content={String(infosImage.largeur)} />
+      <meta property="og:image:height" content={String(infosImage.hauteur)} />
+      <meta property="og:image:alt" content={infosImage.alt} />
     </Fragment>
   )
 }

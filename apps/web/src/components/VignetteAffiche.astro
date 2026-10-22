@@ -185,7 +185,11 @@ const image = assetUrl(affiche.image, 600);
 const imageJeu = assetSrcset(affiche.image, [400, 600, 900, 1400]);
 ---
 
-<li class="group ml-apparition">
+{/* Pas d'apparition animée sur les premières vignettes : elles sont déjà à
+    l'écran, et l'effet retardait l'affichage de la page de 1 à 2,5 s sur
+    téléphone, au-delà du seuil de Google (AUDIT-SEO.md, VIT-1). Les
+    suivantes gardent l'effet en entrant dans l'écran. */}
+<li class:list={["group", !(prioritaire || premiere) && "ml-apparition"]}>
   <a href={lien(langue, `/affiches/${affiche.slug}`)} class="block">
     <div
       class="relative flex items-center justify-center overflow-hidden bg-paper-deep"

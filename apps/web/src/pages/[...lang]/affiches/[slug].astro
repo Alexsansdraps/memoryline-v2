@@ -1,7 +1,7 @@
 ---
 import AfficheVide from "../../../components/AfficheVide.astro";
 import ActionEnAttente from "../../../components/ActionEnAttente.astro";
-import { dimensionsFormat } from "@memoryline/types";
+import { dimensionsFormat, libelleFormat } from "@memoryline/types";
 import Base from "../../../layouts/Base.astro";
 import {
   api,
@@ -300,6 +300,11 @@ const urlFiche = absolue(lien(langue, `/affiches/${product.slug}`));
  * l'identifiant que le site donne lui-même à ce format — le numéro de
  * l'affiche et son format, ceux qui désignent la ligne du panier —, stable
  * tant que l'affiche existe.
+ *
+ * Chaque offre dit aussi son format en toutes lettres (« VIEUX MOULIN –
+ * Affiche personnalisée – A4 (21 × 29,7 cm) »), comme les variantes que
+ * publiait Shopify : sans lui, rien ne disait à Google que 23 € est le prix
+ * de l'A4 et 29 € celui de l'A3 (AUDIT-SEO.md, DS-1).
  */
 function offre(v: {
   format: string;
@@ -310,6 +315,7 @@ function offre(v: {
   const remise = promotion(v.priceCents, v.compareAtCents);
   return {
     "@type": "Offer",
+    ...(v.format ? { name: `${nomComplet} – ${libelleFormat(v.format, locale)}` } : {}),
     sku: v.sku?.trim() || `ML-${product!.id}${v.format ? `-${v.format}` : ""}`,
     price: (v.priceCents / 100).toFixed(2),
     priceCurrency: "EUR",
@@ -425,6 +431,19 @@ const nombreDeVoisines = Math.min(
   8,
 );
 const voisines = (product.voisines ?? []).slice(0, nombreDeVoisines);
+/*
+ * L'image de partage : le visuel servi en 900 px de large (`image`), jamais
+ * agrandi par l'API. Ses dimensions sont celles de CE fichier-là, et non de
+ * l'original (AUDIT-SEO.md, OG-1).
+ */
+const largeurPartage = Math.min(900, largeurImage);
+const imagePartage = image
+  ? {
+      largeur: largeurPartage,
+      hauteur: Math.round((hauteurImage * largeurPartage) / largeurImage),
+      alt: texteImage,
+    }
+  : undefined;
 const voisinesDuRayon = product.voisinesDe === "rayon" && !!pageDuRayon;
 const pageDesVoisines = voisinesDuRayon ? pageDuRayon! : pageDuGenre;
 ---
@@ -437,6 +456,7 @@ const pageDesVoisines = voisinesDuRayon ? pageDuRayon! : pageDuGenre;
   languesTraduites={product.languesTraduites}
   type="product"
   image={image ?? undefined}
+  imageInfos={imagePartage}
   jsonLd={[productLd, breadcrumbLd]}
 >
   {/* L'affiche prend plus de place que le texte : c'est elle qu'on vient

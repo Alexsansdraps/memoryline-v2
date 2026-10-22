@@ -25,8 +25,8 @@ Migrations **0067 à 0070** passées (0067-0069 à 13 h 40, 0070 vers 16 h 50 ; 
 
 ## 2. En cours
 
-- Rien en cours : tout est en prod au 22/10.
-- **Audit SEO du 22/10** : bilan dans `AUDIT-SEO.md` (aucun bloquant, 6 points importants ; rien corrigé, à décider avec Alexandra). Contre-vérification finie pour 1 angle sur 5 seulement (PC éteint) : reproduire un constat avant de le corriger. Avant d'importer `memoryline-seo-shopify.csv`, corriger ses doublons (voir AUDIT-SEO.md, point 3).
+- **Audit SEO du 22/10** : bilan dans `AUDIT-SEO.md`, aucun bloquant. Le 22 au soir (PC de la maison), les points de code sont corrigés, mais **pas encore en ligne** : vitesse des rayons, ordre du jour J dans `MISE-EN-PROD.md`, script de relevé des anciennes adresses, titres de plus de 60 caractères, robots.txt, image de partage, formats des prix, données structurées de l'accueil. Le détail et ce qui reste à décider sont dans la section « Suivi » en haut de `AUDIT-SEO.md`. Avant d'importer `memoryline-seo-shopify.csv`, corriger ses doublons (MISE-EN-PROD § 6).
+- Base de dev (locale) : migrations 0067 à 0070 passées le 22/10 au soir. Sans elles, l'API locale répondait 500 (colonne `ordre_catalogue` absente).
 - La branche `wip-bureau-19oct` (instantanés) et `lot-bo-trello-en-cours` ne servent plus : tout est dans `main`.
 
 ## 3. À faire par Alexandra (données, sur le BO du serveur)

@@ -11,15 +11,23 @@ import { LANGUES, LANGUE_DEFAUT } from "../i18n/utils.ts";
  *
  * En ligne, les pages qui n'ont rien à faire dans Google — le panier, la
  * commande, le compte, la recherche, la photo envoyée depuis un téléphone —
- * sont déjà en « noindex » ; on épargne en plus aux robots de les parcourir,
- * comme le faisait le robots.txt de Shopify (/cart, /checkout, /account).
+ * sont en « noindex ». Seules la commande et la photo sont en plus fermées
+ * aux robots : aucun lien public n'y mène.
+ *
+ * Le panier, le compte et la recherche restent OUVERTS, alors que
+ * Shopify fermait /cart et /account : chaque page du site les lie (près de
+ * quatre cents liens dans le plan du site), et Google ne lit pas le
+ * « noindex » d'une page qu'il n'a pas le droit d'ouvrir. Fermées, il
+ * pourrait les montrer dans ses résultats comme « indexée malgré le blocage
+ * par robots.txt » (AUDIT-SEO.md, IDX-3).
+ *
  * Dans chaque langue, écrit en toutes lettres : un motif à joker valable
  * pour toutes les langues attraperait aussi une affiche dont l'adresse
- * contiendrait le mot « panier ».
+ * contiendrait le mot « commande ».
  *
  * Le plan du site est /sitemap.xml, rendu à la demande (sitemap.xml.ts).
  */
-const PRIVEES = ["/panier", "/commande", "/compte", "/recherche", "/photo/"];
+const PRIVEES = ["/commande", "/photo/"];
 
 export const GET: APIRoute = ({ site }) => {
   const noindex = import.meta.env.PUBLIC_NOINDEX === "true";

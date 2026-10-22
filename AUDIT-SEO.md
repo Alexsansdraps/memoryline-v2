@@ -4,6 +4,26 @@ Demandé par Alexandra (« vérif SEO STP »). Audit en **lecture seule** du sit
 
 **État de l'audit.** 5 angles audités par 5 agents : migration Shopify, indexation, contenu, données structurées, vitesse et mobile. La contre-vérification (un second agent qui essaie de réfuter chaque constat) n'a abouti que pour **les données structurées** : le PC a été éteint avant la fin des 4 autres. Les constats des angles marqués « pas encore contre-vérifiés » sont prouvés par leur auteur (URL, mesure, ligne de code), mais à revérifier avant de toucher au code.
 
+## Suivi — 22/10 au soir (PC de la maison, pas encore en ligne)
+
+**Reproduit** : le relevé des anciennes adresses, rejoué contre le VPS avec le nouveau script `apps/web/scripts/verifier-anciennes-adresses.mjs`. Résultat : les 216 adresses du plan Shopify et 8 variantes mènent à une page qui répond, en un saut au plus. 3 mènent à l'accueil, `/agents.md` répond 404 (admis). VIT-1 aussi : sur le VPS, les 4 premières vignettes du rayon Villes portent encore `ml-apparition`, image principale comprise.
+
+**Corrigé dans le code** (vérifié en local, types compris) :
+- **VIT-1** : les premières vignettes ne sont plus animées. La modification était déjà dans le dossier, non commitée, d'origine inconnue ; elle a été vérifiée et gardée.
+- **IDX-1** : `MISE-EN-PROD.md`, « Jour J, dans l'ordre » est réécrit. On vide la base, on règle tout le `.env`, puis on bascule le DNS (domaine et www) en même temps que la reconstruction, et on demande une nouvelle exploration du robots.txt.
+- **MIG-9 / MIG-10** : script de relevé des 216 anciennes adresses, avec la liste figée avant la bascule (`anciennes-adresses-shopify.txt`), à rejouer le jour J sur memoryline.fr (MISE-EN-PROD § 8).
+- **MIG-6** : `/collections/<c>/<étiquette>` mène au rayon, `/account/*` et `/customer_authentication/*` à la connexion, `/discount/<code>` à l'accueil (utm gardés).
+- **MIG-8, J-1, oubli § 7** : www obligatoire. MISE-EN-PROD § 8 complété (résultats enrichis, débogueur de partage, rapports de la Search Console). `/og-default.png` coché.
+- **CNT-2** : un titre SEO saisi (ou importé de Shopify) perd « | Memory Line » au-delà de 60 caractères, et le « - » de Shopify devient « – ».
+- **IDX-3** : robots.txt ne ferme plus que `/bo/`, `/commande` et `/photo/`. Le panier, le compte et la recherche restent ouverts, en noindex.
+- **OG-1** : l'image de partage des fiches annonce ses dimensions réelles (900 × 1235 pour une affiche 1020 × 1400) et son texte alternatif.
+- **DS-1** : chaque offre porte le nom de son format (« … – A4 (21 × 29,7 cm) »).
+- **Données structurées de l'accueil** : plus de SearchAction ; le bloc WebSite seulement sur l'accueil français.
+
+**Ajouté à MISE-EN-PROD § 6** (données, au BO) : la page « affiches-personnalisables » (MIG-2), l'import du CSV SEO après correction (MIG-3 / CNT-1), le bandeau d'accueil (CNT-6 / VIT-3) et la vitrine à 16 (CNT-10).
+
+**Pas fait, à décider** : VIT-2 (charger le module et le dictionnaire au clic), VIT-4 (images d'avance de l'accueil : la correction proposée ferait réapparaître l'animation sur la première rangée en version ordinateur), VIT-5, CNT-3 (aperçu Google du BO), DS-2 (livraison et retours, réglables aussi dans la Search Console), DS-3, ORG-1, PWA-1, MIG-5 (410 pour le blog), MIG-7 (images des fiches retirées), IDX-4, IDX-5 ; et tous les points de données (CNT-4, 5, 7, 8, 9, IDX-6 à 8).
+
 ## Verdict
 
 **Aucun constat bloquant.** Le site est sain pour Google : 211 adresses dans le plan du site, toutes en 200, canonique, langue et hreflang justes partout, un seul h1 par page, aucun titre manquant ni en double, 40 blocs de données structurées valides. Des 216 adresses que Google connaît sur Shopify, 214 aboutissent en une seule redirection sur une page qui répond (182 sur la bonne page, 30 sur une page approchante) ; 3 mènent à l'accueil, 1 en 404 (/agents.md, sans enjeu). Le « noindex » et le « Disallow: / » actuels sont voulus jusqu'au jour J.

@@ -21,6 +21,7 @@ import {
   langueDepuisParam,
   lien,
   t,
+  LANGUE_DEFAUT,
   type Langue,
 } from "../../i18n/utils.ts";
 
@@ -202,8 +203,14 @@ const lettreTitre = await texte(
  * et le logo de la marque. L'accueil seulement : c'est là qu'il les cherche.
  *
  * Rien n'y est inventé : ni réseaux sociaux (la boutique n'en a déclaré
- * aucun, memoryline.fr publiait une liste vide), ni téléphone. Le champ de
- * recherche mène à la page de recherche du site, dans la langue de la page.
+ * aucun, memoryline.fr publiait une liste vide), ni téléphone.
+ *
+ * Le bloc WebSite ne part que de l'accueil français, la racine du domaine :
+ * Google n'y lit le nom du site que là, et ses quatre copies (/en, /de…)
+ * donnaient à une même entité des adresses contradictoires. Et plus de champ
+ * de recherche (SearchAction) : la page de recherche est fermée aux robots et
+ * en noindex, et Google n'affiche plus ce champ depuis la fin de 2024
+ * (AUDIT-SEO.md, données structurées).
  */
 const siteUrl = Astro.site?.toString().replace(/\/$/, "") ?? "https://memoryline.fr";
 const organisationLd = {
@@ -227,18 +234,12 @@ const siteLd = {
   url: siteUrl + lien(langue, "/"),
   inLanguage: langue,
   publisher: { "@id": `${siteUrl}/#organisation` },
-  potentialAction: {
-    "@type": "SearchAction",
-    target: {
-      "@type": "EntryPoint",
-      urlTemplate: `${siteUrl}${lien(langue, "/recherche")}?q={search_term_string}`,
-    },
-    "query-input": "required name=search_term_string",
-  },
 };
+const donneesStructurees =
+  langue === LANGUE_DEFAUT ? [organisationLd, siteLd] : [organisationLd];
 ---
 
-<Base langue={langue} path={lien(langue, "/")} jsonLd={[organisationLd, siteLd]}>
+<Base langue={langue} path={lien(langue, "/")} jsonLd={donneesStructurees}>
   {/* ---------------- Bandeaux visuels ----------------
       Tout en haut, sous l'en-tête et AVANT les affiches — et surtout HORS de
       la condition de la vitrine : à l'intérieur, ils disparaîtraient le jour

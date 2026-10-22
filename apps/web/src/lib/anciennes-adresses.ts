@@ -199,6 +199,11 @@ export async function destinationAncienne(
   if (/^\/collections\/(vendors|types)$/.test(chemin))
     return { vers: "/recherche", garder: ["q"] };
   if ((m = chemin.match(/^\/collections\/([^/]+)$/))) return { vers: await rayon(m[1]!) };
+  // Une collection filtrée par étiquette (/collections/villes/paris) : le
+  // rayon lui-même. Les fiches vues depuis une collection sont prises plus
+  // haut (/collections/<c>/products/<h>).
+  if ((m = chemin.match(/^\/collections\/([^/]+)\/[^/]+$/)))
+    return { vers: await rayon(m[1]!) };
 
   // Les pages libres renommées ou disparues.
   if ((m = chemin.match(/^\/pages\/([^/]+)$/)) && PAGES_SHOPIFY[m[1]!]) {
@@ -224,6 +229,15 @@ export async function destinationAncienne(
   // un saut au lieu de deux. Une cliente déjà connectée est renvoyée par la
   // page de connexion vers son compte.
   if (chemin === "/account") return { vers: "/compte/connexion" };
+  // Les autres pages du compte (commandes, adresses…) et le lien « Se
+  // connecter » du thème : la connexion, d'où une cliente connectée rejoint
+  // son compte.
+  if (/^\/account\/.+$/.test(chemin) || /^\/customer_authentication(\/.*)?$/.test(chemin))
+    return { vers: "/compte/connexion" };
+  // Un lien de code promo (/discount/NOEL10) : Shopify posait le code puis
+  // menait à l'accueil. Le code se saisit au panier ; on mène à l'accueil,
+  // suivi utm_* compris (AUDIT-SEO.md, MIG-6).
+  if (/^\/discount\/[^/]+$/.test(chemin)) return { vers: "/" };
 
   return null;
 }

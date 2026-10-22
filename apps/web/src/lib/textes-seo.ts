@@ -53,13 +53,29 @@ export function titreDePage(...morceaux: (string | null | undefined | false)[]):
  * Un titre écrit à la main (champ « Titre SEO » du back-office), avec le
  * séparateur du site devant la marque.
  *
- * Le texte de la boutique passe toujours en premier, tel quel ; seule la fin
+ * Le texte de la boutique passe toujours en premier ; seule la fin
  * « — Memory Line » (ou « - », « – ») devient « | Memory Line », pour que
  * ses pages ne se distinguent pas des autres dans les résultats. Les pages
  * légales ont été saisies ainsi, avant que le séparateur soit fixé.
+ *
+ * Les titres repris de Shopify (« LE HAVRE - Affiche personnalisée – Memory
+ * Line ») suivent aussi les deux autres règles du site : le tiret court entre
+ * le nom et la nature devient le tiret demi-cadratin de titreDePage, et un
+ * titre trop long perd la marque, comme les titres composés par le site.
+ * Sans cela, l'import du fichier SEO de Shopify aurait fait passer 43 titres
+ * au-delà de 60 caractères (AUDIT-SEO.md, CNT-2).
  */
 export function separateurDuSite(titre: string): string {
-  return titre.replace(/\s+[-–—]\s+Memory Line\s*$/i, ` | ${MARQUE}`);
+  const marque = ` | ${MARQUE}`;
+  const titreDuSite = titre
+    .trim()
+    .replace(/\s+[-–—]\s+Memory Line\s*$/i, marque)
+    // Un tiret entouré d'espaces sépare deux morceaux ; celui d'un nom de
+    // lieu (« MERS-LES-BAINS ») n'en a pas, et reste.
+    .replace(/\s+-\s+/g, " – ");
+  return titreDuSite.length > TITRE_MAX && titreDuSite.endsWith(marque)
+    ? titreDuSite.slice(0, -marque.length)
+    : titreDuSite;
 }
 
 /**

@@ -45,6 +45,8 @@ interface Props {
    */
   path?: string;
   image?: string;
+  /** Les dimensions et le texte de `image`, annoncés aux réseaux (Seo.astro). */
+  imageInfos?: { largeur: number; hauteur: number; alt: string };
   type?: "website" | "product" | "article";
   /** Page à garder hors de Google (« noindex, follow ») : panier, compte… */
   noindex?: boolean;
@@ -77,6 +79,7 @@ const {
   description,
   path,
   image,
+  imageInfos,
   type,
   noindex,
   languesTraduites,
@@ -404,6 +407,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
       description={desc}
       path={path}
       image={image}
+      imageInfos={imageInfos}
       type={type}
       noindex={horsIndex}
       alternatives={versionsDeclarees.map((v) => v.langue)}

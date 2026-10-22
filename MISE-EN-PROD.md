@@ -13,13 +13,18 @@ Le serveur de test (OVH, 51.255.34.187) **devient** la vraie boutique. Rien ne d
 
 Le résumé des étapes détaillées plus bas. L'ordre compte.
 
+**Pourquoi cet ordre** (AUDIT-SEO.md, IDX-1) : le site de test répond « `Disallow: /` » et « noindex », et ces valeurs sont figées à la construction. Si `memoryline.fr` pointait sur le serveur avant la reconstruction en réel, Google lirait ce robots.txt et pourrait le garder en cache jusqu'à 24 h, sans explorer ni le nouveau site ni les 301 des anciennes adresses. Le DNS change donc **en même temps** que la reconstruction, jamais avant.
+
+- **La veille** : baisser à 300 s la durée de vie (TTL) des enregistrements `memoryline.fr` et `www` chez le registrar, pour que la bascule se propage en quelques minutes. Exporter les redirections de Shopify et les importer (§ 7). Publier la page « affiches-personnalisables » et importer le fichier SEO corrigé (§ 6).
+
 0. **`APP_SECRET`** dans le `.env` du serveur (§ 3), **avant** la première clé saisie au BO : les clés de BO › Réglages › Paiements sont chiffrées avec elle, et sans elle (ou plus courte que 32 caractères) la colonne « Pour de vrai » de l'écran reste fermée. Puis redémarrer (`docker compose -f docker-compose.prod.yml up -d --force-recreate`). Ne plus jamais la changer.
-1. **Domaine** : DNS (§ 4), puis `DOMAINE` et `PUBLIC_ORIGIN` dans le `.env` (§ 3).
-2. **Vider la base de test** (§ 2) : `apps/api/scripts/vider-donnees-test.sh` sans argument (il montre seulement), puis `--vider`. **Avant** les vrais courriels : dès qu'ils partent, la relance de panier écrirait aux adresses de test. Les clés saisies au BO et leur journal survivent au vidage (tables à part).
-3. **`PUBLIC_NOINDEX=false` et courriels Resend** dans le `.env` (§ 3, `MAIL_TEST_*` retirées), puis **reconstruction** (§ 3, « Appliquer » : ces valeurs sont figées à la construction).
-4. **Clés live** dans **BO › Réglages › Paiements**, colonnes « Pour de vrai » de Stripe et de PayPal. Créer le webhook Stripe live (§ 5) et coller son `whsec_`. Cliquer **« Vérifier »** dans chaque colonne live, puis l'interrupteur **« Pour de vrai »** (case « Je confirme… » et confirmation). Aucun redémarrage.
-5. **Une vraie commande de quelques euros** par carte, et par PayPal s'il est branché, puis **remboursement** depuis sa fiche dans le BO (§ 8).
-6. **Google Search Console** (§ 8).
+1. **Vider la base de test** (§ 2) : `apps/api/scripts/vider-donnees-test.sh` sans argument (il montre seulement), puis `--vider`. **Avant** les vrais courriels : dès qu'ils partent, la relance de panier écrirait aux adresses de test. Les clés saisies au BO et leur journal survivent au vidage (tables à part).
+2. **Tout le `.env` en réel, sans reconstruire encore** (§ 3) : `DOMAINE`, `DOMAINE_WWW`, `PUBLIC_ORIGIN`, `PUBLIC_NOINDEX=false`, courriels Resend (`MAIL_TEST_*` retirées), `PUBLIC_JEU_ESSAI` retirée.
+3. **Bascule, d'un seul tenant** : changer le DNS de `memoryline.fr` **et** de `www` (§ 4), puis lancer aussitôt la reconstruction (§ 3, « Appliquer »). Pendant les quelques minutes de la construction, `memoryline.fr` ne répond pas encore : c'est voulu, mieux vaut une page qui ne répond pas qu'un « Disallow: / ». Caddy obtient les certificats tout seul dès que le DNS pointe sur le serveur. Le nom de test `vps-5c917e9d.vps.ovh.net` cesse alors de répondre.
+4. **Vérifications immédiates** (§ 8, les quatre premières lignes) : robots.txt en `Allow: /`, une fiche en `index, follow`, le plan du site, `www` redirigé. Puis, dans la Search Console › Paramètres › robots.txt : **« Demander une nouvelle exploration »**.
+5. **Clés live** dans **BO › Réglages › Paiements**, colonnes « Pour de vrai » de Stripe et de PayPal. Créer le webhook Stripe live (§ 5) et coller son `whsec_`. Cliquer **« Vérifier »** dans chaque colonne live, puis l'interrupteur **« Pour de vrai »** (case « Je confirme… » et confirmation). Aucun redémarrage.
+6. **Une vraie commande de quelques euros** par carte, et par PayPal s'il est branché, puis **remboursement** depuis sa fiche dans le BO (§ 8).
+7. **Google Search Console** et **relevé des anciennes adresses** (§ 8, fin).
 
 Les vraies étiquettes SendCloud ont leur propre interrupteur dans le même écran : seulement sur décision explicite d'Alexandra.
 
@@ -90,7 +95,7 @@ Le `.env` reste possible : c'est le **repli**, utilisé tant que rien n'est sais
 | Variable | Production |
 |---|---|
 | `DOMAINE` | `memoryline.fr` |
-| `DOMAINE_WWW` | `www.memoryline.fr`, **seulement une fois** l'enregistrement DNS `www` pointé vers le serveur (voir § 4). Absente, Caddy ne sert que le domaine nu |
+| `DOMAINE_WWW` | `www.memoryline.fr`. **Obligatoire** : Shopify redirige aujourd'hui `www` vers le domaine nu, et des liens et des favoris le portent. Absente, Caddy ne sert que le domaine nu et ces liens cassent. Le DNS `www` change en même temps que celui du domaine (Jour J, étape 3) |
 | `PUBLIC_ORIGIN` | `https://memoryline.fr` (sans `/` final, sans `www`) : c'est l'adresse canonique de toutes les pages, des hreflang et du plan du site |
 | `COURRIEL_TLS` | une adresse lue par quelqu'un (alertes du certificat) |
 | `PUBLIC_NOINDEX` | `false`. **Sinon Google n'indexe rien** : le défaut du serveur est `true` |
@@ -118,8 +123,10 @@ Ensuite, supprimer du serveur les anciennes copies `.env.avant-*`, qui contienne
 
 ## 4. Nom de domaine
 
+Le DNS change **au moment de la reconstruction** (Jour J, étape 3), pas avant : voir « Pourquoi cet ordre » en haut.
+
 - [ ] Chez le registrar de memoryline.fr : enregistrement **A** `memoryline.fr` → `51.255.34.187` (et AAAA si le serveur a une IPv6). **Supprimer les anciens enregistrements Shopify**, sinon le certificat ne s'obtient pas.
-- [ ] `www.memoryline.fr` (Shopify le redirige aujourd'hui vers le domaine nu, des liens le portent) : faire pointer l'enregistrement `www` vers le serveur (A, ou CNAME vers `memoryline.fr`), **puis** ajouter `DOMAINE_WWW=www.memoryline.fr` au `.env` et relancer le proxy (`docker compose -f docker-compose.prod.yml up -d proxy`). `Caddyfile.prod` est prêt : il obtient le certificat du www et redirige en 301, en un saut, vers la même adresse sur `memoryline.fr`.
+- [ ] `www.memoryline.fr` (Shopify le redirige aujourd'hui vers le domaine nu, des liens le portent), **en même temps** : faire pointer l'enregistrement `www` vers le serveur (A, ou CNAME vers `memoryline.fr`). `DOMAINE_WWW=www.memoryline.fr` est déjà dans le `.env` (Jour J, étape 2). `Caddyfile.prod` est prêt : il obtient le certificat du www et redirige en 301, en un saut, vers la même adresse sur `memoryline.fr`.
 - [ ] Une fois le DNS propagé : `https://memoryline.fr` s'ouvre avec le cadenas (Caddy obtient le certificat tout seul).
 - [ ] Si le serveur a un pare-feu (celui de l'IP chez OVH, ou `ufw`) : ouvrir **l'UDP 443** en plus du TCP 80 et 443. C'est le port de HTTP/3, que `docker-compose.prod.yml` publie désormais. Fermé, rien ne casse : les navigateurs restent en HTTP/2.
 
@@ -146,6 +153,10 @@ Ensuite, supprimer du serveur les anciennes copies `.env.avant-*`, qui contienne
 - [ ] **Promotions** : faire confirmer « 3 achetées = 1 A4 offerte » et « Livraison offerte dès 60 € ».
 - [ ] **Signature** : déposer le PNG transparent de Margaux (le logo Memory Line sert en attendant).
 - [ ] **Vidéo tuto** (BO › Contenu) : déposer la vidéo ou coller son lien. Sans vidéo, la bulle ne s'affiche pas.
+- [ ] **Page « affiches-personnalisables »** (BO › Pages) : créer une page publiée de ce slug et y coller `memoryline-page-affiches-personnalisables.html` (PC du bureau, `Documents\perso`). C'était la page d'atterrissage de Shopify : tant qu'elle n'existe pas, son adresse mène au rayon, sans son texte. Dès qu'elle est publiée, elle reprend exactement l'adresse de Shopify (AUDIT-SEO.md, MIG-2).
+- [ ] **Titres et descriptions SEO de Shopify** : importer `memoryline-seo-shopify.csv` (PC du bureau) dans BO › Produits › Importer, **après l'avoir corrigé**. Tel quel, il ramènerait des titres en double (Mers-les-Bains ×3, Côte d'Opale ×2, « COLMAR COLMAR ») et des descriptions qui parlent d'un autre lieu (Pierrefonds avec le texte de Chantilly…) : vider la colonne « SEO Title » des lignes colmar, cote-dopale-plage-face, mers-les-bains-baigneurs et mers-les-bains-baigneurs-2, et réécrire ou vider la « SEO Description » des fiches en double (liste exacte : AUDIT-SEO.md, MIG-3 et CNT-1). Puis relire l'aperçu ligne par ligne avant d'appliquer.
+- [ ] **Bandeau de l'accueil** : le cœur d'iStock (612 × 612, sans texte ni alt) est l'image principale de l'accueil. Le remplacer par un vrai visuel d'au moins 1 920 px de large, avec une image « mobile » en portrait et un texte alternatif (AUDIT-SEO.md, CNT-6 et VIT-3).
+- [ ] **Vitrine de l'accueil** (BO › Accueil et pied de page) : 16 affiches au lieu de 8, comme sur memoryline.fr aujourd'hui (AUDIT-SEO.md, CNT-10).
 
 ## 7. Corrections de code avant l'ouverture
 
@@ -154,7 +165,7 @@ Ensuite, supprimer du serveur les anciennes copies `.env.avant-*`, qui contienne
 - [ ] Écran pour saisir **l'adresse et le SIRET** des factures.
 - [ ] **Aide du BO** : les rubriques « Comment passer une commande test ? » et « Où arrivent les courriers pendant les tests ? », ainsi que la section de BO › Courriers sur le `.env`, ne doivent s'afficher qu'en mode essai.
 - [ ] Caisse : le message « Ajoutez vos clés Stripe et/ou PayPal dans le fichier .env » peut s'afficher à une cliente. Le remplacer par un message neutre.
-- [ ] Image de partage par défaut `/og-default.png` : elle est absente, ce qui casse l'aperçu sur les réseaux sociaux.
+- [x] Image de partage par défaut `/og-default.png` : en ligne (1 200 × 630), déclarée avec sa largeur, sa hauteur et son texte alternatif (vérifié par l'audit du 22/10).
 - [x] **Plan du site** : rendu à la demande à `/sitemap.xml` (l'adresse de celui de Shopify), à partir du catalogue du moment. Il ne dépend plus de la construction.
 - [x] **Redirections des anciennes adresses Shopify** : fiches, collections, pages, `/policies/…`, blog, recherche, en 301 et en un seul saut, suivi `utm_*` conservé. Les correspondances sont toutes dans `apps/web/src/lib/anciennes-adresses.ts`.
 - [ ] **Faire valider par Margaux** les destinations choisies à la main dans `anciennes-adresses.ts` : les 18 fiches Shopify absentes du nouveau catalogue, les collections vides ou techniques, `/pages/affiches-personnalisables`.
@@ -166,7 +177,7 @@ Ensuite, supprimer du serveur les anciennes copies `.env.avant-*`, qui contienne
 - [ ] `https://memoryline.fr/robots.txt` affiche `Allow: /` et la ligne `Sitemap: https://memoryline.fr/sitemap.xml`.
 - [ ] Une fiche (`curl -s https://memoryline.fr/affiches/vieux-moulin-affiche-personnalisee | grep -E 'robots|canonical'`) porte `index, follow` et une canonique en `https://memoryline.fr/…`.
 - [ ] `https://memoryline.fr/sitemap.xml` liste les `/affiches/…` en `https://memoryline.fr`.
-- [ ] `curl -sI https://memoryline.fr/products/vieux-moulin-affiche-personnalisee` répond `301` vers `/affiches/…`, et `curl -sI https://www.memoryline.fr/` répond `301` vers `https://memoryline.fr/` (si `DOMAINE_WWW` est posé).
+- [ ] `curl -sI https://memoryline.fr/products/vieux-moulin-affiche-personnalisee` répond `301` vers `/affiches/…`, et `curl -sI https://www.memoryline.fr/products/vieux-moulin-affiche-personnalisee` répond `301` vers la même adresse sur `https://memoryline.fr`, puis `301` vers `/affiches/…`.
 - [ ] Une redirection importée de Shopify : `curl -sI https://memoryline.fr/<son ancienne adresse>` répond `301` vers sa cible, en un seul saut (le bouton « Essayer » de BO › Redirections ouvre la même adresse).
 - [ ] `https://memoryline.fr/api/payments/config` répond `"essai": false`.
 - [ ] `curl -sI https://memoryline.fr/fonts/LeagueSpartan-Regular.ttf` porte `cache-control: public, max-age=604800` (une seule ligne `cache-control`), et la page d'accueil `cache-control: no-cache`.
@@ -177,7 +188,12 @@ Ensuite, supprimer du serveur les anciennes copies `.env.avant-*`, qui contienne
 - [ ] Le BO › Accueil et l'en-tête de BO › Réglages › Paiements disent « Pour de vrai : Stripe live, PayPal live, … », sans avertissement « non branché ». Le journal de l'écran montre la bascule (qui, quand), et, après la vraie commande, « dernier avis reçu et vérifié : live le … ».
 - [ ] La caisse arrive **vide** (pas de client fictif), et l'inscription n'affiche plus « Site de test ».
 - [ ] Une commande payée en essai restée en base (par exemple pour essayer les vrais courriels à l'étape 3) porte, une fois la boutique en réel, le badge « Payée en ESSAI » sur sa fiche et « En ESSAI » dans la liste, et les Finances la signalent : ne pas l'expédier, l'archiver.
-- [ ] **Google Search Console** : déclarer le domaine, soumettre `https://memoryline.fr/sitemap.xml` (même adresse que le plan Shopify : le resoumettre suffit).
+- [ ] **Google Search Console** : déclarer le domaine, soumettre `https://memoryline.fr/sitemap.xml` (même adresse que le plan Shopify : le resoumettre suffit). Dans Paramètres › robots.txt, « Demander une nouvelle exploration ».
+- [ ] **Les anciennes adresses de Shopify, toutes** : rejouer le relevé sur le vrai domaine (2 requêtes par seconde au plus) :
+  `node apps/web/scripts/verifier-anciennes-adresses.mjs https://memoryline.fr`
+  Attendu : toutes en `200` en un seul saut, sauf `/agents.md` (fichier technique de Shopify, sans enjeu). Toute autre adresse signalée s'ajoute dans BO › Boutique en ligne › Redirections.
+- [ ] **Données structurées et aperçus de partage** : le test des résultats enrichis de Google sur une fiche et sur l'accueil ; l'outil de débogage de partage de Facebook, « Récupérer à nouveau », sur l'accueil et deux ou trois fiches (les réseaux gardent en cache les aperçus des pages Shopify).
+- [ ] **Les semaines suivantes** : Search Console › Pages, « Introuvable (404) » et « Page avec redirection » ; chaque ancienne adresse en 404 s'ajoute dans BO › Redirections. Puis les rapports « Fiches marchandes », « Extraits de produits » et « Fils d'Ariane ».
 
 ## 9. Sauvegardes
 
