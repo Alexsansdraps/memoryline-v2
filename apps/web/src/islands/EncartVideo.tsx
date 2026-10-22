@@ -7,8 +7,8 @@ import { assetUrl } from "../lib/api.ts";
 /**
  * La vidéo explicative du configurateur — la couche qui la lit.
  *
- * La boutique n'a plus d'encart dans l'étape 1 : une petite bulle « Vidéo
- * tuto » dans l'en-tête de la fenêtre (ProductConfigurator.tsx) ouvre
+ * La boutique n'a plus d'encart dans l'étape 1 : un petit rond « TUTO ▶ »
+ * dans l'en-tête de la fenêtre (ProductConfigurator.tsx) ouvre
  * `LecteurVideo`, une pop-up par-dessus la fenêtre. C'est la seule chose qui
  * fabrique un <iframe> ou un <video>, et seulement après un clic délibéré.
  *

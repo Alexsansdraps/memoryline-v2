@@ -1049,7 +1049,7 @@ export function brancherBarreDeLaFenetre(racine: HTMLElement): void {
  *
  * Reste le signe des autres étapes — le rond ⌄, juste au-dessus de la barre
  * du bas —, suivi de ce qui attend plus bas, en mots de tous les jours :
- * « Plus bas : couleurs, vêtements, cheveux et accessoires ».
+ * « Plus bas : couleurs, cheveux, accessoires et vêtements ».
  *   - Seulement les parties qu'on ne voit pas encore : sur un ordinateur, où
  *     la couleur de peau se voit déjà, il ne parle que du reste.
  *   - Il ne prend aucune place : il flotte, sans fondu, et le doigt passe à

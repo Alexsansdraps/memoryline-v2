@@ -49,6 +49,12 @@ const code = String(Astro.params.code ?? "")
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {/* Comme Base.astro, que cette page n'utilise pas : sans un écouteur de
+        contact, Safari sur iPhone n'affiche pas l'appui (:active) du bouton
+        « Choisir une photo ». */}
+    <script is:inline>
+      document.addEventListener("touchstart", function () {}, { passive: true });
+    </script>
     <Seo
       langue={langue}
       title={tr("photo.meta_titre")}

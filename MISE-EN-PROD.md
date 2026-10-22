@@ -152,7 +152,7 @@ Le DNS change **au moment de la reconstruction** (Jour J, étape 3), pas avant :
 - [ ] **Livraison** : « Retrait sur place » demande d'indiquer son créneau « en commentaire », or la caisse n'a pas de champ commentaire. Changer le texte.
 - [ ] **Promotions** : faire confirmer « 3 achetées = 1 A4 offerte » et « Livraison offerte dès 60 € ».
 - [ ] **Signature** : déposer le PNG transparent de Margaux (le logo Memory Line sert en attendant).
-- [ ] **Vidéo tuto** (BO › Contenu) : déposer la vidéo ou coller son lien. Sans vidéo, la bulle ne s'affiche pas.
+- [ ] **Vidéo du rond « TUTO »** (BO › Contenu du site › « Personnalisation — vidéo explicative ») : déposer la vidéo ou coller son lien. Sans vidéo, le rond ne s'affiche pas — c'est le cas sur la pré-prod au 22/10, d'où le dessin de la boutique.
 - [ ] **Page « affiches-personnalisables »** (BO › Pages) : créer une page publiée de ce slug et y coller `memoryline-page-affiches-personnalisables.html` (PC du bureau, `Documents\perso`). C'était la page d'atterrissage de Shopify : tant qu'elle n'existe pas, son adresse mène au rayon, sans son texte. Dès qu'elle est publiée, elle reprend exactement l'adresse de Shopify (AUDIT-SEO.md, MIG-2).
 - [ ] **Titres et descriptions SEO de Shopify** : importer `memoryline-seo-shopify.csv` (PC du bureau) dans BO › Produits › Importer, **après l'avoir corrigé**. Tel quel, il ramènerait des titres en double (Mers-les-Bains ×3, Côte d'Opale ×2, « COLMAR COLMAR ») et des descriptions qui parlent d'un autre lieu (Pierrefonds avec le texte de Chantilly…) : vider la colonne « SEO Title » des lignes colmar, cote-dopale-plage-face, mers-les-bains-baigneurs et mers-les-bains-baigneurs-2, et réécrire ou vider la « SEO Description » des fiches en double (liste exacte : AUDIT-SEO.md, MIG-3 et CNT-1). Puis relire l'aperçu ligne par ligne avant d'appliquer.
 - [ ] **Bandeau de l'accueil** : le cœur d'iStock (612 × 612, sans texte ni alt) est l'image principale de l'accueil. Le remplacer par un vrai visuel d'au moins 1 920 px de large, avec une image « mobile » en portrait et un texte alternatif (AUDIT-SEO.md, CNT-6 et VIT-3).
@@ -162,9 +162,9 @@ Le DNS change **au moment de la reconstruction** (Jour J, étape 3), pas avant :
 
 À faire côté développement, avant le jour J :
 
-- [ ] Écran pour saisir **l'adresse et le SIRET** des factures.
-- [ ] **Aide du BO** : les rubriques « Comment passer une commande test ? » et « Où arrivent les courriers pendant les tests ? », ainsi que la section de BO › Courriers sur le `.env`, ne doivent s'afficher qu'en mode essai.
-- [ ] Caisse : le message « Ajoutez vos clés Stripe et/ou PayPal dans le fichier .env » peut s'afficher à une cliente. Le remplacer par un message neutre.
+- [x] Écran pour saisir **l'adresse et le SIRET** des factures : BO › Facturation (vérifié le 22/10).
+- [x] **Aide du BO** : les rubriques « Comment passer une commande test ? » et « Où arrivent les courriers pendant les tests ? », ainsi que la section de BO › Courriers sur le `.env`, ne s'affichent plus qu'en mode essai (vérifié le 22/10).
+- [x] Caisse : le message « Ajoutez vos clés Stripe et/ou PayPal dans le fichier .env » est remplacé par un message neutre (« Le paiement en ligne est momentanément indisponible… », vérifié le 22/10).
 - [x] Image de partage par défaut `/og-default.png` : en ligne (1 200 × 630), déclarée avec sa largeur, sa hauteur et son texte alternatif (vérifié par l'audit du 22/10).
 - [x] **Plan du site** : rendu à la demande à `/sitemap.xml` (l'adresse de celui de Shopify), à partir du catalogue du moment. Il ne dépend plus de la construction.
 - [x] **Redirections des anciennes adresses Shopify** : fiches, collections, pages, `/policies/…`, blog, recherche, en 301 et en un seul saut, suivi `utm_*` conservé. Les correspondances sont toutes dans `apps/web/src/lib/anciennes-adresses.ts`.

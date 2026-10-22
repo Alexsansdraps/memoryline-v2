@@ -49,26 +49,37 @@ const ici = lien(langue, "/commande");
  * Il y avait auparavant ICI un second formulaire de stand, en plus de celui du
  * panier : deux dernières étapes pour un même parcours, dont une que le
  * panier sans prix ne permettait même plus d'atteindre.
+ *
+ * La page le DIT, au lieu de renvoyer au panier sans un mot. Ouvrir une fois
+ * le stand depuis le back-office (bouton « Ouvrir » de Ventes stand) met le
+ * navigateur en mode stand pour vingt-quatre heures, et la boutique qui
+ * voulait ensuite passer une commande d'essai sur le site retombait sur le
+ * panier du stand, sans rien pour en sortir (carte Trello du 30/09 : « je ne
+ * peux pas passer des commandes test sur le site (pas en stand) »). Le lien
+ * « Quitter le mode stand » rouvre cette page avec ?stand=0, que le
+ * middleware comprend : il referme le mode stand.
  */
-if (Astro.locals.stand) return Astro.redirect(lien(langue, "/panier"), 302);
+const auStand = Astro.locals.stand;
 
-const session = await moi(Astro);
-if (!session.ok)
+const session = auStand ? null : await moi(Astro);
+if (session && !session.ok)
   return rediriger(
     Astro,
     `${lien(langue, "/compte/connexion")}?retour=${encodeURIComponent(ici)}`,
     302,
   );
 
-const client = session.donnees!;
+const client = session?.donnees ?? null;
 // Le carnet est un confort : s'il ne répond pas, le tunnel s'ouvre quand même
 // avec des champs vides plutôt que de refuser la commande.
 let carnet: Adresse[] = [];
-try {
-  const r = await lireAdresses(Astro);
-  if (r.ok && Array.isArray(r.donnees)) carnet = r.donnees;
-} catch {
-  carnet = [];
+if (!auStand) {
+  try {
+    const r = await lireAdresses(Astro);
+    if (r.ok && Array.isArray(r.donnees)) carnet = r.donnees;
+  } catch {
+    carnet = [];
+  }
 }
 ---
 
@@ -89,6 +100,26 @@ try {
       {tr("commande.titre")}
     </h1>
 
+    {auStand || !client ? (
+      <div class="max-w-xl rounded-2xl border border-ink/10 bg-paper-deep p-6">
+        <h2 class="text-xl font-medium">{tr("commande.stand.titre")}</h2>
+        <p class="mt-3 text-ink-soft">{tr("commande.stand.texte")}</p>
+        <div class="mt-6 flex flex-wrap gap-3">
+          <a
+            href={`${lien(langue, "/commande")}?stand=0`}
+            class="inline-flex items-center justify-center rounded-full bg-ink px-5 py-3 text-paper"
+          >
+            {tr("commande.stand.quitter")}
+          </a>
+          <a
+            href={lien(langue, "/panier")}
+            class="inline-flex items-center justify-center rounded-full border-2 border-ink px-5 py-3 hover:bg-ink hover:text-paper"
+          >
+            {tr("commande.stand.panier")}
+          </a>
+        </div>
+      </div>
+    ) : (
     <CheckoutIsland
       client:only="solid-js"
       langue={langue}
@@ -112,5 +143,6 @@ try {
         parDefaut: a.isDefaultShipping,
       }))}
     />
+    )}
   </section>
 </Base>

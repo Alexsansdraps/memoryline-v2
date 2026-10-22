@@ -242,6 +242,11 @@ export interface LigneCourrier {
    */
   imageUrl?: string | null;
   /**
+   * L'affiche est en paysage : sa vignette, à largeur égale, est deux fois
+   * moins haute. Sert à la hauteur annoncée en attribut (relance de panier).
+   */
+  paysage?: boolean;
+  /**
    * Vrai quand cet article ne peut plus être commandé : produit retiré de la
    * vente, ou stock épuisé. Le courrier le dit au lieu de faire cliquer vers
    * une impasse.
@@ -581,6 +586,14 @@ export function courrierModePaiement(d: {
  * attributs HTML et pas seulement en CSS — les vieilles messageries ignorent
  * le style et affichent alors l'image en pleine largeur, qui pousse le prix
  * hors de l'écran.
+ *
+ * 110 px de large, et non 64 comme sur les autres courriers : c'est l'aperçu
+ * de l'affiche que la cliente a composée (relance-panier.ts), et c'est lui
+ * qui donne envie de revenir. À 64 px, on ne lisait ni le prénom ni les
+ * personnages (retour de Margaux du 22/10). L'aperçu fait 600 px de large :
+ * il reste net sur un écran à haute densité. La hauteur suit l'affiche, A4
+ * en portrait (110 × 156) ou en paysage (110 × 78) : une messagerie qui lit
+ * les attributs sans le style déformerait sinon l'image.
  */
 function tableauLignesAvecImage(lignes: LigneCourrier[], langue: Langue): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0">
@@ -589,8 +602,8 @@ function tableauLignesAvecImage(lignes: LigneCourrier[], langue: Langue): string
         (l) => `<tr>
       ${
         l.imageUrl
-          ? `<td width="72" style="padding:10px 12px 10px 0;border-bottom:1px solid #eee;vertical-align:top">
-        <img src="${h(l.imageUrl)}" width="64" height="90" alt="" style="display:block;border:0;width:64px;height:auto;max-width:64px;background:#f3f3f3" />
+          ? `<td width="122" style="padding:10px 12px 10px 0;border-bottom:1px solid #eee;vertical-align:top">
+        <img src="${h(l.imageUrl)}" width="110" height="${l.paysage ? 78 : 156}" alt="" style="display:block;border:0;width:110px;height:auto;max-width:110px;background:#f3f3f3" />
       </td>`
           : ""
       }

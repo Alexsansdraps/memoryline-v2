@@ -587,6 +587,7 @@ export function mountOrderRoutes(app: Hono): void {
             id: schema.orderItems.id,
             orderId: schema.orderItems.orderId,
             title: schema.orderItems.title,
+            config: schema.orderItems.config,
             format: raw<string | null>`(${schema.orderItems.config} ->> 'format')`,
             imprimable: raw<boolean>`(${schema.orderItems.config} is not null)`,
           })
@@ -605,7 +606,7 @@ export function mountOrderRoutes(app: Hono): void {
     >();
     for (const l of lignesApercu) {
       const liste = apercusParCommande.get(l.orderId) ?? [];
-      if (liste.length < 3) liste.push(cheminApercu(l.id));
+      if (liste.length < 3) liste.push(cheminApercu(l.id, l.config));
       lignesParCommande.set(l.orderId, (lignesParCommande.get(l.orderId) ?? 0) + 1);
       apercusParCommande.set(l.orderId, liste);
       if (l.imprimable)
@@ -1371,7 +1372,7 @@ export function mountOrderRoutes(app: Hono): void {
         unitPriceCents: ligne.unitPriceCents,
         // L'affiche elle-même : un remboursement partiel doit dire LAQUELLE
         // des trois affiches est concernée, et le titre seul ne suffit pas.
-        imageUrl: `${ORIGINE_PUBLIQUE}/api${cheminApercu(ligne.id)}`,
+        imageUrl: `${ORIGINE_PUBLIQUE}/api${cheminApercu(ligne.id, ligne.config)}`,
       });
     }
 

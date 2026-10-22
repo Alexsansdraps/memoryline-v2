@@ -213,7 +213,7 @@ export interface SignatureAffiche {
   image: Buffer;
   /**
    * Largeur de l'IMAGE, marges transparentes comprises, en fraction du petit
-   * côté (0,12 = 12 %) : une image envoyée au back-office garde la taille
+   * côté (0,07 = 7 %) : une image envoyée au back-office garde la taille
    * qu'elle avait sur le papier.
    */
   largeur: number;

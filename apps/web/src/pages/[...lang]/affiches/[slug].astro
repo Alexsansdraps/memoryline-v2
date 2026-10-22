@@ -151,10 +151,9 @@ const image = assetUrl(product.images[0] ?? null, 900);
  * L'ancien `sizes` annonçait 900 px dès 1280 px d'écran : mesuré à 1440 ×
  * 900, l'image s'affichait en 551 px (bornée par la hauteur) et le
  * navigateur téléchargeait la version de 900. Le nouveau prend la plus
- * petite des trois bornes — 62 % de l'écran (un peu plus que la colonne),
- * 900 px (la colonne n'en dépasse jamais 894) et la hauteur utile multipliée
- * par le rapport de l'image —, si bien que la taille affichée ne change pas
- * et que le fichier suit. Sous 768 px, l'image prend toute la largeur de la
+ * petite des deux bornes de l'image — la moitié de l'écran et la hauteur
+ * utile multipliée par le rapport de l'image —, si bien que la taille
+ * affichée ne change pas et que le fichier suit. Sous 768 px, l'image prend toute la largeur de la
  * carte (marges de 16 puis 24 px). Un navigateur qui ne lirait pas `min()`
  * passe à la valeur suivante : il télécharge plus gros, sans rien déranger.
  *
@@ -171,8 +170,20 @@ const imageJeu = assetSrcset(
   [400, 600, 900, 1400],
   dimensionsImage?.largeur,
 );
+/*
+ * La largeur de l'image sur tablette et ordinateur, ÉCRITE et non laissée au
+ * navigateur : la plus petite de la moitié de l'écran et de ce que permet la
+ * hauteur utile (la page moins l'en-tête et les marges), au rapport de
+ * l'image. Laissée en « auto », la grille la rognait sur une tablette de
+ * 1024 × 768 : elle partageait l'espace libre à parts égales avec la colonne
+ * du texte, et la carte (overflow: hidden) coupait 86 px d'affiche.
+ * `max-w-none` va avec : le « max-width: 100% » des images laisse la grille
+ * les compresser, et l'image retombait à la largeur que la colonne voulait
+ * bien lui laisser.
+ */
+const largeurSurGrandEcran = `min(50vw, calc((100svh - 9rem) * ${(largeurImage / hauteurImage).toFixed(4)}))`;
 const tailleAffichee = [
-  `(min-width: 768px) min(62vw, 900px, calc((100vh - 9rem) * ${(largeurImage / hauteurImage).toFixed(4)}))`,
+  `(min-width: 768px) min(50vw, calc((100vh - 9rem) * ${(largeurImage / hauteurImage).toFixed(4)}))`,
   "(min-width: 640px) calc(100vw - 3rem)",
   "calc(100vw - 2rem)",
 ].join(", ");
@@ -477,9 +488,21 @@ const pageDesVoisines = voisinesDuRayon ? pageDuRayon! : pageDuGenre;
       (retour de la boutique : « les photos s'affichent en trop gros ») : pleine
       largeur, une affiche en hauteur faisait 1 300 px et il fallait défiler
       pour la voir entière. Largeur automatique, donc jamais rognée ni
-      déformée ; le fond de la carte comble les côtés. */}
-  <article class="mx-auto grid max-w-[1500px] gap-8 px-4 py-6 sm:px-6 md:grid-cols-[1.7fr_1fr]">
-    <div class="self-start overflow-hidden rounded-2xl border border-ink/10 bg-paper-deep">
+      déformée.
+
+      Et sa colonne prend la largeur de l'IMAGE, pas une part fixe de la page :
+      avec 1,7 part contre 1, la carte grise gardait toute la colonne quand
+      l'affiche, bornée par la hauteur, n'en occupait qu'un tiers — 360 px
+      d'affiche dans 830 px de gris sur un portable (carte Trello du 22/10,
+      « le rectangle contenant l'image prend trop de place »). L'image est
+      aussi bornée à la moitié de l'écran, pour laisser au texte au moins
+      280 px sur une tablette ; le texte en prend 560 au plus, et l'ensemble
+      se centre. */}
+  <article class="mx-auto grid max-w-[1500px] gap-8 px-4 py-6 sm:px-6 md:grid-cols-[auto_minmax(280px,560px)] md:justify-center">
+    {/* `md:min-w-max` : la carte coupe ce qui déborde (coins arrondis), et un
+        élément qui coupe peut, pour la grille, descendre à zéro — elle lui
+        laissait ce qui restait après le texte, et l'affiche était rognée. */}
+    <div class="self-start overflow-hidden rounded-2xl border border-ink/10 bg-paper-deep md:min-w-max">
       {
         image ? (
           <img
@@ -490,7 +513,8 @@ const pageDesVoisines = voisinesDuRayon ? pageDuRayon! : pageDuGenre;
             width={largeurImage}
             height={hauteurImage}
             fetchpriority="high"
-            class="h-auto w-full md:mx-auto md:max-h-[calc(100svh-9rem)] md:w-auto md:max-w-full"
+            class="h-auto w-full md:w-[var(--largeur-affiche)] md:max-w-none"
+            style={`--largeur-affiche: ${largeurSurGrandEcran}`}
           />
         ) : (
           <div class="aspect-[3/4]">

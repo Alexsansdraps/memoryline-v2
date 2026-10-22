@@ -254,7 +254,12 @@ async function signatureDesCreations(): Promise<ResolveData["signature"]> {
     console.warn("[impression] signature introuvable :", chemin);
     return null;
   }
-  const largeur = nombre("signature.largeur", 12, 4, 25) / 100;
+  // 7 % du petit côté, et non plus 12 : la boutique la trouvait « toujours
+  // trop grosse », et sa photo de référence (22/10) la montre à 5 ou 6 % de
+  // la largeur de l'affiche. Le logo par défaut n'occupe que les trois quarts
+  // de son image (marges transparentes) : 7 donne un dessin de 5,2 %. Ce
+  // n'est que le défaut : une valeur enregistrée au BO passe devant.
+  const largeur = nombre("signature.largeur", 7, 4, 25) / 100;
   const marge = nombre("signature.marge", 3, 0, 10) / 100;
   const opacite = nombre("signature.opacite", 100, 20, 100) / 100;
   return {

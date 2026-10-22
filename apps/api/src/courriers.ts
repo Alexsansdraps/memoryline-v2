@@ -56,10 +56,13 @@ import {
   type Langue,
 } from "./courriels/index.js";
 import { livraisonDansLaLangue, nomTraduit } from "./traductions.js";
-// La vignette d'un produit se compose au même endroit que la relance de
-// panier, seul courrier qui l'affiche : deux façons de fabriquer cette adresse
-// finiraient par diverger, et l'aperçu montrerait une image que le vrai
-// courrier n'a pas.
+// L'aperçu réel d'une ligne vient d'apercus.ts, ici comme dans la vraie
+// relance de panier (relance-panier.ts) : deux façons de fabriquer cette
+// adresse finiraient par diverger — c'est arrivé, la relance partait avec le
+// visuel de la fiche. Une différence reste, voulue : le banc ne fabrique pas
+// l'aperçu d'avance et ne le remplace pas quand il est impossible (la vraie
+// relance y met alors le visuel de la fiche, avecLesReplis) ; sur une telle
+// ligne, le banc montre un cadre vide.
 import { cheminApercu } from "./apercus.js";
 import { texteDeHtml } from "@memoryline/types/recherche";
 
@@ -406,7 +409,10 @@ async function donneesDeCommande(
       // L'aperçu réel de CETTE ligne, en adresse absolue : une messagerie
       // ne sait pas résoudre un chemin relatif, et le jeton lui permet de
       // charger l'image sans session.
-      imageUrl: `${ORIGINE_PUBLIQUE}/api${cheminApercu(it.id)}`,
+      imageUrl: `${ORIGINE_PUBLIQUE}/api${cheminApercu(it.id, it.config)}`,
+      // Comme la vraie relance : une affiche en paysage a une vignette moins
+      // haute (tableauLignesAvecImage).
+      paysage: cfg.orientation === "paysage",
     };
   });
   const sousTotalCents = lignes.reduce(

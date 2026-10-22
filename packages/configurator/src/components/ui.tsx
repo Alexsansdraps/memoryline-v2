@@ -126,7 +126,7 @@ export function CocheCouleur(props: { fond: string }) {
 
 /**
  * Pastille de couleur cliquable — la même partout : couleur du texte à
- * l'étape 1, peau, vêtements, cheveux et accessoires des personnages.
+ * l'étape 1, peau, cheveux, accessoires et vêtements des personnages.
  *
  * 40 px : c'est la taille minimale d'une cible au doigt, et le stand se tient
  * sur une tablette. À 22 px, les pastilles des personnages se touchaient à

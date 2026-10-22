@@ -26,8 +26,8 @@
  * donne accès à rien d'autre qu'à cette image-là.
  */
 
-import { createHmac, timingSafeEqual } from "node:crypto";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Hono } from "hono";
@@ -117,13 +117,35 @@ function jetonValide(orderItemId: number, fourni: string): boolean {
 }
 
 /**
- * L'adresse publique de l'aperçu d'une ligne.
+ * La version de l'aperçu d'une ligne : une empreinte de sa configuration.
+ *
+ * Une ligne de PANIER se retouche sur place, sous le même identifiant (PUT
+ * /cart/:cartId/items/:itemId) — c'est même ce que la relance de panier
+ * invite à faire. Rangé et adressé par son seul identifiant, l'aperçu restait
+ * celui d'avant la retouche : la relance suivante, la fiche de la commande,
+ * l'historique du compte et les courriels montraient « Léa » quand l'atelier
+ * imprimait « Léa & Tom », et l'adresse, servie « immutable » pour un an,
+ * gardait l'ancienne image chez les messageries. La version entre donc dans
+ * le nom du fichier ET dans l'adresse : une autre configuration, une autre
+ * image, une autre adresse.
+ */
+export function versionApercu(config: unknown): string {
+  return createHash("sha1")
+    .update(JSON.stringify(config ?? null))
+    .digest("base64url")
+    .slice(0, 10);
+}
+
+/**
+ * L'adresse publique de l'aperçu d'une ligne, pour SA configuration.
  *
  * Relative : la page d'historique et le courrier n'ont pas la même racine, et
- * c'est l'appelant qui sait laquelle préfixer.
+ * c'est l'appelant qui sait laquelle préfixer. Le jeton ne signe que
+ * l'identifiant ; `v` ne sert qu'à changer d'adresse quand l'affiche change
+ * (voir versionApercu) — la route rend toujours la configuration du moment.
  */
-export function cheminApercu(orderItemId: number): string {
-  return `/apercus/ligne/${orderItemId}/image.jpg?j=${jetonApercu(orderItemId)}`;
+export function cheminApercu(orderItemId: number, config: unknown): string {
+  return `/apercus/ligne/${orderItemId}/image.jpg?j=${jetonApercu(orderItemId)}&v=${versionApercu(config)}`;
 }
 
 /** Un fichier existe-t-il déjà ? */
@@ -146,45 +168,141 @@ async function rangerVignette(cache: string, vignette: Buffer): Promise<void> {
   const provisoire = `${cache}.${process.pid}.tmp`;
   await writeFile(provisoire, vignette);
   await rename(provisoire, cache);
+  // « 1234-<version>.jpg » : les autres versions de la ligne 1234 partent.
+  const m = /(\d+)-([A-Za-z0-9_-]+)\.jpg$/.exec(cache);
+  if (m) void oublierLesAutresVersions(Number(m[1]), m[2]!);
+}
+
+/** Le fichier de la vignette d'une ligne, pour une version de son affiche. */
+function fichierApercu(orderItemId: number, version: string): string {
+  return resolve(APERCUS_DIR, `${orderItemId}-${version}.jpg`);
+}
+
+/**
+ * Les statuts d'une ligne encore MODIFIABLE : le panier, et la commande
+ * passée en caisse mais pas payée, qui redevient un panier à la moindre
+ * retouche (panierModifie).
+ */
+const STATUTS_MODIFIABLES = ["draft", "pending"];
+
+/**
+ * L'aperçu de cette configuration est-il déjà fabriqué ? Ne fabrique rien :
+ * sert aux pages qui préfèrent une autre image à un rendu à la demande.
+ */
+export function apercuDejaPret(orderItemId: number, config: unknown): Promise<boolean> {
+  return existe(fichierApercu(orderItemId, versionApercu(config)));
+}
+
+/**
+ * Les autres versions de la vignette d'une ligne, devenues inutiles une fois
+ * la nouvelle rangée. Au mieux : un fichier qu'on n'arrive pas à effacer ne
+ * gêne personne.
+ */
+async function oublierLesAutresVersions(orderItemId: number, garder: string): Promise<void> {
+  try {
+    const prefixe = `${orderItemId}-`;
+    const ancien = `${orderItemId}.jpg`;
+    const garde = `${orderItemId}-${garder}.jpg`;
+    for (const nom of await readdir(APERCUS_DIR)) {
+      if (nom === garde) continue;
+      if (nom !== ancien && !(nom.startsWith(prefixe) && nom.endsWith(".jpg"))) continue;
+      await unlink(resolve(APERCUS_DIR, nom)).catch(() => {});
+    }
+  } catch {
+    /* dossier illisible : rien à nettoyer */
+  }
 }
 
 /**
  * Les vignettes en cours de calcul : la liste des commandes, la fiche et un
- * courrier qui demandent la même en même temps n'en lancent qu'un.
+ * courrier qui demandent la même en même temps n'en lancent qu'un. Une par
+ * VERSION : une retouche pendant un rendu en lance un autre, pour la
+ * nouvelle affiche.
  */
-const vignettesEnCours = new Map<number, Promise<Buffer | null>>();
+const vignettesEnCours = new Map<string, Promise<Buffer | null>>();
+
+/** Ce qu'il faut savoir d'une ligne pour fabriquer sa vignette. */
+interface LigneAApercevoir {
+  config: unknown;
+  productId: number | null;
+  statut: string | null;
+  /** La dernière retouche du panier (panierModifie la tient à jour). */
+  activite: Date | null;
+}
 
 /**
- * Fabrique (ou relit) la vignette d'une ligne de commande.
+ * Fabrique (ou relit) la vignette d'une ligne de commande, pour sa
+ * configuration du moment.
  *
  * Renvoie null quand la ligne n'a rien à montrer : pas de configuration, ou
  * un rendu qui échoue. L'appelant affiche alors un cadre vide plutôt qu'une
  * image cassée.
  */
-export function apercuDeLaLigne(orderItemId: number): Promise<Buffer | null> {
-  let vignette = vignettesEnCours.get(orderItemId);
-  if (!vignette) {
-    vignette = fabriquerApercu(orderItemId).finally(() =>
-      vignettesEnCours.delete(orderItemId),
-    );
-    vignettesEnCours.set(orderItemId, vignette);
-  }
-  return vignette;
+export async function apercuDeLaLigne(orderItemId: number): Promise<Buffer | null> {
+  return (await apercuVersionne(orderItemId))?.image ?? null;
 }
 
-async function fabriquerApercu(orderItemId: number): Promise<Buffer | null> {
-  await prepararerDossier();
-  const cache = resolve(APERCUS_DIR, `${orderItemId}.jpg`);
-  if (await existe(cache)) return readFile(cache);
-
+/** La vignette d'une ligne, avec la version qu'elle montre. */
+async function apercuVersionne(
+  orderItemId: number,
+): Promise<{ image: Buffer | null; version: string } | null> {
   const [ligne] = await db
     .select({
       config: schema.orderItems.config,
       productId: schema.orderItems.productId,
+      statut: schema.orders.status,
+      activite: schema.orders.lastActivityAt,
     })
     .from(schema.orderItems)
+    .leftJoin(schema.orders, eq(schema.orders.id, schema.orderItems.orderId))
     .where(eq(schema.orderItems.id, orderItemId));
   if (!ligne) return null;
+  const version = versionApercu(ligne.config);
+  const cle = `${orderItemId}-${version}`;
+  let vignette = vignettesEnCours.get(cle);
+  if (!vignette) {
+    vignette = fabriquerApercu(orderItemId, ligne, version).finally(() =>
+      vignettesEnCours.delete(cle),
+    );
+    vignettesEnCours.set(cle, vignette);
+  }
+  return { image: await vignette, version };
+}
+
+async function fabriquerApercu(
+  orderItemId: number,
+  ligne: LigneAApercevoir,
+  version: string,
+): Promise<Buffer | null> {
+  await prepararerDossier();
+  const cache = fichierApercu(orderItemId, version);
+  if (await existe(cache)) return readFile(cache);
+
+  /*
+   * Les vignettes rangées avant les versions (« 1234.jpg ») : une commande
+   * FIGÉE garde la sienne, renommée à sa version — sa configuration ne
+   * bougera plus, et on ne refait pas un rendu complet par commande passée.
+   * Celle d'une ligne encore modifiable a pu être faite avant une retouche :
+   * elle est refaite.
+   */
+  const ancien = resolve(APERCUS_DIR, `${orderItemId}.jpg`);
+  // Et seulement s'il a été fait APRÈS la dernière retouche : fait quand la
+  // commande attendait encore son paiement, puis retouchée, il montrerait
+  // l'affiche d'avant sous l'adresse de la bonne.
+  const fait = await stat(ancien).catch(() => null);
+  if (
+    !STATUTS_MODIFIABLES.includes(ligne.statut ?? "") &&
+    fait?.isFile() &&
+    (!ligne.activite || fait.mtime >= ligne.activite)
+  ) {
+    try {
+      await rename(ancien, cache);
+      return await readFile(cache);
+    } catch {
+      // Renommée entre-temps par une autre demande : on relit, sinon on refait.
+      if (await existe(cache)) return readFile(cache);
+    }
+  }
 
   const config = (ligne.config ?? null) as PosterConfig | null;
 
@@ -304,14 +422,21 @@ export function mountApercus(app: Hono) {
     if (!Number.isInteger(id) || id <= 0) return c.notFound();
     if (!jetonValide(id, c.req.query("j") ?? ""))
       return c.json({ error: "adresse invalide" }, 403);
-    const image = await apercuDeLaLigne(id);
-    if (!image) return c.notFound();
-    return new Response(new Uint8Array(image), {
+    const apercu = await apercuVersionne(id);
+    if (!apercu?.image) return c.notFound();
+    // L'adresse change avec l'affiche (versionApercu) : à adresse égale,
+    // image égale, autant que le navigateur et la messagerie la gardent.
+    // Sauf une adresse d'une version DÉPASSÉE (un vieux courrier, une page
+    // ouverte avant une retouche) : elle reçoit l'image du moment, qui n'est
+    // pas la sienne, et ne doit donc pas la garder — sinon, la retouche
+    // défaite, la même adresse resservirait l'image intermédiaire pendant un
+    // an. Une adresse sans version (d'avant les versions) reste gardée.
+    const demandee = c.req.query("v");
+    const perimee = demandee !== undefined && demandee !== apercu.version;
+    return new Response(new Uint8Array(apercu.image), {
       headers: {
         "content-type": "image/jpeg",
-        // Le visuel d'une commande passée ne change plus : autant que le
-        // navigateur et le client de messagerie le gardent.
-        "cache-control": "public, max-age=31536000, immutable",
+        "cache-control": perimee ? "no-cache" : "public, max-age=31536000, immutable",
       },
     });
   });

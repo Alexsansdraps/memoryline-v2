@@ -46,7 +46,9 @@ import {
   sql,
 } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
+import { apercuDeLaLigne, apercuDejaPret, cheminApercu } from "./apercus.js";
 import {
+  adressePublique,
   courrierPanierAbandonne,
   envoyer,
   estConfigure as courrierConfigure,
@@ -933,8 +935,20 @@ const MOTIFS_FORCABLES: MotifRefus[] = ["deja_relance", "pas_de_consentement"];
  * connaître le code.
  */
 type Verdict =
-  | { envoyer: true; lignes: LigneCourrier[] }
+  | { envoyer: true; lignes: LigneCourrier[]; apercus: ApercuDeLigne[] }
   | { envoyer: false; code: MotifRefus; motif: string };
+
+/**
+ * L'aperçu d'une ligne du courrier : la ligne de commande dont on fabrique
+ * l'image, et le visuel de la fiche à montrer si cette image ne peut pas se
+ * faire. Dans l'ordre des lignes, une par ligne.
+ */
+interface ApercuDeLigne {
+  orderItemId: number;
+  /** La configuration de la ligne : elle fait la version de son aperçu. */
+  config: unknown;
+  repli: string | null;
+}
 
 /**
  * Les vignettes des produits, en adresse absolue et publique.
@@ -988,6 +1002,7 @@ async function composerLignes(
 ): Promise<{
   lignes: LigneCourrier[];
   indisponibles: number;
+  apercus: ApercuDeLigne[];
 }> {
   const articles = await db
     .select()
@@ -1003,6 +1018,9 @@ async function composerLignes(
     : [];
   const vignettes = await vignettesDesProduits(ids);
 
+  // Sans adresse publique du site, pas d'image plutôt qu'une image cassée
+  // (adressePublique, mail.ts) : « localhost » ne s'ouvre chez personne.
+  const origine = adressePublique();
   let indisponibles = 0;
   const lignes: LigneCourrier[] = articles.map((it) => {
     const cfg = (it.config ?? {}) as Record<string, unknown>;
@@ -1033,11 +1051,103 @@ async function composerLignes(
       cadre: cadre ? (nomTraduit(cadre.translations, langue) ?? cadre.name) : null,
       quantite: it.quantity,
       unitPriceCents: it.unitPriceCents,
-      imageUrl: it.productId != null ? (vignettes.get(it.productId) ?? null) : null,
+      // L'aperçu RÉEL de la ligne — l'affiche telle que la cliente l'a
+      // composée, son texte et ses personnages —, et non le visuel de la
+      // fiche, qui montrait la boutique (carte Trello « Panier abandonné »,
+      // retour de Margaux du 22/10). C'est l'image de son compte et du banc
+      // des courriers (courriers.ts), rendue par le moteur des fichiers
+      // d'impression (apercus.ts). Adresse absolue, et signée : la messagerie
+      // la charge sans session.
+      imageUrl: origine ? `${origine}/api${cheminApercu(it.id, it.config)}` : null,
+      // Une affiche en paysage a une vignette deux fois moins haute.
+      paysage: cfg.orientation === "paysage",
       indisponible,
     };
   });
-  return { lignes, indisponibles };
+  const apercus = articles.map((it) => ({
+    orderItemId: it.id,
+    config: it.config,
+    repli: it.productId != null ? (vignettes.get(it.productId) ?? null) : null,
+  }));
+  return { lignes, indisponibles, apercus };
+}
+
+/**
+ * Le temps qu'on laisse aux aperçus d'un panier avant de le relancer. Un
+ * rendu complet prend quelques secondes par affiche ; au-delà, le courrier
+ * part quand même (voir `prechaufferApercus`).
+ */
+const ATTENTE_APERCUS_MS = 30_000;
+
+/** Le motif d'un panier qui a cessé d'être relançable. */
+const PLUS_RELANCABLE = "Ce panier n'est plus relançable (payé, annulé, ou sans adresse e-mail).";
+
+/**
+ * La durée d'un passage automatique, au plus. Chaque relance peut attendre
+ * ses aperçus : passé ce temps, le passage rend la main, et le suivant (cinq
+ * minutes plus tard) reprend les paniers restants.
+ */
+const DUREE_MAX_PASSAGE_MS = 2 * 60_000;
+
+/**
+ * Fabrique l'aperçu de chaque affiche d'un panier, et dit où en est chacun :
+ * `true` prêt, `false` impossible, `null` encore en cours au bout du délai.
+ *
+ * Certaines messageries vont chercher les images dès la réception (Apple
+ * Mail, entre autres) : l'aperçu doit donc être prêt avant que le courrier
+ * parte, et non fabriqué à la première ouverture. Passé le délai, on envoie
+ * quand même : le rendu continue, et l'image sera là quand la cliente ouvrira.
+ *
+ * Chaque ligne a son propre état, noté dès qu'il est connu : un aperçu
+ * impossible reçoit le visuel de la fiche (avecLesReplis) même si une autre
+ * affiche du panier, plus longue à composer, dépasse le délai.
+ *
+ * On le fait AVANT les garde-fous (verifierGardesFous), et non entre eux et
+ * l'envoi : ce qu'ils vérifient — une commande payée entre-temps, un refus,
+ * un achat ailleurs — doit l'être juste avant le courrier, pas trente
+ * secondes plus tôt.
+ */
+async function prechaufferApercus(orderId: number): Promise<Map<number, boolean | null>> {
+  const lignes = await db
+    .select({ id: schema.orderItems.id })
+    .from(schema.orderItems)
+    .where(eq(schema.orderItems.orderId, orderId));
+  const etats = new Map<number, boolean | null>(lignes.map((l) => [l.id, null]));
+  const travaux = lignes.map((l) =>
+    apercuDeLaLigne(l.id).then(
+      (image) => void etats.set(l.id, image !== null),
+      () => void etats.set(l.id, false),
+    ),
+  );
+  let delai: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    Promise.all(travaux),
+    new Promise<void>((fin) => {
+      delai = setTimeout(fin, ATTENTE_APERCUS_MS);
+    }),
+  ]);
+  clearTimeout(delai);
+  return new Map(etats);
+}
+
+/**
+ * Les lignes du courrier, le visuel de la fiche à la place de chaque aperçu
+ * impossible. Un aperçu encore en cours garde son adresse : il sera prêt
+ * avant l'ouverture.
+ */
+function avecLesReplis(
+  lignes: LigneCourrier[],
+  apercus: ApercuDeLigne[],
+  etats: Map<number, boolean | null>,
+): LigneCourrier[] {
+  return lignes.map((l, i) => {
+    const a = apercus[i];
+    // Une ligne sans adresse d'image (pas d'adresse publique du site) n'en
+    // reçoit pas non plus de repli : il pointerait vers « localhost ».
+    return a && l.imageUrl && etats.get(a.orderItemId) === false
+      ? { ...l, imageUrl: a.repli }
+      : l;
+  });
 }
 
 /**
@@ -1159,7 +1269,10 @@ async function verifierGardesFous(
     };
 
   // 4. Disponibilité.
-  const { lignes, indisponibles } = await composerLignes(panier.id, langueDuPanier(panier));
+  const { lignes, indisponibles, apercus } = await composerLignes(
+    panier.id,
+    langueDuPanier(panier),
+  );
   if (!lignes.length)
     return { envoyer: false, code: "vide", motif: "Panier vide." };
   if (indisponibles === lignes.length)
@@ -1172,7 +1285,7 @@ async function verifierGardesFous(
           : "L'article n'est plus disponible.",
     };
 
-  return { envoyer: true, lignes };
+  return { envoyer: true, lignes, apercus };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1268,9 +1381,9 @@ export async function relancerUnPanier(
   } = {},
 ): Promise<ResultatEnvoi> {
   const reglages = await lireReglages();
-  const panier = await panierAbandonne(orderId);
+  let panier = await panierAbandonne(orderId);
   if (!panier)
-    return { parti: false, motif: "Ce panier n'est plus relançable (payé, annulé, ou sans adresse e-mail)." };
+    return { parti: false, motif: PLUS_RELANCABLE };
 
   if (!courrierConfigure())
     return { parti: false, motif: "L'envoi de courriers n'est pas configuré." };
@@ -1295,10 +1408,35 @@ export async function relancerUnPanier(
   // texte de la 3e plutôt que d'en inventer un.
   const etape: EtapeRelance = options.etape ?? (Math.min(dejaParties + 1, 3) as EtapeRelance);
 
+  // Un refus certain se dit tout de suite, sans fabriquer d'aperçus pour un
+  // courrier qui ne partira pas — et sans faire attendre trente secondes la
+  // boutique qui a cliqué « Relancer ». Le bouton saute les motifs qu'il a le
+  // droit de forcer ; ils sont revus, en détail, plus bas.
+  const avantLesApercus = await verifierGardesFous(
+    panier,
+    reglages,
+    options.forcer ? MOTIFS_FORCABLES : [],
+  );
+  if (!avantLesApercus.envoyer) {
+    await noterLeRenoncement(panier.id, avantLesApercus.motif);
+    return { parti: false, motif: avantLesApercus.motif };
+  }
+
+  // Les aperçus, puis les garde-fous À NOUVEAU, sur le panier RELU : pendant
+  // l'attente (trente secondes au plus), la cliente a pu payer, ou la boutique
+  // archiver le panier. Sans adresse publique, le courrier n'a pas d'image :
+  // rien à fabriquer.
+  const etatsApercus = adressePublique()
+    ? await prechaufferApercus(panier.id)
+    : new Map<number, boolean | null>();
+  panier = await panierAbandonne(orderId);
+  if (!panier) return { parti: false, motif: PLUS_RELANCABLE };
   const verdict = await verifierGardesFous(panier, reglages);
   let lignes: LigneCourrier[];
+  let apercus: ApercuDeLigne[];
   if (verdict.envoyer) {
     lignes = verdict.lignes;
+    apercus = verdict.apercus;
   } else if (options.forcer && MOTIFS_FORCABLES.includes(verdict.code)) {
     // On repasse les gardes en sautant les deux forçables. Sans ce second
     // passage, forcer « déjà relancé » sauterait du même coup tout ce qui
@@ -1310,6 +1448,7 @@ export async function relancerUnPanier(
       return { parti: false, motif: second.motif };
     }
     lignes = second.lignes;
+    apercus = second.apercus;
   } else {
     await noterLeRenoncement(panier.id, verdict.motif);
     return { parti: false, motif: verdict.motif };
@@ -1339,7 +1478,7 @@ export async function relancerUnPanier(
     langue,
     prenomClient: (panier.nom ?? "").split(" ")[0] || tc(langue)("commun.prenomParDefaut"),
     lien: lienDeRecuperation(jeton, langue),
-    lignes,
+    lignes: avecLesReplis(lignes, apercus, etatsApercus),
     totalCents: panier.totalCents,
     codePromo: panier.promoCode,
     lienDesinscription: desinscription,
@@ -1512,7 +1651,20 @@ export async function passageDeRelance(): Promise<BilanPassage> {
           c.prochaine !== null && c.prochaine.des.getTime() <= maintenant.getTime(),
       );
 
+    const debutPassage = Date.now();
     for (const { panier, prochaine } of candidats) {
+      // Chaque relance attend ses aperçus : un passage peut durer. La plage
+      // d'envoi se revérifie avant chaque panier, et le passage s'écourte
+      // au-delà de DUREE_MAX_PASSAGE_MS — le suivant reprend les restants.
+      if (reglages.plage && !dansLaPlage(reglages, new Date())) {
+        bilan.motif =
+          "La plage d'envoi s'est refermée pendant le passage : les relances restantes partiront à sa prochaine ouverture.";
+        break;
+      }
+      if (Date.now() - debutPassage > DUREE_MAX_PASSAGE_MS) {
+        bilan.motif = "Passage écourté : les relances restantes partiront au passage suivant.";
+        break;
+      }
       bilan.examines += 1;
       const verdict = await verifierGardesFous(panier, reglages);
       if (!verdict.envoyer) {
@@ -2066,19 +2218,25 @@ export function mountRelancePanier(app: Hono): void {
       return c.json({ error: "trop_ancien" }, 410);
     if (!panier.clientOrderId) return c.json({ error: "jeton_inconnu" }, 404);
 
-    const { lignes } = await composerLignes(panier.id);
+    const { lignes, apercus } = await composerLignes(panier.id);
+    // L'aperçu s'il est déjà fabriqué — la relance l'a fait avant de partir —,
+    // sinon le visuel de la fiche : une visite de cette page publique ne doit
+    // pas lancer un rendu complet par affiche, ni montrer une image cassée.
+    const prets = await Promise.all(
+      apercus.map((a) => apercuDejaPret(a.orderItemId, a.config)),
+    );
     return c.json({
       cartId: panier.clientOrderId,
       promoCode: panier.promoCode,
       nom: panier.nom,
       email: panier.email,
       totalCents: panier.totalCents,
-      articles: lignes.map((l) => ({
+      articles: lignes.map((l, i) => ({
         titre: l.titre,
         format: l.format,
         quantite: l.quantite,
         unitPriceCents: l.unitPriceCents,
-        imageUrl: l.imageUrl ?? null,
+        imageUrl: (prets[i] && l.imageUrl) || apercus[i]?.repli || null,
         indisponible: Boolean(l.indisponible),
       })),
     });

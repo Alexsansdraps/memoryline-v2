@@ -599,7 +599,7 @@ html {
 }
 
 /* --------------------------------------------------------------------------
- * La vidéo explicative : une bulle « Vidéo tuto », et la couche qui la lit.
+ * La vidéo explicative : un rond « TUTO ▶ », et la couche qui la lit.
  *
  * Il y avait en tête de l'étape 1 un encart avec une façade 16/9, un titre et
  * un texte : « ça prend trop de place » (retour de la cliente). Il reste une
@@ -613,25 +613,33 @@ html {
  * - `.ml-video-overlay` vit AU-DESSUS de tout (z-index 110 > 100 de
  *   `.ml-modal-overlay`). C'est la seule surface qui porte un lecteur.
  * ------------------------------------------------------------------------ */
+/* Un rond, comme sur le dessin de la boutique (22/10) : « TUTO » dessus, le
+   triangle dessous. 52 px de diamètre, dont 38 seulement comptés dans
+   l'en-tête (marges de -7 px) : l'en-tête garde la hauteur de la croix. */
 .ml-modal-video {
   appearance: none;
   border: none;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: 7px;
-  height: 38px;
-  padding: 0 15px 0 12px;
+  justify-content: center;
+  gap: 3px;
+  width: 52px;
+  height: 52px;
+  margin: -7px 0 -7px auto;
+  padding: 0;
   border-radius: 9999px;
   background: var(--color-terracotta);
   color: var(--color-paper);
   font: inherit;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
   flex: 0 0 auto;
-  margin-left: auto;
   box-shadow: 0 1px 4px rgba(17, 24, 39, 0.18);
 }
 .ml-modal-video:hover {
@@ -641,18 +649,11 @@ html {
   outline: 2px solid var(--color-ink);
   outline-offset: 3px;
 }
-/* Le triangle dans un rond clair : il se lit « lecture » d'un coup d'œil. */
+/* Le triangle de lecture, sous le mot, un peu décalé à droite : un
+   triangle centré sur sa boîte paraît pencher à gauche. */
 .ml-modal-video-icone {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 9999px;
-  background: var(--color-paper);
-  color: var(--color-terracotta);
-  font-size: 9px;
-  padding-left: 1px;
+  display: block;
+  margin-left: 2px;
 }
 
 .ml-video-overlay {
@@ -735,14 +736,9 @@ html {
   }
 }
 
-/* Écrans étroits : la bulle se fait plus fine, le lecteur prend toute la
-   largeur. */
+/* Écrans étroits : le lecteur prend toute la largeur. Le rond « TUTO » garde
+   ses 52 px : une hauteur ou une marge ici en ferait un ovale. */
 @media (max-width: 480px) {
-  .ml-modal-video {
-    height: 34px;
-    padding: 0 12px 0 9px;
-    font-size: 13px;
-  }
   .ml-video-overlay {
     padding: 12px;
   }
@@ -811,8 +807,11 @@ html {
  *
  * Un bouton désactivé ne réagit pas : il ne ferait rien.
  * ------------------------------------------------------------------------ */
-:is(button, a, input[type="submit"]).bg-ink,
-:is(button, a)[class~="hover:bg-ink"],
+/* `label` en plus : « Choisir une photo », sur la page d'envoi depuis le
+   téléphone, est un label qui cache son champ fichier. Sans lui, l'appui n'y
+   montrait rien, sur la seule page qu'on utilise forcément au doigt. */
+:is(button, a, input[type="submit"], label).bg-ink,
+:is(button, a, label)[class~="hover:bg-ink"],
 .ml-cfg-btn {
   -webkit-tap-highlight-color: transparent;
   /* Cette règle remplace les `transition-colors` des boutons : la liste
@@ -822,8 +821,8 @@ html {
   transition-duration: 0.4s;
   transition-timing-function: ease-out;
 }
-:is(button, a, input[type="submit"]).bg-ink:active:not(:disabled),
-:is(button, a)[class~="hover:bg-ink"]:active:not(:disabled) {
+:is(button, a, input[type="submit"], label).bg-ink:active:not(:disabled),
+:is(button, a, label)[class~="hover:bg-ink"]:active:not(:disabled) {
   background-color: var(--color-terracotta);
   border-color: var(--color-terracotta);
   color: var(--color-paper);
@@ -838,8 +837,8 @@ html {
   transition-duration: 0.04s;
 }
 @media (prefers-reduced-motion: no-preference) {
-  :is(button, a, input[type="submit"]).bg-ink:active:not(:disabled),
-  :is(button, a)[class~="hover:bg-ink"]:active:not(:disabled),
+  :is(button, a, input[type="submit"], label).bg-ink:active:not(:disabled),
+  :is(button, a, label)[class~="hover:bg-ink"]:active:not(:disabled),
   .ml-cfg-btn:active:not(:disabled),
   .ml-choix:active:not(:disabled) {
     transform: scale(0.96);
@@ -857,6 +856,14 @@ html {
 :is(button, a)[class~="hover:bg-ink"]:focus-visible,
 .ml-cfg-btn:focus-visible,
 .ml-choix:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 3px;
+}
+/* Le label « Choisir une photo » : le focus clavier tombe sur son champ
+   caché, on reporte donc le contour sur lui. Règle À PART : un navigateur
+   qui ne connaît pas :has() écarte la règle entière, et n'écarte ainsi
+   qu'elle, pas le contour de tous les boutons. */
+label:is(.bg-ink, [class~="hover:bg-ink"]):has(input:focus-visible) {
   outline: 2px solid var(--color-ink);
   outline-offset: 3px;
 }

@@ -318,6 +318,10 @@ export const ui = {
     "panier.sous_total": "Sous-total",
 
     "commande.titre": "Votre commande",
+    "commande.stand.titre": "Ce navigateur est en mode stand",
+    "commande.stand.texte": "Au stand, on ne commande pas en ligne : le client règle sur place, et son panier se valide depuis la page Panier. Pour passer une commande sur le site depuis ce navigateur, quittez le mode stand.",
+    "commande.stand.quitter": "Quitter le mode stand et commander",
+    "commande.stand.panier": "Revenir au panier du stand",
     "commande.nom": "Nom",
     "commande.email": "E-mail",
     "commande.payer": "Payer",
@@ -430,12 +434,12 @@ export const ui = {
     "cfg.erreur":
       "Le configurateur n'a pas pu se charger. Rechargez la page, ou réessayez dans quelques instants.",
 
-    /* La bulle « Vidéo tuto » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
+    /* Le rond « TUTO ▶ » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
        back-office, ils passent devant. */
     "cfg.video.titre": "Comment ça marche ?",
     "cfg.video.lancer": "Lancer la vidéo",
-    "cfg.video.bulle": "Vidéo tuto",
+    "cfg.video.bulle": "Tuto",
 
     "nav.compte": "Compte",
 
@@ -1009,6 +1013,10 @@ export const ui = {
     "panier.sous_total": "Subtotal",
 
     "commande.titre": "Your order",
+    "commande.stand.titre": "This browser is in stand mode",
+    "commande.stand.texte": "At the stand, orders are not placed online: the customer pays on the spot, and the basket is confirmed from the Basket page. To order on the website from this browser, leave stand mode.",
+    "commande.stand.quitter": "Leave stand mode and order",
+    "commande.stand.panier": "Back to the stand basket",
     "commande.nom": "Name",
     "commande.email": "Email",
     "commande.payer": "Pay",
@@ -1102,12 +1110,12 @@ export const ui = {
     "cfg.erreur":
       "The designer couldn't load. Please reload the page, or try again in a moment.",
 
-    /* La bulle « Vidéo tuto » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
+    /* Le rond « TUTO ▶ » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
        back-office, ils passent devant. */
     "cfg.video.titre": "How does it work?",
     "cfg.video.lancer": "Play the video",
-    "cfg.video.bulle": "Video guide",
+    "cfg.video.bulle": "Guide",
 
     "nav.compte": "Account",
 
@@ -1669,6 +1677,10 @@ export const ui = {
     "panier.sous_total": "Zwischensumme",
 
     "commande.titre": "Ihre Bestellung",
+    "commande.stand.titre": "Dieser Browser ist im Standmodus",
+    "commande.stand.texte": "Am Stand wird nicht online bestellt: Der Kunde bezahlt vor Ort, und der Warenkorb wird auf der Warenkorbseite bestätigt. Um in diesem Browser auf der Website zu bestellen, verlassen Sie den Standmodus.",
+    "commande.stand.quitter": "Standmodus verlassen und bestellen",
+    "commande.stand.panier": "Zurück zum Warenkorb des Stands",
     "commande.nom": "Name",
     "commande.email": "E-Mail",
     "commande.payer": "Bezahlen",
@@ -1763,12 +1775,12 @@ export const ui = {
     "cfg.erreur":
       "Der Konfigurator konnte nicht geladen werden. Bitte laden Sie die Seite neu oder versuchen Sie es gleich noch einmal.",
 
-    /* La bulle « Vidéo tuto » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
+    /* Le rond « TUTO ▶ » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
        back-office, ils passent devant. */
     "cfg.video.titre": "Wie funktioniert das?",
     "cfg.video.lancer": "Video abspielen",
-    "cfg.video.bulle": "Video-Anleitung",
+    "cfg.video.bulle": "Hilfe",
 
     "nav.compte": "Konto",
 
@@ -2333,6 +2345,10 @@ export const ui = {
     "panier.sous_total": "Subtotale",
 
     "commande.titre": "Il tuo ordine",
+    "commande.stand.titre": "Questo browser è in modalità stand",
+    "commande.stand.texte": "Allo stand non si ordina online: il cliente paga sul posto e il carrello si conferma dalla pagina Carrello. Per ordinare sul sito da questo browser, esci dalla modalità stand.",
+    "commande.stand.quitter": "Esci dalla modalità stand e ordina",
+    "commande.stand.panier": "Torna al carrello dello stand",
     "commande.nom": "Nome",
     "commande.email": "E-mail",
     "commande.payer": "Paga",
@@ -2426,12 +2442,12 @@ export const ui = {
     "cfg.erreur":
       "Il configuratore non si è caricato. Ricarica la pagina, oppure riprova tra qualche istante.",
 
-    /* La bulle « Vidéo tuto » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
+    /* Le rond « TUTO ▶ » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
        back-office, ils passent devant. */
     "cfg.video.titre": "Come funziona?",
     "cfg.video.lancer": "Guarda il video",
-    "cfg.video.bulle": "Video tutorial",
+    "cfg.video.bulle": "Guida",
 
     "nav.compte": "Account",
 
@@ -2991,6 +3007,10 @@ export const ui = {
     "panier.sous_total": "Subtotal",
 
     "commande.titre": "Tu pedido",
+    "commande.stand.titre": "Este navegador está en modo stand",
+    "commande.stand.texte": "En el stand no se pide en línea: el cliente paga en el momento y su cesta se confirma desde la página Cesta. Para hacer un pedido en la web desde este navegador, sal del modo stand.",
+    "commande.stand.quitter": "Salir del modo stand y pedir",
+    "commande.stand.panier": "Volver a la cesta del stand",
     "commande.nom": "Nombre",
     "commande.email": "Correo electrónico",
     "commande.payer": "Pagar",
@@ -3084,12 +3104,12 @@ export const ui = {
     "cfg.erreur":
       "El configurador no se ha podido cargar. Recarga la página o vuelve a intentarlo en unos instantes.",
 
-    /* La bulle « Vidéo tuto » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
+    /* Le rond « TUTO ▶ » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
        back-office, ils passent devant. */
     "cfg.video.titre": "¿Cómo funciona?",
     "cfg.video.lancer": "Ver el vídeo",
-    "cfg.video.bulle": "Vídeo tutorial",
+    "cfg.video.bulle": "Guía",
 
     "nav.compte": "Cuenta",
 

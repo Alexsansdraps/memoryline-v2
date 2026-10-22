@@ -3241,7 +3241,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         // L'aperçu de la ligne, rendu par le même moteur que le fichier
         // d'impression : ce qu'on regarde ici est ce qui part à l'atelier.
         // Adresse relative, signée ; le back-office la préfixe.
-        apercu: cheminApercu(it.id),
+        apercu: cheminApercu(it.id, it.config),
       };
     });
 

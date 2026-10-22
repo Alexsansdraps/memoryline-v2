@@ -267,11 +267,13 @@ export default function ProductConfigurator(
               <h2 class="text-xl sm:text-2xl">
                 {tr("cfg.titre")}
               </h2>
-              {/* La bulle « Vidéo tuto », aux TROIS étapes.
+              {/* Le rond « TUTO ▶ », aux TROIS étapes.
 
-                  Elle remplace l'encart qui ouvrait l'étape 1 : « ça prend
+                  Il remplace l'encart qui ouvrait l'étape 1 : « ça prend
                   trop de place », a dit la boutique, qui voulait une petite
-                  bulle dans un coin et la vidéo en pop-up.
+                  bulle dans un coin et la vidéo en pop-up. Sa forme est celle
+                  de son dessin du 22/10 : un rond, « TUTO » dessus, le
+                  triangle de lecture dessous.
 
                   Ici et pas dans le fil d'étapes : cette rangée-là est pleine
                   (neuf pixels libres mesurés à 375 px, sans `flex-wrap`), et
@@ -290,10 +292,18 @@ export default function ProductConfigurator(
                   title={tr("cfg.video.lancer")}
                   onClick={() => ouvrirVideo(boutonRouvrir)}
                 >
-                  <span class="ml-modal-video-icone" aria-hidden="true">
-                    ▶
-                  </span>
-                  {tr("cfg.video.bulle")}
+                  <span>{tr("cfg.video.bulle")}</span>
+                  {/* Dessiné, et non le caractère ▶ : iOS l'affiche en émoji
+                      bleu, et la boutique regarde sur tablette. */}
+                  <svg
+                    class="ml-modal-video-icone"
+                    viewBox="0 0 10 12"
+                    width="10"
+                    height="12"
+                    aria-hidden="true"
+                  >
+                    <path d="M0 0 10 6 0 12z" fill="currentColor" />
+                  </svg>
                 </button>
               </Show>
               <button

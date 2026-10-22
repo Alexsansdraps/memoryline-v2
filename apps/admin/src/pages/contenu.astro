@@ -186,12 +186,12 @@ function verdictVideo(cle: string): { texte: string; alerte: boolean } {
     return brut
       ? {
           texte:
-            "Adresse non reconnue : la bulle « Vidéo tuto » ne s'affichera pas. " +
+            "Adresse non reconnue : le rond « TUTO » ne s'affichera pas. " +
             "Attendu : un lien YouTube, un lien Vimeo, ou un fichier .mp4 / .webm.",
           alerte: true,
         }
       : {
-          texte: "Aucune vidéo : la bulle « Vidéo tuto » ne s'affiche pas.",
+          texte: "Aucune vidéo : le rond « TUTO » ne s'affiche pas.",
           alerte: false,
         };
   if (s.genre === "youtube")
@@ -244,16 +244,16 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
   {
     titre: "Personnalisation — vidéo explicative",
     aide:
-      "Une petite bulle « Vidéo tuto » en haut de la fenêtre de " +
-      "personnalisation, aux trois étapes : un clic, et la vidéo s'ouvre en " +
-      "pop-up. Tant qu'aucune vidéo n'est donnée, la bulle ne s'affiche pas. " +
-      "Rien de YouTube ni de Vimeo n'est chargé tant que la cliente n'a pas " +
-      "cliqué — c'est ce qui permet de ne pas toucher au bandeau cookies. " +
-      "Au stand, la bulle ne s'affiche pas.",
+      "Un petit rond « TUTO ▶ » en haut à droite de la fenêtre de " +
+      "personnalisation, à côté de la croix, aux trois étapes : un clic, et " +
+      "la vidéo s'ouvre en pop-up. Tant qu'aucune vidéo n'est donnée, le " +
+      "rond ne s'affiche pas. Rien de YouTube ni de Vimeo n'est chargé tant " +
+      "que la cliente n'a pas cliqué — c'est ce qui permet de ne pas toucher " +
+      "au bandeau cookies. Au stand, le rond ne s'affiche pas.",
     champs: [
       {
         key: "configurateur.video.visible",
-        label: "Afficher la bulle « Vidéo tuto »",
+        label: "Afficher le rond « TUTO »",
         type: "switch",
       },
       {
@@ -263,7 +263,7 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
         aide:
           "Collez un lien YouTube ou Vimeo, ou envoyez un fichier .mp4 / " +
           ".webm (120 Mo maximum, une à deux minutes). Pour retirer la " +
-          "vidéo, videz cette case et enregistrez : la bulle disparaît du " +
+          "vidéo, videz cette case et enregistrez : le rond disparaît du " +
           "site. Le fichier déjà envoyé, lui, reste rangé sur le " +
           "serveur — rien ne se supprime.",
       },
@@ -380,8 +380,8 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
         type: "nombre",
         min: 4,
         max: 25,
-        defaut: 12,
-        aide: "12 si vide.",
+        defaut: 7,
+        aide: "7 si vide. À 7, la signature fait environ 5 % de la largeur d'une affiche en portrait.",
       },
       {
         key: "signature.marge",

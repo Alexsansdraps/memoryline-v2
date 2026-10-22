@@ -773,8 +773,8 @@ function enumeration(mots: string[], locale: string): string {
 /**
  * Éditeur d'un personnage (maquette client §18.2 F) : deux colonnes.
  * Gauche ~35% = prévisualisation isolée du perso composé. Droite = sections :
- * choix du personnage (galerie de bases) + nuancier peau, puis vêtements /
- * pantalon / cheveux / accessoires (galeries zoomées + nuanciers). En bas, une
+ * choix du personnage (galerie de bases) + nuancier peau, puis cheveux /
+ * accessoires / vêtements / pantalon (galeries zoomées + nuanciers). En bas, une
  * barre collée : Retour à gauche, Valider à droite. Plus aucun placement libre.
  */
 export function CharacterEditor(props: {
@@ -1038,7 +1038,7 @@ export function CharacterEditor(props: {
       accessoires: m().partieAccessoires,
     })[partie];
 
-  /** « Plus bas : couleurs, vêtements, cheveux et accessoires », ou rien. */
+  /** « Plus bas : couleurs, cheveux, accessoires et vêtements », ou rien. */
   const libelleInvite = (): string => {
     const mots = dessous()
       .map(motDeLaPartie)
@@ -1086,7 +1086,7 @@ export function CharacterEditor(props: {
     defilerJusqua(cible, masqueHaut(cible));
   };
 
-  /** Section galerie pour un slot (vêtements/pantalon/cheveux/accessoire). */
+  /** Section galerie pour un slot (cheveux/accessoire/vêtements/pantalon). */
   function SlotSection(opts: { slot: Slot; allowNone: boolean }) {
     const list = (): VariantDTO[] => props.slots[opts.slot];
     const selectedId = () => props.character.assets[opts.slot];
@@ -1407,10 +1407,15 @@ export function CharacterEditor(props: {
             </Show>
           </div>
 
-          <SlotSection slot="clothes" allowNone={false} />
-          <SlotSection slot="pants" allowNone={false} />
+          {/* L'ordre dans lequel la boutique fait composer un personnage :
+              peau, cheveux, accessoires, haut, pantalon (carte Trello du
+              22/10). Il ne décide que de l'ordre des réglages à l'écran ; ce
+              qui passe devant quoi sur l'affiche suit SLOT_ZORDER, que ce
+              changement ne touche pas. */}
           <SlotSection slot="hair" allowNone={true} />
           <SlotSection slot="accessory" allowNone={true} />
+          <SlotSection slot="clothes" allowNone={false} />
+          <SlotSection slot="pants" allowNone={false} />
         </div>
       </div>
 

@@ -26,10 +26,26 @@ Migrations **0067 à 0070** passées (0067-0069 à 13 h 40, 0070 vers 16 h 50 ; 
 ## 2. En cours
 
 - **Audit SEO du 22/10** : bilan dans `AUDIT-SEO.md`, aucun bloquant. Le 22 au soir (PC de la maison), les points de code sont corrigés, mais **pas encore en ligne** : vitesse des rayons, ordre du jour J dans `MISE-EN-PROD.md`, script de relevé des anciennes adresses, titres de plus de 60 caractères, robots.txt, image de partage, formats des prix, données structurées de l'accueil. Le détail et ce qui reste à décider sont dans la section « Suivi » en haut de `AUDIT-SEO.md`. Avant d'importer `memoryline-seo-shopify.csv`, corriger ses doublons (MISE-EN-PROD § 6).
+- **Relance de panier abandonné** (carte Trello, commentaire de Margaux du 22/10 : « il faut aussi la simulation des affiches dans le mail »). Le courriel partait avec le visuel de la fiche ; il montre maintenant l'aperçu réel de chaque affiche (son texte, ses personnages), fabriqué avant l'envoi par le moteur des fichiers d'impression, en 110 px au lieu de 64. Si l'aperçu ne peut pas se faire, c'est le visuel de la fiche qui s'affiche. Vérifié de bout en bout sur la boîte d'essai locale. **Pas encore en ligne.**
+- **Cartes Trello du 22/10 (site)**, faites en local, **pas encore en ligne** :
+  - Boutons noirs : l'effet au clic manquait sur le bouton photo de l'écran IA (un `label`) ; le reste était déjà en ligne.
+  - Rond « TUTO ▶ » (dessin de Margaux) à la place de la bulle « Vidéo tuto », en 5 langues. Sur la pré-prod, rien ne s'affiche parce qu'**aucune vidéo n'est réglée** (§ 3).
+  - Signature : 7 % par défaut au lieu de 12 % (fichiers d'impression + aide du BO). La pré-prod a **12 enregistré en base** : le remettre à 7 au BO (§ 3).
+  - Étape 2 : sections dans l'ordre peau › cheveux › accessoires › t-shirt › pantalon (l'ordre de superposition à l'image ne change pas).
+  - Fiche produit : l'image ne prend plus toute la hauteur sur grand écran (largeur bornée par la hauteur de l'écran ; vérifié en 1440, 1024, 768 et mobile).
+  - « Je ne peux pas passer de commande test sur le site » : un navigateur ouvert une fois comme tablette de stand restait 24 h en mode stand, et la page Commande renvoyait au panier sans rien dire. Elle explique maintenant et propose « Quitter le mode stand et commander » (`?stand=0`) ; aide du BO complétée.
+  - « On ne peut pas télécharger le PDF » : corrigé depuis `840e2c0` (5/10), jamais revérifié sur la pré-prod. Les 15 affiches « prêtes à imprimer » n'ont qu'une image de 1 020 × 1 400 px : leur PDF est **toujours refusé** tant que Margaux n'a pas déposé un visuel HD (≥ 1 240 × 1 754 en A4, 1 754 × 2 480 en A3).
+  - Personnage déshabillé après défilement : ce sont des données, trois « Femme test » (ids 71, 72, 73, corps nu) en tête des Femmes de dos (§ 3).
+  - **« BUG ? » POST /orders → 500** (mobile, point Mondial Relay « LOCKER ECO LAVERIE », Lyon 3e, 66 €) : **cause pas trouvée**. Exception non rattrapée côté API (réponse sans détail) ; le contrôle du point SendCloud n'y est pour rien (il ne lève jamais). Pas reproductible en local (pas de Mondial Relay dans la base de dev). Il faut le journal de l'API du VPS :
+    `ssh debian@51.255.34.187 "cd ~/memoryline && docker compose -f docker-compose.prod.yml logs --no-color --since 2026-10-22T13:00:00 api 2>&1 | grep -n -B2 -A20 -E 'Error|error|500' | tail -150"`
+  - Noté sans corriger : la caisse Stripe (`automatic_payment_methods`) ne traite pas le retour des moyens de paiement à redirection ; à voir si un tel moyen est activé chez Stripe.
 - Base de dev (locale) : migrations 0067 à 0070 passées le 22/10 au soir. Sans elles, l'API locale répondait 500 (colonne `ordre_catalogue` absente).
 - La branche `wip-bureau-19oct` (instantanés) et `lot-bo-trello-en-cours` ne servent plus : tout est dans `main`.
 
 ## 3. À faire par Alexandra (données, sur le BO du serveur)
+
+- **Après la mise en ligne des cartes du 22/10** : archiver les trois « Femme test » (Atelier › Personnages, ids 71, 72, 73 › Archiver) ; mettre la largeur de la signature à **7** (Contenu du site › Signature des créations) ; régler la vidéo (Contenu du site › Personnalisation — vidéo explicative), sans quoi le rond « TUTO » ne s'affiche pas ; retester le téléchargement d'un PDF de commande ; commandes test dans une **fenêtre privée** (ou `?stand=0`).
+- Demander à Margaux les visuels HD des 15 affiches « prêtes à imprimer », et lui reposer la question des fonds WebP des commandes.
 
 - Confier son stand au compte vendeur (BO › Comptes) ; créer les lieux de retrait (BO › Livraison › Lieux de retrait) ; saisir l'adresse et le SIRET des factures (BO › Réglages › Factures ; SIRET donné par Margaux : 877 919 852 00047) ; relire la promotion 3+1 (BO › Promotions) et les messages du bandeau.
 - Importer `Documents\perso\memoryline-seo-shopify.csv` et `memoryline-seo-shopify-collections.csv` dans BO › Produits › Importer ; coller `memoryline-page-affiches-personnalisables.html` dans une page `affiches-personnalisables` (ces fichiers sont sur le PC du bureau).

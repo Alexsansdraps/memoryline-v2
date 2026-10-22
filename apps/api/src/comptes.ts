@@ -1323,7 +1323,7 @@ export function mountCompteRoutes(app: Hono): void {
      * des SVG pour une image de 80 pixels. Et c'est la même adresse qui part
      * dans les courriers, qui eux ne savent pas exécuter de code.
      */
-    const items = lignes.map((l) => ({ ...l, apercu: cheminApercu(l.id) }));
+    const items = lignes.map((l) => ({ ...l, apercu: cheminApercu(l.id, l.config) }));
 
     /*
      * Les cadres de CETTE commande, nommés — archivés compris.
