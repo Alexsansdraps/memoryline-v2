@@ -70,6 +70,7 @@ import {
   transporteursEnService,
 } from "./livraison-regles.js";
 
+import { repondreErreurInterne } from "./erreur-interne.js";
 import { mountConfiguratorRoutes } from "./configurator-routes.js";
 import { mountOrderRoutes } from "./commandes.js";
 import { mountCatalogueRoutes } from "./catalogue.js";
@@ -129,6 +130,13 @@ import {
 
 const app = new Hono();
 const isProd = process.env.NODE_ENV === "production";
+
+// Une exception qu'aucune route n'a rattrapée : la route et la pile au
+// journal, un JSON neutre au visiteur (« erreur_interne »), au lieu du
+// « Internal Server Error » en texte que la caisse affichait tel quel. Une
+// seule déclaration couvre tout : les mount…(app) posent leurs routes sur
+// cette application-ci (voir erreur-interne.ts).
+app.onError(repondreErreurInterne);
 
 /**
  * CORS — le web (4324) et l'admin (4323) appellent l'API (3100) depuis le

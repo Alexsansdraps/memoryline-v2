@@ -76,6 +76,10 @@ export async function createStripeIntent(
  * Le MONTANT ENCAISSÉ remonte avec le statut : « succeeded » dit que de
  * l'argent est arrivé, pas combien. C'est ce montant-là que la commande doit
  * valoir pour être marquée payée (markOrderPaid).
+ *
+ * Le client_secret remonte aussi : c'est lui qui prouve, au retour d'un moyen
+ * de paiement à redirection, que le navigateur qui revient est bien celui qui
+ * a payé (secretClientConcorde). Il ne repart jamais tel quel vers personne.
  */
 export async function getStripeIntent(
   cles: ClesStripe,
@@ -84,8 +88,9 @@ export async function getStripeIntent(
   status: string;
   montantCents: number;
   devise: string;
+  clientSecret: string;
 }> {
-  const res = await fetch(`https://api.stripe.com/v1/payment_intents/${id}`, {
+  const res = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(id)}`, {
     headers: { Authorization: `Bearer ${cles.cleSecrete.devoiler()}` },
   });
   if (!res.ok)
@@ -94,12 +99,59 @@ export async function getStripeIntent(
     status: string;
     amount_received?: number;
     currency?: string;
+    client_secret?: string;
   };
   return {
     status: j.status,
     montantCents: Number(j.amount_received ?? 0),
     devise: String(j.currency ?? ""),
+    clientSecret: String(j.client_secret ?? ""),
   };
+}
+
+/**
+ * Le retour d'un moyen de paiement À REDIRECTION (Bancontact, iDEAL, Klarna…,
+ * selon ce que la boutique active chez Stripe) : Stripe renvoie la cliente
+ * sur la caisse avec ?payment_intent=…&payment_intent_client_secret=…
+ * &redirect_status=…
+ *
+ * L'identifiant seul ne suffit pas à dire « c'est moi qui ai payé » : il
+ * passe dans les journaux, les tableaux de bord, les avis. Le client_secret,
+ * lui, n'a été remis qu'au navigateur de la caisse ; on le compare à celui
+ * que Stripe garde, en temps constant. Vide d'un côté ou de l'autre : refusé.
+ */
+export function secretClientConcorde(attendu: string, recu: string): boolean {
+  if (!attendu || !recu) return false;
+  const a = Buffer.from(attendu);
+  const b = Buffer.from(recu);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** Ce que la caisse affiche au retour d'une redirection. */
+export type IssueRetourStripe = "payee" | "en_cours" | "refuse";
+
+/**
+ * L'écran du retour, d'après ce que le SERVEUR sait — jamais d'après le
+ * redirect_status de l'adresse, que n'importe qui peut écrire.
+ *
+ *  - commande payée (à l'instant, ou déjà par le webhook) : « confirmée » ;
+ *  - intention « processing » (la banque n'a pas encore répondu : SEPA,
+ *    certains virements), ou « succeeded » sans que la commande ait pu
+ *    passer payée (un écart de montant, que le journal de la commande
+ *    signale à la boutique) : « en cours de validation ». L'argent est pris
+ *    ou en passe de l'être : surtout ne pas inviter à payer une seconde fois ;
+ *  - tout le reste (requires_payment_method après un refus, canceled, une
+ *    authentification abandonnée) : « refusé », le panier est gardé et la
+ *    commande, toujours en attente, se repaie depuis la caisse.
+ */
+export function issueDuRetour(
+  statutIntention: string,
+  statutCommande: string,
+): IssueRetourStripe {
+  if (statutCommande === "paid") return "payee";
+  if (statutIntention === "succeeded" || statutIntention === "processing")
+    return "en_cours";
+  return "refuse";
 }
 
 /**

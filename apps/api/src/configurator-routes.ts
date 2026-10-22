@@ -118,8 +118,11 @@ import {
   verifyStripeEvent,
   avisIncoherent,
   avisAutreModeRecevable,
+  issueDuRetour,
+  secretClientConcorde,
 } from "./payments.js";
 import { etatEssai } from "./mode-essai.js";
+import { prochainNumeroDeCommande } from "./numeros-commande.js";
 // Les clés qui servent : celles du back-office (BO › Réglages › Paiements),
 // sinon celles du .env. Relues à chaque requête, avec un petit cache que
 // chaque modification vide : changer de clé ne demande plus de redémarrer.
@@ -152,26 +155,6 @@ function slugifyName(name: string): string {
       .replace(/^-+|-+$/g, "")
       .slice(0, 60) || "client"
   );
-}
-
-/**
- * Prochaine numérotation de commande par canal (WEB-xxxx / SAL-xxxx).
- * On prend le MAX du suffixe numérique parmi les numéros bien formés du canal
- * (ignore les DRAFT- et numéros legacy non conformes) — robuste aux historiques.
- * Retry intégré côté appelant non nécessaire : un index unique protège déjà.
- */
-async function nextOrderNumber(channel: "web" | "salon"): Promise<string> {
-  const prefix = channel === "web" ? "WEB-" : "SAL-";
-  const rows = await db
-    .select({ n: schema.orders.number })
-    .from(schema.orders)
-    .where(eq(schema.orders.channel, channel));
-  let max = 0;
-  for (const r of rows) {
-    const m = new RegExp(`^${prefix}(\\d+)$`).exec(r.n);
-    if (m) max = Math.max(max, Number(m[1]));
-  }
-  return prefix + String(max + 1).padStart(4, "0");
 }
 
 /**
@@ -1545,6 +1528,16 @@ export async function markOrderPaid(
     async (tx): Promise<ConclusionEncaissement> => {
       const order = await commandeVerrouillee(tx, eq(schema.orders.id, orderId));
       if (!order) return { issue: "sans_suite" };
+      // Une commande annulée ne repasse jamais « payée » : son intention Stripe
+      // reste « succeeded » après le remboursement, et rejouer le retour de la
+      // banque, /payments/stripe/confirm ou un avis du prestataire la
+      // remettait en commande à expédier.
+      if (order.status === "cancelled" || order.cancelledAt) {
+        console.warn(
+          `[paiement] ${provider} ${externalRef} reçu sur la commande annulée ${order.number} : ignoré`,
+        );
+        return { issue: "sans_suite" };
+      }
       const cePaiement = and(
         eq(schema.payments.orderId, orderId),
         eq(schema.payments.externalRef, externalRef),
@@ -2515,10 +2508,9 @@ export function mountConfiguratorRoutes(app: Hono) {
         .where(eq(schema.customers.id, customer.id))
         .returning();
     }
-    // Garde le numéro s'il en a déjà un (retry) ; sinon en attribue un.
-    const number = /^WEB-\d+$/.test(draft.number)
-      ? draft.number
-      : await nextOrderNumber("web");
+    // Le numéro, lui, ne se prend que dans la transaction, juste avant
+    // l'UPDATE qui l'écrit (prochainNumeroDeCommande) : lu ici, deux paniers
+    // validés au même moment tiraient le même WEB-.
     const code = normaliserCode(body.promoCode);
     // Pas `langueDeLaPage` : c'est la caisse du SITE, quoi que dise le cookie
     // du stand (voir plus bas), et sa page parle la langue qu'elle annonce.
@@ -2666,12 +2658,36 @@ export function mountConfiguratorRoutes(app: Hono) {
         };
 
       const total = articles + port.cents;
+      // Garde le numéro s'il en a déjà un (retry) — relu sous le verrou : un
+      // autre passage en caisse du même panier a pu l'attribuer entre-temps.
+      // Sinon en prend un, en dernier : le verrou du compteur ne dure que
+      // l'UPDATE.
+      const number = /^WEB-\d+$/.test(panier.number)
+        ? panier.number
+        : await prochainNumeroDeCommande(tx, "WEB-");
+      // Une vente du stand rouverte (« Revenir à ma commande ») revient au
+      // navigateur de la tablette ; sortie du mode stand, elle peut passer
+      // par cette caisse. Elle devient alors une commande du SITE, comme le
+      // stand fait d'un panier du site une vente à lui en la validant : elle
+      // sera payée en ligne, livrée, et ne compte plus dans les chiffres ni
+      // chez les vendeurs du stand. Restée « salon » avec son WEB-, elle
+      // était invisible du compteur du site, qui redonnait ce numéro-là à
+      // chaque commande suivante : 500 à la caisse, pour tout le monde.
+      if (panier.channel !== "web")
+        await tx.insert(schema.orderEvents).values({
+          orderId: panier.id,
+          kind: "event",
+          message:
+            number === panier.number
+              ? `Vente du stand passée par la caisse du site : elle devient une commande du site (${number}).`
+              : `Vente du stand (${panier.number}) passée par la caisse du site : elle devient la commande ${number}.`,
+        });
       const [order] = await tx
         .update(schema.orders)
         .set({
-          // Relu sous le verrou : un autre passage en caisse du même panier a
-          // pu attribuer le numéro entre-temps.
-          number: /^WEB-\d+$/.test(panier.number) ? panier.number : number,
+          number,
+          channel: "web",
+          standId: null,
           status: "pending",
           customerId: customer!.id,
           totalCents: total,
@@ -2998,11 +3014,7 @@ export function mountConfiguratorRoutes(app: Hono) {
     try {
       const intent = await getStripeIntent(jeu, payment.externalRef);
       if (intent.status === "succeeded") {
-        const payee = await markOrderPaid(orderId, "stripe", payment.externalRef, {
-          montantCents: intent.montantCents,
-          devise: intent.devise,
-        });
-        if (payee) await signalerPayeeEnEssai(orderId, "stripe", mode, config);
+        await encaisserIntentionStripe(orderId, payment.externalRef, intent, mode, config);
         return c.json({ status: "paid" });
       }
       return c.json({ status: intent.status }, 202);
@@ -3010,6 +3022,102 @@ export function mountConfiguratorRoutes(app: Hono) {
       if (e instanceof MontantEncaisseDifferent)
         return c.json({ error: e.message, code: "montant_different" }, 409);
       console.error("Stripe confirm:", e);
+      return c.json({ error: "vérification impossible" }, 502);
+    }
+  });
+
+  /**
+   * Une intention Stripe « succeeded », relue chez Stripe : la commande passe
+   * payée. Le seul chemin des deux confirmations venues du navigateur — juste
+   * après confirmPayment, et au retour d'une redirection —, et le même
+   * markOrderPaid que le webhook : la commande est verrouillée, le premier
+   * arrivé la paie, les suivants n'y trouvent plus rien à faire (pas de
+   * second courrier, pas de seconde ligne au grand livre).
+   * MontantEncaisseDifferent remonte à l'appelant.
+   */
+  async function encaisserIntentionStripe(
+    orderId: number,
+    ref: string,
+    intent: { montantCents: number; devise: string },
+    mode: Mode,
+    config: ConfigEffective,
+  ): Promise<void> {
+    const payee = await markOrderPaid(orderId, "stripe", ref, {
+      montantCents: intent.montantCents,
+      devise: intent.devise,
+    });
+    if (payee) await signalerPayeeEnEssai(orderId, "stripe", mode, config);
+  }
+
+  /**
+   * Retour d'un moyen de paiement À REDIRECTION (Bancontact, iDEAL, Klarna…).
+   *
+   * La caisse confirme avec redirect: "if_required" : la carte se règle sur
+   * place, mais ces moyens-là quittent le site pour la banque, et Stripe
+   * renvoie la cliente sur la caisse avec ?payment_intent=…
+   * &payment_intent_client_secret=…&redirect_status=…. Sans cette route, elle
+   * retombait sur un formulaire de caisse rempli de son panier déjà réglé, et
+   * la commande ne passait payée que si le webhook arrivait — jamais en essai,
+   * où il n'est pas exigé.
+   *
+   * Le navigateur ne dit que QUEL paiement ; ce qu'il en est, c'est Stripe qui
+   * le dit (getStripeIntent, avec les clés du mode où ce paiement est né), et
+   * redirect_status n'est pas lu ici. Le client_secret prouve que c'est bien
+   * le navigateur de la caisse qui revient (secretClientConcorde) : sans lui,
+   * l'identifiant d'une intention suffirait à lire le numéro d'une commande.
+   * Un secret qui ne concorde pas répond comme un paiement inconnu.
+   *
+   * Rend l'écran à afficher (issueDuRetour) et le numéro de commande. Rejouer
+   * ce retour (un rechargement, le webhook arrivé avant) ne fait rien de plus.
+   */
+  app.post("/payments/stripe/retour", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const ref = String(body.paymentIntent ?? "");
+    const secretClient = String(body.clientSecret ?? "");
+    if (!/^pi_[A-Za-z0-9]{1,200}$/.test(ref) || !secretClient)
+      return c.json({ error: "retour de paiement illisible" }, 400);
+    const config = await configPaiement();
+    const [payment] = await db
+      .select()
+      .from(schema.payments)
+      .where(
+        and(
+          eq(schema.payments.provider, "stripe"),
+          eq(schema.payments.externalRef, ref),
+        ),
+      );
+    if (!payment) return c.json({ error: "paiement introuvable" }, 404);
+    const mode = modeDuPaiement(payment, "stripe", config);
+    const jeu = config.jeux.stripe[mode];
+    if (!jeu) return c.json({ error: "Stripe non configuré" }, 503);
+    const lireCommande = async () => {
+      const [o] = await db
+        .select({ number: schema.orders.number, status: schema.orders.status })
+        .from(schema.orders)
+        .where(eq(schema.orders.id, payment.orderId));
+      return o ?? null;
+    };
+    try {
+      const intent = await getStripeIntent(jeu, ref);
+      if (!secretClientConcorde(intent.clientSecret, secretClient))
+        return c.json({ error: "paiement introuvable" }, 404);
+      if (intent.status === "succeeded") {
+        try {
+          await encaisserIntentionStripe(payment.orderId, ref, intent, mode, config);
+        } catch (e) {
+          // L'écart est au journal de la commande, la boutique le voit : la
+          // cliente, elle, lit « en cours de validation » (issueDuRetour).
+          if (!(e instanceof MontantEncaisseDifferent)) throw e;
+        }
+      }
+      const commande = await lireCommande();
+      if (!commande) return c.json({ error: "commande introuvable" }, 404);
+      return c.json({
+        issue: issueDuRetour(intent.status, commande.status),
+        number: commande.number,
+      });
+    } catch (e) {
+      console.error("Stripe retour:", e);
       return c.json({ error: "vérification impossible" }, 502);
     }
   });

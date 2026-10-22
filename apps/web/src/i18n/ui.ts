@@ -598,6 +598,15 @@ export const ui = {
     "commande.merci_titre": "Merci !",
     "commande.merci_texte": "Votre paiement a bien été reçu et votre commande est confirmée.",
     "commande.numero": "Numéro de commande :",
+    /* Retour d'un moyen de paiement à redirection (Bancontact, iDEAL…) : CheckoutIsland. */
+    "commande.retour.verification": "Nous vérifions votre paiement auprès de votre banque…",
+    "commande.retour.en_cours_titre": "Paiement en cours de validation",
+    "commande.retour.en_cours_texte":
+      "Votre banque n'a pas encore confirmé le paiement. Vous recevrez un e-mail dès qu'il sera validé : inutile de payer une seconde fois.",
+    "commande.retour.refuse":
+      "Le paiement a été refusé ou n'a pas abouti. Votre panier est gardé : vérifiez votre livraison, puis réessayez avec le même moyen de paiement ou un autre.",
+    "commande.retour.injoignable":
+      "Nous n'avons pas pu vérifier votre paiement pour l'instant. Rechargez la page dans un instant ; si le montant a été débité, ne payez pas une seconde fois et écrivez-nous.",
     "commande.coordonnees": "Vos coordonnées",
     "commande.email_compte":
       "C'est l'adresse de votre compte. Pour en changer, passez par « Mes informations ».",
@@ -656,6 +665,9 @@ export const ui = {
       "Il faut être connectée pour valider la commande. Créez votre compte ou connectez-vous, votre panier vous attend.",
     "commande.err.generique":
       "La commande n'a pas pu être préparée. Vérifiez vos informations, puis réessayez.",
+    /* Une panne, pas un refus : l'API qui lève, le réseau coupé (CheckoutIsland). */
+    "commande.err.technique":
+      "Un problème technique nous a empêchés de valider votre commande. Rien n'a été débité et votre panier est gardé : réessayez dans un instant.",
     "commande.err.paiement":
       "Le paiement n'a pas pu être confirmé. Réessayez, ou écrivez-nous si le montant a été débité.",
     "ponct.deux_points": " : ",
@@ -1267,6 +1279,14 @@ export const ui = {
     "commande.merci_titre": "Thank you!",
     "commande.merci_texte": "Your payment has been received and your order is confirmed.",
     "commande.numero": "Order number:",
+    "commande.retour.verification": "We are checking your payment with your bank…",
+    "commande.retour.en_cours_titre": "Payment being validated",
+    "commande.retour.en_cours_texte":
+      "Your bank has not confirmed the payment yet. You will receive an email as soon as it is validated: there is no need to pay a second time.",
+    "commande.retour.refuse":
+      "The payment was declined or did not go through. Your basket has been kept: check your delivery details, then try again with the same payment method or another one.",
+    "commande.retour.injoignable":
+      "We could not check your payment just now. Please reload the page in a moment; if you have been charged, do not pay a second time and contact us.",
     "commande.coordonnees": "Your details",
     "commande.email_compte":
       "This is your account's email address. To change it, go to “My details”.",
@@ -1322,6 +1342,8 @@ export const ui = {
       "You need to be logged in to place your order. Create your account or log in — your basket is waiting for you.",
     "commande.err.generique":
       "Your order could not be prepared. Please check your details and try again.",
+    "commande.err.technique":
+      "A technical problem stopped us from confirming your order. Nothing has been charged and your basket has been kept: please try again in a moment.",
     "commande.err.paiement":
       "The payment could not be confirmed. Please try again, or contact us if you have been charged.",
     "ponct.deux_points": ": ",
@@ -1936,6 +1958,14 @@ export const ui = {
     "commande.merci_titre": "Vielen Dank!",
     "commande.merci_texte": "Ihre Zahlung ist eingegangen und Ihre Bestellung ist bestätigt.",
     "commande.numero": "Bestellnummer:",
+    "commande.retour.verification": "Wir prüfen Ihre Zahlung bei Ihrer Bank…",
+    "commande.retour.en_cours_titre": "Zahlung wird geprüft",
+    "commande.retour.en_cours_texte":
+      "Ihre Bank hat die Zahlung noch nicht bestätigt. Sie erhalten eine E-Mail, sobald sie bestätigt ist: Bitte zahlen Sie nicht ein zweites Mal.",
+    "commande.retour.refuse":
+      "Die Zahlung wurde abgelehnt oder nicht abgeschlossen. Ihr Warenkorb bleibt erhalten: Prüfen Sie Ihre Lieferangaben und versuchen Sie es dann mit derselben oder einer anderen Zahlungsart erneut.",
+    "commande.retour.injoignable":
+      "Wir konnten Ihre Zahlung gerade nicht prüfen. Laden Sie die Seite gleich neu; falls der Betrag abgebucht wurde, zahlen Sie bitte nicht ein zweites Mal und schreiben Sie uns.",
     "commande.coordonnees": "Ihre Kontaktdaten",
     "commande.email_compte":
       "Das ist die E-Mail-Adresse Ihres Kontos. Um sie zu ändern, gehen Sie zu „Meine Daten“.",
@@ -1991,6 +2021,8 @@ export const ui = {
       "Um die Bestellung abzuschließen, müssen Sie angemeldet sein. Erstellen Sie Ihr Konto oder melden Sie sich an – Ihr Warenkorb wartet auf Sie.",
     "commande.err.generique":
       "Ihre Bestellung konnte nicht vorbereitet werden. Bitte prüfen Sie Ihre Angaben und versuchen Sie es erneut.",
+    "commande.err.technique":
+      "Ein technisches Problem hat uns daran gehindert, Ihre Bestellung zu bestätigen. Es wurde nichts abgebucht und Ihr Warenkorb bleibt erhalten: Bitte versuchen Sie es gleich noch einmal.",
     "commande.err.paiement":
       "Die Zahlung konnte nicht bestätigt werden. Bitte versuchen Sie es erneut oder schreiben Sie uns, falls der Betrag abgebucht wurde.",
     "ponct.deux_points": ": ",
@@ -2598,6 +2630,14 @@ export const ui = {
     "commande.merci_titre": "Grazie!",
     "commande.merci_texte": "Abbiamo ricevuto il tuo pagamento e il tuo ordine è confermato.",
     "commande.numero": "Numero d'ordine:",
+    "commande.retour.verification": "Stiamo verificando il tuo pagamento con la tua banca…",
+    "commande.retour.en_cours_titre": "Pagamento in fase di convalida",
+    "commande.retour.en_cours_texte":
+      "La tua banca non ha ancora confermato il pagamento. Riceverai un'e-mail non appena sarà convalidato: non serve pagare una seconda volta.",
+    "commande.retour.refuse":
+      "Il pagamento è stato rifiutato o non è andato a buon fine. Il tuo carrello è stato conservato: controlla la consegna, poi riprova con lo stesso metodo di pagamento o con un altro.",
+    "commande.retour.injoignable":
+      "Non è stato possibile verificare il tuo pagamento in questo momento. Ricarica la pagina tra qualche istante; se l'importo è stato addebitato, non pagare una seconda volta e scrivici.",
     "commande.coordonnees": "I tuoi dati",
     "commande.email_compte":
       "È l'indirizzo e-mail del tuo account. Per cambiarlo, vai su «I miei dati».",
@@ -2653,6 +2693,8 @@ export const ui = {
       "Devi aver effettuato l'accesso per confermare l'ordine. Crea il tuo account o accedi: il tuo carrello ti aspetta.",
     "commande.err.generique":
       "Non è stato possibile preparare l'ordine. Controlla i tuoi dati e riprova.",
+    "commande.err.technique":
+      "Un problema tecnico ci ha impedito di confermare il tuo ordine. Non è stato addebitato nulla e il tuo carrello è stato conservato: riprova tra qualche istante.",
     "commande.err.paiement":
       "Non è stato possibile confermare il pagamento. Riprova, oppure scrivici se l'importo è stato addebitato.",
     "ponct.deux_points": ": ",
@@ -3261,6 +3303,14 @@ export const ui = {
     "commande.merci_titre": "¡Gracias!",
     "commande.merci_texte": "Hemos recibido tu pago y tu pedido está confirmado.",
     "commande.numero": "Número de pedido:",
+    "commande.retour.verification": "Estamos comprobando tu pago con tu banco…",
+    "commande.retour.en_cours_titre": "Pago en proceso de validación",
+    "commande.retour.en_cours_texte":
+      "Tu banco todavía no ha confirmado el pago. Recibirás un correo en cuanto se valide: no hace falta pagar una segunda vez.",
+    "commande.retour.refuse":
+      "El pago ha sido rechazado o no se ha completado. Tu cesta se ha guardado: revisa la entrega y vuelve a intentarlo con el mismo método de pago o con otro.",
+    "commande.retour.injoignable":
+      "No hemos podido comprobar tu pago en este momento. Vuelve a cargar la página dentro de un instante; si se te ha cobrado, no pagues una segunda vez y escríbenos.",
     "commande.coordonnees": "Tus datos",
     "commande.email_compte":
       "Es la dirección de correo de tu cuenta. Para cambiarla, ve a «Mis datos».",
@@ -3316,6 +3366,8 @@ export const ui = {
       "Tienes que iniciar sesión para confirmar el pedido. Crea tu cuenta o inicia sesión: tu cesta te espera.",
     "commande.err.generique":
       "No se ha podido preparar tu pedido. Revisa tus datos y vuelve a intentarlo.",
+    "commande.err.technique":
+      "Un problema técnico nos ha impedido confirmar tu pedido. No se ha cobrado nada y tu cesta se ha guardado: vuelve a intentarlo en unos instantes.",
     "commande.err.paiement":
       "No se ha podido confirmar el pago. Inténtalo de nuevo o escríbenos si se te ha cobrado.",
     "ponct.deux_points": ": ",

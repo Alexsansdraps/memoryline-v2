@@ -1071,6 +1071,18 @@ export const browserApi = {
     }),
 
   /**
+   * Retour d'un moyen de paiement à redirection (Bancontact, iDEAL…) : le
+   * serveur relit l'intention chez Stripe, marque la commande payée si elle
+   * l'est, et dit quel écran montrer. L'adresse de retour ne décide de rien.
+   */
+  stripeRetour: (paymentIntent: string, clientSecret: string) =>
+    browserSend<{ issue: "payee" | "en_cours" | "refuse"; number: string }>(
+      "POST",
+      "/payments/stripe/retour",
+      { paymentIntent, clientSecret },
+    ),
+
+  /**
    * Crée une commande PayPal (montant serveur), renvoie l'id PayPal.
    * `clientId` : celui avec lequel les boutons ont été chargés. S'il n'est
    * plus celui de la boutique (bascule entre l'essai et le réel), l'API

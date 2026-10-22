@@ -28,6 +28,7 @@ import { fr } from "./courriels/fr.js";
 import { enregistrerFichiersDImpression } from "./configurator-routes.js";
 import { rattacherGenerationsAuPanier } from "./ia.js";
 import { HORS_VENTES } from "./statuts-vente.js";
+import { prochainNumeroDeCommande } from "./numeros-commande.js";
 import { estProprietaire, standsDuVendeur } from "./vendeurs.js";
 
 /**
@@ -68,20 +69,6 @@ export function codeFourni(c: Context): string {
   return String(
     c.req.query("code") ?? c.req.header("x-salon-code") ?? "",
   ).trim();
-}
-
-/** Numéro SAL-xxxx suivant, compteur séparé de celui de la boutique. */
-async function prochainNumeroSalon(): Promise<string> {
-  const rows = await db
-    .select({ n: schema.orders.number })
-    .from(schema.orders)
-    .where(eq(schema.orders.channel, "salon"));
-  let max = 0;
-  for (const r of rows) {
-    const m = /^SAL-(\d+)$/.exec(r.n);
-    if (m) max = Math.max(max, Number(m[1]));
-  }
-  return "SAL-" + String(max + 1).padStart(4, "0");
 }
 
 export function mountSalonRoutes(app: Hono): void {
@@ -273,7 +260,6 @@ export function mountSalonRoutes(app: Hono): void {
         .set({ name: nom })
         .where(eq(schema.customers.id, existant.id));
 
-    const numero = await prochainNumeroSalon();
     const evenement = stand.nom;
 
     // La vente se décide sous le VERROU de la commande — le même que prennent
@@ -305,7 +291,12 @@ export function mountSalonRoutes(app: Hono): void {
           channel: "salon",
           standId: stand.id,
           // Une vente rouverte puis revalidée garde SON numéro : pas de trou.
-          number: /^SAL-\d+$/.test(verrouille.number) ? verrouille.number : numero,
+          // Sinon un SAL- pris ici, sous le verrou du compteur, et pas avant
+          // la transaction : deux tablettes validant au même instant tiraient
+          // le même numéro (numeros-commande.ts).
+          number: /^SAL-\d+$/.test(verrouille.number)
+            ? verrouille.number
+            : await prochainNumeroDeCommande(tx, "SAL-"),
           // Payée d'emblée : au stand, le client règle avant de partir avec
           // son affiche, ou il ne commande pas. Un état « en attente »
           // obligeait à se souvenir de cocher chaque vente du samedi, et
@@ -372,7 +363,7 @@ export function mountSalonRoutes(app: Hono): void {
     } catch (e) {
       // La vente est faite et encaissée : un nom de fichier manqué se
       // rattrape au premier téléchargement.
-      console.error(`[stand] fichiers d'impression non enregistrés (${numero}) :`, e);
+      console.error(`[stand] fichiers d'impression non enregistrés (${commande.number}) :`, e);
     }
 
     return c.json({

@@ -235,21 +235,32 @@ export default function CheckoutIsland(props: {
     code === "ZZ" ? tr("livraison.autre_pays") : (nomsPays.of(code) ?? code);
 
   /*
-   * Ce que la caisse affiche quand l'API refuse.
+   * Ce que la caisse affiche quand une étape échoue.
    *
    * browserSend rend « API POST /orders -> 401 {"error":…,"code":…} » :
    * affiché tel quel, c'était du jargon, et en français dans toutes les
    * langues. Un refus connu — par son code, sinon par son statut (`parStatut`,
-   * propre à chaque étape) — a sa phrase dans la langue du visiteur. Les
-   * autres gardent le texte de l'API, sans l'enveloppe technique.
+   * propre à chaque étape) — a sa phrase dans la langue du visiteur. Un autre
+   * refus (4xx) garde le texte de l'API, sans l'enveloppe technique : il dit
+   * ce qui ne va pas.
+   *
+   * Tout le reste est une PANNE, pas un refus : l'API qui lève (500
+   * « erreur_interne »), le proxy qui ne la joint pas (502, 504, une page
+   * HTML au lieu d'un JSON), le réseau coupé — fetch lève alors une
+   * TypeError, sans statut —, un SDK qui échoue. La cliente lisait « Error:
+   * API POST /orders -> 500 » ; elle lit désormais la phrase de l'étape
+   * (`repli`), qui lui dit où elle en est et quoi faire. Le détail part dans
+   * la console, pour qui cherche la cause.
    */
   function messageErreur(
     err: unknown,
     parStatut: Partial<Record<number, CleUi>>,
+    repli: CleUi = "commande.err.technique",
   ): string {
-    const brut = String(err);
-    const m = /-> (\d{3})(?: (\{.*\}))?\s*$/s.exec(brut);
-    if (!m) return brut;
+    console.error("[caisse]", err);
+    const m = /-> (\d{3})(?: (\{.*\}))?\s*$/s.exec(String(err));
+    if (!m) return tr(repli);
+    const statut = Number(m[1]);
     let corps: { error?: unknown; code?: unknown } = {};
     try {
       if (m[2]) corps = JSON.parse(m[2]) as typeof corps;
@@ -258,9 +269,14 @@ export default function CheckoutIsland(props: {
     }
     const cle =
       (typeof corps.code === "string" ? ERREURS_PAR_CODE[corps.code] : undefined) ??
-      parStatut[Number(m[1])];
+      parStatut[statut];
     if (cle) return tr(cle);
-    return typeof corps.error === "string" ? corps.error : brut;
+    const refus =
+      statut < 500 &&
+      corps.code !== "erreur_interne" &&
+      typeof corps.error === "string" &&
+      corps.error.trim() !== "";
+    return refus ? (corps.error as string) : tr(repli);
   }
 
   /**
@@ -1000,14 +1016,15 @@ export default function CheckoutIsland(props: {
                   await browserApi.paypalCapture(oid, data.orderID);
                   finishSuccess();
                 } catch (e) {
-                  setError(messageErreur(e, ECHEC_ENCAISSEMENT));
+                  // Une panne ici tombe APRÈS l'accord donné chez PayPal :
+                  // la phrase du paiement, qui dit d'écrire si c'est débité.
+                  setError(messageErreur(e, ECHEC_ENCAISSEMENT, "commande.err.paiement"));
                 }
               },
-              // 502 : PayPal n'a pas ouvert le paiement (refus de son côté).
+              // PayPal n'a pas ouvert le paiement : 502, refus de son côté,
+              // ou une panne avant même d'y arriver (API, réseau, SDK).
               onError: (e) =>
-                setError(
-                  messageErreur(e, { 502: "commande.err.paypal_ouverture" }),
-                ),
+                setError(messageErreur(e, {}, "commande.err.paypal_ouverture")),
             })
             .render(paypalMountRef!),
         )
@@ -1034,12 +1051,115 @@ export default function CheckoutIsland(props: {
   }
   const [paid, setPaid] = createSignal(false);
 
+  /*
+   * Retour d'un moyen de paiement À REDIRECTION (Bancontact, iDEAL, Klarna…).
+   *
+   * confirmPayment ne quitte le site que pour ces moyens-là (redirect:
+   * "if_required") ; Stripe ramène alors la cliente ICI, avec
+   * ?payment_intent=…&payment_intent_client_secret=…&redirect_status=…, dans
+   * une caisse neuve qui a tout oublié. Elle retombait sur le formulaire,
+   * rempli de son panier déjà réglé.
+   *
+   * L'adresse ne décide de rien — redirect_status s'écrit à la main : on la
+   * transmet au serveur, qui relit l'intention chez Stripe, marque la
+   * commande payée par le même chemin que le paiement sans redirection, et
+   * répond par l'écran à montrer. En attendant : « nous vérifions ». Lu dès
+   * la création de l'îlot (client:only), pour ne pas laisser voir le
+   * formulaire un instant.
+   */
+  const paramsRetour = new URLSearchParams(window.location.search);
+  const intentionRetour = paramsRetour.get("payment_intent");
+  const secretRetour = paramsRetour.get("payment_intent_client_secret");
+  const [retour, setRetour] = createSignal<
+    "verif" | "en_cours" | "refuse" | "injoignable" | null
+  >(intentionRetour && secretRetour ? "verif" : null);
+
+  /** Le secret n'a rien à faire dans l'adresse, ni dans l'historique. */
+  const effacerRetourDeLAdresse = () =>
+    history.replaceState(history.state, "", window.location.pathname);
+
+  onMount(async () => {
+    if (!intentionRetour || !secretRetour) return;
+    try {
+      const r = await browserApi.stripeRetour(intentionRetour, secretRetour);
+      effacerRetourDeLAdresse();
+      setOrderNumber(r.number);
+      if (r.issue === "payee") {
+        finishSuccess();
+        setRetour(null);
+      } else if (r.issue === "en_cours") {
+        // Le panier est engagé dans ce paiement : on l'oublie, comme après un
+        // paiement réussi. Y ajouter une affiche le remettrait en panier sous
+        // un paiement que la banque peut encore accepter.
+        localStorage.removeItem("ml_cart_id");
+        window.dispatchEvent(new Event("ml:panier"));
+        setRetour("en_cours");
+      } else {
+        // Refusé : la commande est restée en attente, le panier aussi. La
+        // caisse ordinaire s'affiche, et revalider ouvre un nouveau paiement.
+        setRetour("refuse");
+      }
+    } catch (err) {
+      console.error("[caisse] retour de paiement", err);
+      // 4xx : une adresse qui ne correspond à aucun de nos paiements (copiée,
+      // trafiquée). Rien à vérifier : la caisse ordinaire.
+      if (/-> 4\d\d/.test(String(err))) {
+        effacerRetourDeLAdresse();
+        setRetour(null);
+        return;
+      }
+      // Une panne : on ne sait pas. L'adresse est gardée, pour qu'un
+      // rechargement refasse la vérification ; surtout pas de formulaire
+      // qui inviterait à payer une seconde fois.
+      setRetour("injoignable");
+    }
+  });
+
+  /** L'écran du retour, tant qu'il n'y a ni « Merci » ni caisse à montrer. */
+  const ecranRetour = () => (
+    <div class="rounded-2xl border border-ink/10 bg-paper-deep/40 p-8 text-center">
+      <Show when={retour() === "verif"}>
+        <p role="status" class="text-ink-soft">
+          <span class="ml-spinner mr-2" aria-hidden="true" />
+          {tr("commande.retour.verification")}
+        </p>
+      </Show>
+      <Show when={retour() === "en_cours"}>
+        <h2 class="font-serif text-3xl">{tr("commande.retour.en_cours_titre")}</h2>
+        <p class="mt-3 text-ink-soft">{tr("commande.retour.en_cours_texte")}</p>
+        <p class="mt-4 text-lg">
+          {tr("commande.numero")}{" "}
+          <span class="text-2xl">{orderNumber()}</span>
+        </p>
+      </Show>
+      <Show when={retour() === "injoignable"}>
+        <p role="alert" class="text-terracotta-deep">
+          {tr("commande.retour.injoignable")}
+        </p>
+      </Show>
+      <Show when={retour() !== "verif"}>
+        <a
+          href={lien(langue, "/affiches")}
+          class="mt-6 inline-block rounded-full bg-ink px-6 py-3 text-paper font-medium hover:bg-ink/85 transition-colors"
+        >
+          {tr("produit.retour")}
+        </a>
+      </Show>
+    </div>
+  );
+
   /** Phase 1 -> 2 : crée la commande (pending) puis prépare le moyen choisi. */
   async function goToPay(e: Event) {
     e.preventDefault();
     if (!formValid() || !method() || submitting()) return;
     setSubmitting(true);
     setError(null);
+    // Le refus d'une redirection précédente ne vaut plus : elle réessaie.
+    if (retour() === "refuse") setRetour(null);
+    // L'étape où l'on en est : un 502 ne dit pas la même chose selon qu'il
+    // répond à la commande (le proxy n'a pas joint l'API, une panne comme une
+    // autre) ou à la carte (Stripe n'a pas préparé le paiement).
+    let etapeCarte = false;
     try {
       const a = adresse();
       // Un retrait sur place envoie le lieu choisi, par son identifiant : le
@@ -1075,6 +1195,7 @@ export default function CheckoutIsland(props: {
         // créée. Charger Stripe.js avec celle lue à l'ouverture de la caisse
         // mariait, après une bascule entre l'essai et le réel, une clé d'un
         // mode à une intention de l'autre — et la carte était refusée.
+        etapeCarte = true;
         const { clientSecret, publicKey } = await browserApi.stripeIntent(order.orderId);
         const cle = publicKey || cfg?.publicKey || "";
         // La boutique a changé de clés depuis l'ouverture : l'encadré « mode
@@ -1104,10 +1225,18 @@ export default function CheckoutIsland(props: {
         // refus connus ont leur code ; un refus sans code garde, en français,
         // le texte de l'API, qui dit précisément quoi corriger. Les autres
         // langues ne peuvent pas le lire : elles ont la phrase générique.
-        // 502 : le paiement par carte n'a pas pu être préparé chez Stripe.
+        // 502, 503 à l'étape de la carte : le paiement par carte n'a pas pu
+        // être préparé chez Stripe, ou Stripe n'est pas branché.
+        // Toute autre panne — l'API qui lève, le réseau coupé — a la phrase
+        // technique : rien n'est débité à ce stade, le panier est intact.
         setError(
           messageErreur(err, {
-            502: "commande.err.carte_indisponible",
+            ...(etapeCarte
+              ? {
+                  502: "commande.err.carte_indisponible" as const,
+                  503: "commande.err.carte_indisponible" as const,
+                }
+              : {}),
             ...(langue === LANGUE_DEFAUT ? {} : { 400: "commande.err.generique" as const }),
           }),
         );
@@ -1183,7 +1312,9 @@ export default function CheckoutIsland(props: {
         setError(tr("commande.err.non_finalise"));
       }
     } catch (err) {
-      setError(messageErreur(err, ECHEC_ENCAISSEMENT));
+      // La carte a pu être débitée avant la panne : la phrase du paiement,
+      // pas celle d'un panier « gardé ».
+      setError(messageErreur(err, ECHEC_ENCAISSEMENT, "commande.err.paiement"));
     } finally {
       setSubmitting(false);
     }
@@ -1191,24 +1322,36 @@ export default function CheckoutIsland(props: {
 
   return (
     <Show
-      when={!paid()}
+      when={!paid() && (retour() === null || retour() === "refuse")}
       fallback={
-        <div class="rounded-2xl border border-sage/40 bg-sage/10 p-8 text-center">
-          <h2 class="font-serif text-3xl">{tr("commande.merci_titre")}</h2>
-          <p class="mt-3 text-ink-soft">{tr("commande.merci_texte")}</p>
-          <p class="mt-4 text-lg">
-            {tr("commande.numero")}{" "}
-            <span class="text-2xl">{orderNumber()}</span>
-          </p>
-          <a
-            href={lien(langue, "/affiches")}
-            class="mt-6 inline-block rounded-full bg-ink px-6 py-3 text-paper font-medium hover:bg-ink/85 transition-colors"
-          >
-            {tr("produit.retour")}
-          </a>
-        </div>
+        <Show when={paid()} fallback={ecranRetour()}>
+          <div class="rounded-2xl border border-sage/40 bg-sage/10 p-8 text-center">
+            <h2 class="font-serif text-3xl">{tr("commande.merci_titre")}</h2>
+            <p class="mt-3 text-ink-soft">{tr("commande.merci_texte")}</p>
+            <p class="mt-4 text-lg">
+              {tr("commande.numero")}{" "}
+              <span class="text-2xl">{orderNumber()}</span>
+            </p>
+            <a
+              href={lien(langue, "/affiches")}
+              class="mt-6 inline-block rounded-full bg-ink px-6 py-3 text-paper font-medium hover:bg-ink/85 transition-colors"
+            >
+              {tr("produit.retour")}
+            </a>
+          </div>
+        </Show>
       }
     >
+      {/* Revenue de la banque sur un refus : en tête, là où elle regarde en
+          arrivant, et pas au pied du formulaire comme les autres erreurs. */}
+      <Show when={retour() === "refuse"}>
+        <p
+          role="alert"
+          class="mb-6 rounded-lg bg-terracotta/10 px-4 py-3 text-sm text-terracotta-deep"
+        >
+          {tr("commande.retour.refuse")}
+        </p>
+      </Show>
       <Show when={cart() && cart()!.items.length === 0}>
         <div class="rounded-2xl border border-ink/10 bg-paper-deep/40 p-8 text-center">
           <p class="text-ink-soft">{tr("panier.vide")}</p>

@@ -62,10 +62,20 @@ const ici = lien(langue, "/commande");
 const auStand = Astro.locals.stand;
 
 const session = auStand ? null : await moi(Astro);
+// Le retour de la banque après un paiement Stripe à redirection arrive ici,
+// avec ses paramètres. Une session expirée entre-temps renvoie à la
+// connexion : les paramètres partent avec, sinon la caisse rouverte ne
+// saurait plus qu'un paiement vient d'avoir lieu.
+const retourBanque = new URLSearchParams();
+for (const cle of ["payment_intent", "payment_intent_client_secret", "redirect_status"]) {
+  const v = Astro.url.searchParams.get(cle);
+  if (v) retourBanque.set(cle, v);
+}
+const iciAvecRetour = retourBanque.size ? `${ici}?${retourBanque}` : ici;
 if (session && !session.ok)
   return rediriger(
     Astro,
-    `${lien(langue, "/compte/connexion")}?retour=${encodeURIComponent(ici)}`,
+    `${lien(langue, "/compte/connexion")}?retour=${encodeURIComponent(iciAvecRetour)}`,
     302,
   );
 
