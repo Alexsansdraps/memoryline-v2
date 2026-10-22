@@ -26,6 +26,7 @@ Migrations **0067 à 0070** passées (0067-0069 à 13 h 40, 0070 vers 16 h 50 ; 
 ## 2. En cours
 
 - Rien en cours : tout est en prod au 22/10.
+- **Audit SEO du 22/10** : bilan dans `AUDIT-SEO.md` (aucun bloquant, 6 points importants ; rien corrigé, à décider avec Alexandra). Contre-vérification finie pour 1 angle sur 5 seulement (PC éteint) : reproduire un constat avant de le corriger. Avant d'importer `memoryline-seo-shopify.csv`, corriger ses doublons (voir AUDIT-SEO.md, point 3).
 - La branche `wip-bureau-19oct` (instantanés) et `lot-bo-trello-en-cours` ne servent plus : tout est dans `main`.
 
 ## 3. À faire par Alexandra (données, sur le BO du serveur)
