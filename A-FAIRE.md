@@ -2,9 +2,13 @@
 
 Fichier de reprise : à lire en premier, à supprimer quand tout est fait. `main` fait foi ; la prod (VPS) est toujours une mise en ligne de `main`.
 
-## 1. Ce qui est en prod (VPS, 22/10, commit `b2cb4ea` de `main`)
+## 1. Ce qui est en prod (VPS, 22/10 vers 21 h 45, commit `0007937` de `main`)
 
-Migrations **0067 à 0070** passées (0067-0069 à 13 h 40, 0070 vers 16 h 50 ; base sauvegardée avant chaque fois : `sauvegardes/base/2026-10-20.sql.gz` sur le serveur). Vérifié avant : types des quatre parties, 89 tests API + 44 tests BO, règle d'archivage, BO connecté et module en local ; après : site, fiches, plan du site, redirections, BO, API et module sur le VPS.
+**Reprise : tout ce qui est dans `main` jusqu'à `0007937` est en ligne sur le VPS** (aucune migration nouvelle depuis 0070). Mis en ligne depuis le PC de la maison avec la nouvelle clé `~/.ssh/memoryline_deploiement` (autorisée sur le serveur le 22/10) ; après coup : site 200, `/api/shipping` 200, BO 302 vers la connexion.
+
+**Mis en ligne le 22/10 au soir (commits `b46cb00`, `1df3afe`, `0007937`)** : corrections de l'audit SEO ; relance de panier avec l'aperçu réel des affiches ; cartes Trello du 22/10 (rond « TUTO ▶ », signature 7 %, ordre de l'étape 2, image de la fiche produit, page Commande en mode stand, bouton photo de l'écran IA) ; **le 500 de POST /orders** (voir § 2) ; erreurs 500 de l'API en JSON (`erreur-interne.ts`, `app.onError`) et messages lisibles à la caisse ; retour de Stripe après un paiement à redirection (page de retour vérifiée côté serveur) ; une commande annulée ne repasse jamais « payée » (`markOrderPaid`).
+
+Avant (b2cb4ea) : migrations **0067 à 0070** passées (base sauvegardée : `sauvegardes/base/2026-10-20.sql.gz` sur le serveur).
 
 - **BO › Personnages et BO › Pièces** séparés (Atelier › Personnages / Pièces par personnage / Pièces / Catégories de pièces) : filtres, compteurs, noms de pièces renommables sur place, couleurs ouvertes à la demande. La page Personnages est passée de 35 000 px à 2 400 px.
 - **Toutes les couleurs pour les clients du site** : chaque famille de teinte d'une pièce a sa rangée, les ombres suivent ; bouton « Remettre les couleurs d'origine » ; catégories de pièces sur « toutes » par défaut (0068).
@@ -25,26 +29,17 @@ Migrations **0067 à 0070** passées (0067-0069 à 13 h 40, 0070 vers 16 h 50 ; 
 
 ## 2. En cours
 
-- **Audit SEO du 22/10** : bilan dans `AUDIT-SEO.md`, aucun bloquant. Le 22 au soir (PC de la maison), les points de code sont corrigés, mais **pas encore en ligne** : vitesse des rayons, ordre du jour J dans `MISE-EN-PROD.md`, script de relevé des anciennes adresses, titres de plus de 60 caractères, robots.txt, image de partage, formats des prix, données structurées de l'accueil. Le détail et ce qui reste à décider sont dans la section « Suivi » en haut de `AUDIT-SEO.md`. Avant d'importer `memoryline-seo-shopify.csv`, corriger ses doublons (MISE-EN-PROD § 6).
-- **Relance de panier abandonné** (carte Trello, commentaire de Margaux du 22/10 : « il faut aussi la simulation des affiches dans le mail »). Le courriel partait avec le visuel de la fiche ; il montre maintenant l'aperçu réel de chaque affiche (son texte, ses personnages), fabriqué avant l'envoi par le moteur des fichiers d'impression, en 110 px au lieu de 64. Si l'aperçu ne peut pas se faire, c'est le visuel de la fiche qui s'affiche. Vérifié de bout en bout sur la boîte d'essai locale. **Pas encore en ligne.**
-- **Cartes Trello du 22/10 (site)**, faites en local, **pas encore en ligne** :
-  - Boutons noirs : l'effet au clic manquait sur le bouton photo de l'écran IA (un `label`) ; le reste était déjà en ligne.
-  - Rond « TUTO ▶ » (dessin de Margaux) à la place de la bulle « Vidéo tuto », en 5 langues. Sur la pré-prod, rien ne s'affiche parce qu'**aucune vidéo n'est réglée** (§ 3).
-  - Signature : 7 % par défaut au lieu de 12 % (fichiers d'impression + aide du BO). La pré-prod a **12 enregistré en base** : le remettre à 7 au BO (§ 3).
-  - Étape 2 : sections dans l'ordre peau › cheveux › accessoires › t-shirt › pantalon (l'ordre de superposition à l'image ne change pas).
-  - Fiche produit : l'image ne prend plus toute la hauteur sur grand écran (largeur bornée par la hauteur de l'écran ; vérifié en 1440, 1024, 768 et mobile).
-  - « Je ne peux pas passer de commande test sur le site » : un navigateur ouvert une fois comme tablette de stand restait 24 h en mode stand, et la page Commande renvoyait au panier sans rien dire. Elle explique maintenant et propose « Quitter le mode stand et commander » (`?stand=0`) ; aide du BO complétée.
-  - « On ne peut pas télécharger le PDF » : corrigé depuis `840e2c0` (5/10), jamais revérifié sur la pré-prod. Les 15 affiches « prêtes à imprimer » n'ont qu'une image de 1 020 × 1 400 px : leur PDF est **toujours refusé** tant que Margaux n'a pas déposé un visuel HD (≥ 1 240 × 1 754 en A4, 1 754 × 2 480 en A3).
-  - Personnage déshabillé après défilement : ce sont des données, trois « Femme test » (ids 71, 72, 73, corps nu) en tête des Femmes de dos (§ 3).
-  - **« BUG ? » POST /orders → 500** : TROUVÉ ET CORRIGÉ (journal du VPS : doublon sur order_number_uniq). Une vente du stand rouverte puis passée par la caisse du site gardait un WEB- invisible du compteur du site → 500 pour toutes les commandes suivantes. Compteur par préfixe sous verrou (numeros-commande.ts) ; erreurs 500 désormais en JSON et lisibles à la caisse.
-    `ssh debian@51.255.34.187 "cd ~/memoryline && docker compose -f docker-compose.prod.yml logs --no-color --since 2026-10-22T13:00:00 api 2>&1 | grep -n -B2 -A20 -E 'Error|error|500' | tail -150"`
-  - Retour de Stripe après un paiement à redirection : traité (page de retour vérifiée côté serveur, commande annulée jamais remise « payée »).
-- Base de dev (locale) : migrations 0067 à 0070 passées le 22/10 au soir. Sans elles, l'API locale répondait 500 (colonne `ordre_catalogue` absente).
-- La branche `wip-bureau-19oct` (instantanés) et `lot-bo-trello-en-cours` ne servent plus : tout est dans `main`.
+Rien n'est en cours dans le code : tout est commité, poussé et en ligne. Détails utiles des derniers travaux :
+
+- **Le 500 de la caisse (carte « BUG ? »)** : cause lue dans le journal du VPS, doublon sur l'index `order_number_uniq`. Une vente du stand rouverte (« Revenir à ma commande »), puis passée par la caisse du site, gardait `channel = 'salon'` avec un numéro WEB- ; l'ancien compteur du site ne lisait que `channel = 'web'` et redonnait ce numéro à chaque commande → 500 pour toutes les clientes. Corrigé : `apps/api/src/numeros-commande.ts` (maximum par préfixe tous canaux, sous `pg_advisory_xact_lock`, dans la transaction), utilisé par POST /orders et par le stand ; la vente passée par le site devient `channel = 'web'` avec une ligne au journal de la commande. Tests : `tests/numeros-commande.test.ts`. **Pas encore vérifié par une vraie commande sur le VPS** : en passer une (fenêtre privée).
+- **Retour Stripe** (`tests/retour-stripe.test.ts`) : pas essayé avec un vrai paiement d'essai à redirection (pas de clé Stripe en local).
+- **Petits restes, non faits (sans gravité)** : une vente du stand passée par le site garde sa note « Stand : … » et son étiquette d'événement ; les commentaires d'en-tête de `apps/api/src/db/schema.ts` disent encore « numérotation sans trou ni doublon » / canal « immuable » ; au retour de Stripe, un paiement réussi mais d'un montant différent (`MontantEncaisseDifferent`) affiche « paiement en cours de validation » au lieu de dire qu'on revient vers la cliente.
+- Base de dev (locale) : migrations 0067 à 0070 passées. L'enquête du 22/10 y a passé des commandes d'essai (comptes `@example.test`) avec le mode Mondial Relay déjà présent ; ces commandes sont **archivées** (`archived_at`).
+- Les branches `wip-bureau-19oct` et `lot-bo-trello-en-cours` ne servent plus : tout est dans `main`.
 
 ## 3. À faire par Alexandra (données, sur le BO du serveur)
 
-- **Après la mise en ligne des cartes du 22/10** : archiver les trois « Femme test » (Atelier › Personnages, ids 71, 72, 73 › Archiver) ; mettre la largeur de la signature à **7** (Contenu du site › Signature des créations) ; régler la vidéo (Contenu du site › Personnalisation — vidéo explicative), sans quoi le rond « TUTO » ne s'affiche pas ; retester le téléchargement d'un PDF de commande ; commandes test dans une **fenêtre privée** (ou `?stand=0`).
+- **Cartes du 22/10 (en ligne)** : archiver les trois « Femme test » (Atelier › Personnages, ids 71, 72, 73 › Archiver) ; mettre la largeur de la signature à **7** (Contenu du site › Signature des créations) ; régler la vidéo (Contenu du site › Personnalisation — vidéo explicative), sans quoi le rond « TUTO » ne s'affiche pas ; retester le téléchargement d'un PDF de commande ; commandes test dans une **fenêtre privée** (ou `?stand=0`).
 - Demander à Margaux les visuels HD des 15 affiches « prêtes à imprimer », et lui reposer la question des fonds WebP des commandes.
 
 - Confier son stand au compte vendeur (BO › Comptes) ; créer les lieux de retrait (BO › Livraison › Lieux de retrait) ; saisir l'adresse et le SIRET des factures (BO › Réglages › Factures ; SIRET donné par Margaux : 877 919 852 00047) ; relire la promotion 3+1 (BO › Promotions) et les messages du bandeau.
@@ -59,7 +54,7 @@ Migrations **0067 à 0070** passées (0067-0069 à 13 h 40, 0070 vers 16 h 50 ; 
 
 ## 5. Bon à savoir
 
-- **Mise en ligne** : `MISE-EN-PROD.md`, étape 1 (archive depuis `main` + polices AnotherShabby hors git, puis `mettre-en-ligne.sh` sur le serveur : sauvegarde, construction, migrations, redémarrage). Depuis le PC du **bureau** seulement, Claude peut mettre en ligne sans mot de passe (clé SSH `~/.ssh/memoryline_deploiement`). Depuis l'autre PC : la commande en une ligne de `MISE-EN-PROD.md`, avec le mot de passe.
+- **Mise en ligne** : `MISE-EN-PROD.md`, étape 1 (archive depuis `main` + polices AnotherShabby hors git, puis `mettre-en-ligne.sh` sur le serveur : sauvegarde, construction, migrations, redémarrage). Depuis le PC du **bureau** et, depuis le 22/10, celui de la **maison**, Claude peut mettre en ligne sans mot de passe (clé SSH `~/.ssh/memoryline_deploiement` sur chacun) : `scp -i ~/.ssh/memoryline_deploiement …` puis `ssh -i ~/.ssh/memoryline_deploiement …` avec la commande de `MISE-EN-PROD.md`. L'archive se construit avec `git -c core.autocrlf=false archive --format=tar -o memoryline-deploiement.tar HEAD -- . ':(exclude)data/memoryline-archive'`, plus les deux polices AnotherShabby (`tar --force-local -rf`), puis `gzip -9` (≈ 4,4 Mo ; sans l'exclusion, 1 Go). Journal de l'API : `docker compose -f docker-compose.prod.yml logs api` dans `~/memoryline`. Depuis l'autre PC : la commande en une ligne de `MISE-EN-PROD.md`, avec le mot de passe.
 - Compte d'essai du BO **local** : `essai-module@example.test` ; le remettre sur un PC avec `pnpm --filter @memoryline/api run create-admin <email> <mdp> owner`.
 - Le cache de construction Docker du VPS a été nettoyé le 19/10 (20 Go libérés, disque à 36 %) ; quand il se remplit : `docker builder prune -f --keep-storage 3GB` sur le serveur.
 - Tests à l'écran sans prendre la main : Chrome headless piloté par script (voir `tests-sans-prendre-l-ecran` dans la mémoire du PC du bureau), jamais de computer-use.
