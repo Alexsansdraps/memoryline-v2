@@ -9,6 +9,7 @@
  * rafraîchissement.
  */
 import { apiUrl, url } from "../lib/url.ts";
+import ApercuFlottant from "./ApercuFlottant.astro";
 import {
   adminApi,
   formatPrice,
@@ -557,8 +558,8 @@ const filtreActif =
                     fichier d'impression ; chargées au fil du défilement.
 
                     Au survol d'une vignette, ou au clavier quand le lien a
-                    le focus, elle grandit sur place (`bo-vignette`, plus
-                    bas) : on reconnaît l'affiche sans ouvrir la commande.
+                    le focus, elle grandit sur place (`bo-vignette`, cf.
+                    ApercuFlottant) : on reconnaît l'affiche sans ouvrir la commande.
 
                     Une ligne sans aperçu possible (commande importée) montre
                     « Aperçu indisponible » à sa place. Avant, l'image
@@ -700,100 +701,8 @@ const filtreActif =
   import "../lib/impression-bo.ts";
 </script>
 
-{/* La vignette en grand, au survol ou au clavier.
-
-    Une copie agrandie (environ 160 px de large) flotte à côté de la vignette,
-    au-dessus de tout. Agrandir la vignette elle-même ne marchait pas : le
-    tableau défile en largeur, et un conteneur qui défile ROGNE ce qui
-    dépasse — la grande image des dernières lignes sortait coupée, avec une
-    barre de défilement en prime. La copie, elle, est posée par rapport à la
-    fenêtre.
-
-    Au clavier, c'est le lien des vignettes qui reçoit le focus : sa première
-    affiche s'agrandit. `focus-visible` seulement, pour qu'un clic de souris
-    ne laisse pas une image ouverte derrière lui. Décorative (alt vide) : le
-    lien dit déjà ce qu'il ouvre. */}
-<script>
-  const flottant = document.createElement("img");
-  flottant.className = "bo-apercu-flottant";
-  flottant.alt = "";
-  flottant.setAttribute("aria-hidden", "true");
-  flottant.hidden = true;
-  document.body.append(flottant);
-
-  const LARGEUR = 160;
-  const MARGE = 8;
-
-  function montrer(vignette: HTMLImageElement): void {
-    if (!vignette.complete || !vignette.naturalWidth) return;
-    const rapport = vignette.naturalHeight / vignette.naturalWidth || Math.SQRT2;
-    const hauteur = Math.round(LARGEUR * rapport);
-    const r = vignette.getBoundingClientRect();
-    let x = r.right + MARGE;
-    if (x + LARGEUR > window.innerWidth - MARGE) x = r.left - MARGE - LARGEUR;
-    let y = r.top + r.height / 2 - hauteur / 2;
-    y = Math.max(MARGE, Math.min(y, window.innerHeight - hauteur - MARGE));
-    flottant.src = vignette.currentSrc || vignette.src;
-    flottant.style.left = `${Math.max(MARGE, x)}px`;
-    flottant.style.top = `${y}px`;
-    flottant.style.width = `${LARGEUR}px`;
-    flottant.style.height = `${hauteur}px`;
-    flottant.hidden = false;
-  }
-  const cacher = () => {
-    flottant.hidden = true;
-  };
-  const vignetteSous = (cible: EventTarget | null) =>
-    cible instanceof Element ? cible.closest<HTMLImageElement>("img.bo-vignette") : null;
-
-  document.addEventListener("mouseover", (e) => {
-    const v = vignetteSous(e.target);
-    if (v) montrer(v);
-  });
-  document.addEventListener("mouseout", (e) => {
-    if (vignetteSous(e.target)) cacher();
-  });
-  document.addEventListener("focusin", (e) => {
-    const lien = e.target instanceof Element ? e.target.closest(".bo-vignettes") : null;
-    if (!lien || !lien.matches(":focus-visible")) return;
-    const v = lien.querySelector<HTMLImageElement>("img.bo-vignette");
-    if (v) montrer(v);
-  });
-  document.addEventListener("focusout", (e) => {
-    if (e.target instanceof Element && e.target.closest(".bo-vignettes")) cacher();
-  });
-  // La copie est posée par rapport à la fenêtre : au moindre défilement,
-  // elle ne serait plus à côté de sa vignette.
-  window.addEventListener("scroll", cacher, { passive: true, capture: true });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") cacher();
-  });
-</script>
-
-<style is:global>
-  .bo-apercu-flottant {
-    position: fixed;
-    z-index: 60;
-    pointer-events: none;
-    object-fit: cover;
-    border-radius: 3px;
-    border: 1px solid var(--color-bo-border, #e5e5e5);
-    background: var(--color-bo-bg, #f6f6f6);
-    box-shadow: 0 8px 28px rgb(0 0 0 / 0.25);
-    animation: bo-apercu-entree 0.12s ease-out;
-  }
-  @keyframes bo-apercu-entree {
-    from {
-      opacity: 0;
-    }
-  }
-  /* Qui a demandé moins de mouvement voit la grande vignette d'un coup. */
-  @media (prefers-reduced-motion: reduce) {
-    .bo-apercu-flottant {
-      animation: none;
-    }
-  }
-</style>
+{/* La vignette en grand, au survol ou au clavier : cf. ApercuFlottant. */}
+<ApercuFlottant />
 
 <script is:inline define:vars={{ exportBase: lienExport, bonsBase: url("/commandes/bons") }}>
   // Sélection multiple : la barre d'actions n'existe que quand elle sert.

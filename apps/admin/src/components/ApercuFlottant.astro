@@ -1,0 +1,111 @@
+---
+/**
+ * La vignette en grand, au survol ou au clavier, partout où le back-office
+ * montre de petites images : les affiches d'une commande (OrderTable), la
+ * photo des produits (BO › Produits)… Une image s'agrandit si elle porte la
+ * classe `bo-vignette` ; `data-apercu-largeur` règle sa largeur en grand
+ * (160 px sans rien). Il suffit d'inclure ce composant une fois dans la page :
+ * Astro ne charge son script qu'une fois, même s'il est inclus deux fois.
+ *
+ * Une copie agrandie flotte à côté de la vignette, au-dessus de tout.
+ * Agrandir la vignette elle-même ne marchait pas : un tableau qui défile en
+ * largeur ROGNE ce qui dépasse — la grande image des dernières lignes
+ * sortait coupée, avec une barre de défilement en prime. La copie, elle, est
+ * posée par rapport à la fenêtre. Elle reprend les proportions de l'image
+ * entière : une vignette rognée pour tenir dans sa case se voit en grand
+ * sans rien de coupé.
+ *
+ * Au clavier, c'est le lien voisin qui reçoit le focus : la première
+ * vignette du bloc `bo-vignettes` qui le contient s'agrandit. `focus-visible`
+ * seulement, pour qu'un clic de souris ne laisse pas une image ouverte
+ * derrière lui. Décorative (alt vide) : le lien dit déjà ce qu'il ouvre.
+ */
+---
+
+<script>
+  const flottant = document.createElement("img");
+  flottant.className = "bo-apercu-flottant";
+  flottant.alt = "";
+  flottant.setAttribute("aria-hidden", "true");
+  flottant.hidden = true;
+  document.body.append(flottant);
+
+  const LARGEUR = 160;
+  const MARGE = 8;
+
+  function montrer(vignette: HTMLImageElement): void {
+    if (!vignette.complete || !vignette.naturalWidth) return;
+    const voulue = Number(vignette.dataset.apercuLargeur) || LARGEUR;
+    const rapport = vignette.naturalHeight / vignette.naturalWidth || Math.SQRT2;
+    // Une image très haute ne déborde pas de la fenêtre : on la rétrécit.
+    const largeur = Math.round(
+      Math.min(voulue, (window.innerHeight - 2 * MARGE) / rapport),
+    );
+    const hauteur = Math.round(largeur * rapport);
+    const r = vignette.getBoundingClientRect();
+    let x = r.right + MARGE;
+    if (x + largeur > window.innerWidth - MARGE) x = r.left - MARGE - largeur;
+    let y = r.top + r.height / 2 - hauteur / 2;
+    y = Math.max(MARGE, Math.min(y, window.innerHeight - hauteur - MARGE));
+    flottant.src = vignette.currentSrc || vignette.src;
+    flottant.style.left = `${Math.max(MARGE, x)}px`;
+    flottant.style.top = `${y}px`;
+    flottant.style.width = `${largeur}px`;
+    flottant.style.height = `${hauteur}px`;
+    flottant.hidden = false;
+  }
+  const cacher = () => {
+    flottant.hidden = true;
+  };
+  const vignetteSous = (cible: EventTarget | null) =>
+    cible instanceof Element ? cible.closest<HTMLImageElement>("img.bo-vignette") : null;
+
+  document.addEventListener("mouseover", (e) => {
+    const v = vignetteSous(e.target);
+    if (v) montrer(v);
+  });
+  document.addEventListener("mouseout", (e) => {
+    if (vignetteSous(e.target)) cacher();
+  });
+  document.addEventListener("focusin", (e) => {
+    const cible = e.target instanceof Element ? e.target : null;
+    const bloc = cible?.closest(".bo-vignettes");
+    if (!cible || !bloc || !cible.matches(":focus-visible")) return;
+    const v = bloc.querySelector<HTMLImageElement>("img.bo-vignette");
+    if (v) montrer(v);
+  });
+  document.addEventListener("focusout", (e) => {
+    if (e.target instanceof Element && e.target.closest(".bo-vignettes")) cacher();
+  });
+  // La copie est posée par rapport à la fenêtre : au moindre défilement,
+  // elle ne serait plus à côté de sa vignette.
+  window.addEventListener("scroll", cacher, { passive: true, capture: true });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") cacher();
+  });
+</script>
+
+<style is:global>
+  .bo-apercu-flottant {
+    position: fixed;
+    z-index: 60;
+    pointer-events: none;
+    object-fit: cover;
+    border-radius: 3px;
+    border: 1px solid var(--color-bo-border, #e5e5e5);
+    background: var(--color-bo-bg, #f6f6f6);
+    box-shadow: 0 8px 28px rgb(0 0 0 / 0.25);
+    animation: bo-apercu-entree 0.12s ease-out;
+  }
+  @keyframes bo-apercu-entree {
+    from {
+      opacity: 0;
+    }
+  }
+  /* Qui a demandé moins de mouvement voit la grande vignette d'un coup. */
+  @media (prefers-reduced-motion: reduce) {
+    .bo-apercu-flottant {
+      animation: none;
+    }
+  }
+</style>
