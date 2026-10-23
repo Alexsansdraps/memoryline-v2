@@ -1,10 +1,12 @@
-# À faire — état au 22 octobre (écrit pour une reprise dans un autre contexte)
+# À faire — état au 23 octobre (écrit pour une reprise dans un autre contexte)
 
 Fichier de reprise : à lire en premier, à supprimer quand tout est fait. `main` fait foi ; la prod (VPS) est toujours une mise en ligne de `main`.
 
-## 1. Ce qui est en prod (VPS, 22/10 vers 21 h 45, commit `0007937` de `main`)
+## 1. Ce qui est en prod (VPS, 23/10 vers 11 h, commit `575b466` de `main`)
 
-**Reprise : tout ce qui est dans `main` jusqu'à `0007937` est en ligne sur le VPS** (aucune migration nouvelle depuis 0070). Mis en ligne depuis le PC de la maison avec la nouvelle clé `~/.ssh/memoryline_deploiement` (autorisée sur le serveur le 22/10) ; après coup : site 200, `/api/shipping` 200, BO 302 vers la connexion.
+**Reprise : tout ce qui est dans `main` jusqu'à `575b466` est en ligne sur le VPS**, migrations jusqu'à **0071** (compte Instagram). Mis en ligne depuis le PC du bureau ; après coup : site 200, données structurées (livraison, retours, fil d'Ariane des rayons, Instagram) lues sur la prod, blog Shopify en 410, 30 fiches aux titres et descriptions identiques à avant.
+
+**Mis en ligne le 23/10 (`575b466`)** : suite de l'audit SEO (détail : AUDIT-SEO.md, « Suivi — 23/10 ») — livraison et retours pour Google, compte Instagram (réglage du BO, pied de page, données de l'organisation), fil d'Ariane et liste des rayons, aperçu Google du BO identique au site (recette partagée `referencementDeFiche`), fiches plus légères (module de composition chargé à la demande : 1,4 et 3,3 Ko au lieu de 77 à 121 Ko), accueil, blog Shopify en 410, 17 anciennes images retrouvées, manifeste web. Décision : **ne pas importer** les fichiers SEO de Shopify.
 
 **Mis en ligne le 22/10 au soir (commits `b46cb00`, `1df3afe`, `0007937`)** : corrections de l'audit SEO ; relance de panier avec l'aperçu réel des affiches ; cartes Trello du 22/10 (rond « TUTO ▶ », signature 7 %, ordre de l'étape 2, image de la fiche produit, page Commande en mode stand, bouton photo de l'écran IA) ; **le 500 de POST /orders** (voir § 2) ; erreurs 500 de l'API en JSON (`erreur-interne.ts`, `app.onError`) et messages lisibles à la caisse ; retour de Stripe après un paiement à redirection (page de retour vérifiée côté serveur) ; une commande annulée ne repasse jamais « payée » (`markOrderPaid`).
 
@@ -29,7 +31,11 @@ Avant (b2cb4ea) : migrations **0067 à 0070** passées (base sauvegardée : `sau
 
 ## 2. En cours
 
-Rien n'est en cours dans le code : tout est commité, poussé et en ligne. Détails utiles des derniers travaux :
+Rien n'est en cours dans le code : tout est commité, poussé et en ligne.
+
+- **Textes des fiches à faire valider par Margaux** (23/10) : document « Textes des fiches à valider », https://claude.ai/artifact/XKJoTgX1W2JJatZ6H3UJDm (privé tant qu'Alexandra ne l'a pas partagé). 17 noms distinctifs pour les fiches « #1 / #2 », 61 descriptions pour les fiches sans texte (rédigées image par image), et une liste de fautes vues sur les visuels et dans les noms. Colonne « Décision » à remplir. Ensuite : les descriptions validées s'importent par BO › Produits › Importer (l'import remplit les descriptions vides ; Claude peut préparer le fichier depuis le document), les noms se changent un par un sur la fiche (l'import ne remplace pas un nom existant). Brouillons bruts : scratchpad du PC du bureau, `fiches/brouillons.json`.
+
+Détails utiles des derniers travaux :
 
 - **Le 500 de la caisse (carte « BUG ? »)** : cause lue dans le journal du VPS, doublon sur l'index `order_number_uniq`. Une vente du stand rouverte (« Revenir à ma commande »), puis passée par la caisse du site, gardait `channel = 'salon'` avec un numéro WEB- ; l'ancien compteur du site ne lisait que `channel = 'web'` et redonnait ce numéro à chaque commande → 500 pour toutes les clientes. Corrigé : `apps/api/src/numeros-commande.ts` (maximum par préfixe tous canaux, sous `pg_advisory_xact_lock`, dans la transaction), utilisé par POST /orders et par le stand ; la vente passée par le site devient `channel = 'web'` avec une ligne au journal de la commande. Tests : `tests/numeros-commande.test.ts`. **Pas encore vérifié par une vraie commande sur le VPS** : en passer une (fenêtre privée).
 - **Retour Stripe** (`tests/retour-stripe.test.ts`) : pas essayé avec un vrai paiement d'essai à redirection (pas de clé Stripe en local).
@@ -51,6 +57,8 @@ Rien n'est en cours dans le code : tout est commité, poussé et en ligne. Déta
 
 - Les traductions des fiches, des catégories et des cadres : données à saisir au BO (bouton « Proposer les traductions manquantes »).
 - Carte Trello « Bordereau La Poste » : en attente côté Alexandra.
+- **Rayon « Accessoires »** (question posée le 23/10) : sur le nouveau site, il montre 25 affiches de villes sous un texte qui parle de porte-clés et de chaussettes (sur Shopify, la même collection est vide pour les clientes). Le cacher en attendant de vrais accessoires, ou lui donner un texte qui décrit ce qu'il contient ?
+- **Conditions de vente** : écrire le délai de préparation, « 2 à 3 jours ouvrés » comme l'ancienne boutique (c'est ce que les données de livraison annoncent à Google), et vérifier le SIRET, qui est 877 919 852 **00021** dans les CGV en ligne alors que Margaux a donné **00047**. Il reste aussi 4 « À COMPLÉTER », dont le médiateur de la consommation, obligatoire.
 
 ## 5. Bon à savoir
 
