@@ -84,3 +84,48 @@ export async function lirePanier<T extends { status?: string | null }>(
   oublierCartId();
   return null;
 }
+
+/**
+ * Ajoute une ligne au panier de ce navigateur, et rend la ligne créée.
+ *
+ * Ici et non dans api.ts : le bouton « Ajouter au panier » de la fiche n'a
+ * besoin que de cela, et importer api.ts lui faisait télécharger, avant
+ * d'être cliquable, le dictionnaire des cinq langues et zod
+ * (AUDIT-SEO.md, VIT-2). api.ts (browserApi.addCartItem) passe par ici : une
+ * seule règle pour le panier clos.
+ *
+ * Panier clos (déjà payé) : on repart d'un panier neuf et on réessaie une
+ * fois, sans rien demander à la cliente. L'erreur garde la forme de celles
+ * d'api.ts (« API POST … -> 400 {"error":"config invalide"} ») : c'est ce
+ * texte que lit messageAjoutRefuse (ajout-panier.ts).
+ */
+export async function ajouterAuPanier<T>(
+  cartId: string,
+  ligne: Record<string, unknown>,
+): Promise<T> {
+  const envoyer = async (id: string): Promise<T> => {
+    const chemin = `/cart/${id}/items`;
+    const res = await fetch(`${PUBLIC_API_URL}${chemin}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(ligne),
+    });
+    if (!res.ok) {
+      let detail = "";
+      try {
+        detail = JSON.stringify(await res.json());
+      } catch {
+        /* corps illisible : le code suffit */
+      }
+      throw new Error(`API POST ${chemin} -> ${res.status} ${detail}`);
+    }
+    return res.json() as Promise<T>;
+  };
+  try {
+    return await envoyer(cartId);
+  } catch (e) {
+    if (!String(e).includes("panier_clos")) throw e;
+    oublierCartId();
+    return envoyer(getCartId());
+  }
+}

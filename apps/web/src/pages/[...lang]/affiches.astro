@@ -2,7 +2,7 @@
 import Base from "../../layouts/Base.astro";
 import BandeauxVisuels from "../../components/BandeauxVisuels.astro";
 import VignetteAffiche from "../../components/VignetteAffiche.astro";
-import { api, bandeauxVisuels, type Collection, type Product } from "../../lib/api.ts";
+import { api, assetUrl, bandeauxVisuels, type Collection, type Product } from "../../lib/api.ts";
 import { RAYONS_FUSIONNES } from "../../lib/anciennes-adresses.ts";
 import { htmlSur } from "../../lib/html-sur.ts";
 import { adresseDuRayon, estGenre, languesDuContenu } from "../../lib/referencement.ts";
@@ -13,7 +13,7 @@ import {
   texteBrut,
   titreDePage,
 } from "../../lib/textes-seo.ts";
-import { clesPageAffiches } from "@memoryline/types";
+import { clesPageAffiches, filDAriane, pageDeRayon } from "@memoryline/types";
 import { grilleProduits, sizesGrille, styleGrille } from "../../lib/grille.ts";
 /** Colonnes réglées au back-office (Contenu du site › Affichage des produits) :
  *  celles de la boutique s'il y en a — tous les rayons et collections —, le
@@ -432,6 +432,53 @@ const canonique = (() => {
 const languesDuRayon = collection?.languesTraduites;
 const filtreParLieu = !!villeEffective;
 
+/*
+ * Ce que Google lit du rayon (AUDIT-SEO.md, DS-3) : le fil d'Ariane, le même
+ * que celui des fiches (Accueil › Affiches personnalisables › Villes), et la
+ * liste des affiches de CETTE page, dans l'ordre de la grille. Avant, aucune
+ * donnée structurée : rien ne disait à Google où un rayon se range.
+ *
+ * L'image de partage est la première affiche de la page, au lieu du logo
+ * par défaut : un rayon partagé montre ce qu'il contient.
+ */
+const siteUrl = Astro.site?.toString().replace(/\/$/, "") ?? "https://memoryline.fr";
+const absolue = (chemin: string) => new URL(chemin, siteUrl + "/").toString();
+const genreDuFil = collection
+  ? collection.genre === "personnalisable" || collection.genre === "prete_a_imprimer"
+    ? collection.genre
+    : null
+  : genre || null;
+const etapesDuFil = [
+  { nom: tr("seo.fil_accueil"), url: absolue(lien(langue, "/")) },
+  ...(genreDuFil
+    ? [
+        {
+          nom: genreDuFil === "personnalisable" ? tr("nav.personnalisables") : tr("nav.pretes"),
+          url: absolue(lien(langue, adresseDuRayon(genreDuFil))),
+        },
+      ]
+    : []),
+  ...(collection
+    ? [{ nom: collection.name, url: absolue(lien(langue, adresseDuRayon(genreDuFil, collection.slug))) }]
+    : []),
+  ...(!genreDuFil && !collection
+    ? [{ nom: tr("catalogue.titre"), url: absolue(lien(langue, "/affiches")) }]
+    : []),
+];
+const donneesDuRayon =
+  error || products.length === 0
+    ? undefined
+    : [
+        filDAriane(etapesDuFil),
+        pageDeRayon(
+          titrePage,
+          absolue(canonique),
+          products.map((p) => ({ nom: p.name, url: absolue(lien(langue, `/affiches/${p.slug}`)) })),
+          (pageDemandee - 1) * PAR_PAGE + 1,
+        ),
+      ];
+const imageDuRayon = assetUrl(products[0]?.image ?? null, 900) ?? undefined;
+
 const precedente = pageDemandee > 1 ? adresseRayon({ page: pageDemandee - 1 }) : null;
 const suivante = pageDemandee < pages ? adresseRayon({ page: pageDemandee + 1 }) : null;
 
@@ -460,6 +507,8 @@ const libelleTri: Record<string, string> = {
   path={canonique}
   languesTraduites={languesDuRayon}
   noindex={filtreParLieu}
+  image={imageDuRayon}
+  jsonLd={donneesDuRayon}
   precedente={precedente}
   suivante={suivante}
 >

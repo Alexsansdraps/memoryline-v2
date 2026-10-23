@@ -1,17 +1,66 @@
 /// <reference lib="dom" />
-import { t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
+import type { CleUi, Langue } from "../i18n/utils.ts";
 import {
   createSignal,
+  lazy,
   onMount,
   onCleanup,
   Show,
+  Suspense,
   type JSX,
 } from "solid-js";
-import type { PosterConfig, PosterFormat } from "@memoryline/types";
-import { sourceVideo } from "@memoryline/types";
-import { browserApi, getCartId, type EncartVideoDTO } from "../lib/api.ts";
-import ConfiguratorIsland from "./ConfiguratorIsland.tsx";
-import { LecteurVideo, facadeEncart } from "./EncartVideo.tsx";
+import type { PosterConfig, PosterFormat, SourceVideo } from "@memoryline/types";
+import { sourceVideo } from "@memoryline/types/video";
+import { getCartId, lirePanier } from "../lib/api-navigateur.ts";
+import type { Cart, EncartVideoDTO } from "../lib/api.ts";
+
+/*
+ * Le module de composition et le lecteur vidéo ne se chargent qu'au besoin.
+ *
+ * Importés d'emblée, ils partaient avec la fiche — le module entier, le
+ * dictionnaire des cinq langues et api.ts —, si bien que le bouton
+ * « Personnaliser » n'était cliquable qu'au bout de trois secondes sur un
+ * téléphone, pour une fenêtre que beaucoup n'ouvrent jamais (AUDIT-SEO.md,
+ * VIT-2). Ils sont maintenant demandés dès que la page est au repos, ou dès
+ * que la souris ou le doigt approche du bouton : à l'ouverture, ils sont
+ * presque toujours déjà là, et sinon la fenêtre montre un rond qui tourne.
+ */
+const chargerConfigurateur = () => import("./ConfiguratorIsland.tsx");
+const ConfiguratorIsland = lazy(chargerConfigurateur);
+const LecteurVideo = lazy(async () => {
+  const m = await import("./EncartVideo.tsx");
+  return {
+    default: (p: {
+      source: NonNullable<SourceVideo>;
+      posterBrut: string;
+      titre: string;
+      langue?: Langue;
+      onFermer: () => void;
+    }) =>
+      m.LecteurVideo({
+        source: p.source,
+        poster: m.facadeEncart(p.posterBrut),
+        titre: p.titre,
+        langue: p.langue,
+        onFermer: p.onFermer,
+      }),
+  };
+});
+
+/** Les mots de la fiche, traduits par la page (libelles(langue, LIBELLES_CONFIGURATEUR)). */
+export const LIBELLES_CONFIGURATEUR = [
+  "panier.moins",
+  "panier.plus",
+  "panier.quantite",
+  "cfg.chargement",
+  "produit.personnaliser",
+  "produit.aide",
+  "cfg.titre",
+  "cfg.video.titre",
+  "cfg.video.lancer",
+  "cfg.video.bulle",
+  "cfg.fermer",
+] as const satisfies readonly CleUi[];
 
 /**
  * Bouton UNIQUE « Personnaliser » de la fiche produit + configurateur en
@@ -41,6 +90,8 @@ export interface ProductConfiguratorProps {
   prixCadres?: boolean;
   /** Langue de la page — pilote tous les libellés affichés. */
   langue?: Langue;
+  /** Les mots de la fiche, traduits par la page. */
+  libelles: Record<(typeof LIBELLES_CONFIGURATEUR)[number], string>;
   product: { id: number; name: string; basePriceCents: number };
   /** Prix réels par format (centimes), ex. { A4: 2300, A3: 2900 }. */
   prices?: Partial<Record<string, number>>;
@@ -66,7 +117,8 @@ export interface ProductConfiguratorProps {
 export default function ProductConfigurator(
   props: ProductConfiguratorProps,
 ): JSX.Element {
-  const tr = t(props.langue ?? LANGUE_DEFAUT);
+  const tr = (cle: CleUi): string =>
+    (props.libelles as Record<string, string>)[cle] ?? String(cle);
   const [open, setOpen] = createSignal(false);
   const [editItemId, setEditItemId] = createSignal<number | null>(null);
 
@@ -157,16 +209,23 @@ export default function ProductConfigurator(
     if (open()) closeModal();
   }
 
+  /** Demande le module de composition à l'avance (une seule fois : import() se souvient). */
+  const prechargerConfigurateur = () => void chargerConfigurateur().catch(() => {});
+
   onMount(async () => {
     window.addEventListener("keydown", onKey);
+    // La page au repos, le module arrive sans gêner rien d'autre ; sans
+    // requestIdleCallback (Safari), deux secondes après le montage.
+    const auRepos = window.requestIdleCallback ?? ((f: () => void) => window.setTimeout(f, 2000));
+    auRepos(prechargerConfigurateur);
     // Mode édition depuis le panier (?edit=ITEM_ID).
     const params = new URLSearchParams(window.location.search);
     const editId = params.get("edit");
     if (!editId) return;
     setLoadingEdit(true);
     try {
-      const cart = await browserApi.cart(getCartId());
-      const item = cart.items.find((i) => String(i.id) === editId);
+      const cart = await lirePanier<Cart>(getCartId());
+      const item = cart?.items.find((i) => String(i.id) === editId);
       if (item) {
         setInitialConfig(item.config);
         setEditItemId(item.id);
@@ -232,6 +291,9 @@ export default function ProductConfigurator(
         <button
           type="button"
           onClick={openModal}
+          onPointerEnter={prechargerConfigurateur}
+          onTouchStart={prechargerConfigurateur}
+          onFocus={prechargerConfigurateur}
           disabled={loadingEdit()}
           aria-busy={loadingEdit()}
           class="inline-block rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
@@ -316,6 +378,14 @@ export default function ProductConfigurator(
               </button>
             </header>
             <div class="ml-modal-body">
+              <Suspense
+                fallback={
+                  <p class="flex items-center justify-center gap-2 py-16 text-ink-soft" role="status">
+                    <span class="ml-spinner" aria-hidden="true" />
+                    {tr("cfg.chargement")}
+                  </p>
+                }
+              >
               <ConfiguratorIsland
                 langue={props.langue}
                 product={props.product}
@@ -345,17 +415,20 @@ export default function ProductConfigurator(
                 itemId={editItemId() ?? undefined}
                 onCancel={closeModal}
               />
+              </Suspense>
             </div>
           </div>
           <Show when={videoOuverte() && source()}>
             {(s) => (
-              <LecteurVideo
-                source={s()}
-                poster={facadeEncart(props.video?.poster ?? "")}
-                titre={props.video?.titre || tr("cfg.video.titre")}
-                langue={props.langue}
-                onFermer={fermerVideo}
-              />
+              <Suspense>
+                <LecteurVideo
+                  source={s()}
+                  posterBrut={props.video?.poster ?? ""}
+                  titre={props.video?.titre || tr("cfg.video.titre")}
+                  langue={props.langue}
+                  onFermer={fermerVideo}
+                />
+              </Suspense>
             )}
           </Show>
         </div>

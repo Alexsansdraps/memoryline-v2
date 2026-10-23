@@ -1264,6 +1264,7 @@ const TEXTES_DU_SITE: Readonly<Record<string, { section: string; champ: string }
   "home.ia.cta": { section: "Accueil — l'affiche à partir d'une photo", champ: "Libellé du bouton" },
   "home.newsletter.title": { section: "Accueil — lettre d'information", champ: "Intitulé" },
   "footer.baseline": { section: "Pied de page", champ: "Baseline" },
+  "footer.instagram": { section: "Pied de page", champ: "Compte Instagram" },
 };
 
 export const CLES_TEXTES_DU_SITE: readonly string[] = Object.keys(TEXTES_DU_SITE);

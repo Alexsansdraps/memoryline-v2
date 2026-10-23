@@ -102,8 +102,6 @@ export { RAYONS_FUSIONNES, COLLECTIONS_DISPARUES };
 export const PAGES_SHOPIFY: Record<string, string> = {
   // La page d'atterrissage « Affiches personnalisables » : le rayon du même nom.
   "affiches-personnalisables": PERSONNALISABLES,
-  // Une page d'essai de Shopify (« mode boutique ») : l'accueil.
-  "mode-boutique": "/",
   cgv: "/pages/conditions-de-vente",
   "conditions-generales-de-vente": "/pages/conditions-de-vente",
   "politique-de-confidentialite": "/pages/confidentialite",
@@ -217,8 +215,8 @@ export async function destinationAncienne(
   if ((m = chemin.match(/^\/policies\/([^/]+)$/)))
     return { vers: POLITIQUES[m[1]!] ?? "/pages/conditions-de-vente" };
 
-  // Le blog : un seul, « Infos », resté vide. Le plus proche est l'accueil.
-  if (/^\/blogs(\/.*)?$/.test(chemin)) return { vers: "/" };
+  // Le blog et la page d'essai de Shopify n'ont pas d'équivalent : ils
+  // répondent 410 (adresseDisparue, plus bas), plus l'accueil.
 
   // La recherche, le panier et le compte.
   if (chemin === "/search") return { vers: "/recherche", garder: ["q"] };
@@ -240,6 +238,34 @@ export async function destinationAncienne(
   if (/^\/discount\/[^/]+$/.test(chemin)) return { vers: "/" };
 
   return null;
+}
+
+/**
+ * Les anciennes adresses de Shopify qui n'ont AUCUN équivalent : le blog
+ * (« Infos », resté vide : aucun article dans le plan du site de Shopify) et
+ * la page d'essai « mode boutique ». Elles répondent 410, « disparu pour de
+ * bon ».
+ *
+ * Elles menaient à l'accueil. Mais Google traite une redirection vers
+ * l'accueil comme une page introuvable déguisée (« soft 404 »), et la
+ * visiteuse qui arrivait d'un vieux lien croyait à une erreur de lien. Le 410
+ * dit vrai, et Google retire l'adresse plus vite qu'un 404
+ * (AUDIT-SEO.md, MIG-5).
+ *
+ * Une page publiée au back-office sous /pages/mode-boutique, ou une
+ * redirection posée au back-office (middleware.ts, lue avant), reprend la
+ * main. API muette : on ne tranche pas, la page dira 404.
+ */
+export async function adresseDisparue(
+  chemin: string,
+  lirePlan: () => Promise<PlanDuSite | null>,
+): Promise<boolean> {
+  if (/^\/blogs(\/.*)?$/.test(chemin)) return true;
+  if (chemin === "/pages/mode-boutique") {
+    const plan = await lirePlan();
+    return !!plan && !plan.pages.some((p) => p.slug === "mode-boutique");
+  }
+  return false;
 }
 
 /**
@@ -279,15 +305,61 @@ export async function imageAncienne(
     const voulu = nomImporte(n).toLowerCase();
     return visuels.find((v) => v.replace(/^\/assets\/[0-9a-f]{8}-/, "").toLowerCase() === voulu);
   };
-  const visuel =
-    trouver(nom) ??
-    trouver(
-      nom.replace(
-        /_(\d+x\d*|x\d+|pico|icon|thumb|small|compact|medium|large|grande|original|master)(_crop_[a-z]+)?(@\dx)?(\.[^.]+)$/i,
-        "$4",
-      ),
-    );
+  const sansTaille = nom.replace(
+    /_(\d+x\d*|x\d+|pico|icon|thumb|small|compact|medium|large|grande|original|master)(_crop_[a-z]+)?(@\dx)?(\.[^.]+)$/i,
+    "$4",
+  );
+  const visuel = trouver(nom) ?? trouver(sansTaille) ?? visuelDeLaFiche(sansTaille, plan);
   return visuel ? assetUrl(visuel, 1400) : null;
+}
+
+/**
+ * Les visuels de memoryline.fr que l'import n'a pas gardés, et la fiche
+ * Shopify qui les portait (plan du site de Shopify, relevé du 22/10 :
+ * AUDIT-SEO.md, MIG-7). Ce sont ceux des fiches retirées, plus un ancien
+ * visuel de Cayeux que sa fiche n'a plus. Liste figée : Shopify ne publiera
+ * plus de nouvelles images.
+ */
+const IMAGES_DES_ANCIENNES_FICHES: Record<string, string> = {
+  "berck-affichepersonnalisee.png": "berck-affiche-personnalisee",
+  "cayeux-sur-mercabines-affichepersonnalisee.png": "cayeux-sur-mer-cabines-affiche-personnalisee",
+  "cayeux-sur-mercabines-affichepersonnalisee_2aa0c661-06a9-472d-8214-771e95651b0d.png":
+    "cayeux-sur-mer-affiche-personnalisee",
+  "crielcabines-affichepersonnalisee.svg": "criel-cabines-affiche-personnalisee",
+  "dieppecabines-affichepersonnalisee.png": "dieppe-sunset-affiche-personnalisee-copie",
+  "dieppecerfs-volants-affichepersonnalisee.png": "dieppe-cerfs-volants-affiche-personnalisee",
+  "dieppefalaises-affichepersonnalisee_794994d2-c266-409e-8e6f-5db2111e270f.png":
+    "dieppe-falaises-affiche-personnalisee",
+  "dieppeplage-affichepersonnalisee.png": "dieppe-sunset-affiche-personnalisee",
+  "fortmahonbellesdunes-affichepersonnalisee.png": "fort-mahon-belles-dunes-affiche-personnalisee",
+  "letouquetcabines-affichepersonnalisee.png": "le-touquet-cabines-2-affiche-personnalisee",
+  "letouquetcabines_2-affichepersonnalisee.png": "le-touquet-cabines-affiche-personnalisee",
+  "letreportfetedelameraffichepersonnalisee.svg": "le-treport-fete-de-la-mer-affiche-personnalisee",
+  "mers-les-bainsvillas_2-affichepersonnalisee.png": "mers-les-bains-villas-2-affiche-personnalisee",
+  "mesnil-val-affichepersonnalisee_1.png": "menisl-val-affiche-personnalisee",
+  "saint-maloremparts-affichepersonnalisee_1_8eec70f2-67ee-4938-a29f-5b257ca43b71.png":
+    "saint-malo-remparts-affiche-personnalisee",
+  "saint-valery-en-caux-affichepersonnalisee_1.png": "saint-valery-en-caux-affiche-personnalisee",
+  "saint-valery-sur-merport-affichepersonnalisee.png":
+    "saint-valery-sur-somme-port-affiche-personnalisee",
+  "stellacabines-affichepersonnalisee.png": "cucq-stella-cabines-affiche-personnalisee",
+  "veules-les-roses-affichepersonnalisee_1.png": "veules-les-roses-affiche-personnalisee",
+};
+
+/**
+ * Le visuel qui remplace une image de memoryline.fr sans équivalent : le
+ * premier visuel de sa fiche si elle est encore en vente, sinon celui de la
+ * fiche qui la remplace (FICHES_RETIREES), comme la page de la fiche y mène
+ * déjà. Une fiche retirée qui ne mène qu'à un rayon (Veules-les-Roses,
+ * Saint-Valery-en-Caux) n'a pas d'affiche à montrer : son image reste
+ * introuvable, plutôt qu'une image sans rapport.
+ */
+function visuelDeLaFiche(nom: string, plan: PlanDuSite): string | undefined {
+  const handle = IMAGES_DES_ANCIENNES_FICHES[nom.toLowerCase()];
+  if (!handle) return undefined;
+  const premier = (slug: string) => plan.produits.find((p) => p.slug === slug)?.images?.[0];
+  const remplacante = FICHES_RETIREES[handle]?.match(/^\/affiches\/([^/?]+)$/)?.[1];
+  return premier(handle) ?? (remplacante ? premier(remplacante) : undefined);
 }
 
 /** Le nom qu'un fichier de Shopify a reçu à l'import (fetch-assets.ts, localName), sans l'empreinte. */

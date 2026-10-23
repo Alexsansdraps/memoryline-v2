@@ -25,6 +25,11 @@ import { LANGUES, LANGUE_DEFAUT } from "../i18n/utils.ts";
  * pour toutes les langues attraperait aussi une affiche dont l'adresse
  * contiendrait le mot « commande ».
  *
+ * Le stand (/stand, /salon) est fermé lui aussi : ces deux adresses ne
+ * servent qu'à la tablette du marché et mènent en 301 à « /?stand=1 », sans
+ * rien à indexer (AUDIT-SEO.md, IDX-4). Le « $ » final ne ferme que ces deux
+ * adresses exactes, pas une affiche dont le nom commencerait par « stand ».
+ *
  * Le plan du site est /sitemap.xml, rendu à la demande (sitemap.xml.ts).
  */
 const PRIVEES = ["/commande", "/photo/"];
@@ -34,6 +39,8 @@ export const GET: APIRoute = ({ site }) => {
   const base = site?.toString().replace(/\/$/, "") ?? "https://memoryline.fr";
   const interdits = [
     "/bo/",
+    "/stand$",
+    "/salon$",
     ...LANGUES.flatMap((l) =>
       PRIVEES.map((p) => (l === LANGUE_DEFAUT ? p : `/${l}${p}`)),
     ),

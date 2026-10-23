@@ -1,7 +1,13 @@
 ---
 import AfficheVide from "../../../components/AfficheVide.astro";
 import ActionEnAttente from "../../../components/ActionEnAttente.astro";
-import { dimensionsFormat, libelleFormat } from "@memoryline/types";
+import {
+  dimensionsFormat,
+  libelleFormat,
+  livraisonsStructurees,
+  paysLivres,
+  politiqueDeRetour,
+} from "@memoryline/types";
 import Base from "../../../layouts/Base.astro";
 import {
   api,
@@ -12,12 +18,15 @@ import {
   prixDesCadresSurLeSite,
   encartVideoDuSite,
   formatPrice,
+  livraisonDuSite,
   promotion,
   varianteLaMoinsChere,
   type ProductDetail,
 } from "../../../lib/api.ts";
-import ProductConfigurator from "../../../islands/ProductConfigurator.tsx";
-import AddToCartButton from "../../../islands/AddToCartButton.tsx";
+import ProductConfigurator, {
+  LIBELLES_CONFIGURATEUR,
+} from "../../../islands/ProductConfigurator.tsx";
+import AddToCartButton, { LIBELLES_AJOUT } from "../../../islands/AddToCartButton.tsx";
 import AfficheIA from "../../../islands/AfficheIA.tsx";
 import VignetteAffiche from "../../../components/VignetteAffiche.astro";
 import { RAYONS_FUSIONNES } from "../../../lib/anciennes-adresses.ts";
@@ -25,19 +34,17 @@ import { grilleProduits, sizesGrille, styleGrille } from "../../../lib/grille.ts
 import { htmlSur } from "../../../lib/html-sur.ts";
 import { adresseDuRayon, languesDuContenu } from "../../../lib/referencement.ts";
 import {
-  descriptionMeta,
   nommeDejaUneAffiche,
-  phraseSeo,
+  referencementDeFiche,
   sansPhraseSeo,
-  separateurDuSite,
   texteBrut,
-  titreDePage,
 } from "../../../lib/textes-seo.ts";
 import {
   LANGUE_DEFAUT,
   LOCALE_COMPLETE,
   estLangue,
   langueDepuisParam,
+  libelles,
   lien,
   t,
   type Langue,
@@ -269,27 +276,29 @@ const descriptionVisible =
  * 3. le début du texte de la fiche, s'il est dans la langue de la page,
  *    coupé à la fin d'une phrase ou d'un mot — plus jamais en plein mot ni
  *    avec ses retours à la ligne ;
- * 4. une phrase de repli, dans la langue de la page.
+ * 4. une phrase de repli, dans la langue de la page. L'affiche tirée d'une
+ *    photo n'a ni personnages ni texte à ajouter : elle a sa propre phrase,
+ *    retirée de la page (texte jugé inutile sous le bouton) mais qui reste
+ *    pour Google le meilleur résumé de ce que fait la fiche.
+ *
+ * La recette est celle du paquet partagé (referencementDeFiche) : l'aperçu
+ * Google du back-office l'applique à l'identique (AUDIT-SEO.md, CNT-3).
  */
-const description =
-  descriptionMeta(product.seoDescription) ||
-  (langue === LANGUE_DEFAUT ? descriptionMeta(phraseSeo(product.description)) : "") ||
-  (ficheTraduite ? descriptionMeta(texteDescription) : "") ||
-  descriptionMeta(
-    // L'affiche tirée d'une photo n'a ni personnages ni texte à ajouter :
-    // elle a sa propre phrase. La boutique l'a retirée de la page (texte
-    // jugé inutile sous le bouton), mais pour Google elle reste le meilleur
-    // résumé de ce que fait la fiche.
-    product.aiEnabled
-      ? tr("ia.intro")
-      : tr(
-          product.kind === "personnalisable"
-            ? "produit.meta_repli.personnalisable"
-            : "produit.meta_repli.prete_a_imprimer",
-        ).replace("{nom}", cleanName),
-  );
-/** Le titre de l'onglet et du résultat Google, quand la boutique en a écrit un. */
-const titreSeo = product.seoTitle?.trim() ? separateurDuSite(product.seoTitle.trim()) : null;
+const referencement = referencementDeFiche(
+  product,
+  {
+    naturePersonnalisable: tr("seo.nature.personnalisable"),
+    naturePrete: tr("seo.nature.prete_a_imprimer"),
+    reprisPersonnalisable: tr("produit.meta_repli.personnalisable"),
+    reprisPrete: tr("produit.meta_repli.prete_a_imprimer"),
+    introIa: tr("ia.intro"),
+  },
+  { francais: langue === LANGUE_DEFAUT, traduite: ficheTraduite },
+  texteDescription,
+);
+const description = referencement.description;
+/** Le titre de l'onglet et du résultat Google. */
+const titrePage = referencement.titre;
 
 // --- Données structurées Schema.org (SEO riche) ------------------------
 const siteUrl = Astro.site?.toString().replace(/\/$/, "") ?? "https://memoryline.fr";
@@ -316,7 +325,18 @@ const urlFiche = absolue(lien(langue, `/affiches/${product.slug}`));
  * Affiche personnalisée – A4 (21 × 29,7 cm) »), comme les variantes que
  * publiait Shopify : sans lui, rien ne disait à Google que 23 € est le prix
  * de l'A4 et 29 € celui de l'A3 (AUDIT-SEO.md, DS-1).
+ *
+ * Elle dit enfin ce que coûte la livraison de CE format et si l'affiche se
+ * retourne (AUDIT-SEO.md, DS-2) : frais tirés des tarifs du back-office,
+ * comme à la caisse ; retours selon les conditions de vente (une affiche
+ * personnalisée ne se retourne pas, une prête à imprimer sous 14 jours).
+ * Tarifs injoignables : la fiche se publie sans ces deux champs.
  */
+const catalogueLivraison = await livraisonDuSite();
+const retours = politiqueDeRetour(
+  product.kind,
+  catalogueLivraison ? paysLivres(catalogueLivraison) : undefined,
+);
 function offre(v: {
   format: string;
   priceCents: number;
@@ -334,6 +354,13 @@ function offre(v: {
     itemCondition: "https://schema.org/NewCondition",
     url: urlFiche,
     seller: { "@type": "Organization", name: "Memory Line" },
+    hasMerchantReturnPolicy: retours,
+    ...(catalogueLivraison
+      ? (() => {
+          const livraisons = livraisonsStructurees(catalogueLivraison, v.priceCents);
+          return livraisons.length ? { shippingDetails: livraisons } : {};
+        })()
+      : {}),
     // Le prix barré, quand la boutique en a réglé un : Google l'affiche
     // barré à côté du prix, comme la fiche.
     ...(remise
@@ -461,7 +488,7 @@ const pageDesVoisines = voisinesDuRayon ? pageDuRayon! : pageDuGenre;
 
 <Base
   langue={langue}
-  title={titreSeo ?? titreDePage(nomComplet)}
+  title={titrePage}
   description={description}
   path={lien(langue, `/affiches/${product.slug}`)}
   languesTraduites={product.languesTraduites}
@@ -700,6 +727,7 @@ const pageDesVoisines = voisinesDuRayon ? pageDuRayon! : pageDuGenre;
           </AfficheIA>
         ) : product.kind === "personnalisable" ? (
           <ProductConfigurator
+            libelles={libelles(langue, LIBELLES_CONFIGURATEUR)}
             langue={langue}
             client:only="solid-js"
             sansPrix={sansPrix}
@@ -735,6 +763,8 @@ const pageDesVoisines = voisinesDuRayon ? pageDuRayon! : pageDuGenre;
           </ProductConfigurator>
         ) : (
           <AddToCartButton
+            libelles={libelles(langue, LIBELLES_AJOUT)}
+            adressePanier={lien(langue, "/panier")}
             langue={langue}
             client:only="solid-js"
             product={{

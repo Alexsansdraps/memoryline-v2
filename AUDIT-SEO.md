@@ -4,7 +4,7 @@ Demandé par Alexandra (« vérif SEO STP »). Audit en **lecture seule** du sit
 
 **État de l'audit.** 5 angles audités par 5 agents : migration Shopify, indexation, contenu, données structurées, vitesse et mobile. La contre-vérification (un second agent qui essaie de réfuter chaque constat) n'a abouti que pour **les données structurées** : le PC a été éteint avant la fin des 4 autres. Les constats des angles marqués « pas encore contre-vérifiés » sont prouvés par leur auteur (URL, mesure, ligne de code), mais à revérifier avant de toucher au code.
 
-## Suivi — 22/10 au soir (PC de la maison, pas encore en ligne)
+## Suivi — 22/10 au soir (PC de la maison, en ligne le soir même)
 
 **Reproduit** : le relevé des anciennes adresses, rejoué contre le VPS avec le nouveau script `apps/web/scripts/verifier-anciennes-adresses.mjs`. Résultat : les 216 adresses du plan Shopify et 8 variantes mènent à une page qui répond, en un saut au plus. 3 mènent à l'accueil, `/agents.md` répond 404 (admis). VIT-1 aussi : sur le VPS, les 4 premières vignettes du rayon Villes portent encore `ml-apparition`, image principale comprise.
 
@@ -23,6 +23,26 @@ Demandé par Alexandra (« vérif SEO STP »). Audit en **lecture seule** du sit
 **Ajouté à MISE-EN-PROD § 6** (données, au BO) : la page « affiches-personnalisables » (MIG-2), l'import du CSV SEO après correction (MIG-3 / CNT-1), le bandeau d'accueil (CNT-6 / VIT-3) et la vitrine à 16 (CNT-10).
 
 **Pas fait, à décider** : VIT-2 (charger le module et le dictionnaire au clic), VIT-4 (images d'avance de l'accueil : la correction proposée ferait réapparaître l'animation sur la première rangée en version ordinateur), VIT-5, CNT-3 (aperçu Google du BO), DS-2 (livraison et retours, réglables aussi dans la Search Console), DS-3, ORG-1, PWA-1, MIG-5 (410 pour le blog), MIG-7 (images des fiches retirées), IDX-4, IDX-5 ; et tous les points de données (CNT-4, 5, 7, 8, 9, IDX-6 à 8).
+
+## Suivi — 23/10 (PC du bureau)
+
+Réponses d'Alexandra aux questions de Claude : le fichier SEO de Shopify, « fais comme tu penses être le mieux » ; le compte Instagram `https://www.instagram.com/memoryline.fr/` ; les retours, « regarde ce qui est fait sur l'ancien site » ; le rayon « À partir de photos », « garde-la » ; les textes des fiches, « rédige les brouillons » ; la traduction allemande d'essai, « non » (gardée) ; les points techniques, « tu peux les faire ».
+
+**Corrigé dans le code** (vérifié en local : types, 214 tests API + 45 BO, pages contrôlées dans un Chrome sans écran) :
+- **DS-2** : chaque offre porte sa politique de retour (aucun retour pour une affiche personnalisée, 14 jours aux frais du client pour une prête à imprimer, comme les CGV) et sa livraison, tirée des tarifs du BO comme à la caisse : 4,90 € en France, 7,90 € en Europe, préparation 2 à 3 jours ouvrés (politique d'expédition de l'ancienne boutique), acheminement lu dans la description du mode (`packages/types/src/donnees-structurees.ts`).
+- **DS-3** : les rayons ont leur fil d'Ariane et la liste de leurs affiches (CollectionPage), et leur première affiche comme image de partage.
+- **ORG-1** : le bloc Organization a `sameAs` (Instagram) et un `contactPoint` vers /contact. Le compte Instagram est un réglage du BO (Contenu du site › Pied de page, migration **0071**) et s'affiche en lien dans le pied de page, en cinq langues.
+- **CNT-3** : le titre et la description d'une fiche sortent d'UNE recette partagée (`referencementDeFiche`, `packages/types/src/textes-seo.ts`) : la fiche du site et l'aperçu Google du BO, qui suit la frappe. 30 fiches comparées avec la prod : titres et descriptions identiques.
+- **VIT-2** : la fiche ne charge plus le dictionnaire des langues ni api.ts ; le module de composition et le lecteur vidéo sont demandés au repos ou à l'approche du bouton « Personnaliser ». Ajout au panier, ouverture du module et réouverture depuis le panier essayés.
+- **VIT-4** : sur l'accueil, seule la première rangée du téléphone est chargée d'avance ; la première rangée de l'ordinateur reste sans animation (`sansApparition`).
+- **VIT-5** : l'image de la section « à partir d'une photo » a sa place réservée (proportions d'une affiche).
+- **MIG-5** : le blog de Shopify et sa page d'essai répondent 410 (le script de relevé les admet).
+- **MIG-7** : 17 des 19 anciennes images sans équivalent mènent au visuel de leur fiche ou de sa remplaçante ; Veules-les-Roses et Saint-Valery-en-Caux, retirées sans remplaçante, restent en 404.
+- **IDX-4** : /stand et /salon fermés dans robots.txt. **PWA-1** : manifeste web.
+
+**Décidé** : ne PAS importer les fichiers SEO de Shopify (MISE-EN-PROD § 6). Les titres du fichier sont déjà ceux du site pour 166 fiches sur 173 ; sur les 7 autres, 4 sont fautifs côté Shopify et 2 n'en diffèrent que par l'encodage des accents (le fichier écrit « é » en deux caractères). Ses descriptions sont des copiés-collés : les 61 fiches sans texte reçoivent des textes rédigés pour elles (brouillons à faire valider par Margaux), et les 17 fiches numérotées des noms distinctifs proposés.
+
+**Pas fait** : IDX-5 (http://www en un seul saut) : il faudrait changer la configuration du proxy en prod, au risque de gêner le renouvellement des certificats, pour un saut de moins que Google suit de toute façon. CNT-5 (rayon « Accessoires ») : en attente de la réponse d'Alexandra.
 
 ## Verdict
 

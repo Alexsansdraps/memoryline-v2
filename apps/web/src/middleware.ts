@@ -41,6 +41,7 @@ import { defineMiddleware } from "astro:middleware";
 import { api } from "./lib/api.ts";
 import { apiInterne } from "./lib/api-interne.ts";
 import {
+  adresseDisparue,
   destinationAncienne,
   imageAncienne,
   type Destination,
@@ -389,6 +390,16 @@ export const onRequest = defineMiddleware(async (context, next) => {
       avecSuivi(vers, context.url.searchParams, cible.garder),
       cible.code as 301 | 302,
     );
+  }
+
+  // 2 bis. Les anciennes adresses sans équivalent (le blog de Shopify, sa
+  // page d'essai) : la page d'erreur, en 410 (anciennes-adresses.ts,
+  // adresseDisparue). Après la table du back-office : une redirection posée
+  // là-bas reste prioritaire.
+  if (await adresseDisparue(sansLangue, () => planDuSite().catch(() => null))) {
+    context.locals.statutErreur = 410;
+    const page = await next("/404");
+    return new Response(page.body, { status: 410, statusText: "Gone", headers: page.headers });
   }
 
   // 3. La forme unique de l'adresse — pour une simple lecture seulement : un

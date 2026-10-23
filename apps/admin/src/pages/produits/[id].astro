@@ -20,6 +20,7 @@ import { apiInterne } from "../../lib/api-interne.ts";
  * jamais effacé.
  */
 import { formaterPoids } from "@memoryline/types";
+import { referencementDeFiche } from "@memoryline/types/textes-seo";
 import { url } from "../../lib/url.ts";
 import Admin from "../../layouts/Admin.astro";
 import EditeurTexte from "../../components/EditeurTexte.astro";
@@ -730,19 +731,23 @@ const statutActuel =
   STATUTS.find((s) => s.valeur === produit?.status) ?? STATUTS[1];
 
 /**
- * Ce que le site publie quand les champs de référencement restent vides : le
- * nom de l'affiche suivi du nom de la boutique, et les premiers mots de la
- * description. L'aperçu doit montrer exactement cela, sinon il ment.
+ * Ce que le site publie pour cette fiche en français : la MÊME recette que la
+ * fiche du site (referencementDeFiche, paquet partagé). L'aperçu montrait
+ * « nom | Memory Line » et les 160 premiers caractères du texte brut, quand le
+ * site publiait autre chose : un aperçu qui ment (AUDIT-SEO.md, CNT-3).
+ *
+ * Les valeurs « par défaut » sont ce que le site publie champs vides : ce
+ * sont les invites grisées des deux champs. L'aperçu, lui, tient compte de
+ * ce qui est saisi, et suit la frappe (script plus bas).
  */
-const LONGUEUR_DESCRIPTION = 160;
-const titreParDefaut = produit ? `${produit.name} | Memory Line` : "";
-const descriptionParDefaut = texteBrut(produit?.description).slice(
-  0,
-  LONGUEUR_DESCRIPTION,
-);
-const apercuTitre = produit?.seoTitle?.trim() || titreParDefaut;
-const apercuDescription =
-  produit?.seoDescription?.trim() || descriptionParDefaut;
+const referencementParDefaut = produit
+  ? referencementDeFiche({ ...produit, seoTitle: null, seoDescription: null })
+  : null;
+const titreParDefaut = referencementParDefaut?.titre ?? "";
+const descriptionParDefaut = referencementParDefaut?.description ?? "";
+const referencementPublie = produit ? referencementDeFiche(produit) : null;
+const apercuTitre = referencementPublie?.titre ?? "";
+const apercuDescription = referencementPublie?.description ?? "";
 const adressePublique = produit ? `${ORIGINE_PUBLIQUE}/affiches/${produit.slug}` : "";
 
 // --- Les trois dessins de la modale des ventes -------------------------
@@ -2020,10 +2025,10 @@ try {
               Aperçu dans les résultats de recherche
             </p>
             <p id="apercu-url" class="text-xs text-bo-muted">{adressePublique}</p>
-            <p id="apercu-titre" class="text-lg leading-snug text-bo-accent">
+            <p id="apercu-titre" class="text-lg leading-snug text-bo-accent" data-defaut={titreParDefaut}>
               {apercuTitre}
             </p>
-            <p id="apercu-description" class="text-sm">
+            <p id="apercu-description" class="text-sm" data-defaut={descriptionParDefaut}>
               {apercuDescription || "Cette affiche n'a pas encore de description."}
             </p>
           </div>
@@ -2527,9 +2532,6 @@ try {
     define:vars={{
       PUBLIC_API_URL,
       productId: id,
-      titreParDefaut,
-      descriptionParDefaut,
-      LONGUEUR_DESCRIPTION,
     }}
   >
     const abs = (u) =>
@@ -2910,46 +2912,9 @@ try {
       });
     }
 
-    // ================================================================
-    // Référencement : l'aperçu suit ce qui se tape
-    // ================================================================
-    const champSeoTitre = document.getElementById("champ-seo-titre");
-    if (champSeoTitre) {
-      const champSeoDescription = document.getElementById(
-        "champ-seo-description",
-      );
-      const champSlug = document.getElementById("champ-slug");
-      const apercuTitre = document.getElementById("apercu-titre");
-      const apercuDescription = document.getElementById("apercu-description");
-      const apercuUrl = document.getElementById("apercu-url");
-      const compteTitre = document.getElementById("compte-seo-titre");
-      const compteDescription = document.getElementById(
-        "compte-seo-description",
-      );
-      const baseUrl = (apercuUrl.textContent || "").replace(/[^/]*$/, "");
-
-      function rafraichirApercu() {
-        const titre = champSeoTitre.value.trim();
-        const description = champSeoDescription.value.trim();
-        apercuTitre.textContent = titre || titreParDefaut;
-        apercuDescription.textContent =
-          description ||
-          descriptionParDefaut ||
-          "Cette affiche n'a pas encore de description.";
-        apercuUrl.textContent = baseUrl + champSlug.value.trim();
-        compteTitre.textContent = titre
-          ? `${titre.length} caractères, 70 conseillés au maximum.`
-          : "Vide : le site utilise le nom de l'affiche.";
-        compteDescription.textContent = description
-          ? `${description.length} caractères, ${LONGUEUR_DESCRIPTION} conseillés au maximum.`
-          : "Vide : le site utilise le début de la description.";
-      }
-
-      [champSeoTitre, champSeoDescription, champSlug].forEach((c) =>
-        c?.addEventListener("input", rafraichirApercu),
-      );
-      rafraichirApercu();
-    }
+    // L'aperçu Google qui suit la frappe vit dans le script du bas : il a
+    // besoin des règles du site (textes-seo), qu'un script en ligne ne peut
+    // pas importer.
 
     // ================================================================
     // Statut : dire tout de suite ce que le choix va changer
@@ -3058,6 +3023,62 @@ try {
       modaleVentes.addEventListener("click", (ev) => {
         if (ev.target === modaleVentes) modaleVentes.close();
       });
+    }
+  </script>
+
+  <script>
+    /*
+     * Référencement : l'aperçu Google suit ce qui se tape, avec les règles
+     * du site lui-même (textes-seo, paquet partagé) : le séparateur
+     * « | Memory Line », la marque qui tombe au-delà de 60 caractères, la
+     * description coupée à la fin d'une phrase ou d'un mot. Champ vide : ce
+     * que le site publie sans lui, calculé par le serveur (data-defaut).
+     */
+    import {
+      DESCRIPTION_MAX,
+      TITRE_MAX,
+      descriptionMeta,
+      separateurDuSite,
+    } from "@memoryline/types/textes-seo";
+
+    const champSeoTitre = document.getElementById("champ-seo-titre") as HTMLInputElement | null;
+    const apercuTitre = document.getElementById("apercu-titre");
+    const apercuDescription = document.getElementById("apercu-description");
+    const apercuUrl = document.getElementById("apercu-url");
+    if (champSeoTitre && apercuTitre && apercuDescription && apercuUrl) {
+      const champTitre = champSeoTitre;
+      const champSeoDescription = document.getElementById(
+        "champ-seo-description",
+      ) as HTMLTextAreaElement | null;
+      const champSlug = document.getElementById("champ-slug") as HTMLInputElement | null;
+      const compteTitre = document.getElementById("compte-seo-titre");
+      const compteDescription = document.getElementById("compte-seo-description");
+      const titreParDefaut = apercuTitre.dataset.defaut ?? "";
+      const descriptionParDefaut = apercuDescription.dataset.defaut ?? "";
+      const baseUrl = (apercuUrl.textContent || "").replace(/[^/]*$/, "");
+
+      const rafraichirApercu = () => {
+        const titre = champTitre.value.trim();
+        const description = champSeoDescription?.value.trim() ?? "";
+        apercuTitre.textContent = titre ? separateurDuSite(titre) : titreParDefaut;
+        apercuDescription.textContent =
+          descriptionMeta(description) ||
+          descriptionParDefaut ||
+          "Cette affiche n'a pas encore de description.";
+        if (champSlug) apercuUrl.textContent = baseUrl + champSlug.value.trim();
+        if (compteTitre)
+          compteTitre.textContent = titre
+            ? `${titre.length} caractères. Au-delà de ${TITRE_MAX}, le site retire « | Memory Line ».`
+            : "Vide : le site compose le titre avec le nom de l'affiche.";
+        if (compteDescription)
+          compteDescription.textContent = description
+            ? `${description.length} caractères. Au-delà de ${DESCRIPTION_MAX}, le site la coupe à la fin d'une phrase ou d'un mot.`
+            : "Vide : le site prend le début du texte de la fiche, ou une phrase toute faite.";
+      };
+      [champTitre, champSeoDescription, champSlug].forEach((c) =>
+        c?.addEventListener("input", rafraichirApercu),
+      );
+      rafraichirApercu();
     }
   </script>
 </Admin>

@@ -48,6 +48,7 @@ const API_URL =
  */
 import {
   PUBLIC_API_URL,
+  ajouterAuPanier,
   getCartId,
   lirePanier,
   oublierCartId,
@@ -652,6 +653,37 @@ export async function setting(
 }
 
 /**
+ * Le compte Instagram de la boutique (BO › Contenu du site › Pied de page),
+ * ou null. Il sert deux fois : le lien du pied de page, et le « sameAs » des
+ * données structurées de l'accueil, par lequel Google relie le site à la
+ * marque. Seule une adresse https://instagram.com/<compte> passe : une saisie
+ * de travers ne doit ni casser le lien ni en publier un vers ailleurs.
+ */
+export async function instagramDeLaBoutique(): Promise<string | null> {
+  const brut = (await setting("footer.instagram", "")).trim();
+  return /^https:\/\/(www\.)?instagram\.com\/[A-Za-z0-9._]+\/?$/.test(brut) ? brut : null;
+}
+
+/**
+ * Zones, modes et tarifs de livraison, lus par le serveur pour les données
+ * structurées des fiches (livraison et frais de port annoncés à Google,
+ * donnees-structurees.ts). Gardés une minute : chaque fiche les demanderait,
+ * et ils ne changent qu'au back-office. API injoignable : null, et la fiche
+ * se publie sans ces champs plutôt qu'avec des frais inventés.
+ */
+const CACHE_LIVRAISON_MS = 60_000;
+let cacheLivraison: { a: number; valeurs: Promise<CatalogueLivraison | null> } | null = null;
+
+export function livraisonDuSite(): Promise<CatalogueLivraison | null> {
+  const maintenant = Date.now();
+  if (cacheLivraison && maintenant - cacheLivraison.a < CACHE_LIVRAISON_MS)
+    return cacheLivraison.valeurs;
+  const valeurs = get<CatalogueLivraison>("/shipping").catch(() => null);
+  cacheLivraison = { a: maintenant, valeurs };
+  return valeurs;
+}
+
+/**
  * Le site propose-t-il les cadres ? Réglage de la page Cadres du back-office.
  *
  * Ne dit rien du stand, qui les propose toujours : c'est à la page de
@@ -968,15 +1000,9 @@ export const browserApi = {
       langue?: string;
     },
   ) =>
-    browserSend<OrderItem>("POST", `/cart/${cartId}/items`, body).catch(
-      async (e: unknown) => {
-        // Panier clos (déjà payé) : on repart d'un panier neuf et on
-        // réessaie une fois, sans rien demander au client.
-        if (!String(e).includes("panier_clos")) throw e;
-        oublierCartId();
-        return browserSend<OrderItem>("POST", `/cart/${getCartId()}/items`, body);
-      },
-    ),
+    // Panier clos (déjà payé) : un panier neuf et un second essai, sans rien
+    // demander au client (api-navigateur.ts, qui porte la règle).
+    ajouterAuPanier<OrderItem>(cartId, body),
 
   updateCartItem: (
     cartId: string,

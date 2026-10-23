@@ -68,6 +68,17 @@ interface Props {
    */
   premiere?: boolean;
   /**
+   * Montrer la vignette tout de suite, sans l'animation d'apparition, même
+   * si son image n'est pas chargée d'avance (`prioritaire`).
+   *
+   * Les deux ne coïncident pas toujours : sur l'accueil, la première rangée
+   * de l'ordinateur compte quatre affiches, mais celle du téléphone deux
+   * seulement. Charger les quatre d'avance volait de la bande passante à
+   * l'image principale sur téléphone (AUDIT-SEO.md, VIT-4) ; les animer
+   * retardait leur affichage sur ordinateur (VIT-1).
+   */
+  sansApparition?: boolean;
+  /**
    * La largeur que la vignette occupe VRAIMENT à l'écran, pour `sizes`.
    *
    * Seule la grille la connaît : ses colonnes, ses marges et ses gouttières.
@@ -96,6 +107,7 @@ const {
   langue,
   prioritaire = false,
   premiere = false,
+  sansApparition = false,
   sizes = GRILLE_RAYON,
   titre: Titre = "h3",
 } = Astro.props;
@@ -189,7 +201,7 @@ const imageJeu = assetSrcset(affiche.image, [400, 600, 900, 1400]);
     l'écran, et l'effet retardait l'affichage de la page de 1 à 2,5 s sur
     téléphone, au-delà du seuil de Google (AUDIT-SEO.md, VIT-1). Les
     suivantes gardent l'effet en entrant dans l'écran. */}
-<li class:list={["group", !(prioritaire || premiere) && "ml-apparition"]}>
+<li class:list={["group", !(prioritaire || premiere || sansApparition) && "ml-apparition"]}>
   <a href={lien(langue, `/affiches/${affiche.slug}`)} class="block">
     <div
       class="relative flex items-center justify-center overflow-hidden bg-paper-deep"

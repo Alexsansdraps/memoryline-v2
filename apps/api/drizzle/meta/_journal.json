@@ -498,6 +498,13 @@
       "when": 1792499883811,
       "tag": "0070_cles_paiement",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1792739852000,
+      "tag": "0071_compte_instagram",
+      "breakpoints": true
     }
   ]
 }

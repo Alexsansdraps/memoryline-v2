@@ -1,17 +1,36 @@
 /// <reference lib="dom" />
-import { t, lien, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
+import type { CleUi, Langue } from "../i18n/utils.ts";
 import { createSignal, onCleanup, onMount, type JSX } from "solid-js";
 import type { PosterConfig, PosterFormat } from "@memoryline/types";
-import { browserApi, getCartId } from "../lib/api.ts";
+import { ajouterAuPanier, getCartId } from "../lib/api-navigateur.ts";
 import { messageAjoutRefuse } from "../lib/ajout-panier.ts";
 
 /**
  * Bouton « Ajouter au panier » pour une affiche prête à imprimer (sans
  * personnalisation). Envoie une config minimale et redirige vers /panier.
+ *
+ * Il n'importe ni le dictionnaire des langues ni api.ts : ses mots arrivent
+ * traduits par la page (`libelles`), et l'ajout passe par le module léger
+ * du navigateur. Avant, la fiche téléchargeait près de 200 Ko de
+ * JavaScript avant que ce bouton devienne cliquable (AUDIT-SEO.md, VIT-2).
  */
+export const LIBELLES_AJOUT = [
+  "panier.moins",
+  "panier.plus",
+  "panier.quantite",
+  "produit.ajout_en_cours",
+  "produit.ajouter",
+  "panier.err.config",
+  "panier.err.ajout",
+] as const satisfies readonly CleUi[];
+
 export interface AddToCartButtonProps {
-  /** Langue de la page — pilote tous les libellés affichés. */
+  /** Langue de la page : celle de la ligne ajoutée au panier. */
   langue?: Langue;
+  /** Les mots du bouton, traduits par la page (libelles(langue, LIBELLES_AJOUT)). */
+  libelles: Record<(typeof LIBELLES_AJOUT)[number], string>;
+  /** L'adresse du panier dans la langue de la page. */
+  adressePanier: string;
   product: {
     id: number;
     name: string;
@@ -26,7 +45,8 @@ export interface AddToCartButtonProps {
 export default function AddToCartButton(
   props: AddToCartButtonProps,
 ): JSX.Element {
-  const tr = t(props.langue ?? LANGUE_DEFAUT);
+  const tr = (cle: CleUi): string =>
+    (props.libelles as Record<string, string>)[cle] ?? String(cle);
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   /**
@@ -77,15 +97,15 @@ export default function AddToCartButton(
       ...(formatChoisi() ? { format: formatChoisi() as PosterFormat } : {}),
     };
     try {
-      await browserApi.addCartItem(getCartId(), {
+      await ajouterAuPanier(getCartId(), {
         productId: props.product.id,
         unitPriceCents: props.product.basePriceCents,
         quantity: quantite(),
         title: props.product.name,
         config,
-        langue: props.langue ?? LANGUE_DEFAUT,
+        langue: props.langue ?? "fr",
       });
-      window.location.href = lien(props.langue ?? LANGUE_DEFAUT, "/panier");
+      window.location.href = props.adressePanier;
     } catch (e) {
       // Dans la langue de la page, jamais le texte brut de l'API.
       setError(messageAjoutRefuse(e, tr));

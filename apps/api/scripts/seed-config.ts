@@ -90,6 +90,14 @@ async function main() {
       label: "Baseline (pied de page)",
       group: "footer",
     },
+    {
+      // Le compte de la boutique (migration 0071) : lien du pied de page et
+      // « sameAs » des données structurées de l'accueil.
+      key: "footer.instagram",
+      value: "https://www.instagram.com/memoryline.fr/",
+      label: "Compte Instagram (pied de page)",
+      group: "footer",
+    },
   ];
   for (const d of defaults) {
     await db

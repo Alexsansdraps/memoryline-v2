@@ -348,7 +348,14 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
   {
     titre: "Pied de page",
     aide: "",
-    champs: [{ key: "footer.baseline", label: "Baseline", type: "texte" }],
+    champs: [
+      { key: "footer.baseline", label: "Baseline", type: "texte" },
+      {
+        key: "footer.instagram",
+        label: "Compte Instagram (https://www.instagram.com/…) — lien du pied de page, et lu par Google",
+        type: "lien",
+      },
+    ],
   },
   {
     titre: "Signature des créations",

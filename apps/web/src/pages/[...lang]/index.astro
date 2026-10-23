@@ -13,6 +13,7 @@ import {
   assetUrl,
   assetSrcset,
   bandeauxVisuels,
+  instagramDeLaBoutique,
   type Product,
 } from "../../lib/api.ts";
 import { PAGE_ACCUEIL } from "@memoryline/types";
@@ -202,8 +203,9 @@ const lettreTitre = await texte(
  * avait aucune. Google en tire le nom du site affiché au-dessus du résultat
  * et le logo de la marque. L'accueil seulement : c'est là qu'il les cherche.
  *
- * Rien n'y est inventé : ni réseaux sociaux (la boutique n'en a déclaré
- * aucun, memoryline.fr publiait une liste vide), ni téléphone.
+ * Rien n'y est inventé : le compte Instagram est celui que la boutique a
+ * réglé (BO › Contenu du site › Pied de page), le contact est la page
+ * Contact, et il n'y a pas de téléphone (AUDIT-SEO.md, ORG-1).
  *
  * Le bloc WebSite ne part que de l'accueil français, la racine du domaine :
  * Google n'y lit le nom du site que là, et ses quatre copies (/en, /de…)
@@ -213,6 +215,7 @@ const lettreTitre = await texte(
  * (AUDIT-SEO.md, données structurées).
  */
 const siteUrl = Astro.site?.toString().replace(/\/$/, "") ?? "https://memoryline.fr";
+const instagram = await instagramDeLaBoutique();
 const organisationLd = {
   "@context": "https://schema.org",
   "@type": "Organization",
@@ -224,6 +227,13 @@ const organisationLd = {
     url: `${siteUrl}/logo-memory-line.png`,
     width: 500,
     height: 222,
+  },
+  ...(instagram ? { sameAs: [instagram] } : {}),
+  contactPoint: {
+    "@type": "ContactPoint",
+    contactType: "customer service",
+    url: `${siteUrl}${lien(LANGUE_DEFAUT, "/contact")}`,
+    availableLanguage: ["fr", "en", "de", "it", "es"],
   },
 };
 const siteLd = {
@@ -300,7 +310,8 @@ const donneesStructurees =
             <VignetteAffiche
               affiche={p}
               langue={langue}
-              prioritaire={rang < 4}
+              prioritaire={rang < grille.mobile}
+              sansApparition={rang < grille.ordinateur}
               premiere={rang === 0 && !bandeauEnTete}
               sizes={sizesGrille(grille, { pleineLargeur: true })}
             />
@@ -336,14 +347,22 @@ const donneesStructurees =
               résoudrait sinon sur l'origine du site, qui ne sert aucun
               /assets — l'image serait cassée dès que la cliente en pose une.
               Le srcset laisse un téléphone télécharger la version qu'il
-              affiche, pas celle d'un grand écran. */}
+              affiche, pas celle d'un grand écran.
+
+              La place de l'image est réservée d'avance, aux proportions d'une
+              affiche (1020 × 1400) : chargée à l'approche de l'écran, elle
+              repoussait sinon la lettre d'information et le pied de page en
+              arrivant (AUDIT-SEO.md, VIT-5). Une image d'autres proportions
+              est recadrée au centre plutôt que de déformer la page. */}
           <img
             src={assetUrl(iaImage) ?? iaImage}
             srcset={assetSrcset(iaImage, [400, 600, 900, 1400])}
             sizes="(min-width: 1024px) 50vw, 100vw"
             alt={iaTitre}
             loading="lazy"
-            class="w-full object-cover"
+            width="1020"
+            height="1400"
+            class="aspect-[1020/1400] h-auto w-full object-cover"
           />
           <div>
             <h2 class="text-3xl leading-tight">{iaTitre}</h2>

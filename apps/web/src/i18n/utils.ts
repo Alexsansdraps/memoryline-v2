@@ -72,3 +72,17 @@ export function cheminSansLangue(pathname: string): string {
   }
   return pathname || "/";
 }
+
+/**
+ * Les libellés d'un îlot, traduits d'avance par la page qui le monte.
+ *
+ * Un îlot qui importe t() fait télécharger au navigateur le dictionnaire des
+ * cinq langues (i18n/ui.ts, près de 200 Ko) avant de pouvoir afficher son
+ * bouton. Pour quelques mots, la page les traduit sur le serveur et les lui
+ * passe en props : c'est ainsi que font la pastille du panier, la lettre
+ * d'information et les boutons de la fiche (AUDIT-SEO.md, VIT-2).
+ */
+export function libelles<K extends CleUi>(langue: Langue, cles: readonly K[]): Record<K, string> {
+  const tr = t(langue);
+  return Object.fromEntries(cles.map((c) => [c, tr(c)])) as Record<K, string>;
+}

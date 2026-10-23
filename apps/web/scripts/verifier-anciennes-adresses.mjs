@@ -35,10 +35,16 @@ const ATTENTE_MS = 500;
 /** Les codes d'une redirection permanente : les seuls qui transmettent le référencement. */
 const PERMANENTES = new Set([301, 308]);
 /**
- * Les adresses qui PEUVENT ne mener nulle part : un fichier technique de
- * Shopify, sans visiteur ni référencement (relevé de l'audit du 22/10).
+ * Les adresses qui PEUVENT ne mener nulle part, avec le code attendu : un
+ * fichier technique de Shopify, sans visiteur ni référencement (404, relevé
+ * de l'audit du 22/10), et le blog vide et la page d'essai de Shopify,
+ * disparus pour de bon (410, anciennes-adresses.ts, adresseDisparue).
  */
-const INTROUVABLES_ADMISES = new Set(["/agents.md"]);
+const INTROUVABLES_ADMISES = new Map([
+  ["/agents.md", 404],
+  ["/blogs/infos", 410],
+  ["/pages/mode-boutique", 410],
+]);
 
 const chemins = readFileSync(new URL("./anciennes-adresses-shopify.txt", import.meta.url), "utf8")
   .split(/\r?\n/)
@@ -113,7 +119,7 @@ for (const { chemin, garder } of tout) {
   const sauts = codes.length - 1;
   relevé.push({ chemin, codes, finale });
 
-  if (INTROUVABLES_ADMISES.has(chemin) && finalCode === 404) continue;
+  if (INTROUVABLES_ADMISES.get(chemin) === finalCode) continue;
   if (finalCode !== 200) problemes.push(`${chemin} : ${codes.join(" → ")} (${finale})`);
   else if (sauts > 1) problemes.push(`${chemin} : ${sauts} sauts (${codes.join(" → ")}) jusqu'à ${finale}`);
   else if (sauts === 1 && !PERMANENTES.has(codes[0]))
@@ -128,7 +134,7 @@ for (const { chemin, garder } of tout) {
 }
 
 const admises = relevé.filter(
-  (r) => INTROUVABLES_ADMISES.has(r.chemin) && r.codes[r.codes.length - 1] === 404,
+  (r) => INTROUVABLES_ADMISES.get(r.chemin) === r.codes[r.codes.length - 1],
 );
 const bons = relevé.length - problemes.length - admises.length;
 console.log(`\nSite vérifié : ${base}`);

@@ -34,3 +34,4 @@ export type PaymentProvider = (typeof PAYMENT_PROVIDERS)[number];
 export * from "./formats.js";
 export * from "./nuanciers.js";
 export * from "./rayons-sans-page.js";
+export * from "./donnees-structurees.js";

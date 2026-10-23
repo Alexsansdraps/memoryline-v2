@@ -10,7 +10,9 @@
     "./couleurs": "./src/couleurs.ts",
     "./bandeaux-visuels": "./src/bandeaux-visuels.ts",
     "./bandeaux-visuels.css": "./src/bandeaux-visuels.css",
-    "./recherche": "./src/recherche.ts"
+    "./recherche": "./src/recherche.ts",
+    "./video": "./src/video.ts",
+    "./textes-seo": "./src/textes-seo.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

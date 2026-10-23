@@ -72,10 +72,12 @@ export default defineConfig({
     // qu'au moment où la page les réclame, refait alors son pré-chargement
     // et répond 504 à la page déjà ouverte. La carte des points relais se
     // masquait sans rien dire (Leaflet) et la page de commande ne se montait
-    // plus (Stripe). Nommés ici, ils sont prêts dès le démarrage. Sans effet
+    // plus (Stripe), et le module de composition, chargé à l'approche du
+    // bouton « Personnaliser », restait sur « Chargement… » (zod, par
+    // @memoryline/types). Nommés ici, ils sont prêts dès le démarrage. Sans effet
     // sur le site en ligne, qui est construit d'avance.
     optimizeDeps: {
-      include: ["leaflet", "@stripe/stripe-js"],
+      include: ["leaflet", "@stripe/stripe-js", "@memoryline/types > zod", "solid-js/store"],
     },
     // Docker Desktop sous Windows ne propage PAS les événements de fichiers
     // dans le conteneur : sans scrutation active, Vite ne voit aucune
