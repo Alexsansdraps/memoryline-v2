@@ -173,16 +173,116 @@ export function calagePropre(brut: unknown): CalagePiece {
 }
 
 /**
- * Transformation SVG correspondant à un calage, dans le repère 500×1000.
- *
- * L'agrandissement part du BAS-CENTRE (250, 1000), le point d'ancrage commun
- * à toutes les couches (`preserveAspectRatio="xMidYMax"`) : agrandir depuis le
- * coin haut-gauche décollerait la pièce du personnage.
+ * Où tombe le cadre 500×1000 du personnage dans le repère d'un fichier : pour
+ * chaque axe, un point du fichier `v` se pose en `echelle × (v − min) + marge`
+ * dans le cadre.
  */
-export function transformCalage(c: CalagePiece): string {
+export interface RepereFichier {
+  minX: number;
+  minY: number;
+  echelleX: number;
+  echelleY: number;
+  margeX: number;
+  margeY: number;
+}
+
+/** Un fichier dessiné au format du cadre : rien à convertir. */
+const REPERE_DU_CADRE: RepereFichier = {
+  minX: 0,
+  minY: 0,
+  echelleX: 1,
+  echelleY: 1,
+  margeX: 0,
+  margeY: 0,
+};
+
+/**
+ * Lit, sur la balise <svg> d'ouverture, comment le fichier se pose dans le
+ * cadre 500×1000 : son viewBox, puis son `preserveAspectRatio` (par défaut
+ * `xMidYMid meet`, centré sans déborder). C'est ainsi que le posent les trois
+ * rendus : l'écran de calage du back-office (une <image> 500×1000), la
+ * boutique (le SVG remplit un cadre 1:2) et l'impression (chaque couche à la
+ * même largeur, centrée sur le même point).
+ *
+ * Sans viewBox lisible, le fichier est pris pour un 500×1000.
+ */
+export function repereDuFichier(ouverture: string): RepereFichier {
+  const attribut = (nom: string) =>
+    new RegExp(`\\s${nom}\\s*=\\s*["']([^"']*)["']`).exec(ouverture)?.[1];
+  const [minX = NaN, minY = NaN, largeur = NaN, hauteur = NaN, ...reste] = (
+    attribut("viewBox") ?? ""
+  )
+    .trim()
+    .split(/[\s,]+/)
+    .map(Number);
+  if (
+    reste.length > 0 ||
+    ![minX, minY, largeur, hauteur].every(Number.isFinite) ||
+    largeur <= 0 ||
+    hauteur <= 0
+  )
+    return REPERE_DU_CADRE;
+  const [alignement = "xMidYMid", mode = "meet"] = (
+    attribut("preserveAspectRatio") ?? ""
+  )
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  let echelleX = 500 / largeur;
+  let echelleY = 1000 / hauteur;
+  if (alignement !== "none") {
+    const e =
+      mode === "slice"
+        ? Math.max(echelleX, echelleY)
+        : Math.min(echelleX, echelleY);
+    echelleX = e;
+    echelleY = e;
+  }
+  // Part de la place libre laissée avant le dessin : 0 collé, ½ centré, 1 au bout.
+  const part = (debut: string, bout: string) =>
+    alignement === "none"
+      ? 0
+      : alignement.includes(debut)
+        ? 0
+        : alignement.includes(bout)
+          ? 1
+          : 0.5;
+  return {
+    minX,
+    minY,
+    echelleX,
+    echelleY,
+    margeX: (500 - largeur * echelleX) * part("xMin", "xMax"),
+    margeY: (1000 - hauteur * echelleY) * part("YMin", "YMax"),
+  };
+}
+
+/**
+ * Transformation SVG correspondant à un calage, écrite dans le repère du
+ * fichier de la pièce.
+ *
+ * Le calage se règle au back-office dans le CADRE du personnage (500×1000) :
+ * décalage en % de sa largeur et de sa hauteur, agrandissement depuis son
+ * BAS-CENTRE (250, 1000) — agrandir depuis le coin haut-gauche décollerait la
+ * pièce du personnage. Une pièce dessinée en 500×1000 a le même repère que le
+ * cadre ; une pièce dessinée dans un autre format (1024×1536, par exemple) y
+ * est réduite et centrée, et le décalage comme le point d'ancrage doivent être
+ * ramenés dans SON repère. Sans cette conversion, un t-shirt calé au
+ * back-office tombait plus bas et plus à droite sur la boutique et à
+ * l'impression (27 octobre).
+ */
+export function transformCalage(
+  c: CalagePiece,
+  repere: RepereFichier = REPERE_DU_CADRE,
+): string {
   const tx = (c.dx / 100) * 500;
   const ty = (c.dy / 100) * 1000;
-  return `translate(${tx} ${ty}) translate(250 1000) scale(${c.scale}) translate(-250 -1000)`;
+  // Le bas-centre du cadre, et le décalage, exprimés dans le fichier.
+  const ax = repere.minX + (250 - repere.margeX) / repere.echelleX;
+  const ay = repere.minY + (1000 - repere.margeY) / repere.echelleY;
+  const fx = tx / repere.echelleX;
+  const fy = ty / repere.echelleY;
+  return `translate(${fx} ${fy}) translate(${ax} ${ay}) scale(${c.scale}) translate(${-ax} ${-ay})`;
 }
 
 /**
@@ -205,9 +305,13 @@ export function appliquerCalage(
   const fin = svg.lastIndexOf("</svg>");
   if (fin <= debut) return svg;
   const dedans = svg.slice(debut, fin);
+  const transformation = transformCalage(
+    calagePropre(calage),
+    repereDuFichier(ouverture[0]),
+  );
   return (
     svg.slice(0, debut) +
-    `<g transform="${transformCalage(calagePropre(calage))}">${dedans}</g>` +
+    `<g transform="${transformation}">${dedans}</g>` +
     svg.slice(fin)
   );
 }
