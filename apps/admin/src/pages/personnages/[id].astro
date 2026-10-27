@@ -800,8 +800,13 @@ const piecesACaler = SLOTS.flatMap((s) => {
             <div class="js-liste flex flex-wrap gap-1.5"></div>
             <p class="mt-1 text-xs text-bo-muted">
               <span class="inline-block h-3 w-3 rounded-full bg-green-600 align-middle"></span>
-              calée · sans coche : posée telle qu'elle est dessinée
+              calée · sans coche : posée telle qu'elle est dessinée ·
+              <span class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-bo-accent align-middle text-[9px] leading-none text-white">★</span>
+              portée par défaut
             </p>
+            {/* La tenue de départ, en clair : on voit tout de suite si la
+                case « par défaut » a bien été prise en compte. */}
+            <p class="js-tenue mt-1 text-xs"></p>
           </div>
           <div class="flex flex-wrap gap-6">
             <div
@@ -881,7 +886,8 @@ const piecesACaler = SLOTS.flatMap((s) => {
                   Le personnage porte cette pièce par défaut
                   <span class="block text-bo-muted">
                     Ce que le client voit dès qu'il l'ajoute à son affiche. Une
-                    seule pièce par emplacement.
+                    seule pièce par emplacement. Enregistré dès que vous cochez
+                    ou décochez.
                   </span>
                 </span>
               </label>
@@ -916,7 +922,8 @@ const piecesACaler = SLOTS.flatMap((s) => {
               <p class="mt-2 text-xs text-bo-muted">
                 « Passer » et « Précédente » n'enregistrent rien : le calage
                 déjà enregistré de la pièce reste tel quel. Seul « Valider et
-                suivante » enregistre ce qui est affiché.
+                suivante » enregistre le calage affiché. La case « par
+                défaut », elle, s'enregistre dès qu'on la coche.
               </p>
             </div>
           </div>
@@ -1121,6 +1128,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
       const caseDefaut = boite.querySelector(".js-defaut");
       const liste = boite.querySelector(".js-liste");
       const etatCalage = boite.querySelector(".js-etat");
+      const tenue = boite.querySelector(".js-tenue");
       const defaut = donnees.defaut || {};
 
       let index = 0;
@@ -1156,11 +1164,13 @@ const piecesACaler = SLOTS.flatMap((s) => {
               (i === index
                 ? "border-bo-accent ring-2 ring-bo-accent"
                 : "border-bo-border hover:border-bo-accent");
+            const parDefaut = defaut[p.slot] === p.position;
             b.title =
               p.slotLabel +
               " — " +
               (p.name || "sans nom") +
-              (calee ? " (calée)" : " (pas de calage)");
+              (calee ? " (calée)" : " (pas de calage)") +
+              (parDefaut ? " · portée par défaut" : "");
             b.setAttribute("aria-label", b.title);
             if (i === index) b.setAttribute("aria-current", "true");
             const svg = document.createElementNS(SVG, "svg");
@@ -1178,6 +1188,13 @@ const piecesACaler = SLOTS.flatMap((s) => {
                 "absolute -right-1 -top-1 h-3 w-3 rounded-full border border-white bg-green-600";
               b.appendChild(coche);
             }
+            if (parDefaut) {
+              const etoile = document.createElement("span");
+              etoile.className =
+                "absolute -bottom-1 -left-1 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-white bg-bo-accent text-[9px] leading-none text-white";
+              etoile.textContent = "★";
+              b.appendChild(etoile);
+            }
             b.addEventListener("click", () => {
               index = i;
               afficher();
@@ -1185,6 +1202,24 @@ const piecesACaler = SLOTS.flatMap((s) => {
             return b;
           }),
         );
+        dessinerTenue();
+      }
+
+      /** « Tenue par défaut : Haut « Clothes 1 », Coupe « Hair 2 » », ou rien. */
+      function dessinerTenue() {
+        if (!tenue) return;
+        const morceaux = Object.keys(defaut)
+          .filter((slot) => defaut[slot] !== null && defaut[slot] !== undefined)
+          .map((slot) => {
+            const p = pieces.find((x) => x.slot === slot && x.position === defaut[slot]);
+            return p
+              ? p.slotLabel + " « " + (p.name || "sans nom") + " »"
+              : slot + " n° " + defaut[slot] + " (pièce plus proposée à ce personnage)";
+          });
+        tenue.className = "js-tenue mt-1 text-xs " + (morceaux.length ? "text-green-700" : "text-bo-muted");
+        tenue.textContent = morceaux.length
+          ? "Tenue par défaut : " + morceaux.join(", ") + "."
+          : "Aucune tenue par défaut : le client reçoit le personnage tel qu'il est dessiné.";
       }
 
       function dessiner() {
@@ -1503,30 +1538,8 @@ const piecesACaler = SLOTS.flatMap((s) => {
           if (!res.ok) throw new Error(data.error || res.status);
           for (const cle of Object.keys(calage)) delete calage[cle];
           Object.assign(calage, data.slotAdjust || {});
-
-          // Tenue par défaut : cochée, cette pièce devient celle portée
-          // d'emblée pour son emplacement ; décochée alors qu'elle l'était,
-          // l'emplacement redevient vide. Un seul choix par emplacement, donc
-          // on écrase sans se poser de question.
-          const etaitDefaut = defaut[p.slot] === p.position;
-          if (caseDefaut.checked !== etaitDefaut) {
-            const res2 = await fetch(
-              `${PUBLIC_API_URL}/admin/characters/${id}/default-assets`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  [p.slot]: caseDefaut.checked ? p.position : null,
-                }),
-                credentials: "include",
-              },
-            );
-            const data2 = await res2.json();
-            if (!res2.ok) throw new Error(data2.error || res2.status);
-            for (const cle of Object.keys(defaut)) delete defaut[cle];
-            Object.assign(defaut, data2.defaultAssets || {});
-          }
-
+          // La tenue par défaut ne passe plus par ici : elle s'enregistre dès
+          // que la case change (voir plus bas).
           avancer(1);
           // Après le passage à la suivante, qui vide le message : sinon
           // « Enregistré » ne se lisait jamais.
@@ -1535,6 +1548,49 @@ const piecesACaler = SLOTS.flatMap((s) => {
           statut.textContent = "Échec : " + err;
         } finally {
           bouton.disabled = false;
+        }
+      });
+
+      /*
+       * Tenue par défaut : enregistrée dès que la case change. Elle ne
+       * partait qu'avec « Valider et suivante » : cochée puis « Passer », ou
+       * cochée puis un clic sur une autre vignette, elle se perdait sans un
+       * mot — et le personnage restait nu sur le site (27 octobre). Cochée,
+       * cette pièce devient celle portée d'emblée pour son emplacement (une
+       * seule par emplacement : la précédente cède sa place) ; décochée,
+       * l'emplacement redevient vide.
+       */
+      caseDefaut?.addEventListener("change", async () => {
+        if (pieces.length === 0) return;
+        const p = pieces[index];
+        const voulu = caseDefaut.checked;
+        caseDefaut.disabled = true;
+        statut.textContent = "Enregistrement de la tenue par défaut…";
+        try {
+          const res = await fetch(
+            `${PUBLIC_API_URL}/admin/characters/${id}/default-assets`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ [p.slot]: voulu ? p.position : null }),
+              credentials: "include",
+            },
+          );
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || "erreur " + res.status);
+          for (const cle of Object.keys(defaut)) delete defaut[cle];
+          Object.assign(defaut, data.defaultAssets || {});
+          statut.textContent = voulu
+            ? "« " + (p.name || p.slotLabel) + " » est portée par défaut. C'est enregistré."
+            : "« " + (p.name || p.slotLabel) + " » n'est plus portée par défaut. C'est enregistré.";
+        } catch (err) {
+          // L'écran revient à ce qui est vraiment enregistré.
+          caseDefaut.checked = defaut[p.slot] === p.position;
+          statut.textContent =
+            "La tenue par défaut n'a pas été enregistrée (" + err.message + "). Réessayez.";
+        } finally {
+          caseDefaut.disabled = false;
+          dessinerListe();
         }
       });
 
