@@ -973,17 +973,22 @@ label:is(.bg-ink, [class~="hover:bg-ink"]):has(input:focus-visible) {
  *
  * Le garde-fou en vw évite l'excès inverse sur un écran court et large
  * (92vw × 1,4142 ≈ 130vw) : l'affiche ne déborde jamais latéralement.
+ *
+ * Et elle ne dépasse jamais sa COLONNE (100 %) : dimensionnée par la seule
+ * hauteur, elle débordait sur le panneau d'à côté dans une fenêtre de 870 px
+ * de large (407 px d'affiche pour une colonne de 327 px, 27/10/2026). On
+ * prend donc la plus petite des trois largeurs, et le ratio fait la hauteur.
  * ------------------------------------------------------------------------ */
 .ml-cfg-poster {
-  width: auto !important;
-  height: min(64vh, 130vw);
+  width: min(100%, calc(64vh / 1.4142), 92vw) !important;
+  height: auto;
   margin-inline: auto;
 }
 
 @media (max-width: 768px) {
   .ml-cfg-poster {
     /* Plus court sur mobile : les commandes doivent rester visibles dessous. */
-    height: min(46vh, 130vw);
+    width: min(100%, calc(46vh / 1.4142), 92vw) !important;
   }
 }
 
