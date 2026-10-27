@@ -158,6 +158,22 @@ export function calageNeutre(c: CalagePiece | null | undefined): boolean {
   return !c || (c.dx === 0 && c.dy === 0 && c.scale === 1);
 }
 
+/**
+ * Bornes d'un calage, communes au back-office (souris, clavier), à l'API et
+ * au rendu.
+ *
+ * Le décalage va jusqu'à toute la largeur ou toute la hauteur du cadre. Il
+ * s'arrêtait à la moitié, et une coupe dessinée pour Femme 6 — assise, sa tête
+ * au tiers du cadre — ne montait pas jusqu'à la tête d'une femme de dos : une
+ * pièce réduite se rapproche du BAS du cadre (l'agrandissement part du
+ * bas-centre), il faut donc la remonter d'autant plus (27/10/2026).
+ */
+export const BORNES_CALAGE = {
+  decalage: 100,
+  tailleMin: 0.2,
+  tailleMax: 3,
+} as const;
+
 /** Complète un calage partiel (venu de la base) avec les valeurs neutres. */
 export function calagePropre(brut: unknown): CalagePiece {
   const o = (brut ?? {}) as Record<string, unknown>;
@@ -165,10 +181,11 @@ export function calagePropre(brut: unknown): CalagePiece {
     const n = Number(v);
     return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : defaut;
   };
+  const { decalage, tailleMin, tailleMax } = BORNES_CALAGE;
   return {
-    dx: nombre(o.dx, 0, -50, 50),
-    dy: nombre(o.dy, 0, -50, 50),
-    scale: nombre(o.scale, 1, 0.2, 3),
+    dx: nombre(o.dx, 0, -decalage, decalage),
+    dy: nombre(o.dy, 0, -decalage, decalage),
+    scale: nombre(o.scale, 1, tailleMin, tailleMax),
   };
 }
 

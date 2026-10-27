@@ -4,7 +4,7 @@ import { url } from "../../lib/url.ts";
 import Admin from "../../layouts/Admin.astro";
 import ApercusZones from "../../components/ApercusZones.astro";
 import GroupesCouleurs from "../../components/GroupesCouleurs.astro";
-import { Y_SOL_PERSONNAGES } from "@memoryline/types";
+import { BORNES_CALAGE, Y_SOL_PERSONNAGES } from "@memoryline/types";
 import {
   adminApi,
   type Asset,
@@ -943,7 +943,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
     </div>
   )}
 
-  <script is:inline define:vars={{ PUBLIC_API_URL, ID_PERSO: id }}>
+  <script is:inline define:vars={{ PUBLIC_API_URL, ID_PERSO: id, BORNES_CALAGE }}>
     // --- Pièces autorisées : raccourcis « tout » / « rien » ---------------
     document.addEventListener("click", (e) => {
       const btn = e.target.closest?.(".js-tout, .js-rien");
@@ -1128,6 +1128,10 @@ const piecesACaler = SLOTS.flatMap((s) => {
       function borne(v, min, max) {
         return Math.min(max, Math.max(min, v));
       }
+      // Les bornes du calage : celles de l'API et du rendu (BORNES_CALAGE).
+      const DECALAGE_MAX = BORNES_CALAGE.decalage;
+      const TAILLE_MIN = BORNES_CALAGE.tailleMin;
+      const TAILLE_MAX = BORNES_CALAGE.tailleMax;
 
       /** Le calage ENREGISTRÉ d'une pièce : le sien, sinon celui de tout son emplacement. */
       function calageEnregistre(p) {
@@ -1357,13 +1361,13 @@ const piecesACaler = SLOTS.flatMap((s) => {
         if (attrape.mode === "deplacer") {
           etat.dx = borne(
             attrape.dx + ((e.clientX - attrape.x) / r.width) * 100,
-            -50,
-            50,
+            -DECALAGE_MAX,
+            DECALAGE_MAX,
           );
           etat.dy = borne(
             attrape.dy + ((e.clientY - attrape.y) / r.height) * 100,
-            -50,
-            50,
+            -DECALAGE_MAX,
+            DECALAGE_MAX,
           );
         } else {
           // Échelle : projection du curseur sur la diagonale du cadre, pour
@@ -1375,18 +1379,18 @@ const piecesACaler = SLOTS.flatMap((s) => {
           const v = attrape.v;
           const norme = v.x * v.x + v.y * v.y;
           if (!norme) return;
-          const s = borne((q.x * v.x + q.y * v.y) / norme, 0.4, 2);
+          const s = borne((q.x * v.x + q.y * v.y) / norme, TAILLE_MIN, TAILLE_MAX);
           // Le coin opposé ne bouge pas : on rattrape l'écart par la
           // translation, sinon la pièce s'échapperait à chaque coup.
           etat.dx = borne(
             attrape.dx0 + (attrape.ancre.x - 0.5) * (attrape.scale0 - s) * 100,
-            -50,
-            50,
+            -DECALAGE_MAX,
+            DECALAGE_MAX,
           );
           etat.dy = borne(
             attrape.dy0 + (attrape.ancre.y - 1) * (attrape.scale0 - s) * 100,
-            -50,
-            50,
+            -DECALAGE_MAX,
+            DECALAGE_MAX,
           );
           etat.scale = s;
         }
@@ -1415,14 +1419,14 @@ const piecesACaler = SLOTS.flatMap((s) => {
       scene.tabIndex = 0;
       scene.addEventListener("keydown", (e) => {
         const pas = e.shiftKey ? 2 : 0.25;
-        if (e.key === "ArrowLeft") etat.dx = borne(etat.dx - pas, -50, 50);
-        else if (e.key === "ArrowRight") etat.dx = borne(etat.dx + pas, -50, 50);
-        else if (e.key === "ArrowUp") etat.dy = borne(etat.dy - pas, -50, 50);
-        else if (e.key === "ArrowDown") etat.dy = borne(etat.dy + pas, -50, 50);
+        if (e.key === "ArrowLeft") etat.dx = borne(etat.dx - pas, -DECALAGE_MAX, DECALAGE_MAX);
+        else if (e.key === "ArrowRight") etat.dx = borne(etat.dx + pas, -DECALAGE_MAX, DECALAGE_MAX);
+        else if (e.key === "ArrowUp") etat.dy = borne(etat.dy - pas, -DECALAGE_MAX, DECALAGE_MAX);
+        else if (e.key === "ArrowDown") etat.dy = borne(etat.dy + pas, -DECALAGE_MAX, DECALAGE_MAX);
         else if (e.key === "+" || e.key === "=")
-          etat.scale = borne(etat.scale + 0.02, 0.4, 2);
+          etat.scale = borne(etat.scale + 0.02, TAILLE_MIN, TAILLE_MAX);
         else if (e.key === "-")
-          etat.scale = borne(etat.scale - 0.02, 0.4, 2);
+          etat.scale = borne(etat.scale - 0.02, TAILLE_MIN, TAILLE_MAX);
         else return;
         e.preventDefault();
         dessiner();

@@ -15,7 +15,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  BORNES_CALAGE,
   appliquerCalage,
+  calagePropre,
   repereDuFichier,
   transformCalage,
   type CalagePiece,
@@ -120,4 +122,20 @@ test("un fichier qui demande un autre ancrage est suivi", () => {
   // Collé en bas : le bas-centre du cadre est le bas du dessin.
   const r = repereDuFichier('<svg viewBox="0 0 1024 1536" preserveAspectRatio="xMidYMax meet">');
   assert.equal(r.margeY, 250);
+});
+
+test("une coupe peut monter au-delà de la moitié du cadre", () => {
+  // Le 27/10, « Hair bouclés courts » restait bloquée à −50 % sur une femme
+  // de dos : réduite à 0,41, elle n'atteignait pas le haut de la tête.
+  assert.deepEqual(calagePropre({ dx: -14.9, dy: -62, scale: 0.41 }), {
+    dx: -14.9,
+    dy: -62,
+    scale: 0.41,
+  });
+  // Les bornes tiennent toujours : ni hors du cadre, ni taille absurde.
+  assert.deepEqual(calagePropre({ dx: 250, dy: -250, scale: 9 }), {
+    dx: BORNES_CALAGE.decalage,
+    dy: -BORNES_CALAGE.decalage,
+    scale: BORNES_CALAGE.tailleMax,
+  });
 });
