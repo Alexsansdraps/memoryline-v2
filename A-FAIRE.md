@@ -1,10 +1,18 @@
-# À faire — état au 23 octobre (écrit pour une reprise dans un autre contexte)
+# À faire — état au 27 octobre (écrit pour une reprise dans un autre contexte)
 
 Fichier de reprise : à lire en premier, à supprimer quand tout est fait. `main` fait foi ; la prod (VPS) est toujours une mise en ligne de `main`.
 
-## 1. Ce qui est en prod (VPS, 23/10 vers 11 h, commit `575b466` de `main`)
+## 1. Ce qui est en prod (VPS, 27/10 vers 12 h 50, commit `86fd8e1` de `main`)
 
-**Reprise : tout ce qui est dans `main` jusqu'à `575b466` est en ligne sur le VPS**, migrations jusqu'à **0071** (compte Instagram). Mis en ligne depuis le PC du bureau ; après coup : site 200, données structurées (livraison, retours, fil d'Ariane des rayons, Instagram) lues sur la prod, blog Shopify en 410, 30 fiches aux titres et descriptions identiques à avant.
+**Reprise : tout ce qui est dans `main` jusqu'à `86fd8e1` est en ligne sur le VPS**, migrations jusqu'à **0072** (numéros de pièces uniques). Mis en ligne depuis le PC du bureau ; après coup : santé 200, plus aucun doublon de numéro dans la bibliothèque publique, 170 pièces mesurées, module essayé en ligne (Femme 6 habillée dans la galerie, vignettes des coupes visibles, Femme 4 avec sa propre tenue).
+
+**Mis en ligne le 27/10 (`86fd8e1`) — calage, d'après la vidéo de Margaux** :
+- **Pièces au même numéro** : « Nouvelle pièce » proposait 0 d'office ; or le numéro (`asset.position`) désigne la pièce pour les pièces autorisées, le calage et la tenue par défaut. En prod : « Cheveux longs raides femme 6 », « Hair raides longs », « Hair bouclés courts » tous au n° 0, « TEST » au n° 2 comme « Hair 2 ». D'où ses trois plaintes : calage « revenu » (valider l'une écrasait l'autre), cases décochées qui revenaient, tenue par défaut qui prenait une autre pièce. Migration 0072 : Hair raides longs → **28**, Hair bouclés courts → **29**, TEST → **30**, chacune avec les cases et le calage de son ancien numéro (rien n'a bougé à l'écran). Le champ a disparu de « Nouvelle pièce » ; le serveur donne le premier numéro libre et refuse un numéro pris.
+- **Calage au BO** : la molette ne touche plus la pièce (elle fait défiler la page) ; un clic sur le personnage puis les flèches déplacent la pièce ; rangée de vignettes pour aller droit à une pièce, coche verte sur celles qui sont calées ; état du calage écrit ; « Passer » n'enregistre rien (c'est écrit) ; « … enregistrée » reste affiché.
+- **Module** : un personnage avec une tenue par défaut se montre habillé dans la galerie ; changer de personnage remplace la tenue par défaut de l'ancien par celle du nouveau (et garde ce que le client a choisi) ; vignettes des pièces dessinées hors du cadre 500 × 1000 cadrées sur le dessin (mesure `emprise` envoyée avec chaque pièce).
+- **À refaire par Margaux** (les calages partagés ont été recopiés tels quels) : sur Femme 4, Femme 2 et les autres femmes de dos, recaler séparément « Cheveux longs raides femme 6 », « Hair raides longs » et « Hair bouclés courts » ; sur Femme 6, caler « TEST » (il avait le calage de Hair 2) ; décocher ce qui ne doit pas être proposé ; recocher « portée par défaut » sur la bonne pièce (Femme 4 a « Hair 2 » par défaut).
+
+Avant, le 23/10 (`575b466`, migration 0071) : site 200, données structurées (livraison, retours, fil d'Ariane des rayons, Instagram) lues sur la prod, blog Shopify en 410, 30 fiches aux titres et descriptions identiques à avant.
 
 **Mis en ligne le 23/10 (`575b466`)** : suite de l'audit SEO (détail : AUDIT-SEO.md, « Suivi — 23/10 ») — livraison et retours pour Google, compte Instagram (réglage du BO, pied de page, données de l'organisation), fil d'Ariane et liste des rayons, aperçu Google du BO identique au site (recette partagée `referencementDeFiche`), fiches plus légères (module de composition chargé à la demande : 1,4 et 3,3 Ko au lieu de 77 à 121 Ko), accueil, blog Shopify en 410, 17 anciennes images retrouvées, manifeste web. Décision : **ne pas importer** les fichiers SEO de Shopify.
 
