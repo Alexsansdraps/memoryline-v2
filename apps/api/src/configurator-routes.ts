@@ -2011,6 +2011,9 @@ export function mountConfiguratorRoutes(app: Hono) {
         categoryId: t.categoryId,
         position: t.position,
         archived: t.archivedAt != null,
+        // Masqué au BO : le module ne le propose plus, mais il vient quand
+        // même, pour qu'une affiche qui le porte déjà s'affiche toujours.
+        active: t.active,
         baseSvgUrl: t.baseSvgUrl,
         baseColorZones: t.baseColorZones,
         // Groupes de couleurs du dessin, et ceux que le client peut changer
@@ -4060,6 +4063,25 @@ export function mountConfiguratorRoutes(app: Hono) {
       .set({ archivedAt: archived ? new Date() : null })
       .where(eq(schema.characterTypes.id, id))
       .returning();
+    if (!row) return c.notFound();
+    return c.json(row);
+  });
+
+  /**
+   * Montre ou masque un personnage sur le site (bouton « Visible » /
+   * « Masqué » du BO). Rien d'autre ne bouge : ni ses réglages, ni sa place,
+   * ni les affiches qui le portent déjà.
+   */
+  app.post("/admin/characters/:id/visible", async (c) => {
+    const id = Number(c.req.param("id"));
+    const b = await c.req.json().catch(() => ({}));
+    if (typeof b.active !== "boolean")
+      return c.json({ error: "Dites si le personnage est visible (active: true ou false)." }, 400);
+    const [row] = await db
+      .update(schema.characterTypes)
+      .set({ active: b.active })
+      .where(eq(schema.characterTypes.id, id))
+      .returning({ id: schema.characterTypes.id, active: schema.characterTypes.active });
     if (!row) return c.notFound();
     return c.json(row);
   });

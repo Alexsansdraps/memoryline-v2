@@ -49,6 +49,13 @@ let flash: string | null = null;
 // c'est sur cette page que le résultat se voit.
 if (Astro.url.searchParams.get("archive"))
   flash = "Personnage archivé. Les commandes passées restent imprimables.";
+// Retour du bouton « Visible » / « Masqué » d'une carte (voir plus bas).
+const visibleChange = Astro.url.searchParams.get("visible");
+if (visibleChange === "1")
+  flash = "Personnage visible : les clients le retrouvent dans le module de personnalisation.";
+else if (visibleChange === "0")
+  flash =
+    "Personnage masqué : les clients ne le voient plus dans le module. Ses réglages ne bougent pas, et une affiche qui le porte déjà s'affiche toujours.";
 /**
  * Traductions des catégories et des noms de personnages : propositions
  * automatiques à relire, saisie à réafficher (après une proposition ou un
@@ -73,6 +80,16 @@ if (Astro.request.method === "POST") {
         form.get("archived") === "true"
           ? "Personnage archivé. Les anciennes commandes restent intactes."
           : "Personnage restauré.";
+    } else if (action === "visible") {
+      // Retour sur la carte, son groupe ouvert : la boutique enchaîne
+      // souvent plusieurs personnages d'un même rayon.
+      const id = Number(form.get("id"));
+      const visible = form.get("active") === "1";
+      await api.personnageVisible(id, visible);
+      return Astro.redirect(
+        url(`/personnages?visible=${visible ? 1 : 0}#personnage-${id}`),
+        303,
+      );
     } else if (action === "annuler-deplacement") {
       // "12:1,19:sans" — on regroupe par destination, un appel par groupe,
       // ce qui permet d'annuler même une sélection venue de plusieurs
@@ -355,10 +372,13 @@ const aplati = (s: string | null | undefined) =>
     .replace(/[̀-ͯ]/g, "");
 
 /** « 67 personnages dans 8 catégories · 2 archivés » : la barre d'entête. */
-const compteur = [
-  `${active.length} personnage${active.length > 1 ? "s" : ""}`,
-  `dans ${catalogue.length} catégorie${catalogue.length > 1 ? "s" : ""}`,
-].join(" ");
+const masques = active.filter((t) => t.active === false).length;
+const compteur =
+  [
+    `${active.length} personnage${active.length > 1 ? "s" : ""}`,
+    `dans ${catalogue.length} catégorie${catalogue.length > 1 ? "s" : ""}`,
+  ].join(" ") +
+  (masques > 0 ? ` · ${masques} masqué${masques > 1 ? "s" : ""} sur le site` : "");
 ---
 
 <Admin title="Personnages">
@@ -652,7 +672,7 @@ const compteur = [
                   <img
                     src={svgSrc(t.baseSvgUrl)}
                     alt=""
-                    class="js-grip h-12 w-12 object-contain border border-bo-border rounded bg-white shrink-0 cursor-grab active:cursor-grabbing"
+                    class={`js-grip h-12 w-12 object-contain border border-bo-border rounded bg-white shrink-0 cursor-grab active:cursor-grabbing${t.active === false ? " opacity-40" : ""}`}
                     style={t.baseSvgUrl ? "" : "visibility:hidden"}
                     loading="lazy"
                     draggable="true"
@@ -669,6 +689,28 @@ const compteur = [
                   </div>
                 </div>
                 <div class="flex items-center gap-1 shrink-0">
+                  {/* Visible ou masqué sur le site : un clic bascule. Masqué,
+                      il n'est pas archivé — il reste ici, réglages compris,
+                      le temps d'être prêt (habillé, calé). */}
+                  <form method="POST" class="inline">
+                    <input type="hidden" name="_action" value="visible" />
+                    <input type="hidden" name="id" value={t.id} />
+                    <input type="hidden" name="active" value={t.active === false ? "1" : "0"} />
+                    <button
+                      title={
+                        t.active === false
+                          ? "Masqué : les clients ne le voient pas dans le module. Cliquer pour le rendre visible."
+                          : "Visible dans le module de personnalisation. Cliquer pour le masquer aux clients."
+                      }
+                      class={`mr-1 cursor-pointer rounded-full px-2 py-0.5 text-xs ${
+                        t.active === false
+                          ? "bg-bo-bg text-bo-muted ring-1 ring-bo-border"
+                          : "bg-green-100 text-green-800"
+                      }`}
+                    >
+                      {t.active === false ? "Masqué" : "Visible"}
+                    </button>
+                  </form>
                   <form method="POST" class="inline">
                     <input type="hidden" name="_action" value="reorder" />
                     <input

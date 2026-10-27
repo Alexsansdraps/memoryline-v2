@@ -512,6 +512,13 @@
       "when": 1793100336381,
       "tag": "0072_pieces_numeros_uniques",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1793110792383,
+      "tag": "0073_personnages_visibles",
+      "breakpoints": true
     }
   ]
 }

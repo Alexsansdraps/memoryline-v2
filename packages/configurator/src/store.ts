@@ -133,6 +133,12 @@ export interface CharacterDTO {
   category: string | null;
   position: number;
   archived: boolean;
+  /**
+   * Proposé dans la galerie ? `false` : masqué au back-office, le client ne
+   * peut plus l'ajouter, mais une affiche qui le porte déjà le montre
+   * toujours. Absent (ancienne API) : proposé.
+   */
+  active?: boolean;
   /** SVG complet pré-composé (viewBox 0 0 500 1000). */
   baseSvgUrl: string;
   /** Zones de couleur par défaut de la base : { stN: "#hex" }. */
@@ -776,6 +782,8 @@ export function presetPaletteForSlot(
  * accessoire. Une catégorie paramétrée au back-office ferme la liste — c'est
  * tout l'intérêt de la paramétrer. La règle elle-même vit dans
  * @memoryline/types (pastillesDeLaRangee), où elle s'essaie sans navigateur.
+ * Le module ne lit plus `libre` depuis le 27 octobre 2026 : plus aucune
+ * saisie libre côté client, seulement les pastilles (cf. ColorRow).
  */
 export function paletteForVariant(
   categories: readonly PieceCategoryDTO[] | undefined,

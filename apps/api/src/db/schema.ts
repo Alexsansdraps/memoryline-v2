@@ -596,6 +596,14 @@ export const characterTypes = pgTable(
     /** Soft-delete (§18.1 A) : non null = archivé, masqué du configurateur, sans casser les commandes. */
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     /**
+     * Proposé aux clients du site ? Faux, le personnage quitte la galerie du
+     * module (« Masqué » au BO) SANS être archivé : il reste dans la liste du
+     * BO avec tous ses réglages, et une affiche qui le porte déjà (panier,
+     * commande, réimpression) s'affiche toujours. Pour un personnage pas
+     * encore prêt — dessiné nu, sans tenue par défaut (0073, 27/10/2026).
+     */
+    active: boolean("active").default(true).notNull(),
+    /**
      * SVG complet pré-composé du personnage (ex. Male_2.svg) — viewBox 500×1000,
      * sous-groupes Base/Bottoms/Clothes/Hair/Accessories. C'est l'affichage par
      * défaut quand on ajoute ce personnage (avant tout changement de slot).

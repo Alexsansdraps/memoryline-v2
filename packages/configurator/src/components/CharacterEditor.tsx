@@ -16,7 +16,6 @@ import {
   couleursDeLaBase,
   couleursDeLaPiece,
   couleursDuGroupePourScope,
-  estCleFamille,
   famillesProposees,
   groupesDuDessin,
   groupesProposesDeLaBase,
@@ -426,13 +425,6 @@ interface LigneCouleur {
    * back-office (cf. paletteForVariant). Absentes : celles que ColorRow reçoit.
    */
   presets?: readonly string[];
-  /**
-   * La saisie libre de CETTE rangée, quand elle n'est pas celle de toute la
-   * couche : une partie qui a sa liste n'en a jamais — le client n'a que les
-   * pastilles de la boutique —, même sur un vêtement sans nuancier de
-   * catégorie. Absente : celle que ColorRow reçoit.
-   */
-  libre?: boolean;
 }
 
 /** Intitulé au-dessus d'une rangée (ou d'un ensemble de rangées). */
@@ -453,95 +445,15 @@ function Intitule(props: { children: JSX.Element }) {
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Saisie libre sur un dessin en pixels                                       */
-/* -------------------------------------------------------------------------- */
-
 /**
- * Repos minimal entre deux couleurs envoyées depuis le SÉLECTEUR LIBRE, sur
- * une rangée de dessin en pixels.
- *
- * Le sélecteur du navigateur émet « input » en continu tant que le doigt
- * glisse — des dizaines de couleurs par seconde. Sur un dessin vectoriel,
- * c'est sans conséquence : tout se recolore dans la page. Sur un dessin en
- * PIXELS, chaque couleur est une image que le serveur calcule et range
- * (couleurs-image-fichier.ts) : un seul glissement lui en demanderait des
- * centaines, et, au stand, autant de fois trois cents kilo-octets à faire
- * descendre sur la tablette.
- *
- * On garde donc la PREMIÈRE couleur du glissement — le client voit tout de
- * suite que l'animal suit son doigt — et la DERNIÈRE, celle qu'il a vraiment
- * choisie, en laissant passer une couleur par seconde entre les deux. Les
- * pastilles du nuancier, elles, ne sont jamais retardées : un clic reste un
- * clic, et les rangées d'un dessin vectoriel ne passent pas par ici.
- *
- * UNE SECONDE, ET PAS MOINS, POUR DEUX RAISONS.
- *
- * D'abord parce qu'aller plus vite ne montre rien de plus : le serveur met
- * près d'un tiers de seconde à calculer chaque image, et il y a trois à cinq
- * cents kilo-octets à faire descendre derrière — sur le réseau d'un stand,
- * demander quatre couleurs par seconde ne fait que les mettre en file.
- * Ensuite et surtout parce que la route qui les sert compte les couleurs
- * neuves par adresse et refuse au-delà (IMAGES_MAX, configurator-routes.ts) :
- * à quatre couleurs par seconde, un client qui s'amusait quarante secondes
- * avec le sélecteur se faisait refuser — et voyait son animal disparaître.
- * MESURÉ. À une par seconde, il reste très loin sous la limite, même à
- * plusieurs derrière la même adresse. Ces deux nombres vont ensemble : en
- * changer un sans regarder l'autre remet ce piège en place.
- */
-const REPOS_SELECTEUR_MS = 1000;
-
-/**
- * Où en est le glissement de chaque rangée.
- *
- * Au niveau du module, et non dans la rangée : changer une couleur reconstruit
- * la rangée (ses lignes sont recalculées à chaque passage), une variable
- * locale repartirait donc de zéro à chaque couleur et ne retiendrait jamais
- * rien. Une entrée par rangée déjà touchée, c'est quelques dizaines d'octets.
- */
-const glissements = new Map<
-  string,
-  { dernier: number; couleur: string; minuterie?: ReturnType<typeof setTimeout> }
->();
-
-/** La rangée s'adresse-t-elle aux pixels d'un dessin (« base:fam0 ») ? */
-function rangeeEnPixels(zone: string): boolean {
-  return estCleFamille(zone.split(":").pop() ?? "");
-}
-
-/**
- * Laisse passer la couleur tout de suite, ou la met en attente — cf.
- * {@link REPOS_SELECTEUR_MS}. La dernière couleur d'un glissement finit
- * toujours par passer : c'est elle que le client garde.
- */
-function couleurEspacee(
-  zone: string,
-  hex: string,
-  envoyer: (hex: string) => void,
-): void {
-  const maintenant = Date.now();
-  const etat = glissements.get(zone) ?? { dernier: 0, couleur: hex };
-  etat.couleur = hex;
-  glissements.set(zone, etat);
-  const attente = REPOS_SELECTEUR_MS - (maintenant - etat.dernier);
-  if (attente <= 0) {
-    etat.dernier = maintenant;
-    envoyer(hex);
-    return;
-  }
-  if (etat.minuterie) return; // une couleur attend déjà : elle prendra celle-ci
-  etat.minuterie = setTimeout(() => {
-    etat.minuterie = undefined;
-    etat.dernier = Date.now();
-    envoyer(etat.couleur);
-  }, attente);
-}
-
-/**
- * Rangée de couleurs : presets cliquables + saisie libre, par groupe.
+ * Rangée de couleurs : les pastilles de la boutique, par groupe.
  *
  * Les pastilles sont celles de la couleur du texte (cf. PastilleCouleur) :
  * mêmes 40 px, même coche sur la couleur portée.
+ *
+ * Plus de saisie libre (la pastille arc-en-ciel et le sélecteur du
+ * navigateur) depuis le 27 octobre 2026, à la demande de la boutique : le
+ * client ne choisit que parmi les couleurs qu'elle propose.
  *
  * Sans aucun nom de groupe, un seul intitulé coiffe les rangées, comme avant
  * les groupes. Dès qu'un groupe est nommé au back-office, chaque rangée porte
@@ -557,16 +469,9 @@ function couleurEspacee(
 function ColorRow(props: {
   zones: LigneCouleur[];
   presets: readonly string[];
-  /**
-   * Saisie hors nuancier autorisée ? Non dès qu'une catégorie a ses couleurs,
-   * et jamais sur un accessoire (cf. pastillesDeLaRangee).
-   */
-  libre: boolean;
   onSetColor: (ligne: LigneCouleur, hex: string) => void;
   /** Intitulé traduit, fourni par l'éditeur. */
   libelle: string;
-  /** Nom traduit de la pastille de saisie libre. */
-  couleurPerso: string;
   /** « Couleur actuelle : {couleur} », traduit (pastille de tête). */
   couleurActuelle: string;
 }) {
@@ -581,12 +486,11 @@ function ColorRow(props: {
       <Index each={props.zones}>
         {(z, rang) => {
           // Les pastilles de la rangée : les siennes (une partie réglée au
-          // back-office), sinon celles de la couche. La saisie libre de même :
-          // une partie qui a sa liste n'en a pas.
+          // back-office), sinon celles de la couche.
           const presets = () => z().presets ?? props.presets;
-          const libre = () => z().libre ?? props.libre;
-          // Couleur saisie hors nuancier : c'est la pastille arc-en-ciel qui
-          // porte la coche, sinon aucune couleur ne paraîtrait choisie.
+          // Couleur hors nuancier (celle du dessin, ou choisie avant le
+          // 27 octobre avec l'ancienne saisie libre) : c'est la pastille de
+          // tête qui porte la coche, sinon aucune couleur ne paraîtrait choisie.
           const horsNuancier = () =>
             !presets().some((hex) => memeCouleur(hex, z().current));
           // Plusieurs rangées sans nom (une par teinte de la pièce, depuis que
@@ -627,43 +531,39 @@ function ColorRow(props: {
                     Cochée quand elle n'est pas du nuancier ; sinon c'est la
                     pastille du nuancier qui l'est. Toujours là, pour que les
                     rangées restent alignées d'une couleur à l'autre. Elle ne
-                    se clique pas — il n'y a rien à choisir, elle l'est déjà.
-                    Avec la saisie libre, c'est la pastille arc-en-ciel qui
-                    montre une couleur hors nuancier. */}
-                <Show when={!libre()}>
-                  <span
-                    role="img"
-                    aria-label={props.couleurActuelle.replace("{couleur}", z().current)}
-                    title={props.couleurActuelle.replace("{couleur}", z().current)}
-                    data-item
-                    style={{
-                      flex: "0 0 auto",
-                      width: "40px",
-                      height: "40px",
-                      "border-radius": "9999px",
-                      background: z().current,
-                      border: "1px solid rgba(17, 24, 39, 0.32)",
-                      "box-sizing": "border-box",
-                      "box-shadow": horsNuancier() ? ANNEAU_COULEUR_CHOISIE : "none",
-                      display: "inline-flex",
-                      "align-items": "center",
-                      "justify-content": "center",
-                    }}
-                  >
-                    <Show when={horsNuancier()}>
-                      <CocheCouleur fond={z().current} />
-                    </Show>
-                  </span>
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      flex: "0 0 auto",
-                      width: "1px",
-                      height: "28px",
-                      background: "#d1d5db",
-                    }}
-                  />
-                </Show>
+                    se clique pas — il n'y a rien à choisir, elle l'est déjà. */}
+                <span
+                  role="img"
+                  aria-label={props.couleurActuelle.replace("{couleur}", z().current)}
+                  title={props.couleurActuelle.replace("{couleur}", z().current)}
+                  data-item
+                  style={{
+                    flex: "0 0 auto",
+                    width: "40px",
+                    height: "40px",
+                    "border-radius": "9999px",
+                    background: z().current,
+                    border: "1px solid rgba(17, 24, 39, 0.32)",
+                    "box-sizing": "border-box",
+                    "box-shadow": horsNuancier() ? ANNEAU_COULEUR_CHOISIE : "none",
+                    display: "inline-flex",
+                    "align-items": "center",
+                    "justify-content": "center",
+                  }}
+                >
+                  <Show when={horsNuancier()}>
+                    <CocheCouleur fond={z().current} />
+                  </Show>
+                </span>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    flex: "0 0 auto",
+                    width: "1px",
+                    height: "28px",
+                    background: "#d1d5db",
+                  }}
+                />
                 <For each={presets()}>
                   {(hex) => (
                     <PastilleCouleur
@@ -674,77 +574,6 @@ function ColorRow(props: {
                     />
                   )}
                 </For>
-                <Show when={libre()}>
-                  {/* Le sélecteur du navigateur, invisible, recouvre toute la
-                      pastille : un toucher n'importe où l'ouvre, et c'est lui
-                      qui renvoie la couleur. Sa propre case, minuscule et
-                      différente d'un navigateur à l'autre, ne se voit plus. */}
-                  <span
-                    title={props.couleurPerso}
-                    data-item
-                    style={{
-                      position: "relative",
-                      flex: "0 0 auto",
-                      width: "40px",
-                      height: "40px",
-                      "border-radius": "9999px",
-                      background:
-                        "conic-gradient(#ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444)",
-                      "box-shadow": horsNuancier() ? ANNEAU_COULEUR_CHOISIE : "none",
-                      display: "inline-flex",
-                      "align-items": "center",
-                      "justify-content": "center",
-                    }}
-                  >
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        width: "26px",
-                        height: "26px",
-                        "border-radius": "9999px",
-                        border: "2px solid #ffffff",
-                        "box-sizing": "border-box",
-                        background: horsNuancier() ? z().current : "#ffffff",
-                        color: "#374151",
-                        "font-size": "18px",
-                        "line-height": "1",
-                        display: "inline-flex",
-                        "align-items": "center",
-                        "justify-content": "center",
-                      }}
-                    >
-                      <Show when={horsNuancier()} fallback="+">
-                        <CocheCouleur fond={z().current} />
-                      </Show>
-                    </span>
-                    <input
-                      type="color"
-                      value={z().current}
-                      onInput={(e) => {
-                        const hex = e.currentTarget.value;
-                        // Un dessin en pixels se recolore sur le serveur : on
-                        // espace les couleurs d'un glissement (cf.
-                        // couleurEspacee). Tout le reste passe sans délai.
-                        if (rangeeEnPixels(z().zone))
-                          couleurEspacee(z().zone, hex, (c) => props.onSetColor(z(), c));
-                        else props.onSetColor(z(), hex);
-                      }}
-                      aria-label={props.couleurPerso}
-                      style={{
-                        position: "absolute",
-                        top: "0",
-                        left: "0",
-                        width: "100%",
-                        height: "100%",
-                        margin: "0",
-                        padding: "0",
-                        border: "none",
-                        opacity: "0",
-                        cursor: "pointer",
-                      }}
-                    />
-                  </span>
-                </Show>
               </div>
             </div>
           );
@@ -960,8 +789,8 @@ export function CharacterEditor(props: {
    * catégorie ni de cases de la pièce pour en retirer.
    *
    * Chaque rangée porte ses pastilles : celles que la boutique a choisies pour
-   * CETTE partie, sans saisie libre, sinon le nuancier de la pièce, comme
-   * avant (cf. paletteForVariant).
+   * CETTE partie, sinon le nuancier de la pièce, comme avant (cf.
+   * paletteForVariant).
    */
   const zonesForSlot = (slot: Slot): LigneCouleur[] => {
     const variant = findVariant(props.slots[slot], props.character.assets[slot]);
@@ -972,7 +801,7 @@ export function CharacterEditor(props: {
     const rangees = variant.colorZones
       ? lignes(slot, groupes, variant.colorZones, "#000000").map((ligne, i) => {
           const p = pastilles(groupes[i]!);
-          return { ...ligne, presets: p.couleurs, libre: p.libre };
+          return { ...ligne, presets: p.couleurs };
         })
       : [];
     // Pièce dessinée en pixels : ses familles de couleurs, comme pour un
@@ -987,7 +816,6 @@ export function CharacterEditor(props: {
         nom: f.nom,
         couleurs: (hex) => ({ [cle]: hex }),
         presets: p.couleurs,
-        libre: p.libre,
       });
     }
     return rangees;
@@ -1234,10 +1062,8 @@ export function CharacterEditor(props: {
           <Show when={zonesForSlot(opts.slot).length > 0}>
             {(() => {
               // Nuancier de LA pièce portée : celui de sa catégorie, sinon
-              // celui de l'emplacement (et alors la saisie libre reste ouverte,
-              // sauf sur un accessoire : jamais de sélecteur). Une partie qui a
-              // sa liste apporte ses propres pastilles, sans saisie libre
-              // (cf. zonesForSlot).
+              // celui de l'emplacement. Une partie qui a sa liste apporte ses
+              // propres pastilles (cf. zonesForSlot).
               const palette = paletteForVariant(
                 props.pieceCategories,
                 findVariant(props.slots[opts.slot], props.character.assets[opts.slot]),
@@ -1248,11 +1074,9 @@ export function CharacterEditor(props: {
                 <>
                   <ColorRow
                     libelle={m().choixCouleur}
-                    couleurPerso={m().couleurPerso}
                     couleurActuelle={m().couleurActuelle}
                     zones={zonesForSlot(opts.slot)}
                     presets={palette.couleurs}
-                    libre={palette.libre}
                     onSetColor={choisirCouleur}
                   />
                   {/* Sous les pastilles, dès qu'une couleur de la pièce n'est
@@ -1477,11 +1301,9 @@ export function CharacterEditor(props: {
               {(b) => (
                 <ColorRow
                   libelle={m().choixCouleur}
-                  couleurPerso={m().couleurPerso}
                   couleurActuelle={m().couleurActuelle}
                   zones={[b().ligne]}
                   presets={b().presets}
-                  libre={true}
                   onSetColor={choisirCouleur}
                 />
               )}

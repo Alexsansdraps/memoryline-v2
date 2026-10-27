@@ -1482,6 +1482,8 @@ export interface CharacterType {
   categoryId: number | null;
   position: number;
   archivedAt: string | null;
+  /** Proposé aux clients du site ? Faux = « Masqué » (0073), sans être archivé. */
+  active: boolean;
   baseSvgUrl: string | null;
   baseColorZones: Record<string, string> | null;
   /** Groupes de couleurs du dessin (nuances réunies, noms, nuanciers). */
@@ -2951,6 +2953,14 @@ export function adminApi(request?: Request) {
         "POST",
         `/admin/characters/${id}/archive`,
         { archived },
+        cookie,
+      ),
+    /** Montre (true) ou masque (false) un personnage sur le site. */
+    personnageVisible: (id: number, active: boolean) =>
+      req<{ id: number; active: boolean }>(
+        "POST",
+        `/admin/characters/${id}/visible`,
+        { active },
         cookie,
       ),
     /** Déplace des personnages vers une catégorie (null = sans catégorie). */

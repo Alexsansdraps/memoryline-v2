@@ -192,13 +192,21 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
    * une affiche de dos ne propose que les persos de dos (et inversement). Évite
    * qu'un perso de face apparaisse sur une affiche de dos. Si aucun perso ne
    * correspond à la vue (donnée incomplète), on retombe sur la liste complète.
+   *
+   * Un personnage MASQUÉ au back-office (`active: false`) n'est plus proposé,
+   * sauf s'il est déjà sur l'affiche (panier rouvert, affiche d'avant le
+   * masquage) : sa vignette reste alors là où le client l'a choisie.
    */
   const visibleCharacters = createMemo<CharacterDTO[]>(() => {
     const view = state.view;
-    const matching = props.characters.filter(
+    const surLAffiche = new Set(state.characters.map((c) => String(c.characterId)));
+    const proposes = props.characters.filter(
+      (c) => c.active !== false || surLAffiche.has(String(c.id)),
+    );
+    const matching = proposes.filter(
       (c) => (c.orientation ?? "front") === view,
     );
-    return matching.length > 0 ? matching : props.characters;
+    return matching.length > 0 ? matching : proposes;
   });
 
   /**

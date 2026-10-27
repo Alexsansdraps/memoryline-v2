@@ -51,6 +51,12 @@ if (Astro.request.method === "POST") {
     if (action === "archive") {
       await api.archiveCharacter(id, f.get("archived") === "true");
       return Astro.redirect(url("/personnages?archive=1"), 303);
+    } else if (action === "visible") {
+      const visible = f.get("active") === "1";
+      await api.personnageVisible(id, visible);
+      flash = visible
+        ? "Personnage visible : les clients le retrouvent dans le module de personnalisation."
+        : "Personnage masqué : les clients ne le voient plus dans le module. Ses réglages ne bougent pas, et une affiche qui le porte déjà s'affiche toujours.";
     } else if (action === "pieces-autorisees") {
       const parSlot: Record<string, number[]> = {};
       for (const s of SLOTS) {
@@ -236,11 +242,35 @@ const piecesACaler = SLOTS.flatMap((s) => {
 ---
 
 <Admin title={perso?.name ?? "Personnage"}>
-  <p class="mb-4">
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
     <a href={url("/personnages")} class="text-bo-accent hover:underline text-sm">
       ← Retour aux personnages
     </a>
-  </p>
+    {/* Visible ou masqué sur le site : le même bouton que sur la liste. Un
+        personnage pas encore prêt (nu, pas calé) se masque le temps de le
+        préparer ici. */}
+    {perso && (
+      <form method="POST" class="flex items-center gap-2 text-sm">
+        <input type="hidden" name="_action" value="visible" />
+        <input type="hidden" name="active" value={perso.active === false ? "1" : "0"} />
+        <span class="text-bo-muted">Sur le site :</span>
+        <button
+          title={
+            perso.active === false
+              ? "Les clients ne le voient pas dans le module. Cliquer pour le rendre visible."
+              : "Les clients le voient dans le module. Cliquer pour le masquer."
+          }
+          class={`cursor-pointer rounded-full px-3 py-1 text-xs font-medium ${
+            perso.active === false
+              ? "bg-bo-bg text-bo-muted ring-1 ring-bo-border"
+              : "bg-green-100 text-green-800"
+          }`}
+        >
+          {perso.active === false ? "Masqué — cliquer pour l'afficher" : "Visible — cliquer pour le masquer"}
+        </button>
+      </form>
+    )}
+  </div>
 
   {flash && (
     <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">
