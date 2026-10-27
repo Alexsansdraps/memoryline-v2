@@ -732,6 +732,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
                       <label
                         class="flex w-20 cursor-pointer flex-col items-center gap-1 rounded border border-bo-border p-1 text-center hover:border-bo-accent"
                         title={a.name}
+                        data-piece={`${s.value}:${a.position}`}
                       >
                         <svg viewBox="0 0 500 1000" class="h-12 w-12 bg-white">
                           <image
@@ -744,6 +745,14 @@ const piecesACaler = SLOTS.flatMap((s) => {
                         </svg>
                         <span class="w-full truncate text-[10px] text-bo-muted">
                           {a.name}
+                        </span>
+                        {/* Portée par défaut : tenue à jour par le calage plus
+                            bas, sans recharger (cf. dessinerTenue). */}
+                        <span
+                          class="js-badge-defaut rounded bg-bo-accent px-1.5 text-[10px] font-medium text-white"
+                          hidden={perso.defaultAssets?.[s.value as "clothes"] !== a.position}
+                        >
+                          Par défaut
                         </span>
                         <input
                           type="checkbox"
@@ -801,7 +810,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
             <p class="mt-1 text-xs text-bo-muted">
               <span class="inline-block h-3 w-3 rounded-full bg-green-600 align-middle"></span>
               calée · sans coche : posée telle qu'elle est dessinée ·
-              <span class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-bo-accent align-middle text-[9px] leading-none text-white">★</span>
+              <span class="rounded bg-bo-accent px-1 align-middle text-[9px] font-medium leading-none text-white">défaut</span>
               portée par défaut
             </p>
             {/* La tenue de départ, en clair : on voit tout de suite si la
@@ -1189,11 +1198,13 @@ const piecesACaler = SLOTS.flatMap((s) => {
               b.appendChild(coche);
             }
             if (parDefaut) {
-              const etoile = document.createElement("span");
-              etoile.className =
-                "absolute -bottom-1 -left-1 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-white bg-bo-accent text-[9px] leading-none text-white";
-              etoile.textContent = "★";
-              b.appendChild(etoile);
+              // Un bandeau écrit, en bas de la vignette : une pastille seule
+              // passait inaperçue.
+              const bandeau = document.createElement("span");
+              bandeau.className =
+                "absolute inset-x-0 bottom-0 rounded-b bg-bo-accent py-px text-center text-[9px] font-medium leading-tight text-white";
+              bandeau.textContent = "défaut";
+              b.appendChild(bandeau);
             }
             b.addEventListener("click", () => {
               index = i;
@@ -1207,6 +1218,13 @@ const piecesACaler = SLOTS.flatMap((s) => {
 
       /** « Tenue par défaut : Haut « Clothes 1 », Coupe « Hair 2 » », ou rien. */
       function dessinerTenue() {
+        // Les étiquettes « Par défaut » de la grille « Pièces autorisées »,
+        // plus haut : à jour sans recharger la page.
+        for (const carte of document.querySelectorAll("[data-piece]")) {
+          const [slot, position] = carte.dataset.piece.split(":");
+          const badge = carte.querySelector(".js-badge-defaut");
+          if (badge) badge.hidden = defaut[slot] !== Number(position);
+        }
         if (!tenue) return;
         const morceaux = Object.keys(defaut)
           .filter((slot) => defaut[slot] !== null && defaut[slot] !== undefined)
