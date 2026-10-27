@@ -46,7 +46,9 @@ if (Astro.request.method === "POST") {
       zonesMasquees: null,
       groupesCouleurs: Array.isArray(groupes) ? groupes : null,
       couleursImage: familles,
-      position: Number(f.get("position") || 0),
+      // Pas de numéro : le serveur donne le premier libre de l'emplacement.
+      // Ce champ proposait 0 d'office, et deux pièces au même numéro se
+      // calaient ensemble (migration 0072).
       // La catégorie décide des couleurs proposées au client : choisie dès la
       // création, la pièce arrive dans le configurateur avec le bon nuancier,
       // au lieu de celui, générique, de son emplacement.
@@ -131,20 +133,11 @@ const vuesChoisissables = vues.filter((v) => !v.archivedAt);
             {vuesChoisissables.map((v) => <option value={v.slug}>{v.name}</option>)}
           </select>
         </label>
-        <label class="block">
+        <label class="block sm:col-span-2">
           <span class="text-bo-muted">Nom</span>
           <input
             name="name"
             placeholder="T-shirt rayé"
-            class="mt-1 w-full border border-bo-border rounded px-3 py-2"
-          />
-        </label>
-        <label class="block">
-          <span class="text-bo-muted">Ordre d'affichage</span>
-          <input
-            name="position"
-            type="number"
-            value="0"
             class="mt-1 w-full border border-bo-border rounded px-3 py-2"
           />
         </label>

@@ -25,6 +25,8 @@ export function StepCharacters(props: {
   state: ConfiguratorState;
   characters: CharacterDTO[];
   slots: SlotVariants;
+  /** Les pièces proposées à un personnage donné (galerie : tenue par défaut). */
+  slotsDe?: (base: CharacterDTO) => SlotVariants;
   pieceCategories?: PieceCategoryDTO[];
   /** Les nuanciers des personnages réglés par la boutique (sinon ceux d'origine). */
   nuanciersBase?: NuanciersPersonnages;
@@ -239,6 +241,7 @@ export function StepCharacters(props: {
             base={props.characterById(char().characterId)}
             characters={props.characters}
             slots={props.slots}
+            slotsDe={props.slotsDe}
             pieceCategories={props.pieceCategories}
             nuanciersBase={props.nuanciersBase}
             cache={props.cache}

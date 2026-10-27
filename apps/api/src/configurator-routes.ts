@@ -1820,10 +1820,21 @@ export function mountConfiguratorRoutes(app: Hono) {
   // après une mise en ligne trouve ainsi la composition complète (voir
   // emprise-personnages.ts). Les mesures déjà rangées ne se refont pas.
   setTimeout(() => {
-    db.select({ url: schema.characterTypes.baseSvgUrl })
-      .from(schema.characterTypes)
-      .where(isNull(schema.characterTypes.archivedAt))
-      .then((lignes) => preparerLesEmprises(lignes.map((l) => l.url)))
+    Promise.all([
+      db
+        .select({ url: schema.characterTypes.baseSvgUrl })
+        .from(schema.characterTypes)
+        .where(isNull(schema.characterTypes.archivedAt)),
+      // Les pièces aussi : leur emprise cadre la vignette de celles qui ne
+      // sont pas dessinées dans le cadre 500 × 1000 (cf. cadrageDeVignette).
+      db
+        .select({ url: schema.assets.svgUrl })
+        .from(schema.assets)
+        .where(and(isNull(schema.assets.characterTypeId), isNull(schema.assets.archivedAt))),
+    ])
+      .then(([persos, pieces]) =>
+        preparerLesEmprises([...persos, ...pieces].map((l) => l.url)),
+      )
       .catch(() => {
         // Sans base au démarrage, les mesures se feront à la première visite.
       });
@@ -1889,7 +1900,10 @@ export function mountConfiguratorRoutes(app: Hono) {
           isNull(schema.assets.archivedAt),
         ),
       )
-      .orderBy(asc(schema.assets.position));
+      // L'identifiant départage deux numéros égaux (il n'en reste plus depuis
+      // 0072) : la tenue par défaut, lue par numéro, retombe toujours sur la
+      // même pièce.
+      .orderBy(asc(schema.assets.position), asc(schema.assets.id));
     // Un tiroir par type d'affiche, y compris ceux créés au back-office :
     // le configurateur cherche `slots[vue]`, il ne doit jamais tomber sur un
     // trou parce qu'un type est arrivé après la mise en production.
@@ -1909,7 +1923,13 @@ export function mountConfiguratorRoutes(app: Hono) {
     const slots: Record<string, Record<string, unknown[]>> = {};
     for (const v of vues) slots[v.slug] = tiroirVide();
     slots["front"] ??= tiroirVide();
-    for (const a of variants) {
+    // Où chaque pièce se trouve dans le cadre : de quoi cadrer la vignette de
+    // celles dessinées dans un autre cadre. Même mesure, même cache que les
+    // personnages.
+    const empriseDesPieces = await Promise.all(
+      variants.map((a) => empriseDuPersonnage(a.svgUrl)),
+    );
+    for (const [i, a] of variants.entries()) {
       // Une pièce sans type explicite reste rattachée au premier type,
       // « de face » — c'est ce que faisait le code d'avant.
       const view = a.view ?? "front";
@@ -1939,6 +1959,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         position: a.position,
         // Catégorie de la pièce : c'est elle qui porte le nuancier proposé.
         pieceCategoryId: a.pieceCategoryId,
+        emprise: empriseDesPieces[i] ?? null,
       });
     }
 
@@ -4663,7 +4684,6 @@ export function mountConfiguratorRoutes(app: Hono) {
       ...(b.couleursImage !== undefined
         ? { couleursImage: couleursImagePropres(b.couleursImage) }
         : {}),
-      position: Number(b.position ?? 0),
       characterTypeId: b.characterTypeId ? Number(b.characterTypeId) : null,
       ...(b.pieceCategoryId !== undefined
         ? {
@@ -4675,17 +4695,69 @@ export function mountConfiguratorRoutes(app: Hono) {
         : {}),
     };
     if (!values.svgUrl) return c.json({ error: "svgUrl requis" }, 400);
+
+    // Le numéro (`position`) est ce qui DÉSIGNE la pièce dans son
+    // emplacement : les pièces autorisées d'un personnage, son calage
+    // (« hair:2 ») et sa tenue par défaut s'enregistrent sous lui. Deux pièces
+    // au même numéro se calaient donc ensemble — c'est arrivé en prod, la
+    // création proposait 0 d'office (migration 0072). Une pièce générique
+    // garde donc un numéro à elle.
+    const voulu =
+      b.position === undefined || b.position === null || b.position === ""
+        ? null
+        : Number(b.position);
+    let position: number | undefined =
+      voulu !== null && Number.isInteger(voulu) && voulu >= 0 ? voulu : undefined;
+    if (values.characterTypeId === null) {
+      const memeEmplacement = and(
+        isNull(schema.assets.characterTypeId),
+        eq(schema.assets.slot, values.slot),
+        sql`coalesce(${schema.assets.view}, 'front') = ${values.view}`,
+      );
+      if (position !== undefined) {
+        const [prise] = await db
+          .select({ id: schema.assets.id, name: schema.assets.name })
+          .from(schema.assets)
+          .where(and(memeEmplacement, eq(schema.assets.position, position)));
+        if (prise && prise.id !== Number(b.id)) {
+          // Créée : elle prend le premier numéro libre, sans rien demander.
+          // Modifiée : on refuse, renuméroter en silence décalerait ses calages.
+          if (b.id)
+            return c.json(
+              {
+                error: `Le numéro ${position} est déjà celui de la pièce « ${prise.name ?? prise.id} ».`,
+              },
+              400,
+            );
+          position = undefined;
+        }
+      }
+      if (position === undefined && !b.id) {
+        const [dernier] = await db
+          .select({ plusHaut: sql<number | null>`max(${schema.assets.position})` })
+          .from(schema.assets)
+          .where(memeEmplacement);
+        position = Number(dernier?.plusHaut ?? 0) + 1;
+      }
+    }
+    // Une modification sans numéro ne touche pas au sien : elle le remettait
+    // à 0.
+    const ligne = position !== undefined ? { ...values, position } : values;
+
     if (b.id) {
       const [row] = await db
         .update(schema.assets)
-        .set(values)
+        .set(ligne)
         .where(eq(schema.assets.id, Number(b.id)))
         .returning();
       // Un autre dessin, peut-être : la couleur principale se remesure.
       if (row) void mesurerLaPiece(row.id);
       return c.json(row);
     }
-    const [row] = await db.insert(schema.assets).values(values).returning();
+    const [row] = await db
+      .insert(schema.assets)
+      .values({ ...values, position: position ?? 0 })
+      .returning();
     // Une pièce neuve : sa couleur principale se mesure tout de suite, en
     // arrière-plan.
     if (row) void mesurerLaPiece(row.id);

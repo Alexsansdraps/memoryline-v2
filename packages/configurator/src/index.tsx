@@ -216,6 +216,10 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     return slotsForCharacter(all, base);
   };
 
+  /** Les pièces proposées à un personnage quelconque : celles de sa vue, qu'il a le droit de porter. */
+  const slotsDe = (base: CharacterDTO): SlotVariants =>
+    slotsForCharacter(variantesDeVue(props.slots, base.orientation ?? state.view), base);
+
   // Présélection du fond du produit : à l'ouverture, l'aperçu montre déjà
   // l'affiche de la fiche (1er fond renvoyé = fond de la ville du produit).
   createEffect(() => {
@@ -244,7 +248,18 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     // En édition : toutes les bases (galerie de personnages) + toutes les
     // variantes du slot courant (galeries vêtements/pantalon/cheveux/accessoires).
     if (state.editingIndex !== null) {
-      for (const base of props.characters) void fetchSvg(base.baseSvgUrl);
+      for (const base of props.characters) {
+        void fetchSvg(base.baseSvgUrl);
+        // Un personnage livré avec une tenue se montre habillé dans la
+        // galerie (cf. tenueDeVignette) : ses pièces viennent avec.
+        if (!base.defaultAssets) continue;
+        const pieces = slotsDe(base);
+        const tenue = defaultCharacter(base, 0, pieces);
+        for (const slot of SLOTS) {
+          const v = findVariant(pieces[slot], tenue.assets[slot]);
+          if (v) void fetchSvg(v.svgUrl);
+        }
+      }
       for (const slot of SLOTS) {
         for (const v of variants[slot]) void fetchSvg(v.svgUrl);
       }
@@ -537,6 +552,12 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     mutate((s) => {
       const c = s.characters[index];
       if (!c) return;
+      // La tenue par défaut de l'ANCIEN personnage : ce que le client
+      // portait sans l'avoir choisi.
+      const ancien = characterById(c.characterId);
+      const tenueAncienne = ancien
+        ? defaultCharacter(ancien, 0, slotsDe(ancien)).assets
+        : {};
       c.characterId = base.id;
       const variants = slotsForCharacter(
         variantesDeVue(props.slots, base.orientation ?? state.view),
@@ -545,8 +566,17 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       // Changement de personnage : les pièces qui n'existent pas chez le
       // nouveau tombent, sa tenue par défaut prend le relais pour ces
       // emplacements-là — sinon un perso nu resterait nu après l'échange.
+      // Une pièce que le client n'a pas choisie (celle de la tenue par défaut
+      // de l'ancien) cède aussi la place à celle du nouveau : passer de
+      // Femme 6 à Femme 4 lui laissait la coupe blonde de Femme 6, au lieu
+      // de celle réglée pour Femme 4 au back-office (vidéo de la boutique,
+      // 27 octobre).
       for (const slot of SLOTS) {
-        if (findVariant(variants[slot], c.assets[slot])) continue;
+        const parDefaut =
+          c.assets[slot] !== undefined &&
+          String(c.assets[slot]) === String(tenueAncienne[slot]);
+        if (parDefaut) delete c.assets[slot];
+        else if (findVariant(variants[slot], c.assets[slot])) continue;
         const pos = base.defaultAssets?.[slot];
         const v =
           pos == null ? undefined : variants[slot]?.find((x) => x.position === pos);
@@ -842,6 +872,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             state={state}
             characters={visibleCharacters()}
             slots={slotVariants()}
+            slotsDe={slotsDe}
             pieceCategories={props.pieceCategories}
             nuanciersBase={props.nuanciersBase}
             cache={cache}

@@ -30,7 +30,9 @@ import {
 } from "@memoryline/types";
 import {
   NONE_ASSET,
+  cadrageDeVignette,
   couleursAuChangementDePiece,
+  defaultCharacter,
   dessinPourLEcran,
   findVariant,
   recolorForCharacter,
@@ -274,6 +276,54 @@ function CrossedCircle() {
       />
       <line x1="6" y1="18" x2="18" y2="6" stroke="#9ca3af" stroke-width="2" />
     </svg>
+  );
+}
+
+/**
+ * La vignette d'un personnage habillé : les mêmes couches que l'aperçu
+ * (CharacterStack), dans un cadre 1:2, agrandi sur le dessin lui-même (son
+ * emprise) pour qu'il remplisse la vignette comme les autres personnages.
+ */
+function PersonnageHabille(props: {
+  character: WorkingCharacter;
+  base: CharacterDTO;
+  slots: SlotVariants;
+  cache: SvgCache;
+  assetBaseUrl?: string;
+}) {
+  const cadrage = () => {
+    const e = props.base.emprise;
+    if (!e) return undefined;
+    const largeur = e.droite - e.gauche;
+    const hauteur = e.bas - e.haut;
+    if (!(largeur > 0 && hauteur > 0)) return undefined;
+    // La vignette est un peu plus large que la moitié de sa hauteur : 1,4
+    // plutôt que 0,9 côté largeur.
+    const k = Math.max(1, Math.min(0.9 / hauteur, 1.4 / largeur));
+    const cx = (e.gauche + e.droite) / 2;
+    const cy = (e.haut + e.bas) / 2;
+    return `scale(${k.toFixed(3)}) translate(${((0.5 - cx) * 100).toFixed(2)}%, ${((0.5 - cy) * 100).toFixed(2)}%)`;
+  };
+  return (
+    <span
+      style={{
+        position: "relative",
+        display: "block",
+        height: "100%",
+        "aspect-ratio": "1 / 2",
+        margin: "0 auto",
+        transform: cadrage(),
+        "transform-origin": "50% 50%",
+      }}
+    >
+      <CharacterStack
+        character={props.character}
+        base={props.base}
+        slots={props.slots}
+        cache={props.cache}
+        assetBaseUrl={props.assetBaseUrl}
+      />
+    </span>
   );
 }
 
@@ -782,6 +832,8 @@ export function CharacterEditor(props: {
   base: CharacterDTO | undefined;
   characters: CharacterDTO[];
   slots: SlotVariants;
+  /** Les pièces proposées à un personnage donné : sa tenue par défaut, dans la galerie. */
+  slotsDe?: (base: CharacterDTO) => SlotVariants;
   cache: SvgCache;
   /** Racine de l'API : elle sert les images recolorées des dessins en pixels. */
   assetBaseUrl?: string;
@@ -852,6 +904,24 @@ export function CharacterEditor(props: {
       (c) => (c.category ?? SANS_CAT) === categorieActive(),
     ),
   );
+
+  /**
+   * Le personnage tel qu'il arrive sur l'affiche, pour sa vignette : avec sa
+   * tenue par défaut. Un personnage dessiné nu (Femme 6, octobre 2026)
+   * s'affichait nu dans la galerie alors qu'il arrive habillé — la boutique
+   * le voulait « composé ». Le personnage en cours d'édition montre sa tenue
+   * du moment. `null` : pas de tenue réglée, la vignette reste le dessin seul.
+   */
+  const tenueDeVignette = (
+    base: CharacterDTO,
+  ): { character: WorkingCharacter; slots: SlotVariants } | null => {
+    if (!base.defaultAssets || Object.values(base.defaultAssets).every((p) => p == null))
+      return null;
+    if (String(props.character.characterId) === String(base.id))
+      return { character: props.character, slots: props.slots };
+    const slots = props.slotsDe?.(base);
+    return slots ? { character: defaultCharacter(base, 0, slots), slots } : null;
+  };
 
   /**
    * Une rangée de pastilles par groupe de couleurs d'une couche (scope).
@@ -1093,7 +1163,14 @@ export function CharacterEditor(props: {
     // « Aucun » n'est coché que sur demande EXPLICITE (NONE_ASSET) —
     // `undefined` = couche d'origine de la base conservée, rien de coché.
     const hasNone = () => selectedId() === NONE_ASSET;
-    const viewBox = SLOT_THUMB_VIEWBOX[opts.slot];
+    // La zone de l'emplacement dans le cadre 500 × 1000, ramenée au repère de
+    // chaque pièce (cf. cadrageDeVignette).
+    const viewBox = (variant: VariantDTO) =>
+      cadrageDeVignette(
+        props.cache.raw[variant.svgUrl],
+        SLOT_THUMB_VIEWBOX[opts.slot],
+        variant.emprise,
+      );
     return (
       <Show when={list().length > 0}>
         {/* Une partie des réglages : l'invitation à descendre la nomme tant
@@ -1140,7 +1217,7 @@ export function CharacterEditor(props: {
                         opts.slot,
                         variant,
                       ),
-                      viewBox,
+                      viewBox(variant),
                       `${uid}-${opts.slot}-${variant.id}`,
                       {
                         couleursImage: variant.couleursImage,
@@ -1332,28 +1409,43 @@ export function CharacterEditor(props: {
                   onClick={() => props.onChangeCharacter(base)}
                   title={base.name}
                 >
-                  <SvgThumb
-                    svg={thumbSvg(
-                      props.cache,
-                      base.baseSvgUrl,
-                      // Mêmes couleurs que sur l'affiche : les défauts du
-                      // back-office, et celles du client pour le sien.
-                      couleursDeLaBase(
-                        String(props.character.characterId) === String(base.id)
-                          ? props.character.colors
-                          : undefined,
-                        base,
-                      ),
-                      undefined,
-                      `${uid}-charbase-${base.id}`,
-                      {
-                        couleursImage: base.baseCouleursImage,
-                        chemin: `/characters/${base.id}`,
-                        assetBaseUrl: props.assetBaseUrl,
-                      },
+                  <Show
+                    when={tenueDeVignette(base)}
+                    fallback={
+                      <SvgThumb
+                        svg={thumbSvg(
+                          props.cache,
+                          base.baseSvgUrl,
+                          // Mêmes couleurs que sur l'affiche : les défauts du
+                          // back-office, et celles du client pour le sien.
+                          couleursDeLaBase(
+                            String(props.character.characterId) === String(base.id)
+                              ? props.character.colors
+                              : undefined,
+                            base,
+                          ),
+                          undefined,
+                          `${uid}-charbase-${base.id}`,
+                          {
+                            couleursImage: base.baseCouleursImage,
+                            chemin: `/characters/${base.id}`,
+                            assetBaseUrl: props.assetBaseUrl,
+                          },
+                        )}
+                        label={base.name}
+                      />
+                    }
+                  >
+                    {(tenue) => (
+                      <PersonnageHabille
+                        character={tenue().character}
+                        base={base}
+                        slots={tenue().slots}
+                        cache={props.cache}
+                        assetBaseUrl={props.assetBaseUrl}
+                      />
                     )}
-                    label={base.name}
-                  />
+                  </Show>
                 </Thumb>
               )}
             </For>

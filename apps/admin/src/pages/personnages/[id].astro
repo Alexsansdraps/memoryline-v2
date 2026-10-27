@@ -748,9 +748,9 @@ const piecesACaler = SLOTS.flatMap((s) => {
       >
         <h3 class="font-semibold mb-1">Calage des pièces</h3>
         <p class="text-xs text-bo-muted mb-4">
-          Attrapez la pièce et posez-la où il faut. La molette la
-          redimensionne. On valide, la suivante s'affiche — et le réglage vaut
-          à l'écran comme à l'impression.
+          Attrapez la pièce et posez-la où il faut, tirez un coin du cadre
+          pour la redimensionner. On valide, la suivante s'affiche — et le
+          réglage vaut à l'écran comme à l'impression.
         </p>
 
         <div class="js-calage" data-id={perso.id}>
@@ -763,6 +763,16 @@ const piecesACaler = SLOTS.flatMap((s) => {
               pieces: piecesACaler,
             })}
           />
+          {/* Toutes les pièces du personnage : un clic mène droit à l'une
+              d'elles — la nouvelle, par exemple — sans repasser par les
+              autres. La coche verte dit celles qui ont déjà un calage. */}
+          <div class="mb-4">
+            <div class="js-liste flex flex-wrap gap-1.5"></div>
+            <p class="mt-1 text-xs text-bo-muted">
+              <span class="inline-block h-3 w-3 rounded-full bg-green-600 align-middle"></span>
+              calée · sans coche : posée telle qu'elle est dessinée
+            </p>
+          </div>
           <div class="flex flex-wrap gap-6">
             <div
               class="js-scene relative h-[420px] w-[210px] shrink-0 cursor-grab touch-none select-none rounded border border-bo-border bg-white"
@@ -816,12 +826,15 @@ const piecesACaler = SLOTS.flatMap((s) => {
 
             <div class="min-w-[280px] flex-1 text-sm">
               <div class="js-titre font-medium"></div>
-              <div class="js-progres mb-3 text-xs text-bo-muted"></div>
+              <div class="js-progres mb-1 text-xs text-bo-muted"></div>
+              <p class="js-etat mb-3 text-xs"></p>
 
               <p class="mb-3 text-xs text-bo-muted">
                 Glissez la pièce pour la déplacer, tirez un coin du cadre pour
-                la redimensionner. Molette et flèches du clavier pour ajuster
-                au détail près.
+                la redimensionner. Après un clic sur le personnage, les flèches
+                du clavier la déplacent au détail près, + et − changent sa
+                taille. La molette fait défiler la page, elle ne touche pas à
+                la pièce.
               </p>
               <div class="js-valeurs mb-4 font-mono text-xs text-bo-muted"></div>
 
@@ -869,6 +882,11 @@ const piecesACaler = SLOTS.flatMap((s) => {
                 </button>
                 <span class="js-statut text-bo-muted"></span>
               </div>
+              <p class="mt-2 text-xs text-bo-muted">
+                « Passer » et « Précédente » n'enregistrent rien : le calage
+                déjà enregistré de la pièce reste tel quel. Seul « Valider et
+                suivante » enregistre ce qui est affiché.
+              </p>
             </div>
           </div>
         </div>
@@ -1070,6 +1088,8 @@ const piecesACaler = SLOTS.flatMap((s) => {
       const statut = boite.querySelector(".js-statut");
       const toutSlot = boite.querySelector(".js-tout-slot");
       const caseDefaut = boite.querySelector(".js-defaut");
+      const liste = boite.querySelector(".js-liste");
+      const etatCalage = boite.querySelector(".js-etat");
       const defaut = donnees.defaut || {};
 
       let index = 0;
@@ -1077,6 +1097,59 @@ const piecesACaler = SLOTS.flatMap((s) => {
 
       function borne(v, min, max) {
         return Math.min(max, Math.max(min, v));
+      }
+
+      /** Le calage ENREGISTRÉ d'une pièce : le sien, sinon celui de tout son emplacement. */
+      function calageEnregistre(p) {
+        const propre = calage[p.slot + ":" + p.position];
+        if (propre) return { valeur: propre, commun: false };
+        if (calage[p.slot]) return { valeur: calage[p.slot], commun: true };
+        return null;
+      }
+
+      /** Une vignette par pièce : un clic y mène, la coche verte dit qu'elle est calée. */
+      function dessinerListe() {
+        if (!liste) return;
+        const SVG = "http://www.w3.org/2000/svg";
+        liste.replaceChildren(
+          ...pieces.map((p, i) => {
+            const b = document.createElement("button");
+            b.type = "button";
+            const calee = calageEnregistre(p) !== null;
+            b.className =
+              "relative h-16 w-9 shrink-0 rounded border bg-white " +
+              (i === index
+                ? "border-bo-accent ring-2 ring-bo-accent"
+                : "border-bo-border hover:border-bo-accent");
+            b.title =
+              p.slotLabel +
+              " — " +
+              (p.name || "sans nom") +
+              (calee ? " (calée)" : " (pas de calage)");
+            b.setAttribute("aria-label", b.title);
+            if (i === index) b.setAttribute("aria-current", "true");
+            const svg = document.createElementNS(SVG, "svg");
+            svg.setAttribute("viewBox", "0 0 500 1000");
+            svg.setAttribute("class", "h-full w-full");
+            const img = document.createElementNS(SVG, "image");
+            img.setAttribute("href", p.url);
+            img.setAttribute("width", "500");
+            img.setAttribute("height", "1000");
+            svg.appendChild(img);
+            b.appendChild(svg);
+            if (calee) {
+              const coche = document.createElement("span");
+              coche.className =
+                "absolute -right-1 -top-1 h-3 w-3 rounded-full border border-white bg-green-600";
+              b.appendChild(coche);
+            }
+            b.addEventListener("click", () => {
+              index = i;
+              afficher();
+            });
+            return b;
+          }),
+        );
       }
 
       function dessiner() {
@@ -1106,7 +1179,17 @@ const piecesACaler = SLOTS.flatMap((s) => {
         void chargerBbox(p.url);
         titre.textContent = p.slotLabel + " — " + (p.name || "sans nom");
         progres.textContent = index + 1 + " / " + pieces.length;
-        const c = calage[p.slot + ":" + p.position] || calage[p.slot] || null;
+        const enregistre = calageEnregistre(p);
+        if (etatCalage) {
+          etatCalage.className = "js-etat mb-3 text-xs " + (enregistre ? "text-green-700" : "text-bo-muted");
+          etatCalage.textContent = !enregistre
+            ? "Pas de calage enregistré : la pièce est posée telle qu'elle est dessinée."
+            : enregistre.commun
+              ? "Calage enregistré pour toutes les pièces de cet emplacement."
+              : "Calage enregistré pour cette pièce.";
+        }
+        dessinerListe();
+        const c = enregistre ? enregistre.valeur : null;
         toutSlot.checked =
           !calage[p.slot + ":" + p.position] && !!calage[p.slot];
         caseDefaut.checked = defaut[p.slot] === p.position;
@@ -1232,6 +1315,10 @@ const piecesACaler = SLOTS.flatMap((s) => {
         }
         scene.setPointerCapture(e.pointerId);
         e.preventDefault();
+        // `preventDefault` empêche aussi le navigateur de donner le focus à
+        // la scène : sans ceci, les flèches du clavier faisaient défiler la
+        // page au lieu de déplacer la pièce attrapée.
+        scene.focus({ preventScroll: true });
       });
 
       scene.addEventListener("pointermove", (e) => {
@@ -1288,22 +1375,10 @@ const piecesACaler = SLOTS.flatMap((s) => {
       scene.addEventListener("pointercancel", lacher);
       window.addEventListener("resize", placerCadre);
 
-      // Molette = taille. `passive: false` sinon le navigateur refuse qu'on
-      // empêche le défilement de la page sous le curseur.
-      scene.addEventListener(
-        "wheel",
-        (e) => {
-          if (pieces.length === 0) return;
-          e.preventDefault();
-          etat.scale = borne(
-            Number((etat.scale * (1 - e.deltaY * 0.0015)).toFixed(3)),
-            0.4,
-            2,
-          );
-          dessiner();
-        },
-        { passive: false },
-      );
+      // Pas de molette : elle changeait la taille de la pièce dès que le
+      // curseur passait sur la scène en faisant défiler la page, et « Valider
+      // et suivante » enregistrait ce geste involontaire (demande de la
+      // boutique, 27 octobre). La taille se règle au cadre ou au clavier.
 
       // Clavier : l'ajustement au pixel près, quand la souris est trop
       // grossière. La scène est focusable pour ça.
@@ -1387,8 +1462,10 @@ const piecesACaler = SLOTS.flatMap((s) => {
             Object.assign(defaut, data2.defaultAssets || {});
           }
 
-          statut.textContent = "Enregistré.";
           avancer(1);
+          // Après le passage à la suivante, qui vide le message : sinon
+          // « Enregistré » ne se lisait jamais.
+          statut.textContent = "« " + (p.name || p.slotLabel) + " » enregistrée.";
         } catch (err) {
           statut.textContent = "Échec : " + err;
         } finally {

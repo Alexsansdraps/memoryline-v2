@@ -99,6 +99,12 @@ export interface VariantDTO {
   position: number;
   /** Catégorie de la pièce (« Casquettes »…) : elle porte le nuancier. */
   pieceCategoryId?: number | null;
+  /**
+   * Où le dessin se trouve dans le cadre 500 × 1000, mesuré par l'API. Ne sert
+   * qu'à cadrer la vignette d'une pièce dessinée dans un autre cadre (cf.
+   * cadrageDeVignette). `null` tant qu'elle n'est pas mesurée.
+   */
+  emprise?: EmpriseDessin | null;
 }
 
 /**
@@ -917,6 +923,47 @@ export function dessinPourLEcran(
     rawSvg,
     `${base}${chemin}/image-couleurs?c=${encodeURIComponent(parametre)}`,
   );
+}
+
+/**
+ * Le cadrage de la vignette d'une pièce, dans le repère de SON fichier.
+ *
+ * SLOT_THUMB_VIEWBOX cadre une zone du cadre 500 × 1000 (la tête pour une
+ * coupe, les jambes pour un pantalon) : juste pour les pièces dessinées dans
+ * ce cadre. Une pièce dessinée dans un autre (les images 1024 × 1536 de
+ * Femme 6, octobre 2026) recevait ces chiffres dans son propre repère, et sa
+ * vignette tombait à côté du dessin : presque vide. Elle se cadre alors sur
+ * son dessin, tel que l'API l'a mesuré, posé dans le cadre comme sur le
+ * personnage (centré, sans déformation). Pas encore mesuré : tout le fichier.
+ */
+export function cadrageDeVignette(
+  svg: string | undefined,
+  standard: string,
+  emprise: EmpriseDessin | null | undefined,
+): string | undefined {
+  const brut = svg ? /<svg\b[^>]*?\sviewBox\s*=\s*"([^"]*)"/.exec(svg)?.[1] : undefined;
+  const v = brut?.trim().split(/[\s,]+/).map(Number);
+  if (!v || v.length !== 4 || v.some((n) => !Number.isFinite(n)) || v[2]! <= 0 || v[3]! <= 0)
+    return standard;
+  const [vx, vy, vw, vh] = v as [number, number, number, number];
+  if (vx === 0 && vy === 0 && vw === 500 && vh === 1000) return standard;
+  if (!emprise) return undefined;
+  const s = Math.min(500 / vw, 1000 / vh);
+  const ox = (500 - vw * s) / 2;
+  const oy = (1000 - vh * s) / 2;
+  const gauche = emprise.gauche * 500;
+  const haut = emprise.haut * 1000;
+  const largeur = (emprise.droite - emprise.gauche) * 500;
+  const hauteur = (emprise.bas - emprise.haut) * 1000;
+  const marge = 0.08 * Math.max(largeur, hauteur);
+  return [
+    vx + (gauche - marge - ox) / s,
+    vy + (haut - marge - oy) / s,
+    (largeur + 2 * marge) / s,
+    (hauteur + 2 * marge) / s,
+  ]
+    .map((n) => Number(n.toFixed(1)))
+    .join(" ");
 }
 
 /**
