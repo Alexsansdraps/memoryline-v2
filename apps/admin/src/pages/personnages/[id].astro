@@ -861,7 +861,8 @@ const piecesACaler = SLOTS.flatMap((s) => {
 
               <p class="mb-3 text-xs text-bo-muted">
                 Glissez la pièce pour la déplacer, tirez un coin du cadre pour
-                la redimensionner. Après un clic sur le personnage, les flèches
+                la redimensionner : elle va jusqu'au bord de l'image, pas
+                au-delà. Après un clic sur le personnage, les flèches
                 du clavier la déplacent au détail près, + et − changent sa
                 taille. La molette fait défiler la page, elle ne touche pas à
                 la pièce.
@@ -1286,6 +1287,34 @@ const piecesACaler = SLOTS.flatMap((s) => {
         };
       }
 
+      /**
+       * Garde le DESSIN de la pièce dans l'image du personnage (demande de la
+       * boutique, 27 octobre) : on la pousse jusqu'au bord, pas au-delà, et
+       * elle ne grandit pas plus que l'image. Sans mesure du dessin (pas
+       * encore arrivée, ou échouée), seules les bornes de l'API tiennent.
+       */
+      function dansLImage() {
+        const b = pieces[index] && bboxes[pieces[index].url];
+        if (!b) return;
+        const largeur = b.right - b.left;
+        const hauteur = b.bottom - b.top;
+        const tailleMax = Math.min(
+          TAILLE_MAX,
+          largeur > 0 ? 1 / largeur : TAILLE_MAX,
+          hauteur > 0 ? 1 / hauteur : TAILLE_MAX,
+        );
+        etat.scale = borne(etat.scale, TAILLE_MIN, tailleMax);
+        // Bords du dessin une fois mis à l'échelle depuis le bas-centre,
+        // avant le décalage (même formule que versEcran).
+        const s = etat.scale;
+        const gauche = 0.5 + (b.left - 0.5) * s;
+        const droite = 0.5 + (b.right - 0.5) * s;
+        const haut = 1 + (b.top - 1) * s;
+        const bas = 1 + (b.bottom - 1) * s;
+        etat.dx = borne(etat.dx, -gauche * 100, (1 - droite) * 100);
+        etat.dy = borne(etat.dy, -haut * 100, (1 - bas) * 100);
+      }
+
       function placerCadre() {
         if (!cadre) return;
         if (pieces.length === 0) {
@@ -1394,6 +1423,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
           );
           etat.scale = s;
         }
+        dansLImage();
         dessiner();
       });
 
@@ -1429,6 +1459,7 @@ const piecesACaler = SLOTS.flatMap((s) => {
           etat.scale = borne(etat.scale - 0.02, TAILLE_MIN, TAILLE_MAX);
         else return;
         e.preventDefault();
+        dansLImage();
         dessiner();
       });
 

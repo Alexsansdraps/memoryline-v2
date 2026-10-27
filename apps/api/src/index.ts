@@ -2551,36 +2551,51 @@ app.post("/admin/svg/analyse", async (c) => {
   let bbox: { left: number; top: number; right: number; bottom: number } | null =
     null;
   try {
+    const W = 200;
     const H = 400;
-    const { data, info } = await sharp(contenu, { density: 120, unlimited: true })
-      .resize(200, H, { fit: "fill" })
-      .ensureAlpha()
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-    const W = info.width;
-    let bas = -1;
-    let haut = H;
-    let gauche = W;
-    let droite = -1;
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        if (data[(y * W + x) * info.channels + 3]! <= 20) continue;
-        if (y < haut) haut = y;
-        if (y > bas) bas = y;
-        if (x < gauche) gauche = x;
-        if (x > droite) droite = x;
+    /** Le rectangle des pixels visibles, le fichier posé dans un cadre 1:2. */
+    const contour = async (fit: "fill" | "contain") => {
+      const { data, info } = await sharp(contenu, { density: 120, unlimited: true })
+        .resize(W, H, { fit, background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      let bas = -1;
+      let haut = H;
+      let gauche = W;
+      let droite = -1;
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          if (data[(y * W + x) * info.channels + 3]! <= 20) continue;
+          if (y < haut) haut = y;
+          if (y > bas) bas = y;
+          if (x < gauche) gauche = x;
+          if (x > droite) droite = x;
+        }
       }
-    }
-    if (bas >= 0) {
-      bottomPct = Number(Math.min(1, Math.max(0.05, bas / H)).toFixed(4));
-      // Fractions du cadre : le back-office les multiplie par la taille de sa
-      // scène, quelle qu'elle soit.
-      bbox = {
-        left: Number((gauche / W).toFixed(4)),
-        top: Number((haut / H).toFixed(4)),
-        right: Number(((droite + 1) / W).toFixed(4)),
-        bottom: Number(((bas + 1) / H).toFixed(4)),
-      };
+      return bas >= 0 ? { gauche, droite, haut, bas } : null;
+    };
+    const etire = await contour("fill");
+    if (etire) {
+      bottomPct = Number(Math.min(1, Math.max(0.05, etire.bas / H)).toFixed(4));
+      // Le rectangle de la pièce, en fractions du CADRE tel que l'écran de
+      // calage le montre : le fichier centré sans être déformé. Étiré
+      // (« fill »), un dessin en 1024 × 1536 donnait un rectangle trop haut
+      // et décalé — et le calage arrêtait la pièce au bord de l'image bien
+      // avant son dessin (27/10/2026). Au format 1:2, les deux se valent.
+      const meta = await sharp(contenu).metadata();
+      const auFormat =
+        !meta.width || !meta.height || Math.abs(meta.width / meta.height - 0.5) < 0.005;
+      const pose = auFormat ? etire : await contour("contain");
+      if (pose)
+        // Fractions du cadre : le back-office les multiplie par la taille de
+        // sa scène, quelle qu'elle soit.
+        bbox = {
+          left: Number((pose.gauche / W).toFixed(4)),
+          top: Number((pose.haut / H).toFixed(4)),
+          right: Number(((pose.droite + 1) / W).toFixed(4)),
+          bottom: Number(((pose.bas + 1) / H).toFixed(4)),
+        };
     }
   } catch {
     // Rasterisation impossible : on rend les zones sans le calage, plutôt que
