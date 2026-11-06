@@ -1462,11 +1462,18 @@ try {
             Aucun visuel pour le moment.
           </p>
 
-          {/* ====== Visuels archivés ====== */}
+          {/* ====== Visuels archivés ======
+              Repliés : la boutique voulait pouvoir les SUPPRIMER (carte
+              Trello du 29/10, « là on peut que archiver ») parce qu'ils
+              encombraient la fiche. Ils restent en base — une commande déjà
+              passée sur l'un d'eux doit se réimprimer —, mais ne prennent plus
+              qu'une ligne tant qu'on ne les ouvre pas. */}
           {fondsArchives.length > 0 && (
-            <div class="mt-5 border-t border-bo-border pt-4">
-              <h4 class="mb-1 text-sm font-semibold">Visuels archivés</h4>
-              <p class="mb-3 text-xs text-bo-muted">
+            <details class="mt-5 border-t border-bo-border pt-4">
+              <summary class="cursor-pointer text-sm font-semibold text-bo-muted hover:text-bo-accent">
+                Voir {fondsArchives.length === 1 ? "le visuel archivé" : `les ${fondsArchives.length} visuels archivés`}
+              </summary>
+              <p class="mt-2 mb-3 text-xs text-bo-muted">
                 Retirés des choix du client. Ils restent imprimables : les
                 commandes déjà passées sur ces fonds se réimpriment à
                 l'identique.
@@ -1500,7 +1507,7 @@ try {
                   </figure>
                 ))}
               </div>
-            </div>
+            </details>
           )}
         </section>
       )}

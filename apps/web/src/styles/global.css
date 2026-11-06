@@ -1193,6 +1193,24 @@ body:has(.ml-stand-fin) > footer {
   outline: 3px solid #4f46e5;
   outline-offset: 2px;
 }
+/* Sur un téléphone, 44 px cerclés de noir de chaque côté mangeaient la
+   rangée : « sur tablette ça s'affiche top mais sur mobile ça fait un peu
+   gros cafouillage, c'est dû aux flèches trop grosses » (carte Trello
+   « Étape 2 », 30/09 et 29/10). Le juste milieu demandé : 34 px, un cercle
+   plus fin, le même chevron un peu plus petit — encore bien visibles, et
+   assez grands pour le doigt avec l'espace autour. La tablette ne change
+   pas. `!important` : la taille est écrite sur le bouton (BoutonDefilement). */
+@media (max-width: 639px) {
+  .ml-defil-btn {
+    width: 34px !important;
+    height: 34px !important;
+    border-width: 1.5px !important;
+  }
+  .ml-defil-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+}
 @media (prefers-reduced-motion: no-preference) {
   .ml-defil-btn {
     transition:

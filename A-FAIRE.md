@@ -1,4 +1,4 @@
-# À faire — état au 27 octobre (écrit pour une reprise dans un autre contexte)
+# À faire — état au 6 novembre (écrit pour une reprise dans un autre contexte)
 
 Fichier de reprise : à lire en premier, à supprimer quand tout est fait. `main` fait foi ; la prod (VPS) est toujours une mise en ligne de `main`.
 
@@ -54,6 +54,13 @@ Avant (b2cb4ea) : migrations **0067 à 0070** passées (base sauvegardée : `sau
 - Les clients du site peuvent maintenant changer **toutes** les couleurs des vêtements, pantalons et coupes (pas seulement la principale).
 
 ## 2. En cours
+
+**Cartes Trello « Prioritaires » du 6/11 — commitées et poussées, PAS ENCORE EN LIGNE** (la prod tourne toujours le commit « Module : l'affiche ne déborde plus de sa colonne ») :
+- **« Problème de couleur »** (« ça me propose pas l'option C'est une ombre ») : ses nouveaux vêtements (pièces 510 à 523 en prod : doudounes, manteaux, vestes) ne sont pas des dessins vectoriels mais une image PNG collée dans un SVG (le fichier le dit : « il ne s'agit pas de tracés vectoriels »). Le BO les traite en pixels, par familles de teintes, où les ombres suivent déjà leur couleur : pas de case possible. Le BO › Pièces le dit maintenant en bleu au-dessus des parties (`GroupesCouleurs.astro`, `dessinerFamilles`). Pour régler les ombres une à une, Margaux doit déposer un vrai SVG fait de tracés puis « Relire le dessin ».
+- **« Demander à Claude llms.txt »** : `/llms.txt` (`apps/web/src/pages/llms.txt.ts`), rendu à la demande depuis le catalogue, la livraison, les cadres, les moyens de paiement et les pages publiées, comme `sitemap.xml` ; rien d'écrit à la main ; pas de ligne dans robots.txt (pas un standard), pas de `llms-full.txt` (les CGV ont encore des « À COMPLÉTER »). La liste des affiches est dans `## Optional`.
+- **« Pouvoir supprimer les images des fiches produits »** : décision d'Alexandra (6/11), on ne supprime pas ; « Visuels archivés » est maintenant replié (« Voir les N visuels archivés »).
+- **« Étape 2 »** : (1) couleurs invisibles tant qu'on ne touche pas le vêtement, de face seulement : en prod, **aucun des 27 personnages de face n'a de tenue par défaut** (13 de dos en ont) ; sans pièce portée, il n'y a rien à colorer. Donnée, pas code : à Margaux de cocher « Le personnage porte cette pièce par défaut » (BO › Personnages › fiche › Calage des pièces) sur une coupe, un haut et un bas de chaque personnage de face. (2) flèches ‹ › trop grosses sur mobile : 34 px au lieu de 44 sur un écran de moins de 640 px, cercle plus fin (`global.css`, `.ml-defil-btn`) ; tablette inchangée.
+- Déjà faites et en ligne depuis le 22/10, à redire à Margaux : boutons noirs, rond « TUTO » (il ne s'affiche pas tant qu'aucune vidéo n'est réglée au BO), signature (la pré-prod garde **12** enregistré au BO : le mettre à 7), image de la fiche produit, panier abandonné avec l'aperçu des affiches.
 
 Rien n'est en cours dans le code : tout est commité, poussé et en ligne.
 

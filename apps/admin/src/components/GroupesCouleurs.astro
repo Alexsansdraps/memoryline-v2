@@ -1704,6 +1704,19 @@ const gardes =
       if (piece) {
         resumerPiece(familles.map((f, i) => ({ nom: f.nom, numero: i + 1 })), 0);
         zoneRegle.append(phraseDeLaPiece(familles.filter((f) => !f.nom).length, familles.length, false));
+        // Pas de case « C'est une ombre » ici, et la boutique la cherchait
+        // (carte Trello du 26/10, « même si je relis le dessin ») : ses
+        // nouveaux vêtements « SVG » n'étaient qu'une image collée dans un
+        // SVG, c'est-à-dire un dessin en pixels. Une
+        // famille de teintes y prend déjà ses ombres et ses reflets, qui en
+        // suivent la couleur ; rien à cocher.
+        zoneRegle.append(
+          el(
+            "p",
+            "mb-1.5 rounded bg-sky-50 px-2 py-1 text-xs text-sky-900",
+            "Ce dessin est une image en pixels (un PNG, ou une image glissée dans un fichier SVG), pas un dessin fait de tracés : il n'y a donc pas de case « C'est une ombre ». Les ombres et les reflets de chaque partie sont déjà comptés dans sa couleur et la suivent. Pour régler les ombres une à une, déposez le dessin exporté en vrai vectoriel (SVG fait de tracés), puis « Relire le dessin ».",
+          ),
+        );
       } else
         resumer(familles.filter((f) => f.proposee).map((f) => nomDeFamille(f, familles.indexOf(f))));
 
