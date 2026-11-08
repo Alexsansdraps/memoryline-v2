@@ -559,9 +559,24 @@ export function nuanceSuivanteRgb(
   const sn = t[1];
   const ln = t[2];
 
+  // L'écart de clarté à la référence, étiré au plus ×ETIREMENT_MAX. Sans
+  // borne, une référence presque blanche (le T-shirt #F5F3F4 de Femme 6, 4 %
+  // sous le blanc pur) passée au rouge étirait ces 4 % jusqu'au blanc : un
+  // pixel à peine plus clair que la référence devenait rose pâle, et le
+  // T-shirt rouge se couvrait de traînées blanches (photo de la boutique,
+  // carte « Problème de couleur », 26/10). Même chose, en miroir, pour une
+  // référence presque noire passée au clair. Sous la borne — tous les cas
+  // ordinaires —, le calcul est exactement celui d'avant : « même proportion
+  // de noir pour une ombre, de blanc pour un reflet » ; et choisir la couleur
+  // d'origine rend toujours la nuance d'origine (étirement de 1).
   let l: number;
-  if (ln <= rel.lr) l = rel.lr > 0 ? rel.lc * (ln / rel.lr) : rel.lc;
-  else l = rel.lr < 1 ? 1 - (1 - rel.lc) * ((1 - ln) / (1 - rel.lr)) : rel.lc;
+  if (ln <= rel.lr)
+    l = rel.lr > 0 ? rel.lc - (rel.lr - ln) * Math.min(rel.lc / rel.lr, ETIREMENT_MAX) : rel.lc;
+  else
+    l =
+      rel.lr < 1
+        ? rel.lc + (ln - rel.lr) * Math.min((1 - rel.lc) / (1 - rel.lr), ETIREMENT_MAX)
+        : rel.lc;
 
   const s =
     rel.refVive && rel.sr > 0
@@ -574,6 +589,13 @@ export function nuanceSuivanteRgb(
 
   versRgb(h, s, borne01(l), sortie);
 }
+
+/**
+ * L'étirement maximal de l'écart de clarté entre une nuance et sa référence
+ * (cf. {@link nuanceSuivanteRgb}). 2 : choisi sur le T-shirt blanc de Femme 6
+ * passé au rouge — les plis restent visibles, plus aucune traînée blanche.
+ */
+const ETIREMENT_MAX = 2;
 
 /** Tampon de travail de {@link nuanceSuivanteRgb} : un seul pour tout le module. */
 const tampon: [number, number, number] = [0, 0, 0];

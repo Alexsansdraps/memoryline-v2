@@ -522,6 +522,9 @@ export function cheminDuDessin(url: string): string | null {
   return chemin.startsWith(resolve(ASSETS_DIR)) ? chemin : null;
 }
 
+/** Voir `empreinte`. */
+const VERSION_DU_CALCUL = "2";
+
 /**
  * L'empreinte d'une image recolorée : le dessin (son nom, sa taille et sa date),
  * ses familles et les couleurs voulues. Un dessin remplacé sur le disque, une
@@ -537,6 +540,10 @@ async function empreinte(
 ): Promise<string> {
   const s = await stat(chemin);
   return createHash("sha1")
+    // La version du calcul : changée quand la recoloration elle-même change
+    // (8/11 : étirement des reflets borné, cf. nuanceSuivanteRgb), pour que
+    // les images rangées avec l'ancien calcul ne soient plus resservies.
+    .update(VERSION_DU_CALCUL)
     .update(basename(chemin))
     .update(String(s.size))
     .update(String(s.mtimeMs))
