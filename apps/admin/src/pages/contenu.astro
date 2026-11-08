@@ -186,12 +186,12 @@ function verdictVideo(cle: string): { texte: string; alerte: boolean } {
     return brut
       ? {
           texte:
-            "Adresse non reconnue : le rond « TUTO » ne s'affichera pas. " +
+            "Adresse non reconnue : le bouton « Tuto » ne s'affichera pas. " +
             "Attendu : un lien YouTube, un lien Vimeo, ou un fichier .mp4 / .webm.",
           alerte: true,
         }
       : {
-          texte: "Aucune vidéo : le rond « TUTO » ne s'affiche pas.",
+          texte: "Aucune vidéo : le bouton « Tuto » ne s'affiche pas.",
           alerte: false,
         };
   if (s.genre === "youtube")
@@ -244,16 +244,16 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
   {
     titre: "Personnalisation — vidéo explicative",
     aide:
-      "Un petit rond « TUTO ▶ » en haut à droite de la fenêtre de " +
+      "Un petit bouton « ▶ Tuto » en haut à droite de la fenêtre de " +
       "personnalisation, à côté de la croix, aux trois étapes : un clic, et " +
       "la vidéo s'ouvre en pop-up. Tant qu'aucune vidéo n'est donnée, le " +
-      "rond ne s'affiche pas. Rien de YouTube ni de Vimeo n'est chargé tant " +
+      "bouton ne s'affiche pas. Rien de YouTube ni de Vimeo n'est chargé tant " +
       "que la cliente n'a pas cliqué — c'est ce qui permet de ne pas toucher " +
-      "au bandeau cookies. Au stand, le rond ne s'affiche pas.",
+      "au bandeau cookies. Au stand, le bouton ne s'affiche pas.",
     champs: [
       {
         key: "configurateur.video.visible",
-        label: "Afficher le rond « TUTO »",
+        label: "Afficher le bouton « Tuto »",
         type: "switch",
       },
       {
@@ -263,7 +263,7 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
         aide:
           "Collez un lien YouTube ou Vimeo, ou envoyez un fichier .mp4 / " +
           ".webm (120 Mo maximum, une à deux minutes). Pour retirer la " +
-          "vidéo, videz cette case et enregistrez : le rond disparaît du " +
+          "vidéo, videz cette case et enregistrez : le bouton disparaît du " +
           "site. Le fichier déjà envoyé, lui, reste rangé sur le " +
           "serveur — rien ne se supprime.",
       },

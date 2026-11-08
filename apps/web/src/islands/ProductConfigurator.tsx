@@ -329,13 +329,14 @@ export default function ProductConfigurator(
               <h2 class="text-xl sm:text-2xl">
                 {tr("cfg.titre")}
               </h2>
-              {/* Le rond « TUTO ▶ », aux TROIS étapes.
+              {/* La pilule « ▶ Tuto », aux TROIS étapes.
 
-                  Il remplace l'encart qui ouvrait l'étape 1 : « ça prend
+                  Elle remplace l'encart qui ouvrait l'étape 1 : « ça prend
                   trop de place », a dit la boutique, qui voulait une petite
-                  bulle dans un coin et la vidéo en pop-up. Sa forme est celle
-                  de son dessin du 22/10 : un rond, « TUTO » dessus, le
-                  triangle de lecture dessous.
+                  bulle dans un coin et la vidéo en pop-up. D'abord un rond
+                  « TUTO ▶ » d'après son dessin du 22/10 ; jugé « pas assez
+                  joli », remplacé le 8/11 par cette pilule, choisie parmi
+                  cinq styles.
 
                   Ici et pas dans le fil d'étapes : cette rangée-là est pleine
                   (neuf pixels libres mesurés à 375 px, sans `flex-wrap`), et
@@ -354,19 +355,19 @@ export default function ProductConfigurator(
                   title={tr("cfg.video.lancer")}
                   onClick={() => ouvrirVideo(boutonRouvrir)}
                 >
-                  <span>{tr("cfg.video.bulle")}</span>
                   {/* Dessiné, et non le caractère ▶ : iOS l'affiche en émoji
                       bleu, et la boutique regarde sur tablette. */}
                   <span class="ml-modal-video-lecture" aria-hidden="true">
                     <svg
                       class="ml-modal-video-icone"
                       viewBox="0 0 10 12"
-                      width="7"
-                      height="8.4"
+                      width="8"
+                      height="9.6"
                     >
                       <path d="M0 0 10 6 0 12z" fill="currentColor" />
                     </svg>
                   </span>
+                  <span>{tr("cfg.video.bulle")}</span>
                 </button>
               </Show>
               <button

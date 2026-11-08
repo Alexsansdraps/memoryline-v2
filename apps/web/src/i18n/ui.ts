@@ -435,7 +435,7 @@ export const ui = {
     "cfg.erreur":
       "Le configurateur n'a pas pu se charger. Rechargez la page, ou réessayez dans quelques instants.",
 
-    /* Le rond « TUTO ▶ » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
+    /* La pilule « ▶ Tuto » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
        back-office, ils passent devant. */
     "cfg.video.titre": "Comment ça marche ?",
@@ -1124,7 +1124,7 @@ export const ui = {
     "cfg.erreur":
       "The designer couldn't load. Please reload the page, or try again in a moment.",
 
-    /* Le rond « TUTO ▶ » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
+    /* La pilule « ▶ Tuto » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
        back-office, ils passent devant. */
     "cfg.video.titre": "How does it work?",
@@ -1800,7 +1800,7 @@ export const ui = {
     "cfg.erreur":
       "Der Konfigurator konnte nicht geladen werden. Bitte laden Sie die Seite neu oder versuchen Sie es gleich noch einmal.",
 
-    /* Le rond « TUTO ▶ » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
+    /* La pilule « ▶ Tuto » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
        back-office, ils passent devant. */
     "cfg.video.titre": "Wie funktioniert das?",
@@ -2478,7 +2478,7 @@ export const ui = {
     "cfg.erreur":
       "Il configuratore non si è caricato. Ricarica la pagina, oppure riprova tra qualche istante.",
 
-    /* Le rond « TUTO ▶ » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
+    /* La pilule « ▶ Tuto » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
        back-office, ils passent devant. */
     "cfg.video.titre": "Come funziona?",
@@ -3151,7 +3151,7 @@ export const ui = {
     "cfg.erreur":
       "El configurador no se ha podido cargar. Recarga la página o vuelve a intentarlo en unos instantes.",
 
-    /* Le rond « TUTO ▶ » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
+    /* La pilule « ▶ Tuto » de la personnalisation et sa pop-up (ProductConfigurator.tsx).
        Ces textes ne sont qu'un REPLI : la marchande peut écrire les siens au
        back-office, ils passent devant. */
     "cfg.video.titre": "¿Cómo funciona?",
