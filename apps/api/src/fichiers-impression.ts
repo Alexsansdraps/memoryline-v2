@@ -259,7 +259,7 @@ async function signatureDesCreations(): Promise<ResolveData["signature"]> {
   // la largeur de l'affiche. Le logo par défaut n'occupe que les trois quarts
   // de son image (marges transparentes) : 7 donne un dessin de 5,2 %. Ce
   // n'est que le défaut : une valeur enregistrée au BO passe devant.
-  const largeur = nombre("signature.largeur", 7, 4, 25) / 100;
+  const largeur = nombre("signature.largeur", 7, 2, 25) / 100;
   const marge = nombre("signature.marge", 3, 0, 10) / 100;
   const opacite = nombre("signature.opacite", 100, 20, 100) / 100;
   return {

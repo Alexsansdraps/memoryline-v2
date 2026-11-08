@@ -383,16 +383,20 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
       },
       {
         key: "signature.largeur",
-        label: "Largeur, en % du petit côté de l'affiche (4 à 25)",
+        // « Taille », et non plus « Largeur » : la boutique cherchait où
+        // régler la TAILLE et ne voyait que « largeur » et « marge » (8/11).
+        // C'est bien la taille : la hauteur suit, sans déformer le logo.
+        // Minimum 2 au lieu de 4 : elle la trouvait toujours trop grosse.
+        label: "Taille de la signature (2 à 25) — plus petit = plus discret",
         type: "nombre",
-        min: 4,
+        min: 2,
         max: 25,
         defaut: 7,
-        aide: "7 si vide. À 7, la signature fait environ 5 % de la largeur d'une affiche en portrait.",
+        aide: "7 si vide. C'est la largeur du logo, en % du petit côté de l'affiche ; sa hauteur suit, sans le déformer. À 7, la signature fait environ 5 % de la largeur d'une affiche en portrait ; à 4, à peu près moitié moins.",
       },
       {
         key: "signature.marge",
-        label: "Marge depuis les bords, en % (0 à 10)",
+        label: "Écart avec le coin en bas à droite, en % (0 à 10)",
         type: "nombre",
         min: 0,
         max: 10,
