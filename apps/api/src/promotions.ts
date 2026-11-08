@@ -18,7 +18,7 @@
  * gardées sur la commande (order.promotions, voir configurator-routes.ts).
  */
 import type { Hono } from "hono";
-import { and, asc, desc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, ne, notInArray, sql } from "drizzle-orm";
 import {
   POSTER_FORMATS,
   estConfigV2,
@@ -28,6 +28,8 @@ import {
 } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { langueDuVisiteur, texteDansLaLangue } from "./traductions.js";
+import { HORS_VENTES } from "./statuts-vente.js";
+import { supprimerPourToujours } from "./suppression.js";
 
 /** Les types de règles que l'écran sait régler. */
 export const TYPES_PROMOTION = ["buy_x_get_y", "percent", "fixed", "free_shipping_over"] as const;
@@ -388,5 +390,66 @@ export function mountPromotions(app: Hono): void {
       .returning();
     if (!row) return c.notFound();
     return c.json({ ok: true, archived: row.archivedAt != null });
+  });
+
+  /**
+   * Supprime DÉFINITIVEMENT une promotion archivée.
+   *
+   * Les commandes passées depuis le figeage des promotions n'en ont plus
+   * besoin : elles en gardent une COPIE (order.promotions — nom, règle,
+   * remise), qui ne bouge pas quand la table change. La caisse et le
+   * contrôle de l'encaissement ignorent déjà une promotion archivée : la
+   * supprimer n'y change rien.
+   *
+   * Reste un lecteur qui la relit : la page Finances, pour les ventes
+   * d'AVANT ce figeage. Elle se demande si une promotion AUTOMATIQUE tournait
+   * le jour de la vente — archivage ignoré, exprès — pour ne pas prendre une
+   * remise pour une anomalie. Une promotion automatique dont la période
+   * couvre une de ces ventes reste donc archivée. Une promotion à CODE n'y
+   * entre pas (finances.ts ne compte que les automatiques) : elle peut partir.
+   *
+   * Le bandeau gardait parfois l'identifiant de la promotion qu'il annonçait
+   * (`announcement_banner.promo_rule_id`, historique, plus lu) : il est
+   * détaché dans la même transaction, comme la base le ferait (« set null »).
+   */
+  app.delete("/admin/promos/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.notFound();
+    return supprimerPourToujours(c, {
+      lire: async () =>
+        (await db.select().from(schema.promoRules).where(eq(schema.promoRules.id, id)))[0] ??
+        null,
+      estArchive: (r) => r.archivedAt != null,
+      empeche: async (r) => {
+        if (normaliserCode(r.code)) return null;
+        const [n] = await db
+          .select({ n: sql<number>`count(*)::int` })
+          .from(schema.orders)
+          .where(
+            and(
+              isNull(schema.orders.promotions),
+              // Une vente avec un code se justifie par son code (finances.ts).
+              sql`coalesce(${schema.orders.promoCode}, '') = ''`,
+              notInArray(schema.orders.status, HORS_VENTES),
+              r.startsAt ? sql`${schema.orders.createdAt} >= ${r.startsAt}` : undefined,
+              r.endsAt ? sql`${schema.orders.createdAt} <= ${r.endsAt}` : undefined,
+            ),
+          );
+        const ventes = Number(n?.n ?? 0);
+        return ventes > 0
+          ? `« ${r.name} » sert encore à la page Finances : ${ventes} vente(s) d'avant le figeage des promotions se jugent avec elle, et ses remises y passeraient pour des anomalies. Elle reste archivée.`
+          : null;
+      },
+      supprimer: async (r) => {
+        await db.transaction(async (tx) => {
+          await tx
+            .update(schema.announcementBanners)
+            .set({ promoRuleId: null })
+            .where(eq(schema.announcementBanners.promoRuleId, r.id));
+          await tx.delete(schema.promoRules).where(eq(schema.promoRules.id, r.id));
+        });
+      },
+      utilisePar: "d'autres éléments",
+    });
   });
 }

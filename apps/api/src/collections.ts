@@ -21,6 +21,8 @@ import type { Hono } from "hono";
 import { and, asc, count, eq, inArray, sql as raw } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import { menuSuitLOrdre } from "./menu-ordre.js";
+import { raisonDeGarderLaCollection } from "./suppression-catalogue.js";
+import { supprimerPourToujours } from "./suppression.js";
 
 /** Au-delà, ce n'est plus un nom de collection, c'est un paragraphe. */
 const NOM_MAX = 80;
@@ -609,10 +611,10 @@ export function mountCollections(app: Hono): void {
   /**
    * Archive une collection, ou la restaure.
    *
-   * La suppression définitive a été RETIRÉE. Elle n'était permise que sur une
-   * collection vide, et pour cause : effacer la ligne emportait en cascade
-   * tout le rangement (`product_collection`), et rien n'aurait su remettre les
-   * affiches dedans.
+   * L'archivage est le geste ordinaire. La suppression définitive (route
+   * DELETE plus bas) ne vient qu'après, et seulement sur une collection vide :
+   * effacer la ligne emporte en cascade tout le rangement
+   * (`product_collection`), et rien ne saurait remettre les affiches dedans.
    *
    * Archivée, la collection quitte la boutique et la liste ordinaire, mais le
    * rangement reste INTACT — c'est ce qui permet de la restaurer complète, avec
@@ -654,6 +656,51 @@ export function mountCollections(app: Hono): void {
       ok: true,
       archived: ligne.archivedAt != null,
       dedans: Number(compte?.n ?? 0),
+    });
+  });
+
+  /**
+   * Supprime définitivement une collection ARCHIVÉE (règles : suppression.ts).
+   *
+   * Seulement VIDE, et c'est la règle de l'en-tête de ce fichier : le
+   * rangement (`product_collection`) partirait en cascade, et avec lui le
+   * poids par défaut de ses affiches. Le menu du site et les rangées des pages
+   * la citent par son adresse, en texte : la route le vérifie aussi (voir
+   * `raisonDeGarderLaCollection`). Le vide et l'archivage sont répétés dans
+   * la requête : remplie ou restaurée depuis un autre onglet entre la lecture
+   * et l'effacement, elle n'est pas touchée.
+   */
+  app.delete("/admin/collections/:id", async (c) => {
+    const id = identifiant(c.req.param("id"));
+    if (id === null) return c.notFound();
+    return supprimerPourToujours(c, {
+      lire: async () =>
+        (
+          await db
+            .select({
+              id: schema.collections.id,
+              slug: schema.collections.slug,
+              archivedAt: schema.collections.archivedAt,
+            })
+            .from(schema.collections)
+            .where(eq(schema.collections.id, id))
+        )[0] ?? null,
+      estArchive: (col) => col.archivedAt != null,
+      empeche: raisonDeGarderLaCollection,
+      utilisePar: "des affiches",
+      supprimer: async () => {
+        await db.transaction(async (tx) => {
+          await tx
+            .delete(schema.collections)
+            .where(
+              and(
+                eq(schema.collections.id, id),
+                raw`${schema.collections.archivedAt} is not null`,
+                raw`not exists (select 1 from ${schema.productCollections} pc where pc.collection_id = ${id})`,
+              ),
+            );
+        });
+      },
     });
   });
 

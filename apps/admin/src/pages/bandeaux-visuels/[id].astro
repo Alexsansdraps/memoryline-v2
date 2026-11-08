@@ -173,7 +173,7 @@ if (formulaire && action === "enregistrer") {
     const { bandeaux } = await lireBandeaux(api);
     const existant = creation ? null : (bandeaux.find((b) => b.id === idDemande) ?? null);
     if (!creation && !existant)
-      throw new Error("Ce bandeau n'existe plus — il a peut-être été archivé depuis un autre onglet.");
+      throw new Error("Ce bandeau n'existe plus — il a peut-être été supprimé depuis un autre onglet.");
     const id = existant?.id ?? nouvelId(bandeaux);
     const b = bandeauDuFormulaire(formulaire, existant ?? nouveauBandeau(id));
     const motif = refus(b, String(formulaire.get("lien") ?? ""));

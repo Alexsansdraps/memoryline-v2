@@ -98,6 +98,16 @@ if (Astro.request.method === "POST") {
         ? `Collection restaurée. Elle est de nouveau en boutique.${affiches}`
         : `Collection archivée. Vous pouvez la restaurer à tout moment, plus bas.${affiches}`;
     }
+    if (action === "supprimer") {
+      // Seule une collection archivée et vide se supprime : l'API refuse le
+      // reste (affiches rangées, lien du menu, rangée d'une page) en disant
+      // pourquoi, et c'est cette phrase qui s'affiche.
+      await api.supprimerCollection(Number(f.get("id")));
+      const nom = String(f.get("nom") ?? "").trim();
+      flash = nom
+        ? `Collection « ${nom} » supprimée définitivement.`
+        : "Collection supprimée définitivement.";
+    }
   } catch (e) {
     flash = e instanceof Error ? e.message : String(e);
     flashErreur = true;
@@ -465,7 +475,8 @@ const archivees = collections
         <p class="mb-3 max-w-3xl text-xs text-bo-muted">
           Retirées de la boutique et de la liste ci-dessus. Le rangement est
           gardé intact : « Restaurer » remet la collection en place avec les
-          affiches qu'elle contenait, à l'ordre près.
+          affiches qu'elle contenait, à l'ordre près. « Supprimer
+          définitivement » l'efface pour de bon, une fois vide.
         </p>
         <div class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface opacity-70">
           <table class="w-full text-sm">
@@ -481,13 +492,28 @@ const archivees = collections
                       ? "vide"
                       : `${c.produits} affiche${c.produits > 1 ? "s" : ""}`}
                   </td>
-                  <td class="px-4 py-2 text-right">
+                  <td class="px-4 py-2 text-right whitespace-nowrap">
                     <form method="POST" class="inline">
                       <input type="hidden" name="_action" value="archiver" />
                       <input type="hidden" name="id" value={c.id} />
                       <input type="hidden" name="archived" value="false" />
                       <button class="text-bo-accent hover:underline">
                         Restaurer
+                      </button>
+                    </form>
+                    {/* Sans retour, d'où la confirmation. L'API refuse une
+                        collection qui range encore des affiches, ou que le
+                        menu ou une page cite : la raison s'affiche en haut. */}
+                    <form
+                      method="POST"
+                      class="ml-3 inline"
+                      onsubmit={`return confirm(${JSON.stringify(`Supprimer définitivement « ${c.name} » ? C'est sans retour.`)})`}
+                    >
+                      <input type="hidden" name="_action" value="supprimer" />
+                      <input type="hidden" name="id" value={c.id} />
+                      <input type="hidden" name="nom" value={c.name} />
+                      <button class="text-xs text-red-700 hover:underline">
+                        Supprimer définitivement
                       </button>
                     </form>
                   </td>

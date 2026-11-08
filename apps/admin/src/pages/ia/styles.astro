@@ -91,6 +91,14 @@ if (Astro.request.method === "POST") {
       flash = restaurer
         ? "Style restauré, avec sa consigne et ses images."
         : "Style archivé. Il ne s'affiche plus sur le site ; vous pouvez le restaurer à tout moment, plus bas.";
+    } else if (action === "supprimer") {
+      // Seul un style archivé se supprime : l'API refuse le reste en disant
+      // pourquoi, et c'est cette phrase qui s'affiche.
+      await api.supprimerStyleIa(Number(f.get("id")));
+      const nom = String(f.get("nom") ?? "").trim();
+      flash = nom
+        ? `Style « ${nom} » supprimé définitivement.`
+        : "Style supprimé définitivement.";
     } else {
       // Les images arrivent en autant de champs « image » que de lignes
       // remplies : on garde celles qui portent quelque chose, dans l'ordre.
@@ -276,6 +284,8 @@ const boutonDiscret =
       <p class="mb-3 max-w-3xl text-xs text-bo-muted">
         Retirés du site et de la liste ci-dessus. Leur consigne et leurs images
         sont gardées entières : « Restaurer » remet le style tel qu'il était.
+        « Supprimer définitivement » efface sa consigne pour de bon ; les
+        affiches déjà créées avec lui n'en ont pas besoin.
       </p>
       <div class="space-y-2 opacity-70">
         {archives.map((s) => (
@@ -308,6 +318,18 @@ const boutonDiscret =
               <input type="hidden" name="archived" value="false" />
               <button class="text-sm text-bo-accent hover:underline">
                 Restaurer
+              </button>
+            </form>
+            {/* Sans retour, d'où la confirmation. */}
+            <form
+              method="POST"
+              onsubmit={`return confirm(${JSON.stringify(`Supprimer définitivement « ${s.title} » ? C'est sans retour.`)})`}
+            >
+              <input type="hidden" name="_action" value="supprimer" />
+              <input type="hidden" name="id" value={s.id} />
+              <input type="hidden" name="nom" value={s.title} />
+              <button class="text-sm text-red-700 hover:underline">
+                Supprimer définitivement
               </button>
             </form>
           </div>

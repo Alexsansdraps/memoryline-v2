@@ -44,7 +44,9 @@
  *     dit et demande de confirmer. L'import, lui, les refuse : on ne confirme
  *     pas cent lignes d'un coup.
  *
- * Rien ne se supprime : une redirection s'archive, et se restaure.
+ * Une redirection s'archive, et se restaure. Archivée, elle peut ensuite être
+ * supprimée définitivement (suppression.ts), sauf si d'autres redirections
+ * mènent encore à son ancienne adresse (voir la route DELETE).
  *
  * La table ne garde ni la date de création ni l'auteur d'une redirection
  * (pas de colonne pour cela). Celles que pose un changement d'adresse
@@ -52,8 +54,9 @@
  * c'est exactement ce qu'écrit `poserRedirection`.
  */
 import type { Hono } from "hono";
-import { and, desc, eq, inArray, isNull, sql as raw } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, sql as raw } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
+import { supprimerPourToujours } from "./suppression.js";
 import { lireCsv } from "./import-produits.js";
 import { cheminAffiche, normaliserChemin, type RedirectionActive } from "./redirections.js";
 import { LANGUES_ETRANGERES } from "./traductions.js";
@@ -1316,6 +1319,43 @@ export function mountRedirections(app: Hono): void {
       if (estUnDoublon(e)) return c.json({ error: DOUBLON }, 409);
       throw e;
     }
+  });
+
+  /**
+   * Supprime définitivement une redirection ARCHIVÉE (règles :
+   * suppression.ts). Aucune table ne pointe vers elle ; une seule ligne part.
+   *
+   * Refusée tant que des redirections EN SERVICE mènent à son ancienne
+   * adresse sans qu'une autre redirection vivante l'ait reprise : elles
+   * passaient par celle-ci, et c'est en la restaurant qu'on leur rend leur
+   * destination d'avant (l'en-tête : elles ne sont jamais réécrites).
+   * Supprimée, ce chemin de retour disparaîtrait. Si une redirection vivante
+   * occupe déjà la même ancienne adresse, c'est elle qu'elles traversent :
+   * celle-ci ne sert plus à rien, et se supprime.
+   */
+  app.delete("/admin/redirections/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: "Cette redirection n'existe plus." }, 404);
+    return supprimerPourToujours(c, {
+      lire: async () => (await db.select().from(schema.redirects).where(eq(schema.redirects.id, id)))[0] ?? null,
+      estArchive: (r) => r.archivedAt != null,
+      empeche: async (r) => {
+        const de = normaliserChemin(r.fromPath);
+        const vivantes = await lireVivantes(db);
+        if (vivantes.some((v) => normaliserChemin(v.fromPath) === de)) return null;
+        const menent = vivantes.filter((v) => cleDeCible(v.toPath) === de).map((v) => v.fromPath);
+        if (!menent.length) return null;
+        const plus = menent.length > 1;
+        return (
+          `${enumerer(menent)} ${plus ? "mènent" : "mène"} encore à « ${montrer(de)} », l'ancienne adresse de cette redirection : ` +
+          `restaurée, elle ${plus ? "les" : "la"} conduirait de nouveau jusqu'à « ${montrer(r.toPath)} ». ` +
+          `Elle reste archivée. Pour la supprimer, archivez ou modifiez d'abord ${plus ? "celles qui y mènent" : "celle qui y mène"}.`
+        );
+      },
+      supprimer: async () => {
+        await db.delete(schema.redirects).where(and(eq(schema.redirects.id, id), isNotNull(schema.redirects.archivedAt)));
+      },
+    });
   });
 
   /**

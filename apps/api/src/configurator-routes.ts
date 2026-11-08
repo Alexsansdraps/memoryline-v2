@@ -15,9 +15,11 @@ import {
   and,
   asc,
   count,
+  type AnyColumn,
   desc,
   eq,
   inArray,
+  isNotNull,
   isNull,
   lt,
   notInArray,
@@ -37,6 +39,8 @@ import {
   type EtatImpression,
 } from "./fichiers-impression.js";
 import { archiveZip } from "./archive-zip.js";
+import { supprimerPourToujours } from "./suppression.js";
+import { commandesQuiEmpechent, enBref } from "./usages-commandes.js";
 import { decorsParLeNom } from "./decors.js";
 import { empriseDuPersonnage, preparerLesEmprises } from "./emprise-personnages.js";
 import {
@@ -87,6 +91,7 @@ import {
   poidsPanier,
   normaliserCode,
   normaliserPays,
+  PREFIXE_NUANCIER_CATEGORIE,
   posterConfigSchema,
   prixDuCadreCents,
   remisesPanier,
@@ -3900,6 +3905,62 @@ export function mountConfiguratorRoutes(app: Hono) {
   });
 
   /**
+   * Supprime DÉFINITIVEMENT une catégorie de personnages archivée (règles :
+   * suppression.ts).
+   *
+   * Refusée tant qu'elle range un personnage EN SERVICE : la clé étrangère
+   * (ON DELETE SET NULL) le sortirait de son rayon sans un mot — la perte même
+   * qui avait fait retirer l'ancienne suppression. On les range ailleurs
+   * d'abord, en le voyant, depuis leur carte. Un personnage ARCHIVÉ qu'elle
+   * range encore ne retient rien : il passe « sans catégorie », et s'il est
+   * restauré un jour, on lui en choisira une.
+   *
+   * Aucune commande ne cite une catégorie (seulement des personnages) : rien
+   * d'autre à vérifier. La condition « archivée » est répétée dans la
+   * requête : restaurée depuis un autre onglet entre-temps, elle reste.
+   */
+  app.delete("/admin/categories/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.notFound();
+    return supprimerPourToujours(c, {
+      lire: async () =>
+        (
+          await db
+            .select()
+            .from(schema.characterCategories)
+            .where(eq(schema.characterCategories.id, id))
+        )[0] ?? null,
+      estArchive: (cat) => cat.archivedAt != null,
+      empeche: async () => {
+        const dedans = await db
+          .select({ name: schema.characterTypes.name })
+          .from(schema.characterTypes)
+          .where(
+            and(
+              eq(schema.characterTypes.categoryId, id),
+              isNull(schema.characterTypes.archivedAt),
+            ),
+          )
+          .orderBy(asc(schema.characterTypes.position), asc(schema.characterTypes.name));
+        if (!dedans.length) return null;
+        const n = dedans.length;
+        return `Elle range encore ${n} personnage${n > 1 ? "s" : ""} en service (${enBref(dedans.map((t) => `« ${t.name} »`))}) : choisissez-${n > 1 ? "leur" : "lui"} une autre catégorie — ou « sans catégorie » — sur ${n > 1 ? "leur carte" : "sa carte"}, puis recommencez. Elle reste archivée.`;
+      },
+      supprimer: async () => {
+        await db
+          .delete(schema.characterCategories)
+          .where(
+            and(
+              eq(schema.characterCategories.id, id),
+              isNotNull(schema.characterCategories.archivedAt),
+            ),
+          );
+      },
+      utilisePar: "des personnages",
+    });
+  });
+
+  /**
    * Affecte un LOT de personnages à une catégorie (vue liste à cocher du BO).
    * `characterIds` = la liste COMPLÈTE des personnages cochés : ceux qui n'y
    * figurent plus et appartenaient à cette catégorie en sortent.
@@ -4065,6 +4126,66 @@ export function mountConfiguratorRoutes(app: Hono) {
       .returning();
     if (!row) return c.notFound();
     return c.json(row);
+  });
+
+  /**
+   * Supprime DÉFINITIVEMENT un personnage archivé (règles : suppression.ts).
+   *
+   * L'ancienne suppression avait été retirée parce qu'elle rendait
+   * impossibles les réimpressions : le fichier d'impression relit le
+   * personnage en base (donneesDImpression). D'où le refus tant qu'une
+   * commande — ou un panier en cours — le porte, ou porte l'une de SES pièces
+   * (les pièces propres à ce personnage, `asset.character_type_id`), cf.
+   * usages-commandes.ts.
+   *
+   * Ce qui part avec lui, dans la même requête : ses réglages, qui sont dans
+   * sa ligne (pièces autorisées, calage, tenue par défaut, couleurs), et ses
+   * pièces propres, par la clé étrangère (ON DELETE CASCADE). Les pièces
+   * GÉNÉRIQUES ne lui appartiennent pas et restent. Ses dessins restent sur le
+   * disque : seule la ligne part.
+   */
+  app.delete("/admin/characters/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.notFound();
+    return supprimerPourToujours(c, {
+      lire: async () =>
+        (
+          await db
+            .select({
+              id: schema.characterTypes.id,
+              archivedAt: schema.characterTypes.archivedAt,
+            })
+            .from(schema.characterTypes)
+            .where(eq(schema.characterTypes.id, id))
+        )[0] ?? null,
+      estArchive: (t) => t.archivedAt != null,
+      empeche: async () => {
+        const reste = "Il reste archivé.";
+        const porte = await commandesQuiEmpechent(db, { personnage: id }, reste);
+        if (porte) return porte;
+        const siennes = await db
+          .select({ id: schema.assets.id })
+          .from(schema.assets)
+          .where(eq(schema.assets.characterTypeId, id));
+        return commandesQuiEmpechent(
+          db,
+          { pieces: siennes.map((p) => p.id) },
+          reste,
+        );
+      },
+      supprimer: async () => {
+        // Une seule requête : la base emporte ses pièces propres avec lui
+        // (cascade), dans la même transaction implicite.
+        await db
+          .delete(schema.characterTypes)
+          .where(
+            and(
+              eq(schema.characterTypes.id, id),
+              isNotNull(schema.characterTypes.archivedAt),
+            ),
+          );
+      },
+    });
   });
 
   /**
@@ -4392,6 +4513,99 @@ export function mountConfiguratorRoutes(app: Hono) {
       ok: true,
       archived: row.archivedAt != null,
       dedans: Number(compte?.n ?? 0),
+    });
+  });
+
+  /**
+   * Supprime DÉFINITIVEMENT une catégorie de pièces archivée (règles :
+   * suppression.ts). Son nuancier part avec elle : il est dans sa ligne.
+   *
+   * Deux choses la retiennent, qui ne se voient pas sur elle :
+   *   - des pièces EN SERVICE qu'elle range encore. La clé étrangère (ON
+   *     DELETE SET NULL) les sortirait de leur rayon sans un mot — la perte
+   *     qui avait fait retirer l'ancienne suppression. On les range ailleurs
+   *     d'abord, depuis l'écran Pièces. Une pièce ARCHIVÉE, elle, ne retient
+   *     rien : elle passe « sans catégorie ».
+   *   - des couleurs de personnages ou de pièces en service qui prennent SON
+   *     nuancier (« categorie:robes », réglé sur leur fiche). Archivée, la
+   *     catégorie les fait déjà retomber sur le nuancier par défaut ; mais
+   *     supprimée, son adresse redeviendrait libre, et la première catégorie
+   *     créée sous le même nom prêterait ses couleurs à leur insu.
+   *
+   * Aucune commande ne cite une catégorie de pièces : ses couleurs choisies
+   * sont recopiées dans la configuration.
+   */
+  app.delete("/admin/piece-categories/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.notFound();
+    return supprimerPourToujours(c, {
+      lire: async () =>
+        (
+          await db
+            .select()
+            .from(schema.pieceCategories)
+            .where(eq(schema.pieceCategories.id, id))
+        )[0] ?? null,
+      estArchive: (cat) => cat.archivedAt != null,
+      empeche: async (cat) => {
+        const dedans = await db
+          .select({ id: schema.assets.id, name: schema.assets.name })
+          .from(schema.assets)
+          .where(
+            and(
+              eq(schema.assets.pieceCategoryId, id),
+              isNull(schema.assets.archivedAt),
+            ),
+          )
+          .orderBy(asc(schema.assets.slot), asc(schema.assets.position));
+        if (dedans.length) {
+          const n = dedans.length;
+          return `Elle range encore ${n} pièce${n > 1 ? "s" : ""} en service (${enBref(dedans.map((p) => `« ${p.name || `pièce ${p.id}`} »`))}) : rangez-${n > 1 ? "les" : "la"} dans une autre catégorie, dans l'écran Pièces, puis recommencez. Elle reste archivée.`;
+        }
+        const nuancier = `${PREFIXE_NUANCIER_CATEGORIE}${cat.slug}`;
+        // Où qu'il soit rangé dans les couleurs (groupes du dessin, familles
+        // d'une image en pixels), un réglage de nuancier s'écrit
+        // `"nuancier": "categorie:…"` : on le cherche à toute profondeur.
+        const prend = (colonne: AnyColumn) =>
+          sql<boolean>`coalesce(jsonb_path_exists(${colonne}, '$.**.nuancier ? (@ == $n)', jsonb_build_object('n', ${nuancier}::text)), false)`;
+        const [persos, pieces] = await Promise.all([
+          db
+            .select({ name: schema.characterTypes.name })
+            .from(schema.characterTypes)
+            .where(
+              and(
+                isNull(schema.characterTypes.archivedAt),
+                sql`(${prend(schema.characterTypes.baseGroupesCouleurs)} or ${prend(schema.characterTypes.baseCouleursImage)})`,
+              ),
+            ),
+          db
+            .select({ id: schema.assets.id, name: schema.assets.name })
+            .from(schema.assets)
+            .where(
+              and(
+                isNull(schema.assets.archivedAt),
+                sql`(${prend(schema.assets.groupesCouleurs)} or ${prend(schema.assets.couleursImage)})`,
+              ),
+            ),
+        ]);
+        const noms = [
+          ...persos.map((t) => `« ${t.name} »`),
+          ...pieces.map((p) => `« ${p.name || `pièce ${p.id}`} »`),
+        ];
+        if (!noms.length) return null;
+        return `Son nuancier est choisi pour des couleurs sur ${noms.length > 1 ? "les fiches" : "la fiche"} de ${enBref(noms)} : choisissez-y un autre nuancier, puis recommencez. Elle reste archivée.`;
+      },
+      supprimer: async () => {
+        await db
+          .delete(schema.pieceCategories)
+          .where(
+            and(
+              eq(schema.pieceCategories.id, id),
+              isNotNull(schema.pieceCategories.archivedAt),
+            ),
+          );
+      },
+      utilisePar: "des pièces",
     });
   });
 
@@ -4805,6 +5019,138 @@ export function mountConfiguratorRoutes(app: Hono) {
     return c.json({ ok: true, archived: row.archivedAt != null });
   });
 
+  /**
+   * Les personnages qui désignent une pièce GÉNÉRIQUE par son numéro : ceux de
+   * son type d'affiche (une pièce « de dos » ne s'offre qu'aux personnages de
+   * dos — c'est la règle du configurateur, variantesDeVue). Pièces autorisées,
+   * calage (« hair:3 ») et tenue par défaut la citent ainsi, et non par son id.
+   *
+   * Vide pour une pièce propre à un personnage, et quand une AUTRE pièce
+   * générique porte le même numéro au même endroit (un doublon d'avant 0072) :
+   * ces réglages la désignent alors aussi, ils ne sont pas à elle seule.
+   */
+  async function personnagesQuiDesignent(
+    ex: typeof db | Transaction,
+    p: { id: number; characterTypeId: number | null; slot: string; view: string | null; position: number },
+  ) {
+    if (p.characterTypeId != null) return [];
+    const vue = p.view ?? "front";
+    const [jumelle] = await ex
+      .select({ id: schema.assets.id })
+      .from(schema.assets)
+      .where(
+        and(
+          isNull(schema.assets.characterTypeId),
+          eq(schema.assets.slot, p.slot),
+          sql`coalesce(${schema.assets.view}, 'front') = ${vue}`,
+          eq(schema.assets.position, p.position),
+          sql`${schema.assets.id} <> ${p.id}`,
+        ),
+      )
+      .limit(1);
+    if (jumelle) return [];
+    return ex
+      .select({
+        id: schema.characterTypes.id,
+        name: schema.characterTypes.name,
+        archivedAt: schema.characterTypes.archivedAt,
+        slotVariants: schema.characterTypes.slotVariants,
+        slotAdjust: schema.characterTypes.slotAdjust,
+        defaultAssets: schema.characterTypes.defaultAssets,
+      })
+      .from(schema.characterTypes)
+      .where(eq(schema.characterTypes.orientation, vue))
+      .orderBy(asc(schema.characterTypes.position), asc(schema.characterTypes.name));
+  }
+
+  /**
+   * Supprime DÉFINITIVEMENT une pièce archivée (règles : suppression.ts).
+   *
+   * L'ancienne suppression avait été retirée parce qu'une pièce effacée
+   * empêchait de régénérer le PDF des commandes qui la portaient. D'où le
+   * refus tant qu'une commande — ou un panier en cours — la porte
+   * (usages-commandes.ts), et tant qu'elle est la TENUE PAR DÉFAUT d'un
+   * personnage en service : c'est lui qui dépend d'elle, on lui en choisit une
+   * autre sur sa fiche d'abord.
+   *
+   * Ce qui part avec elle, dans la même transaction : les réglages qui ne
+   * valent que pour elle chez les personnages — sa place dans leurs pièces
+   * autorisées, son calage (« hair:3 ») et, chez un personnage archivé, la
+   * tenue par défaut. Sans ce ménage, son numéro, redevenu libre, serait
+   * repris par la prochaine pièce créée à cet endroit, qui hériterait en
+   * silence de cases cochées et d'un calage qui n'étaient pas pour elle. Son
+   * dessin reste sur le disque : seule la ligne part.
+   */
+  app.delete("/admin/assets/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.notFound();
+    const reste = "Elle reste archivée.";
+    return supprimerPourToujours(c, {
+      lire: async () =>
+        (
+          await db
+            .select({
+              id: schema.assets.id,
+              characterTypeId: schema.assets.characterTypeId,
+              slot: schema.assets.slot,
+              view: schema.assets.view,
+              position: schema.assets.position,
+              archivedAt: schema.assets.archivedAt,
+            })
+            .from(schema.assets)
+            .where(eq(schema.assets.id, id))
+        )[0] ?? null,
+      estArchive: (p) => p.archivedAt != null,
+      empeche: async (p) => {
+        const porte = await commandesQuiEmpechent(db, { pieces: [p.id] }, reste);
+        if (porte) return porte;
+        const habilles = (await personnagesQuiDesignent(db, p)).filter(
+          (t) =>
+            t.archivedAt == null &&
+            t.defaultAssets?.[p.slot] != null &&
+            Number(t.defaultAssets[p.slot]) === p.position,
+        );
+        if (!habilles.length) return null;
+        const n = habilles.length;
+        return `C'est la tenue par défaut ${n > 1 ? "des personnages" : "du personnage"} ${enBref(habilles.map((t) => `« ${t.name} »`))} : choisissez-${n > 1 ? "leur" : "lui"} une autre pièce sur ${n > 1 ? "leur fiche" : "sa fiche"}, puis recommencez. ${reste}`;
+      },
+      supprimer: async (p) => {
+        await db.transaction(async (tx) => {
+          const partie = await tx
+            .delete(schema.assets)
+            .where(and(eq(schema.assets.id, p.id), isNotNull(schema.assets.archivedAt)))
+            .returning({ id: schema.assets.id });
+          // Restaurée entre-temps depuis un autre onglet : rien ne bouge.
+          if (!partie.length) return;
+          const cle = `${p.slot}:${p.position}`;
+          for (const t of await personnagesQuiDesignent(tx, p)) {
+            const set: Partial<typeof schema.characterTypes.$inferInsert> = {};
+            const autorisees = (t.slotVariants ?? {}) as Record<string, number[] | undefined>;
+            const liste = autorisees[p.slot];
+            if (Array.isArray(liste) && liste.some((n) => Number(n) === p.position))
+              set.slotVariants = {
+                ...autorisees,
+                [p.slot]: liste.filter((n) => Number(n) !== p.position),
+              };
+            if (t.slotAdjust && cle in t.slotAdjust) {
+              const { [cle]: _, ...calage } = t.slotAdjust;
+              set.slotAdjust = calage;
+            }
+            if (t.defaultAssets && Number(t.defaultAssets[p.slot]) === p.position) {
+              const { [p.slot]: _, ...tenue } = t.defaultAssets;
+              set.defaultAssets = tenue;
+            }
+            if (Object.keys(set).length)
+              await tx
+                .update(schema.characterTypes)
+                .set(set)
+                .where(eq(schema.characterTypes.id, t.id));
+          }
+        });
+      },
+    });
+  });
+
   // === Config CONFIGURATEUR par produit (BO) ===============================
 
   /**
@@ -5020,5 +5366,35 @@ export function mountConfiguratorRoutes(app: Hono) {
       .returning();
     if (!row) return c.notFound();
     return c.json({ ok: true, archived: row.archivedAt != null });
+  });
+
+  /**
+   * Supprime DÉFINITIVEMENT un visuel (fond) archivé (règles : suppression.ts).
+   *
+   * Refusé tant qu'une commande — ou un panier en cours — est composée sur ce
+   * fond (`backgroundId`, cf. usages-commandes.ts) : son fichier d'impression
+   * relit le fond en base, et l'affiche ne se réimprimerait plus. Rien d'autre
+   * ne le cite. Le fichier de l'image reste sur le disque : seule la ligne
+   * part.
+   */
+  app.delete("/admin/backgrounds/:bgId", async (c) => {
+    const bgId = Number(c.req.param("bgId"));
+    if (!Number.isInteger(bgId) || bgId <= 0) return c.notFound();
+    return supprimerPourToujours(c, {
+      lire: async () =>
+        (
+          await db
+            .select({ id: schema.backgrounds.id, archivedAt: schema.backgrounds.archivedAt })
+            .from(schema.backgrounds)
+            .where(eq(schema.backgrounds.id, bgId))
+        )[0] ?? null,
+      estArchive: (f) => f.archivedAt != null,
+      empeche: () => commandesQuiEmpechent(db, { fond: bgId }, "Il reste archivé."),
+      supprimer: async () => {
+        await db
+          .delete(schema.backgrounds)
+          .where(and(eq(schema.backgrounds.id, bgId), isNotNull(schema.backgrounds.archivedAt)));
+      },
+    });
   });
 }

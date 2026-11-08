@@ -180,6 +180,11 @@ if (creee) {
 } else if (renommee) {
   const p = assets.find((a) => a.id === renommee);
   flash = p ? `Pièce renommée en « ${p.name} ».` : "Pièce renommée.";
+} else if (Astro.url.searchParams.has("supprimee")) {
+  // Retour d'une suppression définitive (script plus bas) : la pièce n'est
+  // plus là pour donner son nom, il voyage dans l'adresse.
+  const nom = Astro.url.searchParams.get("supprimee")?.trim();
+  flash = nom ? `Pièce « ${nom} » supprimée définitivement.` : "Pièce supprimée définitivement.";
 }
 
 /**
@@ -760,7 +765,9 @@ const vuesFiltre = vues.filter((v) => !v.archivedAt);
       <h3 class="font-semibold mb-1">Pièces archivées</h3>
       <p class="text-xs text-bo-muted mb-3">
         Retirées du configurateur. Elles restent en base pour réimprimer les
-        commandes qui les utilisaient, et peuvent être restaurées.
+        commandes qui les utilisaient, et peuvent être restaurées. « Supprimer
+        définitivement » efface pour de bon une pièce qu'aucune commande, aucun
+        panier en cours ni aucune tenue par défaut n'utilise plus.
       </p>
       <div class="grid sm:grid-cols-3 gap-3 opacity-60">
         {piecesArchivees.map((a) => (
@@ -782,13 +789,22 @@ const vuesFiltre = vues.filter((v) => !v.archivedAt);
                 {SLOTS.find((s) => s.value === a.slot)?.label ?? a.slot} · {nomVue(a.view)}
               </div>
             </div>
-            <button
-              type="button"
-              class="js-archive-asset text-xs text-bo-muted hover:text-bo-accent"
-              data-restaurer="1"
-            >
-              Restaurer
-            </button>
+            <div class="flex flex-col items-end gap-1">
+              <button
+                type="button"
+                class="js-archive-asset text-xs text-bo-muted hover:text-bo-accent"
+                data-restaurer="1"
+              >
+                Restaurer
+              </button>
+              <button
+                type="button"
+                class="js-supprimer-asset text-xs text-red-700 hover:underline"
+                data-nom={a.name ?? ""}
+              >
+                Supprimer définitivement
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -1095,8 +1111,10 @@ const vuesFiltre = vues.filter((v) => !v.archivedAt);
 
   <script is:inline define:vars={{ PUBLIC_API_URL }}>
     // ===== Archivage d'une pièce =====
-    // Il n'y a plus de suppression définitive : une pièce effacée empêchait de
-    // régénérer le PDF des commandes qui l'utilisaient.
+    // On archive d'abord : c'est réversible. Seule une pièce archivée peut
+    // ensuite être supprimée définitivement (plus bas), et l'API refuse celle
+    // qu'une commande porte encore — effacée, elle empêcherait de régénérer
+    // leur PDF.
     document.querySelectorAll(".js-archive-asset").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const card = btn.closest("[data-asset-id]");
@@ -1132,6 +1150,41 @@ const vuesFiltre = vues.filter((v) => !v.archivedAt);
           location.reload();
         } catch (e) {
           alert((restaurer ? "Restauration" : "Archivage") + " impossible : " + e);
+        }
+      });
+    });
+
+    // ===== Suppression définitive d'une pièce archivée =====
+    // Sans retour, d'où la confirmation. L'API refuse (409) une pièce qu'une
+    // commande, un panier en cours ou la tenue par défaut d'un personnage
+    // utilise encore, en disant pourquoi : c'est cette phrase qu'on montre.
+    document.querySelectorAll(".js-supprimer-asset").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const card = btn.closest("[data-asset-id]");
+        if (!card) return;
+        const nom = btn.dataset.nom || "sans nom";
+        if (!confirm(`Supprimer définitivement « ${nom} » ? C'est sans retour.`)) return;
+        const id = card.getAttribute("data-asset-id");
+        btn.disabled = true;
+        try {
+          const res = await fetch(`${PUBLIC_API_URL}/admin/assets/${id}`, {
+            method: "DELETE",
+            credentials: "include",
+          });
+          if (!res.ok) {
+            const j = await res.json().catch(() => null);
+            throw new Error(j?.error || "HTTP " + res.status);
+          }
+          window.mlPiecesNoterFiltres?.();
+          history.replaceState(
+            history.state,
+            "",
+            `${location.pathname}?supprimee=${encodeURIComponent(btn.dataset.nom || "")}`,
+          );
+          location.reload();
+        } catch (e) {
+          btn.disabled = false;
+          alert("Suppression impossible : " + (e instanceof Error ? e.message : e));
         }
       });
     });

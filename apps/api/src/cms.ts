@@ -37,6 +37,7 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   isNull,
   notInArray,
   sql as raw,
@@ -44,7 +45,8 @@ import {
 import { db, schema } from "./db/client.js";
 import type { BlocPage } from "./db/schema.js";
 import { ordreDesCollections } from "./collections.js";
-import { menuSuitLOrdre } from "./menu-ordre.js";
+import { cibleDuLien, menuSuitLOrdre } from "./menu-ordre.js";
+import { supprimerPourToujours } from "./suppression.js";
 import { languesDeLaPage } from "./referencement.js";
 import { dimensionsDuVisuel } from "./dimensions-visuels.js";
 
@@ -1572,9 +1574,9 @@ export function mountCms(app: Hono): void {
   /**
    * Archive une page, ou la restaure.
    *
-   * La suppression définitive a été RETIRÉE : ce qu'une page contenait partait
-   * avec elle, et rien ne la ramenait. Archivée, elle quitte le site et la
-   * liste ordinaire, garde son texte et son adresse, et revient entière.
+   * Archivée, elle quitte le site et la liste ordinaire, garde son texte et
+   * son adresse, et revient entière. La suppression définitive existe de
+   * nouveau, mais seulement APRÈS l'archivage (route DELETE ci-dessous).
    *
    * Les entrées de menu qui pointaient sur elle ne sont pas touchées : le lien
    * mènera à une page introuvable tant qu'elle est rangée, ce qui se répare en
@@ -1593,6 +1595,68 @@ export function mountCms(app: Hono): void {
       .returning({ id: schema.pages.id, archivedAt: schema.pages.archivedAt });
     if (!page) return c.notFound();
     return c.json({ ok: true, archived: page.archivedAt != null });
+  });
+
+  /**
+   * Supprime définitivement une page ARCHIVÉE (règles : suppression.ts). Son
+   * texte, ses blocs et ses traductions sont dans sa ligne et partent avec
+   * elle ; les images de ses blocs restent sur le disque. Son adresse
+   * redevient libre.
+   *
+   * Aucune clé étrangère ne pointe vers une page : ce qui la vise passe par
+   * son ADRESSE, que la base ne surveille pas. On vérifie donc à la main les
+   * deux choses qui y mènent encore et qu'un effacement condamnerait pour de
+   * bon, alors qu'une restauration les répare :
+   *  - un lien du menu (masqué compris : il est prêt à reparaître ; un lien
+   *    déjà retiré du menu, lui, ne mène plus nulle part) ;
+   *  - une redirection en service dont la cible est cette page.
+   * Dans les deux cas la page reste archivée, et la phrase dit quoi changer.
+   */
+  app.delete("/admin/pages/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.notFound();
+    return supprimerPourToujours(c, {
+      lire: async () =>
+        (
+          await db
+            .select({ id: schema.pages.id, slug: schema.pages.slug, title: schema.pages.title, archivedAt: schema.pages.archivedAt })
+            .from(schema.pages)
+            .where(eq(schema.pages.id, id))
+        )[0] ?? null,
+      estArchive: (p) => p.archivedAt !== null,
+      empeche: async (p) => {
+        const cible = `page:${p.slug.toLowerCase()}`;
+        const liens = (
+          await db
+            .select({ label: schema.menuItems.label, href: schema.menuItems.href })
+            .from(schema.menuItems)
+            .where(isNull(schema.menuItems.archivedAt))
+        ).filter((l) => cibleDuLien(l.href) === cible);
+        if (liens.length)
+          return (
+            `« ${p.title} » est encore dans le menu du site (${quelquesNoms(liens.map((l) => l.label))}) : ` +
+            `retirez ${liens.length > 1 ? "ces liens" : "ce lien"} depuis l'écran « Menu », puis supprimez la page. Elle reste archivée.`
+          );
+        const redirections = (
+          await db
+            .select({ fromPath: schema.redirects.fromPath, toPath: schema.redirects.toPath })
+            .from(schema.redirects)
+            .where(isNull(schema.redirects.archivedAt))
+        ).filter((r) => cibleDuLien(r.toPath) === cible);
+        if (redirections.length) {
+          const plus = redirections.length > 1;
+          return (
+            `${plus ? `${redirections.length} redirections mènent` : "Une redirection mène"} encore à « /pages/${p.slug} » ` +
+            `(${quelquesNoms(redirections.map((r) => r.fromPath))}) : archivez-${plus ? "les" : "la"} ou changez ${plus ? "leur" : "sa"} cible ` +
+            `depuis l'écran « Redirections », puis supprimez la page. Elle reste archivée.`
+          );
+        }
+        return null;
+      },
+      supprimer: async () => {
+        await db.delete(schema.pages).where(and(eq(schema.pages.id, id), isNotNull(schema.pages.archivedAt)));
+      },
+    });
   });
 
   /* ---------------------------------------------------------------------- */
@@ -1650,6 +1714,9 @@ export function mountCms(app: Hono): void {
           label: l.label,
           href: l.href,
           parent: l.parentId === null ? null : (nomPar.get(l.parentId) ?? null),
+          // Pour que l'écran sache quels sous-liens rangés partiraient avec
+          // une entrée supprimée définitivement (route DELETE plus bas).
+          parentId: l.parentId,
           archivedAt: l.archivedAt!.toISOString(),
         })),
     });
@@ -1830,6 +1897,72 @@ export function mountCms(app: Hono): void {
       return reponseErreur(c, erreur, "Ce lien n'a pas pu être restauré.");
     }
   });
+
+  /**
+   * Supprime définitivement un lien RETIRÉ du menu (règles : suppression.ts).
+   *
+   * Une entrée principale emporte ses sous-liens rangés, quel que soit le
+   * jour où ils l'ont été : sans elle, ils ne se restaureraient plus nulle
+   * part (« Restaurer » un sous-lien ramène son entrée principale). L'écran
+   * le dit dans sa confirmation. Les deux effacements sont dans la même
+   * transaction.
+   *
+   * Un sous-lien encore DANS le menu, en revanche, bloque tout : la clé
+   * `parent_id` est en cascade, la base l'effacerait sans rien dire. On le
+   * vérifie avant, puis de nouveau dans la transaction (un enregistrement du
+   * menu a pu l'y rattacher entre-temps) — ce second refus prend la forme
+   * qu'aurait celui de la base, et la transaction annule tout.
+   */
+  app.delete("/admin/menu/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.notFound();
+    const sousLiensVivants = (lecteur: Pick<typeof db, "select">) =>
+      lecteur
+        .select({ label: schema.menuItems.label })
+        .from(schema.menuItems)
+        .where(and(eq(schema.menuItems.parentId, id), isNull(schema.menuItems.archivedAt)));
+    return supprimerPourToujours(c, {
+      lire: async () =>
+        (
+          await db
+            .select({ id: schema.menuItems.id, label: schema.menuItems.label, archivedAt: schema.menuItems.archivedAt })
+            .from(schema.menuItems)
+            .where(eq(schema.menuItems.id, id))
+        )[0] ?? null,
+      estArchive: (l) => l.archivedAt !== null,
+      empeche: async (l) => {
+        const vivants = await sousLiensVivants(db);
+        if (!vivants.length) return null;
+        const plus = vivants.length > 1;
+        return (
+          `« ${l.label} » a encore ${plus ? "des sous-liens" : "un sous-lien"} dans le menu ` +
+          `(${quelquesNoms(vivants.map((v) => v.label))}) : ${plus ? "ils partiraient" : "il partirait"} avec elle. ` +
+          `Déplacez-${plus ? "les" : "le"} ou retirez-${plus ? "les" : "le"} du menu d'abord. Le lien reste dans les liens retirés.`
+        );
+      },
+      supprimer: async () => {
+        await db.transaction(async (tx) => {
+          await tx
+            .delete(schema.menuItems)
+            .where(and(eq(schema.menuItems.parentId, id), isNotNull(schema.menuItems.archivedAt)));
+          if ((await sousLiensVivants(tx)).length)
+            throw Object.assign(new Error("Un sous-lien est revenu dans le menu."), { code: "23503" });
+          await tx
+            .delete(schema.menuItems)
+            .where(and(eq(schema.menuItems.id, id), isNotNull(schema.menuItems.archivedAt)));
+        });
+      },
+      utilisePar: "des sous-liens encore dans le menu",
+    });
+  });
+}
+
+/** « « a » », « « a » et « b » », « « a », « b », « c » et 2 autres ». */
+function quelquesNoms(noms: readonly string[]): string {
+  const vus = noms.slice(0, 3).map((n) => `« ${n} »`);
+  const reste = noms.length - vus.length;
+  if (reste > 0) return `${vus.join(", ")} et ${reste} autre${reste > 1 ? "s" : ""}`;
+  return vus.length > 1 ? `${vus.slice(0, -1).join(", ")} et ${vus[vus.length - 1]}` : (vus[0] ?? "");
 }
 
 /**

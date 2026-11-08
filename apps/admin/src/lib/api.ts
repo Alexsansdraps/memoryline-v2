@@ -321,7 +321,15 @@ export interface LienArchive {
   href: string;
   /** Nom de l'entrée dont il était le sous-lien, ou null au premier niveau. */
   parent: string | null;
+  /** Son identifiant : les sous-liens rangés partent avec une entrée supprimée. Absent des anciennes réponses. */
+  parentId?: number | null;
   archivedAt: string;
+}
+
+/** La réponse d'une suppression définitive réussie (apps/api/src/suppression.ts). */
+export interface SuppressionFaite {
+  ok: true;
+  supprime: true;
 }
 
 export interface MenuCms {
@@ -1950,9 +1958,10 @@ export function adminApi(request?: Request) {
         liensMenuArchives: number;
       }>("GET", "/admin/archives", undefined, cookie),
     /**
-     * Archive une lettre, ou la restaure. Il n'y a plus de suppression : une
-     * lettre partie garde la trace de qui l'a reçue, et l'effacer emportait
-     * cette trace avec elle.
+     * Archive une lettre, ou la restaure. Seul un BROUILLON archivé se
+     * supprime définitivement (DELETE /admin/lettres/:id, appelé par
+     * lettre.astro) : une lettre partie garde la trace de qui l'a reçue, et
+     * l'effacer emportait cette trace avec elle.
      */
     archiverLettre: (id: number, archived = true) =>
       req<{ ok: boolean }>(
@@ -1978,6 +1987,12 @@ export function adminApi(request?: Request) {
         { archive },
         cookie,
       ),
+    /**
+     * Supprime DÉFINITIVEMENT une promotion archivée. L'API refuse (409) ce qui n'est pas
+     * archivé et ce qui sert encore, avec une phrase à montrer telle quelle.
+     */
+    supprimerPromo: (id: number) =>
+      req<{ ok: boolean; supprime: boolean }>("DELETE", `/admin/promos/${id}`, undefined, cookie),
     /** Le nom d'une promotion dans UNE langue (vide = le français s'affiche). */
     setPromoTranslation: (id: number, data: { lang: string; name: string }) =>
       req<TraductionsEnregistrees<"name">>(
@@ -2024,6 +2039,9 @@ export function adminApi(request?: Request) {
         { archive },
         cookie,
       ),
+    /** Supprime pour de bon un message ARCHIVÉ ; l'API refuse (409, en clair) tout autre. */
+    supprimerMessageBandeau: (id: number) =>
+      req<SuppressionFaite>("DELETE", `/admin/banners/${id}`, undefined, cookie),
     /** L'ordre du défilement : tous les messages non archivés, dans l'ordre voulu. */
     ordreBandeau: (ids: number[]) =>
       req<{ ok: boolean }>("POST", "/admin/banners/ordre", { ids }, cookie),
@@ -2121,6 +2139,12 @@ export function adminApi(request?: Request) {
         cookie,
       ),
     /**
+     * Supprime DÉFINITIVEMENT un stand archivé. L'API refuse (409) ce qui n'est pas
+     * archivé et ce qui sert encore, avec une phrase à montrer telle quelle.
+     */
+    supprimerStand: (id: number) =>
+      req<{ ok: boolean; supprime: boolean }>("DELETE", `/admin/stands/${id}`, undefined, cookie),
+    /**
      * Archive une commande, ou la restaure. Il n'y a plus de suppression :
      * elle emportait en cascade les lignes, les expéditions, les
      * remboursements et les mouvements d'argent.
@@ -2136,6 +2160,12 @@ export function adminApi(request?: Request) {
         { archived },
         cookie,
       ),
+    /**
+     * Supprime DÉFINITIVEMENT une commande archivée (panier ou commande jamais payée). L'API refuse (409) ce qui n'est pas
+     * archivé et ce qui sert encore, avec une phrase à montrer telle quelle.
+     */
+    supprimerCommande: (id: number) =>
+      req<{ ok: boolean; supprime: boolean }>("DELETE", `/admin/orders/${id}`, undefined, cookie),
     /** Étiquettes déjà employées, les plus fréquentes d'abord. */
     orderTags: () =>
       req<{ name: string; n: number }[]>(
@@ -2445,6 +2475,12 @@ export function adminApi(request?: Request) {
         { archived },
         cookie,
       ),
+    /**
+     * Supprime DÉFINITIVEMENT un cadre archivé. L'API refuse (409) ce qui n'est pas
+     * archivé et ce qui sert encore, avec une phrase à montrer telle quelle.
+     */
+    supprimerCadre: (id: number) =>
+      req<{ ok: boolean; supprime: boolean }>("DELETE", `/admin/frames/${id}`, undefined, cookie),
     /** Poids d'un cadre seul — se règle en pesant, pas en vendant. */
     setFrameWeight: (id: number, weightGrams: number) =>
       req<Cadre>("POST", `/admin/frames/${id}/poids`, { weightGrams }, cookie),
@@ -2489,6 +2525,12 @@ export function adminApi(request?: Request) {
         { archived },
         cookie,
       ),
+    /**
+     * Supprime DÉFINITIVEMENT un mode de livraison archivé, avec ses tarifs. L'API refuse (409) ce qui n'est pas
+     * archivé et ce qui sert encore, avec une phrase à montrer telle quelle.
+     */
+    supprimerModeLivraison: (id: number) =>
+      req<{ ok: boolean; supprime: boolean }>("DELETE", `/admin/shipping/methods/${id}`, undefined, cookie),
     /**
      * Modifie un mode. Ni le slug ni la NATURE ne se changent : le slug
      * voyage dans les commandes déjà parties, et la nature décide de ce qu'on
@@ -2540,6 +2582,12 @@ export function adminApi(request?: Request) {
         { archive },
         cookie,
       ),
+    /**
+     * Supprime DÉFINITIVEMENT un lieu de retrait archivé. L'API refuse (409) ce qui n'est pas
+     * archivé et ce qui sert encore, avec une phrase à montrer telle quelle.
+     */
+    supprimerLieuRetrait: (id: number) =>
+      req<{ ok: boolean; supprime: boolean }>("DELETE", `/admin/pickup-points/${id}`, undefined, cookie),
     /** L'ordre de la caisse : les identifiants, dans l'ordre voulu. */
     rangerLieuxRetrait: (ids: number[]) =>
       req<{ ok: true }>("POST", "/admin/pickup-points/ordre", { ids }, cookie),
@@ -2569,6 +2617,9 @@ export function adminApi(request?: Request) {
         { archive, confirmer },
         cookie,
       ),
+    /** Supprime pour de bon une redirection ARCHIVÉE ; l'API dit en clair pourquoi elle refuse. */
+    supprimerRedirection: (id: number) =>
+      req<SuppressionFaite>("DELETE", `/admin/redirections/${id}`, undefined, cookie),
     /** Un fichier de redirections : l'aperçu, ou l'import pour de bon (`appliquer`). */
     importerRedirections: (texte: string, appliquer: boolean) =>
       req<ResultatImportRedirections>(
@@ -2650,6 +2701,12 @@ export function adminApi(request?: Request) {
         { archived },
         cookie,
       ),
+    /**
+     * Supprime DÉFINITIVEMENT une tranche archivée. L'API refuse (409) ce qui n'est pas
+     * archivé et ce qui sert encore, avec une phrase à montrer telle quelle.
+     */
+    supprimerTarifLivraison: (id: number) =>
+      req<{ ok: boolean; supprime: boolean }>("DELETE", `/admin/shipping/rates/${id}`, undefined, cookie),
     /**
      * Remplace TOUTE la grille d'un mode dans une zone. Une tranche retirée de
      * l'écran doit disparaître de la base : la seule façon sûre est d'envoyer
@@ -2810,6 +2867,12 @@ export function adminApi(request?: Request) {
         { archived },
         cookie,
       ),
+    /**
+     * Supprime DÉFINITIVEMENT un compte archivé. L'API refuse (409) ce qui n'est pas
+     * archivé et ce qui sert encore, avec une phrase à montrer telle quelle.
+     */
+    supprimerCompte: (id: number) =>
+      req<{ ok: boolean; supprime: boolean }>("DELETE", `/admin/users/${id}`, undefined, cookie),
     logoutUser: (id: number) =>
       req<{ ok: boolean }>(
         "POST",
@@ -2837,6 +2900,12 @@ export function adminApi(request?: Request) {
         archived: boolean;
         usage: { produits: number; personnages: number; pieces: number };
       }>("POST", `/admin/views/${id}/archive`, { archived }, cookie),
+    /**
+     * Supprime DÉFINITIVEMENT un type d'affiche archivé. L'API refuse (409) ce qui n'est pas
+     * archivé et ce qui sert encore, avec une phrase à montrer telle quelle.
+     */
+    supprimerView: (id: number) =>
+      req<{ ok: boolean; supprime: boolean }>("DELETE", `/admin/views/${id}`, undefined, cookie),
     pieceCategories: () =>
       req<CategoriePiece[]>("GET", "/admin/piece-categories", undefined, cookie),
     upsertPieceCategory: (data: {
@@ -2860,6 +2929,13 @@ export function adminApi(request?: Request) {
         { archived },
         cookie,
       ),
+    /**
+     * Supprime définitivement une catégorie de pièces ARCHIVÉE. L'API refuse
+     * (409, raison en clair) tant qu'elle range des pièces en service ou
+     * qu'une couleur prend son nuancier : l'erreur levée porte sa phrase.
+     */
+    supprimerCategoriePiece: (id: number) =>
+      req<{ ok: true; supprime: true }>("DELETE", `/admin/piece-categories/${id}`, undefined, cookie),
     /**
      * Les nuanciers des personnages (peau, cheveux / pelage, vêtements,
      * pantalon) et, pour chacun, s'il a été réglé par la boutique.
@@ -2905,6 +2981,13 @@ export function adminApi(request?: Request) {
         { archived },
         cookie,
       ),
+    /**
+     * Supprime définitivement une catégorie de personnages ARCHIVÉE. L'API
+     * refuse (409, raison en clair) tant qu'elle range des personnages en
+     * service : l'erreur levée porte sa phrase.
+     */
+    supprimerCategoriePersonnage: (id: number) =>
+      req<{ ok: true; supprime: true }>("DELETE", `/admin/categories/${id}`, undefined, cookie),
     /** Remplace la composition de la catégorie par la liste cochée. */
     setCategoryCharacters: (id: number, characterIds: number[]) =>
       req<{ category: string; attached: number; detached: number }>(
@@ -2948,6 +3031,13 @@ export function adminApi(request?: Request) {
         { archived },
         cookie,
       ),
+    /**
+     * Supprime définitivement une pièce ARCHIVÉE. L'API refuse (409, raison
+     * en clair) tant qu'une commande la porte ou qu'elle est la tenue par
+     * défaut d'un personnage en service : l'erreur levée porte sa phrase.
+     */
+    supprimerPiece: (id: number) =>
+      req<{ ok: true; supprime: true }>("DELETE", `/admin/assets/${id}`, undefined, cookie),
     archiveCharacter: (id: number, archived: boolean) =>
       req<CharacterType>(
         "POST",
@@ -2955,6 +3045,13 @@ export function adminApi(request?: Request) {
         { archived },
         cookie,
       ),
+    /**
+     * Supprime définitivement un personnage ARCHIVÉ. L'API refuse (409,
+     * raison en clair) tant qu'une commande le porte : l'erreur levée porte
+     * sa phrase.
+     */
+    supprimerPersonnage: (id: number) =>
+      req<{ ok: true; supprime: true }>("DELETE", `/admin/characters/${id}`, undefined, cookie),
     /** Montre (true) ou masque (false) un personnage sur le site. */
     personnageVisible: (id: number, active: boolean) =>
       req<{ id: number; active: boolean }>(
@@ -3119,6 +3216,13 @@ export function adminApi(request?: Request) {
         { archived },
         cookie,
       ),
+    /**
+     * Supprime définitivement une collection ARCHIVÉE et vide. Refusée (409,
+     * raison en clair) si des affiches y sont rangées, ou si le menu ou une
+     * page la cite encore.
+     */
+    supprimerCollection: (id: number) =>
+      req<{ ok: true; supprime: true }>("DELETE", `/admin/collections/${id}`, undefined, cookie),
     /** Range des produits dans la collection, ou les en sort. */
     produitsDeCollection: (
       id: number,
@@ -3176,6 +3280,9 @@ export function adminApi(request?: Request) {
         { archived },
         cookie,
       ),
+    /** Supprime pour de bon une page ARCHIVÉE ; refusée (409) tant que le menu ou une redirection y mène. */
+    supprimerPage: (id: number) =>
+      req<SuppressionFaite>("DELETE", `/admin/pages/${id}`, undefined, cookie),
     /** Le menu du site, entrées masquées comprises — et les liens retirés. */
     menu: () => req<MenuCms>("GET", "/admin/menu", undefined, cookie),
     /**
@@ -3187,6 +3294,9 @@ export function adminApi(request?: Request) {
     /** Remet dans le menu un lien qui en avait été retiré. */
     restaurerLienMenu: (id: number) =>
       req<{ ok: true }>("POST", `/admin/menu/${id}/restaurer`, {}, cookie),
+    /** Supprime pour de bon un lien retiré du menu, avec ses sous-liens rangés. */
+    supprimerLienMenu: (id: number) =>
+      req<SuppressionFaite>("DELETE", `/admin/menu/${id}`, undefined, cookie),
 
     /* --- Ordre d'affichage de chaque page de liste --------------------- */
     /** Les affiches actives d'un genre, dans l'ordre où la boutique les montre. */
@@ -3289,6 +3399,9 @@ export function adminApi(request?: Request) {
         { archived },
         cookie,
       ),
+    /** Supprime définitivement un style ARCHIVÉ (ses images restent sur le disque). */
+    supprimerStyleIa: (id: number) =>
+      req<{ ok: true; supprime: true }>("DELETE", `/admin/ia/prompts/${id}`, undefined, cookie),
 
     /* --- Essai des courriers ------------------------------------------- */
     /** Où partent les courriers en ce moment : boîte d'essai, ou vrais clients. */
@@ -3373,6 +3486,13 @@ export function adminApi(request?: Request) {
         count: number;
         refuses?: { id: number; name: string; raison: string }[];
       }>("POST", "/admin/products/bulk", { ids, action, ...params }, cookie),
+    /**
+     * Supprime définitivement une affiche ARCHIVÉE. L'API refuse (409, avec la
+     * raison en clair) une affiche qui n'est pas archivée ou dont une commande
+     * a besoin ; l'erreur levée porte cette phrase.
+     */
+    supprimerProduit: (id: number) =>
+      req<{ ok: true; supprime: true }>("DELETE", `/admin/products/${id}`, undefined, cookie),
     /** L'éditeur en grille : chaque ligne porte ses propres changements. */
     enregistrerProduitsEnMasse: (
       modifications: Record<string, unknown>[],
@@ -3421,6 +3541,12 @@ export function adminApi(request?: Request) {
         { archived },
         cookie,
       ),
+    /**
+     * Supprime définitivement une catégorie ARCHIVÉE et vide. Refusée (409,
+     * raison en clair) si des produits y sont rangés ou si une page la montre.
+     */
+    supprimerCategorieProduit: (id: number) =>
+      req<{ ok: true; supprime: true }>("DELETE", `/admin/product-categories/${id}`, undefined, cookie),
     /** Range un lot de produits dans une catégorie (null = les en sort). */
     setProductsCategory: (ids: number[], categoryId: number | null) =>
       req<{ ok: boolean; count: number }>(
@@ -3557,6 +3683,13 @@ export function adminApi(request?: Request) {
         { archived },
         cookie,
       ),
+    /**
+     * Supprime définitivement un visuel (fond) ARCHIVÉ. L'API refuse (409,
+     * raison en clair) tant qu'une commande est composée dessus : l'erreur
+     * levée porte sa phrase.
+     */
+    supprimerBackground: (bgId: number | string) =>
+      req<{ ok: true; supprime: true }>("DELETE", `/admin/backgrounds/${bgId}`, undefined, cookie),
     /** Générations récentes, filtrables par statut et paginées. */
     iaGenerations: (filtres?: FiltresIA) => {
       const p = new URLSearchParams();

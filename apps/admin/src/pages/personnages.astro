@@ -80,6 +80,15 @@ if (Astro.request.method === "POST") {
         form.get("archived") === "true"
           ? "Personnage archivé. Les anciennes commandes restent intactes."
           : "Personnage restauré.";
+    } else if (action === "supprimer") {
+      // Seul un personnage archivé se supprime, et pas s'il sert encore à une
+      // commande : l'API refuse le reste en disant pourquoi, et c'est cette
+      // phrase qui s'affiche.
+      await api.supprimerPersonnage(Number(form.get("id")));
+      const nom = String(form.get("nom") ?? "").trim();
+      flash = nom
+        ? `Personnage « ${nom} » supprimé définitivement.`
+        : "Personnage supprimé définitivement.";
     } else if (action === "visible") {
       // Retour sur la carte, son groupe ouvert : la boutique enchaîne
       // souvent plusieurs personnages d'un même rayon.
@@ -194,6 +203,14 @@ if (Astro.request.method === "POST") {
               ? `. Ses ${r.dedans} personnage${r.dedans > 1 ? "s restent proposés" : " reste proposé"} sur le site, rangé${r.dedans > 1 ? "s" : ""} dans « sans catégorie » le temps de l'archivage`
               : ""
           }. Vous pouvez la restaurer à tout moment, plus bas.`;
+    } else if (action === "cat-supprimer") {
+      // Refusée par l'API tant qu'elle range un personnage en service : la
+      // phrase de refus s'affiche telle quelle.
+      await api.supprimerCategoriePersonnage(Number(form.get("id")));
+      const nom = String(form.get("nom") ?? "").trim();
+      flash = nom
+        ? `Catégorie « ${nom} » supprimée définitivement.`
+        : "Catégorie supprimée définitivement.";
     } else if (action === "reorder") {
       const items = JSON.parse(String(form.get("items") || "[]"));
       if (items.length) await api.reorderCharacters(items);
@@ -406,7 +423,10 @@ const compteur =
   {flash && (
     <div
       role="status"
-      class={`mb-4 flex flex-wrap items-center gap-3 text-sm rounded bg-green-50 border border-green-200 px-3 py-2 ${
+      class={`mb-4 flex flex-wrap items-center gap-3 text-sm rounded px-3 py-2 ${
+        // Un refus (une suppression qu'une commande empêche…) se lit en rouge.
+        flash.startsWith("Erreur") ? "bg-red-50 border border-red-200 text-red-800" : "bg-green-50 border border-green-200"
+      } ${
         dndRetour && Astro.request.method !== "POST" ? "sticky top-2 z-20 shadow" : ""
       }`}
     >
@@ -588,15 +608,31 @@ const compteur =
                   Restaurer
                 </button>
               </form>
+              {/* Sans retour, d'où la confirmation. L'API refuse tant qu'elle
+                  range un personnage en service : la raison s'affiche en haut
+                  de l'écran. */}
+              <form
+                method="POST"
+                class="inline"
+                onsubmit={`return confirm(${JSON.stringify(`Supprimer définitivement « ${c.name} » ? C'est sans retour.`)})`}
+              >
+                <input type="hidden" name="_action" value="cat-supprimer" />
+                <input type="hidden" name="id" value={c.id} />
+                <input type="hidden" name="nom" value={c.name} />
+                <button class="text-xs text-red-700 hover:underline">
+                  Supprimer définitivement
+                </button>
+              </form>
             </div>
           ))}
         </div>
       </div>
     )}
     <p class="mt-2 text-xs text-bo-muted">
-      Rien ne se supprime ici : archiver une catégorie la range, sans toucher à
-      un seul personnage. Ils restent en ligne, et « Restaurer » les remet dans
-      leur rayon.
+      Archiver une catégorie la range, sans toucher à un seul personnage. Ils
+      restent en ligne, et « Restaurer » les remet dans leur rayon. Une
+      catégorie archivée peut ensuite être supprimée définitivement, une fois
+      que plus aucun personnage en service n'y est rangé.
     </p>
   </section>
 
@@ -844,7 +880,8 @@ const compteur =
         <h3 class="font-semibold mb-1">Personnages archivés</h3>
         <p class="text-xs text-bo-muted mb-3">
           Retirés du site. Les commandes passées restent intactes et imprimables.
-          Vous pouvez les restaurer à tout moment.
+          Vous pouvez les restaurer à tout moment. « Supprimer définitivement »
+          l'efface pour de bon, si aucune commande ni panier en cours ne le porte.
         </p>
         <div class="bg-bo-surface border border-bo-border rounded-lg overflow-hidden opacity-60">
           <table class="w-full text-sm">
@@ -861,6 +898,21 @@ const compteur =
                       <input type="hidden" name="id" value={t.id} />
                       <input type="hidden" name="archived" value="false" />
                       <button class="text-bo-accent hover:underline">Restaurer</button>
+                    </form>
+                    {/* Sans retour, d'où la confirmation. L'API refuse un
+                        personnage qu'une commande porte encore : la raison
+                        s'affiche en haut de l'écran. */}
+                    <form
+                      method="POST"
+                      class="ml-3 inline"
+                      onsubmit={`return confirm(${JSON.stringify(`Supprimer définitivement « ${t.name} » ? C'est sans retour.`)})`}
+                    >
+                      <input type="hidden" name="_action" value="supprimer" />
+                      <input type="hidden" name="id" value={t.id} />
+                      <input type="hidden" name="nom" value={t.name} />
+                      <button class="text-xs text-red-700 hover:underline">
+                        Supprimer définitivement
+                      </button>
                     </form>
                   </td>
                 </tr>

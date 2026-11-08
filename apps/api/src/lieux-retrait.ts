@@ -11,7 +11,8 @@
  * un nom, une adresse, un texte libre sur plusieurs lignes (horaires, accès),
  * actif ou non, rangés à la main, traduits dans les cinq langues.
  *
- * Ils s'archivent et ne se suppriment jamais. Une commande garde de toute
+ * Ils s'archivent, et un lieu archivé peut ensuite être supprimé pour de bon
+ * (voir la route DELETE, plus bas). Une commande garde de toute
  * façon une COPIE de ce que la cliente a lu (`order.pickup_point`) : le lieu
  * peut être renommé ou archivé ensuite, la fiche, le bon, les courriels et
  * la facture disent toujours où elle a été attendue. Les commandes d'avant
@@ -23,6 +24,7 @@ import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import type { InstantaneLieuRetrait } from "./db/schema.js";
 import { champTraduit } from "./traductions.js";
+import { supprimerPourToujours } from "./suppression.js";
 
 export const NOM_MAX = 120;
 export const ADRESSE_MAX = 300;
@@ -261,6 +263,37 @@ export function mountLieuxRetrait(app: Hono): void {
       .returning();
     if (!ligne) return c.json({ error: "Ce lieu n'existe plus." }, 404);
     return c.json({ ok: true, archive: ligne.archivedAt != null });
+  });
+
+  /**
+   * Supprime DÉFINITIVEMENT un lieu archivé.
+   *
+   * Les commandes qui l'ont choisi n'en ont plus besoin : elles gardent la
+   * COPIE de ce que la cliente a lu (`order.pickup_point`), et c'est elle, et
+   * elle seule, que lisent la fiche, le bon, les courriels et la facture
+   * (`lieuDeRetrait`). L'identifiant qu'elles gardent aussi
+   * (`order.pickup_point_id`) n'est relu nulle part : il est détaché dans la
+   * même transaction, comme la base le ferait (« set null »).
+   */
+  app.delete("/admin/pickup-points/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: "introuvable" }, 404);
+    return supprimerPourToujours(c, {
+      lire: async () =>
+        (await db.select().from(schema.pickupPoints).where(eq(schema.pickupPoints.id, id)))[0] ??
+        null,
+      estArchive: (l) => l.archivedAt != null,
+      supprimer: async (l) => {
+        await db.transaction(async (tx) => {
+          await tx
+            .update(schema.orders)
+            .set({ pickupPointId: null })
+            .where(eq(schema.orders.pickupPointId, l.id));
+          await tx.delete(schema.pickupPoints).where(eq(schema.pickupPoints.id, l.id));
+        });
+      },
+      utilisePar: "des commandes",
+    });
   });
 
   /** L'ordre de la caisse, tel que l'écran l'a rangé : les identifiants dans l'ordre. */

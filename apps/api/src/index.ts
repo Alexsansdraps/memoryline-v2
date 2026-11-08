@@ -92,6 +92,7 @@ import { mountModeEssai } from "./mode-essai.js";
 import { mountPromotions } from "./promotions.js";
 import { mountBandeau } from "./bandeau.js";
 import { mountArchives } from "./archives.js";
+import { CODE_ENCORE_UTILISE, supprimerPourToujours } from "./suppression.js";
 import {
   demarrerRelancePanier,
   mountRelancePanier,
@@ -1658,6 +1659,55 @@ app.post("/admin/shipping/methods/:id/archive", async (c) => {
 });
 
 /**
+ * Supprime DÉFINITIVEMENT un mode archivé, avec sa grille tarifaire.
+ *
+ * Seulement s'il n'est jamais parti avec une commande, panier compris. Les
+ * commandes le citent par son `slug`, sans clé étrangère : la base laisserait
+ * donc faire, et c'est la route qui refuse. Ce slug sert encore à dire
+ * comment le colis est parti et à traduire le nom du mode dans les courriels
+ * et la facture d'une cliente étrangère (`livraisonDansLaLangue`) — un mode
+ * qui a servi reste archivé, pour toujours.
+ *
+ * Ses tranches partent avec lui, archivées ou non, dans la même transaction :
+ * une tranche sans mode ne facture plus rien et ne se restaure plus. La
+ * cascade de la base le ferait aussi ; on l'écrit, pour ne pas en dépendre.
+ */
+app.delete("/admin/shipping/methods/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "identifiant invalide" }, 400);
+  return supprimerPourToujours(c, {
+    lire: async () =>
+      (
+        await db
+          .select()
+          .from(schema.shippingMethods)
+          .where(eq(schema.shippingMethods.id, id))
+      )[0] ?? null,
+    estArchive: (m) => m.archivedAt != null,
+    empeche: async (m) => {
+      const [n] = await sql`
+        select count(*)::int as n from "order" where shipping_method = ${m.slug}
+      `;
+      const commandes = Number(n?.n ?? 0);
+      return commandes > 0
+        ? `« ${m.name} » a servi à ${commandes} commande(s) ou panier(s) : ils le citent pour dire comment le colis est parti et pour traduire son nom dans les courriels et la facture. Il reste archivé.`
+        : null;
+    },
+    supprimer: async (m) => {
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(schema.shippingRates)
+          .where(eq(schema.shippingRates.methodId, m.id));
+        await tx
+          .delete(schema.shippingMethods)
+          .where(eq(schema.shippingMethods.id, m.id));
+      });
+    },
+    utilisePar: "des tarifs ou des commandes",
+  });
+});
+
+/**
  * Remet les modes dans l'ordre voulu, d'après la liste d'identifiants reçue.
  *
  * L'écran envoie l'ordre ENTIER plutôt qu'un « monte d'un cran » : les
@@ -1875,6 +1925,33 @@ app.post("/admin/shipping/rates/:id/archive", async (c) => {
     .returning({ archivedAt: schema.shippingRates.archivedAt });
   if (!ligne) return c.notFound();
   return c.json({ ok: true, archived: ligne.archivedAt != null });
+});
+
+/**
+ * Supprime DÉFINITIVEMENT une tranche archivée.
+ *
+ * Rien ne la cite : une commande fige son port en centimes
+ * (`order.shipping_cents`), jamais la tranche qui l'a calculé. Une tranche
+ * archivée ne facture déjà plus rien ; la supprimer ne fait que vider
+ * « Tranches archivées ».
+ */
+app.delete("/admin/shipping/rates/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "identifiant invalide" }, 400);
+  return supprimerPourToujours(c, {
+    lire: async () =>
+      (
+        await db
+          .select()
+          .from(schema.shippingRates)
+          .where(eq(schema.shippingRates.id, id))
+      )[0] ?? null,
+    estArchive: (t) => t.archivedAt != null,
+    supprimer: async (t) => {
+      await db.delete(schema.shippingRates).where(eq(schema.shippingRates.id, t.id));
+    },
+    utilisePar: "d'autres éléments",
+  });
 });
 
 /**
@@ -3018,6 +3095,69 @@ app.post("/admin/users/:id/archive", async (c) => {
   return c.json({ ok: true, archived: ligne.archivedAt != null });
 });
 
+/**
+ * Supprime DÉFINITIVEMENT un compte archivé, avec ses sessions.
+ *
+ * L'historique n'en souffre pas : les journaux des commandes et des clés de
+ * paiement gardent le NOM de qui a agi, en texte (`order_event.author`, et
+ * la colonne « par » du journal des clés), pas un renvoi vers cette ligne.
+ * Ils continuent de le dire après la suppression.
+ *
+ * Les deux garde-fous de l'archivage tiennent ici aussi, et plus fermement :
+ * jamais son propre compte, jamais le dernier propriétaire. Un compte archivé
+ * ne compte déjà plus parmi ceux qui entrent ; on vérifie quand même qu'il
+ * en reste un AUTRE, vivant — un back-office sans propriétaire ne se répare
+ * pas depuis le back-office.
+ */
+app.delete("/admin/users/:id", async (c) => {
+  const moi = await exigerProprietaire(getCookie(c, SESSION_COOKIE));
+  if (!moi) return c.json({ error: "Réservé au propriétaire" }, 403);
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "identifiant invalide" }, 400);
+  if (id === moi.adminUserId)
+    return c.json(
+      { error: "Vous ne pouvez pas supprimer votre propre compte.", code: CODE_ENCORE_UTILISE },
+      409,
+    );
+  return supprimerPourToujours(c, {
+    lire: async () =>
+      (
+        await db
+          .select({
+            id: schema.adminUsers.id,
+            role: schema.adminUsers.role,
+            archivedAt: schema.adminUsers.archivedAt,
+          })
+          .from(schema.adminUsers)
+          .where(eq(schema.adminUsers.id, id))
+      )[0] ?? null,
+    estArchive: (u) => u.archivedAt != null,
+    empeche: async (u) => {
+      if (u.role !== OWNER_ROLE) return null;
+      const [autres] = await db
+        .select({ n: count() })
+        .from(schema.adminUsers)
+        .where(
+          and(
+            eq(schema.adminUsers.role, OWNER_ROLE),
+            isNull(schema.adminUsers.archivedAt),
+            sqlOp`${schema.adminUsers.id} <> ${u.id}`,
+          ),
+        );
+      return Number(autres?.n ?? 0) === 0
+        ? "C'est le dernier compte propriétaire : il faut toujours pouvoir entrer au back-office. Il reste archivé."
+        : null;
+    },
+    supprimer: async (u) => {
+      await db.transaction(async (tx) => {
+        await tx.delete(schema.sessions).where(eq(schema.sessions.adminUserId, u.id));
+        await tx.delete(schema.adminUsers).where(eq(schema.adminUsers.id, u.id));
+      });
+    },
+    utilisePar: "d'autres éléments",
+  });
+});
+
 /** Ferme toutes les sessions d'un compte — le remet à la porte. */
 app.post("/admin/users/:id/deconnecter", async (c) => {
   const moi = await exigerProprietaire(getCookie(c, SESSION_COOKIE));
@@ -3136,6 +3276,40 @@ app.post("/admin/frames/:id/archive", async (c) => {
     ok: true,
     archived: row.archivedAt != null,
     commandes: Number(vendu?.n ?? 0),
+  });
+});
+
+/**
+ * Supprime DÉFINITIVEMENT un cadre archivé.
+ *
+ * Seulement s'il ne figure sur AUCUNE ligne de commande, panier compris :
+ * leur fiche, le courrier de confirmation et le nom du fichier d'impression
+ * relisent son nom ici (voir l'archivage, juste au-dessus). La ligne de
+ * commande ne le cite que dans sa configuration (`frameId`), sans clé
+ * étrangère : c'est donc la route qui refuse, pas la base. Même comparaison
+ * en TEXTE que pour l'archivage, et pour la même raison.
+ */
+app.delete("/admin/frames/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "identifiant invalide" }, 400);
+  return supprimerPourToujours(c, {
+    lire: async () =>
+      (await db.select().from(schema.frames).where(eq(schema.frames.id, id)))[0] ?? null,
+    estArchive: (f) => f.archivedAt != null,
+    empeche: async (f) => {
+      const [n] = await db
+        .select({ n: count() })
+        .from(schema.orderItems)
+        .where(sqlOp`${schema.orderItems.config} ->> 'frameId' = ${String(f.id)}`);
+      const lignes = Number(n?.n ?? 0);
+      return lignes > 0
+        ? `« ${f.name} » figure sur ${lignes} ligne(s) de commande ou de panier : leur fiche, le courrier et le nom du fichier d'impression lisent son nom ici. Il reste archivé.`
+        : null;
+    },
+    supprimer: async (f) => {
+      await db.delete(schema.frames).where(eq(schema.frames.id, f.id));
+    },
+    utilisePar: "des commandes",
   });
 });
 
@@ -3271,6 +3445,59 @@ app.post("/admin/views/:id/archive", async (c) => {
       personnages: Number(ct?.n ?? 0),
       pieces: Number(a?.n ?? 0),
     },
+  });
+});
+
+/**
+ * Supprime DÉFINITIVEMENT un type d'affiche archivé.
+ *
+ * Seulement s'il ne sert plus à rien : produits, personnages et pièces le
+ * citent par son `slug`, et les lignes de commande aussi (`config.view`) —
+ * c'est lui qui dit, à la réimpression, de quel côté on voit les
+ * personnages. Aucune de ces citations n'a de clé étrangère : la base
+ * laisserait faire, c'est donc la route qui compte et qui refuse.
+ */
+app.delete("/admin/views/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.notFound();
+  return supprimerPourToujours(c, {
+    lire: async () =>
+      (
+        await db.select().from(schema.posterViews).where(eq(schema.posterViews.id, id))
+      )[0] ?? null,
+    estArchive: (v) => v.archivedAt != null,
+    empeche: async (v) => {
+      const [[p], [ct], [a], [l]] = await Promise.all([
+        db
+          .select({ n: count() })
+          .from(schema.products)
+          .where(eq(schema.products.defaultView, v.slug)),
+        db
+          .select({ n: count() })
+          .from(schema.characterTypes)
+          .where(eq(schema.characterTypes.orientation, v.slug)),
+        db.select({ n: count() }).from(schema.assets).where(eq(schema.assets.view, v.slug)),
+        db
+          .select({ n: count() })
+          .from(schema.orderItems)
+          .where(sqlOp`${schema.orderItems.config} ->> 'view' = ${v.slug}`),
+      ]);
+      const encore = [
+        [Number(p?.n ?? 0), "produit(s)"],
+        [Number(ct?.n ?? 0), "personnage(s)"],
+        [Number(a?.n ?? 0), "pièce(s)"],
+        [Number(l?.n ?? 0), "ligne(s) de commande ou de panier"],
+      ]
+        .filter(([n]) => Number(n) > 0)
+        .map(([n, quoi]) => `${n} ${quoi}`);
+      return encore.length
+        ? `« ${v.name} » sert encore à ${encore.join(", ")}. Il reste archivé.`
+        : null;
+    },
+    supprimer: async (v) => {
+      await db.delete(schema.posterViews).where(eq(schema.posterViews.id, v.id));
+    },
+    utilisePar: "d'autres éléments",
   });
 });
 

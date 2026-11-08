@@ -31,6 +31,14 @@ if (Astro.request.method === "POST") {
               ? ` avec ${r.dedans} produit${r.dedans > 1 ? "s" : ""}, qui y restent rangés`
               : ""
           }. Vous pouvez la restaurer à tout moment, plus bas.`;
+    } else if (action === "supprimer") {
+      // Seule une catégorie archivée et vide se supprime : l'API refuse le
+      // reste en disant pourquoi, et c'est cette phrase qui s'affiche.
+      await api.supprimerCategorieProduit(Number(f.get("id")));
+      const nom = String(f.get("nom") ?? "").trim();
+      flash = nom
+        ? `Catégorie « ${nom} » supprimée définitivement.`
+        : "Catégorie supprimée définitivement.";
     } else if (action === "ranger") {
       const ids = f.getAll("ids").map(Number).filter(Boolean);
       const cible = String(f.get("categoryId") || "");
@@ -230,6 +238,7 @@ try {
         Retirées du site et de la liste ci-dessus. Les produits qu'elles
         rangeaient y sont toujours rangés, poids par défaut compris :
         « Restaurer » remet la catégorie en place, telle qu'elle était.
+        « Supprimer définitivement » l'efface pour de bon, une fois vide.
       </p>
       <div class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface opacity-70">
         <table class="w-full text-sm">
@@ -243,13 +252,28 @@ try {
                     <> · {formaterPoids(c.defaultWeightGrams)} par défaut</>
                   )}
                 </td>
-                <td class="px-4 py-2 text-right">
+                <td class="px-4 py-2 text-right whitespace-nowrap">
                   <form method="POST" class="inline">
                     <input type="hidden" name="_action" value="archiver" />
                     <input type="hidden" name="id" value={c.id} />
                     <input type="hidden" name="archived" value="false" />
                     <button class="text-bo-accent hover:underline">
                       Restaurer
+                    </button>
+                  </form>
+                  {/* Sans retour, d'où la confirmation. L'API refuse une
+                      catégorie qui range encore des produits, ou qu'une page
+                      montre : la raison s'affiche en haut de l'écran. */}
+                  <form
+                    method="POST"
+                    class="ml-3 inline"
+                    onsubmit={`return confirm(${JSON.stringify(`Supprimer définitivement « ${c.name} » ? C'est sans retour.`)})`}
+                  >
+                    <input type="hidden" name="_action" value="supprimer" />
+                    <input type="hidden" name="id" value={c.id} />
+                    <input type="hidden" name="nom" value={c.name} />
+                    <button class="text-xs text-red-700 hover:underline">
+                      Supprimer définitivement
                     </button>
                   </form>
                 </td>

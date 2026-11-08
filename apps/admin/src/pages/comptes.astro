@@ -63,6 +63,17 @@ if (Astro.request.method === "POST") {
       flash = restaurer
         ? `Compte « ${nom} » restauré : il peut se reconnecter, avec son rôle et son mot de passe.`
         : `Compte « ${nom} » archivé : il ne peut plus entrer, et ses sessions ouvertes sont fermées. L'historique garde son nom. Vous pouvez le restaurer plus bas.`;
+    } else if (action === "supprimer") {
+      // Refusé pour son propre compte et pour le dernier propriétaire : la
+      // phrase de l'API s'affiche telle quelle, et le compte reste archivé.
+      const nom = String(f.get("libelle") || "Ce compte");
+      try {
+        await api.supprimerCompte(Number(f.get("id")));
+        flash = `Compte « ${nom} » supprimé définitivement. L'historique des commandes garde son nom.`;
+      } catch (e) {
+        flash = e instanceof Error ? e.message : String(e);
+        flashErreur = true;
+      }
     } else if (action === "deconnecter") {
       await api.logoutUser(Number(f.get("id")));
       flash = "Sessions fermées : ce compte devra se reconnecter.";
@@ -325,7 +336,9 @@ const archivable = (c: CompteAdmin) =>
         Ils ne peuvent plus entrer dans le back-office, et leurs sessions ont
         été fermées. Rien n'est effacé : l'historique des commandes garde leur
         nom, là où ils ont expédié, remboursé ou encaissé. « Restaurer » rend
-        l'accès, avec le rôle et le mot de passe d'avant.
+        l'accès, avec le rôle et le mot de passe d'avant. « Supprimer
+        définitivement » efface le compte pour de bon ; l'historique garde
+        quand même son nom, écrit en toutes lettres.
       </p>
       <div class="space-y-2 opacity-70">
         {archives.map((c) => (
@@ -343,6 +356,19 @@ const archivable = (c: CompteAdmin) =>
               <input type="hidden" name="archived" value="false" />
               <button class="text-sm text-bo-accent hover:underline">
                 Restaurer
+              </button>
+            </form>
+            <form
+              method="POST"
+              onsubmit={`return confirm(${JSON.stringify(
+                `Supprimer définitivement « ${c.email} » ? C'est sans retour.`,
+              )})`}
+            >
+              <input type="hidden" name="_action" value="supprimer" />
+              <input type="hidden" name="id" value={c.id} />
+              <input type="hidden" name="libelle" value={c.email} />
+              <button class="text-sm text-red-700 hover:underline">
+                Supprimer définitivement
               </button>
             </form>
           </div>
@@ -418,7 +444,8 @@ const archivable = (c: CompteAdmin) =>
   </details>
 
   <p class="mt-6 text-xs text-bo-muted max-w-3xl">
-    Un compte ne se supprime pas : il s'archive. Deux règles que le back-office
+    Un compte s'archive d'abord ; archivé, il peut ensuite être supprimé
+    définitivement. Deux règles que le back-office
     fait respecter tout seul : il reste toujours au moins un propriétaire
     capable d'entrer, et on ne peut ni archiver son propre compte ni changer
     son propre rôle — de quoi éviter de se retrouver dehors.

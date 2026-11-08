@@ -80,6 +80,14 @@ if (Astro.request.method === "POST") {
               ? `. Ses ${r.dedans} pièce${r.dedans > 1 ? "s" : ""} rest${r.dedans > 1 ? "ent" : "e"} proposée${r.dedans > 1 ? "s" : ""} et repren${r.dedans > 1 ? "nent" : "d"} le nuancier de leur emplacement`
               : ""
           }. Vous pouvez la restaurer à tout moment, plus bas.`;
+    } else if (action === "supprimer") {
+      // Refusée par l'API tant qu'elle range des pièces en service, ou qu'une
+      // couleur prend son nuancier : la phrase de refus s'affiche telle quelle.
+      await api.supprimerCategoriePiece(Number(f.get("id")));
+      const nom = String(f.get("nom") ?? "").trim();
+      flash = nom
+        ? `Catégorie « ${nom} » supprimée définitivement, avec son nuancier.`
+        : "Catégorie supprimée définitivement, avec son nuancier.";
     } else {
       const cat = await api.upsertPieceCategory({
         id: f.get("id") ? Number(f.get("id")) : undefined,
@@ -101,7 +109,9 @@ if (Astro.request.method === "POST") {
       flash = `Catégorie « ${cat.name} » enregistrée.`;
     }
   } catch (e) {
-    flash = "Erreur : " + String(e);
+    // Le message seul, sans le « Error: » du JavaScript : c'est la phrase de
+    // l'API (« Elle range encore 3 pièces… ») que la boutique doit lire.
+    flash = "Erreur : " + (e instanceof Error ? e.message : String(e));
     flashErreur = true;
   }
 }
@@ -305,6 +315,8 @@ function messageArchivage(c: CategoriePiece): string {
         Retirées du configurateur et de la liste ci-dessus. Leurs pièces
         restent proposées, avec le nuancier de leur emplacement :
         « Restaurer » remet la catégorie et ses couleurs en place.
+        « Supprimer définitivement » l'efface pour de bon, avec son nuancier,
+        une fois qu'aucune pièce en service n'y est rangée.
       </p>
       <div class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface opacity-70">
         <table class="w-full text-sm">
@@ -334,6 +346,21 @@ function messageArchivage(c: CategoriePiece): string {
                     <input type="hidden" name="archived" value="false" />
                     <button class="text-bo-accent hover:underline">
                       Restaurer
+                    </button>
+                  </form>
+                  {/* Sans retour, d'où la confirmation. L'API refuse une
+                      catégorie qui range encore des pièces en service : la
+                      raison s'affiche en haut de l'écran. */}
+                  <form
+                    method="POST"
+                    class="ml-3 inline"
+                    onsubmit={`return confirm(${JSON.stringify(`Supprimer définitivement « ${c.name} » ? C'est sans retour.`)})`}
+                  >
+                    <input type="hidden" name="_action" value="supprimer" />
+                    <input type="hidden" name="id" value={c.id} />
+                    <input type="hidden" name="nom" value={c.name} />
+                    <button class="text-xs text-red-700 hover:underline">
+                      Supprimer définitivement
                     </button>
                   </form>
                 </td>

@@ -13,6 +13,14 @@
  * Chaque geste relit la liste en base avant de l'écrire (lib/bandeaux-
  * visuels.ts), puis revient ici par une redirection : actualiser la page ne
  * refait pas monter un bandeau d'un cran de plus.
+ *
+ * Un bandeau ARCHIVÉ peut être supprimé définitivement : il sort de la liste
+ * enregistrée, avec ses textes et ses traductions. Toute la liste tient dans
+ * un seul réglage, réécrit d'un coup : il n'y a ni route à part ni
+ * transaction à ouvrir, et rien d'autre ne pointe vers un bandeau. Son image
+ * reste sur le disque (elle peut servir ailleurs). La règle commune
+ * (apps/api/src/suppression.ts) est appliquée ici : un bandeau qui n'est pas
+ * archivé est refusé.
  */
 import Admin from "../layouts/Admin.astro";
 import { adminApi, type CollectionBo, type ResumePage } from "../lib/api.ts";
@@ -39,8 +47,9 @@ const MESSAGES: Record<string, string> = {
     "Bandeau archivé : il a quitté le site et la liste. « Restaurer », en bas de page, le remet tel quel.",
   restaure:
     "Bandeau restauré, avec tous ses réglages. S'il est allumé et dans sa période, il est de nouveau en ligne.",
+  supprime: "Bandeau supprimé définitivement.",
   introuvable:
-    "Ce bandeau n'existe plus — il a peut-être été archivé depuis un autre onglet.",
+    "Ce bandeau n'existe plus — il a peut-être été supprimé depuis un autre onglet.",
 };
 
 /** Le message (?ok=…) que chaque geste de la liste fait afficher au retour. */
@@ -51,6 +60,7 @@ const RETOUR_DU_GESTE: Record<string, string> = {
   eteindre: "eteint",
   archiver: "archive",
   restaurer: "restaure",
+  supprimer: "supprime",
 };
 
 let flash: string | null = MESSAGES[Astro.url.searchParams.get("ok") ?? ""] ?? null;
@@ -85,6 +95,12 @@ if (Astro.request.method === "POST") {
     } else if (action === "archiver" || action === "restaurer") {
       const archive = action === "archiver";
       suite = bandeaux.map((b) => (b.id === id ? { ...b, archive } : b));
+    } else if (action === "supprimer") {
+      if (!cible.archive)
+        throw new Error(
+          "Archivez-le d'abord : seul un bandeau archivé peut être supprimé définitivement.",
+        );
+      suite = bandeaux.filter((b) => b.id !== id);
     } else if (action === "dupliquer") {
       // La copie part ÉTEINTE, juste sous l'original : on la règle (ses
       // dates, son texte) avant qu'elle se montre à côté de lui.
@@ -338,7 +354,7 @@ const pagesDe = (b: BandeauVisuel) =>
         <p class="mb-3 max-w-3xl text-xs text-bo-muted">
           Hors du site et de la liste ci-dessus. « Restaurer » les remet à
           leur place, avec leur image, leurs textes, leurs traductions et
-          leurs dates.
+          leurs dates ; « Supprimer définitivement » les efface pour de bon.
         </p>
         <div class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface opacity-70">
           <table class="w-full text-sm" data-sans-tri>
@@ -355,6 +371,17 @@ const pagesDe = (b: BandeauVisuel) =>
                       <input type="hidden" name="_action" value="restaurer" />
                       <input type="hidden" name="id" value={b.id} />
                       <button class="text-bo-accent hover:underline">Restaurer</button>
+                    </form>
+                    <form
+                      method="POST"
+                      class="ml-4 inline"
+                      onsubmit={`return confirm(${JSON.stringify(
+                        `Supprimer définitivement « ${nomDuBandeau(b)} » ? C'est sans retour.`,
+                      )})`}
+                    >
+                      <input type="hidden" name="_action" value="supprimer" />
+                      <input type="hidden" name="id" value={b.id} />
+                      <button class="text-red-700 hover:underline">Supprimer définitivement</button>
                     </form>
                   </td>
                 </tr>

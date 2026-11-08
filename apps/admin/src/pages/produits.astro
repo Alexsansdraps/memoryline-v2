@@ -30,91 +30,106 @@ if (Astro.request.method === "POST") {
     .filter((n) => Number.isFinite(n) && n > 0);
   const quoi = String(f.get("bulk") ?? "");
   try {
-    if (!ids.length) throw new Error("Aucun produit sélectionné.");
-    let params: Record<string, unknown> = {};
-    let action = quoi;
-
-    if (quoi === "statut-direct") {
-      // La pastille d'une ligne : l'état voulu est calculé au rendu, pas
-      // déduit ici. Deux onglets ouverts sur la même liste ne peuvent donc
-      // pas se renvoyer l'un l'autre dans un état que personne n'a demandé.
-      action = "statut";
-      const voulu = String(f.get("statutVoulu") ?? "");
-      if (voulu !== "active" && voulu !== "draft" && voulu !== "archived")
-        throw new Error("Ce statut n'existe pas.");
-      params = { valeur: voulu };
-    } else if (quoi === "activer" || quoi === "desactiver" || quoi === "archiver") {
-      action = "statut";
-      params = {
-        valeur:
-          quoi === "activer"
-            ? "active"
-            : quoi === "desactiver"
-              ? "draft"
-              : "archived",
-      };
-    } else if (quoi === "categorie") {
-      const brut = String(f.get("categoryId") ?? "");
-      params = { categoryId: brut === "" ? null : Number(brut) };
-    } else if (quoi === "poids") {
-      const brut = String(f.get("poids") ?? "").trim();
-      params = { weightGrams: brut === "" ? null : Number(brut) };
-    } else if (quoi === "prix") {
-      const mode = String(f.get("prixMode") ?? "fixe");
-      const unite = String(f.get("prixUnite") ?? "euros");
-      const format = String(f.get("prixFormat") ?? "tous");
-      // La saisie est en euros, avec la virgule française ; l'API compte en
-      // centimes. La conversion se fait ici, une fois, plutôt que dans chaque
-      // appel.
-      //
-      // Une case VIDE est refusée ici. Elle était lue comme « 0 » : un clic
-      // sur Appliquer sans rien écrire rendait gratuites toutes les affiches
-      // cochées. Pour offrir un produit, il faut écrire 0.
-      const saisie = String(f.get("prixValeur") ?? "").trim();
-      if (!saisie)
-        throw new Error(
-          "Indiquez un montant (ou un pourcentage) avant d'appliquer. Pour offrir un produit, écrivez 0.",
-        );
-      const valeur = Number(saisie.replace(",", "."));
-      if (!Number.isFinite(valeur) || valeur < 0)
-        throw new Error("Le montant saisi n'est pas un nombre valable.");
-      params =
-        unite === "pourcent"
-          ? { mode, format, pourcent: valeur }
-          : { mode, format, montantCents: Math.round(valeur * 100) };
-    } else if (quoi === "collection-ajouter" || quoi === "collection-retirer") {
-      const brut = String(f.get("collectionId") ?? "");
-      if (!brut) throw new Error("Choisissez une collection.");
-      params = { collectionId: Number(brut) };
-    } else if (quoi !== "supprimer") {
-      // « supprimer » n'existe plus : retirer une affiche, c'est l'ARCHIVER,
-      // et l'onglet « Archivées » la garde entière. Le bouton rouge a disparu
-      // de cet écran, mais un onglet resté ouvert avant la bascule peut encore
-      // l'envoyer : on laisse alors l'action descendre jusqu'à l'API, qui la
-      // refuse en disant quoi faire à la place. « Action inconnue » laisserait
-      // croire à une panne.
-      throw new Error("Action inconnue.");
-    }
-
-    const r = await api.produitsEnMasse(ids, action, params);
-    const refuses = r.refuses ?? [];
-    if (quoi === "statut-direct" && !refuses.length) {
-      // Un clic sur une pastille ne concerne qu'une affiche : « 1 produit
-      // modifié » serait exact et ne dirait rien de ce qui a changé.
-      const voulu = String(f.get("statutVoulu") ?? "");
-      flash =
-        voulu === "active"
-          ? "Affiche remise en vente. Elle réapparaît sur le site."
-          : "Affiche retirée de la vente. Elle ne s'affiche plus sur le site.";
+    if (quoi === "supprimer-definitivement") {
+      // La suppression DÉFINITIVE, une affiche à la fois, depuis l'onglet
+      // « Archivés » : l'API ne l'accepte que pour une affiche archivée
+      // qu'aucune commande ne porte, et dit pourquoi sinon — c'est cette
+      // phrase qui s'affiche. Pas de version groupée : une case cochée en
+      // trop ne doit pas pouvoir effacer quoi que ce soit.
+      if (ids.length !== 1) throw new Error("Une affiche à la fois. Rechargez la page.");
+      await api.supprimerProduit(ids[0]!);
+      const nom = String(f.get("nom") ?? "").trim();
+      flash = nom
+        ? `Affiche « ${nom} » supprimée définitivement.`
+        : "Affiche supprimée définitivement.";
       flashErreur = false;
     } else {
-      flash =
-        `${r.count} produit${r.count > 1 ? "s" : ""} modifié${r.count > 1 ? "s" : ""}.` +
-        (refuses.length
-          ? ` ${refuses.length} refusé${refuses.length > 1 ? "s" : ""} : ` +
-            refuses.map((x) => `${x.name} (${x.raison})`).join(" ; ")
-          : "");
-      flashErreur = refuses.length > 0;
+      if (!ids.length) throw new Error("Aucun produit sélectionné.");
+      let params: Record<string, unknown> = {};
+      let action = quoi;
+
+      if (quoi === "statut-direct") {
+        // La pastille d'une ligne : l'état voulu est calculé au rendu, pas
+        // déduit ici. Deux onglets ouverts sur la même liste ne peuvent donc
+        // pas se renvoyer l'un l'autre dans un état que personne n'a demandé.
+        action = "statut";
+        const voulu = String(f.get("statutVoulu") ?? "");
+        if (voulu !== "active" && voulu !== "draft" && voulu !== "archived")
+          throw new Error("Ce statut n'existe pas.");
+        params = { valeur: voulu };
+      } else if (quoi === "activer" || quoi === "desactiver" || quoi === "archiver") {
+        action = "statut";
+        params = {
+          valeur:
+            quoi === "activer"
+              ? "active"
+              : quoi === "desactiver"
+                ? "draft"
+                : "archived",
+        };
+      } else if (quoi === "categorie") {
+        const brut = String(f.get("categoryId") ?? "");
+        params = { categoryId: brut === "" ? null : Number(brut) };
+      } else if (quoi === "poids") {
+        const brut = String(f.get("poids") ?? "").trim();
+        params = { weightGrams: brut === "" ? null : Number(brut) };
+      } else if (quoi === "prix") {
+        const mode = String(f.get("prixMode") ?? "fixe");
+        const unite = String(f.get("prixUnite") ?? "euros");
+        const format = String(f.get("prixFormat") ?? "tous");
+        // La saisie est en euros, avec la virgule française ; l'API compte en
+        // centimes. La conversion se fait ici, une fois, plutôt que dans chaque
+        // appel.
+        //
+        // Une case VIDE est refusée ici. Elle était lue comme « 0 » : un clic
+        // sur Appliquer sans rien écrire rendait gratuites toutes les affiches
+        // cochées. Pour offrir un produit, il faut écrire 0.
+        const saisie = String(f.get("prixValeur") ?? "").trim();
+        if (!saisie)
+          throw new Error(
+            "Indiquez un montant (ou un pourcentage) avant d'appliquer. Pour offrir un produit, écrivez 0.",
+          );
+        const valeur = Number(saisie.replace(",", "."));
+        if (!Number.isFinite(valeur) || valeur < 0)
+          throw new Error("Le montant saisi n'est pas un nombre valable.");
+        params =
+          unite === "pourcent"
+            ? { mode, format, pourcent: valeur }
+            : { mode, format, montantCents: Math.round(valeur * 100) };
+      } else if (quoi === "collection-ajouter" || quoi === "collection-retirer") {
+        const brut = String(f.get("collectionId") ?? "");
+        if (!brut) throw new Error("Choisissez une collection.");
+        params = { collectionId: Number(brut) };
+      } else if (quoi !== "supprimer") {
+        // « supprimer » n'existe plus : retirer une affiche, c'est l'ARCHIVER,
+        // et l'onglet « Archivées » la garde entière. Le bouton rouge a disparu
+        // de cet écran, mais un onglet resté ouvert avant la bascule peut encore
+        // l'envoyer : on laisse alors l'action descendre jusqu'à l'API, qui la
+        // refuse en disant quoi faire à la place. « Action inconnue » laisserait
+        // croire à une panne.
+        throw new Error("Action inconnue.");
+      }
+
+      const r = await api.produitsEnMasse(ids, action, params);
+      const refuses = r.refuses ?? [];
+      if (quoi === "statut-direct" && !refuses.length) {
+        // Un clic sur une pastille ne concerne qu'une affiche : « 1 produit
+        // modifié » serait exact et ne dirait rien de ce qui a changé.
+        const voulu = String(f.get("statutVoulu") ?? "");
+        flash =
+          voulu === "active"
+            ? "Affiche remise en vente. Elle réapparaît sur le site."
+            : "Affiche retirée de la vente. Elle ne s'affiche plus sur le site.";
+        flashErreur = false;
+      } else {
+        flash =
+          `${r.count} produit${r.count > 1 ? "s" : ""} modifié${r.count > 1 ? "s" : ""}.` +
+          (refuses.length
+            ? ` ${refuses.length} refusé${refuses.length > 1 ? "s" : ""} : ` +
+              refuses.map((x) => `${x.name} (${x.raison})`).join(" ; ")
+            : "");
+        flashErreur = refuses.length > 0;
+      }
     }
   } catch (e) {
     flash = String(e instanceof Error ? e.message : e);
@@ -380,7 +395,9 @@ const lienGrilleDuFiltre = (() => {
             s'efface pas, elle s'archive — c'est ce que fait « Archiver »
             juste au-dessus, et elle se retrouve dans l'onglet « Archivées »,
             d'où elle se remet en vente. Supprimer emportait aussi ses photos,
-            ses fonds de configurateur et son rangement en collections. */}
+            ses fonds de configurateur et son rangement en collections. La
+            suppression DÉFINITIVE existe de nouveau (8/11), mais pas ici :
+            ligne par ligne, dans l'onglet « Archivés », après confirmation. */}
       </div>
 
       <div
@@ -612,6 +629,24 @@ const lienGrilleDuFiltre = (() => {
                     >
                       Configurer
                     </a>
+                    {/* Sur une affiche ARCHIVÉE seulement — elle se restaure
+                        d'un clic sur sa pastille « Archivé ». Sans retour,
+                        d'où la confirmation ; l'API refuse une affiche que
+                        des commandes portent, et la raison s'affiche en haut. */}
+                    {p.status === "archived" && (
+                      <form
+                        method="POST"
+                        class="ml-3 inline"
+                        onsubmit={`return confirm(${JSON.stringify(`Supprimer définitivement « ${p.name} » ? C'est sans retour.`)})`}
+                      >
+                        <input type="hidden" name="ids" value={p.id} />
+                        <input type="hidden" name="bulk" value="supprimer-definitivement" />
+                        <input type="hidden" name="nom" value={p.name} />
+                        <button class="text-xs text-red-700 hover:underline">
+                          Supprimer définitivement
+                        </button>
+                      </form>
+                    )}
                   </td>
                 </tr>
               );

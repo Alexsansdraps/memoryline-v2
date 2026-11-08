@@ -12,7 +12,9 @@
  *
  * L'enregistrement remplace l'arbre entier en une fois : ce qui a été retiré
  * ici quitte le site — et rejoint « Liens retirés du menu », en bas de l'écran,
- * d'où il se remet en place. Rien ne s'efface.
+ * d'où il se remet en place. Rien ne s'efface en enregistrant : seul
+ * « Supprimer définitivement », sur un lien déjà retiré, l'efface pour de bon
+ * (avec ses sous-liens retirés, qui ne se restaureraient plus sans lui).
  *
  * Le menu se saisit dans les cinq langues, mais UNE À LA FOIS : les boutons du
  * haut choisissent la langue affichée, et chaque ligne montre alors son nom
@@ -181,6 +183,17 @@ if (Astro.request.method === "POST") {
       flash = String(e).replace(/^Error:\s*/, "");
       flashErreur = true;
     }
+  } else if (String(f.get("_action") ?? "") === "supprimer") {
+    // Même geste à part que « Restaurer » : il ne touche qu'aux liens
+    // retirés, jamais à l'arbre affiché. Un refus de l'API (409) s'affiche
+    // tel quel.
+    try {
+      await api.supprimerLienMenu(Number(f.get("id")));
+      flash = "Lien supprimé définitivement.";
+    } catch (e) {
+      flash = String(e).replace(/^Error:\s*/, "");
+      flashErreur = true;
+    }
   } else {
     const brut = String(f.get("entrees") ?? "");
     let souples: EntreeSouple[] = [];
@@ -289,6 +302,18 @@ const lienPlace = (sous: string) =>
 
 /** Les liens retirés du menu, gardés pour pouvoir les remettre. */
 const archives: LienArchive[] = menu?.archives ?? [];
+
+/**
+ * La confirmation de « Supprimer définitivement ». Une entrée emporte ses
+ * sous-liens retirés (apps/api/src/cms.ts) : la phrase les compte.
+ */
+function confirmationSuppression(lien: LienArchive): string {
+  const sousLiens = archives.filter((a) => a.parentId === lien.id).length;
+  const avec = sousLiens
+    ? ` ${sousLiens > 1 ? `Ses ${sousLiens} sous-liens retirés partent` : "Son sous-lien retiré part"} avec elle.`
+    : "";
+  return `Supprimer définitivement « ${lien.label} » ? C'est sans retour.${avec}`;
+}
 
 /**
  * Le champ caché part rempli : sans JavaScript, l'écran ne sait ni ajouter ni
@@ -692,7 +717,7 @@ const boutonOutil =
         Ces liens ne sont plus dans le menu du site. Leur nom, leur adresse et
         leurs traductions sont gardés : « Restaurer » les remet dans le menu
         ci-dessus, où vous pouvez les replacer avec les flèches avant
-        d'enregistrer.
+        d'enregistrer. « Supprimer définitivement » les efface pour de bon.
       </p>
       <div class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface opacity-70">
         <table class="w-full text-sm">
@@ -716,6 +741,17 @@ const boutonOutil =
                     <input type="hidden" name="id" value={lien.id} />
                     <button class="text-bo-accent hover:underline">
                       Restaurer
+                    </button>
+                  </form>
+                  <form
+                    method="POST"
+                    class="ml-4 inline"
+                    onsubmit={`return confirm(${JSON.stringify(confirmationSuppression(lien))})`}
+                  >
+                    <input type="hidden" name="_action" value="supprimer" />
+                    <input type="hidden" name="id" value={lien.id} />
+                    <button class="text-red-700 hover:underline">
+                      Supprimer définitivement
                     </button>
                   </form>
                 </td>

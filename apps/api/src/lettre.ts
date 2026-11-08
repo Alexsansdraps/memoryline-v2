@@ -31,6 +31,7 @@ import type { Hono } from "hono";
 import { and, asc, desc, eq, inArray, isNotNull, sql as sqlOp } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { db, schema } from "./db/client.js";
+import { supprimerPourToujours } from "./suppression.js";
 import { envoyer, estConfigure, estEnEssai } from "./mail.js";
 
 /* -------------------------------------------------------------------------- */
@@ -614,11 +615,13 @@ export function mountLettre(app: Hono): void {
   /**
    * Archive une lettre, ou la restaure.
    *
-   * La suppression définitive a été RETIRÉE. Une lettre PARTIE ne s'effaçait
+   * La suppression directe a été RETIRÉE. Une lettre PARTIE ne s'effaçait
    * déjà pas, et c'était la bonne règle : ses `lettre_envoi` disent qui l'a
    * reçue, et cette liste est la seule chose qui empêche d'écrire deux fois à
    * la même personne. Mais le brouillon, lui, était bel et bien détruit — et
-   * un brouillon, c'est un texte écrit, relu, mis en forme.
+   * un brouillon, c'est un texte écrit, relu, mis en forme. (Un brouillon
+   * ARCHIVÉ peut désormais être supprimé définitivement : route DELETE
+   * ci-dessous.)
    *
    * L'archivage range les deux. La lettre quitte la liste ordinaire, garde
    * son contenu et ses destinataires, et « Restaurer » la remet telle quelle.
@@ -656,6 +659,57 @@ export function mountLettre(app: Hono): void {
     const touchee = lignes[0];
     if (!touchee) return c.json({ error: "Cette lettre n'existe pas." }, 404);
     return c.json({ ok: true, archived: touchee.archivedAt != null });
+  });
+
+  /**
+   * Supprime définitivement une lettre ARCHIVÉE (règles : suppression.ts) —
+   * mais seulement un BROUILLON qui n'est jamais parti.
+   *
+   * Une lettre envoyée, même archivée, reste : c'est la trace d'un envoi. Ses
+   * `lettre_envoi` disent qui l'a reçue, quand, et si le courrier est passé ;
+   * c'est ce qu'on relit quand quelqu'un demande pourquoi il a reçu ce
+   * message, ou s'il l'a vraiment reçu. La clé étrangère est en cascade : la
+   * base effacerait cette trace sans rien dire, d'où la vérification ici. Un
+   * envoi d'essai n'écrit rien dans `lettre_envoi` : un brouillon essayé
+   * reste un brouillon, et se supprime.
+   *
+   * La requête répète les conditions (archivée, brouillon) : rien ne passe
+   * entre la vérification et l'effacement, qui tient en une instruction.
+   */
+  app.delete("/admin/lettres/:id", async (c) => {
+    const id = identifiant(c.req.param("id"));
+    if (!id) return c.json({ error: "Cette lettre n'existe pas." }, 404);
+    return supprimerPourToujours(c, {
+      lire: () => lireLettre(id),
+      estArchive: (l) => l.archivedAt != null,
+      empeche: async (l) => {
+        const [envois] = await db
+          .select({ n: sqlOp<number>`count(*)::int` })
+          .from(schema.lettreEnvois)
+          .where(eq(schema.lettreEnvois.lettreId, id));
+        if (etatDe(l.etat) === "brouillon" && !envois?.n) return null;
+        const quand = l.envoyeeLe
+          ? ` le ${l.envoyeeLe.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Paris" })}`
+          : "";
+        return (
+          `« ${l.titre} » ${etatDe(l.etat) === "envoyee" ? `est partie${quand}` : "a commencé à partir"} : ` +
+          "elle reste archivée, comme trace de ce qui a été envoyé et à qui. " +
+          "Seul un brouillon jamais envoyé peut être supprimé définitivement."
+        );
+      },
+      supprimer: async () => {
+        await db
+          .delete(schema.lettres)
+          .where(
+            and(
+              eq(schema.lettres.id, id),
+              isNotNull(schema.lettres.archivedAt),
+              eq(schema.lettres.etat, "brouillon"),
+              sqlOp`not exists (select 1 from ${schema.lettreEnvois} where ${schema.lettreEnvois.lettreId} = ${id})`,
+            ),
+          );
+      },
+    });
   });
 
   /** La lettre telle qu'elle arrivera, sans rien envoyer. */

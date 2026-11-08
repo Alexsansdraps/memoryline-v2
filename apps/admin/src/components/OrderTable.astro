@@ -109,10 +109,17 @@ const ONGLETS: {
   },
   // Le rangement, et non une corbeille : rien n'y est détruit, et les
   // commandes en sortent entières. Les autres onglets ne les montrent pas.
+  // Seule la fiche d'une archivée propose « Supprimer définitivement », et
+  // l'API ne le permet qu'à un panier ou une commande jamais payée.
   { cle: "archivees", label: "Archivées", filtres: { archived: "1" } },
 ];
 
 const params = Astro.url.searchParams;
+// Retour de la fiche d'une commande supprimée définitivement : elle n'existe
+// plus, c'est donc la liste qui le redit.
+const supprimee = params.get("supprimee");
+if (!flash && supprimee)
+  flash = `Commande ${supprimee} supprimée définitivement, avec ses lignes et son journal.`;
 const ongletActif = params.get("onglet") ?? "toutes";
 const onglet = ONGLETS.find((o) => o.cle === ongletActif) ?? ONGLETS[0]!;
 

@@ -70,6 +70,27 @@ if (Astro.request.method === "POST" && estProprietaire) {
         // vient de quitter la liste ordinaire, et c'est là qu'on la retrouve.
         return Astro.redirect(`${url("/commandes")}?onglet=archivees`);
       }
+    } else if (action === "supprimer-commande") {
+      // Seuls un panier ou une commande jamais payée, archivés, sans facture
+      // ni argent ni colis, peuvent partir (commandes.ts, motifCommandeAGarder).
+      // Un refus s'affiche tel quel, sans « Erreur : » ; la commande reste.
+      const numero = String(f.get("numero") ?? "");
+      let refus: string | null = null;
+      try {
+        await api.supprimerCommande(id);
+      } catch (e) {
+        refus = e instanceof Error ? e.message : String(e);
+      }
+      if (refus) {
+        flash = refus;
+        flashErreur = true;
+      } else {
+        // La fiche n'existe plus : retour à l'onglet d'où l'on venait, qui
+        // redit ce qui vient de partir.
+        return Astro.redirect(
+          `${url("/commandes")}?onglet=archivees&supprimee=${encodeURIComponent(numero)}`,
+        );
+      }
     } else if (action === "annuler-expedition") {
       await api.cancelFulfillment(Number(f.get("fulfillmentId")));
       flash = "Expédition annulée.";
@@ -2181,9 +2202,11 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
             </section>
           )}
 
-          {/* En dernier : ranger une commande, ce qui se défait. Il n'y a
-              plus de suppression — elle emportait les articles, les
-              expéditions, les remboursements et les mouvements d'argent. */}
+          {/* En dernier : ranger une commande, ce qui se défait. Archivée,
+              elle peut ensuite être supprimée pour de bon — mais seulement
+              un panier ou une commande jamais payée : l'API refuse tout ce
+              qui a une facture, de l'argent, un remboursement ou un colis,
+              et sa phrase s'affiche en haut de la fiche. */}
           <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
             <h3 class="mb-2 font-medium">
               {order.archivedAt ? "Commande archivée" : "Archiver la commande"}
@@ -2202,6 +2225,23 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                   <input type="hidden" name="archived" value="false" />
                   <button class="rounded border border-bo-border px-3 py-1.5 text-sm hover:bg-bo-bg">
                     Restaurer {order.number}
+                  </button>
+                </form>
+                <p class="mt-3 mb-2 text-xs text-bo-muted">
+                  Un panier ou une commande jamais payée peut aussi être
+                  supprimé pour de bon. Une commande payée, remboursée ou
+                  facturée, jamais : ses pièces comptables se gardent dix ans.
+                </p>
+                <form
+                  method="POST"
+                  onsubmit={`return confirm(${JSON.stringify(
+                    `Supprimer définitivement « ${order.number} » ? C'est sans retour.`,
+                  )})`}
+                >
+                  <input type="hidden" name="_action" value="supprimer-commande" />
+                  <input type="hidden" name="numero" value={order.number} />
+                  <button class="text-sm text-red-700 hover:underline">
+                    Supprimer définitivement
                   </button>
                 </form>
               </>

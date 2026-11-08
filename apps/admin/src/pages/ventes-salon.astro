@@ -99,6 +99,13 @@ if (Astro.request.method === "POST" && estProprietaire) {
               } Vous pouvez le restaurer à tout moment, plus bas.`;
           break;
         }
+        case "supprimer": {
+          // Refusé pour un stand qui a des commandes : la phrase de l'API
+          // passe par le `catch` plus bas, et le stand reste archivé.
+          await api.supprimerStand(cible);
+          flash = `Stand « ${texte("libelle") || "Ce stand"} » supprimé définitivement.`;
+          break;
+        }
       }
     }
   } catch (souci) {
@@ -476,6 +483,8 @@ const classeBouton =
         Retirés de la liste ci-dessus, fermés, leur adresse ne répond plus.
         Leurs ventes n'ont pas bougé : elles gardent leur nom et restent
         comptées. « Restaurer » remet le stand dans la liste, toujours fermé.
+        « Supprimer définitivement » l'efface pour de bon, s'il n'a jamais
+        rien vendu.
       </p>
       <div class="grid gap-2 opacity-70">
         {archives.map((stand) => (
@@ -503,6 +512,19 @@ const classeBouton =
               <input type="hidden" name="archived" value="false" />
               <button class="text-sm text-bo-accent hover:underline">
                 Restaurer
+              </button>
+            </form>
+            <form
+              method="POST"
+              onsubmit={`return confirm(${JSON.stringify(
+                `Supprimer définitivement « ${stand.nom} » ? C'est sans retour.`,
+              )})`}
+            >
+              <input type="hidden" name="_action" value="supprimer" />
+              <input type="hidden" name="id" value={stand.id} />
+              <input type="hidden" name="libelle" value={stand.nom} />
+              <button class="text-sm text-red-700 hover:underline">
+                Supprimer définitivement
               </button>
             </form>
           </article>

@@ -106,6 +106,14 @@ if (Astro.request.method === "POST") {
       flash = restaurer
         ? "Page restaurée. Elle est de nouveau dans la liste, avec son texte."
         : "Page archivée. Vous pouvez la restaurer à tout moment, plus bas.";
+    } else if (action === "supprimer") {
+      // L'API refuse en clair (409) une page encore dans le menu ou visée
+      // par une redirection : la phrase s'affiche telle quelle.
+      const id = Number(f.get("id"));
+      if (!Number.isFinite(id) || id <= 0)
+        throw new Error("Cette page n'a pas pu être retrouvée.");
+      await api.supprimerPage(id);
+      flash = "Page supprimée définitivement. Son adresse est de nouveau libre.";
     } else if (action === "ordre") {
       const ordre = String(f.get("ordre") ?? "")
         .split(",")
@@ -579,6 +587,8 @@ const cadre = "mb-8 overflow-hidden rounded-lg border border-bo-border bg-bo-sur
         Retirées du site : leur adresse ne répond plus, et elles ne sont plus
         listées au-dessus. Rien n'est perdu — leur texte, leurs traductions et
         leur adresse sont gardés, et « Restaurer » les remet en l'état.
+        « Supprimer définitivement » les efface pour de bon, et libère leur
+        adresse.
       </p>
       <div class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface opacity-70">
         <table class="w-full text-sm">
@@ -599,6 +609,13 @@ const cadre = "mb-8 overflow-hidden rounded-lg border border-bo-border bg-bo-sur
                     <input type="hidden" name="archived" value="false" />
                     <button class="text-bo-accent hover:underline">
                       Restaurer
+                    </button>
+                  </form>
+                  <form method="POST" class="js-supprimer ml-4 inline" data-nom={p.title}>
+                    <input type="hidden" name="_action" value="supprimer" />
+                    <input type="hidden" name="id" value={p.id} />
+                    <button class="text-red-700 hover:underline">
+                      Supprimer définitivement
                     </button>
                   </form>
                 </td>
@@ -684,6 +701,15 @@ const cadre = "mb-8 overflow-hidden rounded-lg border border-bo-border bg-bo-sur
               `restaurer quand vous voudrez, dans « Pages archivées ».`,
           )
         )
+          e.preventDefault();
+      });
+    });
+
+    // La suppression définitive, elle, est sans retour : la phrase le dit.
+    document.querySelectorAll("form.js-supprimer").forEach((f) => {
+      f.addEventListener("submit", (e) => {
+        const nom = f.getAttribute("data-nom") || "cette page";
+        if (!confirm(`Supprimer définitivement « ${nom} » ? C'est sans retour.`))
           e.preventDefault();
       });
     });

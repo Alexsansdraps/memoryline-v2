@@ -12,8 +12,9 @@
  * Un message : un texte, un bouton facultatif (texte et adresse), allumé ou
  * non, des dates facultatives, une place dans le défilement — rangée à la
  * poignée ou aux flèches (lib/rangement.ts). Les couleurs et la durée de
- * chaque message valent pour tout le bandeau. Rien ne se supprime : un
- * message s'archive, et revient par « Restaurer ».
+ * chaque message valent pour tout le bandeau. Un message s'archive, et
+ * revient par « Restaurer » ; archivé, il peut aussi être supprimé
+ * définitivement, après confirmation.
  */
 import Admin from "../layouts/Admin.astro";
 import Traductions from "../components/Traductions.astro";
@@ -134,6 +135,9 @@ if (Astro.request.method === "POST") {
         action === "archiver"
           ? "Message archivé : il a quitté le site. Il se retrouve plus bas, dans « Messages archivés »."
           : "Message restauré, éteint, en fin de défilement : rallumez-le quand il doit reparaître.";
+    } else if (action === "supprimer") {
+      await api.supprimerMessageBandeau(id);
+      flash = "Message supprimé définitivement.";
     } else if (action === "ordre") {
       const ids = String(f.get("ordre") ?? "")
         .split(",")
@@ -218,6 +222,8 @@ const champ = "mt-1 w-full rounded border border-bo-border bg-bo-surface px-3 py
 const boutonOutil =
   "flex h-6 w-6 items-center justify-center rounded border border-bo-border text-xs text-bo-muted hover:bg-bo-bg disabled:cursor-default disabled:opacity-30";
 const boutonLien = "text-bo-accent hover:underline";
+/** Le geste sans retour : rouge, mais discret, à côté de « Restaurer ». */
+const boutonSupprimer = "text-red-700 hover:underline";
 ---
 
 <Admin title="Bandeau d'annonce">
@@ -476,7 +482,8 @@ const boutonLien = "text-bo-accent hover:underline";
       <h2 class="mb-1 font-semibold">Messages archivés</h2>
       <p class="mb-3 text-sm text-bo-muted">
         Ils ont quitté le site, sans rien perdre. « Restaurer » ramène un
-        message éteint, en fin de défilement.
+        message éteint, en fin de défilement ; « Supprimer définitivement »
+        l'efface pour de bon.
       </p>
       <div class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface">
         <table class="w-full text-sm">
@@ -489,6 +496,17 @@ const boutonLien = "text-bo-accent hover:underline";
                     <input type="hidden" name="_action" value="restaurer" />
                     <input type="hidden" name="id" value={m.id} />
                     <button class={boutonLien}>Restaurer</button>
+                  </form>
+                  <form
+                    method="POST"
+                    class="ml-4 inline"
+                    onsubmit={`return confirm(${JSON.stringify(
+                      `Supprimer définitivement « ${m.message} » ? C'est sans retour.`,
+                    )})`}
+                  >
+                    <input type="hidden" name="_action" value="supprimer" />
+                    <input type="hidden" name="id" value={m.id} />
+                    <button class={boutonSupprimer}>Supprimer définitivement</button>
                   </form>
                 </td>
               </tr>

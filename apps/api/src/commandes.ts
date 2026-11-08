@@ -56,6 +56,12 @@ import { markOrderPaid } from "./configurator-routes.js";
 import { renderInvoicePdf, type LigneFacture } from "./pdf.js";
 import { cheminApercu } from "./apercus.js";
 import { bornesDuVendeur } from "./vendeurs.js";
+import { supprimerPourToujours } from "./suppression.js";
+import {
+  numeroSuivant,
+  numerosDuPrefixe,
+  type PrefixeNumero,
+} from "./numeros-commande.js";
 import {
   emetteurComplet,
   emetteurDuMoment,
@@ -175,6 +181,88 @@ export const LIBELLE_EXPEDITION: Record<StatutExpedition, string> = {
   partially_fulfilled: "Partiellement traitée",
   fulfilled: "Traitée",
 };
+
+/* -------------------------------------------------------------------------- */
+/*  Suppression définitive                                                    */
+/* -------------------------------------------------------------------------- */
+
+/** Les séries de numéros de commande, celles du compteur. */
+const PREFIXES_NUMERO: readonly PrefixeNumero[] = ["WEB-", "SAL-"];
+
+/**
+ * Ce qu'il faut savoir d'une commande pour décider si elle peut partir pour
+ * toujours. Des NOMBRES de lignes, lus en base par la route : la règle
+ * elle-même ne touche à rien, et s'essaie sans base (tests/suppression-
+ * commande.test.ts).
+ */
+export interface EtatCommandeASupprimer {
+  status: string;
+  invoiceNumber: string | null;
+  /** Lignes de `refund`. */
+  remboursements: number;
+  /** Mouvements au grand livre (`order_transaction`), quels qu'ils soient. */
+  mouvements: number;
+  /**
+   * Paiements dont le prestataire a dit autre chose que « en attente » :
+   * encaissé, montant différent, en trop… De l'argent est passé.
+   */
+  paiementsAboutis: number;
+  /** Expéditions (`fulfillment`), annulées comprises : un colis a existé. */
+  expeditions: number;
+  /** Étiquettes demandées à SendCloud (`bordereau`) : un achat a pu partir. */
+  bordereaux: number;
+  /** Dépenses de carte cadeau écrites sur cette commande. */
+  depensesCarteCadeau: number;
+  /** Part réglée en carte cadeau, figée sur la commande. */
+  giftCardCents: number;
+  /**
+   * Vrai si son numéro (WEB-0042) est le plus haut de sa série : le compteur
+   * prend le maximum + 1 (numeros-commande.ts), la supprimer redonnerait donc
+   * ce numéro à la commande suivante.
+   */
+  dernierDeSaSerie: boolean;
+}
+
+/**
+ * La raison pour laquelle une commande archivée ne peut PAS être supprimée,
+ * ou null si elle le peut.
+ *
+ * La loi tranche l'essentiel : factures et pièces comptables se gardent dix
+ * ans (art. L123-22 du Code de commerce), et une facture effacée laisserait
+ * un trou dans une numérotation qui doit être continue (art. 242 nonies A de
+ * l'annexe II au CGI). Une commande payée, remboursée ou facturée ne se
+ * supprime donc JAMAIS — elle reste archivée, et c'est tout.
+ *
+ * Ce qui peut partir : un panier, ou une commande jamais payée (un virement
+ * jamais arrivé, une annulation avant paiement), sans facture, sans un seul
+ * mouvement d'argent, sans colis, sans étiquette, sans carte cadeau.
+ *
+ * Le doute retient : le moindre mouvement au grand livre suffit, même un
+ * échec, parce que le grand livre est justement ce qu'on ne réécrit pas.
+ * Les ventes du stand naissent « paid » avec leur encaissement écrit
+ * (salon.ts) : elles tombent sous la même règle, sans cas à part.
+ */
+export function motifCommandeAGarder(e: EtatCommandeASupprimer): string | null {
+  const suite = "Elle reste archivée.";
+  if (e.invoiceNumber)
+    return `Cette commande a une facture (n° ${e.invoiceNumber}) : factures et pièces comptables se gardent dix ans, et la suite des numéros de facture ne doit pas avoir de trou. ${suite}`;
+  if (e.remboursements > 0)
+    return `Cette commande a été remboursée : c'est une pièce comptable, à garder dix ans. ${suite}`;
+  if (e.status === "paid" || e.status === "authorized")
+    return `Cette commande a été payée : c'est une vente, et ses pièces comptables se gardent dix ans. ${suite}`;
+  if (e.mouvements > 0 || e.paiementsAboutis > 0)
+    return `De l'argent a été enregistré pour cette commande (grand livre ou prestataire de paiement) : c'est une pièce comptable, à garder dix ans. ${suite}`;
+  if (e.depensesCarteCadeau > 0 || e.giftCardCents > 0)
+    return `Une carte cadeau a été dépensée sur cette commande : elle est la preuve de cette dépense. ${suite}`;
+  if (e.expeditions > 0 || e.bordereaux > 0)
+    return `Un colis ou une étiquette d'envoi a été préparé pour cette commande : elle garde la trace de ce qui est parti. ${suite}`;
+  // Un panier porte un numéro DRAFT-, hors de toute série : jamais concerné.
+  // Une commande en attente de virement, si : la cliente a reçu son numéro
+  // par courriel, et le virer avec ce libellé l'attribuerait à une autre.
+  if (e.dernierDeSaSerie)
+    return `C'est la dernière commande numérotée de sa série : la supprimer redonnerait son numéro à la prochaine commande, alors que la cliente a pu le recevoir par courriel. Elle pourra partir dès qu'une commande plus récente aura été passée. ${suite}`;
+  return null;
+}
 
 /** Lien de suivi public, quand on sait le fabriquer. */
 export function lienDeSuivi(
@@ -1008,6 +1096,138 @@ export function mountOrderRoutes(app: Hono): void {
         404,
       );
     return c.json({ ok: true, archived: archiver, numero: touchees[0] });
+  });
+
+  /**
+   * Supprime DÉFINITIVEMENT une commande archivée — un panier, ou une
+   * commande jamais payée. La règle est dans `motifCommandeAGarder`, plus
+   * haut : rien de ce qui a été payé, remboursé, facturé, encaissé, expédié
+   * ou réglé en carte cadeau ne part, jamais.
+   *
+   * Ce qui part avec elle, dans la même transaction : ses lignes, leurs
+   * fichiers d'impression EN BASE (les PDF sur le disque restent : ce n'est
+   * pas à une route de ménage d'effacer des fichiers), son journal et ses
+   * paiements restés « en attente » (un passage chez Stripe ou PayPal jamais
+   * abouti). Les générations d'images IA qui citaient une de ses lignes
+   * restent, détachées. La base en ferait autant par ses cascades ; on
+   * l'écrit, pour ne pas dépendre d'une base où elles manqueraient.
+   *
+   * Le trou qu'elle laisse dans la numérotation des COMMANDES est permis :
+   * seule celle des FACTURES doit être continue, et une commande facturée ne
+   * passe pas ici. La dernière de sa série, en revanche, attend : son numéro
+   * resservirait (voir `dernierDeSaSerie`).
+   */
+  app.delete("/admin/orders/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0)
+      return c.json({ error: "commande inconnue" }, 400);
+    return supprimerPourToujours(c, {
+      lire: async () =>
+        (
+          await db
+            .select({
+              id: schema.orders.id,
+              number: schema.orders.number,
+              status: schema.orders.status,
+              invoiceNumber: schema.orders.invoiceNumber,
+              giftCardCents: schema.orders.giftCardCents,
+              archivedAt: schema.orders.archivedAt,
+            })
+            .from(schema.orders)
+            .where(eq(schema.orders.id, id))
+        )[0] ?? null,
+      estArchive: (o) => o.archivedAt != null,
+      empeche: async (o) => {
+        const nombre = async (requete: Promise<{ n: number }[]>) =>
+          Number((await requete)[0]?.n ?? 0);
+        const n = raw<number>`count(*)::int`;
+        const [remboursements, mouvements, paiementsAboutis, expeditions, bordereaux, cartes] =
+          await Promise.all([
+            nombre(db.select({ n }).from(schema.refunds).where(eq(schema.refunds.orderId, o.id))),
+            nombre(
+              db
+                .select({ n })
+                .from(schema.orderTransactions)
+                .where(eq(schema.orderTransactions.orderId, o.id)),
+            ),
+            nombre(
+              db
+                .select({ n })
+                .from(schema.payments)
+                .where(
+                  and(
+                    eq(schema.payments.orderId, o.id),
+                    // Un statut vide compte comme abouti : le doute retient.
+                    raw`coalesce(${schema.payments.status}, '') <> 'pending'`,
+                  ),
+                ),
+            ),
+            nombre(
+              db
+                .select({ n })
+                .from(schema.fulfillments)
+                .where(eq(schema.fulfillments.orderId, o.id)),
+            ),
+            nombre(
+              db.select({ n }).from(schema.bordereaux).where(eq(schema.bordereaux.orderId, o.id)),
+            ),
+            nombre(
+              db
+                .select({ n })
+                .from(schema.giftCardTransactions)
+                .where(eq(schema.giftCardTransactions.orderId, o.id)),
+            ),
+          ]);
+        // Le plus haut numéro de sa série ? Même lecture que le compteur
+        // (numeros-commande.ts) : tous canaux confondus, par préfixe.
+        const prefixe = PREFIXES_NUMERO.find((p) => o.number.startsWith(p));
+        let dernierDeSaSerie = false;
+        if (prefixe && /^\d+$/.test(o.number.slice(prefixe.length))) {
+          const serie = await db
+            .select({ n: schema.orders.number })
+            .from(schema.orders)
+            .where(numerosDuPrefixe(prefixe));
+          dernierDeSaSerie =
+            numeroSuivant(prefixe, serie.map((r) => r.n)) ===
+            numeroSuivant(prefixe, [o.number]);
+        }
+        return motifCommandeAGarder({
+          status: o.status,
+          invoiceNumber: o.invoiceNumber,
+          remboursements,
+          mouvements,
+          paiementsAboutis,
+          expeditions,
+          bordereaux,
+          depensesCarteCadeau: cartes,
+          giftCardCents: o.giftCardCents,
+          dernierDeSaSerie,
+        });
+      },
+      supprimer: async (o) => {
+        await db.transaction(async (tx) => {
+          const lignes = await tx
+            .select({ id: schema.orderItems.id })
+            .from(schema.orderItems)
+            .where(eq(schema.orderItems.orderId, o.id));
+          const idsLignes = lignes.map((l) => l.id);
+          if (idsLignes.length) {
+            await tx
+              .update(schema.aiGenerations)
+              .set({ orderItemId: null })
+              .where(inArray(schema.aiGenerations.orderItemId, idsLignes));
+            await tx
+              .delete(schema.printFiles)
+              .where(inArray(schema.printFiles.orderItemId, idsLignes));
+            await tx.delete(schema.orderItems).where(eq(schema.orderItems.orderId, o.id));
+          }
+          await tx.delete(schema.orderEvents).where(eq(schema.orderEvents.orderId, o.id));
+          await tx.delete(schema.payments).where(eq(schema.payments.orderId, o.id));
+          await tx.delete(schema.orders).where(eq(schema.orders.id, o.id));
+        });
+      },
+      utilisePar: "d'autres éléments",
+    });
   });
 
   /**

@@ -90,6 +90,12 @@ if (Astro.request.method === "POST") {
       flash = restaurer
         ? `« ${nom} » restauré : il revient dans la liste, avec son réglage « Proposé à la caisse ».`
         : `« ${nom} » archivé : il quitte la caisse et cette liste. Les commandes qui l'ont choisi gardent son nom et son adresse. Vous pouvez le restaurer plus bas.`;
+    } else if (action === "supprimer") {
+      // Les commandes qui l'ont choisi gardent leur copie du lieu : rien ne
+      // s'y oppose, sauf un lieu qui n'est pas archivé (refusé par l'API).
+      await api.supprimerLieuRetrait(Number(texte("id")));
+      const nom = texte("libelle") || "Ce lieu";
+      flash = `« ${nom} » supprimé définitivement. Les commandes qui l'avaient choisi gardent son nom et son adresse.`;
     } else if (action === "ordre") {
       const ids = texte("ordre")
         .split(",")
@@ -426,7 +432,9 @@ const champ = "mt-1 block w-full rounded border border-bo-border px-2 py-1";
       <p class="mb-3 max-w-3xl text-xs text-bo-muted">
         Retirés de la caisse et de la liste. Les commandes qui les avaient
         choisis gardent leur nom et leur adresse. « Restaurer » les remet dans
-        la liste, avec leur réglage « Proposé à la caisse ».
+        la liste, avec leur réglage « Proposé à la caisse ». « Supprimer
+        définitivement » l'efface pour de bon ; les commandes gardent quand
+        même leur copie.
       </p>
       <div class="space-y-2 opacity-70">
         {archives.map((l) => (
@@ -442,6 +450,17 @@ const champ = "mt-1 block w-full rounded border border-bo-border px-2 py-1";
               <input type="hidden" name="archive" value="false" />
               <button class="text-sm text-bo-accent hover:underline">Restaurer</button>
             </form>
+            <form
+              method="POST"
+              onsubmit={`return confirm(${JSON.stringify(
+                `Supprimer définitivement « ${l.nom} » ? C'est sans retour.`,
+              )})`}
+            >
+              <input type="hidden" name="_action" value="supprimer" />
+              <input type="hidden" name="id" value={l.id} />
+              <input type="hidden" name="libelle" value={l.nom} />
+              <button class="text-sm text-red-700 hover:underline">Supprimer définitivement</button>
+            </form>
           </div>
         ))}
       </div>
@@ -449,7 +468,8 @@ const champ = "mt-1 block w-full rounded border border-bo-border px-2 py-1";
   )}
 
   <p class="max-w-3xl text-xs text-bo-muted">
-    Un lieu ne se supprime pas : il s'archive. Le texte qui s'affiche sous
+    Un lieu s'archive d'abord ; archivé, il peut ensuite être supprimé
+    définitivement. Le texte qui s'affiche sous
     « Retrait sur place » lui-même (délai, rappel) se règle dans
     <a href={url("/livraison")} class="underline">Livraison</a>, sur le mode.
   </p>

@@ -43,6 +43,7 @@ import { FILIGRANE } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { clientDeLaRequete } from "./comptes.js";
 import { HORS_VENTES } from "./statuts-vente.js";
+import { supprimerPourToujours } from "./suppression.js";
 import {
   STYLE_MEMORY_LINE,
   ajouterDemandeClient,
@@ -1851,6 +1852,35 @@ export function mountIaRoutes(app: Hono): void {
       .returning({ archivedAt: schema.aiPrompts.archivedAt });
     if (!ligne) return c.json({ error: "Style introuvable" }, 404);
     return c.json({ ok: true, archived: ligne.archivedAt != null });
+  });
+
+  /**
+   * Supprime DÉFINITIVEMENT un style archivé (règles : suppression.ts).
+   *
+   * Rien ne le retient : aucune table ne pointe vers lui, et une affiche déjà
+   * générée garde la consigne réellement envoyée (`ai_generation.prompt`) —
+   * elle n'a pas besoin du style pour se réimprimer. Sa consigne et ses
+   * traductions sont dans sa ligne et partent avec elle ; ses images restent
+   * dans data/assets : seule la ligne part.
+   */
+  app.delete("/admin/ia/prompts/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.notFound();
+    return supprimerPourToujours(c, {
+      lire: async () =>
+        (
+          await db
+            .select({ id: schema.aiPrompts.id, archivedAt: schema.aiPrompts.archivedAt })
+            .from(schema.aiPrompts)
+            .where(eq(schema.aiPrompts.id, id))
+        )[0] ?? null,
+      estArchive: (s) => s.archivedAt != null,
+      supprimer: async () => {
+        await db
+          .delete(schema.aiPrompts)
+          .where(and(eq(schema.aiPrompts.id, id), isNotNull(schema.aiPrompts.archivedAt)));
+      },
+    });
   });
 }
 

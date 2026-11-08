@@ -16,7 +16,9 @@
  * sont les couleurs du premier message et six secondes — le site ne change
  * pas d'allure avant que la boutique le décide.
  *
- * Rien ne se supprime : un message s'archive, et se restaure.
+ * Un message s'archive, et se restaure. Archivé, il peut ensuite être
+ * supprimé définitivement (suppression.ts) : rien d'autre ne pointe vers lui,
+ * ses traductions vivent dans sa ligne et partent avec elle.
  *
  * Les traductions du message et du texte du bouton passent par la route
  * commune /admin/banner/:id/translations (traductions.ts).
@@ -25,6 +27,7 @@ import type { Hono } from "hono";
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { normaliserLienSaisi } from "@memoryline/types/bandeaux-visuels";
 import { db, schema } from "./db/client.js";
+import { supprimerPourToujours } from "./suppression.js";
 import { langueDuVisiteur, texteDansLaLangue } from "./traductions.js";
 
 /** La clé du réglage commun dans la table `setting`. */
@@ -287,6 +290,29 @@ export function mountBandeau(app: Hono): void {
       .returning();
     if (!row) return c.notFound();
     return c.json({ ok: true, archived: row.archivedAt != null });
+  });
+
+  /**
+   * Supprime définitivement un message ARCHIVÉ (règles : suppression.ts).
+   * Aucune table ne pointe vers un message, et ses traductions sont dans sa
+   * ligne : rien d'autre ne part avec lui. La condition « archivé » est
+   * répétée dans la requête : restauré depuis un autre onglet entre la
+   * lecture et l'effacement, il n'est pas touché.
+   */
+  app.delete("/admin/banners/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.notFound();
+    return supprimerPourToujours(c, {
+      lire: async () =>
+        (await db.select().from(schema.announcementBanners).where(eq(schema.announcementBanners.id, id)))[0] ??
+        null,
+      estArchive: (m) => m.archivedAt != null,
+      supprimer: async () => {
+        await db
+          .delete(schema.announcementBanners)
+          .where(and(eq(schema.announcementBanners.id, id), isNotNull(schema.announcementBanners.archivedAt)));
+      },
+    });
   });
 
   /**

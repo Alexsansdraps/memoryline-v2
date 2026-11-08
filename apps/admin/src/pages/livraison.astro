@@ -89,8 +89,16 @@ let flashErreur = false;
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   // Lu AVANT `_action` : le bouton Archiver vit dans le formulaire de
-  // modification, qui porte son propre `_action` caché.
-  const action = f.get("archiver") ? "mode-archiver" : f.get("_action");
+  // modification, qui porte son propre `_action` caché. De même pour
+  // « Supprimer définitivement », logé dans le formulaire de restauration
+  // d'un mode ou d'une tranche archivés : il dit lequel (« mode », « tarif »).
+  const supprimer = String(f.get("supprimer") ?? "");
+  const action =
+    supprimer === "mode" || supprimer === "tarif"
+      ? `${supprimer}-supprimer`
+      : f.get("archiver")
+        ? "mode-archiver"
+        : f.get("_action");
   try {
     if (action === "mode-traductions" || action === "mode-traduire") {
       // Chaque mode a son bloc : le formulaire ne porte que les cases du
@@ -168,6 +176,22 @@ if (Astro.request.method === "POST") {
               ? ` Les ${commandes} commande${commandes > 1 ? "s" : ""} parties avec lui continuent de l'afficher.`
               : ""
           } Sa grille est gardée entière ; vous pouvez le restaurer plus bas.`;
+    } else if (action === "mode-supprimer" || action === "tarif-supprimer") {
+      // Refusé pour un mode qui a servi à une commande : la phrase de l'API
+      // s'affiche telle quelle, sans « Erreur : », et il reste archivé.
+      const nom = String(f.get("libelle") || "Cet élément");
+      try {
+        if (action === "mode-supprimer") {
+          await api.supprimerModeLivraison(Number(f.get("id")));
+          flash = `Mode « ${nom} » supprimé définitivement, avec sa grille tarifaire.`;
+        } else {
+          await api.supprimerTarifLivraison(Number(f.get("id")));
+          flash = `Tranche « ${nom} » supprimée définitivement.`;
+        }
+      } catch (e) {
+        flash = lisible(e);
+        flashErreur = true;
+      }
     } else if (action === "tarif-restaurer") {
       await api.archiverTarifLivraison(Number(f.get("id")), false);
       flash = "Tranche restaurée : elle facture de nouveau dans sa grille.";
@@ -652,7 +676,8 @@ const ordreModes = modesActifs.map((m) => m.id);
           Retirés du tunnel de commande et de la liste ci-dessus. Leur grille
           tarifaire est gardée entière, et les commandes parties avec eux
           continuent de les nommer. « Restaurer » rend le mode et sa grille ;
-          il revient décoché.
+          il revient décoché. « Supprimer définitivement » l'efface pour de
+          bon, avec sa grille, s'il n'a servi à aucune commande.
         </p>
         <div class="space-y-2 opacity-70">
           {modesArchives.map((m) => (
@@ -683,6 +708,16 @@ const ordreModes = modesActifs.map((m) => m.id);
                 class="text-sm text-bo-accent hover:underline"
               >
                 Restaurer
+              </button>
+              <button
+                type="submit"
+                name="supprimer"
+                value="mode"
+                formnovalidate
+                data-supprimer={`Supprimer définitivement « ${m.name} » ? C'est sans retour.`}
+                class="text-sm text-red-700 hover:underline"
+              >
+                Supprimer définitivement
               </button>
             </form>
           ))}
@@ -971,6 +1006,8 @@ const ordreModes = modesActifs.map((m) => m.id);
         attendent ici, avec leur prix. « Restaurer » remet la tranche dans sa
         grille — refusé si une autre tranche a repris la même borne de poids
         depuis, car deux prix pour un même colis ne se départagent pas.
+        « Supprimer définitivement » l'efface pour de bon : les commandes ont
+        figé leur port, aucune ne la cite.
       </p>
       <div class="space-y-2 opacity-70">
         {tarifsArchives.map((t) => (
@@ -980,6 +1017,11 @@ const ordreModes = modesActifs.map((m) => m.id);
           >
             <input type="hidden" name="_action" value="tarif-restaurer" />
             <input type="hidden" name="id" value={t.id} />
+            <input
+              type="hidden"
+              name="libelle"
+              value={`${nomMode(t.methodId)} · ${nomZone(t.zoneId)} · ${bornes(t.minWeightGrams, t.maxWeightGrams)}`}
+            />
             <div class="min-w-56 flex-1">
               <p class="font-medium">
                 {nomMode(t.methodId)} · {nomZone(t.zoneId)}
@@ -994,6 +1036,15 @@ const ordreModes = modesActifs.map((m) => m.id);
             </div>
             <button class="text-sm text-bo-accent hover:underline">
               Restaurer
+            </button>
+            <button
+              type="submit"
+              name="supprimer"
+              value="tarif"
+              data-supprimer={`Supprimer définitivement « ${nomMode(t.methodId)} · ${nomZone(t.zoneId)} · ${bornes(t.minWeightGrams, t.maxWeightGrams)} » ? C'est sans retour.`}
+              class="text-sm text-red-700 hover:underline"
+            >
+              Supprimer définitivement
             </button>
           </form>
         ))}
@@ -1195,6 +1246,13 @@ const ordreModes = modesActifs.map((m) => m.id);
     for (const bouton of document.querySelectorAll("[data-archiver]")) {
       bouton.addEventListener("click", (e) => {
         if (!confirm(bouton.getAttribute("data-archiver"))) e.preventDefault();
+      });
+    }
+    // Supprimer définitivement un mode ou une tranche archivés : sans retour,
+    // donc demandé une dernière fois.
+    for (const bouton of document.querySelectorAll("[data-supprimer]")) {
+      bouton.addEventListener("click", (e) => {
+        if (!confirm(bouton.getAttribute("data-supprimer"))) e.preventDefault();
       });
     }
   </script>

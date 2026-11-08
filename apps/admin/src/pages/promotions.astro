@@ -20,8 +20,10 @@
  * le dit, et « Passer au réglage demandé » pré-remplit le formulaire — rien
  * n'est enregistré avant qu'on clique « Enregistrer ».
  *
- * Rien ne se supprime : une promotion s'archive, et les commandes passées
- * gardent la remise qu'elles ont eue (figée sur la commande).
+ * Une promotion s'archive d'abord, et les commandes passées gardent la
+ * remise qu'elles ont eue (figée sur la commande). Archivée, elle peut
+ * ensuite être supprimée pour de bon — refusé tant que la page Finances la
+ * relit pour des ventes d'avant ce figeage (promotions.ts).
  */
 import { apiInterne } from "../lib/api-interne.ts";
 import Admin from "../layouts/Admin.astro";
@@ -282,6 +284,12 @@ if (Astro.request.method === "POST") {
         action === "archiver"
           ? `« ${nom} » est archivée : elle ne s'applique plus. Les commandes passées gardent leur remise.`
           : `« ${nom} » est revenue, éteinte : rallumez-la quand elle doit reprendre.`;
+    } else if (action === "supprimer") {
+      // Un refus de l'API passe par le `catch` plus bas : sa phrase s'affiche
+      // telle quelle, et la promotion reste archivée.
+      const nom = String(form.get("nom") ?? "");
+      await api.supprimerPromo(Number(form.get("id")));
+      flash = `« ${nom} » est supprimée définitivement. Les commandes passées gardent leur remise.`;
     } else if (action === "enregistrer") {
       const saisie = depuisFormulaire(form);
       saisieRefusee = saisie;
@@ -728,7 +736,7 @@ const boutonLien = "text-bo-accent hover:underline";
       <p class="mb-3 max-w-3xl text-sm text-bo-muted">
         Elles ne s'appliquent plus nulle part. Les commandes passées gardent la
         remise qu'elles ont eue. « Restaurer » la ramène dans la liste,
-        éteinte.
+        éteinte. « Supprimer définitivement » l'efface pour de bon.
       </p>
       <div class="overflow-x-auto rounded-lg border border-bo-border bg-bo-surface">
         <table class="w-full text-sm">
@@ -744,6 +752,18 @@ const boutonLien = "text-bo-accent hover:underline";
                     <input type="hidden" name="id" value={p.id} />
                     <input type="hidden" name="nom" value={p.name} />
                     <button class={boutonLien}>Restaurer</button>
+                  </form>
+                  <form
+                    method="POST"
+                    class="ml-4 inline"
+                    onsubmit={`return confirm(${JSON.stringify(
+                      `Supprimer définitivement « ${p.name} » ? C'est sans retour.`,
+                    )})`}
+                  >
+                    <input type="hidden" name="_action" value="supprimer" />
+                    <input type="hidden" name="id" value={p.id} />
+                    <input type="hidden" name="nom" value={p.name} />
+                    <button class="text-red-700 hover:underline">Supprimer définitivement</button>
                   </form>
                 </td>
               </tr>

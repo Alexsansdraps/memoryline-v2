@@ -196,6 +196,12 @@ if (Astro.request.method === "POST") {
           ? "Lettre restaurée : elle revient dans la liste, telle qu'elle était."
           : "Lettre archivée. Son texte et ses destinataires sont gardés entiers ; vous pouvez la restaurer à tout moment, dans « Lettres archivées ».",
       };
+    } else if (action === "supprimer" && id) {
+      // Seul un brouillon archivé jamais parti se supprime : l'API refuse
+      // (409) une lettre envoyée, qui reste la trace de qui l'a reçue, et sa
+      // phrase s'affiche telle quelle.
+      await appelApi<{ ok: boolean }>("DELETE", `/admin/lettres/${id}`);
+      flash = { ton: "ok", message: "Brouillon supprimé définitivement." };
     } else if (action === "essai" && id) {
       const retour = await appelApi<{ resume: string }>(
         "POST",
@@ -417,7 +423,9 @@ const TON_CLASSE: Record<Ton, string> = {
       <p class="mb-3 max-w-3xl text-sm text-bo-muted">
         Retirées de la liste ci-dessus, et rien de plus : leur texte est gardé
         entier, et celles qui sont parties gardent la trace de qui les a
-        reçues. « Restaurer » remet la lettre telle qu'elle était.
+        reçues. « Restaurer » remet la lettre telle qu'elle était. Un
+        brouillon jamais envoyé peut aussi être supprimé définitivement ; une
+        lettre partie reste, comme trace de l'envoi.
       </p>
       <div class="space-y-2 opacity-70">
         {archivees.map((l) => (
@@ -445,6 +453,19 @@ const TON_CLASSE: Record<Ton, string> = {
                 Restaurer
               </button>
             </form>
+            {l.etat === "brouillon" ? (
+              <form method="POST" class="js-supprimer" data-nom={l.titre}>
+                <input type="hidden" name="_action" value="supprimer" />
+                <input type="hidden" name="id" value={l.id} />
+                <button class="text-sm text-red-700 hover:underline">
+                  Supprimer définitivement
+                </button>
+              </form>
+            ) : (
+              <span class="text-xs text-bo-muted" title="Une lettre partie ne se supprime pas : elle garde la trace de qui l'a reçue.">
+                Gardée : trace de l'envoi
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -790,6 +811,13 @@ const TON_CLASSE: Record<Ton, string> = {
           )
         )
           ev.preventDefault();
+      });
+    });
+
+    document.querySelectorAll("form.js-supprimer").forEach((f) => {
+      f.addEventListener("submit", (ev) => {
+        const nom = f.getAttribute("data-nom") || "cette lettre";
+        if (!confirm(`Supprimer définitivement « ${nom} » ? C'est sans retour.`)) ev.preventDefault();
       });
     });
 

@@ -19,8 +19,9 @@
  * l'écran les annonce, et montre ce qu'il a corrigé.
  *
  * Le site applique ce qui est enregistré ici dans les deux secondes
- * (apps/web/src/middleware.ts). Rien ne se supprime : une redirection
- * s'archive, et se restaure.
+ * (apps/web/src/middleware.ts). Une redirection s'archive, et se restaure ;
+ * archivée, elle peut aussi être supprimée définitivement, sauf si d'autres
+ * mènent encore à son ancienne adresse (l'API le dit, la phrase s'affiche).
  *
  * Une redirection qui menait déjà à une adresse qu'on redirige n'est pas
  * réécrite : le site suit la chaîne en un seul saut, et archiver la nouvelle
@@ -148,6 +149,9 @@ if (Astro.request.method === "POST") {
         flash = `« ${clair(r.redirection.fromPath)} » restaurée : elle mène de nouveau à « ${clair(r.redirection.toPath)} ».`;
         notes = [...r.notes];
       }
+    } else if (action === "supprimer") {
+      await api.supprimerRedirection(Number(texte("id")));
+      flash = `« ${clair(texte("libelle"))} » supprimée définitivement.`;
     } else if (action === "import-apercu" || action === "import-appliquer") {
       importTexte = texte("texte");
       const appliquer = action === "import-appliquer";
@@ -670,7 +674,8 @@ const bouton = "rounded border border-bo-border px-3 py-1 text-xs hover:bg-bo-bg
       <div class="px-5 pb-5">
         <p class="mb-3 max-w-3xl text-xs text-bo-muted">
           Elles ne s'appliquent plus : archivées ici, ou remplacées quand une affiche a changé
-          d'adresse ou en a repris une. « Restaurer » repasse par les mêmes contrôles qu'un ajout.
+          d'adresse ou en a repris une. « Restaurer » repasse par les mêmes contrôles qu'un ajout ;
+          « Supprimer définitivement » l'efface pour de bon.
         </p>
         <ul class="divide-y divide-bo-border text-sm opacity-80">
           {archiveesVues.map((r) => (
@@ -687,6 +692,12 @@ const bouton = "rounded border border-bo-border px-3 py-1 text-xs hover:bg-bo-bg
                 <input type="hidden" name="libelle" value={r.fromPath} />
                 <button class="text-sm text-bo-accent hover:underline">Restaurer</button>
               </form>
+              <form method="POST" class="js-supprimer" data-nom={clair(r.fromPath)}>
+                <input type="hidden" name="_action" value="supprimer" />
+                <input type="hidden" name="id" value={r.id} />
+                <input type="hidden" name="libelle" value={r.fromPath} />
+                <button class="text-sm text-red-700 hover:underline">Supprimer définitivement</button>
+              </form>
             </li>
           ))}
         </ul>
@@ -695,7 +706,7 @@ const bouton = "rounded border border-bo-border px-3 py-1 text-xs hover:bg-bo-bg
   )}
 
   <p class="max-w-3xl text-xs text-bo-muted">
-    Une redirection ne se supprime pas : elle s'archive. Un navigateur qui a déjà suivi une
+    Une redirection s'archive d'abord ; seule une archivée se supprime définitivement. Un navigateur qui a déjà suivi une
     redirection 301 peut s'en souvenir : pour vérifier qu'une redirection archivée ne s'applique
     plus, essayez l'adresse dans une fenêtre de navigation privée. Le pas à pas est dans
     <a href={url("/aide#redirections-shopify")} class="underline">l'aide</a>.
@@ -717,6 +728,12 @@ const bouton = "rounded border border-bo-border px-3 py-1 text-xs hover:bg-bo-bg
           )
         )
           e.preventDefault();
+      });
+    });
+    document.querySelectorAll("form.js-supprimer").forEach((f) => {
+      f.addEventListener("submit", (e) => {
+        const nom = f.getAttribute("data-nom") || "cette redirection";
+        if (!confirm(`Supprimer définitivement « ${nom} » ? C'est sans retour.`)) e.preventDefault();
       });
     });
     // L'aperçu de l'import arrive plus bas : on y descend, sinon on croirait

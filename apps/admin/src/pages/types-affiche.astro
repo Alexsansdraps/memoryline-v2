@@ -19,6 +19,17 @@ if (Astro.request.method === "POST") {
       flash = restaurer
         ? "Type d'affiche restauré."
         : "Type d'affiche archivé. Vous pouvez le restaurer à tout moment, plus bas.";
+    } else if (action === "supprimer") {
+      // Refusé tant qu'un produit, un personnage, une pièce ou une commande le
+      // cite : la phrase de l'API s'affiche telle quelle, sans « Erreur : ».
+      const nom = String(f.get("libelle") || "Ce type d'affiche");
+      try {
+        await api.supprimerView(Number(f.get("id")));
+        flash = `Type d'affiche « ${nom} » supprimé définitivement.`;
+      } catch (e) {
+        flash = e instanceof Error ? e.message : String(e);
+        flashErreur = true;
+      }
     } else {
       const vue = await api.upsertView({
         id: f.get("id") ? Number(f.get("id")) : undefined,
@@ -246,7 +257,8 @@ const archives = vues.filter((v) => v.archivedAt);
       <p class="mb-3 max-w-3xl text-xs text-bo-muted">
         Retirés du site et de la liste ci-dessus. Les personnages, pièces et
         affiches qui les citent les retrouvent toujours : rien n'est cassé, et
-        « Restaurer » les remet en place.
+        « Restaurer » les remet en place. « Supprimer définitivement »
+        l'efface pour de bon, une fois que plus rien ne le cite.
       </p>
       <div class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface opacity-70">
         <table class="w-full text-sm">
@@ -264,6 +276,20 @@ const archives = vues.filter((v) => v.archivedAt);
                     <input type="hidden" name="archived" value="false" />
                     <button class="text-bo-accent hover:underline">
                       Restaurer
+                    </button>
+                  </form>
+                  <form
+                    method="POST"
+                    class="ml-4 inline"
+                    onsubmit={`return confirm(${JSON.stringify(
+                      `Supprimer définitivement « ${v.name} » ? C'est sans retour.`,
+                    )})`}
+                  >
+                    <input type="hidden" name="_action" value="supprimer" />
+                    <input type="hidden" name="id" value={v.id} />
+                    <input type="hidden" name="libelle" value={v.name} />
+                    <button class="text-red-700 hover:underline">
+                      Supprimer définitivement
                     </button>
                   </form>
                 </td>

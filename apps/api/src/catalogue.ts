@@ -27,6 +27,11 @@ import {
 } from "drizzle-orm";
 import { poidsDesCollections } from "./collections.js";
 import { db, schema } from "./db/client.js";
+import { supprimerPourToujours } from "./suppression.js";
+import {
+  mountSuppressionProduit,
+  raisonDeGarderLaCategorie,
+} from "./suppression-catalogue.js";
 
 /** Slug lisible et stable : accents retirés, tout en minuscules. */
 function slugifier(nom: string): string {
@@ -139,11 +144,12 @@ export function mountCatalogueRoutes(app: Hono): void {
   /**
    * Archive une catégorie de produits, ou la restaure.
    *
-   * La suppression définitive a été RETIRÉE. Elle n'était permise que sur une
-   * catégorie vide, et pour cause : effacer la ligne remettait à zéro le
+   * L'archivage est le geste ordinaire. La suppression définitive (route
+   * DELETE plus bas) ne vient qu'après, et seulement sur une catégorie vide,
+   * pour la raison qui l'avait fait retirer : effacer la ligne remet à zéro le
    * `category_id` de tout ce qu'elle rangeait (`on delete set null`). Les
-   * produits perdaient d'un coup leur rangement ET le poids par défaut qu'elle
-   * leur donnait — donc leur affranchissement —, sans que rien ne le signale.
+   * produits perdraient d'un coup leur rangement ET le poids par défaut qu'elle
+   * leur donne — donc leur affranchissement —, sans que rien ne le signale.
    *
    * Archivée, elle peut donc l'être PLEINE : le rangement reste intact, c'est
    * ce qui permet de la restaurer complète. `dedans` dit combien de produits
@@ -180,6 +186,50 @@ export function mountCatalogueRoutes(app: Hono): void {
       ok: true,
       archived: ligne.archivedAt != null,
       dedans: Number(n),
+    });
+  });
+
+  /**
+   * Supprime définitivement une catégorie ARCHIVÉE (règles : suppression.ts).
+   *
+   * Seulement VIDE : `product.category_id` est en `on delete set null`, et la
+   * base remettrait sans rien dire les produits rangés dedans à « aucune
+   * catégorie » — la perte que l'en-tête de la route d'archivage décrit. Une
+   * page qui la montre dans une rangée la retient aussi (voir
+   * `raisonDeGarderLaCategorie`). Les deux conditions sont répétées dans la
+   * requête : restaurée, ou remplie depuis un autre onglet entre la lecture
+   * et l'effacement, elle n'est pas touchée.
+   */
+  app.delete("/admin/product-categories/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.notFound();
+    return supprimerPourToujours(c, {
+      lire: async () =>
+        (
+          await db
+            .select({
+              id: schema.productCategories.id,
+              archivedAt: schema.productCategories.archivedAt,
+            })
+            .from(schema.productCategories)
+            .where(eq(schema.productCategories.id, id))
+        )[0] ?? null,
+      estArchive: (cat) => cat.archivedAt != null,
+      empeche: raisonDeGarderLaCategorie,
+      utilisePar: "des produits",
+      supprimer: async () => {
+        await db.transaction(async (tx) => {
+          await tx
+            .delete(schema.productCategories)
+            .where(
+              and(
+                eq(schema.productCategories.id, id),
+                raw`${schema.productCategories.archivedAt} is not null`,
+                raw`not exists (select 1 from ${schema.products} p where p.category_id = ${id})`,
+              ),
+            );
+        });
+      },
     });
   });
 
@@ -403,4 +453,9 @@ export function mountCatalogueRoutes(app: Hono): void {
       .orderBy(asc(schema.products.name));
     return c.json(rows);
   });
+
+  // La suppression définitive d'une affiche archivée : sa route vit avec ses
+  // règles, dans suppression-catalogue.ts, et se monte ici pour ne rien
+  // demander à index.ts.
+  mountSuppressionProduit(app);
 }

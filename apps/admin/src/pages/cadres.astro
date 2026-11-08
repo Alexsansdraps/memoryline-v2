@@ -22,6 +22,8 @@ function centimes(v: FormDataEntryValue | null): number {
 }
 
 let flash: string | null = null;
+/** Le refus d'une suppression définitive, tel que l'API le dit. */
+let refus: string | null = null;
 /**
  * Traductions des noms de cadres : propositions automatiques à relire, saisie
  * à réafficher (après une proposition ou un refus), et bloc ouvert.
@@ -71,6 +73,16 @@ if (Astro.request.method === "POST") {
       flash = restaurer
         ? `Cadre « ${nom} » restauré, avec ses prix et son poids. Cochez « Affiché » pour le reproposer.`
         : `Cadre « ${nom} » archivé : il n'est plus proposé.${vendu} Vous pouvez le restaurer à tout moment, plus bas.`;
+    } else if (action === "supprimer") {
+      // L'API refuse un cadre encore cité par une commande ou un panier :
+      // sa phrase s'affiche telle quelle, et le cadre reste archivé.
+      const nom = String(f.get("libelle") || "Ce cadre");
+      try {
+        await api.supprimerCadre(Number(f.get("id")));
+        flash = `Cadre « ${nom} » supprimé définitivement.`;
+      } catch (e) {
+        refus = e instanceof Error ? e.message : String(e);
+      }
     } else {
       const cadre = await api.upsertFrame({
         id: f.get("id") ? Number(f.get("id")) : undefined,
@@ -129,6 +141,11 @@ function messageArchivage(c: Cadre): string {
   {flash && (
     <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">
       {flash}
+    </p>
+  )}
+  {refus && (
+    <p class="mb-4 text-sm rounded bg-red-50 border border-red-200 px-3 py-2">
+      {refus}
     </p>
   )}
   {error && <p class="mb-4 text-red-600 text-sm">API injoignable : {error}</p>}
@@ -377,7 +394,8 @@ function messageArchivage(c: Cadre): string {
         Retirés du catalogue et du tableau ci-dessus. Les commandes déjà
         passées continuent de les nommer, sur leur fiche comme dans le nom du
         fichier d'impression. « Restaurer » rend le cadre avec ses prix et son
-        poids ; il revient décoché, à vous de le reproposer.
+        poids ; il revient décoché, à vous de le reproposer. « Supprimer
+        définitivement » l'efface pour de bon, s'il n'a jamais été vendu.
       </p>
       <div class="space-y-2 opacity-70">
         {archives.map((c) => (
@@ -401,6 +419,19 @@ function messageArchivage(c: Cadre): string {
               <input type="hidden" name="archived" value="false" />
               <button class="text-sm text-bo-accent hover:underline">
                 Restaurer
+              </button>
+            </form>
+            <form
+              method="POST"
+              onsubmit={`return confirm(${JSON.stringify(
+                `Supprimer définitivement « ${c.name} » ? C'est sans retour.`,
+              )})`}
+            >
+              <input type="hidden" name="_action" value="supprimer" />
+              <input type="hidden" name="id" value={c.id} />
+              <input type="hidden" name="libelle" value={c.name} />
+              <button class="text-sm text-red-700 hover:underline">
+                Supprimer définitivement
               </button>
             </form>
           </div>

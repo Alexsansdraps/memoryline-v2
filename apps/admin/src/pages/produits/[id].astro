@@ -1467,7 +1467,8 @@ try {
               Trello du 29/10, « là on peut que archiver ») parce qu'ils
               encombraient la fiche. Ils restent en base — une commande déjà
               passée sur l'un d'eux doit se réimprimer —, mais ne prennent plus
-              qu'une ligne tant qu'on ne les ouvre pas. */}
+              qu'une ligne tant qu'on ne les ouvre pas. Depuis le 8/11, celui
+              qu'aucune commande n'utilise se supprime aussi pour de bon. */}
           {fondsArchives.length > 0 && (
             <details class="mt-5 border-t border-bo-border pt-4">
               <summary class="cursor-pointer text-sm font-semibold text-bo-muted hover:text-bo-accent">
@@ -1476,7 +1477,8 @@ try {
               <p class="mt-2 mb-3 text-xs text-bo-muted">
                 Retirés des choix du client. Ils restent imprimables : les
                 commandes déjà passées sur ces fonds se réimpriment à
-                l'identique.
+                l'identique. « Supprimer définitivement » efface celui
+                qu'aucune commande ni panier en cours n'utilise.
               </p>
               <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 opacity-60">
                 {fondsArchives.map((bg) => (
@@ -1504,6 +1506,16 @@ try {
                         {bg.name}
                       </figcaption>
                     )}
+                    {/* Sans retour : confirmation, puis l'API refuse (409) un
+                        fond qu'une commande ou un panier en cours utilise
+                        encore, en disant pourquoi. */}
+                    <button
+                      type="button"
+                      class="js-supprimer-bg block w-full border-t border-bo-border px-2 py-1 text-left text-xs text-red-700 hover:underline"
+                      data-nom={bg.name ?? ""}
+                    >
+                      Supprimer définitivement
+                    </button>
                   </figure>
                 ))}
               </div>
@@ -2565,9 +2577,10 @@ try {
     const grid = document.getElementById("bg-grid");
     const empty = document.getElementById("bg-empty");
 
-    // Il n'y a plus de suppression définitive : un fond effacé empêchait de
-    // régénérer le PDF des commandes qui l'utilisaient. Archivé, il sort des
-    // choix du client et reste imprimable.
+    // On archive d'abord : un fond effacé empêchait de régénérer le PDF des
+    // commandes qui l'utilisaient. Archivé, il sort des choix du client et
+    // reste imprimable ; seul un fond archivé que plus rien n'utilise se
+    // supprime ensuite pour de bon (plus bas).
     function bindArchive(btn) {
       btn.addEventListener("click", async () => {
         const fig = btn.closest("[data-bg-id]");
@@ -2606,6 +2619,33 @@ try {
     }
 
     document.querySelectorAll(".js-archive-bg").forEach(bindArchive);
+
+    // Suppression définitive d'un visuel ARCHIVÉ : l'API refuse (409) celui
+    // qu'une commande ou un panier en cours utilise encore — effacé, il
+    // empêcherait de réimprimer — et sa phrase s'affiche telle quelle.
+    document.querySelectorAll(".js-supprimer-bg").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const fig = btn.closest("[data-bg-id]");
+        if (!fig) return;
+        const nom = btn.dataset.nom || "ce visuel";
+        if (!confirm(`Supprimer définitivement « ${nom} » ? C'est sans retour.`)) return;
+        btn.disabled = true;
+        try {
+          const res = await fetch(
+            `${PUBLIC_API_URL}/admin/backgrounds/${fig.getAttribute("data-bg-id")}`,
+            { method: "DELETE", credentials: "include" },
+          );
+          if (!res.ok) {
+            const j = await res.json().catch(() => null);
+            throw new Error(j?.error || "HTTP " + res.status);
+          }
+          location.reload();
+        } catch (e) {
+          btn.disabled = false;
+          alert("Suppression impossible : " + (e instanceof Error ? e.message : e));
+        }
+      });
+    });
 
     // --- Téléversement d'un ou plusieurs visuels ---
     // Deux temps : on dépose le fichier (POST /admin/uploads), puis on

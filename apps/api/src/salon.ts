@@ -30,6 +30,7 @@ import { rattacherGenerationsAuPanier } from "./ia.js";
 import { HORS_VENTES } from "./statuts-vente.js";
 import { prochainNumeroDeCommande } from "./numeros-commande.js";
 import { estProprietaire, standsDuVendeur } from "./vendeurs.js";
+import { supprimerPourToujours } from "./suppression.js";
 
 /**
  * Un code d'accès : six caractères, sans ceux qui se confondent.
@@ -592,6 +593,61 @@ export function mountSalonRoutes(app: Hono): void {
       ok: true,
       archived: ligne.archivedAt != null,
       commandes: Number(vendu?.n ?? 0),
+    });
+  });
+
+  /**
+   * Supprime DÉFINITIVEMENT un stand archivé.
+   *
+   * Seulement s'il n'a jamais rien vendu : une commande du salon — payée,
+   * annulée, remboursée — ne dit où elle a été faite que par
+   * `order.stand_id`, et la base le viderait en silence (« set null », voir
+   * l'archivage ci-dessus). C'est donc la route qui refuse, avant elle.
+   *
+   * Les PANIERS restés ouverts sur sa tablette ne sont pas des ventes : ils
+   * sont détachés, dans la même transaction que le reste — ses relais photo
+   * (une tablette rangée n'en reçoit plus) et sa place dans la liste des
+   * stands confiés aux vendeurs (`admin_user.stand_ids`, sans clé étrangère :
+   * un identifiant orphelin y resterait sinon). Son code, alors, redevient
+   * libre : sans vente, aucun nouveau stand ne peut hériter de rien.
+   */
+  app.delete("/admin/stands/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0)
+      return c.json({ error: "stand inconnu" }, 400);
+    return supprimerPourToujours(c, {
+      lire: async () =>
+        (await db.select().from(schema.stands).where(eq(schema.stands.id, id)))[0] ?? null,
+      estArchive: (s) => s.archivedAt != null,
+      empeche: async (s) => {
+        const [n] = await db
+          .select({ n: count() })
+          .from(schema.orders)
+          .where(and(eq(schema.orders.standId, s.id), ne(schema.orders.status, "draft")));
+        const ventes = Number(n?.n ?? 0);
+        return ventes > 0
+          ? `« ${s.nom} » a ${ventes} commande(s) : c'est lui qui dit où elles ont été faites. Il reste archivé.`
+          : null;
+      },
+      supprimer: async (s) => {
+        await db.transaction(async (tx) => {
+          await tx
+            .update(schema.orders)
+            .set({ standId: null })
+            .where(eq(schema.orders.standId, s.id));
+          await tx.delete(schema.aiPhotoRelays).where(eq(schema.aiPhotoRelays.standId, s.id));
+          await tx.execute(raw`
+            update admin_user
+               set stand_ids = coalesce(
+                 (select jsonb_agg(e) from jsonb_array_elements(stand_ids) e
+                   where e <> to_jsonb(${s.id}::int)),
+                 '[]'::jsonb)
+             where stand_ids @> jsonb_build_array(${s.id}::int)
+          `);
+          await tx.delete(schema.stands).where(eq(schema.stands.id, s.id));
+        });
+      },
+      utilisePar: "des commandes",
     });
   });
 }
