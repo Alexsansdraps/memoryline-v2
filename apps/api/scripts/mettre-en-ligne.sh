@@ -67,10 +67,15 @@ echo "5/5 · Redémarrage…"
 $COMPOSE up -d
 $COMPOSE ps
 
-# Le site redémarré met quelques secondes à répondre : la page de maintenance
-# reste jusque-là (une minute au plus), plutôt qu'une erreur 502.
-for _ in $(seq 1 30); do
-  if $COMPOSE exec -T web node -e "fetch('http://localhost:4321/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))" 2>/dev/null; then
+# Le site et l'API redémarrés mettent quelques secondes à répondre (l'API une
+# dizaine de plus que le site, mesuré le 8/11) : la page de maintenance reste
+# jusqu'à ce que les DEUX répondent (une minute et demie au plus), plutôt
+# qu'une erreur 502.
+pret() {
+  $COMPOSE exec -T "$1" node -e "fetch('$2').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))" 2>/dev/null
+}
+for _ in $(seq 1 45); do
+  if pret web http://localhost:4321/ && pret api http://localhost:3000/health; then
     break
   fi
   sleep 2
