@@ -44,3 +44,7 @@ apps/web/public/fonts/AnotherShabby-Regular.ttf
 # ci-dessus ne les voyait pas, et un « git add -A » les aurait mis sur main,
 # où la vérification des types de l'API échouait sur l'un d'eux.
 **/scripts/tmp-*
+
+# L'interrupteur de la page de maintenance (posé et retiré par
+# mettre-en-ligne.sh sur le serveur) : jamais dans Git.
+maintenance/ACTIVE

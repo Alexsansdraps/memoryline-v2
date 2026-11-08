@@ -204,6 +204,9 @@ services:
       DOMAINE_WWW: ${DOMAINE_WWW:-}
     volumes:
       - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
+      # La page de maintenance et son interrupteur (le fichier ACTIVE, posé
+      # et retiré par mettre-en-ligne.sh) : voir Caddyfile.prod.
+      - ./maintenance:/srv/maintenance:ro
       # Les certificats, pour ne pas en redemander à chaque redémarrage :
       # Let's Encrypt limite le nombre de demandes par semaine.
       - caddy_data:/data

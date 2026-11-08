@@ -13,6 +13,13 @@
 #   4. les MIGRATIONS de la base (nouvelles colonnes, nouvelles tables) ;
 #   5. le redémarrage, et l'état des services.
 #
+# Pendant tout ce temps, le site montre une PAGE DE MAINTENANCE (« On fait une
+# petite mise à jour », maintenance/index.html, servie par Caddy tant que le
+# fichier maintenance/ACTIVE existe — voir Caddyfile.prod). Le fichier est
+# posé en premier et retiré en dernier, QUOI QU'IL ARRIVE (trap EXIT) : une
+# mise en ligne qui échoue rend le site tel qu'il était, sans le laisser en
+# maintenance. L'API et le back-office n'y passent pas.
+#
 # Il s'arrête à la première erreur (set -e) : une migration qui échoue ne
 # laisse pas redémarrer un site qui chercherait une colonne absente.
 #
@@ -37,6 +44,12 @@ fi
 # (« set: pipefail: invalid option name »). On les retire avant de s'en servir.
 sed -i 's/\r$//' apps/api/scripts/*.sh
 
+# La page de maintenance, jusqu'à la fin du script, quelle qu'elle soit.
+mkdir -p maintenance
+touch maintenance/ACTIVE
+trap 'rm -f "$HOME/memoryline/maintenance/ACTIVE"; echo "Page de maintenance retirée : le site est de retour."' EXIT
+echo "0/5 · Page de maintenance affichée."
+
 echo "1/5 · Sauvegarde de la base et des fichiers…"
 bash apps/api/scripts/sauvegarder.sh
 
@@ -53,6 +66,15 @@ $COMPOSE run --rm api pnpm --filter @memoryline/api db:migrate
 echo "5/5 · Redémarrage…"
 $COMPOSE up -d
 $COMPOSE ps
+
+# Le site redémarré met quelques secondes à répondre : la page de maintenance
+# reste jusque-là (une minute au plus), plutôt qu'une erreur 502.
+for _ in $(seq 1 30); do
+  if $COMPOSE exec -T web node -e "fetch('http://localhost:4321/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))" 2>/dev/null; then
+    break
+  fi
+  sleep 2
+done
 
 echo
 echo "Mise en ligne terminée."

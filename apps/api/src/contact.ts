@@ -347,13 +347,9 @@ function courrierPourLaBoutique(
   /**
    * Le bouton « Répondre à … ».
    *
-   * Un en-tête « Reply-To » aurait été plus élégant : la boutique aurait
-   * cliqué sur « Répondre » et la réponse serait partie à la cliente. Il
-   * faudrait pour cela que mail.ts sache poser cet en-tête, ce qu'il ne fait
-   * pas — il ne connaît que des en-têtes libres, et la boîte d'essai refuse
-   * net « Reply-To » parmi ceux-là (« cannot overwrite header »). Un lien
-   * « mailto: » dans le corps fait le même travail, dans toutes les
-   * messageries, sans toucher au fichier d'envoi.
+   * Depuis le 8/11, mail.ts pose aussi l'en-tête « Reply-To » (repondreA,
+   * plus bas) : « Répondre » part droit à la cliente. Le lien reste, pour
+   * une messagerie qui l'ignorerait.
    */
   const sujetReponse = encodeURIComponent(`Re : ${m.sujet}`);
   const lienReponse = `mailto:${encodeURIComponent(m.email)}?subject=${sujetReponse}`;
@@ -384,6 +380,8 @@ function courrierPourLaBoutique(
 
   return {
     to: destinataire,
+    // « Répondre » part droit à la personne qui a écrit.
+    repondreA: m.email,
     subject: `Message du site — ${m.sujet}`,
     html: gabarit(m.sujet, contenu),
     text: texteSimple,

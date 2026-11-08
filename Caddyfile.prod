@@ -98,6 +98,36 @@
 		defer
 	}
 
+	# --- Page de maintenance pendant une mise en ligne ----------------------
+	#
+	# Demande d'Alexandra (8/11) : « une page de maintenance pendant qu'on
+	# commence une mise en prod, et quand on l'a finie ça remet le site ».
+	# mettre-en-ligne.sh pose le fichier maintenance/ACTIVE en commençant et
+	# le retire en finissant — même si la mise en ligne échoue. Tant qu'il
+	# existe, les visiteuses voient maintenance/index.html (qui se recharge
+	# seule toutes les 30 s), en 503 avec « Retry-After » : Google comprend
+	# que c'est passager et ne retire aucune page de son index.
+	#
+	# Ni l'API (le webhook de Stripe, le retour d'un paiement) ni le
+	# back-office n'y passent : ils continuent de répondre tant que leur
+	# service tourne, et la boutique peut vérifier son BO juste après.
+	@enMaintenance {
+		file {
+			root /srv/maintenance
+			try_files /ACTIVE
+		}
+		not path /api/* /bo /bo/*
+	}
+	handle @enMaintenance {
+		root * /srv/maintenance
+		rewrite * /index.html
+		header Cache-Control "no-store"
+		header Retry-After "120"
+		file_server {
+			status 503
+		}
+	}
+
 	handle_path /api/* {
 		reverse_proxy api:3000
 	}

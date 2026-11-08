@@ -5,6 +5,9 @@
  *   RESEND_API_KEY  : la clé d'API (« re_… »)
  *   MAIL_FROM       : l'expéditeur, ex. « Memory Line <commandes@memoryline.fr> »
  *   MAIL_BCC        : facultatif — une copie de chaque envoi pour la boutique
+ *   MAIL_REPONSE    : facultatif — où arrivent les RÉPONSES des clients (voir
+ *                     ADRESSE_DE_REPONSE) ; à défaut CONTACT_TO, puis
+ *                     MAIL_BOUTIQUE
  *   MAIL_TEST_URL   : facultatif — adresse d'une boîte de test (Mailpit).
  *                     Renseignée, elle prend TOUT : aucun courrier ne part
  *                     vers un vrai destinataire. C'est le mode d'essai.
@@ -37,6 +40,34 @@ const EXPEDITEUR =
   (process.env.MAIL_FROM ?? "").trim() ||
   (BOITE_TEST ? "Memory Line (essai) <boutique@memoryline.test>" : "");
 
+/**
+ * Où arrivent les réponses des clients (en-tête « Reply-To »).
+ *
+ * Question de la boutique (carte Trello du 8/11) : « si les gens répondent
+ * au mail, ça arrive dans quelle boîte ? » Jusque-là, à l'expéditeur
+ * (MAIL_FROM, une adresse « commandes@… » que personne ne relève
+ * forcément). Désormais à la boîte de la boutique : MAIL_REPONSE si elle est
+ * donnée, sinon celle qui reçoit déjà le formulaire de contact (CONTACT_TO),
+ * sinon celle des avis de commande (MAIL_BOUTIQUE). Aucune des trois, ou la
+ * même adresse que l'expéditeur : pas d'en-tête, comme avant.
+ */
+const ADRESSE_DE_REPONSE = (() => {
+  for (const brut of [process.env.MAIL_REPONSE, process.env.CONTACT_TO, process.env.MAIL_BOUTIQUE]) {
+    const v = (brut ?? "").trim();
+    if (!v) continue;
+    // Une liste « a@b.fr, c@d.fr » : la première suffit pour répondre.
+    const adresse = adresseSeule(v.split(",")[0]!);
+    if (adresse.includes("@"))
+      return adresse.toLowerCase() === adresseSeule(EXPEDITEUR).toLowerCase() ? "" : adresse;
+  }
+  return "";
+})();
+
+/** L'adresse de réponse d'un courrier : la sienne, sinon celle de la boutique. */
+function reponseA(courrier: Courrier): string {
+  return (courrier.repondreA ?? "").trim() || ADRESSE_DE_REPONSE;
+}
+
 /** Vrai quand on sait où envoyer : la boîte d'essai, ou Resend. */
 export function estConfigure(): boolean {
   if (BOITE_TEST) return true;
@@ -60,6 +91,9 @@ async function deposerDansLaBoite(courrier: Courrier): Promise<boolean> {
       From: { Email: adresseSeule(EXPEDITEUR), Name: nomSeul(EXPEDITEUR) },
       To: [{ Email: courrier.to }],
       ...(COPIE ? { Bcc: [COPIE] } : {}),
+      // Un champ à part : la boîte d'essai refuse « Reply-To » parmi les
+      // en-têtes libres (« cannot overwrite header »).
+      ...(reponseA(courrier) ? { ReplyTo: [{ Email: reponseA(courrier) }] } : {}),
       Subject: courrier.subject,
       HTML: courrier.html,
       ...(courrier.text ? { Text: courrier.text } : {}),
@@ -127,6 +161,12 @@ export interface Courrier {
   /** Les fichiers joints. Seule la facture s'en sert aujourd'hui. */
   pieces?: PieceJointe[];
   /**
+   * Où partira « Répondre » dans la messagerie du destinataire. Absente :
+   * la boîte de la boutique (ADRESSE_DE_REPONSE). Le message d'un client
+   * transmis à la boutique y met l'adresse du client.
+   */
+  repondreA?: string;
+  /**
    * En-têtes supplémentaires. Sert au désabonnement en un clic de la lettre
    * d'information : Gmail et Outlook affichent alors un bouton
    * « Se désabonner » à côté de l'expéditeur, et s'en servent pour juger si
@@ -163,6 +203,7 @@ export async function envoyer(courrier: Courrier): Promise<boolean> {
         from: EXPEDITEUR,
         to: [courrier.to],
         ...(COPIE ? { bcc: [COPIE] } : {}),
+        ...(reponseA(courrier) ? { reply_to: reponseA(courrier) } : {}),
         subject: courrier.subject,
         html: courrier.html,
         ...(courrier.text ? { text: courrier.text } : {}),
