@@ -120,6 +120,23 @@ export default function ProductConfigurator(
   const tr = (cle: CleUi): string =>
     (props.libelles as Record<string, string>)[cle] ?? String(cle);
   const [open, setOpen] = createSignal(false);
+  /**
+   * La fenêtre a-t-elle déjà été ouverte sur cette page ? Une fois montée, la
+   * composition n'est plus démontée à la fermeture, seulement CACHÉE.
+   *
+   * Demande d'Alexandra (8/11) : un clic à côté de la fenêtre la fermait, et
+   * tout ce qui avait été composé était perdu. Désormais :
+   *   - un clic à côté ne ferme plus rien (voir l'overlay plus bas) ;
+   *   - la croix, « Retour » et Échap ferment, mais l'affiche en cours reste
+   *     là : la rouvrir sur la même page la rend telle quelle, à la même
+   *     étape ;
+   *   - partir composer une AUTRE affiche (une autre page) jette ce
+   *     brouillon tout seul : il ne vit que dans cette page, rien n'est rangé
+   *     dans le navigateur. Après « Ajouter au panier », la page part vers le
+   *     panier : jeté aussi. Revenir par le bouton « précédent » rouvre la
+   *     page à neuf (voir `pageshow`).
+   */
+  const [monte, setMonte] = createSignal(false);
   const [editItemId, setEditItemId] = createSignal<number | null>(null);
 
   /**
@@ -162,6 +179,7 @@ export default function ProductConfigurator(
     document.body.style.overflow = lock ? "hidden" : "";
   }
   function openModal() {
+    setMonte(true);
     setOpen(true);
     lockScroll(true);
   }
@@ -212,8 +230,22 @@ export default function ProductConfigurator(
   /** Demande le module de composition à l'avance (une seule fois : import() se souvient). */
   const prechargerConfigurateur = () => void chargerConfigurateur().catch(() => {});
 
+  /**
+   * Une page resservie par le bouton « précédent » (cache du navigateur)
+   * revient avec la composition d'avant, cachée — celle qu'on vient peut-être
+   * d'ajouter au panier. On repart à neuf, comme une nouvelle visite.
+   */
+  function surRetour(e: PageTransitionEvent) {
+    if (!e.persisted) return;
+    setOpen(false);
+    setMonte(false);
+    setVideoOuverte(false);
+    lockScroll(false);
+  }
+
   onMount(async () => {
     window.addEventListener("keydown", onKey);
+    window.addEventListener("pageshow", surRetour);
     // La page au repos, le module arrive sans gêner rien d'autre ; sans
     // requestIdleCallback (Safari), deux secondes après le montage.
     const auRepos = window.requestIdleCallback ?? ((f: () => void) => window.setTimeout(f, 2000));
@@ -240,6 +272,7 @@ export default function ProductConfigurator(
 
   onCleanup(() => {
     window.removeEventListener("keydown", onKey);
+    window.removeEventListener("pageshow", surRetour);
     lockScroll(false);
   });
 
@@ -314,15 +347,17 @@ export default function ProductConfigurator(
         {tr("produit.aide")}
       </p>
 
-      <Show when={open()}>
+      <Show when={monte()}>
+        {/* Cachée et non démontée quand elle est fermée (voir `monte`). Pas de
+            fermeture au clic à côté : un doigt qui glisse hors de la fenêtre
+            sur une tablette la refermait en pleine composition. */}
         <div
           class="ml-modal-overlay"
           role="dialog"
           aria-modal="true"
           aria-label={tr("produit.personnaliser")}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closeModal();
-          }}
+          aria-hidden={open() ? undefined : "true"}
+          style={open() ? undefined : { display: "none" }}
         >
           <div class="ml-modal-panel">
             <header class="ml-modal-head">
