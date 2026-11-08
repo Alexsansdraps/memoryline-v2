@@ -357,15 +357,16 @@ export default function ProductConfigurator(
                   <span>{tr("cfg.video.bulle")}</span>
                   {/* Dessiné, et non le caractère ▶ : iOS l'affiche en émoji
                       bleu, et la boutique regarde sur tablette. */}
-                  <svg
-                    class="ml-modal-video-icone"
-                    viewBox="0 0 10 12"
-                    width="10"
-                    height="12"
-                    aria-hidden="true"
-                  >
-                    <path d="M0 0 10 6 0 12z" fill="currentColor" />
-                  </svg>
+                  <span class="ml-modal-video-lecture" aria-hidden="true">
+                    <svg
+                      class="ml-modal-video-icone"
+                      viewBox="0 0 10 12"
+                      width="7"
+                      height="8.4"
+                    >
+                      <path d="M0 0 10 6 0 12z" fill="currentColor" />
+                    </svg>
+                  </span>
                 </button>
               </Show>
               <button
