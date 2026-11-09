@@ -859,8 +859,12 @@ function clarteDe(hex: string): number {
  * (ou blancs, ou noirs), dont la teinte ne veut rien dire : leur écart de
  * clarté, sur la même échelle. Un gris et une couleur franche : en dernier
  * recours, après toutes les autres.
+ *
+ * Exportée pour les dessins en pixels : une famille cochée « C'est une
+ * ombre » suit la famille la plus proche selon le même écart (cf.
+ * familleASuivre).
  */
-function ecartDeTeinte(a: string, b: string): number {
+export function ecartDeTeinte(a: string, b: string): number {
   const x = hexVersRgb(a);
   const y = hexVersRgb(b);
   if (!x || !y) return Infinity;

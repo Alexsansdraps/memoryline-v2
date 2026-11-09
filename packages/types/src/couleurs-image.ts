@@ -31,6 +31,7 @@
  * pixels ; le back-office importe ce module tel quel dans le navigateur.
  */
 import {
+  ecartDeTeinte,
   hexVersRgb,
   memeCouleur,
   nuanceSuivanteRgb,
@@ -245,6 +246,116 @@ export function teintesDeLaFamille(f: FamilleCouleur): string[] {
 /** La part du dessin qu'occupe une famille, en pourcentage arrondi. */
 export function partEnPourcent(f: FamilleCouleur): number {
   return Math.round(f.part * 100);
+}
+
+/*
+ * « C'EST UNE OMBRE » SUR UNE PIÈCE EN PIXELS (Margaux, 9 novembre 2026).
+ * La lecture d'une image range ses teintes en familles ; une ombre trop
+ * sombre pour la famille de sa couleur en devient une à part. Sur la veste
+ * 517 passée au rouge, les ombres restaient beiges : le client avait deux
+ * rangées de pastilles, la veste et son ombre. La case la rattache à la
+ * famille qu'elle doit suivre — ses teintes rejoignent celles de cette
+ * famille, qui gardent leur écart à la référence (cf. planDeRecoloration) —,
+ * et décocher une teinte rattachée en refait une partie à part. Rien d'autre
+ * ne change : l'aperçu, le fichier d'impression et le cache des images
+ * recolorées savent déjà ce que sont des teintes rattachées.
+ */
+
+/**
+ * La famille qu'une famille cochée « C'est une ombre » suivra : la plus
+ * proche en teinte (cf. ecartDeTeinte : l'angle pour deux couleurs franches,
+ * l'écart de clarté pour deux gris), la plus étendue à égalité. Jamais
+ * elle-même ; `undefined` s'il n'y en a pas d'autre.
+ */
+export function familleASuivre(
+  familles: readonly FamilleCouleur[],
+  cle: string,
+): FamilleCouleur | undefined {
+  const ombre = familles.find((f) => f.cle === cle);
+  if (!ombre) return undefined;
+  let suivie: FamilleCouleur | undefined;
+  let ecart = Infinity;
+  for (const f of familles) {
+    if (f.cle === cle) continue;
+    const e = ecartDeTeinte(ombre.reference, f.reference);
+    if (e < ecart || (e === ecart && suivie && f.part > suivie.part)) {
+      suivie = f;
+      ecart = e;
+    }
+  }
+  return suivie;
+}
+
+/**
+ * Rattache une famille à celle qu'elle doit suivre (cf. familleASuivre) :
+ * sa référence et ses teintes deviennent des teintes de l'autre, sa part s'y
+ * ajoute, et elle disparaît de la liste — le client n'a plus sa rangée.
+ * `vers` impose la famille suivie (une relecture du dessin remet une ombre
+ * là où la boutique l'avait rangée). `null` si la famille n'existe pas ou
+ * qu'il n'y a rien à suivre.
+ */
+export function rattacherFamille(
+  familles: readonly FamilleCouleur[],
+  cle: string,
+  vers?: string,
+): { familles: FamilleCouleur[]; suivie: FamilleCouleur } | null {
+  const ombre = familles.find((f) => f.cle === cle);
+  const cible =
+    vers === undefined
+      ? familleASuivre(familles, cle)
+      : familles.find((f) => f.cle === vers && f.cle !== cle);
+  if (!ombre || !cible) return null;
+  const teintes = [...(cible.teintes ?? [])];
+  for (const t of teintesDeLaFamille(ombre))
+    if (!memeCouleur(t, cible.reference) && !teintes.some((x) => memeCouleur(x, t))) teintes.push(t);
+  const suivie: FamilleCouleur = {
+    ...cible,
+    part: Math.min(1, cible.part + ombre.part),
+    ...(teintes.length ? { teintes } : {}),
+  };
+  return {
+    familles: familles.filter((f) => f.cle !== cle).map((f) => (f.cle === cible.cle ? suivie : f)),
+    suivie,
+  };
+}
+
+/**
+ * Le contraire : une teinte rattachée à une famille en sort et redevient une
+ * famille à part, juste après elle, avec `part` (mesurée par l'appelant sur
+ * la carte des teintes) retirée à son ancienne famille.
+ *
+ * Sa clé est neuve, au-delà de toutes celles de la liste, plutôt que la
+ * première libre : la clé d'une famille rattachée plus tôt a pu rester dans
+ * un panier, et sa couleur tomberait sur cette autre teinte.
+ * `null` si la teinte n'est pas rattachée à cette famille.
+ */
+export function separerTeinte(
+  familles: readonly FamilleCouleur[],
+  cle: string,
+  teinte: string,
+  part = 0,
+): { familles: FamilleCouleur[]; separee: FamilleCouleur } | null {
+  const i = familles.findIndex((f) => f.cle === cle);
+  const origine = familles[i];
+  if (!origine || !(origine.teintes ?? []).some((t) => memeCouleur(t, teinte))) return null;
+  const reste = (origine.teintes ?? []).filter((t) => !memeCouleur(t, teinte));
+  const partPropre = Math.min(origine.part, Math.max(0, Number.isFinite(part) ? part : 0));
+  const { teintes: _anciennes, ...sansTeintes } = origine;
+  const allegee: FamilleCouleur = {
+    ...sansTeintes,
+    part: origine.part - partPropre,
+    ...(reste.length ? { teintes: reste } : {}),
+  };
+  let rang = 0;
+  for (const f of familles) {
+    const n = Number(f.cle.slice(PREFIXE_FAMILLE.length));
+    if (Number.isInteger(n) && n >= rang) rang = n + 1;
+  }
+  const separee: FamilleCouleur = { cle: cleFamille(rang), reference: teinte, part: partPropre };
+  const out = [...familles];
+  out[i] = allegee;
+  out.splice(i + 1, 0, separee);
+  return { familles: out, separee };
 }
 
 /**

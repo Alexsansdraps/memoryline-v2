@@ -316,10 +316,13 @@ const gardes =
     groupesProposesDeLaPiece,
     hexVersRgb,
     memeCouleur,
+    memeFamilleDeTeinte,
     ombreDAutreTeinte,
     partEnPourcent,
+    rattacherFamille,
     reglerOmbre,
     rgbVersHex,
+    separerTeinte,
     teintesDeLaFamille,
     versTsl,
     zoneLaPlusEtendue,
@@ -481,7 +484,7 @@ const gardes =
     nouvelles: FamilleCouleur[],
   ): FamilleCouleur[] {
     const prises = new Set<string>();
-    return nouvelles.map((f) => {
+    let reprises = nouvelles.map((f) => {
       const ancienne = anciennes.find(
         (a) => !prises.has(a.cle) && memeCouleur(a.reference, f.reference),
       );
@@ -499,6 +502,16 @@ const gardes =
         ...(ancienne.couleurs?.length ? { couleurs: ancienne.couleurs } : {}),
       };
     });
+    // Une ombre que la boutique avait cochée le reste : relue comme une
+    // famille à part, elle retourne sous la partie qu'elle suivait.
+    for (const a of anciennes)
+      for (const t of a.teintes ?? []) {
+        const ombre = reprises.find((f) => memeCouleur(f.reference, t));
+        if (!ombre || ombre.cle === a.cle) continue;
+        const r = rattacherFamille(reprises, ombre.cle, a.cle);
+        if (r) reprises = r.familles;
+      }
+    return reprises;
   }
 
   /* ---------------------------------------------------------------------- */
@@ -556,6 +569,31 @@ const gardes =
    * plus proche, pour qu'un arrondi du décodage ne fasse pas changer une
    * teinte de famille.
    */
+  /** Les niveaux de gris de la carte des teintes : 20, 45, 70… (cf. couleurs-image-fichier.ts). */
+  const NIVEAU_BASE = 20;
+  const NIVEAU_PAS = 25;
+
+  /**
+   * La part du dessin (0 à 1) peinte par UNE teinte, comptée sur la carte :
+   * une teinte rattachée qui redevient une partie emporte sa part. `null` si
+   * la carte manque ou ne la connaît pas.
+   */
+  async function partDeLaTeinte(couleursImage: CouleursImage, teinte: string): Promise<number | null> {
+    if (!couleursImage.carte || !couleursImage.carteTeintes?.length) return null;
+    const rang = couleursImage.carteTeintes.findIndex((t) => memeCouleur(t, teinte));
+    if (rang < 0) return null;
+    const source = await carteDecodee(couleursImage.carte);
+    if (!source) return null;
+    let visibles = 0;
+    let siens = 0;
+    for (let i = 0; i < source.data.length; i += 4) {
+      if (source.data[i + 3]! < 128) continue; // hors dessin
+      visibles++;
+      if (Math.round((source.data[i]! - NIVEAU_BASE) / NIVEAU_PAS) === rang) siens++;
+    }
+    return visibles ? siens / visibles : null;
+  }
+
   async function vignetteDeFamille(
     couleursImage: CouleursImage,
     teintes: string[],
@@ -564,8 +602,6 @@ const gardes =
     if (!couleursImage.carte || !couleursImage.carteTeintes?.length) return null;
     const source = await carteDecodee(couleursImage.carte);
     if (!source) return null;
-    const NIVEAU_BASE = 20;
-    const NIVEAU_PAS = 25;
     const voulus = new Set(
       couleursImage.carteTeintes
         .map((t, i) => (teintes.some((x) => memeCouleur(x, t)) ? i : -1))
@@ -1701,24 +1737,61 @@ const gardes =
     function dessinerFamilles(couleursImage: CouleursImage) {
       const familles = couleursImage.familles;
       const piece = etat.mode === "piece";
+      // La plus étendue : jamais une ombre, sa ligne n'a pas de case.
+      const principale = familles.reduce<FamilleCouleur | undefined>(
+        (p, f) => (!p || f.part > p.part ? f : p),
+        undefined,
+      );
       if (piece) {
-        resumerPiece(familles.map((f, i) => ({ nom: f.nom, numero: i + 1 })), 0);
-        zoneRegle.append(phraseDeLaPiece(familles.filter((f) => !f.nom).length, familles.length, false));
-        // Pas de case « C'est une ombre » ici, et la boutique la cherchait
-        // (carte Trello du 26/10, « même si je relis le dessin ») : ses
-        // nouveaux vêtements « SVG » n'étaient qu'une image collée dans un
-        // SVG, c'est-à-dire un dessin en pixels. Une
-        // famille de teintes y prend déjà ses ombres et ses reflets, qui en
-        // suivent la couleur ; rien à cocher.
+        const ombres = familles.reduce((n, f) => n + (f.teintes?.length ?? 0), 0);
+        resumerPiece(familles.map((f, i) => ({ nom: f.nom, numero: i + 1 })), ombres);
+        zoneRegle.append(
+          phraseDeLaPiece(familles.filter((f) => !f.nom).length, familles.length, familles.length + ombres > 1),
+        );
+        // La case « C'est une ombre » vaut aussi pour une image en pixels
+        // (Margaux, 9/11) : jusque-là, l'écran disait « pas de case, les
+        // ombres suivent déjà », et sur ses vestes 517, 520, 521 et 523 une
+        // ombre trop sombre formait une partie à part, restée beige sous une
+        // veste passée au rouge. Cf. rattacherFamille.
         zoneRegle.append(
           el(
             "p",
             "mb-1.5 rounded bg-sky-50 px-2 py-1 text-xs text-sky-900",
-            "Ce dessin est une image en pixels (un PNG, ou une image glissée dans un fichier SVG), pas un dessin fait de tracés : il n'y a donc pas de case « C'est une ombre ». Les ombres et les reflets de chaque partie sont déjà comptés dans sa couleur et la suivent. Pour régler les ombres une à une, déposez le dessin exporté en vrai vectoriel (SVG fait de tracés), puis « Relire le dessin ».",
+            "Ce dessin est une image en pixels (un PNG, ou une image glissée dans un fichier SVG) : ses couleurs sont relevées dans l'image, chacune avec ses nuances les plus proches. Une ombre restée à part se coche « C'est une ombre » : elle suit alors la partie de la teinte la plus proche.",
           ),
         );
       } else
         resumer(familles.filter((f) => f.proposee).map((f) => nomDeFamille(f, familles.indexOf(f))));
+
+      /** Pièce : la famille devient une ombre de la plus proche (cf. rattacherFamille). */
+      const enOmbre = (f: FamilleCouleur) => {
+        const r = rattacherFamille(familles, f.cle);
+        if (!r) return;
+        familles.splice(0, familles.length, ...r.familles);
+        dessiner();
+        const i = familles.indexOf(r.suivie);
+        void enregistrerTout([
+          "Ombre de ",
+          puce(r.suivie.defaut ?? r.suivie.reference),
+          nomDeFamille(r.suivie, i),
+          " : elle en suit la couleur, le client ne la choisit plus à part.",
+        ]);
+      };
+
+      /** Pièce : une teinte rattachée redevient une partie à part (cf. separerTeinte). */
+      const enPartie = async (f: FamilleCouleur, teinte: string) => {
+        const part = await partDeLaTeinte(couleursImage, teinte);
+        // La page a pu relire le dessin pendant la mesure : on ne touche
+        // plus à une liste qui n'est plus la sienne.
+        if (etat.couleursImage !== couleursImage) return;
+        const r = separerTeinte(familles, f.cle, teinte, part ?? 0);
+        if (!r) return;
+        familles.splice(0, familles.length, ...r.familles);
+        dessiner();
+        void enregistrerTout(
+          `Cette couleur est maintenant la partie ${familles.indexOf(r.separee) + 1} : le client la choisira séparément.`,
+        );
+      };
 
       familles.forEach((f, i) => {
         const couleur = f.defaut ?? f.reference;
@@ -1787,8 +1860,55 @@ const gardes =
                     reglerCouleursDeLaPartie(f, designer(f.nom, i + 1), couleurs),
                 }
               : undefined,
+            // Pièce : « C'est une ombre », sauf sur la plus étendue.
+            ombre:
+              piece && f !== principale
+                ? { oui: false, onChange: (oui) => (oui ? enOmbre(f) : undefined) }
+                : undefined,
           }),
         );
+
+        // Pièce : ses ombres et reflets, une ligne chacun en retrait dessous,
+        // la case cochée — la décocher en refait une partie à part.
+        if (piece)
+          for (const t of f.teintes ?? []) {
+            const vignetteOmbre = el(
+              "img",
+              "h-16 w-16 shrink-0 rounded border border-bo-border bg-white object-contain",
+            );
+            vignetteOmbre.alt = "Où est cette ombre sur le dessin";
+            vignetteOmbre.style.visibility = "hidden";
+            void vignetteDeFamille(couleursImage, [t], t).then((src) => {
+              if (!src) return;
+              vignetteOmbre.src = src;
+              vignetteOmbre.style.visibility = "visible";
+            });
+            liste.append(
+              ligne({
+                cle: `${f.cle}-${t.slice(1)}`,
+                couleur: t,
+                vignette: vignetteOmbre,
+                libelle: `Ombre de ${nomDeFamille(f, i)}`,
+                nom: undefined,
+                exemple: "",
+                onNom: () => {},
+                retrait: true,
+                ombre: {
+                  oui: true,
+                  suit: {
+                    nom: nomDeFamille(f, i),
+                    couleur,
+                    // D'une autre teinte : c'est la boutique qui l'y a
+                    // rattachée, et elle doit savoir qu'un clic la libère.
+                    autreTeinte: memeFamilleDeTeinte(t, f.reference) ? null : "reglage",
+                    reflet: clarte(t) > clarte(f.reference),
+                  },
+                  onChange: (oui) => (oui ? undefined : void enPartie(f, t)),
+                },
+                notes: [],
+              }),
+            );
+          }
 
         const rangee = el("div", "flex flex-wrap items-center gap-x-4 gap-y-1");
         rangee.append(
@@ -1798,7 +1918,9 @@ const gardes =
             void enregistrerTout("Couleur de départ changée.");
           }),
         );
-        if (f.teintes?.length)
+        // Un personnage garde ses puces « séparer » dans les réglages
+        // avancés ; une pièce a ses cases « C'est une ombre » plus haut.
+        if (!piece && f.teintes?.length)
           rangee.append(
             teintesReunies(
               f.teintes.map((t) => ({
