@@ -1,10 +1,10 @@
-# À faire — état au 6 novembre (écrit pour une reprise dans un autre contexte)
+# À faire — état au 9 novembre (écrit pour une reprise dans un autre contexte)
 
 Fichier de reprise : à lire en premier, à supprimer quand tout est fait. `main` fait foi ; la prod (VPS) est toujours une mise en ligne de `main`.
 
-## 1. Ce qui est en prod (VPS, 27/10 au soir, commit « Module : l'affiche ne déborde plus de sa colonne » de `main`)
+## 1. Ce qui est en prod (VPS, 8/11 au soir, commit `b8649c6` de `main`)
 
-**Reprise : tout ce qui est dans `main` jusqu'au commit « Module : l'affiche ne déborde plus de sa colonne » est en ligne sur le VPS**, migrations jusqu'à **0073** (personnages masquables). Mis en ligne depuis le PC du bureau ; après `86fd8e1` : santé 200, plus aucun doublon de numéro dans la bibliothèque publique, 170 pièces mesurées, module essayé en ligne (Femme 6 habillée dans la galerie, vignettes des coupes visibles, Femme 4 avec sa propre tenue).
+**Reprise : tout ce qui est dans `main` jusqu'à `b8649c6` (« Personnalisation : plus de fermeture au clic à côté… ») est en ligne sur le VPS**, migrations jusqu'à **0073** (aucune nouvelle depuis le 27/10). Vérifié le 9/11 depuis le PC du bureau : le module en ligne contient le code de `b8649c6`, santé 200 ; après le `git pull`, 241 tests API et 45 tests BO passent, types sans erreur (hors les 3 anciennes de StandSalon). Mis en ligne depuis le PC du bureau ; après `86fd8e1` : santé 200, plus aucun doublon de numéro dans la bibliothèque publique, 170 pièces mesurées, module essayé en ligne (Femme 6 habillée dans la galerie, vignettes des coupes visibles, Femme 4 avec sa propre tenue).
 
 **Mis en ligne le 27/10 après-midi — le T-shirt de Femme 6 n'était pas au même endroit sur le site qu'au BO** (capture d'Alexandra) : le calage se règle au BO dans le cadre 500 × 1000 du personnage, mais `appliquerCalage` (site ET impression) l'écrivait dans le repère du fichier comme si chaque pièce faisait 500 × 1000. Six pièces font 1024 × 1536 (T-shirt, jean et cheveux de Femme 6, coupes 28, 29, 30) : leur calage tombait ailleurs (T-shirt 1,5 % plus bas et plus à droite, coupes très loin de la tête sur Femme 2 et Femme 4). Corrigé dans `packages/types/src/svg-color.ts` (`repereDuFichier` lit viewBox et preserveAspectRatio, `transformCalage` convertit) ; une pièce en 500 × 1000 garde exactement la même transformation qu'avant. Tests : `apps/api/tests/calage-pieces.test.ts`. Vérifié en local : le T-shirt tombe au même endroit qu'au BO.
 
