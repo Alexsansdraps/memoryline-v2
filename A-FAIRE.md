@@ -104,7 +104,12 @@ Détails utiles des derniers travaux :
 - Les traductions des fiches, des catégories et des cadres : données à saisir au BO (bouton « Proposer les traductions manquantes »).
 - Carte Trello « Bordereau La Poste » : en attente côté Alexandra.
 - **Rayon « Accessoires »** (question posée le 23/10) : sur le nouveau site, il montre 25 affiches de villes sous un texte qui parle de porte-clés et de chaussettes (sur Shopify, la même collection est vide pour les clientes). Le cacher en attendant de vrais accessoires, ou lui donner un texte qui décrit ce qu'il contient ?
-- **Conditions de vente** : écrire le délai de préparation, « 2 à 3 jours ouvrés » comme l'ancienne boutique (c'est ce que les données de livraison annoncent à Google), et vérifier le SIRET, qui est 877 919 852 **00021** dans les CGV en ligne alors que Margaux a donné **00047**. Il reste aussi 4 « À COMPLÉTER », dont le médiateur de la consommation, obligatoire.
+- **Conditions de vente et pages légales** (relu le 9/11 avec l'ancien site et le registre SIRENE) :
+  - **SIRET : c'est 877 919 852 00047.** Le registre public (recherche-entreprises.api.gouv.fr) donne ce siège actif depuis le 01/08/2022 ; 00021 est un ancien établissement fermé, que l'ancien site Shopify affichait encore. À corriger dans BO › Pages (mentions légales, CGV, confidentialité) et à vérifier dans BO › Facturation.
+  - **Forme juridique : entrepreneur individuel** (registre, code 1000), TVA non applicable (art. 293 B), comme l'ancien site.
+  - **Délai de préparation : « 2 à 3 jours ouvrés »**, d'après la politique d'expédition de l'ancien site (« Impression à la demande : 2 à 3 jours ouvrés »). À écrire dans l'article 6 des CGV.
+  - **Reste à obtenir de Margaux** (ni l'ancien site ni le registre ne les donnent ; son adresse est « non diffusible » au registre) : l'adresse postale à publier, un téléphone, son nom complet (entrepreneur et directeur de la publication), le numéro d'immatriculation (RCS ou répertoire des métiers) s'il y en a un, et le médiateur de la consommation (obligatoire).
+  - L'adresse publique de l'ancien site est memoryline.contact@gmail.com, reprise telle quelle dans les pages légales.
 
 ## 5. Bon à savoir
 
