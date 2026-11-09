@@ -467,6 +467,18 @@ html {
   flex: 0 0 auto;
 }
 
+/* Le titre et la pilule « Tuto », loin de la croix. Côte à côte tant qu'ils
+   tiennent sur une ligne ; sinon (téléphone) la pilule passe sous le titre,
+   qui tient alors sur une seule ligne : à côté de la croix, elle se touchait
+   en visant l'autre (9/11). */
+.ml-modal-titre {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  min-width: 0;
+}
+
 .ml-modal-close {
   appearance: none;
   border: none;
@@ -479,6 +491,9 @@ html {
   line-height: 1;
   cursor: pointer;
   flex: 0 0 auto;
+  /* Toujours seule dans le coin de droite : la place libre de l'en-tête
+     passe à sa gauche, et la pilule « Tuto » reste près du titre. */
+  margin-left: auto;
 }
 .ml-modal-close:hover {
   background: #e2d9c8;
@@ -613,13 +628,16 @@ html {
  * - `.ml-video-overlay` vit AU-DESSUS de tout (z-index 110 > 100 de
  *   `.ml-modal-overlay`). C'est la seule surface qui porte un lecteur.
  * ------------------------------------------------------------------------ */
-/* Une pilule claire, à côté de la croix : un rond rouge avec le triangle de
-   lecture, puis « Tuto ». D'abord un rond rouge « TUTO ▶ » d'après le dessin
-   de la boutique (22/10), jugé « pas assez joli » ; ce style-ci a été choisi
-   le 8/11 parmi cinq. Même hauteur que la croix (32 px) : l'en-tête ne
-   bouge pas. Un halo s'en échappe deux fois à l'ouverture de la fenêtre,
-   pour qu'on le remarque, puis se tait ; rien de tout ça pour qui a demandé
-   moins d'animations. */
+/* Une pilule claire, juste après le titre : un rond rouge avec le triangle
+   de lecture, puis « Tuto ». D'abord un rond rouge « TUTO ▶ » d'après le
+   dessin de la boutique (22/10), jugé « pas assez joli » ; ce style-ci a été
+   choisi le 8/11 parmi cinq. Elle était collée à la croix (12 px) : on
+   appuyait sur l'une en visant l'autre, et fermer la fenêtre au lieu
+   d'ouvrir la vidéo (9/11). Près du titre, toute la largeur libre les
+   sépare. Même hauteur que la croix (32 px) : l'en-tête ne bouge pas. Un
+   halo s'en échappe deux fois à l'ouverture de la fenêtre, pour qu'on le
+   remarque, puis se tait ; rien de tout ça pour qui a demandé moins
+   d'animations. */
 .ml-modal-video {
   appearance: none;
   position: relative;
@@ -627,7 +645,6 @@ html {
   align-items: center;
   gap: 6px;
   height: 32px;
-  margin-left: auto;
   padding: 0 12px 0 4px;
   border: 1.5px solid var(--color-terracotta);
   border-radius: 9999px;

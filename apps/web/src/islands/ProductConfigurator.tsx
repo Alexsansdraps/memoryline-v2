@@ -361,6 +361,10 @@ export default function ProductConfigurator(
         >
           <div class="ml-modal-panel">
             <header class="ml-modal-head">
+              {/* Le titre et la pilule « Tuto » ensemble, loin de la croix :
+                  côte à côte quand ils tiennent sur une ligne, la pilule sous
+                  le titre sur un téléphone (cf. .ml-modal-titre). */}
+              <div class="ml-modal-titre">
               <h2 class="text-xl sm:text-2xl">
                 {tr("cfg.titre")}
               </h2>
@@ -405,6 +409,7 @@ export default function ProductConfigurator(
                   <span>{tr("cfg.video.bulle")}</span>
                 </button>
               </Show>
+              </div>
               <button
                 type="button"
                 class="ml-modal-close"
