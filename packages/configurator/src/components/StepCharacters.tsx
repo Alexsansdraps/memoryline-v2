@@ -16,6 +16,13 @@ import type {
 } from "../store";
 
 /**
+ * Au doigt, le temps qu'il faut tenir une ligne pour la prendre. Plus court,
+ * un défilement qui hésite la prendrait ; plus long, on croit que rien ne se
+ * passe.
+ */
+const APPUI_TENU_MS = 300;
+
+/**
  * Étape 2 : gestion des personnages.
  * - liste des personnages ajoutés (Modifier / supprimer / réordonner),
  *   bouton « + Ajouter un personnage ».
@@ -109,6 +116,56 @@ export function StepCharacters(props: {
     window.addEventListener("pointerup", lacher);
     window.addEventListener("pointercancel", lacher);
   }
+
+  /**
+   * Toute la ligne se prend, et plus seulement les ⠿ (carte Trello du 8/11 :
+   * « pouvoir glisser les cartes plus facilement »). Ses boutons gardent leur
+   * clic.
+   *
+   * À la souris, la ligne part dès qu'on appuie. Au doigt, il faut la tenir un
+   * instant : si toute la ligne prenait le doigt d'emblée, on ne pourrait plus
+   * faire défiler une longue liste sur la tablette du stand. Un balayage
+   * rapide défile donc comme avant, un appui tenu prend la ligne. Les ⠿, eux,
+   * prennent tout de suite, même au doigt.
+   */
+  function prendre(e: PointerEvent, rang: number) {
+    if ((e.target as Element | null)?.closest("button")) return;
+    if (e.pointerType !== "touch") {
+      if (e.button !== 0) return;
+      attraper(e, rang);
+      return;
+    }
+    const depart = { x: e.clientX, y: e.clientY };
+    const annuler = () => {
+      clearTimeout(minuterie);
+      window.removeEventListener("pointermove", glisse);
+      window.removeEventListener("pointerup", annuler);
+      window.removeEventListener("pointercancel", annuler);
+    };
+    // Le doigt bouge avant la fin de l'appui : c'est un défilement.
+    const glisse = (ev: PointerEvent) => {
+      if (Math.hypot(ev.clientX - depart.x, ev.clientY - depart.y) > 8) annuler();
+    };
+    const minuterie = setTimeout(() => {
+      annuler();
+      navigator.vibrate?.(15);
+      attraper(e, rang);
+    }, APPUI_TENU_MS);
+    window.addEventListener("pointermove", glisse);
+    window.addEventListener("pointerup", annuler);
+    window.addEventListener("pointercancel", annuler);
+  }
+
+  /**
+   * Une fois la ligne prise au doigt, la page ne défile plus sous lui. Branché
+   * sur la liste dès le départ, et non au moment de la prise : le navigateur
+   * ne laisse bloquer le défilement qu'aux écouteurs présents quand le doigt
+   * se pose.
+   */
+  const bloquerLeDefilement = (ev: TouchEvent) => {
+    if (rangSaisi() !== null) ev.preventDefault();
+  };
+
   const editingChar = () => {
     const i = editing();
     return i === null ? undefined : props.state.characters[i];
@@ -130,7 +187,13 @@ export function StepCharacters(props: {
 
             {/* Liste des personnages ajoutés + z-order */}
             <Show when={props.state.characters.length > 0}>
-              <div ref={liste} style={{ "margin-bottom": "14px" }}>
+              <div
+                ref={(el) => {
+                  liste = el;
+                  el.addEventListener("touchmove", bloquerLeDefilement, { passive: false });
+                }}
+                style={{ "margin-bottom": "14px" }}
+              >
                 <For each={props.state.characters}>
                   {(c, i) => {
                     const base = props.characterById(c.characterId);
@@ -140,6 +203,8 @@ export function StepCharacters(props: {
                         // Une ligne de la liste : un item que le bord bas
                         // peut couper en deux.
                         data-item
+                        title={m().reordonnerAide}
+                        onPointerDown={(e) => prendre(e, i())}
                         style={{
                           display: "flex",
                           "align-items": "center",
@@ -149,6 +214,12 @@ export function StepCharacters(props: {
                           "border-radius": "6px",
                           "margin-bottom": "6px",
                           background: "#fff",
+                          cursor: rangSaisi() === i() ? "grabbing" : "grab",
+                          // Un appui tenu ne sélectionne pas le nom et
+                          // n'ouvre pas le menu du téléphone.
+                          "user-select": "none",
+                          "-webkit-user-select": "none",
+                          "-webkit-touch-callout": "none",
                           // La ligne saisie s'allège : sans ce repère, on ne
                           // sait plus laquelle on tient dès qu'il y en a trois.
                           opacity: rangSaisi() === i() ? "0.55" : "1",
@@ -163,7 +234,12 @@ export function StepCharacters(props: {
                           tabindex="0"
                           aria-label={m().reordonnerAide}
                           title={m().reordonnerAide}
-                          onPointerDown={(e) => attraper(e, i())}
+                          onPointerDown={(e) => {
+                            // Les ⠿ prennent tout de suite, même au doigt ;
+                            // la ligne ne doit pas relancer sa propre prise.
+                            e.stopPropagation();
+                            attraper(e, i());
+                          }}
                           style={{
                             cursor: rangSaisi() === i() ? "grabbing" : "grab",
                             color: "#9ca3af",

@@ -55,6 +55,8 @@ Avant (b2cb4ea) : migrations **0067 à 0070** passées (base sauvegardée : `sau
 
 ## 2. En cours
 
+**9/11, en ligne — carte « Changement de place des personnages : pouvoir glisser les cartes plus facilement, pas seulement là où il y a les 6 petits points »** : à l'étape 2, toute la ligne d'un personnage se prend (`StepCharacters.tsx`, `prendre`), ses boutons (Modifier, copier, ✕) gardent leur clic. À la souris, elle part dès qu'on appuie ; au doigt, après un appui tenu de 0,3 s (`APPUI_TENU_MS`, petite vibration), pour qu'un balayage rapide fasse toujours défiler la liste sur la tablette du stand ; les ⠿ prennent tout de suite, même au doigt. Essayé en local (Chrome sans écran) : souris par le nom, balayage au doigt (rien ne bouge), appui tenu au doigt (la ligne suit), « Modifier » ouvre toujours l'éditeur. Carte « pouvoir aussi supprimer, pas seulement archiver » : faite le 8/11 (`c8f2413`).
+
 **9/11, en ligne — la pilule « Tuto » quitte la croix** (Alexandra : « la croix pour fermer est trop proche du bouton tuto ») : elles étaient à 12 px l'une de l'autre, à droite de l'en-tête de la fenêtre de personnalisation. La pilule suit maintenant le titre (`.ml-modal-titre` dans `ProductConfigurator.tsx`, `global.css`) et la croix reste seule à droite (`margin-left: auto`) : 615 px d'écart à 1280 px, 343 px à 768 ; sur un téléphone (320 à 390 px), la pilule passe sous le titre, à 170–240 px de la croix (en-tête 99 px au lieu de 89). La fenêtre de l'affiche IA (même en-tête, sans pilule) ne change pas. Essayé en local : la pilule ouvre toujours la vidéo.
 
 **8/11, en ligne (`5b9a2d4` puis `c8f2413`, `9d3d1e1`, `e21bd5e`, `8ff1f1f`)** :
