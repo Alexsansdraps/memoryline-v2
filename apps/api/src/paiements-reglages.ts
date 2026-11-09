@@ -89,7 +89,15 @@ import {
   type VerificationConnue,
 } from "./paiements-cles.js";
 import { verifierPaypal, verifierStripe, type VerdictCles } from "./payments.js";
-import { courrierModePaiement, envoyer as envoyerMail } from "./mail.js";
+import {
+  courrierModePaiement,
+  courriersReelsPrets,
+  envoyer as envoyerMail,
+  estConfigure as courriersConfigures,
+  estEnEssai as courriersEnEssai,
+  noterModeBoutique,
+  type ModeBoutique,
+} from "./mail.js";
 // Import croisé : sendcloud-colis.ts lit `etiquettesReelles` ici. Chacun ne
 // s'en sert qu'à l'intérieur d'une fonction, jamais au chargement du module :
 // le cycle ne se referme pas pendant l'évaluation (même cas que commandes.ts
@@ -236,6 +244,11 @@ let generation = 0;
 /** La dernière configuration lue, gardée pour une panne de la base. */
 let derniereConnue: ConfigEffective | null = null;
 
+/** Ce que l'interrupteur dit aux courriers (mail.ts) : « env » = jamais touché. */
+function modeBoutiqueDe(choisi: ConfigEffective["choisi"]): ModeBoutique {
+  return choisi === "reel" || choisi === "essai" ? choisi : null;
+}
+
 function lancerChargement(): Promise<ConfigEffective> {
   const gen = generation;
   const p: Promise<ConfigEffective> = chargerEtat()
@@ -244,6 +257,11 @@ function lancerChargement(): Promise<ConfigEffective> {
         cache = { config, jusqua: Date.now() + DUREE_CACHE_MS };
         derniereConnue = config;
       }
+      // Les courriers suivent l'interrupteur (mail.ts) : ils apprennent le
+      // mode à chaque lecture, et savent le relire avant chaque envoi.
+      noterModeBoutique(modeBoutiqueDe(config.choisi), async () =>
+        modeBoutiqueDe((await configPaiement()).choisi),
+      );
       return config;
     })
     .finally(() => {
@@ -452,7 +470,7 @@ function bascule(etat: EtatLu): { possible: boolean; raisons: string[] } {
       empreintesActuelles: jeu ? empreintesDuJeu(etat.cles, jeu) : null,
     };
   };
-  return preconditionsBascule({ stripe: entree("stripe"), paypal: entree("paypal") });
+  return preconditionsBascule({ stripe: entree("stripe"), paypal: entree("paypal") }, courriersReelsPrets());
 }
 
 /* -------------------------------------------------------------------------- */
@@ -679,6 +697,12 @@ export function mountPaiementsReglages(app: Hono): void {
         avisRefuse: dernierAvisRefuse
           ? { le: dernierAvisRefuse.le.toISOString(), secret: dernierAvisRefuse.secret, avis: dernierAvisRefuse.avis }
           : null,
+      },
+      // Où partent les courriers à cet instant, et s'ils pourraient partir
+      // pour de vrai (l'interrupteur les y envoie avec les paiements).
+      courriels: {
+        voie: courriersEnEssai() ? "boite" : courriersConfigures() ? "resend" : "aucun",
+        reelsPrets: courriersReelsPrets(),
       },
       etiquettes: {
         reelles: config.etiquettesReelles,
@@ -1003,9 +1027,9 @@ export function mountPaiementsReglages(app: Hono): void {
         (mode === avant
           ? "Rien n'a changé : la boutique était déjà réglée ainsi."
           : mode === "reel"
-            ? "✅ C'est fait : la boutique encaisse maintenant POUR DE VRAI. Les cartes et PayPal sont réellement débités."
+            ? "✅ C'est fait : la boutique est maintenant POUR DE VRAI. Les cartes et PayPal sont réellement débités, les courriels partent chez les clientes, et les étiquettes SendCloud sont facturées."
             : mode === "essai"
-              ? "🧪 C'est fait : la boutique est en MODE ESSAI. Aucun paiement réel n'est possible."
+              ? "🧪 C'est fait : la boutique est en MODE ESSAI. Aucun paiement réel n'est possible, les courriels restent dans la boîte d'essai et les étiquettes SendCloud sont gratuites."
               : "C'est fait : les réglages du serveur décident de nouveau du mode de chaque prestataire.") + avis,
     });
   });
@@ -1024,6 +1048,15 @@ export function mountPaiementsReglages(app: Hono): void {
       b.reelles === true || b.reelles === "oui" ? "oui" : b.reelles === "env" ? "env" : "non";
     const serveur = etiquettesDuEnv(process.env);
     const etat = await chargerEtat();
+    // L'interrupteur réglé, les étiquettes le suivent : pas de réglage à part.
+    if (etat.config.choisi !== "env")
+      return c.json(
+        {
+          error:
+            "Les étiquettes suivent l'interrupteur « La boutique encaisse » : vraies étiquettes pour de vrai, étiquettes d'essai en essai.",
+        },
+        409,
+      );
     // Rendre la main au serveur ALLUME les étiquettes payantes quand il les
     // demande et qu'elles sont éteintes ici : même confirmation que « oui ».
     const allume = choix === "oui" || (choix === "env" && serveur && !etat.config.etiquettesReelles);

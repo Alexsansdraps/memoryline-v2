@@ -344,7 +344,8 @@ test("passer en réel avec des clés live saisies : elles servent, et seules les
     assert.ok(!publique.includes(secret), "aucun secret dans /payments/config");
     assert.ok(!JSON.stringify(cfg).includes(secret), "aucun secret dans un JSON de la configuration");
   }
-  assert.equal(phraseEtat(cfg, true).texte, "Pour de vrai : Stripe live, PayPal live, étiquettes non payées.");
+  // Depuis le 9/11, les étiquettes suivent l'interrupteur : pour de vrai, elles sont payantes.
+  assert.equal(phraseEtat(cfg, true).texte, "Pour de vrai : Stripe live, PayPal live, étiquettes payantes.");
 });
 
 test("les secrets de webhook : tous connus, celui du mode actif d'abord", () => {

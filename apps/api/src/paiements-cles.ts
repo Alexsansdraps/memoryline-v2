@@ -514,7 +514,12 @@ export interface ConfigEffective {
   secretsWebhook: SecretWebhook[];
   /** Acheter les vraies étiquettes SendCloud (payantes). */
   etiquettesReelles: boolean;
-  etiquettesSource: Source;
+  /**
+   * Qui en décide : « mode » (elles suivent l'interrupteur « La boutique
+   * encaisse », dès qu'il a été réglé), sinon leur propre réglage d'avant
+   * (« bo ») ou le .env (« env »).
+   */
+  etiquettesSource: Source | "mode";
 }
 
 /** Le mode d'une clé secrète Stripe : live si sk_live_ ou rk_live_. */
@@ -621,7 +626,10 @@ export function jeuPaypalBO(cases: Partial<Record<Champ, LectureBO>>, mode: Mode
  * l'enregistrement qui vérifie AVANT de remplacer (paiements-reglages.ts).
  *
  * `etiquettes` : la dernière décision prise à l'écran, ou null (le .env
- * décide, SENDCLOUD_ACHATS_REELS=oui).
+ * décide, SENDCLOUD_ACHATS_REELS=oui). Elle ne compte plus dès que
+ * l'interrupteur a été réglé (Alexandra, 9 novembre 2026 : « les étiquettes
+ * suivent le mode ») : pour de vrai, de vraies étiquettes ; en essai, des
+ * étiquettes d'essai. Seul « env » (jamais touché) garde l'ancienne règle.
  */
 export function resoudreConfig(
   env: EnvPaiement,
@@ -686,8 +694,9 @@ export function resoudreConfig(
     env: duEnv,
     bo,
     secretsWebhook,
-    etiquettesReelles: etiquettes ?? etiquettesDuEnv(env),
-    etiquettesSource: etiquettes === null ? "env" : "bo",
+    etiquettesReelles:
+      choisi === "reel" ? true : choisi === "essai" ? false : (etiquettes ?? etiquettesDuEnv(env)),
+    etiquettesSource: choisi !== "env" ? "mode" : etiquettes === null ? "env" : "bo",
   };
 }
 
@@ -861,16 +870,31 @@ export interface EntreeBascule {
  *    ferme l'onglet pendant la validation 3-D Secure laisserait une commande
  *    débitée mais « en attente », que rien ne viendrait rattraper.
  */
-export function preconditionsBascule(entrees: Record<Prestataire, EntreeBascule>): {
+export function preconditionsBascule(
+  entrees: Record<Prestataire, EntreeBascule>,
+  /**
+   * Les courriers peuvent-ils partir pour de vrai (Resend : RESEND_API_KEY et
+   * MAIL_FROM) ? L'interrupteur les fait partir en même temps que les
+   * paiements : une cliente qui paie doit recevoir sa confirmation.
+   */
+  courriersPrets = true,
+): {
   possible: boolean;
   raisons: string[];
 } {
   const raisons: string[] = [];
+  if (!courriersPrets)
+    raisons.push(
+      "Les courriels ne peuvent pas partir pour de vrai : il manque RESEND_API_KEY ou MAIL_FROM dans les réglages du serveur (le .env), avec un domaine validé chez Resend.",
+    );
   const presents = PRESTATAIRES.filter((p) => entrees[p].jeu);
   if (presents.length === 0)
     return {
       possible: false,
-      raisons: ["Aucune clé live : saisissez les clés de la colonne « Pour de vrai » de Stripe ou de PayPal, puis cliquez « Vérifier »."],
+      raisons: [
+        ...raisons,
+        "Aucune clé live : saisissez les clés de la colonne « Pour de vrai » de Stripe ou de PayPal, puis cliquez « Vérifier ».",
+      ],
     };
   for (const p of presents) {
     const { jeu, verification, empreintesActuelles } = entrees[p];

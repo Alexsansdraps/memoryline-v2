@@ -19,14 +19,14 @@ Le résumé des étapes détaillées plus bas. L'ordre compte.
 
 0. **`APP_SECRET`** dans le `.env` du serveur (§ 3), **avant** la première clé saisie au BO : les clés de BO › Réglages › Paiements sont chiffrées avec elle, et sans elle (ou plus courte que 32 caractères) la colonne « Pour de vrai » de l'écran reste fermée. Puis redémarrer (`docker compose -f docker-compose.prod.yml up -d --force-recreate`). Ne plus jamais la changer.
 1. **Vider la base de test** (§ 2) : `apps/api/scripts/vider-donnees-test.sh` sans argument (il montre seulement), puis `--vider`. **Avant** les vrais courriels : dès qu'ils partent, la relance de panier écrirait aux adresses de test. Les clés saisies au BO et leur journal survivent au vidage (tables à part).
-2. **Tout le `.env` en réel, sans reconstruire encore** (§ 3) : `DOMAINE`, `DOMAINE_WWW`, `PUBLIC_ORIGIN`, `PUBLIC_NOINDEX=false`, courriels Resend (`MAIL_TEST_*` retirées), `PUBLIC_JEU_ESSAI` retirée.
+2. **Tout le `.env` en réel, sans reconstruire encore** (§ 3) : `DOMAINE`, `DOMAINE_WWW`, `PUBLIC_ORIGIN`, `PUBLIC_NOINDEX=false`, courriels Resend (`RESEND_API_KEY`, `MAIL_FROM` ; **garder** `MAIL_TEST_URL` : depuis le 9/11, c'est l'interrupteur de l'étape 5 qui choisit entre la boîte d'essai et Resend), `PUBLIC_JEU_ESSAI` retirée.
 3. **Bascule, d'un seul tenant** : changer le DNS de `memoryline.fr` **et** de `www` (§ 4), puis lancer aussitôt la reconstruction (§ 3, « Appliquer »). Pendant les quelques minutes de la construction, `memoryline.fr` ne répond pas encore : c'est voulu, mieux vaut une page qui ne répond pas qu'un « Disallow: / ». Caddy obtient les certificats tout seul dès que le DNS pointe sur le serveur. Le nom de test `vps-5c917e9d.vps.ovh.net` cesse alors de répondre.
 4. **Vérifications immédiates** (§ 8, les quatre premières lignes) : robots.txt en `Allow: /`, une fiche en `index, follow`, le plan du site, `www` redirigé. Puis, dans la Search Console › Paramètres › robots.txt : **« Demander une nouvelle exploration »**.
 5. **Clés live** dans **BO › Réglages › Paiements**, colonnes « Pour de vrai » de Stripe et de PayPal. Créer le webhook Stripe live (§ 5) et coller son `whsec_`. Cliquer **« Vérifier »** dans chaque colonne live, puis l'interrupteur **« Pour de vrai »** (case « Je confirme… » et confirmation). Aucun redémarrage.
 6. **Une vraie commande de quelques euros** par carte, et par PayPal s'il est branché, puis **remboursement** depuis sa fiche dans le BO (§ 8).
 7. **Google Search Console** et **relevé des anciennes adresses** (§ 8, fin).
 
-Les vraies étiquettes SendCloud ont leur propre interrupteur dans le même écran : seulement sur décision explicite d'Alexandra.
+**Un seul interrupteur** (décision d'Alexandra, 9/11) : « La boutique encaisse » de BO › Réglages › Paiements bascule ensemble les paiements (clés d'essai ↔ clés live, les deux restent enregistrées), les courriels (boîte d'essai ↔ Resend) et les étiquettes SendCloud (gratuites ↔ facturées). Le passage « pour de vrai » est refusé tant que `RESEND_API_KEY` et `MAIL_FROM` manquent. Plus rien à retirer du `.env` le jour J pour les courriels ni pour les étiquettes.
 
 ---
 
@@ -84,7 +84,7 @@ Le `.env` reste possible : c'est le **repli**, utilisé tant que rien n'est sais
 ### Courriels
 | Variable | Production |
 |---|---|
-| `MAIL_TEST_URL`, `MAIL_TEST_PUBLIC_URL` | **à supprimer** (sinon tout reste dans la boîte d'essai Mailpit) |
+| `MAIL_TEST_URL`, `MAIL_TEST_PUBLIC_URL` | **à garder** depuis le 9/11 : en essai, les courriels y restent ; pour de vrai (l'interrupteur de BO › Réglages › Paiements), Resend passe devant |
 | `RESEND_API_KEY` | clé Resend de production |
 | `MAIL_FROM` | ex. `Memory Line <commandes@memoryline.fr>` (domaine vérifié chez Resend) |
 | `MAIL_BOUTIQUE` | adresse de Margaux (avis « nouvelle commande ») |
@@ -105,7 +105,7 @@ Le `.env` reste possible : c'est le **repli**, utilisé tant que rien n'est sais
 ### Livraison et IA
 | Variable | Production |
 |---|---|
-| `SENDCLOUD_ACHATS_REELS` | `oui` : chaque bordereau devient **payant**. Seulement sur décision explicite d'Alexandra. Se règle maintenant aussi dans BO › Réglages › Paiements, « Acheter les vraies étiquettes SendCloud » (avec confirmation), qui passe devant : une fois l'interrupteur touché, la variable n'a plus d'effet (le lien « Laisser les réglages du serveur décider » lui rend la main) |
+| `SENDCLOUD_ACHATS_REELS` | **inutile** depuis le 9/11 : les étiquettes suivent l'interrupteur « La boutique encaisse » (BO › Réglages › Paiements) dès qu'il a été réglé une fois — facturées pour de vrai, gratuites en essai. Ne sert encore que tant que l'interrupteur n'a jamais été touché |
 | `SENDCLOUD_PUBLIC_KEY` / `SECRET_KEY` | inchangées (vérifier que c'est le compte de Margaux, pas `essai`) |
 | `OPENAI_API_KEY` | inchangée. Conseillé : une clé de projet avec un budget mensuel côté OpenAI |
 

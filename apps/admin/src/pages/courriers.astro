@@ -464,13 +464,14 @@ const TONS: Record<Ton, string> = {
     <section class="mt-8 rounded-lg border border-bo-border bg-bo-surface p-5">
       <h3 class="mb-1 font-semibold">Le jour où les courriers devront vraiment partir</h3>
       <p class="max-w-3xl text-sm text-bo-muted">
-        Tant que la boîte d'essai est en place, elle attrape tout : c'est elle qui
-        reçoit, jamais vos clients. Pour lui rendre la main, ouvrez le fichier de
-        réglages de la boutique (le fichier « .env », à la racine du dossier),
-        effacez ce qui suit <strong>MAIL_TEST_URL</strong> en laissant la ligne
-        vide, puis relancez la boutique. Les courriers repartiront alors vers les
-        adresses des clients, et le bandeau du haut passera de vert à ambre pour
-        vous le rappeler.
+        Tant que la boutique est en essai, la boîte d'essai attrape tout : c'est
+        elle qui reçoit, jamais vos clients. Les courriers partent pour de vrai
+        dès que l'interrupteur de <a href="/bo/paiements#interrupteur" class="text-bo-accent underline">Réglages › Paiements</a>
+        passe « pour de vrai », en même temps que les paiements et les
+        étiquettes. Il faut pour cela que la clé d'envoi (<strong>RESEND_API_KEY</strong>)
+        et l'adresse d'expédition (<strong>MAIL_FROM</strong>, d'un domaine validé
+        chez Resend) soient dans les réglages du serveur : l'écran Paiements dit
+        ce qui manque.
       </p>
     </section>
   )}

@@ -638,9 +638,12 @@ export interface EtatPaiements {
     /** Le dernier avis refusé : signé avec le secret d'un mode, il se disait de l'autre. */
     avisRefuse: { le: string; secret: "test" | "live"; avis: "test" | "live" } | null;
   };
+  /** Où partent les courriers maintenant, et s'ils pourraient partir pour de vrai (Resend). */
+  courriels: { voie: "boite" | "resend" | "aucun"; reelsPrets: boolean };
   etiquettes: {
     reelles: boolean;
-    source: "bo" | "env";
+    /** « mode » : elles suivent l'interrupteur (dès qu'il a été réglé). */
+    source: "bo" | "env" | "mode";
     configure: boolean;
     /** Ce que diraient les réglages du serveur (SENDCLOUD_ACHATS_REELS). */
     serveur: boolean;

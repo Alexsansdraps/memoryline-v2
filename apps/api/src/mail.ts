@@ -68,15 +68,77 @@ function reponseA(courrier: Courrier): string {
   return (courrier.repondreA ?? "").trim() || ADRESSE_DE_REPONSE;
 }
 
+/*
+ * UN SEUL INTERRUPTEUR POUR TOUTE LA BOUTIQUE (Alexandra, 9 novembre 2026 :
+ * « tout renseigner, et que ça sache quand on est en test et en prod »).
+ * L'interrupteur « La boutique encaisse » de BO › Réglages › Paiements décide
+ * aussi des courriers : en essai, la boîte d'essai (Mailpit) les garde ; pour
+ * de vrai, Resend les envoie. Le .env peut donc porter les deux à la fois —
+ * MAIL_TEST_URL et RESEND_API_KEY + MAIL_FROM — sans qu'on ait à en retirer
+ * une ligne le jour de l'ouverture. Tant que l'interrupteur n'a jamais été
+ * touché, rien ne change : la boîte d'essai, si elle est là, passe devant.
+ */
+
+/** Ce que dit l'interrupteur : « reel », « essai », ou null (jamais touché, le .env décide). */
+export type ModeBoutique = "reel" | "essai" | null;
+
+/** Où part un courrier : la boîte d'essai, Resend, ou nulle part (rien de réglé). */
+export type Aiguillage = "boite" | "resend" | "aucun";
+
+/**
+ * La décision, sans rien lire d'autre que ses arguments (tests/courriers-mode.test.ts).
+ *
+ * Pour de vrai, Resend d'abord ; s'il n'est pas prêt, la boîte d'essai garde
+ * le courrier plutôt que de le perdre (le passage en réel est refusé tant que
+ * Resend n'est pas prêt : cf. paiements-reglages.ts, bascule). En essai, ou
+ * tant que l'interrupteur n'a jamais été touché : la boîte d'essai d'abord,
+ * comme avant ; sans elle, Resend.
+ */
+export function aiguillageCourriers(o: {
+  mode: ModeBoutique;
+  boiteTest: boolean;
+  resendPret: boolean;
+}): Aiguillage {
+  if (o.mode === "reel") return o.resendPret ? "resend" : o.boiteTest ? "boite" : "aucun";
+  return o.boiteTest ? "boite" : o.resendPret ? "resend" : "aucun";
+}
+
+/** Resend peut-il envoyer pour de vrai : une clé ET un vrai expéditeur (MAIL_FROM) ? */
+export function courriersReelsPrets(): boolean {
+  return CLE.length > 0 && (process.env.MAIL_FROM ?? "").trim().length > 0;
+}
+
+/** Le dernier mode connu de l'interrupteur, et de quoi le relire. */
+let modeConnu: ModeBoutique = null;
+let lireMode: (() => Promise<ModeBoutique>) | null = null;
+
+/**
+ * Branché par paiements-reglages.ts : `noterModeBoutique` à chaque lecture de
+ * la configuration (le mode est connu des fonctions synchrones ci-dessous),
+ * `lire` pour qu'un envoi relise le mode juste avant de partir. Le module des
+ * courriers ne dépend ainsi pas de celui des paiements.
+ */
+export function noterModeBoutique(mode: ModeBoutique, lire?: () => Promise<ModeBoutique>): void {
+  modeConnu = mode;
+  if (lire) lireMode = lire;
+}
+
+function aiguillage(): Aiguillage {
+  return aiguillageCourriers({
+    mode: modeConnu,
+    boiteTest: BOITE_TEST.length > 0,
+    resendPret: courriersReelsPrets(),
+  });
+}
+
 /** Vrai quand on sait où envoyer : la boîte d'essai, ou Resend. */
 export function estConfigure(): boolean {
-  if (BOITE_TEST) return true;
-  return CLE.length > 0 && EXPEDITEUR.length > 0;
+  return aiguillage() !== "aucun";
 }
 
 /** Vrai quand les courriers vont dans la boîte d'essai, pas chez le client. */
 export function estEnEssai(): boolean {
-  return BOITE_TEST.length > 0;
+  return aiguillage() === "boite";
 }
 
 /**
@@ -183,7 +245,16 @@ export interface Courrier {
  * Renvoie vrai si l'envoi est parti.
  */
 export async function envoyer(courrier: Courrier): Promise<boolean> {
-  if (!estConfigure()) {
+  // Le mode de l'instant : l'interrupteur a pu changer depuis la dernière lecture.
+  if (lireMode) {
+    try {
+      modeConnu = await lireMode();
+    } catch {
+      // On garde le dernier connu.
+    }
+  }
+  const voie = aiguillage();
+  if (voie === "aucun") {
     console.warn(
       "[mail] non configuré (RESEND_API_KEY / MAIL_FROM) — courrier non envoyé :",
       courrier.subject,
@@ -192,7 +263,7 @@ export async function envoyer(courrier: Courrier): Promise<boolean> {
   }
   try {
     // En mode d'essai, rien ne part : le courrier va dans la boîte de test.
-    if (BOITE_TEST) return await deposerDansLaBoite(courrier);
+    if (voie === "boite") return await deposerDansLaBoite(courrier);
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
