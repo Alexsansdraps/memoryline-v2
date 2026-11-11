@@ -728,6 +728,11 @@ html {
 .ml-video-cadre {
   position: relative;
   width: min(1100px, 92vw);
+  /* La hauteur en clair, AVANT aspect-ratio : un Safari d'avant iOS 15 (une
+     tablette un peu ancienne) ignore aspect-ratio, et le cadre — donc la
+     vidéo — y faisait zéro pixel de haut. Les autres prennent la ligne
+     suivante. */
+  height: min(calc(min(1100px, 92vw) * 0.5625), 84vh);
   aspect-ratio: 16 / 9;
   max-height: 84vh;
   background: #000;

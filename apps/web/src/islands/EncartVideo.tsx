@@ -105,6 +105,10 @@ export function LecteurVideo(props: {
         <Show
           when={props.source.genre !== "fichier" ? props.source.embed : null}
         >
+          {/* Pas de `loading="lazy"` : la couche n'existe qu'après le clic,
+              il n'y a rien à différer, et Safari (iPhone, iPad) ne chargeait
+              jamais une iframe « paresseuse » posée dans une couche fixe —
+              « la vidéo ne s'affiche pas sur mobile ou tablette », 11/11. */}
           {(embed) => (
             <iframe
               src={embed()}
@@ -112,7 +116,6 @@ export function LecteurVideo(props: {
               allow="autoplay; fullscreen; picture-in-picture"
               referrerpolicy="strict-origin-when-cross-origin"
               allowfullscreen
-              loading="lazy"
               style={{ ...plein, border: "0" }}
             />
           )}
