@@ -14,19 +14,22 @@ Tout `main` jusqu'au code de `dd72e8b` (11/11), migrations jusqu'à **0074**. V�
 - **Retour de Stripe après un paiement à redirection** : codé et testé (`tests/retour-stripe.test.ts`), jamais essayé avec un vrai paiement d'essai.
 - Petits restes sans gravité : une vente du stand passée par le site garde sa note « Stand : … » ; les commentaires d'en-tête de `apps/api/src/db/schema.ts` disent encore « numérotation sans trou ni doublon » / canal « immuable » ; au retour de Stripe, un paiement réussi d'un montant différent (`MontantEncaisseDifferent`) affiche « en cours de validation » au lieu de dire qu'on revient vers la cliente.
 
-## 3. À faire sur le BO ou le serveur (vérifié sur le VPS le 11/11 : pas encore fait)
+## 3. À faire sur le BO ou le serveur (vérifié sur le VPS le 11/11, réponses d'Alexandra du 11/11)
 
-- **Interrupteur essai / pour de vrai** (BO › Réglages › Paiements) : jamais touché en prod. Le régler une fois sur « Garder en essai » pour que paiements, courriels et étiquettes le suivent.
-- **Courriels réels** : `RESEND_API_KEY` est renseignée, mais **`MAIL_FROM` est vide** sur le serveur (expéditeur, sur le domaine vérifié chez Resend — pas une adresse gmail). `CONTACT_TO` et `MAIL_BOUTIQUE` sont renseignées : les réponses aux courriels vont donc déjà à la boîte de la boutique (`MAIL_REPONSE` facultatif). Clé Resend de Margaux : à saisir avec Alexandra, pas par courriel (ou la régénérer ensuite).
-- **Compte du BO de Margaux** (agence.glowup@gmail.com, rôle Propriétaire) : n'existe pas. Comptes actifs : a.porhansl@icloud.com, votre@email.fr (propriétaires), vendeur@memoryline.fr (vendeur, **aucun stand confié**). Claude ne le crée pas (mot de passe).
-- **Vidéo du Tuto** : toujours celle de TEST (Big Buck Bunny). Margaux dépose la sienne (fichier .mp4 téléversé, préféré pour les connexions faibles) : BO › Contenu du site › Personnalisation — vidéo explicative.
-- **Lieux de retrait** : aucun (BO › Livraison › Lieux de retrait) ; sans lieu, le retrait sur place n'apparaît pas à la caisse.
-- **Adresse des factures** : seul le SIRET est saisi (BO › Réglages › Factures).
-- **Page « affiches-personnalisables »** : n'existe pas. Y coller `memoryline-page-affiches-personnalisables.html` (PC du bureau, `Documents\perso`) : elle reprend l'adresse de Shopify.
-- **Redirections de Shopify** : aucune importée (0 en base). Avant la fermeture de Shopify : admin Shopify › Contenu › Menus › Redirections d'URL › Exporter, puis BO › Boutique en ligne › Redirections › Importer (aperçu, puis « Appliquer »).
-- **Tenues par défaut des personnages de face** : aucune (Margaux, 9/11 : « normal », elle le fera) ; sans elles, les couleurs de face ne se voient qu'après avoir touché un vêtement.
-- **Calages à refaire par Margaux** (depuis le 27/10) : sur les femmes de dos, recaler séparément « Cheveux longs raides femme 6 », « Hair raides longs », « Hair bouclés courts » ; sur Femme 6, caler « TEST ».
-- **Visuels HD des 15 affiches « prêtes à imprimer »** : sans eux (1 020 × 1 400 px aujourd'hui), leur PDF d'impression est refusé (il faut ≥ 1 240 × 1 754 en A4, 1 754 × 2 480 en A3). Margaux peut les déposer elle-même par « Ajouter un visuel » sur chaque fiche — à lui répondre (sa question du 9/11).
+**Pour Margaux (à lui transmettre) :**
+- **Tenues par défaut des personnages de face** : aucune aujourd'hui (c'est à elle de voir). Sans elles, les couleurs de face ne se voient qu'après avoir touché un vêtement. BO › Personnages › fiche › Calage des pièces › « Le personnage porte cette pièce par défaut ».
+- **Calages à refaire** (depuis le 27/10) : sur les femmes de dos, recaler séparément « Cheveux longs raides femme 6 », « Hair raides longs », « Hair bouclés courts » ; sur Femme 6, caler « TEST ».
+- **Visuels HD des 15 affiches « prêtes à imprimer »** : vérifié le 11/11, elles n'ont toujours que des images de 1 020 × 1 400 px (les visuels HD ne sont pas sur le site). Sans eux, leur PDF d'impression est refusé (il faut ≥ 1 240 × 1 754 en A4, 1 754 × 2 480 en A3). Elle peut les déposer elle-même : fiche de l'affiche › bloc « Images ».
+- **Vidéo du Tuto** : elle ne l'a pas encore ; c'est la vidéo de TEST qui reste en attendant. Fichier .mp4 à téléverser (BO › Contenu du site › Personnalisation — vidéo explicative).
+- **Adresse des factures** : demandée à Margaux par Alexandra (BO › Réglages › Factures ; seul le SIRET est saisi).
+
+**Pour plus tard :**
+- **Compte du BO de Margaux** (agence.glowup@gmail.com) : on le fera plus tard. **Un seul compte, rôle « Propriétaire »** : ce rôle fait déjà tout, y compris vendre au stand (Ventes stand › « Ouvrir ») — pas besoin d'un compte vendeur en plus. Le compte vendeur@memoryline.fr n'est qu'un compte d'essai (à archiver un jour).
+- **Courriels réels — l'expéditeur (`MAIL_FROM`)** : Alexandra voulait l'adresse de Memory Line (memoryline.contact@gmail.com). Resend refuse d'envoyer « au nom » d'une adresse gmail : il faut une adresse sur le domaine **memoryline.fr**, une fois ce domaine vérifié chez Resend (des lignes DNS à ajouter chez l'hébergeur du domaine). Par ex. `Memory Line <commandes@memoryline.fr>`, les réponses partant déjà vers la boîte de la boutique (Reply-To = `CONTACT_TO`). À faire au moment de l'ouverture (MISE-EN-PROD § 3).
+- **Interrupteur « Garder en essai / Pour de vrai »** (BO › Réglages › Paiements) : rien à faire maintenant (sans clic, la boutique reste en essai). Le jour de l'ouverture : « Pour de vrai ».
+- **Lieux de retrait** : aucun pour l'instant ; la cliente choisira son lieu à la caisse parmi ceux créés (BO › Livraison › Lieux de retrait). À créer quand ils seront connus ; sans lieu, le retrait sur place n'apparaît pas.
+- **Redirections de Shopify** (avant de fermer la boutique Shopify) : sur l'ancien site, des adresses ont pu être renvoyées vers d'autres à la main (ex. une ancienne fiche « strasbourg » vers « colmar »). La liste s'exporte de l'admin Shopify (Contenu › Menus › Redirections d'URL › Exporter) et s'importe dans BO › Boutique en ligne › Redirections. Les adresses des fiches et collections Shopify, elles, sont déjà redirigées automatiquement par le nouveau site.
+- **Page « affiches-personnalisables »** : l'ancienne adresse `/pages/affiches-personnalisables` mène déjà au rayon « Affiches personnalisables » (vérifié). Facultatif : y reprendre le long texte de l'ancienne page Shopify (fichier `memoryline-page-affiches-personnalisables.html`, PC du bureau) en créant une page de ce nom.
 - Relire la promotion 3+1 (BO › Promotions) et les messages du bandeau.
 
 **Fait et vérifié le 11/11** (sorti de la liste) : les trois « Femme test » archivées ; signature réglée (9) ; ombres cochées sur les pièces 517, 520, 521, 523 ; une vraie commande payée sur le site depuis la correction du 500 (WEB-0015, 29/10) ; `CONTACT_TO` et `MAIL_BOUTIQUE` renseignées ; SIRET 00047 et délai dans les pages légales.
