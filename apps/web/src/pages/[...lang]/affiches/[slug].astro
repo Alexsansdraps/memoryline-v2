@@ -95,15 +95,15 @@ const prixCadres = Astro.locals.stand || (await prixDesCadresSurLeSite());
 /*
  * L'encart vidéo de la personnalisation.
  *
- * Au stand, jamais : la vidéo remplace une vendeuse absente, et au stand la
- * vendeuse est là, debout à côté du client — une minute de vidéo sur le wifi
- * d'un salon est la dernière chose à charger sur une tablette. C'est
- * l'inverse exact des cadres, qui eux sont TOUJOURS proposés au stand, d'où
- * deux lignes qui se ressemblent et disent le contraire.
+ * Au stand AUSSI, depuis le 12 novembre 2026 (Margaux, sur la tablette du
+ * stand : « j'ai toujours pas la vidéo » ; Alexandra : « faut la voir en
+ * stand »). Elle était masquée au stand depuis le 25/09, la vendeuse y
+ * étant à côté du client. Rien n'est chargé avant le clic sur « Tuto » : le
+ * wifi du salon n'en souffre pas tant qu'on ne la regarde pas.
  *
  * Aucune requête de plus : les réglages sont déjà lus une fois par page.
  */
-const encartVideo = Astro.locals.stand ? null : await encartVideoDuSite(langue);
+const encartVideo = await encartVideoDuSite(langue);
 
 /*
  * Une affiche introuvable n'est PLUS une redirection vers le catalogue.
