@@ -118,6 +118,82 @@ async function restaurer(cle: string, id: number): Promise<void> {
   }
 }
 
+/**
+ * Supprime définitivement une chose archivée, par la route de sa nature
+ * (apps/api/src/suppression.ts et les siennes) : elle seule sait ce qui s'en
+ * sert encore, et son refus (409, en clair) s'affiche tel quel. Même `switch`
+ * explicite que pour restaurer, pour la même raison.
+ */
+async function supprimer(cle: string, id: number): Promise<void> {
+  switch (cle) {
+    case "pages":
+      await api.supprimerPage(id);
+      return;
+    case "produits":
+      await api.supprimerProduit(id);
+      return;
+    case "collections":
+      await api.supprimerCollection(id);
+      return;
+    case "categories-produits":
+      await api.supprimerCategorieProduit(id);
+      return;
+    case "cadres":
+      await api.supprimerCadre(id);
+      return;
+    case "personnages":
+      await api.supprimerPersonnage(id);
+      return;
+    case "pieces":
+      await api.supprimerPiece(id);
+      return;
+    case "categories-personnages":
+      await api.supprimerCategoriePersonnage(id);
+      return;
+    case "categories-pieces":
+      await api.supprimerCategoriePiece(id);
+      return;
+    case "types-affiche":
+      await api.supprimerView(id);
+      return;
+    case "fonds":
+      await api.supprimerBackground(id);
+      return;
+    case "styles-ia":
+      await api.supprimerStyleIa(id);
+      return;
+    case "stands":
+      await api.supprimerStand(id);
+      return;
+    case "modes-livraison":
+      await api.supprimerModeLivraison(id);
+      return;
+    case "lieux-retrait":
+      await api.supprimerLieuRetrait(id);
+      return;
+    case "tarifs-livraison":
+      await api.supprimerTarifLivraison(id);
+      return;
+    case "lettres":
+      await api.supprimerLettre(id);
+      return;
+    case "promotions":
+      await api.supprimerPromo(id);
+      return;
+    case "messages-bandeau":
+      await api.supprimerMessageBandeau(id);
+      return;
+    case "comptes":
+      await api.supprimerCompte(id);
+      return;
+    case "redirections":
+      await api.supprimerRedirection(id);
+      return;
+    default:
+      throw new Error("Cette nature d'archive n'est pas reconnue. Rechargez la page.");
+  }
+}
+
 let flash: string | null = null;
 let flashErreur = false;
 if (Astro.request.method === "POST") {
@@ -125,18 +201,29 @@ if (Astro.request.method === "POST") {
   const cle = String(f.get("cle") ?? "");
   const id = Number(f.get("id"));
   const nom = String(f.get("nom") ?? "");
+  const action = f.get("_action");
   try {
-    if (f.get("_action") !== "restaurer") throw new Error("Action inconnue.");
+    if (action !== "restaurer" && action !== "supprimer") throw new Error("Action inconnue.");
     if (!Number.isInteger(id) || id <= 0)
       throw new Error("Ligne introuvable. Rechargez la page.");
-    await restaurer(cle, id);
-    // « revient » plutôt que « est restauré » : la liste mêle du masculin et
-    // du féminin, et « la collection est restauré » se lit comme une faute.
-    flash = nom
-      ? `« ${nom} » revient à sa place, comme avant l'archivage.`
-      : "C'est revenu à sa place, comme avant l'archivage.";
+    if (action === "supprimer") {
+      await supprimer(cle, id);
+      // Tournure sans accord, pour la même raison que « revient » plus bas.
+      flash = nom
+        ? `Suppression définitive de « ${nom} » : c'est fait, sans retour.`
+        : "Suppression définitive : c'est fait, sans retour.";
+    } else {
+      await restaurer(cle, id);
+      // « revient » plutôt que « est restauré » : la liste mêle du masculin et
+      // du féminin, et « la collection est restauré » se lit comme une faute.
+      flash = nom
+        ? `« ${nom} » revient à sa place, comme avant l'archivage.`
+        : "C'est revenu à sa place, comme avant l'archivage.";
+    }
   } catch (e) {
-    flash = "Rien n'a été restauré : " + String(e).replace(/^Error:\s*/, "");
+    flash =
+      (action === "supprimer" ? "Rien n'a été supprimé : " : "Rien n'a été restauré : ") +
+      String(e).replace(/^Error:\s*/, "");
     flashErreur = true;
   }
 }
@@ -193,6 +280,11 @@ const leJour = (iso: string | null): string =>
     passées, elles, continuent de s'imprimer comme avant, même sur un fond ou un
     personnage archivé.
   </p>
+  <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+    « Supprimer définitivement » efface pour de bon une chose archivée dont
+    plus rien ne se sert. Tant qu'une commande, un panier en cours ou un
+    réglage l'utilise encore, la boutique refuse et dit pourquoi.
+  </p>
   <p class="mb-6 max-w-3xl text-sm text-bo-muted">
     Chaque chose se restaure aussi depuis son propre écran, dans sa section
     « Archivés ». Cette page-ci évite d'avoir à se souvenir duquel il s'agissait.
@@ -239,7 +331,7 @@ const leJour = (iso: string | null): string =>
                   {groupe.dateSource === "archivage" ? "Archivé le " : "Modifié le "}
                   {leJour(el.date)}
                 </td>
-                <td class="px-4 py-2 text-right">
+                <td class="whitespace-nowrap px-4 py-2 text-right">
                   <form method="POST" class="inline">
                     <input type="hidden" name="_action" value="restaurer" />
                     <input type="hidden" name="cle" value={groupe.cle} />
@@ -247,6 +339,24 @@ const leJour = (iso: string | null): string =>
                     <input type="hidden" name="nom" value={el.libelle} />
                     <button class="text-bo-accent hover:underline">
                       Restaurer
+                    </button>
+                  </form>
+                  {/* Comme sur chaque écran : seulement ce qui est archivé, et
+                      la boutique refuse en le disant tant que quelque chose
+                      s'en sert encore. */}
+                  <form
+                    method="POST"
+                    class="ml-4 inline"
+                    onsubmit={`return confirm(${JSON.stringify(
+                      `Supprimer définitivement « ${el.libelle} » ? C'est sans retour.`,
+                    )})`}
+                  >
+                    <input type="hidden" name="_action" value="supprimer" />
+                    <input type="hidden" name="cle" value={groupe.cle} />
+                    <input type="hidden" name="id" value={el.id} />
+                    <input type="hidden" name="nom" value={el.libelle} />
+                    <button class="text-red-700 hover:underline">
+                      Supprimer définitivement
                     </button>
                   </form>
                 </td>
@@ -290,10 +400,11 @@ const leJour = (iso: string | null): string =>
   <section class="mb-6 max-w-3xl rounded-lg border border-bo-border bg-bo-bg p-4">
     <h2 class="mb-2 font-semibold">Ce qui disparaît vraiment</h2>
     <p class="mb-3 text-sm text-bo-muted">
-      Votre règle est « <em>rien ne se supprime entièrement ça n'existe pas, ça
-      sera de l'archivage, partout</em> ». Elle vaut partout sauf sur trois
-      choses, dont aucune ne vous appartient. Les voici, pour que vous sachiez
-      exactement ce qui part pour de bon.
+      La règle, depuis le 8 novembre 2026 : on archive d'abord, et seule une
+      chose archivée dont plus rien ne se sert peut être supprimée
+      définitivement. Les commandes payées ou facturées ne se suppriment
+      jamais : la loi demande de les garder dix ans. En dehors de ce bouton,
+      trois choses partent d'elles-mêmes, et aucune ne vous appartient :
     </p>
     <ol class="ml-5 list-decimal space-y-2 text-sm text-bo-muted">
       <li>

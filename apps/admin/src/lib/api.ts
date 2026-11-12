@@ -1973,6 +1973,13 @@ export function adminApi(request?: Request) {
         { archived },
         cookie,
       ),
+    /**
+     * Supprime définitivement une lettre ARCHIVÉE et jamais envoyée. L'API
+     * refuse (409, raison en clair) une lettre partie : l'erreur levée porte
+     * sa phrase.
+     */
+    supprimerLettre: (id: number) =>
+      req<{ ok: boolean }>("DELETE", `/admin/lettres/${id}`, undefined, cookie),
     stats: () => req<Stats>("GET", "/admin/stats", undefined, cookie),
     /** Toutes les promotions, archivées comprises (marquées par `archivedAt`). */
     promos: () => req<PromoRule[]>("GET", "/admin/promos", undefined, cookie),

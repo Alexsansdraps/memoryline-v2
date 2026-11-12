@@ -526,6 +526,13 @@
       "when": 1794236431445,
       "tag": "0074_siret_et_delai",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1794482612039,
+      "tag": "0075_adresse_boutique",
+      "breakpoints": true
     }
   ]
 }
