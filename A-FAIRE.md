@@ -9,7 +9,7 @@ Tout `main`, migrations jusqu'à **0075** (12/11). Vérifié le 11/11 : site, AP
 ## 2. Reste à faire dans le code (Claude)
 
 - **Pas essayé au navigateur, BO connecté** : la suppression définitive sur les écrans atelier, catalogue et contenu (seuls les écrans « ventes » l'ont été).
-- **Vidéo du Tuto sur un vrai iPhone/iPad** : corrigée pour Safari le 11/11 (`dd72e8b`) mais vérifiée seulement en Chrome simulé. À faire retester par Margaux, en fenêtre privée (au stand, la vidéo est masquée exprès).
+- **Vidéo du Tuto sur un vrai iPhone/iPad** : corrigée pour Safari le 11/11 (`dd72e8b`) mais vérifiée seulement en Chrome simulé. À faire retester par Margaux. Depuis le 12/11 (`330e4c5`), elle s'affiche aussi en mode stand (vérifié sur le VPS avec ?stand=1) : sur la tablette du stand, elle ne la voyait pas car elle y était masquée exprès.
 - **Retour de Stripe après un paiement à redirection** : codé et testé (`tests/retour-stripe.test.ts`), jamais essayé avec un vrai paiement d'essai.
 - Petits restes sans gravité : une vente du stand passée par le site garde sa note « Stand : … » ; les commentaires d'en-tête de `apps/api/src/db/schema.ts` disent encore « numérotation sans trou ni doublon » / canal « immuable » ; au retour de Stripe, un paiement réussi d'un montant différent (`MontantEncaisseDifferent`) affiche « en cours de validation » au lieu de dire qu'on revient vers la cliente.
 
