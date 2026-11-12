@@ -209,8 +209,8 @@ export function deriverCles(matiere: string, source: ClesDerivees["source"]): Cl
 export function refusChiffrementLive(cles: ClesDerivees | null): string | null {
   if (cles?.solide) return null;
   if (cles?.source === "APP_SECRET")
-    return `La colonne « Pour de vrai » reste fermée : APP_SECRET est trop courte (moins de ${LONGUEUR_MINIMALE_APP_SECRET} caractères) pour protéger des clés live. Faites-en poser une longue dans les réglages du serveur (openssl rand -hex 32), puis redémarrer l'API.`;
-  return "La colonne « Pour de vrai » reste fermée : les réglages du serveur n'ont pas d'APP_SECRET. Sans elle, les clés live seraient chiffrées avec l'adresse de la base, qu'une sauvegarde volée suffit à retrouver. Faites poser APP_SECRET (openssl rand -hex 32) dans le .env du serveur, puis redémarrer l'API.";
+    return `La colonne « Production » reste fermée : APP_SECRET est trop courte (moins de ${LONGUEUR_MINIMALE_APP_SECRET} caractères) pour protéger des clés live. Faites-en poser une longue dans les réglages du serveur (openssl rand -hex 32), puis redémarrer l'API.`;
+  return "La colonne « Production » reste fermée : les réglages du serveur n'ont pas d'APP_SECRET. Sans elle, les clés live seraient chiffrées avec l'adresse de la base, qu'une sauvegarde volée suffit à retrouver. Faites poser APP_SECRET (openssl rand -hex 32) dans le .env du serveur, puis redémarrer l'API.";
 }
 
 /**
@@ -318,8 +318,8 @@ export function controlerForme(p: Prestataire, m: Mode, c: Champ, brut: unknown)
   if (/[^\x21-\x7e]/.test(v))
     return refus("La valeur contient un caractère inattendu (accent, guillemet typographique…) : recopiez-la depuis le site du prestataire.");
 
-  const colonne = m === "live" ? "Pour de vrai" : "Essai";
-  const autreColonne = m === "live" ? "Essai" : "Pour de vrai";
+  const colonne = m === "live" ? "Production" : "Essai";
+  const autreColonne = m === "live" ? "Essai" : "Production";
 
   if (p === "stripe") {
     const estPublique = /^pk_/.test(v);
@@ -402,8 +402,8 @@ export function refusCroise(
   const autre: Mode = m === "live" ? "test" : "live";
   if (connues.some((k) => k.mode === autre && k.champ === c && k.empreinte === nouvelle))
     return m === "live"
-      ? "C'est la même valeur que celle de la colonne Essai : la colonne « Pour de vrai » attend les identifiants LIVE, qui sont différents."
-      : "C'est la même valeur que celle de la colonne « Pour de vrai » : la colonne Essai attend les identifiants de test (sandbox), qui sont différents.";
+      ? "C'est la même valeur que celle de la colonne Essai : la colonne « Production » attend les identifiants LIVE, qui sont différents."
+      : "C'est la même valeur que celle de la colonne « Production » : la colonne Essai attend les identifiants de test (sandbox), qui sont différents.";
   if (p === "paypal") {
     const vis = c === "secret" ? "client_id" : c === "client_id" ? "secret" : null;
     if (vis && connues.some((k) => k.mode === m && k.champ === vis && k.empreinte === nouvelle))
@@ -809,7 +809,7 @@ export function effetDeLaColonne(cfg: ConfigEffective, cases: CasesBO, p: Presta
   if (m === "live" && cfg.liveEnAttente[p])
     return "La colonne est complète. Ces clés live serviront dès qu'une vérification aura réussi (bouton « Vérifier »).";
   return m === "live"
-    ? "La colonne est complète. Elle servira quand la boutique passera « pour de vrai »."
+    ? "La colonne est complète. Elle servira quand la boutique passera en production."
     : "La colonne est complète. Elle servira quand la boutique sera en essai.";
 }
 
@@ -885,7 +885,7 @@ export function preconditionsBascule(
   const raisons: string[] = [];
   if (!courriersPrets)
     raisons.push(
-      "Les courriels ne peuvent pas partir pour de vrai : il manque RESEND_API_KEY ou MAIL_FROM dans les réglages du serveur (le .env), avec un domaine validé chez Resend.",
+      "Les courriels ne peuvent pas partir réellement : il manque RESEND_API_KEY ou MAIL_FROM dans les réglages du serveur (le .env), avec un domaine validé chez Resend.",
     );
   const presents = PRESTATAIRES.filter((p) => entrees[p].jeu);
   if (presents.length === 0)
@@ -893,7 +893,7 @@ export function preconditionsBascule(
       possible: false,
       raisons: [
         ...raisons,
-        "Aucune clé live : saisissez les clés de la colonne « Pour de vrai » de Stripe ou de PayPal, puis cliquez « Vérifier ».",
+        "Aucune clé live : saisissez les clés de la colonne « Production » de Stripe ou de PayPal, puis cliquez « Vérifier ».",
       ],
     };
   for (const p of presents) {
@@ -907,7 +907,7 @@ export function preconditionsBascule(
       raisons.push("Le client-id PayPal live du navigateur manque : le bouton PayPal ne pourrait pas s'afficher.");
     }
     if (!verification)
-      raisons.push(`Clés ${nom} live jamais vérifiées : cliquez « Vérifier » dans la colonne « Pour de vrai ».`);
+      raisons.push(`Clés ${nom} live jamais vérifiées : cliquez « Vérifier » dans la colonne « Production ».`);
     else if (!memesEmpreintes(verification.empreintes, empreintesActuelles))
       raisons.push(`Clés ${nom} live modifiées depuis la dernière vérification : cliquez « Vérifier ».`);
     else if (!verification.ok)
@@ -953,7 +953,7 @@ export function phraseEtat(
     ton === "essai"
       ? "Mode essai"
       : ton === "reel"
-        ? "Pour de vrai"
+        ? "Production"
         : ton === "mixte"
           ? `Attention, mode mixte${cfg.choisi === "env" ? " (choisi par les réglages du serveur)" : ""}`
           : "Aucun moyen de paiement branché";

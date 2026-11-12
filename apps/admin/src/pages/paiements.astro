@@ -177,8 +177,8 @@ function quand(iso: string | null): string {
 
 const NOMS = { stripe: "Stripe", paypal: "PayPal" } as const;
 const TITRES = {
-  stripe: { test: "Essai (test)", live: "Pour de vrai (live)" },
-  paypal: { test: "Bac à sable (sandbox)", live: "Pour de vrai (live)" },
+  stripe: { test: "Essai (test)", live: "Production (live)" },
+  paypal: { test: "Bac à sable (sandbox)", live: "Production (live)" },
 } as const;
 
 /** Les cases dont la valeur est un secret : masquées pendant la saisie. */
@@ -220,10 +220,10 @@ const TONS = {
 /** La confirmation du passage en réel : ce qui change, en clair. */
 function texteBascule(e: EtatPaiements): string {
   const lignes = [
-    "Passer la boutique « pour de vrai » ?",
+    "Passer la boutique en production ?",
     "",
     e.stripe.live.verifiable
-      ? `• Les cartes seront réellement débitées, sur le compte Stripe ${e.compteStripeLive ? `« ${e.compteStripeLive} »` : "de la colonne « Pour de vrai »"}.`
+      ? `• Les cartes seront réellement débitées, sur le compte Stripe ${e.compteStripeLive ? `« ${e.compteStripeLive} »` : "de la colonne « Production »"}.`
       : "• La carte bancaire ne sera plus proposée : aucune clé Stripe live.",
     e.paypal.live.verifiable
       ? "• PayPal encaissera sur le compte réel."
@@ -231,7 +231,7 @@ function texteBascule(e: EtatPaiements): string {
     "• L'encadré « Boutique en mode essai » disparaît de la caisse.",
     "• Les commandes payées en essai restent dans le back-office, marquées « Payée en ESSAI » : elles n'ont rapporté aucun argent.",
     "• Une clé live remplacée ensuite sera vérifiée avant de servir.",
-    "• Les courriels partent pour de vrai chez les clientes (Resend), au lieu de la boîte d'essai.",
+    "• Les courriels partent réellement chez les clientes (Resend), au lieu de la boîte d'essai.",
     e.etiquettes.configure
       ? "• Les bordereaux SendCloud achetés depuis une fiche commande seront de vraies étiquettes, facturées."
       : "• SendCloud n'est pas branché : pas d'étiquettes à acheter.",
@@ -240,13 +240,13 @@ function texteBascule(e: EtatPaiements): string {
 }
 
 const TEXTE_ESSAI =
-  "Revenir en essai ?\n\nLes clientes ne pourront plus payer pour de vrai. Les paiements réels déjà ouverts aboutiront quand même. Les courriels resteront dans la boîte d'essai, et les étiquettes SendCloud seront des étiquettes d'essai, gratuites.";
+  "Revenir en essai ?\n\nLes clientes ne pourront plus payer réellement. Les paiements réels déjà ouverts aboutiront quand même. Les courriels resteront dans la boîte d'essai, et les étiquettes SendCloud seront des étiquettes d'essai, gratuites.";
 // La boutique est déjà en essai par les réglages du serveur : on ne « revient »
 // de rien, on fixe l'essai ici pour qu'un changement du serveur ne le défasse pas.
 const TEXTE_GARDER_ESSAI =
   "Garder la boutique en essai, quoi que disent les réglages du serveur ?\n\nSeules les clés d'essai serviront aux paiements, même si les réglages du serveur passent en réel un jour.";
 const TEXTE_ENV =
-  "Laisser les réglages du serveur décider du mode de chaque prestataire ?\n\nC'est l'état d'avant cet écran. Une colonne « Pour de vrai » saisie ici ne servira qu'une fois vérifiée.";
+  "Laisser les réglages du serveur décider du mode de chaque prestataire ?\n\nC'est l'état d'avant cet écran. Une colonne « Production » saisie ici ne servira qu'une fois vérifiée.";
 
 /** Une case avec son article : « la clé publique », « le secret du webhook ». */
 const AVEC_ARTICLE: Record<string, string> = {
@@ -279,7 +279,7 @@ const ACTIONS: Record<string, string> = {
 };
 const VALEURS: Record<string, string> = {
   essai: "en essai",
-  reel: "pour de vrai",
+  reel: "en production",
   env: "les réglages du serveur décident",
   oui: "payantes",
   non: "d'essai",
@@ -319,9 +319,9 @@ const boutonLong = "max-w-full rounded border border-bo-border px-3 py-1.5 text-
         <p class="font-semibold">{etat.resume}</p>
         <p class="mt-1 text-sm">
           {etat.choisi === "env"
-            ? "L'interrupteur n'a pas été réglé ici : chaque prestataire suit les réglages du serveur, sauf colonne complète saisie ici (une colonne « Pour de vrai », seulement une fois vérifiée)."
+            ? "L'interrupteur n'a pas été réglé ici : chaque prestataire suit les réglages du serveur, sauf colonne complète saisie ici (une colonne « Production », seulement une fois vérifiée)."
             : etat.choisi === "reel"
-              ? "Réglé ici sur « pour de vrai » : seules les clés live servent aux nouveaux paiements."
+              ? "Réglé ici sur « production » : seules les clés live servent aux nouveaux paiements."
               : "Réglé ici sur « en essai » : seules les clés d'essai servent aux nouveaux paiements."}
         </p>
         <p class="mt-1 text-xs opacity-80">
@@ -379,10 +379,10 @@ const boutonLong = "max-w-full rounded border border-bo-border px-3 py-1.5 text-
           {etat.courriels.voie === "boite"
             ? "dans la boîte d'essai, rien ne part chez les clientes."
             : etat.courriels.voie === "resend"
-              ? "envoyés pour de vrai (Resend)."
+              ? "envoyés réellement (Resend)."
               : "nulle part : ni boîte d'essai ni Resend dans les réglages du serveur."}
           {!etat.courriels.reelsPrets &&
-            " Pour de vrai, il faudra RESEND_API_KEY et MAIL_FROM dans les réglages du serveur."}
+            " En production, il faudra RESEND_API_KEY et MAIL_FROM dans les réglages du serveur."}
         </p>
         <div class="mt-4 grid gap-3 sm:grid-cols-2">
           <div class={`rounded-lg border p-4 ${essaiCoche ? "border-amber-500 bg-amber-50 text-amber-900" : "border-bo-border"}`}>
@@ -408,7 +408,7 @@ const boutonLong = "max-w-full rounded border border-bo-border px-3 py-1.5 text-
 
           <div class={`rounded-lg border p-4 ${reelCoche ? "border-green-600 bg-green-50 text-green-900" : "border-bo-border"}`}>
             <p class="font-medium">
-              <span aria-hidden="true">{reelCoche ? "●" : "○"}</span> Pour de vrai
+              <span aria-hidden="true">{reelCoche ? "●" : "○"}</span> Production
             </p>
             {reelCoche && <p class="mt-1 text-xs">C'est l'état actuel : les cartes sont réellement débitées.</p>}
             {etat.choisi !== "reel" && (
@@ -417,10 +417,10 @@ const boutonLong = "max-w-full rounded border border-bo-border px-3 py-1.5 text-
                 <input type="hidden" name="valeur" value="reel" />
                 <label class="flex items-start gap-2 text-sm">
                   <input type="checkbox" name="confirme" value="oui" required disabled={!etat.bascule.possible} class="mt-0.5" />
-                  <span>Je confirme : les clientes paieront pour de vrai.</span>
+                  <span>Je confirme : les clientes paieront réellement.</span>
                 </label>
                 <button class="rounded bg-bo-accent px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40" disabled={!etat.bascule.possible}>
-                  Passer « pour de vrai »
+                  Passer en production
                 </button>
               </form>
             )}
@@ -615,7 +615,7 @@ const boutonLong = "max-w-full rounded border border-bo-border px-3 py-1.5 text-
                 <p class="mt-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                   Le {quand(etat.webhook.avisRefuse.le)}, un avis du compte{" "}
                   {etat.webhook.avisRefuse.avis === "live" ? "live" : "de test"} a été signé avec le
-                  secret de la colonne {etat.webhook.avisRefuse.secret === "live" ? "« Pour de vrai »" : "Essai"} :
+                  secret de la colonne {etat.webhook.avisRefuse.secret === "live" ? "« Production »" : "Essai"} :
                   il a été refusé. Le secret du webhook est sans doute dans la mauvaise colonne
                   (ou l'avis était un faux). Une fois le secret à sa place, Stripe renvoie l'avis
                   de lui-même.
@@ -660,7 +660,7 @@ const boutonLong = "max-w-full rounded border border-bo-border px-3 py-1.5 text-
         {etat.etiquettes.source !== "mode" && (
           <p class="mt-2 text-xs text-bo-muted">
             Elles suivront l'interrupteur « La boutique encaisse », plus haut, dès qu'il sera
-            réglé : vraies étiquettes pour de vrai, étiquettes d'essai en essai.
+            réglé : vraies étiquettes en production, étiquettes d'essai en essai.
           </p>
         )}
       </section>

@@ -656,7 +656,7 @@ export function courrierModePaiement(d: {
         : "réglages du serveur";
   const titre =
     d.mode === "reel"
-      ? "La boutique encaisse maintenant pour de vrai"
+      ? "La boutique est maintenant en production"
       : d.mode === "essai"
         ? "La boutique est passée en mode essai"
         : "Les réglages du serveur décident du mode des paiements";

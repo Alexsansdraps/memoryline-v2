@@ -167,7 +167,7 @@ function refusDe(...args: Parameters<typeof controlerForme>): string {
 }
 
 test("une clé live dans la colonne d'essai, ou l'inverse, est refusée avec la bonne colonne", () => {
-  assert.match(refusDe("stripe", "test", "cle_publique", PK_LIVE), /LIVE.*Pour de vrai/);
+  assert.match(refusDe("stripe", "test", "cle_publique", PK_LIVE), /LIVE.*Production/);
   assert.match(refusDe("stripe", "live", "cle_secrete", SK_TEST), /TEST.*Essai/);
   assert.match(refusDe("stripe", "live", "cle_publique", PK_TEST), /TEST/);
   assert.match(refusDe("stripe", "test", "cle_secrete", "rk_live_FACTICE_restreinte"), /LIVE/);
@@ -345,7 +345,7 @@ test("passer en réel avec des clés live saisies : elles servent, et seules les
     assert.ok(!JSON.stringify(cfg).includes(secret), "aucun secret dans un JSON de la configuration");
   }
   // Depuis le 9/11, les étiquettes suivent l'interrupteur : pour de vrai, elles sont payantes.
-  assert.equal(phraseEtat(cfg, true).texte, "Pour de vrai : Stripe live, PayPal live, étiquettes payantes.");
+  assert.equal(phraseEtat(cfg, true).texte, "Production : Stripe live, PayPal live, étiquettes payantes.");
 });
 
 test("les secrets de webhook : tous connus, celui du mode actif d'abord", () => {
@@ -369,7 +369,7 @@ test("la phrase de tête dit le mode, chaque prestataire et les étiquettes", ()
   const cfg = resoudreConfig(ENVS["tout en test"]!, casesVides(), "env", null);
   assert.equal(phraseEtat(cfg, true).texte, "Mode essai : Stripe test, PayPal sandbox, étiquettes non payées.");
   const sansPaypal = resoudreConfig({ STRIPE_SECRET_KEY: SK_LIVE, PUBLIC_STRIPE_KEY: PK_LIVE }, casesVides(), "reel", true);
-  assert.equal(phraseEtat(sansPaypal, true).texte, "Pour de vrai : Stripe live, PayPal non branché, étiquettes payantes.");
+  assert.equal(phraseEtat(sansPaypal, true).texte, "Production : Stripe live, PayPal non branché, étiquettes payantes.");
   assert.equal(phraseEtat(resoudreConfig({}, casesVides(), "env", null), false).ton, "aucun");
 });
 

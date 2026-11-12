@@ -637,7 +637,7 @@ export async function verifierStripe(
     if (livemode !== live)
       return refus(
         livemode
-          ? "Cette clé est une clé LIVE : elle va dans la colonne « Pour de vrai »."
+          ? "Cette clé est une clé LIVE : elle va dans la colonne « Production »."
           : "Cette clé est une clé de TEST : elle va dans la colonne « Essai ».",
       );
   }
@@ -689,7 +689,7 @@ export async function verifierStripe(
   // Le webhook : sans lui, une commande payée dont l'onglet s'est fermé
   // pendant la validation de la banque resterait « en attente ».
   if (live && !jeu.secretWebhook)
-    return refus("Il manque le secret du webhook (whsec_…) de la colonne « Pour de vrai ».", compte);
+    return refus("Il manque le secret du webhook (whsec_…) de la colonne « Production ».", compte);
   const hooks = await appeler(
     f,
     "https://api.stripe.com/v1/webhook_endpoints?limit=100",
@@ -792,7 +792,7 @@ export async function verifierPaypal(
         ok: false,
         message: live
           ? "Ces identifiants sont ceux du bac à sable : ils vont dans la colonne « Essai »."
-          : "Ces identifiants sont ceux du compte réel : ils vont dans la colonne « Pour de vrai ».",
+          : "Ces identifiants sont ceux du compte réel : ils vont dans la colonne « Production ».",
         compte: null,
       };
     return {

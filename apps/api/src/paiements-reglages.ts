@@ -805,7 +805,7 @@ export function mountPaiementsReglages(app: Hono): void {
           return c.json(
             {
               error:
-                `Rien n'a changé : la boutique encaisse pour de vrai, et avec cette valeur la colonne « Pour de vrai » ne passe pas la vérification. ${masquer(verdict.message)}` +
+                `Rien n'a changé : la boutique est en production, et avec cette valeur la colonne « Production » ne passe pas la vérification. ${masquer(verdict.message)}` +
                 (vivante ? " L'ancienne valeur reste en service." : ""),
               code: "verification_refusee",
             },
@@ -988,7 +988,7 @@ export function mountPaiementsReglages(app: Hono): void {
       if (!confirme(b.confirme))
         return c.json(
           {
-            error: "Cochez « Je confirme : les clientes paieront pour de vrai. » pour passer en réel.",
+            error: "Cochez « Je confirme : les clientes paieront réellement. » pour passer en production.",
             code: "confirmation_requise",
           },
           409,
@@ -1027,7 +1027,7 @@ export function mountPaiementsReglages(app: Hono): void {
         (mode === avant
           ? "Rien n'a changé : la boutique était déjà réglée ainsi."
           : mode === "reel"
-            ? "✅ C'est fait : la boutique est maintenant POUR DE VRAI. Les cartes et PayPal sont réellement débités, les courriels partent chez les clientes, et les étiquettes SendCloud sont facturées."
+            ? "✅ C'est fait : la boutique est maintenant EN PRODUCTION. Les cartes et PayPal sont réellement débités, les courriels partent chez les clientes, et les étiquettes SendCloud sont facturées."
             : mode === "essai"
               ? "🧪 C'est fait : la boutique est en MODE ESSAI. Aucun paiement réel n'est possible, les courriels restent dans la boîte d'essai et les étiquettes SendCloud sont gratuites."
               : "C'est fait : les réglages du serveur décident de nouveau du mode de chaque prestataire.") + avis,
@@ -1053,7 +1053,7 @@ export function mountPaiementsReglages(app: Hono): void {
       return c.json(
         {
           error:
-            "Les étiquettes suivent l'interrupteur « La boutique encaisse » : vraies étiquettes pour de vrai, étiquettes d'essai en essai.",
+            "Les étiquettes suivent l'interrupteur « La boutique encaisse » : vraies étiquettes en production, étiquettes d'essai en essai.",
         },
         409,
       );

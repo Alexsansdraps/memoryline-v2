@@ -1009,11 +1009,11 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
           <li>
             <strong>D'abord APP_SECRET.</strong> Les clés sont chiffrées avec ce
             réglage du serveur. Tant qu'il manque (ou qu'il est trop court),
-            l'écran le dit en orange et la colonne « Pour de vrai » reste
+            l'écran le dit en orange et la colonne « Production » reste
             fermée : faites-le poser, puis redémarrer l'API.
           </li>
           <li>
-            <strong>Les clés live</strong>, dans la colonne « Pour de vrai » :
+            <strong>Les clés live</strong>, dans la colonne « Production » :
             pour Stripe, la clé publique (pk_live_…) et la clé secrète
             (sk_live_…) ; pour PayPal, le client-id et le secret de
             l'application Live. Une clé d'essai dans la colonne live est
@@ -1037,8 +1037,8 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
             serveur sont en live.
           </li>
           <li>
-            <strong>L'interrupteur « Pour de vrai »</strong> : cochez « Je
-            confirme : les clientes paieront pour de vrai », cliquez, et
+            <strong>L'interrupteur « Production »</strong> : cochez « Je
+            confirme : les clientes paieront réellement », cliquez, et
             relisez la confirmation. Le changement vaut tout de suite, sans
             redémarrage : l'encadré « Boutique en mode essai » disparaît de la
             caisse. Ensuite, une clé live remplacée est vérifiée avant d'être
@@ -1063,7 +1063,7 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
         </p>
         <p>
           <strong>Revenir en essai</strong> : « Revenir en essai » sur le même
-          écran. Les clientes ne peuvent plus payer pour de vrai ; un paiement
+          écran. Les clientes ne peuvent plus payer réellement ; un paiement
           réel déjà ouvert aboutit quand même. « Laisser les réglages du serveur
           décider » leur rend la main (le fichier .env de l'hébergement), comme
           avant l'écran ; les étiquettes ont le même lien.

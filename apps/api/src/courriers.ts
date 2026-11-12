@@ -719,7 +719,7 @@ function resumeDestination(): string {
     return `Tout arrive dans la boîte d'essai (${BOITE_TEST}). Aucun client ne reçoit quoi que ce soit tant qu'elle est en service, même si vous saisissez sa vraie adresse.`;
   }
   const copie = COPIE ? ` Une copie discrète part aussi vers ${COPIE}.` : "";
-  return `Les courriers partent pour de vrai, au nom de ${EXPEDITEUR}, vers l'adresse indiquée.${copie}`;
+  return `Les courriers partent réellement, au nom de ${EXPEDITEUR}, vers l'adresse indiquée.${copie}`;
 }
 
 /** Où le courrier qu'on vient d'envoyer est allé. */
@@ -738,7 +738,7 @@ function resumeEnvoi(destinataire: string, parti: boolean): string {
 
 /** Marche à suivre quand rien n'est en place pour envoyer. */
 const RIEN_POUR_ENVOYER =
-  "Aucun envoi n'est possible pour le moment. Deux façons de s'en sortir : démarrer la boîte d'essai, qui garde les courriers sans les faire partir, ou renseigner la clé d'envoi de la boutique pour les envoyer pour de vrai. Ces deux réglages se posent dans la configuration du serveur (MAIL_TEST_URL et RESEND_API_KEY).";
+  "Aucun envoi n'est possible pour le moment. Deux façons de s'en sortir : démarrer la boîte d'essai, qui garde les courriers sans les faire partir, ou renseigner la clé d'envoi de la boutique pour les envoyer réellement. Ces deux réglages se posent dans la configuration du serveur (MAIL_TEST_URL et RESEND_API_KEY).";
 
 /* -------------------------------------------------------------------------- */
 /*  Débit d'envoi                                                             */

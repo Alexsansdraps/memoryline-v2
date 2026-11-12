@@ -533,6 +533,13 @@
       "when": 1794482612039,
       "tag": "0075_adresse_boutique",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1794483407742,
+      "tag": "0076_hebergeur_base",
+      "breakpoints": true
     }
   ]
 }
