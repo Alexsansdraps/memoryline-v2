@@ -161,12 +161,14 @@ export function destinations(
       nom: p.title,
       href: `/pages/${p.slug}`,
       traductions: p.titres ?? {},
-      enLigne: p.status === "active" && p.affichage !== "stand",
+      // Une page « Tablette du stand » s'ouvre sur la tablette en mode stand,
+      // et son lien au menu ne se montre que là (13/11, cms.ts, demandeDuStand).
+      enLigne: p.status === "active",
       remarque:
         p.status !== "active"
           ? "brouillon : la page est introuvable tant qu'elle n'est pas en ligne"
           : p.affichage === "stand"
-            ? "réservée à la tablette du stand"
+            ? "tablette du stand seulement : son lien au menu ne se voit qu'en mode stand, jamais sur le site"
             : undefined,
       reglage: { libelle: "Page", href: `/pages/${p.id}` },
     }));

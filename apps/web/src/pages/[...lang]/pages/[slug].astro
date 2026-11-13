@@ -58,7 +58,7 @@ const admin = Astro.locals.admin ?? null;
 const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
 let page: PageCms | null = null;
 try {
-  page = await api.page(slug, langue);
+  page = await api.page(slug, langue, Astro.locals.stand);
 } catch (e) {
   // Page absente ou brouillon : elle n'existe pas pour le visiteur, et le
   // dire est plus honnête qu'un cadre vide qui laisserait croire à une panne

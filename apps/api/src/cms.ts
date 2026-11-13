@@ -87,6 +87,28 @@ export const AFFICHAGES_SITE: string[] = ["site", "les-deux"];
 const AFFICHAGES_STAND: string[] = ["stand", "les-deux"];
 
 /**
+ * La requête vient-elle de la tablette en MODE STAND (`?stand=1`, que le site
+ * ajoute quand son cookie de stand est posé) ?
+ *
+ * Margaux, 13 novembre 2026, pour le marché de Noël de Mulhouse : une page
+ * « Tablette du stand » où les affiches de Mulhouse passent en premier, avec
+ * son lien dans le menu — et rien de tout cela pour qui commande sur le site.
+ * Jusque-là, une telle page n'était lue que par /stand/pages : sur la
+ * tablette, son adresse répondait « introuvable » et son lien au menu menait
+ * nulle part. Le mode stand ne donne AUCUN droit (il cache des montants) : il
+ * ne fait qu'ouvrir des pages écrites pour être vues au stand.
+ */
+function demandeDuStand(c: { req: { query: (k: string) => string | undefined } }): boolean {
+  return c.req.query("stand") === "1";
+}
+
+/** Le nom d'une page du site dans une adresse du menu (« /pages/mulhouse »), ou null. */
+function pageDuLien(href: string): string | null {
+  const m = /^\/pages\/([^/?#]+)\/?(?:[?#].*)?$/.exec(href.trim());
+  return m ? decodeURIComponent(m[1]!).toLowerCase() : null;
+}
+
+/**
  * Les langues que la boutique sait servir, et leur nom en toutes lettres.
  *
  * Le français est la référence et n'en fait donc pas partie : il vit dans les
@@ -1199,7 +1221,24 @@ export function mountCms(app: Hono): void {
    */
   app.get("/menu", async (c) => {
     const langue = langueDemandee(c);
-    const lignes = await db
+    const auStand = demandeDuStand(c);
+    // Les pages réservées à la tablette du stand : leur lien au menu ne se
+    // montre qu'en mode stand (cf. demandeDuStand).
+    const pagesDuStand = auStand
+      ? new Set<string>()
+      : new Set(
+          (
+            await db
+              .select({ slug: schema.pages.slug })
+              .from(schema.pages)
+              .where(eq(schema.pages.affichage, "stand"))
+          ).map((p) => p.slug.toLowerCase()),
+        );
+    const pourCeVisiteur = (href: string) => {
+      const page = pageDuLien(href);
+      return !page || !pagesDuStand.has(page);
+    };
+    const toutes = await db
       .select({
         id: schema.menuItems.id,
         parentId: schema.menuItems.parentId,
@@ -1217,6 +1256,11 @@ export function mountCms(app: Hono): void {
         ),
       )
       .orderBy(asc(schema.menuItems.position), asc(schema.menuItems.id));
+    // Une entrée écartée emporte ses sous-entrées, comme une entrée masquée.
+    const ecartees = new Set(toutes.filter((l) => !pourCeVisiteur(l.href)).map((l) => l.id));
+    const lignes = toutes.filter(
+      (l) => !ecartees.has(l.id) && (l.parentId === null || !ecartees.has(l.parentId)),
+    );
 
     const libelle = (l: { label: string; translations: TraductionsMenu | null }) =>
       utile(langue === "fr" ? undefined : l.translations?.[langue]?.label) ?? l.label;
@@ -1271,7 +1315,12 @@ export function mountCms(app: Hono): void {
           // Une page archivée n'existe plus pour le site, même pour qui en
           // aurait gardé l'adresse : c'est la même règle qu'un brouillon.
           isNull(schema.pages.archivedAt),
-          inArray(schema.pages.affichage, AFFICHAGES_SITE),
+          // En mode stand, la tablette ouvre aussi les pages écrites pour
+          // elle (cf. demandeDuStand) ; le site, jamais.
+          inArray(
+            schema.pages.affichage,
+            demandeDuStand(c) ? [...new Set([...AFFICHAGES_SITE, ...AFFICHAGES_STAND])] : AFFICHAGES_SITE,
+          ),
         ),
       );
     if (!page) return c.notFound();

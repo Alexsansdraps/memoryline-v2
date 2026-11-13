@@ -419,6 +419,15 @@ export interface OptionsCatalogue {
   offset?: number;
 }
 
+/** « ?lang=en&stand=1 » : la langue (le français n'en a pas besoin) et le mode stand. */
+function requeteLangueStand(langue: string | undefined, stand: boolean): string {
+  const p = new URLSearchParams();
+  if (langue && langue !== "fr") p.set("lang", langue);
+  if (stand) p.set("stand", "1");
+  const q = p.toString();
+  return q ? `?${q}` : "";
+}
+
 export const api = {
   stats: () => get<Stats>("/stats"),
   /**
@@ -480,16 +489,20 @@ export const api = {
       `/villes${requete ? `?${requete}` : ""}`,
     );
   },
-  /** Une page écrite au back-office. Lève si elle n'existe pas ou est en brouillon. */
-  page: (slug: string, langue?: string) =>
-    get<PageCms>(
-      `/pages/${encodeURIComponent(slug)}${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,
-    ),
-  /** Le menu du haut, dans la langue du visiteur. */
-  menu: (langue?: string) =>
-    get<{ entrees: EntreeMenuPublique[] }>(
-      `/menu${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,
-    ),
+  /**
+   * Une page écrite au back-office. Lève si elle n'existe pas ou est en
+   * brouillon. `stand` : la tablette en mode stand ouvre aussi les pages
+   * réservées au stand (« Tablette du stand »).
+   */
+  page: (slug: string, langue?: string, stand = false) =>
+    get<PageCms>(`/pages/${encodeURIComponent(slug)}${requeteLangueStand(langue, stand)}`),
+  /**
+   * Le menu du haut, dans la langue du visiteur. `stand` : en mode stand, il
+   * garde aussi les liens vers les pages réservées au stand ; hors stand, ils
+   * n'y sont pas.
+   */
+  menu: (langue?: string, stand = false) =>
+    get<{ entrees: EntreeMenuPublique[] }>(`/menu${requeteLangueStand(langue, stand)}`),
   product: (slug: string, langue?: string) =>
     get<ProductDetail>(
       `/products/${slug}${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,

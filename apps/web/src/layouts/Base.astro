@@ -141,7 +141,7 @@ const MENU_DE_SECOURS: EntreeMenuPublique[] = [
  * tombe jamais parce qu'un ornement n'a pas pu être lu.
  */
 const [reponseMenu, reponseReglages, reglagesFrancais] = await Promise.all([
-  api.menu(langue).catch(() => null),
+  api.menu(langue, Astro.locals.stand).catch(() => null),
   // La baseline dans la langue de la page : l'écran « Contenu du site » la
   // fait traduire, comme les textes de l'accueil. En français, la lecture
   // est exactement celle d'avant.
