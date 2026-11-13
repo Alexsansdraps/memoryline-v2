@@ -105,7 +105,20 @@ export function aiguillageCourriers(o: {
 
 /** Resend peut-il envoyer pour de vrai : une clé ET un vrai expéditeur (MAIL_FROM) ? */
 export function courriersReelsPrets(): boolean {
-  return CLE.length > 0 && (process.env.MAIL_FROM ?? "").trim().length > 0;
+  return manqueAuxCourriels().length === 0;
+}
+
+/**
+ * Ce qui manque pour envoyer réellement, NOMMÉ : « RESEND_API_KEY »,
+ * « MAIL_FROM », les deux, ou rien. Le message disait « l'un ou l'autre », et
+ * la boutique, sa clé posée, ne comprenait pas pourquoi il restait (13/11).
+ * La clé est lue au démarrage : posée sans redémarrer l'API, elle manque.
+ */
+export function manqueAuxCourriels(): string[] {
+  const manque: string[] = [];
+  if (!CLE) manque.push("RESEND_API_KEY");
+  if (!(process.env.MAIL_FROM ?? "").trim()) manque.push("MAIL_FROM");
+  return manque;
 }
 
 /** Le dernier mode connu de l'interrupteur, et de quoi le relire. */

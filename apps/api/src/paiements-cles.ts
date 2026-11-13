@@ -878,6 +878,8 @@ export function preconditionsBascule(
    * paiements : une cliente qui paie doit recevoir sa confirmation.
    */
   courriersPrets = true,
+  /** Ce qui manque, nommé (mail.ts, manqueAuxCourriels) : la phrase le dit. */
+  manqueCourriels: string[] = [],
 ): {
   possible: boolean;
   raisons: string[];
@@ -885,7 +887,11 @@ export function preconditionsBascule(
   const raisons: string[] = [];
   if (!courriersPrets)
     raisons.push(
-      "Les courriels ne peuvent pas partir réellement : il manque RESEND_API_KEY ou MAIL_FROM dans les réglages du serveur (le .env), avec un domaine validé chez Resend.",
+      manqueCourriels.length === 1 && manqueCourriels[0] === "MAIL_FROM"
+        ? "Les courriels ne peuvent pas partir réellement : la clé Resend est là, il manque MAIL_FROM (l'adresse d'expédition, sur un domaine validé chez Resend) dans les réglages du serveur (le .env)."
+        : manqueCourriels.length === 1 && manqueCourriels[0] === "RESEND_API_KEY"
+          ? "Les courriels ne peuvent pas partir réellement : il manque RESEND_API_KEY dans les réglages du serveur (le .env), ou l'API n'a pas été redémarrée depuis qu'elle y a été ajoutée."
+          : "Les courriels ne peuvent pas partir réellement : il manque RESEND_API_KEY et MAIL_FROM dans les réglages du serveur (le .env), avec un domaine validé chez Resend.",
     );
   const presents = PRESTATAIRES.filter((p) => entrees[p].jeu);
   if (presents.length === 0)

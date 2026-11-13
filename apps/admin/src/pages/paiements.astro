@@ -382,7 +382,7 @@ const boutonLong = "max-w-full rounded border border-bo-border px-3 py-1.5 text-
               ? "envoyés réellement (Resend)."
               : "nulle part : ni boîte d'essai ni Resend dans les réglages du serveur."}
           {!etat.courriels.reelsPrets &&
-            " En production, il faudra RESEND_API_KEY et MAIL_FROM dans les réglages du serveur."}
+            ` Pour passer en production, il manque ${(etat.courriels.manque?.length ? etat.courriels.manque : ["RESEND_API_KEY", "MAIL_FROM"]).join(" et ")} dans les réglages du serveur.`}
         </p>
         <div class="mt-4 grid gap-3 sm:grid-cols-2">
           <div class={`rounded-lg border p-4 ${essaiCoche ? "border-amber-500 bg-amber-50 text-amber-900" : "border-bo-border"}`}>

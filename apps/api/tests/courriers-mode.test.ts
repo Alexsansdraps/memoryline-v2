@@ -63,3 +63,13 @@ test("courriels prêts (ou non précisé) : la raison n'apparaît pas", () => {
     assert.ok(!r.raisons.some((x) => x.includes("RESEND_API_KEY")));
   }
 });
+
+test("la raison nomme ce qui manque : MAIL_FROM seul, la clé seule, ou les deux", () => {
+  const seulFrom = preconditionsBascule({ stripe: vide, paypal: vide }, false, ["MAIL_FROM"]).raisons[0]!;
+  assert.match(seulFrom, /la clé Resend est là, il manque MAIL_FROM/);
+  const seuleCle = preconditionsBascule({ stripe: vide, paypal: vide }, false, ["RESEND_API_KEY"]).raisons[0]!;
+  assert.match(seuleCle, /il manque RESEND_API_KEY .*redémarrée/);
+  assert.doesNotMatch(seuleCle, /MAIL_FROM/);
+  const lesDeux = preconditionsBascule({ stripe: vide, paypal: vide }, false, ["RESEND_API_KEY", "MAIL_FROM"]).raisons[0]!;
+  assert.match(lesDeux, /RESEND_API_KEY et MAIL_FROM/);
+});

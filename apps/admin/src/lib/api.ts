@@ -639,7 +639,7 @@ export interface EtatPaiements {
     avisRefuse: { le: string; secret: "test" | "live"; avis: "test" | "live" } | null;
   };
   /** Où partent les courriers maintenant, et s'ils pourraient partir pour de vrai (Resend). */
-  courriels: { voie: "boite" | "resend" | "aucun"; reelsPrets: boolean };
+  courriels: { voie: "boite" | "resend" | "aucun"; reelsPrets: boolean; manque?: string[] };
   etiquettes: {
     reelles: boolean;
     /** « mode » : elles suivent l'interrupteur (dès qu'il a été réglé). */

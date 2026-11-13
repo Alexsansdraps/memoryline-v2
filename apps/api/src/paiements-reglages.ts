@@ -92,6 +92,7 @@ import { verifierPaypal, verifierStripe, type VerdictCles } from "./payments.js"
 import {
   courrierModePaiement,
   courriersReelsPrets,
+  manqueAuxCourriels,
   envoyer as envoyerMail,
   estConfigure as courriersConfigures,
   estEnEssai as courriersEnEssai,
@@ -470,7 +471,11 @@ function bascule(etat: EtatLu): { possible: boolean; raisons: string[] } {
       empreintesActuelles: jeu ? empreintesDuJeu(etat.cles, jeu) : null,
     };
   };
-  return preconditionsBascule({ stripe: entree("stripe"), paypal: entree("paypal") }, courriersReelsPrets());
+  return preconditionsBascule(
+    { stripe: entree("stripe"), paypal: entree("paypal") },
+    courriersReelsPrets(),
+    manqueAuxCourriels(),
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -703,6 +708,7 @@ export function mountPaiementsReglages(app: Hono): void {
       courriels: {
         voie: courriersEnEssai() ? "boite" : courriersConfigures() ? "resend" : "aucun",
         reelsPrets: courriersReelsPrets(),
+        manque: manqueAuxCourriels(),
       },
       etiquettes: {
         reelles: config.etiquettesReelles,
