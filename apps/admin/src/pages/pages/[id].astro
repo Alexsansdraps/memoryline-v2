@@ -145,6 +145,35 @@ function blocsDepuisCorps(corps: string): BlocPage[] {
   return html ? [{ type: "texte", html } as BlocPage] : [];
 }
 
+/*
+ * LES AFFICHES DE LA PAGE (Margaux, 13/11 : « comment j'ajoute des
+ * collections ? », pour la page du stand de Mulhouse). Sous le texte, une
+ * grille d'affiches prises dans des collections, DANS L'ORDRE choisi : celles
+ * de la première d'abord (Mulhouse), puis la suivante, sans doublon, jusqu'au
+ * nombre voulu. Le site savait déjà rendre cette grille (bloc « produits »,
+ * cms.ts) ; l'éditeur d'un seul tenant ne savait plus la poser.
+ */
+const AFFICHES_MAX = 48;
+const CHOIX_DE_COLLECTIONS = 6;
+
+/** La grille d'affiches enregistrée sur la page : ses collections, dans l'ordre, et leur nombre. */
+function grilleDeLaPage(blocs: BlocPage[] | null | undefined): { collections: string[]; limite: number } {
+  const b = (blocs ?? []).find((x) => x.type === "produits" && x.source === "collection");
+  if (!b) return { collections: [], limite: AFFICHES_MAX };
+  const refs = Array.isArray(b.references) && b.references.length ? b.references : [b.reference];
+  const collections = refs.map((r) => String(r ?? "").trim()).filter(Boolean);
+  const n = Number(b.limite);
+  return { collections, limite: Number.isFinite(n) && n > 0 ? Math.min(n, AFFICHES_MAX) : AFFICHES_MAX };
+}
+
+/** Le bloc à enregistrer pour la grille, ou rien si aucune collection n'est choisie. */
+function blocDesAffiches(collections: string[], limite: number): BlocPage[] {
+  const refs = [...new Set(collections.map((c) => c.trim()).filter(Boolean))];
+  if (!refs.length) return [];
+  const n = Math.min(Math.max(Math.trunc(limite) || AFFICHES_MAX, 1), AFFICHES_MAX);
+  return [{ type: "produits", source: "collection", reference: refs[0], references: refs, limite: n } as BlocPage];
+}
+
 let flash: string | null = null;
 let flashErreur = false;
 
@@ -155,6 +184,7 @@ let saisie: {
   statut: string;
   seoTitre: string;
   seoDescription: string;
+  affiches?: { collections: string[]; limite: number };
   corps: string;
 } | null = null;
 
@@ -364,6 +394,10 @@ if (Astro.request.method === "POST") {
     const seoTitre = String(f.get("seoTitle") ?? "").trim();
     const seoDescription = String(f.get("seoDescription") ?? "").trim();
     const corpsSaisi = String(f.get("corps") ?? "").trim();
+    const affichesSaisies = {
+      collections: f.getAll("affiches").map((v) => String(v)),
+      limite: Number(f.get("affichesLimite") ?? AFFICHES_MAX),
+    };
 
     try {
       if (!Number.isFinite(idPage) || idPage <= 0)
@@ -385,7 +419,10 @@ if (Astro.request.method === "POST") {
         status: statut,
         seoTitle: seoTitre || null,
         seoDescription: seoDescription || null,
-        blocks: blocsDepuisCorps(corpsSaisi),
+        blocks: [
+          ...blocsDepuisCorps(corpsSaisi),
+          ...blocDesAffiches(affichesSaisies.collections, affichesSaisies.limite),
+        ],
       });
       flash =
         statut === "active"
@@ -401,6 +438,7 @@ if (Astro.request.method === "POST") {
         seoTitre,
         seoDescription,
         corps: corpsSaisi,
+        affiches: affichesSaisies,
       };
     }
   }
@@ -426,7 +464,13 @@ const seoDescription = saisie?.seoDescription ?? page?.seoDescription ?? "";
 const corps = saisie?.corps ?? corpsDepuisBlocs(page?.blocks);
 
 /** Une ancienne grille de produits ne se replie pas : il faut le dire. */
-const grillePerdue = !saisie && contientUneGrille(page?.blocks);
+const grilles = (page?.blocks ?? []).filter((b) => b.type === "produits");
+const grillePerdue =
+  !saisie &&
+  contientUneGrille(page?.blocks) &&
+  (grilles.length > 1 || grilles.some((b) => b.source !== "collection"));
+/** La grille d'affiches de l'écran : la saisie refusée, sinon celle enregistrée. */
+const affiches = saisie?.affiches ?? grilleDeLaPage(page?.blocks);
 
 /**
  * Les collections que montrent les rangées « Affiches » de la page.
@@ -686,6 +730,51 @@ const boutonDiscret =
             etiquette="Contenu de la page"
           />
         </div>
+      </section>
+
+      {/* =============================================================== */}
+      {/* Les affiches de la page (cf. blocDesAffiches)                   */}
+      {/* =============================================================== */}
+      <section id="affiches" class="rounded-lg border border-bo-border bg-bo-surface p-5">
+        <h3 class="mb-1 font-semibold">Affiches de la page</h3>
+        <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+          Une grille d'affiches sous le texte, prises dans les collections
+          choisies ci-dessous, <strong>dans cet ordre</strong> : d'abord celles
+          de la 1re collection, puis celles de la 2e, et ainsi de suite, sans
+          doublon. Laissez tout sur « aucune » pour une page sans affiches.
+        </p>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: Math.max(CHOIX_DE_COLLECTIONS, affiches.collections.length) }, (_, i) => (
+            <label class="block">
+              <span class="text-xs text-bo-muted">
+                {i === 0 ? "1re collection (en premier)" : `${i + 1}e collection`}
+              </span>
+              <select name="affiches" class={champ}>
+                <option value="">— aucune —</option>
+                {(donnees?.collections ?? []).map((c) => (
+                  <option value={c.slug} selected={affiches.collections[i] === c.slug}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
+        <label class="mt-4 block w-60">
+          <span class="text-xs text-bo-muted">Nombre d'affiches ({AFFICHES_MAX} au plus)</span>
+          <input
+            type="number"
+            name="affichesLimite"
+            min="1"
+            max={AFFICHES_MAX}
+            value={affiches.limite}
+            class={champ}
+          />
+        </label>
+        <p class="mt-2 text-xs text-bo-muted">
+          Une collection vide n'affiche rien : remplissez-la depuis Produits
+          (filtrez, cochez, puis « Ajouter » à la collection).
+        </p>
       </section>
 
       {/* =============================================================== */}
