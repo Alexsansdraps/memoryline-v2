@@ -149,7 +149,9 @@ export function destinations(
         remarque: !c.active
           ? "collection masquée : sa page est introuvable"
           : !enService
-            ? "aucune affiche en ligne : sa page est introuvable"
+            ? // Une collection qu'on vient de créer est vide : c'est le cas
+              // de « Mulhouse » (13/11). Dire comment la remplir.
+              "aucune affiche en ligne dedans : sa page est introuvable. Ajoutez-y des affiches : Produits › filtrez (par ex. la ville) › cochez › « Ajouter » à la collection"
             : undefined,
         reglage: { libelle: "Collection", href: `/collections/${c.id}` },
       };
