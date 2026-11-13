@@ -298,6 +298,13 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
     aide: "La grille d'affiches mise en avant sur l'accueil.",
     champs: [
       { key: "home.vitrine.visible", label: "Afficher cette section", type: "switch" },
+      {
+        key: "home.h1",
+        label: "Petite ligne rouge au-dessus (titre de la page)",
+        type: "texte",
+        aide:
+          "Vide : « Affiches personnalisées de villes et de paysages ». C'est le titre que Google lit en premier : qu'il dise ce que vend la boutique.",
+      },
       { key: "home.vitrine.title", label: "Titre de la section", type: "texte" },
       {
         key: "home.vitrine.subtitle",

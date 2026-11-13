@@ -76,6 +76,11 @@ const texte = (cle: string, defaut: string) => setting(cle, defaut, langue);
 const vitrineVisible = await visible("home.vitrine.visible");
 const vitrineTitre = await texte("home.vitrine.title", tr("accueil.vitrine_titre"));
 /**
+ * Le titre de la page (la petite ligne rouge), réglable depuis le 13/11
+ * (« Accueil et pied de page ») ; vide, celui du dictionnaire.
+ */
+const accueilH1 = await texte("home.h1", tr("accueil.h1"));
+/**
  * Texte d'introduction de la vitrine : une ligne par ligne saisie au
  * back-office. Celles qui commencent par un tiret deviennent une puce, les
  * autres restent des phrases — c'est ce que fait la boutique actuelle, et ça
@@ -272,7 +277,7 @@ const donneesStructurees =
       <section class="w-full px-4 pt-12 pb-4 sm:px-6 lg:px-12">
         <div class="mb-8 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 class="text-xs uppercase tracking-wide text-terracotta">{tr("accueil.h1")}</h1>
+            <h1 class="text-xs uppercase tracking-wide text-terracotta">{accueilH1}</h1>
             <h2 class="mt-1 text-2xl sm:text-3xl">{vitrineTitre}</h2>
             <div class="mt-2 space-y-0.5 text-ink-soft">
               {vitrineLignes.map((l) =>
@@ -331,7 +336,7 @@ const donneesStructurees =
       </section>
     ) : (
       <section class="w-full px-4 pt-12 pb-4 sm:px-6 lg:px-12">
-        <h1 class="text-xs uppercase tracking-wide text-terracotta">{tr("accueil.h1")}</h1>
+        <h1 class="text-xs uppercase tracking-wide text-terracotta">{accueilH1}</h1>
       </section>
     )
   }

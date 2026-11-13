@@ -1257,6 +1257,7 @@ const TEXTES_DU_SITE: Readonly<Record<string, { section: string; champ: string }
     section: "Personnalisation — vidéo explicative",
     champ: "Titre de la pop-up vidéo",
   },
+  "home.h1": { section: "Accueil — les affiches", champ: "Petite ligne rouge au-dessus (titre de la page)" },
   "home.vitrine.title": { section: "Accueil — les affiches", champ: "Titre de la section" },
   "home.vitrine.subtitle": { section: "Accueil — les affiches", champ: "Texte d'introduction" },
   "home.ia.title": { section: "Accueil — l'affiche à partir d'une photo", champ: "Titre" },
