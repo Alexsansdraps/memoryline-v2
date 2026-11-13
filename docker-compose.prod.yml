@@ -146,6 +146,8 @@ services:
         ADMIN_BASE: /bo
         ALLOWED_HOSTS: ${DOMAINE}
         PUBLIC_API_URL: /api
+        # L'adresse du site, pour les liens « Voir la page » du back-office.
+        PUBLIC_ORIGIN: ${PUBLIC_ORIGIN}
         # Figée au build (voir le Dockerfile) : la passer au seul démarrage
         # laissait le back-office appeler « /api », et chaque page en 500.
         API_URL_INTERNAL: http://api:3000

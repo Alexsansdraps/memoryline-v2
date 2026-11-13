@@ -40,6 +40,12 @@ ARG ADMIN_BASE=/bo
 ARG PUBLIC_API_URL=/api
 ENV ADMIN_BASE=$ADMIN_BASE
 ENV PUBLIC_API_URL=$PUBLIC_API_URL
+# L'adresse publique du SITE, pour les liens « Voir la page », « Voir sur le
+# site »… du back-office. Figée au build comme les autres : sans elle, ces
+# liens retombaient sur « http://localhost:8080 » (Alexandra, 13/11).
+ARG PUBLIC_ORIGIN
+ENV PUBLIC_ORIGIN=$PUBLIC_ORIGIN
+ENV PUBLIC_SITE_URL=$PUBLIC_ORIGIN
 RUN pnpm --filter @memoryline/admin run build
 
 # --- Étage 2 : exécution ---------------------------------------------------
