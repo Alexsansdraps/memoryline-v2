@@ -1034,9 +1034,22 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
           </nav>
         </div>
 
-        <p class="mt-12 border-t border-ink/10 pt-6 text-sm text-ink-soft">
-          © {new Date().getFullYear()} {tr("pied.droits")}
-        </p>
+        <div
+          class="mt-12 flex flex-col gap-2 border-t border-ink/10 pt-6 text-sm text-ink-soft sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p>© {new Date().getFullYear()} {tr("pied.droits")}</p>
+          {/* La signature de qui a créé le site (Alexandra, 13/11). Les
+              mentions légales la reprennent (migration 0078). */}
+          <p class="text-xs">
+            {tr("pied.credit.avant")} <span class="text-terracotta">♥</span>
+            {tr("pied.credit.apres")}{" "}
+            <a
+              href="https://alexandraporhansl.com"
+              class="underline-offset-2 transition-colors hover:text-terracotta hover:underline"
+              >Alexandra Porhansl</a
+            >
+          </p>
+        </div>
       </div>
     </footer>
     <CookieBanner langue={langue} />

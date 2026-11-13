@@ -12,6 +12,7 @@ import {
   gte,
   inArray,
   isNull,
+  ne,
   or,
   sql as sqlOp,
 } from "drizzle-orm";
@@ -2272,6 +2273,64 @@ app.post("/auth/logout", async (c) => {
   return c.json({ ok: true });
 });
 
+/** Longueur minimale d'un mot de passe du back-office (création, BO › Comptes, et le sien). */
+const MDP_ADMIN_MIN = 10;
+
+/**
+ * Chacun change SON mot de passe, quel que soit son rôle.
+ *
+ * Hors de « /admin/* » exprès : la garde de ces routes ne laisse au vendeur
+ * que des lectures, et c'est très bien ainsi — mais son propre mot de passe
+ * est à lui. La propriétaire, elle, peut aussi changer celui de n'importe
+ * quel compte depuis BO › Comptes.
+ *
+ * L'ancien mot de passe est demandé : une session laissée ouverte sur la
+ * tablette d'un stand ne doit pas suffire à prendre le compte. Les mauvais
+ * essais comptent avec ceux de la connexion (même plafond, même fenêtre).
+ *
+ * Les AUTRES sessions du compte sont fermées : si le mot de passe change parce
+ * qu'il a circulé, l'appareil de celui qui le connaissait doit sortir. Celle
+ * d'où l'on change reste ouverte, pour ne pas renvoyer à la connexion.
+ */
+app.post("/auth/mot-de-passe", async (c) => {
+  const user = await validateSession(getCookie(c, SESSION_COOKIE));
+  if (!user) return c.json({ error: "Non authentifié" }, 401);
+  const ip = clientIp(c);
+  if (loginRateLimited(ip))
+    return c.json({ error: "Trop de tentatives, réessayez plus tard" }, 429);
+  const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  const ancien = String(b.ancien ?? "");
+  const nouveau = String(b.nouveau ?? "");
+  if (nouveau.length < MDP_ADMIN_MIN)
+    return c.json(
+      { error: `Le nouveau mot de passe doit faire au moins ${MDP_ADMIN_MIN} caractères.` },
+      400,
+    );
+  const [compte] = await db
+    .select({ passwordHash: schema.adminUsers.passwordHash })
+    .from(schema.adminUsers)
+    .where(eq(schema.adminUsers.id, user.adminUserId));
+  if (!compte || !(await verifyPassword(ancien, compte.passwordHash))) {
+    noteFailedLogin(ip);
+    return c.json({ error: "Le mot de passe actuel n'est pas le bon." }, 400);
+  }
+  if (ancien === nouveau)
+    return c.json({ error: "Le nouveau mot de passe est le même que l'ancien." }, 400);
+  await db
+    .update(schema.adminUsers)
+    .set({ passwordHash: await hashPassword(nouveau) })
+    .where(eq(schema.adminUsers.id, user.adminUserId));
+  await db
+    .delete(schema.sessions)
+    .where(
+      and(
+        eq(schema.sessions.adminUserId, user.adminUserId),
+        ne(schema.sessions.id, user.sessionId),
+      ),
+    );
+  return c.json({ ok: true });
+});
+
 app.get("/auth/me", async (c) => {
   const user = await validateSession(getCookie(c, SESSION_COOKIE));
   if (!user) return c.json({ user: null }, 401);
@@ -2944,8 +3003,8 @@ app.post("/admin/users", async (c) => {
   const motDePasse = String(b.password ?? "");
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
     return c.json({ error: "adresse e-mail invalide" }, 400);
-  if (motDePasse && motDePasse.length < 10)
-    return c.json({ error: "mot de passe : 10 caractères minimum" }, 400);
+  if (motDePasse && motDePasse.length < MDP_ADMIN_MIN)
+    return c.json({ error: `mot de passe : ${MDP_ADMIN_MIN} caractères minimum` }, 400);
 
   // Les stands confiés, quand le formulaire les envoie (absent = on n'y
   // touche pas). Chacun doit exister ; un stand archivé reste permis : le

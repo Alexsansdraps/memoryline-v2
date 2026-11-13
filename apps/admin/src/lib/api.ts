@@ -288,6 +288,8 @@ export interface PageCms {
     seoTitle: string | null;
     seoDescription: string | null;
     blocks: BlocPage[];
+    /** « site », « stand » ou « les-deux » : où la page se montre. */
+    affichage?: string;
     /**
      * Par langue : le nom, le texte, et le référencement (titre et
      * description Google). Hors du français, un référencement non traduit
@@ -2854,6 +2856,12 @@ export function adminApi(request?: Request) {
         cookie,
       ),
     users: () => req<CompteAdmin[]>("GET", "/admin/users", undefined, cookie),
+    /**
+     * Change le mot de passe du compte CONNECTÉ, quel que soit son rôle
+     * (l'ancien est demandé). Ses autres sessions sont fermées.
+     */
+    changerMonMotDePasse: (ancien: string, nouveau: string) =>
+      req<{ ok: boolean }>("POST", "/auth/mot-de-passe", { ancien, nouveau }, cookie),
     upsertUser: (data: {
       id?: number;
       email: string;

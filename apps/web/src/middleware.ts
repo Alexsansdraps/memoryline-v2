@@ -452,8 +452,18 @@ export const onRequest = defineMiddleware(async (context, next) => {
       headers: reponse.headers,
     });
 
+  /*
+   * Seule la TABLETTE retient le mode d'une page à l'autre : son adresse porte
+   * le code du stand (BO › Ventes stand, « /?stand=1&code=… »), ou le cookie
+   * est déjà là et se renouvelle. Un simple « ?stand=1 » — une page réservée
+   * au stand ouverte depuis le back-office pour la relire — ne vaut que pour
+   * la page affichée : la personne qui la regarde ne doit pas se retrouver
+   * sur tout le site sans prix pendant une journée (Alexandra, 13/11 : « le
+   * mode stand n'est pas à activer/désactiver »).
+   */
+  const tablette = context.url.searchParams.has("code") || cookieStand;
   if (demande !== null) {
-    if (stand)
+    if (stand && tablette)
       context.cookies.set(COOKIE_STAND, "1", {
         path: "/",
         httpOnly: false,
@@ -462,7 +472,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
         // stand rouvrirait la boutique sans prix des semaines plus tard.
         maxAge: 60 * 60 * 24,
       });
-    else context.cookies.delete(COOKIE_STAND, { path: "/" });
+    else if (!stand) context.cookies.delete(COOKIE_STAND, { path: "/" });
   }
   return reponse;
 });

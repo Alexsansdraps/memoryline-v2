@@ -674,7 +674,11 @@ const boutonDiscret =
               champ garde la saisie rejetée, et le lien mènerait nulle part. */}
           {page?.status === "active" && page.slug && (
             <a
-              href={`${ORIGINE_PUBLIQUE}/pages/${encodeURIComponent(page.slug)}`}
+              href={`${ORIGINE_PUBLIQUE}/pages/${encodeURIComponent(page.slug)}${
+                // Une page réservée au stand ne s'ouvre qu'en mode stand. Sans
+                // le code du stand, ce mode ne vaut que pour cette page.
+                page.affichage === "stand" ? "?stand=1" : ""
+              }`}
               target="_blank"
               rel="noopener"
               class={boutonDiscret}

@@ -53,6 +53,8 @@ export const ui = {
     "nav.langue": "Langue",
 
     "pied.droits": "Memory Line — Affiches personnalisées",
+    "pied.credit.avant": "Créé avec",
+    "pied.credit.apres": "par",
     "pied.baseline": "Votre affiche prête en 2 minutes.",
 
     "meta.titre": "Memory Line | Affiches personnalisées de villes & paysages",
@@ -782,6 +784,8 @@ export const ui = {
     "nav.langue": "Language",
 
     "pied.droits": "Memory Line — Personalised posters",
+    "pied.credit.avant": "Made with",
+    "pied.credit.apres": "by",
     "pied.baseline": "Your poster ready in 2 minutes.",
 
     "meta.titre": "Memory Line | Personalised city & landscape posters",
@@ -1455,6 +1459,8 @@ export const ui = {
     "nav.langue": "Sprache",
 
     "pied.droits": "Memory Line — Personalisierte Poster",
+    "pied.credit.avant": "Mit",
+    "pied.credit.apres": "gemacht von",
     "pied.baseline": "Ihr Poster in 2 Minuten fertig.",
 
     "meta.titre": "Memory Line | Personalisierte Städte- & Landschaftsposter",
@@ -2137,6 +2143,8 @@ export const ui = {
     "nav.langue": "Lingua",
 
     "pied.droits": "Memory Line — Poster personalizzati",
+    "pied.credit.avant": "Creato con",
+    "pied.credit.apres": "da",
     "pied.baseline": "Il tuo poster pronto in 2 minuti.",
 
     "meta.titre": "Memory Line | Poster personalizzati di città e paesaggi",
@@ -2811,6 +2819,8 @@ export const ui = {
     "nav.langue": "Idioma",
 
     "pied.droits": "Memory Line — Láminas personalizadas",
+    "pied.credit.avant": "Hecho con",
+    "pied.credit.apres": "por",
     "pied.baseline": "Tu lámina lista en 2 minutos.",
 
     "meta.titre": "Memory Line | Láminas personalizadas de ciudades y paisajes",

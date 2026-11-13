@@ -19,7 +19,8 @@ const PUBLIC_PATHS = new Set(["/login"]);
  * L'API refuse de toute façon le reste. Ce filtre-ci évite seulement à
  * quelqu'un de tomber sur un écran vide et un message qu'il ne comprend pas.
  */
-const ECRANS_DU_VENDEUR = ["/ventes-salon", "/logout"];
+// « /mot-de-passe » : son propre mot de passe est à lui, quel que soit son rôle.
+const ECRANS_DU_VENDEUR = ["/ventes-salon", "/logout", "/mot-de-passe"];
 
 /**
  * La fiche d'UNE commande (/commandes/123) et ses bons de livraison : le

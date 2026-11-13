@@ -449,6 +449,11 @@ const badgeCaisse =
               </div>
             </details>
             {Astro.locals.user && <span>{Astro.locals.user.email}</span>}
+            {Astro.locals.user && (
+              <a href={url("/mot-de-passe")} class="text-bo-accent hover:underline">
+                Mon mot de passe
+              </a>
+            )}
             <form method="POST" action={url("/logout")}>
               <button class="text-bo-accent hover:underline">Déconnexion</button>
             </form>

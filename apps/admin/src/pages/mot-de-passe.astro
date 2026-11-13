@@ -1,0 +1,111 @@
+---
+/**
+ * Mon mot de passe : chaque compte du back-office change le sien, quel que
+ * soit son rôle — un vendeur aussi (middleware.ts lui ouvre cette page).
+ *
+ * La propriétaire peut en plus changer celui de n'importe quel compte depuis
+ * BO › Comptes ; les clientes changent le leur depuis « Mon compte » sur le
+ * site, ou par « Mot de passe oublié ».
+ */
+import Admin from "../layouts/Admin.astro";
+import { adminApi } from "../lib/api.ts";
+import { url } from "../lib/url.ts";
+
+const MIN = 10;
+const api = adminApi(Astro.request);
+const user = Astro.locals.user;
+
+let flash: string | null = null;
+let flashErreur = false;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const ancien = String(f.get("ancien") ?? "");
+  const nouveau = String(f.get("nouveau") ?? "");
+  const confirmation = String(f.get("confirmation") ?? "");
+  if (nouveau !== confirmation) {
+    flash = "Les deux nouveaux mots de passe ne sont pas identiques.";
+    flashErreur = true;
+  } else if (nouveau.length < MIN) {
+    flash = `Le nouveau mot de passe doit faire au moins ${MIN} caractères.`;
+    flashErreur = true;
+  } else {
+    try {
+      await api.changerMonMotDePasse(ancien, nouveau);
+      flash =
+        "Mot de passe changé. Vos autres appareils connectés ont été déconnectés ; celui-ci reste connecté.";
+    } catch (e) {
+      flash = e instanceof Error ? e.message : String(e);
+      flashErreur = true;
+    }
+  }
+}
+---
+
+<Admin title="Mon mot de passe">
+  {flash && (
+    <p
+      class={`mb-4 max-w-md text-sm rounded px-3 py-2 border ${
+        flashErreur ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"
+      }`}
+      role="status"
+    >
+      {flash}
+    </p>
+  )}
+
+  <p class="mb-6 text-sm text-bo-muted max-w-xl">
+    Le mot de passe du compte <strong>{user?.email}</strong>. Une fois changé,
+    vos autres appareils devront se reconnecter.
+    {user?.role === "owner" && (
+      <>
+        {" "}Pour changer celui d'un autre compte, passez par
+        <a href={url("/comptes")} class="text-bo-accent hover:underline">Comptes</a>.
+      </>
+    )}
+  </p>
+
+  <form
+    method="POST"
+    class="max-w-md space-y-4 bg-bo-surface border border-bo-border rounded-lg p-5"
+  >
+    <label class="block">
+      <span class="text-sm">Mot de passe actuel</span>
+      <input
+        name="ancien"
+        type="password"
+        required
+        autocomplete="current-password"
+        class="mt-1 block w-full border border-bo-border rounded px-2 py-1.5"
+      />
+    </label>
+    <label class="block">
+      <span class="text-sm">Nouveau mot de passe</span>
+      <input
+        name="nouveau"
+        type="password"
+        required
+        minlength={MIN}
+        autocomplete="new-password"
+        class="mt-1 block w-full border border-bo-border rounded px-2 py-1.5"
+      />
+      <span class="mt-1 block text-xs text-bo-muted">{MIN} caractères au moins.</span>
+    </label>
+    <label class="block">
+      <span class="text-sm">Nouveau mot de passe, une seconde fois</span>
+      <input
+        name="confirmation"
+        type="password"
+        required
+        minlength={MIN}
+        autocomplete="new-password"
+        class="mt-1 block w-full border border-bo-border rounded px-2 py-1.5"
+      />
+    </label>
+    <button
+      class="rounded bg-bo-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+    >
+      Changer mon mot de passe
+    </button>
+  </form>
+</Admin>
