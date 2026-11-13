@@ -49,6 +49,26 @@ const isActive = (href: string) =>
   href === "/" ? path === "/" : path === href || path.startsWith(href + "/");
 
 /*
+ * L'ÉCRAN EN COURS, BIEN EN ÉVIDENCE (Alexandra, 13/11 : « quand on est dans
+ * une page du BO, il faut que cette page soit affichée dans l'arbo bien mise
+ * en évidence »). Avant, l'entrée ouverte et son parent avaient le même fond
+ * à peine plus clair. Maintenant UNE seule entrée est « en cours » : celle
+ * dont l'adresse colle le mieux (la plus longue qui correspond) — sur
+ * « Ordre d'affichage », c'est elle et non « Produits » ; sur la fiche d'une
+ * affiche, c'est « Produits ». Son parent garde une marque plus discrète :
+ * on voit la rubrique ET l'écran.
+ */
+const motifsDuMenu = visibleNav.flatMap((g) =>
+  g.entrees.flatMap((e) => [
+    ...[e.href, ...(e.aussi ?? [])].map((m) => ({ m, cible: e.href })),
+    ...e.children.flatMap((c) => [c.href, ...(c.aussi ?? [])].map((m) => ({ m, cible: c.href }))),
+  ]),
+);
+const courant =
+  motifsDuMenu.filter((x) => isActive(x.m)).sort((a, b) => b.m.length - a.m.length)[0]?.cible ?? null;
+const estCourant = (href: string) => courant !== null && href === courant;
+
+/*
  * Le mode de la caisse, sur CHAQUE page de la propriétaire : « Mode essai »
  * ou « Paiements réels ». L'interrupteur vit dans Réglages › Paiements et se
  * bascule à tout moment ; sans ce badge, rien ne dirait, en préparant une
@@ -138,8 +158,7 @@ const badgeCaisse =
               // retenu le navigateur : on ne se perd jamais dans un menu qui
               // cache l'endroit où l'on se trouve.
               const ici = groupe.entrees.some(
-                (e) =>
-                  isActive(e.href) || e.children.some((c) => isActive(c.href)),
+                (e) => estCourant(e.href) || e.children.some((c) => estCourant(c.href)),
               );
               return (
                 <div data-groupe={groupe.titre ?? ""} data-ici={ici ? "1" : undefined}>
@@ -165,9 +184,9 @@ const badgeCaisse =
                       // Le parent reste mis en avant quand on est sur une de
                       // ses sous-pages, pour que la section courante reste
                       // lisible.
-                      const active =
-                        isActive(item.href) ||
-                        item.children.some((c) => isActive(c.href));
+                      const enCours = estCourant(item.href);
+                      // Le parent de l'écran ouvert : marqué, mais moins.
+                      const rubrique = !enCours && item.children.some((c) => estCourant(c.href));
                       return (
                         // Un bloc par entrée, sous-liens compris : « Importer
                         // un fichier » appartient à « Produits » et se lit en
@@ -175,10 +194,13 @@ const badgeCaisse =
                         <div>
                           <a
                             href={url(item.href)}
-                            class={`flex items-center gap-3 px-5 py-2.5 text-sm transition-colors ${
-                              active
-                                ? "bg-white/10 text-white font-medium"
-                                : "hover:bg-white/5"
+                            aria-current={enCours ? "page" : undefined}
+                            class={`flex items-center gap-3 border-l-4 py-2.5 pl-4 pr-5 text-sm transition-colors ${
+                              enCours
+                                ? "border-white bg-bo-accent text-white font-semibold"
+                                : rubrique
+                                  ? "border-white/40 bg-white/10 text-white font-medium"
+                                  : "border-transparent hover:bg-white/5"
                             }`}
                           >
                             <span>{item.icon}</span>
@@ -187,10 +209,11 @@ const badgeCaisse =
                           {item.children.map((child) => (
                             <a
                               href={url(child.href)}
-                              class={`flex items-center gap-2 py-2 pl-12 pr-5 text-[13px] transition-colors ${
-                                isActive(child.href)
-                                  ? "bg-white/10 text-white font-medium"
-                                  : "text-white/70 hover:bg-white/5"
+                              aria-current={estCourant(child.href) ? "page" : undefined}
+                              class={`flex items-center gap-2 border-l-4 py-2 pl-11 pr-5 text-[13px] transition-colors ${
+                                estCourant(child.href)
+                                  ? "border-white bg-bo-accent text-white font-semibold"
+                                  : "border-transparent text-white/70 hover:bg-white/5"
                               }`}
                             >
                               <span class="text-white/40">└</span>
@@ -213,6 +236,10 @@ const badgeCaisse =
           (function () {
             var menu = document.querySelector("aside nav");
             if (!menu) return;
+            // L'écran en cours, amené dans la partie visible du menu : sur un
+            // petit écran, il pouvait rester caché sous la ligne de flottaison.
+            var enCours = menu.querySelector('[aria-current="page"]');
+            if (enCours && enCours.scrollIntoView) enCours.scrollIntoView({ block: "nearest" });
 
             // Un menu réduit à une seule ligne — ce que voit un vendeur —
             // n'a pas de groupes, donc rien à ouvrir ni à fermer.

@@ -19,6 +19,12 @@ export interface NavItem {
   owner?: boolean;
   /** Sous-entrées, affichées en retrait sous le parent. */
   children?: NavItem[];
+  /**
+   * D'autres écrans qui appartiennent à cette entrée sans avoir la leur
+   * (« Catégories de produits », ouvert depuis Produits) : le menu la met en
+   * avant quand on y est.
+   */
+  aussi?: string[];
 }
 
 /** Un thème du menu. `titre` à null pour le bloc du haut, qui n'en a pas. */
@@ -80,6 +86,7 @@ export const MENU: GroupeNav[] = [
         label: "Produits",
         icon: "🖼️",
         owner: true,
+        aussi: ["/categories-produits"],
         // Aucun autre écran ne pointe vers l'import : sans cette entrée, il
         // redevient introuvable, ce qu'il a déjà été une fois.
         children: [

@@ -46,6 +46,15 @@ import {
 } from "../lib/api.ts";
 import { cleDAdresse, destinations, type Destination } from "../lib/destinations.ts";
 
+/**
+ * La page d'une ligne, cochée dans sa liste : l'adresse ne se saisit plus à
+ * la main (Alexandra, 13/11 : « faut pas qu'on puisse modifier l'adresse,
+ * juste la voir, et qu'elle change en choisissant une page »). Comparée par
+ * ce qu'elle MONTRE (cleDAdresse), comme le reste de l'écran.
+ */
+const memePage = (cible: string, href: string | undefined): boolean =>
+  !!href && cleDAdresse(cible) === cleDAdresse(href);
+
 const api = adminApi(Astro.request);
 
 /**
@@ -411,17 +420,16 @@ const boutonOutil =
     <ul class="space-y-1 text-bo-muted">
       <li>
         <strong class="text-bo-ink">Choisissez la page dans la liste</strong>
-        « ou choisir une page » de la ligne : l'accueil, les rayons d'affiches,
+        « Page » de la ligne : l'accueil, les rayons d'affiches,
         chaque collection, chaque page de
         <a class="underline" href={url("/pages")}>Pages du site</a>. L'adresse
         se remplit seule, le nom aussi s'il est vide.
       </li>
       <li>
-        L'adresse peut aussi s'écrire à la main :
-        <code class="rounded bg-bo-bg px-1">/pages/magnets</code> pour une page,
-        <code class="rounded bg-bo-bg px-1">/affiches?collection=noel</code>
-        pour une collection, ou <code class="rounded bg-bo-bg px-1">https://…</code>
-        pour un autre site. Sous chaque ligne, une phrase dit où elle mène.
+        L'adresse ne se tape pas : elle se remplit toute seule et se lit à
+        côté. Une page écrite dans Pages du site a pour adresse
+        <code class="rounded bg-bo-bg px-1">/pages/son-nom</code>. Sous chaque
+        ligne, une phrase dit où elle mène.
       </li>
       <li>
         Pour <strong class="text-bo-ink">renommer</strong> une entrée, changez
@@ -513,19 +521,22 @@ const boutonOutil =
               <input
                 data-valeur="href"
                 value={entree.href}
-                placeholder="/magnets"
-                class={champ}
+                placeholder="choisissez une page →"
+                readonly
+                tabindex="-1"
+                title="L'adresse se règle en choisissant la page à côté"
+                class={`${champ} cursor-default opacity-70`}
               />
             </label>
             <label class="block min-w-[12rem] flex-1">
-              <span class="text-xs text-bo-muted">ou choisir une page</span>
+              <span class="text-xs text-bo-muted">Page</span>
               <select data-choisir class={champ}>
                 <option value="">— Choisir —</option>
                 {GROUPES_DE_CIBLES.map((g) => (
                   <optgroup label={g.titre}>
                     {cibles.map((d, i) =>
                       d.groupe === g.groupe ? (
-                        <option value={String(i)}>
+                        <option value={String(i)} selected={memePage(d.href, entree.href)}>
                           {d.nom}
                           {d.enLigne ? "" : " (introuvable)"}
                         </option>
@@ -619,19 +630,22 @@ const boutonOutil =
                     <input
                       data-valeur="href"
                       value={enfant.href}
-                      placeholder="/magnets-ronds"
-                      class={champ}
+                      placeholder="choisissez une page →"
+                      readonly
+                      tabindex="-1"
+                      title="L'adresse se règle en choisissant la page à côté"
+                      class={`${champ} cursor-default opacity-70`}
                     />
                   </label>
                   <label class="block min-w-[11rem] flex-1">
-                    <span class="text-xs text-bo-muted">ou choisir une page</span>
+                    <span class="text-xs text-bo-muted">Page</span>
                     <select data-choisir class={champ}>
                       <option value="">— Choisir —</option>
                       {GROUPES_DE_CIBLES.map((g) => (
                         <optgroup label={g.titre}>
                           {cibles.map((d, i) =>
                             d.groupe === g.groupe ? (
-                              <option value={String(i)}>
+                              <option value={String(i)} selected={memePage(d.href, enfant.href)}>
                                 {d.nom}
                                 {d.enLigne ? "" : " (introuvable)"}
                               </option>
@@ -1029,7 +1043,7 @@ const boutonOutil =
           const cible = parCle.get(cleDAdresse(href));
           if (!cible) {
             texte =
-              "⚠ Cette adresse ne correspond à aucune page connue du site : vérifiez-la, ou choisissez la page dans la liste.";
+              "⚠ Cette adresse ne correspond à aucune page connue du site : choisissez la page dans la liste « Page ».";
             alerte = true;
           } else {
             texte = `→ ${cible.nom}${cible.enLigne ? "" : ` — ${cible.remarque ?? "introuvable sur le site"}`}`;
@@ -1051,8 +1065,8 @@ const boutonOutil =
         const liste = (e.target as HTMLElement).closest<HTMLSelectElement>("select[data-choisir]");
         if (!liste) return;
         const cible = cibles[Number(liste.value)];
-        // La liste revient sur « Choisir » : c'est un geste, pas un réglage.
-        liste.value = "";
+        // La liste GARDE la page choisie (13/11) : c'est elle qui fait
+        // l'adresse, qu'on ne saisit plus à la main.
         const ligne = ligneDe(liste);
         if (!cible || !ligne) return;
         const adresse = dansLaLigne<HTMLInputElement>(ligne, '[data-valeur="href"]');
