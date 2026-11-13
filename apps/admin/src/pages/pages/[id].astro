@@ -154,7 +154,8 @@ function blocsDepuisCorps(corps: string): BlocPage[] {
  * cms.ts) ; l'éditeur d'un seul tenant ne savait plus la poser.
  */
 const AFFICHES_MAX = 48;
-const CHOIX_DE_COLLECTIONS = 6;
+/** Au-delà, « + Ajouter une collection » disparaît (même borne que l'API, cms.ts). */
+const COLLECTIONS_MAX = 20;
 
 /** La grille d'affiches enregistrée sur la page : ses collections, dans l'ordre, et leur nombre. */
 function grilleDeLaPage(blocs: BlocPage[] | null | undefined): { collections: string[]; limite: number } {
@@ -743,25 +744,86 @@ const boutonDiscret =
           de la 1re collection, puis celles de la 2e, et ainsi de suite, sans
           doublon. Laissez tout sur « aucune » pour une page sans affiches.
         </p>
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: Math.max(CHOIX_DE_COLLECTIONS, affiches.collections.length) }, (_, i) => (
-            <label class="block">
-              <span class="text-xs text-bo-muted">
-                {i === 0 ? "1re collection (en premier)" : `${i + 1}e collection`}
-              </span>
-              <select name="affiches" class={champ}>
-                <option value="">— aucune —</option>
-                {(donnees?.collections ?? []).map((c) => (
-                  <option value={c.slug} selected={affiches.collections[i] === c.slug}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+        {/* Une liste au départ (ou une par collection déjà choisie) ; « +
+            Ajouter une collection » en ajoute une, jusqu'à COLLECTIONS_MAX,
+            sans écrire la borne (Alexandra, 13/11). */}
+        <div id="affiches-liste" class="space-y-2" data-max={COLLECTIONS_MAX}>
+          {Array.from({ length: Math.max(1, affiches.collections.length) }, (_, i) => (
+            <div data-ligne-collection class="flex items-end gap-2">
+              <label class="block w-full max-w-md">
+                <span data-rang class="text-xs text-bo-muted">
+                  {i === 0 ? "1re collection (en premier)" : `${i + 1}e collection`}
+                </span>
+                <select name="affiches" class={champ}>
+                  <option value="">— aucune —</option>
+                  {(donnees?.collections ?? []).map((c) => (
+                    <option value={c.slug} selected={affiches.collections[i] === c.slug}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                data-retirer-collection
+                class={`${boutonDiscret} mb-0.5`}
+                title="Retirer cette collection"
+                aria-label="Retirer cette collection"
+                hidden={i === 0 && affiches.collections.length <= 1}
+              >
+                ✕
+              </button>
+            </div>
           ))}
         </div>
+        <button type="button" id="affiches-ajouter" class={`${boutonDiscret} mt-3`}>
+          + Ajouter une collection
+        </button>
+        <script is:inline>
+          (function () {
+            var liste = document.getElementById("affiches-liste");
+            var ajouter = document.getElementById("affiches-ajouter");
+            if (!liste || !ajouter) return;
+            var max = Number(liste.dataset.max) || 20;
+            function lignes() {
+              return Array.prototype.slice.call(liste.querySelectorAll("[data-ligne-collection]"));
+            }
+            function renumeroter() {
+              var l = lignes();
+              l.forEach(function (ligne, i) {
+                var rang = ligne.querySelector("[data-rang]");
+                if (rang) rang.textContent = i === 0 ? "1re collection (en premier)" : i + 1 + "e collection";
+                var x = ligne.querySelector("[data-retirer-collection]");
+                if (x) x.hidden = l.length === 1;
+              });
+              ajouter.hidden = l.length >= max;
+            }
+            ajouter.addEventListener("click", function () {
+              var l = lignes();
+              if (l.length >= max) return;
+              var copie = l[l.length - 1].cloneNode(true);
+              var choix = copie.querySelector("select");
+              if (choix) choix.value = "";
+              liste.appendChild(copie);
+              renumeroter();
+              if (choix) choix.focus();
+            });
+            liste.addEventListener("click", function (e) {
+              var x = e.target.closest && e.target.closest("[data-retirer-collection]");
+              if (!x) return;
+              var l = lignes();
+              var ligne = x.closest("[data-ligne-collection]");
+              if (l.length === 1) {
+                var s = ligne.querySelector("select");
+                if (s) s.value = "";
+              } else ligne.remove();
+              renumeroter();
+            });
+            renumeroter();
+          })();
+        </script>
         <label class="mt-4 block w-60">
-          <span class="text-xs text-bo-muted">Nombre d'affiches ({AFFICHES_MAX} au plus)</span>
+          <span class="text-xs text-bo-muted">Nombre d'affiches</span>
           <input
             type="number"
             name="affichesLimite"

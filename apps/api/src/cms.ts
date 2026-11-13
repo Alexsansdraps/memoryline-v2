@@ -159,8 +159,11 @@ const LIMITE_PRODUITS_MAX = 48;
  * route que traverse tout le monde. Et une rangée qui puise dans quinze
  * collections ne se comprend plus en la regardant : c'est deux blocs qu'il
  * fallait faire.
+ *
+ * 20 depuis le 13/11 : l'éditeur de page ajoute les collections une à une
+ * (« + Ajouter une collection ») et s'arrête à 20, sans l'écrire.
  */
-const REFERENCES_MAX = 12;
+const REFERENCES_MAX = 20;
 
 /** Un menu plus grand que cela ne tient pas dans un bandeau de site. */
 const ENTREES_MENU_MAX = 200;
