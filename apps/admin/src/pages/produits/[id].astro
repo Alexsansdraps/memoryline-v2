@@ -1452,6 +1452,13 @@ try {
                     {bg.name}
                   </figcaption>
                 )}
+                <button
+                  type="button"
+                  class="js-supprimer-direct block w-full border-t border-bo-border px-2 py-1 text-left text-xs text-red-700 hover:underline"
+                  data-nom={bg.name ?? ""}
+                >
+                  Supprimer
+                </button>
               </figure>
             ))}
           </div>
@@ -2647,6 +2654,57 @@ try {
       });
     });
 
+    // « Supprimer » sur un visuel EN SERVICE, en un geste (carte Trello « Pouvoir
+    // supprimer aussi les images sur les fiches produits (là on peut que
+    // archiver) », jugée « pas bonne » le 14/11 : le bouton définitif n'existait
+    // que dans la section repliée des archivés, où la boutique ne le trouvait
+    // pas). Il archive, puis supprime ; si une commande ou un panier en cours
+    // s'en sert encore, l'API refuse la suppression et le visuel reste
+    // seulement archivé — la commande doit pouvoir se réimprimer — et le
+    // message le dit.
+    async function supprimerEnUnGeste(btn) {
+      const fig = btn.closest("[data-bg-id]");
+      if (!fig) return;
+      const nom = btn.dataset.nom || "ce visuel";
+      if (
+        !confirm(
+          `Supprimer « ${nom} » ? Il disparaît pour de bon. ` +
+            "S'il sert à une commande déjà passée, il sera seulement archivé.",
+        )
+      )
+        return;
+      btn.disabled = true;
+      const id = fig.getAttribute("data-bg-id");
+      try {
+        const arch = await fetch(`${PUBLIC_API_URL}/admin/backgrounds/${id}/archive`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        });
+        if (!arch.ok) throw new Error("HTTP " + arch.status);
+        const res = await fetch(`${PUBLIC_API_URL}/admin/backgrounds/${id}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        if (res.status === 409) {
+          const j = await res.json().catch(() => null);
+          alert(
+            "Ce visuel a été archivé, pas supprimé : " +
+              (j?.error || "des commandes s'en servent encore."),
+          );
+        } else if (!res.ok) throw new Error("HTTP " + res.status);
+        location.reload();
+      } catch (e) {
+        btn.disabled = false;
+        alert("Suppression impossible : " + (e instanceof Error ? e.message : e));
+      }
+    }
+    function bindSupprimerDirect(btn) {
+      btn?.addEventListener("click", () => supprimerEnUnGeste(btn));
+    }
+    document.querySelectorAll(".js-supprimer-direct").forEach(bindSupprimerDirect);
+
     // --- Téléversement d'un ou plusieurs visuels ---
     // Deux temps : on dépose le fichier (POST /admin/uploads), puis on
     // rattache l'URL obtenue au produit, exactement comme un ajout par URL.
@@ -2732,9 +2790,13 @@ try {
           `<button type="button" class="js-archive-bg absolute top-1 right-1 rounded-full bg-white/90 border border-bo-border px-2 py-0.5 text-xs leading-none text-bo-muted hover:text-bo-accent hover:border-bo-accent shadow" title="Archiver ce visuel" aria-label="Archiver ce visuel">Archiver</button>` +
           (bg.name
             ? `<figcaption class="px-2 py-1 text-xs text-bo-muted truncate">${bg.name}</figcaption>`
-            : "");
+            : "") +
+          `<button type="button" class="js-supprimer-direct block w-full border-t border-bo-border px-2 py-1 text-left text-xs text-red-700 hover:underline">Supprimer</button>`;
+        const supprimer = fig.querySelector(".js-supprimer-direct");
+        if (supprimer) supprimer.dataset.nom = bg.name ?? "";
         grid.appendChild(fig);
         bindArchive(fig.querySelector(".js-archive-bg"));
+        bindSupprimerDirect(supprimer);
         empty?.classList.add("hidden");
 
         addInput.value = "";
