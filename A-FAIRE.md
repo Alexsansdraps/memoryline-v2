@@ -8,6 +8,8 @@ Tout `main` (`1c70121`), migrations jusqu'à **0078** (13/11). Vérifié le 13/1
 
 ## 2. Reste à faire dans le code (Claude)
 
+- **14/11, en ligne (`0d59ff2`)** : carte « Pouvoir supprimer aussi les images sur les fiches produits » jugée « pas bonne » par Margaux — le bouton définitif n'était que dans la section repliée des visuels archivés. Chaque visuel en service a maintenant « Supprimer » (archive puis supprime ; s'il sert à une commande, il reste archivé avec un message). Pas cliqué au BO connecté.
+
 - **Pas essayé au navigateur, BO connecté** : la suppression définitive sur les écrans atelier, catalogue et contenu (seuls les écrans « ventes » l'ont été).
 - **Vidéo du Tuto sur un vrai iPhone/iPad** : corrigée pour Safari le 11/11 (`dd72e8b`) mais vérifiée seulement en Chrome simulé. À faire retester par Margaux. Depuis le 12/11 (`330e4c5`), elle s'affiche aussi en mode stand (vérifié sur le VPS avec ?stand=1) : sur la tablette du stand, elle ne la voyait pas car elle y était masquée exprès.
 - **Retour de Stripe après un paiement à redirection** : codé et testé (`tests/retour-stripe.test.ts`), jamais essayé avec un vrai paiement d'essai.
