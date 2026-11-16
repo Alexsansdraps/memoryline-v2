@@ -422,6 +422,11 @@ export function mountPromotions(app: Hono): void {
       estArchive: (r) => r.archivedAt != null,
       empeche: async (r) => {
         if (normaliserCode(r.code)) return null;
+        // Une promotion ÉTEINTE n'est lue par personne : la page Finances ne
+        // juge les ventes qu'avec les promotions allumées (finances.ts,
+        // reglesActives). Sans cette ligne, une promotion créée par erreur et
+        // jamais allumée ne se supprimait pas.
+        if (r.active === false) return null;
         const [n] = await db
           .select({ n: sql<number>`count(*)::int` })
           .from(schema.orders)

@@ -68,7 +68,7 @@ if (Astro.request.method === "POST") {
       // vendu, parler des commandes ferait chercher ce qui n'existe pas.
       const vendu =
         commandes > 0
-          ? ` Les ${commandes} ligne(s) déjà vendue(s) gardent son nom, sur leur fiche comme dans le nom du fichier d'impression.`
+          ? ` ${commandes > 1 ? `Les ${commandes} lignes de commande ou de panier qui le portent gardent` : "La ligne de commande ou de panier qui le porte garde"} son nom, sur leur fiche comme dans le nom du fichier d'impression.`
           : "";
       flash = restaurer
         ? `Cadre « ${nom} » restauré, avec ses prix et son poids. Cochez « Affiché » pour le reproposer.`

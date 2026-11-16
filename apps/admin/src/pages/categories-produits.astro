@@ -28,7 +28,9 @@ if (Astro.request.method === "POST") {
         ? "Catégorie restaurée, avec les produits qu'elle rangeait."
         : `Catégorie archivée${
             r.dedans > 0
-              ? ` avec ${r.dedans} produit${r.dedans > 1 ? "s" : ""}, qui y restent rangés`
+              ? r.dedans > 1
+                ? ` avec ${r.dedans} produits, qui y restent rangés`
+                : " avec 1 produit, qui y reste rangé"
               : ""
           }. Vous pouvez la restaurer à tout moment, plus bas.`;
     } else if (action === "supprimer") {
@@ -83,7 +85,7 @@ function messageArchivage(c: CategorieProduit): string {
   const n = c.produits ?? 0;
   if (n > 0)
     l.push(
-      `Les ${n} produit${n > 1 ? "s qu'elle range y restent rangés" : " qu'elle range y reste rangé"} : rien n'est déplacé, et le poids par défaut continue de s'appliquer à ${n > 1 ? "leurs colis" : "son colis"}.`,
+      `${n > 1 ? `Les ${n} produits qu'elle range y restent rangés` : "Le produit qu'elle range y reste rangé"} : rien n'est déplacé, et le poids par défaut continue de s'appliquer à ${n > 1 ? "leurs colis" : "son colis"}.`,
     );
   l.push(
     "Rien n'est supprimé : vous pourrez la restaurer quand vous voudrez, dans « Catégories archivées ».",

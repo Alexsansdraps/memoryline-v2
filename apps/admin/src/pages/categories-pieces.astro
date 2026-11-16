@@ -77,7 +77,9 @@ if (Astro.request.method === "POST") {
         ? "Catégorie restaurée, avec ses pièces et son nuancier."
         : `Catégorie archivée${
             r.dedans > 0
-              ? `. Ses ${r.dedans} pièce${r.dedans > 1 ? "s" : ""} rest${r.dedans > 1 ? "ent" : "e"} proposée${r.dedans > 1 ? "s" : ""} et repren${r.dedans > 1 ? "nent" : "d"} le nuancier de leur emplacement`
+              ? r.dedans > 1
+                ? `. Ses ${r.dedans} pièces restent proposées et reprennent le nuancier de leur emplacement`
+                : ". Sa pièce reste proposée et reprend le nuancier de son emplacement"
               : ""
           }. Vous pouvez la restaurer à tout moment, plus bas.`;
     } else if (action === "supprimer") {
@@ -150,7 +152,7 @@ function messageArchivage(c: CategoriePiece): string {
   const n = c.pieces ?? 0;
   if (n > 0)
     l.push(
-      `Ses ${n} pièce${n > 1 ? "s restent proposées" : " reste proposée"} dans le configurateur : ${n > 1 ? "elles reprennent" : "elle reprend"} simplement le nuancier de l'emplacement « ${nomSlot(c.slot)} » le temps de l'archivage.`,
+      `${n > 1 ? `Ses ${n} pièces restent proposées` : "Sa pièce reste proposée"} dans le configurateur : ${n > 1 ? "elles reprennent" : "elle reprend"} simplement le nuancier de l'emplacement « ${nomSlot(c.slot)} » le temps de l'archivage.`,
     );
   if (c.colors.length)
     l.push(

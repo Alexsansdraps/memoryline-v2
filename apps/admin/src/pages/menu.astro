@@ -950,7 +950,9 @@ const boutonOutil =
             ? reels(ligne.querySelector("[data-enfants]"), "data-enfant").length
             : 0;
           const avertissement = sousLiens
-            ? " Ses " + sousLiens + " sous-lien(s) partiront avec elle."
+            ? sousLiens > 1
+              ? " Ses " + sousLiens + " sous-liens partiront avec elle."
+              : " Son sous-lien partira avec elle."
             : "";
           if (
             !confirm(

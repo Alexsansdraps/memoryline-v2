@@ -234,7 +234,8 @@ if (Astro.request.method === "POST" && estProprietaire) {
       }
     }
   } catch (e) {
-    flash = "Erreur : " + String(e);
+    // Sans le « Error: » de String(e) : le message disait « Erreur : Error: … ».
+    flash = "Erreur : " + String(e).replace(/^Error:\s*/, "");
     flashErreur = true;
   }
 }

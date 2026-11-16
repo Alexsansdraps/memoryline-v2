@@ -149,7 +149,7 @@ export async function raisonDeGarderLaCollection(col: {
       .orderBy(asc(schema.products.name))
       .limit(NOMS_CITES);
     raisons.push(
-      `${Number(n) > 1 ? "Des affiches y sont encore rangées" : "Une affiche y est encore rangée"} : ${enumerer(noms.map((x) => x.name), Number(n))}. Sortez-les d'abord de la collection (Produits › Modifier en masse, archivées comprises) : supprimée, elle leur retirerait en silence ce rangement et le poids par défaut qu'elle leur donne.`,
+      `${Number(n) > 1 ? "Des affiches y sont encore rangées" : "Une affiche y est encore rangée"} : ${enumerer(noms.map((x) => x.name), Number(n))}. ${Number(n) > 1 ? "Sortez-les" : "Sortez-la"} d'abord de la collection (Produits › Modifier en masse, archivées comprises) : supprimée, elle ${Number(n) > 1 ? "leur" : "lui"} retirerait en silence ce rangement et le poids par défaut qu'elle ${Number(n) > 1 ? "leur" : "lui"} donne.`,
     );
   }
 
