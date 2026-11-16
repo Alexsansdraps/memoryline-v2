@@ -29,7 +29,16 @@ import { apiInterne } from "../lib/api-interne.ts";
 import Admin from "../layouts/Admin.astro";
 import { adminApi, type PromoRule } from "../lib/api.ts";
 import { url } from "../lib/url.ts";
-import { POSTER_FORMATS, estConfigV2, libelleRegle, lireConditions, lireOffre } from "@memoryline/types";
+import {
+  FUSEAU_BOUTIQUE,
+  POSTER_FORMATS,
+  champAParis,
+  estConfigV2,
+  instantDeParis,
+  libelleRegle,
+  lireConditions,
+  lireOffre,
+} from "@memoryline/types";
 import TraductionsNoms from "../components/TraductionsNoms.astro";
 import { traiterTraductionsNoms } from "../lib/traductions-noms.ts";
 import type { EtatTraductions } from "../lib/traductions.ts";
@@ -78,21 +87,23 @@ function enCentimes(v: FormDataEntryValue | null): number | null {
 
 /**
  * Une date pour un champ `datetime-local` (sans fuseau), à l'heure de la
- * boutique : le serveur tourne à l'heure de Paris (TZ), comme l'écran des
- * bandeaux visuels.
+ * boutique : Paris, dit explicitement (champAParis) plutôt que confié au
+ * réglage TZ du serveur, comme l'écran des bandeaux visuels.
  */
 function pourChamp(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  return Number.isNaN(d.getTime()) ? "" : champAParis(d);
 }
 
-/** Un champ `datetime-local` vers une date ISO, ou null. */
+/**
+ * Un champ `datetime-local` vers une date ISO, ou null. Lu à PARIS : une
+ * promotion « jusqu'au 24 décembre 23:59 » finit à 23 h 59 à Paris, quel que
+ * soit le fuseau de la machine qui reçoit le formulaire.
+ */
 function quandOuRien(v: string): string | null {
   if (!v.trim()) return null;
-  const d = new Date(v);
+  const d = instantDeParis(v) ?? new Date(v);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
@@ -367,6 +378,7 @@ function periode(p: PromoRule): string {
       month: "short",
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: FUSEAU_BOUTIQUE,
     });
   if (p.startsAt && p.endsAt) return `du ${jour(p.startsAt)} au ${jour(p.endsAt)}`;
   if (p.startsAt) return `à partir du ${jour(p.startsAt)}`;

@@ -19,6 +19,7 @@
 import Admin from "../layouts/Admin.astro";
 import Traductions from "../components/Traductions.astro";
 import { url } from "../lib/url.ts";
+import { FUSEAU_BOUTIQUE, champAParis, instantDeParis } from "@memoryline/types";
 import { adminApi, type Banner, type BannerBo, type ReglagesBandeau } from "../lib/api.ts";
 import {
   traiterTraductions,
@@ -44,11 +45,13 @@ const elementTraduit = (m: Banner): ElementTraduit => ({
   translations: m.translations,
 });
 
-/** Un champ date-heure (heure de Paris, celle du serveur) vers ISO, ou rien. */
+/** Un champ date-heure (heure de Paris) vers ISO, ou rien. */
 function quandOuRien(v: FormDataEntryValue | null): string | null {
   const s = String(v ?? "").trim();
   if (!s) return null;
-  const d = new Date(s);
+  // Lue à Paris (instantDeParis) et non dans le fuseau de la machine qui
+  // fabrique la page ; une date déjà munie de son fuseau se lit telle quelle.
+  const d = instantDeParis(s) ?? new Date(s);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
@@ -56,9 +59,7 @@ function quandOuRien(v: FormDataEntryValue | null): string | null {
 function pourChamp(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  return Number.isNaN(d.getTime()) ? "" : champAParis(d);
 }
 
 /** Le message en cours de saisie, tel que le formulaire le montre. */
@@ -208,7 +209,13 @@ function etat(m: Banner): { mot: string; ton: string } {
 /** La période d'un message, en une ligne. */
 function periode(m: Banner): string {
   const jour = (iso: string) =>
-    new Date(iso).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    new Date(iso).toLocaleString("fr-FR", {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: FUSEAU_BOUTIQUE,
+    });
   if (m.startsAt && m.endsAt) return `du ${jour(m.startsAt)} au ${jour(m.endsAt)}`;
   if (m.startsAt) return `à partir du ${jour(m.startsAt)}`;
   if (m.endsAt) return `jusqu'au ${jour(m.endsAt)}`;

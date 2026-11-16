@@ -14,6 +14,7 @@ import { apiInterne } from "../../lib/api-interne.ts";
  */
 import Admin from "../../layouts/Admin.astro";
 import { url } from "../../lib/url.ts";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 import { adminApi, formatPrice, type ClientDetail } from "../../lib/api.ts";
 
 const id = Number(Astro.params.id);
@@ -95,7 +96,7 @@ function quand(iso: string | null | undefined): string {
   if (!iso) return "";
   try {
     const d = new Date(iso);
-    return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} à ${d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
+    return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric", timeZone: FUSEAU_BOUTIQUE })} à ${d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: FUSEAU_BOUTIQUE })}`;
   } catch {
     return "";
   }
@@ -109,6 +110,7 @@ function leJour(iso: string | null | undefined): string {
       day: "numeric",
       month: "long",
       year: "numeric",
+      timeZone: FUSEAU_BOUTIQUE,
     });
   } catch {
     return "";

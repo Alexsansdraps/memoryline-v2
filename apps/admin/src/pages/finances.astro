@@ -15,6 +15,7 @@ import { apiInterne } from "../lib/api-interne.ts";
 import Admin from "../layouts/Admin.astro";
 import { formatPrice } from "../lib/api.ts";
 import { apiUrl, url } from "../lib/url.ts";
+import { FUSEAU_BOUTIQUE, decalerJour, jourAParis } from "@memoryline/types";
 
 /**
  * L'API vue du serveur : en conteneur par le réseau interne, sinon en direct.
@@ -92,18 +93,18 @@ async function lireFinances(chemin: string): Promise<Finances> {
 
 /* --- La période, portée par l'adresse ----------------------------------- */
 
-/** « 2026-09-09 » en heure locale : la journée telle qu'on la vit. */
-function jourISO(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
-const aujourdhui = new Date();
+/**
+ * Aujourd'hui À PARIS, « 2026-09-09 » : la journée telle qu'on la vit à la
+ * boutique, quel que soit le fuseau de la machine (jourAParis).
+ */
+const aujourdhui = jourAParis(new Date());
+const [annee, mois] = aujourdhui.split("-").map(Number) as [number, number];
+const premierDuMois = (a: number, m: number) => `${a}-${String(m).padStart(2, "0")}-01`;
 
 /** Ce que l'API affiche quand l'adresse ne dit rien : le mois en cours. */
 const MOIS_EN_COURS = {
-  du: jourISO(new Date(aujourdhui.getFullYear(), aujourdhui.getMonth(), 1)),
-  au: jourISO(aujourdhui),
+  du: premierDuMois(annee, mois),
+  au: aujourdhui,
 };
 
 const RACCOURCIS = [
@@ -111,15 +112,15 @@ const RACCOURCIS = [
   {
     cle: "mois-dernier",
     label: "Le mois dernier",
-    du: jourISO(new Date(aujourdhui.getFullYear(), aujourdhui.getMonth() - 1, 1)),
-    // Le jour 0 du mois courant, c'est le dernier jour du mois d'avant.
-    au: jourISO(new Date(aujourdhui.getFullYear(), aujourdhui.getMonth(), 0)),
+    du: mois === 1 ? premierDuMois(annee - 1, 12) : premierDuMois(annee, mois - 1),
+    // La veille du 1er du mois courant, c'est le dernier jour du mois d'avant.
+    au: decalerJour(premierDuMois(annee, mois), -1),
   },
   {
     cle: "annee",
     label: "Cette année",
-    du: jourISO(new Date(aujourdhui.getFullYear(), 0, 1)),
-    au: jourISO(aujourdhui),
+    du: `${annee}-01-01`,
+    au: aujourdhui,
   },
 ];
 
@@ -280,10 +281,15 @@ const totalMouvements = mouvements.reduce((somme, m) => somme + m.cents, 0);
 function quand(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  const jour = d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+  const jour = d.toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "long",
+    timeZone: FUSEAU_BOUTIQUE,
+  });
   const heure = d.toLocaleTimeString("fr-FR", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: FUSEAU_BOUTIQUE,
   });
   return `le ${jour} à ${heure}`;
 }
@@ -297,6 +303,7 @@ function jourDit(iso: string): string {
         day: "numeric",
         month: "long",
         year: "numeric",
+        timeZone: FUSEAU_BOUTIQUE,
       });
 }
 

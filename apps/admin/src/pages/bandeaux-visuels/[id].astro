@@ -34,6 +34,8 @@ import {
   type HauteurBandeau,
   type PositionTexteBandeau,
   type StyleTexteBandeau,
+  champAParis,
+  instantDeParis,
 } from "@memoryline/types";
 import { adminApi, type CollectionBo, type ResumePage } from "../../lib/api.ts";
 import { apiUrl, url } from "../../lib/url.ts";
@@ -72,11 +74,13 @@ const elementTraduit = (b: BandeauVisuel): ElementTraduit => ({
   champs: CHAMPS_TRADUITS,
 });
 
-/** Un champ date-heure vers une date ISO, à l'heure de la boutique (TZ du serveur). */
+/** Un champ date-heure vers une date ISO, à l'heure de la boutique (Paris). */
 function quandOuRien(v: FormDataEntryValue | null): string | null {
   const s = String(v ?? "").trim();
   if (!s) return null;
-  const d = new Date(s);
+  // Lue à Paris (instantDeParis) et non dans le fuseau de la machine qui
+  // fabrique la page ; une date déjà munie de son fuseau se lit telle quelle.
+  const d = instantDeParis(s) ?? new Date(s);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
@@ -84,9 +88,7 @@ function quandOuRien(v: FormDataEntryValue | null): string | null {
 function pourChamp(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  return Number.isNaN(d.getTime()) ? "" : champAParis(d);
 }
 
 /**

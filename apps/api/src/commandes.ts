@@ -35,7 +35,13 @@ import {
 // ou réel), pas avec celles du moment : voir paiements-reglages.ts.
 import { configPaiement, modeDuPaiement, payeeEnEssai } from "./paiements-reglages.js";
 import { nomDuMode } from "./paiements-cles.js";
-import { lignesRemplies, type TextesAffiche } from "@memoryline/types";
+import {
+  FUSEAU_BOUTIQUE,
+  anneeAParis,
+  instantDeParis,
+  lignesRemplies,
+  type TextesAffiche,
+} from "@memoryline/types";
 import {
   courrierAnnulee,
   courrierExpediee,
@@ -123,11 +129,27 @@ export type StatutFinancier =
  *
  * `new Date("2026-09-29")` se lit en heure UNIVERSELLE : un filtre « à partir
  * du 29 » commençait à 2 heures du matin à Paris, et les commandes de la nuit
- * glissaient au jour d'avant. Écrite sans « Z », l'heure se lit dans le fuseau
- * du serveur — Europe/Paris (TZ dans docker-compose).
+ * glissaient au jour d'avant. Lue par instantDeParis, elle est à Paris quel
+ * que soit le fuseau de la machine (TZ dans docker-compose, ou pas).
  */
 function debutDuJour(date: string): Date {
-  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T00:00:00`) : new Date(date);
+  return (/^\d{4}-\d{2}-\d{2}$/.test(date) && instantDeParis(date)) || new Date(date);
+}
+
+/**
+ * Le dernier instant de la journée de Paris, pour une date « 2026-09-29 ».
+ *
+ * Une date de fin s'entend « jusqu'au soir » : sinon un filtre « du 1er au 3 »
+ * perdrait toutes les commandes du 3. `new Date("2026-09-29")` puis
+ * `setHours(23, 59…)` tombait juste à Paris, mais seulement parce que le
+ * serveur y est réglé : ailleurs, le soir pris était celui d'un autre fuseau.
+ */
+function finDuJour(date: string): Date {
+  const soir = /^\d{4}-\d{2}-\d{2}$/.test(date) && instantDeParis(`${date}T23:59:59.999`);
+  if (soir) return soir;
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
 }
 
 /**
@@ -618,13 +640,7 @@ export function mountOrderRoutes(app: Hono): void {
       conditions.push(eq(schema.orders.standId, stand));
     conditions.push(...limiterAuStand(c));
     if (q.from) conditions.push(gte(schema.orders.createdAt, debutDuJour(q.from)));
-    if (q.to) {
-      // Une date de fin s'entend « jusqu'au soir » : sinon un filtre « du 1er
-      // au 3 » perdrait toutes les commandes du 3.
-      const fin = new Date(q.to);
-      fin.setHours(23, 59, 59, 999);
-      conditions.push(lte(schema.orders.createdAt, fin));
-    }
+    if (q.to) conditions.push(lte(schema.orders.createdAt, finDuJour(q.to)));
     const cherche = (q.q ?? "").trim();
     if (cherche) {
       const motif = `%${cherche.toLowerCase()}%`;
@@ -805,11 +821,7 @@ export function mountOrderRoutes(app: Hono): void {
       conditions.push(eq(schema.orders.standId, stand));
     conditions.push(...limiterAuStand(c));
     if (q.from) conditions.push(gte(schema.orders.createdAt, debutDuJour(q.from)));
-    if (q.to) {
-      const fin = new Date(q.to);
-      fin.setHours(23, 59, 59, 999);
-      conditions.push(lte(schema.orders.createdAt, fin));
-    }
+    if (q.to) conditions.push(lte(schema.orders.createdAt, finDuJour(q.to)));
     const ids = (q.ids ?? "")
       .split(",")
       .map((v) => Number(v))
@@ -891,7 +903,10 @@ export function mountOrderRoutes(app: Hono): void {
       const lieu = lieuDeRetrait(r);
       return [
         r.number,
-        r.createdAt ? new Date(r.createdAt).toLocaleString("fr-FR") : "",
+        // L'heure de Paris, dite : le fichier part chez la comptable.
+        r.createdAt
+          ? new Date(r.createdAt).toLocaleString("fr-FR", { timeZone: FUSEAU_BOUTIQUE })
+          : "",
         r.customerName ?? "",
         r.customerEmail ?? "",
         r.channel,
@@ -1503,10 +1518,15 @@ export function mountOrderRoutes(app: Hono): void {
   /**
    * Rembourse tout ou partie d'une commande.
    *
-   * Le montant n'est jamais celui qu'on saisit à la main : il est recalculé à
-   * partir des quantités rendues et du prix réellement payé. On ne peut donc
-   * pas rembourser plus que ce qui a été encaissé, ni deux fois le même
-   * article.
+   * Deux façons, l'une OU l'autre :
+   *   - des articles et/ou le port : le montant est recalculé à partir des
+   *     quantités rendues et du prix réellement payé — on ne peut pas rendre
+   *     deux fois le même article ;
+   *   - un MONTANT LIBRE (`amountCents`), demandé par la boutique le 16/11
+   *     (« une option de remboursement où je peux choisir le montant, avec
+   *     Stripe et PayPal ») : un geste commercial, une affiche abîmée qu'on
+   *     ne reprend pas… Aucun article n'est marqué rendu.
+   * Dans les deux cas, jamais plus que ce qui reste encaissé.
    */
   app.post("/admin/orders/:id/refunds", async (c) => {
     const id = Number(c.req.param("id"));
@@ -1603,10 +1623,25 @@ export function mountOrderRoutes(app: Hono): void {
         erreur: `Frais de port : ${(portRestant / 100).toFixed(2)} € remboursables au plus.`,
       };
 
-    const montant = detail.reduce((s, d) => s + d.amountCents, 0) + portDemande;
+    let montant = detail.reduce((s, d) => s + d.amountCents, 0) + portDemande;
+    const libre = Math.max(0, Math.round(Number(b.amountCents) || 0));
+    if (libre > 0) {
+      if (montant > 0)
+        return {
+          erreur:
+            "Choisissez soit des articles et le port, soit un montant libre, mais pas les deux à la fois.",
+        };
+      montant = libre;
+    }
     if (montant <= 0) return { erreur: "Rien à rembourser." };
     if (dejaCents + montant > order.totalCents)
-      return { erreur: "Le total remboursé dépasserait le montant encaissé." };
+      return {
+        erreur: `Le total remboursé dépasserait le montant encaissé : ${(
+          Math.max(0, order.totalCents - dejaCents) / 100
+        )
+          .toFixed(2)
+          .replace(".", ",")} € remboursables au plus.`,
+      };
 
     // Renvoi de l'argent chez le prestataire qui l'a encaissé, s'il est
     // demandé et possible. On ne cherchait ici qu'un paiement Stripe : une
@@ -1734,7 +1769,8 @@ export function mountOrderRoutes(app: Hono): void {
       kind: "event",
       message:
         `Remboursement de ${(montant / 100).toFixed(2).replace(".", ",")} €` +
-        (gateway === "stripe" ? " via Stripe" : " (hors ligne)") +
+        (gateway === "stripe" ? " via Stripe" : gateway === "paypal" ? " via PayPal" : " (hors ligne)") +
+        (libre > 0 ? " (montant libre)" : "") +
         (b.restock === true ? ", articles remis en stock" : "") +
         ".",
     });
@@ -1877,7 +1913,7 @@ export function mountOrderRoutes(app: Hono): void {
         {
           error: `La commande ${order.number} est déjà annulée${
             order.cancelledAt
-              ? ` depuis le ${order.cancelledAt.toLocaleDateString("fr-FR")}`
+              ? ` depuis le ${order.cancelledAt.toLocaleDateString("fr-FR", { timeZone: FUSEAU_BOUTIQUE })}`
               : ""
           }. Rien n'a été refait.`,
         },
@@ -2713,7 +2749,9 @@ export function mountOrderRoutes(app: Hono): void {
         };
 
       const maintenant = new Date();
-      const annee = maintenant.getFullYear();
+      // L'année de PARIS : une facture éditée le 1er janvier à 0 h 30 ouvre
+      // F2027, même s'il n'est encore que 23 h 30 le 31 en temps universel.
+      const annee = anneeAParis(maintenant);
       // « on conflict do update » plutôt que « do nothing » : c'est ce qui
       // rend la ligne verrouillée même quand elle existait déjà, et donc ce
       // qui sérialise deux demandes simultanées.

@@ -35,6 +35,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { PDFFont, PDFPage, RGB } from "pdf-lib";
+import { FUSEAU_BOUTIQUE, instantDeParis } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 
 /* -------------------------------------------------------------------------- */
@@ -165,26 +166,17 @@ function dateDeFin(v: unknown): { valeur: Date | null } | null {
   if (typeof v !== "string") return null;
   const propre = v.trim();
   if (!propre) return { valeur: null };
-  // Un jour seul (« 2027-12-31 ») est construit dans le fuseau du serveur, puis
-  // poussé à son soir. Le lire comme un instant universel le ferait basculer
-  // d'un jour dans les fuseaux à l'ouest, et la carte perdrait sa dernière
-  // journée sans que personne ne comprenne pourquoi.
-  const jourSeul = /^(\d{4})-(\d{2})-(\d{2})$/.exec(propre);
-  if (jourSeul) {
-    const annee = Number(jourSeul[1]);
-    const mois = Number(jourSeul[2]);
-    const jourDuMois = Number(jourSeul[3]);
-    const quand = new Date(annee, mois - 1, jourDuMois, 23, 59, 59, 999);
-    // « 2027-02-31 » se lit sans broncher et donne le 3 mars. Une date que le
-    // calendrier ne contient pas est refusée plutôt que remplacée en silence
-    // par une autre, que la propriétaire n'a pas choisie.
-    if (
-      quand.getFullYear() !== annee ||
-      quand.getMonth() !== mois - 1 ||
-      quand.getDate() !== jourDuMois
-    )
-      return null;
-    return { valeur: quand };
+  // Un jour seul (« 2027-12-31 ») vaut jusqu'au soir de ce jour À PARIS
+  // (instantDeParis), quel que soit le fuseau de la machine. Le lire comme un
+  // instant universel le ferait basculer d'un jour, et la carte perdrait sa
+  // dernière journée sans que personne ne comprenne pourquoi.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(propre)) {
+    // « 2027-02-31 » se lit sans broncher en JavaScript et donne le 3 mars.
+    // Une date que le calendrier ne contient pas est refusée (null) plutôt
+    // que remplacée en silence par une autre, que la propriétaire n'a pas
+    // choisie.
+    const quand = instantDeParis(`${propre}T23:59:59.999`);
+    return quand ? { valeur: quand } : null;
   }
 
   const quand = new Date(propre);
@@ -260,10 +252,13 @@ function montantEnToutesLettres(cents: number): string {
 
 /** « 31 décembre 2027 ». */
 function jourEnFrancais(quand: Date): string {
+  // À Paris : la fin de validité est le 31 à 23 h 59 de Paris, qui serait
+  // déjà le 1er dans un fuseau à l'est.
   return quand.toLocaleDateString("fr-FR", {
     day: "numeric",
     month: "long",
     year: "numeric",
+    timeZone: FUSEAU_BOUTIQUE,
   });
 }
 

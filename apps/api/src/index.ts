@@ -40,7 +40,11 @@ import {
   NATURES_LIVRAISON,
   REGLAGE_BANDEAUX_VISUELS,
   bandeauxPublics,
+  decalerJour,
+  derniersJoursAParis,
   formaterPoids,
+  instantDeParis,
+  jourAParis,
   normaliserCode,
 } from "@memoryline/types";
 import { rechercherPointsRelais } from "./mondial-relay.js";
@@ -2862,11 +2866,22 @@ async function nombreProprietaires(): Promise<number> {
  * vente, et les gonfler ferait mentir le tableau de bord.
  */
 app.get("/admin/stats/orders", async (c) => {
-  const jours = Math.min(365, Math.max(1, Number(c.req.query("days") ?? 30)));
+  // Un nombre ENTIER de jours (« ?days=abc » ou « 1.5 » ne compte pas une
+  // période de jours de calendrier) ; illisible, les trente jours habituels.
+  const demande = Math.round(Number(c.req.query("days") ?? 30));
+  const jours = Math.min(365, Math.max(1, Number.isFinite(demande) ? demande : 30));
   const canal = String(c.req.query("channel") ?? "");
   const maintenant = new Date();
-  const debut = new Date(maintenant.getTime() - jours * 86400000);
-  const debutPrecedent = new Date(maintenant.getTime() - 2 * jours * 86400000);
+  // Des jours de CALENDRIER à Paris, pas des tranches de 24 h : « Aujourd'hui »
+  // comptait les ventes depuis hier à la même heure, et le total du stand, à
+  // 10 h le deuxième jour d'un marché, ramassait toute la soirée de la veille.
+  // La période court de minuit (Paris) du premier jour jusqu'à maintenant ; la
+  // précédente, ce sont les mêmes nombres de jours entiers juste avant (« hier »
+  // = toute la journée d'hier).
+  const joursDeLaPeriode = derniersJoursAParis(maintenant, jours);
+  const premierJour = joursDeLaPeriode[0]!;
+  const debut = instantDeParis(premierJour)!;
+  const debutPrecedent = instantDeParis(decalerJour(premierJour, -jours))!;
 
   const conditions = [
     eq(schema.orders.status, "paid"),
@@ -2923,15 +2938,15 @@ app.get("/admin/stats/orders", async (c) => {
     };
   };
 
-  // Une valeur par jour, pour la courbe. Le jour le plus ancien en premier.
-  const serie: number[] = [];
-  for (let i = jours - 1; i >= 0; i--) {
-    const fin = new Date(maintenant.getTime() - i * 86400000);
-    const deb = new Date(fin.getTime() - 86400000);
-    serie.push(
-      lignes.filter((l) => l.createdAt > deb && l.createdAt <= fin).length,
-    );
+  // Une valeur par jour de Paris, pour la courbe. Le jour le plus ancien en
+  // premier. Une vente à 0 h 30 est du jour qui commence, pas de la veille.
+  const parJour = new Map<string, number>();
+  for (const l of lignes) {
+    if (!dansPeriode(l.createdAt)) continue;
+    const jour = jourAParis(l.createdAt);
+    parJour.set(jour, (parJour.get(jour) ?? 0) + 1);
   }
+  const serie = joursDeLaPeriode.map((j) => parJour.get(j) ?? 0);
 
   // Ce qui reste à préparer sur la période : le chiffre qui dit quoi faire
   // aujourd'hui, là où les autres disent ce qui s'est passé.

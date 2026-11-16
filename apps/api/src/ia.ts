@@ -39,7 +39,7 @@ import { fileURLToPath } from "node:url";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
-import { FILIGRANE } from "@memoryline/types";
+import { FILIGRANE, debutDuMoisAParis } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { clientDeLaRequete } from "./comptes.js";
 import { HORS_VENTES } from "./statuts-vente.js";
@@ -291,10 +291,15 @@ export function ipDeLaRequete(c: Context): string {
   );
 }
 
-/** Premier jour du mois en cours (UTC) — borne du plafond et des statistiques. */
+/**
+ * Le 1er du mois en cours, à minuit de PARIS — borne du plafond et des
+ * statistiques. Il était pris en temps universel : le 1er entre minuit et 1 h
+ * (2 h l'été), le « mois en cours » était encore l'ancien : le plafond
+ * comptait tout le mois écoulé et pouvait bloquer la génération ; ensuite, ce
+ * qui avait été dépensé dans cette première heure ne comptait plus nulle part.
+ */
 function debutDuMois(): Date {
-  const n = new Date();
-  return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), 1));
+  return debutDuMoisAParis(new Date());
 }
 
 /** Dépense estimée depuis le 1er du mois, en centimes. */

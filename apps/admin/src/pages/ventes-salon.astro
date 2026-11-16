@@ -4,6 +4,7 @@ import OrderStats from "../components/OrderStats.astro";
 import OrderTable from "../components/OrderTable.astro";
 import { adminApi, formatPrice, type StandBo } from "../lib/api.ts";
 import { url } from "../lib/url.ts";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 
 const api = adminApi(Astro.request);
 
@@ -207,6 +208,7 @@ function jour(iso: string | null): string {
         day: "numeric",
         month: "long",
         year: "numeric",
+        timeZone: FUSEAU_BOUTIQUE,
       });
 }
 

@@ -7,6 +7,7 @@
  * Deux endroits qui en décideraient chacun à sa façon finiraient par envoyer à
  * la même cliente une confirmation en anglais et une facture en français.
  */
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 import { fr, type CleCourriel } from "./fr.js";
 import { en } from "./en.js";
 import { de } from "./de.js";
@@ -158,18 +159,28 @@ export function prixDans(langue: Langue | null | undefined, cents: number): stri
   }).format(cents / 100);
 }
 
-/** « 10 septembre 2026 », « 10 September 2026 », « 10. September 2026 »… */
+/**
+ * « 10 septembre 2026 », « 10 September 2026 », « 10. September 2026 »…
+ *
+ * Le jour de PARIS, dit explicitement : c'est lui qui est imprimé sur la
+ * facture (date d'émission, date de commande) et écrit dans les courriers. Une
+ * commande passée le 31 à 0 h 30 est du 31, quelle que soit l'horloge de la
+ * machine qui fabrique le PDF, et quelle que soit la langue de la cliente.
+ */
 export function dateLongue(langue: Langue | null | undefined, quand: Date): string {
   return quand.toLocaleDateString(LOCALE_COURRIEL[langue ?? "fr"], {
     day: "numeric",
     month: "long",
     year: "numeric",
+    timeZone: FUSEAU_BOUTIQUE,
   });
 }
 
-/** « 10/09/2026 », « 10.9.2026 »… la date courte de la locale. */
+/** « 10/09/2026 », « 10.9.2026 »… la date courte de la locale, à Paris. */
 export function dateCourte(langue: Langue | null | undefined, quand: Date): string {
-  return quand.toLocaleDateString(LOCALE_COURRIEL[langue ?? "fr"]);
+  return quand.toLocaleDateString(LOCALE_COURRIEL[langue ?? "fr"], {
+    timeZone: FUSEAU_BOUTIQUE,
+  });
 }
 
 /**

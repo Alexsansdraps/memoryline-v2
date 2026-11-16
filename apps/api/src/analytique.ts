@@ -46,10 +46,15 @@
  * vérifier le jour où un chiffre surprendra.
  */
 import type { Hono } from "hono";
+import { FUSEAU_BOUTIQUE, instantDeParis, jourAParis } from "@memoryline/types";
 import { sql } from "./db/client.js";
 
-/** Le fuseau qui fait foi pour découper les jours. */
-const FUSEAU = "Europe/Paris";
+/**
+ * Le fuseau qui fait foi pour découper les jours. La base est en UTC
+ * (`SHOW timezone`) : chaque découpage SQL d'une date passe par
+ * `at time zone ${FUSEAU}`, sinon une vente à 0 h 30 tombe la veille.
+ */
+const FUSEAU = FUSEAU_BOUTIQUE;
 
 /** Les seuls statuts qui comptent comme une vente. */
 const VENDUE = sql`status = 'paid' and cancelled_at is null`;
@@ -108,7 +113,7 @@ interface Periode {
  * « sv-SE » n'est là que parce que cette langue écrit les dates à l'ISO.
  */
 function jourDeParis(d: Date): string {
-  return d.toLocaleDateString("sv-SE", { timeZone: FUSEAU });
+  return jourAParis(d);
 }
 
 /** Une date « AAAA-MM-JJ » qui existe vraiment, ou rien. */
@@ -165,13 +170,12 @@ function periodes(brutDepuis: string | undefined, brutJusqu: string | undefined)
   // Les deux bornes saisies à l'envers disent la même période : on la lit
   // dans le bon sens plutôt que de répondre « aucune vente ».
   if (depuis && jusqu && depuis > jusqu) [depuis, jusqu] = [jusqu, depuis];
-  // Les heures sont celles du serveur, réglé sur Paris (TZ, docker-compose) :
-  // « le 5 octobre » commence à minuit à Paris, pas à minuit en temps
-  // universel, ce qui ferait glisser deux heures de ventes sur la veille.
-  const fin = jusqu ? new Date(`${jusqu}T23:59:59.999`) : new Date();
-  const debut = depuis
-    ? new Date(`${depuis}T00:00:00.000`)
-    : new Date(fin.getTime() - 29 * 86400000);
+  // « Le 5 octobre » commence à minuit à PARIS, pas à minuit en temps
+  // universel, ce qui ferait glisser deux heures de ventes sur la veille. Lu
+  // par instantDeParis : juste même si le serveur n'est pas réglé sur Paris.
+  const fin = (jusqu && instantDeParis(`${jusqu}T23:59:59.999`)) || new Date();
+  const debut =
+    (depuis && instantDeParis(depuis)) || new Date(fin.getTime() - 29 * 86400000);
   const duree = Math.max(1, fin.getTime() - debut.getTime());
   const avant: Periode = {
     debut: new Date(debut.getTime() - duree),

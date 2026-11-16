@@ -19,6 +19,7 @@ export * from "./video.js";
 export * from "./bandeaux-visuels.js";
 export * from "./grille.js";
 export * from "./filigrane.js";
+export * from "./fuseau.js";
 
 /** Canal d'une commande — dimension structurante, immuable (§11). */
 export const ORDER_CHANNELS = ["web", "salon"] as const;

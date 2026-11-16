@@ -29,6 +29,7 @@ import {
   or,
   sql as raw,
 } from "drizzle-orm";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { hashPassword, verifyPassword } from "./auth.js";
 import {
@@ -1565,7 +1566,7 @@ export function mountCompteRoutes(app: Hono): void {
       return /[";\r\n]/.test(sure) ? `"${sure.replace(/"/g, '""')}"` : sure;
     };
     const jour = (iso: string | Date | null) =>
-      iso ? new Date(iso).toLocaleDateString("fr-FR") : "";
+      iso ? new Date(iso).toLocaleDateString("fr-FR", { timeZone: FUSEAU_BOUTIQUE }) : "";
 
     // Les colonnes de l'import (import-clients.ts) se lisent toutes ici : un
     // fichier exporté se réimporte tel quel, sans rien renommer.

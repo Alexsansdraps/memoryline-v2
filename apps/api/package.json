@@ -32,6 +32,7 @@
   "dependencies": {
     "@hono/node-server": "^1.13.0",
     "@memoryline/types": "workspace:*",
+    "@twemoji/svg": "15.0.0",
     "drizzle-orm": "^0.38.0",
     "hono": "^4.6.0",
     "pdf-lib": "^1.17.1",

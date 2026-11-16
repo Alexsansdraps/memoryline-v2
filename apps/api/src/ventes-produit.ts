@@ -21,6 +21,7 @@
  */
 import type { Hono } from "hono";
 import { and, eq, gte, inArray, notInArray } from "drizzle-orm";
+import { derniersJoursAParis, instantDeParis, jourAParis } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { HORS_VENTES } from "./statuts-vente.js";
 
@@ -29,23 +30,23 @@ const JOURS_MIN = 1;
 const JOURS_MAX = 365;
 const JOURS_DEFAUT = 90;
 
-/** « 2026-09-09 », en heure locale du serveur : c'est la journée commerciale. */
-function jourISO(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
 export function mountVentesProduit(app: Hono) {
   app.get("/admin/products/:id/ventes", async (c) => {
     const id = Number(c.req.param("id"));
     if (!Number.isFinite(id)) return c.json({ error: "produit inconnu" }, 400);
 
+    const demande = Math.round(Number(c.req.query("jours") ?? JOURS_DEFAUT));
     const jours = Math.min(
       JOURS_MAX,
-      Math.max(JOURS_MIN, Number(c.req.query("jours") ?? JOURS_DEFAUT)),
+      Math.max(JOURS_MIN, Number.isFinite(demande) ? demande : JOURS_DEFAUT),
     );
+    // Des jours de calendrier à Paris, de minuit du premier jusqu'à maintenant.
+    // « Maintenant moins N fois 24 h » laissait hors de la courbe les ventes du
+    // bout de journée d'avant, pourtant comptées dans les totaux, et les nuits
+    // de changement d'heure sautaient un jour ou le comptaient deux fois.
     const fin = new Date();
-    const debut = new Date(fin.getTime() - jours * 86400000);
+    const joursDeLaCourbe = derniersJoursAParis(fin, jours);
+    const debut = instantDeParis(joursDeLaCourbe[0]!)!;
 
     // Les lignes de commande qui portent CE produit, sur des commandes qui
     // comptent comme des ventes. Une jointure plutôt que deux requêtes : le
@@ -119,17 +120,15 @@ export function mountVentesProduit(app: Hono) {
       canal.cents += cents;
       parCanal.set(l.canal, canal);
 
-      const jour = jourISO(l.creeLe);
+      // Le jour de PARIS de la vente : une vente à 0 h 30 est du jour qui
+      // commence, quelle que soit l'horloge de la machine.
+      const jour = jourAParis(l.creeLe);
       parJour.set(jour, (parJour.get(jour) ?? 0) + cents);
     }
 
     // La courbe porte un point par jour, y compris les jours sans vente :
     // sans eux, deux ventes espacées d'un mois se toucheraient sur le dessin.
-    const serie: { jour: string; cents: number }[] = [];
-    for (let i = jours - 1; i >= 0; i--) {
-      const j = jourISO(new Date(fin.getTime() - i * 86400000));
-      serie.push({ jour: j, cents: parJour.get(j) ?? 0 });
-    }
+    const serie = joursDeLaCourbe.map((j) => ({ jour: j, cents: parJour.get(j) ?? 0 }));
 
     // Nouveaux clients ou habitués : on regarde, pour chacun des acheteurs de
     // cette affiche, si sa TOUTE PREMIÈRE commande tombe dans la

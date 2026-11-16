@@ -11,7 +11,7 @@
  * partir des expéditions et des remboursements enregistrés.
  */
 import { apiUrl, url } from "../../lib/url.ts";
-import { libelleFormat } from "@memoryline/types";
+import { FUSEAU_BOUTIQUE, libelleFormat } from "@memoryline/types";
 import Admin from "../../layouts/Admin.astro";
 import AffichesCommande from "../../components/AffichesCommande.astro";
 import ChampsAdresse from "../../components/ChampsAdresse.astro";
@@ -104,6 +104,8 @@ if (Astro.request.method === "POST" && estProprietaire) {
       const r = await api.refundOrder(id, {
         items,
         shippingCents: Math.round(Number(f.get("portEuros") ?? 0) * 100) || 0,
+        // Le montant libre (16/11) : l'API refuse qu'on le mêle aux articles.
+        amountCents: Math.round(Number(String(f.get("montantLibre") ?? "").replace(",", ".")) * 100) || 0,
         reason: String(f.get("reason") ?? ""),
         note: String(f.get("noteRemb") ?? ""),
         restock: f.get("restock") === "on",
@@ -365,12 +367,12 @@ const NOM_TRANSPORTEUR: Record<string, string> = {
 const remboursements = detail?.remboursements ?? [];
 const mouvements = detail?.mouvements ?? [];
 
-/** « 27 août 2026 à 22:36 » */
+/** « 27 août 2026 à 22:36 », à l'heure de Paris (dite, pas confiée à TZ). */
 function quand(iso: string | null | undefined): string {
   if (!iso) return "";
   try {
     const d = new Date(iso);
-    return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} à ${d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
+    return `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric", timeZone: FUSEAU_BOUTIQUE })} à ${d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: FUSEAU_BOUTIQUE })}`;
   } catch {
     return "";
   }
@@ -1831,6 +1833,20 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                         class="w-28 rounded border border-bo-border px-2 py-1"
                       />
                     </label>
+                    <label class="text-sm">
+                      <span class="mb-1 block text-xs text-bo-muted">
+                        OU un montant libre, en € (max {formatPrice(Math.max(0, total - rembourse))})
+                      </span>
+                      <input
+                        type="number"
+                        name="montantLibre"
+                        step="0.01"
+                        min="0"
+                        max={(Math.max(0, total - rembourse) / 100).toFixed(2)}
+                        placeholder="0,00"
+                        class="w-32 rounded border border-bo-border px-2 py-1"
+                      />
+                    </label>
                     <label class="flex-1 text-sm">
                       <span class="mb-1 block text-xs text-bo-muted">Motif</span>
                       <input
@@ -1858,11 +1874,17 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                   </label>
                   <label class="flex items-center gap-2 text-sm">
                     <input type="checkbox" name="viaPsp" checked />
-                    Rendre l'argent via Stripe
+                    Rendre l'argent via Stripe ou PayPal (celui qui a encaissé)
                     <span class="text-xs text-bo-muted">
                       (décochez pour un remboursement fait à la main)
                     </span>
                   </label>
+                  <p class="text-xs text-bo-muted">
+                    Soit des articles et le port, soit un montant libre (geste
+                    commercial, affiche abîmée qu'on ne reprend pas). Rappel : une
+                    affiche personnalisée n'a pas de droit de rétractation (seule la
+                    garantie joue) ; une affiche prête à imprimer, 14 jours.
+                  </p>
                   <button class="rounded bg-bo-nav px-4 py-2 text-sm text-white">
                     Rembourser
                   </button>

@@ -41,7 +41,13 @@ import {
   or,
   sql as raw,
 } from "drizzle-orm";
-import { reglesActives, TYPES_REGLE_APPLIQUES } from "@memoryline/types";
+import {
+  FUSEAU_BOUTIQUE,
+  instantDeParis,
+  jourAParis,
+  reglesActives,
+  TYPES_REGLE_APPLIQUES,
+} from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { HORS_VENTES } from "./statuts-vente.js";
 // Le mode où la boutique encaisse, pour signaler les ventes payées en essai.
@@ -78,14 +84,10 @@ const LIMITE_ANOMALIES = 200;
 
 const FORMAT_JOUR = /^\d{4}-\d{2}-\d{2}$/;
 
-/** « 2026-09-09 » en heure locale : c'est la journée commerciale. */
-function jourISO(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
 /**
- * Un jour saisi, converti en instant local.
+ * Un jour saisi, converti en instant : minuit ou le dernier instant de la
+ * journée DE PARIS — c'est la journée commerciale, quel que soit le fuseau
+ * de la machine (instantDeParis, packages/types/src/fuseau.ts).
  *
  * Le repli silencieux de JavaScript est refusé : « 2026-02-31 » deviendrait le
  * 3 mars sans que personne ne le voie, et la période affichée ne serait plus
@@ -93,14 +95,7 @@ function jourISO(d: Date): string {
  */
 function instantDuJour(jour: string, finDeJournee: boolean): Date | null {
   if (!FORMAT_JOUR.test(jour)) return null;
-  const [a, m, j] = jour.split("-").map(Number);
-  if (a === undefined || m === undefined || j === undefined) return null;
-  const d = finDeJournee
-    ? new Date(a, m - 1, j, 23, 59, 59, 999)
-    : new Date(a, m - 1, j, 0, 0, 0, 0);
-  if (d.getFullYear() !== a || d.getMonth() !== m - 1 || d.getDate() !== j)
-    return null;
-  return d;
+  return instantDeParis(finDeJournee ? `${jour}T23:59:59.999` : jour);
 }
 
 interface Periode {
@@ -120,14 +115,11 @@ function lirePeriode(
   duBrut: string,
   auBrut: string,
 ): { periode: Periode } | { erreur: string } {
-  const aujourdhui = new Date();
-  const premierDuMois = new Date(
-    aujourdhui.getFullYear(),
-    aujourdhui.getMonth(),
-    1,
-  );
-  const du = duBrut.trim() || jourISO(premierDuMois);
-  const au = auBrut.trim() || jourISO(aujourdhui);
+  // Aujourd'hui et le 1er du mois À PARIS : le 1er à 0 h 30, « ce mois-ci »
+  // est déjà le nouveau.
+  const aujourdhui = jourAParis(new Date());
+  const du = duBrut.trim() || `${aujourdhui.slice(0, 8)}01`;
+  const au = auBrut.trim() || aujourdhui;
 
   const debut = instantDuJour(du, false);
   if (!debut)
@@ -147,15 +139,12 @@ function lirePeriode(
       erreur:
         "La période se termine avant d'avoir commencé. Inversez les deux dates.",
     };
-  if (debut.getFullYear() < PREMIERE_ANNEE)
+  if (Number(du.slice(0, 4)) < PREMIERE_ANNEE)
     return {
       erreur: `La boutique n'a aucune vente avant ${PREMIERE_ANNEE}. Choisissez une date de début plus récente.`,
     };
-  const finDuMondeConnu = new Date(
-    aujourdhui.getFullYear() + 1,
-    aujourdhui.getMonth(),
-    aujourdhui.getDate(),
-  );
+  // Un an devant nous, à un jour près : ce n'est qu'un garde-fou.
+  const finDuMondeConnu = new Date(Date.now() + 366 * 86400000);
   if (debut.getTime() > Date.now())
     return {
       erreur: "La période commence dans le futur : il n'y a rien à y lire.",
@@ -906,7 +895,7 @@ export function mountFinances(app: Hono): void {
     const euros = (cents: number) => (cents / 100).toFixed(2).replace(".", ",");
     const lignes = finances.mouvements.map((m) =>
       [
-        new Date(m.date).toLocaleString("fr-FR"),
+        new Date(m.date).toLocaleString("fr-FR", { timeZone: FUSEAU_BOUTIQUE }),
         m.numero,
         m.canal,
         m.stand ?? "",

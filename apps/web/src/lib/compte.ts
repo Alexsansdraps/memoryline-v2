@@ -519,10 +519,13 @@ export function formatDate(
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return String(iso);
+  // Le jour de la boutique (Paris), comme sur la facture et les courriers :
+  // une commande du 31 à 0 h 30 reste du 31, d'où que l'on regarde.
   return new Intl.DateTimeFormat(LOCALE_COMPLETE[langue], {
     day: "2-digit",
     month: "long",
     year: "numeric",
+    timeZone: "Europe/Paris",
   }).format(d);
 }
 

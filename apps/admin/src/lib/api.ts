@@ -2268,6 +2268,8 @@ export function adminApi(request?: Request) {
       data: {
         items?: { orderItemId: number; quantity: number }[];
         shippingCents?: number;
+        /** Un montant libre, à la place des articles et du port. */
+        amountCents?: number;
         reason?: string;
         note?: string;
         restock?: boolean;

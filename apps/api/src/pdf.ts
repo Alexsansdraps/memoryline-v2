@@ -17,8 +17,10 @@
  */
 
 import { createHash } from "node:crypto";
+import { readdirSync } from "node:fs";
 import { mkdir, readdir, readFile, rename, utimes, writeFile } from "node:fs/promises";
-import { basename, extname, resolve } from "node:path";
+import { createRequire } from "node:module";
+import { basename, dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import sharp from "sharp";
@@ -75,6 +77,14 @@ import {
   tailleDeLigne,
 } from "@memoryline/types";
 import type { PosterConfig, PosterFormat } from "@memoryline/types";
+import {
+  boiteEmoji,
+  codesAEssayer,
+  contientEmoji,
+  departsDesSegments,
+  largeurEmoji,
+  segmentsDeLigne,
+} from "@memoryline/types/emojis";
 import {
   dateLongue,
   mentionTva,
@@ -677,6 +687,152 @@ function px(valeur: number): string {
   return String(Math.round(valeur * 100) / 100);
 }
 
+// --- Emojis ------------------------------------------------------------------
+
+/*
+ * Les emojis des lignes s'impriment en IMAGES. Aucune police installée sur le
+ * serveur ne les dessine en couleur : avec Noto Emoji ou Twemoji en police,
+ * le moteur du SVG les sortait en noir et blanc, et certains (⭐ ✨ ❄️ ☀️)
+ * pas du tout. Chaque emoji est donc remplacé par son image, à la place que
+ * le navigateur lui donne (cf. packages/types/src/emojis.ts).
+ *
+ * Les images sont celles du jeu Twemoji (paquet @twemoji/svg, dans les
+ * node_modules de l'API : aucun appel réseau à l'impression).
+ *   Graphismes Twemoji — Copyright 2019 Twitter, Inc and other contributors,
+ *   jeu repris et tenu à jour par jdecked (github.com/jdecked/twemoji) —
+ *   licence CC-BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
+ *   Le paquet lui-même (fichiers optimisés) est sous licence MIT.
+ *   L'attribution doit figurer dans les mentions légales du site.
+ */
+
+/** Les fichiers du jeu, par nom sans VS16 (cf. codeEmoji) ; `null` sans le jeu. */
+let jeuEmojis: Map<string, string> | null | undefined;
+
+function fichiersEmojis(): Map<string, string> | null {
+  if (jeuEmojis !== undefined) return jeuEmojis;
+  try {
+    const dossier = dirname(
+      createRequire(import.meta.url).resolve("@twemoji/svg/package.json"),
+    );
+    const jeu = new Map<string, string>();
+    for (const nom of readdirSync(dossier).sort()) {
+      if (!nom.endsWith(".svg")) continue;
+      const code = nom.slice(0, -4).split("-").filter((c) => c !== "fe0f").join("-");
+      if (!jeu.has(code)) jeu.set(code, resolve(dossier, nom));
+    }
+    jeuEmojis = jeu;
+  } catch {
+    jeuEmojis = null;
+  }
+  return jeuEmojis;
+}
+
+/** Les images déjà lues, prêtes à poser : elles ne changent jamais. */
+const imagesEmojis = new Map<string, Promise<string | null>>();
+
+/**
+ * L'image d'un emoji, en `data:` à poser dans le SVG du texte, ou `null` si
+ * le jeu ne la connaît pas — un emoji plus récent que lui, par exemple.
+ */
+function imageEmoji(grappe: string): Promise<string | null> {
+  let image = imagesEmojis.get(grappe);
+  if (!image) {
+    image = (async () => {
+      const jeu = fichiersEmojis();
+      const fichier = codesAEssayer(grappe)
+        .map((c) => jeu?.get(c))
+        .find(Boolean);
+      if (!fichier) return null;
+      const svg = await readFile(fichier);
+      return `data:image/svg+xml;base64,${svg.toString("base64")}`;
+    })().catch(() => null);
+    imagesEmojis.set(grappe, image);
+  }
+  return image;
+}
+
+/** Un bout de ligne prêt à poser, sa largeur en multiples du corps. */
+type BoutDeLigne =
+  | { morceaux: MorceauDeTexte[]; largeur: number }
+  | { image: string; largeur: number };
+
+/** Une sous-ligne de l'affiche, prête à mesurer et à poser. */
+interface SousLigne {
+  /** Tout son texte, morceau par morceau, ses emojis ôtés. */
+  morceaux: MorceauDeTexte[];
+  /**
+   * Ses bouts, emojis à part. `null` sans emoji : la ligne s'écrit alors
+   * exactement comme avant les emojis, d'un seul `<text>` centré.
+   */
+  bouts: BoutDeLigne[] | null;
+  /** Sa largeur en multiples du corps ; `null` si la mesure a échoué. */
+  largeur: number | null;
+}
+
+/**
+ * Prépare une sous-ligne. Sans emoji — l'immense majorité —, rien ne change :
+ * mêmes morceaux, même mesure, même `<text>` qu'avant. Avec, la ligne est
+ * découpée en bouts : le texte entre deux emojis est mesuré comme une ligne
+ * (largeurParCorps, entre deux barres) et chaque emoji prend sa place
+ * connue ; c'est de ces largeurs MESURÉES qu'on tire le départ de chaque
+ * bout, pour que la ligne entière reste centrée comme à l'écran.
+ *
+ * Un emoji que le jeu ne connaît pas est sauté : mieux vaut un caractère en
+ * moins qu'une case vide qui décale la ligne. Si une mesure échoue, la ligne
+ * s'imprime sans ses emojis plutôt que de travers.
+ */
+async function preparerSousLigne(
+  texte: string,
+  police: PoliceAffiche,
+  espacement: number,
+): Promise<SousLigne> {
+  const enTexte = async (t: string): Promise<SousLigne> => {
+    const morceaux = morceauxDeTexte(t, police);
+    return { morceaux, bouts: null, largeur: await largeurParCorps(morceaux, police, espacement) };
+  };
+  if (!contientEmoji(texte)) return enTexte(texte);
+
+  // Les emojis remplacés par leur image ; ceux sans image disparaissent, et
+  // le texte qui les entourait se recolle.
+  const poses: ({ texte: string } | { image: string })[] = [];
+  for (const s of segmentsDeLigne(texte)) {
+    if (s.type === "emoji") {
+      const image = await imageEmoji(s.emoji);
+      if (image) poses.push({ image });
+      continue;
+    }
+    const precedent = poses[poses.length - 1];
+    if (precedent && "texte" in precedent) precedent.texte += s.texte;
+    else poses.push({ texte: s.texte });
+  }
+  // Les espaces qu'un emoji sauté laisse au bord de la ligne s'en vont,
+  // comme celles que sousLignes ôte déjà.
+  const debut = poses[0];
+  if (debut && "texte" in debut) debut.texte = debut.texte.trimStart();
+  const fin = poses[poses.length - 1];
+  if (fin && "texte" in fin) fin.texte = fin.texte.trimEnd();
+  const restants = poses.filter((p) => !("texte" in p) || p.texte);
+  const seulTexte = restants.map((p) => ("texte" in p ? p.texte : "")).join("");
+  if (!restants.some((p) => "image" in p)) return enTexte(seulTexte);
+
+  const bouts: BoutDeLigne[] = [];
+  for (const p of restants) {
+    if ("image" in p) {
+      bouts.push({ image: p.image, largeur: largeurEmoji(espacement) });
+      continue;
+    }
+    const morceaux = morceauxDeTexte(p.texte, police);
+    const largeur = await largeurParCorps(morceaux, police, espacement);
+    if (largeur === null) return enTexte(seulTexte);
+    bouts.push({ morceaux, largeur });
+  }
+  return {
+    morceaux: bouts.flatMap((b) => ("morceaux" in b ? b.morceaux : [])),
+    bouts,
+    largeur: bouts.reduce((s, b) => s + b.largeur, 0),
+  };
+}
+
 /**
  * Construit un SVG plein cadre contenant les TROIS LIGNES de l'affiche, ou
  * `null` s'il n'y en a aucune de remplie. Le bloc est centré en haut (zone
@@ -725,8 +881,11 @@ async function buildTextSvg(
       // autant de lignes, coupées au même endroit que dans l'aperçu.
       // Les caractères que la police ne sait pas écrire passent dans une
       // autre — les chiffres de la manuscrite, notamment (cf. morceauxDeTexte).
-      const decoupe = sousLignes(ligne.value).map((s) => morceauxDeTexte(s, police));
+      // Les emojis, eux, deviennent des images (cf. preparerSousLigne).
       const espacement = espacementDeLigne(i);
+      const decoupe = await Promise.all(
+        sousLignes(ligne.value).map((s) => preparerSousLigne(s, police, espacement)),
+      );
       // Rapportée au PETIT côté : c'est la largeur en portrait, la hauteur en
       // paysage — sinon le titre d'une affiche couchée grossirait de 41 %.
       const voulue = Math.min(width, height) * tailleDeLigne(i) * facteur;
@@ -734,9 +893,7 @@ async function buildTextSvg(
       // qu'il dépasse : l'aperçu fait la même chose (reductionDesLignes).
       // Les morceaux d'une ligne coupée gardent la même taille entre eux :
       // c'est le plus long qui décide.
-      const largeurs = await Promise.all(
-        decoupe.map((m) => largeurParCorps(m, police, espacement)),
-      );
+      const largeurs = decoupe.map((d) => d.largeur);
       const occupee = Math.max(0, ...largeurs.map((l) => (l === null ? 0 : l * voulue)));
       return {
         police,
@@ -749,9 +906,11 @@ async function buildTextSvg(
 
   /** Les boîtes des morceaux d'une ligne, en multiples de sa taille. */
   const boites = (r: (typeof rendus)[number], interligne: number) =>
-    r.decoupe.map((morceaux) =>
+    r.decoupe.map(({ morceaux }) =>
       // La police de la ligne compte toujours (l'« étai » de la boîte CSS),
-      // celles de ses morceaux s'y ajoutent.
+      // celles de ses morceaux s'y ajoutent. Les emojis n'y entrent pas :
+      // à l'écran, leur police de secours ne grandit pas une ligne dont
+      // l'interligne est fixé.
       boiteDeLigne([r.police, ...morceaux.map((m) => m.police)], interligne),
     );
 
@@ -769,6 +928,40 @@ async function buildTextSvg(
     // demi-espacement vers la gauche (0,3 mm sur un A4). Le moteur du SVG
     // ne compte pas ce dernier espace : on le décale d'autant.
     const decalage = (r.espacement * r.taille) / 2;
+    /**
+     * Pose une sous-ligne centrée sur `centre`, sa ligne de base en `base`.
+     * Sans emoji, un seul `<text>` centré, comme toujours. Avec, chaque bout
+     * part de la place que lui laissent les largeurs mesurées des autres :
+     * le texte en `<text>` calé à gauche, chaque emoji en `<image>`.
+     */
+    const poser = (d: SousLigne, centre: number, base: number): void => {
+      if (!d.bouts) {
+        parts.push(
+          `<text x="${px(centre - decalage)}" y="${px(base)}" ` +
+            `text-anchor="middle" ${attributs}>${contenuDeLigne(d.morceaux)}</text>`,
+        );
+        return;
+      }
+      const departs = departsDesSegments(
+        d.bouts.map((bout) => bout.largeur * r.taille),
+        centre,
+      );
+      for (const [k, bout] of d.bouts.entries()) {
+        const depart = departs[k]!;
+        if ("morceaux" in bout) {
+          parts.push(
+            `<text x="${px(depart)}" y="${px(base)}" ${attributs}>` +
+              `${contenuDeLigne(bout.morceaux)}</text>`,
+          );
+          continue;
+        }
+        const e = boiteEmoji(depart, base, r.taille);
+        parts.push(
+          `<image x="${px(e.x)}" y="${px(e.y)}" width="${px(e.cote)}" height="${px(e.cote)}" ` +
+            `href="${bout.image}"/>`,
+        );
+      }
+    };
     // Une ligne déplacée à la main s'imprime là où le client l'a posée : le
     // centre de la ligne vaut (x·largeur, y·hauteur), exactement comme dans
     // l'aperçu. Elle sort de l'empilement, qui continue sans elle. Coupée en
@@ -776,22 +969,16 @@ async function buildTextSvg(
     if (typeof ligne.x === "number" && typeof ligne.y === "number") {
       const b = boites(r, INTERLIGNE_LIGNE_POSEE);
       let y = ligne.y * height - (b.reduce((s, x) => s + x.hauteur, 0) * r.taille) / 2;
-      for (const [j, morceaux] of r.decoupe.entries()) {
-        parts.push(
-          `<text x="${px(ligne.x * width - decalage)}" y="${px(y + b[j]!.base * r.taille)}" ` +
-            `text-anchor="middle" ${attributs}>${contenuDeLigne(morceaux)}</text>`,
-        );
+      for (const [j, d] of r.decoupe.entries()) {
+        poser(d, ligne.x * width, y + b[j]!.base * r.taille);
         y += b[j]!.hauteur * r.taille;
       }
       continue;
     }
     const b = boites(r, interligneDeLigne(i));
     haut += espaceAvantLigne(i) * r.taille;
-    for (const [j, morceaux] of r.decoupe.entries()) {
-      parts.push(
-        `<text x="${px(width / 2 - decalage)}" y="${px(haut + b[j]!.base * r.taille)}" ` +
-          `text-anchor="middle" ${attributs}>${contenuDeLigne(morceaux)}</text>`,
-      );
+    for (const [j, d] of r.decoupe.entries()) {
+      poser(d, width / 2, haut + b[j]!.base * r.taille);
       haut += b[j]!.hauteur * r.taille;
     }
   }
@@ -1086,9 +1273,13 @@ async function fondSvgRasterise(svg: Buffer, W: number, H: number): Promise<Buff
   // la conversion : sa clé change, pour qu'il soit redessiné une fois. Les
   // autres fonds gardent la leur, et leur image déjà calculée.
   const contientWebp = svg.includes("data:image/webp");
+  // « net » : les fonds rangés avant le 16/11 avaient été dessinés à 150 dpi
+  // puis agrandis (voir plus bas) ; leur clé change pour qu'ils soient
+  // redessinés une fois, à la bonne densité.
   const cle = `${createHash("sha1")
     .update(svg)
     .update(contientWebp ? "webp→png" : "")
+    .update("net")
     .digest("hex")}-${W}x${H}`;
   const chemin = resolve(DOSSIER_FONDS, `${cle}.png`);
   try {
@@ -1111,12 +1302,31 @@ async function fondSvgRasterise(svg: Buffer, W: number, H: number): Promise<Buff
       // proportions, la réduction ne coupe rien.
       const plusGrand = await fondDejaRasterise(cle.split("-")[0]!, W);
       // unlimited:true → autorise les gros SVG de villes (sinon sharp lève
-      // "Buffer size limit exceeded"). density réduite à 150 (suffisant en cover).
-      const pixels = await sharp(
-        plusGrand ?? (await sansWebp(svg)),
-        plusGrand ? undefined : { density: 150, unlimited: true },
-      )
+      // "Buffer size limit exceeded").
+      //
+      // LA DENSITÉ DONNE DIRECTEMENT LA TAILLE D'IMPRESSION. Elle était fixée
+      // à 150 : un fond de 1 024 × 1 536 sortait en 2 133 × 3 200 px, puis
+      // était AGRANDI jusqu'à l'A4 (2 480 px), et bien plus jusqu'à l'A3
+      // (3 508 px). La photo collée dans le fond (2 246 × 3 302 px pour
+      // Vieux-Moulin) était donc réduite puis réagrandie : deux passages, et
+      // un tirage mou (« qualité pas extraordinaire, si tu peux la pousser »,
+      // la boutique, 16/11). Désormais le fond est dessiné juste au-dessus de
+      // la taille voulue, puis seulement recadré : la photo ne passe qu'une
+      // fois, à la résolution d'impression. Un léger renforcement de netteté
+      // compense l'agrandissement qui reste en A3 (une photo de 2 246 px
+      // étalée sur 3 508). Plus lent la première fois ; le résultat est rangé.
+      const source = plusGrand ?? (await sansWebp(svg));
+      let densite: number | undefined;
+      if (!plusGrand) {
+        const m = await sharp(source, { unlimited: true }).metadata();
+        densite =
+          m.width && m.height
+            ? Math.min(600, Math.max(72, Math.ceil(72 * Math.max(W / m.width, H / m.height)) + 1))
+            : 300;
+      }
+      const pixels = await sharp(source, densite ? { density: densite, unlimited: true } : undefined)
         .resize({ width: W, height: H, fit: "cover", position: "centre" })
+        .sharpen({ sigma: 0.6 })
         .png()
         .toBuffer();
       try {

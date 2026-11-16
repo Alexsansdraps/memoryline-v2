@@ -431,8 +431,17 @@ export function mountPromotions(app: Hono): void {
               // Une vente avec un code se justifie par son code (finances.ts).
               sql`coalesce(${schema.orders.promoCode}, '') = ''`,
               notInArray(schema.orders.status, HORS_VENTES),
-              r.startsAt ? sql`${schema.orders.createdAt} >= ${r.startsAt}` : undefined,
-              r.endsAt ? sql`${schema.orders.createdAt} <= ${r.endsAt}` : undefined,
+              // En TEXTE ISO, converti par Postgres : une Date passée telle
+              // quelle dans un sql`` n'est pas mise en forme (client partagé
+              // avec Drizzle, voir analytique.ts) et la requête tombait sur
+              // une erreur de type — la suppression d'une promotion datée
+              // échouait avant même de répondre.
+              r.startsAt
+                ? sql`${schema.orders.createdAt} >= ${r.startsAt.toISOString()}::timestamptz`
+                : undefined,
+              r.endsAt
+                ? sql`${schema.orders.createdAt} <= ${r.endsAt.toISOString()}::timestamptz`
+                : undefined,
             ),
           );
         const ventes = Number(n?.n ?? 0);

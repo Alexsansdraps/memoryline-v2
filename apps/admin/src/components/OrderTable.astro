@@ -9,6 +9,7 @@
  * rafraîchissement.
  */
 import { apiUrl, url } from "../lib/url.ts";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 import ApercuFlottant from "./ApercuFlottant.astro";
 import {
   adminApi,
@@ -173,15 +174,23 @@ const lienExport = (() => {
   return apiUrl(`/admin/orders/export.csv?${p.toString()}`);
 })();
 
-/** « le 27 août à 22:36 », comme sur la boutique. */
+/**
+ * « le 27 août à 22:36 », comme sur la boutique. L'heure de PARIS, dite
+ * explicitement plutôt que confiée au réglage TZ du serveur.
+ */
 function quand(iso: string | null | undefined): string {
   if (!iso) return "—";
   try {
     const d = new Date(iso);
-    const jour = d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+    const jour = d.toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "long",
+      timeZone: FUSEAU_BOUTIQUE,
+    });
     const heure = d.toLocaleTimeString("fr-FR", {
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: FUSEAU_BOUTIQUE,
     });
     return `le ${jour} à ${heure}`;
   } catch {

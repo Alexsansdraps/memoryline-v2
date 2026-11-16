@@ -8,11 +8,13 @@
   "exports": {
     ".": "./src/index.ts",
     "./couleurs": "./src/couleurs.ts",
+    "./emojis": "./src/emojis.ts",
     "./bandeaux-visuels": "./src/bandeaux-visuels.ts",
     "./bandeaux-visuels.css": "./src/bandeaux-visuels.css",
     "./recherche": "./src/recherche.ts",
     "./video": "./src/video.ts",
-    "./textes-seo": "./src/textes-seo.ts"
+    "./textes-seo": "./src/textes-seo.ts",
+    "./fuseau": "./src/fuseau.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
