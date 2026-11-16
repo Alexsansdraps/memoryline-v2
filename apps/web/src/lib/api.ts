@@ -1115,7 +1115,7 @@ export const browserApi = {
    * l'est, et dit quel écran montrer. L'adresse de retour ne décide de rien.
    */
   stripeRetour: (paymentIntent: string, clientSecret: string) =>
-    browserSend<{ issue: "payee" | "en_cours" | "refuse"; number: string }>(
+    browserSend<{ issue: "payee" | "en_cours" | "ecart" | "refuse"; number: string }>(
       "POST",
       "/payments/stripe/retour",
       { paymentIntent, clientSecret },

@@ -2711,12 +2711,26 @@ export function mountConfiguratorRoutes(app: Hono) {
               ? `Vente du stand passée par la caisse du site : elle devient une commande du site (${number}).`
               : `Vente du stand (${panier.number}) passée par la caisse du site : elle devient la commande ${number}.`,
         });
+      // La validation au stand avait posé la note « Stand : <événement> » et
+      // l'étiquette de l'événement (salon.ts) : devenue une commande du site,
+      // la vente ne doit plus se ranger avec ce marché dans les recherches et
+      // les filtres. Une note écrite à la main, elle, reste.
+      const evenementDuStand =
+        panier.channel !== "web" && panier.internalNote?.startsWith("Stand : ")
+          ? panier.internalNote.slice("Stand : ".length)
+          : null;
       const [order] = await tx
         .update(schema.orders)
         .set({
           number,
           channel: "web",
           standId: null,
+          ...(evenementDuStand !== null
+            ? {
+                internalNote: null,
+                tags: (panier.tags ?? []).filter((t) => t !== evenementDuStand),
+              }
+            : {}),
           status: "pending",
           customerId: customer!.id,
           totalCents: total,
@@ -3130,19 +3144,21 @@ export function mountConfiguratorRoutes(app: Hono) {
       const intent = await getStripeIntent(jeu, ref);
       if (!secretClientConcorde(intent.clientSecret, secretClient))
         return c.json({ error: "paiement introuvable" }, 404);
+      let ecart = false;
       if (intent.status === "succeeded") {
         try {
           await encaisserIntentionStripe(payment.orderId, ref, intent, mode, config);
         } catch (e) {
           // L'écart est au journal de la commande, la boutique le voit : la
-          // cliente, elle, lit « en cours de validation » (issueDuRetour).
+          // cliente, elle, lit que la boutique revient vers elle (issueDuRetour).
           if (!(e instanceof MontantEncaisseDifferent)) throw e;
+          ecart = true;
         }
       }
       const commande = await lireCommande();
       if (!commande) return c.json({ error: "commande introuvable" }, 404);
       return c.json({
-        issue: issueDuRetour(intent.status, commande.status),
+        issue: issueDuRetour(intent.status, commande.status, ecart),
         number: commande.number,
       });
     } catch (e) {

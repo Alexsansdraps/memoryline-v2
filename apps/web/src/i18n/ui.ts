@@ -607,6 +607,8 @@ export const ui = {
     "commande.retour.en_cours_titre": "Paiement en cours de validation",
     "commande.retour.en_cours_texte":
       "Votre banque n'a pas encore confirmé le paiement. Vous recevrez un e-mail dès qu'il sera validé : inutile de payer une seconde fois.",
+    "commande.retour.ecart_texte":
+      "Votre paiement est bien arrivé, mais son montant ne correspond pas à votre commande. La boutique revient vers vous par e-mail pour régler cela : inutile de payer une seconde fois.",
     "commande.retour.refuse":
       "Le paiement a été refusé ou n'a pas abouti. Votre panier est gardé : vérifiez votre livraison, puis réessayez avec le même moyen de paiement ou un autre.",
     "commande.retour.injoignable":
@@ -1291,6 +1293,8 @@ export const ui = {
     "commande.retour.en_cours_titre": "Payment being validated",
     "commande.retour.en_cours_texte":
       "Your bank has not confirmed the payment yet. You will receive an email as soon as it is validated: there is no need to pay a second time.",
+    "commande.retour.ecart_texte":
+      "Your payment has arrived, but its amount does not match your order. The shop will get back to you by email to sort this out: there is no need to pay a second time.",
     "commande.retour.refuse":
       "The payment was declined or did not go through. Your basket has been kept: check your delivery details, then try again with the same payment method or another one.",
     "commande.retour.injoignable":
@@ -1974,6 +1978,8 @@ export const ui = {
     "commande.retour.en_cours_titre": "Zahlung wird geprüft",
     "commande.retour.en_cours_texte":
       "Ihre Bank hat die Zahlung noch nicht bestätigt. Sie erhalten eine E-Mail, sobald sie bestätigt ist: Bitte zahlen Sie nicht ein zweites Mal.",
+    "commande.retour.ecart_texte":
+      "Ihre Zahlung ist eingegangen, aber der Betrag stimmt nicht mit Ihrer Bestellung überein. Der Shop meldet sich per E-Mail bei Ihnen, um das zu klären: Bitte nicht ein zweites Mal bezahlen.",
     "commande.retour.refuse":
       "Die Zahlung wurde abgelehnt oder nicht abgeschlossen. Ihr Warenkorb bleibt erhalten: Prüfen Sie Ihre Lieferangaben und versuchen Sie es dann mit derselben oder einer anderen Zahlungsart erneut.",
     "commande.retour.injoignable":
@@ -2650,6 +2656,8 @@ export const ui = {
     "commande.retour.en_cours_titre": "Pagamento in fase di convalida",
     "commande.retour.en_cours_texte":
       "La tua banca non ha ancora confermato il pagamento. Riceverai un'e-mail non appena sarà convalidato: non serve pagare una seconda volta.",
+    "commande.retour.ecart_texte":
+      "Il tuo pagamento è arrivato, ma l'importo non corrisponde al tuo ordine. Il negozio ti ricontatterà via e-mail per sistemare la cosa: non serve pagare una seconda volta.",
     "commande.retour.refuse":
       "Il pagamento è stato rifiutato o non è andato a buon fine. Il tuo carrello è stato conservato: controlla la consegna, poi riprova con lo stesso metodo di pagamento o con un altro.",
     "commande.retour.injoignable":
@@ -3327,6 +3335,8 @@ export const ui = {
     "commande.retour.en_cours_titre": "Pago en proceso de validación",
     "commande.retour.en_cours_texte":
       "Tu banco todavía no ha confirmado el pago. Recibirás un correo en cuanto se valide: no hace falta pagar una segunda vez.",
+    "commande.retour.ecart_texte":
+      "Tu pago ha llegado, pero su importe no coincide con tu pedido. La tienda se pondrá en contacto contigo por correo para resolverlo: no hace falta pagar una segunda vez.",
     "commande.retour.refuse":
       "El pago ha sido rechazado o no se ha completado. Tu cesta se ha guardado: revisa la entrega y vuelve a intentarlo con el mismo método de pago o con otro.",
     "commande.retour.injoignable":

@@ -1071,7 +1071,7 @@ export default function CheckoutIsland(props: {
   const intentionRetour = paramsRetour.get("payment_intent");
   const secretRetour = paramsRetour.get("payment_intent_client_secret");
   const [retour, setRetour] = createSignal<
-    "verif" | "en_cours" | "refuse" | "injoignable" | null
+    "verif" | "en_cours" | "ecart" | "refuse" | "injoignable" | null
   >(intentionRetour && secretRetour ? "verif" : null);
 
   /** Le secret n'a rien à faire dans l'adresse, ni dans l'historique. */
@@ -1087,13 +1087,13 @@ export default function CheckoutIsland(props: {
       if (r.issue === "payee") {
         finishSuccess();
         setRetour(null);
-      } else if (r.issue === "en_cours") {
+      } else if (r.issue === "en_cours" || r.issue === "ecart") {
         // Le panier est engagé dans ce paiement : on l'oublie, comme après un
         // paiement réussi. Y ajouter une affiche le remettrait en panier sous
         // un paiement que la banque peut encore accepter.
         localStorage.removeItem("ml_cart_id");
         window.dispatchEvent(new Event("ml:panier"));
-        setRetour("en_cours");
+        setRetour(r.issue === "ecart" ? "ecart" : "en_cours");
       } else {
         // Refusé : la commande est restée en attente, le panier aussi. La
         // caisse ordinaire s'affiche, et revalider ouvre un nouveau paiement.
@@ -1124,9 +1124,11 @@ export default function CheckoutIsland(props: {
           {tr("commande.retour.verification")}
         </p>
       </Show>
-      <Show when={retour() === "en_cours"}>
+      <Show when={retour() === "en_cours" || retour() === "ecart"}>
         <h2 class="font-serif text-3xl">{tr("commande.retour.en_cours_titre")}</h2>
-        <p class="mt-3 text-ink-soft">{tr("commande.retour.en_cours_texte")}</p>
+        <p class="mt-3 text-ink-soft">
+          {tr(retour() === "ecart" ? "commande.retour.ecart_texte" : "commande.retour.en_cours_texte")}
+        </p>
         <p class="mt-4 text-lg">
           {tr("commande.numero")}{" "}
           <span class="text-2xl">{orderNumber()}</span>

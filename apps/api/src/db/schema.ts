@@ -4,7 +4,10 @@
  *
  * Principes structurants :
  *  - order.channel ('web' | 'salon') NON NULL, fixé quand la commande naît
- *    (validation au stand, passage par la caisse du site), immuable ensuite (§11).
+ *    (validation au stand, passage par la caisse du site), immuable ensuite (§11),
+ *    à une exception : une vente du stand rouverte puis payée par la caisse du
+ *    site devient « web », abandonne son SAL- (qui peut être redonné) et sa
+ *    note « Stand : … » (POST /orders).
  *  - Numérotation séparée WEB-xxxx / SAL-xxxx, compteur par préfixe et non par
  *    canal (numeros-commande.ts).
  *  - order_item.config = snapshot JSON de la personnalisation (§14.3).
@@ -1335,7 +1338,7 @@ export const orders = pgTable(
   "order",
   {
     id: serial("id").primaryKey(),
-    channel: orderChannelEnum("channel").notNull(), // immuable une fois née (§11)
+    channel: orderChannelEnum("channel").notNull(), // immuable une fois née (§11), sauf stand → site (voir l'en-tête)
     number: text("number").notNull(), // 'WEB-1042' / 'SAL-0087'
     clientOrderId: text("client_order_id"),
     /**

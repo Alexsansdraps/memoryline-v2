@@ -128,7 +128,7 @@ export function secretClientConcorde(attendu: string, recu: string): boolean {
 }
 
 /** Ce que la caisse affiche au retour d'une redirection. */
-export type IssueRetourStripe = "payee" | "en_cours" | "refuse";
+export type IssueRetourStripe = "payee" | "en_cours" | "ecart" | "refuse";
 
 /**
  * L'écran du retour, d'après ce que le SERVEUR sait — jamais d'après le
@@ -147,8 +147,16 @@ export type IssueRetourStripe = "payee" | "en_cours" | "refuse";
 export function issueDuRetour(
   statutIntention: string,
   statutCommande: string,
+  /**
+   * L'argent est pris, mais d'un autre montant que la commande
+   * (MontantEncaisseDifferent) : elle ne passera jamais payée toute seule, et
+   * « en cours de validation » laissait attendre un courriel qui ne viendrait
+   * pas. La cliente lit que la boutique revient vers elle.
+   */
+  ecart = false,
 ): IssueRetourStripe {
   if (statutCommande === "paid") return "payee";
+  if (ecart && statutIntention === "succeeded") return "ecart";
   if (statutIntention === "succeeded" || statutIntention === "processing")
     return "en_cours";
   return "refuse";

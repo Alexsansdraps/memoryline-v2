@@ -30,6 +30,12 @@ test("l'écran vient de la commande et de l'intention, jamais de redirect_status
   // au journal de la commande) : surtout pas « réessayez ».
   assert.equal(issueDuRetour("succeeded", "pending"), "en_cours");
   assert.equal(issueDuRetour("succeeded", "draft"), "en_cours");
+  // Le même cas, quand le serveur SAIT que c'est un écart de montant : la
+  // cliente lit que la boutique revient vers elle, pas « en cours ».
+  assert.equal(issueDuRetour("succeeded", "pending", true), "ecart");
+  // Un écart ne change rien à une commande payée, ni à un refus.
+  assert.equal(issueDuRetour("succeeded", "paid", true), "payee");
+  assert.equal(issueDuRetour("canceled", "pending", true), "refuse");
   // Refus, abandon chez la banque, annulation : le panier est gardé.
   assert.equal(issueDuRetour("requires_payment_method", "pending"), "refuse");
   assert.equal(issueDuRetour("requires_action", "pending"), "refuse");
