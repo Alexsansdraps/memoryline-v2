@@ -211,6 +211,8 @@ const MOTS: Record<
     avant: (date: string) => string;
     /** « à 20:00 », collé derrière la date. */
     aHeure: (heure: string) => string;
+    /** La pièce à présenter au stand (17/11). */
+    identite: string;
   }
 > = {
   fr: {
@@ -220,6 +222,7 @@ const MOTS: Record<
     ferme: "Fermé",
     avant: (d) => `À venir chercher au plus tard le ${d}.`,
     aHeure: (h) => `à ${h}`,
+    identite: "Une carte d'identité vous sera demandée pour retirer votre commande.",
   },
   en: {
     periode: (d, f) => `From ${d} to ${f}.`,
@@ -228,6 +231,7 @@ const MOTS: Record<
     ferme: "Closed",
     avant: (d) => `To be collected by ${d} at the latest.`,
     aHeure: (h) => `at ${h}`,
+    identite: "An ID card will be required to collect your order.",
   },
   de: {
     periode: (d, f) => `Von ${d} bis ${f}.`,
@@ -236,6 +240,7 @@ const MOTS: Record<
     ferme: "Geschlossen",
     avant: (d) => `Abholung spätestens am ${d}.`,
     aHeure: (h) => `um ${h}`,
+    identite: "Bei der Abholung wird ein Personalausweis verlangt.",
   },
   it: {
     periode: (d, f) => `Dal ${d} al ${f}.`,
@@ -244,6 +249,7 @@ const MOTS: Record<
     ferme: "Chiuso",
     avant: (d) => `Da ritirare entro ${d}.`,
     aHeure: (h) => `alle ${h}`,
+    identite: "Per ritirare l'ordine sarà richiesta una carta d'identità.",
   },
   es: {
     periode: (d, f) => `Del ${d} al ${f}.`,
@@ -252,6 +258,7 @@ const MOTS: Record<
     ferme: "Cerrado",
     avant: (d) => `Recogida a más tardar el ${d}.`,
     aHeure: (h) => `a las ${h}`,
+    identite: "Se le pedirá un documento de identidad para recoger su pedido.",
   },
 };
 
@@ -394,6 +401,15 @@ export function resumeHoraires(
   lignes.push(...autres);
   lignes.push(m.avant(dernierMomentEcrit(s, langue) ?? jourEcrit(s.dateFin, langue)));
   return lignes.join("\n");
+}
+
+/**
+ * « Une carte d'identité vous sera demandée pour retirer votre commande »
+ * (17/11), dans la langue voulue. Elle termine le texte de chaque stand : la
+ * commande le garde, et les courriels le reprennent.
+ */
+export function mentionIdentite(langue = "fr"): string {
+  return (MOTS[langue] ?? MOTS.fr!).identite;
 }
 
 /** Les langues dans lesquelles le résumé s'écrit. */

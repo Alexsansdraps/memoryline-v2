@@ -1718,6 +1718,10 @@ export default function CheckoutIsland(props: {
                                     </>
                                   )}
                                 </Show>
+                                {/* La pièce à présenter au retrait (17/11). */}
+                                <span class="mt-3 block font-medium">
+                                  {tr("livraison.stand_identite")}
+                                </span>
                                 <Show when={lieu().retirerAvant}>
                                   <label class="mt-3 flex cursor-pointer items-start gap-2 border-t border-ink/10 pt-3">
                                     <input

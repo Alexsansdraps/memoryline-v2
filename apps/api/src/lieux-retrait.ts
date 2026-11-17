@@ -27,6 +27,7 @@ import { champTraduit } from "./traductions.js";
 import {
   dernierMomentDeRetrait,
   LANGUES_RESUME,
+  mentionIdentite,
   resumeHoraires,
   semaineDuStand,
   retraitProposable,
@@ -295,12 +296,13 @@ export async function synchroniserLieuDuStand(standId: number, maintenant = new 
   // s'affichent sous le stand à la caisse, et la commande les garde. Les 7
   // prochains jours y sont écrits un par un (17/11) : la minute qui suit
   // minuit les fait avancer d'un jour.
-  const description = resumeHoraires(cal, "fr", { maintenant }) || null;
-  const translations = description
-    ? Object.fromEntries(
-        LANGUES_RESUME.filter((l) => l !== "fr").map((l) => [l, { description: resumeHoraires(cal, l, { maintenant }) }]),
-      )
-    : null;
+  // Et toujours, en dernière ligne, la carte d'identité à présenter (17/11).
+  const texteDuStand = (l: string) =>
+    [resumeHoraires(cal, l, { maintenant }), mentionIdentite(l)].filter(Boolean).join("\n");
+  const description = texteDuStand("fr");
+  const translations = Object.fromEntries(
+    LANGUES_RESUME.filter((l) => l !== "fr").map((l) => [l, { description: texteDuStand(l) }]),
+  );
   const voulu = {
     nom: stand.nom,
     adresse: stand.emplacement?.trim() || null,
