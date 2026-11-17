@@ -26,6 +26,7 @@ import {
   sql as raw,
 } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
+import { annulerBordereau } from "./sendcloud-colis.js";
 import {
   capturePaypalDeLaCommande,
   RefusPaypal,
@@ -1985,6 +1986,36 @@ export function mountOrderRoutes(app: Hono): void {
       .select()
       .from(schema.orderItems)
       .where(eq(schema.orderItems.orderId, id));
+
+    /* --- 0. Le bordereau, s'il en a un -------------------------------- */
+
+    // Une étiquette achetée avant l'annulation restait valable — et
+    // facturée — : l'annulation bloquait seulement l'achat d'une nouvelle
+    // (Alexandra, 17/11 : « quand la commande est annulée, on ne doit plus
+    // pouvoir acheter de bordereau »). Elle est annulée chez SendCloud ICI,
+    // AVANT l'argent : si SendCloud refuse, rien n'est rendu ni annulé, et la
+    // boutique sait quoi faire.
+    const [etiquette] = await db
+      .select({ statut: schema.bordereaux.statut, suivi: schema.bordereaux.trackingNumber })
+      .from(schema.bordereaux)
+      .where(
+        and(
+          eq(schema.bordereaux.orderId, id),
+          inArray(schema.bordereaux.statut, ["achete", "en_cours"]),
+        ),
+      );
+    if (etiquette) {
+      try {
+        await annulerBordereau(id, auteur ?? undefined);
+      } catch (e) {
+        return c.json(
+          {
+            error: `La commande n'a pas été annulée : son bordereau${etiquette.suivi ? ` ${etiquette.suivi}` : ""} n'a pas pu être annulé chez SendCloud (${e instanceof Error ? e.message : String(e)}). Annulez-le depuis le bloc « Bordereau transporteur », puis recommencez.`,
+          },
+          409,
+        );
+      }
+    }
 
     /* --- 1. L'argent, s'il faut le rendre ----------------------------- */
 
