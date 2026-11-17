@@ -365,6 +365,11 @@ async function fichierALaTaille(
         const sharp = (await import("sharp")).default;
         await mkdir(TAILLES_DIR, { recursive: true });
         if (estSvg) {
+          // Pas de cache d'images de sharp pour ces conversions : chacune
+          // décode des photos de plusieurs milliers de pixels, et l'API
+          // gardait ensuite 1,4 Go pour rien (17/11). Le résultat, lui, est
+          // rangé sur le disque.
+          sharp.cache(false);
           // Les images WebP collées dans le SVG d'abord converties : le
           // moteur de dessin les laisserait de côté sans rien dire (pdf.ts,
           // sansWebp). Puis dessiné directement à la largeur demandée.

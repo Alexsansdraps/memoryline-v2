@@ -1544,63 +1544,79 @@ export default function CheckoutIsland(props: {
                   <For each={optionsPort()}>
                     {(o) =>
                       o.mode.slug === MODE_RETRAIT_STAND ? (
-                        /* Retrait au stand : UNE option, avec sa phrase, et
-                           dessous « Où nous trouver : » et les stands ouverts,
-                           visibles d'emblée avec leur emplacement, leurs dates
-                           et leurs horaires (17/11 : « on doit voir les stands
-                           direct »). Choisir un stand choisit le mode. */
-                        <div
-                          class={`border p-4 transition-colors ${
-                            modeChoisi() === o.mode.slug ? "border-ink" : "border-ink/20"
-                          }`}
-                        >
-                          <span class="flex items-baseline justify-between gap-3">
-                            <span class="font-medium">{o.mode.name}</span>
-                            <span>
-                              {o.offert
-                                ? tr("livraison.offerte")
-                                : formatPrice(o.fraisCents, locale)}
+                        /* Retrait au stand (17/11) : le même rectangle que les
+                           autres modes ; dedans, sous sa phrase, un bouton de
+                           couleur par stand ouvert (ville / événement). DESSOUS
+                           le rectangle : l'emplacement, les dates et horaires du
+                           stand choisi, et la case « je viendrai avant le … ».
+                           Pas de <label> autour : des boutons dans un libellé ne
+                           se lisent pas bien. */
+                        <>
+                          <div
+                            class={`flex items-start gap-3 border p-4 transition-colors ${
+                              modeChoisi() === o.mode.slug
+                                ? "border-ink"
+                                : "border-ink/20 hover:border-ink/50"
+                            }`}
+                          >
+                            <input
+                              id="mode-retrait-stand"
+                              type="radio"
+                              name="mode-livraison"
+                              class="mt-1"
+                              checked={modeChoisi() === o.mode.slug}
+                              onChange={() => setModeChoisi(o.mode.slug)}
+                            />
+                            <span class="flex-1">
+                              <label
+                                for="mode-retrait-stand"
+                                class="flex cursor-pointer items-baseline justify-between gap-3"
+                              >
+                                <span class="font-medium">{o.mode.name}</span>
+                                <span>
+                                  {o.offert
+                                    ? tr("livraison.offerte")
+                                    : formatPrice(o.fraisCents, locale)}
+                                </span>
+                              </label>
+                              <Show when={o.mode.description}>
+                                <label
+                                  for="mode-retrait-stand"
+                                  class="mt-0.5 block cursor-pointer whitespace-pre-line text-sm text-ink-soft"
+                                >
+                                  {o.mode.description}
+                                </label>
+                              </Show>
+                              <span class="mt-3 flex flex-wrap gap-2">
+                                <For each={lieuxDesStands()}>
+                                  {(lieu) => {
+                                    const choisi = () =>
+                                      modeChoisi() === o.mode.slug && lieuRetenu()?.id === lieu.id;
+                                    return (
+                                      <button
+                                        type="button"
+                                        aria-pressed={choisi()}
+                                        onClick={() => {
+                                          // Un autre stand, une autre date : la
+                                          // case se recoche.
+                                          if (lieuChoisi() !== lieu.id) setStandCompris(false);
+                                          setModeChoisi(o.mode.slug);
+                                          setLieuChoisi(lieu.id);
+                                        }}
+                                        class={`rounded-full border-2 border-terracotta px-4 py-2 text-sm font-semibold transition-colors ${
+                                          choisi()
+                                            ? "bg-terracotta text-paper"
+                                            : "bg-paper text-terracotta hover:bg-terracotta/10"
+                                        }`}
+                                      >
+                                        {lieu.nom}
+                                      </button>
+                                    );
+                                  }}
+                                </For>
+                              </span>
                             </span>
-                          </span>
-                          <Show when={o.mode.description}>
-                            <span class="mt-0.5 block whitespace-pre-line text-sm text-ink-soft">
-                              {o.mode.description}
-                            </span>
-                          </Show>
-                          <p class="mt-3 text-sm font-medium">{tr("livraison.ou_nous_trouver")}</p>
-                          {/* Un bouton de couleur par ville / événement (17/11).
-                              Le choisir choisit le mode ; le choisi se remplit. */}
-                          <div class="mt-2 flex flex-wrap gap-2" role="group">
-                            <For each={lieuxDesStands()}>
-                              {(lieu) => {
-                                const choisi = () =>
-                                  modeChoisi() === o.mode.slug && lieuRetenu()?.id === lieu.id;
-                                return (
-                                  <button
-                                    type="button"
-                                    aria-pressed={choisi()}
-                                    onClick={() => {
-                                      // Un autre stand, une autre date : la case
-                                      // se recoche.
-                                      if (lieuChoisi() !== lieu.id) setStandCompris(false);
-                                      setModeChoisi(o.mode.slug);
-                                      setLieuChoisi(lieu.id);
-                                    }}
-                                    class={`rounded-full border-2 border-terracotta px-4 py-2 text-sm font-semibold transition-colors ${
-                                      choisi()
-                                        ? "bg-terracotta text-paper"
-                                        : "bg-paper text-terracotta hover:bg-terracotta/10"
-                                    }`}
-                                  >
-                                    {lieu.nom}
-                                  </button>
-                                );
-                              }}
-                            </For>
                           </div>
-                          {/* Le stand choisi : son emplacement, ses dates et ses
-                              horaires, et la case à cocher (sans elle, pas de
-                              paiement). */}
                           <Show
                             when={
                               modeChoisi() === o.mode.slug && lieuRetenu()?.standId != null
@@ -1609,14 +1625,13 @@ export default function CheckoutIsland(props: {
                             }
                           >
                             {(lieu) => (
-                              <div class="mt-3 border border-ink/15 bg-paper-deep/40 p-3 text-sm">
+                              <div class="border border-ink/15 bg-paper-deep/40 p-4 text-sm">
+                                <span class="block font-medium">{lieu().nom}</span>
                                 <Show when={lieu().adresse}>
-                                  <span class="block whitespace-pre-line font-medium">
-                                    {lieu().adresse}
-                                  </span>
+                                  <span class="mt-0.5 block whitespace-pre-line">{lieu().adresse}</span>
                                 </Show>
                                 <Show when={lieu().description}>
-                                  <span class="mt-1 block whitespace-pre-line text-ink-soft">
+                                  <span class="mt-2 block whitespace-pre-line text-ink-soft">
                                     {lieu().description}
                                   </span>
                                 </Show>
@@ -1639,7 +1654,7 @@ export default function CheckoutIsland(props: {
                               </div>
                             )}
                           </Show>
-                        </div>
+                        </>
                       ) : (
                       <label
                         class={`flex cursor-pointer items-start gap-3 border p-4 transition-colors ${
