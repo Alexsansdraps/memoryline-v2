@@ -2,7 +2,12 @@
 
 > **17/11 au soir : À REPRENDRE.**
 > - **Les travaux non finis** (codes promo et cartes cadeaux, /commande sans panier, états de traitement en frise, module des stands à l’accueil) sont sauvegardés sur la branche **`wip/17-11-soir`**, poussée, PAS en ligne. Pour reprendre : `git checkout wip/17-11-soir`, lire le rapport plus bas, finir, vérifier, puis fusionner dans main.
-> - **PageSpeed** (17/11, 16:17) : le score SEO de 42 venait de la page de maintenance, car le test est tombé pendant une mise en ligne. Le site réel est sain (200, description, index/follow, robots.txt). Restent : accessibilité 89 ; images sans largeur ni hauteur (`width`/`height`) ; console ; en-têtes CSP, HSTS et COOP. Relancer le test hors mise en ligne.
+> - **PageSpeed (17/11, 16:19, mobile)** : SEO 100, Accessibilité 100, Bonnes pratiques 100, Agents 3/3. Le 42 de 16:17 venait de la page de maintenance. **Performance 78** (4G lente simulée) : FCP 2,6 s, LCP 4,4 s, TBT 100 ms, CLS 0. À faire :
+>   - charger Tag Manager après le chargement de la page (environ 75 Ko de JS tiers inutilisé, 3 tâches longues) ;
+>   - alléger l’image LCP de l’accueil (92 Ko à gagner, format et taille, `fetchpriority="high"`, préchargement) ;
+>   - réduire le CSS bloquant ;
+>   - remplacer les 4 animations non composées.
+>   - Les en-têtes CSP, HSTS et COOP sont des pistes facultatives.
 >
 > **17/11 après-midi** (tout est en prod, voir `git log`) :
 > - **Historique Shopify : JAMAIS importé** : 0 commande et 0 cliente Shopify au vidage. L’import est réécrit et sûr sur la base en service (`941b5e4`).
