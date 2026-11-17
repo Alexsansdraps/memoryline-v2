@@ -33,6 +33,8 @@ import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { hashPassword, verifyPassword } from "./auth.js";
 import {
+  avecBordereauReel,
+  etapeDeLaCommande,
   lienDeSuivi,
   resumeCommandes,
   statutExpedition,
@@ -1777,6 +1779,7 @@ export function mountCompteRoutes(app: Hono): void {
       .where(eq(schema.orders.customerId, id))
       .orderBy(desc(schema.orders.createdAt));
     const resume = await resumeCommandes(commandes.map((o) => o.id));
+    const reels = await avecBordereauReel(commandes.map((o) => o.id));
     const a = (await agregatsClients([id])).get(id) ?? AGREGAT_VIDE;
 
     return c.json({
@@ -1784,6 +1787,9 @@ export function mountCompteRoutes(app: Hono): void {
       adresses,
       commandes: commandes.map((o) => {
         const s = resume.get(o.id)!;
+        // L'étape (17/11) : le seul statut que montre le back-office. Rien
+        // pour une reprise de Shopify, qui garde ses deux statuts.
+        const etape = o.legacyId == null ? etapeDeLaCommande(o, s, reels.has(o.id)) : null;
         return {
           id: o.id,
           number: o.number,
@@ -1792,6 +1798,8 @@ export function mountCompteRoutes(app: Hono): void {
           articles: s.articles,
           statutFinancier: statutFinancier(o, s.rembourseCents),
           statutExpedition: statutExpedition(s.articles, s.expedies),
+          parcours: etape?.parcours,
+          etapeTraitement: etape?.etape,
         };
       }),
       stats: {

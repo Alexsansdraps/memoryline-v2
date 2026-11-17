@@ -1526,6 +1526,8 @@ export interface ClientDetail {
     articles: number;
     statutFinancier?: StatutFinancier;
     statutExpedition?: StatutExpedition;
+    parcours?: string;
+    etapeTraitement?: string;
   }[];
   stats: { commandes: number; caCents: number; panierMoyenCents: number };
 }

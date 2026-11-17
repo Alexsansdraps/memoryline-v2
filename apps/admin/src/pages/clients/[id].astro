@@ -14,7 +14,22 @@ import { apiInterne } from "../../lib/api-interne.ts";
  */
 import Admin from "../../layouts/Admin.astro";
 import { url } from "../../lib/url.ts";
-import { FUSEAU_BOUTIQUE } from "@memoryline/types";
+import {
+  FUSEAU_BOUTIQUE,
+  libelleEtape,
+  tonEtape,
+  type EtapeTraitement,
+  type ParcoursTraitement,
+} from "@memoryline/types";
+
+/** La couleur d'une étape (17/11), la même que dans les listes et sur la fiche. */
+const CLASSE_TON: Record<string, string> = {
+  neutre: "bg-bo-bg text-bo-muted",
+  a_faire: "bg-amber-100 text-amber-900",
+  en_partie: "bg-orange-100 text-orange-900",
+  en_cours: "bg-sky-100 text-sky-900",
+  fait: "bg-green-100 text-green-900",
+};
 import { adminApi, formatPrice, type ClientDetail } from "../../lib/api.ts";
 
 const id = Number(Astro.params.id);
@@ -224,8 +239,7 @@ const nom = client?.name?.trim() || "Client sans nom";
                   <tr>
                     <th class="px-4 py-2 font-medium">Commande</th>
                     <th class="px-4 py-2 font-medium">Date</th>
-                    <th class="px-4 py-2 font-medium">Paiement</th>
-                    <th class="px-4 py-2 font-medium">Traitement</th>
+                    <th class="px-4 py-2 font-medium">Statut</th>
                     <th class="px-4 py-2 font-medium">Articles</th>
                     <th class="px-4 py-2 text-right font-medium">Total</th>
                   </tr>
@@ -237,6 +251,14 @@ const nom = client?.name?.trim() || "Client sans nom";
                       classe: "bg-bo-bg text-bo-muted",
                     };
                     const t = BADGE_TRAITEMENT[o.statutExpedition ?? "unfulfilled"]!;
+                    // UN statut (17/11) : l'étape ; une reprise de Shopify
+                    // garde ses deux mots.
+                    const e = o.etapeTraitement && o.parcours
+                      ? {
+                          texte: libelleEtape(o.etapeTraitement as EtapeTraitement, o.parcours as ParcoursTraitement),
+                          classe: CLASSE_TON[o.etapeTraitement === "a_encaisser" ? "a_faire" : tonEtape(o.etapeTraitement as EtapeTraitement)]!,
+                        }
+                      : { texte: `${p.texte} · ${t.texte}`, classe: p.classe };
                     return (
                       <tr
                         class="cursor-pointer border-t border-bo-border hover:bg-bo-bg/50"
@@ -255,18 +277,10 @@ const nom = client?.name?.trim() || "Client sans nom";
                         </td>
                         <td class="px-4 py-2">
                           <span
-                            class={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${p.classe}`}
+                            class={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${e.classe}`}
                           >
                             <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
-                            {p.texte}
-                          </span>
-                        </td>
-                        <td class="px-4 py-2">
-                          <span
-                            class={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${t.classe}`}
-                          >
-                            <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
-                            {t.texte}
+                            {e.texte}
                           </span>
                         </td>
                         <td class="px-4 py-2 whitespace-nowrap text-bo-muted">
@@ -280,7 +294,7 @@ const nom = client?.name?.trim() || "Client sans nom";
                   })}
                   {commandes.length === 0 && (
                     <tr>
-                      <td colspan="6" class="px-4 py-6 text-center text-bo-muted">
+                      <td colspan="5" class="px-4 py-6 text-center text-bo-muted">
                         Aucune commande pour l'instant.
                       </td>
                     </tr>

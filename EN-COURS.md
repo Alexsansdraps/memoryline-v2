@@ -108,7 +108,7 @@ Ce fichier est écrit par le Claude du PC du bureau, qui s'est arrêté le 17/11
   - Onglets du site : À préparer, Envoyées ou prêtes, Impayées, Remboursées. Onglets du stand : À encaisser, À imprimer, Terminées.
   - Action groupée : « Étape suivante ». L'API « fulfil »/« unfulfil » passe aussi par les étapes. Le mode « ancien » des courriels est retiré.
   - Vérifié au navigateur en local : Envoyée avec courriel dans Mailpit, retour en arrière, Livrée, stand sans courriel.
-  - **Reste** : la fiche client (clients/[id].astro) montre encore Paiement et Traitement.
+  - La fiche client montre aussi l'étape (fait ensuite).
 - **2.2 Module « Ventes des stands en cours » : FAIT** (`8f337b8`), route `GET /admin/stands/en-cours`.
 - **2.4.2 Code à usage unique qui n'a rien remisé : FAIT** (`bc934bd`), avec `codeARemise` dans `@memoryline/types` et les tests `code-usage-unique.test.ts`.
 - **2.4.3 Finances : FAIT** (`bc934bd`). Le chiffre d'affaires par canal exclut les cartes vendues : `partDuChiffreDAffaires`, tests `finances-cartes-cadeaux.test.ts`.
@@ -122,7 +122,7 @@ Ce fichier est écrit par le Claude du PC du bureau, qui s'est arrêté le 17/11
   - BO › Courriers : un aperçu « Carte cadeau ».
   - Facture : « Dont X € réglés par carte cadeau. » (5 langues).
   - **Reste** : l'essai Stripe en mode TEST (carte de 10 € sur une commande de 15 € + port), à faire en local avec des clés de test.
-- **Reste aussi** : la fiche client (clients/[id].astro), qui montre encore Paiement et Traitement à la place de l'étape.
+- Fiche client du BO : une seule colonne « Statut » (l'étape), FAIT.
 
 ## 2. À FAIRE, dans cet ordre
 
