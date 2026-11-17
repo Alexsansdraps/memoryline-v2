@@ -284,11 +284,13 @@ export async function synchroniserLieuDuStand(standId: number, maintenant = new 
   if (!stand) return;
   const cal = calendrierDuStand(stand);
   // Les dates et les horaires, dits en clair dans chaque langue : ils
-  // s'affichent sous le stand à la caisse, et la commande les garde.
-  const description = resumeHoraires(cal, "fr") || null;
+  // s'affichent sous le stand à la caisse, et la commande les garde. Les 7
+  // prochains jours y sont écrits un par un (17/11) : la minute qui suit
+  // minuit les fait avancer d'un jour.
+  const description = resumeHoraires(cal, "fr", { maintenant }) || null;
   const translations = description
     ? Object.fromEntries(
-        LANGUES_RESUME.filter((l) => l !== "fr").map((l) => [l, { description: resumeHoraires(cal, l) }]),
+        LANGUES_RESUME.filter((l) => l !== "fr").map((l) => [l, { description: resumeHoraires(cal, l, { maintenant }) }]),
       )
     : null;
   const voulu = {

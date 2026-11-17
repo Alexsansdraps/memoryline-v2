@@ -11,7 +11,7 @@
  *
  * Toutes les dates sont des jours à Paris, écrits « AAAA-MM-JJ ».
  */
-import { decalerJour, jourAParis } from "./fuseau.js";
+import { champAParis, decalerJour, jourAParis } from "./fuseau.js";
 
 /** Un créneau d'ouverture, « 10:00 » à « 12:30 ». */
 export interface Creneau {
@@ -54,12 +54,6 @@ export const HORAIRES_PAR_DEFAUT: HorairesStand = {
   matin: { de: "10:00", a: "12:30" },
   apresMidi: { de: "14:00", a: "19:00" },
 };
-
-/**
- * Le retrait au stand n'est plus proposé quand la fin du stand est à moins
- * de ce nombre de jours : le temps d'imprimer l'affiche (2 à 3 jours ouvrés).
- */
-export const MARGE_RETRAIT_JOURS = 3;
 
 /** Au-delà, ce n'est plus un salon : une faute de frappe dans l'année. */
 export const DUREE_MAX_JOURS = 120;
@@ -185,13 +179,16 @@ export function ouvertureEffective(s: StandCalendrier, maintenant: Date): boolea
  * peu importe s'ils sont ouverts ou pas ») : ouvert/fermé dit si la tablette
  * vend. Ce qui décide, c'est l'interrupteur à part « Activé / Désactivé sur
  * le site » (`actif`), le stand non archivé, et, s'il a des dates, la fin :
- * jusqu'à MARGE_RETRAIT_JOURS avant, le temps d'imprimer l'affiche.
+ * jusqu'à la fermeture du dernier jour ouvert. Il n'y a plus de marge de
+ * 3 jours (17/11 : « ça peut être préparé le jour même »).
  */
 export function retraitProposable(s: StandCalendrier, maintenant: Date): boolean {
   if (s.archivedAt) return false;
   if (s.actif === false) return false;
   if (!jourValide(s.dateFin)) return true;
-  return jourAParis(maintenant) <= decalerJour(s.dateFin, -MARGE_RETRAIT_JOURS);
+  // Sans heure connue, toute la journée : « 24:00 » vient après toute heure.
+  const dernier = dernierMomentDeRetrait(s) ?? { jour: s.dateFin, heure: null };
+  return champAParis(maintenant) < `${dernier.jour}T${dernier.heure ?? "24:00"}`;
 }
 
 /* --- Le résumé pour les clientes, dans les cinq langues ------------------ */
@@ -209,6 +206,8 @@ const MOTS: Record<
   {
     periode: (debut: string, fin: string) => string;
     tousLesJours: string;
+    /** Après les 7 jours écrits un par un : le reste du stand. */
+    ensuite: string;
     et: string;
     ferme: string;
     avant: (date: string) => string;
@@ -219,6 +218,7 @@ const MOTS: Record<
   fr: {
     periode: (d, f) => `Du ${d} au ${f}.`,
     tousLesJours: "Tous les jours",
+    ensuite: "Ensuite, tous les jours",
     et: "et",
     ferme: "Fermé",
     avant: (d) => `À venir chercher au plus tard le ${d}.`,
@@ -227,6 +227,7 @@ const MOTS: Record<
   en: {
     periode: (d, f) => `From ${d} to ${f}.`,
     tousLesJours: "Every day",
+    ensuite: "After that, every day",
     et: "and",
     ferme: "Closed",
     avant: (d) => `To be collected by ${d} at the latest.`,
@@ -235,6 +236,7 @@ const MOTS: Record<
   de: {
     periode: (d, f) => `Von ${d} bis ${f}.`,
     tousLesJours: "Täglich",
+    ensuite: "Danach täglich",
     et: "und",
     ferme: "Geschlossen",
     avant: (d) => `Abholung spätestens am ${d}.`,
@@ -243,6 +245,7 @@ const MOTS: Record<
   it: {
     periode: (d, f) => `Dal ${d} al ${f}.`,
     tousLesJours: "Tutti i giorni",
+    ensuite: "Poi, tutti i giorni",
     et: "e",
     ferme: "Chiuso",
     avant: (d) => `Da ritirare entro ${d}.`,
@@ -251,6 +254,7 @@ const MOTS: Record<
   es: {
     periode: (d, f) => `Del ${d} al ${f}.`,
     tousLesJours: "Todos los días",
+    ensuite: "Después, todos los días",
     et: "y",
     ferme: "Cerrado",
     avant: (d) => `Recogida a más tardar el ${d}.`,
@@ -269,7 +273,8 @@ export function dernierMomentDeRetrait(
   const jours = joursDuStand(s.dateDebut, s.dateFin);
   for (let i = jours.length - 1; i >= 0; i--) {
     const h = horairesDuJour(s.horaires, jours[i]!);
-    if (h.ferme) continue;
+    // Un jour sans aucun créneau est fermé, même sans la case « Fermé ».
+    if (h.ferme || h.creneaux.length === 0) continue;
     const fin = h.creneaux.map((c) => c.a).sort().at(-1) ?? null;
     return { jour: jours[i]!, heure: fin };
   }
@@ -316,11 +321,27 @@ function creneauxEcrits(creneaux: Creneau[], langue: string): string {
  *   Samedi 21 novembre : 10:00–20:00.
  *   À venir chercher au plus tard le jeudi 24 décembre.
  *
+ * Avec `maintenant` (la caisse, 17/11 : « mets les horaires des 7 prochains
+ * jours en vrai ») : les 7 prochains jours du stand sont écrits un par un, à
+ * partir d'aujourd'hui ou du premier jour s'il n'a pas commencé, puis
+ * « Ensuite, tous les jours : … » et les jours particuliers d'après :
+ *
+ *   Du vendredi 20 novembre au jeudi 24 décembre 2026.
+ *   Vendredi 20 novembre : 10:00–12:30 et 14:00–19:00.
+ *   Samedi 21 novembre : 10:00–20:00.
+ *   …
+ *   Lundi 23 novembre : fermé.
+ *   …
+ *   Ensuite, tous les jours : 10:00–12:30 et 14:00–19:00.
+ *   À venir chercher au plus tard le jeudi 24 décembre à 19:00.
+ *
+ * Sans `maintenant` (le back-office) : le résumé complet, pour tout vérifier.
  * Vide sans dates.
  */
 export function resumeHoraires(
   s: Pick<StandCalendrier, "dateDebut" | "dateFin" | "horaires">,
   langue = "fr",
+  options: { maintenant?: Date } = {},
 ): string {
   if (!jourValide(s.dateDebut) || !jourValide(s.dateFin) || s.dateDebut > s.dateFin) return "";
   const m = MOTS[langue] ?? MOTS.fr!;
@@ -328,12 +349,33 @@ export function resumeHoraires(
   const lignes: string[] = [m.periode(jourEcrit(s.dateDebut, langue), jourEcrit(s.dateFin, langue, true))];
   const base = s.horaires ?? HORAIRES_PAR_DEFAUT;
   const creneauxDeBase = [base.matin, base.apresMidi].filter((c): c is Creneau => !!c);
+  // Les 7 prochains jours, un par un ; « Ensuite » pour la suite du stand.
+  let apresLaSemaine = "";
+  if (options.maintenant) {
+    const aujourdhui = jourAParis(options.maintenant);
+    const debut = aujourdhui > s.dateDebut ? aujourdhui : s.dateDebut;
+    const semaine = joursDuStand(debut, s.dateFin).slice(0, 7);
+    for (const jour of semaine) {
+      const h = horairesDuJour(base, jour);
+      const texte = h.ferme || !h.creneaux.length ? m.ferme.toLowerCase() : creneauxEcrits(h.creneaux, langue);
+      lignes.push(`${majuscule(jourEcrit(jour, langue))}${deuxPoints}${texte}.`);
+    }
+    apresLaSemaine = semaine.at(-1) ?? "";
+    if (semaine.length && apresLaSemaine >= s.dateFin) {
+      lignes.push(m.avant(dernierMomentEcrit(s, langue) ?? jourEcrit(s.dateFin, langue)));
+      return lignes.join("\n");
+    }
+  }
   if (creneauxDeBase.length)
-    lignes.push(`${m.tousLesJours}${deuxPoints}${creneauxEcrits(creneauxDeBase, langue)}.`);
+    lignes.push(
+      `${apresLaSemaine ? m.ensuite : m.tousLesJours}${deuxPoints}${creneauxEcrits(creneauxDeBase, langue)}.`,
+    );
   const fermes: string[] = [];
   const autres: string[] = [];
   for (const jour of joursDuStand(s.dateDebut, s.dateFin)) {
     if (!base.jours?.[jour]) continue;
+    // Déjà écrit dans les 7 prochains jours.
+    if (apresLaSemaine && jour <= apresLaSemaine) continue;
     const h = horairesDuJour(base, jour);
     if (h.ferme) fermes.push(jourEcrit(jour, langue));
     else
