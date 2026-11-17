@@ -1,4 +1,22 @@
-# À faire — état au 17 novembre, nuit (écrit pour une reprise dans un autre contexte)
+# À faire — état au 17 novembre, fin de matinée (écrit pour une reprise dans un autre contexte)
+
+> **17/11 : BASCULE FAITE. memoryline.fr est servi par le VPS.** Ce qui a été fait :
+> - **Vidage par Alexandra à 08 h 38**, script modifié à sa demande (`8e15016`). TOUTES les commandes et clientes du nouveau site sont parties, WEB-0016 comprise. L'IA et les personnages n'ont pas été touchés. Les clientes Shopify restent. Sauvegarde : `sauvegardes/base/2026-11-17-avant-vidage.sql.gz`.
+> - **Le `.env` du serveur.** Il contient maintenant DOMAINE=memoryline.fr, DOMAINE_WWW avec www et l'ancien nom du VPS, PUBLIC_ORIGIN=https://memoryline.fr et PUBLIC_NOINDEX=false. Un second `PUBLIC_NOINDEX=true`, plus bas, a été retiré. Copie de l'ancien fichier : `.env.avant-domaine`, à effacer à J+7. Images de secours : `secours-{api,web,admin}:avant-domaine`.
+> - **La construction**, puis les deux lignes A chez OVH (@ et www) passées à 51.255.34.187, puis `up -d`. Le TTL est resté par défaut.
+> - **Vérifié** : certificat Let's Encrypt de memoryline.fr ; www, http et l'ancien nom du VPS en 301/308 vers https://memoryline.fr, chemin gardé ; robots.txt « Allow: / » ; pages en « index, follow », canoniques en memoryline.fr.
+> - **Piège** : un copier-coller depuis le chat change `www.memoryline.fr` en lien Markdown `[www.memoryline.fr](https://…)`, jusque dans le .env. Contrôler avec `grep '^DOMAINE_WWW=' .env | tr '.' ' '`.
+>
+> **Reste, dans l'ordre** :
+> 1. **Webhook Stripe live** : passer son URL à https://memoryline.fr/api/payments/stripe/webhook, puis BO › Paiements › « Vérifier ». PayPal n'a rien à faire : pas de webhook, capture par le serveur.
+> 2. **Le stand.** BO › Ventes stand › « Nouveau code » › « Ouvrir ». Ouvrir le nouveau lien sur la tablette.
+> 3. **Page /pages/mulhouse** : encore « TEST TOUT VOIR », PUBLIQUE, sur la collection « cuisine ».
+> 4. **Les 15 affiches prêtes à imprimer** : sans visuel HD (sinon, les passer en brouillon).
+> 5. **Au BO** : vidéo Tuto (test), collection « Cuisine », relance de panier, pages légales (médiateur), compte vendeur@ à archiver.
+> 6. **Search Console et redirections.** Search Console : propriété et sitemap. Puis l'import des redirections Shopify, et Stripe › Payment method domains.
+> 7. **Remboursement de WEB-0016** sur paypal.com, et `rm ~/.env` (fichier parasite de /home/debian).
+> 8. **À J+7** : ne pas détacher le domaine de Shopify avant, puis mettre le mot de passe sur la boutique Shopify ; effacer `.env.avant-domaine` et les images de secours.
+
 
 > **17/11 matin : pour la bascule de memoryline.fr, lire `RECETTE-17-11.md`** (plan vérifié pas à pas, avec retour arrière, et ce qu'il faut régler au BO avant). Le script de vidage a été corrigé : il GARDE les ventes payées pour de vrai (WEB-0016) et ne se lance qu'une fois. La recette complète (§ 1 de ce fichier) a été faite et ses bugs corrigés et mis en ligne (`9de3957`). **Bloquant restant, côté données : les 15 affiches prêtes à imprimer n'ont pas de visuel HD, leur PDF est refusé** (visuels de Margaux, ou les passer en brouillon).
 
