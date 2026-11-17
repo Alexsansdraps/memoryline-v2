@@ -189,7 +189,9 @@ const SUIVI =
 function avecSuivi(vers: string, requete: URLSearchParams, garder: string[] = []): string {
   const suite = new URLSearchParams();
   for (const [cle, valeur] of requete)
-    if (SUIVI.test(cle) || garder.includes(cle)) suite.append(cle, valeur);
+    // `stand` aussi : une redirection ne doit pas faire sortir la tablette du
+    // mode stand, qui ne vit que dans l'adresse.
+    if (SUIVI.test(cle) || cle === "stand" || garder.includes(cle)) suite.append(cle, valeur);
   const texte = suite.toString();
   if (!texte) return vers;
   // Avant l'ancre : « /pages/faq#livraison?utm… » perdrait le suivi dans
@@ -453,6 +455,28 @@ export const onRequest = defineMiddleware(async (context, next) => {
       statusText: statutErreur === 410 ? "Gone" : "Service Unavailable",
       headers: reponse.headers,
     });
+
+  // Une redirection rendue par une page (Astro.redirect : rayon fusionné,
+  // ancienne adresse…) garde le mode stand : sans cela, la tablette en
+  // sortait au premier lien qui passait par elle (« TOUT VOIR », 17/11).
+  const vers = reponse.headers.get("location");
+  if (stand && vers && reponse.status >= 300 && reponse.status < 400) {
+    try {
+      const u = new URL(vers, context.url);
+      if ((vers.startsWith("/") || u.host === context.url.host) && !u.searchParams.has("stand")) {
+        u.searchParams.set("stand", "1");
+        const entetes = new Headers(reponse.headers);
+        entetes.set("location", u.pathname + u.search + u.hash);
+        reponse = new Response(reponse.body, {
+          status: reponse.status,
+          statusText: reponse.statusText,
+          headers: entetes,
+        });
+      }
+    } catch {
+      // Une adresse illisible : la redirection part telle quelle.
+    }
+  }
 
   // L'ancien cookie du mode stand (jusqu'au 17/11) : retiré là où il traîne
   // encore, pour qu'il ne serve plus jamais à rien.
