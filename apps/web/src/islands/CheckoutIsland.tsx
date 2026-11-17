@@ -1731,13 +1731,20 @@ export default function CheckoutIsland(props: {
                                       onChange={(e) => setStandCompris(e.currentTarget.checked)}
                                     />
                                     <span>
-                                      {tr("livraison.stand_compris").replace(
-                                        "{date}",
-                                        jourLong(lieu().retirerAvant!) +
-                                          (lieu().retirerAvantHeure
-                                            ? " " + tr("livraison.a_heure").replace("{heure}", lieu().retirerAvantHeure!)
-                                            : ""),
-                                      )}
+                                      {/* En gras de « au plus tard » à la fin (17/11) :
+                                          le passage est entre ** dans la traduction. */}
+                                      {tr("livraison.stand_compris")
+                                        .replace(
+                                          "{date}",
+                                          jourLong(lieu().retirerAvant!) +
+                                            (lieu().retirerAvantHeure
+                                              ? " " + tr("livraison.a_heure").replace("{heure}", lieu().retirerAvantHeure!)
+                                              : ""),
+                                        )
+                                        .split("**")
+                                        .map((morceau, i) =>
+                                          i % 2 ? <strong class="font-semibold">{morceau}</strong> : morceau,
+                                        )}
                                     </span>
                                   </label>
                                 </Show>

@@ -1,5 +1,14 @@
 /// <reference lib="dom" />
-import { For, createMemo, createUniqueId } from "solid-js";
+import {
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  createUniqueId,
+  on,
+  onCleanup,
+} from "solid-js";
 import {
   appliquerCalage,
   calagePour,
@@ -60,6 +69,94 @@ function fillSvg(rawSvg: string): string {
 }
 
 /**
+ * Les images d'un SVG de couche : celles qu'un dessin en pixels va chercher
+ * au serveur, recoloriées (cf. dessinPourLEcran). Une couche vectorielle n'en
+ * a pas et s'affiche aussitôt.
+ */
+function imagesDuSvg(svg: string): string[] {
+  const urls: string[] = [];
+  for (const m of svg.matchAll(/<image\b[^>]*?\s(?:xlink:)?href="([^"]+)"/g)) {
+    const url = m[1]!.replace(/&amp;/g, "&");
+    if (!url.startsWith("data:")) urls.push(url);
+  }
+  return urls;
+}
+
+/** Met des images dans le cache du navigateur ; résolu même si l'une échoue. */
+function precharger(urls: string[]): Promise<void> {
+  return Promise.all(
+    urls.map(
+      (url) =>
+        new Promise<void>((fini) => {
+          const image = new Image();
+          image.onload = () => fini();
+          image.onerror = () => fini();
+          image.src = url;
+        }),
+    ),
+  ).then(() => undefined);
+}
+
+/**
+ * Une couche du personnage qui ne se vide jamais (17/11 : « quand on change la
+ * couleur des pantalons ça charge un peu, et on voit la meuf en string »).
+ *
+ * Une pièce dessinée en pixels est recoloriée par le serveur : sa nouvelle
+ * image met un moment à venir. L'ancienne reste affichée pendant ce temps, et
+ * la nouvelle ne prend sa place qu'une fois chargée (elle sort alors du
+ * cache). Une couche vectorielle change aussitôt.
+ */
+function Couche(props: { svg: string; onAttente: (enAttente: boolean) => void }) {
+  const [affiche, setAffiche] = createSignal("");
+  // Chaque changement a son numéro : une image lente qui arrive après une
+  // couleur plus récente ne la remplace pas.
+  let generation = 0;
+  createEffect(
+    on(
+      () => props.svg,
+      (svg) => {
+        const g = ++generation;
+        const urls = imagesDuSvg(svg);
+        if (!urls.length) {
+          setAffiche(svg);
+          props.onAttente(false);
+          return;
+        }
+        props.onAttente(true);
+        const poser = () => {
+          if (g !== generation) return;
+          generation++;
+          setAffiche(svg);
+          props.onAttente(false);
+        };
+        void precharger(urls).then(poser);
+        // Une image qui ne vient pas ne bloque pas la couche indéfiniment.
+        setTimeout(poser, 12_000);
+      },
+    ),
+  );
+  onCleanup(() => {
+    generation++;
+    props.onAttente(false);
+  });
+  return (
+    <div
+      class="ml-cfg-charlayer"
+      // eslint-disable-next-line solid/no-innerhtml
+      innerHTML={affiche()}
+      style={{
+        position: "absolute",
+        inset: "0",
+        width: "100%",
+        height: "100%",
+        "pointer-events": "none",
+        "user-select": "none",
+      }}
+    />
+  );
+}
+
+/**
  * Rend un personnage composé : sa base et les pièces choisies, toutes au même
  * cadre 500×1000, recoloriées avec les couleurs du perso, dans l'ordre corps →
  * pantalon → haut → cheveux → accessoires. La base est découpée en tranches
@@ -78,6 +175,11 @@ export function CharacterStack(props: {
    * recoloré.
    */
   assetBaseUrl?: string;
+  /**
+   * Montre un petit indicateur tant qu'une couche attend sa nouvelle image
+   * (17/11). Pour le grand aperçu de l'éditeur, pas pour les vignettes.
+   */
+  indicateur?: boolean;
 }) {
   // Scope CSS unique par instance : les <style> des SVG inlinés sont globaux
   // au document, sans scoping la dernière couche écrase les couleurs des
@@ -157,7 +259,10 @@ export function CharacterStack(props: {
         props.assetBaseUrl,
       );
       out.push({
-        key: `${slot}:${variant.id}`,
+        // La clé est l'EMPLACEMENT, pas la pièce : changer de pantalon garde
+        // la même couche, qui montre l'ancien jusqu'à ce que le nouveau soit
+        // chargé (cf. Couche).
+        key: slot,
         svg: fillSvg(
           scopeSvgStyles(
             // Calage de la pièce sur ce personnage : même fonction que
@@ -175,25 +280,46 @@ export function CharacterStack(props: {
     return out;
   });
 
+  // Les couches par leur clé : une clé qui reste (même emplacement, autre
+  // couleur ou autre pièce) garde son composant, qui gère le changement.
+  const cles = createMemo(() => layers().map((l) => l.key));
+  const svgDe = (cle: string) => layers().find((l) => l.key === cle)?.svg ?? "";
+  // Les couches qui attendent leur nouvelle image, pour l'indicateur.
+  const [enAttente, setEnAttente] = createSignal<ReadonlySet<string>>(new Set());
+  const noter = (cle: string, oui: boolean) =>
+    setEnAttente((avant) => {
+      if (avant.has(cle) === oui) return avant;
+      const apres = new Set(avant);
+      if (oui) apres.add(cle);
+      else apres.delete(cle);
+      return apres;
+    });
+
   return (
     <div class="ml-cfg-charstack">
-      <For each={layers()}>
-        {(layer) => (
-          <div
-            class="ml-cfg-charlayer"
-            // eslint-disable-next-line solid/no-innerhtml
-            innerHTML={layer.svg}
-            style={{
-              position: "absolute",
-              inset: "0",
-              width: "100%",
-              height: "100%",
-              "pointer-events": "none",
-              "user-select": "none",
-            }}
-          />
-        )}
+      <For each={cles()}>
+        {(cle) => <Couche svg={svgDe(cle)} onAttente={(oui) => noter(cle, oui)} />}
       </For>
+      <Show when={props.indicateur && enAttente().size > 0}>
+        <div
+          class="ml-cfg-charstack-attente"
+          role="status"
+          aria-label="Chargement des couleurs…"
+          style={{
+            position: "absolute",
+            top: "10px",
+            right: "10px",
+            width: "26px",
+            height: "26px",
+            "border-radius": "50%",
+            border: "3px solid rgba(17, 24, 39, 0.15)",
+            "border-top-color": "rgba(17, 24, 39, 0.65)",
+            animation: "ml-cfg-tourne 0.8s linear infinite",
+            "pointer-events": "none",
+          }}
+        />
+        <style>{"@keyframes ml-cfg-tourne{to{transform:rotate(360deg)}}"}</style>
+      </Show>
     </div>
   );
 }

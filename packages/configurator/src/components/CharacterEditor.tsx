@@ -1163,6 +1163,7 @@ export function CharacterEditor(props: {
               slots={props.slots}
               cache={props.cache}
               assetBaseUrl={props.assetBaseUrl}
+              indicateur
             />
           </div>
         </div>
