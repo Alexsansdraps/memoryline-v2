@@ -744,6 +744,66 @@ const classeBouton =
                   </span>
                 </div>
               </fieldset>
+              {/* Régler plusieurs jours d'un coup (17/11) : un réglage, des
+                  jours cochés (par jour de la semaine, ou date par date dans
+                  le tableau), « Appliquer », puis on enregistre. Ces champs
+                  n'ont pas de nom : ils ne partent pas avec le formulaire, ils
+                  remplissent seulement les lignes du tableau. */}
+              {joursDuStand(stand.dateDebut ?? null, stand.dateFin ?? null).length > 0 && (
+                <div
+                  class="space-y-2 rounded border border-bo-border p-3 text-xs"
+                  data-reglage-groupe
+                  data-ligne-horaires
+                  data-visibles={JSON.stringify(VISIBLES)}
+                  data-base={JSON.stringify(heuresDeRepli(stand))}
+                >
+                  <p class="text-sm font-medium">Régler plusieurs jours d'un coup</p>
+                  <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span class="text-bo-muted">Cocher :</span>
+                    {["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."].map((nom, i) => (
+                      <label class="flex items-center gap-1">
+                        <input type="checkbox" data-coche-semaine={i + 1} />
+                        {nom}
+                      </label>
+                    ))}
+                    <button type="button" class="underline" data-coche-tout>tous</button>
+                    <button type="button" class="underline" data-coche-aucun>aucun</button>
+                    <span class="text-bo-muted">(ou des dates précises dans le tableau)</span>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <select
+                      data-type-horaires
+                      aria-label="Réglage à appliquer"
+                      class="rounded border border-bo-border bg-bo-surface px-1 py-0.5 text-xs"
+                    >
+                      <option value="normal" selected={!baseNonStop(stand)}>Avec pause</option>
+                      <option value="ferme">Fermé</option>
+                      <option value="matin_ferme">Matin fermé</option>
+                      <option value="aprem_ferme">Après-midi fermé</option>
+                      <option value="non_stop" selected={baseNonStop(stand)}>Non-stop</option>
+                    </select>
+                    <span data-champ="md">
+                      <input type="time" data-groupe="md" value={heuresDeRepli(stand).md} class={champJour} aria-label="Ouverture" />
+                    </span>
+                    <span data-champ="tm" hidden={baseNonStop(stand)}>–</span>
+                    <span data-champ="ma" hidden={baseNonStop(stand)}>
+                      <input type="time" data-groupe="ma" value={heuresDeRepli(stand).ma} class={champJour} aria-label="Fin du matin" />
+                    </span>
+                    <span data-champ="ns" hidden={!baseNonStop(stand)} class="text-bo-muted">→ sans coupure</span>
+                    <span data-champ="fm" hidden class="text-bo-muted">Matin fermé</span>
+                    <span data-champ="ad" hidden={baseNonStop(stand)}>
+                      <input type="time" data-groupe="ad" value={heuresDeRepli(stand).ad} class={champJour} aria-label="Début de l'après-midi" />
+                    </span>
+                    <span data-champ="ta" hidden={baseNonStop(stand)}>–</span>
+                    <span data-champ="aa">
+                      <input type="time" data-groupe="aa" value={heuresDeRepli(stand).aa} class={champJour} aria-label="Fermeture" />
+                    </span>
+                    <span data-champ="fa" hidden class="text-bo-muted">Après-midi fermé</span>
+                    <button type="button" class={classeBouton} data-appliquer-groupe>Appliquer aux jours cochés</button>
+                  </div>
+                  <p class="text-bo-muted" data-groupe-message role="status"></p>
+                </div>
+              )}
               {joursDuStand(stand.dateDebut ?? null, stand.dateFin ?? null).length > 0 && (
                 <div class="max-h-96 overflow-y-auto rounded border border-bo-border">
                   <table
@@ -754,6 +814,7 @@ const classeBouton =
                   >
                     <thead class="sticky top-0 bg-bo-bg text-left text-xs text-bo-muted">
                       <tr>
+                        <th class="w-6 px-2 py-1.5"><span class="sr-only">Cocher</span></th>
                         <th class="px-2 py-1.5">Jour</th>
                         <th class="px-2 py-1.5">Ce jour-là</th>
                         <th class="px-2 py-1.5">Matin</th>
@@ -794,6 +855,14 @@ const classeBouton =
                             class={`border-t border-bo-border ${genre === "ferme" ? "bg-bo-bg text-bo-muted" : ""}`}
                             data-ligne-horaires
                           >
+                            <td class="px-2 py-1">
+                              <input
+                                type="checkbox"
+                                data-coche-jour
+                                data-jour-semaine={((new Date(`${j}T12:00:00Z`).getUTCDay() + 6) % 7) + 1}
+                                aria-label={`Cocher le ${jourCourt(j)}`}
+                              />
+                            </td>
                             <td class="px-2 py-1 whitespace-nowrap">{jourCourt(j)}</td>
                             <td class="px-2 py-1">
                               <select
@@ -1214,8 +1283,65 @@ const classeBouton =
         const saisie = morceau.querySelector("input");
         if (saisie && !morceau.hidden && !saisie.value && base[champ]) saisie.value = base[champ];
       });
-      ligne.classList.toggle("bg-bo-bg", choix.value === "ferme");
-      ligne.classList.toggle("text-bo-muted", choix.value === "ferme");
+      if (ligne.tagName === "TR") {
+        ligne.classList.toggle("bg-bo-bg", choix.value === "ferme");
+        ligne.classList.toggle("text-bo-muted", choix.value === "ferme");
+      }
+    });
+
+    // Régler plusieurs jours d'un coup (17/11). Cocher un jour de la semaine
+    // coche toutes ses dates ; « Appliquer » recopie le réglage et ses heures
+    // sur chaque ligne cochée, qu'on enregistre ensuite avec le calendrier.
+    document.addEventListener("change", (evenement) => {
+      const coche = evenement.target;
+      if (!(coche instanceof HTMLInputElement) || !coche.hasAttribute("data-coche-semaine")) return;
+      const formulaire = coche.closest("form");
+      if (!formulaire) return;
+      formulaire
+        .querySelectorAll(`[data-coche-jour][data-jour-semaine="${coche.getAttribute("data-coche-semaine")}"]`)
+        .forEach((jour) => {
+          jour.checked = coche.checked;
+        });
+    });
+    document.addEventListener("click", (evenement) => {
+      const cible = evenement.target;
+      if (!(cible instanceof Element)) return;
+      const tout = cible.closest("[data-coche-tout]");
+      const aucun = cible.closest("[data-coche-aucun]");
+      const appliquer = cible.closest("[data-appliquer-groupe]");
+      if (!tout && !aucun && !appliquer) return;
+      const formulaire = cible.closest("form");
+      const groupe = cible.closest("[data-reglage-groupe]");
+      if (!formulaire || !groupe) return;
+      if (tout || aucun) {
+        formulaire.querySelectorAll("[data-coche-jour], [data-coche-semaine]").forEach((c) => {
+          c.checked = !!tout;
+        });
+        return;
+      }
+      const message = groupe.querySelector("[data-groupe-message]");
+      const lignes = Array.from(formulaire.querySelectorAll("[data-coche-jour]"))
+        .filter((c) => c.checked)
+        .map((c) => c.closest("tr"))
+        .filter(Boolean);
+      if (!lignes.length) {
+        if (message) message.textContent = "Cochez d'abord des jours : un jour de la semaine, ou des dates dans le tableau.";
+        return;
+      }
+      const type = groupe.querySelector("select[data-type-horaires]")?.value || "normal";
+      const heure = (champ) => groupe.querySelector(`[data-groupe="${champ}"]`)?.value || "";
+      lignes.forEach((ligne) => {
+        const choix = ligne.querySelector("select[data-type-horaires]");
+        if (!choix) return;
+        ["md", "ma", "ad", "aa"].forEach((champ) => {
+          const saisie = ligne.querySelector(`[data-champ="${champ}"] input`);
+          if (saisie) saisie.value = heure(champ);
+        });
+        choix.value = type;
+        choix.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      if (message)
+        message.textContent = `Réglage recopié sur ${lignes.length} jour${lignes.length > 1 ? "s" : ""}. Vérifiez le tableau, puis « Enregistrer le calendrier ».`;
     });
 
     // Il y a un bouton par stand, et la liste change à chaque salon : on écoute
