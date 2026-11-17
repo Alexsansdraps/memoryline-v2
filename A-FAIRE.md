@@ -25,6 +25,12 @@
 > - **Le mode stand ne vit plus que dans l'adresse (`?stand=1`)**, sans cookie. `memoryline.fr` sans le paramètre est le site normal. Base.astro ajoute `stand=1` aux liens et aux formulaires au moment où on les suit, `avecStand()` fait de même pour les îlots, et l'API reconnaît la tablette par l'en-tête `X-Stand: 1` (cadres.ts). Plus besoin de rouvrir le lien chaque matin ; garder le lien complet reste nécessaire.
 > - **Grands bandeaux** (bandeaux visuels) : masqués en mode stand, comme le bandeau d'annonce.
 >
+> **17/11 au soir — PANNE DU SERVEUR, puis redémarrage** : pendant une mise en ligne (construction des images), Claude faisait préparer en série les images légères des 243 fonds SVG. La mémoire a saturé, et le VPS ne répondait plus du tout (ni site ni SSH). Il a repris après un redémarrage. **Le VPS n'est pas dans le compte OVH du domaine** : il est dans un autre compte (Margaux ?). Noter son identifiant client OVH ici quand on l'a. Depuis : `ff16502`, une seule conversion de fond SVG à la fois pour tout le serveur. **Ne jamais lancer de préparation en masse pendant une mise en ligne.** Après un incident pareil, l'OpenSSH récent pénalise l'adresse qui a raté trop de connexions (jusqu'à environ 10 minutes) : ne pas insister, réessayer une fois plus tard.
+>
+> **17/11, aussi fait (en ligne avant la panne)** : bande « Stand fermé » sur la tablette, avec la vente bloquée (`c916765`). Inscription avec confirmation du mot de passe, et « Afficher / Masquer » sur tous les champs mot de passe. Phrase sous l'e-mail de la caisse retirée. Silhouette de chargement de la caisse et du panier (`1e27158`). Fonds SVG servis en WebP léger (`?l=`) et chargement de l'aperçu (`efa2097`).
+>
+> **Commité, PAS ENCORE EN LIGNE au moment de la panne** : `31755a2`, **Retrait au stand** (migration 0082). Il comprend le champ « Emplacement exact » dans Ventes stand, le lieu de retrait de chaque stand tenu tout seul (`pickup_point.stand_id`), et le mode « Retrait au stand » à 0 €, qui ne propose que les stands ouverts. S'y ajoute `ff16502`. À mettre en ligne SEUL, sans rien d'autre qui tourne.
+>
 > **Reste, dans l'ordre** :
 > 1. **Webhook Stripe live** : passer son URL à https://memoryline.fr/api/payments/stripe/webhook, puis BO › Paiements › « Vérifier ». PayPal n'a rien à faire : pas de webhook, capture par le serveur.
 > 2. **Le stand.** BO › Ventes stand › « Nouveau code » › « Ouvrir ». Ouvrir le nouveau lien sur la tablette.
