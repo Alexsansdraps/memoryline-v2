@@ -15,9 +15,10 @@
 #   - les commandes, paniers et ventes de stand de la nouvelle boutique, avec
 #     leurs paiements, journaux, expéditions, bordereaux et fichiers
 #     d'impression ;
+#     TOUTES, y compris WEB-0016 (payée en réel par PayPal le 16/11 : c'était
+#     l'essai d'Alexandra, qui a décidé le 17/11 de la supprimer aussi — son
+#     remboursement se fait alors sur le site de PayPal, plus depuis le BO) ;
 #   - les clientes créées sur la nouvelle boutique, leurs adresses et sessions ;
-#   - les générations IA et leurs fichiers (photos de clientes comprises),
-#     les photos du relais téléphone ;
 #   - les inscrites à la lettre, les lettres, les refus de relance ;
 #   - les sessions du back-office (tout le monde se reconnecte) ;
 #   - le compteur des factures, pour que la première vraie soit F2026-0001 ;
@@ -29,11 +30,9 @@
 #   - les caches recalculables : aperçus des commandes, PDF d'impression.
 #
 # CE QUI RESTE :
-#   - les commandes payées POUR DE VRAI (paiement « live » encaissé), et leur
-#     cliente : la boutique encaisse en réel depuis le 16/11 au soir, et une
-#     vente réelle est une pièce comptable qu'il faut pouvoir rembourser depuis
-#     sa fiche (WEB-0016, l'essai d'Alexandra). La première vraie commande
-#     prendra donc le numéro suivant (WEB-0017), pas WEB-0001 ;
+#   - les générations IA et leurs fichiers, les photos du relais téléphone, et
+#     TOUS les personnages, essais compris (Alexandra, 17/11 : « touche pas aux
+#     affiches IA ni aux personnages, Margaux s'en occupe ») ;
 #   - le catalogue (affiches, fonds, personnages, pièces, cadres, collections),
 #     les réglages, les pages, les menus, la livraison, les promotions ;
 #   - tout ce qui vient de Shopify (colonne legacy_id) : historique des
@@ -43,9 +42,9 @@
 #     cadeau peut être une vraie dette de la boutique, un compte peut être
 #     celui de Margaux).
 #
-# Les essais du catalogue (« Femme test », « Mariés (essai) ») sont ARCHIVÉS,
-# pas supprimés : c'est la règle du projet, et des commandes de test ont pu
-# les citer.
+# L'affiche d'essai « Mariés (essai) » est ARCHIVÉE, pas supprimée : c'est la
+# règle du projet. Les personnages d'essai (« Femme test ») ne sont plus
+# touchés : Margaux s'en occupe.
 #
 # Pourquoi pas de TRUNCATE … RESTART IDENTITY : les vignettes des courriels
 # sont rangées sous le numéro de la ligne de commande. Remettre les numéros à
@@ -88,13 +87,13 @@ trap remettre_en_route EXIT
 
 echo "=== Ce que la base contient aujourd'hui ==="
 psql_base -P footer=off <<'SQL'
-SELECT 'Commandes et paniers à supprimer' AS quoi, count(*) AS nombre FROM "order" o WHERE o.legacy_id IS NULL AND NOT EXISTS (SELECT 1 FROM payment p WHERE p.order_id = o.id AND p.mode = 'live' AND p.status = 'succeeded')
-UNION ALL SELECT '  dont payées ou réglées (en essai)', count(*) FROM "order" o WHERE o.legacy_id IS NULL AND o.status <> 'draft' AND NOT EXISTS (SELECT 1 FROM payment p WHERE p.order_id = o.id AND p.mode = 'live' AND p.status = 'succeeded')
-UNION ALL SELECT 'Ventes RÉELLES gardées (paiement live)', count(*) FROM "order" o WHERE o.legacy_id IS NULL AND EXISTS (SELECT 1 FROM payment p WHERE p.order_id = o.id AND p.mode = 'live' AND p.status = 'succeeded')
+SELECT 'Commandes et paniers à supprimer (TOUS)' AS quoi, count(*) AS nombre FROM "order" o WHERE o.legacy_id IS NULL
+UNION ALL SELECT '  dont payées ou réglées', count(*) FROM "order" o WHERE o.legacy_id IS NULL AND o.status <> 'draft'
+UNION ALL SELECT '  dont payées EN RÉEL (supprimées aussi)', count(*) FROM "order" o WHERE o.legacy_id IS NULL AND EXISTS (SELECT 1 FROM payment p WHERE p.order_id = o.id AND p.mode = 'live' AND p.status = 'succeeded')
 UNION ALL SELECT 'Commandes Shopify gardées', count(*) FROM "order" WHERE legacy_id IS NOT NULL
 UNION ALL SELECT 'Clientes à supprimer', count(*) FROM customer WHERE legacy_id IS NULL
 UNION ALL SELECT 'Clientes Shopify gardées', count(*) FROM customer WHERE legacy_id IS NOT NULL
-UNION ALL SELECT 'Générations IA', count(*) FROM ai_generation
+UNION ALL SELECT 'Générations IA (GARDÉES)', count(*) FROM ai_generation
 UNION ALL SELECT 'Inscrites à la lettre', count(*) FROM newsletter_subscriber
 UNION ALL SELECT 'Lettres d''information', count(*) FROM lettre
 UNION ALL SELECT 'Factures déjà numérotées', count(*) FROM "order" WHERE invoice_number IS NOT NULL
@@ -139,12 +138,12 @@ SELECT o.channel AS canal, o.status AS etat, coalesce(p.mode, '(sans paiement en
     SELECT coalesce(mode, '.env') AS mode FROM payment
      WHERE order_id = o.id AND status = 'succeeded' ORDER BY id DESC LIMIT 1
   ) p ON true
- WHERE o.legacy_id IS NULL AND o.status <> 'draft' AND NOT EXISTS (SELECT 1 FROM payment p WHERE p.order_id = o.id AND p.mode = 'live' AND p.status = 'succeeded')
+ WHERE o.legacy_id IS NULL AND o.status <> 'draft'
  GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
 SQL
 
 echo
-echo "=== Ce qui RESTE : les ventes payées pour de vrai (paiement live) ==="
+echo "=== Payées EN RÉEL, supprimées AUSSI : à rembourser sur le site de PayPal ou de Stripe ==="
 psql_base -P footer=off <<'SQL'
 SELECT o.number AS commande, o.status AS etat, round(o.total_cents / 100.0, 2) AS total_euros,
        to_char(o.created_at AT TIME ZONE 'Europe/Paris', 'DD/MM HH24:MI') AS le
@@ -210,18 +209,15 @@ $COMPOSE stop api
 
 echo "3/5 · Vidage de la base (une seule transaction : tout ou rien)…"
 psql_base -1 <<'SQL'
--- Les générations IA d'abord : leurs clés sont en « SET NULL », elles
--- survivraient sinon aux commandes et aux clientes, chemins de photos compris.
-DELETE FROM ai_generation;
-DELETE FROM ia_relais_photo;
+-- Les générations IA ne sont PAS touchées (Alexandra, 17/11) : leurs clés
+-- vers la commande et la cliente sont en « SET NULL », elles restent.
 
--- Commandes, paniers et ventes de stand. Le reste suit en cascade : lignes,
+-- TOUTES les commandes, paniers et ventes de stand du nouveau site, WEB-0016
+-- comprise (voir « CE QUI PART »). Le reste suit en cascade : lignes,
 -- journal, paiements, encaissements, expéditions, bordereaux, remboursements,
 -- fichiers d'impression.
--- SAUF les ventes payées pour de vrai (paiement live) : voir « CE QUI RESTE ».
 DELETE FROM "order" o
- WHERE o.legacy_id IS NULL
-   AND NOT EXISTS (SELECT 1 FROM payment p WHERE p.order_id = o.id AND p.mode = 'live' AND p.status = 'succeeded');
+ WHERE o.legacy_id IS NULL;
 
 -- Clientes (adresses, sessions et jetons suivent en cascade).
 -- Sauf celles d'une vente gardée.
@@ -251,9 +247,8 @@ DELETE FROM stand
  WHERE (nom ILIKE '%essai%' OR nom ILIKE '%test%')
    AND NOT EXISTS (SELECT 1 FROM "order" o WHERE o.stand_id = stand.id);
 
--- Essais du catalogue : archivés, comme le veut la règle du projet.
-UPDATE character_type SET archived_at = now()
- WHERE archived_at IS NULL AND slug LIKE 'femme-test%';
+-- L'affiche d'essai : archivée, comme le veut la règle du projet. Les
+-- personnages d'essai ne sont plus touchés (Margaux s'en occupe).
 UPDATE product SET status = 'archived'
  WHERE status <> 'archived' AND slug = 'maries-essai-recette-produit-de-test';
 UPDATE poster_view SET archived_at = now()
@@ -266,11 +261,12 @@ SQL
 # ne doit pas permettre un second lancement, qui viderait la vraie boutique).
 date '+le %d/%m/%Y à %H:%M' > "$MARQUE"
 
-echo "4/5 · Fichiers des essais (photos IA, aperçus, PDF d'impression)…"
+echo "4/5 · Fichiers des commandes d'essai (aperçus, PDF d'impression)…"
 # Par le conteneur : ces fichiers ont été écrits par l'API, et n'appartiennent
-# pas forcément à l'utilisateur du serveur.
+# pas forcément à l'utilisateur du serveur. Les photos et affiches IA
+# (/app/data/assets/ia) restent : on ne touche pas à l'IA.
 $COMPOSE run --rm --no-deps --entrypoint sh api -c \
-  'for d in /app/data/assets/ia /app/data/assets/apercus /app/data/assets/cache/impressions; do [ -d "$d" ] && find "$d" -mindepth 1 -delete; done; true'
+  'for d in /app/data/assets/apercus /app/data/assets/cache/impressions; do [ -d "$d" ] && find "$d" -mindepth 1 -delete; done; true'
 
 echo "5/5 · Redémarrage de l'API…"
 $COMPOSE up -d api
@@ -288,19 +284,19 @@ rm -f maintenance/ACTIVE
 echo
 echo "=== Après le vidage ==="
 psql_base -P footer=off <<'SQL'
-SELECT 'Commandes d''essai restantes (attendu 0)' AS quoi, count(*) AS nombre FROM "order" o WHERE o.legacy_id IS NULL AND NOT EXISTS (SELECT 1 FROM payment p WHERE p.order_id = o.id AND p.mode = 'live' AND p.status = 'succeeded')
-UNION ALL SELECT 'Ventes réelles gardées', count(*) FROM "order" o WHERE o.legacy_id IS NULL AND EXISTS (SELECT 1 FROM payment p WHERE p.order_id = o.id AND p.mode = 'live' AND p.status = 'succeeded')
-UNION ALL SELECT 'Clientes (celles des ventes gardées)', count(*) FROM customer WHERE legacy_id IS NULL
-UNION ALL SELECT 'Générations IA', count(*) FROM ai_generation
+SELECT 'Commandes restantes (attendu 0)' AS quoi, count(*) AS nombre FROM "order" o WHERE o.legacy_id IS NULL
+UNION ALL SELECT 'Clientes du nouveau site (attendu 0)', count(*) FROM customer WHERE legacy_id IS NULL
+UNION ALL SELECT 'Clientes Shopify gardées', count(*) FROM customer WHERE legacy_id IS NOT NULL
+UNION ALL SELECT 'Générations IA (gardées)', count(*) FROM ai_generation
 UNION ALL SELECT 'Stands ouverts', count(*) FROM stand WHERE ouvert
 UNION ALL SELECT 'Compteur de factures', count(*) FROM facture_compteur;
 SQL
 RESTE=$(psql_base -At <<'SQL'
-SELECT count(*) FROM "order" o WHERE o.legacy_id IS NULL AND NOT EXISTS (SELECT 1 FROM payment p WHERE p.order_id = o.id AND p.mode = 'live' AND p.status = 'succeeded');
+SELECT count(*) FROM "order" o WHERE o.legacy_id IS NULL;
 SQL
 )
 if [ "$RESTE" != "0" ]; then
-  echo "✗ Il reste $RESTE commande(s) d'essai : ne pas basculer le domaine, regarder pourquoi." >&2
+  echo "✗ Il reste $RESTE commande(s) : ne pas basculer le domaine, regarder pourquoi." >&2
   exit 1
 fi
 echo
