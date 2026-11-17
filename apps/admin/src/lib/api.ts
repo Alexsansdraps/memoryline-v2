@@ -455,6 +455,8 @@ export interface StandBo {
   horaires?: HorairesStand | null;
   /** « manuel » : le bouton décide ; « calendrier » : les jours de marché. */
   pilotage?: string;
+  /** Proposé au « Retrait au stand » sur le site, à part d'ouvert/fermé. */
+  actif?: boolean;
   ouvert: boolean;
   createdAt: string;
   closedAt: string | null;
@@ -2140,6 +2142,7 @@ export function adminApi(request?: Request) {
       corps: {
         nom?: string;
         emplacement?: string;
+        actif?: boolean;
         ouvert?: boolean;
         nouveauCode?: boolean;
         dateDebut?: string;

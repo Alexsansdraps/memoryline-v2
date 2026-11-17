@@ -42,6 +42,11 @@ export interface StandCalendrier {
   dateFin: string | null;
   horaires: HorairesStand | null;
   archivedAt?: Date | string | null;
+  /**
+   * Proposé au retrait sur le site (« Activé / Désactivé »), à part de
+   * l'ouverture de la tablette. Absent : activé.
+   */
+  actif?: boolean;
 }
 
 /** L'horaire proposé pour un stand neuf. */
@@ -176,16 +181,16 @@ export function ouvertureEffective(s: StandCalendrier, maintenant: Date): boolea
 /**
  * Le site propose-t-il de retirer sa commande à ce stand ?
  *
- * Pas s'il est archivé, ni fermé à la main. Sans dates : tant qu'il est
- * ouvert (comme avant). Avec des dates : dès maintenant, et jusqu'à
- * MARGE_RETRAIT_JOURS avant la fin, le temps d'imprimer l'affiche — y compris
- * avant le premier jour, et les jours de fermeture : la cliente viendra un
- * autre jour.
+ * Ouvert ou fermé n'y fait RIEN (17/11 : « il faut afficher tous les stands,
+ * peu importe s'ils sont ouverts ou pas ») : ouvert/fermé dit si la tablette
+ * vend. Ce qui décide, c'est l'interrupteur à part « Activé / Désactivé sur
+ * le site » (`actif`), le stand non archivé, et, s'il a des dates, la fin :
+ * jusqu'à MARGE_RETRAIT_JOURS avant, le temps d'imprimer l'affiche.
  */
 export function retraitProposable(s: StandCalendrier, maintenant: Date): boolean {
   if (s.archivedAt) return false;
-  if (s.pilotage !== "calendrier" && !s.ouvert) return false;
-  if (!jourValide(s.dateFin)) return s.ouvert;
+  if (s.actif === false) return false;
+  if (!jourValide(s.dateFin)) return true;
   return jourAParis(maintenant) <= decalerJour(s.dateFin, -MARGE_RETRAIT_JOURS);
 }
 
@@ -207,6 +212,8 @@ const MOTS: Record<
     et: string;
     ferme: string;
     avant: (date: string) => string;
+    /** « à 20:00 », collé derrière la date. */
+    aHeure: (heure: string) => string;
   }
 > = {
   fr: {
@@ -215,6 +222,7 @@ const MOTS: Record<
     et: "et",
     ferme: "Fermé",
     avant: (d) => `À venir chercher au plus tard le ${d}.`,
+    aHeure: (h) => `à ${h}`,
   },
   en: {
     periode: (d, f) => `From ${d} to ${f}.`,
@@ -222,6 +230,7 @@ const MOTS: Record<
     et: "and",
     ferme: "Closed",
     avant: (d) => `To be collected by ${d} at the latest.`,
+    aHeure: (h) => `at ${h}`,
   },
   de: {
     periode: (d, f) => `Von ${d} bis ${f}.`,
@@ -229,6 +238,7 @@ const MOTS: Record<
     et: "und",
     ferme: "Geschlossen",
     avant: (d) => `Abholung spätestens am ${d}.`,
+    aHeure: (h) => `um ${h}`,
   },
   it: {
     periode: (d, f) => `Dal ${d} al ${f}.`,
@@ -236,6 +246,7 @@ const MOTS: Record<
     et: "e",
     ferme: "Chiuso",
     avant: (d) => `Da ritirare entro ${d}.`,
+    aHeure: (h) => `alle ${h}`,
   },
   es: {
     periode: (d, f) => `Del ${d} al ${f}.`,
@@ -243,8 +254,38 @@ const MOTS: Record<
     et: "y",
     ferme: "Cerrado",
     avant: (d) => `Recogida a más tardar el ${d}.`,
+    aHeure: (h) => `a las ${h}`,
   },
 };
+
+/**
+ * Le dernier moment pour venir chercher sa commande : le dernier jour OUVERT
+ * du stand, et l'heure où il ferme ce jour-là (17/11 : « ajoute l'heure de
+ * fin »). Null sans dates, ou si aucun jour n'est ouvert.
+ */
+export function dernierMomentDeRetrait(
+  s: Pick<StandCalendrier, "dateDebut" | "dateFin" | "horaires">,
+): { jour: string; heure: string | null } | null {
+  const jours = joursDuStand(s.dateDebut, s.dateFin);
+  for (let i = jours.length - 1; i >= 0; i--) {
+    const h = horairesDuJour(s.horaires, jours[i]!);
+    if (h.ferme) continue;
+    const fin = h.creneaux.map((c) => c.a).sort().at(-1) ?? null;
+    return { jour: jours[i]!, heure: fin };
+  }
+  return null;
+}
+
+/** « dimanche 27 décembre à 20:00 », dans la langue voulue. */
+export function dernierMomentEcrit(
+  s: Pick<StandCalendrier, "dateDebut" | "dateFin" | "horaires">,
+  langue = "fr",
+): string | null {
+  const d = dernierMomentDeRetrait(s);
+  if (!d) return null;
+  const m = MOTS[langue] ?? MOTS.fr!;
+  return d.heure ? `${jourEcrit(d.jour, langue)} ${m.aHeure(d.heure)}` : jourEcrit(d.jour, langue);
+}
 
 /** « vendredi 20 novembre » (avec l'année si demandé), dans la langue voulue. */
 export function jourEcrit(jour: string, langue = "fr", avecAnnee = false): string {
@@ -302,7 +343,7 @@ export function resumeHoraires(
   }
   if (fermes.length) lignes.push(`${m.ferme}${deuxPoints}${fermes.join(", ")}.`);
   lignes.push(...autres);
-  lignes.push(m.avant(jourEcrit(s.dateFin, langue)));
+  lignes.push(m.avant(dernierMomentEcrit(s, langue) ?? jourEcrit(s.dateFin, langue)));
   return lignes.join("\n");
 }
 

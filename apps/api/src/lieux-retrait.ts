@@ -25,6 +25,7 @@ import { db, schema } from "./db/client.js";
 import type { InstantaneLieuRetrait } from "./db/schema.js";
 import { champTraduit } from "./traductions.js";
 import {
+  dernierMomentDeRetrait,
   LANGUES_RESUME,
   resumeHoraires,
   retraitProposable,
@@ -157,11 +158,14 @@ export async function lieuPourLaCommande(
   // garde, et la cliente doit avoir coché qu'elle viendra avant.
   const [stand] = lieu.standId
     ? await lecteur
-        .select({ dateFin: schema.stands.dateFin })
+        .select({ dateDebut: schema.stands.dateDebut, dateFin: schema.stands.dateFin, horaires: schema.stands.horaires })
         .from(schema.stands)
         .where(eq(schema.stands.id, lieu.standId))
     : [];
-  const retirerAvant = stand?.dateFin ?? null;
+  const dernier = stand
+    ? dernierMomentDeRetrait({ dateDebut: stand.dateDebut ?? null, dateFin: stand.dateFin ?? null, horaires: stand.horaires ?? null })
+    : null;
+  const retirerAvant = dernier ? (dernier.heure ? `${dernier.jour} ${dernier.heure}` : dernier.jour) : null;
   return {
     id: lieu.id,
     standId: lieu.standId ?? null,
@@ -187,15 +191,31 @@ export async function lieuxRetraitPublics(langue: string): Promise<
     standId: number | null;
     /** Le dernier jour du stand (« AAAA-MM-JJ ») : la cliente coche qu'elle viendra avant. */
     retirerAvant: string | null;
+    /** L'heure où le stand ferme ce dernier jour (« 20:00 »), pour la case à cocher. */
+    retirerAvantHeure: string | null;
+    /** Le stand est-il ouvert en ce moment ? Dit à la caisse (17/11). Null hors stand. */
+    ouvert: boolean | null;
   }[]
 > {
   const rangs = await db
-    .select({ l: schema.pickupPoints, dateFin: schema.stands.dateFin })
+    .select({
+      l: schema.pickupPoints,
+      dateDebut: schema.stands.dateDebut,
+      dateFin: schema.stands.dateFin,
+      horaires: schema.stands.horaires,
+      standOuvert: schema.stands.ouvert,
+    })
     .from(schema.pickupPoints)
     .leftJoin(schema.stands, eq(schema.stands.id, schema.pickupPoints.standId))
     .where(and(eq(schema.pickupPoints.active, true), isNull(schema.pickupPoints.archivedAt)))
     .orderBy(asc(schema.pickupPoints.position), asc(schema.pickupPoints.id));
-  return rangs.map(({ l, dateFin }) => ({
+  return rangs.map(({ l, dateDebut, dateFin, horaires, standOuvert }) => {
+    // Le dernier moment pour venir : le dernier jour OUVERT, à l'heure où il ferme.
+    const dernier =
+      l.standId != null
+        ? dernierMomentDeRetrait({ dateDebut: dateDebut ?? null, dateFin: dateFin ?? null, horaires: horaires ?? null })
+        : null;
+    return {
     id: l.id,
     nom: champTraduit(l.translations, langue, "nom") ?? l.nom,
     adresse: l.adresse?.trim() || null,
@@ -203,8 +223,11 @@ export async function lieuxRetraitPublics(langue: string): Promise<
       ? (champTraduit(l.translations, langue, "description") ?? l.description)
       : null,
     standId: l.standId ?? null,
-    retirerAvant: l.standId != null ? (dateFin ?? null) : null,
-  }));
+    retirerAvant: dernier?.jour ?? null,
+    retirerAvantHeure: dernier?.heure ?? null,
+    ouvert: l.standId != null ? !!standOuvert : null,
+    };
+  });
 }
 
 /** Combien de lieux la caisse proposerait : sans aucun, le mode retrait se masque. */
@@ -252,6 +275,7 @@ export function calendrierDuStand(stand: typeof schema.stands.$inferSelect): Sta
     dateFin: stand.dateFin ?? null,
     horaires: stand.horaires ?? null,
     archivedAt: stand.archivedAt,
+    actif: stand.actif,
   };
 }
 

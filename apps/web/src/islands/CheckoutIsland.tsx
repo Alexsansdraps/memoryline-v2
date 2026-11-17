@@ -553,6 +553,10 @@ export default function CheckoutIsland(props: {
     standId?: number | null;
     /** Retrait au stand : le dernier jour pour venir (« AAAA-MM-JJ »). */
     retirerAvant?: string | null;
+    /** L'heure où il ferme ce dernier jour (« 20:00 »). */
+    retirerAvantHeure?: string | null;
+    /** Le stand est-il ouvert en ce moment ? */
+    ouvert?: boolean | null;
   };
   /** Les stands ouverts, chacun proposé comme une option à part entière. */
   const lieuxDesStands = (): LieuRetrait[] =>
@@ -1609,7 +1613,13 @@ export default function CheckoutIsland(props: {
                                             : "bg-paper text-terracotta hover:bg-terracotta/10"
                                         }`}
                                       >
-                                        {lieu.nom}
+                                        <span class="block">{lieu.nom}</span>
+                                        {/* Ouvert ou fermé en ce moment (17/11). */}
+                                        <Show when={lieu.ouvert != null}>
+                                          <span class="block text-xs font-normal opacity-85">
+                                            {lieu.ouvert ? "● " + tr("livraison.stand_ouvert") : "○ " + tr("livraison.stand_ferme")}
+                                          </span>
+                                        </Show>
                                       </button>
                                     );
                                   }}
@@ -1626,7 +1636,14 @@ export default function CheckoutIsland(props: {
                           >
                             {(lieu) => (
                               <div class="border border-ink/15 bg-paper-deep/40 p-4 text-sm">
-                                <span class="block font-medium">{lieu().nom}</span>
+                                <span class="block font-medium">
+                                  {lieu().nom}
+                                  <Show when={lieu().ouvert != null}>
+                                    <span class={`ml-2 text-xs font-normal ${lieu().ouvert ? "text-green-700" : "text-ink-soft"}`}>
+                                      {lieu().ouvert ? "● " + tr("livraison.stand_ouvert") : "○ " + tr("livraison.stand_ferme")}
+                                    </span>
+                                  </Show>
+                                </span>
                                 <Show when={lieu().adresse}>
                                   <span class="mt-0.5 block whitespace-pre-line">{lieu().adresse}</span>
                                 </Show>
@@ -1646,7 +1663,10 @@ export default function CheckoutIsland(props: {
                                     <span>
                                       {tr("livraison.stand_compris").replace(
                                         "{date}",
-                                        jourLong(lieu().retirerAvant!),
+                                        jourLong(lieu().retirerAvant!) +
+                                          (lieu().retirerAvantHeure
+                                            ? " " + tr("livraison.a_heure").replace("{heure}", lieu().retirerAvantHeure!)
+                                            : ""),
                                       )}
                                     </span>
                                   </label>

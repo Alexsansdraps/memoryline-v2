@@ -167,6 +167,29 @@ if (Astro.request.method === "POST" && estProprietaire) {
               } Vous pouvez le restaurer à tout moment, plus bas.`;
           break;
         }
+        case "actif": {
+          const { stand } = await api.majStand(cible, { actif: texte("actif") === "1" });
+          flash = stand.actif
+            ? `« ${stand.nom} » est activé : il est proposé au « Retrait au stand » à la caisse du site, ouvert ou fermé.`
+            : `« ${stand.nom} » est désactivé : il n'est plus proposé au « Retrait au stand » sur le site. Sa tablette, elle, ne change pas.`;
+          break;
+        }
+        case "supprimer_direct": {
+          // Archivé puis supprimé d'un geste (17/11), seulement sans vente :
+          // la règle du projet (on archive d'abord, on ne supprime jamais ce
+          // dont une commande se sert) est tenue par l'API. Si elle refuse,
+          // le stand est restauré tel qu'il était.
+          const nom = texte("libelle") || "Ce stand";
+          await api.archiverStand(cible, true);
+          try {
+            await api.supprimerStand(cible);
+          } catch (refus) {
+            await api.archiverStand(cible, false).catch(() => undefined);
+            throw refus;
+          }
+          flash = `Stand « ${nom} » supprimé définitivement.`;
+          break;
+        }
         case "supprimer": {
           // Refusé pour un stand qui a des commandes : la phrase de l'API
           // passe par le `catch` plus bas, et le stand reste archivé.
@@ -436,7 +459,12 @@ const classeBouton =
                       : ""}
                 </span>
               </div>
-              <p class="mt-1 text-xs text-bo-muted">{dateDite(stand)}</p>
+              <p class="mt-1 text-xs text-bo-muted">
+                {dateDite(stand)} ·{" "}
+                {stand.actif === false
+                  ? "désactivé sur le site (pas de retrait au stand)"
+                  : "proposé au retrait au stand sur le site"}
+              </p>
             </div>
 
             {/* Ouvrir et fermer se font sans confirmation : le geste se refait
@@ -706,6 +734,17 @@ const classeBouton =
               <button class={classeBouton}>Nouveau code</button>
             </form>
 
+            {/* Activé / Désactivé sur le site : proposé ou non au « Retrait
+                au stand », à part d'ouvert/fermé (la tablette). */}
+            <form method="POST">
+              <input type="hidden" name="_action" value="actif" />
+              <input type="hidden" name="id" value={stand.id} />
+              <input type="hidden" name="actif" value={stand.actif === false ? "1" : "0"} />
+              <button class={classeBouton}>
+                {stand.actif === false ? "Activer sur le site" : "Désactiver sur le site"}
+              </button>
+            </form>
+
             <form method="POST" data-confirme={messageArchivage(stand)}>
               <input type="hidden" name="_action" value="archiver" />
               <input type="hidden" name="id" value={stand.id} />
@@ -713,6 +752,31 @@ const classeBouton =
               <input type="hidden" name="archived" value="true" />
               <button class={classeBouton}>Archiver</button>
             </form>
+
+            {/* Supprimer : en rouge, avec un avertissement au clic. Un stand
+                qui a vendu ne se supprime pas (ses ventes ne sauraient plus
+                où elles ont été faites) : on le dit, et rien ne part. */}
+            {stand.commandes > 0 ? (
+              <button
+                type="button"
+                class="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
+                onclick={`alert(${JSON.stringify(`« ${stand.nom} » a ${stand.commandes} commande(s) : il ne peut pas être supprimé, ses ventes ne sauraient plus où elles ont été faites. Archivez-le à la place.`)})`}
+              >
+                Supprimer
+              </button>
+            ) : (
+              <form
+                method="POST"
+                data-confirme={`Supprimer définitivement « ${stand.nom} » ?\n\nC'est irréversible : son code, son calendrier et son emplacement disparaissent, et il n'est plus proposé au retrait sur le site.`}
+              >
+                <input type="hidden" name="_action" value="supprimer_direct" />
+                <input type="hidden" name="id" value={stand.id} />
+                <input type="hidden" name="libelle" value={stand.nom} />
+                <button class="rounded bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700">
+                  Supprimer
+                </button>
+              </form>
+            )}
           </div>
         </article>
       ))

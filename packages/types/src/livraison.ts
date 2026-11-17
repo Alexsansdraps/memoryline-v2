@@ -158,6 +158,10 @@ export interface LieuRetraitPublic {
    * réglé dans Ventes stand) : il ne sort que sous « Retrait au stand ».
    */
   standId?: number | null;
+  /** Le dernier jour du stand, et s'il est ouvert en ce moment (17/11). */
+  retirerAvant?: string | null;
+  retirerAvantHeure?: string | null;
+  ouvert?: boolean | null;
 }
 
 /** Code pays normalisé : deux lettres majuscules, ou chaîne vide. */

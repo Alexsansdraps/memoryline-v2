@@ -1271,6 +1271,12 @@ export const stands = pgTable(
      */
     pilotage: text("pilotage").notNull().default("manuel"),
     /**
+     * Proposé au « Retrait au stand » sur le site (17/11) : « Activé /
+     * Désactivé », à part d'ouvert/fermé, qui dit seulement si la tablette
+     * vend. Un stand fermé reste proposé tant qu'il est activé.
+     */
+    actif: boolean("actif").notNull().default(true),
+    /**
      * Ouvert veut dire « la tablette accepte des commandes ». Fermer ne
      * supprime rien : les ventes restent, et le stand peut rouvrir l'an
      * prochain sous le même nom.

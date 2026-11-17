@@ -589,6 +589,13 @@
       "when": 1794913474938,
       "tag": "0083_calendrier_des_stands",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1794915026968,
+      "tag": "0084_stand_actif",
+      "breakpoints": true
     }
   ]
 }

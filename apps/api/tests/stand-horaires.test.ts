@@ -7,6 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  dernierMomentDeRetrait,
   horairesDuJour,
   horairesLus,
   joursDuStand,
@@ -66,16 +67,20 @@ test("manuel : le bouton décide, quoi que disent les horaires", () => {
   assert.equal(ouvertureEffective({ ...ouvertALaMain, archivedAt: new Date() }, midi("2026-11-20")), false);
 });
 
-test("retrait proposé dès maintenant, jusqu'à 3 jours avant la fin ; jamais fermé à la main", () => {
+test("retrait proposé jusqu'à 3 jours avant la fin, ouvert ou fermé ; pas s'il est désactivé", () => {
   assert.equal(retraitProposable(marche, midi("2026-11-17")), true, "avant le premier jour");
   assert.equal(retraitProposable(marche, midi("2026-11-23")), true, "un jour de fermeture");
   assert.equal(retraitProposable(marche, midi("2026-12-21")), true, "3 jours avant la fin");
   assert.equal(retraitProposable(marche, midi("2026-12-22")), false, "moins de 3 jours avant la fin");
-  assert.equal(retraitProposable({ ...marche, pilotage: "manuel", ouvert: false }, midi("2026-11-20")), false);
-  // Sans dates : comme avant, tant que le stand est ouvert.
+  // Fermé à la main : la tablette ne vend pas, mais le site le propose toujours.
+  assert.equal(retraitProposable({ ...marche, pilotage: "manuel", ouvert: false }, midi("2026-11-20")), true);
+  // Désactivé : plus proposé, même ouvert.
+  assert.equal(retraitProposable({ ...marche, ouvert: true, actif: false }, midi("2026-11-20")), false);
+  // Sans dates : proposé tant qu'il est activé, ouvert ou non.
   const sansDates = { ...marche, pilotage: "manuel", dateDebut: null, dateFin: null };
-  assert.equal(retraitProposable({ ...sansDates, ouvert: true }, midi("2026-11-20")), true);
-  assert.equal(retraitProposable({ ...sansDates, ouvert: false }, midi("2026-11-20")), false);
+  assert.equal(retraitProposable({ ...sansDates, ouvert: false }, midi("2026-11-20")), true);
+  assert.equal(retraitProposable({ ...sansDates, actif: false }, midi("2026-11-20")), false);
+  assert.equal(retraitProposable({ ...sansDates, archivedAt: new Date() }, midi("2026-11-20")), false);
 });
 
 test("le back-office envoie le calendrier : il est vérifié et nettoyé", () => {
@@ -110,7 +115,13 @@ test("le résumé pour les clientes, en français et dans les autres langues", (
   assert.match(fr, /Tous les jours : 10:00–12:30 et 14:00–19:00\./);
   assert.match(fr, /Fermé : lundi 23 novembre\./);
   assert.match(fr, /Samedi 21 novembre : 10:00–13:00 et 14:00–20:00\./);
-  assert.match(fr, /À venir chercher au plus tard le jeudi 24 décembre\.$/);
+  assert.match(fr, /À venir chercher au plus tard le jeudi 24 décembre à 19:00\.$/);
+  // Le dernier jour fermé : le dernier moment est le dernier jour OUVERT.
+  const finFermee = {
+    ...marche,
+    horaires: { ...marche.horaires!, jours: { ...marche.horaires!.jours, "2026-12-24": { ferme: true } } },
+  };
+  assert.deepEqual(dernierMomentDeRetrait(finFermee), { jour: "2026-12-23", heure: "19:00" });
   assert.match(resumeHoraires(marche, "en"), /Every day: 10:00–12:30 and 14:00–19:00\./);
   assert.match(resumeHoraires(marche, "de"), /Geschlossen: /);
   assert.equal(resumeHoraires({ ...marche, dateDebut: null }, "fr"), "");

@@ -463,6 +463,7 @@ export function mountSalonRoutes(app: Hono): void {
           dateFin: s.dateFin ?? null,
           horaires: s.horaires ?? null,
           pilotage: s.pilotage,
+          actif: s.actif,
           ouvert: s.ouvert,
           createdAt: s.createdAt,
           closedAt: s.closedAt,
@@ -523,6 +524,13 @@ export function mountSalonRoutes(app: Hono): void {
       const nom = String(b.nom ?? "").trim().slice(0, 120);
       if (!nom) return c.json({ error: "Le nom du stand ne peut pas être vide." }, 400);
       champs.nom = nom;
+    }
+    if ("actif" in b) {
+      // Proposé ou non au « Retrait au stand » sur le site : à part de
+      // l'ouverture de la tablette (17/11).
+      if (typeof b.actif !== "boolean")
+        return c.json({ error: "Dites si le stand est activé ou désactivé sur le site." }, 400);
+      champs.actif = b.actif;
     }
     if ("emplacement" in b) {
       // Texte libre : une adresse, une place, « allée B, chalet 12 »… Vide =
@@ -764,6 +772,10 @@ export function mountSalonRoutes(app: Hono): void {
             .set({ standId: null })
             .where(eq(schema.orders.standId, s.id));
           await tx.delete(schema.aiPhotoRelays).where(eq(schema.aiPhotoRelays.standId, s.id));
+          // Son lieu de retrait part avec lui : laissé, il deviendrait un
+          // lieu ordinaire, proposé sous les autres modes de retrait. Les
+          // commandes passées gardent leur copie du lieu.
+          await tx.delete(schema.pickupPoints).where(eq(schema.pickupPoints.standId, s.id));
           await tx.execute(raw`
             update admin_user
                set stand_ids = coalesce(
