@@ -2434,8 +2434,11 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
       };
       unite.addEventListener("change", () => {
         if (unite.value === "pct") {
+          // Pas de 0,01 comme en euros : avec un pas de 1 compté depuis le
+          // min de 0,01, le navigateur refusait 50 % ou 100 % (recette du
+          // 17/11 : seuls 1,01 %, 2,01 %… passaient).
           montant.max = "100";
-          montant.step = "1";
+          montant.step = "0.01";
           montant.value = "100";
         } else {
           montant.max = (reste / 100).toFixed(2);

@@ -361,8 +361,8 @@ function courrierPourLaBoutique(
       <a href="${h(lienReponse)}" style="display:inline-block;background:#121212;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:999px">Répondre à ${h(m.nom)}</a>
     </p>
     <p style="margin:12px 0 0;font-size:13px;color:#5b5b54">
-      Ce bouton écrit à ${h(m.email)}. Le bouton « Répondre » de votre
-      messagerie, lui, répondrait à la boutique.
+      Ce bouton écrit à ${h(m.email)}, comme le bouton « Répondre » de
+      votre messagerie.
     </p>`;
 
   const enTete = [

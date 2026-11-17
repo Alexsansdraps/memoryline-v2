@@ -2480,6 +2480,10 @@ export function mountConfiguratorRoutes(app: Hono) {
     if (!draft) return c.json({ error: "panier introuvable" }, 404);
     if (draft.status === "paid")
       return c.json({ error: "commande déjà payée" }, 409);
+    // Une commande ANNULÉE est close aussi (recette du 17/11 : revalider la
+    // caisse la repassait « en attente de paiement », remboursée comprise).
+    if (draft.status !== "draft" && draft.status !== "pending")
+      return c.json({ error: "panier_clos", code: "panier_clos" }, 409);
 
     const items = await db
       .select()
@@ -2610,6 +2614,8 @@ export function mountConfiguratorRoutes(app: Hono) {
       if (!panier) return { erreur: "panier introuvable", statut: 404 as const };
       if (panier.status === "paid")
         return { erreur: "commande déjà payée", statut: 409 as const };
+      if (panier.status !== "draft" && panier.status !== "pending")
+        return { erreur: "panier_clos", statut: 409 as const, code: "panier_clos" };
       const lignes = await tx
         .select()
         .from(schema.orderItems)

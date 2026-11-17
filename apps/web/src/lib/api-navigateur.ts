@@ -80,7 +80,9 @@ export async function lirePanier<T extends { status?: string | null }>(
   const res = await fetch(`${PUBLIC_API_URL}${chemin}`);
   if (!res.ok) throw new Error(`API ${chemin} -> ${res.status}`);
   const panier = (await res.json()) as T;
-  if (panier.status !== "paid") return panier;
+  // Payé, ou annulé (recette du 17/11) : ce n'est plus un panier.
+  if (panier.status !== "paid" && panier.status !== "cancelled" && panier.status !== "voided")
+    return panier;
   oublierCartId();
   return null;
 }
