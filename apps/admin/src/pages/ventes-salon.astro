@@ -111,12 +111,21 @@ if (Astro.request.method === "POST" && estProprietaire) {
           };
           const jours: Record<string, unknown> = {};
           for (const j of joursDuStand(texte("ancien_debut") || null, texte("ancien_fin") || null)) {
-            if (champs.get(`j_${j}_ferme`)) {
+            // Ce jour-là : normal, fermé, matin ou après-midi fermé, non-stop
+            // (17/11). Une case vidée reprend l'heure de base d'avant.
+            const genre = texte(`j_${j}_type`) || "normal";
+            const md = texte(`j_${j}_md`) || ancienne.matin?.de || "";
+            const ma = texte(`j_${j}_ma`) || ancienne.matin?.a || "";
+            const ad = texte(`j_${j}_ad`) || ancienne.apresMidi?.de || "";
+            const aa = texte(`j_${j}_aa`) || ancienne.apresMidi?.a || "";
+            if (genre === "ferme") {
               jours[j] = { ferme: true };
               continue;
             }
-            const m = creneau(texte(`j_${j}_md`), texte(`j_${j}_ma`));
-            const am = creneau(texte(`j_${j}_ad`), texte(`j_${j}_aa`));
+            // Non-stop : du début du matin à la fin de l'après-midi, sans coupure.
+            const m =
+              genre === "matin_ferme" ? null : creneau(md, genre === "non_stop" ? aa : ma);
+            const am = genre === "aprem_ferme" || genre === "non_stop" ? null : creneau(ad, aa);
             if (meme(m, ancienne.matin) && meme(am, ancienne.apresMidi)) continue;
             jours[j] = { matin: m, apresMidi: am };
           }
@@ -649,7 +658,7 @@ const classeBouton =
                     <thead class="sticky top-0 bg-bo-bg text-left text-xs text-bo-muted">
                       <tr>
                         <th class="px-2 py-1.5">Jour</th>
-                        <th class="px-2 py-1.5">Fermé</th>
+                        <th class="px-2 py-1.5">Ce jour-là</th>
                         <th class="px-2 py-1.5">Matin</th>
                         <th class="px-2 py-1.5">Après-midi</th>
                       </tr>
@@ -658,23 +667,54 @@ const classeBouton =
                       {joursDuStand(stand.dateDebut ?? null, stand.dateFin ?? null).map((j) => {
                         const h = horairesDuJour(stand.horaires ?? null, j);
                         const special = stand.horaires?.jours?.[j];
-                        const m = special && "matin" in special ? special.matin : baseDe(stand).matin;
-                        const am = special && "apresMidi" in special ? special.apresMidi : baseDe(stand).apresMidi;
+                        const base = baseDe(stand);
+                        const m = special && "matin" in special ? special.matin : base.matin;
+                        const am = special && "apresMidi" in special ? special.apresMidi : base.apresMidi;
+                        // Ce jour-là (17/11) : normal, fermé, matin ou après-midi
+                        // fermé, ou non-stop (un seul créneau, du matin au soir).
+                        const genre =
+                          h.ferme || (!m && !am)
+                          ? "ferme"
+                          : !special
+                            ? "normal"
+                          : !m && am
+                            ? "matin_ferme"
+                            : m && !am
+                              ? m.a >= (base.apresMidi?.de ?? "13:00")
+                                ? "non_stop"
+                                : "aprem_ferme"
+                              : "normal";
+                        // Non-stop : « de » dans la case du matin, « à » dans celle
+                        // du soir ; les deux du milieu restent vides.
+                        const v =
+                          genre === "non_stop"
+                            ? { md: m?.de, ma: "", ad: "", aa: m?.a }
+                            : { md: m?.de, ma: m?.a, ad: am?.de, aa: am?.a };
                         return (
                           <tr class={`border-t border-bo-border ${h.ferme ? "bg-bo-bg text-bo-muted" : ""}`}>
                             <td class="px-2 py-1 whitespace-nowrap">{jourCourt(j)}</td>
                             <td class="px-2 py-1">
-                              <input type="checkbox" name={`j_${j}_ferme`} checked={h.ferme} aria-label={`Fermé le ${jourCourt(j)}`} />
+                              <select
+                                name={`j_${j}_type`}
+                                aria-label={`Ce jour-là, le ${jourCourt(j)}`}
+                                class="rounded border border-bo-border bg-bo-surface px-1 py-0.5 text-xs"
+                              >
+                                <option value="normal" selected={genre === "normal"}>Normal</option>
+                                <option value="ferme" selected={genre === "ferme"}>Fermé</option>
+                                <option value="matin_ferme" selected={genre === "matin_ferme"}>Matin fermé</option>
+                                <option value="aprem_ferme" selected={genre === "aprem_ferme"}>Après-midi fermé</option>
+                                <option value="non_stop" selected={genre === "non_stop"}>Non-stop</option>
+                              </select>
                             </td>
                             <td class="px-2 py-1 whitespace-nowrap">
-                              <input type="time" name={`j_${j}_md`} value={m?.de ?? ""} class={champJour} />
+                              <input type="time" name={`j_${j}_md`} value={v.md ?? ""} class={champJour} />
                               –
-                              <input type="time" name={`j_${j}_ma`} value={m?.a ?? ""} class={champJour} />
+                              <input type="time" name={`j_${j}_ma`} value={v.ma ?? ""} class={champJour} />
                             </td>
                             <td class="px-2 py-1 whitespace-nowrap">
-                              <input type="time" name={`j_${j}_ad`} value={am?.de ?? ""} class={champJour} />
+                              <input type="time" name={`j_${j}_ad`} value={v.ad ?? ""} class={champJour} />
                               –
-                              <input type="time" name={`j_${j}_aa`} value={am?.a ?? ""} class={champJour} />
+                              <input type="time" name={`j_${j}_aa`} value={v.aa ?? ""} class={champJour} />
                             </td>
                           </tr>
                         );
@@ -684,7 +724,9 @@ const classeBouton =
                 </div>
               )}
               <p class="text-xs text-bo-muted">
-                Un jour qu'on ne touche pas suit les horaires de base. Après avoir
+                Un jour qu'on ne touche pas suit les horaires de base. « Non-stop » :
+                ouvert sans coupure, de l'heure de début du matin à l'heure de fin
+                de l'après-midi. Après avoir
                 changé les dates, enregistrez : la liste des jours se met à jour.
                 Les clientes voient ces dates et ces horaires sous « Retrait au
                 stand », proposé à la caisse du site jusqu'à 3 jours avant la fin.

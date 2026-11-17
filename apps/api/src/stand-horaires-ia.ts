@@ -44,7 +44,8 @@ Règles :
 - "matin" et "apresMidi" sont les horaires de base, recopiés sur chaque jour du stand. "jours" ne contient QUE les jours qui s'en écartent : fermés, ou à horaires différents.
 - Garde tel quel tout ce que la consigne ne change pas.
 - « Fermé les lundis » : chaque lundi entre dateDebut et dateFin est fermé.
-- Une journée continue (« 11h-20h ») : un seul créneau dans "matin", et "apresMidi" à null.
+- Une journée continue, « non-stop » (« 11h-20h », « non-stop le 24 ») : un seul créneau dans "matin", du début du matin à la fin de l'après-midi, et "apresMidi" à null.
+- « Fermé le matin » un jour : ce jour-là "matin" à null et l'après-midi garde ses heures. « Fermé l'après-midi » : "apresMidi" à null.
 - « Le 24 jusqu'à 16h » : ce jour-là seulement, le dernier créneau finit à 16:00 ; un créneau qui commencerait après 16:00 devient null.
 - Les heures sur 24 h, « HH:MM ». Les dates « AAAA-MM-JJ » ; l'année se déduit d'aujourd'hui (${aujourdhui}) : une date déjà passée cette année est celle de l'année suivante.
 - Le matin finit avant le début de l'après-midi.
