@@ -701,7 +701,7 @@ export const ui = {
     "accueil.ia_texte":
       "Envoyez une photo — une maison, une plage, une rue, un souvenir — et retrouvez-la illustrée dans le style Memory Line. Vous voyez le résultat avant de commander.",
     "accueil.ia_bouton": "Essayer avec ma photo",
-    "accueil.lettre_titre": "Abonnez-vous à notre lettre d'information",
+    "accueil.lettre_titre": "Abonnez-vous à notre newsletter",
     // La description Google d'une fiche sans texte ni description SEO
     // (61 fiches) : une vraie phrase, selon la nature de l'affiche.
     "produit.meta_repli.personnalisable":
