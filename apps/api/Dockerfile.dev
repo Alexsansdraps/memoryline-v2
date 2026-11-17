@@ -9,7 +9,11 @@ RUN corepack enable
 # sharp rend le titre et le sous-titre de l'affiche avec les polices SYSTÈME :
 # sans elles, les PDF de recette sortent dans une police de repli, et ce qu'on
 # montre à la cliente ne correspond pas à ce qui sera imprimé.
-RUN apk add --no-cache fontconfig
+# font-dejavu : police de SECOURS, prise seulement pour les caractères
+# qu'aucune police de l'affiche ne sait écrire (★ ♡ ♪ → ✓, grec, cyrillique,
+# arabe). Sans elle, ils s'imprimaient en petites cases à code hexadécimal
+# (recette du 17/11). Vérifié : 16 rendus existants identiques au pixel près.
+RUN apk add --no-cache fontconfig font-dejavu
 COPY apps/api/fonts/ /usr/share/fonts/memoryline/
 RUN fc-cache -f
 

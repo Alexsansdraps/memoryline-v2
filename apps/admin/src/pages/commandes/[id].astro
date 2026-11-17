@@ -1113,6 +1113,11 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                   {resteAExpedier} affiche(s) à remettre au client. Commande prise
                   au stand : elle se remet en main propre. Si elle doit voyager,
                   achetez son bordereau ci-dessous.
+                  <span class="mt-1 block text-xs">
+                    « Marquer comme remis » envoie au client un courriel
+                    « Votre affiche est prête » (sans prix) : cliquez-le quand
+                    l'affiche est prête à être retirée, pas forcément après.
+                  </span>
                 </p>
                 <form method="POST">
                   <input type="hidden" name="_action" value="expedier" />

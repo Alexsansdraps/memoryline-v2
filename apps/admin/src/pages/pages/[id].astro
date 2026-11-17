@@ -179,10 +179,13 @@ let flash: string | null = null;
 let flashErreur = false;
 
 /** Ce qui vient d'être saisi, gardé seulement si l'enregistrement est refusé. */
+const AFFICHAGES = ["site", "stand", "les-deux"];
+
 let saisie: {
   titre: string;
   adresse: string;
   statut: string;
+  affichage: string;
   seoTitre: string;
   seoDescription: string;
   affiches?: { collections: string[]; limite: number };
@@ -392,6 +395,9 @@ if (Astro.request.method === "POST") {
     const titre = String(f.get("title") ?? "").trim();
     const adresse = String(f.get("slug") ?? "").trim();
     const statut = String(f.get("status") ?? "");
+    // Où la page se montre (recette du 17/11 : le champ manquait, l'API le
+    // connaissait depuis le 13/11 mais le BO ne permettait pas de le régler).
+    const affichage = String(f.get("affichage") ?? "site");
     const seoTitre = String(f.get("seoTitle") ?? "").trim();
     const seoDescription = String(f.get("seoDescription") ?? "").trim();
     const corpsSaisi = String(f.get("corps") ?? "").trim();
@@ -413,11 +419,16 @@ if (Astro.request.method === "POST") {
         );
       if (statut !== "active" && statut !== "draft")
         throw new Error("Indiquez si la page est en ligne ou en brouillon.");
+      if (!AFFICHAGES.includes(affichage))
+        throw new Error(
+          "Dites où cette page doit se montrer : sur le site, sur la tablette du stand, ou sur les deux.",
+        );
 
       await api.enregistrerPage(idPage, {
         title: titre,
         slug: adresse,
         status: statut,
+        affichage,
         seoTitle: seoTitre || null,
         seoDescription: seoDescription || null,
         blocks: [
@@ -426,9 +437,13 @@ if (Astro.request.method === "POST") {
         ],
       });
       flash =
-        statut === "active"
-          ? "Page enregistrée. Elle est en ligne sur le site."
-          : "Page enregistrée. Elle reste en brouillon : personne ne la voit encore.";
+        statut !== "active"
+          ? "Page enregistrée. Elle reste en brouillon : personne ne la voit encore."
+          : affichage === "stand"
+            ? "Page enregistrée. Elle se montre sur la tablette du stand seulement : introuvable sur le site."
+            : affichage === "les-deux"
+              ? "Page enregistrée. Elle est en ligne sur le site et sur la tablette du stand."
+              : "Page enregistrée. Elle est en ligne sur le site.";
     } catch (e) {
       flash = String(e).replace(/^Error:\s*/, "");
       flashErreur = true;
@@ -436,6 +451,7 @@ if (Astro.request.method === "POST") {
         titre,
         adresse,
         statut,
+        affichage,
         seoTitre,
         seoDescription,
         corps: corpsSaisi,
@@ -458,6 +474,7 @@ const page = donnees?.page ?? null;
 const titre = saisie?.titre ?? page?.title ?? "";
 const adresse = saisie?.adresse ?? page?.slug ?? "";
 const statut = saisie?.statut ?? page?.status ?? "draft";
+const affichage = saisie?.affichage ?? page?.affichage ?? "site";
 const seoTitre = saisie?.seoTitre ?? page?.seoTitle ?? "";
 const seoDescription = saisie?.seoDescription ?? page?.seoDescription ?? "";
 
@@ -646,6 +663,25 @@ const boutonDiscret =
             <span class="mt-1 block text-xs text-bo-muted">
               Un brouillon n'est visible que d'ici. Rien n'apparaît sur le site
               tant que la page n'est pas en ligne.
+            </span>
+          </label>
+
+          <label class="block">
+            <span class="text-sm font-medium">Où elle se montre</span>
+            <select name="affichage" class={champ}>
+              <option value="site" selected={affichage !== "stand" && affichage !== "les-deux"}>
+                Sur le site
+              </option>
+              <option value="stand" selected={affichage === "stand"}>
+                Sur la tablette du stand seulement
+              </option>
+              <option value="les-deux" selected={affichage === "les-deux"}>
+                Sur le site et sur la tablette du stand
+              </option>
+            </select>
+            <span class="mt-1 block text-xs text-bo-muted">
+              Une page « tablette du stand seulement » est introuvable sur le
+              site, et son lien au menu ne se voit qu'en mode stand.
             </span>
           </label>
         </div>

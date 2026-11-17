@@ -21,9 +21,13 @@ RUN corepack enable
 #                        utilisé côté web, les deux rendus concordent donc.
 # Le grep fait échouer la construction si une police proposée au client
 # manque : mieux vaut une image refusée qu'un PDF en police de repli.
-RUN apk add --no-cache fontconfig
+# font-dejavu : police de SECOURS, prise seulement pour les caractères
+# qu'aucune police de l'affiche ne sait écrire (★ ♡ ♪ → ✓, grec, cyrillique,
+# arabe). Sans elle, ils s'imprimaient en petites cases à code hexadécimal
+# (recette du 17/11). Vérifié : 16 rendus existants identiques au pixel près.
+RUN apk add --no-cache fontconfig font-dejavu
 COPY apps/api/fonts/ /usr/share/fonts/memoryline/
-RUN fc-cache -f && fc-list | grep -Ei "dm serif" && fc-list | grep -Ei "abril fatface" && fc-list | grep -Ei "league spartan" && fc-list | grep -Ei "another shabby"
+RUN fc-cache -f && fc-list | grep -Ei "dm serif" && fc-list | grep -Ei "abril fatface" && fc-list | grep -Ei "league spartan" && fc-list | grep -Ei "another shabby" && fc-list | grep -Ei "dejavu sans"
 
 WORKDIR /app
 

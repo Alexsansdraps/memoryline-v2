@@ -55,8 +55,11 @@ export interface VenteStand {
  * « Revenir à ma commande » recharge la page sur le panier rouvert : le
  * client devait retaper son nom et son adresse pour corriger une affiche
  * (recette du 6/10). Ils passent par la session de l'onglet, liés au panier
- * qu'ils accompagnent, et sont effacés dès qu'ils sont relus : le client
- * suivant ne les trouvera pas.
+ * qu'ils accompagnent. Ils RESTENT tant que ce panier est celui de la
+ * tablette (recette du 17/11 : « Modifier » une affiche quitte le panier
+ * pour la fiche, et au retour ils avaient déjà été effacés) ; ils partent dès
+ * qu'un autre panier se présente — « Client suivant » en ouvre un neuf : le
+ * client suivant ne les trouvera pas.
  */
 const CLE_CLIENT_ROUVERT = "ml_stand_client_rouvert";
 
@@ -172,13 +175,14 @@ export default function CommandeStand(props: {
     // tapés, s'ils accompagnent bien le panier qui revient.
     try {
       const brut = sessionStorage.getItem(CLE_CLIENT_ROUVERT);
-      sessionStorage.removeItem(CLE_CLIENT_ROUVERT);
       const client = brut
         ? (JSON.parse(brut) as { cartId?: string; nom?: string; email?: string })
         : null;
       if (client && client.cartId === getCartId()) {
         setNom(client.nom ?? "");
         setCourriel(client.email ?? "");
+      } else if (brut) {
+        sessionStorage.removeItem(CLE_CLIENT_ROUVERT);
       }
     } catch {
       // Session refusée ou illisible : les champs restent vides, comme avant.

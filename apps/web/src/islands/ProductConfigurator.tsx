@@ -133,8 +133,14 @@ export default function ProductConfigurator(
    *   - partir composer une AUTRE affiche (une autre page) jette ce
    *     brouillon tout seul : il ne vit que dans cette page, rien n'est rangé
    *     dans le navigateur. Après « Ajouter au panier », la page part vers le
-   *     panier : jeté aussi. Revenir par le bouton « précédent » rouvre la
-   *     page à neuf (voir `pageshow`).
+   *     panier : jeté aussi. Revenir du panier par le bouton « précédent »
+   *     rouvre la page à neuf (voir `pageshow`).
+   *
+   * Recette du 17/11 : le bouton ou le geste « précédent » PENDANT la
+   * composition (tablette du stand, Android) quittait la fiche et jetait
+   * l'affiche. L'ouverture pose maintenant une entrée d'historique : le
+   * « précédent » ne fait que fermer la fenêtre, comme la croix, et l'affiche
+   * reste là. Même procédé que CommandeStand.tsx.
    */
   const [monte, setMonte] = createSignal(false);
   const [editItemId, setEditItemId] = createSignal<number | null>(null);
@@ -178,12 +184,42 @@ export default function ProductConfigurator(
   function lockScroll(lock: boolean) {
     document.body.style.overflow = lock ? "hidden" : "";
   }
+  /** Notre entrée d'historique : posée à l'ouverture, consommée à la fermeture. */
+  const entreeOuverte = () =>
+    typeof history !== "undefined" && Boolean((history.state as { mlPerso?: boolean } | null)?.mlPerso);
   function openModal() {
     setMonte(true);
     setOpen(true);
     lockScroll(true);
+    if (!entreeOuverte())
+      history.pushState({ ...((history.state as object | null) ?? {}), mlPerso: true }, "");
   }
+  /** Croix, « Retour », Échap : on repasse par l'historique, popstate ferme. */
   function closeModal() {
+    if (entreeOuverte()) {
+      history.back();
+      return;
+    }
+    fermer();
+  }
+  /** Le « précédent » du navigateur, ou la fin de closeModal. */
+  function surPopstate() {
+    if (entreeOuverte()) return; // « suivant » vers notre entrée : rien à rouvrir
+    setVideoOuverte(false);
+    if (open()) fermer();
+  }
+  /**
+   * Une entrée « fenêtre ouverte » retrouvée alors que la fenêtre est fermée
+   * (page rechargée, ou resservie par le cache) : on retire la marque, sinon
+   * la prochaine fermeture reculerait d'une page de trop.
+   */
+  function oublierEntreeOrpheline() {
+    if (entreeOuverte() && !open()) {
+      const { mlPerso: _retire, ...reste } = history.state as Record<string, unknown>;
+      history.replaceState(reste, "");
+    }
+  }
+  function fermer() {
     setOpen(false);
     lockScroll(false);
     // La couche vidéo est montée dans la modale : la laisser « ouverte » la
@@ -241,11 +277,14 @@ export default function ProductConfigurator(
     setMonte(false);
     setVideoOuverte(false);
     lockScroll(false);
+    oublierEntreeOrpheline();
   }
 
   onMount(async () => {
     window.addEventListener("keydown", onKey);
     window.addEventListener("pageshow", surRetour);
+    window.addEventListener("popstate", surPopstate);
+    oublierEntreeOrpheline();
     // La page au repos, le module arrive sans gêner rien d'autre ; sans
     // requestIdleCallback (Safari), deux secondes après le montage.
     const auRepos = window.requestIdleCallback ?? ((f: () => void) => window.setTimeout(f, 2000));
@@ -273,6 +312,7 @@ export default function ProductConfigurator(
   onCleanup(() => {
     window.removeEventListener("keydown", onKey);
     window.removeEventListener("pageshow", surRetour);
+    window.removeEventListener("popstate", surPopstate);
     lockScroll(false);
   });
 
