@@ -99,6 +99,21 @@ Ce fichier est écrit par le Claude du PC du bureau, qui s'est arrêté le 17/11
 
 ---
 
+## 1 bis. Fait le 17/11 au soir par le Claude de la maison (en ligne)
+
+- **2.1 Statut unique en étapes : FAIT** (`264efe2`).
+  - Fiche : une frise « Statut » en tête. L'étape en cours est en plein ; les autres sont des boutons, en avant comme en arrière, avec « Le client recevra : … » ou « Aucun courriel », et une confirmation quand un courriel part ou quand des expéditions s'annulent. Pour « Envoyée », il y a des champs transporteur et suivi.
+  - Un seul badge en en-tête, plus un badge « Remboursée » à côté s'il y a lieu. Le bloc Articles n'a plus de statut, ni de « Marquer comme remis », ni de « Traiter les articles ».
+  - Listes : une seule colonne « Statut », avec un bouton « → étape suivante » (✉ si un courriel part) et « Marquer payée » pour une vente du stand à encaisser.
+  - Onglets du site : À préparer, Envoyées ou prêtes, Impayées, Remboursées. Onglets du stand : À encaisser, À imprimer, Terminées.
+  - Action groupée : « Étape suivante ». L'API « fulfil »/« unfulfil » passe aussi par les étapes. Le mode « ancien » des courriels est retiré.
+  - Vérifié au navigateur en local : Envoyée avec courriel dans Mailpit, retour en arrière, Livrée, stand sans courriel.
+  - **Reste** : la fiche client (clients/[id].astro) montre encore Paiement et Traitement.
+- **2.2 Module « Ventes des stands en cours » : FAIT** (`8f337b8`), route `GET /admin/stands/en-cours`.
+- **2.4.2 Code à usage unique qui n'a rien remisé : FAIT** (`bc934bd`), avec `codeARemise` dans `@memoryline/types` et les tests `code-usage-unique.test.ts`.
+- **2.4.3 Finances : FAIT** (`bc934bd`). Le chiffre d'affaires par canal exclut les cartes vendues : `partDuChiffreDAffaires`, tests `finances-cartes-cadeaux.test.ts`.
+- **Restent : 2.3 et 2.5.**
+
 ## 2. À FAIRE, dans cet ordre
 
 ### 2.1 Le STATUT UNIQUE en étapes (le plus important, avant le marché de vendredi 20/11)
