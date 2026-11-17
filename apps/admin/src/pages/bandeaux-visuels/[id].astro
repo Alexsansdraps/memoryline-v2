@@ -274,7 +274,7 @@ const RETOURS: Record<string, string> = {
   cree: "Bandeau créé.",
   enregistre: "Bandeau enregistré.",
   duplique:
-    "Copie créée, éteinte pour l'instant : réglez-la, puis cochez « Afficher ce bandeau ».",
+    "Copie créée, désactivée pour l'instant : réglez-la, puis cochez « Afficher ce bandeau ».",
 };
 if (!flash && RETOURS[Astro.url.searchParams.get("ok") ?? ""]) {
   flash = RETOURS[Astro.url.searchParams.get("ok") ?? ""] ?? null;
@@ -839,8 +839,8 @@ const HAUTEURS: Record<HauteurBandeau, { libelle: string; aide: string }> = {
         </div>
         <p class="mt-2 text-xs text-bo-muted">
           À l'heure de Paris. Sans début, il s'affiche dès l'enregistrement ;
-          sans fin, jusqu'à ce que vous l'éteigniez. Le bandeau de Noël du
-          1er décembre au 26 décembre à 0 h s'allume et s'éteint tout seul.
+          sans fin, jusqu'à ce que vous le désactiviez. Le bandeau de Noël du
+          1er décembre au 26 décembre à 0 h s'active et se désactive tout seul.
         </p>
 
         <label class="mt-4 block border-t border-bo-border pt-4">

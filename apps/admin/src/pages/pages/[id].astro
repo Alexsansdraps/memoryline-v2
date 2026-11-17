@@ -153,25 +153,28 @@ function blocsDepuisCorps(corps: string): BlocPage[] {
  * nombre voulu. Le site savait déjà rendre cette grille (bloc « produits »,
  * cms.ts) ; l'éditeur d'un seul tenant ne savait plus la poser.
  */
-const AFFICHES_MAX = 48;
+/** Le nombre d'affiches d'une grille neuve. */
+const AFFICHES_PAR_DEFAUT = 48;
+/** Le plus qu'une grille puisse montrer (même borne que l'API, cms.ts). */
+const AFFICHES_MAX = 200;
 /** Au-delà, « + Ajouter une collection » disparaît (même borne que l'API, cms.ts). */
 const COLLECTIONS_MAX = 20;
 
 /** La grille d'affiches enregistrée sur la page : ses collections, dans l'ordre, et leur nombre. */
 function grilleDeLaPage(blocs: BlocPage[] | null | undefined): { collections: string[]; limite: number } {
   const b = (blocs ?? []).find((x) => x.type === "produits" && x.source === "collection");
-  if (!b) return { collections: [], limite: AFFICHES_MAX };
+  if (!b) return { collections: [], limite: AFFICHES_PAR_DEFAUT };
   const refs = Array.isArray(b.references) && b.references.length ? b.references : [b.reference];
   const collections = refs.map((r) => String(r ?? "").trim()).filter(Boolean);
   const n = Number(b.limite);
-  return { collections, limite: Number.isFinite(n) && n > 0 ? Math.min(n, AFFICHES_MAX) : AFFICHES_MAX };
+  return { collections, limite: Number.isFinite(n) && n > 0 ? Math.min(n, AFFICHES_MAX) : AFFICHES_PAR_DEFAUT };
 }
 
 /** Le bloc à enregistrer pour la grille, ou rien si aucune collection n'est choisie. */
 function blocDesAffiches(collections: string[], limite: number): BlocPage[] {
   const refs = [...new Set(collections.map((c) => c.trim()).filter(Boolean))];
   if (!refs.length) return [];
-  const n = Math.min(Math.max(Math.trunc(limite) || AFFICHES_MAX, 1), AFFICHES_MAX);
+  const n = Math.min(Math.max(Math.trunc(limite) || AFFICHES_PAR_DEFAUT, 1), AFFICHES_MAX);
   return [{ type: "produits", source: "collection", reference: refs[0], references: refs, limite: n } as BlocPage];
 }
 
@@ -403,7 +406,7 @@ if (Astro.request.method === "POST") {
     const corpsSaisi = String(f.get("corps") ?? "").trim();
     const affichesSaisies = {
       collections: f.getAll("affiches").map((v) => String(v)),
-      limite: Number(f.get("affichesLimite") ?? AFFICHES_MAX),
+      limite: Number(f.get("affichesLimite") ?? AFFICHES_PAR_DEFAUT),
     };
 
     try {

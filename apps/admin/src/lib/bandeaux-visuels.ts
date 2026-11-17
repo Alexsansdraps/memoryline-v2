@@ -222,7 +222,7 @@ export const PASTILLES: Record<EtatBandeau, { libelle: string; classe: string; a
     aide: "Sa date de fin est passée : il ne s'affiche plus. Changez les dates pour le remettre.",
   },
   eteint: {
-    libelle: "Éteint",
+    libelle: "Désactivé",
     classe: "bg-bo-bg text-bo-muted",
     aide: "La case « Afficher ce bandeau » est décochée.",
   },

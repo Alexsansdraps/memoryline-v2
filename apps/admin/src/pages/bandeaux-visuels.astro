@@ -41,8 +41,8 @@ const api = adminApi(Astro.request);
 /** Ce que dit l'écran au retour d'un geste (redirection ?ok=…). */
 const MESSAGES: Record<string, string> = {
   monte: "Ordre enregistré : sur une page qui en a plusieurs, les bandeaux s'affichent dans l'ordre de cette liste.",
-  allume: "Bandeau allumé. Il s'affiche sur ses pages, dans sa période.",
-  eteint: "Bandeau éteint : il a quitté le site. Ses réglages sont gardés.",
+  allume: "Bandeau activé. Il s'affiche sur ses pages, dans sa période.",
+  eteint: "Bandeau désactivé : il a quitté le site. Ses réglages sont gardés.",
   archive:
     "Bandeau archivé : il a quitté le site et la liste. « Restaurer », en bas de page, le remet tel quel.",
   restaure:
@@ -179,7 +179,7 @@ const pagesDe = (b: BandeauVisuel) =>
       Une grande image en haut d'une page, bord à bord sous le menu — comme la
       bannière de Noël de l'ancienne boutique. Vous choisissez l'image, un
       texte posé dessus, un bouton ou un lien, la hauteur, les pages où elle
-      s'affiche et, si vous voulez, ses dates : elle s'allume et s'éteint
+      s'affiche et, si vous voulez, ses dates : elle s'active et se désactive
       toute seule.
     </p>
     <p>
@@ -308,7 +308,7 @@ const pagesDe = (b: BandeauVisuel) =>
                     />
                     <input type="hidden" name="id" value={b.id} />
                     <button class="text-xs text-bo-muted hover:text-bo-accent hover:underline">
-                      {b.actif ? "Éteindre" : "Allumer"}
+                      {b.actif ? "Désactiver" : "Activer"}
                     </button>
                   </form>
                   <form method="POST" class="ml-3 inline">

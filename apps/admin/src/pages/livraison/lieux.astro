@@ -70,7 +70,7 @@ if (Astro.request.method === "POST") {
       ouvert = lieu.id;
       flash = id
         ? `Lieu « ${lieu.nom} » enregistré. Les commandes déjà passées gardent le texte qu'elles ont lu.`
-        : `Lieu « ${lieu.nom} » ajouté${lieu.active ? " : il est proposé à la caisse dès maintenant" : ", éteint : cochez « Proposé à la caisse » quand il ouvre"}.`;
+        : `Lieu « ${lieu.nom} » ajouté${lieu.active ? " : il est proposé à la caisse dès maintenant" : ", désactivé : cochez « Proposé à la caisse » quand il ouvre"}.`;
     } else if (action === "actif") {
       const id = Number(texte("id"));
       const lieu = await api.enregistrerLieuRetrait({
@@ -244,7 +244,7 @@ const champ = "mt-1 block w-full rounded border border-bo-border px-2 py-1";
                       l.active ? "bg-green-100 text-green-900" : "bg-bo-bg text-bo-muted"
                     }`}
                   >
-                    {l.active ? "Proposé à la caisse" : "Éteint"}
+                    {l.active ? "Proposé à la caisse" : "Désactivé"}
                   </span>
                 </p>
                 {l.adresse && <p class="whitespace-pre-line text-bo-muted">{l.adresse}</p>}

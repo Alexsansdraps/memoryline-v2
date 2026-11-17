@@ -88,7 +88,7 @@ if (Astro.request.method === "POST") {
         : "";
       flash = r.active
         ? `Réglages enregistrés. Les relances partent toutes seules : ${enumeration(quand)}${plage}.`
-        : "Réglages enregistrés. La relance automatique est éteinte : seul le bouton « Relancer » envoie un courrier.";
+        : "Réglages enregistrés. La relance automatique est désactivée : seul le bouton « Relancer » envoie un courrier.";
     } else if (action === "essai") {
       // Le courriel tel qu'il partira, envoyé à l'adresse du compte connecté
       // (dans la boîte d'essai sur le site de test) : on le lit comme une
@@ -296,7 +296,7 @@ function tonEtat(etat: PanierAbandonne["etat"]): string {
           reglagesEnregistres.active ? "bg-green-100 text-green-800" : "bg-bo-bg text-bo-muted"
         }`}
       >
-        {reglagesEnregistres.active ? "Relance automatique allumée" : "Relance automatique éteinte"}
+        {reglagesEnregistres.active ? "Relance automatique activée" : "Relance automatique désactivée"}
       </span>
     </div>
     <ul class="divide-y divide-bo-border">

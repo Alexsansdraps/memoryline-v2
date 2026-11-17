@@ -286,15 +286,15 @@ if (Astro.request.method === "POST") {
     } else if (action === "toggle") {
       const p = await api.basculerPromo(Number(form.get("id")));
       flash = p.active
-        ? `« ${p.name} » est allumée : le panier la déduit pendant ses dates.`
-        : `« ${p.name} » est éteinte : le panier ne la déduit plus.`;
+        ? `« ${p.name} » est activée : le panier la déduit pendant ses dates.`
+        : `« ${p.name} » est désactivée : le panier ne la déduit plus.`;
     } else if (action === "archiver" || action === "restaurer") {
       const nom = String(form.get("nom") ?? "");
       await api.archiverPromo(Number(form.get("id")), action === "archiver");
       flash =
         action === "archiver"
           ? `« ${nom} » est archivée : elle ne s'applique plus. Les commandes passées gardent leur remise.`
-          : `« ${nom} » est revenue, éteinte : rallumez-la quand elle doit reprendre.`;
+          : `« ${nom} » est revenue, désactivée : réactivez-la quand elle doit reprendre.`;
     } else if (action === "supprimer") {
       // Un refus de l'API passe par le `catch` plus bas : sa phrase s'affiche
       // telle quelle, et la promotion reste archivée.
@@ -748,7 +748,7 @@ const boutonLien = "text-bo-accent hover:underline";
       <p class="mb-3 max-w-3xl text-sm text-bo-muted">
         Elles ne s'appliquent plus nulle part. Les commandes passées gardent la
         remise qu'elles ont eue. « Restaurer » la ramène dans la liste,
-        éteinte. « Supprimer définitivement » l'efface pour de bon.
+        désactivée. « Supprimer définitivement » l'efface pour de bon.
       </p>
       <div class="overflow-x-auto rounded-lg border border-bo-border bg-bo-surface">
         <table class="w-full text-sm">

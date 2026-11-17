@@ -588,6 +588,33 @@ const libelleTri: Record<string, string> = {
                 </option>
               ))}
             </select>
+            {/* Le même choix, en tapant pour chercher (17/11 : « pouvoir taper
+                pour chercher dans la liste »). Caché tant que le script ne l'a
+                pas branché : sans JavaScript, le menu ci-dessus suffit. */}
+            <div
+              class="ml-lieux relative hidden"
+              data-aucun={tr("catalogue.aucun_lieu")}
+            >
+              <input
+                id="ville-recherche"
+                type="text"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded="false"
+                aria-controls="ville-liste"
+                autocomplete="off"
+                spellcheck="false"
+                value={villeDemandee ?? ""}
+                placeholder={tr("catalogue.chercher_lieu")}
+                class="w-[min(14rem,60vw)] border border-ink/20 bg-paper px-3 py-2 text-sm"
+              />
+              <ul
+                id="ville-liste"
+                role="listbox"
+                hidden
+                class="absolute left-0 z-30 mt-1 max-h-72 w-[min(16rem,80vw)] overflow-auto border border-ink/20 bg-paper py-1 text-sm shadow-lg"
+              ></ul>
+            </div>
           </div>
         )}
         <div class="ml-auto flex items-center gap-2">
@@ -710,6 +737,117 @@ const libelleTri: Record<string, string> = {
     }
   </section>
 
+  <script is:inline>
+    // La liste des lieux, en tapant pour chercher : on tape « col », il ne
+    // reste que Colmar. Accents et majuscules ne comptent pas. Le menu
+    // d'origine reste dans la page, caché, et porte toujours la valeur : le
+    // choix passe par lui, et le script plus bas envoie le formulaire.
+    (function () {
+      var boite = document.querySelector(".ml-lieux");
+      var menu = document.getElementById("ville");
+      if (!boite || !menu) return;
+      var champ = boite.querySelector("input");
+      var liste = boite.querySelector("ul");
+      var aucun = boite.getAttribute("data-aucun") || "";
+      var simple = function (s) {
+        return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+      };
+      var lieux = Array.prototype.map.call(menu.options, function (o) {
+        return { valeur: o.value, texte: o.textContent.trim(), cle: simple(o.textContent) };
+      });
+      var actuel = menu.value;
+      var visibles = [];
+      var actif = -1;
+
+      menu.hidden = true;
+      menu.tabIndex = -1;
+      boite.classList.remove("hidden");
+      var etiquette = document.querySelector('label[for="ville"]');
+      if (etiquette) etiquette.htmlFor = "ville-recherche";
+
+      function fermer() {
+        liste.hidden = true;
+        champ.setAttribute("aria-expanded", "false");
+        champ.removeAttribute("aria-activedescendant");
+        actif = -1;
+      }
+      function marquer(i) {
+        actif = i;
+        Array.prototype.forEach.call(liste.children, function (li, k) {
+          li.setAttribute("aria-selected", k === i ? "true" : "false");
+          li.classList.toggle("bg-ink/10", k === i);
+        });
+        var li = liste.children[i];
+        if (li && li.id) {
+          champ.setAttribute("aria-activedescendant", li.id);
+          li.scrollIntoView({ block: "nearest" });
+        }
+      }
+      function ouvrir(filtre) {
+        var f = simple(filtre);
+        visibles = lieux.filter(function (l) {
+          return !f || l.valeur === "" || l.cle.indexOf(f) !== -1;
+        });
+        liste.innerHTML = "";
+        visibles.forEach(function (l, i) {
+          var li = document.createElement("li");
+          li.id = "ville-option-" + i;
+          li.setAttribute("role", "option");
+          li.className = "cursor-pointer px-3 py-1.5 hover:bg-ink/10" + (l.valeur === actuel ? " font-semibold" : "");
+          li.textContent = l.texte;
+          li.addEventListener("mousedown", function (e) {
+            e.preventDefault();
+            choisir(l);
+          });
+          liste.appendChild(li);
+        });
+        if (visibles.length <= 1 && f) {
+          var vide = document.createElement("li");
+          vide.className = "px-3 py-1.5 text-ink-soft";
+          vide.textContent = aucun;
+          liste.appendChild(vide);
+        }
+        liste.hidden = false;
+        champ.setAttribute("aria-expanded", "true");
+        // Une seule ville trouvée (plus « Tous les lieux ») : déjà en surbrillance.
+        marquer(f && visibles.length === 2 ? 1 : -1);
+      }
+      function choisir(l) {
+        fermer();
+        champ.value = l.valeur;
+        if (l.valeur === actuel) return;
+        menu.value = l.valeur;
+        menu.dispatchEvent(new Event("change"));
+      }
+
+      champ.addEventListener("focus", function () {
+        champ.select();
+        ouvrir("");
+      });
+      champ.addEventListener("input", function () {
+        ouvrir(champ.value);
+      });
+      champ.addEventListener("keydown", function (e) {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          if (liste.hidden) ouvrir(champ.value);
+          var n = visibles.length;
+          if (!n) return;
+          marquer(e.key === "ArrowDown" ? (actif + 1) % n : (actif - 1 + n) % n);
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          if (actif >= 0 && visibles[actif]) choisir(visibles[actif]);
+        } else if (e.key === "Escape") {
+          champ.value = actuel;
+          fermer();
+        }
+      });
+      champ.addEventListener("blur", function () {
+        champ.value = actuel;
+        fermer();
+      });
+    })();
+  </script>
   <script is:inline>
     // Les menus de la barre envoient le formulaire dès qu'on choisit : un
     // bouton de plus à cliquer pour ranger une grille se paie en abandons.

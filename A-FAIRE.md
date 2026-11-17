@@ -14,6 +14,12 @@
 > - **Page /pages/mulhouse** : elle devient « Marché de Noël de Mulhouse », réservée à la tablette, et montre la collection `marche-de-noel-mulhouse-2026`. Une page « tablette du stand seulement » peut maintenant montrer une collection DÉSACTIVÉE (jamais archivée) : celle du marché reste invisible sur le site.
 > - **Bouton Tuto éteint** tant que la vidéo est celle de test (Big Buck Bunny).
 >
+> **Aussi le 17/11 (après-midi)** :
+> - le BO dit « Désactiver / Activer / désactivé » au lieu de « Éteindre / Allumer / éteint », partout ;
+> - le lien « Alexandra Porhansl » du pied de page s'ouvre dans un nouvel onglet ;
+> - une grille de page peut montrer jusqu'à 200 affiches (48 par défaut). La page du stand montre les 80 affiches de la collection du marché (0081), dans l'ordre de la collection : l'Alsace y est déjà (Mulhouse, Colmar, Kaysersberg, Riquewihr…) ; Margaux règle l'ordre dans Produits › Ordre d'affichage ;
+> - la page d'un rayon a une liste « Lieux » où l'on tape pour chercher (accents ignorés). Sans JavaScript, le menu d'origine reste.
+>
 > **Reste, dans l'ordre** :
 > 1. **Webhook Stripe live** : passer son URL à https://memoryline.fr/api/payments/stripe/webhook, puis BO › Paiements › « Vérifier ». PayPal n'a rien à faire : pas de webhook, capture par le serveur.
 > 2. **Le stand.** BO › Ventes stand › « Nouveau code » › « Ouvrir ». Ouvrir le nouveau lien sur la tablette.

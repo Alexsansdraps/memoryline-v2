@@ -1618,7 +1618,7 @@ export async function passageDeRelance(): Promise<BilanPassage> {
     const reglages = await lireReglages();
     if (!reglages.active) {
       bilan.motif =
-        "La relance automatique est éteinte : aucun courrier ne part tout seul. Le bouton « Relancer » d'une ligne, lui, fonctionne toujours.";
+        "La relance automatique est désactivée : aucun courrier ne part tout seul. Le bouton « Relancer » d'une ligne, lui, fonctionne toujours.";
       return bilan;
     }
     if (!courrierConfigure()) {

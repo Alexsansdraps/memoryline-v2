@@ -149,8 +149,14 @@ const ADRESSES_RESERVEES: string[] = [
   "sitemap",
 ];
 
-/** Au-delà, ce n'est plus une rangée de produits, c'est un catalogue. */
-const LIMITE_PRODUITS_MAX = 48;
+/**
+ * Au-delà, ce n'est plus une rangée de produits, c'est un catalogue.
+ *
+ * 200 et non plus 48 (17/11) : la page du stand de Mulhouse montre toute la
+ * collection du marché (80 affiches, l'Alsace en tête), et elle tronquait à
+ * 48. Une page en reçoit 48 par défaut (BO › Pages) ; davantage se demande.
+ */
+const LIMITE_PRODUITS_MAX = 200;
 
 /**
  * Le nombre de collections qu'une même rangée peut réunir.

@@ -126,16 +126,16 @@ if (Astro.request.method === "POST") {
       saisieRefusee = null;
       flash = m.active
         ? "Message enregistré. Il défile en haut du site pendant ses dates."
-        : "Message enregistré, éteint : il ne s'affiche pas tant qu'il n'est pas allumé.";
+        : "Message enregistré, désactivé : il ne s'affiche pas tant qu'il n'est pas activé.";
     } else if (action === "toggle") {
       const m = await api.basculerMessageBandeau(id);
-      flash = m.active ? "Message allumé." : "Message éteint : il ne s'affiche plus sur le site.";
+      flash = m.active ? "Message activé." : "Message désactivé : il ne s'affiche plus sur le site.";
     } else if (action === "archiver" || action === "restaurer") {
       await api.archiverMessageBandeau(id, action === "archiver");
       flash =
         action === "archiver"
           ? "Message archivé : il a quitté le site. Il se retrouve plus bas, dans « Messages archivés »."
-          : "Message restauré, éteint, en fin de défilement : rallumez-le quand il doit reparaître.";
+          : "Message restauré, désactivé, en fin de défilement : réactivez-le quand il doit reparaître.";
     } else if (action === "supprimer") {
       await api.supprimerMessageBandeau(id);
       flash = "Message supprimé définitivement.";
@@ -198,7 +198,7 @@ const saisie: SaisieMessage =
 /** Où en est un message, en un mot, et sa couleur. */
 function etat(m: Banner): { mot: string; ton: string } {
   const maintenant = Date.now();
-  if (!m.active) return { mot: "Éteint", ton: "bg-bo-bg text-bo-muted" };
+  if (!m.active) return { mot: "Désactivé", ton: "bg-bo-bg text-bo-muted" };
   if (m.endsAt && new Date(m.endsAt).getTime() < maintenant)
     return { mot: "Terminé", ton: "bg-amber-100 text-amber-900" };
   if (m.startsAt && new Date(m.startsAt).getTime() > maintenant)
@@ -253,7 +253,7 @@ const boutonSupprimer = "text-red-700 hover:underline";
     message, c'est un texte et, si vous le voulez, un bouton qui mène à une
     page. Le bandeau n'applique aucune remise : les offres se règlent dans
     <a href={url("/promotions")} class="underline">Promotions</a>. Quand une
-    offre change ou s'arrête, pensez à réécrire ou à éteindre le message qui
+    offre change ou s'arrête, pensez à réécrire ou à désactiver le message qui
     l'annonce.
   </p>
 
@@ -343,7 +343,7 @@ const boutonSupprimer = "text-red-700 hover:underline";
                     <form method="POST" class="inline">
                       <input type="hidden" name="_action" value="toggle" />
                       <input type="hidden" name="id" value={m.id} />
-                      <button class={boutonLien}>{m.active ? "Éteindre" : "Allumer"}</button>
+                      <button class={boutonLien}>{m.active ? "Désactiver" : "Activer"}</button>
                     </form>
                     <form method="POST" class="inline">
                       <input type="hidden" name="_action" value="archiver" />
@@ -489,7 +489,7 @@ const boutonSupprimer = "text-red-700 hover:underline";
       <h2 class="mb-1 font-semibold">Messages archivés</h2>
       <p class="mb-3 text-sm text-bo-muted">
         Ils ont quitté le site, sans rien perdre. « Restaurer » ramène un
-        message éteint, en fin de défilement ; « Supprimer définitivement »
+        message désactivé, en fin de défilement ; « Supprimer définitivement »
         l'efface pour de bon.
       </p>
       <div class="overflow-hidden rounded-lg border border-bo-border bg-bo-surface">

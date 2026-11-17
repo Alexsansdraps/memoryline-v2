@@ -80,6 +80,8 @@ export const ui = {
     /* Tri et pagination d'un rayon */
     "catalogue.ville": "Lieux",
     "catalogue.toutes_villes": "Tous les lieux",
+    "catalogue.chercher_lieu": "Rechercher un lieu…",
+    "catalogue.aucun_lieu": "Aucun lieu ne correspond.",
     "catalogue.tri": "Trier",
     "catalogue.tri.manuel": "Ordre de la boutique",
     "catalogue.tri.nouveautes": "Nouveautés",
@@ -813,6 +815,8 @@ export const ui = {
 
     "catalogue.ville": "Places",
     "catalogue.toutes_villes": "All places",
+    "catalogue.chercher_lieu": "Search for a place…",
+    "catalogue.aucun_lieu": "No matching place.",
     "catalogue.tri": "Sort",
     "catalogue.tri.manuel": "Shop order",
     "catalogue.tri.nouveautes": "New in",
@@ -1492,6 +1496,8 @@ export const ui = {
 
     "catalogue.ville": "Orte",
     "catalogue.toutes_villes": "Alle Orte",
+    "catalogue.chercher_lieu": "Ort suchen…",
+    "catalogue.aucun_lieu": "Kein passender Ort.",
     "catalogue.tri": "Sortieren",
     "catalogue.tri.manuel": "Reihenfolge des Shops",
     "catalogue.tri.nouveautes": "Neuheiten",
@@ -2180,6 +2186,8 @@ export const ui = {
 
     "catalogue.ville": "Luoghi",
     "catalogue.toutes_villes": "Tutti i luoghi",
+    "catalogue.chercher_lieu": "Cerca un luogo…",
+    "catalogue.aucun_lieu": "Nessun luogo corrispondente.",
     "catalogue.tri": "Ordina",
     "catalogue.tri.manuel": "Ordine del negozio",
     "catalogue.tri.nouveautes": "Novità",
@@ -2860,6 +2868,8 @@ export const ui = {
 
     "catalogue.ville": "Lugares",
     "catalogue.toutes_villes": "Todos los lugares",
+    "catalogue.chercher_lieu": "Buscar un lugar…",
+    "catalogue.aucun_lieu": "Ningún lugar coincide.",
     "catalogue.tri": "Ordenar",
     "catalogue.tri.manuel": "Orden de la tienda",
     "catalogue.tri.nouveautes": "Novedades",

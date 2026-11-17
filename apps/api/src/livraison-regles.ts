@@ -212,7 +212,7 @@ export function raisonsMasquage(
       );
     else if (!transporteurConfigure(m.carrier))
       raisons.push(
-        `Il manque le ${t.contrat} — à demander à ${t.aupres}. Sans lui, la carte des points relais reste éteinte.`,
+        `Il manque le ${t.contrat} — à demander à ${t.aupres}. Sans lui, la carte des points relais reste désactivée.`,
       );
   }
   // Un retrait suppose un endroit où retirer : un lieu ACTIF de BO ›
