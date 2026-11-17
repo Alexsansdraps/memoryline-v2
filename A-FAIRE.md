@@ -1,5 +1,7 @@
 # À faire — état au 17 novembre, fin de matinée (écrit pour une reprise dans un autre contexte)
 
+> **17/11, fin de soirée (PC de la maison) : tout `EN-COURS.md` § 2 est fait et en ligne** (`264efe2` → `8c6a9bf`). Statut unique en étapes (frise sur la fiche, une colonne « Statut » dans les listes et la fiche client, étape suivante d'un clic ou en groupe) ; module « Ventes des stands en cours » à l'accueil ; écran « Code promo / Carte cadeau » ; usage unique compté seulement s'il a remisé ; cartes cadeaux au chiffre d'affaires à l'utilisation ; petits restes des cartes. Reste : l'essai Stripe en mode test avec une carte de 10 €, et l'import Shopify (CSV d'Alexandra). Détail dans `EN-COURS.md` § 1 bis.
+>
 > **17/11 au soir : À REPRENDRE.**
 > - **Les travaux du 17/11 sont fusionnés dans `main` et en ligne** (codes promo et cartes cadeaux, 0 €, /commande sans panier). Le statut unique en étapes est interrompu : il est en sommeil côté API. **Ce qui reste à faire est dans `EN-COURS.md`.**
 > - **PageSpeed (17/11, 16:19, mobile)** : SEO 100, Accessibilité 100, Bonnes pratiques 100, Agents 3/3. Le 42 de 16:17 venait de la page de maintenance. **Performance 78** (4G lente simulée) : FCP 2,6 s, LCP 4,4 s, TBT 100 ms, CLS 0. À faire :
