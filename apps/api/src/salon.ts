@@ -31,7 +31,8 @@ import { HORS_VENTES } from "./statuts-vente.js";
 import { prochainNumeroDeCommande } from "./numeros-commande.js";
 import { estProprietaire, standsDuVendeur } from "./vendeurs.js";
 import { supprimerPourToujours } from "./suppression.js";
-import { synchroniserLieuDuStand } from "./lieux-retrait.js";
+import { appliquerCalendrier } from "./stands-calendrier.js";
+import { DUREE_MAX_JOURS, horairesLus, joursDuStand, jourValide } from "@memoryline/types";
 
 /**
  * Un code d'accès : six caractères, sans ceux qui se confondent.
@@ -450,6 +451,10 @@ export function mountSalonRoutes(app: Hono): void {
           code: proprietaire ? s.code : null,
           nom: s.nom,
           emplacement: s.emplacement ?? null,
+          dateDebut: s.dateDebut ?? null,
+          dateFin: s.dateFin ?? null,
+          horaires: s.horaires ?? null,
+          pilotage: s.pilotage,
           ouvert: s.ouvert,
           createdAt: s.createdAt,
           closedAt: s.closedAt,
@@ -483,7 +488,7 @@ export function mountSalonRoutes(app: Hono): void {
         .values({ code, nom, ouvert: b.ouvert === true })
         .returning();
       // Son lieu de retrait (« Retrait au stand », à la caisse du site).
-      if (stand) await synchroniserLieuDuStand(stand.id);
+      if (stand) await appliquerCalendrier(stand.id);
       return c.json({ ok: true, stand });
     }
     return c.json(
@@ -533,9 +538,49 @@ export function mountSalonRoutes(app: Hono): void {
           400,
         );
       champs.ouvert = b.ouvert;
+      // Le bouton prend la main sur le calendrier (17/11) : fermé à la main,
+      // le stand le reste tant qu'on ne l'a pas rouvert, quoi que disent les
+      // horaires. « Suivre le calendrier » la lui rend.
+      champs.pilotage = "manuel";
       // La date de fermeture ne se remet pas à zéro à la réouverture : on veut
       // savoir quand le stand a fermé la dernière fois.
       if (!b.ouvert) champs.closedAt = new Date();
+    }
+    // Le calendrier : dates, horaires, jours fermés (packages/types/src/stand-horaires.ts).
+    if ("dateDebut" in b || "dateFin" in b) {
+      const debut = String(b.dateDebut ?? "").trim() || null;
+      const fin = String(b.dateFin ?? "").trim() || null;
+      if ((debut && !jourValide(debut)) || (fin && !jourValide(fin)))
+        return c.json({ error: "Une des dates du stand n'est pas valide." }, 400);
+      if (!debut !== !fin)
+        return c.json({ error: "Donnez la date de début ET la date de fin du stand." }, 400);
+      if (debut && fin && debut > fin)
+        return c.json({ error: "La date de fin doit venir après la date de début." }, 400);
+      if (debut && fin && joursDuStand(debut, fin).length > DUREE_MAX_JOURS)
+        return c.json({ error: `Un stand dure au plus ${DUREE_MAX_JOURS} jours : vérifiez l'année des dates.` }, 400);
+      champs.dateDebut = debut;
+      champs.dateFin = fin;
+      // Les premières dates données : le calendrier prend la main, sauf si la
+      // même demande dit autre chose.
+      if (debut && !stand.dateDebut && !("ouvert" in b) && !("pilotage" in b))
+        champs.pilotage = "calendrier";
+      // Sans dates, plus de calendrier à suivre.
+      if (!debut) champs.pilotage = "manuel";
+    }
+    if ("horaires" in b) {
+      const debut = ("dateDebut" in champs ? champs.dateDebut : stand.dateDebut) as string | null;
+      const fin = ("dateFin" in champs ? champs.dateFin : stand.dateFin) as string | null;
+      const h = horairesLus(b.horaires, debut, fin);
+      if (typeof h === "string") return c.json({ error: h }, 400);
+      champs.horaires = h;
+    }
+    if (b.pilotage === "calendrier") {
+      const debut = "dateDebut" in champs ? champs.dateDebut : stand.dateDebut;
+      if (!debut)
+        return c.json({ error: "Donnez d'abord les dates du stand : sans elles, il n'y a pas de calendrier à suivre." }, 400);
+      if (stand.archivedAt)
+        return c.json({ error: "Ce stand est archivé : restaurez-le avant de le rouvrir." }, 400);
+      champs.pilotage = "calendrier";
     }
     if (b.nouveauCode === true) {
       // Changer le code coupe l'ancienne adresse : à faire APRÈS le stand, ou
@@ -556,9 +601,11 @@ export function mountSalonRoutes(app: Hono): void {
       .set(champs)
       .where(eq(schema.stands.id, id))
       .returning();
-    // Le lieu de retrait suit : nom, emplacement, ouvert ou fermé.
-    await synchroniserLieuDuStand(id);
-    return c.json({ ok: true, stand: suivant });
+    // L'ouverture suit le calendrier s'il pilote, et le lieu de retrait suit :
+    // nom, emplacement, horaires, proposé ou non.
+    await appliquerCalendrier(id);
+    const [relu] = await db.select().from(schema.stands).where(eq(schema.stands.id, id));
+    return c.json({ ok: true, stand: relu ?? suivant });
   });
 
   /**
@@ -608,7 +655,7 @@ export function mountSalonRoutes(app: Hono): void {
     if (!ligne)
       return c.json({ error: "Ce stand n'existe plus. Rechargez la page." }, 404);
     // Archivé, il quitte aussi la caisse du site (Retrait au stand).
-    await synchroniserLieuDuStand(id);
+    await appliquerCalendrier(id);
 
     return c.json({
       ok: true,

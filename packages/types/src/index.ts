@@ -7,6 +7,7 @@ export * from "./svg-normalisation.js";
 export * from "./empilement-personnage.js";
 export * from "./promo.js";
 export * from "./livraison.js";
+export * from "./stand-horaires.js";
 export * from "./poids.js";
 export * from "./fonts.js";
 export * from "./textes-affiche.js";

@@ -69,6 +69,7 @@ const ERREURS_PAR_CODE: Record<string, CleUi> = {
   panier_modifie: "commande.err.panier_modifie",
   lieu_retrait_requis: "commande.err.lieu_retrait_requis",
   telephone_invalide: "livraison.telephone_invalide",
+  retrait_stand_compris: "livraison.stand_compris_requis",
   // La boutique a basculé entre l'essai et le réel pendant la commande : la
   // caisse relit ses moyens de paiement, la cliente choisit de nouveau.
   paiement_reconfigure: "commande.err.paiement_reconfigure",
@@ -550,7 +551,22 @@ export default function CheckoutIsland(props: {
     adresse: string | null;
     description: string | null;
     standId?: number | null;
+    /** Retrait au stand : le dernier jour pour venir (« AAAA-MM-JJ »). */
+    retirerAvant?: string | null;
   };
+  /** Les stands ouverts, chacun proposé comme une option à part entière. */
+  const lieuxDesStands = (): LieuRetrait[] =>
+    (catalogue()?.lieuxRetrait ?? []).filter((l: LieuRetrait) => l.standId != null);
+  /** La case « je viendrai avant la fin du stand » (17/11). */
+  const [standCompris, setStandCompris] = createSignal(false);
+  /** « jeudi 24 décembre », dans la langue de la page. */
+  const jourLong = (jour: string) =>
+    new Intl.DateTimeFormat(locale, {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      timeZone: "UTC",
+    }).format(new Date(`${jour}T12:00:00Z`));
   /**
    * Les lieux du mode choisi : les stands ouverts sous « Retrait au stand »
    * (gratuit, avec leur emplacement), les lieux de BO › Livraison sous les
@@ -903,6 +919,12 @@ export default function CheckoutIsland(props: {
     }
     if (demandeUnPointRelais(o.mode.kind))
       return pointRelais().id.trim().length > 0;
+    // Retrait au stand : un stand choisi, et la case cochée s'il a une date de fin.
+    if (o.mode.slug === MODE_RETRAIT_STAND) {
+      const l = lieuRetenu();
+      if (!l) return false;
+      if (l.retirerAvant && !standCompris()) return false;
+    }
     return true;
   };
 
@@ -1213,6 +1235,7 @@ export default function CheckoutIsland(props: {
           relayPointId: relais.id.trim(),
           relayPointLabel: relais.label.trim(),
           ...(lieu ? { pickupPointId: lieu.id } : {}),
+          ...(lieu?.standId != null ? { retraitCompris: standCompris() } : {}),
         },
         langue,
       );
@@ -1491,15 +1514,9 @@ export default function CheckoutIsland(props: {
                 </select>
               </label>
 
-              {/* Le poids commande la tranche d'affranchissement : l'écrire
-                  ici est ce qui rend compréhensible un prix de port qui monte
-                  parce qu'on a ajouté un cadre. */}
-              <Show when={poidsColis() > 0}>
-                <p class="text-xs text-ink-soft">
-                  {tr("livraison.poids_colis")} {formaterPoids(poidsColis(), locale)}
-                </p>
-              </Show>
-
+              {/* Le poids du colis n'est plus affiché (17/11) : il ne dit rien
+                  à la cliente. Il sert toujours, en coulisse, à ne proposer
+                  que les modes qui savent le porter. */}
               <Show
                 when={optionsPort().length > 0}
                 fallback={
@@ -1525,7 +1542,105 @@ export default function CheckoutIsland(props: {
               >
                 <div class="space-y-2">
                   <For each={optionsPort()}>
-                    {(o) => (
+                    {(o) =>
+                      o.mode.slug === MODE_RETRAIT_STAND ? (
+                        /* Retrait au stand : UNE option, avec sa phrase, et
+                           dessous « Où nous trouver : » et les stands ouverts,
+                           visibles d'emblée avec leur emplacement, leurs dates
+                           et leurs horaires (17/11 : « on doit voir les stands
+                           direct »). Choisir un stand choisit le mode. */
+                        <div
+                          class={`border p-4 transition-colors ${
+                            modeChoisi() === o.mode.slug ? "border-ink" : "border-ink/20"
+                          }`}
+                        >
+                          <span class="flex items-baseline justify-between gap-3">
+                            <span class="font-medium">{o.mode.name}</span>
+                            <span>
+                              {o.offert
+                                ? tr("livraison.offerte")
+                                : formatPrice(o.fraisCents, locale)}
+                            </span>
+                          </span>
+                          <Show when={o.mode.description}>
+                            <span class="mt-0.5 block whitespace-pre-line text-sm text-ink-soft">
+                              {o.mode.description}
+                            </span>
+                          </Show>
+                          <p class="mt-3 text-sm font-medium">{tr("livraison.ou_nous_trouver")}</p>
+                          {/* Un bouton de couleur par ville / événement (17/11).
+                              Le choisir choisit le mode ; le choisi se remplit. */}
+                          <div class="mt-2 flex flex-wrap gap-2" role="group">
+                            <For each={lieuxDesStands()}>
+                              {(lieu) => {
+                                const choisi = () =>
+                                  modeChoisi() === o.mode.slug && lieuRetenu()?.id === lieu.id;
+                                return (
+                                  <button
+                                    type="button"
+                                    aria-pressed={choisi()}
+                                    onClick={() => {
+                                      // Un autre stand, une autre date : la case
+                                      // se recoche.
+                                      if (lieuChoisi() !== lieu.id) setStandCompris(false);
+                                      setModeChoisi(o.mode.slug);
+                                      setLieuChoisi(lieu.id);
+                                    }}
+                                    class={`rounded-full border-2 border-terracotta px-4 py-2 text-sm font-semibold transition-colors ${
+                                      choisi()
+                                        ? "bg-terracotta text-paper"
+                                        : "bg-paper text-terracotta hover:bg-terracotta/10"
+                                    }`}
+                                  >
+                                    {lieu.nom}
+                                  </button>
+                                );
+                              }}
+                            </For>
+                          </div>
+                          {/* Le stand choisi : son emplacement, ses dates et ses
+                              horaires, et la case à cocher (sans elle, pas de
+                              paiement). */}
+                          <Show
+                            when={
+                              modeChoisi() === o.mode.slug && lieuRetenu()?.standId != null
+                                ? lieuRetenu()
+                                : null
+                            }
+                          >
+                            {(lieu) => (
+                              <div class="mt-3 border border-ink/15 bg-paper-deep/40 p-3 text-sm">
+                                <Show when={lieu().adresse}>
+                                  <span class="block whitespace-pre-line font-medium">
+                                    {lieu().adresse}
+                                  </span>
+                                </Show>
+                                <Show when={lieu().description}>
+                                  <span class="mt-1 block whitespace-pre-line text-ink-soft">
+                                    {lieu().description}
+                                  </span>
+                                </Show>
+                                <Show when={lieu().retirerAvant}>
+                                  <label class="mt-3 flex cursor-pointer items-start gap-2 border-t border-ink/10 pt-3">
+                                    <input
+                                      type="checkbox"
+                                      class="mt-0.5"
+                                      checked={standCompris()}
+                                      onChange={(e) => setStandCompris(e.currentTarget.checked)}
+                                    />
+                                    <span>
+                                      {tr("livraison.stand_compris").replace(
+                                        "{date}",
+                                        jourLong(lieu().retirerAvant!),
+                                      )}
+                                    </span>
+                                  </label>
+                                </Show>
+                              </div>
+                            )}
+                          </Show>
+                        </div>
+                      ) : (
                       <label
                         class={`flex cursor-pointer items-start gap-3 border p-4 transition-colors ${
                           modeChoisi() === o.mode.slug
@@ -1559,7 +1674,8 @@ export default function CheckoutIsland(props: {
                           </Show>
                         </span>
                       </label>
-                    )}
+                      )
+                    }
                   </For>
                   {/* Retrait sur place : les lieux réglés au back-office,
                       HORS du libellé du mode — des boutons radio dans un
@@ -1569,6 +1685,7 @@ export default function CheckoutIsland(props: {
                   <Show
                     when={
                       optionChoisie()?.mode.kind === "pickup" &&
+                      optionChoisie()?.mode.slug !== MODE_RETRAIT_STAND &&
                       lieuxRetrait().length > 0
                     }
                   >

@@ -24,6 +24,12 @@ import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import type { InstantaneLieuRetrait } from "./db/schema.js";
 import { champTraduit } from "./traductions.js";
+import {
+  LANGUES_RESUME,
+  resumeHoraires,
+  retraitProposable,
+  type StandCalendrier,
+} from "@memoryline/types";
 import { supprimerPourToujours } from "./suppression.js";
 
 export const NOM_MAX = 120;
@@ -129,7 +135,12 @@ type Lecteur = Pick<typeof db, "select">;
 export async function lieuPourLaCommande(
   lecteur: Lecteur,
   id: number,
-): Promise<{ id: number; standId: number | null; instantane: InstantaneLieuRetrait } | null> {
+): Promise<{
+  id: number;
+  standId: number | null;
+  retirerAvant: string | null;
+  instantane: InstantaneLieuRetrait;
+} | null> {
   if (!Number.isInteger(id) || id <= 0) return null;
   const [lieu] = await lecteur
     .select()
@@ -142,10 +153,21 @@ export async function lieuPourLaCommande(
       ),
     );
   if (!lieu) return null;
+  // Le dernier jour du stand, pour un retrait au stand : la commande le
+  // garde, et la cliente doit avoir coché qu'elle viendra avant.
+  const [stand] = lieu.standId
+    ? await lecteur
+        .select({ dateFin: schema.stands.dateFin })
+        .from(schema.stands)
+        .where(eq(schema.stands.id, lieu.standId))
+    : [];
+  const retirerAvant = stand?.dateFin ?? null;
   return {
     id: lieu.id,
     standId: lieu.standId ?? null,
+    retirerAvant,
     instantane: {
+      ...(retirerAvant ? { retirerAvant } : {}),
       nom: lieu.nom,
       adresse: lieu.adresse?.trim() || null,
       description: lieu.description?.trim() || null,
@@ -163,14 +185,17 @@ export async function lieuxRetraitPublics(langue: string): Promise<
     description: string | null;
     /** Le stand dont c'est le lieu : il ne sort que sous « Retrait au stand ». */
     standId: number | null;
+    /** Le dernier jour du stand (« AAAA-MM-JJ ») : la cliente coche qu'elle viendra avant. */
+    retirerAvant: string | null;
   }[]
 > {
-  const lignes = await db
-    .select()
+  const rangs = await db
+    .select({ l: schema.pickupPoints, dateFin: schema.stands.dateFin })
     .from(schema.pickupPoints)
+    .leftJoin(schema.stands, eq(schema.stands.id, schema.pickupPoints.standId))
     .where(and(eq(schema.pickupPoints.active, true), isNull(schema.pickupPoints.archivedAt)))
     .orderBy(asc(schema.pickupPoints.position), asc(schema.pickupPoints.id));
-  return lignes.map((l) => ({
+  return rangs.map(({ l, dateFin }) => ({
     id: l.id,
     nom: champTraduit(l.translations, langue, "nom") ?? l.nom,
     adresse: l.adresse?.trim() || null,
@@ -178,6 +203,7 @@ export async function lieuxRetraitPublics(langue: string): Promise<
       ? (champTraduit(l.translations, langue, "description") ?? l.description)
       : null,
     standId: l.standId ?? null,
+    retirerAvant: l.standId != null ? (dateFin ?? null) : null,
   }));
 }
 
@@ -217,20 +243,63 @@ export async function nombreDeLieuxDesStands(): Promise<number> {
  * archivé avec lui. Créé la première fois. Rien à faire au BO : la cliente
  * voit « Retrait au stand » à la caisse dès qu'un stand ouvre (17/11).
  */
-export async function synchroniserLieuDuStand(standId: number): Promise<void> {
+/** Ce que le calendrier d'un stand lit de sa ligne en base. */
+export function calendrierDuStand(stand: typeof schema.stands.$inferSelect): StandCalendrier {
+  return {
+    ouvert: stand.ouvert,
+    pilotage: stand.pilotage,
+    dateDebut: stand.dateDebut ?? null,
+    dateFin: stand.dateFin ?? null,
+    horaires: stand.horaires ?? null,
+    archivedAt: stand.archivedAt,
+  };
+}
+
+export async function synchroniserLieuDuStand(standId: number, maintenant = new Date()): Promise<void> {
   const [stand] = await db.select().from(schema.stands).where(eq(schema.stands.id, standId));
   if (!stand) return;
-  const valeurs = {
+  const cal = calendrierDuStand(stand);
+  // Les dates et les horaires, dits en clair dans chaque langue : ils
+  // s'affichent sous le stand à la caisse, et la commande les garde.
+  const description = resumeHoraires(cal, "fr") || null;
+  const translations = description
+    ? Object.fromEntries(
+        LANGUES_RESUME.filter((l) => l !== "fr").map((l) => [l, { description: resumeHoraires(cal, l) }]),
+      )
+    : null;
+  const voulu = {
     nom: stand.nom,
     adresse: stand.emplacement?.trim() || null,
-    active: stand.ouvert && !stand.archivedAt,
-    archivedAt: stand.archivedAt ? new Date() : null,
-    updatedAt: new Date(),
+    description,
+    translations,
+    active: retraitProposable(cal, maintenant),
+    archived: !!stand.archivedAt,
   };
   const [lieu] = await db
-    .select({ id: schema.pickupPoints.id })
+    .select()
     .from(schema.pickupPoints)
     .where(eq(schema.pickupPoints.standId, standId));
+  // Rien n'a changé (le cas de presque tous les passages de la minute) :
+  // on n'écrit pas.
+  if (
+    lieu &&
+    lieu.nom === voulu.nom &&
+    (lieu.adresse ?? null) === voulu.adresse &&
+    (lieu.description ?? null) === voulu.description &&
+    JSON.stringify(lieu.translations ?? null) === JSON.stringify(voulu.translations) &&
+    lieu.active === voulu.active &&
+    !!lieu.archivedAt === voulu.archived
+  )
+    return;
+  const valeurs = {
+    nom: voulu.nom,
+    adresse: voulu.adresse,
+    description: voulu.description,
+    translations: voulu.translations,
+    active: voulu.active,
+    archivedAt: voulu.archived ? (lieu?.archivedAt ?? maintenant) : null,
+    updatedAt: maintenant,
+  };
   if (lieu) await db.update(schema.pickupPoints).set(valeurs).where(eq(schema.pickupPoints.id, lieu.id));
   else await db.insert(schema.pickupPoints).values({ ...valeurs, standId, position: 0 });
 }

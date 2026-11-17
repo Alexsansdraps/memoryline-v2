@@ -51,6 +51,7 @@ import {
   normaliserCode,
 } from "@memoryline/types";
 import { rechercherPointsRelais } from "./mondial-relay.js";
+import { demarrerCalendrierDesStands } from "./stands-calendrier.js";
 import { adresseDuLieu, suggererAdresses } from "./adresses.js";
 import {
   champTraduit,
@@ -3723,6 +3724,10 @@ serve({ fetch: app.fetch, port }, (info) => {
   // celles jamais mesurées, ou dont le dessin a changé, le sont en
   // arrière-plan — quelques secondes pour toute la bibliothèque.
   demarrerMesureDesPieces();
+  // Le calendrier des stands (apps/api/src/stands-calendrier.ts) : ouverture
+  // automatique les jours de marché, et « Retrait au stand » à la caisse tant
+  // qu'il est temps. Au démarrage, puis toutes les minutes.
+  demarrerCalendrierDesStands();
 });
 
 export type AppType = typeof app;

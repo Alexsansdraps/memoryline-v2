@@ -1,4 +1,4 @@
-import type { CouleursImage, GroupeCouleur } from "@memoryline/types";
+import type { CouleursImage, GroupeCouleur, HorairesStand } from "@memoryline/types";
 import {
   RECHERCHE_LIMITE_PANNEAU,
   type GroupeId,
@@ -449,6 +449,12 @@ export interface StandBo {
   nom: string;
   /** Où trouver le stand, en texte libre : montré à la caisse du site sous « Retrait au stand ». */
   emplacement?: string | null;
+  /** Le calendrier (17/11) : premier et dernier jour, horaires, jours fermés. */
+  dateDebut?: string | null;
+  dateFin?: string | null;
+  horaires?: HorairesStand | null;
+  /** « manuel » : le bouton décide ; « calendrier » : les jours de marché. */
+  pilotage?: string;
   ouvert: boolean;
   createdAt: string;
   closedAt: string | null;
@@ -2131,7 +2137,16 @@ export function adminApi(request?: Request) {
     /** Renomme, ouvre, ferme, ou donne un nouveau code d'accès. */
     majStand: (
       id: number,
-      corps: { nom?: string; emplacement?: string; ouvert?: boolean; nouveauCode?: boolean },
+      corps: {
+        nom?: string;
+        emplacement?: string;
+        ouvert?: boolean;
+        nouveauCode?: boolean;
+        dateDebut?: string;
+        dateFin?: string;
+        horaires?: unknown;
+        pilotage?: "calendrier";
+      },
     ) =>
       req<{ ok: true; stand: StandBo }>(
         "POST",

@@ -2730,6 +2730,16 @@ export function mountConfiguratorRoutes(app: Hono) {
           statut: 400 as const,
           code: "lieu_retrait_requis",
         };
+      // Retrait au stand : la cliente coche qu'elle viendra avant le dernier
+      // jour du stand (17/11). Le serveur le vérifie aussi : la case ne vit
+      // pas que dans la page.
+      const retraitCompris = liv.retraitCompris === true;
+      if (lieu?.standId != null && lieu.retirerAvant && !retraitCompris)
+        return {
+          erreur: "Cochez que vous viendrez chercher votre commande au stand avant sa fermeture.",
+          statut: 400 as const,
+          code: "retrait_stand_compris",
+        };
 
       const total = articles + port.cents;
       // Garde le numéro s'il en a déjà un (retry) — relu sous le verrou : un
@@ -2800,7 +2810,12 @@ export function mountConfiguratorRoutes(app: Hono) {
           relayPointId: lieu ? null : String(liv.relayPointId ?? "").trim() || null,
           relayPointLabel: lieu ? null : String(liv.relayPointLabel ?? "").trim() || null,
           pickupPointId: lieu?.id ?? null,
-          pickupPoint: lieu?.instantane ?? null,
+          pickupPoint: lieu
+            ? {
+                ...lieu.instantane,
+                ...(lieu.standId != null && lieu.retirerAvant ? { retraitCompris } : {}),
+              }
+            : null,
           // Le passage au tunnel est LA dernière activité du panier : c'est à
           // partir d'ici que se compte l'inactivité qui en fera un abandon.
           lastActivityAt: maintenant,

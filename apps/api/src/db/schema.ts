@@ -19,6 +19,7 @@ import type {
   CouleursImage,
   CouleursProposees,
   GroupeCouleur,
+  HorairesStand,
   RegleParier,
   RemiseAppliquee,
 } from "@memoryline/types";
@@ -1078,6 +1079,9 @@ export type InstantaneLieuRetrait = {
   nom: string;
   adresse: string | null;
   description: string | null;
+  /** Retrait au stand : le dernier jour pour venir, et la case cochée par la cliente. */
+  retirerAvant?: string;
+  retraitCompris?: boolean;
   translations?: Partial<Record<string, { nom?: string; description?: string }>>;
 };
 
@@ -1251,6 +1255,21 @@ export const stands = pgTable(
      * stand », pour que la cliente sache où venir chercher son affiche.
      */
     emplacement: text("emplacement"),
+    /**
+     * Le calendrier du stand (17/11) : premier et dernier jour (« AAAA-MM-JJ »,
+     * à Paris), l'horaire de base et les jours qui s'en écartent ou sont
+     * fermés (packages/types/src/stand-horaires.ts).
+     */
+    dateDebut: text("date_debut"),
+    dateFin: text("date_fin"),
+    horaires: jsonb("horaires").$type<HorairesStand>(),
+    /**
+     * Qui décide de l'ouverture : « manuel » (le bouton, et lui seul — fermé à
+     * la main, le stand le reste quoi que disent les horaires) ou
+     * « calendrier » (`ouvert` suit les jours de marché, tenu à jour chaque
+     * minute par stands-calendrier.ts).
+     */
+    pilotage: text("pilotage").notNull().default("manuel"),
     /**
      * Ouvert veut dire « la tablette accepte des commandes ». Fermer ne
      * supprime rien : les ventes restent, et le stand peut rouvrir l'an
