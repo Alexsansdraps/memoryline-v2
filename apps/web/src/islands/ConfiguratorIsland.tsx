@@ -11,6 +11,7 @@ import type {
 import {
   PUBLIC_API_URL,
   avecStand,
+  versLePanier,
   browserApi,
   getCartId,
   type OrderItem,
@@ -174,11 +175,13 @@ export default function ConfiguratorIsland(
       // Le serveur a écrit la ligne sans son cadre (page ouverte avant que la
       // boutique ne les retire du site) : le panier le dit à la cliente.
       // Le panier dans la langue de la fiche, pas celui du français.
-      const panier = lien(langue, "/panier");
+      // Sur le site, le panier est la page de commande (17/11) ; au stand,
+      // la page /panier de la tablette.
+      const panier = versLePanier(lien(langue, "/commande"), lien(langue, "/panier"));
       // replace : l'entrée « fenêtre ouverte » de la fiche (ProductConfigurator)
       // ne reste pas dans l'historique, « précédent » depuis le panier
       // revient en un appui sur la fiche.
-      window.location.replace(avecStand(ligne.cadreRetire ? `${panier}?cadres=retires` : panier));
+      window.location.replace(ligne.cadreRetire ? `${panier}${panier.includes("?") ? "&" : "?"}cadres=retires` : panier);
     } catch (e) {
       // Une phrase dans la langue de la fiche : l'erreur brute (« Error: API
       // POST /cart/… -> 400 … ») s'affichait telle quelle, en jargon et en
@@ -192,7 +195,7 @@ export default function ConfiguratorIsland(
     // Étape 1 « Retour » : en édition on revient au panier ; en ajout on
     // ferme simplement la modale (reste sur la fiche produit).
     if (mode === "edit") {
-      window.location.replace(avecStand(lien(langue, "/panier")));
+      window.location.replace(versLePanier(lien(langue, "/commande"), lien(langue, "/panier")));
     } else if (props.onCancel) {
       props.onCancel();
     } else {

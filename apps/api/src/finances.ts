@@ -266,7 +266,19 @@ const LIBELLE_MOYEN: Record<string, string> = {
   paypal: "PayPal",
   stand: "Réglé sur place",
   manuel: "À la main (virement, espèces)",
+  // Depuis le 17/11 : la part payée par une carte cadeau a sa propre ligne au
+  // grand livre, et une commande à 0 € la sienne, de zéro.
+  carte_cadeau: "Carte cadeau",
+  gratuit: "Commande gratuite (rien à encaisser)",
 };
+
+/**
+ * Les écritures qui ne disent pas QUI a encaissé le reste d'une commande : la
+ * part d'une carte cadeau (déjà comptée à part, voir parMoyen) et l'écriture
+ * de zéro d'une commande gratuite. Le « moyen qui domine » d'une commande se
+ * cherche sans elles.
+ */
+const ECRITURES_SANS_PRESTATAIRE = new Set(["carte_cadeau", "gratuit"]);
 
 const MOYEN_INCONNU = "Moyen non renseigné";
 
@@ -526,8 +538,12 @@ async function rapprocher(periode: Periode): Promise<Finances> {
       journalVenteCents += t.cents;
       journalMouvements += t.nombre;
       // Quand une commande porte plusieurs encaissements, c'est le plus gros
-      // qui la caractérise : c'est celui-là qu'on cherchera à retrouver.
-      if (t.cents > (plusGrosseVenteDe.get(t.orderId) ?? -1)) {
+      // qui la caractérise : c'est celui-là qu'on cherchera à retrouver. La
+      // part d'une carte cadeau n'en est pas un : elle se compte à part.
+      if (
+        !ECRITURES_SANS_PRESTATAIRE.has(t.passerelle ?? "") &&
+        t.cents > (plusGrosseVenteDe.get(t.orderId) ?? -1)
+      ) {
         plusGrosseVenteDe.set(t.orderId, t.cents);
         moyenDe.set(t.orderId, t.passerelle);
       }

@@ -397,12 +397,38 @@ const classeBouton =
                     )}
                   </td>
                   <td class="px-4 py-3">
-                    {carte.clientNom || carte.clientEmail || (
-                      <span class="text-bo-muted">Sans destinataire</span>
+                    {carte.numeroCommande ? (
+                      <>
+                        {/* Vendue en ligne : l'acheteuse est la cliente de la
+                            commande, la carte est partie chez le destinataire. */}
+                        <span class="block">
+                          {carte.clientNom || carte.clientEmail || "Acheteuse inconnue"}
+                        </span>
+                        {carte.recipientEmail && (
+                          <span class="mt-1 block text-xs text-bo-muted">
+                            Pour {carte.recipientName ? `${carte.recipientName}, ` : ""}
+                            {carte.recipientEmail}
+                            {carte.sentAt ? "" : " (courriel non parti)"}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      carte.clientNom || carte.clientEmail || (
+                        <span class="text-bo-muted">Sans destinataire</span>
+                      )
                     )}
                   </td>
                   <td class="px-4 py-3 whitespace-nowrap">
                     {jour(carte.createdAt)}
+                    <span class="mt-1 block text-xs text-bo-muted">
+                      {carte.numeroCommande && carte.orderId ? (
+                        <a href={url(`/commandes/${carte.orderId}`)} class="hover:underline">
+                          vendue en ligne, commande {carte.numeroCommande}
+                        </a>
+                      ) : (
+                        "vendue au BO"
+                      )}
+                    </span>
                   </td>
                   <td class="px-4 py-3 text-right whitespace-nowrap">
                     <a

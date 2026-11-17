@@ -60,6 +60,7 @@ export {
   getCartId,
   nouveauCartId,
   reprendreCartId,
+  versLePanier,
 } from "./api-navigateur.ts";
 
 /** Transforme un chemin /assets/... en URL absolue chargeable par le navigateur. */
@@ -837,7 +838,19 @@ export interface OrderItem {
   orderId: number;
   productId: number | null;
   variantId: number | null;
-  config: PosterConfig;
+  /** La composition de l'affiche ; NULL pour une carte cadeau (`giftCard`). */
+  config: PosterConfig | null;
+  /**
+   * Non nul : la ligne est une CARTE CADEAU, pas une affiche (17/11). Son
+   * montant est son prix, vérifié par le serveur ; ni format, ni cadre, ni
+   * port, ni promotion. Le destinataire se remplit à la caisse.
+   */
+  giftCard?: {
+    montantCents: number;
+    destinataireEmail?: string | null;
+    destinatairePrenom?: string | null;
+    message?: string | null;
+  } | null;
   title: string | null;
   unitPriceCents: number;
   quantity: number;
@@ -972,36 +985,50 @@ export const browserApi = {
       `/shipping/adresses/position?lat=${latitude}&lng=${longitude}`,
     ),
   /**
-   * Vérifie un code promo ; rejette si le code est inconnu ou expiré.
-   *
-   * Le nom de la règle revient dans la langue de la page (repli français) :
-   * c'est lui qui s'écrit sur la ligne de remise. La langue passe dans
-   * l'adresse, comme pour les lectures ; le code, lui, ne se traduit jamais.
-   */
-  verifierCode: (code: string, langue?: string) =>
-    browserSend<{
-      /**
-       * Départage deux règles de même priorité, comme le fait le serveur.
-       * Facultatif : une API d'avant ce champ ne le rend pas (repli à 0).
-       */
-      id?: number;
-      code: string;
-      name: string;
-      type: string;
-      config: unknown;
-      priority: number;
-    }>(
-      "POST",
-      `/promos/verifier${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,
-      { code },
-    ),
-  /**
    * Les promotions automatiques en cours, leur nom dans la langue de la page
    * (repli français). Typées par l'appelant : le panier et la caisse ne lisent
    * pas les mêmes champs de la règle, et chacun a déjà son type.
    */
   promos: <T>(langue?: string) =>
     browserGet<T[]>(`/promos${langue && langue !== "fr" ? `?lang=${langue}` : ""}`),
+  /**
+   * Le champ « Code promo ou carte cadeau » de la caisse (17/11). Rend la
+   * promotion du code, ou la carte (code masqué et solde). Rejette d'une
+   * seule phrase tout code refusé (404 « code_invalide »), un code à usage
+   * unique déjà servi (409), et trop d'essais (429).
+   */
+  codeCaisse: (code: string, langue?: string) =>
+    browserSend<
+      | {
+          type: "promo";
+          regle: {
+            id?: number;
+            code: string;
+            name: string;
+            type: string;
+            config: unknown;
+            priority: number;
+          };
+        }
+      | { type: "carte"; carte: { code: string; masque: string; soldeCents: number } }
+    >("POST", `/caisse/code${langue && langue !== "fr" ? `?lang=${langue}` : ""}`, { code }),
+  /**
+   * Ajoute une carte cadeau au panier : un montant de 10 à 300 €, en euros
+   * ronds, que le serveur revérifie. Un panier déjà payé est remplacé par un
+   * neuf, comme pour une affiche.
+   */
+  ajouterCarteCadeau: (cartId: string, montantCents: number, langue?: string) =>
+    ajouterAuPanier<OrderItem>(cartId, {
+      carteCadeau: { montantCents },
+      ...(langue ? { langue } : {}),
+    }),
+  /**
+   * Valide sans paiement une commande à 0 € (remise à 100 % et livraison
+   * offerte, ou carte cadeau qui couvre tout). Le serveur recalcule tout et
+   * refuse le moindre centime à payer.
+   */
+  validerGratuite: (orderId: number) =>
+    browserSend<{ status: string; number: string }>("POST", "/payments/gratuit", { orderId }),
   backgrounds: (productId: number | string) =>
     browserGet<BackgroundDTO[]>(`/backgrounds?productId=${productId}`),
 
@@ -1085,6 +1112,14 @@ export const browserApi = {
      * PAS celle du compte, qui reste le premier choix pour les e-mails.
      */
     langue?: string,
+    /**
+     * La carte cadeau saisie à la caisse (son code), et le destinataire de
+     * chaque carte cadeau achetée (17/11).
+     */
+    cartes?: {
+      carteCadeau?: string;
+      cartesCadeaux?: { itemId: number; email: string; prenom: string; message: string }[];
+    },
   ) =>
     browserSend<{
       orderId: number;
@@ -1092,12 +1127,17 @@ export const browserApi = {
       status: string;
       totalCents: number;
       shippingCents: number;
+      /** La part de la carte cadeau, et ce qui reste à payer, calculés par le serveur. */
+      giftCardCents?: number;
+      aPayerCents?: number;
     }>("POST", "/orders", {
       cartId,
       customer,
       promoCode,
       shipping,
       ...(langue ? { langue } : {}),
+      ...(cartes?.carteCadeau ? { carteCadeau: cartes.carteCadeau } : {}),
+      ...(cartes?.cartesCadeaux?.length ? { cartesCadeaux: cartes.cartesCadeaux } : {}),
     }),
 
   /* --- Paiement (Stripe & PayPal) --------------------------------------- */

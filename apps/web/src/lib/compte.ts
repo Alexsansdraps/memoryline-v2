@@ -100,6 +100,8 @@ export interface LigneCommande {
   quantity: number;
   unitPriceCents: number;
   config?: PosterConfig | null;
+  /** Une carte cadeau achetée (17/11) : son montant et son destinataire. */
+  giftCard?: { montantCents: number; destinataireEmail?: string | null } | null;
   /**
    * L'adresse de la vignette, servie par l'API et rendue côté serveur.
    *
@@ -414,6 +416,29 @@ export const commande = (astro: ContexteAstro, id: string, langue?: Langue) =>
 
 export const adresses = (astro: ContexteAstro) =>
   appel<Adresse[]>(astro, "/compte/adresses");
+
+/**
+ * Une carte cadeau achetée sur le site, telle que « Mes cartes cadeaux » la
+ * montre (17/11) : jamais le code complet — la carte est au porteur, et son
+ * destinataire est souvent quelqu'un d'autre —, le solde relu au journal.
+ */
+export interface CarteCadeauDuCompte {
+  id: number;
+  /** « ••••-••••-••••-K7R2 ». */
+  masque: string;
+  initialCents: number;
+  soldeCents: number;
+  etat: "active" | "epuisee" | "desactivee" | "echue";
+  destinataireEmail: string | null;
+  destinatairePrenom: string | null;
+  acheteeLe: string;
+  commande: string;
+  /** Les dernières dépenses : quand, combien — jamais qui. */
+  utilisations: { le: string; montantCents: number }[];
+}
+
+export const cartesCadeaux = (astro: ContexteAstro) =>
+  appel<{ cartes: CarteCadeauDuCompte[] }>(astro, "/compte/cartes-cadeaux");
 
 export const enregistrerAdresse = (
   astro: ContexteAstro,

@@ -105,7 +105,7 @@ const envois = new Map<string, { compte: number; finFenetre: number }>();
  *
  * Si la lecture change là-bas, celle-ci doit suivre.
  */
-function adresseAppelante(c: {
+export function adresseAppelante(c: {
   req: { header: (k: string) => string | undefined };
 }): string {
   const chaine = c.req.header("x-forwarded-for");

@@ -1282,6 +1282,8 @@ export interface OrderDetail {
     createdAt?: string;
     legacyName?: string | null;
     promoCode?: string | null;
+    /** La part du total payée par une carte cadeau (17/11). */
+    giftCardCents?: number;
     shippingCents?: number;
     shippingName?: string | null;
     shippingLine1?: string | null;
@@ -1342,7 +1344,20 @@ export interface OrderDetail {
     rembourse?: number;
     aExpedier?: number;
     aRembourser?: number;
+    /**
+     * Une carte cadeau achetée (17/11) : son montant, son destinataire, et la
+     * carte née au paiement (code masqué). Null pour une affiche.
+     */
+    carteCadeau?: {
+      montantCents: number;
+      destinataireEmail?: string | null;
+      destinatairePrenom?: string | null;
+      message?: string | null;
+      carte: { id: number; masque: string; envoyeeLe: string | null } | null;
+    } | null;
   })[];
+  /** La carte cadeau qui paie une part de la commande (giftCardCents). */
+  carteCadeauPayante?: { id: number; masque: string } | null;
   expeditions?: Expedition[];
   remboursements?: Remboursement[];
   mouvements?: Mouvement[];

@@ -297,7 +297,8 @@ export default function ProductConfigurator(
     try {
       const cart = await lirePanier<Cart>(getCartId());
       const item = cart?.items.find((i) => String(i.id) === editId);
-      if (item) {
+      // Une carte cadeau n'a pas de composition à rouvrir.
+      if (item?.config) {
         setInitialConfig(item.config);
         setEditItemId(item.id);
         openModal();

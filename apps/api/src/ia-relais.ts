@@ -99,7 +99,7 @@ const ORIGINE =
  * téléphones peuvent partager la même adresse IP chez leur opérateur : c'est
  * pour eux que les seuils ne descendent pas plus bas.
  */
-function frein(max: number, fenetreMs: number) {
+export function frein(max: number, fenetreMs: number) {
   const passages = new Map<string, number[]>();
   return (cle: string): boolean => {
     const maintenant = Date.now();

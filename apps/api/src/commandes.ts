@@ -28,6 +28,11 @@ import {
 import { db, schema } from "./db/client.js";
 import { annulerBordereau } from "./sendcloud-colis.js";
 import {
+  desactiverCartesVendues,
+  recrediterCarte,
+  resteARendreALaCarte,
+} from "./cartes-cadeaux.js";
+import {
   capturePaypalDeLaCommande,
   RefusPaypal,
   refundPaypal,
@@ -45,6 +50,15 @@ import {
   type TextesAffiche,
 } from "@memoryline/types";
 import {
+  datesApresPassage,
+  etapeDe,
+  libelleEtape,
+  parcoursDe,
+  passageEtape,
+  type EtapeTraitement,
+  type ParcoursTraitement,
+} from "@memoryline/types";
+import {
   courrierAnnulee,
   courrierExpediee,
   courrierFacture,
@@ -60,7 +74,7 @@ import {
 // `resumeCommandes` ici — mais chacun ne s'en sert qu'à l'intérieur d'une
 // fonction, jamais au chargement du module : le cycle ne se referme donc
 // jamais pendant l'évaluation, et Node le résout sans broncher.
-import { markOrderPaid } from "./configurator-routes.js";
+import { markOrderPaid, ValidationRefusee } from "./configurator-routes.js";
 import { renderInvoicePdf, type LigneFacture } from "./pdf.js";
 import { cheminApercu } from "./apercus.js";
 import { bornesDuVendeur } from "./vendeurs.js";
@@ -181,11 +195,18 @@ export type StatutExpedition =
   | "partially_fulfilled"
   | "fulfilled";
 
-/** Où en est la préparation : rien parti, une partie, ou tout. */
+/**
+ * Où en est la préparation : rien parti, une partie, ou tout.
+ *
+ * Rien à expédier du tout — des cartes cadeaux seules, parties par e-mail au
+ * paiement — compte pour « tout est parti » : la commande ne doit pas
+ * attendre sous « À expédier » un colis qui n'existera jamais.
+ */
 export function statutExpedition(
   commandes: number,
   expedies: number,
 ): StatutExpedition {
+  if (commandes <= 0) return "fulfilled";
   if (expedies <= 0) return "unfulfilled";
   if (expedies < commandes) return "partially_fulfilled";
   return "fulfilled";
@@ -341,6 +362,9 @@ export async function resumeCommandes(
    * liste des commandes.
    */
   const [lignes, partis, rembourses] = await Promise.all([
+    // Les cartes cadeaux ne comptent pas parmi les articles à expédier : elles
+    // partent par e-mail au paiement. Une commande qui n'en a pas d'autres n'a
+    // rien à expédier (statutExpedition).
     db
       .select({
         orderId: schema.orderItems.orderId,
@@ -348,7 +372,12 @@ export async function resumeCommandes(
         quantity: schema.orderItems.quantity,
       })
       .from(schema.orderItems)
-      .where(inArray(schema.orderItems.orderId, ids)),
+      .where(
+        and(
+          inArray(schema.orderItems.orderId, ids),
+          isNull(schema.orderItems.giftCard),
+        ),
+      ),
     // Seules les expéditions non annulées comptent comme parties.
     db
       .select({
@@ -388,6 +417,89 @@ export async function resumeCommandes(
 
   return out;
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Étapes de traitement (17/11)                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Les commandes de ce lot qui ont un VRAI bordereau SendCloud : acheté, ou
+ * dont l'achat est en cours. Une lettre d'essai ne compte pas : elle ne
+ * voyage pas. Un tel colis a son étiquette : on ne revient plus avant
+ * « Envoyée », et un retrait qui en a un voyage comme une livraison.
+ */
+async function avecBordereauReel(ids: number[]): Promise<Set<number>> {
+  if (!ids.length) return new Set();
+  const rows = await db
+    .select({ orderId: schema.bordereaux.orderId })
+    .from(schema.bordereaux)
+    .where(
+      and(
+        inArray(schema.bordereaux.orderId, ids),
+        inArray(schema.bordereaux.statut, ["achete", "en_cours"]),
+        eq(schema.bordereaux.essai, false),
+      ),
+    );
+  return new Set(rows.map((r) => r.orderId));
+}
+
+/**
+ * Le parcours et l'étape d'une commande (packages/types/src/traitement.ts) :
+ * la liste, l'export et la frise de la fiche les lisent tous ici.
+ */
+function etapeDeLaCommande(
+  o: Parameters<typeof lieuDeRetrait>[0] & {
+    channel: string;
+    status: string;
+    readyAt: Date | null;
+    deliveredAt: Date | null;
+  },
+  s: ResumeCommande,
+  bordereauReel: boolean,
+): { parcours: ParcoursTraitement; etape: EtapeTraitement } {
+  const parcours = parcoursDe({
+    channel: o.channel,
+    retrait: lieuDeRetrait(o) !== null,
+    bordereauReel,
+  });
+  return {
+    parcours,
+    etape: etapeDe(parcours, {
+      status: o.status,
+      articles: s.articles,
+      expedies: s.expedies,
+      readyAt: o.readyAt,
+      deliveredAt: o.deliveredAt,
+    }),
+  };
+}
+
+/**
+ * Un passage d'étape à la fois par commande.
+ *
+ * Deux clics rapprochés sur « Envoyée » expédiaient deux fois et
+ * prévenaient deux fois la cliente. Le second attend ici la fin du premier,
+ * relit la commande, et la trouve déjà envoyée. L'API tourne dans un seul
+ * processus : un verrou en mémoire suffit, sans tenir de connexion ouverte.
+ */
+const passagesEnCours = new Map<number, Promise<unknown>>();
+async function unPassageALaFois<T>(orderId: number, faire: () => Promise<T>): Promise<T> {
+  const avant = passagesEnCours.get(orderId) ?? Promise.resolve();
+  const celuiCi = avant.catch(() => undefined).then(faire);
+  passagesEnCours.set(orderId, celuiCi);
+  try {
+    return await celuiCi;
+  } finally {
+    if (passagesEnCours.get(orderId) === celuiCi) passagesEnCours.delete(orderId);
+  }
+}
+
+/** Le nom des transporteurs de SendCloud, comme le formulaire « Expédier » de la fiche. */
+const NOM_TRANSPORTEUR_SENDCLOUD: Record<string, string> = {
+  mondial_relay: "Mondial Relay",
+  colissimo: "Colissimo",
+  chronopost: "Chronopost",
+};
 
 /* -------------------------------------------------------------------------- */
 /*  Petits outils                                                             */
@@ -541,9 +653,17 @@ async function commandesAnnulees(ids: number[]): Promise<Set<number>> {
  * choses : ne prévenir que les clientes dont le colis part vraiment, et dire à
  * l'écran combien de commandes ont été écartées, plutôt que d'annoncer
  * « 30 commandes traitées » quand deux d'entre elles étaient annulées.
+ *
+ * `envoi` : le transporteur et le suivi du colis, quand on les connaît
+ * (l'étape « Envoyée » de la fiche, ou le vrai bordereau de la commande).
  */
 async function expedierTout(
   ids: number[],
+  envoi: {
+    carrier?: string | null;
+    trackingNumber?: string | null;
+    trackingUrl?: string | null;
+  } = {},
 ): Promise<{ expediees: number[]; annulees: number[] }> {
   const annulees = await commandesAnnulees(ids);
   const expediees: number[] = [];
@@ -552,10 +672,13 @@ async function expedierTout(
     // dans la fonction qui écrit, et pas seulement dans l'écran : un écran qui
     // masque un bouton est une politesse, pas une garde.
     if (annulees.has(id)) continue;
-    const lignes = await db
-      .select()
-      .from(schema.orderItems)
-      .where(eq(schema.orderItems.orderId, id));
+    // Les cartes cadeaux partent par e-mail, au paiement : rien à expédier.
+    const lignes = (
+      await db
+        .select()
+        .from(schema.orderItems)
+        .where(eq(schema.orderItems.orderId, id))
+    ).filter((l) => !l.giftCard);
     const partis = await quantitesExpediees(id);
     const reste = lignes
       .map((l) => ({
@@ -566,7 +689,7 @@ async function expedierTout(
     if (!reste.length) continue;
     const [ful] = await db
       .insert(schema.fulfillments)
-      .values({ orderId: id, status: "success" })
+      .values({ orderId: id, status: "success", ...envoi })
       .returning();
     await db
       .insert(schema.fulfillmentItems)
@@ -674,6 +797,13 @@ export function mountOrderRoutes(app: Hono): void {
         customerId: schema.orders.customerId,
         customerName: schema.customers.name,
         customerEmail: schema.customers.email,
+        // L'étape de traitement (17/11) : ses deux dates, et de quoi savoir
+        // si c'est un retrait.
+        readyAt: schema.orders.readyAt,
+        deliveredAt: schema.orders.deliveredAt,
+        pickupPoint: schema.orders.pickupPoint,
+        relayPointId: schema.orders.relayPointId,
+        relayPointLabel: schema.orders.relayPointLabel,
       })
       .from(schema.orders)
       .leftJoin(
@@ -684,7 +814,10 @@ export function mountOrderRoutes(app: Hono): void {
       .orderBy(desc(schema.orders.createdAt))
       .limit(limit);
 
-    const resume = await resumeCommandes(rows.map((r) => r.id));
+    const [resume, bordereauxReels] = await Promise.all([
+      resumeCommandes(rows.map((r) => r.id)),
+      avecBordereauReel(rows.map((r) => r.id)),
+    ]);
     // Les aperçus des premières affiches de chaque commande, pour la liste
     // (demande de la boutique : voir les affiches sans ouvrir la commande,
     // comme dans le panier). Trois au plus ; le reste se dit « +N ».
@@ -713,7 +846,8 @@ export function mountOrderRoutes(app: Hono): void {
     >();
     for (const l of lignesApercu) {
       const liste = apercusParCommande.get(l.orderId) ?? [];
-      if (liste.length < 3) liste.push(cheminApercu(l.id, l.config));
+      // Une carte cadeau n'a pas d'aperçu : rien n'est composé.
+      if (liste.length < 3 && l.config) liste.push(cheminApercu(l.id, l.config));
       lignesParCommande.set(l.orderId, (lignesParCommande.get(l.orderId) ?? 0) + 1);
       apercusParCommande.set(l.orderId, liste);
       if (l.imprimable)
@@ -744,10 +878,17 @@ export function mountOrderRoutes(app: Hono): void {
         );
       for (const l of lignesPaiement) if (payeeEnEssai([l], config)) enEssai.add(l.orderId);
     }
-    let enrichies = rows.map((r) => {
+    let enrichies = rows.map(({ pickupPoint, relayPointId, relayPointLabel, ...r }) => {
       const s = resume.get(r.id)!;
+      const { parcours, etape } = etapeDeLaCommande(
+        { ...r, pickupPoint, relayPointId, relayPointLabel },
+        s,
+        bordereauxReels.has(r.id),
+      );
       return {
         ...r,
+        parcours,
+        etapeTraitement: etape,
         payeeEnEssai: enEssai.has(r.id),
         apercus: apercusParCommande.get(r.id) ?? [],
         /** Nombre d'affiches DIFFÉRENTES (lignes), pour le « +N » des vignettes. */
@@ -770,6 +911,14 @@ export function mountOrderRoutes(app: Hono): void {
     const exp = (q.fulfillment ?? "").split(",").filter(Boolean);
     if (exp.length)
       enrichies = enrichies.filter((o) => exp.includes(o.statutExpedition));
+    // Les étapes de traitement (17/11) : « en_preparation,prete »… et le
+    // parcours (« livraison », « retrait », « stand »).
+    const etapes = (q.etape ?? "").split(",").filter(Boolean);
+    if (etapes.length)
+      enrichies = enrichies.filter((o) => etapes.includes(o.etapeTraitement));
+    const parcoursDemandes = (q.parcours ?? "").split(",").filter(Boolean);
+    if (parcoursDemandes.length)
+      enrichies = enrichies.filter((o) => parcoursDemandes.includes(o.parcours));
     const tag = (q.tag ?? "").trim().toLowerCase();
     if (tag)
       enrichies = enrichies.filter((o) =>
@@ -1288,10 +1437,14 @@ export function mountOrderRoutes(app: Hono): void {
         400,
       );
 
-    const lignes = await db
-      .select()
-      .from(schema.orderItems)
-      .where(eq(schema.orderItems.orderId, id));
+    // Les cartes cadeaux partent par e-mail, au paiement : seules les
+    // affiches s'expédient.
+    const lignes = (
+      await db
+        .select()
+        .from(schema.orderItems)
+        .where(eq(schema.orderItems.orderId, id))
+    ).filter((l) => !l.giftCard);
     const resume = await resumeCommandes([id]);
     const dejaParti = await quantitesExpediees(id);
 
@@ -1385,6 +1538,14 @@ export function mountOrderRoutes(app: Hono): void {
    * Ne lève jamais. Le colis est parti, c'est le fait qui compte ; un courrier
    * qui ne part pas ne doit pas défaire une expédition enregistrée. L'échec se
    * lit dans la chronologie de la commande.
+   *
+   * Depuis le 17/11 (étapes de traitement, packages/types/src/traitement.ts) :
+   *   - « envoyee » : l'avis d'expédition, pour une commande qui VOYAGE
+   *     seulement. Un retrait qui part (« Retirée ») et une vente du stand
+   *     (« Terminée ») ne reçoivent rien : la personne est là ;
+   *   - « prete » : « Votre commande vous attend », pour un retrait ;
+   *   - le stand ne reçoit JAMAIS de courrier.
+   * Rend ce qui est parti, pour que la fiche le dise.
    */
   async function previenirDeLExpedition(
     orderId: number,
@@ -1393,8 +1554,12 @@ export function mountOrderRoutes(app: Hono): void {
       trackingNumber: string | null;
       trackingUrl: string | null;
     },
-  ): Promise<void> {
-    if (!mailConfigure()) return;
+    // « ancien » : la règle d'avant les étapes, gardée pour les gestes qui ne
+    // passent pas encore par la frise (formulaire « Expédier », actions
+    // groupées) tant que l'écran n'a pas basculé.
+    quoi: "ancien" | "envoyee" | "prete" = "ancien",
+  ): Promise<{ sujet: string; email: string; parti: boolean } | null> {
+    if (!mailConfigure()) return null;
     try {
       const [commande] = await db
         .select({
@@ -1409,7 +1574,9 @@ export function mountOrderRoutes(app: Hono): void {
         })
         .from(schema.orders)
         .where(eq(schema.orders.id, orderId));
-      if (!commande?.customerId) return;
+      if (!commande?.customerId) return null;
+      // Le stand ne reçoit aucun courrier (17/11) : la personne est là.
+      if (quoi !== "ancien" && commande.channel === "salon") return null;
 
       const [client] = await db
         .select({
@@ -1420,7 +1587,7 @@ export function mountOrderRoutes(app: Hono): void {
         })
         .from(schema.customers)
         .where(eq(schema.customers.id, commande.customerId));
-      if (!client?.email) return;
+      if (!client?.email) return null;
       const langue = langueDuDestinataire({
         compte: client.langue,
         commande: commande.langue,
@@ -1448,30 +1615,36 @@ export function mountOrderRoutes(app: Hono): void {
       const prenom =
         prenomPourCourrier(client) || tc(langue)("commun.prenomParDefaut");
       // Une commande du site à retirer sur place n'est pas « en route » :
-      // elle attend au lieu choisi, et c'est ce que dit son courrier.
+      // elle attend au lieu choisi, et c'est ce que dit son courrier. Un
+      // retrait qui voyage finalement (vrai bordereau) se lit comme une
+      // livraison : même règle que la frise (parcoursDe).
       const lieu =
         commande.channel === "salon" ? null : lignesDuLieu(lieuDeRetrait(commande, langue));
+      if (quoi !== "ancien") {
+        const retrait = !!lieu && !(await avecBordereauReel([orderId])).has(orderId);
+        if (quoi === "prete" ? !retrait : retrait) return null;
+      }
 
-      const courrier = lieu
-        ? courrierPreteAuRetrait({
-            langue,
-            prenomClient: prenom,
-            numero: commande.number,
-            lieu,
-            lignes,
-          })
-        : commande.channel === "salon"
-          ? courrierPreteAuStand({
+      const courrier =
+        (quoi === "prete" || quoi === "ancien") && lieu
+          ? courrierPreteAuRetrait({
               langue,
               prenomClient: prenom,
               numero: commande.number,
-              // Le nom du stand a été gardé dans la note interne au moment de
-              // la vente : c'est le seul endroit où il vit sur la commande.
-              evenement:
-                commande.note?.replace(/^Stand\s*:\s*/, "").trim() || null,
+              lieu,
               lignes,
             })
-          : courrierExpediee({
+          : quoi === "ancien" && commande.channel === "salon"
+            ? courrierPreteAuStand({
+                langue,
+                prenomClient: prenom,
+                numero: commande.number,
+                // Le nom du stand a été gardé dans la note interne au moment
+                // de la vente : c'est le seul endroit où il vit sur la commande.
+                evenement: commande.note?.replace(/^Stand\s*:\s*/, "").trim() || null,
+                lignes,
+              })
+            : courrierExpediee({
               langue,
               prenomClient: prenom,
               numero: commande.number,
@@ -1489,10 +1662,172 @@ export function mountOrderRoutes(app: Hono): void {
           ? `Courrier envoyé à ${client.email} : ${courrier.subject}.`
           : `Le courrier « ${courrier.subject} » n'a pas pu partir vers ${client.email}.`,
       });
+      return { sujet: courrier.subject, email: client.email, parti };
     } catch {
       // Une panne de courrier ne défait pas une expédition enregistrée.
+      return null;
     }
   }
+
+  /**
+   * Fait passer une commande à une autre étape de traitement (17/11).
+   *
+   * La frise de la fiche passe par ici. La règle (qui choisit quoi, quel
+   * courriel part, quand on ne revient pas en arrière) est dans
+   * packages/types/src/traitement.ts ; ce qui s'écrit réutilise la logique
+   * d'avant : `expedierTout` pour faire partir ce qui reste,
+   * `annulerExpeditions` pour revenir avant « parti », et
+   * `previenirDeLExpedition` pour le courriel.
+   *
+   * `cible` reçoit le parcours et l'étape actuelle : null = rien à faire.
+   */
+  async function changerEtape(
+    id: number,
+    cible: (parcours: ParcoursTraitement, de: EtapeTraitement) => string | null,
+    opts: { auteur?: string | null; carrier?: string | null; trackingNumber?: string | null } = {},
+  ): Promise<
+    | { erreur: string; code: 404 | 409 }
+    | {
+        inchange: boolean;
+        parcours: ParcoursTraitement;
+        de: EtapeTraitement;
+        etape: EtapeTraitement;
+        courrier: { sujet: string; email: string; parti: boolean } | null;
+      }
+  > {
+    type Envoi = { carrier: string | null; trackingNumber: string | null; trackingUrl: string | null };
+    type Fait =
+      | { erreur: string; code: 404 | 409 }
+      | {
+          inchange: boolean;
+          parcours: ParcoursTraitement;
+          de: EtapeTraitement;
+          etape: EtapeTraitement;
+          envoi: Envoi | null;
+          courrierAEnvoyer: "expediee" | "prete_a_retirer" | null;
+        };
+    const fait = await unPassageALaFois<Fait>(id, async (): Promise<Fait> => {
+      const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, id));
+      if (!order) return { erreur: "Cette commande n'existe plus.", code: 404 as const };
+      // Les reprises de Shopify ont été traitées là-bas (voir index.ts).
+      if (order.legacyId != null)
+        return {
+          erreur: `Commande reprise de Shopify (${order.legacyName ?? "ancienne boutique"}) : elle a été traitée là-bas.`,
+          code: 409 as const,
+        };
+      const [resumes, reels] = await Promise.all([
+        resumeCommandes([id]),
+        avecBordereauReel([id]),
+      ]);
+      const bordereauReel = reels.has(id);
+      const { parcours, etape: de } = etapeDeLaCommande(order, resumes.get(id)!, bordereauReel);
+      const vers = cible(parcours, de);
+      if (vers === null)
+        return { inchange: true, parcours, de, etape: de, envoi: null, courrierAEnvoyer: null };
+      const passage = passageEtape(parcours, de, vers, { bordereauReel });
+      if (!passage.ok) return { erreur: passage.raison, code: 409 as const };
+      if (passage.inchange)
+        return { inchange: true, parcours, de, etape: de, envoi: null, courrierAEnvoyer: null };
+      const etape = vers as EtapeTraitement;
+
+      // 1. Les expéditions, par la logique d'avant. Une commande qui voyage
+      //    part avec le transporteur et le suivi saisis, sinon ceux de son
+      //    vrai bordereau ; un retrait ou une vente du stand, sans.
+      const envoi: Envoi = { carrier: null, trackingNumber: null, trackingUrl: null };
+      if (passage.expedier) {
+        if (parcours === "livraison") {
+          envoi.carrier = opts.carrier?.trim() || null;
+          envoi.trackingNumber = opts.trackingNumber?.trim() || null;
+          if (!envoi.carrier && !envoi.trackingNumber && bordereauReel) {
+            const [b] = await db
+              .select()
+              .from(schema.bordereaux)
+              .where(
+                and(
+                  eq(schema.bordereaux.orderId, id),
+                  eq(schema.bordereaux.statut, "achete"),
+                  eq(schema.bordereaux.essai, false),
+                ),
+              );
+            if (b) {
+              envoi.carrier = NOM_TRANSPORTEUR_SENDCLOUD[b.transporteur ?? ""] ?? b.transporteur ?? null;
+              envoi.trackingNumber = b.trackingNumber;
+              envoi.trackingUrl = b.trackingUrl;
+            }
+          }
+          envoi.trackingUrl ??= lienDeSuivi(envoi.carrier, envoi.trackingNumber);
+        }
+        await expedierTout([id], envoi);
+      }
+      if (passage.annulerExpeditions) await annulerExpeditions([id]);
+
+      // 2. La commande : traitée ou non (comme avant), et les deux dates.
+      const dates = datesApresPassage(etape, order, new Date());
+      await db
+        .update(schema.orders)
+        .set({
+          ...dates,
+          ...(passage.expedier ? { fulfilledAt: new Date() } : {}),
+          ...(passage.annulerExpeditions ? { fulfilledAt: null } : {}),
+        })
+        .where(eq(schema.orders.id, id));
+
+      // 3. Le journal : dans un mois, on saura qui a fait quoi, et quand.
+      await db.insert(schema.orderEvents).values({
+        orderId: id,
+        kind: "event",
+        author: opts.auteur?.trim() || null,
+        message:
+          `Traitement : ${libelleEtape(de, parcours)} → ${libelleEtape(etape, parcours)}.` +
+          (passage.annulerExpeditions ? " Les expéditions enregistrées sont annulées." : "") +
+          (envoi.trackingNumber ? ` Suivi ${envoi.trackingNumber}.` : ""),
+      });
+      return {
+        inchange: false,
+        parcours,
+        de,
+        etape,
+        envoi: passage.courrier ? envoi : null,
+        courrierAEnvoyer: passage.courrier,
+      };
+    });
+    if ("erreur" in fait) return fait;
+    // 4. Le courriel, hors du verrou : un envoi lent ne retient personne.
+    const courrier =
+      fait.courrierAEnvoyer && fait.envoi
+        ? await previenirDeLExpedition(
+            id,
+            fait.envoi,
+            fait.courrierAEnvoyer === "prete_a_retirer" ? "prete" : "envoyee",
+          )
+        : null;
+    return {
+      inchange: fait.inchange,
+      parcours: fait.parcours,
+      de: fait.de,
+      etape: fait.etape,
+      courrier,
+    };
+  }
+
+  /**
+   * L'étape de traitement d'une commande (17/11) : la frise de la fiche.
+   * Corps : { etape, carrier?, trackingNumber?, auteur? }.
+   */
+  app.post("/admin/orders/:id/traitement", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0)
+      return c.json({ error: "commande inconnue" }, 400);
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const vers = String(b.etape ?? "");
+    const r = await changerEtape(id, () => vers, {
+      auteur: typeof b.auteur === "string" ? b.auteur : null,
+      carrier: typeof b.carrier === "string" ? b.carrier : null,
+      trackingNumber: typeof b.trackingNumber === "string" ? b.trackingNumber : null,
+    });
+    if ("erreur" in r) return c.json({ error: r.erreur }, r.code);
+    return c.json(r);
+  });
 
   /** Annule une expédition (colis jamais parti, erreur de saisie). */
   app.post("/admin/fulfillments/:id/cancel", async (c) => {
@@ -1642,7 +1977,9 @@ export function mountOrderRoutes(app: Hono): void {
         unitPriceCents: ligne.unitPriceCents,
         // L'affiche elle-même : un remboursement partiel doit dire LAQUELLE
         // des trois affiches est concernée, et le titre seul ne suffit pas.
-        imageUrl: `${ORIGINE_PUBLIQUE}/api${cheminApercu(ligne.id, ligne.config)}`,
+        imageUrl: ligne.config
+          ? `${ORIGINE_PUBLIQUE}/api${cheminApercu(ligne.id, ligne.config)}`
+          : null,
       });
     }
 
@@ -1673,13 +2010,49 @@ export function mountOrderRoutes(app: Hono): void {
           .replace(".", ",")} € remboursables au plus.`,
       };
 
+    // Une commande réglée en partie par une CARTE CADEAU (17/11) : chaque
+    // moyen ne rend que ce qu'il a reçu. Le prestataire d'abord — c'est de
+    // l'argent qui retourne sur le moyen de paiement de la cliente —, la
+    // carte ensuite, recréditée dans son journal, jamais au-delà de ce
+    // qu'elle a payé pour cette commande.
+    const rendableCarte = await resteARendreALaCarte(order.giftCardId, id);
+    const [dejaHorsCarte] = await db
+      .select({
+        n: raw<number>`coalesce(sum(${schema.orderTransactions.amountCents}), 0)::int`,
+      })
+      .from(schema.orderTransactions)
+      .where(
+        and(
+          eq(schema.orderTransactions.orderId, id),
+          eq(schema.orderTransactions.kind, "refund"),
+          raw`coalesce(${schema.orderTransactions.gateway}, '') <> 'carte_cadeau'`,
+        ),
+      );
+    const payeHorsCarte = Math.max(
+      0,
+      order.totalCents - (order.giftCardId ? Math.max(0, order.giftCardCents) : 0),
+    );
+    const rendableHorsCarte = Math.max(0, payeHorsCarte - Number(dejaHorsCarte?.n ?? 0));
+    if (montant > rendableHorsCarte + rendableCarte)
+      return {
+        erreur: `Le total remboursé dépasserait ce qui reste à rendre : ${(
+          (rendableHorsCarte + rendableCarte) / 100
+        )
+          .toFixed(2)
+          .replace(".", ",")} € au plus.`,
+      };
+    const partPrestataire = Math.min(montant, rendableHorsCarte);
+    const partCarte = montant - partPrestataire;
+
     // Renvoi de l'argent chez le prestataire qui l'a encaissé, s'il est
     // demandé et possible. On ne cherchait ici qu'un paiement Stripe : une
     // vente réglée par PayPal retombait donc sur « à la main », c'est-à-dire
     // que la boutique notait un remboursement que personne n'avait fait.
-    let gateway = "manuel";
+    // Seule la part du prestataire part chez lui : il refuserait de rendre
+    // plus qu'il n'a pris.
+    let gateway = partPrestataire > 0 ? "manuel" : "carte_cadeau";
     let externalRef: string | null = null;
-    if (b.viaPsp !== false) {
+    if (b.viaPsp !== false && partPrestataire > 0) {
       const [paiement] = await db
         .select()
         .from(schema.payments)
@@ -1705,7 +2078,7 @@ export function mountOrderRoutes(app: Hono): void {
             code: 400,
           };
         try {
-          const r = await refundStripe(jeu, paiement.externalRef, montant);
+          const r = await refundStripe(jeu, paiement.externalRef, partPrestataire);
           gateway = "stripe";
           externalRef = r.id;
         } catch (e) {
@@ -1745,7 +2118,7 @@ export function mountOrderRoutes(app: Hono): void {
             code: 502,
           };
         try {
-          const r = await refundPaypal(jeu, capture, montant);
+          const r = await refundPaypal(jeu, capture, partPrestataire);
           gateway = "paypal";
           externalRef = r.id;
         } catch (e) {
@@ -1759,11 +2132,30 @@ export function mountOrderRoutes(app: Hono): void {
       }
     }
 
+    // La part de la carte cadeau lui est rendue dans SON journal, sous
+    // verrou : jamais plus que ce qu'elle a payé pour cette commande, même si
+    // deux remboursements partent au même instant.
+    const rendueALaCarte =
+      partCarte > 0 && order.giftCardId
+        ? await db.transaction((tx) =>
+            recrediterCarte(
+              tx,
+              order.giftCardId!,
+              order,
+              partCarte,
+              `Remboursement de la commande ${order.number}`,
+            ),
+          )
+        : 0;
+    // Ce qui a vraiment été rendu, par les deux moyens réunis.
+    const rendu = partPrestataire + rendueALaCarte;
+    if (rendu <= 0) return { erreur: "Rien à rembourser." };
+
     const [refund] = await db
       .insert(schema.refunds)
       .values({
         orderId: id,
-        amountCents: montant,
+        amountCents: rendu,
         shippingCents: portDemande,
         reason: String(b.reason ?? "").trim() || null,
         note: String(b.note ?? "").trim() || null,
@@ -1778,15 +2170,27 @@ export function mountOrderRoutes(app: Hono): void {
         .insert(schema.refundItems)
         .values(detail.map((d) => ({ ...d, refundId: refund!.id })));
 
-    await db.insert(schema.orderTransactions).values({
-      orderId: id,
-      kind: "refund",
-      status: "success",
-      amountCents: montant,
-      gateway,
-      externalRef,
-      message: String(b.reason ?? "").trim() || null,
-    });
+    // Le grand livre : une ligne par moyen qui rend de l'argent.
+    if (partPrestataire > 0)
+      await db.insert(schema.orderTransactions).values({
+        orderId: id,
+        kind: "refund",
+        status: "success",
+        amountCents: partPrestataire,
+        gateway,
+        externalRef,
+        message: String(b.reason ?? "").trim() || null,
+      });
+    if (rendueALaCarte > 0)
+      await db.insert(schema.orderTransactions).values({
+        orderId: id,
+        kind: "refund",
+        status: "success",
+        amountCents: rendueALaCarte,
+        gateway: "carte_cadeau",
+        externalRef: `carte-${order.giftCardId}`,
+        message: "Recrédité sur la carte cadeau",
+      });
 
     // Remise en stock, pour les articles qui en ont un (magnets, cartes) ;
     // une affiche imprimée à la commande n'a rien à réintégrer.
@@ -1796,29 +2200,62 @@ export function mountOrderRoutes(app: Hono): void {
         new Map(detail.map((d) => [d.orderItemId, d.quantity])),
       );
 
+    const enEuros = (cents: number) => `${(cents / 100).toFixed(2).replace(".", ",")} €`;
     await db.insert(schema.orderEvents).values({
       orderId: id,
       kind: "event",
       message:
-        `Remboursement de ${(montant / 100).toFixed(2).replace(".", ",")} €` +
-        (gateway === "stripe" ? " via Stripe" : gateway === "paypal" ? " via PayPal" : " (hors ligne)") +
+        `Remboursement de ${enEuros(rendu)}` +
+        (partPrestataire > 0
+          ? gateway === "stripe"
+            ? " via Stripe"
+            : gateway === "paypal"
+              ? " via PayPal"
+              : " (hors ligne)"
+          : "") +
+        (rendueALaCarte > 0
+          ? partPrestataire > 0
+            ? `, dont ${enEuros(rendueALaCarte)} recrédités sur la carte cadeau`
+            : " recrédités sur la carte cadeau"
+          : "") +
         (libre > 0 ? (b.tout === true ? " (tout le reste)" : " (montant libre)") : "") +
         (b.restock === true ? ", articles remis en stock" : "") +
         ".",
     });
+
+    // Les cartes cadeaux que cette commande avait ACHETÉES et qu'on rembourse
+    // ne doivent plus servir : la cliente ne garde pas l'argent ET la carte.
+    // Rembourser tout, ou leurs lignes, les met hors service ; un montant
+    // libre ne dit pas lesquelles, la boutique en décide au BO.
+    const lignesCartes = lignes.filter((l) => l.giftCard).map((l) => l.id);
+    if (lignesCartes.length) {
+      const visees =
+        b.tout === true
+          ? null
+          : detail.map((d) => d.orderItemId).filter((oid) => lignesCartes.includes(oid));
+      const note =
+        visees === null || visees.length
+          ? await desactiverCartesVendues(id, visees, `remboursement de la commande ${order.number}`)
+          : libre > 0
+            ? "Cette commande a vendu une ou plusieurs cartes cadeaux : ce remboursement libre ne les a pas mises hors service. Faites-le au besoin dans BO › Cartes cadeaux."
+            : null;
+      if (note)
+        await db.insert(schema.orderEvents).values({ orderId: id, kind: "event", message: note });
+    }
 
     // Le courrier suit le remboursement qui vient d'être inscrit, et lui seul.
     // Rejouer la requête ne le renverra pas : elle créerait un AUTRE
     // remboursement, et n'y arrive pas — les quantités déjà rendues et le
     // plafond du montant encaissé la refusent avant d'en écrire un second.
     await previenirDuRemboursement(id, {
-      montantCents: montant,
+      montantCents: rendu,
       portCents: portDemande,
       articles: articlesRendus,
-      totalRembourseCents: dejaCents + montant,
-      viaPaiementEnLigne: gateway !== "manuel",
+      totalRembourseCents: dejaCents + rendu,
+      viaPaiementEnLigne: partPrestataire > 0 && gateway !== "manuel",
+      surCarteCadeauCents: rendueALaCarte,
     });
-    return { refund: refund!, montantCents: montant };
+    return { refund: refund!, montantCents: rendu };
   }
 
   /**
@@ -1841,6 +2278,8 @@ export function mountOrderRoutes(app: Hono): void {
       articles: LigneCourrier[];
       totalRembourseCents: number;
       viaPaiementEnLigne: boolean;
+      /** La part rendue sur la carte cadeau qui avait payé. */
+      surCarteCadeauCents?: number;
     },
   ): Promise<void> {
     if (!mailConfigure()) return;
@@ -1894,6 +2333,7 @@ export function mountOrderRoutes(app: Hono): void {
         totalRembourseCents: remboursement.totalRembourseCents,
         totalCommandeCents: commande.totalCents,
         viaPaiementEnLigne: remboursement.viaPaiementEnLigne,
+        surCarteCadeauCents: remboursement.surCarteCadeauCents ?? 0,
       });
       const parti = await envoyerCourrier({ ...courrier, to: client.email });
       await db.insert(schema.orderEvents).values({
@@ -2118,6 +2558,25 @@ export function mountOrderRoutes(app: Hono): void {
         message: motif,
       });
 
+    /* --- 3 bis. Les cartes cadeaux ------------------------------------ */
+
+    // La carte cadeau qui avait payé une part : ce qu'elle a payé pour cette
+    // commande, et qu'un remboursement ne lui a pas déjà rendu, revient dans
+    // son journal. Une commande jamais payée n'a rien débité : rien à rendre.
+    const rendueALaCarte = order.giftCardId
+      ? await db.transaction((tx) =>
+          recrediterCarte(tx, order.giftCardId!, order, null, `Commande ${order.number} annulée`),
+        )
+      : 0;
+    // Les cartes que la commande avait ACHETÉES ne servent plus.
+    const noteCartes = await desactiverCartesVendues(
+      id,
+      null,
+      `commande ${order.number} annulée`,
+    );
+    if (noteCartes)
+      await db.insert(schema.orderEvents).values({ orderId: id, kind: "event", message: noteCartes });
+
     /* --- 4. Le statut -------------------------------------------------- */
 
     const annuleeLe = new Date();
@@ -2143,7 +2602,7 @@ export function mountOrderRoutes(app: Hono): void {
      * enverrait la boutique rendre une seconde fois le même argent.
      */
     const resteADevoir = etaitPayee
-      ? Math.max(0, order.totalCents - resume.rembourseCents - rembourseCents)
+      ? Math.max(0, order.totalCents - resume.rembourseCents - rembourseCents - rendueALaCarte)
       : 0;
 
     await db.insert(schema.orderEvents).values({
@@ -2157,6 +2616,9 @@ export function mountOrderRoutes(app: Hono): void {
           : resteADevoir > 0
             ? ` Le montant réglé n'a PAS été remboursé : ${(resteADevoir / 100).toFixed(2).replace(".", ",")} € restent à rendre à la cliente.`
             : "") +
+        (rendueALaCarte > 0
+          ? ` ${(rendueALaCarte / 100).toFixed(2).replace(".", ",")} € recrédités sur la carte cadeau qui avait payé.`
+          : "") +
         (b.restock === true ? " Articles remis en stock." : "") +
         (rienEncaisse && order.totalCents > 0
           ? " Écriture d'annulation portée au grand livre."
@@ -2534,9 +2996,18 @@ export function mountOrderRoutes(app: Hono): void {
         deja: true,
         message: `La commande ${order.number} était déjà marquée payée. Rien n'a été encaissé une seconde fois.`,
       });
-    if (order.totalCents <= 0)
+    // Ce qui reste à encaisser : le total, moins la part qu'une carte cadeau
+    // paiera (son journal la débite au même moment, dans markOrderPaid).
+    const aEncaisser =
+      order.totalCents - (order.giftCardId ? Math.max(0, order.giftCardCents) : 0);
+    if (aEncaisser <= 0)
       return c.json(
-        { error: "Cette commande ne vaut rien : il n'y a rien à encaisser." },
+        {
+          error:
+            order.totalCents > 0
+              ? "Une carte cadeau couvre toute cette commande : il n'y a rien à encaisser. La cliente la valide elle-même à la caisse."
+              : "Cette commande ne vaut rien : il n'y a rien à encaisser.",
+        },
         400,
       );
 
@@ -2591,16 +3062,26 @@ export function mountOrderRoutes(app: Hono): void {
       provider: "manuel",
       externalRef,
       status: "pending",
-      amountCents: order.totalCents,
+      amountCents: aEncaisser,
     });
 
-    // Le montant déclaré reçu est le total lu plus haut : si la commande a
-    // bougé depuis — la cliente a modifié son panier, elle est revenue en
-    // panier —, markOrderPaid ne valide rien.
-    const encaissee = await markOrderPaid(id, "manuel", externalRef, {
-      montantCents: order.totalCents,
-      devise: "EUR",
-    });
+    // Le montant déclaré reçu est le total lu plus haut, moins la part d'une
+    // carte cadeau : si la commande a bougé depuis — la cliente a modifié son
+    // panier, elle est revenue en panier —, markOrderPaid ne valide rien. Elle
+    // refuse aussi, en le disant, quand la carte cadeau ne peut plus payer sa
+    // part ou qu'un code à usage unique a servi entre-temps.
+    let encaissee: boolean;
+    let refus: string | null = null;
+    try {
+      encaissee = await markOrderPaid(id, "manuel", externalRef, {
+        montantCents: aEncaisser,
+        devise: "EUR",
+      });
+    } catch (e) {
+      if (!(e instanceof ValidationRefusee)) throw e;
+      encaissee = false;
+      refus = e.message;
+    }
     if (!encaissee) {
       // La ligne de paiement posée à l'instant ne correspond à aucun
       // encaissement : la laisser « en attente » ferait croire à un règlement
@@ -2624,6 +3105,11 @@ export function mountOrderRoutes(app: Hono): void {
           deja: true,
           message: `La commande ${order.number} était déjà marquée payée. Rien n'a été encaissé une seconde fois.`,
         });
+      if (refus)
+        return c.json(
+          { error: `Rien n'a été encaissé pour la commande ${order.number} : ${refus}` },
+          409,
+        );
       return c.json(
         {
           error: `La commande ${order.number} a changé pendant la saisie : la cliente a modifié son panier, et son total n'est plus ${(order.totalCents / 100).toFixed(2).replace(".", ",")} €. Rien n'a été encaissé. Rechargez la page pour voir ce qu'elle contient maintenant.`,
@@ -2637,7 +3123,10 @@ export function mountOrderRoutes(app: Hono): void {
       kind: "event",
       author: auteur,
       message:
-        `Encaissement de ${(order.totalCents / 100).toFixed(2).replace(".", ",")} € reçu par ${moyen}` +
+        `Encaissement de ${(aEncaisser / 100).toFixed(2).replace(".", ",")} € reçu par ${moyen}` +
+        (aEncaisser !== order.totalCents
+          ? ` (le reste, ${((order.totalCents - aEncaisser) / 100).toFixed(2).replace(".", ",")} €, réglé par carte cadeau)`
+          : "") +
         (reference ? ` (réf. ${reference})` : "") +
         `, saisi au back-office${auteur ? ` par ${auteur}` : ""}.`,
     });
@@ -2645,7 +3134,7 @@ export function mountOrderRoutes(app: Hono): void {
     return c.json({
       ok: true,
       encaissee,
-      montantCents: order.totalCents,
+      montantCents: aEncaisser,
       moyen,
       reference: reference || null,
     });
@@ -2901,6 +3390,16 @@ export function mountOrderRoutes(app: Hono): void {
     const lignes: LigneFacture[] = articles.map((it) => {
       const cfg = (it.config ?? {}) as Record<string, unknown>;
       const cadre = cadres.find((f) => String(f.id) === String(cfg.frameId ?? ""));
+      // Une carte cadeau achetée : son nom dans la langue de la facture, et
+      // son destinataire.
+      if (it.giftCard)
+        return {
+          designation: t("lignes.carteCadeau"),
+          precision: it.giftCard.destinataireEmail ?? null,
+          lignesAffiche: [],
+          quantite: it.quantity,
+          unitPriceCents: it.unitPriceCents,
+        };
       return {
         designation: it.title ?? t("lignes.titreParDefaut"),
         precision:

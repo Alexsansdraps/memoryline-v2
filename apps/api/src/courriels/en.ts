@@ -58,6 +58,25 @@ export const en: Partial<Record<CleCourriel, string>> = {
   "confirmation.retrait": "To collect from:",
   "confirmation.question": "Any questions? Just reply to this email.",
   "confirmation.texte": "Your order {numero} is confirmed. Total: {total}.",
+  "confirmation.dontCarte": "Of which paid with gift card {code}",
+  "confirmation.carteEnvoyee": "Gift card of {montant} sent by e-mail to {email}.",
+
+  "lignes.carteCadeau": "Gift card",
+  "lignes.carteCadeauPour": "Gift card for {email}",
+  "carteCadeau.objet": "Your Memory Line gift card of {montant}",
+  "carteCadeau.objetDe": "{prenom} is giving you a Memory Line gift card",
+  "carteCadeau.bonjour": "Hello,",
+  "carteCadeau.intro": "Here is your Memory Line gift card, worth {montant}.",
+  "carteCadeau.introDe": "{prenom} is giving you a Memory Line gift card, worth {montant}.",
+  "carteCadeau.mot": "Their message:",
+  "carteCadeau.code": "Your code",
+  "carteCadeau.mode":
+    "Enter this code when paying for your order on memoryline.fr, in the “Promo code or gift card” field.",
+  "carteCadeau.solde":
+    "Use it in one or several orders: any remaining balance stays available with the same code.",
+  "carteCadeau.garder": "Keep this e-mail: this code is worth money, like a banknote.",
+  "carteCadeau.bouton": "Choose a poster",
+  "carteCadeau.texteCode": "Your code: {code} (worth {montant}).",
 
   /* --- Relance de panier : le courrier d'origine ----------------------------- */
 
@@ -203,6 +222,8 @@ export const en: Partial<Record<CleCourriel, string>> = {
     "The money is going back to the payment method used for the order. Please allow a few working days for it to appear on your statement: that timing is down to your bank, not to us.",
   "remboursee.horsLigne":
     "This refund is not being made through online payment. We'll be in touch if we need any further details to send it to you.",
+  "remboursee.carte":
+    "{montant} goes back onto your gift card: its balance stays available with the same code.",
   "remboursee.question": "Any questions about this refund? Just reply to this email.",
   "remboursee.texte": "A refund of {montant} has been issued for your order {numero}.",
   "remboursee.textePartiel":

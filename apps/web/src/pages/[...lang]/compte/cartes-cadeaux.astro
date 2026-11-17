@@ -1,0 +1,139 @@
+---
+/**
+ * « Mes cartes cadeaux » (17/11) : les cartes que la cliente connectée a
+ * achetées sur le site, liées à ses commandes payées.
+ *
+ * Le code n'y figure que masqué, sauf ses quatre derniers signes : la carte
+ * est au porteur, et celle ou celui qui la reçoit est souvent quelqu'un
+ * d'autre. Le solde est relu au journal de la carte (GET
+ * /compte/cartes-cadeaux), les dernières utilisations disent quand et
+ * combien, jamais qui.
+ */
+import CompteCadre from "../../../components/CompteCadre.astro";
+import {
+  cartesCadeaux,
+  exigerSession,
+  formatDate,
+  type CarteCadeauDuCompte,
+} from "../../../lib/compte.ts";
+import { formatPrice } from "../../../lib/api.ts";
+import {
+  LOCALE_COMPLETE,
+  estLangue,
+  langueDepuisParam,
+  lien,
+  t,
+  type CleUi,
+  type Langue,
+} from "../../../i18n/utils.ts";
+
+export const prerender = false;
+
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
+const tr = t(langue);
+const locale = LOCALE_COMPLETE[langue];
+
+const session = await exigerSession(Astro, langue);
+if (session.etat === "anonyme") return session.redirection;
+
+let erreur: CleUi | null = session.etat === "indisponible" ? session.erreur : null;
+let cartes: CarteCadeauDuCompte[] = [];
+if (session.etat === "connecte") {
+  const r = await cartesCadeaux(Astro);
+  if (r.ok) cartes = r.donnees?.cartes ?? [];
+  else if (!erreur) erreur = r.erreur;
+}
+
+const ETATS: Record<CarteCadeauDuCompte["etat"], { cle: CleUi; ton: string }> = {
+  active: { cle: "compte.cartes.etat.active", ton: "bg-sage/15 text-sage" },
+  epuisee: { cle: "compte.cartes.etat.epuisee", ton: "bg-ink/10 text-ink-soft" },
+  desactivee: { cle: "compte.cartes.etat.desactivee", ton: "bg-terracotta/10 text-terracotta-deep" },
+  echue: { cle: "compte.cartes.etat.echue", ton: "bg-ink/10 text-ink-soft" },
+};
+const remplir = (texte: string, valeurs: Record<string, string>) =>
+  texte.replace(/\{(\w+)\}/g, (tel, nom: string) => valeurs[nom] ?? tel);
+---
+
+<CompteCadre
+  langue={langue}
+  titre={tr("compte.cartes.titre")}
+  chemin="/compte/cartes-cadeaux"
+  menu={session.etat === "connecte"}
+>
+  {
+    erreur && (
+      <p class="mb-6 border border-terracotta/40 bg-terracotta/5 px-4 py-3 text-terracotta-deep">
+        {tr(erreur)}
+      </p>
+    )
+  }
+
+  <p class="mb-8 text-ink-soft">{tr("compte.cartes.intro")}</p>
+
+  {
+    session.etat === "connecte" && !erreur && cartes.length === 0 && (
+      <div class="mb-8 border border-ink/10 p-6">
+        <p class="text-ink-soft">{tr("compte.cartes.vide")}</p>
+        <a
+          href={lien(langue, "/carte-cadeau")}
+          class="mt-4 inline-block rounded-full bg-ink px-6 py-3 font-medium text-paper hover:bg-ink/85"
+        >
+          {tr("compte.cartes.offrir")}
+        </a>
+      </div>
+    )
+  }
+
+  <ul class="grid gap-4 sm:grid-cols-2">
+    {
+      cartes.map((c) => {
+        const etat = ETATS[c.etat] ?? ETATS.active;
+        const destinataire = c.destinatairePrenom
+          ? `${c.destinatairePrenom} (${c.destinataireEmail ?? ""})`
+          : (c.destinataireEmail ?? "—");
+        return (
+          <li class="border border-ink/10 p-5">
+            <div class="flex items-start justify-between gap-3">
+              <p class="font-mono text-lg tracking-wider">{c.masque}</p>
+              <span class={`shrink-0 rounded px-2 py-0.5 text-xs ${etat.ton}`}>{tr(etat.cle)}</span>
+            </div>
+            <p class="mt-3 text-lg">
+              {remplir(tr("compte.cartes.solde"), {
+                solde: formatPrice(c.soldeCents, locale),
+                montant: formatPrice(c.initialCents, locale),
+              })}
+            </p>
+            <p class="mt-2 text-sm text-ink-soft">
+              {remplir(tr("compte.cartes.pour"), { destinataire })}
+            </p>
+            <p class="mt-1 text-sm text-ink-soft">
+              {remplir(tr("compte.cartes.achetee"), {
+                date: formatDate(c.acheteeLe, langue),
+                commande: c.commande,
+              })}
+            </p>
+            {c.utilisations.length > 0 && (
+              <div class="mt-4">
+                <p class="text-xs uppercase tracking-[0.08em] text-ink-soft">
+                  {tr("compte.cartes.utilisations")}
+                </p>
+                <ul class="mt-1 space-y-0.5 text-sm">
+                  {c.utilisations.map((u) => (
+                    <li>
+                      {remplir(tr("compte.cartes.utilisation"), {
+                        date: formatDate(u.le, langue),
+                        montant: `− ${formatPrice(u.montantCents, locale)}`,
+                      })}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </li>
+        );
+      })
+    }
+  </ul>
+</CompteCadre>

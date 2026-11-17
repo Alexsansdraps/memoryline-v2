@@ -17,11 +17,15 @@
  * déduite de montants figés, et les règles en jeu au moment de la caisse sont
  * gardées sur la commande (order.promotions, voir configurator-routes.ts).
  */
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import { and, asc, desc, eq, isNull, ne, notInArray, sql } from "drizzle-orm";
 import {
   POSTER_FORMATS,
+  cleDeCarte,
+  cleDeCode,
+  codeCarteMasque,
   estConfigV2,
+  estUsageUnique,
   lireConditions,
   lireOffre,
   normaliserCode,
@@ -30,6 +34,105 @@ import { db, schema } from "./db/client.js";
 import { langueDuVisiteur, texteDansLaLangue } from "./traductions.js";
 import { HORS_VENTES } from "./statuts-vente.js";
 import { supprimerPourToujours } from "./suppression.js";
+import { carteParCle, carteUtilisable } from "./cartes-cadeaux.js";
+import { adresseAppelante } from "./contact.js";
+import { frein } from "./ia-relais.js";
+
+/** Une transaction ouverte par `db.transaction`. */
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Le code d'une commande, ramené à sa CLÉ en SQL : majuscules, sans espaces
+ * ni tirets — exactement cleDeCode (@memoryline/types).
+ */
+const cleSqlDuCodeCommande = sql`upper(regexp_replace(coalesce(${schema.orders.promoCode}, ''), '[[:space:]-]', '', 'g'))`;
+const cleSqlDuCodePromo = sql`upper(regexp_replace(coalesce(${schema.promoRules.code}, ''), '[[:space:]-]', '', 'g'))`;
+
+/**
+ * Les commandes qui ont VRAIMENT utilisé un code : payées, et pas remboursées
+ * en entier. Une commande annulée n'est plus « payée » ; une commande
+ * remboursée de tout ce qu'elle a coûté rend son code aussi. C'est ce qui
+ * libère un code à usage unique (estUsageUnique).
+ */
+const utiliseVraiment = sql`${schema.orders.status} = 'paid' and not (${schema.orders.totalCents} > 0 and coalesce((select sum(r.amount_cents) from "refund" r where r.order_id = ${schema.orders.id}), 0) >= ${schema.orders.totalCents})`;
+
+/**
+ * Combien de commandes ont utilisé ce code (voir `utiliseVraiment`), en dehors
+ * de la commande `sauf`.
+ *
+ * Lu SOUS LE VERROU de la promotion au moment du paiement (markOrderPaid) :
+ * deux commandes payées au même instant avec un code à usage unique passent
+ * l'une après l'autre, et la seconde voit la première.
+ */
+export async function utilisationsDuCode(
+  ex: typeof db | Transaction,
+  code: string,
+  sauf: number | null = null,
+): Promise<number> {
+  const cle = cleDeCode(code);
+  if (!cle) return 0;
+  const [r] = await ex
+    .select({ n: sql<number>`count(*)::int` })
+    .from(schema.orders)
+    .where(
+      and(
+        sql`${cleSqlDuCodeCommande} = ${cle}`,
+        utiliseVraiment,
+        sauf != null ? ne(schema.orders.id, sauf) : undefined,
+      ),
+    );
+  return Number(r?.n ?? 0);
+}
+
+/**
+ * La promotion vivante qui répond à ce code (active, non archivée, dans ses
+ * dates), comparée par sa CLÉ : casse, espaces et tirets ignorés.
+ */
+export async function promotionDuCode(
+  ex: typeof db | Transaction,
+  saisie: unknown,
+  maintenant: Date = new Date(),
+): Promise<typeof schema.promoRules.$inferSelect | null> {
+  const cle = cleDeCode(saisie);
+  if (!cle || cle.length > 60) return null;
+  const regles = await ex
+    .select()
+    .from(schema.promoRules)
+    .where(
+      and(
+        eq(schema.promoRules.active, true),
+        isNull(schema.promoRules.archivedAt),
+        sql`${cleSqlDuCodePromo} = ${cle}`,
+      ),
+    )
+    .orderBy(asc(schema.promoRules.id));
+  return (
+    regles.find(
+      (r) =>
+        (!r.startsAt || r.startsAt <= maintenant) && (!r.endsAt || r.endsAt >= maintenant),
+    ) ?? null
+  );
+}
+
+/**
+ * Les essais de code à la caisse, par adresse : trente toutes les dix
+ * minutes. Large pour une personne qui se trompe en recopiant sa carte,
+ * étroit pour un script qui voudrait deviner des codes — vingt et un signes
+ * à la puissance douze, trente essais à la fois.
+ */
+const essaisDeCode = frein(30, 10 * 60_000);
+
+/**
+ * Compte un essai de code pour l'adresse qui appelle. Vrai quand elle en a
+ * déjà fait trop : la route répond alors 429, sans rien vérifier.
+ */
+export function tropDEssaisDeCode(c: Context): boolean {
+  return essaisDeCode(adresseAppelante(c));
+}
+
+/** Le seul refus que la caisse donne pour un code : il ne dit jamais pourquoi. */
+export const CODE_NON_VALABLE = "Ce code n'est pas valable.";
+export const CODE_DEJA_UTILISE = "Ce code a déjà été utilisé.";
 
 /** Les types de règles que l'écran sait régler. */
 export const TYPES_PROMOTION = ["buy_x_get_y", "percent", "fixed", "free_shipping_over"] as const;
@@ -77,6 +180,21 @@ function communs(
   return {
     conditions: { minCents: minCents || null, minQuantite: minQuantite || null },
     cumulable: brut.cumulable !== false,
+  };
+}
+
+/**
+ * Les deux options d'une remise sur le panier (pourcentage ou montant) :
+ * offrir aussi la livraison, et ne servir qu'une fois. Absentes = non, comme
+ * pour toutes les règles d'avant.
+ */
+function optionsRemise(brut: Record<string, unknown>): {
+  livraisonOfferte: boolean;
+  usageUnique: boolean;
+} {
+  return {
+    livraisonOfferte: brut.livraisonOfferte === true,
+    usageUnique: brut.usageUnique === true,
   };
 }
 
@@ -143,18 +261,24 @@ export function configPromotion(
     };
   }
   if (type === "percent") {
+    // Jusqu'à 100 % : avec « livraison offerte », c'est un code « tout
+    // gratuit », et la commande se valide sans paiement (POST /payments/gratuit).
     const percent = entierEntre(cfg.percent, 1, 100);
     if (percent === null) return { erreur: "Le pourcentage de remise doit aller de 1 à 100 %." };
     const c = communs(cfg);
     if ("erreur" in c) return c;
-    return { config: { percent, conditions: c.conditions, cumulable: c.cumulable } };
+    return {
+      config: { percent, ...optionsRemise(cfg), conditions: c.conditions, cumulable: c.cumulable },
+    };
   }
   if (type === "fixed") {
     const amountCents = entierEntre(cfg.amountCents, 1, 10_000_000);
     if (amountCents === null) return { erreur: "Indiquez le montant de la remise, en euros." };
     const c = communs(cfg);
     if ("erreur" in c) return c;
-    return { config: { amountCents, conditions: c.conditions, cumulable: c.cumulable } };
+    return {
+      config: { amountCents, ...optionsRemise(cfg), conditions: c.conditions, cumulable: c.cumulable },
+    };
   }
   if (type === "free_shipping_over") {
     const thresholdCents = entierEntre(cfg.thresholdCents, 0, 10_000_000);
@@ -207,32 +331,20 @@ export function mountPromotions(app: Hono): void {
    */
   app.post("/promos/verifier", async (c) => {
     const langue = langueDuVisiteur(c);
+    if (tropDEssaisDeCode(c))
+      return c.json({ error: "Trop d'essais. Réessayez dans quelques minutes.", code: "trop_d_essais" }, 429);
     const b = await c.req.json().catch(() => ({}));
-    const code = normaliserCode((b as { code?: unknown }).code);
-    if (!code || code.length > 60) return c.json({ error: "code inconnu" }, 404);
-    const now = new Date();
-    const [regle] = await db
-      .select()
-      .from(schema.promoRules)
-      .where(
-        and(
-          eq(schema.promoRules.active, true),
-          isNull(schema.promoRules.archivedAt),
-          sql`upper(${schema.promoRules.code}) = ${code}`,
-        ),
-      );
-    if (
-      !regle ||
-      (regle.startsAt && regle.startsAt > now) ||
-      (regle.endsAt && regle.endsAt < now)
-    )
-      return c.json({ error: "code inconnu" }, 404);
+    const regle = await promotionDuCode(db, (b as { code?: unknown }).code);
+    if (!regle) return c.json({ error: "code inconnu" }, 404);
+    if (estUsageUnique(regle.config) && (await utilisationsDuCode(db, regle.code ?? "")) > 0)
+      return c.json({ error: CODE_DEJA_UTILISE, code: "code_deja_utilise" }, 409);
     return c.json({
       // L'identifiant départage deux règles de même priorité (reglesActives) :
       // sans lui, le navigateur ne rangerait pas le code comme le serveur, et
       // le panier n'afficherait pas le montant encaissé.
       id: regle.id,
-      code,
+      // Le code tel que la boutique l'a écrit : c'est lui que garde la commande.
+      code: normaliserCode(regle.code),
       name: texteDansLaLangue(regle.translations, langue, "name", regle.name),
       type: regle.type,
       config: regle.config,
@@ -240,13 +352,97 @@ export function mountPromotions(app: Hono): void {
     });
   });
 
-  /** Toutes les promotions, archivées comprises (marquées par `archivedAt`). */
+  /**
+   * Le champ « Code promo ou carte cadeau » de la caisse.
+   *
+   * Un seul champ, deux sortes de codes. Une promotion à code d'abord — c'est
+   * la boutique qui choisit ses codes, une carte a un code tiré au hasard —,
+   * puis une carte cadeau. Comparés par leur clé : ni la casse, ni les tirets,
+   * ni les espaces ne comptent.
+   *
+   * Ce que la route ne dit JAMAIS : qu'un code existe mais ne vaut plus rien
+   * (carte désactivée, échue, vide ; promotion éteinte, archivée, hors de ses
+   * dates). Une seule phrase pour tout refus, « Ce code n'est pas valable. »,
+   * et un frein par adresse : sans eux, la route se laisserait interroger
+   * jusqu'à trouver le code d'une autre. Seule exception, voulue par la
+   * boutique : un code à usage unique déjà servi le dit.
+   *
+   * Une carte rend son code masqué et son solde : la personne qui l'a tapée a
+   * la carte en main, le solde est à elle. La part qu'elle paiera se calcule à
+   * la caisse, et le serveur la recalcule au passage en caisse (POST /orders).
+   */
+  app.post("/caisse/code", async (c) => {
+    const langue = langueDuVisiteur(c);
+    if (tropDEssaisDeCode(c))
+      return c.json(
+        { error: "Trop d'essais. Réessayez dans quelques minutes.", code: "trop_d_essais" },
+        429,
+      );
+    const b = ((await c.req.json().catch(() => ({}))) ?? {}) as { code?: unknown };
+    const saisie = String(b.code ?? "").slice(0, 80);
+    const maintenant = new Date();
+
+    const regle = await promotionDuCode(db, saisie, maintenant);
+    if (regle) {
+      if (estUsageUnique(regle.config) && (await utilisationsDuCode(db, regle.code ?? "")) > 0)
+        return c.json({ error: CODE_DEJA_UTILISE, code: "code_deja_utilise" }, 409);
+      return c.json({
+        type: "promo",
+        regle: {
+          id: regle.id,
+          code: normaliserCode(regle.code),
+          name: texteDansLaLangue(regle.translations, langue, "name", regle.name),
+          type: regle.type,
+          config: regle.config,
+          priority: regle.priority,
+        },
+      });
+    }
+
+    const cle = cleDeCarte(saisie);
+    if (cle) {
+      const carte = await carteParCle(db, cle);
+      if (carte && carteUtilisable(carte, maintenant))
+        return c.json({
+          type: "carte",
+          carte: {
+            // Le code tel qu'il est écrit sur la carte : c'est lui que la
+            // caisse renverra au passage en caisse.
+            code: carte.code,
+            masque: codeCarteMasque(carte.code),
+            soldeCents: carte.balanceCents,
+          },
+        });
+    }
+    return c.json({ error: CODE_NON_VALABLE, code: "code_invalide" }, 404);
+  });
+
+  /**
+   * Toutes les promotions, archivées comprises (marquées par `archivedAt`).
+   *
+   * Chacune dit combien de commandes payées ont utilisé son code
+   * (`utilisations`, voir utiliseVraiment) : c'est ce chiffre qui ferme un
+   * code à usage unique, et la boutique doit pouvoir le lire.
+   */
   app.get("/admin/promos", async (c) => {
-    const rows = await db
-      .select()
-      .from(schema.promoRules)
-      .orderBy(desc(schema.promoRules.priority), asc(schema.promoRules.id));
-    return c.json(rows);
+    const [rows, usages] = await Promise.all([
+      db
+        .select()
+        .from(schema.promoRules)
+        .orderBy(desc(schema.promoRules.priority), asc(schema.promoRules.id)),
+      db
+        .select({ cle: sql<string>`${cleSqlDuCodeCommande}`, n: sql<number>`count(*)::int` })
+        .from(schema.orders)
+        .where(and(sql`coalesce(${schema.orders.promoCode}, '') <> ''`, utiliseVraiment))
+        .groupBy(sql`1`),
+    ]);
+    const parCle = new Map(usages.map((u) => [u.cle, Number(u.n)]));
+    return c.json(
+      rows.map((r) => ({
+        ...r,
+        utilisations: r.code ? (parCle.get(cleDeCode(r.code)) ?? 0) : null,
+      })),
+    );
   });
 
   /**
@@ -275,15 +471,20 @@ export function mountPromotions(app: Hono): void {
     const code = normaliserCode(b.code) || null;
     if (code && !/^[A-Z0-9_-]{2,60}$/.test(code))
       return c.json({ error: "Le code ne peut contenir que des lettres sans accent, des chiffres, « - » et « _ » (2 à 60 signes)." }, 400);
+    // Sans code, une promotion est automatique : elle ne peut pas être « à
+    // usage unique », il n'y aurait rien à compter.
+    if (!code && lu.config.usageUnique === true) lu.config.usageUnique = false;
     if (code) {
       // Deux promotions vivantes ne peuvent pas répondre au même code : le
       // panier n'en prendrait qu'une, au hasard. Une archivée libère le sien.
+      // Comparés par leur CLÉ (cleDeCode) : la caisse ne voit pas la
+      // différence entre « NOEL-26 » et « NOEL26 », la boutique non plus.
       const [doublon] = await db
         .select({ id: schema.promoRules.id, name: schema.promoRules.name })
         .from(schema.promoRules)
         .where(
           and(
-            sql`upper(${schema.promoRules.code}) = ${code}`,
+            sql`${cleSqlDuCodePromo} = ${cleDeCode(code)}`,
             isNull(schema.promoRules.archivedAt),
             id !== null ? ne(schema.promoRules.id, id) : undefined,
           ),
@@ -367,7 +568,7 @@ export function mountPromotions(app: Hono): void {
           .from(schema.promoRules)
           .where(
             and(
-              sql`upper(${schema.promoRules.code}) = ${code}`,
+              sql`${cleSqlDuCodePromo} = ${cleDeCode(code)}`,
               isNull(schema.promoRules.archivedAt),
               ne(schema.promoRules.id, id),
             ),

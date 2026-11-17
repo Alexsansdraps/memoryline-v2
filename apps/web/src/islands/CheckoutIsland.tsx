@@ -27,9 +27,11 @@ import {
   formaterPoids,
   optionsLivraison,
   PAYS_PROPOSES,
-  seuilPortOffertCents,
+  seuilPortCents,
   remisesPanier,
   totalPanierCents,
+  partCarteCadeau,
+  resteAPayerCents,
   urlAsset,
   type OptionLivraison,
   type RegleParier,
@@ -73,6 +75,16 @@ const ERREURS_PAR_CODE: Record<string, CleUi> = {
   // La boutique a basculé entre l'essai et le réel pendant la commande : la
   // caisse relit ses moyens de paiement, la cliente choisit de nouveau.
   paiement_reconfigure: "commande.err.paiement_reconfigure",
+  // Le code promo, la carte cadeau, la commande à 0 € (17/11).
+  code_invalide: "caisse.code.invalide",
+  carte_invalide: "caisse.code.invalide",
+  code_deja_utilise: "caisse.code.deja_utilise",
+  trop_d_essais: "caisse.code.trop_essais",
+  carte_solde: "caisse.err.carte_solde",
+  carte_sur_carte: "caisse.carte.sur_carte",
+  carte_email: "caisse.err.carte_email",
+  carte_ligne_invalide: "caisse.err.carte_ligne",
+  montant_non_nul: "caisse.err.montant_non_nul",
 };
 
 /**
@@ -90,6 +102,7 @@ import {
   formatPrice,
   getCartId,
   PUBLIC_API_URL,
+  type OrderItem,
   type PointRelais,
   type SuggestionAdresse,
 } from "../lib/api.ts";
@@ -98,9 +111,16 @@ import { apercuAbsolu, urlApercu } from "../lib/ia.ts";
 // « catalogue » est déjà, ici, celui de la livraison.
 import {
   catalogue as catalogueProduits,
+  estPretAImprimer,
+  nomDeLaLigne,
   visuelBoutique,
 } from "../lib/catalogue-panier.ts";
-import { codePromoRetenu } from "./CartIsland.tsx";
+import {
+  codePromoRetenu,
+  oublierCodePromo,
+  retenirCodePromo,
+} from "../lib/code-promo.ts";
+import VignetteCarteCadeau from "./carte-cadeau-vignette.tsx";
 import { clientFictif } from "./jeu-essai.ts";
 // Le même découpage que la fiche client : deux versions finiraient par
 // proposer deux noms pour la même personne.
@@ -204,7 +224,12 @@ interface AdresseCarnet {
 
 export default function CheckoutIsland(props: {
   langue?: Langue;
-  /** La cliente connectée. La page ne rend le tunnel qu'à elle. */
+  /**
+   * La cliente connectée. Sans elle (17/11), la caisse s'ouvre quand même :
+   * le récapitulatif se modifie, le code se saisit, et un bloc « Connectez-
+   * vous ou créez votre compte » prend la place des informations et du
+   * paiement. Commander demande toujours un compte (le serveur le vérifie).
+   */
   compte?: {
     nom: string;
     prenom?: string;
@@ -357,6 +382,49 @@ export default function CheckoutIsland(props: {
       (s, it) => s + it.unitPriceCents * it.quantity,
       0,
     );
+
+  /*
+   * Le récapitulatif se MODIFIE ici (17/11) : la page /panier n'existe plus
+   * sur le site. Quantité, retrait, « Modifier » qui rouvre la composition —
+   * les mêmes gestes qu'au panier (CartIsland), et le serveur recalcule tout.
+   * Un changement pendant le paiement ramène à la saisie : le serveur a
+   * remis la commande en panier, l'ancien montant ne vaut plus.
+   */
+  const [occupe, setOccupe] = createSignal<number | null>(null);
+  async function changerLigne(action: () => Promise<unknown>, id: number) {
+    setOccupe(id);
+    setError(null);
+    try {
+      await action();
+      if (phase() === "pay") backToDetails();
+      await relirePanier();
+      // La pastille de l'en-tête compte les exemplaires : elle doit suivre.
+      window.dispatchEvent(new Event("ml:panier"));
+    } catch (e) {
+      setError(messageErreur(e, {}));
+    } finally {
+      setOccupe(null);
+    }
+  }
+  /** Change la quantité d'une affiche ; une carte cadeau garde la sienne. */
+  const setQuantite = (it: OrderItem, quantite: number) => {
+    const q = Math.max(1, Math.min(99, quantite));
+    if (q === it.quantity || it.giftCard || !it.config) return;
+    const config = it.config;
+    void changerLigne(
+      () => browserApi.updateCartItem(getCartId(), it.id, { config, quantity: q, langue }),
+      it.id,
+    );
+  };
+  const retirerLigne = (it: OrderItem) =>
+    void changerLigne(() => browserApi.deleteCartItem(getCartId(), it.id), it.id);
+  /** « Modifier » rouvre la composition sur la fiche ; pas pour une carte, une IA, une affiche prête. */
+  const lienModifier = (it: OrderItem): string | null => {
+    if (it.giftCard || !it.config || it.config.aiPublicId) return null;
+    if (estPretAImprimer(fiches(), it)) return null;
+    const slug = it.productId != null ? fiches()?.get(it.productId)?.slug : null;
+    return slug ? `${lien(langue, `/affiches/${slug}`)}?edit=${it.id}` : null;
+  };
   /**
    * Poids du colis, tel que le serveur l'a pesé. Le refaire ici demanderait
    * de connaître le poids des variantes, des catégories et des cadres : deux
@@ -392,7 +460,7 @@ export default function CheckoutIsland(props: {
     const lib = biblio();
     if (!lib) return;
     for (const ligne of cart()?.items ?? []) {
-      for (const perso of ligne.config.characters ?? []) {
+      for (const perso of ligne.config?.characters ?? []) {
         const base = personnageParId(perso.typeId);
         if (!base) continue;
         void fetchSvg(base.baseSvgUrl);
@@ -418,31 +486,100 @@ export default function CheckoutIsland(props: {
   });
   // La part du cadre vient du serveur : une affiche offerte « cadre non
   // compris » se déduit sans son cadre, ici comme à l'encaissement.
+  // Les cartes cadeaux du panier n'entrent pas dans les promotions — ni
+  // comptées, ni remisées — et ne pèsent rien : le moteur ne voit que les
+  // affiches, exactement comme le serveur.
   const lignes = () =>
-    (cart()?.items ?? []).map((it) => ({
-      unitPriceCents: it.unitPriceCents,
-      quantity: it.quantity,
-      format:
-        (it.config as { format?: string } | null | undefined)?.format ?? null,
-      cadreCents: it.cadreCents ?? 0,
-    }));
-  /**
-   * Code promo saisi au panier. Il est revérifié ici, puis renvoyé au serveur
-   * qui refait seul le calcul : ce qui suit ne sert qu'à afficher le bon
-   * montant avant de payer.
+    (cart()?.items ?? [])
+      .filter((it) => !it.giftCard)
+      .map((it) => ({
+        unitPriceCents: it.unitPriceCents,
+        quantity: it.quantity,
+        format: it.config?.format ?? null,
+        cadreCents: it.cadreCents ?? 0,
+      }));
+  /** Les cartes cadeaux achetées, à leur montant (vérifié par le serveur). */
+  const cartesAchetees = () => (cart()?.items ?? []).filter((it) => it.giftCard);
+  const cartesCents = () =>
+    cartesAchetees().reduce((s, it) => s + it.unitPriceCents * it.quantity, 0);
+  /** Des affiches à livrer ? Sinon : ni mode, ni adresse, ni port. */
+  const avecAffiches = () => lignes().length > 0;
+  const sousTotalAffiches = () =>
+    lignes().reduce((s, l) => s + l.unitPriceCents * l.quantity, 0);
+
+  /*
+   * Le champ « Code promo ou carte cadeau » (17/11) : un seul champ, deux
+   * sortes de codes. Un code promo et une carte cadeau servent ensemble ; un
+   * second de la même sorte remplace le premier.
+   *
+   * Rien de ce qui suit ne fixe un montant : le serveur revérifie le code et
+   * la carte au passage en caisse, recalcule tout, et c'est son total qui
+   * s'encaisse. Ici, on affiche le bon montant AVANT de payer.
    */
-  const [codePromo] = createResource(async () => {
-    const code = codePromoRetenu();
-    if (!code) return null;
+  const [codePromo, setCodePromo] = createSignal<RegleParier | null>(null);
+  const [carte, setCarte] = createSignal<{
+    code: string;
+    masque: string;
+    soldeCents: number;
+  } | null>(null);
+  const [codeSaisi, setCodeSaisi] = createSignal("");
+  const [codeEnvoi, setCodeEnvoi] = createSignal(false);
+  const [codeErreur, setCodeErreur] = createSignal<string | null>(null);
+  /** Le code d'une visite précédente a été revérifié (la page attend ce moment). */
+  const [codeRepris, setCodeRepris] = createSignal(false);
+
+  async function appliquerCode(saisie: string, silencieux = false) {
+    const propre = saisie.trim();
+    if (!propre || codeEnvoi()) return;
+    setCodeEnvoi(true);
+    setCodeErreur(null);
     try {
-      const regle = await browserApi.verifierCode(code, langue);
-      // Son vrai identifiant, gardé : à priorité égale, il range le code
-      // parmi les autres règles comme le fait le serveur (reglesActives).
-      return { id: 0, ...regle } as unknown as RegleParier;
-    } catch {
-      return null;
+      // Dans la langue de la page : le nom de la promotion s'écrit sur la
+      // ligne de remise.
+      const r = await browserApi.codeCaisse(propre, langue);
+      if (r.type === "promo") {
+        // Son vrai identifiant, gardé : à priorité égale, il range le code
+        // parmi les autres règles comme le fait le serveur (reglesActives).
+        setCodePromo({ id: 0, ...r.regle } as unknown as RegleParier);
+        retenirCodePromo(r.regle.code);
+      } else {
+        setCarte(r.carte);
+      }
+      setCodeSaisi("");
+      // Le total a changé : un paiement préparé pour l'ancien ne vaut plus.
+      if (phase() === "pay") backToDetails();
+    } catch (e) {
+      if (silencieux) oublierCodePromo();
+      else
+        setCodeErreur(
+          messageErreur(
+            e,
+            { 404: "caisse.code.invalide", 409: "caisse.code.deja_utilise", 429: "caisse.code.trop_essais" },
+            "caisse.code.invalide",
+          ),
+        );
+    } finally {
+      setCodeEnvoi(false);
     }
+  }
+  function retirerPromo() {
+    setCodePromo(null);
+    oublierCodePromo();
+    if (phase() === "pay") backToDetails();
+  }
+  function retirerCarte() {
+    setCarte(null);
+    if (phase() === "pay") backToDetails();
+  }
+  // Le code promo d'une visite précédente — ou remis par le lien d'une
+  // relance de panier — est revérifié en silence : s'il ne vaut plus rien,
+  // il disparaît sans reproche.
+  onMount(async () => {
+    const retenu = codePromoRetenu();
+    if (retenu) await appliquerCode(retenu, true);
+    setCodeRepris(true);
   });
+
   const reglesEnJeu = (): RegleParier[] => {
     const auto = promos() ?? [];
     const c = codePromo();
@@ -613,7 +750,7 @@ export default function CheckoutIsland(props: {
   };
   /** Vrai quand le mode choisi est un retrait et qu'il reste à dire où. */
   const lieuManquant = (): boolean =>
-    optionChoisie()?.mode.kind === "pickup" && lieuRetenu() === null;
+    avecAffiches() && optionChoisie()?.mode.kind === "pickup" && lieuRetenu() === null;
 
 
   /* Recherche de points relais : on interroge le transporteur avec un code
@@ -893,8 +1030,8 @@ export default function CheckoutIsland(props: {
     return `${(metres / 1000).toLocaleString(locale, { maximumFractionDigits: 1 })} km`;
   }
 
-  /** Panier après remises : c'est lui qui décide de la franchise de port. */
-  const apresRemise = () => Math.max(0, subtotal() - discount());
+  /** Les affiches après remises : c'est lui qui décide de la franchise de port. */
+  const apresRemise = () => Math.max(0, sousTotalAffiches() - discount());
 
   /**
    * Le seuil de la promotion « livraison offerte dès X € », s'il y en a une.
@@ -904,17 +1041,22 @@ export default function CheckoutIsland(props: {
    * du port facturé.
    */
   const seuilPort = () =>
-    seuilPortOffertCents(reglesEnJeu(), new Date(), codes());
+    // 0 quand un code offre la livraison (« tout gratuit »), sinon le seuil
+    // des promotions « livraison offerte dès X € » — la fonction du serveur.
+    seuilPortCents(lignes(), reglesEnJeu(), new Date(), codes());
 
   const optionsPort = (): OptionLivraison[] => {
     const cat = catalogue();
-    return cat
+    // Des cartes cadeaux seules : rien à livrer.
+    return cat && avecAffiches()
       ? optionsLivraison(cat, pays(), apresRemise(), poidsColis(), seuilPort())
       : [];
   };
   const optionChoisie = () =>
     optionsPort().find((o) => o.mode.slug === modeChoisi()) ?? null;
-  const fraisPort = () => optionChoisie()?.fraisCents ?? 0;
+  // Sans compte, le mode de livraison ne se choisit pas encore : pas de
+  // port dans le total, il s'y ajoute une fois connectée.
+  const fraisPort = () => (props.compte ? (optionChoisie()?.fraisCents ?? 0) : 0);
 
   // Premier mode disponible par défaut, et repli si le choix devient
   // impossible — changer de pays peut retirer le retrait sur place.
@@ -935,6 +1077,7 @@ export default function CheckoutIsland(props: {
 
   /** Ce que le mode choisi exige avant de pouvoir payer. */
   const livraisonValide = () => {
+    if (!avecAffiches()) return true;
     const o = optionChoisie();
     if (!o) return false;
     if (demandeUneAdresse(o.mode.kind)) {
@@ -957,9 +1100,49 @@ export default function CheckoutIsland(props: {
     return true;
   };
 
-  /** Montant réellement dû (= ce que débitera Stripe/PayPal). */
+  /** Ce que vaut la commande : affiches remisées, cartes achetées, port. */
   const total = () =>
-    totalPanierCents(lignes(), reglesEnJeu(), new Date(), codes()) + fraisPort();
+    totalPanierCents(lignes(), reglesEnJeu(), new Date(), codes()) +
+    cartesCents() +
+    fraisPort();
+  /**
+   * La part de la carte cadeau : jusqu'au total, sans dépasser son solde, et
+   * jamais sur les cartes achetées. Le serveur refait le même calcul.
+   */
+  const partCarte = () => {
+    const c = carte();
+    return c ? partCarteCadeau(total(), cartesCents(), c.soldeCents) : 0;
+  };
+  /** Ce que débiteront Stripe ou PayPal : le total, moins la carte. */
+  const aPayer = () => resteAPayerCents(total(), partCarte());
+  /**
+   * Rien à payer : la caisse remplace le paiement par « Valider ma
+   * commande ». C'est une estimation de l'écran ; le serveur décide au
+   * passage en caisse (aPayerCents), et recalcule tout avant de valider.
+   */
+  const gratuit = () =>
+    Boolean(cart()) && cart()!.items.length > 0 && aPayer() === 0 &&
+    (!avecAffiches() || optionChoisie() !== null);
+
+  /*
+   * Le destinataire de chaque carte cadeau achetée : son e-mail (celle de la
+   * cliente si rien n'est dit), son prénom et un petit mot, facultatifs.
+   */
+  const [destinataires, setDestinataires] = createSignal<
+    Record<number, { email: string; prenom: string; message: string }>
+  >({});
+  const destinataire = (id: number) =>
+    destinataires()[id] ?? { email: "", prenom: "", message: "" };
+  const majDestinataire = (
+    id: number,
+    champ: "email" | "prenom" | "message",
+    valeur: string,
+  ) => setDestinataires({ ...destinataires(), [id]: { ...destinataire(id), [champ]: valeur } });
+  const destinatairesValides = () =>
+    cartesAchetees().every((it) => {
+      const e = destinataire(it.id).email.trim();
+      return !e || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+    });
 
   const methods = (): Method[] => {
     const c = config();
@@ -978,7 +1161,8 @@ export default function CheckoutIsland(props: {
     name().trim().length > 0 &&
     emailValid() &&
     livraisonValide() &&
-    !lieuManquant();
+    !lieuManquant() &&
+    destinatairesValides();
 
   /**
    * Ce qui manque encore pour passer au paiement, en toutes lettres, sous le
@@ -991,7 +1175,9 @@ export default function CheckoutIsland(props: {
     if (!name().trim()) liste.push(tr("commande.manque.nom"));
     if (!emailValid()) liste.push(tr("commande.manque.email"));
     const o = optionChoisie();
-    if (!o) liste.push(tr("commande.manque.mode"));
+    if (!avecAffiches()) {
+      // Des cartes cadeaux seules : rien à livrer, rien à choisir.
+    } else if (!o) liste.push(tr("commande.manque.mode"));
     else if (!livraisonValide())
       liste.push(
         tr(
@@ -1001,7 +1187,9 @@ export default function CheckoutIsland(props: {
         ),
       );
     if (lieuManquant()) liste.push(tr("commande.manque.lieu"));
-    if (!method()) liste.push(tr("commande.manque.moyen"));
+    if (!destinatairesValides()) liste.push(tr("caisse.err.carte_email"));
+    // À 0 €, il n'y a pas de moyen de paiement à choisir.
+    if (!method() && !gratuit()) liste.push(tr("commande.manque.moyen"));
     return liste;
   };
 
@@ -1230,9 +1418,23 @@ export default function CheckoutIsland(props: {
   );
 
   /** Phase 1 -> 2 : crée la commande (pending) puis prépare le moyen choisi. */
+  /**
+   * Valide une commande à 0 € : le serveur recalcule TOUT (articles, code,
+   * livraison, carte) et refuse le moindre centime à payer.
+   */
+  async function validerSansPaiement(oid: number): Promise<void> {
+    const r = await browserApi.validerGratuite(oid);
+    if (r.status !== "paid") throw new Error("API POST /payments/gratuit -> 409 {\"code\":\"montant_non_nul\"}");
+    setOrderNumber(r.number);
+    setSansPaiement(true);
+    finishSuccess();
+  }
+  /** La commande s'est validée sans paiement : le « Merci » le dit autrement. */
+  const [sansPaiement, setSansPaiement] = createSignal(false);
+
   async function goToPay(e: Event) {
     e.preventDefault();
-    if (!formValid() || !method() || submitting()) return;
+    if (!formValid() || (!method() && !gratuit()) || submitting()) return;
     setSubmitting(true);
     setError(null);
     // Le refus d'une redirection précédente ne vaut plus : elle réessaie.
@@ -1251,25 +1453,51 @@ export default function CheckoutIsland(props: {
       const order = await browserApi.createOrder(
         getCartId(),
         { name: name().trim(), email: email().trim() },
-        codePromoRetenu() || undefined,
-        {
-          method: modeChoisi() ?? "",
-          name: name().trim(),
-          line1: a.line1.trim(),
-          line2: a.line2.trim(),
-          postalCode: a.postalCode.trim(),
-          city: a.city.trim(),
-          country: pays(),
-          phone: a.phone.trim(),
-          relayPointId: relais.id.trim(),
-          relayPointLabel: relais.label.trim(),
-          ...(lieu ? { pickupPointId: lieu.id } : {}),
-          ...(lieu?.standId != null ? { retraitCompris: standCompris() } : {}),
-        },
+        codePromo()?.code ?? undefined,
+        // Des cartes cadeaux seules : rien à livrer, pas de livraison envoyée.
+        avecAffiches()
+          ? {
+              method: modeChoisi() ?? "",
+              name: name().trim(),
+              line1: a.line1.trim(),
+              line2: a.line2.trim(),
+              postalCode: a.postalCode.trim(),
+              city: a.city.trim(),
+              country: pays(),
+              phone: a.phone.trim(),
+              relayPointId: relais.id.trim(),
+              relayPointLabel: relais.label.trim(),
+              ...(lieu ? { pickupPointId: lieu.id } : {}),
+              ...(lieu?.standId != null ? { retraitCompris: standCompris() } : {}),
+            }
+          : undefined,
         langue,
+        {
+          carteCadeau: carte()?.code,
+          cartesCadeaux: cartesAchetees().map((it) => ({
+            itemId: it.id,
+            email: destinataire(it.id).email.trim(),
+            prenom: destinataire(it.id).prenom.trim(),
+            message: destinataire(it.id).message.trim(),
+          })),
+        },
       );
       setOrderId(order.orderId);
       setOrderNumber(order.number);
+
+      // Le reste à payer que le SERVEUR a calculé. À 0 €, rien à encaisser :
+      // la commande se valide sans prestataire, après un dernier recalcul.
+      const resteServeur = order.aPayerCents ?? order.totalCents;
+      if (resteServeur === 0) {
+        await validerSansPaiement(order.orderId);
+        return;
+      }
+      // L'écran croyait la commande gratuite, le serveur non : on le dit, et
+      // la cliente choisit un moyen de paiement.
+      if (!method()) {
+        setError(tr("caisse.err.montant_non_nul"));
+        return;
+      }
 
       if (method() === "stripe") {
         const cfg = config()?.stripe;
@@ -1402,6 +1630,32 @@ export default function CheckoutIsland(props: {
     }
   }
 
+  /*
+   * La page attend que la caisse soit PRÊTE pour la montrer d'un coup
+   * (commande.astro, .ml-attente) : le panier lu, les promotions, le
+   * catalogue de livraison et les fiches lus, le code d'une visite précédente
+   * revérifié — le récapitulatif est alors calculé —, puis les polices
+   * chargées. Le retour de la banque, lui, se montre tout de suite : c'est
+   * l'écran « nous vérifions votre paiement ».
+   */
+  let pretSignale = false;
+  createEffect(() => {
+    const retourBanque = retour() !== null && retour() !== "refuse";
+    const pret =
+      retourBanque ||
+      paid() ||
+      (!cart.loading &&
+        !promos.loading &&
+        !catalogue.loading &&
+        !fiches.loading &&
+        codeRepris());
+    if (!pret || pretSignale) return;
+    pretSignale = true;
+    const montrer = () => document.getElementById("ml-attente")?.setAttribute("data-pret", "");
+    // Les polices d'abord : sinon le texte apparaîtrait, puis changerait.
+    void (document.fonts?.ready ?? Promise.resolve()).then(montrer, montrer);
+  });
+
   return (
     <Show
       when={!paid() && (retour() === null || retour() === "refuse")}
@@ -1409,7 +1663,9 @@ export default function CheckoutIsland(props: {
         <Show when={paid()} fallback={ecranRetour()}>
           <div class="rounded-2xl border border-sage/40 bg-sage/10 p-8 text-center">
             <h2 class="font-serif text-3xl">{tr("commande.merci_titre")}</h2>
-            <p class="mt-3 text-ink-soft">{tr("commande.merci_texte")}</p>
+            <p class="mt-3 text-ink-soft">
+              {tr(sansPaiement() ? "caisse.merci_gratuit" : "commande.merci_texte")}
+            </p>
             <p class="mt-4 text-lg">
               {tr("commande.numero")}{" "}
               <span class="text-2xl">{orderNumber()}</span>
@@ -1472,6 +1728,31 @@ export default function CheckoutIsland(props: {
 
       <Show when={cart() && cart()!.items.length > 0}>
         <div class="grid lg:grid-cols-[1fr_320px] gap-8 items-start">
+          {/* Sans compte (17/11) : le récapitulatif reste modifiable, à droite,
+              et la connexion n'est demandée qu'ici, au moment des
+              informations et du paiement. Le retour ramène à cette page,
+              panier intact. */}
+          <Show when={!props.compte}>
+            <div class="rounded-2xl border border-ink/10 bg-paper-deep/40 p-6">
+              <h2 class="text-2xl">{tr("caisse.connexion.titre")}</h2>
+              <p class="mt-3 text-ink-soft">{tr("caisse.connexion.texte")}</p>
+              <div class="mt-6 flex flex-wrap gap-3">
+                <a
+                  href={`${lien(langue, "/compte/connexion")}?retour=${encodeURIComponent(lien(langue, "/commande"))}`}
+                  class="inline-flex items-center justify-center rounded-full bg-ink px-6 py-3 font-medium text-paper hover:bg-ink/85 transition-colors"
+                >
+                  {tr("caisse.connexion.se_connecter")}
+                </a>
+                <a
+                  href={`${lien(langue, "/compte/inscription")}?retour=${encodeURIComponent(lien(langue, "/commande"))}`}
+                  class="inline-flex items-center justify-center rounded-full border-2 border-ink px-6 py-3 font-medium hover:bg-ink hover:text-paper transition-colors"
+                >
+                  {tr("caisse.connexion.creer")}
+                </a>
+              </div>
+            </div>
+          </Show>
+          <Show when={props.compte}>
           <div class="space-y-8">
             {/* Coordonnées */}
             <fieldset class="space-y-4" disabled={phase() === "pay"}>
@@ -1526,7 +1807,67 @@ export default function CheckoutIsland(props: {
               </label>
             </fieldset>
 
-            {/* Livraison */}
+            {/* Les cartes cadeaux achetées : à qui les envoyer. */}
+            <Show when={cartesAchetees().length > 0}>
+              <fieldset class="space-y-4" disabled={phase() === "pay"}>
+                <legend class="text-2xl mb-2">{tr("caisse.cartes.titre")}</legend>
+                <p class="text-sm text-ink-soft">{tr("caisse.cartes.intro")}</p>
+                <For each={cartesAchetees()}>
+                  {(it) => (
+                    <div class="space-y-3 rounded-lg border border-ink/15 p-4">
+                      <p class="font-medium">
+                        {tr("caisse.cartes.numero").replace("{montant}", () =>
+                          formatPrice(it.unitPriceCents, locale),
+                        )}
+                      </p>
+                      <label class="block">
+                        <span class="text-sm font-medium">{tr("caisse.cartes.email")}</span>
+                        <input
+                          type="email"
+                          value={destinataire(it.id).email}
+                          onInput={(e) => majDestinataire(it.id, "email", e.currentTarget.value)}
+                          placeholder={email()}
+                          maxlength="200"
+                          class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
+                        />
+                        <span class="mt-1 block text-xs text-ink-soft">{tr("caisse.cartes.email_aide")}</span>
+                      </label>
+                      <label class="block">
+                        <span class="text-sm font-medium">{tr("caisse.cartes.prenom")}</span>
+                        <input
+                          type="text"
+                          value={destinataire(it.id).prenom}
+                          onInput={(e) => majDestinataire(it.id, "prenom", e.currentTarget.value)}
+                          maxlength="60"
+                          class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
+                        />
+                      </label>
+                      <label class="block">
+                        <span class="text-sm font-medium">{tr("caisse.cartes.message")}</span>
+                        <textarea
+                          rows="3"
+                          value={destinataire(it.id).message}
+                          onInput={(e) => majDestinataire(it.id, "message", e.currentTarget.value)}
+                          maxlength="300"
+                          class="mt-1 w-full rounded-lg border border-ink/20 bg-paper px-4 py-3 focus:border-terracotta focus:outline-none disabled:opacity-60"
+                        />
+                      </label>
+                    </div>
+                  )}
+                </For>
+              </fieldset>
+            </Show>
+
+            {/* Livraison : des affiches seulement. Des cartes cadeaux seules
+                n'ont rien à livrer. */}
+            <Show
+              when={avecAffiches()}
+              fallback={
+                <p class="rounded-lg border border-ink/10 bg-paper-deep/40 px-4 py-3 text-sm text-ink-soft">
+                  {tr("caisse.sans_livraison")}
+                </p>
+              }
+            >
             <fieldset class="space-y-4" disabled={phase() === "pay"}>
               <legend class="text-2xl mb-2">{tr("livraison.titre")}</legend>
 
@@ -2209,6 +2550,7 @@ export default function CheckoutIsland(props: {
                 </div>
               </Show>
             </fieldset>
+            </Show>
 
             {/* Paiement */}
             <fieldset class="space-y-4">
@@ -2219,7 +2561,36 @@ export default function CheckoutIsland(props: {
               {/* Aucun moyen configuré. La cliente lit ce message : il ne
                   parle ni de fichier ni de clé, seulement de ce qu'elle peut
                   faire — revenir plus tard, ou nous écrire. */}
-              <Show when={config() && methods().length === 0}>
+              {/* Rien à payer (estimation de l'écran ; le serveur décide) :
+                  pas de moyen de paiement, un bouton qui valide. */}
+              <Show when={gratuit() && phase() === "details"}>
+                <p class="rounded-lg border border-sage/40 bg-sage/10 p-4 text-sm">
+                  {tr("caisse.valider_texte")}
+                </p>
+                <button
+                  type="button"
+                  onClick={goToPay}
+                  disabled={!formValid() || submitting()}
+                  aria-busy={submitting()}
+                  class="w-full rounded-full bg-terracotta px-8 py-4 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submitting() ? (
+                    <>
+                      <span class="ml-spinner ml-spinner-clair mr-2" aria-hidden="true" />
+                      {tr("caisse.validation_en_cours")}
+                    </>
+                  ) : (
+                    tr("caisse.valider")
+                  )}
+                </button>
+                <Show when={!submitting() && manques().length > 0}>
+                  <p class="mt-2 text-center text-sm text-ink-soft" role="status">
+                    {tr("commande.il_manque").replace("{liste}", manques().join(", "))}
+                  </p>
+                </Show>
+              </Show>
+
+              <Show when={!gratuit() && config() && methods().length === 0}>
                 <div
                   role="status"
                   class="rounded-lg border border-dashed border-terracotta/40 bg-terracotta/5 p-4 text-sm text-ink-soft"
@@ -2234,7 +2605,7 @@ export default function CheckoutIsland(props: {
               {/* Mode essai : ce qu'il faut saisir. Sans ce rappel on cherche
                   le numéro de carte de test ailleurs à chaque fois, et devant
                   PayPal on essaie son vrai compte, qui ne marche pas. */}
-              <Show when={config()?.essai && methods().length > 0}>
+              <Show when={!gratuit() && config()?.essai && methods().length > 0}>
                 <div class="rounded-lg border border-sage/40 bg-sage/10 p-4 text-sm">
                   <p class="font-medium">{tr("commande.essai.titre")}</p>
                   <ul class="mt-2 space-y-1 text-ink-soft">
@@ -2254,7 +2625,7 @@ export default function CheckoutIsland(props: {
                 </div>
               </Show>
 
-              <Show when={methods().length > 0}>
+              <Show when={methods().length > 0 && (!gratuit() || phase() === "pay")}>
                 {/* Onglets moyens de paiement */}
                 <div class="flex gap-3">
                   <For each={methods()}>
@@ -2294,7 +2665,7 @@ export default function CheckoutIsland(props: {
                     ) : (
                       tr("commande.continuer_paiement").replace(
                         "{total}",
-                        formatPrice(total(), locale),
+                        formatPrice(aPayer(), locale),
                       )
                     )}
                   </button>
@@ -2331,7 +2702,7 @@ export default function CheckoutIsland(props: {
                           {tr("commande.paiement_en_cours")}
                         </>
                       ) : (
-                        `${tr("commande.payer")} ${formatPrice(total(), locale)}`
+                        `${tr("commande.payer")} ${formatPrice(aPayer(), locale)}`
                       )}
                     </button>
                   </Show>
@@ -2360,6 +2731,7 @@ export default function CheckoutIsland(props: {
               </Show>
             </fieldset>
           </div>
+          </Show>
 
           {/* Récapitulatif */}
           <aside class="rounded-2xl border border-ink/10 bg-paper-deep/40 p-6 lg:sticky lg:top-24">
@@ -2372,17 +2744,27 @@ export default function CheckoutIsland(props: {
                 {tr("panier.cadres_retires")}
               </p>
             </Show>
-            <ul class="space-y-3 text-sm">
+            <ul class="space-y-4 text-sm">
               <For each={cart()?.items ?? []}>
                 {(it) => (
                   <li class="flex justify-between gap-3">
                     <div class="flex min-w-0 gap-3">
                       {/* Aperçu FILIGRANÉ : la commande n'est pas encore
                           payée, l'affiche montrée ici en porte donc un,
-                          exactement comme au panier. */}
+                          exactement comme au panier. Une carte cadeau a sa
+                          vignette, avec son montant. */}
                       <div class="ml-panier-vignette w-14 shrink-0">
                         <Show
-                          when={it.config.aiPublicId}
+                          when={!it.giftCard && it.config}
+                          fallback={
+                            <VignetteCarteCadeau
+                              libelle={tr("carte.titre")}
+                              montant={formatPrice(it.unitPriceCents, locale)}
+                            />
+                          }
+                        >
+                        <Show
+                          when={it.config!.aiPublicId}
                           fallback={
                             /* Une affiche prête à imprimer : son visuel de
                                boutique, comme au panier. */
@@ -2396,7 +2778,7 @@ export default function CheckoutIsland(props: {
                               }
                             >
                               <PosterPreview
-                                state={stateFromConfig(it.config)}
+                                state={stateFromConfig(it.config!)}
                                 characterById={personnageParId}
                                 slots={biblio()!.slots}
                                 cache={cache}
@@ -2407,8 +2789,8 @@ export default function CheckoutIsland(props: {
                                 foregroundUrl={
                                   urlAsset(
                                     PUBLIC_API_URL,
-                                    it.config.foregroundUrl ||
-                                      (it.config.view === "back"
+                                    it.config!.foregroundUrl ||
+                                      (it.config!.view === "back"
                                         ? "/assets/muret_officiel.svg"
                                         : ""),
                                   ) || undefined
@@ -2435,15 +2817,15 @@ export default function CheckoutIsland(props: {
                                milieu d'une vignette en portrait. */
                             style={{
                               "aspect-ratio":
-                                it.config.orientation === "paysage"
+                                it.config!.orientation === "paysage"
                                   ? "1.4142 / 1"
                                   : "1 / 1.4142",
                             }}
                           >
                             <img
                               src={apercuAbsolu(
-                                it.config.aiApercuUrl ||
-                                  urlApercu(it.config.aiPublicId!),
+                                it.config!.aiApercuUrl ||
+                                  urlApercu(it.config!.aiPublicId!),
                               )}
                               alt=""
                               class="absolute inset-0 h-full w-full object-contain"
@@ -2453,15 +2835,62 @@ export default function CheckoutIsland(props: {
                             />
                           </div>
                         </Show>
+                        </Show>
                       </div>
                       <div class="min-w-0">
                         <span class="block truncate">
-                          {it.title ?? tr("panier.affiche_sans_titre")}
+                          {it.giftCard
+                            ? tr("carte.titre")
+                            : (nomDeLaLigne(fiches(), it) ?? tr("panier.affiche_sans_titre"))}
                         </span>
-                        <span class="text-ink-soft">
-                          {it.config.format ?? "A4"} · {tr("commande.qte")}{" "}
-                          {it.quantity}
+                        <span class="block text-ink-soft">
+                          {it.giftCard
+                            ? tr("carte.envoi")
+                            : `${it.config?.format ?? "A4"} · ${formatPrice(it.unitPriceCents, locale)}`}
                         </span>
+                        {/* Les gestes du panier : la quantité, le retrait,
+                            « Modifier ». Figés pendant le paiement. */}
+                        <div class="mt-1.5 flex flex-wrap items-center gap-2">
+                          <Show when={!it.giftCard}>
+                            <span class="inline-flex items-center rounded-md border border-ink/20">
+                              <button
+                                type="button"
+                                onClick={() => setQuantite(it, it.quantity - 1)}
+                                disabled={occupe() === it.id || it.quantity <= 1 || phase() === "pay" || submitting()}
+                                aria-label={tr("panier.moins")}
+                                class="px-2 py-0.5 leading-none hover:bg-paper-deep disabled:opacity-40"
+                              >
+                                −
+                              </button>
+                              <span class="w-7 text-center tabular-nums">{it.quantity}</span>
+                              <button
+                                type="button"
+                                onClick={() => setQuantite(it, it.quantity + 1)}
+                                disabled={occupe() === it.id || phase() === "pay" || submitting()}
+                                aria-label={tr("panier.plus")}
+                                class="px-2 py-0.5 leading-none hover:bg-paper-deep disabled:opacity-40"
+                              >
+                                +
+                              </button>
+                            </span>
+                          </Show>
+                          <button
+                            type="button"
+                            onClick={() => retirerLigne(it)}
+                            disabled={occupe() === it.id || phase() === "pay" || submitting()}
+                            class="text-xs text-ink-soft underline underline-offset-2 hover:text-terracotta-deep disabled:opacity-40"
+                          >
+                            {tr("panier.supprimer")}
+                          </button>
+                          <Show when={lienModifier(it) && phase() !== "pay"}>
+                            <a
+                              href={lienModifier(it)!}
+                              class="text-xs text-ink-soft underline underline-offset-2 hover:text-terracotta"
+                            >
+                              {tr("panier.modifier")}
+                            </a>
+                          </Show>
+                        </div>
                       </div>
                     </div>
                     <span class="shrink-0">
@@ -2481,7 +2910,7 @@ export default function CheckoutIsland(props: {
                 <span>− {formatPrice(discount(), locale)}</span>
               </div>
             </Show>
-            <Show when={optionChoisie()}>
+            <Show when={props.compte && avecAffiches() && optionChoisie()}>
               <div class="mt-1 flex justify-between text-sm text-ink-soft">
                 <span>{optionChoisie()!.mode.name}</span>
                 <span>
@@ -2497,11 +2926,106 @@ export default function CheckoutIsland(props: {
               <span class="font-medium">{tr("panier.total")}</span>
               <span class="text-xl">{formatPrice(total(), locale)}</span>
             </div>
+            {/* La carte cadeau : sa part, son code masqué, et ce qui restera
+                dessus. Puis ce que débitera la carte bancaire ou PayPal. */}
+            <Show when={carte()}>
+              {(c) => (
+                <>
+                  <div class="mt-2 flex items-start justify-between gap-3 text-sm">
+                    <span>
+                      {tr("caisse.carte.ligne").replace("{code}", () => c().masque)}
+                      <button
+                        type="button"
+                        onClick={retirerCarte}
+                        disabled={phase() === "pay" || submitting()}
+                        class="ml-2 text-xs text-ink-soft underline underline-offset-2 hover:text-ink disabled:opacity-40"
+                      >
+                        {tr("caisse.code.retirer")}
+                      </button>
+                    </span>
+                    <span class="shrink-0 text-sage">− {formatPrice(partCarte(), locale)}</span>
+                  </div>
+                  <Show when={partCarte() === 0 && cartesCents() > 0}>
+                    <p class="mt-1 text-xs text-terracotta-deep">{tr("caisse.carte.sur_carte")}</p>
+                  </Show>
+                  <Show when={c().soldeCents - partCarte() > 0 && partCarte() > 0}>
+                    <p class="mt-1 text-xs text-ink-soft">
+                      {tr("caisse.carte.reste").replace("{solde}", () =>
+                        formatPrice(c().soldeCents - partCarte(), locale),
+                      )}
+                    </p>
+                  </Show>
+                  <div class="mt-2 flex justify-between">
+                    <span class="font-medium">{tr("caisse.reste_a_payer")}</span>
+                    <span class="text-xl">{formatPrice(aPayer(), locale)}</span>
+                  </div>
+                </>
+              )}
+            </Show>
+
+            {/* Le champ « Code promo ou carte cadeau » : un code promo et une
+                carte peuvent servir ensemble. */}
+            <div class="mt-5 border-t border-ink/10 pt-4 text-left">
+              <Show when={codePromo()}>
+                {(p) => (
+                  <p class="mb-2 flex items-center justify-between gap-3 text-sm">
+                    <span class="text-sage">
+                      {tr("caisse.code.applique").replace("{code}", () => (p() as { code?: string }).code ?? "")}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={retirerPromo}
+                      disabled={phase() === "pay" || submitting()}
+                      class="text-xs text-ink-soft underline underline-offset-2 hover:text-ink disabled:opacity-40"
+                    >
+                      {tr("caisse.code.retirer")}
+                    </button>
+                  </p>
+                )}
+              </Show>
+              <label id="ml-code-caisse-titre" for="ml-code-caisse" class="mb-1 block text-sm font-medium">
+                {tr("caisse.code.titre")}
+              </label>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void appliquerCode(codeSaisi());
+                }}
+                class="flex items-stretch gap-2"
+              >
+                <input
+                  id="ml-code-caisse"
+                  aria-labelledby="ml-code-caisse-titre"
+                  value={codeSaisi()}
+                  onInput={(e) => {
+                    setCodeSaisi(e.currentTarget.value);
+                    setCodeErreur(null);
+                  }}
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  spellcheck={false}
+                  disabled={phase() === "pay" || submitting()}
+                  class="min-w-0 flex-1 rounded-lg border border-ink/20 bg-paper px-3 py-2 text-sm outline-none focus:border-ink disabled:opacity-60"
+                />
+                <button
+                  type="submit"
+                  disabled={codeEnvoi() || !codeSaisi().trim() || phase() === "pay" || submitting()}
+                  class="rounded-lg border border-ink px-3 py-2 text-sm font-medium hover:bg-ink hover:text-paper disabled:opacity-40 transition-colors"
+                >
+                  {tr("caisse.code.appliquer")}
+                </button>
+              </form>
+              <Show when={codeErreur()}>
+                <p role="alert" class="mt-2 text-sm text-terracotta-deep">
+                  {codeErreur()}
+                </p>
+              </Show>
+            </div>
             <a
-              href={lien(langue, "/panier")}
+              href={lien(langue, "/affiches")}
               class="mt-4 block text-center text-sm text-ink-soft hover:text-terracotta"
             >
-              {tr("commande.modifier_panier")}
+              {tr("panier.continuer")}
             </a>
           </aside>
         </div>

@@ -21,22 +21,37 @@
  * DÉSACTIVE, ce qui laisse tout en place.
  *
  * Enfin, un code de carte vaut de l'argent au porteur. Il est tiré par le
- * serveur, jamais choisi, et aucune route publique ne dit si un code existe ni
- * ce qu'il vaut : ce serait offrir de quoi deviner les codes des autres, un
- * essai après l'autre. Tout ce fichier vit sous « /admin/* », que la garde de
- * `index.ts` réserve déjà au propriétaire : les codes y sont en clair, un
- * vendeur de stand n'y accède pas.
+ * serveur, jamais choisi. Les routes de gestion vivent sous « /admin/* », que
+ * la garde de `index.ts` réserve déjà au propriétaire : les codes y sont en
+ * clair, un vendeur de stand n'y accède pas.
+ *
+ * Depuis le 17/11, la carte se DÉPENSE aussi en ligne, et s'y ACHÈTE. La
+ * caisse vérifie un code par une seule route publique (promotions.ts,
+ * « /caisse/code »), freinée, qui répond la même phrase pour tout code refusé :
+ * elle ne dit jamais si un code existe. La dépense s'écrit au journal au
+ * moment où la commande est payée, sous verrou (debiterCarte) : un même euro
+ * ne sert jamais deux fois, même à deux commandes simultanées. Une carte
+ * achetée naît au paiement de sa commande (emettreCartesDeLaCommande), avec
+ * un code de seize signes, et part par e-mail à son destinataire.
  */
 import type { Hono } from "hono";
-import { asc, count, desc, eq, sql as raw } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, sql as raw } from "drizzle-orm";
 import { randomInt } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { PDFFont, PDFPage, RGB } from "pdf-lib";
-import { FUSEAU_BOUTIQUE, instantDeParis } from "@memoryline/types";
+import {
+  FUSEAU_BOUTIQUE,
+  codeCarteMasque,
+  instantDeParis,
+} from "@memoryline/types";
 import { db, schema } from "./db/client.js";
+import { clientDeLaRequete } from "./comptes.js";
+import { courrierCarteCadeau, envoyer as envoyerMail } from "./mail.js";
+import { langueDuDestinataire } from "./courriels/index.js";
+import { prenomPourCourrier } from "./prenom.js";
 
 /* -------------------------------------------------------------------------- */
 /*  Le code d'une carte                                                       */
@@ -55,14 +70,19 @@ import { db, schema } from "./db/client.js";
  * B, D, G, P, T et V se disent toutes « -é », M et N se répondent. On garde C,
  * qui se dit « sé » mais n'a plus de S en face, et on écarte les autres.
  *
- * Restent vingt et un signes. Douze tirages en font 21^12, soit sept millions
- * de milliards de codes possibles : tomber sur celui d'un autre client n'est
- * pas une hypothèse à considérer.
+ * Restent vingt et un signes. Seize tirages en font 21^16, soit des millions
+ * de milliards de milliards de codes possibles : tomber sur celui d'un autre
+ * client n'est pas une hypothèse à considérer. Les cartes d'avant le 17/11 en
+ * ont douze ; elles restent valables, et la saisie accepte les deux formes
+ * (cleDeCarte, @memoryline/types).
  */
 const ALPHABET = "ACEFHJKLRUWXY23456789";
 
-/** Douze signes, présentés en trois groupes de quatre séparés par des tirets. */
-const LONGUEUR_CODE = 12;
+/**
+ * Seize signes, présentés en quatre groupes de quatre séparés par des tirets :
+ * « V7X9-KQ4M-Z8WP-3N6R ».
+ */
+const LONGUEUR_CODE = 16;
 
 /**
  * Plafond d'une carte : mille euros.
@@ -94,8 +114,8 @@ type EtatCarte = (typeof ETATS)[number];
  */
 class SaisieRefusee extends Error {}
 
-/** Tire un code neuf, présenté en trois groupes de quatre. */
-function nouveauCode(): string {
+/** Tire un code neuf, présenté en groupes de quatre. */
+export function nouveauCode(): string {
   let brut = "";
   for (let i = 0; i < LONGUEUR_CODE; i++)
     brut += ALPHABET[randomInt(ALPHABET.length)];
@@ -202,6 +222,380 @@ async function soldeDuJournal(tx: Transaction, carteId: number): Promise<number>
     .from(schema.giftCardTransactions)
     .where(eq(schema.giftCardTransactions.giftCardId, carteId));
   return Number(somme?.total ?? 0);
+}
+
+/** Recopie sur la carte le solde relu de son journal (voir l'en-tête). */
+async function recopierSolde(tx: Transaction, carteId: number): Promise<number> {
+  const solde = await soldeDuJournal(tx, carteId);
+  await tx
+    .update(schema.giftCards)
+    .set({ balanceCents: solde })
+    .where(eq(schema.giftCards.id, carteId));
+  return solde;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  La carte à la caisse : dépense, remboursement, vente en ligne              */
+/* -------------------------------------------------------------------------- */
+
+/** Là où passent les requêtes : la base, ou la transaction en cours. */
+type Executeur = typeof db | Transaction;
+
+/** Une carte retrouvée par la CLÉ de son code (cleDeCarte : sans tirets). */
+export async function carteParCle(
+  ex: Executeur,
+  cle: string,
+): Promise<typeof schema.giftCards.$inferSelect | null> {
+  const [carte] = await ex
+    .select()
+    .from(schema.giftCards)
+    .where(raw`replace(${schema.giftCards.code}, '-', '') = ${cle}`);
+  return carte ?? null;
+}
+
+/**
+ * La carte peut-elle payer à cet instant ? Active, pas échue, un solde.
+ *
+ * Lu sur la recopie du solde : c'est ce que montre la caisse. Le débit, lui,
+ * relit le journal sous verrou (verifierCarteSousVerrou).
+ */
+export function carteUtilisable(
+  carte: { status: string; expiresAt: Date | null; balanceCents: number },
+  quand: Date = new Date(),
+): boolean {
+  return (
+    carte.status === "active" &&
+    (!carte.expiresAt || carte.expiresAt >= quand) &&
+    carte.balanceCents > 0
+  );
+}
+
+/** Pourquoi une carte ne peut pas payer ce qu'on lui demande. */
+export type RefusCarte = "introuvable" | "desactivee" | "echue" | "solde";
+
+/**
+ * Vérifie qu'une carte peut payer `montantCents`, en la VERROUILLANT jusqu'à
+ * la fin de la transaction.
+ *
+ * C'est ce verrou qui empêche la double dépense : deux commandes payées au
+ * même instant avec la même carte passent l'une après l'autre, et la seconde
+ * relit le solde que la première vient de laisser. Le débit (debiterCarte)
+ * doit suivre dans la MÊME transaction.
+ *
+ * `quand` : l'heure à laquelle juger la date de fin — celle du passage en
+ * caisse, comme pour les promotions. Une carte valable jusqu'à minuit ne doit
+ * pas faire refuser un paiement ouvert à 23 h 58.
+ */
+export async function verifierCarteSousVerrou(
+  tx: Transaction,
+  carteId: number,
+  montantCents: number,
+  quand: Date,
+): Promise<
+  | { ok: true; carte: typeof schema.giftCards.$inferSelect; soldeCents: number }
+  | { ok: false; raison: RefusCarte; soldeCents: number; code: string | null }
+> {
+  const [carte] = await tx
+    .select()
+    .from(schema.giftCards)
+    .where(eq(schema.giftCards.id, carteId))
+    .for("update");
+  if (!carte) return { ok: false, raison: "introuvable", soldeCents: 0, code: null };
+  const solde = await soldeDuJournal(tx, carteId);
+  if (carte.status !== "active")
+    return { ok: false, raison: "desactivee", soldeCents: solde, code: carte.code };
+  if (carte.expiresAt && carte.expiresAt < quand)
+    return { ok: false, raison: "echue", soldeCents: solde, code: carte.code };
+  if (solde < montantCents)
+    return { ok: false, raison: "solde", soldeCents: solde, code: carte.code };
+  return { ok: true, carte, soldeCents: solde };
+}
+
+/**
+ * Débite la carte pour une commande : un mouvement NÉGATIF au journal, puis le
+ * solde relu. À appeler après verifierCarteSousVerrou, dans la même
+ * transaction : c'est elle qui tient le verrou et a vérifié le solde.
+ */
+export async function debiterCarte(
+  tx: Transaction,
+  carteId: number,
+  montantCents: number,
+  commande: { id: number; number: string },
+): Promise<number> {
+  await tx.insert(schema.giftCardTransactions).values({
+    giftCardId: carteId,
+    orderId: commande.id,
+    amountCents: -montantCents,
+    label: `Commande ${commande.number}`,
+  });
+  return recopierSolde(tx, carteId);
+}
+
+/**
+ * Ce que la carte a payé pour cette commande et ne lui a pas encore été rendu :
+ * ses mouvements pour la commande, débits moins recrédits.
+ */
+async function rendableALaCarte(
+  ex: Executeur,
+  carteId: number,
+  orderId: number,
+): Promise<number> {
+  const [somme] = await ex
+    .select({
+      total: raw<string | null>`coalesce(sum(${schema.giftCardTransactions.amountCents}), 0)`,
+    })
+    .from(schema.giftCardTransactions)
+    .where(
+      and(
+        eq(schema.giftCardTransactions.giftCardId, carteId),
+        eq(schema.giftCardTransactions.orderId, orderId),
+      ),
+    );
+  return Math.max(0, -Number(somme?.total ?? 0));
+}
+
+/** Ce qui reste à rendre à la carte qui a payé cette commande (hors transaction). */
+export async function resteARendreALaCarte(
+  carteId: number | null,
+  orderId: number,
+): Promise<number> {
+  if (!carteId) return 0;
+  return rendableALaCarte(db, carteId, orderId);
+}
+
+/**
+ * Rend à la carte ce qu'elle a payé pour une commande — un remboursement, une
+ * annulation —, au plus `plafondCents` (null : tout ce qui reste). Rend le
+ * montant recrédité.
+ *
+ * Jamais plus que ce que la carte a payé pour CETTE commande : rejouer un
+ * remboursement, ou annuler une commande déjà remboursée, ne recrédite rien
+ * deux fois. Une carte désactivée entre-temps est recréditée quand même : le
+ * journal dit ce qui lui revient, la propriétaire décide du reste.
+ */
+export async function recrediterCarte(
+  tx: Transaction,
+  carteId: number,
+  commande: { id: number; number: string },
+  plafondCents: number | null,
+  libelle: string,
+): Promise<number> {
+  const [carte] = await tx
+    .select({ id: schema.giftCards.id })
+    .from(schema.giftCards)
+    .where(eq(schema.giftCards.id, carteId))
+    .for("update");
+  if (!carte) return 0;
+  const rendable = await rendableALaCarte(tx, carteId, commande.id);
+  const montant = Math.max(
+    0,
+    plafondCents === null ? rendable : Math.min(rendable, Math.max(0, plafondCents)),
+  );
+  if (montant <= 0) return 0;
+  await tx.insert(schema.giftCardTransactions).values({
+    giftCardId: carteId,
+    orderId: commande.id,
+    amountCents: montant,
+    label: libelle.slice(0, LIBELLE_MAX),
+  });
+  await recopierSolde(tx, carteId);
+  return montant;
+}
+
+/** Une carte qui vient de naître du paiement d'une commande. */
+export interface CarteEmise {
+  id: number;
+  code: string;
+  montantCents: number;
+}
+
+/**
+ * Crée les cartes cadeaux qu'une commande vient d'ACHETER : une par ligne
+ * « carte cadeau », avec un code neuf et son écriture d'ouverture au journal.
+ *
+ * Appelée par markOrderPaid, dans la transaction qui marque la commande payée :
+ * une carte n'existe que si son achat a été encaissé, et l'inverse. L'index
+ * unique sur `order_item_id` garantit qu'un paiement confirmé deux fois
+ * (webhook et navigateur) ne fait jamais deux cartes.
+ *
+ * Le montant est celui de la ligne, que le serveur a vérifié à l'ajout au
+ * panier et revérifie au paiement (valeurDesLignes) : jamais un chiffre du
+ * navigateur.
+ */
+export async function emettreCartesDeLaCommande(
+  tx: Transaction,
+  commande: { id: number; number: string; customerId: number | null },
+): Promise<CarteEmise[]> {
+  const lignes = await tx
+    .select()
+    .from(schema.orderItems)
+    .where(
+      and(
+        eq(schema.orderItems.orderId, commande.id),
+        isNotNull(schema.orderItems.giftCard),
+      ),
+    )
+    .orderBy(asc(schema.orderItems.id));
+  if (!lignes.length) return [];
+
+  const [client] = commande.customerId
+    ? await tx
+        .select({ email: schema.customers.email })
+        .from(schema.customers)
+        .where(eq(schema.customers.id, commande.customerId))
+    : [];
+
+  const emises: CarteEmise[] = [];
+  for (const ligne of lignes) {
+    const [deja] = await tx
+      .select({ id: schema.giftCards.id })
+      .from(schema.giftCards)
+      .where(eq(schema.giftCards.orderItemId, ligne.id));
+    if (deja) continue;
+    const g = ligne.giftCard!;
+    // Une ligne porte une carte : sa quantité est tenue à 1 par le serveur.
+    // Si elle valait plus, la carte vaut ce qui a été payé, ni plus ni moins.
+    const montant = ligne.unitPriceCents * Math.max(1, ligne.quantity);
+    if (montant <= 0) continue;
+
+    let code = "";
+    for (let essai = 0; essai < 8 && !code; essai++) {
+      const candidat = nouveauCode();
+      const [pris] = await tx
+        .select({ id: schema.giftCards.id })
+        .from(schema.giftCards)
+        .where(raw`replace(${schema.giftCards.code}, '-', '') = ${candidat.replace(/-/g, "")}`);
+      if (!pris) code = candidat;
+    }
+    if (!code) throw new Error("Aucun code de carte cadeau libre après huit tirages.");
+
+    const [carte] = await tx
+      .insert(schema.giftCards)
+      .values({
+        code,
+        initialAmountCents: montant,
+        balanceCents: montant,
+        status: "active",
+        expiresAt: null,
+        customerId: commande.customerId,
+        note: `Vendue en ligne, commande ${commande.number}`,
+        orderId: commande.id,
+        orderItemId: ligne.id,
+        recipientEmail: (g.destinataireEmail || client?.email || "").trim().toLowerCase() || null,
+        recipientName: g.destinatairePrenom?.trim() || null,
+        message: g.message?.trim() || null,
+      })
+      .returning();
+    if (!carte) continue;
+    await tx.insert(schema.giftCardTransactions).values({
+      giftCardId: carte.id,
+      orderId: commande.id,
+      amountCents: montant,
+      label: `Achat de la carte (commande ${commande.number})`,
+    });
+    await recopierSolde(tx, carte.id);
+    emises.push({ id: carte.id, code, montantCents: montant });
+  }
+  return emises;
+}
+
+/**
+ * Envoie au destinataire chaque carte de la commande qui n'est pas encore
+ * partie. Après la transaction du paiement : une commande payée le reste
+ * même si un courriel échoue. Ne lève jamais ; le journal de la commande dit
+ * ce qui est parti, et ce qui reste à renvoyer à la main.
+ */
+export async function envoyerCartesDeLaCommande(orderId: number): Promise<void> {
+  try {
+    const cartes = await db
+      .select()
+      .from(schema.giftCards)
+      .where(and(eq(schema.giftCards.orderId, orderId), isNull(schema.giftCards.sentAt)));
+    if (!cartes.length) return;
+    const [commande] = await db
+      .select()
+      .from(schema.orders)
+      .where(eq(schema.orders.id, orderId));
+    if (!commande) return;
+    const [acheteuse] = commande.customerId
+      ? await db
+          .select()
+          .from(schema.customers)
+          .where(eq(schema.customers.id, commande.customerId))
+      : [];
+    // La langue de la COMMANDE : celle dans laquelle l'acheteuse a écrit
+    // son petit mot.
+    const langue = langueDuDestinataire({ commande: commande.langue, compte: acheteuse?.langue });
+    for (const carte of cartes) {
+      if (carte.orderItemId == null) continue;
+      const destinataire = carte.recipientEmail || acheteuse?.email || null;
+      if (!destinataire) continue;
+      const courrier = courrierCarteCadeau({
+        langue,
+        prenomDestinataire: carte.recipientName,
+        deLaPart: acheteuse ? prenomPourCourrier(acheteuse) || null : null,
+        montantCents: carte.initialAmountCents,
+        code: carte.code,
+        message: carte.message,
+      });
+      const parti = await envoyerMail({ ...courrier, to: destinataire });
+      if (parti)
+        await db
+          .update(schema.giftCards)
+          .set({ sentAt: new Date() })
+          .where(eq(schema.giftCards.id, carte.id));
+      await db.insert(schema.orderEvents).values({
+        orderId,
+        kind: "event",
+        message: parti
+          ? `Carte cadeau ${codeCarteMasque(carte.code)} de ${montantEnToutesLettres(carte.initialAmountCents)} envoyée par e-mail à ${destinataire}.`
+          : `Carte cadeau ${codeCarteMasque(carte.code)} NON envoyée à ${destinataire} (envoi d'e-mails non configuré ou en échec) : renvoyez le code à la main, depuis BO › Cartes cadeaux.`,
+      });
+    }
+  } catch (e) {
+    console.error("[carte cadeau] envoi impossible", e);
+  }
+}
+
+/**
+ * Met hors service les cartes qu'une commande a ACHETÉES — sa vente est
+ * annulée ou remboursée. `lignes` : celles des lignes concernées, ou null pour
+ * toutes.
+ *
+ * Rend ce qu'il faut en dire au journal de la commande, en particulier les
+ * cartes déjà dépensées en partie : l'argent rendu à l'acheteuse a peut-être
+ * déjà servi.
+ */
+export async function desactiverCartesVendues(
+  orderId: number,
+  lignes: number[] | null,
+  raison: string,
+): Promise<string | null> {
+  const cartes = await db
+    .select()
+    .from(schema.giftCards)
+    .where(
+      and(
+        eq(schema.giftCards.orderId, orderId),
+        isNotNull(schema.giftCards.orderItemId),
+        lignes ? inArray(schema.giftCards.orderItemId, lignes.length ? lignes : [-1]) : undefined,
+      ),
+    );
+  const aCouper = cartes.filter((c) => c.status === "active");
+  if (!aCouper.length) return null;
+  await db
+    .update(schema.giftCards)
+    .set({ status: "disabled", disabledAt: new Date() })
+    .where(inArray(schema.giftCards.id, aCouper.map((c) => c.id)));
+  const entamees = aCouper.filter((c) => c.balanceCents < c.initialAmountCents);
+  return (
+    `${aCouper.length > 1 ? "Cartes cadeaux mises" : "Carte cadeau mise"} hors service (${raison}) : ` +
+    aCouper.map((c) => codeCarteMasque(c.code)).join(", ") +
+    "." +
+    (entamees.length
+      ? ` ATTENTION : ${entamees.map((c) => `${codeCarteMasque(c.code)} (reste ${montantEnToutesLettres(c.balanceCents)} sur ${montantEnToutesLettres(c.initialAmountCents)})`).join(", ")} avai${entamees.length > 1 ? "ent" : "t"} déjà servi.`
+      : "")
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -485,6 +879,13 @@ interface CarteRendue {
   disabledAt: string | null;
   /** Nombre de fois où la carte a payé quelque chose. */
   utilisations: number;
+  /** Vendue en ligne : la commande qui l'a achetée. Null = vendue au back-office. */
+  orderId: number | null;
+  numeroCommande: string | null;
+  /** À qui elle a été envoyée, quand elle a été vendue en ligne. */
+  recipientEmail: string | null;
+  recipientName: string | null;
+  sentAt: string | null;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -510,12 +911,15 @@ export function mountCartesCadeaux(app: Hono): void {
         carte: schema.giftCards,
         clientNom: schema.customers.name,
         clientEmail: schema.customers.email,
+        numeroCommande: schema.orders.number,
       })
       .from(schema.giftCards)
       .leftJoin(
         schema.customers,
         eq(schema.giftCards.customerId, schema.customers.id),
       )
+      // Vendue en ligne : la commande qui l'a achetée (« WEB-0042 »).
+      .leftJoin(schema.orders, eq(schema.giftCards.orderId, schema.orders.id))
       .orderBy(desc(schema.giftCards.createdAt), desc(schema.giftCards.id));
 
     // Les utilisations comptées d'un coup : une requête par carte serait une
@@ -532,7 +936,7 @@ export function mountCartesCadeaux(app: Hono): void {
     let totalEnCirculationCents = 0;
     let cartesEnCirculation = 0;
 
-    const cartes: CarteRendue[] = lignes.map(({ carte, clientNom, clientEmail }) => {
+    const cartes: CarteRendue[] = lignes.map(({ carte, clientNom, clientEmail, numeroCommande }) => {
       const perimee = carte.expiresAt !== null && carte.expiresAt < maintenant;
       if (carte.status === "active" && !perimee && carte.balanceCents > 0) {
         totalEnCirculationCents += carte.balanceCents;
@@ -552,6 +956,11 @@ export function mountCartesCadeaux(app: Hono): void {
         createdAt: carte.createdAt.toISOString(),
         disabledAt: carte.disabledAt ? carte.disabledAt.toISOString() : null,
         utilisations: parCarte.get(carte.id) ?? 0,
+        orderId: carte.orderId,
+        numeroCommande: numeroCommande ?? null,
+        recipientEmail: carte.recipientEmail,
+        recipientName: carte.recipientName,
+        sentAt: carte.sentAt ? carte.sentAt.toISOString() : null,
       };
     });
 
@@ -603,6 +1012,12 @@ export function mountCartesCadeaux(app: Hono): void {
       );
 
     const { carte } = ligne;
+    const [vente] = carte.orderId
+      ? await db
+          .select({ number: schema.orders.number })
+          .from(schema.orders)
+          .where(eq(schema.orders.id, carte.orderId))
+      : [];
     return c.json({
       carte: {
         id: carte.id,
@@ -615,6 +1030,12 @@ export function mountCartesCadeaux(app: Hono): void {
         note: carte.note,
         createdAt: carte.createdAt.toISOString(),
         disabledAt: carte.disabledAt ? carte.disabledAt.toISOString() : null,
+        orderId: carte.orderId,
+        numeroCommande: vente?.number ?? null,
+        recipientEmail: carte.recipientEmail,
+        recipientName: carte.recipientName,
+        message: carte.message,
+        sentAt: carte.sentAt ? carte.sentAt.toISOString() : null,
       },
       mouvements: mouvements.map((m) => ({
         id: m.id,
@@ -1004,18 +1425,79 @@ export function mountCartesCadeaux(app: Hono): void {
     });
   });
 
+  /**
+   * « Mes cartes cadeaux » : les cartes que la cliente connectée a ACHETÉES
+   * sur le site, liées à ses commandes payées.
+   *
+   * Jamais le code complet : la carte est au porteur, et son destinataire est
+   * souvent quelqu'un d'autre. Le code masqué sauf son dernier groupe suffit à
+   * la reconnaître. Le solde est relu au journal ; les utilisations disent
+   * quand et combien, jamais qui.
+   */
+  app.get("/compte/cartes-cadeaux", async (c) => {
+    const moi = await clientDeLaRequete(c);
+    if (!moi) return c.json({ error: "Non authentifié" }, 401);
+    const lignes = await db
+      .select({ carte: schema.giftCards, numero: schema.orders.number })
+      .from(schema.giftCards)
+      .innerJoin(schema.orders, eq(schema.giftCards.orderId, schema.orders.id))
+      .where(and(eq(schema.orders.customerId, moi.id), eq(schema.orders.status, "paid")))
+      .orderBy(desc(schema.giftCards.createdAt), desc(schema.giftCards.id));
+    const ids = lignes.map((l) => l.carte.id);
+    const mouvements = ids.length
+      ? await db
+          .select({
+            giftCardId: schema.giftCardTransactions.giftCardId,
+            amountCents: schema.giftCardTransactions.amountCents,
+            createdAt: schema.giftCardTransactions.createdAt,
+          })
+          .from(schema.giftCardTransactions)
+          .where(inArray(schema.giftCardTransactions.giftCardId, ids))
+          .orderBy(desc(schema.giftCardTransactions.createdAt), desc(schema.giftCardTransactions.id))
+      : [];
+    c.header("Cache-Control", "no-store");
+    return c.json({
+      cartes: lignes.map(({ carte, numero }) => {
+        const siens = mouvements.filter((m) => m.giftCardId === carte.id);
+        // Le journal fait foi, ici comme partout.
+        const solde = siens.reduce((s, m) => s + m.amountCents, 0);
+        const etat =
+          carte.status !== "active"
+            ? "desactivee"
+            : solde <= 0
+              ? "epuisee"
+              : carte.expiresAt && carte.expiresAt < new Date()
+                ? "echue"
+                : "active";
+        return {
+          id: carte.id,
+          masque: codeCarteMasque(carte.code),
+          initialCents: carte.initialAmountCents,
+          soldeCents: Math.max(0, solde),
+          etat,
+          destinataireEmail: carte.recipientEmail,
+          destinatairePrenom: carte.recipientName,
+          acheteeLe: carte.createdAt.toISOString(),
+          commande: numero,
+          // Les dernières dépenses : quand, combien. Pas la commande d'un
+          // autre, ni qui l'a passée.
+          utilisations: siens
+            .filter((m) => m.amountCents < 0)
+            .slice(0, 5)
+            .map((m) => ({ le: m.createdAt.toISOString(), montantCents: -m.amountCents })),
+        };
+      }),
+    });
+  });
+
   /*
    * Il n'y a pas de route DELETE, et ce n'est pas un oubli : voir l'en-tête.
-   * Il n'y a pas non plus de route publique — une adresse qui répondrait « ce
-   * code existe » se laisserait interroger jusqu'à en trouver un.
    *
-   * Reste à écrire, et volontairement laissé de côté ici parce que cela touche
-   * au montant encaissé : la DÉPENSE d'une carte au moment de payer. Elle a sa
-   * place dans le tunnel de commande, et tout ce dont elle a besoin est déjà là :
-   * un mouvement NÉGATIF au journal, avec `orderId` et un libellé du genre
-   * « payé la commande WEB-0042 », puis le solde relu de la somme du journal —
-   * exactement ce que fait « /ajuster », verrou compris. La part réglée par la
-   * carte se recopie sur `orders.giftCardCents`, et le prestataire de paiement
-   * n'encaisse que la différence.
+   * La seule route publique qui lise un code est celle de la caisse
+   * (promotions.ts, « /caisse/code ») : freinée, et muette sur l'existence
+   * d'un code qu'elle refuse. La dépense s'écrit au paiement (markOrderPaid,
+   * configurator-routes.ts), avec verifierCarteSousVerrou et debiterCarte ;
+   * un remboursement ou une annulation la rendent (recrediterCarte,
+   * commandes.ts).
    */
 }

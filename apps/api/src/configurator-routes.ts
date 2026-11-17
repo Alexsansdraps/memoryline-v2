@@ -98,7 +98,7 @@ import {
   posterConfigSchema,
   prixDuCadreCents,
   remisesPanier,
-  seuilPortOffertCents,
+  seuilPortCents,
   sousTotalCents,
   totalPanierCents,
   type CouleursImage,
@@ -107,7 +107,34 @@ import {
   type TextesAffiche,
   reglesActives,
   type RegleParier,
+  CARTE_MESSAGE_MAX,
+  CARTE_PRENOM_MAX,
+  cleDeCarte,
+  cleDeCode,
+  codeCarteMasque,
+  estLigneCarte,
+  estUsageUnique,
+  montantCarteValide,
+  partCarteCadeau,
+  validableSansPaiement,
+  type LigneCarteCadeau,
 } from "@memoryline/types";
+import {
+  carteParCle,
+  carteUtilisable,
+  debiterCarte,
+  emettreCartesDeLaCommande,
+  envoyerCartesDeLaCommande,
+  verifierCarteSousVerrou,
+  type CarteEmise,
+} from "./cartes-cadeaux.js";
+import {
+  CODE_DEJA_UTILISE,
+  CODE_NON_VALABLE,
+  promotionDuCode,
+  tropDEssaisDeCode,
+  utilisationsDuCode,
+} from "./promotions.js";
 import { imageRecoloree } from "./couleurs-image-fichier.js";
 import {
   enregistrerNuancierBase,
@@ -407,7 +434,57 @@ type PricedItem = {
    * les lignes d'avant : lignesDuMoteur la retrouve au catalogue.
    */
   frameCents?: number | null;
+  /** Non nul : une carte cadeau achetée, pas une affiche (order_item.gift_card). */
+  giftCard?: LigneCarteCadeau | null;
 };
+
+/**
+ * Les affiches d'un panier, sans ses cartes cadeaux.
+ *
+ * Une carte cadeau n'a ni poids, ni port, ni remise : les promotions ne la
+ * comptent pas (« 3 achetées = 1 A4 offerte ») et ne la remisent pas, et le
+ * port ne porte que sur les affiches. Toutes les lectures du moteur de
+ * remises et de la livraison passent donc par ce tri.
+ */
+function affichesSeules<T extends { giftCard?: unknown }>(items: readonly T[]): T[] {
+  return items.filter((it) => !estLigneCarte(it));
+}
+
+/** Les cartes cadeaux d'un panier. */
+function cartesSeules<T extends { giftCard?: unknown }>(items: readonly T[]): T[] {
+  return items.filter((it) => estLigneCarte(it));
+}
+
+/**
+ * Une ligne « carte cadeau » qui ne tient plus : montant hors des bornes,
+ * quantité autre que 1, prix qui ne retombe pas sur le montant. Elle ne peut
+ * venir que d'une écriture faite ailleurs que par l'ajout au panier : on
+ * refuse d'encaisser plutôt que de vendre une carte au mauvais prix.
+ */
+export class LigneCarteInvalide extends Error {
+  constructor() {
+    super(
+      "Une carte cadeau de votre panier n'a pas un montant valable (de 10 à 300 €). Retirez-la, puis ajoutez-la de nouveau.",
+    );
+    this.name = "LigneCarteInvalide";
+  }
+}
+
+/** Le montant des cartes cadeaux du panier, chaque ligne revérifiée. */
+function montantDesCartes(items: readonly PricedItem[]): number {
+  let total = 0;
+  for (const it of cartesSeules(items)) {
+    const montant = it.giftCard?.montantCents;
+    if (
+      !montantCarteValide(montant) ||
+      it.unitPriceCents !== montant ||
+      it.quantity !== 1
+    )
+      throw new LigneCarteInvalide();
+    total += montant;
+  }
+  return total;
+}
 
 /**
  * Poids total d'un panier, en grammes.
@@ -420,9 +497,12 @@ type PricedItem = {
  * cadre s'ajoute par-dessus : c'est un objet de plus dans le colis.
  */
 async function poidsDuPanier(
-  items: PricedItem[],
+  tous: PricedItem[],
   ex: Executeur = db,
 ): Promise<number> {
+  // Une carte cadeau part par e-mail : elle ne pèse rien dans le colis.
+  const items = affichesSeules(tous);
+  if (!items.length) return 0;
   const produitIds = [
     ...new Set(items.map((i) => i.productId).filter((v): v is number => !!v)),
   ];
@@ -1054,6 +1134,11 @@ async function panierModifie(
       lastActivityAt: maintenant,
       panierDuStand: auStand,
       promotions: null,
+      // La carte cadeau retenue au passage en caisse payait une part de
+      // l'ANCIEN total : le prochain passage en caisse la recalcule. Rien
+      // n'avait été débité — le débit n'a lieu qu'au paiement.
+      giftCardId: null,
+      giftCardCents: 0,
       ...saLangue,
       ...(valeur
         ? {
@@ -1112,9 +1197,13 @@ async function calculerArticles(
   maintenant: Date,
   ex: Executeur = db,
   regles: RegleParier[] | null = null,
-): Promise<{ totalCents: number; figees: PromotionsFigees }> {
+): Promise<{ totalCents: number; figees: PromotionsFigees; cartesCents: number }> {
   const rules: RegleParier[] = regles ?? (await ex.select().from(schema.promoRules));
-  const lignes = await lignesDuMoteur(items, ex);
+  // Les cartes cadeaux achetées s'ajoutent à leur montant, sans remise : le
+  // moteur ne voit que les affiches. Leur montant est revérifié ici, à chaque
+  // calcul — au passage en caisse comme au paiement.
+  const cartesCents = montantDesCartes(items);
+  const lignes = await lignesDuMoteur(affichesSeules(items), ex);
   const codes = code ? [code] : [];
   // Le code passe par le moteur, qui décide seul s'il ouvre droit à une
   // remise : le navigateur peut envoyer ce qu'il veut, un code inconnu ou
@@ -1134,8 +1223,9 @@ async function calculerArticles(
     endsAt: r.endsAt ?? null,
   }));
   return {
-    totalCents: totalPanierCents(lignes, rules, maintenant, codes),
+    totalCents: totalPanierCents(lignes, rules, maintenant, codes) + cartesCents,
     figees: { regles: enJeu, detail, codes },
+    cartesCents,
   };
 }
 
@@ -1185,7 +1275,9 @@ async function computeShippingCents(
     reglesFigees ? Promise.resolve(null) : ex.select().from(schema.promoRules),
   ]);
   const regles: RegleParier[] = reglesFigees ?? reglesDeLaTable ?? [];
-  const lignes = await lignesDuMoteur(items, ex);
+  // Le port ne porte que sur les AFFICHES : une carte cadeau part par
+  // e-mail, et ne compte ni dans le seuil de gratuité ni dans le poids.
+  const lignes = await lignesDuMoteur(affichesSeules(items), ex);
   // Le seuil de gratuité se compare au panier APRÈS remises : c'est ce que
   // le client voit à l'écran, et c'est le montant qu'il paie vraiment.
   const apresRemise =
@@ -1201,10 +1293,10 @@ async function computeShippingCents(
     pays,
     Math.max(0, apresRemise),
     poids,
-    // La promotion « livraison offerte dès X € », si la boutique en a une.
-    // C'est le serveur qui décide du port encaissé : l'écran l'affiche, il
-    // ne le calcule pas pour lui.
-    seuilPortOffertCents(regles, maintenant, code ? [code] : []),
+    // La promotion « livraison offerte dès X € », ou un code qui offre la
+    // livraison (seuil 0) : C'est le serveur qui décide du port encaissé,
+    // avec la même fonction que l'écran.
+    seuilPortCents(lignes, regles, maintenant, code ? [code] : []),
   );
   if (!option) return null;
   return {
@@ -1216,6 +1308,16 @@ async function computeShippingCents(
     poidsGrammes: poids,
   };
 }
+
+/** Le « port » d'une commande sans affiche : rien à livrer, rien à peser. */
+const SANS_LIVRAISON = {
+  cents: 0,
+  label: "",
+  description: null,
+  kind: "aucune",
+  carrier: null,
+  poidsGrammes: 0,
+} satisfies NonNullable<Awaited<ReturnType<typeof computeShippingCents>>>;
 
 /**
  * Ce que vaut une commande d'après ses lignes ACTUELLES : articles, remise du
@@ -1255,6 +1357,10 @@ async function valeurDesLignes(
     .where(eq(schema.orderItems.orderId, order.id));
   const figees = order.promotions?.regles ?? null;
   const articles = await computeOrderTotalCents(items, order.promoCode, maintenant, ex, figees);
+  // Des cartes cadeaux seules : rien à livrer, donc pas de port, quel que
+  // soit le mode resté sur la commande d'un passage en caisse précédent.
+  if (affichesSeules(items).length === 0)
+    return { totalCents: articles, shippingCents: 0, poidsGrammes: 0, livrable: true };
   // Une commande sans mode de livraison (reprise de l'ancienne boutique) garde
   // le port qu'elle porte : il n'y a rien pour le recalculer.
   if (!order.shippingMethod)
@@ -1311,14 +1417,150 @@ export class MontantEncaisseDifferent extends Error {
   constructor(
     readonly attenduCents: number,
     readonly recuCents: number,
+    /**
+     * Une autre raison que le panier : la carte cadeau ou le code à usage
+     * unique ne tiennent plus au moment du paiement (obstacleAuPaiement).
+     */
+    message?: string,
   ) {
     super(
-      `Votre paiement de ${euros(recuCents)} a bien été reçu, mais votre panier a changé pendant le paiement ` +
-        `et vaut maintenant ${euros(attenduCents)}. Votre commande n'est donc pas encore validée : ` +
-        `nous revenons vers vous très vite pour régulariser. Inutile de payer une seconde fois.`,
+      message ??
+        `Votre paiement de ${euros(recuCents)} a bien été reçu, mais votre panier a changé pendant le paiement ` +
+          `et vaut maintenant ${euros(attenduCents)}. Votre commande n'est donc pas encore validée : ` +
+          `nous revenons vers vous très vite pour régulariser. Inutile de payer une seconde fois.`,
     );
     this.name = "MontantEncaisseDifferent";
   }
+}
+
+/**
+ * Une commande qu'on ne peut pas valider SANS paiement (POST /payments/gratuit)
+ * ou sans encaissement à la main : rien n'a été reçu, rien n'est à rendre.
+ * `code` dit pourquoi, la caisse le traduit.
+ */
+export class ValidationRefusee extends Error {
+  constructor(
+    readonly code: "montant_non_nul" | "carte_solde" | "code_deja_utilise" | "panier_modifie",
+    message: string,
+  ) {
+    super(message);
+    this.name = "ValidationRefusee";
+  }
+}
+
+/** Ce qui peut encore empêcher une commande d'être payée, au dernier moment. */
+interface ObstacleAuPaiement {
+  code: "carte_solde" | "code_deja_utilise";
+  /** La phrase pour la cliente. */
+  pourLaCliente: string;
+  /** La phrase pour le journal de la commande. */
+  pourLeJournal: string;
+}
+
+/**
+ * Les deux contrôles qui ne se font qu'au PAIEMENT, sous verrou, dans la
+ * transaction de markOrderPaid : la carte cadeau peut-elle encore payer sa
+ * part, et le code à usage unique est-il encore libre ?
+ *
+ * Les deux prennent un verrou (la carte, la promotion) qui dure jusqu'à la fin
+ * de la transaction. Deux commandes payées au même instant avec la même carte,
+ * ou le même code à usage unique, passent donc l'une après l'autre : la
+ * seconde voit le solde, ou l'usage, que la première vient d'écrire.
+ */
+async function obstacleAuPaiement(
+  tx: Transaction,
+  order: typeof schema.orders.$inferSelect,
+): Promise<ObstacleAuPaiement | null> {
+  const quand = order.lastActivityAt ?? new Date();
+
+  // Le code à usage unique : la règle figée au passage en caisse dit s'il
+  // l'est ; la promotion vivante porte le verrou.
+  const code = order.promoCode ? cleDeCode(order.promoCode) : "";
+  if (code) {
+    const figee = (order.promotions?.regles ?? []).find((r) => cleDeCode(r.code) === code);
+    const [vivante] = await tx
+      .select({ id: schema.promoRules.id, config: schema.promoRules.config })
+      .from(schema.promoRules)
+      .where(sql`upper(regexp_replace(coalesce(${schema.promoRules.code}, ''), '[[:space:]-]', '', 'g')) = ${code}`)
+      .orderBy(asc(schema.promoRules.id))
+      .limit(1)
+      .for("update");
+    const unique = estUsageUnique(figee?.config ?? vivante?.config);
+    if (unique && (await utilisationsDuCode(tx, order.promoCode!, order.id)) > 0)
+      return {
+        code: "code_deja_utilise",
+        pourLaCliente:
+          `Le code ${order.promoCode} ne servait qu'une fois, et une autre commande vient de l'utiliser.`,
+        pourLeJournal: `le code à usage unique ${order.promoCode} a été utilisé par une autre commande payée entre-temps`,
+      };
+  }
+
+  // La carte cadeau : son solde, relu au journal sous verrou, doit couvrir la
+  // part retenue au passage en caisse.
+  if (order.giftCardId && order.giftCardCents > 0) {
+    const verdict = await verifierCarteSousVerrou(tx, order.giftCardId, order.giftCardCents, quand);
+    if (!verdict.ok) {
+      const masque = verdict.code ? codeCarteMasque(verdict.code) : "";
+      return {
+        code: "carte_solde",
+        pourLaCliente:
+          verdict.raison === "solde"
+            ? `Le solde de votre carte cadeau ${masque} ne couvre plus les ${euros(order.giftCardCents)} prévus : il reste ${euros(Math.max(0, verdict.soldeCents))}.`
+            : `Votre carte cadeau ${masque} ne peut plus être utilisée.`,
+        pourLeJournal:
+          verdict.raison === "solde"
+            ? `le solde de la carte cadeau ${masque} (${euros(Math.max(0, verdict.soldeCents))}) ne couvre plus les ${euros(order.giftCardCents)} retenus au passage en caisse`
+            : `la carte cadeau ${masque} n'est plus utilisable (${verdict.raison === "echue" ? "date de fin passée" : verdict.raison === "desactivee" ? "mise hors service" : "introuvable"})`,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * De l'argent est arrivé chez le prestataire, mais la commande ne peut pas
+ * être validée (obstacleAuPaiement). Comme pour un écart de montant : la
+ * ligne de paiement passe en « montant_different » avec la somme reçue, et le
+ * journal dit quoi faire — une seule fois.
+ */
+async function noterPaiementBloque(
+  tx: Transaction,
+  order: typeof schema.orders.$inferSelect,
+  provider: "stripe" | "paypal",
+  externalRef: string,
+  recu: MontantRecu,
+  obstacle: ObstacleAuPaiement,
+): Promise<void> {
+  const nomPrestataire = provider === "stripe" ? "Stripe" : "PayPal";
+  console.error(
+    `[paiement] ${order.number} : ${nomPrestataire} ${externalRef} a encaissé ${recu.montantCents}, mais ${obstacle.pourLeJournal} — NON marquée payée`,
+  );
+  const [paiement] = await tx
+    .select({ id: schema.payments.id, status: schema.payments.status })
+    .from(schema.payments)
+    .where(and(eq(schema.payments.orderId, order.id), eq(schema.payments.externalRef, externalRef)));
+  if (paiement?.status === "montant_different") return;
+  if (paiement)
+    await tx
+      .update(schema.payments)
+      .set({ status: "montant_different", amountCents: recu.montantCents })
+      .where(eq(schema.payments.id, paiement.id));
+  else
+    await tx.insert(schema.payments).values({
+      orderId: order.id,
+      provider,
+      externalRef,
+      status: "montant_different",
+      amountCents: recu.montantCents,
+    });
+  await tx.insert(schema.orderEvents).values({
+    orderId: order.id,
+    kind: "event",
+    message:
+      `PAIEMENT À RÉGULARISER : ${nomPrestataire} a encaissé ${euros(recu.montantCents)} (${externalRef}), ` +
+      `mais ${obstacle.pourLeJournal}. La commande n'a PAS été marquée payée : voyez avec la cliente, ` +
+      `puis remboursez ce paiement depuis votre compte ${nomPrestataire} ; elle pourra repasser commande.`,
+  });
 }
 
 /**
@@ -1346,16 +1588,24 @@ async function verifierEncaissement(
   provider: "stripe" | "paypal",
   externalRef: string,
   recu: MontantRecu,
-): Promise<{ valide: true; montantCents: number } | { valide: false; attenduCents: number }> {
+): Promise<
+  | { valide: true; montantCents: number; totalCents: number }
+  | { valide: false; attenduCents: number }
+> {
   const valeur = await valeurDesLignes(order, order.lastActivityAt ?? new Date(), tx);
   const devise = recu.devise.trim().toUpperCase();
+  // Le prestataire n'encaisse que ce que la carte cadeau ne paie pas : la
+  // part de la carte (giftCardCents) est réglée par son journal, au même
+  // moment (markOrderPaid).
+  const attendu = valeur.totalCents - Math.max(0, order.giftCardCents);
   if (
     valeur.livrable &&
     devise === "EUR" &&
     Number.isInteger(recu.montantCents) &&
-    recu.montantCents === valeur.totalCents
+    attendu > 0 &&
+    recu.montantCents === attendu
   )
-    return { valide: true, montantCents: valeur.totalCents };
+    return { valide: true, montantCents: attendu, totalCents: valeur.totalCents };
 
   const nomPrestataire = provider === "stripe" ? "Stripe" : "PayPal";
   console.error(
@@ -1396,6 +1646,9 @@ async function verifierEncaissement(
       message:
         `ÉCART DE PAIEMENT : ${nomPrestataire} a encaissé ${recuEnClair} (${externalRef}), ` +
         `mais la commande vaut ${euros(valeur.totalCents)} d'après ses lignes actuelles` +
+        (order.giftCardCents > 0
+          ? `, dont ${euros(order.giftCardCents)} réglés par carte cadeau : ${euros(Math.max(0, attendu))} étaient attendus du prestataire`
+          : "") +
         (valeur.livrable
           ? ""
           : ", sans compter le port : le mode de livraison choisi ne sait plus porter ce colis") +
@@ -1404,7 +1657,7 @@ async function verifierEncaissement(
         `elle pourra repasser commande au bon montant.`,
     });
   }
-  return { valide: false, attenduCents: valeur.totalCents };
+  return { valide: false, attenduCents: Math.max(0, attendu) };
 }
 
 /** Ce paiement est-il celui qui a déjà réglé la commande (avis rejoué) ? */
@@ -1498,9 +1751,19 @@ async function signalerPaiementEnTrop(
 
 /** Ce que la transaction de markOrderPaid a conclu. */
 type ConclusionEncaissement =
-  | { issue: "payee"; order: typeof schema.orders.$inferSelect }
-  | { issue: "ecart"; attenduCents: number; recuCents: number }
+  | { issue: "payee"; order: typeof schema.orders.$inferSelect; cartes: CarteEmise[] }
+  | { issue: "ecart"; attenduCents: number; recuCents: number; message?: string }
+  | { issue: "refus"; code: ValidationRefusee["code"]; message: string }
   | { issue: "sans_suite" };
+
+/**
+ * Le moyen par lequel une commande est réglée :
+ *  - « stripe », « paypal » : un prestataire en ligne, qui dit ce qu'il a pris ;
+ *  - « manuel » : un virement, un chèque, des espèces, déclarés au back-office ;
+ *  - « aucun » : RIEN à encaisser — une remise à 100 % et la livraison
+ *    offerte, ou une carte cadeau qui couvre tout (POST /payments/gratuit).
+ */
+export type MoyenDEncaissement = "stripe" | "paypal" | "manuel" | "aucun";
 
 /**
  * Passe une commande de `pending` à `paid` et génère les PDF — UNE SEULE FOIS
@@ -1543,10 +1806,25 @@ type ConclusionEncaissement =
  * Les suites — relance récupérée, affiches IA, fichiers d'impression,
  * courriers — viennent APRÈS la transaction : une commande est payée pour de
  * bon avant qu'on envoie quoi que ce soit.
+ *
+ * CARTE CADEAU ET CODE À USAGE UNIQUE (17/11). Le total de la commande reste
+ * ce qu'elle vaut ; le prestataire n'en prend que ce que la carte cadeau ne
+ * paie pas (`giftCardCents`). Dans la même transaction, sous verrou
+ * (obstacleAuPaiement) : la carte doit encore pouvoir payer sa part, et un
+ * code à usage unique ne doit pas avoir servi à une autre commande payée.
+ * Alors seulement la carte est DÉBITÉE dans son journal, et le grand livre
+ * reçoit une vente par moyen — le prestataire, la carte, ou « gratuit » pour
+ * une commande à 0 €. Si un contrôle échoue : avec « aucun » ou « manuel »,
+ * rien n'a été reçu, {@link ValidationRefusee} est levée ; avec un
+ * prestataire, l'argent est arrivé, le paiement est noté à régulariser et
+ * {@link MontantEncaisseDifferent} est levée avec la raison.
+ *
+ * Les cartes cadeaux que la commande ACHÈTE naissent aussi dans cette
+ * transaction (emettreCartesDeLaCommande), et partent par e-mail après.
  */
 export async function markOrderPaid(
   orderId: number,
-  provider: "stripe" | "paypal" | "manuel",
+  provider: MoyenDEncaissement,
   externalRef: string,
   recu: MontantRecu,
 ): Promise<boolean> {
@@ -1571,8 +1849,9 @@ export async function markOrderPaid(
 
       if (order.status === "paid") {
         // Payée entre la lecture de la fiche et le clic : il n'y a rien à
-        // déclarer reçu (la route le dit).
-        if (provider === "manuel") return { issue: "sans_suite" };
+        // déclarer reçu (la route le dit). Une commande gratuite déjà
+        // validée ne se valide pas une seconde fois.
+        if (provider === "manuel" || provider === "aucun") return { issue: "sans_suite" };
         if (await dejaEncaisse(tx, orderId, externalRef)) {
           // Le prestataire rejoue son avis : la commande est déjà faite.
           await tx
@@ -1585,13 +1864,42 @@ export async function markOrderPaid(
         return { issue: "sans_suite" };
       }
 
-      // Ce qui entre au grand livre : la somme vérifiée chez le prestataire,
-      // ou le total déclaré reçu par la boutique.
-      let montantCents: number;
+      // La part de la carte cadeau, retenue au passage en caisse.
+      const carteCents = order.giftCardId ? Math.max(0, order.giftCardCents) : 0;
+      // Ce que vaut la commande, et ce que le prestataire a pris.
+      let totalCents: number;
+      let recuCents: number;
       if (provider === "manuel") {
-        if (order.status !== "pending" || order.totalCents !== recu.montantCents)
+        if (order.status !== "pending" || order.totalCents - carteCents !== recu.montantCents)
           return { issue: "sans_suite" };
-        montantCents = order.totalCents;
+        totalCents = order.totalCents;
+        recuCents = recu.montantCents;
+      } else if (provider === "aucun") {
+        if (order.status !== "pending")
+          return {
+            issue: "refus",
+            code: "panier_modifie",
+            message: "Votre panier a changé depuis le calcul du total. Revenez à l'étape précédente.",
+          };
+        // Tout est recalculé ici, sous le verrou : articles, code et dates de
+        // la promotion (figées au passage en caisse), livraison, carte. Rien
+        // ne se valide sans paiement si ce n'est pas EXACTEMENT 0 €.
+        const valeur = await valeurDesLignes(order, order.lastActivityAt ?? new Date(), tx);
+        if (
+          !validableSansPaiement({
+            livrable: valeur.livrable,
+            totalCents: valeur.totalCents,
+            totalCommandeCents: order.totalCents,
+            carteCents,
+          })
+        )
+          return {
+            issue: "refus",
+            code: "montant_non_nul",
+            message: "Cette commande n'est pas gratuite : elle se règle par carte ou par PayPal.",
+          };
+        totalCents = valeur.totalCents;
+        recuCents = 0;
       } else {
         const verdict = await verifierEncaissement(tx, order, provider, externalRef, recu);
         if (!verdict.valide)
@@ -1600,38 +1908,112 @@ export async function markOrderPaid(
             attenduCents: verdict.attenduCents,
             recuCents: recu.montantCents,
           };
-        montantCents = verdict.montantCents;
+        totalCents = verdict.totalCents;
+        recuCents = verdict.montantCents;
       }
 
-      // Trace le paiement (idempotent sur externalRef).
-      const [avant] = await tx
-        .select({ status: schema.payments.status })
-        .from(schema.payments)
-        .where(cePaiement);
-      await tx
-        .update(schema.payments)
-        .set(
-          provider === "manuel"
-            ? { status: "succeeded" }
-            : { status: "succeeded", amountCents: montantCents },
-        )
-        .where(cePaiement);
+      // Les contrôles du dernier moment, sous verrou : la carte cadeau, le
+      // code à usage unique.
+      const obstacle = await obstacleAuPaiement(tx, order);
+      if (obstacle) {
+        if (provider === "aucun" || provider === "manuel")
+          return { issue: "refus", code: obstacle.code, message: obstacle.pourLaCliente };
+        await noterPaiementBloque(tx, order, provider, externalRef, recu, obstacle);
+        return {
+          issue: "ecart",
+          attenduCents: Math.max(0, totalCents - carteCents),
+          recuCents: recu.montantCents,
+          message:
+            `Votre paiement de ${euros(recu.montantCents)} a bien été reçu, mais ${obstacle.pourLaCliente} ` +
+            `Votre commande n'est donc pas encore validée : nous revenons vers vous très vite pour régulariser. ` +
+            `Inutile de payer une seconde fois.`,
+        };
+      }
 
+      // La carte cadeau paie sa part : un mouvement négatif à SON journal,
+      // sur le solde vérifié sous verrou juste au-dessus.
+      if (carteCents > 0 && order.giftCardId)
+        await debiterCarte(tx, order.giftCardId, carteCents, order);
+
+      // Trace le paiement (idempotent sur externalRef). Sans prestataire, il
+      // n'y a pas de ligne de paiement : rien n'a été encaissé nulle part.
+      const [avant] =
+        provider === "aucun"
+          ? []
+          : await tx
+              .select({ status: schema.payments.status })
+              .from(schema.payments)
+              .where(cePaiement);
+      if (provider !== "aucun")
+        await tx
+          .update(schema.payments)
+          .set(
+            provider === "manuel"
+              ? { status: "succeeded" }
+              : { status: "succeeded", amountCents: recuCents },
+          )
+          .where(cePaiement);
+
+      // Rien à expédier (des cartes cadeaux seules, parties par e-mail) : la
+      // commande est traitée dès qu'elle est payée.
+      const lignes = await tx
+        .select({ giftCard: schema.orderItems.giftCard })
+        .from(schema.orderItems)
+        .where(eq(schema.orderItems.orderId, orderId));
+      const rienAExpedier = lignes.length > 0 && affichesSeules(lignes).length === 0;
       await tx
         .update(schema.orders)
-        .set({ status: "paid", totalCents: montantCents })
+        .set({
+          status: "paid",
+          totalCents,
+          ...(rienAExpedier ? { fulfilledAt: new Date() } : {}),
+        })
         .where(eq(schema.orders.id, orderId));
 
-      // Le grand livre reçoit l'encaissement. C'est la seule source de vérité
-      // pour le solde de la commande : le total, lui, ne bouge jamais.
-      await tx.insert(schema.orderTransactions).values({
-        orderId,
-        kind: "sale",
-        status: "success",
-        amountCents: montantCents,
-        gateway: provider,
-        externalRef: externalRef ?? null,
-      });
+      // Le grand livre reçoit l'encaissement, une ligne par moyen. C'est la
+      // seule source de vérité pour le solde de la commande : la somme des
+      // ventes retombe sur le total (finances.ts).
+      if (provider !== "aucun")
+        await tx.insert(schema.orderTransactions).values({
+          orderId,
+          kind: "sale",
+          status: "success",
+          amountCents: recuCents,
+          gateway: provider,
+          externalRef: externalRef ?? null,
+        });
+      if (carteCents > 0)
+        await tx.insert(schema.orderTransactions).values({
+          orderId,
+          kind: "sale",
+          status: "success",
+          amountCents: carteCents,
+          gateway: "carte_cadeau",
+          externalRef: `carte-${order.giftCardId}`,
+          message: "Réglé par carte cadeau",
+        });
+      // Une commande à 0 € a son écriture, de zéro : la page Finances sait
+      // ainsi qu'elle a été validée exprès, et ne la prend pas pour une
+      // vente dont l'argent manque.
+      if (totalCents === 0)
+        await tx.insert(schema.orderTransactions).values({
+          orderId,
+          kind: "sale",
+          status: "success",
+          amountCents: 0,
+          gateway: "gratuit",
+          externalRef: externalRef ?? null,
+          message: "Commande gratuite, validée sans paiement",
+        });
+      if (provider === "aucun")
+        await tx.insert(schema.orderEvents).values({
+          orderId,
+          kind: "event",
+          message:
+            carteCents > 0
+              ? `Commande réglée en entier par carte cadeau (${euros(carteCents)}) : validée sans paiement en ligne.`
+              : `Commande à 0 € (${order.promoCode ? `code ${order.promoCode}` : "remise"}) : validée sans paiement.`,
+        });
 
       // Un avis rejoué après que le panier a été remis au montant payé : le
       // journal disait de rembourser ce paiement, il doit dire que ce n'est
@@ -1642,15 +2024,24 @@ export async function markOrderPaid(
           kind: "event",
           message:
             `Le paiement ${externalRef}, relevé plus tôt comme ÉCART DE PAIEMENT, correspond désormais ` +
-            `au total de la commande (${euros(montantCents)}) : elle est marquée payée, il n'y a rien à rembourser.`,
+            `au total de la commande (${euros(recuCents)}) : elle est marquée payée, il n'y a rien à rembourser.`,
         });
 
-      return { issue: "payee", order };
+      // Les cartes cadeaux achetées naissent maintenant, avec la commande
+      // payée : ni avant, ni deux fois.
+      const cartes = await emettreCartesDeLaCommande(tx, order);
+
+      return { issue: "payee", order, cartes };
     },
   );
 
   if (conclusion.issue === "ecart")
-    throw new MontantEncaisseDifferent(conclusion.attenduCents, conclusion.recuCents);
+    throw new MontantEncaisseDifferent(
+      conclusion.attenduCents,
+      conclusion.recuCents,
+      conclusion.message,
+    );
+  if (conclusion.issue === "refus") throw new ValidationRefusee(conclusion.code, conclusion.message);
   if (conclusion.issue !== "payee") return false;
   const { order } = conclusion;
 
@@ -1670,6 +2061,9 @@ export async function markOrderPaid(
     console.error("Fichiers d'impression non enregistrés (commande " + orderId + ") :", e);
   }
 
+  // Les cartes cadeaux achetées partent chez leur destinataire, puis la
+  // confirmation chez l'acheteuse, qui les mentionne.
+  if (conclusion.cartes.length) await envoyerCartesDeLaCommande(orderId);
   await previenirDuPaiement(orderId);
   return true;
 }
@@ -1712,6 +2106,17 @@ async function previenirDuPaiement(orderId: number): Promise<void> {
 
     const lignesDans = (l: Langue) =>
       items.map((it) => {
+        // Une carte cadeau : ni format ni cadre, et son destinataire.
+        if (it.giftCard)
+          return {
+            titre: it.giftCard.destinataireEmail
+              ? tc(l)("lignes.carteCadeauPour", { email: it.giftCard.destinataireEmail })
+              : tc(l)("lignes.carteCadeau"),
+            format: null,
+            cadre: null,
+            quantite: it.quantity,
+            unitPriceCents: it.unitPriceCents,
+          };
         const cfg = (it.config ?? {}) as Record<string, unknown>;
         const cadre = cadres.find((f) => String(f.id) === String(cfg.frameId ?? ""));
         return {
@@ -1731,8 +2136,25 @@ async function previenirDuPaiement(orderId: number): Promise<void> {
     );
     const port = order.shippingCents ?? 0;
     // La remise se DÉDUIT de ce qui a été facturé : c'est le montant payé qui
-    // fait foi, pas un recalcul qui pourrait diverger.
+    // fait foi, pas un recalcul qui pourrait diverger. La part d'une carte
+    // cadeau n'en est pas une : le total reste celui de la commande.
     const remise = Math.max(0, sousTotal + port - order.totalCents);
+    // La carte qui a payé une part, code masqué ; les cartes achetées.
+    const [cartePayante] = order.giftCardId
+      ? await db
+          .select({ code: schema.giftCards.code })
+          .from(schema.giftCards)
+          .where(eq(schema.giftCards.id, order.giftCardId))
+      : [];
+    const cartesAchetees = await db
+      .select({
+        montantCents: schema.giftCards.initialAmountCents,
+        email: schema.giftCards.recipientEmail,
+      })
+      .from(schema.giftCards)
+      .where(eq(schema.giftCards.orderId, orderId));
+    // Rien à livrer : ni mode, ni adresse dans le courrier.
+    const sansLivraison = !order.shippingMethod && items.every((it) => it.giftCard);
 
     if (client?.email) {
       const courrier = courrierConfirmation({
@@ -1746,13 +2168,18 @@ async function previenirDuPaiement(orderId: number): Promise<void> {
         codePromo: order.promoCode,
         portCents: port,
         totalCents: order.totalCents,
+        carteCadeauCents: order.giftCardId ? order.giftCardCents : 0,
+        carteCadeauMasque: cartePayante ? codeCarteMasque(cartePayante.code) : null,
+        cartesEnvoyees: cartesAchetees
+          .filter((c): c is { montantCents: number; email: string } => Boolean(c.email))
+          .map((c) => ({ montantCents: c.montantCents, email: c.email })),
         // La commande garde le nom français du mode ; la cliente lit celui de
         // sa langue, quand la boutique l'a traduit.
-        modeLivraison: (await livraisonDansLaLangue(order, langue)).nom,
+        modeLivraison: sansLivraison ? null : (await livraisonDansLaLangue(order, langue)).nom,
         // Un retrait sur place n'a pas d'adresse de livraison : le courrier
         // dit à la place OÙ venir — le nom du lieu, son adresse et son texte,
         // tels que la cliente les a lus en commandant (lieux-retrait.ts).
-        adresse: lieuDeRetrait(order, langue)
+        adresse: sansLivraison || lieuDeRetrait(order, langue)
           ? null
           : [
               order.shippingName,
@@ -2324,10 +2751,106 @@ export function mountConfiguratorRoutes(app: Hono) {
     return c.json({ retires });
   });
 
+  /**
+   * Ajoute une CARTE CADEAU au panier : un montant libre, de 10 à 300 €.
+   *
+   * Le montant est vérifié ici (montantCarteValide) et devient le prix de la
+   * ligne : le navigateur n'a pas d'autre mot à dire. Il ne bouge plus ensuite
+   * — la ligne ne se modifie pas (PUT la refuse), elle se retire. Quantité 1 :
+   * chaque carte a son destinataire, saisi à la caisse.
+   *
+   * Pas au stand : la carte part par e-mail après un paiement en ligne, le
+   * stand encaisse de la main à la main.
+   */
+  async function ajouterUneCarte(
+    c: Context,
+    cartId: string,
+    body: Record<string, unknown>,
+  ): Promise<Response> {
+    const brut = (body.carteCadeau ?? {}) as { montantCents?: unknown };
+    const montant = Number(brut.montantCents);
+    if (!montantCarteValide(montant))
+      return c.json(
+        {
+          error: "Le montant d'une carte cadeau va de 10 à 300 €, en euros ronds.",
+          code: "montant_carte",
+        },
+        400,
+      );
+    if (requeteDuStand(c))
+      return c.json(
+        { error: "La carte cadeau s'achète sur le site, pas au stand.", code: "carte_au_stand" },
+        409,
+      );
+    const langue = langueDeLaPage(c, body.langue);
+    await naitreLePanier(cartId, langue);
+    const ligne = await db.transaction(async (tx) => {
+      const order = await panierModifiable(tx, cartId);
+      if (!order) return null;
+      const [ecrite] = await tx
+        .insert(schema.orderItems)
+        .values({
+          orderId: order.id,
+          productId: null,
+          variantId: null,
+          // Ni configuration, ni format, ni cadre : rien à imprimer.
+          config: null,
+          title: "Carte cadeau",
+          unitPriceCents: montant,
+          frameCents: 0,
+          quantity: 1,
+          giftCard: {
+            montantCents: montant,
+            destinataireEmail: null,
+            destinatairePrenom: null,
+            message: null,
+          },
+        })
+        .returning();
+      await panierModifie(tx, order, false, langue);
+      return ecrite ?? null;
+    });
+    if (!ligne) return c.json({ error: "panier_clos" }, 409);
+    return c.json({ ...ligne, cadreCents: 0 });
+  }
+
+  /**
+   * Le panier naît avec son premier article. « onConflictDoNothing » : deux
+   * ajouts partis au même instant d'un panier neuf ne doivent pas en créer
+   * deux — l'index unique sur l'identifiant de panier garde le premier, et le
+   * second y ajoute simplement sa ligne.
+   */
+  async function naitreLePanier(cartId: string, langue: Langue | null): Promise<void> {
+    const [existe] = await db
+      .select({ id: schema.orders.id })
+      .from(schema.orders)
+      .where(eq(schema.orders.clientOrderId, cartId));
+    if (existe) return;
+    await db
+      .insert(schema.orders)
+      .values({
+        channel: "web",
+        // Le numéro provisoire reprend l'identifiant de panier ENTIER :
+        // tronqué à huit caractères, deux paniers commençant pareil se
+        // heurtaient à l'index unique et le second ne pouvait plus être
+        // créé du tout.
+        number: `DRAFT-${cartId}`,
+        clientOrderId: cartId,
+        status: "draft",
+        totalCents: 0,
+        lastActivityAt: new Date(),
+        langue,
+      })
+      .onConflictDoNothing();
+  }
+
   /** Ajoute une ligne au panier (crée le draft si besoin). */
   app.post("/cart/:cartId/items", async (c) => {
     const cartId = c.req.param("cartId");
     const body = await c.req.json();
+    // Une carte cadeau : un montant, et rien d'autre (ajouterUneCarte).
+    if (body && typeof body === "object" && (body as Record<string, unknown>).carteCadeau != null)
+      return ajouterUneCarte(c, cartId, body as Record<string, unknown>);
     const parsed = posterConfigSchema.safeParse(body.config);
     if (!parsed.success)
       return c.json({ error: "config invalide", details: parsed.error.issues }, 400);
@@ -2425,6 +2948,9 @@ export function mountConfiguratorRoutes(app: Hono) {
     const item = await db.transaction(async (tx) => {
       const trouve = await loadCartItem(tx, c.req.param("cartId"), itemId);
       if (!trouve) return null;
+      // Une carte cadeau ne se modifie pas : son montant a été vérifié à
+      // l'ajout, et ni sa quantité ni son prix ne bougent ensuite.
+      if (trouve.item.giftCard) return "carte" as const;
       const { unitPriceCents, frameCents } = await resolvePrixLigne(
         trouve.item.productId,
         config.format,
@@ -2454,6 +2980,15 @@ export function mountConfiguratorRoutes(app: Hono) {
       return ligne ?? null;
     });
     if (!item) return c.notFound();
+    if (item === "carte")
+      return c.json(
+        {
+          error:
+            "Une carte cadeau ne se modifie pas : retirez-la du panier, puis ajoutez-en une autre.",
+          code: "carte_non_modifiable",
+        },
+        409,
+      );
     const avecCadre = { ...item, cadreCents: item.frameCents ?? 0 };
     return c.json(cadreRetire ? { ...avecCadre, cadreRetire } : avecCadre);
   });
@@ -2572,18 +3107,54 @@ export function mountConfiguratorRoutes(app: Hono) {
     // Le numéro, lui, ne se prend que dans la transaction, juste avant
     // l'UPDATE qui l'écrit (prochainNumeroDeCommande) : lu ici, deux paniers
     // validés au même moment tiraient le même WEB-.
-    const code = normaliserCode(body.promoCode);
+    //
+    // Le code promo : retrouvé par sa CLÉ (casse, tirets et espaces
+    // ignorés), et gardé tel que la boutique l'a écrit. Un code qui ne répond
+    // plus — éteint, archivé, hors de ses dates depuis qu'il a été vérifié à
+    // la caisse — est refusé en clair plutôt qu'ignoré : la cliente doit voir
+    // son total changer avant de payer. Un code à usage unique déjà servi
+    // aussi ; le décompte qui fait foi se refait au paiement, sous verrou.
+    const saisieCode = normaliserCode(body.promoCode);
+    const regleDuCode = saisieCode ? await promotionDuCode(db, saisieCode) : null;
+    if (saisieCode && !regleDuCode)
+      return c.json({ error: CODE_NON_VALABLE, code: "code_invalide" }, 409);
+    if (
+      regleDuCode &&
+      estUsageUnique(regleDuCode.config) &&
+      (await utilisationsDuCode(db, regleDuCode.code ?? "")) > 0
+    )
+      return c.json({ error: CODE_DEJA_UTILISE, code: "code_deja_utilise" }, 409);
+    const code = regleDuCode ? normaliserCode(regleDuCode.code) : "";
+
+    // La carte cadeau saisie à la caisse : retrouvée par la clé de son code,
+    // et refusée d'une seule phrase si elle ne peut pas payer (désactivée,
+    // échue, vide, inconnue). Chaque essai compte dans le frein de la caisse.
+    const saisieCarte = String(body.carteCadeau ?? "").trim().slice(0, 80);
+    let carteRetenue: typeof schema.giftCards.$inferSelect | null = null;
+    if (saisieCarte) {
+      if (tropDEssaisDeCode(c))
+        return c.json(
+          { error: "Trop d'essais. Réessayez dans quelques minutes.", code: "trop_d_essais" },
+          429,
+        );
+      const cle = cleDeCarte(saisieCarte);
+      carteRetenue = cle ? await carteParCle(db, cle) : null;
+      if (!carteRetenue || !carteUtilisable(carteRetenue))
+        return c.json({ error: CODE_NON_VALABLE, code: "carte_invalide" }, 409);
+    }
     // Pas `langueDeLaPage` : c'est la caisse du SITE, quoi que dise le cookie
     // du stand (voir plus bas), et sa page parle la langue qu'elle annonce.
     const langueCaisse = langueLue(body.langue);
 
     // Livraison : mode et adresse viennent du client, le prix vient de la
     // base. Sans mode choisi, on refuse — mieux vaut une commande bloquée
-    // qu'un colis sans destination.
+    // qu'un colis sans destination. Des cartes cadeaux seules n'ont rien à
+    // livrer : ni mode, ni adresse.
     const liv = (body.shipping ?? {}) as Record<string, unknown>;
     const modeSlug = String(liv.method ?? "").trim();
     const pays = normaliserPays(liv.country) || "FR";
-    if (!modeSlug) return c.json({ error: "mode de livraison requis", code: "mode_indisponible" }, 400);
+    if (!modeSlug && affichesSeules(items).length > 0)
+      return c.json({ error: "mode de livraison requis", code: "mode_indisponible" }, 400);
     const ligne1 = String(liv.line1 ?? "").trim();
     const ville = String(liv.city ?? "").trim();
     const cp = String(liv.postalCode ?? "").trim();
@@ -2673,19 +3244,31 @@ export function mountConfiguratorRoutes(app: Hono) {
       // comme dernière activité : le paiement sera vérifié avec les
       // promotions de CE moment-là (verifierEncaissement).
       const maintenant = new Date();
+      // Des affiches à livrer ? Sinon (cartes cadeaux seules), ni mode, ni
+      // adresse, ni port : les cartes partent par e-mail.
+      const avecAffiches = affichesSeules(lignes).length > 0;
       // Les promotions en jeu sont FIGÉES avec la commande (`promotions`) :
       // c'est avec elles que le paiement sera vérifié, quoi que la boutique
       // modifie entre-temps, et c'est leur remise que lira la page Finances.
-      const calcul = await calculerArticles(lignes, code, maintenant, tx);
+      let calcul: Awaited<ReturnType<typeof calculerArticles>>;
+      try {
+        calcul = await calculerArticles(lignes, code, maintenant, tx);
+      } catch (e) {
+        if (e instanceof LigneCarteInvalide)
+          return { erreur: e.message, statut: 409 as const, code: "carte_ligne_invalide" };
+        throw e;
+      }
       const articles = calcul.totalCents;
-      const port = await computeShippingCents(lignes, modeSlug, pays, code, maintenant, tx);
+      const port = avecAffiches
+        ? await computeShippingCents(lignes, modeSlug, pays, code, maintenant, tx)
+        : SANS_LIVRAISON;
       if (!port)
         return { erreur: "mode de livraison indisponible", statut: 400 as const, code: "mode_indisponible" };
       // Une nature que la liste ne connaît plus ne dit pas quoi demander au
       // client : ni adresse, ni point relais. On refuse la commande plutôt que
       // de l'accepter sans savoir où livrer — c'est ce qui arriverait à un
       // vieux mode restauré des archives, dont la nature a disparu depuis.
-      if (!CODES_NATURE.includes(port.kind))
+      if (avecAffiches && !CODES_NATURE.includes(port.kind))
         return { erreur: "mode de livraison indisponible", statut: 400 as const, code: "mode_indisponible" };
       // Une livraison à domicile sans adresse n'arrive nulle part ; un point
       // relais sans point relais non plus.
@@ -2745,6 +3328,51 @@ export function mountConfiguratorRoutes(app: Hono) {
         };
 
       const total = articles + port.cents;
+
+      // La carte cadeau paie jusqu'au total, sans dépasser son solde, et
+      // jamais les cartes cadeaux que la commande achète. Rien n'est débité
+      // ici : la part est RETENUE, et la carte ne paie qu'au paiement de la
+      // commande (markOrderPaid), où son solde est relu sous verrou.
+      const carteCents = carteRetenue
+        ? partCarteCadeau(total, calcul.cartesCents, carteRetenue.balanceCents)
+        : 0;
+      if (carteRetenue && carteCents === 0 && calcul.cartesCents > 0)
+        return {
+          erreur:
+            "Une carte cadeau ne peut pas payer une autre carte cadeau : retirez-la, ou ajoutez des affiches à votre panier.",
+          statut: 409 as const,
+          code: "carte_sur_carte",
+        };
+
+      // Le destinataire de chaque carte cadeau achetée : son e-mail (celle de
+      // l'acheteuse à défaut), son prénom et le petit mot, facultatifs.
+      const saisies = new Map<number, Record<string, unknown>>();
+      for (const d of Array.isArray(body.cartesCadeaux) ? body.cartesCadeaux : [])
+        if (d && typeof d === "object")
+          saisies.set(Number((d as { itemId?: unknown }).itemId), d as Record<string, unknown>);
+      for (const l of cartesSeules(lignes)) {
+        const d = saisies.get(l.id);
+        const emailDest =
+          String(d?.email ?? "").trim().toLowerCase() || (customer!.email ?? emailNormalise).toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailDest) || emailDest.length > 200)
+          return {
+            erreur: "L'adresse e-mail du destinataire d'une carte cadeau n'est pas valable.",
+            statut: 400 as const,
+            code: "carte_email",
+          };
+        await tx
+          .update(schema.orderItems)
+          .set({
+            giftCard: {
+              montantCents: l.giftCard!.montantCents,
+              destinataireEmail: emailDest,
+              destinatairePrenom: String(d?.prenom ?? "").trim().slice(0, CARTE_PRENOM_MAX) || null,
+              message: String(d?.message ?? "").trim().slice(0, CARTE_MESSAGE_MAX) || null,
+            },
+          })
+          .where(eq(schema.orderItems.id, l.id));
+      }
+
       // Garde le numéro s'il en a déjà un (retry) — relu sous le verrou : un
       // autre passage en caisse du même panier a pu l'attribuer entre-temps.
       // Sinon en prend un, en dernier : le verrou du compteur ne dure que
@@ -2794,24 +3422,29 @@ export function mountConfiguratorRoutes(app: Hono) {
           totalCents: total,
           promoCode: code || null,
           promotions: calcul.figees,
-          shippingMethod: modeSlug,
-          shippingLabel: port.label,
-          shippingDescription: port.description,
+          // La carte cadeau retenue, et la part qu'elle paiera : le
+          // prestataire n'encaissera que le reste.
+          giftCardId: carteCents > 0 ? carteRetenue!.id : null,
+          giftCardCents: carteCents,
+          // Des cartes cadeaux seules : ni mode, ni adresse, ni point relais.
+          shippingMethod: avecAffiches ? modeSlug : null,
+          shippingLabel: avecAffiches ? port.label : null,
+          shippingDescription: avecAffiches ? port.description : null,
           shippingCents: port.cents,
           // Poids figé : le catalogue changera, le colis a pesé ce qu'il a pesé.
           weightGrams: port.poidsGrammes,
-          shippingName: String(liv.name ?? "").trim() || name,
-          shippingLine1: ligne1 || null,
-          shippingLine2: String(liv.line2 ?? "").trim() || null,
-          shippingPostalCode: cp || null,
-          shippingCity: ville || null,
-          shippingCountry: pays,
-          shippingPhone: String(liv.phone ?? "").trim() || null,
+          shippingName: avecAffiches ? String(liv.name ?? "").trim() || name : null,
+          shippingLine1: avecAffiches ? ligne1 || null : null,
+          shippingLine2: avecAffiches ? String(liv.line2 ?? "").trim() || null : null,
+          shippingPostalCode: avecAffiches ? cp || null : null,
+          shippingCity: avecAffiches ? ville || null : null,
+          shippingCountry: avecAffiches ? pays : null,
+          shippingPhone: avecAffiches ? String(liv.phone ?? "").trim() || null : null,
           // Un point relais pour un mode « relais ». Pour un retrait, plus
           // rien ici : le repère « stand:<id> » d'avant est remplacé par le
           // lieu choisi, juste dessous.
-          relayPointId: lieu ? null : String(liv.relayPointId ?? "").trim() || null,
-          relayPointLabel: lieu ? null : String(liv.relayPointLabel ?? "").trim() || null,
+          relayPointId: lieu || !avecAffiches ? null : String(liv.relayPointId ?? "").trim() || null,
+          relayPointLabel: lieu || !avecAffiches ? null : String(liv.relayPointLabel ?? "").trim() || null,
           pickupPointId: lieu?.id ?? null,
           pickupPoint: lieu
             ? {
@@ -2838,7 +3471,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         })
         .where(eq(schema.orders.id, panier.id))
         .returning();
-      return { order: order!, port, total };
+      return { order: order!, port, total, carteCents };
     });
     if ("erreur" in resultat)
       return c.json(
@@ -2848,7 +3481,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         },
         resultat.statut,
       );
-    const { order, port, total } = resultat;
+    const { order, port, total, carteCents } = resultat;
 
     // L'adresse rejoint le carnet de la cliente : saisie une fois, elle
     // revient toute seule la prochaine fois. Une livraison en point relais n'a
@@ -2899,6 +3532,11 @@ export function mountConfiguratorRoutes(app: Hono) {
       totalCents: total,
       shippingCents: port.cents,
       poidsGrammes: port.poidsGrammes,
+      // La part de la carte cadeau, et ce qui reste à payer : calculés ICI.
+      // À 0 €, la caisse remplace le paiement par « Valider ma commande »
+      // (POST /payments/gratuit), qui recalcule tout avant de valider.
+      giftCardCents: carteCents,
+      aPayerCents: Math.max(0, total - carteCents),
     });
   });
 
@@ -2953,6 +3591,58 @@ export function mountConfiguratorRoutes(app: Hono) {
     "Votre panier a changé depuis le calcul du total. Revenez à l'étape précédente pour le recalculer avant de payer.";
 
   /**
+   * Ce que le prestataire doit encaisser : le total, moins la part de la
+   * carte cadeau — calculé ici, jamais lu du navigateur.
+   *
+   * Avant d'ouvrir un paiement, la carte et un code à usage unique sont
+   * revérifiés, sans verrou : mieux vaut le dire AVANT que la carte bancaire
+   * soit débitée. Le contrôle qui fait foi, sous verrou, a lieu au paiement
+   * (markOrderPaid). Une commande qui ne demande rien se valide ailleurs
+   * (POST /payments/gratuit).
+   */
+  async function montantAEncaisser(
+    order: typeof schema.orders.$inferSelect,
+  ): Promise<{ montantCents: number } | { refus: { error: string; code: string } }> {
+    const carteCents = order.giftCardId ? Math.max(0, order.giftCardCents) : 0;
+    const montant = order.totalCents - carteCents;
+    if (montant <= 0)
+      return {
+        refus: {
+          error: "Cette commande ne demande aucun paiement : validez-la.",
+          code: "rien_a_payer",
+        },
+      };
+    if (order.giftCardId && carteCents > 0) {
+      const [carte] = await db
+        .select()
+        .from(schema.giftCards)
+        .where(eq(schema.giftCards.id, order.giftCardId));
+      if (
+        !carte ||
+        !carteUtilisable(carte, order.lastActivityAt ?? new Date()) ||
+        carte.balanceCents < carteCents
+      )
+        return {
+          refus: {
+            error:
+              "Le solde de votre carte cadeau a changé. Revenez à l'étape précédente pour recalculer votre total.",
+            code: "carte_solde",
+          },
+        };
+    }
+    if (order.promoCode) {
+      const cle = cleDeCode(order.promoCode);
+      const figee = (order.promotions?.regles ?? []).find((r) => cleDeCode(r.code) === cle);
+      if (
+        estUsageUnique(figee?.config) &&
+        (await utilisationsDuCode(db, order.promoCode, order.id)) > 0
+      )
+        return { refus: { error: CODE_DEJA_UTILISE, code: "code_deja_utilise" } };
+    }
+    return { montantCents: montant };
+  }
+
+  /**
    * Crée un PaymentIntent Stripe pour la commande et renvoie son clientSecret
    * (le navigateur confirme le paiement avec Stripe.js). Le montant vient du
    * SERVEUR (order.totalCents), jamais du client.
@@ -2975,10 +3665,12 @@ export function mountConfiguratorRoutes(app: Hono) {
       return c.json({ error: "commande déjà payée" }, 409);
     if (order.status !== "pending")
       return c.json({ error: PANIER_A_REVALIDER, code: "panier_modifie" }, 409);
+    const aPayer = await montantAEncaisser(order);
+    if ("refus" in aPayer) return c.json(aPayer.refus, 409);
     try {
       const intent = await createStripeIntent(
         jeu,
-        order.totalCents,
+        aPayer.montantCents,
         order.id,
         order.number,
       );
@@ -2987,7 +3679,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         provider: "stripe",
         externalRef: intent.id,
         status: "pending",
-        amountCents: order.totalCents,
+        amountCents: aPayer.montantCents,
         // Le mode de CES clés : c'est avec elles que ce paiement se
         // confirmera et se remboursera, même après une bascule.
         mode: jeu.mode,
@@ -3263,10 +3955,12 @@ export function mountConfiguratorRoutes(app: Hono) {
       return c.json({ error: "commande déjà payée" }, 409);
     if (order.status !== "pending")
       return c.json({ error: PANIER_A_REVALIDER, code: "panier_modifie" }, 409);
+    const aPayer = await montantAEncaisser(order);
+    if ("refus" in aPayer) return c.json(aPayer.refus, 409);
     try {
       const paypalOrderId = await createPaypalOrder(
         jeu,
-        order.totalCents,
+        aPayer.montantCents,
         order.number,
       );
       await db.insert(schema.payments).values({
@@ -3274,7 +3968,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         provider: "paypal",
         externalRef: paypalOrderId,
         status: "pending",
-        amountCents: order.totalCents,
+        amountCents: aPayer.montantCents,
         // La capture se fera avec les clés de ce mode-là (voir plus bas).
         mode: jeu.mode,
       });
@@ -3340,12 +4034,18 @@ export function mountConfiguratorRoutes(app: Hono) {
       // dans le cas courant. Celui qui fait foi, sous verrou, vient après la
       // capture (markOrderPaid).
       const valeur = await valeurDesLignes(order, order.lastActivityAt ?? new Date());
+      // Le prestataire n'encaisse que ce que la carte cadeau ne paie pas.
+      const carteCents = order.giftCardId ? Math.max(0, order.giftCardCents) : 0;
       if (
         order.status !== "pending" ||
         !valeur.livrable ||
-        valeur.totalCents !== payment.amountCents
+        valeur.totalCents - carteCents !== payment.amountCents
       )
         return c.json({ error: PANIER_A_REVALIDER, code: "panier_modifie" }, 409);
+      // La carte et le code à usage unique, revérifiés AVANT que l'argent
+      // bouge : PayPal le permet, autant s'en servir.
+      const aPayer = await montantAEncaisser(order);
+      if ("refus" in aPayer) return c.json(aPayer.refus, 409);
     }
 
     // Les clés du mode où CE paiement a été ouvert : une commande PayPal du
@@ -3381,6 +4081,62 @@ export function mountConfiguratorRoutes(app: Hono) {
     }
   });
 
+  /**
+   * Valide une commande qui ne demande AUCUN paiement : une remise à 100 % et
+   * la livraison offerte, ou une carte cadeau qui couvre tout.
+   *
+   * La caisse affiche « Valider ma commande » à la place du paiement quand le
+   * reste à payer, calculé par le serveur au passage en caisse, vaut 0. Ici,
+   * tout est RECALCULÉ sous le verrou de la commande (markOrderPaid, moyen
+   * « aucun ») : articles, code et dates de la promotion, livraison, carte
+   * cadeau et son solde, code à usage unique. Le moindre centime à payer, et
+   * rien n'est validé.
+   *
+   * Réservée à la cliente de la commande, connectée : sans paiement, la
+   * session est la seule preuve que c'est bien elle qui valide.
+   *
+   * Idempotente : une commande déjà payée ne se valide pas une seconde fois.
+   * La route répond qu'elle l'est, avec son numéro, et c'est tout.
+   */
+  app.post("/payments/gratuit", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const connecte = await clientDeLaRequete(c);
+    if (!connecte)
+      return c.json(
+        {
+          error:
+            "Il faut être connectée pour valider la commande. Connectez-vous, votre panier vous attend.",
+          code: "compte_requis",
+        },
+        401,
+      );
+    const order = await loadPayableOrder(Number((body as { orderId?: unknown }).orderId));
+    if (!order || order.customerId !== connecte.id)
+      return c.json({ error: "commande introuvable" }, 404);
+    if (order.status === "paid") return c.json({ status: "paid", number: order.number });
+    if (order.status !== "pending")
+      return c.json({ error: PANIER_A_REVALIDER, code: "panier_modifie" }, 409);
+    try {
+      await markOrderPaid(
+        order.id,
+        "aucun",
+        `${order.giftCardId && order.giftCardCents > 0 ? "carte" : "gratuit"}-${order.id}`,
+        { montantCents: 0, devise: "EUR" },
+      );
+    } catch (e) {
+      if (e instanceof ValidationRefusee)
+        return c.json({ error: e.message, code: e.code }, 409);
+      if (e instanceof LigneCarteInvalide)
+        return c.json({ error: e.message, code: "carte_ligne_invalide" }, 409);
+      throw e;
+    }
+    const [apres] = await db
+      .select({ status: schema.orders.status, number: schema.orders.number })
+      .from(schema.orders)
+      .where(eq(schema.orders.id, order.id));
+    return c.json({ status: apres?.status ?? "pending", number: apres?.number ?? order.number });
+  });
+
   /** Détail d'une commande + ses lignes (pour la fiche BO et les liens PDF). */
   app.get("/admin/orders/:id", async (c) => {
     const id = Number(c.req.param("id"));
@@ -3404,6 +4160,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         unitPriceCents: schema.orderItems.unitPriceCents,
         config: schema.orderItems.config,
         format: sql<string>`(${schema.orderItems.config} ->> 'format')`,
+        giftCard: schema.orderItems.giftCard,
       })
       .from(schema.orderItems)
       .where(eq(schema.orderItems.orderId, id))
@@ -3422,6 +4179,18 @@ export function mountConfiguratorRoutes(app: Hono) {
     // Le cadre choisi, en toutes lettres : la configuration n'en garde que
     // l'identifiant, illisible sur une fiche de préparation.
     const cadres = await db.select().from(schema.frames);
+    // Les cartes cadeaux que cette commande a achetées, nées à son paiement.
+    const cartesEmises = items.some((it) => it.giftCard)
+      ? await db
+          .select({
+            id: schema.giftCards.id,
+            code: schema.giftCards.code,
+            orderItemId: schema.giftCards.orderItemId,
+            sentAt: schema.giftCards.sentAt,
+          })
+          .from(schema.giftCards)
+          .where(eq(schema.giftCards.orderId, id))
+      : [];
     const enrichies = items.map((it) => {
       const cfg = (it.config ?? {}) as Record<string, unknown>;
       // Les lignes réellement écrites, dans l'ordre. Passer par `lignesRemplies`
@@ -3440,6 +4209,20 @@ export function mountConfiguratorRoutes(app: Hono) {
         quantity: it.quantity,
         unitPriceCents: it.unitPriceCents,
         format: it.format,
+        // Une carte cadeau achetée : son montant, son destinataire et la carte
+        // née au paiement (code masqué : le code complet se lit dans BO ›
+        // Cartes cadeaux). Null pour une affiche.
+        carteCadeau: it.giftCard
+          ? {
+              ...it.giftCard,
+              carte: (() => {
+                const emise = cartesEmises.find((ce) => ce.orderItemId === it.id);
+                return emise
+                  ? { id: emise.id, masque: codeCarteMasque(emise.code), envoyeeLe: emise.sentAt }
+                  : null;
+              })(),
+            }
+          : null,
         // Le sens de la feuille, pour qui imprime : absent = portrait.
         orientation: cfg.orientation === "paysage" ? "paysage" : null,
         cadre: cadre?.name ?? null,
@@ -3457,7 +4240,8 @@ export function mountConfiguratorRoutes(app: Hono) {
         // L'aperçu de la ligne, rendu par le même moteur que le fichier
         // d'impression : ce qu'on regarde ici est ce qui part à l'atelier.
         // Adresse relative, signée ; le back-office la préfixe.
-        apercu: cheminApercu(it.id, it.config),
+        // Une carte cadeau n'a rien de composé : pas d'aperçu.
+        apercu: it.config ? cheminApercu(it.id, it.config) : undefined,
       };
     });
 
@@ -3550,7 +4334,8 @@ export function mountConfiguratorRoutes(app: Hono) {
       ...it,
       expedie: partiParLigne.get(it.id) ?? 0,
       rembourse: renduParLigne.get(it.id) ?? 0,
-      aExpedier: it.quantity - (partiParLigne.get(it.id) ?? 0),
+      // Une carte cadeau part par e-mail : rien à expédier.
+      aExpedier: it.carteCadeau ? 0 : it.quantity - (partiParLigne.get(it.id) ?? 0),
       aRembourser: it.quantity - (renduParLigne.get(it.id) ?? 0),
     }));
 
@@ -3562,6 +4347,17 @@ export function mountConfiguratorRoutes(app: Hono) {
       // la caisse, ou l'ancien repère « stand:… » des commandes d'avant. La
       // fiche et le bon n'ont pas à connaître ces deux formes.
       lieuRetrait: lieuDeRetrait(order),
+      // La carte cadeau qui paie une part de la commande (giftCardCents), code
+      // masqué : la fiche l'écrit sous le total.
+      carteCadeauPayante: order.giftCardId
+        ? await (async () => {
+            const [carte] = await db
+              .select({ id: schema.giftCards.id, code: schema.giftCards.code })
+              .from(schema.giftCards)
+              .where(eq(schema.giftCards.id, order.giftCardId!));
+            return carte ? { id: carte.id, masque: codeCarteMasque(carte.code) } : null;
+          })()
+        : null,
       customer: customer ?? null,
       items: avecRestes,
       paiements,

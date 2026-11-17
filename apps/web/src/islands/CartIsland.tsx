@@ -49,6 +49,7 @@ import {
   visuelBoutique,
 } from "../lib/catalogue-panier.ts";
 import CommandeStand, { ConfirmationStand, type VenteStand } from "./CommandeStand.tsx";
+import VignetteCarteCadeau from "./carte-cadeau-vignette.tsx";
 
 /**
  * Panier (§18.3). Lit ml_cart_id (localStorage), liste les lignes avec une
@@ -73,21 +74,13 @@ interface PromoRule {
   priority?: number;
 }
 
-/**
- * Code promo retenu entre le panier et le tunnel de commande.
- *
- * Il ne vaut RIEN par lui-même : le serveur revérifie le code au moment de
- * créer la commande et recalcule le montant. Ce qui est gardé ici n'est qu'un
- * confort — ne pas avoir à le retaper à l'étape suivante.
+/*
+ * Le code promo ne se saisit plus au panier (17/11, « le code promo ne doit
+ * pas être utilisé dans le panier mais sur la page de paiement ») : le champ
+ * « Code promo ou carte cadeau » vit à la caisse (CheckoutIsland), et le code
+ * retenu entre deux visites dans lib/code-promo.ts. Le panier ne montre plus
+ * que les promotions automatiques.
  */
-export const CLE_CODE_PROMO = "ml_code_promo";
-export function codePromoRetenu(): string {
-  try {
-    return localStorage.getItem(CLE_CODE_PROMO) ?? "";
-  } catch {
-    return "";
-  }
-}
 
 
 export default function CartIsland(props: {
@@ -115,52 +108,6 @@ export default function CartIsland(props: {
   const [busy, setBusy] = createSignal<number | null>(null);
   /** La vente du stand, une fois enregistrée : elle remplace le panier à l'écran. */
   const [vente, setVente] = createSignal<VenteStand | null>(null);
-
-  // Code promo : celui déjà saisi est repris, et revérifié à l'affichage —
-  // un code peut avoir expiré depuis la dernière visite.
-  const [codeSaisi, setCodeSaisi] = createSignal(codePromoRetenu());
-  const [codeApplique, setCodeApplique] = createSignal<PromoRule | null>(null);
-  const [codeEtat, setCodeEtat] = createSignal<"repos" | "envoi" | "refuse">(
-    "repos",
-  );
-
-  async function appliquerCode(code: string, silencieux = false) {
-    const propre = code.trim();
-    if (!propre) return;
-    setCodeEtat("envoi");
-    try {
-      // Dans la langue de la page : le nom de la règle s'écrit sur la ligne
-      // de remise.
-      const regle = await browserApi.verifierCode(propre, langue);
-      setCodeApplique({ id: 0, ...regle } as PromoRule);
-      setCodeEtat("repos");
-      try {
-        localStorage.setItem(CLE_CODE_PROMO, regle.code);
-      } catch {
-        // Stockage refusé (navigation privée) : le code reste valable pour
-        // cette page, il faudra le ressaisir au tunnel.
-      }
-    } catch {
-      setCodeApplique(null);
-      setCodeEtat(silencieux ? "repos" : "refuse");
-      if (silencieux) oublierCode();
-    }
-  }
-
-  function oublierCode() {
-    setCodeApplique(null);
-    setCodeSaisi("");
-    setCodeEtat("repos");
-    try {
-      localStorage.removeItem(CLE_CODE_PROMO);
-    } catch {
-      // rien à faire : sans stockage, il n'y avait rien à oublier
-    }
-  }
-
-  // Reprise d'un code d'une visite précédente, sans rien reprocher au client
-  // s'il n'est plus valable. Pas au stand : aucune remise ne s'y affiche.
-  if (!props.stand && codeSaisi()) void appliquerCode(codeSaisi(), true);
 
   /**
    * Des cadres ont quitté le panier parce que le site ne les propose plus.
@@ -242,7 +189,7 @@ export default function CartIsland(props: {
     const lib = biblio();
     if (!lib) return;
     for (const ligne of cart()?.items ?? []) {
-      for (const perso of ligne.config.characters ?? []) {
+      for (const perso of ligne.config?.characters ?? []) {
         const base = personnageParId(perso.typeId);
         if (!base) continue;
         void fetchSvg(base.baseSvgUrl);
@@ -283,7 +230,16 @@ export default function CartIsland(props: {
    */
   function details(it: OrderItem): string[] {
     const out: string[] = [];
-    const format = it.config.format ?? "A4";
+    // Une carte cadeau : ni format ni cadre, elle part par e-mail.
+    if (it.giftCard || !it.config) {
+      out.push(tr("carte.envoi"));
+      if (it.giftCard?.destinataireEmail)
+        out.push(tr("carte.pour").replace("{email}", () => it.giftCard!.destinataireEmail!));
+      return out;
+    }
+    // Une constante : la vérification du dessus ne vaut pas dans les rappels.
+    const config = it.config;
+    const format = config.format ?? "A4";
     out.push(
       `${tr("panier.format")}${tr("ponct.deux_points")}${format}${DIMENSIONS[format] ? ` (${DIMENSIONS[format]})` : ""}`,
     );
@@ -294,7 +250,7 @@ export default function CartIsland(props: {
       return out;
     }
     const cadre = (cadres() ?? []).find(
-      (c) => String(c.id) === String(it.config.frameId),
+      (c) => String(c.id) === String(config.frameId),
     );
     out.push(
       `${tr("panier.cadre")}${tr("ponct.deux_points")}${cadre ? cadre.name : tr("panier.sans_cadre")}`,
@@ -343,28 +299,30 @@ export default function CartIsland(props: {
    * compris » se déduit sans son cadre, ici comme à l'encaissement.
    */
   const lignes = () =>
-    (cart()?.items ?? []).map((it) => ({
-      unitPriceCents: it.unitPriceCents,
-      quantity: it.quantity,
-      format: it.config.format ?? null,
-      cadreCents: it.cadreCents ?? 0,
-    }));
+    // Les cartes cadeaux n'entrent pas dans les promotions : ni comptées, ni
+    // remisées (le moteur ne voit que les affiches, comme au serveur).
+    (cart()?.items ?? [])
+      .filter((it) => !it.giftCard)
+      .map((it) => ({
+        unitPriceCents: it.unitPriceCents,
+        quantity: it.quantity,
+        format: it.config?.format ?? null,
+        cadreCents: it.cadreCents ?? 0,
+      }));
+  /** Le montant des cartes cadeaux du panier, à leur prix. */
+  const cartesCents = () =>
+    (cart()?.items ?? [])
+      .filter((it) => it.giftCard)
+      .reduce((s, it) => s + it.unitPriceCents * it.quantity, 0);
 
   /**
    * Remises — calculées par le moteur PARTAGÉ (@memoryline/types), le même que
    * l'API utilise pour le montant réellement encaissé. Ce qui est affiché ici
    * ne peut donc plus diverger de ce qui sera débité.
    */
-  /** Promotions automatiques + celle du code saisi, s'il y en a un. */
-  const reglesEnJeu = (): PromoRule[] => {
-    const auto = promos() ?? [];
-    const c = codeApplique();
-    return c ? [...auto, c] : auto;
-  };
-  const codes = () => {
-    const c = codeApplique();
-    return c?.code ? [c.code] : [];
-  };
+  /** Les promotions automatiques seules : le code se saisit à la caisse. */
+  const reglesEnJeu = (): PromoRule[] => promos() ?? [];
+  const codes = (): string[] => [];
 
   const discount = (): { amount: number; label: string } => {
     const { remiseCents, detail } = remisesPanier(
@@ -385,9 +343,12 @@ export default function CartIsland(props: {
   };
 
   const total = () =>
-    totalPanierCents(lignes(), reglesEnJeu(), new Date(), codes());
+    totalPanierCents(lignes(), reglesEnJeu(), new Date(), codes()) + cartesCents();
 
   function editHref(it: OrderItem): string | null {
+    // Une carte cadeau ne se modifie pas : elle se retire, et s'en ajoute une
+    // autre.
+    if (it.giftCard || !it.config) return null;
     // Une affiche IA ne se « modifie » pas : on en regénère une autre depuis la
     // fiche produit. Proposer « Modifier » ouvrirait un configurateur qui n'a
     // rien à éditer.
@@ -415,7 +376,8 @@ export default function CartIsland(props: {
    */
   async function setQuantite(it: OrderItem, quantite: number) {
     const q = Math.max(1, Math.min(99, quantite));
-    if (q === it.quantity) return;
+    // Une carte cadeau garde sa quantité : une ligne, une carte, un destinataire.
+    if (q === it.quantity || it.giftCard || !it.config) return;
     setBusy(it.id);
     try {
       await browserApi.updateCartItem(getCartId(), it.id, {
@@ -454,6 +416,19 @@ export default function CartIsland(props: {
    * au texte — le titre coupé en deux, « Format : A4 (21 × 29,7 cm) » sur
    * trois lignes.
    */
+  /*
+   * La page attend le panier pour se montrer d'un coup (panier.astro,
+   * .ml-attente) : le panier lu, la vente enregistrée le cas échéant, puis
+   * les polices chargées — le texte ne change plus ensuite.
+   */
+  let pretSignale = false;
+  createEffect(() => {
+    if (cart.loading || pretSignale) return;
+    pretSignale = true;
+    const montrer = () => document.getElementById("ml-attente")?.setAttribute("data-pret", "");
+    void (document.fonts?.ready ?? Promise.resolve()).then(montrer, montrer);
+  });
+
   const COLONNES = props.stand
     ? "sm:grid-cols-[1fr_auto] md:max-lg:grid-cols-1"
     : "sm:grid-cols-[1fr_auto_7rem]";
@@ -560,12 +535,14 @@ export default function CartIsland(props: {
                 <li class={`grid gap-4 border-b border-ink/10 py-6 ${COLONNES} sm:items-start`}>
                   <div class="flex gap-4 min-w-0">
                     <div class="ml-panier-vignette w-20 shrink-0 sm:w-24">
+                      {/* Une carte cadeau : sa vignette, avec son montant. */}
+                      <Show when={!it.giftCard && it.config} fallback={<VignetteCarteCadeau libelle={tr("carte.titre")} montant={formatPrice(it.unitPriceCents, locale)} />}>
                       {/* Affiche IA : le visuel n'est pas une pile de calques
                           mais l'image générée, dont l'aperçu arrive déjà
                           filigrané — le filigrane y est cuit dans les pixels,
                           donc plus solide que la couche SVG du site. */}
                       <Show
-                        when={it.config.aiPublicId}
+                        when={it.config!.aiPublicId}
                         fallback={
                       <Show
                         when={imageSeule(it)}
@@ -575,7 +552,7 @@ export default function CartIsland(props: {
                         fallback={<div class="ml-skeleton aspect-[1/1.4142] w-full" />}
                       >
                         <PosterPreview
-                          state={stateFromConfig(it.config)}
+                          state={stateFromConfig(it.config!)}
                           characterById={personnageParId}
                           slots={biblio()!.slots}
                           cache={cache}
@@ -589,8 +566,8 @@ export default function CartIsland(props: {
                             // toujours muret, sinon leur aperçu changerait.
                             urlAsset(
                               PUBLIC_API_URL,
-                              it.config.foregroundUrl ||
-                                (it.config.view === "back"
+                              it.config!.foregroundUrl ||
+                                (it.config!.view === "back"
                                   ? "/assets/muret_officiel.svg"
                                   : ""),
                             ) || undefined
@@ -621,15 +598,15 @@ export default function CartIsland(props: {
                              montre déjà la création dans son sens. */
                           style={{
                             "aspect-ratio":
-                              it.config.orientation === "paysage"
+                              it.config!.orientation === "paysage"
                                 ? "1.4142 / 1"
                                 : "1 / 1.4142",
                           }}
                         >
                           <img
                             src={apercuAbsolu(
-                              it.config.aiApercuUrl ||
-                                urlApercu(it.config.aiPublicId!),
+                              it.config!.aiApercuUrl ||
+                                urlApercu(it.config!.aiPublicId!),
                             )}
                             alt=""
                             class="absolute inset-0 h-full w-full object-contain"
@@ -644,12 +621,15 @@ export default function CartIsland(props: {
                           />
                         </div>
                       </Show>
+                    </Show>
                     </div>
 
                     <div class="min-w-0">
                       <h2 class="text-lg leading-tight">
-                        {nomDeLaLigne(cart()?.fiches, it) ??
-                          tr("panier.affiche_sans_titre")}
+                        {it.giftCard
+                          ? tr("carte.titre")
+                          : (nomDeLaLigne(cart()?.fiches, it) ??
+                            tr("panier.affiche_sans_titre"))}
                       </h2>
                       <Show when={!props.stand}>
                         <p class="mt-1 text-sm">
@@ -673,6 +653,8 @@ export default function CartIsland(props: {
                   <div
                     class={`flex items-center gap-3 sm:justify-center ${props.stand ? "md:max-lg:justify-start" : ""}`}
                   >
+                    {/* Une carte cadeau : une par ligne, sa quantité ne bouge pas. */}
+                    <Show when={!it.giftCard}>
                     <div class="inline-flex items-center rounded-md border border-ink/20">
                       <button
                         type="button"
@@ -696,6 +678,7 @@ export default function CartIsland(props: {
                         +
                       </button>
                     </div>
+                    </Show>
                     <button
                       type="button"
                       onClick={() => remove(it)}
@@ -764,63 +747,6 @@ export default function CartIsland(props: {
                 <span>− {formatPrice(discount().amount, locale)}</span>
               </div>
             </Show>
-            {/* Code promo : un champ, un bouton, et la remise se voit tout
-                de suite dans le total au-dessus. */}
-            <div class="mt-4 text-left">
-              <Show
-                when={!codeApplique()}
-                fallback={
-                  <p class="flex items-center justify-between gap-3 text-sm">
-                    <span class="text-sage">
-                      {tr("panier.code_applique")} {codeApplique()!.code}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={oublierCode}
-                      class="text-ink-soft underline underline-offset-4 hover:text-ink"
-                    >
-                      {tr("panier.code_retirer")}
-                    </button>
-                  </p>
-                }
-              >
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void appliquerCode(codeSaisi());
-                  }}
-                  class="flex items-stretch gap-2"
-                >
-                  <label class="sr-only" for="ml-code-promo">
-                    {tr("panier.code")}
-                  </label>
-                  <input
-                    id="ml-code-promo"
-                    value={codeSaisi()}
-                    onInput={(e) => {
-                      setCodeSaisi(e.currentTarget.value);
-                      if (codeEtat() === "refuse") setCodeEtat("repos");
-                    }}
-                    placeholder={tr("panier.code")}
-                    autocomplete="off"
-                    class="min-w-0 flex-1 border border-ink/20 px-3 py-2 outline-none focus:border-ink"
-                  />
-                  <button
-                    type="submit"
-                    disabled={codeEtat() === "envoi" || !codeSaisi().trim()}
-                    class="border border-ink px-4 py-2 font-medium hover:bg-ink hover:text-paper disabled:opacity-40 transition-colors"
-                  >
-                    {tr("panier.code_appliquer")}
-                  </button>
-                </form>
-                <Show when={codeEtat() === "refuse"}>
-                  <p class="mt-2 text-sm text-terracotta-deep">
-                    {tr("panier.code_refuse")}
-                  </p>
-                </Show>
-              </Show>
-            </div>
-
             <div class="mt-3 flex items-center justify-end gap-4">
               <span class="text-ink-soft">{tr("panier.total_estime")}</span>
               <span class="text-2xl">{formatPrice(total(), locale)}</span>

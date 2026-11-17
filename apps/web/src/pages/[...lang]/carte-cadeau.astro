@@ -1,0 +1,93 @@
+---
+/**
+ * La carte cadeau, vendue sur le site (17/11).
+ *
+ * Pas une fiche du catalogue : le montant est LIBRE (10 à 300 €, en euros
+ * ronds), il n'y a ni format, ni prix à régler, ni stock, et la carte ne se
+ * range parmi aucune affiche. Une ligne de la table des produits aurait
+ * traîné partout la logique des affiches — formats, cadres, poids, fichiers
+ * d'impression, listes, référencement — avec autant d'exceptions à écrire.
+ * La page existe donc dès la mise en ligne, dans les cinq langues, et la
+ * boutique y mène depuis son menu (BO › Menu) : « /carte-cadeau ».
+ *
+ * Ce qu'elle dit, et ce que le serveur fait : la carte part par e-mail dès le
+ * paiement, sans frais de port ; elle s'utilise en une ou plusieurs fois, le
+ * solde restant reste sur le même code. Le destinataire, son prénom et le
+ * petit mot se donnent à la caisse.
+ *
+ * Au stand, la carte ne se vend pas (le stand encaisse de la main à la main,
+ * la carte part après un paiement en ligne) : la page le dit, sans bouton.
+ */
+import Base from "../../layouts/Base.astro";
+import { titreDePage } from "../../lib/textes-seo.ts";
+import CarteCadeauIsland, { LIBELLES_CARTE } from "../../islands/CarteCadeauIsland.tsx";
+import {
+  LOCALE_COMPLETE,
+  estLangue,
+  langueDepuisParam,
+  libelles,
+  lien,
+  t,
+  type Langue,
+} from "../../i18n/utils.ts";
+
+export const prerender = false;
+
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
+const tr = t(langue);
+const auStand = Astro.locals.stand;
+---
+
+<Base
+  langue={langue}
+  title={titreDePage(tr("carte.page.titre"))}
+  description={tr("carte.page.description")}
+  path={lien(langue, "/carte-cadeau")}
+>
+  <section class="mx-auto max-w-[1200px] px-4 sm:px-6 pt-12 pb-16">
+    <nav class="text-sm text-ink-soft">
+      <a href={lien(langue, "/")} class="hover:text-terracotta">Memory Line</a> ·
+      <a href={lien(langue, "/affiches")} class="hover:text-terracotta">{tr("nav.affiches")}</a>
+    </nav>
+    <div class="mt-6 grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      {/* La carte elle-même, dessinée : un cadeau se montre. */}
+      <div
+        class="flex aspect-[1.6/1] w-full flex-col items-center justify-center gap-3 rounded-2xl border border-ink/15 bg-paper-deep p-8 text-center shadow-sm"
+        aria-hidden="true"
+      >
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" class="text-terracotta">
+          <rect x="3" y="8" width="18" height="13" rx="1" />
+          <path d="M3 12h18M12 8v13M12 8c-1.5-3-5-4-5-1.5S10 8 12 8zm0 0c1.5-3 5-4 5-1.5S14 8 12 8z" />
+        </svg>
+        <span class="text-xs uppercase tracking-[0.3em] text-ink-soft">Memory Line</span>
+        <span class="font-serif text-3xl">{tr("carte.page.titre")}</span>
+      </div>
+
+      <div>
+        <h1 class="text-3xl sm:text-4xl">{tr("carte.page.titre")}</h1>
+        <p class="mt-4 text-lg text-ink-soft">{tr("carte.page.intro")}</p>
+        <ul class="mt-6 space-y-2 text-sm">
+          {["carte.page.envoi", "carte.page.solde", "carte.page.destinataire"].map((cle) => (
+            <li class="flex gap-3">
+              <span class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-terracotta" aria-hidden="true" />
+              <span>{tr(cle as "carte.page.envoi")}</span>
+            </li>
+          ))}
+        </ul>
+        <div class="mt-8">
+          <CarteCadeauIsland
+            client:load
+            langue={langue}
+            locale={LOCALE_COMPLETE[langue]}
+            libelles={libelles(langue, LIBELLES_CARTE)}
+            adresseCommande={lien(langue, "/commande")}
+            adressePanier={lien(langue, "/panier")}
+            stand={auStand}
+          />
+        </div>
+      </div>
+    </div>
+  </section>
+</Base>

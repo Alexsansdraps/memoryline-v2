@@ -281,6 +281,16 @@ export function mountSalonRoutes(app: Hono): void {
       .from(schema.orderItems)
       .where(eq(schema.orderItems.orderId, panier.id));
     if (!lignes.length) return c.json({ error: "Aucune affiche choisie." }, 400);
+    // Une carte cadeau part par e-mail après un paiement en ligne : le stand,
+    // qui encaisse de la main à la main, ne la vend pas (17/11).
+    if (lignes.some((l) => l.giftCard))
+      return c.json(
+        {
+          error:
+            "Une carte cadeau s'achète sur le site, pas au stand : retirez-la du panier.",
+        },
+        409,
+      );
 
     // Une fiche par personne, pas une par commande : un habitué des salons
     // reviendra, et on veut retrouver son historique.

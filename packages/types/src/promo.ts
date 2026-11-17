@@ -71,6 +71,46 @@ export function normaliserCode(code: unknown): string {
   return String(code ?? "").trim().toUpperCase();
 }
 
+/**
+ * La CLÉ d'un code, celle qui sert à le reconnaître : en majuscules, sans
+ * espaces ni tirets.
+ *
+ * Un code se recopie d'un courriel ou d'un papier : « v7x9 kq4m z8wp 3n6r »
+ * et « V7X9-KQ4M-Z8WP-3N6R » sont le même code. `normaliserCode` garde les
+ * tirets, parce que c'est ainsi que la boutique l'a écrit et qu'il s'affiche ;
+ * celle-ci ne sert qu'à comparer. Deux promotions dont les codes ne diffèrent
+ * que par un tiret sont donc refusées au back-office (promotions.ts).
+ */
+export function cleDeCode(code: unknown): string {
+  return String(code ?? "")
+    .replace(/[\s-]+/g, "")
+    .toUpperCase();
+}
+
+/**
+ * La règle offre-t-elle aussi la livraison ?
+ *
+ * Une remise sur le panier (pourcentage ou montant) peut s'accompagner du port
+ * offert : c'est ce qui fait un code « tout gratuit », affiches à 100 % et
+ * livraison comprise. Absent = non : rien ne change pour les règles d'avant.
+ */
+export function offreLaLivraison(regle: Pick<RegleParier, "type" | "config">): boolean {
+  if (regle.type !== "percent" && regle.type !== "fixed") return false;
+  return ((regle.config ?? {}) as { livraisonOfferte?: unknown }).livraisonOfferte === true;
+}
+
+/**
+ * Le code ne sert-il qu'UNE fois, toutes clientes confondues ?
+ *
+ * Absent = réutilisable : c'est ce que faisaient tous les codes avant que la
+ * question se pose. Le décompte, lui, se fait au serveur, au moment où la
+ * commande est payée (configurator-routes.ts) : ce drapeau ne fait que dire
+ * qu'il faut compter.
+ */
+export function estUsageUnique(config: unknown): boolean {
+  return ((config ?? {}) as { usageUnique?: unknown }).usageUnique === true;
+}
+
 /* ------------------------------------------------------------------------ */
 /*  « X achetées = Y offertes » : les deux formes de réglage                */
 /* ------------------------------------------------------------------------ */
@@ -202,12 +242,14 @@ export function reglesActives<T extends RegleParier>(
   maintenant: Date = new Date(),
   codes: readonly string[] = [],
 ): T[] {
-  const saisis = new Set(codes.map(normaliserCode).filter(Boolean));
+  // Comparés par leur CLÉ (cleDeCode) : ni la casse, ni les tirets, ni les
+  // espaces ne doivent faire refuser un code bien recopié.
+  const saisis = new Set(codes.map(cleDeCode).filter(Boolean));
   return regles
     .filter((r) => r.active !== false)
     .filter((r) => !r.archivedAt)
     .filter((r) => {
-      const code = normaliserCode(r.code);
+      const code = cleDeCode(r.code);
       return !code || saisis.has(code);
     })
     .filter((r) => {
@@ -375,10 +417,12 @@ export function libelleRegle(regle: RegleParier): string {
       : "";
     return `${achetees} = ${quoi} ${effet}, ${cadre}${fois}${phraseConditions(cfg)}`;
   }
+  // « et livraison offerte » : un code « tout gratuit » se lit comme tel.
+  const livraison = offreLaLivraison(regle) ? " et livraison offerte" : "";
   if (regle.type === "percent")
-    return `-${Math.min(100, Math.max(0, nombre(cfg.percent, 0)))} % sur le panier${phraseConditions(cfg)}`;
+    return `-${Math.min(100, Math.max(0, nombre(cfg.percent, 0)))} % sur le panier${livraison}${phraseConditions(cfg)}`;
   if (regle.type === "fixed")
-    return `-${euros(Math.max(0, Math.round(nombre(cfg.amountCents, 0))))} sur le panier${phraseConditions(cfg)}`;
+    return `-${euros(Math.max(0, Math.round(nombre(cfg.amountCents, 0))))} sur le panier${livraison}${phraseConditions(cfg)}`;
   if (regle.type === "free_shipping_over")
     return `Livraison offerte dès ${euros(Math.max(0, Math.round(nombre(cfg.thresholdCents, 0))))}`;
   return regle.type;
@@ -423,6 +467,24 @@ export function seuilPortOffertCents(
   return seuil;
 }
 
+/**
+ * Le seuil de port offert à appliquer à CE panier : 0 quand une règle qui
+ * offre la livraison joue (offreLaLivraison), sinon celui des promotions
+ * « livraison offerte dès X € ».
+ *
+ * C'est lui que lisent la caisse et l'API au moment de chiffrer le port :
+ * une seule fonction, pour que le port affiché soit le port encaissé.
+ */
+export function seuilPortCents(
+  lignes: readonly LignePanier[],
+  regles: readonly RegleParier[],
+  maintenant: Date = new Date(),
+  codes: readonly string[] = [],
+): number | null {
+  if (remisesPanier(lignes, regles, maintenant, codes).portOffert) return 0;
+  return seuilPortOffertCents(regles, maintenant, codes);
+}
+
 export interface RemiseAppliquee {
   regle: string;
   montantCents: number;
@@ -442,29 +504,40 @@ export interface RemiseAppliquee {
  * `free_shipping_over` n'apparaît pas ICI : elle ne remise pas les affiches,
  * elle annule les frais de port. C'est `seuilPortOffertCents` qui la lit, et
  * le calcul de la livraison qui l'applique.
+ *
+ * `portOffert` : une règle qui joue offre aussi la livraison
+ * (offreLaLivraison). Une règle « joue » quand elle passe tous les filtres —
+ * active, code saisi, minimum atteint, cumul permis —, même s'il ne restait
+ * plus rien à remiser : un panier déjà à zéro garde son port offert.
  */
 export function remisesPanier(
   lignes: readonly LignePanier[],
   regles: readonly RegleParier[],
   maintenant: Date = new Date(),
   codes: readonly string[] = [],
-): { remiseCents: number; detail: RemiseAppliquee[] } {
+): { remiseCents: number; detail: RemiseAppliquee[]; portOffert: boolean } {
   const sousTotal = sousTotalCents(lignes);
   const exemplaires = nombreDExemplaires(lignes);
   const detail: RemiseAppliquee[] = [];
   let remise = 0;
+  let portOffert = false;
 
   for (const regle of reglesActives(regles, maintenant, codes)) {
     if (!(TYPES_REGLE_APPLIQUES as readonly string[]).includes(regle.type)) continue;
     const cfg = (regle.config ?? {}) as Record<string, unknown>;
     const restant = sousTotal - remise;
-    if (restant <= 0) break;
     const cumulable = estCumulable(cfg);
     // Une règle qui refuse le cumul n'a rien à faire après une autre.
     if (!cumulable && remise > 0) continue;
     const { minCents, minQuantite } = lireConditions(cfg);
     if ((minCents && sousTotal < minCents) || (minQuantite && exemplaires < minQuantite))
       continue;
+    // La règle joue : si elle offre la livraison, c'est acquis.
+    if (offreLaLivraison(regle)) portOffert = true;
+    // Plus rien à remiser : les règles suivantes ne remisent rien non plus,
+    // mais l'une d'elles peut encore offrir la livraison. Le résultat de la
+    // remise est exactement celui d'avant, qui s'arrêtait ici.
+    if (restant <= 0) continue;
 
     let montant = 0;
     if (regle.type === "buy_x_get_y") {
@@ -484,7 +557,7 @@ export function remisesPanier(
     }
   }
 
-  return { remiseCents: remise, detail };
+  return { remiseCents: remise, detail, portOffert };
 }
 
 /** Total à payer, remises comprises. */

@@ -272,6 +272,8 @@ const GESTES_REFUSES_AUX_REPRISES = new Set([
   "facture",
   "fulfillments",
   "fulfil",
+  // Les étapes de traitement (17/11, commandes.ts) : elles expédient et écrivent.
+  "traitement",
   "refunds",
   "cancel",
   "encaisser",
