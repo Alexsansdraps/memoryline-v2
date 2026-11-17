@@ -290,6 +290,7 @@ export const de: Partial<Record<CleCourriel, string>> = {
   "facturePdf.clientParDefaut": "Kunde",
   "facturePdf.commandeDu": "Bestellung {numero} vom {date}",
   "facturePdf.reglee": "Bestellung bezahlt. Rechnung beglichen.",
+  "facturePdf.dontCarte": "Davon {montant} per Geschenkkarte bezahlt.",
   "facturePdf.nonReglee": "Bestellung bislang nicht bezahlt.",
   "facturePdf.annulee": "Bestellung storniert",
   /* « am {date} » avant le participe : l'ordre allemand. Le code ajoute

@@ -530,6 +530,7 @@ export const ui = {
     "compte.commande.quantite": "Quantité",
     "compte.commande.introuvable": "Cette commande est introuvable.",
     "compte.commande.sans_suivi": "Aucun numéro de suivi pour le moment.",
+    "compte.commande.cartes_par_email": "Envoyée par e-mail au destinataire",
 
     "compte.statut.financier.pending": "En attente de paiement",
     "compte.statut.financier.authorized": "Paiement autorisé",
@@ -1304,6 +1305,7 @@ export const ui = {
     "compte.commande.quantite": "Quantity",
     "compte.commande.introuvable": "This order could not be found.",
     "compte.commande.sans_suivi": "No tracking number yet.",
+    "compte.commande.cartes_par_email": "Sent by email to the recipient",
 
     "compte.statut.financier.pending": "Awaiting payment",
     "compte.statut.financier.authorized": "Payment authorised",
@@ -2065,6 +2067,7 @@ export const ui = {
     "compte.commande.quantite": "Menge",
     "compte.commande.introuvable": "Diese Bestellung wurde nicht gefunden.",
     "compte.commande.sans_suivi": "Noch keine Sendungsnummer.",
+    "compte.commande.cartes_par_email": "Per E-Mail an den Empfänger gesendet",
 
     "compte.statut.financier.pending": "Zahlung ausstehend",
     "compte.statut.financier.authorized": "Zahlung autorisiert",
@@ -2828,6 +2831,7 @@ export const ui = {
     "compte.commande.quantite": "Quantità",
     "compte.commande.introuvable": "Questo ordine non è stato trovato.",
     "compte.commande.sans_suivi": "Nessun numero di tracciamento per ora.",
+    "compte.commande.cartes_par_email": "Inviata via e-mail al destinatario",
 
     "compte.statut.financier.pending": "In attesa di pagamento",
     "compte.statut.financier.authorized": "Pagamento autorizzato",
@@ -3586,6 +3590,7 @@ export const ui = {
     "compte.commande.quantite": "Cantidad",
     "compte.commande.introuvable": "No se ha encontrado este pedido.",
     "compte.commande.sans_suivi": "Todavía no hay número de seguimiento.",
+    "compte.commande.cartes_par_email": "Enviada por correo electrónico al destinatario",
 
     "compte.statut.financier.pending": "Pendiente de pago",
     "compte.statut.financier.authorized": "Pago autorizado",

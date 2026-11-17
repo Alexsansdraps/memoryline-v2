@@ -307,6 +307,7 @@ export const fr = {
   "facturePdf.clientParDefaut": "Client",
   "facturePdf.commandeDu": "Commande {numero} du {date}",
   "facturePdf.reglee": "Commande réglée. Facture acquittée.",
+  "facturePdf.dontCarte": "Dont {montant} réglés par carte cadeau.",
   "facturePdf.nonReglee": "Commande non réglée à ce jour.",
   /** Suivie, s'il y en a un, du motif de l'annulation, puis d'un point. */
   "facturePdf.annulee": "Commande annulée",

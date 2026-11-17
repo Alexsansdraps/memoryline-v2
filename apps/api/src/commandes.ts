@@ -70,6 +70,7 @@ import {
   envoyer as envoyerCourrier,
   estConfigure as mailConfigure,
   type LigneCourrier,
+  prix,
 } from "./mail.js";
 // L'encaissement d'un virement passe par la MÊME fonction que celui d'un
 // paiement Stripe. L'import est croisé — configurator-routes.ts lit déjà
@@ -3482,7 +3483,14 @@ export function mountOrderRoutes(app: Hono): void {
           ? t("facturePdf.annuleeLe", { date: dateCourte(langue, order.cancelledAt) })
           : t("facturePdf.annulee")
       }${order.cancelReason ? ` — ${motifDansLaLangue(order.cancelReason, langue)}` : ""}.`;
-    if (order.status === "paid") return t("facturePdf.reglee");
+    // Payée en partie (ou en entier) par une carte cadeau : la facture le dit
+    // (17/11), sous la mention de règlement.
+    if (order.status === "paid")
+      return order.giftCardCents > 0
+        ? `${t("facturePdf.reglee")} ${t("facturePdf.dontCarte", {
+            montant: prix(Math.min(order.giftCardCents, order.totalCents), langue),
+          })}`
+        : t("facturePdf.reglee");
     return t("facturePdf.nonReglee");
   }
 

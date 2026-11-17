@@ -296,6 +296,7 @@ export const it: Partial<Record<CleCourriel, string>> = {
   "facturePdf.clientParDefaut": "Cliente",
   "facturePdf.commandeDu": "Ordine {numero} in data {date}",
   "facturePdf.reglee": "Ordine pagato. Fattura saldata.",
+  "facturePdf.dontCarte": "Di cui {montant} pagati con carta regalo.",
   "facturePdf.nonReglee": "Ordine non ancora pagato.",
   "facturePdf.annulee": "Ordine annullato",
   "facturePdf.annuleeLe": "Ordine annullato in data {date}",

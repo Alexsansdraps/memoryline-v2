@@ -79,6 +79,13 @@ const lignesAdresse = detail ? adresseLivraison(detail.order) : [];
 const expeditions = (detail?.expeditions ?? []).filter(
   (e) => e.trackingUrl || e.trackingNumber,
 );
+/**
+ * Une commande de cartes cadeaux SEULES (17/11) : rien ne voyage, les cartes
+ * partent par e-mail au paiement. Ni « Expédiée », ni ligne de livraison, ni
+ * adresse, ni suivi : « Envoyée par e-mail au destinataire ».
+ */
+const cartesSeules =
+  !!detail && detail.items.length > 0 && detail.items.every((l) => Boolean(l.giftCard));
 ---
 
 <CompteCadre
@@ -116,7 +123,9 @@ const expeditions = (detail?.expeditions ?? []).filter(
             </span>
             <span class="border border-ink/15 bg-paper-deep px-3 py-1">
               {tr("compte.commande.traitement")}{deuxPoints}
-              {libelleStatut(tr, "expedition", detail.statutExpedition)}
+              {cartesSeules
+                ? tr("compte.commande.cartes_par_email")
+                : libelleStatut(tr, "expedition", detail.statutExpedition)}
             </span>
           </p>
         </div>
@@ -192,7 +201,9 @@ const expeditions = (detail?.expeditions ?? []).filter(
         <section class="grid gap-10 sm:grid-cols-2">
           {/* Une commande à retirer n'a pas d'adresse de livraison : on dit
               à la place OÙ venir la chercher, tel qu'elle l'a choisi. */}
-          {detail.lieuRetrait ? (
+          {cartesSeules ? (
+            <div />
+          ) : detail.lieuRetrait ? (
             <div>
               <h2 class="mb-3 text-2xl">{tr("retrait.titre")}</h2>
               <address class="text-ink-soft not-italic">
@@ -233,7 +244,7 @@ const expeditions = (detail?.expeditions ?? []).filter(
                 <dd>- {formatPrice(detail.montants.remiseCents, locale)}</dd>
               </div>
             )}
-            <div class="flex justify-between gap-4">
+            <div class="flex justify-between gap-4" hidden={cartesSeules}>
               <dt class="text-ink-soft">{tr("compte.commande.port")}</dt>
               <dd>
                 {detail.montants.portCents > 0
@@ -254,7 +265,7 @@ const expeditions = (detail?.expeditions ?? []).filter(
           </dl>
         </section>
 
-        <section>
+        <section hidden={cartesSeules}>
           <h2 class="mb-3 text-2xl">{tr("compte.commande.expeditions")}</h2>
           {expeditions.length ? (
             <ul class="space-y-2">

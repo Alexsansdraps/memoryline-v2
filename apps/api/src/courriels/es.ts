@@ -280,6 +280,7 @@ export const es: Partial<Record<CleCourriel, string>> = {
   "facturePdf.clientParDefaut": "Cliente",
   "facturePdf.commandeDu": "Pedido {numero} del {date}",
   "facturePdf.reglee": "Pedido pagado. Factura saldada.",
+  "facturePdf.dontCarte": "De los cuales {montant} pagados con tarjeta regalo.",
   "facturePdf.nonReglee": "Pedido pendiente de pago a día de hoy.",
   "facturePdf.annulee": "Pedido cancelado",
   "facturePdf.annuleeLe": "Pedido cancelado el {date}",

@@ -25,6 +25,7 @@ import {
   courrierExpediee,
   courrierFacture,
   courrierMotDePasseModifie,
+  courrierCarteCadeau,
   courrierPreteAuStand,
   courrierPreteAuRetrait,
   courrierConfirmation,
@@ -138,6 +139,7 @@ type IdModele =
   | "annulee"
   | "facture"
   | "nouvelle-commande"
+  | "carte-cadeau"
   | "panier-abandonne"
   | "bienvenue"
   | "mot-de-passe-modifie"
@@ -206,6 +208,13 @@ const MODELES: Modele[] = [
     nom: "Avis de nouvelle commande",
     quand: "Vous prévient qu'une commande vient d'arriver.",
     besoinCommande: true,
+  },
+  {
+    id: "carte-cadeau",
+    nom: "Carte cadeau",
+    quand:
+      "Part vers le destinataire d'une carte cadeau achetée sur le site, dès le paiement : le montant, le code et le petit mot de l'acheteuse.",
+    besoinCommande: false,
   },
   {
     id: "panier-abandonne",
@@ -678,6 +687,17 @@ function rendre(
           langue === "fr" ? "" : `&lang=${langue}`
         }`,
         textes: textesRelance,
+      });
+    case "carte-cadeau":
+      // Un code d'exemple, de la forme des vrais (XXXX-XXXX-XXXX-XXXX) mais
+      // qui ne paie rien : un aperçu ne doit jamais montrer une vraie carte.
+      return courrierCarteCadeau({
+        langue,
+        prenomDestinataire: "Camille",
+        deLaPart: "Léa",
+        montantCents: 5000,
+        code: "EXEM-PLED-ECAR-TE00",
+        message: "Joyeux Noël ! Choisis l'affiche qui te ressemble.",
       });
     case "bienvenue":
       return courrierBienvenue({

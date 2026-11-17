@@ -329,7 +329,7 @@ function h(v: unknown): string {
  * (« €23.00 »). Sans langue, le français : c'est celle des courriers à la
  * boutique.
  */
-function prix(cents: number, langue: Langue = "fr"): string {
+export function prix(cents: number, langue: Langue = "fr"): string {
   return prixDans(langue, cents);
 }
 

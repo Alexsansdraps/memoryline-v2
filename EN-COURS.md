@@ -112,7 +112,17 @@ Ce fichier est écrit par le Claude du PC du bureau, qui s'est arrêté le 17/11
 - **2.2 Module « Ventes des stands en cours » : FAIT** (`8f337b8`), route `GET /admin/stands/en-cours`.
 - **2.4.2 Code à usage unique qui n'a rien remisé : FAIT** (`bc934bd`), avec `codeARemise` dans `@memoryline/types` et les tests `code-usage-unique.test.ts`.
 - **2.4.3 Finances : FAIT** (`bc934bd`). Le chiffre d'affaires par canal exclut les cartes vendues : `partDuChiffreDAffaires`, tests `finances-cartes-cadeaux.test.ts`.
-- **Restent : 2.3 et 2.5.**
+- **2.3 Écran « Code promo / Carte cadeau » : FAIT** (`ff447fd`).
+  - BO › « Code promo / Carte cadeau » (/cartes-cadeaux) a des onglets Tout / Codes promo / Cartes cadeaux, un bouton « Créer : un code promo / une carte cadeau », et une table des codes avec les colonnes Type, Code, Valeur, Usage, État et Modifier. Les sections des cartes sont inchangées : vendre, imprimer, journal, ajuster, désactiver.
+  - « Promotions » ne montre plus que les promotions automatiques, avec un lien vers le nouvel écran.
+  - Un code se crée et se modifie dans le même formulaire, ouvert en mode « Code promo » (`/promotions?type=code`). Ce mode garde la liste des codes, l'activation, l'archivage, la restauration et les traductions.
+  - Différence avec la demande : la création d'un code passe par la page Promotions en mode code, et pas par un formulaire intégré à l'écran.
+- **2.5 Petits restes : FAITS en partie.**
+  - Compte client : une commande de cartes seules affiche « Envoyée par e-mail au destinataire », sans ligne Livraison, sans adresse ni suivi (5 langues).
+  - BO › Courriers : un aperçu « Carte cadeau ».
+  - Facture : « Dont X € réglés par carte cadeau. » (5 langues).
+  - **Reste** : l'essai Stripe en mode TEST (carte de 10 € sur une commande de 15 € + port), à faire en local avec des clés de test.
+- **Reste aussi** : la fiche client (clients/[id].astro), qui montre encore Paiement et Traitement à la place de l'étape.
 
 ## 2. À FAIRE, dans cet ordre
 
